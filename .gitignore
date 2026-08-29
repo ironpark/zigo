@@ -1,0 +1,17 @@
+.zig-cache/
+zig-out/
+
+.DS_Store
+
+# Editor and IDE files
+.vscode/
+.idea/
+
+# Build and coverage artifacts
+*.o
+*.a
+*.so
+*.dylib
+*.dll
+*.exe
+coverage/
