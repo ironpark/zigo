@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-29T04:13:08Z"
 depends_on:
 - "01-zigo-go-bindings#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Serializing a fixture, parsing it back and re-serializing yields byte-identical output.
 > NEXT: none
