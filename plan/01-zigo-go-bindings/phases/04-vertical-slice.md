@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-29T22:40:22Z"
 depends_on:
 - "01-zigo-go-bindings#3"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `cd examples/01-scalar && zig build go && cd go && go test ./...` passes, asserting
 > NEXT: none
