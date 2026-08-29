@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-29T23:36:17Z"
 depends_on:
 - "01-zigo-go-bindings#7"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Each of ZIGO001 through ZIGO009 has a snapshot test asserting its message and hint.
 > NEXT: none
