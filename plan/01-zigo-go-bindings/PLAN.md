@@ -14,7 +14,7 @@ registered_at: "2026-08-29T03:54:30Z"
 - [x] [Phase 04: Vertical slice: Go calls Zig](phases/04-vertical-slice.md)
 - [x] [Phase 05: Error unions and slices](phases/05-errors-and-slices.md)
 - [x] [Phase 06: Opaque handles and lifetimes](phases/06-opaque-lifecycle.md)
-- [ ] [Phase 07: Parameter names and semantic metadata](phases/07-names-and-metadata.md)
+- [x] [Phase 07: Parameter names and semantic metadata](phases/07-names-and-metadata.md)
 - [ ] [Phase 08: Diagnostics completed](phases/08-diagnostics.md)
 - [ ] [Phase 09: Source sync check and ABI diff](phases/09-sync-and-abi-diff.md)
 - [ ] [Phase 10: Generic specialization and callbacks](phases/10-generics-and-callbacks.md)

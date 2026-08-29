@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-29T23:30:23Z"
 depends_on:
 - "01-zigo-go-bindings#6"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: A function annotated with sidecar names produces a Go signature using those names.
 > NEXT: none
