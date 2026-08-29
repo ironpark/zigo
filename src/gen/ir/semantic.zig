@@ -212,6 +212,7 @@ pub const SemanticFn = struct {
     params: []const Parameter,
     receiver: ?[]const u8 = null,
     @"return": TypeNode,
+    return_semantic: ?SemanticHint = null,
     symbol: []const u8,
 };
 

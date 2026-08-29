@@ -18,3 +18,13 @@ func TestOpaqueLifecycle(t *testing.T) {
 		t.Fatalf("LiveBytes() = %d, want 0", got)
 	}
 }
+
+func TestNamesAndUTF8(t *testing.T) {
+	const text = "안녕, Zig와 Go"
+	if got := Echo(text); got != text {
+		t.Fatalf("Echo() = %q, want %q", got, text)
+	}
+	if got := Fallback(21); got != 42 {
+		t.Fatalf("Fallback() = %d, want 42", got)
+	}
+}

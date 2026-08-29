@@ -29,6 +29,17 @@ pub fn liveBytes() usize {
     return live_bytes.load(.monotonic);
 }
 
+/// Echoes UTF-8 text without changing its bytes.
+pub fn echo(text: []const u8) []const u8 {
+    return text;
+}
+
+pub const fallback = struct {
+    pub fn call(value: i64) i64 {
+        return value * 2;
+    }
+}.call;
+
 test "counting allocation returns to zero" {
     const context = try Context.create();
     try std.testing.expectEqual(@as(i64, 3), context.add(3));

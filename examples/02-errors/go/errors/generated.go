@@ -43,16 +43,16 @@ func errorForCode(code int32) error {
 	}
 }
 
-func Divide(p0 float64, p1 float64) (float64, error) {
-	result, code := raw.Divide(p0, p1)
+func Divide(numerator float64, denominator float64) (float64, error) {
+	result, code := raw.Divide(numerator, denominator)
 	if code != 0 {
 		return 0, errorForCode(code)
 	}
 	return result, nil
 }
-func Sum(p0 []float64) float64 {
-	return raw.Sum(p0)
+func Sum(values []float64) float64 {
+	return raw.Sum(values)
 }
-func NormalizeFormat(p0 Format) Format {
-	return Format(raw.NormalizeFormat(uint32(p0)))
+func NormalizeFormat(value Format) Format {
+	return Format(raw.NormalizeFormat(uint32(value)))
 }

@@ -8,6 +8,6 @@ package raw
 */
 import "C"
 
-func Add(p0 int32, p1 int32) int32 {
-	return int32(C.zg_add(C.int32_t(p0), C.int32_t(p1)))
+func Add(a int32, b int32) int32 {
+	return int32(C.zg_add(C.int32_t(a), C.int32_t(b)))
 }

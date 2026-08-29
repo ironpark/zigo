@@ -1,13 +1,19 @@
 const std = @import("std");
 const bindings = @import("bindings");
+const names = @import("names.zig");
 const walk = @import("walk.zig");
 
 pub fn main(init: std.process.Init) !void {
     const allocator = init.arena.allocator();
     const args = try init.minimal.args.toSlice(allocator);
-    if (args.len != 4) return error.InvalidArguments;
+    if (args.len != 5) return error.InvalidArguments;
 
-    const document = try walk.reflect(allocator, bindings.bindings, args[2], args[3]);
+    var document = try walk.reflect(allocator, bindings.bindings, args[2], args[3]);
+    try names.apply(allocator, init.io, &document, args[4]);
+    var stderr_buffer: [1024]u8 = undefined;
+    var stderr = std.Io.File.Writer.init(.stderr(), init.io, &stderr_buffer);
+    try names.writeWarnings(&stderr.interface, document);
+    try stderr.interface.flush();
     const semantic_json = try document.serialize(allocator);
     var stdout_buffer: [4096]u8 = undefined;
     var stdout = std.Io.File.Writer.init(.stdout(), init.io, &stdout_buffer);

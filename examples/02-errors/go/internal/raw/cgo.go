@@ -9,19 +9,19 @@ package raw
 import "C"
 import "unsafe"
 
-func Divide(p0 float64, p1 float64) (float64, int32) {
+func Divide(numerator float64, denominator float64) (float64, int32) {
 	var outResult C.double
-	code := int32(C.zg_divide(C.double(p0), C.double(p1), &outResult))
+	code := int32(C.zg_divide(C.double(numerator), C.double(denominator), &outResult))
 	return float64(outResult), code
 }
-func Sum(p0 []float64) float64 {
-	var p0_zero C.double
-	p0_ptr := &p0_zero
-	if len(p0) != 0 {
-		p0_ptr = (*C.double)(unsafe.Pointer(&p0[0]))
+func Sum(values []float64) float64 {
+	var values_zero C.double
+	values_ptr := &values_zero
+	if len(values) != 0 {
+		values_ptr = (*C.double)(unsafe.Pointer(&values[0]))
 	}
-	return float64(C.zg_sum(p0_ptr, C.size_t(len(p0))))
+	return float64(C.zg_sum(values_ptr, C.size_t(len(values))))
 }
-func NormalizeFormat(p0 uint32) uint32 {
-	return uint32(C.zg_normalize_format(C.uint32_t(p0)))
+func NormalizeFormat(value uint32) uint32 {
+	return uint32(C.zg_normalize_format(C.uint32_t(value)))
 }

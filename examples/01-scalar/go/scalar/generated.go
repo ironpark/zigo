@@ -3,6 +3,6 @@ package scalar
 
 import "example.com/zigo/scalar/internal/raw"
 
-func Add(p0 int32, p1 int32) int32 {
-	return raw.Add(p0, p1)
+func Add(a int32, b int32) int32 {
+	return raw.Add(a, b)
 }

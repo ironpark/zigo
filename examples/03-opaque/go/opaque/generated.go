@@ -67,3 +67,11 @@ func (c *Context) Add(value int64) int64 {
 func LiveBytes() uint {
 	return raw.LiveBytes()
 }
+
+// Echo Echoes UTF-8 text without changing its bytes.
+func Echo(text string) string {
+	return string(raw.Echo([]byte(text)))
+}
+func Fallback(p0 int64) int64 {
+	return raw.Fallback(p0)
+}

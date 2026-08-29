@@ -2,7 +2,7 @@
 depends_on:
 - "01-zigo-go-bindings#6"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: A function annotated with sidecar names produces a Go signature using those names.
 > NEXT: none

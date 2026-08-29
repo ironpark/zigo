@@ -23,3 +23,17 @@ func ContextDeinit(self unsafe.Pointer) {
 func LiveBytes() uint {
 	return uint(C.zg_live_bytes())
 }
+func Echo(text []uint8) []uint8 {
+	var outResultPtr *C.uint8_t
+	var outResultLen C.size_t
+	var text_zero C.uint8_t
+	text_ptr := &text_zero
+	if len(text) != 0 {
+		text_ptr = (*C.uint8_t)(unsafe.Pointer(&text[0]))
+	}
+	C.zg_echo(text_ptr, C.size_t(len(text)), &outResultPtr, &outResultLen)
+	return C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))
+}
+func Fallback(p0 int64) int64 {
+	return int64(C.zg_fallback(C.int64_t(p0)))
+}

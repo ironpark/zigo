@@ -57,6 +57,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{.{ .name = "semantic", .module = semantic_module }},
     });
+    const reflect_names_module = b.createModule(.{
+        .root_source_file = b.path("src/reflect/names.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "semantic", .module = semantic_module }},
+    });
     const tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("tests/test.zig"),
         .target = target,
@@ -76,6 +82,7 @@ pub fn build(b: *std.Build) void {
             }) },
             .{ .name = "abi", .module = abi_module },
             .{ .name = "reflect_walk", .module = reflect_walk_module },
+            .{ .name = "reflect_names", .module = reflect_names_module },
         },
     }) });
     const run_tests = b.addRunArtifact(tests);
@@ -161,7 +168,9 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     const semantic_run = b.addRunArtifact(reflector);
     const layout_json = semantic_run.addOutputFileArg("layout.json");
     semantic_run.addArgs(&.{ options.name, options.prefix });
+    semantic_run.addFileArg(options.bindings);
     const semantic_json = semantic_run.captureStdOut(.{ .basename = "semantic.json", .trim_whitespace = .none });
+    _ = semantic_run.captureStdErr(.{ .basename = "warnings.txt", .trim_whitespace = .none });
 
     const raw_source_dir = options.go_dir.path(b, "internal/raw").getPath(b);
     const include_dir = cgoRelativePath(b, raw_source_dir, b.pathJoin(&.{ b.install_path, "include" }));

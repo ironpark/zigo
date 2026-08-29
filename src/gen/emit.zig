@@ -54,6 +54,13 @@ fn renderShim(_: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program
         try writeZigType(writer, function.ret);
         try writer.writeAll(" {\n    ");
 
+        if (function.origin.@"return" == .slice) {
+            try writer.writeAll("const result = ");
+            try writeTargetCall(writer, function);
+            try writer.writeAll(";\n    out_result_ptr.* = result.ptr;\n    out_result_len.* = result.len;\n}\n");
+            continue;
+        }
+
         if (function.origin.@"return" == .error_union) {
             const error_union = function.origin.@"return".error_union;
             if (error_union.payload.* == .void) {
@@ -198,6 +205,11 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         try writer.writeByte(')');
         try writeRawReturnType(writer, program, function);
         try writer.writeAll(" {\n");
+        if (function.origin.@"return" == .slice) {
+            try writer.writeAll("\tvar outResultPtr *C.");
+            try writeCgoType(writer, semanticScalar(program, function.origin.@"return".slice.element.*));
+            try writer.writeAll("\n\tvar outResultLen C.size_t\n");
+        }
         for (function.origin.params) |parameter| {
             if (parameter.type == .slice) {
                 try writer.print("\tvar {s}_zero C.", .{parameter.name});
@@ -222,6 +234,8 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         try writer.writeByte('\t');
         if (returns_error) {
             try writer.writeAll("code := int32(");
+        } else if (function.origin.@"return" == .slice) {
+            // The ptr/len out parameters are converted after the C call.
         } else if (function.origin.@"return" != .void) {
             try writer.writeAll("return ");
             try writeRawConversionPrefix(writer, program, function.origin.@"return");
@@ -244,12 +258,17 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 .slice_length => try writer.print("C.size_t(len({s}))", .{function.origin.params[parameter.source_index].name}),
                 .slice_written => try writer.print("&{s}_written", .{function.origin.params[parameter.source_index].name}),
                 .payload_out => try writer.writeAll("&outResult"),
+                .return_slice_pointer => try writer.writeAll("&outResultPtr"),
+                .return_slice_length => try writer.writeAll("&outResultLen"),
             }
         }
         try writer.writeByte(')');
         if (returns_error) try writer.writeByte(')');
-        if (!returns_error and function.origin.@"return" != .void) try writer.writeByte(')');
+        if (!returns_error and function.origin.@"return" != .void and function.origin.@"return" != .slice) try writer.writeByte(')');
         try writer.writeByte('\n');
+        if (function.origin.@"return" == .slice) {
+            try writer.writeAll("\treturn C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))\n");
+        }
         if (returns_error) {
             if (error_payload == .void) {
                 try writer.writeAll("\treturn code\n");
@@ -283,6 +302,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         else
             try naming.pascalAlloc(allocator, function.origin.name);
         defer allocator.free(go_name);
+        if (function.origin.doc) |doc| try writeGoDoc(writer, go_name, doc);
         if (function.origin.receiver) |receiver| {
             const receiver_name = try receiverVariableAlloc(allocator, receiver);
             defer allocator.free(receiver_name);
@@ -293,7 +313,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         for (function.origin.params, 0..) |parameter, index| {
             if (index != 0) try writer.writeAll(", ");
             try writer.print("{s} ", .{parameter.name});
-            try writePublicGoType(writer, parameter.type);
+            try writePublicParameterType(writer, parameter);
         }
         try writer.writeByte(')');
         if (constructor) |value| {
@@ -309,6 +329,8 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             if (error_payload == .void) try writer.writeAll("code := raw.") else try writer.writeAll("result, code := raw.");
         } else if (borrowed_direct) {
             try writer.writeAll("result := raw.");
+        } else if (isUtf8Slice(function.origin.@"return", function.origin.return_semantic)) {
+            try writer.writeAll("return string(raw.");
         } else if (function.origin.@"return" != .void) {
             if (function.origin.@"return" == .@"enum") {
                 try writer.print("return {s}(raw.", .{function.origin.@"return".@"enum".ref});
@@ -338,6 +360,10 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                     try writer.print("({s})", .{parameter.name});
                 },
                 .opaque_ptr => try writer.print("{s}.ptr", .{parameter.name}),
+                .slice => if (isUtf8Slice(parameter.type, parameter.semantic))
+                    try writer.print("[]byte({s})", .{parameter.name})
+                else
+                    try writer.writeAll(parameter.name),
                 else => try writer.writeAll(parameter.name),
             }
             call_index += 1;
@@ -345,6 +371,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         try writer.writeByte(')');
         if (!returns_error and function.origin.@"return" == .@"enum") try writer.writeByte(')');
         if (!returns_error and function.origin.@"return" == .bool) try writer.writeAll(" != 0");
+        if (!returns_error and isUtf8Slice(function.origin.@"return", function.origin.return_semantic)) try writer.writeByte(')');
         try writer.writeByte('\n');
         if (borrowed_direct) {
             try writer.writeAll("\treturn ");
@@ -391,6 +418,10 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
 }
 
 fn writePublicFunctionReturnType(writer: *std.Io.Writer, function: semantic.SemanticFn) !void {
+    if (isUtf8Slice(function.@"return", function.return_semantic)) {
+        try writer.writeAll(" string");
+        return;
+    }
     if (function.@"return" == .opaque_ptr and function.ownership == .borrowed) {
         try writer.print(" *{s}Ref", .{function.@"return".opaque_ptr.ref});
         return;
@@ -518,8 +549,12 @@ fn writeRawGoType(writer: *std.Io.Writer, program: abi.Program, node: semantic.T
 fn writePublicGoType(writer: *std.Io.Writer, node: semantic.TypeNode) !void {
     switch (node) {
         .slice => |value| {
-            try writer.writeAll("[]");
-            try writePublicGoType(writer, value.element.*);
+            if (isByteType(value.element.*)) {
+                try writer.writeAll("[]byte");
+            } else {
+                try writer.writeAll("[]");
+                try writePublicGoType(writer, value.element.*);
+            }
         },
         .@"enum" => |value| try writer.writeAll(value.ref),
         .bool => try writer.writeAll("bool"),
@@ -530,6 +565,33 @@ fn writePublicGoType(writer: *std.Io.Writer, node: semantic.TypeNode) !void {
         .float => |value| try writer.print("float{d}", .{value.bits}),
         .opaque_ptr => |value| try writer.print("*{s}", .{value.ref}),
         else => unreachable,
+    }
+}
+
+fn writePublicParameterType(writer: *std.Io.Writer, parameter: semantic.Parameter) !void {
+    if (isUtf8Slice(parameter.type, parameter.semantic)) return writer.writeAll("string");
+    try writePublicGoType(writer, parameter.type);
+}
+
+fn isUtf8Slice(node: semantic.TypeNode, hint: ?semantic.SemanticHint) bool {
+    return hint == .utf8_string and node == .slice and isByteType(node.slice.element.*);
+}
+
+fn isByteType(node: semantic.TypeNode) bool {
+    return node == .int and !node.int.signed and node.int.bits == 8;
+}
+
+fn writeGoDoc(writer: *std.Io.Writer, go_name: []const u8, doc: []const u8) !void {
+    try writer.writeByte('\n');
+    var lines = std.mem.splitScalar(u8, doc, '\n');
+    var first = true;
+    while (lines.next()) |line| {
+        if (first) {
+            try writer.print("// {s} {s}\n", .{ go_name, line });
+            first = false;
+        } else {
+            try writer.print("// {s}\n", .{line});
+        }
     }
 }
 

@@ -60,6 +60,25 @@ pub fn semanticDocument(
 
         var function_errors: []const abi.ErrorCode = &.{};
         const return_scalar = switch (function.@"return") {
+            .slice => |slice| result: {
+                const element = try allocator.create(abi.AbiScalar);
+                element.* = try lowerValue(allocator, document, slice.element.*);
+                const many = try allocator.create(abi.AbiScalar);
+                many.* = .{ .pointer = .{ .child = element, .is_const = slice.@"const", .is_many = true } };
+                try params.append(allocator, .{
+                    .name = "out_result_ptr",
+                    .role = .return_slice_pointer,
+                    .scalar = .{ .pointer = .{ .child = many, .is_const = false } },
+                });
+                const usize_child = try allocator.create(abi.AbiScalar);
+                usize_child.* = .usize;
+                try params.append(allocator, .{
+                    .name = "out_result_len",
+                    .role = .return_slice_length,
+                    .scalar = .{ .pointer = .{ .child = usize_child, .is_const = false } },
+                });
+                break :result abi.AbiScalar.void;
+            },
             .error_union => |error_union| result: {
                 function_errors = try codesFor(allocator, error_union.error_set, error_codes);
                 if (error_union.payload.* != .void) {

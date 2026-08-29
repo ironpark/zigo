@@ -74,13 +74,16 @@ pub fn reflect(
             params[output_index] = reflected;
         }
         const return_type = info.return_type orelse @compileError("generic return types require an explicit specialization");
-        functions[function_index] = .{
+        var reflected_function: semantic.SemanticFn = .{
             .name = entry.name,
             .params = params,
             .receiver = receiver,
             .@"return" = try typeNode(allocator, return_type, &types),
             .symbol = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ prefix, entry.name }),
         };
+        if (@hasField(@TypeOf(entry), "semantic")) reflected_function.return_semantic = entry.semantic;
+        if (@hasField(@TypeOf(entry), "returns")) reflected_function.ownership = entry.returns;
+        functions[function_index] = reflected_function;
     }
 
     var constructors: std.ArrayList(semantic.Constructor) = .empty;
