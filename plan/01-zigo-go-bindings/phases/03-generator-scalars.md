@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-29T22:37:53Z"
 depends_on:
 - "01-zigo-go-bindings#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Running `zigo-gen` on the scalar fixture writes a shim, a header, `internal/raw` and
 > NEXT: none
