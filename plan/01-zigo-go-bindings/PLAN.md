@@ -9,7 +9,7 @@ registered_at: "2026-08-29T03:54:30Z"
 
 - [x] [Phase 00: Build API skeleton and test harness](phases/00-build-api-skeleton.md)
 - [x] [Phase 01: Semantic IR types and error lock](phases/01-ir-types.md)
-- [ ] [Phase 02: Reflector over scalar declarations](phases/02-reflector-scalars.md)
+- [x] [Phase 02: Reflector over scalar declarations](phases/02-reflector-scalars.md)
 - [ ] [Phase 03: Generator emitting scalar bindings](phases/03-generator-scalars.md)
 - [ ] [Phase 04: Vertical slice: Go calls Zig](phases/04-vertical-slice.md)
 - [ ] [Phase 05: Error unions and slices](phases/05-errors-and-slices.md)

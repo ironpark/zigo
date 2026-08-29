@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-29T04:16:29Z"
 depends_on:
 - "01-zigo-go-bindings#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build go` in `examples/01-scalar` produces a `semantic.json` describing
 > NEXT: none
