@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-29T22:52:14Z"
 depends_on:
 - "01-zigo-go-bindings#4"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `errors.Is(err, mylib.ErrDivideByZero)` holds in the example's Go tests.
 > NEXT: none

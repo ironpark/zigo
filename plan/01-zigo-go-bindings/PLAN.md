@@ -12,7 +12,7 @@ registered_at: "2026-08-29T03:54:30Z"
 - [x] [Phase 02: Reflector over scalar declarations](phases/02-reflector-scalars.md)
 - [x] [Phase 03: Generator emitting scalar bindings](phases/03-generator-scalars.md)
 - [x] [Phase 04: Vertical slice: Go calls Zig](phases/04-vertical-slice.md)
-- [ ] [Phase 05: Error unions and slices](phases/05-errors-and-slices.md)
+- [x] [Phase 05: Error unions and slices](phases/05-errors-and-slices.md)
 - [ ] [Phase 06: Opaque handles and lifetimes](phases/06-opaque-lifecycle.md)
 - [ ] [Phase 07: Parameter names and semantic metadata](phases/07-names-and-metadata.md)
 - [ ] [Phase 08: Diagnostics completed](phases/08-diagnostics.md)
