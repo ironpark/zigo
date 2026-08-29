@@ -204,3 +204,54 @@ test "errors enums and slices share one lowered ABI" {
     try std.testing.expect(std.mem.containsAtLeast(u8, shim, 1, "p0_ptr: [*c]f64, p0_len: usize, p0_written: *usize"));
     try std.testing.expect(std.mem.containsAtLeast(u8, shim, 1, "p0_written.* = p0_len"));
 }
+
+test "opaque handles lower constructors methods and idempotent close" {
+    const fixture =
+        \\{
+        \\  "constructors":[{"deinit":"deinit","init":"create","type":"Context"}],
+        \\  "functions":[
+        \\    {"name":"create","namespace":"Context","ownership":"caller","params":[],"return":{"error_set":["OutOfMemory"],"kind":"error_union","payload":{"const":false,"kind":"opaque_ptr","nullable":false,"ref":"Context"}},"symbol":"zg_context_create"},
+        \\    {"name":"deinit","params":[],"receiver":"Context","return":{"kind":"void"},"symbol":"zg_context_deinit"}
+        \\  ],
+        \\  "package":"opaque","prefix":"zg","types":[{"kind":"opaque","name":"Context","zig_path":"root.Context"}],"zig_version":"0.16.0"
+        \\}
+    ;
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try generate(arena.allocator(), std.testing.io, fixture, temporary.dir, .{
+        .package = "opaque",
+        .prefix = "zg",
+        .go_module = "example.com/opaque",
+    });
+    const shim = try temporary.dir.readFileAlloc(std.testing.io, "shim.zig", std.testing.allocator, .limited(32 * 1024));
+    defer std.testing.allocator.free(shim);
+    try std.testing.expect(std.mem.containsAtLeast(u8, shim, 1, "target.Context.create()"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, shim, 1, "target.Context.deinit(self)"));
+    const public = try temporary.dir.readFileAlloc(std.testing.io, "opaque/generated.go", std.testing.allocator, .limited(32 * 1024));
+    defer std.testing.allocator.free(public);
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func NewContext() (*Context, error)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "value.once.Do"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "type ContextRef struct"));
+}
+
+test "ZIGO003 validation failure leaves the output tree untouched" {
+    const fixture =
+        \\{"functions":[{"name":"configure","params":[{"name":"config","type":{"kind":"value_struct","ref":"Config"}}],"return":{"kind":"void"},"symbol":"zg_configure"}],"package":"bad","prefix":"zg","types":[{"kind":"value_struct","name":"Config"}],"zig_version":"0.16.0"}
+    ;
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "sentinel.txt", .data = "unchanged" });
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectError(error.InvalidSemantic, generate(arena.allocator(), std.testing.io, fixture, temporary.dir, .{
+        .package = "bad",
+        .prefix = "zg",
+        .go_module = "example.com/bad",
+    }));
+    const sentinel = try temporary.dir.readFileAlloc(std.testing.io, "sentinel.txt", std.testing.allocator, .limited(64));
+    defer std.testing.allocator.free(sentinel);
+    try std.testing.expectEqualStrings("unchanged", sentinel);
+    try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "shim.zig", .{}));
+}

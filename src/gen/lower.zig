@@ -13,11 +13,20 @@ pub fn semanticDocument(
     const functions = try allocator.alloc(abi.AbiFn, document.functions.len);
     for (document.functions, 0..) |*function, function_index| {
         var params: std.ArrayList(abi.AbiParam) = .empty;
+        if (function.receiver) |receiver| {
+            const child = try allocator.create(abi.AbiScalar);
+            child.* = .{ .@"opaque" = receiver };
+            try params.append(allocator, .{
+                .name = "self",
+                .role = .receiver,
+                .scalar = .{ .pointer = .{ .child = child, .is_const = false } },
+            });
+        }
         for (function.params, 0..) |parameter, parameter_index| {
             switch (parameter.type) {
                 .slice => |slice| {
                     const child = try allocator.create(abi.AbiScalar);
-                    child.* = lowerValue(document, slice.element.*);
+                    child.* = try lowerValue(allocator, document, slice.element.*);
                     try params.append(allocator, .{
                         .name = try std.fmt.allocPrint(allocator, "{s}_ptr", .{parameter.name}),
                         .role = .slice_pointer,
@@ -43,7 +52,7 @@ pub fn semanticDocument(
                 },
                 else => try params.append(allocator, .{
                     .name = parameter.name,
-                    .scalar = lowerValue(document, parameter.type),
+                    .scalar = try lowerValue(allocator, document, parameter.type),
                     .source_index = parameter_index,
                 }),
             }
@@ -55,7 +64,7 @@ pub fn semanticDocument(
                 function_errors = try codesFor(allocator, error_union.error_set, error_codes);
                 if (error_union.payload.* != .void) {
                     const payload = try allocator.create(abi.AbiScalar);
-                    payload.* = lowerValue(document, error_union.payload.*);
+                    payload.* = try lowerValue(allocator, document, error_union.payload.*);
                     try params.append(allocator, .{
                         .name = "out_result",
                         .role = .payload_out,
@@ -65,11 +74,18 @@ pub fn semanticDocument(
                 }
                 break :result abi.AbiScalar{ .signed_int = 32 };
             },
-            else => lowerValue(document, function.@"return"),
+            else => try lowerValue(allocator, document, function.@"return"),
         };
         const function_name = try naming.snakeAlloc(allocator, function.name);
+        defer allocator.free(function_name);
+        const symbol_owner = function.receiver orelse function.namespace;
+        const symbol = if (symbol_owner) |owner| blk: {
+            const receiver_name = try naming.snakeAlloc(allocator, owner);
+            defer allocator.free(receiver_name);
+            break :blk try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ prefix, receiver_name, function_name });
+        } else try std.fmt.allocPrint(allocator, "{s}_{s}", .{ prefix, function_name });
         functions[function_index] = .{
-            .symbol = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ prefix, function_name }),
+            .symbol = symbol,
             .params = try params.toOwnedSlice(allocator),
             .ret = return_scalar,
             .errors = function_errors,
@@ -77,6 +93,7 @@ pub fn semanticDocument(
         };
     }
     return .{
+        .constructors = document.constructors,
         .error_codes = error_codes,
         .functions = functions,
         .package = package,
@@ -85,7 +102,7 @@ pub fn semanticDocument(
     };
 }
 
-fn lowerValue(document: semantic.Semantic, node: semantic.TypeNode) abi.AbiScalar {
+fn lowerValue(allocator: std.mem.Allocator, document: semantic.Semantic, node: semantic.TypeNode) !abi.AbiScalar {
     return switch (node) {
         .void => .void,
         .bool => .bool_u8,
@@ -96,7 +113,12 @@ fn lowerValue(document: semantic.Semantic, node: semantic.TypeNode) abi.AbiScala
         else
             .{ .unsigned_int = value.bits },
         .float => |value| .{ .float = value.bits },
-        .@"enum" => |value| lowerValue(document, enumDeclaration(document, value.ref).tag_type.?),
+        .@"enum" => |value| lowerValue(allocator, document, enumDeclaration(document, value.ref).tag_type.?),
+        .opaque_ptr => |value| blk: {
+            const child = try allocator.create(abi.AbiScalar);
+            child.* = .{ .@"opaque" = value.ref };
+            break :blk .{ .pointer = .{ .child = child, .is_const = value.@"const" } };
+        },
         else => unreachable,
     };
 }

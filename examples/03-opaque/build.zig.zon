@@ -1,0 +1,10 @@
+.{
+    .name = .opaque_example,
+    .version = "0.0.0",
+    .fingerprint = 0x444fbc7491bdca16,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .zigo = .{ .path = "../.." },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "src", "go", "zigo" },
+}

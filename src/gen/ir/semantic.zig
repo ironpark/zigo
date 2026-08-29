@@ -207,6 +207,7 @@ pub const Parameter = struct {
 pub const SemanticFn = struct {
     doc: ?[]const u8 = null,
     name: []const u8,
+    namespace: ?[]const u8 = null,
     ownership: Ownership = .borrowed,
     params: []const Parameter,
     receiver: ?[]const u8 = null,

@@ -8,6 +8,7 @@ pub const AbiScalar = union(enum) {
     signed_int: u16,
     unsigned_int: u16,
     float: u16,
+    @"opaque": []const u8,
     pointer: struct {
         child: *const AbiScalar,
         is_const: bool,
@@ -21,7 +22,7 @@ pub const AbiParam = struct {
     scalar: AbiScalar,
     source_index: usize = 0,
 
-    pub const Role = enum { value, slice_pointer, slice_length, slice_written, payload_out };
+    pub const Role = enum { receiver, value, slice_pointer, slice_length, slice_written, payload_out };
 };
 
 pub const ErrorCode = struct { code: i32, name: []const u8 };
@@ -35,6 +36,7 @@ pub const AbiFn = struct {
 };
 
 pub const Program = struct {
+    constructors: []const semantic.Constructor = &.{},
     error_codes: []const ErrorCode = &.{},
     functions: []const AbiFn,
     package: []const u8,
