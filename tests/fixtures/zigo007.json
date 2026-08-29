@@ -1,0 +1,19 @@
+{
+  "functions": [
+    {
+      "name": "lookupID",
+      "params": [],
+      "return": { "kind": "void" },
+      "symbol": "ignored"
+    },
+    {
+      "name": "lookup_id",
+      "params": [],
+      "return": { "kind": "void" },
+      "symbol": "ignored"
+    }
+  ],
+  "package": "bad",
+  "prefix": "zg",
+  "zig_version": "0.16.0"
+}

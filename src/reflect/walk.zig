@@ -47,11 +47,12 @@ pub fn reflect(
         };
         const receiver = comptime receiverName(info, declaration);
         const first_param: usize = if (receiver != null) 1 else 0;
-        const params = try allocator.alloc(semantic.Parameter, info.params.len - first_param);
+        const params = try allocator.alloc(semantic.Parameter, comptime concreteParamCount(info, first_param));
         inline for (info.params, 0..) |param, param_index| {
             if (param_index < first_param) continue;
-            if (param.is_generic or param.type == null) @compileError("generic parameters require an explicit specialization");
-            const output_index = param_index - first_param;
+            if (info.is_generic) continue;
+            if (param.is_generic or param.type == null) continue;
+            const output_index = comptime concreteParamIndex(info, first_param, param_index);
             const has_sidecar = @hasField(@TypeOf(entry), "params");
             const parameter_name = if (has_sidecar)
                 entry.params[output_index]
@@ -73,12 +74,12 @@ pub fn reflect(
             }
             params[output_index] = reflected;
         }
-        const return_type = info.return_type orelse @compileError("generic return types require an explicit specialization");
         var reflected_function: semantic.SemanticFn = .{
+            .has_comptime_params = if (info.is_generic) true else null,
             .name = entry.name,
             .params = params,
             .receiver = receiver,
-            .@"return" = try typeNode(allocator, return_type, &types),
+            .@"return" = if (info.return_type) |return_type| try typeNode(allocator, return_type, &types) else .{ .void = {} },
             .symbol = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ prefix, entry.name }),
         };
         if (@hasField(@TypeOf(entry), "semantic")) reflected_function.return_semantic = entry.semantic;
@@ -131,6 +132,22 @@ fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayLis
                 break :blk .{ .slice = .{ .@"const" = info.is_const, .element = element } };
             },
             .one => blk: {
+                if (@typeInfo(info.child) == .@"fn") {
+                    const function_info = @typeInfo(info.child).@"fn";
+                    const callback_params = try allocator.alloc(semantic.TypeNode, function_info.params.len);
+                    inline for (function_info.params, 0..) |parameter, index| {
+                        const parameter_type = parameter.type orelse return error.GenericCallback;
+                        callback_params[index] = try typeNode(allocator, parameter_type, types);
+                    }
+                    const callback_return = try allocator.create(semantic.TypeNode);
+                    callback_return.* = try typeNode(allocator, function_info.return_type orelse return error.GenericCallback, types);
+                    break :blk .{ .callback = .{
+                        .c_callconv = std.meta.eql(function_info.calling_convention, std.builtin.CallingConvention.c),
+                        .has_userdata = false,
+                        .params = callback_params,
+                        .@"return" = callback_return,
+                    } };
+                }
                 const name = opaqueNameForPath(types.items, @typeName(info.child)) orelse return error.MissingOpaqueType;
                 break :blk .{ .opaque_ptr = .{
                     .@"const" = info.is_const,
@@ -198,8 +215,35 @@ fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayLis
             });
             break :blk .{ .value_struct = .{ .ref = name } };
         },
+        .@"union" => blk: {
+            const name = shortTypeName(@typeName(T));
+            try types.append(allocator, .{
+                .kind = .tagged_union,
+                .name = name,
+                .zig_path = @typeName(T),
+            });
+            break :blk .{ .value_struct = .{ .ref = name } };
+        },
         else => @compileError("zigo supports scalars, enums, slices, opaque pointers, structs, and error unions"),
     };
+}
+
+fn concreteParamCount(comptime info: std.builtin.Type.Fn, comptime first_param: usize) usize {
+    if (info.is_generic) return 0;
+    var count: usize = 0;
+    inline for (info.params, 0..) |parameter, index| {
+        if (index >= first_param and !parameter.is_generic and parameter.type != null) count += 1;
+    }
+    return count;
+}
+
+fn concreteParamIndex(comptime info: std.builtin.Type.Fn, comptime first_param: usize, comptime target_index: usize) usize {
+    var count: usize = 0;
+    inline for (info.params, 0..) |parameter, index| {
+        if (index == target_index) return count;
+        if (index >= first_param and !parameter.is_generic and parameter.type != null) count += 1;
+    }
+    unreachable;
 }
 
 fn receiverName(comptime info: std.builtin.Type.Fn, comptime declaration: anytype) ?[]const u8 {
@@ -319,4 +363,33 @@ test "scalar reflection matches the semantic JSON golden" {
         \\
     ;
     try std.testing.expectEqualStrings(golden, json);
+}
+
+test "reflection preserves invalid declarations for generator diagnostics" {
+    const Fixture = struct {
+        const Value = union(enum) { integer: i32, flag: bool };
+
+        fn generic(comptime T: type, value: T) T {
+            return value;
+        }
+
+        fn callback(value: *const fn (i32) void) void {
+            _ = value;
+        }
+
+        fn tagged(value: Value) void {
+            _ = value;
+        }
+    };
+    const declaration = .{ .functions = .{
+        .{ .name = "generic", .@"fn" = Fixture.generic },
+        .{ .name = "callback", .@"fn" = Fixture.callback },
+        .{ .name = "tagged", .@"fn" = Fixture.tagged },
+    } };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), declaration, "invalid", "zg");
+    try std.testing.expectEqual(true, document.functions[0].has_comptime_params.?);
+    try std.testing.expect(!document.functions[1].params[0].type.callback.c_callconv);
+    try std.testing.expectEqual(semantic.TypeKind.tagged_union, document.types[0].kind);
 }

@@ -2,7 +2,7 @@
 depends_on:
 - "01-zigo-go-bindings#7"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Each of ZIGO001 through ZIGO009 has a snapshot test asserting its message and hint.
 > NEXT: none

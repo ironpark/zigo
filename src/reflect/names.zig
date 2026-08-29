@@ -50,6 +50,7 @@ pub fn writeWarnings(writer: *std.Io.Writer, document: semantic.Semantic) !void 
 
 fn scanSource(allocator: std.mem.Allocator, source: []const u8, functions: []semantic.SemanticFn) !void {
     const terminated = try allocator.dupeZ(u8, source);
+    defer allocator.free(terminated);
     var tree = try std.zig.Ast.parse(allocator, terminated, .zig);
     defer tree.deinit(allocator);
     if (tree.errors.len != 0) return;
@@ -70,13 +71,20 @@ fn scanSource(allocator: std.mem.Allocator, source: []const u8, functions: []sem
             }
             const receiver_count: usize = @intFromBool(function.receiver != null);
             if (names.items.len != function.params.len + receiver_count) continue;
-            const updated_params = try allocator.dupe(semantic.Parameter, function.params);
-            for (updated_params, 0..) |*parameter, index| {
-                if (parameter.name_source != .fallback) continue;
-                parameter.name = try allocator.dupe(u8, names.items[index + receiver_count]);
-                parameter.name_source = .ast;
+            var needs_names = false;
+            for (function.params) |parameter| if (parameter.name_source == .fallback) {
+                needs_names = true;
+                break;
+            };
+            if (needs_names) {
+                const updated_params = try allocator.dupe(semantic.Parameter, function.params);
+                for (updated_params, 0..) |*parameter, index| {
+                    if (parameter.name_source != .fallback) continue;
+                    parameter.name = try allocator.dupe(u8, names.items[index + receiver_count]);
+                    parameter.name_source = .ast;
+                }
+                function.params = updated_params;
             }
-            function.params = updated_params;
             if (function.doc == null) function.doc = try docCommentAlloc(allocator, tree, proto.firstToken());
             break;
         }
@@ -122,8 +130,9 @@ test "AST names and docs enrich only fallback metadata" {
     defer std.testing.allocator.free(functions);
     try scanSource(std.testing.allocator, source, functions);
     document.functions = functions;
-    defer std.testing.allocator.free(document.functions[0].params[0].name);
+    const ast_name = document.functions[0].params[0].name;
     defer std.testing.allocator.free(document.functions[0].params);
+    defer std.testing.allocator.free(ast_name);
     defer std.testing.allocator.free(document.functions[0].doc.?);
     try std.testing.expectEqual(.ast, document.functions[0].params[0].name_source);
     try std.testing.expectEqualStrings("left", document.functions[0].params[0].name);

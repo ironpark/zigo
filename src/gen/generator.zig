@@ -242,7 +242,17 @@ test "ZIGO003 validation failure leaves the output tree untouched" {
     ;
     var temporary = std.testing.tmpDir(.{ .iterate = true });
     defer temporary.cleanup();
-    try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "sentinel.txt", .data = "unchanged" });
+    const existing = [_]struct { path: []const u8, content: []const u8 }{
+        .{ .path = "shim.zig", .content = "old shim" },
+        .{ .path = "zigo_bad.h", .content = "old header" },
+        .{ .path = "internal/raw/cgo.go", .content = "old raw" },
+        .{ .path = "bad/generated.go", .content = "old public" },
+        .{ .path = "errors.lock.json", .content = "old lock" },
+    };
+    for (existing) |file| {
+        if (std.fs.path.dirname(file.path)) |directory| try temporary.dir.createDirPath(std.testing.io, directory);
+        try temporary.dir.writeFile(std.testing.io, .{ .sub_path = file.path, .data = file.content });
+    }
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     try std.testing.expectError(error.InvalidSemantic, generate(arena.allocator(), std.testing.io, fixture, temporary.dir, .{
@@ -250,8 +260,9 @@ test "ZIGO003 validation failure leaves the output tree untouched" {
         .prefix = "zg",
         .go_module = "example.com/bad",
     }));
-    const sentinel = try temporary.dir.readFileAlloc(std.testing.io, "sentinel.txt", std.testing.allocator, .limited(64));
-    defer std.testing.allocator.free(sentinel);
-    try std.testing.expectEqualStrings("unchanged", sentinel);
-    try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "shim.zig", .{}));
+    for (existing) |file| {
+        const actual = try temporary.dir.readFileAlloc(std.testing.io, file.path, std.testing.allocator, .limited(64));
+        defer std.testing.allocator.free(actual);
+        try std.testing.expectEqualStrings(file.content, actual);
+    }
 }

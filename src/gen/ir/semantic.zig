@@ -24,6 +24,7 @@ pub const ErrorUnion = struct {
     payload: *TypeNode,
 };
 pub const Callback = struct {
+    c_callconv: bool = true,
     has_userdata: bool,
     params: []const TypeNode,
     @"return": *TypeNode,
@@ -47,6 +48,8 @@ pub const TypeNode = union(enum) {
         switch (self) {
             .bool => try writeKind(jw, "bool"),
             .callback => |value| {
+                try jw.objectField("c_callconv");
+                try jw.write(value.c_callconv);
                 try jw.objectField("has_userdata");
                 try jw.write(value.has_userdata);
                 try writeKind(jw, "callback");
@@ -160,6 +163,7 @@ pub const TypeNode = union(enum) {
             .payload = try parseTypePointer(allocator, object, "payload", options),
         } };
         if (std.mem.eql(u8, kind, "callback")) return .{ .callback = .{
+            .c_callconv = try parseOptionalField(bool, allocator, object, "c_callconv", true, options),
             .has_userdata = try parseField(bool, allocator, object, "has_userdata", options),
             .params = try parseField([]const TypeNode, allocator, object, "params", options),
             .@"return" = try parseTypePointer(allocator, object, "return", options),
@@ -206,6 +210,7 @@ pub const Parameter = struct {
 
 pub const SemanticFn = struct {
     doc: ?[]const u8 = null,
+    has_comptime_params: ?bool = null,
     name: []const u8,
     namespace: ?[]const u8 = null,
     ownership: Ownership = .borrowed,
@@ -216,7 +221,7 @@ pub const SemanticFn = struct {
     symbol: []const u8,
 };
 
-pub const TypeKind = enum { @"enum", error_set, @"opaque", value_struct };
+pub const TypeKind = enum { @"enum", error_set, @"opaque", tagged_union, value_struct };
 pub const Layout = enum { @"extern", @"packed" };
 pub const TypeField = struct {
     name: []const u8,

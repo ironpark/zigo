@@ -117,9 +117,15 @@ pub fn build(b: *std.Build) void {
         },
     }) });
     const run_generator_tests = b.addRunArtifact(generator_tests);
+    const reflect_walk_tests = b.addTest(.{ .root_module = reflect_walk_module });
+    const run_reflect_walk_tests = b.addRunArtifact(reflect_walk_tests);
+    const reflect_names_tests = b.addTest(.{ .root_module = reflect_names_module });
+    const run_reflect_names_tests = b.addRunArtifact(reflect_names_tests);
     const test_step = b.step("test", "Run unit and snapshot harness tests");
     test_step.dependOn(&run_tests.step);
     test_step.dependOn(&run_generator_tests.step);
+    test_step.dependOn(&run_reflect_walk_tests.step);
+    test_step.dependOn(&run_reflect_names_tests.step);
 
     const snapshot_exe = b.addExecutable(.{
         .name = "zigo-snapshot",
