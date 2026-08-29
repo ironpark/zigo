@@ -1,5 +1,7 @@
 const std = @import("std");
 const emit = @import("emit.zig");
+const abi = @import("abi");
+const errors_lock = @import("errors_lock");
 const lower = @import("lower.zig");
 const semantic = @import("semantic");
 const validate = @import("validate.zig");
@@ -10,13 +12,34 @@ pub const Options = struct {
     go_module: []const u8,
     include_dir: []const u8 = "${SRCDIR}/../../../zig-out/include",
     library_dir: []const u8 = "${SRCDIR}/../../../zig-out/lib",
+    errors_lock_bytes: ?[]const u8 = null,
 };
 
 pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []const u8, output: std.Io.Dir, options: Options) !void {
     var parsed = try semantic.Semantic.parse(allocator, semantic_bytes);
     defer parsed.deinit();
     try validate.semanticDocument(parsed.value);
-    const program = try lower.semanticDocument(allocator, parsed.value, options.package, options.prefix);
+    var baseline: ?errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(allocator, bytes) else null;
+    defer if (baseline) |*value| value.deinit(allocator);
+    var lock: errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(allocator, bytes) else .{};
+    defer lock.deinit(allocator);
+    var error_names: std.ArrayList([]const u8) = .empty;
+    defer error_names.deinit(allocator);
+    for (parsed.value.functions) |function| switch (function.@"return") {
+        .error_union => |value| for (value.error_set) |name| {
+            var exists = false;
+            for (error_names.items) |existing| {
+                if (std.mem.eql(u8, existing, name)) exists = true;
+            }
+            if (!exists) try error_names.append(allocator, name);
+        },
+        else => {},
+    };
+    try lock.assign(allocator, error_names.items);
+    if (baseline) |value| try lock.validateAgainst(value);
+    const abi_codes = try allocator.alloc(abi.ErrorCode, lock.codes.items.len);
+    for (lock.codes.items, 0..) |entry, index| abi_codes[index] = .{ .code = entry.code, .name = entry.name };
+    const program = try lower.semanticDocument(allocator, parsed.value, options.package, options.prefix, abi_codes);
     const emitter_options: emit.Options = .{
         .go_module = options.go_module,
         .include_dir = options.include_dir,
@@ -31,6 +54,9 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         try emitter.render(allocator, &rendered.writer, program, emitter_options);
         try output.writeFile(io, .{ .sub_path = relative_path, .data = rendered.written() });
     }
+    const serialized_lock = try lock.serialize(allocator);
+    defer allocator.free(serialized_lock);
+    try output.writeFile(io, .{ .sub_path = "errors.lock.json", .data = serialized_lock });
 }
 
 test "scalar IR generates matching shim header raw and public packages" {
@@ -132,4 +158,49 @@ test "bool is lowered to uint8 at the ABI boundary" {
     const header = try temporary.dir.readFileAlloc(std.testing.io, "zigo_scalar.h", std.testing.allocator, .limited(16 * 1024));
     defer std.testing.allocator.free(header);
     try std.testing.expect(std.mem.containsAtLeast(u8, header, 1, "uint8_t zg_negate(uint8_t p0)"));
+}
+
+test "errors enums and slices share one lowered ABI" {
+    const fixture =
+        \\{
+        \\  "functions": [
+        \\    {"name":"divide","params":[{"name":"p0","type":{"bits":64,"kind":"float"}},{"name":"p1","type":{"bits":64,"kind":"float"}}],"return":{"error_set":["DivideByZero"],"kind":"error_union","payload":{"bits":64,"kind":"float"}},"symbol":"ignored"},
+        \\    {"name":"sum","params":[{"name":"p0","type":{"const":true,"element":{"bits":64,"kind":"float"},"kind":"slice"}}],"return":{"bits":64,"kind":"float"},"symbol":"ignored"},
+        \\    {"name":"fill","params":[{"direction":"out","name":"p0","type":{"const":false,"element":{"bits":64,"kind":"float"},"kind":"slice"}}],"return":{"kind":"void"},"symbol":"ignored"},
+        \\    {"name":"normalizeFormat","params":[{"name":"p0","type":{"kind":"enum","ref":"Format"}}],"return":{"kind":"enum","ref":"Format"},"symbol":"ignored"}
+        \\  ],
+        \\  "package":"features",
+        \\  "prefix":"zg",
+        \\  "types":[{"fields":[{"name":"pcm","value":0},{"name":"flac","value":1}],"kind":"enum","name":"Format","tag_type":{"bits":32,"kind":"int","signed":false}}],
+        \\  "zig_version":"0.16.0"
+        \\}
+    ;
+    const lock =
+        \\{"ir_version":1,"next_code":2,"codes":{"DivideByZero":1},"reserved":{"0":"OK","-1":"Unknown","-2":"PanicCaught","-3":"CallbackPanic","-4":"InvalidHandle"}}
+    ;
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try generate(arena.allocator(), std.testing.io, fixture, temporary.dir, .{
+        .package = "features",
+        .prefix = "zg",
+        .go_module = "example.com/features",
+        .errors_lock_bytes = lock,
+    });
+    const header = try temporary.dir.readFileAlloc(std.testing.io, "zigo_features.h", std.testing.allocator, .limited(64 * 1024));
+    defer std.testing.allocator.free(header);
+    try std.testing.expect(std.mem.containsAtLeast(u8, header, 1, "int32_t zg_divide(double p0, double p1, double * out_result)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, header, 1, "const double * p0_ptr, size_t p0_len"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, header, 1, "size_t * p0_written"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, header, 1, "#define ZG_FORMAT_FLAC 1"));
+    const public = try temporary.dir.readFileAlloc(std.testing.io, "features/generated.go", std.testing.allocator, .limited(64 * 1024));
+    defer std.testing.allocator.free(public);
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "ErrDivideByZero"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func (value Format) String() string"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func Sum(p0 []float64) float64"));
+    const shim = try temporary.dir.readFileAlloc(std.testing.io, "shim.zig", std.testing.allocator, .limited(64 * 1024));
+    defer std.testing.allocator.free(shim);
+    try std.testing.expect(std.mem.containsAtLeast(u8, shim, 1, "p0_ptr: [*c]f64, p0_len: usize, p0_written: *usize"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, shim, 1, "p0_written.* = p0_len"));
 }

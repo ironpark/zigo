@@ -97,6 +97,16 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "semantic", .module = generator_test_semantic },
             .{ .name = "abi", .module = generator_test_abi },
+            .{ .name = "diagnostic", .module = b.createModule(.{
+                .root_source_file = b.path("src/gen/diagnostic.zig"),
+                .target = target,
+                .optimize = optimize,
+            }) },
+            .{ .name = "errors_lock", .module = b.createModule(.{
+                .root_source_file = b.path("src/gen/ir/errors_lock.zig"),
+                .target = target,
+                .optimize = optimize,
+            }) },
         },
     }) });
     const run_generator_tests = b.addRunArtifact(generator_tests);
@@ -160,6 +170,15 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     generate.addFileArg(semantic_json);
     const generated_dir = generate.addOutputDirectoryArg("bindings");
     generate.addArgs(&.{ options.name, options.prefix, options.go_module, include_dir, library_dir });
+    const errors_lock_path = "zigo/errors.lock.json";
+    const has_errors_lock = blk: {
+        b.build_root.handle.access(b.graph.io, errors_lock_path, .{}) catch |err| switch (err) {
+            error.FileNotFound => break :blk false,
+            else => @panic("unable to inspect errors.lock.json"),
+        };
+        break :blk true;
+    };
+    if (has_errors_lock) generate.addFileArg(b.path(errors_lock_path));
 
     const check = b.addRunArtifact(generator);
     check.addArg("--check-stub");
@@ -186,6 +205,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     const update = b.addUpdateSourceFiles();
     update.addCopyFileToSource(generated_dir.path(b, "internal/raw/cgo.go"), sourcePath(b, options.go_dir, "internal/raw/cgo.go"));
     update.addCopyFileToSource(generated_dir.path(b, b.fmt("{s}/generated.go", .{options.name})), sourcePath(b, options.go_dir, b.fmt("{s}/generated.go", .{options.name})));
+    update.addCopyFileToSource(generated_dir.path(b, "errors.lock.json"), errors_lock_path);
     const go_mod_path = sourcePath(b, options.go_dir, "go.mod");
     b.build_root.handle.access(b.graph.io, go_mod_path, .{}) catch |err| switch (err) {
         error.FileNotFound => update.addBytesToSource(b.fmt("module {s}\n\ngo 1.23\n", .{options.go_module}), go_mod_path),
@@ -234,6 +254,16 @@ fn addGenerator(
         .optimize = optimize,
         .imports = &.{.{ .name = "semantic", .module = semantic_module }},
     });
+    const diagnostic_module = b.createModule(.{
+        .root_source_file = root_source_file.dirname().path(b, "gen/diagnostic.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const errors_lock_module = b.createModule(.{
+        .root_source_file = root_source_file.dirname().path(b, "gen/ir/errors_lock.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     return b.addExecutable(.{
         .name = "zigo-gen",
         .root_module = b.createModule(.{
@@ -243,6 +273,8 @@ fn addGenerator(
             .imports = &.{
                 .{ .name = "semantic", .module = semantic_module },
                 .{ .name = "abi", .module = abi_module },
+                .{ .name = "diagnostic", .module = diagnostic_module },
+                .{ .name = "errors_lock", .module = errors_lock_module },
             },
         }),
     });

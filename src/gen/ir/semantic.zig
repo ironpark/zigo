@@ -19,6 +19,7 @@ pub const Slice = struct {
 };
 pub const Optional = struct { child: *TypeNode };
 pub const ErrorUnion = struct {
+    anyerror: bool = false,
     error_set: []const []const u8,
     payload: *TypeNode,
 };
@@ -60,6 +61,10 @@ pub const TypeNode = union(enum) {
                 try jw.write(value.ref);
             },
             .error_union => |value| {
+                if (value.anyerror) {
+                    try jw.objectField("anyerror");
+                    try jw.write(true);
+                }
                 try jw.objectField("error_set");
                 try jw.write(value.error_set);
                 try writeKind(jw, "error_union");
@@ -150,6 +155,7 @@ pub const TypeNode = union(enum) {
             .child = try parseTypePointer(allocator, object, "child", options),
         } };
         if (std.mem.eql(u8, kind, "error_union")) return .{ .error_union = .{
+            .anyerror = try parseOptionalField(bool, allocator, object, "anyerror", false, options),
             .error_set = try parseField([]const []const u8, allocator, object, "error_set", options),
             .payload = try parseTypePointer(allocator, object, "payload", options),
         } };
@@ -216,6 +222,7 @@ pub const TypeField = struct {
     value: ?i64 = null,
 };
 pub const TypeDecl = struct {
+    exhaustive: bool = true,
     fields: []const TypeField = &.{},
     kind: TypeKind,
     layout: ?Layout = null,

@@ -2,7 +2,7 @@
 depends_on:
 - "01-zigo-go-bindings#4"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `errors.Is(err, mylib.ErrDivideByZero)` holds in the example's Go tests.
 > NEXT: none
