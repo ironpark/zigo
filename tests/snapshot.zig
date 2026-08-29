@@ -15,10 +15,17 @@ pub const Result = struct {
         return self.differences.items.len == 0;
     }
 
-    pub fn render(self: Result) void {
+    pub fn renderTo(self: Result, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         for (self.differences.items) |difference| {
-            std.debug.print("snapshot {s}: {s}\n", .{ @tagName(difference.kind), difference.path });
+            try writer.print("snapshot {s}: {s}\n", .{ @tagName(difference.kind), difference.path });
         }
+    }
+
+    pub fn render(self: Result) void {
+        var buffer: [64]u8 = undefined;
+        const stderr = std.debug.lockStderr(&buffer);
+        defer std.debug.unlockStderr();
+        self.renderTo(&stderr.file_writer.interface) catch {};
     }
 };
 
@@ -102,11 +109,15 @@ test "reports a corrupted golden tree by file name" {
     try actual.dir.writeFile(std.testing.io, .{ .sub_path = "nested/generated.go", .data = "corrupted\n" });
     var result = try compare(std.testing.allocator, std.testing.io, expected.dir, actual.dir);
     defer result.deinit(std.testing.allocator);
-    result.render();
     try std.testing.expect(!result.matches());
     try std.testing.expectEqual(@as(usize, 1), result.differences.items.len);
     try std.testing.expectEqual(DifferenceKind.content, result.differences.items[0].kind);
     try std.testing.expectEqualStrings("nested/generated.go", result.differences.items[0].path);
+
+    var rendered: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer rendered.deinit();
+    try result.renderTo(&rendered.writer);
+    try std.testing.expectEqualStrings("snapshot content: nested/generated.go\n", rendered.written());
 }
 
 test "update mode makes the golden tree match actual output" {
