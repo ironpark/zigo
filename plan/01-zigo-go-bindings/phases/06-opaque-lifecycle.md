@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-29T23:24:05Z"
 depends_on:
 - "01-zigo-go-bindings#5"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: A create-and-destroy loop in the Go tests ends with the counting allocator reporting
 > NEXT: none
