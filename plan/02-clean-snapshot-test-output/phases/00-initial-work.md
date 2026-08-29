@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-29T21:56:19Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Snapshot mismatch detection and diagnostic formatting remain covered, `zig build test` passes, and its default successful output is empty.
 > NEXT: none
