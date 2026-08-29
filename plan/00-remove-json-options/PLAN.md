@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-08-29T03:34:47Z"
 description: Remove JSON-option guidance from tool.md while preserving the planr workflow.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-29T03:28:13Z"
 ---
 > NEXT: Start the remove-json-guidance phase. ([Phase 0](phases/00-remove-json-guidance.md))
 
 # Phases
 
-- [ ] [Phase 00: Remove JSON guidance](phases/00-remove-json-guidance.md)
+- [x] [Phase 00: Remove JSON guidance](phases/00-remove-json-guidance.md)
 
 # Shared Verification
 
