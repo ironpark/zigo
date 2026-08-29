@@ -153,28 +153,49 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     semantic_run.addArgs(&.{ options.name, options.prefix });
     const semantic_json = semantic_run.captureStdOut(.{ .basename = "semantic.json", .trim_whitespace = .none });
 
+    const raw_source_dir = options.go_dir.path(b, "internal/raw").getPath(b);
+    const include_dir = cgoRelativePath(b, raw_source_dir, b.pathJoin(&.{ b.install_path, "include" }));
+    const library_dir = cgoRelativePath(b, raw_source_dir, b.pathJoin(&.{ b.install_path, "lib" }));
+    const generate = b.addRunArtifact(generator);
+    generate.addFileArg(semantic_json);
+    const generated_dir = generate.addOutputDirectoryArg("bindings");
+    generate.addArgs(&.{ options.name, options.prefix, options.go_module, include_dir, library_dir });
+
     const check = b.addRunArtifact(generator);
     check.addArg("--check-stub");
     const abi_check = b.addRunArtifact(generator);
     abi_check.addArgs(&.{ "--abi-check-stub", options.abi_base });
 
+    const shim_module = b.createModule(.{
+        .root_source_file = generated_dir.path(b, "shim.zig"),
+        .target = options.target,
+        .optimize = options.optimize,
+        .imports = &.{.{ .name = "zigo_target", .module = options.module }},
+    });
     const lib = b.addLibrary(.{
         .name = b.fmt("{s}_zigo", .{options.name}),
         .linkage = switch (options.link_mode) {
             .static => .static,
             .dynamic => .dynamic,
         },
-        .root_module = options.module,
+        .root_module = shim_module,
     });
+    const install_lib = b.addInstallArtifact(lib, .{});
+    const header_name = b.fmt("zigo_{s}.h", .{options.name});
+    const install_header = b.addInstallHeaderFile(generated_dir.path(b, header_name), header_name);
     const update = b.addUpdateSourceFiles();
-    update.step.dependOn(&semantic_run.step);
-    update.step.dependOn(&lib.step);
+    update.addCopyFileToSource(generated_dir.path(b, "internal/raw/cgo.go"), sourcePath(b, options.go_dir, "internal/raw/cgo.go"));
+    update.addCopyFileToSource(generated_dir.path(b, b.fmt("{s}/generated.go", .{options.name})), sourcePath(b, options.go_dir, b.fmt("{s}/generated.go", .{options.name})));
+    const go_mod_path = sourcePath(b, options.go_dir, "go.mod");
+    b.build_root.handle.access(b.graph.io, go_mod_path, .{}) catch |err| switch (err) {
+        error.FileNotFound => update.addBytesToSource(b.fmt("module {s}\n\ngo 1.23\n", .{options.go_module}), go_mod_path),
+        else => @panic("unable to inspect go.mod"),
+    };
+    update.step.dependOn(&install_lib.step);
+    update.step.dependOn(&install_header.step);
     check.step.dependOn(&lib.step);
     abi_check.step.dependOn(&lib.step);
 
-    _ = options.bindings;
-    _ = options.go_dir;
-    _ = options.go_module;
     _ = options.target;
     _ = options.optimize;
     _ = options.prefix;
@@ -182,6 +203,18 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     _ = layout_json;
 
     return .{ .update = update, .check = check, .abi_check = abi_check, .lib = lib, .semantic_json = semantic_json };
+}
+
+fn sourcePath(b: *std.Build, directory: std.Build.LazyPath, child: []const u8) []const u8 {
+    return switch (directory) {
+        .src_path => |source| b.pathJoin(&.{ source.sub_path, child }),
+        else => @panic("go_dir must be a source path"),
+    };
+}
+
+fn cgoRelativePath(b: *std.Build, from: []const u8, to: []const u8) []const u8 {
+    const relative = std.fs.path.relative(b.allocator, "", null, from, to) catch @panic("OOM");
+    return b.fmt("${{SRCDIR}}/{s}", .{relative});
 }
 
 fn addGenerator(

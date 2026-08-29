@@ -32,7 +32,7 @@ fn headerPath(allocator: std.mem.Allocator, program: abi.Program) ![]u8 {
 }
 
 fn rawPath(allocator: std.mem.Allocator, _: abi.Program) ![]u8 {
-    return allocator.dupe(u8, "internal/raw/raw.go");
+    return allocator.dupe(u8, "internal/raw/cgo.go");
 }
 
 fn publicPath(allocator: std.mem.Allocator, program: abi.Program) ![]u8 {
