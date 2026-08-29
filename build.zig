@@ -40,6 +40,17 @@ pub fn build(b: *std.Build) void {
     const generator = addGenerator(b, packagePath("src/main.zig"), target, optimize);
     b.installArtifact(generator);
 
+    const semantic_module = b.createModule(.{
+        .root_source_file = packagePath("src/gen/ir/semantic.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const abi_module = b.createModule(.{
+        .root_source_file = packagePath("src/gen/ir/abi.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "semantic", .module = semantic_module }},
+    });
     const tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = packagePath("tests/test.zig"),
         .target = target,
@@ -51,6 +62,13 @@ pub fn build(b: *std.Build) void {
                 .target = target,
                 .optimize = optimize,
             }) },
+            .{ .name = "semantic", .module = semantic_module },
+            .{ .name = "errors_lock", .module = b.createModule(.{
+                .root_source_file = packagePath("src/gen/ir/errors_lock.zig"),
+                .target = target,
+                .optimize = optimize,
+            }) },
+            .{ .name = "abi", .module = abi_module },
         },
     }) });
     const run_tests = b.addRunArtifact(tests);
