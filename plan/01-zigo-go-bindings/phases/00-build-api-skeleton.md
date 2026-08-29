@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-29T04:06:51Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build` and `zig build test` succeed at the repository root.
 > NEXT: none

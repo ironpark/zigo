@@ -7,7 +7,7 @@ registered_at: "2026-08-29T03:54:30Z"
 
 # Phases
 
-- [ ] [Phase 00: Build API skeleton and test harness](phases/00-build-api-skeleton.md)
+- [x] [Phase 00: Build API skeleton and test harness](phases/00-build-api-skeleton.md)
 - [ ] [Phase 01: Semantic IR types and error lock](phases/01-ir-types.md)
 - [ ] [Phase 02: Reflector over scalar declarations](phases/02-reflector-scalars.md)
 - [ ] [Phase 03: Generator emitting scalar bindings](phases/03-generator-scalars.md)
