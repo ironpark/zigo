@@ -1,12 +1,19 @@
 const std = @import("std");
+const generator = @import("gen/generator.zig");
 
-/// Phase 0 provides a successful generator process boundary before the IR pipeline exists.
 pub fn main(init: std.process.Init) !void {
-    const args = try init.minimal.args.toSlice(init.arena.allocator());
-    if (args.len >= 2 and std.mem.eql(u8, args[1], "--semantic-stub")) {
-        var buffer: [64]u8 = undefined;
-        var stdout = std.Io.File.Writer.init(.stdout(), init.io, &buffer);
-        try stdout.interface.writeAll("{}\n");
-        try stdout.interface.flush();
-    }
+    const allocator = init.arena.allocator();
+    const args = try init.minimal.args.toSlice(allocator);
+    if (args.len < 5 or args.len > 8) return error.InvalidArguments;
+    const semantic_bytes = try std.Io.Dir.cwd().readFileAlloc(init.io, args[1], allocator, .limited(64 * 1024 * 1024));
+    try std.Io.Dir.cwd().createDirPath(init.io, args[2]);
+    var output = try std.Io.Dir.cwd().openDir(init.io, args[2], .{ .iterate = true });
+    defer output.close(init.io);
+    try generator.generate(allocator, init.io, semantic_bytes, output, .{
+        .package = args[3],
+        .prefix = args[4],
+        .go_module = if (args.len >= 6) args[5] else args[3],
+        .include_dir = if (args.len >= 7) args[6] else "${SRCDIR}/../../../zig-out/include",
+        .library_dir = if (args.len >= 8) args[7] else "${SRCDIR}/../../../zig-out/lib",
+    });
 }

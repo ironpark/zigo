@@ -79,8 +79,30 @@ pub fn build(b: *std.Build) void {
         },
     }) });
     const run_tests = b.addRunArtifact(tests);
+    const generator_test_semantic = b.createModule(.{
+        .root_source_file = b.path("src/gen/ir/semantic.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const generator_test_abi = b.createModule(.{
+        .root_source_file = b.path("src/gen/ir/abi.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "semantic", .module = generator_test_semantic }},
+    });
+    const generator_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/gen/generator.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "semantic", .module = generator_test_semantic },
+            .{ .name = "abi", .module = generator_test_abi },
+        },
+    }) });
+    const run_generator_tests = b.addRunArtifact(generator_tests);
     const test_step = b.step("test", "Run unit and snapshot harness tests");
     test_step.dependOn(&run_tests.step);
+    test_step.dependOn(&run_generator_tests.step);
 
     const snapshot_exe = b.addExecutable(.{
         .name = "zigo-snapshot",
@@ -168,12 +190,27 @@ fn addGenerator(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
 ) *std.Build.Step.Compile {
+    const semantic_module = b.createModule(.{
+        .root_source_file = root_source_file.dirname().path(b, "gen/ir/semantic.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const abi_module = b.createModule(.{
+        .root_source_file = root_source_file.dirname().path(b, "gen/ir/abi.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "semantic", .module = semantic_module }},
+    });
     return b.addExecutable(.{
         .name = "zigo-gen",
         .root_module = b.createModule(.{
             .root_source_file = root_source_file,
             .target = target,
             .optimize = optimize,
+            .imports = &.{
+                .{ .name = "semantic", .module = semantic_module },
+                .{ .name = "abi", .module = abi_module },
+            },
         }),
     });
 }

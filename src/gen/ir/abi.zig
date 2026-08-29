@@ -24,6 +24,12 @@ pub const AbiFn = struct {
     origin: *const semantic.SemanticFn,
 };
 
+pub const Program = struct {
+    functions: []const AbiFn,
+    package: []const u8,
+    prefix: []const u8,
+};
+
 test "ABI functions retain their semantic origin" {
     const origin: semantic.SemanticFn = .{
         .name = "ping",
