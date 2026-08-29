@@ -2,7 +2,7 @@
 depends_on:
 - "01-zigo-go-bindings#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `zig build go` in `examples/01-scalar` produces a `semantic.json` describing
 > NEXT: none

@@ -33,42 +33,49 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const zigo = b.addModule("zigo", .{
-        .root_source_file = packagePath("src/root.zig"),
+        .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
-    const generator = addGenerator(b, packagePath("src/main.zig"), target, optimize);
+    const generator = addGenerator(b, b.path("src/main.zig"), target, optimize);
     b.installArtifact(generator);
 
     const semantic_module = b.createModule(.{
-        .root_source_file = packagePath("src/gen/ir/semantic.zig"),
+        .root_source_file = b.path("src/gen/ir/semantic.zig"),
         .target = target,
         .optimize = optimize,
     });
     const abi_module = b.createModule(.{
-        .root_source_file = packagePath("src/gen/ir/abi.zig"),
+        .root_source_file = b.path("src/gen/ir/abi.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "semantic", .module = semantic_module }},
+    });
+    const reflect_walk_module = b.createModule(.{
+        .root_source_file = b.path("src/reflect/walk.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{.{ .name = "semantic", .module = semantic_module }},
     });
     const tests = b.addTest(.{ .root_module = b.createModule(.{
-        .root_source_file = packagePath("tests/test.zig"),
+        .root_source_file = b.path("tests/test.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
             .{ .name = "zigo", .module = zigo },
             .{ .name = "diagnostic", .module = b.createModule(.{
-                .root_source_file = packagePath("src/gen/diagnostic.zig"),
+                .root_source_file = b.path("src/gen/diagnostic.zig"),
                 .target = target,
                 .optimize = optimize,
             }) },
             .{ .name = "semantic", .module = semantic_module },
             .{ .name = "errors_lock", .module = b.createModule(.{
-                .root_source_file = packagePath("src/gen/ir/errors_lock.zig"),
+                .root_source_file = b.path("src/gen/ir/errors_lock.zig"),
                 .target = target,
                 .optimize = optimize,
             }) },
             .{ .name = "abi", .module = abi_module },
+            .{ .name = "reflect_walk", .module = reflect_walk_module },
         },
     }) });
     const run_tests = b.addRunArtifact(tests);
@@ -78,7 +85,7 @@ pub fn build(b: *std.Build) void {
     const snapshot_exe = b.addExecutable(.{
         .name = "zigo-snapshot",
         .root_module = b.createModule(.{
-            .root_source_file = packagePath("tests/snapshot_main.zig"),
+            .root_source_file = b.path("tests/snapshot_main.zig"),
             .target = target,
             .optimize = optimize,
         }),
@@ -93,8 +100,35 @@ pub fn build(b: *std.Build) void {
 pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     const zigo_dependency = b.dependencyFromBuildZig(@This(), .{});
     const generator = addGenerator(b, zigo_dependency.path("src/main.zig"), b.graph.host, .Debug);
-    const semantic_run = b.addRunArtifact(generator);
-    semantic_run.addArg("--semantic-stub");
+    const semantic_module = b.createModule(.{
+        .root_source_file = zigo_dependency.path("src/gen/ir/semantic.zig"),
+        .target = options.target,
+        .optimize = .Debug,
+    });
+    const bindings_module = b.createModule(.{
+        .root_source_file = options.bindings,
+        .target = options.target,
+        .optimize = options.optimize,
+        .imports = &.{
+            .{ .name = "zigo", .module = zigo_dependency.module("zigo") },
+            .{ .name = options.name, .module = options.module },
+        },
+    });
+    const reflector = b.addExecutable(.{
+        .name = "zigo-reflect",
+        .root_module = b.createModule(.{
+            .root_source_file = zigo_dependency.path("src/reflect/main.zig"),
+            .target = options.target,
+            .optimize = .Debug,
+            .imports = &.{
+                .{ .name = "bindings", .module = bindings_module },
+                .{ .name = "semantic", .module = semantic_module },
+            },
+        }),
+    });
+    const semantic_run = b.addRunArtifact(reflector);
+    const layout_json = semantic_run.addOutputFileArg("layout.json");
+    semantic_run.addArgs(&.{ options.name, options.prefix });
     const semantic_json = semantic_run.captureStdOut(.{ .basename = "semantic.json", .trim_whitespace = .none });
 
     const check = b.addRunArtifact(generator);
@@ -123,6 +157,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     _ = options.optimize;
     _ = options.prefix;
     _ = options.cgo_flags;
+    _ = layout_json;
 
     return .{ .update = update, .check = check, .abi_check = abi_check, .lib = lib, .semantic_json = semantic_json };
 }
@@ -141,9 +176,4 @@ fn addGenerator(
             .optimize = optimize,
         }),
     });
-}
-
-fn packagePath(comptime sub_path: []const u8) std.Build.LazyPath {
-    const package_root = comptime std.fs.path.dirname(@src().file) orelse ".";
-    return .{ .cwd_relative = package_root ++ "/" ++ sub_path };
 }
