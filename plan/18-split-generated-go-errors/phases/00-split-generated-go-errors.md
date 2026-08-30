@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T05:21:54Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `pkgname_errors_gen.go` contains the complete unchanged public error API while the main file no longer does; all planned verification passes, generated trees are clean, implementation is committed, and the plan phase can be marked done.
 > NEXT: none
