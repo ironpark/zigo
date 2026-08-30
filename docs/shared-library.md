@@ -31,5 +31,14 @@ existing module, add it explicitly:
 go get github.com/ebitengine/purego@v0.10.2
 ```
 
-Callbacks remain cgo-only until the callback function-pointer ABI phase. A
-purego configuration containing callbacks fails generation with a diagnostic.
+Callback-bearing purego libraries use a versioned native entry point ending in
+`_purego_v1`. Its C signature contains the callback function pointer explicitly,
+followed by the existing integer userdata parameter. Callback types and return
+types are lowered from semantic IR and use the C calling convention. The shared
+library therefore has no unresolved dependency on a Go `//export` trampoline.
+
+The cgo backend keeps its original symbols and fixed generated trampolines. This
+dual-symbol strategy avoids changing an existing cgo ABI in place. Binding
+reports identify the backend and callback convention; `abi-diff` accepts
+`--base-backend` and `--current-backend` so a backend/convention switch is
+reported as breaking rather than mistaken for an unchanged semantic signature.

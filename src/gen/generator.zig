@@ -38,10 +38,6 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
     var parsed = try semantic.Semantic.parse(scratch_allocator, semantic_bytes);
     defer parsed.deinit();
     try validate.semanticDocument(scratch_allocator, parsed.value);
-    if (options.backend == .purego) for (parsed.value.functions) |function| {
-        for (function.params) |parameter| if (parameter.type == .callback)
-            return error.PuregoCallbacksUnsupported;
-    };
     var baseline: ?errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(scratch_allocator, bytes) else null;
     defer if (baseline) |*value| value.deinit(scratch_allocator);
     var lock: errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(scratch_allocator, bytes) else .{};
@@ -67,7 +63,10 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
             return lhs.code < rhs.code;
         }
     }.lessThan);
-    const program = try lower.semanticDocument(scratch_allocator, parsed.value, options.package, options.prefix, abi_codes);
+    const program = try lower.semanticDocumentForBackend(scratch_allocator, parsed.value, options.package, options.prefix, abi_codes, switch (options.backend) {
+        .cgo => .cgo,
+        .purego => .purego,
+    });
     const emitter_options: emit.Options = .{
         .go_module = options.go_module,
         .cflags_override = options.cflags_override,
@@ -591,7 +590,7 @@ test "generated errors lock produces an identical second generation" {
     }
 }
 
-test "purego generation emits an atomic retryable loader and rejects callbacks" {
+test "purego generation emits an atomic retryable loader and explicit callback ABI" {
     const scalar_fixture =
         \\{"functions":[{"name":"add","params":[{"name":"a","type":{"bits":32,"kind":"int","signed":true}},{"name":"b","type":{"bits":32,"kind":"int","signed":true}}],"return":{"bits":32,"kind":"int","signed":true},"symbol":"ignored"},{"name":"accept","params":[{"name":"value","type":{"const":true,"kind":"opaque_ptr","nullable":true,"ref":"Handle"}}],"return":{"kind":"void"},"symbol":"ignored"}],"package":"scalar","prefix":"zg","types":[{"kind":"opaque","name":"Handle"}],"zig_version":"0.16.0"}
     ;
@@ -617,14 +616,37 @@ test "purego generation emits an atomic retryable loader and rejects callbacks" 
     try std.testing.expect(std.mem.indexOf(u8, raw, "func Accept(value unsafe.Pointer)") != null);
 
     const callback_fixture =
-        \\{"functions":[{"name":"install","params":[{"name":"callback","type":{"c_callconv":true,"has_userdata":true,"kind":"callback","params":[{"bits":64,"is_usize":true,"kind":"int","signed":false}],"return":{"kind":"void"}}}],"return":{"kind":"void"},"symbol":"ignored"}],"package":"callbacks","prefix":"zg","zig_version":"0.16.0"}
+        \\{"functions":[{"name":"install","params":[{"name":"callback","type":{"c_callconv":true,"has_userdata":true,"kind":"callback","params":[{"bits":32,"kind":"int","signed":true},{"bits":64,"is_usize":true,"kind":"int","signed":false}],"return":{"bits":32,"kind":"int","signed":true}}},{"name":"userdata","type":{"bits":64,"is_usize":true,"kind":"int","signed":false}}],"return":{"kind":"void"},"symbol":"ignored"}],"package":"callbacks","prefix":"zg","zig_version":"0.16.0"}
     ;
     var rejected = std.testing.tmpDir(.{ .iterate = true });
     defer rejected.cleanup();
-    try std.testing.expectError(error.PuregoCallbacksUnsupported, generate(std.testing.allocator, std.testing.io, callback_fixture, rejected.dir, .{
+    try generate(std.testing.allocator, std.testing.io, callback_fixture, rejected.dir, .{
         .package = "callbacks",
         .prefix = "zg",
         .go_module = "example.com/callbacks",
         .backend = .purego,
-    }));
+    });
+    const callback_header = try rejected.dir.readFileAlloc(std.testing.io, "zigo_callbacks.h", std.testing.allocator, .limited(16 * 1024));
+    defer std.testing.allocator.free(callback_header);
+    try std.testing.expect(std.mem.containsAtLeast(u8, callback_header, 1, "void zg_install_purego_v1(int32_t (*callback)(int32_t, size_t), size_t userdata)"));
+    const callback_shim = try rejected.dir.readFileAlloc(std.testing.io, "shim.zig", std.testing.allocator, .limited(16 * 1024));
+    defer std.testing.allocator.free(callback_shim);
+    try std.testing.expect(std.mem.containsAtLeast(u8, callback_shim, 1, "callback: *const fn (i32, usize) callconv(.c) i32, userdata: usize"));
+    try std.testing.expect(std.mem.indexOf(u8, callback_shim, "extern fn zg_install_go_callback_callback") == null);
+
+    var legacy = std.testing.tmpDir(.{ .iterate = true });
+    defer legacy.cleanup();
+    try generate(std.testing.allocator, std.testing.io, callback_fixture, legacy.dir, .{
+        .package = "callbacks",
+        .prefix = "zg",
+        .go_module = "example.com/callbacks",
+        .backend = .cgo,
+    });
+    const legacy_header = try legacy.dir.readFileAlloc(std.testing.io, "zigo_callbacks.h", std.testing.allocator, .limited(16 * 1024));
+    defer std.testing.allocator.free(legacy_header);
+    try std.testing.expect(std.mem.containsAtLeast(u8, legacy_header, 1, "void zg_install(size_t userdata)"));
+    try std.testing.expect(std.mem.indexOf(u8, legacy_header, "zg_install_purego_v1") == null);
+    const legacy_shim = try legacy.dir.readFileAlloc(std.testing.io, "shim.zig", std.testing.allocator, .limited(16 * 1024));
+    defer std.testing.allocator.free(legacy_shim);
+    try std.testing.expect(std.mem.containsAtLeast(u8, legacy_shim, 1, "extern fn zg_install_go_callback_callback"));
 }

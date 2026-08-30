@@ -1,6 +1,8 @@
 const std = @import("std");
 const semantic = @import("semantic");
 
+pub const Backend = enum { cgo, purego };
+
 pub const ChangeKind = enum { breaking, added, compatible };
 pub const Change = struct {
     kind: ChangeKind,
@@ -44,8 +46,15 @@ pub const Report = struct {
 };
 
 pub fn diff(allocator: std.mem.Allocator, base: semantic.Semantic, current: semantic.Semantic) !Report {
+    return diffWithBackends(allocator, base, .cgo, current, .cgo);
+}
+
+pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, base_backend: Backend, current: semantic.Semantic, current_backend: Backend) !Report {
     var report: Report = .{};
     errdefer report.deinit(allocator);
+
+    if (base_backend != current_backend)
+        try add(allocator, &report, .breaking, "document.backend", "binding backend and callback ABI convention changed");
 
     if (base.ir_version != current.ir_version)
         try add(allocator, &report, .breaking, "document.ir_version", "semantic IR version changed");
@@ -110,6 +119,15 @@ pub fn diff(allocator: std.mem.Allocator, base: semantic.Semantic, current: sema
         try add(allocator, &report, .added, new.type, "constructor mapping added");
 
     return report;
+}
+
+test "backend switching is an explicit breaking ABI change" {
+    const document: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0" };
+    var report = try diffWithBackends(std.testing.allocator, document, .cgo, document, .purego);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expect(report.hasBreaking());
+    try std.testing.expectEqualStrings("document.backend", report.changes.items[0].subject);
+    try std.testing.expectEqualStrings("binding backend and callback ABI convention changed", report.changes.items[0].detail);
 }
 
 fn add(allocator: std.mem.Allocator, report: *Report, kind: ChangeKind, subject: []const u8, detail: []const u8) !void {

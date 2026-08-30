@@ -42,6 +42,8 @@ pub const AbiDiff = struct {
     current_path: []const u8,
     json: bool = false,
     fail_on_breaking: bool = false,
+    base_backend: Backend = .cgo,
+    current_backend: Backend = .cgo,
 };
 
 pub const Report = struct {
@@ -81,7 +83,7 @@ pub fn writeUsage(writer: *std.Io.Writer) std.Io.Writer.Error!void {
         \\commands:
         \\  generate  --semantic <file> --output <dir> --package <name> [options]
         \\  check     --generated <dir> --source <dir>
-        \\  abi-diff  --base <file> --current <file> [--json] [--fail-on breaking]
+        \\  abi-diff  --base <file> --current <file> [--base-backend cgo|purego] [--current-backend cgo|purego] [--json] [--fail-on breaking]
         \\  report    --semantic <file> [--go-module <path>] [options]
         \\  doctor    [--go <path>] [--gofmt <path>] [--target native|cross] [--auto-cleanup]
         \\
@@ -242,6 +244,8 @@ fn parseAbiDiff(args: []const []const u8) ParseError!AbiDiff {
     var json_seen = false;
     var fail_on_breaking = false;
     var fail_on_seen = false;
+    var base_backend: ?Backend = null;
+    var current_backend: ?Backend = null;
     var index: usize = 0;
     while (index < args.len) {
         const flag = args[index];
@@ -259,6 +263,12 @@ fn parseAbiDiff(args: []const []const u8) ParseError!AbiDiff {
             fail_on_seen = true;
             if (!std.mem.eql(u8, try takeValue(args, &index), "breaking")) return error.InvalidValue;
             fail_on_breaking = true;
+        } else if (std.mem.eql(u8, flag, "--base-backend")) {
+            if (base_backend != null) return error.DuplicateArgument;
+            base_backend = parseBackend(try takeValue(args, &index)) orelse return error.InvalidValue;
+        } else if (std.mem.eql(u8, flag, "--current-backend")) {
+            if (current_backend != null) return error.DuplicateArgument;
+            current_backend = parseBackend(try takeValue(args, &index)) orelse return error.InvalidValue;
         } else {
             return error.UnknownArgument;
         }
@@ -268,6 +278,8 @@ fn parseAbiDiff(args: []const []const u8) ParseError!AbiDiff {
         .current_path = current_path orelse return error.MissingRequiredArgument,
         .json = json,
         .fail_on_breaking = fail_on_breaking,
+        .base_backend = base_backend orelse .cgo,
+        .current_backend = current_backend orelse .cgo,
     };
 }
 
@@ -441,9 +453,11 @@ test "check and abi-diff commands parse named arguments" {
     try std.testing.expectEqualStrings("expected", check.generated_path);
     try std.testing.expectEqualStrings("go", check.source_path);
 
-    const diff = (try parse(&.{ "abi-diff", "--base", "old.json", "--current", "new.json", "--json", "--fail-on", "breaking" })).abi_diff;
+    const diff = (try parse(&.{ "abi-diff", "--base", "old.json", "--current", "new.json", "--base-backend", "cgo", "--current-backend", "purego", "--json", "--fail-on", "breaking" })).abi_diff;
     try std.testing.expect(diff.json);
     try std.testing.expect(diff.fail_on_breaking);
+    try std.testing.expectEqual(Backend.cgo, diff.base_backend);
+    try std.testing.expectEqual(Backend.purego, diff.current_backend);
 }
 
 test "report and doctor commands parse effective configuration" {

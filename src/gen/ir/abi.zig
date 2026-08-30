@@ -14,6 +14,10 @@ pub const AbiScalar = union(enum) {
         is_const: bool,
         is_many: bool = false,
     },
+    callback: struct {
+        params: []const AbiScalar,
+        ret: *const AbiScalar,
+    },
 };
 
 pub const AbiParam = struct {
@@ -53,6 +57,11 @@ pub const AbiProjection = struct {
 };
 
 pub const Program = struct {
+    pub const Backend = enum { cgo, purego };
+    pub const CallbackConvention = enum { fixed_go_export, function_pointer_userdata_v1 };
+
+    backend: Backend = .cgo,
+    callback_convention: CallbackConvention = .fixed_go_export,
     constructors: []const semantic.Constructor = &.{},
     error_codes: []const ErrorCode = &.{},
     functions: []const AbiFn,

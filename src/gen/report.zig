@@ -29,7 +29,10 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
             if (!exists) try error_codes.append(scratch_allocator, .{ .code = @intCast(error_codes.items.len + 1), .name = name });
         }
     };
-    const program = try lower.semanticDocument(scratch_allocator, document, document.package, document.prefix, error_codes.items);
+    const program = try lower.semanticDocumentForBackend(scratch_allocator, document, document.package, document.prefix, error_codes.items, switch (options.backend) {
+        .cgo => .cgo,
+        .purego => .purego,
+    });
     try writer.writeAll("zigo binding report\n");
     try writer.print("package: {s}\n", .{document.package});
     if (options.go_module.len != 0) try writer.print("go module: {s}\n", .{options.go_module});
@@ -38,6 +41,7 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
     try writer.print("raw package: {s}\n", .{if (options.raw_colocated) "colocated" else options.raw_package_path});
     try writer.print("automatic cleanup: {s}\n", .{if (options.auto_cleanup) "enabled (Go 1.24+)" else "disabled"});
     try writer.print("backend: {s}\n", .{@tagName(options.backend)});
+    try writer.print("callback ABI: {s}\n", .{@tagName(program.callback_convention)});
 
     try writer.print("\ntypes ({d})\n", .{document.types.len});
     for (document.types) |declaration| {
@@ -174,4 +178,10 @@ test "report exposes final public names symbols ownership and projections" {
     try std.testing.expect(std.mem.indexOf(u8, actual, "Value.deinit -> (*Value).Close [lifecycle mapping]") != null);
     try std.testing.expect(std.mem.indexOf(u8, actual, "input:slice/retained/ast") != null);
     try std.testing.expect(std.mem.indexOf(u8, actual, "Value.number -> (*Value).TryAsNumber/AsNumber") != null);
+    try std.testing.expect(std.mem.indexOf(u8, actual, "backend: cgo\ncallback ABI: fixed_go_export") != null);
+
+    var purego_output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer purego_output.deinit();
+    try render(std.testing.allocator, &purego_output.writer, document, .{ .backend = .purego });
+    try std.testing.expect(std.mem.indexOf(u8, purego_output.written(), "backend: purego\ncallback ABI: function_pointer_userdata_v1") != null);
 }

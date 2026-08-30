@@ -10,6 +10,17 @@ pub fn semanticDocument(
     prefix: []const u8,
     error_codes: []const abi.ErrorCode,
 ) !abi.Program {
+    return semanticDocumentForBackend(allocator, document, package, prefix, error_codes, .cgo);
+}
+
+pub fn semanticDocumentForBackend(
+    allocator: std.mem.Allocator,
+    document: semantic.Semantic,
+    package: []const u8,
+    prefix: []const u8,
+    error_codes: []const abi.ErrorCode,
+    backend: abi.Program.Backend,
+) !abi.Program {
     const functions = try allocator.alloc(abi.AbiFn, document.functions.len);
     for (document.functions, 0..) |*function, function_index| {
         var params: std.ArrayList(abi.AbiParam) = .empty;
@@ -24,7 +35,19 @@ pub fn semanticDocument(
         }
         for (function.params, 0..) |parameter, parameter_index| {
             switch (parameter.type) {
-                .callback => continue,
+                .callback => |callback| {
+                    if (backend == .cgo) continue;
+                    const callback_params = try allocator.alloc(abi.AbiScalar, callback.params.len);
+                    for (callback.params, 0..) |callback_parameter, callback_index|
+                        callback_params[callback_index] = try lowerValue(allocator, document, callback_parameter);
+                    const callback_return = try allocator.create(abi.AbiScalar);
+                    callback_return.* = try lowerValue(allocator, document, callback.@"return".*);
+                    try params.append(allocator, .{
+                        .name = parameter.name,
+                        .scalar = .{ .callback = .{ .params = callback_params, .ret = callback_return } },
+                        .source_index = parameter_index,
+                    });
+                },
                 .slice => |slice| {
                     const child = try allocator.create(abi.AbiScalar);
                     child.* = try lowerValue(allocator, document, slice.element.*);
@@ -99,11 +122,15 @@ pub fn semanticDocument(
         const function_name = try naming.snakeAlloc(allocator, function.name);
         defer allocator.free(function_name);
         const symbol_owner = function.receiver orelse function.namespace;
-        const symbol = if (symbol_owner) |owner| blk: {
+        const legacy_symbol = if (symbol_owner) |owner| blk: {
             const receiver_name = try naming.snakeAlloc(allocator, owner);
             defer allocator.free(receiver_name);
             break :blk try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ prefix, receiver_name, function_name });
         } else try std.fmt.allocPrint(allocator, "{s}_{s}", .{ prefix, function_name });
+        const symbol = if (backend == .purego and functionHasCallback(function.*))
+            try std.fmt.allocPrint(allocator, "{s}_purego_v1", .{legacy_symbol})
+        else
+            legacy_symbol;
         functions[function_index] = .{
             .symbol = symbol,
             .params = try params.toOwnedSlice(allocator),
@@ -114,6 +141,8 @@ pub fn semanticDocument(
     }
     const projections = try lowerTaggedUnionProjections(allocator, document, prefix);
     return .{
+        .backend = backend,
+        .callback_convention = if (backend == .purego) .function_pointer_userdata_v1 else .fixed_go_export,
         .constructors = document.constructors,
         .error_codes = error_codes,
         .functions = functions,
@@ -122,6 +151,11 @@ pub fn semanticDocument(
         .projections = projections,
         .types = document.types,
     };
+}
+
+fn functionHasCallback(function: semantic.SemanticFn) bool {
+    for (function.params) |parameter| if (parameter.type == .callback) return true;
+    return false;
 }
 
 fn lowerTaggedUnionProjections(allocator: std.mem.Allocator, document: semantic.Semantic, prefix: []const u8) ![]const abi.AbiProjection {

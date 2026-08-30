@@ -2,7 +2,7 @@
 depends_on:
 - "31-shared-library-purego#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Header, Zig shim, symbol-table, ABI snapshot, and negative signature tests prove the callback ABI is
 > NEXT: none

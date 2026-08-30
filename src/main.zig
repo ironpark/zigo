@@ -46,15 +46,6 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         try stderr.interface.flush();
         std.process.exit(1);
     }
-    if (options.backend == .purego) for (parsed.value.functions) |function| {
-        for (function.params) |parameter| if (parameter.type == .callback) {
-            var buffer: [512]u8 = undefined;
-            var stderr = std.Io.File.Writer.init(.stderr(), io, &buffer);
-            try stderr.interface.print("error: purego callbacks are not supported yet ({s}); use the cgo backend or wait for the callback ABI phase\n", .{function.name});
-            try stderr.interface.flush();
-            std.process.exit(1);
-        };
-    };
     try std.Io.Dir.cwd().createDirPath(io, options.output_path);
     var output = try std.Io.Dir.cwd().openDir(io, options.output_path, .{ .iterate = true });
     defer output.close(io);
@@ -109,7 +100,13 @@ fn runAbiDiff(allocator: std.mem.Allocator, io: std.Io, options: cli.AbiDiff) !v
     defer base.deinit();
     var current = try semantic.Semantic.parse(allocator, current_bytes);
     defer current.deinit();
-    var report = try abi_diff.diff(allocator, base.value, current.value);
+    var report = try abi_diff.diffWithBackends(allocator, base.value, switch (options.base_backend) {
+        .cgo => .cgo,
+        .purego => .purego,
+    }, current.value, switch (options.current_backend) {
+        .cgo => .cgo,
+        .purego => .purego,
+    });
     defer report.deinit(allocator);
     var buffer: [4096]u8 = undefined;
     var stdout = std.Io.File.Writer.init(.stdout(), io, &buffer);
