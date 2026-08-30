@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-08-30T10:06:48Z"
 description: Add a verified example with multiple opaque types and a method whose receiver accepts another exposed type.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-30T10:02:40Z"
 ---
 > NEXT: Implement and validate the multi-type consumer example. ([Phase 0](phases/00-multi-type-consumer-example.md))
 
 # Phases
 
-- [ ] [Phase 00: Multi-type consumer example](phases/00-multi-type-consumer-example.md)
+- [x] [Phase 00: Multi-type consumer example](phases/00-multi-type-consumer-example.md)
 
 # Shared Verification
 

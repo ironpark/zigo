@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T10:06:48Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: All example and repository validation commands pass with committed generated artifacts.
 > NEXT: none
