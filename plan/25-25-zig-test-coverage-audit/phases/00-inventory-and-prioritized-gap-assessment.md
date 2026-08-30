@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T09:24:13Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 53개 test discovery가 재확인되고, 우선순위별 Zig 테스트 공백과 보강 case가 문서화된다.
 > NEXT: none
