@@ -2,7 +2,7 @@
 depends_on:
 - "15-generation-reliability#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Every unsafe lock state or transition is rejected without output mutation,
 > NEXT: none

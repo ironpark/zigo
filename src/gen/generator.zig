@@ -358,3 +358,25 @@ fn expectAllocationFailureLeavesOutputUntouched(allocator: std.mem.Allocator) !v
 test "allocation failures before commit leave the output tree untouched" {
     try std.testing.checkAllAllocationFailures(std.testing.allocator, expectAllocationFailureLeavesOutputUntouched, .{});
 }
+
+test "invalid errors lock leaves the output tree untouched" {
+    const fixture =
+        \\{"functions":[],"package":"locked","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    const invalid_lock =
+        \\{"codes":{},"ir_version":1,"next_code":1,"reserved":{"-1":"Changed","-2":"PanicCaught","-3":"CallbackPanic","-4":"InvalidHandle","0":"OK"}}
+    ;
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "errors.lock.json", .data = "old output" });
+
+    try std.testing.expectError(error.ReservedMappingChanged, generate(std.testing.allocator, std.testing.io, fixture, temporary.dir, .{
+        .package = "locked",
+        .prefix = "zg",
+        .go_module = "example.com/locked",
+        .errors_lock_bytes = invalid_lock,
+    }));
+    const actual = try temporary.dir.readFileAlloc(std.testing.io, "errors.lock.json", std.testing.allocator, .limited(64));
+    defer std.testing.allocator.free(actual);
+    try std.testing.expectEqualStrings("old output", actual);
+}

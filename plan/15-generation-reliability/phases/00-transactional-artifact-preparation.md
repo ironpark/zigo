@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T04:40:12Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Validation/render/allocation failures cannot change seeded output files, normal
 > NEXT: none

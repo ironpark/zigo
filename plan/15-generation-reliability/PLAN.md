@@ -7,7 +7,7 @@ registered_at: "2026-08-30T04:39:05Z"
 
 # Phases
 
-- [ ] [Phase 00: Transactional artifact preparation](phases/00-transactional-artifact-preparation.md)
+- [x] [Phase 00: Transactional artifact preparation](phases/00-transactional-artifact-preparation.md)
 - [ ] [Phase 01: Safe errors.lock state transitions](phases/01-safe-errors-lock-transitions.md)
 - [ ] [Phase 02: Transparent reflection enrichment](phases/02-transparent-reflection-enrichment.md)
 - [ ] [Phase 03: Complex golden coverage and documentation](phases/03-complex-golden-and-docs.md)

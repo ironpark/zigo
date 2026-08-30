@@ -93,6 +93,8 @@ pub fn build(b: *std.Build) void {
     const run_reflect_names_tests = b.addRunArtifact(reflect_names_tests);
     const abi_diff_tests = b.addTest(.{ .root_module = generator_modules.abi_diff, .filters = test_filters });
     const run_abi_diff_tests = b.addRunArtifact(abi_diff_tests);
+    const errors_lock_tests = b.addTest(.{ .root_module = generator_modules.errors_lock, .filters = test_filters });
+    const run_errors_lock_tests = b.addRunArtifact(errors_lock_tests);
     const diagnostic_tests = b.addTest(.{ .root_module = generator_modules.diagnostic, .filters = test_filters });
     const run_diagnostic_tests = b.addRunArtifact(diagnostic_tests);
     const sync_check_tests = b.addTest(.{ .root_module = generator_modules.sync_check, .filters = test_filters });
@@ -109,6 +111,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_reflect_walk_tests.step);
     test_step.dependOn(&run_reflect_names_tests.step);
     test_step.dependOn(&run_abi_diff_tests.step);
+    test_step.dependOn(&run_errors_lock_tests.step);
     test_step.dependOn(&run_diagnostic_tests.step);
     test_step.dependOn(&run_sync_check_tests.step);
     test_step.dependOn(&run_cli_tests.step);
@@ -131,6 +134,7 @@ pub fn build(b: *std.Build) void {
     check_step.dependOn(&reflect_walk_tests.step);
     check_step.dependOn(&reflect_names_tests.step);
     check_step.dependOn(&abi_diff_tests.step);
+    check_step.dependOn(&errors_lock_tests.step);
     check_step.dependOn(&diagnostic_tests.step);
     check_step.dependOn(&sync_check_tests.step);
     check_step.dependOn(&cli_tests.step);
