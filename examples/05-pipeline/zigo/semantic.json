@@ -1,0 +1,461 @@
+{
+  "constructors": [
+    {
+      "deinit": "deinit",
+      "init": "create",
+      "type": "IntBatch"
+    },
+    {
+      "deinit": "deinit",
+      "init": "create",
+      "type": "FloatBatch"
+    },
+    {
+      "deinit": "deinit",
+      "init": "create",
+      "type": "Pipeline"
+    }
+  ],
+  "functions": [
+    {
+      "name": "create",
+      "namespace": "IntBatch",
+      "ownership": "caller",
+      "params": [],
+      "return": {
+        "error_set": [
+          "OutOfMemory"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "IntBatch"
+        }
+      },
+      "symbol": "zg_create"
+    },
+    {
+      "name": "push",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "value",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          }
+        }
+      ],
+      "receiver": "IntBatch",
+      "return": {
+        "error_set": [
+          "OutOfMemory"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "void"
+        }
+      },
+      "symbol": "zg_push"
+    },
+    {
+      "name": "len",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "IntBatch",
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_len"
+    },
+    {
+      "name": "deinit",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "IntBatch",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_deinit"
+    },
+    {
+      "name": "create",
+      "namespace": "FloatBatch",
+      "ownership": "caller",
+      "params": [],
+      "return": {
+        "error_set": [
+          "OutOfMemory"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "FloatBatch"
+        }
+      },
+      "symbol": "zg_create"
+    },
+    {
+      "name": "push",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "p0",
+          "name_source": "fallback",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "kind": "float"
+          }
+        }
+      ],
+      "receiver": "FloatBatch",
+      "return": {
+        "error_set": [
+          "OutOfMemory"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "void"
+        }
+      },
+      "symbol": "zg_push"
+    },
+    {
+      "name": "len",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "FloatBatch",
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_len"
+    },
+    {
+      "name": "deinit",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "FloatBatch",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_deinit"
+    },
+    {
+      "name": "create",
+      "namespace": "Pipeline",
+      "ownership": "caller",
+      "params": [
+        {
+          "direction": "in",
+          "name": "name",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "semantic": "utf8_string",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "mode",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "kind": "enum",
+            "ref": "Mode"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "callback",
+          "name_source": "sidecar",
+          "retention": "retained",
+          "type": {
+            "c_callconv": true,
+            "has_userdata": true,
+            "kind": "callback",
+            "params": [
+              {
+                "bits": 32,
+                "is_usize": false,
+                "kind": "int",
+                "signed": true
+              },
+              {
+                "bits": 64,
+                "is_usize": true,
+                "kind": "int",
+                "signed": false
+              }
+            ],
+            "return": {
+              "bits": 32,
+              "is_usize": false,
+              "kind": "int",
+              "signed": true
+            }
+          }
+        },
+        {
+          "direction": "in",
+          "name": "userdata",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "OutOfMemory",
+          "InvalidName"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "Pipeline"
+        }
+      },
+      "symbol": "zg_create"
+    },
+    {
+      "name": "process",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "values",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 32,
+              "is_usize": false,
+              "kind": "int",
+              "signed": true
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "receiver": "Pipeline",
+      "return": {
+        "error_set": [
+          "EmptyInput",
+          "Disabled",
+          "CallbackPanicked"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "is_usize": false,
+          "kind": "int",
+          "signed": true
+        }
+      },
+      "symbol": "zg_process"
+    },
+    {
+      "name": "name",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Pipeline",
+      "return": {
+        "const": true,
+        "element": {
+          "bits": 8,
+          "is_usize": false,
+          "kind": "int",
+          "signed": false
+        },
+        "kind": "slice"
+      },
+      "return_semantic": "utf8_string",
+      "symbol": "zg_name"
+    },
+    {
+      "name": "mode",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Pipeline",
+      "return": {
+        "kind": "enum",
+        "ref": "Mode"
+      },
+      "symbol": "zg_mode"
+    },
+    {
+      "name": "setEnabled",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "enabled",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "receiver": "Pipeline",
+      "return": {
+        "kind": "bool"
+      },
+      "symbol": "zg_setEnabled"
+    },
+    {
+      "name": "processed",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Pipeline",
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_processed"
+    },
+    {
+      "name": "total",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Pipeline",
+      "return": {
+        "bits": 64,
+        "is_usize": false,
+        "kind": "int",
+        "signed": true
+      },
+      "symbol": "zg_total"
+    },
+    {
+      "name": "deinit",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Pipeline",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_deinit"
+    },
+    {
+      "name": "liveBytes",
+      "ownership": "borrowed",
+      "params": [],
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_liveBytes"
+    },
+    {
+      "name": "compressionBound",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "source_len",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_compressionBound"
+    }
+  ],
+  "ir_version": 1,
+  "package": "pipeline",
+  "prefix": "zg",
+  "types": [
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "opaque",
+      "name": "Pipeline",
+      "zig_path": "root.Pipeline"
+    },
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "opaque",
+      "name": "IntBatch",
+      "zig_path": "root.Batch(i32)"
+    },
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "opaque",
+      "name": "FloatBatch",
+      "zig_path": "root.Batch(f64)"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "sum",
+          "value": 0
+        },
+        {
+          "name": "weighted",
+          "value": 1
+        }
+      ],
+      "kind": "enum",
+      "name": "Mode",
+      "tag_type": {
+        "bits": 32,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "zig_path": "root.Mode"
+    }
+  ],
+  "zig_version": "0.16.0"
+}
