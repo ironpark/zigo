@@ -8,6 +8,7 @@ pub const CgoFlags = struct {
 };
 
 pub const LinkMode = enum { static, dynamic };
+pub const Backend = enum { cgo, purego };
 
 pub const Options = struct {
     pub const RawPackage = union(enum) {
@@ -26,6 +27,7 @@ pub const Options = struct {
     optimize: std.builtin.OptimizeMode,
     prefix: []const u8 = "zg",
     link_mode: LinkMode = .static,
+    backend: Backend = .cgo,
     cgo_flags: ?CgoFlags = null,
     abi_base: ?[]const u8 = null,
     raw_package: RawPackage = .internal,
@@ -424,6 +426,15 @@ fn matchesAnyFilter(name: []const u8, filters: []const []const u8) bool {
 
 /// Adds the Go-binding pipeline to a consuming build graph.
 pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
+    if (options.backend == .purego) {
+        if (options.link_mode != .dynamic) @panic("purego backend requires .link_mode = .dynamic");
+        const target = options.target.result;
+        if ((target.os.tag != .macos and target.os.tag != .linux) or
+            (target.cpu.arch != .aarch64 and target.cpu.arch != .x86_64))
+            @panic("purego backend supports native macOS/Linux on amd64/arm64 only");
+        if (!isRunnableOnHost(target, b.graph.host.result))
+            @panic("purego backend requires the native host target");
+    }
     const go_package = naming.snakeAlloc(b.allocator, options.name) catch @panic("OOM");
     const raw_package = resolveRawPackage(b, options.raw_package, go_package);
     const zigo_dependency = b.dependencyFromBuildZig(@This(), .{});
@@ -493,6 +504,8 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         "--framework-ldflags", framework_ldflags,
         "--raw-package-path",  raw_package.path,
         "--raw-package-name",  raw_package.name,
+        "--backend",           @tagName(options.backend),
+        "--library-name",      libraryFilename(b, b.fmt("{s}_zigo", .{go_package}), options.target.result, options.link_mode),
     });
     if (raw_package.colocated) generate.addArg("--raw-colocated");
     if (options.auto_cleanup) generate.addArg("--auto-cleanup");
@@ -528,11 +541,13 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     report.addArgs(&.{ "report", "--semantic" });
     report.addFileArg(semantic_json);
     report.addArgs(&.{ "--go-module", options.go_module, "--raw-package-path", raw_package.path });
+    report.addArgs(&.{ "--backend", @tagName(options.backend) });
     if (raw_package.colocated) report.addArg("--raw-colocated");
     if (options.auto_cleanup) report.addArg("--auto-cleanup");
     const doctor = b.addRunArtifact(generator);
     doctor.has_side_effects = true;
     doctor.addArgs(&.{ "doctor", "--target", if (isRunnableOnHost(options.target.result, b.graph.host.result)) "native" else "cross" });
+    doctor.addArgs(&.{ "--backend", @tagName(options.backend) });
     if (options.auto_cleanup) doctor.addArg("--auto-cleanup");
     const abi_check: ?*std.Build.Step.Run = if (options.abi_base) |abi_base| check: {
         const baseline = b.addSystemCommand(&.{ "git", "show" });
@@ -580,7 +595,11 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     update.addCopyFileToSource(semantic_json, "zigo/semantic.json");
     const go_mod_path = sourcePath(b, options.go_dir, "go.mod");
     b.build_root.handle.access(b.graph.io, go_mod_path, .{}) catch |err| switch (err) {
-        error.FileNotFound => update.addBytesToSource(b.fmt("module {s}\n\ngo {s}\n", .{ options.go_module, if (options.auto_cleanup) "1.24" else "1.23" }), go_mod_path),
+        error.FileNotFound => update.addBytesToSource(b.fmt("module {s}\n\ngo {s}\n{s}", .{
+            options.go_module,
+            if (options.auto_cleanup) "1.24" else "1.23",
+            if (options.backend == .purego) "\nrequire github.com/ebitengine/purego v0.10.2\n" else "",
+        }), go_mod_path),
         else => @panic("unable to inspect go.mod"),
     };
     update.step.dependOn(&install_lib.step);

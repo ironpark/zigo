@@ -7,7 +7,7 @@ registered_at: "2026-08-30T12:44:24Z"
 
 # Phases
 
-- [ ] [Phase 00: Shared Library Artifact Contract](phases/00-shared-library-contract.md)
+- [x] [Phase 00: Shared Library Artifact Contract](phases/00-shared-library-contract.md)
 - [ ] [Phase 01: Backend Model and Atomic purego Loader](phases/01-purego-loader.md)
 - [ ] [Phase 02: Callback-Free purego Call Surface](phases/02-purego-call-surface.md)
 - [ ] [Phase 03: Callback Function-Pointer ABI](phases/03-callback-pointer-abi.md)

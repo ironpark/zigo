@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T13:04:06Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Native macOS/Linux dynamic fixtures prove artifact installation, symbol visibility, dependency
 > NEXT: none

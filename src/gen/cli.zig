@@ -1,5 +1,7 @@
 const std = @import("std");
 
+pub const Backend = enum { cgo, purego };
+
 pub const ParseError = error{
     DuplicateArgument,
     InvalidValue,
@@ -26,6 +28,8 @@ pub const Generate = struct {
     raw_colocated: bool = false,
     auto_cleanup: bool = false,
     errors_lock_path: ?[]const u8 = null,
+    backend: Backend = .cgo,
+    library_name: []const u8 = "",
 };
 
 pub const Check = struct {
@@ -46,6 +50,7 @@ pub const Report = struct {
     raw_package_path: []const u8 = "internal/raw",
     raw_colocated: bool = false,
     auto_cleanup: bool = false,
+    backend: Backend = .cgo,
 };
 
 pub const Doctor = struct {
@@ -53,6 +58,7 @@ pub const Doctor = struct {
     gofmt_executable: []const u8 = "gofmt",
     native_target: bool = true,
     auto_cleanup: bool = false,
+    backend: Backend = .cgo,
 };
 
 pub const Command = union(enum) {
@@ -132,6 +138,8 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
     var raw_colocated_seen = false;
     var auto_cleanup = false;
     var auto_cleanup_seen = false;
+    var backend: ?Backend = null;
+    var library_name: ?[]const u8 = null;
 
     var index: usize = 0;
     while (index < args.len) {
@@ -173,6 +181,11 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
             try set(&raw_package_name, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--errors-lock")) {
             try set(&errors_lock_path, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--backend")) {
+            if (backend != null) return error.DuplicateArgument;
+            backend = parseBackend(try takeValue(args, &index)) orelse return error.InvalidValue;
+        } else if (std.mem.eql(u8, flag, "--library-name")) {
+            try set(&library_name, try takeValue(args, &index));
         } else {
             return error.UnknownArgument;
         }
@@ -196,6 +209,8 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .raw_colocated = raw_colocated,
         .auto_cleanup = auto_cleanup,
         .errors_lock_path = errors_lock_path,
+        .backend = backend orelse .cgo,
+        .library_name = library_name orelse "",
     };
 }
 
@@ -264,6 +279,7 @@ fn parseReport(args: []const []const u8) ParseError!Report {
     var raw_colocated_seen = false;
     var auto_cleanup = false;
     var auto_cleanup_seen = false;
+    var backend: ?Backend = null;
     var index: usize = 0;
     while (index < args.len) {
         const flag = args[index];
@@ -282,6 +298,9 @@ fn parseReport(args: []const []const u8) ParseError!Report {
             if (auto_cleanup_seen) return error.DuplicateArgument;
             auto_cleanup_seen = true;
             auto_cleanup = true;
+        } else if (std.mem.eql(u8, flag, "--backend")) {
+            if (backend != null) return error.DuplicateArgument;
+            backend = parseBackend(try takeValue(args, &index)) orelse return error.InvalidValue;
         } else {
             return error.UnknownArgument;
         }
@@ -292,6 +311,7 @@ fn parseReport(args: []const []const u8) ParseError!Report {
         .raw_package_path = raw_package_path orelse "internal/raw",
         .raw_colocated = raw_colocated,
         .auto_cleanup = auto_cleanup,
+        .backend = backend orelse .cgo,
     };
 }
 
@@ -302,6 +322,7 @@ fn parseDoctor(args: []const []const u8) ParseError!Doctor {
     var target_seen = false;
     var auto_cleanup = false;
     var auto_cleanup_seen = false;
+    var backend: ?Backend = null;
     var index: usize = 0;
     while (index < args.len) {
         const flag = args[index];
@@ -325,6 +346,9 @@ fn parseDoctor(args: []const []const u8) ParseError!Doctor {
             if (auto_cleanup_seen) return error.DuplicateArgument;
             auto_cleanup_seen = true;
             auto_cleanup = true;
+        } else if (std.mem.eql(u8, flag, "--backend")) {
+            if (backend != null) return error.DuplicateArgument;
+            backend = parseBackend(try takeValue(args, &index)) orelse return error.InvalidValue;
         } else {
             return error.UnknownArgument;
         }
@@ -334,7 +358,14 @@ fn parseDoctor(args: []const []const u8) ParseError!Doctor {
         .gofmt_executable = gofmt_executable orelse "gofmt",
         .native_target = native_target,
         .auto_cleanup = auto_cleanup,
+        .backend = backend orelse .cgo,
     };
+}
+
+fn parseBackend(value: []const u8) ?Backend {
+    if (std.mem.eql(u8, value, "cgo")) return .cgo;
+    if (std.mem.eql(u8, value, "purego")) return .purego;
+    return null;
 }
 
 fn takeValue(args: []const []const u8, index: *usize) ParseError![]const u8 {

@@ -21,6 +21,8 @@ pub const Options = struct {
     raw_colocated: bool = false,
     auto_cleanup: bool = false,
     errors_lock_bytes: ?[]const u8 = null,
+    backend: emit.Options.Backend = .cgo,
+    library_name: []const u8 = "",
 };
 
 const PreparedFile = struct {
@@ -36,6 +38,10 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
     var parsed = try semantic.Semantic.parse(scratch_allocator, semantic_bytes);
     defer parsed.deinit();
     try validate.semanticDocument(scratch_allocator, parsed.value);
+    if (options.backend == .purego) for (parsed.value.functions) |function| {
+        for (function.params) |parameter| if (parameter.type == .callback)
+            return error.PuregoCallbacksUnsupported;
+    };
     var baseline: ?errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(scratch_allocator, bytes) else null;
     defer if (baseline) |*value| value.deinit(scratch_allocator);
     var lock: errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(scratch_allocator, bytes) else .{};
@@ -74,6 +80,8 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .raw_package_name = options.raw_package_name,
         .raw_colocated = options.raw_colocated,
         .auto_cleanup = options.auto_cleanup,
+        .backend = options.backend,
+        .library_name = options.library_name,
     };
     var prepared: std.ArrayList(PreparedFile) = .empty;
     defer prepared.deinit(scratch_allocator);
@@ -581,4 +589,40 @@ test "generated errors lock produces an identical second generation" {
         defer std.testing.allocator.free(second_bytes);
         try std.testing.expectEqualStrings(first_bytes, second_bytes);
     }
+}
+
+test "purego generation emits an atomic retryable loader and rejects callbacks" {
+    const scalar_fixture =
+        \\{"functions":[{"name":"add","params":[{"name":"a","type":{"bits":32,"kind":"int","signed":true}},{"name":"b","type":{"bits":32,"kind":"int","signed":true}}],"return":{"bits":32,"kind":"int","signed":true},"symbol":"ignored"}],"package":"scalar","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    try generate(std.testing.allocator, std.testing.io, scalar_fixture, temporary.dir, .{
+        .package = "scalar",
+        .prefix = "zg",
+        .go_module = "example.com/scalar",
+        .backend = .purego,
+        .library_name = "libscalar_zigo.so",
+    });
+    const raw = try temporary.dir.readFileAlloc(std.testing.io, "internal/raw/raw_gen.go", std.testing.allocator, .limited(64 * 1024));
+    defer std.testing.allocator.free(raw);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "import \"C\"") == null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "runtime/cgo") == null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "github.com/ebitengine/purego") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "type LibraryError struct") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "loadedBindings.Store(&next)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "purego.Dlclose(handle)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "different library is already loaded") != null);
+
+    const callback_fixture =
+        \\{"functions":[{"name":"install","params":[{"name":"callback","type":{"c_callconv":true,"has_userdata":true,"kind":"callback","params":[{"bits":64,"is_usize":true,"kind":"int","signed":false}],"return":{"kind":"void"}}}],"return":{"kind":"void"},"symbol":"ignored"}],"package":"callbacks","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    var rejected = std.testing.tmpDir(.{ .iterate = true });
+    defer rejected.cleanup();
+    try std.testing.expectError(error.PuregoCallbacksUnsupported, generate(std.testing.allocator, std.testing.io, callback_fixture, rejected.dir, .{
+        .package = "callbacks",
+        .prefix = "zg",
+        .go_module = "example.com/callbacks",
+        .backend = .purego,
+    }));
 }

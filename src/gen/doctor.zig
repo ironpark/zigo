@@ -1,10 +1,12 @@
 const std = @import("std");
 
 pub const Options = struct {
+    pub const Backend = enum { cgo, purego };
     go_executable: []const u8 = "go",
     gofmt_executable: []const u8 = "gofmt",
     native_target: bool = true,
     auto_cleanup: bool = false,
+    backend: Backend = .cgo,
 };
 
 pub const Probe = struct {
@@ -26,7 +28,7 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, writer: *std.Io.Writer, opt
         allocator.free(result.stdout);
         allocator.free(result.stderr);
     };
-    const cgo_result = if (go_version_result != null) std.process.run(allocator, io, .{
+    const cgo_result = if (go_version_result != null and options.backend == .cgo) std.process.run(allocator, io, .{
         .argv = &.{ options.go_executable, "env", "CGO_ENABLED" },
         .stdout_limit = .limited(64 * 1024),
         .stderr_limit = .limited(64 * 1024),
@@ -35,7 +37,7 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, writer: *std.Io.Writer, opt
         allocator.free(result.stdout);
         allocator.free(result.stderr);
     };
-    const cc_result = if (go_version_result != null) std.process.run(allocator, io, .{
+    const cc_result = if (go_version_result != null and options.backend == .cgo) std.process.run(allocator, io, .{
         .argv = &.{ options.go_executable, "env", "CC" },
         .stdout_limit = .limited(64 * 1024),
         .stderr_limit = .limited(64 * 1024),
@@ -70,10 +72,10 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, writer: *std.Io.Writer, opt
         .c_compiler_available = cc_probe_result != null,
         .gofmt_available = gofmt_result != null,
         .native_target = options.native_target,
-    }, options.auto_cleanup);
+    }, options.auto_cleanup, options.backend);
 }
 
-pub fn render(writer: *std.Io.Writer, probe: Probe, auto_cleanup: bool) !bool {
+pub fn render(writer: *std.Io.Writer, probe: Probe, auto_cleanup: bool, backend: Options.Backend) !bool {
     var healthy = true;
     if (probe.native_target) {
         try writer.writeAll("PASS target: native build\n");
@@ -100,7 +102,9 @@ pub fn render(writer: *std.Io.Writer, probe: Probe, auto_cleanup: bool) !bool {
         try writer.print("FAIL go: executable unavailable; install Go 1.{d} or newer and add it to PATH\n", .{minimum_minor});
     }
 
-    if (probe.cgo_enabled) |enabled| {
+    if (backend == .purego) {
+        try writer.writeAll("PASS purego: no C compiler required at Go build time\n");
+    } else if (probe.cgo_enabled) |enabled| {
         if (std.mem.eql(u8, enabled, "1")) {
             try writer.writeAll("PASS cgo: enabled\n");
         } else {
@@ -112,7 +116,9 @@ pub fn render(writer: *std.Io.Writer, probe: Probe, auto_cleanup: bool) !bool {
         try writer.writeAll("FAIL cgo: unable to query `go env CGO_ENABLED`\n");
     }
 
-    if (probe.c_compiler) |compiler| {
+    if (backend == .purego) {
+        // Runtime loading uses the prebuilt native library.
+    } else if (probe.c_compiler) |compiler| {
         if (probe.c_compiler_available) {
             try writer.print("PASS C compiler: {s}\n", .{compiler});
         } else {
@@ -177,7 +183,7 @@ test "doctor distinguishes required failures from optional gofmt" {
         .c_compiler_available = true,
         .gofmt_available = false,
         .native_target = true,
-    }, true));
+    }, true, .cgo));
     try std.testing.expect(std.mem.indexOf(u8, healthy_output.written(), "WARN gofmt") != null);
     try std.testing.expect(std.mem.indexOf(u8, healthy_output.written(), "doctor: ok") != null);
 
@@ -190,11 +196,25 @@ test "doctor distinguishes required failures from optional gofmt" {
         .c_compiler_available = false,
         .gofmt_available = true,
         .native_target = false,
-    }, true));
+    }, true, .cgo));
     try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "install Go 1.24 or newer for auto_cleanup") != null);
     try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "CGO_ENABLED=1") != null);
     try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "missing-cc is configured") != null);
     try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "cross compilation is not supported") != null);
+}
+
+test "purego doctor does not require cgo or a C compiler" {
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try std.testing.expect(try render(&output.writer, .{
+        .go_version = "go version go1.24.2 linux/amd64",
+        .cgo_enabled = null,
+        .c_compiler = null,
+        .c_compiler_available = false,
+        .gofmt_available = true,
+        .native_target = true,
+    }, false, .purego));
+    try std.testing.expect(std.mem.indexOf(u8, output.written(), "no C compiler required") != null);
 }
 
 test "Go version parser accepts development and future major versions" {

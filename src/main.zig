@@ -68,6 +68,11 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         .raw_colocated = options.raw_colocated,
         .auto_cleanup = options.auto_cleanup,
         .errors_lock_bytes = errors_lock_bytes,
+        .backend = switch (options.backend) {
+            .cgo => .cgo,
+            .purego => .purego,
+        },
+        .library_name = options.library_name,
     });
 }
 
@@ -116,6 +121,10 @@ fn runReport(allocator: std.mem.Allocator, io: std.Io, options: cli.Report) !voi
         .raw_package_path = options.raw_package_path,
         .raw_colocated = options.raw_colocated,
         .auto_cleanup = options.auto_cleanup,
+        .backend = switch (options.backend) {
+            .cgo => .cgo,
+            .purego => .purego,
+        },
     });
     try stdout.interface.flush();
 }
@@ -128,6 +137,10 @@ fn runDoctor(allocator: std.mem.Allocator, io: std.Io, options: cli.Doctor) !voi
         .gofmt_executable = options.gofmt_executable,
         .native_target = options.native_target,
         .auto_cleanup = options.auto_cleanup,
+        .backend = switch (options.backend) {
+            .cgo => .cgo,
+            .purego => .purego,
+        },
     });
     try stdout.interface.flush();
     if (!healthy) std.process.exit(1);

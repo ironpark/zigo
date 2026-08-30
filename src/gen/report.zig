@@ -5,10 +5,12 @@ const lower = @import("lower.zig");
 const naming = @import("naming.zig");
 
 pub const Options = struct {
+    pub const Backend = enum { cgo, purego };
     go_module: []const u8 = "",
     raw_package_path: []const u8 = "internal/raw",
     raw_colocated: bool = false,
     auto_cleanup: bool = false,
+    backend: Backend = .cgo,
 };
 
 pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: semantic.Semantic, options: Options) !void {
@@ -35,6 +37,7 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
     try writer.print("Zig version: {s}\n", .{document.zig_version});
     try writer.print("raw package: {s}\n", .{if (options.raw_colocated) "colocated" else options.raw_package_path});
     try writer.print("automatic cleanup: {s}\n", .{if (options.auto_cleanup) "enabled (Go 1.24+)" else "disabled"});
+    try writer.print("backend: {s}\n", .{@tagName(options.backend)});
 
     try writer.print("\ntypes ({d})\n", .{document.types.len});
     for (document.types) |declaration| {
