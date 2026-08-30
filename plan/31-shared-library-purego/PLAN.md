@@ -11,7 +11,7 @@ registered_at: "2026-08-30T12:44:24Z"
 - [x] [Phase 01: Backend Model and Atomic purego Loader](phases/01-purego-loader.md)
 - [x] [Phase 02: Callback-Free purego Call Surface](phases/02-purego-call-surface.md)
 - [x] [Phase 03: Callback Function-Pointer ABI](phases/03-callback-pointer-abi.md)
-- [ ] [Phase 04: purego Callback Registry and Lifecycle](phases/04-purego-callbacks.md)
+- [x] [Phase 04: purego Callback Registry and Lifecycle](phases/04-purego-callbacks.md)
 - [ ] [Phase 05: Packaging, CI, and User Documentation](phases/05-packaging-ci-docs.md)
 
 # Shared Verification

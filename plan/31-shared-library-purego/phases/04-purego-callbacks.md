@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T15:03:06Z"
 depends_on:
 - "31-shared-library-purego#3"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Callback examples pass under `CGO_ENABLED=0`, race-enabled Go tests show no registry leaks or calls
 > NEXT: none
