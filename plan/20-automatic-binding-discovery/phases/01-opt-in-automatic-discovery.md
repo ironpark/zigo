@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T05:52:12Z"
 depends_on:
 - "20-automatic-binding-discovery#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Unit tests cover root functions, methods, exclusions, overrides, compatibility with `.functions`, and failure cases under Zig 0.16.0.
 > NEXT: none
