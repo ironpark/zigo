@@ -17,6 +17,7 @@ pub fn build(b: *std.Build) void {
         .go_module = "example.com/zigo/scalar",
         .target = target,
         .optimize = optimize,
+        .raw_package = .colocated,
     });
     b.step("go", "Generate and build Go bindings").dependOn(&bindings.update.step);
     b.step("go-check", "Fail if generated bindings are stale").dependOn(&bindings.check.step);

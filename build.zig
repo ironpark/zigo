@@ -9,6 +9,12 @@ pub const CgoFlags = struct {
 pub const LinkMode = enum { static, dynamic };
 
 pub const Options = struct {
+    pub const RawPackage = union(enum) {
+        internal,
+        colocated,
+        path: []const u8,
+    };
+
     name: []const u8,
     module: *std.Build.Module,
     bindings: std.Build.LazyPath,
@@ -20,6 +26,13 @@ pub const Options = struct {
     link_mode: LinkMode = .static,
     cgo_flags: ?CgoFlags = null,
     abi_base: []const u8 = "HEAD",
+    raw_package: RawPackage = .internal,
+};
+
+const ResolvedRawPackage = struct {
+    path: []const u8,
+    name: []const u8,
+    colocated: bool,
 };
 
 pub const GoBindings = struct {
@@ -170,6 +183,8 @@ pub fn build(b: *std.Build) void {
 
 /// Adds the Go-binding pipeline to a consuming build graph.
 pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
+    const go_package = naming.snakeAlloc(b.allocator, options.name) catch @panic("OOM");
+    const raw_package = resolveRawPackage(b, options.raw_package, go_package);
     const zigo_dependency = b.dependencyFromBuildZig(@This(), .{});
     const generator = addGenerator(b, zigo_dependency.path("src/main.zig"), b.graph.host, .Debug);
     const semantic_module = b.createModule(.{
@@ -205,7 +220,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     const semantic_json = semantic_run.captureStdOut(.{ .basename = "semantic.json", .trim_whitespace = .none });
     _ = semantic_run.captureStdErr(.{ .basename = "warnings.txt", .trim_whitespace = .none });
 
-    const raw_source_dir = options.go_dir.path(b, "internal/raw").getPath(b);
+    const raw_source_dir = options.go_dir.path(b, raw_package.path).getPath(b);
     const include_dir = cgoRelativePath(b, raw_source_dir, b.pathJoin(&.{ b.install_path, "include" }));
     const library_dir = cgoRelativePath(b, raw_source_dir, b.pathJoin(&.{ b.install_path, "lib" }));
     const generate = b.addRunArtifact(generator);
@@ -216,7 +231,15 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     const ldflags_override = if (options.cgo_flags) |flags| joinFlags(b, flags.ldflags) else "";
     const system_ldflags = systemLibraryFlags(b, options.module);
     const framework_ldflags = frameworkFlags(b, options.module);
-    generate.addArgs(&.{ cflags_override, ldflags_override, system_ldflags, framework_ldflags });
+    generate.addArgs(&.{
+        cflags_override,
+        ldflags_override,
+        system_ldflags,
+        framework_ldflags,
+        raw_package.path,
+        raw_package.name,
+        if (raw_package.colocated) "1" else "0",
+    });
     const errors_lock_path = "zigo/errors.lock.json";
     const has_errors_lock = blk: {
         b.build_root.handle.access(b.graph.io, errors_lock_path, .{}) catch |err| switch (err) {
@@ -264,8 +287,11 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     const header_name = b.fmt("zigo_{s}.h", .{options.name});
     const install_header = b.addInstallHeaderFile(generated_dir.path(b, header_name), header_name);
     const update = b.addUpdateSourceFiles();
-    update.addCopyFileToSource(generated_dir.path(b, "internal/raw/raw_gen.go"), sourcePath(b, options.go_dir, "internal/raw/raw_gen.go"));
-    const go_package = naming.snakeAlloc(b.allocator, options.name) catch @panic("OOM");
+    const raw_go_path = if (raw_package.colocated)
+        b.fmt("{s}/{s}_raw_gen.go", .{ go_package, go_package })
+    else
+        b.fmt("{s}/{s}_gen.go", .{ raw_package.path, raw_package.name });
+    update.addCopyFileToSource(generated_dir.path(b, raw_go_path), sourcePath(b, options.go_dir, raw_go_path));
     const public_go_path = b.fmt("{s}/{s}_gen.go", .{ go_package, go_package });
     update.addCopyFileToSource(generated_dir.path(b, public_go_path), sourcePath(b, options.go_dir, public_go_path));
     update.addCopyFileToSource(generated_dir.path(b, "errors.lock.json"), errors_lock_path);
@@ -286,6 +312,52 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     _ = layout_json;
 
     return .{ .update = update, .check = check, .abi_check = abi_check, .lib = lib, .semantic_json = semantic_json };
+}
+
+fn resolveRawPackage(b: *std.Build, option: Options.RawPackage, go_package: []const u8) ResolvedRawPackage {
+    return switch (option) {
+        .internal => .{ .path = "internal/raw", .name = "raw", .colocated = false },
+        .colocated => .{ .path = go_package, .name = go_package, .colocated = true },
+        .path => |path| blk: {
+            validateRawPackagePath(path);
+            if (std.mem.eql(u8, path, go_package)) @panic("raw_package.path matches the public package; use .colocated");
+            const name = naming.snakeAlloc(b.allocator, std.fs.path.basename(path)) catch @panic("OOM");
+            if (!isGoIdentifier(name)) @panic("raw_package.path basename must normalize to a valid Go package name");
+            break :blk .{ .path = path, .name = name, .colocated = false };
+        },
+    };
+}
+
+fn validateRawPackagePath(path: []const u8) void {
+    if (path.len == 0 or std.fs.path.isAbsolute(path) or std.mem.indexOfScalar(u8, path, '\\') != null)
+        @panic("raw_package.path must be a non-empty relative slash-separated path");
+    var components = std.mem.splitScalar(u8, path, '/');
+    while (components.next()) |component| {
+        if (component.len == 0 or std.mem.eql(u8, component, ".") or std.mem.eql(u8, component, ".."))
+            @panic("raw_package.path must not contain empty, '.' or '..' components");
+        for (component) |character| {
+            if (!(std.ascii.isAlphanumeric(character) or character == '_' or character == '-' or character == '.'))
+                @panic("raw_package.path components may contain only ASCII letters, digits, '_', '-' and '.'");
+        }
+    }
+}
+
+fn isGoIdentifier(value: []const u8) bool {
+    if (value.len == 0 or std.mem.eql(u8, value, "_") or isGoKeyword(value) or !(std.ascii.isAlphabetic(value[0]) or value[0] == '_')) return false;
+    for (value[1..]) |character| if (!(std.ascii.isAlphanumeric(character) or character == '_')) return false;
+    return true;
+}
+
+fn isGoKeyword(value: []const u8) bool {
+    const keywords = [_][]const u8{
+        "break",    "default",     "func",   "interface", "select",
+        "case",     "defer",       "go",     "map",       "struct",
+        "chan",     "else",        "goto",   "package",   "switch",
+        "const",    "fallthrough", "if",     "range",     "type",
+        "continue", "for",         "import", "return",    "var",
+    };
+    for (keywords) |keyword| if (std.mem.eql(u8, value, keyword)) return true;
+    return false;
 }
 
 fn sourcePath(b: *std.Build, directory: std.Build.LazyPath, child: []const u8) []const u8 {

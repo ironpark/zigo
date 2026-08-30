@@ -110,7 +110,7 @@ zigo 패키지는 3개를 노출한다.
                        │ addOutputDirectoryArg → LazyPath
          ┌─────────────┼──────────────┬──────────────┐
          ▼             ▼              ▼              ▼
- shim.zig+panic.c zigo_mylib.h   go/internal/raw  go/mylib
+ shim.zig+panic.c zigo_mylib.h   go/raw package   go/mylib
          │             │              │              │
          │             └──────────────┴──────────────┘
          │                            │
@@ -206,6 +206,12 @@ import "C"
 
 ```zig
 pub const Options = struct {
+    pub const RawPackage = union(enum) {
+        internal,                     // go/internal/raw/raw_gen.go
+        colocated,                    // go/mylib/mylib_raw_gen.go
+        path: []const u8,             // go/<path>/<basename>_gen.go
+    };
+
     name: []const u8,                 // Zig 모듈 이름 = C 심볼 유도 기반
     module: *std.Build.Module,        // 관측 대상
     bindings: std.Build.LazyPath,     // bindings.zig
@@ -218,6 +224,7 @@ pub const Options = struct {
     link_mode: enum { static, dynamic } = .static,
     cgo_flags: ?CgoFlags = null,      // null이면 빌드 경로에서 자동 계산
     abi_base: []const u8 = "HEAD",    // ABI diff 기준 git ref
+    raw_package: RawPackage = .internal,
 };
 
 pub const GoBindings = struct {
@@ -231,6 +238,12 @@ pub const GoBindings = struct {
 
 스텝 이름은 zigo가 만들지 않고 **사용자가 `b.step(...)`으로 붙인다.**
 라이브러리가 사용자 빌드의 네임스페이스를 점유하지 않기 위함이다.
+
+`raw_package.path`는 `go_dir` 기준 상대 slash 경로다. 경로 요소에는 영문자, 숫자,
+`_`, `-`, `.`만 허용하며 절대 경로, 역슬래시, 빈 요소와 `.`/`..` 요소는 거부한다.
+마지막 경로 요소를 snake_case로 정규화해 Go package와
+파일 이름으로 사용하고, public package와 같은 경로가 필요하면 `.colocated`를 사용한다.
+동위치에서는 raw 함수를 비공개 `zigoRaw*`로 생성해 public wrapper 이름과 충돌하지 않는다.
 
 ---
 
@@ -273,6 +286,12 @@ C 헤더는 백엔드가 아니라 **cgo가 요구하는 산출물**이다.
 **덧쓰기 규칙:** 생성기는 각 Go package에서 `<package>_gen.go`만 쓴다.
 `internal/raw`는 `raw_gen.go`, public package `mylib`은 `mylib_gen.go`를 사용한다.
 그 밖의 `custom.go` 같은 파일은 사용자 소유이며 생성기가 수정하지 않는다.
+
+`.raw_package = .{ .path = "support/ffi" }`이면 raw 파일은
+`go/support/ffi/ffi_gen.go`에 생성되고 public 파일은 해당 package를 `raw` 별칭으로 import한다.
+`.raw_package = .colocated`이면 `go/mylib/mylib_raw_gen.go`가 public 파일 옆에 생성된다.
+`UpdateSourceFiles`는 이전 생성물을 삭제하지 않으므로 모드나 경로를 바꾼 뒤에는 예전 raw
+`_gen.go` 파일을 한 번 직접 삭제해야 한다.
 
 ---
 

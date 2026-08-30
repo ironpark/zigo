@@ -10,7 +10,10 @@ pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(allocator);
     if (args.len >= 2 and std.mem.eql(u8, args[1], "--check")) return runCheck(allocator, init.io, args);
     if (args.len >= 2 and std.mem.eql(u8, args[1], "--abi-diff")) return runAbiDiff(allocator, init.io, args);
-    if (args.len < 5 or (args.len > 9 and args.len < 12) or args.len > 13) return error.InvalidArguments;
+    const legacy_args = args.len >= 5 and args.len <= 9;
+    const flags_args = args.len == 12 or args.len == 13;
+    const raw_package_args = args.len == 15 or args.len == 16;
+    if (!legacy_args and !flags_args and !raw_package_args) return error.InvalidArguments;
     const semantic_bytes = try std.Io.Dir.cwd().readFileAlloc(init.io, args[1], allocator, .limited(64 * 1024 * 1024));
     var parsed = try semantic.Semantic.parse(allocator, semantic_bytes);
     defer parsed.deinit();
@@ -28,10 +31,15 @@ pub fn main(init: std.process.Init) !void {
         .framework_ldflags = if (args.len >= 12) args[11] else "",
         .include_dir = if (args.len >= 7) args[6] else "${SRCDIR}/../../../zig-out/include",
         .library_dir = if (args.len >= 8) args[7] else "${SRCDIR}/../../../zig-out/lib",
+        .raw_package_path = if (raw_package_args) args[12] else "internal/raw",
+        .raw_package_name = if (raw_package_args) args[13] else "raw",
+        .raw_colocated = raw_package_args and std.mem.eql(u8, args[14], "1"),
         .errors_lock_bytes = if (args.len == 9)
             try std.Io.Dir.cwd().readFileAlloc(init.io, args[8], allocator, .limited(16 * 1024 * 1024))
         else if (args.len == 13)
             try std.Io.Dir.cwd().readFileAlloc(init.io, args[12], allocator, .limited(16 * 1024 * 1024))
+        else if (args.len == 16)
+            try std.Io.Dir.cwd().readFileAlloc(init.io, args[15], allocator, .limited(16 * 1024 * 1024))
         else
             null,
     });

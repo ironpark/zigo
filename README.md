@@ -145,6 +145,23 @@ zig-out/lib/libmylib_zigo.a
 이전 버전의 `generated.go`와 `internal/raw/cgo.go`가 남아 있다면 업그레이드할 때 한 번
 삭제해야 중복 선언을 피할 수 있다.
 
+raw 계층의 기본 위치는 `go/internal/raw/raw_gen.go`다. 필요하면 `addGoBindings`에서
+다른 상대 패키지 경로나 public package와 같은 위치를 선택할 수 있다:
+
+```zig
+// go/support/ffi/ffi_gen.go
+.raw_package = .{ .path = "support/ffi" },
+
+// go/mylib/mylib_raw_gen.go; package mylib
+.raw_package = .colocated,
+```
+
+사용자 경로는 `go_dir` 기준이며 각 요소에는 영문자, 숫자, `_`, `-`, `.`만 쓸 수 있고
+절대 경로와 `.`/`..` 요소는 허용하지 않는다. 동위치
+모드의 low-level 함수는 public wrapper와 충돌하지 않도록 비공개 `zigoRaw*` 이름을 쓴다.
+기존 프로젝트에서 모드나 경로를 바꾸면 `zig build go` 실행 후 이전 raw `_gen.go` 파일은
+한 번 직접 삭제해야 한다.
+
 ---
 
 ## 설계상 중요한 결정들
@@ -161,8 +178,9 @@ build.zig에만 있다. 빌드 그래프 안에서는 모듈 배선만으로 해
 `go get`으로 이 패키지를 받는 사람은 Zig를 갖고 있지 않다. gopls와 `go build`도
 안정된 경로를 요구한다. `go-check` 스텝이 최신성을 CI에서 강제한다.
 
-**Go 패키지를 2계층으로 생성한다.**
-`internal/raw`는 100% 생성되고, public 계층은 사용자가 특정 타입만 직접 작성해 덮어쓸 수 있다.
+**Go API를 raw/public 두 계층으로 생성한다.**
+raw 계층은 기본적으로 `internal/raw`에 생성되며 위치를 바꾸거나 public package에 합칠 수 있다.
+public 계층은 사용자가 특정 타입만 직접 작성해 덮어쓸 수 있다.
 생성기가 완벽하게 Go다운 API를 만들지 못해도 프로젝트가 막히지 않는다.
 
 **추론이 애매하면 생성하지 않고 진단을 낸다.**

@@ -16,6 +16,9 @@ pub const Options = struct {
     framework_ldflags: []const u8 = "",
     include_dir: []const u8 = "${SRCDIR}/../../../zig-out/include",
     library_dir: []const u8 = "${SRCDIR}/../../../zig-out/lib",
+    raw_package_path: []const u8 = "internal/raw",
+    raw_package_name: []const u8 = "raw",
+    raw_colocated: bool = false,
     errors_lock_bytes: ?[]const u8 = null,
 };
 
@@ -52,9 +55,12 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .framework_ldflags = options.framework_ldflags,
         .include_dir = options.include_dir,
         .library_dir = options.library_dir,
+        .raw_package_path = options.raw_package_path,
+        .raw_package_name = options.raw_package_name,
+        .raw_colocated = options.raw_colocated,
     };
     for (emit.all) |emitter| {
-        const relative_path = try emitter.pathAlloc(allocator, program);
+        const relative_path = try emitter.pathAlloc(allocator, program, emitter_options);
         defer allocator.free(relative_path);
         if (std.fs.path.dirname(relative_path)) |directory| try output.createDirPath(io, directory);
         var rendered: std.Io.Writer.Allocating = .init(allocator);
@@ -197,6 +203,57 @@ test "public Go filename uses the normalized package name" {
     try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "internal/raw/cgo.go", .{}));
 }
 
+test "raw Go package can use a custom relative path" {
+    const fixture =
+        \\{"functions":[{"name":"add","params":[{"name":"p0","type":{"bits":32,"kind":"int","signed":true}},{"name":"p1","type":{"bits":32,"kind":"int","signed":true}}],"return":{"bits":32,"kind":"int","signed":true},"symbol":"ignored"}],"package":"scalar","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try generate(arena.allocator(), std.testing.io, fixture, temporary.dir, .{
+        .package = "scalar",
+        .prefix = "zg",
+        .go_module = "example.com/zigo/scalar",
+        .raw_package_path = "support/ffi",
+        .raw_package_name = "ffi",
+    });
+    const raw = try temporary.dir.readFileAlloc(std.testing.io, "support/ffi/ffi_gen.go", std.testing.allocator, .limited(16 * 1024));
+    defer std.testing.allocator.free(raw);
+    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "package ffi"));
+    const public = try temporary.dir.readFileAlloc(std.testing.io, "scalar/scalar_gen.go", std.testing.allocator, .limited(16 * 1024));
+    defer std.testing.allocator.free(public);
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "import raw \"example.com/zigo/scalar/support/ffi\""));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "return raw.Add(p0, p1)"));
+}
+
+test "raw Go bindings can be colocated without public name collisions" {
+    const fixture =
+        \\{"functions":[{"name":"add","params":[{"name":"p0","type":{"bits":32,"kind":"int","signed":true}},{"name":"p1","type":{"bits":32,"kind":"int","signed":true}}],"return":{"bits":32,"kind":"int","signed":true},"symbol":"ignored"}],"package":"scalar","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try generate(arena.allocator(), std.testing.io, fixture, temporary.dir, .{
+        .package = "scalar",
+        .prefix = "zg",
+        .go_module = "example.com/zigo/scalar",
+        .raw_package_path = "scalar",
+        .raw_package_name = "scalar",
+        .raw_colocated = true,
+    });
+    const raw = try temporary.dir.readFileAlloc(std.testing.io, "scalar/scalar_raw_gen.go", std.testing.allocator, .limited(16 * 1024));
+    defer std.testing.allocator.free(raw);
+    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "package scalar"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "func zigoRawAdd("));
+    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "func zigoRawLastErrorMessage()"));
+    const public = try temporary.dir.readFileAlloc(std.testing.io, "scalar/scalar_gen.go", std.testing.allocator, .limited(16 * 1024));
+    defer std.testing.allocator.free(public);
+    try std.testing.expect(std.mem.indexOf(u8, public, "import ") == null);
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "return zigoRawAdd(p0, p1)"));
+}
+
 test "cgo flag overrides and observed link flags are emitted" {
     const fixture =
         \\{"functions":[],"package":"flags","prefix":"zg","zig_version":"0.16.0"}
@@ -285,6 +342,9 @@ test "opaque handles lower constructors methods and idempotent close" {
         .package = "opaque",
         .prefix = "zg",
         .go_module = "example.com/opaque",
+        .raw_package_path = "opaque",
+        .raw_package_name = "opaque",
+        .raw_colocated = true,
     });
     const shim = try temporary.dir.readFileAlloc(std.testing.io, "shim.zig", std.testing.allocator, .limited(32 * 1024));
     defer std.testing.allocator.free(shim);
@@ -295,6 +355,12 @@ test "opaque handles lower constructors methods and idempotent close" {
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func NewContext() (*Context, error)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "value.once.Do"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "type ContextRef struct"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "zigoRawContextCreate("));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "zigoRawContextDeinit(value.ptr)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "zigoRawLastErrorMessage()"));
+    const raw = try temporary.dir.readFileAlloc(std.testing.io, "opaque/opaque_raw_gen.go", std.testing.allocator, .limited(32 * 1024));
+    defer std.testing.allocator.free(raw);
+    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "func zigoRawContextCreate("));
 }
 
 test "ZIGO003 validation failure leaves the output tree untouched" {
