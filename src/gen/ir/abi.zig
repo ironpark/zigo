@@ -35,12 +35,24 @@ pub const AbiFn = struct {
     origin: *const semantic.SemanticFn,
 };
 
+pub const AbiProjection = struct {
+    kind: Kind,
+    symbol: []const u8,
+    params: []const AbiParam,
+    ret: AbiScalar,
+    owner: *const semantic.TypeDecl,
+    field: ?*const semantic.TypeField = null,
+
+    pub const Kind = enum { tag, payload };
+};
+
 pub const Program = struct {
     constructors: []const semantic.Constructor = &.{},
     error_codes: []const ErrorCode = &.{},
     functions: []const AbiFn,
     package: []const u8,
     prefix: []const u8,
+    projections: []const AbiProjection = &.{},
     types: []const semantic.TypeDecl = &.{},
 };
 

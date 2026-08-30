@@ -38,6 +38,14 @@ pub fn pascalAlloc(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     return output.toOwnedSlice(allocator);
 }
 
+pub fn projectionSymbolAlloc(allocator: std.mem.Allocator, prefix: []const u8, type_name: []const u8, projection: []const u8) ![]u8 {
+    const owner = try snakeAlloc(allocator, type_name);
+    defer allocator.free(owner);
+    const name = try snakeAlloc(allocator, projection);
+    defer allocator.free(name);
+    return std.fmt.allocPrint(allocator, "{s}_{s}_project_{s}", .{ prefix, owner, name });
+}
+
 pub fn camelAlloc(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     const snake = try snakeAlloc(allocator, input);
     defer allocator.free(snake);

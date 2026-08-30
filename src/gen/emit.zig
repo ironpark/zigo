@@ -153,58 +153,39 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         if (function.origin.@"return" == .void) try writeSliceWrittenAssignments(writer, function);
         try writer.writeAll("}\n");
     }
-    try renderTaggedUnionShim(allocator, writer, program);
+    try renderTaggedUnionShim(writer, program);
 }
 
-fn renderTaggedUnionShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
-    for (program.types) |declaration| {
-        if (declaration.kind != .tagged_union) continue;
-        const tag_symbol = try taggedUnionSymbolAlloc(allocator, program, declaration, "tag");
-        defer allocator.free(tag_symbol);
-        try writer.print("export fn {s}(self: *const target.{s}) ", .{ tag_symbol, declaration.name });
-        try writeZigType(writer, semanticScalar(program, declaration.tag_type.?));
-        try writer.writeAll(" {\n    return @intFromEnum(std.meta.activeTag(self.*));\n}\n");
-
-        for (declaration.fields) |field| {
-            const payload = field.type.?;
-            if (payload == .void) continue;
-            const symbol = try taggedUnionSymbolAlloc(allocator, program, declaration, field.name);
-            defer allocator.free(symbol);
-            try writer.print("export fn {s}(self: *const target.{s}", .{ symbol, declaration.name });
-            if (payload == .slice) {
-                try writer.writeAll(", out_value_ptr: *[*c]");
-                if (payload.slice.@"const") try writer.writeAll("const ");
-                try writeZigType(writer, semanticScalar(program, payload.slice.element.*));
-                try writer.writeAll(", out_value_len: *usize");
-            } else {
-                try writer.writeAll(", out_value: *");
-                try writeProjectionZigType(writer, program, payload);
-            }
-            try writer.print(") u8 {{\n    if (std.meta.activeTag(self.*) != .{s}) return 0;\n", .{field.name});
-            if (payload == .slice) {
-                try writer.print("    out_value_ptr.* = self.{s}.ptr;\n    out_value_len.* = self.{s}.len;\n", .{ field.name, field.name });
-            } else {
-                try writer.writeAll("    out_value.* = ");
-                switch (payload) {
-                    .bool => try writer.print("@intFromBool(self.{s})", .{field.name}),
-                    .@"enum" => try writer.print("@intFromEnum(self.{s})", .{field.name}),
-                    else => try writer.print("self.{s}", .{field.name}),
-                }
-                try writer.writeAll(";\n");
-            }
-            try writer.writeAll("    return 1;\n}\n");
+fn renderTaggedUnionShim(writer: *std.Io.Writer, program: abi.Program) !void {
+    for (program.projections) |projection| {
+        try writer.print("export fn {s}(", .{projection.symbol});
+        for (projection.params, 0..) |parameter, index| {
+            if (index != 0) try writer.writeAll(", ");
+            try writer.print("{s}: ", .{parameter.name});
+            try writeZigType(writer, parameter.scalar);
         }
-    }
-}
-
-fn writeProjectionZigType(writer: *std.Io.Writer, program: abi.Program, node: semantic.TypeNode) !void {
-    switch (node) {
-        .opaque_ptr => |pointer| {
-            try writer.writeByte('*');
-            if (pointer.@"const") try writer.writeAll("const ");
-            try writer.print("target.{s}", .{pointer.ref});
-        },
-        else => try writeZigType(writer, semanticScalar(program, node)),
+        try writer.writeAll(") ");
+        try writeZigType(writer, projection.ret);
+        switch (projection.kind) {
+            .tag => try writer.writeAll(" {\n    return @intFromEnum(std.meta.activeTag(self.*));\n}\n"),
+            .payload => {
+                const field = projection.field.?;
+                const payload = field.type.?;
+                try writer.print(" {{\n    if (std.meta.activeTag(self.*) != .{s}) return 0;\n", .{field.name});
+                if (payload == .slice) {
+                    try writer.print("    out_value_ptr.* = self.{s}.ptr;\n    out_value_len.* = self.{s}.len;\n", .{ field.name, field.name });
+                } else {
+                    try writer.writeAll("    out_value.* = ");
+                    switch (payload) {
+                        .bool => try writer.print("@intFromBool(self.{s})", .{field.name}),
+                        .@"enum" => try writer.print("@intFromEnum(self.{s})", .{field.name}),
+                        else => try writer.print("self.{s}", .{field.name}),
+                    }
+                    try writer.writeAll(";\n");
+                }
+                try writer.writeAll("    return 1;\n}\n");
+            },
+        }
     }
 }
 
@@ -368,41 +349,39 @@ fn renderHeader(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
 }
 
 fn renderTaggedUnionHeader(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
-    for (program.types) |declaration| {
-        if (declaration.kind != .tagged_union) continue;
-        const union_name = try naming.snakeAlloc(allocator, declaration.name);
-        defer allocator.free(union_name);
-        const tag_symbol = try taggedUnionSymbolAlloc(allocator, program, declaration, "tag");
-        defer allocator.free(tag_symbol);
-        try writeCType(writer, semanticScalar(program, declaration.tag_type.?));
-        try writer.print(" {s}(const {s}_{s} *self);\n", .{ tag_symbol, program.prefix, union_name });
-        for (declaration.fields) |field| {
-            const payload = field.type.?;
-            if (payload == .void) continue;
-            const symbol = try taggedUnionSymbolAlloc(allocator, program, declaration, field.name);
-            defer allocator.free(symbol);
-            try writer.print("uint8_t {s}(const {s}_{s} *self, ", .{ symbol, program.prefix, union_name });
-            if (payload == .slice) {
-                if (payload.slice.@"const") try writer.writeAll("const ");
-                try writeCType(writer, semanticScalar(program, payload.slice.element.*));
-                try writer.writeAll(" **out_value_ptr, size_t *out_value_len");
-            } else {
-                try writeProjectionCType(writer, program, payload);
-                try writer.writeAll(" *out_value");
-            }
-            try writer.writeAll(");\n");
+    for (program.projections) |projection| {
+        try writeCType(writer, projection.ret);
+        try writer.print(" {s}(", .{projection.symbol});
+        for (projection.params, 0..) |parameter, index| {
+            if (index != 0) try writer.writeAll(", ");
+            try writeProjectionCParam(allocator, writer, program, projection, parameter);
         }
+        try writer.writeAll(");\n");
     }
 }
 
-fn writeProjectionCType(writer: *std.Io.Writer, program: abi.Program, node: semantic.TypeNode) !void {
-    switch (node) {
-        .opaque_ptr => |pointer| {
-            if (pointer.@"const") try writer.writeAll("const ");
-            try writer.writeAll("void *");
-        },
-        else => try writeCType(writer, semanticScalar(program, node)),
+fn writeProjectionCParam(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, projection: abi.AbiProjection, parameter: abi.AbiParam) !void {
+    if (parameter.role == .receiver) {
+        const union_name = try naming.snakeAlloc(allocator, projection.owner.name);
+        defer allocator.free(union_name);
+        try writer.print("const {s}_{s} *{s}", .{ program.prefix, union_name, parameter.name });
+        return;
     }
+    var wrote_pointer = false;
+    try writeProjectionCType(writer, parameter.scalar, &wrote_pointer);
+    try writer.print("{s}{s}", .{ if (wrote_pointer) "" else " ", parameter.name });
+}
+
+fn writeProjectionCType(writer: *std.Io.Writer, value: abi.AbiScalar, wrote_pointer: *bool) !void {
+    if (value != .pointer) {
+        try writeCType(writer, value);
+        return;
+    }
+    const pointer = value.pointer;
+    if (pointer.is_const) try writer.writeAll("const ");
+    try writeProjectionCType(writer, pointer.child.*, wrote_pointer);
+    try writer.writeAll(if (wrote_pointer.*) "*" else " *");
+    wrote_pointer.* = true;
 }
 
 fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
@@ -533,51 +512,50 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
 }
 
 fn renderRawTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
-    for (program.types) |declaration| {
-        if (declaration.kind != .tagged_union) continue;
+    for (program.projections) |projection| {
+        const declaration = projection.owner.*;
         const union_name = try naming.snakeAlloc(allocator, declaration.name);
         defer allocator.free(union_name);
-        const tag_symbol = try taggedUnionSymbolAlloc(allocator, program, declaration, "tag");
-        defer allocator.free(tag_symbol);
-        try writer.print("\nfunc {s}ProjectTag(self unsafe.Pointer) ", .{declaration.name});
-        try writeRawGoType(writer, program, declaration.tag_type.?);
-        try writer.writeAll(" {\n\treturn ");
-        try writeRawGoType(writer, program, declaration.tag_type.?);
-        try writer.print("(C.{s}((*C.{s}_{s})(self)))\n}}\n", .{ tag_symbol, program.prefix, union_name });
-
-        for (declaration.fields) |field| {
-            const payload = field.type.?;
-            if (payload == .void) continue;
-            const field_name = try naming.pascalAlloc(allocator, field.name);
-            defer allocator.free(field_name);
-            const symbol = try taggedUnionSymbolAlloc(allocator, program, declaration, field.name);
-            defer allocator.free(symbol);
-            try writer.print("\nfunc {s}Project{s}(self unsafe.Pointer) (", .{ declaration.name, field_name });
-            try writeRawGoType(writer, program, payload);
-            try writer.writeAll(", bool) {\n");
-            if (payload == .slice) {
-                try writer.writeAll("\tvar outValuePtr *C.");
-                try writeCgoType(writer, semanticScalar(program, payload.slice.element.*));
-                try writer.writeAll("\n\tvar outValueLen C.size_t\n\tok := C.");
-                try writer.print("{s}((*C.{s}_{s})(self), &outValuePtr, &outValueLen)\n", .{ symbol, program.prefix, union_name });
-                try writer.writeAll("\tif ok == 0 {\n\t\treturn nil, false\n\t}\n\treturn unsafe.Slice((*");
-                try writeRawGoType(writer, program, payload.slice.element.*);
-                try writer.writeAll(")(unsafe.Pointer(outValuePtr)), int(outValueLen)), true\n");
-            } else {
-                if (payload == .opaque_ptr) {
-                    try writer.writeAll("\tvar outValue unsafe.Pointer\n");
+        switch (projection.kind) {
+            .tag => {
+                try writer.print("\nfunc {s}ProjectTag(self unsafe.Pointer) ", .{declaration.name});
+                try writeRawGoType(writer, program, declaration.tag_type.?);
+                try writer.writeAll(" {\n\treturn ");
+                try writeRawGoType(writer, program, declaration.tag_type.?);
+                try writer.print("(C.{s}((*C.{s}_{s})(self)))\n}}\n", .{ projection.symbol, program.prefix, union_name });
+            },
+            .payload => {
+                const field = projection.field.?.*;
+                const payload = field.type.?;
+                const field_name = try naming.pascalAlloc(allocator, field.name);
+                defer allocator.free(field_name);
+                try writer.print("\nfunc {s}Project{s}(self unsafe.Pointer) (", .{ declaration.name, field_name });
+                try writeRawGoType(writer, program, payload);
+                try writer.writeAll(", bool) {\n");
+                if (payload == .slice) {
+                    try writer.writeAll("\tvar outValuePtr *C.");
+                    try writeCgoType(writer, semanticScalar(program, payload.slice.element.*));
+                    try writer.writeAll("\n\tvar outValueLen C.size_t\n\tok := C.");
+                    try writer.print("{s}((*C.{s}_{s})(self), &outValuePtr, &outValueLen)\n", .{ projection.symbol, program.prefix, union_name });
+                    try writer.writeAll("\tif ok == 0 {\n\t\treturn nil, false\n\t}\n\treturn unsafe.Slice((*");
+                    try writeRawGoType(writer, program, payload.slice.element.*);
+                    try writer.writeAll(")(unsafe.Pointer(outValuePtr)), int(outValueLen)), true\n");
                 } else {
-                    try writer.writeAll("\tvar outValue C.");
-                    try writeCgoType(writer, semanticScalar(program, payload));
-                    try writer.writeByte('\n');
+                    if (payload == .opaque_ptr) {
+                        try writer.writeAll("\tvar outValue unsafe.Pointer\n");
+                    } else {
+                        try writer.writeAll("\tvar outValue C.");
+                        try writeCgoType(writer, semanticScalar(program, payload));
+                        try writer.writeByte('\n');
+                    }
+                    try writer.print("\tok := C.{s}((*C.{s}_{s})(self), &outValue)\n\tif ok == 0 {{\n\t\treturn ", .{ projection.symbol, program.prefix, union_name });
+                    try writer.writeAll(rawGoZero(payload));
+                    try writer.writeAll(", false\n\t}\n\treturn ");
+                    try writeRawResultConversion(writer, program, payload, "outValue");
+                    try writer.writeAll(", true\n");
                 }
-                try writer.print("\tok := C.{s}((*C.{s}_{s})(self), &outValue)\n\tif ok == 0 {{\n\t\treturn ", .{ symbol, program.prefix, union_name });
-                try writer.writeAll(rawGoZero(payload));
-                try writer.writeAll(", false\n\t}\n\treturn ");
-                try writeRawResultConversion(writer, program, payload, "outValue");
-                try writer.writeAll(", true\n");
-            }
-            try writer.writeAll("}\n");
+                try writer.writeAll("}\n");
+            },
         }
     }
 }
@@ -941,15 +919,17 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
 }
 
 fn renderPublicTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
-    for (program.types) |declaration| {
-        if (declaration.kind != .tagged_union) continue;
+    for (program.projections) |tag_projection| {
+        if (tag_projection.kind != .tag) continue;
+        const declaration = tag_projection.owner.*;
         inline for (.{ false, true }) |borrowed| {
             try writer.print("func (value *{s}{s}) Tag() {s} {{\n\tdefer runtime.KeepAlive(value)\n\treturn {s}(", .{ declaration.name, if (borrowed) "Ref" else "", declaration.tag_type.?.@"enum".ref, declaration.tag_type.?.@"enum".ref });
             try writeRawReferencePrefix(writer, options);
             try writer.print("{s}ProjectTag(value.ptr))\n}}\n\n", .{declaration.name});
-            for (declaration.fields) |field| {
+            for (program.projections) |payload_projection| {
+                if (payload_projection.kind != .payload or !std.mem.eql(u8, payload_projection.owner.name, declaration.name)) continue;
+                const field = payload_projection.field.?.*;
                 const payload = field.type.?;
-                if (payload == .void) continue;
                 const field_name = try naming.pascalAlloc(allocator, field.name);
                 defer allocator.free(field_name);
                 try writer.print("func (value *{s}{s}) As{s}() (", .{ declaration.name, if (borrowed) "Ref" else "", field_name });
@@ -1514,19 +1494,6 @@ fn rawGoNameAlloc(allocator: std.mem.Allocator, function: semantic.SemanticFn) !
     return allocator.dupe(u8, function_name);
 }
 
-fn taggedUnionSymbolAlloc(
-    allocator: std.mem.Allocator,
-    program: abi.Program,
-    declaration: semantic.TypeDecl,
-    projection: []const u8,
-) ![]u8 {
-    const union_name = try naming.snakeAlloc(allocator, declaration.name);
-    defer allocator.free(union_name);
-    const projection_name = try naming.snakeAlloc(allocator, projection);
-    defer allocator.free(projection_name);
-    return std.fmt.allocPrint(allocator, "{s}_{s}_project_{s}", .{ program.prefix, union_name, projection_name });
-}
-
 fn receiverVariableAlloc(allocator: std.mem.Allocator, receiver: []const u8) ![]u8 {
     const snake = try naming.snakeAlloc(allocator, receiver);
     defer allocator.free(snake);
@@ -1573,8 +1540,7 @@ fn programNeedsBoolHelper(program: abi.Program) bool {
 
 test "tagged union emitters generate checked pointer-only projections" {
     var i16_node: semantic.TypeNode = .{ .int = .{ .bits = 16, .signed = true } };
-    const program: abi.Program = .{
-        .functions = &.{},
+    const document: semantic.Semantic = .{
         .package = "variant",
         .prefix = "zg",
         .types = &.{
@@ -1612,7 +1578,11 @@ test "tagged union emitters generate checked pointer-only projections" {
             },
             .{ .kind = .@"opaque", .name = "Child" },
         },
+        .zig_version = "0.16.0",
     };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try @import("lower.zig").semanticDocument(arena.allocator(), document, "variant", "zg", &.{});
 
     const shim = try renderForTest(renderShim, program);
     defer std.testing.allocator.free(shim);

@@ -2,7 +2,7 @@
 depends_on:
 - "29-harden-tagged-union-accessors#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Structural lowering tests cover tag/scalar/slice/handle projections and emitters contain no independent symbol derivation.
 > NEXT: none

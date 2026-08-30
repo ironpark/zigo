@@ -94,6 +94,15 @@ pub fn build(b: *std.Build) void {
             .{ .name = "semantic", .module = generator_modules.semantic },
         },
     });
+    const lower_module = b.createModule(.{
+        .root_source_file = b.path("src/gen/lower.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "abi", .module = generator_modules.abi },
+            .{ .name = "semantic", .module = generator_modules.semantic },
+        },
+    });
     const tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("tests/test.zig"),
         .target = target,
@@ -137,6 +146,8 @@ pub fn build(b: *std.Build) void {
     const run_emit_tests = b.addRunArtifact(emit_tests);
     const validate_tests = b.addTest(.{ .root_module = validate_module, .filters = test_filters });
     const run_validate_tests = b.addRunArtifact(validate_tests);
+    const lower_tests = b.addTest(.{ .root_module = lower_module, .filters = test_filters });
+    const run_lower_tests = b.addRunArtifact(lower_tests);
     const test_step = b.step("test", "Run unit and snapshot harness tests");
     test_step.dependOn(&run_tests.step);
     test_step.dependOn(&run_generator_tests.step);
@@ -150,6 +161,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_build_options_tests.step);
     test_step.dependOn(&run_emit_tests.step);
     test_step.dependOn(&run_validate_tests.step);
+    test_step.dependOn(&run_lower_tests.step);
     addProcessContractTests(b, test_step, generator);
 
     const generator_case_runner = b.addExecutable(.{
@@ -177,6 +189,7 @@ pub fn build(b: *std.Build) void {
     check_step.dependOn(&build_options_tests.step);
     check_step.dependOn(&emit_tests.step);
     check_step.dependOn(&validate_tests.step);
+    check_step.dependOn(&lower_tests.step);
     check_step.dependOn(&generator_case_runner.step);
 
     const snapshot_exe = b.addExecutable(.{

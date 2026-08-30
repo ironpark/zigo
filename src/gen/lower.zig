@@ -112,13 +112,82 @@ pub fn semanticDocument(
             .origin = function,
         };
     }
+    const projections = try lowerTaggedUnionProjections(allocator, document, prefix);
     return .{
         .constructors = document.constructors,
         .error_codes = error_codes,
         .functions = functions,
         .package = package,
         .prefix = prefix,
+        .projections = projections,
         .types = document.types,
+    };
+}
+
+fn lowerTaggedUnionProjections(allocator: std.mem.Allocator, document: semantic.Semantic, prefix: []const u8) ![]const abi.AbiProjection {
+    var projections: std.ArrayList(abi.AbiProjection) = .empty;
+    for (document.types) |*declaration| {
+        if (declaration.kind != .tagged_union) continue;
+        const tag_params = try allocator.alloc(abi.AbiParam, 1);
+        tag_params[0] = try projectionReceiver(allocator, declaration.name);
+        try projections.append(allocator, .{
+            .kind = .tag,
+            .symbol = try naming.projectionSymbolAlloc(allocator, prefix, declaration.name, "tag"),
+            .params = tag_params,
+            .ret = try lowerValue(allocator, document, declaration.tag_type.?),
+            .owner = declaration,
+        });
+        for (declaration.fields) |*field| {
+            const payload = field.type.?;
+            if (payload == .void) continue;
+            var params: std.ArrayList(abi.AbiParam) = .empty;
+            try params.append(allocator, try projectionReceiver(allocator, declaration.name));
+            if (payload == .slice) {
+                const element = try allocator.create(abi.AbiScalar);
+                element.* = try lowerValue(allocator, document, payload.slice.element.*);
+                const many = try allocator.create(abi.AbiScalar);
+                many.* = .{ .pointer = .{ .child = element, .is_const = payload.slice.@"const", .is_many = true } };
+                try params.append(allocator, .{
+                    .name = "out_value_ptr",
+                    .role = .return_slice_pointer,
+                    .scalar = .{ .pointer = .{ .child = many, .is_const = false } },
+                });
+                const length = try allocator.create(abi.AbiScalar);
+                length.* = .usize;
+                try params.append(allocator, .{
+                    .name = "out_value_len",
+                    .role = .return_slice_length,
+                    .scalar = .{ .pointer = .{ .child = length, .is_const = false } },
+                });
+            } else {
+                const lowered = try allocator.create(abi.AbiScalar);
+                lowered.* = try lowerValue(allocator, document, payload);
+                try params.append(allocator, .{
+                    .name = "out_value",
+                    .role = .payload_out,
+                    .scalar = .{ .pointer = .{ .child = lowered, .is_const = false } },
+                });
+            }
+            try projections.append(allocator, .{
+                .kind = .payload,
+                .symbol = try naming.projectionSymbolAlloc(allocator, prefix, declaration.name, field.name),
+                .params = try params.toOwnedSlice(allocator),
+                .ret = .bool_u8,
+                .owner = declaration,
+                .field = field,
+            });
+        }
+    }
+    return projections.toOwnedSlice(allocator);
+}
+
+fn projectionReceiver(allocator: std.mem.Allocator, owner: []const u8) !abi.AbiParam {
+    const child = try allocator.create(abi.AbiScalar);
+    child.* = .{ .@"opaque" = owner };
+    return .{
+        .name = "self",
+        .role = .receiver,
+        .scalar = .{ .pointer = .{ .child = child, .is_const = true } },
     };
 }
 
@@ -246,4 +315,75 @@ test "semantic lowering assigns receiver slice return error and scalar ABI roles
     try std.testing.expect(sizes.params[1].scalar == .isize);
     try std.testing.expect(sizes.ret == .unsigned_int);
     try std.testing.expectEqual(@as(u16, 16), sizes.ret.unsigned_int);
+}
+
+test "tagged union lowering records tag scalar slice and handle projections" {
+    var i16_node: semantic.TypeNode = .{ .int = .{ .bits = 16, .signed = true } };
+    const document: semantic.Semantic = .{
+        .package = "variant",
+        .prefix = "zg",
+        .types = &.{
+            .{
+                .fields = &.{
+                    .{ .name = "none", .type = .{ .void = {} }, .value = 0 },
+                    .{ .name = "number", .type = .{ .int = .{ .bits = 32, .signed = true } }, .value = 1 },
+                    .{ .name = "samples", .type = .{ .slice = .{ .@"const" = true, .element = &i16_node } }, .value = 2 },
+                    .{ .name = "child", .type = .{ .opaque_ptr = .{ .@"const" = true, .nullable = false, .ref = "Child" } }, .value = 3 },
+                },
+                .kind = .tagged_union,
+                .name = "Value",
+                .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } },
+            },
+            .{
+                .fields = &.{
+                    .{ .name = "none", .value = 0 },
+                    .{ .name = "number", .value = 1 },
+                    .{ .name = "samples", .value = 2 },
+                    .{ .name = "child", .value = 3 },
+                },
+                .kind = .@"enum",
+                .name = "ValueTag",
+                .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+            },
+            .{ .kind = .@"opaque", .name = "Child" },
+        },
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try semanticDocument(arena.allocator(), document, "variant", "zg", &.{});
+
+    try std.testing.expectEqual(@as(usize, 4), program.projections.len);
+
+    const tag = program.projections[0];
+    try std.testing.expectEqual(abi.AbiProjection.Kind.tag, tag.kind);
+    try std.testing.expectEqualStrings("zg_value_project_tag", tag.symbol);
+    try std.testing.expectEqual(@as(usize, 1), tag.params.len);
+    try std.testing.expectEqual(abi.AbiParam.Role.receiver, tag.params[0].role);
+    try std.testing.expect(tag.params[0].scalar.pointer.is_const);
+    try std.testing.expectEqualStrings("Value", tag.params[0].scalar.pointer.child.@"opaque");
+    try std.testing.expectEqual(@as(u16, 8), tag.ret.unsigned_int);
+
+    const number = program.projections[1];
+    try std.testing.expectEqual(abi.AbiProjection.Kind.payload, number.kind);
+    try std.testing.expectEqualStrings("zg_value_project_number", number.symbol);
+    try std.testing.expectEqualStrings("number", number.field.?.name);
+    try std.testing.expectEqual(abi.AbiParam.Role.payload_out, number.params[1].role);
+    try std.testing.expectEqual(@as(u16, 32), number.params[1].scalar.pointer.child.signed_int);
+    try std.testing.expect(number.ret == .bool_u8);
+
+    const samples = program.projections[2];
+    try std.testing.expectEqual(abi.AbiParam.Role.return_slice_pointer, samples.params[1].role);
+    try std.testing.expect(samples.params[1].scalar.pointer.child.pointer.is_many);
+    try std.testing.expect(samples.params[1].scalar.pointer.child.pointer.is_const);
+    try std.testing.expectEqual(@as(u16, 16), samples.params[1].scalar.pointer.child.pointer.child.signed_int);
+    try std.testing.expectEqual(abi.AbiParam.Role.return_slice_length, samples.params[2].role);
+    try std.testing.expect(samples.params[2].scalar.pointer.child.* == .usize);
+
+    const child = program.projections[3];
+    try std.testing.expectEqualStrings("zg_value_project_child", child.symbol);
+    try std.testing.expectEqual(abi.AbiParam.Role.payload_out, child.params[1].role);
+    const child_pointer = child.params[1].scalar.pointer.child.pointer;
+    try std.testing.expect(child_pointer.is_const);
+    try std.testing.expectEqualStrings("Child", child_pointer.child.@"opaque");
 }

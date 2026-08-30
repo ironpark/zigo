@@ -325,7 +325,7 @@ fn findGeneratedAccessorCollision(allocator: std.mem.Allocator, document: semant
         while (projection_index <= declaration.fields.len) : (projection_index += 1) {
             const projection = if (projection_index == 0) "tag" else declaration.fields[projection_index - 1].name;
             if (projection_index != 0 and declaration.fields[projection_index - 1].type.? == .void) continue;
-            const symbol = try taggedProjectionSymbolAlloc(allocator, document.prefix, declaration.name, projection);
+            const symbol = try naming.projectionSymbolAlloc(allocator, document.prefix, declaration.name, projection);
             errdefer allocator.free(symbol);
             for (document.functions) |function| {
                 const function_symbol = try functionSymbolAlloc(allocator, document.prefix, function);
@@ -359,14 +359,6 @@ fn findGeneratedAccessorCollision(allocator: std.mem.Allocator, document: semant
         }
     }
     return null;
-}
-
-fn taggedProjectionSymbolAlloc(allocator: std.mem.Allocator, prefix: []const u8, type_name: []const u8, projection: []const u8) ![]u8 {
-    const owner = try naming.snakeAlloc(allocator, type_name);
-    defer allocator.free(owner);
-    const name = try naming.snakeAlloc(allocator, projection);
-    defer allocator.free(name);
-    return std.fmt.allocPrint(allocator, "{s}_{s}_project_{s}", .{ prefix, owner, name });
 }
 
 fn supported(node: semantic.TypeNode) !void {
