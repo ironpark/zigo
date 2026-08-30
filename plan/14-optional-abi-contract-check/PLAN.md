@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T04:32:02Z"
 description: Make ABI contract checking opt-in and detect document, symbol, and constructor compatibility breaks.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-30T04:25:03Z"
 ---
 > NEXT: Complete semantic contract comparison before changing the public build API. ([Phase 0](phases/00-complete-contract-diff.md))
@@ -8,7 +9,7 @@ registered_at: "2026-08-30T04:25:03Z"
 # Phases
 
 - [x] [Phase 00: Complete semantic contract comparison](phases/00-complete-contract-diff.md)
-- [ ] [Phase 01: Make compatibility policy opt-in](phases/01-opt-in-build-api.md)
+- [x] [Phase 01: Make compatibility policy opt-in](phases/01-opt-in-build-api.md)
 
 # Shared Verification
 

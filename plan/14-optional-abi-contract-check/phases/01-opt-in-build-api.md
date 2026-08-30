@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T04:32:02Z"
 depends_on:
 - "14-optional-abi-contract-check#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: A minimal consumer without ABI configuration compiles without an ABI check step, opted-in examples retain `abi-check`, and all repository checks pass.
 > NEXT: none
