@@ -106,7 +106,91 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             };
         }
     }
+    if (findIntegrityProblem(document)) |declaration| return .{
+        .severity = .@"error",
+        .code = "ZIGO010",
+        .message = "semantic document contains an unresolved or incompatible declaration reference",
+        .site = .{ .path = "semantic.json", .declaration = declaration },
+        .hint = "regenerate semantic.json from matching bindings and source declarations",
+    };
     return null;
+}
+
+fn findIntegrityProblem(document: semantic.Semantic) ?[]const u8 {
+    for (document.types, 0..) |declaration, index| {
+        for (document.types[0..index]) |previous| {
+            if (std.mem.eql(u8, declaration.name, previous.name)) return declaration.name;
+        }
+        if (declaration.kind == .@"enum") {
+            const tag = declaration.tag_type orelse return declaration.name;
+            if (tag != .int or tag.int.bits == 0 or tag.int.bits > 64) return declaration.name;
+        }
+        for (declaration.fields) |field| {
+            if (field.type) |node| if (!referencesValid(document, node)) return declaration.name;
+        }
+    }
+    for (document.functions) |function| {
+        if (function.receiver) |receiver| {
+            if (!hasTypeKind(document, receiver, .@"opaque")) return function.name;
+        }
+        for (function.params) |parameter| {
+            if (!referencesValid(document, parameter.type)) return function.name;
+        }
+        if (!referencesValid(document, function.@"return")) return function.name;
+    }
+    for (document.constructors, 0..) |constructor, index| {
+        if (!hasTypeKind(document, constructor.type, .@"opaque")) return constructor.type;
+        for (document.constructors[0..index]) |previous| {
+            if (std.mem.eql(u8, constructor.type, previous.type)) return constructor.type;
+        }
+        if (!hasConstructorInit(document, constructor)) return constructor.init;
+        if (!hasConstructorDeinit(document, constructor)) return constructor.deinit;
+    }
+    return null;
+}
+
+fn referencesValid(document: semantic.Semantic, node: semantic.TypeNode) bool {
+    return switch (node) {
+        .@"enum" => |value| hasTypeKind(document, value.ref, .@"enum"),
+        .opaque_ptr => |value| hasTypeKind(document, value.ref, .@"opaque"),
+        .value_struct => |value| hasTypeKind(document, value.ref, .value_struct),
+        .slice => |value| referencesValid(document, value.element.*),
+        .optional => |value| referencesValid(document, value.child.*),
+        .error_union => |value| referencesValid(document, value.payload.*),
+        .callback => |value| blk: {
+            for (value.params) |parameter| if (!referencesValid(document, parameter)) break :blk false;
+            break :blk referencesValid(document, value.@"return".*);
+        },
+        else => true,
+    };
+}
+
+fn hasTypeKind(document: semantic.Semantic, name: []const u8, kind: semantic.TypeKind) bool {
+    for (document.types) |declaration| {
+        if (std.mem.eql(u8, declaration.name, name)) return declaration.kind == kind;
+    }
+    return false;
+}
+
+fn hasConstructorInit(document: semantic.Semantic, constructor: semantic.Constructor) bool {
+    for (document.functions) |function| {
+        if (!std.mem.eql(u8, function.name, constructor.init) or function.receiver != null or
+            !std.mem.eql(u8, function.namespace orelse "", constructor.type)) continue;
+        if (function.ownership != .caller or function.@"return" != .error_union) return false;
+        const payload = function.@"return".error_union.payload.*;
+        if (payload != .opaque_ptr) return false;
+        return !payload.opaque_ptr.nullable and std.mem.eql(u8, payload.opaque_ptr.ref, constructor.type);
+    }
+    return false;
+}
+
+fn hasConstructorDeinit(document: semantic.Semantic, constructor: semantic.Constructor) bool {
+    for (document.functions) |function| {
+        if (!std.mem.eql(u8, function.name, constructor.deinit) or
+            !std.mem.eql(u8, function.receiver orelse "", constructor.type)) continue;
+        return function.params.len == 0 and function.@"return" == .void;
+    }
+    return false;
 }
 
 fn containsNonCFunctionPointer(node: semantic.TypeNode) bool {
@@ -299,6 +383,142 @@ test "implemented diagnostic snapshots are stable" {
 
 test "symbol collision validation propagates every allocation failure" {
     try std.testing.checkAllAllocationFailures(std.testing.allocator, expectSymbolCollision, .{});
+}
+
+test "referential integrity failures are reported before lowering" {
+    var callback_return: semantic.TypeNode = .{ .@"enum" = .{ .ref = "MissingMode" } };
+    var optional_child: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "WrongKind" } };
+    var constructor_payload: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Context" } };
+    const valid_constructor_functions = [_]semantic.SemanticFn{
+        .{
+            .name = "create",
+            .namespace = "Context",
+            .ownership = .caller,
+            .params = &.{},
+            .@"return" = .{ .error_union = .{ .error_set = &.{"OutOfMemory"}, .payload = &constructor_payload } },
+            .symbol = "ignored",
+        },
+        .{
+            .name = "deinit",
+            .params = &.{},
+            .receiver = "Context",
+            .@"return" = .{ .void = {} },
+            .symbol = "ignored",
+        },
+    };
+    const cases = [_]struct {
+        document: semantic.Semantic,
+        declaration: []const u8,
+    }{
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "normalize",
+                .params = &.{},
+                .@"return" = .{ .@"enum" = .{ .ref = "MissingMode" } },
+                .symbol = "ignored",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .declaration = "normalize" },
+        .{ .document = .{
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{.{ .kind = .@"enum", .name = "Mode" }},
+            .zig_version = "0.16.0",
+        }, .declaration = "Mode" },
+        .{ .document = .{
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{
+                .{ .kind = .@"opaque", .name = "Thing" },
+                .{ .kind = .value_struct, .name = "Thing", .layout = .@"extern" },
+            },
+            .zig_version = "0.16.0",
+        }, .declaration = "Thing" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "visit",
+                .params = &.{.{ .name = "callback", .type = .{ .callback = .{
+                    .has_userdata = false,
+                    .params = &.{},
+                    .@"return" = &callback_return,
+                } } }},
+                .@"return" = .{ .void = {} },
+                .symbol = "ignored",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .declaration = "visit" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "use",
+                .params = &.{.{ .name = "thing", .type = .{ .optional = .{ .child = &optional_child } } }},
+                .@"return" = .{ .void = {} },
+                .symbol = "ignored",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{.{ .kind = .@"enum", .name = "WrongKind", .tag_type = .{ .int = .{ .bits = 32, .signed = false } } }},
+            .zig_version = "0.16.0",
+        }, .declaration = "use" },
+        .{ .document = .{
+            .constructors = &.{.{ .type = "Context", .init = "missing", .deinit = "deinit" }},
+            .functions = &valid_constructor_functions,
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{.{ .kind = .@"opaque", .name = "Context" }},
+            .zig_version = "0.16.0",
+        }, .declaration = "missing" },
+        .{ .document = .{
+            .constructors = &.{
+                .{ .type = "Context", .init = "create", .deinit = "deinit" },
+                .{ .type = "Context", .init = "create", .deinit = "deinit" },
+            },
+            .functions = &valid_constructor_functions,
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{.{ .kind = .@"opaque", .name = "Context" }},
+            .zig_version = "0.16.0",
+        }, .declaration = "Context" },
+    };
+    for (cases) |case| {
+        const issue = (try findIssue(std.testing.allocator, case.document)) orelse return error.MissingDiagnostic;
+        try std.testing.expectEqualStrings("ZIGO010", issue.code);
+        try std.testing.expectEqualStrings(case.declaration, issue.site.declaration);
+        try std.testing.expectError(error.InvalidSemantic, semanticDocument(std.testing.allocator, case.document));
+    }
+}
+
+test "well-formed constructor references pass integrity validation" {
+    var payload: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Context" } };
+    const document: semantic.Semantic = .{
+        .constructors = &.{.{ .type = "Context", .init = "create", .deinit = "deinit" }},
+        .functions = &.{
+            .{
+                .name = "create",
+                .namespace = "Context",
+                .ownership = .caller,
+                .params = &.{},
+                .@"return" = .{ .error_union = .{ .error_set = &.{"OutOfMemory"}, .payload = &payload } },
+                .symbol = "ignored",
+            },
+            .{
+                .name = "deinit",
+                .params = &.{},
+                .receiver = "Context",
+                .@"return" = .{ .void = {} },
+                .symbol = "ignored",
+            },
+        },
+        .package = "good",
+        .prefix = "zg",
+        .types = &.{.{ .kind = .@"opaque", .name = "Context" }},
+        .zig_version = "0.16.0",
+    };
+    try std.testing.expect((try findIssue(std.testing.allocator, document)) == null);
+    try semanticDocument(std.testing.allocator, document);
 }
 
 fn expectSymbolCollision(allocator: std.mem.Allocator) !void {

@@ -448,6 +448,25 @@ test "ZIGO003 validation failure leaves the output tree untouched" {
     }
 }
 
+test "ZIGO010 validation failure leaves the output tree untouched" {
+    const fixture =
+        \\{"functions":[{"name":"normalize","params":[],"return":{"kind":"enum","ref":"MissingMode"},"symbol":"zg_normalize"}],"package":"bad","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "shim.zig", .data = "old shim" });
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectError(error.InvalidSemantic, generate(arena.allocator(), std.testing.io, fixture, temporary.dir, .{
+        .package = "bad",
+        .prefix = "zg",
+        .go_module = "example.com/bad",
+    }));
+    const actual = try temporary.dir.readFileAlloc(std.testing.io, "shim.zig", std.testing.allocator, .limited(64));
+    defer std.testing.allocator.free(actual);
+    try std.testing.expectEqualStrings("old shim", actual);
+}
+
 fn expectAllocationFailureLeavesOutputUntouched(allocator: std.mem.Allocator) !void {
     const fixture =
         \\{"functions":[{"name":"add","params":[{"name":"left","type":{"bits":32,"kind":"int","signed":true}},{"name":"right","type":{"bits":32,"kind":"int","signed":true}}],"return":{"bits":32,"kind":"int","signed":true},"symbol":"zg_add"}],"package":"atomic","prefix":"zg","zig_version":"0.16.0"}

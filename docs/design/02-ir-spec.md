@@ -104,6 +104,13 @@ IR은 세 가지 역할을 한다: **reflector ↔ generator 프로세스 경계
 `is_usize`는 별도 플래그로 둔다. 타깃별 비트폭은 layout 파일에 있으므로
 semantic.json은 "usize다"라는 사실만 기록한다 → 타깃 독립성 유지.
 
+모든 `ref`는 같은 문서의 `types`에서 정확히 한 번 선언되어야 하며 노드 종류와 선언
+종류가 일치해야 한다. `enum`은 유효한 정수 `tag_type`을 가져야 한다. constructor의
+`type`은 opaque 선언이어야 하고, `init`은 해당 namespace에서 caller-owned non-null
+opaque pointer를 error union으로 반환하며, `deinit`은 인자 없이 `void`를 반환하는
+해당 타입의 receiver 함수여야 한다. 이 무결성 조건은 lowering 전에 `ZIGO010`으로
+검사한다.
+
 ### 1.2 왜 doc 필드가 있는가
 
 `@typeInfo`는 doc comment를 주지 않는다. `name_source: "ast"` 경로에서
