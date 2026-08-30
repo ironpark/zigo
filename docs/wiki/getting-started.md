@@ -143,3 +143,4 @@ mapping의 호환성 파괴를 검사한다. `abi_base`를 생략하면 Git base
 - generic과 system library까지 조합한 코드: [통합 파이프라인 예제](../../examples/05-pipeline/README.md)
 - 상태, 용량 정책과 callback 수명을 조합한 코드: [event queue 예제](../../examples/07-event-queue/README.md)
 - 51개 함수와 여러 계약을 한꺼번에 생성하는 코드: [telemetry hub 예제](../../examples/08-telemetry-hub/README.md)
+- 두 opaque 타입과 receiver 간 참조: [multi-type relations 예제](../../examples/09-type-relations/README.md)

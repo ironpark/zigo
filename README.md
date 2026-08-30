@@ -92,3 +92,4 @@ cd go && go test ./...
 - [통합 파이프라인 예제](examples/05-pipeline/README.md)
 - [상태 기반 event queue 예제](examples/07-event-queue/README.md)
 - [51개 함수의 대형 telemetry hub 예제](examples/08-telemetry-hub/README.md)
+- [두 opaque 타입의 교차 참조 예제](examples/09-type-relations/README.md)

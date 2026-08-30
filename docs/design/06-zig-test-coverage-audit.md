@@ -29,7 +29,7 @@
 64개에는 포함되지 않는다. process contract는 help, parse error, invalid semantic, stale 생성물,
 breaking ABI와 실제 invalid consumer project의 exit/output을 캡처해 검사한다.
 
-8개 example root의 Zig test 14개는 모두 표준 `test` step으로 실행되며 CI example loop에도
+9개 example root의 Zig test 16개는 모두 표준 `test` step으로 실행되며 CI example loop에도
 연결됐다.
 
 ## 최초 감사 항목과 조치 상태

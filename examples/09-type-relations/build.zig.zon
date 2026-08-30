@@ -1,0 +1,8 @@
+.{
+    .name = .zigo_type_relations_example,
+    .version = "0.0.0",
+    .fingerprint = 0x7d734601941dc615,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{ .zigo = .{ .path = "../.." } },
+    .paths = .{ "build.zig", "build.zig.zon", "src", "go", "zigo" },
+}

@@ -32,6 +32,10 @@ UTF-8 메타데이터, enum 정책, typed error, retained observer와 custom raw
 set, UTF-8 소유 상태, slice 입력, retained callback, 조회·통계·변환 API를 함께 검증하는
 생성기 폭(breadth) 회귀 fixture다.
 
+[`examples/09-type-relations`](../../examples/09-type-relations/README.md)은 두 opaque 타입을
+동시에 노출하고 `Accumulator` receiver가 `*Counter`를 받는 교차 타입 API와 독립 lifecycle을
+검증한다.
+
 ```bash
 cd examples/05-pipeline
 zig build test
