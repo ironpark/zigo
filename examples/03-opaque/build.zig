@@ -9,6 +9,9 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    const tests = b.addTest(.{ .root_module = opaque_module });
+    b.step("test", "Run the Zig opaque tests").dependOn(&b.addRunArtifact(tests).step);
+
     const bindings = zigo.addGoBindings(b, .{
         .name = "opaque",
         .module = opaque_module,

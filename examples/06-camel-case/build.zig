@@ -9,6 +9,9 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    const tests = b.addTest(.{ .root_module = http_client });
+    b.step("test", "Run the Zig CamelCase tests").dependOn(&b.addRunArtifact(tests).step);
+
     const bindings = zigo.addGoBindings(b, .{
         .name = "HTTPClient",
         .module = http_client,

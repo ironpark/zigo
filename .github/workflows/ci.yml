@@ -47,6 +47,7 @@ jobs:
           for example in "${examples[@]}"; do
             (
               cd "$example"
+              zig build test --summary all
               zig build go-check abi-check --summary all
               zig build go
             )

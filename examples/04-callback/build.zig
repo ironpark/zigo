@@ -10,6 +10,9 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     callback.linkSystemLibrary("z", .{});
+    const tests = b.addTest(.{ .root_module = callback });
+    b.step("test", "Run the Zig callback tests").dependOn(&b.addRunArtifact(tests).step);
+
     const bindings = zigo.addGoBindings(b, .{
         .name = "callback",
         .module = callback,
