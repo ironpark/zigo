@@ -159,6 +159,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     }) });
     const run_sync_check_tests = b.addRunArtifact(sync_check_tests);
+    const cli_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/gen/cli.zig"),
+        .target = target,
+        .optimize = optimize,
+    }) });
+    const run_cli_tests = b.addRunArtifact(cli_tests);
     const test_step = b.step("test", "Run unit and snapshot harness tests");
     test_step.dependOn(&run_tests.step);
     test_step.dependOn(&run_generator_tests.step);
@@ -166,6 +172,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_reflect_names_tests.step);
     test_step.dependOn(&run_abi_diff_tests.step);
     test_step.dependOn(&run_sync_check_tests.step);
+    test_step.dependOn(&run_cli_tests.step);
 
     const snapshot_exe = b.addExecutable(.{
         .name = "zigo-snapshot",
@@ -224,22 +231,28 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     const include_dir = cgoRelativePath(b, raw_source_dir, b.pathJoin(&.{ b.install_path, "include" }));
     const library_dir = cgoRelativePath(b, raw_source_dir, b.pathJoin(&.{ b.install_path, "lib" }));
     const generate = b.addRunArtifact(generator);
+    generate.addArgs(&.{ "generate", "--semantic" });
     generate.addFileArg(semantic_json);
+    generate.addArg("--output");
     const generated_dir = generate.addOutputDirectoryArg("bindings");
-    generate.addArgs(&.{ options.name, options.prefix, options.go_module, include_dir, library_dir });
     const cflags_override = if (options.cgo_flags) |flags| joinFlags(b, flags.cflags) else "";
     const ldflags_override = if (options.cgo_flags) |flags| joinFlags(b, flags.ldflags) else "";
     const system_ldflags = systemLibraryFlags(b, options.module);
     const framework_ldflags = frameworkFlags(b, options.module);
     generate.addArgs(&.{
-        cflags_override,
-        ldflags_override,
-        system_ldflags,
-        framework_ldflags,
-        raw_package.path,
-        raw_package.name,
-        if (raw_package.colocated) "1" else "0",
+        "--package",           options.name,
+        "--prefix",            options.prefix,
+        "--go-module",         options.go_module,
+        "--include-dir",       include_dir,
+        "--library-dir",       library_dir,
+        "--cflags",            cflags_override,
+        "--ldflags",           ldflags_override,
+        "--system-ldflags",    system_ldflags,
+        "--framework-ldflags", framework_ldflags,
+        "--raw-package-path",  raw_package.path,
+        "--raw-package-name",  raw_package.name,
     });
+    if (raw_package.colocated) generate.addArg("--raw-colocated");
     const errors_lock_path = "zigo/errors.lock.json";
     const has_errors_lock = blk: {
         b.build_root.handle.access(b.graph.io, errors_lock_path, .{}) catch |err| switch (err) {
@@ -248,7 +261,10 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         };
         break :blk true;
     };
-    if (has_errors_lock) generate.addFileArg(b.path(errors_lock_path));
+    if (has_errors_lock) {
+        generate.addArg("--errors-lock");
+        generate.addFileArg(b.path(errors_lock_path));
+    }
 
     const raw_go_path = if (raw_package.colocated)
         b.fmt("{s}/{s}_cgo_gen.go", .{ go_package, go_package })
@@ -258,8 +274,9 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     const go_sources_dir = formattedGoSources(b, generated_dir, &.{ raw_go_path, public_go_path });
 
     const check = b.addRunArtifact(generator);
-    check.addArg("--check");
+    check.addArgs(&.{ "check", "--generated" });
     check.addDirectoryArg(go_sources_dir);
+    check.addArg("--source");
     check.addDirectoryArg(options.go_dir);
     const baseline = b.addSystemCommand(&.{ "git", "show" });
     // The ref can move without changing argv, so this read must not reuse a
@@ -269,8 +286,9 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     baseline.addArg(b.fmt("{s}:./zigo/semantic.json", .{options.abi_base}));
     const baseline_semantic = baseline.captureStdOut(.{ .basename = "semantic-base.json", .trim_whitespace = .none });
     const abi_check = b.addRunArtifact(generator);
-    abi_check.addArg("--abi-diff");
+    abi_check.addArgs(&.{ "abi-diff", "--base" });
     abi_check.addFileArg(baseline_semantic);
+    abi_check.addArg("--current");
     abi_check.addFileArg(semantic_json);
     abi_check.addArgs(&.{ "--fail-on", "breaking" });
 

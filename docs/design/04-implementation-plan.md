@@ -37,7 +37,7 @@ src/
     walk.zig            # comptime 타입 그래프 순회
     json_out.zig
   gen/
-    main.zig            # zigo-gen exe 진입 (--out / --check / --abi-diff)
+    main.zig            # zigo-gen exe 진입 (generate / check / abi-diff)
     ir/
       semantic.zig  abi.zig  errors_lock.zig
     validate.zig
@@ -203,7 +203,7 @@ error[ZIGO003]: cannot pass `mylib.Config` by value
 
 **(b) ABI diff**
 1. `semantic.json` 정규화 직렬화 (키 정렬) — diff 잡음 제거의 전제
-2. `zigo-gen --abi-diff --base <ref>`: `git show <ref>:zigo/semantic.json` 파싱
+2. `zigo-gen abi-diff --base <old.json> --current <new.json>`: 두 semantic 문서 파싱
 3. 판정기: BREAKING / ADDED / ABI COMPATIBLE
 4. `--fail-on breaking` 종료 코드, `--json` 출력
 5. `abi_check` 스텝으로 노출
