@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T03:51:27Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: No generator implementation path uses `std.heap.page_allocator`.
 > NEXT: none

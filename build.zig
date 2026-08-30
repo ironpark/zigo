@@ -46,36 +46,27 @@ pub const GoBindings = struct {
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const test_filters = b.option([]const []const u8, "test-filter", "Run only tests or generator cases matching a filter") orelse &.{};
     const zigo = b.addModule("zigo", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
     });
-    const generator = addGenerator(b, b.path("src/main.zig"), target, optimize);
+    const generator_modules = createGeneratorModules(b, b.path("src"), target, optimize);
+    const generator = addGeneratorWithModules(b, b.path("src/main.zig"), target, optimize, generator_modules);
     b.installArtifact(generator);
 
-    const semantic_module = b.createModule(.{
-        .root_source_file = b.path("src/gen/ir/semantic.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const abi_module = b.createModule(.{
-        .root_source_file = b.path("src/gen/ir/abi.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{.{ .name = "semantic", .module = semantic_module }},
-    });
     const reflect_walk_module = b.createModule(.{
         .root_source_file = b.path("src/reflect/walk.zig"),
         .target = target,
         .optimize = optimize,
-        .imports = &.{.{ .name = "semantic", .module = semantic_module }},
+        .imports = &.{.{ .name = "semantic", .module = generator_modules.semantic }},
     });
     const reflect_names_module = b.createModule(.{
         .root_source_file = b.path("src/reflect/names.zig"),
         .target = target,
         .optimize = optimize,
-        .imports = &.{.{ .name = "semantic", .module = semantic_module }},
+        .imports = &.{.{ .name = "semantic", .module = generator_modules.semantic }},
     });
     const tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("tests/test.zig"),
@@ -83,87 +74,32 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{
             .{ .name = "zigo", .module = zigo },
-            .{ .name = "diagnostic", .module = b.createModule(.{
-                .root_source_file = b.path("src/gen/diagnostic.zig"),
-                .target = target,
-                .optimize = optimize,
-            }) },
-            .{ .name = "semantic", .module = semantic_module },
-            .{ .name = "errors_lock", .module = b.createModule(.{
-                .root_source_file = b.path("src/gen/ir/errors_lock.zig"),
-                .target = target,
-                .optimize = optimize,
-            }) },
-            .{ .name = "abi_diff", .module = b.createModule(.{
-                .root_source_file = b.path("src/gen/abi_diff.zig"),
-                .target = target,
-                .optimize = optimize,
-                .imports = &.{.{ .name = "semantic", .module = semantic_module }},
-            }) },
-            .{ .name = "sync_check", .module = b.createModule(.{
-                .root_source_file = b.path("src/gen/sync_check.zig"),
-                .target = target,
-                .optimize = optimize,
-            }) },
-            .{ .name = "abi", .module = abi_module },
+            .{ .name = "diagnostic", .module = generator_modules.diagnostic },
+            .{ .name = "semantic", .module = generator_modules.semantic },
+            .{ .name = "errors_lock", .module = generator_modules.errors_lock },
+            .{ .name = "abi_diff", .module = generator_modules.abi_diff },
+            .{ .name = "sync_check", .module = generator_modules.sync_check },
+            .{ .name = "abi", .module = generator_modules.abi },
             .{ .name = "reflect_walk", .module = reflect_walk_module },
             .{ .name = "reflect_names", .module = reflect_names_module },
         },
-    }) });
+    }), .filters = test_filters });
     const run_tests = b.addRunArtifact(tests);
-    const generator_test_semantic = b.createModule(.{
-        .root_source_file = b.path("src/gen/ir/semantic.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
-    const generator_test_abi = b.createModule(.{
-        .root_source_file = b.path("src/gen/ir/abi.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{.{ .name = "semantic", .module = generator_test_semantic }},
-    });
-    const generator_tests = b.addTest(.{ .root_module = b.createModule(.{
-        .root_source_file = b.path("src/gen/generator.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "semantic", .module = generator_test_semantic },
-            .{ .name = "abi", .module = generator_test_abi },
-            .{ .name = "diagnostic", .module = b.createModule(.{
-                .root_source_file = b.path("src/gen/diagnostic.zig"),
-                .target = target,
-                .optimize = optimize,
-            }) },
-            .{ .name = "errors_lock", .module = b.createModule(.{
-                .root_source_file = b.path("src/gen/ir/errors_lock.zig"),
-                .target = target,
-                .optimize = optimize,
-            }) },
-        },
-    }) });
+    const generator_tests = b.addTest(.{ .root_module = generator_modules.generator, .filters = test_filters });
     const run_generator_tests = b.addRunArtifact(generator_tests);
-    const reflect_walk_tests = b.addTest(.{ .root_module = reflect_walk_module });
+    const reflect_walk_tests = b.addTest(.{ .root_module = reflect_walk_module, .filters = test_filters });
     const run_reflect_walk_tests = b.addRunArtifact(reflect_walk_tests);
-    const reflect_names_tests = b.addTest(.{ .root_module = reflect_names_module });
+    const reflect_names_tests = b.addTest(.{ .root_module = reflect_names_module, .filters = test_filters });
     const run_reflect_names_tests = b.addRunArtifact(reflect_names_tests);
-    const abi_diff_tests = b.addTest(.{ .root_module = b.createModule(.{
-        .root_source_file = b.path("src/gen/abi_diff.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{.{ .name = "semantic", .module = semantic_module }},
-    }) });
+    const abi_diff_tests = b.addTest(.{ .root_module = generator_modules.abi_diff, .filters = test_filters });
     const run_abi_diff_tests = b.addRunArtifact(abi_diff_tests);
-    const sync_check_tests = b.addTest(.{ .root_module = b.createModule(.{
-        .root_source_file = b.path("src/gen/sync_check.zig"),
-        .target = target,
-        .optimize = optimize,
-    }) });
+    const sync_check_tests = b.addTest(.{ .root_module = generator_modules.sync_check, .filters = test_filters });
     const run_sync_check_tests = b.addRunArtifact(sync_check_tests);
     const cli_tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("src/gen/cli.zig"),
         .target = target,
         .optimize = optimize,
-    }) });
+    }), .filters = test_filters });
     const run_cli_tests = b.addRunArtifact(cli_tests);
     const test_step = b.step("test", "Run unit and snapshot harness tests");
     test_step.dependOn(&run_tests.step);
@@ -173,6 +109,28 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_abi_diff_tests.step);
     test_step.dependOn(&run_sync_check_tests.step);
     test_step.dependOn(&run_cli_tests.step);
+
+    const generator_case_runner = b.addExecutable(.{
+        .name = "zigo-generator-case",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/generator_case_main.zig"),
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{.{ .name = "generator", .module = generator_modules.generator }},
+        }),
+    });
+    addGeneratorCases(b, test_step, generator_case_runner, test_filters);
+
+    const check_step = b.step("check", "Compile all project artifacts without running tests");
+    check_step.dependOn(&generator.step);
+    check_step.dependOn(&tests.step);
+    check_step.dependOn(&generator_tests.step);
+    check_step.dependOn(&reflect_walk_tests.step);
+    check_step.dependOn(&reflect_names_tests.step);
+    check_step.dependOn(&abi_diff_tests.step);
+    check_step.dependOn(&sync_check_tests.step);
+    check_step.dependOn(&cli_tests.step);
+    check_step.dependOn(&generator_case_runner.step);
 
     const snapshot_exe = b.addExecutable(.{
         .name = "zigo-snapshot",
@@ -186,6 +144,49 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_snapshot.addArgs(args);
     const snapshot_step = b.step("snapshot", "Compare or update a snapshot directory tree");
     snapshot_step.dependOn(&run_snapshot.step);
+}
+
+fn addGeneratorCases(
+    b: *std.Build,
+    test_step: *std.Build.Step,
+    runner: *std.Build.Step.Compile,
+    test_filters: []const []const u8,
+) void {
+    const cases_path = b.pathFromRoot("tests/generator_cases");
+    var directory = std.Io.Dir.cwd().openDir(b.graph.io, cases_path, .{ .iterate = true }) catch |err|
+        std.debug.panic("unable to open generator cases at '{s}': {}", .{ cases_path, err });
+    defer directory.close(b.graph.io);
+
+    var names: std.ArrayList([]const u8) = .empty;
+    defer names.deinit(b.allocator);
+    var iterator = directory.iterate();
+    while (iterator.next(b.graph.io) catch |err|
+        std.debug.panic("unable to enumerate generator cases at '{s}': {}", .{ cases_path, err })) |entry|
+    {
+        if (entry.kind != .directory) continue;
+        names.append(b.allocator, b.dupe(entry.name)) catch @panic("OOM");
+    }
+    std.mem.sort([]const u8, names.items, {}, struct {
+        fn lessThan(_: void, lhs: []const u8, rhs: []const u8) bool {
+            return std.mem.lessThan(u8, lhs, rhs);
+        }
+    }.lessThan);
+
+    const cases = b.path("tests/generator_cases");
+    for (names.items) |name| {
+        if (!matchesAnyFilter(name, test_filters)) continue;
+        const run = b.addRunArtifact(runner);
+        run.setName(b.fmt("generator case ({s})", .{name}));
+        run.addDirectoryArg(cases.path(b, name));
+        _ = run.addOutputDirectoryArg(b.fmt("{s}-actual", .{name}));
+        test_step.dependOn(&run.step);
+    }
+}
+
+fn matchesAnyFilter(name: []const u8, filters: []const []const u8) bool {
+    if (filters.len == 0) return true;
+    for (filters) |filter| if (std.mem.find(u8, name, filter) != null) return true;
+    return false;
 }
 
 /// Adds the Go-binding pipeline to a consuming build graph.
@@ -432,38 +433,87 @@ fn addGenerator(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
 ) *std.Build.Step.Compile {
+    const modules = createGeneratorModules(b, root_source_file.dirname(), target, optimize);
+    return addGeneratorWithModules(b, root_source_file, target, optimize, modules);
+}
+
+const GeneratorModules = struct {
+    semantic: *std.Build.Module,
+    abi: *std.Build.Module,
+    diagnostic: *std.Build.Module,
+    errors_lock: *std.Build.Module,
+    abi_diff: *std.Build.Module,
+    sync_check: *std.Build.Module,
+    generator: *std.Build.Module,
+};
+
+fn createGeneratorModules(
+    b: *std.Build,
+    source_root: std.Build.LazyPath,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) GeneratorModules {
     const semantic_module = b.createModule(.{
-        .root_source_file = root_source_file.dirname().path(b, "gen/ir/semantic.zig"),
+        .root_source_file = source_root.path(b, "gen/ir/semantic.zig"),
         .target = target,
         .optimize = optimize,
     });
     const abi_module = b.createModule(.{
-        .root_source_file = root_source_file.dirname().path(b, "gen/ir/abi.zig"),
+        .root_source_file = source_root.path(b, "gen/ir/abi.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{.{ .name = "semantic", .module = semantic_module }},
     });
     const diagnostic_module = b.createModule(.{
-        .root_source_file = root_source_file.dirname().path(b, "gen/diagnostic.zig"),
+        .root_source_file = source_root.path(b, "gen/diagnostic.zig"),
         .target = target,
         .optimize = optimize,
     });
     const errors_lock_module = b.createModule(.{
-        .root_source_file = root_source_file.dirname().path(b, "gen/ir/errors_lock.zig"),
+        .root_source_file = source_root.path(b, "gen/ir/errors_lock.zig"),
         .target = target,
         .optimize = optimize,
     });
     const abi_diff_module = b.createModule(.{
-        .root_source_file = root_source_file.dirname().path(b, "gen/abi_diff.zig"),
+        .root_source_file = source_root.path(b, "gen/abi_diff.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{.{ .name = "semantic", .module = semantic_module }},
     });
     const sync_check_module = b.createModule(.{
-        .root_source_file = root_source_file.dirname().path(b, "gen/sync_check.zig"),
+        .root_source_file = source_root.path(b, "gen/sync_check.zig"),
         .target = target,
         .optimize = optimize,
     });
+    const generator_module = b.createModule(.{
+        .root_source_file = source_root.path(b, "gen/generator.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "semantic", .module = semantic_module },
+            .{ .name = "abi", .module = abi_module },
+            .{ .name = "diagnostic", .module = diagnostic_module },
+            .{ .name = "errors_lock", .module = errors_lock_module },
+        },
+    });
+    return .{
+        .semantic = semantic_module,
+        .abi = abi_module,
+        .diagnostic = diagnostic_module,
+        .errors_lock = errors_lock_module,
+        .abi_diff = abi_diff_module,
+        .sync_check = sync_check_module,
+        .generator = generator_module,
+    };
+}
+
+fn addGeneratorWithModules(
+    b: *std.Build,
+    root_source_file: std.Build.LazyPath,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+    modules: GeneratorModules,
+) *std.Build.Step.Compile {
     return b.addExecutable(.{
         .name = "zigo-gen",
         .root_module = b.createModule(.{
@@ -471,12 +521,12 @@ fn addGenerator(
             .target = target,
             .optimize = optimize,
             .imports = &.{
-                .{ .name = "semantic", .module = semantic_module },
-                .{ .name = "abi", .module = abi_module },
-                .{ .name = "diagnostic", .module = diagnostic_module },
-                .{ .name = "errors_lock", .module = errors_lock_module },
-                .{ .name = "abi_diff", .module = abi_diff_module },
-                .{ .name = "sync_check", .module = sync_check_module },
+                .{ .name = "semantic", .module = modules.semantic },
+                .{ .name = "abi", .module = modules.abi },
+                .{ .name = "diagnostic", .module = modules.diagnostic },
+                .{ .name = "errors_lock", .module = modules.errors_lock },
+                .{ .name = "abi_diff", .module = modules.abi_diff },
+                .{ .name = "sync_check", .module = modules.sync_check },
             },
         }),
     });

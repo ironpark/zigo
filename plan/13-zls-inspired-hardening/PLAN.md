@@ -7,7 +7,7 @@ registered_at: "2026-08-30T03:49:12Z"
 
 # Phases
 
-- [ ] [Phase 00: Harden allocator and OOM boundaries](phases/00-allocator-oom-boundaries.md)
+- [x] [Phase 00: Harden allocator and OOM boundaries](phases/00-allocator-oom-boundaries.md)
 - [ ] [Phase 01: Introduce fixture tests and canonical module wiring](phases/01-fixture-tests-build-graph.md)
 - [ ] [Phase 02: Improve failure diagnostics and CI gates](phases/02-diagnostics-ci-gates.md)
 

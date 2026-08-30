@@ -1,0 +1,16 @@
+{
+  "functions": [
+    {
+      "name": "add",
+      "params": [
+        {"name": "p0", "type": {"bits": 32, "kind": "int", "signed": true}},
+        {"name": "p1", "type": {"bits": 32, "kind": "int", "signed": true}}
+      ],
+      "return": {"bits": 32, "kind": "int", "signed": true},
+      "symbol": "ignored"
+    }
+  ],
+  "package": "scalar",
+  "prefix": "zg",
+  "zig_version": "0.16.0"
+}

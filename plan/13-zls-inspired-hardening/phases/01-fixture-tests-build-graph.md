@@ -2,7 +2,7 @@
 depends_on:
 - "13-zls-inspired-hardening#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: A new generator behavior case can be added without embedding a large expected source string in Zig code.
 > NEXT: none
