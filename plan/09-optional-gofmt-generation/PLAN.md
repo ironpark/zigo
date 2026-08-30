@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-08-30T02:49:47Z"
 description: Run gofmt on generated Go files when available, without mutating generator cache outputs, and use formatted files for update and stale checks.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-30T02:46:59Z"
 ---
 > NEXT: Implement and verify the optional immutable gofmt stage. ([Phase 0](phases/00-optional-gofmt-stage.md))
 
 # Phases
 
-- [ ] [Phase 00: Optional gofmt stage](phases/00-optional-gofmt-stage.md)
+- [x] [Phase 00: Optional gofmt stage](phases/00-optional-gofmt-stage.md)
 
 # Shared Verification
 

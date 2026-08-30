@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T02:49:47Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Root Zig tests, all example generation/check/ABI steps, and all Go tests pass; build output confirms formatter execution where installed; `git diff --check` is clean.
 > NEXT: none
