@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T10:45:40Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Focused and full Zig tests pass, proving unsupported payloads fail before emission and generated cleanup-enabled accessors preserve liveness.
 > NEXT: none

@@ -7,7 +7,7 @@ registered_at: "2026-08-30T10:42:00Z"
 
 # Phases
 
-- [ ] [Phase 00: Lifetime and payload validation](phases/00-initial-work.md)
+- [x] [Phase 00: Lifetime and payload validation](phases/00-initial-work.md)
 - [ ] [Phase 01: Projection ABI IR](phases/01-projection-abi-ir.md)
 - [ ] [Phase 02: Lifecycle and panic boundary](phases/02-lifecycle-panic-boundary.md)
 - [ ] [Phase 03: ABI classification and adversarial matrix](phases/03-abi-and-adversarial-tests.md)
