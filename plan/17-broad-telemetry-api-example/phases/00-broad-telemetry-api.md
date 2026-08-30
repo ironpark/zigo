@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T05:10:49Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: API counts meet the target; Zig tests, `go-check`, post-commit `abi-check`, Go
 > NEXT: none

@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-08-30T05:10:49Z"
 description: Add a deliberately large telemetry hub example with 40+ public operations to stress binding generation, ownership, errors, enums, slices, callbacks, docs, and CI.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-30T05:03:38Z"
 ---
 > NEXT: Implement the broad TelemetryHub state machine and expose at least 40 operations. ([Phase 0](phases/00-broad-telemetry-api.md))
 
 # Phases
 
-- [ ] [Phase 00: Broad telemetry API example](phases/00-broad-telemetry-api.md)
+- [x] [Phase 00: Broad telemetry API example](phases/00-broad-telemetry-api.md)
 
 # Shared Verification
 
