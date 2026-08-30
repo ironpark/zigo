@@ -50,10 +50,10 @@ public 패키지와 같은 디렉터리에 둘 수도 있다.
 
 ## 생성 후 Go 포맷
 
-빌드 환경의 `PATH`에서 `gofmt` 실행 파일을 찾을 수 있으면 raw/cgo와 public 생성 파일을
-각각 포맷한 뒤 `go_dir`에 기록한다. `go-check`도 같은 포맷 결과를 비교한다. `gofmt`가
-없으면 생성은 실패하지 않고 generator 결과를 그대로 사용한다. 사용자 소유 Go 파일은
-포맷하지 않는다.
+빌드 환경의 `PATH`에서 `gofmt` 실행 파일을 찾을 수 있으면 raw/cgo, public API와 public
+error 생성 파일을 각각 포맷한 뒤 `go_dir`에 기록한다. `go-check`도 같은 포맷 결과를
+비교한다. `gofmt`가 없으면 생성은 실패하지 않고 generator 결과를 그대로 사용한다.
+사용자 소유 Go 파일은 포맷하지 않는다.
 
 ## 링크와 cgo 플래그
 
@@ -108,6 +108,7 @@ zigo는 대상 모듈에 설정된 system library와 framework 링크 정보를 
 go/go.mod
 go/internal/raw/raw_gen.go
 go/<package>/<package>_gen.go
+go/<package>/<package>_errors_gen.go
 zigo/semantic.json
 zigo/errors.lock.json
 zig-out/include/zigo_<name>.h
@@ -115,8 +116,10 @@ zig-out/lib/lib<name>_zigo.a
 ```
 
 Go 소스와 `zigo/semantic.json`, `zigo/errors.lock.json`은 소스 관리에 포함한다.
-`zig-out/`은 빌드 산출물이므로 커밋하지 않는다. public 패키지의 별도 `.go` 파일은
-생성기가 덮어쓰지 않으므로 사용자 편의 API를 추가하는 데 사용할 수 있다.
+`zig-out/`은 빌드 산출물이므로 커밋하지 않는다. public 패키지에서 위 두 생성 파일을
+제외한 별도 `.go` 파일은 생성기가 덮어쓰지 않으므로 사용자 편의 API를 추가하는 데
+사용할 수 있다. package 단위 error 타입, `Err*` 값과 code 변환은
+`<package>_errors_gen.go`에 함께 유지한다.
 
 `errors.lock.json`은 append-only 상태다. zigo는 버전과 예약 음수 코드, 양수 코드의
 연속성·유일성을 검사하고 기존 이름의 삭제·이름 변경·재배정을 거부한다. 새 코드 배정은

@@ -13,10 +13,10 @@ The generated package covers:
 - a custom raw package at `go/internal/native`.
 
 The binding declaration contains **51 functions** and reflects **4 public types** (one opaque
-handle and three enums). Generation produces a 421-line public Go file and a separate 236-line
-raw cgo file under `go/internal/native`. The Go suite drives every API family, including failed
-construction cleanup, transactional batch rejection, callback panic recovery, and independent
-concurrent lifecycles.
+handle and three enums). Generation produces a 369-line public API file, a separate 56-line
+public error file, and a 236-line raw cgo file under `go/internal/native`. The Go suite drives
+every API family, including failed construction cleanup, transactional batch rejection, callback
+panic recovery, and independent concurrent lifecycles.
 
 ```sh
 zig build test

@@ -67,58 +67,6 @@ func (value Severity) String() string {
 	}
 }
 
-type Error struct {
-	Code int32
-	Name string
-}
-
-func (err *Error) Error() string { return err.Name }
-func (err *Error) Is(target error) bool {
-	other, ok := target.(*Error)
-	return ok && err.Code == other.Code
-}
-
-var ErrOutOfMemory = &Error{Code: 1, Name: "OutOfMemory"}
-var ErrInvalidName = &Error{Code: 2, Name: "InvalidName"}
-var ErrInvalidCapacity = &Error{Code: 3, Name: "InvalidCapacity"}
-var ErrNonFinite = &Error{Code: 4, Name: "NonFinite"}
-var ErrInvalidRange = &Error{Code: 5, Name: "InvalidRange"}
-var ErrDisabled = &Error{Code: 6, Name: "Disabled"}
-var ErrFull = &Error{Code: 7, Name: "Full"}
-var ErrEmpty = &Error{Code: 8, Name: "Empty"}
-var ErrInvalidLimit = &Error{Code: 9, Name: "InvalidLimit"}
-var ErrObserverPanicked = &Error{Code: 10, Name: "ObserverPanicked"}
-var ErrPanicCaught = &Error{Code: -2, Name: "PanicCaught"}
-
-func errorForCode(code int32) error {
-	switch code {
-	case -2:
-		return &Error{Code: -2, Name: "PanicCaught: " + raw.LastErrorMessage()}
-	case 1:
-		return ErrOutOfMemory
-	case 2:
-		return ErrInvalidName
-	case 3:
-		return ErrInvalidCapacity
-	case 4:
-		return ErrNonFinite
-	case 5:
-		return ErrInvalidRange
-	case 6:
-		return ErrDisabled
-	case 7:
-		return ErrFull
-	case 8:
-		return ErrEmpty
-	case 9:
-		return ErrInvalidLimit
-	case 10:
-		return ErrObserverPanicked
-	default:
-		return &Error{Code: code, Name: "Unknown"}
-	}
-}
-
 type TelemetryHub struct {
 	ptr             unsafe.Pointer
 	once            sync.Once

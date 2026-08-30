@@ -8,31 +8,6 @@ import (
 	"example.com/zigo/opaque/internal/raw"
 )
 
-type Error struct {
-	Code int32
-	Name string
-}
-
-func (err *Error) Error() string { return err.Name }
-func (err *Error) Is(target error) bool {
-	other, ok := target.(*Error)
-	return ok && err.Code == other.Code
-}
-
-var ErrOutOfMemory = &Error{Code: 1, Name: "OutOfMemory"}
-var ErrPanicCaught = &Error{Code: -2, Name: "PanicCaught"}
-
-func errorForCode(code int32) error {
-	switch code {
-	case -2:
-		return &Error{Code: -2, Name: "PanicCaught: " + raw.LastErrorMessage()}
-	case 1:
-		return ErrOutOfMemory
-	default:
-		return &Error{Code: code, Name: "Unknown"}
-	}
-}
-
 type Context struct {
 	ptr  unsafe.Pointer
 	once sync.Once

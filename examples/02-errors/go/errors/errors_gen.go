@@ -19,31 +19,6 @@ func (value Format) String() string {
 	}
 }
 
-type Error struct {
-	Code int32
-	Name string
-}
-
-func (err *Error) Error() string { return err.Name }
-func (err *Error) Is(target error) bool {
-	other, ok := target.(*Error)
-	return ok && err.Code == other.Code
-}
-
-var ErrDivideByZero = &Error{Code: 1, Name: "DivideByZero"}
-var ErrPanicCaught = &Error{Code: -2, Name: "PanicCaught"}
-
-func errorForCode(code int32) error {
-	switch code {
-	case -2:
-		return &Error{Code: -2, Name: "PanicCaught: " + raw.LastErrorMessage()}
-	case 1:
-		return ErrDivideByZero
-	default:
-		return &Error{Code: code, Name: "Unknown"}
-	}
-}
-
 func Divide(numerator float64, denominator float64) (float64, error) {
 	result, code := raw.Divide(numerator, denominator)
 	if code != 0 {

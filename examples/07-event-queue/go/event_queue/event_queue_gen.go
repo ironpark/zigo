@@ -26,49 +26,6 @@ func (value Policy) String() string {
 	}
 }
 
-type Error struct {
-	Code int32
-	Name string
-}
-
-func (err *Error) Error() string { return err.Name }
-func (err *Error) Is(target error) bool {
-	other, ok := target.(*Error)
-	return ok && err.Code == other.Code
-}
-
-var ErrOutOfMemory = &Error{Code: 1, Name: "OutOfMemory"}
-var ErrInvalidName = &Error{Code: 2, Name: "InvalidName"}
-var ErrInvalidCapacity = &Error{Code: 3, Name: "InvalidCapacity"}
-var ErrFull = &Error{Code: 4, Name: "Full"}
-var ErrEmpty = &Error{Code: 5, Name: "Empty"}
-var ErrInvalidLimit = &Error{Code: 6, Name: "InvalidLimit"}
-var ErrObserverPanicked = &Error{Code: 7, Name: "ObserverPanicked"}
-var ErrPanicCaught = &Error{Code: -2, Name: "PanicCaught"}
-
-func errorForCode(code int32) error {
-	switch code {
-	case -2:
-		return &Error{Code: -2, Name: "PanicCaught: " + raw.LastErrorMessage()}
-	case 1:
-		return ErrOutOfMemory
-	case 2:
-		return ErrInvalidName
-	case 3:
-		return ErrInvalidCapacity
-	case 4:
-		return ErrFull
-	case 5:
-		return ErrEmpty
-	case 6:
-		return ErrInvalidLimit
-	case 7:
-		return ErrObserverPanicked
-	default:
-		return &Error{Code: code, Name: "Unknown"}
-	}
-}
-
 type EventQueue struct {
 	ptr             unsafe.Pointer
 	once            sync.Once
