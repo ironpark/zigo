@@ -216,7 +216,9 @@ func CompressionBound(source_len uint) uint {
 	return raw.CompressionBound(source_len)
 }
 func boolToUint8(value bool) uint8 {
-	if value { return 1 }
+	if value {
+		return 1
+	}
 	return 0
 }
 

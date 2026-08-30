@@ -250,9 +250,16 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     };
     if (has_errors_lock) generate.addFileArg(b.path(errors_lock_path));
 
+    const raw_go_path = if (raw_package.colocated)
+        b.fmt("{s}/{s}_cgo_gen.go", .{ go_package, go_package })
+    else
+        b.fmt("{s}/{s}_gen.go", .{ raw_package.path, raw_package.name });
+    const public_go_path = b.fmt("{s}/{s}_gen.go", .{ go_package, go_package });
+    const go_sources_dir = formattedGoSources(b, generated_dir, &.{ raw_go_path, public_go_path });
+
     const check = b.addRunArtifact(generator);
     check.addArg("--check");
-    check.addDirectoryArg(generated_dir);
+    check.addDirectoryArg(go_sources_dir);
     check.addDirectoryArg(options.go_dir);
     const baseline = b.addSystemCommand(&.{ "git", "show" });
     // The ref can move without changing argv, so this read must not reuse a
@@ -287,13 +294,8 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     const header_name = b.fmt("zigo_{s}.h", .{options.name});
     const install_header = b.addInstallHeaderFile(generated_dir.path(b, header_name), header_name);
     const update = b.addUpdateSourceFiles();
-    const raw_go_path = if (raw_package.colocated)
-        b.fmt("{s}/{s}_cgo_gen.go", .{ go_package, go_package })
-    else
-        b.fmt("{s}/{s}_gen.go", .{ raw_package.path, raw_package.name });
-    update.addCopyFileToSource(generated_dir.path(b, raw_go_path), sourcePath(b, options.go_dir, raw_go_path));
-    const public_go_path = b.fmt("{s}/{s}_gen.go", .{ go_package, go_package });
-    update.addCopyFileToSource(generated_dir.path(b, public_go_path), sourcePath(b, options.go_dir, public_go_path));
+    update.addCopyFileToSource(go_sources_dir.path(b, raw_go_path), sourcePath(b, options.go_dir, raw_go_path));
+    update.addCopyFileToSource(go_sources_dir.path(b, public_go_path), sourcePath(b, options.go_dir, public_go_path));
     update.addCopyFileToSource(generated_dir.path(b, "errors.lock.json"), errors_lock_path);
     update.addCopyFileToSource(semantic_json, "zigo/semantic.json");
     const go_mod_path = sourcePath(b, options.go_dir, "go.mod");
@@ -312,6 +314,18 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     _ = layout_json;
 
     return .{ .update = update, .check = check, .abi_check = abi_check, .lib = lib, .semantic_json = semantic_json };
+}
+
+fn formattedGoSources(b: *std.Build, generated_dir: std.Build.LazyPath, paths: []const []const u8) std.Build.LazyPath {
+    const gofmt = b.findProgram(&.{"gofmt"}, &.{}) catch return generated_dir;
+    const formatted = b.addWriteFiles();
+    for (paths) |path| {
+        const run = b.addSystemCommand(&.{gofmt});
+        run.addFileArg(generated_dir.path(b, path));
+        const output = run.captureStdOut(.{ .basename = std.fs.path.basename(path), .trim_whitespace = .none });
+        _ = formatted.addCopyFile(output, path);
+    }
+    return formatted.getDirectory();
 }
 
 fn resolveRawPackage(b: *std.Build, option: Options.RawPackage, go_package: []const u8) ResolvedRawPackage {
