@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T02:18:07Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Root Zig tests pass, the colocated example passes generation/check/ABI and Go tests, no `_raw_gen.go` colocated references remain, and `git diff --check` is clean.
 > NEXT: none

@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-08-30T02:18:07Z"
 description: Rename colocated low-level Go output from package_raw_gen.go to package_cgo_gen.go while preserving separate raw package filenames.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-30T02:17:11Z"
 ---
 > NEXT: Rename and verify the colocated cgo output file. ([Phase 0](phases/00-rename-colocated-cgo-output.md))
 
 # Phases
 
-- [ ] [Phase 00: Rename colocated cgo output](phases/00-rename-colocated-cgo-output.md)
+- [x] [Phase 00: Rename colocated cgo output](phases/00-rename-colocated-cgo-output.md)
 
 # Shared Verification
 
