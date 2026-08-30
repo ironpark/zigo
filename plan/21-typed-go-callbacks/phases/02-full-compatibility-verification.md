@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T06:19:29Z"
 depends_on:
 - "21-typed-go-callbacks#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Every repository verification passes and planr reports all phases done.
 > NEXT: none

@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T06:19:29Z"
 description: Generate named Go callback types and signature-specific handle helpers instead of erasing callbacks to any.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-30T06:09:48Z"
 ---
 > NEXT: Implement stable public callback types and signature-specific typed handle helpers in the Go emitter. ([Phase 0](phases/00-typed-callback-emission.md))
@@ -9,7 +10,7 @@ registered_at: "2026-08-30T06:09:48Z"
 
 - [x] [Phase 00: Typed callback emission](phases/00-typed-callback-emission.md)
 - [x] [Phase 01: Fixtures and documentation](phases/01-fixtures-and-documentation.md)
-- [ ] [Phase 02: Full compatibility verification](phases/02-full-compatibility-verification.md)
+- [x] [Phase 02: Full compatibility verification](phases/02-full-compatibility-verification.md)
 
 # Shared Verification
 
