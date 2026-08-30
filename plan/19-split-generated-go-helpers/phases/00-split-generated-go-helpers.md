@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T05:28:56Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Helper code is isolated in package-named generated files with unchanged package behavior; every planned check passes, implementation is committed, and the phase is recorded done.
 > NEXT: none

@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-08-30T05:28:56Z"
 description: Split generated package helper functions into pkgname_helpers_gen.go while preserving output atomicity and stale checks.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-30T05:24:34Z"
 ---
 > NEXT: Implement the package helper emitter and carry the new output through the complete pipeline. ([Phase 0](phases/00-split-generated-go-helpers.md))
 
 # Phases
 
-- [ ] [Phase 00: Split Generated Go Helpers](phases/00-split-generated-go-helpers.md)
+- [x] [Phase 00: Split Generated Go Helpers](phases/00-split-generated-go-helpers.md)
 
 # Shared Verification
 
