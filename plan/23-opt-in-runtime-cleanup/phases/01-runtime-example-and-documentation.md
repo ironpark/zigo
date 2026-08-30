@@ -2,7 +2,7 @@
 depends_on:
 - "23-opt-in-runtime-cleanup#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Event-queue Zig and Go tests pass and documentation continues to require explicit `Close` as the primary contract.
 > NEXT: none

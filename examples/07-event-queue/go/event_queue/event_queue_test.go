@@ -3,8 +3,10 @@ package event_queue
 import (
 	"errors"
 	"fmt"
+	"runtime"
 	"sync"
 	"testing"
+	"time"
 )
 
 var _ EventQueueObserver = func(uint64, int32) int32 { return 0 }
@@ -175,6 +177,60 @@ func TestConcurrentIndependentQueueLifecycles(t *testing.T) {
 		t.Error(err)
 	}
 	assertNoLiveQueueResources(t)
+}
+
+func TestRuntimeCleanupFallbackReleasesQueueAndObserver(t *testing.T) {
+	assertNoLiveQueueResources(t)
+	func() {
+		queue, err := NewEventQueue("cleanup fallback", 2, PolicyReject, func(uint64, int32) int32 { return 0 })
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := queue.Enqueue(1, 10); err != nil {
+			t.Fatal(err)
+		}
+		if got := LiveQueues(); got != 1 {
+			t.Fatalf("LiveQueues() before fallback = %d, want 1", got)
+		}
+		if got := activeCallbackHandleCount(); got != 1 {
+			t.Fatalf("active callback handles before fallback = %d, want 1", got)
+		}
+		runtime.KeepAlive(queue)
+	}()
+	waitForRuntimeCleanup(t)
+}
+
+func TestExplicitCloseStopsRuntimeCleanup(t *testing.T) {
+	assertNoLiveQueueResources(t)
+	func() {
+		queue, err := NewEventQueue("explicit close", 1, PolicyReject, func(uint64, int32) int32 { return 0 })
+		if err != nil {
+			t.Fatal(err)
+		}
+		queue.Close()
+		queue.Close()
+	}()
+	for range 3 {
+		runtime.GC()
+		runtime.Gosched()
+	}
+	assertNoLiveQueueResources(t)
+}
+
+func waitForRuntimeCleanup(t *testing.T) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		runtime.GC()
+		runtime.Gosched()
+		if activeCallbackHandleCount() == 0 && LiveQueues() == 0 {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("runtime cleanup timed out: callback handles=%d live queues=%d", activeCallbackHandleCount(), LiveQueues())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }
 
 func assertNoLiveQueueResources(t *testing.T) {

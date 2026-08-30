@@ -2,6 +2,7 @@
 package event_queue
 
 import (
+	"runtime"
 	"runtime/cgo"
 	"sync"
 	"unsafe"
@@ -31,6 +32,7 @@ type EventQueue struct {
 	ptr             unsafe.Pointer
 	once            sync.Once
 	callbackHandles []cgo.Handle
+	cleanup         runtime.Cleanup
 }
 
 type EventQueueRef struct {
@@ -38,18 +40,36 @@ type EventQueueRef struct {
 	parent any
 }
 
+type eventQueueCleanupState struct {
+	ptr             unsafe.Pointer
+	callbackHandles []cgo.Handle
+}
+
+func newEventQueue(ptr unsafe.Pointer, callbackHandles []cgo.Handle) *EventQueue {
+	value := &EventQueue{ptr: ptr, callbackHandles: callbackHandles}
+	state := eventQueueCleanupState{ptr: ptr, callbackHandles: callbackHandles}
+	value.cleanup = runtime.AddCleanup(value, cleanupEventQueue, state)
+	return value
+}
+
+func cleanupEventQueue(state eventQueueCleanupState) {
+	if state.ptr != nil {
+		raw.EventQueueDeinit(state.ptr)
+	}
+	for _, handle := range state.callbackHandles {
+		deleteCallbackHandle(handle)
+	}
+}
+
 func (value *EventQueue) Close() {
 	if value == nil {
 		return
 	}
 	value.once.Do(func() {
-		if value.ptr != nil {
-			raw.EventQueueDeinit(value.ptr)
-			value.ptr = nil
-		}
-		for _, handle := range value.callbackHandles {
-			deleteCallbackHandle(handle)
-		}
+		value.cleanup.Stop()
+		cleanupEventQueue(eventQueueCleanupState{ptr: value.ptr, callbackHandles: value.callbackHandles})
+		value.ptr = nil
 		value.callbackHandles = nil
 	})
+	runtime.KeepAlive(value)
 }

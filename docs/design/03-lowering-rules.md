@@ -118,8 +118,11 @@ func NewContext(...) (*Context, error)
 func (c *Context) Close()   // deinit 대응 함수가 있을 때만
 ```
 
-`runtime.SetFinalizer`는 **붙이지 않는다.** finalizer는 실행 시점이 불확정이고
-네이티브 자원 해제 순서 문제를 만든다. 명시적 `Close()` + `go vet` 수준의 문서화가 낫다.
+`runtime.SetFinalizer`는 붙이지 않는다. `.auto_cleanup = true`인 Go 1.24+ 프로젝트만
+wrapper를 참조하지 않는 별도 resource state로 `runtime.AddCleanup`을 붙인다. 명시적
+`Close()`가 cleanup을 `Stop`하고 같은 해제 루틴을 호출하며, 각 native 호출은
+`runtime.KeepAlive`로 wrapper의 생존 구간을 고정한다. cleanup은 실행 시점과 프로그램
+종료 전 실행을 보장하지 않으므로 `Close()`가 항상 기본 계약이다.
 
 ## 7. 소유권 → Go 매핑
 

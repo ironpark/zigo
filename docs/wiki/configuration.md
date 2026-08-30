@@ -17,10 +17,32 @@
 | `cgo_flags` | 아니요 | 자동 계산 대신 사용할 CFLAGS와 LDFLAGS |
 | `abi_base` | 아니요 | ABI·바인딩 계약 비교에 사용할 Git ref. 생략하면 검사 비활성화 |
 | `raw_package` | 아니요 | raw Go 코드 위치. 기본값 `.internal` |
+| `auto_cleanup` | 아니요 | Go 1.24+ `runtime.AddCleanup` 누수 안전망. 기본값 `false` |
 
 `abi_base`는 호환성 정책이 필요한 프로젝트만 지정한다. 생략하면 zigo는 Git을 호출하지
 않고 `GoBindings.abi_check`를 `null`로 반환한다. 활성화한 경우 지정한 ref에 커밋된
 `zigo/semantic.json`이 비교 기준이다.
+
+## 자동 cleanup
+
+Go 1.24 이상만 지원해도 되는 프로젝트는 caller-owned opaque wrapper에 best-effort cleanup을
+붙일 수 있다.
+
+```zig
+.auto_cleanup = true,
+```
+
+이 옵션으로 새 `go.mod`를 만들 때 Go 버전은 1.24로 기록된다. 이미 `go.mod`가 있으면
+zigo가 수정하지 않으므로 사용자가 `go 1.24` 이상으로 올려야 한다. 생성기는 wrapper와
+독립된 native pointer/callback handle 상태를 `runtime.AddCleanup`에 넘기고, 명시적
+`Close`에서는 cleanup을 중단한 뒤 같은 해제 함수를 호출한다. native 호출 중 조기 해제를
+막기 위해 관련 wrapper에는 `runtime.KeepAlive`도 생성한다.
+
+cleanup 실행 시점과 프로그램 종료 전 실행은 보장되지 않으므로 `Close`가 여전히 기본
+수명 계약이다. retained callback이 소유 wrapper를 캡처하면 `cgo.Handle`에서 wrapper로
+이어지는 강한 참조 때문에 cleanup이 실행되지 않을 수 있다. cleanup은 임의 goroutine에서
+동시에 실행될 수 있으므로 특정 OS thread나 사용자 동기화가 필요한 deinitializer에는 이
+옵션을 사용하지 않는다.
 
 ## raw Go 패키지 위치
 

@@ -2,6 +2,7 @@
 package event_queue
 
 import (
+	"runtime"
 	"runtime/cgo"
 
 	raw "example.com/zigo/event-queue/bridge/cgo"
@@ -14,9 +15,10 @@ func NewEventQueue(name string, capacity uint, policy Policy, observer EventQueu
 		deleteCallbackHandle(observerHandle)
 		return nil, errorForCode(code)
 	}
-	return &EventQueue{ptr: result, callbackHandles: []cgo.Handle{observerHandle}}, nil
+	return newEventQueue(result, []cgo.Handle{observerHandle}), nil
 }
 func (e *EventQueue) Enqueue(id uint64, value int32) error {
+	defer runtime.KeepAlive(e)
 	code := raw.EventQueueEnqueue(e.ptr, id, value)
 	if code != 0 {
 		return errorForCode(code)
@@ -24,6 +26,7 @@ func (e *EventQueue) Enqueue(id uint64, value int32) error {
 	return nil
 }
 func (e *EventQueue) Process(limit uint) (uint, error) {
+	defer runtime.KeepAlive(e)
 	result, code := raw.EventQueueProcess(e.ptr, limit)
 	if code != 0 {
 		return 0, errorForCode(code)
@@ -31,24 +34,31 @@ func (e *EventQueue) Process(limit uint) (uint, error) {
 	return result, nil
 }
 func (e *EventQueue) Name() string {
+	defer runtime.KeepAlive(e)
 	return string(raw.EventQueueName(e.ptr))
 }
 func (e *EventQueue) Len() uint {
+	defer runtime.KeepAlive(e)
 	return raw.EventQueueLen(e.ptr)
 }
 func (e *EventQueue) Capacity() uint {
+	defer runtime.KeepAlive(e)
 	return raw.EventQueueCapacity(e.ptr)
 }
 func (e *EventQueue) Policy() Policy {
+	defer runtime.KeepAlive(e)
 	return Policy(raw.EventQueuePolicy(e.ptr))
 }
 func (e *EventQueue) Dropped() uint {
+	defer runtime.KeepAlive(e)
 	return raw.EventQueueDropped(e.ptr)
 }
 func (e *EventQueue) Processed() uint {
+	defer runtime.KeepAlive(e)
 	return raw.EventQueueProcessed(e.ptr)
 }
 func (e *EventQueue) Clear() uint {
+	defer runtime.KeepAlive(e)
 	return raw.EventQueueClear(e.ptr)
 }
 func LiveQueues() uint {

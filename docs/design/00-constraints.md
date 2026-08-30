@@ -143,6 +143,8 @@ v2에서 레이아웃 상수를 타깃별 컴파일 산출물에서 추출하는
   생성된 트램폴린이 `defer recover()`로 감싸고 `-3`으로 변환한다
 - 콜백이 Zig 쪽에 **저장**되면(`retained`) `cgo.Handle` 수명 관리가 필요하다 →
   Go 래퍼에 `Close()`를 **강제 생성**하고 미호출 시 누수임을 문서화한다
+- Go 1.24+ opt-in cleanup은 retained handle 누수의 best-effort 안전망이지만, callback이
+  소유 wrapper를 캡처하면 강한 참조 순환 때문에 실행되지 않을 수 있다
 
 ---
 
