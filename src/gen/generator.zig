@@ -274,6 +274,47 @@ test "errors enums and slices share one lowered ABI" {
     try std.testing.expect(std.mem.containsAtLeast(u8, shim, 1, "p0_written.* = p0_len"));
 }
 
+test "callbacks use role-specific public types and typed handle helpers" {
+    const fixture =
+        \\{
+        \\  "functions":[
+        \\    {"name":"subscribe","params":[{"name":"handler","type":{"c_callconv":true,"has_userdata":true,"kind":"callback","params":[{"bits":32,"kind":"int","signed":true},{"bits":64,"is_usize":true,"kind":"int","signed":false}],"return":{"bits":32,"kind":"int","signed":true}}},{"name":"userdata","type":{"bits":64,"is_usize":true,"kind":"int","signed":false}}],"return":{"kind":"void"},"symbol":"zg_subscribe"},
+        \\    {"name":"install","namespace":"Registry","params":[{"name":"handler","type":{"c_callconv":true,"has_userdata":true,"kind":"callback","params":[{"bits":64,"kind":"int","signed":false},{"bits":64,"is_usize":true,"kind":"int","signed":false}],"return":{"bits":32,"kind":"int","signed":true}}},{"name":"userdata","type":{"bits":64,"is_usize":true,"kind":"int","signed":false}}],"return":{"kind":"void"},"symbol":"zg_registry_install"},
+        \\    {"name":"replace","namespace":"Registry","params":[{"name":"handler","type":{"c_callconv":true,"has_userdata":true,"kind":"callback","params":[{"bits":8,"kind":"int","signed":false},{"bits":64,"is_usize":true,"kind":"int","signed":false}],"return":{"bits":32,"kind":"int","signed":true}}},{"name":"userdata","type":{"bits":64,"is_usize":true,"kind":"int","signed":false}}],"return":{"kind":"void"},"symbol":"zg_registry_replace"}
+        \\  ],
+        \\  "package":"callbacks","prefix":"zg","zig_version":"0.16.0"
+        \\}
+    ;
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try generate(arena.allocator(), std.testing.io, fixture, temporary.dir, .{
+        .package = "callbacks",
+        .prefix = "zg",
+        .go_module = "example.com/callbacks",
+    });
+    const public = try temporary.dir.readFileAlloc(std.testing.io, "callbacks/callbacks_gen.go", std.testing.allocator, .limited(64 * 1024));
+    defer std.testing.allocator.free(public);
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "type SubscribeHandlerCallback func(int32) int32"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "type RegistryInstallHandler func(uint64) int32"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "type RegistryReplaceHandler func(uint8) int32"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func Subscribe(handler SubscribeHandlerCallback)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "defer deleteCallbackHandle(handlerHandle)"));
+    const helpers = try temporary.dir.readFileAlloc(std.testing.io, "callbacks/callbacks_helpers_gen.go", std.testing.allocator, .limited(64 * 1024));
+    defer std.testing.allocator.free(helpers);
+    try std.testing.expect(std.mem.containsAtLeast(u8, helpers, 1, "func newSubscribeHandlerCallbackHandle(value SubscribeHandlerCallback) cgo.Handle"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, helpers, 1, "stored := (func(int32) int32)(value)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, helpers, 1, "stored := (func(uint64) int32)(value)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, helpers, 1, "stored := (func(uint8) int32)(value)"));
+    try std.testing.expect(std.mem.indexOf(u8, helpers, "value any") == null);
+    const raw = try temporary.dir.readFileAlloc(std.testing.io, "internal/raw/raw_gen.go", std.testing.allocator, .limited(64 * 1024));
+    defer std.testing.allocator.free(raw);
+    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, ".Value().(func(int32) int32)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, ".Value().(func(uint64) int32)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, ".Value().(func(uint8) int32)"));
+}
+
 test "opaque handles lower constructors methods and idempotent close" {
     const fixture =
         \\{

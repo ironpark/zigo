@@ -497,6 +497,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         try writer.writeByte('\n');
     }
     try renderGoEnums(allocator, writer, program);
+    try renderGoCallbackTypes(allocator, writer, program);
     try renderGoHandles(allocator, writer, program, options);
     for (program.functions) |function| {
         const constructor = constructorForInit(program, function.origin.*);
@@ -519,10 +520,13 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             if (callbackForUserdata(function.origin.params, parameter_index) != null) continue;
             if (public_parameter_index != 0) try writer.writeAll(", ");
             try writer.print("{s} ", .{parameter.name});
-            if (parameter.type == .callback)
-                try writePublicCallbackType(writer, parameter.type.callback)
-            else
+            if (parameter.type == .callback) {
+                const callback_name = try callbackTypeNameAlloc(allocator, program, function, parameter_index);
+                defer allocator.free(callback_name);
+                try writer.writeAll(callback_name);
+            } else {
                 try writePublicParameterType(writer, parameter);
+            }
             public_parameter_index += 1;
         }
         try writer.writeByte(')');
@@ -532,7 +536,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             try writePublicFunctionReturnType(writer, function.origin.*);
         }
         try writer.writeAll(" {\n");
-        try renderCallbackHandleSetup(writer, function.origin.*);
+        try renderCallbackHandleSetup(allocator, writer, program, function);
         try writer.writeByte('\t');
         const returns_error = function.origin.@"return" == .error_union;
         const error_payload = if (returns_error) function.origin.@"return".error_union.payload.* else semantic.TypeNode{ .void = {} };
@@ -660,19 +664,26 @@ fn renderPublicHelpers(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
             "\treturn 0\n" ++
             "}\n",
     );
-    if (has_callbacks) try writer.writeAll(
-        "\nvar activeCallbackHandles atomic.Int64\n\n" ++
-            "func newCallbackHandle(value any) cgo.Handle {\n" ++
-            "\thandle := cgo.NewHandle(value)\n" ++
-            "\tactiveCallbackHandles.Add(1)\n" ++
-            "\treturn handle\n" ++
-            "}\n\n" ++
+    if (has_callbacks) {
+        try writer.writeAll("\nvar activeCallbackHandles atomic.Int64\n\n");
+        for (program.functions) |function| {
+            for (function.origin.params, 0..) |parameter, parameter_index| {
+                if (parameter.type != .callback) continue;
+                const callback_name = try callbackTypeNameAlloc(allocator, program, function, parameter_index);
+                defer allocator.free(callback_name);
+                try writer.print("func new{s}Handle(value {s}) cgo.Handle {{\n\tstored := (", .{ callback_name, callback_name });
+                try writePublicCallbackType(writer, parameter.type.callback);
+                try writer.writeAll(")(value)\n\thandle := cgo.NewHandle(stored)\n\tactiveCallbackHandles.Add(1)\n\treturn handle\n}\n\n");
+            }
+        }
+        try writer.writeAll(
             "func deleteCallbackHandle(handle cgo.Handle) {\n" ++
-            "\thandle.Delete()\n" ++
-            "\tactiveCallbackHandles.Add(-1)\n" ++
-            "}\n\n" ++
-            "func activeCallbackHandleCount() int64 { return activeCallbackHandles.Load() }\n",
-    );
+                "\thandle.Delete()\n" ++
+                "\tactiveCallbackHandles.Add(-1)\n" ++
+                "}\n\n" ++
+                "func activeCallbackHandleCount() int64 { return activeCallbackHandles.Load() }\n",
+        );
+    }
 }
 
 fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
@@ -741,6 +752,19 @@ fn renderGoEnums(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
             try writer.print("\tcase {s}{s}:\n\t\treturn \"{s}\"\n", .{ declaration.name, field_name, field.name });
         }
         try writer.print("\tdefault:\n\t\treturn \"{s}(?)\"\n\t}}\n}}\n\n", .{declaration.name});
+    }
+}
+
+fn renderGoCallbackTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
+    for (program.functions) |function| {
+        for (function.origin.params, 0..) |parameter, parameter_index| {
+            if (parameter.type != .callback) continue;
+            const callback_name = try callbackTypeNameAlloc(allocator, program, function, parameter_index);
+            defer allocator.free(callback_name);
+            try writer.print("type {s} ", .{callback_name});
+            try writePublicCallbackType(writer, parameter.type.callback);
+            try writer.writeAll("\n\n");
+        }
     }
 }
 
@@ -880,10 +904,12 @@ fn writePublicCallbackType(writer: *std.Io.Writer, callback: semantic.Callback) 
     try writePublicGoType(writer, callback.@"return".*);
 }
 
-fn renderCallbackHandleSetup(writer: *std.Io.Writer, function: semantic.SemanticFn) !void {
-    for (function.params) |parameter| {
+fn renderCallbackHandleSetup(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, function: abi.AbiFn) !void {
+    for (function.origin.params, 0..) |parameter, parameter_index| {
         if (parameter.type != .callback) continue;
-        try writer.print("\t{s}Handle := newCallbackHandle({s})\n", .{ parameter.name, parameter.name });
+        const callback_name = try callbackTypeNameAlloc(allocator, program, function, parameter_index);
+        defer allocator.free(callback_name);
+        try writer.print("\t{s}Handle := new{s}Handle({s})\n", .{ parameter.name, callback_name, parameter.name });
         if (parameter.retention == .borrowed) {
             try writer.print("\tdefer deleteCallbackHandle({s}Handle)\n", .{parameter.name});
         }
@@ -1083,6 +1109,50 @@ fn callbackTrampolineNameAlloc(allocator: std.mem.Allocator, function: abi.AbiFn
     const parameter_name = try naming.snakeAlloc(allocator, function.origin.params[parameter_index].name);
     defer allocator.free(parameter_name);
     return std.fmt.allocPrint(allocator, "{s}_go_callback_{s}", .{ function.symbol, parameter_name });
+}
+
+fn callbackTypeNameAlloc(allocator: std.mem.Allocator, program: abi.Program, function: abi.AbiFn, parameter_index: usize) ![]u8 {
+    const base = try callbackTypeBaseNameAlloc(allocator, function, parameter_index);
+    defer allocator.free(base);
+    var duplicate_base = false;
+    for (program.functions) |candidate| {
+        for (candidate.origin.params, 0..) |parameter, candidate_index| {
+            if (parameter.type != .callback) continue;
+            if (candidate.origin == function.origin and candidate_index == parameter_index) continue;
+            const candidate_base = try callbackTypeBaseNameAlloc(allocator, candidate, candidate_index);
+            defer allocator.free(candidate_base);
+            if (std.mem.eql(u8, base, candidate_base)) duplicate_base = true;
+        }
+    }
+
+    const qualified = if (duplicate_base and (function.origin.receiver orelse function.origin.namespace) != null) blk: {
+        const owner = (function.origin.receiver orelse function.origin.namespace).?;
+        const function_name = try naming.pascalAlloc(allocator, function.origin.name);
+        defer allocator.free(function_name);
+        const parameter_name = try naming.pascalAlloc(allocator, function.origin.params[parameter_index].name);
+        defer allocator.free(parameter_name);
+        break :blk try std.fmt.allocPrint(allocator, "{s}{s}{s}", .{ owner, function_name, parameter_name });
+    } else try allocator.dupe(u8, base);
+    defer allocator.free(qualified);
+
+    if (publicTypeNameExists(program, qualified)) return std.fmt.allocPrint(allocator, "{s}Callback", .{qualified});
+    return allocator.dupe(u8, qualified);
+}
+
+fn callbackTypeBaseNameAlloc(allocator: std.mem.Allocator, function: abi.AbiFn, parameter_index: usize) ![]u8 {
+    const parameter_name = try naming.pascalAlloc(allocator, function.origin.params[parameter_index].name);
+    defer allocator.free(parameter_name);
+    if (function.origin.receiver orelse function.origin.namespace) |owner| {
+        return std.fmt.allocPrint(allocator, "{s}{s}", .{ owner, parameter_name });
+    }
+    const function_name = try naming.pascalAlloc(allocator, function.origin.name);
+    defer allocator.free(function_name);
+    return std.fmt.allocPrint(allocator, "{s}{s}Callback", .{ function_name, parameter_name });
+}
+
+fn publicTypeNameExists(program: abi.Program, name: []const u8) bool {
+    for (program.types) |declaration| if (std.mem.eql(u8, declaration.name, name)) return true;
+    return false;
 }
 
 fn programNeedsUnsafe(program: abi.Program) bool {
