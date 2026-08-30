@@ -3,22 +3,6 @@ package errors
 
 import raw "example.com/zigo/errors/support/ffi"
 
-type Format uint32
-
-const FormatPcm Format = 0
-const FormatFlac Format = 1
-
-func (value Format) String() string {
-	switch value {
-	case FormatPcm:
-		return "pcm"
-	case FormatFlac:
-		return "flac"
-	default:
-		return "Format(?)"
-	}
-}
-
 func Divide(numerator float64, denominator float64) (float64, error) {
 	result, code := raw.Divide(numerator, denominator)
 	if code != 0 {

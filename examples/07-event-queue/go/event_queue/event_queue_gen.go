@@ -3,56 +3,9 @@ package event_queue
 
 import (
 	"runtime/cgo"
-	"sync"
-	"unsafe"
 
 	raw "example.com/zigo/event-queue/bridge/cgo"
 )
-
-type Policy uint32
-
-const PolicyReject Policy = 0
-const PolicyDropOldest Policy = 1
-
-func (value Policy) String() string {
-	switch value {
-	case PolicyReject:
-		return "reject"
-	case PolicyDropOldest:
-		return "drop_oldest"
-	default:
-		return "Policy(?)"
-	}
-}
-
-type EventQueueObserver func(uint64, int32) int32
-
-type EventQueue struct {
-	ptr             unsafe.Pointer
-	once            sync.Once
-	callbackHandles []cgo.Handle
-}
-
-type EventQueueRef struct {
-	ptr    unsafe.Pointer
-	parent any
-}
-
-func (value *EventQueue) Close() {
-	if value == nil {
-		return
-	}
-	value.once.Do(func() {
-		if value.ptr != nil {
-			raw.EventQueueDeinit(value.ptr)
-			value.ptr = nil
-		}
-		for _, handle := range value.callbackHandles {
-			deleteCallbackHandle(handle)
-		}
-		value.callbackHandles = nil
-	})
-}
 
 func NewEventQueue(name string, capacity uint, policy Policy, observer EventQueueObserver) (*EventQueue, error) {
 	observerHandle := newEventQueueObserverHandle(observer)

@@ -186,8 +186,8 @@ Go 생성물은 반드시 사용자 저장소에 커밋되어야 한다:
 
 따라서 `std.Build.Step.UpdateSourceFiles`로 생성 결과를 `go_dir`에 기록한다.
 `go-check` 스텝은 동일 생성을 수행하되 기록 대신 **비교**하고, 다르면 실패한다 (CI 게이트).
-`gofmt`가 `PATH`에 있으면 생성된 네 Go 파일(raw/cgo, public API, public errors, private
-helpers)을 각각 포맷한 별도 cache output이
+`gofmt`가 `PATH`에 있으면 생성된 다섯 Go 파일(raw/cgo, public callables, public types,
+public errors, private helpers)을 각각 포맷한 별도 cache output이
 `UpdateSourceFiles`와 `go-check`의 입력이 된다. 원본 generator cache는 수정하지 않으며,
 `gofmt`가 없는 환경에서는 포맷 단계를 생략한다.
 
@@ -294,7 +294,8 @@ C 헤더는 백엔드가 아니라 **cgo가 요구하는 산출물**이다.
     internal/raw/       # 🤖 100% 생성. 손대지 말 것
       raw_gen.go
     mylib/
-      mylib_gen.go         # 🤖 생성기가 덮어씀
+      mylib_gen.go         # 🤖 public callable API
+      mylib_type_gen.go    # 🤖 public type API
       mylib_errors_gen.go  # 🤖 package error API
       mylib_helpers_gen.go # 🤖 private runtime support
       custom.go            # 👤 사용자 소유
@@ -303,8 +304,9 @@ C 헤더는 백엔드가 아니라 **cgo가 요구하는 산출물**이다.
     include/zigo_mylib.h
 ```
 
-**덧쓰기 규칙:** `internal/raw`는 `raw_gen.go`, public package `mylib`은 API용
-`mylib_gen.go`와 package error용 `mylib_errors_gen.go`를 사용한다. error 파일은 단일
+**덧쓰기 규칙:** `internal/raw`는 `raw_gen.go`, public package `mylib`은 callable API용
+`mylib_gen.go`, enum·callback·opaque handle/Ref와 그 타입 고유 메서드용
+`mylib_type_gen.go`, package error용 `mylib_errors_gen.go`를 사용한다. error 파일은 단일
 `Error` 타입, 안정적인 `Err*` 값과 code 변환을 함께 소유하며 Zig error set별로 나누지
 않는다. bool ABI 변환과 callback handle 수명 관리는 `mylib_helpers_gen.go`에 둔다. 그
 밖의 `custom.go` 같은 파일은 사용자 소유이며 생성기가 수정하지 않는다.

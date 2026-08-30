@@ -149,6 +149,7 @@ override와 exclude의 충돌은 컴파일 오류다.
 go/go.mod
 go/internal/raw/raw_gen.go
 go/<package>/<package>_gen.go
+go/<package>/<package>_type_gen.go
 go/<package>/<package>_errors_gen.go
 go/<package>/<package>_helpers_gen.go
 zigo/semantic.json
@@ -158,9 +159,10 @@ zig-out/lib/lib<name>_zigo.a
 ```
 
 Go 소스와 `zigo/semantic.json`, `zigo/errors.lock.json`은 소스 관리에 포함한다.
-`zig-out/`은 빌드 산출물이므로 커밋하지 않는다. public 패키지에서 위 세 생성 파일을
+`zig-out/`은 빌드 산출물이므로 커밋하지 않는다. public 패키지에서 위 네 생성 파일을
 제외한 별도 `.go` 파일은 생성기가 덮어쓰지 않으므로 사용자 편의 API를 추가하는 데
-사용할 수 있다. package 단위 error 타입, `Err*` 값과 code 변환은
+사용할 수 있다. enum, callback, opaque handle/Ref와 타입 고유 메서드는
+`<package>_type_gen.go`에 둔다. package 단위 error 타입, `Err*` 값과 code 변환은
 `<package>_errors_gen.go`에 함께 유지한다. bool 변환과 callback handle 수명 관리 같은
 비공개 runtime support는 `<package>_helpers_gen.go`에 둔다.
 

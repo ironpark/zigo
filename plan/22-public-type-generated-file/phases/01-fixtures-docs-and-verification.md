@@ -2,7 +2,7 @@
 depends_on:
 - "22-public-type-generated-file#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Repository-wide verification passes, the plan is complete, and the worktree is clean and committed.
 > NEXT: none

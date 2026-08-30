@@ -3,97 +3,9 @@ package telemetry_hub
 
 import (
 	"runtime/cgo"
-	"sync"
-	"unsafe"
 
 	raw "example.com/zigo/telemetry-hub/internal/native"
 )
-
-type Mode uint32
-
-const ModeRaw Mode = 0
-const ModeScaled Mode = 1
-const ModeAbsolute Mode = 2
-
-func (value Mode) String() string {
-	switch value {
-	case ModeRaw:
-		return "raw"
-	case ModeScaled:
-		return "scaled"
-	case ModeAbsolute:
-		return "absolute"
-	default:
-		return "Mode(?)"
-	}
-}
-
-type OverflowPolicy uint32
-
-const OverflowPolicyReject OverflowPolicy = 0
-const OverflowPolicyDropOldest OverflowPolicy = 1
-
-func (value OverflowPolicy) String() string {
-	switch value {
-	case OverflowPolicyReject:
-		return "reject"
-	case OverflowPolicyDropOldest:
-		return "drop_oldest"
-	default:
-		return "OverflowPolicy(?)"
-	}
-}
-
-type Severity uint32
-
-const SeverityDebug Severity = 0
-const SeverityInfo Severity = 1
-const SeverityWarning Severity = 2
-const SeverityCritical Severity = 3
-
-func (value Severity) String() string {
-	switch value {
-	case SeverityDebug:
-		return "debug"
-	case SeverityInfo:
-		return "info"
-	case SeverityWarning:
-		return "warning"
-	case SeverityCritical:
-		return "critical"
-	default:
-		return "Severity(?)"
-	}
-}
-
-type TelemetryHubObserver func(uint64, float64) int32
-
-type TelemetryHub struct {
-	ptr             unsafe.Pointer
-	once            sync.Once
-	callbackHandles []cgo.Handle
-}
-
-type TelemetryHubRef struct {
-	ptr    unsafe.Pointer
-	parent any
-}
-
-func (value *TelemetryHub) Close() {
-	if value == nil {
-		return
-	}
-	value.once.Do(func() {
-		if value.ptr != nil {
-			raw.TelemetryHubDeinit(value.ptr)
-			value.ptr = nil
-		}
-		for _, handle := range value.callbackHandles {
-			deleteCallbackHandle(handle)
-		}
-		value.callbackHandles = nil
-	})
-}
 
 func NewTelemetryHub(input_name string, max_samples uint, initial_mode Mode, overflow_policy OverflowPolicy, observer TelemetryHubObserver) (*TelemetryHub, error) {
 	observerHandle := newTelemetryHubObserverHandle(observer)

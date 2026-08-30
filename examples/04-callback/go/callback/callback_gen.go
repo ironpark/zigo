@@ -3,94 +3,9 @@ package callback
 
 import (
 	"runtime/cgo"
-	"sync"
-	"unsafe"
 
 	"example.com/zigo/callback/internal/raw"
 )
-
-type CallbackContextCallback func(int32) int32
-
-type CallbackContext struct {
-	ptr             unsafe.Pointer
-	once            sync.Once
-	callbackHandles []cgo.Handle
-}
-
-type CallbackContextRef struct {
-	ptr    unsafe.Pointer
-	parent any
-}
-
-func (value *CallbackContext) Close() {
-	if value == nil {
-		return
-	}
-	value.once.Do(func() {
-		if value.ptr != nil {
-			raw.CallbackContextDeinit(value.ptr)
-			value.ptr = nil
-		}
-		for _, handle := range value.callbackHandles {
-			deleteCallbackHandle(handle)
-		}
-		value.callbackHandles = nil
-	})
-}
-
-type FloatBuffer struct {
-	ptr             unsafe.Pointer
-	once            sync.Once
-	callbackHandles []cgo.Handle
-}
-
-type FloatBufferRef struct {
-	ptr    unsafe.Pointer
-	parent any
-}
-
-func (value *FloatBuffer) Close() {
-	if value == nil {
-		return
-	}
-	value.once.Do(func() {
-		if value.ptr != nil {
-			raw.FloatBufferDeinit(value.ptr)
-			value.ptr = nil
-		}
-		for _, handle := range value.callbackHandles {
-			deleteCallbackHandle(handle)
-		}
-		value.callbackHandles = nil
-	})
-}
-
-type IntBuffer struct {
-	ptr             unsafe.Pointer
-	once            sync.Once
-	callbackHandles []cgo.Handle
-}
-
-type IntBufferRef struct {
-	ptr    unsafe.Pointer
-	parent any
-}
-
-func (value *IntBuffer) Close() {
-	if value == nil {
-		return
-	}
-	value.once.Do(func() {
-		if value.ptr != nil {
-			raw.IntBufferDeinit(value.ptr)
-			value.ptr = nil
-		}
-		for _, handle := range value.callbackHandles {
-			deleteCallbackHandle(handle)
-		}
-		value.callbackHandles = nil
-	})
-}
 
 func NewFloatBuffer() (*FloatBuffer, error) {
 	result, code := raw.FloatBufferCreate()
