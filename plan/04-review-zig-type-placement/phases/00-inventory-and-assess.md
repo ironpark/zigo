@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T01:47:24Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Every production type in `build.zig` and `src/` has exactly one assessment entry tied to its canonical implementation.
 > NEXT: none
