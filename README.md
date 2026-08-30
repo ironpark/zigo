@@ -39,6 +39,7 @@ pub fn build(b: *std.Build) void {
         .name = "mylib",
         .module = mylib,
         .bindings = b.path("src/bindings.zig"),
+        .source_root = b.path("src/root.zig"),
         .go_dir = b.path("go"),
         .go_module = "example.com/mylib/go",
         .target = target,
@@ -68,7 +69,8 @@ const zigo = @import("zigo");
 const mylib = @import("mylib");
 
 pub const bindings = zigo.define(.{
-    .functions = .{.{ .name = "add", .@"fn" = mylib.add }},
+    .root = mylib,
+    .discover = .public,
 });
 ```
 

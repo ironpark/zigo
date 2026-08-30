@@ -19,8 +19,9 @@
 ## 이름과 메타데이터
 
 Zig reflection에는 함수 파라미터 이름이 없다. zigo는 `bindings.zig`의 `params`, Zig AST
-스캔, `p0`, `p1` 형식의 fallback 순으로 이름을 결정한다. 공개 API의 안정성을 위해
-`params`를 명시하는 편이 좋다.
+스캔, `p0`, `p1` 형식의 fallback 순으로 이름을 결정한다. `source_root`를 지정하면 실제
+대상 모듈 루트에서 owner-qualified 선언을 찾는다. AST 정보는 타입 판단에 사용하지 않는다.
+공개 Go 파라미터 이름을 Zig 소스와 독립적으로 고정하려면 `params`를 명시한다.
 
 AST 보강에 사용하는 기본 `bindings.zig`를 읽지 못하면 reflection이 실패한다. 선택적인
 같은 디렉터리의 `root.zig`가 없는 경우만 정상적으로 건너뛰며, 발견된 `.zig` import를
@@ -28,6 +29,11 @@ AST 보강에 사용하는 기본 `bindings.zig`를 읽지 못하면 reflection�
 
 문자열, 반환 포인터 소유권, retained 포인터와 콜백 수명은 타입만으로 결정할 수 없다.
 `semantic`, `returns`, `param_meta.retention`을 통해 계약을 명시해야 한다.
+
+`.discover = .public`은 공개 Zig API와 바인딩 API가 같은 프로젝트를 위한 opt-in 정책이다.
+공개 helper나 지원하지 않는 generic 함수까지 발견될 수 있으므로 `exclude`로 의도를
+명시한다. 일부 함수만 안정적으로 노출해야 하는 라이브러리는 명시적인 `functions` 목록을
+유지한다.
 
 ## 런타임 주의사항
 

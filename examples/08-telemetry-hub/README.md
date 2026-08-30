@@ -12,8 +12,9 @@ The generated package covers:
 - deterministic close and lifecycle accounting;
 - a custom raw package at `go/internal/native`.
 
-The binding declaration contains **51 functions** and reflects **4 public types** (one opaque
-handle and three enums). Generation produces a 347-line public API file, a separate 56-line
+Automatic discovery finds **51 functions** while the 26-line binding declaration retains only
+the opaque representation and three exceptional UTF-8/callback contracts. Reflection records
+**4 public types** (one opaque handle and three enums). Generation produces a 347-line public API file, a separate 56-line
 public error file, a 29-line private helper file, and a 236-line raw cgo file under
 `go/internal/native`. The Go suite drives every API family, including failed construction cleanup,
 transactional batch rejection, callback panic recovery, and independent concurrent lifecycles.

@@ -23,23 +23,23 @@ func zg_telemetry_hub_create_go_callback_observer(p0 C.uint64_t, p1 C.double, p2
 	return C.int32_t(callback(uint64(p0), float64(p1)))
 }
 
-func TelemetryHubCreate(name []uint8, capacity uint, mode uint32, overflow_policy uint32, observerHandle uintptr) (unsafe.Pointer, int32) {
-	var name_zero C.uint8_t
-	name_ptr := &name_zero
-	if len(name) != 0 {
-		name_ptr = (*C.uint8_t)(unsafe.Pointer(&name[0]))
+func TelemetryHubCreate(input_name []uint8, max_samples uint, initial_mode uint32, overflow_policy uint32, observerHandle uintptr) (unsafe.Pointer, int32) {
+	var input_name_zero C.uint8_t
+	input_name_ptr := &input_name_zero
+	if len(input_name) != 0 {
+		input_name_ptr = (*C.uint8_t)(unsafe.Pointer(&input_name[0]))
 	}
 	var outResult unsafe.Pointer
-	code := int32(C.zg_telemetry_hub_create(name_ptr, C.size_t(len(name)), C.size_t(capacity), C.uint32_t(mode), C.uint32_t(overflow_policy), C.size_t(observerHandle), &outResult))
+	code := int32(C.zg_telemetry_hub_create(input_name_ptr, C.size_t(len(input_name)), C.size_t(max_samples), C.uint32_t(initial_mode), C.uint32_t(overflow_policy), C.size_t(observerHandle), &outResult))
 	return unsafe.Pointer(outResult), code
 }
-func TelemetryHubRename(self unsafe.Pointer, name []uint8) int32 {
-	var name_zero C.uint8_t
-	name_ptr := &name_zero
-	if len(name) != 0 {
-		name_ptr = (*C.uint8_t)(unsafe.Pointer(&name[0]))
+func TelemetryHubRename(self unsafe.Pointer, new_name []uint8) int32 {
+	var new_name_zero C.uint8_t
+	new_name_ptr := &new_name_zero
+	if len(new_name) != 0 {
+		new_name_ptr = (*C.uint8_t)(unsafe.Pointer(&new_name[0]))
 	}
-	code := int32(C.zg_telemetry_hub_rename(self, name_ptr, C.size_t(len(name))))
+	code := int32(C.zg_telemetry_hub_rename(self, new_name_ptr, C.size_t(len(new_name))))
 	return code
 }
 func TelemetryHubName(self unsafe.Pointer) []uint8 {
@@ -63,40 +63,40 @@ func TelemetryHubIsFull(self unsafe.Pointer) uint8 {
 func TelemetryHubMode(self unsafe.Pointer) uint32 {
 	return uint32(C.zg_telemetry_hub_mode(self))
 }
-func TelemetryHubSetMode(self unsafe.Pointer, mode uint32) uint32 {
-	return uint32(C.zg_telemetry_hub_set_mode(self, C.uint32_t(mode)))
+func TelemetryHubSetMode(self unsafe.Pointer, new_mode uint32) uint32 {
+	return uint32(C.zg_telemetry_hub_set_mode(self, C.uint32_t(new_mode)))
 }
 func TelemetryHubOverflowPolicy(self unsafe.Pointer) uint32 {
 	return uint32(C.zg_telemetry_hub_overflow_policy(self))
 }
-func TelemetryHubSetOverflowPolicy(self unsafe.Pointer, policy uint32) uint32 {
-	return uint32(C.zg_telemetry_hub_set_overflow_policy(self, C.uint32_t(policy)))
+func TelemetryHubSetOverflowPolicy(self unsafe.Pointer, new_policy uint32) uint32 {
+	return uint32(C.zg_telemetry_hub_set_overflow_policy(self, C.uint32_t(new_policy)))
 }
 func TelemetryHubEnabled(self unsafe.Pointer) uint8 {
 	return uint8(C.zg_telemetry_hub_enabled(self))
 }
-func TelemetryHubSetEnabled(self unsafe.Pointer, enabled uint8) uint8 {
-	return uint8(C.zg_telemetry_hub_set_enabled(self, C.uint8_t(enabled)))
+func TelemetryHubSetEnabled(self unsafe.Pointer, new_enabled uint8) uint8 {
+	return uint8(C.zg_telemetry_hub_set_enabled(self, C.uint8_t(new_enabled)))
 }
 func TelemetryHubThreshold(self unsafe.Pointer) float64 {
 	return float64(C.zg_telemetry_hub_threshold(self))
 }
-func TelemetryHubSetThreshold(self unsafe.Pointer, threshold float64) int32 {
-	code := int32(C.zg_telemetry_hub_set_threshold(self, C.double(threshold)))
+func TelemetryHubSetThreshold(self unsafe.Pointer, new_threshold float64) int32 {
+	code := int32(C.zg_telemetry_hub_set_threshold(self, C.double(new_threshold)))
 	return code
 }
 func TelemetryHubScaleFactor(self unsafe.Pointer) float64 {
 	return float64(C.zg_telemetry_hub_scale_factor(self))
 }
-func TelemetryHubSetScaleFactor(self unsafe.Pointer, factor float64) int32 {
-	code := int32(C.zg_telemetry_hub_set_scale_factor(self, C.double(factor)))
+func TelemetryHubSetScaleFactor(self unsafe.Pointer, new_factor float64) int32 {
+	code := int32(C.zg_telemetry_hub_set_scale_factor(self, C.double(new_factor)))
 	return code
 }
 func TelemetryHubOffset(self unsafe.Pointer) float64 {
 	return float64(C.zg_telemetry_hub_offset(self))
 }
-func TelemetryHubSetOffset(self unsafe.Pointer, offset float64) int32 {
-	code := int32(C.zg_telemetry_hub_set_offset(self, C.double(offset)))
+func TelemetryHubSetOffset(self unsafe.Pointer, new_offset float64) int32 {
+	code := int32(C.zg_telemetry_hub_set_offset(self, C.double(new_offset)))
 	return code
 }
 func TelemetryHubPush(self unsafe.Pointer, id uint64, value float64) int32 {

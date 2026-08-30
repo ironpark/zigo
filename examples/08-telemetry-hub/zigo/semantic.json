@@ -14,7 +14,7 @@
       "params": [
         {
           "direction": "in",
-          "name": "name",
+          "name": "input_name",
           "name_source": "sidecar",
           "retention": "borrowed",
           "semantic": "utf8_string",
@@ -31,7 +31,7 @@
         },
         {
           "direction": "in",
-          "name": "capacity",
+          "name": "max_samples",
           "name_source": "sidecar",
           "retention": "borrowed",
           "type": {
@@ -43,7 +43,7 @@
         },
         {
           "direction": "in",
-          "name": "mode",
+          "name": "initial_mode",
           "name_source": "sidecar",
           "retention": "borrowed",
           "type": {
@@ -131,7 +131,7 @@
       "params": [
         {
           "direction": "in",
-          "name": "name",
+          "name": "new_name",
           "name_source": "sidecar",
           "retention": "borrowed",
           "semantic": "utf8_string",
@@ -241,8 +241,8 @@
       "params": [
         {
           "direction": "in",
-          "name": "mode",
-          "name_source": "sidecar",
+          "name": "new_mode",
+          "name_source": "ast",
           "retention": "borrowed",
           "type": {
             "kind": "enum",
@@ -274,8 +274,8 @@
       "params": [
         {
           "direction": "in",
-          "name": "policy",
-          "name_source": "sidecar",
+          "name": "new_policy",
+          "name_source": "ast",
           "retention": "borrowed",
           "type": {
             "kind": "enum",
@@ -306,8 +306,8 @@
       "params": [
         {
           "direction": "in",
-          "name": "enabled",
-          "name_source": "sidecar",
+          "name": "new_enabled",
+          "name_source": "ast",
           "retention": "borrowed",
           "type": {
             "kind": "bool"
@@ -337,8 +337,8 @@
       "params": [
         {
           "direction": "in",
-          "name": "threshold",
-          "name_source": "sidecar",
+          "name": "new_threshold",
+          "name_source": "ast",
           "retention": "borrowed",
           "type": {
             "bits": 64,
@@ -376,8 +376,8 @@
       "params": [
         {
           "direction": "in",
-          "name": "factor",
-          "name_source": "sidecar",
+          "name": "new_factor",
+          "name_source": "ast",
           "retention": "borrowed",
           "type": {
             "bits": 64,
@@ -415,8 +415,8 @@
       "params": [
         {
           "direction": "in",
-          "name": "offset",
-          "name_source": "sidecar",
+          "name": "new_offset",
+          "name_source": "ast",
           "retention": "borrowed",
           "type": {
             "bits": 64,
@@ -444,7 +444,7 @@
         {
           "direction": "in",
           "name": "id",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "type": {
             "bits": 64,
@@ -456,7 +456,7 @@
         {
           "direction": "in",
           "name": "value",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "type": {
             "bits": 64,
@@ -485,7 +485,7 @@
         {
           "direction": "in",
           "name": "id",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "type": {
             "bits": 64,
@@ -497,7 +497,7 @@
         {
           "direction": "in",
           "name": "value",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "type": {
             "bits": 64,
@@ -507,7 +507,7 @@
         {
           "direction": "in",
           "name": "severity",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "type": {
             "kind": "enum",
@@ -536,7 +536,7 @@
         {
           "direction": "in",
           "name": "values",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "type": {
             "const": true,
@@ -569,7 +569,7 @@
         {
           "direction": "in",
           "name": "limit",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "type": {
             "bits": 64,
@@ -871,7 +871,7 @@
         {
           "direction": "in",
           "name": "boundary",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "type": {
             "bits": 64,
@@ -902,7 +902,7 @@
         {
           "direction": "in",
           "name": "boundary",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "type": {
             "bits": 64,
@@ -933,7 +933,7 @@
         {
           "direction": "in",
           "name": "boundary",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "type": {
             "bits": 64,
@@ -961,7 +961,7 @@
         {
           "direction": "in",
           "name": "boundary",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "type": {
             "bits": 64,
@@ -989,7 +989,7 @@
         {
           "direction": "in",
           "name": "factor",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "type": {
             "bits": 64,
@@ -1017,7 +1017,7 @@
         {
           "direction": "in",
           "name": "delta",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "type": {
             "bits": 64,
@@ -1045,7 +1045,7 @@
         {
           "direction": "in",
           "name": "lower",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "type": {
             "bits": 64,
@@ -1055,7 +1055,7 @@
         {
           "direction": "in",
           "name": "upper",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "type": {
             "bits": 64,

@@ -7,6 +7,7 @@
 | `name` | 예 | 생성할 라이브러리와 Go 패키지의 기준 이름 |
 | `module` | 예 | reflection할 `*std.Build.Module` |
 | `bindings` | 예 | `zigo.define` 선언 파일 |
+| `source_root` | 아니요 | AST 이름·문서 보강에 사용할 실제 대상 모듈 루트. 생략하면 `bindings` 옆 `root.zig` 탐색 |
 | `go_dir` | 예 | 생성된 Go 모듈을 둘 소스 경로 |
 | `go_module` | 예 | 생성될 `go.mod`와 import에 사용할 모듈 경로 |
 | `target` | 예 | 라이브러리 타깃 |
@@ -69,13 +70,48 @@ zigo는 대상 모듈에 설정된 system library와 framework 링크 정보를 
 
 ## `bindings.zig` 선언
 
-최상위 선언은 다음 세 그룹을 사용한다.
+명시 모드는 다음 세 그룹을 사용한다.
 
 | 그룹 | 역할 |
 |---|---|
 | `types` | opaque 또는 명시적 representation으로 노출할 타입 |
 | `specializations` | comptime generic을 구체화한 named type |
 | `functions` | 생성할 함수와 메서드 |
+
+큰 공개 API는 opt-in 자동 발견 모드를 사용할 수 있다.
+
+```zig
+pub const bindings = zigo.define(.{
+    .root = mylib,
+    .discover = .public,
+    .types = .{
+        .{ .type = mylib.Context, .repr = .@"opaque" },
+    },
+    .overrides = .{
+        .{
+            .path = "Context.create",
+            .params = .{ "name", "callback", "userdata" },
+            .param_meta = .{
+                .name = .{ .semantic = .utf8_string },
+                .callback = .{ .retention = .retained },
+            },
+        },
+        .{ .path = "Context.name", .semantic = .utf8_string },
+    },
+    .exclude = .{"Context.debugState"},
+});
+```
+
+`.discover = .public`은 `types`와 `specializations`에 등록된 컨테이너의 공개 함수부터
+발견하고, 이어서 `root` 모듈의 공개 함수를 발견한다. 타입 메서드는
+`Context.process`, 루트 함수는 `root.version` 형식의 안정적인 경로로 식별한다.
+`overrides`는 이름 변경과 reflection만으로 알 수 없는 의미·소유권 메타데이터를 지정하고,
+`exclude`는 바인딩하지 않을 공개 함수를 지정한다. 존재하지 않는 경로, 중복 경로,
+override와 exclude의 충돌은 컴파일 오류다.
+
+자동 발견은 명시적으로 선택해야 한다. 이 모드에서는 새 `pub fn`이 C/Go API에도
+추가되므로 생성물 stale 검사와, 독립 배포 계약이 있다면 `abi-check`를 함께 사용한다.
+세밀하게 선택해야 하는 API와 generic 함수의 구체화는 기존 `functions` 모드를 사용한다.
 
 함수 항목의 주요 필드는 다음과 같다.
 
@@ -87,6 +123,11 @@ zigo는 대상 모듈에 설정된 system library와 framework 링크 정보를 
 | `param_meta` | 파라미터별 `semantic`과 `retention` 계약 |
 | `semantic` | 반환값 의미. 예: `.utf8_string` |
 | `returns` | 반환 포인터의 소유권 계약 |
+
+파라미터 이름 우선순위는 명시적인 `params`, 대상 소스 AST, `p0` 형식 fallback 순이다.
+`param_meta`를 사용할 때는 해당 이름을 reflection 단계에서 식별할 수 있도록 같은 override에
+`params`도 적는다. `source_root`를 설정하면 다른 디렉터리 구조에서도 정확한 대상 소스에서
+이름과 문서를 읽는다.
 
 ```zig
 .{

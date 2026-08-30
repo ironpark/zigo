@@ -2,7 +2,7 @@
 depends_on:
 - "20-automatic-binding-discovery#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Telemetry-hub exposes the same intended API with a substantially smaller declaration and its Zig/Go/generation/ABI checks pass.
 > NEXT: none

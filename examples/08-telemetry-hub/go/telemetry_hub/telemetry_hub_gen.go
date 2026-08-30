@@ -93,17 +93,17 @@ func (value *TelemetryHub) Close() {
 	})
 }
 
-func NewTelemetryHub(name string, capacity uint, mode Mode, overflow_policy OverflowPolicy, observer func(uint64, float64) int32) (*TelemetryHub, error) {
+func NewTelemetryHub(input_name string, max_samples uint, initial_mode Mode, overflow_policy OverflowPolicy, observer func(uint64, float64) int32) (*TelemetryHub, error) {
 	observerHandle := newCallbackHandle(observer)
-	result, code := raw.TelemetryHubCreate([]byte(name), capacity, uint32(mode), uint32(overflow_policy), uintptr(observerHandle))
+	result, code := raw.TelemetryHubCreate([]byte(input_name), max_samples, uint32(initial_mode), uint32(overflow_policy), uintptr(observerHandle))
 	if code != 0 {
 		deleteCallbackHandle(observerHandle)
 		return nil, errorForCode(code)
 	}
 	return &TelemetryHub{ptr: result, callbackHandles: []cgo.Handle{observerHandle}}, nil
 }
-func (t *TelemetryHub) Rename(name string) error {
-	code := raw.TelemetryHubRename(t.ptr, []byte(name))
+func (t *TelemetryHub) Rename(new_name string) error {
+	code := raw.TelemetryHubRename(t.ptr, []byte(new_name))
 	if code != 0 {
 		return errorForCode(code)
 	}
@@ -127,26 +127,26 @@ func (t *TelemetryHub) IsFull() bool {
 func (t *TelemetryHub) Mode() Mode {
 	return Mode(raw.TelemetryHubMode(t.ptr))
 }
-func (t *TelemetryHub) SetMode(mode Mode) Mode {
-	return Mode(raw.TelemetryHubSetMode(t.ptr, uint32(mode)))
+func (t *TelemetryHub) SetMode(new_mode Mode) Mode {
+	return Mode(raw.TelemetryHubSetMode(t.ptr, uint32(new_mode)))
 }
 func (t *TelemetryHub) OverflowPolicy() OverflowPolicy {
 	return OverflowPolicy(raw.TelemetryHubOverflowPolicy(t.ptr))
 }
-func (t *TelemetryHub) SetOverflowPolicy(policy OverflowPolicy) OverflowPolicy {
-	return OverflowPolicy(raw.TelemetryHubSetOverflowPolicy(t.ptr, uint32(policy)))
+func (t *TelemetryHub) SetOverflowPolicy(new_policy OverflowPolicy) OverflowPolicy {
+	return OverflowPolicy(raw.TelemetryHubSetOverflowPolicy(t.ptr, uint32(new_policy)))
 }
 func (t *TelemetryHub) Enabled() bool {
 	return raw.TelemetryHubEnabled(t.ptr) != 0
 }
-func (t *TelemetryHub) SetEnabled(enabled bool) bool {
-	return raw.TelemetryHubSetEnabled(t.ptr, boolToUint8(enabled)) != 0
+func (t *TelemetryHub) SetEnabled(new_enabled bool) bool {
+	return raw.TelemetryHubSetEnabled(t.ptr, boolToUint8(new_enabled)) != 0
 }
 func (t *TelemetryHub) Threshold() float64 {
 	return raw.TelemetryHubThreshold(t.ptr)
 }
-func (t *TelemetryHub) SetThreshold(threshold float64) error {
-	code := raw.TelemetryHubSetThreshold(t.ptr, threshold)
+func (t *TelemetryHub) SetThreshold(new_threshold float64) error {
+	code := raw.TelemetryHubSetThreshold(t.ptr, new_threshold)
 	if code != 0 {
 		return errorForCode(code)
 	}
@@ -155,8 +155,8 @@ func (t *TelemetryHub) SetThreshold(threshold float64) error {
 func (t *TelemetryHub) ScaleFactor() float64 {
 	return raw.TelemetryHubScaleFactor(t.ptr)
 }
-func (t *TelemetryHub) SetScaleFactor(factor float64) error {
-	code := raw.TelemetryHubSetScaleFactor(t.ptr, factor)
+func (t *TelemetryHub) SetScaleFactor(new_factor float64) error {
+	code := raw.TelemetryHubSetScaleFactor(t.ptr, new_factor)
 	if code != 0 {
 		return errorForCode(code)
 	}
@@ -165,8 +165,8 @@ func (t *TelemetryHub) SetScaleFactor(factor float64) error {
 func (t *TelemetryHub) Offset() float64 {
 	return raw.TelemetryHubOffset(t.ptr)
 }
-func (t *TelemetryHub) SetOffset(offset float64) error {
-	code := raw.TelemetryHubSetOffset(t.ptr, offset)
+func (t *TelemetryHub) SetOffset(new_offset float64) error {
+	code := raw.TelemetryHubSetOffset(t.ptr, new_offset)
 	if code != 0 {
 		return errorForCode(code)
 	}

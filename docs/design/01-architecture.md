@@ -324,27 +324,31 @@ const zigo = @import("zigo");
 const lib  = @import("mylib");
 
 pub const bindings = zigo.define(.{
+    .root = lib,
+    .discover = .public,
     .types = .{
         .{ .type = lib.Context, .repr = .@"opaque" },
         .{ .type = lib.Format,  .repr = .value },
         .{ .name = "FloatBuffer", .type = lib.Buffer(f32) },   // generic 구체화
     },
 
-    .functions = .{
-        .{ .@"fn" = lib.open, .params = .{ "path", "flags" } },
-        .{ .@"fn" = lib.version, .returns = .borrowed, .semantic = .utf8_string },
+    .overrides = .{
+        .{ .path = "root.version", .returns = .borrowed, .semantic = .utf8_string },
         .{
-            .@"fn" = lib.Context.process,
+            .path = "Context.process",
             .params = .{ "input", "output" },
             .param_meta = .{
                 .output = .{ .direction = .out },
             },
         },
     },
+    .exclude = .{"root.internalProbe"},
 });
 ```
 
-- `.params`는 **이름 공급 채널**이다. reflection에 파라미터 이름이 없기 때문에 사실상 필수.
+- compiler reflection이 공개 함수의 존재와 타입을 결정하고 AST가 소유자별 파라미터 이름과 문서를 보강한다.
+- `.params`는 AST 이름을 고정하거나 `param_meta`의 키를 reflection 단계에서 제공할 때 사용한다.
+- 자동 발견이 맞지 않는 정밀 allowlist는 기존 `.functions` 항목을 사용한다.
 - 나머지 메타데이터는 선택적이며, 없으면 보수적 기본값(`in`, `borrowed`, `[]byte`).
 - `package`/`prefix`는 build.zig 옵션으로 이동했다 (빌드 배선과 함께 있는 편이 자연스럽다).
 - 이 파일이 **공개 API 계약서**다. 리뷰 대상은 생성된 바인딩이 아니라 이 파일이다.

@@ -17,6 +17,7 @@ pub fn build(b: *std.Build) void {
         .name = "telemetry_hub",
         .module = telemetry_hub,
         .bindings = b.path("src/bindings.zig"),
+        .source_root = b.path("src/root.zig"),
         .go_dir = b.path("go"),
         .go_module = "example.com/zigo/telemetry-hub",
         .target = target,

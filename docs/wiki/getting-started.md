@@ -36,6 +36,7 @@ pub fn build(b: *std.Build) void {
         .name = "mylib",
         .module = mylib,
         .bindings = b.path("src/bindings.zig"),
+        .source_root = b.path("src/root.zig"),
         .go_dir = b.path("go"),
         .go_module = "example.com/mylib/go",
         .target = target,
@@ -50,7 +51,7 @@ pub fn build(b: *std.Build) void {
 ## 3. 공개 API 선언
 
 라이브러리 구현은 그대로 두고 `src/bindings.zig`에 Go로 노출할 선언만 적는다.
-함수 이름은 `.name`으로 명시하는 것이 가장 안정적이다.
+작은 API나 정밀한 allowlist가 필요하면 함수 목록을 명시한다.
 
 ```zig
 const zigo = @import("zigo");
@@ -67,6 +68,26 @@ pub const bindings = zigo.define(.{
     },
 });
 ```
+
+공개 함수 전체가 바인딩 대상인 큰 API는 자동 발견을 명시적으로 선택할 수 있다.
+
+```zig
+pub const bindings = zigo.define(.{
+    .root = mylib,
+    .discover = .public,
+    .types = .{
+        .{ .type = mylib.Context, .repr = .@"opaque" },
+    },
+    .overrides = .{
+        .{ .path = "Context.name", .semantic = .utf8_string },
+    },
+    .exclude = .{"Context.debugState"},
+});
+```
+
+자동 발견에서 등록 타입의 함수는 `Context.process`, 모듈 함수는 `root.version` 경로로
+override하거나 제외한다. 새 공개 함수도 자동으로 ABI에 들어오므로 생성물과 ABI 검사를
+통해 변경을 리뷰한다.
 
 Generic 타입은 구체화된 타입을 이름과 함께 등록한다.
 
