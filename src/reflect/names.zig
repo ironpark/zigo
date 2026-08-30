@@ -8,17 +8,27 @@ pub fn apply(
     io: std.Io,
     document: *semantic.Semantic,
     bindings_path: []const u8,
+    diagnostics: *std.Io.Writer,
 ) !void {
+    const bindings_source = std.Io.Dir.cwd().readFileAlloc(io, bindings_path, allocator, .limited(8 * 1024 * 1024)) catch |err| {
+        try writeReadError(diagnostics, bindings_path, err);
+        return err;
+    };
     const functions = try allocator.dupe(semantic.SemanticFn, document.functions);
-    const bindings_source = std.Io.Dir.cwd().readFileAlloc(io, bindings_path, allocator, .limited(8 * 1024 * 1024)) catch return;
-    try scanSource(allocator, bindings_source, functions);
+    var has_errors = try scanSourceWithDiagnostics(allocator, bindings_source, functions, bindings_path, diagnostics);
 
     const directory = std.fs.path.dirname(bindings_path) orelse ".";
     const root_path = try std.fs.path.join(allocator, &.{ directory, "root.zig" });
     if (!std.mem.eql(u8, root_path, bindings_path)) {
         if (std.Io.Dir.cwd().readFileAlloc(io, root_path, allocator, .limited(8 * 1024 * 1024))) |root_source| {
-            try scanSource(allocator, root_source, functions);
-        } else |_| {}
+            has_errors = try scanSourceWithDiagnostics(allocator, root_source, functions, root_path, diagnostics) or has_errors;
+        } else |err| switch (err) {
+            error.FileNotFound => {},
+            else => {
+                try writeReadError(diagnostics, root_path, err);
+                has_errors = true;
+            },
+        }
     }
 
     var cursor: usize = 0;
@@ -31,10 +41,14 @@ pub fn apply(
         if (!std.mem.endsWith(u8, referenced, ".zig")) continue;
         const path = try std.fs.path.join(allocator, &.{ directory, referenced });
         if (std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(8 * 1024 * 1024))) |source| {
-            try scanSource(allocator, source, functions);
-        } else |_| {}
+            has_errors = try scanSourceWithDiagnostics(allocator, source, functions, path, diagnostics) or has_errors;
+        } else |err| {
+            try writeReadError(diagnostics, path, err);
+            has_errors = true;
+        }
     }
     document.functions = functions;
+    if (has_errors) return error.EnrichmentFailed;
 }
 
 pub fn writeWarnings(writer: *std.Io.Writer, document: semantic.Semantic) !void {
@@ -48,12 +62,31 @@ pub fn writeWarnings(writer: *std.Io.Writer, document: semantic.Semantic) !void 
     }
 }
 
-fn scanSource(allocator: std.mem.Allocator, source: []const u8, functions: []semantic.SemanticFn) !void {
+fn scanSourceWithDiagnostics(
+    allocator: std.mem.Allocator,
+    source: []const u8,
+    functions: []semantic.SemanticFn,
+    path: []const u8,
+    diagnostics: *std.Io.Writer,
+) !bool {
+    const parse_error_count = try scanSource(allocator, source, functions);
+    if (parse_error_count != 0) {
+        try diagnostics.print("error: zigo could not enrich names from {s}: {d} Zig parse error(s)\n", .{ path, parse_error_count });
+        return true;
+    }
+    return false;
+}
+
+fn writeReadError(writer: *std.Io.Writer, path: []const u8, err: anyerror) !void {
+    try writer.print("error: zigo could not read enrichment source {s}: {s}\n", .{ path, @errorName(err) });
+}
+
+fn scanSource(allocator: std.mem.Allocator, source: []const u8, functions: []semantic.SemanticFn) !usize {
     const terminated = try allocator.dupeZ(u8, source);
     defer allocator.free(terminated);
     var tree = try std.zig.Ast.parse(allocator, terminated, .zig);
     defer tree.deinit(allocator);
-    if (tree.errors.len != 0) return;
+    if (tree.errors.len != 0) return tree.errors.len;
 
     for (0..tree.nodes.len) |raw_index| {
         const node: std.zig.Ast.Node.Index = @enumFromInt(raw_index);
@@ -89,6 +122,7 @@ fn scanSource(allocator: std.mem.Allocator, source: []const u8, functions: []sem
             break;
         }
     }
+    return 0;
 }
 
 fn docCommentAlloc(allocator: std.mem.Allocator, tree: std.zig.Ast, first_token: std.zig.Ast.TokenIndex) !?[]const u8 {
@@ -128,7 +162,7 @@ test "AST names and docs enrich only fallback metadata" {
     };
     const functions = try std.testing.allocator.dupe(semantic.SemanticFn, document.functions);
     defer std.testing.allocator.free(functions);
-    try scanSource(std.testing.allocator, source, functions);
+    try std.testing.expectEqual(@as(usize, 0), try scanSource(std.testing.allocator, source, functions));
     document.functions = functions;
     const ast_name = document.functions[0].params[0].name;
     defer std.testing.allocator.free(document.functions[0].params);
@@ -156,4 +190,56 @@ test "fallback names emit a concise warning" {
     defer output.deinit();
     try writeWarnings(&output.writer, document);
     try std.testing.expectEqualStrings("warning: zigo has no parameter names for fallback; using p0-style names\n", output.written());
+}
+
+test "missing primary binding source is fatal" {
+    var document: semantic.Semantic = .{
+        .package = "names",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    var diagnostics: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer diagnostics.deinit();
+    try std.testing.expectError(error.FileNotFound, apply(
+        std.testing.allocator,
+        std.testing.io,
+        &document,
+        ".zig-cache/zigo-missing-bindings.zig",
+        &diagnostics.writer,
+    ));
+    try std.testing.expect(std.mem.indexOf(u8, diagnostics.written(), "zigo-missing-bindings.zig: FileNotFound") != null);
+}
+
+test "auxiliary read and parse failures identify their source paths" {
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    try temporary.dir.writeFile(std.testing.io, .{
+        .sub_path = "bindings.zig",
+        .data = "const broken = @import(\"broken.zig\");\nconst missing = @import(\"missing.zig\");\n",
+    });
+    try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "broken.zig", .data = "pub fn (\n" });
+    const bindings_path = try std.fmt.allocPrint(std.testing.allocator, ".zig-cache/tmp/{s}/bindings.zig", .{temporary.sub_path});
+    defer std.testing.allocator.free(bindings_path);
+
+    var document: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "fallback",
+            .params = &.{.{ .name = "p0", .type = .{ .int = .{ .bits = 32, .signed = true } } }},
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_fallback",
+        }},
+        .package = "names",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var diagnostics: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer diagnostics.deinit();
+    try std.testing.expectError(error.EnrichmentFailed, apply(arena.allocator(), std.testing.io, &document, bindings_path, &diagnostics.writer));
+
+    try std.testing.expect(std.mem.indexOf(u8, diagnostics.written(), "broken.zig: 1 Zig parse error(s)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, diagnostics.written(), "missing.zig: FileNotFound") != null);
+    try std.testing.expect(std.mem.indexOf(u8, diagnostics.written(), "root.zig") == null);
+    try std.testing.expectEqual(.fallback, document.functions[0].params[0].name_source);
 }

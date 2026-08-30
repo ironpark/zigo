@@ -234,6 +234,9 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     semantic_run.addArgs(&.{ options.name, options.prefix });
     semantic_run.addFileArg(options.bindings);
     const semantic_json = semantic_run.captureStdOut(.{ .basename = "semantic.json", .trim_whitespace = .none });
+    // Successful fallback warnings stay captured so Zig does not label a
+    // successful command as failed. On a non-zero exit, Step.Run reports the
+    // captured enrichment diagnostics with the actual failure.
     _ = semantic_run.captureStdErr(.{ .basename = "warnings.txt", .trim_whitespace = .none });
 
     const raw_source_dir = options.go_dir.path(b, raw_package.path).getPath(b);

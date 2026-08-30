@@ -2,7 +2,7 @@
 depends_on:
 - "15-generation-reliability#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Focused tests verify fatal primary errors, allowed missing root files, visible
 > NEXT: none

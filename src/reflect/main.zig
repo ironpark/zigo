@@ -8,10 +8,10 @@ pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(allocator);
     if (args.len != 5) return error.InvalidArguments;
 
-    var document = try walk.reflect(allocator, bindings.bindings, args[2], args[3]);
-    try names.apply(allocator, init.io, &document, args[4]);
     var stderr_buffer: [1024]u8 = undefined;
     var stderr = std.Io.File.Writer.init(.stderr(), init.io, &stderr_buffer);
+    var document = try walk.reflect(allocator, bindings.bindings, args[2], args[3]);
+    try names.apply(allocator, init.io, &document, args[4], &stderr.interface);
     try names.writeWarnings(&stderr.interface, document);
     try stderr.interface.flush();
     const semantic_json = try document.serialize(allocator);

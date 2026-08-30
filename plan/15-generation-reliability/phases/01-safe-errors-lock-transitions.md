@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T04:43:15Z"
 depends_on:
 - "15-generation-reliability#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Every unsafe lock state or transition is rejected without output mutation,
 > NEXT: none
