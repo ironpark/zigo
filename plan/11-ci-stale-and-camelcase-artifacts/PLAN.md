@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-08-30T03:36:33Z"
 description: Make stale generated-file CI checks effective and keep CamelCase package artifact names normalized end to end.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-30T03:33:00Z"
 ---
 > NEXT: Implement the normalized artifact stem, effective CI stale gate, and CamelCase integration example. ([Phase 0](phases/00-enforce-stale-checks-and-normalized-artifacts.md))
 
 # Phases
 
-- [ ] [Phase 00: Enforce stale checks and normalized artifacts](phases/00-enforce-stale-checks-and-normalized-artifacts.md)
+- [x] [Phase 00: Enforce stale checks and normalized artifacts](phases/00-enforce-stale-checks-and-normalized-artifacts.md)
 
 # Shared Verification
 
