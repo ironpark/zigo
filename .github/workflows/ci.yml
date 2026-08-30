@@ -25,16 +25,35 @@ jobs:
           cache: false
       - name: Zig unit and snapshot tests
         run: zig build test --summary all
-      - name: Generate, check, and test all examples
+      - name: Check, generate, and test all examples
         shell: bash
         run: |
           set -euo pipefail
-          for example in examples/01-scalar examples/02-errors examples/03-opaque examples/04-callback examples/05-pipeline; do
+          examples=(
+            examples/01-scalar
+            examples/02-errors
+            examples/03-opaque
+            examples/04-callback
+            examples/05-pipeline
+            examples/06-camel-case
+          )
+
+          for example in "${examples[@]}"; do
             (
               cd "$example"
-              zig build go
               zig build go-check abi-check --summary all
+              zig build go
             )
+          done
+
+          if [[ -n "$(git status --porcelain --untracked-files=all -- examples)" ]]; then
+            echo "Generated example files are stale. Run 'zig build go' in each changed example and commit the result."
+            git status --short -- examples
+            git diff -- examples
+            exit 1
+          fi
+
+          for example in "${examples[@]}"; do
             (
               cd "$example/go"
               go test ./...

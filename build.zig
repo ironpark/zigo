@@ -299,7 +299,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         .imports = &.{.{ .name = "zigo_target", .module = options.module }},
     });
     const lib = b.addLibrary(.{
-        .name = b.fmt("{s}_zigo", .{options.name}),
+        .name = b.fmt("{s}_zigo", .{go_package}),
         .linkage = switch (options.link_mode) {
             .static => .static,
             .dynamic => .dynamic,
@@ -309,7 +309,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     lib.root_module.addCSourceFile(.{ .file = generated_dir.path(b, "panic.c"), .flags = &.{"-fno-sanitize=undefined"} });
     lib.root_module.linkSystemLibrary("c", .{});
     const install_lib = b.addInstallArtifact(lib, .{});
-    const header_name = b.fmt("zigo_{s}.h", .{options.name});
+    const header_name = b.fmt("zigo_{s}.h", .{go_package});
     const install_header = b.addInstallHeaderFile(generated_dir.path(b, header_name), header_name);
     const update = b.addUpdateSourceFiles();
     update.addCopyFileToSource(go_sources_dir.path(b, raw_go_path), sourcePath(b, options.go_dir, raw_go_path));
