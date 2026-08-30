@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T09:45:20Z"
 depends_on:
 - "26-26-zig-test-hardening#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 손상 semantic이 panic하지 않고 명시적 오류를 반환하며 관련 test가 통과한다.
 > NEXT: none
