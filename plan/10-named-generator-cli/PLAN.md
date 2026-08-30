@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-08-30T03:18:09Z"
 description: Replace the internal zigo-gen positional protocol with tested generate, check, and abi-diff subcommands using named arguments.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-30T03:14:53Z"
 ---
 > NEXT: Replace the positional generator protocol with named subcommands and verify it end to end. ([Phase 0](phases/00-named-generator-protocol.md))
 
 # Phases
 
-- [ ] [Phase 00: Named generator protocol](phases/00-named-generator-protocol.md)
+- [x] [Phase 00: Named generator protocol](phases/00-named-generator-protocol.md)
 
 # Shared Verification
 
