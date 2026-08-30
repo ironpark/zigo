@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T09:58:10Z"
 description: Harden Zig tests by running every example in CI, validating semantic references, wiring negative fixtures, and adding parser, CLI, build-option, and lowering coverage.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-30T09:37:22Z"
 ---
 > NEXT: 8개 example의 Zig 테스트를 표준 build step과 CI에 연결한다. ([Phase 0](phases/00-example-test-discovery-and-ci.md))
@@ -11,7 +12,7 @@ registered_at: "2026-08-30T09:37:22Z"
 - [x] [Phase 01: Semantic referential integrity](phases/01-semantic-referential-integrity.md)
 - [x] [Phase 02: Negative process integration](phases/02-negative-process-integration.md)
 - [x] [Phase 03: Parser and lowering unit coverage](phases/03-parser-and-lowering-unit-coverage.md)
-- [ ] [Phase 04: Build options and full matrix](phases/04-build-options-and-full-matrix.md)
+- [x] [Phase 04: Build options and full matrix](phases/04-build-options-and-full-matrix.md)
 
 # Shared Verification
 
