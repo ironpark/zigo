@@ -24,6 +24,7 @@ pub const Generate = struct {
     raw_package_path: []const u8 = "internal/raw",
     raw_package_name: []const u8 = "raw",
     raw_colocated: bool = false,
+    auto_cleanup: bool = false,
     errors_lock_path: ?[]const u8 = null,
 };
 
@@ -108,6 +109,8 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
     var errors_lock_path: ?[]const u8 = null;
     var raw_colocated = false;
     var raw_colocated_seen = false;
+    var auto_cleanup = false;
+    var auto_cleanup_seen = false;
 
     var index: usize = 0;
     while (index < args.len) {
@@ -117,6 +120,10 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
             if (raw_colocated_seen) return error.DuplicateArgument;
             raw_colocated_seen = true;
             raw_colocated = true;
+        } else if (std.mem.eql(u8, flag, "--auto-cleanup")) {
+            if (auto_cleanup_seen) return error.DuplicateArgument;
+            auto_cleanup_seen = true;
+            auto_cleanup = true;
         } else if (std.mem.eql(u8, flag, "--semantic")) {
             try set(&semantic_path, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--output")) {
@@ -166,6 +173,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .raw_package_path = raw_package_path orelse "internal/raw",
         .raw_package_name = raw_package_name orelse "raw",
         .raw_colocated = raw_colocated,
+        .auto_cleanup = auto_cleanup,
         .errors_lock_path = errors_lock_path,
     };
 }
@@ -269,6 +277,7 @@ test "generate command parses named arguments" {
         "--raw-package-name",
         "scalar",
         "--raw-colocated",
+        "--auto-cleanup",
         "--errors-lock",
         "errors.lock.json",
     });
@@ -279,6 +288,7 @@ test "generate command parses named arguments" {
     try std.testing.expectEqualStrings("-Icustom", options.cflags);
     try std.testing.expectEqualStrings("scalar", options.raw_package_path);
     try std.testing.expect(options.raw_colocated);
+    try std.testing.expect(options.auto_cleanup);
     try std.testing.expectEqualStrings("errors.lock.json", options.errors_lock_path.?);
 }
 
@@ -289,6 +299,7 @@ test "generate command retains defaults" {
     try std.testing.expectEqualStrings("scalar", options.go_module);
     try std.testing.expectEqualStrings("internal/raw", options.raw_package_path);
     try std.testing.expect(!options.raw_colocated);
+    try std.testing.expect(!options.auto_cleanup);
     try std.testing.expect(options.errors_lock_path == null);
 }
 
@@ -308,6 +319,7 @@ test "parser rejects incomplete unknown and duplicate arguments" {
     try std.testing.expectError(error.MissingValue, parse(&.{ "check", "--generated" }));
     try std.testing.expectError(error.UnknownArgument, parse(&.{ "check", "--wat", "value" }));
     try std.testing.expectError(error.DuplicateArgument, parse(&.{ "check", "--generated", "one", "--generated", "two", "--source", "go" }));
+    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar", "--auto-cleanup", "--auto-cleanup" }));
     try std.testing.expectError(error.InvalidValue, parse(&.{ "abi-diff", "--base", "old", "--current", "new", "--fail-on", "all" }));
 }
 

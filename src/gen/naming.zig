@@ -38,6 +38,28 @@ pub fn pascalAlloc(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     return output.toOwnedSlice(allocator);
 }
 
+pub fn camelAlloc(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
+    const snake = try snakeAlloc(allocator, input);
+    defer allocator.free(snake);
+    var output: std.ArrayList(u8) = .empty;
+    errdefer output.deinit(allocator);
+    var iterator = std.mem.splitScalar(u8, snake, '_');
+    var first = true;
+    while (iterator.next()) |word| {
+        if (word.len == 0) continue;
+        if (first) {
+            try output.appendSlice(allocator, word);
+            first = false;
+        } else if (initialism(word)) |canonical| {
+            try output.appendSlice(allocator, canonical);
+        } else {
+            try output.append(allocator, std.ascii.toUpper(word[0]));
+            try output.appendSlice(allocator, word[1..]);
+        }
+    }
+    return output.toOwnedSlice(allocator);
+}
+
 fn initialism(word: []const u8) ?[]const u8 {
     const table = [_]struct { lower: []const u8, canonical: []const u8 }{
         .{ .lower = "id", .canonical = "ID" },
@@ -49,17 +71,21 @@ fn initialism(word: []const u8) ?[]const u8 {
 }
 
 test "naming normalizes symbols and Go initialisms" {
-    const cases = [_]struct { input: []const u8, snake: []const u8, pascal: []const u8 }{
-        .{ .input = "lookupID", .snake = "lookup_id", .pascal = "LookupID" },
-        .{ .input = "parseURL", .snake = "parse_url", .pascal = "ParseURL" },
-        .{ .input = "validateUTF8", .snake = "validate_utf8", .pascal = "ValidateUTF8" },
+    const cases = [_]struct { input: []const u8, snake: []const u8, pascal: []const u8, camel: []const u8 }{
+        .{ .input = "lookupID", .snake = "lookup_id", .pascal = "LookupID", .camel = "lookupID" },
+        .{ .input = "parseURL", .snake = "parse_url", .pascal = "ParseURL", .camel = "parseURL" },
+        .{ .input = "validateUTF8", .snake = "validate_utf8", .pascal = "ValidateUTF8", .camel = "validateUTF8" },
+        .{ .input = "HTTPClient", .snake = "http_client", .pascal = "HttpClient", .camel = "httpClient" },
     };
     for (cases) |case| {
         const snake = try snakeAlloc(std.testing.allocator, case.input);
         defer std.testing.allocator.free(snake);
         const pascal = try pascalAlloc(std.testing.allocator, case.input);
         defer std.testing.allocator.free(pascal);
+        const camel = try camelAlloc(std.testing.allocator, case.input);
+        defer std.testing.allocator.free(camel);
         try std.testing.expectEqualStrings(case.snake, snake);
         try std.testing.expectEqualStrings(case.pascal, pascal);
+        try std.testing.expectEqualStrings(case.camel, camel);
     }
 }

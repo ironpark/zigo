@@ -19,6 +19,7 @@ pub const Options = struct {
     raw_package_path: []const u8 = "internal/raw",
     raw_package_name: []const u8 = "raw",
     raw_colocated: bool = false,
+    auto_cleanup: bool = false,
     errors_lock_bytes: ?[]const u8 = null,
 };
 
@@ -72,6 +73,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .raw_package_path = options.raw_package_path,
         .raw_package_name = options.raw_package_name,
         .raw_colocated = options.raw_colocated,
+        .auto_cleanup = options.auto_cleanup,
     };
     var prepared: std.ArrayList(PreparedFile) = .empty;
     defer prepared.deinit(scratch_allocator);
@@ -326,12 +328,14 @@ test "callbacks use role-specific public types and typed handle helpers" {
     try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, ".Value().(func(uint8) int32)"));
 }
 
-test "opaque handles lower constructors methods and idempotent close" {
+test "opt-in cleanup isolates state stops explicitly and keeps owners alive" {
     const fixture =
         \\{
         \\  "constructors":[{"deinit":"deinit","init":"create","type":"Context"}],
         \\  "functions":[
-        \\    {"name":"create","namespace":"Context","ownership":"caller","params":[],"return":{"error_set":["OutOfMemory"],"kind":"error_union","payload":{"const":false,"kind":"opaque_ptr","nullable":false,"ref":"Context"}},"symbol":"zg_context_create"},
+        \\    {"name":"create","namespace":"Context","ownership":"caller","params":[{"name":"callback","retention":"retained","type":{"c_callconv":true,"has_userdata":true,"kind":"callback","params":[{"bits":32,"kind":"int","signed":true},{"bits":64,"is_usize":true,"kind":"int","signed":false}],"return":{"bits":32,"kind":"int","signed":true}}},{"name":"userdata","type":{"bits":64,"is_usize":true,"kind":"int","signed":false}}],"return":{"error_set":["OutOfMemory"],"kind":"error_union","payload":{"const":false,"kind":"opaque_ptr","nullable":false,"ref":"Context"}},"symbol":"zg_context_create"},
+        \\    {"name":"touch","params":[],"receiver":"Context","return":{"kind":"void"},"symbol":"zg_context_touch"},
+        \\    {"name":"use","params":[{"name":"context","type":{"const":false,"kind":"opaque_ptr","nullable":false,"ref":"Context"}}],"return":{"kind":"void"},"symbol":"zg_use"},
         \\    {"name":"deinit","params":[],"receiver":"Context","return":{"kind":"void"},"symbol":"zg_context_deinit"}
         \\  ],
         \\  "package":"opaque","prefix":"zg","types":[{"kind":"opaque","name":"Context","zig_path":"root.Context"}],"zig_version":"0.16.0"
@@ -348,23 +352,37 @@ test "opaque handles lower constructors methods and idempotent close" {
         .raw_package_path = "opaque",
         .raw_package_name = "opaque",
         .raw_colocated = true,
+        .auto_cleanup = true,
     });
     const shim = try temporary.dir.readFileAlloc(std.testing.io, "shim.zig", std.testing.allocator, .limited(32 * 1024));
     defer std.testing.allocator.free(shim);
-    try std.testing.expect(std.mem.containsAtLeast(u8, shim, 1, "target.Context.create()"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, shim, 1, "target.Context.create("));
     try std.testing.expect(std.mem.containsAtLeast(u8, shim, 1, "target.Context.deinit(self)"));
     const public = try temporary.dir.readFileAlloc(std.testing.io, "opaque/opaque_gen.go", std.testing.allocator, .limited(32 * 1024));
     defer std.testing.allocator.free(public);
-    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func NewContext() (*Context, error)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "import (\n\t\"runtime\"\n\t\"runtime/cgo\"\n)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func NewContext(callback ContextCallback) (*Context, error)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "zigoRawContextCreate("));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "return newContext(result, []cgo.Handle{callbackHandle}), nil"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func (c *Context) Touch() {\n\tdefer runtime.KeepAlive(c)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func Use(context *Context) {\n\tdefer runtime.KeepAlive(context)"));
     try std.testing.expect(std.mem.indexOf(u8, public, "type Context struct") == null);
     try std.testing.expect(std.mem.indexOf(u8, public, "zigoRawLastErrorMessage()") == null);
     const public_types = try temporary.dir.readFileAlloc(std.testing.io, "opaque/opaque_type_gen.go", std.testing.allocator, .limited(32 * 1024));
     defer std.testing.allocator.free(public_types);
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "type Context struct"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "type ContextRef struct"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "cleanup         runtime.Cleanup"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "type contextCleanupState struct"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "callbackHandles []cgo.Handle"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "runtime.AddCleanup(value, cleanupContext, state)"));
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "runtime.AddCleanup(value, cleanupContext, value)") == null);
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "func cleanupContext(state contextCleanupState)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "zigoRawContextDeinit(state.ptr)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "deleteCallbackHandle(handle)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "value.once.Do"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "zigoRawContextDeinit(value.ptr)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "value.cleanup.Stop()"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "runtime.KeepAlive(value)"));
     const public_errors = try temporary.dir.readFileAlloc(std.testing.io, "opaque/opaque_errors_gen.go", std.testing.allocator, .limited(32 * 1024));
     defer std.testing.allocator.free(public_errors);
     try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "zigoRawLastErrorMessage()"));

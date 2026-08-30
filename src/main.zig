@@ -62,6 +62,7 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         .raw_package_path = options.raw_package_path,
         .raw_package_name = options.raw_package_name,
         .raw_colocated = options.raw_colocated,
+        .auto_cleanup = options.auto_cleanup,
         .errors_lock_bytes = errors_lock_bytes,
     });
 }

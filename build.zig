@@ -28,6 +28,7 @@ pub const Options = struct {
     cgo_flags: ?CgoFlags = null,
     abi_base: ?[]const u8 = null,
     raw_package: RawPackage = .internal,
+    auto_cleanup: bool = false,
 };
 
 const ResolvedRawPackage = struct {
@@ -271,6 +272,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         "--raw-package-name",  raw_package.name,
     });
     if (raw_package.colocated) generate.addArg("--raw-colocated");
+    if (options.auto_cleanup) generate.addArg("--auto-cleanup");
     const errors_lock_path = "zigo/errors.lock.json";
     const has_errors_lock = blk: {
         b.build_root.handle.access(b.graph.io, errors_lock_path, .{}) catch |err| switch (err) {
@@ -345,7 +347,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     update.addCopyFileToSource(semantic_json, "zigo/semantic.json");
     const go_mod_path = sourcePath(b, options.go_dir, "go.mod");
     b.build_root.handle.access(b.graph.io, go_mod_path, .{}) catch |err| switch (err) {
-        error.FileNotFound => update.addBytesToSource(b.fmt("module {s}\n\ngo 1.23\n", .{options.go_module}), go_mod_path),
+        error.FileNotFound => update.addBytesToSource(b.fmt("module {s}\n\ngo {s}\n", .{ options.go_module, if (options.auto_cleanup) "1.24" else "1.23" }), go_mod_path),
         else => @panic("unable to inspect go.mod"),
     };
     update.step.dependOn(&install_lib.step);
