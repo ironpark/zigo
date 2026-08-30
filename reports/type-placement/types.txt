@@ -1,0 +1,86 @@
+# ziglyzer production type inventory
+# target: build.zig plus src/
+# ziglyzer source: 150cfba
+# target source: ca3f2a4
+
+build.zig:1:1	file-root	build
+build.zig:3:22	struct	CgoFlags
+build.zig:8:22	enum	LinkMode
+build.zig:10:21	struct	Options
+build.zig:24:24	struct	GoBindings
+src/gen/abi_diff.zig:1:1	file-root	abi_diff
+src/gen/abi_diff.zig:4:24	enum	ChangeKind
+src/gen/abi_diff.zig:5:20	struct	Change
+src/gen/abi_diff.zig:11:20	struct	Report
+src/gen/diagnostic.zig:1:1	file-root	diagnostic
+src/gen/diagnostic.zig:3:22	enum	Severity
+src/gen/diagnostic.zig:5:18	struct	Site
+src/gen/diagnostic.zig:10:24	struct	Diagnostic
+src/gen/emit.zig:1:1	file-root	emit
+src/gen/emit.zig:6:21	struct	Options
+src/gen/emit.zig:16:21	struct	Emitter
+src/gen/generator.zig:1:1	file-root	generator
+src/gen/generator.zig:9:21	struct	Options
+src/gen/generator.zig:99:25	struct	<anonymous>
+src/gen/generator.zig:287:25	struct	<anonymous>
+src/gen/ir/abi.zig:1:1	file-root	abi
+src/gen/ir/abi.zig:3:23	union	AbiScalar
+src/gen/ir/abi.zig:12:14	struct	<anonymous>
+src/gen/ir/abi.zig:19:22	struct	AbiParam
+src/gen/ir/abi.zig:25:22	enum	Role
+src/gen/ir/abi.zig:28:23	struct	ErrorCode
+src/gen/ir/abi.zig:30:19	struct	AbiFn
+src/gen/ir/abi.zig:38:21	struct	Program
+src/gen/ir/errors_lock.zig:1:1	file-root	errors_lock
+src/gen/ir/errors_lock.zig:3:23	struct	ErrorCode
+src/gen/ir/errors_lock.zig:8:24	struct	ErrorsLock
+src/gen/ir/semantic.zig:1:1	file-root	semantic
+src/gen/ir/semantic.zig:3:17	struct	Int
+src/gen/ir/semantic.zig:9:19	struct	Float
+src/gen/ir/semantic.zig:10:17	struct	Ref
+src/gen/ir/semantic.zig:11:23	struct	OpaquePtr
+src/gen/ir/semantic.zig:16:19	struct	Slice
+src/gen/ir/semantic.zig:20:22	struct	Optional
+src/gen/ir/semantic.zig:21:24	struct	ErrorUnion
+src/gen/ir/semantic.zig:26:22	struct	Callback
+src/gen/ir/semantic.zig:33:22	union	TypeNode
+src/gen/ir/semantic.zig:196:24	enum	NameSource
+src/gen/ir/semantic.zig:197:23	enum	Direction
+src/gen/ir/semantic.zig:198:23	enum	Retention
+src/gen/ir/semantic.zig:199:26	enum	SemanticHint
+src/gen/ir/semantic.zig:200:23	enum	Ownership
+src/gen/ir/semantic.zig:202:23	struct	Parameter
+src/gen/ir/semantic.zig:211:24	struct	SemanticFn
+src/gen/ir/semantic.zig:224:22	enum	TypeKind
+src/gen/ir/semantic.zig:225:20	enum	Layout
+src/gen/ir/semantic.zig:226:23	struct	TypeField
+src/gen/ir/semantic.zig:231:22	struct	TypeDecl
+src/gen/ir/semantic.zig:240:25	struct	Constructor
+src/gen/ir/semantic.zig:246:22	struct	Semantic
+src/gen/lower.zig:1:1	file-root	lower
+src/gen/naming.zig:1:1	file-root	naming
+src/gen/naming.zig:42:22	struct	<anonymous>
+src/gen/naming.zig:52:22	struct	<anonymous>
+src/gen/sync_check.zig:1:1	file-root	sync_check
+src/gen/sync_check.zig:3:28	enum	DifferenceKind
+src/gen/sync_check.zig:4:24	struct	Difference
+src/gen/sync_check.zig:6:20	struct	Result
+src/gen/sync_check.zig:46:60	struct	<anonymous>
+src/gen/validate.zig:1:1	file-root	validate
+src/gen/validate.zig:200:22	struct	<anonymous>
+src/main.zig:1:1	file-root	main
+src/reflect/main.zig:1:1	file-root	main
+src/reflect/names.zig:1:1	file-root	names
+src/reflect/walk.zig:1:1	file-root	walk
+src/reflect/walk.zig:314:17	struct	<anonymous>
+src/reflect/walk.zig:386:21	struct	Fixture
+src/reflect/walk.zig:387:23	union	Value
+src/reflect/walk.zig:415:21	struct	Generic
+src/reflect/walk.zig:417:20	struct	<anonymous>
+src/root.zig:1:1	file-root	root
+src/root.zig:9:17	struct	<anonymous>
+
+# Supplemental source-context finding not emitted as a separate --types row:
+# src/reflect/walk.zig:416:12 type-factory Generic.Buffer(comptime T: type) type
+# src/reflect/walk.zig:420:11 local alias FloatBuffer = Generic.Buffer(f32)
+# src/reflect/walk.zig:421:11 local alias IntBuffer = Generic.Buffer(i32)
