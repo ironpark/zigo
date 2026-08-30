@@ -2,7 +2,7 @@
 depends_on:
 - "01-zigo-go-bindings#8"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Editing a generated file makes `zig build go-check` fail and name that file.
 > NEXT: none

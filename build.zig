@@ -80,6 +80,17 @@ pub fn build(b: *std.Build) void {
                 .target = target,
                 .optimize = optimize,
             }) },
+            .{ .name = "abi_diff", .module = b.createModule(.{
+                .root_source_file = b.path("src/gen/abi_diff.zig"),
+                .target = target,
+                .optimize = optimize,
+                .imports = &.{.{ .name = "semantic", .module = semantic_module }},
+            }) },
+            .{ .name = "sync_check", .module = b.createModule(.{
+                .root_source_file = b.path("src/gen/sync_check.zig"),
+                .target = target,
+                .optimize = optimize,
+            }) },
             .{ .name = "abi", .module = abi_module },
             .{ .name = "reflect_walk", .module = reflect_walk_module },
             .{ .name = "reflect_names", .module = reflect_names_module },
@@ -121,11 +132,26 @@ pub fn build(b: *std.Build) void {
     const run_reflect_walk_tests = b.addRunArtifact(reflect_walk_tests);
     const reflect_names_tests = b.addTest(.{ .root_module = reflect_names_module });
     const run_reflect_names_tests = b.addRunArtifact(reflect_names_tests);
+    const abi_diff_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/gen/abi_diff.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "semantic", .module = semantic_module }},
+    }) });
+    const run_abi_diff_tests = b.addRunArtifact(abi_diff_tests);
+    const sync_check_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("src/gen/sync_check.zig"),
+        .target = target,
+        .optimize = optimize,
+    }) });
+    const run_sync_check_tests = b.addRunArtifact(sync_check_tests);
     const test_step = b.step("test", "Run unit and snapshot harness tests");
     test_step.dependOn(&run_tests.step);
     test_step.dependOn(&run_generator_tests.step);
     test_step.dependOn(&run_reflect_walk_tests.step);
     test_step.dependOn(&run_reflect_names_tests.step);
+    test_step.dependOn(&run_abi_diff_tests.step);
+    test_step.dependOn(&run_sync_check_tests.step);
 
     const snapshot_exe = b.addExecutable(.{
         .name = "zigo-snapshot",
@@ -196,9 +222,18 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     if (has_errors_lock) generate.addFileArg(b.path(errors_lock_path));
 
     const check = b.addRunArtifact(generator);
-    check.addArg("--check-stub");
+    check.addArg("--check");
+    check.addDirectoryArg(generated_dir);
+    check.addDirectoryArg(options.go_dir);
+    const baseline = b.addSystemCommand(&.{ "git", "show" });
+    baseline.setCwd(b.path("."));
+    baseline.addArg(b.fmt("{s}:./zigo/semantic.json", .{options.abi_base}));
+    const baseline_semantic = baseline.captureStdOut(.{ .basename = "semantic-base.json", .trim_whitespace = .none });
     const abi_check = b.addRunArtifact(generator);
-    abi_check.addArgs(&.{ "--abi-check-stub", options.abi_base });
+    abi_check.addArg("--abi-diff");
+    abi_check.addFileArg(baseline_semantic);
+    abi_check.addFileArg(semantic_json);
+    abi_check.addArgs(&.{ "--fail-on", "breaking" });
 
     const shim_module = b.createModule(.{
         .root_source_file = generated_dir.path(b, "shim.zig"),
@@ -221,6 +256,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     update.addCopyFileToSource(generated_dir.path(b, "internal/raw/cgo.go"), sourcePath(b, options.go_dir, "internal/raw/cgo.go"));
     update.addCopyFileToSource(generated_dir.path(b, b.fmt("{s}/generated.go", .{options.name})), sourcePath(b, options.go_dir, b.fmt("{s}/generated.go", .{options.name})));
     update.addCopyFileToSource(generated_dir.path(b, "errors.lock.json"), errors_lock_path);
+    update.addCopyFileToSource(semantic_json, "zigo/semantic.json");
     const go_mod_path = sourcePath(b, options.go_dir, "go.mod");
     b.build_root.handle.access(b.graph.io, go_mod_path, .{}) catch |err| switch (err) {
         error.FileNotFound => update.addBytesToSource(b.fmt("module {s}\n\ngo 1.23\n", .{options.go_module}), go_mod_path),
@@ -234,7 +270,6 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     _ = options.target;
     _ = options.optimize;
     _ = options.prefix;
-    _ = options.cgo_flags;
     _ = layout_json;
 
     return .{ .update = update, .check = check, .abi_check = abi_check, .lib = lib, .semantic_json = semantic_json };
@@ -279,6 +314,17 @@ fn addGenerator(
         .target = target,
         .optimize = optimize,
     });
+    const abi_diff_module = b.createModule(.{
+        .root_source_file = root_source_file.dirname().path(b, "gen/abi_diff.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "semantic", .module = semantic_module }},
+    });
+    const sync_check_module = b.createModule(.{
+        .root_source_file = root_source_file.dirname().path(b, "gen/sync_check.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     return b.addExecutable(.{
         .name = "zigo-gen",
         .root_module = b.createModule(.{
@@ -290,6 +336,8 @@ fn addGenerator(
                 .{ .name = "abi", .module = abi_module },
                 .{ .name = "diagnostic", .module = diagnostic_module },
                 .{ .name = "errors_lock", .module = errors_lock_module },
+                .{ .name = "abi_diff", .module = abi_diff_module },
+                .{ .name = "sync_check", .module = sync_check_module },
             },
         }),
     });
