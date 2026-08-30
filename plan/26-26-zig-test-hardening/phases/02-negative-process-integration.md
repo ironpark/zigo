@@ -2,7 +2,7 @@
 depends_on:
 - "26-26-zig-test-hardening#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: dead fixture가 root `zig build test`에서 실행되고 성공 로그에 의도된 stderr noise를 남기지 않는다.
 > NEXT: none

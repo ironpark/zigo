@@ -117,6 +117,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_diagnostic_tests.step);
     test_step.dependOn(&run_sync_check_tests.step);
     test_step.dependOn(&run_cli_tests.step);
+    addProcessContractTests(b, test_step, generator);
 
     const generator_case_runner = b.addExecutable(.{
         .name = "zigo-generator-case",
@@ -154,6 +155,62 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_snapshot.addArgs(args);
     const snapshot_step = b.step("snapshot", "Compare or update a snapshot directory tree");
     snapshot_step.dependOn(&run_snapshot.step);
+}
+
+fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator: *std.Build.Step.Compile) void {
+    const help = b.addRunArtifact(generator);
+    help.setName("CLI contract (help)");
+    help.addArg("--help");
+    help.expectExitCode(0);
+    help.expectStdOutMatch("usage: zigo-gen <command> [options]");
+    test_step.dependOn(&help.step);
+
+    const invalid_arguments = b.addRunArtifact(generator);
+    invalid_arguments.setName("CLI contract (invalid arguments)");
+    invalid_arguments.addArg("unknown-command");
+    invalid_arguments.expectExitCode(2);
+    invalid_arguments.expectStdErrMatch("error: the command is missing or unknown");
+    test_step.dependOn(&invalid_arguments.step);
+
+    const invalid_semantic = b.addRunArtifact(generator);
+    invalid_semantic.setName("CLI contract (invalid semantic)");
+    invalid_semantic.addArgs(&.{ "generate", "--semantic" });
+    invalid_semantic.addFileArg(b.path("tests/fixtures/zigo007.json"));
+    invalid_semantic.addArg("--output");
+    _ = invalid_semantic.addOutputDirectoryArg("invalid-semantic-output");
+    invalid_semantic.addArgs(&.{ "--package", "bad" });
+    invalid_semantic.expectExitCode(1);
+    invalid_semantic.expectStdErrMatch("error[ZIGO007]: generated C symbol collides with another declaration");
+    test_step.dependOn(&invalid_semantic.step);
+
+    const stale = b.addRunArtifact(generator);
+    stale.setName("CLI contract (stale generated files)");
+    stale.addArgs(&.{ "check", "--generated" });
+    stale.addDirectoryArg(b.path("tests/fixtures/cli/stale/generated"));
+    stale.addArg("--source");
+    stale.addDirectoryArg(b.path("tests/fixtures/cli/stale/source"));
+    stale.expectExitCode(1);
+    stale.expectStdErrMatch("generated file content: value_gen.go");
+    test_step.dependOn(&stale.step);
+
+    const abi_break = b.addRunArtifact(generator);
+    abi_break.setName("CLI contract (breaking ABI)");
+    abi_break.addArgs(&.{ "abi-diff", "--base" });
+    abi_break.addFileArg(b.path("tests/fixtures/cli/abi/base.json"));
+    abi_break.addArg("--current");
+    abi_break.addFileArg(b.path("tests/fixtures/cli/abi/current.json"));
+    abi_break.addArgs(&.{ "--fail-on", "breaking" });
+    abi_break.expectExitCode(1);
+    abi_break.expectStdOutMatch("BREAKING: ping: function removed");
+    test_step.dependOn(&abi_break.step);
+
+    const invalid_project = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "go", "--summary", "none" });
+    invalid_project.setName("invalid project contract (ZIGO007)");
+    invalid_project.setCwd(b.path("tests/fixtures/invalid-project"));
+    invalid_project.has_side_effects = true;
+    invalid_project.expectExitCode(1);
+    invalid_project.expectStdErrMatch("error[ZIGO007]: generated C symbol collides with another declaration");
+    test_step.dependOn(&invalid_project.step);
 }
 
 fn addGeneratorCases(
