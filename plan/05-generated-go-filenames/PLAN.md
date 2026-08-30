@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-08-30T01:57:07Z"
 description: Rename generated Go outputs to package-based *_gen.go files, migrate examples, and verify generation, sync checks, ABI checks, and Go tests.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-30T01:53:00Z"
 ---
 > NEXT: Rename generator-owned Go files and migrate every checked-in consumer. ([Phase 0](phases/00-rename-generated-go-outputs.md))
 
 # Phases
 
-- [ ] [Phase 00: Rename generated Go outputs](phases/00-rename-generated-go-outputs.md)
+- [x] [Phase 00: Rename generated Go outputs](phases/00-rename-generated-go-outputs.md)
 
 # Shared Verification
 

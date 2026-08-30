@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T01:57:07Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test --summary all` passes with path assertions for `raw_gen.go` and package-specific public files.
 > NEXT: none
