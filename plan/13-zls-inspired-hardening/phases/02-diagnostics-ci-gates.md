@@ -2,7 +2,7 @@
 depends_on:
 - "13-zls-inspired-hardening#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: A deliberately changed expected fixture reports the changed content and path without an uncaptured failed-command banner.
 > NEXT: none

@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T03:54:52Z"
 depends_on:
 - "13-zls-inspired-hardening#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: A new generator behavior case can be added without embedding a large expected source string in Zig code.
 > NEXT: none

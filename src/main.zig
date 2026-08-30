@@ -9,7 +9,21 @@ const validate = @import("gen/validate.zig");
 pub fn main(init: std.process.Init) !void {
     const allocator = init.arena.allocator();
     const args = try init.minimal.args.toSlice(allocator);
-    const command = try cli.parse(if (args.len == 0) &.{} else args[1..]);
+    const command_args = if (args.len == 0) &.{} else args[1..];
+    if (cli.isHelp(command_args)) {
+        var buffer: [2048]u8 = undefined;
+        var stdout = std.Io.File.Writer.init(.stdout(), init.io, &buffer);
+        try cli.writeUsage(&stdout.interface);
+        try stdout.interface.flush();
+        return;
+    }
+    const command = cli.parse(command_args) catch |err| {
+        var buffer: [2048]u8 = undefined;
+        var stderr = std.Io.File.Writer.init(.stderr(), init.io, &buffer);
+        try cli.writeParseError(&stderr.interface, err);
+        try stderr.interface.flush();
+        std.process.exit(2);
+    };
     switch (command) {
         .generate => |options| try runGenerate(allocator, init.io, options),
         .check => |options| try runCheck(allocator, init.io, options),
@@ -21,7 +35,13 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
     const semantic_bytes = try std.Io.Dir.cwd().readFileAlloc(io, options.semantic_path, allocator, .limited(64 * 1024 * 1024));
     var parsed = try semantic.Semantic.parse(allocator, semantic_bytes);
     defer parsed.deinit();
-    if (try validate.findIssue(allocator, parsed.value)) |issue| issue.emitAndExit(allocator);
+    if (try validate.findIssue(allocator, parsed.value)) |issue| {
+        var buffer: [1024]u8 = undefined;
+        var stderr = std.Io.File.Writer.init(.stderr(), io, &buffer);
+        try issue.render(&stderr.interface);
+        try stderr.interface.flush();
+        std.process.exit(1);
+    }
     try std.Io.Dir.cwd().createDirPath(io, options.output_path);
     var output = try std.Io.Dir.cwd().openDir(io, options.output_path, .{ .iterate = true });
     defer output.close(io);

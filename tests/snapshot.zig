@@ -1,13 +1,20 @@
 const std = @import("std");
 
 pub const DifferenceKind = enum { missing, unexpected, content };
-pub const Difference = struct { kind: DifferenceKind, path: []const u8 };
+pub const Difference = struct {
+    kind: DifferenceKind,
+    path: []const u8,
+    detail: ?[]const u8 = null,
+};
 
 pub const Result = struct {
     differences: std.ArrayList(Difference) = .empty,
 
     pub fn deinit(self: *Result, allocator: std.mem.Allocator) void {
-        for (self.differences.items) |difference| allocator.free(difference.path);
+        for (self.differences.items) |difference| {
+            allocator.free(difference.path);
+            if (difference.detail) |detail| allocator.free(detail);
+        }
         self.differences.deinit(allocator);
     }
 
@@ -18,6 +25,7 @@ pub const Result = struct {
     pub fn renderTo(self: Result, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         for (self.differences.items) |difference| {
             try writer.print("snapshot {s}: {s}\n", .{ @tagName(difference.kind), difference.path });
+            if (difference.detail) |detail| try writer.writeAll(detail);
         }
     }
 
@@ -74,7 +82,7 @@ fn compareOneWay(allocator: std.mem.Allocator, io: std.Io, source: std.Io.Dir, d
         if (entry.kind != .file) continue;
         const destination_bytes = destination.readFileAlloc(io, entry.path, allocator, .limited(64 * 1024 * 1024)) catch |err| switch (err) {
             error.FileNotFound => {
-                try appendDifference(allocator, result, if (report_unexpected) .unexpected else .missing, entry.path);
+                try appendDifference(allocator, result, if (report_unexpected) .unexpected else .missing, entry.path, null);
                 continue;
             },
             else => return err,
@@ -83,15 +91,44 @@ fn compareOneWay(allocator: std.mem.Allocator, io: std.Io, source: std.Io.Dir, d
         if (!report_unexpected) {
             const source_bytes = try source.readFileAlloc(io, entry.path, allocator, .limited(64 * 1024 * 1024));
             defer allocator.free(source_bytes);
-            if (!std.mem.eql(u8, source_bytes, destination_bytes)) try appendDifference(allocator, result, .content, entry.path);
+            if (!std.mem.eql(u8, source_bytes, destination_bytes)) {
+                const detail = try contentDifferenceAlloc(allocator, source_bytes, destination_bytes);
+                defer allocator.free(detail);
+                try appendDifference(allocator, result, .content, entry.path, detail);
+            }
         }
     }
 }
 
-fn appendDifference(allocator: std.mem.Allocator, result: *Result, kind: DifferenceKind, path: []const u8) !void {
+fn appendDifference(allocator: std.mem.Allocator, result: *Result, kind: DifferenceKind, path: []const u8, detail: ?[]const u8) !void {
     const owned_path = try allocator.dupe(u8, path);
     errdefer allocator.free(owned_path);
-    try result.differences.append(allocator, .{ .kind = kind, .path = owned_path });
+    const owned_detail = if (detail) |value| try allocator.dupe(u8, value) else null;
+    errdefer if (owned_detail) |value| allocator.free(value);
+    try result.differences.append(allocator, .{ .kind = kind, .path = owned_path, .detail = owned_detail });
+}
+
+fn contentDifferenceAlloc(allocator: std.mem.Allocator, expected: []const u8, actual: []const u8) ![]u8 {
+    var expected_lines = std.mem.splitScalar(u8, expected, '\n');
+    var actual_lines = std.mem.splitScalar(u8, actual, '\n');
+    var line_number: usize = 1;
+    while (true) : (line_number += 1) {
+        const expected_line = expected_lines.next();
+        const actual_line = actual_lines.next();
+        if (expected_line == null or actual_line == null or !std.mem.eql(u8, expected_line.?, actual_line.?)) {
+            const expected_value = expected_line orelse "<end of file>";
+            const actual_value = actual_line orelse "<end of file>";
+            const limit = 200;
+            return std.fmt.allocPrint(allocator, "  @@ line {d} @@\n  - {s}{s}\n  + {s}{s}\n", .{
+                line_number,
+                expected_value[0..@min(expected_value.len, limit)],
+                if (expected_value.len > limit) "…" else "",
+                actual_value[0..@min(actual_value.len, limit)],
+                if (actual_value.len > limit) "…" else "",
+            });
+        }
+        if (expected_line == null) unreachable;
+    }
 }
 
 fn lessThan(_: void, lhs: Difference, rhs: Difference) bool {
@@ -119,7 +156,13 @@ test "reports a corrupted golden tree by file name" {
     var rendered: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer rendered.deinit();
     try result.renderTo(&rendered.writer);
-    try std.testing.expectEqualStrings("snapshot content: nested/nested_gen.go\n", rendered.written());
+    try std.testing.expectEqualStrings(
+        "snapshot content: nested/nested_gen.go\n" ++
+            "  @@ line 1 @@\n" ++
+            "  - golden\n" ++
+            "  + corrupted\n",
+        rendered.written(),
+    );
 }
 
 test "update mode makes the golden tree match actual output" {

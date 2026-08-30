@@ -14,16 +14,17 @@ pub const Diagnostic = struct {
     site: Site,
     hint: []const u8,
 
-    pub fn renderAlloc(self: Diagnostic, allocator: std.mem.Allocator) ![]u8 {
-        return std.fmt.allocPrint(allocator, "{s}[{s}]: {s}\n  --> {s} ({s})\n  hint: {s}\n", .{
+    pub fn render(self: Diagnostic, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        try writer.print("{s}[{s}]: {s}\n  --> {s} ({s})\n  hint: {s}\n", .{
             @tagName(self.severity), self.code, self.message, self.site.path, self.site.declaration, self.hint,
         });
     }
 
-    pub fn emitAndExit(self: Diagnostic, allocator: std.mem.Allocator) noreturn {
-        const rendered = self.renderAlloc(allocator) catch "error[ZIGO000]: unable to render diagnostic\n";
-        std.debug.print("{s}", .{rendered});
-        std.process.exit(1);
+    pub fn renderAlloc(self: Diagnostic, allocator: std.mem.Allocator) ![]u8 {
+        var rendered: std.Io.Writer.Allocating = .init(allocator);
+        errdefer rendered.deinit();
+        self.render(&rendered.writer) catch return error.OutOfMemory;
+        return rendered.toOwnedSlice();
     }
 };
 
@@ -40,4 +41,21 @@ test "diagnostic rendering includes actionable context" {
     try std.testing.expect(std.mem.indexOf(u8, rendered, "error[ZIGO003]") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered, "src/bindings.zig:3") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered, "hint:") != null);
+}
+
+test "allocated diagnostic rendering propagates OOM" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, expectRenderedDiagnostic, .{});
+}
+
+fn expectRenderedDiagnostic(allocator: std.mem.Allocator) !void {
+    const diagnostic: Diagnostic = .{
+        .severity = .@"error",
+        .code = "ZIGO003",
+        .message = "cannot pass a value",
+        .site = .{ .path = "semantic.json", .declaration = "configure" },
+        .hint = "expose it as opaque",
+    };
+    const rendered = try diagnostic.renderAlloc(allocator);
+    defer allocator.free(rendered);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "error[ZIGO003]") != null);
 }

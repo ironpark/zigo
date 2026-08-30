@@ -45,6 +45,44 @@ pub const Command = union(enum) {
     abi_diff: AbiDiff,
 };
 
+pub fn isHelp(args: []const []const u8) bool {
+    if (args.len == 1) return std.mem.eql(u8, args[0], "help") or isHelpFlag(args[0]);
+    return args.len == 2 and isKnownCommand(args[0]) and isHelpFlag(args[1]);
+}
+
+pub fn writeUsage(writer: *std.Io.Writer) std.Io.Writer.Error!void {
+    try writer.writeAll(
+        \\usage: zigo-gen <command> [options]
+        \\
+        \\commands:
+        \\  generate  --semantic <file> --output <dir> --package <name> [options]
+        \\  check     --generated <dir> --source <dir>
+        \\  abi-diff  --base <file> --current <file> [--json] [--fail-on breaking]
+        \\
+    );
+}
+
+fn isHelpFlag(argument: []const u8) bool {
+    return std.mem.eql(u8, argument, "--help") or std.mem.eql(u8, argument, "-h");
+}
+
+fn isKnownCommand(argument: []const u8) bool {
+    return std.mem.eql(u8, argument, "generate") or std.mem.eql(u8, argument, "check") or std.mem.eql(u8, argument, "abi-diff");
+}
+
+pub fn writeParseError(writer: *std.Io.Writer, err: ParseError) std.Io.Writer.Error!void {
+    const message = switch (err) {
+        error.DuplicateArgument => "an argument was provided more than once",
+        error.InvalidValue => "an argument has an unsupported value",
+        error.MissingRequiredArgument => "a required argument is missing",
+        error.MissingValue => "an argument is missing its value",
+        error.UnknownArgument => "an unknown argument was provided",
+        error.UnknownCommand => "the command is missing or unknown",
+    };
+    try writer.print("error: {s}\n\n", .{message});
+    try writeUsage(writer);
+}
+
 pub fn parse(args: []const []const u8) ParseError!Command {
     if (args.len == 0) return error.UnknownCommand;
     if (std.mem.eql(u8, args[0], "generate")) return .{ .generate = try parseGenerate(args[1..]) };
@@ -271,4 +309,14 @@ test "parser rejects incomplete unknown and duplicate arguments" {
     try std.testing.expectError(error.UnknownArgument, parse(&.{ "check", "--wat", "value" }));
     try std.testing.expectError(error.DuplicateArgument, parse(&.{ "check", "--generated", "one", "--generated", "two", "--source", "go" }));
     try std.testing.expectError(error.InvalidValue, parse(&.{ "abi-diff", "--base", "old", "--current", "new", "--fail-on", "all" }));
+}
+
+test "help and parse errors render actionable usage" {
+    try std.testing.expect(isHelp(&.{"--help"}));
+    try std.testing.expect(isHelp(&.{ "generate", "--help" }));
+    var rendered: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer rendered.deinit();
+    try writeParseError(&rendered.writer, error.MissingRequiredArgument);
+    try std.testing.expect(std.mem.indexOf(u8, rendered.written(), "required argument is missing") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered.written(), "generate  --semantic") != null);
 }

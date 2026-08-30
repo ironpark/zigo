@@ -23,6 +23,10 @@ jobs:
         with:
           go-version: "1.23.x"
           cache: false
+      - name: Check Zig formatting
+        run: zig fmt --check build.zig src tests examples
+      - name: Compile all Zig artifacts
+        run: zig build check --summary all
       - name: Zig unit and snapshot tests
         run: zig build test --summary all
       - name: Check, generate, and test all examples
@@ -62,3 +66,13 @@ jobs:
       - name: Record cgo call overhead
         working-directory: examples/01-scalar/go
         run: go test ./scalar -run '^$' -bench '^BenchmarkAddCgo$' -benchmem
+
+  windows-compile:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - name: Compile all Zig artifacts
+        run: zig build check --summary all
