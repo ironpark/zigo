@@ -261,10 +261,10 @@ error[ZIGO003]: cannot pass `mylib.Config` by value
 |---|---|
 | reflector | JSON 골든 파일 — Zig 버전 업그레이드 감지기 역할 |
 | validate/lower | IR 픽스처 → IR 골든 + 실패 케이스 스냅샷 |
-| emitter | 생성 코드 골든 파일 |
-| 빌드 API | 예제 4종이 실제 의존성으로 zigo를 fetch해 빌드 |
-| 통합 | 예제 4종의 `go test` |
-| 메모리 | 카운팅 allocator로 누수 0 검증 |
+| emitter | scalar와 복합 pipeline의 전체 생성 트리 골든 파일 |
+| 빌드 API | 예제 6종이 실제 의존성으로 zigo를 fetch해 빌드 |
+| 통합 | 예제 6종의 `go test` |
+| 메모리 | allocation failure 전수 검사와 누수 0 검증 |
 | 성능 | cgo 호출 벤치마크 CI 기록 |
 
 generator가 순수 함수(IR in → 파일 out)인 덕분에 위 3개 층은

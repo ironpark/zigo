@@ -190,6 +190,12 @@ Go 생성물은 반드시 사용자 저장소에 커밋되어야 한다:
 `UpdateSourceFiles`와 `go-check`의 입력이 된다. 원본 generator cache는 수정하지 않으며,
 `gofmt`가 없는 환경에서는 포맷 단계를 생략한다.
 
+generator는 경로 계산, 모든 emitter 렌더링, `errors.lock.json` 직렬화를 먼저 메모리의
+prepared set에서 완료한다. 이 준비 단계가 성공한 뒤에만 출력 디렉터리에 쓰므로 semantic
+검증, 렌더링, allocation 실패가 기존 출력 트리를 일부만 갱신하지 않는다. 최종 commit
+중 발생하는 머신·파일시스템 장애까지 여러 파일에 걸쳐 원자적으로 복구하는 것은 보장하지
+않으며, 소스 트리 반영은 생성 프로세스가 성공한 뒤 `UpdateSourceFiles`가 수행한다.
+
 ### (D) 정적 라이브러리와 cgo 배선
 
 생성기는 빌드 그래프로부터 install prefix와 `go_dir`을 알고 있으므로 경로를 직접 계산한다.

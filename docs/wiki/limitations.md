@@ -22,6 +22,10 @@ Zig reflection에는 함수 파라미터 이름이 없다. zigo는 `bindings.zig
 스캔, `p0`, `p1` 형식의 fallback 순으로 이름을 결정한다. 공개 API의 안정성을 위해
 `params`를 명시하는 편이 좋다.
 
+AST 보강에 사용하는 기본 `bindings.zig`를 읽지 못하면 reflection이 실패한다. 선택적인
+같은 디렉터리의 `root.zig`가 없는 경우만 정상적으로 건너뛰며, 발견된 `.zig` import를
+읽지 못하거나 AST를 파싱하지 못하면 오류 경로와 원인을 출력하고 생성을 중단한다.
+
 문자열, 반환 포인터 소유권, retained 포인터와 콜백 수명은 타입만으로 결정할 수 없다.
 `semantic`, `returns`, `param_meta.retention`을 통해 계약을 명시해야 한다.
 
@@ -42,5 +46,9 @@ Zig reflection에는 함수 파라미터 이름이 없다. zigo는 `bindings.zig
 버전과의 호환성을 보증하는 프로젝트는 `abi_base`를 설정하고 `abi-check`도 실행한다.
 raw 패키지 모드나 경로를 변경하면 zigo는 이전 위치의 파일을 자동 삭제하지 않는다.
 새 바인딩 생성 후 오래된 `_gen.go` 파일을 한 번 직접 제거해야 한다.
+
+생성기는 모든 산출물을 메모리에서 준비한 뒤 쓰므로 검증·렌더링·메모리 실패에는 기존
+트리가 유지된다. 다만 최종 파일 쓰기 중 전원 차단이나 파일시스템 장애가 발생했을 때
+여러 파일을 하나의 filesystem transaction으로 복구하는 것까지는 보장하지 않는다.
 
 제약의 설계 근거와 전체 리스크 목록은 [제약과 리스크](../design/00-constraints.md)에 있다.

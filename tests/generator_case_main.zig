@@ -15,6 +15,7 @@ const CaseOptions = struct {
     raw_package_path: []const u8 = "internal/raw",
     raw_package_name: []const u8 = "raw",
     raw_colocated: bool = false,
+    errors_lock_path: ?[]const u8 = null,
 };
 
 pub fn main(init: std.process.Init) !void {
@@ -34,6 +35,10 @@ pub fn main(init: std.process.Init) !void {
     var parsed_options = try std.json.parseFromSlice(CaseOptions, allocator, options_bytes, .{});
     defer parsed_options.deinit();
     const options = parsed_options.value;
+    const errors_lock_bytes = if (options.errors_lock_path) |path|
+        try case_dir.readFileAlloc(init.io, path, allocator, .limited(16 * 1024 * 1024))
+    else
+        null;
 
     try generator.generate(allocator, init.io, semantic_bytes, output_dir, .{
         .package = options.package,
@@ -48,6 +53,7 @@ pub fn main(init: std.process.Init) !void {
         .raw_package_path = options.raw_package_path,
         .raw_package_name = options.raw_package_name,
         .raw_colocated = options.raw_colocated,
+        .errors_lock_bytes = errors_lock_bytes,
     });
 
     var result = try snapshot.compare(allocator, init.io, expected_dir, output_dir);

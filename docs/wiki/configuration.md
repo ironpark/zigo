@@ -117,3 +117,8 @@ zig-out/lib/lib<name>_zigo.a
 Go 소스와 `zigo/semantic.json`, `zigo/errors.lock.json`은 소스 관리에 포함한다.
 `zig-out/`은 빌드 산출물이므로 커밋하지 않는다. public 패키지의 별도 `.go` 파일은
 생성기가 덮어쓰지 않으므로 사용자 편의 API를 추가하는 데 사용할 수 있다.
+
+`errors.lock.json`은 append-only 상태다. zigo는 버전과 예약 음수 코드, 양수 코드의
+연속성·유일성을 검사하고 기존 이름의 삭제·이름 변경·재배정을 거부한다. 새 코드 배정은
+전체 상태를 준비한 뒤 반영되므로 실패한 생성이 lock 일부만 변경하지 않는다. 충돌을
+피하려면 생성 결과와 lock 변경을 같은 커밋으로 반영한다.

@@ -151,9 +151,10 @@ fn renderPanicSource(_: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
             "    if (zg_panic_active) longjmp(zg_panic_env, 1);\n" ++
             "    abort();\n" ++
             "}\n\n" ++
-            "const char *zg_last_error_message(void) { return zg_panic_message; }\n\n",
+            "const char *zg_last_error_message(void) { return zg_panic_message; }\n",
     );
     for (program.functions) |function| {
+        try writer.writeByte('\n');
         try writeCFunctionDeclaration(writer, function, true);
         try writer.writeAll(";\n");
         try writeCFunctionDeclaration(writer, function, false);
@@ -178,7 +179,7 @@ fn renderPanicSource(_: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         }
         try writer.writeAll(");\n    zg_panic_active = 0;\n");
         if (function.ret != .void) try writer.writeAll("    return result;\n");
-        try writer.writeAll("}\n\n");
+        try writer.writeAll("}\n");
     }
 }
 

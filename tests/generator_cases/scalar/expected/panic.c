@@ -30,4 +30,3 @@ int32_t zg_add(int32_t p0, int32_t p1) {
     zg_panic_active = 0;
     return result;
 }
-

@@ -1,0 +1,7 @@
+{
+  "package": "pipeline",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/pipeline",
+  "system_ldflags": "-lz",
+  "errors_lock_path": "errors.lock.json"
+}

@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T04:46:26Z"
 depends_on:
 - "15-generation-reliability#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Focused tests verify fatal primary errors, allowed missing root files, visible
 > NEXT: none
