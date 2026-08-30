@@ -7,6 +7,9 @@ import (
 	"example.com/zigo/pipeline/internal/raw"
 )
 
+// NewIntBatch creates a caller-owned IntBatch.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
 func NewIntBatch() (*IntBatch, error) {
 	result, code := raw.IntBatchCreate()
 	if code != 0 {
@@ -14,16 +17,27 @@ func NewIntBatch() (*IntBatch, error) {
 	}
 	return &IntBatch{ptr: result}, nil
 }
+
+// Push invokes the bound Zig IntBatch.push operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (i *IntBatch) Push(value int32) error {
-	code := raw.IntBatchPush(i.ptr, value)
+	code := raw.IntBatchPush(zigoMustPointer("IntBatch.Push receiver", i), value)
 	if code != 0 {
 		return errorForCode(code)
 	}
 	return nil
 }
+
+// Len invokes the bound Zig IntBatch.len operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (i *IntBatch) Len() uint {
-	return raw.IntBatchLen(i.ptr)
+	return raw.IntBatchLen(zigoMustPointer("IntBatch.Len receiver", i))
 }
+
+// NewFloatBatch creates a caller-owned FloatBatch.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
 func NewFloatBatch() (*FloatBatch, error) {
 	result, code := raw.FloatBatchCreate()
 	if code != 0 {
@@ -31,16 +45,27 @@ func NewFloatBatch() (*FloatBatch, error) {
 	}
 	return &FloatBatch{ptr: result}, nil
 }
+
+// Push invokes the bound Zig FloatBatch.push operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (f *FloatBatch) Push(value float64) error {
-	code := raw.FloatBatchPush(f.ptr, value)
+	code := raw.FloatBatchPush(zigoMustPointer("FloatBatch.Push receiver", f), value)
 	if code != 0 {
 		return errorForCode(code)
 	}
 	return nil
 }
+
+// Len invokes the bound Zig FloatBatch.len operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (f *FloatBatch) Len() uint {
-	return raw.FloatBatchLen(f.ptr)
+	return raw.FloatBatchLen(zigoMustPointer("FloatBatch.Len receiver", f))
 }
+
+// NewPipeline creates a caller-owned Pipeline.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
 func NewPipeline(name string, mode Mode, callback PipelineCallback) (*Pipeline, error) {
 	callbackHandle := newPipelineCallbackHandle(callback)
 	result, code := raw.PipelineCreate([]byte(name), uint32(mode), uintptr(callbackHandle))
@@ -50,31 +75,54 @@ func NewPipeline(name string, mode Mode, callback PipelineCallback) (*Pipeline, 
 	}
 	return &Pipeline{ptr: result, callbackHandles: []cgo.Handle{callbackHandle}}, nil
 }
+
+// Process invokes the bound Zig Pipeline.process operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (p *Pipeline) Process(values []int32) (int64, error) {
-	result, code := raw.PipelineProcess(p.ptr, values)
+	result, code := raw.PipelineProcess(zigoMustPointer("Pipeline.Process receiver", p), values)
 	if code != 0 {
 		return 0, errorForCode(code)
 	}
 	return result, nil
 }
+
+// Name invokes the bound Zig Pipeline.name operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (p *Pipeline) Name() string {
-	return string(raw.PipelineName(p.ptr))
+	return string(raw.PipelineName(zigoMustPointer("Pipeline.Name receiver", p)))
 }
+
+// Mode invokes the bound Zig Pipeline.mode operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (p *Pipeline) Mode() Mode {
-	return Mode(raw.PipelineMode(p.ptr))
+	return Mode(raw.PipelineMode(zigoMustPointer("Pipeline.Mode receiver", p)))
 }
+
+// SetEnabled invokes the bound Zig Pipeline.setEnabled operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (p *Pipeline) SetEnabled(enabled bool) bool {
-	return raw.PipelineSetEnabled(p.ptr, boolToUint8(enabled)) != 0
+	return raw.PipelineSetEnabled(zigoMustPointer("Pipeline.SetEnabled receiver", p), boolToUint8(enabled)) != 0
 }
+
+// Processed invokes the bound Zig Pipeline.processed operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (p *Pipeline) Processed() uint {
-	return raw.PipelineProcessed(p.ptr)
+	return raw.PipelineProcessed(zigoMustPointer("Pipeline.Processed receiver", p))
 }
+
+// Total invokes the bound Zig Pipeline.total operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (p *Pipeline) Total() int64 {
-	return raw.PipelineTotal(p.ptr)
+	return raw.PipelineTotal(zigoMustPointer("Pipeline.Total receiver", p))
 }
+
+// LiveBytes invokes the bound Zig liveBytes operation.
 func LiveBytes() uint {
 	return raw.LiveBytes()
 }
+
+// CompressionBound invokes the bound Zig compressionBound operation.
 func CompressionBound(source_len uint) uint {
 	return raw.CompressionBound(source_len)
 }

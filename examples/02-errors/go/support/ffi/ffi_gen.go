@@ -9,13 +9,17 @@ package ffi
 import "C"
 import "unsafe"
 
+// LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// Divide calls the generated C ABI wrapper for zg_divide.
 func Divide(numerator float64, denominator float64) (float64, int32) {
 	var outResult C.double
 	code := int32(C.zg_divide(C.double(numerator), C.double(denominator), &outResult))
 	return float64(outResult), code
 }
+
+// Sum calls the generated C ABI wrapper for zg_sum.
 func Sum(values []float64) float64 {
 	var values_zero C.double
 	values_ptr := &values_zero
@@ -24,6 +28,8 @@ func Sum(values []float64) float64 {
 	}
 	return float64(C.zg_sum(values_ptr, C.size_t(len(values))))
 }
+
+// NormalizeFormat calls the generated C ABI wrapper for zg_normalize_format.
 func NormalizeFormat(value uint32) uint32 {
 	return uint32(C.zg_normalize_format(C.uint32_t(value)))
 }

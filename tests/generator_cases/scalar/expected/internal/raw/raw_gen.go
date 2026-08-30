@@ -8,8 +8,10 @@ package raw
 */
 import "C"
 
+// LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// Add calls the generated C ABI wrapper for zg_add.
 func Add(p0 int32, p1 int32) int32 {
 	return int32(C.zg_add(C.int32_t(p0), C.int32_t(p1)))
 }

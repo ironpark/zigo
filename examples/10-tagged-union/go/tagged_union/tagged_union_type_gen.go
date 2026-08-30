@@ -9,12 +9,19 @@ import (
 	"example.com/zigo/tagged-union/internal/raw"
 )
 
+// Mode represents the corresponding Zig enum.
 type Mode uint8
 
+// ModeIdle corresponds to the Zig tag idle.
 const ModeIdle Mode = 0
+
+// ModeActive corresponds to the Zig tag active.
 const ModeActive Mode = 1
+
+// ModePaused corresponds to the Zig tag paused.
 const ModePaused Mode = 2
 
+// String returns the Zig tag name.
 func (value Mode) String() string {
 	switch value {
 	case ModeIdle:
@@ -28,16 +35,31 @@ func (value Mode) String() string {
 	}
 }
 
+// ValueTag represents the corresponding Zig enum.
 type ValueTag uint8
 
+// ValueTagNone corresponds to the Zig tag none.
 const ValueTagNone ValueTag = 0
+
+// ValueTagInteger corresponds to the Zig tag integer.
 const ValueTagInteger ValueTag = 1
+
+// ValueTagFlag corresponds to the Zig tag flag.
 const ValueTagFlag ValueTag = 2
+
+// ValueTagMode corresponds to the Zig tag mode.
 const ValueTagMode ValueTag = 3
+
+// ValueTagSamples corresponds to the Zig tag samples.
 const ValueTagSamples ValueTag = 4
+
+// ValueTagChild corresponds to the Zig tag child.
 const ValueTagChild ValueTag = 5
+
+// ValueTagMutableSamples corresponds to the Zig tag mutableSamples.
 const ValueTagMutableSamples ValueTag = 6
 
+// String returns the Zig tag name.
 func (value ValueTag) String() string {
 	switch value {
 	case ValueTagNone:
@@ -59,12 +81,14 @@ func (value ValueTag) String() string {
 	}
 }
 
+// Child is a caller-owned native handle. Call Close when it is no longer needed.
 type Child struct {
 	ptr     unsafe.Pointer
 	once    sync.Once
 	cleanup runtime.Cleanup
 }
 
+// ChildRef is a borrowed Child reference that remains valid only while its parent is open.
 type ChildRef struct {
 	ptr    unsafe.Pointer
 	parent any
@@ -104,6 +128,7 @@ func cleanupChild(state childCleanupState) {
 	}
 }
 
+// Close releases the native Child resources. It is safe to call more than once.
 func (value *Child) Close() {
 	if value == nil {
 		return
@@ -116,12 +141,14 @@ func (value *Child) Close() {
 	runtime.KeepAlive(value)
 }
 
+// Value is a caller-owned native handle. Call Close when it is no longer needed.
 type Value struct {
 	ptr     unsafe.Pointer
 	once    sync.Once
 	cleanup runtime.Cleanup
 }
 
+// ValueRef is a borrowed Value reference that remains valid only while its parent is open.
 type ValueRef struct {
 	ptr    unsafe.Pointer
 	parent any
@@ -161,6 +188,7 @@ func cleanupValue(state valueCleanupState) {
 	}
 }
 
+// Close releases the native Value resources. It is safe to call more than once.
 func (value *Value) Close() {
 	if value == nil {
 		return
@@ -218,6 +246,7 @@ func zigoProjectionError(operation string, status uint8) error {
 	}
 }
 
+// TryTag returns the active tagged-union tag or a typed lifecycle/native error.
 func (value *Value) TryTag() (ValueTag, error) {
 	defer runtime.KeepAlive(value)
 	ptr, err := zigoCheckedPointer("Value.Tag receiver", value)
@@ -231,6 +260,7 @@ func (value *Value) TryTag() (ValueTag, error) {
 	return ValueTag(result), nil
 }
 
+// Tag returns the active tagged-union tag and panics with a typed error on failure.
 func (value *Value) Tag() ValueTag {
 	result, err := value.TryTag()
 	if err != nil {
@@ -239,6 +269,7 @@ func (value *Value) Tag() ValueTag {
 	return result
 }
 
+// TryAsInteger returns the integer payload, whether it is active, and any lifecycle/native error.
 func (value *Value) TryAsInteger() (int64, bool, error) {
 	defer runtime.KeepAlive(value)
 	ptr, err := zigoCheckedPointer("Value.AsInteger receiver", value)
@@ -255,6 +286,7 @@ func (value *Value) TryAsInteger() (int64, bool, error) {
 	return result, true, nil
 }
 
+// AsInteger returns the integer payload when active and panics with a typed error on failure.
 func (value *Value) AsInteger() (int64, bool) {
 	result, matched, err := value.TryAsInteger()
 	if err != nil {
@@ -263,6 +295,7 @@ func (value *Value) AsInteger() (int64, bool) {
 	return result, matched
 }
 
+// TryAsFlag returns the flag payload, whether it is active, and any lifecycle/native error.
 func (value *Value) TryAsFlag() (bool, bool, error) {
 	defer runtime.KeepAlive(value)
 	ptr, err := zigoCheckedPointer("Value.AsFlag receiver", value)
@@ -279,6 +312,7 @@ func (value *Value) TryAsFlag() (bool, bool, error) {
 	return result != 0, true, nil
 }
 
+// AsFlag returns the flag payload when active and panics with a typed error on failure.
 func (value *Value) AsFlag() (bool, bool) {
 	result, matched, err := value.TryAsFlag()
 	if err != nil {
@@ -287,6 +321,7 @@ func (value *Value) AsFlag() (bool, bool) {
 	return result, matched
 }
 
+// TryAsMode returns the mode payload, whether it is active, and any lifecycle/native error.
 func (value *Value) TryAsMode() (Mode, bool, error) {
 	defer runtime.KeepAlive(value)
 	ptr, err := zigoCheckedPointer("Value.AsMode receiver", value)
@@ -303,6 +338,7 @@ func (value *Value) TryAsMode() (Mode, bool, error) {
 	return Mode(result), true, nil
 }
 
+// AsMode returns the mode payload when active and panics with a typed error on failure.
 func (value *Value) AsMode() (Mode, bool) {
 	result, matched, err := value.TryAsMode()
 	if err != nil {
@@ -311,6 +347,7 @@ func (value *Value) AsMode() (Mode, bool) {
 	return result, matched
 }
 
+// TryAsSamples returns the samples payload, whether it is active, and any lifecycle/native error.
 func (value *Value) TryAsSamples() ([]int16, bool, error) {
 	defer runtime.KeepAlive(value)
 	ptr, err := zigoCheckedPointer("Value.AsSamples receiver", value)
@@ -327,6 +364,7 @@ func (value *Value) TryAsSamples() ([]int16, bool, error) {
 	return append([]int16(nil), result...), true, nil
 }
 
+// AsSamples returns the samples payload when active and panics with a typed error on failure.
 func (value *Value) AsSamples() ([]int16, bool) {
 	result, matched, err := value.TryAsSamples()
 	if err != nil {
@@ -335,6 +373,7 @@ func (value *Value) AsSamples() ([]int16, bool) {
 	return result, matched
 }
 
+// TryAsChild returns the child payload, whether it is active, and any lifecycle/native error.
 func (value *Value) TryAsChild() (*ChildRef, bool, error) {
 	defer runtime.KeepAlive(value)
 	ptr, err := zigoCheckedPointer("Value.AsChild receiver", value)
@@ -351,6 +390,7 @@ func (value *Value) TryAsChild() (*ChildRef, bool, error) {
 	return &ChildRef{ptr: result, parent: value}, true, nil
 }
 
+// AsChild returns the child payload when active and panics with a typed error on failure.
 func (value *Value) AsChild() (*ChildRef, bool) {
 	result, matched, err := value.TryAsChild()
 	if err != nil {
@@ -359,6 +399,7 @@ func (value *Value) AsChild() (*ChildRef, bool) {
 	return result, matched
 }
 
+// TryAsMutableSamples returns the mutableSamples payload, whether it is active, and any lifecycle/native error.
 func (value *Value) TryAsMutableSamples() ([]int16, bool, error) {
 	defer runtime.KeepAlive(value)
 	ptr, err := zigoCheckedPointer("Value.AsMutableSamples receiver", value)
@@ -375,6 +416,7 @@ func (value *Value) TryAsMutableSamples() ([]int16, bool, error) {
 	return append([]int16(nil), result...), true, nil
 }
 
+// AsMutableSamples returns the mutableSamples payload when active and panics with a typed error on failure.
 func (value *Value) AsMutableSamples() ([]int16, bool) {
 	result, matched, err := value.TryAsMutableSamples()
 	if err != nil {
@@ -383,6 +425,7 @@ func (value *Value) AsMutableSamples() ([]int16, bool) {
 	return result, matched
 }
 
+// TryTag returns the active tagged-union tag or a typed lifecycle/native error.
 func (value *ValueRef) TryTag() (ValueTag, error) {
 	defer runtime.KeepAlive(value)
 	ptr, err := zigoCheckedPointer("Value.Tag receiver", value)
@@ -396,6 +439,7 @@ func (value *ValueRef) TryTag() (ValueTag, error) {
 	return ValueTag(result), nil
 }
 
+// Tag returns the active tagged-union tag and panics with a typed error on failure.
 func (value *ValueRef) Tag() ValueTag {
 	result, err := value.TryTag()
 	if err != nil {
@@ -404,6 +448,7 @@ func (value *ValueRef) Tag() ValueTag {
 	return result
 }
 
+// TryAsInteger returns the integer payload, whether it is active, and any lifecycle/native error.
 func (value *ValueRef) TryAsInteger() (int64, bool, error) {
 	defer runtime.KeepAlive(value)
 	ptr, err := zigoCheckedPointer("Value.AsInteger receiver", value)
@@ -420,6 +465,7 @@ func (value *ValueRef) TryAsInteger() (int64, bool, error) {
 	return result, true, nil
 }
 
+// AsInteger returns the integer payload when active and panics with a typed error on failure.
 func (value *ValueRef) AsInteger() (int64, bool) {
 	result, matched, err := value.TryAsInteger()
 	if err != nil {
@@ -428,6 +474,7 @@ func (value *ValueRef) AsInteger() (int64, bool) {
 	return result, matched
 }
 
+// TryAsFlag returns the flag payload, whether it is active, and any lifecycle/native error.
 func (value *ValueRef) TryAsFlag() (bool, bool, error) {
 	defer runtime.KeepAlive(value)
 	ptr, err := zigoCheckedPointer("Value.AsFlag receiver", value)
@@ -444,6 +491,7 @@ func (value *ValueRef) TryAsFlag() (bool, bool, error) {
 	return result != 0, true, nil
 }
 
+// AsFlag returns the flag payload when active and panics with a typed error on failure.
 func (value *ValueRef) AsFlag() (bool, bool) {
 	result, matched, err := value.TryAsFlag()
 	if err != nil {
@@ -452,6 +500,7 @@ func (value *ValueRef) AsFlag() (bool, bool) {
 	return result, matched
 }
 
+// TryAsMode returns the mode payload, whether it is active, and any lifecycle/native error.
 func (value *ValueRef) TryAsMode() (Mode, bool, error) {
 	defer runtime.KeepAlive(value)
 	ptr, err := zigoCheckedPointer("Value.AsMode receiver", value)
@@ -468,6 +517,7 @@ func (value *ValueRef) TryAsMode() (Mode, bool, error) {
 	return Mode(result), true, nil
 }
 
+// AsMode returns the mode payload when active and panics with a typed error on failure.
 func (value *ValueRef) AsMode() (Mode, bool) {
 	result, matched, err := value.TryAsMode()
 	if err != nil {
@@ -476,6 +526,7 @@ func (value *ValueRef) AsMode() (Mode, bool) {
 	return result, matched
 }
 
+// TryAsSamples returns the samples payload, whether it is active, and any lifecycle/native error.
 func (value *ValueRef) TryAsSamples() ([]int16, bool, error) {
 	defer runtime.KeepAlive(value)
 	ptr, err := zigoCheckedPointer("Value.AsSamples receiver", value)
@@ -492,6 +543,7 @@ func (value *ValueRef) TryAsSamples() ([]int16, bool, error) {
 	return append([]int16(nil), result...), true, nil
 }
 
+// AsSamples returns the samples payload when active and panics with a typed error on failure.
 func (value *ValueRef) AsSamples() ([]int16, bool) {
 	result, matched, err := value.TryAsSamples()
 	if err != nil {
@@ -500,6 +552,7 @@ func (value *ValueRef) AsSamples() ([]int16, bool) {
 	return result, matched
 }
 
+// TryAsChild returns the child payload, whether it is active, and any lifecycle/native error.
 func (value *ValueRef) TryAsChild() (*ChildRef, bool, error) {
 	defer runtime.KeepAlive(value)
 	ptr, err := zigoCheckedPointer("Value.AsChild receiver", value)
@@ -516,6 +569,7 @@ func (value *ValueRef) TryAsChild() (*ChildRef, bool, error) {
 	return &ChildRef{ptr: result, parent: value}, true, nil
 }
 
+// AsChild returns the child payload when active and panics with a typed error on failure.
 func (value *ValueRef) AsChild() (*ChildRef, bool) {
 	result, matched, err := value.TryAsChild()
 	if err != nil {
@@ -524,6 +578,7 @@ func (value *ValueRef) AsChild() (*ChildRef, bool) {
 	return result, matched
 }
 
+// TryAsMutableSamples returns the mutableSamples payload, whether it is active, and any lifecycle/native error.
 func (value *ValueRef) TryAsMutableSamples() ([]int16, bool, error) {
 	defer runtime.KeepAlive(value)
 	ptr, err := zigoCheckedPointer("Value.AsMutableSamples receiver", value)
@@ -540,6 +595,7 @@ func (value *ValueRef) TryAsMutableSamples() ([]int16, bool, error) {
 	return append([]int16(nil), result...), true, nil
 }
 
+// AsMutableSamples returns the mutableSamples payload when active and panics with a typed error on failure.
 func (value *ValueRef) AsMutableSamples() ([]int16, bool) {
 	result, matched, err := value.TryAsMutableSamples()
 	if err != nil {

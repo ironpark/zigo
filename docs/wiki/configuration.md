@@ -23,6 +23,31 @@
 않고 `GoBindings.abi_check`를 `null`로 반환한다. 활성화한 경우 지정한 ref에 커밋된
 `zigo/semantic.json`이 비교 기준이다.
 
+## 표준 빌드 스텝과 진단
+
+`addGoBindings`의 반환값에 표준 스텝을 한 번에 등록할 수 있다.
+
+```zig
+const bindings = zigo.addGoBindings(b, .{
+    // 필수 옵션…
+});
+_ = bindings.addStandardSteps(b, .{});
+```
+
+등록되는 스텝은 `go`, `go-check`, `go-report`, `go-doctor`와, `abi_base`가 설정된 경우의
+`abi-check`다. 한 빌드에 바인딩 세트가 여러 개면 이름 접두사를 지정한다.
+
+```zig
+_ = admin_bindings.addStandardSteps(b, .{ .name_prefix = "admin" });
+// admin-go, admin-go-check, admin-go-report, admin-go-doctor, admin-abi-check
+```
+
+`go-report`는 최종 Go 이름과 C 심볼, type representation, constructor/Close mapping,
+ownership, parameter retention과 이름 출처, 자동 tagged-union projection을 출력한다.
+`go-doctor`는 현재 target이 host에서 실행 가능한지, Go 최소 버전, `CGO_ENABLED`, Go가
+설정한 C 컴파일러와 gofmt를 검사한다. gofmt 부재는 경고지만 cross target, 낮은 Go 버전,
+비활성 cgo와 실행할 수 없는 C 컴파일러는 실패다.
+
 ## 자동 cleanup
 
 Go 1.24 이상만 지원해도 되는 프로젝트는 caller-owned opaque wrapper에 best-effort cleanup을
@@ -146,16 +171,19 @@ tagged union을 값 ABI로 노출하지 않고 포인터 handle로 사용하려�
 },
 ```
 
-zigo는 `ValueTag`와 `(*Value).Tag()`를 만들고 payload가 있는 각 variant에
+zigo는 `ValueTag`, `TryTag() (ValueTag, error)`와 편의 메서드 `Tag()`를 만들고 payload가
+있는 각 variant에 `TryAs<Variant>() (payload, bool, error)`와
 `As<Variant>() (payload, bool)`을 생성한다. 같은 accessor는 borrowed `*ValueRef`에도
-생긴다. active tag가 다르면 accessor는 payload를 읽거나 out 파라미터를 기록하지 않고
-Go zero value와 `false`를 반환한다. `void` variant는 tag 상수만 가진다.
+생긴다. active tag가 다르면 checked accessor는 payload를 읽거나 out 파라미터를 기록하지
+않고 `(zero, false, nil)`을 반환한다. `void` variant는 tag 상수만 가진다.
 
 projection의 내부 status는 mismatch, success, invalid handle/required output, Zig panic을
-구분한다. public wrapper는 nil·closed owned handle과 이미 닫힌 parent를 가진 borrowed handle을
-native 호출 전에 차단한다. 이 경우와 native panic은 설명이 있는 Go panic으로 전달되며,
-variant mismatch만 `(zero, false)`가 된다. 같은 handle에 대한 `Close`, variant 변경,
-accessor 호출을 동시에 수행할 때의 직렬화는 호출자 책임이다.
+구분한다. checked accessor는 `*HandleError`, `*NativePanicError` 또는 예기치 않은 status의
+`*ProjectionError`를 반환한다. `errors.Is(err, ErrInvalidHandle)`과
+`errors.Is(err, ErrNativePanic)`으로 분류할 수 있다. 기존 `Tag`와 `As*`는 source
+compatibility를 위해 checked accessor를 호출한 뒤 오류가 있으면 같은 typed error로
+panic한다. 같은 handle에 대한 `Close`, variant 변경, accessor 호출을 동시에 수행할 때의
+직렬화는 호출자 책임이다.
 
 ABI diff는 기존 순서·tag·payload를 보존한 끝부분 variant 추가를 compatible append로
 분류한다. 삭제, 재정렬, 이름 변경, 기존 tag/payload 변경과 projection prefix 변경은
@@ -218,6 +246,12 @@ Go 소스와 `zigo/semantic.json`, `zigo/errors.lock.json`은 소스 관리에 �
 `<package>_type_gen.go`에 둔다. package 단위 error 타입, `Err*` 값과 code 변환은
 `<package>_errors_gen.go`에 함께 유지한다. bool 변환과 callback handle 수명 관리 같은
 비공개 runtime support는 `<package>_helpers_gen.go`에 둔다.
+
+모든 exported 생성 선언에는 GoDoc을 붙인다. Zig source doc이 있으면 AST 보강 결과를
+우선 사용하고, 문서가 없는 함수·메서드에는 bound Zig operation을 나타내는 기본 설명을
+생성한다. Handle/Ref/Close, callback, enum과 tag, error sentinel, checked projection에는
+ownership, lifetime과 실패 방식이 명시된다. internal raw package도 별도로 탐색하거나
+디버깅할 때 문맥을 잃지 않도록 C ABI 심볼을 포함한 GoDoc을 생성한다.
 
 콜백 파라미터는 public API에서 익명 `func(...) ...` 대신 생성된 정의 타입을 사용한다.
 메서드와 namespace 함수는 기본적으로 `<Owner><ParameterRole>`(예:

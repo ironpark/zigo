@@ -9,11 +9,15 @@ import (
 	"example.com/zigo/pipeline/internal/raw"
 )
 
+// Mode represents the corresponding Zig enum.
 type Mode uint32
 
+// ModeSum corresponds to the Zig tag sum.
 const ModeSum Mode = 0
+// ModeWeighted corresponds to the Zig tag weighted.
 const ModeWeighted Mode = 1
 
+// String returns the Zig tag name.
 func (value Mode) String() string {
 	switch value {
 	case ModeSum:
@@ -25,14 +29,17 @@ func (value Mode) String() string {
 	}
 }
 
+// PipelineCallback is the Go callback signature accepted by the generated binding.
 type PipelineCallback func(int32) int32
 
+// Pipeline is a caller-owned native handle. Call Close when it is no longer needed.
 type Pipeline struct {
 	ptr             unsafe.Pointer
 	once            sync.Once
 	callbackHandles []cgo.Handle
 }
 
+// PipelineRef is a borrowed Pipeline reference that remains valid only while its parent is open.
 type PipelineRef struct {
 	ptr    unsafe.Pointer
 	parent any
@@ -55,6 +62,7 @@ func (value *PipelineRef) zigoPointer() unsafe.Pointer {
 	return value.ptr
 }
 
+// Close releases the native Pipeline resources. It is safe to call more than once.
 func (value *Pipeline) Close() {
 	if value == nil {
 		return
@@ -71,12 +79,14 @@ func (value *Pipeline) Close() {
 	})
 }
 
+// IntBatch is a caller-owned native handle. Call Close when it is no longer needed.
 type IntBatch struct {
 	ptr             unsafe.Pointer
 	once            sync.Once
 	callbackHandles []cgo.Handle
 }
 
+// IntBatchRef is a borrowed IntBatch reference that remains valid only while its parent is open.
 type IntBatchRef struct {
 	ptr    unsafe.Pointer
 	parent any
@@ -99,6 +109,7 @@ func (value *IntBatchRef) zigoPointer() unsafe.Pointer {
 	return value.ptr
 }
 
+// Close releases the native IntBatch resources. It is safe to call more than once.
 func (value *IntBatch) Close() {
 	if value == nil {
 		return
@@ -115,12 +126,14 @@ func (value *IntBatch) Close() {
 	})
 }
 
+// FloatBatch is a caller-owned native handle. Call Close when it is no longer needed.
 type FloatBatch struct {
 	ptr             unsafe.Pointer
 	once            sync.Once
 	callbackHandles []cgo.Handle
 }
 
+// FloatBatchRef is a borrowed FloatBatch reference that remains valid only while its parent is open.
 type FloatBatchRef struct {
 	ptr    unsafe.Pointer
 	parent any
@@ -143,6 +156,7 @@ func (value *FloatBatchRef) zigoPointer() unsafe.Pointer {
 	return value.ptr
 }
 
+// Close releases the native FloatBatch resources. It is safe to call more than once.
 func (value *FloatBatch) Close() {
 	if value == nil {
 		return

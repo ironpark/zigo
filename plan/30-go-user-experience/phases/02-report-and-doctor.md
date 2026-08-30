@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T11:58:38Z"
 depends_on:
 - "30-go-user-experience#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Users can run registered report and doctor steps without modifying generated output; reports include final public names, symbols, ownership and relevant semantics, and doctor failures identify a concrete corrective action.
 > NEXT: none

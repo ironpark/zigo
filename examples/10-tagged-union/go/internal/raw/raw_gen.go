@@ -9,61 +9,91 @@ package raw
 import "C"
 import "unsafe"
 
+// LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// ChildCreate calls the generated C ABI wrapper for zg_child_create.
 func ChildCreate(value int32) (unsafe.Pointer, int32) {
 	var outResult unsafe.Pointer
 	code := int32(C.zg_child_create(C.int32_t(value), &outResult))
 	return unsafe.Pointer(outResult), code
 }
+
+// ChildGet calls the generated C ABI wrapper for zg_child_get.
 func ChildGet(self unsafe.Pointer) int32 {
 	return int32(C.zg_child_get(self))
 }
+
+// ChildDeinit calls the generated C ABI wrapper for zg_child_deinit.
 func ChildDeinit(self unsafe.Pointer) {
 	C.zg_child_deinit(self)
 }
+
+// ValueCreate calls the generated C ABI wrapper for zg_value_create.
 func ValueCreate(initial int64) (unsafe.Pointer, int32) {
 	var outResult unsafe.Pointer
 	code := int32(C.zg_value_create(C.int64_t(initial), &outResult))
 	return unsafe.Pointer(outResult), code
 }
+
+// ValueSetNone calls the generated C ABI wrapper for zg_value_set_none.
 func ValueSetNone(self unsafe.Pointer) {
 	C.zg_value_set_none(self)
 }
+
+// ValueSetFlag calls the generated C ABI wrapper for zg_value_set_flag.
 func ValueSetFlag(self unsafe.Pointer, flag uint8) {
 	C.zg_value_set_flag(self, C.uint8_t(flag))
 }
+
+// ValueSetMode calls the generated C ABI wrapper for zg_value_set_mode.
 func ValueSetMode(self unsafe.Pointer, mode uint8) {
 	C.zg_value_set_mode(self, C.uint8_t(mode))
 }
+
+// ValueUsePresetSamples calls the generated C ABI wrapper for zg_value_use_preset_samples.
 func ValueUsePresetSamples(self unsafe.Pointer) {
 	C.zg_value_use_preset_samples(self)
 }
+
+// ValueUseEmptySamples calls the generated C ABI wrapper for zg_value_use_empty_samples.
 func ValueUseEmptySamples(self unsafe.Pointer) {
 	C.zg_value_use_empty_samples(self)
 }
+
+// ValueUseMutableSamples calls the generated C ABI wrapper for zg_value_use_mutable_samples.
 func ValueUseMutableSamples(self unsafe.Pointer) {
 	C.zg_value_use_mutable_samples(self)
 }
+
+// ValueSetChild calls the generated C ABI wrapper for zg_value_set_child.
 func ValueSetChild(self unsafe.Pointer, child unsafe.Pointer) {
 	C.zg_value_set_child(self, child)
 }
+
+// ValueBorrow calls the generated C ABI wrapper for zg_value_borrow.
 func ValueBorrow(self unsafe.Pointer) unsafe.Pointer {
 	return unsafe.Pointer(C.zg_value_borrow(self))
 }
+
+// ValueDeinit calls the generated C ABI wrapper for zg_value_deinit.
 func ValueDeinit(self unsafe.Pointer) {
 	C.zg_value_deinit(self)
 }
+
+// LiveValues calls the generated C ABI wrapper for zg_live_values.
 func LiveValues() uint {
 	return uint(C.zg_live_values())
 }
 
+// ValueProjectTag returns the active tag and a projection status.
 func ValueProjectTag(self unsafe.Pointer) (uint8, uint8) {
 	var outValue C.uint8_t
 	status := C.zg_value_project_tag((*C.zg_value)(self), &outValue)
 	return uint8(outValue), uint8(status)
 }
 
+// ValueProjectInteger returns the payload and a projection status.
 func ValueProjectInteger(self unsafe.Pointer) (int64, uint8) {
 	var outValue C.int64_t
 	status := C.zg_value_project_integer((*C.zg_value)(self), &outValue)
@@ -73,6 +103,7 @@ func ValueProjectInteger(self unsafe.Pointer) (int64, uint8) {
 	return int64(outValue), uint8(status)
 }
 
+// ValueProjectFlag returns the payload and a projection status.
 func ValueProjectFlag(self unsafe.Pointer) (uint8, uint8) {
 	var outValue C.uint8_t
 	status := C.zg_value_project_flag((*C.zg_value)(self), &outValue)
@@ -82,6 +113,7 @@ func ValueProjectFlag(self unsafe.Pointer) (uint8, uint8) {
 	return uint8(outValue), uint8(status)
 }
 
+// ValueProjectMode returns the payload and a projection status.
 func ValueProjectMode(self unsafe.Pointer) (uint8, uint8) {
 	var outValue C.uint8_t
 	status := C.zg_value_project_mode((*C.zg_value)(self), &outValue)
@@ -91,6 +123,7 @@ func ValueProjectMode(self unsafe.Pointer) (uint8, uint8) {
 	return uint8(outValue), uint8(status)
 }
 
+// ValueProjectSamples returns the payload and a projection status.
 func ValueProjectSamples(self unsafe.Pointer) ([]int16, uint8) {
 	var outValuePtr *C.int16_t
 	var outValueLen C.size_t
@@ -101,6 +134,7 @@ func ValueProjectSamples(self unsafe.Pointer) ([]int16, uint8) {
 	return unsafe.Slice((*int16)(unsafe.Pointer(outValuePtr)), int(outValueLen)), uint8(status)
 }
 
+// ValueProjectChild returns the payload and a projection status.
 func ValueProjectChild(self unsafe.Pointer) (unsafe.Pointer, uint8) {
 	var outValue unsafe.Pointer
 	status := C.zg_value_project_child((*C.zg_value)(self), &outValue)
@@ -110,6 +144,7 @@ func ValueProjectChild(self unsafe.Pointer) (unsafe.Pointer, uint8) {
 	return unsafe.Pointer(outValue), uint8(status)
 }
 
+// ValueProjectMutableSamples returns the payload and a projection status.
 func ValueProjectMutableSamples(self unsafe.Pointer) ([]int16, uint8) {
 	var outValuePtr *C.int16_t
 	var outValueLen C.size_t

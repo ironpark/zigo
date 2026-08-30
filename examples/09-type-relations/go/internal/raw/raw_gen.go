@@ -9,36 +9,54 @@ package raw
 import "C"
 import "unsafe"
 
+// LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// CounterCreate calls the generated C ABI wrapper for zg_counter_create.
 func CounterCreate(initial int64) (unsafe.Pointer, int32) {
 	var outResult unsafe.Pointer
 	code := int32(C.zg_counter_create(C.int64_t(initial), &outResult))
 	return unsafe.Pointer(outResult), code
 }
+
+// CounterGet calls the generated C ABI wrapper for zg_counter_get.
 func CounterGet(self unsafe.Pointer) int64 {
 	return int64(C.zg_counter_get(self))
 }
+
+// CounterAdd calls the generated C ABI wrapper for zg_counter_add.
 func CounterAdd(self unsafe.Pointer, delta int64) int64 {
 	return int64(C.zg_counter_add(self, C.int64_t(delta)))
 }
+
+// CounterDeinit calls the generated C ABI wrapper for zg_counter_deinit.
 func CounterDeinit(self unsafe.Pointer) {
 	C.zg_counter_deinit(self)
 }
+
+// AccumulatorCreate calls the generated C ABI wrapper for zg_accumulator_create.
 func AccumulatorCreate() (unsafe.Pointer, int32) {
 	var outResult unsafe.Pointer
 	code := int32(C.zg_accumulator_create(&outResult))
 	return unsafe.Pointer(outResult), code
 }
+
+// AccumulatorAbsorb calls the generated C ABI wrapper for zg_accumulator_absorb.
 func AccumulatorAbsorb(self unsafe.Pointer, counter unsafe.Pointer) int64 {
 	return int64(C.zg_accumulator_absorb(self, counter))
 }
+
+// AccumulatorTotal calls the generated C ABI wrapper for zg_accumulator_total.
 func AccumulatorTotal(self unsafe.Pointer) int64 {
 	return int64(C.zg_accumulator_total(self))
 }
+
+// AccumulatorDeinit calls the generated C ABI wrapper for zg_accumulator_deinit.
 func AccumulatorDeinit(self unsafe.Pointer) {
 	C.zg_accumulator_deinit(self)
 }
+
+// LiveObjects calls the generated C ABI wrapper for zg_live_objects.
 func LiveObjects() uint {
 	return uint(C.zg_live_objects())
 }

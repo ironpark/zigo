@@ -8,8 +8,10 @@ package scalar
 */
 import "C"
 
+// zigoRawLastErrorMessage returns the most recent native panic message for this binding.
 func zigoRawLastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// zigoRawAdd calls the generated C ABI wrapper for zg_add.
 func zigoRawAdd(a int32, b int32) int32 {
 	return int32(C.zg_add(C.int32_t(a), C.int32_t(b)))
 }

@@ -209,6 +209,22 @@ pub fn build(b: *std.Build) void {
     const doctor_tests = b.addTest(.{ .root_module = doctor_module, .filters = test_filters });
     const run_doctor_tests = b.addRunArtifact(doctor_tests);
     const test_step = b.step("test", "Run unit and snapshot harness tests");
+    const godoc_audit = b.addSystemCommand(&.{ "go", "run", "./tests/godoc_audit/main.go" });
+    godoc_audit.addArgs(&.{
+        "tests/generator_cases/complex/expected",
+        "tests/generator_cases/scalar/expected",
+        "examples/01-scalar/go",
+        "examples/02-errors/go",
+        "examples/03-opaque/go",
+        "examples/04-callback/go",
+        "examples/05-pipeline/go",
+        "examples/06-camel-case/go",
+        "examples/07-event-queue/go",
+        "examples/08-telemetry-hub/go",
+        "examples/09-type-relations/go",
+        "examples/10-tagged-union/go",
+    });
+    test_step.dependOn(&godoc_audit.step);
     test_step.dependOn(&run_tests.step);
     test_step.dependOn(&run_generator_tests.step);
     test_step.dependOn(&run_reflect_walk_tests.step);

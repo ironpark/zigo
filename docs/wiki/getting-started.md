@@ -43,8 +43,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
 
-    b.step("go", "Generate Go bindings").dependOn(&bindings.update.step);
-    b.step("go-check", "Check generated bindings").dependOn(&bindings.check.step);
+    _ = bindings.addStandardSteps(b, .{});
 }
 ```
 
@@ -104,6 +103,7 @@ Generic 타입은 구체화된 타입을 이름과 함께 등록한다.
 
 ```bash
 zig build go
+zig build go-doctor
 cd go && go test ./...
 ```
 
@@ -120,6 +120,11 @@ cd go && go test ./...
 `go-check`는 생성 결과와 커밋된 파일이 다르거나, 더 이상 생성되지 않는 zigo 생성 파일이
 소스 트리에 남아 있으면 실패한다. 일반 사용자 작성 Go 파일은 검사하지 않는다.
 
+`go-doctor`는 native target, 최소 Go 버전, cgo와 C toolchain 전제, 선택적인 gofmt를
+검사한다. `go-report`는 reflection 이후 확정된 Go 이름, C 심볼, ownership, 파라미터
+retention과 이름 보강 출처, tagged-union projection을 출력한다. 둘 다 소스나 생성물을
+수정하지 않는다.
+
 독립 배포된 이전 버전과의 ABI·바인딩 계약을 유지해야 한다면 명시적으로 활성화한다.
 
 ```zig
@@ -127,8 +132,7 @@ const bindings = zigo.addGoBindings(b, .{
     // 다른 필수 옵션들…
     .abi_base = "HEAD",
 });
-if (bindings.abi_check) |abi_check|
-    b.step("abi-check", "Check ABI compatibility").dependOn(&abi_check.step);
+_ = bindings.addStandardSteps(b, .{});
 ```
 
 이후 CI에서 `zig build go-check abi-check`를 실행한다. `abi-check`는 지정한 Git ref의

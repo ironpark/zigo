@@ -8,6 +8,9 @@ import (
 	raw "example.com/zigo/event-queue/bridge/cgo"
 )
 
+// NewEventQueue creates a caller-owned EventQueue.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
 func NewEventQueue(name string, capacity uint, policy Policy, observer EventQueueObserver) (*EventQueue, error) {
 	observerHandle := newEventQueueObserverHandle(observer)
 	result, code := raw.EventQueueCreate([]byte(name), capacity, uint32(policy), uintptr(observerHandle))
@@ -17,50 +20,81 @@ func NewEventQueue(name string, capacity uint, policy Policy, observer EventQueu
 	}
 	return newEventQueue(result, []cgo.Handle{observerHandle}), nil
 }
+
+// Enqueue invokes the bound Zig EventQueue.enqueue operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (e *EventQueue) Enqueue(id uint64, value int32) error {
 	defer runtime.KeepAlive(e)
-	code := raw.EventQueueEnqueue(e.ptr, id, value)
+	code := raw.EventQueueEnqueue(zigoMustPointer("EventQueue.Enqueue receiver", e), id, value)
 	if code != 0 {
 		return errorForCode(code)
 	}
 	return nil
 }
+
+// Process invokes the bound Zig EventQueue.process operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (e *EventQueue) Process(limit uint) (uint, error) {
 	defer runtime.KeepAlive(e)
-	result, code := raw.EventQueueProcess(e.ptr, limit)
+	result, code := raw.EventQueueProcess(zigoMustPointer("EventQueue.Process receiver", e), limit)
 	if code != 0 {
 		return 0, errorForCode(code)
 	}
 	return result, nil
 }
+
+// Name invokes the bound Zig EventQueue.name operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (e *EventQueue) Name() string {
 	defer runtime.KeepAlive(e)
-	return string(raw.EventQueueName(e.ptr))
+	return string(raw.EventQueueName(zigoMustPointer("EventQueue.Name receiver", e)))
 }
+
+// Len invokes the bound Zig EventQueue.len operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (e *EventQueue) Len() uint {
 	defer runtime.KeepAlive(e)
-	return raw.EventQueueLen(e.ptr)
+	return raw.EventQueueLen(zigoMustPointer("EventQueue.Len receiver", e))
 }
+
+// Capacity invokes the bound Zig EventQueue.capacity operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (e *EventQueue) Capacity() uint {
 	defer runtime.KeepAlive(e)
-	return raw.EventQueueCapacity(e.ptr)
+	return raw.EventQueueCapacity(zigoMustPointer("EventQueue.Capacity receiver", e))
 }
+
+// Policy invokes the bound Zig EventQueue.policy operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (e *EventQueue) Policy() Policy {
 	defer runtime.KeepAlive(e)
-	return Policy(raw.EventQueuePolicy(e.ptr))
+	return Policy(raw.EventQueuePolicy(zigoMustPointer("EventQueue.Policy receiver", e)))
 }
+
+// Dropped invokes the bound Zig EventQueue.dropped operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (e *EventQueue) Dropped() uint {
 	defer runtime.KeepAlive(e)
-	return raw.EventQueueDropped(e.ptr)
+	return raw.EventQueueDropped(zigoMustPointer("EventQueue.Dropped receiver", e))
 }
+
+// Processed invokes the bound Zig EventQueue.processed operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (e *EventQueue) Processed() uint {
 	defer runtime.KeepAlive(e)
-	return raw.EventQueueProcessed(e.ptr)
+	return raw.EventQueueProcessed(zigoMustPointer("EventQueue.Processed receiver", e))
 }
+
+// Clear invokes the bound Zig EventQueue.clear operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (e *EventQueue) Clear() uint {
 	defer runtime.KeepAlive(e)
-	return raw.EventQueueClear(e.ptr)
+	return raw.EventQueueClear(zigoMustPointer("EventQueue.Clear receiver", e))
 }
+
+// LiveQueues invokes the bound Zig liveQueues operation.
 func LiveQueues() uint {
 	return raw.LiveQueues()
 }

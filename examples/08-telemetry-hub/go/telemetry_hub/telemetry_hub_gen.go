@@ -7,6 +7,9 @@ import (
 	raw "example.com/zigo/telemetry-hub/internal/native"
 )
 
+// NewTelemetryHub creates a caller-owned TelemetryHub.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
 func NewTelemetryHub(input_name string, max_samples uint, initial_mode Mode, overflow_policy OverflowPolicy, observer TelemetryHubObserver) (*TelemetryHub, error) {
 	observerHandle := newTelemetryHubObserverHandle(observer)
 	result, code := raw.TelemetryHubCreate([]byte(input_name), max_samples, uint32(initial_mode), uint32(overflow_policy), uintptr(observerHandle))
@@ -16,246 +19,416 @@ func NewTelemetryHub(input_name string, max_samples uint, initial_mode Mode, ove
 	}
 	return &TelemetryHub{ptr: result, callbackHandles: []cgo.Handle{observerHandle}}, nil
 }
+
+// Rename invokes the bound Zig TelemetryHub.rename operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) Rename(new_name string) error {
-	code := raw.TelemetryHubRename(t.ptr, []byte(new_name))
+	code := raw.TelemetryHubRename(zigoMustPointer("TelemetryHub.Rename receiver", t), []byte(new_name))
 	if code != 0 {
 		return errorForCode(code)
 	}
 	return nil
 }
+
+// Name invokes the bound Zig TelemetryHub.name operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) Name() string {
-	return string(raw.TelemetryHubName(t.ptr))
+	return string(raw.TelemetryHubName(zigoMustPointer("TelemetryHub.Name receiver", t)))
 }
+
+// Capacity invokes the bound Zig TelemetryHub.capacity operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) Capacity() uint {
-	return raw.TelemetryHubCapacity(t.ptr)
+	return raw.TelemetryHubCapacity(zigoMustPointer("TelemetryHub.Capacity receiver", t))
 }
+
+// Len invokes the bound Zig TelemetryHub.len operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) Len() uint {
-	return raw.TelemetryHubLen(t.ptr)
+	return raw.TelemetryHubLen(zigoMustPointer("TelemetryHub.Len receiver", t))
 }
+
+// IsEmpty invokes the bound Zig TelemetryHub.isEmpty operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) IsEmpty() bool {
-	return raw.TelemetryHubIsEmpty(t.ptr) != 0
+	return raw.TelemetryHubIsEmpty(zigoMustPointer("TelemetryHub.IsEmpty receiver", t)) != 0
 }
+
+// IsFull invokes the bound Zig TelemetryHub.isFull operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) IsFull() bool {
-	return raw.TelemetryHubIsFull(t.ptr) != 0
+	return raw.TelemetryHubIsFull(zigoMustPointer("TelemetryHub.IsFull receiver", t)) != 0
 }
+
+// Mode invokes the bound Zig TelemetryHub.mode operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) Mode() Mode {
-	return Mode(raw.TelemetryHubMode(t.ptr))
+	return Mode(raw.TelemetryHubMode(zigoMustPointer("TelemetryHub.Mode receiver", t)))
 }
+
+// SetMode invokes the bound Zig TelemetryHub.setMode operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) SetMode(new_mode Mode) Mode {
-	return Mode(raw.TelemetryHubSetMode(t.ptr, uint32(new_mode)))
+	return Mode(raw.TelemetryHubSetMode(zigoMustPointer("TelemetryHub.SetMode receiver", t), uint32(new_mode)))
 }
+
+// OverflowPolicy invokes the bound Zig TelemetryHub.overflowPolicy operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) OverflowPolicy() OverflowPolicy {
-	return OverflowPolicy(raw.TelemetryHubOverflowPolicy(t.ptr))
+	return OverflowPolicy(raw.TelemetryHubOverflowPolicy(zigoMustPointer("TelemetryHub.OverflowPolicy receiver", t)))
 }
+
+// SetOverflowPolicy invokes the bound Zig TelemetryHub.setOverflowPolicy operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) SetOverflowPolicy(new_policy OverflowPolicy) OverflowPolicy {
-	return OverflowPolicy(raw.TelemetryHubSetOverflowPolicy(t.ptr, uint32(new_policy)))
+	return OverflowPolicy(raw.TelemetryHubSetOverflowPolicy(zigoMustPointer("TelemetryHub.SetOverflowPolicy receiver", t), uint32(new_policy)))
 }
+
+// Enabled invokes the bound Zig TelemetryHub.enabled operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) Enabled() bool {
-	return raw.TelemetryHubEnabled(t.ptr) != 0
+	return raw.TelemetryHubEnabled(zigoMustPointer("TelemetryHub.Enabled receiver", t)) != 0
 }
+
+// SetEnabled invokes the bound Zig TelemetryHub.setEnabled operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) SetEnabled(new_enabled bool) bool {
-	return raw.TelemetryHubSetEnabled(t.ptr, boolToUint8(new_enabled)) != 0
+	return raw.TelemetryHubSetEnabled(zigoMustPointer("TelemetryHub.SetEnabled receiver", t), boolToUint8(new_enabled)) != 0
 }
+
+// Threshold invokes the bound Zig TelemetryHub.threshold operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) Threshold() float64 {
-	return raw.TelemetryHubThreshold(t.ptr)
+	return raw.TelemetryHubThreshold(zigoMustPointer("TelemetryHub.Threshold receiver", t))
 }
+
+// SetThreshold invokes the bound Zig TelemetryHub.setThreshold operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) SetThreshold(new_threshold float64) error {
-	code := raw.TelemetryHubSetThreshold(t.ptr, new_threshold)
+	code := raw.TelemetryHubSetThreshold(zigoMustPointer("TelemetryHub.SetThreshold receiver", t), new_threshold)
 	if code != 0 {
 		return errorForCode(code)
 	}
 	return nil
 }
+
+// ScaleFactor invokes the bound Zig TelemetryHub.scaleFactor operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) ScaleFactor() float64 {
-	return raw.TelemetryHubScaleFactor(t.ptr)
+	return raw.TelemetryHubScaleFactor(zigoMustPointer("TelemetryHub.ScaleFactor receiver", t))
 }
+
+// SetScaleFactor invokes the bound Zig TelemetryHub.setScaleFactor operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) SetScaleFactor(new_factor float64) error {
-	code := raw.TelemetryHubSetScaleFactor(t.ptr, new_factor)
+	code := raw.TelemetryHubSetScaleFactor(zigoMustPointer("TelemetryHub.SetScaleFactor receiver", t), new_factor)
 	if code != 0 {
 		return errorForCode(code)
 	}
 	return nil
 }
+
+// Offset invokes the bound Zig TelemetryHub.offset operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) Offset() float64 {
-	return raw.TelemetryHubOffset(t.ptr)
+	return raw.TelemetryHubOffset(zigoMustPointer("TelemetryHub.Offset receiver", t))
 }
+
+// SetOffset invokes the bound Zig TelemetryHub.setOffset operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) SetOffset(new_offset float64) error {
-	code := raw.TelemetryHubSetOffset(t.ptr, new_offset)
+	code := raw.TelemetryHubSetOffset(zigoMustPointer("TelemetryHub.SetOffset receiver", t), new_offset)
 	if code != 0 {
 		return errorForCode(code)
 	}
 	return nil
 }
+
+// Push invokes the bound Zig TelemetryHub.push operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) Push(id uint64, value float64) error {
-	code := raw.TelemetryHubPush(t.ptr, id, value)
+	code := raw.TelemetryHubPush(zigoMustPointer("TelemetryHub.Push receiver", t), id, value)
 	if code != 0 {
 		return errorForCode(code)
 	}
 	return nil
 }
+
+// PushWithSeverity invokes the bound Zig TelemetryHub.pushWithSeverity operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) PushWithSeverity(id uint64, value float64, severity Severity) error {
-	code := raw.TelemetryHubPushWithSeverity(t.ptr, id, value, uint32(severity))
+	code := raw.TelemetryHubPushWithSeverity(zigoMustPointer("TelemetryHub.PushWithSeverity receiver", t), id, value, uint32(severity))
 	if code != 0 {
 		return errorForCode(code)
 	}
 	return nil
 }
+
+// PushBatch invokes the bound Zig TelemetryHub.pushBatch operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) PushBatch(values []float64) error {
-	code := raw.TelemetryHubPushBatch(t.ptr, values)
+	code := raw.TelemetryHubPushBatch(zigoMustPointer("TelemetryHub.PushBatch receiver", t), values)
 	if code != 0 {
 		return errorForCode(code)
 	}
 	return nil
 }
+
+// Process invokes the bound Zig TelemetryHub.process operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) Process(limit uint) (uint, error) {
-	result, code := raw.TelemetryHubProcess(t.ptr, limit)
+	result, code := raw.TelemetryHubProcess(zigoMustPointer("TelemetryHub.Process receiver", t), limit)
 	if code != 0 {
 		return 0, errorForCode(code)
 	}
 	return result, nil
 }
+
+// ProcessAll invokes the bound Zig TelemetryHub.processAll operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) ProcessAll() (uint, error) {
-	result, code := raw.TelemetryHubProcessAll(t.ptr)
+	result, code := raw.TelemetryHubProcessAll(zigoMustPointer("TelemetryHub.ProcessAll receiver", t))
 	if code != 0 {
 		return 0, errorForCode(code)
 	}
 	return result, nil
 }
+
+// Clear invokes the bound Zig TelemetryHub.clear operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) Clear() uint {
-	return raw.TelemetryHubClear(t.ptr)
+	return raw.TelemetryHubClear(zigoMustPointer("TelemetryHub.Clear receiver", t))
 }
+
+// ResetStatistics invokes the bound Zig TelemetryHub.resetStatistics operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) ResetStatistics() {
-	raw.TelemetryHubResetStatistics(t.ptr)
+	raw.TelemetryHubResetStatistics(zigoMustPointer("TelemetryHub.ResetStatistics receiver", t))
 }
+
+// Accepted invokes the bound Zig TelemetryHub.accepted operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) Accepted() uint {
-	return raw.TelemetryHubAccepted(t.ptr)
+	return raw.TelemetryHubAccepted(zigoMustPointer("TelemetryHub.Accepted receiver", t))
 }
+
+// Rejected invokes the bound Zig TelemetryHub.rejected operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) Rejected() uint {
-	return raw.TelemetryHubRejected(t.ptr)
+	return raw.TelemetryHubRejected(zigoMustPointer("TelemetryHub.Rejected receiver", t))
 }
+
+// Dropped invokes the bound Zig TelemetryHub.dropped operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) Dropped() uint {
-	return raw.TelemetryHubDropped(t.ptr)
+	return raw.TelemetryHubDropped(zigoMustPointer("TelemetryHub.Dropped receiver", t))
 }
+
+// Processed invokes the bound Zig TelemetryHub.processed operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) Processed() uint {
-	return raw.TelemetryHubProcessed(t.ptr)
+	return raw.TelemetryHubProcessed(zigoMustPointer("TelemetryHub.Processed receiver", t))
 }
+
+// Filtered invokes the bound Zig TelemetryHub.filtered operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) Filtered() uint {
-	return raw.TelemetryHubFiltered(t.ptr)
+	return raw.TelemetryHubFiltered(zigoMustPointer("TelemetryHub.Filtered receiver", t))
 }
+
+// Sum invokes the bound Zig TelemetryHub.sum operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) Sum() float64 {
-	return raw.TelemetryHubSum(t.ptr)
+	return raw.TelemetryHubSum(zigoMustPointer("TelemetryHub.Sum receiver", t))
 }
+
+// Minimum invokes the bound Zig TelemetryHub.minimum operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) Minimum() (float64, error) {
-	result, code := raw.TelemetryHubMinimum(t.ptr)
+	result, code := raw.TelemetryHubMinimum(zigoMustPointer("TelemetryHub.Minimum receiver", t))
 	if code != 0 {
 		return 0, errorForCode(code)
 	}
 	return result, nil
 }
+
+// Maximum invokes the bound Zig TelemetryHub.maximum operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) Maximum() (float64, error) {
-	result, code := raw.TelemetryHubMaximum(t.ptr)
+	result, code := raw.TelemetryHubMaximum(zigoMustPointer("TelemetryHub.Maximum receiver", t))
 	if code != 0 {
 		return 0, errorForCode(code)
 	}
 	return result, nil
 }
+
+// Average invokes the bound Zig TelemetryHub.average operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) Average() (float64, error) {
-	result, code := raw.TelemetryHubAverage(t.ptr)
+	result, code := raw.TelemetryHubAverage(zigoMustPointer("TelemetryHub.Average receiver", t))
 	if code != 0 {
 		return 0, errorForCode(code)
 	}
 	return result, nil
 }
+
+// FirstID invokes the bound Zig TelemetryHub.firstId operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) FirstID() (uint64, error) {
-	result, code := raw.TelemetryHubFirstID(t.ptr)
+	result, code := raw.TelemetryHubFirstID(zigoMustPointer("TelemetryHub.FirstID receiver", t))
 	if code != 0 {
 		return 0, errorForCode(code)
 	}
 	return result, nil
 }
+
+// FirstValue invokes the bound Zig TelemetryHub.firstValue operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) FirstValue() (float64, error) {
-	result, code := raw.TelemetryHubFirstValue(t.ptr)
+	result, code := raw.TelemetryHubFirstValue(zigoMustPointer("TelemetryHub.FirstValue receiver", t))
 	if code != 0 {
 		return 0, errorForCode(code)
 	}
 	return result, nil
 }
+
+// LastID invokes the bound Zig TelemetryHub.lastId operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) LastID() (uint64, error) {
-	result, code := raw.TelemetryHubLastID(t.ptr)
+	result, code := raw.TelemetryHubLastID(zigoMustPointer("TelemetryHub.LastID receiver", t))
 	if code != 0 {
 		return 0, errorForCode(code)
 	}
 	return result, nil
 }
+
+// LastValue invokes the bound Zig TelemetryHub.lastValue operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) LastValue() (float64, error) {
-	result, code := raw.TelemetryHubLastValue(t.ptr)
+	result, code := raw.TelemetryHubLastValue(zigoMustPointer("TelemetryHub.LastValue receiver", t))
 	if code != 0 {
 		return 0, errorForCode(code)
 	}
 	return result, nil
 }
+
+// LastSeverity invokes the bound Zig TelemetryHub.lastSeverity operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) LastSeverity() (Severity, error) {
-	result, code := raw.TelemetryHubLastSeverity(t.ptr)
+	result, code := raw.TelemetryHubLastSeverity(zigoMustPointer("TelemetryHub.LastSeverity receiver", t))
 	if code != 0 {
 		return 0, errorForCode(code)
 	}
 	return Severity(result), nil
 }
+
+// CountAbove invokes the bound Zig TelemetryHub.countAbove operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) CountAbove(boundary float64) (uint, error) {
-	result, code := raw.TelemetryHubCountAbove(t.ptr, boundary)
+	result, code := raw.TelemetryHubCountAbove(zigoMustPointer("TelemetryHub.CountAbove receiver", t), boundary)
 	if code != 0 {
 		return 0, errorForCode(code)
 	}
 	return result, nil
 }
+
+// CountBelow invokes the bound Zig TelemetryHub.countBelow operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) CountBelow(boundary float64) (uint, error) {
-	result, code := raw.TelemetryHubCountBelow(t.ptr, boundary)
+	result, code := raw.TelemetryHubCountBelow(zigoMustPointer("TelemetryHub.CountBelow receiver", t), boundary)
 	if code != 0 {
 		return 0, errorForCode(code)
 	}
 	return result, nil
 }
+
+// ContainsAbove invokes the bound Zig TelemetryHub.containsAbove operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) ContainsAbove(boundary float64) (bool, error) {
-	result, code := raw.TelemetryHubContainsAbove(t.ptr, boundary)
+	result, code := raw.TelemetryHubContainsAbove(zigoMustPointer("TelemetryHub.ContainsAbove receiver", t), boundary)
 	if code != 0 {
 		return false, errorForCode(code)
 	}
 	return result != 0, nil
 }
+
+// ContainsBelow invokes the bound Zig TelemetryHub.containsBelow operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) ContainsBelow(boundary float64) (bool, error) {
-	result, code := raw.TelemetryHubContainsBelow(t.ptr, boundary)
+	result, code := raw.TelemetryHubContainsBelow(zigoMustPointer("TelemetryHub.ContainsBelow receiver", t), boundary)
 	if code != 0 {
 		return false, errorForCode(code)
 	}
 	return result != 0, nil
 }
+
+// ScaleValues invokes the bound Zig TelemetryHub.scaleValues operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) ScaleValues(factor float64) error {
-	code := raw.TelemetryHubScaleValues(t.ptr, factor)
+	code := raw.TelemetryHubScaleValues(zigoMustPointer("TelemetryHub.ScaleValues receiver", t), factor)
 	if code != 0 {
 		return errorForCode(code)
 	}
 	return nil
 }
+
+// OffsetValues invokes the bound Zig TelemetryHub.offsetValues operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) OffsetValues(delta float64) error {
-	code := raw.TelemetryHubOffsetValues(t.ptr, delta)
+	code := raw.TelemetryHubOffsetValues(zigoMustPointer("TelemetryHub.OffsetValues receiver", t), delta)
 	if code != 0 {
 		return errorForCode(code)
 	}
 	return nil
 }
+
+// ClampValues invokes the bound Zig TelemetryHub.clampValues operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
 func (t *TelemetryHub) ClampValues(lower float64, upper float64) error {
-	code := raw.TelemetryHubClampValues(t.ptr, lower, upper)
+	code := raw.TelemetryHubClampValues(zigoMustPointer("TelemetryHub.ClampValues receiver", t), lower, upper)
 	if code != 0 {
 		return errorForCode(code)
 	}
 	return nil
 }
+
+// AbsoluteValues invokes the bound Zig TelemetryHub.absoluteValues operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) AbsoluteValues() {
-	raw.TelemetryHubAbsoluteValues(t.ptr)
+	raw.TelemetryHubAbsoluteValues(zigoMustPointer("TelemetryHub.AbsoluteValues receiver", t))
 }
+
+// NegateValues invokes the bound Zig TelemetryHub.negateValues operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (t *TelemetryHub) NegateValues() {
-	raw.TelemetryHubNegateValues(t.ptr)
+	raw.TelemetryHubNegateValues(zigoMustPointer("TelemetryHub.NegateValues receiver", t))
 }
+
+// LiveHubs invokes the bound Zig liveHubs operation.
 func LiveHubs() uint {
 	return raw.LiveHubs()
 }

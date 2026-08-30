@@ -9,12 +9,19 @@ import (
 	raw "example.com/zigo/telemetry-hub/internal/native"
 )
 
+// Mode represents the corresponding Zig enum.
 type Mode uint32
 
+// ModeRaw corresponds to the Zig tag raw.
 const ModeRaw Mode = 0
+
+// ModeScaled corresponds to the Zig tag scaled.
 const ModeScaled Mode = 1
+
+// ModeAbsolute corresponds to the Zig tag absolute.
 const ModeAbsolute Mode = 2
 
+// String returns the Zig tag name.
 func (value Mode) String() string {
 	switch value {
 	case ModeRaw:
@@ -28,11 +35,16 @@ func (value Mode) String() string {
 	}
 }
 
+// OverflowPolicy represents the corresponding Zig enum.
 type OverflowPolicy uint32
 
+// OverflowPolicyReject corresponds to the Zig tag reject.
 const OverflowPolicyReject OverflowPolicy = 0
+
+// OverflowPolicyDropOldest corresponds to the Zig tag drop_oldest.
 const OverflowPolicyDropOldest OverflowPolicy = 1
 
+// String returns the Zig tag name.
 func (value OverflowPolicy) String() string {
 	switch value {
 	case OverflowPolicyReject:
@@ -44,13 +56,22 @@ func (value OverflowPolicy) String() string {
 	}
 }
 
+// Severity represents the corresponding Zig enum.
 type Severity uint32
 
+// SeverityDebug corresponds to the Zig tag debug.
 const SeverityDebug Severity = 0
+
+// SeverityInfo corresponds to the Zig tag info.
 const SeverityInfo Severity = 1
+
+// SeverityWarning corresponds to the Zig tag warning.
 const SeverityWarning Severity = 2
+
+// SeverityCritical corresponds to the Zig tag critical.
 const SeverityCritical Severity = 3
 
+// String returns the Zig tag name.
 func (value Severity) String() string {
 	switch value {
 	case SeverityDebug:
@@ -66,19 +87,40 @@ func (value Severity) String() string {
 	}
 }
 
+// TelemetryHubObserver is the Go callback signature accepted by the generated binding.
 type TelemetryHubObserver func(uint64, float64) int32
 
+// TelemetryHub is a caller-owned native handle. Call Close when it is no longer needed.
 type TelemetryHub struct {
 	ptr             unsafe.Pointer
 	once            sync.Once
 	callbackHandles []cgo.Handle
 }
 
+// TelemetryHubRef is a borrowed TelemetryHub reference that remains valid only while its parent is open.
 type TelemetryHubRef struct {
 	ptr    unsafe.Pointer
 	parent any
 }
 
+func (value *TelemetryHub) zigoPointer() unsafe.Pointer {
+	if value == nil {
+		return nil
+	}
+	return value.ptr
+}
+
+func (value *TelemetryHubRef) zigoPointer() unsafe.Pointer {
+	if value == nil || value.ptr == nil {
+		return nil
+	}
+	if parent, ok := value.parent.(interface{ zigoPointer() unsafe.Pointer }); ok && parent.zigoPointer() == nil {
+		return nil
+	}
+	return value.ptr
+}
+
+// Close releases the native TelemetryHub resources. It is safe to call more than once.
 func (value *TelemetryHub) Close() {
 	if value == nil {
 		return
@@ -93,4 +135,31 @@ func (value *TelemetryHub) Close() {
 		}
 		value.callbackHandles = nil
 	})
+}
+
+type zigoHandle interface {
+	zigoPointer() unsafe.Pointer
+}
+
+func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, error) {
+	ptr := value.zigoPointer()
+	if ptr == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	return ptr, nil
+}
+
+func zigoMustPointer(operation string, value zigoHandle) unsafe.Pointer {
+	ptr, err := zigoCheckedPointer(operation, value)
+	if err != nil {
+		panic(err)
+	}
+	return ptr
+}
+
+func zigoOptionalPointer(operation string, absent bool, value zigoHandle) unsafe.Pointer {
+	if absent {
+		return nil
+	}
+	return zigoMustPointer(operation, value)
 }

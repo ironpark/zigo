@@ -8,16 +8,36 @@ import (
 	"example.com/zigo/type-relations/internal/raw"
 )
 
+// Counter is a caller-owned native handle. Call Close when it is no longer needed.
 type Counter struct {
 	ptr  unsafe.Pointer
 	once sync.Once
 }
 
+// CounterRef is a borrowed Counter reference that remains valid only while its parent is open.
 type CounterRef struct {
 	ptr    unsafe.Pointer
 	parent any
 }
 
+func (value *Counter) zigoPointer() unsafe.Pointer {
+	if value == nil {
+		return nil
+	}
+	return value.ptr
+}
+
+func (value *CounterRef) zigoPointer() unsafe.Pointer {
+	if value == nil || value.ptr == nil {
+		return nil
+	}
+	if parent, ok := value.parent.(interface{ zigoPointer() unsafe.Pointer }); ok && parent.zigoPointer() == nil {
+		return nil
+	}
+	return value.ptr
+}
+
+// Close releases the native Counter resources. It is safe to call more than once.
 func (value *Counter) Close() {
 	if value == nil {
 		return
@@ -30,16 +50,36 @@ func (value *Counter) Close() {
 	})
 }
 
+// Accumulator is a caller-owned native handle. Call Close when it is no longer needed.
 type Accumulator struct {
 	ptr  unsafe.Pointer
 	once sync.Once
 }
 
+// AccumulatorRef is a borrowed Accumulator reference that remains valid only while its parent is open.
 type AccumulatorRef struct {
 	ptr    unsafe.Pointer
 	parent any
 }
 
+func (value *Accumulator) zigoPointer() unsafe.Pointer {
+	if value == nil {
+		return nil
+	}
+	return value.ptr
+}
+
+func (value *AccumulatorRef) zigoPointer() unsafe.Pointer {
+	if value == nil || value.ptr == nil {
+		return nil
+	}
+	if parent, ok := value.parent.(interface{ zigoPointer() unsafe.Pointer }); ok && parent.zigoPointer() == nil {
+		return nil
+	}
+	return value.ptr
+}
+
+// Close releases the native Accumulator resources. It is safe to call more than once.
 func (value *Accumulator) Close() {
 	if value == nil {
 		return
@@ -50,4 +90,31 @@ func (value *Accumulator) Close() {
 			value.ptr = nil
 		}
 	})
+}
+
+type zigoHandle interface {
+	zigoPointer() unsafe.Pointer
+}
+
+func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, error) {
+	ptr := value.zigoPointer()
+	if ptr == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	return ptr, nil
+}
+
+func zigoMustPointer(operation string, value zigoHandle) unsafe.Pointer {
+	ptr, err := zigoCheckedPointer(operation, value)
+	if err != nil {
+		panic(err)
+	}
+	return ptr
+}
+
+func zigoOptionalPointer(operation string, absent bool, value zigoHandle) unsafe.Pointer {
+	if absent {
+		return nil
+	}
+	return zigoMustPointer(operation, value)
 }

@@ -10,6 +10,7 @@ import "C"
 import "runtime/cgo"
 import "unsafe"
 
+// LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
 //export zg_event_queue_create_go_callback_observer
@@ -23,6 +24,7 @@ func zg_event_queue_create_go_callback_observer(p0 C.uint64_t, p1 C.int32_t, p2 
 	return C.int32_t(callback(uint64(p0), int32(p1)))
 }
 
+// EventQueueCreate calls the generated C ABI wrapper for zg_event_queue_create.
 func EventQueueCreate(name []uint8, capacity uint, policy uint32, observerHandle uintptr) (unsafe.Pointer, int32) {
 	var name_zero C.uint8_t
 	name_ptr := &name_zero
@@ -33,42 +35,64 @@ func EventQueueCreate(name []uint8, capacity uint, policy uint32, observerHandle
 	code := int32(C.zg_event_queue_create(name_ptr, C.size_t(len(name)), C.size_t(capacity), C.uint32_t(policy), C.size_t(observerHandle), &outResult))
 	return unsafe.Pointer(outResult), code
 }
+
+// EventQueueEnqueue calls the generated C ABI wrapper for zg_event_queue_enqueue.
 func EventQueueEnqueue(self unsafe.Pointer, id uint64, value int32) int32 {
 	code := int32(C.zg_event_queue_enqueue(self, C.uint64_t(id), C.int32_t(value)))
 	return code
 }
+
+// EventQueueProcess calls the generated C ABI wrapper for zg_event_queue_process.
 func EventQueueProcess(self unsafe.Pointer, limit uint) (uint, int32) {
 	var outResult C.size_t
 	code := int32(C.zg_event_queue_process(self, C.size_t(limit), &outResult))
 	return uint(outResult), code
 }
+
+// EventQueueName calls the generated C ABI wrapper for zg_event_queue_name.
 func EventQueueName(self unsafe.Pointer) []uint8 {
 	var outResultPtr *C.uint8_t
 	var outResultLen C.size_t
 	C.zg_event_queue_name(self, &outResultPtr, &outResultLen)
 	return C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))
 }
+
+// EventQueueLen calls the generated C ABI wrapper for zg_event_queue_len.
 func EventQueueLen(self unsafe.Pointer) uint {
 	return uint(C.zg_event_queue_len(self))
 }
+
+// EventQueueCapacity calls the generated C ABI wrapper for zg_event_queue_capacity.
 func EventQueueCapacity(self unsafe.Pointer) uint {
 	return uint(C.zg_event_queue_capacity(self))
 }
+
+// EventQueuePolicy calls the generated C ABI wrapper for zg_event_queue_policy.
 func EventQueuePolicy(self unsafe.Pointer) uint32 {
 	return uint32(C.zg_event_queue_policy(self))
 }
+
+// EventQueueDropped calls the generated C ABI wrapper for zg_event_queue_dropped.
 func EventQueueDropped(self unsafe.Pointer) uint {
 	return uint(C.zg_event_queue_dropped(self))
 }
+
+// EventQueueProcessed calls the generated C ABI wrapper for zg_event_queue_processed.
 func EventQueueProcessed(self unsafe.Pointer) uint {
 	return uint(C.zg_event_queue_processed(self))
 }
+
+// EventQueueClear calls the generated C ABI wrapper for zg_event_queue_clear.
 func EventQueueClear(self unsafe.Pointer) uint {
 	return uint(C.zg_event_queue_clear(self))
 }
+
+// EventQueueDeinit calls the generated C ABI wrapper for zg_event_queue_deinit.
 func EventQueueDeinit(self unsafe.Pointer) {
 	C.zg_event_queue_deinit(self)
 }
+
+// LiveQueues calls the generated C ABI wrapper for zg_live_queues.
 func LiveQueues() uint {
 	return uint(C.zg_live_queues())
 }

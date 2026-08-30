@@ -8,16 +8,36 @@ import (
 	"example.com/zigo/opaque/internal/raw"
 )
 
+// Context is a caller-owned native handle. Call Close when it is no longer needed.
 type Context struct {
 	ptr  unsafe.Pointer
 	once sync.Once
 }
 
+// ContextRef is a borrowed Context reference that remains valid only while its parent is open.
 type ContextRef struct {
 	ptr    unsafe.Pointer
 	parent any
 }
 
+func (value *Context) zigoPointer() unsafe.Pointer {
+	if value == nil {
+		return nil
+	}
+	return value.ptr
+}
+
+func (value *ContextRef) zigoPointer() unsafe.Pointer {
+	if value == nil || value.ptr == nil {
+		return nil
+	}
+	if parent, ok := value.parent.(interface{ zigoPointer() unsafe.Pointer }); ok && parent.zigoPointer() == nil {
+		return nil
+	}
+	return value.ptr
+}
+
+// Close releases the native Context resources. It is safe to call more than once.
 func (value *Context) Close() {
 	if value == nil {
 		return
@@ -28,4 +48,31 @@ func (value *Context) Close() {
 			value.ptr = nil
 		}
 	})
+}
+
+type zigoHandle interface {
+	zigoPointer() unsafe.Pointer
+}
+
+func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, error) {
+	ptr := value.zigoPointer()
+	if ptr == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	return ptr, nil
+}
+
+func zigoMustPointer(operation string, value zigoHandle) unsafe.Pointer {
+	ptr, err := zigoCheckedPointer(operation, value)
+	if err != nil {
+		panic(err)
+	}
+	return ptr
+}
+
+func zigoOptionalPointer(operation string, absent bool, value zigoHandle) unsafe.Pointer {
+	if absent {
+		return nil
+	}
+	return zigoMustPointer(operation, value)
 }

@@ -7,6 +7,9 @@ import (
 	"example.com/zigo/callback/internal/raw"
 )
 
+// NewFloatBuffer creates a caller-owned FloatBuffer.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
 func NewFloatBuffer() (*FloatBuffer, error) {
 	result, code := raw.FloatBufferCreate()
 	if code != 0 {
@@ -14,12 +17,22 @@ func NewFloatBuffer() (*FloatBuffer, error) {
 	}
 	return &FloatBuffer{ptr: result}, nil
 }
+
+// Push invokes the bound Zig FloatBuffer.push operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (f *FloatBuffer) Push(value float32) {
-	raw.FloatBufferPush(f.ptr, value)
+	raw.FloatBufferPush(zigoMustPointer("FloatBuffer.Push receiver", f), value)
 }
+
+// Len invokes the bound Zig FloatBuffer.len operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (f *FloatBuffer) Len() uint {
-	return raw.FloatBufferLen(f.ptr)
+	return raw.FloatBufferLen(zigoMustPointer("FloatBuffer.Len receiver", f))
 }
+
+// NewIntBuffer creates a caller-owned IntBuffer.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
 func NewIntBuffer() (*IntBuffer, error) {
 	result, code := raw.IntBufferCreate()
 	if code != 0 {
@@ -27,12 +40,22 @@ func NewIntBuffer() (*IntBuffer, error) {
 	}
 	return &IntBuffer{ptr: result}, nil
 }
+
+// Push invokes the bound Zig IntBuffer.push operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (i *IntBuffer) Push(value int32) {
-	raw.IntBufferPush(i.ptr, value)
+	raw.IntBufferPush(zigoMustPointer("IntBuffer.Push receiver", i), value)
 }
+
+// Len invokes the bound Zig IntBuffer.len operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (i *IntBuffer) Len() uint {
-	return raw.IntBufferLen(i.ptr)
+	return raw.IntBufferLen(zigoMustPointer("IntBuffer.Len receiver", i))
 }
+
+// NewCallbackContext creates a caller-owned CallbackContext.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
 func NewCallbackContext(callback CallbackContextCallback) (*CallbackContext, error) {
 	callbackHandle := newCallbackContextCallbackHandle(callback)
 	result, code := raw.CallbackContextCreate(uintptr(callbackHandle))
@@ -42,9 +65,15 @@ func NewCallbackContext(callback CallbackContextCallback) (*CallbackContext, err
 	}
 	return &CallbackContext{ptr: result, callbackHandles: []cgo.Handle{callbackHandle}}, nil
 }
+
+// Run invokes the bound Zig CallbackContext.run operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (c *CallbackContext) Run(value int32) int32 {
-	return raw.CallbackContextRun(c.ptr, value)
+	return raw.CallbackContextRun(zigoMustPointer("CallbackContext.Run receiver", c), value)
 }
+
+// PanicNow invokes the bound Zig panicNow operation.
+// Native failures are returned as generated error values.
 func PanicNow() error {
 	code := raw.PanicNow()
 	if code != 0 {
@@ -52,6 +81,8 @@ func PanicNow() error {
 	}
 	return nil
 }
+
+// CompressionBound invokes the bound Zig compressionBound operation.
 func CompressionBound(source_len uint) uint {
 	return raw.CompressionBound(source_len)
 }

@@ -43,9 +43,13 @@ AST 보강에 사용하는 기본 `bindings.zig`를 읽지 못하면 reflection�
 
 - Zig panic은 C 경계에서 오류 코드 `-2`와 마지막 오류 메시지로 변환되지만 정상 복구를
   뜻하지 않는다. 메시지를 수집한 뒤 현재 작업을 중단한다.
-- tagged-union projection은 별도 status `3`으로 실제 Zig panic을 구분한다. null handle과
-  필수 out 파라미터는 호출 전에 status `2`로 거부하지만, `SIGSEGV` 같은 하드웨어 fault나
-  손상된 native 메모리까지 복구하지는 않는다.
+- 모든 public opaque receiver와 handle 인자는 cgo 진입 전에 nil·closed 상태를 검사한다.
+  오류 반환이 없는 일반 메서드는 `*HandleError`로 panic한다. Tagged-union의 `TryTag`와
+  `TryAs*`는 같은 상태를 error로 반환하며, 편의 메서드 `Tag`와 `As*`만 typed error로
+  panic한다.
+- tagged-union projection은 별도 status `3`으로 실제 Zig panic을 구분해
+  `*NativePanicError`로 반환한다. null handle과 필수 out 파라미터는 status `2`로
+  거부하지만, `SIGSEGV` 같은 하드웨어 fault나 손상된 native 메모리까지 복구하지는 않는다.
 - cgo 호출 비용은 무시할 수 없다. 호출당 작업이 작은 API를 그대로 노출하기보다 배치
   지향 함수를 제공하는 편이 낫다.
 - retained Go 콜백과 포인터는 생성된 `Close` 경로에서 해제될 때까지 유효해야 한다.

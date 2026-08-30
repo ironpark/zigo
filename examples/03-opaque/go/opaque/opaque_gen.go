@@ -3,6 +3,9 @@ package opaque
 
 import "example.com/zigo/opaque/internal/raw"
 
+// NewContext creates a caller-owned Context.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
 func NewContext() (*Context, error) {
 	result, code := raw.ContextCreate()
 	if code != 0 {
@@ -10,9 +13,14 @@ func NewContext() (*Context, error) {
 	}
 	return &Context{ptr: result}, nil
 }
+
+// Add invokes the bound Zig Context.add operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (c *Context) Add(value int64) int64 {
-	return raw.ContextAdd(c.ptr, value)
+	return raw.ContextAdd(zigoMustPointer("Context.Add receiver", c), value)
 }
+
+// LiveBytes invokes the bound Zig liveBytes operation.
 func LiveBytes() uint {
 	return raw.LiveBytes()
 }
@@ -21,6 +29,8 @@ func LiveBytes() uint {
 func Echo(text string) string {
 	return string(raw.Echo([]byte(text)))
 }
+
+// Fallback invokes the bound Zig fallback operation.
 func Fallback(p0 int64) int64 {
 	return raw.Fallback(p0)
 }

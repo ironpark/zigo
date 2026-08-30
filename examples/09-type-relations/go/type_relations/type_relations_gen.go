@@ -3,6 +3,9 @@ package type_relations
 
 import "example.com/zigo/type-relations/internal/raw"
 
+// NewCounter creates a caller-owned Counter.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
 func NewCounter(initial int64) (*Counter, error) {
 	result, code := raw.CounterCreate(initial)
 	if code != 0 {
@@ -10,12 +13,22 @@ func NewCounter(initial int64) (*Counter, error) {
 	}
 	return &Counter{ptr: result}, nil
 }
+
+// Get invokes the bound Zig Counter.get operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (c *Counter) Get() int64 {
-	return raw.CounterGet(c.ptr)
+	return raw.CounterGet(zigoMustPointer("Counter.Get receiver", c))
 }
+
+// Add invokes the bound Zig Counter.add operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (c *Counter) Add(delta int64) int64 {
-	return raw.CounterAdd(c.ptr, delta)
+	return raw.CounterAdd(zigoMustPointer("Counter.Add receiver", c), delta)
 }
+
+// NewAccumulator creates a caller-owned Accumulator.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
 func NewAccumulator() (*Accumulator, error) {
 	result, code := raw.AccumulatorCreate()
 	if code != 0 {
@@ -25,12 +38,18 @@ func NewAccumulator() (*Accumulator, error) {
 }
 
 // Absorb Adds the current value of another exposed opaque type.
+// It panics with *HandleError if a required handle is nil or closed.
 func (a *Accumulator) Absorb(counter *Counter) int64 {
-	return raw.AccumulatorAbsorb(a.ptr, counter.ptr)
+	return raw.AccumulatorAbsorb(zigoMustPointer("Accumulator.Absorb receiver", a), zigoMustPointer("Accumulator.Absorb parameter counter", counter))
 }
+
+// Total invokes the bound Zig Accumulator.total operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (a *Accumulator) Total() int64 {
-	return raw.AccumulatorTotal(a.ptr)
+	return raw.AccumulatorTotal(zigoMustPointer("Accumulator.Total receiver", a))
 }
+
+// LiveObjects invokes the bound Zig liveObjects operation.
 func LiveObjects() uint {
 	return raw.LiveObjects()
 }

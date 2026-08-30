@@ -45,21 +45,21 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    b.step("go", "Generate Go bindings").dependOn(&bindings.update.step);
-    b.step("go-check", "Check generated bindings").dependOn(&bindings.check.step);
+    _ = bindings.addStandardSteps(b, .{});
 }
 ```
 
-이전 배포 버전과의 ABI·바인딩 계약을 유지해야 할 때만 옵션과 스텝을 추가한다.
+이전 배포 버전과의 ABI·바인딩 계약을 유지해야 할 때만 `abi_base`를 추가한다.
 
 ```zig
 // addGoBindings options
 .abi_base = "HEAD",
 
-// after addGoBindings
-if (bindings.abi_check) |abi_check|
-    b.step("abi-check", "Check ABI compatibility").dependOn(&abi_check.step);
 ```
+
+`addStandardSteps`는 `go`, `go-check`, `go-report`, `go-doctor`와, `abi_base`가 있을 때
+`abi-check`를 등록한다. 바인딩 세트가 여러 개면 `.name_prefix = "admin"`처럼 지정해
+`admin-go`, `admin-go-check` 형식의 독립된 스텝을 만든다.
 
 Go에 노출할 선언을 별도 파일에 적는다.
 
@@ -78,8 +78,14 @@ pub const bindings = zigo.define(.{
 
 ```bash
 zig build go
+zig build go-doctor
+zig build go-report
 cd go && go test ./...
 ```
+
+생성된 opaque 메서드는 nil·closed handle을 cgo 진입 전에 검사하고 `*HandleError`로
+panic한다. Tagged union은 panic하지 않고 처리할 수 있는 `TryTag`와 `TryAs*`도 함께
+생성하며, 모든 exported 생성 선언에는 ownership과 실패 계약을 설명하는 GoDoc이 붙는다.
 
 ## 문서
 

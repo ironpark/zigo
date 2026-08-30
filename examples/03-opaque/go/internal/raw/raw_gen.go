@@ -9,22 +9,32 @@ package raw
 import "C"
 import "unsafe"
 
+// LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// ContextCreate calls the generated C ABI wrapper for zg_context_create.
 func ContextCreate() (unsafe.Pointer, int32) {
 	var outResult unsafe.Pointer
 	code := int32(C.zg_context_create(&outResult))
 	return unsafe.Pointer(outResult), code
 }
+
+// ContextAdd calls the generated C ABI wrapper for zg_context_add.
 func ContextAdd(self unsafe.Pointer, value int64) int64 {
 	return int64(C.zg_context_add(self, C.int64_t(value)))
 }
+
+// ContextDeinit calls the generated C ABI wrapper for zg_context_deinit.
 func ContextDeinit(self unsafe.Pointer) {
 	C.zg_context_deinit(self)
 }
+
+// LiveBytes calls the generated C ABI wrapper for zg_live_bytes.
 func LiveBytes() uint {
 	return uint(C.zg_live_bytes())
 }
+
+// Echo calls the generated C ABI wrapper for zg_echo.
 func Echo(text []uint8) []uint8 {
 	var outResultPtr *C.uint8_t
 	var outResultLen C.size_t
@@ -36,6 +46,8 @@ func Echo(text []uint8) []uint8 {
 	C.zg_echo(text_ptr, C.size_t(len(text)), &outResultPtr, &outResultLen)
 	return C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))
 }
+
+// Fallback calls the generated C ABI wrapper for zg_fallback.
 func Fallback(p0 int64) int64 {
 	return int64(C.zg_fallback(C.int64_t(p0)))
 }

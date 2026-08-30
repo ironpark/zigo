@@ -8,8 +8,10 @@ package http_client
 */
 import "C"
 
+// zigoRawLastErrorMessage returns the most recent native panic message for this binding.
 func zigoRawLastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// zigoRawStatusCode calls the generated C ABI wrapper for zg_status_code.
 func zigoRawStatusCode(retry_count uint32) uint32 {
 	return uint32(C.zg_status_code(C.uint32_t(retry_count)))
 }

@@ -3,18 +3,27 @@ package errors
 
 import raw "example.com/zigo/errors/support/ffi"
 
+// Error is a stable Zig error-set value returned by the generated binding.
 type Error struct {
+	// Code is the stable integer stored in errors.lock.json.
 	Code int32
+	// Name is the Zig error name, optionally followed by native panic context.
 	Name string
 }
 
+// Error implements error.
 func (err *Error) Error() string { return err.Name }
+
+// Is compares generated errors by stable code.
 func (err *Error) Is(target error) bool {
 	other, ok := target.(*Error)
 	return ok && err.Code == other.Code
 }
 
+// ErrDivideByZero represents Zig error.DivideByZero.
 var ErrDivideByZero = &Error{Code: 1, Name: "DivideByZero"}
+
+// ErrPanicCaught identifies a Zig panic translated at the C ABI boundary.
 var ErrPanicCaught = &Error{Code: -2, Name: "PanicCaught"}
 
 func errorForCode(code int32) error {

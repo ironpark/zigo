@@ -3,6 +3,8 @@ package errors
 
 import raw "example.com/zigo/errors/support/ffi"
 
+// Divide invokes the bound Zig divide operation.
+// Native failures are returned as generated error values.
 func Divide(numerator float64, denominator float64) (float64, error) {
 	result, code := raw.Divide(numerator, denominator)
 	if code != 0 {
@@ -10,9 +12,13 @@ func Divide(numerator float64, denominator float64) (float64, error) {
 	}
 	return result, nil
 }
+
+// Sum invokes the bound Zig sum operation.
 func Sum(values []float64) float64 {
 	return raw.Sum(values)
 }
+
+// NormalizeFormat invokes the bound Zig normalizeFormat operation.
 func NormalizeFormat(value Format) Format {
 	return Format(raw.NormalizeFormat(uint32(value)))
 }

@@ -7,6 +7,9 @@ import (
 	"example.com/zigo/tagged-union/internal/raw"
 )
 
+// NewChild creates a caller-owned Child.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
 func NewChild(value int32) (*Child, error) {
 	result, code := raw.ChildCreate(value)
 	if code != 0 {
@@ -14,10 +17,17 @@ func NewChild(value int32) (*Child, error) {
 	}
 	return newChild(result), nil
 }
+
+// Get invokes the bound Zig Child.get operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (c *Child) Get() int32 {
 	defer runtime.KeepAlive(c)
 	return raw.ChildGet(zigoMustPointer("Child.Get receiver", c))
 }
+
+// NewValue creates a caller-owned Value.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
 func NewValue(initial int64) (*Value, error) {
 	result, code := raw.ValueCreate(initial)
 	if code != 0 {
@@ -25,40 +35,67 @@ func NewValue(initial int64) (*Value, error) {
 	}
 	return newValue(result), nil
 }
+
+// SetNone invokes the bound Zig Value.setNone operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (v *Value) SetNone() {
 	defer runtime.KeepAlive(v)
 	raw.ValueSetNone(zigoMustPointer("Value.SetNone receiver", v))
 }
+
+// SetFlag invokes the bound Zig Value.setFlag operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (v *Value) SetFlag(flag bool) {
 	defer runtime.KeepAlive(v)
 	raw.ValueSetFlag(zigoMustPointer("Value.SetFlag receiver", v), boolToUint8(flag))
 }
+
+// SetMode invokes the bound Zig Value.setMode operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (v *Value) SetMode(mode Mode) {
 	defer runtime.KeepAlive(v)
 	raw.ValueSetMode(zigoMustPointer("Value.SetMode receiver", v), uint8(mode))
 }
+
+// UsePresetSamples invokes the bound Zig Value.usePresetSamples operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (v *Value) UsePresetSamples() {
 	defer runtime.KeepAlive(v)
 	raw.ValueUsePresetSamples(zigoMustPointer("Value.UsePresetSamples receiver", v))
 }
+
+// UseEmptySamples invokes the bound Zig Value.useEmptySamples operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (v *Value) UseEmptySamples() {
 	defer runtime.KeepAlive(v)
 	raw.ValueUseEmptySamples(zigoMustPointer("Value.UseEmptySamples receiver", v))
 }
+
+// UseMutableSamples invokes the bound Zig Value.useMutableSamples operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (v *Value) UseMutableSamples() {
 	defer runtime.KeepAlive(v)
 	raw.ValueUseMutableSamples(zigoMustPointer("Value.UseMutableSamples receiver", v))
 }
+
+// SetChild invokes the bound Zig Value.setChild operation.
+// It panics with *HandleError if a required handle is nil or closed.
 func (v *Value) SetChild(child *Child) {
 	defer runtime.KeepAlive(v)
 	defer runtime.KeepAlive(child)
 	raw.ValueSetChild(zigoMustPointer("Value.SetChild receiver", v), zigoMustPointer("Value.SetChild parameter child", child))
 }
+
+// Borrow invokes the bound Zig Value.borrow operation.
+// The returned reference remains valid only while its parent handle remains open.
+// It panics with *HandleError if a required handle is nil or closed.
 func (v *Value) Borrow() *ValueRef {
 	defer runtime.KeepAlive(v)
 	result := raw.ValueBorrow(zigoMustPointer("Value.Borrow receiver", v))
 	return &ValueRef{ptr: result, parent: v}
 }
+
+// LiveValues invokes the bound Zig liveValues operation.
 func LiveValues() uint {
 	return raw.LiveValues()
 }

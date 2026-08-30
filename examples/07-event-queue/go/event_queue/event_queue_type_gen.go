@@ -10,11 +10,16 @@ import (
 	raw "example.com/zigo/event-queue/bridge/cgo"
 )
 
+// Policy represents the corresponding Zig enum.
 type Policy uint32
 
+// PolicyReject corresponds to the Zig tag reject.
 const PolicyReject Policy = 0
+
+// PolicyDropOldest corresponds to the Zig tag drop_oldest.
 const PolicyDropOldest Policy = 1
 
+// String returns the Zig tag name.
 func (value Policy) String() string {
 	switch value {
 	case PolicyReject:
@@ -26,8 +31,10 @@ func (value Policy) String() string {
 	}
 }
 
+// EventQueueObserver is the Go callback signature accepted by the generated binding.
 type EventQueueObserver func(uint64, int32) int32
 
+// EventQueue is a caller-owned native handle. Call Close when it is no longer needed.
 type EventQueue struct {
 	ptr             unsafe.Pointer
 	once            sync.Once
@@ -35,9 +42,27 @@ type EventQueue struct {
 	cleanup         runtime.Cleanup
 }
 
+// EventQueueRef is a borrowed EventQueue reference that remains valid only while its parent is open.
 type EventQueueRef struct {
 	ptr    unsafe.Pointer
 	parent any
+}
+
+func (value *EventQueue) zigoPointer() unsafe.Pointer {
+	if value == nil {
+		return nil
+	}
+	return value.ptr
+}
+
+func (value *EventQueueRef) zigoPointer() unsafe.Pointer {
+	if value == nil || value.ptr == nil {
+		return nil
+	}
+	if parent, ok := value.parent.(interface{ zigoPointer() unsafe.Pointer }); ok && parent.zigoPointer() == nil {
+		return nil
+	}
+	return value.ptr
 }
 
 type eventQueueCleanupState struct {
@@ -61,6 +86,7 @@ func cleanupEventQueue(state eventQueueCleanupState) {
 	}
 }
 
+// Close releases the native EventQueue resources. It is safe to call more than once.
 func (value *EventQueue) Close() {
 	if value == nil {
 		return
@@ -72,4 +98,31 @@ func (value *EventQueue) Close() {
 		value.callbackHandles = nil
 	})
 	runtime.KeepAlive(value)
+}
+
+type zigoHandle interface {
+	zigoPointer() unsafe.Pointer
+}
+
+func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, error) {
+	ptr := value.zigoPointer()
+	if ptr == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	return ptr, nil
+}
+
+func zigoMustPointer(operation string, value zigoHandle) unsafe.Pointer {
+	ptr, err := zigoCheckedPointer(operation, value)
+	if err != nil {
+		panic(err)
+	}
+	return ptr
+}
+
+func zigoOptionalPointer(operation string, absent bool, value zigoHandle) unsafe.Pointer {
+	if absent {
+		return nil
+	}
+	return zigoMustPointer(operation, value)
 }

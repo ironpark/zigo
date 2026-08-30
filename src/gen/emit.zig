@@ -440,13 +440,16 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
     if (programHasCallbacks(program)) try writer.writeAll("import \"runtime/cgo\"\n");
     if (programNeedsUnsafe(program)) try writer.writeAll("import \"unsafe\"\n");
     try writer.writeByte('\n');
-    try writer.print("func {s}LastErrorMessage() string {{ return C.GoString(C.zg_last_error_message()) }}\n\n", .{if (options.raw_colocated) "zigoRaw" else ""});
+    const last_error_name = if (options.raw_colocated) "zigoRawLastErrorMessage" else "LastErrorMessage";
+    try writer.print("// {s} returns the most recent native panic message for this binding.\nfunc {s}() string {{ return C.GoString(C.zg_last_error_message()) }}\n\n", .{ last_error_name, last_error_name });
     try renderRawCallbacks(allocator, writer, program);
 
     for (program.functions) |function| {
         const go_name = try rawGoNameAlloc(allocator, function.origin.*);
         defer allocator.free(go_name);
-        try writer.print("func {s}{s}(", .{ if (options.raw_colocated) "zigoRaw" else "", go_name });
+        const raw_public_name = try std.fmt.allocPrint(allocator, "{s}{s}", .{ if (options.raw_colocated) "zigoRaw" else "", go_name });
+        defer allocator.free(raw_public_name);
+        try writer.print("// {s} calls the generated C ABI wrapper for {s}.\nfunc {s}(", .{ raw_public_name, function.symbol, raw_public_name });
         var raw_parameter_index: usize = 0;
         if (function.origin.receiver != null) {
             try writer.writeAll("self unsafe.Pointer");
@@ -555,7 +558,7 @@ fn renderRawTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.Io.W
         defer allocator.free(union_name);
         switch (projection.kind) {
             .tag => {
-                try writer.print("\nfunc {s}ProjectTag(self unsafe.Pointer) (", .{declaration.name});
+                try writer.print("\n// {s}ProjectTag returns the active tag and a projection status.\nfunc {s}ProjectTag(self unsafe.Pointer) (", .{ declaration.name, declaration.name });
                 try writeRawGoType(writer, program, declaration.tag_type.?);
                 try writer.writeAll(", uint8) {\n\tvar outValue C.");
                 try writeCgoType(writer, semanticScalar(program, declaration.tag_type.?));
@@ -569,7 +572,7 @@ fn renderRawTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.Io.W
                 const payload = field.type.?;
                 const field_name = try naming.pascalAlloc(allocator, field.name);
                 defer allocator.free(field_name);
-                try writer.print("\nfunc {s}Project{s}(self unsafe.Pointer) (", .{ declaration.name, field_name });
+                try writer.print("\n// {s}Project{s} returns the payload and a projection status.\nfunc {s}Project{s}(self unsafe.Pointer) (", .{ declaration.name, field_name, declaration.name, field_name });
                 try writeRawGoType(writer, program, payload);
                 try writer.writeAll(", uint8) {\n");
                 if (payload == .slice) {
@@ -685,7 +688,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         else
             try allocator.dupe(u8, go_name);
         defer allocator.free(operation);
-        if (function.origin.doc) |doc| try writeGoDoc(writer, go_name, doc);
+        try writePublicFunctionDoc(writer, function.origin.*, go_name, constructor);
         if (function.origin.receiver) |receiver| {
             const receiver_name = try receiverVariableAlloc(allocator, receiver);
             defer allocator.free(receiver_name);
@@ -922,6 +925,11 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     for (program.types) |declaration| {
         if (!isHandleType(declaration)) continue;
         const auto_cleanup = isAutoCleanupType(program, declaration.name, options);
+        if (constructorForType(program, declaration.name) != null) {
+            try writer.print("// {s} is a caller-owned native handle. Call Close when it is no longer needed.\n", .{declaration.name});
+        } else {
+            try writer.print("// {s} represents a native Zig handle.\n", .{declaration.name});
+        }
         try writer.print("type {s} struct {{\n", .{declaration.name});
         if (programHasCallbacks(program)) {
             try writer.writeAll("\tptr             unsafe.Pointer\n\tonce            sync.Once\n\tcallbackHandles []cgo.Handle\n");
@@ -932,8 +940,9 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         }
         try writer.print(
             "}}\n\n" ++
+                "// {s}Ref is a borrowed {s} reference that remains valid only while its parent is open.\n" ++
                 "type {s}Ref struct {{\n\tptr    unsafe.Pointer\n\tparent any\n}}\n\n",
-            .{declaration.name},
+            .{ declaration.name, declaration.name, declaration.name },
         );
         try writer.print(
             "func (value *{s}) zigoPointer() unsafe.Pointer {{\n\tif value == nil {{\n\t\treturn nil\n\t}}\n\treturn value.ptr\n}}\n\n" ++
@@ -965,13 +974,13 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                 try writer.print("{s}(state.ptr)\n\t}}\n", .{raw_deinit});
                 if (programHasCallbacks(program)) try writer.writeAll("\tfor _, handle := range state.callbackHandles {\n\t\tdeleteCallbackHandle(handle)\n\t}\n");
                 try writer.writeAll("}\n\n");
-                try writer.print("func (value *{s}) Close() {{\n\tif value == nil {{\n\t\treturn\n\t}}\n\tvalue.once.Do(func() {{\n\t\tvalue.cleanup.Stop()\n\t\tcleanup{s}({s}CleanupState{{ptr: value.ptr", .{ declaration.name, declaration.name, private_name });
+                try writer.print("// Close releases the native {s} resources. It is safe to call more than once.\nfunc (value *{s}) Close() {{\n\tif value == nil {{\n\t\treturn\n\t}}\n\tvalue.once.Do(func() {{\n\t\tvalue.cleanup.Stop()\n\t\tcleanup{s}({s}CleanupState{{ptr: value.ptr", .{ declaration.name, declaration.name, declaration.name, private_name });
                 if (programHasCallbacks(program)) try writer.writeAll(", callbackHandles: value.callbackHandles");
                 try writer.writeAll("})\n\t\tvalue.ptr = nil\n");
                 if (programHasCallbacks(program)) try writer.writeAll("\t\tvalue.callbackHandles = nil\n");
                 try writer.writeAll("\t})\n\truntime.KeepAlive(value)\n}\n\n");
             } else {
-                try writer.print("func (value *{s}) Close() {{\n\tif value == nil {{\n\t\treturn\n\t}}\n\tvalue.once.Do(func() {{\n\t\tif value.ptr != nil {{\n\t\t\t", .{declaration.name});
+                try writer.print("// Close releases the native {s} resources. It is safe to call more than once.\nfunc (value *{s}) Close() {{\n\tif value == nil {{\n\t\treturn\n\t}}\n\tvalue.once.Do(func() {{\n\t\tif value.ptr != nil {{\n\t\t\t", .{ declaration.name, declaration.name });
                 try writeRawReferencePrefix(writer, options);
                 try writer.print("{s}(value.ptr)\n\t\t\tvalue.ptr = nil\n\t\t}}\n", .{raw_deinit});
                 if (programHasCallbacks(program)) try writer.writeAll("\t\tfor _, handle := range value.callbackHandles {\n\t\t\tdeleteCallbackHandle(handle)\n\t\t}\n\t\tvalue.callbackHandles = nil\n");
@@ -1034,17 +1043,17 @@ fn renderPublicTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.I
         if (tag_projection.kind != .tag) continue;
         const declaration = tag_projection.owner.*;
         inline for (.{ false, true }) |borrowed| {
-            try writer.print("func (value *{s}{s}) TryTag() ({s}, error) {{\n\tdefer runtime.KeepAlive(value)\n\tptr, err := zigoCheckedPointer(\"{s}.Tag receiver\", value)\n\tif err != nil {{\n\t\treturn 0, err\n\t}}\n\tresult, status := ", .{ declaration.name, if (borrowed) "Ref" else "", declaration.tag_type.?.@"enum".ref, declaration.name });
+            try writer.print("// TryTag returns the active tagged-union tag or a typed lifecycle/native error.\nfunc (value *{s}{s}) TryTag() ({s}, error) {{\n\tdefer runtime.KeepAlive(value)\n\tptr, err := zigoCheckedPointer(\"{s}.Tag receiver\", value)\n\tif err != nil {{\n\t\treturn 0, err\n\t}}\n\tresult, status := ", .{ declaration.name, if (borrowed) "Ref" else "", declaration.tag_type.?.@"enum".ref, declaration.name });
             try writeRawReferencePrefix(writer, options);
             try writer.print("{s}ProjectTag(ptr)\n\tif status != zigoProjectionSuccess {{\n\t\treturn 0, zigoProjectionError(\"{s}.Tag\", status)\n\t}}\n\treturn {s}(result), nil\n}}\n\n", .{ declaration.name, declaration.name, declaration.tag_type.?.@"enum".ref });
-            try writer.print("func (value *{s}{s}) Tag() {s} {{\n\tresult, err := value.TryTag()\n\tif err != nil {{\n\t\tpanic(err)\n\t}}\n\treturn result\n}}\n\n", .{ declaration.name, if (borrowed) "Ref" else "", declaration.tag_type.?.@"enum".ref });
+            try writer.print("// Tag returns the active tagged-union tag and panics with a typed error on failure.\nfunc (value *{s}{s}) Tag() {s} {{\n\tresult, err := value.TryTag()\n\tif err != nil {{\n\t\tpanic(err)\n\t}}\n\treturn result\n}}\n\n", .{ declaration.name, if (borrowed) "Ref" else "", declaration.tag_type.?.@"enum".ref });
             for (program.projections) |payload_projection| {
                 if (payload_projection.kind != .payload or !std.mem.eql(u8, payload_projection.owner.name, declaration.name)) continue;
                 const field = payload_projection.field.?.*;
                 const payload = field.type.?;
                 const field_name = try naming.pascalAlloc(allocator, field.name);
                 defer allocator.free(field_name);
-                try writer.print("func (value *{s}{s}) TryAs{s}() (", .{ declaration.name, if (borrowed) "Ref" else "", field_name });
+                try writer.print("// TryAs{s} returns the {s} payload, whether it is active, and any lifecycle/native error.\nfunc (value *{s}{s}) TryAs{s}() (", .{ field_name, field.name, declaration.name, if (borrowed) "Ref" else "", field_name });
                 if (payload == .opaque_ptr) {
                     try writer.print("*{s}Ref", .{payload.opaque_ptr.ref});
                 } else {
@@ -1077,7 +1086,7 @@ fn renderPublicTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.I
                     try writePublicResultConversion(writer, payload, "result");
                 }
                 try writer.writeAll(", true, nil\n}\n\n");
-                try writer.print("func (value *{s}{s}) As{s}() (", .{ declaration.name, if (borrowed) "Ref" else "", field_name });
+                try writer.print("// As{s} returns the {s} payload when active and panics with a typed error on failure.\nfunc (value *{s}{s}) As{s}() (", .{ field_name, field.name, declaration.name, if (borrowed) "Ref" else "", field_name });
                 if (payload == .opaque_ptr) {
                     try writer.print("*{s}Ref", .{payload.opaque_ptr.ref});
                 } else {
@@ -1115,15 +1124,15 @@ fn writeBorrowedResult(allocator: std.mem.Allocator, writer: *std.Io.Writer, fun
 fn renderGoEnums(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
     for (program.types) |declaration| {
         if (declaration.kind != .@"enum") continue;
-        try writer.print("type {s} ", .{declaration.name});
+        try writer.print("// {s} represents the corresponding Zig enum.\ntype {s} ", .{ declaration.name, declaration.name });
         try writePublicGoType(writer, declaration.tag_type.?);
         try writer.writeAll("\n\n");
         for (declaration.fields) |field| {
             const field_name = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(field_name);
-            try writer.print("const {s}{s} {s} = {d}\n", .{ declaration.name, field_name, declaration.name, field.value.? });
+            try writer.print("// {s}{s} corresponds to the Zig tag {s}.\nconst {s}{s} {s} = {d}\n", .{ declaration.name, field_name, field.name, declaration.name, field_name, declaration.name, field.value.? });
         }
-        try writer.print("\nfunc (value {s}) String() string {{\n\tswitch value {{\n", .{declaration.name});
+        try writer.print("\n// String returns the Zig tag name.\nfunc (value {s}) String() string {{\n\tswitch value {{\n", .{declaration.name});
         for (declaration.fields) |field| {
             const field_name = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(field_name);
@@ -1139,7 +1148,7 @@ fn renderGoCallbackTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, p
             if (parameter.type != .callback) continue;
             const callback_name = try callbackTypeNameAlloc(allocator, program, function, parameter_index);
             defer allocator.free(callback_name);
-            try writer.print("type {s} ", .{callback_name});
+            try writer.print("// {s} is the Go callback signature accepted by the generated binding.\ntype {s} ", .{ callback_name, callback_name });
             try writePublicCallbackType(writer, parameter.type.callback);
             try writer.writeAll("\n\n");
         }
@@ -1148,31 +1157,37 @@ fn renderGoCallbackTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, p
 
 fn renderGoHandleErrors(writer: *std.Io.Writer) !void {
     try writer.writeAll(
-        "var ErrInvalidHandle = errors.New(\"zigo: nil or closed handle\")\n" ++
+        "// ErrInvalidHandle identifies a nil, closed, or invalid borrowed handle.\n" ++
+            "var ErrInvalidHandle = errors.New(\"zigo: nil or closed handle\")\n" ++
+            "// ErrNativePanic identifies a Zig panic caught at the projection boundary.\n" ++
             "var ErrNativePanic = errors.New(\"zigo: native panic\")\n\n" ++
+            "// HandleError reports which generated operation received an invalid handle.\n" ++
             "type HandleError struct {\n" ++
+            "\t// Operation names the generated operation and offending receiver or parameter.\n" ++
             "\tOperation string\n" ++
             "}\n\n" ++
-            "func (err *HandleError) Error() string {\n" ++
+            "// Error implements error.\nfunc (err *HandleError) Error() string {\n" ++
             "\treturn \"zigo: \" + err.Operation + \": nil or closed handle\"\n" ++
             "}\n\n" ++
-            "func (err *HandleError) Unwrap() error { return ErrInvalidHandle }\n\n" ++
+            "// Unwrap returns ErrInvalidHandle for errors.Is classification.\nfunc (err *HandleError) Unwrap() error { return ErrInvalidHandle }\n\n" ++
+            "// NativePanicError reports a Zig panic caught while projecting a tagged union.\n" ++
             "type NativePanicError struct {\n" ++
-            "\tOperation string\n" ++
-            "\tMessage   string\n" ++
+            "\t// Operation names the generated projection.\n\tOperation string\n" ++
+            "\t// Message is the native panic message when available.\n\tMessage string\n" ++
             "}\n\n" ++
-            "func (err *NativePanicError) Error() string {\n" ++
+            "// Error implements error.\nfunc (err *NativePanicError) Error() string {\n" ++
             "\tif err.Message == \"\" {\n" ++
             "\t\treturn \"zigo: \" + err.Operation + \": native panic\"\n" ++
             "\t}\n" ++
             "\treturn \"zigo: \" + err.Operation + \": native panic: \" + err.Message\n" ++
             "}\n\n" ++
-            "func (err *NativePanicError) Unwrap() error { return ErrNativePanic }\n\n" ++
+            "// Unwrap returns ErrNativePanic for errors.Is classification.\nfunc (err *NativePanicError) Unwrap() error { return ErrNativePanic }\n\n" ++
+            "// ProjectionError reports an unrecognized native projection status.\n" ++
             "type ProjectionError struct {\n" ++
-            "\tOperation string\n" ++
-            "\tStatus    uint8\n" ++
+            "\t// Operation names the generated projection.\n\tOperation string\n" ++
+            "\t// Status is the unexpected native status code.\n\tStatus uint8\n" ++
             "}\n\n" ++
-            "func (err *ProjectionError) Error() string {\n" ++
+            "// Error implements error.\nfunc (err *ProjectionError) Error() string {\n" ++
             "\treturn \"zigo: \" + err.Operation + \": invalid projection status\"\n" ++
             "}\n\n",
     );
@@ -1180,13 +1195,21 @@ fn renderGoHandleErrors(writer: *std.Io.Writer) !void {
 
 fn renderGoErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     if (program.error_codes.len == 0) return;
-    try writer.writeAll("type Error struct {\n\tCode int32\n\tName string\n}\n\nfunc (err *Error) Error() string { return err.Name }\nfunc (err *Error) Is(target error) bool {\n\tother, ok := target.(*Error)\n\treturn ok && err.Code == other.Code\n}\n\n");
+    try writer.writeAll(
+        "// Error is a stable Zig error-set value returned by the generated binding.\n" ++
+            "type Error struct {\n" ++
+            "\t// Code is the stable integer stored in errors.lock.json.\n\tCode int32\n" ++
+            "\t// Name is the Zig error name, optionally followed by native panic context.\n\tName string\n" ++
+            "}\n\n" ++
+            "// Error implements error.\nfunc (err *Error) Error() string { return err.Name }\n" ++
+            "// Is compares generated errors by stable code.\nfunc (err *Error) Is(target error) bool {\n\tother, ok := target.(*Error)\n\treturn ok && err.Code == other.Code\n}\n\n",
+    );
     for (program.error_codes) |entry| {
         const name = try naming.pascalAlloc(allocator, entry.name);
         defer allocator.free(name);
-        try writer.print("var Err{s} = &Error{{Code: {d}, Name: \"{s}\"}}\n", .{ name, entry.code, entry.name });
+        try writer.print("// Err{s} represents Zig error.{s}.\nvar Err{s} = &Error{{Code: {d}, Name: \"{s}\"}}\n", .{ name, entry.name, name, entry.code, entry.name });
     }
-    try writer.writeAll("var ErrPanicCaught = &Error{Code: -2, Name: \"PanicCaught\"}\n\nfunc errorForCode(code int32) error {\n\tswitch code {\n\tcase -2:\n\t\treturn &Error{Code: -2, Name: \"PanicCaught: \" + ");
+    try writer.writeAll("// ErrPanicCaught identifies a Zig panic translated at the C ABI boundary.\nvar ErrPanicCaught = &Error{Code: -2, Name: \"PanicCaught\"}\n\nfunc errorForCode(code int32) error {\n\tswitch code {\n\tcase -2:\n\t\treturn &Error{Code: -2, Name: \"PanicCaught: \" + ");
     try writeRawReferencePrefix(writer, options);
     try writer.writeAll("LastErrorMessage()}\n");
     for (program.error_codes) |entry| {
@@ -1379,6 +1402,36 @@ fn writeGoDoc(writer: *std.Io.Writer, go_name: []const u8, doc: []const u8) !voi
             try writer.print("// {s}\n", .{line});
         }
     }
+}
+
+fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.SemanticFn, go_name: []const u8, constructor: ?semantic.Constructor) !void {
+    if (function.doc) |doc| {
+        try writeGoDoc(writer, go_name, doc);
+    } else if (constructor) |value| {
+        try writer.print("\n// {s} creates a caller-owned {s}.\n", .{ go_name, value.type });
+    } else if (function.receiver) |receiver| {
+        try writer.print("\n// {s} invokes the bound Zig {s}.{s} operation.\n", .{ go_name, receiver, function.name });
+    } else {
+        try writer.print("\n// {s} invokes the bound Zig {s} operation.\n", .{ go_name, function.name });
+    }
+    if (constructor != null)
+        try writer.writeAll("// The caller must call Close on the returned handle.\n");
+    if (returnsBorrowedHandle(function))
+        try writer.writeAll("// The returned reference remains valid only while its parent handle remains open.\n");
+    if (function.receiver != null or hasOpaqueParameter(function))
+        try writer.writeAll("// It panics with *HandleError if a required handle is nil or closed.\n");
+    if (function.@"return" == .error_union)
+        try writer.writeAll("// Native failures are returned as generated error values.\n");
+}
+
+fn returnsBorrowedHandle(function: semantic.SemanticFn) bool {
+    const node = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
+    return node == .opaque_ptr and function.ownership == .borrowed;
+}
+
+fn hasOpaqueParameter(function: semantic.SemanticFn) bool {
+    for (function.params) |parameter| if (parameter.type == .opaque_ptr) return true;
+    return false;
 }
 
 fn rawGoTypeName(program: abi.Program, node: semantic.TypeNode) []const u8 {

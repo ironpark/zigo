@@ -9,11 +9,16 @@ import (
 	"example.com/zigo/pipeline/internal/raw"
 )
 
+// Mode represents the corresponding Zig enum.
 type Mode uint32
 
+// ModeSum corresponds to the Zig tag sum.
 const ModeSum Mode = 0
+
+// ModeWeighted corresponds to the Zig tag weighted.
 const ModeWeighted Mode = 1
 
+// String returns the Zig tag name.
 func (value Mode) String() string {
 	switch value {
 	case ModeSum:
@@ -25,19 +30,40 @@ func (value Mode) String() string {
 	}
 }
 
+// PipelineCallback is the Go callback signature accepted by the generated binding.
 type PipelineCallback func(int32) int32
 
+// Pipeline is a caller-owned native handle. Call Close when it is no longer needed.
 type Pipeline struct {
 	ptr             unsafe.Pointer
 	once            sync.Once
 	callbackHandles []cgo.Handle
 }
 
+// PipelineRef is a borrowed Pipeline reference that remains valid only while its parent is open.
 type PipelineRef struct {
 	ptr    unsafe.Pointer
 	parent any
 }
 
+func (value *Pipeline) zigoPointer() unsafe.Pointer {
+	if value == nil {
+		return nil
+	}
+	return value.ptr
+}
+
+func (value *PipelineRef) zigoPointer() unsafe.Pointer {
+	if value == nil || value.ptr == nil {
+		return nil
+	}
+	if parent, ok := value.parent.(interface{ zigoPointer() unsafe.Pointer }); ok && parent.zigoPointer() == nil {
+		return nil
+	}
+	return value.ptr
+}
+
+// Close releases the native Pipeline resources. It is safe to call more than once.
 func (value *Pipeline) Close() {
 	if value == nil {
 		return
@@ -54,17 +80,37 @@ func (value *Pipeline) Close() {
 	})
 }
 
+// IntBatch is a caller-owned native handle. Call Close when it is no longer needed.
 type IntBatch struct {
 	ptr             unsafe.Pointer
 	once            sync.Once
 	callbackHandles []cgo.Handle
 }
 
+// IntBatchRef is a borrowed IntBatch reference that remains valid only while its parent is open.
 type IntBatchRef struct {
 	ptr    unsafe.Pointer
 	parent any
 }
 
+func (value *IntBatch) zigoPointer() unsafe.Pointer {
+	if value == nil {
+		return nil
+	}
+	return value.ptr
+}
+
+func (value *IntBatchRef) zigoPointer() unsafe.Pointer {
+	if value == nil || value.ptr == nil {
+		return nil
+	}
+	if parent, ok := value.parent.(interface{ zigoPointer() unsafe.Pointer }); ok && parent.zigoPointer() == nil {
+		return nil
+	}
+	return value.ptr
+}
+
+// Close releases the native IntBatch resources. It is safe to call more than once.
 func (value *IntBatch) Close() {
 	if value == nil {
 		return
@@ -81,17 +127,37 @@ func (value *IntBatch) Close() {
 	})
 }
 
+// FloatBatch is a caller-owned native handle. Call Close when it is no longer needed.
 type FloatBatch struct {
 	ptr             unsafe.Pointer
 	once            sync.Once
 	callbackHandles []cgo.Handle
 }
 
+// FloatBatchRef is a borrowed FloatBatch reference that remains valid only while its parent is open.
 type FloatBatchRef struct {
 	ptr    unsafe.Pointer
 	parent any
 }
 
+func (value *FloatBatch) zigoPointer() unsafe.Pointer {
+	if value == nil {
+		return nil
+	}
+	return value.ptr
+}
+
+func (value *FloatBatchRef) zigoPointer() unsafe.Pointer {
+	if value == nil || value.ptr == nil {
+		return nil
+	}
+	if parent, ok := value.parent.(interface{ zigoPointer() unsafe.Pointer }); ok && parent.zigoPointer() == nil {
+		return nil
+	}
+	return value.ptr
+}
+
+// Close releases the native FloatBatch resources. It is safe to call more than once.
 func (value *FloatBatch) Close() {
 	if value == nil {
 		return
@@ -106,4 +172,31 @@ func (value *FloatBatch) Close() {
 		}
 		value.callbackHandles = nil
 	})
+}
+
+type zigoHandle interface {
+	zigoPointer() unsafe.Pointer
+}
+
+func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, error) {
+	ptr := value.zigoPointer()
+	if ptr == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	return ptr, nil
+}
+
+func zigoMustPointer(operation string, value zigoHandle) unsafe.Pointer {
+	ptr, err := zigoCheckedPointer(operation, value)
+	if err != nil {
+		panic(err)
+	}
+	return ptr
+}
+
+func zigoOptionalPointer(operation string, absent bool, value zigoHandle) unsafe.Pointer {
+	if absent {
+		return nil
+	}
+	return zigoMustPointer(operation, value)
 }
