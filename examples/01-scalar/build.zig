@@ -4,6 +4,7 @@ const zigo = @import("zigo");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const dynamic = b.option(bool, "dynamic", "Build a runtime-loadable shared binding library") orelse false;
     const scalar = b.addModule("scalar", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
@@ -20,6 +21,7 @@ pub fn build(b: *std.Build) void {
         .go_module = "example.com/zigo/scalar",
         .target = target,
         .optimize = optimize,
+        .link_mode = if (dynamic) .dynamic else .static,
         .abi_base = "HEAD",
         .raw_package = .colocated,
     });

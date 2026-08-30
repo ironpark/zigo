@@ -45,6 +45,10 @@ pub const GoBindings = struct {
     report: *std.Build.Step.Run,
     doctor: *std.Build.Step.Run,
     lib: *std.Build.Step.Compile,
+    /// Installs the native binding library into `zig-out/lib`.
+    install_library: *std.Build.Step.InstallArtifact,
+    /// Target-specific basename of the native binding library.
+    library_filename: []const u8,
     semantic_json: std.Build.LazyPath,
 
     pub const StandardStepOptions = struct {
@@ -60,6 +64,7 @@ pub const GoBindings = struct {
         abi_check: ?*std.Build.Step,
         report: *std.Build.Step,
         doctor: *std.Build.Step,
+        library: *std.Build.Step,
     };
 
     /// Registers conventional user-facing build steps for this binding set.
@@ -75,12 +80,14 @@ pub const GoBindings = struct {
         report.dependOn(&self.report.step);
         const doctor = b.step(standardStepName(b, options.name_prefix, "go-doctor"), "Check Go binding toolchain prerequisites");
         doctor.dependOn(&self.doctor.step);
+        const library = b.step(standardStepName(b, options.name_prefix, "go-lib"), "Build and install the native Go binding library");
+        library.dependOn(&self.install_library.step);
         const abi_check = if (self.abi_check) |run| step: {
             const value = b.step(standardStepName(b, options.name_prefix, "abi-check"), "Fail on a breaking Go binding ABI change");
             value.dependOn(&run.step);
             break :step value;
         } else null;
-        return .{ .update = update, .check = check, .abi_check = abi_check, .report = report, .doctor = doctor };
+        return .{ .update = update, .check = check, .abi_check = abi_check, .report = report, .doctor = doctor, .library = library };
     }
 };
 
@@ -284,6 +291,17 @@ pub fn build(b: *std.Build) void {
     if (b.args) |args| run_snapshot.addArgs(args);
     const snapshot_step = b.step("snapshot", "Compare or update a snapshot directory tree");
     snapshot_step.dependOn(&run_snapshot.step);
+
+    const shared_smoke = b.addExecutable(.{
+        .name = "zigo-shared-library-smoke",
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("tests/shared_library_smoke.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    const shared_smoke_step = b.step("shared-library-smoke", "Build the native shared-library smoke loader");
+    shared_smoke_step.dependOn(&shared_smoke.step);
 }
 
 fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator: *std.Build.Step.Compile) void {
@@ -575,7 +593,24 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     _ = options.prefix;
     _ = layout_json;
 
-    return .{ .update = update, .check = check, .abi_check = abi_check, .report = report, .doctor = doctor, .lib = lib, .semantic_json = semantic_json };
+    return .{
+        .update = update,
+        .check = check,
+        .abi_check = abi_check,
+        .report = report,
+        .doctor = doctor,
+        .lib = lib,
+        .install_library = install_lib,
+        .library_filename = libraryFilename(b, lib.name, options.target.result, options.link_mode),
+        .semantic_json = semantic_json,
+    };
+}
+
+fn libraryFilename(b: *std.Build, name: []const u8, target: std.Target, mode: LinkMode) []const u8 {
+    return switch (mode) {
+        .static => b.fmt("{s}{s}{s}", .{ target.libPrefix(), name, target.staticLibSuffix() }),
+        .dynamic => b.fmt("{s}{s}{s}", .{ target.libPrefix(), name, target.dynamicLibSuffix() }),
+    };
 }
 
 fn formattedGoSources(b: *std.Build, generated_dir: std.Build.LazyPath, paths: []const []const u8) std.Build.LazyPath {
