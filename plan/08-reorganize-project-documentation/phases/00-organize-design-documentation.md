@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T02:30:16Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Existing design documents live under `docs/design/`, no stale old-path references remain, and internal links among them resolve.
 > NEXT: none
