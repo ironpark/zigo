@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T02:35:28Z"
 description: Reorganize design docs, simplify README, and move detailed usage and limitations into wiki-style documentation.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-30T02:29:01Z"
 ---
 > NEXT: Start by organizing the existing design documentation. ([Phase 0](phases/00-organize-design-documentation.md))
@@ -8,7 +9,7 @@ registered_at: "2026-08-30T02:29:01Z"
 # Phases
 
 - [x] [Phase 00: Organize design documentation](phases/00-organize-design-documentation.md)
-- [ ] [Phase 01: Create concise README and wiki](phases/01-create-readme-and-wiki.md)
+- [x] [Phase 01: Create concise README and wiki](phases/01-create-readme-and-wiki.md)
 
 # Shared Verification
 

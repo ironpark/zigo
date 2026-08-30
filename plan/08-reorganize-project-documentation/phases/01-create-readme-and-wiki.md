@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T02:35:28Z"
 depends_on:
 - "08-reorganize-project-documentation#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: README is concise, detailed content is retained in discoverable wiki pages, Markdown links resolve, and documented build/test commands are verified where feasible.
 > NEXT: none
