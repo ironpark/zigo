@@ -2,7 +2,7 @@
 depends_on:
 - "28-automatic-tagged-union-accessors#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Emitter golden/unit tests prove no union layout crosses C, accessors check tags before payload reads, and generated Go compiles.
 > NEXT: none

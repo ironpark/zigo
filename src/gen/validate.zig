@@ -102,7 +102,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .code = "ZIGO006",
             .message = "tagged union contains a payload that cannot use generated accessors",
             .site = .{ .path = "semantic.json", .declaration = declaration.name },
-            .hint = "use void, scalar, enum, opaque-pointer, or scalar-slice payloads",
+            .hint = "use void, scalar, enum, opaque-pointer, or numeric-slice payloads",
         };
     }
     for (document.functions, 0..) |function, index| {
@@ -120,6 +120,13 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             };
         }
     }
+    if (try findGeneratedAccessorCollision(allocator, document)) |declaration| return .{
+        .severity = .@"error",
+        .code = "ZIGO007",
+        .message = "generated tagged-union accessor collides with another declaration",
+        .site = .{ .path = "semantic.json", .declaration = declaration },
+        .hint = "rename the conflicting function, type, or union variant",
+    };
     if (findIntegrityProblem(document)) |declaration| return .{
         .severity = .@"error",
         .code = "ZIGO010",
@@ -209,11 +216,7 @@ fn accessorPayloadSupported(document: semantic.Semantic, node: semantic.TypeNode
         .void, .bool, .int, .float => true,
         .@"enum" => |value| hasTypeKind(document, value.ref, .@"enum"),
         .opaque_ptr => |value| hasHandleType(document, value.ref),
-        .slice => |value| switch (value.element.*) {
-            .bool, .int, .float => true,
-            .@"enum" => |entry| hasTypeKind(document, entry.ref, .@"enum"),
-            else => false,
-        },
+        .slice => |value| value.element.* == .int or value.element.* == .float,
         else => false,
     };
 }
@@ -292,6 +295,63 @@ fn functionSymbolAlloc(allocator: std.mem.Allocator, prefix: []const u8, functio
         return std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ prefix, owner_name, function_name });
     }
     return std.fmt.allocPrint(allocator, "{s}_{s}", .{ prefix, function_name });
+}
+
+fn findGeneratedAccessorCollision(allocator: std.mem.Allocator, document: semantic.Semantic) !?[]const u8 {
+    const Generated = struct { symbol: []const u8 };
+    var generated: std.ArrayList(Generated) = .empty;
+    defer {
+        for (generated.items) |entry| allocator.free(entry.symbol);
+        generated.deinit(allocator);
+    }
+    for (document.types) |declaration| {
+        if (declaration.kind != .tagged_union) continue;
+        var projection_index: usize = 0;
+        while (projection_index <= declaration.fields.len) : (projection_index += 1) {
+            const projection = if (projection_index == 0) "tag" else declaration.fields[projection_index - 1].name;
+            if (projection_index != 0 and declaration.fields[projection_index - 1].type.? == .void) continue;
+            const symbol = try taggedProjectionSymbolAlloc(allocator, document.prefix, declaration.name, projection);
+            errdefer allocator.free(symbol);
+            for (document.functions) |function| {
+                const function_symbol = try functionSymbolAlloc(allocator, document.prefix, function);
+                defer allocator.free(function_symbol);
+                if (std.mem.eql(u8, symbol, function_symbol)) {
+                    allocator.free(symbol);
+                    return function.name;
+                }
+            }
+            for (generated.items) |previous| {
+                if (std.mem.eql(u8, symbol, previous.symbol)) {
+                    allocator.free(symbol);
+                    return declaration.name;
+                }
+            }
+            try generated.append(allocator, .{ .symbol = symbol });
+        }
+        for (document.functions) |function| {
+            if (!std.mem.eql(u8, function.receiver orelse "", declaration.name)) continue;
+            const method = try naming.pascalAlloc(allocator, function.name);
+            defer allocator.free(method);
+            if (std.mem.eql(u8, method, "Tag")) return function.name;
+            for (declaration.fields) |field| {
+                if (field.type.? == .void) continue;
+                const field_name = try naming.pascalAlloc(allocator, field.name);
+                defer allocator.free(field_name);
+                const accessor = try std.fmt.allocPrint(allocator, "As{s}", .{field_name});
+                defer allocator.free(accessor);
+                if (std.mem.eql(u8, method, accessor)) return function.name;
+            }
+        }
+    }
+    return null;
+}
+
+fn taggedProjectionSymbolAlloc(allocator: std.mem.Allocator, prefix: []const u8, type_name: []const u8, projection: []const u8) ![]u8 {
+    const owner = try naming.snakeAlloc(allocator, type_name);
+    defer allocator.free(owner);
+    const name = try naming.snakeAlloc(allocator, projection);
+    defer allocator.free(name);
+    return std.fmt.allocPrint(allocator, "{s}_{s}_project_{s}", .{ prefix, owner, name });
 }
 
 fn supported(node: semantic.TypeNode) !void {
@@ -506,6 +566,33 @@ test "tagged union accessor payload rejects slices containing handles" {
     const issue = (try findIssue(std.testing.allocator, document)).?;
     try std.testing.expectEqualStrings("ZIGO006", issue.code);
     try std.testing.expectEqualStrings("Value", issue.site.declaration);
+}
+
+test "tagged union generated accessor collisions are rejected" {
+    const document: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "projectTag",
+            .params = &.{},
+            .receiver = "Value",
+            .@"return" = .{ .void = {} },
+            .symbol = "ignored",
+        }},
+        .package = "variant",
+        .prefix = "zg",
+        .types = &.{
+            .{
+                .fields = &.{.{ .name = "none", .type = .{ .void = {} }, .value = 0 }},
+                .kind = .tagged_union,
+                .name = "Value",
+                .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } },
+            },
+            .{ .kind = .@"enum", .name = "ValueTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
+        },
+        .zig_version = "0.16.0",
+    };
+    const issue = (try findIssue(std.testing.allocator, document)).?;
+    try std.testing.expectEqualStrings("ZIGO007", issue.code);
+    try std.testing.expectEqualStrings("projectTag", issue.site.declaration);
 }
 
 test "symbol collision validation propagates every allocation failure" {
