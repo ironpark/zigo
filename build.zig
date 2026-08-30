@@ -231,6 +231,9 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     check.addDirectoryArg(generated_dir);
     check.addDirectoryArg(options.go_dir);
     const baseline = b.addSystemCommand(&.{ "git", "show" });
+    // The ref can move without changing argv, so this read must not reuse a
+    // build-cache entry from an older commit.
+    baseline.has_side_effects = true;
     baseline.setCwd(b.path("."));
     baseline.addArg(b.fmt("{s}:./zigo/semantic.json", .{options.abi_base}));
     const baseline_semantic = baseline.captureStdOut(.{ .basename = "semantic-base.json", .trim_whitespace = .none });
