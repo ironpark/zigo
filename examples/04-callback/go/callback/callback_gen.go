@@ -110,8 +110,8 @@ func NewIntBuffer() (*IntBuffer, error) {
 	}
 	return &IntBuffer{ptr: result}, nil
 }
-func (i *IntBuffer) Push(p0 int32) {
-	raw.IntBufferPush(i.ptr, p0)
+func (i *IntBuffer) Push(value int32) {
+	raw.IntBufferPush(i.ptr, value)
 }
 func (i *IntBuffer) Len() uint {
 	return raw.IntBufferLen(i.ptr)

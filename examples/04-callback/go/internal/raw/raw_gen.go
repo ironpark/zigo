@@ -42,8 +42,8 @@ func IntBufferCreate() (unsafe.Pointer, int32) {
 	code := int32(C.zg_int_buffer_create(&outResult))
 	return unsafe.Pointer(outResult), code
 }
-func IntBufferPush(self unsafe.Pointer, p0 int32) {
-	C.zg_int_buffer_push(self, C.int32_t(p0))
+func IntBufferPush(self unsafe.Pointer, value int32) {
+	C.zg_int_buffer_push(self, C.int32_t(value))
 }
 func IntBufferLen(self unsafe.Pointer) uint {
 	return uint(C.zg_int_buffer_len(self))
