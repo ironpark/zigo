@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T03:41:06Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Git reports `ref/zls` as ignored, its origin is official, and its checked-out branch/tag and commit match the selected 0.16.x ref.
 > NEXT: none
