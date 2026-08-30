@@ -12,7 +12,7 @@
 
 ## 조사 데이터와 경계
 
-Zig 0.16.0에서 `ziglyzer` 소스 `150cfba`를 `make install`로 설치했고, `/Users/ironpark/.local/bin/ziglyzer`가 `PATH`에서 선택되는 것을 확인했다. 대상 소스 기준은 `ca3f2a4`다. 원시 생산 타입 목록은 [`reports/type-placement/types.txt`](../reports/type-placement/types.txt)에 보존했다.
+Zig 0.16.0에서 `ziglyzer` 소스 `150cfba`를 `make install`로 설치했고, `/Users/ironpark/.local/bin/ziglyzer`가 `PATH`에서 선택되는 것을 확인했다. 대상 소스 기준은 `ca3f2a4`다. 원시 생산 타입 목록은 [`reports/type-placement/types.txt`](../../reports/type-placement/types.txt)에 보존했다.
 
 실행한 핵심 명령은 다음과 같다.
 

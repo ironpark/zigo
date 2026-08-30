@@ -2,7 +2,7 @@
 depends_on:
 - "08-reorganize-project-documentation#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: README is concise, detailed content is retained in discoverable wiki pages, Markdown links resolve, and documented build/test commands are verified where feasible.
 > NEXT: none
