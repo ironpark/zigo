@@ -2,9 +2,9 @@
 depends_on:
 - "29-harden-tagged-union-accessors#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
-> DONE-WHEN: Runtime/process tests show wrong variants do not write outputs, closed/nil handles do not abort, and projection panics are distinguishable.
+> DONE-WHEN: Runtime/process tests show wrong variants preserve outputs and closed/nil handles do not abort; emitter tests show Zig panics map to a distinct projection status.
 > NEXT: none
 
 # Lifecycle and panic boundary
@@ -17,4 +17,4 @@ status: planned
 
 ## Done When
 
-- Runtime/process tests show wrong variants do not write outputs, closed/nil handles do not abort, and projection panics are distinguishable.
+- Runtime/process tests show wrong variants preserve outputs and closed/nil handles do not abort; emitter tests show Zig panics map to a distinct projection status.

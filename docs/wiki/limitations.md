@@ -43,10 +43,16 @@ AST 보강에 사용하는 기본 `bindings.zig`를 읽지 못하면 reflection�
 
 - Zig panic은 C 경계에서 오류 코드 `-2`와 마지막 오류 메시지로 변환되지만 정상 복구를
   뜻하지 않는다. 메시지를 수집한 뒤 현재 작업을 중단한다.
+- tagged-union projection은 별도 status `3`으로 실제 Zig panic을 구분한다. null handle과
+  필수 out 파라미터는 호출 전에 status `2`로 거부하지만, `SIGSEGV` 같은 하드웨어 fault나
+  손상된 native 메모리까지 복구하지는 않는다.
 - cgo 호출 비용은 무시할 수 없다. 호출당 작업이 작은 API를 그대로 노출하기보다 배치
   지향 함수를 제공하는 편이 낫다.
 - retained Go 콜백과 포인터는 생성된 `Close` 경로에서 해제될 때까지 유효해야 한다.
   소유 객체는 사용 후 반드시 닫고, 콜백에서 발생한 panic의 전달 규칙도 테스트한다.
+- 동일 handle의 `Close`, tagged-union variant 변경, projection 호출을 여러 goroutine에서
+  동시에 실행하지 않는다. 생성된 `runtime.KeepAlive`는 명시적 lifecycle 작업의 동기화
+  장치가 아니다.
 - `auto_cleanup`은 실행 시점과 프로그램 종료 전 실행을 보장하지 않는다. callback이 소유
   객체를 캡처하는 강한 참조 순환과 특정 thread에서만 가능한 해제를 해결하지 않으므로
   명시적 `Close`의 대체로 사용하지 않는다.

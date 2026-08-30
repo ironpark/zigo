@@ -44,6 +44,12 @@ pub const AbiProjection = struct {
     field: ?*const semantic.TypeField = null,
 
     pub const Kind = enum { tag, payload };
+    pub const Status = enum(u8) {
+        mismatch = 0,
+        success = 1,
+        invalid_handle = 2,
+        panic = 3,
+    };
 };
 
 pub const Program = struct {

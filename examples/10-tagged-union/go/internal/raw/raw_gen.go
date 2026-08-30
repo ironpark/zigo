@@ -49,52 +49,54 @@ func ValueDeinit(self unsafe.Pointer) {
 	C.zg_value_deinit(self)
 }
 
-func ValueProjectTag(self unsafe.Pointer) uint8 {
-	return uint8(C.zg_value_project_tag((*C.zg_value)(self)))
+func ValueProjectTag(self unsafe.Pointer) (uint8, uint8) {
+	var outValue C.uint8_t
+	status := C.zg_value_project_tag((*C.zg_value)(self), &outValue)
+	return uint8(outValue), uint8(status)
 }
 
-func ValueProjectInteger(self unsafe.Pointer) (int64, bool) {
+func ValueProjectInteger(self unsafe.Pointer) (int64, uint8) {
 	var outValue C.int64_t
-	ok := C.zg_value_project_integer((*C.zg_value)(self), &outValue)
-	if ok == 0 {
-		return 0, false
+	status := C.zg_value_project_integer((*C.zg_value)(self), &outValue)
+	if status != 1 {
+		return 0, uint8(status)
 	}
-	return int64(outValue), true
+	return int64(outValue), uint8(status)
 }
 
-func ValueProjectFlag(self unsafe.Pointer) (uint8, bool) {
+func ValueProjectFlag(self unsafe.Pointer) (uint8, uint8) {
 	var outValue C.uint8_t
-	ok := C.zg_value_project_flag((*C.zg_value)(self), &outValue)
-	if ok == 0 {
-		return 0, false
+	status := C.zg_value_project_flag((*C.zg_value)(self), &outValue)
+	if status != 1 {
+		return 0, uint8(status)
 	}
-	return uint8(outValue), true
+	return uint8(outValue), uint8(status)
 }
 
-func ValueProjectMode(self unsafe.Pointer) (uint8, bool) {
+func ValueProjectMode(self unsafe.Pointer) (uint8, uint8) {
 	var outValue C.uint8_t
-	ok := C.zg_value_project_mode((*C.zg_value)(self), &outValue)
-	if ok == 0 {
-		return 0, false
+	status := C.zg_value_project_mode((*C.zg_value)(self), &outValue)
+	if status != 1 {
+		return 0, uint8(status)
 	}
-	return uint8(outValue), true
+	return uint8(outValue), uint8(status)
 }
 
-func ValueProjectSamples(self unsafe.Pointer) ([]int16, bool) {
+func ValueProjectSamples(self unsafe.Pointer) ([]int16, uint8) {
 	var outValuePtr *C.int16_t
 	var outValueLen C.size_t
-	ok := C.zg_value_project_samples((*C.zg_value)(self), &outValuePtr, &outValueLen)
-	if ok == 0 {
-		return nil, false
+	status := C.zg_value_project_samples((*C.zg_value)(self), &outValuePtr, &outValueLen)
+	if status != 1 {
+		return nil, uint8(status)
 	}
-	return unsafe.Slice((*int16)(unsafe.Pointer(outValuePtr)), int(outValueLen)), true
+	return unsafe.Slice((*int16)(unsafe.Pointer(outValuePtr)), int(outValueLen)), uint8(status)
 }
 
-func ValueProjectChild(self unsafe.Pointer) (unsafe.Pointer, bool) {
+func ValueProjectChild(self unsafe.Pointer) (unsafe.Pointer, uint8) {
 	var outValue unsafe.Pointer
-	ok := C.zg_value_project_child((*C.zg_value)(self), &outValue)
-	if ok == 0 {
-		return nil, false
+	status := C.zg_value_project_child((*C.zg_value)(self), &outValue)
+	if status != 1 {
+		return nil, uint8(status)
 	}
-	return unsafe.Pointer(outValue), true
+	return unsafe.Pointer(outValue), uint8(status)
 }

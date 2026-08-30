@@ -2,7 +2,10 @@ package tagged_union
 
 import (
 	"reflect"
+	"strings"
 	"testing"
+
+	"example.com/zigo/tagged-union/internal/raw"
 )
 
 func TestGeneratedTagAndCheckedPayloadAccessors(t *testing.T) {
@@ -64,4 +67,39 @@ func TestSliceIsCopiedAndBorrowedHandleHasAccessors(t *testing.T) {
 	if !ok || childRef == nil {
 		t.Fatalf("borrowed AsChild() = (%v, %v)", childRef, ok)
 	}
+}
+
+func TestProjectionLifecycleFailuresStayInGo(t *testing.T) {
+	if _, status := raw.ValueProjectTag(nil); status != zigoProjectionInvalidHandle {
+		t.Fatalf("raw nil projection status = %d, want %d", status, zigoProjectionInvalidHandle)
+	}
+
+	assertProjectionPanic(t, "Value.Tag", func() { (*Value)(nil).Tag() })
+	assertProjectionPanic(t, "Value.AsInteger", func() { (*Value)(nil).AsInteger() })
+
+	value, err := NewValue(7)
+	if err != nil {
+		t.Fatal(err)
+	}
+	borrowed := value.Borrow()
+	value.Close()
+
+	assertProjectionPanic(t, "Value.Tag", func() { value.Tag() })
+	assertProjectionPanic(t, "Value.AsInteger", func() { value.AsInteger() })
+	assertProjectionPanic(t, "Value.Tag", func() { borrowed.Tag() })
+}
+
+func assertProjectionPanic(t *testing.T, operation string, call func()) {
+	t.Helper()
+	defer func() {
+		value := recover()
+		if value == nil {
+			t.Fatalf("%s did not panic", operation)
+		}
+		message, ok := value.(string)
+		if !ok || !strings.Contains(message, operation) || !strings.Contains(message, "nil or closed handle") {
+			t.Fatalf("%s panic = %#v", operation, value)
+		}
+	}()
+	call()
 }

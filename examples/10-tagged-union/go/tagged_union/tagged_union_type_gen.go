@@ -66,6 +66,23 @@ type ChildRef struct {
 	parent any
 }
 
+func (value *Child) zigoPointer() unsafe.Pointer {
+	if value == nil {
+		return nil
+	}
+	return value.ptr
+}
+
+func (value *ChildRef) zigoPointer() unsafe.Pointer {
+	if value == nil || value.ptr == nil {
+		return nil
+	}
+	if parent, ok := value.parent.(interface{ zigoPointer() unsafe.Pointer }); ok && parent.zigoPointer() == nil {
+		return nil
+	}
+	return value.ptr
+}
+
 func (value *Child) Close() {
 	if value == nil {
 		return
@@ -88,6 +105,23 @@ type ValueRef struct {
 	parent any
 }
 
+func (value *Value) zigoPointer() unsafe.Pointer {
+	if value == nil {
+		return nil
+	}
+	return value.ptr
+}
+
+func (value *ValueRef) zigoPointer() unsafe.Pointer {
+	if value == nil || value.ptr == nil {
+		return nil
+	}
+	if parent, ok := value.parent.(interface{ zigoPointer() unsafe.Pointer }); ok && parent.zigoPointer() == nil {
+		return nil
+	}
+	return value.ptr
+}
+
 func (value *Value) Close() {
 	if value == nil {
 		return
@@ -100,102 +134,206 @@ func (value *Value) Close() {
 	})
 }
 
+const (
+	zigoProjectionMismatch uint8 = iota
+	zigoProjectionSuccess
+	zigoProjectionInvalidHandle
+	zigoProjectionPanic
+)
+
+func zigoProjectionFailure(operation string, status uint8) {
+	switch status {
+	case zigoProjectionInvalidHandle:
+		panic("zigo: " + operation + ": nil or closed handle")
+	case zigoProjectionPanic:
+		panic("zigo: " + operation + ": native panic: " + raw.LastErrorMessage())
+	default:
+		panic("zigo: " + operation + ": invalid projection status")
+	}
+}
+
 func (value *Value) Tag() ValueTag {
 	defer runtime.KeepAlive(value)
-	return ValueTag(raw.ValueProjectTag(value.ptr))
+	ptr := value.zigoPointer()
+	if ptr == nil {
+		zigoProjectionFailure("Value.Tag", zigoProjectionInvalidHandle)
+	}
+	result, status := raw.ValueProjectTag(ptr)
+	if status != zigoProjectionSuccess {
+		zigoProjectionFailure("Value.Tag", status)
+	}
+	return ValueTag(result)
 }
 
 func (value *Value) AsInteger() (int64, bool) {
 	defer runtime.KeepAlive(value)
-	result, ok := raw.ValueProjectInteger(value.ptr)
-	if !ok {
+	ptr := value.zigoPointer()
+	if ptr == nil {
+		zigoProjectionFailure("Value.AsInteger", zigoProjectionInvalidHandle)
+	}
+	result, status := raw.ValueProjectInteger(ptr)
+	if status == zigoProjectionMismatch {
 		return 0, false
+	}
+	if status != zigoProjectionSuccess {
+		zigoProjectionFailure("Value.AsInteger", status)
 	}
 	return result, true
 }
 
 func (value *Value) AsFlag() (bool, bool) {
 	defer runtime.KeepAlive(value)
-	result, ok := raw.ValueProjectFlag(value.ptr)
-	if !ok {
+	ptr := value.zigoPointer()
+	if ptr == nil {
+		zigoProjectionFailure("Value.AsFlag", zigoProjectionInvalidHandle)
+	}
+	result, status := raw.ValueProjectFlag(ptr)
+	if status == zigoProjectionMismatch {
 		return false, false
+	}
+	if status != zigoProjectionSuccess {
+		zigoProjectionFailure("Value.AsFlag", status)
 	}
 	return result != 0, true
 }
 
 func (value *Value) AsMode() (Mode, bool) {
 	defer runtime.KeepAlive(value)
-	result, ok := raw.ValueProjectMode(value.ptr)
-	if !ok {
+	ptr := value.zigoPointer()
+	if ptr == nil {
+		zigoProjectionFailure("Value.AsMode", zigoProjectionInvalidHandle)
+	}
+	result, status := raw.ValueProjectMode(ptr)
+	if status == zigoProjectionMismatch {
 		return 0, false
+	}
+	if status != zigoProjectionSuccess {
+		zigoProjectionFailure("Value.AsMode", status)
 	}
 	return Mode(result), true
 }
 
 func (value *Value) AsSamples() ([]int16, bool) {
 	defer runtime.KeepAlive(value)
-	result, ok := raw.ValueProjectSamples(value.ptr)
-	if !ok {
+	ptr := value.zigoPointer()
+	if ptr == nil {
+		zigoProjectionFailure("Value.AsSamples", zigoProjectionInvalidHandle)
+	}
+	result, status := raw.ValueProjectSamples(ptr)
+	if status == zigoProjectionMismatch {
 		return nil, false
+	}
+	if status != zigoProjectionSuccess {
+		zigoProjectionFailure("Value.AsSamples", status)
 	}
 	return append([]int16(nil), result...), true
 }
 
 func (value *Value) AsChild() (*ChildRef, bool) {
 	defer runtime.KeepAlive(value)
-	result, ok := raw.ValueProjectChild(value.ptr)
-	if !ok {
+	ptr := value.zigoPointer()
+	if ptr == nil {
+		zigoProjectionFailure("Value.AsChild", zigoProjectionInvalidHandle)
+	}
+	result, status := raw.ValueProjectChild(ptr)
+	if status == zigoProjectionMismatch {
 		return nil, false
+	}
+	if status != zigoProjectionSuccess {
+		zigoProjectionFailure("Value.AsChild", status)
 	}
 	return &ChildRef{ptr: result, parent: value}, true
 }
 
 func (value *ValueRef) Tag() ValueTag {
 	defer runtime.KeepAlive(value)
-	return ValueTag(raw.ValueProjectTag(value.ptr))
+	ptr := value.zigoPointer()
+	if ptr == nil {
+		zigoProjectionFailure("Value.Tag", zigoProjectionInvalidHandle)
+	}
+	result, status := raw.ValueProjectTag(ptr)
+	if status != zigoProjectionSuccess {
+		zigoProjectionFailure("Value.Tag", status)
+	}
+	return ValueTag(result)
 }
 
 func (value *ValueRef) AsInteger() (int64, bool) {
 	defer runtime.KeepAlive(value)
-	result, ok := raw.ValueProjectInteger(value.ptr)
-	if !ok {
+	ptr := value.zigoPointer()
+	if ptr == nil {
+		zigoProjectionFailure("Value.AsInteger", zigoProjectionInvalidHandle)
+	}
+	result, status := raw.ValueProjectInteger(ptr)
+	if status == zigoProjectionMismatch {
 		return 0, false
+	}
+	if status != zigoProjectionSuccess {
+		zigoProjectionFailure("Value.AsInteger", status)
 	}
 	return result, true
 }
 
 func (value *ValueRef) AsFlag() (bool, bool) {
 	defer runtime.KeepAlive(value)
-	result, ok := raw.ValueProjectFlag(value.ptr)
-	if !ok {
+	ptr := value.zigoPointer()
+	if ptr == nil {
+		zigoProjectionFailure("Value.AsFlag", zigoProjectionInvalidHandle)
+	}
+	result, status := raw.ValueProjectFlag(ptr)
+	if status == zigoProjectionMismatch {
 		return false, false
+	}
+	if status != zigoProjectionSuccess {
+		zigoProjectionFailure("Value.AsFlag", status)
 	}
 	return result != 0, true
 }
 
 func (value *ValueRef) AsMode() (Mode, bool) {
 	defer runtime.KeepAlive(value)
-	result, ok := raw.ValueProjectMode(value.ptr)
-	if !ok {
+	ptr := value.zigoPointer()
+	if ptr == nil {
+		zigoProjectionFailure("Value.AsMode", zigoProjectionInvalidHandle)
+	}
+	result, status := raw.ValueProjectMode(ptr)
+	if status == zigoProjectionMismatch {
 		return 0, false
+	}
+	if status != zigoProjectionSuccess {
+		zigoProjectionFailure("Value.AsMode", status)
 	}
 	return Mode(result), true
 }
 
 func (value *ValueRef) AsSamples() ([]int16, bool) {
 	defer runtime.KeepAlive(value)
-	result, ok := raw.ValueProjectSamples(value.ptr)
-	if !ok {
+	ptr := value.zigoPointer()
+	if ptr == nil {
+		zigoProjectionFailure("Value.AsSamples", zigoProjectionInvalidHandle)
+	}
+	result, status := raw.ValueProjectSamples(ptr)
+	if status == zigoProjectionMismatch {
 		return nil, false
+	}
+	if status != zigoProjectionSuccess {
+		zigoProjectionFailure("Value.AsSamples", status)
 	}
 	return append([]int16(nil), result...), true
 }
 
 func (value *ValueRef) AsChild() (*ChildRef, bool) {
 	defer runtime.KeepAlive(value)
-	result, ok := raw.ValueProjectChild(value.ptr)
-	if !ok {
+	ptr := value.zigoPointer()
+	if ptr == nil {
+		zigoProjectionFailure("Value.AsChild", zigoProjectionInvalidHandle)
+	}
+	result, status := raw.ValueProjectChild(ptr)
+	if status == zigoProjectionMismatch {
 		return nil, false
+	}
+	if status != zigoProjectionSuccess {
+		zigoProjectionFailure("Value.AsChild", status)
 	}
 	return &ChildRef{ptr: result, parent: value}, true
 }

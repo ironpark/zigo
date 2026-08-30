@@ -130,14 +130,26 @@ wrapper를 참조하지 않는 별도 resource state로 `runtime.AddCleanup`을 
 않는다. discriminant와 payload마다 별도 projection 심볼을 만든다.
 
 ```c
-uint8_t zg_value_project_tag(const zg_value *self);
+uint8_t zg_value_project_tag(const zg_value *self, uint8_t *out_value);
 uint8_t zg_value_project_integer(const zg_value *self, int64_t *out_value);
 ```
 
-payload projection의 반환 `uint8_t`는 variant 일치 여부다. shim은 `activeTag`를 먼저 검사하고
-불일치하면 out 파라미터를 쓰지 않는다. Go public API는 이를 `AsInteger() (int64, bool)`로
-노출한다. numeric slice는 pointer+length로 projection한 직후 Go-owned slice로 복사하며,
-opaque-pointer payload는 union wrapper를 parent로 보유하는 borrowed `TRef`가 된다.
+모든 projection은 `0 = variant mismatch`, `1 = success`, `2 = invalid handle/required output`,
+`3 = Zig panic` 상태를 반환한다. shim은 `activeTag`를 먼저 검사하고 불일치하면 out
+파라미터를 쓰지 않는다. 생성된 C wrapper는 null handle과 null out 파라미터를 Zig 호출 전에
+거부하고, 실제 Zig panic만 status 3과 `zg_last_error_message()`로 변환한다. 하드웨어 fault나
+메모리 손상까지 복구하는 계약은 아니다.
+
+Go public API는 tag 상태를 확인한 뒤 `Tag()`를 반환하고, payload mismatch만
+`AsInteger() (int64, bool)`의 `false`로 노출한다. nil/closed handle, 예상하지 못한 상태,
+native panic은 설명이 있는 Go panic이 되므로 C/Zig로 잘못된 포인터를 전달하지 않는다.
+borrowed `TRef`는 parent handle의 종료 상태도 재귀적으로 확인한다. numeric slice는
+pointer+length로 projection한 직후 Go-owned slice로 복사하며, opaque-pointer payload는 union
+wrapper를 parent로 보유하는 borrowed `TRef`가 된다.
+
+`Close`, variant 변경, projection 호출을 여러 goroutine에서 동시에 수행하려면 호출자가
+동기화해야 한다. `runtime.KeepAlive`는 GC에 의한 조기 cleanup만 막으며 명시적 `Close`와의
+data race나 use-after-close를 직렬화하지 않는다.
 
 variant 추가·삭제, discriminant 변경, payload 타입 변경은 생성 projection ABI가 바뀌므로
 ABI diff에서 breaking type definition change다.

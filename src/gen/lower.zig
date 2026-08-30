@@ -128,13 +128,20 @@ fn lowerTaggedUnionProjections(allocator: std.mem.Allocator, document: semantic.
     var projections: std.ArrayList(abi.AbiProjection) = .empty;
     for (document.types) |*declaration| {
         if (declaration.kind != .tagged_union) continue;
-        const tag_params = try allocator.alloc(abi.AbiParam, 1);
+        const tag_params = try allocator.alloc(abi.AbiParam, 2);
         tag_params[0] = try projectionReceiver(allocator, declaration.name);
+        const tag_output = try allocator.create(abi.AbiScalar);
+        tag_output.* = try lowerValue(allocator, document, declaration.tag_type.?);
+        tag_params[1] = .{
+            .name = "out_value",
+            .role = .payload_out,
+            .scalar = .{ .pointer = .{ .child = tag_output, .is_const = false } },
+        };
         try projections.append(allocator, .{
             .kind = .tag,
             .symbol = try naming.projectionSymbolAlloc(allocator, prefix, declaration.name, "tag"),
             .params = tag_params,
-            .ret = try lowerValue(allocator, document, declaration.tag_type.?),
+            .ret = .bool_u8,
             .owner = declaration,
         });
         for (declaration.fields) |*field| {
@@ -358,11 +365,17 @@ test "tagged union lowering records tag scalar slice and handle projections" {
     const tag = program.projections[0];
     try std.testing.expectEqual(abi.AbiProjection.Kind.tag, tag.kind);
     try std.testing.expectEqualStrings("zg_value_project_tag", tag.symbol);
-    try std.testing.expectEqual(@as(usize, 1), tag.params.len);
+    try std.testing.expectEqual(@as(usize, 2), tag.params.len);
     try std.testing.expectEqual(abi.AbiParam.Role.receiver, tag.params[0].role);
     try std.testing.expect(tag.params[0].scalar.pointer.is_const);
     try std.testing.expectEqualStrings("Value", tag.params[0].scalar.pointer.child.@"opaque");
-    try std.testing.expectEqual(@as(u16, 8), tag.ret.unsigned_int);
+    try std.testing.expectEqual(abi.AbiParam.Role.payload_out, tag.params[1].role);
+    try std.testing.expectEqual(@as(u16, 8), tag.params[1].scalar.pointer.child.unsigned_int);
+    try std.testing.expect(tag.ret == .bool_u8);
+    try std.testing.expectEqual(@as(u8, 0), @intFromEnum(abi.AbiProjection.Status.mismatch));
+    try std.testing.expectEqual(@as(u8, 1), @intFromEnum(abi.AbiProjection.Status.success));
+    try std.testing.expectEqual(@as(u8, 2), @intFromEnum(abi.AbiProjection.Status.invalid_handle));
+    try std.testing.expectEqual(@as(u8, 3), @intFromEnum(abi.AbiProjection.Status.panic));
 
     const number = program.projections[1];
     try std.testing.expectEqual(abi.AbiProjection.Kind.payload, number.kind);

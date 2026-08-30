@@ -151,6 +151,12 @@ zigo는 `ValueTag`와 `(*Value).Tag()`를 만들고 payload가 있는 각 varian
 생긴다. active tag가 다르면 accessor는 payload를 읽거나 out 파라미터를 기록하지 않고
 Go zero value와 `false`를 반환한다. `void` variant는 tag 상수만 가진다.
 
+projection의 내부 status는 mismatch, success, invalid handle/required output, Zig panic을
+구분한다. public wrapper는 nil·closed owned handle과 이미 닫힌 parent를 가진 borrowed handle을
+native 호출 전에 차단한다. 이 경우와 native panic은 설명이 있는 Go panic으로 전달되며,
+variant mismatch만 `(zero, false)`가 된다. 같은 handle에 대한 `Close`, variant 변경,
+accessor 호출을 동시에 수행할 때의 직렬화는 호출자 책임이다.
+
 지원 payload는 `void`, bool, 정수, float, enum, 등록된 handle pointer, 숫자 slice다.
 숫자 slice는 Zig 메모리 view를 public Go API에 그대로 노출하지 않고 호출마다 복사한다.
 handle payload는 union wrapper에 수명이 묶인 borrowed `*TRef`다. union 자체를 함수 인자나
