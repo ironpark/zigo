@@ -39,6 +39,15 @@ pub fn reflect(
             }
         }
     }
+    if (@hasField(@TypeOf(declaration), "specializations")) {
+        inline for (declaration.specializations) |entry| {
+            try types.append(allocator, .{
+                .kind = .@"opaque",
+                .name = entry.name,
+                .zig_path = @typeName(entry.type),
+            });
+        }
+    }
 
     inline for (entries, 0..) |entry, function_index| {
         const info = switch (@typeInfo(@TypeOf(entry.@"fn"))) {
@@ -143,7 +152,8 @@ fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayLis
                     callback_return.* = try typeNode(allocator, function_info.return_type orelse return error.GenericCallback, types);
                     break :blk .{ .callback = .{
                         .c_callconv = std.meta.eql(function_info.calling_convention, std.builtin.CallingConvention.c),
-                        .has_userdata = false,
+                        .has_userdata = function_info.params.len != 0 and
+                            function_info.params[function_info.params.len - 1].type == usize,
                         .params = callback_params,
                         .@"return" = callback_return,
                     } };
@@ -253,10 +263,17 @@ fn receiverName(comptime info: std.builtin.Type.Fn, comptime declaration: anytyp
         .pointer => |pointer| pointer,
         else => return null,
     };
-    if (pointer.size != .one or !@hasField(@TypeOf(declaration), "types")) return null;
-    inline for (declaration.types) |entry| {
-        if (entry.repr == .@"opaque" and entry.type == pointer.child) {
-            return if (@hasField(@TypeOf(entry), "name")) entry.name else shortTypeName(@typeName(entry.type));
+    if (pointer.size != .one) return null;
+    if (@hasField(@TypeOf(declaration), "types")) {
+        inline for (declaration.types) |entry| {
+            if (entry.repr == .@"opaque" and entry.type == pointer.child) {
+                return if (@hasField(@TypeOf(entry), "name")) entry.name else shortTypeName(@typeName(entry.type));
+            }
+        }
+    }
+    if (@hasField(@TypeOf(declaration), "specializations")) {
+        inline for (declaration.specializations) |entry| {
+            if (entry.type == pointer.child) return entry.name;
         }
     }
     return null;
@@ -392,4 +409,27 @@ test "reflection preserves invalid declarations for generator diagnostics" {
     try std.testing.expectEqual(true, document.functions[0].has_comptime_params.?);
     try std.testing.expect(!document.functions[1].params[0].type.callback.c_callconv);
     try std.testing.expectEqual(semantic.TypeKind.tagged_union, document.types[0].kind);
+}
+
+test "named generic specializations become distinct opaque types" {
+    const Generic = struct {
+        fn Buffer(comptime T: type) type {
+            return struct { value: T };
+        }
+    };
+    const FloatBuffer = Generic.Buffer(f32);
+    const IntBuffer = Generic.Buffer(i32);
+    const declaration = .{
+        .specializations = .{
+            .{ .name = "FloatBuffer", .type = FloatBuffer },
+            .{ .name = "IntBuffer", .type = IntBuffer },
+        },
+        .functions = .{},
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), declaration, "generic", "zg");
+    try std.testing.expectEqual(@as(usize, 2), document.types.len);
+    try std.testing.expectEqualStrings("FloatBuffer", document.types[0].name);
+    try std.testing.expectEqualStrings("IntBuffer", document.types[1].name);
 }

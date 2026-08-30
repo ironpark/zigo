@@ -24,6 +24,7 @@ pub fn semanticDocument(
         }
         for (function.params, 0..) |parameter, parameter_index| {
             switch (parameter.type) {
+                .callback => continue,
                 .slice => |slice| {
                     const child = try allocator.create(abi.AbiScalar);
                     child.* = try lowerValue(allocator, document, slice.element.*);

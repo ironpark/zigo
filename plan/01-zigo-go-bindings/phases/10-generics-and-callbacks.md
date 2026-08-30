@@ -2,7 +2,7 @@
 depends_on:
 - "01-zigo-go-bindings#9"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Two specializations of the same generic produce distinct, non-colliding symbols and
 > NEXT: none

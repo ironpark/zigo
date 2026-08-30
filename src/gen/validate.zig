@@ -160,6 +160,10 @@ fn supported(node: semantic.TypeNode) !void {
         .float => |value| if (value.bits != 32 and value.bits != 64) return error.UnsupportedFloatWidth,
         .slice => |value| try supported(value.element.*),
         .error_union => |value| try supported(value.payload.*),
+        .callback => |value| {
+            for (value.params) |parameter| try supported(parameter);
+            try supported(value.@"return".*);
+        },
         else => return error.UnsupportedType,
     }
 }
