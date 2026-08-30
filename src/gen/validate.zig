@@ -213,12 +213,27 @@ fn taggedUnionAccessorsSupported(document: semantic.Semantic, declaration: seman
 
 fn accessorPayloadSupported(document: semantic.Semantic, node: semantic.TypeNode) bool {
     return switch (node) {
-        .void, .bool, .int, .float => true,
+        .void, .bool => true,
+        .int => |value| integerSupported(value),
+        .float => |value| floatSupported(value),
         .@"enum" => |value| hasTypeKind(document, value.ref, .@"enum"),
         .opaque_ptr => |value| hasHandleType(document, value.ref),
-        .slice => |value| value.element.* == .int or value.element.* == .float,
+        .slice => |value| switch (value.element.*) {
+            .int => |integer| integerSupported(integer),
+            .float => |float| floatSupported(float),
+            else => false,
+        },
         else => false,
     };
+}
+
+fn integerSupported(value: semantic.Int) bool {
+    if (value.is_usize) return value.bits != 0 and value.bits <= 64;
+    return value.bits == 8 or value.bits == 16 or value.bits == 32 or value.bits == 64;
+}
+
+fn floatSupported(value: semantic.Float) bool {
+    return value.bits == 32 or value.bits == 64;
 }
 
 fn hasTypeKind(document: semantic.Semantic, name: []const u8, kind: semantic.TypeKind) bool {
@@ -357,8 +372,8 @@ fn taggedProjectionSymbolAlloc(allocator: std.mem.Allocator, prefix: []const u8,
 fn supported(node: semantic.TypeNode) !void {
     switch (node) {
         .void, .bool, .@"enum", .opaque_ptr, .value_struct => {},
-        .int => |value| if (value.bits == 0 or value.bits > 64) return error.UnsupportedIntegerWidth,
-        .float => |value| if (value.bits != 32 and value.bits != 64) return error.UnsupportedFloatWidth,
+        .int => |value| if (!integerSupported(value)) return error.UnsupportedIntegerWidth,
+        .float => |value| if (!floatSupported(value)) return error.UnsupportedFloatWidth,
         .slice => |value| try supported(value.element.*),
         .error_union => |value| try supported(value.payload.*),
         .callback => |value| {
@@ -566,6 +581,34 @@ test "tagged union accessor payload rejects slices containing handles" {
     const issue = (try findIssue(std.testing.allocator, document)).?;
     try std.testing.expectEqualStrings("ZIGO006", issue.code);
     try std.testing.expectEqualStrings("Value", issue.site.declaration);
+}
+
+test "tagged union accessor payload rejects unrepresentable scalar widths" {
+    var i24_node: semantic.TypeNode = .{ .int = .{ .bits = 24, .signed = true } };
+    const cases = [_]semantic.TypeNode{
+        .{ .int = .{ .bits = 128, .signed = false } },
+        .{ .float = .{ .bits = 16 } },
+        .{ .slice = .{ .@"const" = true, .element = &i24_node } },
+    };
+    for (cases) |payload| {
+        const document: semantic.Semantic = .{
+            .package = "variant",
+            .prefix = "zg",
+            .types = &.{
+                .{
+                    .fields = &.{.{ .name = "value", .type = payload, .value = 0 }},
+                    .kind = .tagged_union,
+                    .name = "Value",
+                    .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } },
+                },
+                .{ .kind = .@"enum", .name = "ValueTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
+            },
+            .zig_version = "0.16.0",
+        };
+        const issue = (try findIssue(std.testing.allocator, document)).?;
+        try std.testing.expectEqualStrings("ZIGO006", issue.code);
+        try std.testing.expectEqualStrings("Value", issue.site.declaration);
+    }
 }
 
 test "tagged union generated accessor collisions are rejected" {

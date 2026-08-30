@@ -2,6 +2,7 @@
 package tagged_union
 
 import (
+	"runtime"
 	"sync"
 	"unsafe"
 
@@ -100,10 +101,12 @@ func (value *Value) Close() {
 }
 
 func (value *Value) Tag() ValueTag {
+	defer runtime.KeepAlive(value)
 	return ValueTag(raw.ValueProjectTag(value.ptr))
 }
 
 func (value *Value) AsInteger() (int64, bool) {
+	defer runtime.KeepAlive(value)
 	result, ok := raw.ValueProjectInteger(value.ptr)
 	if !ok {
 		return 0, false
@@ -112,6 +115,7 @@ func (value *Value) AsInteger() (int64, bool) {
 }
 
 func (value *Value) AsFlag() (bool, bool) {
+	defer runtime.KeepAlive(value)
 	result, ok := raw.ValueProjectFlag(value.ptr)
 	if !ok {
 		return false, false
@@ -120,6 +124,7 @@ func (value *Value) AsFlag() (bool, bool) {
 }
 
 func (value *Value) AsMode() (Mode, bool) {
+	defer runtime.KeepAlive(value)
 	result, ok := raw.ValueProjectMode(value.ptr)
 	if !ok {
 		return 0, false
@@ -128,6 +133,7 @@ func (value *Value) AsMode() (Mode, bool) {
 }
 
 func (value *Value) AsSamples() ([]int16, bool) {
+	defer runtime.KeepAlive(value)
 	result, ok := raw.ValueProjectSamples(value.ptr)
 	if !ok {
 		return nil, false
@@ -136,6 +142,7 @@ func (value *Value) AsSamples() ([]int16, bool) {
 }
 
 func (value *Value) AsChild() (*ChildRef, bool) {
+	defer runtime.KeepAlive(value)
 	result, ok := raw.ValueProjectChild(value.ptr)
 	if !ok {
 		return nil, false
@@ -144,10 +151,12 @@ func (value *Value) AsChild() (*ChildRef, bool) {
 }
 
 func (value *ValueRef) Tag() ValueTag {
+	defer runtime.KeepAlive(value)
 	return ValueTag(raw.ValueProjectTag(value.ptr))
 }
 
 func (value *ValueRef) AsInteger() (int64, bool) {
+	defer runtime.KeepAlive(value)
 	result, ok := raw.ValueProjectInteger(value.ptr)
 	if !ok {
 		return 0, false
@@ -156,6 +165,7 @@ func (value *ValueRef) AsInteger() (int64, bool) {
 }
 
 func (value *ValueRef) AsFlag() (bool, bool) {
+	defer runtime.KeepAlive(value)
 	result, ok := raw.ValueProjectFlag(value.ptr)
 	if !ok {
 		return false, false
@@ -164,6 +174,7 @@ func (value *ValueRef) AsFlag() (bool, bool) {
 }
 
 func (value *ValueRef) AsMode() (Mode, bool) {
+	defer runtime.KeepAlive(value)
 	result, ok := raw.ValueProjectMode(value.ptr)
 	if !ok {
 		return 0, false
@@ -172,6 +183,7 @@ func (value *ValueRef) AsMode() (Mode, bool) {
 }
 
 func (value *ValueRef) AsSamples() ([]int16, bool) {
+	defer runtime.KeepAlive(value)
 	result, ok := raw.ValueProjectSamples(value.ptr)
 	if !ok {
 		return nil, false
@@ -180,6 +192,7 @@ func (value *ValueRef) AsSamples() ([]int16, bool) {
 }
 
 func (value *ValueRef) AsChild() (*ChildRef, bool) {
+	defer runtime.KeepAlive(value)
 	result, ok := raw.ValueProjectChild(value.ptr)
 	if !ok {
 		return nil, false
