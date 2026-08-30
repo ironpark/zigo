@@ -7,7 +7,7 @@ registered_at: "2026-08-30T08:22:11Z"
 
 # Phases
 
-- [ ] [Phase 00: Option and safe emission](phases/00-option-and-safe-emission.md)
+- [x] [Phase 00: Option and safe emission](phases/00-option-and-safe-emission.md)
 - [ ] [Phase 01: Runtime example and documentation](phases/01-runtime-example-and-documentation.md)
 - [ ] [Phase 02: Repository compatibility verification](phases/02-repository-compatibility-verification.md)
 

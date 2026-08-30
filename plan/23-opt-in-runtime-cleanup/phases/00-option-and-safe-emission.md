@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T08:29:13Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Focused and full generator tests pass and generated opt-in Go source compiles with Go 1.24+.
 > NEXT: none
