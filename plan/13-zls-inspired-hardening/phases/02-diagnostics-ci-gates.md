@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T03:59:59Z"
 depends_on:
 - "13-zls-inspired-hardening#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: A deliberately changed expected fixture reports the changed content and path without an uncaptured failed-command banner.
 > NEXT: none

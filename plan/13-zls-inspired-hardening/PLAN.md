@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T03:59:59Z"
 description: Apply prioritized Zig 0.16 reliability, test, build, and developer-experience improvements informed by zls.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-30T03:49:12Z"
 ---
 > NEXT: Harden allocator ownership and allocation-failure behavior before restructuring tests. ([Phase 0](phases/00-allocator-oom-boundaries.md))
@@ -9,7 +10,7 @@ registered_at: "2026-08-30T03:49:12Z"
 
 - [x] [Phase 00: Harden allocator and OOM boundaries](phases/00-allocator-oom-boundaries.md)
 - [x] [Phase 01: Introduce fixture tests and canonical module wiring](phases/01-fixture-tests-build-graph.md)
-- [ ] [Phase 02: Improve failure diagnostics and CI gates](phases/02-diagnostics-ci-gates.md)
+- [x] [Phase 02: Improve failure diagnostics and CI gates](phases/02-diagnostics-ci-gates.md)
 
 # Shared Verification
 
