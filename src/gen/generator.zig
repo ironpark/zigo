@@ -22,6 +22,11 @@ pub const Options = struct {
     errors_lock_bytes: ?[]const u8 = null,
 };
 
+const PreparedFile = struct {
+    path: []const u8,
+    contents: []const u8,
+};
+
 pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []const u8, output: std.Io.Dir, options: Options) !void {
     var scratch = std.heap.ArenaAllocator.init(allocator);
     defer scratch.deinit();
@@ -63,18 +68,28 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .raw_package_name = options.raw_package_name,
         .raw_colocated = options.raw_colocated,
     };
+    var prepared: std.ArrayList(PreparedFile) = .empty;
+    defer prepared.deinit(scratch_allocator);
     for (emit.all) |emitter| {
         const relative_path = try emitter.pathAlloc(scratch_allocator, program, emitter_options);
-        defer scratch_allocator.free(relative_path);
-        if (std.fs.path.dirname(relative_path)) |directory| try output.createDirPath(io, directory);
         var rendered: std.Io.Writer.Allocating = .init(scratch_allocator);
         defer rendered.deinit();
         try emitter.render(scratch_allocator, &rendered.writer, program, emitter_options);
-        try output.writeFile(io, .{ .sub_path = relative_path, .data = rendered.written() });
+        try prepared.append(scratch_allocator, .{
+            .path = relative_path,
+            .contents = try rendered.toOwnedSlice(),
+        });
     }
     const serialized_lock = try lock.serialize(scratch_allocator);
-    defer scratch_allocator.free(serialized_lock);
-    try output.writeFile(io, .{ .sub_path = "errors.lock.json", .data = serialized_lock });
+    try prepared.append(scratch_allocator, .{ .path = "errors.lock.json", .contents = serialized_lock });
+
+    // Do not mutate the output tree until parsing, validation, lowering, every
+    // emitter, and lock serialization have completed successfully. The commit
+    // loop deliberately performs no work with the caller-provided allocator.
+    for (prepared.items) |file| {
+        if (std.fs.path.dirname(file.path)) |directory| try output.createDirPath(io, directory);
+        try output.writeFile(io, .{ .sub_path = file.path, .data = file.contents });
+    }
 }
 
 test "bool is lowered to uint8 at the ABI boundary" {
@@ -299,4 +314,47 @@ test "ZIGO003 validation failure leaves the output tree untouched" {
         defer std.testing.allocator.free(actual);
         try std.testing.expectEqualStrings(file.content, actual);
     }
+}
+
+fn expectAllocationFailureLeavesOutputUntouched(allocator: std.mem.Allocator) !void {
+    const fixture =
+        \\{"functions":[{"name":"add","params":[{"name":"left","type":{"bits":32,"kind":"int","signed":true}},{"name":"right","type":{"bits":32,"kind":"int","signed":true}}],"return":{"bits":32,"kind":"int","signed":true},"symbol":"zg_add"}],"package":"atomic","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    const existing = [_]struct { path: []const u8, content: []const u8 }{
+        .{ .path = "shim.zig", .content = "old shim" },
+        .{ .path = "zigo_atomic.h", .content = "old header" },
+        .{ .path = "internal/raw/raw_gen.go", .content = "old raw" },
+        .{ .path = "atomic/atomic_gen.go", .content = "old public" },
+        .{ .path = "errors.lock.json", .content = "old lock" },
+    };
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    for (existing) |file| {
+        if (std.fs.path.dirname(file.path)) |directory| try temporary.dir.createDirPath(std.testing.io, directory);
+        try temporary.dir.writeFile(std.testing.io, .{ .sub_path = file.path, .data = file.content });
+    }
+
+    generate(allocator, std.testing.io, fixture, temporary.dir, .{
+        .package = "atomic",
+        .prefix = "zg",
+        .go_module = "example.com/atomic",
+    }) catch |err| {
+        if (err != error.OutOfMemory) return err;
+        for (existing) |file| {
+            const actual = try temporary.dir.readFileAlloc(std.testing.io, file.path, std.testing.allocator, .limited(64));
+            defer std.testing.allocator.free(actual);
+            try std.testing.expectEqualStrings(file.content, actual);
+        }
+        return err;
+    };
+
+    for (existing) |file| {
+        const actual = try temporary.dir.readFileAlloc(std.testing.io, file.path, std.testing.allocator, .limited(64 * 1024));
+        defer std.testing.allocator.free(actual);
+        try std.testing.expect(!std.mem.eql(u8, file.content, actual));
+    }
+}
+
+test "allocation failures before commit leave the output tree untouched" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, expectAllocationFailureLeavesOutputUntouched, .{});
 }
