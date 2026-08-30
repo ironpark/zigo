@@ -43,6 +43,7 @@ jobs:
             examples/07-event-queue
             examples/08-telemetry-hub
             examples/09-type-relations
+            examples/10-tagged-union
           )
 
           for example in "${examples[@]}"; do

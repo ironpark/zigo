@@ -36,6 +36,10 @@ set, UTF-8 소유 상태, slice 입력, retained callback, 조회·통계·변�
 동시에 노출하고 `Accumulator` receiver가 `*Counter`를 받는 교차 타입 API와 독립 lifecycle을
 검증한다.
 
+[`examples/10-tagged-union`](../../examples/10-tagged-union/README.md)은 tagged union을 opaque
+handle로 유지하면서 자동 생성된 tag와 checked payload accessor를 owned/borrowed Go wrapper,
+scalar·enum·slice·다른 handle payload에 걸쳐 검증한다.
+
 ```bash
 cd examples/05-pipeline
 zig build test

@@ -42,6 +42,15 @@ IR은 세 가지 역할을 한다: **reflector ↔ generator 프로세스 경계
         {"name":"x","type":{"kind":"float","bits":32}},
         {"name":"y","type":{"kind":"float","bits":32}}
       ]
+    },
+    {
+      "name": "Value",
+      "kind": "tagged_union",
+      "tag_type": {"kind":"enum","ref":"ValueTag"},
+      "fields": [
+        {"name":"none","value":0,"type":{"kind":"void"}},
+        {"name":"integer","value":1,"type":{"kind":"int","signed":true,"bits":64}}
+      ]
     }
   ],
 
@@ -106,8 +115,8 @@ semantic.json은 "usize다"라는 사실만 기록한다 → 타깃 독립성 �
 
 모든 `ref`는 같은 문서의 `types`에서 정확히 한 번 선언되어야 하며 노드 종류와 선언
 종류가 일치해야 한다. `enum`은 유효한 정수 `tag_type`을 가져야 한다. constructor의
-`type`은 opaque 선언이어야 하고, `init`은 해당 namespace에서 caller-owned non-null
-opaque pointer를 error union으로 반환하며, `deinit`은 인자 없이 `void`를 반환하는
+`type`은 opaque 또는 tagged-union handle 선언이어야 하고, `init`은 해당 namespace에서 caller-owned non-null
+handle pointer를 error union으로 반환하며, `deinit`은 인자 없이 `void`를 반환하는
 해당 타입의 receiver 함수여야 한다. 이 무결성 조건은 lowering 전에 `ZIGO010`으로
 검사한다.
 

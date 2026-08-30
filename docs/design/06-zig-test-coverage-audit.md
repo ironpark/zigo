@@ -1,7 +1,7 @@
 # Zig 테스트 커버리지 감사
 
 최종 검증 기준: 2026-08-30, Zig 0.16.0. 보강 후 `zig build test --summary all`은
-31/31 build step과 64/64 test를 통과했다. 아래 항목은 최초 감사에서 발견한 공백과
+33/33 build step과 72/72 test를 통과했다. 아래 항목은 최초 감사에서 발견한 공백과
 이번 보강의 처리 상태를 함께 기록한다.
 
 이 감사에서 커버리지는 line percentage가 아니라 production 계약을 증명하는 테스트의 형태로
@@ -10,26 +10,27 @@
 
 ## 실제 discovery
 
-루트 `test` step에서 실행되는 64개 테스트의 분포는 다음과 같다.
+루트 `test` step에서 실행되는 72개 테스트의 분포는 다음과 같다.
 
 | Test artifact | 테스트 수 | 주된 범위 |
 |---|---:|---|
 | root aggregate | 9 | `define`, semantic parser/round trip/OOM, errors lock 연동, snapshot |
-| generator | 19 | generator, validator, lowering, naming |
-| reflect walk | 5 | reflection, generic specialization, automatic discovery |
+| generator | 23 | generator, validator, lowering, naming |
+| reflect walk | 6 | reflection, generic specialization, automatic discovery, tagged union |
 | reflect names | 6 | AST 이름·문서 보강과 파일 실패 |
-| ABI diff | 6 | breaking/compatible 분류와 OOM |
+| ABI diff | 7 | breaking/compatible 분류와 OOM |
 | errors lock | 5 | parse, append-only, remap과 예약 코드 |
 | diagnostic | 2 | rendering과 OOM |
 | sync check | 3 | changed/obsolete 파일과 OOM |
 | CLI parser | 5 | named argument, defaults, parse diagnostics |
 | build options | 4 | raw package path component와 Go identifier/keyword |
+| emitter | 2 | 생성 파일 분리와 tagged-union checked projection |
 
 두 generator golden case와 6개 CLI/process contract는 별도 process step으로 실행되며 위
-64개에는 포함되지 않는다. process contract는 help, parse error, invalid semantic, stale 생성물,
+72개에는 포함되지 않는다. process contract는 help, parse error, invalid semantic, stale 생성물,
 breaking ABI와 실제 invalid consumer project의 exit/output을 캡처해 검사한다.
 
-9개 example root의 Zig test 16개는 모두 표준 `test` step으로 실행되며 CI example loop에도
+10개 example root의 Zig test 17개는 모두 표준 `test` step으로 실행되며 CI example loop에도
 연결됐다.
 
 ## 최초 감사 항목과 조치 상태
@@ -134,8 +135,9 @@ breaking ABI와 실제 invalid consumer project의 exit/output을 캡처해 검�
 - ABI diff는 signature, identity, constructor, appended error와 OOM을 검증한다.
 - reflection은 public discovery, owner-qualified selector, generic specialization과 AST failure를
   직접 검증한다.
-- emission은 direct unit보다 complex golden, 8개 build graph, Go compile/runtime/race의 다층
-  검증이 더 적합하며 현재 이 경로는 비교적 강하다.
+- emission은 direct unit, complex golden, 10개 build graph, Go compile/runtime/race의 다층
+  검증을 사용한다. tagged-union projection은 emitter 문자열 계약과 실제 Zig/C/cgo/Go 예제를
+  함께 통과한다.
 
 ## 권장 구현 순서
 

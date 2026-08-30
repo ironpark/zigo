@@ -97,7 +97,7 @@ zigo는 대상 모듈에 설정된 system library와 framework 링크 정보를 
 
 | 그룹 | 역할 |
 |---|---|
-| `types` | opaque 또는 명시적 representation으로 노출할 타입 |
+| `types` | opaque, tagged-union handle 또는 명시적 representation으로 노출할 타입 |
 | `specializations` | comptime generic을 구체화한 named type |
 | `functions` | 생성할 함수와 메서드 |
 
@@ -135,6 +135,26 @@ override와 exclude의 충돌은 컴파일 오류다.
 자동 발견은 명시적으로 선택해야 한다. 이 모드에서는 새 `pub fn`이 C/Go API에도
 추가되므로 생성물 stale 검사와, 독립 배포 계약이 있다면 `abi-check`를 함께 사용한다.
 세밀하게 선택해야 하는 API와 generic 함수의 구체화는 기존 `functions` 모드를 사용한다.
+
+### Tagged union accessor
+
+tagged union을 값 ABI로 노출하지 않고 포인터 handle로 사용하려면 한 번 등록한다.
+
+```zig
+.types = .{
+    .{ .type = mylib.Value, .repr = .tagged_union },
+},
+```
+
+zigo는 `ValueTag`와 `(*Value).Tag()`를 만들고 payload가 있는 각 variant에
+`As<Variant>() (payload, bool)`을 생성한다. 같은 accessor는 borrowed `*ValueRef`에도
+생긴다. active tag가 다르면 accessor는 payload를 읽거나 out 파라미터를 기록하지 않고
+Go zero value와 `false`를 반환한다. `void` variant는 tag 상수만 가진다.
+
+지원 payload는 `void`, bool, 정수, float, enum, 등록된 handle pointer, 숫자 slice다.
+숫자 slice는 Zig 메모리 view를 public Go API에 그대로 노출하지 않고 호출마다 복사한다.
+handle payload는 union wrapper에 수명이 묶인 borrowed `*TRef`다. union 자체를 함수 인자나
+반환값으로 직접 전달하면 `ZIGO006`; pointer로 노출해야 한다.
 
 함수 항목의 주요 필드는 다음과 같다.
 

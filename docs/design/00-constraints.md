@@ -159,7 +159,7 @@ v2에서 레이아웃 상수를 타깃별 컴파일 산출물에서 추출하는
 | ZIGO003 | 값 전달 대상이 `extern`/`packed`가 아닌 struct | §3 |
 | ZIGO004 | `callconv(.c)`가 아닌 함수 포인터 | §8 |
 | ZIGO005 | 포인터를 포함하는 원소 타입의 슬라이스 | §6 |
-| ZIGO006 | tagged union (v1) | 표현 미정 |
+| ZIGO006 | tagged union by-value 또는 accessor로 내릴 수 없는 payload | union layout 비노출·checked projection 계약 |
 | ZIGO007 | 심볼 이름 충돌 | 자동 번호 부여는 ABI 불안정 |
 | ZIGO008 | comptime 파라미터가 남은 함수 | §2 |
 | ZIGO009 | `retained` 포인터에 대응 해제 함수 부재 | §6 |

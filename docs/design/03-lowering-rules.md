@@ -124,7 +124,25 @@ wrapper를 참조하지 않는 별도 resource state로 `runtime.AddCleanup`을 
 `runtime.KeepAlive`로 wrapper의 생존 구간을 고정한다. cleanup은 실행 시점과 프로그램
 종료 전 실행을 보장하지 않으므로 `Close()`가 항상 기본 계약이다.
 
-## 7. 소유권 → Go 매핑
+## 7. tagged union projection
+
+`.repr = .tagged_union`은 union을 opaque handle로 내리고 실제 layout을 C struct로 복제하지
+않는다. discriminant와 payload마다 별도 projection 심볼을 만든다.
+
+```c
+uint8_t zg_value_project_tag(const zg_value *self);
+uint8_t zg_value_project_integer(const zg_value *self, int64_t *out_value);
+```
+
+payload projection의 반환 `uint8_t`는 variant 일치 여부다. shim은 `activeTag`를 먼저 검사하고
+불일치하면 out 파라미터를 쓰지 않는다. Go public API는 이를 `AsInteger() (int64, bool)`로
+노출한다. numeric slice는 pointer+length로 projection한 직후 Go-owned slice로 복사하며,
+opaque-pointer payload는 union wrapper를 parent로 보유하는 borrowed `TRef`가 된다.
+
+variant 추가·삭제, discriminant 변경, payload 타입 변경은 생성 projection ABI가 바뀌므로
+ABI diff에서 breaking type definition change다.
+
+## 8. 소유권 → Go 매핑
 
 | ownership | Go |
 |---|---|
@@ -141,7 +159,7 @@ type ContextRef struct {
 }
 ```
 
-## 8. 콜백
+## 9. 콜백
 
 ```zig
 pub fn setCallback(
@@ -166,7 +184,7 @@ func (c *Context) SetCallback(fn ContextCallback)
 
 `callconv(.c)`가 아닌 함수 포인터는 하강 실패.
 
-## 9. 심볼 이름 규칙
+## 10. 심볼 이름 규칙
 
 ```
 <prefix>_<snake(receiver)>_<snake(fn)>
@@ -180,14 +198,14 @@ Go 이름:
 - 메서드: `camelCase` → `PascalCase`
 - 이니셜리즘 보정: `id → ID`, `url → URL`, `utf8 → UTF8` (테이블 기반, 확장 가능)
 
-## 10. 하강이 실패해야 하는 경우
+## 11. 하강이 실패해야 하는 경우
 
-9가지 거부 조건과 진단 코드(`ZIGO001`–`ZIGO009`)는
+10가지 거부 조건과 진단 코드(`ZIGO001`–`ZIGO010`)는
 [`00-constraints.md` §9](00-constraints.md)에 정의되어 있다.
 실패는 전부 **선언 위치 + 수정 방법**을 포함한 진단으로 보고하며,
 어떤 산출물도 쓰지 않는다.
 
-## 11. cgo 링크 지시자
+## 12. cgo 링크 지시자
 
 생성기는 빌드 그래프 안에서 동작하므로 install prefix와 `go_dir`의 상대 경로를 알고 있다.
 따라서 사용자가 `-L`/`-I`를 손으로 쓰지 않는다.

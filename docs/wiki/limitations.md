@@ -11,6 +11,9 @@
 
 - 일반 Zig `struct`의 메모리 배치는 안정된 C ABI가 아니다. 값으로 노출하려면
   `extern struct`를 사용하고, 일반 struct는 opaque 포인터로 노출한다.
+- tagged union은 `.repr = .tagged_union`으로 등록한 뒤 포인터로만 노출한다. 생성된
+  `Tag`/`As*`가 active tag를 검사하며 union 레이아웃은 C로 전달하지 않는다. nested
+  aggregate, optional, error union, callback 또는 pointer 원소 slice payload는 지원하지 않는다.
 - generic 함수는 구체화 전에는 시그니처가 없으므로 직접 노출할 수 없다. generic 타입은
   `specializations`에 구체화된 타입을 등록한다.
 - `anyerror`, C 호출 규약이 아닌 함수 포인터, Go 포인터를 포함할 수 있는 슬라이스처럼

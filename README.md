@@ -8,7 +8,7 @@ reflection 결과를 바탕으로 C ABI shim, C 헤더, cgo 코드와 Go API를 
 ## 주요 기능
 
 - Zig 라이브러리 소스를 수정하지 않고 `bindings.zig`에서 노출할 API를 선언한다.
-- 스칼라, 슬라이스, 에러 유니온, opaque 타입, generic specialization과 콜백을 지원한다.
+- 스칼라, 슬라이스, 에러 유니온, opaque 타입, tagged-union accessor, generic specialization과 콜백을 지원한다.
 - Go용 raw 계층과 public 계층, C 헤더와 Zig shim을 한 번에 생성한다.
 - `go-check`로 생성물 동기화를 검사하고, 필요하면 `abi-check`를 켜 호환성 파괴를 막는다.
 
@@ -93,3 +93,4 @@ cd go && go test ./...
 - [상태 기반 event queue 예제](examples/07-event-queue/README.md)
 - [51개 함수의 대형 telemetry hub 예제](examples/08-telemetry-hub/README.md)
 - [두 opaque 타입의 교차 참조 예제](examples/09-type-relations/README.md)
+- [tagged union 자동 accessor 예제](examples/10-tagged-union/README.md)

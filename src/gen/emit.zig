@@ -535,13 +535,15 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
 fn renderRawTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
     for (program.types) |declaration| {
         if (declaration.kind != .tagged_union) continue;
+        const union_name = try naming.snakeAlloc(allocator, declaration.name);
+        defer allocator.free(union_name);
         const tag_symbol = try taggedUnionSymbolAlloc(allocator, program, declaration, "tag");
         defer allocator.free(tag_symbol);
         try writer.print("\nfunc {s}ProjectTag(self unsafe.Pointer) ", .{declaration.name});
         try writeRawGoType(writer, program, declaration.tag_type.?);
         try writer.writeAll(" {\n\treturn ");
         try writeRawGoType(writer, program, declaration.tag_type.?);
-        try writer.print("(C.{s}(self))\n}}\n", .{tag_symbol});
+        try writer.print("(C.{s}((*C.{s}_{s})(self)))\n}}\n", .{ tag_symbol, program.prefix, union_name });
 
         for (declaration.fields) |field| {
             const payload = field.type.?;
@@ -557,7 +559,7 @@ fn renderRawTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.Io.W
                 try writer.writeAll("\tvar outValuePtr *C.");
                 try writeCgoType(writer, semanticScalar(program, payload.slice.element.*));
                 try writer.writeAll("\n\tvar outValueLen C.size_t\n\tok := C.");
-                try writer.print("{s}(self, &outValuePtr, &outValueLen)\n", .{symbol});
+                try writer.print("{s}((*C.{s}_{s})(self), &outValuePtr, &outValueLen)\n", .{ symbol, program.prefix, union_name });
                 try writer.writeAll("\tif ok == 0 {\n\t\treturn nil, false\n\t}\n\treturn unsafe.Slice((*");
                 try writeRawGoType(writer, program, payload.slice.element.*);
                 try writer.writeAll(")(unsafe.Pointer(outValuePtr)), int(outValueLen)), true\n");
@@ -569,8 +571,8 @@ fn renderRawTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.Io.W
                     try writeCgoType(writer, semanticScalar(program, payload));
                     try writer.writeByte('\n');
                 }
-                try writer.print("\tok := C.{s}(self, &outValue)\n\tif ok == 0 {{\n\t\treturn ", .{symbol});
-                try writer.writeAll(goZero(payload));
+                try writer.print("\tok := C.{s}((*C.{s}_{s})(self), &outValue)\n\tif ok == 0 {{\n\t\treturn ", .{ symbol, program.prefix, union_name });
+                try writer.writeAll(rawGoZero(payload));
                 try writer.writeAll(", false\n\t}\n\treturn ");
                 try writeRawResultConversion(writer, program, payload, "outValue");
                 try writer.writeAll(", true\n");
@@ -1276,6 +1278,13 @@ fn rawGoTypeName(program: abi.Program, node: semantic.TypeNode) []const u8 {
 fn goZero(node: semantic.TypeNode) []const u8 {
     return switch (node) {
         .bool => "false",
+        .slice, .opaque_ptr => "nil",
+        else => "0",
+    };
+}
+
+fn rawGoZero(node: semantic.TypeNode) []const u8 {
+    return switch (node) {
         .slice, .opaque_ptr => "nil",
         else => "0",
     };
