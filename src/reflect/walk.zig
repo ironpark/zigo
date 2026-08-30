@@ -11,8 +11,12 @@ pub fn reflect(
     // declarations fail at compile time. Broad APIs can legitimately exceed
     // Zig's default quota of 1,000 branches while doing that work.
     @setEvalBranchQuota(100_000);
-    const entries = declaration.functions;
-    const functions = try allocator.alloc(semantic.SemanticFn, entries.len);
+    if (!@hasField(@TypeOf(declaration), "functions") and !comptime discoveryEnabled(declaration)) {
+        @compileError("zigo declarations require `.functions` or opt-in `.discover = .public`");
+    }
+    comptime validateSelectors(declaration);
+
+    var functions: std.ArrayList(semantic.SemanticFn) = .empty;
     var types: std.ArrayList(semantic.TypeDecl) = .empty;
 
     if (@hasField(@TypeOf(declaration), "types")) {
@@ -53,58 +57,31 @@ pub fn reflect(
         }
     }
 
-    inline for (entries, 0..) |entry, function_index| {
-        const info = switch (@typeInfo(@TypeOf(entry.@"fn"))) {
-            .@"fn" => |info| info,
-            else => @compileError("zigo function entry must contain a function"),
-        };
-        const receiver = comptime receiverName(info, declaration);
-        const first_param: usize = if (receiver != null) 1 else 0;
-        const params = try allocator.alloc(semantic.Parameter, comptime concreteParamCount(info, first_param));
-        inline for (info.params, 0..) |param, param_index| {
-            if (param_index < first_param) continue;
-            if (info.is_generic) continue;
-            if (param.is_generic or param.type == null) continue;
-            const output_index = comptime concreteParamIndex(info, first_param, param_index);
-            const has_sidecar = @hasField(@TypeOf(entry), "params");
-            const parameter_name = if (has_sidecar)
-                entry.params[output_index]
-            else
-                try std.fmt.allocPrint(allocator, "p{d}", .{output_index});
-            var reflected: semantic.Parameter = .{
-                .name = parameter_name,
-                .name_source = if (has_sidecar) .sidecar else .fallback,
-                .type = try typeNode(allocator, param.type.?, &types),
-            };
-            if (has_sidecar and @hasField(@TypeOf(entry), "param_meta")) {
-                const meta = entry.param_meta;
-                if (@hasField(@TypeOf(meta), parameter_name)) {
-                    const value = @field(meta, parameter_name);
-                    if (@hasField(@TypeOf(value), "direction")) reflected.direction = value.direction;
-                    if (@hasField(@TypeOf(value), "retention")) reflected.retention = value.retention;
-                    if (@hasField(@TypeOf(value), "semantic")) reflected.semantic = value.semantic;
-                }
-            }
-            params[output_index] = reflected;
+    if (@hasField(@TypeOf(declaration), "functions")) {
+        inline for (declaration.functions) |entry| {
+            try appendFunction(allocator, &functions, &types, declaration, prefix, entry.name, entry.@"fn", entry, null);
         }
-        var reflected_function: semantic.SemanticFn = .{
-            .has_comptime_params = if (info.is_generic) true else null,
-            .name = entry.name,
-            .params = params,
-            .receiver = receiver,
-            .@"return" = if (info.return_type) |return_type| try typeNode(allocator, return_type, &types) else .{ .void = {} },
-            .symbol = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ prefix, entry.name }),
-        };
-        if (@hasField(@TypeOf(entry), "semantic")) reflected_function.return_semantic = entry.semantic;
-        if (@hasField(@TypeOf(entry), "returns")) reflected_function.ownership = entry.returns;
-        functions[function_index] = reflected_function;
+    }
+    if (comptime discoveryEnabled(declaration)) {
+        if (@hasField(@TypeOf(declaration), "types")) {
+            inline for (declaration.types) |entry| {
+                const owner = comptime if (@hasField(@TypeOf(entry), "name")) entry.name else shortTypeName(@typeName(entry.type));
+                try discoverContainer(allocator, &functions, &types, declaration, prefix, entry.type, owner);
+            }
+        }
+        if (@hasField(@TypeOf(declaration), "specializations")) {
+            inline for (declaration.specializations) |entry| {
+                try discoverContainer(allocator, &functions, &types, declaration, prefix, entry.type, entry.name);
+            }
+        }
+        try discoverContainer(allocator, &functions, &types, declaration, prefix, declaration.root, null);
     }
 
     var constructors: std.ArrayList(semantic.Constructor) = .empty;
-    for (functions) |*function| {
+    for (functions.items) |*function| {
         if (!isConstructorName(function.name)) continue;
         const type_name = returnedOpaqueName(function.@"return") orelse continue;
-        for (functions) |destructor| {
+        for (functions.items) |destructor| {
             if (destructor.receiver == null or !std.mem.eql(u8, destructor.receiver.?, type_name)) continue;
             if (!isDestructorName(destructor.name)) continue;
             try constructors.append(allocator, .{
@@ -120,12 +97,174 @@ pub fn reflect(
 
     return .{
         .constructors = try constructors.toOwnedSlice(allocator),
-        .functions = functions,
+        .functions = try functions.toOwnedSlice(allocator),
         .package = package_name,
         .prefix = prefix,
         .types = try types.toOwnedSlice(allocator),
         .zig_version = @import("builtin").zig_version_string,
     };
+}
+
+fn appendFunction(
+    allocator: std.mem.Allocator,
+    functions: *std.ArrayList(semantic.SemanticFn),
+    types: *std.ArrayList(semantic.TypeDecl),
+    comptime declaration: anytype,
+    prefix: []const u8,
+    comptime source_name: []const u8,
+    comptime function_value: anytype,
+    comptime metadata: anytype,
+    comptime discovered_owner: ?[]const u8,
+) !void {
+    const info = switch (@typeInfo(@TypeOf(function_value))) {
+        .@"fn" => |info| info,
+        else => @compileError("zigo function entry must contain a function"),
+    };
+    const function_name = if (@hasField(@TypeOf(metadata), "name")) metadata.name else source_name;
+    const receiver = comptime receiverName(info, declaration);
+    const first_param: usize = if (receiver != null) 1 else 0;
+    const params = try allocator.alloc(semantic.Parameter, comptime concreteParamCount(info, first_param));
+    inline for (info.params, 0..) |param, param_index| {
+        if (param_index < first_param) continue;
+        if (info.is_generic) continue;
+        if (param.is_generic or param.type == null) continue;
+        const output_index = comptime concreteParamIndex(info, first_param, param_index);
+        const has_sidecar = @hasField(@TypeOf(metadata), "params");
+        const parameter_name = if (has_sidecar)
+            metadata.params[output_index]
+        else
+            try std.fmt.allocPrint(allocator, "p{d}", .{output_index});
+        var reflected: semantic.Parameter = .{
+            .name = parameter_name,
+            .name_source = if (has_sidecar) .sidecar else .fallback,
+            .type = try typeNode(allocator, param.type.?, types),
+        };
+        if (has_sidecar and @hasField(@TypeOf(metadata), "param_meta")) {
+            const meta = metadata.param_meta;
+            if (@hasField(@TypeOf(meta), parameter_name)) {
+                const value = @field(meta, parameter_name);
+                if (@hasField(@TypeOf(value), "direction")) reflected.direction = value.direction;
+                if (@hasField(@TypeOf(value), "retention")) reflected.retention = value.retention;
+                if (@hasField(@TypeOf(value), "semantic")) reflected.semantic = value.semantic;
+            }
+        }
+        params[output_index] = reflected;
+    }
+    var reflected_function: semantic.SemanticFn = .{
+        .has_comptime_params = if (info.is_generic) true else null,
+        .name = function_name,
+        .namespace = if (receiver == null) discovered_owner else null,
+        .params = params,
+        .receiver = receiver,
+        .@"return" = if (info.return_type) |return_type| try typeNode(allocator, return_type, types) else .{ .void = {} },
+        .symbol = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ prefix, function_name }),
+    };
+    if (@hasField(@TypeOf(metadata), "semantic")) reflected_function.return_semantic = metadata.semantic;
+    if (@hasField(@TypeOf(metadata), "returns")) reflected_function.ownership = metadata.returns;
+    try functions.append(allocator, reflected_function);
+}
+
+fn discoverContainer(
+    allocator: std.mem.Allocator,
+    functions: *std.ArrayList(semantic.SemanticFn),
+    types: *std.ArrayList(semantic.TypeDecl),
+    comptime declaration: anytype,
+    prefix: []const u8,
+    comptime Container: type,
+    comptime owner: ?[]const u8,
+) !void {
+    inline for (comptime std.meta.declarations(Container)) |candidate| {
+        const value = @field(Container, candidate.name);
+        if (@typeInfo(@TypeOf(value)) != .@"fn") continue;
+        const path = comptime declarationPath(owner, candidate.name);
+        if (comptime selectorContains(declaration, "exclude", path)) continue;
+        comptime var overridden = false;
+        if (@hasField(@TypeOf(declaration), "overrides")) {
+            inline for (declaration.overrides) |override| {
+                if (comptime std.mem.eql(u8, override.path, path)) {
+                    overridden = true;
+                    try appendFunction(allocator, functions, types, declaration, prefix, candidate.name, value, override, owner);
+                }
+            }
+        }
+        if (!overridden) try appendFunction(allocator, functions, types, declaration, prefix, candidate.name, value, .{}, owner);
+    }
+}
+
+fn discoveryEnabled(comptime declaration: anytype) bool {
+    if (!@hasField(@TypeOf(declaration), "discover")) return false;
+    if (declaration.discover != .public) @compileError("zigo `.discover` must be `.public`");
+    if (!@hasField(@TypeOf(declaration), "root")) @compileError("zigo `.discover = .public` requires `.root`");
+    if (@TypeOf(declaration.root) != type) @compileError("zigo `.root` must be a module or container type");
+    return true;
+}
+
+fn validateSelectors(comptime declaration: anytype) void {
+    if (!discoveryEnabled(declaration)) {
+        if (@hasField(@TypeOf(declaration), "overrides") or @hasField(@TypeOf(declaration), "exclude")) {
+            @compileError("zigo `.overrides` and `.exclude` require `.discover = .public`");
+        }
+        return;
+    }
+    if (@hasField(@TypeOf(declaration), "overrides")) {
+        inline for (declaration.overrides, 0..) |override, index| {
+            if (!@hasField(@TypeOf(override), "path")) @compileError("zigo override entries require `.path`");
+            if (!discoveredPathExists(declaration, override.path)) {
+                @compileError("zigo override path does not name a discovered public function: " ++ override.path);
+            }
+            inline for (declaration.overrides, 0..) |previous, previous_index| {
+                if (previous_index < index and std.mem.eql(u8, previous.path, override.path)) @compileError("duplicate zigo override path: " ++ override.path);
+            }
+            if (selectorContains(declaration, "exclude", override.path)) {
+                @compileError("zigo path cannot be both overridden and excluded: " ++ override.path);
+            }
+        }
+    }
+    if (@hasField(@TypeOf(declaration), "exclude")) {
+        inline for (declaration.exclude, 0..) |path, index| {
+            if (!discoveredPathExists(declaration, path)) {
+                @compileError("zigo exclusion path does not name a discovered public function: " ++ path);
+            }
+            inline for (declaration.exclude, 0..) |previous, previous_index| {
+                if (previous_index < index and std.mem.eql(u8, previous, path)) @compileError("duplicate zigo exclusion path: " ++ path);
+            }
+        }
+    }
+}
+
+fn discoveredPathExists(comptime declaration: anytype, comptime wanted: []const u8) bool {
+    if (@hasField(@TypeOf(declaration), "types")) {
+        inline for (declaration.types) |entry| {
+            const owner = if (@hasField(@TypeOf(entry), "name")) entry.name else shortTypeName(@typeName(entry.type));
+            if (containerHasPath(entry.type, owner, wanted)) return true;
+        }
+    }
+    if (@hasField(@TypeOf(declaration), "specializations")) {
+        inline for (declaration.specializations) |entry| {
+            if (containerHasPath(entry.type, entry.name, wanted)) return true;
+        }
+    }
+    return containerHasPath(declaration.root, null, wanted);
+}
+
+fn containerHasPath(comptime Container: type, comptime owner: ?[]const u8, comptime wanted: []const u8) bool {
+    inline for (comptime std.meta.declarations(Container)) |candidate| {
+        if (@typeInfo(@TypeOf(@field(Container, candidate.name))) != .@"fn") continue;
+        if (std.mem.eql(u8, declarationPath(owner, candidate.name), wanted)) return true;
+    }
+    return false;
+}
+
+fn selectorContains(comptime declaration: anytype, comptime field_name: []const u8, comptime path: []const u8) bool {
+    if (!@hasField(@TypeOf(declaration), field_name)) return false;
+    inline for (@field(declaration, field_name)) |candidate| {
+        if (std.mem.eql(u8, candidate, path)) return true;
+    }
+    return false;
+}
+
+fn declarationPath(comptime owner: ?[]const u8, comptime name: []const u8) []const u8 {
+    return if (owner) |value| value ++ "." ++ name else "root." ++ name;
 }
 
 fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayList(semantic.TypeDecl)) !semantic.TypeNode {
@@ -436,4 +575,80 @@ test "named generic specializations become distinct opaque types" {
     try std.testing.expectEqual(@as(usize, 2), document.types.len);
     try std.testing.expectEqualStrings("FloatBuffer", document.types[0].name);
     try std.testing.expectEqualStrings("IntBuffer", document.types[1].name);
+}
+
+test "public discovery combines methods root functions exclusions and overrides" {
+    const Api = struct {
+        pub const Handle = struct {
+            pub fn create() *Handle {
+                unreachable;
+            }
+
+            pub fn set(self: *Handle, value: i32) void {
+                _ = self;
+                _ = value;
+            }
+
+            pub fn internal(self: *Handle, secret: i32) void {
+                _ = self;
+                _ = secret;
+            }
+
+            pub fn deinit(self: *Handle) void {
+                _ = self;
+            }
+        };
+
+        pub fn ping(value: i32) i32 {
+            return value;
+        }
+
+        fn privateHelper() void {}
+    };
+    const declaration = .{
+        .root = Api,
+        .discover = .public,
+        .types = .{.{ .type = Api.Handle, .repr = .@"opaque" }},
+        .overrides = .{
+            .{ .path = "Handle.set", .name = "put", .params = .{"value"} },
+            .{ .path = "root.ping", .name = "health" },
+        },
+        .exclude = .{"Handle.internal"},
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), declaration, "auto", "zg");
+    try std.testing.expectEqual(@as(usize, 4), document.functions.len);
+    try std.testing.expectEqualStrings("create", document.functions[0].name);
+    try std.testing.expectEqualStrings("Handle", document.functions[0].namespace.?);
+    try std.testing.expectEqual(.caller, document.functions[0].ownership);
+    try std.testing.expectEqualStrings("put", document.functions[1].name);
+    try std.testing.expectEqualStrings("value", document.functions[1].params[0].name);
+    try std.testing.expectEqual(.sidecar, document.functions[1].params[0].name_source);
+    try std.testing.expectEqualStrings("deinit", document.functions[2].name);
+    try std.testing.expectEqualStrings("health", document.functions[3].name);
+    try std.testing.expect(document.functions[3].receiver == null);
+    try std.testing.expect(document.functions[3].namespace == null);
+    try std.testing.expectEqual(@as(usize, 1), document.constructors.len);
+}
+
+test "discovery selectors use stable owner-qualified paths" {
+    const Api = struct {
+        pub const Handle = struct {
+            pub fn update(self: *Handle) void {
+                _ = self;
+            }
+        };
+
+        pub fn update() void {}
+    };
+    const declaration = .{
+        .root = Api,
+        .discover = .public,
+        .types = .{.{ .type = Api.Handle, .repr = .@"opaque" }},
+    };
+    try std.testing.expect(comptime discoveredPathExists(declaration, "Handle.update"));
+    try std.testing.expect(comptime discoveredPathExists(declaration, "root.update"));
+    try std.testing.expect(!comptime discoveredPathExists(declaration, "Missing.update"));
+    try std.testing.expect(!comptime discoveredPathExists(declaration, "root.privateHelper"));
 }
