@@ -1,7 +1,9 @@
 const std = @import("std");
 const abi_diff = @import("abi_diff");
 const cli = @import("gen/cli.zig");
+const doctor = @import("gen/doctor.zig");
 const generator = @import("gen/generator.zig");
+const binding_report = @import("gen/report.zig");
 const semantic = @import("semantic");
 const sync_check = @import("sync_check");
 const validate = @import("gen/validate.zig");
@@ -28,6 +30,8 @@ pub fn main(init: std.process.Init) !void {
         .generate => |options| try runGenerate(allocator, init.io, options),
         .check => |options| try runCheck(allocator, init.io, options),
         .abi_diff => |options| try runAbiDiff(allocator, init.io, options),
+        .report => |options| try runReport(allocator, init.io, options),
+        .doctor => |options| try runDoctor(allocator, init.io, options),
     }
 }
 
@@ -98,4 +102,33 @@ fn runAbiDiff(allocator: std.mem.Allocator, io: std.Io, options: cli.AbiDiff) !v
     if (options.json) try report.renderJson(allocator, &stdout.interface) else try report.renderText(&stdout.interface);
     try stdout.interface.flush();
     if (options.fail_on_breaking and report.hasBreaking()) std.process.exit(1);
+}
+
+fn runReport(allocator: std.mem.Allocator, io: std.Io, options: cli.Report) !void {
+    const semantic_bytes = try std.Io.Dir.cwd().readFileAlloc(io, options.semantic_path, allocator, .limited(64 * 1024 * 1024));
+    var parsed = try semantic.Semantic.parse(allocator, semantic_bytes);
+    defer parsed.deinit();
+    try validate.semanticDocument(allocator, parsed.value);
+    var buffer: [4096]u8 = undefined;
+    var stdout = std.Io.File.Writer.init(.stdout(), io, &buffer);
+    try binding_report.render(allocator, &stdout.interface, parsed.value, .{
+        .go_module = options.go_module,
+        .raw_package_path = options.raw_package_path,
+        .raw_colocated = options.raw_colocated,
+        .auto_cleanup = options.auto_cleanup,
+    });
+    try stdout.interface.flush();
+}
+
+fn runDoctor(allocator: std.mem.Allocator, io: std.Io, options: cli.Doctor) !void {
+    var buffer: [2048]u8 = undefined;
+    var stdout = std.Io.File.Writer.init(.stdout(), io, &buffer);
+    const healthy = try doctor.run(allocator, io, &stdout.interface, .{
+        .go_executable = options.go_executable,
+        .gofmt_executable = options.gofmt_executable,
+        .native_target = options.native_target,
+        .auto_cleanup = options.auto_cleanup,
+    });
+    try stdout.interface.flush();
+    if (!healthy) std.process.exit(1);
 }

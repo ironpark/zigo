@@ -40,10 +40,27 @@ pub const AbiDiff = struct {
     fail_on_breaking: bool = false,
 };
 
+pub const Report = struct {
+    semantic_path: []const u8,
+    go_module: []const u8 = "",
+    raw_package_path: []const u8 = "internal/raw",
+    raw_colocated: bool = false,
+    auto_cleanup: bool = false,
+};
+
+pub const Doctor = struct {
+    go_executable: []const u8 = "go",
+    gofmt_executable: []const u8 = "gofmt",
+    native_target: bool = true,
+    auto_cleanup: bool = false,
+};
+
 pub const Command = union(enum) {
     generate: Generate,
     check: Check,
     abi_diff: AbiDiff,
+    report: Report,
+    doctor: Doctor,
 };
 
 pub fn isHelp(args: []const []const u8) bool {
@@ -59,6 +76,8 @@ pub fn writeUsage(writer: *std.Io.Writer) std.Io.Writer.Error!void {
         \\  generate  --semantic <file> --output <dir> --package <name> [options]
         \\  check     --generated <dir> --source <dir>
         \\  abi-diff  --base <file> --current <file> [--json] [--fail-on breaking]
+        \\  report    --semantic <file> [--go-module <path>] [options]
+        \\  doctor    [--go <path>] [--gofmt <path>] [--target native|cross] [--auto-cleanup]
         \\
     );
 }
@@ -68,7 +87,7 @@ fn isHelpFlag(argument: []const u8) bool {
 }
 
 fn isKnownCommand(argument: []const u8) bool {
-    return std.mem.eql(u8, argument, "generate") or std.mem.eql(u8, argument, "check") or std.mem.eql(u8, argument, "abi-diff");
+    return std.mem.eql(u8, argument, "generate") or std.mem.eql(u8, argument, "check") or std.mem.eql(u8, argument, "abi-diff") or std.mem.eql(u8, argument, "report") or std.mem.eql(u8, argument, "doctor");
 }
 
 pub fn writeParseError(writer: *std.Io.Writer, err: ParseError) std.Io.Writer.Error!void {
@@ -89,6 +108,8 @@ pub fn parse(args: []const []const u8) ParseError!Command {
     if (std.mem.eql(u8, args[0], "generate")) return .{ .generate = try parseGenerate(args[1..]) };
     if (std.mem.eql(u8, args[0], "check")) return .{ .check = try parseCheck(args[1..]) };
     if (std.mem.eql(u8, args[0], "abi-diff")) return .{ .abi_diff = try parseAbiDiff(args[1..]) };
+    if (std.mem.eql(u8, args[0], "report")) return .{ .report = try parseReport(args[1..]) };
+    if (std.mem.eql(u8, args[0], "doctor")) return .{ .doctor = try parseDoctor(args[1..]) };
     return error.UnknownCommand;
 }
 
@@ -235,6 +256,87 @@ fn parseAbiDiff(args: []const []const u8) ParseError!AbiDiff {
     };
 }
 
+fn parseReport(args: []const []const u8) ParseError!Report {
+    var semantic_path: ?[]const u8 = null;
+    var go_module: ?[]const u8 = null;
+    var raw_package_path: ?[]const u8 = null;
+    var raw_colocated = false;
+    var raw_colocated_seen = false;
+    var auto_cleanup = false;
+    var auto_cleanup_seen = false;
+    var index: usize = 0;
+    while (index < args.len) {
+        const flag = args[index];
+        index += 1;
+        if (std.mem.eql(u8, flag, "--semantic")) {
+            try set(&semantic_path, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--go-module")) {
+            try set(&go_module, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--raw-package-path")) {
+            try set(&raw_package_path, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--raw-colocated")) {
+            if (raw_colocated_seen) return error.DuplicateArgument;
+            raw_colocated_seen = true;
+            raw_colocated = true;
+        } else if (std.mem.eql(u8, flag, "--auto-cleanup")) {
+            if (auto_cleanup_seen) return error.DuplicateArgument;
+            auto_cleanup_seen = true;
+            auto_cleanup = true;
+        } else {
+            return error.UnknownArgument;
+        }
+    }
+    return .{
+        .semantic_path = semantic_path orelse return error.MissingRequiredArgument,
+        .go_module = go_module orelse "",
+        .raw_package_path = raw_package_path orelse "internal/raw",
+        .raw_colocated = raw_colocated,
+        .auto_cleanup = auto_cleanup,
+    };
+}
+
+fn parseDoctor(args: []const []const u8) ParseError!Doctor {
+    var go_executable: ?[]const u8 = null;
+    var gofmt_executable: ?[]const u8 = null;
+    var native_target = true;
+    var target_seen = false;
+    var auto_cleanup = false;
+    var auto_cleanup_seen = false;
+    var index: usize = 0;
+    while (index < args.len) {
+        const flag = args[index];
+        index += 1;
+        if (std.mem.eql(u8, flag, "--go")) {
+            try set(&go_executable, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--gofmt")) {
+            try set(&gofmt_executable, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--target")) {
+            if (target_seen) return error.DuplicateArgument;
+            target_seen = true;
+            const value = try takeValue(args, &index);
+            if (std.mem.eql(u8, value, "native")) {
+                native_target = true;
+            } else if (std.mem.eql(u8, value, "cross")) {
+                native_target = false;
+            } else {
+                return error.InvalidValue;
+            }
+        } else if (std.mem.eql(u8, flag, "--auto-cleanup")) {
+            if (auto_cleanup_seen) return error.DuplicateArgument;
+            auto_cleanup_seen = true;
+            auto_cleanup = true;
+        } else {
+            return error.UnknownArgument;
+        }
+    }
+    return .{
+        .go_executable = go_executable orelse "go",
+        .gofmt_executable = gofmt_executable orelse "gofmt",
+        .native_target = native_target,
+        .auto_cleanup = auto_cleanup,
+    };
+}
+
 fn takeValue(args: []const []const u8, index: *usize) ParseError![]const u8 {
     if (index.* >= args.len) return error.MissingValue;
     const value = args[index.*];
@@ -311,6 +413,19 @@ test "check and abi-diff commands parse named arguments" {
     const diff = (try parse(&.{ "abi-diff", "--base", "old.json", "--current", "new.json", "--json", "--fail-on", "breaking" })).abi_diff;
     try std.testing.expect(diff.json);
     try std.testing.expect(diff.fail_on_breaking);
+}
+
+test "report and doctor commands parse effective configuration" {
+    const report = (try parse(&.{ "report", "--semantic", "semantic.json", "--go-module", "example.com/api", "--raw-package-path", "bridge/raw", "--raw-colocated", "--auto-cleanup" })).report;
+    try std.testing.expectEqualStrings("semantic.json", report.semantic_path);
+    try std.testing.expectEqualStrings("example.com/api", report.go_module);
+    try std.testing.expect(report.raw_colocated);
+    try std.testing.expect(report.auto_cleanup);
+
+    const doctor = (try parse(&.{ "doctor", "--go", "/tools/go", "--gofmt", "/tools/gofmt", "--target", "cross", "--auto-cleanup" })).doctor;
+    try std.testing.expectEqualStrings("/tools/go", doctor.go_executable);
+    try std.testing.expect(!doctor.native_target);
+    try std.testing.expect(doctor.auto_cleanup);
 }
 
 test "parser rejects incomplete unknown and duplicate arguments" {

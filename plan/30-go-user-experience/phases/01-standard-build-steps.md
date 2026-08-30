@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T11:50:27Z"
 depends_on:
 - "30-go-user-experience#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: A minimal consumer registers standard steps with one call, custom names support multiple binding sets, and build-graph tests plus representative examples pass.
 > NEXT: none

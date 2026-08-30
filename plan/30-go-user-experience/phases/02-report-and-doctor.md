@@ -2,7 +2,7 @@
 depends_on:
 - "30-go-user-experience#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Users can run registered report and doctor steps without modifying generated output; reports include final public names, symbols, ownership and relevant semantics, and doctor failures identify a concrete corrective action.
 > NEXT: none

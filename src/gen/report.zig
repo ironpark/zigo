@@ -1,0 +1,174 @@
+const std = @import("std");
+const abi = @import("abi");
+const semantic = @import("semantic");
+const lower = @import("lower.zig");
+const naming = @import("naming.zig");
+
+pub const Options = struct {
+    go_module: []const u8 = "",
+    raw_package_path: []const u8 = "internal/raw",
+    raw_colocated: bool = false,
+    auto_cleanup: bool = false,
+};
+
+pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: semantic.Semantic, options: Options) !void {
+    var scratch = std.heap.ArenaAllocator.init(allocator);
+    defer scratch.deinit();
+    const scratch_allocator = scratch.allocator();
+    var error_codes: std.ArrayList(abi.ErrorCode) = .empty;
+    defer error_codes.deinit(scratch_allocator);
+    for (document.functions) |function| if (function.@"return" == .error_union) {
+        for (function.@"return".error_union.error_set) |name| {
+            var exists = false;
+            for (error_codes.items) |entry| if (std.mem.eql(u8, entry.name, name)) {
+                exists = true;
+                break;
+            };
+            if (!exists) try error_codes.append(scratch_allocator, .{ .code = @intCast(error_codes.items.len + 1), .name = name });
+        }
+    };
+    const program = try lower.semanticDocument(scratch_allocator, document, document.package, document.prefix, error_codes.items);
+    try writer.writeAll("zigo binding report\n");
+    try writer.print("package: {s}\n", .{document.package});
+    if (options.go_module.len != 0) try writer.print("go module: {s}\n", .{options.go_module});
+    try writer.print("C prefix: {s}\n", .{document.prefix});
+    try writer.print("Zig version: {s}\n", .{document.zig_version});
+    try writer.print("raw package: {s}\n", .{if (options.raw_colocated) "colocated" else options.raw_package_path});
+    try writer.print("automatic cleanup: {s}\n", .{if (options.auto_cleanup) "enabled (Go 1.24+)" else "disabled"});
+
+    try writer.print("\ntypes ({d})\n", .{document.types.len});
+    for (document.types) |declaration| {
+        try writer.print("- {s}: {s}", .{ declaration.name, @tagName(declaration.kind) });
+        if (isHandleType(declaration)) {
+            try writer.print(" | Go {s}, {s}Ref", .{ declaration.name, declaration.name });
+            if (findConstructorForType(document, declaration.name)) |constructor|
+                try writer.print(" | caller-owned via {s}, released by {s}/Close", .{ constructor.init, constructor.deinit })
+            else
+                try writer.writeAll(" | borrowed/library-owned handle");
+        } else {
+            try writer.print(" | Go {s}", .{declaration.name});
+        }
+        if (declaration.zig_path) |path| try writer.print(" | Zig {s}", .{path});
+        try writer.writeByte('\n');
+    }
+
+    try writer.print("\nfunctions ({d})\n", .{program.functions.len});
+    for (program.functions) |function| {
+        const origin = function.origin.*;
+        const identity = try semanticIdentityAlloc(scratch_allocator, origin);
+        defer scratch_allocator.free(identity);
+        const public_name = try publicFunctionNameAlloc(scratch_allocator, document, origin);
+        defer scratch_allocator.free(public_name);
+        try writer.print("- {s} -> {s} | C {s} | return ownership {s}", .{ identity, public_name, function.symbol, @tagName(origin.ownership) });
+        if (origin.return_semantic) |hint| try writer.print("/{s}", .{@tagName(hint)});
+        for (origin.params) |parameter| {
+            try writer.print(" | {s}:{s}/{s}/{s}", .{ parameter.name, typeName(parameter.type), @tagName(parameter.retention), @tagName(parameter.name_source) });
+            if (parameter.semantic) |hint| try writer.print("/{s}", .{@tagName(hint)});
+        }
+        try writer.writeByte('\n');
+    }
+
+    try writer.print("\nprojections ({d})\n", .{program.projections.len});
+    for (program.projections) |projection| switch (projection.kind) {
+        .tag => try writer.print(
+            "- {s}.tag -> (*{s}).TryTag/Tag and (*{s}Ref).TryTag/Tag | C {s}\n",
+            .{ projection.owner.name, projection.owner.name, projection.owner.name, projection.symbol },
+        ),
+        .payload => {
+            const go_field = try naming.pascalAlloc(scratch_allocator, projection.field.?.name);
+            defer scratch_allocator.free(go_field);
+            try writer.print(
+                "- {s}.{s} -> (*{s}).TryAs{s}/As{s} and (*{s}Ref).TryAs{s}/As{s} | C {s}\n",
+                .{ projection.owner.name, projection.field.?.name, projection.owner.name, go_field, go_field, projection.owner.name, go_field, go_field, projection.symbol },
+            );
+        },
+    };
+}
+
+fn publicFunctionNameAlloc(allocator: std.mem.Allocator, document: semantic.Semantic, function: semantic.SemanticFn) ![]u8 {
+    if (constructorForInit(document, function)) |constructor|
+        return std.fmt.allocPrint(allocator, "New{s}", .{constructor.type});
+    const name = try naming.pascalAlloc(allocator, function.name);
+    defer allocator.free(name);
+    if (constructorForDeinit(document, function) != null)
+        return std.fmt.allocPrint(allocator, "(*{s}).Close [lifecycle mapping]", .{function.receiver.?});
+    if (function.receiver) |receiver|
+        return std.fmt.allocPrint(allocator, "(*{s}).{s}", .{ receiver, name });
+    return allocator.dupe(u8, name);
+}
+
+fn semanticIdentityAlloc(allocator: std.mem.Allocator, function: semantic.SemanticFn) ![]u8 {
+    if (function.receiver orelse function.namespace) |owner|
+        return std.fmt.allocPrint(allocator, "{s}.{s}", .{ owner, function.name });
+    return allocator.dupe(u8, function.name);
+}
+
+fn constructorForInit(document: semantic.Semantic, function: semantic.SemanticFn) ?semantic.Constructor {
+    if (function.receiver != null) return null;
+    for (document.constructors) |constructor| {
+        if (std.mem.eql(u8, constructor.init, function.name) and std.mem.eql(u8, constructor.type, function.namespace orelse ""))
+            return constructor;
+    }
+    return null;
+}
+
+fn constructorForDeinit(document: semantic.Semantic, function: semantic.SemanticFn) ?semantic.Constructor {
+    const receiver = function.receiver orelse return null;
+    for (document.constructors) |constructor| {
+        if (std.mem.eql(u8, constructor.type, receiver) and std.mem.eql(u8, constructor.deinit, function.name))
+            return constructor;
+    }
+    return null;
+}
+
+fn findConstructorForType(document: semantic.Semantic, name: []const u8) ?semantic.Constructor {
+    for (document.constructors) |constructor| if (std.mem.eql(u8, constructor.type, name)) return constructor;
+    return null;
+}
+
+fn isHandleType(declaration: semantic.TypeDecl) bool {
+    return declaration.kind == .@"opaque" or declaration.kind == .tagged_union;
+}
+
+fn typeName(node: semantic.TypeNode) []const u8 {
+    return switch (node) {
+        .@"enum" => "enum",
+        .opaque_ptr => "opaque_ptr",
+        .value_struct => "value_struct",
+        .error_union => "error_union",
+        .optional => "optional",
+        .callback => "callback",
+        .slice => "slice",
+        .int => "int",
+        .float => "float",
+        .bool => "bool",
+        .void => "void",
+    };
+}
+
+test "report exposes final public names symbols ownership and projections" {
+    var payload: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+    const document: semantic.Semantic = .{
+        .constructors = &.{.{ .type = "Value", .init = "create", .deinit = "deinit" }},
+        .functions = &.{
+            .{ .name = "create", .namespace = "Value", .ownership = .caller, .params = &.{}, .@"return" = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Value" } }, .symbol = "ignored" },
+            .{ .name = "set", .receiver = "Value", .params = &.{.{ .name = "input", .name_source = .ast, .retention = .retained, .type = .{ .slice = .{ .@"const" = true, .element = &payload } } }}, .@"return" = .{ .void = {} }, .symbol = "ignored" },
+            .{ .name = "deinit", .receiver = "Value", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "ignored" },
+        },
+        .package = "sample",
+        .prefix = "zs",
+        .types = &.{
+            .{ .kind = .tagged_union, .name = "Value", .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } }, .fields = &.{.{ .name = "number", .type = .{ .int = .{ .bits = 32, .signed = true } }, .value = 0 }} },
+            .{ .kind = .@"enum", .name = "ValueTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } }, .fields = &.{.{ .name = "number", .value = 0 }} },
+        },
+        .zig_version = "0.16.0",
+    };
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try render(std.testing.allocator, &output.writer, document, .{ .go_module = "example.com/sample", .auto_cleanup = true });
+    const actual = output.written();
+    try std.testing.expect(std.mem.indexOf(u8, actual, "Value.create -> NewValue | C zs_value_create | return ownership caller") != null);
+    try std.testing.expect(std.mem.indexOf(u8, actual, "Value.deinit -> (*Value).Close [lifecycle mapping]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, actual, "input:slice/retained/ast") != null);
+    try std.testing.expect(std.mem.indexOf(u8, actual, "Value.number -> (*Value).TryAsNumber/AsNumber") != null);
+}

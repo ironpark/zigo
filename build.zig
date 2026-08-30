@@ -42,6 +42,8 @@ pub const GoBindings = struct {
     update: *std.Build.Step.UpdateSourceFiles,
     check: *std.Build.Step.Run,
     abi_check: ?*std.Build.Step.Run,
+    report: *std.Build.Step.Run,
+    doctor: *std.Build.Step.Run,
     lib: *std.Build.Step.Compile,
     semantic_json: std.Build.LazyPath,
 
@@ -56,6 +58,8 @@ pub const GoBindings = struct {
         update: *std.Build.Step,
         check: *std.Build.Step,
         abi_check: ?*std.Build.Step,
+        report: *std.Build.Step,
+        doctor: *std.Build.Step,
     };
 
     /// Registers conventional user-facing build steps for this binding set.
@@ -67,12 +71,16 @@ pub const GoBindings = struct {
         update.dependOn(&self.update.step);
         const check = b.step(standardStepName(b, options.name_prefix, "go-check"), "Fail if generated Go bindings are stale");
         check.dependOn(&self.check.step);
+        const report = b.step(standardStepName(b, options.name_prefix, "go-report"), "Explain the effective Go binding contract");
+        report.dependOn(&self.report.step);
+        const doctor = b.step(standardStepName(b, options.name_prefix, "go-doctor"), "Check Go binding toolchain prerequisites");
+        doctor.dependOn(&self.doctor.step);
         const abi_check = if (self.abi_check) |run| step: {
             const value = b.step(standardStepName(b, options.name_prefix, "abi-check"), "Fail on a breaking Go binding ABI change");
             value.dependOn(&run.step);
             break :step value;
         } else null;
-        return .{ .update = update, .check = check, .abi_check = abi_check };
+        return .{ .update = update, .check = check, .abi_check = abi_check, .report = report, .doctor = doctor };
     }
 };
 
@@ -137,6 +145,20 @@ pub fn build(b: *std.Build) void {
             .{ .name = "semantic", .module = generator_modules.semantic },
         },
     });
+    const report_module = b.createModule(.{
+        .root_source_file = b.path("src/gen/report.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "abi", .module = generator_modules.abi },
+            .{ .name = "semantic", .module = generator_modules.semantic },
+        },
+    });
+    const doctor_module = b.createModule(.{
+        .root_source_file = b.path("src/gen/doctor.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     const tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("tests/test.zig"),
         .target = target,
@@ -182,6 +204,10 @@ pub fn build(b: *std.Build) void {
     const run_validate_tests = b.addRunArtifact(validate_tests);
     const lower_tests = b.addTest(.{ .root_module = lower_module, .filters = test_filters });
     const run_lower_tests = b.addRunArtifact(lower_tests);
+    const report_tests = b.addTest(.{ .root_module = report_module, .filters = test_filters });
+    const run_report_tests = b.addRunArtifact(report_tests);
+    const doctor_tests = b.addTest(.{ .root_module = doctor_module, .filters = test_filters });
+    const run_doctor_tests = b.addRunArtifact(doctor_tests);
     const test_step = b.step("test", "Run unit and snapshot harness tests");
     test_step.dependOn(&run_tests.step);
     test_step.dependOn(&run_generator_tests.step);
@@ -196,6 +222,8 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_emit_tests.step);
     test_step.dependOn(&run_validate_tests.step);
     test_step.dependOn(&run_lower_tests.step);
+    test_step.dependOn(&run_report_tests.step);
+    test_step.dependOn(&run_doctor_tests.step);
     addProcessContractTests(b, test_step, generator);
 
     const generator_case_runner = b.addExecutable(.{
@@ -224,6 +252,8 @@ pub fn build(b: *std.Build) void {
     check_step.dependOn(&emit_tests.step);
     check_step.dependOn(&validate_tests.step);
     check_step.dependOn(&lower_tests.step);
+    check_step.dependOn(&report_tests.step);
+    check_step.dependOn(&doctor_tests.step);
     check_step.dependOn(&generator_case_runner.step);
 
     const snapshot_exe = b.addExecutable(.{
@@ -286,6 +316,25 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     abi_break.expectExitCode(1);
     abi_break.expectStdOutMatch("BREAKING: ping: function removed");
     test_step.dependOn(&abi_break.step);
+
+    const report = b.addRunArtifact(generator);
+    report.setName("CLI contract (binding report)");
+    report.addArgs(&.{ "report", "--semantic" });
+    report.addFileArg(b.path("tests/generator_cases/complex/semantic.json"));
+    report.addArgs(&.{ "--go-module", "example.com/zigo/pipeline" });
+    report.expectExitCode(0);
+    report.expectStdOutMatch("Pipeline.process -> (*Pipeline).Process | C zg_pipeline_process");
+    report.expectStdOutMatch("return ownership borrowed");
+    test_step.dependOn(&report.step);
+
+    const doctor = b.addRunArtifact(generator);
+    doctor.setName("CLI contract (doctor failure)");
+    doctor.addArgs(&.{ "doctor", "--go", "/definitely/missing/zigo-go", "--gofmt", "/definitely/missing/zigo-gofmt", "--target", "cross" });
+    doctor.expectExitCode(1);
+    doctor.expectStdOutMatch("FAIL target: cross compilation is not supported");
+    doctor.expectStdOutMatch("FAIL go: executable unavailable");
+    doctor.expectStdOutMatch("doctor: failed");
+    test_step.dependOn(&doctor.step);
 
     const invalid_project = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "go", "--summary", "none" });
     invalid_project.setName("invalid project contract (ZIGO007)");
@@ -441,6 +490,16 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     check.addDirectoryArg(go_sources_dir);
     check.addArg("--source");
     check.addDirectoryArg(options.go_dir);
+    const report = b.addRunArtifact(generator);
+    report.addArgs(&.{ "report", "--semantic" });
+    report.addFileArg(semantic_json);
+    report.addArgs(&.{ "--go-module", options.go_module, "--raw-package-path", raw_package.path });
+    if (raw_package.colocated) report.addArg("--raw-colocated");
+    if (options.auto_cleanup) report.addArg("--auto-cleanup");
+    const doctor = b.addRunArtifact(generator);
+    doctor.has_side_effects = true;
+    doctor.addArgs(&.{ "doctor", "--target", if (isRunnableOnHost(options.target.result, b.graph.host.result)) "native" else "cross" });
+    if (options.auto_cleanup) doctor.addArg("--auto-cleanup");
     const abi_check: ?*std.Build.Step.Run = if (options.abi_base) |abi_base| check: {
         const baseline = b.addSystemCommand(&.{ "git", "show" });
         // The ref can move without changing argv, so this read must not reuse a
@@ -500,7 +559,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     _ = options.prefix;
     _ = layout_json;
 
-    return .{ .update = update, .check = check, .abi_check = abi_check, .lib = lib, .semantic_json = semantic_json };
+    return .{ .update = update, .check = check, .abi_check = abi_check, .report = report, .doctor = doctor, .lib = lib, .semantic_json = semantic_json };
 }
 
 fn formattedGoSources(b: *std.Build, generated_dir: std.Build.LazyPath, paths: []const []const u8) std.Build.LazyPath {
@@ -513,6 +572,10 @@ fn formattedGoSources(b: *std.Build, generated_dir: std.Build.LazyPath, paths: [
         _ = formatted.addCopyFile(output, path);
     }
     return formatted.getDirectory();
+}
+
+fn isRunnableOnHost(target: std.Target, host: std.Target) bool {
+    return target.cpu.arch == host.cpu.arch and target.os.tag == host.os.tag and target.abi == host.abi;
 }
 
 fn resolveRawPackage(b: *std.Build, option: Options.RawPackage, go_package: []const u8) ResolvedRawPackage {
