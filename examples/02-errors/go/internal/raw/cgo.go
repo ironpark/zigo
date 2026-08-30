@@ -9,6 +9,8 @@ package raw
 import "C"
 import "unsafe"
 
+func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
+
 func Divide(numerator float64, denominator float64) (float64, int32) {
 	var outResult C.double
 	code := int32(C.zg_divide(C.double(numerator), C.double(denominator), &outResult))

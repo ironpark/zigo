@@ -243,6 +243,46 @@
         "kind": "void"
       },
       "symbol": "zg_deinit"
+    },
+    {
+      "name": "panicNow",
+      "ownership": "borrowed",
+      "params": [],
+      "return": {
+        "error_set": [
+          "OutOfMemory"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "void"
+        }
+      },
+      "symbol": "zg_panicNow"
+    },
+    {
+      "name": "compressionBound",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "source_len",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_compressionBound"
     }
   ],
   "ir_version": 1,

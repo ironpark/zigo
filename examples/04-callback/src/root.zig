@@ -52,6 +52,16 @@ pub const CallbackContext = struct {
     }
 };
 
+pub fn panicNow() CreateError!void {
+    @panic("deliberate boundary panic");
+}
+
+extern fn compressBound(source_len: usize) callconv(.c) usize;
+
+pub fn compressionBound(source_len: usize) usize {
+    return compressBound(source_len);
+}
+
 test "generic specializations and callback context" {
     const float_buffer = try FloatBuffer.create();
     defer float_buffer.deinit();

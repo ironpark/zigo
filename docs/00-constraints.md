@@ -86,15 +86,17 @@ C ABI 에러 코드로 노출하면 라이브러리 재빌드만으로 ABI가 �
 
 ---
 
-## 5. Zig panic은 프로세스를 죽인다
+## 5. Zig panic은 언어 수준에서 복구할 수 없다
 
-에러 유니온은 코드로 변환되지만 `unreachable`, 인덱스 초과, `catch unreachable` 등은
-복구 불가능한 abort다. cgo 경계 너머로 Go의 recover가 통하지 않는다.
+에러 유니온은 코드로 변환되지만 `unreachable`, 인덱스 초과, `catch unreachable` 등에는
+Go의 `recover`가 통하지 않는다.
 
-**대응:** shim이 커스텀 panic 핸들러를 설치해 `-2` 반환 + 진단 문자열을 저장하고
-`zg_last_error_message()`로 조회 가능하게 한다.
+**대응:** 생성된 C wrapper가 호출 경계를 만들고, shim의 커스텀 panic 핸들러가
+진단 문자열을 저장한 뒤 그 경계로 돌아가 `-2`를 반환한다. 문자열은
+`zg_last_error_message()`로 조회한다.
 
-**목표는 "복구"가 아니라 "진단 가능한 죽음"이다.** 이 한계는 README에 명시한다.
+**이는 복구 계약이 아니다.** panic이 발생한 작업과 관련 상태는 신뢰하지 말고 중단해야 한다.
+경계의 목적은 로그를 남길 기회를 주고 Go 프로세스 전체의 즉시 종료를 피하는 것이다.
 
 ---
 

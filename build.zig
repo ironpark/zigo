@@ -211,6 +211,11 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     generate.addFileArg(semantic_json);
     const generated_dir = generate.addOutputDirectoryArg("bindings");
     generate.addArgs(&.{ options.name, options.prefix, options.go_module, include_dir, library_dir });
+    const cflags_override = if (options.cgo_flags) |flags| joinFlags(b, flags.cflags) else "";
+    const ldflags_override = if (options.cgo_flags) |flags| joinFlags(b, flags.ldflags) else "";
+    const system_ldflags = systemLibraryFlags(b, options.module);
+    const framework_ldflags = frameworkFlags(b, options.module);
+    generate.addArgs(&.{ cflags_override, ldflags_override, system_ldflags, framework_ldflags });
     const errors_lock_path = "zigo/errors.lock.json";
     const has_errors_lock = blk: {
         b.build_root.handle.access(b.graph.io, errors_lock_path, .{}) catch |err| switch (err) {
@@ -249,6 +254,8 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         },
         .root_module = shim_module,
     });
+    lib.root_module.addCSourceFile(.{ .file = generated_dir.path(b, "panic.c"), .flags = &.{"-fno-sanitize=undefined"} });
+    lib.root_module.linkSystemLibrary("c", .{});
     const install_lib = b.addInstallArtifact(lib, .{});
     const header_name = b.fmt("zigo_{s}.h", .{options.name});
     const install_header = b.addInstallHeaderFile(generated_dir.path(b, header_name), header_name);
@@ -285,6 +292,28 @@ fn sourcePath(b: *std.Build, directory: std.Build.LazyPath, child: []const u8) [
 fn cgoRelativePath(b: *std.Build, from: []const u8, to: []const u8) []const u8 {
     const relative = std.fs.path.relative(b.allocator, "", null, from, to) catch @panic("OOM");
     return b.fmt("${{SRCDIR}}/{s}", .{relative});
+}
+
+fn joinFlags(b: *std.Build, flags: []const []const u8) []const u8 {
+    return std.mem.join(b.allocator, " ", flags) catch @panic("OOM");
+}
+
+fn systemLibraryFlags(b: *std.Build, module: *std.Build.Module) []const u8 {
+    var flags: std.ArrayList([]const u8) = .empty;
+    for (module.link_objects.items) |object| switch (object) {
+        .system_lib => |library| flags.append(b.allocator, b.fmt("-l{s}", .{library.name})) catch @panic("OOM"),
+        else => {},
+    };
+    return joinFlags(b, flags.items);
+}
+
+fn frameworkFlags(b: *std.Build, module: *std.Build.Module) []const u8 {
+    var flags: std.ArrayList([]const u8) = .empty;
+    for (module.frameworks.keys()) |framework| {
+        flags.append(b.allocator, "-framework") catch @panic("OOM");
+        flags.append(b.allocator, framework) catch @panic("OOM");
+    }
+    return joinFlags(b, flags.items);
 }
 
 fn addGenerator(

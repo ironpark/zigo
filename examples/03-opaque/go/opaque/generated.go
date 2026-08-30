@@ -19,12 +19,13 @@ func (err *Error) Is(target error) bool {
 	return ok && err.Code == other.Code
 }
 
-var (
-	ErrOutOfMemory = &Error{Code: 1, Name: "OutOfMemory"}
-)
+var ErrOutOfMemory = &Error{Code: 1, Name: "OutOfMemory"}
+var ErrPanicCaught = &Error{Code: -2, Name: "PanicCaught"}
 
 func errorForCode(code int32) error {
 	switch code {
+	case -2:
+		return &Error{Code: -2, Name: "PanicCaught: " + raw.LastErrorMessage()}
 	case 1:
 		return ErrOutOfMemory
 	default:

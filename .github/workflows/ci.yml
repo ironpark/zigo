@@ -1,0 +1,45 @@
+name: CI
+
+permissions:
+  contents: read
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.23.x"
+          cache: false
+      - name: Zig unit and snapshot tests
+        run: zig build test --summary all
+      - name: Generate, check, and test all examples
+        shell: bash
+        run: |
+          set -euo pipefail
+          for example in examples/01-scalar examples/02-errors examples/03-opaque examples/04-callback; do
+            (
+              cd "$example"
+              zig build go
+              zig build go-check abi-check --summary all
+            )
+            (
+              cd "$example/go"
+              go test ./...
+            )
+          done
+      - name: Record cgo call overhead
+        working-directory: examples/01-scalar/go
+        run: go test ./scalar -run '^$' -bench '^BenchmarkAddCgo$' -benchmem

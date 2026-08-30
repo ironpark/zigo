@@ -143,16 +143,16 @@ type ContextRef struct {
 ```zig
 pub fn setCallback(
     ctx: *Context,
-    cb: *const fn (*anyopaque, Event) callconv(.c) void,
-    userdata: *anyopaque,
-) void
+    cb: *const fn (Event, usize) callconv(.c) i32,
+    userdata: usize,
+) !void
 ```
 → C: 그대로. Go public:
 ```go
 func (c *Context) SetCallback(fn func(Event))
 ```
 생성물:
-1. `//export zigoTrampoline_Context_setCallback` C 트램폴린
+1. `//export zg_context_set_callback_go_callback_cb` Go/C 트램폴린
 2. `cgo.NewHandle(fn)` 등록, `uintptr`를 userdata로 전달
 3. 트램폴린 내부 `defer func(){ if r:=recover(); r!=nil { … } }()`
 4. `retention=retained`이면 handle을 `Context`에 저장, `Close()`에서 `Delete()`
@@ -199,5 +199,5 @@ import "C"
 
 - 경로는 `${SRCDIR}` 상대로만 생성한다. 절대 경로는 커밋되면 다른 머신에서 깨진다.
 - 배포 시 라이브러리를 다른 위치에 두려면 `addGoBindings(.{ .cgo_flags = ... })`로 덮어쓴다.
-- 플랫폼별 추가 링크가 필요한 경우(`-framework`, `-lm` 등)는 사용자 Zig 라이브러리의
-  `linkSystemLibrary` 호출을 관측해 `#cgo` 지시자에 반영한다 (M8).
+- `linkSystemLibrary`는 `-l...`로, `linkFramework`는 Darwin 전용 `-framework ...`로
+  자동 반영한다.

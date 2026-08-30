@@ -21,12 +21,13 @@ func (err *Error) Is(target error) bool {
 	return ok && err.Code == other.Code
 }
 
-var (
-	ErrOutOfMemory = &Error{Code: 1, Name: "OutOfMemory"}
-)
+var ErrOutOfMemory = &Error{Code: 1, Name: "OutOfMemory"}
+var ErrPanicCaught = &Error{Code: -2, Name: "PanicCaught"}
 
 func errorForCode(code int32) error {
 	switch code {
+	case -2:
+		return &Error{Code: -2, Name: "PanicCaught: " + raw.LastErrorMessage()}
 	case 1:
 		return ErrOutOfMemory
 	default:
@@ -152,6 +153,16 @@ func NewCallbackContext(callback func(int32) int32) (*CallbackContext, error) {
 }
 func (c *CallbackContext) Run(value int32) int32 {
 	return raw.CallbackContextRun(c.ptr, value)
+}
+func PanicNow() error {
+	code := raw.PanicNow()
+	if code != 0 {
+		return errorForCode(code)
+	}
+	return nil
+}
+func CompressionBound(source_len uint) uint {
+	return raw.CompressionBound(source_len)
 }
 
 var activeCallbackHandles atomic.Int64

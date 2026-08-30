@@ -9,6 +9,8 @@ package raw
 import "C"
 import "unsafe"
 
+func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
+
 func ContextCreate() (unsafe.Pointer, int32) {
 	var outResult unsafe.Pointer
 	code := int32(C.zg_context_create(&outResult))

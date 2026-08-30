@@ -3,12 +3,14 @@ package raw
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
-#cgo LDFLAGS: -L${SRCDIR}/../../../zig-out/lib -lcallback_zigo
+#cgo LDFLAGS: -L${SRCDIR}/../../../zig-out/lib -lcallback_zigo -lz
 #include "zigo_callback.h"
 */
 import "C"
 import "runtime/cgo"
 import "unsafe"
+
+func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
 //export zg_callback_context_create_go_callback_callback
 func zg_callback_context_create_go_callback_callback(p0 C.int32_t, p1 C.size_t) (result C.int32_t) {
@@ -59,4 +61,11 @@ func CallbackContextRun(self unsafe.Pointer, value int32) int32 {
 }
 func CallbackContextDeinit(self unsafe.Pointer) {
 	C.zg_callback_context_deinit(self)
+}
+func PanicNow() int32 {
+	code := int32(C.zg_panic_now())
+	return code
+}
+func CompressionBound(source_len uint) uint {
+	return uint(C.zg_compression_bound(C.size_t(source_len)))
 }

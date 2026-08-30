@@ -2,7 +2,7 @@
 depends_on:
 - "01-zigo-go-bindings#10"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: CI is green on macOS and Linux from a clean checkout.
 > NEXT: none

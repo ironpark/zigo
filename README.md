@@ -5,7 +5,7 @@ C ABI shim · C 헤더 · cgo 바인딩을 만든다.
 
 **Zig 패키지 의존성**으로 추가하고 `zig build go` 로 사용한다.
 
-> 상태: 설계 단계. 진행 상황은 [`docs/04-implementation-plan.md`](docs/04-implementation-plan.md).
+> 상태: v1 구현 완료. Zig 0.16.0과 Go 1.23 이상에서 네이티브 macOS/Linux 빌드를 지원한다.
 
 ---
 
@@ -24,7 +24,7 @@ Zig 컴파일러가 이미 해결해 놓은 타입 해석·alias·generic 구체
 
 ---
 
-## 사용법 (설계안)
+## 사용법
 
 ```bash
 zig fetch --save git+https://github.com/ironpark/zigo
@@ -71,7 +71,9 @@ const lib  = @import("mylib");
 pub const bindings = zigo.define(.{
     .types = .{
         .{ .type = lib.Context, .repr = .@"opaque" },
-        .{ .name = "FloatBuffer", .type = lib.Buffer(f32) },   // generic 구체화
+    },
+    .specializations = .{
+        .{ .name = "FloatBuffer", .type = lib.Buffer(f32) },
     },
     .functions = .{
         .{ .@"fn" = lib.Context.process, .params = .{ "input", "output" } },
@@ -134,8 +136,8 @@ zigo/semantic.json      🤖 커밋됨. ABI diff 기준
 zigo/errors.lock.json   🤖 커밋됨. 안정 에러코드
 go/internal/raw/        🤖 100% 생성
 go/mylib/
-  generated_context.go  🤖 덮어써짐
-  context.go            👤 있으면 생성 건너뜀
+  generated.go          🤖 덮어써짐
+  custom.go             👤 사용자 확장
 zig-out/lib/libmylib_zigo.a
 ```
 
@@ -167,6 +169,10 @@ build.zig에만 있다. 빌드 그래프 안에서는 모듈 배선만으로 해
 **에러 코드는 `@intFromError`를 쓰지 않는다.**
 그 값은 빌드마다 달라질 수 있다. 대신 `errors.lock.json`에 append-only 안정 매핑을 커밋한다.
 
+**시스템 링크 설정도 빌드 그래프에서 가져온다.**
+사용자 모듈의 `linkSystemLibrary`와 `linkFramework` 설정은 생성된 `#cgo LDFLAGS`에
+전달된다. 배포 경로가 다르면 `cgo_flags`로 CFLAGS/LDFLAGS를 명시적으로 덮어쓸 수 있다.
+
 **Go 전용이다.**
 IR은 reflector↔generator 프로세스 경계, ABI diff 기준, generator 테스트 픽스처로 존재한다.
 언어 중립성을 위한 추상화 계층은 넣지 않는다.
@@ -179,22 +185,18 @@ IR은 reflector↔generator 프로세스 경계, ABI diff 기준, generator 테�
 
 ```text
 $ zig build abi-check
-
-BREAKING (2)
-  Context.process   param input: []const f32 → []const f64
-  Decoder.reset     removed
-ADDED (1)
-  Decoder.flush() !void
-ABI COMPATIBLE (1)
-  error Timeout added (code 8)
+BREAKING: Context.process: signature changed
+ADDED: Decoder.flush: function added
+ABI COMPATIBLE: Decoder.open: error appended
 ```
 
 ---
 
 ## 한계 (알고 시작할 것)
 
-- **Zig panic은 복구할 수 없다.** shim이 잡아 진단 코드(`-2`)로 바꾸지만
-  프로세스 상태는 이미 신뢰할 수 없다. "복구"가 아니라 "진단 가능한 죽음"이 목표다.
+- **Zig panic 이후 정상 처리를 계속하면 안 된다.** C 경계가 panic을 코드 `-2`로 바꾸고
+  `zg_last_error_message()`에 메시지를 남기지만, 이는 진단을 위한 격리다. 메시지를 수집한 뒤
+  해당 작업을 중단해야 하며 복구된 것으로 간주하면 안 된다.
 - **파라미터 이름은 reflection에 없다.** `bindings.zig`의 `.params`로 공급하거나,
   AST에서 추출하거나, `p0/p1` 폴백이 된다.
 - **cgo 호출은 싸지 않다.** 호출당 작업량이 작은 API를 1:1로 노출하면 실용성이 떨어진다.
@@ -218,10 +220,15 @@ ABI COMPATIBLE (1)
 ## 요구사항
 
 - Zig 0.16.0
-- Go 1.26+ (cgo 활성)
+- Go 1.23+ (cgo 활성)
 
 ## zigo 자체 개발
 
 ```bash
-zig build test     # 단위 + 스냅샷 테스트
+zig build test --summary all
+
+for example in examples/*; do
+  (cd "$example" && zig build go-check abi-check)
+  (cd "$example/go" && go test ./...)
+done
 ```

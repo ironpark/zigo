@@ -10,7 +10,7 @@ pub fn main(init: std.process.Init) !void {
     const args = try init.minimal.args.toSlice(allocator);
     if (args.len >= 2 and std.mem.eql(u8, args[1], "--check")) return runCheck(allocator, init.io, args);
     if (args.len >= 2 and std.mem.eql(u8, args[1], "--abi-diff")) return runAbiDiff(allocator, init.io, args);
-    if (args.len < 5 or args.len > 9) return error.InvalidArguments;
+    if (args.len < 5 or (args.len > 9 and args.len < 12) or args.len > 13) return error.InvalidArguments;
     const semantic_bytes = try std.Io.Dir.cwd().readFileAlloc(init.io, args[1], allocator, .limited(64 * 1024 * 1024));
     var parsed = try semantic.Semantic.parse(allocator, semantic_bytes);
     defer parsed.deinit();
@@ -22,9 +22,18 @@ pub fn main(init: std.process.Init) !void {
         .package = args[3],
         .prefix = args[4],
         .go_module = if (args.len >= 6) args[5] else args[3],
+        .cflags_override = if (args.len >= 12 and args[8].len != 0) args[8] else null,
+        .ldflags_override = if (args.len >= 12 and args[9].len != 0) args[9] else null,
+        .system_ldflags = if (args.len >= 12) args[10] else "",
+        .framework_ldflags = if (args.len >= 12) args[11] else "",
         .include_dir = if (args.len >= 7) args[6] else "${SRCDIR}/../../../zig-out/include",
         .library_dir = if (args.len >= 8) args[7] else "${SRCDIR}/../../../zig-out/lib",
-        .errors_lock_bytes = if (args.len >= 9) try std.Io.Dir.cwd().readFileAlloc(init.io, args[8], allocator, .limited(16 * 1024 * 1024)) else null,
+        .errors_lock_bytes = if (args.len == 9)
+            try std.Io.Dir.cwd().readFileAlloc(init.io, args[8], allocator, .limited(16 * 1024 * 1024))
+        else if (args.len == 13)
+            try std.Io.Dir.cwd().readFileAlloc(init.io, args[12], allocator, .limited(16 * 1024 * 1024))
+        else
+            null,
     });
 }
 

@@ -8,6 +8,8 @@ package raw
 */
 import "C"
 
+func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
+
 func Add(a int32, b int32) int32 {
 	return int32(C.zg_add(C.int32_t(a), C.int32_t(b)))
 }

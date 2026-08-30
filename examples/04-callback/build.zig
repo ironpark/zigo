@@ -9,6 +9,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    callback.linkSystemLibrary("z", .{});
     const bindings = zigo.addGoBindings(b, .{
         .name = "callback",
         .module = callback,

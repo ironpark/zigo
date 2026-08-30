@@ -26,5 +26,7 @@ pub const bindings = zigo.define(.{
         },
         .{ .name = "run", .@"fn" = library.CallbackContext.run },
         .{ .name = "deinit", .@"fn" = library.CallbackContext.deinit },
+        .{ .name = "panicNow", .@"fn" = library.panicNow },
+        .{ .name = "compressionBound", .@"fn" = library.compressionBound },
     },
 });

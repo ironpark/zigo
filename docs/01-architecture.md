@@ -110,7 +110,7 @@ zigo 패키지는 3개를 노출한다.
                        │ addOutputDirectoryArg → LazyPath
          ┌─────────────┼──────────────┬──────────────┐
          ▼             ▼              ▼              ▼
-   shim.zig      zigo_mylib.h    go/internal/raw  go/mylib
+ shim.zig+panic.c zigo_mylib.h   go/internal/raw  go/mylib
          │             │              │              │
          │             └──────────────┴──────────────┘
          │                            │
@@ -120,7 +120,7 @@ zigo 패키지는 3개를 노출한다.
          │              └─────────────────────────────┘
          ▼
    ┌──────────────────────────────┐
-   │ (D) addLibrary(.static)      │  shim.zig + mylib → libmylib_zigo.a
+   │ (D) addLibrary(.static)      │  shim.zig + panic.c + mylib → libmylib_zigo.a
    │     installArtifact          │  → zig-out/lib
    └──────────────────────────────┘
                        │
@@ -197,6 +197,8 @@ import "C"
 
 `${SRCDIR}` 기준 상대 경로는 `go_dir`과 install prefix로부터 계산한다.
 사용자가 직접 배포용 경로를 쓰고 싶으면 `.cgo_flags` 옵션으로 덮어쓴다.
+사용자 모듈의 `linkSystemLibrary`는 `-l...`, `linkFramework`는 Darwin 전용
+`-framework ...` 지시자로 함께 전달된다.
 
 ---
 
