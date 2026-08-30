@@ -19,7 +19,7 @@ generator, ABI 정책과 FFI 수명주기의 실제 실패 동작을 확인한 �
 
 | 실험 | 방법 | 기대 | 관측 | 판정 |
 |---|---|---|---|---|
-| 루트 기준선 | `zig build test --summary all` | 모든 unit/golden 통과 | 22/22 step, 52/52 test 통과 | 통과 |
+| 루트 기준선 | `zig build test --summary all` | 모든 unit/golden 통과 | 수정 후 22/22 step, 53/53 test 통과 | 통과 |
 | 소비자 build graph | 8개 예제에서 `zig build go-check abi-check --summary all` | stale 없음, breaking ABI 없음 | 예제별 16/16 step 통과 | 통과 |
 | 생성 Go API 실행 | 8개 Go module에서 `go test -count=1 ./...` | 실제 cgo 호출 통과 | 모든 module 통과 | 통과 |
 | 독립 생성 결정성 | complex semantic/lock을 서로 다른 두 디렉터리에 생성 후 recursive diff | 파일 집합과 bytes 동일 | 9개 파일 동일 | 통과 |
@@ -30,6 +30,12 @@ generator, ABI 정책과 FFI 수명주기의 실제 실패 동작을 확인한 �
 | ABI 동일 입력 | 동일 semantic을 JSON mode로 비교 | 빈 changes와 exit 0 | `{ "changes": [] }`, exit 0 | 통과 |
 | invalid errors lock | reserved mapping 변경 후 기존 sentinel 출력에 생성 | 실패 및 기존 출력 보존 | `ReservedMappingChanged`, 전후 SHA-256 동일 | 통과 |
 | OOM/semantic 실패 | allocation-failure sweep 및 invalid semantic 단위 실험 | commit 전 기존 출력 보존 | 관련 6개 filtered test 통과 | 통과 |
+| gofmt 가용성 | 8개 예제를 정상 PATH와 gofmt 없는 PATH에서 각각 `go-check` | 도구 유무와 무관하게 동일 판정 | 수정 전 8/8 실패, 수정 후 양쪽 8/8 통과 | **결함 발견·수정** |
+| reflection breadth | telemetry hub의 discovery 결과와 생성 API 수 집계 | 대형 API 누락 없음 | function 51, type 4, constructor 1, AST 이름 21, retained callback 1 | 통과 |
+| raw 배치·이름 | 8개 예제의 실제 raw 파일 경로 확인 | internal/custom/colocated와 CamelCase 정규화 | 8개 기대 경로, `http_client_cgo_gen.go` 확인 | 통과 |
+| callback/cleanup race | callback/pipeline/event queue 각 10회, telemetry hub 5회 `go test -race` | race·누수·double close 없음 | 모두 통과 | 통과 |
+| 복합 Zig 상태 | event queue와 telemetry hub `zig build test` | 상태/경계 테스트 통과 | 각각 3/3 통과 | 통과 |
+| core 교차 compile | root `check`를 host와 Windows GNU target으로 실행 | generator와 test artifact compile | 양쪽 12/12 통과 | 통과 |
 
 독립 생성에서 확인한 파일 집합은 header, shim, panic bridge, errors lock, raw Go 파일과
 분리된 public callable/type/error/helper Go 파일이다. 해시는 출력 절대 경로에 영향을 받지
@@ -46,13 +52,30 @@ source tree도 역방향으로 순회하고, 현재 생성 집합에는 없으�
 수정했다. marker가 없는 사용자 Go 파일은 계속 무시한다. 동일 부정 실험은 수정 후
 `generated file obsolete: pipeline/obsolete_gen.go`와 exit 1을 반환했다.
 
+### 발견 및 수정: gofmt 유무에 따른 stale 판정
+
+기존 optional formatting 경로는 `gofmt`가 있으면 포맷 결과를, 없으면 emitter 원문을 비교했다.
+원문의 trailing blank line, 한 줄 `if`, cleanup state 정렬이 gofmt 결과와 달라 8개 예제 모두
+최소 PATH에서 stale로 판정됐다.
+
+모든 generated Go 파일의 끝 newline을 generator에서 정규화하고, bool helper와 cleanup state를
+gofmt 결과와 같은 형태로 emit하도록 수정했다. empty type file, helper, cleanup state 및 complex
+golden이 이를 회귀 검증한다. 수정 후 8개 예제는 gofmt가 있는 일반 PATH에서 16/16 step,
+없는 PATH에서 7/7 step으로 모두 통과했다.
+
+## 종합 판정
+
+지원 범위인 네이티브 macOS에서 기능·생성 결정성·ABI gate·실패 원자성·대형 discovery·FFI
+수명주기에 남은 correctness 실패는 재현되지 않았다. 실험에서 두 결함을 발견했고 모두 회귀
+테스트와 함께 수정했다.
+
+Windows GNU target으로 core artifact는 교차 컴파일되지만 소비자 `go-check`는 target reflector를
+host에서 실행할 수 없어 실패한다. 이는 현재 문서가 명시한 v1 비지원 범위이며 새 결함으로
+분류하지 않았다. pipeline은 그보다 앞서 target zlib 부재에도 영향을 받는다.
+
 Go 링크 단계는 로컬 macOS deployment target보다 Zig object의 최소 OS 버전이 높다는 linker
 warning을 출력했다. 현재 환경에서는 링크와 실행이 모두 성공했으므로 기능 결함으로 판정하지
 않지만, 더 낮은 macOS 배포 버전을 지원할 때는 별도 target 설정 검증이 필요하다.
 
-## 남은 실험
-
-- 자동 discovery, 대형 API, CamelCase와 세 raw package 배치
-- `gofmt` 가용/비가용 경로
-- retained callback 및 runtime cleanup 반복/race 검증
-- host와 Windows 교차 타깃 compile gate
+`runtime.AddCleanup`은 실행 시점을 보장하지 않는 best-effort 안전망이라는 제약이 그대로 남는다.
+race 반복에서는 native owner와 callback handle이 모두 회수됐지만, 명시적 `Close`가 기본 계약이다.

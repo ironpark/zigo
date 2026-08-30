@@ -76,7 +76,8 @@ public 패키지와 같은 디렉터리에 둘 수도 있다.
 빌드 환경의 `PATH`에서 `gofmt` 실행 파일을 찾을 수 있으면 raw/cgo, public API, public
 error와 private helper 생성 파일을 각각 포맷한 뒤 `go_dir`에 기록한다. `go-check`도 같은
 포맷 결과를 비교한다. `gofmt`가 없으면 생성은 실패하지 않고 generator 결과를 그대로
-사용한다. 사용자 소유 Go 파일은 포맷하지 않는다.
+사용한다. generator 원문도 지원하는 생성 형태에 대해서는 gofmt-stable하게 유지하므로
+`gofmt` 유무가 `go-check` 결과를 바꾸지 않는다. 사용자 소유 Go 파일은 포맷하지 않는다.
 
 ## 링크와 cgo 플래그
 

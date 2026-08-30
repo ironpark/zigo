@@ -2,7 +2,7 @@
 depends_on:
 - "24-24-adversarial-system-validation#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: breadth/lifecycle/target 매트릭스가 통과하고 발견 결함, 수정, 한계 및 재현 명령이 최종 문서에 정리된다.
 > NEXT: none

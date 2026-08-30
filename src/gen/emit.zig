@@ -710,7 +710,9 @@ fn renderPublicHelpers(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
     );
     if (needs_bool) try writer.writeAll(
         "\nfunc boolToUint8(value bool) uint8 {\n" ++
-            "\tif value { return 1 }\n" ++
+            "\tif value {\n" ++
+            "\t\treturn 1\n" ++
+            "\t}\n" ++
             "\treturn 0\n" ++
             "}\n",
     );
@@ -759,8 +761,12 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             if (auto_cleanup) {
                 const private_name = try naming.camelAlloc(allocator, declaration.name);
                 defer allocator.free(private_name);
-                try writer.print("type {s}CleanupState struct {{\n\tptr unsafe.Pointer\n", .{private_name});
-                if (programHasCallbacks(program)) try writer.writeAll("\tcallbackHandles []cgo.Handle\n");
+                try writer.print("type {s}CleanupState struct {{\n", .{private_name});
+                if (programHasCallbacks(program)) {
+                    try writer.writeAll("\tptr             unsafe.Pointer\n\tcallbackHandles []cgo.Handle\n");
+                } else {
+                    try writer.writeAll("\tptr unsafe.Pointer\n");
+                }
                 try writer.writeAll("}\n\n");
                 try writer.print("func new{s}(ptr unsafe.Pointer", .{declaration.name});
                 if (programHasCallbacks(program)) try writer.writeAll(", callbackHandles []cgo.Handle");

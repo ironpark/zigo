@@ -107,4 +107,3 @@ func (value *FloatBatch) Close() {
 		value.callbackHandles = nil
 	})
 }
-
