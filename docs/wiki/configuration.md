@@ -157,6 +157,10 @@ native 호출 전에 차단한다. 이 경우와 native panic은 설명이 있�
 variant mismatch만 `(zero, false)`가 된다. 같은 handle에 대한 `Close`, variant 변경,
 accessor 호출을 동시에 수행할 때의 직렬화는 호출자 책임이다.
 
+ABI diff는 기존 순서·tag·payload를 보존한 끝부분 variant 추가를 compatible append로
+분류한다. 삭제, 재정렬, 이름 변경, 기존 tag/payload 변경과 projection prefix 변경은
+breaking이다.
+
 지원 payload는 `void`, bool, 정수, float, enum, 등록된 handle pointer, 숫자 slice다.
 숫자 slice는 Zig 메모리 view를 public Go API에 그대로 노출하지 않고 호출마다 복사한다.
 handle payload는 union wrapper에 수명이 묶인 borrowed `*TRef`다. union 자체를 함수 인자나

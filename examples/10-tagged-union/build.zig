@@ -21,6 +21,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .abi_base = "HEAD",
+        .auto_cleanup = true,
     });
     b.step("go", "Generate and build Go bindings").dependOn(&bindings.update.step);
     b.step("go-check", "Fail if generated bindings are stale").dependOn(&bindings.check.step);

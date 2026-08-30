@@ -8,6 +8,9 @@ The projection ABI distinguishes mismatch, success, invalid input, and Zig panic
 reject nil, closed, and parent-invalid borrowed handles before entering native code. Callers must
 still synchronize `Close`, variant mutation, and accessor calls on the same handle.
 
+This example also enables Go 1.24 `runtime.AddCleanup` as a leak fallback. Explicit `Close` remains
+the deterministic lifecycle contract, including when projections are in use.
+
 The tests cover scalar and enum variants, wrong-variant access, a copied numeric-slice payload, and
 an opaque child payload. They also verify output preservation and lifecycle rejection. Void variants
 have a tag constant but no payload accessor.

@@ -161,6 +161,26 @@
       "symbol": "zg_usePresetSamples"
     },
     {
+      "name": "useEmptySamples",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Value",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_useEmptySamples"
+    },
+    {
+      "name": "useMutableSamples",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Value",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_useMutableSamples"
+    },
+    {
       "name": "setChild",
       "ownership": "borrowed",
       "params": [
@@ -205,6 +225,18 @@
         "kind": "void"
       },
       "symbol": "zg_deinit"
+    },
+    {
+      "name": "liveValues",
+      "ownership": "borrowed",
+      "params": [],
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_liveValues"
     }
   ],
   "ir_version": 1,
@@ -276,6 +308,20 @@
             "ref": "Child"
           },
           "value": 5
+        },
+        {
+          "name": "mutableSamples",
+          "type": {
+            "const": false,
+            "element": {
+              "bits": 16,
+              "is_usize": false,
+              "kind": "int",
+              "signed": true
+            },
+            "kind": "slice"
+          },
+          "value": 6
         }
       ],
       "kind": "tagged_union",
@@ -338,6 +384,10 @@
         {
           "name": "child",
           "value": 5
+        },
+        {
+          "name": "mutableSamples",
+          "value": 6
         }
       ],
       "kind": "enum",

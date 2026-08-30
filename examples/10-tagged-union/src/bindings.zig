@@ -15,8 +15,11 @@ pub const bindings = zigo.define(.{
         .{ .name = "setFlag", .@"fn" = library.Value.setFlag, .params = .{"flag"} },
         .{ .name = "setMode", .@"fn" = library.Value.setMode, .params = .{"mode"} },
         .{ .name = "usePresetSamples", .@"fn" = library.Value.usePresetSamples },
+        .{ .name = "useEmptySamples", .@"fn" = library.Value.useEmptySamples },
+        .{ .name = "useMutableSamples", .@"fn" = library.Value.useMutableSamples },
         .{ .name = "setChild", .@"fn" = library.Value.setChild, .params = .{"child"} },
         .{ .name = "borrow", .@"fn" = library.Value.borrow },
         .{ .name = "deinit", .@"fn" = library.Value.deinit },
+        .{ .name = "liveValues", .@"fn" = library.liveValues },
     },
 });

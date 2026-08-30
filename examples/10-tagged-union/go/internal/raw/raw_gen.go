@@ -39,6 +39,12 @@ func ValueSetMode(self unsafe.Pointer, mode uint8) {
 func ValueUsePresetSamples(self unsafe.Pointer) {
 	C.zg_value_use_preset_samples(self)
 }
+func ValueUseEmptySamples(self unsafe.Pointer) {
+	C.zg_value_use_empty_samples(self)
+}
+func ValueUseMutableSamples(self unsafe.Pointer) {
+	C.zg_value_use_mutable_samples(self)
+}
 func ValueSetChild(self unsafe.Pointer, child unsafe.Pointer) {
 	C.zg_value_set_child(self, child)
 }
@@ -47,6 +53,9 @@ func ValueBorrow(self unsafe.Pointer) unsafe.Pointer {
 }
 func ValueDeinit(self unsafe.Pointer) {
 	C.zg_value_deinit(self)
+}
+func LiveValues() uint {
+	return uint(C.zg_live_values())
 }
 
 func ValueProjectTag(self unsafe.Pointer) (uint8, uint8) {
@@ -99,4 +108,14 @@ func ValueProjectChild(self unsafe.Pointer) (unsafe.Pointer, uint8) {
 		return nil, uint8(status)
 	}
 	return unsafe.Pointer(outValue), uint8(status)
+}
+
+func ValueProjectMutableSamples(self unsafe.Pointer) ([]int16, uint8) {
+	var outValuePtr *C.int16_t
+	var outValueLen C.size_t
+	status := C.zg_value_project_mutable_samples((*C.zg_value)(self), &outValuePtr, &outValueLen)
+	if status != 1 {
+		return nil, uint8(status)
+	}
+	return unsafe.Slice((*int16)(unsafe.Pointer(outValuePtr)), int(outValueLen)), uint8(status)
 }

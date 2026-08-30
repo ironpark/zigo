@@ -132,7 +132,8 @@ breaking ABI와 실제 invalid consumer project의 exit/output을 캡처해 검�
 - ZIGO001–ZIGO009 diagnostic snapshot과 ZIGO010 무결성 회귀가 존재한다.
 - generator는 invalid semantic/lock과 allocation failure 전 출력 보존을 검증한다.
 - errors lock은 예약 코드, duplicate/reuse, append-only transition을 직접 검증한다.
-- ABI diff는 signature, identity, constructor, appended error와 OOM을 검증한다.
+- ABI diff는 signature, identity, constructor, appended error, append-only tagged-union/enum
+  variant, 기존 variant 변경과 OOM을 검증한다.
 - reflection은 public discovery, owner-qualified selector, generic specialization과 AST failure를
   직접 검증한다.
 - emission은 direct unit, complex golden, 10개 build graph, Go compile/runtime/race의 다층

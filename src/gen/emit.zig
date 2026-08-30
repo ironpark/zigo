@@ -1644,6 +1644,13 @@ test "tagged union emitters generate checked pointer-only projections" {
                 .name = "Mode",
                 .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
             },
+            .{
+                .fields = &.{.{ .name = "URLValue", .type = .{ .int = .{ .bits = 64, .signed = false } }, .value = 0 }},
+                .kind = .tagged_union,
+                .name = "HTTPResult",
+                .tag_type = .{ .@"enum" = .{ .ref = "HTTPResultTag" } },
+            },
+            .{ .fields = &.{.{ .name = "URLValue", .value = 0 }}, .kind = .@"enum", .name = "HTTPResultTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
             .{ .kind = .@"opaque", .name = "Child" },
         },
         .zig_version = "0.16.0",
@@ -1671,6 +1678,7 @@ test "tagged union emitters generate checked pointer-only projections" {
     try std.testing.expect(std.mem.indexOf(u8, header, "uint8_t zg_value_project_tag(const zg_value *self, uint8_t *out_value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, header, "uint8_t zg_value_project_integer(const zg_value *self, int32_t *out_value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, header, "uint8_t zg_value_project_samples(const zg_value *self, const int16_t **out_value_ptr, size_t *out_value_len);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, header, "uint8_t zg_http_result_project_url_value(const zg_http_result *self, uint64_t *out_value);") != null);
 
     const panic_source = try renderForTest(renderPanicSource, program);
     defer std.testing.allocator.free(panic_source);
@@ -1682,6 +1690,7 @@ test "tagged union emitters generate checked pointer-only projections" {
     defer std.testing.allocator.free(raw);
     try std.testing.expect(std.mem.indexOf(u8, raw, "func ValueProjectTag(self unsafe.Pointer) (uint8, uint8)") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "func ValueProjectInteger(self unsafe.Pointer) (int32, uint8)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "func HTTPResultProjectURLValue(self unsafe.Pointer) (uint64, uint8)") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "if status != 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "unsafe.Slice((*int16)(unsafe.Pointer(outValuePtr)), int(outValueLen))") != null);
 
@@ -1691,11 +1700,12 @@ test "tagged union emitters generate checked pointer-only projections" {
     try std.testing.expect(std.mem.indexOf(u8, public_types, "func (value *Value) AsInteger() (int32, bool)") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "func (value *ValueRef) AsInteger() (int32, bool)") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "func (value *Value) AsChild() (*ChildRef, bool)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (value *HTTPResult) AsURLValue() (uint64, bool)") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "append([]int16(nil), result...)") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "ptr := value.zigoPointer()") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "nil or closed handle") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "native panic: ") != null);
-    try std.testing.expectEqual(@as(usize, 12), std.mem.count(u8, public_types, "defer runtime.KeepAlive(value)"));
+    try std.testing.expectEqual(@as(usize, 16), std.mem.count(u8, public_types, "defer runtime.KeepAlive(value)"));
 }
 
 fn renderForTest(render: *const fn (std.mem.Allocator, *std.Io.Writer, abi.Program, Options) anyerror!void, program: abi.Program) ![]u8 {

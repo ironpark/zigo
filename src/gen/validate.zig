@@ -630,6 +630,43 @@ test "tagged union generated accessor collisions are rejected" {
     try std.testing.expectEqualStrings("projectTag", issue.site.declaration);
 }
 
+test "normalized tagged union type and variant collisions are rejected" {
+    const cases = [_]semantic.Semantic{
+        .{
+            .package = "variant",
+            .prefix = "zg",
+            .types = &.{
+                .{ .fields = &.{.{ .name = "none", .type = .{ .void = {} }, .value = 0 }}, .kind = .tagged_union, .name = "HTTPValue", .tag_type = .{ .@"enum" = .{ .ref = "HTTPValueTag" } } },
+                .{ .fields = &.{.{ .name = "none", .type = .{ .void = {} }, .value = 0 }}, .kind = .tagged_union, .name = "http_value", .tag_type = .{ .@"enum" = .{ .ref = "OtherTag" } } },
+                .{ .kind = .@"enum", .name = "HTTPValueTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
+                .{ .kind = .@"enum", .name = "OtherTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
+            },
+            .zig_version = "0.16.0",
+        },
+        .{
+            .package = "variant",
+            .prefix = "zg",
+            .types = &.{
+                .{
+                    .fields = &.{
+                        .{ .name = "httpCode", .type = .{ .int = .{ .bits = 32, .signed = true } }, .value = 0 },
+                        .{ .name = "http_code", .type = .{ .int = .{ .bits = 32, .signed = true } }, .value = 1 },
+                    },
+                    .kind = .tagged_union,
+                    .name = "Value",
+                    .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } },
+                },
+                .{ .kind = .@"enum", .name = "ValueTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
+            },
+            .zig_version = "0.16.0",
+        },
+    };
+    for (cases) |document| {
+        const issue = (try findIssue(std.testing.allocator, document)).?;
+        try std.testing.expectEqualStrings("ZIGO007", issue.code);
+    }
+}
+
 test "symbol collision validation propagates every allocation failure" {
     try std.testing.checkAllAllocationFailures(std.testing.allocator, expectSymbolCollision, .{});
 }

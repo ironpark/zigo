@@ -36,6 +36,7 @@ const ValueTagFlag ValueTag = 2
 const ValueTagMode ValueTag = 3
 const ValueTagSamples ValueTag = 4
 const ValueTagChild ValueTag = 5
+const ValueTagMutableSamples ValueTag = 6
 
 func (value ValueTag) String() string {
 	switch value {
@@ -51,14 +52,17 @@ func (value ValueTag) String() string {
 		return "samples"
 	case ValueTagChild:
 		return "child"
+	case ValueTagMutableSamples:
+		return "mutableSamples"
 	default:
 		return "ValueTag(?)"
 	}
 }
 
 type Child struct {
-	ptr  unsafe.Pointer
-	once sync.Once
+	ptr     unsafe.Pointer
+	once    sync.Once
+	cleanup runtime.Cleanup
 }
 
 type ChildRef struct {
@@ -83,21 +87,39 @@ func (value *ChildRef) zigoPointer() unsafe.Pointer {
 	return value.ptr
 }
 
+type childCleanupState struct {
+	ptr unsafe.Pointer
+}
+
+func newChild(ptr unsafe.Pointer) *Child {
+	value := &Child{ptr: ptr}
+	state := childCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, cleanupChild, state)
+	return value
+}
+
+func cleanupChild(state childCleanupState) {
+	if state.ptr != nil {
+		raw.ChildDeinit(state.ptr)
+	}
+}
+
 func (value *Child) Close() {
 	if value == nil {
 		return
 	}
 	value.once.Do(func() {
-		if value.ptr != nil {
-			raw.ChildDeinit(value.ptr)
-			value.ptr = nil
-		}
+		value.cleanup.Stop()
+		cleanupChild(childCleanupState{ptr: value.ptr})
+		value.ptr = nil
 	})
+	runtime.KeepAlive(value)
 }
 
 type Value struct {
-	ptr  unsafe.Pointer
-	once sync.Once
+	ptr     unsafe.Pointer
+	once    sync.Once
+	cleanup runtime.Cleanup
 }
 
 type ValueRef struct {
@@ -122,16 +144,33 @@ func (value *ValueRef) zigoPointer() unsafe.Pointer {
 	return value.ptr
 }
 
+type valueCleanupState struct {
+	ptr unsafe.Pointer
+}
+
+func newValue(ptr unsafe.Pointer) *Value {
+	value := &Value{ptr: ptr}
+	state := valueCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, cleanupValue, state)
+	return value
+}
+
+func cleanupValue(state valueCleanupState) {
+	if state.ptr != nil {
+		raw.ValueDeinit(state.ptr)
+	}
+}
+
 func (value *Value) Close() {
 	if value == nil {
 		return
 	}
 	value.once.Do(func() {
-		if value.ptr != nil {
-			raw.ValueDeinit(value.ptr)
-			value.ptr = nil
-		}
+		value.cleanup.Stop()
+		cleanupValue(valueCleanupState{ptr: value.ptr})
+		value.ptr = nil
 	})
+	runtime.KeepAlive(value)
 }
 
 const (
@@ -245,6 +284,22 @@ func (value *Value) AsChild() (*ChildRef, bool) {
 	return &ChildRef{ptr: result, parent: value}, true
 }
 
+func (value *Value) AsMutableSamples() ([]int16, bool) {
+	defer runtime.KeepAlive(value)
+	ptr := value.zigoPointer()
+	if ptr == nil {
+		zigoProjectionFailure("Value.AsMutableSamples", zigoProjectionInvalidHandle)
+	}
+	result, status := raw.ValueProjectMutableSamples(ptr)
+	if status == zigoProjectionMismatch {
+		return nil, false
+	}
+	if status != zigoProjectionSuccess {
+		zigoProjectionFailure("Value.AsMutableSamples", status)
+	}
+	return append([]int16(nil), result...), true
+}
+
 func (value *ValueRef) Tag() ValueTag {
 	defer runtime.KeepAlive(value)
 	ptr := value.zigoPointer()
@@ -336,4 +391,20 @@ func (value *ValueRef) AsChild() (*ChildRef, bool) {
 		zigoProjectionFailure("Value.AsChild", status)
 	}
 	return &ChildRef{ptr: result, parent: value}, true
+}
+
+func (value *ValueRef) AsMutableSamples() ([]int16, bool) {
+	defer runtime.KeepAlive(value)
+	ptr := value.zigoPointer()
+	if ptr == nil {
+		zigoProjectionFailure("Value.AsMutableSamples", zigoProjectionInvalidHandle)
+	}
+	result, status := raw.ValueProjectMutableSamples(ptr)
+	if status == zigoProjectionMismatch {
+		return nil, false
+	}
+	if status != zigoProjectionSuccess {
+		zigoProjectionFailure("Value.AsMutableSamples", status)
+	}
+	return append([]int16(nil), result...), true
 }

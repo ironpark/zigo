@@ -413,7 +413,7 @@ ABI COMPATIBLE (1)
 ```
 
 - 함수 제거 / 시그니처 변경 / 에러코드 재배정 → BREAKING
-- 함수·타입 추가, 에러 집합 append → COMPATIBLE
+- 함수·타입 추가, 에러 집합 append, 기존 tag를 보존한 enum/tagged-union 끝부분 variant append → COMPATIBLE
 - 반환 소유권·retention 변경 → BREAKING (조용한 메모리 버그를 만들므로)
 
 ---

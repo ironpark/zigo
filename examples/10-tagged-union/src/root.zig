@@ -4,6 +4,9 @@ pub const CreateError = error{OutOfMemory};
 
 pub const Mode = enum(u8) { idle, active, paused };
 
+var mutable_samples = [_]i16{ 21, 34, 55 };
+var live_values: std.atomic.Value(usize) = .init(0);
+
 pub const Child = struct {
     value: i32,
 
@@ -29,10 +32,12 @@ pub const Value = union(enum(u8)) {
     mode: Mode,
     samples: []const i16,
     child: *const Child,
+    mutableSamples: []i16,
 
     pub fn create(initial: i64) CreateError!*Value {
         const value = std.heap.page_allocator.create(Value) catch return error.OutOfMemory;
         value.* = .{ .integer = initial };
+        _ = live_values.fetchAdd(1, .monotonic);
         return value;
     }
 
@@ -52,6 +57,14 @@ pub const Value = union(enum(u8)) {
         self.* = .{ .samples = &.{ 3, 5, 8, 13 } };
     }
 
+    pub fn useEmptySamples(self: *Value) void {
+        self.* = .{ .samples = &.{} };
+    }
+
+    pub fn useMutableSamples(self: *Value) void {
+        self.* = .{ .mutableSamples = mutable_samples[0..] };
+    }
+
     pub fn setChild(self: *Value, child: *const Child) void {
         self.* = .{ .child = child };
     }
@@ -61,9 +74,14 @@ pub const Value = union(enum(u8)) {
     }
 
     pub fn deinit(self: *Value) void {
+        _ = live_values.fetchSub(1, .monotonic);
         std.heap.page_allocator.destroy(self);
     }
 };
+
+pub fn liveValues() usize {
+    return live_values.load(.monotonic);
+}
 
 test "tagged union changes variants without exposing its layout" {
     const child = try Child.create(17);
@@ -78,7 +96,18 @@ test "tagged union changes variants without exposing its layout" {
     try std.testing.expectEqual(Mode.paused, value.mode);
     value.usePresetSamples();
     try std.testing.expectEqualSlices(i16, &.{ 3, 5, 8, 13 }, value.samples);
+    value.useEmptySamples();
+    try std.testing.expectEqual(@as(usize, 0), value.samples.len);
+    value.useMutableSamples();
+    try std.testing.expectEqualSlices(i16, &.{ 21, 34, 55 }, value.mutableSamples);
     value.setChild(child);
     try std.testing.expectEqual(@as(i32, 17), value.child.value);
     try std.testing.expect(value.borrow() == value);
+}
+
+test "value lifecycle accounting returns to zero" {
+    const value = try Value.create(1);
+    try std.testing.expectEqual(@as(usize, 1), liveValues());
+    value.deinit();
+    try std.testing.expectEqual(@as(usize, 0), liveValues());
 }

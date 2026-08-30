@@ -400,3 +400,63 @@ test "tagged union lowering records tag scalar slice and handle projections" {
     try std.testing.expect(child_pointer.is_const);
     try std.testing.expectEqualStrings("Child", child_pointer.child.@"opaque");
 }
+
+test "multiple tagged unions keep custom normalized projection symbols isolated" {
+    const document: semantic.Semantic = .{
+        .package = "multi_variant",
+        .prefix = "api",
+        .types = &.{
+            .{
+                .fields = &.{.{ .name = "URLValue", .type = .{ .int = .{ .bits = 64, .signed = false } }, .value = 0 }},
+                .kind = .tagged_union,
+                .name = "HTTPResult",
+                .tag_type = .{ .@"enum" = .{ .ref = "HTTPResultTag" } },
+            },
+            .{ .fields = &.{.{ .name = "URLValue", .value = 0 }}, .kind = .@"enum", .name = "HTTPResultTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
+            .{
+                .fields = &.{.{ .name = "number", .type = .{ .float = .{ .bits = 64 } }, .value = 0 }},
+                .kind = .tagged_union,
+                .name = "Metric",
+                .tag_type = .{ .@"enum" = .{ .ref = "MetricTag" } },
+            },
+            .{ .fields = &.{.{ .name = "number", .value = 0 }}, .kind = .@"enum", .name = "MetricTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
+        },
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try semanticDocument(arena.allocator(), document, "multi_variant", "api", &.{});
+
+    try std.testing.expectEqual(@as(usize, 4), program.projections.len);
+    try std.testing.expectEqualStrings("api_http_result_project_tag", program.projections[0].symbol);
+    try std.testing.expectEqualStrings("api_http_result_project_url_value", program.projections[1].symbol);
+    try std.testing.expectEqualStrings("api_metric_project_tag", program.projections[2].symbol);
+    try std.testing.expectEqualStrings("api_metric_project_number", program.projections[3].symbol);
+    try std.testing.expectEqualStrings("HTTPResult", program.projections[1].owner.name);
+    try std.testing.expectEqualStrings("Metric", program.projections[3].owner.name);
+}
+
+test "mutable tagged union slice projection preserves element mutability" {
+    var element: semantic.TypeNode = .{ .int = .{ .bits = 16, .signed = true } };
+    const document: semantic.Semantic = .{
+        .package = "mutable_variant",
+        .prefix = "zg",
+        .types = &.{
+            .{
+                .fields = &.{.{ .name = "buffer", .type = .{ .slice = .{ .@"const" = false, .element = &element } }, .value = 0 }},
+                .kind = .tagged_union,
+                .name = "Value",
+                .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } },
+            },
+            .{ .fields = &.{.{ .name = "buffer", .value = 0 }}, .kind = .@"enum", .name = "ValueTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
+        },
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try semanticDocument(arena.allocator(), document, "mutable_variant", "zg", &.{});
+
+    const output_pointer = program.projections[1].params[1].scalar.pointer.child.pointer;
+    try std.testing.expect(output_pointer.is_many);
+    try std.testing.expect(!output_pointer.is_const);
+}

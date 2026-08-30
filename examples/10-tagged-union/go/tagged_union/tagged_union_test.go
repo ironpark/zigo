@@ -2,8 +2,10 @@ package tagged_union
 
 import (
 	"reflect"
+	"runtime"
 	"strings"
 	"testing"
+	"time"
 
 	"example.com/zigo/tagged-union/internal/raw"
 )
@@ -58,6 +60,23 @@ func TestSliceIsCopiedAndBorrowedHandleHasAccessors(t *testing.T) {
 		t.Fatalf("AsSamples() did not return an independent copy: (%v, %v)", second, ok)
 	}
 
+	value.UseEmptySamples()
+	empty, ok := value.AsSamples()
+	if !ok || len(empty) != 0 {
+		t.Fatalf("AsSamples() for empty payload = (%v, %v)", empty, ok)
+	}
+
+	value.UseMutableSamples()
+	mutable, ok := value.AsMutableSamples()
+	if !ok || !reflect.DeepEqual(mutable, []int16{21, 34, 55}) {
+		t.Fatalf("AsMutableSamples() = (%v, %v)", mutable, ok)
+	}
+	mutable[0] = 99
+	again, ok := value.AsMutableSamples()
+	if !ok || again[0] != 21 {
+		t.Fatalf("AsMutableSamples() exposed native memory: (%v, %v)", again, ok)
+	}
+
 	value.SetChild(child)
 	borrowed := value.Borrow()
 	if borrowed.Tag() != ValueTagChild {
@@ -102,4 +121,30 @@ func assertProjectionPanic(t *testing.T, operation string, call func()) {
 		}
 	}()
 	call()
+}
+
+func TestRuntimeCleanupAfterProjectionUse(t *testing.T) {
+	if got := LiveValues(); got != 0 {
+		t.Fatalf("LiveValues() before cleanup test = %d, want 0", got)
+	}
+	func() {
+		value, err := NewValue(9)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if value.Tag() != ValueTagInteger {
+			t.Fatal("unexpected tag before cleanup")
+		}
+		runtime.KeepAlive(value)
+	}()
+
+	deadline := time.Now().Add(5 * time.Second)
+	for LiveValues() != 0 {
+		runtime.GC()
+		runtime.Gosched()
+		if time.Now().After(deadline) {
+			t.Fatalf("runtime cleanup timed out: live values=%d", LiveValues())
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
 }

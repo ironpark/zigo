@@ -83,7 +83,17 @@ pub fn diff(allocator: std.mem.Allocator, base: semantic.Semantic, current: sema
             try add(allocator, &report, .breaking, old.name, "type removed");
             continue;
         };
-        if (!typeDeclEqual(old, new)) try add(allocator, &report, .breaking, old.name, "type definition changed");
+        switch (classifyTypeChange(old, new)) {
+            .equal => {},
+            .appended => try add(
+                allocator,
+                &report,
+                .compatible,
+                old.name,
+                if (old.kind == .tagged_union) "tagged-union variant appended" else "enum value appended",
+            ),
+            .breaking => try add(allocator, &report, .breaking, old.name, "type definition changed"),
+        }
     }
     for (current.types) |new| if (findType(base.types, new.name) == null)
         try add(allocator, &report, .added, new.name, "type added");
@@ -162,15 +172,21 @@ fn compareErrors(allocator: std.mem.Allocator, report: *Report, subject: []const
     if (new.len > old.len) try add(allocator, report, .compatible, subject, "error appended");
 }
 
-fn typeDeclEqual(lhs: semantic.TypeDecl, rhs: semantic.TypeDecl) bool {
-    if (lhs.kind != rhs.kind or lhs.layout != rhs.layout or lhs.exhaustive != rhs.exhaustive or lhs.fields.len != rhs.fields.len) return false;
-    if ((lhs.tag_type == null) != (rhs.tag_type == null)) return false;
-    if (lhs.tag_type) |tag| if (!typeEqual(tag, rhs.tag_type.?)) return false;
-    for (lhs.fields, rhs.fields) |a, b| {
-        if (!std.mem.eql(u8, a.name, b.name) or a.value != b.value or (a.type == null) != (b.type == null)) return false;
-        if (a.type) |node| if (!typeEqual(node, b.type.?)) return false;
-    }
-    return true;
+const TypeChange = enum { equal, appended, breaking };
+
+fn classifyTypeChange(lhs: semantic.TypeDecl, rhs: semantic.TypeDecl) TypeChange {
+    if (lhs.kind != rhs.kind or lhs.layout != rhs.layout or lhs.exhaustive != rhs.exhaustive) return .breaking;
+    if ((lhs.tag_type == null) != (rhs.tag_type == null)) return .breaking;
+    if (lhs.tag_type) |tag| if (!typeEqual(tag, rhs.tag_type.?)) return .breaking;
+    if (rhs.fields.len < lhs.fields.len) return .breaking;
+    for (lhs.fields, rhs.fields[0..lhs.fields.len]) |a, b| if (!typeFieldEqual(a, b)) return .breaking;
+    if (rhs.fields.len == lhs.fields.len) return .equal;
+    return if (lhs.kind == .tagged_union or lhs.kind == .@"enum") .appended else .breaking;
+}
+
+fn typeFieldEqual(lhs: semantic.TypeField, rhs: semantic.TypeField) bool {
+    if (!std.mem.eql(u8, lhs.name, rhs.name) or lhs.value != rhs.value or (lhs.type == null) != (rhs.type == null)) return false;
+    return lhs.type == null or typeEqual(lhs.type.?, rhs.type.?);
 }
 
 fn typeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
@@ -259,6 +275,103 @@ test "tagged union variant payload changes are breaking" {
     try std.testing.expect(report.hasBreaking());
     try std.testing.expectEqualStrings("Value", report.changes.items[0].subject);
     try std.testing.expectEqualStrings("type definition changed", report.changes.items[0].detail);
+}
+
+test "appending tagged union variants and tag values is ABI compatible" {
+    const old: semantic.Semantic = .{
+        .package = "variant",
+        .prefix = "zg",
+        .types = &.{
+            .{
+                .fields = &.{.{ .name = "none", .type = .{ .void = {} }, .value = 0 }},
+                .kind = .tagged_union,
+                .name = "Value",
+                .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } },
+            },
+            .{
+                .fields = &.{.{ .name = "none", .value = 0 }},
+                .kind = .@"enum",
+                .name = "ValueTag",
+                .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+            },
+        },
+        .zig_version = "0.16.0",
+    };
+    const current: semantic.Semantic = .{
+        .package = "variant",
+        .prefix = "zg",
+        .types = &.{
+            .{
+                .fields = &.{
+                    .{ .name = "none", .type = .{ .void = {} }, .value = 0 },
+                    .{ .name = "number", .type = .{ .int = .{ .bits = 32, .signed = true } }, .value = 1 },
+                },
+                .kind = .tagged_union,
+                .name = "Value",
+                .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } },
+            },
+            .{
+                .fields = &.{ .{ .name = "none", .value = 0 }, .{ .name = "number", .value = 1 } },
+                .kind = .@"enum",
+                .name = "ValueTag",
+                .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+            },
+        },
+        .zig_version = "0.16.0",
+    };
+    var report = try diff(std.testing.allocator, old, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expect(!report.hasBreaking());
+    try std.testing.expectEqual(@as(usize, 2), report.changes.items.len);
+    try std.testing.expectEqual(ChangeKind.compatible, report.changes.items[0].kind);
+    try std.testing.expectEqualStrings("tagged-union variant appended", report.changes.items[0].detail);
+    try std.testing.expectEqual(ChangeKind.compatible, report.changes.items[1].kind);
+    try std.testing.expectEqualStrings("enum value appended", report.changes.items[1].detail);
+}
+
+test "removing renaming or retagging an existing variant is breaking" {
+    const base: semantic.Semantic = .{
+        .package = "variant",
+        .prefix = "zg",
+        .types = &.{.{
+            .fields = &.{
+                .{ .name = "none", .type = .{ .void = {} }, .value = 0 },
+                .{ .name = "number", .type = .{ .int = .{ .bits = 32, .signed = true } }, .value = 1 },
+            },
+            .kind = .tagged_union,
+            .name = "Value",
+            .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } },
+        }},
+        .zig_version = "0.16.0",
+    };
+    const changed_fields = [_][]const semantic.TypeField{
+        &.{.{ .name = "none", .type = .{ .void = {} }, .value = 0 }},
+        &.{
+            .{ .name = "none", .type = .{ .void = {} }, .value = 0 },
+            .{ .name = "integer", .type = .{ .int = .{ .bits = 32, .signed = true } }, .value = 1 },
+        },
+        &.{
+            .{ .name = "none", .type = .{ .void = {} }, .value = 0 },
+            .{ .name = "number", .type = .{ .int = .{ .bits = 32, .signed = true } }, .value = 7 },
+        },
+    };
+    for (changed_fields) |fields| {
+        const current: semantic.Semantic = .{
+            .package = "variant",
+            .prefix = "zg",
+            .types = &.{.{
+                .fields = fields,
+                .kind = .tagged_union,
+                .name = "Value",
+                .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } },
+            }},
+            .zig_version = "0.16.0",
+        };
+        var report = try diff(std.testing.allocator, base, current);
+        defer report.deinit(std.testing.allocator);
+        try std.testing.expect(report.hasBreaking());
+        try std.testing.expectEqualStrings("type definition changed", report.changes.items[0].detail);
+    }
 }
 
 test "appending an error is ABI compatible" {

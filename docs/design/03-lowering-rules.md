@@ -151,8 +151,10 @@ wrapper를 parent로 보유하는 borrowed `TRef`가 된다.
 동기화해야 한다. `runtime.KeepAlive`는 GC에 의한 조기 cleanup만 막으며 명시적 `Close`와의
 data race나 use-after-close를 직렬화하지 않는다.
 
-variant 추가·삭제, discriminant 변경, payload 타입 변경은 생성 projection ABI가 바뀌므로
-ABI diff에서 breaking type definition change다.
+기존 순서와 tag 값을 유지한 끝부분 variant 추가는 기존 projection 심볼을 보존하므로 ABI
+compatible append다. variant 삭제·순서 변경·이름 변경, 기존 discriminant나 payload 타입
+변경은 breaking type definition change다. 이름 또는 prefix 변경으로 기존 projection 심볼이
+달라지는 경우도 breaking이다.
 
 ## 8. 소유권 → Go 매핑
 
