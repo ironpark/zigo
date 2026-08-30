@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T09:14:06Z"
 description: Adversarially validate generator correctness, atomicity, ABI policy, discovery, layouts, formatting, callbacks, cleanup, and cross-target build behavior.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-30T08:58:46Z"
 ---
 > NEXT: 정상 기준선과 반복 생성 결정성을 검증한다. ([Phase 0](phases/00-baseline-and-determinism.md))
@@ -9,7 +10,7 @@ registered_at: "2026-08-30T08:58:46Z"
 
 - [x] [Phase 00: Baseline and deterministic generation](phases/00-baseline-and-determinism.md)
 - [x] [Phase 01: Mutation and failure atomicity](phases/01-mutation-and-failure-atomicity.md)
-- [ ] [Phase 02: Lifecycle, breadth, and compatibility matrix](phases/02-lifecycle-breadth-and-compatibility.md)
+- [x] [Phase 02: Lifecycle, breadth, and compatibility matrix](phases/02-lifecycle-breadth-and-compatibility.md)
 
 # Shared Verification
 
