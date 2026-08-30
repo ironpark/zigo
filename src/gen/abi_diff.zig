@@ -231,6 +231,36 @@ test "parameter type changes are breaking and functions are added" {
     try std.testing.expectEqual(ChangeKind.added, report.changes.items[1].kind);
 }
 
+test "tagged union variant payload changes are breaking" {
+    const old: semantic.Semantic = .{
+        .package = "variant",
+        .prefix = "zg",
+        .types = &.{.{
+            .fields = &.{.{ .name = "number", .type = .{ .int = .{ .bits = 32, .signed = true } }, .value = 0 }},
+            .kind = .tagged_union,
+            .name = "Value",
+            .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } },
+        }},
+        .zig_version = "0.16.0",
+    };
+    const current: semantic.Semantic = .{
+        .package = "variant",
+        .prefix = "zg",
+        .types = &.{.{
+            .fields = &.{.{ .name = "number", .type = .{ .int = .{ .bits = 64, .signed = true } }, .value = 0 }},
+            .kind = .tagged_union,
+            .name = "Value",
+            .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } },
+        }},
+        .zig_version = "0.16.0",
+    };
+    var report = try diff(std.testing.allocator, old, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expect(report.hasBreaking());
+    try std.testing.expectEqualStrings("Value", report.changes.items[0].subject);
+    try std.testing.expectEqualStrings("type definition changed", report.changes.items[0].detail);
+}
+
 test "appending an error is ABI compatible" {
     var old_payload: semantic.TypeNode = .{ .void = {} };
     var new_payload: semantic.TypeNode = .{ .void = {} };

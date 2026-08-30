@@ -31,6 +31,13 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .hint = "bind a concrete specialization instead of the generic function",
         };
         for (function.params) |parameter| {
+            if (containsTaggedUnionValue(document, parameter.type)) return .{
+                .severity = .@"error",
+                .code = "ZIGO006",
+                .message = "cannot pass a tagged union by value",
+                .site = .{ .path = "semantic.json", .declaration = function.name },
+                .hint = "register it with `.repr = .tagged_union` and expose pointers to the union",
+            };
             if (unsupportedValueStruct(document, parameter.type) != null) return .{
                 .severity = .@"error",
                 .code = "ZIGO003",
@@ -60,6 +67,13 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .hint = "expose a release, clear, close, destroy, or deinit function for the retained value",
             };
         }
+        if (containsTaggedUnionValue(document, function.@"return")) return .{
+            .severity = .@"error",
+            .code = "ZIGO006",
+            .message = "cannot return a tagged union by value",
+            .site = .{ .path = "semantic.json", .declaration = function.name },
+            .hint = "register it with `.repr = .tagged_union` and expose pointers to the union",
+        };
         if (unsupportedValueStruct(document, function.@"return") != null) return .{
             .severity = .@"error",
             .code = "ZIGO003",
@@ -83,12 +97,12 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .site = .{ .path = "semantic.json", .declaration = declaration.name },
             .hint = "make the enum exhaustive before exposing it",
         };
-        if (declaration.kind == .tagged_union) return .{
+        if (declaration.kind == .tagged_union and !taggedUnionAccessorsSupported(document, declaration)) return .{
             .severity = .@"error",
             .code = "ZIGO006",
-            .message = "tagged unions are not supported in IR v1",
+            .message = "tagged union contains a payload that cannot use generated accessors",
             .site = .{ .path = "semantic.json", .declaration = declaration.name },
-            .hint = "expose separate functions or an explicit extern struct representation",
+            .hint = "use void, scalar, enum, opaque-pointer, or scalar-slice payloads",
         };
     }
     for (document.functions, 0..) |function, index| {
@@ -131,7 +145,7 @@ fn findIntegrityProblem(document: semantic.Semantic) ?[]const u8 {
     }
     for (document.functions) |function| {
         if (function.receiver) |receiver| {
-            if (!hasTypeKind(document, receiver, .@"opaque")) return function.name;
+            if (!hasHandleType(document, receiver)) return function.name;
         }
         for (function.params) |parameter| {
             if (!referencesValid(document, parameter.type)) return function.name;
@@ -139,7 +153,7 @@ fn findIntegrityProblem(document: semantic.Semantic) ?[]const u8 {
         if (!referencesValid(document, function.@"return")) return function.name;
     }
     for (document.constructors, 0..) |constructor, index| {
-        if (!hasTypeKind(document, constructor.type, .@"opaque")) return constructor.type;
+        if (!hasHandleType(document, constructor.type)) return constructor.type;
         for (document.constructors[0..index]) |previous| {
             if (std.mem.eql(u8, constructor.type, previous.type)) return constructor.type;
         }
@@ -152,7 +166,7 @@ fn findIntegrityProblem(document: semantic.Semantic) ?[]const u8 {
 fn referencesValid(document: semantic.Semantic, node: semantic.TypeNode) bool {
     return switch (node) {
         .@"enum" => |value| hasTypeKind(document, value.ref, .@"enum"),
-        .opaque_ptr => |value| hasTypeKind(document, value.ref, .@"opaque"),
+        .opaque_ptr => |value| hasHandleType(document, value.ref),
         .value_struct => |value| hasTypeKind(document, value.ref, .value_struct),
         .slice => |value| referencesValid(document, value.element.*),
         .optional => |value| referencesValid(document, value.child.*),
@@ -165,11 +179,54 @@ fn referencesValid(document: semantic.Semantic, node: semantic.TypeNode) bool {
     };
 }
 
+fn containsTaggedUnionValue(document: semantic.Semantic, node: semantic.TypeNode) bool {
+    return switch (node) {
+        .value_struct => |value| hasTypeKind(document, value.ref, .tagged_union),
+        .slice => |value| containsTaggedUnionValue(document, value.element.*),
+        .optional => |value| containsTaggedUnionValue(document, value.child.*),
+        .error_union => |value| containsTaggedUnionValue(document, value.payload.*),
+        .callback => |value| blk: {
+            for (value.params) |parameter| if (containsTaggedUnionValue(document, parameter)) break :blk true;
+            break :blk containsTaggedUnionValue(document, value.@"return".*);
+        },
+        else => false,
+    };
+}
+
+fn taggedUnionAccessorsSupported(document: semantic.Semantic, declaration: semantic.TypeDecl) bool {
+    const tag = declaration.tag_type orelse return false;
+    if (tag != .@"enum" or !hasTypeKind(document, tag.@"enum".ref, .@"enum")) return false;
+    if (declaration.fields.len == 0) return false;
+    for (declaration.fields) |field| {
+        const payload = field.type orelse return false;
+        if (!accessorPayloadSupported(document, payload)) return false;
+    }
+    return true;
+}
+
+fn accessorPayloadSupported(document: semantic.Semantic, node: semantic.TypeNode) bool {
+    return switch (node) {
+        .void, .bool, .int, .float => true,
+        .@"enum" => |value| hasTypeKind(document, value.ref, .@"enum"),
+        .opaque_ptr => |value| hasHandleType(document, value.ref),
+        .slice => |value| switch (value.element.*) {
+            .bool, .int, .float => true,
+            .@"enum" => |entry| hasTypeKind(document, entry.ref, .@"enum"),
+            else => false,
+        },
+        else => false,
+    };
+}
+
 fn hasTypeKind(document: semantic.Semantic, name: []const u8, kind: semantic.TypeKind) bool {
     for (document.types) |declaration| {
         if (std.mem.eql(u8, declaration.name, name)) return declaration.kind == kind;
     }
     return false;
+}
+
+fn hasHandleType(document: semantic.Semantic, name: []const u8) bool {
+    return hasTypeKind(document, name, .@"opaque") or hasTypeKind(document, name, .tagged_union);
 }
 
 fn hasConstructorInit(document: semantic.Semantic, constructor: semantic.Constructor) bool {
@@ -334,11 +391,17 @@ test "implemented diagnostic snapshots are stable" {
             .zig_version = "0.16.0",
         }, .snapshot = "error[ZIGO005]: slice element type contains a pointer\n  --> semantic.json (pointers)\n  hint: pass scalar elements or opaque handle values instead of Go pointers\n" },
         .{ .document = .{
+            .functions = &.{.{
+                .name = "consume",
+                .params = &.{.{ .name = "value", .type = .{ .value_struct = .{ .ref = "Value" } } }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_consume",
+            }},
             .package = "bad",
             .prefix = "zg",
             .types = &.{.{ .kind = .tagged_union, .name = "Value" }},
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO006]: tagged unions are not supported in IR v1\n  --> semantic.json (Value)\n  hint: expose separate functions or an explicit extern struct representation\n" },
+        }, .snapshot = "error[ZIGO006]: cannot pass a tagged union by value\n  --> semantic.json (consume)\n  hint: register it with `.repr = .tagged_union` and expose pointers to the union\n" },
         .{ .document = .{
             .functions = &.{
                 .{ .name = "lookupID", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "ignored" },
@@ -379,6 +442,70 @@ test "implemented diagnostic snapshots are stable" {
         defer std.testing.allocator.free(rendered);
         try std.testing.expectEqualStrings(case.snapshot, rendered);
     }
+}
+
+test "tagged union handles accept supported accessor payloads and constructors" {
+    var handle_payload: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Value" } };
+    const document: semantic.Semantic = .{
+        .constructors = &.{.{ .deinit = "deinit", .init = "create", .type = "Value" }},
+        .functions = &.{
+            .{
+                .name = "create",
+                .namespace = "Value",
+                .ownership = .caller,
+                .params = &.{},
+                .@"return" = .{ .error_union = .{ .error_set = &.{"OutOfMemory"}, .payload = &handle_payload } },
+                .symbol = "zg_value_create",
+            },
+            .{ .name = "deinit", .params = &.{}, .receiver = "Value", .@"return" = .{ .void = {} }, .symbol = "zg_value_deinit" },
+        },
+        .package = "variant",
+        .prefix = "zg",
+        .types = &.{
+            .{
+                .fields = &.{
+                    .{ .name = "none", .type = .{ .void = {} }, .value = 0 },
+                    .{ .name = "integer", .type = .{ .int = .{ .bits = 32, .signed = true } }, .value = 1 },
+                },
+                .kind = .tagged_union,
+                .name = "Value",
+                .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } },
+            },
+            .{
+                .fields = &.{
+                    .{ .name = "none", .value = 0 },
+                    .{ .name = "integer", .value = 1 },
+                },
+                .kind = .@"enum",
+                .name = "ValueTag",
+                .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+            },
+        },
+        .zig_version = "0.16.0",
+    };
+    try semanticDocument(std.testing.allocator, document);
+}
+
+test "tagged union accessor payload rejects slices containing handles" {
+    var handle: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Thing" } };
+    const document: semantic.Semantic = .{
+        .package = "variant",
+        .prefix = "zg",
+        .types = &.{
+            .{
+                .fields = &.{.{ .name = "things", .type = .{ .slice = .{ .@"const" = true, .element = &handle } }, .value = 0 }},
+                .kind = .tagged_union,
+                .name = "Value",
+                .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } },
+            },
+            .{ .kind = .@"enum", .name = "ValueTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
+            .{ .kind = .@"opaque", .name = "Thing" },
+        },
+        .zig_version = "0.16.0",
+    };
+    const issue = (try findIssue(std.testing.allocator, document)).?;
+    try std.testing.expectEqualStrings("ZIGO006", issue.code);
+    try std.testing.expectEqualStrings("Value", issue.site.declaration);
 }
 
 test "symbol collision validation propagates every allocation failure" {

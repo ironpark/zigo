@@ -43,7 +43,14 @@ pub fn reflect(
                     }),
                     else => @compileError("zigo value type entries must name a struct"),
                 },
-                else => @compileError("zigo type repr must be .opaque or .value"),
+                .tagged_union => switch (info) {
+                    .@"union" => |union_info| {
+                        if (union_info.tag_type == null) @compileError("zigo tagged_union type entries must name a tagged union");
+                        try appendTaggedUnion(allocator, &types, T, type_name);
+                    },
+                    else => @compileError("zigo tagged_union type entries must name a tagged union"),
+                },
+                else => @compileError("zigo type repr must be .opaque, .value, or .tagged_union"),
             }
         }
     }
@@ -370,11 +377,13 @@ fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayLis
         },
         .@"union" => blk: {
             const name = shortTypeName(@typeName(T));
-            try types.append(allocator, .{
-                .kind = .tagged_union,
-                .name = name,
-                .zig_path = @typeName(T),
-            });
+            for (types.items) |declaration| {
+                if (declaration.kind == .tagged_union and std.mem.eql(u8, declaration.zig_path orelse "", @typeName(T))) {
+                    break :blk .{ .value_struct = .{ .ref = declaration.name } };
+                }
+            }
+            if (@typeInfo(T).@"union".tag_type == null) @compileError("zigo cannot reflect an untagged union");
+            try appendTaggedUnion(allocator, types, T, name);
             break :blk .{ .value_struct = .{ .ref = name } };
         },
         else => @compileError("zigo supports scalars, enums, slices, opaque pointers, structs, and error unions"),
@@ -409,7 +418,7 @@ fn receiverName(comptime info: std.builtin.Type.Fn, comptime declaration: anytyp
     if (pointer.size != .one) return null;
     if (@hasField(@TypeOf(declaration), "types")) {
         inline for (declaration.types) |entry| {
-            if (entry.repr == .@"opaque" and entry.type == pointer.child) {
+            if ((entry.repr == .@"opaque" or entry.repr == .tagged_union) and entry.type == pointer.child) {
                 return if (@hasField(@TypeOf(entry), "name")) entry.name else shortTypeName(@typeName(entry.type));
             }
         }
@@ -424,11 +433,55 @@ fn receiverName(comptime info: std.builtin.Type.Fn, comptime declaration: anytyp
 
 fn opaqueNameForPath(types: []const semantic.TypeDecl, path: []const u8) ?[]const u8 {
     for (types) |declaration| {
-        if (declaration.kind == .@"opaque" and
+        if ((declaration.kind == .@"opaque" or declaration.kind == .tagged_union) and
             (std.mem.eql(u8, declaration.zig_path orelse "", path) or
                 std.mem.eql(u8, declaration.name, shortTypeName(path)))) return declaration.name;
     }
     return null;
+}
+
+fn appendTaggedUnion(
+    allocator: std.mem.Allocator,
+    types: *std.ArrayList(semantic.TypeDecl),
+    comptime T: type,
+    name: []const u8,
+) !void {
+    const info = @typeInfo(T).@"union";
+    const Tag = info.tag_type orelse @compileError("zigo cannot reflect an untagged union");
+    const tag_info = @typeInfo(Tag).@"enum";
+    const tag_name = try std.fmt.allocPrint(allocator, "{s}Tag", .{name});
+
+    const union_index = types.items.len;
+    try types.append(allocator, .{
+        .kind = .tagged_union,
+        .name = name,
+        .zig_path = @typeName(T),
+    });
+
+    const fields = try allocator.alloc(semantic.TypeField, info.fields.len);
+    inline for (info.fields, 0..) |field, index| {
+        fields[index] = .{
+            .name = field.name,
+            .type = try typeNode(allocator, field.type, types),
+            .value = @intCast(@intFromEnum(@field(Tag, field.name))),
+        };
+    }
+    types.items[union_index].fields = fields;
+    types.items[union_index].tag_type = .{ .@"enum" = .{ .ref = tag_name } };
+
+    const tag_fields = try allocator.alloc(semantic.TypeField, tag_info.fields.len);
+    inline for (tag_info.fields, 0..) |field, index| {
+        tag_fields[index] = .{ .name = field.name, .value = @intCast(field.value) };
+    }
+    const integer_tag = try typeNode(allocator, tag_info.tag_type, types);
+    try types.append(allocator, .{
+        .exhaustive = tag_info.is_exhaustive,
+        .fields = tag_fields,
+        .kind = .@"enum",
+        .name = tag_name,
+        .tag_type = integer_tag,
+        .zig_path = @typeName(Tag),
+    });
 }
 
 fn returnedOpaqueName(node: semantic.TypeNode) ?[]const u8 {
@@ -552,6 +605,52 @@ test "reflection preserves invalid declarations for generator diagnostics" {
     try std.testing.expectEqual(true, document.functions[0].has_comptime_params.?);
     try std.testing.expect(!document.functions[1].params[0].type.callback.c_callconv);
     try std.testing.expectEqual(semantic.TypeKind.tagged_union, document.types[0].kind);
+}
+
+test "tagged union representation reflects discriminants and payloads" {
+    const Value = union(enum(u8)) {
+        none,
+        integer: i32,
+        flag: bool,
+    };
+    const Fixture = struct {
+        fn current() *const Value {
+            unreachable;
+        }
+    };
+    const declaration = .{
+        .types = .{.{ .type = Value, .repr = .tagged_union }},
+        .functions = .{.{ .name = "current", .@"fn" = Fixture.current }},
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), declaration, "variant", "zg");
+
+    try std.testing.expectEqual(@as(usize, 2), document.types.len);
+    const union_decl = document.types[0];
+    try std.testing.expectEqual(semantic.TypeKind.tagged_union, union_decl.kind);
+    try std.testing.expectEqualStrings("Value", union_decl.name);
+    try std.testing.expectEqualStrings("ValueTag", union_decl.tag_type.?.@"enum".ref);
+    try std.testing.expectEqual(@as(usize, 3), union_decl.fields.len);
+    try std.testing.expect(union_decl.fields[0].type.? == .void);
+    try std.testing.expectEqual(@as(i64, 1), union_decl.fields[1].value.?);
+    try std.testing.expect(union_decl.fields[1].type.? == .int);
+
+    const tag_decl = document.types[1];
+    try std.testing.expectEqual(semantic.TypeKind.@"enum", tag_decl.kind);
+    try std.testing.expectEqualStrings("ValueTag", tag_decl.name);
+    try std.testing.expectEqual(@as(u16, 8), tag_decl.tag_type.?.int.bits);
+    try std.testing.expectEqualStrings("Value", document.functions[0].@"return".opaque_ptr.ref);
+    try std.testing.expect(document.functions[0].@"return".opaque_ptr.@"const");
+
+    const json = try document.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(json);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"kind\": \"tagged_union\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"integer\"") != null);
+    var parsed = try semantic.Semantic.parse(std.testing.allocator, json);
+    defer parsed.deinit();
+    try std.testing.expectEqual(semantic.TypeKind.tagged_union, parsed.value.types[0].kind);
+    try std.testing.expectEqual(@as(i64, 1), parsed.value.types[0].fields[1].value.?);
 }
 
 test "named generic specializations become distinct opaque types" {
