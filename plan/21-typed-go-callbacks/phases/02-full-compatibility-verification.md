@@ -2,7 +2,7 @@
 depends_on:
 - "21-typed-go-callbacks#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Every repository verification passes and planr reports all phases done.
 > NEXT: none
