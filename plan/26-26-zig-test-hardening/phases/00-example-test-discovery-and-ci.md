@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T09:38:28Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 8개 example의 test step과 CI 연결이 존재하고 14/14 테스트가 통과한다.
 > NEXT: none

@@ -7,7 +7,7 @@ registered_at: "2026-08-30T09:37:22Z"
 
 # Phases
 
-- [ ] [Phase 00: Example test discovery and CI](phases/00-example-test-discovery-and-ci.md)
+- [x] [Phase 00: Example test discovery and CI](phases/00-example-test-discovery-and-ci.md)
 - [ ] [Phase 01: Semantic referential integrity](phases/01-semantic-referential-integrity.md)
 - [ ] [Phase 02: Negative process integration](phases/02-negative-process-integration.md)
 - [ ] [Phase 03: Parser and lowering unit coverage](phases/03-parser-and-lowering-unit-coverage.md)
