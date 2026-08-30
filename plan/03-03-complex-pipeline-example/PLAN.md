@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-08-30T00:49:52Z"
 description: Add and verify an integrated Zig-Go pipeline example covering callbacks, errors, generics, lifecycle, UTF-8, slices, and system linking.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-30T00:46:18Z"
 ---
 > NEXT: Build and verify the integrated pipeline example. ([Phase 0](phases/00-integrated-pipeline-example.md))
 
 # Phases
 
-- [ ] [Phase 00: Integrated Pipeline Example](phases/00-integrated-pipeline-example.md)
+- [x] [Phase 00: Integrated Pipeline Example](phases/00-integrated-pipeline-example.md)
 
 # Shared Verification
 
