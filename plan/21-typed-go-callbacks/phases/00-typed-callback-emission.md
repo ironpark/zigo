@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T06:15:55Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Focused generator and golden tests prove no callback value crosses the public helper as `any`, while raw assertions remain valid.
 > NEXT: none
