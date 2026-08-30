@@ -17,7 +17,7 @@ registered_at: "2026-08-29T03:54:30Z"
 - [x] [Phase 07: Parameter names and semantic metadata](phases/07-names-and-metadata.md)
 - [x] [Phase 08: Diagnostics completed](phases/08-diagnostics.md)
 - [x] [Phase 09: Source sync check and ABI diff](phases/09-sync-and-abi-diff.md)
-- [ ] [Phase 10: Generic specialization and callbacks](phases/10-generics-and-callbacks.md)
+- [x] [Phase 10: Generic specialization and callbacks](phases/10-generics-and-callbacks.md)
 - [ ] [Phase 11: Hardening and release readiness](phases/11-hardening.md)
 
 # Shared Verification

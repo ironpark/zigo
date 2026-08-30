@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T00:14:24Z"
 depends_on:
 - "01-zigo-go-bindings#9"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Two specializations of the same generic produce distinct, non-colliding symbols and
 > NEXT: none
