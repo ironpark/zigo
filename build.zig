@@ -18,6 +18,7 @@ pub const Options = struct {
     name: []const u8,
     module: *std.Build.Module,
     bindings: std.Build.LazyPath,
+    source_root: ?std.Build.LazyPath = null,
     go_dir: std.Build.LazyPath,
     go_module: []const u8,
     target: std.Build.ResolvedTarget,
@@ -233,6 +234,11 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     const layout_json = semantic_run.addOutputFileArg("layout.json");
     semantic_run.addArgs(&.{ options.name, options.prefix });
     semantic_run.addFileArg(options.bindings);
+    if (options.source_root) |source_root| {
+        semantic_run.addFileArg(source_root);
+    } else {
+        semantic_run.addArg("");
+    }
     const semantic_json = semantic_run.captureStdOut(.{ .basename = "semantic.json", .trim_whitespace = .none });
     // Successful fallback warnings stay captured so Zig does not label a
     // successful command as failed. On a non-zero exit, Step.Run reports the

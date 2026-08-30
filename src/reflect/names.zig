@@ -8,6 +8,7 @@ pub fn apply(
     io: std.Io,
     document: *semantic.Semantic,
     bindings_path: []const u8,
+    source_root_path: ?[]const u8,
     diagnostics: *std.Io.Writer,
 ) !void {
     const bindings_source = std.Io.Dir.cwd().readFileAlloc(io, bindings_path, allocator, .limited(8 * 1024 * 1024)) catch |err| {
@@ -18,7 +19,7 @@ pub fn apply(
     var has_errors = try scanSourceWithDiagnostics(allocator, bindings_source, functions, bindings_path, diagnostics);
 
     const directory = std.fs.path.dirname(bindings_path) orelse ".";
-    const root_path = try std.fs.path.join(allocator, &.{ directory, "root.zig" });
+    const root_path = source_root_path orelse try std.fs.path.join(allocator, &.{ directory, "root.zig" });
     if (!std.mem.eql(u8, root_path, bindings_path)) {
         if (std.Io.Dir.cwd().readFileAlloc(io, root_path, allocator, .limited(8 * 1024 * 1024))) |root_source| {
             has_errors = try scanSourceWithDiagnostics(allocator, root_source, functions, root_path, diagnostics) or has_errors;
@@ -88,41 +89,104 @@ fn scanSource(allocator: std.mem.Allocator, source: []const u8, functions: []sem
     defer tree.deinit(allocator);
     if (tree.errors.len != 0) return tree.errors.len;
 
+    const visited = try allocator.alloc(bool, tree.nodes.len);
+    defer allocator.free(visited);
+    @memset(visited, false);
+    const matched = try allocator.alloc(bool, functions.len);
+    defer allocator.free(matched);
+    @memset(matched, false);
+
+    try scanMembers(allocator, tree, tree.rootDecls(), null, functions, visited, matched);
+
+    // Generic type factories contain methods in anonymous containers rather
+    // than a named source-level owner. Give those remaining declarations a
+    // signature-based fallback after all owner-qualified matches are fixed.
     for (0..tree.nodes.len) |raw_index| {
         const node: std.zig.Ast.Node.Index = @enumFromInt(raw_index);
+        if (visited[raw_index]) continue;
         var buffer: [1]std.zig.Ast.Node.Index = undefined;
         const proto = tree.fullFnProto(&buffer, node) orelse continue;
-        const name_token = proto.name_token orelse continue;
-        const declaration_name = tree.tokenSlice(name_token);
-        for (functions) |*function| {
-            if (!std.mem.eql(u8, function.name, declaration_name)) continue;
-            var iterator = proto.iterate(&tree);
-            var names: std.ArrayList([]const u8) = .empty;
-            defer names.deinit(allocator);
-            while (iterator.next()) |parameter| {
-                if (parameter.name_token) |token| try names.append(allocator, tree.tokenSlice(token));
-            }
-            const receiver_count: usize = @intFromBool(function.receiver != null);
-            if (names.items.len != function.params.len + receiver_count) continue;
-            var needs_names = false;
-            for (function.params) |parameter| if (parameter.name_source == .fallback) {
-                needs_names = true;
-                break;
-            };
-            if (needs_names) {
-                const updated_params = try allocator.dupe(semantic.Parameter, function.params);
-                for (updated_params, 0..) |*parameter, index| {
-                    if (parameter.name_source != .fallback) continue;
-                    parameter.name = try allocator.dupe(u8, names.items[index + receiver_count]);
-                    parameter.name_source = .ast;
-                }
-                function.params = updated_params;
-            }
-            if (function.doc == null) function.doc = try docCommentAlloc(allocator, tree, proto.firstToken());
-            break;
-        }
+        try enrichMatches(allocator, tree, proto, null, functions, matched, false);
     }
     return 0;
+}
+
+fn scanMembers(
+    allocator: std.mem.Allocator,
+    tree: std.zig.Ast,
+    members: []const std.zig.Ast.Node.Index,
+    owner: ?[]const u8,
+    functions: []semantic.SemanticFn,
+    visited: []bool,
+    matched: []bool,
+) !void {
+    for (members) |node| {
+        var fn_buffer: [1]std.zig.Ast.Node.Index = undefined;
+        if (tree.fullFnProto(&fn_buffer, node)) |proto| {
+            visited[@intFromEnum(node)] = true;
+            try enrichMatches(allocator, tree, proto, owner, functions, matched, true);
+            continue;
+        }
+
+        const variable = tree.fullVarDecl(node) orelse continue;
+        const init_node = variable.ast.init_node.unwrap() orelse continue;
+        var container_buffer: [2]std.zig.Ast.Node.Index = undefined;
+        const container = tree.fullContainerDecl(&container_buffer, init_node) orelse continue;
+        const declaration_name = tree.tokenSlice(variable.ast.mut_token + 1);
+        try scanMembers(allocator, tree, container.ast.members, declaration_name, functions, visited, matched);
+    }
+}
+
+fn enrichMatches(
+    allocator: std.mem.Allocator,
+    tree: std.zig.Ast,
+    proto: std.zig.Ast.full.FnProto,
+    source_owner: ?[]const u8,
+    functions: []semantic.SemanticFn,
+    matched: []bool,
+    qualified: bool,
+) !void {
+    const name_token = proto.name_token orelse return;
+    const declaration_name = tree.tokenSlice(name_token);
+    var iterator = proto.iterate(&tree);
+    var names: std.ArrayList([]const u8) = .empty;
+    defer names.deinit(allocator);
+    while (iterator.next()) |parameter| {
+        if (parameter.name_token) |token| try names.append(allocator, tree.tokenSlice(token));
+    }
+
+    for (functions, 0..) |*function, index| {
+        if (matched[index] or !std.mem.eql(u8, function.name, declaration_name)) continue;
+        if (qualified and !optionalStringEqual(functionOwner(function.*), source_owner)) continue;
+        const receiver_count: usize = @intFromBool(function.receiver != null);
+        if (names.items.len != function.params.len + receiver_count) continue;
+
+        var needs_names = false;
+        for (function.params) |parameter| if (parameter.name_source == .fallback) {
+            needs_names = true;
+            break;
+        };
+        if (needs_names) {
+            const updated_params = try allocator.dupe(semantic.Parameter, function.params);
+            for (updated_params, 0..) |*parameter, parameter_index| {
+                if (parameter.name_source != .fallback) continue;
+                parameter.name = try allocator.dupe(u8, names.items[parameter_index + receiver_count]);
+                parameter.name_source = .ast;
+            }
+            function.params = updated_params;
+        }
+        if (function.doc == null) function.doc = try docCommentAlloc(allocator, tree, proto.firstToken());
+        matched[index] = true;
+    }
+}
+
+fn functionOwner(function: semantic.SemanticFn) ?[]const u8 {
+    return function.receiver orelse function.namespace;
+}
+
+fn optionalStringEqual(lhs: ?[]const u8, rhs: ?[]const u8) bool {
+    if (lhs == null or rhs == null) return lhs == null and rhs == null;
+    return std.mem.eql(u8, lhs.?, rhs.?);
 }
 
 fn docCommentAlloc(allocator: std.mem.Allocator, tree: std.zig.Ast, first_token: std.zig.Ast.TokenIndex) !?[]const u8 {
@@ -174,6 +238,75 @@ test "AST names and docs enrich only fallback metadata" {
     try std.testing.expectEqualStrings("Adds two values.", document.functions[0].doc.?);
 }
 
+test "AST enrichment distinguishes methods by lexical owner" {
+    const source =
+        \\pub const Alpha = struct {
+        \\    /// Uses an alpha amount.
+        \\    pub fn update(self: *Alpha, alpha_amount: i32) void { _ = self; _ = alpha_amount; }
+        \\};
+        \\pub const Beta = struct {
+        \\    /// Uses a beta amount.
+        \\    pub fn update(self: *Beta, beta_amount: i32) void { _ = self; _ = beta_amount; }
+        \\};
+    ;
+    var functions = [_]semantic.SemanticFn{
+        .{
+            .name = "update",
+            .params = &.{.{ .name = "p0", .type = .{ .int = .{ .bits = 32, .signed = true } } }},
+            .receiver = "Alpha",
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_alpha_update",
+        },
+        .{
+            .name = "update",
+            .params = &.{.{ .name = "p0", .type = .{ .int = .{ .bits = 32, .signed = true } } }},
+            .receiver = "Beta",
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_beta_update",
+        },
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), source, &functions));
+    try std.testing.expectEqualStrings("alpha_amount", functions[0].params[0].name);
+    try std.testing.expectEqualStrings("Uses an alpha amount.", functions[0].doc.?);
+    try std.testing.expectEqualStrings("beta_amount", functions[1].params[0].name);
+    try std.testing.expectEqualStrings("Uses a beta amount.", functions[1].doc.?);
+}
+
+test "AST enrichment applies a generic factory method to every specialization" {
+    const source =
+        \\pub fn Batch(comptime T: type) type {
+        \\    return struct {
+        \\        pub fn push(self: *@This(), value: T) void { _ = self; _ = value; }
+        \\    };
+        \\}
+    ;
+    var functions = [_]semantic.SemanticFn{
+        .{
+            .name = "push",
+            .params = &.{.{ .name = "p0", .type = .{ .int = .{ .bits = 32, .signed = true } } }},
+            .receiver = "IntBatch",
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_int_batch_push",
+        },
+        .{
+            .name = "push",
+            .params = &.{.{ .name = "p0", .type = .{ .float = .{ .bits = 64 } } }},
+            .receiver = "FloatBatch",
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_float_batch_push",
+        },
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), source, &functions));
+    try std.testing.expectEqualStrings("value", functions[0].params[0].name);
+    try std.testing.expectEqualStrings("value", functions[1].params[0].name);
+    try std.testing.expectEqual(.ast, functions[0].params[0].name_source);
+    try std.testing.expectEqual(.ast, functions[1].params[0].name_source);
+}
+
 test "fallback names emit a concise warning" {
     const document: semantic.Semantic = .{
         .functions = &.{.{
@@ -205,6 +338,7 @@ test "missing primary binding source is fatal" {
         std.testing.io,
         &document,
         ".zig-cache/zigo-missing-bindings.zig",
+        null,
         &diagnostics.writer,
     ));
     try std.testing.expect(std.mem.indexOf(u8, diagnostics.written(), "zigo-missing-bindings.zig: FileNotFound") != null);
@@ -236,7 +370,7 @@ test "auxiliary read and parse failures identify their source paths" {
     defer arena.deinit();
     var diagnostics: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer diagnostics.deinit();
-    try std.testing.expectError(error.EnrichmentFailed, apply(arena.allocator(), std.testing.io, &document, bindings_path, &diagnostics.writer));
+    try std.testing.expectError(error.EnrichmentFailed, apply(arena.allocator(), std.testing.io, &document, bindings_path, null, &diagnostics.writer));
 
     try std.testing.expect(std.mem.indexOf(u8, diagnostics.written(), "broken.zig: 1 Zig parse error(s)") != null);
     try std.testing.expect(std.mem.indexOf(u8, diagnostics.written(), "missing.zig: FileNotFound") != null);

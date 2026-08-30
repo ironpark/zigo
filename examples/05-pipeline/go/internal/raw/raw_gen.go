@@ -43,8 +43,8 @@ func FloatBatchCreate() (unsafe.Pointer, int32) {
 	code := int32(C.zg_float_batch_create(&outResult))
 	return unsafe.Pointer(outResult), code
 }
-func FloatBatchPush(self unsafe.Pointer, p0 float64) int32 {
-	code := int32(C.zg_float_batch_push(self, C.double(p0)))
+func FloatBatchPush(self unsafe.Pointer, value float64) int32 {
+	code := int32(C.zg_float_batch_push(self, C.double(value)))
 	return code
 }
 func FloatBatchLen(self unsafe.Pointer) uint {

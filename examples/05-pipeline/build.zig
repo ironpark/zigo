@@ -19,6 +19,7 @@ pub fn build(b: *std.Build) void {
         .name = "pipeline",
         .module = pipeline,
         .bindings = b.path("src/bindings.zig"),
+        .source_root = b.path("src/root.zig"),
         .go_dir = b.path("go"),
         .go_module = "example.com/zigo/pipeline",
         .target = target,

@@ -130,8 +130,8 @@ func NewFloatBatch() (*FloatBatch, error) {
 	}
 	return &FloatBatch{ptr: result}, nil
 }
-func (f *FloatBatch) Push(p0 float64) error {
-	code := raw.FloatBatchPush(f.ptr, p0)
+func (f *FloatBatch) Push(value float64) error {
+	code := raw.FloatBatchPush(f.ptr, value)
 	if code != 0 {
 		return errorForCode(code)
 	}
