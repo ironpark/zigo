@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T09:01:01Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: baseline, repeated generation, formatting 및 파일 배치 관측 결과가 기록되고 관련 검증이 통과한다.
 > NEXT: none
