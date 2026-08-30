@@ -34,7 +34,7 @@ ziglyzer --report . /tmp/zigo-type-placement-review/build \
 
 ## 공통 물리 배치 판정
 
-검색 결과 타입별 파일 분리 정책과 설정된 라인 제한은 없었다. `docs/04-implementation-plan.md`의 예시 트리는 기능 단위 구조 제안이지 owner별 타입 파일 분리 정책이 아니다. 따라서 모든 named type의 현재/예상 물리 위치는 owner 구현 파일로 동일하고, split-file form은 적용 대상이 아니다. 파일별 실제 물리 줄 수는 다음과 같다.
+검색 결과 타입별 파일 분리 정책과 설정된 라인 제한은 없었다. `04-implementation-plan.md`의 예시 트리는 기능 단위 구조 제안이지 owner별 타입 파일 분리 정책이 아니다. 따라서 모든 named type의 현재/예상 물리 위치는 owner 구현 파일로 동일하고, split-file form은 적용 대상이 아니다. 파일별 실제 물리 줄 수는 다음과 같다.
 
 | 파일 | 줄 | 파일 | 줄 |
 |---|---:|---|---:|

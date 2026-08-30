@@ -224,7 +224,7 @@ ABI COMPATIBLE: Decoder.open: error appended
 - **cgo 호출은 싸지 않다.** 호출당 작업량이 작은 API를 1:1로 노출하면 실용성이 떨어진다.
   배치 지향 API 설계를 권장한다.
 - **v1은 크로스 컴파일을 지원하지 않는다.** reflector는 *실행*되어야 하므로
-  타깃 레이아웃을 뽑을 수 없다 ([상세](docs/00-constraints.md)).
+  타깃 레이아웃을 뽑을 수 없다 ([상세](docs/design/00-constraints.md)).
 - **`retained` 포인터/콜백은 명시가 필요하다.** Go GC와 충돌하지 않으려면 생명주기를 IR에 적어야 한다.
 
 ---
@@ -233,11 +233,11 @@ ABI COMPATIBLE: Decoder.open: error appended
 
 | 문서 | 내용 |
 |---|---|
-| [`docs/00-constraints.md`](docs/00-constraints.md) | 기술적 제약, 하강 실패 조건 9종, 리스크 등록부 |
-| [`docs/01-architecture.md`](docs/01-architecture.md) | 빌드 그래프, `addGoBindings` API, 소유권 모델, ABI diff |
-| [`docs/02-ir-spec.md`](docs/02-ir-spec.md) | semantic / layout / errors.lock 스키마 |
-| [`docs/03-lowering-rules.md`](docs/03-lowering-rules.md) | Zig → C ABI → Go 변환 전체 표, 실패 조건 9종, cgo 지시자 |
-| [`docs/04-implementation-plan.md`](docs/04-implementation-plan.md) | M0–M8 마일스톤, 디렉터리 구조, 검증 전략 |
+| [`docs/design/00-constraints.md`](docs/design/00-constraints.md) | 기술적 제약, 하강 실패 조건 9종, 리스크 등록부 |
+| [`docs/design/01-architecture.md`](docs/design/01-architecture.md) | 빌드 그래프, `addGoBindings` API, 소유권 모델, ABI diff |
+| [`docs/design/02-ir-spec.md`](docs/design/02-ir-spec.md) | semantic / layout / errors.lock 스키마 |
+| [`docs/design/03-lowering-rules.md`](docs/design/03-lowering-rules.md) | Zig → C ABI → Go 변환 전체 표, 실패 조건 9종, cgo 지시자 |
+| [`docs/design/04-implementation-plan.md`](docs/design/04-implementation-plan.md) | M0–M8 마일스톤, 디렉터리 구조, 검증 전략 |
 
 ## 요구사항
 
