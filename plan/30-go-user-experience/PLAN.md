@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T12:10:58Z"
 description: Unify generated Go handle safety, add checked APIs and standard build diagnostics, and improve generated Go documentation.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-30T11:40:38Z"
 ---
 > NEXT: Implement uniform opaque-handle validation and source-compatible checked tagged-union projection APIs. ([Phase 0](phases/00-uniform-handle-safety.md))
@@ -10,7 +11,7 @@ registered_at: "2026-08-30T11:40:38Z"
 - [x] [Phase 00: Uniform Handle Safety and Checked Projections](phases/00-uniform-handle-safety.md)
 - [x] [Phase 01: Standard Build Steps](phases/01-standard-build-steps.md)
 - [x] [Phase 02: Binding Report and Environment Doctor](phases/02-report-and-doctor.md)
-- [ ] [Phase 03: Complete Generated GoDoc and User Documentation](phases/03-complete-generated-godoc.md)
+- [x] [Phase 03: Complete Generated GoDoc and User Documentation](phases/03-complete-generated-godoc.md)
 
 # Shared Verification
 

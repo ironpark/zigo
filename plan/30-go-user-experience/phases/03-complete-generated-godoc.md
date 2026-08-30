@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T12:10:58Z"
 depends_on:
 - "30-go-user-experience#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: The Go AST documentation audit passes across generated fixtures, wiki and README examples match the implemented API, all generated artifacts are current, and the full Zig/example Go/ABI validation matrix passes.
 > NEXT: none
