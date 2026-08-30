@@ -12,7 +12,7 @@ zig build test --summary all
 
 ```bash
 for example in examples/*; do
-  (cd "$example" && zig build go-check abi-check)
+  (cd "$example" && zig build test go-check abi-check --summary all)
   (cd "$example/go" && go test ./...)
 done
 ```

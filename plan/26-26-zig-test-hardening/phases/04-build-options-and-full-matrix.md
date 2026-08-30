@@ -2,7 +2,7 @@
 depends_on:
 - "26-26-zig-test-hardening#3"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: build option 경계 test와 전체 repository validation이 모두 통과하고 남은 비범위가 문서화된다.
 > NEXT: none

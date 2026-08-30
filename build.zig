@@ -1,4 +1,5 @@
 const std = @import("std");
+const build_options = @import("src/build_options.zig");
 const naming = @import("src/gen/naming.zig");
 
 pub const CgoFlags = struct {
@@ -70,6 +71,11 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{.{ .name = "semantic", .module = generator_modules.semantic }},
     });
+    const build_options_module = b.createModule(.{
+        .root_source_file = b.path("src/build_options.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     const tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("tests/test.zig"),
         .target = target,
@@ -107,6 +113,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     }), .filters = test_filters });
     const run_cli_tests = b.addRunArtifact(cli_tests);
+    const build_options_tests = b.addTest(.{ .root_module = build_options_module, .filters = test_filters });
+    const run_build_options_tests = b.addRunArtifact(build_options_tests);
     const test_step = b.step("test", "Run unit and snapshot harness tests");
     test_step.dependOn(&run_tests.step);
     test_step.dependOn(&run_generator_tests.step);
@@ -117,6 +125,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_diagnostic_tests.step);
     test_step.dependOn(&run_sync_check_tests.step);
     test_step.dependOn(&run_cli_tests.step);
+    test_step.dependOn(&run_build_options_tests.step);
     addProcessContractTests(b, test_step, generator);
 
     const generator_case_runner = b.addExecutable(.{
@@ -141,6 +150,7 @@ pub fn build(b: *std.Build) void {
     check_step.dependOn(&diagnostic_tests.step);
     check_step.dependOn(&sync_check_tests.step);
     check_step.dependOn(&cli_tests.step);
+    check_step.dependOn(&build_options_tests.step);
     check_step.dependOn(&generator_case_runner.step);
 
     const snapshot_exe = b.addExecutable(.{
@@ -437,45 +447,18 @@ fn resolveRawPackage(b: *std.Build, option: Options.RawPackage, go_package: []co
         .internal => .{ .path = "internal/raw", .name = "raw", .colocated = false },
         .colocated => .{ .path = go_package, .name = go_package, .colocated = true },
         .path => |path| blk: {
-            validateRawPackagePath(path);
             if (std.mem.eql(u8, path, go_package)) @panic("raw_package.path matches the public package; use .colocated");
+            build_options.validateRawPackagePath(path) catch |err| switch (err) {
+                error.InvalidPath => @panic("raw_package.path must be a non-empty relative slash-separated path"),
+                error.InvalidComponent => @panic("raw_package.path must not contain empty, '.' or '..' components"),
+                error.InvalidCharacter => @panic("raw_package.path components may contain only ASCII letters, digits, '_', '-' and '.'"),
+            };
             const name = naming.snakeAlloc(b.allocator, std.fs.path.basename(path)) catch @panic("OOM");
-            if (!isGoIdentifier(name)) @panic("raw_package.path basename must normalize to a valid Go package name");
+            build_options.validateRawPackageName(name) catch
+                @panic("raw_package.path basename must normalize to a valid Go package name");
             break :blk .{ .path = path, .name = name, .colocated = false };
         },
     };
-}
-
-fn validateRawPackagePath(path: []const u8) void {
-    if (path.len == 0 or std.fs.path.isAbsolute(path) or std.mem.indexOfScalar(u8, path, '\\') != null)
-        @panic("raw_package.path must be a non-empty relative slash-separated path");
-    var components = std.mem.splitScalar(u8, path, '/');
-    while (components.next()) |component| {
-        if (component.len == 0 or std.mem.eql(u8, component, ".") or std.mem.eql(u8, component, ".."))
-            @panic("raw_package.path must not contain empty, '.' or '..' components");
-        for (component) |character| {
-            if (!(std.ascii.isAlphanumeric(character) or character == '_' or character == '-' or character == '.'))
-                @panic("raw_package.path components may contain only ASCII letters, digits, '_', '-' and '.'");
-        }
-    }
-}
-
-fn isGoIdentifier(value: []const u8) bool {
-    if (value.len == 0 or std.mem.eql(u8, value, "_") or isGoKeyword(value) or !(std.ascii.isAlphabetic(value[0]) or value[0] == '_')) return false;
-    for (value[1..]) |character| if (!(std.ascii.isAlphanumeric(character) or character == '_')) return false;
-    return true;
-}
-
-fn isGoKeyword(value: []const u8) bool {
-    const keywords = [_][]const u8{
-        "break",    "default",     "func",   "interface", "select",
-        "case",     "defer",       "go",     "map",       "struct",
-        "chan",     "else",        "goto",   "package",   "switch",
-        "const",    "fallthrough", "if",     "range",     "type",
-        "continue", "for",         "import", "return",    "var",
-    };
-    for (keywords) |keyword| if (std.mem.eql(u8, value, keyword)) return true;
-    return false;
 }
 
 fn sourcePath(b: *std.Build, directory: std.Build.LazyPath, child: []const u8) []const u8 {
