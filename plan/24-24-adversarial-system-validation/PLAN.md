@@ -8,7 +8,7 @@ registered_at: "2026-08-30T08:58:46Z"
 # Phases
 
 - [x] [Phase 00: Baseline and deterministic generation](phases/00-baseline-and-determinism.md)
-- [ ] [Phase 01: Mutation and failure atomicity](phases/01-mutation-and-failure-atomicity.md)
+- [x] [Phase 01: Mutation and failure atomicity](phases/01-mutation-and-failure-atomicity.md)
 - [ ] [Phase 02: Lifecycle, breadth, and compatibility matrix](phases/02-lifecycle-breadth-and-compatibility.md)
 
 # Shared Verification
