@@ -7,7 +7,7 @@ registered_at: "2026-08-30T06:54:53Z"
 
 # Phases
 
-- [ ] [Phase 00: Emitter and build graph](phases/00-emitter-and-build-graph.md)
+- [x] [Phase 00: Emitter and build graph](phases/00-emitter-and-build-graph.md)
 - [ ] [Phase 01: Fixtures, documentation, and verification](phases/01-fixtures-docs-and-verification.md)
 
 # Shared Verification

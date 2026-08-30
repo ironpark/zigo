@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T06:58:22Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Focused and full generator tests prove types appear only in the type file and every generated-file workflow includes it.
 > NEXT: none
