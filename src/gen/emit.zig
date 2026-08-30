@@ -47,7 +47,7 @@ fn rawPath(allocator: std.mem.Allocator, program: abi.Program, options: Options)
     if (options.raw_colocated) {
         const package = try naming.snakeAlloc(allocator, program.package);
         defer allocator.free(package);
-        return std.fmt.allocPrint(allocator, "{s}/{s}_raw_gen.go", .{ package, package });
+        return std.fmt.allocPrint(allocator, "{s}/{s}_cgo_gen.go", .{ package, package });
     }
     return std.fmt.allocPrint(allocator, "{s}/{s}_gen.go", .{ options.raw_package_path, options.raw_package_name });
 }

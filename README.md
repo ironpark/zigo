@@ -152,7 +152,7 @@ raw 계층의 기본 위치는 `go/internal/raw/raw_gen.go`다. 필요하면 `ad
 // go/support/ffi/ffi_gen.go
 .raw_package = .{ .path = "support/ffi" },
 
-// go/mylib/mylib_raw_gen.go; package mylib
+// go/mylib/mylib_cgo_gen.go; package mylib
 .raw_package = .colocated,
 ```
 

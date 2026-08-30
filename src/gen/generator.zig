@@ -243,7 +243,7 @@ test "raw Go bindings can be colocated without public name collisions" {
         .raw_package_name = "scalar",
         .raw_colocated = true,
     });
-    const raw = try temporary.dir.readFileAlloc(std.testing.io, "scalar/scalar_raw_gen.go", std.testing.allocator, .limited(16 * 1024));
+    const raw = try temporary.dir.readFileAlloc(std.testing.io, "scalar/scalar_cgo_gen.go", std.testing.allocator, .limited(16 * 1024));
     defer std.testing.allocator.free(raw);
     try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "package scalar"));
     try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "func zigoRawAdd("));
@@ -358,7 +358,7 @@ test "opaque handles lower constructors methods and idempotent close" {
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "zigoRawContextCreate("));
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "zigoRawContextDeinit(value.ptr)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "zigoRawLastErrorMessage()"));
-    const raw = try temporary.dir.readFileAlloc(std.testing.io, "opaque/opaque_raw_gen.go", std.testing.allocator, .limited(32 * 1024));
+    const raw = try temporary.dir.readFileAlloc(std.testing.io, "opaque/opaque_cgo_gen.go", std.testing.allocator, .limited(32 * 1024));
     defer std.testing.allocator.free(raw);
     try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "func zigoRawContextCreate("));
 }

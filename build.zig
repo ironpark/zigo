@@ -288,7 +288,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     const install_header = b.addInstallHeaderFile(generated_dir.path(b, header_name), header_name);
     const update = b.addUpdateSourceFiles();
     const raw_go_path = if (raw_package.colocated)
-        b.fmt("{s}/{s}_raw_gen.go", .{ go_package, go_package })
+        b.fmt("{s}/{s}_cgo_gen.go", .{ go_package, go_package })
     else
         b.fmt("{s}/{s}_gen.go", .{ raw_package.path, raw_package.name });
     update.addCopyFileToSource(generated_dir.path(b, raw_go_path), sourcePath(b, options.go_dir, raw_go_path));

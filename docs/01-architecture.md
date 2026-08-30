@@ -208,7 +208,7 @@ import "C"
 pub const Options = struct {
     pub const RawPackage = union(enum) {
         internal,                     // go/internal/raw/raw_gen.go
-        colocated,                    // go/mylib/mylib_raw_gen.go
+        colocated,                    // go/mylib/mylib_cgo_gen.go
         path: []const u8,             // go/<path>/<basename>_gen.go
     };
 
@@ -289,7 +289,7 @@ C 헤더는 백엔드가 아니라 **cgo가 요구하는 산출물**이다.
 
 `.raw_package = .{ .path = "support/ffi" }`이면 raw 파일은
 `go/support/ffi/ffi_gen.go`에 생성되고 public 파일은 해당 package를 `raw` 별칭으로 import한다.
-`.raw_package = .colocated`이면 `go/mylib/mylib_raw_gen.go`가 public 파일 옆에 생성된다.
+`.raw_package = .colocated`이면 `go/mylib/mylib_cgo_gen.go`가 public 파일 옆에 생성된다.
 `UpdateSourceFiles`는 이전 생성물을 삭제하지 않으므로 모드나 경로를 바꾼 뒤에는 예전 raw
 `_gen.go` 파일을 한 번 직접 삭제해야 한다.
 
