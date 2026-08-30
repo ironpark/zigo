@@ -11,4 +11,5 @@
 | [ABI 하강 규칙](03-lowering-rules.md) | Zig 타입을 C ABI와 Go API로 변환하는 규칙 |
 | [구현 계획](04-implementation-plan.md) | 마일스톤, 디렉터리 구조와 검증 전략 |
 | [적대적 시스템 검증](05-validation-audit.md) | 정상·변형·실패·수명주기 실험과 관측 결과 |
+| [Zig 테스트 커버리지 감사](06-zig-test-coverage-audit.md) | test discovery, 미검증 계약과 보강 우선순위 |
 | [타입 배치 검토](type-placement-review.md) | named type의 소유 파일과 배치 정책 검토 기록 |
