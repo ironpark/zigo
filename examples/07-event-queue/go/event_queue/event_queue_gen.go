@@ -25,6 +25,8 @@ func (value Policy) String() string {
 	}
 }
 
+type EventQueueObserver func(uint64, int32) int32
+
 type EventQueue struct {
 	ptr             unsafe.Pointer
 	once            sync.Once
@@ -52,8 +54,8 @@ func (value *EventQueue) Close() {
 	})
 }
 
-func NewEventQueue(name string, capacity uint, policy Policy, observer func(uint64, int32) int32) (*EventQueue, error) {
-	observerHandle := newCallbackHandle(observer)
+func NewEventQueue(name string, capacity uint, policy Policy, observer EventQueueObserver) (*EventQueue, error) {
+	observerHandle := newEventQueueObserverHandle(observer)
 	result, code := raw.EventQueueCreate([]byte(name), capacity, uint32(policy), uintptr(observerHandle))
 	if code != 0 {
 		deleteCallbackHandle(observerHandle)

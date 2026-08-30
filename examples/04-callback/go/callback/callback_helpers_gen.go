@@ -8,8 +8,9 @@ import (
 
 var activeCallbackHandles atomic.Int64
 
-func newCallbackHandle(value any) cgo.Handle {
-	handle := cgo.NewHandle(value)
+func newCallbackContextCallbackHandle(value CallbackContextCallback) cgo.Handle {
+	stored := (func(int32) int32)(value)
+	handle := cgo.NewHandle(stored)
 	activeCallbackHandles.Add(1)
 	return handle
 }

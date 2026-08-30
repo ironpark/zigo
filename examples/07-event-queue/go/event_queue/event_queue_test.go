@@ -7,6 +7,8 @@ import (
 	"testing"
 )
 
+var _ EventQueueObserver = func(uint64, int32) int32 { return 0 }
+
 type observedEvent struct {
 	id    uint64
 	value int32

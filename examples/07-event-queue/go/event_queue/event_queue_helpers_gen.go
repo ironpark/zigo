@@ -8,8 +8,9 @@ import (
 
 var activeCallbackHandles atomic.Int64
 
-func newCallbackHandle(value any) cgo.Handle {
-	handle := cgo.NewHandle(value)
+func newEventQueueObserverHandle(value EventQueueObserver) cgo.Handle {
+	stored := (func(uint64, int32) int32)(value)
+	handle := cgo.NewHandle(stored)
 	activeCallbackHandles.Add(1)
 	return handle
 }

@@ -7,6 +7,8 @@ import (
 	"testing"
 )
 
+var _ PipelineCallback = func(int32) int32 { return 0 }
+
 func TestPipelineEndToEnd(t *testing.T) {
 	pipeline, err := NewPipeline("복합 파이프라인", ModeWeighted, func(value int32) int32 {
 		return value + 10

@@ -164,6 +164,18 @@ Go 소스와 `zigo/semantic.json`, `zigo/errors.lock.json`은 소스 관리에 �
 `<package>_errors_gen.go`에 함께 유지한다. bool 변환과 callback handle 수명 관리 같은
 비공개 runtime support는 `<package>_helpers_gen.go`에 둔다.
 
+콜백 파라미터는 public API에서 익명 `func(...) ...` 대신 생성된 정의 타입을 사용한다.
+메서드와 namespace 함수는 기본적으로 `<Owner><ParameterRole>`(예:
+`EventQueueObserver`)을 사용하고, 같은 owner에서 역할 이름이 겹치면
+`<Owner><Function><ParameterRole>`로 구분한다. 자유 함수는
+`<Function><ParameterRole>Callback` 형식을 사용한다. 기존 public 타입과 충돌하면
+`Callback` 접미사를 추가한다.
+
+각 콜백 타입에는 `<package>_helpers_gen.go`의 비공개 typed handle 생성기가 대응한다.
+이 생성기는 정의 타입을 raw trampoline이 검사하는 익명 함수 타입으로 명시 변환한 뒤
+`cgo.Handle`에 저장한다. `borrowed` 콜백의 handle은 호출이 끝나면 즉시 해제하고,
+`retained` 콜백의 handle은 소유 객체의 멱등 `Close`에서 해제한다.
+
 `errors.lock.json`은 append-only 상태다. zigo는 버전과 예약 음수 코드, 양수 코드의
 연속성·유일성을 검사하고 기존 이름의 삭제·이름 변경·재배정을 거부한다. 새 코드 배정은
 전체 상태를 준비한 뒤 반영되므로 실패한 생성이 lock 일부만 변경하지 않는다. 충돌을

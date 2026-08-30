@@ -149,13 +149,17 @@ pub fn setCallback(
 ```
 → C: 그대로. Go public:
 ```go
-func (c *Context) SetCallback(fn func(Event))
+type ContextCallback func(Event)
+
+func (c *Context) SetCallback(fn ContextCallback)
 ```
 생성물:
 1. `//export zg_context_set_callback_go_callback_cb` Go/C 트램폴린
-2. `cgo.NewHandle(fn)` 등록, `uintptr`를 userdata로 전달
+2. 정의 콜백 타입을 raw trampoline의 익명 함수 타입으로 변환해 `cgo.NewHandle`에 등록하고,
+   `uintptr`를 userdata로 전달
 3. 트램폴린 내부 `defer func(){ if r:=recover(); r!=nil { … } }()`
-4. `retention=retained`이면 handle을 `Context`에 저장, `Close()`에서 `Delete()`
+4. `retention=borrowed`이면 호출 직후 `Delete()`
+5. `retention=retained`이면 handle을 `Context`에 저장, `Close()`에서 `Delete()`
 
 `callconv(.c)`가 아닌 함수 포인터는 하강 실패.
 

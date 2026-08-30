@@ -8,6 +8,8 @@ import (
 	"testing"
 )
 
+var _ TelemetryHubObserver = func(uint64, float64) int32 { return 0 }
+
 func TestConfigurationAndEnumSurface(t *testing.T) {
 	if ModeScaled.String() != "scaled" || OverflowPolicyDropOldest.String() != "drop_oldest" || SeverityCritical.String() != "critical" {
 		t.Fatal("generated enum names do not match Zig tags")
@@ -259,7 +261,7 @@ func TestFailedConstructionAndIndependentConcurrentLifecycles(t *testing.T) {
 	assertNoLiveResources(t)
 }
 
-func newTestHub(t *testing.T, name string, capacity uint, policy OverflowPolicy, observer func(uint64, float64) int32) *TelemetryHub {
+func newTestHub(t *testing.T, name string, capacity uint, policy OverflowPolicy, observer TelemetryHubObserver) *TelemetryHub {
 	t.Helper()
 	hub, err := NewTelemetryHub(name, capacity, ModeRaw, policy, observer)
 	if err != nil {

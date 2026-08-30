@@ -66,6 +66,8 @@ func (value Severity) String() string {
 	}
 }
 
+type TelemetryHubObserver func(uint64, float64) int32
+
 type TelemetryHub struct {
 	ptr             unsafe.Pointer
 	once            sync.Once
@@ -93,8 +95,8 @@ func (value *TelemetryHub) Close() {
 	})
 }
 
-func NewTelemetryHub(input_name string, max_samples uint, initial_mode Mode, overflow_policy OverflowPolicy, observer func(uint64, float64) int32) (*TelemetryHub, error) {
-	observerHandle := newCallbackHandle(observer)
+func NewTelemetryHub(input_name string, max_samples uint, initial_mode Mode, overflow_policy OverflowPolicy, observer TelemetryHubObserver) (*TelemetryHub, error) {
+	observerHandle := newTelemetryHubObserverHandle(observer)
 	result, code := raw.TelemetryHubCreate([]byte(input_name), max_samples, uint32(initial_mode), uint32(overflow_policy), uintptr(observerHandle))
 	if code != 0 {
 		deleteCallbackHandle(observerHandle)

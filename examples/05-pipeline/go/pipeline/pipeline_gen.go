@@ -25,6 +25,8 @@ func (value Mode) String() string {
 	}
 }
 
+type PipelineCallback func(int32) int32
+
 type Pipeline struct {
 	ptr             unsafe.Pointer
 	once            sync.Once
@@ -140,8 +142,8 @@ func (f *FloatBatch) Push(value float64) error {
 func (f *FloatBatch) Len() uint {
 	return raw.FloatBatchLen(f.ptr)
 }
-func NewPipeline(name string, mode Mode, callback func(int32) int32) (*Pipeline, error) {
-	callbackHandle := newCallbackHandle(callback)
+func NewPipeline(name string, mode Mode, callback PipelineCallback) (*Pipeline, error) {
+	callbackHandle := newPipelineCallbackHandle(callback)
 	result, code := raw.PipelineCreate([]byte(name), uint32(mode), uintptr(callbackHandle))
 	if code != 0 {
 		deleteCallbackHandle(callbackHandle)

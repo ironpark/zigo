@@ -9,6 +9,8 @@ import (
 	"example.com/zigo/callback/internal/raw"
 )
 
+type CallbackContextCallback func(int32) int32
+
 type CallbackContext struct {
 	ptr             unsafe.Pointer
 	once            sync.Once
@@ -116,8 +118,8 @@ func (i *IntBuffer) Push(value int32) {
 func (i *IntBuffer) Len() uint {
 	return raw.IntBufferLen(i.ptr)
 }
-func NewCallbackContext(callback func(int32) int32) (*CallbackContext, error) {
-	callbackHandle := newCallbackHandle(callback)
+func NewCallbackContext(callback CallbackContextCallback) (*CallbackContext, error) {
+	callbackHandle := newCallbackContextCallbackHandle(callback)
 	result, code := raw.CallbackContextCreate(uintptr(callbackHandle))
 	if code != 0 {
 		deleteCallbackHandle(callbackHandle)

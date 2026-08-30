@@ -6,6 +6,8 @@ import (
 	"testing"
 )
 
+var _ CallbackContextCallback = func(int32) int32 { return 0 }
+
 func TestGenericSpecializations(t *testing.T) {
 	floatBuffer, err := NewFloatBuffer()
 	if err != nil {

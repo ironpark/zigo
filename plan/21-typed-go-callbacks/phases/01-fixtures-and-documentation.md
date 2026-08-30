@@ -2,7 +2,7 @@
 depends_on:
 - "21-typed-go-callbacks#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Event queue, pipeline, callback, and telemetry examples expose named callback types and pass generation, Zig, and Go tests.
 > NEXT: none
