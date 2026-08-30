@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T07:01:32Z"
 depends_on:
 - "22-public-type-generated-file#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Repository-wide verification passes, the plan is complete, and the worktree is clean and committed.
 > NEXT: none
