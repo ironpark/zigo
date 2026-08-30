@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T10:37:47Z"
 depends_on:
 - "28-automatic-tagged-union-accessors#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Example Zig tests, generation/stale checks, Go tests, ABI checks, and the full root test graph pass.
 > NEXT: none

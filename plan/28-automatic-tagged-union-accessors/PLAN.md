@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T10:37:47Z"
 description: Generate safe tag and payload accessor bindings for opt-in tagged-union handles without exposing Zig union layout through the C ABI.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-30T10:19:39Z"
 ---
 > NEXT: Implement semantic reflection and validation for the opt-in tagged-union handle representation. ([Phase 0](phases/00-initial-work.md))
@@ -9,7 +10,7 @@ registered_at: "2026-08-30T10:19:39Z"
 
 - [x] [Phase 00: Semantic reflection and validation](phases/00-initial-work.md)
 - [x] [Phase 01: Checked accessor emission](phases/01-checked-accessor-emission.md)
-- [ ] [Phase 02: End-to-end example and documentation](phases/02-example-and-documentation.md)
+- [x] [Phase 02: End-to-end example and documentation](phases/02-example-and-documentation.md)
 
 # Shared Verification
 
