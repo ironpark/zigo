@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T11:15:31Z"
 depends_on:
 - "29-harden-tagged-union-accessors#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: ABI unit tests and all Zig/Go/example/stale/ABI checks pass with documented compatibility and concurrency contracts.
 > NEXT: none
