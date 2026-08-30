@@ -7,7 +7,7 @@ registered_at: "2026-08-30T05:40:49Z"
 
 # Phases
 
-- [ ] [Phase 00: Qualified reflection model](phases/00-qualified-reflection-model.md)
+- [x] [Phase 00: Qualified reflection model](phases/00-qualified-reflection-model.md)
 - [ ] [Phase 01: Opt-in automatic discovery](phases/01-opt-in-automatic-discovery.md)
 - [ ] [Phase 02: Broad fixture and documentation](phases/02-broad-fixture-and-documentation.md)
 - [ ] [Phase 03: Full compatibility verification](phases/03-full-compatibility-verification.md)
