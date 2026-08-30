@@ -16,7 +16,7 @@ func NewChild(value int32) (*Child, error) {
 }
 func (c *Child) Get() int32 {
 	defer runtime.KeepAlive(c)
-	return raw.ChildGet(c.ptr)
+	return raw.ChildGet(zigoMustPointer("Child.Get receiver", c))
 }
 func NewValue(initial int64) (*Value, error) {
 	result, code := raw.ValueCreate(initial)
@@ -27,36 +27,36 @@ func NewValue(initial int64) (*Value, error) {
 }
 func (v *Value) SetNone() {
 	defer runtime.KeepAlive(v)
-	raw.ValueSetNone(v.ptr)
+	raw.ValueSetNone(zigoMustPointer("Value.SetNone receiver", v))
 }
 func (v *Value) SetFlag(flag bool) {
 	defer runtime.KeepAlive(v)
-	raw.ValueSetFlag(v.ptr, boolToUint8(flag))
+	raw.ValueSetFlag(zigoMustPointer("Value.SetFlag receiver", v), boolToUint8(flag))
 }
 func (v *Value) SetMode(mode Mode) {
 	defer runtime.KeepAlive(v)
-	raw.ValueSetMode(v.ptr, uint8(mode))
+	raw.ValueSetMode(zigoMustPointer("Value.SetMode receiver", v), uint8(mode))
 }
 func (v *Value) UsePresetSamples() {
 	defer runtime.KeepAlive(v)
-	raw.ValueUsePresetSamples(v.ptr)
+	raw.ValueUsePresetSamples(zigoMustPointer("Value.UsePresetSamples receiver", v))
 }
 func (v *Value) UseEmptySamples() {
 	defer runtime.KeepAlive(v)
-	raw.ValueUseEmptySamples(v.ptr)
+	raw.ValueUseEmptySamples(zigoMustPointer("Value.UseEmptySamples receiver", v))
 }
 func (v *Value) UseMutableSamples() {
 	defer runtime.KeepAlive(v)
-	raw.ValueUseMutableSamples(v.ptr)
+	raw.ValueUseMutableSamples(zigoMustPointer("Value.UseMutableSamples receiver", v))
 }
 func (v *Value) SetChild(child *Child) {
 	defer runtime.KeepAlive(v)
 	defer runtime.KeepAlive(child)
-	raw.ValueSetChild(v.ptr, child.ptr)
+	raw.ValueSetChild(zigoMustPointer("Value.SetChild receiver", v), zigoMustPointer("Value.SetChild parameter child", child))
 }
 func (v *Value) Borrow() *ValueRef {
 	defer runtime.KeepAlive(v)
-	result := raw.ValueBorrow(v.ptr)
+	result := raw.ValueBorrow(zigoMustPointer("Value.Borrow receiver", v))
 	return &ValueRef{ptr: result, parent: v}
 }
 func LiveValues() uint {

@@ -1,9 +1,9 @@
 package tagged_union
 
 import (
+	"errors"
 	"reflect"
 	"runtime"
-	"strings"
 	"testing"
 	"time"
 
@@ -20,11 +20,20 @@ func TestGeneratedTagAndCheckedPayloadAccessors(t *testing.T) {
 	if got := value.Tag(); got != ValueTagInteger {
 		t.Fatalf("Tag() = %v, want %v", got, ValueTagInteger)
 	}
+	if got, err := value.TryTag(); err != nil || got != ValueTagInteger {
+		t.Fatalf("TryTag() = (%v, %v), want (%v, nil)", got, err, ValueTagInteger)
+	}
 	if got, ok := value.AsInteger(); !ok || got != 42 {
 		t.Fatalf("AsInteger() = (%d, %v), want (42, true)", got, ok)
 	}
+	if got, ok, err := value.TryAsInteger(); err != nil || !ok || got != 42 {
+		t.Fatalf("TryAsInteger() = (%d, %v, %v), want (42, true, nil)", got, ok, err)
+	}
 	if got, ok := value.AsFlag(); ok || got {
 		t.Fatalf("AsFlag() on integer = (%v, %v), want (false, false)", got, ok)
+	}
+	if got, ok, err := value.TryAsFlag(); err != nil || ok || got {
+		t.Fatalf("TryAsFlag() on integer = (%v, %v, %v), want (false, false, nil)", got, ok, err)
 	}
 
 	value.SetFlag(true)
@@ -93,8 +102,16 @@ func TestProjectionLifecycleFailuresStayInGo(t *testing.T) {
 		t.Fatalf("raw nil projection status = %d, want %d", status, zigoProjectionInvalidHandle)
 	}
 
-	assertProjectionPanic(t, "Value.Tag", func() { (*Value)(nil).Tag() })
-	assertProjectionPanic(t, "Value.AsInteger", func() { (*Value)(nil).AsInteger() })
+	assertHandlePanic(t, "Value.Tag receiver", func() { (*Value)(nil).Tag() })
+	assertHandlePanic(t, "Value.AsInteger receiver", func() { (*Value)(nil).AsInteger() })
+	assertInvalidHandleError(t, "Value.Tag receiver", func() error {
+		_, err := (*Value)(nil).TryTag()
+		return err
+	})
+	assertInvalidHandleError(t, "Value.AsInteger receiver", func() error {
+		_, _, err := (*Value)(nil).TryAsInteger()
+		return err
+	})
 
 	value, err := NewValue(7)
 	if err != nil {
@@ -103,21 +120,68 @@ func TestProjectionLifecycleFailuresStayInGo(t *testing.T) {
 	borrowed := value.Borrow()
 	value.Close()
 
-	assertProjectionPanic(t, "Value.Tag", func() { value.Tag() })
-	assertProjectionPanic(t, "Value.AsInteger", func() { value.AsInteger() })
-	assertProjectionPanic(t, "Value.Tag", func() { borrowed.Tag() })
+	assertHandlePanic(t, "Value.Tag receiver", func() { value.Tag() })
+	assertHandlePanic(t, "Value.AsInteger receiver", func() { value.AsInteger() })
+	assertHandlePanic(t, "Value.Tag receiver", func() { borrowed.Tag() })
+	assertHandlePanic(t, "Value.SetFlag receiver", func() { value.SetFlag(true) })
+	assertHandlePanic(t, "Value.Borrow receiver", func() { value.Borrow() })
+	assertInvalidHandleError(t, "Value.Tag receiver", func() error {
+		_, err := borrowed.TryTag()
+		return err
+	})
 }
 
-func assertProjectionPanic(t *testing.T, operation string, call func()) {
+func TestOpaqueArgumentsAndNativeProjectionErrorsAreTyped(t *testing.T) {
+	child, err := NewChild(11)
+	if err != nil {
+		t.Fatal(err)
+	}
+	child.Close()
+	assertHandlePanic(t, "Child.Get receiver", func() { child.Get() })
+
+	value, err := NewValue(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer value.Close()
+	assertHandlePanic(t, "Value.SetChild parameter child", func() { value.SetChild(child) })
+
+	projectionErr := zigoProjectionError("Value.Tag", zigoProjectionPanic)
+	if !errors.Is(projectionErr, ErrNativePanic) {
+		t.Fatalf("errors.Is(%v, ErrNativePanic) = false", projectionErr)
+	}
+	var nativeErr *NativePanicError
+	if !errors.As(projectionErr, &nativeErr) || nativeErr.Operation != "Value.Tag" {
+		t.Fatalf("native projection error = %#v", projectionErr)
+	}
+}
+
+func assertInvalidHandleError(t *testing.T, operation string, call func() error) {
+	t.Helper()
+	err := call()
+	if !errors.Is(err, ErrInvalidHandle) {
+		t.Fatalf("errors.Is(%v, ErrInvalidHandle) = false", err)
+	}
+	var handleErr *HandleError
+	if !errors.As(err, &handleErr) || handleErr.Operation != operation {
+		t.Fatalf("handle error = %#v, want operation %q", err, operation)
+	}
+}
+
+func assertHandlePanic(t *testing.T, operation string, call func()) {
 	t.Helper()
 	defer func() {
 		value := recover()
 		if value == nil {
 			t.Fatalf("%s did not panic", operation)
 		}
-		message, ok := value.(string)
-		if !ok || !strings.Contains(message, operation) || !strings.Contains(message, "nil or closed handle") {
+		err, ok := value.(error)
+		if !ok || !errors.Is(err, ErrInvalidHandle) {
 			t.Fatalf("%s panic = %#v", operation, value)
+		}
+		var handleErr *HandleError
+		if !errors.As(err, &handleErr) || handleErr.Operation != operation {
+			t.Fatalf("%s panic error = %#v", operation, err)
 		}
 	}()
 	call()

@@ -380,6 +380,10 @@ test "opt-in cleanup isolates state stops explicitly and keeps owners alive" {
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "return newContext(result, []cgo.Handle{callbackHandle}), nil"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func (c *Context) Touch() {\n\tdefer runtime.KeepAlive(c)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func Use(context *Context) {\n\tdefer runtime.KeepAlive(context)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "zigoMustPointer(\"Context.Touch receiver\", c)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "zigoMustPointer(\"Use parameter context\", context)"));
+    try std.testing.expect(std.mem.indexOf(u8, public, "c.ptr") == null);
+    try std.testing.expect(std.mem.indexOf(u8, public, "context.ptr") == null);
     try std.testing.expect(std.mem.indexOf(u8, public, "type Context struct") == null);
     try std.testing.expect(std.mem.indexOf(u8, public, "zigoRawLastErrorMessage()") == null);
     const public_types = try temporary.dir.readFileAlloc(std.testing.io, "opaque/opaque_type_gen.go", std.testing.allocator, .limited(32 * 1024));
@@ -408,7 +412,8 @@ test "opt-in cleanup isolates state stops explicitly and keeps owners alive" {
     const public_errors = try temporary.dir.readFileAlloc(std.testing.io, "opaque/opaque_errors_gen.go", std.testing.allocator, .limited(32 * 1024));
     defer std.testing.allocator.free(public_errors);
     try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "zigoRawLastErrorMessage()"));
-    try std.testing.expect(std.mem.indexOf(u8, public_errors, "import ") == null);
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "import \"errors\""));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "type HandleError struct"));
     const raw = try temporary.dir.readFileAlloc(std.testing.io, "opaque/opaque_cgo_gen.go", std.testing.allocator, .limited(32 * 1024));
     defer std.testing.allocator.free(raw);
     try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "func zigoRawContextCreate("));

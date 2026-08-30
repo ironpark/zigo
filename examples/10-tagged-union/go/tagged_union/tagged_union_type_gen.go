@@ -173,6 +173,33 @@ func (value *Value) Close() {
 	runtime.KeepAlive(value)
 }
 
+type zigoHandle interface {
+	zigoPointer() unsafe.Pointer
+}
+
+func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, error) {
+	ptr := value.zigoPointer()
+	if ptr == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	return ptr, nil
+}
+
+func zigoMustPointer(operation string, value zigoHandle) unsafe.Pointer {
+	ptr, err := zigoCheckedPointer(operation, value)
+	if err != nil {
+		panic(err)
+	}
+	return ptr
+}
+
+func zigoOptionalPointer(operation string, absent bool, value zigoHandle) unsafe.Pointer {
+	if absent {
+		return nil
+	}
+	return zigoMustPointer(operation, value)
+}
+
 const (
 	zigoProjectionMismatch uint8 = iota
 	zigoProjectionSuccess
@@ -180,231 +207,343 @@ const (
 	zigoProjectionPanic
 )
 
-func zigoProjectionFailure(operation string, status uint8) {
+func zigoProjectionError(operation string, status uint8) error {
 	switch status {
 	case zigoProjectionInvalidHandle:
-		panic("zigo: " + operation + ": nil or closed handle")
+		return &HandleError{Operation: operation}
 	case zigoProjectionPanic:
-		panic("zigo: " + operation + ": native panic: " + raw.LastErrorMessage())
+		return &NativePanicError{Operation: operation, Message: raw.LastErrorMessage()}
 	default:
-		panic("zigo: " + operation + ": invalid projection status")
+		return &ProjectionError{Operation: operation, Status: status}
 	}
+}
+
+func (value *Value) TryTag() (ValueTag, error) {
+	defer runtime.KeepAlive(value)
+	ptr, err := zigoCheckedPointer("Value.Tag receiver", value)
+	if err != nil {
+		return 0, err
+	}
+	result, status := raw.ValueProjectTag(ptr)
+	if status != zigoProjectionSuccess {
+		return 0, zigoProjectionError("Value.Tag", status)
+	}
+	return ValueTag(result), nil
 }
 
 func (value *Value) Tag() ValueTag {
+	result, err := value.TryTag()
+	if err != nil {
+		panic(err)
+	}
+	return result
+}
+
+func (value *Value) TryAsInteger() (int64, bool, error) {
 	defer runtime.KeepAlive(value)
-	ptr := value.zigoPointer()
-	if ptr == nil {
-		zigoProjectionFailure("Value.Tag", zigoProjectionInvalidHandle)
+	ptr, err := zigoCheckedPointer("Value.AsInteger receiver", value)
+	if err != nil {
+		return 0, false, err
 	}
-	result, status := raw.ValueProjectTag(ptr)
+	result, status := raw.ValueProjectInteger(ptr)
+	if status == zigoProjectionMismatch {
+		return 0, false, nil
+	}
 	if status != zigoProjectionSuccess {
-		zigoProjectionFailure("Value.Tag", status)
+		return 0, false, zigoProjectionError("Value.AsInteger", status)
 	}
-	return ValueTag(result)
+	return result, true, nil
 }
 
 func (value *Value) AsInteger() (int64, bool) {
-	defer runtime.KeepAlive(value)
-	ptr := value.zigoPointer()
-	if ptr == nil {
-		zigoProjectionFailure("Value.AsInteger", zigoProjectionInvalidHandle)
+	result, matched, err := value.TryAsInteger()
+	if err != nil {
+		panic(err)
 	}
-	result, status := raw.ValueProjectInteger(ptr)
+	return result, matched
+}
+
+func (value *Value) TryAsFlag() (bool, bool, error) {
+	defer runtime.KeepAlive(value)
+	ptr, err := zigoCheckedPointer("Value.AsFlag receiver", value)
+	if err != nil {
+		return false, false, err
+	}
+	result, status := raw.ValueProjectFlag(ptr)
 	if status == zigoProjectionMismatch {
-		return 0, false
+		return false, false, nil
 	}
 	if status != zigoProjectionSuccess {
-		zigoProjectionFailure("Value.AsInteger", status)
+		return false, false, zigoProjectionError("Value.AsFlag", status)
 	}
-	return result, true
+	return result != 0, true, nil
 }
 
 func (value *Value) AsFlag() (bool, bool) {
-	defer runtime.KeepAlive(value)
-	ptr := value.zigoPointer()
-	if ptr == nil {
-		zigoProjectionFailure("Value.AsFlag", zigoProjectionInvalidHandle)
+	result, matched, err := value.TryAsFlag()
+	if err != nil {
+		panic(err)
 	}
-	result, status := raw.ValueProjectFlag(ptr)
+	return result, matched
+}
+
+func (value *Value) TryAsMode() (Mode, bool, error) {
+	defer runtime.KeepAlive(value)
+	ptr, err := zigoCheckedPointer("Value.AsMode receiver", value)
+	if err != nil {
+		return 0, false, err
+	}
+	result, status := raw.ValueProjectMode(ptr)
 	if status == zigoProjectionMismatch {
-		return false, false
+		return 0, false, nil
 	}
 	if status != zigoProjectionSuccess {
-		zigoProjectionFailure("Value.AsFlag", status)
+		return 0, false, zigoProjectionError("Value.AsMode", status)
 	}
-	return result != 0, true
+	return Mode(result), true, nil
 }
 
 func (value *Value) AsMode() (Mode, bool) {
-	defer runtime.KeepAlive(value)
-	ptr := value.zigoPointer()
-	if ptr == nil {
-		zigoProjectionFailure("Value.AsMode", zigoProjectionInvalidHandle)
+	result, matched, err := value.TryAsMode()
+	if err != nil {
+		panic(err)
 	}
-	result, status := raw.ValueProjectMode(ptr)
+	return result, matched
+}
+
+func (value *Value) TryAsSamples() ([]int16, bool, error) {
+	defer runtime.KeepAlive(value)
+	ptr, err := zigoCheckedPointer("Value.AsSamples receiver", value)
+	if err != nil {
+		return nil, false, err
+	}
+	result, status := raw.ValueProjectSamples(ptr)
 	if status == zigoProjectionMismatch {
-		return 0, false
+		return nil, false, nil
 	}
 	if status != zigoProjectionSuccess {
-		zigoProjectionFailure("Value.AsMode", status)
+		return nil, false, zigoProjectionError("Value.AsSamples", status)
 	}
-	return Mode(result), true
+	return append([]int16(nil), result...), true, nil
 }
 
 func (value *Value) AsSamples() ([]int16, bool) {
-	defer runtime.KeepAlive(value)
-	ptr := value.zigoPointer()
-	if ptr == nil {
-		zigoProjectionFailure("Value.AsSamples", zigoProjectionInvalidHandle)
+	result, matched, err := value.TryAsSamples()
+	if err != nil {
+		panic(err)
 	}
-	result, status := raw.ValueProjectSamples(ptr)
+	return result, matched
+}
+
+func (value *Value) TryAsChild() (*ChildRef, bool, error) {
+	defer runtime.KeepAlive(value)
+	ptr, err := zigoCheckedPointer("Value.AsChild receiver", value)
+	if err != nil {
+		return nil, false, err
+	}
+	result, status := raw.ValueProjectChild(ptr)
 	if status == zigoProjectionMismatch {
-		return nil, false
+		return nil, false, nil
 	}
 	if status != zigoProjectionSuccess {
-		zigoProjectionFailure("Value.AsSamples", status)
+		return nil, false, zigoProjectionError("Value.AsChild", status)
 	}
-	return append([]int16(nil), result...), true
+	return &ChildRef{ptr: result, parent: value}, true, nil
 }
 
 func (value *Value) AsChild() (*ChildRef, bool) {
-	defer runtime.KeepAlive(value)
-	ptr := value.zigoPointer()
-	if ptr == nil {
-		zigoProjectionFailure("Value.AsChild", zigoProjectionInvalidHandle)
+	result, matched, err := value.TryAsChild()
+	if err != nil {
+		panic(err)
 	}
-	result, status := raw.ValueProjectChild(ptr)
+	return result, matched
+}
+
+func (value *Value) TryAsMutableSamples() ([]int16, bool, error) {
+	defer runtime.KeepAlive(value)
+	ptr, err := zigoCheckedPointer("Value.AsMutableSamples receiver", value)
+	if err != nil {
+		return nil, false, err
+	}
+	result, status := raw.ValueProjectMutableSamples(ptr)
 	if status == zigoProjectionMismatch {
-		return nil, false
+		return nil, false, nil
 	}
 	if status != zigoProjectionSuccess {
-		zigoProjectionFailure("Value.AsChild", status)
+		return nil, false, zigoProjectionError("Value.AsMutableSamples", status)
 	}
-	return &ChildRef{ptr: result, parent: value}, true
+	return append([]int16(nil), result...), true, nil
 }
 
 func (value *Value) AsMutableSamples() ([]int16, bool) {
-	defer runtime.KeepAlive(value)
-	ptr := value.zigoPointer()
-	if ptr == nil {
-		zigoProjectionFailure("Value.AsMutableSamples", zigoProjectionInvalidHandle)
+	result, matched, err := value.TryAsMutableSamples()
+	if err != nil {
+		panic(err)
 	}
-	result, status := raw.ValueProjectMutableSamples(ptr)
-	if status == zigoProjectionMismatch {
-		return nil, false
-	}
-	if status != zigoProjectionSuccess {
-		zigoProjectionFailure("Value.AsMutableSamples", status)
-	}
-	return append([]int16(nil), result...), true
+	return result, matched
 }
 
-func (value *ValueRef) Tag() ValueTag {
+func (value *ValueRef) TryTag() (ValueTag, error) {
 	defer runtime.KeepAlive(value)
-	ptr := value.zigoPointer()
-	if ptr == nil {
-		zigoProjectionFailure("Value.Tag", zigoProjectionInvalidHandle)
+	ptr, err := zigoCheckedPointer("Value.Tag receiver", value)
+	if err != nil {
+		return 0, err
 	}
 	result, status := raw.ValueProjectTag(ptr)
 	if status != zigoProjectionSuccess {
-		zigoProjectionFailure("Value.Tag", status)
+		return 0, zigoProjectionError("Value.Tag", status)
 	}
-	return ValueTag(result)
+	return ValueTag(result), nil
 }
 
-func (value *ValueRef) AsInteger() (int64, bool) {
+func (value *ValueRef) Tag() ValueTag {
+	result, err := value.TryTag()
+	if err != nil {
+		panic(err)
+	}
+	return result
+}
+
+func (value *ValueRef) TryAsInteger() (int64, bool, error) {
 	defer runtime.KeepAlive(value)
-	ptr := value.zigoPointer()
-	if ptr == nil {
-		zigoProjectionFailure("Value.AsInteger", zigoProjectionInvalidHandle)
+	ptr, err := zigoCheckedPointer("Value.AsInteger receiver", value)
+	if err != nil {
+		return 0, false, err
 	}
 	result, status := raw.ValueProjectInteger(ptr)
 	if status == zigoProjectionMismatch {
-		return 0, false
+		return 0, false, nil
 	}
 	if status != zigoProjectionSuccess {
-		zigoProjectionFailure("Value.AsInteger", status)
+		return 0, false, zigoProjectionError("Value.AsInteger", status)
 	}
-	return result, true
+	return result, true, nil
 }
 
-func (value *ValueRef) AsFlag() (bool, bool) {
+func (value *ValueRef) AsInteger() (int64, bool) {
+	result, matched, err := value.TryAsInteger()
+	if err != nil {
+		panic(err)
+	}
+	return result, matched
+}
+
+func (value *ValueRef) TryAsFlag() (bool, bool, error) {
 	defer runtime.KeepAlive(value)
-	ptr := value.zigoPointer()
-	if ptr == nil {
-		zigoProjectionFailure("Value.AsFlag", zigoProjectionInvalidHandle)
+	ptr, err := zigoCheckedPointer("Value.AsFlag receiver", value)
+	if err != nil {
+		return false, false, err
 	}
 	result, status := raw.ValueProjectFlag(ptr)
 	if status == zigoProjectionMismatch {
-		return false, false
+		return false, false, nil
 	}
 	if status != zigoProjectionSuccess {
-		zigoProjectionFailure("Value.AsFlag", status)
+		return false, false, zigoProjectionError("Value.AsFlag", status)
 	}
-	return result != 0, true
+	return result != 0, true, nil
 }
 
-func (value *ValueRef) AsMode() (Mode, bool) {
+func (value *ValueRef) AsFlag() (bool, bool) {
+	result, matched, err := value.TryAsFlag()
+	if err != nil {
+		panic(err)
+	}
+	return result, matched
+}
+
+func (value *ValueRef) TryAsMode() (Mode, bool, error) {
 	defer runtime.KeepAlive(value)
-	ptr := value.zigoPointer()
-	if ptr == nil {
-		zigoProjectionFailure("Value.AsMode", zigoProjectionInvalidHandle)
+	ptr, err := zigoCheckedPointer("Value.AsMode receiver", value)
+	if err != nil {
+		return 0, false, err
 	}
 	result, status := raw.ValueProjectMode(ptr)
 	if status == zigoProjectionMismatch {
-		return 0, false
+		return 0, false, nil
 	}
 	if status != zigoProjectionSuccess {
-		zigoProjectionFailure("Value.AsMode", status)
+		return 0, false, zigoProjectionError("Value.AsMode", status)
 	}
-	return Mode(result), true
+	return Mode(result), true, nil
 }
 
-func (value *ValueRef) AsSamples() ([]int16, bool) {
+func (value *ValueRef) AsMode() (Mode, bool) {
+	result, matched, err := value.TryAsMode()
+	if err != nil {
+		panic(err)
+	}
+	return result, matched
+}
+
+func (value *ValueRef) TryAsSamples() ([]int16, bool, error) {
 	defer runtime.KeepAlive(value)
-	ptr := value.zigoPointer()
-	if ptr == nil {
-		zigoProjectionFailure("Value.AsSamples", zigoProjectionInvalidHandle)
+	ptr, err := zigoCheckedPointer("Value.AsSamples receiver", value)
+	if err != nil {
+		return nil, false, err
 	}
 	result, status := raw.ValueProjectSamples(ptr)
 	if status == zigoProjectionMismatch {
-		return nil, false
+		return nil, false, nil
 	}
 	if status != zigoProjectionSuccess {
-		zigoProjectionFailure("Value.AsSamples", status)
+		return nil, false, zigoProjectionError("Value.AsSamples", status)
 	}
-	return append([]int16(nil), result...), true
+	return append([]int16(nil), result...), true, nil
 }
 
-func (value *ValueRef) AsChild() (*ChildRef, bool) {
+func (value *ValueRef) AsSamples() ([]int16, bool) {
+	result, matched, err := value.TryAsSamples()
+	if err != nil {
+		panic(err)
+	}
+	return result, matched
+}
+
+func (value *ValueRef) TryAsChild() (*ChildRef, bool, error) {
 	defer runtime.KeepAlive(value)
-	ptr := value.zigoPointer()
-	if ptr == nil {
-		zigoProjectionFailure("Value.AsChild", zigoProjectionInvalidHandle)
+	ptr, err := zigoCheckedPointer("Value.AsChild receiver", value)
+	if err != nil {
+		return nil, false, err
 	}
 	result, status := raw.ValueProjectChild(ptr)
 	if status == zigoProjectionMismatch {
-		return nil, false
+		return nil, false, nil
 	}
 	if status != zigoProjectionSuccess {
-		zigoProjectionFailure("Value.AsChild", status)
+		return nil, false, zigoProjectionError("Value.AsChild", status)
 	}
-	return &ChildRef{ptr: result, parent: value}, true
+	return &ChildRef{ptr: result, parent: value}, true, nil
 }
 
-func (value *ValueRef) AsMutableSamples() ([]int16, bool) {
+func (value *ValueRef) AsChild() (*ChildRef, bool) {
+	result, matched, err := value.TryAsChild()
+	if err != nil {
+		panic(err)
+	}
+	return result, matched
+}
+
+func (value *ValueRef) TryAsMutableSamples() ([]int16, bool, error) {
 	defer runtime.KeepAlive(value)
-	ptr := value.zigoPointer()
-	if ptr == nil {
-		zigoProjectionFailure("Value.AsMutableSamples", zigoProjectionInvalidHandle)
+	ptr, err := zigoCheckedPointer("Value.AsMutableSamples receiver", value)
+	if err != nil {
+		return nil, false, err
 	}
 	result, status := raw.ValueProjectMutableSamples(ptr)
 	if status == zigoProjectionMismatch {
-		return nil, false
+		return nil, false, nil
 	}
 	if status != zigoProjectionSuccess {
-		zigoProjectionFailure("Value.AsMutableSamples", status)
+		return nil, false, zigoProjectionError("Value.AsMutableSamples", status)
 	}
-	return append([]int16(nil), result...), true
+	return append([]int16(nil), result...), true, nil
+}
+
+func (value *ValueRef) AsMutableSamples() ([]int16, bool) {
+	result, matched, err := value.TryAsMutableSamples()
+	if err != nil {
+		panic(err)
+	}
+	return result, matched
 }
