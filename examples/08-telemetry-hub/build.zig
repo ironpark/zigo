@@ -26,4 +26,20 @@ pub fn build(b: *std.Build) void {
         .raw_package = .{ .path = "internal/native" },
     });
     _ = bindings.addStandardSteps(b, .{});
+
+    const purego_bindings = zigo.addGoBindings(b, .{
+        .name = "telemetry_hub",
+        .module = telemetry_hub,
+        .bindings = b.path("src/bindings.zig"),
+        .source_root = b.path("src/root.zig"),
+        .go_dir = b.path("go-purego"),
+        .go_module = "example.com/zigo/telemetry-hub-purego",
+        .target = target,
+        .optimize = optimize,
+        .abi_base = "HEAD",
+        .raw_package = .{ .path = "internal/native" },
+        .backend = .purego,
+        .link_mode = .dynamic,
+    });
+    _ = purego_bindings.addStandardSteps(b, .{ .name_prefix = "purego" });
 }

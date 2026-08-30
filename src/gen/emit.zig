@@ -310,7 +310,7 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, functio
             },
             .bool => try writer.print("{s} != 0", .{parameter.name}),
             .@"enum" => try writer.print("@enumFromInt({s})", .{parameter.name}),
-            .slice => try writer.print("{s}_ptr[0..{s}_len]", .{ parameter.name, parameter.name }),
+            .slice => try writer.print("if ({s}_len == 0) &.{{}} else {s}_ptr[0..{s}_len]", .{ parameter.name, parameter.name, parameter.name }),
             else => try writer.writeAll(parameter.name),
         }
     }
@@ -604,8 +604,10 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         }
         try writer.writeAll(") uint8\n");
     }
+    try writer.writeAll("}\n\n");
+    if (programHasCallbacks(program)) try renderPuregoCallbackRegistry(allocator, writer, program, options);
     try writer.writeAll(
-        "}\n\nvar loadedBindings atomic.Pointer[nativeBindings]\nvar loadMu sync.Mutex\nvar successfulLibraryPath string\n\n" ++
+        "var loadedBindings atomic.Pointer[nativeBindings]\nvar loadMu sync.Mutex\nvar successfulLibraryPath string\n\n" ++
             "// LibraryLoaded reports whether every required native symbol was published.\n" ++
             "func LibraryLoaded() bool { return loadedBindings.Load() != nil }\n\n" ++
             "// LoadLibrary atomically loads and registers every required native symbol.\n" ++
@@ -614,8 +616,11 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             "\tif path == \"\" { path = os.Getenv(\"ZIGO_LIBRARY_PATH\") }\n" ++
             "\tif path == \"\" { path = defaultLibraryName }\n" ++
             "\tloadMu.Lock()\n\tdefer loadMu.Unlock()\n" ++
-            "\tif loadedBindings.Load() != nil {\n\t\tif path == successfulLibraryPath { return nil }\n\t\treturn &LibraryError{Path: path, Operation: \"load\", Cause: errors.New(\"a different library is already loaded\")}\n\t}\n" ++
-            "\thandle, err := purego.Dlopen(path, purego.RTLD_NOW|purego.RTLD_LOCAL)\n" ++
+            "\tif loadedBindings.Load() != nil {\n\t\tif path == successfulLibraryPath { return nil }\n\t\treturn &LibraryError{Path: path, Operation: \"load\", Cause: errors.New(\"a different library is already loaded\")}\n\t}\n",
+    );
+    if (programHasCallbacks(program)) try writer.writeAll("\tensureCallbackDispatchers()\n");
+    try writer.writeAll(
+        "\thandle, err := purego.Dlopen(path, purego.RTLD_NOW|purego.RTLD_LOCAL)\n" ++
             "\tif err != nil { return &LibraryError{Path: path, Operation: \"open\", Cause: err} }\n" ++
             "\tfail := func(symbol string, cause error) error { _ = purego.Dlclose(handle); return &LibraryError{Path: path, Symbol: symbol, Operation: \"resolve\", Cause: cause} }\n",
     );
@@ -648,6 +653,139 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     try renderPuregoProjections(allocator, writer, program);
 }
 
+fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
+    const prefix = if (options.raw_colocated) "zigoRaw" else "";
+    try writer.writeAll(
+        "type callbackEntry struct {\n\tmu sync.Mutex\n\tcond *sync.Cond\n\tvalue any\n\tclosing bool\n\tactive int\n}\n\n" ++
+            "var callbackRegistryMu sync.Mutex\nvar callbackRegistry = make(map[uintptr]*callbackEntry)\nvar nextCallbackToken atomic.Uint64\nvar activeCallbackHandles atomic.Int64\n\n",
+    );
+    try writer.print("// {s}NewCallbackHandle stores a callback value and returns its native userdata token.\nfunc {s}NewCallbackHandle(value any) uintptr {{\n", .{ prefix, prefix });
+    try writer.writeAll("\tentry := &callbackEntry{value: value}\n\tentry.cond = sync.NewCond(&entry.mu)\n\ttoken := uintptr(nextCallbackToken.Add(1))\n\tif token == 0 { token = uintptr(nextCallbackToken.Add(1)) }\n\tcallbackRegistryMu.Lock()\n\tcallbackRegistry[token] = entry\n\tcallbackRegistryMu.Unlock()\n\tactiveCallbackHandles.Add(1)\n\treturn token\n}\n\n");
+    try writer.print("// {s}DeleteCallbackHandle releases a callback token after in-flight calls finish.\nfunc {s}DeleteCallbackHandle(token uintptr) {{\n", .{ prefix, prefix });
+    try writer.writeAll("\tif token == 0 { return }\n\tcallbackRegistryMu.Lock()\n\tentry := callbackRegistry[token]\n\tif entry == nil { callbackRegistryMu.Unlock(); return }\n\tentry.mu.Lock()\n\tentry.closing = true\n\tdelete(callbackRegistry, token)\n\tcallbackRegistryMu.Unlock()\n\tfor entry.active != 0 { entry.cond.Wait() }\n\tentry.value = nil\n\tentry.mu.Unlock()\n\tactiveCallbackHandles.Add(-1)\n}\n\n");
+    try writer.print("// {s}ActiveCallbackHandleCount reports the number of live callback tokens.\nfunc {s}ActiveCallbackHandleCount() int64 {{ return activeCallbackHandles.Load() }}\n\n", .{ prefix, prefix });
+    try writer.writeAll("func acquireCallback(token uintptr) (*callbackEntry, any, bool) {\n\tcallbackRegistryMu.Lock()\n\tentry := callbackRegistry[token]\n\tif entry == nil { callbackRegistryMu.Unlock(); return nil, nil, false }\n\tentry.mu.Lock()\n\tcallbackRegistryMu.Unlock()\n\tif entry.closing { entry.mu.Unlock(); return nil, nil, false }\n\tentry.active++\n\tvalue := entry.value\n\tentry.mu.Unlock()\n\treturn entry, value, true\n}\n\nfunc releaseCallback(entry *callbackEntry) {\n\tentry.mu.Lock()\n\tentry.active--\n\tif entry.closing && entry.active == 0 { entry.cond.Broadcast() }\n\tentry.mu.Unlock()\n}\n\n");
+
+    const count = uniqueCallbackSignatureCount(program);
+    try writer.print("var callbackPointers [{d}]uintptr\nvar callbackDispatchersOnce sync.Once\n\nfunc ensureCallbackDispatchers() {{\n\tcallbackDispatchersOnce.Do(func() {{\n", .{count});
+    var signature_index: usize = 0;
+    for (program.functions) |function| {
+        for (function.origin.params, 0..) |parameter, parameter_index| {
+            if (parameter.type != .callback or !isFirstCallbackSignatureAt(program, function.origin, parameter_index)) continue;
+            try writer.print("\t\tcallbackPointers[{d}] = purego.NewCallback(func(", .{signature_index});
+            const callback = parameter.type.callback;
+            for (callback.params, 0..) |callback_parameter, index| {
+                if (index != 0) try writer.writeAll(", ");
+                try writer.print("p{d} ", .{index});
+                try writeRawGoType(writer, program, callback_parameter);
+            }
+            try writer.writeByte(')');
+            if (callback.@"return".* != .void) {
+                try writer.writeAll(" (result ");
+                try writeRawGoType(writer, program, callback.@"return".*);
+                try writer.writeByte(')');
+            }
+            try writer.writeAll(" {\n");
+            if (callback.@"return".* != .void) {
+                try writer.writeAll("\t\t\tdefer func() { if recover() != nil { result = ");
+                try writeCallbackFailureValue(writer, callback.@"return".*, true);
+                try writer.writeAll(" } }()\n");
+            } else {
+                try writer.writeAll("\t\t\tdefer func() { _ = recover() }()\n");
+            }
+            const userdata_index = callback.params.len - 1;
+            try writer.print("\t\t\tentry, stored, ok := acquireCallback(uintptr(p{d}))\n\t\t\tif !ok {{", .{userdata_index});
+            if (callback.@"return".* != .void) {
+                try writer.writeAll(" return ");
+                try writeCallbackFailureValue(writer, callback.@"return".*, false);
+            } else try writer.writeAll(" return");
+            try writer.writeAll(" }\n\t\t\tdefer releaseCallback(entry)\n\t\t\tcallback := stored.(func(");
+            for (callback.params[0..userdata_index], 0..) |callback_parameter, index| {
+                if (index != 0) try writer.writeAll(", ");
+                try writeRawGoType(writer, program, callback_parameter);
+            }
+            try writer.writeByte(')');
+            if (callback.@"return".* != .void) {
+                try writer.writeByte(' ');
+                try writeRawGoType(writer, program, callback.@"return".*);
+            }
+            try writer.writeAll(")\n\t\t\t");
+            if (callback.@"return".* != .void) try writer.writeAll("return ");
+            try writer.writeAll("callback(");
+            for (0..userdata_index) |index| {
+                if (index != 0) try writer.writeAll(", ");
+                try writer.print("p{d}", .{index});
+            }
+            try writer.writeAll(")\n\t\t})\n");
+            signature_index += 1;
+        }
+    }
+    try writer.writeAll("\t})\n}\n\n");
+    for (0..count) |index|
+        try writer.print("// {s}CallbackPointer{d} returns the permanent dispatcher for callback ABI signature {d}.\nfunc {s}CallbackPointer{d}() uintptr {{ ensureCallbackDispatchers(); return callbackPointers[{d}] }}\n", .{ prefix, index, index, prefix, index, index });
+    try writer.print("// {s}CallbackDispatcherCount reports the number of unique callback ABI dispatchers.\nfunc {s}CallbackDispatcherCount() int {{ ensureCallbackDispatchers(); return len(callbackPointers) }}\n", .{ prefix, prefix });
+    try writer.writeByte('\n');
+    _ = allocator;
+}
+
+fn writeCallbackFailureValue(writer: *std.Io.Writer, node: semantic.TypeNode, panic_value: bool) !void {
+    if (node == .int and node.int.signed and node.int.bits == 32)
+        try writer.writeAll(if (panic_value) "-3" else "-4")
+    else
+        try writer.writeAll("0");
+}
+
+fn uniqueCallbackSignatureCount(program: abi.Program) usize {
+    var count: usize = 0;
+    for (program.functions) |function| {
+        for (function.origin.params, 0..) |parameter, parameter_index| {
+            if (parameter.type == .callback and isFirstCallbackSignatureAt(program, function.origin, parameter_index)) count += 1;
+        }
+    }
+    return count;
+}
+
+fn callbackSignatureIndex(program: abi.Program, wanted: semantic.Callback) usize {
+    var index: usize = 0;
+    for (program.functions) |function| {
+        for (function.origin.params, 0..) |parameter, parameter_index| {
+            if (parameter.type != .callback or !isFirstCallbackSignatureAt(program, function.origin, parameter_index)) continue;
+            if (callbackSignatureEqual(parameter.type.callback, wanted)) return index;
+            index += 1;
+        }
+    }
+    unreachable;
+}
+
+fn isFirstCallbackSignatureAt(program: abi.Program, origin: *const semantic.SemanticFn, parameter_index: usize) bool {
+    const wanted = origin.params[parameter_index].type.callback;
+    for (program.functions) |function| {
+        for (function.origin.params, 0..) |parameter, candidate_index| {
+            if (function.origin == origin and candidate_index == parameter_index) return true;
+            if (parameter.type == .callback and callbackSignatureEqual(parameter.type.callback, wanted)) return false;
+        }
+    }
+    unreachable;
+}
+
+fn callbackSignatureEqual(lhs: semantic.Callback, rhs: semantic.Callback) bool {
+    if (lhs.params.len != rhs.params.len or !semanticTypeEqual(lhs.@"return".*, rhs.@"return".*)) return false;
+    for (lhs.params, rhs.params) |a, b| if (!semanticTypeEqual(a, b)) return false;
+    return true;
+}
+
+fn semanticTypeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
+    if (std.meta.activeTag(lhs) != std.meta.activeTag(rhs)) return false;
+    return switch (lhs) {
+        .void, .bool => true,
+        .int => |value| value.bits == rhs.int.bits and value.signed == rhs.int.signed and value.is_usize == rhs.int.is_usize,
+        .float => |value| value.bits == rhs.float.bits,
+        .@"enum" => |value| std.mem.eql(u8, value.ref, rhs.@"enum".ref),
+        .opaque_ptr => |value| value.@"const" == rhs.opaque_ptr.@"const" and value.nullable == rhs.opaque_ptr.nullable and std.mem.eql(u8, value.ref, rhs.opaque_ptr.ref),
+        else => false,
+    };
+}
+
 fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, function: abi.AbiFn, options: Options) !void {
     const go_name = try rawGoNameAlloc(allocator, function.origin.*);
     defer allocator.free(go_name);
@@ -662,8 +800,12 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
     for (function.origin.params, 0..) |parameter, parameter_index| {
         if (callbackForUserdata(function.origin.params, parameter_index) != null) continue;
         if (parameter_count != 0) try writer.writeAll(", ");
-        try writer.print("{s} ", .{parameter.name});
-        if (parameter.type == .callback) try writer.writeAll("uintptr") else try writeRawGoType(writer, program, parameter.type);
+        if (parameter.type == .callback) {
+            try writer.print("{s}Callback, {s}Token uintptr", .{ parameter.name, parameter.name });
+        } else {
+            try writer.print("{s} ", .{parameter.name});
+            try writeRawGoType(writer, program, parameter.type);
+        }
         parameter_count += 1;
     }
     try writer.writeByte(')');
@@ -678,7 +820,10 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
     const error_payload = if (returns_error) function.origin.@"return".error_union.payload.* else semantic.TypeNode{ .void = {} };
     if (returns_error and error_payload != .void) {
         try writer.writeAll("\tvar outResult ");
-        try writeRawGoType(writer, program, error_payload);
+        if (puregoPayloadNeedsConversion(error_payload))
+            try writePuregoAbiType(writer, semanticScalar(program, error_payload))
+        else
+            try writeRawGoType(writer, program, error_payload);
         try writer.writeByte('\n');
     }
     try writer.writeByte('\t');
@@ -690,7 +835,11 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
             .receiver => try writer.writeAll("self"),
             .value => {
                 const source_name = function.origin.params[parameter.source_index].name;
-                if (parameter.scalar == .usize)
+                if (parameter.scalar == .callback) {
+                    try writer.print("{s}Callback", .{source_name});
+                } else if (callbackForUserdata(function.origin.params, parameter.source_index)) |callback_parameter| {
+                    try writer.print("{s}Token", .{callback_parameter.name});
+                } else if (parameter.scalar == .usize)
                     try writer.print("uintptr({s})", .{source_name})
                 else
                     try writer.writeAll(source_name);
@@ -709,13 +858,25 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         try writeRawGoType(writer, program, function.origin.@"return".slice.element.*);
         try writer.writeAll(")(outResultPtr), int(outResultLen))\n");
     } else if (returns_error) {
-        if (error_payload == .void) try writer.writeAll("\treturn code\n") else try writer.writeAll("\treturn outResult, code\n");
+        if (error_payload == .void) {
+            try writer.writeAll("\treturn code\n");
+        } else if (puregoPayloadNeedsConversion(error_payload)) {
+            try writer.writeAll("\treturn ");
+            try writeRawResultConversion(writer, program, error_payload, "outResult");
+            try writer.writeAll(", code\n");
+        } else {
+            try writer.writeAll("\treturn outResult, code\n");
+        }
     } else if (function.origin.@"return" != .void) {
         try writer.writeAll("\treturn ");
         try writeRawResultConversion(writer, program, function.origin.@"return", "result");
         try writer.writeByte('\n');
     }
     try writer.writeAll("}\n");
+}
+
+fn puregoPayloadNeedsConversion(node: semantic.TypeNode) bool {
+    return node == .int and node.int.is_usize;
 }
 
 fn renderPuregoProjections(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
@@ -879,23 +1040,19 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
     const package = try naming.snakeAlloc(allocator, program.package);
     defer allocator.free(package);
     try writer.print("// Code generated by zigo. DO NOT EDIT.\npackage {s}\n\n", .{package});
-    const needs_cgo = publicNeedsCgo(program);
     const needs_runtime = publicNeedsRuntime(program, options);
     const needs_raw = !options.raw_colocated;
-    const import_count = @as(usize, @intFromBool(needs_cgo)) + @as(usize, @intFromBool(needs_runtime)) + @as(usize, @intFromBool(needs_raw));
+    const import_count = @as(usize, @intFromBool(needs_runtime)) + @as(usize, @intFromBool(needs_raw));
     if (import_count > 1) {
         try writer.writeAll("import (\n");
         if (needs_runtime) try writer.writeAll("\t\"runtime\"\n");
-        if (needs_cgo) try writer.writeAll("\t\"runtime/cgo\"\n");
         if (needs_raw) {
-            if (needs_runtime or needs_cgo) try writer.writeByte('\n');
+            if (needs_runtime) try writer.writeByte('\n');
             try writeRawImport(writer, options, "\t");
         }
         try writer.writeAll(")\n\n");
     } else if (needs_runtime) {
         try writer.writeAll("import \"runtime\"\n\n");
-    } else if (needs_cgo) {
-        try writer.writeAll("import \"runtime/cgo\"\n\n");
     } else if (needs_raw) {
         try writer.writeAll("import ");
         try writeRawImport(writer, options, "");
@@ -991,7 +1148,16 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             if (callbackForUserdata(function.origin.params, parameter_index) != null) continue;
             if (call_index != 0) try writer.writeAll(", ");
             switch (parameter.type) {
-                .callback => try writer.print("uintptr({s}Handle)", .{parameter.name}),
+                .callback => {
+                    if (options.backend == .purego) {
+                        const signature_index = callbackSignatureIndex(program, parameter.type.callback);
+                        try writeRawReferencePrefix(writer, options);
+                        try writer.print("CallbackPointer{d}(), uintptr({s}Handle)", .{ signature_index, parameter.name });
+                        call_index += 1;
+                    } else {
+                        try writer.print("uintptr({s}Handle)", .{parameter.name});
+                    }
+                },
                 .bool => try writer.print("boolToUint8({s})", .{parameter.name}),
                 .@"enum" => {
                     try writer.writeAll(rawGoTypeName(program, parameter.type));
@@ -1037,7 +1203,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                         if (programHasCallbacks(program)) {
                             try writer.writeAll(", ");
                             if (hasRetainedCallback(function.origin.*)) {
-                                try writer.writeAll("[]cgo.Handle{");
+                                try writer.writeAll("[]zigoCallbackHandle{");
                                 try writeRetainedCallbackHandles(writer, function.origin.*);
                                 try writer.writeByte('}');
                             } else {
@@ -1048,7 +1214,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                     } else {
                         try writer.print("&{s}{{ptr: result", .{value.type});
                         if (hasRetainedCallback(function.origin.*)) {
-                            try writer.writeAll(", callbackHandles: []cgo.Handle{");
+                            try writer.writeAll(", callbackHandles: []zigoCallbackHandle{");
                             try writeRetainedCallbackHandles(writer, function.origin.*);
                             try writer.writeByte('}');
                         }
@@ -1073,7 +1239,6 @@ fn renderPublicTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
     if (programHasOpaqueTypes(program)) {
         try writer.writeAll("\nimport (\n");
         if (programHasAutoCleanupTypes(program, options) or programHasTaggedUnionTypes(program)) try writer.writeAll("\t\"runtime\"\n");
-        if (programHasCallbacks(program)) try writer.writeAll("\t\"runtime/cgo\"\n");
         try writer.writeAll("\t\"sync\"\n\t\"unsafe\"\n");
         if (!options.raw_colocated) {
             try writer.writeByte('\n');
@@ -1112,19 +1277,21 @@ fn renderPublicErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
     try renderGoErrors(allocator, writer, program, options);
 }
 
-fn renderPublicHelpers(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, _: Options) !void {
+fn renderPublicHelpers(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     const package = try naming.snakeAlloc(allocator, program.package);
     defer allocator.free(package);
     try writer.print("// Code generated by zigo. DO NOT EDIT.\npackage {s}\n", .{package});
     const has_callbacks = programHasCallbacks(program);
     const needs_bool = programNeedsBoolHelper(program);
     if (!has_callbacks and !needs_bool) return;
-    if (has_callbacks) try writer.writeAll(
-        "\nimport (\n" ++
-            "\t\"runtime/cgo\"\n" ++
-            "\t\"sync/atomic\"\n" ++
-            ")\n",
-    );
+    if (has_callbacks) {
+        if (options.backend == .cgo) {
+            try writer.writeAll("\nimport (\n\t\"runtime/cgo\"\n\t\"sync/atomic\"\n)\n");
+        } else if (!options.raw_colocated) {
+            try writer.writeAll("\nimport ");
+            try writeRawImport(writer, options, "");
+        }
+    }
     if (needs_bool) try writer.writeAll(
         "\nfunc boolToUint8(value bool) uint8 {\n" ++
             "\tif value {\n" ++
@@ -1134,19 +1301,44 @@ fn renderPublicHelpers(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
             "}\n",
     );
     if (has_callbacks) {
+        if (options.backend == .purego) {
+            try writer.writeAll("\ntype zigoCallbackHandle = uintptr\n\n");
+            for (program.functions) |function| {
+                for (function.origin.params, 0..) |parameter, parameter_index| {
+                    if (parameter.type != .callback) continue;
+                    const callback_name = try callbackTypeNameAlloc(allocator, program, function, parameter_index);
+                    defer allocator.free(callback_name);
+                    try writer.print("func new{s}Handle(value {s}) zigoCallbackHandle {{\n\treturn ", .{ callback_name, callback_name });
+                    try writeRawReferencePrefix(writer, options);
+                    try writer.writeAll("NewCallbackHandle((");
+                    try writePublicCallbackType(writer, parameter.type.callback);
+                    try writer.writeAll(")(value))\n}\n\n");
+                }
+            }
+            try writer.writeAll("func deleteCallbackHandle(handle zigoCallbackHandle) { ");
+            try writeRawReferencePrefix(writer, options);
+            try writer.writeAll("DeleteCallbackHandle(handle) }\n\nfunc activeCallbackHandleCount() int64 { return ");
+            try writeRawReferencePrefix(writer, options);
+            try writer.writeAll("ActiveCallbackHandleCount() }\n");
+            try writer.writeAll("func callbackDispatcherCount() int { return ");
+            try writeRawReferencePrefix(writer, options);
+            try writer.writeAll("CallbackDispatcherCount() }\n");
+            return;
+        }
         try writer.writeAll("\nvar activeCallbackHandles atomic.Int64\n\n");
+        try writer.writeAll("type zigoCallbackHandle = cgo.Handle\n\n");
         for (program.functions) |function| {
             for (function.origin.params, 0..) |parameter, parameter_index| {
                 if (parameter.type != .callback) continue;
                 const callback_name = try callbackTypeNameAlloc(allocator, program, function, parameter_index);
                 defer allocator.free(callback_name);
-                try writer.print("func new{s}Handle(value {s}) cgo.Handle {{\n\tstored := (", .{ callback_name, callback_name });
+                try writer.print("func new{s}Handle(value {s}) zigoCallbackHandle {{\n\tstored := (", .{ callback_name, callback_name });
                 try writePublicCallbackType(writer, parameter.type.callback);
                 try writer.writeAll(")(value)\n\thandle := cgo.NewHandle(stored)\n\tactiveCallbackHandles.Add(1)\n\treturn handle\n}\n\n");
             }
         }
         try writer.writeAll(
-            "func deleteCallbackHandle(handle cgo.Handle) {\n" ++
+            "func deleteCallbackHandle(handle zigoCallbackHandle) {\n" ++
                 "\thandle.Delete()\n" ++
                 "\tactiveCallbackHandles.Add(-1)\n" ++
                 "}\n\n" ++
@@ -1166,7 +1358,7 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         }
         try writer.print("type {s} struct {{\n", .{declaration.name});
         if (programHasCallbacks(program)) {
-            try writer.writeAll("\tptr             unsafe.Pointer\n\tonce            sync.Once\n\tcallbackHandles []cgo.Handle\n");
+            try writer.writeAll("\tptr             unsafe.Pointer\n\tonce            sync.Once\n\tmu              sync.RWMutex\n\tcallbackHandles []zigoCallbackHandle\n");
             if (auto_cleanup) try writer.writeAll("\tcleanup         runtime.Cleanup\n");
         } else {
             try writer.writeAll("\tptr  unsafe.Pointer\n\tonce sync.Once\n");
@@ -1191,13 +1383,13 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                 defer allocator.free(private_name);
                 try writer.print("type {s}CleanupState struct {{\n", .{private_name});
                 if (programHasCallbacks(program)) {
-                    try writer.writeAll("\tptr             unsafe.Pointer\n\tcallbackHandles []cgo.Handle\n");
+                    try writer.writeAll("\tptr             unsafe.Pointer\n\tcallbackHandles []zigoCallbackHandle\n");
                 } else {
                     try writer.writeAll("\tptr unsafe.Pointer\n");
                 }
                 try writer.writeAll("}\n\n");
                 try writer.print("func new{s}(ptr unsafe.Pointer", .{declaration.name});
-                if (programHasCallbacks(program)) try writer.writeAll(", callbackHandles []cgo.Handle");
+                if (programHasCallbacks(program)) try writer.writeAll(", callbackHandles []zigoCallbackHandle");
                 try writer.print(") *{s} {{\n\tvalue := &{s}{{ptr: ptr", .{ declaration.name, declaration.name });
                 if (programHasCallbacks(program)) try writer.writeAll(", callbackHandles: callbackHandles");
                 try writer.print("}}\n\tstate := {s}CleanupState{{ptr: ptr", .{private_name});
@@ -1208,13 +1400,17 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                 try writer.print("{s}(state.ptr)\n\t}}\n", .{raw_deinit});
                 if (programHasCallbacks(program)) try writer.writeAll("\tfor _, handle := range state.callbackHandles {\n\t\tdeleteCallbackHandle(handle)\n\t}\n");
                 try writer.writeAll("}\n\n");
-                try writer.print("// Close releases the native {s} resources. It is safe to call more than once.\nfunc (value *{s}) Close() {{\n\tif value == nil {{\n\t\treturn\n\t}}\n\tvalue.once.Do(func() {{\n\t\tvalue.cleanup.Stop()\n\t\tcleanup{s}({s}CleanupState{{ptr: value.ptr", .{ declaration.name, declaration.name, declaration.name, private_name });
+                try writer.print("// Close releases the native {s} resources. It is safe to call more than once.\nfunc (value *{s}) Close() {{\n\tif value == nil {{\n\t\treturn\n\t}}\n\tvalue.once.Do(func() {{\n", .{ declaration.name, declaration.name });
+                if (programHasCallbacks(program)) try writer.writeAll("\t\tvalue.mu.Lock()\n\t\tdefer value.mu.Unlock()\n");
+                try writer.print("\t\tvalue.cleanup.Stop()\n\t\tcleanup{s}({s}CleanupState{{ptr: value.ptr", .{ declaration.name, private_name });
                 if (programHasCallbacks(program)) try writer.writeAll(", callbackHandles: value.callbackHandles");
                 try writer.writeAll("})\n\t\tvalue.ptr = nil\n");
                 if (programHasCallbacks(program)) try writer.writeAll("\t\tvalue.callbackHandles = nil\n");
                 try writer.writeAll("\t})\n\truntime.KeepAlive(value)\n}\n\n");
             } else {
-                try writer.print("// Close releases the native {s} resources. It is safe to call more than once.\nfunc (value *{s}) Close() {{\n\tif value == nil {{\n\t\treturn\n\t}}\n\tvalue.once.Do(func() {{\n\t\tif value.ptr != nil {{\n\t\t\t", .{ declaration.name, declaration.name });
+                try writer.print("// Close releases the native {s} resources. It is safe to call more than once.\nfunc (value *{s}) Close() {{\n\tif value == nil {{\n\t\treturn\n\t}}\n\tvalue.once.Do(func() {{\n", .{ declaration.name, declaration.name });
+                if (programHasCallbacks(program)) try writer.writeAll("\t\tvalue.mu.Lock()\n\t\tdefer value.mu.Unlock()\n");
+                try writer.writeAll("\t\tif value.ptr != nil {\n\t\t\t");
                 try writeRawReferencePrefix(writer, options);
                 try writer.print("{s}(value.ptr)\n\t\t\tvalue.ptr = nil\n\t\t}}\n", .{raw_deinit});
                 if (programHasCallbacks(program)) try writer.writeAll("\t\tfor _, handle := range value.callbackHandles {\n\t\t\tdeleteCallbackHandle(handle)\n\t\t}\n\t\tvalue.callbackHandles = nil\n");
@@ -1586,6 +1782,17 @@ fn renderCallbackHandleSetup(allocator: std.mem.Allocator, writer: *std.Io.Write
 }
 
 fn renderKeepAliveDefers(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, function: abi.AbiFn, options: Options) !void {
+    if (programHasCallbacks(program)) {
+        if (function.origin.receiver) |receiver| {
+            const receiver_name = try receiverVariableAlloc(allocator, receiver);
+            defer allocator.free(receiver_name);
+            try writer.print("\tif {s} != nil {{ {s}.mu.RLock(); defer {s}.mu.RUnlock() }}\n", .{ receiver_name, receiver_name, receiver_name });
+        }
+        for (function.origin.params) |parameter| switch (parameter.type) {
+            .opaque_ptr => try writer.print("\tif {s} != nil {{ {s}.mu.RLock(); defer {s}.mu.RUnlock() }}\n", .{ parameter.name, parameter.name, parameter.name }),
+            else => {},
+        };
+    }
     if (!options.auto_cleanup) return;
     if (function.origin.receiver) |receiver| {
         if (isAutoCleanupType(program, receiver, options)) {

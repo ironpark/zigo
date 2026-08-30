@@ -33,6 +33,10 @@ pub const IntBuffer = Buffer(i32);
 
 pub const Observer = *const fn (value: i32, userdata: usize) callconv(.c) i32;
 
+pub fn apply(value: i32, callback: Observer, userdata: usize) i32 {
+    return callback(value, userdata);
+}
+
 pub const CallbackContext = struct {
     callback: Observer,
     userdata: usize,
@@ -76,4 +80,5 @@ test "generic specializations and callback context" {
     const context = try CallbackContext.create(&callback, 0);
     defer context.deinit();
     try std.testing.expectEqual(@as(i32, 8), context.run(7));
+    try std.testing.expectEqual(@as(i32, 9), apply(8, &callback, 0));
 }

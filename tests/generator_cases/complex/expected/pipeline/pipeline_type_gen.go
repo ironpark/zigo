@@ -2,7 +2,6 @@
 package pipeline
 
 import (
-	"runtime/cgo"
 	"sync"
 	"unsafe"
 
@@ -36,7 +35,8 @@ type PipelineCallback func(int32) int32
 type Pipeline struct {
 	ptr             unsafe.Pointer
 	once            sync.Once
-	callbackHandles []cgo.Handle
+	mu              sync.RWMutex
+	callbackHandles []zigoCallbackHandle
 }
 
 // PipelineRef is a borrowed Pipeline reference that remains valid only while its parent is open.
@@ -68,6 +68,8 @@ func (value *Pipeline) Close() {
 		return
 	}
 	value.once.Do(func() {
+		value.mu.Lock()
+		defer value.mu.Unlock()
 		if value.ptr != nil {
 			raw.PipelineDeinit(value.ptr)
 			value.ptr = nil
@@ -83,7 +85,8 @@ func (value *Pipeline) Close() {
 type IntBatch struct {
 	ptr             unsafe.Pointer
 	once            sync.Once
-	callbackHandles []cgo.Handle
+	mu              sync.RWMutex
+	callbackHandles []zigoCallbackHandle
 }
 
 // IntBatchRef is a borrowed IntBatch reference that remains valid only while its parent is open.
@@ -115,6 +118,8 @@ func (value *IntBatch) Close() {
 		return
 	}
 	value.once.Do(func() {
+		value.mu.Lock()
+		defer value.mu.Unlock()
 		if value.ptr != nil {
 			raw.IntBatchDeinit(value.ptr)
 			value.ptr = nil
@@ -130,7 +135,8 @@ func (value *IntBatch) Close() {
 type FloatBatch struct {
 	ptr             unsafe.Pointer
 	once            sync.Once
-	callbackHandles []cgo.Handle
+	mu              sync.RWMutex
+	callbackHandles []zigoCallbackHandle
 }
 
 // FloatBatchRef is a borrowed FloatBatch reference that remains valid only while its parent is open.
@@ -162,6 +168,8 @@ func (value *FloatBatch) Close() {
 		return
 	}
 	value.once.Do(func() {
+		value.mu.Lock()
+		defer value.mu.Unlock()
 		if value.ptr != nil {
 			raw.FloatBatchDeinit(value.ptr)
 			value.ptr = nil

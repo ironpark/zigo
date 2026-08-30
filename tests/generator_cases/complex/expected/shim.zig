@@ -49,7 +49,7 @@ export fn zg_float_batch_deinit_impl(self: *target.FloatBatch) void {
     target.FloatBatch.deinit(self);
 }
 export fn zg_pipeline_create_impl(name_ptr: [*c]const u8, name_len: usize, mode: u32, userdata: usize, out_result: **target.Pipeline) i32 {
-    const result = target.Pipeline.create(name_ptr[0..name_len], @enumFromInt(mode), &zg_pipeline_create_go_callback_callback, userdata) catch |err| return switch (err) {
+    const result = target.Pipeline.create(if (name_len == 0) &.{} else name_ptr[0..name_len], @enumFromInt(mode), &zg_pipeline_create_go_callback_callback, userdata) catch |err| return switch (err) {
         error.OutOfMemory => 1,
         error.InvalidName => 2,
     };
@@ -57,7 +57,7 @@ export fn zg_pipeline_create_impl(name_ptr: [*c]const u8, name_len: usize, mode:
     return 0;
 }
 export fn zg_pipeline_process_impl(self: *target.Pipeline, values_ptr: [*c]const i32, values_len: usize, out_result: *i64) i32 {
-    const result = target.Pipeline.process(self, values_ptr[0..values_len]) catch |err| return switch (err) {
+    const result = target.Pipeline.process(self, if (values_len == 0) &.{} else values_ptr[0..values_len]) catch |err| return switch (err) {
         error.EmptyInput => 3,
         error.Disabled => 4,
         error.CallbackPanicked => 5,

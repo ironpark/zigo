@@ -42,3 +42,13 @@ dual-symbol strategy avoids changing an existing cgo ABI in place. Binding
 reports identify the backend and callback convention; `abi-diff` accepts
 `--base-backend` and `--current-backend` so a backend/convention switch is
 reported as breaking rather than mistaken for an unchanged semantic signature.
+
+For purego callbacks, generated code creates one permanent native dispatcher per
+unique callback signature. Individual Go callback values live in a synchronized
+integer-token registry; native code retains only the dispatcher pointer and the
+token, never Go memory. Borrowed tokens are removed after the call. Retained
+tokens move into the returned owner and are removed on constructor rollback,
+explicit `Close`, or automatic cleanup when enabled. Deletion rejects new
+invocations and waits for calls already in flight. Dispatcher recovery converts
+Go panics to the existing `-3` callback-panic status for signed 32-bit callback
+results; a released token deterministically returns `-4`.

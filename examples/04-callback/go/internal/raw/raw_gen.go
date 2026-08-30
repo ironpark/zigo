@@ -24,6 +24,17 @@ func zg_callback_context_create_go_callback_callback(p0 C.int32_t, p1 C.size_t) 
 	return C.int32_t(callback(int32(p0)))
 }
 
+//export zg_apply_go_callback_callback
+func zg_apply_go_callback_callback(p0 C.int32_t, p1 C.size_t) (result C.int32_t) {
+	defer func() {
+		if recover() != nil {
+			result = C.int32_t(-3)
+		}
+	}()
+	callback := cgo.Handle(p1).Value().(func(int32) int32)
+	return C.int32_t(callback(int32(p0)))
+}
+
 // FloatBufferCreate calls the generated C ABI wrapper for zg_float_buffer_create.
 func FloatBufferCreate() (unsafe.Pointer, int32) {
 	var outResult unsafe.Pointer
@@ -94,4 +105,9 @@ func PanicNow() int32 {
 // CompressionBound calls the generated C ABI wrapper for zg_compression_bound.
 func CompressionBound(source_len uint) uint {
 	return uint(C.zg_compression_bound(C.size_t(source_len)))
+}
+
+// Apply calls the generated C ABI wrapper for zg_apply.
+func Apply(value int32, callbackHandle uintptr) int32 {
+	return int32(C.zg_apply(C.int32_t(value), C.size_t(callbackHandle)))
 }

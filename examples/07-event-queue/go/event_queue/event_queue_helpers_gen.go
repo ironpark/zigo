@@ -8,14 +8,16 @@ import (
 
 var activeCallbackHandles atomic.Int64
 
-func newEventQueueObserverHandle(value EventQueueObserver) cgo.Handle {
+type zigoCallbackHandle = cgo.Handle
+
+func newEventQueueObserverHandle(value EventQueueObserver) zigoCallbackHandle {
 	stored := (func(uint64, int32) int32)(value)
 	handle := cgo.NewHandle(stored)
 	activeCallbackHandles.Add(1)
 	return handle
 }
 
-func deleteCallbackHandle(handle cgo.Handle) {
+func deleteCallbackHandle(handle zigoCallbackHandle) {
 	handle.Delete()
 	activeCallbackHandles.Add(-1)
 }

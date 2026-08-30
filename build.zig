@@ -233,6 +233,9 @@ pub fn build(b: *std.Build) void {
         "examples/09-type-relations/go",
         "examples/10-tagged-union/go",
         "examples/10-tagged-union/go-purego",
+        "examples/04-callback/go-purego",
+        "examples/07-event-queue/go-purego",
+        "examples/08-telemetry-hub/go-purego",
     });
     test_step.dependOn(&godoc_audit.step);
     test_step.dependOn(&run_tests.step);
@@ -563,6 +566,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         run.addFileArg(baseline_semantic);
         run.addArg("--current");
         run.addFileArg(semantic_json);
+        run.addArgs(&.{ "--base-backend", @tagName(options.backend), "--current-backend", @tagName(options.backend) });
         run.addArgs(&.{ "--fail-on", "breaking" });
         break :check run;
     } else null;

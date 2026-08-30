@@ -3,7 +3,6 @@ package event_queue
 
 import (
 	"runtime"
-	"runtime/cgo"
 	"sync"
 	"unsafe"
 
@@ -38,7 +37,8 @@ type EventQueueObserver func(uint64, int32) int32
 type EventQueue struct {
 	ptr             unsafe.Pointer
 	once            sync.Once
-	callbackHandles []cgo.Handle
+	mu              sync.RWMutex
+	callbackHandles []zigoCallbackHandle
 	cleanup         runtime.Cleanup
 }
 
@@ -67,10 +67,10 @@ func (value *EventQueueRef) zigoPointer() unsafe.Pointer {
 
 type eventQueueCleanupState struct {
 	ptr             unsafe.Pointer
-	callbackHandles []cgo.Handle
+	callbackHandles []zigoCallbackHandle
 }
 
-func newEventQueue(ptr unsafe.Pointer, callbackHandles []cgo.Handle) *EventQueue {
+func newEventQueue(ptr unsafe.Pointer, callbackHandles []zigoCallbackHandle) *EventQueue {
 	value := &EventQueue{ptr: ptr, callbackHandles: callbackHandles}
 	state := eventQueueCleanupState{ptr: ptr, callbackHandles: callbackHandles}
 	value.cleanup = runtime.AddCleanup(value, cleanupEventQueue, state)
@@ -92,6 +92,8 @@ func (value *EventQueue) Close() {
 		return
 	}
 	value.once.Do(func() {
+		value.mu.Lock()
+		defer value.mu.Unlock()
 		value.cleanup.Stop()
 		cleanupEventQueue(eventQueueCleanupState{ptr: value.ptr, callbackHandles: value.callbackHandles})
 		value.ptr = nil

@@ -2,7 +2,6 @@
 package callback
 
 import (
-	"runtime/cgo"
 	"sync"
 	"unsafe"
 
@@ -12,11 +11,15 @@ import (
 // CallbackContextCallback is the Go callback signature accepted by the generated binding.
 type CallbackContextCallback func(int32) int32
 
+// ApplyCallbackCallback is the Go callback signature accepted by the generated binding.
+type ApplyCallbackCallback func(int32) int32
+
 // CallbackContext is a caller-owned native handle. Call Close when it is no longer needed.
 type CallbackContext struct {
 	ptr             unsafe.Pointer
 	once            sync.Once
-	callbackHandles []cgo.Handle
+	mu              sync.RWMutex
+	callbackHandles []zigoCallbackHandle
 }
 
 // CallbackContextRef is a borrowed CallbackContext reference that remains valid only while its parent is open.
@@ -48,6 +51,8 @@ func (value *CallbackContext) Close() {
 		return
 	}
 	value.once.Do(func() {
+		value.mu.Lock()
+		defer value.mu.Unlock()
 		if value.ptr != nil {
 			raw.CallbackContextDeinit(value.ptr)
 			value.ptr = nil
@@ -63,7 +68,8 @@ func (value *CallbackContext) Close() {
 type FloatBuffer struct {
 	ptr             unsafe.Pointer
 	once            sync.Once
-	callbackHandles []cgo.Handle
+	mu              sync.RWMutex
+	callbackHandles []zigoCallbackHandle
 }
 
 // FloatBufferRef is a borrowed FloatBuffer reference that remains valid only while its parent is open.
@@ -95,6 +101,8 @@ func (value *FloatBuffer) Close() {
 		return
 	}
 	value.once.Do(func() {
+		value.mu.Lock()
+		defer value.mu.Unlock()
 		if value.ptr != nil {
 			raw.FloatBufferDeinit(value.ptr)
 			value.ptr = nil
@@ -110,7 +118,8 @@ func (value *FloatBuffer) Close() {
 type IntBuffer struct {
 	ptr             unsafe.Pointer
 	once            sync.Once
-	callbackHandles []cgo.Handle
+	mu              sync.RWMutex
+	callbackHandles []zigoCallbackHandle
 }
 
 // IntBufferRef is a borrowed IntBuffer reference that remains valid only while its parent is open.
@@ -142,6 +151,8 @@ func (value *IntBuffer) Close() {
 		return
 	}
 	value.once.Do(func() {
+		value.mu.Lock()
+		defer value.mu.Unlock()
 		if value.ptr != nil {
 			raw.IntBufferDeinit(value.ptr)
 			value.ptr = nil

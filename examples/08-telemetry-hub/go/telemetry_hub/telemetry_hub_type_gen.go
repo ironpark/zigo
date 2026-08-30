@@ -2,7 +2,6 @@
 package telemetry_hub
 
 import (
-	"runtime/cgo"
 	"sync"
 	"unsafe"
 
@@ -94,7 +93,8 @@ type TelemetryHubObserver func(uint64, float64) int32
 type TelemetryHub struct {
 	ptr             unsafe.Pointer
 	once            sync.Once
-	callbackHandles []cgo.Handle
+	mu              sync.RWMutex
+	callbackHandles []zigoCallbackHandle
 }
 
 // TelemetryHubRef is a borrowed TelemetryHub reference that remains valid only while its parent is open.
@@ -126,6 +126,8 @@ func (value *TelemetryHub) Close() {
 		return
 	}
 	value.once.Do(func() {
+		value.mu.Lock()
+		defer value.mu.Unlock()
 		if value.ptr != nil {
 			raw.TelemetryHubDeinit(value.ptr)
 			value.ptr = nil

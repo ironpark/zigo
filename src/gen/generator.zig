@@ -337,7 +337,7 @@ test "callbacks use role-specific public types and typed handle helpers" {
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "type RegistryReplaceHandler func(uint8) int32"));
     const helpers = try temporary.dir.readFileAlloc(std.testing.io, "callbacks/callbacks_helpers_gen.go", std.testing.allocator, .limited(64 * 1024));
     defer std.testing.allocator.free(helpers);
-    try std.testing.expect(std.mem.containsAtLeast(u8, helpers, 1, "func newSubscribeHandlerCallbackHandle(value SubscribeHandlerCallback) cgo.Handle"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, helpers, 1, "func newSubscribeHandlerCallbackHandle(value SubscribeHandlerCallback) zigoCallbackHandle"));
     try std.testing.expect(std.mem.containsAtLeast(u8, helpers, 1, "stored := (func(int32) int32)(value)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, helpers, 1, "stored := (func(uint64) int32)(value)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, helpers, 1, "stored := (func(uint8) int32)(value)"));
@@ -381,12 +381,12 @@ test "opt-in cleanup isolates state stops explicitly and keeps owners alive" {
     try std.testing.expect(std.mem.containsAtLeast(u8, shim, 1, "target.Context.deinit(self)"));
     const public = try temporary.dir.readFileAlloc(std.testing.io, "opaque/opaque_gen.go", std.testing.allocator, .limited(32 * 1024));
     defer std.testing.allocator.free(public);
-    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "import (\n\t\"runtime\"\n\t\"runtime/cgo\"\n)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "import \"runtime\""));
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func NewContext(callback ContextCallback) (*Context, error)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "zigoRawContextCreate("));
-    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "return newContext(result, []cgo.Handle{callbackHandle}), nil"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func (c *Context) Touch() {\n\tdefer runtime.KeepAlive(c)"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func Use(context *Context) {\n\tdefer runtime.KeepAlive(context)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "return newContext(result, []zigoCallbackHandle{callbackHandle}), nil"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "defer runtime.KeepAlive(c)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "defer runtime.KeepAlive(context)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "zigoMustPointer(\"Context.Touch receiver\", c)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "zigoMustPointer(\"Use parameter context\", context)"));
     try std.testing.expect(std.mem.indexOf(u8, public, "c.ptr") == null);
@@ -404,10 +404,10 @@ test "opt-in cleanup isolates state stops explicitly and keeps owners alive" {
         1,
         "type contextCleanupState struct {\n" ++
             "\tptr             unsafe.Pointer\n" ++
-            "\tcallbackHandles []cgo.Handle\n" ++
+            "\tcallbackHandles []zigoCallbackHandle\n" ++
             "}\n",
     ));
-    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "callbackHandles []cgo.Handle"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "callbackHandles []zigoCallbackHandle"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "runtime.AddCleanup(value, cleanupContext, state)"));
     try std.testing.expect(std.mem.indexOf(u8, public_types, "runtime.AddCleanup(value, cleanupContext, value)") == null);
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "func cleanupContext(state contextCleanupState)"));
@@ -616,7 +616,7 @@ test "purego generation emits an atomic retryable loader and explicit callback A
     try std.testing.expect(std.mem.indexOf(u8, raw, "func Accept(value unsafe.Pointer)") != null);
 
     const callback_fixture =
-        \\{"functions":[{"name":"install","params":[{"name":"callback","type":{"c_callconv":true,"has_userdata":true,"kind":"callback","params":[{"bits":32,"kind":"int","signed":true},{"bits":64,"is_usize":true,"kind":"int","signed":false}],"return":{"bits":32,"kind":"int","signed":true}}},{"name":"userdata","type":{"bits":64,"is_usize":true,"kind":"int","signed":false}}],"return":{"kind":"void"},"symbol":"ignored"}],"package":"callbacks","prefix":"zg","zig_version":"0.16.0"}
+        \\{"functions":[{"name":"install","params":[{"name":"callback","type":{"c_callconv":true,"has_userdata":true,"kind":"callback","params":[{"bits":32,"kind":"int","signed":true},{"bits":64,"is_usize":true,"kind":"int","signed":false}],"return":{"bits":32,"kind":"int","signed":true}}},{"name":"userdata","type":{"bits":64,"is_usize":true,"kind":"int","signed":false}}],"return":{"kind":"void"},"symbol":"ignored"},{"name":"apply","params":[{"name":"callback","type":{"c_callconv":true,"has_userdata":true,"kind":"callback","params":[{"bits":32,"kind":"int","signed":true},{"bits":64,"is_usize":true,"kind":"int","signed":false}],"return":{"bits":32,"kind":"int","signed":true}}},{"name":"userdata","type":{"bits":64,"is_usize":true,"kind":"int","signed":false}}],"return":{"kind":"void"},"symbol":"ignored"},{"name":"process","params":[],"return":{"error_set":["Failed"],"kind":"error_union","payload":{"bits":64,"is_usize":true,"kind":"int","signed":false}},"symbol":"ignored"}],"package":"callbacks","prefix":"zg","zig_version":"0.16.0"}
     ;
     var rejected = std.testing.tmpDir(.{ .iterate = true });
     defer rejected.cleanup();
@@ -633,6 +633,12 @@ test "purego generation emits an atomic retryable loader and explicit callback A
     defer std.testing.allocator.free(callback_shim);
     try std.testing.expect(std.mem.containsAtLeast(u8, callback_shim, 1, "callback: *const fn (i32, usize) callconv(.c) i32, userdata: usize"));
     try std.testing.expect(std.mem.indexOf(u8, callback_shim, "extern fn zg_install_go_callback_callback") == null);
+    const callback_raw = try rejected.dir.readFileAlloc(std.testing.io, "internal/raw/raw_gen.go", std.testing.allocator, .limited(64 * 1024));
+    defer std.testing.allocator.free(callback_raw);
+    try std.testing.expect(std.mem.containsAtLeast(u8, callback_raw, 1, "var callbackPointers [1]uintptr"));
+    try std.testing.expect(std.mem.indexOf(u8, callback_raw, "CallbackPointer1") == null);
+    try std.testing.expect(std.mem.containsAtLeast(u8, callback_raw, 1, "var outResult uintptr"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, callback_raw, 1, "return uint(outResult), code"));
 
     var legacy = std.testing.tmpDir(.{ .iterate = true });
     defer legacy.cleanup();

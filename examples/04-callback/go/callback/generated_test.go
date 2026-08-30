@@ -53,6 +53,17 @@ func TestRetainedCallbackLifecycle(t *testing.T) {
 	}
 }
 
+func TestBorrowedCallbackLifecycle(t *testing.T) {
+	for value := int32(0); value < 100; value++ {
+		if got := Apply(value, func(input int32) int32 { return input + 1 }); got != value+1 {
+			t.Fatalf("Apply(%d) = %d", value, got)
+		}
+	}
+	if got := activeCallbackHandleCount(); got != 0 {
+		t.Fatalf("active callback handles = %d, want 0", got)
+	}
+}
+
 func TestCallbackPanicIsContained(t *testing.T) {
 	context, err := NewCallbackContext(func(int32) int32 { panic("boom") })
 	if err != nil {

@@ -15,14 +15,16 @@ func boolToUint8(value bool) uint8 {
 
 var activeCallbackHandles atomic.Int64
 
-func newPipelineCallbackHandle(value PipelineCallback) cgo.Handle {
+type zigoCallbackHandle = cgo.Handle
+
+func newPipelineCallbackHandle(value PipelineCallback) zigoCallbackHandle {
 	stored := (func(int32) int32)(value)
 	handle := cgo.NewHandle(stored)
 	activeCallbackHandles.Add(1)
 	return handle
 }
 
-func deleteCallbackHandle(handle cgo.Handle) {
+func deleteCallbackHandle(handle zigoCallbackHandle) {
 	handle.Delete()
 	activeCallbackHandles.Add(-1)
 }

@@ -27,4 +27,20 @@ pub fn build(b: *std.Build) void {
         .auto_cleanup = true,
     });
     _ = bindings.addStandardSteps(b, .{});
+
+    const purego_bindings = zigo.addGoBindings(b, .{
+        .name = "event_queue",
+        .module = event_queue,
+        .bindings = b.path("src/bindings.zig"),
+        .go_dir = b.path("go-purego"),
+        .go_module = "example.com/zigo/event-queue-purego",
+        .target = target,
+        .optimize = optimize,
+        .abi_base = "HEAD",
+        .raw_package = .{ .path = "internal/native" },
+        .auto_cleanup = true,
+        .backend = .purego,
+        .link_mode = .dynamic,
+    });
+    _ = purego_bindings.addStandardSteps(b, .{ .name_prefix = "purego" });
 }

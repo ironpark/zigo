@@ -2,7 +2,7 @@
 depends_on:
 - "31-shared-library-purego#3"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Callback examples pass under `CGO_ENABLED=0`, race-enabled Go tests show no registry leaks or calls
 > NEXT: none
