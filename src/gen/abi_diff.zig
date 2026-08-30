@@ -47,6 +47,13 @@ pub fn diff(allocator: std.mem.Allocator, base: semantic.Semantic, current: sema
     var report: Report = .{};
     errdefer report.deinit(allocator);
 
+    if (base.ir_version != current.ir_version)
+        try add(allocator, &report, .breaking, "document.ir_version", "semantic IR version changed");
+    if (!std.mem.eql(u8, base.package, current.package))
+        try add(allocator, &report, .breaking, "document.package", "generated package identity changed");
+    if (!std.mem.eql(u8, base.prefix, current.prefix))
+        try add(allocator, &report, .breaking, "document.prefix", "generated C symbol prefix changed");
+
     for (base.functions) |old| {
         const new = findFunction(current.functions, old) orelse {
             const identity = try functionIdentity(allocator, old);
@@ -56,6 +63,8 @@ pub fn diff(allocator: std.mem.Allocator, base: semantic.Semantic, current: sema
         };
         const identity = try functionIdentity(allocator, old);
         defer allocator.free(identity);
+        if (!std.mem.eql(u8, old.symbol, new.symbol))
+            try add(allocator, &report, .breaking, identity, "exported C symbol changed");
         if (!signatureEqual(old, new)) try add(allocator, &report, .breaking, identity, "signature changed");
         if (old.ownership != new.ownership or !optionalHintEqual(old.return_semantic, new.return_semantic))
             try add(allocator, &report, .breaking, identity, "return ownership or semantics changed");
@@ -78,6 +87,17 @@ pub fn diff(allocator: std.mem.Allocator, base: semantic.Semantic, current: sema
     }
     for (current.types) |new| if (findType(base.types, new.name) == null)
         try add(allocator, &report, .added, new.name, "type added");
+
+    for (base.constructors) |old| {
+        const new = findConstructor(current.constructors, old.type) orelse {
+            try add(allocator, &report, .breaking, old.type, "constructor mapping removed");
+            continue;
+        };
+        if (!std.mem.eql(u8, old.init, new.init) or !std.mem.eql(u8, old.deinit, new.deinit))
+            try add(allocator, &report, .breaking, old.type, "constructor or destructor mapping changed");
+    }
+    for (current.constructors) |new| if (findConstructor(base.constructors, new.type) == null)
+        try add(allocator, &report, .added, new.type, "constructor mapping added");
 
     return report;
 }
@@ -188,6 +208,11 @@ fn findType(types: []const semantic.TypeDecl, name: []const u8) ?semantic.TypeDe
     return null;
 }
 
+fn findConstructor(constructors: []const semantic.Constructor, type_name: []const u8) ?semantic.Constructor {
+    for (constructors) |constructor| if (std.mem.eql(u8, constructor.type, type_name)) return constructor;
+    return null;
+}
+
 test "parameter type changes are breaking and functions are added" {
     const old: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{.{
         .name = "value",
@@ -227,15 +252,89 @@ test "appending an error is ABI compatible" {
     try std.testing.expectEqual(ChangeKind.compatible, report.changes.items[0].kind);
 }
 
-test "diff cleans up every partial allocation failure" {
-    try std.testing.checkAllAllocationFailures(std.testing.allocator, expectAddedFunction, .{});
+test "document identity and exported symbol changes are breaking" {
+    const base: semantic.Semantic = .{
+        .package = "demo",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+        .functions = &.{.{
+            .name = "run",
+            .params = &.{},
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_run",
+        }},
+    };
+    const current: semantic.Semantic = .{
+        .ir_version = 2,
+        .package = "renamed",
+        .prefix = "acme",
+        .zig_version = "0.16.0",
+        .functions = &.{.{
+            .name = "run",
+            .params = &.{},
+            .@"return" = .{ .void = {} },
+            .symbol = "acme_run",
+        }},
+    };
+    var report = try diff(std.testing.allocator, base, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 4), report.changes.items.len);
+    try std.testing.expect(report.hasBreaking());
+    for (report.changes.items) |change| try std.testing.expectEqual(ChangeKind.breaking, change.kind);
 }
 
-fn expectAddedFunction(allocator: std.mem.Allocator) !void {
-    const base: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0" };
+test "constructor mapping changes break while additions are compatible" {
+    const base: semantic.Semantic = .{
+        .package = "demo",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+        .constructors = &.{.{ .type = "Context", .init = "create", .deinit = "deinit" }},
+    };
     const current: semantic.Semantic = .{
         .package = "demo",
         .prefix = "zg",
+        .zig_version = "0.16.0",
+        .constructors = &.{
+            .{ .type = "Context", .init = "open", .deinit = "close" },
+            .{ .type = "Session", .init = "create", .deinit = "deinit" },
+        },
+    };
+    var report = try diff(std.testing.allocator, base, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 2), report.changes.items.len);
+    try std.testing.expectEqual(ChangeKind.breaking, report.changes.items[0].kind);
+    try std.testing.expectEqual(ChangeKind.added, report.changes.items[1].kind);
+}
+
+test "unchanged semantic contract has an empty report" {
+    const document: semantic.Semantic = .{
+        .package = "demo",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+        .constructors = &.{.{ .type = "Context", .init = "create", .deinit = "deinit" }},
+        .functions = &.{.{
+            .name = "run",
+            .params = &.{},
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_run",
+        }},
+    };
+    var report = try diff(std.testing.allocator, document, document);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 0), report.changes.items.len);
+    try std.testing.expect(!report.hasBreaking());
+}
+
+test "diff cleans up every partial allocation failure" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, expectExpandedBreakingReport, .{});
+}
+
+fn expectExpandedBreakingReport(allocator: std.mem.Allocator) !void {
+    const base: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0" };
+    const current: semantic.Semantic = .{
+        .ir_version = 2,
+        .package = "renamed",
+        .prefix = "acme",
         .zig_version = "0.16.0",
         .functions = &.{.{
             .name = "extra",
@@ -246,5 +345,5 @@ fn expectAddedFunction(allocator: std.mem.Allocator) !void {
     };
     var report = try diff(allocator, base, current);
     defer report.deinit(allocator);
-    try std.testing.expectEqual(@as(usize, 1), report.changes.items.len);
+    try std.testing.expectEqual(@as(usize, 4), report.changes.items.len);
 }
