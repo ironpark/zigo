@@ -8,7 +8,7 @@ registered_at: "2026-08-30T06:09:48Z"
 # Phases
 
 - [x] [Phase 00: Typed callback emission](phases/00-typed-callback-emission.md)
-- [ ] [Phase 01: Fixtures and documentation](phases/01-fixtures-and-documentation.md)
+- [x] [Phase 01: Fixtures and documentation](phases/01-fixtures-and-documentation.md)
 - [ ] [Phase 02: Full compatibility verification](phases/02-full-compatibility-verification.md)
 
 # Shared Verification

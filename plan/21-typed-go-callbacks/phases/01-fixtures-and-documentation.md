@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T06:18:24Z"
 depends_on:
 - "21-typed-go-callbacks#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Event queue, pipeline, callback, and telemetry examples expose named callback types and pass generation, Zig, and Go tests.
 > NEXT: none
