@@ -206,7 +206,7 @@ error[ZIGO003]: cannot pass `mylib.Config` by value
 2. `zigo-gen abi-diff --base <old.json> --current <new.json>`: 두 semantic 문서 파싱
 3. 판정기: BREAKING / ADDED / ABI COMPATIBLE
 4. `--fail-on breaking` 종료 코드, `--json` 출력
-5. `abi_check` 스텝으로 노출
+5. `abi_base`를 지정한 경우에만 optional `abi_check` 스텝으로 노출
 
 **완료 기준:** 파라미터 타입 변경 시 BREAKING, 함수 추가 시 ADDED 검출.
 `zig build go-check abi-check` 가 예제 저장소 CI에서 동작.

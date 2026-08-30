@@ -17,8 +17,10 @@ pub fn build(b: *std.Build) void {
         .go_module = "example.com/zigo/opaque",
         .target = target,
         .optimize = optimize,
+        .abi_base = "HEAD",
     });
     b.step("go", "Generate and build Go bindings").dependOn(&bindings.update.step);
     b.step("go-check", "Fail if generated bindings are stale").dependOn(&bindings.check.step);
-    b.step("abi-check", "Fail on a breaking ABI change").dependOn(&bindings.abi_check.step);
+    if (bindings.abi_check) |abi_check|
+        b.step("abi-check", "Fail on a breaking ABI change").dependOn(&abi_check.step);
 }

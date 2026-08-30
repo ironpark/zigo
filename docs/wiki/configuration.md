@@ -14,8 +14,12 @@
 | `prefix` | 아니요 | C 심볼 접두사. 기본값 `zg` |
 | `link_mode` | 아니요 | `.static` 또는 `.dynamic`. 기본값 `.static` |
 | `cgo_flags` | 아니요 | 자동 계산 대신 사용할 CFLAGS와 LDFLAGS |
-| `abi_base` | 아니요 | ABI 비교에 사용할 Git ref. 기본값 `HEAD` |
+| `abi_base` | 아니요 | ABI·바인딩 계약 비교에 사용할 Git ref. 생략하면 검사 비활성화 |
 | `raw_package` | 아니요 | raw Go 코드 위치. 기본값 `.internal` |
+
+`abi_base`는 호환성 정책이 필요한 프로젝트만 지정한다. 생략하면 zigo는 Git을 호출하지
+않고 `GoBindings.abi_check`를 `null`로 반환한다. 활성화한 경우 지정한 ref에 커밋된
+`zigo/semantic.json`이 비교 기준이다.
 
 ## raw Go 패키지 위치
 

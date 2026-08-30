@@ -38,7 +38,8 @@ Zig reflection에는 함수 파라미터 이름이 없다. zigo는 `bindings.zig
 
 ## 생성물 관리
 
-생성된 Go 파일과 ABI 메타데이터는 커밋하고 CI에서 `go-check`와 `abi-check`를 실행한다.
+생성된 Go 파일과 ABI 메타데이터는 커밋하고 CI에서 `go-check`를 실행한다. 독립 배포
+버전과의 호환성을 보증하는 프로젝트는 `abi_base`를 설정하고 `abi-check`도 실행한다.
 raw 패키지 모드나 경로를 변경하면 zigo는 이전 위치의 파일을 자동 삭제하지 않는다.
 새 바인딩 생성 후 오래된 `_gen.go` 파일을 한 번 직접 제거해야 한다.
 

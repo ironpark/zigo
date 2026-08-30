@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T04:27:23Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Every newly covered contract change produces `hasBreaking() == true`, unchanged documents remain empty, and focused/full Zig tests pass.
 > NEXT: none

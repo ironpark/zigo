@@ -46,11 +46,13 @@ pub fn build(b: *std.Build) void {
         .go_module = "github.com/me/mylib/go",     // cgo import path 계산용
         .target    = target,
         .optimize  = optimize,
+        .abi_base  = "HEAD",                     // 계약 검사를 쓸 때만 지정
     });
 
     b.step("go", "Generate + build Go bindings").dependOn(&go.update.step);
     b.step("go-check", "Fail if bindings are stale").dependOn(&go.check.step);
-    b.step("abi-check", "Fail on breaking ABI change").dependOn(&go.abi_check.step);
+    if (go.abi_check) |abi_check|
+        b.step("abi-check", "Fail on breaking ABI change").dependOn(&abi_check.step);
 }
 ```
 
@@ -232,14 +234,14 @@ pub const Options = struct {
     prefix: []const u8 = "zg",        // C 심볼 접두사
     link_mode: enum { static, dynamic } = .static,
     cgo_flags: ?CgoFlags = null,      // null이면 빌드 경로에서 자동 계산
-    abi_base: []const u8 = "HEAD",    // ABI diff 기준 git ref
+    abi_base: ?[]const u8 = null,      // 지정한 경우에만 ABI diff 활성화
     raw_package: RawPackage = .internal,
 };
 
 pub const GoBindings = struct {
     update: *std.Build.Step.UpdateSourceFiles,  // zig build go
     check: *std.Build.Step.Run,                 // zig build go-check
-    abi_check: *std.Build.Step.Run,             // zig build abi-check
+    abi_check: ?*std.Build.Step.Run,            // opt-in zig build abi-check
     lib: *std.Build.Step.Compile,               // 정적 라이브러리
     semantic_json: std.Build.LazyPath,          // 후처리용 노출
 };
@@ -260,7 +262,7 @@ pub const GoBindings = struct {
 
 1. **프로세스 경계.** reflector(사용자 코드와 링크됨)와 generator(순수 함수)는
    별개의 실행 파일이다. 둘 사이에는 직렬화된 표현이 반드시 필요하다.
-2. **ABI diff.** `semantic.json`을 커밋해야 API 호환성 검사가 성립한다.
+2. **선택적 ABI diff.** 호환성 정책을 켠 경우 `semantic.json`을 커밋해야 비교가 성립한다.
 3. **테스트 가능성.** generator 테스트가 IR 픽스처만으로 완결되고,
    테스트마다 실제 Zig 프로젝트를 세울 필요가 없다.
 

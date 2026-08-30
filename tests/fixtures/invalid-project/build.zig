@@ -16,5 +16,6 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = .Debug,
     });
+    std.debug.assert(bindings.abi_check == null);
     b.step("go", "Expected diagnostic failure").dependOn(&bindings.update.step);
 }

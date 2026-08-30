@@ -10,7 +10,7 @@ reflection 결과를 바탕으로 C ABI shim, C 헤더, cgo 코드와 Go API를 
 - Zig 라이브러리 소스를 수정하지 않고 `bindings.zig`에서 노출할 API를 선언한다.
 - 스칼라, 슬라이스, 에러 유니온, opaque 타입, generic specialization과 콜백을 지원한다.
 - Go용 raw 계층과 public 계층, C 헤더와 Zig shim을 한 번에 생성한다.
-- `go-check`로 생성물 동기화를, `abi-check`로 호환성 파괴 여부를 검사한다.
+- `go-check`로 생성물 동기화를 검사하고, 필요하면 `abi-check`를 켜 호환성 파괴를 막는다.
 
 ## 빠른 시작
 
@@ -46,8 +46,18 @@ pub fn build(b: *std.Build) void {
     });
     b.step("go", "Generate Go bindings").dependOn(&bindings.update.step);
     b.step("go-check", "Check generated bindings").dependOn(&bindings.check.step);
-    b.step("abi-check", "Check ABI compatibility").dependOn(&bindings.abi_check.step);
 }
+```
+
+이전 배포 버전과의 ABI·바인딩 계약을 유지해야 할 때만 옵션과 스텝을 추가한다.
+
+```zig
+// addGoBindings options
+.abi_base = "HEAD",
+
+// after addGoBindings
+if (bindings.abi_check) |abi_check|
+    b.step("abi-check", "Check ABI compatibility").dependOn(&abi_check.step);
 ```
 
 Go에 노출할 선언을 별도 파일에 적는다.

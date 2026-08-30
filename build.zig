@@ -25,7 +25,7 @@ pub const Options = struct {
     prefix: []const u8 = "zg",
     link_mode: LinkMode = .static,
     cgo_flags: ?CgoFlags = null,
-    abi_base: []const u8 = "HEAD",
+    abi_base: ?[]const u8 = null,
     raw_package: RawPackage = .internal,
 };
 
@@ -38,7 +38,7 @@ const ResolvedRawPackage = struct {
 pub const GoBindings = struct {
     update: *std.Build.Step.UpdateSourceFiles,
     check: *std.Build.Step.Run,
-    abi_check: *std.Build.Step.Run,
+    abi_check: ?*std.Build.Step.Run,
     lib: *std.Build.Step.Compile,
     semantic_json: std.Build.LazyPath,
 };
@@ -283,19 +283,22 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     check.addDirectoryArg(go_sources_dir);
     check.addArg("--source");
     check.addDirectoryArg(options.go_dir);
-    const baseline = b.addSystemCommand(&.{ "git", "show" });
-    // The ref can move without changing argv, so this read must not reuse a
-    // build-cache entry from an older commit.
-    baseline.has_side_effects = true;
-    baseline.setCwd(b.path("."));
-    baseline.addArg(b.fmt("{s}:./zigo/semantic.json", .{options.abi_base}));
-    const baseline_semantic = baseline.captureStdOut(.{ .basename = "semantic-base.json", .trim_whitespace = .none });
-    const abi_check = b.addRunArtifact(generator);
-    abi_check.addArgs(&.{ "abi-diff", "--base" });
-    abi_check.addFileArg(baseline_semantic);
-    abi_check.addArg("--current");
-    abi_check.addFileArg(semantic_json);
-    abi_check.addArgs(&.{ "--fail-on", "breaking" });
+    const abi_check: ?*std.Build.Step.Run = if (options.abi_base) |abi_base| check: {
+        const baseline = b.addSystemCommand(&.{ "git", "show" });
+        // The ref can move without changing argv, so this read must not reuse a
+        // build-cache entry from an older commit.
+        baseline.has_side_effects = true;
+        baseline.setCwd(b.path("."));
+        baseline.addArg(b.fmt("{s}:./zigo/semantic.json", .{abi_base}));
+        const baseline_semantic = baseline.captureStdOut(.{ .basename = "semantic-base.json", .trim_whitespace = .none });
+        const run = b.addRunArtifact(generator);
+        run.addArgs(&.{ "abi-diff", "--base" });
+        run.addFileArg(baseline_semantic);
+        run.addArg("--current");
+        run.addFileArg(semantic_json);
+        run.addArgs(&.{ "--fail-on", "breaking" });
+        break :check run;
+    } else null;
 
     const shim_module = b.createModule(.{
         .root_source_file = generated_dir.path(b, "shim.zig"),
@@ -329,7 +332,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     update.step.dependOn(&install_lib.step);
     update.step.dependOn(&install_header.step);
     check.step.dependOn(&lib.step);
-    abi_check.step.dependOn(&lib.step);
+    if (abi_check) |run| run.step.dependOn(&lib.step);
 
     _ = options.target;
     _ = options.optimize;

@@ -44,7 +44,6 @@ pub fn build(b: *std.Build) void {
 
     b.step("go", "Generate Go bindings").dependOn(&bindings.update.step);
     b.step("go-check", "Check generated bindings").dependOn(&bindings.check.step);
-    b.step("abi-check", "Check ABI compatibility").dependOn(&bindings.abi_check.step);
 }
 ```
 
@@ -90,16 +89,30 @@ cd go && go test ./...
 `zig build go`는 Zig 라이브러리와 헤더를 설치하고 Go 소스, `semantic.json`, 안정적인
 에러 코드 잠금 파일을 갱신한다. 생성된 소스와 `zigo/` 메타데이터는 함께 커밋한다.
 
-CI에서는 생성물 최신 상태와 ABI 호환성을 검사한다.
+CI에서는 기본적으로 생성물 최신 상태와 Go 동작을 검사한다.
 
 ```bash
-zig build go-check abi-check
+zig build go-check
 cd go && go test ./...
 ```
 
-`go-check`는 생성 결과와 커밋된 파일이 다르면 실패한다. `abi-check`는 기본적으로
-`HEAD:zigo/semantic.json`을 기준으로 호환성 파괴를 검사하며 기준 ref는 `abi_base`로
-바꿀 수 있다.
+`go-check`는 생성 결과와 커밋된 파일이 다르면 실패한다.
+
+독립 배포된 이전 버전과의 ABI·바인딩 계약을 유지해야 한다면 명시적으로 활성화한다.
+
+```zig
+const bindings = zigo.addGoBindings(b, .{
+    // 다른 필수 옵션들…
+    .abi_base = "HEAD",
+});
+if (bindings.abi_check) |abi_check|
+    b.step("abi-check", "Check ABI compatibility").dependOn(&abi_check.step);
+```
+
+이후 CI에서 `zig build go-check abi-check`를 실행한다. `abi-check`는 지정한 Git ref의
+`zigo/semantic.json`과 현재 계약을 비교해 함수·타입·C 심볼·package/prefix·constructor
+mapping의 호환성 파괴를 검사한다. `abi_base`를 생략하면 Git baseline 명령과
+`abi_check` handle이 만들어지지 않는다.
 
 ## 다음 단계
 

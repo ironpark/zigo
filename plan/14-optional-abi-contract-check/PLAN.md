@@ -7,7 +7,7 @@ registered_at: "2026-08-30T04:25:03Z"
 
 # Phases
 
-- [ ] [Phase 00: Complete semantic contract comparison](phases/00-complete-contract-diff.md)
+- [x] [Phase 00: Complete semantic contract comparison](phases/00-complete-contract-diff.md)
 - [ ] [Phase 01: Make compatibility policy opt-in](phases/01-opt-in-build-api.md)
 
 # Shared Verification
