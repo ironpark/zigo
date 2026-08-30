@@ -2,7 +2,7 @@
 depends_on:
 - "23-opt-in-runtime-cleanup#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Default Go 1.23 examples and the Go 1.24 cleanup example all pass repository-wide verification.
 > NEXT: none
