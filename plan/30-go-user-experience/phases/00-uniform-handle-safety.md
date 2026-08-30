@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T11:47:28Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: No generated public call passes an opaque `.ptr` directly to raw code.
 > NEXT: none

@@ -7,7 +7,7 @@ registered_at: "2026-08-30T11:40:38Z"
 
 # Phases
 
-- [ ] [Phase 00: Uniform Handle Safety and Checked Projections](phases/00-uniform-handle-safety.md)
+- [x] [Phase 00: Uniform Handle Safety and Checked Projections](phases/00-uniform-handle-safety.md)
 - [ ] [Phase 01: Standard Build Steps](phases/01-standard-build-steps.md)
 - [ ] [Phase 02: Binding Report and Environment Doctor](phases/02-report-and-doctor.md)
 - [ ] [Phase 03: Complete Generated GoDoc and User Documentation](phases/03-complete-generated-godoc.md)

@@ -25,8 +25,5 @@ pub fn build(b: *std.Build) void {
         .abi_base = "HEAD",
         .raw_package = .{ .path = "internal/native" },
     });
-    b.step("go", "Generate the broad Go API").dependOn(&bindings.update.step);
-    b.step("go-check", "Fail if the broad generated API is stale").dependOn(&bindings.check.step);
-    if (bindings.abi_check) |abi_check|
-        b.step("abi-check", "Fail on a breaking broad API change").dependOn(&abi_check.step);
+    _ = bindings.addStandardSteps(b, .{});
 }

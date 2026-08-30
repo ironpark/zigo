@@ -44,7 +44,41 @@ pub const GoBindings = struct {
     abi_check: ?*std.Build.Step.Run,
     lib: *std.Build.Step.Compile,
     semantic_json: std.Build.LazyPath,
+
+    pub const StandardStepOptions = struct {
+        /// Prefixes conventional step names for projects with multiple binding sets.
+        /// For example, `.name_prefix = "admin"` registers `admin-go` and
+        /// `admin-go-check` instead of `go` and `go-check`.
+        name_prefix: ?[]const u8 = null,
+    };
+
+    pub const StandardSteps = struct {
+        update: *std.Build.Step,
+        check: *std.Build.Step,
+        abi_check: ?*std.Build.Step,
+    };
+
+    /// Registers conventional user-facing build steps for this binding set.
+    pub fn addStandardSteps(self: GoBindings, b: *std.Build, options: StandardStepOptions) StandardSteps {
+        if (options.name_prefix) |prefix| {
+            if (prefix.len == 0) @panic("Go binding step name_prefix must not be empty");
+        }
+        const update = b.step(standardStepName(b, options.name_prefix, "go"), "Generate and build Go bindings");
+        update.dependOn(&self.update.step);
+        const check = b.step(standardStepName(b, options.name_prefix, "go-check"), "Fail if generated Go bindings are stale");
+        check.dependOn(&self.check.step);
+        const abi_check = if (self.abi_check) |run| step: {
+            const value = b.step(standardStepName(b, options.name_prefix, "abi-check"), "Fail on a breaking Go binding ABI change");
+            value.dependOn(&run.step);
+            break :step value;
+        } else null;
+        return .{ .update = update, .check = check, .abi_check = abi_check };
+    }
 };
+
+fn standardStepName(b: *std.Build, prefix: ?[]const u8, suffix: []const u8) []const u8 {
+    return if (prefix) |value| b.fmt("{s}-{s}", .{ value, suffix }) else suffix;
+}
 
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
