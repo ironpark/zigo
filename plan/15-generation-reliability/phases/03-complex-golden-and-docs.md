@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T04:50:42Z"
 depends_on:
 - "15-generation-reliability#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: The complex fixture detects changes in all generated artifact forms, docs match
 > NEXT: none
