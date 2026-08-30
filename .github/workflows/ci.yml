@@ -40,6 +40,7 @@ jobs:
             examples/04-callback
             examples/05-pipeline
             examples/06-camel-case
+            examples/07-event-queue
           )
 
           for example in "${examples[@]}"; do

@@ -87,4 +87,5 @@ cd go && go test ./...
 - [제한사항과 운영 주의사항](docs/wiki/limitations.md)
 - [프로젝트 개발](docs/wiki/development.md)
 - [설계 문서](docs/design/README.md)
-- [통합 예제](examples/05-pipeline/README.md)
+- [통합 파이프라인 예제](examples/05-pipeline/README.md)
+- [상태 기반 event queue 예제](examples/07-event-queue/README.md)

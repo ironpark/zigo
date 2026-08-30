@@ -118,4 +118,5 @@ mapping의 호환성 파괴를 검사한다. `abi_base`를 생략하면 Git base
 
 - raw Go 패키지 위치, 링크 방식, cgo 플래그: [설정과 생성물](configuration.md)
 - 지원하지 않는 타입과 수명 계약: [제한사항과 운영 주의사항](limitations.md)
-- 실제 기능을 조합한 코드: [통합 파이프라인 예제](../../examples/05-pipeline/README.md)
+- generic과 system library까지 조합한 코드: [통합 파이프라인 예제](../../examples/05-pipeline/README.md)
+- 상태, 용량 정책과 callback 수명을 조합한 코드: [event queue 예제](../../examples/07-event-queue/README.md)

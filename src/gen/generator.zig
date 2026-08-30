@@ -55,6 +55,11 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
     if (baseline) |value| try lock.validateAgainst(value);
     const abi_codes = try scratch_allocator.alloc(abi.ErrorCode, lock.codes.items.len);
     for (lock.codes.items, 0..) |entry, index| abi_codes[index] = .{ .code = entry.code, .name = entry.name };
+    std.mem.sort(abi.ErrorCode, abi_codes, {}, struct {
+        fn lessThan(_: void, lhs: abi.ErrorCode, rhs: abi.ErrorCode) bool {
+            return lhs.code < rhs.code;
+        }
+    }.lessThan);
     const program = try lower.semanticDocument(scratch_allocator, parsed.value, options.package, options.prefix, abi_codes);
     const emitter_options: emit.Options = .{
         .go_module = options.go_module,
@@ -379,4 +384,44 @@ test "invalid errors lock leaves the output tree untouched" {
     const actual = try temporary.dir.readFileAlloc(std.testing.io, "errors.lock.json", std.testing.allocator, .limited(64));
     defer std.testing.allocator.free(actual);
     try std.testing.expectEqualStrings("old output", actual);
+}
+
+test "generated errors lock produces an identical second generation" {
+    const fixture =
+        \\{"functions":[{"name":"run","params":[],"return":{"error_set":["Zulu","Alpha"],"kind":"error_union","payload":{"kind":"void"}},"symbol":"zg_run"}],"package":"repeatable","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    var first = std.testing.tmpDir(.{ .iterate = true });
+    defer first.cleanup();
+    var second = std.testing.tmpDir(.{ .iterate = true });
+    defer second.cleanup();
+
+    try generate(std.testing.allocator, std.testing.io, fixture, first.dir, .{
+        .package = "repeatable",
+        .prefix = "zg",
+        .go_module = "example.com/repeatable",
+    });
+    const lock = try first.dir.readFileAlloc(std.testing.io, "errors.lock.json", std.testing.allocator, .limited(16 * 1024));
+    defer std.testing.allocator.free(lock);
+    try generate(std.testing.allocator, std.testing.io, fixture, second.dir, .{
+        .package = "repeatable",
+        .prefix = "zg",
+        .go_module = "example.com/repeatable",
+        .errors_lock_bytes = lock,
+    });
+
+    const paths = [_][]const u8{
+        "errors.lock.json",
+        "repeatable/repeatable_gen.go",
+        "internal/raw/raw_gen.go",
+        "panic.c",
+        "shim.zig",
+        "zigo_repeatable.h",
+    };
+    for (paths) |path| {
+        const first_bytes = try first.dir.readFileAlloc(std.testing.io, path, std.testing.allocator, .limited(64 * 1024));
+        defer std.testing.allocator.free(first_bytes);
+        const second_bytes = try second.dir.readFileAlloc(std.testing.io, path, std.testing.allocator, .limited(64 * 1024));
+        defer std.testing.allocator.free(second_bytes);
+        try std.testing.expectEqualStrings(first_bytes, second_bytes);
+    }
 }

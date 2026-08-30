@@ -1,0 +1,20 @@
+{
+  "codes": {
+    "Empty": 5,
+    "Full": 4,
+    "InvalidCapacity": 3,
+    "InvalidLimit": 6,
+    "InvalidName": 2,
+    "ObserverPanicked": 7,
+    "OutOfMemory": 1
+  },
+  "ir_version": 1,
+  "next_code": 8,
+  "reserved": {
+    "-1": "Unknown",
+    "-2": "PanicCaught",
+    "-3": "CallbackPanic",
+    "-4": "InvalidHandle",
+    "0": "OK"
+  }
+}

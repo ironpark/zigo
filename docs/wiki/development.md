@@ -23,10 +23,23 @@ done
 슬라이스, enum, generic specialization, retained 콜백과 system library 전파를 한 번에
 검증한다.
 
+[`examples/07-event-queue`](../../examples/07-event-queue/README.md)은 고정 용량 상태,
+UTF-8 메타데이터, enum 정책, typed error, retained observer와 custom raw package 경로를
+애플리케이션 형태로 검증한다.
+
 ```bash
 cd examples/05-pipeline
 zig build test
 zig build go
+zig build go-check abi-check
+cd go && go test -count=1 ./...
+```
+
+event queue 예제도 동일하게 실행한다.
+
+```bash
+cd examples/07-event-queue
+zig build test
 zig build go-check abi-check
 cd go && go test -count=1 ./...
 ```
