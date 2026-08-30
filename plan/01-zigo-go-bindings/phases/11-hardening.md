@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T00:25:26Z"
 depends_on:
 - "01-zigo-go-bindings#10"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: CI is green on macOS and Linux from a clean checkout.
 > NEXT: none
