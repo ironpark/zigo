@@ -2,7 +2,7 @@
 depends_on:
 - "26-26-zig-test-hardening#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: parser 실패 공간과 핵심 lowering role이 구조체 수준의 unit test로 고정된다.
 > NEXT: none

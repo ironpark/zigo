@@ -160,3 +160,90 @@ fn codesFor(allocator: std.mem.Allocator, names: []const []const u8, all_codes: 
     }
     return result;
 }
+
+test "semantic lowering assigns receiver slice return error and scalar ABI roles" {
+    var float_node: semantic.TypeNode = .{ .float = .{ .bits = 32 } };
+    var enum_payload: semantic.TypeNode = .{ .@"enum" = .{ .ref = "Mode" } };
+    const document: semantic.Semantic = .{
+        .functions = &.{
+            .{
+                .name = "fill",
+                .params = &.{.{
+                    .direction = .out,
+                    .name = "output",
+                    .type = .{ .slice = .{ .@"const" = false, .element = &float_node } },
+                }},
+                .receiver = "Context",
+                .@"return" = .{ .void = {} },
+                .symbol = "ignored",
+            },
+            .{
+                .name = "values",
+                .params = &.{},
+                .@"return" = .{ .slice = .{ .@"const" = true, .element = &float_node } },
+                .symbol = "ignored",
+            },
+            .{
+                .name = "mode",
+                .params = &.{},
+                .@"return" = .{ .error_union = .{ .error_set = &.{"Failed"}, .payload = &enum_payload } },
+                .symbol = "ignored",
+            },
+            .{
+                .name = "sizes",
+                .params = &.{
+                    .{ .name = "unsigned", .type = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } } },
+                    .{ .name = "signed", .type = .{ .int = .{ .bits = 64, .is_usize = true, .signed = true } } },
+                },
+                .@"return" = .{ .@"enum" = .{ .ref = "Mode" } },
+                .symbol = "ignored",
+            },
+        },
+        .package = "roles",
+        .prefix = "zg",
+        .types = &.{
+            .{ .kind = .@"opaque", .name = "Context" },
+            .{ .kind = .@"enum", .name = "Mode", .tag_type = .{ .int = .{ .bits = 16, .signed = false } } },
+        },
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try semanticDocument(arena.allocator(), document, "roles", "zg", &.{.{ .code = 7, .name = "Failed" }});
+
+    const fill = program.functions[0];
+    try std.testing.expectEqualStrings("zg_context_fill", fill.symbol);
+    try std.testing.expectEqual(@as(usize, 4), fill.params.len);
+    try std.testing.expectEqual(abi.AbiParam.Role.receiver, fill.params[0].role);
+    try std.testing.expect(fill.params[0].scalar == .pointer);
+    try std.testing.expectEqual(abi.AbiParam.Role.slice_pointer, fill.params[1].role);
+    try std.testing.expect(fill.params[1].scalar.pointer.is_many);
+    try std.testing.expect(!fill.params[1].scalar.pointer.is_const);
+    try std.testing.expectEqual(abi.AbiParam.Role.slice_length, fill.params[2].role);
+    try std.testing.expect(fill.params[2].scalar == .usize);
+    try std.testing.expectEqual(abi.AbiParam.Role.slice_written, fill.params[3].role);
+    try std.testing.expect(fill.params[3].scalar.pointer.child.* == .usize);
+
+    const values = program.functions[1];
+    try std.testing.expectEqual(@as(usize, 2), values.params.len);
+    try std.testing.expectEqual(abi.AbiParam.Role.return_slice_pointer, values.params[0].role);
+    try std.testing.expect(values.params[0].scalar.pointer.child.pointer.is_many);
+    try std.testing.expect(values.params[0].scalar.pointer.child.pointer.is_const);
+    try std.testing.expectEqual(abi.AbiParam.Role.return_slice_length, values.params[1].role);
+    try std.testing.expect(values.ret == .void);
+
+    const mode = program.functions[2];
+    try std.testing.expect(mode.ret == .signed_int);
+    try std.testing.expectEqual(@as(u16, 32), mode.ret.signed_int);
+    try std.testing.expectEqual(@as(usize, 1), mode.params.len);
+    try std.testing.expectEqual(abi.AbiParam.Role.payload_out, mode.params[0].role);
+    try std.testing.expect(mode.params[0].scalar.pointer.child.* == .unsigned_int);
+    try std.testing.expectEqual(@as(u16, 16), mode.params[0].scalar.pointer.child.unsigned_int);
+    try std.testing.expectEqual(@as(i32, 7), mode.errors[0].code);
+
+    const sizes = program.functions[3];
+    try std.testing.expect(sizes.params[0].scalar == .usize);
+    try std.testing.expect(sizes.params[1].scalar == .isize);
+    try std.testing.expect(sizes.ret == .unsigned_int);
+    try std.testing.expectEqual(@as(u16, 16), sizes.ret.unsigned_int);
+}

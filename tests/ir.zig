@@ -54,6 +54,74 @@ test "semantic fixture round trips byte-identically" {
     try std.testing.expectEqualStrings(serialized, second);
 }
 
+test "semantic parser rejects malformed unknown and incomplete documents" {
+    try expectSemanticParseFailure("{");
+    try expectSemanticParseFailure(
+        \\{"package":"bad","prefix":"zg","zig_version":"0.16.0","functions":[{"name":"run","params":[],"return":{"kind":"mystery"},"symbol":"zg_run"}]}
+    );
+    try expectSemanticParseFailure(
+        \\{"prefix":"zg","zig_version":"0.16.0"}
+    );
+    try expectSemanticParseFailure(
+        \\{"package":"bad","prefix":"zg","zig_version":"0.16.0","functions":[{"name":"run","params":[],"return":{"kind":"int","bits":32},"symbol":"zg_run"}]}
+    );
+}
+
+fn expectSemanticParseFailure(bytes: []const u8) !void {
+    if (semantic.Semantic.parse(std.testing.allocator, bytes)) |parsed_value| {
+        var parsed = parsed_value;
+        parsed.deinit();
+        return error.ExpectedParseFailure;
+    } else |_| {}
+}
+
+test "semantic parser applies defaults and preserves nested type nodes" {
+    const minimal =
+        \\{"package":"minimal","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    var parsed_minimal = try semantic.Semantic.parse(std.testing.allocator, minimal);
+    defer parsed_minimal.deinit();
+    try std.testing.expectEqual(@as(u32, 1), parsed_minimal.value.ir_version);
+    try std.testing.expectEqual(@as(usize, 0), parsed_minimal.value.functions.len);
+    try std.testing.expectEqual(@as(usize, 0), parsed_minimal.value.types.len);
+    try std.testing.expectEqual(@as(usize, 0), parsed_minimal.value.constructors.len);
+
+    const nested =
+        \\{"functions":[{"name":"install","params":[{"name":"callback","type":{"has_userdata":true,"kind":"callback","params":[{"child":{"const":true,"element":{"kind":"enum","ref":"Mode"},"kind":"slice"},"kind":"optional"}],"return":{"kind":"void"}}}],"return":{"kind":"void"},"symbol":"zg_install"}],"package":"nested","prefix":"zg","types":[{"fields":[{"name":"ready","value":1}],"kind":"enum","name":"Mode","tag_type":{"bits":8,"kind":"int","signed":false}}],"zig_version":"0.16.0"}
+    ;
+    var parsed_nested = try semantic.Semantic.parse(std.testing.allocator, nested);
+    defer parsed_nested.deinit();
+    const callback = parsed_nested.value.functions[0].params[0].type.callback;
+    try std.testing.expect(callback.c_callconv);
+    try std.testing.expect(callback.has_userdata);
+    try std.testing.expectEqual(@as(usize, 1), callback.params.len);
+    const optional = callback.params[0].optional;
+    try std.testing.expect(optional.child.* == .slice);
+    try std.testing.expect(optional.child.slice.element.* == .@"enum");
+    try std.testing.expectEqualStrings("Mode", optional.child.slice.element.@"enum".ref);
+
+    const serialized = try parsed_nested.value.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(serialized);
+    var reparsed = try semantic.Semantic.parse(std.testing.allocator, serialized);
+    defer reparsed.deinit();
+    try std.testing.expectEqualStrings("Mode", reparsed.value.functions[0].params[0].type.callback.params[0].optional.child.slice.element.@"enum".ref);
+}
+
+test "semantic parser releases every partial allocation on failure" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, parseAndSerializeNestedSemantic, .{});
+}
+
+fn parseAndSerializeNestedSemantic(allocator: std.mem.Allocator) !void {
+    const nested =
+        \\{"functions":[{"name":"install","params":[{"name":"callback","type":{"has_userdata":true,"kind":"callback","params":[{"const":true,"element":{"kind":"enum","ref":"Mode"},"kind":"slice"}],"return":{"kind":"void"}}}],"return":{"kind":"void"},"symbol":"zg_install"}],"package":"nested","prefix":"zg","types":[{"kind":"enum","name":"Mode","tag_type":{"bits":8,"kind":"int","signed":false}}],"zig_version":"0.16.0"}
+    ;
+    var parsed = try semantic.Semantic.parse(allocator, nested);
+    defer parsed.deinit();
+    const serialized = try parsed.value.serialize(allocator);
+    defer allocator.free(serialized);
+    try std.testing.expect(serialized.len != 0);
+}
+
 test "error lock appends codes and rejects edited mappings" {
     const fixture =
         \\{"ir_version":1,"next_code":3,"codes":{"OutOfMemory":1,"InvalidInput":2},"reserved":{"0":"OK","-1":"Unknown","-2":"PanicCaught","-3":"CallbackPanic","-4":"InvalidHandle"}}
