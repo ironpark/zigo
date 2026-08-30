@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T14:29:38Z"
 depends_on:
 - "31-shared-library-purego#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Header, Zig shim, symbol-table, ABI snapshot, and negative signature tests prove the callback ABI is
 > NEXT: none
