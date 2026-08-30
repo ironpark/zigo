@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T08:33:41Z"
 description: Add opt-in Go 1.24 runtime.AddCleanup fallback for generated owned handles with safe state isolation, KeepAlive, tests, and documentation.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-30T08:22:11Z"
 ---
 > NEXT: Propagate the opt-in and emit cleanup-safe Go wrappers with focused tests. ([Phase 0](phases/00-option-and-safe-emission.md))
@@ -9,7 +10,7 @@ registered_at: "2026-08-30T08:22:11Z"
 
 - [x] [Phase 00: Option and safe emission](phases/00-option-and-safe-emission.md)
 - [x] [Phase 01: Runtime example and documentation](phases/01-runtime-example-and-documentation.md)
-- [ ] [Phase 02: Repository compatibility verification](phases/02-repository-compatibility-verification.md)
+- [x] [Phase 02: Repository compatibility verification](phases/02-repository-compatibility-verification.md)
 
 # Shared Verification
 
