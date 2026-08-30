@@ -2,7 +2,7 @@
 depends_on:
 - "24-24-adversarial-system-validation#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 모든 부정 실험이 의도한 진단과 exit 상태를 보이고 원자성/append-only 불변식이 입증된다.
 > NEXT: none

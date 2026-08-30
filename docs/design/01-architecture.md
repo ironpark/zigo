@@ -186,6 +186,9 @@ Go 생성물은 반드시 사용자 저장소에 커밋되어야 한다:
 
 따라서 `std.Build.Step.UpdateSourceFiles`로 생성 결과를 `go_dir`에 기록한다.
 `go-check` 스텝은 동일 생성을 수행하되 기록 대신 **비교**하고, 다르면 실패한다 (CI 게이트).
+현재 생성 집합의 파일 누락·내용 변경뿐 아니라 zigo generated marker를 가진 이전 생성 파일이
+소스 트리에만 남은 경우도 obsolete로 실패한다. marker가 없는 사용자 작성 Go 파일은 비교
+대상이 아니다.
 `gofmt`가 `PATH`에 있으면 생성된 다섯 Go 파일(raw/cgo, public callables, public types,
 public errors, private helpers)을 각각 포맷한 별도 cache output이
 `UpdateSourceFiles`와 `go-check`의 입력이 된다. 원본 generator cache는 수정하지 않으며,
