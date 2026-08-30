@@ -105,19 +105,19 @@ test "reports a corrupted golden tree by file name" {
     defer actual.cleanup();
     try expected.dir.createDirPath(std.testing.io, "nested");
     try actual.dir.createDirPath(std.testing.io, "nested");
-    try expected.dir.writeFile(std.testing.io, .{ .sub_path = "nested/generated.go", .data = "golden\n" });
-    try actual.dir.writeFile(std.testing.io, .{ .sub_path = "nested/generated.go", .data = "corrupted\n" });
+    try expected.dir.writeFile(std.testing.io, .{ .sub_path = "nested/nested_gen.go", .data = "golden\n" });
+    try actual.dir.writeFile(std.testing.io, .{ .sub_path = "nested/nested_gen.go", .data = "corrupted\n" });
     var result = try compare(std.testing.allocator, std.testing.io, expected.dir, actual.dir);
     defer result.deinit(std.testing.allocator);
     try std.testing.expect(!result.matches());
     try std.testing.expectEqual(@as(usize, 1), result.differences.items.len);
     try std.testing.expectEqual(DifferenceKind.content, result.differences.items[0].kind);
-    try std.testing.expectEqualStrings("nested/generated.go", result.differences.items[0].path);
+    try std.testing.expectEqualStrings("nested/nested_gen.go", result.differences.items[0].path);
 
     var rendered: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer rendered.deinit();
     try result.renderTo(&rendered.writer);
-    try std.testing.expectEqualStrings("snapshot content: nested/generated.go\n", rendered.written());
+    try std.testing.expectEqualStrings("snapshot content: nested/nested_gen.go\n", rendered.written());
 }
 
 test "update mode makes the golden tree match actual output" {
@@ -127,7 +127,7 @@ test "update mode makes the golden tree match actual output" {
     defer actual.cleanup();
     try golden.dir.writeFile(std.testing.io, .{ .sub_path = "stale.txt", .data = "remove me" });
     try actual.dir.createDirPath(std.testing.io, "nested");
-    try actual.dir.writeFile(std.testing.io, .{ .sub_path = "nested/generated.go", .data = "current\n" });
+    try actual.dir.writeFile(std.testing.io, .{ .sub_path = "nested/nested_gen.go", .data = "current\n" });
 
     try updateGolden(std.testing.allocator, std.testing.io, golden.dir, actual.dir);
     var result = try compare(std.testing.allocator, std.testing.io, golden.dir, actual.dir);

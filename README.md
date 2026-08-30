@@ -136,10 +136,14 @@ zigo/semantic.json      🤖 커밋됨. ABI diff 기준
 zigo/errors.lock.json   🤖 커밋됨. 안정 에러코드
 go/internal/raw/        🤖 100% 생성
 go/mylib/
-  generated.go          🤖 덮어써짐
+  mylib_gen.go          🤖 덮어써짐
   custom.go             👤 사용자 확장
 zig-out/lib/libmylib_zigo.a
 ```
+
+생성되는 Go 파일은 package 이름을 snake_case로 정규화한 `<package>_gen.go`를 쓴다.
+이전 버전의 `generated.go`와 `internal/raw/cgo.go`가 남아 있다면 업그레이드할 때 한 번
+삭제해야 중복 선언을 피할 수 있다.
 
 ---
 

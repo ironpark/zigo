@@ -184,7 +184,7 @@ Go 생성물은 반드시 사용자 저장소에 커밋되어야 한다:
 생성기는 빌드 그래프로부터 install prefix와 `go_dir`을 알고 있으므로 경로를 직접 계산한다.
 
 ```go
-// go/internal/raw/cgo.go  (생성됨)
+// go/internal/raw/raw_gen.go  (생성됨)
 package raw
 
 /*
@@ -261,18 +261,18 @@ C 헤더는 백엔드가 아니라 **cgo가 요구하는 산출물**이다.
   go/
     go.mod              # 사용자 소유 (없으면 1회 생성)
     internal/raw/       # 🤖 100% 생성. 손대지 말 것
-      raw.go  cgo.go  errors.go
+      raw_gen.go
     mylib/
-      generated_context.go   # 🤖 생성기가 덮어씀
-      context.go             # 👤 사용자 소유. 있으면 생성 건너뜀
+      mylib_gen.go      # 🤖 생성기가 덮어씀
+      custom.go         # 👤 사용자 소유
   zig-out/
     lib/libmylib_zigo.a
     include/zigo_mylib.h
 ```
 
-**덧쓰기 규칙:** 생성기는 `generated_` 접두사 파일만 쓴다. 사용자가 같은 타입의
-비접두사 파일을 만들면 그 타입의 public 계층 생성을 건너뛴다 (raw는 계속 생성).
-이것이 "생성기가 완벽할 필요 없음"을 실현하는 메커니즘이다.
+**덧쓰기 규칙:** 생성기는 각 Go package에서 `<package>_gen.go`만 쓴다.
+`internal/raw`는 `raw_gen.go`, public package `mylib`은 `mylib_gen.go`를 사용한다.
+그 밖의 `custom.go` 같은 파일은 사용자 소유이며 생성기가 수정하지 않는다.
 
 ---
 

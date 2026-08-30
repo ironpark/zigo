@@ -41,13 +41,13 @@ fn headerPath(allocator: std.mem.Allocator, program: abi.Program) ![]u8 {
 }
 
 fn rawPath(allocator: std.mem.Allocator, _: abi.Program) ![]u8 {
-    return allocator.dupe(u8, "internal/raw/cgo.go");
+    return allocator.dupe(u8, "internal/raw/raw_gen.go");
 }
 
 fn publicPath(allocator: std.mem.Allocator, program: abi.Program) ![]u8 {
     const package = try naming.snakeAlloc(allocator, program.package);
     defer allocator.free(package);
-    return std.fmt.allocPrint(allocator, "{s}/generated.go", .{package});
+    return std.fmt.allocPrint(allocator, "{s}/{s}_gen.go", .{ package, package });
 }
 
 fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, _: Options) !void {

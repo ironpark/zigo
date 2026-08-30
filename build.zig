@@ -1,4 +1,5 @@
 const std = @import("std");
+const naming = @import("src/gen/naming.zig");
 
 pub const CgoFlags = struct {
     cflags: []const []const u8 = &.{},
@@ -263,8 +264,10 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     const header_name = b.fmt("zigo_{s}.h", .{options.name});
     const install_header = b.addInstallHeaderFile(generated_dir.path(b, header_name), header_name);
     const update = b.addUpdateSourceFiles();
-    update.addCopyFileToSource(generated_dir.path(b, "internal/raw/cgo.go"), sourcePath(b, options.go_dir, "internal/raw/cgo.go"));
-    update.addCopyFileToSource(generated_dir.path(b, b.fmt("{s}/generated.go", .{options.name})), sourcePath(b, options.go_dir, b.fmt("{s}/generated.go", .{options.name})));
+    update.addCopyFileToSource(generated_dir.path(b, "internal/raw/raw_gen.go"), sourcePath(b, options.go_dir, "internal/raw/raw_gen.go"));
+    const go_package = naming.snakeAlloc(b.allocator, options.name) catch @panic("OOM");
+    const public_go_path = b.fmt("{s}/{s}_gen.go", .{ go_package, go_package });
+    update.addCopyFileToSource(generated_dir.path(b, public_go_path), sourcePath(b, options.go_dir, public_go_path));
     update.addCopyFileToSource(generated_dir.path(b, "errors.lock.json"), errors_lock_path);
     update.addCopyFileToSource(semantic_json, "zigo/semantic.json");
     const go_mod_path = sourcePath(b, options.go_dir, "go.mod");

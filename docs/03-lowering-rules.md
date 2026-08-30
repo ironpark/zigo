@@ -186,7 +186,7 @@ Go 이름:
 따라서 사용자가 `-L`/`-I`를 손으로 쓰지 않는다.
 
 ```go
-// go/internal/raw/cgo.go  (생성됨)
+// go/internal/raw/raw_gen.go  (생성됨)
 package raw
 
 /*

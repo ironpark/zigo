@@ -62,11 +62,11 @@ test "source check reports a changed generated Go file" {
     defer source.cleanup();
     try generated.dir.createDirPath(std.testing.io, "nested");
     try source.dir.createDirPath(std.testing.io, "nested");
-    try generated.dir.writeFile(std.testing.io, .{ .sub_path = "nested/generated.go", .data = "current\n" });
-    try source.dir.writeFile(std.testing.io, .{ .sub_path = "nested/generated.go", .data = "edited\n" });
+    try generated.dir.writeFile(std.testing.io, .{ .sub_path = "nested/nested_gen.go", .data = "current\n" });
+    try source.dir.writeFile(std.testing.io, .{ .sub_path = "nested/nested_gen.go", .data = "edited\n" });
     try source.dir.writeFile(std.testing.io, .{ .sub_path = "nested/user.go", .data = "package nested\n" });
     var result = try compare(std.testing.allocator, std.testing.io, generated.dir, source.dir);
     defer result.deinit(std.testing.allocator);
     try std.testing.expectEqual(@as(usize, 1), result.differences.items.len);
-    try std.testing.expectEqualStrings("nested/generated.go", result.differences.items[0].path);
+    try std.testing.expectEqualStrings("nested/nested_gen.go", result.differences.items[0].path);
 }
