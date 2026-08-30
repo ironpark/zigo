@@ -4,7 +4,6 @@ package callback
 import (
 	"runtime/cgo"
 	"sync"
-	"sync/atomic"
 	"unsafe"
 
 	"example.com/zigo/callback/internal/raw"
@@ -139,18 +138,3 @@ func PanicNow() error {
 func CompressionBound(source_len uint) uint {
 	return raw.CompressionBound(source_len)
 }
-
-var activeCallbackHandles atomic.Int64
-
-func newCallbackHandle(value any) cgo.Handle {
-	handle := cgo.NewHandle(value)
-	activeCallbackHandles.Add(1)
-	return handle
-}
-
-func deleteCallbackHandle(handle cgo.Handle) {
-	handle.Delete()
-	activeCallbackHandles.Add(-1)
-}
-
-func activeCallbackHandleCount() int64 { return activeCallbackHandles.Load() }

@@ -186,8 +186,8 @@ Go 생성물은 반드시 사용자 저장소에 커밋되어야 한다:
 
 따라서 `std.Build.Step.UpdateSourceFiles`로 생성 결과를 `go_dir`에 기록한다.
 `go-check` 스텝은 동일 생성을 수행하되 기록 대신 **비교**하고, 다르면 실패한다 (CI 게이트).
-`gofmt`가 `PATH`에 있으면 생성된 세 Go 파일(raw/cgo, public API, public errors)을 각각
-포맷한 별도 cache output이
+`gofmt`가 `PATH`에 있으면 생성된 네 Go 파일(raw/cgo, public API, public errors, private
+helpers)을 각각 포맷한 별도 cache output이
 `UpdateSourceFiles`와 `go-check`의 입력이 된다. 원본 generator cache는 수정하지 않으며,
 `gofmt`가 없는 환경에서는 포맷 단계를 생략한다.
 
@@ -296,6 +296,7 @@ C 헤더는 백엔드가 아니라 **cgo가 요구하는 산출물**이다.
     mylib/
       mylib_gen.go         # 🤖 생성기가 덮어씀
       mylib_errors_gen.go  # 🤖 package error API
+      mylib_helpers_gen.go # 🤖 private runtime support
       custom.go            # 👤 사용자 소유
   zig-out/
     lib/libmylib_zigo.a
@@ -305,7 +306,8 @@ C 헤더는 백엔드가 아니라 **cgo가 요구하는 산출물**이다.
 **덧쓰기 규칙:** `internal/raw`는 `raw_gen.go`, public package `mylib`은 API용
 `mylib_gen.go`와 package error용 `mylib_errors_gen.go`를 사용한다. error 파일은 단일
 `Error` 타입, 안정적인 `Err*` 값과 code 변환을 함께 소유하며 Zig error set별로 나누지
-않는다. 그 밖의 `custom.go` 같은 파일은 사용자 소유이며 생성기가 수정하지 않는다.
+않는다. bool ABI 변환과 callback handle 수명 관리는 `mylib_helpers_gen.go`에 둔다. 그
+밖의 `custom.go` 같은 파일은 사용자 소유이며 생성기가 수정하지 않는다.
 
 `.raw_package = .{ .path = "support/ffi" }`이면 raw 파일은
 `go/support/ffi/ffi_gen.go`에 생성되고 public 파일은 해당 package를 `raw` 별칭으로 import한다.

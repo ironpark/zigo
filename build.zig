@@ -284,7 +284,8 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         b.fmt("{s}/{s}_gen.go", .{ raw_package.path, raw_package.name });
     const public_go_path = b.fmt("{s}/{s}_gen.go", .{ go_package, go_package });
     const public_errors_go_path = b.fmt("{s}/{s}_errors_gen.go", .{ go_package, go_package });
-    const go_sources_dir = formattedGoSources(b, generated_dir, &.{ raw_go_path, public_go_path, public_errors_go_path });
+    const public_helpers_go_path = b.fmt("{s}/{s}_helpers_gen.go", .{ go_package, go_package });
+    const go_sources_dir = formattedGoSources(b, generated_dir, &.{ raw_go_path, public_go_path, public_errors_go_path, public_helpers_go_path });
 
     const check = b.addRunArtifact(generator);
     check.addArgs(&.{ "check", "--generated" });
@@ -331,6 +332,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     update.addCopyFileToSource(go_sources_dir.path(b, raw_go_path), sourcePath(b, options.go_dir, raw_go_path));
     update.addCopyFileToSource(go_sources_dir.path(b, public_go_path), sourcePath(b, options.go_dir, public_go_path));
     update.addCopyFileToSource(go_sources_dir.path(b, public_errors_go_path), sourcePath(b, options.go_dir, public_errors_go_path));
+    update.addCopyFileToSource(go_sources_dir.path(b, public_helpers_go_path), sourcePath(b, options.go_dir, public_helpers_go_path));
     update.addCopyFileToSource(generated_dir.path(b, "errors.lock.json"), errors_lock_path);
     update.addCopyFileToSource(semantic_json, "zigo/semantic.json");
     const go_mod_path = sourcePath(b, options.go_dir, "go.mod");

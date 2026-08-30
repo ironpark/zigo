@@ -4,7 +4,6 @@ package event_queue
 import (
 	"runtime/cgo"
 	"sync"
-	"sync/atomic"
 	"unsafe"
 
 	raw "example.com/zigo/event-queue/bridge/cgo"
@@ -100,18 +99,3 @@ func (e *EventQueue) Clear() uint {
 func LiveQueues() uint {
 	return raw.LiveQueues()
 }
-
-var activeCallbackHandles atomic.Int64
-
-func newCallbackHandle(value any) cgo.Handle {
-	handle := cgo.NewHandle(value)
-	activeCallbackHandles.Add(1)
-	return handle
-}
-
-func deleteCallbackHandle(handle cgo.Handle) {
-	handle.Delete()
-	activeCallbackHandles.Add(-1)
-}
-
-func activeCallbackHandleCount() int64 { return activeCallbackHandles.Load() }

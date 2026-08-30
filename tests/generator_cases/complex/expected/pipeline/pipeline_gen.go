@@ -4,7 +4,6 @@ package pipeline
 import (
 	"runtime/cgo"
 	"sync"
-	"sync/atomic"
 	"unsafe"
 
 	"example.com/zigo/pipeline/internal/raw"
@@ -178,22 +177,3 @@ func LiveBytes() uint {
 func CompressionBound(source_len uint) uint {
 	return raw.CompressionBound(source_len)
 }
-func boolToUint8(value bool) uint8 {
-	if value { return 1 }
-	return 0
-}
-
-var activeCallbackHandles atomic.Int64
-
-func newCallbackHandle(value any) cgo.Handle {
-	handle := cgo.NewHandle(value)
-	activeCallbackHandles.Add(1)
-	return handle
-}
-
-func deleteCallbackHandle(handle cgo.Handle) {
-	handle.Delete()
-	activeCallbackHandles.Add(-1)
-}
-
-func activeCallbackHandleCount() int64 { return activeCallbackHandles.Load() }

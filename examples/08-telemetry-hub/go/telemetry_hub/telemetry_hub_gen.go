@@ -4,7 +4,6 @@ package telemetry_hub
 import (
 	"runtime/cgo"
 	"sync"
-	"sync/atomic"
 	"unsafe"
 
 	raw "example.com/zigo/telemetry-hub/internal/native"
@@ -346,24 +345,3 @@ func (t *TelemetryHub) NegateValues() {
 func LiveHubs() uint {
 	return raw.LiveHubs()
 }
-func boolToUint8(value bool) uint8 {
-	if value {
-		return 1
-	}
-	return 0
-}
-
-var activeCallbackHandles atomic.Int64
-
-func newCallbackHandle(value any) cgo.Handle {
-	handle := cgo.NewHandle(value)
-	activeCallbackHandles.Add(1)
-	return handle
-}
-
-func deleteCallbackHandle(handle cgo.Handle) {
-	handle.Delete()
-	activeCallbackHandles.Add(-1)
-}
-
-func activeCallbackHandleCount() int64 { return activeCallbackHandles.Load() }
