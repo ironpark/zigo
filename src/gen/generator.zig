@@ -23,30 +23,34 @@ pub const Options = struct {
 };
 
 pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []const u8, output: std.Io.Dir, options: Options) !void {
-    var parsed = try semantic.Semantic.parse(allocator, semantic_bytes);
+    var scratch = std.heap.ArenaAllocator.init(allocator);
+    defer scratch.deinit();
+    const scratch_allocator = scratch.allocator();
+
+    var parsed = try semantic.Semantic.parse(scratch_allocator, semantic_bytes);
     defer parsed.deinit();
-    try validate.semanticDocument(parsed.value);
-    var baseline: ?errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(allocator, bytes) else null;
-    defer if (baseline) |*value| value.deinit(allocator);
-    var lock: errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(allocator, bytes) else .{};
-    defer lock.deinit(allocator);
+    try validate.semanticDocument(scratch_allocator, parsed.value);
+    var baseline: ?errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(scratch_allocator, bytes) else null;
+    defer if (baseline) |*value| value.deinit(scratch_allocator);
+    var lock: errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(scratch_allocator, bytes) else .{};
+    defer lock.deinit(scratch_allocator);
     var error_names: std.ArrayList([]const u8) = .empty;
-    defer error_names.deinit(allocator);
+    defer error_names.deinit(scratch_allocator);
     for (parsed.value.functions) |function| switch (function.@"return") {
         .error_union => |value| for (value.error_set) |name| {
             var exists = false;
             for (error_names.items) |existing| {
                 if (std.mem.eql(u8, existing, name)) exists = true;
             }
-            if (!exists) try error_names.append(allocator, name);
+            if (!exists) try error_names.append(scratch_allocator, name);
         },
         else => {},
     };
-    try lock.assign(allocator, error_names.items);
+    try lock.assign(scratch_allocator, error_names.items);
     if (baseline) |value| try lock.validateAgainst(value);
-    const abi_codes = try allocator.alloc(abi.ErrorCode, lock.codes.items.len);
+    const abi_codes = try scratch_allocator.alloc(abi.ErrorCode, lock.codes.items.len);
     for (lock.codes.items, 0..) |entry, index| abi_codes[index] = .{ .code = entry.code, .name = entry.name };
-    const program = try lower.semanticDocument(allocator, parsed.value, options.package, options.prefix, abi_codes);
+    const program = try lower.semanticDocument(scratch_allocator, parsed.value, options.package, options.prefix, abi_codes);
     const emitter_options: emit.Options = .{
         .go_module = options.go_module,
         .cflags_override = options.cflags_override,
@@ -60,16 +64,16 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .raw_colocated = options.raw_colocated,
     };
     for (emit.all) |emitter| {
-        const relative_path = try emitter.pathAlloc(allocator, program, emitter_options);
-        defer allocator.free(relative_path);
+        const relative_path = try emitter.pathAlloc(scratch_allocator, program, emitter_options);
+        defer scratch_allocator.free(relative_path);
         if (std.fs.path.dirname(relative_path)) |directory| try output.createDirPath(io, directory);
-        var rendered: std.Io.Writer.Allocating = .init(allocator);
+        var rendered: std.Io.Writer.Allocating = .init(scratch_allocator);
         defer rendered.deinit();
-        try emitter.render(allocator, &rendered.writer, program, emitter_options);
+        try emitter.render(scratch_allocator, &rendered.writer, program, emitter_options);
         try output.writeFile(io, .{ .sub_path = relative_path, .data = rendered.written() });
     }
-    const serialized_lock = try lock.serialize(allocator);
-    defer allocator.free(serialized_lock);
+    const serialized_lock = try lock.serialize(scratch_allocator);
+    defer scratch_allocator.free(serialized_lock);
     try output.writeFile(io, .{ .sub_path = "errors.lock.json", .data = serialized_lock });
 }
 

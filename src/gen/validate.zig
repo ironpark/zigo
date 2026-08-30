@@ -3,10 +3,10 @@ const diagnostic = @import("diagnostic");
 const semantic = @import("semantic");
 const naming = @import("naming.zig");
 
-pub fn semanticDocument(document: semantic.Semantic) !void {
+pub fn semanticDocument(allocator: std.mem.Allocator, document: semantic.Semantic) !void {
     if (document.ir_version != 1) return error.UnsupportedIrVersion;
     if (document.package.len == 0 or document.prefix.len == 0) return error.InvalidName;
-    if (findIssue(document) != null) return error.InvalidSemantic;
+    if (try findIssue(allocator, document) != null) return error.InvalidSemantic;
     for (document.functions) |function| {
         if (function.name.len == 0) return error.InvalidName;
         for (function.params) |parameter| try supported(parameter.type);
@@ -14,7 +14,7 @@ pub fn semanticDocument(document: semantic.Semantic) !void {
     }
 }
 
-pub fn findIssue(document: semantic.Semantic) ?diagnostic.Diagnostic {
+pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
     for (document.functions) |function| {
         if (function.@"return" == .error_union and function.@"return".error_union.anyerror) return .{
             .severity = .@"error",
@@ -92,11 +92,11 @@ pub fn findIssue(document: semantic.Semantic) ?diagnostic.Diagnostic {
         };
     }
     for (document.functions, 0..) |function, index| {
-        const symbol = functionSymbolAlloc(std.heap.page_allocator, document.prefix, function) catch return null;
-        defer std.heap.page_allocator.free(symbol);
+        const symbol = try functionSymbolAlloc(allocator, document.prefix, function);
+        defer allocator.free(symbol);
         for (document.functions[0..index]) |previous| {
-            const previous_symbol = functionSymbolAlloc(std.heap.page_allocator, document.prefix, previous) catch return null;
-            defer std.heap.page_allocator.free(previous_symbol);
+            const previous_symbol = try functionSymbolAlloc(allocator, document.prefix, previous);
+            defer allocator.free(previous_symbol);
             if (std.mem.eql(u8, symbol, previous_symbol)) return .{
                 .severity = .@"error",
                 .code = "ZIGO007",
@@ -290,9 +290,27 @@ test "implemented diagnostic snapshots are stable" {
         }, .snapshot = "error[ZIGO009]: retained pointer has no matching release function\n  --> semantic.json (remember)\n  hint: expose a release, clear, close, destroy, or deinit function for the retained value\n" },
     };
     for (cases) |case| {
-        const issue = findIssue(case.document) orelse return error.MissingDiagnostic;
+        const issue = (try findIssue(std.testing.allocator, case.document)) orelse return error.MissingDiagnostic;
         const rendered = try issue.renderAlloc(std.testing.allocator);
         defer std.testing.allocator.free(rendered);
         try std.testing.expectEqualStrings(case.snapshot, rendered);
     }
+}
+
+test "symbol collision validation propagates every allocation failure" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, expectSymbolCollision, .{});
+}
+
+fn expectSymbolCollision(allocator: std.mem.Allocator) !void {
+    const document: semantic.Semantic = .{
+        .functions = &.{
+            .{ .name = "lookupID", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "ignored" },
+            .{ .name = "lookup_id", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "ignored" },
+        },
+        .package = "bad",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    const issue = (try findIssue(allocator, document)) orelse return error.MissingDiagnostic;
+    try std.testing.expectEqualStrings("ZIGO007", issue.code);
 }

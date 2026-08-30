@@ -52,7 +52,9 @@ pub fn compare(allocator: std.mem.Allocator, io: std.Io, generated: std.Io.Dir, 
 }
 
 fn append(allocator: std.mem.Allocator, result: *Result, kind: DifferenceKind, path: []const u8) !void {
-    try result.differences.append(allocator, .{ .kind = kind, .path = try allocator.dupe(u8, path) });
+    const owned_path = try allocator.dupe(u8, path);
+    errdefer allocator.free(owned_path);
+    try result.differences.append(allocator, .{ .kind = kind, .path = owned_path });
 }
 
 test "source check reports a changed generated Go file" {
@@ -69,4 +71,20 @@ test "source check reports a changed generated Go file" {
     defer result.deinit(std.testing.allocator);
     try std.testing.expectEqual(@as(usize, 1), result.differences.items.len);
     try std.testing.expectEqualStrings("nested/nested_gen.go", result.differences.items[0].path);
+}
+
+test "source check cleans up every partial allocation failure" {
+    var generated = std.testing.tmpDir(.{ .iterate = true });
+    defer generated.cleanup();
+    var source = std.testing.tmpDir(.{ .iterate = true });
+    defer source.cleanup();
+    try generated.dir.writeFile(std.testing.io, .{ .sub_path = "changed_gen.go", .data = "current\n" });
+    try source.dir.writeFile(std.testing.io, .{ .sub_path = "changed_gen.go", .data = "edited\n" });
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, expectChangedSource, .{ generated.dir, source.dir });
+}
+
+fn expectChangedSource(allocator: std.mem.Allocator, generated: std.Io.Dir, source: std.Io.Dir) !void {
+    var result = try compare(allocator, std.testing.io, generated, source);
+    defer result.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 1), result.differences.items.len);
 }

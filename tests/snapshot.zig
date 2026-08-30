@@ -89,7 +89,9 @@ fn compareOneWay(allocator: std.mem.Allocator, io: std.Io, source: std.Io.Dir, d
 }
 
 fn appendDifference(allocator: std.mem.Allocator, result: *Result, kind: DifferenceKind, path: []const u8) !void {
-    try result.differences.append(allocator, .{ .kind = kind, .path = try allocator.dupe(u8, path) });
+    const owned_path = try allocator.dupe(u8, path);
+    errdefer allocator.free(owned_path);
+    try result.differences.append(allocator, .{ .kind = kind, .path = owned_path });
 }
 
 fn lessThan(_: void, lhs: Difference, rhs: Difference) bool {
@@ -133,4 +135,20 @@ test "update mode makes the golden tree match actual output" {
     var result = try compare(std.testing.allocator, std.testing.io, golden.dir, actual.dir);
     defer result.deinit(std.testing.allocator);
     try std.testing.expect(result.matches());
+}
+
+test "snapshot comparison cleans up every partial allocation failure" {
+    var expected = std.testing.tmpDir(.{ .iterate = true });
+    defer expected.cleanup();
+    var actual = std.testing.tmpDir(.{ .iterate = true });
+    defer actual.cleanup();
+    try expected.dir.writeFile(std.testing.io, .{ .sub_path = "value.txt", .data = "expected\n" });
+    try actual.dir.writeFile(std.testing.io, .{ .sub_path = "value.txt", .data = "actual\n" });
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, expectContentDifference, .{ expected.dir, actual.dir });
+}
+
+fn expectContentDifference(allocator: std.mem.Allocator, expected: std.Io.Dir, actual: std.Io.Dir) !void {
+    var result = try compare(allocator, std.testing.io, expected, actual);
+    defer result.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 1), result.differences.items.len);
 }

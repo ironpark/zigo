@@ -580,7 +580,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         try writer.writeByte('\n');
         if (borrowed_direct) {
             try writer.writeAll("\treturn ");
-            try writeBorrowedResult(writer, function.origin.*, "result");
+            try writeBorrowedResult(allocator, writer, function.origin.*, "result");
             try writer.writeByte('\n');
         }
         if (returns_error) {
@@ -604,7 +604,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                     }
                     try writer.writeByte('}');
                 } else if (error_payload == .opaque_ptr and function.origin.ownership == .borrowed) {
-                    try writeBorrowedResult(writer, function.origin.*, "result");
+                    try writeBorrowedResult(allocator, writer, function.origin.*, "result");
                 } else {
                     try writePublicResultConversion(writer, error_payload, "result");
                 }
@@ -670,10 +670,10 @@ fn writePublicFunctionReturnType(writer: *std.Io.Writer, function: semantic.Sema
     try writePublicReturnType(writer, function.@"return");
 }
 
-fn writeBorrowedResult(writer: *std.Io.Writer, function: semantic.SemanticFn, expression: []const u8) !void {
+fn writeBorrowedResult(allocator: std.mem.Allocator, writer: *std.Io.Writer, function: semantic.SemanticFn, expression: []const u8) !void {
     const node = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
-    const parent = if (function.receiver) |receiver| try receiverVariableAlloc(std.heap.page_allocator, receiver) else null;
-    defer if (parent) |value| std.heap.page_allocator.free(value);
+    const parent = if (function.receiver) |receiver| try receiverVariableAlloc(allocator, receiver) else null;
+    defer if (parent) |value| allocator.free(value);
     try writer.print("&{s}Ref{{ptr: {s}, parent: {s}}}", .{ node.opaque_ptr.ref, expression, parent orelse "nil" });
 }
 

@@ -83,10 +83,14 @@ pub fn diff(allocator: std.mem.Allocator, base: semantic.Semantic, current: sema
 }
 
 fn add(allocator: std.mem.Allocator, report: *Report, kind: ChangeKind, subject: []const u8, detail: []const u8) !void {
+    const owned_subject = try allocator.dupe(u8, subject);
+    errdefer allocator.free(owned_subject);
+    const owned_detail = try allocator.dupe(u8, detail);
+    errdefer allocator.free(owned_detail);
     try report.changes.append(allocator, .{
         .kind = kind,
-        .subject = try allocator.dupe(u8, subject),
-        .detail = try allocator.dupe(u8, detail),
+        .subject = owned_subject,
+        .detail = owned_detail,
     });
 }
 
@@ -221,4 +225,26 @@ test "appending an error is ABI compatible" {
     defer report.deinit(std.testing.allocator);
     try std.testing.expect(!report.hasBreaking());
     try std.testing.expectEqual(ChangeKind.compatible, report.changes.items[0].kind);
+}
+
+test "diff cleans up every partial allocation failure" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, expectAddedFunction, .{});
+}
+
+fn expectAddedFunction(allocator: std.mem.Allocator) !void {
+    const base: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0" };
+    const current: semantic.Semantic = .{
+        .package = "demo",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+        .functions = &.{.{
+            .name = "extra",
+            .params = &.{},
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_extra",
+        }},
+    };
+    var report = try diff(allocator, base, current);
+    defer report.deinit(allocator);
+    try std.testing.expectEqual(@as(usize, 1), report.changes.items.len);
 }
