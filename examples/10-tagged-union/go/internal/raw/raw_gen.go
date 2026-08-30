@@ -86,6 +86,29 @@ func LiveValues() uint {
 	return uint(C.zg_live_values())
 }
 
+// Divide calls the generated C ABI wrapper for zg_divide.
+func Divide(numerator float64, denominator float64) (float64, int32) {
+	var outResult C.double
+	code := int32(C.zg_divide(C.double(numerator), C.double(denominator), &outResult))
+	return float64(outResult), code
+}
+
+// Sum calls the generated C ABI wrapper for zg_sum.
+func Sum(values []float64) float64 {
+	var values_zero C.double
+	values_ptr := &values_zero
+	if len(values) != 0 {
+		values_ptr = (*C.double)(unsafe.Pointer(&values[0]))
+	}
+	return float64(C.zg_sum(values_ptr, C.size_t(len(values))))
+}
+
+// PanicError calls the generated C ABI wrapper for zg_panic_error.
+func PanicError() int32 {
+	code := int32(C.zg_panic_error())
+	return code
+}
+
 // ValueProjectTag returns the active tag and a projection status.
 func ValueProjectTag(self unsafe.Pointer) (uint8, uint8) {
 	var outValue C.uint8_t

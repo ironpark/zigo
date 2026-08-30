@@ -232,6 +232,7 @@ pub fn build(b: *std.Build) void {
         "examples/08-telemetry-hub/go",
         "examples/09-type-relations/go",
         "examples/10-tagged-union/go",
+        "examples/10-tagged-union/go-purego",
     });
     test_step.dependOn(&godoc_audit.step);
     test_step.dependOn(&run_tests.step);
@@ -602,6 +603,16 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         }), go_mod_path),
         else => @panic("unable to inspect go.mod"),
     };
+    if (options.backend == .purego) {
+        const go_mod = b.build_root.handle.readFileAlloc(b.graph.io, go_mod_path, b.allocator, .limited(1024 * 1024)) catch |err| switch (err) {
+            error.FileNotFound => null,
+            else => @panic("unable to read go.mod for purego dependency validation"),
+        };
+        if (go_mod) |contents| {
+            if (std.mem.indexOf(u8, contents, "github.com/ebitengine/purego") == null)
+                @panic("purego backend requires github.com/ebitengine/purego v0.10.2; run `go get github.com/ebitengine/purego@v0.10.2`");
+        }
+    }
     update.step.dependOn(&install_lib.step);
     update.step.dependOn(&install_header.step);
     check.step.dependOn(&lib.step);

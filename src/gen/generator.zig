@@ -593,7 +593,7 @@ test "generated errors lock produces an identical second generation" {
 
 test "purego generation emits an atomic retryable loader and rejects callbacks" {
     const scalar_fixture =
-        \\{"functions":[{"name":"add","params":[{"name":"a","type":{"bits":32,"kind":"int","signed":true}},{"name":"b","type":{"bits":32,"kind":"int","signed":true}}],"return":{"bits":32,"kind":"int","signed":true},"symbol":"ignored"}],"package":"scalar","prefix":"zg","zig_version":"0.16.0"}
+        \\{"functions":[{"name":"add","params":[{"name":"a","type":{"bits":32,"kind":"int","signed":true}},{"name":"b","type":{"bits":32,"kind":"int","signed":true}}],"return":{"bits":32,"kind":"int","signed":true},"symbol":"ignored"},{"name":"accept","params":[{"name":"value","type":{"const":true,"kind":"opaque_ptr","nullable":true,"ref":"Handle"}}],"return":{"kind":"void"},"symbol":"ignored"}],"package":"scalar","prefix":"zg","types":[{"kind":"opaque","name":"Handle"}],"zig_version":"0.16.0"}
     ;
     var temporary = std.testing.tmpDir(.{ .iterate = true });
     defer temporary.cleanup();
@@ -613,6 +613,8 @@ test "purego generation emits an atomic retryable loader and rejects callbacks" 
     try std.testing.expect(std.mem.indexOf(u8, raw, "loadedBindings.Store(&next)") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "purego.Dlclose(handle)") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "different library is already loaded") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "fnAdd func(int32, int32) int32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "func Accept(value unsafe.Pointer)") != null);
 
     const callback_fixture =
         \\{"functions":[{"name":"install","params":[{"name":"callback","type":{"c_callconv":true,"has_userdata":true,"kind":"callback","params":[{"bits":64,"is_usize":true,"kind":"int","signed":false}],"return":{"kind":"void"}}}],"return":{"kind":"void"},"symbol":"ignored"}],"package":"callbacks","prefix":"zg","zig_version":"0.16.0"}

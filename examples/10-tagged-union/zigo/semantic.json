@@ -237,6 +237,83 @@
         "signed": false
       },
       "symbol": "zg_liveValues"
+    },
+    {
+      "name": "divide",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "numerator",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "kind": "float"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "denominator",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "kind": "float"
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "DivideByZero"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "kind": "float"
+        }
+      },
+      "symbol": "zg_divide"
+    },
+    {
+      "name": "sum",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "values",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 64,
+              "kind": "float"
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": {
+        "bits": 64,
+        "kind": "float"
+      },
+      "symbol": "zg_sum"
+    },
+    {
+      "name": "panicError",
+      "ownership": "borrowed",
+      "params": [],
+      "return": {
+        "error_set": [
+          "Never"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "void"
+        }
+      },
+      "symbol": "zg_panicError"
     }
   ],
   "ir_version": 1,

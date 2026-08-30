@@ -563,7 +563,9 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             "const defaultLibraryName = \"{s}\"\n\n" ++
             "// LibraryError reports a native library loading or symbol resolution failure.\n" ++
             "type LibraryError struct {{\n\tPath string\n\tSymbol string\n\tOperation string\n\tCause error\n}}\n\n" ++
+            "// Error describes the failed loading operation.\n" ++
             "func (err *LibraryError) Error() string {{\n\tif err.Symbol != \"\" {{ return fmt.Sprintf(\"zigo: %s %q from %q: %v\", err.Operation, err.Symbol, err.Path, err.Cause) }}\n\treturn fmt.Sprintf(\"zigo: %s %q: %v\", err.Operation, err.Path, err.Cause)\n}}\n" ++
+            "// Unwrap returns the platform loader error.\n" ++
             "func (err *LibraryError) Unwrap() error {{ return err.Cause }}\n\n" ++
             "type nativeBindings struct {{\n",
         .{ options.raw_package_name, options.library_name },
@@ -595,37 +597,155 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     try writer.writeAll(
         "}\n\nvar loadedBindings atomic.Pointer[nativeBindings]\nvar loadMu sync.Mutex\nvar successfulLibraryPath string\n\n" ++
             "// LibraryLoaded reports whether every required native symbol was published.\n" ++
-            "func LibraryLoaded() bool {{ return loadedBindings.Load() != nil }}\n\n" ++
+            "func LibraryLoaded() bool { return loadedBindings.Load() != nil }\n\n" ++
             "// LoadLibrary atomically loads and registers every required native symbol.\n" ++
             "// A failed load leaves the binding retryable; a successful handle is never unloaded.\n" ++
-            "func LoadLibrary(path string) error {{\n" ++
-            "\tif path == \"\" {{ path = os.Getenv(\"ZIGO_LIBRARY_PATH\") }}\n" ++
-            "\tif path == \"\" {{ path = defaultLibraryName }}\n" ++
+            "func LoadLibrary(path string) error {\n" ++
+            "\tif path == \"\" { path = os.Getenv(\"ZIGO_LIBRARY_PATH\") }\n" ++
+            "\tif path == \"\" { path = defaultLibraryName }\n" ++
             "\tloadMu.Lock()\n\tdefer loadMu.Unlock()\n" ++
-            "\tif loadedBindings.Load() != nil {{\n\t\tif path == successfulLibraryPath {{ return nil }}\n\t\treturn &LibraryError{{Path: path, Operation: \"load\", Cause: errors.New(\"a different library is already loaded\")}}\n\t}}\n" ++
+            "\tif loadedBindings.Load() != nil {\n\t\tif path == successfulLibraryPath { return nil }\n\t\treturn &LibraryError{Path: path, Operation: \"load\", Cause: errors.New(\"a different library is already loaded\")}\n\t}\n" ++
             "\thandle, err := purego.Dlopen(path, purego.RTLD_NOW|purego.RTLD_LOCAL)\n" ++
-            "\tif err != nil {{ return &LibraryError{{Path: path, Operation: \"open\", Cause: err}} }}\n" ++
-            "\tfail := func(symbol string, cause error) error {{ _ = purego.Dlclose(handle); return &LibraryError{{Path: path, Symbol: symbol, Operation: \"resolve\", Cause: cause}} }}\n",
+            "\tif err != nil { return &LibraryError{Path: path, Operation: \"open\", Cause: err} }\n" ++
+            "\tfail := func(symbol string, cause error) error { _ = purego.Dlclose(handle); return &LibraryError{Path: path, Symbol: symbol, Operation: \"resolve\", Cause: cause} }\n",
     );
-    try writePuregoResolve(writer, "zg_last_error_message");
-    for (program.functions) |function| try writePuregoResolve(writer, function.symbol);
-    for (program.projections) |projection| try writePuregoResolve(writer, projection.symbol);
-    try writer.writeAll("\tvar next nativeBindings\n\tpurego.RegisterFunc(&next.lastError, handle, \"zg_last_error_message\")\n");
+    try writePuregoResolve(writer, "addrLastError", "zg_last_error_message");
     for (program.functions) |function| {
         const name = try rawGoNameAlloc(allocator, function.origin.*);
         defer allocator.free(name);
-        try writer.print("\tpurego.RegisterFunc(&next.fn{s}, handle, \"{s}\")\n", .{ name, function.symbol });
+        const variable = try std.fmt.allocPrint(allocator, "addr{s}", .{name});
+        defer allocator.free(variable);
+        try writePuregoResolve(writer, variable, function.symbol);
     }
-    for (program.projections, 0..) |projection, index|
-        try writer.print("\tpurego.RegisterFunc(&next.fnProjection{d}, handle, \"{s}\")\n", .{ index, projection.symbol });
+    for (program.projections, 0..) |projection, index| {
+        const variable = try std.fmt.allocPrint(allocator, "addrProjection{d}", .{index});
+        defer allocator.free(variable);
+        try writePuregoResolve(writer, variable, projection.symbol);
+    }
+    try writer.writeAll("\tvar next nativeBindings\n\tpurego.RegisterFunc(&next.lastError, addrLastError)\n");
+    for (program.functions) |function| {
+        const name = try rawGoNameAlloc(allocator, function.origin.*);
+        defer allocator.free(name);
+        try writer.print("\tpurego.RegisterFunc(&next.fn{s}, addr{s})\n", .{ name, name });
+    }
+    for (program.projections, 0..) |_, index|
+        try writer.print("\tpurego.RegisterFunc(&next.fnProjection{d}, addrProjection{d})\n", .{ index, index });
     try writer.writeAll("\tloadedBindings.Store(&next)\n\tsuccessfulLibraryPath = path\n\treturn nil\n}\n\n");
     try writer.writeAll("func bindings() *nativeBindings {\n\tvalue := loadedBindings.Load()\n\tif value == nil { panic(\"zigo: native library is not loaded; call LoadLibrary first\") }\n\treturn value\n}\n\n");
     const last_error_name = if (options.raw_colocated) "zigoRawLastErrorMessage" else "LastErrorMessage";
-    try writer.print("func {s}() string {{\n\tp := bindings().lastError()\n\tif p == 0 {{ return \"\" }}\n\tb := make([]byte, 0, 128)\n\tfor i := uintptr(0); ; i++ {{ c := *(*byte)(unsafe.Pointer(p+i)); if c == 0 {{ return string(b) }}; b = append(b, c) }}\n}}\n", .{last_error_name});
+    try writer.print("// {s} returns the most recent native panic message for this binding.\nfunc {s}() string {{\n\tp := bindings().lastError()\n\tif p == 0 {{ return \"\" }}\n\tb := make([]byte, 0, 128)\n\tfor i := uintptr(0); ; i++ {{ c := *(*byte)(unsafe.Pointer(p+i)); if c == 0 {{ return string(b) }}; b = append(b, c) }}\n}}\n", .{ last_error_name, last_error_name });
+    for (program.functions) |function| try renderPuregoFunction(allocator, writer, program, function, options);
+    try renderPuregoProjections(allocator, writer, program);
 }
 
-fn writePuregoResolve(writer: *std.Io.Writer, symbol: []const u8) !void {
-    try writer.print("\tif _, err := purego.Dlsym(handle, \"{s}\"); err != nil {{ return fail(\"{s}\", err) }}\n", .{ symbol, symbol });
+fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, function: abi.AbiFn, options: Options) !void {
+    const go_name = try rawGoNameAlloc(allocator, function.origin.*);
+    defer allocator.free(go_name);
+    const raw_name = try std.fmt.allocPrint(allocator, "{s}{s}", .{ if (options.raw_colocated) "zigoRaw" else "", go_name });
+    defer allocator.free(raw_name);
+    try writer.print("\n// {s} calls the generated purego ABI wrapper for {s}.\nfunc {s}(", .{ raw_name, function.symbol, raw_name });
+    var parameter_count: usize = 0;
+    if (function.origin.receiver != null) {
+        try writer.writeAll("self unsafe.Pointer");
+        parameter_count = 1;
+    }
+    for (function.origin.params, 0..) |parameter, parameter_index| {
+        if (callbackForUserdata(function.origin.params, parameter_index) != null) continue;
+        if (parameter_count != 0) try writer.writeAll(", ");
+        try writer.print("{s} ", .{parameter.name});
+        try writeRawGoType(writer, program, parameter.type);
+        parameter_count += 1;
+    }
+    try writer.writeByte(')');
+    try writeRawReturnType(writer, program, function);
+    try writer.writeAll(" {\n");
+    for (function.origin.params) |parameter| if (parameter.type == .slice) {
+        try writer.print("\tvar {s}Ptr unsafe.Pointer\n\tif len({s}) != 0 {{ {s}Ptr = unsafe.Pointer(&{s}[0]) }}\n", .{ parameter.name, parameter.name, parameter.name, parameter.name });
+        if (parameter.direction == .out) try writer.print("\tvar {s}Written uintptr\n", .{parameter.name});
+    };
+    if (function.origin.@"return" == .slice) try writer.writeAll("\tvar outResultPtr unsafe.Pointer\n\tvar outResultLen uintptr\n");
+    const returns_error = function.origin.@"return" == .error_union;
+    const error_payload = if (returns_error) function.origin.@"return".error_union.payload.* else semantic.TypeNode{ .void = {} };
+    if (returns_error and error_payload != .void) {
+        try writer.writeAll("\tvar outResult ");
+        try writeRawGoType(writer, program, error_payload);
+        try writer.writeByte('\n');
+    }
+    try writer.writeByte('\t');
+    if (returns_error) try writer.writeAll("code := ") else if (function.origin.@"return" != .void and function.origin.@"return" != .slice) try writer.writeAll("result := ");
+    try writer.print("bindings().fn{s}(", .{go_name});
+    for (function.params, 0..) |parameter, index| {
+        if (index != 0) try writer.writeAll(", ");
+        switch (parameter.role) {
+            .receiver => try writer.writeAll("self"),
+            .value => {
+                const source_name = function.origin.params[parameter.source_index].name;
+                if (parameter.scalar == .usize)
+                    try writer.print("uintptr({s})", .{source_name})
+                else
+                    try writer.writeAll(source_name);
+            },
+            .slice_pointer => try writer.print("{s}Ptr", .{function.origin.params[parameter.source_index].name}),
+            .slice_length => try writer.print("uintptr(len({s}))", .{function.origin.params[parameter.source_index].name}),
+            .slice_written => try writer.print("&{s}Written", .{function.origin.params[parameter.source_index].name}),
+            .payload_out => try writer.writeAll("&outResult"),
+            .return_slice_pointer => try writer.writeAll("&outResultPtr"),
+            .return_slice_length => try writer.writeAll("&outResultLen"),
+        }
+    }
+    try writer.writeAll(")\n");
+    if (function.origin.@"return" == .slice) {
+        try writer.writeAll("\tif outResultLen == 0 { return nil }\n\treturn unsafe.Slice((*");
+        try writeRawGoType(writer, program, function.origin.@"return".slice.element.*);
+        try writer.writeAll(")(outResultPtr), int(outResultLen))\n");
+    } else if (returns_error) {
+        if (error_payload == .void) try writer.writeAll("\treturn code\n") else try writer.writeAll("\treturn outResult, code\n");
+    } else if (function.origin.@"return" != .void) {
+        try writer.writeAll("\treturn ");
+        try writeRawResultConversion(writer, program, function.origin.@"return", "result");
+        try writer.writeByte('\n');
+    }
+    try writer.writeAll("}\n");
+}
+
+fn renderPuregoProjections(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
+    for (program.projections, 0..) |projection, projection_index| {
+        const declaration = projection.owner.*;
+        switch (projection.kind) {
+            .tag => {
+                try writer.print("\n// {s}ProjectTag returns the active tag and a projection status.\nfunc {s}ProjectTag(self unsafe.Pointer) (", .{ declaration.name, declaration.name });
+                try writeRawGoType(writer, program, declaration.tag_type.?);
+                try writer.writeAll(", uint8) {\n\tvar outValue ");
+                try writeRawGoType(writer, program, declaration.tag_type.?);
+                try writer.print("\n\tstatus := bindings().fnProjection{d}(self, &outValue)\n\treturn outValue, status\n}}\n", .{projection_index});
+            },
+            .payload => {
+                const field = projection.field.?.*;
+                const payload = field.type.?;
+                const field_name = try naming.pascalAlloc(allocator, field.name);
+                defer allocator.free(field_name);
+                try writer.print("\n// {s}Project{s} returns the payload and a projection status.\nfunc {s}Project{s}(self unsafe.Pointer) (", .{ declaration.name, field_name, declaration.name, field_name });
+                try writeRawGoType(writer, program, payload);
+                try writer.writeAll(", uint8) {\n");
+                if (payload == .slice) {
+                    try writer.writeAll("\tvar outValuePtr unsafe.Pointer\n\tvar outValueLen uintptr\n");
+                    try writer.print("\tstatus := bindings().fnProjection{d}(self, &outValuePtr, &outValueLen)\n", .{projection_index});
+                    try writer.writeAll("\tif status != 1 || outValueLen == 0 { return nil, status }\n\treturn unsafe.Slice((*");
+                    try writeRawGoType(writer, program, payload.slice.element.*);
+                    try writer.writeAll(")(outValuePtr), int(outValueLen)), status\n");
+                } else {
+                    try writer.writeAll("\tvar outValue ");
+                    try writeRawGoType(writer, program, payload);
+                    try writer.print("\n\tstatus := bindings().fnProjection{d}(self, &outValue)\n\treturn outValue, status\n", .{projection_index});
+                }
+                try writer.writeAll("}\n");
+            },
+        }
+    }
+}
+
+fn writePuregoResolve(writer: *std.Io.Writer, variable: []const u8, symbol: []const u8) !void {
+    try writer.print("\t{s}, err := purego.Dlsym(handle, \"{s}\")\n\tif err != nil {{ return fail(\"{s}\", err) }}\n", .{ variable, symbol, symbol });
 }
 
 fn writePuregoAbiType(writer: *std.Io.Writer, scalar: abi.AbiScalar) !void {

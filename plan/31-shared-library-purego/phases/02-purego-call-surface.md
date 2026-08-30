@@ -2,7 +2,7 @@
 depends_on:
 - "31-shared-library-purego#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: The representative module passes `CGO_ENABLED=0 go test ./...` against the generated shared
 > NEXT: none

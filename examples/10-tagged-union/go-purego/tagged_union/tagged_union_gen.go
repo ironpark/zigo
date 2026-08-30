@@ -7,6 +7,15 @@ import (
 	"example.com/zigo/tagged-union/internal/raw"
 )
 
+// LibraryError reports a native shared-library loading failure.
+type LibraryError = raw.LibraryError
+
+// LoadLibrary atomically loads all generated native entry points.
+func LoadLibrary(path string) error { return raw.LoadLibrary(path) }
+
+// LibraryLoaded reports whether the native call surface is ready.
+func LibraryLoaded() bool { return raw.LibraryLoaded() }
+
 // NewChild creates a caller-owned Child.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.

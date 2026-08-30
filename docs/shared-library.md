@@ -15,3 +15,21 @@ search path.
 The shared library is target-specific. A native shared build is suitable for
 runtime loading; it is not a cross-platform binary or a cross-target generation
 mechanism.
+
+## purego backend
+
+Set both `.backend = .purego` and `.link_mode = .dynamic`. The initial backend
+supports native macOS and Linux on amd64 and arm64. Generated Go must call
+`LoadLibrary(path)` before any binding call; `LibraryLoaded()` reports whether
+all symbols were resolved and atomically published. Successful libraries stay
+loaded for the process lifetime.
+
+If zigo creates `go.mod`, it pins `github.com/ebitengine/purego v0.10.2`. For an
+existing module, add it explicitly:
+
+```sh
+go get github.com/ebitengine/purego@v0.10.2
+```
+
+Callbacks remain cgo-only until the callback function-pointer ABI phase. A
+purego configuration containing callbacks fails generation with a diagnostic.

@@ -4,6 +4,7 @@ const zigo = @import("zigo");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const purego = b.option(bool, "purego", "Generate callback-free purego bindings") orelse false;
     const tagged_union = b.addModule("tagged_union", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
@@ -16,12 +17,14 @@ pub fn build(b: *std.Build) void {
         .name = "tagged_union",
         .module = tagged_union,
         .bindings = b.path("src/bindings.zig"),
-        .go_dir = b.path("go"),
+        .go_dir = b.path(if (purego) "go-purego" else "go"),
         .go_module = "example.com/zigo/tagged-union",
         .target = target,
         .optimize = optimize,
         .abi_base = "HEAD",
         .auto_cleanup = true,
+        .backend = if (purego) .purego else .cgo,
+        .link_mode = if (purego) .dynamic else .static,
     });
     _ = bindings.addStandardSteps(b, .{});
 }

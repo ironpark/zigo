@@ -1,6 +1,7 @@
 const std = @import("std");
 
 pub const CreateError = error{OutOfMemory};
+pub const MathError = error{DivideByZero};
 
 pub const Mode = enum(u8) { idle, active, paused };
 
@@ -81,6 +82,21 @@ pub const Value = union(enum(u8)) {
 
 pub fn liveValues() usize {
     return live_values.load(.monotonic);
+}
+
+pub fn divide(numerator: f64, denominator: f64) MathError!f64 {
+    if (denominator == 0) return error.DivideByZero;
+    return numerator / denominator;
+}
+
+pub fn sum(values: []const f64) f64 {
+    var total: f64 = 0;
+    for (values) |value| total += value;
+    return total;
+}
+
+pub fn panicError() error{Never}!void {
+    @panic("purego panic translation");
 }
 
 test "tagged union changes variants without exposing its layout" {

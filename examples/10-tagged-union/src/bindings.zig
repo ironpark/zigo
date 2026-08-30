@@ -21,5 +21,8 @@ pub const bindings = zigo.define(.{
         .{ .name = "borrow", .@"fn" = library.Value.borrow },
         .{ .name = "deinit", .@"fn" = library.Value.deinit },
         .{ .name = "liveValues", .@"fn" = library.liveValues },
+        .{ .name = "divide", .@"fn" = library.divide, .params = .{ "numerator", "denominator" } },
+        .{ .name = "sum", .@"fn" = library.sum, .params = .{"values"} },
+        .{ .name = "panicError", .@"fn" = library.panicError },
     },
 });

@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T13:08:41Z"
 depends_on:
 - "31-shared-library-purego#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Loader unit/integration tests cover success, repeat load, conflicting path, retry, missing file,
 > NEXT: none

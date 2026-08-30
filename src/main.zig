@@ -46,6 +46,15 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         try stderr.interface.flush();
         std.process.exit(1);
     }
+    if (options.backend == .purego) for (parsed.value.functions) |function| {
+        for (function.params) |parameter| if (parameter.type == .callback) {
+            var buffer: [512]u8 = undefined;
+            var stderr = std.Io.File.Writer.init(.stderr(), io, &buffer);
+            try stderr.interface.print("error: purego callbacks are not supported yet ({s}); use the cgo backend or wait for the callback ABI phase\n", .{function.name});
+            try stderr.interface.flush();
+            std.process.exit(1);
+        };
+    };
     try std.Io.Dir.cwd().createDirPath(io, options.output_path);
     var output = try std.Io.Dir.cwd().openDir(io, options.output_path, .{ .iterate = true });
     defer output.close(io);
