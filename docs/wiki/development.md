@@ -27,6 +27,11 @@ done
 UTF-8 메타데이터, enum 정책, typed error, retained observer와 custom raw package 경로를
 애플리케이션 형태로 검증한다.
 
+[`examples/08-telemetry-hub`](../../examples/08-telemetry-hub/README.md)은 하나의 opaque
+타입에 51개 함수를 노출한다. 대형 declaration의 comptime reflection, 세 enum, 여러 error
+set, UTF-8 소유 상태, slice 입력, retained callback, 조회·통계·변환 API를 함께 검증하는
+생성기 폭(breadth) 회귀 fixture다.
+
 ```bash
 cd examples/05-pipeline
 zig build test
@@ -39,6 +44,15 @@ event queue 예제도 동일하게 실행한다.
 
 ```bash
 cd examples/07-event-queue
+zig build test
+zig build go-check abi-check
+cd go && go test -count=1 ./...
+```
+
+대형 API의 reflection과 생성 비용까지 확인할 때는 telemetry hub 예제를 실행한다.
+
+```bash
+cd examples/08-telemetry-hub
 zig build test
 zig build go-check abi-check
 cd go && go test -count=1 ./...

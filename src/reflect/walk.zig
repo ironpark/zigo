@@ -7,6 +7,10 @@ pub fn reflect(
     package_name: []const u8,
     prefix: []const u8,
 ) !semantic.Semantic {
+    // Reflection deliberately unrolls binding and parameter metadata so invalid
+    // declarations fail at compile time. Broad APIs can legitimately exceed
+    // Zig's default quota of 1,000 branches while doing that work.
+    @setEvalBranchQuota(100_000);
     const entries = declaration.functions;
     const functions = try allocator.alloc(semantic.SemanticFn, entries.len);
     var types: std.ArrayList(semantic.TypeDecl) = .empty;

@@ -89,3 +89,4 @@ cd go && go test ./...
 - [설계 문서](docs/design/README.md)
 - [통합 파이프라인 예제](examples/05-pipeline/README.md)
 - [상태 기반 event queue 예제](examples/07-event-queue/README.md)
+- [51개 함수의 대형 telemetry hub 예제](examples/08-telemetry-hub/README.md)

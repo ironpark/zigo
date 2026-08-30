@@ -1,0 +1,1213 @@
+{
+  "constructors": [
+    {
+      "deinit": "deinit",
+      "init": "create",
+      "type": "TelemetryHub"
+    }
+  ],
+  "functions": [
+    {
+      "name": "create",
+      "namespace": "TelemetryHub",
+      "ownership": "caller",
+      "params": [
+        {
+          "direction": "in",
+          "name": "name",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "semantic": "utf8_string",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "capacity",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "direction": "in",
+          "name": "mode",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "kind": "enum",
+            "ref": "Mode"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "overflow_policy",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "kind": "enum",
+            "ref": "OverflowPolicy"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "observer",
+          "name_source": "sidecar",
+          "retention": "retained",
+          "type": {
+            "c_callconv": true,
+            "has_userdata": true,
+            "kind": "callback",
+            "params": [
+              {
+                "bits": 64,
+                "is_usize": false,
+                "kind": "int",
+                "signed": false
+              },
+              {
+                "bits": 64,
+                "kind": "float"
+              },
+              {
+                "bits": 64,
+                "is_usize": true,
+                "kind": "int",
+                "signed": false
+              }
+            ],
+            "return": {
+              "bits": 32,
+              "is_usize": false,
+              "kind": "int",
+              "signed": true
+            }
+          }
+        },
+        {
+          "direction": "in",
+          "name": "userdata",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "OutOfMemory",
+          "InvalidName",
+          "InvalidCapacity"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "TelemetryHub"
+        }
+      },
+      "symbol": "zg_create"
+    },
+    {
+      "name": "rename",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "name",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "semantic": "utf8_string",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "OutOfMemory",
+          "InvalidName"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "void"
+        }
+      },
+      "symbol": "zg_rename"
+    },
+    {
+      "name": "name",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "const": true,
+        "element": {
+          "bits": 8,
+          "is_usize": false,
+          "kind": "int",
+          "signed": false
+        },
+        "kind": "slice"
+      },
+      "return_semantic": "utf8_string",
+      "symbol": "zg_name"
+    },
+    {
+      "name": "capacity",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_capacity"
+    },
+    {
+      "name": "len",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_len"
+    },
+    {
+      "name": "isEmpty",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "kind": "bool"
+      },
+      "symbol": "zg_isEmpty"
+    },
+    {
+      "name": "isFull",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "kind": "bool"
+      },
+      "symbol": "zg_isFull"
+    },
+    {
+      "name": "mode",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "kind": "enum",
+        "ref": "Mode"
+      },
+      "symbol": "zg_mode"
+    },
+    {
+      "name": "setMode",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "mode",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "kind": "enum",
+            "ref": "Mode"
+          }
+        }
+      ],
+      "receiver": "TelemetryHub",
+      "return": {
+        "kind": "enum",
+        "ref": "Mode"
+      },
+      "symbol": "zg_setMode"
+    },
+    {
+      "name": "overflowPolicy",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "kind": "enum",
+        "ref": "OverflowPolicy"
+      },
+      "symbol": "zg_overflowPolicy"
+    },
+    {
+      "name": "setOverflowPolicy",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "policy",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "kind": "enum",
+            "ref": "OverflowPolicy"
+          }
+        }
+      ],
+      "receiver": "TelemetryHub",
+      "return": {
+        "kind": "enum",
+        "ref": "OverflowPolicy"
+      },
+      "symbol": "zg_setOverflowPolicy"
+    },
+    {
+      "name": "enabled",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "kind": "bool"
+      },
+      "symbol": "zg_enabled"
+    },
+    {
+      "name": "setEnabled",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "enabled",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "receiver": "TelemetryHub",
+      "return": {
+        "kind": "bool"
+      },
+      "symbol": "zg_setEnabled"
+    },
+    {
+      "name": "threshold",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "bits": 64,
+        "kind": "float"
+      },
+      "symbol": "zg_threshold"
+    },
+    {
+      "name": "setThreshold",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "threshold",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "kind": "float"
+          }
+        }
+      ],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "NonFinite",
+          "InvalidRange"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "void"
+        }
+      },
+      "symbol": "zg_setThreshold"
+    },
+    {
+      "name": "scaleFactor",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "bits": 64,
+        "kind": "float"
+      },
+      "symbol": "zg_scaleFactor"
+    },
+    {
+      "name": "setScaleFactor",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "factor",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "kind": "float"
+          }
+        }
+      ],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "NonFinite",
+          "InvalidRange"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "void"
+        }
+      },
+      "symbol": "zg_setScaleFactor"
+    },
+    {
+      "name": "offset",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "bits": 64,
+        "kind": "float"
+      },
+      "symbol": "zg_offset"
+    },
+    {
+      "name": "setOffset",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "offset",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "kind": "float"
+          }
+        }
+      ],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "NonFinite",
+          "InvalidRange"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "void"
+        }
+      },
+      "symbol": "zg_setOffset"
+    },
+    {
+      "name": "push",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "id",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "direction": "in",
+          "name": "value",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "kind": "float"
+          }
+        }
+      ],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "NonFinite",
+          "Disabled",
+          "Full"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "void"
+        }
+      },
+      "symbol": "zg_push"
+    },
+    {
+      "name": "pushWithSeverity",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "id",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "direction": "in",
+          "name": "value",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "kind": "float"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "severity",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "kind": "enum",
+            "ref": "Severity"
+          }
+        }
+      ],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "NonFinite",
+          "Disabled",
+          "Full"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "void"
+        }
+      },
+      "symbol": "zg_pushWithSeverity"
+    },
+    {
+      "name": "pushBatch",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "values",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 64,
+              "kind": "float"
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "NonFinite",
+          "Disabled",
+          "Full"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "void"
+        }
+      },
+      "symbol": "zg_pushBatch"
+    },
+    {
+      "name": "process",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "limit",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "Empty",
+          "InvalidLimit",
+          "ObserverPanicked"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "is_usize": true,
+          "kind": "int",
+          "signed": false
+        }
+      },
+      "symbol": "zg_process"
+    },
+    {
+      "name": "processAll",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "Empty",
+          "InvalidLimit",
+          "ObserverPanicked"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "is_usize": true,
+          "kind": "int",
+          "signed": false
+        }
+      },
+      "symbol": "zg_processAll"
+    },
+    {
+      "name": "clear",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_clear"
+    },
+    {
+      "name": "resetStatistics",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_resetStatistics"
+    },
+    {
+      "name": "accepted",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_accepted"
+    },
+    {
+      "name": "rejected",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_rejected"
+    },
+    {
+      "name": "dropped",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_dropped"
+    },
+    {
+      "name": "processed",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_processed"
+    },
+    {
+      "name": "filtered",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_filtered"
+    },
+    {
+      "name": "sum",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "bits": 64,
+        "kind": "float"
+      },
+      "symbol": "zg_sum"
+    },
+    {
+      "name": "minimum",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "InvalidRange",
+          "Empty"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "kind": "float"
+        }
+      },
+      "symbol": "zg_minimum"
+    },
+    {
+      "name": "maximum",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "InvalidRange",
+          "Empty"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "kind": "float"
+        }
+      },
+      "symbol": "zg_maximum"
+    },
+    {
+      "name": "average",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "InvalidRange",
+          "Empty"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "kind": "float"
+        }
+      },
+      "symbol": "zg_average"
+    },
+    {
+      "name": "firstId",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "InvalidRange",
+          "Empty"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "is_usize": false,
+          "kind": "int",
+          "signed": false
+        }
+      },
+      "symbol": "zg_firstId"
+    },
+    {
+      "name": "firstValue",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "InvalidRange",
+          "Empty"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "kind": "float"
+        }
+      },
+      "symbol": "zg_firstValue"
+    },
+    {
+      "name": "lastId",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "InvalidRange",
+          "Empty"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "is_usize": false,
+          "kind": "int",
+          "signed": false
+        }
+      },
+      "symbol": "zg_lastId"
+    },
+    {
+      "name": "lastValue",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "InvalidRange",
+          "Empty"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "kind": "float"
+        }
+      },
+      "symbol": "zg_lastValue"
+    },
+    {
+      "name": "lastSeverity",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "InvalidRange",
+          "Empty"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "enum",
+          "ref": "Severity"
+        }
+      },
+      "symbol": "zg_lastSeverity"
+    },
+    {
+      "name": "countAbove",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "boundary",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "kind": "float"
+          }
+        }
+      ],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "NonFinite",
+          "InvalidRange"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "is_usize": true,
+          "kind": "int",
+          "signed": false
+        }
+      },
+      "symbol": "zg_countAbove"
+    },
+    {
+      "name": "countBelow",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "boundary",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "kind": "float"
+          }
+        }
+      ],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "NonFinite",
+          "InvalidRange"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "is_usize": true,
+          "kind": "int",
+          "signed": false
+        }
+      },
+      "symbol": "zg_countBelow"
+    },
+    {
+      "name": "containsAbove",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "boundary",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "kind": "float"
+          }
+        }
+      ],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "NonFinite",
+          "InvalidRange"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "bool"
+        }
+      },
+      "symbol": "zg_containsAbove"
+    },
+    {
+      "name": "containsBelow",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "boundary",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "kind": "float"
+          }
+        }
+      ],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "NonFinite",
+          "InvalidRange"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "bool"
+        }
+      },
+      "symbol": "zg_containsBelow"
+    },
+    {
+      "name": "scaleValues",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "factor",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "kind": "float"
+          }
+        }
+      ],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "NonFinite",
+          "InvalidRange"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "void"
+        }
+      },
+      "symbol": "zg_scaleValues"
+    },
+    {
+      "name": "offsetValues",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "delta",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "kind": "float"
+          }
+        }
+      ],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "NonFinite",
+          "InvalidRange"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "void"
+        }
+      },
+      "symbol": "zg_offsetValues"
+    },
+    {
+      "name": "clampValues",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "lower",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "kind": "float"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "upper",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "kind": "float"
+          }
+        }
+      ],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "NonFinite",
+          "InvalidRange"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "void"
+        }
+      },
+      "symbol": "zg_clampValues"
+    },
+    {
+      "name": "absoluteValues",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_absoluteValues"
+    },
+    {
+      "name": "negateValues",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_negateValues"
+    },
+    {
+      "name": "deinit",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "TelemetryHub",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_deinit"
+    },
+    {
+      "name": "liveHubs",
+      "ownership": "borrowed",
+      "params": [],
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_liveHubs"
+    }
+  ],
+  "ir_version": 1,
+  "package": "telemetry_hub",
+  "prefix": "zg",
+  "types": [
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "opaque",
+      "name": "TelemetryHub",
+      "zig_path": "root.TelemetryHub"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "raw",
+          "value": 0
+        },
+        {
+          "name": "scaled",
+          "value": 1
+        },
+        {
+          "name": "absolute",
+          "value": 2
+        }
+      ],
+      "kind": "enum",
+      "name": "Mode",
+      "tag_type": {
+        "bits": 32,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "zig_path": "root.Mode"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "reject",
+          "value": 0
+        },
+        {
+          "name": "drop_oldest",
+          "value": 1
+        }
+      ],
+      "kind": "enum",
+      "name": "OverflowPolicy",
+      "tag_type": {
+        "bits": 32,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "zig_path": "root.OverflowPolicy"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "debug",
+          "value": 0
+        },
+        {
+          "name": "info",
+          "value": 1
+        },
+        {
+          "name": "warning",
+          "value": 2
+        },
+        {
+          "name": "critical",
+          "value": 3
+        }
+      ],
+      "kind": "enum",
+      "name": "Severity",
+      "tag_type": {
+        "bits": 32,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "zig_path": "root.Severity"
+    }
+  ],
+  "zig_version": "0.16.0"
+}
