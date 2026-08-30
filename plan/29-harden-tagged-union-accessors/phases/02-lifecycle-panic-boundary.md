@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T11:06:30Z"
 depends_on:
 - "29-harden-tagged-union-accessors#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Runtime/process tests show wrong variants preserve outputs and closed/nil handles do not abort; emitter tests show Zig panics map to a distinct projection status.
 > NEXT: none
