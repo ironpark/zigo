@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T05:57:59Z"
 depends_on:
 - "20-automatic-binding-discovery#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: All repository checks pass and the worktree contains only the committed implementation and plan status updates.
 > NEXT: none
