@@ -8,7 +8,7 @@ registered_at: "2026-08-30T10:19:39Z"
 # Phases
 
 - [x] [Phase 00: Semantic reflection and validation](phases/00-initial-work.md)
-- [ ] [Phase 01: Checked accessor emission](phases/01-checked-accessor-emission.md)
+- [x] [Phase 01: Checked accessor emission](phases/01-checked-accessor-emission.md)
 - [ ] [Phase 02: End-to-end example and documentation](phases/02-example-and-documentation.md)
 
 # Shared Verification
