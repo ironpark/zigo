@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-30T00:08:03Z"
 depends_on:
 - "01-zigo-go-bindings#8"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Editing a generated file makes `zig build go-check` fail and name that file.
 > NEXT: none
