@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-30T10:23:55Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Focused Zig tests prove deterministic IR and diagnostics for valid and invalid tagged unions.
 > NEXT: none
