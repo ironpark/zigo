@@ -11,6 +11,14 @@ pub const AbiScalar = union(enum) {
     @"opaque": []const u8,
     /// A zigo-owned value snapshot struct, named by its C typedef.
     snapshot: []const u8,
+    /// A user `extern struct` mirrored into C. Aggregates never cross the
+    /// boundary by value, so this only ever appears behind a pointer.
+    value_struct: struct {
+        /// Semantic type name, as Zig and public Go spell it.
+        name: []const u8,
+        /// C typedef, `<prefix>_<type>`.
+        c_name: []const u8,
+    },
     pointer: struct {
         child: *const AbiScalar,
         is_const: bool,
@@ -28,7 +36,7 @@ pub const AbiParam = struct {
     scalar: AbiScalar,
     source_index: usize = 0,
 
-    pub const Role = enum { receiver, value, slice_pointer, slice_length, slice_written, payload_out, return_slice_pointer, return_slice_length };
+    pub const Role = enum { receiver, value, slice_pointer, slice_length, slice_written, payload_out, return_slice_pointer, return_slice_length, struct_in, struct_out };
 };
 
 pub const ErrorCode = struct { code: i32, name: []const u8 };
@@ -93,6 +101,27 @@ pub const AbiSnapshot = struct {
     };
 };
 
+/// A user `extern struct` mirrored into the C header. `extern` already fixes
+/// the layout, so the members are the user's own; the recorded size and
+/// alignment let the shim assert that the Zig type still matches the mirror.
+pub const AbiStruct = struct {
+    owner: *const semantic.TypeDecl,
+    name: []const u8,
+    c_name: []const u8,
+    fields: []const Field,
+    size: usize,
+    alignment: usize,
+
+    pub const Field = struct {
+        name: []const u8,
+        scalar: AbiScalar,
+        node: semantic.TypeNode,
+        /// Byte offset in the C mirror, which Go must reproduce exactly.
+        offset: usize,
+        bytes: usize,
+    };
+};
+
 pub const Program = struct {
     pub const Backend = enum { cgo, purego };
     pub const CallbackConvention = enum { fixed_go_export, function_pointer_userdata_v1 };
@@ -106,6 +135,7 @@ pub const Program = struct {
     prefix: []const u8,
     projections: []const AbiProjection = &.{},
     snapshots: []const AbiSnapshot = &.{},
+    structs: []const AbiStruct = &.{},
     types: []const semantic.TypeDecl = &.{},
 };
 

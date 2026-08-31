@@ -7,7 +7,7 @@ registered_at: "2026-08-31T10:01:11Z"
 
 # Phases
 
-- [ ] [Phase 00: Eligibility and diagnostics](phases/00-eligibility-diagnostics.md)
+- [x] [Phase 00: Eligibility and diagnostics](phases/00-eligibility-diagnostics.md)
 - [ ] [Phase 01: Lowering and native emitters](phases/01-lowering-native-emit.md)
 - [ ] [Phase 02: Go surfaces for both backends](phases/02-go-surfaces.md)
 - [ ] [Phase 03: ABI rules, example and documentation](phases/03-abi-example-docs.md)

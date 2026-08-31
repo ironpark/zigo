@@ -162,7 +162,11 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
             continue;
         }
 
-        if (function.origin.@"return" != .void) try writer.writeAll("return ");
+        if (function.origin.@"return" == .value_struct) {
+            try writer.writeAll("out_result.* = ");
+        } else if (function.origin.@"return" != .void) {
+            try writer.writeAll("return ");
+        }
         try writeTargetCall(allocator, writer, function);
         try writer.writeAll(";\n");
         if (function.origin.@"return" == .void) try writeSliceWrittenAssignments(writer, function);
@@ -170,6 +174,26 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
     }
     try renderTaggedUnionShim(writer, program);
     try renderTaggedUnionSnapshotShim(allocator, writer, program);
+    try renderValueStructShim(writer, program);
+}
+
+/// `extern` already fixes the layout on both sides, so the shim asserts rather
+/// than converts: if the Zig struct ever stops matching the C mirror the
+/// generated code fails to build instead of misreading memory.
+fn renderValueStructShim(writer: *std.Io.Writer, program: abi.Program) !void {
+    for (program.structs) |record| {
+        try writer.print(
+            "\ncomptime {{\n    std.debug.assert(@sizeOf(target.{0s}) == {1d});\n    std.debug.assert(@alignOf(target.{0s}) == {2d});\n",
+            .{ record.name, record.size, record.alignment },
+        );
+        for (record.fields) |field| {
+            try writer.print(
+                "    std.debug.assert(@offsetOf(target.{s}, \"{s}\") == {d});\n",
+                .{ record.name, field.name, field.offset },
+            );
+        }
+        try writer.writeAll("}\n");
+    }
 }
 
 /// The snapshot struct is zigo's own `extern struct`, never the Zig union's
@@ -400,6 +424,7 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, functio
             .bool => try writer.print("{s} != 0", .{parameter.name}),
             .@"enum" => try writer.print("@enumFromInt({s})", .{parameter.name}),
             .slice => try writer.print("if ({s}_len == 0) &.{{}} else {s}_ptr[0..{s}_len]", .{ parameter.name, parameter.name, parameter.name }),
+            .value_struct => try writer.print("{s}.*", .{parameter.name}),
             else => try writer.writeAll(parameter.name),
         }
     }
@@ -462,6 +487,7 @@ fn renderHeader(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         }
         try writer.writeByte('\n');
     }
+    try renderValueStructTypes(allocator, writer, program);
     try renderSnapshotTypes(allocator, writer, program);
     for (program.functions) |function| {
         try writeCType(writer, function.ret);
@@ -487,6 +513,30 @@ fn renderTaggedUnionHeader(allocator: std.mem.Allocator, writer: *std.Io.Writer,
         try writeCSnapshotDeclaration(allocator, writer, program, snapshot, false);
         try writer.writeAll(";\n");
     }
+}
+
+/// The C mirror of a user `extern struct`. The members and their order are the
+/// user's own; `extern` means the C compiler's layout rules already apply, so
+/// nothing is reordered and no padding is spelled out.
+fn renderValueStructTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
+    for (program.structs) |record| {
+        try writer.print("typedef struct {s} {{\n", .{record.c_name});
+        for (record.fields) |field| {
+            try writer.writeAll("    ");
+            try writeStructCMemberType(allocator, writer, program, field);
+            try writer.print(" {s};\n", .{field.name});
+        }
+        try writer.print("}} {s};\n\n", .{record.c_name});
+    }
+}
+
+fn writeStructCMemberType(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, field: abi.AbiStruct.Field) !void {
+    if (field.node == .@"enum") {
+        const enum_name = try naming.snakeAlloc(allocator, field.node.@"enum".ref);
+        defer allocator.free(enum_name);
+        return writer.print("{s}_{s}", .{ program.prefix, enum_name });
+    }
+    try writeCType(writer, field.scalar);
 }
 
 /// The value snapshot struct as C sees it. Padding is spelled out so the Zig
@@ -591,6 +641,15 @@ fn goParamNamesForAlloc(allocator: std.mem.Allocator, params: []const semantic.P
     return naming.goParamNamesAlloc(allocator, zig_names);
 }
 
+/// Phase gate: the Go emitters do not carry value structs yet. Until they do,
+/// such a function is left out of the Go surface rather than emitted wrong.
+fn functionUsesValueStruct(function: abi.AbiFn) bool {
+    for (function.origin.params) |parameter| if (parameter.type == .value_struct) return true;
+    if (function.origin.@"return" == .value_struct) return true;
+    if (function.origin.@"return" == .error_union and function.origin.@"return".error_union.payload.* == .value_struct) return true;
+    return false;
+}
+
 fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     if (options.backend == .purego) return renderPuregoRaw(allocator, writer, program, options);
     const package = try naming.snakeAlloc(allocator, program.package);
@@ -624,6 +683,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
     try renderRawCallbacks(allocator, writer, program);
 
     for (program.functions) |function| {
+        if (functionUsesValueStruct(function)) continue;
         const go_name = try rawGoNameAlloc(allocator, function.origin.*);
         defer allocator.free(go_name);
         const raw_public_name = try std.fmt.allocPrint(allocator, "{s}{s}", .{ if (options.raw_colocated) "zigoRaw" else "", go_name });
@@ -691,6 +751,9 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
             if (index != 0) try writer.writeAll(", ");
             switch (parameter.role) {
                 .receiver => try writer.writeAll("self"),
+                // Value structs are not on the Go surface yet; such functions
+                // are skipped above, so this switch never sees their roles.
+                .struct_in, .struct_out => unreachable,
                 .value => {
                     if (callbackForUserdataIndex(function.origin.params, parameter.source_index)) |callback_index| {
                         try writer.writeAll("C.");
@@ -859,6 +922,7 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     // round-trips, which `go vet` reports as a possible stale pointer.
     try writer.writeAll("\tlastError func() unsafe.Pointer\n");
     for (program.functions) |function| {
+        if (functionUsesValueStruct(function)) continue;
         const name = try rawGoNameAlloc(allocator, function.origin.*);
         defer allocator.free(name);
         try writer.print("\tfn{s} func(", .{name});
@@ -928,6 +992,7 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     );
     try writePuregoResolve(writer, "addrLastError", "zg_last_error_message");
     for (program.functions) |function| {
+        if (functionUsesValueStruct(function)) continue;
         const name = try rawGoNameAlloc(allocator, function.origin.*);
         defer allocator.free(name);
         const variable = try std.fmt.allocPrint(allocator, "addr{s}", .{name});
@@ -946,6 +1011,7 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     }
     try writer.writeAll("\tvar next nativeBindings\n\tpurego.RegisterFunc(&next.lastError, addrLastError)\n");
     for (program.functions) |function| {
+        if (functionUsesValueStruct(function)) continue;
         const name = try rawGoNameAlloc(allocator, function.origin.*);
         defer allocator.free(name);
         try writer.print("\tpurego.RegisterFunc(&next.fn{s}, addr{s})\n", .{ name, name });
@@ -978,7 +1044,10 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         "\tlength := 0\n\tfor *(*byte)(unsafe.Add(p, length)) != 0 {{ length++ }}\n" ++
         "\treturn string(unsafe.Slice((*byte)(p), length))\n}}\n", .{ last_error_name, last_error_name });
     try renderRawSnapshotTypes(allocator, writer, program);
-    for (program.functions) |function| try renderPuregoFunction(allocator, writer, program, function, options);
+    for (program.functions) |function| {
+        if (functionUsesValueStruct(function)) continue;
+        try renderPuregoFunction(allocator, writer, program, function, options);
+    }
     try renderPuregoProjections(allocator, writer, program);
     try renderRawSnapshotAccessors(allocator, writer, program);
 }
@@ -1166,6 +1235,9 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         if (index != 0) try writer.writeAll(", ");
         switch (parameter.role) {
             .receiver => try writer.writeAll("self"),
+            // Value structs are not on the Go surface yet; such functions are
+            // skipped above, so this switch never sees their roles.
+            .struct_in, .struct_out => unreachable,
             .value => {
                 const source_name = go_names[parameter.source_index];
                 if (parameter.scalar == .callback) {
@@ -1262,11 +1334,12 @@ fn writePuregoAbiType(writer: *std.Io.Writer, scalar: abi.AbiScalar) !void {
         .unsigned_int => |bits| try writer.print("uint{d}", .{bits}),
         .float => |bits| try writer.print("float{d}", .{bits}),
         .@"opaque" => try writer.writeAll("byte"),
-        .snapshot => try writer.writeAll("unsafe.Pointer"),
+        .snapshot, .value_struct => try writer.writeAll("unsafe.Pointer"),
         .pointer => |pointer| {
-            // The snapshot struct crosses as a raw address; purego never needs
-            // to know its Go spelling.
-            if (pointer.is_many or pointer.child.* == .@"opaque" or pointer.child.* == .snapshot)
+            // Aggregates cross as a raw address; purego never needs to know
+            // their Go spelling.
+            if (pointer.is_many or pointer.child.* == .@"opaque" or
+                pointer.child.* == .snapshot or pointer.child.* == .value_struct)
                 return writer.writeAll("unsafe.Pointer");
             try writer.writeByte('*');
             try writePuregoAbiType(writer, pointer.child.*);
@@ -1482,6 +1555,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             "var DefaultLibraryName = raw.DefaultLibraryName\n\n",
     );
     for (program.functions) |function| {
+        if (functionUsesValueStruct(function)) continue;
         const constructor = constructorForInit(program, function.origin.*);
         if (constructor == null and constructorForDeinit(program, function.origin.*) != null) continue;
         const go_names = try goParamNamesForAlloc(allocator, function.origin.params);
@@ -2496,6 +2570,7 @@ fn writeZigType(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
         .float => |bits| try writer.print("f{d}", .{bits}),
         .@"opaque" => |name| try writer.print("target.{s}", .{name}),
         .snapshot => |name| try writer.writeAll(name),
+        .value_struct => |record| try writer.print("target.{s}", .{record.name}),
         .pointer => |pointer| {
             try writer.writeAll(if (pointer.is_many) "[*c]" else "*");
             if (pointer.is_const) try writer.writeAll("const ");
@@ -2524,6 +2599,7 @@ fn writeCType(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
         .float => |bits| try writer.writeAll(if (bits == 32) "float" else "double"),
         .@"opaque" => try writer.writeAll("void"),
         .snapshot => |name| try writer.writeAll(name),
+        .value_struct => |record| try writer.writeAll(record.c_name),
         .pointer => |pointer| {
             if (pointer.is_const) try writer.writeAll("const ");
             try writeCType(writer, pointer.child.*);
@@ -2561,6 +2637,7 @@ fn writeCgoType(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
         .float => |bits| try writer.writeAll(if (bits == 32) "float" else "double"),
         .@"opaque" => try writer.writeAll("void"),
         .snapshot => |name| try writer.writeAll(name),
+        .value_struct => |record| try writer.writeAll(record.c_name),
         .pointer => unreachable,
         .callback => unreachable,
     }

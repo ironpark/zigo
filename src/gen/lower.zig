@@ -39,9 +39,9 @@ pub fn semanticDocumentForBackend(
                     if (backend == .cgo) continue;
                     const callback_params = try allocator.alloc(abi.AbiScalar, callback.params.len);
                     for (callback.params, 0..) |callback_parameter, callback_index|
-                        callback_params[callback_index] = try lowerValue(allocator, document, callback_parameter);
+                        callback_params[callback_index] = try lowerValue(allocator, document, prefix, callback_parameter);
                     const callback_return = try allocator.create(abi.AbiScalar);
-                    callback_return.* = try lowerValue(allocator, document, callback.@"return".*);
+                    callback_return.* = try lowerValue(allocator, document, prefix, callback.@"return".*);
                     try params.append(allocator, .{
                         .name = parameter.name,
                         .scalar = .{ .callback = .{ .params = callback_params, .ret = callback_return } },
@@ -50,7 +50,7 @@ pub fn semanticDocumentForBackend(
                 },
                 .slice => |slice| {
                     const child = try allocator.create(abi.AbiScalar);
-                    child.* = try lowerValue(allocator, document, slice.element.*);
+                    child.* = try lowerValue(allocator, document, prefix, slice.element.*);
                     try params.append(allocator, .{
                         .name = try std.fmt.allocPrint(allocator, "{s}_ptr", .{parameter.name}),
                         .role = .slice_pointer,
@@ -74,9 +74,21 @@ pub fn semanticDocumentForBackend(
                         });
                     }
                 },
+                // Aggregates never cross the boundary by value: an input
+                // struct travels as `const T*` and Go takes the address.
+                .value_struct => {
+                    const child = try allocator.create(abi.AbiScalar);
+                    child.* = try lowerValue(allocator, document, prefix, parameter.type);
+                    try params.append(allocator, .{
+                        .name = parameter.name,
+                        .role = .struct_in,
+                        .scalar = .{ .pointer = .{ .child = child, .is_const = true } },
+                        .source_index = parameter_index,
+                    });
+                },
                 else => try params.append(allocator, .{
                     .name = parameter.name,
-                    .scalar = try lowerValue(allocator, document, parameter.type),
+                    .scalar = try lowerValue(allocator, document, prefix, parameter.type),
                     .source_index = parameter_index,
                 }),
             }
@@ -86,7 +98,7 @@ pub fn semanticDocumentForBackend(
         const return_scalar = switch (function.@"return") {
             .slice => |slice| result: {
                 const element = try allocator.create(abi.AbiScalar);
-                element.* = try lowerValue(allocator, document, slice.element.*);
+                element.* = try lowerValue(allocator, document, prefix, slice.element.*);
                 const many = try allocator.create(abi.AbiScalar);
                 many.* = .{ .pointer = .{ .child = element, .is_const = slice.@"const", .is_many = true } };
                 try params.append(allocator, .{
@@ -107,7 +119,7 @@ pub fn semanticDocumentForBackend(
                 function_errors = try codesFor(allocator, error_union.error_set, error_codes);
                 if (error_union.payload.* != .void) {
                     const payload = try allocator.create(abi.AbiScalar);
-                    payload.* = try lowerValue(allocator, document, error_union.payload.*);
+                    payload.* = try lowerValue(allocator, document, prefix, error_union.payload.*);
                     try params.append(allocator, .{
                         .name = "out_result",
                         .role = .payload_out,
@@ -117,7 +129,17 @@ pub fn semanticDocumentForBackend(
                 }
                 break :result abi.AbiScalar{ .signed_int = 32 };
             },
-            else => try lowerValue(allocator, document, function.@"return"),
+            .value_struct => result: {
+                const child = try allocator.create(abi.AbiScalar);
+                child.* = try lowerValue(allocator, document, prefix, function.@"return");
+                try params.append(allocator, .{
+                    .name = "out_result",
+                    .role = .struct_out,
+                    .scalar = .{ .pointer = .{ .child = child, .is_const = false } },
+                });
+                break :result abi.AbiScalar.void;
+            },
+            else => try lowerValue(allocator, document, prefix, function.@"return"),
         };
         const function_name = try naming.snakeAlloc(allocator, function.name);
         defer allocator.free(function_name);
@@ -141,6 +163,7 @@ pub fn semanticDocumentForBackend(
     }
     const projections = try lowerTaggedUnionProjections(allocator, document, prefix);
     const snapshots = try lowerTaggedUnionSnapshots(allocator, document, prefix);
+    const structs = try lowerValueStructs(allocator, document, prefix);
     return .{
         .backend = backend,
         .callback_convention = if (backend == .purego) .function_pointer_userdata_v1 else .fixed_go_export,
@@ -151,6 +174,7 @@ pub fn semanticDocumentForBackend(
         .prefix = prefix,
         .projections = projections,
         .snapshots = snapshots,
+        .structs = structs,
         .types = document.types,
     };
 }
@@ -167,7 +191,7 @@ fn lowerTaggedUnionProjections(allocator: std.mem.Allocator, document: semantic.
         const tag_params = try allocator.alloc(abi.AbiParam, 2);
         tag_params[0] = try projectionReceiver(allocator, declaration.name);
         const tag_output = try allocator.create(abi.AbiScalar);
-        tag_output.* = try lowerValue(allocator, document, declaration.tag_type.?);
+        tag_output.* = try lowerValue(allocator, document, prefix, declaration.tag_type.?);
         tag_params[1] = .{
             .name = "out_value",
             .role = .payload_out,
@@ -187,7 +211,7 @@ fn lowerTaggedUnionProjections(allocator: std.mem.Allocator, document: semantic.
             try params.append(allocator, try projectionReceiver(allocator, declaration.name));
             if (payload == .slice) {
                 const element = try allocator.create(abi.AbiScalar);
-                element.* = try lowerValue(allocator, document, payload.slice.element.*);
+                element.* = try lowerValue(allocator, document, prefix, payload.slice.element.*);
                 const many = try allocator.create(abi.AbiScalar);
                 many.* = .{ .pointer = .{ .child = element, .is_const = payload.slice.@"const", .is_many = true } };
                 try params.append(allocator, .{
@@ -204,7 +228,7 @@ fn lowerTaggedUnionProjections(allocator: std.mem.Allocator, document: semantic.
                 });
             } else {
                 const lowered = try allocator.create(abi.AbiScalar);
-                lowered.* = try lowerValue(allocator, document, payload);
+                lowered.* = try lowerValue(allocator, document, prefix, payload);
                 try params.append(allocator, .{
                     .name = "out_value",
                     .role = .payload_out,
@@ -233,7 +257,7 @@ fn lowerTaggedUnionSnapshots(allocator: std.mem.Allocator, document: semantic.Se
     for (document.types) |*declaration| {
         if (declaration.kind != .tagged_union or declaration.unionRepr() != .value_snapshot) continue;
         const type_name = try snapshotTypeNameAlloc(allocator, prefix, declaration.name);
-        const layout = try snapshotLayout(allocator, document, declaration.*);
+        const layout = try snapshotLayout(allocator, document, prefix, declaration.*);
 
         const receiver = try projectionReceiver(allocator, declaration.name);
         const out_child = try allocator.create(abi.AbiScalar);
@@ -259,16 +283,141 @@ fn lowerTaggedUnionSnapshots(allocator: std.mem.Allocator, document: semantic.Se
     return snapshots.toOwnedSlice(allocator);
 }
 
+/// The C mirror of an `extern struct`. The members are the user's own in the
+/// user's order: `extern` already means C layout, so nothing is reordered or
+/// padded here. Size and alignment are computed with the same rules the C
+/// compiler applies, purely so the shim can assert the Zig type still agrees.
+fn lowerValueStructs(allocator: std.mem.Allocator, document: semantic.Semantic, prefix: []const u8) ![]const abi.AbiStruct {
+    var structs: std.ArrayList(abi.AbiStruct) = .empty;
+    for (document.types) |*declaration| {
+        if (declaration.kind != .value_struct or declaration.layout != .@"extern") continue;
+        if (!valueStructUsed(document, declaration.name)) continue;
+        const fields = try allocator.alloc(abi.AbiStruct.Field, declaration.fields.len);
+        var offset: usize = 0;
+        var alignment: usize = 1;
+        for (declaration.fields, 0..) |field, index| {
+            const node = field.type.?;
+            const scalar = try lowerValue(allocator, document, prefix, node);
+            const bytes = try memberBytes(document, prefix, node, scalar);
+            const member_alignment = try memberAlignment(document, prefix, node, scalar);
+            offset += padding(offset, member_alignment);
+            fields[index] = .{
+                .name = field.name,
+                .scalar = scalar,
+                .node = node,
+                .offset = offset,
+                .bytes = bytes,
+            };
+            offset += bytes;
+            alignment = @max(alignment, member_alignment);
+        }
+        try structs.append(allocator, .{
+            .owner = declaration,
+            .name = declaration.name,
+            .c_name = try cTypeNameAlloc(allocator, prefix, declaration.name),
+            .fields = fields,
+            .size = offset + padding(offset, alignment),
+            .alignment = alignment,
+        });
+    }
+    return structs.toOwnedSlice(allocator);
+}
+
+/// Only structs a function actually mentions reach the header, so registering
+/// a type without using it adds nothing to the generated surface.
+fn valueStructUsed(document: semantic.Semantic, name: []const u8) bool {
+    for (document.functions) |function| {
+        for (function.params) |parameter| if (mentionsValueStruct(document, parameter.type, name)) return true;
+        if (mentionsValueStruct(document, function.@"return", name)) return true;
+    }
+    return false;
+}
+
+fn mentionsValueStruct(document: semantic.Semantic, node: semantic.TypeNode, name: []const u8) bool {
+    return switch (node) {
+        .value_struct => |value| blk: {
+            if (std.mem.eql(u8, value.ref, name)) break :blk true;
+            for (document.types) |declaration| {
+                if (declaration.kind != .value_struct or !std.mem.eql(u8, declaration.name, value.ref)) continue;
+                for (declaration.fields) |field| {
+                    if (field.type) |child| if (mentionsValueStruct(document, child, name)) break :blk true;
+                }
+            }
+            break :blk false;
+        },
+        .error_union => |value| mentionsValueStruct(document, value.payload.*, name),
+        else => false,
+    };
+}
+
+fn memberBytes(document: semantic.Semantic, prefix: []const u8, node: semantic.TypeNode, scalar: abi.AbiScalar) !usize {
+    if (node != .value_struct) return scalarBytes(scalar);
+    const nested = valueStructDeclaration(document, node.value_struct.ref);
+    var offset: usize = 0;
+    var alignment: usize = 1;
+    for (nested.fields) |field| {
+        const child = field.type.?;
+        const child_scalar = try lowerValueNoAlloc(document, prefix, child);
+        const bytes = try memberBytes(document, prefix, child, child_scalar);
+        const child_alignment = try memberAlignment(document, prefix, child, child_scalar);
+        offset += padding(offset, child_alignment);
+        offset += bytes;
+        alignment = @max(alignment, child_alignment);
+    }
+    return offset + padding(offset, alignment);
+}
+
+fn memberAlignment(document: semantic.Semantic, prefix: []const u8, node: semantic.TypeNode, scalar: abi.AbiScalar) !usize {
+    if (node != .value_struct) return scalarBytes(scalar);
+    const nested = valueStructDeclaration(document, node.value_struct.ref);
+    var alignment: usize = 1;
+    for (nested.fields) |field| {
+        const child = field.type.?;
+        const child_scalar = try lowerValueNoAlloc(document, prefix, child);
+        alignment = @max(alignment, try memberAlignment(document, prefix, child, child_scalar));
+    }
+    return alignment;
+}
+
+/// Layout only needs the scalar's width, and a nested struct never consults
+/// the returned name, so the sizing walk avoids allocating C names.
+fn lowerValueNoAlloc(document: semantic.Semantic, prefix: []const u8, node: semantic.TypeNode) !abi.AbiScalar {
+    return switch (node) {
+        .value_struct => |value| .{ .value_struct = .{ .name = value.ref, .c_name = value.ref } },
+        .@"enum" => |value| lowerValueNoAlloc(document, prefix, enumDeclaration(document, value.ref).tag_type.?),
+        .bool => .bool_u8,
+        .int => |value| if (value.is_usize)
+            (if (value.signed) .isize else .usize)
+        else if (value.signed)
+            .{ .signed_int = value.bits }
+        else
+            .{ .unsigned_int = value.bits },
+        .float => |value| .{ .float = value.bits },
+        else => error.UnsupportedType,
+    };
+}
+
+fn valueStructDeclaration(document: semantic.Semantic, name: []const u8) semantic.TypeDecl {
+    for (document.types) |declaration| if (std.mem.eql(u8, declaration.name, name)) return declaration;
+    unreachable;
+}
+
+fn cTypeNameAlloc(allocator: std.mem.Allocator, prefix: []const u8, type_name: []const u8) ![]u8 {
+    const owner = try naming.snakeAlloc(allocator, type_name);
+    defer allocator.free(owner);
+    return std.fmt.allocPrint(allocator, "{s}_{s}", .{ prefix, owner });
+}
+
 const SnapshotLayout = struct { fields: []const abi.AbiSnapshot.Field, size: usize, alignment: usize };
 
-fn snapshotLayout(allocator: std.mem.Allocator, document: semantic.Semantic, declaration: semantic.TypeDecl) !SnapshotLayout {
+fn snapshotLayout(allocator: std.mem.Allocator, document: semantic.Semantic, prefix: []const u8, declaration: semantic.TypeDecl) !SnapshotLayout {
     const Payload = struct { field: *const semantic.TypeField, scalar: abi.AbiScalar, bytes: usize };
     var payloads: std.ArrayList(Payload) = .empty;
     defer payloads.deinit(allocator);
     for (declaration.fields) |*field| {
         const node = field.type.?;
         if (node == .void) continue;
-        const scalar = try lowerValue(allocator, document, node);
+        const scalar = try lowerValue(allocator, document, prefix, node);
         try payloads.append(allocator, .{ .field = field, .scalar = scalar, .bytes = scalarBytes(scalar) });
     }
     // A stable descending-width sort keeps declaration order inside each width,
@@ -279,7 +428,7 @@ fn snapshotLayout(allocator: std.mem.Allocator, document: semantic.Semantic, dec
         }
     }.lessThan);
 
-    const tag_scalar = try lowerValue(allocator, document, declaration.tag_type.?);
+    const tag_scalar = try lowerValue(allocator, document, prefix, declaration.tag_type.?);
     const tag_bytes = scalarBytes(tag_scalar);
     var alignment = tag_bytes;
     for (payloads.items) |payload| alignment = @max(alignment, payload.bytes);
@@ -366,7 +515,7 @@ fn projectionReceiver(allocator: std.mem.Allocator, owner: []const u8) !abi.AbiP
     };
 }
 
-fn lowerValue(allocator: std.mem.Allocator, document: semantic.Semantic, node: semantic.TypeNode) !abi.AbiScalar {
+fn lowerValue(allocator: std.mem.Allocator, document: semantic.Semantic, prefix: []const u8, node: semantic.TypeNode) !abi.AbiScalar {
     return switch (node) {
         .void => .void,
         .bool => .bool_u8,
@@ -377,12 +526,16 @@ fn lowerValue(allocator: std.mem.Allocator, document: semantic.Semantic, node: s
         else
             .{ .unsigned_int = value.bits },
         .float => |value| .{ .float = value.bits },
-        .@"enum" => |value| lowerValue(allocator, document, enumDeclaration(document, value.ref).tag_type.?),
+        .@"enum" => |value| lowerValue(allocator, document, prefix, enumDeclaration(document, value.ref).tag_type.?),
         .opaque_ptr => |value| blk: {
             const child = try allocator.create(abi.AbiScalar);
             child.* = .{ .@"opaque" = value.ref };
             break :blk .{ .pointer = .{ .child = child, .is_const = value.@"const" } };
         },
+        .value_struct => |value| .{ .value_struct = .{
+            .name = value.ref,
+            .c_name = try cTypeNameAlloc(allocator, prefix, value.ref),
+        } },
         // Validation rejects every node that cannot be lowered, so this is a
         // backstop against a malformed document rather than a reachable path.
         else => error.UnsupportedType,
@@ -722,4 +875,142 @@ test "the projection representation lowers no snapshot" {
     const program = try semanticDocument(arena.allocator(), document, "signal", "zg", &.{});
     try std.testing.expectEqual(@as(usize, 0), program.snapshots.len);
     try std.testing.expectEqual(@as(usize, 2), program.projections.len);
+}
+
+test "extern struct parameters and returns lower to pointers with a mirrored layout" {
+    const document: semantic.Semantic = .{
+        .functions = &.{
+            .{
+                .name = "configure",
+                .params = &.{.{ .name = "config", .type = .{ .value_struct = .{ .ref = "Config" } } }},
+                .@"return" = .{ .void = {} },
+                .symbol = "ignored",
+            },
+            .{
+                .name = "defaultConfig",
+                .params = &.{},
+                .@"return" = .{ .value_struct = .{ .ref = "Config" } },
+                .symbol = "ignored",
+            },
+        },
+        .package = "config",
+        .prefix = "zg",
+        .types = &.{
+            .{
+                .fields = &.{
+                    .{ .name = "enabled", .type = .{ .bool = {} } },
+                    .{ .name = "width", .type = .{ .int = .{ .bits = 32, .signed = true } } },
+                    .{ .name = "mode", .type = .{ .@"enum" = .{ .ref = "Mode" } } },
+                    .{ .name = "ratio", .type = .{ .float = .{ .bits = 64 } } },
+                    .{ .name = "origin", .type = .{ .value_struct = .{ .ref = "Point" } } },
+                },
+                .kind = .value_struct,
+                .layout = .@"extern",
+                .name = "Config",
+            },
+            .{
+                .fields = &.{
+                    .{ .name = "x", .type = .{ .int = .{ .bits = 16, .signed = true } } },
+                    .{ .name = "y", .type = .{ .int = .{ .bits = 16, .signed = true } } },
+                },
+                .kind = .value_struct,
+                .layout = .@"extern",
+                .name = "Point",
+            },
+            .{ .fields = &.{.{ .name = "idle", .value = 0 }}, .kind = .@"enum", .name = "Mode", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
+        },
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try semanticDocument(arena.allocator(), document, "config", "zg", &.{});
+
+    // An input struct travels as `const T*`, never by value.
+    const configure = program.functions[0];
+    try std.testing.expectEqual(@as(usize, 1), configure.params.len);
+    try std.testing.expectEqual(abi.AbiParam.Role.struct_in, configure.params[0].role);
+    try std.testing.expect(configure.params[0].scalar.pointer.is_const);
+    try std.testing.expectEqualStrings("Config", configure.params[0].scalar.pointer.child.value_struct.name);
+    try std.testing.expectEqualStrings("zg_config", configure.params[0].scalar.pointer.child.value_struct.c_name);
+    try std.testing.expect(configure.ret == .void);
+
+    // A returned struct becomes a mutable out parameter and a void return.
+    const default_config = program.functions[1];
+    try std.testing.expectEqual(@as(usize, 1), default_config.params.len);
+    try std.testing.expectEqual(abi.AbiParam.Role.struct_out, default_config.params[0].role);
+    try std.testing.expectEqualStrings("out_result", default_config.params[0].name);
+    try std.testing.expect(!default_config.params[0].scalar.pointer.is_const);
+    try std.testing.expect(default_config.ret == .void);
+
+    // The mirror keeps the user's field order and the C compiler's offsets.
+    try std.testing.expectEqual(@as(usize, 2), program.structs.len);
+    const config = program.structs[0];
+    try std.testing.expectEqualStrings("zg_config", config.c_name);
+    try std.testing.expectEqual(@as(usize, 8), config.alignment);
+    try std.testing.expectEqual(@as(usize, 32), config.size);
+    const expected = [_]struct { name: []const u8, offset: usize, bytes: usize }{
+        .{ .name = "enabled", .offset = 0, .bytes = 1 },
+        .{ .name = "width", .offset = 4, .bytes = 4 },
+        .{ .name = "mode", .offset = 8, .bytes = 1 },
+        .{ .name = "ratio", .offset = 16, .bytes = 8 },
+        .{ .name = "origin", .offset = 24, .bytes = 4 },
+    };
+    try std.testing.expectEqual(expected.len, config.fields.len);
+    for (expected, config.fields) |want, got| {
+        try std.testing.expectEqualStrings(want.name, got.name);
+        try std.testing.expectEqual(want.offset, got.offset);
+        try std.testing.expectEqual(want.bytes, got.bytes);
+    }
+
+    const point = program.structs[1];
+    try std.testing.expectEqual(@as(usize, 4), point.size);
+    try std.testing.expectEqual(@as(usize, 2), point.alignment);
+}
+
+test "an extern struct error payload keeps the existing out parameter shape" {
+    var payload: semantic.TypeNode = .{ .value_struct = .{ .ref = "Config" } };
+    const document: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "load",
+            .params = &.{},
+            .@"return" = .{ .error_union = .{ .error_set = &.{"Failed"}, .payload = &payload } },
+            .symbol = "ignored",
+        }},
+        .package = "config",
+        .prefix = "zg",
+        .types = &.{.{
+            .fields = &.{.{ .name = "width", .type = .{ .int = .{ .bits = 32, .signed = true } } }},
+            .kind = .value_struct,
+            .layout = .@"extern",
+            .name = "Config",
+        }},
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try semanticDocument(arena.allocator(), document, "config", "zg", &.{.{ .code = 7, .name = "Failed" }});
+
+    const load = program.functions[0];
+    try std.testing.expect(load.ret == .signed_int);
+    try std.testing.expectEqual(abi.AbiParam.Role.payload_out, load.params[0].role);
+    try std.testing.expect(!load.params[0].scalar.pointer.is_const);
+    try std.testing.expectEqualStrings("zg_config", load.params[0].scalar.pointer.child.value_struct.c_name);
+}
+
+test "a registered but unused extern struct stays out of the generated surface" {
+    const document: semantic.Semantic = .{
+        .package = "config",
+        .prefix = "zg",
+        .types = &.{.{
+            .fields = &.{.{ .name = "width", .type = .{ .int = .{ .bits = 32, .signed = true } } }},
+            .kind = .value_struct,
+            .layout = .@"extern",
+            .name = "Config",
+        }},
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try semanticDocument(arena.allocator(), document, "config", "zg", &.{});
+    try std.testing.expectEqual(@as(usize, 0), program.structs.len);
 }
