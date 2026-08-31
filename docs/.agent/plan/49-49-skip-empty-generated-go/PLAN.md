@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T18:52:21Z"
 description: Do not write a generated Go file that declares nothing, and remove one left by an earlier run
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-31T18:35:59Z"
 ---
 > NEXT: Skip writing a Go file that declares nothing, remove a stale one, and delete the twelve existing empties. ([Phase 0](phases/00-skip-empty-go-files.md))
@@ -9,7 +10,7 @@ registered_at: "2026-08-31T18:35:59Z"
 
 - [x] [Phase 00: Skip and prune declaration-free Go files](phases/00-skip-empty-go-files.md)
 - [x] [Phase 01: Generation formats its own Go output](phases/01-generation-formats-its-own-go-output.md)
-- [ ] [Phase 02: Publishing copies whatever generation produced](phases/02-publish-generated-go-tree.md)
+- [x] [Phase 02: Publishing copies whatever generation produced](phases/02-publish-generated-go-tree.md)
 
 # Shared Verification
 
