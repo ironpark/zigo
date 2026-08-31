@@ -1,6 +1,24 @@
 package type_relations
 
-import "testing"
+import (
+	"io"
+	"testing"
+)
+
+// Generated handles close like any other Go resource.
+var (
+	_ io.Closer = (*Counter)(nil)
+	_ io.Closer = (*Accumulator)(nil)
+)
+
+// must unwraps a generated call whose only failure mode here would be a nil or
+// closed handle.
+func must[T any](value T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return value
+}
 
 func TestAccumulatorAcceptsCounter(t *testing.T) {
 	counter, err := NewCounter(40)
@@ -15,13 +33,13 @@ func TestAccumulatorAcceptsCounter(t *testing.T) {
 	}
 	defer accumulator.Close()
 
-	if got := accumulator.Absorb(counter); got != 40 {
+	if got := must(accumulator.Absorb(counter)); got != 40 {
 		t.Fatalf("Absorb(counter) = %d, want 40", got)
 	}
-	if got := counter.Add(2); got != 42 {
+	if got := must(counter.Add(2)); got != 42 {
 		t.Fatalf("counter.Add(2) = %d, want 42", got)
 	}
-	if got := accumulator.Absorb(counter); got != 82 {
+	if got := must(accumulator.Absorb(counter)); got != 82 {
 		t.Fatalf("second Absorb(counter) = %d, want 82", got)
 	}
 }

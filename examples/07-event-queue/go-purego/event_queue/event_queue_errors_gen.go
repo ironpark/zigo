@@ -107,6 +107,6 @@ func errorForCode(operation string, code int32) error {
 	case 7:
 		return ErrObserverPanicked
 	default:
-		return &Error{Code: code, Name: "Unknown(" + strconv.FormatInt(int64(code), 10) + ")"}
+		return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")"}
 	}
 }

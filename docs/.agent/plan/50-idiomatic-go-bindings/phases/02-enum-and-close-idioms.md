@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-31T19:54:39Z"
 depends_on:
 - "50-idiomatic-go-bindings#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Regenerated examples show one `const` block per enum; every handle type
 > NEXT: none

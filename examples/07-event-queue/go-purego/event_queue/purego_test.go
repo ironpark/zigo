@@ -2,12 +2,25 @@ package event_queue
 
 import (
 	"errors"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
 	"time"
 )
+
+// A generated handle closes like any other Go resource.
+var _ io.Closer = (*EventQueue)(nil)
+
+// must unwraps a generated call whose only failure mode here would be a nil or
+// closed handle.
+func must[T any](value T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return value
+}
 
 func init() {
 	// An explicit path keeps the test independent of the loader search path;

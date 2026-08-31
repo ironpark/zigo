@@ -15,15 +15,23 @@ func NewCounter(initial int64) (*Counter, error) {
 }
 
 // Get invokes the bound Zig Counter.get operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (c *Counter) Get() int64 {
-	return raw.CounterGet(zigoMustPointer("Counter.Get receiver", c))
+// It returns *HandleError if a required handle is nil or closed.
+func (c *Counter) Get() (int64, error) {
+	ptr, err := zigoCheckedPointer("Counter.Get receiver", c)
+	if err != nil {
+		return 0, err
+	}
+	return raw.CounterGet(ptr), nil
 }
 
 // Add invokes the bound Zig Counter.add operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (c *Counter) Add(delta int64) int64 {
-	return raw.CounterAdd(zigoMustPointer("Counter.Add receiver", c), delta)
+// It returns *HandleError if a required handle is nil or closed.
+func (c *Counter) Add(delta int64) (int64, error) {
+	ptr, err := zigoCheckedPointer("Counter.Add receiver", c)
+	if err != nil {
+		return 0, err
+	}
+	return raw.CounterAdd(ptr, delta), nil
 }
 
 // NewAccumulator creates a caller-owned Accumulator.
@@ -38,15 +46,27 @@ func NewAccumulator() (*Accumulator, error) {
 }
 
 // Absorb adds the current value of another exposed opaque type.
-// It panics with *HandleError if a required handle is nil or closed.
-func (a *Accumulator) Absorb(counter *Counter) int64 {
-	return raw.AccumulatorAbsorb(zigoMustPointer("Accumulator.Absorb receiver", a), zigoMustPointer("Accumulator.Absorb parameter counter", counter))
+// It returns *HandleError if a required handle is nil or closed.
+func (a *Accumulator) Absorb(counter *Counter) (int64, error) {
+	ptr, err := zigoCheckedPointer("Accumulator.Absorb receiver", a)
+	if err != nil {
+		return 0, err
+	}
+	counterPtr, err := zigoCheckedPointer("Accumulator.Absorb parameter counter", counter)
+	if err != nil {
+		return 0, err
+	}
+	return raw.AccumulatorAbsorb(ptr, counterPtr), nil
 }
 
 // Total invokes the bound Zig Accumulator.total operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (a *Accumulator) Total() int64 {
-	return raw.AccumulatorTotal(zigoMustPointer("Accumulator.Total receiver", a))
+// It returns *HandleError if a required handle is nil or closed.
+func (a *Accumulator) Total() (int64, error) {
+	ptr, err := zigoCheckedPointer("Accumulator.Total receiver", a)
+	if err != nil {
+		return 0, err
+	}
+	return raw.AccumulatorTotal(ptr), nil
 }
 
 // LiveObjects invokes the bound Zig liveObjects operation.

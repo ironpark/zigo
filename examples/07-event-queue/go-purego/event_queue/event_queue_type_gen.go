@@ -13,11 +13,12 @@ import (
 // Policy represents the corresponding Zig enum.
 type Policy uint32
 
-// PolicyReject corresponds to the Zig tag reject.
-const PolicyReject Policy = 0
-
-// PolicyDropOldest corresponds to the Zig tag drop_oldest.
-const PolicyDropOldest Policy = 1
+const (
+	// PolicyReject corresponds to the Zig tag reject.
+	PolicyReject Policy = 0
+	// PolicyDropOldest corresponds to the Zig tag drop_oldest.
+	PolicyDropOldest Policy = 1
+)
 
 // String returns the Zig tag name.
 func (value Policy) String() string {
@@ -27,7 +28,7 @@ func (value Policy) String() string {
 	case PolicyDropOldest:
 		return "drop_oldest"
 	default:
-		return "Policy(" + strconv.FormatInt(int64(value), 10) + ")"
+		return "Policy(" + strconv.Itoa(int(value)) + ")"
 	}
 }
 
@@ -88,9 +89,10 @@ func cleanupEventQueue(state eventQueueCleanupState) {
 }
 
 // Close releases the native EventQueue resources. It is safe to call more than once.
-func (e *EventQueue) Close() {
+// The error result is always nil; it exists so EventQueue satisfies io.Closer.
+func (e *EventQueue) Close() error {
 	if e == nil {
-		return
+		return nil
 	}
 	e.once.Do(func() {
 		e.mu.Lock()
@@ -101,6 +103,7 @@ func (e *EventQueue) Close() {
 		e.callbackHandles = nil
 	})
 	runtime.KeepAlive(e)
+	return nil
 }
 
 type zigoHandle interface {
@@ -115,19 +118,11 @@ func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, err
 	return ptr, nil
 }
 
-func zigoMustPointer(operation string, value zigoHandle) unsafe.Pointer {
-	ptr, err := zigoCheckedPointer(operation, value)
-	if err != nil {
-		panic(err)
-	}
-	return ptr
-}
-
-func zigoOptionalPointer(operation string, absent bool, value zigoHandle) unsafe.Pointer {
+func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsafe.Pointer, error) {
 	if absent {
-		return nil
+		return nil, nil
 	}
-	return zigoMustPointer(operation, value)
+	return zigoCheckedPointer(operation, value)
 }
 
 // Stats mirrors the Zig `extern struct` of the same name.

@@ -15,9 +15,13 @@ func NewContext() (*Context, error) {
 }
 
 // Add invokes the bound Zig Context.add operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (c *Context) Add(value int64) int64 {
-	return raw.ContextAdd(zigoMustPointer("Context.Add receiver", c), value)
+// It returns *HandleError if a required handle is nil or closed.
+func (c *Context) Add(value int64) (int64, error) {
+	ptr, err := zigoCheckedPointer("Context.Add receiver", c)
+	if err != nil {
+		return 0, err
+	}
+	return raw.ContextAdd(ptr, value), nil
 }
 
 // LiveBytes invokes the bound Zig liveBytes operation.

@@ -21,7 +21,7 @@ func NewEventQueue(name string, capacity uint, policy Policy, observer EventQueu
 }
 
 // Enqueue invokes the bound Zig EventQueue.enqueue operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (e *EventQueue) Enqueue(id uint64, value int32) error {
 	if e != nil {
@@ -29,7 +29,11 @@ func (e *EventQueue) Enqueue(id uint64, value int32) error {
 		defer e.mu.RUnlock()
 	}
 	defer runtime.KeepAlive(e)
-	code := raw.EventQueueEnqueue(zigoMustPointer("EventQueue.Enqueue receiver", e), id, value)
+	ptr, err := zigoCheckedPointer("EventQueue.Enqueue receiver", e)
+	if err != nil {
+		return err
+	}
+	code := raw.EventQueueEnqueue(ptr, id, value)
 	if code != 0 {
 		return errorForCode("EventQueue.Enqueue", code)
 	}
@@ -37,7 +41,7 @@ func (e *EventQueue) Enqueue(id uint64, value int32) error {
 }
 
 // Process invokes the bound Zig EventQueue.process operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (e *EventQueue) Process(limit uint) (uint, error) {
 	if e != nil {
@@ -45,7 +49,11 @@ func (e *EventQueue) Process(limit uint) (uint, error) {
 		defer e.mu.RUnlock()
 	}
 	defer runtime.KeepAlive(e)
-	result, code := raw.EventQueueProcess(zigoMustPointer("EventQueue.Process receiver", e), limit)
+	ptr, err := zigoCheckedPointer("EventQueue.Process receiver", e)
+	if err != nil {
+		return 0, err
+	}
+	result, code := raw.EventQueueProcess(ptr, limit)
 	if code != 0 {
 		return 0, errorForCode("EventQueue.Process", code)
 	}
@@ -53,95 +61,127 @@ func (e *EventQueue) Process(limit uint) (uint, error) {
 }
 
 // Name invokes the bound Zig EventQueue.name operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (e *EventQueue) Name() string {
+// It returns *HandleError if a required handle is nil or closed.
+func (e *EventQueue) Name() (string, error) {
 	if e != nil {
 		e.mu.RLock()
 		defer e.mu.RUnlock()
 	}
 	defer runtime.KeepAlive(e)
-	return string(raw.EventQueueName(zigoMustPointer("EventQueue.Name receiver", e)))
+	ptr, err := zigoCheckedPointer("EventQueue.Name receiver", e)
+	if err != nil {
+		return "", err
+	}
+	return string(raw.EventQueueName(ptr)), nil
 }
 
 // Len invokes the bound Zig EventQueue.len operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (e *EventQueue) Len() uint {
+// It returns *HandleError if a required handle is nil or closed.
+func (e *EventQueue) Len() (uint, error) {
 	if e != nil {
 		e.mu.RLock()
 		defer e.mu.RUnlock()
 	}
 	defer runtime.KeepAlive(e)
-	return raw.EventQueueLen(zigoMustPointer("EventQueue.Len receiver", e))
+	ptr, err := zigoCheckedPointer("EventQueue.Len receiver", e)
+	if err != nil {
+		return 0, err
+	}
+	return raw.EventQueueLen(ptr), nil
 }
 
 // Capacity invokes the bound Zig EventQueue.capacity operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (e *EventQueue) Capacity() uint {
+// It returns *HandleError if a required handle is nil or closed.
+func (e *EventQueue) Capacity() (uint, error) {
 	if e != nil {
 		e.mu.RLock()
 		defer e.mu.RUnlock()
 	}
 	defer runtime.KeepAlive(e)
-	return raw.EventQueueCapacity(zigoMustPointer("EventQueue.Capacity receiver", e))
+	ptr, err := zigoCheckedPointer("EventQueue.Capacity receiver", e)
+	if err != nil {
+		return 0, err
+	}
+	return raw.EventQueueCapacity(ptr), nil
 }
 
 // Policy invokes the bound Zig EventQueue.policy operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (e *EventQueue) Policy() Policy {
+// It returns *HandleError if a required handle is nil or closed.
+func (e *EventQueue) Policy() (Policy, error) {
 	if e != nil {
 		e.mu.RLock()
 		defer e.mu.RUnlock()
 	}
 	defer runtime.KeepAlive(e)
-	return Policy(raw.EventQueuePolicy(zigoMustPointer("EventQueue.Policy receiver", e)))
+	ptr, err := zigoCheckedPointer("EventQueue.Policy receiver", e)
+	if err != nil {
+		return 0, err
+	}
+	return Policy(raw.EventQueuePolicy(ptr)), nil
 }
 
 // Dropped invokes the bound Zig EventQueue.dropped operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (e *EventQueue) Dropped() uint {
+// It returns *HandleError if a required handle is nil or closed.
+func (e *EventQueue) Dropped() (uint, error) {
 	if e != nil {
 		e.mu.RLock()
 		defer e.mu.RUnlock()
 	}
 	defer runtime.KeepAlive(e)
-	return raw.EventQueueDropped(zigoMustPointer("EventQueue.Dropped receiver", e))
+	ptr, err := zigoCheckedPointer("EventQueue.Dropped receiver", e)
+	if err != nil {
+		return 0, err
+	}
+	return raw.EventQueueDropped(ptr), nil
 }
 
 // Processed invokes the bound Zig EventQueue.processed operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (e *EventQueue) Processed() uint {
+// It returns *HandleError if a required handle is nil or closed.
+func (e *EventQueue) Processed() (uint, error) {
 	if e != nil {
 		e.mu.RLock()
 		defer e.mu.RUnlock()
 	}
 	defer runtime.KeepAlive(e)
-	return raw.EventQueueProcessed(zigoMustPointer("EventQueue.Processed receiver", e))
+	ptr, err := zigoCheckedPointer("EventQueue.Processed receiver", e)
+	if err != nil {
+		return 0, err
+	}
+	return raw.EventQueueProcessed(ptr), nil
 }
 
 // Stats invokes the bound Zig EventQueue.stats operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (e *EventQueue) Stats() Stats {
+// It returns *HandleError if a required handle is nil or closed.
+func (e *EventQueue) Stats() (Stats, error) {
 	if e != nil {
 		e.mu.RLock()
 		defer e.mu.RUnlock()
 	}
 	defer runtime.KeepAlive(e)
-	return zigoStatsFromRaw(raw.EventQueueStats(zigoMustPointer("EventQueue.Stats receiver", e)))
+	ptr, err := zigoCheckedPointer("EventQueue.Stats receiver", e)
+	if err != nil {
+		return Stats{}, err
+	}
+	return zigoStatsFromRaw(raw.EventQueueStats(ptr)), nil
 }
 
 // Limits invokes the bound Zig EventQueue.limits operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (e *EventQueue) Limits() Limits {
+// It returns *HandleError if a required handle is nil or closed.
+func (e *EventQueue) Limits() (Limits, error) {
 	if e != nil {
 		e.mu.RLock()
 		defer e.mu.RUnlock()
 	}
 	defer runtime.KeepAlive(e)
-	return zigoLimitsFromRaw(raw.EventQueueLimits(zigoMustPointer("EventQueue.Limits receiver", e)))
+	ptr, err := zigoCheckedPointer("EventQueue.Limits receiver", e)
+	if err != nil {
+		return Limits{}, err
+	}
+	return zigoLimitsFromRaw(raw.EventQueueLimits(ptr)), nil
 }
 
 // ApplyLimits invokes the bound Zig EventQueue.applyLimits operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (e *EventQueue) ApplyLimits(updated Limits) error {
 	if e != nil {
@@ -149,7 +189,11 @@ func (e *EventQueue) ApplyLimits(updated Limits) error {
 		defer e.mu.RUnlock()
 	}
 	defer runtime.KeepAlive(e)
-	code := raw.EventQueueApplyLimits(zigoMustPointer("EventQueue.ApplyLimits receiver", e), zigoLimitsToRaw(updated))
+	ptr, err := zigoCheckedPointer("EventQueue.ApplyLimits receiver", e)
+	if err != nil {
+		return err
+	}
+	code := raw.EventQueueApplyLimits(ptr, zigoLimitsToRaw(updated))
 	if code != 0 {
 		return errorForCode("EventQueue.ApplyLimits", code)
 	}
@@ -157,14 +201,18 @@ func (e *EventQueue) ApplyLimits(updated Limits) error {
 }
 
 // Clear invokes the bound Zig EventQueue.clear operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (e *EventQueue) Clear() uint {
+// It returns *HandleError if a required handle is nil or closed.
+func (e *EventQueue) Clear() (uint, error) {
 	if e != nil {
 		e.mu.RLock()
 		defer e.mu.RUnlock()
 	}
 	defer runtime.KeepAlive(e)
-	return raw.EventQueueClear(zigoMustPointer("EventQueue.Clear receiver", e))
+	ptr, err := zigoCheckedPointer("EventQueue.Clear receiver", e)
+	if err != nil {
+		return 0, err
+	}
+	return raw.EventQueueClear(ptr), nil
 }
 
 // LiveQueues invokes the bound Zig liveQueues operation.

@@ -38,9 +38,10 @@ func (c *CounterRef) zigoPointer() unsafe.Pointer {
 }
 
 // Close releases the native Counter resources. It is safe to call more than once.
-func (c *Counter) Close() {
+// The error result is always nil; it exists so Counter satisfies io.Closer.
+func (c *Counter) Close() error {
 	if c == nil {
-		return
+		return nil
 	}
 	c.once.Do(func() {
 		if c.ptr != nil {
@@ -48,6 +49,7 @@ func (c *Counter) Close() {
 			c.ptr = nil
 		}
 	})
+	return nil
 }
 
 // Accumulator is a caller-owned native handle. Call Close when it is no longer needed.
@@ -80,9 +82,10 @@ func (a *AccumulatorRef) zigoPointer() unsafe.Pointer {
 }
 
 // Close releases the native Accumulator resources. It is safe to call more than once.
-func (a *Accumulator) Close() {
+// The error result is always nil; it exists so Accumulator satisfies io.Closer.
+func (a *Accumulator) Close() error {
 	if a == nil {
-		return
+		return nil
 	}
 	a.once.Do(func() {
 		if a.ptr != nil {
@@ -90,6 +93,7 @@ func (a *Accumulator) Close() {
 			a.ptr = nil
 		}
 	})
+	return nil
 }
 
 type zigoHandle interface {
@@ -104,17 +108,9 @@ func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, err
 	return ptr, nil
 }
 
-func zigoMustPointer(operation string, value zigoHandle) unsafe.Pointer {
-	ptr, err := zigoCheckedPointer(operation, value)
-	if err != nil {
-		panic(err)
-	}
-	return ptr
-}
-
-func zigoOptionalPointer(operation string, absent bool, value zigoHandle) unsafe.Pointer {
+func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsafe.Pointer, error) {
 	if absent {
-		return nil
+		return nil, nil
 	}
-	return zigoMustPointer(operation, value)
+	return zigoCheckedPointer(operation, value)
 }

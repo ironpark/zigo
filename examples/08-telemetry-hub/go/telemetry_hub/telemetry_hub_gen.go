@@ -17,14 +17,18 @@ func NewTelemetryHub(inputName string, maxSamples uint, initialMode Mode, overfl
 }
 
 // Rename invokes the bound Zig TelemetryHub.rename operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) Rename(newName string) error {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	code := raw.TelemetryHubRename(zigoMustPointer("TelemetryHub.Rename receiver", t), []byte(newName))
+	ptr, err := zigoCheckedPointer("TelemetryHub.Rename receiver", t)
+	if err != nil {
+		return err
+	}
+	code := raw.TelemetryHubRename(ptr, []byte(newName))
 	if code != 0 {
 		return errorForCode("TelemetryHub.Rename", code)
 	}
@@ -32,134 +36,186 @@ func (t *TelemetryHub) Rename(newName string) error {
 }
 
 // Name invokes the bound Zig TelemetryHub.name operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) Name() string {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) Name() (string, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return string(raw.TelemetryHubName(zigoMustPointer("TelemetryHub.Name receiver", t)))
+	ptr, err := zigoCheckedPointer("TelemetryHub.Name receiver", t)
+	if err != nil {
+		return "", err
+	}
+	return string(raw.TelemetryHubName(ptr)), nil
 }
 
 // Capacity invokes the bound Zig TelemetryHub.capacity operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) Capacity() uint {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) Capacity() (uint, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return raw.TelemetryHubCapacity(zigoMustPointer("TelemetryHub.Capacity receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.Capacity receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	return raw.TelemetryHubCapacity(ptr), nil
 }
 
 // Len invokes the bound Zig TelemetryHub.len operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) Len() uint {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) Len() (uint, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return raw.TelemetryHubLen(zigoMustPointer("TelemetryHub.Len receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.Len receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	return raw.TelemetryHubLen(ptr), nil
 }
 
 // IsEmpty invokes the bound Zig TelemetryHub.isEmpty operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) IsEmpty() bool {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) IsEmpty() (bool, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return raw.TelemetryHubIsEmpty(zigoMustPointer("TelemetryHub.IsEmpty receiver", t)) != 0
+	ptr, err := zigoCheckedPointer("TelemetryHub.IsEmpty receiver", t)
+	if err != nil {
+		return false, err
+	}
+	return raw.TelemetryHubIsEmpty(ptr) != 0, nil
 }
 
 // IsFull invokes the bound Zig TelemetryHub.isFull operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) IsFull() bool {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) IsFull() (bool, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return raw.TelemetryHubIsFull(zigoMustPointer("TelemetryHub.IsFull receiver", t)) != 0
+	ptr, err := zigoCheckedPointer("TelemetryHub.IsFull receiver", t)
+	if err != nil {
+		return false, err
+	}
+	return raw.TelemetryHubIsFull(ptr) != 0, nil
 }
 
 // Mode invokes the bound Zig TelemetryHub.mode operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) Mode() Mode {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) Mode() (Mode, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return Mode(raw.TelemetryHubMode(zigoMustPointer("TelemetryHub.Mode receiver", t)))
+	ptr, err := zigoCheckedPointer("TelemetryHub.Mode receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	return Mode(raw.TelemetryHubMode(ptr)), nil
 }
 
 // SetMode invokes the bound Zig TelemetryHub.setMode operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) SetMode(newMode Mode) Mode {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) SetMode(newMode Mode) (Mode, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return Mode(raw.TelemetryHubSetMode(zigoMustPointer("TelemetryHub.SetMode receiver", t), uint32(newMode)))
+	ptr, err := zigoCheckedPointer("TelemetryHub.SetMode receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	return Mode(raw.TelemetryHubSetMode(ptr, uint32(newMode))), nil
 }
 
 // OverflowPolicy invokes the bound Zig TelemetryHub.overflowPolicy operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) OverflowPolicy() OverflowPolicy {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) OverflowPolicy() (OverflowPolicy, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return OverflowPolicy(raw.TelemetryHubOverflowPolicy(zigoMustPointer("TelemetryHub.OverflowPolicy receiver", t)))
+	ptr, err := zigoCheckedPointer("TelemetryHub.OverflowPolicy receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	return OverflowPolicy(raw.TelemetryHubOverflowPolicy(ptr)), nil
 }
 
 // SetOverflowPolicy invokes the bound Zig TelemetryHub.setOverflowPolicy operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) SetOverflowPolicy(newPolicy OverflowPolicy) OverflowPolicy {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) SetOverflowPolicy(newPolicy OverflowPolicy) (OverflowPolicy, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return OverflowPolicy(raw.TelemetryHubSetOverflowPolicy(zigoMustPointer("TelemetryHub.SetOverflowPolicy receiver", t), uint32(newPolicy)))
+	ptr, err := zigoCheckedPointer("TelemetryHub.SetOverflowPolicy receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	return OverflowPolicy(raw.TelemetryHubSetOverflowPolicy(ptr, uint32(newPolicy))), nil
 }
 
 // Enabled invokes the bound Zig TelemetryHub.enabled operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) Enabled() bool {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) Enabled() (bool, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return raw.TelemetryHubEnabled(zigoMustPointer("TelemetryHub.Enabled receiver", t)) != 0
+	ptr, err := zigoCheckedPointer("TelemetryHub.Enabled receiver", t)
+	if err != nil {
+		return false, err
+	}
+	return raw.TelemetryHubEnabled(ptr) != 0, nil
 }
 
 // SetEnabled invokes the bound Zig TelemetryHub.setEnabled operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) SetEnabled(newEnabled bool) bool {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) SetEnabled(newEnabled bool) (bool, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return raw.TelemetryHubSetEnabled(zigoMustPointer("TelemetryHub.SetEnabled receiver", t), boolToUint8(newEnabled)) != 0
+	ptr, err := zigoCheckedPointer("TelemetryHub.SetEnabled receiver", t)
+	if err != nil {
+		return false, err
+	}
+	return raw.TelemetryHubSetEnabled(ptr, boolToUint8(newEnabled)) != 0, nil
 }
 
 // Threshold invokes the bound Zig TelemetryHub.threshold operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) Threshold() float64 {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) Threshold() (float64, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return raw.TelemetryHubThreshold(zigoMustPointer("TelemetryHub.Threshold receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.Threshold receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	return raw.TelemetryHubThreshold(ptr), nil
 }
 
 // SetThreshold invokes the bound Zig TelemetryHub.setThreshold operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) SetThreshold(newThreshold float64) error {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	code := raw.TelemetryHubSetThreshold(zigoMustPointer("TelemetryHub.SetThreshold receiver", t), newThreshold)
+	ptr, err := zigoCheckedPointer("TelemetryHub.SetThreshold receiver", t)
+	if err != nil {
+		return err
+	}
+	code := raw.TelemetryHubSetThreshold(ptr, newThreshold)
 	if code != 0 {
 		return errorForCode("TelemetryHub.SetThreshold", code)
 	}
@@ -167,24 +223,32 @@ func (t *TelemetryHub) SetThreshold(newThreshold float64) error {
 }
 
 // ScaleFactor invokes the bound Zig TelemetryHub.scaleFactor operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) ScaleFactor() float64 {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) ScaleFactor() (float64, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return raw.TelemetryHubScaleFactor(zigoMustPointer("TelemetryHub.ScaleFactor receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.ScaleFactor receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	return raw.TelemetryHubScaleFactor(ptr), nil
 }
 
 // SetScaleFactor invokes the bound Zig TelemetryHub.setScaleFactor operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) SetScaleFactor(newFactor float64) error {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	code := raw.TelemetryHubSetScaleFactor(zigoMustPointer("TelemetryHub.SetScaleFactor receiver", t), newFactor)
+	ptr, err := zigoCheckedPointer("TelemetryHub.SetScaleFactor receiver", t)
+	if err != nil {
+		return err
+	}
+	code := raw.TelemetryHubSetScaleFactor(ptr, newFactor)
 	if code != 0 {
 		return errorForCode("TelemetryHub.SetScaleFactor", code)
 	}
@@ -192,24 +256,32 @@ func (t *TelemetryHub) SetScaleFactor(newFactor float64) error {
 }
 
 // Offset invokes the bound Zig TelemetryHub.offset operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) Offset() float64 {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) Offset() (float64, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return raw.TelemetryHubOffset(zigoMustPointer("TelemetryHub.Offset receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.Offset receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	return raw.TelemetryHubOffset(ptr), nil
 }
 
 // SetOffset invokes the bound Zig TelemetryHub.setOffset operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) SetOffset(newOffset float64) error {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	code := raw.TelemetryHubSetOffset(zigoMustPointer("TelemetryHub.SetOffset receiver", t), newOffset)
+	ptr, err := zigoCheckedPointer("TelemetryHub.SetOffset receiver", t)
+	if err != nil {
+		return err
+	}
+	code := raw.TelemetryHubSetOffset(ptr, newOffset)
 	if code != 0 {
 		return errorForCode("TelemetryHub.SetOffset", code)
 	}
@@ -217,14 +289,18 @@ func (t *TelemetryHub) SetOffset(newOffset float64) error {
 }
 
 // Push invokes the bound Zig TelemetryHub.push operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) Push(id uint64, value float64) error {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	code := raw.TelemetryHubPush(zigoMustPointer("TelemetryHub.Push receiver", t), id, value)
+	ptr, err := zigoCheckedPointer("TelemetryHub.Push receiver", t)
+	if err != nil {
+		return err
+	}
+	code := raw.TelemetryHubPush(ptr, id, value)
 	if code != 0 {
 		return errorForCode("TelemetryHub.Push", code)
 	}
@@ -232,14 +308,18 @@ func (t *TelemetryHub) Push(id uint64, value float64) error {
 }
 
 // PushWithSeverity invokes the bound Zig TelemetryHub.pushWithSeverity operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) PushWithSeverity(id uint64, value float64, severity Severity) error {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	code := raw.TelemetryHubPushWithSeverity(zigoMustPointer("TelemetryHub.PushWithSeverity receiver", t), id, value, uint32(severity))
+	ptr, err := zigoCheckedPointer("TelemetryHub.PushWithSeverity receiver", t)
+	if err != nil {
+		return err
+	}
+	code := raw.TelemetryHubPushWithSeverity(ptr, id, value, uint32(severity))
 	if code != 0 {
 		return errorForCode("TelemetryHub.PushWithSeverity", code)
 	}
@@ -247,14 +327,18 @@ func (t *TelemetryHub) PushWithSeverity(id uint64, value float64, severity Sever
 }
 
 // PushBatch invokes the bound Zig TelemetryHub.pushBatch operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) PushBatch(values []float64) error {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	code := raw.TelemetryHubPushBatch(zigoMustPointer("TelemetryHub.PushBatch receiver", t), values)
+	ptr, err := zigoCheckedPointer("TelemetryHub.PushBatch receiver", t)
+	if err != nil {
+		return err
+	}
+	code := raw.TelemetryHubPushBatch(ptr, values)
 	if code != 0 {
 		return errorForCode("TelemetryHub.PushBatch", code)
 	}
@@ -262,14 +346,18 @@ func (t *TelemetryHub) PushBatch(values []float64) error {
 }
 
 // Process invokes the bound Zig TelemetryHub.process operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) Process(limit uint) (uint, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	result, code := raw.TelemetryHubProcess(zigoMustPointer("TelemetryHub.Process receiver", t), limit)
+	ptr, err := zigoCheckedPointer("TelemetryHub.Process receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	result, code := raw.TelemetryHubProcess(ptr, limit)
 	if code != 0 {
 		return 0, errorForCode("TelemetryHub.Process", code)
 	}
@@ -277,14 +365,18 @@ func (t *TelemetryHub) Process(limit uint) (uint, error) {
 }
 
 // ProcessAll invokes the bound Zig TelemetryHub.processAll operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) ProcessAll() (uint, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	result, code := raw.TelemetryHubProcessAll(zigoMustPointer("TelemetryHub.ProcessAll receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.ProcessAll receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	result, code := raw.TelemetryHubProcessAll(ptr)
 	if code != 0 {
 		return 0, errorForCode("TelemetryHub.ProcessAll", code)
 	}
@@ -292,94 +384,131 @@ func (t *TelemetryHub) ProcessAll() (uint, error) {
 }
 
 // Clear invokes the bound Zig TelemetryHub.clear operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) Clear() uint {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) Clear() (uint, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return raw.TelemetryHubClear(zigoMustPointer("TelemetryHub.Clear receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.Clear receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	return raw.TelemetryHubClear(ptr), nil
 }
 
 // ResetStatistics invokes the bound Zig TelemetryHub.resetStatistics operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) ResetStatistics() {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) ResetStatistics() error {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	raw.TelemetryHubResetStatistics(zigoMustPointer("TelemetryHub.ResetStatistics receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.ResetStatistics receiver", t)
+	if err != nil {
+		return err
+	}
+	raw.TelemetryHubResetStatistics(ptr)
+	return nil
 }
 
 // Accepted invokes the bound Zig TelemetryHub.accepted operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) Accepted() uint {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) Accepted() (uint, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return raw.TelemetryHubAccepted(zigoMustPointer("TelemetryHub.Accepted receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.Accepted receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	return raw.TelemetryHubAccepted(ptr), nil
 }
 
 // Rejected invokes the bound Zig TelemetryHub.rejected operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) Rejected() uint {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) Rejected() (uint, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return raw.TelemetryHubRejected(zigoMustPointer("TelemetryHub.Rejected receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.Rejected receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	return raw.TelemetryHubRejected(ptr), nil
 }
 
 // Dropped invokes the bound Zig TelemetryHub.dropped operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) Dropped() uint {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) Dropped() (uint, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return raw.TelemetryHubDropped(zigoMustPointer("TelemetryHub.Dropped receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.Dropped receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	return raw.TelemetryHubDropped(ptr), nil
 }
 
 // Processed invokes the bound Zig TelemetryHub.processed operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) Processed() uint {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) Processed() (uint, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return raw.TelemetryHubProcessed(zigoMustPointer("TelemetryHub.Processed receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.Processed receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	return raw.TelemetryHubProcessed(ptr), nil
 }
 
 // Filtered invokes the bound Zig TelemetryHub.filtered operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) Filtered() uint {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) Filtered() (uint, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return raw.TelemetryHubFiltered(zigoMustPointer("TelemetryHub.Filtered receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.Filtered receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	return raw.TelemetryHubFiltered(ptr), nil
 }
 
 // Sum invokes the bound Zig TelemetryHub.sum operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) Sum() float64 {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) Sum() (float64, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return raw.TelemetryHubSum(zigoMustPointer("TelemetryHub.Sum receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.Sum receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	return raw.TelemetryHubSum(ptr), nil
 }
 
 // Minimum invokes the bound Zig TelemetryHub.minimum operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) Minimum() (float64, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	result, code := raw.TelemetryHubMinimum(zigoMustPointer("TelemetryHub.Minimum receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.Minimum receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	result, code := raw.TelemetryHubMinimum(ptr)
 	if code != 0 {
 		return 0, errorForCode("TelemetryHub.Minimum", code)
 	}
@@ -387,14 +516,18 @@ func (t *TelemetryHub) Minimum() (float64, error) {
 }
 
 // Maximum invokes the bound Zig TelemetryHub.maximum operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) Maximum() (float64, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	result, code := raw.TelemetryHubMaximum(zigoMustPointer("TelemetryHub.Maximum receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.Maximum receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	result, code := raw.TelemetryHubMaximum(ptr)
 	if code != 0 {
 		return 0, errorForCode("TelemetryHub.Maximum", code)
 	}
@@ -402,14 +535,18 @@ func (t *TelemetryHub) Maximum() (float64, error) {
 }
 
 // Average invokes the bound Zig TelemetryHub.average operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) Average() (float64, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	result, code := raw.TelemetryHubAverage(zigoMustPointer("TelemetryHub.Average receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.Average receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	result, code := raw.TelemetryHubAverage(ptr)
 	if code != 0 {
 		return 0, errorForCode("TelemetryHub.Average", code)
 	}
@@ -417,14 +554,18 @@ func (t *TelemetryHub) Average() (float64, error) {
 }
 
 // FirstID invokes the bound Zig TelemetryHub.firstId operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) FirstID() (uint64, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	result, code := raw.TelemetryHubFirstID(zigoMustPointer("TelemetryHub.FirstID receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.FirstID receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	result, code := raw.TelemetryHubFirstID(ptr)
 	if code != 0 {
 		return 0, errorForCode("TelemetryHub.FirstID", code)
 	}
@@ -432,14 +573,18 @@ func (t *TelemetryHub) FirstID() (uint64, error) {
 }
 
 // FirstValue invokes the bound Zig TelemetryHub.firstValue operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) FirstValue() (float64, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	result, code := raw.TelemetryHubFirstValue(zigoMustPointer("TelemetryHub.FirstValue receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.FirstValue receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	result, code := raw.TelemetryHubFirstValue(ptr)
 	if code != 0 {
 		return 0, errorForCode("TelemetryHub.FirstValue", code)
 	}
@@ -447,14 +592,18 @@ func (t *TelemetryHub) FirstValue() (float64, error) {
 }
 
 // LastID invokes the bound Zig TelemetryHub.lastId operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) LastID() (uint64, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	result, code := raw.TelemetryHubLastID(zigoMustPointer("TelemetryHub.LastID receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.LastID receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	result, code := raw.TelemetryHubLastID(ptr)
 	if code != 0 {
 		return 0, errorForCode("TelemetryHub.LastID", code)
 	}
@@ -462,14 +611,18 @@ func (t *TelemetryHub) LastID() (uint64, error) {
 }
 
 // LastValue invokes the bound Zig TelemetryHub.lastValue operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) LastValue() (float64, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	result, code := raw.TelemetryHubLastValue(zigoMustPointer("TelemetryHub.LastValue receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.LastValue receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	result, code := raw.TelemetryHubLastValue(ptr)
 	if code != 0 {
 		return 0, errorForCode("TelemetryHub.LastValue", code)
 	}
@@ -477,14 +630,18 @@ func (t *TelemetryHub) LastValue() (float64, error) {
 }
 
 // LastSeverity invokes the bound Zig TelemetryHub.lastSeverity operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) LastSeverity() (Severity, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	result, code := raw.TelemetryHubLastSeverity(zigoMustPointer("TelemetryHub.LastSeverity receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.LastSeverity receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	result, code := raw.TelemetryHubLastSeverity(ptr)
 	if code != 0 {
 		return 0, errorForCode("TelemetryHub.LastSeverity", code)
 	}
@@ -492,14 +649,18 @@ func (t *TelemetryHub) LastSeverity() (Severity, error) {
 }
 
 // CountAbove invokes the bound Zig TelemetryHub.countAbove operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) CountAbove(boundary float64) (uint, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	result, code := raw.TelemetryHubCountAbove(zigoMustPointer("TelemetryHub.CountAbove receiver", t), boundary)
+	ptr, err := zigoCheckedPointer("TelemetryHub.CountAbove receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	result, code := raw.TelemetryHubCountAbove(ptr, boundary)
 	if code != 0 {
 		return 0, errorForCode("TelemetryHub.CountAbove", code)
 	}
@@ -507,14 +668,18 @@ func (t *TelemetryHub) CountAbove(boundary float64) (uint, error) {
 }
 
 // CountBelow invokes the bound Zig TelemetryHub.countBelow operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) CountBelow(boundary float64) (uint, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	result, code := raw.TelemetryHubCountBelow(zigoMustPointer("TelemetryHub.CountBelow receiver", t), boundary)
+	ptr, err := zigoCheckedPointer("TelemetryHub.CountBelow receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	result, code := raw.TelemetryHubCountBelow(ptr, boundary)
 	if code != 0 {
 		return 0, errorForCode("TelemetryHub.CountBelow", code)
 	}
@@ -522,14 +687,18 @@ func (t *TelemetryHub) CountBelow(boundary float64) (uint, error) {
 }
 
 // ContainsAbove invokes the bound Zig TelemetryHub.containsAbove operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) ContainsAbove(boundary float64) (bool, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	result, code := raw.TelemetryHubContainsAbove(zigoMustPointer("TelemetryHub.ContainsAbove receiver", t), boundary)
+	ptr, err := zigoCheckedPointer("TelemetryHub.ContainsAbove receiver", t)
+	if err != nil {
+		return false, err
+	}
+	result, code := raw.TelemetryHubContainsAbove(ptr, boundary)
 	if code != 0 {
 		return false, errorForCode("TelemetryHub.ContainsAbove", code)
 	}
@@ -537,14 +706,18 @@ func (t *TelemetryHub) ContainsAbove(boundary float64) (bool, error) {
 }
 
 // ContainsBelow invokes the bound Zig TelemetryHub.containsBelow operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) ContainsBelow(boundary float64) (bool, error) {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	result, code := raw.TelemetryHubContainsBelow(zigoMustPointer("TelemetryHub.ContainsBelow receiver", t), boundary)
+	ptr, err := zigoCheckedPointer("TelemetryHub.ContainsBelow receiver", t)
+	if err != nil {
+		return false, err
+	}
+	result, code := raw.TelemetryHubContainsBelow(ptr, boundary)
 	if code != 0 {
 		return false, errorForCode("TelemetryHub.ContainsBelow", code)
 	}
@@ -552,14 +725,18 @@ func (t *TelemetryHub) ContainsBelow(boundary float64) (bool, error) {
 }
 
 // ScaleValues invokes the bound Zig TelemetryHub.scaleValues operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) ScaleValues(factor float64) error {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	code := raw.TelemetryHubScaleValues(zigoMustPointer("TelemetryHub.ScaleValues receiver", t), factor)
+	ptr, err := zigoCheckedPointer("TelemetryHub.ScaleValues receiver", t)
+	if err != nil {
+		return err
+	}
+	code := raw.TelemetryHubScaleValues(ptr, factor)
 	if code != 0 {
 		return errorForCode("TelemetryHub.ScaleValues", code)
 	}
@@ -567,14 +744,18 @@ func (t *TelemetryHub) ScaleValues(factor float64) error {
 }
 
 // OffsetValues invokes the bound Zig TelemetryHub.offsetValues operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) OffsetValues(delta float64) error {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	code := raw.TelemetryHubOffsetValues(zigoMustPointer("TelemetryHub.OffsetValues receiver", t), delta)
+	ptr, err := zigoCheckedPointer("TelemetryHub.OffsetValues receiver", t)
+	if err != nil {
+		return err
+	}
+	code := raw.TelemetryHubOffsetValues(ptr, delta)
 	if code != 0 {
 		return errorForCode("TelemetryHub.OffsetValues", code)
 	}
@@ -582,14 +763,18 @@ func (t *TelemetryHub) OffsetValues(delta float64) error {
 }
 
 // ClampValues invokes the bound Zig TelemetryHub.clampValues operation.
-// It panics with *HandleError if a required handle is nil or closed.
+// It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (t *TelemetryHub) ClampValues(lower float64, upper float64) error {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	code := raw.TelemetryHubClampValues(zigoMustPointer("TelemetryHub.ClampValues receiver", t), lower, upper)
+	ptr, err := zigoCheckedPointer("TelemetryHub.ClampValues receiver", t)
+	if err != nil {
+		return err
+	}
+	code := raw.TelemetryHubClampValues(ptr, lower, upper)
 	if code != 0 {
 		return errorForCode("TelemetryHub.ClampValues", code)
 	}
@@ -597,23 +782,33 @@ func (t *TelemetryHub) ClampValues(lower float64, upper float64) error {
 }
 
 // AbsoluteValues invokes the bound Zig TelemetryHub.absoluteValues operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) AbsoluteValues() {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) AbsoluteValues() error {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	raw.TelemetryHubAbsoluteValues(zigoMustPointer("TelemetryHub.AbsoluteValues receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.AbsoluteValues receiver", t)
+	if err != nil {
+		return err
+	}
+	raw.TelemetryHubAbsoluteValues(ptr)
+	return nil
 }
 
 // NegateValues invokes the bound Zig TelemetryHub.negateValues operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) NegateValues() {
+// It returns *HandleError if a required handle is nil or closed.
+func (t *TelemetryHub) NegateValues() error {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	raw.TelemetryHubNegateValues(zigoMustPointer("TelemetryHub.NegateValues receiver", t))
+	ptr, err := zigoCheckedPointer("TelemetryHub.NegateValues receiver", t)
+	if err != nil {
+		return err
+	}
+	raw.TelemetryHubNegateValues(ptr)
+	return nil
 }
 
 // LiveHubs invokes the bound Zig liveHubs operation.

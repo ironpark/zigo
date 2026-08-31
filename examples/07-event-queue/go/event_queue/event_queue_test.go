@@ -3,6 +3,7 @@ package event_queue
 import (
 	"errors"
 	"fmt"
+	"io"
 	"runtime"
 	"sync"
 	"testing"
@@ -10,6 +11,18 @@ import (
 )
 
 var _ EventQueueObserver = func(uint64, int32) int32 { return 0 }
+
+// A generated handle closes like any other Go resource.
+var _ io.Closer = (*EventQueue)(nil)
+
+// must unwraps a generated call whose only failure mode here would be a nil or
+// closed handle.
+func must[T any](value T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return value
+}
 
 type observedEvent struct {
 	id    uint64
@@ -27,13 +40,13 @@ func TestRejectQueueEndToEnd(t *testing.T) {
 	}
 	defer queue.Close()
 
-	if got := queue.Name(); got != "중요 이벤트" {
+	if got := must(queue.Name()); got != "중요 이벤트" {
 		t.Fatalf("Name() = %q", got)
 	}
-	if got := queue.Capacity(); got != 2 {
+	if got := must(queue.Capacity()); got != 2 {
 		t.Fatalf("Capacity() = %d, want 2", got)
 	}
-	if got := queue.Policy(); got != PolicyReject {
+	if got := must(queue.Policy()); got != PolicyReject {
 		t.Fatalf("Policy() = %v, want %v", got, PolicyReject)
 	}
 	if err := queue.Enqueue(10, 100); err != nil {
@@ -57,7 +70,7 @@ func TestRejectQueueEndToEnd(t *testing.T) {
 	if _, err := queue.Process(0); !errors.Is(err, ErrInvalidLimit) {
 		t.Fatalf("Process(0) error = %v, want %v", err, ErrInvalidLimit)
 	}
-	if got := queue.Processed(); got != 2 {
+	if got := must(queue.Processed()); got != 2 {
 		t.Fatalf("Processed() = %d, want 2", got)
 	}
 	want := []observedEvent{{id: 10, value: 100}, {id: 11, value: 200}}
@@ -82,7 +95,7 @@ func TestDropOldestPolicy(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if got := queue.Dropped(); got != 1 {
+	if got := must(queue.Dropped()); got != 1 {
 		t.Fatalf("Dropped() = %d, want 1", got)
 	}
 	if got, err := queue.Process(2); err != nil || got != 2 {
@@ -97,7 +110,7 @@ func TestDropOldestPolicy(t *testing.T) {
 	if err := queue.Enqueue(5, 50); err != nil {
 		t.Fatal(err)
 	}
-	if got := queue.Clear(); got != 2 {
+	if got := must(queue.Clear()); got != 2 {
 		t.Fatalf("Clear() = %d, want 2", got)
 	}
 }
@@ -126,7 +139,7 @@ func TestObserverPanicBecomesTypedError(t *testing.T) {
 	if _, err := queue.Process(1); !errors.Is(err, ErrObserverPanicked) {
 		t.Fatalf("Process() error = %v, want %v", err, ErrObserverPanicked)
 	}
-	if got := queue.Len(); got != 1 {
+	if got := must(queue.Len()); got != 1 {
 		t.Fatalf("Len() after observer panic = %d, want 1", got)
 	}
 	queue.Close()

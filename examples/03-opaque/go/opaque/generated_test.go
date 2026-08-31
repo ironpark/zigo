@@ -1,6 +1,21 @@
 package opaque
 
-import "testing"
+import (
+	"io"
+	"testing"
+)
+
+// A generated handle closes like any other Go resource.
+var _ io.Closer = (*Context)(nil)
+
+// must unwraps a generated call whose only failure mode here would be a nil or
+// closed handle.
+func must[T any](value T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return value
+}
 
 func TestOpaqueLifecycle(t *testing.T) {
 	for range 100 {
@@ -8,7 +23,7 @@ func TestOpaqueLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := context.Add(3); got != 3 {
+		if got := must(context.Add(3)); got != 3 {
 			t.Fatalf("Add() = %d, want 3", got)
 		}
 		context.Close()

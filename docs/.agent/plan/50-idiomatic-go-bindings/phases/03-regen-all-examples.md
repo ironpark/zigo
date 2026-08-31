@@ -3,7 +3,7 @@ depends_on:
 - "50-idiomatic-go-bindings#1"
 - "50-idiomatic-go-bindings#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `grep -r "sync.RWMutex" examples/*/go*/*_gen.go` returns nothing; all ten
 > NEXT: none

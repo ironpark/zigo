@@ -9,15 +9,15 @@ func assertValueStructRoundTrip(t *testing.T, queue *EventQueue) {
 
 	// A struct return arrives filled through an out parameter and comes back
 	// as a value.
-	before := queue.Stats()
+	before := must(queue.Stats())
 	if before.Capacity == 0 {
 		t.Fatalf("Stats() = %+v, want a non-zero capacity", before)
 	}
-	if before.Policy != queue.Policy() {
-		t.Fatalf("Stats().Policy = %v, want %v", before.Policy, queue.Policy())
+	if before.Policy != must(queue.Policy()) {
+		t.Fatalf("Stats().Policy = %v, want %v", before.Policy, must(queue.Policy()))
 	}
-	if before.Len != uint32(queue.Len()) {
-		t.Fatalf("Stats().Len = %d, want %d", before.Len, queue.Len())
+	if before.Len != uint32(must(queue.Len())) {
+		t.Fatalf("Stats().Len = %d, want %d", before.Len, must(queue.Len()))
 	}
 
 	// A struct parameter travels the other way and survives the round trip.
@@ -25,16 +25,16 @@ func assertValueStructRoundTrip(t *testing.T, queue *EventQueue) {
 	if err := queue.ApplyLimits(updated); err != nil {
 		t.Fatal(err)
 	}
-	if got := queue.Limits(); got != updated {
+	if got := must(queue.Limits()); got != updated {
 		t.Fatalf("Limits() = %+v, want %+v", got, updated)
 	}
-	if got := queue.Stats(); got.Capacity != updated.Capacity || got.Policy != updated.Policy {
+	if got := must(queue.Stats()); got.Capacity != updated.Capacity || got.Policy != updated.Policy {
 		t.Fatalf("Stats() = %+v, want capacity %d policy %v", got, updated.Capacity, updated.Policy)
 	}
 
 	// The bool field crosses as uint8 and is restored on the Go side.
-	if got := queue.Stats().Saturated; got != (queue.Len() >= queue.Capacity()) {
-		t.Fatalf("Stats().Saturated = %v, want %v", got, queue.Len() >= queue.Capacity())
+	if got := must(queue.Stats()).Saturated; got != (must(queue.Len()) >= must(queue.Capacity())) {
+		t.Fatalf("Stats().Saturated = %v, want %v", got, must(queue.Len()) >= must(queue.Capacity()))
 	}
 
 	// Errors still travel as codes; the struct payload is untouched.

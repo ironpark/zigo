@@ -6,11 +6,12 @@ import "strconv"
 // Format represents the corresponding Zig enum.
 type Format uint32
 
-// FormatPcm corresponds to the Zig tag pcm.
-const FormatPcm Format = 0
-
-// FormatFlac corresponds to the Zig tag flac.
-const FormatFlac Format = 1
+const (
+	// FormatPcm corresponds to the Zig tag pcm.
+	FormatPcm Format = 0
+	// FormatFlac corresponds to the Zig tag flac.
+	FormatFlac Format = 1
+)
 
 // String returns the Zig tag name.
 func (value Format) String() string {
@@ -20,6 +21,6 @@ func (value Format) String() string {
 	case FormatFlac:
 		return "flac"
 	default:
-		return "Format(" + strconv.FormatInt(int64(value), 10) + ")"
+		return "Format(" + strconv.Itoa(int(value)) + ")"
 	}
 }

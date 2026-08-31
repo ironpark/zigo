@@ -12,14 +12,14 @@ import (
 // Mode represents the corresponding Zig enum.
 type Mode uint32
 
-// ModeRaw corresponds to the Zig tag raw.
-const ModeRaw Mode = 0
-
-// ModeScaled corresponds to the Zig tag scaled.
-const ModeScaled Mode = 1
-
-// ModeAbsolute corresponds to the Zig tag absolute.
-const ModeAbsolute Mode = 2
+const (
+	// ModeRaw corresponds to the Zig tag raw.
+	ModeRaw Mode = 0
+	// ModeScaled corresponds to the Zig tag scaled.
+	ModeScaled Mode = 1
+	// ModeAbsolute corresponds to the Zig tag absolute.
+	ModeAbsolute Mode = 2
+)
 
 // String returns the Zig tag name.
 func (value Mode) String() string {
@@ -31,18 +31,19 @@ func (value Mode) String() string {
 	case ModeAbsolute:
 		return "absolute"
 	default:
-		return "Mode(" + strconv.FormatInt(int64(value), 10) + ")"
+		return "Mode(" + strconv.Itoa(int(value)) + ")"
 	}
 }
 
 // OverflowPolicy represents the corresponding Zig enum.
 type OverflowPolicy uint32
 
-// OverflowPolicyReject corresponds to the Zig tag reject.
-const OverflowPolicyReject OverflowPolicy = 0
-
-// OverflowPolicyDropOldest corresponds to the Zig tag drop_oldest.
-const OverflowPolicyDropOldest OverflowPolicy = 1
+const (
+	// OverflowPolicyReject corresponds to the Zig tag reject.
+	OverflowPolicyReject OverflowPolicy = 0
+	// OverflowPolicyDropOldest corresponds to the Zig tag drop_oldest.
+	OverflowPolicyDropOldest OverflowPolicy = 1
+)
 
 // String returns the Zig tag name.
 func (value OverflowPolicy) String() string {
@@ -52,24 +53,23 @@ func (value OverflowPolicy) String() string {
 	case OverflowPolicyDropOldest:
 		return "drop_oldest"
 	default:
-		return "OverflowPolicy(" + strconv.FormatInt(int64(value), 10) + ")"
+		return "OverflowPolicy(" + strconv.Itoa(int(value)) + ")"
 	}
 }
 
 // Severity represents the corresponding Zig enum.
 type Severity uint32
 
-// SeverityDebug corresponds to the Zig tag debug.
-const SeverityDebug Severity = 0
-
-// SeverityInfo corresponds to the Zig tag info.
-const SeverityInfo Severity = 1
-
-// SeverityWarning corresponds to the Zig tag warning.
-const SeverityWarning Severity = 2
-
-// SeverityCritical corresponds to the Zig tag critical.
-const SeverityCritical Severity = 3
+const (
+	// SeverityDebug corresponds to the Zig tag debug.
+	SeverityDebug Severity = 0
+	// SeverityInfo corresponds to the Zig tag info.
+	SeverityInfo Severity = 1
+	// SeverityWarning corresponds to the Zig tag warning.
+	SeverityWarning Severity = 2
+	// SeverityCritical corresponds to the Zig tag critical.
+	SeverityCritical Severity = 3
+)
 
 // String returns the Zig tag name.
 func (value Severity) String() string {
@@ -83,7 +83,7 @@ func (value Severity) String() string {
 	case SeverityCritical:
 		return "critical"
 	default:
-		return "Severity(" + strconv.FormatInt(int64(value), 10) + ")"
+		return "Severity(" + strconv.Itoa(int(value)) + ")"
 	}
 }
 
@@ -122,9 +122,10 @@ func (t *TelemetryHubRef) zigoPointer() unsafe.Pointer {
 }
 
 // Close releases the native TelemetryHub resources. It is safe to call more than once.
-func (t *TelemetryHub) Close() {
+// The error result is always nil; it exists so TelemetryHub satisfies io.Closer.
+func (t *TelemetryHub) Close() error {
 	if t == nil {
-		return
+		return nil
 	}
 	t.once.Do(func() {
 		t.mu.Lock()
@@ -138,6 +139,7 @@ func (t *TelemetryHub) Close() {
 		}
 		t.callbackHandles = nil
 	})
+	return nil
 }
 
 type zigoHandle interface {
@@ -152,17 +154,9 @@ func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, err
 	return ptr, nil
 }
 
-func zigoMustPointer(operation string, value zigoHandle) unsafe.Pointer {
-	ptr, err := zigoCheckedPointer(operation, value)
-	if err != nil {
-		panic(err)
-	}
-	return ptr
-}
-
-func zigoOptionalPointer(operation string, absent bool, value zigoHandle) unsafe.Pointer {
+func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsafe.Pointer, error) {
 	if absent {
-		return nil
+		return nil, nil
 	}
-	return zigoMustPointer(operation, value)
+	return zigoCheckedPointer(operation, value)
 }
