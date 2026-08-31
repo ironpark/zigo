@@ -381,6 +381,18 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     abi_break.expectStdOutMatch("BREAKING: ping: function removed");
     test_step.dependOn(&abi_break.step);
 
+    const union_repr_abi = b.addRunArtifact(generator);
+    union_repr_abi.setName("CLI contract (tagged-union representation ABI rules)");
+    union_repr_abi.addArgs(&.{ "abi-diff", "--base" });
+    union_repr_abi.addFileArg(b.path("tests/fixtures/cli/abi/union_repr_base.json"));
+    union_repr_abi.addArg("--current");
+    union_repr_abi.addFileArg(b.path("tests/fixtures/cli/abi/union_repr_current.json"));
+    union_repr_abi.addArgs(&.{ "--fail-on", "breaking" });
+    union_repr_abi.expectExitCode(1);
+    union_repr_abi.expectStdOutMatch("ABI COMPATIBLE: Projected: tagged-union variant appended");
+    union_repr_abi.expectStdOutMatch("BREAKING: Snapshotted: tagged-union variant appended to a value snapshot");
+    test_step.dependOn(&union_repr_abi.step);
+
     const report = b.addRunArtifact(generator);
     report.setName("CLI contract (binding report)");
     report.addArgs(&.{ "report", "--semantic" });

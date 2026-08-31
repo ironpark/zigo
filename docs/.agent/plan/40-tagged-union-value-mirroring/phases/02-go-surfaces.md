@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-31T09:49:41Z"
 depends_on:
 - "40-tagged-union-value-mirroring#1"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: 값 스냅샷 union에서 tag와 payload 읽기가 native 호출 1회로 끝나는 것이 테스트로 확인된다.
 > NEXT: none

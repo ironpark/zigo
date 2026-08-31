@@ -1,0 +1,99 @@
+{
+  "functions": [],
+  "package": "contract",
+  "prefix": "zg",
+  "types": [
+    {
+      "fields": [
+        {
+          "name": "idle",
+          "type": {
+            "kind": "void"
+          },
+          "value": 0
+        },
+        {
+          "name": "ticks",
+          "type": {
+            "bits": 32,
+            "kind": "int",
+            "signed": false
+          },
+          "value": 1
+        }
+      ],
+      "kind": "tagged_union",
+      "name": "Projected",
+      "tag_type": {
+        "kind": "enum",
+        "ref": "ProjectedTag"
+      }
+    },
+    {
+      "fields": [
+        {
+          "name": "idle",
+          "value": 0
+        },
+        {
+          "name": "ticks",
+          "value": 1
+        }
+      ],
+      "kind": "enum",
+      "name": "ProjectedTag",
+      "tag_type": {
+        "bits": 8,
+        "kind": "int",
+        "signed": false
+      }
+    },
+    {
+      "fields": [
+        {
+          "name": "idle",
+          "type": {
+            "kind": "void"
+          },
+          "value": 0
+        },
+        {
+          "name": "ticks",
+          "type": {
+            "bits": 32,
+            "kind": "int",
+            "signed": false
+          },
+          "value": 1
+        }
+      ],
+      "kind": "tagged_union",
+      "name": "Snapshotted",
+      "tag_type": {
+        "kind": "enum",
+        "ref": "SnapshottedTag"
+      },
+      "union_repr": "value_snapshot"
+    },
+    {
+      "fields": [
+        {
+          "name": "idle",
+          "value": 0
+        },
+        {
+          "name": "ticks",
+          "value": 1
+        }
+      ],
+      "kind": "enum",
+      "name": "SnapshottedTag",
+      "tag_type": {
+        "bits": 8,
+        "kind": "int",
+        "signed": false
+      }
+    }
+  ],
+  "zig_version": "0.16.0"
+}
