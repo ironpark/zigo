@@ -730,7 +730,9 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         }
         try writer.writeAll("}\n");
     }
+    try renderRawSnapshotTypes(allocator, writer, program);
     try renderRawTaggedUnionAccessors(allocator, writer, program, options);
+    try renderRawSnapshotAccessors(allocator, writer, program);
 }
 
 /// Base name of the installed native library, without the platform prefix and
@@ -879,6 +881,14 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         }
         try writer.writeAll(") uint8\n");
     }
+    for (program.snapshots, 0..) |snapshot, snapshot_index| {
+        try writer.print("\tfnSnapshot{d} func(", .{snapshot_index});
+        for (snapshot.params, 0..) |parameter, index| {
+            if (index != 0) try writer.writeAll(", ");
+            try writePuregoAbiType(writer, parameter.scalar);
+        }
+        try writer.writeAll(") uint8\n");
+    }
     try writer.writeAll("}\n\n");
     if (programHasCallbacks(program)) try renderPuregoCallbackRegistry(allocator, writer, program, options);
     try writer.writeAll(
@@ -929,6 +939,11 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         defer allocator.free(variable);
         try writePuregoResolve(writer, variable, projection.symbol);
     }
+    for (program.snapshots, 0..) |snapshot, index| {
+        const variable = try std.fmt.allocPrint(allocator, "addrSnapshot{d}", .{index});
+        defer allocator.free(variable);
+        try writePuregoResolve(writer, variable, snapshot.symbol);
+    }
     try writer.writeAll("\tvar next nativeBindings\n\tpurego.RegisterFunc(&next.lastError, addrLastError)\n");
     for (program.functions) |function| {
         const name = try rawGoNameAlloc(allocator, function.origin.*);
@@ -937,6 +952,8 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     }
     for (program.projections, 0..) |_, index|
         try writer.print("\tpurego.RegisterFunc(&next.fnProjection{d}, addrProjection{d})\n", .{ index, index });
+    for (program.snapshots, 0..) |_, index|
+        try writer.print("\tpurego.RegisterFunc(&next.fnSnapshot{d}, addrSnapshot{d})\n", .{ index, index });
     try writer.writeAll("\tloadedBindings.Store(&next)\n\treturn nil\n}\n\n");
     if (options.library_automatic) {
         try writer.writeAll(
@@ -960,8 +977,10 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         "\tp := bindings().lastError()\n\tif p == nil {{ return \"\" }}\n" ++
         "\tlength := 0\n\tfor *(*byte)(unsafe.Add(p, length)) != 0 {{ length++ }}\n" ++
         "\treturn string(unsafe.Slice((*byte)(p), length))\n}}\n", .{ last_error_name, last_error_name });
+    try renderRawSnapshotTypes(allocator, writer, program);
     for (program.functions) |function| try renderPuregoFunction(allocator, writer, program, function, options);
     try renderPuregoProjections(allocator, writer, program);
+    try renderRawSnapshotAccessors(allocator, writer, program);
 }
 
 fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
@@ -1256,6 +1275,79 @@ fn writePuregoAbiType(writer: *std.Io.Writer, scalar: abi.AbiScalar) !void {
     }
 }
 
+
+/// The Go spelling of a snapshot member. Padding keeps the layout without
+/// becoming part of the API, so it is written to the blank identifier.
+fn snapshotGoFieldAlloc(allocator: std.mem.Allocator, field: abi.AbiSnapshot.Field) ![]u8 {
+    if (field.kind == .padding) return allocator.dupe(u8, "_");
+    return naming.pascalAlloc(allocator, field.name);
+}
+
+fn snapshotRawTypeNameAlloc(allocator: std.mem.Allocator, snapshot: abi.AbiSnapshot) ![]u8 {
+    return std.fmt.allocPrint(allocator, "{s}SnapshotData", .{snapshot.owner.name});
+}
+
+fn snapshotRawFunctionNameAlloc(allocator: std.mem.Allocator, snapshot: abi.AbiSnapshot) ![]u8 {
+    return std.fmt.allocPrint(allocator, "{s}ReadSnapshot", .{snapshot.owner.name});
+}
+
+/// The raw layout struct, shared verbatim by both backends: cgo converts into
+/// it member by member, purego lets the native call fill it in place.
+fn renderRawSnapshotTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
+    for (program.snapshots) |snapshot| {
+        const type_name = try snapshotRawTypeNameAlloc(allocator, snapshot);
+        defer allocator.free(type_name);
+        try writer.print(
+            "\n// {s} mirrors the {s} value snapshot layout, padding included.\ntype {s} struct {{\n",
+            .{ type_name, snapshot.type_name, type_name },
+        );
+        for (snapshot.fields) |field| {
+            const go_name = try snapshotGoFieldAlloc(allocator, field);
+            defer allocator.free(go_name);
+            try writer.print("\t{s} ", .{go_name});
+            if (field.kind == .padding) {
+                try writer.print("[{d}]byte\n", .{field.bytes});
+            } else {
+                try writeGoScalar(writer, field.scalar);
+                try writer.writeByte('\n');
+            }
+        }
+        try writer.writeAll("}\n");
+    }
+}
+
+fn renderRawSnapshotAccessors(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
+    for (program.snapshots, 0..) |snapshot, snapshot_index| {
+        const type_name = try snapshotRawTypeNameAlloc(allocator, snapshot);
+        defer allocator.free(type_name);
+        const function_name = try snapshotRawFunctionNameAlloc(allocator, snapshot);
+        defer allocator.free(function_name);
+        const union_name = try naming.snakeAlloc(allocator, snapshot.owner.name);
+        defer allocator.free(union_name);
+        try writer.print(
+            "\n// {s} fills a value snapshot in one native call and returns a projection status.\nfunc {s}(self unsafe.Pointer) ({s}, uint8) {{\n",
+            .{ function_name, function_name, type_name },
+        );
+        if (program.backend == .purego) {
+            try writer.print("\tvar out {s}\n", .{type_name});
+            try writer.print("\tstatus := bindings().fnSnapshot{d}(self, unsafe.Pointer(&out))\n", .{snapshot_index});
+            try writer.print("\tif status != 1 {{\n\t\treturn {s}{{}}, status\n\t}}\n\treturn out, status\n}}\n", .{type_name});
+            continue;
+        }
+        try writer.print("\tvar out C.{s}\n", .{snapshot.type_name});
+        try writer.print("\tstatus := C.{s}((*C.{s}_{s})(self), &out)\n", .{ snapshot.symbol, program.prefix, union_name });
+        try writer.print("\tif status != 1 {{\n\t\treturn {s}{{}}, uint8(status)\n\t}}\n\treturn {s}{{\n", .{ type_name, type_name });
+        for (snapshot.fields) |field| {
+            if (field.kind == .padding) continue;
+            const go_name = try snapshotGoFieldAlloc(allocator, field);
+            defer allocator.free(go_name);
+            try writer.print("\t\t{s}: ", .{go_name});
+            try writeGoScalar(writer, field.scalar);
+            try writer.print("(out.{s}),\n", .{field.name});
+        }
+        try writer.writeAll("\t}, uint8(status)\n}\n");
+    }
+}
 
 fn renderRawTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     for (program.projections) |projection| {
@@ -1582,6 +1674,86 @@ fn renderPublicTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
     try renderGoCallbackTypes(allocator, writer, program);
     try renderGoHandles(allocator, writer, program, options);
     try renderPublicTaggedUnionAccessors(allocator, writer, program, options);
+    try renderPublicSnapshots(allocator, writer, program, options);
+}
+
+/// The public snapshot type and its one-call reader. This is added next to
+/// `Tag`/`As*`, never in place of them.
+fn renderPublicSnapshots(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
+    for (program.snapshots) |snapshot| {
+        const declaration = snapshot.owner.*;
+        const tag_type = declaration.tag_type.?.@"enum".ref;
+        const type_name = try std.fmt.allocPrint(allocator, "{s}Snapshot", .{declaration.name});
+        defer allocator.free(type_name);
+        const raw_function = try snapshotRawFunctionNameAlloc(allocator, snapshot);
+        defer allocator.free(raw_function);
+        const recv = try receiverVariableAlloc(allocator, declaration.name);
+        defer allocator.free(recv);
+
+        try writer.print(
+            "// {s} is a value copy of a {s}: one native call carries the active tag\n" ++
+                "// and every scalar payload back together.\ntype {s} struct {{\n\ttag {s}\n",
+            .{ type_name, declaration.name, type_name, tag_type },
+        );
+        for (snapshot.fields) |field| {
+            if (field.kind != .payload) continue;
+            const member = try naming.camelAlloc(allocator, field.name);
+            defer allocator.free(member);
+            try writer.print("\t{s} ", .{member});
+            try writePublicGoType(writer, field.node.?);
+            try writer.writeByte('\n');
+        }
+        try writer.print("}}\n\n// Tag returns the variant the snapshot captured.\nfunc (snapshot {s}) Tag() {s} {{\n\treturn snapshot.tag\n}}\n\n", .{ type_name, tag_type });
+        for (snapshot.fields) |field| {
+            if (field.kind != .payload) continue;
+            const member = try naming.camelAlloc(allocator, field.name);
+            defer allocator.free(member);
+            const accessor = try naming.pascalAlloc(allocator, field.name);
+            defer allocator.free(accessor);
+            const tag_constant = try naming.pascalAlloc(allocator, field.source.?.name);
+            defer allocator.free(tag_constant);
+            try writer.print("// {s} returns the {s} payload and whether it is the captured variant.\nfunc (snapshot {s}) {s}() (", .{ accessor, field.source.?.name, type_name, accessor });
+            try writePublicGoType(writer, field.node.?);
+            try writer.print(", bool) {{\n\treturn snapshot.{s}, snapshot.tag == {s}{s}\n}}\n\n", .{ member, tag_type, tag_constant });
+        }
+
+        inline for (.{ false, true }) |borrowed| {
+            const suffix = if (borrowed) "Ref" else "";
+            try writer.print(
+                "// TrySnapshot reads the tag and every payload in one native call, or\n" ++
+                    "// returns a typed lifecycle/native error.\nfunc ({0s} *{1s}{2s}) TrySnapshot() ({3s}, error) {{\n" ++
+                    "\tdefer runtime.KeepAlive({0s})\n\tptr, err := zigoCheckedPointer(\"{1s}.Snapshot receiver\", {0s})\n" ++
+                    "\tif err != nil {{\n\t\treturn {3s}{{}}, err\n\t}}\n\tdata, status := ",
+                .{ recv, declaration.name, suffix, type_name },
+            );
+            try writeRawReferencePrefix(writer, options);
+            try writer.print(
+                "{0s}(ptr)\n\tif status != zigoProjectionSuccess {{\n\t\treturn {1s}{{}}, zigoProjectionError(\"{2s}.Snapshot\", status)\n\t}}\n\treturn {1s}{{\n\t\ttag: {3s}(data.Tag),\n",
+                .{ raw_function, type_name, declaration.name, tag_type },
+            );
+            for (snapshot.fields) |field| {
+                if (field.kind != .payload) continue;
+                const member = try naming.camelAlloc(allocator, field.name);
+                defer allocator.free(member);
+                const raw_member = try naming.pascalAlloc(allocator, field.name);
+                defer allocator.free(raw_member);
+                try writer.print("\t\t{s}: ", .{member});
+                try writePublicResultConversion(writer, field.node.?, try tempExpression(allocator, raw_member));
+                try writer.writeAll(",\n");
+            }
+            try writer.writeAll("\t}, nil\n}\n\n");
+            try writer.print(
+                "// Snapshot reads the tag and every payload in one native call and panics\n" ++
+                    "// with a typed error on failure.\nfunc ({0s} *{1s}{2s}) Snapshot() {3s} {{\n" ++
+                    "\tresult, err := {0s}.TrySnapshot()\n\tif err != nil {{\n\t\tpanic(err)\n\t}}\n\treturn result\n}}\n\n",
+                .{ recv, declaration.name, suffix, type_name },
+            );
+        }
+    }
+}
+
+fn tempExpression(allocator: std.mem.Allocator, member: []const u8) ![]u8 {
+    return std.fmt.allocPrint(allocator, "data.{s}", .{member});
 }
 
 fn renderPublicErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
