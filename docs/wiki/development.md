@@ -17,6 +17,42 @@ for example in examples/*; do
 done
 ```
 
+## purego 백엔드 검증
+
+purego 바인딩을 가진 예제는 별도 스텝으로 생성하고, C 컴파일러 없이 테스트한다.
+
+```bash
+for example in examples/04-callback examples/07-event-queue examples/08-telemetry-hub; do
+  (cd "$example" && zig build purego-go purego-go-verify --summary all)
+  (cd "$example/go-purego" && CGO_ENABLED=0 go test ./...)
+done
+
+(cd examples/10-tagged-union && zig build go go-verify -Dpurego --summary all)
+```
+
+두 백엔드를 등록한 예제는 정적 아카이브와 공유 라이브러리가 같은 `zig-out/lib`에
+설치된다. 공유 라이브러리가 cgo 링크를 가리므로 cgo 테스트와 purego 테스트를 한
+트리에서 연달아 실행하지 말고, 백엔드를 바꿀 때 `rm -rf zig-out` 후 다시 생성하거나
+`--prefix`로 설치 위치를 분리한다. 생성된 purego 테스트는 `ZIGO_LIBRARY_PATH`가 있으면
+그 경로를 우선 사용한다.
+
+`examples/10-tagged-union`의 purego 테스트는 `ZIGO_TEST_LIBRARY`에 설치된 라이브러리의
+절대 경로를 요구하며, `ZIGO_TEST_WRONG_LIBRARY`를 함께 주면 심볼 누락 실패 경로까지
+검증한다. 설정하지 않으면 skip한다.
+
+설치된 아티팩트 자체는 저장소 도구로 검사한다.
+
+```bash
+tests/inspect_shared_library.sh \
+  examples/04-callback/zig-out/lib/libcallback_zigo.dylib zg_last_error_message
+zig build shared-library-smoke -- \
+  examples/04-callback/zig-out/lib/libcallback_zigo.dylib zg_last_error_message
+```
+
+생성된 purego 로더는 플랫폼 파일명을 실행 시점에 고르므로 macOS와 Linux에서 생성물이
+동일해야 한다. CI는 두 OS의 amd64·arm64에서 이 동일성과 `CGO_ENABLED=0` 테스트를 함께
+검사한다.
+
 ## 통합 예제
 
 [`examples/05-pipeline`](../../examples/05-pipeline/README.md)은 opaque 객체, 에러,

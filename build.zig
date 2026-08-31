@@ -67,6 +67,9 @@ pub const GoBindings = struct {
         report: *std.Build.Step,
         doctor: *std.Build.Step,
         library: *std.Build.Step,
+        /// Aggregate validation step: staleness, toolchain, native library and,
+        /// when `abi_base` is set, the ABI comparison.
+        verify: *std.Build.Step,
     };
 
     /// Registers conventional user-facing build steps for this binding set.
@@ -89,7 +92,12 @@ pub const GoBindings = struct {
             value.dependOn(&run.step);
             break :step value;
         } else null;
-        return .{ .update = update, .check = check, .abi_check = abi_check, .report = report, .doctor = doctor, .library = library };
+        const verify = b.step(standardStepName(b, options.name_prefix, "go-verify"), "Validate generated bindings, toolchain, and the native library");
+        verify.dependOn(check);
+        verify.dependOn(library);
+        verify.dependOn(doctor);
+        if (abi_check) |value| verify.dependOn(value);
+        return .{ .update = update, .check = check, .abi_check = abi_check, .report = report, .doctor = doctor, .library = library, .verify = verify };
     }
 };
 
@@ -306,8 +314,11 @@ pub fn build(b: *std.Build) void {
             .optimize = optimize,
         }),
     });
-    const shared_smoke_step = b.step("shared-library-smoke", "Build the native shared-library smoke loader");
-    shared_smoke_step.dependOn(&shared_smoke.step);
+    const run_shared_smoke = b.addRunArtifact(shared_smoke);
+    run_shared_smoke.has_side_effects = true;
+    if (b.args) |args| run_shared_smoke.addArgs(args);
+    const shared_smoke_step = b.step("shared-library-smoke", "Load an installed shared library and check its exported symbols");
+    shared_smoke_step.dependOn(&run_shared_smoke.step);
 }
 
 fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator: *std.Build.Step.Compile) void {
@@ -375,6 +386,16 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     doctor.expectStdOutMatch("FAIL go: executable unavailable");
     doctor.expectStdOutMatch("doctor: failed");
     test_step.dependOn(&doctor.step);
+
+    const purego_doctor = b.addRunArtifact(generator);
+    purego_doctor.setName("CLI contract (purego deployment doctor)");
+    purego_doctor.addArgs(&.{ "doctor", "--backend", "purego", "--target", "native", "--library", "/definitely/missing/zigo-library.so", "--go-mod" });
+    purego_doctor.addFileArg(b.path("tests/fixtures/doctor/go.mod"));
+    purego_doctor.expectExitCode(1);
+    purego_doctor.expectStdOutMatch("FAIL purego module: ");
+    purego_doctor.expectStdOutMatch("go get github.com/ebitengine/purego@v0.10.2");
+    purego_doctor.expectStdOutMatch("is missing; run `zig build go-lib`");
+    test_step.dependOn(&purego_doctor.step);
 
     const invalid_project = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "go", "--summary", "none" });
     invalid_project.setName("invalid project contract (ZIGO007)");
@@ -509,7 +530,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         "--raw-package-path",  raw_package.path,
         "--raw-package-name",  raw_package.name,
         "--backend",           @tagName(options.backend),
-        "--library-name",      libraryFilename(b, b.fmt("{s}_zigo", .{go_package}), options.target.result, options.link_mode),
+        "--library-stem",      b.fmt("{s}_zigo", .{go_package}),
     });
     if (raw_package.colocated) generate.addArg("--raw-colocated");
     if (options.auto_cleanup) generate.addArg("--auto-cleanup");
@@ -616,6 +637,13 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
             if (std.mem.indexOf(u8, contents, "github.com/ebitengine/purego") == null)
                 @panic("purego backend requires github.com/ebitengine/purego v0.10.2; run `go get github.com/ebitengine/purego@v0.10.2`");
         }
+    }
+    if (options.backend == .purego) {
+        // The purego doctor validates the deployed artifact, so it must run
+        // against a freshly installed library and the module that loads it.
+        doctor.step.dependOn(&install_lib.step);
+        doctor.addArgs(&.{ "--library", b.getInstallPath(.lib, libraryFilename(b, lib.name, options.target.result, options.link_mode)) });
+        doctor.addArgs(&.{ "--go-mod", b.pathFromRoot(go_mod_path) });
     }
     update.step.dependOn(&install_lib.step);
     update.step.dependOn(&install_header.step);

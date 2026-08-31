@@ -4,7 +4,8 @@
 
 - Zig 0.16.0
 - Go 1.23 이상
-- cgo가 활성화된 macOS 또는 Linux 네이티브 빌드 환경
+- cgo가 활성화된 macOS 또는 Linux 네이티브 빌드 환경 (purego 백엔드는 Go 빌드에 C
+  컴파일러가 필요 없지만, Zig 공유 라이브러리는 여전히 타깃 호스트에서 빌드한다)
 - ABI 검사를 위한 Git 저장소
 
 ## 1. 의존성 추가
@@ -140,8 +141,34 @@ _ = bindings.addStandardSteps(b, .{});
 mapping의 호환성 파괴를 검사한다. `abi_base`를 생략하면 Git baseline 명령과
 `abi_check` handle이 만들어지지 않는다.
 
+## 5. cgo 없이 빌드하기 (선택)
+
+C 컴파일러 없이 Go 애플리케이션을 빌드해야 한다면 purego 백엔드를 추가로 등록한다.
+공개 Go API는 동일하고, 네이티브 라이브러리를 실행 시점에 로드한다는 점만 달라진다.
+
+```zig
+const purego_bindings = zigo.addGoBindings(b, .{
+    // 위와 같은 필수 옵션들…
+    .go_dir = b.path("go-purego"),
+    .go_module = "example.com/mylib/go-purego",
+    .backend = .purego,
+    .link_mode = .dynamic,
+});
+_ = purego_bindings.addStandardSteps(b, .{ .name_prefix = "purego" });
+```
+
+```bash
+zig build purego-go            # 공유 라이브러리 설치와 Go 소스 생성
+zig build purego-go-verify     # 전제, 생성물, 설치된 아티팩트 검증
+cd go-purego && CGO_ENABLED=0 go test ./...
+```
+
+로드 경로, 배포 단위, 콜백 제약과 CI 매트릭스는
+[공유 라이브러리와 purego 백엔드](purego.md)에 정리되어 있다.
+
 ## 다음 단계
 
+- 동적 라이브러리 배포와 `CGO_ENABLED=0` 빌드: [공유 라이브러리와 purego 백엔드](purego.md)
 - raw Go 패키지 위치, 링크 방식, cgo 플래그: [설정과 생성물](configuration.md)
 - 지원하지 않는 타입과 수명 계약: [제한사항과 운영 주의사항](limitations.md)
 - generic과 system library까지 조합한 코드: [통합 파이프라인 예제](../../examples/05-pipeline/README.md)

@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"runtime"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -12,7 +13,9 @@ import (
 	"github.com/ebitengine/purego"
 )
 
-const defaultLibraryName = "libcallback_zigo.dylib"
+// DefaultLibraryName is the installed shared-library basename for the running platform.
+// It is empty on platforms this backend does not support.
+var DefaultLibraryName = map[string]string{"darwin": "libcallback_zigo.dylib", "linux": "libcallback_zigo.so"}[runtime.GOOS]
 
 // LibraryError reports a native library loading or symbol resolution failure.
 type LibraryError struct {
@@ -175,7 +178,10 @@ func LoadLibrary(path string) error {
 		path = os.Getenv("ZIGO_LIBRARY_PATH")
 	}
 	if path == "" {
-		path = defaultLibraryName
+		path = DefaultLibraryName
+	}
+	if path == "" {
+		return &LibraryError{Path: path, Operation: "load", Cause: errors.New("this platform has no default zigo shared-library name; pass an explicit path")}
 	}
 	loadMu.Lock()
 	defer loadMu.Unlock()

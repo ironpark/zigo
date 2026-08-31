@@ -72,6 +72,91 @@ jobs:
         working-directory: examples/01-scalar/go
         run: go test ./scalar -run '^$' -bench '^BenchmarkAddCgo$' -benchmem
 
+  purego:
+    # purego bindings load a native artifact at run time, so every supported
+    # host architecture needs its own job; a Zig shared library is not portable.
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.24.x"
+          cache: false
+      - name: Generate and validate purego bindings
+        shell: bash
+        run: |
+          set -euo pipefail
+          for example in 04-callback 07-event-queue 08-telemetry-hub; do
+            (cd "examples/$example" && zig build purego-go purego-go-verify --summary all)
+          done
+          (cd examples/10-tagged-union && zig build go go-verify -Dpurego --summary all)
+
+          if [[ -n "$(git status --porcelain --untracked-files=all -- examples)" ]]; then
+            echo "Generated purego files are stale or platform specific. Regenerate and commit them."
+            git status --short -- examples
+            git diff -- examples
+            exit 1
+          fi
+      - name: Inspect the shared artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          suffix=.so
+          [[ "$RUNNER_OS" == "macOS" ]] && suffix=.dylib
+
+          tests/inspect_shared_library.sh "examples/04-callback/zig-out/lib/libcallback_zigo$suffix" \
+            zg_last_error_message zg_apply_purego_v1
+          tests/inspect_shared_library.sh "examples/07-event-queue/zig-out/lib/libevent_queue_zigo$suffix" \
+            zg_last_error_message
+          tests/inspect_shared_library.sh "examples/08-telemetry-hub/zig-out/lib/libtelemetry_hub_zigo$suffix" \
+            zg_last_error_message
+          tests/inspect_shared_library.sh "examples/10-tagged-union/zig-out/lib/libtagged_union_zigo$suffix" \
+            zg_last_error_message
+
+          zig build shared-library-smoke -- \
+            "examples/04-callback/zig-out/lib/libcallback_zigo$suffix" \
+            zg_last_error_message zg_apply_purego_v1
+      - name: Run the purego examples without cgo
+        shell: bash
+        # The race detector still requires cgo, so these jobs assert the
+        # cgo-free contract instead; the cgo matrix keeps the raced coverage.
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          suffix=.so
+          [[ "$RUNNER_OS" == "macOS" ]] && suffix=.dylib
+
+          for example in 04-callback 07-event-queue 08-telemetry-hub; do
+            (cd "examples/$example/go-purego" && go test ./...)
+          done
+
+          (
+            cd examples/10-tagged-union/go-purego
+            ZIGO_TEST_LIBRARY="$PWD/../zig-out/lib/libtagged_union_zigo$suffix" \
+            ZIGO_TEST_WRONG_LIBRARY="$PWD/../../04-callback/zig-out/lib/libcallback_zigo$suffix" \
+              go test ./...
+          )
+      - name: Diagnose an incomplete purego deployment
+        shell: bash
+        run: |
+          set -euo pipefail
+          zig build --summary all
+          output=$(./zig-out/bin/zigo-gen doctor --backend purego \
+            --library /definitely/missing/libzigo.so \
+            --go-mod examples/04-callback/go/go.mod && echo unexpected-success || true)
+          echo "$output"
+          grep -q "zig build go-lib" <<<"$output"
+          grep -q "go get github.com/ebitengine/purego@v0.10.2" <<<"$output"
+          grep -q "doctor: failed" <<<"$output"
+
   windows-compile:
     runs-on: windows-latest
     steps:

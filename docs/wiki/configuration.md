@@ -14,6 +14,7 @@
 | `optimize` | 예 | 라이브러리 최적화 모드 |
 | `prefix` | 아니요 | C 심볼 접두사. 기본값 `zg` |
 | `link_mode` | 아니요 | `.static` 또는 `.dynamic`. 기본값 `.static` |
+| `backend` | 아니요 | `.cgo` 또는 `.purego`. 기본값 `.cgo`. `.purego`는 `.link_mode = .dynamic` 필요 |
 | `cgo_flags` | 아니요 | 자동 계산 대신 사용할 CFLAGS와 LDFLAGS |
 | `abi_base` | 아니요 | ABI·바인딩 계약 비교에 사용할 Git ref. 생략하면 검사 비활성화 |
 | `raw_package` | 아니요 | raw Go 코드 위치. 기본값 `.internal` |
@@ -34,19 +35,27 @@ const bindings = zigo.addGoBindings(b, .{
 _ = bindings.addStandardSteps(b, .{});
 ```
 
-등록되는 스텝은 `go`, `go-check`, `go-report`, `go-doctor`와, `abi_base`가 설정된 경우의
-`abi-check`다. 한 빌드에 바인딩 세트가 여러 개면 이름 접두사를 지정한다.
+등록되는 스텝은 `go`, `go-check`, `go-report`, `go-doctor`, `go-lib`, `go-verify`와,
+`abi_base`가 설정된 경우의 `abi-check`다. `go-lib`은 네이티브 바인딩 라이브러리를 빌드해
+`zig-out/lib`에 설치하고, `go-verify`는 생성물 최신 상태·네이티브 라이브러리·`go-doctor`와
+(설정한 경우) `abi-check`를 한 번에 실행하는 집계 스텝이다. 한 빌드에 바인딩 세트가
+여러 개면 이름 접두사를 지정한다.
 
 ```zig
 _ = admin_bindings.addStandardSteps(b, .{ .name_prefix = "admin" });
-// admin-go, admin-go-check, admin-go-report, admin-go-doctor, admin-abi-check
+// admin-go, admin-go-check, admin-go-report, admin-go-doctor,
+// admin-go-lib, admin-go-verify, admin-abi-check
 ```
 
 `go-report`는 최종 Go 이름과 C 심볼, type representation, constructor/Close mapping,
 ownership, parameter retention과 이름 출처, 자동 tagged-union projection을 출력한다.
-`go-doctor`는 현재 target이 host에서 실행 가능한지, Go 최소 버전, `CGO_ENABLED`, Go가
-설정한 C 컴파일러와 gofmt를 검사한다. gofmt 부재는 경고지만 cross target, 낮은 Go 버전,
-비활성 cgo와 실행할 수 없는 C 컴파일러는 실패다.
+`go-doctor`는 현재 target이 host에서 실행 가능한지, Go 최소 버전, gofmt를 검사하고, 선택한
+백엔드에 따라 나머지 전제를 확인한다. `.cgo`에서는 `CGO_ENABLED`와 Go가 설정한 C
+컴파일러를, `.purego`에서는 호스트 플랫폼 지원 여부, `go.mod`의 purego 요구사항, 설치된
+공유 라이브러리의 존재와 실제 로드 가능 여부를 검사한다. gofmt 부재는 경고지만 cross
+target, 낮은 Go 버전, 비활성 cgo, 실행할 수 없는 C 컴파일러, 지원하지 않는 purego
+플랫폼, 없는 purego 요구사항과 로드할 수 없는 공유 라이브러리는 실패다. 자세한 내용은
+[공유 라이브러리와 purego 백엔드](purego.md)를 참고한다.
 
 ## 자동 cleanup
 

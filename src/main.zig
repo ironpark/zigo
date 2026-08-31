@@ -72,7 +72,7 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
             .cgo => .cgo,
             .purego => .purego,
         },
-        .library_name = options.library_name,
+        .library_stem = options.library_stem,
     });
 }
 
@@ -147,6 +147,8 @@ fn runDoctor(allocator: std.mem.Allocator, io: std.Io, options: cli.Doctor) !voi
             .cgo => .cgo,
             .purego => .purego,
         },
+        .library_path = options.library_path,
+        .go_mod_path = options.go_mod_path,
     });
     try stdout.interface.flush();
     if (!healthy) std.process.exit(1);

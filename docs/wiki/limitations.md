@@ -4,6 +4,16 @@
 
 - 현재 지원 범위는 Zig 0.16.0, Go 1.23 이상, cgo가 활성화된 네이티브 macOS/Linux다.
   선택적인 `auto_cleanup`은 Go 1.24 이상이 필요하다.
+- opt-in `.backend = .purego`는 Go 빌드에서 C 컴파일러와 cgo를 제거하지만, 지원 범위는
+  네이티브 macOS/Linux의 amd64·arm64로 더 좁고 `.link_mode = .dynamic`을 요구한다.
+  Windows, 모바일, purego Tier 2 타깃은 후속 작업이다. 정적 링크는 cgo 전용이다.
+- purego는 v1 이전 베타 소프트웨어다. zigo는 `github.com/ebitengine/purego v0.10.2`를
+  고정해 생성·검증하며 사용을 생성된 raw 파일에만 격리한다. 다른 버전을 요구하는
+  `go.mod`는 `go-doctor`가 경고로 보고한다.
+- 공유 라이브러리는 타깃별 아티팩트다. purego는 Go 애플리케이션 빌드에서 C 컴파일러를
+  없앨 뿐 하나의 Zig 아티팩트를 여러 타깃에 이식해 주지 않으므로, 배포하는 OS·아키텍처
+  조합마다 해당 호스트에서 빌드하고 CI 잡도 조합마다 필요하다.
+- Go race detector는 여전히 cgo를 요구하므로 `CGO_ENABLED=0` 테스트에는 사용할 수 없다.
 - reflector 실행이 빌드에 포함되므로 v1은 크로스 컴파일을 지원하지 않는다.
 - zigo는 Go 바인딩만 생성한다. IR은 다른 언어용 범용 IDL을 목표로 하지 않는다.
 
@@ -62,6 +72,13 @@ AST 보강에 사용하는 기본 `bindings.zig`를 읽지 못하면 reflection�
   명시적 `Close`의 대체로 사용하지 않는다.
 - `errors.lock.json`의 정수 코드는 append-only 계약이다. 삭제된 에러의 코드를 다른
   에러에 재사용하지 않는다.
+- purego 백엔드는 바인딩 호출 전에 `LoadLibrary`가 성공해야 한다. 로드는 원자적이라
+  실패해도 부분적으로 호출 가능한 패키지를 남기지 않지만, 성공한 라이브러리는 프로세스
+  수명 동안 언로드하지 않는다. `LoadLibrary`는 임의의 네이티브 코드를 로드하므로
+  애플리케이션이 통제하는 경로만 넘긴다.
+- purego 콜백은 고유 시그니처마다 영구 dispatcher를 만든다. 콜백 panic은 부호 있는
+  32비트 콜백 결과에서 `-3`, 이미 해제된 토큰 호출은 `-4`로 변환된다. 세부 사항은
+  [공유 라이브러리와 purego 백엔드](purego.md)에 있다.
 
 ## 생성물 관리
 

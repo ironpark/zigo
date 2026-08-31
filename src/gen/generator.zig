@@ -22,7 +22,7 @@ pub const Options = struct {
     auto_cleanup: bool = false,
     errors_lock_bytes: ?[]const u8 = null,
     backend: emit.Options.Backend = .cgo,
-    library_name: []const u8 = "",
+    library_stem: []const u8 = "",
 };
 
 const PreparedFile = struct {
@@ -80,7 +80,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .raw_colocated = options.raw_colocated,
         .auto_cleanup = options.auto_cleanup,
         .backend = options.backend,
-        .library_name = options.library_name,
+        .library_stem = options.library_stem,
     };
     var prepared: std.ArrayList(PreparedFile) = .empty;
     defer prepared.deinit(scratch_allocator);
@@ -601,7 +601,7 @@ test "purego generation emits an atomic retryable loader and explicit callback A
         .prefix = "zg",
         .go_module = "example.com/scalar",
         .backend = .purego,
-        .library_name = "libscalar_zigo.so",
+        .library_stem = "scalar_zigo",
     });
     const raw = try temporary.dir.readFileAlloc(std.testing.io, "internal/raw/raw_gen.go", std.testing.allocator, .limited(64 * 1024));
     defer std.testing.allocator.free(raw);
@@ -609,6 +609,9 @@ test "purego generation emits an atomic retryable loader and explicit callback A
     try std.testing.expect(std.mem.indexOf(u8, raw, "runtime/cgo") == null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "github.com/ebitengine/purego") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "type LibraryError struct") != null);
+    // The committed loader must be identical on every supported host, so the
+    // platform basename is selected at run time instead of at generation time.
+    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "map[string]string{\"darwin\": \"libscalar_zigo.dylib\", \"linux\": \"libscalar_zigo.so\"}[runtime.GOOS]"));
     try std.testing.expect(std.mem.indexOf(u8, raw, "loadedBindings.Store(&next)") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "purego.Dlclose(handle)") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "different library is already loaded") != null);

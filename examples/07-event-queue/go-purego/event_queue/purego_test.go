@@ -2,6 +2,7 @@ package event_queue
 
 import (
 	"errors"
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -9,8 +10,13 @@ import (
 )
 
 func init() {
+	// An explicit path keeps the test independent of the loader search path;
+	// ZIGO_LIBRARY_PATH still wins so the artifact can be installed elsewhere.
 	_, file, _, _ := runtime.Caller(0)
-	path := filepath.Join(filepath.Dir(file), "..", "..", "zig-out", "lib", "libevent_queue_zigo.dylib")
+	path := os.Getenv("ZIGO_LIBRARY_PATH")
+	if path == "" {
+		path = filepath.Join(filepath.Dir(file), "..", "..", "zig-out", "lib", DefaultLibraryName)
+	}
 	if err := LoadLibrary(path); err != nil {
 		panic(err)
 	}

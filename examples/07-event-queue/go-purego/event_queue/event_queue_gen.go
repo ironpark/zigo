@@ -16,6 +16,10 @@ func LoadLibrary(path string) error { return raw.LoadLibrary(path) }
 // LibraryLoaded reports whether the native call surface is ready.
 func LibraryLoaded() bool { return raw.LibraryLoaded() }
 
+// DefaultLibraryName is the installed shared-library basename for the running platform.
+// LoadLibrary falls back to it when no explicit path and no ZIGO_LIBRARY_PATH are set.
+var DefaultLibraryName = raw.DefaultLibraryName
+
 // NewEventQueue creates a caller-owned EventQueue.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.

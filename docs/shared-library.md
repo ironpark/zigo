@@ -24,6 +24,12 @@ supports native macOS and Linux on amd64 and arm64. Generated Go must call
 all symbols were resolved and atomically published. Successful libraries stay
 loaded for the process lifetime.
 
+Generated Go selects the platform basename at run time, so the committed loader
+is byte-identical on macOS and Linux: `DefaultLibraryName` is
+`map[string]string{"darwin": ..., "linux": ...}[runtime.GOOS]`. `LoadLibrary`
+resolves its path from the explicit argument, then `ZIGO_LIBRARY_PATH`, then
+`DefaultLibraryName` through the platform loader search path.
+
 If zigo creates `go.mod`, it pins `github.com/ebitengine/purego v0.10.2`. For an
 existing module, add it explicitly:
 
@@ -52,3 +58,30 @@ explicit `Close`, or automatic cleanup when enabled. Deletion rejects new
 invocations and waits for calls already in flight. Dispatcher recovery converts
 Go panics to the existing `-3` callback-panic status for signed 32-bit callback
 results; a released token deterministically returns `-4`.
+
+## Validation
+
+`addStandardSteps` registers `go-lib` (build and install the artifact) and
+`go-verify`, which aggregates staleness, the installed library, `go-doctor` and,
+when `abi_base` is set, `abi-check`. For the purego backend `go-doctor` checks
+host platform support, the `go.mod` purego requirement, and loads the installed
+artifact with the platform loader; failures name the command that fixes them.
+
+Two repository tools inspect a built artifact directly:
+
+```sh
+tests/inspect_shared_library.sh <library> <symbol>...
+zig build shared-library-smoke -- <library> <symbol>...
+```
+
+The script asserts the platform filename, that no build-cache path is baked into
+the runtime dependencies, that the requested symbols are exported, and that no
+generated `zg_` symbol is left undefined — an undefined one would mean a cgo
+trampoline dependency that a `CGO_ENABLED=0` process cannot satisfy. The smoke
+loader performs the same symbol check through the real platform loader.
+
+Because a shared library is target specific, CI needs one job per supported
+OS/architecture pair: macOS and Linux on amd64 and arm64. purego removes the C
+compiler from the Go application build; it does not remove the per-target Zig
+build. User-facing packaging, loading, and security guidance lives in
+[the wiki page](wiki/purego.md).

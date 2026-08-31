@@ -29,7 +29,7 @@ pub const Generate = struct {
     auto_cleanup: bool = false,
     errors_lock_path: ?[]const u8 = null,
     backend: Backend = .cgo,
-    library_name: []const u8 = "",
+    library_stem: []const u8 = "",
 };
 
 pub const Check = struct {
@@ -61,6 +61,8 @@ pub const Doctor = struct {
     native_target: bool = true,
     auto_cleanup: bool = false,
     backend: Backend = .cgo,
+    library_path: ?[]const u8 = null,
+    go_mod_path: ?[]const u8 = null,
 };
 
 pub const Command = union(enum) {
@@ -86,6 +88,7 @@ pub fn writeUsage(writer: *std.Io.Writer) std.Io.Writer.Error!void {
         \\  abi-diff  --base <file> --current <file> [--base-backend cgo|purego] [--current-backend cgo|purego] [--json] [--fail-on breaking]
         \\  report    --semantic <file> [--go-module <path>] [options]
         \\  doctor    [--go <path>] [--gofmt <path>] [--target native|cross] [--auto-cleanup]
+        \\            [--backend cgo|purego] [--library <path>] [--go-mod <path>]
         \\
     );
 }
@@ -141,7 +144,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
     var auto_cleanup = false;
     var auto_cleanup_seen = false;
     var backend: ?Backend = null;
-    var library_name: ?[]const u8 = null;
+    var library_stem: ?[]const u8 = null;
 
     var index: usize = 0;
     while (index < args.len) {
@@ -186,8 +189,8 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         } else if (std.mem.eql(u8, flag, "--backend")) {
             if (backend != null) return error.DuplicateArgument;
             backend = parseBackend(try takeValue(args, &index)) orelse return error.InvalidValue;
-        } else if (std.mem.eql(u8, flag, "--library-name")) {
-            try set(&library_name, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--library-stem")) {
+            try set(&library_stem, try takeValue(args, &index));
         } else {
             return error.UnknownArgument;
         }
@@ -212,7 +215,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .auto_cleanup = auto_cleanup,
         .errors_lock_path = errors_lock_path,
         .backend = backend orelse .cgo,
-        .library_name = library_name orelse "",
+        .library_stem = library_stem orelse "",
     };
 }
 
@@ -335,12 +338,18 @@ fn parseDoctor(args: []const []const u8) ParseError!Doctor {
     var auto_cleanup = false;
     var auto_cleanup_seen = false;
     var backend: ?Backend = null;
+    var library_path: ?[]const u8 = null;
+    var go_mod_path: ?[]const u8 = null;
     var index: usize = 0;
     while (index < args.len) {
         const flag = args[index];
         index += 1;
         if (std.mem.eql(u8, flag, "--go")) {
             try set(&go_executable, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--library")) {
+            try set(&library_path, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--go-mod")) {
+            try set(&go_mod_path, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--gofmt")) {
             try set(&gofmt_executable, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--target")) {
@@ -371,6 +380,8 @@ fn parseDoctor(args: []const []const u8) ParseError!Doctor {
         .native_target = native_target,
         .auto_cleanup = auto_cleanup,
         .backend = backend orelse .cgo,
+        .library_path = library_path,
+        .go_mod_path = go_mod_path,
     };
 }
 
@@ -471,6 +482,13 @@ test "report and doctor commands parse effective configuration" {
     try std.testing.expectEqualStrings("/tools/go", doctor.go_executable);
     try std.testing.expect(!doctor.native_target);
     try std.testing.expect(doctor.auto_cleanup);
+    try std.testing.expect(doctor.library_path == null);
+
+    const purego_doctor = (try parse(&.{ "doctor", "--backend", "purego", "--library", "zig-out/lib/libscalar_zigo.so", "--go-mod", "go/go.mod" })).doctor;
+    try std.testing.expectEqual(Backend.purego, purego_doctor.backend);
+    try std.testing.expectEqualStrings("zig-out/lib/libscalar_zigo.so", purego_doctor.library_path.?);
+    try std.testing.expectEqualStrings("go/go.mod", purego_doctor.go_mod_path.?);
+    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "doctor", "--library", "one", "--library", "two" }));
 }
 
 test "parser rejects incomplete unknown and duplicate arguments" {

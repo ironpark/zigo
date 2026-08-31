@@ -1,6 +1,7 @@
 package raw
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -11,7 +12,7 @@ func TestCallbackDispatcherIsPermanentAcrossLoadRetry(t *testing.T) {
 	if first == 0 || CallbackDispatcherCount() != 1 {
 		t.Fatal("callback dispatcher was not initialized")
 	}
-	if err := LoadLibrary(filepath.Join(t.TempDir(), "missing.dylib")); err == nil {
+	if err := LoadLibrary(filepath.Join(t.TempDir(), "missing-library")); err == nil {
 		t.Fatal("missing library load succeeded")
 	}
 	if LibraryLoaded() {
@@ -21,7 +22,10 @@ func TestCallbackDispatcherIsPermanentAcrossLoadRetry(t *testing.T) {
 		t.Fatal("failed load allocated a replacement callback dispatcher")
 	}
 	_, file, _, _ := runtime.Caller(0)
-	path := filepath.Join(filepath.Dir(file), "..", "..", "..", "zig-out", "lib", "libcallback_zigo.dylib")
+	path := os.Getenv("ZIGO_LIBRARY_PATH")
+	if path == "" {
+		path = filepath.Join(filepath.Dir(file), "..", "..", "..", "zig-out", "lib", DefaultLibraryName)
+	}
 	if err := LoadLibrary(path); err != nil {
 		t.Fatal(err)
 	}
