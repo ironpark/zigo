@@ -26,7 +26,7 @@ pub fn semanticDocumentForBackend(
         var params: std.ArrayList(abi.AbiParam) = .empty;
         if (function.receiver) |receiver| {
             const child = try allocator.create(abi.AbiScalar);
-            child.* = .{ .@"opaque" = receiver };
+            child.* = .{ .@"opaque" = try lowerOpaque(allocator, prefix, receiver) };
             try params.append(allocator, .{
                 .name = "self",
                 .role = .receiver,
@@ -168,7 +168,9 @@ pub fn semanticDocumentForBackend(
         .backend = backend,
         .callback_convention = if (backend == .purego) .function_pointer_userdata_v1 else .fixed_go_export,
         .constructors = document.constructors,
+        .enums = try lowerEnums(allocator, document, prefix),
         .error_codes = error_codes,
+        .handles = try lowerHandles(allocator, document, prefix),
         .functions = functions,
         .package = package,
         .prefix = prefix,
@@ -189,7 +191,7 @@ fn lowerTaggedUnionProjections(allocator: std.mem.Allocator, document: semantic.
     for (document.types) |*declaration| {
         if (declaration.kind != .tagged_union) continue;
         const tag_params = try allocator.alloc(abi.AbiParam, 2);
-        tag_params[0] = try projectionReceiver(allocator, declaration.name);
+        tag_params[0] = try projectionReceiver(allocator, prefix, declaration.name);
         const tag_output = try allocator.create(abi.AbiScalar);
         tag_output.* = try lowerValue(allocator, document, prefix, declaration.tag_type.?);
         tag_params[1] = .{
@@ -208,7 +210,7 @@ fn lowerTaggedUnionProjections(allocator: std.mem.Allocator, document: semantic.
             const payload = field.type.?;
             if (payload == .void) continue;
             var params: std.ArrayList(abi.AbiParam) = .empty;
-            try params.append(allocator, try projectionReceiver(allocator, declaration.name));
+            try params.append(allocator, try projectionReceiver(allocator, prefix, declaration.name));
             if (payload == .slice) {
                 const element = try allocator.create(abi.AbiScalar);
                 element.* = try lowerValue(allocator, document, prefix, payload.slice.element.*);
@@ -259,7 +261,7 @@ fn lowerTaggedUnionSnapshots(allocator: std.mem.Allocator, document: semantic.Se
         const type_name = try snapshotTypeNameAlloc(allocator, prefix, declaration.name);
         const layout = try snapshotLayout(allocator, document, prefix, declaration.*);
 
-        const receiver = try projectionReceiver(allocator, declaration.name);
+        const receiver = try projectionReceiver(allocator, prefix, declaration.name);
         const out_child = try allocator.create(abi.AbiScalar);
         out_child.* = .{ .snapshot = type_name };
         const params = try allocator.alloc(abi.AbiParam, 2);
@@ -390,6 +392,51 @@ fn memberLayout(lowered: []const abi.AbiStruct, node: semantic.TypeNode, scalar:
     unreachable;
 }
 
+/// Every C name a backend needs for an `opaque` or tagged union handle.
+fn lowerOpaque(allocator: std.mem.Allocator, prefix: []const u8, name: []const u8) !abi.AbiOpaque {
+    return .{ .name = name, .c_name = try cTypeNameAlloc(allocator, prefix, name) };
+}
+
+/// The handle typedefs the header declares, in declaration order. A tagged
+/// union is a handle too: C only ever holds a pointer to it.
+fn lowerHandles(allocator: std.mem.Allocator, document: semantic.Semantic, prefix: []const u8) ![]const abi.AbiOpaque {
+    var handles: std.ArrayList(abi.AbiOpaque) = .empty;
+    for (document.types) |declaration| {
+        if (declaration.kind != .@"opaque" and declaration.kind != .tagged_union) continue;
+        try handles.append(allocator, try lowerOpaque(allocator, prefix, declaration.name));
+    }
+    return handles.toOwnedSlice(allocator);
+}
+
+/// The enum typedefs and their member constants. The constant name is already
+/// uppercased here, so no backend re-spells it.
+fn lowerEnums(allocator: std.mem.Allocator, document: semantic.Semantic, prefix: []const u8) ![]const abi.AbiEnum {
+    var enums: std.ArrayList(abi.AbiEnum) = .empty;
+    for (document.types) |declaration| {
+        if (declaration.kind != .@"enum") continue;
+        const c_name = try cTypeNameAlloc(allocator, prefix, declaration.name);
+        const constants = try allocator.alloc(abi.AbiEnum.Constant, declaration.fields.len);
+        for (declaration.fields, 0..) |field, index| {
+            const member = try naming.snakeAlloc(allocator, field.name);
+            defer allocator.free(member);
+            const combined = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ c_name, member });
+            defer allocator.free(combined);
+            constants[index] = .{
+                .name = field.name,
+                .c_name = try std.ascii.allocUpperString(allocator, combined),
+                .value = field.value.?,
+            };
+        }
+        try enums.append(allocator, .{
+            .name = declaration.name,
+            .c_name = c_name,
+            .tag = try lowerValue(allocator, document, prefix, declaration.tag_type.?),
+            .constants = constants,
+        });
+    }
+    return enums.toOwnedSlice(allocator);
+}
+
 fn cTypeNameAlloc(allocator: std.mem.Allocator, prefix: []const u8, type_name: []const u8) ![]u8 {
     const owner = try naming.snakeAlloc(allocator, type_name);
     defer allocator.free(owner);
@@ -493,9 +540,9 @@ fn snapshotTypeNameAlloc(allocator: std.mem.Allocator, prefix: []const u8, type_
     return std.fmt.allocPrint(allocator, "{s}_{s}_snapshot_t", .{ prefix, owner });
 }
 
-fn projectionReceiver(allocator: std.mem.Allocator, owner: []const u8) !abi.AbiParam {
+fn projectionReceiver(allocator: std.mem.Allocator, prefix: []const u8, owner: []const u8) !abi.AbiParam {
     const child = try allocator.create(abi.AbiScalar);
-    child.* = .{ .@"opaque" = owner };
+    child.* = .{ .@"opaque" = try lowerOpaque(allocator, prefix, owner) };
     return .{
         .name = "self",
         .role = .receiver,
@@ -517,7 +564,7 @@ fn lowerValue(allocator: std.mem.Allocator, document: semantic.Semantic, prefix:
         .@"enum" => |value| lowerValue(allocator, document, prefix, enumDeclaration(document, value.ref).tag_type.?),
         .opaque_ptr => |value| blk: {
             const child = try allocator.create(abi.AbiScalar);
-            child.* = .{ .@"opaque" = value.ref };
+            child.* = .{ .@"opaque" = try lowerOpaque(allocator, prefix, value.ref) };
             break :blk .{ .pointer = .{ .child = child, .is_const = value.@"const" } };
         },
         .value_struct => |value| .{ .value_struct = .{
@@ -679,7 +726,7 @@ test "tagged union lowering records tag scalar slice and handle projections" {
     try std.testing.expectEqual(@as(usize, 2), tag.params.len);
     try std.testing.expectEqual(abi.AbiParam.Role.receiver, tag.params[0].role);
     try std.testing.expect(tag.params[0].scalar.pointer.is_const);
-    try std.testing.expectEqualStrings("Value", tag.params[0].scalar.pointer.child.@"opaque");
+    try std.testing.expectEqualStrings("Value", tag.params[0].scalar.pointer.child.@"opaque".name);
     try std.testing.expectEqual(abi.AbiParam.Role.payload_out, tag.params[1].role);
     try std.testing.expectEqual(@as(u16, 8), tag.params[1].scalar.pointer.child.unsigned_int);
     try std.testing.expect(tag.ret == .bool_u8);
@@ -709,7 +756,7 @@ test "tagged union lowering records tag scalar slice and handle projections" {
     try std.testing.expectEqual(abi.AbiParam.Role.payload_out, child.params[1].role);
     const child_pointer = child.params[1].scalar.pointer.child.pointer;
     try std.testing.expect(child_pointer.is_const);
-    try std.testing.expectEqualStrings("Child", child_pointer.child.@"opaque");
+    try std.testing.expectEqualStrings("Child", child_pointer.child.@"opaque".name);
 }
 
 test "multiple tagged unions keep custom normalized projection symbols isolated" {
@@ -1006,4 +1053,41 @@ test "a registered but unused extern struct stays out of the generated surface" 
     defer arena.deinit();
     const program = try semanticDocument(arena.allocator(), document, "config", "zg", &.{});
     try std.testing.expectEqual(@as(usize, 0), program.structs.len);
+}
+
+test "lowering mints every C type name the header needs" {
+    const document: semantic.Semantic = .{
+        .package = "names",
+        .prefix = "zg",
+        .types = &.{
+            .{ .kind = .@"opaque", .name = "EventQueue" },
+            .{
+                .fields = &.{
+                    .{ .name = "idle", .value = 0 },
+                    .{ .name = "inFlight", .value = 1 },
+                },
+                .kind = .@"enum",
+                .name = "QueueState",
+                .tag_type = .{ .int = .{ .bits = 16, .signed = false } },
+            },
+        },
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try semanticDocument(arena.allocator(), document, "names", "zg", &.{});
+
+    try std.testing.expectEqual(@as(usize, 1), program.handles.len);
+    try std.testing.expectEqualStrings("EventQueue", program.handles[0].name);
+    try std.testing.expectEqualStrings("zg_event_queue", program.handles[0].c_name);
+
+    try std.testing.expectEqual(@as(usize, 1), program.enums.len);
+    const state = program.enums[0];
+    try std.testing.expectEqualStrings("QueueState", state.name);
+    try std.testing.expectEqualStrings("zg_queue_state", state.c_name);
+    try std.testing.expectEqual(@as(u16, 16), state.tag.unsigned_int);
+    try std.testing.expectEqual(@as(usize, 2), state.constants.len);
+    try std.testing.expectEqualStrings("ZG_QUEUE_STATE_IDLE", state.constants[0].c_name);
+    try std.testing.expectEqualStrings("ZG_QUEUE_STATE_IN_FLIGHT", state.constants[1].c_name);
+    try std.testing.expectEqual(@as(i64, 1), state.constants[1].value);
 }

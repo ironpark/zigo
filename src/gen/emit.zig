@@ -2790,9 +2790,16 @@ fn semanticScalar(program: abi.Program, node: semantic.TypeNode) abi.AbiScalar {
         .int => |value| if (value.is_usize) (if (value.signed) .isize else .usize) else if (value.signed) .{ .signed_int = value.bits } else .{ .unsigned_int = value.bits },
         .float => |value| .{ .float = value.bits },
         .@"enum" => |value| semanticScalar(program, enumDecl(program, value.ref).tag_type.?),
-        .opaque_ptr => |value| .{ .@"opaque" = value.ref },
+        .opaque_ptr => |value| .{ .@"opaque" = handleRecord(program, value.ref) },
         else => unreachable,
     };
+}
+
+/// The lowered handle for a semantic type name. Lowering records one for every
+/// `opaque` and tagged union, so a missing entry is a malformed program.
+fn handleRecord(program: abi.Program, name: []const u8) abi.AbiOpaque {
+    for (program.handles) |handle| if (std.mem.eql(u8, handle.name, name)) return handle;
+    unreachable;
 }
 
 fn isHandleType(declaration: semantic.TypeDecl) bool {
@@ -2813,7 +2820,7 @@ fn writeZigType(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
         .signed_int => |bits| try writer.print("i{d}", .{bits}),
         .unsigned_int => |bits| try writer.print("u{d}", .{bits}),
         .float => |bits| try writer.print("f{d}", .{bits}),
-        .@"opaque" => |name| try writer.print("target.{s}", .{name}),
+        .@"opaque" => |handle| try writer.print("target.{s}", .{handle.name}),
         .snapshot => |name| try writer.writeAll(name),
         .value_struct => |record| try writer.print("target.{s}", .{record.name}),
         .pointer => |pointer| {

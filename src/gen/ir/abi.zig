@@ -8,7 +8,7 @@ pub const AbiScalar = union(enum) {
     signed_int: u16,
     unsigned_int: u16,
     float: u16,
-    @"opaque": []const u8,
+    @"opaque": AbiOpaque,
     /// A zigo-owned value snapshot struct, named by its C typedef.
     snapshot: []const u8,
     /// A user `extern struct` mirrored into C. Aggregates never cross the
@@ -28,6 +28,32 @@ pub const AbiScalar = union(enum) {
         params: []const AbiScalar,
         ret: *const AbiScalar,
     },
+};
+
+/// A user type that C only ever sees behind a pointer: an `opaque` handle or
+/// a tagged union. Lowering mints the typedef so no backend has to spell it.
+pub const AbiOpaque = struct {
+    /// Semantic type name, as Zig and public Go spell it.
+    name: []const u8,
+    /// C typedef, `<prefix>_<type>`.
+    c_name: []const u8,
+};
+
+/// A user enum mirrored into C as its tag type plus one constant per member.
+pub const AbiEnum = struct {
+    name: []const u8,
+    /// C typedef, `<prefix>_<type>`.
+    c_name: []const u8,
+    /// The integer the typedef aliases.
+    tag: AbiScalar,
+    constants: []const Constant,
+
+    pub const Constant = struct {
+        name: []const u8,
+        /// C macro, `<PREFIX>_<TYPE>_<MEMBER>`.
+        c_name: []const u8,
+        value: i64,
+    };
 };
 
 pub const AbiParam = struct {
@@ -129,7 +155,9 @@ pub const Program = struct {
     backend: Backend = .cgo,
     callback_convention: CallbackConvention = .fixed_go_export,
     constructors: []const semantic.Constructor = &.{},
+    enums: []const AbiEnum = &.{},
     error_codes: []const ErrorCode = &.{},
+    handles: []const AbiOpaque = &.{},
     functions: []const AbiFn,
     package: []const u8,
     prefix: []const u8,
