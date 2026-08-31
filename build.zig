@@ -243,6 +243,7 @@ pub fn build(b: *std.Build) void {
         "tests/generator_cases/complex/expected",
         "tests/generator_cases/scalar/expected",
         "tests/generator_cases/union_snapshot/expected",
+        "tests/generator_cases/value_struct/expected",
         "examples/01-scalar/go",
         "examples/02-errors/go",
         "examples/03-opaque/go",

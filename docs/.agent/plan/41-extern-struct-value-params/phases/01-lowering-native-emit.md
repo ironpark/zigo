@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-31T10:11:04Z"
 depends_on:
 - "41-extern-struct-value-params#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: generator case 골든 트리에 헤더·shim 산출물이 고정된다.
 > NEXT: none

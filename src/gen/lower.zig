@@ -289,9 +289,16 @@ fn lowerTaggedUnionSnapshots(allocator: std.mem.Allocator, document: semantic.Se
 /// compiler applies, purely so the shim can assert the Zig type still agrees.
 fn lowerValueStructs(allocator: std.mem.Allocator, document: semantic.Semantic, prefix: []const u8) ![]const abi.AbiStruct {
     var structs: std.ArrayList(abi.AbiStruct) = .empty;
+    // A C struct must be complete before another names it by value, so a
+    // nested struct is emitted ahead of the struct that embeds it.
+    var ordered: std.ArrayList(*const semantic.TypeDecl) = .empty;
+    defer ordered.deinit(allocator);
     for (document.types) |*declaration| {
         if (declaration.kind != .value_struct or declaration.layout != .@"extern") continue;
         if (!valueStructUsed(document, declaration.name)) continue;
+        try appendStructInDependencyOrder(allocator, document, declaration, &ordered);
+    }
+    for (ordered.items) |declaration| {
         const fields = try allocator.alloc(abi.AbiStruct.Field, declaration.fields.len);
         var offset: usize = 0;
         var alignment: usize = 1;
@@ -321,6 +328,25 @@ fn lowerValueStructs(allocator: std.mem.Allocator, document: semantic.Semantic, 
         });
     }
     return structs.toOwnedSlice(allocator);
+}
+
+fn appendStructInDependencyOrder(
+    allocator: std.mem.Allocator,
+    document: semantic.Semantic,
+    declaration: *const semantic.TypeDecl,
+    ordered: *std.ArrayList(*const semantic.TypeDecl),
+) !void {
+    for (ordered.items) |present| if (present == declaration) return;
+    for (declaration.fields) |field| {
+        const node = field.type orelse continue;
+        if (node != .value_struct) continue;
+        for (document.types) |*nested| {
+            if (nested.kind != .value_struct or !std.mem.eql(u8, nested.name, node.value_struct.ref)) continue;
+            try appendStructInDependencyOrder(allocator, document, nested, ordered);
+        }
+    }
+    for (ordered.items) |present| if (present == declaration) return;
+    try ordered.append(allocator, declaration);
 }
 
 /// Only structs a function actually mentions reach the header, so registering
@@ -942,9 +968,14 @@ test "extern struct parameters and returns lower to pointers with a mirrored lay
     try std.testing.expect(!default_config.params[0].scalar.pointer.is_const);
     try std.testing.expect(default_config.ret == .void);
 
-    // The mirror keeps the user's field order and the C compiler's offsets.
+    // A nested struct is emitted before the struct that embeds it, so the C
+    // header never names an incomplete type.
     try std.testing.expectEqual(@as(usize, 2), program.structs.len);
-    const config = program.structs[0];
+    try std.testing.expectEqualStrings("Point", program.structs[0].name);
+    try std.testing.expectEqualStrings("Config", program.structs[1].name);
+
+    // The mirror keeps the user's field order and the C compiler's offsets.
+    const config = program.structs[1];
     try std.testing.expectEqualStrings("zg_config", config.c_name);
     try std.testing.expectEqual(@as(usize, 8), config.alignment);
     try std.testing.expectEqual(@as(usize, 32), config.size);
@@ -962,7 +993,7 @@ test "extern struct parameters and returns lower to pointers with a mirrored lay
         try std.testing.expectEqual(want.bytes, got.bytes);
     }
 
-    const point = program.structs[1];
+    const point = program.structs[0];
     try std.testing.expectEqual(@as(usize, 4), point.size);
     try std.testing.expectEqual(@as(usize, 2), point.alignment);
 }

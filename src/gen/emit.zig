@@ -641,13 +641,103 @@ fn goParamNamesForAlloc(allocator: std.mem.Allocator, params: []const semantic.P
     return naming.goParamNamesAlloc(allocator, zig_names);
 }
 
-/// Phase gate: the Go emitters do not carry value structs yet. Until they do,
-/// such a function is left out of the Go surface rather than emitted wrong.
-fn functionUsesValueStruct(function: abi.AbiFn) bool {
-    for (function.origin.params) |parameter| if (parameter.type == .value_struct) return true;
-    if (function.origin.@"return" == .value_struct) return true;
-    if (function.origin.@"return" == .error_union and function.origin.@"return".error_union.payload.* == .value_struct) return true;
-    return false;
+
+fn structRawTypeNameAlloc(allocator: std.mem.Allocator, record: abi.AbiStruct) ![]u8 {
+    return std.fmt.allocPrint(allocator, "{s}Data", .{record.name});
+}
+
+/// The Go mirror of an `extern struct`. cgo converts member by member and does
+/// not depend on this layout, but purego hands the address straight to the
+/// native call, so the padding is spelled out rather than left to Go happening
+/// to agree with C.
+fn renderRawStructTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
+    for (program.structs) |record| {
+        const type_name = try structRawTypeNameAlloc(allocator, record);
+        defer allocator.free(type_name);
+        try writer.print(
+            "\n// {s} mirrors the {s} layout, padding included.\ntype {s} struct {{\n",
+            .{ type_name, record.c_name, type_name },
+        );
+        var offset: usize = 0;
+        var reserved: usize = 0;
+        for (record.fields) |field| {
+            if (field.offset > offset) {
+                try writer.print("\t_ [{d}]byte\n", .{field.offset - offset});
+                reserved += 1;
+            }
+            const go_name = try naming.pascalAlloc(allocator, field.name);
+            defer allocator.free(go_name);
+            try writer.print("\t{s} ", .{go_name});
+            try writeRawStructFieldType(allocator, writer, program, field);
+            try writer.writeByte('\n');
+            offset = field.offset + field.bytes;
+        }
+        if (record.size > offset) try writer.print("\t_ [{d}]byte\n", .{record.size - offset});
+        try writer.writeAll("}\n");
+    }
+}
+
+fn writeRawStructFieldType(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, field: abi.AbiStruct.Field) !void {
+    if (field.node == .value_struct) {
+        const nested = structRecord(program, field.node.value_struct.ref).?;
+        const nested_name = try structRawTypeNameAlloc(allocator, nested);
+        defer allocator.free(nested_name);
+        return writer.writeAll(nested_name);
+    }
+    try writeGoScalar(writer, field.scalar);
+}
+
+fn structRecord(program: abi.Program, name: []const u8) ?abi.AbiStruct {
+    for (program.structs) |record| if (std.mem.eql(u8, record.name, name)) return record;
+    return null;
+}
+
+/// Builds the C value a cgo call passes by address. Converting member by
+/// member keeps the generated cgo code independent of the Go mirror's layout.
+fn writeCgoStructConversion(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, record: abi.AbiStruct, c_name: []const u8, go_name: []const u8) !void {
+    try writer.print("\tvar {s} C.{s}\n", .{ c_name, record.c_name });
+    for (record.fields) |field| {
+        const member = try naming.pascalAlloc(allocator, field.name);
+        defer allocator.free(member);
+        if (field.node == .value_struct) {
+            const nested = structRecord(program, field.node.value_struct.ref).?;
+            const nested_c = try std.fmt.allocPrint(allocator, "{s}{s}", .{ c_name, member });
+            defer allocator.free(nested_c);
+            const nested_go = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ go_name, member });
+            defer allocator.free(nested_go);
+            try writeCgoStructConversion(allocator, writer, program, nested, nested_c, nested_go);
+            try writer.print("\t{s}.{s} = {s}\n", .{ c_name, field.name, nested_c });
+            continue;
+        }
+        try writer.print("\t{s}.{s} = C.", .{ c_name, field.name });
+        try writeCgoType(writer, field.scalar);
+        try writer.print("({s}.{s})\n", .{ go_name, member });
+    }
+}
+
+/// Reads a C value back into the Go mirror, again member by member.
+fn writeCgoStructRead(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, record: abi.AbiStruct, indent: []const u8, c_name: []const u8) !void {
+    const type_name = try structRawTypeNameAlloc(allocator, record);
+    defer allocator.free(type_name);
+    try writer.print("{s}{{\n", .{type_name});
+    for (record.fields) |field| {
+        const member = try naming.pascalAlloc(allocator, field.name);
+        defer allocator.free(member);
+        try writer.print("{s}\t{s}: ", .{ indent, member });
+        if (field.node == .value_struct) {
+            const nested = structRecord(program, field.node.value_struct.ref).?;
+            const nested_c = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ c_name, field.name });
+            defer allocator.free(nested_c);
+            const nested_indent = try std.fmt.allocPrint(allocator, "{s}\t", .{indent});
+            defer allocator.free(nested_indent);
+            try writeCgoStructRead(allocator, writer, program, nested, nested_indent, nested_c);
+        } else {
+            try writeGoScalar(writer, field.scalar);
+            try writer.print("({s}.{s})", .{ c_name, field.name });
+        }
+        try writer.writeAll(",\n");
+    }
+    try writer.print("{s}}}", .{indent});
 }
 
 fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
@@ -683,7 +773,6 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
     try renderRawCallbacks(allocator, writer, program);
 
     for (program.functions) |function| {
-        if (functionUsesValueStruct(function)) continue;
         const go_name = try rawGoNameAlloc(allocator, function.origin.*);
         defer allocator.free(go_name);
         const raw_public_name = try std.fmt.allocPrint(allocator, "{s}{s}", .{ if (options.raw_colocated) "zigoRaw" else "", go_name });
@@ -716,6 +805,12 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
             try writer.writeAll("\n\tvar outResultLen C.size_t\n");
         }
         for (function.origin.params, 0..) |parameter, parameter_index| {
+            if (parameter.type == .value_struct) {
+                const record = structRecord(program, parameter.type.value_struct.ref).?;
+                const c_name = try std.fmt.allocPrint(allocator, "c{s}", .{go_names[parameter_index]});
+                defer allocator.free(c_name);
+                try writeCgoStructConversion(allocator, writer, program, record, c_name, go_names[parameter_index]);
+            }
             if (parameter.type == .slice) {
                 const slice_name = go_names[parameter_index];
                 try writer.print("\tvar {s}Zero C.", .{slice_name});
@@ -728,9 +823,16 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         }
         const returns_error = function.origin.@"return" == .error_union;
         const error_payload = if (returns_error) function.origin.@"return".error_union.payload.* else semantic.TypeNode{ .void = {} };
+        if (returnsValueStruct(function)) {
+            const record = structRecord(program, function.origin.@"return".value_struct.ref).?;
+            try writer.print("\tvar outResult C.{s}\n", .{record.c_name});
+        }
         if (returns_error and error_payload != .void) {
             if (error_payload == .opaque_ptr) {
                 try writer.writeAll("\tvar outResult unsafe.Pointer\n");
+            } else if (error_payload == .value_struct) {
+                const record = structRecord(program, error_payload.value_struct.ref).?;
+                try writer.print("\tvar outResult C.{s}\n", .{record.c_name});
             } else {
                 try writer.writeAll("\tvar outResult C.");
                 try writeCgoType(writer, semanticScalar(program, error_payload));
@@ -740,8 +842,8 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         try writer.writeByte('\t');
         if (returns_error) {
             try writer.writeAll("code := int32(");
-        } else if (function.origin.@"return" == .slice) {
-            // The ptr/len out parameters are converted after the C call.
+        } else if (function.origin.@"return" == .slice or returnsValueStruct(function)) {
+            // The out parameters are converted after the C call.
         } else if (function.origin.@"return" != .void) {
             try writer.writeAll("return ");
             try writeRawConversionPrefix(writer, program, function.origin.@"return");
@@ -751,9 +853,8 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
             if (index != 0) try writer.writeAll(", ");
             switch (parameter.role) {
                 .receiver => try writer.writeAll("self"),
-                // Value structs are not on the Go surface yet; such functions
-                // are skipped above, so this switch never sees their roles.
-                .struct_in, .struct_out => unreachable,
+                .struct_in => try writer.print("&c{s}", .{go_names[parameter.source_index]}),
+                .struct_out => try writer.writeAll("&outResult"),
                 .value => {
                     if (callbackForUserdataIndex(function.origin.params, parameter.source_index)) |callback_index| {
                         try writer.writeAll("C.");
@@ -777,14 +878,26 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         }
         try writer.writeByte(')');
         if (returns_error) try writer.writeByte(')');
-        if (!returns_error and function.origin.@"return" != .void and function.origin.@"return" != .slice) try writer.writeByte(')');
+        if (!returns_error and function.origin.@"return" != .void and
+            function.origin.@"return" != .slice and !returnsValueStruct(function)) try writer.writeByte(')');
         try writer.writeByte('\n');
         if (function.origin.@"return" == .slice) {
             try writer.writeAll("\treturn C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))\n");
         }
+        if (returnsValueStruct(function)) {
+            const record = structRecord(program, function.origin.@"return".value_struct.ref).?;
+            try writer.writeAll("\treturn ");
+            try writeCgoStructRead(allocator, writer, program, record, "\t", "outResult");
+            try writer.writeByte('\n');
+        }
         if (returns_error) {
             if (error_payload == .void) {
                 try writer.writeAll("\treturn code\n");
+            } else if (error_payload == .value_struct) {
+                const record = structRecord(program, error_payload.value_struct.ref).?;
+                try writer.writeAll("\treturn ");
+                try writeCgoStructRead(allocator, writer, program, record, "\t", "outResult");
+                try writer.writeAll(", code\n");
             } else {
                 try writer.writeAll("\treturn ");
                 try writeRawResultConversion(writer, program, error_payload, "outResult", options);
@@ -793,6 +906,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         }
         try writer.writeAll("}\n");
     }
+    try renderRawStructTypes(allocator, writer, program);
     try renderRawSnapshotTypes(allocator, writer, program);
     try renderRawTaggedUnionAccessors(allocator, writer, program, options);
     try renderRawSnapshotAccessors(allocator, writer, program);
@@ -922,7 +1036,6 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     // round-trips, which `go vet` reports as a possible stale pointer.
     try writer.writeAll("\tlastError func() unsafe.Pointer\n");
     for (program.functions) |function| {
-        if (functionUsesValueStruct(function)) continue;
         const name = try rawGoNameAlloc(allocator, function.origin.*);
         defer allocator.free(name);
         try writer.print("\tfn{s} func(", .{name});
@@ -992,7 +1105,6 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     );
     try writePuregoResolve(writer, "addrLastError", "zg_last_error_message");
     for (program.functions) |function| {
-        if (functionUsesValueStruct(function)) continue;
         const name = try rawGoNameAlloc(allocator, function.origin.*);
         defer allocator.free(name);
         const variable = try std.fmt.allocPrint(allocator, "addr{s}", .{name});
@@ -1011,7 +1123,6 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     }
     try writer.writeAll("\tvar next nativeBindings\n\tpurego.RegisterFunc(&next.lastError, addrLastError)\n");
     for (program.functions) |function| {
-        if (functionUsesValueStruct(function)) continue;
         const name = try rawGoNameAlloc(allocator, function.origin.*);
         defer allocator.free(name);
         try writer.print("\tpurego.RegisterFunc(&next.fn{s}, addr{s})\n", .{ name, name });
@@ -1043,9 +1154,9 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         "\tp := bindings().lastError()\n\tif p == nil {{ return \"\" }}\n" ++
         "\tlength := 0\n\tfor *(*byte)(unsafe.Add(p, length)) != 0 {{ length++ }}\n" ++
         "\treturn string(unsafe.Slice((*byte)(p), length))\n}}\n", .{ last_error_name, last_error_name });
+    try renderRawStructTypes(allocator, writer, program);
     try renderRawSnapshotTypes(allocator, writer, program);
     for (program.functions) |function| {
-        if (functionUsesValueStruct(function)) continue;
         try renderPuregoFunction(allocator, writer, program, function, options);
     }
     try renderPuregoProjections(allocator, writer, program);
@@ -1218,26 +1329,35 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         if (parameter.direction == .out) try writer.print("\tvar {s}Written uintptr\n", .{slice_name});
     };
     if (function.origin.@"return" == .slice) try writer.writeAll("\tvar outResultPtr unsafe.Pointer\n\tvar outResultLen uintptr\n");
+    if (returnsValueStruct(function)) {
+        try writer.writeAll("\tvar outResult ");
+        try writeRawGoType(writer, program, function.origin.@"return");
+        try writer.writeByte('\n');
+    }
     const returns_error = function.origin.@"return" == .error_union;
     const error_payload = if (returns_error) function.origin.@"return".error_union.payload.* else semantic.TypeNode{ .void = {} };
     if (returns_error and error_payload != .void) {
         try writer.writeAll("\tvar outResult ");
-        if (puregoPayloadNeedsConversion(error_payload))
+        if (error_payload == .value_struct)
+            try writeRawGoType(writer, program, error_payload)
+        else if (puregoPayloadNeedsConversion(error_payload))
             try writePuregoAbiType(writer, semanticScalar(program, error_payload))
         else
             try writeRawGoType(writer, program, error_payload);
         try writer.writeByte('\n');
     }
     try writer.writeByte('\t');
-    if (returns_error) try writer.writeAll("code := ") else if (function.origin.@"return" != .void and function.origin.@"return" != .slice) try writer.writeAll("result := ");
+    if (returns_error)
+        try writer.writeAll("code := ")
+    else if (function.origin.@"return" != .void and function.origin.@"return" != .slice and !returnsValueStruct(function))
+        try writer.writeAll("result := ");
     try writer.print("bindings().fn{s}(", .{go_name});
     for (function.params, 0..) |parameter, index| {
         if (index != 0) try writer.writeAll(", ");
         switch (parameter.role) {
             .receiver => try writer.writeAll("self"),
-            // Value structs are not on the Go surface yet; such functions are
-            // skipped above, so this switch never sees their roles.
-            .struct_in, .struct_out => unreachable,
+            .struct_in => try writer.print("unsafe.Pointer(&{s})", .{go_names[parameter.source_index]}),
+            .struct_out => try writer.writeAll("unsafe.Pointer(&outResult)"),
             .value => {
                 const source_name = go_names[parameter.source_index];
                 if (parameter.scalar == .callback) {
@@ -1252,7 +1372,9 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
             .slice_pointer => try writer.print("{s}Ptr", .{go_names[parameter.source_index]}),
             .slice_length => try writer.print("uintptr(len({s}))", .{go_names[parameter.source_index]}),
             .slice_written => try writer.print("&{s}Written", .{go_names[parameter.source_index]}),
-            .payload_out => try writer.writeAll("&outResult"),
+            // A struct payload crosses as a raw address, matching the
+            // unsafe.Pointer the bindings table declares for it.
+            .payload_out => try writer.writeAll(if (error_payload == .value_struct) "unsafe.Pointer(&outResult)" else "&outResult"),
             .return_slice_pointer => try writer.writeAll("&outResultPtr"),
             .return_slice_length => try writer.writeAll("&outResultLen"),
         }
@@ -1272,6 +1394,8 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         } else {
             try writer.writeAll("\treturn outResult, code\n");
         }
+    } else if (returnsValueStruct(function)) {
+        try writer.writeAll("\treturn outResult\n");
     } else if (function.origin.@"return" != .void) {
         try writer.writeAll("\treturn ");
         try writeRawResultConversion(writer, program, function.origin.@"return", "result", options);
@@ -1555,7 +1679,6 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             "var DefaultLibraryName = raw.DefaultLibraryName\n\n",
     );
     for (program.functions) |function| {
-        if (functionUsesValueStruct(function)) continue;
         const constructor = constructorForInit(program, function.origin.*);
         if (constructor == null and constructorForDeinit(program, function.origin.*) != null) continue;
         const go_names = try goParamNamesForAlloc(allocator, function.origin.params);
@@ -1618,6 +1741,9 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             if (function.origin.@"return" == .@"enum") {
                 try writer.print("return {s}(", .{function.origin.@"return".@"enum".ref});
                 try writeRawReferencePrefix(writer, options);
+            } else if (function.origin.@"return" == .value_struct) {
+                try writer.print("return zigo{s}FromRaw(", .{function.origin.@"return".value_struct.ref});
+                try writeRawReferencePrefix(writer, options);
             } else {
                 try writer.writeAll("return ");
                 try writeRawReferencePrefix(writer, options);
@@ -1650,6 +1776,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                     }
                 },
                 .bool => try writer.print("boolToUint8({s})", .{go_names[parameter_index]}),
+                .value_struct => |value| try writer.print("zigo{s}ToRaw({s})", .{ value.ref, go_names[parameter_index] }),
                 .@"enum" => {
                     try writer.writeAll(rawGoTypeName(program, parameter.type));
                     try writer.print("({s})", .{go_names[parameter_index]});
@@ -1668,6 +1795,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         }
         try writer.writeByte(')');
         if (!returns_error and function.origin.@"return" == .@"enum") try writer.writeByte(')');
+        if (!returns_error and function.origin.@"return" == .value_struct) try writer.writeByte(')');
         if (!returns_error and function.origin.@"return" == .bool) try writer.writeAll(" != 0");
         if (!returns_error and isUtf8Slice(function.origin.@"return", function.origin.return_semantic)) try writer.writeByte(')');
         try writer.writeByte('\n');
@@ -1682,7 +1810,10 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                 try writeDeleteRetainedCallbacks(allocator, writer, function.origin.*);
             }
             try writer.writeAll("\t\treturn ");
-            if (error_payload != .void) try writer.print("{s}, ", .{goZero(error_payload)});
+            if (error_payload != .void) {
+                try writeGoZeroValue(writer, error_payload);
+                try writer.writeAll(", ");
+            }
             try writer.writeAll("errorForCode(code)\n\t}\n");
             if (error_payload == .void) {
                 try writer.writeAll("\treturn nil\n");
@@ -1729,6 +1860,9 @@ fn renderPublicTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
     try writer.print("// Code generated by zigo. DO NOT EDIT.\npackage {s}\n", .{package});
     // Enum String() reports an unknown tag with its numeric value.
     const needs_strconv = programHasEnums(program);
+    // The value-struct converters call into the raw package even when no
+    // handle type does.
+    const needs_raw = !options.raw_colocated and program.structs.len != 0;
     if (programHasOpaqueTypes(program)) {
         try writer.writeAll("\nimport (\n");
         if (programHasAutoCleanupTypes(program, options) or programHasTaggedUnionTypes(program)) try writer.writeAll("\t\"runtime\"\n");
@@ -1739,6 +1873,14 @@ fn renderPublicTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
             try writeRawImport(writer, options, "\t");
         }
         try writer.writeAll(")\n\n");
+    } else if (needs_strconv and needs_raw) {
+        try writer.writeAll("\nimport (\n\t\"strconv\"\n\n");
+        try writeRawImport(writer, options, "\t");
+        try writer.writeAll(")\n\n");
+    } else if (needs_raw) {
+        try writer.writeAll("\nimport ");
+        try writeRawImport(writer, options, "");
+        try writer.writeAll("\n");
     } else if (needs_strconv) {
         try writer.writeAll("\nimport \"strconv\"\n\n");
     } else {
@@ -1749,6 +1891,68 @@ fn renderPublicTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
     try renderGoHandles(allocator, writer, program, options);
     try renderPublicTaggedUnionAccessors(allocator, writer, program, options);
     try renderPublicSnapshots(allocator, writer, program, options);
+    try renderPublicValueStructs(allocator, writer, program, options);
+}
+
+/// The public face of an `extern struct` is an ordinary Go value type. The
+/// pointer that actually crosses the boundary is taken inside the generated
+/// call, so callers never see it.
+fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
+    for (program.structs) |record| {
+        try writer.print("// {s} mirrors the Zig `extern struct` of the same name.\ntype {s} struct {{\n", .{ record.name, record.name });
+        for (record.fields) |field| {
+            const member = try naming.pascalAlloc(allocator, field.name);
+            defer allocator.free(member);
+            try writer.print("\t// {s} corresponds to the Zig field {s}.\n\t{s} ", .{ member, field.name, member });
+            try writePublicGoType(writer, field.node);
+            try writer.writeByte('\n');
+        }
+        try writer.writeAll("}\n\n");
+    }
+    for (program.structs) |record| {
+        const raw_type = try structRawTypeNameAlloc(allocator, record);
+        defer allocator.free(raw_type);
+        try writer.print("func zigo{s}ToRaw(value {s}) ", .{ record.name, record.name });
+        try writeRawReferencePrefix(writer, options);
+        try writer.print("{s} {{\n\treturn ", .{raw_type});
+        try writeRawReferencePrefix(writer, options);
+        try writer.print("{s}{{\n", .{raw_type});
+        for (record.fields) |field| {
+            const member = try naming.pascalAlloc(allocator, field.name);
+            defer allocator.free(member);
+            try writer.print("\t\t{s}: ", .{member});
+            switch (field.node) {
+                .value_struct => |nested| try writer.print("zigo{s}ToRaw(value.{s})", .{ nested.ref, member }),
+                .bool => try writer.print("boolToUint8(value.{s})", .{member}),
+                .@"enum" => {
+                    try writer.writeAll(rawGoTypeName(program, field.node));
+                    try writer.print("(value.{s})", .{member});
+                },
+                else => try writer.print("value.{s}", .{member}),
+            }
+            try writer.writeAll(",\n");
+        }
+        try writer.writeAll("\t}\n}\n\n");
+
+        try writer.print("func zigo{s}FromRaw(value ", .{record.name});
+        try writeRawReferencePrefix(writer, options);
+        try writer.print("{s}) {s} {{\n\treturn {s}{{\n", .{ raw_type, record.name, record.name });
+        for (record.fields) |field| {
+            const member = try naming.pascalAlloc(allocator, field.name);
+            defer allocator.free(member);
+            try writer.print("\t\t{s}: ", .{member});
+            switch (field.node) {
+                .value_struct => |nested| try writer.print("zigo{s}FromRaw(value.{s})", .{ nested.ref, member }),
+                else => {
+                    const expression = try std.fmt.allocPrint(allocator, "value.{s}", .{member});
+                    defer allocator.free(expression);
+                    try writePublicResultConversion(writer, field.node, expression);
+                },
+            }
+            try writer.writeAll(",\n");
+        }
+        try writer.writeAll("\t}\n}\n\n");
+    }
 }
 
 /// The public snapshot type and its one-call reader. This is added next to
@@ -2271,6 +2475,10 @@ fn writeRawReturnType(writer: *std.Io.Writer, program: abi.Program, function: ab
     }
 }
 
+fn returnsValueStruct(function: abi.AbiFn) bool {
+    return function.origin.@"return" == .value_struct;
+}
+
 fn writePublicReturnType(writer: *std.Io.Writer, node: semantic.TypeNode) !void {
     switch (node) {
         .void => {},
@@ -2306,6 +2514,7 @@ fn writeRawResultConversion(writer: *std.Io.Writer, program: abi.Program, node: 
 fn writePublicResultConversion(writer: *std.Io.Writer, node: semantic.TypeNode, expression: []const u8) !void {
     switch (node) {
         .bool => try writer.print("{s} != 0", .{expression}),
+        .value_struct => |value| try writer.print("zigo{s}FromRaw({s})", .{ value.ref, expression }),
         .@"enum" => |value| try writer.print("{s}({s})", .{ value.ref, expression }),
         else => try writer.writeAll(expression),
     }
@@ -2319,6 +2528,7 @@ fn writeRawGoType(writer: *std.Io.Writer, program: abi.Program, node: semantic.T
         },
         .@"enum" => try writer.writeAll(rawGoTypeName(program, node)),
         .opaque_ptr => try writer.writeAll("unsafe.Pointer"),
+        .value_struct => |value| try writer.print("{s}Data", .{value.ref}),
         else => try writeGoScalar(writer, semanticScalar(program, node)),
     }
 }
@@ -2341,6 +2551,7 @@ fn writePublicGoType(writer: *std.Io.Writer, node: semantic.TypeNode) !void {
             try writeIntegerName(writer, integer.signed, integer.bits, false),
         .float => |value| try writer.print("float{d}", .{value.bits}),
         .opaque_ptr => |value| try writer.print("*{s}", .{value.ref}),
+        .value_struct => |value| try writer.writeAll(value.ref),
         else => unreachable,
     }
 }
@@ -2530,6 +2741,13 @@ fn goZero(node: semantic.TypeNode) []const u8 {
         .slice, .opaque_ptr => "nil",
         else => "0",
     };
+}
+
+/// The zero value an error path returns. A struct needs its own composite
+/// literal, so callers that can see one use this instead of `goZero`.
+fn writeGoZeroValue(writer: *std.Io.Writer, node: semantic.TypeNode) !void {
+    if (node == .value_struct) return writer.print("{s}{{}}", .{node.value_struct.ref});
+    try writer.writeAll(goZero(node));
 }
 
 fn rawGoZero(node: semantic.TypeNode) []const u8 {
@@ -2853,6 +3071,9 @@ fn rawNameForSemanticAlloc(allocator: std.mem.Allocator, program: abi.Program, n
 }
 
 fn programNeedsBoolHelper(program: abi.Program) bool {
+    for (program.structs) |record| {
+        for (record.fields) |field| if (field.node == .bool) return true;
+    }
     for (program.functions) |function| for (function.origin.params) |parameter| if (parameter.type == .bool) return true;
     return false;
 }
