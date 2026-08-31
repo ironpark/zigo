@@ -9,6 +9,8 @@ pub const CgoFlags = struct {
 
 pub const LinkMode = enum { static, dynamic };
 pub const Backend = enum { cgo, purego };
+/// How a generated purego package finds its shared library at run time.
+pub const LibraryLoading = build_options.LibraryLoading;
 
 pub const Options = struct {
     pub const RawPackage = union(enum) {
@@ -32,6 +34,9 @@ pub const Options = struct {
     abi_base: ?[]const u8 = null,
     raw_package: RawPackage = .internal,
     auto_cleanup: bool = false,
+    /// purego-only run-time loading policy. The default requires an explicit
+    /// `LoadLibrary` call and consults `ZIGO_LIBRARY_PATH`.
+    library_loading: LibraryLoading = .{},
 };
 
 const ResolvedRawPackage = struct {
@@ -452,6 +457,13 @@ fn matchesAnyFilter(name: []const u8, filters: []const []const u8) bool {
 
 /// Adds the Go-binding pipeline to a consuming build graph.
 pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
+    build_options.validateLibraryLoading(options.library_loading, options.backend == .purego) catch |err| switch (err) {
+        error.UnsupportedBackend => @panic("library_loading is only supported by .backend = .purego"),
+        error.UnreachableLoader => @panic("library_loading.exported_api = false requires .automatic = true; nothing else could load the library"),
+        error.EmptySearchPath => @panic("library_loading.search_paths entries must not be empty"),
+        error.InvalidSearchPath => @panic("library_loading.search_paths entries must not contain quotes, backslashes or control characters"),
+        error.InvalidEnvironmentName => @panic("library_loading.env_vars entries must be ASCII letters, digits and underscores, and must not start with a digit"),
+    };
     if (options.backend == .purego) {
         if (options.link_mode != .dynamic) @panic("purego backend requires .link_mode = .dynamic");
         if (!build_options.puregoTargetSupported(options.target.result))
@@ -533,6 +545,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         "--library-stem",      b.fmt("{s}_zigo", .{go_package}),
         "--link-mode",         @tagName(options.link_mode),
     });
+    if (options.backend == .purego) addLibraryLoadingArgs(b, generate, options.library_loading);
     if (raw_package.colocated) generate.addArg("--raw-colocated");
     if (options.auto_cleanup) generate.addArg("--auto-cleanup");
     const errors_lock_path = "zigo/errors.lock.json";
@@ -568,6 +581,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     report.addFileArg(semantic_json);
     report.addArgs(&.{ "--go-module", options.go_module, "--raw-package-path", raw_package.path });
     report.addArgs(&.{ "--backend", @tagName(options.backend) });
+    if (options.backend == .purego) addLibraryLoadingArgs(b, report, options.library_loading);
     if (raw_package.colocated) report.addArg("--raw-colocated");
     if (options.auto_cleanup) report.addArg("--auto-cleanup");
     const doctor = b.addRunArtifact(generator);
@@ -673,6 +687,20 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         .library_filename = libraryFilename(b, lib.name, options.target.result, options.link_mode),
         .semantic_json = semantic_json,
     };
+}
+
+/// Passes the run-time loading policy as delimited lists, matching the
+/// generator's `--library-*` arguments.
+fn addLibraryLoadingArgs(b: *std.Build, run: *std.Build.Step.Run, loading: LibraryLoading) void {
+    if (loading.search_paths.len != 0)
+        run.addArgs(&.{ "--library-search-paths", joinWith(b, loading.search_paths, ":") });
+    if (loading.env_vars) |names| run.addArgs(&.{ "--library-env-vars", joinWith(b, names, ",") });
+    if (loading.automatic) run.addArg("--library-automatic");
+    if (!loading.exported_api) run.addArg("--library-internal-api");
+}
+
+fn joinWith(b: *std.Build, values: []const []const u8, separator: []const u8) []const u8 {
+    return std.mem.join(b.allocator, separator, values) catch @panic("OOM");
 }
 
 fn libraryFilename(b: *std.Build, name: []const u8, target: std.Target, mode: LinkMode) []const u8 {

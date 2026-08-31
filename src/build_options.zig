@@ -11,6 +11,69 @@ pub fn puregoTargetSupported(target: std.Target) bool {
         (target.cpu.arch == .x86_64 or target.cpu.arch == .aarch64);
 }
 
+/// How a generated purego package finds its shared library at run time.
+pub const LibraryLoading = struct {
+    /// Locations tried in order after the environment variables. An entry that
+    /// already names a library file is used as is; anything else is treated as
+    /// a directory and joined with the platform library name. `${EXECUTABLE_DIR}`
+    /// expands to the directory of the running executable.
+    search_paths: []const []const u8 = &.{},
+    /// Environment variables consulted before the search paths. `null` uses the
+    /// package-specific name followed by the shared `ZIGO_LIBRARY_PATH`.
+    env_vars: ?[]const []const u8 = null,
+    /// Load on the first binding call instead of requiring an explicit call.
+    automatic: bool = false,
+    /// Generate the exported `LoadLibrary`/`LibraryLoaded` API.
+    exported_api: bool = true,
+};
+
+pub const LibraryLoadingError = error{
+    UnsupportedBackend,
+    UnreachableLoader,
+    EmptySearchPath,
+    InvalidSearchPath,
+    InvalidEnvironmentName,
+};
+
+/// Rejects policies that cannot produce a usable package. `purego` reports
+/// whether the binding set selected the purego backend.
+pub fn validateLibraryLoading(loading: LibraryLoading, purego: bool) LibraryLoadingError!void {
+    if (!purego and !isDefaultLibraryLoading(loading)) return error.UnsupportedBackend;
+    // Without an exported loader nothing could ever load the library.
+    if (!loading.exported_api and !loading.automatic) return error.UnreachableLoader;
+    for (loading.search_paths) |path| {
+        if (path.len == 0) return error.EmptySearchPath;
+        // ':' separates the entries when the policy reaches the generator.
+        for (path) |character| if (std.ascii.isControl(character) or character == '"' or
+            character == '\\' or character == ':')
+            return error.InvalidSearchPath;
+    }
+    if (loading.env_vars) |names| for (names) |name| {
+        if (name.len == 0 or std.ascii.isDigit(name[0])) return error.InvalidEnvironmentName;
+        for (name) |character| if (!(std.ascii.isAlphanumeric(character) or character == '_'))
+            return error.InvalidEnvironmentName;
+    };
+}
+
+pub fn isDefaultLibraryLoading(loading: LibraryLoading) bool {
+    return loading.search_paths.len == 0 and loading.env_vars == null and
+        !loading.automatic and loading.exported_api;
+}
+
+/// Environment variable a generated package reads before the shared one, so two
+/// zigo purego packages in one process do not resolve to the same file.
+pub fn packageEnvironmentNameAlloc(allocator: std.mem.Allocator, go_package: []const u8) ![]u8 {
+    var name: std.ArrayList(u8) = .empty;
+    errdefer name.deinit(allocator);
+    try name.appendSlice(allocator, "ZIGO_");
+    for (go_package) |character| try name.append(allocator, if (std.ascii.isAlphanumeric(character))
+        std.ascii.toUpper(character)
+    else
+        '_');
+    try name.appendSlice(allocator, "_LIBRARY_PATH");
+    return name.toOwnedSlice(allocator);
+}
+
 pub const RawPackageError = error{
     InvalidPath,
     InvalidComponent,
@@ -96,4 +159,23 @@ test "purego target support covers the documented desktop matrix" {
     target.os.tag = .linux;
     target.cpu.arch = .riscv64;
     try std.testing.expect(!puregoTargetSupported(target));
+}
+
+test "library loading policies reject unusable combinations" {
+    try validateLibraryLoading(.{}, false);
+    try validateLibraryLoading(.{ .search_paths = &.{ "${EXECUTABLE_DIR}", "/opt/app/lib" }, .automatic = true }, true);
+    try validateLibraryLoading(.{ .automatic = true, .exported_api = false }, true);
+    try std.testing.expectError(error.UnsupportedBackend, validateLibraryLoading(.{ .automatic = true }, false));
+    try std.testing.expectError(error.UnreachableLoader, validateLibraryLoading(.{ .exported_api = false }, true));
+    try std.testing.expectError(error.EmptySearchPath, validateLibraryLoading(.{ .search_paths = &.{""} }, true));
+    try std.testing.expectError(error.InvalidSearchPath, validateLibraryLoading(.{ .search_paths = &.{"lib\"dir"} }, true));
+    try std.testing.expectError(error.InvalidSearchPath, validateLibraryLoading(.{ .search_paths = &.{"/opt/a:/opt/b"} }, true));
+    try std.testing.expectError(error.InvalidEnvironmentName, validateLibraryLoading(.{ .env_vars = &.{"9BAD"} }, true));
+    try std.testing.expectError(error.InvalidEnvironmentName, validateLibraryLoading(.{ .env_vars = &.{"BAD-NAME"} }, true));
+}
+
+test "package environment names are derived from the Go package" {
+    const name = try packageEnvironmentNameAlloc(std.testing.allocator, "event_queue");
+    defer std.testing.allocator.free(name);
+    try std.testing.expectEqualStrings("ZIGO_EVENT_QUEUE_LIBRARY_PATH", name);
 }

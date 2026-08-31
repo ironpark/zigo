@@ -20,6 +20,12 @@ pub const Options = struct {
     backend: Backend = .cgo,
     link_mode: Options.LinkMode = .static,
     library_stem: []const u8 = "",
+    /// Colon-separated purego candidate locations, in the order they are tried.
+    library_search_paths: []const u8 = "",
+    /// Comma-separated environment variable names. `null` selects the defaults.
+    library_env_vars: ?[]const u8 = null,
+    library_automatic: bool = false,
+    library_exported_api: bool = true,
 };
 
 pub const Emitter = struct {

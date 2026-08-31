@@ -77,6 +77,10 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
             .dynamic => .dynamic,
         },
         .library_stem = options.library_stem,
+        .library_search_paths = options.library_search_paths,
+        .library_env_vars = options.library_env_vars,
+        .library_automatic = options.library_automatic,
+        .library_exported_api = options.library_exported_api,
     });
 }
 
@@ -135,6 +139,10 @@ fn runReport(allocator: std.mem.Allocator, io: std.Io, options: cli.Report) !voi
             .cgo => .cgo,
             .purego => .purego,
         },
+        .library_search_paths = options.library_search_paths,
+        .library_env_vars = options.library_env_vars,
+        .library_automatic = options.library_automatic,
+        .library_exported_api = options.library_exported_api,
     });
     try stdout.interface.flush();
 }

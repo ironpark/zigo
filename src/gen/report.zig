@@ -11,6 +11,10 @@ pub const Options = struct {
     raw_colocated: bool = false,
     auto_cleanup: bool = false,
     backend: Backend = .cgo,
+    library_search_paths: []const u8 = "",
+    library_env_vars: ?[]const u8 = null,
+    library_automatic: bool = false,
+    library_exported_api: bool = true,
 };
 
 pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: semantic.Semantic, options: Options) !void {
@@ -42,6 +46,19 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
     try writer.print("automatic cleanup: {s}\n", .{if (options.auto_cleanup) "enabled (Go 1.24+)" else "disabled"});
     try writer.print("backend: {s}\n", .{@tagName(options.backend)});
     try writer.print("callback ABI: {s}\n", .{@tagName(program.callback_convention)});
+    if (options.backend == .purego) {
+        try writer.print("library loading: {s}, loader API {s}\n", .{
+            if (options.library_automatic) "automatic on first call" else "explicit LoadLibrary",
+            if (options.library_exported_api) "exported" else "internal",
+        });
+        try writer.print("library environment: {s}\n", .{blk: {
+            const names = options.library_env_vars orelse break :blk "ZIGO_LIBRARY_PATH";
+            break :blk if (names.len == 0) "none" else names;
+        }});
+        try writer.print("library search paths: {s}\n", .{
+            if (options.library_search_paths.len == 0) "none" else options.library_search_paths,
+        });
+    }
 
     try writer.print("\ntypes ({d})\n", .{document.types.len});
     for (document.types) |declaration| {
@@ -184,4 +201,38 @@ test "report exposes final public names symbols ownership and projections" {
     defer purego_output.deinit();
     try render(std.testing.allocator, &purego_output.writer, document, .{ .backend = .purego });
     try std.testing.expect(std.mem.indexOf(u8, purego_output.written(), "backend: purego\ncallback ABI: function_pointer_userdata_v1") != null);
+}
+
+test "purego report states the effective loading policy" {
+    const document: semantic.Semantic = .{
+        .functions = &.{},
+        .package = "scalar",
+        .prefix = "zg",
+        .types = &.{},
+        .zig_version = "0.16.0",
+    };
+    var explicit: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer explicit.deinit();
+    try render(std.testing.allocator, &explicit.writer, document, .{ .backend = .purego });
+    try std.testing.expect(std.mem.indexOf(u8, explicit.written(), "library loading: explicit LoadLibrary, loader API exported") != null);
+    try std.testing.expect(std.mem.indexOf(u8, explicit.written(), "library search paths: none") != null);
+
+    var automatic: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer automatic.deinit();
+    try render(std.testing.allocator, &automatic.writer, document, .{
+        .backend = .purego,
+        .library_search_paths = "${EXECUTABLE_DIR}:/opt/app/lib",
+        .library_env_vars = "",
+        .library_automatic = true,
+        .library_exported_api = false,
+    });
+    try std.testing.expect(std.mem.indexOf(u8, automatic.written(), "library loading: automatic on first call, loader API internal") != null);
+    try std.testing.expect(std.mem.indexOf(u8, automatic.written(), "library environment: none") != null);
+    try std.testing.expect(std.mem.indexOf(u8, automatic.written(), "library search paths: ${EXECUTABLE_DIR}:/opt/app/lib") != null);
+
+    // A cgo report has no loading policy to explain.
+    var cgo: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer cgo.deinit();
+    try render(std.testing.allocator, &cgo.writer, document, .{});
+    try std.testing.expect(std.mem.indexOf(u8, cgo.written(), "library loading:") == null);
 }

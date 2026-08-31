@@ -24,6 +24,10 @@ pub const Options = struct {
     backend: emit.Options.Backend = .cgo,
     link_mode: emit.Options.LinkMode = .static,
     library_stem: []const u8 = "",
+    library_search_paths: []const u8 = "",
+    library_env_vars: ?[]const u8 = null,
+    library_automatic: bool = false,
+    library_exported_api: bool = true,
 };
 
 const PreparedFile = struct {
@@ -83,6 +87,10 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .backend = options.backend,
         .link_mode = options.link_mode,
         .library_stem = options.library_stem,
+        .library_search_paths = options.library_search_paths,
+        .library_env_vars = options.library_env_vars,
+        .library_automatic = options.library_automatic,
+        .library_exported_api = options.library_exported_api,
     };
     var prepared: std.ArrayList(PreparedFile) = .empty;
     defer prepared.deinit(scratch_allocator);

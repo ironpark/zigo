@@ -32,6 +32,12 @@ pub const Generate = struct {
     backend: Backend = .cgo,
     link_mode: LinkMode = .static,
     library_stem: []const u8 = "",
+    /// Colon-separated candidate locations, in the order they are tried.
+    library_search_paths: []const u8 = "",
+    /// Comma-separated environment variable names. `null` selects the defaults.
+    library_env_vars: ?[]const u8 = null,
+    library_automatic: bool = false,
+    library_exported_api: bool = true,
 };
 
 pub const Check = struct {
@@ -55,6 +61,10 @@ pub const Report = struct {
     raw_colocated: bool = false,
     auto_cleanup: bool = false,
     backend: Backend = .cgo,
+    library_search_paths: []const u8 = "",
+    library_env_vars: ?[]const u8 = null,
+    library_automatic: bool = false,
+    library_exported_api: bool = true,
 };
 
 pub const Doctor = struct {
@@ -89,6 +99,8 @@ pub fn writeUsage(writer: *std.Io.Writer) std.Io.Writer.Error!void {
         \\  check     --generated <dir> --source <dir>
         \\  abi-diff  --base <file> --current <file> [--base-backend cgo|purego] [--current-backend cgo|purego] [--json] [--fail-on breaking]
         \\  report    --semantic <file> [--go-module <path>] [options]
+        \\            [--library-search-paths <a:b>] [--library-env-vars <A,B>]
+        \\            [--library-automatic] [--library-internal-api]
         \\  doctor    [--go <path>] [--gofmt <path>] [--target native|cross] [--auto-cleanup]
         \\            [--backend cgo|purego] [--library <path>] [--go-mod <path>]
         \\
@@ -126,6 +138,31 @@ pub fn parse(args: []const []const u8) ParseError!Command {
     return error.UnknownCommand;
 }
 
+/// The `--library-*` run-time loading policy, shared by `generate` and `report`.
+const LibraryLoadingArgs = struct {
+    search_paths: ?[]const u8 = null,
+    env_vars: ?[]const u8 = null,
+    automatic: bool = false,
+    exported_api: bool = true,
+
+    /// Consumes one loading-policy flag. Returns false for any other flag.
+    fn parseFlag(self: *LibraryLoadingArgs, flag: []const u8, args: []const []const u8, index: *usize) ParseError!bool {
+        if (std.mem.eql(u8, flag, "--library-search-paths")) {
+            try set(&self.search_paths, try takeValue(args, index));
+        } else if (std.mem.eql(u8, flag, "--library-env-vars")) {
+            if (self.env_vars != null) return error.DuplicateArgument;
+            self.env_vars = try takeValue(args, index);
+        } else if (std.mem.eql(u8, flag, "--library-automatic")) {
+            if (self.automatic) return error.DuplicateArgument;
+            self.automatic = true;
+        } else if (std.mem.eql(u8, flag, "--library-internal-api")) {
+            if (!self.exported_api) return error.DuplicateArgument;
+            self.exported_api = false;
+        } else return false;
+        return true;
+    }
+};
+
 fn parseGenerate(args: []const []const u8) ParseError!Generate {
     var semantic_path: ?[]const u8 = null;
     var output_path: ?[]const u8 = null;
@@ -148,6 +185,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
     var backend: ?Backend = null;
     var link_mode: ?LinkMode = null;
     var library_stem: ?[]const u8 = null;
+    var loading: LibraryLoadingArgs = .{};
 
     var index: usize = 0;
     while (index < args.len) {
@@ -195,6 +233,8 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         } else if (std.mem.eql(u8, flag, "--link-mode")) {
             if (link_mode != null) return error.DuplicateArgument;
             link_mode = parseLinkMode(try takeValue(args, &index)) orelse return error.InvalidValue;
+        } else if (try loading.parseFlag(flag, args, &index)) {
+            // handled by the shared loading-policy parser
         } else if (std.mem.eql(u8, flag, "--library-stem")) {
             try set(&library_stem, try takeValue(args, &index));
         } else {
@@ -223,6 +263,10 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .backend = backend orelse .cgo,
         .link_mode = link_mode orelse .static,
         .library_stem = library_stem orelse "",
+        .library_search_paths = loading.search_paths orelse "",
+        .library_env_vars = loading.env_vars,
+        .library_automatic = loading.automatic,
+        .library_exported_api = loading.exported_api,
     };
 }
 
@@ -302,11 +346,14 @@ fn parseReport(args: []const []const u8) ParseError!Report {
     var auto_cleanup = false;
     var auto_cleanup_seen = false;
     var backend: ?Backend = null;
+    var loading: LibraryLoadingArgs = .{};
     var index: usize = 0;
     while (index < args.len) {
         const flag = args[index];
         index += 1;
-        if (std.mem.eql(u8, flag, "--semantic")) {
+        if (try loading.parseFlag(flag, args, &index)) {
+            // handled by the shared loading-policy parser
+        } else if (std.mem.eql(u8, flag, "--semantic")) {
             try set(&semantic_path, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--go-module")) {
             try set(&go_module, try takeValue(args, &index));
@@ -334,6 +381,10 @@ fn parseReport(args: []const []const u8) ParseError!Report {
         .raw_colocated = raw_colocated,
         .auto_cleanup = auto_cleanup,
         .backend = backend orelse .cgo,
+        .library_search_paths = loading.search_paths orelse "",
+        .library_env_vars = loading.env_vars,
+        .library_automatic = loading.automatic,
+        .library_exported_api = loading.exported_api,
     };
 }
 
@@ -464,6 +515,18 @@ test "generate command parses named arguments" {
     try std.testing.expectEqual(LinkMode.dynamic, dynamic_generate.link_mode);
     try std.testing.expectEqualStrings("scalar_zigo", dynamic_generate.library_stem);
     try std.testing.expectError(error.InvalidValue, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--link-mode", "shared" }));
+
+    const loading = (try parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--library-search-paths", "${EXECUTABLE_DIR}:/opt/app/lib", "--library-env-vars", "ZIGO_SCALAR_LIBRARY_PATH,ZIGO_LIBRARY_PATH", "--library-automatic", "--library-internal-api" })).generate;
+    try std.testing.expectEqualStrings("${EXECUTABLE_DIR}:/opt/app/lib", loading.library_search_paths);
+    try std.testing.expectEqualStrings("ZIGO_SCALAR_LIBRARY_PATH,ZIGO_LIBRARY_PATH", loading.library_env_vars.?);
+    try std.testing.expect(loading.library_automatic);
+    try std.testing.expect(!loading.library_exported_api);
+    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--library-automatic", "--library-automatic" }));
+
+    // The same policy flags configure the report so it can explain the contract.
+    const loading_report = (try parse(&.{ "report", "--semantic", "s.json", "--backend", "purego", "--library-env-vars", "" })).report;
+    try std.testing.expectEqualStrings("", loading_report.library_env_vars.?);
+    try std.testing.expect(loading_report.library_exported_api);
 }
 
 test "generate command retains defaults" {
