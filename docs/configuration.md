@@ -325,12 +325,12 @@ breaking이다.
 ### Tagged union 값 스냅샷
 
 `Tag()`와 `As*()`는 각각 FFI 왕복이므로, payload가 전부 스칼라인 union을 반복해서 읽는
-코드는 왕복 비용을 그대로 지불한다. `.repr = .tagged_union_value`로 등록하면 zigo가 값
+코드는 왕복 비용을 그대로 지불한다. `.access = .snapshot`을 붙이면 zigo가 값
 스냅샷 표현을 하나 더 만든다.
 
 ```zig
 .types = .{
-    .{ .type = mylib.Signal, .repr = .tagged_union_value },
+    .{ .type = mylib.Signal, .repr = .tagged_union, .access = .snapshot },
 },
 ```
 
@@ -393,6 +393,27 @@ handle payload는 union wrapper에 수명이 묶인 borrowed `*TRef`다. union �
 }
 ```
 
+## 타입의 종류와 접근 전략
+
+`repr`은 **타입이 무엇인지**만 말한다.
+
+| 값 | 뜻 |
+|---|---|
+| `.@"opaque"` | 포인터 handle |
+| `.value` | `extern struct` 값 미러 |
+| `.tagged_union` | tagged union handle |
+
+`access`는 **Go가 그 내용을 어떻게 읽는지**를 말하며, 기본값은 `.projection`이다.
+
+| 값 | 뜻 |
+|---|---|
+| `.projection` | variant마다 tag를 확인하는 접근자 |
+| `.snapshot` | tag와 스칼라 payload를 한 번의 호출로 담는 스냅샷 구조체 (projection도 그대로 남는다) |
+
+두 축을 나눠 두었으므로 접근 전략이 늘어도 `repr` 이름이 곱해지지 않는다. 예전
+`.tagged_union_value`는 "tagged union인데 스냅샷"을 한 이름에 섞은 것이었고, 전략이 하나
+더 생길 때마다 새 `repr` 이름이 필요했다.
+
 ## 마이그레이션: 선언을 지칭하는 방법
 
 | 예전 | 지금 |
@@ -403,6 +424,10 @@ handle payload는 union wrapper에 수명이 묶인 borrowed `*TRef`다. union �
 | `.overrides = .{ .{ .path = "Context.create", ... } }` | `.functions = .{ .{ .path = "Context.create", ... } }` |
 | `.specializations = .{ .{ .name = "FloatBuffer", .type = T } }` | `.types = .{ .{ .name = "FloatBuffer", .type = T, .repr = .@"opaque" } }` |
 | (`.root` 는 `discover` 모드에서만 필요) | `.root` 는 항상 필요하다 |
+| `.{ .type = T, .repr = .tagged_union_value }` | `.{ .type = T, .repr = .tagged_union, .access = .snapshot }` |
+
+semantic IR도 같은 축을 따른다. `union_repr: "value_snapshot"` 은 `access: "snapshot"` 이
+되었다. 생성되는 C 심볼과 Go API는 바뀌지 않는다.
 
 `.@"fn"`은 더 이상 받지 않는다. 경로가 함수 값을 대신하며, `.root`와 `types`에서
 컨테이너를 찾아 해석한다. 경로가 공개 함수를 가리키지 않으면 컴파일 오류다.

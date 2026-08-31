@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T11:47:45Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `bindings.zig`가 선언을 지칭하는 방법이 하나다.
 > NEXT: none

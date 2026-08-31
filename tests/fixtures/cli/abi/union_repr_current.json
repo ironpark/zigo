@@ -93,7 +93,7 @@
         "kind": "enum",
         "ref": "SnapshottedTag"
       },
-      "union_repr": "value_snapshot"
+      "access": "snapshot"
     },
     {
       "fields": [

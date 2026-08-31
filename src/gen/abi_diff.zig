@@ -108,7 +108,7 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
                 old.name,
                 "tagged-union variant appended to a value snapshot; the snapshot struct grew",
             ),
-            .repr_changed => try add(allocator, &report, .breaking, old.name, "tagged-union representation changed"),
+            .access_changed => try add(allocator, &report, .breaking, old.name, "type access strategy changed"),
             .breaking => try add(allocator, &report, .breaking, old.name, "type definition changed"),
         }
     }
@@ -198,14 +198,14 @@ fn compareErrors(allocator: std.mem.Allocator, report: *Report, subject: []const
     if (new.len > old.len) try add(allocator, report, .compatible, subject, "error appended");
 }
 
-const TypeChange = enum { equal, appended, snapshot_appended, repr_changed, breaking };
+const TypeChange = enum { equal, appended, snapshot_appended, access_changed, breaking };
 
 /// Appending a variant is source-compatible for a projection union, whose
 /// symbols are per variant. A value snapshot union carries its variants in one
 /// struct, so the same append changes that struct's size and layout.
 fn classifyTypeChange(lhs: semantic.TypeDecl, rhs: semantic.TypeDecl) TypeChange {
     if (lhs.kind != rhs.kind or lhs.layout != rhs.layout or lhs.exhaustive != rhs.exhaustive) return .breaking;
-    if (lhs.unionRepr() != rhs.unionRepr()) return .repr_changed;
+    if (lhs.accessStrategy() != rhs.accessStrategy()) return .access_changed;
     if ((lhs.tag_type == null) != (rhs.tag_type == null)) return .breaking;
     if (lhs.tag_type) |tag| if (!typeEqual(tag, rhs.tag_type.?)) return .breaking;
     if (rhs.fields.len < lhs.fields.len) return .breaking;
@@ -213,7 +213,7 @@ fn classifyTypeChange(lhs: semantic.TypeDecl, rhs: semantic.TypeDecl) TypeChange
     if (rhs.fields.len == lhs.fields.len) return .equal;
     if (lhs.kind == .@"enum") return .appended;
     if (lhs.kind != .tagged_union) return .breaking;
-    return if (lhs.unionRepr() == .value_snapshot) .snapshot_appended else .appended;
+    return if (lhs.accessStrategy() == .snapshot) .snapshot_appended else .appended;
 }
 
 fn typeFieldEqual(lhs: semantic.TypeField, rhs: semantic.TypeField) bool {
@@ -523,7 +523,7 @@ fn expectExpandedBreakingReport(allocator: std.mem.Allocator) !void {
     try std.testing.expectEqual(@as(usize, 4), report.changes.items.len);
 }
 
-test "switching a tagged union between representations is breaking" {
+test "switching a tagged union between access strategies is breaking" {
     const variants = [_]semantic.TypeField{.{ .name = "ticks", .type = .{ .int = .{ .bits = 32, .signed = false } }, .value = 0 }};
     const tags = [_]semantic.TypeField{.{ .name = "ticks", .value = 0 }};
     const projection: semantic.TypeDecl = .{
@@ -533,7 +533,7 @@ test "switching a tagged union between representations is breaking" {
         .tag_type = .{ .@"enum" = .{ .ref = "SignalTag" } },
     };
     var snapshot = projection;
-    snapshot.union_repr = .value_snapshot;
+    snapshot.access = .snapshot;
     const tag_decl: semantic.TypeDecl = .{
         .fields = &tags,
         .kind = .@"enum",
@@ -553,7 +553,7 @@ test "switching a tagged union between representations is breaking" {
     defer report.deinit(std.testing.allocator);
     try std.testing.expect(report.hasBreaking());
     try std.testing.expectEqualStrings("Signal", report.changes.items[0].subject);
-    try std.testing.expectEqualStrings("tagged-union representation changed", report.changes.items[0].detail);
+    try std.testing.expectEqualStrings("type access strategy changed", report.changes.items[0].detail);
 }
 
 test "every extern struct field change is breaking" {

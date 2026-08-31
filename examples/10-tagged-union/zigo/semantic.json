@@ -643,6 +643,7 @@
       "zig_path": "@typeInfo(root.Value).@\"union\".tag_type.?"
     },
     {
+      "access": "snapshot",
       "exhaustive": true,
       "fields": [
         {
@@ -702,7 +703,6 @@
         "kind": "enum",
         "ref": "SignalTag"
       },
-      "union_repr": "value_snapshot",
       "zig_path": "root.Signal"
     },
     {

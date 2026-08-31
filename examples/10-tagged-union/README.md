@@ -12,7 +12,7 @@ support `errors.Is(err, ErrInvalidHandle)` and `errors.Is(err, ErrNativePanic)`.
 methods and opaque arguments use the same lifecycle guard. Callers must still synchronize `Close`,
 variant mutation, and accessor calls on the same handle.
 
-`Signal` sits alongside `Value` and registers with `.repr = .tagged_union_value`. Every one of its
+`Signal` sits alongside `Value` and registers with `.repr = .tagged_union, .access = .snapshot`. Every one of its
 variant payloads is void, a bool, a scalar, or an enum, so zigo also generates a value snapshot: a
 zigo-owned `extern struct` that the shim fills from the active variant. `Snapshot()` and
 `TrySnapshot() (SignalSnapshot, error)` carry the tag and the payload back in a single native call,

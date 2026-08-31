@@ -2,7 +2,7 @@
 depends_on:
 - "43-breaking-surface-cleanup#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 두 union 표현이 같은 축의 값으로 표현된다.
 > NEXT: none

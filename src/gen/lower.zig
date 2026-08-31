@@ -255,7 +255,7 @@ fn lowerTaggedUnionProjections(allocator: std.mem.Allocator, document: semantic.
 fn lowerTaggedUnionSnapshots(allocator: std.mem.Allocator, document: semantic.Semantic, prefix: []const u8) ![]const abi.AbiSnapshot {
     var snapshots: std.ArrayList(abi.AbiSnapshot) = .empty;
     for (document.types) |*declaration| {
-        if (declaration.kind != .tagged_union or declaration.unionRepr() != .value_snapshot) continue;
+        if (declaration.kind != .tagged_union or declaration.accessStrategy() != .snapshot) continue;
         const type_name = try snapshotTypeNameAlloc(allocator, prefix, declaration.name);
         const layout = try snapshotLayout(allocator, document, prefix, declaration.*);
 
@@ -825,7 +825,7 @@ test "value snapshot lowering orders payloads by width and spells out padding" {
                 .kind = .tagged_union,
                 .name = "Signal",
                 .tag_type = .{ .@"enum" = .{ .ref = "SignalTag" } },
-                .union_repr = .value_snapshot,
+                .access = .snapshot,
             },
             .{
                 .fields = &.{

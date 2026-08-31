@@ -223,29 +223,35 @@ pub const SemanticFn = struct {
 
 pub const TypeKind = enum { @"enum", error_set, @"opaque", tagged_union, value_struct };
 pub const Layout = enum { @"extern", @"packed" };
-/// How a tagged union reaches Go. `projection` keeps the per-variant FFI
-/// accessors; `value_snapshot` adds a zigo-owned snapshot struct that carries
-/// the tag and every scalar payload back in one call.
-pub const UnionRepr = enum { projection, value_snapshot };
+/// How Go reaches a type's contents. This is a separate axis from the type's
+/// kind: a tagged union is a tagged union either way, and adding a strategy
+/// adds one value here rather than multiplying the kind names.
+pub const Access = enum {
+    /// Per-variant FFI accessors that check the tag on every read.
+    projection,
+    /// A zigo-owned snapshot struct carrying the tag and every scalar payload
+    /// back in one call, alongside the projections.
+    snapshot,
+};
 pub const TypeField = struct {
     name: []const u8,
     type: ?TypeNode = null,
     value: ?i64 = null,
 };
 pub const TypeDecl = struct {
+    access: ?Access = null,
     exhaustive: bool = true,
     fields: []const TypeField = &.{},
     kind: TypeKind,
     layout: ?Layout = null,
     name: []const u8,
     tag_type: ?TypeNode = null,
-    union_repr: ?UnionRepr = null,
     zig_path: ?[]const u8 = null,
 
-    /// The representation a tagged union was registered with. Types that are
-    /// not tagged unions never carry one.
-    pub fn unionRepr(self: TypeDecl) UnionRepr {
-        return self.union_repr orelse .projection;
+    /// The access strategy a type was registered with. Types that only have
+    /// one never carry the field.
+    pub fn accessStrategy(self: TypeDecl) Access {
+        return self.access orelse .projection;
     }
 };
 pub const Constructor = struct {

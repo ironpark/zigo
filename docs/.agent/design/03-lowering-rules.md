@@ -200,8 +200,9 @@ compatible append다. variant 삭제·순서 변경·이름 변경, 기존 discr
 
 projection은 정확하지만 tag 확인과 payload 읽기가 각각 FFI 왕복이다. payload가 전부
 스칼라인 작은 union을 반복해서 들여다보는 Go 코드에는 이 비용이 그대로 쌓인다.
-`.repr = .tagged_union_value`는 같은 union에 **값 스냅샷** 표현을 하나 더 붙여, tag와
-payload를 한 번의 native 호출로 함께 읽게 한다. 기본값은 여전히 `.repr = .tagged_union`이며,
+`.access = .snapshot`은 같은 union에 **값 스냅샷** 표현을 하나 더 붙여, tag와
+payload를 한 번의 native 호출로 함께 읽게 한다. 접근 전략은 타입 종류와 다른 축이므로
+`repr`은 그대로 `.tagged_union`이고 기본값은 `.projection`이며,
 projection 심볼과 `Tag()`/`As*()`/`TryAs*()`는 그대로 남는다. 스냅샷은 대체가 아니라 추가다.
 
 스냅샷도 Zig union의 메모리 배치를 C로 복제하지 않는다. zigo가 **자기 소유의 `extern

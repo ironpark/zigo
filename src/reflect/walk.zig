@@ -37,14 +37,14 @@ pub fn reflect(
                     .@"struct" => try appendValueStruct(allocator, &types, T, type_name),
                     else => @compileError("zigo value type entries must name a struct"),
                 },
-                .tagged_union, .tagged_union_value => switch (info) {
+                .tagged_union => switch (info) {
                     .@"union" => |union_info| {
                         if (union_info.tag_type == null) @compileError("zigo tagged_union type entries must name a tagged union");
-                        try appendTaggedUnion(allocator, &types, T, type_name, if (entry.repr == .tagged_union_value) .value_snapshot else .projection);
+                        try appendTaggedUnion(allocator, &types, T, type_name, comptime accessStrategy(entry));
                     },
                     else => @compileError("zigo tagged_union type entries must name a tagged union"),
                 },
-                else => @compileError("zigo type repr must be .opaque, .value, .tagged_union, or .tagged_union_value"),
+                else => @compileError("zigo type repr must be .opaque, .value, or .tagged_union"),
             }
         }
     }
@@ -196,6 +196,18 @@ fn discoveryEnabled(comptime declaration: anytype) bool {
     if (declaration.discover != .public) @compileError("zigo `.discover` must be `.public`");
     if (@TypeOf(declaration.root) != type) @compileError("zigo `.root` must be a module or container type");
     return true;
+}
+
+/// The access strategy a `types` entry chose. Defaults keep the axis out of
+/// declarations that do not need it; new strategies add a value here rather
+/// than a new `repr` name.
+fn accessStrategy(comptime entry: anytype) semantic.Access {
+    if (!@hasField(@TypeOf(entry), "access")) return .projection;
+    return switch (entry.access) {
+        .projection => .projection,
+        .snapshot => .snapshot,
+        else => @compileError("zigo `.access` must be `.projection` or `.snapshot`"),
+    };
 }
 
 /// The display name of a `types` entry: the explicit `.name` when given, and
@@ -446,7 +458,7 @@ fn opaqueNameForPath(types: []const semantic.TypeDecl, path: []const u8) ?[]cons
 }
 
 fn isHandleRepr(comptime repr: anytype) bool {
-    return repr == .@"opaque" or repr == .tagged_union or repr == .tagged_union_value;
+    return repr == .@"opaque" or repr == .tagged_union;
 }
 
 /// A value struct carries its field types into the IR. Validation needs them
@@ -487,7 +499,7 @@ fn appendTaggedUnion(
     types: *std.ArrayList(semantic.TypeDecl),
     comptime T: type,
     name: []const u8,
-    repr: semantic.UnionRepr,
+    access: semantic.Access,
 ) !void {
     const info = @typeInfo(T).@"union";
     const Tag = info.tag_type orelse @compileError("zigo cannot reflect an untagged union");
@@ -498,9 +510,9 @@ fn appendTaggedUnion(
     try types.append(allocator, .{
         .kind = .tagged_union,
         .name = name,
-        // The projection default stays absent from semantic.json so opting out
-        // of the snapshot leaves existing documents byte-identical.
-        .union_repr = if (repr == .projection) null else repr,
+        // The default strategy stays absent from semantic.json, so a type that
+        // does not choose one leaves its document unchanged.
+        .access = if (access == .projection) null else access,
         .zig_path = @typeName(T),
     });
 
@@ -653,7 +665,7 @@ test "reflection preserves invalid declarations for generator diagnostics" {
     try std.testing.expectEqual(semantic.TypeKind.tagged_union, document.types[0].kind);
 }
 
-test "the value snapshot repr is recorded only when it is opted into" {
+test "the snapshot access strategy is recorded only when it is opted into" {
     const Signal = union(enum(u8)) {
         idle,
         ticks: u32,
@@ -668,23 +680,23 @@ test "the value snapshot repr is recorded only when it is opted into" {
 
     const snapshot = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .type = Signal, .repr = .tagged_union_value }},
+        .types = .{.{ .type = Signal, .repr = .tagged_union, .access = .snapshot }},
         .functions = .{.{ .path = "root.current" }},
     }, "variant", "zg");
-    try std.testing.expectEqual(semantic.UnionRepr.value_snapshot, snapshot.types[0].unionRepr());
+    try std.testing.expectEqual(semantic.Access.snapshot, snapshot.types[0].accessStrategy());
     const snapshot_json = try snapshot.serialize(std.testing.allocator);
     defer std.testing.allocator.free(snapshot_json);
-    try std.testing.expect(std.mem.indexOf(u8, snapshot_json, "\"union_repr\": \"value_snapshot\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, snapshot_json, "\"access\": \"snapshot\"") != null);
 
     const projection = try reflect(arena.allocator(), .{
         .root = Fixture,
         .types = .{.{ .type = Signal, .repr = .tagged_union }},
         .functions = .{.{ .path = "root.current" }},
     }, "variant", "zg");
-    try std.testing.expectEqual(semantic.UnionRepr.projection, projection.types[0].unionRepr());
+    try std.testing.expectEqual(semantic.Access.projection, projection.types[0].accessStrategy());
     const projection_json = try projection.serialize(std.testing.allocator);
     defer std.testing.allocator.free(projection_json);
-    try std.testing.expect(std.mem.indexOf(u8, projection_json, "union_repr") == null);
+    try std.testing.expect(std.mem.indexOf(u8, projection_json, "\"access\":") == null);
 }
 
 test "tagged union representation reflects discriminants and payloads" {

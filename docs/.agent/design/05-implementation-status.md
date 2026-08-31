@@ -46,7 +46,7 @@
 variant 접근"이라는 상태가 항상 존재하고, 초안에 없던 `TryAs*` 계열 API가 필요해졌다.
 
 projection의 대가는 접근 한 번마다 FFI 왕복이다. 이를 줄이기 위해 `.repr =
-.tagged_union_value`가 뒤이어 추가되었다(03 §7.1). 이것도 Zig 배치를 복제하지 않는다.
+.tagged_union, .access = .snapshot`이 뒤이어 추가되었다(03 §7.1). 이것도 Zig 배치를 복제하지 않는다.
 zigo가 자기 소유의 `extern struct`를 정의하고 shim이 값을 옮겨 담아, tag와 payload를 한 번의
 호출로 함께 넘긴다. 기본값은 그대로 projection이고, 값 스냅샷은 payload가 전부
 void/bool/스칼라/enum인 union이 명시적으로 opt-in할 때만 생성된다. 대신 variant 추가가 구조체

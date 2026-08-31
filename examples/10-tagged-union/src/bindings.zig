@@ -6,7 +6,7 @@ pub const bindings = zigo.define(.{
     .types = .{
         .{ .type = library.Child, .repr = .@"opaque" },
         .{ .type = library.Value, .repr = .tagged_union },
-        .{ .type = library.Signal, .repr = .tagged_union_value },
+        .{ .type = library.Signal, .repr = .tagged_union, .access = .snapshot },
     },
     .functions = .{
         .{ .path = "Child.create", .params = .{"value"} },

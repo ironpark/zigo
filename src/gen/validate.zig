@@ -127,7 +127,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .hint = "give every field a bool, integer, float, registered enum, or nested `extern struct` type; an empty struct has no C representation",
             };
         }
-        if (declaration.kind == .tagged_union and declaration.unionRepr() == .value_snapshot) {
+        if (declaration.kind == .tagged_union and declaration.accessStrategy() == .snapshot) {
             if (snapshotIneligibleVariant(document, declaration)) |variant| return .{
                 .severity = .@"error",
                 .code = "ZIGO011",
@@ -638,7 +638,7 @@ test "implemented diagnostic snapshots are stable" {
                     .kind = .tagged_union,
                     .name = "Signal",
                     .tag_type = .{ .@"enum" = .{ .ref = "SignalTag" } },
-                    .union_repr = .value_snapshot,
+                    .access = .snapshot,
                 },
                 .{
                     .fields = &.{ .{ .name = "none", .value = 0 }, .{ .name = "samples", .value = 1 } },
@@ -1014,7 +1014,7 @@ test "a variant named tag collides with the snapshot discriminant member" {
                 .kind = .tagged_union,
                 .name = "Signal",
                 .tag_type = .{ .@"enum" = .{ .ref = "SignalTag" } },
-                .union_repr = .value_snapshot,
+                .access = .snapshot,
             },
             .{ .fields = &.{.{ .name = "tag", .value = 0 }}, .kind = .@"enum", .name = "SignalTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
         },
@@ -1041,7 +1041,7 @@ test "value snapshot eligibility accepts void bool scalar and enum payloads" {
                 .kind = .tagged_union,
                 .name = "Signal",
                 .tag_type = .{ .@"enum" = .{ .ref = "SignalTag" } },
-                .union_repr = .value_snapshot,
+                .access = .snapshot,
             },
             .{
                 .fields = &.{
@@ -1075,7 +1075,7 @@ test "an opaque handle payload keeps a union out of the value snapshot represent
                 .kind = .tagged_union,
                 .name = "Signal",
                 .tag_type = .{ .@"enum" = .{ .ref = "SignalTag" } },
-                .union_repr = .value_snapshot,
+                .access = .snapshot,
             },
             .{ .fields = &.{.{ .name = "child", .value = 0 }}, .kind = .@"enum", .name = "SignalTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
             .{ .kind = .@"opaque", .name = "Child" },
@@ -1088,7 +1088,7 @@ test "an opaque handle payload keeps a union out of the value snapshot represent
 
     // The same union stays valid under the default projection representation.
     var projection_types = document.types[0];
-    projection_types.union_repr = null;
+    projection_types.access = null;
     var types = [_]semantic.TypeDecl{ projection_types, document.types[1], document.types[2] };
     var projection_document = document;
     projection_document.types = &types;
