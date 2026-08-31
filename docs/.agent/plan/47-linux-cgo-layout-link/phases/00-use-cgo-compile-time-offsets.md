@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T18:00:17Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: helper에 `static const size_t offsetof_` 선언이 없고 모든 검증 명령이 성공한다.
 > NEXT: none
