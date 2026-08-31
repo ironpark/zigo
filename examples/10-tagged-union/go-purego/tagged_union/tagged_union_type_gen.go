@@ -791,3 +791,268 @@ func (s *SignalRef) Snapshot() (SignalSnapshot, error) { return zigoSignalSnapsh
 // MustSnapshot reads the tag and every payload in one native call and panics
 // with a typed error on failure.
 func (s *SignalRef) MustSnapshot() SignalSnapshot { return zigoMust(zigoSignalSnapshot(s)) }
+
+// ValueVariant is the sealed interface every Value variant implements. A type
+// switch over the concrete variant types reads the active payload without
+// probing each projection in turn.
+type ValueVariant interface{ isValueVariant() }
+
+// ValueNone is the none variant of Value. It carries no payload.
+type ValueNone struct{}
+
+func (ValueNone) isValueVariant() {}
+
+// ValueInteger is the integer variant of Value.
+type ValueInteger struct {
+	// Value is the payload the integer variant carries.
+	Value int64
+}
+
+func (ValueInteger) isValueVariant() {}
+
+// ValueFlag is the flag variant of Value.
+type ValueFlag struct {
+	// Value is the payload the flag variant carries.
+	Value bool
+}
+
+func (ValueFlag) isValueVariant() {}
+
+// ValueMode is the mode variant of Value.
+type ValueMode struct {
+	// Value is the payload the mode variant carries.
+	Value Mode
+}
+
+func (ValueMode) isValueVariant() {}
+
+// ValueSamples is the samples variant of Value.
+type ValueSamples struct {
+	// Value is the payload the samples variant carries.
+	Value []int16
+}
+
+func (ValueSamples) isValueVariant() {}
+
+// ValueChild is the child variant of Value.
+type ValueChild struct {
+	// Value is the payload the child variant carries.
+	Value *ChildRef
+}
+
+func (ValueChild) isValueVariant() {}
+
+// ValueMutableSamples is the mutableSamples variant of Value.
+type ValueMutableSamples struct {
+	// Value is the payload the mutableSamples variant carries.
+	Value []int16
+}
+
+func (ValueMutableSamples) isValueVariant() {}
+
+func zigoValueVariant(receiver zigoHandle) (ValueVariant, error) {
+	tag, err := zigoValueTag(receiver)
+	if err != nil {
+		return nil, err
+	}
+	switch tag {
+	case ValueTagNone:
+		return ValueNone{}, nil
+	case ValueTagInteger:
+		payload, matched, err := zigoValueAsInteger(receiver)
+		if err != nil {
+			return nil, err
+		}
+		if !matched {
+			return nil, zigoProjectionError("Value.Variant", zigoProjectionMismatch)
+		}
+		return ValueInteger{Value: payload}, nil
+	case ValueTagFlag:
+		payload, matched, err := zigoValueAsFlag(receiver)
+		if err != nil {
+			return nil, err
+		}
+		if !matched {
+			return nil, zigoProjectionError("Value.Variant", zigoProjectionMismatch)
+		}
+		return ValueFlag{Value: payload}, nil
+	case ValueTagMode:
+		payload, matched, err := zigoValueAsMode(receiver)
+		if err != nil {
+			return nil, err
+		}
+		if !matched {
+			return nil, zigoProjectionError("Value.Variant", zigoProjectionMismatch)
+		}
+		return ValueMode{Value: payload}, nil
+	case ValueTagSamples:
+		payload, matched, err := zigoValueAsSamples(receiver)
+		if err != nil {
+			return nil, err
+		}
+		if !matched {
+			return nil, zigoProjectionError("Value.Variant", zigoProjectionMismatch)
+		}
+		return ValueSamples{Value: payload}, nil
+	case ValueTagChild:
+		payload, matched, err := zigoValueAsChild(receiver)
+		if err != nil {
+			return nil, err
+		}
+		if !matched {
+			return nil, zigoProjectionError("Value.Variant", zigoProjectionMismatch)
+		}
+		return ValueChild{Value: payload}, nil
+	case ValueTagMutableSamples:
+		payload, matched, err := zigoValueAsMutableSamples(receiver)
+		if err != nil {
+			return nil, err
+		}
+		if !matched {
+			return nil, zigoProjectionError("Value.Variant", zigoProjectionMismatch)
+		}
+		return ValueMutableSamples{Value: payload}, nil
+	default:
+		return nil, zigoProjectionError("Value.Variant", zigoProjectionMismatch)
+	}
+}
+
+// Variant returns the active variant as a concrete ValueVariant, or a typed
+// lifecycle/native error.
+func (v *Value) Variant() (ValueVariant, error) { return zigoValueVariant(v) }
+
+// MustVariant returns the active variant as a concrete ValueVariant and panics
+// with a typed error on failure.
+func (v *Value) MustVariant() ValueVariant { return zigoMust(zigoValueVariant(v)) }
+
+// Variant returns the active variant as a concrete ValueVariant, or a typed
+// lifecycle/native error.
+func (v *ValueRef) Variant() (ValueVariant, error) { return zigoValueVariant(v) }
+
+// MustVariant returns the active variant as a concrete ValueVariant and panics
+// with a typed error on failure.
+func (v *ValueRef) MustVariant() ValueVariant { return zigoMust(zigoValueVariant(v)) }
+
+// SignalVariant is the sealed interface every Signal variant implements. A type
+// switch over the concrete variant types reads the active payload without
+// probing each projection in turn.
+type SignalVariant interface{ isSignalVariant() }
+
+// SignalIdle is the idle variant of Signal. It carries no payload.
+type SignalIdle struct{}
+
+func (SignalIdle) isSignalVariant() {}
+
+// SignalTicks is the ticks variant of Signal.
+type SignalTicks struct {
+	// Value is the payload the ticks variant carries.
+	Value uint32
+}
+
+func (SignalTicks) isSignalVariant() {}
+
+// SignalLevel is the level variant of Signal.
+type SignalLevel struct {
+	// Value is the payload the level variant carries.
+	Value float64
+}
+
+func (SignalLevel) isSignalVariant() {}
+
+// SignalOffset is the offset variant of Signal.
+type SignalOffset struct {
+	// Value is the payload the offset variant carries.
+	Value int16
+}
+
+func (SignalOffset) isSignalVariant() {}
+
+// SignalMode is the mode variant of Signal.
+type SignalMode struct {
+	// Value is the payload the mode variant carries.
+	Value Mode
+}
+
+func (SignalMode) isSignalVariant() {}
+
+// SignalActive is the active variant of Signal.
+type SignalActive struct {
+	// Value is the payload the active variant carries.
+	Value bool
+}
+
+func (SignalActive) isSignalVariant() {}
+
+func zigoSignalVariant(receiver zigoHandle) (SignalVariant, error) {
+	tag, err := zigoSignalTag(receiver)
+	if err != nil {
+		return nil, err
+	}
+	switch tag {
+	case SignalTagIdle:
+		return SignalIdle{}, nil
+	case SignalTagTicks:
+		payload, matched, err := zigoSignalAsTicks(receiver)
+		if err != nil {
+			return nil, err
+		}
+		if !matched {
+			return nil, zigoProjectionError("Signal.Variant", zigoProjectionMismatch)
+		}
+		return SignalTicks{Value: payload}, nil
+	case SignalTagLevel:
+		payload, matched, err := zigoSignalAsLevel(receiver)
+		if err != nil {
+			return nil, err
+		}
+		if !matched {
+			return nil, zigoProjectionError("Signal.Variant", zigoProjectionMismatch)
+		}
+		return SignalLevel{Value: payload}, nil
+	case SignalTagOffset:
+		payload, matched, err := zigoSignalAsOffset(receiver)
+		if err != nil {
+			return nil, err
+		}
+		if !matched {
+			return nil, zigoProjectionError("Signal.Variant", zigoProjectionMismatch)
+		}
+		return SignalOffset{Value: payload}, nil
+	case SignalTagMode:
+		payload, matched, err := zigoSignalAsMode(receiver)
+		if err != nil {
+			return nil, err
+		}
+		if !matched {
+			return nil, zigoProjectionError("Signal.Variant", zigoProjectionMismatch)
+		}
+		return SignalMode{Value: payload}, nil
+	case SignalTagActive:
+		payload, matched, err := zigoSignalAsActive(receiver)
+		if err != nil {
+			return nil, err
+		}
+		if !matched {
+			return nil, zigoProjectionError("Signal.Variant", zigoProjectionMismatch)
+		}
+		return SignalActive{Value: payload}, nil
+	default:
+		return nil, zigoProjectionError("Signal.Variant", zigoProjectionMismatch)
+	}
+}
+
+// Variant returns the active variant as a concrete SignalVariant, or a typed
+// lifecycle/native error.
+func (s *Signal) Variant() (SignalVariant, error) { return zigoSignalVariant(s) }
+
+// MustVariant returns the active variant as a concrete SignalVariant and panics
+// with a typed error on failure.
+func (s *Signal) MustVariant() SignalVariant { return zigoMust(zigoSignalVariant(s)) }
+
+// Variant returns the active variant as a concrete SignalVariant, or a typed
+// lifecycle/native error.
+func (s *SignalRef) Variant() (SignalVariant, error) { return zigoSignalVariant(s) }
+
+// MustVariant returns the active variant as a concrete SignalVariant and panics
+// with a typed error on failure.
+func (s *SignalRef) MustVariant() SignalVariant { return zigoMust(zigoSignalVariant(s)) }

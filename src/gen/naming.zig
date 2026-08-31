@@ -209,3 +209,58 @@ test "Go identifier and keyword checks cover boundaries" {
     for ([_][]const u8{ "raw", "native_api", "_private", "x9" }) |name| try std.testing.expect(isGoIdentifier(name));
     for ([_][]const u8{ "", "_", "type", "9raw", "raw-name" }) |name| try std.testing.expect(!isGoIdentifier(name));
 }
+
+/// The Go type name for one tagged-union variant: `<Union><PascalVariant>`.
+///
+/// A derived name that another generated identifier already claims takes a
+/// `Variant` suffix, then a numeric one, so a clash resolves the same way on
+/// every run instead of emitting two Go declarations with one name. A variant
+/// whose name carries no identifier characters has no derivation at all and is
+/// reported as `error.InvalidName`.
+pub fn variantTypeNameAlloc(
+    allocator: std.mem.Allocator,
+    union_name: []const u8,
+    variant_name: []const u8,
+    taken: []const []const u8,
+) error{ InvalidName, OutOfMemory }![]u8 {
+    const variant = try pascalAlloc(allocator, variant_name);
+    defer allocator.free(variant);
+    if (variant.len == 0) return error.InvalidName;
+    var candidate = try std.fmt.allocPrint(allocator, "{s}{s}", .{ union_name, variant });
+    errdefer allocator.free(candidate);
+    if (!containsConstName(taken, candidate)) return candidate;
+    {
+        const previous = candidate;
+        defer allocator.free(previous);
+        candidate = try std.fmt.allocPrint(allocator, "{s}Variant", .{previous});
+    }
+    var suffix: usize = 2;
+    while (containsConstName(taken, candidate)) : (suffix += 1) {
+        const previous = candidate;
+        defer allocator.free(previous);
+        candidate = try std.fmt.allocPrint(allocator, "{s}Variant{d}", .{ union_name, suffix });
+    }
+    return candidate;
+}
+
+fn containsConstName(names: []const []const u8, value: []const u8) bool {
+    for (names) |name| if (std.mem.eql(u8, name, value)) return true;
+    return false;
+}
+
+test "variant type names derive from the union and resolve clashes deterministically" {
+    const taken = [_][]const u8{ "ValueTag", "ValueTagVariant", "ValueVariant2" };
+    const cases = [_]struct { variant: []const u8, expected: []const u8 }{
+        .{ .variant = "integer", .expected = "ValueInteger" },
+        .{ .variant = "mutableSamples", .expected = "ValueMutableSamples" },
+        // `ValueTag` is the tag enum and `ValueTagVariant` is already spoken
+        // for, so the numeric suffix settles it.
+        .{ .variant = "tag", .expected = "ValueVariant3" },
+    };
+    for (cases) |case| {
+        const name = try variantTypeNameAlloc(std.testing.allocator, "Value", case.variant, &taken);
+        defer std.testing.allocator.free(name);
+        try std.testing.expectEqualStrings(case.expected, name);
+    }
+    try std.testing.expectError(error.InvalidName, variantTypeNameAlloc(std.testing.allocator, "Value", "_", &taken));
+}

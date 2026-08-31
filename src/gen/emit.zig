@@ -1882,6 +1882,7 @@ fn renderPublicTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
     try renderGoHandles(allocator, writer, program, options);
     try renderPublicTaggedUnionAccessors(allocator, writer, program, options);
     try renderPublicSnapshots(allocator, writer, program, options);
+    try renderPublicUnionVariants(allocator, writer, program, options);
     try renderPublicValueStructs(allocator, writer, program, options);
 }
 
@@ -2025,6 +2026,146 @@ fn renderPublicSnapshots(allocator: std.mem.Allocator, writer: *std.Io.Writer, p
             );
         }
     }
+}
+
+/// Every top-level Go identifier the public package already declares. A
+/// derived variant type name is checked against this so the sealed hierarchy
+/// can never shadow a handle, an enum constant, or a tag type.
+fn publicIdentifiersAlloc(allocator: std.mem.Allocator, program: abi.Program) ![][]u8 {
+    var names: std.ArrayList([]u8) = .empty;
+    errdefer {
+        for (names.items) |name| allocator.free(name);
+        names.deinit(allocator);
+    }
+    for (program.types) |declaration| {
+        try names.append(allocator, try allocator.dupe(u8, declaration.name));
+        switch (declaration.kind) {
+            .@"opaque" => try names.append(allocator, try std.fmt.allocPrint(allocator, "{s}Ref", .{declaration.name})),
+            .tagged_union => {
+                try names.append(allocator, try std.fmt.allocPrint(allocator, "{s}Ref", .{declaration.name}));
+                try names.append(allocator, try std.fmt.allocPrint(allocator, "{s}Snapshot", .{declaration.name}));
+                try names.append(allocator, try std.fmt.allocPrint(allocator, "{s}Variant", .{declaration.name}));
+            },
+            .@"enum" => for (declaration.fields) |field| {
+                const constant = try naming.pascalAlloc(allocator, field.name);
+                defer allocator.free(constant);
+                try names.append(allocator, try std.fmt.allocPrint(allocator, "{s}{s}", .{ declaration.name, constant }));
+            },
+            else => {},
+        }
+    }
+    return names.toOwnedSlice(allocator);
+}
+
+fn freeIdentifiers(allocator: std.mem.Allocator, names: [][]u8) void {
+    for (names) |name| allocator.free(name);
+    allocator.free(names);
+}
+
+/// The sealed variant hierarchy for every tagged union: the marker interface,
+/// one concrete type per Zig variant, and one builder both the owned and the
+/// borrowed handle delegate to. This is added next to `Tag`/`As*`/`Snapshot`,
+/// never in place of them.
+fn renderPublicUnionVariants(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
+    _ = options;
+    var identifiers = try publicIdentifiersAlloc(allocator, program);
+    defer freeIdentifiers(allocator, identifiers);
+
+    for (program.projections) |tag_projection| {
+        if (tag_projection.kind != .tag) continue;
+        const declaration = tag_projection.owner.*;
+        const tag_type = declaration.tag_type.?.@"enum".ref;
+        const recv = try receiverVariableAlloc(allocator, declaration.name);
+        defer allocator.free(recv);
+
+        // The variant names are settled up front so a later variant can see
+        // the names its siblings already claimed.
+        var variant_names: std.ArrayList([]u8) = .empty;
+        defer {
+            for (variant_names.items) |name| allocator.free(name);
+            variant_names.deinit(allocator);
+        }
+        for (declaration.fields) |field| {
+            const name = try naming.variantTypeNameAlloc(allocator, declaration.name, field.name, identifiers);
+            errdefer allocator.free(name);
+            try variant_names.append(allocator, name);
+            const owned = try allocator.dupe(u8, name);
+            errdefer allocator.free(owned);
+            identifiers = try appendIdentifier(allocator, identifiers, owned);
+        }
+
+        try writer.print(
+            "// {0s}Variant is the sealed interface every {0s} variant implements. A type\n" ++
+                "// switch over the concrete variant types reads the active payload without\n" ++
+                "// probing each projection in turn.\ntype {0s}Variant interface{{ is{0s}Variant() }}\n\n",
+            .{declaration.name},
+        );
+        for (declaration.fields, variant_names.items) |field, variant_name| {
+            const payload = field.type.?;
+            if (payload == .void) {
+                try writer.print(
+                    "// {0s} is the {1s} variant of {2s}. It carries no payload.\ntype {0s} struct{{}}\n\n",
+                    .{ variant_name, field.name, declaration.name },
+                );
+            } else {
+                try writer.print(
+                    "// {0s} is the {1s} variant of {2s}.\ntype {0s} struct {{\n\t// Value is the payload the {1s} variant carries.\n\tValue ",
+                    .{ variant_name, field.name, declaration.name },
+                );
+                try writePayloadType(writer, payload);
+                try writer.writeAll("\n}\n\n");
+            }
+            try writer.print("func ({0s}) is{1s}Variant() {{}}\n\n", .{ variant_name, declaration.name });
+        }
+
+        // One builder per union: the tag read picks the single projection the
+        // active variant needs, so reading never costs one call per variant.
+        try writer.print(
+            "func zigo{0s}Variant(receiver zigoHandle) ({0s}Variant, error) {{\n" ++
+                "\ttag, err := zigo{0s}Tag(receiver)\n\tif err != nil {{\n\t\treturn nil, err\n\t}}\n\tswitch tag {{\n",
+            .{declaration.name},
+        );
+        for (declaration.fields, variant_names.items) |field, variant_name| {
+            const tag_constant = try naming.pascalAlloc(allocator, field.name);
+            defer allocator.free(tag_constant);
+            try writer.print("\tcase {s}{s}:\n", .{ tag_type, tag_constant });
+            if (field.type.? == .void) {
+                try writer.print("\t\treturn {s}{{}}, nil\n", .{variant_name});
+                continue;
+            }
+            try writer.print(
+                "\t\tpayload, matched, err := zigo{0s}As{1s}(receiver)\n\t\tif err != nil {{\n\t\t\treturn nil, err\n\t\t}}\n" ++
+                    "\t\tif !matched {{\n\t\t\treturn nil, zigoProjectionError(\"{0s}.Variant\", zigoProjectionMismatch)\n\t\t}}\n" ++
+                    "\t\treturn {2s}{{Value: payload}}, nil\n",
+                .{ declaration.name, tag_constant, variant_name },
+            );
+        }
+        try writer.print(
+            "\tdefault:\n\t\treturn nil, zigoProjectionError(\"{0s}.Variant\", zigoProjectionMismatch)\n\t}}\n}}\n\n",
+            .{declaration.name},
+        );
+
+        inline for (.{ false, true }) |borrowed| {
+            const suffix = if (borrowed) "Ref" else "";
+            try writer.print(
+                "// Variant returns the active variant as a concrete {1s}Variant, or a typed\n" ++
+                    "// lifecycle/native error.\nfunc ({0s} *{1s}{2s}) Variant() ({1s}Variant, error) {{ return zigo{1s}Variant({0s}) }}\n\n",
+                .{ recv, declaration.name, suffix },
+            );
+            try writer.print(
+                "// MustVariant returns the active variant as a concrete {1s}Variant and panics\n" ++
+                    "// with a typed error on failure.\nfunc ({0s} *{1s}{2s}) MustVariant() {1s}Variant {{ return zigoMust(zigo{1s}Variant({0s})) }}\n\n",
+                .{ recv, declaration.name, suffix },
+            );
+        }
+    }
+}
+
+fn appendIdentifier(allocator: std.mem.Allocator, names: [][]u8, name: []u8) ![][]u8 {
+    var list: std.ArrayList([]u8) = .fromOwnedSlice(names);
+    errdefer list.deinit(allocator);
+    try list.append(allocator, name);
+    return list.toOwnedSlice(allocator);
 }
 
 fn renderPublicErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
