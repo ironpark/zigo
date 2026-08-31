@@ -86,6 +86,8 @@ func TestPuregoTaggedUnion(t *testing.T) {
 	}
 
 	assertSignalSnapshots(t)
+	assertValueVariants(t)
+	assertSignalVariants(t)
 }
 
 // must unwraps a generated call whose only failure mode in these tests would be

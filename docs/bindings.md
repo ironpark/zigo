@@ -189,6 +189,36 @@ borrowed `*TRef`입니다. union 자체를 함수 값으로 직접 전달하면 
 기존 순서·tag·payload를 보존한 끝부분 variant 추가는 compatible append입니다. 삭제,
 재정렬, 이름·tag·payload 변경은 breaking입니다.
 
+### Variant 타입과 type switch
+
+같은 union에 sealed interface 표현도 함께 생성됩니다. `Tag()` 뒤에 맞는 `As*`를
+찾아 부르는 대신 type switch 하나로 읽습니다.
+
+- sealed interface `ValueVariant`
+- variant별 concrete type `Value<Variant>`. payload는 exported field `Value`이고,
+  payload가 없는 variant는 빈 struct입니다.
+- `Variant() (ValueVariant, error)`와 `MustVariant()`
+
+```go
+switch active := value.MustVariant().(type) {
+case ValueInteger:
+    fmt.Println(active.Value)
+case ValueChild:
+    // borrowed *ChildRef. receiver가 열려 있는 동안만 유효합니다.
+    use(active.Value)
+case ValueNone:
+    fmt.Println("none")
+}
+```
+
+읽기 전용 표현이며 variant type으로 union을 만들거나 설정할 수는 없습니다. payload
+사본과 수명 규칙은 `As*`와 같습니다. 숫자 slice는 호출마다 복사되고, handle payload는
+receiver에 수명이 묶인 borrowed `*TRef`입니다. native 호출 횟수는 tag 한 번과 활성
+variant의 projection 한 번이며, variant 수만큼 probe하지 않습니다.
+
+variant type 이름이 이미 생성된 다른 이름과 겹치면 `Variant` 접미사, 그다음 숫자
+접미사로 결정적으로 회피합니다.
+
 ## Tagged union snapshot
 
 작고 모양이 고정된 scalar union을 자주 읽는다면 snapshot을 추가할 수 있습니다.
@@ -208,6 +238,9 @@ if ticks, ok := snapshot.Ticks(); ok {
     fmt.Println(snapshot.Tag(), ticks)
 }
 ```
+
+snapshot을 쓰는 union은 `Variant()`도 이 한 번의 호출로 만들어집니다. tag를 따로
+읽지 않습니다.
 
 모든 payload가 `void`, bool, 정수/부동소수 scalar 또는 등록 enum이어야 합니다. 중첩
 aggregate, slice, handle, optional, error union, callback은 `ZIGO011`로 거부됩니다. `tag`라는

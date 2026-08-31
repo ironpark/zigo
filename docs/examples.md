@@ -55,7 +55,7 @@ zig build purego-go purego-go-verify
 | [07-event-queue](../examples/07-event-queue) | 이벤트 큐 수명주기, observer 콜백, `auto_cleanup`, extern struct 값, cgo·purego 병행 |
 | [08-telemetry-hub](../examples/08-telemetry-hub) | 51개 함수 자동 발견, 여러 enum/error set, purego 자동 로딩과 비공개 로더 |
 | [09-type-relations](../examples/09-type-relations) | 한 바인딩 문서의 opaque 타입 2종과 borrowed 타입 간 참조 |
-| [10-tagged-union](../examples/10-tagged-union) | projection 방식의 `Tag`/`As*`와 값 snapshot 방식의 `Snapshot()` |
+| [10-tagged-union](../examples/10-tagged-union) | projection 방식의 `Tag`/`As*`, 값 snapshot 방식의 `Snapshot()`, sealed variant 방식의 `Variant()` |
 
 예제를 복사해 시작하기보다, 각 예제의 `build.zig`와 `src/bindings.zig`에서 필요한 부분만
 현재 프로젝트로 옮기는 편이 package path와 ABI 정책을 명확하게 유지하기 쉽습니다.
