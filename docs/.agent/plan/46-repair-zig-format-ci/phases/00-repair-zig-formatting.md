@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T17:55:09Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: CI와 동일한 format check 및 `zig build test --summary all`이 성공한다.
 > NEXT: none
