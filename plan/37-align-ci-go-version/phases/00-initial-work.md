@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T07:23:43Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Both CI jobs install Go 1.26.x, the workflow no longer selects Go 1.24.x, and the scoped fix is committed.
 > NEXT: none

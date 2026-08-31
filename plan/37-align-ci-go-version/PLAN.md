@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-08-31T07:23:43Z"
 description: Align example Go module requirements with the Go 1.24 CI toolchain.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-31T07:20:30Z"
 ---
 > NEXT: Upgrade both CI jobs to Go 1.26.x and verify the workflow. ([Phase 0](phases/00-initial-work.md))
 
 # Phases
 
-- [ ] [Phase 00: Initial Work](phases/00-initial-work.md)
+- [x] [Phase 00: Initial Work](phases/00-initial-work.md)
 
 # Shared Verification
 
