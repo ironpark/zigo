@@ -1,5 +1,16 @@
 const std = @import("std");
 
+/// purego release the generator emits bindings for and validates against.
+pub const purego_module = "github.com/ebitengine/purego";
+pub const purego_version = "v0.10.2";
+
+/// Native platforms the purego backend supports. `build.zig` applies it to the
+/// requested target; `doctor` applies it to the host it runs on.
+pub fn puregoTargetSupported(target: std.Target) bool {
+    return (target.os.tag == .macos or target.os.tag == .linux) and
+        (target.cpu.arch == .x86_64 or target.cpu.arch == .aarch64);
+}
+
 pub const RawPackageError = error{
     InvalidPath,
     InvalidComponent,
@@ -69,4 +80,20 @@ test "raw package names reject Go keywords" {
 test "Go identifier validation covers keywords and boundaries" {
     for ([_][]const u8{ "raw", "native_api", "_private", "x9" }) |name| try std.testing.expect(isGoIdentifier(name));
     for ([_][]const u8{ "", "_", "type", "9raw", "raw-name" }) |name| try std.testing.expect(!isGoIdentifier(name));
+}
+
+test "purego target support covers the documented desktop matrix" {
+    var target = @import("builtin").target;
+    for ([_]std.Target.Os.Tag{ .macos, .linux }) |os| {
+        for ([_]std.Target.Cpu.Arch{ .aarch64, .x86_64 }) |arch| {
+            target.os.tag = os;
+            target.cpu.arch = arch;
+            try std.testing.expect(puregoTargetSupported(target));
+        }
+    }
+    target.os.tag = .windows;
+    try std.testing.expect(!puregoTargetSupported(target));
+    target.os.tag = .linux;
+    target.cpu.arch = .riscv64;
+    try std.testing.expect(!puregoTargetSupported(target));
 }

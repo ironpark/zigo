@@ -17,11 +17,12 @@ if [[ ! -f "$library" ]]; then
   exit 1
 fi
 
-case "$(uname -s)" in
+os=$(uname -s)
+case "$os" in
   Darwin) expected_suffix=.dylib ;;
   Linux) expected_suffix=.so ;;
   *)
-    echo "FAIL platform: $(uname -s) is not a supported zigo shared-library platform"
+    echo "FAIL platform: $os is not a supported zigo shared-library platform"
     exit 1
     ;;
 esac
@@ -32,17 +33,18 @@ if [[ "$library" != *"$expected_suffix" ]]; then
 fi
 echo "PASS artifact: $library"
 
-if [[ "$(uname -s)" == Darwin ]]; then
+if [[ "$os" == Darwin ]]; then
   # The first otool line echoes the inspected path, which is itself inside zig-out.
   dependencies=$(otool -L "$library" | tail -n +2)
-  # Mach-O symbol names carry a leading underscore that ELF names do not.
-  defined=$(nm -gU "$library" | awk '{print $NF}' | sed 's/^_//')
-  undefined=$(nm -u "$library" | awk '{print $NF}' | sed 's/^_//')
+  # Mach-O names carry a leading underscore that ELF names do not; undefined
+  # symbols are the ones typed `U`.
+  symbols=$(nm -g "$library" | sed 's/^_//;s/ _/ /')
 else
   dependencies=$(objdump -p "$library" | grep -E 'NEEDED|RUNPATH|RPATH' || true)
-  defined=$(nm -D --defined-only "$library" | awk '{print $NF}')
-  undefined=$(nm -D --undefined-only "$library" | awk '{print $NF}')
+  symbols=$(nm -D "$library")
 fi
+defined=$(awk '$(NF-1) != "U" {print $NF}' <<<"$symbols")
+undefined=$(awk '$(NF-1) == "U" {print $NF}' <<<"$symbols")
 
 if grep -qE '\.zig-cache|zig-out' <<<"$dependencies"; then
   echo "FAIL dependencies: a build-cache path is baked into the artifact"

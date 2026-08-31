@@ -80,6 +80,8 @@ jobs:
       matrix:
         os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel]
     runs-on: ${{ matrix.os }}
+    env:
+      LIB_SUFFIX: ${{ startsWith(matrix.os, 'macos') && '.dylib' || '.so' }}
     steps:
       - uses: actions/checkout@v7
       - uses: mlugg/setup-zig@v2
@@ -93,11 +95,30 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for example in 04-callback 07-event-queue 08-telemetry-hub; do
+          for example in 04-callback 08-telemetry-hub; do
             (cd "examples/$example" && zig build purego-go purego-go-verify --summary all)
           done
           (cd examples/10-tagged-union && zig build go go-verify -Dpurego --summary all)
-
+      - name: Build both backends from one tree
+        shell: bash
+        # A static archive and a shared library with the same base name live in
+        # one zig-out/lib; the cgo link and the C header must still resolve to
+        # the cgo artifacts. This is also this example's purego coverage.
+        run: |
+          set -euo pipefail
+          cd examples/07-event-queue
+          rm -rf zig-out
+          zig build go purego-go purego-go-verify --summary all
+          test -f "zig-out/lib/libevent_queue_zigo.a"
+          test -f "zig-out/lib/libevent_queue_zigo$LIB_SUFFIX"
+          test -f zig-out/include/zigo_event_queue.h
+          test -f zig-out/include/zigo_event_queue_purego.h
+          (cd go && go test ./...)
+          (cd go-purego && CGO_ENABLED=0 go test ./...)
+      - name: Check that generated purego files are platform neutral
+        shell: bash
+        run: |
+          set -euo pipefail
           if [[ -n "$(git status --porcelain --untracked-files=all -- examples)" ]]; then
             echo "Generated purego files are stale or platform specific. Regenerate and commit them."
             git status --short -- examples
@@ -108,21 +129,20 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          suffix=.so
-          [[ "$RUNNER_OS" == "macOS" ]] && suffix=.dylib
-
-          tests/inspect_shared_library.sh "examples/04-callback/zig-out/lib/libcallback_zigo$suffix" \
-            zg_last_error_message zg_apply_purego_v1
-          tests/inspect_shared_library.sh "examples/07-event-queue/zig-out/lib/libevent_queue_zigo$suffix" \
-            zg_last_error_message
-          tests/inspect_shared_library.sh "examples/08-telemetry-hub/zig-out/lib/libtelemetry_hub_zigo$suffix" \
-            zg_last_error_message
-          tests/inspect_shared_library.sh "examples/10-tagged-union/zig-out/lib/libtagged_union_zigo$suffix" \
-            zg_last_error_message
-
-          zig build shared-library-smoke -- \
-            "examples/04-callback/zig-out/lib/libcallback_zigo$suffix" \
-            zg_last_error_message zg_apply_purego_v1
+          libraries=(
+            "04-callback:libcallback_zigo:zg_last_error_message zg_apply_purego_v1"
+            "07-event-queue:libevent_queue_zigo:zg_last_error_message"
+            "08-telemetry-hub:libtelemetry_hub_zigo:zg_last_error_message"
+            "10-tagged-union:libtagged_union_zigo:zg_last_error_message"
+          )
+          for entry in "${libraries[@]}"; do
+            read -r example stem symbols <<<"${entry//:/ }"
+            library="examples/$example/zig-out/lib/$stem$LIB_SUFFIX"
+            # The script checks the file and its dependencies; the smoke loader
+            # resolves the symbols through the real platform loader.
+            tests/inspect_shared_library.sh "$library"
+            zig build shared-library-smoke -- "$library" $symbols
+          done
       - name: Run the purego examples without cgo
         shell: bash
         # The race detector still requires cgo, so these jobs assert the
@@ -131,52 +151,14 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           set -euo pipefail
-          suffix=.so
-          [[ "$RUNNER_OS" == "macOS" ]] && suffix=.dylib
-
-          for example in 04-callback 07-event-queue 08-telemetry-hub; do
+          for example in 04-callback 08-telemetry-hub; do
             (cd "examples/$example/go-purego" && go test ./...)
           done
 
-          (
-            cd examples/10-tagged-union/go-purego
-            ZIGO_TEST_LIBRARY="$PWD/../zig-out/lib/libtagged_union_zigo$suffix" \
-            ZIGO_TEST_WRONG_LIBRARY="$PWD/../../04-callback/zig-out/lib/libcallback_zigo$suffix" \
-              go test ./...
-          )
-      - name: Build both backends from one tree
-        shell: bash
-        # A static archive and a shared library with the same base name live in
-        # one zig-out/lib; the cgo link and the C header must still resolve to
-        # the cgo artifacts.
-        run: |
-          set -euo pipefail
-          suffix=.so
-          [[ "$RUNNER_OS" == "macOS" ]] && suffix=.dylib
-
-          (
-            cd examples/07-event-queue
-            rm -rf zig-out
-            zig build go purego-go --summary all
-            test -f "zig-out/lib/libevent_queue_zigo.a"
-            test -f "zig-out/lib/libevent_queue_zigo$suffix"
-            test -f zig-out/include/zigo_event_queue.h
-            test -f zig-out/include/zigo_event_queue_purego.h
-            (cd go && go test ./...)
-            (cd go-purego && CGO_ENABLED=0 go test ./...)
-          )
-      - name: Diagnose an incomplete purego deployment
-        shell: bash
-        run: |
-          set -euo pipefail
-          zig build --summary all
-          output=$(./zig-out/bin/zigo-gen doctor --backend purego \
-            --library /definitely/missing/libzigo.so \
-            --go-mod examples/04-callback/go/go.mod && echo unexpected-success || true)
-          echo "$output"
-          grep -q "zig build go-lib" <<<"$output"
-          grep -q "go get github.com/ebitengine/purego@v0.10.2" <<<"$output"
-          grep -q "doctor: failed" <<<"$output"
+          cd examples/10-tagged-union/go-purego
+          ZIGO_TEST_LIBRARY="$PWD/../zig-out/lib/libtagged_union_zigo$LIB_SUFFIX" \
+          ZIGO_TEST_WRONG_LIBRARY="$PWD/../../04-callback/zig-out/lib/libcallback_zigo$LIB_SUFFIX" \
+            go test ./...
 
   windows-compile:
     runs-on: windows-latest

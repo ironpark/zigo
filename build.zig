@@ -175,6 +175,7 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/gen/doctor.zig"),
         .target = target,
         .optimize = optimize,
+        .imports = &.{.{ .name = "build_options", .module = build_options_module }},
     });
     const tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("tests/test.zig"),
@@ -453,10 +454,9 @@ fn matchesAnyFilter(name: []const u8, filters: []const []const u8) bool {
 pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     if (options.backend == .purego) {
         if (options.link_mode != .dynamic) @panic("purego backend requires .link_mode = .dynamic");
-        const target = options.target.result;
-        if ((target.os.tag != .macos and target.os.tag != .linux) or
-            (target.cpu.arch != .aarch64 and target.cpu.arch != .x86_64))
+        if (!build_options.puregoTargetSupported(options.target.result))
             @panic("purego backend supports native macOS/Linux on amd64/arm64 only");
+        const target = options.target.result;
         if (!isRunnableOnHost(target, b.graph.host.result))
             @panic("purego backend requires the native host target");
     }
@@ -631,7 +631,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         error.FileNotFound => update.addBytesToSource(b.fmt("module {s}\n\ngo {s}\n{s}", .{
             options.go_module,
             if (options.auto_cleanup) "1.24" else "1.23",
-            if (options.backend == .purego) "\nrequire github.com/ebitengine/purego v0.10.2\n" else "",
+            if (options.backend == .purego) b.fmt("\nrequire {s} {s}\n", .{ build_options.purego_module, build_options.purego_version }) else "",
         }), go_mod_path),
         else => @panic("unable to inspect go.mod"),
     };
@@ -641,8 +641,8 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
             else => @panic("unable to read go.mod for purego dependency validation"),
         };
         if (go_mod) |contents| {
-            if (std.mem.indexOf(u8, contents, "github.com/ebitengine/purego") == null)
-                @panic("purego backend requires github.com/ebitengine/purego v0.10.2; run `go get github.com/ebitengine/purego@v0.10.2`");
+            if (std.mem.indexOf(u8, contents, build_options.purego_module) == null)
+                std.debug.panic("purego backend requires {0s} {1s}; run `go get {0s}@{1s}`", .{ build_options.purego_module, build_options.purego_version });
         }
     }
     if (options.backend == .purego) {
@@ -762,6 +762,7 @@ fn addGenerator(
 }
 
 const GeneratorModules = struct {
+    build_options: *std.Build.Module,
     semantic: *std.Build.Module,
     abi: *std.Build.Module,
     diagnostic: *std.Build.Module,
@@ -777,6 +778,11 @@ fn createGeneratorModules(
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
 ) GeneratorModules {
+    const build_options_module = b.createModule(.{
+        .root_source_file = source_root.path(b, "build_options.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     const semantic_module = b.createModule(.{
         .root_source_file = source_root.path(b, "gen/ir/semantic.zig"),
         .target = target,
@@ -821,6 +827,7 @@ fn createGeneratorModules(
         },
     });
     return .{
+        .build_options = build_options_module,
         .semantic = semantic_module,
         .abi = abi_module,
         .diagnostic = diagnostic_module,
@@ -845,6 +852,7 @@ fn addGeneratorWithModules(
             .target = target,
             .optimize = optimize,
             .imports = &.{
+                .{ .name = "build_options", .module = modules.build_options },
                 .{ .name = "semantic", .module = modules.semantic },
                 .{ .name = "abi", .module = modules.abi },
                 .{ .name = "diagnostic", .module = modules.diagnostic },
