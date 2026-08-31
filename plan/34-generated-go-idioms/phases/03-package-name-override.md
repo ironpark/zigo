@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-31T07:21:32Z"
 depends_on:
 - "34-generated-go-idioms#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: A binding set can generate an underscore-free package name, the default output is unchanged, an
 > NEXT: none

@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T07:21:32Z"
 description: "Make generated Go read like hand-written Go: camelCase identifiers, keyword-safe names, sentence GoDoc, canonical formatting without an external gofmt, and a package name override"
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-31T06:42:53Z"
 ---
 > NEXT: Emit canonical Go so generated files no longer depend on an external gofmt. ([Phase 0](phases/00-canonical-formatting.md))
@@ -10,7 +11,7 @@ registered_at: "2026-08-31T06:42:53Z"
 - [x] [Phase 00: Deterministic Formatting](phases/00-canonical-formatting.md)
 - [x] [Phase 01: Go Naming for the Public API](phases/01-public-naming.md)
 - [x] [Phase 02: Readable Comments and Diagnostics](phases/02-comments-and-diagnostics.md)
-- [ ] [Phase 03: Public Package Name Override](phases/03-package-name-override.md)
+- [x] [Phase 03: Public Package Name Override](phases/03-package-name-override.md)
 
 # Shared Verification
 
