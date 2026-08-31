@@ -7,7 +7,7 @@ language: en
 # Where plans are stored, relative to this file. List more than one to keep
 # active and archived plans apart.
 plans_dirs:
-  - plan
+  - docs/.agent/plan
 
 # Paths the done-check ignores, so build output does not make a phase look
 # unfinished.
