@@ -2118,27 +2118,51 @@ fn renderPublicUnionVariants(allocator: std.mem.Allocator, writer: *std.Io.Write
             try writer.print("func ({0s}) is{1s}Variant() {{}}\n\n", .{ variant_name, declaration.name });
         }
 
-        // One builder per union: the tag read picks the single projection the
-        // active variant needs, so reading never costs one call per variant.
-        try writer.print(
-            "func zigo{0s}Variant(receiver zigoHandle) ({0s}Variant, error) {{\n" ++
-                "\ttag, err := zigo{0s}Tag(receiver)\n\tif err != nil {{\n\t\treturn nil, err\n\t}}\n\tswitch tag {{\n",
-            .{declaration.name},
-        );
-        for (declaration.fields, variant_names.items) |field, variant_name| {
-            const tag_constant = try naming.pascalAlloc(allocator, field.name);
-            defer allocator.free(tag_constant);
-            try writer.print("\tcase {s}{s}:\n", .{ tag_type, tag_constant });
-            if (field.type.? == .void) {
-                try writer.print("\t\treturn {s}{{}}, nil\n", .{variant_name});
-                continue;
-            }
+        // One builder per union. A union whose payloads all fit the value
+        // snapshot reads tag and payload together in a single native call;
+        // any other union reads the tag and then calls only the projection
+        // the active variant needs, so reading never costs one call per
+        // variant either way.
+        const snapshot = snapshotForOwner(program, declaration.name);
+        if (snapshot) |record| {
             try writer.print(
-                "\t\tpayload, matched, err := zigo{0s}As{1s}(receiver)\n\t\tif err != nil {{\n\t\t\treturn nil, err\n\t\t}}\n" ++
-                    "\t\tif !matched {{\n\t\t\treturn nil, zigoProjectionError(\"{0s}.Variant\", zigoProjectionMismatch)\n\t\t}}\n" ++
-                    "\t\treturn {2s}{{Value: payload}}, nil\n",
-                .{ declaration.name, tag_constant, variant_name },
+                "func zigo{0s}Variant(receiver zigoHandle) ({0s}Variant, error) {{\n" ++
+                    "\tdata, err := zigo{0s}Snapshot(receiver)\n\tif err != nil {{\n\t\treturn nil, err\n\t}}\n\tswitch data.tag {{\n",
+                .{declaration.name},
             );
+            for (declaration.fields, variant_names.items) |field, variant_name| {
+                const tag_constant = try naming.pascalAlloc(allocator, field.name);
+                defer allocator.free(tag_constant);
+                try writer.print("\tcase {s}{s}:\n", .{ tag_type, tag_constant });
+                if (field.type.? == .void) {
+                    try writer.print("\t\treturn {s}{{}}, nil\n", .{variant_name});
+                    continue;
+                }
+                const member = try naming.camelAlloc(allocator, snapshotMember(record, field.name).?.name);
+                defer allocator.free(member);
+                try writer.print("\t\treturn {s}{{Value: data.{s}}}, nil\n", .{ variant_name, member });
+            }
+        } else {
+            try writer.print(
+                "func zigo{0s}Variant(receiver zigoHandle) ({0s}Variant, error) {{\n" ++
+                    "\ttag, err := zigo{0s}Tag(receiver)\n\tif err != nil {{\n\t\treturn nil, err\n\t}}\n\tswitch tag {{\n",
+                .{declaration.name},
+            );
+            for (declaration.fields, variant_names.items) |field, variant_name| {
+                const tag_constant = try naming.pascalAlloc(allocator, field.name);
+                defer allocator.free(tag_constant);
+                try writer.print("\tcase {s}{s}:\n", .{ tag_type, tag_constant });
+                if (field.type.? == .void) {
+                    try writer.print("\t\treturn {s}{{}}, nil\n", .{variant_name});
+                    continue;
+                }
+                try writer.print(
+                    "\t\tpayload, matched, err := zigo{0s}As{1s}(receiver)\n\t\tif err != nil {{\n\t\t\treturn nil, err\n\t\t}}\n" ++
+                        "\t\tif !matched {{\n\t\t\treturn nil, zigoProjectionError(\"{0s}.Variant\", zigoProjectionMismatch)\n\t\t}}\n" ++
+                        "\t\treturn {2s}{{Value: payload}}, nil\n",
+                    .{ declaration.name, tag_constant, variant_name },
+                );
+            }
         }
         try writer.print(
             "\tdefault:\n\t\treturn nil, zigoProjectionError(\"{0s}.Variant\", zigoProjectionMismatch)\n\t}}\n}}\n\n",
@@ -2159,6 +2183,16 @@ fn renderPublicUnionVariants(allocator: std.mem.Allocator, writer: *std.Io.Write
             );
         }
     }
+}
+
+/// The value snapshot lowered for one tagged union, when the union has one.
+/// Its single native call carries the tag and every payload, so the variant
+/// builder can skip the projections entirely.
+fn snapshotForOwner(program: abi.Program, name: []const u8) ?abi.AbiSnapshot {
+    for (program.snapshots) |snapshot| {
+        if (std.mem.eql(u8, snapshot.owner.name, name)) return snapshot;
+    }
+    return null;
 }
 
 fn appendIdentifier(allocator: std.mem.Allocator, names: [][]u8, name: []u8) ![][]u8 {
@@ -3477,6 +3511,22 @@ test "tagged union emitters generate checked pointer-only projections" {
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, public_types, "ValueProjectInteger(ptr)"));
     try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *ValueRef) AsInteger() (int32, bool, error) { return zigoValueAsInteger(v) }") != null);
 
+    // The sealed variant hierarchy sits beside the projections: one concrete
+    // type per Zig variant, and a builder that reads the tag and then only
+    // the projection the active variant needs.
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "type ValueVariant interface{ isValueVariant() }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "type ValueNone struct{}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (ValueNone) isValueVariant() {}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "type ValueChild struct {\n\t// Value is the payload the child variant carries.\n\tValue *ChildRef\n}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "type HTTPResultURLValue struct {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "tag, err := zigoValueTag(receiver)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "payload, matched, err := zigoValueAsInteger(receiver)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) Variant() (ValueVariant, error) { return zigoValueVariant(v) }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *ValueRef) Variant() (ValueVariant, error) { return zigoValueVariant(v) }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) MustVariant() ValueVariant { return zigoMust(zigoValueVariant(v)) }") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *ValueRef) MustVariant() ValueVariant { return zigoMust(zigoValueVariant(v)) }") != null);
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, public_types, "func zigoValueVariant(receiver zigoHandle)"));
+
     const public_errors = try renderForTest(renderPublicErrors, program);
     defer std.testing.allocator.free(public_errors);
     try std.testing.expect(std.mem.indexOf(u8, public_errors, "var ErrInvalidHandle = errors.New") != null);
@@ -3490,6 +3540,69 @@ fn renderForTest(render: *const fn (std.mem.Allocator, *std.Io.Writer, abi.Progr
     errdefer output.deinit();
     try render(std.testing.allocator, &output.writer, program, .{ .go_module = "example.com/variant" });
     return output.toOwnedSlice();
+}
+
+test "snapshot-backed unions build their variants from one native call" {
+    const document: semantic.Semantic = .{
+        .package = "signal",
+        .prefix = "zg",
+        .types = &.{
+            .{
+                .access = .snapshot,
+                .fields = &.{
+                    .{ .name = "idle", .type = .{ .void = {} }, .value = 0 },
+                    .{ .name = "ticks", .type = .{ .int = .{ .bits = 32, .signed = false } }, .value = 1 },
+                    .{ .name = "level", .type = .{ .float = .{ .bits = 64 } }, .value = 2 },
+                    .{ .name = "mode", .type = .{ .@"enum" = .{ .ref = "Mode" } }, .value = 3 },
+                    .{ .name = "active", .type = .{ .bool = {} }, .value = 4 },
+                },
+                .kind = .tagged_union,
+                .name = "Signal",
+                .tag_type = .{ .@"enum" = .{ .ref = "SignalTag" } },
+            },
+            .{
+                .fields = &.{
+                    .{ .name = "idle", .value = 0 },
+                    .{ .name = "ticks", .value = 1 },
+                    .{ .name = "level", .value = 2 },
+                    .{ .name = "mode", .value = 3 },
+                    .{ .name = "active", .value = 4 },
+                },
+                .kind = .@"enum",
+                .name = "SignalTag",
+                .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+            },
+            .{
+                .fields = &.{ .{ .name = "idle", .value = 0 }, .{ .name = "active", .value = 1 } },
+                .kind = .@"enum",
+                .name = "Mode",
+                .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+            },
+        },
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try @import("lower.zig").semanticDocument(arena.allocator(), document, "signal", "zg", &.{});
+
+    const public_types = try renderForTest(renderPublicTypes, program);
+    defer std.testing.allocator.free(public_types);
+
+    const builder = std.mem.indexOf(u8, public_types, "func zigoSignalVariant(receiver zigoHandle) (SignalVariant, error) {").?;
+    const builder_end = std.mem.indexOfPos(u8, public_types, builder, "\n}\n").?;
+    const body = public_types[builder..builder_end];
+    // The whole variant costs one native call: the snapshot read. Not one
+    // projection per variant, and not a tag read on top of it.
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, body, "zigoSignalSnapshot(receiver)"));
+    try std.testing.expectEqual(@as(usize, 0), std.mem.count(u8, body, "zigoSignalTag(receiver)"));
+    try std.testing.expectEqual(@as(usize, 0), std.mem.count(u8, body, "zigoSignalAs"));
+    try std.testing.expect(std.mem.indexOf(u8, body, "return SignalIdle{}, nil") != null);
+    try std.testing.expect(std.mem.indexOf(u8, body, "return SignalLevel{Value: data.level}, nil") != null);
+    try std.testing.expect(std.mem.indexOf(u8, body, "return SignalMode{Value: data.mode}, nil") != null);
+    try std.testing.expect(std.mem.indexOf(u8, body, "return SignalActive{Value: data.active}, nil") != null);
+    // The projection surface stays: the fast path is additive.
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (s *Signal) AsTicks() (uint32, bool, error)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (s *SignalRef) MustVariant() SignalVariant { return zigoMust(zigoSignalVariant(s)) }") != null);
 }
 
 test "a colocated internal loader keeps the loader out of the exported names" {

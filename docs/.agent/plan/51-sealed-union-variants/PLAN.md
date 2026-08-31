@@ -7,7 +7,7 @@ registered_at: "2026-08-31T20:02:17Z"
 
 # Phases
 
-- [ ] [Phase 00: Emit sealed variant types and the shared builder](phases/00-emit-variant-types.md)
+- [x] [Phase 00: Emit sealed variant types and the shared builder](phases/00-emit-variant-types.md)
 - [ ] [Phase 01: Snapshot fast path for scalar-only unions](phases/01-snapshot-fast-path.md)
 - [ ] [Phase 02: Regenerate examples and add type-switch coverage](phases/02-regen-and-tests.md)
 

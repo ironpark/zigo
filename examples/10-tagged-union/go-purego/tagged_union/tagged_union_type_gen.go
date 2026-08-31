@@ -984,58 +984,23 @@ type SignalActive struct {
 func (SignalActive) isSignalVariant() {}
 
 func zigoSignalVariant(receiver zigoHandle) (SignalVariant, error) {
-	tag, err := zigoSignalTag(receiver)
+	data, err := zigoSignalSnapshot(receiver)
 	if err != nil {
 		return nil, err
 	}
-	switch tag {
+	switch data.tag {
 	case SignalTagIdle:
 		return SignalIdle{}, nil
 	case SignalTagTicks:
-		payload, matched, err := zigoSignalAsTicks(receiver)
-		if err != nil {
-			return nil, err
-		}
-		if !matched {
-			return nil, zigoProjectionError("Signal.Variant", zigoProjectionMismatch)
-		}
-		return SignalTicks{Value: payload}, nil
+		return SignalTicks{Value: data.ticks}, nil
 	case SignalTagLevel:
-		payload, matched, err := zigoSignalAsLevel(receiver)
-		if err != nil {
-			return nil, err
-		}
-		if !matched {
-			return nil, zigoProjectionError("Signal.Variant", zigoProjectionMismatch)
-		}
-		return SignalLevel{Value: payload}, nil
+		return SignalLevel{Value: data.level}, nil
 	case SignalTagOffset:
-		payload, matched, err := zigoSignalAsOffset(receiver)
-		if err != nil {
-			return nil, err
-		}
-		if !matched {
-			return nil, zigoProjectionError("Signal.Variant", zigoProjectionMismatch)
-		}
-		return SignalOffset{Value: payload}, nil
+		return SignalOffset{Value: data.offset}, nil
 	case SignalTagMode:
-		payload, matched, err := zigoSignalAsMode(receiver)
-		if err != nil {
-			return nil, err
-		}
-		if !matched {
-			return nil, zigoProjectionError("Signal.Variant", zigoProjectionMismatch)
-		}
-		return SignalMode{Value: payload}, nil
+		return SignalMode{Value: data.mode}, nil
 	case SignalTagActive:
-		payload, matched, err := zigoSignalAsActive(receiver)
-		if err != nil {
-			return nil, err
-		}
-		if !matched {
-			return nil, zigoProjectionError("Signal.Variant", zigoProjectionMismatch)
-		}
-		return SignalActive{Value: payload}, nil
+		return SignalActive{Value: data.active}, nil
 	default:
 		return nil, zigoProjectionError("Signal.Variant", zigoProjectionMismatch)
 	}

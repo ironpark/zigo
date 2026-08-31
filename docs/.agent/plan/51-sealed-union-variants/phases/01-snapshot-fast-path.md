@@ -2,7 +2,7 @@
 depends_on:
 - "51-sealed-union-variants#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Example 10's `Signal` variant builder performs a single native call
 > NEXT: none

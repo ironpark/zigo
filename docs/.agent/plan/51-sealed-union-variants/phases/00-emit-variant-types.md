@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T20:09:06Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Regenerated example 10 contains the sealed interface, all seven `Value`
 > NEXT: none
