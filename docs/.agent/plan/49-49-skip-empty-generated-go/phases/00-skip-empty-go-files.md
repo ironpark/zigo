@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T18:45:46Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 
 # Skip and prune declaration-free Go files

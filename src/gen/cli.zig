@@ -39,6 +39,9 @@ pub const Generate = struct {
     library_env_vars: ?[]const u8 = null,
     library_automatic: bool = false,
     library_exported_api: bool = true,
+    /// Generated Go is formatted through `gofmt`, so generation runs it over
+    /// its own output rather than leaving the caller to enumerate the files.
+    gofmt_executable: []const u8 = "gofmt",
 };
 
 pub const Check = struct {
@@ -97,7 +100,7 @@ pub fn writeUsage(writer: *std.Io.Writer) std.Io.Writer.Error!void {
         \\usage: zigo-gen <command> [options]
         \\
         \\commands:
-        \\  generate  --semantic <file> --output <dir> --package <name> [options]
+        \\  generate  --semantic <file> --output <dir> --package <name> [--gofmt <path>] [options]
         \\  check     --generated <dir> --source <dir>
         \\  abi-diff  --base <file> --current <file> [--base-backend cgo|purego] [--current-backend cgo|purego] [--json] [--fail-on breaking]
         \\  report    --semantic <file> [--go-module <path>] [options]
@@ -181,6 +184,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
     var raw_package_name: ?[]const u8 = null;
     var go_package: ?[]const u8 = null;
     var errors_lock_path: ?[]const u8 = null;
+    var gofmt_executable: ?[]const u8 = null;
     var raw_colocated = false;
     var raw_colocated_seen = false;
     var auto_cleanup = false;
@@ -244,6 +248,8 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
             try set(&go_package, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--library-stem")) {
             try set(&library_stem, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--gofmt")) {
+            try set(&gofmt_executable, try takeValue(args, &index));
         } else {
             return error.UnknownArgument;
         }
@@ -275,6 +281,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .library_env_vars = loading.env_vars,
         .library_automatic = loading.automatic,
         .library_exported_api = loading.exported_api,
+        .gofmt_executable = gofmt_executable orelse "gofmt",
     };
 }
 

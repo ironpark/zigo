@@ -83,6 +83,45 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         .library_automatic = options.library_automatic,
         .library_exported_api = options.library_exported_api,
     });
+    try formatGeneratedGo(allocator, io, options.output_path, options.gofmt_executable);
+}
+
+/// `gofmt` owns the formatting of generated Go: it ships with every Go
+/// distribution and its rules change between releases, so zigo formats through
+/// it rather than emitting output a newer `gofmt` would rewrite. It recurses
+/// into a directory, so one call covers whatever set of files this run wrote —
+/// nothing outside generation has to know which files those are.
+fn formatGeneratedGo(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    output_path: []const u8,
+    gofmt_executable: []const u8,
+) !void {
+    const result = std.process.run(allocator, io, .{
+        .argv = &.{ gofmt_executable, "-w", output_path },
+        .stdout_limit = .limited(1024 * 1024),
+        .stderr_limit = .limited(1024 * 1024),
+    }) catch {
+        var buffer: [512]u8 = undefined;
+        var stderr = std.Io.File.Writer.init(.stderr(), io, &buffer);
+        try stderr.interface.print(
+            "generated Go is formatted with gofmt, but '{s}' could not be run; install the Go distribution or pass --gofmt <path>\n",
+            .{gofmt_executable},
+        );
+        try stderr.interface.flush();
+        std.process.exit(1);
+    };
+    defer allocator.free(result.stdout);
+    defer allocator.free(result.stderr);
+    switch (result.term) {
+        .exited => |code| if (code == 0) return,
+        else => {},
+    }
+    var buffer: [4096]u8 = undefined;
+    var stderr = std.Io.File.Writer.init(.stderr(), io, &buffer);
+    try stderr.interface.print("gofmt failed on the generated Go:\n{s}\n", .{result.stderr});
+    try stderr.interface.flush();
+    std.process.exit(1);
 }
 
 fn runCheck(allocator: std.mem.Allocator, io: std.Io, options: cli.Check) !void {

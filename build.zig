@@ -602,6 +602,9 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     generate.addFileArg(semantic_json);
     generate.addArg("--output");
     const generated_dir = generate.addOutputDirectoryArg("bindings");
+    // Generation formats its own Go, so the set of generated files never has to
+    // be spelled out here.
+    if (options.gofmt) |gofmt| generate.addArgs(&.{ "--gofmt", gofmt });
     const cflags_override = if (options.cgo_flags) |flags| joinFlags(b, flags.cflags) else "";
     const ldflags_override = if (options.cgo_flags) |flags| joinFlags(b, flags.ldflags) else "";
     const system_ldflags = systemLibraryFlags(b, options.module);
@@ -647,11 +650,10 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     const public_type_go_path = b.fmt("{s}/{s}_type_gen.go", .{ go_package, go_package });
     const public_errors_go_path = b.fmt("{s}/{s}_errors_gen.go", .{ go_package, go_package });
     const public_helpers_go_path = b.fmt("{s}/{s}_helpers_gen.go", .{ go_package, go_package });
-    const go_sources_dir = formattedGoSources(b, generated_dir, &.{ raw_go_path, public_go_path, public_type_go_path, public_errors_go_path, public_helpers_go_path }, options.gofmt);
 
     const check = b.addRunArtifact(generator);
     check.addArgs(&.{ "check", "--generated" });
-    check.addDirectoryArg(go_sources_dir);
+    check.addDirectoryArg(generated_dir);
     check.addArg("--source");
     check.addDirectoryArg(options.go_dir);
     const report = b.addRunArtifact(generator);
@@ -713,11 +715,11 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         header_name;
     const install_header = b.addInstallHeaderFile(generated_dir.path(b, header_name), installed_header_name);
     const update = b.addUpdateSourceFiles();
-    update.addCopyFileToSource(go_sources_dir.path(b, raw_go_path), sourcePath(b, options.go_dir, raw_go_path));
-    update.addCopyFileToSource(go_sources_dir.path(b, public_go_path), sourcePath(b, options.go_dir, public_go_path));
-    update.addCopyFileToSource(go_sources_dir.path(b, public_type_go_path), sourcePath(b, options.go_dir, public_type_go_path));
-    update.addCopyFileToSource(go_sources_dir.path(b, public_errors_go_path), sourcePath(b, options.go_dir, public_errors_go_path));
-    update.addCopyFileToSource(go_sources_dir.path(b, public_helpers_go_path), sourcePath(b, options.go_dir, public_helpers_go_path));
+    update.addCopyFileToSource(generated_dir.path(b, raw_go_path), sourcePath(b, options.go_dir, raw_go_path));
+    update.addCopyFileToSource(generated_dir.path(b, public_go_path), sourcePath(b, options.go_dir, public_go_path));
+    update.addCopyFileToSource(generated_dir.path(b, public_type_go_path), sourcePath(b, options.go_dir, public_type_go_path));
+    update.addCopyFileToSource(generated_dir.path(b, public_errors_go_path), sourcePath(b, options.go_dir, public_errors_go_path));
+    update.addCopyFileToSource(generated_dir.path(b, public_helpers_go_path), sourcePath(b, options.go_dir, public_helpers_go_path));
     update.addCopyFileToSource(generated_dir.path(b, "errors.lock.json"), errors_lock_path);
     update.addCopyFileToSource(semantic_json, "zigo/semantic.json");
     const go_mod_path = sourcePath(b, options.go_dir, "go.mod");
@@ -787,27 +789,6 @@ fn libraryFilename(b: *std.Build, name: []const u8, target: std.Target, mode: Li
         .static => b.fmt("{s}{s}{s}", .{ target.libPrefix(), name, target.staticLibSuffix() }),
         .dynamic => b.fmt("{s}{s}{s}", .{ target.libPrefix(), name, target.dynamicLibSuffix() }),
     };
-}
-
-/// `gofmt` owns the formatting of generated Go. It ships with every Go
-/// distribution, and its rules change between releases, so zigo formats through
-/// it rather than committing output that a newer `gofmt` would rewrite. A
-/// missing binary fails the build instead of silently committing unformatted
-/// files that differ from another machine's.
-fn formattedGoSources(b: *std.Build, generated_dir: std.Build.LazyPath, paths: []const []const u8, gofmt_executable: ?[]const u8) std.Build.LazyPath {
-    const gofmt = if (gofmt_executable) |value|
-        value
-    else
-        b.findProgram(&.{"gofmt"}, &.{}) catch
-            @panic("gofmt is required to format generated Go; install the Go distribution or set `.gofmt = \"<path>\"`");
-    const formatted = b.addWriteFiles();
-    for (paths) |path| {
-        const run = b.addSystemCommand(&.{gofmt});
-        run.addFileArg(generated_dir.path(b, path));
-        const output = run.captureStdOut(.{ .basename = std.fs.path.basename(path), .trim_whitespace = .none });
-        _ = formatted.addCopyFile(output, path);
-    }
-    return formatted.getDirectory();
 }
 
 fn isRunnableOnHost(target: std.Target, host: std.Target) bool {

@@ -7,7 +7,7 @@ registered_at: "2026-08-31T18:35:59Z"
 
 # Phases
 
-- [ ] [Phase 00: Skip and prune declaration-free Go files](phases/00-skip-empty-go-files.md)
+- [x] [Phase 00: Skip and prune declaration-free Go files](phases/00-skip-empty-go-files.md)
 - [ ] [Phase 01: Generation formats its own Go output](phases/01-generation-formats-its-own-go-output.md)
 - [ ] [Phase 02: Publishing copies whatever generation produced](phases/02-publish-generated-go-tree.md)
 
