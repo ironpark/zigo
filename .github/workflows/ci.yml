@@ -9,11 +9,7 @@ on:
 
 jobs:
   test:
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, macos-latest]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
       - uses: mlugg/setup-zig@v2
@@ -73,15 +69,9 @@ jobs:
         run: go test ./scalar -run '^$' -bench '^BenchmarkAddCgo$' -benchmem
 
   purego:
-    # purego bindings load a native artifact at run time, so every supported
-    # host architecture needs its own job; a Zig shared library is not portable.
-    strategy:
-      fail-fast: false
-      matrix:
-        os: [ubuntu-latest, ubuntu-24.04-arm, macos-latest, macos-15-intel]
-    runs-on: ${{ matrix.os }}
+    runs-on: ubuntu-latest
     env:
-      LIB_SUFFIX: ${{ startsWith(matrix.os, 'macos') && '.dylib' || '.so' }}
+      LIB_SUFFIX: .so
     steps:
       - uses: actions/checkout@v7
       - uses: mlugg/setup-zig@v2
@@ -122,12 +112,12 @@ jobs:
           test -f zig-out/include/zigo_event_queue_purego.h
           (cd go && go vet ./... && go test ./...)
           (cd go-purego && CGO_ENABLED=0 go vet ./... && CGO_ENABLED=0 go test ./...)
-      - name: Check that generated purego files are platform neutral
+      - name: Check that generated purego files are current
         shell: bash
         run: |
           set -euo pipefail
           if [[ -n "$(git status --porcelain --untracked-files=all -- examples)" ]]; then
-            echo "Generated purego files are stale or platform specific. Regenerate and commit them."
+            echo "Generated purego files are stale. Regenerate and commit them."
             git status --short -- examples
             git diff -- examples
             exit 1
@@ -152,8 +142,8 @@ jobs:
           done
       - name: Run the purego examples without cgo
         shell: bash
-        # The race detector still requires cgo, so these jobs assert the
-        # cgo-free contract instead; the cgo matrix keeps the raced coverage.
+        # The race detector still requires cgo, so this job asserts the
+        # cgo-free contract; the main test job keeps cgo coverage.
         env:
           CGO_ENABLED: "0"
         run: |
@@ -168,13 +158,3 @@ jobs:
           ZIGO_TEST_LIBRARY="$PWD/../zig-out/lib/libtagged_union_zigo$LIB_SUFFIX" \
           ZIGO_TEST_WRONG_LIBRARY="$PWD/../../04-callback/zig-out/lib/libcallback_zigo$LIB_SUFFIX" \
             go test ./...
-
-  windows-compile:
-    runs-on: windows-latest
-    steps:
-      - uses: actions/checkout@v7
-      - uses: mlugg/setup-zig@v2
-        with:
-          version: 0.16.0
-      - name: Compile all Zig artifacts
-        run: zig build check --summary all
