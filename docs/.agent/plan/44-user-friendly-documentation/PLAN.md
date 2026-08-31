@@ -7,7 +7,7 @@ registered_at: "2026-08-31T17:20:03Z"
 
 # Phases
 
-- [ ] [Phase 00: Onboarding and navigation](phases/00-onboarding-navigation.md)
+- [x] [Phase 00: Onboarding and navigation](phases/00-onboarding-navigation.md)
 - [ ] [Phase 01: Reference split and consistency audit](phases/01-reference-split.md)
 
 # Shared Verification

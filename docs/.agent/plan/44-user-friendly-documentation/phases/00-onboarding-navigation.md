@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T17:28:07Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 새 사용자가 README에서 시작해 기본 바인딩 생성과 Go 테스트까지 끊김 없이 따라갈 수 있다.
 > NEXT: none
