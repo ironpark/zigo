@@ -16,6 +16,7 @@
 | `link_mode` | 아니요 | `.static` 또는 `.dynamic`. 기본값 `.static` |
 | `backend` | 아니요 | `.cgo` 또는 `.purego`. 기본값 `.cgo`. `.purego`는 `.link_mode = .dynamic` 필요 |
 | `library_loading` | 아니요 | purego 전용 런타임 로딩 정책. search path, 환경 변수, 자동 로딩, 로더 노출 여부 |
+| `gofmt` | 아니요 | 생성물 포맷에 사용할 `gofmt` 경로. 생략하면 `PATH`에서 찾는다 |
 | `cgo_flags` | 아니요 | 자동 계산 대신 사용할 CFLAGS와 LDFLAGS |
 | `abi_base` | 아니요 | ABI·바인딩 계약 비교에 사용할 Git ref. 생략하면 검사 비활성화 |
 | `raw_package` | 아니요 | raw Go 코드 위치. 기본값 `.internal` |
@@ -50,12 +51,12 @@ _ = admin_bindings.addStandardSteps(b, .{ .name_prefix = "admin" });
 
 `go-report`는 최종 Go 이름과 C 심볼, type representation, constructor/Close mapping,
 ownership, parameter retention과 이름 출처, 자동 tagged-union projection을 출력한다.
-`go-doctor`는 현재 target이 host에서 실행 가능한지, Go 최소 버전, gofmt를 검사하고, 선택한
+`go-doctor`는 현재 target이 host에서 실행 가능한지, Go 최소 버전, `gofmt`를 검사하고, 선택한
 백엔드에 따라 나머지 전제를 확인한다. `.cgo`에서는 `CGO_ENABLED`와 Go가 설정한 C
 컴파일러를, `.purego`에서는 호스트 플랫폼 지원 여부, `go.mod`의 purego 요구사항, 설치된
 공유 라이브러리의 존재와 실제 로드 가능 여부를 검사한다. gofmt 부재는 경고지만 cross
-target, 낮은 Go 버전, 비활성 cgo, 실행할 수 없는 C 컴파일러, 지원하지 않는 purego
-플랫폼, 없는 purego 요구사항과 로드할 수 없는 공유 라이브러리는 실패다. 자세한 내용은
+target, 낮은 Go 버전, 비활성 cgo, 실행할 수 없는 C 컴파일러, 없는 `gofmt`, 지원하지 않는
+purego 플랫폼, 없는 purego 요구사항과 로드할 수 없는 공유 라이브러리는 실패다. 자세한 내용은
 [공유 라이브러리와 purego 백엔드](purego.md)를 참고한다.
 
 ## 자동 cleanup
@@ -108,11 +109,18 @@ public 패키지와 같은 디렉터리에 둘 수도 있다.
 
 ## 생성 후 Go 포맷
 
-빌드 환경의 `PATH`에서 `gofmt` 실행 파일을 찾을 수 있으면 raw/cgo, public API, public
-error와 private helper 생성 파일을 각각 포맷한 뒤 `go_dir`에 기록한다. `go-check`도 같은
-포맷 결과를 비교한다. `gofmt`가 없으면 생성은 실패하지 않고 generator 결과를 그대로
-사용한다. generator 원문도 지원하는 생성 형태에 대해서는 gofmt-stable하게 유지하므로
-`gofmt` 유무가 `go-check` 결과를 바꾸지 않는다. 사용자 소유 Go 파일은 포맷하지 않는다.
+생성된 raw/cgo, public API, public error, private helper 파일은 `gofmt`로 포맷한 뒤
+`go_dir`에 기록하고, `go-check`도 같은 포맷 결과를 비교한다. 사용자 소유 Go 파일은
+포맷하지 않는다.
+
+`gofmt`는 **필수**다. 찾지 못하면 생성이 실패하며, `PATH` 대신 특정 실행 파일을 쓰려면
+`.gofmt = "/path/to/gofmt"`를 지정한다. `gofmt`는 모든 Go 배포판에 포함되고 zigo는 이미
+Go를 요구하므로 추가 의존성이 아니다.
+
+포맷을 generator가 직접 하지 않고 `gofmt`에 맡기는 이유는 정규 형식이 Go 릴리스마다
+바뀌기 때문이다. 예를 들어 Go 1.19는 doc comment를 다시 포맷한다. generator가 자체 규칙으로
+포맷하면 새 `gofmt`가 생성물을 "미포맷"으로 보고하게 된다. 대신 `gofmt`가 없을 때 조용히
+미포맷 결과를 커밋해 머신마다 생성물이 달라지던 동작은 제거했다.
 
 ## 링크와 cgo 플래그
 

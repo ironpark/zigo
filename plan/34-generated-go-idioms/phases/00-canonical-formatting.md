@@ -2,21 +2,22 @@
 perf_phase: false
 status: in-progress
 ---
-> DONE-WHEN: Generation with no `gofmt` on `PATH` reproduces the committed files byte for byte, `gofmt -l`
-> NEXT: none
 
-# Canonical Formatting Without gofmt
+# Deterministic Formatting
 
 ## Planned Work
 
-- Emit already-canonical Go: expanded statements and blocks, and `gofmt` alignment for struct
-  fields, const and var blocks.
-- Remove the `gofmt` pass from the build graph along with the options and diagnostics that exist
-  only to feed it, keeping the committed files unchanged.
-- Add a check that every generated file equals its `gofmt` output, so a formatting regression fails
-  the build instead of being repaired silently.
+- Measurement changed the approach. Emitting canonical Go by hand would make zigo own a formatting
+  contract that `gofmt` changes between Go releases: Go 1.19 reformats doc comments, so
+  hand-canonical output would be reported unformatted by a newer `gofmt`. `gofmt` also ships with
+  every Go distribution, which zigo already requires. The dependency is therefore kept and the
+  silent fallback that makes output environment dependent is removed.
+- Fail generation with an actionable message when `gofmt` cannot be found, instead of silently
+  committing unformatted output, and let a project point at a specific `gofmt`.
+- Make `go-doctor` report a missing `gofmt` as a failure rather than a warning, and update the
+  documentation that calls formatting optional.
 
 ## Done When
 
-- Generation with no `gofmt` on `PATH` reproduces the committed files byte for byte, `gofmt -l`
-  reports nothing for every generated directory, and every example still passes `go-check`.
+- Generation without `gofmt` fails and names the fix, generation with it is unchanged, doctor
+  reports the new requirement, and every example still passes `go-check` with identical files.

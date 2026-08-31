@@ -205,10 +205,13 @@ pub fn render(writer: *std.Io.Writer, probe: Probe, auto_cleanup: bool, backend:
         try writer.writeAll("FAIL C compiler: unable to query `go env CC`; install a native C toolchain\n");
     }
 
-    if (probe.gofmt_available)
-        try writer.writeAll("PASS gofmt: available\n")
-    else
-        try writer.writeAll("WARN gofmt: unavailable; generation remains supported but install gofmt for standard formatting\n");
+    if (probe.gofmt_available) {
+        try writer.writeAll("PASS gofmt: available\n");
+    } else {
+        // Generation formats through gofmt, so a missing binary is not optional.
+        healthy = false;
+        try writer.writeAll("FAIL gofmt: unavailable; generated Go is formatted with gofmt, so install the Go distribution or set `.gofmt`\n");
+    }
 
     try writer.writeAll(if (healthy) "doctor: ok\n" else "doctor: failed\n");
     return healthy;
@@ -292,10 +295,10 @@ test "doctor distinguishes required failures from optional gofmt" {
         .cgo_enabled = "1",
         .c_compiler = "cc",
         .c_compiler_available = true,
-        .gofmt_available = false,
+        .gofmt_available = true,
         .native_target = true,
     }, true, .cgo));
-    try std.testing.expect(std.mem.indexOf(u8, healthy_output.written(), "WARN gofmt") != null);
+    try std.testing.expect(std.mem.indexOf(u8, healthy_output.written(), "PASS gofmt") != null);
     try std.testing.expect(std.mem.indexOf(u8, healthy_output.written(), "doctor: ok") != null);
 
     var failed_output: std.Io.Writer.Allocating = .init(std.testing.allocator);
@@ -312,6 +315,19 @@ test "doctor distinguishes required failures from optional gofmt" {
     try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "CGO_ENABLED=1") != null);
     try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "missing-cc is configured") != null);
     try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "cross compilation is not supported") != null);
+
+    // A missing gofmt is a failure: generation formats through it.
+    var unformatted: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer unformatted.deinit();
+    try std.testing.expect(!try render(&unformatted.writer, .{
+        .go_version = "go version go1.24.2 linux/amd64",
+        .cgo_enabled = "1",
+        .c_compiler = "cc",
+        .c_compiler_available = true,
+        .gofmt_available = false,
+        .native_target = true,
+    }, false, .cgo));
+    try std.testing.expect(std.mem.indexOf(u8, unformatted.written(), "FAIL gofmt") != null);
 }
 
 test "purego doctor does not require cgo or a C compiler" {

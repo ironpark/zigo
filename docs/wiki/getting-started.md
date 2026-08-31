@@ -3,7 +3,7 @@
 ## 준비 사항
 
 - Zig 0.16.0
-- Go 1.23 이상
+- Go 1.23 이상 (생성물 포맷에 배포판의 `gofmt`를 사용한다)
 - cgo가 활성화된 macOS 또는 Linux 네이티브 빌드 환경 (purego 백엔드는 Go 빌드에 C
   컴파일러가 필요 없지만, Zig 공유 라이브러리는 여전히 타깃 호스트에서 빌드한다)
 - ABI 검사를 위한 Git 저장소
@@ -121,8 +121,8 @@ cd go && go test ./...
 `go-check`는 생성 결과와 커밋된 파일이 다르거나, 더 이상 생성되지 않는 zigo 생성 파일이
 소스 트리에 남아 있으면 실패한다. 일반 사용자 작성 Go 파일은 검사하지 않는다.
 
-`go-doctor`는 native target, 최소 Go 버전, cgo와 C toolchain 전제, 선택적인 gofmt를
-검사한다. `go-report`는 reflection 이후 확정된 Go 이름, C 심볼, ownership, 파라미터
+`go-doctor`는 native target, 최소 Go 버전, cgo와 C toolchain 전제, 생성물 포맷에 쓰는
+`gofmt`를 검사한다. `go-report`는 reflection 이후 확정된 Go 이름, C 심볼, ownership, 파라미터
 retention과 이름 보강 출처, tagged-union projection을 출력한다. 둘 다 소스나 생성물을
 수정하지 않는다.
 

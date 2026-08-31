@@ -34,6 +34,8 @@ pub const Options = struct {
     abi_base: ?[]const u8 = null,
     raw_package: RawPackage = .internal,
     auto_cleanup: bool = false,
+    /// `gofmt` used to format generated Go. Defaults to the one on `PATH`.
+    gofmt: ?[]const u8 = null,
     /// purego-only run-time loading policy. The default requires an explicit
     /// `LoadLibrary` call and consults `ZIGO_LIBRARY_PATH`.
     library_loading: LibraryLoading = .{},
@@ -390,6 +392,7 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     doctor.expectExitCode(1);
     doctor.expectStdOutMatch("FAIL target: cross compilation is not supported");
     doctor.expectStdOutMatch("FAIL go: executable unavailable");
+    doctor.expectStdOutMatch("FAIL gofmt: unavailable");
     doctor.expectStdOutMatch("doctor: failed");
     test_step.dependOn(&doctor.step);
 
@@ -573,7 +576,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     const public_type_go_path = b.fmt("{s}/{s}_type_gen.go", .{ go_package, go_package });
     const public_errors_go_path = b.fmt("{s}/{s}_errors_gen.go", .{ go_package, go_package });
     const public_helpers_go_path = b.fmt("{s}/{s}_helpers_gen.go", .{ go_package, go_package });
-    const go_sources_dir = formattedGoSources(b, generated_dir, &.{ raw_go_path, public_go_path, public_type_go_path, public_errors_go_path, public_helpers_go_path });
+    const go_sources_dir = formattedGoSources(b, generated_dir, &.{ raw_go_path, public_go_path, public_type_go_path, public_errors_go_path, public_helpers_go_path }, options.gofmt);
 
     const check = b.addRunArtifact(generator);
     check.addArgs(&.{ "check", "--generated" });
@@ -592,6 +595,8 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     doctor.has_side_effects = true;
     doctor.addArgs(&.{ "doctor", "--target", if (isRunnableOnHost(options.target.result, b.graph.host.result)) "native" else "cross" });
     doctor.addArgs(&.{ "--backend", @tagName(options.backend) });
+    // Report the same gofmt the update step will format with.
+    if (options.gofmt) |gofmt| doctor.addArgs(&.{ "--gofmt", gofmt });
     if (options.auto_cleanup) doctor.addArg("--auto-cleanup");
     const abi_check: ?*std.Build.Step.Run = if (options.abi_base) |abi_base| check: {
         const baseline = b.addSystemCommand(&.{ "git", "show" });
@@ -714,8 +719,17 @@ fn libraryFilename(b: *std.Build, name: []const u8, target: std.Target, mode: Li
     };
 }
 
-fn formattedGoSources(b: *std.Build, generated_dir: std.Build.LazyPath, paths: []const []const u8) std.Build.LazyPath {
-    const gofmt = b.findProgram(&.{"gofmt"}, &.{}) catch return generated_dir;
+/// `gofmt` owns the formatting of generated Go. It ships with every Go
+/// distribution, and its rules change between releases, so zigo formats through
+/// it rather than committing output that a newer `gofmt` would rewrite. A
+/// missing binary fails the build instead of silently committing unformatted
+/// files that differ from another machine's.
+fn formattedGoSources(b: *std.Build, generated_dir: std.Build.LazyPath, paths: []const []const u8, gofmt_executable: ?[]const u8) std.Build.LazyPath {
+    const gofmt = if (gofmt_executable) |value|
+        value
+    else
+        b.findProgram(&.{"gofmt"}, &.{}) catch
+            @panic("gofmt is required to format generated Go; install the Go distribution or set `.gofmt = \"<path>\"`");
     const formatted = b.addWriteFiles();
     for (paths) |path| {
         const run = b.addSystemCommand(&.{gofmt});
