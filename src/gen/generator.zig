@@ -811,6 +811,10 @@ test "purego generation emits an atomic retryable loader and explicit callback A
     const raw = try temporary.dir.readFileAlloc(std.testing.io, "internal/raw/raw_gen.go", std.testing.allocator, .limited(64 * 1024));
     defer std.testing.allocator.free(raw);
     try std.testing.expect(std.mem.indexOf(u8, raw, "import \"C\"") == null);
+    // A uintptr round-trip is what `go vet` reports as a possible stale pointer.
+    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "lastError func() unsafe.Pointer"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "unsafe.Add(p, length)"));
+    try std.testing.expect(std.mem.indexOf(u8, raw, "unsafe.Pointer(p") == null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "runtime/cgo") == null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "github.com/ebitengine/purego") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "type LibraryError struct") != null);

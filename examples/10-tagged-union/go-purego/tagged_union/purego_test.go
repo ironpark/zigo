@@ -3,6 +3,7 @@ package tagged_union
 import (
 	"errors"
 	"os"
+	"strings"
 	"testing"
 )
 
@@ -50,8 +51,12 @@ func TestPuregoTaggedUnion(t *testing.T) {
 	if _, err := Divide(1, 0); !errors.Is(err, ErrDivideByZero) {
 		t.Fatalf("divide error = %v", err)
 	}
+	// The message is read out of native memory, so assert its text and not
+	// just the code: a broken pointer walk would still classify correctly.
 	if err := PanicError(); !errors.Is(err, ErrPanicCaught) {
 		t.Fatalf("panic translation = %v", err)
+	} else if !strings.Contains(err.Error(), "purego panic translation") {
+		t.Fatalf("panic message = %q, want the native text", err.Error())
 	}
 
 	value, err := NewValue(42)

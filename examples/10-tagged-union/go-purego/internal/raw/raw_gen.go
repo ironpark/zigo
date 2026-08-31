@@ -40,7 +40,7 @@ func (err *LibraryError) Error() string {
 func (err *LibraryError) Unwrap() error { return err.Cause }
 
 type nativeBindings struct {
-	lastError                func() uintptr
+	lastError                func() unsafe.Pointer
 	fnChildCreate            func(int32, *unsafe.Pointer) int32
 	fnChildGet               func(unsafe.Pointer) int32
 	fnChildDeinit            func(unsafe.Pointer)
@@ -283,17 +283,14 @@ func bindings() *nativeBindings {
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string {
 	p := bindings().lastError()
-	if p == 0 {
+	if p == nil {
 		return ""
 	}
-	b := make([]byte, 0, 128)
-	for i := uintptr(0); ; i++ {
-		c := *(*byte)(unsafe.Pointer(p + i))
-		if c == 0 {
-			return string(b)
-		}
-		b = append(b, c)
+	length := 0
+	for *(*byte)(unsafe.Add(p, length)) != 0 {
+		length++
 	}
+	return string(unsafe.Slice((*byte)(p), length))
 }
 
 // ChildCreate calls the generated purego ABI wrapper for zg_child_create.
@@ -359,7 +356,7 @@ func ValueSetChild(self unsafe.Pointer, child unsafe.Pointer) {
 // ValueBorrow calls the generated purego ABI wrapper for zg_value_borrow.
 func ValueBorrow(self unsafe.Pointer) unsafe.Pointer {
 	result := bindings().fnValueBorrow(self)
-	return unsafe.Pointer(result)
+	return result
 }
 
 // ValueDeinit calls the generated purego ABI wrapper for zg_value_deinit.

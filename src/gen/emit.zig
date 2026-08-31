@@ -593,13 +593,13 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 try writer.writeAll("\treturn code\n");
             } else {
                 try writer.writeAll("\treturn ");
-                try writeRawResultConversion(writer, program, error_payload, "outResult");
+                try writeRawResultConversion(writer, program, error_payload, "outResult", options);
                 try writer.writeAll(", code\n");
             }
         }
         try writer.writeAll("}\n");
     }
-    try renderRawTaggedUnionAccessors(allocator, writer, program);
+    try renderRawTaggedUnionAccessors(allocator, writer, program, options);
 }
 
 /// Base name of the installed native library, without the platform prefix and
@@ -722,7 +722,9 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             "type nativeBindings struct {{\n",
         .{ library_stem, library_stem },
     );
-    try writer.writeAll("\tlastError func() uintptr\n");
+    // An unsafe.Pointer return keeps the message read free of uintptr
+    // round-trips, which `go vet` reports as a possible stale pointer.
+    try writer.writeAll("\tlastError func() unsafe.Pointer\n");
     for (program.functions) |function| {
         const name = try rawGoNameAlloc(allocator, function.origin.*);
         defer allocator.free(name);
@@ -823,7 +825,10 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             "LoadLibrary first\") }\n\treturn value\n}\n\n");
     }
     const last_error_name = if (options.raw_colocated) "zigoRawLastErrorMessage" else "LastErrorMessage";
-    try writer.print("// {s} returns the most recent native panic message for this binding.\nfunc {s}() string {{\n\tp := bindings().lastError()\n\tif p == 0 {{ return \"\" }}\n\tb := make([]byte, 0, 128)\n\tfor i := uintptr(0); ; i++ {{ c := *(*byte)(unsafe.Pointer(p+i)); if c == 0 {{ return string(b) }}; b = append(b, c) }}\n}}\n", .{ last_error_name, last_error_name });
+    try writer.print("// {s} returns the most recent native panic message for this binding.\nfunc {s}() string {{\n" ++
+        "\tp := bindings().lastError()\n\tif p == nil {{ return \"\" }}\n" ++
+        "\tlength := 0\n\tfor *(*byte)(unsafe.Add(p, length)) != 0 {{ length++ }}\n" ++
+        "\treturn string(unsafe.Slice((*byte)(p), length))\n}}\n", .{ last_error_name, last_error_name });
     for (program.functions) |function| try renderPuregoFunction(allocator, writer, program, function, options);
     try renderPuregoProjections(allocator, writer, program);
 }
@@ -1040,14 +1045,14 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
             try writer.writeAll("\treturn code\n");
         } else if (puregoPayloadNeedsConversion(error_payload)) {
             try writer.writeAll("\treturn ");
-            try writeRawResultConversion(writer, program, error_payload, "outResult");
+            try writeRawResultConversion(writer, program, error_payload, "outResult", options);
             try writer.writeAll(", code\n");
         } else {
             try writer.writeAll("\treturn outResult, code\n");
         }
     } else if (function.origin.@"return" != .void) {
         try writer.writeAll("\treturn ");
-        try writeRawResultConversion(writer, program, function.origin.@"return", "result");
+        try writeRawResultConversion(writer, program, function.origin.@"return", "result", options);
         try writer.writeByte('\n');
     }
     try writer.writeAll("}\n");
@@ -1116,7 +1121,7 @@ fn writePuregoAbiType(writer: *std.Io.Writer, scalar: abi.AbiScalar) !void {
     }
 }
 
-fn renderRawTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
+fn renderRawTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     for (program.projections) |projection| {
         const declaration = projection.owner.*;
         const union_name = try naming.snakeAlloc(allocator, declaration.name);
@@ -1159,7 +1164,7 @@ fn renderRawTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.Io.W
                     try writer.print("\tstatus := C.{s}((*C.{s}_{s})(self), &outValue)\n\tif status != 1 {{\n\t\treturn ", .{ projection.symbol, program.prefix, union_name });
                     try writer.writeAll(rawGoZero(payload));
                     try writer.writeAll(", uint8(status)\n\t}\n\treturn ");
-                    try writeRawResultConversion(writer, program, payload, "outValue");
+                    try writeRawResultConversion(writer, program, payload, "outValue", options);
                     try writer.writeAll(", uint8(status)\n");
                 }
                 try writer.writeAll("}\n");
@@ -1908,7 +1913,10 @@ fn writeRawConversionPrefix(writer: *std.Io.Writer, program: abi.Program, node: 
     try writer.writeByte('(');
 }
 
-fn writeRawResultConversion(writer: *std.Io.Writer, program: abi.Program, node: semantic.TypeNode, expression: []const u8) !void {
+fn writeRawResultConversion(writer: *std.Io.Writer, program: abi.Program, node: semantic.TypeNode, expression: []const u8, options: Options) !void {
+    // A purego handle already arrives as an unsafe.Pointer; only the cgo
+    // backend has a C pointer type to convert.
+    if (options.backend == .purego and node == .opaque_ptr) return writer.writeAll(expression);
     try writeRawGoType(writer, program, node);
     try writer.print("({s})", .{expression});
 }

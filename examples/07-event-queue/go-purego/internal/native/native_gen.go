@@ -40,7 +40,7 @@ func (err *LibraryError) Error() string {
 func (err *LibraryError) Unwrap() error { return err.Cause }
 
 type nativeBindings struct {
-	lastError             func() uintptr
+	lastError             func() unsafe.Pointer
 	fnEventQueueCreate    func(unsafe.Pointer, uintptr, uintptr, uint32, uintptr, uintptr, *unsafe.Pointer) int32
 	fnEventQueueEnqueue   func(unsafe.Pointer, uint64, int32) int32
 	fnEventQueueProcess   func(unsafe.Pointer, uintptr, *uintptr) int32
@@ -322,17 +322,14 @@ func bindings() *nativeBindings {
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string {
 	p := bindings().lastError()
-	if p == 0 {
+	if p == nil {
 		return ""
 	}
-	b := make([]byte, 0, 128)
-	for i := uintptr(0); ; i++ {
-		c := *(*byte)(unsafe.Pointer(p + i))
-		if c == 0 {
-			return string(b)
-		}
-		b = append(b, c)
+	length := 0
+	for *(*byte)(unsafe.Add(p, length)) != 0 {
+		length++
 	}
+	return string(unsafe.Slice((*byte)(p), length))
 }
 
 // EventQueueCreate calls the generated purego ABI wrapper for zg_event_queue_create_purego_v1.

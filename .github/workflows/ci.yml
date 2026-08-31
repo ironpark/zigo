@@ -120,8 +120,8 @@ jobs:
           test -f "zig-out/lib/libevent_queue_zigo$LIB_SUFFIX"
           test -f zig-out/include/zigo_event_queue.h
           test -f zig-out/include/zigo_event_queue_purego.h
-          (cd go && go test ./...)
-          (cd go-purego && CGO_ENABLED=0 go test ./...)
+          (cd go && go vet ./... && go test ./...)
+          (cd go-purego && CGO_ENABLED=0 go vet ./... && CGO_ENABLED=0 go test ./...)
       - name: Check that generated purego files are platform neutral
         shell: bash
         run: |
@@ -159,10 +159,12 @@ jobs:
         run: |
           set -euo pipefail
           for example in 04-callback 08-telemetry-hub; do
-            (cd "examples/$example/go-purego" && go test ./...)
+            # vet must stay clean: generated code should not need suppressions.
+            (cd "examples/$example/go-purego" && go vet ./... && go test ./...)
           done
 
           cd examples/10-tagged-union/go-purego
+          go vet ./...
           ZIGO_TEST_LIBRARY="$PWD/../zig-out/lib/libtagged_union_zigo$LIB_SUFFIX" \
           ZIGO_TEST_WRONG_LIBRARY="$PWD/../../04-callback/zig-out/lib/libcallback_zigo$LIB_SUFFIX" \
             go test ./...

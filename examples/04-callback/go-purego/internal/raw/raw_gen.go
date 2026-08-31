@@ -40,7 +40,7 @@ func (err *LibraryError) Error() string {
 func (err *LibraryError) Unwrap() error { return err.Cause }
 
 type nativeBindings struct {
-	lastError               func() uintptr
+	lastError               func() unsafe.Pointer
 	fnFloatBufferCreate     func(*unsafe.Pointer) int32
 	fnFloatBufferPush       func(unsafe.Pointer, float32)
 	fnFloatBufferLen        func(unsafe.Pointer) uintptr
@@ -334,17 +334,14 @@ func bindings() *nativeBindings {
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string {
 	p := bindings().lastError()
-	if p == 0 {
+	if p == nil {
 		return ""
 	}
-	b := make([]byte, 0, 128)
-	for i := uintptr(0); ; i++ {
-		c := *(*byte)(unsafe.Pointer(p + i))
-		if c == 0 {
-			return string(b)
-		}
-		b = append(b, c)
+	length := 0
+	for *(*byte)(unsafe.Add(p, length)) != 0 {
+		length++
 	}
+	return string(unsafe.Slice((*byte)(p), length))
 }
 
 // FloatBufferCreate calls the generated purego ABI wrapper for zg_float_buffer_create.
