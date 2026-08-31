@@ -58,13 +58,14 @@ const zigo = @import("zigo");
 const mylib = @import("mylib");
 
 pub const bindings = zigo.define(.{
+    .root = mylib,
     .types = .{
         .{ .type = mylib.Context, .repr = .@"opaque" },
     },
     .functions = .{
-        .{ .name = "create", .@"fn" = mylib.Context.create },
-        .{ .name = "process", .@"fn" = mylib.Context.process, .params = .{ "input", "output" } },
-        .{ .name = "deinit", .@"fn" = mylib.Context.deinit },
+        .{ .path = "Context.create" },
+        .{ .path = "Context.process", .params = .{ "input", "output" } },
+        .{ .path = "Context.deinit" },
     },
 });
 ```
@@ -78,22 +79,23 @@ pub const bindings = zigo.define(.{
     .types = .{
         .{ .type = mylib.Context, .repr = .@"opaque" },
     },
-    .overrides = .{
+    .functions = .{
         .{ .path = "Context.name", .semantic = .utf8_string },
     },
     .exclude = .{"Context.debugState"},
 });
 ```
 
-자동 발견에서 등록 타입의 함수는 `Context.process`, 모듈 함수는 `root.version` 경로로
-override하거나 제외한다. 새 공개 함수도 자동으로 ABI에 들어오므로 생성물과 ABI 검사를
+경로 문법은 두 모드에서 같다. 등록 타입의 함수는 `Context.process`, 모듈 함수는
+`root.version`이다. 자동 발견에서는 같은 `functions` 목록이 메타데이터를 붙이는 역할을 하고,
+`exclude`가 제외를 맡는다. 새 공개 함수도 자동으로 ABI에 들어오므로 생성물과 ABI 검사를
 통해 변경을 리뷰한다.
 
 Generic 타입은 구체화된 타입을 이름과 함께 등록한다.
 
 ```zig
-.specializations = .{
-    .{ .name = "FloatBuffer", .type = mylib.Buffer(f32) },
+.types = .{
+    .{ .name = "FloatBuffer", .type = mylib.Buffer(f32), .repr = .@"opaque" },
 },
 ```
 

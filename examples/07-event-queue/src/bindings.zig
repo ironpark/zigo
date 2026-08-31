@@ -2,6 +2,7 @@ const zigo = @import("zigo");
 const library = @import("event_queue");
 
 pub const bindings = zigo.define(.{
+    .root = library,
     .types = .{
         .{ .type = library.EventQueue, .repr = .@"opaque" },
         .{ .type = library.Stats, .repr = .value },
@@ -9,27 +10,26 @@ pub const bindings = zigo.define(.{
     },
     .functions = .{
         .{
-            .name = "create",
-            .@"fn" = library.EventQueue.create,
+            .path = "EventQueue.create",
             .params = .{ "name", "capacity", "policy", "observer", "userdata" },
             .param_meta = .{
                 .name = .{ .semantic = .utf8_string },
                 .observer = .{ .retention = .retained },
             },
         },
-        .{ .name = "enqueue", .@"fn" = library.EventQueue.enqueue, .params = .{ "id", "value" } },
-        .{ .name = "process", .@"fn" = library.EventQueue.process, .params = .{"limit"} },
-        .{ .name = "name", .@"fn" = library.EventQueue.name, .semantic = .utf8_string },
-        .{ .name = "len", .@"fn" = library.EventQueue.len },
-        .{ .name = "capacity", .@"fn" = library.EventQueue.capacity },
-        .{ .name = "policy", .@"fn" = library.EventQueue.policy },
-        .{ .name = "dropped", .@"fn" = library.EventQueue.dropped },
-        .{ .name = "processed", .@"fn" = library.EventQueue.processed },
-        .{ .name = "stats", .@"fn" = library.EventQueue.stats },
-        .{ .name = "limits", .@"fn" = library.EventQueue.limits },
-        .{ .name = "applyLimits", .@"fn" = library.EventQueue.applyLimits, .params = .{"updated"} },
-        .{ .name = "clear", .@"fn" = library.EventQueue.clear },
-        .{ .name = "deinit", .@"fn" = library.EventQueue.deinit },
-        .{ .name = "liveQueues", .@"fn" = library.liveQueues },
+        .{ .path = "EventQueue.enqueue", .params = .{ "id", "value" } },
+        .{ .path = "EventQueue.process", .params = .{"limit"} },
+        .{ .path = "EventQueue.name", .semantic = .utf8_string },
+        .{ .path = "EventQueue.len" },
+        .{ .path = "EventQueue.capacity" },
+        .{ .path = "EventQueue.policy" },
+        .{ .path = "EventQueue.dropped" },
+        .{ .path = "EventQueue.processed" },
+        .{ .path = "EventQueue.stats" },
+        .{ .path = "EventQueue.limits" },
+        .{ .path = "EventQueue.applyLimits", .params = .{"updated"} },
+        .{ .path = "EventQueue.clear" },
+        .{ .path = "EventQueue.deinit" },
+        .{ .path = "root.liveQueues" },
     },
 });

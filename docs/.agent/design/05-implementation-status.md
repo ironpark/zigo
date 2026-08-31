@@ -18,8 +18,8 @@
 | `Options` 필드 | `name`~`auto_cleanup` | `source_root`, `gofmt`, `go_package`, `backend`, `library_loading` 추가 |
 | `GoBindings` 필드 | `update/check/abi_check/lib/semantic_json` | `report`, `doctor`, `install_library`, `library_filename` 추가 |
 | generator 구조 | `gen/main.zig`, `gen/emit/*`, `gen/diff.zig` | `src/main.zig`, 단일 `gen/emit.zig`, `gen/abi_diff.zig`, 추가로 `cli.zig`, `generator.zig`, `report.zig`, `doctor.zig`, `sync_check.zig` |
-| 함수 항목 문법 | `.{ .path = "root.version", ... }` | 명시 목록은 `.{ .name = "add", .@"fn" = lib.add }`. `.path` 는 `discover` 모드의 `overrides`/`exclude` 전용 |
-| generic 구체화 | `.types` 안에 `.name` 항목 | 별도 `.specializations` 키 |
+| 함수 항목 문법 | `.{ .path = "root.version", ... }` | 초안대로 돌아왔다. `.functions` 는 두 모드에서 같은 경로 문법을 쓰고 `.@"fn"` 은 없다 |
+| generic 구체화 | `.types` 안에 `.name` 항목 | 초안대로 돌아왔다. 별도 `.specializations` 키는 없앴다 |
 | Go 최소 버전 | 계획 문서의 "Go 1.26" | 생성 코드 요구는 Go 1.23+ (`auto_cleanup` 만 1.24+). CI가 1.26.x 로 검증 |
 
 ### 1.1 tagged union — 초안과 구현의 차이

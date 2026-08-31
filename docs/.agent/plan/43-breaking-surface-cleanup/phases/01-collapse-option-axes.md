@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T11:40:57Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 예제 10종이 새 옵션으로 갱신되고 두 백엔드가 통과한다.
 > NEXT: none

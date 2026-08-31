@@ -14,6 +14,9 @@ pub fn reflect(
     if (!@hasField(@TypeOf(declaration), "functions") and !comptime discoveryEnabled(declaration)) {
         @compileError("zigo declarations require `.functions` or opt-in `.discover = .public`");
     }
+    if (!@hasField(@TypeOf(declaration), "root")) {
+        @compileError("zigo declarations require `.root`; paths in `.functions` resolve against it");
+    }
     comptime validateSelectors(declaration);
 
     var functions: std.ArrayList(semantic.SemanticFn) = .empty;
@@ -45,34 +48,31 @@ pub fn reflect(
             }
         }
     }
-    if (@hasField(@TypeOf(declaration), "specializations")) {
-        inline for (declaration.specializations) |entry| {
-            try types.append(allocator, .{
-                .kind = .@"opaque",
-                .name = entry.name,
-                .zig_path = @typeName(entry.type),
-            });
-        }
-    }
-
-    if (@hasField(@TypeOf(declaration), "functions")) {
-        inline for (declaration.functions) |entry| {
-            try appendFunction(allocator, &functions, &types, declaration, prefix, entry.name, entry.@"fn", entry, null);
-        }
-    }
     if (comptime discoveryEnabled(declaration)) {
+        // Discovery walks every registered container plus the root; entries in
+        // `functions` attach metadata to what it finds.
         if (@hasField(@TypeOf(declaration), "types")) {
             inline for (declaration.types) |entry| {
-                const owner = comptime if (@hasField(@TypeOf(entry), "name")) entry.name else shortTypeName(@typeName(entry.type));
-                try discoverContainer(allocator, &functions, &types, declaration, prefix, entry.type, owner);
-            }
-        }
-        if (@hasField(@TypeOf(declaration), "specializations")) {
-            inline for (declaration.specializations) |entry| {
-                try discoverContainer(allocator, &functions, &types, declaration, prefix, entry.type, entry.name);
+                try discoverContainer(allocator, &functions, &types, declaration, prefix, entry.type, comptime typeEntryName(entry));
             }
         }
         try discoverContainer(allocator, &functions, &types, declaration, prefix, declaration.root, null);
+    } else {
+        inline for (declaration.functions) |entry| {
+            const owner = comptime pathOwner(entry.path);
+            const member = comptime pathMember(entry.path);
+            try appendFunction(
+                allocator,
+                &functions,
+                &types,
+                declaration,
+                prefix,
+                member,
+                @field(comptime pathContainer(declaration, owner), member),
+                entry,
+                owner,
+            );
+        }
     }
 
     var constructors: std.ArrayList(semantic.Constructor) = .empty;
@@ -118,6 +118,8 @@ fn appendFunction(
         .@"fn" => |info| info,
         else => @compileError("zigo function entry must contain a function"),
     };
+    // `.path` addresses the declaration; `.name` only renames it on the Go
+    // side, so there is still exactly one way to say which function is meant.
     const function_name = if (@hasField(@TypeOf(metadata), "name")) metadata.name else source_name;
     const receiver = comptime receiverName(info, declaration);
     const first_param: usize = if (receiver != null) 1 else 0;
@@ -176,51 +178,59 @@ fn discoverContainer(
         if (@typeInfo(@TypeOf(value)) != .@"fn") continue;
         const path = comptime declarationPath(owner, candidate.name);
         if (comptime selectorContains(declaration, "exclude", path)) continue;
-        comptime var overridden = false;
-        if (@hasField(@TypeOf(declaration), "overrides")) {
-            inline for (declaration.overrides) |override| {
-                if (comptime std.mem.eql(u8, override.path, path)) {
-                    overridden = true;
-                    try appendFunction(allocator, functions, types, declaration, prefix, candidate.name, value, override, owner);
+        comptime var adjusted = false;
+        if (@hasField(@TypeOf(declaration), "functions")) {
+            inline for (declaration.functions) |entry| {
+                if (comptime std.mem.eql(u8, entry.path, path)) {
+                    adjusted = true;
+                    try appendFunction(allocator, functions, types, declaration, prefix, candidate.name, value, entry, owner);
                 }
             }
         }
-        if (!overridden) try appendFunction(allocator, functions, types, declaration, prefix, candidate.name, value, .{}, owner);
+        if (!adjusted) try appendFunction(allocator, functions, types, declaration, prefix, candidate.name, value, .{}, owner);
     }
 }
 
 fn discoveryEnabled(comptime declaration: anytype) bool {
     if (!@hasField(@TypeOf(declaration), "discover")) return false;
     if (declaration.discover != .public) @compileError("zigo `.discover` must be `.public`");
-    if (!@hasField(@TypeOf(declaration), "root")) @compileError("zigo `.discover = .public` requires `.root`");
     if (@TypeOf(declaration.root) != type) @compileError("zigo `.root` must be a module or container type");
     return true;
 }
 
+/// The display name of a `types` entry: the explicit `.name` when given, and
+/// otherwise the short Zig type name. Generic instantiations need the explicit
+/// form, which is why registering one is an ordinary `types` entry.
+fn typeEntryName(comptime entry: anytype) []const u8 {
+    return if (@hasField(@TypeOf(entry), "name")) entry.name else shortTypeName(@typeName(entry.type));
+}
+
 fn validateSelectors(comptime declaration: anytype) void {
+    if (@TypeOf(declaration.root) != type) @compileError("zigo `.root` must be a module or container type");
+    if (@hasField(@TypeOf(declaration), "functions")) {
+        inline for (declaration.functions, 0..) |entry, index| {
+            if (!@hasField(@TypeOf(entry), "path")) @compileError("zigo function entries require `.path`");
+            if (!declarationPathExists(declaration, entry.path)) {
+                @compileError("zigo path does not name a public function: " ++ entry.path ++
+                    " (use `root.<name>` for a function in `.root`, or `<Type>.<name>` for one in a registered type)");
+            }
+            inline for (declaration.functions, 0..) |previous, previous_index| {
+                if (previous_index < index and std.mem.eql(u8, previous.path, entry.path)) @compileError("duplicate zigo function path: " ++ entry.path);
+            }
+            if (selectorContains(declaration, "exclude", entry.path)) {
+                @compileError("zigo path cannot be both listed and excluded: " ++ entry.path);
+            }
+        }
+    }
     if (!discoveryEnabled(declaration)) {
-        if (@hasField(@TypeOf(declaration), "overrides") or @hasField(@TypeOf(declaration), "exclude")) {
-            @compileError("zigo `.overrides` and `.exclude` require `.discover = .public`");
+        if (@hasField(@TypeOf(declaration), "exclude")) {
+            @compileError("zigo `.exclude` requires `.discover = .public`; an explicit list simply omits the function");
         }
         return;
     }
-    if (@hasField(@TypeOf(declaration), "overrides")) {
-        inline for (declaration.overrides, 0..) |override, index| {
-            if (!@hasField(@TypeOf(override), "path")) @compileError("zigo override entries require `.path`");
-            if (!discoveredPathExists(declaration, override.path)) {
-                @compileError("zigo override path does not name a discovered public function: " ++ override.path);
-            }
-            inline for (declaration.overrides, 0..) |previous, previous_index| {
-                if (previous_index < index and std.mem.eql(u8, previous.path, override.path)) @compileError("duplicate zigo override path: " ++ override.path);
-            }
-            if (selectorContains(declaration, "exclude", override.path)) {
-                @compileError("zigo path cannot be both overridden and excluded: " ++ override.path);
-            }
-        }
-    }
     if (@hasField(@TypeOf(declaration), "exclude")) {
         inline for (declaration.exclude, 0..) |path, index| {
-            if (!discoveredPathExists(declaration, path)) {
+            if (!declarationPathExists(declaration, path)) {
                 @compileError("zigo exclusion path does not name a discovered public function: " ++ path);
             }
             inline for (declaration.exclude, 0..) |previous, previous_index| {
@@ -230,16 +240,36 @@ fn validateSelectors(comptime declaration: anytype) void {
     }
 }
 
-fn discoveredPathExists(comptime declaration: anytype, comptime wanted: []const u8) bool {
+/// `root.<name>` for a function in `.root`, `<Type>.<name>` for one in a
+/// registered type. The same grammar addresses a declaration whether the
+/// binding lists functions explicitly or discovers them.
+fn pathOwner(comptime path: []const u8) ?[]const u8 {
+    const index = comptime std.mem.lastIndexOfScalar(u8, path, '.') orelse
+        @compileError("zigo path must be `root.<name>` or `<Type>.<name>`: " ++ path);
+    const owner = path[0..index];
+    return if (std.mem.eql(u8, owner, "root")) null else owner;
+}
+
+fn pathMember(comptime path: []const u8) []const u8 {
+    const index = comptime std.mem.lastIndexOfScalar(u8, path, '.') orelse
+        @compileError("zigo path must be `root.<name>` or `<Type>.<name>`: " ++ path);
+    return path[index + 1 ..];
+}
+
+fn pathContainer(comptime declaration: anytype, comptime owner: ?[]const u8) type {
+    const name = owner orelse return declaration.root;
     if (@hasField(@TypeOf(declaration), "types")) {
         inline for (declaration.types) |entry| {
-            const owner = if (@hasField(@TypeOf(entry), "name")) entry.name else shortTypeName(@typeName(entry.type));
-            if (containerHasPath(entry.type, owner, wanted)) return true;
+            if (comptime std.mem.eql(u8, typeEntryName(entry), name)) return entry.type;
         }
     }
-    if (@hasField(@TypeOf(declaration), "specializations")) {
-        inline for (declaration.specializations) |entry| {
-            if (containerHasPath(entry.type, entry.name, wanted)) return true;
+    @compileError("zigo path names a type that is not registered in `.types`: " ++ name);
+}
+
+fn declarationPathExists(comptime declaration: anytype, comptime wanted: []const u8) bool {
+    if (@hasField(@TypeOf(declaration), "types")) {
+        inline for (declaration.types) |entry| {
+            if (containerHasPath(entry.type, comptime typeEntryName(entry), wanted)) return true;
         }
     }
     return containerHasPath(declaration.root, null, wanted);
@@ -400,14 +430,7 @@ fn receiverName(comptime info: std.builtin.Type.Fn, comptime declaration: anytyp
     if (pointer.size != .one) return null;
     if (@hasField(@TypeOf(declaration), "types")) {
         inline for (declaration.types) |entry| {
-            if (isHandleRepr(entry.repr) and entry.type == pointer.child) {
-                return if (@hasField(@TypeOf(entry), "name")) entry.name else shortTypeName(@typeName(entry.type));
-            }
-        }
-    }
-    if (@hasField(@TypeOf(declaration), "specializations")) {
-        inline for (declaration.specializations) |entry| {
-            if (entry.type == pointer.child) return entry.name;
+            if (isHandleRepr(entry.repr) and entry.type == pointer.child) return typeEntryName(entry);
         }
     }
     return null;
@@ -530,12 +553,12 @@ fn shortTypeName(full_name: []const u8) []const u8 {
 }
 
 test "scalar reflection matches the semantic JSON golden" {
-    const add = struct {
-        fn call(a: i32, b: i32) i32 {
+    const Api = struct {
+        pub fn add(a: i32, b: i32) i32 {
             return a + b;
         }
-    }.call;
-    const declaration = .{ .functions = .{.{ .name = "add", .@"fn" = add }} };
+    };
+    const declaration = .{ .root = Api, .functions = .{.{ .path = "root.add" }} };
     const document = try reflect(std.testing.allocator, declaration, "scalar", "zg");
     const json = try document.serialize(std.testing.allocator);
     defer std.testing.allocator.free(json);
@@ -605,22 +628,22 @@ test "reflection preserves invalid declarations for generator diagnostics" {
     const Fixture = struct {
         const Value = union(enum) { integer: i32, flag: bool };
 
-        fn generic(comptime T: type, value: T) T {
+        pub fn generic(comptime T: type, value: T) T {
             return value;
         }
 
-        fn callback(value: *const fn (i32) void) void {
+        pub fn callback(value: *const fn (i32) void) void {
             _ = value;
         }
 
-        fn tagged(value: Value) void {
+        pub fn tagged(value: Value) void {
             _ = value;
         }
     };
-    const declaration = .{ .functions = .{
-        .{ .name = "generic", .@"fn" = Fixture.generic },
-        .{ .name = "callback", .@"fn" = Fixture.callback },
-        .{ .name = "tagged", .@"fn" = Fixture.tagged },
+    const declaration = .{ .root = Fixture, .functions = .{
+        .{ .path = "root.generic" },
+        .{ .path = "root.callback" },
+        .{ .path = "root.tagged" },
     } };
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -636,7 +659,7 @@ test "the value snapshot repr is recorded only when it is opted into" {
         ticks: u32,
     };
     const Fixture = struct {
-        fn current() *const Signal {
+        pub fn current() *const Signal {
             unreachable;
         }
     };
@@ -644,8 +667,9 @@ test "the value snapshot repr is recorded only when it is opted into" {
     defer arena.deinit();
 
     const snapshot = try reflect(arena.allocator(), .{
+        .root = Fixture,
         .types = .{.{ .type = Signal, .repr = .tagged_union_value }},
-        .functions = .{.{ .name = "current", .@"fn" = Fixture.current }},
+        .functions = .{.{ .path = "root.current" }},
     }, "variant", "zg");
     try std.testing.expectEqual(semantic.UnionRepr.value_snapshot, snapshot.types[0].unionRepr());
     const snapshot_json = try snapshot.serialize(std.testing.allocator);
@@ -653,8 +677,9 @@ test "the value snapshot repr is recorded only when it is opted into" {
     try std.testing.expect(std.mem.indexOf(u8, snapshot_json, "\"union_repr\": \"value_snapshot\"") != null);
 
     const projection = try reflect(arena.allocator(), .{
+        .root = Fixture,
         .types = .{.{ .type = Signal, .repr = .tagged_union }},
-        .functions = .{.{ .name = "current", .@"fn" = Fixture.current }},
+        .functions = .{.{ .path = "root.current" }},
     }, "variant", "zg");
     try std.testing.expectEqual(semantic.UnionRepr.projection, projection.types[0].unionRepr());
     const projection_json = try projection.serialize(std.testing.allocator);
@@ -669,13 +694,14 @@ test "tagged union representation reflects discriminants and payloads" {
         flag: bool,
     };
     const Fixture = struct {
-        fn current() *const Value {
+        pub fn current() *const Value {
             unreachable;
         }
     };
     const declaration = .{
+        .root = Fixture,
         .types = .{.{ .type = Value, .repr = .tagged_union }},
-        .functions = .{.{ .name = "current", .@"fn" = Fixture.current }},
+        .functions = .{.{ .path = "root.current" }},
     };
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -708,7 +734,7 @@ test "tagged union representation reflects discriminants and payloads" {
     try std.testing.expectEqual(@as(i64, 1), parsed.value.types[0].fields[1].value.?);
 }
 
-test "named generic specializations become distinct opaque types" {
+test "named generic instantiations are ordinary registered types" {
     const Generic = struct {
         fn Buffer(comptime T: type) type {
             return struct { value: T };
@@ -717,9 +743,10 @@ test "named generic specializations become distinct opaque types" {
     const FloatBuffer = Generic.Buffer(f32);
     const IntBuffer = Generic.Buffer(i32);
     const declaration = .{
-        .specializations = .{
-            .{ .name = "FloatBuffer", .type = FloatBuffer },
-            .{ .name = "IntBuffer", .type = IntBuffer },
+        .root = Generic,
+        .types = .{
+            .{ .name = "FloatBuffer", .type = FloatBuffer, .repr = .@"opaque" },
+            .{ .name = "IntBuffer", .type = IntBuffer, .repr = .@"opaque" },
         },
         .functions = .{},
     };
@@ -731,7 +758,7 @@ test "named generic specializations become distinct opaque types" {
     try std.testing.expectEqualStrings("IntBuffer", document.types[1].name);
 }
 
-test "public discovery combines methods root functions exclusions and overrides" {
+test "public discovery combines methods root functions exclusions and entries" {
     const Api = struct {
         pub const Handle = struct {
             pub fn create() *Handle {
@@ -763,7 +790,7 @@ test "public discovery combines methods root functions exclusions and overrides"
         .root = Api,
         .discover = .public,
         .types = .{.{ .type = Api.Handle, .repr = .@"opaque" }},
-        .overrides = .{
+        .functions = .{
             .{ .path = "Handle.set", .name = "put", .params = .{"value"} },
             .{ .path = "root.ping", .name = "health" },
         },
@@ -801,8 +828,8 @@ test "discovery selectors use stable owner-qualified paths" {
         .discover = .public,
         .types = .{.{ .type = Api.Handle, .repr = .@"opaque" }},
     };
-    try std.testing.expect(comptime discoveredPathExists(declaration, "Handle.update"));
-    try std.testing.expect(comptime discoveredPathExists(declaration, "root.update"));
-    try std.testing.expect(!comptime discoveredPathExists(declaration, "Missing.update"));
-    try std.testing.expect(!comptime discoveredPathExists(declaration, "root.privateHelper"));
+    try std.testing.expect(comptime declarationPathExists(declaration, "Handle.update"));
+    try std.testing.expect(comptime declarationPathExists(declaration, "root.update"));
+    try std.testing.expect(!comptime declarationPathExists(declaration, "Missing.update"));
+    try std.testing.expect(!comptime declarationPathExists(declaration, "root.privateHelper"));
 }

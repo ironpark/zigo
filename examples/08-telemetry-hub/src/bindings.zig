@@ -7,7 +7,7 @@ pub const bindings = zigo.define(.{
     .types = .{
         .{ .type = library.TelemetryHub, .repr = .@"opaque" },
     },
-    .overrides = .{
+    .functions = .{
         .{
             .path = "TelemetryHub.create",
             .params = .{ "input_name", "max_samples", "initial_mode", "overflow_policy", "observer", "userdata" },

@@ -42,7 +42,7 @@ pub fn Buffer(comptime T: type) type { ... }
 **generic을 다루는 유일한 수단**이다.
 
 ```zig
-.{ .name = "FloatBuffer", .type = lib.Buffer(f32) },
+.{ .name = "FloatBuffer", .type = lib.Buffer(f32), .repr = .@"opaque" },
 ```
 
 부수 효과로 설계가 단순해진다: reflector는 항상 이미 구체화된 타입만 본다.

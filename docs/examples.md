@@ -24,7 +24,7 @@ purego 패키지도 함께 배선한 예제(04·07·08)는 `zig build purego-go`
 | [05-pipeline](../examples/05-pipeline) | 통합 파이프라인. opaque 상태 + enum + 슬라이스 + typed error + retained 콜백을 한 API에 모으고, `source_root` 로 AST 이름 보강을 켜며 zlib 링크를 cgo 지시자로 전파한다 |
 | [06-camel-case](../examples/06-camel-case) | 이름 규칙. 바인딩 이름 `HTTPClient` 가 Go package `http_client`, C 심볼 `zg_*` 로 어떻게 정규화되는지 보여준다 |
 | [07-event-queue](../examples/07-event-queue) | 상태를 가진 이벤트 큐. 용량 초과 정책 enum, retained observer 콜백, `auto_cleanup` 안전망, raw 패키지 `bridge/cgo` 배치. `Stats`·`Limits` 로 `extern struct` 를 Go 값처럼 주고받는다. cgo·purego 두 패키지를 동시에 배선한다 |
-| [08-telemetry-hub](../examples/08-telemetry-hub) | 가장 넓은 API 표면. `discover = .public` + `overrides`, enum 3종과 다수의 error set, 필터·통계·in-place 변환. purego 쪽은 `library_loading` 으로 자동 로딩과 비공개 로더를 시험한다 |
+| [08-telemetry-hub](../examples/08-telemetry-hub) | 가장 넓은 API 표면. `discover = .public` + 경로 항목, enum 3종과 다수의 error set, 필터·통계·in-place 변환. purego 쪽은 `library_loading` 으로 자동 로딩과 비공개 로더를 시험한다 |
 | [09-type-relations](../examples/09-type-relations) | 한 문서에서 opaque 타입 2종. `Accumulator.absorb` 가 borrowed `*const Counter` 를 받아 소유권과 타입 참조가 독립임을 보여준다 |
 | [10-tagged-union](../examples/10-tagged-union) | union 표현 두 가지. `Value` 는 `.repr = .tagged_union` projection 으로 `TryTag`/`TryAs*` 와 panic 하는 편의 메서드 `Tag`/`As*` 를, `Signal` 은 `.repr = .tagged_union_value` 스냅샷으로 `Snapshot()` 한 번에 tag 와 payload 를 제공한다. `-Dpurego` 로 백엔드를 바꿔 생성한다 |
 

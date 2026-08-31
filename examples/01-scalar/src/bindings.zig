@@ -3,5 +3,6 @@ const zigo = @import("zigo");
 const scalar = @import("scalar");
 
 pub const bindings = zigo.define(.{
-    .functions = .{.{ .name = "add", .@"fn" = scalar.add }},
+    .root = scalar,
+    .functions = .{.{ .path = "root.add" }},
 });

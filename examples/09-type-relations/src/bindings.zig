@@ -2,19 +2,20 @@ const zigo = @import("zigo");
 const library = @import("type_relations");
 
 pub const bindings = zigo.define(.{
+    .root = library,
     .types = .{
         .{ .type = library.Counter, .repr = .@"opaque" },
         .{ .type = library.Accumulator, .repr = .@"opaque" },
     },
     .functions = .{
-        .{ .name = "create", .@"fn" = library.Counter.create, .params = .{"initial"} },
-        .{ .name = "get", .@"fn" = library.Counter.get },
-        .{ .name = "add", .@"fn" = library.Counter.add, .params = .{"delta"} },
-        .{ .name = "deinit", .@"fn" = library.Counter.deinit },
-        .{ .name = "create", .@"fn" = library.Accumulator.create },
-        .{ .name = "absorb", .@"fn" = library.Accumulator.absorb, .params = .{"counter"} },
-        .{ .name = "total", .@"fn" = library.Accumulator.total },
-        .{ .name = "deinit", .@"fn" = library.Accumulator.deinit },
-        .{ .name = "liveObjects", .@"fn" = library.liveObjects },
+        .{ .path = "Counter.create", .params = .{"initial"} },
+        .{ .path = "Counter.get" },
+        .{ .path = "Counter.add", .params = .{"delta"} },
+        .{ .path = "Counter.deinit" },
+        .{ .path = "Accumulator.create" },
+        .{ .path = "Accumulator.absorb", .params = .{"counter"} },
+        .{ .path = "Accumulator.total" },
+        .{ .path = "Accumulator.deinit" },
+        .{ .path = "root.liveObjects" },
     },
 });

@@ -354,12 +354,10 @@ pub const bindings = zigo.define(.{
         .{ .type = lib.Context, .repr = .@"opaque" },
         .{ .type = lib.Format,  .repr = .value },
         .{ .type = lib.Value,   .repr = .tagged_union },
-    },
-    .specializations = .{
-        .{ .name = "FloatBuffer", .type = lib.Buffer(f32) },   // generic 구체화
+        .{ .name = "FloatBuffer", .type = lib.Buffer(f32), .repr = .@"opaque" },  // generic 구체화
     },
 
-    .overrides = .{
+    .functions = .{
         .{ .path = "root.version", .returns = .borrowed, .semantic = .utf8_string },
         .{
             .path = "Context.process",
@@ -375,9 +373,9 @@ pub const bindings = zigo.define(.{
 
 - compiler reflection이 공개 함수의 존재와 타입을 결정하고 AST가 소유자별 파라미터 이름과 문서를 보강한다.
 - `.params`는 AST 이름을 고정하거나 `param_meta`의 키를 reflection 단계에서 제공할 때 사용한다.
-- 자동 발견이 맞지 않는 정밀 allowlist는 `.functions` 항목
-  (`.{ .name = "add", .@"fn" = lib.add }`)을 사용한다. `.overrides`와 `.exclude`의
-  `.path`는 `.discover = .public` 모드에서만 유효하다.
+- 자동 발견이 맞지 않는 정밀 allowlist는 `.discover`를 빼고 같은 `.functions` 목록에
+  경로를 적는다. 선언을 지칭하는 문법은 두 모드에서 하나다. `.exclude`만 자동 발견
+  전용인데, 명시 목록에서는 적지 않는 것이 곧 제외이기 때문이다.
 - 나머지 메타데이터는 선택적이며, 없으면 보수적 기본값(`in`, `borrowed`, `[]byte`).
 - `package`/`prefix`는 build.zig 옵션으로 이동했다 (빌드 배선과 함께 있는 편이 자연스럽다).
 - 이 파일이 **공개 API 계약서**다. 리뷰 대상은 생성된 바인딩이 아니라 이 파일이다.

@@ -2,9 +2,10 @@ const zigo = @import("zigo");
 const errors = @import("errors");
 
 pub const bindings = zigo.define(.{
+    .root = errors,
     .functions = .{
-        .{ .name = "divide", .@"fn" = errors.divide },
-        .{ .name = "sum", .@"fn" = errors.sum },
-        .{ .name = "normalizeFormat", .@"fn" = errors.normalizeFormat },
+        .{ .path = "root.divide" },
+        .{ .path = "root.sum" },
+        .{ .path = "root.normalizeFormat" },
     },
 });

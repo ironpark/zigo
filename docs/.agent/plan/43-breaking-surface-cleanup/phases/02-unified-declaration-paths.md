@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `bindings.zig`가 선언을 지칭하는 방법이 하나다.
 > NEXT: none

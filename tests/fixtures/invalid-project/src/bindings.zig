@@ -2,8 +2,9 @@ const zigo = @import("zigo");
 const invalid = @import("invalid");
 
 pub const bindings = zigo.define(.{
+    .root = invalid,
     .functions = .{
-        .{ .name = "lookupID", .@"fn" = invalid.lookupID },
-        .{ .name = "lookup_id", .@"fn" = invalid.lookup_id },
+        .{ .path = "root.lookupID" },
+        .{ .path = "root.lookup_id" },
     },
 });

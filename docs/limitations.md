@@ -37,7 +37,7 @@
   zigo가 정의한 `extern struct`이며, variant 수만큼 멤버를 가지므로 variant가 많은 union은
   호출마다 그만큼을 복사한다.
 - generic 함수는 구체화 전에는 시그니처가 없으므로 직접 노출할 수 없다. generic 타입은
-  `specializations`에 구체화된 타입을 등록한다.
+  `types`에 구체화된 타입을 이름과 함께 등록한다.
 - `anyerror`, C 호출 규약이 아닌 함수 포인터, Go 포인터를 포함할 수 있는 슬라이스처럼
   안전한 계약을 만들 수 없는 선언은 생성 단계에서 거부한다.
 - 지원 타입과 정확한 하강 규칙은 [ABI 하강 규칙](.agent/design/03-lowering-rules.md)을 참고한다.
