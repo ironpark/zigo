@@ -133,7 +133,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .code = "ZIGO011",
                 .message = "tagged union variant cannot be mirrored into a value snapshot",
                 .site = .{ .path = "semantic.json", .declaration = variant },
-                .hint = "use `.repr = .tagged_union`, or give every variant a void, bool, integer, float, or enum payload and a name other than `tag`",
+                .hint = "use `.access = .projection`, or give every variant a void, bool, integer, float, or enum payload and a name other than `tag`",
             };
         }
     }
@@ -243,19 +243,29 @@ fn taggedUnionAccessorsSupported(document: semantic.Semantic, declaration: seman
     return true;
 }
 
-fn accessorPayloadSupported(document: semantic.Semantic, node: semantic.TypeNode) bool {
+/// What zigo can move across the C ABI as a single scalar. `bool` crosses as
+/// uint8_t exactly as it does everywhere else; public Go restores it. Every
+/// payload rule below is this set plus whatever else that position allows.
+fn scalarPayloadSupported(document: semantic.Semantic, node: semantic.TypeNode) bool {
     return switch (node) {
-        .void, .bool => true,
+        .bool => true,
         .int => |value| integerSupported(value),
         .float => |value| floatSupported(value),
         .@"enum" => |value| hasTypeKind(document, value.ref, .@"enum"),
+        else => false,
+    };
+}
+
+fn accessorPayloadSupported(document: semantic.Semantic, node: semantic.TypeNode) bool {
+    return switch (node) {
+        .void => true,
         .opaque_ptr => |value| hasHandleType(document, value.ref),
         .slice => |value| switch (value.element.*) {
             .int => |integer| integerSupported(integer),
             .float => |float| floatSupported(float),
             else => false,
         },
-        else => false,
+        else => scalarPayloadSupported(document, node),
     };
 }
 
@@ -276,13 +286,8 @@ fn snapshotIneligibleVariant(document: semantic.Semantic, declaration: semantic.
 
 fn snapshotPayloadEligible(document: semantic.Semantic, node: semantic.TypeNode) bool {
     return switch (node) {
-        // `bool` crosses the C ABI as uint8_t here exactly as it does
-        // everywhere else in zigo; public Go restores it.
-        .void, .bool => true,
-        .int => |value| integerSupported(value),
-        .float => |value| floatSupported(value),
-        .@"enum" => |value| hasTypeKind(document, value.ref, .@"enum"),
-        else => false,
+        .void => true,
+        else => scalarPayloadSupported(document, node),
     };
 }
 
@@ -304,16 +309,12 @@ fn externStructProblem(document: semantic.Semantic, declaration: semantic.TypeDe
 
 fn externStructFieldEligible(document: semantic.Semantic, node: semantic.TypeNode, depth: usize) bool {
     return switch (node) {
-        .bool => true,
-        .int => |value| integerSupported(value),
-        .float => |value| floatSupported(value),
-        .@"enum" => |value| hasTypeKind(document, value.ref, .@"enum"),
         .value_struct => |value| for (document.types) |nested| {
             if (!std.mem.eql(u8, nested.name, value.ref)) continue;
             break nested.kind == .value_struct and nested.layout == .@"extern" and
                 externStructProblem(document, nested, depth + 1) == null;
         } else false,
-        else => false,
+        else => scalarPayloadSupported(document, node),
     };
 }
 
@@ -322,14 +323,11 @@ fn externStructFieldEligible(document: semantic.Semantic, node: semantic.TypeNod
 /// the struct; a struct inside a slice or a callback signature does not.
 fn nestedValueStruct(node: semantic.TypeNode) bool {
     return switch (node) {
+        // These two positions lower to a pointer, so a struct here is fine;
+        // anywhere it is merely contained is not.
+        .value_struct => false,
         .error_union => |value| nestedValueStruct(value.payload.*),
-        .slice => |value| containsValueStruct(value.element.*),
-        .optional => |value| containsValueStruct(value.child.*),
-        .callback => |value| blk: {
-            for (value.params) |parameter| if (containsValueStruct(parameter)) break :blk true;
-            break :blk containsValueStruct(value.@"return".*);
-        },
-        else => false,
+        else => containsValueStruct(node),
     };
 }
 
@@ -648,7 +646,7 @@ test "implemented diagnostic snapshots are stable" {
                 },
             },
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO011]: tagged union variant cannot be mirrored into a value snapshot\n  --> semantic.json (samples)\n  hint: use `.repr = .tagged_union`, or give every variant a void, bool, integer, float, or enum payload and a name other than `tag`\n" },
+        }, .snapshot = "error[ZIGO011]: tagged union variant cannot be mirrored into a value snapshot\n  --> semantic.json (samples)\n  hint: use `.access = .projection`, or give every variant a void, bool, integer, float, or enum payload and a name other than `tag`\n" },
         .{ .document = .{
             .package = "bad",
             .prefix = "zg",

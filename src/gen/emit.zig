@@ -173,7 +173,7 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         try writer.writeAll("}\n");
     }
     try renderTaggedUnionShim(writer, program);
-    try renderTaggedUnionSnapshotShim(allocator, writer, program);
+    try renderTaggedUnionSnapshotShim(writer, program);
     try renderValueStructShim(writer, program);
 }
 
@@ -198,7 +198,7 @@ fn renderValueStructShim(writer: *std.Io.Writer, program: abi.Program) !void {
 
 /// The snapshot struct is zigo's own `extern struct`, never the Zig union's
 /// layout: the shim reads the active variant and copies it in.
-fn renderTaggedUnionSnapshotShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
+fn renderTaggedUnionSnapshotShim(writer: *std.Io.Writer, program: abi.Program) !void {
     for (program.snapshots) |snapshot| {
         try writer.print("\nconst {s} = extern struct {{\n", .{snapshot.type_name});
         for (snapshot.fields) |field| {
@@ -243,7 +243,6 @@ fn renderTaggedUnionSnapshotShim(allocator: std.mem.Allocator, writer: *std.Io.W
             try writer.writeAll(",\n");
         }
         try writer.writeAll("    }\n    return 1;\n}\n");
-        _ = allocator;
     }
 }
 
@@ -345,9 +344,9 @@ fn renderPanicSource(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
     }
     for (program.projections) |projection| {
         try writer.writeByte('\n');
-        try writeCProjectionDeclaration(allocator, writer, program, projection, true);
+        try writeCUnionDeclaration(allocator, writer, program, projection.owner.name, projection.symbol, projection.params, projection.ret, true);
         try writer.writeAll(";\n");
-        try writeCProjectionDeclaration(allocator, writer, program, projection, false);
+        try writeCUnionDeclaration(allocator, writer, program, projection.owner.name, projection.symbol, projection.params, projection.ret, false);
         try writer.writeAll(" {\n    if (");
         for (projection.params, 0..) |parameter, index| {
             if (index != 0) try writer.writeAll(" || ");
@@ -364,9 +363,9 @@ fn renderPanicSource(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
     }
     for (program.snapshots) |snapshot| {
         try writer.writeByte('\n');
-        try writeCSnapshotDeclaration(allocator, writer, program, snapshot, true);
+        try writeCUnionDeclaration(allocator, writer, program, snapshot.owner.name, snapshot.symbol, snapshot.params, snapshot.ret, true);
         try writer.writeAll(";\n");
-        try writeCSnapshotDeclaration(allocator, writer, program, snapshot, false);
+        try writeCUnionDeclaration(allocator, writer, program, snapshot.owner.name, snapshot.symbol, snapshot.params, snapshot.ret, false);
         try writer.writeAll(" {\n    if (");
         for (snapshot.params, 0..) |parameter, index| {
             if (index != 0) try writer.writeAll(" || ");
@@ -506,11 +505,11 @@ fn renderHeader(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
 
 fn renderTaggedUnionHeader(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
     for (program.projections) |projection| {
-        try writeCProjectionDeclaration(allocator, writer, program, projection, false);
+        try writeCUnionDeclaration(allocator, writer, program, projection.owner.name, projection.symbol, projection.params, projection.ret, false);
         try writer.writeAll(";\n");
     }
     for (program.snapshots) |snapshot| {
-        try writeCSnapshotDeclaration(allocator, writer, program, snapshot, false);
+        try writeCUnionDeclaration(allocator, writer, program, snapshot.owner.name, snapshot.symbol, snapshot.params, snapshot.ret, false);
         try writer.writeAll(";\n");
     }
 }
@@ -523,20 +522,28 @@ fn renderValueStructTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
         try writer.print("typedef struct {s} {{\n", .{record.c_name});
         for (record.fields) |field| {
             try writer.writeAll("    ");
-            try writeStructCMemberType(allocator, writer, program, field);
+            try writeCMemberType(allocator, writer, program, field.node, field.scalar);
             try writer.print(" {s};\n", .{field.name});
         }
         try writer.print("}} {s};\n\n", .{record.c_name});
     }
 }
 
-fn writeStructCMemberType(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, field: abi.AbiStruct.Field) !void {
-    if (field.node == .@"enum") {
-        const enum_name = try naming.snakeAlloc(allocator, field.node.@"enum".ref);
+/// An enum member keeps its C typedef name; everything else is spelled from the
+/// lowered scalar. Shared by the extern struct mirror and the value snapshot.
+fn writeCMemberType(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    node: ?semantic.TypeNode,
+    scalar: abi.AbiScalar,
+) !void {
+    if (node) |value| if (value == .@"enum") {
+        const enum_name = try naming.snakeAlloc(allocator, value.@"enum".ref);
         defer allocator.free(enum_name);
         return writer.print("{s}_{s}", .{ program.prefix, enum_name });
-    }
-    try writeCType(writer, field.scalar);
+    };
+    try writeCType(writer, scalar);
 }
 
 /// The value snapshot struct as C sees it. Padding is spelled out so the Zig
@@ -546,7 +553,7 @@ fn renderSnapshotTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
         try writer.print("typedef struct {s} {{\n", .{snapshot.type_name});
         for (snapshot.fields) |field| {
             try writer.writeAll("    ");
-            try writeSnapshotCMemberType(allocator, writer, program, field);
+            try writeCMemberType(allocator, writer, program, field.node, field.scalar);
             if (field.kind == .padding) {
                 try writer.print(" {s}[{d}];\n", .{ field.name, field.bytes });
             } else {
@@ -557,49 +564,25 @@ fn renderSnapshotTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
     }
 }
 
-fn writeSnapshotCMemberType(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, field: abi.AbiSnapshot.Field) !void {
-    if (field.node) |node| if (node == .@"enum") {
-        const enum_name = try naming.snakeAlloc(allocator, node.@"enum".ref);
-        defer allocator.free(enum_name);
-        return writer.print("{s}_{s}", .{ program.prefix, enum_name });
-    };
-    try writeCType(writer, field.scalar);
-}
-
-fn writeCSnapshotDeclaration(
+/// Snapshots and projections share one C declaration form: both take the owning
+/// union by const pointer and return a status.
+fn writeCUnionDeclaration(
     allocator: std.mem.Allocator,
     writer: *std.Io.Writer,
     program: abi.Program,
-    snapshot: abi.AbiSnapshot,
+    owner: []const u8,
+    symbol: []const u8,
+    params: []const abi.AbiParam,
+    ret: abi.AbiScalar,
     implementation: bool,
 ) !void {
-    try writeCType(writer, snapshot.ret);
-    try writer.print(" {s}{s}(", .{ snapshot.symbol, if (implementation) "_impl" else "" });
-    for (snapshot.params, 0..) |parameter, index| {
+    try writeCType(writer, ret);
+    try writer.print(" {s}{s}(", .{ symbol, if (implementation) "_impl" else "" });
+    for (params, 0..) |parameter, index| {
         if (index != 0) try writer.writeAll(", ");
-        try writeUnionCParam(allocator, writer, program, snapshot.owner.name, parameter);
+        try writeUnionCParam(allocator, writer, program, owner, parameter);
     }
     try writer.writeByte(')');
-}
-
-fn writeCProjectionDeclaration(
-    allocator: std.mem.Allocator,
-    writer: *std.Io.Writer,
-    program: abi.Program,
-    projection: abi.AbiProjection,
-    implementation: bool,
-) !void {
-    try writeCType(writer, projection.ret);
-    try writer.print(" {s}{s}(", .{ projection.symbol, if (implementation) "_impl" else "" });
-    for (projection.params, 0..) |parameter, index| {
-        if (index != 0) try writer.writeAll(", ");
-        try writeProjectionCParam(allocator, writer, program, projection, parameter);
-    }
-    try writer.writeByte(')');
-}
-
-fn writeProjectionCParam(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, projection: abi.AbiProjection, parameter: abi.AbiParam) !void {
-    try writeUnionCParam(allocator, writer, program, projection.owner.name, parameter);
 }
 
 fn writeUnionCParam(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, owner: []const u8, parameter: abi.AbiParam) !void {
@@ -642,8 +625,12 @@ fn goParamNamesForAlloc(allocator: std.mem.Allocator, params: []const semantic.P
 }
 
 
-fn structRawTypeNameAlloc(allocator: std.mem.Allocator, record: abi.AbiStruct) ![]u8 {
-    return std.fmt.allocPrint(allocator, "{s}Data", .{record.name});
+/// Suffix of the raw Go mirror of an `extern struct`. Named once so the
+/// declaration and every reference to it cannot drift apart.
+const raw_struct_suffix = "Data";
+
+fn structRawTypeNameAlloc(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
+    return std.fmt.allocPrint(allocator, "{s}{s}", .{ name, raw_struct_suffix });
 }
 
 /// The Go mirror of an `extern struct`. cgo converts member by member and does
@@ -652,19 +639,16 @@ fn structRawTypeNameAlloc(allocator: std.mem.Allocator, record: abi.AbiStruct) !
 /// to agree with C.
 fn renderRawStructTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
     for (program.structs) |record| {
-        const type_name = try structRawTypeNameAlloc(allocator, record);
+        const type_name = try structRawTypeNameAlloc(allocator, record.name);
         defer allocator.free(type_name);
         try writer.print(
             "\n// {s} mirrors the {s} layout, padding included.\ntype {s} struct {{\n",
             .{ type_name, record.c_name, type_name },
         );
         var offset: usize = 0;
-        var reserved: usize = 0;
         for (record.fields) |field| {
-            if (field.offset > offset) {
+            if (field.offset > offset)
                 try writer.print("\t_ [{d}]byte\n", .{field.offset - offset});
-                reserved += 1;
-            }
             const go_name = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(go_name);
             try writer.print("\t{s} ", .{go_name});
@@ -680,7 +664,7 @@ fn renderRawStructTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
 fn writeRawStructFieldType(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, field: abi.AbiStruct.Field) !void {
     if (field.node == .value_struct) {
         const nested = structRecord(program, field.node.value_struct.ref).?;
-        const nested_name = try structRawTypeNameAlloc(allocator, nested);
+        const nested_name = try structRawTypeNameAlloc(allocator, nested.name);
         defer allocator.free(nested_name);
         return writer.writeAll(nested_name);
     }
@@ -717,7 +701,7 @@ fn writeCgoStructConversion(allocator: std.mem.Allocator, writer: *std.Io.Writer
 
 /// Reads a C value back into the Go mirror, again member by member.
 fn writeCgoStructRead(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, record: abi.AbiStruct, indent: []const u8, c_name: []const u8) !void {
-    const type_name = try structRawTypeNameAlloc(allocator, record);
+    const type_name = try structRawTypeNameAlloc(allocator, record.name);
     defer allocator.free(type_name);
     try writer.print("{s}{{\n", .{type_name});
     for (record.fields) |field| {
@@ -1390,7 +1374,10 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
             .slice_written => try writer.print("&{s}Written", .{go_names[parameter.source_index]}),
             // A struct payload crosses as a raw address, matching the
             // unsafe.Pointer the bindings table declares for it.
-            .payload_out => try writer.writeAll(if (error_payload == .value_struct) "unsafe.Pointer(&outResult)" else "&outResult"),
+            // An aggregate payload crosses as a raw address, exactly as the
+            // lowered scalar for this parameter already says.
+            .payload_out => try writer.writeAll(if (parameter.scalar == .pointer and
+                parameter.scalar.pointer.child.* == .value_struct) "unsafe.Pointer(&outResult)" else "&outResult"),
             .return_slice_pointer => try writer.writeAll("&outResultPtr"),
             .return_slice_length => try writer.writeAll("&outResultLen"),
         }
@@ -1926,7 +1913,7 @@ fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer
         try writer.writeAll("}\n\n");
     }
     for (program.structs) |record| {
-        const raw_type = try structRawTypeNameAlloc(allocator, record);
+        const raw_type = try structRawTypeNameAlloc(allocator, record.name);
         defer allocator.free(raw_type);
         try writer.print("func zigo{s}ToRaw(value {s}) ", .{ record.name, record.name });
         try writeRawReferencePrefix(writer, options);
@@ -2032,7 +2019,9 @@ fn renderPublicSnapshots(allocator: std.mem.Allocator, writer: *std.Io.Writer, p
                 const raw_member = try naming.pascalAlloc(allocator, field.name);
                 defer allocator.free(raw_member);
                 try writer.print("\t\t{s}: ", .{member});
-                try writePublicResultConversion(writer, field.node.?, try tempExpression(allocator, raw_member));
+                const temp = try std.fmt.allocPrint(allocator, "data.{s}", .{raw_member});
+                defer allocator.free(temp);
+                try writePublicResultConversion(writer, field.node.?, temp);
                 try writer.writeAll(",\n");
             }
             try writer.writeAll("\t}, nil\n}\n\n");
@@ -2046,33 +2035,28 @@ fn renderPublicSnapshots(allocator: std.mem.Allocator, writer: *std.Io.Writer, p
     }
 }
 
-fn tempExpression(allocator: std.mem.Allocator, member: []const u8) ![]u8 {
-    return std.fmt.allocPrint(allocator, "data.{s}", .{member});
-}
-
 fn renderPublicErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     const package = try publicPackageAlloc(allocator, program, options);
     defer allocator.free(package);
     try writer.print("// Code generated by zigo. DO NOT EDIT.\npackage {s}\n", .{package});
     const has_handles = programHasOpaqueTypes(program);
     const has_codes = program.error_codes.len != 0;
-    // A Zig panic reaches Go from two boundaries: a projection status and an
-    // error-returning call. Both report it as the same error.
-    const has_panics = has_handles or has_codes;
     const has_status = programHasTaggedUnionTypes(program);
     // The raw package declares the loader sentinel. A colocated raw package is
     // the public package, so it needs no alias.
     const has_library = options.backend == .purego and !options.raw_colocated;
-    if (!has_panics and !has_handles and !has_library) return;
+    // A Zig panic reaches Go from two boundaries: a projection status and an
+    // error-returning call. Both report it as the same error, so the file is
+    // needed whenever either exists.
+    if (!has_handles and !has_codes and !has_library) return;
     // errorForCode names an unrecognized code with its number.
-    const needs_strconv = has_codes;
     const raw_import = (has_codes or has_library) and !options.raw_colocated;
-    const import_count = 1 + @as(usize, @intFromBool(needs_strconv)) + @as(usize, @intFromBool(raw_import));
+    const import_count = 1 + @as(usize, @intFromBool(has_codes)) + @as(usize, @intFromBool(raw_import));
     if (import_count == 1) {
         try writer.writeAll("\nimport \"errors\"\n");
     } else {
         try writer.writeAll("\nimport (\n\t\"errors\"\n");
-        if (needs_strconv) try writer.writeAll("\t\"strconv\"\n");
+        if (has_codes) try writer.writeAll("\t\"strconv\"\n");
         if (raw_import) {
             try writer.writeByte('\n');
             try writeRawImport(writer, options, "\t");
@@ -2082,7 +2066,7 @@ fn renderPublicErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
     try writer.writeByte('\n');
     try renderGoSentinels(writer, .{
         .handles = has_handles,
-        .panics = has_panics,
+        .panics = has_handles or has_codes,
         .status = has_status,
         .library = has_library,
     }, options);
@@ -2574,7 +2558,7 @@ fn writeRawGoType(writer: *std.Io.Writer, program: abi.Program, node: semantic.T
         },
         .@"enum" => try writer.writeAll(rawGoTypeName(program, node)),
         .opaque_ptr => try writer.writeAll("unsafe.Pointer"),
-        .value_struct => |value| try writer.print("{s}Data", .{value.ref}),
+        .value_struct => |value| try writer.print("{s}{s}", .{ value.ref, raw_struct_suffix }),
         else => try writeGoScalar(writer, semanticScalar(program, node)),
     }
 }

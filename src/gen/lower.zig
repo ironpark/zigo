@@ -305,9 +305,9 @@ fn lowerValueStructs(allocator: std.mem.Allocator, document: semantic.Semantic, 
         for (declaration.fields, 0..) |field, index| {
             const node = field.type.?;
             const scalar = try lowerValue(allocator, document, prefix, node);
-            const bytes = try memberBytes(document, prefix, node, scalar);
-            const member_alignment = try memberAlignment(document, prefix, node, scalar);
-            offset += padding(offset, member_alignment);
+            const member = memberLayout(structs.items, node, scalar);
+            const bytes = member.bytes;
+            offset += padding(offset, member.alignment);
             fields[index] = .{
                 .name = field.name,
                 .scalar = scalar,
@@ -316,7 +316,7 @@ fn lowerValueStructs(allocator: std.mem.Allocator, document: semantic.Semantic, 
                 .bytes = bytes,
             };
             offset += bytes;
-            alignment = @max(alignment, member_alignment);
+            alignment = @max(alignment, member.alignment);
         }
         try structs.append(allocator, .{
             .owner = declaration,
@@ -376,55 +376,17 @@ fn mentionsValueStruct(document: semantic.Semantic, node: semantic.TypeNode, nam
     };
 }
 
-fn memberBytes(document: semantic.Semantic, prefix: []const u8, node: semantic.TypeNode, scalar: abi.AbiScalar) !usize {
-    if (node != .value_struct) return scalarBytes(scalar);
-    const nested = valueStructDeclaration(document, node.value_struct.ref);
-    var offset: usize = 0;
-    var alignment: usize = 1;
-    for (nested.fields) |field| {
-        const child = field.type.?;
-        const child_scalar = try lowerValueNoAlloc(document, prefix, child);
-        const bytes = try memberBytes(document, prefix, child, child_scalar);
-        const child_alignment = try memberAlignment(document, prefix, child, child_scalar);
-        offset += padding(offset, child_alignment);
-        offset += bytes;
-        alignment = @max(alignment, child_alignment);
+/// A nested struct is lowered before the struct that embeds it, so its final
+/// size and alignment are already recorded and never recomputed here.
+fn memberLayout(lowered: []const abi.AbiStruct, node: semantic.TypeNode, scalar: abi.AbiScalar) struct { bytes: usize, alignment: usize } {
+    if (node != .value_struct) {
+        const bytes = scalarBytes(scalar);
+        return .{ .bytes = bytes, .alignment = bytes };
     }
-    return offset + padding(offset, alignment);
-}
-
-fn memberAlignment(document: semantic.Semantic, prefix: []const u8, node: semantic.TypeNode, scalar: abi.AbiScalar) !usize {
-    if (node != .value_struct) return scalarBytes(scalar);
-    const nested = valueStructDeclaration(document, node.value_struct.ref);
-    var alignment: usize = 1;
-    for (nested.fields) |field| {
-        const child = field.type.?;
-        const child_scalar = try lowerValueNoAlloc(document, prefix, child);
-        alignment = @max(alignment, try memberAlignment(document, prefix, child, child_scalar));
+    for (lowered) |record| {
+        if (std.mem.eql(u8, record.name, node.value_struct.ref))
+            return .{ .bytes = record.size, .alignment = record.alignment };
     }
-    return alignment;
-}
-
-/// Layout only needs the scalar's width, and a nested struct never consults
-/// the returned name, so the sizing walk avoids allocating C names.
-fn lowerValueNoAlloc(document: semantic.Semantic, prefix: []const u8, node: semantic.TypeNode) !abi.AbiScalar {
-    return switch (node) {
-        .value_struct => |value| .{ .value_struct = .{ .name = value.ref, .c_name = value.ref } },
-        .@"enum" => |value| lowerValueNoAlloc(document, prefix, enumDeclaration(document, value.ref).tag_type.?),
-        .bool => .bool_u8,
-        .int => |value| if (value.is_usize)
-            (if (value.signed) .isize else .usize)
-        else if (value.signed)
-            .{ .signed_int = value.bits }
-        else
-            .{ .unsigned_int = value.bits },
-        .float => |value| .{ .float = value.bits },
-        else => error.UnsupportedType,
-    };
-}
-
-fn valueStructDeclaration(document: semantic.Semantic, name: []const u8) semantic.TypeDecl {
-    for (document.types) |declaration| if (std.mem.eql(u8, declaration.name, name)) return declaration;
     unreachable;
 }
 
