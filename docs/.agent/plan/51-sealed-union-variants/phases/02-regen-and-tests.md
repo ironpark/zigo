@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-31T20:16:37Z"
 depends_on:
 - "51-sealed-union-variants#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: All ten examples' Go tests pass (cgo and purego); `gofmt -l` and `go vet`
 > NEXT: none

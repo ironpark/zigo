@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T20:16:37Z"
 description: "Add sealed-interface variant representation for tagged unions: per-variant types + Variant() so Go users type-switch instead of As* probing"
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-31T20:02:17Z"
 ---
 > NEXT: Emit sealed variant interfaces, concrete variant types, and the shared Variant builder. ([Phase 0](phases/00-emit-variant-types.md))
@@ -9,7 +10,7 @@ registered_at: "2026-08-31T20:02:17Z"
 
 - [x] [Phase 00: Emit sealed variant types and the shared builder](phases/00-emit-variant-types.md)
 - [x] [Phase 01: Snapshot fast path for scalar-only unions](phases/01-snapshot-fast-path.md)
-- [ ] [Phase 02: Regenerate examples and add type-switch coverage](phases/02-regen-and-tests.md)
+- [x] [Phase 02: Regenerate examples and add type-switch coverage](phases/02-regen-and-tests.md)
 
 # Shared Verification
 
