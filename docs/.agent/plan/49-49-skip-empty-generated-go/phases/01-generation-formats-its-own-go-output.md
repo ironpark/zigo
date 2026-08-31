@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-31T18:49:34Z"
 depends_on:
 - "49-49-skip-empty-generated-go#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test` and `zig build check` pass.
 > NEXT: none

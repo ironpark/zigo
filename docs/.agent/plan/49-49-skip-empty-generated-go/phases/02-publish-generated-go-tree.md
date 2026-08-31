@@ -2,7 +2,7 @@
 depends_on:
 - "49-49-skip-empty-generated-go#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `zig build go` and `zig build go-check` pass in every example directory.
 > NEXT: none
