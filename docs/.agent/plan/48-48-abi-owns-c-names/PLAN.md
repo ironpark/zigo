@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T18:14:42Z"
 description: Move C type-name minting out of the emitter into lowering, and expose lowered struct records on AbiFn/AbiParam
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-31T18:08:46Z"
 ---
 > NEXT: Add the `AbiEnum`, `AbiOpaque`, and `AbiScalar.opaque` C-name records to the IR and populate them in lowering. ([Phase 0](phases/00-ir-enum-opaque-names.md))
@@ -9,7 +10,7 @@ registered_at: "2026-08-31T18:08:46Z"
 
 - [x] [Phase 00: IR records for enums and handles](phases/00-ir-enum-opaque-names.md)
 - [x] [Phase 01: Emitter reads C names from the IR](phases/01-emit-consumes-c-names.md)
-- [ ] [Phase 02: Functions carry their own struct records](phases/02-fn-struct-records.md)
+- [x] [Phase 02: Functions carry their own struct records](phases/02-fn-struct-records.md)
 
 # Shared Verification
 

@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-31T18:14:42Z"
 depends_on:
 - "48-48-abi-owns-c-names#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: No `structRecord(...).?` remains outside the nested-member sites.
 > NEXT: none
