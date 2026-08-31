@@ -10,7 +10,7 @@ import "example.com/zigo/signal/internal/raw"
 func NewSignal() (*Signal, error) {
 	result, code := raw.SignalCreate()
 	if code != 0 {
-		return nil, errorForCode(code)
+		return nil, errorForCode("NewSignal", code)
 	}
 	return &Signal{ptr: result}, nil
 }

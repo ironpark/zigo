@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T11:57:56Z"
 description: Collapse duplicated axes in the build options, declaration DSL and generated Go surface
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-31T10:38:14Z"
 ---
 > NEXT: 소비되지 않는 layout 산출물 제거부터 시작한다. ([Phase 0](phases/00-drop-layout-artifact.md))
@@ -10,8 +11,8 @@ registered_at: "2026-08-31T10:38:14Z"
 - [x] [Phase 00: Drop the unused layout artifact](phases/00-drop-layout-artifact.md)
 - [x] [Phase 01: Collapse the build option axes](phases/01-collapse-option-axes.md)
 - [x] [Phase 02: One way to name a declaration](phases/02-unified-declaration-paths.md)
-- [ ] [Phase 03: Separate type kind from access strategy](phases/03-split-repr-axis.md)
-- [ ] [Phase 04: One error discrimination rule](phases/04-unify-go-errors.md)
+- [x] [Phase 03: Separate type kind from access strategy](phases/03-split-repr-axis.md)
+- [x] [Phase 04: One error discrimination rule](phases/04-unify-go-errors.md)
 
 # Shared Verification
 

@@ -10,7 +10,7 @@ import "example.com/zigo/pipeline/internal/raw"
 func NewIntBatch() (*IntBatch, error) {
 	result, code := raw.IntBatchCreate()
 	if code != 0 {
-		return nil, errorForCode(code)
+		return nil, errorForCode("NewIntBatch", code)
 	}
 	return &IntBatch{ptr: result}, nil
 }
@@ -22,7 +22,7 @@ func (i *IntBatch) Push(value int32) error {
 	if i != nil { i.mu.RLock(); defer i.mu.RUnlock() }
 	code := raw.IntBatchPush(zigoMustPointer("IntBatch.Push receiver", i), value)
 	if code != 0 {
-		return errorForCode(code)
+		return errorForCode("IntBatch.Push", code)
 	}
 	return nil
 }
@@ -40,7 +40,7 @@ func (i *IntBatch) Len() uint {
 func NewFloatBatch() (*FloatBatch, error) {
 	result, code := raw.FloatBatchCreate()
 	if code != 0 {
-		return nil, errorForCode(code)
+		return nil, errorForCode("NewFloatBatch", code)
 	}
 	return &FloatBatch{ptr: result}, nil
 }
@@ -52,7 +52,7 @@ func (f *FloatBatch) Push(p0 float64) error {
 	if f != nil { f.mu.RLock(); defer f.mu.RUnlock() }
 	code := raw.FloatBatchPush(zigoMustPointer("FloatBatch.Push receiver", f), p0)
 	if code != 0 {
-		return errorForCode(code)
+		return errorForCode("FloatBatch.Push", code)
 	}
 	return nil
 }
@@ -72,7 +72,7 @@ func NewPipeline(name string, mode Mode, callback PipelineCallback) (*Pipeline, 
 	result, code := raw.PipelineCreate([]byte(name), uint32(mode), uintptr(callbackHandle))
 	if code != 0 {
 		deleteCallbackHandle(callbackHandle)
-		return nil, errorForCode(code)
+		return nil, errorForCode("NewPipeline", code)
 	}
 	return &Pipeline{ptr: result, callbackHandles: []zigoCallbackHandle{callbackHandle}}, nil
 }
@@ -84,7 +84,7 @@ func (p *Pipeline) Process(values []int32) (int64, error) {
 	if p != nil { p.mu.RLock(); defer p.mu.RUnlock() }
 	result, code := raw.PipelineProcess(zigoMustPointer("Pipeline.Process receiver", p), values)
 	if code != 0 {
-		return 0, errorForCode(code)
+		return 0, errorForCode("Pipeline.Process", code)
 	}
 	return result, nil
 }

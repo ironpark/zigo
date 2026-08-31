@@ -17,6 +17,9 @@ import (
 // It is empty on platforms this backend does not support.
 var DefaultLibraryName = map[string]string{"darwin": "libcallback_zigo.dylib", "linux": "libcallback_zigo.so"}[runtime.GOOS]
 
+// ErrLibraryLoad identifies a shared-library load or symbol resolution failure.
+var ErrLibraryLoad = errors.New("zigo: shared library unavailable")
+
 // LibraryError reports a native library loading or symbol resolution failure.
 type LibraryError struct {
 	Path      string
@@ -35,6 +38,9 @@ func (err *LibraryError) Error() string {
 	}
 	return fmt.Sprintf("zigo: %s %q: %v", err.Operation, err.Path, err.Cause)
 }
+
+// Is reports ErrLibraryLoad so every generated error classifies the same way.
+func (err *LibraryError) Is(target error) bool { return target == ErrLibraryLoad }
 
 // Unwrap returns the platform loader error.
 func (err *LibraryError) Unwrap() error { return err.Cause }

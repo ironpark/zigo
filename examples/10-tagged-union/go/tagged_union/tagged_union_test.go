@@ -131,7 +131,7 @@ func TestProjectionLifecycleFailuresStayInGo(t *testing.T) {
 	})
 }
 
-func TestOpaqueArgumentsAndNativeProjectionErrorsAreTyped(t *testing.T) {
+func TestOpaqueArgumentsAndNativeErrorsAreTyped(t *testing.T) {
 	child, err := NewChild(11)
 	if err != nil {
 		t.Fatal(err)

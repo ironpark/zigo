@@ -26,7 +26,7 @@ var DefaultLibraryName = raw.DefaultLibraryName
 func NewChild(value int32) (*Child, error) {
 	result, code := raw.ChildCreate(value)
 	if code != 0 {
-		return nil, errorForCode(code)
+		return nil, errorForCode("NewChild", code)
 	}
 	return newChild(result), nil
 }
@@ -44,7 +44,7 @@ func (c *Child) Get() int32 {
 func NewValue(initial int64) (*Value, error) {
 	result, code := raw.ValueCreate(initial)
 	if code != 0 {
-		return nil, errorForCode(code)
+		return nil, errorForCode("NewValue", code)
 	}
 	return newValue(result), nil
 }
@@ -114,7 +114,7 @@ func (v *Value) Borrow() *ValueRef {
 func NewSignal(initial uint32) (*Signal, error) {
 	result, code := raw.SignalCreate(initial)
 	if code != 0 {
-		return nil, errorForCode(code)
+		return nil, errorForCode("NewSignal", code)
 	}
 	return newSignal(result), nil
 }
@@ -171,7 +171,7 @@ func LiveValues() uint {
 func Divide(numerator float64, denominator float64) (float64, error) {
 	result, code := raw.Divide(numerator, denominator)
 	if code != 0 {
-		return 0, errorForCode(code)
+		return 0, errorForCode("Divide", code)
 	}
 	return result, nil
 }
@@ -186,7 +186,7 @@ func Sum(values []float64) float64 {
 func PanicError() error {
 	code := raw.PanicError()
 	if code != 0 {
-		return errorForCode(code)
+		return errorForCode("PanicError", code)
 	}
 	return nil
 }

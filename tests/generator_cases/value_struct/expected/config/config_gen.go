@@ -24,7 +24,7 @@ func Translate(origin Point, dx int16) Point {
 func Load() (Config, error) {
 	result, code := raw.Load()
 	if code != 0 {
-		return Config{}, errorForCode(code)
+		return Config{}, errorForCode("Load", code)
 	}
 	return zigoConfigFromRaw(result), nil
 }

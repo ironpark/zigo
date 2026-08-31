@@ -312,10 +312,8 @@ zigo는 `ValueTag`, `TryTag() (ValueTag, error)`와 편의 메서드 `Tag()`를 
 
 projection의 내부 status는 mismatch, success, invalid handle/required output, Zig panic을
 구분한다. checked accessor는 `*HandleError`, `*NativePanicError` 또는 예기치 않은 status의
-`*ProjectionError`를 반환한다. `errors.Is(err, ErrInvalidHandle)`과
-`errors.Is(err, ErrNativePanic)`으로 분류할 수 있다. 기존 `Tag`와 `As*`는 source
-compatibility를 위해 checked accessor를 호출한 뒤 오류가 있으면 같은 typed error로
-panic한다. 같은 handle에 대한 `Close`, variant 변경, accessor 호출을 동시에 수행할 때의
+`*StatusError`를 반환하며, 판별 방법은 아래 [에러 판별](#에러-판별) 한 규칙을 따른다.
+`Tag`와 `As*`는 checked accessor를 호출한 뒤 오류가 있으면 같은 typed error로 panic한다. 같은 handle에 대한 `Close`, variant 변경, accessor 호출을 동시에 수행할 때의
 직렬화는 호출자 책임이다.
 
 ABI diff는 기존 순서·tag·payload를 보존한 끝부분 variant 추가를 compatible append로
@@ -414,6 +412,20 @@ handle payload는 union wrapper에 수명이 묶인 borrowed `*TRef`다. union �
 `.tagged_union_value`는 "tagged union인데 스냅샷"을 한 이름에 섞은 것이었고, 전략이 하나
 더 생길 때마다 새 `repr` 이름이 필요했다.
 
+## 마이그레이션: 에러 판별
+
+| 예전 | 지금 |
+|---|---|
+| `errors.Is(err, ErrPanicCaught)` | `errors.Is(err, ErrNativePanic)` |
+| `errors.As(err, &zigoErr)` 후 `zigoErr.Code == -2` | `errors.Is(err, ErrNativePanic)` |
+| `*ProjectionError` | `*StatusError` + `errors.Is(err, ErrNativeStatus)` |
+| `errors.As(err, &libraryErr)` (`*LibraryError`) | `errors.Is(err, ErrLibraryLoad)`. `errors.As`는 그대로 쓸 수 있다 |
+| `Err<ZigError>` | 그대로 |
+| `ErrInvalidHandle`, `ErrNativePanic` | 그대로 |
+
+`ErrPanicCaught`는 없앴다. Zig panic은 하나의 사건인데 경계에 따라 두 개의 센티널로
+갈렸기 때문이다. 이제 오류 반환 함수의 코드 `-2`도 `*NativePanicError`를 만든다.
+
 ## 마이그레이션: 선언을 지칭하는 방법
 
 | 예전 | 지금 |
@@ -432,6 +444,43 @@ semantic IR도 같은 축을 따른다. `union_repr: "value_snapshot"` 은 `acce
 `.@"fn"`은 더 이상 받지 않는다. 경로가 함수 값을 대신하며, `.root`와 `types`에서
 컨테이너를 찾아 해석한다. 경로가 공개 함수를 가리키지 않으면 컴파일 오류다.
 `.name`은 이제 주소가 아니라 이름 바꾸기 전용이다.
+
+## 에러 판별
+
+생성된 Go의 에러는 **하나의 규칙**으로 판별한다. **분류는 언제나 내보낸 센티널에 대한
+`errors.Is`**이고, `errors.As`는 세부 정보를 읽을 때만 쓴다. 모든 에러 타입은 정확히 하나의
+센티널로 unwrap된다.
+
+| `errors.Is` 대상 | 뜻 | 세부 타입 | 언제 |
+|---|---|---|---|
+| `ErrInvalidHandle` | nil·closed·부모가 닫힌 handle | `*HandleError` | 모든 handle 인자와 receiver |
+| `ErrNativePanic` | Zig panic | `*NativePanicError` | 오류 반환 함수의 코드 `-2`, projection·snapshot의 status `3` |
+| `ErrNativeStatus` | 바인딩이 모르는 native status | `*StatusError` | projection·snapshot이 예기치 않은 status를 반환 |
+| `ErrLibraryLoad` | 공유 라이브러리 로드·심볼 해석 실패 | `*LibraryError` | purego 전용 |
+| `Err<ZigError>` | Zig error set 값 | `*Error` | 오류 반환 함수. 코드로 비교한다 |
+
+```go
+switch {
+case errors.Is(err, ErrInvalidHandle):   // 사용자 코드의 use-after-close
+case errors.Is(err, ErrNativePanic):     // 네이티브 쪽이 죽었다
+case errors.Is(err, ErrOutOfMemory):     // Zig error set 값
+}
+
+var panicErr *NativePanicError
+if errors.As(err, &panicErr) {
+    log.Print(panicErr.Operation, panicErr.Message)
+}
+```
+
+`Tag`/`As*`/`Snapshot`처럼 panic하는 편의 접근자는 그대로 남는다. 오류를 반환할 자리가 없는
+생성 메서드(`ctx.Add(1)`)는 닫힌 handle에서 이미 panic하므로, union 접근자만 예외로 두면
+표면이 오히려 갈라진다. panic으로 전달되는 값도 같은 표의 규칙으로 판별한다.
+
+```go
+defer func() {
+    if err, ok := recover().(error); ok && errors.Is(err, ErrInvalidHandle) { ... }
+}()
+```
 
 ## 생성 파일
 

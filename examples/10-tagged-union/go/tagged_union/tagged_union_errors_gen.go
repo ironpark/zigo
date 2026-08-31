@@ -11,8 +11,11 @@ import (
 // ErrInvalidHandle identifies a nil, closed, or invalid borrowed handle.
 var ErrInvalidHandle = errors.New("zigo: nil or closed handle")
 
-// ErrNativePanic identifies a Zig panic caught at the projection boundary.
+// ErrNativePanic identifies a Zig panic caught at the native boundary.
 var ErrNativePanic = errors.New("zigo: native panic")
+
+// ErrNativeStatus identifies a native status this binding does not recognize.
+var ErrNativeStatus = errors.New("zigo: unrecognized native status")
 
 // HandleError reports which generated operation received an invalid handle.
 type HandleError struct {
@@ -28,9 +31,9 @@ func (err *HandleError) Error() string {
 // Unwrap returns ErrInvalidHandle for errors.Is classification.
 func (err *HandleError) Unwrap() error { return ErrInvalidHandle }
 
-// NativePanicError reports a Zig panic caught while projecting a tagged union.
+// NativePanicError reports a Zig panic caught at the native boundary.
 type NativePanicError struct {
-	// Operation names the generated projection.
+	// Operation names the generated call or projection.
 	Operation string
 	// Message is the native panic message when available.
 	Message string
@@ -47,18 +50,21 @@ func (err *NativePanicError) Error() string {
 // Unwrap returns ErrNativePanic for errors.Is classification.
 func (err *NativePanicError) Unwrap() error { return ErrNativePanic }
 
-// ProjectionError reports an unrecognized native projection status.
-type ProjectionError struct {
-	// Operation names the generated projection.
+// StatusError reports a native status code this binding does not recognize.
+type StatusError struct {
+	// Operation names the generated call or projection.
 	Operation string
 	// Status is the unexpected native status code.
 	Status uint8
 }
 
 // Error implements error.
-func (err *ProjectionError) Error() string {
-	return "zigo: " + err.Operation + ": invalid projection status"
+func (err *StatusError) Error() string {
+	return "zigo: " + err.Operation + ": unrecognized native status"
 }
+
+// Unwrap returns ErrNativeStatus for errors.Is classification.
+func (err *StatusError) Unwrap() error { return ErrNativeStatus }
 
 // Error is a stable Zig error-set value returned by the generated binding.
 type Error struct {
@@ -86,13 +92,10 @@ var ErrDivideByZero = &Error{Code: 2, Name: "DivideByZero"}
 // ErrNever represents Zig error.Never.
 var ErrNever = &Error{Code: 3, Name: "Never"}
 
-// ErrPanicCaught identifies a Zig panic translated at the C ABI boundary.
-var ErrPanicCaught = &Error{Code: -2, Name: "PanicCaught"}
-
-func errorForCode(code int32) error {
+func errorForCode(operation string, code int32) error {
 	switch code {
 	case -2:
-		return &Error{Code: -2, Name: "PanicCaught: " + raw.LastErrorMessage()}
+		return &NativePanicError{Operation: operation, Message: raw.LastErrorMessage()}
 	case 1:
 		return ErrOutOfMemory
 	case 2:

@@ -53,7 +53,9 @@ func TestPuregoTaggedUnion(t *testing.T) {
 	}
 	// The message is read out of native memory, so assert its text and not
 	// just the code: a broken pointer walk would still classify correctly.
-	if err := PanicError(); !errors.Is(err, ErrPanicCaught) {
+	// A Zig panic classifies the same way whether it came from a projection
+	// status or from an error-returning call.
+	if err := PanicError(); !errors.Is(err, ErrNativePanic) {
 		t.Fatalf("panic translation = %v", err)
 	} else if !strings.Contains(err.Error(), "purego panic translation") {
 		t.Fatalf("panic message = %q, want the native text", err.Error())

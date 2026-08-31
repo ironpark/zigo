@@ -11,7 +11,7 @@ func NewTelemetryHub(inputName string, maxSamples uint, initialMode Mode, overfl
 	result, code := raw.TelemetryHubCreate([]byte(inputName), maxSamples, uint32(initialMode), uint32(overflowPolicy), raw.CallbackPointer0(), uintptr(observerHandle))
 	if code != 0 {
 		deleteCallbackHandle(observerHandle)
-		return nil, errorForCode(code)
+		return nil, errorForCode("NewTelemetryHub", code)
 	}
 	return &TelemetryHub{ptr: result, callbackHandles: []zigoCallbackHandle{observerHandle}}, nil
 }
@@ -26,7 +26,7 @@ func (t *TelemetryHub) Rename(newName string) error {
 	}
 	code := raw.TelemetryHubRename(zigoMustPointer("TelemetryHub.Rename receiver", t), []byte(newName))
 	if code != 0 {
-		return errorForCode(code)
+		return errorForCode("TelemetryHub.Rename", code)
 	}
 	return nil
 }
@@ -161,7 +161,7 @@ func (t *TelemetryHub) SetThreshold(newThreshold float64) error {
 	}
 	code := raw.TelemetryHubSetThreshold(zigoMustPointer("TelemetryHub.SetThreshold receiver", t), newThreshold)
 	if code != 0 {
-		return errorForCode(code)
+		return errorForCode("TelemetryHub.SetThreshold", code)
 	}
 	return nil
 }
@@ -186,7 +186,7 @@ func (t *TelemetryHub) SetScaleFactor(newFactor float64) error {
 	}
 	code := raw.TelemetryHubSetScaleFactor(zigoMustPointer("TelemetryHub.SetScaleFactor receiver", t), newFactor)
 	if code != 0 {
-		return errorForCode(code)
+		return errorForCode("TelemetryHub.SetScaleFactor", code)
 	}
 	return nil
 }
@@ -211,7 +211,7 @@ func (t *TelemetryHub) SetOffset(newOffset float64) error {
 	}
 	code := raw.TelemetryHubSetOffset(zigoMustPointer("TelemetryHub.SetOffset receiver", t), newOffset)
 	if code != 0 {
-		return errorForCode(code)
+		return errorForCode("TelemetryHub.SetOffset", code)
 	}
 	return nil
 }
@@ -226,7 +226,7 @@ func (t *TelemetryHub) Push(id uint64, value float64) error {
 	}
 	code := raw.TelemetryHubPush(zigoMustPointer("TelemetryHub.Push receiver", t), id, value)
 	if code != 0 {
-		return errorForCode(code)
+		return errorForCode("TelemetryHub.Push", code)
 	}
 	return nil
 }
@@ -241,7 +241,7 @@ func (t *TelemetryHub) PushWithSeverity(id uint64, value float64, severity Sever
 	}
 	code := raw.TelemetryHubPushWithSeverity(zigoMustPointer("TelemetryHub.PushWithSeverity receiver", t), id, value, uint32(severity))
 	if code != 0 {
-		return errorForCode(code)
+		return errorForCode("TelemetryHub.PushWithSeverity", code)
 	}
 	return nil
 }
@@ -256,7 +256,7 @@ func (t *TelemetryHub) PushBatch(values []float64) error {
 	}
 	code := raw.TelemetryHubPushBatch(zigoMustPointer("TelemetryHub.PushBatch receiver", t), values)
 	if code != 0 {
-		return errorForCode(code)
+		return errorForCode("TelemetryHub.PushBatch", code)
 	}
 	return nil
 }
@@ -271,7 +271,7 @@ func (t *TelemetryHub) Process(limit uint) (uint, error) {
 	}
 	result, code := raw.TelemetryHubProcess(zigoMustPointer("TelemetryHub.Process receiver", t), limit)
 	if code != 0 {
-		return 0, errorForCode(code)
+		return 0, errorForCode("TelemetryHub.Process", code)
 	}
 	return result, nil
 }
@@ -286,7 +286,7 @@ func (t *TelemetryHub) ProcessAll() (uint, error) {
 	}
 	result, code := raw.TelemetryHubProcessAll(zigoMustPointer("TelemetryHub.ProcessAll receiver", t))
 	if code != 0 {
-		return 0, errorForCode(code)
+		return 0, errorForCode("TelemetryHub.ProcessAll", code)
 	}
 	return result, nil
 }
@@ -381,7 +381,7 @@ func (t *TelemetryHub) Minimum() (float64, error) {
 	}
 	result, code := raw.TelemetryHubMinimum(zigoMustPointer("TelemetryHub.Minimum receiver", t))
 	if code != 0 {
-		return 0, errorForCode(code)
+		return 0, errorForCode("TelemetryHub.Minimum", code)
 	}
 	return result, nil
 }
@@ -396,7 +396,7 @@ func (t *TelemetryHub) Maximum() (float64, error) {
 	}
 	result, code := raw.TelemetryHubMaximum(zigoMustPointer("TelemetryHub.Maximum receiver", t))
 	if code != 0 {
-		return 0, errorForCode(code)
+		return 0, errorForCode("TelemetryHub.Maximum", code)
 	}
 	return result, nil
 }
@@ -411,7 +411,7 @@ func (t *TelemetryHub) Average() (float64, error) {
 	}
 	result, code := raw.TelemetryHubAverage(zigoMustPointer("TelemetryHub.Average receiver", t))
 	if code != 0 {
-		return 0, errorForCode(code)
+		return 0, errorForCode("TelemetryHub.Average", code)
 	}
 	return result, nil
 }
@@ -426,7 +426,7 @@ func (t *TelemetryHub) FirstID() (uint64, error) {
 	}
 	result, code := raw.TelemetryHubFirstID(zigoMustPointer("TelemetryHub.FirstID receiver", t))
 	if code != 0 {
-		return 0, errorForCode(code)
+		return 0, errorForCode("TelemetryHub.FirstID", code)
 	}
 	return result, nil
 }
@@ -441,7 +441,7 @@ func (t *TelemetryHub) FirstValue() (float64, error) {
 	}
 	result, code := raw.TelemetryHubFirstValue(zigoMustPointer("TelemetryHub.FirstValue receiver", t))
 	if code != 0 {
-		return 0, errorForCode(code)
+		return 0, errorForCode("TelemetryHub.FirstValue", code)
 	}
 	return result, nil
 }
@@ -456,7 +456,7 @@ func (t *TelemetryHub) LastID() (uint64, error) {
 	}
 	result, code := raw.TelemetryHubLastID(zigoMustPointer("TelemetryHub.LastID receiver", t))
 	if code != 0 {
-		return 0, errorForCode(code)
+		return 0, errorForCode("TelemetryHub.LastID", code)
 	}
 	return result, nil
 }
@@ -471,7 +471,7 @@ func (t *TelemetryHub) LastValue() (float64, error) {
 	}
 	result, code := raw.TelemetryHubLastValue(zigoMustPointer("TelemetryHub.LastValue receiver", t))
 	if code != 0 {
-		return 0, errorForCode(code)
+		return 0, errorForCode("TelemetryHub.LastValue", code)
 	}
 	return result, nil
 }
@@ -486,7 +486,7 @@ func (t *TelemetryHub) LastSeverity() (Severity, error) {
 	}
 	result, code := raw.TelemetryHubLastSeverity(zigoMustPointer("TelemetryHub.LastSeverity receiver", t))
 	if code != 0 {
-		return 0, errorForCode(code)
+		return 0, errorForCode("TelemetryHub.LastSeverity", code)
 	}
 	return Severity(result), nil
 }
@@ -501,7 +501,7 @@ func (t *TelemetryHub) CountAbove(boundary float64) (uint, error) {
 	}
 	result, code := raw.TelemetryHubCountAbove(zigoMustPointer("TelemetryHub.CountAbove receiver", t), boundary)
 	if code != 0 {
-		return 0, errorForCode(code)
+		return 0, errorForCode("TelemetryHub.CountAbove", code)
 	}
 	return result, nil
 }
@@ -516,7 +516,7 @@ func (t *TelemetryHub) CountBelow(boundary float64) (uint, error) {
 	}
 	result, code := raw.TelemetryHubCountBelow(zigoMustPointer("TelemetryHub.CountBelow receiver", t), boundary)
 	if code != 0 {
-		return 0, errorForCode(code)
+		return 0, errorForCode("TelemetryHub.CountBelow", code)
 	}
 	return result, nil
 }
@@ -531,7 +531,7 @@ func (t *TelemetryHub) ContainsAbove(boundary float64) (bool, error) {
 	}
 	result, code := raw.TelemetryHubContainsAbove(zigoMustPointer("TelemetryHub.ContainsAbove receiver", t), boundary)
 	if code != 0 {
-		return false, errorForCode(code)
+		return false, errorForCode("TelemetryHub.ContainsAbove", code)
 	}
 	return result != 0, nil
 }
@@ -546,7 +546,7 @@ func (t *TelemetryHub) ContainsBelow(boundary float64) (bool, error) {
 	}
 	result, code := raw.TelemetryHubContainsBelow(zigoMustPointer("TelemetryHub.ContainsBelow receiver", t), boundary)
 	if code != 0 {
-		return false, errorForCode(code)
+		return false, errorForCode("TelemetryHub.ContainsBelow", code)
 	}
 	return result != 0, nil
 }
@@ -561,7 +561,7 @@ func (t *TelemetryHub) ScaleValues(factor float64) error {
 	}
 	code := raw.TelemetryHubScaleValues(zigoMustPointer("TelemetryHub.ScaleValues receiver", t), factor)
 	if code != 0 {
-		return errorForCode(code)
+		return errorForCode("TelemetryHub.ScaleValues", code)
 	}
 	return nil
 }
@@ -576,7 +576,7 @@ func (t *TelemetryHub) OffsetValues(delta float64) error {
 	}
 	code := raw.TelemetryHubOffsetValues(zigoMustPointer("TelemetryHub.OffsetValues receiver", t), delta)
 	if code != 0 {
-		return errorForCode(code)
+		return errorForCode("TelemetryHub.OffsetValues", code)
 	}
 	return nil
 }
@@ -591,7 +591,7 @@ func (t *TelemetryHub) ClampValues(lower float64, upper float64) error {
 	}
 	code := raw.TelemetryHubClampValues(zigoMustPointer("TelemetryHub.ClampValues receiver", t), lower, upper)
 	if code != 0 {
-		return errorForCode(code)
+		return errorForCode("TelemetryHub.ClampValues", code)
 	}
 	return nil
 }

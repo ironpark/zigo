@@ -28,7 +28,7 @@ func NewEventQueue(name string, capacity uint, policy Policy, observer EventQueu
 	result, code := raw.EventQueueCreate([]byte(name), capacity, uint32(policy), raw.CallbackPointer0(), uintptr(observerHandle))
 	if code != 0 {
 		deleteCallbackHandle(observerHandle)
-		return nil, errorForCode(code)
+		return nil, errorForCode("NewEventQueue", code)
 	}
 	return newEventQueue(result, []zigoCallbackHandle{observerHandle}), nil
 }
@@ -44,7 +44,7 @@ func (e *EventQueue) Enqueue(id uint64, value int32) error {
 	defer runtime.KeepAlive(e)
 	code := raw.EventQueueEnqueue(zigoMustPointer("EventQueue.Enqueue receiver", e), id, value)
 	if code != 0 {
-		return errorForCode(code)
+		return errorForCode("EventQueue.Enqueue", code)
 	}
 	return nil
 }
@@ -60,7 +60,7 @@ func (e *EventQueue) Process(limit uint) (uint, error) {
 	defer runtime.KeepAlive(e)
 	result, code := raw.EventQueueProcess(zigoMustPointer("EventQueue.Process receiver", e), limit)
 	if code != 0 {
-		return 0, errorForCode(code)
+		return 0, errorForCode("EventQueue.Process", code)
 	}
 	return result, nil
 }
@@ -164,7 +164,7 @@ func (e *EventQueue) ApplyLimits(updated Limits) error {
 	defer runtime.KeepAlive(e)
 	code := raw.EventQueueApplyLimits(zigoMustPointer("EventQueue.ApplyLimits receiver", e), zigoLimitsToRaw(updated))
 	if code != 0 {
-		return errorForCode(code)
+		return errorForCode("EventQueue.ApplyLimits", code)
 	}
 	return nil
 }

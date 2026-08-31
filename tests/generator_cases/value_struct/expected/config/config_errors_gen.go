@@ -2,10 +2,33 @@
 package config
 
 import (
+	"errors"
 	"strconv"
 
 	"example.com/zigo/config/internal/raw"
 )
+
+// ErrNativePanic identifies a Zig panic caught at the native boundary.
+var ErrNativePanic = errors.New("zigo: native panic")
+
+// NativePanicError reports a Zig panic caught at the native boundary.
+type NativePanicError struct {
+	// Operation names the generated call or projection.
+	Operation string
+	// Message is the native panic message when available.
+	Message string
+}
+
+// Error implements error.
+func (err *NativePanicError) Error() string {
+	if err.Message == "" {
+		return "zigo: " + err.Operation + ": native panic"
+	}
+	return "zigo: " + err.Operation + ": native panic: " + err.Message
+}
+
+// Unwrap returns ErrNativePanic for errors.Is classification.
+func (err *NativePanicError) Unwrap() error { return ErrNativePanic }
 
 // Error is a stable Zig error-set value returned by the generated binding.
 type Error struct {
@@ -25,13 +48,11 @@ func (err *Error) Is(target error) bool {
 
 // ErrInvalid represents Zig error.Invalid.
 var ErrInvalid = &Error{Code: 1, Name: "Invalid"}
-// ErrPanicCaught identifies a Zig panic translated at the C ABI boundary.
-var ErrPanicCaught = &Error{Code: -2, Name: "PanicCaught"}
 
-func errorForCode(code int32) error {
+func errorForCode(operation string, code int32) error {
 	switch code {
 	case -2:
-		return &Error{Code: -2, Name: "PanicCaught: " + raw.LastErrorMessage()}
+		return &NativePanicError{Operation: operation, Message: raw.LastErrorMessage()}
 	case 1:
 		return ErrInvalid
 	default:

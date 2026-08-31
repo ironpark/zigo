@@ -9,7 +9,7 @@ import "example.com/zigo/type-relations/internal/raw"
 func NewCounter(initial int64) (*Counter, error) {
 	result, code := raw.CounterCreate(initial)
 	if code != 0 {
-		return nil, errorForCode(code)
+		return nil, errorForCode("NewCounter", code)
 	}
 	return &Counter{ptr: result}, nil
 }
@@ -32,7 +32,7 @@ func (c *Counter) Add(delta int64) int64 {
 func NewAccumulator() (*Accumulator, error) {
 	result, code := raw.AccumulatorCreate()
 	if code != 0 {
-		return nil, errorForCode(code)
+		return nil, errorForCode("NewAccumulator", code)
 	}
 	return &Accumulator{ptr: result}, nil
 }

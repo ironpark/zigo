@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T11:57:56Z"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: 생성된 Go의 에러 판별이 하나의 규칙으로 설명된다.
 > NEXT: none

@@ -344,7 +344,7 @@ func zigoProjectionError(operation string, status uint8) error {
 	case zigoProjectionPanic:
 		return &NativePanicError{Operation: operation, Message: raw.LastErrorMessage()}
 	default:
-		return &ProjectionError{Operation: operation, Status: status}
+		return &StatusError{Operation: operation, Status: status}
 	}
 }
 

@@ -9,7 +9,7 @@ import "example.com/zigo/opaque/internal/raw"
 func NewContext() (*Context, error) {
 	result, code := raw.ContextCreate()
 	if code != 0 {
-		return nil, errorForCode(code)
+		return nil, errorForCode("NewContext", code)
 	}
 	return &Context{ptr: result}, nil
 }

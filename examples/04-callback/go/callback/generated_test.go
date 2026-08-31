@@ -76,15 +76,16 @@ func TestCallbackPanicIsContained(t *testing.T) {
 }
 
 func TestZigPanicIsDiagnosable(t *testing.T) {
+	// A Zig panic is one event with one sentinel, whichever boundary caught it.
 	err := PanicNow()
-	var zigoErr *Error
-	if !errors.As(err, &zigoErr) {
-		t.Fatalf("PanicNow() error = %T, want *Error", err)
+	if !errors.Is(err, ErrNativePanic) {
+		t.Fatalf("errors.Is(%v, ErrNativePanic) = false", err)
 	}
-	if zigoErr.Code != -2 {
-		t.Fatalf("PanicNow() code = %d, want -2", zigoErr.Code)
+	var panicErr *NativePanicError
+	if !errors.As(err, &panicErr) {
+		t.Fatalf("PanicNow() error = %T, want *NativePanicError", err)
 	}
-	if !strings.Contains(zigoErr.Error(), "deliberate boundary panic") {
-		t.Fatalf("PanicNow() error = %q", zigoErr.Error())
+	if !strings.Contains(panicErr.Message, "deliberate boundary panic") {
+		t.Fatalf("PanicNow() message = %q", panicErr.Message)
 	}
 }

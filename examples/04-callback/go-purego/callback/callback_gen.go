@@ -22,7 +22,7 @@ var DefaultLibraryName = raw.DefaultLibraryName
 func NewFloatBuffer() (*FloatBuffer, error) {
 	result, code := raw.FloatBufferCreate()
 	if code != 0 {
-		return nil, errorForCode(code)
+		return nil, errorForCode("NewFloatBuffer", code)
 	}
 	return &FloatBuffer{ptr: result}, nil
 }
@@ -53,7 +53,7 @@ func (f *FloatBuffer) Len() uint {
 func NewIntBuffer() (*IntBuffer, error) {
 	result, code := raw.IntBufferCreate()
 	if code != 0 {
-		return nil, errorForCode(code)
+		return nil, errorForCode("NewIntBuffer", code)
 	}
 	return &IntBuffer{ptr: result}, nil
 }
@@ -86,7 +86,7 @@ func NewCallbackContext(callback CallbackContextCallback) (*CallbackContext, err
 	result, code := raw.CallbackContextCreate(raw.CallbackPointer0(), uintptr(callbackHandle))
 	if code != 0 {
 		deleteCallbackHandle(callbackHandle)
-		return nil, errorForCode(code)
+		return nil, errorForCode("NewCallbackContext", code)
 	}
 	return &CallbackContext{ptr: result, callbackHandles: []zigoCallbackHandle{callbackHandle}}, nil
 }
@@ -106,7 +106,7 @@ func (c *CallbackContext) Run(value int32) int32 {
 func PanicNow() error {
 	code := raw.PanicNow()
 	if code != 0 {
-		return errorForCode(code)
+		return errorForCode("PanicNow", code)
 	}
 	return nil
 }
