@@ -4,6 +4,8 @@ const library = @import("event_queue");
 pub const bindings = zigo.define(.{
     .types = .{
         .{ .type = library.EventQueue, .repr = .@"opaque" },
+        .{ .type = library.Stats, .repr = .value },
+        .{ .type = library.Limits, .repr = .value },
     },
     .functions = .{
         .{
@@ -23,6 +25,9 @@ pub const bindings = zigo.define(.{
         .{ .name = "policy", .@"fn" = library.EventQueue.policy },
         .{ .name = "dropped", .@"fn" = library.EventQueue.dropped },
         .{ .name = "processed", .@"fn" = library.EventQueue.processed },
+        .{ .name = "stats", .@"fn" = library.EventQueue.stats },
+        .{ .name = "limits", .@"fn" = library.EventQueue.limits },
+        .{ .name = "applyLimits", .@"fn" = library.EventQueue.applyLimits, .params = .{"updated"} },
         .{ .name = "clear", .@"fn" = library.EventQueue.clear },
         .{ .name = "deinit", .@"fn" = library.EventQueue.deinit },
         .{ .name = "liveQueues", .@"fn" = library.liveQueues },

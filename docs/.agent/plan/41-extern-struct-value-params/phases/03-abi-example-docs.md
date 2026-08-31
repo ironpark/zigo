@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-31T10:25:51Z"
 depends_on:
 - "41-extern-struct-value-params#2"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: 필드 변경이 breaking으로 나오는 CLI 계약 테스트가 있다.
 > NEXT: none

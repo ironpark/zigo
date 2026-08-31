@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include "zigo_config.h"
 
 static _Thread_local jmp_buf zg_panic_env;
 static _Thread_local int zg_panic_active;

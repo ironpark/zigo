@@ -555,3 +555,35 @@ test "switching a tagged union between representations is breaking" {
     try std.testing.expectEqualStrings("Signal", report.changes.items[0].subject);
     try std.testing.expectEqualStrings("tagged-union representation changed", report.changes.items[0].detail);
 }
+
+test "every extern struct field change is breaking" {
+    const width: semantic.TypeField = .{ .name = "width", .type = .{ .int = .{ .bits = 32, .signed = true } } };
+    const height: semantic.TypeField = .{ .name = "height", .type = .{ .int = .{ .bits = 32, .signed = true } } };
+    const depth: semantic.TypeField = .{ .name = "depth", .type = .{ .int = .{ .bits = 32, .signed = true } } };
+    const wide: semantic.TypeField = .{ .name = "width", .type = .{ .int = .{ .bits = 64, .signed = true } } };
+
+    const base: semantic.Semantic = .{
+        .package = "contract",
+        .prefix = "zg",
+        .types = &.{.{ .fields = &.{ width, height }, .kind = .value_struct, .layout = .@"extern", .name = "Config" }},
+        .zig_version = "0.16.0",
+    };
+    // An enum or a projection union tolerates an append; a struct cannot,
+    // because the append moves its size.
+    const cases = [_][]const semantic.TypeField{
+        &.{ width, height, depth },
+        &.{width},
+        &.{ height, width },
+        &.{ wide, height },
+    };
+    for (cases) |fields| {
+        var current = base;
+        const types = [_]semantic.TypeDecl{.{ .fields = fields, .kind = .value_struct, .layout = .@"extern", .name = "Config" }};
+        current.types = &types;
+        var report = try diff(std.testing.allocator, base, current);
+        defer report.deinit(std.testing.allocator);
+        try std.testing.expect(report.hasBreaking());
+        try std.testing.expectEqualStrings("Config", report.changes.items[0].subject);
+        try std.testing.expectEqualStrings("type definition changed", report.changes.items[0].detail);
+    }
+}

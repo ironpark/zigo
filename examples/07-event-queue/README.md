@@ -7,7 +7,9 @@ This application-shaped example exposes a bounded Zig event queue as a Go packag
 - scalar event batches processed through a retained Go observer callback;
 - callback panic translation, lifecycle accounting, and concurrent independent queues;
 - Go 1.24 `runtime.AddCleanup` fallback while deterministic `Close` remains primary;
-- a custom raw cgo package at `go/bridge/cgo`.
+- a custom raw cgo package at `go/bridge/cgo`;
+- `extern struct` parameters and returns via `Stats`, `Limits`, `ApplyLimits`, exposed as Go
+  values while the C ABI takes pointers.
 
 Run the complete example from this directory:
 
@@ -18,6 +20,11 @@ zig build go-check abi-check
 cd go
 go test -count=1 ./...
 ```
+
+`Stats` and `Limits` are Zig `extern struct` types. Go passes and receives them by value; the
+generated code takes the address, because zigo never moves an aggregate across the C boundary
+by value. `go/bridge/cgo/cheader` reads the layout the generated header defines so the layout
+test can check the Go mirrors against it directly.
 
 `EventQueue` itself is intentionally not thread-safe. The Go concurrency test creates one
 queue per goroutine rather than sharing a queue without synchronization.

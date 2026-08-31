@@ -118,6 +118,44 @@ func (e *EventQueue) Processed() uint {
 	return raw.EventQueueProcessed(zigoMustPointer("EventQueue.Processed receiver", e))
 }
 
+// Stats invokes the bound Zig EventQueue.stats operation.
+// It panics with *HandleError if a required handle is nil or closed.
+func (e *EventQueue) Stats() Stats {
+	if e != nil {
+		e.mu.RLock()
+		defer e.mu.RUnlock()
+	}
+	defer runtime.KeepAlive(e)
+	return zigoStatsFromRaw(raw.EventQueueStats(zigoMustPointer("EventQueue.Stats receiver", e)))
+}
+
+// Limits invokes the bound Zig EventQueue.limits operation.
+// It panics with *HandleError if a required handle is nil or closed.
+func (e *EventQueue) Limits() Limits {
+	if e != nil {
+		e.mu.RLock()
+		defer e.mu.RUnlock()
+	}
+	defer runtime.KeepAlive(e)
+	return zigoLimitsFromRaw(raw.EventQueueLimits(zigoMustPointer("EventQueue.Limits receiver", e)))
+}
+
+// ApplyLimits invokes the bound Zig EventQueue.applyLimits operation.
+// It panics with *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+func (e *EventQueue) ApplyLimits(updated Limits) error {
+	if e != nil {
+		e.mu.RLock()
+		defer e.mu.RUnlock()
+	}
+	defer runtime.KeepAlive(e)
+	code := raw.EventQueueApplyLimits(zigoMustPointer("EventQueue.ApplyLimits receiver", e), zigoLimitsToRaw(updated))
+	if code != 0 {
+		return errorForCode(code)
+	}
+	return nil
+}
+
 // Clear invokes the bound Zig EventQueue.clear operation.
 // It panics with *HandleError if a required handle is nil or closed.
 func (e *EventQueue) Clear() uint {

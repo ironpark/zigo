@@ -274,6 +274,57 @@
       "symbol": "zg_processed"
     },
     {
+      "name": "stats",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "EventQueue",
+      "return": {
+        "kind": "value_struct",
+        "ref": "Stats"
+      },
+      "symbol": "zg_stats"
+    },
+    {
+      "name": "limits",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "EventQueue",
+      "return": {
+        "kind": "value_struct",
+        "ref": "Limits"
+      },
+      "symbol": "zg_limits"
+    },
+    {
+      "name": "applyLimits",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "updated",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "kind": "value_struct",
+            "ref": "Limits"
+          }
+        }
+      ],
+      "receiver": "EventQueue",
+      "return": {
+        "error_set": [
+          "OutOfMemory",
+          "InvalidName",
+          "InvalidCapacity"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "void"
+        }
+      },
+      "symbol": "zg_applyLimits"
+    },
+    {
       "name": "clear",
       "ownership": "borrowed",
       "params": [],
@@ -324,6 +375,64 @@
       "exhaustive": true,
       "fields": [
         {
+          "name": "len",
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "capacity",
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "dropped",
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "processed",
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "policy",
+          "type": {
+            "kind": "enum",
+            "ref": "Policy"
+          }
+        },
+        {
+          "name": "saturated",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "kind": "value_struct",
+      "layout": "extern",
+      "name": "Stats",
+      "zig_path": "root.Stats"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
           "name": "reject",
           "value": 0
         },
@@ -341,6 +450,31 @@
         "signed": false
       },
       "zig_path": "root.Policy"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "capacity",
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "policy",
+          "type": {
+            "kind": "enum",
+            "ref": "Policy"
+          }
+        }
+      ],
+      "kind": "value_struct",
+      "layout": "extern",
+      "name": "Limits",
+      "zig_path": "root.Limits"
     }
   ],
   "zig_version": "0.16.0"

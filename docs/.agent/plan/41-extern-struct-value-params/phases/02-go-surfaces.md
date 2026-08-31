@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-31T10:18:43Z"
 depends_on:
 - "41-extern-struct-value-params#1"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: 두 백엔드가 같은 공개 API를 제공하고 테스트가 통과한다.
 > NEXT: none

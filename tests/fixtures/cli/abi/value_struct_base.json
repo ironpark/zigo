@@ -1,0 +1,48 @@
+{
+  "functions": [
+    {
+      "name": "configure",
+      "params": [
+        {
+          "name": "config",
+          "type": {
+            "kind": "value_struct",
+            "ref": "Config"
+          }
+        }
+      ],
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_configure"
+    }
+  ],
+  "package": "contract",
+  "prefix": "zg",
+  "types": [
+    {
+      "fields": [
+        {
+          "name": "width",
+          "type": {
+            "bits": 32,
+            "kind": "int",
+            "signed": true
+          }
+        },
+        {
+          "name": "height",
+          "type": {
+            "bits": 32,
+            "kind": "int",
+            "signed": true
+          }
+        }
+      ],
+      "kind": "value_struct",
+      "layout": "extern",
+      "name": "Config"
+    }
+  ],
+  "zig_version": "0.16.0"
+}

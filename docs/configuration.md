@@ -205,6 +205,39 @@ override와 exclude의 충돌은 컴파일 오류다.
 추가되므로 생성물 stale 검사와, 독립 배포 계약이 있다면 `abi-check`를 함께 사용한다.
 세밀하게 선택해야 하는 API와 generic 함수의 구체화는 기존 `functions` 모드를 사용한다.
 
+### Extern struct 값 파라미터와 반환
+
+Go에서 struct를 값처럼 주고받으려면 Zig에서 `extern struct`로 선언하고 `.repr = .value`로
+등록한다. 일반 struct의 배치는 Zig 명세상 보장되지 않으므로 미러링하지 않는다.
+
+```zig
+.types = .{
+    .{ .type = mylib.Config, .repr = .value },
+},
+```
+
+공개 API는 값 타입이다.
+
+```go
+cfg := Config{Width: 120, Mode: ModeActive}
+Configure(cfg)
+current := DefaultConfig()
+```
+
+다만 C 경계에서는 값으로 넘어가지 않는다. 파라미터는 `const T*`, 반환은 `T*` out
+파라미터로 내려가고 주소를 잡는 일은 생성 코드 안에서만 일어난다. aggregate를 값으로
+전달하면 플랫폼별 ABI 규칙이 드러나고 purego는 C struct를 값으로 전달하지 못한다.
+
+적격 조건이 있다. **모든 필드가 bool, 정수/부동소수 스칼라, 등록된 enum, 또는 다시 적격한
+`extern struct`** 여야 한다. slice, 포인터, optional, error union, callback, 일반 struct
+필드가 있으면 생성이 `ZIGO012`로 실패하며 문제된 필드를 지목한다. 필드가 없는 struct도 C
+표현이 없으므로 거부한다. struct는 파라미터·반환·error union payload 자리에서만 쓸 수 있고,
+slice 원소나 optional, callback 시그니처 안에 넣으면 `ZIGO013`으로 거부한다. `packed
+struct`의 정수 백킹 노출은 지원하지 않으며 `ZIGO003`으로 거부한다.
+
+ABI diff는 필드 추가·삭제·순서 변경·타입 변경을 모두 breaking으로 판정한다. 어느 쪽이든
+struct의 크기나 offset이 움직이므로 compatible append는 없다.
+
 ### Tagged union accessor
 
 tagged union을 값 ABI로 노출하지 않고 포인터 handle로 사용하려면 한 번 등록한다.

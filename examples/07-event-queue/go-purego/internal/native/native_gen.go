@@ -40,19 +40,22 @@ func (err *LibraryError) Error() string {
 func (err *LibraryError) Unwrap() error { return err.Cause }
 
 type nativeBindings struct {
-	lastError             func() unsafe.Pointer
-	fnEventQueueCreate    func(unsafe.Pointer, uintptr, uintptr, uint32, uintptr, uintptr, *unsafe.Pointer) int32
-	fnEventQueueEnqueue   func(unsafe.Pointer, uint64, int32) int32
-	fnEventQueueProcess   func(unsafe.Pointer, uintptr, *uintptr) int32
-	fnEventQueueName      func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
-	fnEventQueueLen       func(unsafe.Pointer) uintptr
-	fnEventQueueCapacity  func(unsafe.Pointer) uintptr
-	fnEventQueuePolicy    func(unsafe.Pointer) uint32
-	fnEventQueueDropped   func(unsafe.Pointer) uintptr
-	fnEventQueueProcessed func(unsafe.Pointer) uintptr
-	fnEventQueueClear     func(unsafe.Pointer) uintptr
-	fnEventQueueDeinit    func(unsafe.Pointer)
-	fnLiveQueues          func() uintptr
+	lastError               func() unsafe.Pointer
+	fnEventQueueCreate      func(unsafe.Pointer, uintptr, uintptr, uint32, uintptr, uintptr, *unsafe.Pointer) int32
+	fnEventQueueEnqueue     func(unsafe.Pointer, uint64, int32) int32
+	fnEventQueueProcess     func(unsafe.Pointer, uintptr, *uintptr) int32
+	fnEventQueueName        func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
+	fnEventQueueLen         func(unsafe.Pointer) uintptr
+	fnEventQueueCapacity    func(unsafe.Pointer) uintptr
+	fnEventQueuePolicy      func(unsafe.Pointer) uint32
+	fnEventQueueDropped     func(unsafe.Pointer) uintptr
+	fnEventQueueProcessed   func(unsafe.Pointer) uintptr
+	fnEventQueueStats       func(unsafe.Pointer, unsafe.Pointer)
+	fnEventQueueLimits      func(unsafe.Pointer, unsafe.Pointer)
+	fnEventQueueApplyLimits func(unsafe.Pointer, unsafe.Pointer) int32
+	fnEventQueueClear       func(unsafe.Pointer) uintptr
+	fnEventQueueDeinit      func(unsafe.Pointer)
+	fnLiveQueues            func() uintptr
 }
 
 type callbackEntry struct {
@@ -281,6 +284,18 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_event_queue_processed", err)
 	}
+	addrEventQueueStats, err := purego.Dlsym(handle, "zg_event_queue_stats")
+	if err != nil {
+		return fail("zg_event_queue_stats", err)
+	}
+	addrEventQueueLimits, err := purego.Dlsym(handle, "zg_event_queue_limits")
+	if err != nil {
+		return fail("zg_event_queue_limits", err)
+	}
+	addrEventQueueApplyLimits, err := purego.Dlsym(handle, "zg_event_queue_apply_limits")
+	if err != nil {
+		return fail("zg_event_queue_apply_limits", err)
+	}
 	addrEventQueueClear, err := purego.Dlsym(handle, "zg_event_queue_clear")
 	if err != nil {
 		return fail("zg_event_queue_clear", err)
@@ -304,6 +319,9 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnEventQueuePolicy, addrEventQueuePolicy)
 	purego.RegisterFunc(&next.fnEventQueueDropped, addrEventQueueDropped)
 	purego.RegisterFunc(&next.fnEventQueueProcessed, addrEventQueueProcessed)
+	purego.RegisterFunc(&next.fnEventQueueStats, addrEventQueueStats)
+	purego.RegisterFunc(&next.fnEventQueueLimits, addrEventQueueLimits)
+	purego.RegisterFunc(&next.fnEventQueueApplyLimits, addrEventQueueApplyLimits)
 	purego.RegisterFunc(&next.fnEventQueueClear, addrEventQueueClear)
 	purego.RegisterFunc(&next.fnEventQueueDeinit, addrEventQueueDeinit)
 	purego.RegisterFunc(&next.fnLiveQueues, addrLiveQueues)
@@ -330,6 +348,23 @@ func LastErrorMessage() string {
 		length++
 	}
 	return string(unsafe.Slice((*byte)(p), length))
+}
+
+// StatsData mirrors the zg_stats layout, padding included.
+type StatsData struct {
+	Len       uint32
+	Capacity  uint32
+	Dropped   uint32
+	Processed uint32
+	Policy    uint32
+	Saturated uint8
+	_         [3]byte
+}
+
+// LimitsData mirrors the zg_limits layout, padding included.
+type LimitsData struct {
+	Capacity uint32
+	Policy   uint32
 }
 
 // EventQueueCreate calls the generated purego ABI wrapper for zg_event_queue_create_purego_v1.
@@ -395,6 +430,26 @@ func EventQueueDropped(self unsafe.Pointer) uint {
 func EventQueueProcessed(self unsafe.Pointer) uint {
 	result := bindings().fnEventQueueProcessed(self)
 	return uint(result)
+}
+
+// EventQueueStats calls the generated purego ABI wrapper for zg_event_queue_stats.
+func EventQueueStats(self unsafe.Pointer) StatsData {
+	var outResult StatsData
+	bindings().fnEventQueueStats(self, unsafe.Pointer(&outResult))
+	return outResult
+}
+
+// EventQueueLimits calls the generated purego ABI wrapper for zg_event_queue_limits.
+func EventQueueLimits(self unsafe.Pointer) LimitsData {
+	var outResult LimitsData
+	bindings().fnEventQueueLimits(self, unsafe.Pointer(&outResult))
+	return outResult
+}
+
+// EventQueueApplyLimits calls the generated purego ABI wrapper for zg_event_queue_apply_limits.
+func EventQueueApplyLimits(self unsafe.Pointer, updated LimitsData) int32 {
+	code := bindings().fnEventQueueApplyLimits(self, unsafe.Pointer(&updated))
+	return code
 }
 
 // EventQueueClear calls the generated purego ABI wrapper for zg_event_queue_clear.

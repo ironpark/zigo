@@ -82,6 +82,39 @@ func EventQueueProcessed(self unsafe.Pointer) uint {
 	return uint(C.zg_event_queue_processed(self))
 }
 
+// EventQueueStats calls the generated C ABI wrapper for zg_event_queue_stats.
+func EventQueueStats(self unsafe.Pointer) StatsData {
+	var outResult C.zg_stats
+	C.zg_event_queue_stats(self, &outResult)
+	return StatsData{
+		Len:       uint32(outResult.len),
+		Capacity:  uint32(outResult.capacity),
+		Dropped:   uint32(outResult.dropped),
+		Processed: uint32(outResult.processed),
+		Policy:    uint32(outResult.policy),
+		Saturated: uint8(outResult.saturated),
+	}
+}
+
+// EventQueueLimits calls the generated C ABI wrapper for zg_event_queue_limits.
+func EventQueueLimits(self unsafe.Pointer) LimitsData {
+	var outResult C.zg_limits
+	C.zg_event_queue_limits(self, &outResult)
+	return LimitsData{
+		Capacity: uint32(outResult.capacity),
+		Policy:   uint32(outResult.policy),
+	}
+}
+
+// EventQueueApplyLimits calls the generated C ABI wrapper for zg_event_queue_apply_limits.
+func EventQueueApplyLimits(self unsafe.Pointer, updated LimitsData) int32 {
+	var cupdated C.zg_limits
+	cupdated.capacity = C.uint32_t(updated.Capacity)
+	cupdated.policy = C.uint32_t(updated.Policy)
+	code := int32(C.zg_event_queue_apply_limits(self, &cupdated))
+	return code
+}
+
 // EventQueueClear calls the generated C ABI wrapper for zg_event_queue_clear.
 func EventQueueClear(self unsafe.Pointer) uint {
 	return uint(C.zg_event_queue_clear(self))
@@ -95,4 +128,21 @@ func EventQueueDeinit(self unsafe.Pointer) {
 // LiveQueues calls the generated C ABI wrapper for zg_live_queues.
 func LiveQueues() uint {
 	return uint(C.zg_live_queues())
+}
+
+// StatsData mirrors the zg_stats layout, padding included.
+type StatsData struct {
+	Len       uint32
+	Capacity  uint32
+	Dropped   uint32
+	Processed uint32
+	Policy    uint32
+	Saturated uint8
+	_         [3]byte
+}
+
+// LimitsData mirrors the zg_limits layout, padding included.
+type LimitsData struct {
+	Capacity uint32
+	Policy   uint32
 }

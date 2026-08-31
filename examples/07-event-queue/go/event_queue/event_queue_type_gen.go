@@ -129,3 +129,63 @@ func zigoOptionalPointer(operation string, absent bool, value zigoHandle) unsafe
 	}
 	return zigoMustPointer(operation, value)
 }
+
+// Stats mirrors the Zig `extern struct` of the same name.
+type Stats struct {
+	// Len corresponds to the Zig field len.
+	Len uint32
+	// Capacity corresponds to the Zig field capacity.
+	Capacity uint32
+	// Dropped corresponds to the Zig field dropped.
+	Dropped uint32
+	// Processed corresponds to the Zig field processed.
+	Processed uint32
+	// Policy corresponds to the Zig field policy.
+	Policy Policy
+	// Saturated corresponds to the Zig field saturated.
+	Saturated bool
+}
+
+// Limits mirrors the Zig `extern struct` of the same name.
+type Limits struct {
+	// Capacity corresponds to the Zig field capacity.
+	Capacity uint32
+	// Policy corresponds to the Zig field policy.
+	Policy Policy
+}
+
+func zigoStatsToRaw(value Stats) raw.StatsData {
+	return raw.StatsData{
+		Len:       value.Len,
+		Capacity:  value.Capacity,
+		Dropped:   value.Dropped,
+		Processed: value.Processed,
+		Policy:    uint32(value.Policy),
+		Saturated: boolToUint8(value.Saturated),
+	}
+}
+
+func zigoStatsFromRaw(value raw.StatsData) Stats {
+	return Stats{
+		Len:       value.Len,
+		Capacity:  value.Capacity,
+		Dropped:   value.Dropped,
+		Processed: value.Processed,
+		Policy:    Policy(value.Policy),
+		Saturated: value.Saturated != 0,
+	}
+}
+
+func zigoLimitsToRaw(value Limits) raw.LimitsData {
+	return raw.LimitsData{
+		Capacity: value.Capacity,
+		Policy:   uint32(value.Policy),
+	}
+}
+
+func zigoLimitsFromRaw(value raw.LimitsData) Limits {
+	return Limits{
+		Capacity: value.Capacity,
+		Policy:   Policy(value.Policy),
+	}
+}

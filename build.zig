@@ -394,6 +394,17 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     union_repr_abi.expectStdOutMatch("BREAKING: Snapshotted: tagged-union variant appended to a value snapshot");
     test_step.dependOn(&union_repr_abi.step);
 
+    const value_struct_abi = b.addRunArtifact(generator);
+    value_struct_abi.setName("CLI contract (extern struct field ABI rules)");
+    value_struct_abi.addArgs(&.{ "abi-diff", "--base" });
+    value_struct_abi.addFileArg(b.path("tests/fixtures/cli/abi/value_struct_base.json"));
+    value_struct_abi.addArg("--current");
+    value_struct_abi.addFileArg(b.path("tests/fixtures/cli/abi/value_struct_current.json"));
+    value_struct_abi.addArgs(&.{ "--fail-on", "breaking" });
+    value_struct_abi.expectExitCode(1);
+    value_struct_abi.expectStdOutMatch("BREAKING: Config: type definition changed");
+    test_step.dependOn(&value_struct_abi.step);
+
     const report = b.addRunArtifact(generator);
     report.setName("CLI contract (binding report)");
     report.addArgs(&.{ "report", "--semantic" });

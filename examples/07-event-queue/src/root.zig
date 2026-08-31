@@ -11,6 +11,24 @@ pub const Policy = enum(u32) {
 
 pub const Observer = *const fn (id: u64, value: i32, userdata: usize) callconv(.c) i32;
 
+/// Counters read back in one call. `extern` fixes the layout, which is what
+/// lets zigo mirror the struct into C; Go still sees an ordinary value.
+pub const Stats = extern struct {
+    len: u32,
+    capacity: u32,
+    dropped: u32,
+    processed: u32,
+    policy: Policy,
+    saturated: bool,
+};
+
+/// Capacity and policy applied together, so the queue is never briefly
+/// configured with one but not the other.
+pub const Limits = extern struct {
+    capacity: u32,
+    policy: Policy,
+};
+
 const Event = struct {
     id: u64,
     value: i32,
@@ -104,6 +122,31 @@ pub const EventQueue = struct {
 
     pub fn processed(self: *EventQueue) usize {
         return self.processed_count;
+    }
+
+    pub fn stats(self: *EventQueue) Stats {
+        return .{
+            .len = @intCast(self.items.items.len),
+            .capacity = @intCast(self.capacity_value),
+            .dropped = @intCast(self.dropped_count),
+            .processed = @intCast(self.processed_count),
+            .policy = self.policy_value,
+            .saturated = self.items.items.len >= self.capacity_value,
+        };
+    }
+
+    pub fn applyLimits(self: *EventQueue, updated: Limits) CreateError!void {
+        if (updated.capacity == 0) return error.InvalidCapacity;
+        self.capacity_value = updated.capacity;
+        self.policy_value = updated.policy;
+        while (self.items.items.len > self.capacity_value) {
+            _ = self.items.orderedRemove(0);
+            self.dropped_count += 1;
+        }
+    }
+
+    pub fn limits(self: *EventQueue) Limits {
+        return .{ .capacity = @intCast(self.capacity_value), .policy = self.policy_value };
     }
 
     pub fn clear(self: *EventQueue) usize {

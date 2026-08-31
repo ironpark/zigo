@@ -52,6 +52,20 @@ zigo가 자기 소유의 `extern struct`를 정의하고 shim이 값을 옮겨 �
 void/bool/스칼라/enum인 union이 명시적으로 opt-in할 때만 생성된다. 대신 variant 추가가 구조체
 배치를 바꾸므로 ABI 판정이 projection과 반대로 breaking이 된다.
 
+### 1.2 extern struct 값 파라미터 — 문서와 구현의 차이
+
+00 §3과 03 §6은 "값 전달을 원하면 `extern struct`로 선언하라"고 안내했지만 그 경로는
+구현되어 있지 않았다. `value_struct`가 semantic IR, validate, abi_diff, report에는 있고
+lower와 emit에는 없어서, 등록한 struct를 파라미터로 쓰면 `lower.zig`의 `else =>
+unreachable`에서 generator가 패닉했다. 문서가 권장하는 경로가 도달 가능한 unreachable이었다.
+
+구현은 그 경로를 열되 "값 전달"이라는 서술을 고쳤다. **zigo는 어떤 aggregate도 C 경계를
+값으로 넘기지 않는다.** `extern struct`는 in이면 `const T*`, out이면 `T*`로 내려가고 값
+의미는 생성된 Go 코드가 유지한다. 플랫폼별 aggregate 전달 규칙과 purego의 스칼라·포인터
+전용 raw 시그니처를 모두 피하기 위해서이며, tagged union 값 스냅샷(§1.1)이 out 포인터를
+쓰는 것과 같은 판단이다. 적격 조건은 `ZIGO012`와 `ZIGO013`이 지키고, `packed struct`의
+정수 백킹 노출은 비범위로 두어 `ZIGO003`이 거부한다.
+
 ---
 
 ## 2. 미구현

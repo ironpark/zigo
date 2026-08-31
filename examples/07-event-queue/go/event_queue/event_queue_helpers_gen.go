@@ -6,6 +6,13 @@ import (
 	"sync/atomic"
 )
 
+func boolToUint8(value bool) uint8 {
+	if value {
+		return 1
+	}
+	return 0
+}
+
 var activeCallbackHandles atomic.Int64
 
 type zigoCallbackHandle = cgo.Handle

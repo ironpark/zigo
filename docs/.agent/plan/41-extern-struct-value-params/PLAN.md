@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T10:25:51Z"
 description: Lower extern struct parameters and returns through pointers while presenting Go value semantics
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-31T10:01:11Z"
 ---
 > NEXT: 적격 조건과 진단부터 세워 도달 가능한 unreachable을 없앤다. ([Phase 0](phases/00-eligibility-diagnostics.md))
@@ -9,8 +10,8 @@ registered_at: "2026-08-31T10:01:11Z"
 
 - [x] [Phase 00: Eligibility and diagnostics](phases/00-eligibility-diagnostics.md)
 - [x] [Phase 01: Lowering and native emitters](phases/01-lowering-native-emit.md)
-- [ ] [Phase 02: Go surfaces for both backends](phases/02-go-surfaces.md)
-- [ ] [Phase 03: ABI rules, example and documentation](phases/03-abi-example-docs.md)
+- [x] [Phase 02: Go surfaces for both backends](phases/02-go-surfaces.md)
+- [x] [Phase 03: ABI rules, example and documentation](phases/03-abi-example-docs.md)
 
 # Shared Verification
 

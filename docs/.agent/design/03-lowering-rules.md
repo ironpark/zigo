@@ -101,12 +101,52 @@ func (c *Context) Process(input []float32, output []float32) (int, error)
 
 | Zig 선언 | 노출 방식 |
 |---|---|
-| `extern struct` | 값 전달. C struct 미러링 + Go struct 미러링 |
-| `packed struct` | 정수 백킹으로 전달 (`u32` 등) + Go 비트 접근자 |
+| `extern struct` | **값 의미, 포인터 전달.** C struct 미러링 + Go struct 미러링 |
+| `packed struct` | 미지원. 정수 백킹 노출은 비범위이며 `ZIGO003`으로 거부한다 |
 | 일반 `struct` | **opaque only.** 포인터로만 전달 |
 
-일반 struct의 레이아웃은 Zig 명세상 보장되지 않으므로 값 전달을 시도하지 않는다.
-사용자가 값 전달을 원하면 `extern struct` 선언이 요구된다 (진단이 이를 안내한다).
+일반 struct의 레이아웃은 Zig 명세상 보장되지 않으므로 미러링하지 않는다. Go에서 값처럼
+주고받으려면 `extern struct` 선언이 요구된다 (진단이 이를 안내한다).
+
+### 6.1 aggregate는 값으로 넘기지 않는다
+
+`extern struct`도 C 경계를 값으로 건너가지 않는다. 파라미터는 `const T*`, 반환과 out은
+`T*`로 내려간다. 이유는 두 가지다. aggregate by-value 전달은 레지스터 분할, 크기 임계값,
+숨은 반환 포인터 같은 플랫폼별 ABI 규칙을 그대로 노출한다. 그리고 purego의 raw 시그니처는
+스칼라와 포인터만 다룬다. tagged union 값 스냅샷이 out 포인터를 쓰는 것과 같은 이유이며
+(§7.1), 그래서 규칙은 하나다. **zigo는 어떤 aggregate도 C 경계를 값으로 넘기지 않는다.**
+
+```c
+typedef struct zg_config {
+    uint8_t enabled;
+    int32_t width;
+    zg_mode mode;
+} zg_config;
+
+void zg_configure(const zg_config *config);
+void zg_default_config(zg_config *out_result);
+```
+
+값 의미는 Go 쪽에서 유지된다. 공개 API는 `func Configure(cfg Config)` 와
+`func DefaultConfig() Config` 이고, 주소를 잡는 일은 생성 코드 안에서만 일어난다. raw
+계층은 struct마다 `<T>Data` 미러를 두는데, cgo는 멤버 단위로 C 값을 채우므로 미러의
+배치에 의존하지 않고, purego는 미러의 주소를 그대로 넘기므로 배치가 계약이다. 그래서
+미러에는 하강 단계에서 계산한 offset으로부터 패딩을 명시한다.
+
+레이아웃은 `extern`이 이미 고정한다. 헤더는 사용자의 필드를 사용자의 순서대로 미러링하고,
+재정렬하거나 패딩을 지어내지 않는다. 중첩 struct는 자신을 품는 struct보다 먼저 나온다.
+shim에는 `@sizeOf`/`@alignOf`/`@offsetOf` comptime 단언이 함께 생성되어, Zig 타입이 미러와
+어긋나면 빌드가 실패한다.
+
+필드는 재귀적으로 ABI 안전해야 한다. bool, 정수/부동소수 스칼라, 등록된 enum, 그리고 다시
+적격한 `extern struct` 만 허용한다. slice·포인터·optional·error union·callback·일반 struct
+필드는 `ZIGO012`가 문제된 필드를 지목하며 거부한다. 필드가 하나도 없는 struct는 C 표현이
+없으므로 같은 진단으로 거부한다. struct는 파라미터·반환·error union payload 자리에서만
+쓸 수 있고, slice 원소나 optional, callback 시그니처 안에 들어가면 `ZIGO013`으로 거부한다.
+
+ABI 판정은 단순하다. 필드 추가·삭제·순서 변경·타입 변경은 모두 struct의 크기나 offset을
+움직이므로 **전부 breaking**이다. enum 값 추가나 projection union의 variant 추가와 달리
+compatible append는 없다.
 
 opaque 타입은 다음을 생성한다:
 ```go

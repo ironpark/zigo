@@ -60,11 +60,17 @@ Zig의 기본 struct는 필드 재정렬·패딩이 **명세되지 않았고 컴
 
 | Zig 선언 | 노출 |
 |---|---|
-| `extern struct` | 값 전달. C/Go struct 미러링 |
-| `packed struct` | 정수 백킹으로 전달 + Go 비트 접근자 |
+| `extern struct` | **값 의미, 포인터 전달.** C/Go struct 미러링 |
+| `packed struct` | 미지원 (정수 백킹 노출은 비범위) |
 | 일반 `struct` | **opaque only.** 포인터로만 |
 
-값 전달을 원하면 사용자가 `extern struct`로 선언해야 한다. 진단이 이를 안내한다.
+Go에서 값처럼 주고받으려면 사용자가 `extern struct`로 선언해야 한다. 진단이 이를 안내한다.
+
+다만 **zigo는 어떤 aggregate도 C 경계를 값으로 넘기지 않는다.** `extern struct`도 in이면
+`const T*`, out이면 `T*`로 내려가고, 값 의미는 생성된 Go 코드가 안쪽에서 주소를 잡아
+유지한다. aggregate를 값으로 전달하면 레지스터 분할·크기 임계값·숨은 반환 포인터 같은
+플랫폼별 ABI 규칙이 그대로 드러나고, purego의 raw 시그니처는 스칼라와 포인터뿐이다.
+tagged union 값 스냅샷이 out 포인터를 쓰는 것과 같은 규칙이다(03 §6, §7.1).
 
 이 제약은 §7의 크로스 컴파일 문제도 대부분 해소한다.
 
@@ -127,7 +133,7 @@ reflector는 컴파일만 되는 것이 아니라 실행되어 IR을 stdout으�
 - `layout.<target>.json` — `@sizeOf`/`@alignOf`/`@offsetOf` 결과. **타깃별로 다름**
 
 **현재 방침:** layout 정보를 생성 입력으로 쓰지 않는다.
-값 전달을 `extern struct`로 제한했으므로(§3) C 컴파일러가 헤더로부터 동일 레이아웃을 도출한다.
+값 미러링을 `extern struct`로 제한했으므로(§3) C 컴파일러가 헤더로부터 동일 레이아웃을 도출한다.
 `layout.json`은 현재 포인터/usize 폭만 담은 스텁이며 소비되지 않는다 (02 §2).
 
 크로스 컴파일 지원은 레이아웃 상수를 타깃별 컴파일 산출물에서 추출하는 후속 작업이다.
@@ -156,7 +162,7 @@ reflector는 컴파일만 되는 것이 아니라 실행되어 IR을 stdout으�
 |---|---|---|
 | ZIGO001 | `anyerror` 반환 | §4 |
 | ZIGO002 | non-exhaustive enum | 정수 매핑 불안정 |
-| ZIGO003 | 값 전달 대상이 `extern`/`packed`가 아닌 struct | §3 |
+| ZIGO003 | 값 미러링 대상이 `extern struct`가 아닌 struct | §3 |
 | ZIGO004 | `callconv(.c)`가 아닌 함수 포인터 | §8 |
 | ZIGO005 | 포인터를 포함하는 원소 타입의 슬라이스 | §6 |
 | ZIGO006 | tagged union by-value 또는 accessor로 내릴 수 없는 payload | union layout 비노출·checked projection 계약 |
@@ -164,6 +170,9 @@ reflector는 컴파일만 되는 것이 아니라 실행되어 IR을 stdout으�
 | ZIGO008 | comptime 파라미터가 남은 함수 | §2 |
 | ZIGO009 | `retained` 포인터에 대응 해제 함수 부재 | §6 |
 | ZIGO010 | 미해결·종류 불일치 타입 참조 또는 잘못된 constructor 매핑 | lowering의 totality 보장 |
+| ZIGO011 | 값 스냅샷으로 옮길 수 없는 tagged union variant | 스냅샷은 스칼라의 평평한 복사본 (03 §7.1) |
+| ZIGO012 | C ABI로 내릴 수 없는 `extern struct` 필드 또는 빈 struct | C 미러는 C 표현 가능한 멤버만 (§3, 03 §6.1) |
+| ZIGO013 | 파라미터·반환·error payload 밖에 놓인 `extern struct` | 그 자리에는 포인터 하강 규칙이 없다 (03 §6.1) |
 
 진단은 **선언 위치 + 수정 방법**을 포함한다.
 

@@ -297,7 +297,7 @@ fn renderPanicSource(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
         "#include <stdint.h>\n" ++
         "#include <stdlib.h>\n" ++
         "#include <string.h>\n");
-    if (program.projections.len != 0 or program.snapshots.len != 0) {
+    if (program.projections.len != 0 or program.snapshots.len != 0 or program.structs.len != 0) {
         try writer.print("#include \"zigo_{s}.h\"\n\n", .{package});
     } else {
         try writer.writeByte('\n');

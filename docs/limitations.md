@@ -19,8 +19,14 @@
 
 ## Zig 타입과 ABI
 
-- 일반 Zig `struct`의 메모리 배치는 안정된 C ABI가 아니다. 값으로 노출하려면
+- 일반 Zig `struct`의 메모리 배치는 안정된 C ABI가 아니다. 값 의미로 노출하려면
   `extern struct`를 사용하고, 일반 struct는 opaque 포인터로 노출한다.
+- zigo는 어떤 aggregate도 C 경계를 값으로 넘기지 않는다. `extern struct` 파라미터는
+  `const T*`, 반환은 `T*` out 파라미터로 내려가며 값 의미는 Go 쪽에서만 유지된다. 필드는
+  bool, 정수/부동소수 스칼라, 등록된 enum, 또는 다시 적격한 `extern struct`여야 하고, 그
+  밖의 필드나 빈 struct는 `ZIGO012`로 거부된다. struct를 slice 원소, optional, callback
+  시그니처 안에 넣으면 `ZIGO013`으로 거부된다. 필드를 하나라도 바꾸면 ABI가 깨진다.
+- `packed struct`의 정수 백킹 노출은 지원하지 않는다. `ZIGO003`으로 거부된다.
 - tagged union은 `.repr = .tagged_union`으로 등록한 뒤 포인터로만 노출한다. 생성된
   `Tag`/`As*`가 active tag를 검사하며 union 레이아웃은 C로 전달하지 않는다. nested
   aggregate, optional, error union, callback 또는 pointer 원소 slice payload는 지원하지 않는다.
