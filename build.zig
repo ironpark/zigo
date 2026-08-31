@@ -572,14 +572,10 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         }),
     });
     const semantic_run = b.addRunArtifact(reflector);
-    const layout_json = semantic_run.addOutputFileArg("layout.json");
     semantic_run.addArgs(&.{ options.name, options.prefix });
     semantic_run.addFileArg(options.bindings);
-    if (options.source_root) |source_root| {
-        semantic_run.addFileArg(source_root);
-    } else {
-        semantic_run.addArg("");
-    }
+    // An absent source root is an absent argument, not an empty one.
+    if (options.source_root) |source_root| semantic_run.addFileArg(source_root);
     const semantic_json = semantic_run.captureStdOut(.{ .basename = "semantic.json", .trim_whitespace = .none });
     // Successful fallback warnings stay captured so Zig does not label a
     // successful command as failed. On a non-zero exit, Step.Run reports the
@@ -746,7 +742,6 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     _ = options.target;
     _ = options.optimize;
     _ = options.prefix;
-    _ = layout_json;
 
     return .{
         .update = update,

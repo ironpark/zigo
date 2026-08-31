@@ -259,7 +259,7 @@ error[ZIGO003]: cannot pass `mylib.Config` by value
 `purego` 백엔드는 v1에 구현되었다. 남은 항목:
 
 - 크로스 컴파일 — 레이아웃 상수를 타깃별 컴파일 산출물에서 추출
-- `layout.json` 기반 헤더 레이아웃 대조 검증 (현재 스텁, 02 §2)
+- 생성된 C 헤더와 타깃 레이아웃 대조 검증 (05 §2)
 - Windows·모바일·purego Tier 2 타깃
 - 배치 API 힌트로 cgo 오버헤드 완화
 

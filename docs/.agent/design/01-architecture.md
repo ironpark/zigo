@@ -105,7 +105,6 @@ zigo 패키지는 3개를 노출한다.
                        │ addRunArtifact → captureStdOut()
                        ▼
              semantic.json  (LazyPath)
-             layout.json    (LazyPath — 현재 소비되지 않음, 02 §2)
                        │
         ┌──────────────▼───────────────────┐
         │ (B) Run: zigo-gen                │   순수 함수: IR in → 파일 out

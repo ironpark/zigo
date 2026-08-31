@@ -8,7 +8,6 @@ IR은 세 가지 역할을 한다: **reflector ↔ generator 프로세스 경계
 | 파일 | 타깃 의존 | Git 커밋 | 용도 |
 |---|---|---|---|
 | `semantic.json` | ✗ | ✅ | 의미 API. diff 기준. generator의 입력 |
-| `layout.<target>.json` | ✅ | ✗ | 포인터/usize 폭. **현재 스텁이며 소비되지 않는다** (§2) |
 | `errors.lock.json` | ✗ | ✅ | 에러명 → 안정 정수 코드 (append-only) |
 
 ---
@@ -128,34 +127,7 @@ handle pointer를 error union으로 반환하며, `deinit`은 인자 없이 `voi
 
 ---
 
-## 2. layout.\<target\>.json
-
-```jsonc
-{
-  "ir_version": 1,
-  "target": "aarch64-macos",
-  "pointer_bits": 64,
-  "usize_bits": 64,
-  "structs": {
-    "Rect": { "size": 8, "align": 4,
-              "fields": {"x": 0, "y": 4} }
-  }
-}
-```
-
-**현재 상태:** reflector는 `ir_version`, `target`, `pointer_bits`, `usize_bits`만 채우고
-`structs`는 항상 빈 객체다. 빌드 그래프는 이 파일을 어떤 스텝의 입력으로도 쓰지 않는다.
-설계 의도였던 "생성된 C 헤더의 레이아웃과 대조해 빌드를 실패시킨다"는 검증은 아직 없다.
-값 전달을 `extern struct`로 제한했기 때문에(00 §3) 정확성은 이 검증 없이도 유지된다.
-Go 코드 생성에는 어떤 경우에도 사용하지 않는다 (cgo가 헤더로 해결).
-
-**크로스 컴파일 시에는 생성되지 않는다.** reflector는 실행되어야 하므로 타깃용
-레이아웃을 뽑을 수 없다. 값 전달을 `extern struct`로 제한했기 때문에 이 파일 없이도
-정확성이 유지된다 — 상세는 [`00-constraints.md` §7](00-constraints.md).
-
----
-
-## 3. errors.lock.json
+## 2. errors.lock.json
 
 ```jsonc
 {
@@ -177,7 +149,7 @@ Go 코드 생성에는 어떤 경우에도 사용하지 않는다 (cgo가 헤더
 
 ---
 
-## 4. ABI IR (내부 표현, 파일로 쓰지 않음)
+## 3. ABI IR (내부 표현, 파일로 쓰지 않음)
 
 validate/lower 단계의 결과. emitter가 소비하는 유일한 자료구조.
 semantic IR과의 차이는 **모든 타입이 C ABI 표현으로 평탄화되어 있다**는 점이다.

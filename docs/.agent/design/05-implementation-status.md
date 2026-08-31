@@ -72,7 +72,7 @@ unreachable`에서 generator가 패닉했다. 문서가 권장하는 경로가 �
 
 | 항목 | 근거 문서 | 현재 상태 |
 |---|---|---|
-| `layout.<target>.json` 검증 | 02 §2 | reflector가 `pointer_bits`/`usize_bits`/`target` 만 채운 스텁을 쓰고 `structs` 는 항상 비어 있다. build.zig 는 이 파일을 소비하지 않는다(`_ = layout_json;`). 헤더 대조 검증은 없다 |
+| 헤더 레이아웃 대조 검증 | 00 §7 | 없다. 한때 `layout.<target>.json` 스텁이 있었으나 `structs` 가 항상 비어 있고 어떤 스텝도 읽지 않아 제거했다. 정확성은 `extern struct` 제한(00 §3)과 shim의 comptime 단언(03 §6.1)이 유지한다. 타깃별 레이아웃을 컴파일 산출물에서 뽑아 헤더와 대조하는 검증은 후속 과제다 |
 | 크로스 컴파일 | 00 §7 | 미지원. reflector 실행 제약 그대로 |
 | Windows·모바일·purego Tier 2 타깃 | — | 미지원 |
 | Go 외 언어 | 01 §12 | 비범위 유지 |

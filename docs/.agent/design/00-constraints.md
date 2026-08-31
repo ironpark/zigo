@@ -130,11 +130,11 @@ reflector는 컴파일만 되는 것이 아니라 실행되어 IR을 stdout으�
 타깃용 reflector는 호스트에서 돌지 않는다.
 
 - `semantic.json` — 타깃 독립. 호스트 빌드로 한 번 얻으면 된다. **문제 없음**
-- `layout.<target>.json` — `@sizeOf`/`@alignOf`/`@offsetOf` 결과. **타깃별로 다름**
+- 레이아웃 상수 — `@sizeOf`/`@alignOf`/`@offsetOf` 결과. **타깃별로 다름**
 
-**현재 방침:** layout 정보를 생성 입력으로 쓰지 않는다.
-값 미러링을 `extern struct`로 제한했으므로(§3) C 컴파일러가 헤더로부터 동일 레이아웃을 도출한다.
-`layout.json`은 현재 포인터/usize 폭만 담은 스텁이며 소비되지 않는다 (02 §2).
+**현재 방침:** 레이아웃 정보를 생성 입력으로 쓰지 않는다. reflector는 `semantic.json`만
+산출한다. 값 미러링을 `extern struct`로 제한했으므로(§3) C 컴파일러가 헤더로부터 동일
+레이아웃을 도출하고, Zig 쪽은 shim의 comptime 단언이 고정한다 (03 §6.1).
 
 크로스 컴파일 지원은 레이아웃 상수를 타깃별 컴파일 산출물에서 추출하는 후속 작업이다.
 

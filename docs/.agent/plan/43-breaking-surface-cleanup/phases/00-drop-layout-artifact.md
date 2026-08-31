@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: reflector가 semantic 문서만 산출한다.
 > NEXT: none
