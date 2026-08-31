@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-31T06:14:01Z"
 depends_on:
 - "33-purego-library-loading-policy#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: The example passes `CGO_ENABLED=0` tests without an explicit load, generated files stay platform
 > NEXT: none
