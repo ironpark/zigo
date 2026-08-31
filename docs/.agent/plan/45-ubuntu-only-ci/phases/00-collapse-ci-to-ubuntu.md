@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T17:51:24Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: workflow에 `macos`, `windows`, ARM runner 또는 `${{ matrix.os }}` 참조가 없다.
 > NEXT: none
