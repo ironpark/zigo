@@ -1,9 +1,11 @@
-# 공유 라이브러리와 purego 백엔드
+# 공유 라이브러리와 purego
 
-zigo는 두 가지 Go 백엔드를 생성한다. 기본값 `.cgo`는 정적 링크와 cgo 호출을 사용하고,
-opt-in `.purego`는 네이티브 공유 라이브러리를 런타임에 로드해 `CGO_ENABLED=0`으로 빌드한
-Go 프로그램에서 호출한다. 공개 Go API는 두 백엔드에서 동일하며, 달라지는 것은 raw
-구현 파일과 로더 API뿐이다.
+zigo의 기본값 `.cgo_static`은 정적 링크와 cgo 호출을 사용합니다. 선택적인 `.purego`는
+네이티브 공유 라이브러리를 runtime에 로드하므로 Go 프로그램을 `CGO_ENABLED=0`으로
+빌드할 수 있습니다. 공개 Go API는 두 backend에서 동일하고 raw 구현과 loader만 달라집니다.
+
+> purego를 사용해도 Zig shared library는 배포할 OS·architecture의 native host에서
+> 빌드해야 합니다. 단일 실행 파일이 목적이라면 기본 `.cgo_static`을 사용하세요.
 
 | 항목 | `.cgo_static` / `.cgo_dynamic` | `.purego` |
 |---|---|---|
@@ -165,10 +167,11 @@ if !mylib.LibraryLoaded() {
 
 ### 자동 로딩
 
-`.automatic = true`이면 첫 바인딩 호출이 후보 목록을 **한 번** 시도한다. 성공하면 이후
+`.loader = .automatic` 또는 `.automatic_internal`이면 첫 바인딩 호출이 후보 목록을
+**한 번** 시도한다. 성공하면 이후
 호출은 그대로 진행되고, 모두 실패하면 모든 후보를 담은 오류로 panic한다. 공개 API가 오류를
 반환하지 않는 형태이므로 panic 외에 다른 선택지가 없다. 실패 후에도 `LoadLibrary`가 노출된
-구성이라면 다른 경로로 명시적 재시도를 할 수 있다.
+`.automatic` 구성이라면 다른 경로로 명시적 재시도를 할 수 있다.
 
 `examples/08-telemetry-hub`의 purego 바인딩이 이 구성을 사용한다. 테스트는 로더를 전혀
 호출하지 않고, 공개 패키지에는 바인딩된 API만 있다.

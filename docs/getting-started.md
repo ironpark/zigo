@@ -163,7 +163,7 @@ zig build go-check
 `go-check`는 다음 상태에서 실패합니다.
 
 - 현재 선언으로 생성한 내용과 커밋된 파일이 다름
-- 필요한 생성 파일이나 메타데이터가 없음
+- 필요한 Go 생성 파일이 없음
 - 더 이상 생성되지 않는 zigo 파일이 이전 경로에 남아 있음
 
 독립 배포된 이전 버전과 ABI 호환성을 유지해야 할 때만 `.abi_base = "HEAD"` 같은 기준을
@@ -181,7 +181,9 @@ zig build go-check
 
 ## 다음 단계
 
-- 함수 메타데이터, 타입과 패키지 설정: [설정과 생성물](configuration.md)
+- 백엔드와 Go 패키지 설정: [빌드 설정](configuration.md)
+- 함수 메타데이터와 타입 등록: [`bindings.zig` 선언](bindings.md)
+- 생성 파일과 CI 세부 정책: [생성물과 CI 관리](generated-code.md)
 - 자신의 API와 가까운 실행 예제: [예제 선택 가이드](examples.md)
 - C 컴파일러 없는 Go 빌드: [공유 라이브러리와 purego](purego.md)
 - 플랫폼, 타입, ABI와 수명 제약: [지원 범위와 제한사항](limitations.md)

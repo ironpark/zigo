@@ -13,7 +13,7 @@ cgo 코드, 사용하기 편한 Go API를 함께 만듭니다.
 - 스칼라, 슬라이스, 에러 유니온, enum, opaque handle, extern struct, tagged union,
   generic specialization과 Go 콜백을 하나의 선언 방식으로 다룹니다.
 - 생성된 raw 계층을 감추고 생성자, `Close`, typed error 등 Go다운 공개 API를 제공합니다.
-- `go-check`와 선택적인 `abi-check`로 생성물 누락과 호환성 파괴를 CI에서 찾습니다.
+- `go-check`와 선택적인 `abi-check`로 Go 생성물 누락과 호환성 파괴를 CI에서 찾습니다.
 - 필요하면 purego 백엔드로 `CGO_ENABLED=0` Go 빌드를 지원합니다.
 
 ## 빠른 시작
@@ -90,7 +90,9 @@ purego를 선택했다면 [공유 라이브러리와 purego](docs/purego.md)를 
 ## 문서
 
 - [시작 가이드](docs/getting-started.md) — 설치부터 첫 생성, 테스트, CI까지
-- [바인딩 설정](docs/configuration.md) — 빌드 옵션, 타입 선언, 생성물에 대한 전체 참조
+- [빌드 설정](docs/configuration.md) — 백엔드, 패키지, cleanup과 ABI 옵션
+- [`bindings.zig` 선언](docs/bindings.md) — 함수, 타입, 메타데이터와 생성 Go 오류
+- [생성물과 CI 관리](docs/generated-code.md) — 빌드 스텝, 생성 파일과 커밋 정책
 - [예제 선택 가이드](docs/examples.md) — 기능별로 가장 가까운 실행 가능한 예제 찾기
 - [지원 범위와 제한사항](docs/limitations.md) — 타입, ABI, 수명과 플랫폼 제약
 - [사용자 문서 전체 목차](docs/README.md) — 목적별 문서 탐색

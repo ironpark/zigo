@@ -1,5 +1,8 @@
 # 제한사항과 운영 주의사항
 
+새 API를 설계할 때는 먼저 이 문서에서 타입과 수명 계약을 확인하세요. 실제 선언 방법은
+[`bindings.zig` 선언](bindings.md), backend별 설정은 [빌드 설정](configuration.md)에 있습니다.
+
 ## 지원 환경
 
 - 현재 지원 범위는 Zig 0.16.0, Go 1.23 이상, cgo가 활성화된 네이티브 macOS/Linux다.
@@ -93,18 +96,17 @@ AST 보강에 사용하는 기본 `bindings.zig`를 읽지 못하면 reflection�
   애플리케이션이 통제하는 경로만 넘긴다.
 - purego 콜백은 고유 시그니처마다 영구 dispatcher를 만든다. 콜백 panic은 부호 있는
   32비트 콜백 결과에서 `-3`, 이미 해제된 토큰 호출은 `-4`로 변환된다. 세부 사항은
-  [공유 라이브러리와 purego 백엔드](purego.md)에 있다.
+  [공유 라이브러리와 purego](purego.md)에 있다.
 
 ## 생성물 관리
 
-생성된 Go 파일과 ABI 메타데이터는 커밋하고 CI에서 `go-check`를 실행한다. 독립 배포
-버전과의 호환성을 보증하는 프로젝트는 `abi_base`를 설정하고 `abi-check`도 실행한다.
-raw 패키지 모드나 경로를 변경하면 zigo는 이전 위치의 파일을 자동 삭제하지 않는다.
-`go-check`가 zigo marker를 가진 오래된 파일을 obsolete로 보고하므로 새 바인딩 생성 후 해당
-`_gen.go` 파일을 직접 제거해야 한다.
+생성된 Go 파일과 ABI metadata는 커밋하고 CI에서 `go-check`를 실행합니다. 독립 배포
+버전과 호환성을 보증할 때는 `abi_base`와 `abi-check`도 사용합니다. raw package 경로를
+바꾼 뒤에는 이전 `_gen.go`를 직접 삭제해야 합니다.
 
 생성기는 모든 산출물을 메모리에서 준비한 뒤 쓰므로 검증·렌더링·메모리 실패에는 기존
-트리가 유지된다. 다만 최종 파일 쓰기 중 전원 차단이나 파일시스템 장애가 발생했을 때
-여러 파일을 하나의 filesystem transaction으로 복구하는 것까지는 보장하지 않는다.
+tree가 유지됩니다. 다만 최종 파일 쓰기 중 전원 차단이나 filesystem 장애가 발생했을 때
+여러 파일을 하나의 transaction으로 복구하는 것까지는 보장하지 않습니다. 파일별 역할과
+commit·CI 정책은 [생성물과 CI 관리](generated-code.md)가 정본입니다.
 
 제약의 설계 근거와 전체 리스크 목록은 [제약과 리스크](.agent/design/00-constraints.md)에 있다.

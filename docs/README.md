@@ -4,14 +4,16 @@
 
 1. [시작 가이드](getting-started.md)에서 기본 cgo 바인딩을 생성하고 테스트합니다.
 2. [예제 선택 가이드](examples.md)에서 자신의 API와 가장 비슷한 예제를 찾습니다.
-3. [설정과 생성물](configuration.md)에서 필요한 옵션과 선언 메타데이터만 확인합니다.
+3. [`bindings.zig` 선언](bindings.md)에서 필요한 타입과 함수 메타데이터를 확인합니다.
 
 ## 목적별로 찾기
 
 | 하고 싶은 일 | 읽을 문서 |
 |---|---|
 | zigo를 설치하고 첫 Go 바인딩 만들기 | [시작 가이드](getting-started.md) |
-| 함수·타입·콜백을 어떻게 선언하는지 확인하기 | [설정과 생성물](configuration.md) |
+| 백엔드, Go 패키지와 빌드 옵션 선택하기 | [빌드 설정](configuration.md) |
+| 함수·타입·콜백을 어떻게 선언하는지 확인하기 | [`bindings.zig` 선언](bindings.md) |
+| 생성 파일, 빌드 스텝과 CI 정책 확인하기 | [생성물과 CI 관리](generated-code.md) |
 | 실행 가능한 코드에서 기능 찾기 | [예제 선택 가이드](examples.md) |
 | `CGO_ENABLED=0`으로 빌드하거나 공유 라이브러리 배포하기 | [공유 라이브러리와 purego](purego.md) |
 | 지원하지 않는 타입, ABI 또는 수명 제약 확인하기 | [지원 범위와 제한사항](limitations.md) |

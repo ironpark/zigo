@@ -2,7 +2,7 @@
 depends_on:
 - "44-user-friendly-documentation#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 설정, 바인딩 선언, 생성물 운영이 각각 독립적으로 탐색 가능한 정본 문서가 된다.
 > NEXT: none
