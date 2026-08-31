@@ -115,17 +115,17 @@ cd go-purego && CGO_ENABLED=0 go test ./...
 `library_loading`으로 라이브러리를 찾을 위치와 순서, 첫 호출 자동 로딩, 로더 API 노출
 여부를 선언할 수 있다. 공유 라이브러리는 여전히 타깃별 아티팩트이므로 배포 대상
 OS·아키텍처마다 빌드해야 한다.
-로드 경로, 패키징, 콜백 제약은 [공유 라이브러리와 purego 백엔드](docs/wiki/purego.md)에
+로드 경로, 패키징, 콜백 제약은 [공유 라이브러리와 purego 백엔드](docs/purego.md)에
 정리되어 있다.
 
 ## 문서
 
-- [사용자 위키](docs/wiki/README.md)
-- [설치와 사용](docs/wiki/getting-started.md)
-- [설정과 생성물](docs/wiki/configuration.md)
-- [공유 라이브러리와 purego 백엔드](docs/wiki/purego.md)
-- [제한사항과 운영 주의사항](docs/wiki/limitations.md)
-- [프로젝트 개발](docs/wiki/development.md)
+- [사용자 문서](docs/README.md)
+- [설치와 사용](docs/getting-started.md)
+- [설정과 생성물](docs/configuration.md)
+- [공유 라이브러리와 purego 백엔드](docs/purego.md)
+- [제한사항과 운영 주의사항](docs/limitations.md)
+- [프로젝트 개발](docs/development.md)
 - [설계 문서](docs/.agent/design/README.md)
 - [통합 파이프라인 예제](examples/05-pipeline/README.md)
 - [상태 기반 event queue 예제](examples/07-event-queue/README.md)

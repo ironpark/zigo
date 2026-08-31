@@ -28,7 +28,7 @@
   `specializations`에 구체화된 타입을 등록한다.
 - `anyerror`, C 호출 규약이 아닌 함수 포인터, Go 포인터를 포함할 수 있는 슬라이스처럼
   안전한 계약을 만들 수 없는 선언은 생성 단계에서 거부한다.
-- 지원 타입과 정확한 하강 규칙은 [ABI 하강 규칙](../.agent/design/03-lowering-rules.md)을 참고한다.
+- 지원 타입과 정확한 하강 규칙은 [ABI 하강 규칙](.agent/design/03-lowering-rules.md)을 참고한다.
 
 ## 이름과 메타데이터
 
@@ -94,4 +94,4 @@ raw 패키지 모드나 경로를 변경하면 zigo는 이전 위치의 파일�
 트리가 유지된다. 다만 최종 파일 쓰기 중 전원 차단이나 파일시스템 장애가 발생했을 때
 여러 파일을 하나의 filesystem transaction으로 복구하는 것까지는 보장하지 않는다.
 
-제약의 설계 근거와 전체 리스크 목록은 [제약과 리스크](../.agent/design/00-constraints.md)에 있다.
+제약의 설계 근거와 전체 리스크 목록은 [제약과 리스크](.agent/design/00-constraints.md)에 있다.

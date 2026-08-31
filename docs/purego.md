@@ -253,4 +253,4 @@ CGO_ENABLED=0 go test ./...
 `CGO_ENABLED=0` 프로세스에서 사용할 수 없다. `shared-library-smoke`는 같은 검사를 실제
 플랫폼 로더로 수행한다.
 
-아티팩트 계약의 세부 사항은 [공유 라이브러리 계약](../shared-library.md)에 있다.
+아티팩트 계약의 세부 사항은 [공유 라이브러리 계약](shared-library.md)에 있다.
