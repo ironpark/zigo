@@ -2,11 +2,19 @@ package callback
 
 import (
 	"errors"
+	"io"
 	"strings"
 	"testing"
 )
 
 var _ CallbackContextCallback = func(int32) int32 { return 0 }
+
+// Generated handles close like any other Go resource.
+var (
+	_ io.Closer = (*FloatBuffer)(nil)
+	_ io.Closer = (*IntBuffer)(nil)
+	_ io.Closer = (*CallbackContext)(nil)
+)
 
 func TestGenericSpecializations(t *testing.T) {
 	floatBuffer, err := NewFloatBuffer()

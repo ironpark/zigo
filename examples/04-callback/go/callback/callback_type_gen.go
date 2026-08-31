@@ -46,9 +46,10 @@ func (c *CallbackContextRef) zigoPointer() unsafe.Pointer {
 }
 
 // Close releases the native CallbackContext resources. It is safe to call more than once.
-func (c *CallbackContext) Close() {
+// The error result is always nil; it exists so CallbackContext satisfies io.Closer.
+func (c *CallbackContext) Close() error {
 	if c == nil {
-		return
+		return nil
 	}
 	c.once.Do(func() {
 		c.mu.Lock()
@@ -62,6 +63,7 @@ func (c *CallbackContext) Close() {
 		}
 		c.callbackHandles = nil
 	})
+	return nil
 }
 
 // FloatBuffer is a caller-owned native handle. Call Close when it is no longer needed.
@@ -96,9 +98,10 @@ func (f *FloatBufferRef) zigoPointer() unsafe.Pointer {
 }
 
 // Close releases the native FloatBuffer resources. It is safe to call more than once.
-func (f *FloatBuffer) Close() {
+// The error result is always nil; it exists so FloatBuffer satisfies io.Closer.
+func (f *FloatBuffer) Close() error {
 	if f == nil {
-		return
+		return nil
 	}
 	f.once.Do(func() {
 		f.mu.Lock()
@@ -112,6 +115,7 @@ func (f *FloatBuffer) Close() {
 		}
 		f.callbackHandles = nil
 	})
+	return nil
 }
 
 // IntBuffer is a caller-owned native handle. Call Close when it is no longer needed.
@@ -146,9 +150,10 @@ func (i *IntBufferRef) zigoPointer() unsafe.Pointer {
 }
 
 // Close releases the native IntBuffer resources. It is safe to call more than once.
-func (i *IntBuffer) Close() {
+// The error result is always nil; it exists so IntBuffer satisfies io.Closer.
+func (i *IntBuffer) Close() error {
 	if i == nil {
-		return
+		return nil
 	}
 	i.once.Do(func() {
 		i.mu.Lock()
@@ -162,6 +167,7 @@ func (i *IntBuffer) Close() {
 		}
 		i.callbackHandles = nil
 	})
+	return nil
 }
 
 type zigoHandle interface {

@@ -129,7 +129,8 @@ generic 함수는 구체화 전에는 signature가 없으므로 직접 노출할
 ```
 
 caller-owned pointer를 반환하는 생성 함수와 대응 deinitializer가 있으면 공개 Go API에
-constructor와 멱등 `Close`가 생성됩니다. 모든 receiver와 handle 인자는 native 호출 전에
+constructor와 멱등 `Close() error`가 생성됩니다. 반환 error는 항상 nil이며 handle이
+`io.Closer`를 만족시키기 위한 것입니다. 모든 receiver와 handle 인자는 native 호출 전에
 nil·closed 상태를 검사합니다. 검사 결과는 항상 반환값으로 전달되며, 오류 반환 자리가
 없던 메서드에는 `error` 결과가 추가됩니다.
 

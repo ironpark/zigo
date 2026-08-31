@@ -88,6 +88,6 @@ func errorForCode(operation string, code int32) error {
 	case 5:
 		return ErrCallbackPanicked
 	default:
-		return &Error{Code: code, Name: "Unknown(" + strconv.FormatInt(int64(code), 10) + ")"}
+		return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")"}
 	}
 }

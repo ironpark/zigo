@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-31T19:50:36Z"
 depends_on:
 - "50-idiomatic-go-bindings#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Example 10's regenerated tagged-union type file is at least 30% smaller than
 > NEXT: none

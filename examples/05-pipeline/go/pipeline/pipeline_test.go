@@ -3,11 +3,19 @@ package pipeline
 import (
 	"errors"
 	"fmt"
+	"io"
 	"sync"
 	"testing"
 )
 
 var _ PipelineCallback = func(int32) int32 { return 0 }
+
+// Generated handles close like any other Go resource.
+var (
+	_ io.Closer = (*Pipeline)(nil)
+	_ io.Closer = (*IntBatch)(nil)
+	_ io.Closer = (*FloatBatch)(nil)
+)
 
 func TestPipelineEndToEnd(t *testing.T) {
 	pipeline, err := NewPipeline("복합 파이프라인", ModeWeighted, func(value int32) int32 {

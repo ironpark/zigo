@@ -13,18 +13,20 @@ import (
 // SignalTag represents the corresponding Zig enum.
 type SignalTag uint8
 
-// SignalTagIdle corresponds to the Zig tag idle.
-const SignalTagIdle SignalTag = 0
-// SignalTagTicks corresponds to the Zig tag ticks.
-const SignalTagTicks SignalTag = 1
-// SignalTagLevel corresponds to the Zig tag level.
-const SignalTagLevel SignalTag = 2
-// SignalTagOffset corresponds to the Zig tag offset.
-const SignalTagOffset SignalTag = 3
-// SignalTagMode corresponds to the Zig tag mode.
-const SignalTagMode SignalTag = 4
-// SignalTagActive corresponds to the Zig tag active.
-const SignalTagActive SignalTag = 5
+const (
+	// SignalTagIdle corresponds to the Zig tag idle.
+	SignalTagIdle SignalTag = 0
+	// SignalTagTicks corresponds to the Zig tag ticks.
+	SignalTagTicks SignalTag = 1
+	// SignalTagLevel corresponds to the Zig tag level.
+	SignalTagLevel SignalTag = 2
+	// SignalTagOffset corresponds to the Zig tag offset.
+	SignalTagOffset SignalTag = 3
+	// SignalTagMode corresponds to the Zig tag mode.
+	SignalTagMode SignalTag = 4
+	// SignalTagActive corresponds to the Zig tag active.
+	SignalTagActive SignalTag = 5
+)
 
 // String returns the Zig tag name.
 func (value SignalTag) String() string {
@@ -42,17 +44,19 @@ func (value SignalTag) String() string {
 	case SignalTagActive:
 		return "active"
 	default:
-		return "SignalTag(" + strconv.FormatInt(int64(value), 10) + ")"
+		return "SignalTag(" + strconv.Itoa(int(value)) + ")"
 	}
 }
 
 // Mode represents the corresponding Zig enum.
 type Mode uint8
 
-// ModeIdle corresponds to the Zig tag idle.
-const ModeIdle Mode = 0
-// ModeActive corresponds to the Zig tag active.
-const ModeActive Mode = 1
+const (
+	// ModeIdle corresponds to the Zig tag idle.
+	ModeIdle Mode = 0
+	// ModeActive corresponds to the Zig tag active.
+	ModeActive Mode = 1
+)
 
 // String returns the Zig tag name.
 func (value Mode) String() string {
@@ -62,7 +66,7 @@ func (value Mode) String() string {
 	case ModeActive:
 		return "active"
 	default:
-		return "Mode(" + strconv.FormatInt(int64(value), 10) + ")"
+		return "Mode(" + strconv.Itoa(int(value)) + ")"
 	}
 }
 
@@ -96,9 +100,10 @@ func (s *SignalRef) zigoPointer() unsafe.Pointer {
 }
 
 // Close releases the native Signal resources. It is safe to call more than once.
-func (s *Signal) Close() {
+// The error result is always nil; it exists so Signal satisfies io.Closer.
+func (s *Signal) Close() error {
 	if s == nil {
-		return
+		return nil
 	}
 	s.once.Do(func() {
 		if s.ptr != nil {
@@ -106,6 +111,7 @@ func (s *Signal) Close() {
 			s.ptr = nil
 		}
 	})
+	return nil
 }
 
 type zigoHandle interface {

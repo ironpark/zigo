@@ -8,7 +8,7 @@ registered_at: "2026-08-31T19:35:34Z"
 # Phases
 
 - [x] [Phase 00: Error-first naming: base methods return errors, Must variants panic](phases/00-error-first-naming.md)
-- [ ] [Phase 01: Deduplicate handle/ref method bodies](phases/01-handle-ref-dedup.md)
+- [x] [Phase 01: Deduplicate handle/ref method bodies](phases/01-handle-ref-dedup.md)
 - [ ] [Phase 02: Idiomatic small surface: enum blocks, Close() error, helper cleanup](phases/02-enum-and-close-idioms.md)
 - [ ] [Phase 03: Regenerate all examples and retire the stale lifecycle](phases/03-regen-all-examples.md)
 

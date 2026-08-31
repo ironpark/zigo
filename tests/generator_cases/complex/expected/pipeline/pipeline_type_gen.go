@@ -12,10 +12,12 @@ import (
 // Mode represents the corresponding Zig enum.
 type Mode uint32
 
-// ModeSum corresponds to the Zig tag sum.
-const ModeSum Mode = 0
-// ModeWeighted corresponds to the Zig tag weighted.
-const ModeWeighted Mode = 1
+const (
+	// ModeSum corresponds to the Zig tag sum.
+	ModeSum Mode = 0
+	// ModeWeighted corresponds to the Zig tag weighted.
+	ModeWeighted Mode = 1
+)
 
 // String returns the Zig tag name.
 func (value Mode) String() string {
@@ -25,7 +27,7 @@ func (value Mode) String() string {
 	case ModeWeighted:
 		return "weighted"
 	default:
-		return "Mode(" + strconv.FormatInt(int64(value), 10) + ")"
+		return "Mode(" + strconv.Itoa(int(value)) + ")"
 	}
 }
 
@@ -64,9 +66,10 @@ func (p *PipelineRef) zigoPointer() unsafe.Pointer {
 }
 
 // Close releases the native Pipeline resources. It is safe to call more than once.
-func (p *Pipeline) Close() {
+// The error result is always nil; it exists so Pipeline satisfies io.Closer.
+func (p *Pipeline) Close() error {
 	if p == nil {
-		return
+		return nil
 	}
 	p.once.Do(func() {
 		p.mu.Lock()
@@ -80,6 +83,7 @@ func (p *Pipeline) Close() {
 		}
 		p.callbackHandles = nil
 	})
+	return nil
 }
 
 // IntBatch is a caller-owned native handle. Call Close when it is no longer needed.
@@ -114,9 +118,10 @@ func (i *IntBatchRef) zigoPointer() unsafe.Pointer {
 }
 
 // Close releases the native IntBatch resources. It is safe to call more than once.
-func (i *IntBatch) Close() {
+// The error result is always nil; it exists so IntBatch satisfies io.Closer.
+func (i *IntBatch) Close() error {
 	if i == nil {
-		return
+		return nil
 	}
 	i.once.Do(func() {
 		i.mu.Lock()
@@ -130,6 +135,7 @@ func (i *IntBatch) Close() {
 		}
 		i.callbackHandles = nil
 	})
+	return nil
 }
 
 // FloatBatch is a caller-owned native handle. Call Close when it is no longer needed.
@@ -164,9 +170,10 @@ func (f *FloatBatchRef) zigoPointer() unsafe.Pointer {
 }
 
 // Close releases the native FloatBatch resources. It is safe to call more than once.
-func (f *FloatBatch) Close() {
+// The error result is always nil; it exists so FloatBatch satisfies io.Closer.
+func (f *FloatBatch) Close() error {
 	if f == nil {
-		return
+		return nil
 	}
 	f.once.Do(func() {
 		f.mu.Lock()
@@ -180,6 +187,7 @@ func (f *FloatBatch) Close() {
 		}
 		f.callbackHandles = nil
 	})
+	return nil
 }
 
 type zigoHandle interface {

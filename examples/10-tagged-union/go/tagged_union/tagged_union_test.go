@@ -2,6 +2,7 @@ package tagged_union
 
 import (
 	"errors"
+	"io"
 	"reflect"
 	"runtime"
 	"testing"
@@ -12,6 +13,13 @@ import (
 
 // must unwraps a generated call whose only failure mode in these tests would be
 // a nil or closed handle, which the tests establish is not the case.
+// Generated handles close like any other Go resource.
+var (
+	_ io.Closer = (*Child)(nil)
+	_ io.Closer = (*Value)(nil)
+	_ io.Closer = (*Signal)(nil)
+)
+
 func must[T any](value T, err error) T {
 	if err != nil {
 		panic(err)

@@ -10,10 +10,12 @@ import (
 // Mode represents the corresponding Zig enum.
 type Mode uint8
 
-// ModeIdle corresponds to the Zig tag idle.
-const ModeIdle Mode = 0
-// ModeActive corresponds to the Zig tag active.
-const ModeActive Mode = 1
+const (
+	// ModeIdle corresponds to the Zig tag idle.
+	ModeIdle Mode = 0
+	// ModeActive corresponds to the Zig tag active.
+	ModeActive Mode = 1
+)
 
 // String returns the Zig tag name.
 func (value Mode) String() string {
@@ -23,7 +25,7 @@ func (value Mode) String() string {
 	case ModeActive:
 		return "active"
 	default:
-		return "Mode(" + strconv.FormatInt(int64(value), 10) + ")"
+		return "Mode(" + strconv.Itoa(int(value)) + ")"
 	}
 }
 

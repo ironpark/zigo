@@ -2253,21 +2253,21 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                 try writer.print("{s}(state.ptr)\n\t}}\n", .{raw_deinit});
                 if (programHasCallbacks(program)) try writer.writeAll("\tfor _, handle := range state.callbackHandles {\n\t\tdeleteCallbackHandle(handle)\n\t}\n");
                 try writer.writeAll("}\n\n");
-                try writer.print("// Close releases the native {1s} resources. It is safe to call more than once.\nfunc ({0s} *{1s}) Close() {{\n\tif {0s} == nil {{\n\t\treturn\n\t}}\n\t{0s}.once.Do(func() {{\n", .{ recv, declaration.name });
+                try writer.print("// Close releases the native {1s} resources. It is safe to call more than once.\n// The error result is always nil; it exists so {1s} satisfies io.Closer.\nfunc ({0s} *{1s}) Close() error {{\n\tif {0s} == nil {{\n\t\treturn nil\n\t}}\n\t{0s}.once.Do(func() {{\n", .{ recv, declaration.name });
                 if (programHasCallbacks(program)) try writer.print("\t\t{0s}.mu.Lock()\n\t\tdefer {0s}.mu.Unlock()\n", .{recv});
                 try writer.print("\t\t{0s}.cleanup.Stop()\n\t\tcleanup{1s}({2s}CleanupState{{ptr: {0s}.ptr", .{ recv, declaration.name, private_name });
                 if (programHasCallbacks(program)) try writer.print(", callbackHandles: {0s}.callbackHandles", .{recv});
                 try writer.print("}})\n\t\t{0s}.ptr = nil\n", .{recv});
                 if (programHasCallbacks(program)) try writer.print("\t\t{0s}.callbackHandles = nil\n", .{recv});
-                try writer.print("\t}})\n\truntime.KeepAlive({0s})\n}}\n\n", .{recv});
+                try writer.print("\t}})\n\truntime.KeepAlive({0s})\n\treturn nil\n}}\n\n", .{recv});
             } else {
-                try writer.print("// Close releases the native {1s} resources. It is safe to call more than once.\nfunc ({0s} *{1s}) Close() {{\n\tif {0s} == nil {{\n\t\treturn\n\t}}\n\t{0s}.once.Do(func() {{\n", .{ recv, declaration.name });
+                try writer.print("// Close releases the native {1s} resources. It is safe to call more than once.\n// The error result is always nil; it exists so {1s} satisfies io.Closer.\nfunc ({0s} *{1s}) Close() error {{\n\tif {0s} == nil {{\n\t\treturn nil\n\t}}\n\t{0s}.once.Do(func() {{\n", .{ recv, declaration.name });
                 if (programHasCallbacks(program)) try writer.print("\t\t{0s}.mu.Lock()\n\t\tdefer {0s}.mu.Unlock()\n", .{recv});
                 try writer.print("\t\tif {0s}.ptr != nil {{\n\t\t\t", .{recv});
                 try writeRawReferencePrefix(writer, options);
                 try writer.print("{1s}({0s}.ptr)\n\t\t\t{0s}.ptr = nil\n\t\t}}\n", .{ recv, raw_deinit });
                 if (programHasCallbacks(program)) try writer.print("\t\tfor _, handle := range {0s}.callbackHandles {{\n\t\t\tdeleteCallbackHandle(handle)\n\t\t}}\n\t\t{0s}.callbackHandles = nil\n", .{recv});
-                try writer.writeAll("\t})\n}\n\n");
+                try writer.writeAll("\t})\n\treturn nil\n}\n\n");
             }
         }
     }
@@ -2515,19 +2515,35 @@ fn renderGoEnums(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
         try writer.print("// {s} represents the corresponding Zig enum.\ntype {s} ", .{ declaration.name, declaration.name });
         try writePublicGoType(writer, declaration.tag_type.?);
         try writer.writeAll("\n\n");
+        // One const block per enum. Every constant keeps its own leading
+        // comment so godoc still names it.
+        try writer.writeAll("const (\n");
         for (declaration.fields) |field| {
             const field_name = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(field_name);
-            try writer.print("// {s}{s} corresponds to the Zig tag {s}.\nconst {s}{s} {s} = {d}\n", .{ declaration.name, field_name, field.name, declaration.name, field_name, declaration.name, field.value.? });
+            try writer.print("\t// {s}{s} corresponds to the Zig tag {s}.\n\t{s}{s} {s} = {d}\n", .{ declaration.name, field_name, field.name, declaration.name, field_name, declaration.name, field.value.? });
         }
-        try writer.print("\n// String returns the Zig tag name.\nfunc (value {s}) String() string {{\n\tswitch value {{\n", .{declaration.name});
+        try writer.print(")\n\n// String returns the Zig tag name.\nfunc (value {s}) String() string {{\n\tswitch value {{\n", .{declaration.name});
         for (declaration.fields) |field| {
             const field_name = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(field_name);
             try writer.print("\tcase {s}{s}:\n\t\treturn \"{s}\"\n", .{ declaration.name, field_name, field.name });
         }
-        try writer.print("\tdefault:\n\t\treturn \"{s}(\" + strconv.FormatInt(int64(value), 10) + \")\"\n\t}}\n}}\n\n", .{declaration.name});
+        try writer.print("\tdefault:\n\t\treturn \"{s}(\" + ", .{declaration.name});
+        try writeEnumNumberFormat(writer, declaration.tag_type.?);
+        try writer.writeAll(" + \")\"\n\t}\n}\n\n");
     }
+}
+
+/// How an unknown enum value prints itself. `strconv.Itoa` covers every width
+/// that fits an `int`; only the widths that can outrun it need the 64-bit
+/// formatters.
+fn writeEnumNumberFormat(writer: *std.Io.Writer, tag_type: semantic.TypeNode) !void {
+    const integer = tag_type.int;
+    const wide = integer.is_usize or integer.bits >= 64;
+    if (!wide) return writer.writeAll("strconv.Itoa(int(value))");
+    if (integer.signed) return writer.writeAll("strconv.FormatInt(int64(value), 10)");
+    try writer.writeAll("strconv.FormatUint(uint64(value), 10)");
 }
 
 fn renderGoCallbackTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
@@ -2567,7 +2583,7 @@ fn renderGoErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, program:
         defer allocator.free(name);
         try writer.print("\tcase {d}:\n\t\treturn Err{s}\n", .{ entry.code, name });
     }
-    try writer.writeAll("\tdefault:\n\t\treturn &Error{Code: code, Name: \"Unknown(\" + strconv.FormatInt(int64(code), 10) + \")\"}\n\t}\n}\n");
+    try writer.writeAll("\tdefault:\n\t\treturn &Error{Code: code, Name: \"Unknown(\" + strconv.Itoa(int(code)) + \")\"}\n\t}\n}\n");
 }
 
 fn writeRawImport(writer: *std.Io.Writer, options: Options, indent: []const u8) !void {

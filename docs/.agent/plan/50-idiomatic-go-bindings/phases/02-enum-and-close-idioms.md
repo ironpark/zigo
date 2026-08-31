@@ -2,7 +2,7 @@
 depends_on:
 - "50-idiomatic-go-bindings#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Regenerated examples show one `const` block per enum; every handle type
 > NEXT: none

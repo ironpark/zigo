@@ -13,14 +13,14 @@ import (
 // Mode represents the corresponding Zig enum.
 type Mode uint8
 
-// ModeIdle corresponds to the Zig tag idle.
-const ModeIdle Mode = 0
-
-// ModeActive corresponds to the Zig tag active.
-const ModeActive Mode = 1
-
-// ModePaused corresponds to the Zig tag paused.
-const ModePaused Mode = 2
+const (
+	// ModeIdle corresponds to the Zig tag idle.
+	ModeIdle Mode = 0
+	// ModeActive corresponds to the Zig tag active.
+	ModeActive Mode = 1
+	// ModePaused corresponds to the Zig tag paused.
+	ModePaused Mode = 2
+)
 
 // String returns the Zig tag name.
 func (value Mode) String() string {
@@ -32,33 +32,29 @@ func (value Mode) String() string {
 	case ModePaused:
 		return "paused"
 	default:
-		return "Mode(" + strconv.FormatInt(int64(value), 10) + ")"
+		return "Mode(" + strconv.Itoa(int(value)) + ")"
 	}
 }
 
 // ValueTag represents the corresponding Zig enum.
 type ValueTag uint8
 
-// ValueTagNone corresponds to the Zig tag none.
-const ValueTagNone ValueTag = 0
-
-// ValueTagInteger corresponds to the Zig tag integer.
-const ValueTagInteger ValueTag = 1
-
-// ValueTagFlag corresponds to the Zig tag flag.
-const ValueTagFlag ValueTag = 2
-
-// ValueTagMode corresponds to the Zig tag mode.
-const ValueTagMode ValueTag = 3
-
-// ValueTagSamples corresponds to the Zig tag samples.
-const ValueTagSamples ValueTag = 4
-
-// ValueTagChild corresponds to the Zig tag child.
-const ValueTagChild ValueTag = 5
-
-// ValueTagMutableSamples corresponds to the Zig tag mutableSamples.
-const ValueTagMutableSamples ValueTag = 6
+const (
+	// ValueTagNone corresponds to the Zig tag none.
+	ValueTagNone ValueTag = 0
+	// ValueTagInteger corresponds to the Zig tag integer.
+	ValueTagInteger ValueTag = 1
+	// ValueTagFlag corresponds to the Zig tag flag.
+	ValueTagFlag ValueTag = 2
+	// ValueTagMode corresponds to the Zig tag mode.
+	ValueTagMode ValueTag = 3
+	// ValueTagSamples corresponds to the Zig tag samples.
+	ValueTagSamples ValueTag = 4
+	// ValueTagChild corresponds to the Zig tag child.
+	ValueTagChild ValueTag = 5
+	// ValueTagMutableSamples corresponds to the Zig tag mutableSamples.
+	ValueTagMutableSamples ValueTag = 6
+)
 
 // String returns the Zig tag name.
 func (value ValueTag) String() string {
@@ -78,30 +74,27 @@ func (value ValueTag) String() string {
 	case ValueTagMutableSamples:
 		return "mutableSamples"
 	default:
-		return "ValueTag(" + strconv.FormatInt(int64(value), 10) + ")"
+		return "ValueTag(" + strconv.Itoa(int(value)) + ")"
 	}
 }
 
 // SignalTag represents the corresponding Zig enum.
 type SignalTag uint8
 
-// SignalTagIdle corresponds to the Zig tag idle.
-const SignalTagIdle SignalTag = 0
-
-// SignalTagTicks corresponds to the Zig tag ticks.
-const SignalTagTicks SignalTag = 1
-
-// SignalTagLevel corresponds to the Zig tag level.
-const SignalTagLevel SignalTag = 2
-
-// SignalTagOffset corresponds to the Zig tag offset.
-const SignalTagOffset SignalTag = 3
-
-// SignalTagMode corresponds to the Zig tag mode.
-const SignalTagMode SignalTag = 4
-
-// SignalTagActive corresponds to the Zig tag active.
-const SignalTagActive SignalTag = 5
+const (
+	// SignalTagIdle corresponds to the Zig tag idle.
+	SignalTagIdle SignalTag = 0
+	// SignalTagTicks corresponds to the Zig tag ticks.
+	SignalTagTicks SignalTag = 1
+	// SignalTagLevel corresponds to the Zig tag level.
+	SignalTagLevel SignalTag = 2
+	// SignalTagOffset corresponds to the Zig tag offset.
+	SignalTagOffset SignalTag = 3
+	// SignalTagMode corresponds to the Zig tag mode.
+	SignalTagMode SignalTag = 4
+	// SignalTagActive corresponds to the Zig tag active.
+	SignalTagActive SignalTag = 5
+)
 
 // String returns the Zig tag name.
 func (value SignalTag) String() string {
@@ -119,7 +112,7 @@ func (value SignalTag) String() string {
 	case SignalTagActive:
 		return "active"
 	default:
-		return "SignalTag(" + strconv.FormatInt(int64(value), 10) + ")"
+		return "SignalTag(" + strconv.Itoa(int(value)) + ")"
 	}
 }
 
@@ -171,9 +164,10 @@ func cleanupChild(state childCleanupState) {
 }
 
 // Close releases the native Child resources. It is safe to call more than once.
-func (c *Child) Close() {
+// The error result is always nil; it exists so Child satisfies io.Closer.
+func (c *Child) Close() error {
 	if c == nil {
-		return
+		return nil
 	}
 	c.once.Do(func() {
 		c.cleanup.Stop()
@@ -181,6 +175,7 @@ func (c *Child) Close() {
 		c.ptr = nil
 	})
 	runtime.KeepAlive(c)
+	return nil
 }
 
 // Value is a caller-owned native handle. Call Close when it is no longer needed.
@@ -231,9 +226,10 @@ func cleanupValue(state valueCleanupState) {
 }
 
 // Close releases the native Value resources. It is safe to call more than once.
-func (v *Value) Close() {
+// The error result is always nil; it exists so Value satisfies io.Closer.
+func (v *Value) Close() error {
 	if v == nil {
-		return
+		return nil
 	}
 	v.once.Do(func() {
 		v.cleanup.Stop()
@@ -241,6 +237,7 @@ func (v *Value) Close() {
 		v.ptr = nil
 	})
 	runtime.KeepAlive(v)
+	return nil
 }
 
 // Signal is a caller-owned native handle. Call Close when it is no longer needed.
@@ -291,9 +288,10 @@ func cleanupSignal(state signalCleanupState) {
 }
 
 // Close releases the native Signal resources. It is safe to call more than once.
-func (s *Signal) Close() {
+// The error result is always nil; it exists so Signal satisfies io.Closer.
+func (s *Signal) Close() error {
 	if s == nil {
-		return
+		return nil
 	}
 	s.once.Do(func() {
 		s.cleanup.Stop()
@@ -301,6 +299,7 @@ func (s *Signal) Close() {
 		s.ptr = nil
 	})
 	runtime.KeepAlive(s)
+	return nil
 }
 
 type zigoHandle interface {
