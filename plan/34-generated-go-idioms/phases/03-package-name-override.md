@@ -2,7 +2,7 @@
 depends_on:
 - "34-generated-go-idioms#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: A binding set can generate an underscore-free package name, the default output is unchanged, an
 > NEXT: none

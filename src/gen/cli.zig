@@ -28,6 +28,7 @@ pub const Generate = struct {
     raw_package_name: []const u8 = "raw",
     raw_colocated: bool = false,
     auto_cleanup: bool = false,
+    go_package: []const u8 = "",
     errors_lock_path: ?[]const u8 = null,
     backend: Backend = .cgo,
     link_mode: LinkMode = .static,
@@ -61,6 +62,7 @@ pub const Report = struct {
     raw_colocated: bool = false,
     auto_cleanup: bool = false,
     backend: Backend = .cgo,
+    go_package: []const u8 = "",
     library_search_paths: []const u8 = "",
     library_env_vars: ?[]const u8 = null,
     library_automatic: bool = false,
@@ -177,6 +179,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
     var framework_ldflags: ?[]const u8 = null;
     var raw_package_path: ?[]const u8 = null;
     var raw_package_name: ?[]const u8 = null;
+    var go_package: ?[]const u8 = null;
     var errors_lock_path: ?[]const u8 = null;
     var raw_colocated = false;
     var raw_colocated_seen = false;
@@ -223,6 +226,8 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
             try set(&framework_ldflags, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--raw-package-path")) {
             try set(&raw_package_path, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--go-package")) {
+            try set(&go_package, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--raw-package-name")) {
             try set(&raw_package_name, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--errors-lock")) {
@@ -235,6 +240,8 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
             link_mode = parseLinkMode(try takeValue(args, &index)) orelse return error.InvalidValue;
         } else if (try loading.parseFlag(flag, args, &index)) {
             // handled by the shared loading-policy parser
+        } else if (std.mem.eql(u8, flag, "--go-package")) {
+            try set(&go_package, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--library-stem")) {
             try set(&library_stem, try takeValue(args, &index));
         } else {
@@ -257,6 +264,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .framework_ldflags = framework_ldflags orelse "",
         .raw_package_path = raw_package_path orelse "internal/raw",
         .raw_package_name = raw_package_name orelse "raw",
+        .go_package = go_package orelse "",
         .raw_colocated = raw_colocated,
         .auto_cleanup = auto_cleanup,
         .errors_lock_path = errors_lock_path,
@@ -346,6 +354,7 @@ fn parseReport(args: []const []const u8) ParseError!Report {
     var auto_cleanup = false;
     var auto_cleanup_seen = false;
     var backend: ?Backend = null;
+    var go_package: ?[]const u8 = null;
     var loading: LibraryLoadingArgs = .{};
     var index: usize = 0;
     while (index < args.len) {
@@ -359,6 +368,8 @@ fn parseReport(args: []const []const u8) ParseError!Report {
             try set(&go_module, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--raw-package-path")) {
             try set(&raw_package_path, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--go-package")) {
+            try set(&go_package, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--raw-colocated")) {
             if (raw_colocated_seen) return error.DuplicateArgument;
             raw_colocated_seen = true;
@@ -381,6 +392,7 @@ fn parseReport(args: []const []const u8) ParseError!Report {
         .raw_colocated = raw_colocated,
         .auto_cleanup = auto_cleanup,
         .backend = backend orelse .cgo,
+        .go_package = go_package orelse "",
         .library_search_paths = loading.search_paths orelse "",
         .library_env_vars = loading.env_vars,
         .library_automatic = loading.automatic,

@@ -9,7 +9,7 @@ registered_at: "2026-08-31T06:42:53Z"
 
 - [x] [Phase 00: Deterministic Formatting](phases/00-canonical-formatting.md)
 - [x] [Phase 01: Go Naming for the Public API](phases/01-public-naming.md)
-- [ ] [Phase 02: Readable Comments and Diagnostics](phases/02-comments-and-diagnostics.md)
+- [x] [Phase 02: Readable Comments and Diagnostics](phases/02-comments-and-diagnostics.md)
 - [ ] [Phase 03: Public Package Name Override](phases/03-package-name-override.md)
 
 # Shared Verification

@@ -67,6 +67,7 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         .raw_package_name = options.raw_package_name,
         .raw_colocated = options.raw_colocated,
         .auto_cleanup = options.auto_cleanup,
+        .go_package = options.go_package,
         .errors_lock_bytes = errors_lock_bytes,
         .backend = switch (options.backend) {
             .cgo => .cgo,
@@ -139,6 +140,7 @@ fn runReport(allocator: std.mem.Allocator, io: std.Io, options: cli.Report) !voi
             .cgo => .cgo,
             .purego => .purego,
         },
+        .go_package = options.go_package,
         .library_search_paths = options.library_search_paths,
         .library_env_vars = options.library_env_vars,
         .library_automatic = options.library_automatic,

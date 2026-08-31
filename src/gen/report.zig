@@ -11,6 +11,7 @@ pub const Options = struct {
     raw_colocated: bool = false,
     auto_cleanup: bool = false,
     backend: Backend = .cgo,
+    go_package: []const u8 = "",
     library_search_paths: []const u8 = "",
     library_env_vars: ?[]const u8 = null,
     library_automatic: bool = false,
@@ -39,6 +40,13 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
     });
     try writer.writeAll("zigo binding report\n");
     try writer.print("package: {s}\n", .{document.package});
+    {
+        const go_package = if (options.go_package.len != 0)
+            try scratch_allocator.dupe(u8, options.go_package)
+        else
+            try naming.snakeAlloc(scratch_allocator, document.package);
+        try writer.print("Go package: {s}\n", .{go_package});
+    }
     if (options.go_module.len != 0) try writer.print("go module: {s}\n", .{options.go_module});
     try writer.print("C prefix: {s}\n", .{document.prefix});
     try writer.print("Zig version: {s}\n", .{document.zig_version});

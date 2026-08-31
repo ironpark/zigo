@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-31T07:16:30Z"
 depends_on:
 - "34-generated-go-idioms#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Doc comments read as sentences, unknown enum values and error codes carry their number, no empty
 > NEXT: none

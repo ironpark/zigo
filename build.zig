@@ -36,6 +36,10 @@ pub const Options = struct {
     auto_cleanup: bool = false,
     /// `gofmt` used to format generated Go. Defaults to the one on `PATH`.
     gofmt: ?[]const u8 = null,
+    /// Public Go package name. Defaults to the snake_case binding name, which
+    /// can contain underscores; set it to choose an idiomatic Go name. The C
+    /// header and the native library keep the binding name either way.
+    go_package: ?[]const u8 = null,
     /// purego-only run-time loading policy. The default requires an explicit
     /// `LoadLibrary` call and consults `ZIGO_LIBRARY_PATH`.
     library_loading: LibraryLoading = .{},
@@ -479,7 +483,12 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         if (!isRunnableOnHost(target, b.graph.host.result))
             @panic("purego backend requires the native host target");
     }
-    const go_package = naming.snakeAlloc(b.allocator, options.name) catch @panic("OOM");
+    const artifact_package = naming.snakeAlloc(b.allocator, options.name) catch @panic("OOM");
+    const go_package = if (options.go_package) |value| blk: {
+        naming.validateGoPackageName(value) catch
+            @panic("go_package must be a valid Go package identifier");
+        break :blk value;
+    } else artifact_package;
     const raw_package = resolveRawPackage(b, options.raw_package, go_package);
     const zigo_dependency = b.dependencyFromBuildZig(@This(), .{});
     const generator = addGenerator(b, zigo_dependency.path("src/main.zig"), b.graph.host, .Debug);
@@ -549,8 +558,9 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         "--raw-package-path",  raw_package.path,
         "--raw-package-name",  raw_package.name,
         "--backend",           @tagName(options.backend),
-        "--library-stem",      b.fmt("{s}_zigo", .{go_package}),
+        "--library-stem",      b.fmt("{s}_zigo", .{artifact_package}),
         "--link-mode",         @tagName(options.link_mode),
+        "--go-package",        go_package,
     });
     if (options.backend == .purego) addLibraryLoadingArgs(b, generate, options.library_loading);
     if (raw_package.colocated) generate.addArg("--raw-colocated");
@@ -586,7 +596,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     const report = b.addRunArtifact(generator);
     report.addArgs(&.{ "report", "--semantic" });
     report.addFileArg(semantic_json);
-    report.addArgs(&.{ "--go-module", options.go_module, "--raw-package-path", raw_package.path });
+    report.addArgs(&.{ "--go-module", options.go_module, "--raw-package-path", raw_package.path, "--go-package", go_package });
     report.addArgs(&.{ "--backend", @tagName(options.backend) });
     if (options.backend == .purego) addLibraryLoadingArgs(b, report, options.library_loading);
     if (raw_package.colocated) report.addArg("--raw-colocated");
@@ -623,7 +633,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         .imports = &.{.{ .name = "zigo_target", .module = options.module }},
     });
     const lib = b.addLibrary(.{
-        .name = b.fmt("{s}_zigo", .{go_package}),
+        .name = b.fmt("{s}_zigo", .{artifact_package}),
         .linkage = switch (options.link_mode) {
             .static => .static,
             .dynamic => .dynamic,
@@ -633,11 +643,11 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     lib.root_module.addCSourceFile(.{ .file = generated_dir.path(b, "panic.c"), .flags = &.{"-fno-sanitize=undefined"} });
     lib.root_module.linkSystemLibrary("c", .{});
     const install_lib = b.addInstallArtifact(lib, .{});
-    const header_name = b.fmt("zigo_{s}.h", .{go_package});
+    const header_name = b.fmt("zigo_{s}.h", .{artifact_package});
     // A purego binding set declares the `_purego_v1` entry points, so it must not
     // overwrite the cgo header when both backends install into one prefix.
     const installed_header_name = if (options.backend == .purego)
-        b.fmt("zigo_{s}_purego.h", .{go_package})
+        b.fmt("zigo_{s}_purego.h", .{artifact_package})
     else
         header_name;
     const install_header = b.addInstallHeaderFile(generated_dir.path(b, header_name), installed_header_name);

@@ -17,6 +17,7 @@
 | `backend` | 아니요 | `.cgo` 또는 `.purego`. 기본값 `.cgo`. `.purego`는 `.link_mode = .dynamic` 필요 |
 | `library_loading` | 아니요 | purego 전용 런타임 로딩 정책. search path, 환경 변수, 자동 로딩, 로더 노출 여부 |
 | `gofmt` | 아니요 | 생성물 포맷에 사용할 `gofmt` 경로. 생략하면 `PATH`에서 찾는다 |
+| `go_package` | 아니요 | 공개 Go 패키지 이름. 생략하면 `name`의 snake_case |
 | `cgo_flags` | 아니요 | 자동 계산 대신 사용할 CFLAGS와 LDFLAGS |
 | `abi_base` | 아니요 | ABI·바인딩 계약 비교에 사용할 Git ref. 생략하면 검사 비활성화 |
 | `raw_package` | 아니요 | raw Go 코드 위치. 기본값 `.internal` |
@@ -106,6 +107,31 @@ public 패키지와 같은 디렉터리에 둘 수도 있다.
 역슬래시는 허용하지 않는다. 각 요소에는 ASCII 영문자, 숫자, `_`, `-`, `.`만 쓸 수
 있다. 경로나 모드를 바꾼 뒤에는 이전 위치의 `_gen.go` 파일을 직접 삭제해 중복 선언을
 방지한다.
+
+## Go 이름 규칙
+
+생성된 Go는 Go 관례를 따른다.
+
+- 공개 파라미터 이름은 Zig의 snake_case를 camelCase로 바꾼다. `source_len`은 `sourceLen`이
+  된다. Go에는 named argument가 없으므로 호출자 코드에는 영향이 없다.
+- Go 키워드(`type`, `range`, `func` 등)나 생성 코드가 선언하는 지역 변수(`code`, `result`,
+  `outResult` 등)와 겹치면 밑줄을 붙여 `type_`, `code_`로 escape한다. 변환 후 두 파라미터
+  이름이 같아지면 뒤쪽에 숫자를 붙인다.
+- 한 타입의 receiver 이름은 모든 생성 파일에서 동일한 약어를 쓴다.
+- Zig doc comment는 Go 식별자 뒤에 한 문장으로 이어 붙인다.
+
+공개 패키지 이름은 기본적으로 `name`의 snake_case이므로 `event_queue`처럼 밑줄이 들어갈 수
+있다. Go 관례는 밑줄 없는 패키지 이름이므로 필요하면 바꾼다.
+
+```zig
+.name = "event_queue",
+.go_package = "eventqueue",
+```
+
+`go_package`는 공개 패키지의 이름과 디렉터리만 바꾼다. C 헤더(`zigo_event_queue.h`)와
+네이티브 라이브러리(`libevent_queue_zigo.a`)는 `name`을 그대로 쓰므로 아티팩트 위치는
+움직이지 않는다. 기본값을 바꾸지 않은 이유는 import 경로가 바뀌는 호환성 파괴이기
+때문이다. 유효한 Go 식별자가 아니면 빌드 그래프를 만드는 시점에 실패한다.
 
 ## 생성 후 Go 포맷
 
