@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-31T07:10:42Z"
 depends_on:
 - "34-generated-go-idioms#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Generated signatures use camelCase parameters, keyword-named Zig parameters compile, one receiver
 > NEXT: none

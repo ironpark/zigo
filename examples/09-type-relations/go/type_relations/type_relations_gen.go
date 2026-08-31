@@ -37,7 +37,7 @@ func NewAccumulator() (*Accumulator, error) {
 	return &Accumulator{ptr: result}, nil
 }
 
-// Absorb Adds the current value of another exposed opaque type.
+// Absorb adds the current value of another exposed opaque type.
 // It panics with *HandleError if a required handle is nil or closed.
 func (a *Accumulator) Absorb(counter *Counter) int64 {
 	return raw.AccumulatorAbsorb(zigoMustPointer("Accumulator.Absorb receiver", a), zigoMustPointer("Accumulator.Absorb parameter counter", counter))

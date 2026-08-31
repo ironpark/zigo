@@ -3,6 +3,7 @@ package telemetry_hub
 
 import (
 	"errors"
+	"strconv"
 
 	raw "example.com/zigo/telemetry-hub-purego/internal/native"
 )
@@ -134,6 +135,6 @@ func errorForCode(code int32) error {
 	case 10:
 		return ErrObserverPanicked
 	default:
-		return &Error{Code: code, Name: "Unknown"}
+		return &Error{Code: code, Name: "Unknown(" + strconv.FormatInt(int64(code), 10) + ")"}
 	}
 }

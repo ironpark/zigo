@@ -3,6 +3,7 @@ package tagged_union
 
 import (
 	"errors"
+	"strconv"
 
 	"example.com/zigo/tagged-union/internal/raw"
 )
@@ -99,6 +100,6 @@ func errorForCode(code int32) error {
 	case 3:
 		return ErrNever
 	default:
-		return &Error{Code: code, Name: "Unknown"}
+		return &Error{Code: code, Name: "Unknown(" + strconv.FormatInt(int64(code), 10) + ")"}
 	}
 }

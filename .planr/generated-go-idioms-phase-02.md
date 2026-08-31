@@ -2,6 +2,11 @@
 depends_on:
 - "34-generated-go-idioms#1"
 perf_phase: false
+planr_base: sha256:43253febdb7f1bcfc0b7bb6d3a68cc36e3730a9639e5035547fed0848283a87a
+planr_edit: "generated-go-idioms#2"
+planr_phase: 2
+planr_slug: comments-and-diagnostics
+planr_target: plan/34-generated-go-idioms/phases/02-comments-and-diagnostics.md
 status: in-progress
 ---
 > DONE-WHEN: Doc comments read as sentences, unknown enum values and error codes carry their number, no empty

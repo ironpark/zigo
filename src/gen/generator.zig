@@ -353,7 +353,8 @@ test "errors enums and slices share one lowered ABI" {
     defer std.testing.allocator.free(public_errors);
     try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "ErrDivideByZero"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "func errorForCode(code int32) error"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "import \"example.com/features/internal/raw\""));
+    // The error file also converts an unrecognized code, so its imports are a block.
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "\t\"strconv\"\n\n\t\"example.com/features/internal/raw\""));
     const shim = try temporary.dir.readFileAlloc(std.testing.io, "shim.zig", std.testing.allocator, .limited(64 * 1024));
     defer std.testing.allocator.free(shim);
     try std.testing.expect(std.mem.containsAtLeast(u8, shim, 1, "p0_ptr: [*c]f64, p0_len: usize, p0_written: *usize"));
@@ -474,7 +475,7 @@ test "opt-in cleanup isolates state stops explicitly and keeps owners alive" {
     const public_errors = try temporary.dir.readFileAlloc(std.testing.io, "opaque/opaque_errors_gen.go", std.testing.allocator, .limited(32 * 1024));
     defer std.testing.allocator.free(public_errors);
     try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "zigoRawLastErrorMessage()"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "import \"errors\""));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "\t\"errors\"\n\t\"strconv\"\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "type HandleError struct"));
     const raw = try temporary.dir.readFileAlloc(std.testing.io, "opaque/opaque_cgo_gen.go", std.testing.allocator, .limited(32 * 1024));
     defer std.testing.allocator.free(raw);

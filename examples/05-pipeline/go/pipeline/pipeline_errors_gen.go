@@ -3,6 +3,7 @@ package pipeline
 
 import (
 	"errors"
+	"strconv"
 
 	"example.com/zigo/pipeline/internal/raw"
 )
@@ -109,6 +110,6 @@ func errorForCode(code int32) error {
 	case 5:
 		return ErrCallbackPanicked
 	default:
-		return &Error{Code: code, Name: "Unknown"}
+		return &Error{Code: code, Name: "Unknown(" + strconv.FormatInt(int64(code), 10) + ")"}
 	}
 }

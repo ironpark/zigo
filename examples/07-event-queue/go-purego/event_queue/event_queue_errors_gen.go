@@ -3,6 +3,7 @@ package event_queue
 
 import (
 	"errors"
+	"strconv"
 
 	raw "example.com/zigo/event-queue-purego/internal/native"
 )
@@ -119,6 +120,6 @@ func errorForCode(code int32) error {
 	case 7:
 		return ErrObserverPanicked
 	default:
-		return &Error{Code: code, Name: "Unknown"}
+		return &Error{Code: code, Name: "Unknown(" + strconv.FormatInt(int64(code), 10) + ")"}
 	}
 }

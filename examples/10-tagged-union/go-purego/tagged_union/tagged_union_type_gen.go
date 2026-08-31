@@ -3,6 +3,7 @@ package tagged_union
 
 import (
 	"runtime"
+	"strconv"
 	"sync"
 	"unsafe"
 
@@ -31,7 +32,7 @@ func (value Mode) String() string {
 	case ModePaused:
 		return "paused"
 	default:
-		return "Mode(?)"
+		return "Mode(" + strconv.FormatInt(int64(value), 10) + ")"
 	}
 }
 
@@ -77,7 +78,7 @@ func (value ValueTag) String() string {
 	case ValueTagMutableSamples:
 		return "mutableSamples"
 	default:
-		return "ValueTag(?)"
+		return "ValueTag(" + strconv.FormatInt(int64(value), 10) + ")"
 	}
 }
 

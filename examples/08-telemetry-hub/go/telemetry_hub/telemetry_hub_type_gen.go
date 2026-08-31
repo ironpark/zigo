@@ -2,6 +2,7 @@
 package telemetry_hub
 
 import (
+	"strconv"
 	"sync"
 	"unsafe"
 
@@ -30,7 +31,7 @@ func (value Mode) String() string {
 	case ModeAbsolute:
 		return "absolute"
 	default:
-		return "Mode(?)"
+		return "Mode(" + strconv.FormatInt(int64(value), 10) + ")"
 	}
 }
 
@@ -51,7 +52,7 @@ func (value OverflowPolicy) String() string {
 	case OverflowPolicyDropOldest:
 		return "drop_oldest"
 	default:
-		return "OverflowPolicy(?)"
+		return "OverflowPolicy(" + strconv.FormatInt(int64(value), 10) + ")"
 	}
 }
 
@@ -82,7 +83,7 @@ func (value Severity) String() string {
 	case SeverityCritical:
 		return "critical"
 	default:
-		return "Severity(?)"
+		return "Severity(" + strconv.FormatInt(int64(value), 10) + ")"
 	}
 }
 

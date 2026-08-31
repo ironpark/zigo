@@ -25,7 +25,7 @@ func LiveBytes() uint {
 	return raw.LiveBytes()
 }
 
-// Echo Echoes UTF-8 text without changing its bytes.
+// Echo echoes UTF-8 text without changing its bytes.
 func Echo(text string) string {
 	return string(raw.Echo([]byte(text)))
 }

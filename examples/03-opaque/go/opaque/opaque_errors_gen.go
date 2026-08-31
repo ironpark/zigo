@@ -3,6 +3,7 @@ package opaque
 
 import (
 	"errors"
+	"strconv"
 
 	"example.com/zigo/opaque/internal/raw"
 )
@@ -89,6 +90,6 @@ func errorForCode(code int32) error {
 	case 1:
 		return ErrOutOfMemory
 	default:
-		return &Error{Code: code, Name: "Unknown"}
+		return &Error{Code: code, Name: "Unknown(" + strconv.FormatInt(int64(code), 10) + ")"}
 	}
 }

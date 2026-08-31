@@ -2,6 +2,7 @@
 package pipeline
 
 import (
+	"strconv"
 	"sync"
 	"unsafe"
 
@@ -24,7 +25,7 @@ func (value Mode) String() string {
 	case ModeWeighted:
 		return "weighted"
 	default:
-		return "Mode(?)"
+		return "Mode(" + strconv.FormatInt(int64(value), 10) + ")"
 	}
 }
 

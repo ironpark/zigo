@@ -3,6 +3,7 @@ package event_queue
 
 import (
 	"runtime"
+	"strconv"
 	"sync"
 	"unsafe"
 
@@ -26,7 +27,7 @@ func (value Policy) String() string {
 	case PolicyDropOldest:
 		return "drop_oldest"
 	default:
-		return "Policy(?)"
+		return "Policy(" + strconv.FormatInt(int64(value), 10) + ")"
 	}
 }
 
