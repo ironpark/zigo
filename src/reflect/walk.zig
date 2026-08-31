@@ -43,14 +43,14 @@ pub fn reflect(
                     }),
                     else => @compileError("zigo value type entries must name a struct"),
                 },
-                .tagged_union => switch (info) {
+                .tagged_union, .tagged_union_value => switch (info) {
                     .@"union" => |union_info| {
                         if (union_info.tag_type == null) @compileError("zigo tagged_union type entries must name a tagged union");
-                        try appendTaggedUnion(allocator, &types, T, type_name);
+                        try appendTaggedUnion(allocator, &types, T, type_name, if (entry.repr == .tagged_union_value) .value_snapshot else .projection);
                     },
                     else => @compileError("zigo tagged_union type entries must name a tagged union"),
                 },
-                else => @compileError("zigo type repr must be .opaque, .value, or .tagged_union"),
+                else => @compileError("zigo type repr must be .opaque, .value, .tagged_union, or .tagged_union_value"),
             }
         }
     }
@@ -383,7 +383,7 @@ fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayLis
                 }
             }
             if (@typeInfo(T).@"union".tag_type == null) @compileError("zigo cannot reflect an untagged union");
-            try appendTaggedUnion(allocator, types, T, name);
+            try appendTaggedUnion(allocator, types, T, name, .projection);
             break :blk .{ .value_struct = .{ .ref = name } };
         },
         else => @compileError("zigo supports scalars, enums, slices, opaque pointers, structs, and error unions"),
@@ -418,7 +418,7 @@ fn receiverName(comptime info: std.builtin.Type.Fn, comptime declaration: anytyp
     if (pointer.size != .one) return null;
     if (@hasField(@TypeOf(declaration), "types")) {
         inline for (declaration.types) |entry| {
-            if ((entry.repr == .@"opaque" or entry.repr == .tagged_union) and entry.type == pointer.child) {
+            if (isHandleRepr(entry.repr) and entry.type == pointer.child) {
                 return if (@hasField(@TypeOf(entry), "name")) entry.name else shortTypeName(@typeName(entry.type));
             }
         }
@@ -440,11 +440,16 @@ fn opaqueNameForPath(types: []const semantic.TypeDecl, path: []const u8) ?[]cons
     return null;
 }
 
+fn isHandleRepr(comptime repr: anytype) bool {
+    return repr == .@"opaque" or repr == .tagged_union or repr == .tagged_union_value;
+}
+
 fn appendTaggedUnion(
     allocator: std.mem.Allocator,
     types: *std.ArrayList(semantic.TypeDecl),
     comptime T: type,
     name: []const u8,
+    repr: semantic.UnionRepr,
 ) !void {
     const info = @typeInfo(T).@"union";
     const Tag = info.tag_type orelse @compileError("zigo cannot reflect an untagged union");
@@ -455,6 +460,9 @@ fn appendTaggedUnion(
     try types.append(allocator, .{
         .kind = .tagged_union,
         .name = name,
+        // The projection default stays absent from semantic.json so opting out
+        // of the snapshot leaves existing documents byte-identical.
+        .union_repr = if (repr == .projection) null else repr,
         .zig_path = @typeName(T),
     });
 
@@ -605,6 +613,38 @@ test "reflection preserves invalid declarations for generator diagnostics" {
     try std.testing.expectEqual(true, document.functions[0].has_comptime_params.?);
     try std.testing.expect(!document.functions[1].params[0].type.callback.c_callconv);
     try std.testing.expectEqual(semantic.TypeKind.tagged_union, document.types[0].kind);
+}
+
+test "the value snapshot repr is recorded only when it is opted into" {
+    const Signal = union(enum(u8)) {
+        idle,
+        ticks: u32,
+    };
+    const Fixture = struct {
+        fn current() *const Signal {
+            unreachable;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const snapshot = try reflect(arena.allocator(), .{
+        .types = .{.{ .type = Signal, .repr = .tagged_union_value }},
+        .functions = .{.{ .name = "current", .@"fn" = Fixture.current }},
+    }, "variant", "zg");
+    try std.testing.expectEqual(semantic.UnionRepr.value_snapshot, snapshot.types[0].unionRepr());
+    const snapshot_json = try snapshot.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(snapshot_json);
+    try std.testing.expect(std.mem.indexOf(u8, snapshot_json, "\"union_repr\": \"value_snapshot\"") != null);
+
+    const projection = try reflect(arena.allocator(), .{
+        .types = .{.{ .type = Signal, .repr = .tagged_union }},
+        .functions = .{.{ .name = "current", .@"fn" = Fixture.current }},
+    }, "variant", "zg");
+    try std.testing.expectEqual(semantic.UnionRepr.projection, projection.types[0].unionRepr());
+    const projection_json = try projection.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(projection_json);
+    try std.testing.expect(std.mem.indexOf(u8, projection_json, "union_repr") == null);
 }
 
 test "tagged union representation reflects discriminants and payloads" {

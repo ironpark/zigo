@@ -223,6 +223,10 @@ pub const SemanticFn = struct {
 
 pub const TypeKind = enum { @"enum", error_set, @"opaque", tagged_union, value_struct };
 pub const Layout = enum { @"extern", @"packed" };
+/// How a tagged union reaches Go. `projection` keeps the per-variant FFI
+/// accessors; `value_snapshot` adds a zigo-owned snapshot struct that carries
+/// the tag and every scalar payload back in one call.
+pub const UnionRepr = enum { projection, value_snapshot };
 pub const TypeField = struct {
     name: []const u8,
     type: ?TypeNode = null,
@@ -235,7 +239,14 @@ pub const TypeDecl = struct {
     layout: ?Layout = null,
     name: []const u8,
     tag_type: ?TypeNode = null,
+    union_repr: ?UnionRepr = null,
     zig_path: ?[]const u8 = null,
+
+    /// The representation a tagged union was registered with. Types that are
+    /// not tagged unions never carry one.
+    pub fn unionRepr(self: TypeDecl) UnionRepr {
+        return self.union_repr orelse .projection;
+    }
 };
 pub const Constructor = struct {
     deinit: []const u8,

@@ -104,6 +104,15 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .site = .{ .path = "semantic.json", .declaration = declaration.name },
             .hint = "use void, scalar, enum, opaque-pointer, or numeric-slice payloads",
         };
+        if (declaration.kind == .tagged_union and declaration.unionRepr() == .value_snapshot) {
+            if (snapshotIneligibleVariant(document, declaration)) |variant| return .{
+                .severity = .@"error",
+                .code = "ZIGO011",
+                .message = "tagged union variant cannot be mirrored into a value snapshot",
+                .site = .{ .path = "semantic.json", .declaration = variant },
+                .hint = "use `.repr = .tagged_union`, or give every variant a void, bool, integer, float, or enum payload and a name other than `tag`",
+            };
+        }
     }
     for (document.functions, 0..) |function, index| {
         const symbol = try functionSymbolAlloc(allocator, document.prefix, function);
@@ -223,6 +232,33 @@ fn accessorPayloadSupported(document: semantic.Semantic, node: semantic.TypeNode
             .float => |float| floatSupported(float),
             else => false,
         },
+        else => false,
+    };
+}
+
+/// The first variant that cannot live in a zigo-owned snapshot struct, or null
+/// when the union is eligible. Slices, opaque handles, nested aggregates,
+/// optionals, error unions and callbacks all disqualify it: a snapshot must be
+/// a flat copy of C-representable scalars.
+fn snapshotIneligibleVariant(document: semantic.Semantic, declaration: semantic.TypeDecl) ?[]const u8 {
+    for (declaration.fields) |field| {
+        const payload = field.type orelse return field.name;
+        if (!snapshotPayloadEligible(document, payload)) return field.name;
+        // The snapshot struct spells the discriminant `tag`, so no variant may
+        // claim that field name.
+        if (std.ascii.eqlIgnoreCase(field.name, "tag")) return field.name;
+    }
+    return null;
+}
+
+fn snapshotPayloadEligible(document: semantic.Semantic, node: semantic.TypeNode) bool {
+    return switch (node) {
+        // `bool` crosses the C ABI as uint8_t here exactly as it does
+        // everywhere else in zigo; public Go restores it.
+        .void, .bool => true,
+        .int => |value| integerSupported(value),
+        .float => |value| floatSupported(value),
+        .@"enum" => |value| hasTypeKind(document, value.ref, .@"enum"),
         else => false,
     };
 }
@@ -405,6 +441,7 @@ test "implemented diagnostic snapshots are stable" {
     var void_node: semantic.TypeNode = .{ .void = {} };
     var pointer_node: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Thing" } };
     var callback_return: semantic.TypeNode = .{ .void = {} };
+    var sample_element: semantic.TypeNode = .{ .int = .{ .bits = 16, .signed = true } };
     const cases = [_]struct { document: semantic.Semantic, snapshot: []const u8 }{
         .{ .document = .{
             .functions = &.{.{
@@ -502,6 +539,29 @@ test "implemented diagnostic snapshots are stable" {
             .types = &.{.{ .kind = .@"opaque", .name = "Thing" }},
             .zig_version = "0.16.0",
         }, .snapshot = "error[ZIGO009]: retained pointer has no matching release function\n  --> semantic.json (remember)\n  hint: expose a release, clear, close, destroy, or deinit function for the retained value\n" },
+        .{ .document = .{
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{
+                .{
+                    .fields = &.{
+                        .{ .name = "none", .type = .{ .void = {} }, .value = 0 },
+                        .{ .name = "samples", .type = .{ .slice = .{ .@"const" = true, .element = &sample_element } }, .value = 1 },
+                    },
+                    .kind = .tagged_union,
+                    .name = "Signal",
+                    .tag_type = .{ .@"enum" = .{ .ref = "SignalTag" } },
+                    .union_repr = .value_snapshot,
+                },
+                .{
+                    .fields = &.{ .{ .name = "none", .value = 0 }, .{ .name = "samples", .value = 1 } },
+                    .kind = .@"enum",
+                    .name = "SignalTag",
+                    .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+                },
+            },
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO011]: tagged union variant cannot be mirrored into a value snapshot\n  --> semantic.json (samples)\n  hint: use `.repr = .tagged_union`, or give every variant a void, bool, integer, float, or enum payload and a name other than `tag`\n" },
     };
     for (cases) |case| {
         const issue = (try findIssue(std.testing.allocator, case.document)) orelse return error.MissingDiagnostic;
@@ -819,4 +879,95 @@ fn expectSymbolCollision(allocator: std.mem.Allocator) !void {
     };
     const issue = (try findIssue(allocator, document)) orelse return error.MissingDiagnostic;
     try std.testing.expectEqualStrings("ZIGO007", issue.code);
+}
+
+test "a variant named tag collides with the snapshot discriminant member" {
+    const document: semantic.Semantic = .{
+        .package = "variant",
+        .prefix = "zg",
+        .types = &.{
+            .{
+                .fields = &.{.{ .name = "tag", .type = .{ .int = .{ .bits = 32, .signed = false } }, .value = 0 }},
+                .kind = .tagged_union,
+                .name = "Signal",
+                .tag_type = .{ .@"enum" = .{ .ref = "SignalTag" } },
+                .union_repr = .value_snapshot,
+            },
+            .{ .fields = &.{.{ .name = "tag", .value = 0 }}, .kind = .@"enum", .name = "SignalTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
+        },
+        .zig_version = "0.16.0",
+    };
+    const issue = (try findIssue(std.testing.allocator, document)) orelse return error.MissingDiagnostic;
+    try std.testing.expectEqualStrings("ZIGO011", issue.code);
+    try std.testing.expectEqualStrings("tag", issue.site.declaration);
+}
+
+test "value snapshot eligibility accepts void bool scalar and enum payloads" {
+    const eligible: semantic.Semantic = .{
+        .package = "variant",
+        .prefix = "zg",
+        .types = &.{
+            .{
+                .fields = &.{
+                    .{ .name = "idle", .type = .{ .void = {} }, .value = 0 },
+                    .{ .name = "ticks", .type = .{ .int = .{ .bits = 32, .signed = false } }, .value = 1 },
+                    .{ .name = "level", .type = .{ .float = .{ .bits = 32 } }, .value = 2 },
+                    .{ .name = "mode", .type = .{ .@"enum" = .{ .ref = "Mode" } }, .value = 3 },
+                    .{ .name = "active", .type = .{ .bool = {} }, .value = 4 },
+                },
+                .kind = .tagged_union,
+                .name = "Signal",
+                .tag_type = .{ .@"enum" = .{ .ref = "SignalTag" } },
+                .union_repr = .value_snapshot,
+            },
+            .{
+                .fields = &.{
+                    .{ .name = "idle", .value = 0 },
+                    .{ .name = "ticks", .value = 1 },
+                    .{ .name = "level", .value = 2 },
+                    .{ .name = "mode", .value = 3 },
+                    .{ .name = "active", .value = 4 },
+                },
+                .kind = .@"enum",
+                .name = "SignalTag",
+                .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+            },
+            .{ .fields = &.{.{ .name = "idle", .value = 0 }}, .kind = .@"enum", .name = "Mode", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
+        },
+        .zig_version = "0.16.0",
+    };
+    try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(std.testing.allocator, eligible));
+    try semanticDocument(std.testing.allocator, eligible);
+}
+
+test "an opaque handle payload keeps a union out of the value snapshot representation" {
+    var child: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = true, .nullable = false, .ref = "Child" } };
+    _ = &child;
+    const document: semantic.Semantic = .{
+        .package = "variant",
+        .prefix = "zg",
+        .types = &.{
+            .{
+                .fields = &.{.{ .name = "child", .type = .{ .opaque_ptr = .{ .@"const" = true, .nullable = false, .ref = "Child" } }, .value = 0 }},
+                .kind = .tagged_union,
+                .name = "Signal",
+                .tag_type = .{ .@"enum" = .{ .ref = "SignalTag" } },
+                .union_repr = .value_snapshot,
+            },
+            .{ .fields = &.{.{ .name = "child", .value = 0 }}, .kind = .@"enum", .name = "SignalTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
+            .{ .kind = .@"opaque", .name = "Child" },
+        },
+        .zig_version = "0.16.0",
+    };
+    const issue = (try findIssue(std.testing.allocator, document)) orelse return error.MissingDiagnostic;
+    try std.testing.expectEqualStrings("ZIGO011", issue.code);
+    try std.testing.expectEqualStrings("child", issue.site.declaration);
+
+    // The same union stays valid under the default projection representation.
+    var projection_types = document.types[0];
+    projection_types.union_repr = null;
+    var types = [_]semantic.TypeDecl{ projection_types, document.types[1], document.types[2] };
+    var projection_document = document;
+    projection_document.types = &types;
+    try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(std.testing.allocator, projection_document));
 }
