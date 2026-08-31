@@ -90,9 +90,8 @@ cleanup 실행 시점과 프로그램 종료 전 실행은 보장되지 않으�
 | `.cgo_dynamic` | cgo + 공유 라이브러리 |
 | `.purego` | cgo 없음. 실행 시점에 공유 라이브러리에서 심볼을 찾는다 |
 
-예전에는 `backend`와 `link_mode`가 따로 있었지만 존재하지 않는 조합을 표현할 수 있었다.
-purego는 정적 링크를 하지 않고 cgo를 거치지도 않는다. 한 축으로 접으면 그 조합이 아예
-표현되지 않으므로, 빌드 중 `@panic`으로 배우던 제약이 사라진다.
+purego는 정적 링크를 하지 않고 cgo를 거치지도 않는다. 한 축으로 두었으므로 그 조합은
+아예 표현되지 않으며, 빌드 중에 제약을 배울 일이 없다.
 
 ## raw Go 패키지 위치
 
@@ -121,24 +120,6 @@ public 패키지 경로를 그대로 주면 두 패키지가 같은 디렉터리
 역슬래시는 허용하지 않는다. 각 요소에는 ASCII 영문자, 숫자, `_`, `-`, `.`만 쓸 수
 있다. 경로나 모드를 바꾼 뒤에는 이전 위치의 `_gen.go` 파일을 직접 삭제해 중복 선언을
 방지한다.
-
-## 마이그레이션: 옵션 축 정리
-
-| 예전 | 지금 |
-|---|---|
-| `.backend = .cgo, .link_mode = .static` (기본값) | `.link = .cgo_static` (기본값) |
-| `.backend = .cgo, .link_mode = .dynamic` | `.link = .cgo_dynamic` |
-| `.backend = .purego, .link_mode = .dynamic` | `.link = .purego` |
-| `.backend = .purego, .link_mode = .static` | 표현할 수 없다 (예전에는 빌드 중 `@panic`) |
-| `.raw_package = .internal` | `.raw_package = "internal/raw"` (기본값) |
-| `.raw_package = .{ .path = "support/ffi" }` | `.raw_package = "support/ffi"` |
-| `.raw_package = .colocated` | `.raw_package = "<public 패키지 경로>"` |
-| `.library_loading = .{}` | 그대로. `loader` 기본값이 `.explicit` |
-| `.library_loading = .{ .automatic = true }` | `.library_loading = .{ .loader = .automatic }` |
-| `.library_loading = .{ .automatic = true, .exported_api = false }` | `.library_loading = .{ .loader = .automatic_internal }` |
-| `.library_loading = .{ .exported_api = false }` | 표현할 수 없다 (아무도 라이브러리를 로드할 수 없다) |
-
-`zigo.Backend`와 `zigo.LinkMode`는 더 이상 공개 타입이 아니다.
 
 ## Go 이름 규칙
 
@@ -204,6 +185,9 @@ zigo는 대상 모듈에 설정된 system library와 framework 링크 정보를 
 
 선언을 지칭하는 방법은 **경로 하나**다. `root.<name>`은 `root` 모듈의 함수를,
 `<Type>.<name>`은 `types`에 등록된 타입의 함수를 가리킨다.
+
+경로가 공개 함수를 가리키지 않으면 컴파일 오류다. `.name`은 주소가 아니라 Go 쪽 이름을
+바꿀 때만 쓴다.
 
 ```zig
 pub const bindings = zigo.define(.{
@@ -408,42 +392,9 @@ handle payload는 union wrapper에 수명이 묶인 borrowed `*TRef`다. union �
 | `.projection` | variant마다 tag를 확인하는 접근자 |
 | `.snapshot` | tag와 스칼라 payload를 한 번의 호출로 담는 스냅샷 구조체 (projection도 그대로 남는다) |
 
-두 축을 나눠 두었으므로 접근 전략이 늘어도 `repr` 이름이 곱해지지 않는다. 예전
-`.tagged_union_value`는 "tagged union인데 스냅샷"을 한 이름에 섞은 것이었고, 전략이 하나
-더 생길 때마다 새 `repr` 이름이 필요했다.
+두 축을 나눠 두었으므로 접근 전략이 늘어도 `repr` 이름이 곱해지지 않는다.
 
-## 마이그레이션: 에러 판별
-
-| 예전 | 지금 |
-|---|---|
-| `errors.Is(err, ErrPanicCaught)` | `errors.Is(err, ErrNativePanic)` |
-| `errors.As(err, &zigoErr)` 후 `zigoErr.Code == -2` | `errors.Is(err, ErrNativePanic)` |
-| `*ProjectionError` | `*StatusError` + `errors.Is(err, ErrNativeStatus)` |
-| `errors.As(err, &libraryErr)` (`*LibraryError`) | `errors.Is(err, ErrLibraryLoad)`. `errors.As`는 그대로 쓸 수 있다 |
-| `Err<ZigError>` | 그대로 |
-| `ErrInvalidHandle`, `ErrNativePanic` | 그대로 |
-
-`ErrPanicCaught`는 없앴다. Zig panic은 하나의 사건인데 경계에 따라 두 개의 센티널로
-갈렸기 때문이다. 이제 오류 반환 함수의 코드 `-2`도 `*NativePanicError`를 만든다.
-
-## 마이그레이션: 선언을 지칭하는 방법
-
-| 예전 | 지금 |
-|---|---|
-| `.{ .name = "add", .@"fn" = mylib.add }` | `.{ .path = "root.add" }` |
-| `.{ .name = "process", .@"fn" = mylib.Context.process }` | `.{ .path = "Context.process" }` |
-| `.{ .name = "put", .@"fn" = mylib.Context.set }` | `.{ .path = "Context.set", .name = "put" }` |
-| `.overrides = .{ .{ .path = "Context.create", ... } }` | `.functions = .{ .{ .path = "Context.create", ... } }` |
-| `.specializations = .{ .{ .name = "FloatBuffer", .type = T } }` | `.types = .{ .{ .name = "FloatBuffer", .type = T, .repr = .@"opaque" } }` |
-| (`.root` 는 `discover` 모드에서만 필요) | `.root` 는 항상 필요하다 |
-| `.{ .type = T, .repr = .tagged_union_value }` | `.{ .type = T, .repr = .tagged_union, .access = .snapshot }` |
-
-semantic IR도 같은 축을 따른다. `union_repr: "value_snapshot"` 은 `access: "snapshot"` 이
-되었다. 생성되는 C 심볼과 Go API는 바뀌지 않는다.
-
-`.@"fn"`은 더 이상 받지 않는다. 경로가 함수 값을 대신하며, `.root`와 `types`에서
-컨테이너를 찾아 해석한다. 경로가 공개 함수를 가리키지 않으면 컴파일 오류다.
-`.name`은 이제 주소가 아니라 이름 바꾸기 전용이다.
+semantic IR도 같은 축을 따르며, 생성되는 C 심볼과 Go API는 접근 전략과 무관하다.
 
 ## 에러 판별
 
