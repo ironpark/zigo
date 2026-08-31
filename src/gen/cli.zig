@@ -1,6 +1,7 @@
 const std = @import("std");
 
 pub const Backend = enum { cgo, purego };
+pub const LinkMode = enum { static, dynamic };
 
 pub const ParseError = error{
     DuplicateArgument,
@@ -29,6 +30,7 @@ pub const Generate = struct {
     auto_cleanup: bool = false,
     errors_lock_path: ?[]const u8 = null,
     backend: Backend = .cgo,
+    link_mode: LinkMode = .static,
     library_stem: []const u8 = "",
 };
 
@@ -144,6 +146,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
     var auto_cleanup = false;
     var auto_cleanup_seen = false;
     var backend: ?Backend = null;
+    var link_mode: ?LinkMode = null;
     var library_stem: ?[]const u8 = null;
 
     var index: usize = 0;
@@ -189,6 +192,9 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         } else if (std.mem.eql(u8, flag, "--backend")) {
             if (backend != null) return error.DuplicateArgument;
             backend = parseBackend(try takeValue(args, &index)) orelse return error.InvalidValue;
+        } else if (std.mem.eql(u8, flag, "--link-mode")) {
+            if (link_mode != null) return error.DuplicateArgument;
+            link_mode = parseLinkMode(try takeValue(args, &index)) orelse return error.InvalidValue;
         } else if (std.mem.eql(u8, flag, "--library-stem")) {
             try set(&library_stem, try takeValue(args, &index));
         } else {
@@ -215,6 +221,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .auto_cleanup = auto_cleanup,
         .errors_lock_path = errors_lock_path,
         .backend = backend orelse .cgo,
+        .link_mode = link_mode orelse .static,
         .library_stem = library_stem orelse "",
     };
 }
@@ -385,6 +392,12 @@ fn parseDoctor(args: []const []const u8) ParseError!Doctor {
     };
 }
 
+fn parseLinkMode(value: []const u8) ?LinkMode {
+    if (std.mem.eql(u8, value, "static")) return .static;
+    if (std.mem.eql(u8, value, "dynamic")) return .dynamic;
+    return null;
+}
+
 fn parseBackend(value: []const u8) ?Backend {
     if (std.mem.eql(u8, value, "cgo")) return .cgo;
     if (std.mem.eql(u8, value, "purego")) return .purego;
@@ -446,6 +459,11 @@ test "generate command parses named arguments" {
     try std.testing.expect(options.raw_colocated);
     try std.testing.expect(options.auto_cleanup);
     try std.testing.expectEqualStrings("errors.lock.json", options.errors_lock_path.?);
+
+    const dynamic_generate = (try parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--link-mode", "dynamic", "--library-stem", "scalar_zigo" })).generate;
+    try std.testing.expectEqual(LinkMode.dynamic, dynamic_generate.link_mode);
+    try std.testing.expectEqualStrings("scalar_zigo", dynamic_generate.library_stem);
+    try std.testing.expectError(error.InvalidValue, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--link-mode", "shared" }));
 }
 
 test "generate command retains defaults" {

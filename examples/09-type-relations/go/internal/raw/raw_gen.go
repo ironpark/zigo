@@ -3,7 +3,7 @@ package raw
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
-#cgo LDFLAGS: -L${SRCDIR}/../../../zig-out/lib -ltype_relations_zigo
+#cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libtype_relations_zigo.a
 #include "zigo_type_relations.h"
 */
 import "C"

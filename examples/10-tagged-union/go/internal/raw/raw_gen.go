@@ -3,7 +3,7 @@ package raw
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
-#cgo LDFLAGS: -L${SRCDIR}/../../../zig-out/lib -ltagged_union_zigo
+#cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libtagged_union_zigo.a
 #include "zigo_tagged_union.h"
 */
 import "C"

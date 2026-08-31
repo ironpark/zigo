@@ -72,6 +72,10 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
             .cgo => .cgo,
             .purego => .purego,
         },
+        .link_mode = switch (options.link_mode) {
+            .static => .static,
+            .dynamic => .dynamic,
+        },
         .library_stem = options.library_stem,
     });
 }

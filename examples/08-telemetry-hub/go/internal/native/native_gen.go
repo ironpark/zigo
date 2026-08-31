@@ -3,7 +3,7 @@ package native
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
-#cgo LDFLAGS: -L${SRCDIR}/../../../zig-out/lib -ltelemetry_hub_zigo
+#cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libtelemetry_hub_zigo.a
 #include "zigo_telemetry_hub.h"
 */
 import "C"

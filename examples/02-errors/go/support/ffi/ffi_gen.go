@@ -3,7 +3,7 @@ package ffi
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
-#cgo LDFLAGS: -L${SRCDIR}/../../../zig-out/lib -lerrors_zigo
+#cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/liberrors_zigo.a
 #include "zigo_errors.h"
 */
 import "C"

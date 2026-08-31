@@ -3,7 +3,7 @@ package raw
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
-#cgo LDFLAGS: -L${SRCDIR}/../../../zig-out/lib -lpipeline_zigo -lz
+#cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libpipeline_zigo.a -lz
 #include "zigo_pipeline.h"
 */
 import "C"

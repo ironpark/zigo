@@ -3,7 +3,7 @@ package scalar
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../zig-out/include
-#cgo LDFLAGS: -L${SRCDIR}/../../zig-out/lib -lscalar_zigo
+#cgo LDFLAGS: ${SRCDIR}/../../zig-out/lib/libscalar_zigo.a
 #include "zigo_scalar.h"
 */
 import "C"

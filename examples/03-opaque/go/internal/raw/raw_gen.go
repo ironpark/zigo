@@ -3,7 +3,7 @@ package raw
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
-#cgo LDFLAGS: -L${SRCDIR}/../../../zig-out/lib -lopaque_zigo
+#cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libopaque_zigo.a
 #include "zigo_opaque.h"
 */
 import "C"

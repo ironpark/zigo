@@ -3,7 +3,7 @@ package cgo
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
-#cgo LDFLAGS: -L${SRCDIR}/../../../zig-out/lib -levent_queue_zigo
+#cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libevent_queue_zigo.a
 #include "zigo_event_queue.h"
 */
 import "C"

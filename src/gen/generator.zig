@@ -22,6 +22,7 @@ pub const Options = struct {
     auto_cleanup: bool = false,
     errors_lock_bytes: ?[]const u8 = null,
     backend: emit.Options.Backend = .cgo,
+    link_mode: emit.Options.LinkMode = .static,
     library_stem: []const u8 = "",
 };
 
@@ -80,6 +81,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .raw_colocated = options.raw_colocated,
         .auto_cleanup = options.auto_cleanup,
         .backend = options.backend,
+        .link_mode = options.link_mode,
         .library_stem = options.library_stem,
     };
     var prepared: std.ArrayList(PreparedFile) = .empty;
@@ -247,6 +249,51 @@ test "cgo flag overrides and observed link flags are emitted" {
     try std.testing.expect(std.mem.indexOf(u8, raw, "#cgo CFLAGS: -I/opt/flags/include") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "#cgo LDFLAGS: -L/opt/flags/lib -lflags_zigo -lz") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "#cgo darwin LDFLAGS: -framework CoreFoundation") != null);
+}
+
+test "static cgo links its archive by path and dynamic cgo keeps the search path" {
+    const fixture =
+        \\{"functions":[],"package":"flags","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    var static_output = std.testing.tmpDir(.{ .iterate = true });
+    defer static_output.cleanup();
+    try generate(std.testing.allocator, std.testing.io, fixture, static_output.dir, .{
+        .package = "flags",
+        .prefix = "zg",
+        .go_module = "example.com/flags",
+        .library_stem = "flags_zigo",
+        .system_ldflags = "-lz",
+    });
+    const static_raw = try static_output.dir.readFileAlloc(std.testing.io, "internal/raw/raw_gen.go", std.testing.allocator, .limited(16 * 1024));
+    defer std.testing.allocator.free(static_raw);
+    // A dynamic artifact of the same name in the install directory must not be
+    // able to satisfy this link.
+    try std.testing.expect(std.mem.containsAtLeast(u8, static_raw, 1, "#cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libflags_zigo.a -lz"));
+
+    var dynamic_output = std.testing.tmpDir(.{ .iterate = true });
+    defer dynamic_output.cleanup();
+    try generate(std.testing.allocator, std.testing.io, fixture, dynamic_output.dir, .{
+        .package = "flags",
+        .prefix = "zg",
+        .go_module = "example.com/flags",
+        .library_stem = "flags_zigo",
+        .link_mode = .dynamic,
+    });
+    const dynamic_raw = try dynamic_output.dir.readFileAlloc(std.testing.io, "internal/raw/raw_gen.go", std.testing.allocator, .limited(16 * 1024));
+    defer std.testing.allocator.free(dynamic_raw);
+    try std.testing.expect(std.mem.containsAtLeast(u8, dynamic_raw, 1, "#cgo LDFLAGS: -L${SRCDIR}/../../../zig-out/lib -lflags_zigo"));
+
+    // Without an explicit stem the package name still derives the artifact.
+    var default_output = std.testing.tmpDir(.{ .iterate = true });
+    defer default_output.cleanup();
+    try generate(std.testing.allocator, std.testing.io, fixture, default_output.dir, .{
+        .package = "flags",
+        .prefix = "zg",
+        .go_module = "example.com/flags",
+    });
+    const default_raw = try default_output.dir.readFileAlloc(std.testing.io, "internal/raw/raw_gen.go", std.testing.allocator, .limited(16 * 1024));
+    defer std.testing.allocator.free(default_raw);
+    try std.testing.expect(std.mem.containsAtLeast(u8, default_raw, 1, "${SRCDIR}/../../../zig-out/lib/libflags_zigo.a"));
 }
 
 test "errors enums and slices share one lowered ABI" {

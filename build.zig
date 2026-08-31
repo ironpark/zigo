@@ -531,6 +531,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         "--raw-package-name",  raw_package.name,
         "--backend",           @tagName(options.backend),
         "--library-stem",      b.fmt("{s}_zigo", .{go_package}),
+        "--link-mode",         @tagName(options.link_mode),
     });
     if (raw_package.colocated) generate.addArg("--raw-colocated");
     if (options.auto_cleanup) generate.addArg("--auto-cleanup");
@@ -610,7 +611,13 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     lib.root_module.linkSystemLibrary("c", .{});
     const install_lib = b.addInstallArtifact(lib, .{});
     const header_name = b.fmt("zigo_{s}.h", .{go_package});
-    const install_header = b.addInstallHeaderFile(generated_dir.path(b, header_name), header_name);
+    // A purego binding set declares the `_purego_v1` entry points, so it must not
+    // overwrite the cgo header when both backends install into one prefix.
+    const installed_header_name = if (options.backend == .purego)
+        b.fmt("zigo_{s}_purego.h", .{go_package})
+    else
+        header_name;
+    const install_header = b.addInstallHeaderFile(generated_dir.path(b, header_name), installed_header_name);
     const update = b.addUpdateSourceFiles();
     update.addCopyFileToSource(go_sources_dir.path(b, raw_go_path), sourcePath(b, options.go_dir, raw_go_path));
     update.addCopyFileToSource(go_sources_dir.path(b, public_go_path), sourcePath(b, options.go_dir, public_go_path));

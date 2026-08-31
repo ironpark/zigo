@@ -3,7 +3,7 @@ package raw
 
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
-#cgo LDFLAGS: -L${SRCDIR}/../../../zig-out/lib -lcallback_zigo -lz
+#cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libcallback_zigo.a -lz
 #include "zigo_callback.h"
 */
 import "C"
