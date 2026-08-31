@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T18:10:45Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test` passes with the emitter still minting its own names, so
 > NEXT: none

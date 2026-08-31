@@ -7,7 +7,7 @@ registered_at: "2026-08-31T18:08:46Z"
 
 # Phases
 
-- [ ] [Phase 00: IR records for enums and handles](phases/00-ir-enum-opaque-names.md)
+- [x] [Phase 00: IR records for enums and handles](phases/00-ir-enum-opaque-names.md)
 - [ ] [Phase 01: Emitter reads C names from the IR](phases/01-emit-consumes-c-names.md)
 - [ ] [Phase 02: Functions carry their own struct records](phases/02-fn-struct-records.md)
 

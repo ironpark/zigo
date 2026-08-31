@@ -2,7 +2,7 @@
 depends_on:
 - "48-48-abi-owns-c-names#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Every generated artifact is byte-identical to before the plan: `zig build
 > NEXT: none
