@@ -313,7 +313,7 @@ C 헤더는 백엔드가 아니라 **cgo가 요구하는 산출물**이다.
     semantic.json       # ✅ 커밋. ABI diff 기준
     errors.lock.json    # ✅ 커밋. 안정 에러코드
   go/
-    go.mod              # 👤 사용자 소유. 생성기는 만들지 않는다
+    go.mod              # 없으면 1회 생성, 이후 👤 사용자 소유
     internal/raw/       # 🤖 100% 생성. 손대지 말 것
       raw_gen.go        # cgo 지시자 또는 purego loader (backend에 따라)
     mylib/

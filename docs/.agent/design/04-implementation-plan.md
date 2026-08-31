@@ -242,7 +242,9 @@ error[ZIGO003]: cannot pass `mylib.Config` by value
 
 1. shim에 panic 핸들러 설치 → `-2 PanicCaught` + `zg_last_error_message()`
 2. `linkSystemLibrary` 관측 → `#cgo LDFLAGS` 반영 (`-framework`, `-lm` 등)
-3. ~~`go.mod` 부트스트랩~~ — 구현하지 않았다. `go.mod`는 사용자가 작성한다
+3. `go.mod` 부트스트랩 — `addGoBindings`가 configure 시점에 `go_dir/go.mod` 존재를
+   확인해 없을 때만 1회 생성한다 (module path, `go` 지시자, purego 백엔드면 `require`).
+   이후에는 사용자 소유이며 다시 덮어쓰지 않는다
 4. 예제 CI 워크플로 (macOS/Linux)
 5. cgo 호출 오버헤드 벤치마크를 CI에 기록 (회귀 감지)
 6. README / 예제 문서화
@@ -258,7 +260,6 @@ error[ZIGO003]: cannot pass `mylib.Config` by value
 
 - 크로스 컴파일 — 레이아웃 상수를 타깃별 컴파일 산출물에서 추출
 - `layout.json` 기반 헤더 레이아웃 대조 검증 (현재 스텁, 02 §2)
-- `go.mod` 부트스트랩 (현재는 사용자가 작성)
 - Windows·모바일·purego Tier 2 타깃
 - 배치 API 힌트로 cgo 오버헤드 완화
 

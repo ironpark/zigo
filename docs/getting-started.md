@@ -168,11 +168,7 @@ cd go-purego && CGO_ENABLED=0 go test ./...
 
 ## 다음 단계
 
-- 동적 라이브러리 배포와 `CGO_ENABLED=0` 빌드: [공유 라이브러리와 purego 백엔드](purego.md)
 - raw Go 패키지 위치, 링크 방식, cgo 플래그: [설정과 생성물](configuration.md)
+- 동적 라이브러리 배포와 `CGO_ENABLED=0` 빌드: [공유 라이브러리와 purego 백엔드](purego.md)
 - 지원하지 않는 타입과 수명 계약: [제한사항과 운영 주의사항](limitations.md)
-- generic과 system library까지 조합한 코드: [통합 파이프라인 예제](../examples/05-pipeline/README.md)
-- 상태, 용량 정책과 callback 수명을 조합한 코드: [event queue 예제](../examples/07-event-queue/README.md)
-- 51개 함수와 여러 계약을 한꺼번에 생성하는 코드: [telemetry hub 예제](../examples/08-telemetry-hub/README.md)
-- 두 opaque 타입과 receiver 간 참조: [multi-type relations 예제](../examples/09-type-relations/README.md)
-- pointer-only tagged union과 자동 payload accessor: [tagged union 예제](../examples/10-tagged-union/README.md)
+- 실제로 동작하는 코드: [예제](examples.md)

@@ -29,7 +29,6 @@
 | 항목 | 근거 문서 | 현재 상태 |
 |---|---|---|
 | `layout.<target>.json` 검증 | 02 §2 | reflector가 `pointer_bits`/`usize_bits`/`target` 만 채운 스텁을 쓰고 `structs` 는 항상 비어 있다. build.zig 는 이 파일을 소비하지 않는다(`_ = layout_json;`). 헤더 대조 검증은 없다 |
-| `go.mod` 부트스트랩 | 04 M8 | 생성기가 `go.mod` 를 만들지 않는다. 예제는 모두 손으로 작성한 `go.mod` 를 커밋한다 |
 | 크로스 컴파일 | 00 §7 | 미지원. reflector 실행 제약 그대로 |
 | Windows·모바일·purego Tier 2 타깃 | — | 미지원 |
 | Go 외 언어 | 01 §12 | 비범위 유지 |

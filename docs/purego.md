@@ -233,24 +233,5 @@ purego 백엔드는 콜백 파라미터를 C 함수 포인터와 `uintptr_t` use
 - zigo가 `go.mod`를 새로 만들 때만 purego 요구사항을 기록한다. 이미 있는 모듈은 직접
   `go get github.com/ebitengine/purego@v0.10.2`를 실행한다.
 
-## CI
-
-공유 라이브러리는 타깃별 아티팩트이므로 지원하는 OS·아키텍처마다 잡이 필요하다. 이
-저장소의 `purego` 잡은 `ubuntu-latest`, `ubuntu-24.04-arm`, `macos-latest`,
-`macos-15-intel`에서 다음을 실행한다.
-
-```bash
-zig build purego-go purego-go-verify          # 생성, 전제 검사, 아티팩트 로드 확인
-git status --porcelain -- examples            # 생성물이 플랫폼 간에 동일한지 확인
-tests/inspect_shared_library.sh <library> <symbol>…
-zig build shared-library-smoke -- <library> <symbol>…
-CGO_ENABLED=0 go test ./...
-```
-
-`tests/inspect_shared_library.sh`는 플랫폼 파일명, 빌드 캐시 경로가 새겨지지 않았는지,
-요청한 심볼이 export되었는지, 그리고 해석되지 않은 `zg_` 심볼이 없는지를 검사한다.
-마지막 검사는 cgo 트램폴린 의존성이 남았는지를 잡아내며, 그런 라이브러리는
-`CGO_ENABLED=0` 프로세스에서 사용할 수 없다. `shared-library-smoke`는 같은 검사를 실제
-플랫폼 로더로 수행한다.
-
-아티팩트 계약의 세부 사항은 [공유 라이브러리 계약](shared-library.md)에 있다.
+아티팩트 계약의 세부 사항은 설계 문서
+[공유 라이브러리 계약](.agent/design/06-shared-library-contract.md)에 있다.

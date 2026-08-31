@@ -11,6 +11,7 @@
 | [ABI 하강 규칙](03-lowering-rules.md) | Zig 타입을 C ABI와 Go API로 변환하는 규칙 |
 | [구현 계획](04-implementation-plan.md) | 마일스톤, 디렉터리 구조와 검증 전략 |
 | [구현 상태](05-implementation-status.md) | 구현된 것, 설계와의 차이, 미구현 항목 |
+| [공유 라이브러리 계약](06-shared-library-contract.md) | 동적 아티팩트 파일명, export 심볼과 런타임 로딩 계약 (영문) |
 
 00~04는 현재 구현을 서술한다. 설계 시점과 달라진 결정과 아직 없는 기능은
 [구현 상태](05-implementation-status.md)에 모아 두었다.

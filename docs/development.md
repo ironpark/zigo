@@ -56,54 +56,22 @@ zig build shared-library-smoke -- \
 동일해야 한다. CI는 두 OS의 amd64·arm64에서 이 동일성과 `CGO_ENABLED=0` 테스트를 함께
 검사한다.
 
-## 통합 예제
+## 예제 검증
 
-[`examples/05-pipeline`](../examples/05-pipeline/README.md)은 opaque 객체, 에러,
-슬라이스, enum, generic specialization, retained 콜백과 system library 전파를 한 번에
-검증한다.
-
-[`examples/07-event-queue`](../examples/07-event-queue/README.md)은 고정 용량 상태,
-UTF-8 메타데이터, enum 정책, typed error, retained observer와 custom raw package 경로를
-애플리케이션 형태로 검증한다.
-
-[`examples/08-telemetry-hub`](../examples/08-telemetry-hub/README.md)은 하나의 opaque
-타입에 51개 함수를 노출한다. 대형 declaration의 comptime reflection, 세 enum, 여러 error
-set, UTF-8 소유 상태, slice 입력, retained callback, 조회·통계·변환 API를 함께 검증하는
-생성기 폭(breadth) 회귀 fixture다.
-
-[`examples/09-type-relations`](../examples/09-type-relations/README.md)은 두 opaque 타입을
-동시에 노출하고 `Accumulator` receiver가 `*Counter`를 받는 교차 타입 API와 독립 lifecycle을
-검증한다.
-
-[`examples/10-tagged-union`](../examples/10-tagged-union/README.md)은 tagged union을 opaque
-handle로 유지하면서 자동 생성된 tag와 checked payload accessor를 owned/borrowed Go wrapper,
-scalar·enum·slice·다른 handle payload에 걸쳐 검증한다.
+각 예제가 무엇을 다루는지는 [예제](examples.md)에 정리되어 있다. 저장소를 바꾼 뒤에는
+생성물과 ABI가 여전히 일치하는지 예제에서 확인한다.
 
 ```bash
-cd examples/05-pipeline
+cd examples/05-pipeline      # 07-event-queue, 08-telemetry-hub 도 동일하다
 zig build test
 zig build go
 zig build go-check abi-check
 cd go && go test -count=1 ./...
 ```
 
-event queue 예제도 동일하게 실행한다.
-
-```bash
-cd examples/07-event-queue
-zig build test
-zig build go-check abi-check
-cd go && go test -count=1 ./...
-```
-
-대형 API의 reflection과 생성 비용까지 확인할 때는 telemetry hub 예제를 실행한다.
-
-```bash
-cd examples/08-telemetry-hub
-zig build test
-zig build go-check abi-check
-cd go && go test -count=1 ./...
-```
+05-pipeline은 기능 조합의 폭을, 07-event-queue는 애플리케이션 형태의 수명 계약을,
+08-telemetry-hub는 51개 함수 규모에서의 reflection·생성 비용을 각각 회귀 검사한다.
+09-type-relations와 10-tagged-union은 타입 간 참조와 tagged-union accessor를 담당한다.
 
 ## 문서 변경 확인
 
