@@ -17,7 +17,7 @@ purego 패키지도 함께 배선한 예제(04·07·08)는 `zig build purego-go`
 
 | 예제 | 다루는 것 |
 |---|---|
-| [01-scalar](../examples/01-scalar) | 최소 수직 슬라이스. 자유 함수 `add(i32, i32) i32` 하나. `raw_package = .colocated` 와 `-Ddynamic` 로 정적·동적 링크를 함께 확인한다 |
+| [01-scalar](../examples/01-scalar) | 최소 수직 슬라이스. 자유 함수 `add(i32, i32) i32` 하나. 동위치 raw 패키지와 `-Ddynamic` 로 정적·동적 링크를 함께 확인한다 |
 | [02-errors](../examples/02-errors) | 에러 유니온과 슬라이스. `errors.Is(err, ErrDivideByZero)`, `[]const f64` 합산, enum 왕복. raw 패키지를 `support/ffi` 로 옮긴 예 |
 | [03-opaque](../examples/03-opaque) | opaque handle 수명주기. `NewContext`/`Close` 멱등성, 할당 카운터, `semantic = .utf8_string` 문자열 왕복 |
 | [04-callback](../examples/04-callback) | retained Go 콜백과 generic 구체화(`FloatBuffer`, `IntBuffer`). 콜백 panic이 프로세스를 죽이지 않는지 확인한다. purego 패키지도 함께 생성한다 |

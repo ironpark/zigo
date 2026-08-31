@@ -13,6 +13,30 @@ pub fn puregoTargetSupported(target: std.Target) bool {
 
 /// How a generated purego package finds its shared library at run time.
 pub const LibraryLoading = struct {
+    /// Who triggers the load, and whether the loader is part of the public API.
+    /// One axis, because "no exported loader and no automatic load" would mean
+    /// nothing could ever load the library.
+    pub const Loader = enum {
+        /// The caller must call the exported `LoadLibrary`.
+        explicit,
+        /// Loads on the first binding call; `LoadLibrary` stays exported so a
+        /// caller can still choose the path.
+        automatic,
+        /// Loads on the first binding call and keeps the loader out of the
+        /// public API.
+        automatic_internal,
+
+        /// Whether the first binding call loads the library.
+        pub fn isAutomatic(self: Loader) bool {
+            return self != .explicit;
+        }
+
+        /// Whether the public package exposes `LoadLibrary`/`LibraryLoaded`.
+        pub fn exportsApi(self: Loader) bool {
+            return self != .automatic_internal;
+        }
+    };
+
     /// Locations tried in order after the environment variables. An entry that
     /// already names a library file is used as is; anything else is treated as
     /// a directory and joined with the platform library name. `${EXECUTABLE_DIR}`
@@ -21,15 +45,11 @@ pub const LibraryLoading = struct {
     /// Environment variables consulted before the search paths. `null` uses the
     /// package-specific name followed by the shared `ZIGO_LIBRARY_PATH`.
     env_vars: ?[]const []const u8 = null,
-    /// Load on the first binding call instead of requiring an explicit call.
-    automatic: bool = false,
-    /// Generate the exported `LoadLibrary`/`LibraryLoaded` API.
-    exported_api: bool = true,
+    loader: Loader = .explicit,
 };
 
 pub const LibraryLoadingError = error{
     UnsupportedBackend,
-    UnreachableLoader,
     EmptySearchPath,
     InvalidSearchPath,
     InvalidEnvironmentName,
@@ -39,8 +59,6 @@ pub const LibraryLoadingError = error{
 /// whether the binding set selected the purego backend.
 pub fn validateLibraryLoading(loading: LibraryLoading, purego: bool) LibraryLoadingError!void {
     if (!purego and !isDefaultLibraryLoading(loading)) return error.UnsupportedBackend;
-    // Without an exported loader nothing could ever load the library.
-    if (!loading.exported_api and !loading.automatic) return error.UnreachableLoader;
     for (loading.search_paths) |path| {
         if (path.len == 0) return error.EmptySearchPath;
         // ':' separates the entries when the policy reaches the generator.
@@ -57,7 +75,7 @@ pub fn validateLibraryLoading(loading: LibraryLoading, purego: bool) LibraryLoad
 
 pub fn isDefaultLibraryLoading(loading: LibraryLoading) bool {
     return loading.search_paths.len == 0 and loading.env_vars == null and
-        !loading.automatic and loading.exported_api;
+        loading.loader == .explicit;
 }
 
 pub const RawPackageError = error{
@@ -116,10 +134,9 @@ test "purego target support covers the documented desktop matrix" {
 
 test "library loading policies reject unusable combinations" {
     try validateLibraryLoading(.{}, false);
-    try validateLibraryLoading(.{ .search_paths = &.{ "${EXECUTABLE_DIR}", "/opt/app/lib" }, .automatic = true }, true);
-    try validateLibraryLoading(.{ .automatic = true, .exported_api = false }, true);
-    try std.testing.expectError(error.UnsupportedBackend, validateLibraryLoading(.{ .automatic = true }, false));
-    try std.testing.expectError(error.UnreachableLoader, validateLibraryLoading(.{ .exported_api = false }, true));
+    try validateLibraryLoading(.{ .search_paths = &.{ "${EXECUTABLE_DIR}", "/opt/app/lib" }, .loader = .automatic }, true);
+    try validateLibraryLoading(.{ .loader = .automatic_internal }, true);
+    try std.testing.expectError(error.UnsupportedBackend, validateLibraryLoading(.{ .loader = .automatic }, false));
     try std.testing.expectError(error.EmptySearchPath, validateLibraryLoading(.{ .search_paths = &.{""} }, true));
     try std.testing.expectError(error.InvalidSearchPath, validateLibraryLoading(.{ .search_paths = &.{"lib\"dir"} }, true));
     try std.testing.expectError(error.InvalidSearchPath, validateLibraryLoading(.{ .search_paths = &.{"/opt/a:/opt/b"} }, true));

@@ -5,9 +5,9 @@ opt-in `.purego`는 네이티브 공유 라이브러리를 런타임에 로드�
 Go 프로그램에서 호출한다. 공개 Go API는 두 백엔드에서 동일하며, 달라지는 것은 raw
 구현 파일과 로더 API뿐이다.
 
-| 항목 | `.cgo` (기본) | `.purego` |
+| 항목 | `.cgo_static` / `.cgo_dynamic` | `.purego` |
 |---|---|---|
-| `link_mode` | `.static` 또는 `.dynamic` | `.dynamic`만 |
+| 링크 시점 | 빌드 | 실행 |
 | Go 빌드 요구사항 | C 컴파일러, `CGO_ENABLED=1` | 없음, `CGO_ENABLED=0` 가능 |
 | 네이티브 아티팩트 | 빌드 시 링크 | 실행 시 로드 |
 | 배포 단위 | Go 바이너리 하나 | Go 바이너리 + 플랫폼별 공유 라이브러리 |
@@ -25,14 +25,13 @@ const purego_bindings = zigo.addGoBindings(b, .{
     .go_module = "example.com/mylib/go-purego",
     .target = target,
     .optimize = optimize,
-    .backend = .purego,
-    .link_mode = .dynamic,
+    .link = .purego,
 });
 _ = purego_bindings.addStandardSteps(b, .{ .name_prefix = "purego" });
 ```
 
-`.backend = .purego`는 `.link_mode = .dynamic`을 요구하며, 지원하지 않는 조합이나 타깃은
-빌드 그래프를 만드는 시점에 실패한다. 한 저장소에서 두 백엔드를 모두 제공하려면 위처럼
+`.link = .purego`는 하나의 값이므로 "purego + 정적 링크" 같은 조합은 표현되지 않는다.
+지원하지 않는 타깃은 빌드 그래프를 만드는 시점에 실패한다. 한 저장소에서 두 백엔드를 모두 제공하려면 위처럼
 `go_dir`과 `go_module`이 다른 바인딩 세트를 각각 등록하고 `name_prefix`로 스텝 이름을
 분리한다. `examples/04-callback`, `examples/07-event-queue`,
 `examples/08-telemetry-hub`가 이 구성을 사용한다.
@@ -119,9 +118,9 @@ if !mylib.LibraryLoaded() {
     // 플랫폼 라이브러리 이름을 붙인다.
     .search_paths = &.{ "${EXECUTABLE_DIR}", "${EXECUTABLE_DIR}/../lib", "/opt/myapp/lib" },
     // 첫 바인딩 호출에서 위 후보를 한 번 시도한다.
-    .automatic = true,
-    // 공개 패키지에서 LoadLibrary/LibraryLoaded/DefaultLibraryName을 감춘다.
-    .exported_api = false,
+    // 첫 호출에서 자동으로 로드하고, 공개 패키지에서
+    // LoadLibrary/LibraryLoaded/DefaultLibraryName을 감춘다.
+    .loader = .automatic_internal,
     // 기본값은 패키지 전용 이름과 공용 이름 두 개다.
     .env_vars = &.{ "MYAPP_LIBRARY_PATH" },
 },
@@ -131,11 +130,21 @@ if !mylib.LibraryLoaded() {
 |---|---|---|
 | `search_paths` | 없음 | 환경 변수 다음에 순서대로 시도할 위치 |
 | `env_vars` | `null` | `null`은 `ZIGO_<PACKAGE>_LIBRARY_PATH`와 `ZIGO_LIBRARY_PATH`. 빈 목록은 환경 변수를 보지 않음 |
-| `automatic` | `false` | 첫 바인딩 호출에서 자동 로드 |
-| `exported_api` | `true` | 공개 패키지에 로더 API를 노출 |
+| `loader` | `.explicit` | 누가 로드를 시작하는지, 로더가 공개 API인지 |
 
-`library_loading`은 `.backend = .purego`에서만 쓸 수 있고, `exported_api = false`는
-`automatic = true`와 공개 패키지와 분리된 raw 패키지를 요구한다. 잘못된 조합은 빌드
+`loader`는 세 값을 가진다.
+
+| 값 | 뜻 |
+|---|---|
+| `.explicit` | 호출자가 `LoadLibrary`를 직접 부른다 |
+| `.automatic` | 첫 바인딩 호출에서 자동 로드하고 `LoadLibrary`도 그대로 노출한다 |
+| `.automatic_internal` | 자동 로드하고 로더를 공개 API에서 감춘다 |
+
+"자동 로드도 안 하고 로더도 노출하지 않는" 조합은 아무도 라이브러리를 로드할 수 없으므로
+축을 하나로 접어 아예 표현되지 않게 했다. raw 패키지를 public 패키지와 같은 위치에 둔
+경우 `.automatic_internal`은 raw 로더 이름을 내보내지 않는 방식으로 지켜진다.
+
+`library_loading`은 `.link = .purego`에서만 쓸 수 있다. 잘못된 조합은 빌드
 그래프를 만드는 시점에 실패한다.
 
 ### 후보 순서

@@ -7,18 +7,33 @@ pub const CgoFlags = struct {
     ldflags: []const []const u8 = &.{},
 };
 
-pub const LinkMode = enum { static, dynamic };
-pub const Backend = enum { cgo, purego };
+const LinkMode = enum { static, dynamic };
+const Backend = enum { cgo, purego };
+
+/// How the Go side reaches the native library. One axis, because the two it
+/// replaced could describe combinations that do not exist: purego never links
+/// statically, and it never goes through cgo.
+pub const Link = enum {
+    /// cgo against a static archive.
+    cgo_static,
+    /// cgo against a shared library.
+    cgo_dynamic,
+    /// No cgo. Symbols are resolved at run time from a shared library.
+    purego,
+
+    fn backend(self: Link) Backend {
+        return if (self == .purego) .purego else .cgo;
+    }
+
+    fn linkMode(self: Link) LinkMode {
+        return if (self == .cgo_static) .static else .dynamic;
+    }
+};
+
 /// How a generated purego package finds its shared library at run time.
 pub const LibraryLoading = build_options.LibraryLoading;
 
 pub const Options = struct {
-    pub const RawPackage = union(enum) {
-        internal,
-        colocated,
-        path: []const u8,
-    };
-
     name: []const u8,
     module: *std.Build.Module,
     bindings: std.Build.LazyPath,
@@ -28,11 +43,12 @@ pub const Options = struct {
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
     prefix: []const u8 = "zg",
-    link_mode: LinkMode = .static,
-    backend: Backend = .cgo,
+    link: Link = .cgo_static,
     cgo_flags: ?CgoFlags = null,
     abi_base: ?[]const u8 = null,
-    raw_package: RawPackage = .internal,
+    /// Slash-separated path of the raw package inside `go_dir`. Setting it to
+    /// the public package path colocates the two.
+    raw_package: []const u8 = "internal/raw",
     auto_cleanup: bool = false,
     /// `gofmt` used to format generated Go. Defaults to the one on `PATH`.
     gofmt: ?[]const u8 = null,
@@ -517,24 +533,20 @@ fn matchesAnyFilter(name: []const u8, filters: []const []const u8) bool {
 
 /// Adds the Go-binding pipeline to a consuming build graph.
 pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
-    build_options.validateLibraryLoading(options.library_loading, options.backend == .purego) catch |err| switch (err) {
-        error.UnsupportedBackend => @panic("library_loading is only supported by .backend = .purego"),
-        error.UnreachableLoader => @panic("library_loading.exported_api = false requires .automatic = true; nothing else could load the library"),
+    const backend = options.link.backend();
+    const link_mode = options.link.linkMode();
+    build_options.validateLibraryLoading(options.library_loading, backend == .purego) catch |err| switch (err) {
+        error.UnsupportedBackend => @panic("library_loading is only supported by .link = .purego"),
         error.EmptySearchPath => @panic("library_loading.search_paths entries must not be empty"),
         error.InvalidSearchPath => @panic("library_loading.search_paths entries must not contain quotes, backslashes or control characters"),
         error.InvalidEnvironmentName => @panic("library_loading.env_vars entries must be ASCII letters, digits and underscores, and must not start with a digit"),
     };
-    if (options.backend == .purego) {
-        if (options.link_mode != .dynamic) @panic("purego backend requires .link_mode = .dynamic");
-        // A colocated raw package is the public package, so its exported loader
-        // cannot be hidden. Use `.raw_package = .internal` instead.
-        if (!options.library_loading.exported_api and options.raw_package == .colocated)
-            @panic("library_loading.exported_api = false requires a raw package separate from the public package");
+    if (backend == .purego) {
         if (!build_options.puregoTargetSupported(options.target.result))
-            @panic("purego backend supports native macOS/Linux on amd64/arm64 only");
+            @panic("`.link = .purego` supports native macOS/Linux on amd64/arm64 only");
         const target = options.target.result;
         if (!isRunnableOnHost(target, b.graph.host.result))
-            @panic("purego backend requires the native host target");
+            @panic("`.link = .purego` requires the native host target");
     }
     const artifact_package = naming.snakeAlloc(b.allocator, options.name) catch @panic("OOM");
     const go_package = if (options.go_package) |value| blk: {
@@ -606,12 +618,12 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         "--framework-ldflags", framework_ldflags,
         "--raw-package-path",  raw_package.path,
         "--raw-package-name",  raw_package.name,
-        "--backend",           @tagName(options.backend),
+        "--backend",           @tagName(backend),
         "--library-stem",      b.fmt("{s}_zigo", .{artifact_package}),
-        "--link-mode",         @tagName(options.link_mode),
+        "--link-mode",         @tagName(link_mode),
         "--go-package",        go_package,
     });
-    if (options.backend == .purego) addLibraryLoadingArgs(b, generate, options.library_loading);
+    if (backend == .purego) addLibraryLoadingArgs(b, generate, options.library_loading);
     if (raw_package.colocated) generate.addArg("--raw-colocated");
     if (options.auto_cleanup) generate.addArg("--auto-cleanup");
     const errors_lock_path = "zigo/errors.lock.json";
@@ -646,14 +658,14 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     report.addArgs(&.{ "report", "--semantic" });
     report.addFileArg(semantic_json);
     report.addArgs(&.{ "--go-module", options.go_module, "--raw-package-path", raw_package.path, "--go-package", go_package });
-    report.addArgs(&.{ "--backend", @tagName(options.backend) });
-    if (options.backend == .purego) addLibraryLoadingArgs(b, report, options.library_loading);
+    report.addArgs(&.{ "--backend", @tagName(backend) });
+    if (backend == .purego) addLibraryLoadingArgs(b, report, options.library_loading);
     if (raw_package.colocated) report.addArg("--raw-colocated");
     if (options.auto_cleanup) report.addArg("--auto-cleanup");
     const doctor = b.addRunArtifact(generator);
     doctor.has_side_effects = true;
     doctor.addArgs(&.{ "doctor", "--target", if (isRunnableOnHost(options.target.result, b.graph.host.result)) "native" else "cross" });
-    doctor.addArgs(&.{ "--backend", @tagName(options.backend) });
+    doctor.addArgs(&.{ "--backend", @tagName(backend) });
     // Report the same gofmt the update step will format with.
     if (options.gofmt) |gofmt| doctor.addArgs(&.{ "--gofmt", gofmt });
     if (options.auto_cleanup) doctor.addArg("--auto-cleanup");
@@ -670,7 +682,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         run.addFileArg(baseline_semantic);
         run.addArg("--current");
         run.addFileArg(semantic_json);
-        run.addArgs(&.{ "--base-backend", @tagName(options.backend), "--current-backend", @tagName(options.backend) });
+        run.addArgs(&.{ "--base-backend", @tagName(backend), "--current-backend", @tagName(backend) });
         run.addArgs(&.{ "--fail-on", "breaking" });
         break :check run;
     } else null;
@@ -683,7 +695,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     });
     const lib = b.addLibrary(.{
         .name = b.fmt("{s}_zigo", .{artifact_package}),
-        .linkage = switch (options.link_mode) {
+        .linkage = switch (link_mode) {
             .static => .static,
             .dynamic => .dynamic,
         },
@@ -695,7 +707,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     const header_name = b.fmt("zigo_{s}.h", .{artifact_package});
     // A purego binding set declares the `_purego_v1` entry points, so it must not
     // overwrite the cgo header when both backends install into one prefix.
-    const installed_header_name = if (options.backend == .purego)
+    const installed_header_name = if (backend == .purego)
         b.fmt("zigo_{s}_purego.h", .{artifact_package})
     else
         header_name;
@@ -713,11 +725,11 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         error.FileNotFound => update.addBytesToSource(b.fmt("module {s}\n\ngo {s}\n{s}", .{
             options.go_module,
             if (options.auto_cleanup) "1.24" else "1.23",
-            if (options.backend == .purego) b.fmt("\nrequire {s} {s}\n", .{ build_options.purego_module, build_options.purego_version }) else "",
+            if (backend == .purego) b.fmt("\nrequire {s} {s}\n", .{ build_options.purego_module, build_options.purego_version }) else "",
         }), go_mod_path),
         else => @panic("unable to inspect go.mod"),
     };
-    if (options.backend == .purego) {
+    if (backend == .purego) {
         const go_mod = b.build_root.handle.readFileAlloc(b.graph.io, go_mod_path, b.allocator, .limited(1024 * 1024)) catch |err| switch (err) {
             error.FileNotFound => null,
             else => @panic("unable to read go.mod for purego dependency validation"),
@@ -727,11 +739,11 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
                 std.debug.panic("purego backend requires {0s} {1s}; run `go get {0s}@{1s}`", .{ build_options.purego_module, build_options.purego_version });
         }
     }
-    if (options.backend == .purego) {
+    if (backend == .purego) {
         // The purego doctor validates the deployed artifact, so it must run
         // against a freshly installed library and the module that loads it.
         doctor.step.dependOn(&install_lib.step);
-        doctor.addArgs(&.{ "--library", b.getInstallPath(.lib, libraryFilename(b, lib.name, options.target.result, options.link_mode)) });
+        doctor.addArgs(&.{ "--library", b.getInstallPath(.lib, libraryFilename(b, lib.name, options.target.result, link_mode)) });
         doctor.addArgs(&.{ "--go-mod", b.pathFromRoot(go_mod_path) });
     }
     update.step.dependOn(&install_lib.step);
@@ -751,7 +763,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         .doctor = doctor,
         .lib = lib,
         .install_library = install_lib,
-        .library_filename = libraryFilename(b, lib.name, options.target.result, options.link_mode),
+        .library_filename = libraryFilename(b, lib.name, options.target.result, link_mode),
         .semantic_json = semantic_json,
     };
 }
@@ -762,8 +774,8 @@ fn addLibraryLoadingArgs(b: *std.Build, run: *std.Build.Step.Run, loading: Libra
     if (loading.search_paths.len != 0)
         run.addArgs(&.{ "--library-search-paths", joinWith(b, loading.search_paths, ":") });
     if (loading.env_vars) |names| run.addArgs(&.{ "--library-env-vars", joinWith(b, names, ",") });
-    if (loading.automatic) run.addArg("--library-automatic");
-    if (!loading.exported_api) run.addArg("--library-internal-api");
+    if (loading.loader.isAutomatic()) run.addArg("--library-automatic");
+    if (!loading.loader.exportsApi()) run.addArg("--library-internal-api");
 }
 
 fn joinWith(b: *std.Build, values: []const []const u8, separator: []const u8) []const u8 {
@@ -802,23 +814,19 @@ fn isRunnableOnHost(target: std.Target, host: std.Target) bool {
     return target.cpu.arch == host.cpu.arch and target.os.tag == host.os.tag and target.abi == host.abi;
 }
 
-fn resolveRawPackage(b: *std.Build, option: Options.RawPackage, go_package: []const u8) ResolvedRawPackage {
-    return switch (option) {
-        .internal => .{ .path = "internal/raw", .name = "raw", .colocated = false },
-        .colocated => .{ .path = go_package, .name = go_package, .colocated = true },
-        .path => |path| blk: {
-            if (std.mem.eql(u8, path, go_package)) @panic("raw_package.path matches the public package; use .colocated");
-            build_options.validateRawPackagePath(path) catch |err| switch (err) {
-                error.InvalidPath => @panic("raw_package.path must be a non-empty relative slash-separated path"),
-                error.InvalidComponent => @panic("raw_package.path must not contain empty, '.' or '..' components"),
-                error.InvalidCharacter => @panic("raw_package.path components may contain only ASCII letters, digits, '_', '-' and '.'"),
-            };
-            const name = naming.snakeAlloc(b.allocator, std.fs.path.basename(path)) catch @panic("OOM");
-            naming.validateGoPackageName(name) catch
-                @panic("raw_package.path basename must normalize to a valid Go package name");
-            break :blk .{ .path = path, .name = name, .colocated = false };
-        },
+/// Colocation is not a separate option: naming the public package as the raw
+/// package path is what colocates them.
+fn resolveRawPackage(b: *std.Build, path: []const u8, go_package: []const u8) ResolvedRawPackage {
+    if (std.mem.eql(u8, path, go_package)) return .{ .path = go_package, .name = go_package, .colocated = true };
+    build_options.validateRawPackagePath(path) catch |err| switch (err) {
+        error.InvalidPath => @panic("raw_package must be a non-empty relative slash-separated path"),
+        error.InvalidComponent => @panic("raw_package must not contain empty, '.' or '..' components"),
+        error.InvalidCharacter => @panic("raw_package components may contain only ASCII letters, digits, '_', '-' and '.'"),
     };
+    const name = naming.snakeAlloc(b.allocator, std.fs.path.basename(path)) catch @panic("OOM");
+    naming.validateGoPackageName(name) catch
+        @panic("raw_package basename must normalize to a valid Go package name");
+    return .{ .path = path, .name = name, .colocated = false };
 }
 
 fn sourcePath(b: *std.Build, directory: std.Build.LazyPath, child: []const u8) []const u8 {

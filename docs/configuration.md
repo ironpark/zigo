@@ -13,14 +13,13 @@
 | `target` | 예 | 라이브러리 타깃 |
 | `optimize` | 예 | 라이브러리 최적화 모드 |
 | `prefix` | 아니요 | C 심볼 접두사. 기본값 `zg` |
-| `link_mode` | 아니요 | `.static` 또는 `.dynamic`. 기본값 `.static` |
-| `backend` | 아니요 | `.cgo` 또는 `.purego`. 기본값 `.cgo`. `.purego`는 `.link_mode = .dynamic` 필요 |
-| `library_loading` | 아니요 | purego 전용 런타임 로딩 정책. search path, 환경 변수, 자동 로딩, 로더 노출 여부 |
+| `link` | 아니요 | `.cgo_static`, `.cgo_dynamic`, `.purego` 중 하나. 기본값 `.cgo_static` |
+| `library_loading` | 아니요 | purego 전용 런타임 로딩 정책. search path, 환경 변수, 로더 |
 | `gofmt` | 아니요 | 생성물 포맷에 사용할 `gofmt` 경로. 생략하면 `PATH`에서 찾는다 |
 | `go_package` | 아니요 | 공개 Go 패키지 이름. 생략하면 `name`의 snake_case |
 | `cgo_flags` | 아니요 | 자동 계산 대신 사용할 CFLAGS와 LDFLAGS |
 | `abi_base` | 아니요 | ABI·바인딩 계약 비교에 사용할 Git ref. 생략하면 검사 비활성화 |
-| `raw_package` | 아니요 | raw Go 코드 위치. 기본값 `.internal` |
+| `raw_package` | 아니요 | `go_dir` 기준 raw Go 패키지 경로. 기본값 `"internal/raw"` |
 | `auto_cleanup` | 아니요 | Go 1.24+ `runtime.AddCleanup` 누수 안전망. 기본값 `false` |
 
 `abi_base`는 호환성 정책이 필요한 프로젝트만 지정한다. 생략하면 zigo는 Git을 호출하지
@@ -81,32 +80,65 @@ cleanup 실행 시점과 프로그램 종료 전 실행은 보장되지 않으�
 동시에 실행될 수 있으므로 특정 OS thread나 사용자 동기화가 필요한 deinitializer에는 이
 옵션을 사용하지 않는다.
 
+## 링크 방식
+
+`link`는 Go가 네이티브 라이브러리에 닿는 방법을 한 축으로 고른다.
+
+| 값 | 뜻 |
+|---|---|
+| `.cgo_static` | cgo + 정적 아카이브 (기본값) |
+| `.cgo_dynamic` | cgo + 공유 라이브러리 |
+| `.purego` | cgo 없음. 실행 시점에 공유 라이브러리에서 심볼을 찾는다 |
+
+예전에는 `backend`와 `link_mode`가 따로 있었지만 존재하지 않는 조합을 표현할 수 있었다.
+purego는 정적 링크를 하지 않고 cgo를 거치지도 않는다. 한 축으로 접으면 그 조합이 아예
+표현되지 않으므로, 빌드 중 `@panic`으로 배우던 제약이 사라진다.
+
 ## raw Go 패키지 위치
 
 기본값은 `go/internal/raw/raw_gen.go`다.
 
 ```zig
-.raw_package = .internal,
+.raw_package = "internal/raw",
 ```
 
 다른 상대 경로를 지정하면 마지막 경로 요소를 정규화해 Go 패키지 이름으로 사용한다.
 
 ```zig
 // go/support/ffi/ffi_gen.go
-.raw_package = .{ .path = "support/ffi" },
+.raw_package = "support/ffi",
 ```
 
-public 패키지와 같은 디렉터리에 둘 수도 있다.
+public 패키지 경로를 그대로 주면 두 패키지가 같은 디렉터리에 놓인다. 동위치 여부는 별도
+옵션이 아니라 이 비교에서 파생된다.
 
 ```zig
-// go/mylib/mylib_cgo_gen.go
-.raw_package = .colocated,
+// go/mylib/mylib_cgo_gen.go — go_package 가 "mylib" 일 때
+.raw_package = "mylib",
 ```
 
 사용자 경로는 `go_dir` 기준의 상대 경로여야 한다. 빈 요소, `.`과 `..`, 절대 경로와
 역슬래시는 허용하지 않는다. 각 요소에는 ASCII 영문자, 숫자, `_`, `-`, `.`만 쓸 수
 있다. 경로나 모드를 바꾼 뒤에는 이전 위치의 `_gen.go` 파일을 직접 삭제해 중복 선언을
 방지한다.
+
+## 마이그레이션: 옵션 축 정리
+
+| 예전 | 지금 |
+|---|---|
+| `.backend = .cgo, .link_mode = .static` (기본값) | `.link = .cgo_static` (기본값) |
+| `.backend = .cgo, .link_mode = .dynamic` | `.link = .cgo_dynamic` |
+| `.backend = .purego, .link_mode = .dynamic` | `.link = .purego` |
+| `.backend = .purego, .link_mode = .static` | 표현할 수 없다 (예전에는 빌드 중 `@panic`) |
+| `.raw_package = .internal` | `.raw_package = "internal/raw"` (기본값) |
+| `.raw_package = .{ .path = "support/ffi" }` | `.raw_package = "support/ffi"` |
+| `.raw_package = .colocated` | `.raw_package = "<public 패키지 경로>"` |
+| `.library_loading = .{}` | 그대로. `loader` 기본값이 `.explicit` |
+| `.library_loading = .{ .automatic = true }` | `.library_loading = .{ .loader = .automatic }` |
+| `.library_loading = .{ .automatic = true, .exported_api = false }` | `.library_loading = .{ .loader = .automatic_internal }` |
+| `.library_loading = .{ .exported_api = false }` | 표현할 수 없다 (아무도 라이브러리를 로드할 수 없다) |
+
+`zigo.Backend`와 `zigo.LinkMode`는 더 이상 공개 타입이 아니다.
 
 ## Go 이름 규칙
 
@@ -355,7 +387,7 @@ zig-out/include/zigo_<name>.h
 zig-out/lib/lib<name>_zigo.a
 ```
 
-`.backend = .purego`는 헤더를 `zig-out/include/zigo_<name>_purego.h`로, 라이브러리를
+`.link = .purego`는 헤더를 `zig-out/include/zigo_<name>_purego.h`로, 라이브러리를
 `zig-out/lib/lib<name>_zigo.dylib`(macOS) 또는 `.so`(Linux)로 설치한다. 이름이 겹치지
 않으므로 두 백엔드를 한 `zig-out`에 함께 설치해도 서로를 덮어쓰지 않는다.
 

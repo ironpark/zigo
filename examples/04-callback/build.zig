@@ -34,8 +34,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .abi_base = "HEAD",
-        .backend = .purego,
-        .link_mode = .dynamic,
+        .link = .purego,
     });
     _ = purego_bindings.addStandardSteps(b, .{ .name_prefix = "purego" });
 }

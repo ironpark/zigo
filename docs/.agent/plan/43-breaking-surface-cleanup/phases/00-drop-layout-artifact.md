@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T11:31:47Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: reflector가 semantic 문서만 산출한다.
 > NEXT: none

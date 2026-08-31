@@ -23,8 +23,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .abi_base = "HEAD",
         .auto_cleanup = true,
-        .backend = if (purego) .purego else .cgo,
-        .link_mode = if (purego) .dynamic else .static,
+        .link = if (purego) .purego else .cgo_static,
     });
     _ = bindings.addStandardSteps(b, .{});
 }

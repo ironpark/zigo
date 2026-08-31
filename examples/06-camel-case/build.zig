@@ -21,7 +21,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .abi_base = "HEAD",
-        .raw_package = .colocated,
+        .raw_package = "http_client",
     });
     _ = bindings.addStandardSteps(b, .{});
 }

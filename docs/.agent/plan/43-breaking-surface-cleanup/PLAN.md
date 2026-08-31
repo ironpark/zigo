@@ -7,7 +7,7 @@ registered_at: "2026-08-31T10:38:14Z"
 
 # Phases
 
-- [ ] [Phase 00: Drop the unused layout artifact](phases/00-drop-layout-artifact.md)
+- [x] [Phase 00: Drop the unused layout artifact](phases/00-drop-layout-artifact.md)
 - [ ] [Phase 01: Collapse the build option axes](phases/01-collapse-option-axes.md)
 - [ ] [Phase 02: One way to name a declaration](phases/02-unified-declaration-paths.md)
 - [ ] [Phase 03: Separate type kind from access strategy](phases/03-split-repr-axis.md)

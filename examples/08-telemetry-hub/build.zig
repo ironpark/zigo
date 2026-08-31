@@ -23,7 +23,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .abi_base = "HEAD",
-        .raw_package = .{ .path = "internal/native" },
+        .raw_package = "internal/native",
     });
     _ = bindings.addStandardSteps(b, .{});
 
@@ -37,16 +37,14 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .abi_base = "HEAD",
-        .raw_package = .{ .path = "internal/native" },
-        .backend = .purego,
-        .link_mode = .dynamic,
+        .raw_package = "internal/native",
+        .link = .purego,
         // The library is found next to the executable when deployed, and in the
         // installed prefix when the tests run from the package directory. The
         // public package therefore exposes no loader at all.
         .library_loading = .{
             .search_paths = &.{ "${EXECUTABLE_DIR}", "${EXECUTABLE_DIR}/../lib", "../../zig-out/lib" },
-            .automatic = true,
-            .exported_api = false,
+            .loader = .automatic_internal,
         },
     });
     _ = purego_bindings.addStandardSteps(b, .{ .name_prefix = "purego" });

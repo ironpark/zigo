@@ -21,7 +21,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .abi_base = "HEAD",
-        .raw_package = .{ .path = "support/ffi" },
+        .raw_package = "support/ffi",
     });
     _ = bindings.addStandardSteps(b, .{});
 }

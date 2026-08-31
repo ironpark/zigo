@@ -940,6 +940,12 @@ fn usesExecutableDir(options: Options) bool {
 const executable_dir_token = "${EXECUTABLE_DIR}";
 
 /// Emits the ordered candidate resolution the loader and the automatic path share.
+/// A colocated raw package *is* the public package, so an internal loader
+/// policy can only be honoured by not exporting the loader identifiers.
+fn loaderPrefix(options: Options) []const u8 {
+    return if (options.raw_colocated and !options.library_exported_api) "zigoRaw" else "";
+}
+
 fn renderPuregoCandidates(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     const env_names = try libraryEnvNamesAlloc(allocator, program, options);
     defer allocator.free(env_names);
@@ -975,10 +981,11 @@ fn renderPuregoCandidates(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
                 "\t\tentry = strings.ReplaceAll(entry, \"{0s}\", filepath.Dir(executable))\n\t}}\n",
             .{executable_dir_token},
         );
-        try writer.writeAll(
-            "\tif DefaultLibraryName == \"\" { return \"\" }\n" ++
-                "\tif strings.HasSuffix(entry, filepath.Ext(DefaultLibraryName)) { return entry }\n" ++
-                "\treturn filepath.Join(entry, DefaultLibraryName)\n}\n\n",
+        try writer.print(
+            "\tif {0s}DefaultLibraryName == \"\" {{ return \"\" }}\n" ++
+                "\tif strings.HasSuffix(entry, filepath.Ext({0s}DefaultLibraryName)) {{ return entry }}\n" ++
+                "\treturn filepath.Join(entry, {0s}DefaultLibraryName)\n}}\n\n",
+            .{loaderPrefix(options)},
         );
     }
     try writer.writeAll(
@@ -998,9 +1005,10 @@ fn renderPuregoCandidates(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
         "\tfor _, entry := range librarySearchPaths {\n" ++
             "\t\tif resolved := resolveSearchPath(entry); resolved != \"\" { candidates = append(candidates, resolved) }\n\t}\n",
     );
-    try writer.writeAll(
-        "\tif DefaultLibraryName != \"\" { candidates = append(candidates, DefaultLibraryName) }\n" ++
-            "\treturn candidates\n}\n\n",
+    try writer.print(
+        "\tif {0s}DefaultLibraryName != \"\" {{ candidates = append(candidates, {0s}DefaultLibraryName) }}\n" ++
+            "\treturn candidates\n}}\n\n",
+        .{loaderPrefix(options)},
     );
 }
 
@@ -1020,9 +1028,9 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     if (search_paths) try writer.writeAll("\t\"strings\"\n");
     try writer.writeAll("\t\"sync\"\n\t\"sync/atomic\"\n\t\"unsafe\"\n\n\t\"github.com/ebitengine/purego\"\n)\n\n");
     try writer.print(
-        "// DefaultLibraryName is the installed shared-library basename for the running platform.\n" ++
+        "// {2s}DefaultLibraryName is the installed shared-library basename for the running platform.\n" ++
             "// It is empty on platforms this backend does not support.\n" ++
-            "var DefaultLibraryName = map[string]string{{\"darwin\": \"lib{s}.dylib\", \"linux\": \"lib{s}.so\"}}[runtime.GOOS]\n\n" ++
+            "var {2s}DefaultLibraryName = map[string]string{{\"darwin\": \"lib{0s}.dylib\", \"linux\": \"lib{1s}.so\"}}[runtime.GOOS]\n\n" ++
             "// LibraryError reports a native library loading or symbol resolution failure.\n" ++
             "type LibraryError struct {{\n\tPath string\n\tSymbol string\n\tOperation string\n\tCause error\n}}\n\n" ++
             "// Error describes the failed loading operation.\n" ++
@@ -1030,7 +1038,7 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             "// Unwrap returns the platform loader error.\n" ++
             "func (err *LibraryError) Unwrap() error {{ return err.Cause }}\n\n" ++
             "type nativeBindings struct {{\n",
-        .{ library_stem, library_stem },
+        .{ library_stem, library_stem, loaderPrefix(options) },
     );
     // An unsafe.Pointer return keeps the message read free of uintptr
     // round-trips, which `go vet` reports as a possible stale pointer.
@@ -1068,20 +1076,24 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     }
     try writer.writeAll("}\n\n");
     if (programHasCallbacks(program)) try renderPuregoCallbackRegistry(allocator, writer, program, options);
-    try writer.writeAll(
+    try writer.print(
         "var loadedBindings atomic.Pointer[nativeBindings]\nvar loadMu sync.Mutex\nvar successfulLibraryPath string\n\n" ++
-            "// LibraryLoaded reports whether every required native symbol was published.\n" ++
-            "func LibraryLoaded() bool { return loadedBindings.Load() != nil }\n\n",
+            "// {0s}LibraryLoaded reports whether every required native symbol was published.\n" ++
+            "func {0s}LibraryLoaded() bool {{ return loadedBindings.Load() != nil }}\n\n",
+        .{loaderPrefix(options)},
     );
     if (options.library_automatic)
         try writer.writeAll("var automaticLoadAttempted bool\nvar automaticLoadError error\n\n");
     try renderPuregoCandidates(allocator, writer, program, options);
-    try writer.writeAll(
-        "// LoadLibrary atomically loads and registers every required native symbol.\n" ++
+    try writer.print(
+        "// {0s}LoadLibrary atomically loads and registers every required native symbol.\n" ++
             "// An empty path uses the configured candidates. A failed load leaves the\n" ++
             "// binding retryable; a successful handle is never unloaded.\n" ++
-            "func LoadLibrary(path string) error {\n\tloadMu.Lock()\n\tdefer loadMu.Unlock()\n\treturn loadLibraryLocked(path)\n}\n\n" ++
-            "func loadLibraryLocked(explicit string) error {\n" ++
+            "func {0s}LoadLibrary(path string) error {{\n\tloadMu.Lock()\n\tdefer loadMu.Unlock()\n\treturn loadLibraryLocked(path)\n}}\n\n",
+        .{loaderPrefix(options)},
+    );
+    try writer.writeAll(
+        "func loadLibraryLocked(explicit string) error {\n" ++
             "\tcandidates := libraryCandidates(explicit)\n" ++
             "\tif len(candidates) == 0 { return &LibraryError{Operation: \"load\", Cause: errors.New(\"no shared-library candidate is configured for this platform; pass an explicit path\")} }\n" ++
             "\tif loadedBindings.Load() != nil {\n" ++
@@ -3194,4 +3206,49 @@ fn renderForTest(render: *const fn (std.mem.Allocator, *std.Io.Writer, abi.Progr
     errdefer output.deinit();
     try render(std.testing.allocator, &output.writer, program, .{ .go_module = "example.com/variant" });
     return output.toOwnedSlice();
+}
+
+test "a colocated internal loader keeps the loader out of the exported names" {
+    const origin: semantic.SemanticFn = .{
+        .name = "ping",
+        .params = &.{},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_ping",
+    };
+    const program: abi.Program = .{
+        .backend = .purego,
+        .callback_convention = .function_pointer_userdata_v1,
+        .functions = &.{.{ .symbol = "zg_ping", .params = &.{}, .ret = .void, .origin = &origin }},
+        .package = "hub",
+        .prefix = "zg",
+    };
+    const options: Options = .{
+        .go_module = "example.com/hub",
+        .backend = .purego,
+        .raw_colocated = true,
+        .library_exported_api = false,
+        .library_automatic = true,
+    };
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try renderRaw(std.testing.allocator, &output.writer, program, options);
+    const raw = output.written();
+
+    // The raw package is the public package here, so the loader can only be
+    // kept internal by not exporting its names.
+    try std.testing.expect(std.mem.indexOf(u8, raw, "func zigoRawLoadLibrary(") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "func zigoRawLibraryLoaded(") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "var zigoRawDefaultLibraryName = ") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "func LoadLibrary(") == null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "func LibraryLoaded(") == null);
+    // The error type is not part of the loader API; callers still inspect it.
+    try std.testing.expect(std.mem.indexOf(u8, raw, "type LibraryError struct") != null);
+
+    var exported: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer exported.deinit();
+    var exported_options = options;
+    exported_options.raw_colocated = false;
+    exported_options.library_exported_api = true;
+    try renderRaw(std.testing.allocator, &exported.writer, program, exported_options);
+    try std.testing.expect(std.mem.indexOf(u8, exported.written(), "func LoadLibrary(") != null);
 }

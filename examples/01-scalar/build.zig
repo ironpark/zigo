@@ -21,9 +21,9 @@ pub fn build(b: *std.Build) void {
         .go_module = "example.com/zigo/scalar",
         .target = target,
         .optimize = optimize,
-        .link_mode = if (dynamic) .dynamic else .static,
+        .link = if (dynamic) .cgo_dynamic else .cgo_static,
         .abi_base = "HEAD",
-        .raw_package = .colocated,
+        .raw_package = "scalar",
     });
     _ = bindings.addStandardSteps(b, .{});
 }

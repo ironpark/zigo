@@ -4,8 +4,8 @@
 
 - 현재 지원 범위는 Zig 0.16.0, Go 1.23 이상, cgo가 활성화된 네이티브 macOS/Linux다.
   선택적인 `auto_cleanup`은 Go 1.24 이상이 필요하다.
-- opt-in `.backend = .purego`는 Go 빌드에서 C 컴파일러와 cgo를 제거하지만, 지원 범위는
-  네이티브 macOS/Linux의 amd64·arm64로 더 좁고 `.link_mode = .dynamic`을 요구한다.
+- opt-in `.link = .purego`는 Go 빌드에서 C 컴파일러와 cgo를 제거하지만, 지원 범위는
+  네이티브 macOS/Linux의 amd64·arm64로 더 좁고 공유 라이브러리 배포를 요구한다.
   Windows, 모바일, purego Tier 2 타깃은 후속 작업이다. 정적 링크는 cgo 전용이다.
 - purego는 v1 이전 베타 소프트웨어다. zigo는 `github.com/ebitengine/purego v0.10.2`를
   고정해 생성·검증하며 사용을 생성된 raw 파일에만 격리한다. 다른 버전을 요구하는
@@ -85,7 +85,7 @@ AST 보강에 사용하는 기본 `bindings.zig`를 읽지 못하면 reflection�
 - `errors.lock.json`의 정수 코드는 append-only 계약이다. 삭제된 에러의 코드를 다른
   에러에 재사용하지 않는다.
 - purego 백엔드는 기본적으로 바인딩 호출 전에 `LoadLibrary`가 성공해야 한다.
-  `library_loading.automatic`을 켜면 첫 호출에서 한 번 자동으로 시도하지만, 모든 후보가
+  `library_loading.loader`를 `.automatic`으로 두면 첫 호출에서 한 번 자동으로 시도하지만, 모든 후보가
   실패하면 panic한다. 공개 API가 오류를 반환하지 않는 형태이므로 다른 선택지가 없다. 로드는 원자적이라
   실패해도 부분적으로 호출 가능한 패키지를 남기지 않지만, 성공한 라이브러리는 프로세스
   수명 동안 언로드하지 않는다. `LoadLibrary`는 임의의 네이티브 코드를 로드하므로

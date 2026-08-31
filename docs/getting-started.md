@@ -151,8 +151,7 @@ const purego_bindings = zigo.addGoBindings(b, .{
     // 위와 같은 필수 옵션들…
     .go_dir = b.path("go-purego"),
     .go_module = "example.com/mylib/go-purego",
-    .backend = .purego,
-    .link_mode = .dynamic,
+    .link = .purego,
 });
 _ = purego_bindings.addStandardSteps(b, .{ .name_prefix = "purego" });
 ```
