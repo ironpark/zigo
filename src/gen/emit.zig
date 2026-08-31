@@ -624,7 +624,6 @@ fn goParamNamesForAlloc(allocator: std.mem.Allocator, params: []const semantic.P
     return naming.goParamNamesAlloc(allocator, zig_names);
 }
 
-
 /// Suffix of the raw Go mirror of an `extern struct`. Named once so the
 /// declaration and every reference to it cannot drift apart.
 const raw_struct_suffix = "Data";
@@ -1475,7 +1474,6 @@ fn writePuregoAbiType(writer: *std.Io.Writer, scalar: abi.AbiScalar) !void {
     }
 }
 
-
 /// The Go spelling of a snapshot member. Padding keeps the layout without
 /// becoming part of the API, so it is written to the blank identifier.
 fn snapshotGoFieldAlloc(allocator: std.mem.Allocator, field: abi.AbiSnapshot.Field) ![]u8 {
@@ -2134,7 +2132,6 @@ fn renderGoSentinels(writer: *std.Io.Writer, set: SentinelSet, options: Options)
             "// Unwrap returns ErrNativeStatus for errors.Is classification.\nfunc (err *StatusError) Unwrap() error { return ErrNativeStatus }\n\n",
     );
 }
-
 
 fn renderPublicHelpers(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     const package = try publicPackageAlloc(allocator, program, options);
