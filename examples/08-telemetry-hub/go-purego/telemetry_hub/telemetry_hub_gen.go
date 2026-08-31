@@ -3,19 +3,6 @@ package telemetry_hub
 
 import raw "example.com/zigo/telemetry-hub-purego/internal/native"
 
-// LibraryError reports a native shared-library loading failure.
-type LibraryError = raw.LibraryError
-
-// LoadLibrary atomically loads all generated native entry points.
-func LoadLibrary(path string) error { return raw.LoadLibrary(path) }
-
-// LibraryLoaded reports whether the native call surface is ready.
-func LibraryLoaded() bool { return raw.LibraryLoaded() }
-
-// DefaultLibraryName is the installed shared-library basename for the running platform.
-// LoadLibrary falls back to it when no explicit path and no ZIGO_LIBRARY_PATH are set.
-var DefaultLibraryName = raw.DefaultLibraryName
-
 // NewTelemetryHub creates a caller-owned TelemetryHub.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.

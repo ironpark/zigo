@@ -30,6 +30,13 @@ is byte-identical on macOS and Linux: `DefaultLibraryName` is
 resolves its path from the explicit argument, then `ZIGO_LIBRARY_PATH`, then
 `DefaultLibraryName` through the platform loader search path.
 
+`Options.library_loading` configures the candidate order: the explicit argument,
+then each configured environment variable, then each configured search path,
+then the platform default name. It can also load on the first binding call and
+keep the loader out of the public package. The default policy is an explicit
+`LoadLibrary`, the package-specific and shared environment variables, and the
+platform default name. See [the wiki page](wiki/purego.md) for the full option.
+
 If zigo creates `go.mod`, it pins `github.com/ebitengine/purego v0.10.2`. For an
 existing module, add it explicitly:
 

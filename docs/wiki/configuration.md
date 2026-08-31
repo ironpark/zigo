@@ -15,6 +15,7 @@
 | `prefix` | 아니요 | C 심볼 접두사. 기본값 `zg` |
 | `link_mode` | 아니요 | `.static` 또는 `.dynamic`. 기본값 `.static` |
 | `backend` | 아니요 | `.cgo` 또는 `.purego`. 기본값 `.cgo`. `.purego`는 `.link_mode = .dynamic` 필요 |
+| `library_loading` | 아니요 | purego 전용 런타임 로딩 정책. search path, 환경 변수, 자동 로딩, 로더 노출 여부 |
 | `cgo_flags` | 아니요 | 자동 계산 대신 사용할 CFLAGS와 LDFLAGS |
 | `abi_base` | 아니요 | ABI·바인딩 계약 비교에 사용할 Git ref. 생략하면 검사 비활성화 |
 | `raw_package` | 아니요 | raw Go 코드 위치. 기본값 `.internal` |

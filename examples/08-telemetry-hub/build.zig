@@ -40,6 +40,14 @@ pub fn build(b: *std.Build) void {
         .raw_package = .{ .path = "internal/native" },
         .backend = .purego,
         .link_mode = .dynamic,
+        // The library is found next to the executable when deployed, and in the
+        // installed prefix when the tests run from the package directory. The
+        // public package therefore exposes no loader at all.
+        .library_loading = .{
+            .search_paths = &.{ "${EXECUTABLE_DIR}", "${EXECUTABLE_DIR}/../lib", "../../zig-out/lib" },
+            .automatic = true,
+            .exported_api = false,
+        },
     });
     _ = purego_bindings.addStandardSteps(b, .{ .name_prefix = "purego" });
 }

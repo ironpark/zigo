@@ -93,12 +93,19 @@ jobs:
           cache: false
       - name: Generate and validate purego bindings
         shell: bash
+        # 08-telemetry-hub uses the automatic, internal-loader policy; the others
+        # keep the default explicit loader, so both policies are exercised.
         run: |
           set -euo pipefail
           for example in 04-callback 08-telemetry-hub; do
             (cd "examples/$example" && zig build purego-go purego-go-verify --summary all)
           done
           (cd examples/10-tagged-union && zig build go go-verify -Dpurego --summary all)
+
+          if grep -q "LoadLibrary" examples/08-telemetry-hub/go-purego/telemetry_hub/*_gen.go; then
+            echo "The internal-loader policy leaked a loader into the public package."
+            exit 1
+          fi
       - name: Build both backends from one tree
         shell: bash
         # A static archive and a shared library with the same base name live in

@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-31T06:10:26Z"
 depends_on:
 - "33-purego-library-loading-policy#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: An automatic example calls no loader function, a failure names every candidate, the public
 > NEXT: none

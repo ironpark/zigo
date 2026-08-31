@@ -3,25 +3,13 @@ package telemetry_hub
 import (
 	"errors"
 	"fmt"
-	"os"
-	"path/filepath"
-	"runtime"
 	"sync"
 	"testing"
 )
 
-func init() {
-	// An explicit path keeps the test independent of the loader search path;
-	// ZIGO_LIBRARY_PATH still wins so the artifact can be installed elsewhere.
-	_, file, _, _ := runtime.Caller(0)
-	path := os.Getenv("ZIGO_LIBRARY_PATH")
-	if path == "" {
-		path = filepath.Join(filepath.Dir(file), "..", "..", "zig-out", "lib", DefaultLibraryName)
-	}
-	if err := LoadLibrary(path); err != nil {
-		panic(err)
-	}
-}
+// This binding set uses an automatic loading policy with an internal loader, so
+// the tests call no loader function: the first binding call finds the library
+// through the configured search paths.
 
 func TestPuregoTelemetryPipelineAndPanic(t *testing.T) {
 	var values []float64

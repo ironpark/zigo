@@ -5,7 +5,9 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"runtime"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -211,18 +213,48 @@ var successfulLibraryPath string
 // LibraryLoaded reports whether every required native symbol was published.
 func LibraryLoaded() bool { return loadedBindings.Load() != nil }
 
+var automaticLoadAttempted bool
+var automaticLoadError error
+
 // libraryEnvVars are consulted in order when no explicit path is given.
 var libraryEnvVars = []string{"ZIGO_TELEMETRY_HUB_LIBRARY_PATH", "ZIGO_LIBRARY_PATH"}
+
+// librarySearchPaths are tried after the environment, in order.
+var librarySearchPaths = []string{"${EXECUTABLE_DIR}", "${EXECUTABLE_DIR}/../lib", "../../zig-out/lib"}
+
+// resolveSearchPath joins a directory entry with the platform library
+// name. It returns "" when the entry cannot be formed.
+func resolveSearchPath(entry string) string {
+	if strings.Contains(entry, "${EXECUTABLE_DIR}") {
+		executable, err := os.Executable()
+		if err != nil {
+			return ""
+		}
+		entry = strings.ReplaceAll(entry, "${EXECUTABLE_DIR}", filepath.Dir(executable))
+	}
+	if DefaultLibraryName == "" {
+		return ""
+	}
+	if strings.HasSuffix(entry, filepath.Ext(DefaultLibraryName)) {
+		return entry
+	}
+	return filepath.Join(entry, DefaultLibraryName)
+}
 
 // libraryCandidates lists the paths a load attempt tries, in order.
 func libraryCandidates(explicit string) []string {
 	if explicit != "" {
 		return []string{explicit}
 	}
-	candidates := make([]string, 0, 2)
+	candidates := make([]string, 0, 3)
 	for _, name := range libraryEnvVars {
 		if value := os.Getenv(name); value != "" {
 			candidates = append(candidates, value)
+		}
+	}
+	for _, entry := range librarySearchPaths {
+		if resolved := resolveSearchPath(entry); resolved != "" {
+			candidates = append(candidates, resolved)
 		}
 	}
 	if DefaultLibraryName != "" {
@@ -545,10 +577,26 @@ func loadCandidate(path string) error {
 	return nil
 }
 
+// ensureLoaded performs the one automatic load attempt. A later explicit
+// call can still succeed with a different path.
+func ensureLoaded() {
+	loadMu.Lock()
+	defer loadMu.Unlock()
+	if loadedBindings.Load() != nil || automaticLoadAttempted {
+		return
+	}
+	automaticLoadAttempted = true
+	automaticLoadError = loadLibraryLocked("")
+}
+
 func bindings() *nativeBindings {
 	value := loadedBindings.Load()
 	if value == nil {
-		panic("zigo: native library is not loaded; call LoadLibrary first")
+		ensureLoaded()
+		value = loadedBindings.Load()
+	}
+	if value == nil {
+		panic(automaticLoadError)
 	}
 	return value
 }

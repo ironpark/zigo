@@ -89,11 +89,13 @@ if !mylib.LibraryLoaded() {
 }
 ```
 
-`LoadLibrary(path)`의 경로 결정 순서는 다음과 같다.
+`LoadLibrary(path)`의 경로 결정 순서는 다음과 같다. 후보는 [로딩 정책](#로딩-정책-설정)으로
+바꿀 수 있다.
 
 1. 인자로 받은 경로
-2. 환경 변수 `ZIGO_LIBRARY_PATH`
-3. `DefaultLibraryName` (플랫폼 기본 파일명; 플랫폼 로더의 검색 경로에서 찾는다)
+2. 설정된 환경 변수 (기본값은 `ZIGO_<PACKAGE>_LIBRARY_PATH`, `ZIGO_LIBRARY_PATH`)
+3. 설정된 search path
+4. `DefaultLibraryName` (플랫폼 기본 파일명; 플랫폼 로더의 검색 경로에서 찾는다)
 
 로딩은 원자적이다. 필요한 심볼을 모두 해석한 뒤에만 호출 표면을 공개하므로, 실패한
 로드는 부분적으로 호출 가능한 패키지를 남기지 않고 다른 경로로 재시도할 수 있다.
@@ -105,6 +107,76 @@ if !mylib.LibraryLoaded() {
 `DefaultLibraryName`은 생성 시점이 아니라 실행 시점에 `runtime.GOOS`로 결정된다. 따라서
 커밋된 생성물은 macOS와 Linux에서 동일하며, 생성물 최신 상태 검사도 두 플랫폼에서 같은
 결과를 낸다.
+
+## 로딩 정책 설정
+
+`library_loading`으로 라이브러리를 어디서 어떤 순서로 찾을지, 첫 호출에 자동으로 로드할지,
+로더를 공개 API로 노출할지를 선언한다. 기본값은 위에서 설명한 동작 그대로다.
+
+```zig
+.library_loading = .{
+    // 환경 변수 다음에 이 순서로 시도한다. 파일이 아니면 디렉터리로 보고
+    // 플랫폼 라이브러리 이름을 붙인다.
+    .search_paths = &.{ "${EXECUTABLE_DIR}", "${EXECUTABLE_DIR}/../lib", "/opt/myapp/lib" },
+    // 첫 바인딩 호출에서 위 후보를 한 번 시도한다.
+    .automatic = true,
+    // 공개 패키지에서 LoadLibrary/LibraryLoaded/DefaultLibraryName을 감춘다.
+    .exported_api = false,
+    // 기본값은 패키지 전용 이름과 공용 이름 두 개다.
+    .env_vars = &.{ "MYAPP_LIBRARY_PATH" },
+},
+```
+
+| 필드 | 기본값 | 설명 |
+|---|---|---|
+| `search_paths` | 없음 | 환경 변수 다음에 순서대로 시도할 위치 |
+| `env_vars` | `null` | `null`은 `ZIGO_<PACKAGE>_LIBRARY_PATH`와 `ZIGO_LIBRARY_PATH`. 빈 목록은 환경 변수를 보지 않음 |
+| `automatic` | `false` | 첫 바인딩 호출에서 자동 로드 |
+| `exported_api` | `true` | 공개 패키지에 로더 API를 노출 |
+
+`library_loading`은 `.backend = .purego`에서만 쓸 수 있고, `exported_api = false`는
+`automatic = true`와 공개 패키지와 분리된 raw 패키지를 요구한다. 잘못된 조합은 빌드
+그래프를 만드는 시점에 실패한다.
+
+### 후보 순서
+
+1. `LoadLibrary(path)`에 넘긴 경로 (비어 있지 않으면 이것만 시도한다)
+2. `env_vars`의 각 환경 변수 중 값이 있는 것
+3. `search_paths`의 각 항목
+4. `DefaultLibraryName` (플랫폼 로더 검색 경로)
+
+`search_paths` 항목이 플랫폼 라이브러리 확장자로 끝나면 파일 경로로 그대로 쓰고, 그렇지
+않으면 디렉터리로 보고 `DefaultLibraryName`을 붙인다. `${EXECUTABLE_DIR}`는 실행 중인
+실행 파일의 디렉터리로 확장되며, 확인할 수 없으면 그 항목은 건너뛴다. 항목에 `:`는 쓸 수
+없다. 생성기로 전달할 때 목록 구분자이기 때문이다.
+
+후보를 여러 개 시도해 모두 실패하면 하나의 `*LibraryError`가 모든 시도를 묶어 반환된다.
+후보가 하나뿐이면 그 시도의 경로와 심볼이 그대로 보존된다.
+
+### 자동 로딩
+
+`.automatic = true`이면 첫 바인딩 호출이 후보 목록을 **한 번** 시도한다. 성공하면 이후
+호출은 그대로 진행되고, 모두 실패하면 모든 후보를 담은 오류로 panic한다. 공개 API가 오류를
+반환하지 않는 형태이므로 panic 외에 다른 선택지가 없다. 실패 후에도 `LoadLibrary`가 노출된
+구성이라면 다른 경로로 명시적 재시도를 할 수 있다.
+
+`examples/08-telemetry-hub`의 purego 바인딩이 이 구성을 사용한다. 테스트는 로더를 전혀
+호출하지 않고, 공개 패키지에는 바인딩된 API만 있다.
+
+### 환경 변수 이름
+
+기본 환경 변수는 패키지 전용 이름(`ZIGO_TELEMETRY_HUB_LIBRARY_PATH`)이 먼저이고 공용
+`ZIGO_LIBRARY_PATH`가 그다음이다. 한 프로세스가 zigo purego 패키지를 둘 이상 로드할 때
+공용 변수 하나로 서로의 라이브러리를 가리키지 않도록 하기 위한 것이다. 배포에서 환경 변수를
+아예 쓰지 않으려면 `.env_vars = &.{}`로 비운다.
+
+`go-report`가 적용된 정책을 출력한다.
+
+```text
+library loading: automatic on first call, loader API internal
+library environment: ZIGO_TELEMETRY_HUB_LIBRARY_PATH,ZIGO_LIBRARY_PATH
+library search paths: ${EXECUTABLE_DIR}:${EXECUTABLE_DIR}/../lib:../../zig-out/lib
+```
 
 ## 패키징과 배포
 
@@ -126,6 +198,11 @@ if !mylib.LibraryLoaded() {
 - `LoadLibrary`는 임의의 네이티브 코드를 프로세스에 로드한다. 경로는 애플리케이션이
   통제하는 위치여야 하며, 쓰기 가능한 공용 디렉터리나 사용자 입력에서 온 경로를 그대로
   넘기지 않는다.
+- 자동 로딩은 이 결정을 빌드 시점의 정책으로 옮긴다. `search_paths`에는 배포에서 쓰기
+  권한이 통제되는 위치만 넣고, 상대 경로는 실행 시점의 작업 디렉터리에 따라 달라지므로
+  배포용으로는 `${EXECUTABLE_DIR}` 기준 경로나 절대 경로를 쓴다.
+- 환경 변수는 후보 중 가장 먼저 시도된다. 신뢰 경계가 중요한 배포에서는
+  `.env_vars = &.{}`로 비워 외부에서 로드 대상을 바꿀 수 없게 한다.
 - `ZIGO_LIBRARY_PATH`와 파일명 fallback은 편의 기능이다. 신뢰 경계가 중요한 배포에서는
   절대 경로를 명시하고, 필요하면 로드 전에 서명이나 체크섬을 검증한다.
 - 로드된 라이브러리는 언로드되지 않으므로, 잘못된 아티팩트를 로드한 프로세스는 재시작해야

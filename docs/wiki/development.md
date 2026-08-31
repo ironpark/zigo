@@ -35,6 +35,10 @@ done
 별도 이름으로 설치되므로, 두 백엔드를 순서에 상관없이 한 트리에서 검증할 수 있다.
 생성된 purego 테스트는 `ZIGO_LIBRARY_PATH`가 있으면 그 경로를 우선 사용한다.
 
+`examples/08-telemetry-hub`의 purego 바인딩은 자동 로딩과 내부 로더 정책을 사용하므로
+테스트가 로더를 호출하지 않는다. 라이브러리는 `../../zig-out/lib` search path로 찾으므로
+`zig build purego-go-lib` 이후 패키지 디렉터리에서 테스트를 실행해야 한다.
+
 `examples/10-tagged-union`의 purego 테스트는 `ZIGO_TEST_LIBRARY`에 설치된 라이브러리의
 절대 경로를 요구하며, `ZIGO_TEST_WRONG_LIBRARY`를 함께 주면 심볼 누락 실패 경로까지
 검증한다. 설정하지 않으면 skip한다.

@@ -51,10 +51,12 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
             if (options.library_automatic) "automatic on first call" else "explicit LoadLibrary",
             if (options.library_exported_api) "exported" else "internal",
         });
-        try writer.print("library environment: {s}\n", .{blk: {
-            const names = options.library_env_vars orelse break :blk "ZIGO_LIBRARY_PATH";
-            break :blk if (names.len == 0) "none" else names;
-        }});
+        // The default matches the emitter: a package-specific name, then the shared one.
+        const package = try naming.snakeAlloc(scratch_allocator, document.package);
+        const specific = try naming.libraryPathEnvironmentAlloc(scratch_allocator, package);
+        const default_names = try std.fmt.allocPrint(scratch_allocator, "{s},ZIGO_LIBRARY_PATH", .{specific});
+        const env_names = options.library_env_vars orelse default_names;
+        try writer.print("library environment: {s}\n", .{if (env_names.len == 0) "none" else env_names});
         try writer.print("library search paths: {s}\n", .{
             if (options.library_search_paths.len == 0) "none" else options.library_search_paths,
         });
@@ -215,6 +217,7 @@ test "purego report states the effective loading policy" {
     defer explicit.deinit();
     try render(std.testing.allocator, &explicit.writer, document, .{ .backend = .purego });
     try std.testing.expect(std.mem.indexOf(u8, explicit.written(), "library loading: explicit LoadLibrary, loader API exported") != null);
+    try std.testing.expect(std.mem.indexOf(u8, explicit.written(), "library environment: ZIGO_SCALAR_LIBRARY_PATH,ZIGO_LIBRARY_PATH") != null);
     try std.testing.expect(std.mem.indexOf(u8, explicit.written(), "library search paths: none") != null);
 
     var automatic: std.Io.Writer.Allocating = .init(std.testing.allocator);
