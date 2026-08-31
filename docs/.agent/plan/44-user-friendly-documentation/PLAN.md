@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T17:41:23Z"
 description: README와 사용자 문서를 작업 흐름 중심으로 재구성하고 내용·링크·명령을 검증한다.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-31T17:20:03Z"
 ---
 > NEXT: README와 시작 문서를 기본 cgo 사용자 여정 중심으로 재구성한다. ([Phase 0](phases/00-onboarding-navigation.md))
@@ -8,7 +9,7 @@ registered_at: "2026-08-31T17:20:03Z"
 # Phases
 
 - [x] [Phase 00: Onboarding and navigation](phases/00-onboarding-navigation.md)
-- [ ] [Phase 01: Reference split and consistency audit](phases/01-reference-split.md)
+- [x] [Phase 01: Reference split and consistency audit](phases/01-reference-split.md)
 
 # Shared Verification
 
