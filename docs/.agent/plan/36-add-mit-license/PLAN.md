@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-08-31T10:34:43Z"
 description: Add the standard MIT license for the zigo repository.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-31T07:15:55Z"
 ---
 > NEXT: Add and verify the repository's MIT license file. ([Phase 0](phases/00-initial-work.md))
 
 # Phases
 
-- [ ] [Phase 00: Initial Work](phases/00-initial-work.md)
+- [x] [Phase 00: Initial Work](phases/00-initial-work.md)
 
 # Shared Verification
 

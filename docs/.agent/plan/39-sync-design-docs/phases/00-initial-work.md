@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T10:34:44Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 05-implementation-status.md 가 구현된 것·차이·미구현을 표로 정리한다.
 > NEXT: none

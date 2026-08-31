@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-08-31T10:34:41Z"
 description: Move planr guidance under docs/.agent, update AGENTS.md, and add a CLAUDE.md symlink.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-31T07:13:28Z"
 ---
 > NEXT: Relocate the agent guidance and add the cross-tool instruction symlink. ([Phase 0](phases/00-initial-work.md))
 
 # Phases
 
-- [ ] [Phase 00: Initial Work](phases/00-initial-work.md)
+- [x] [Phase 00: Initial Work](phases/00-initial-work.md)
 
 # Shared Verification
 

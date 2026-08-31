@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T10:34:43Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `LICENSE` is present, contains the MIT heading, grant, disclaimer, and correct copyright line, and the scoped changes are committed.
 > NEXT: none
