@@ -26,13 +26,13 @@ func zg_event_queue_create_go_callback_observer(p0 C.uint64_t, p1 C.int32_t, p2 
 
 // EventQueueCreate calls the generated C ABI wrapper for zg_event_queue_create.
 func EventQueueCreate(name []uint8, capacity uint, policy uint32, observerHandle uintptr) (unsafe.Pointer, int32) {
-	var name_zero C.uint8_t
-	name_ptr := &name_zero
+	var nameZero C.uint8_t
+	namePtr := &nameZero
 	if len(name) != 0 {
-		name_ptr = (*C.uint8_t)(unsafe.Pointer(&name[0]))
+		namePtr = (*C.uint8_t)(unsafe.Pointer(&name[0]))
 	}
 	var outResult unsafe.Pointer
-	code := int32(C.zg_event_queue_create(name_ptr, C.size_t(len(name)), C.size_t(capacity), C.uint32_t(policy), C.size_t(observerHandle), &outResult))
+	code := int32(C.zg_event_queue_create(namePtr, C.size_t(len(name)), C.size_t(capacity), C.uint32_t(policy), C.size_t(observerHandle), &outResult))
 	return unsafe.Pointer(outResult), code
 }
 

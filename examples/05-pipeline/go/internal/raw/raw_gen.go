@@ -72,25 +72,25 @@ func FloatBatchDeinit(self unsafe.Pointer) {
 
 // PipelineCreate calls the generated C ABI wrapper for zg_pipeline_create.
 func PipelineCreate(name []uint8, mode uint32, callbackHandle uintptr) (unsafe.Pointer, int32) {
-	var name_zero C.uint8_t
-	name_ptr := &name_zero
+	var nameZero C.uint8_t
+	namePtr := &nameZero
 	if len(name) != 0 {
-		name_ptr = (*C.uint8_t)(unsafe.Pointer(&name[0]))
+		namePtr = (*C.uint8_t)(unsafe.Pointer(&name[0]))
 	}
 	var outResult unsafe.Pointer
-	code := int32(C.zg_pipeline_create(name_ptr, C.size_t(len(name)), C.uint32_t(mode), C.size_t(callbackHandle), &outResult))
+	code := int32(C.zg_pipeline_create(namePtr, C.size_t(len(name)), C.uint32_t(mode), C.size_t(callbackHandle), &outResult))
 	return unsafe.Pointer(outResult), code
 }
 
 // PipelineProcess calls the generated C ABI wrapper for zg_pipeline_process.
 func PipelineProcess(self unsafe.Pointer, values []int32) (int64, int32) {
-	var values_zero C.int32_t
-	values_ptr := &values_zero
+	var valuesZero C.int32_t
+	valuesPtr := &valuesZero
 	if len(values) != 0 {
-		values_ptr = (*C.int32_t)(unsafe.Pointer(&values[0]))
+		valuesPtr = (*C.int32_t)(unsafe.Pointer(&values[0]))
 	}
 	var outResult C.int64_t
-	code := int32(C.zg_pipeline_process(self, values_ptr, C.size_t(len(values)), &outResult))
+	code := int32(C.zg_pipeline_process(self, valuesPtr, C.size_t(len(values)), &outResult))
 	return int64(outResult), code
 }
 
@@ -133,6 +133,6 @@ func LiveBytes() uint {
 }
 
 // CompressionBound calls the generated C ABI wrapper for zg_compression_bound.
-func CompressionBound(source_len uint) uint {
-	return uint(C.zg_compression_bound(C.size_t(source_len)))
+func CompressionBound(sourceLen uint) uint {
+	return uint(C.zg_compression_bound(C.size_t(sourceLen)))
 }

@@ -2,6 +2,6 @@
 package http_client
 
 // StatusCode invokes the bound Zig statusCode operation.
-func StatusCode(retry_count uint32) uint32 {
-	return zigoRawStatusCode(retry_count)
+func StatusCode(retryCount uint32) uint32 {
+	return zigoRawStatusCode(retryCount)
 }

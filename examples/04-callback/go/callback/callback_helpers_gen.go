@@ -17,7 +17,7 @@ func newCallbackContextCallbackHandle(value CallbackContextCallback) zigoCallbac
 	return handle
 }
 
-func newApplyCallbackCallbackHandle(value ApplyCallbackCallback) zigoCallbackHandle {
+func newApplyCallbackHandle(value ApplyCallback) zigoCallbackHandle {
 	stored := (func(int32) int32)(value)
 	handle := cgo.NewHandle(stored)
 	activeCallbackHandles.Add(1)

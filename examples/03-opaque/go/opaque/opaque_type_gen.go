@@ -17,35 +17,35 @@ type Context struct {
 // ContextRef is a borrowed Context reference that remains valid only while its parent is open.
 type ContextRef struct {
 	ptr    unsafe.Pointer
-	parent any
+	parent zigoHandle
 }
 
-func (value *Context) zigoPointer() unsafe.Pointer {
-	if value == nil {
+func (c *Context) zigoPointer() unsafe.Pointer {
+	if c == nil {
 		return nil
 	}
-	return value.ptr
+	return c.ptr
 }
 
-func (value *ContextRef) zigoPointer() unsafe.Pointer {
-	if value == nil || value.ptr == nil {
+func (c *ContextRef) zigoPointer() unsafe.Pointer {
+	if c == nil || c.ptr == nil {
 		return nil
 	}
-	if parent, ok := value.parent.(interface{ zigoPointer() unsafe.Pointer }); ok && parent.zigoPointer() == nil {
+	if parent := c.parent; parent != nil && parent.zigoPointer() == nil {
 		return nil
 	}
-	return value.ptr
+	return c.ptr
 }
 
 // Close releases the native Context resources. It is safe to call more than once.
-func (value *Context) Close() {
-	if value == nil {
+func (c *Context) Close() {
+	if c == nil {
 		return
 	}
-	value.once.Do(func() {
-		if value.ptr != nil {
-			raw.ContextDeinit(value.ptr)
-			value.ptr = nil
+	c.once.Do(func() {
+		if c.ptr != nil {
+			raw.ContextDeinit(c.ptr)
+			c.ptr = nil
 		}
 	})
 }

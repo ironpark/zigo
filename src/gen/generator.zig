@@ -468,9 +468,9 @@ test "opt-in cleanup isolates state stops explicitly and keeps owners alive" {
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "func cleanupContext(state contextCleanupState)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "zigoRawContextDeinit(state.ptr)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "deleteCallbackHandle(handle)"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "value.once.Do"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "value.cleanup.Stop()"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "runtime.KeepAlive(value)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "c.once.Do"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "c.cleanup.Stop()"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "runtime.KeepAlive(c)"));
     const public_errors = try temporary.dir.readFileAlloc(std.testing.io, "opaque/opaque_errors_gen.go", std.testing.allocator, .limited(32 * 1024));
     defer std.testing.allocator.free(public_errors);
     try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "zigoRawLastErrorMessage()"));
@@ -643,6 +643,28 @@ test "generated errors lock produces an identical second generation" {
         defer std.testing.allocator.free(second_bytes);
         try std.testing.expectEqualStrings(first_bytes, second_bytes);
     }
+}
+
+test "Go parameter names escape keywords, generated locals and duplicates" {
+    const fixture =
+        \\{"functions":[{"name":"pick","params":[{"name":"type","type":{"bits":32,"kind":"int","signed":true}},{"name":"range","type":{"bits":32,"kind":"int","signed":true}},{"name":"code","type":{"bits":32,"kind":"int","signed":true}},{"name":"result","type":{"bits":32,"kind":"int","signed":true}},{"name":"source_len","type":{"bits":64,"is_usize":true,"kind":"int","signed":false}}],"return":{"error_set":["Failed"],"kind":"error_union","payload":{"bits":32,"kind":"int","signed":true}},"symbol":"ignored"}],"package":"kw","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    try generate(std.testing.allocator, std.testing.io, fixture, temporary.dir, .{
+        .package = "kw",
+        .prefix = "zg",
+        .go_module = "example.com/kw",
+    });
+    const public = try temporary.dir.readFileAlloc(std.testing.io, "kw/kw_gen.go", std.testing.allocator, .limited(32 * 1024));
+    defer std.testing.allocator.free(public);
+    // Keywords and the locals the generated bodies declare would not compile.
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func Pick(type_ int32, range_ int32, code_ int32, result_ int32, sourceLen uint) (int32, error)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "result, code := raw.Pick(type_, range_, code_, result_, sourceLen)"));
+    const raw = try temporary.dir.readFileAlloc(std.testing.io, "internal/raw/raw_gen.go", std.testing.allocator, .limited(32 * 1024));
+    defer std.testing.allocator.free(raw);
+    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "func Pick(type_ int32, range_ int32, code_ int32, result_ int32, sourceLen uint)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "code := int32(C.zg_pick("));
 }
 
 test "purego loading policy shapes the generated candidate order" {

@@ -95,12 +95,12 @@ func Divide(numerator float64, denominator float64) (float64, int32) {
 
 // Sum calls the generated C ABI wrapper for zg_sum.
 func Sum(values []float64) float64 {
-	var values_zero C.double
-	values_ptr := &values_zero
+	var valuesZero C.double
+	valuesPtr := &valuesZero
 	if len(values) != 0 {
-		values_ptr = (*C.double)(unsafe.Pointer(&values[0]))
+		valuesPtr = (*C.double)(unsafe.Pointer(&values[0]))
 	}
-	return float64(C.zg_sum(values_ptr, C.size_t(len(values))))
+	return float64(C.zg_sum(valuesPtr, C.size_t(len(values))))
 }
 
 // PanicError calls the generated C ABI wrapper for zg_panic_error.

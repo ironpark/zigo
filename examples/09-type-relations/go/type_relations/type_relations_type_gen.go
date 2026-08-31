@@ -17,35 +17,35 @@ type Counter struct {
 // CounterRef is a borrowed Counter reference that remains valid only while its parent is open.
 type CounterRef struct {
 	ptr    unsafe.Pointer
-	parent any
+	parent zigoHandle
 }
 
-func (value *Counter) zigoPointer() unsafe.Pointer {
-	if value == nil {
+func (c *Counter) zigoPointer() unsafe.Pointer {
+	if c == nil {
 		return nil
 	}
-	return value.ptr
+	return c.ptr
 }
 
-func (value *CounterRef) zigoPointer() unsafe.Pointer {
-	if value == nil || value.ptr == nil {
+func (c *CounterRef) zigoPointer() unsafe.Pointer {
+	if c == nil || c.ptr == nil {
 		return nil
 	}
-	if parent, ok := value.parent.(interface{ zigoPointer() unsafe.Pointer }); ok && parent.zigoPointer() == nil {
+	if parent := c.parent; parent != nil && parent.zigoPointer() == nil {
 		return nil
 	}
-	return value.ptr
+	return c.ptr
 }
 
 // Close releases the native Counter resources. It is safe to call more than once.
-func (value *Counter) Close() {
-	if value == nil {
+func (c *Counter) Close() {
+	if c == nil {
 		return
 	}
-	value.once.Do(func() {
-		if value.ptr != nil {
-			raw.CounterDeinit(value.ptr)
-			value.ptr = nil
+	c.once.Do(func() {
+		if c.ptr != nil {
+			raw.CounterDeinit(c.ptr)
+			c.ptr = nil
 		}
 	})
 }
@@ -59,35 +59,35 @@ type Accumulator struct {
 // AccumulatorRef is a borrowed Accumulator reference that remains valid only while its parent is open.
 type AccumulatorRef struct {
 	ptr    unsafe.Pointer
-	parent any
+	parent zigoHandle
 }
 
-func (value *Accumulator) zigoPointer() unsafe.Pointer {
-	if value == nil {
+func (a *Accumulator) zigoPointer() unsafe.Pointer {
+	if a == nil {
 		return nil
 	}
-	return value.ptr
+	return a.ptr
 }
 
-func (value *AccumulatorRef) zigoPointer() unsafe.Pointer {
-	if value == nil || value.ptr == nil {
+func (a *AccumulatorRef) zigoPointer() unsafe.Pointer {
+	if a == nil || a.ptr == nil {
 		return nil
 	}
-	if parent, ok := value.parent.(interface{ zigoPointer() unsafe.Pointer }); ok && parent.zigoPointer() == nil {
+	if parent := a.parent; parent != nil && parent.zigoPointer() == nil {
 		return nil
 	}
-	return value.ptr
+	return a.ptr
 }
 
 // Close releases the native Accumulator resources. It is safe to call more than once.
-func (value *Accumulator) Close() {
-	if value == nil {
+func (a *Accumulator) Close() {
+	if a == nil {
 		return
 	}
-	value.once.Do(func() {
-		if value.ptr != nil {
-			raw.AccumulatorDeinit(value.ptr)
-			value.ptr = nil
+	a.once.Do(func() {
+		if a.ptr != nil {
+			raw.AccumulatorDeinit(a.ptr)
+			a.ptr = nil
 		}
 	})
 }

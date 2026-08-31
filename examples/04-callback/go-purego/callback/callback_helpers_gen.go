@@ -9,7 +9,7 @@ func newCallbackContextCallbackHandle(value CallbackContextCallback) zigoCallbac
 	return raw.NewCallbackHandle((func(int32) int32)(value))
 }
 
-func newApplyCallbackCallbackHandle(value ApplyCallbackCallback) zigoCallbackHandle {
+func newApplyCallbackHandle(value ApplyCallback) zigoCallbackHandle {
 	return raw.NewCallbackHandle((func(int32) int32)(value))
 }
 

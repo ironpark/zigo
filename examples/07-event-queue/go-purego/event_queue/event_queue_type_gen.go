@@ -45,24 +45,24 @@ type EventQueue struct {
 // EventQueueRef is a borrowed EventQueue reference that remains valid only while its parent is open.
 type EventQueueRef struct {
 	ptr    unsafe.Pointer
-	parent any
+	parent zigoHandle
 }
 
-func (value *EventQueue) zigoPointer() unsafe.Pointer {
-	if value == nil {
+func (e *EventQueue) zigoPointer() unsafe.Pointer {
+	if e == nil {
 		return nil
 	}
-	return value.ptr
+	return e.ptr
 }
 
-func (value *EventQueueRef) zigoPointer() unsafe.Pointer {
-	if value == nil || value.ptr == nil {
+func (e *EventQueueRef) zigoPointer() unsafe.Pointer {
+	if e == nil || e.ptr == nil {
 		return nil
 	}
-	if parent, ok := value.parent.(interface{ zigoPointer() unsafe.Pointer }); ok && parent.zigoPointer() == nil {
+	if parent := e.parent; parent != nil && parent.zigoPointer() == nil {
 		return nil
 	}
-	return value.ptr
+	return e.ptr
 }
 
 type eventQueueCleanupState struct {
@@ -87,19 +87,19 @@ func cleanupEventQueue(state eventQueueCleanupState) {
 }
 
 // Close releases the native EventQueue resources. It is safe to call more than once.
-func (value *EventQueue) Close() {
-	if value == nil {
+func (e *EventQueue) Close() {
+	if e == nil {
 		return
 	}
-	value.once.Do(func() {
-		value.mu.Lock()
-		defer value.mu.Unlock()
-		value.cleanup.Stop()
-		cleanupEventQueue(eventQueueCleanupState{ptr: value.ptr, callbackHandles: value.callbackHandles})
-		value.ptr = nil
-		value.callbackHandles = nil
+	e.once.Do(func() {
+		e.mu.Lock()
+		defer e.mu.Unlock()
+		e.cleanup.Stop()
+		cleanupEventQueue(eventQueueCleanupState{ptr: e.ptr, callbackHandles: e.callbackHandles})
+		e.ptr = nil
+		e.callbackHandles = nil
 	})
-	runtime.KeepAlive(value)
+	runtime.KeepAlive(e)
 }
 
 type zigoHandle interface {

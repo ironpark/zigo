@@ -756,7 +756,7 @@ fn resolveRawPackage(b: *std.Build, option: Options.RawPackage, go_package: []co
                 error.InvalidCharacter => @panic("raw_package.path components may contain only ASCII letters, digits, '_', '-' and '.'"),
             };
             const name = naming.snakeAlloc(b.allocator, std.fs.path.basename(path)) catch @panic("OOM");
-            build_options.validateRawPackageName(name) catch
+            naming.validateGoPackageName(name) catch
                 @panic("raw_package.path basename must normalize to a valid Go package name");
             break :blk .{ .path = path, .name = name, .colocated = false };
         },

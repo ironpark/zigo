@@ -42,42 +42,42 @@ type Pipeline struct {
 // PipelineRef is a borrowed Pipeline reference that remains valid only while its parent is open.
 type PipelineRef struct {
 	ptr    unsafe.Pointer
-	parent any
+	parent zigoHandle
 }
 
-func (value *Pipeline) zigoPointer() unsafe.Pointer {
-	if value == nil {
+func (p *Pipeline) zigoPointer() unsafe.Pointer {
+	if p == nil {
 		return nil
 	}
-	return value.ptr
+	return p.ptr
 }
 
-func (value *PipelineRef) zigoPointer() unsafe.Pointer {
-	if value == nil || value.ptr == nil {
+func (p *PipelineRef) zigoPointer() unsafe.Pointer {
+	if p == nil || p.ptr == nil {
 		return nil
 	}
-	if parent, ok := value.parent.(interface{ zigoPointer() unsafe.Pointer }); ok && parent.zigoPointer() == nil {
+	if parent := p.parent; parent != nil && parent.zigoPointer() == nil {
 		return nil
 	}
-	return value.ptr
+	return p.ptr
 }
 
 // Close releases the native Pipeline resources. It is safe to call more than once.
-func (value *Pipeline) Close() {
-	if value == nil {
+func (p *Pipeline) Close() {
+	if p == nil {
 		return
 	}
-	value.once.Do(func() {
-		value.mu.Lock()
-		defer value.mu.Unlock()
-		if value.ptr != nil {
-			raw.PipelineDeinit(value.ptr)
-			value.ptr = nil
+	p.once.Do(func() {
+		p.mu.Lock()
+		defer p.mu.Unlock()
+		if p.ptr != nil {
+			raw.PipelineDeinit(p.ptr)
+			p.ptr = nil
 		}
-		for _, handle := range value.callbackHandles {
+		for _, handle := range p.callbackHandles {
 			deleteCallbackHandle(handle)
 		}
-		value.callbackHandles = nil
+		p.callbackHandles = nil
 	})
 }
 
@@ -92,42 +92,42 @@ type IntBatch struct {
 // IntBatchRef is a borrowed IntBatch reference that remains valid only while its parent is open.
 type IntBatchRef struct {
 	ptr    unsafe.Pointer
-	parent any
+	parent zigoHandle
 }
 
-func (value *IntBatch) zigoPointer() unsafe.Pointer {
-	if value == nil {
+func (i *IntBatch) zigoPointer() unsafe.Pointer {
+	if i == nil {
 		return nil
 	}
-	return value.ptr
+	return i.ptr
 }
 
-func (value *IntBatchRef) zigoPointer() unsafe.Pointer {
-	if value == nil || value.ptr == nil {
+func (i *IntBatchRef) zigoPointer() unsafe.Pointer {
+	if i == nil || i.ptr == nil {
 		return nil
 	}
-	if parent, ok := value.parent.(interface{ zigoPointer() unsafe.Pointer }); ok && parent.zigoPointer() == nil {
+	if parent := i.parent; parent != nil && parent.zigoPointer() == nil {
 		return nil
 	}
-	return value.ptr
+	return i.ptr
 }
 
 // Close releases the native IntBatch resources. It is safe to call more than once.
-func (value *IntBatch) Close() {
-	if value == nil {
+func (i *IntBatch) Close() {
+	if i == nil {
 		return
 	}
-	value.once.Do(func() {
-		value.mu.Lock()
-		defer value.mu.Unlock()
-		if value.ptr != nil {
-			raw.IntBatchDeinit(value.ptr)
-			value.ptr = nil
+	i.once.Do(func() {
+		i.mu.Lock()
+		defer i.mu.Unlock()
+		if i.ptr != nil {
+			raw.IntBatchDeinit(i.ptr)
+			i.ptr = nil
 		}
-		for _, handle := range value.callbackHandles {
+		for _, handle := range i.callbackHandles {
 			deleteCallbackHandle(handle)
 		}
-		value.callbackHandles = nil
+		i.callbackHandles = nil
 	})
 }
 
@@ -142,42 +142,42 @@ type FloatBatch struct {
 // FloatBatchRef is a borrowed FloatBatch reference that remains valid only while its parent is open.
 type FloatBatchRef struct {
 	ptr    unsafe.Pointer
-	parent any
+	parent zigoHandle
 }
 
-func (value *FloatBatch) zigoPointer() unsafe.Pointer {
-	if value == nil {
+func (f *FloatBatch) zigoPointer() unsafe.Pointer {
+	if f == nil {
 		return nil
 	}
-	return value.ptr
+	return f.ptr
 }
 
-func (value *FloatBatchRef) zigoPointer() unsafe.Pointer {
-	if value == nil || value.ptr == nil {
+func (f *FloatBatchRef) zigoPointer() unsafe.Pointer {
+	if f == nil || f.ptr == nil {
 		return nil
 	}
-	if parent, ok := value.parent.(interface{ zigoPointer() unsafe.Pointer }); ok && parent.zigoPointer() == nil {
+	if parent := f.parent; parent != nil && parent.zigoPointer() == nil {
 		return nil
 	}
-	return value.ptr
+	return f.ptr
 }
 
 // Close releases the native FloatBatch resources. It is safe to call more than once.
-func (value *FloatBatch) Close() {
-	if value == nil {
+func (f *FloatBatch) Close() {
+	if f == nil {
 		return
 	}
-	value.once.Do(func() {
-		value.mu.Lock()
-		defer value.mu.Unlock()
-		if value.ptr != nil {
-			raw.FloatBatchDeinit(value.ptr)
-			value.ptr = nil
+	f.once.Do(func() {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if f.ptr != nil {
+			raw.FloatBatchDeinit(f.ptr)
+			f.ptr = nil
 		}
-		for _, handle := range value.callbackHandles {
+		for _, handle := range f.callbackHandles {
 			deleteCallbackHandle(handle)
 		}
-		value.callbackHandles = nil
+		f.callbackHandles = nil
 	})
 }
 

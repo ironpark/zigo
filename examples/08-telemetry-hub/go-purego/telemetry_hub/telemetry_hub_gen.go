@@ -6,9 +6,9 @@ import raw "example.com/zigo/telemetry-hub-purego/internal/native"
 // NewTelemetryHub creates a caller-owned TelemetryHub.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
-func NewTelemetryHub(input_name string, max_samples uint, initial_mode Mode, overflow_policy OverflowPolicy, observer TelemetryHubObserver) (*TelemetryHub, error) {
+func NewTelemetryHub(inputName string, maxSamples uint, initialMode Mode, overflowPolicy OverflowPolicy, observer TelemetryHubObserver) (*TelemetryHub, error) {
 	observerHandle := newTelemetryHubObserverHandle(observer)
-	result, code := raw.TelemetryHubCreate([]byte(input_name), max_samples, uint32(initial_mode), uint32(overflow_policy), raw.CallbackPointer0(), uintptr(observerHandle))
+	result, code := raw.TelemetryHubCreate([]byte(inputName), maxSamples, uint32(initialMode), uint32(overflowPolicy), raw.CallbackPointer0(), uintptr(observerHandle))
 	if code != 0 {
 		deleteCallbackHandle(observerHandle)
 		return nil, errorForCode(code)
@@ -19,12 +19,12 @@ func NewTelemetryHub(input_name string, max_samples uint, initial_mode Mode, ove
 // Rename invokes the bound Zig TelemetryHub.rename operation.
 // It panics with *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
-func (t *TelemetryHub) Rename(new_name string) error {
+func (t *TelemetryHub) Rename(newName string) error {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	code := raw.TelemetryHubRename(zigoMustPointer("TelemetryHub.Rename receiver", t), []byte(new_name))
+	code := raw.TelemetryHubRename(zigoMustPointer("TelemetryHub.Rename receiver", t), []byte(newName))
 	if code != 0 {
 		return errorForCode(code)
 	}
@@ -93,12 +93,12 @@ func (t *TelemetryHub) Mode() Mode {
 
 // SetMode invokes the bound Zig TelemetryHub.setMode operation.
 // It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) SetMode(new_mode Mode) Mode {
+func (t *TelemetryHub) SetMode(newMode Mode) Mode {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return Mode(raw.TelemetryHubSetMode(zigoMustPointer("TelemetryHub.SetMode receiver", t), uint32(new_mode)))
+	return Mode(raw.TelemetryHubSetMode(zigoMustPointer("TelemetryHub.SetMode receiver", t), uint32(newMode)))
 }
 
 // OverflowPolicy invokes the bound Zig TelemetryHub.overflowPolicy operation.
@@ -113,12 +113,12 @@ func (t *TelemetryHub) OverflowPolicy() OverflowPolicy {
 
 // SetOverflowPolicy invokes the bound Zig TelemetryHub.setOverflowPolicy operation.
 // It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) SetOverflowPolicy(new_policy OverflowPolicy) OverflowPolicy {
+func (t *TelemetryHub) SetOverflowPolicy(newPolicy OverflowPolicy) OverflowPolicy {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return OverflowPolicy(raw.TelemetryHubSetOverflowPolicy(zigoMustPointer("TelemetryHub.SetOverflowPolicy receiver", t), uint32(new_policy)))
+	return OverflowPolicy(raw.TelemetryHubSetOverflowPolicy(zigoMustPointer("TelemetryHub.SetOverflowPolicy receiver", t), uint32(newPolicy)))
 }
 
 // Enabled invokes the bound Zig TelemetryHub.enabled operation.
@@ -133,12 +133,12 @@ func (t *TelemetryHub) Enabled() bool {
 
 // SetEnabled invokes the bound Zig TelemetryHub.setEnabled operation.
 // It panics with *HandleError if a required handle is nil or closed.
-func (t *TelemetryHub) SetEnabled(new_enabled bool) bool {
+func (t *TelemetryHub) SetEnabled(newEnabled bool) bool {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	return raw.TelemetryHubSetEnabled(zigoMustPointer("TelemetryHub.SetEnabled receiver", t), boolToUint8(new_enabled)) != 0
+	return raw.TelemetryHubSetEnabled(zigoMustPointer("TelemetryHub.SetEnabled receiver", t), boolToUint8(newEnabled)) != 0
 }
 
 // Threshold invokes the bound Zig TelemetryHub.threshold operation.
@@ -154,12 +154,12 @@ func (t *TelemetryHub) Threshold() float64 {
 // SetThreshold invokes the bound Zig TelemetryHub.setThreshold operation.
 // It panics with *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
-func (t *TelemetryHub) SetThreshold(new_threshold float64) error {
+func (t *TelemetryHub) SetThreshold(newThreshold float64) error {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	code := raw.TelemetryHubSetThreshold(zigoMustPointer("TelemetryHub.SetThreshold receiver", t), new_threshold)
+	code := raw.TelemetryHubSetThreshold(zigoMustPointer("TelemetryHub.SetThreshold receiver", t), newThreshold)
 	if code != 0 {
 		return errorForCode(code)
 	}
@@ -179,12 +179,12 @@ func (t *TelemetryHub) ScaleFactor() float64 {
 // SetScaleFactor invokes the bound Zig TelemetryHub.setScaleFactor operation.
 // It panics with *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
-func (t *TelemetryHub) SetScaleFactor(new_factor float64) error {
+func (t *TelemetryHub) SetScaleFactor(newFactor float64) error {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	code := raw.TelemetryHubSetScaleFactor(zigoMustPointer("TelemetryHub.SetScaleFactor receiver", t), new_factor)
+	code := raw.TelemetryHubSetScaleFactor(zigoMustPointer("TelemetryHub.SetScaleFactor receiver", t), newFactor)
 	if code != 0 {
 		return errorForCode(code)
 	}
@@ -204,12 +204,12 @@ func (t *TelemetryHub) Offset() float64 {
 // SetOffset invokes the bound Zig TelemetryHub.setOffset operation.
 // It panics with *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
-func (t *TelemetryHub) SetOffset(new_offset float64) error {
+func (t *TelemetryHub) SetOffset(newOffset float64) error {
 	if t != nil {
 		t.mu.RLock()
 		defer t.mu.RUnlock()
 	}
-	code := raw.TelemetryHubSetOffset(zigoMustPointer("TelemetryHub.SetOffset receiver", t), new_offset)
+	code := raw.TelemetryHubSetOffset(zigoMustPointer("TelemetryHub.SetOffset receiver", t), newOffset)
 	if code != 0 {
 		return errorForCode(code)
 	}

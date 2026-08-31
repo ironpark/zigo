@@ -12,6 +12,6 @@ import "C"
 func zigoRawLastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
 // zigoRawStatusCode calls the generated C ABI wrapper for zg_status_code.
-func zigoRawStatusCode(retry_count uint32) uint32 {
-	return uint32(C.zg_status_code(C.uint32_t(retry_count)))
+func zigoRawStatusCode(retryCount uint32) uint32 {
+	return uint32(C.zg_status_code(C.uint32_t(retryCount)))
 }

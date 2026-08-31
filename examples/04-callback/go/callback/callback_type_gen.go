@@ -11,8 +11,8 @@ import (
 // CallbackContextCallback is the Go callback signature accepted by the generated binding.
 type CallbackContextCallback func(int32) int32
 
-// ApplyCallbackCallback is the Go callback signature accepted by the generated binding.
-type ApplyCallbackCallback func(int32) int32
+// ApplyCallback is the Go callback signature accepted by the generated binding.
+type ApplyCallback func(int32) int32
 
 // CallbackContext is a caller-owned native handle. Call Close when it is no longer needed.
 type CallbackContext struct {
@@ -25,42 +25,42 @@ type CallbackContext struct {
 // CallbackContextRef is a borrowed CallbackContext reference that remains valid only while its parent is open.
 type CallbackContextRef struct {
 	ptr    unsafe.Pointer
-	parent any
+	parent zigoHandle
 }
 
-func (value *CallbackContext) zigoPointer() unsafe.Pointer {
-	if value == nil {
+func (c *CallbackContext) zigoPointer() unsafe.Pointer {
+	if c == nil {
 		return nil
 	}
-	return value.ptr
+	return c.ptr
 }
 
-func (value *CallbackContextRef) zigoPointer() unsafe.Pointer {
-	if value == nil || value.ptr == nil {
+func (c *CallbackContextRef) zigoPointer() unsafe.Pointer {
+	if c == nil || c.ptr == nil {
 		return nil
 	}
-	if parent, ok := value.parent.(interface{ zigoPointer() unsafe.Pointer }); ok && parent.zigoPointer() == nil {
+	if parent := c.parent; parent != nil && parent.zigoPointer() == nil {
 		return nil
 	}
-	return value.ptr
+	return c.ptr
 }
 
 // Close releases the native CallbackContext resources. It is safe to call more than once.
-func (value *CallbackContext) Close() {
-	if value == nil {
+func (c *CallbackContext) Close() {
+	if c == nil {
 		return
 	}
-	value.once.Do(func() {
-		value.mu.Lock()
-		defer value.mu.Unlock()
-		if value.ptr != nil {
-			raw.CallbackContextDeinit(value.ptr)
-			value.ptr = nil
+	c.once.Do(func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		if c.ptr != nil {
+			raw.CallbackContextDeinit(c.ptr)
+			c.ptr = nil
 		}
-		for _, handle := range value.callbackHandles {
+		for _, handle := range c.callbackHandles {
 			deleteCallbackHandle(handle)
 		}
-		value.callbackHandles = nil
+		c.callbackHandles = nil
 	})
 }
 
@@ -75,42 +75,42 @@ type FloatBuffer struct {
 // FloatBufferRef is a borrowed FloatBuffer reference that remains valid only while its parent is open.
 type FloatBufferRef struct {
 	ptr    unsafe.Pointer
-	parent any
+	parent zigoHandle
 }
 
-func (value *FloatBuffer) zigoPointer() unsafe.Pointer {
-	if value == nil {
+func (f *FloatBuffer) zigoPointer() unsafe.Pointer {
+	if f == nil {
 		return nil
 	}
-	return value.ptr
+	return f.ptr
 }
 
-func (value *FloatBufferRef) zigoPointer() unsafe.Pointer {
-	if value == nil || value.ptr == nil {
+func (f *FloatBufferRef) zigoPointer() unsafe.Pointer {
+	if f == nil || f.ptr == nil {
 		return nil
 	}
-	if parent, ok := value.parent.(interface{ zigoPointer() unsafe.Pointer }); ok && parent.zigoPointer() == nil {
+	if parent := f.parent; parent != nil && parent.zigoPointer() == nil {
 		return nil
 	}
-	return value.ptr
+	return f.ptr
 }
 
 // Close releases the native FloatBuffer resources. It is safe to call more than once.
-func (value *FloatBuffer) Close() {
-	if value == nil {
+func (f *FloatBuffer) Close() {
+	if f == nil {
 		return
 	}
-	value.once.Do(func() {
-		value.mu.Lock()
-		defer value.mu.Unlock()
-		if value.ptr != nil {
-			raw.FloatBufferDeinit(value.ptr)
-			value.ptr = nil
+	f.once.Do(func() {
+		f.mu.Lock()
+		defer f.mu.Unlock()
+		if f.ptr != nil {
+			raw.FloatBufferDeinit(f.ptr)
+			f.ptr = nil
 		}
-		for _, handle := range value.callbackHandles {
+		for _, handle := range f.callbackHandles {
 			deleteCallbackHandle(handle)
 		}
-		value.callbackHandles = nil
+		f.callbackHandles = nil
 	})
 }
 
@@ -125,42 +125,42 @@ type IntBuffer struct {
 // IntBufferRef is a borrowed IntBuffer reference that remains valid only while its parent is open.
 type IntBufferRef struct {
 	ptr    unsafe.Pointer
-	parent any
+	parent zigoHandle
 }
 
-func (value *IntBuffer) zigoPointer() unsafe.Pointer {
-	if value == nil {
+func (i *IntBuffer) zigoPointer() unsafe.Pointer {
+	if i == nil {
 		return nil
 	}
-	return value.ptr
+	return i.ptr
 }
 
-func (value *IntBufferRef) zigoPointer() unsafe.Pointer {
-	if value == nil || value.ptr == nil {
+func (i *IntBufferRef) zigoPointer() unsafe.Pointer {
+	if i == nil || i.ptr == nil {
 		return nil
 	}
-	if parent, ok := value.parent.(interface{ zigoPointer() unsafe.Pointer }); ok && parent.zigoPointer() == nil {
+	if parent := i.parent; parent != nil && parent.zigoPointer() == nil {
 		return nil
 	}
-	return value.ptr
+	return i.ptr
 }
 
 // Close releases the native IntBuffer resources. It is safe to call more than once.
-func (value *IntBuffer) Close() {
-	if value == nil {
+func (i *IntBuffer) Close() {
+	if i == nil {
 		return
 	}
-	value.once.Do(func() {
-		value.mu.Lock()
-		defer value.mu.Unlock()
-		if value.ptr != nil {
-			raw.IntBufferDeinit(value.ptr)
-			value.ptr = nil
+	i.once.Do(func() {
+		i.mu.Lock()
+		defer i.mu.Unlock()
+		if i.ptr != nil {
+			raw.IntBufferDeinit(i.ptr)
+			i.ptr = nil
 		}
-		for _, handle := range value.callbackHandles {
+		for _, handle := range i.callbackHandles {
 			deleteCallbackHandle(handle)
 		}
-		value.callbackHandles = nil
+		i.callbackHandles = nil
 	})
 }
 

@@ -100,42 +100,42 @@ type TelemetryHub struct {
 // TelemetryHubRef is a borrowed TelemetryHub reference that remains valid only while its parent is open.
 type TelemetryHubRef struct {
 	ptr    unsafe.Pointer
-	parent any
+	parent zigoHandle
 }
 
-func (value *TelemetryHub) zigoPointer() unsafe.Pointer {
-	if value == nil {
+func (t *TelemetryHub) zigoPointer() unsafe.Pointer {
+	if t == nil {
 		return nil
 	}
-	return value.ptr
+	return t.ptr
 }
 
-func (value *TelemetryHubRef) zigoPointer() unsafe.Pointer {
-	if value == nil || value.ptr == nil {
+func (t *TelemetryHubRef) zigoPointer() unsafe.Pointer {
+	if t == nil || t.ptr == nil {
 		return nil
 	}
-	if parent, ok := value.parent.(interface{ zigoPointer() unsafe.Pointer }); ok && parent.zigoPointer() == nil {
+	if parent := t.parent; parent != nil && parent.zigoPointer() == nil {
 		return nil
 	}
-	return value.ptr
+	return t.ptr
 }
 
 // Close releases the native TelemetryHub resources. It is safe to call more than once.
-func (value *TelemetryHub) Close() {
-	if value == nil {
+func (t *TelemetryHub) Close() {
+	if t == nil {
 		return
 	}
-	value.once.Do(func() {
-		value.mu.Lock()
-		defer value.mu.Unlock()
-		if value.ptr != nil {
-			raw.TelemetryHubDeinit(value.ptr)
-			value.ptr = nil
+	t.once.Do(func() {
+		t.mu.Lock()
+		defer t.mu.Unlock()
+		if t.ptr != nil {
+			raw.TelemetryHubDeinit(t.ptr)
+			t.ptr = nil
 		}
-		for _, handle := range value.callbackHandles {
+		for _, handle := range t.callbackHandles {
 			deleteCallbackHandle(handle)
 		}
-		value.callbackHandles = nil
+		t.callbackHandles = nil
 	})
 }
 

@@ -130,6 +130,6 @@ func LiveBytes() uint {
 }
 
 // CompressionBound invokes the bound Zig compressionBound operation.
-func CompressionBound(source_len uint) uint {
-	return raw.CompressionBound(source_len)
+func CompressionBound(sourceLen uint) uint {
+	return raw.CompressionBound(sourceLen)
 }

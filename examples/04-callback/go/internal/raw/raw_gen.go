@@ -103,8 +103,8 @@ func PanicNow() int32 {
 }
 
 // CompressionBound calls the generated C ABI wrapper for zg_compression_bound.
-func CompressionBound(source_len uint) uint {
-	return uint(C.zg_compression_bound(C.size_t(source_len)))
+func CompressionBound(sourceLen uint) uint {
+	return uint(C.zg_compression_bound(C.size_t(sourceLen)))
 }
 
 // Apply calls the generated C ABI wrapper for zg_apply.

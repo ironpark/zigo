@@ -117,3 +117,95 @@ test "library path environment names are derived from the Go package" {
     defer std.testing.allocator.free(name);
     try std.testing.expectEqualStrings("ZIGO_EVENT_QUEUE_LIBRARY_PATH", name);
 }
+
+/// Names the generated Go bodies introduce, which a parameter must not shadow.
+const reserved_locals = [_][]const u8{
+    "code",           "result", "outResult", "outResultPtr",
+    "outResultLen",   "self",   "err",       "handle",
+    "callbackHandle",
+};
+
+pub fn isGoKeyword(value: []const u8) bool {
+    const keywords = [_][]const u8{
+        "break",    "default",     "func",   "interface", "select",
+        "case",     "defer",       "go",     "map",       "struct",
+        "chan",     "else",        "goto",   "package",   "switch",
+        "const",    "fallthrough", "if",     "range",     "type",
+        "continue", "for",         "import", "return",    "var",
+    };
+    for (keywords) |keyword| if (std.mem.eql(u8, value, keyword)) return true;
+    return false;
+}
+
+/// Rejects a name that cannot be a Go package identifier.
+pub fn validateGoPackageName(name: []const u8) error{InvalidGoPackageName}!void {
+    if (!isGoIdentifier(name)) return error.InvalidGoPackageName;
+}
+
+pub fn isGoIdentifier(value: []const u8) bool {
+    if (value.len == 0 or std.mem.eql(u8, value, "_") or isGoKeyword(value) or
+        !(std.ascii.isAlphabetic(value[0]) or value[0] == '_')) return false;
+    for (value[1..]) |character| if (!(std.ascii.isAlphanumeric(character) or character == '_')) return false;
+    return true;
+}
+
+/// Public Go names for one signature's parameters. Zig spells parameters in
+/// snake_case, so they are camelCased, then escaped when the result is a Go
+/// keyword, shadows a generated local, or repeats an earlier parameter.
+pub fn goParamNamesAlloc(allocator: std.mem.Allocator, zig_names: []const []const u8) ![][]u8 {
+    var names: std.ArrayList([]u8) = .empty;
+    errdefer {
+        for (names.items) |name| allocator.free(name);
+        names.deinit(allocator);
+    }
+    for (zig_names) |zig_name| {
+        var candidate = try camelAlloc(allocator, zig_name);
+        if (isGoKeyword(candidate) or isReservedLocal(candidate)) {
+            const previous = candidate;
+            defer allocator.free(previous);
+            candidate = try std.fmt.allocPrint(allocator, "{s}_", .{previous});
+        }
+        var suffix: usize = 2;
+        while (containsName(names.items, candidate)) : (suffix += 1) {
+            const previous = candidate;
+            defer allocator.free(previous);
+            candidate = try std.fmt.allocPrint(allocator, "{s}{d}", .{ previous, suffix });
+        }
+        try names.append(allocator, candidate);
+    }
+    return names.toOwnedSlice(allocator);
+}
+
+pub fn freeParamNames(allocator: std.mem.Allocator, names: [][]u8) void {
+    for (names) |name| allocator.free(name);
+    allocator.free(names);
+}
+
+fn isReservedLocal(value: []const u8) bool {
+    for (reserved_locals) |reserved| if (std.mem.eql(u8, value, reserved)) return true;
+    return false;
+}
+
+fn containsName(names: []const []u8, value: []const u8) bool {
+    for (names) |name| if (std.mem.eql(u8, name, value)) return true;
+    return false;
+}
+
+test "Go parameter names are camelCase and escape keywords, locals and duplicates" {
+    const zig_names = [_][]const u8{ "source_len", "type", "range", "code", "result", "new_name", "newName", "p0" };
+    const names = try goParamNamesAlloc(std.testing.allocator, &zig_names);
+    defer freeParamNames(std.testing.allocator, names);
+    const expected = [_][]const u8{ "sourceLen", "type_", "range_", "code_", "result_", "newName", "newName2", "p0" };
+    for (expected, names) |want, got| try std.testing.expectEqualStrings(want, got);
+}
+
+test "Go package names reject keywords and non-identifiers" {
+    try validateGoPackageName("native_api");
+    try std.testing.expectError(error.InvalidGoPackageName, validateGoPackageName("type"));
+    try std.testing.expectError(error.InvalidGoPackageName, validateGoPackageName("123"));
+}
+
+test "Go identifier and keyword checks cover boundaries" {
+    for ([_][]const u8{ "raw", "native_api", "_private", "x9" }) |name| try std.testing.expect(isGoIdentifier(name));
+    for ([_][]const u8{ "", "_", "type", "9raw", "raw-name" }) |name| try std.testing.expect(!isGoIdentifier(name));
+}

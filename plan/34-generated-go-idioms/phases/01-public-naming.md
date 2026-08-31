@@ -2,7 +2,7 @@
 depends_on:
 - "34-generated-go-idioms#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Generated signatures use camelCase parameters, keyword-named Zig parameters compile, one receiver
 > NEXT: none

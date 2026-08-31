@@ -418,8 +418,8 @@ func PanicNow() int32 {
 }
 
 // CompressionBound calls the generated purego ABI wrapper for zg_compression_bound.
-func CompressionBound(source_len uint) uint {
-	result := bindings().fnCompressionBound(uintptr(source_len))
+func CompressionBound(sourceLen uint) uint {
+	result := bindings().fnCompressionBound(uintptr(sourceLen))
 	return uint(result)
 }
 

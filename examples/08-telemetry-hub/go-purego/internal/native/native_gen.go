@@ -618,23 +618,23 @@ func LastErrorMessage() string {
 }
 
 // TelemetryHubCreate calls the generated purego ABI wrapper for zg_telemetry_hub_create_purego_v1.
-func TelemetryHubCreate(input_name []uint8, max_samples uint, initial_mode uint32, overflow_policy uint32, observerCallback, observerToken uintptr) (unsafe.Pointer, int32) {
-	var input_namePtr unsafe.Pointer
-	if len(input_name) != 0 {
-		input_namePtr = unsafe.Pointer(&input_name[0])
+func TelemetryHubCreate(inputName []uint8, maxSamples uint, initialMode uint32, overflowPolicy uint32, observerCallback, observerToken uintptr) (unsafe.Pointer, int32) {
+	var inputNamePtr unsafe.Pointer
+	if len(inputName) != 0 {
+		inputNamePtr = unsafe.Pointer(&inputName[0])
 	}
 	var outResult unsafe.Pointer
-	code := bindings().fnTelemetryHubCreate(input_namePtr, uintptr(len(input_name)), uintptr(max_samples), initial_mode, overflow_policy, observerCallback, observerToken, &outResult)
+	code := bindings().fnTelemetryHubCreate(inputNamePtr, uintptr(len(inputName)), uintptr(maxSamples), initialMode, overflowPolicy, observerCallback, observerToken, &outResult)
 	return outResult, code
 }
 
 // TelemetryHubRename calls the generated purego ABI wrapper for zg_telemetry_hub_rename.
-func TelemetryHubRename(self unsafe.Pointer, new_name []uint8) int32 {
-	var new_namePtr unsafe.Pointer
-	if len(new_name) != 0 {
-		new_namePtr = unsafe.Pointer(&new_name[0])
+func TelemetryHubRename(self unsafe.Pointer, newName []uint8) int32 {
+	var newNamePtr unsafe.Pointer
+	if len(newName) != 0 {
+		newNamePtr = unsafe.Pointer(&newName[0])
 	}
-	code := bindings().fnTelemetryHubRename(self, new_namePtr, uintptr(len(new_name)))
+	code := bindings().fnTelemetryHubRename(self, newNamePtr, uintptr(len(newName)))
 	return code
 }
 
@@ -680,8 +680,8 @@ func TelemetryHubMode(self unsafe.Pointer) uint32 {
 }
 
 // TelemetryHubSetMode calls the generated purego ABI wrapper for zg_telemetry_hub_set_mode.
-func TelemetryHubSetMode(self unsafe.Pointer, new_mode uint32) uint32 {
-	result := bindings().fnTelemetryHubSetMode(self, new_mode)
+func TelemetryHubSetMode(self unsafe.Pointer, newMode uint32) uint32 {
+	result := bindings().fnTelemetryHubSetMode(self, newMode)
 	return uint32(result)
 }
 
@@ -692,8 +692,8 @@ func TelemetryHubOverflowPolicy(self unsafe.Pointer) uint32 {
 }
 
 // TelemetryHubSetOverflowPolicy calls the generated purego ABI wrapper for zg_telemetry_hub_set_overflow_policy.
-func TelemetryHubSetOverflowPolicy(self unsafe.Pointer, new_policy uint32) uint32 {
-	result := bindings().fnTelemetryHubSetOverflowPolicy(self, new_policy)
+func TelemetryHubSetOverflowPolicy(self unsafe.Pointer, newPolicy uint32) uint32 {
+	result := bindings().fnTelemetryHubSetOverflowPolicy(self, newPolicy)
 	return uint32(result)
 }
 
@@ -704,8 +704,8 @@ func TelemetryHubEnabled(self unsafe.Pointer) uint8 {
 }
 
 // TelemetryHubSetEnabled calls the generated purego ABI wrapper for zg_telemetry_hub_set_enabled.
-func TelemetryHubSetEnabled(self unsafe.Pointer, new_enabled uint8) uint8 {
-	result := bindings().fnTelemetryHubSetEnabled(self, new_enabled)
+func TelemetryHubSetEnabled(self unsafe.Pointer, newEnabled uint8) uint8 {
+	result := bindings().fnTelemetryHubSetEnabled(self, newEnabled)
 	return uint8(result)
 }
 
@@ -716,8 +716,8 @@ func TelemetryHubThreshold(self unsafe.Pointer) float64 {
 }
 
 // TelemetryHubSetThreshold calls the generated purego ABI wrapper for zg_telemetry_hub_set_threshold.
-func TelemetryHubSetThreshold(self unsafe.Pointer, new_threshold float64) int32 {
-	code := bindings().fnTelemetryHubSetThreshold(self, new_threshold)
+func TelemetryHubSetThreshold(self unsafe.Pointer, newThreshold float64) int32 {
+	code := bindings().fnTelemetryHubSetThreshold(self, newThreshold)
 	return code
 }
 
@@ -728,8 +728,8 @@ func TelemetryHubScaleFactor(self unsafe.Pointer) float64 {
 }
 
 // TelemetryHubSetScaleFactor calls the generated purego ABI wrapper for zg_telemetry_hub_set_scale_factor.
-func TelemetryHubSetScaleFactor(self unsafe.Pointer, new_factor float64) int32 {
-	code := bindings().fnTelemetryHubSetScaleFactor(self, new_factor)
+func TelemetryHubSetScaleFactor(self unsafe.Pointer, newFactor float64) int32 {
+	code := bindings().fnTelemetryHubSetScaleFactor(self, newFactor)
 	return code
 }
 
@@ -740,8 +740,8 @@ func TelemetryHubOffset(self unsafe.Pointer) float64 {
 }
 
 // TelemetryHubSetOffset calls the generated purego ABI wrapper for zg_telemetry_hub_set_offset.
-func TelemetryHubSetOffset(self unsafe.Pointer, new_offset float64) int32 {
-	code := bindings().fnTelemetryHubSetOffset(self, new_offset)
+func TelemetryHubSetOffset(self unsafe.Pointer, newOffset float64) int32 {
+	code := bindings().fnTelemetryHubSetOffset(self, newOffset)
 	return code
 }
 

@@ -99,13 +99,13 @@ func PanicNow() error {
 }
 
 // CompressionBound invokes the bound Zig compressionBound operation.
-func CompressionBound(source_len uint) uint {
-	return raw.CompressionBound(source_len)
+func CompressionBound(sourceLen uint) uint {
+	return raw.CompressionBound(sourceLen)
 }
 
 // Apply invokes the bound Zig apply operation.
-func Apply(value int32, callback ApplyCallbackCallback) int32 {
-	callbackHandle := newApplyCallbackCallbackHandle(callback)
+func Apply(value int32, callback ApplyCallback) int32 {
+	callbackHandle := newApplyCallbackHandle(callback)
 	defer deleteCallbackHandle(callbackHandle)
 	return raw.Apply(value, uintptr(callbackHandle))
 }
