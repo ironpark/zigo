@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T09:47:58Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 적격/부적격 semantic 픽스처가 각각 통과와 진단 스냅샷으로 고정된다.
 > NEXT: none

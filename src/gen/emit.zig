@@ -169,6 +169,66 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         try writer.writeAll("}\n");
     }
     try renderTaggedUnionShim(writer, program);
+    try renderTaggedUnionSnapshotShim(allocator, writer, program);
+}
+
+/// The snapshot struct is zigo's own `extern struct`, never the Zig union's
+/// layout: the shim reads the active variant and copies it in.
+fn renderTaggedUnionSnapshotShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
+    for (program.snapshots) |snapshot| {
+        try writer.print("\nconst {s} = extern struct {{\n", .{snapshot.type_name});
+        for (snapshot.fields) |field| {
+            try writer.print("    {s}: ", .{field.name});
+            if (field.kind == .padding) {
+                try writer.print("[{d}]u8", .{field.bytes});
+            } else {
+                try writeZigType(writer, field.scalar);
+            }
+            try writer.writeAll(",\n");
+        }
+        try writer.writeAll("};\n");
+        try writer.print(
+            "comptime {{\n    std.debug.assert(@sizeOf({0s}) == {1d});\n    std.debug.assert(@alignOf({0s}) == {2d});\n}}\n",
+            .{ snapshot.type_name, snapshot.size, snapshot.alignment },
+        );
+        try writer.print("export fn {s}_impl(", .{snapshot.symbol});
+        for (snapshot.params, 0..) |parameter, index| {
+            if (index != 0) try writer.writeAll(", ");
+            try writer.print("{s}: ", .{parameter.name});
+            try writeZigType(writer, parameter.scalar);
+        }
+        try writer.writeAll(") ");
+        try writeZigType(writer, snapshot.ret);
+        try writer.print(
+            " {{\n    out_snapshot.* = std.mem.zeroes({s});\n    out_snapshot.tag = @intFromEnum(std.meta.activeTag(self.*));\n    switch (self.*) {{\n",
+            .{snapshot.type_name},
+        );
+        for (snapshot.owner.fields) |field| {
+            const payload = field.type.?;
+            if (payload == .void) {
+                try writer.print("        .{s} => {{}},\n", .{field.name});
+                continue;
+            }
+            const member = snapshotMember(snapshot, field.name).?;
+            try writer.print("        .{s} => |value| out_snapshot.{s} = ", .{ field.name, member.name });
+            switch (payload) {
+                .@"enum" => try writer.writeAll("@intFromEnum(value)"),
+                .bool => try writer.writeAll("@intFromBool(value)"),
+                else => try writer.writeAll("value"),
+            }
+            try writer.writeAll(",\n");
+        }
+        try writer.writeAll("    }\n    return 1;\n}\n");
+        _ = allocator;
+    }
+}
+
+fn snapshotMember(snapshot: abi.AbiSnapshot, variant: []const u8) ?abi.AbiSnapshot.Field {
+    for (snapshot.fields) |field| {
+        const source = field.source orelse continue;
+        if (std.mem.eql(u8, source.name, variant)) return field;
+    }
+    return null;
 }
 
 fn renderTaggedUnionShim(writer: *std.Io.Writer, program: abi.Program) !void {
@@ -213,7 +273,7 @@ fn renderPanicSource(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
         "#include <stdint.h>\n" ++
         "#include <stdlib.h>\n" ++
         "#include <string.h>\n");
-    if (program.projections.len != 0) {
+    if (program.projections.len != 0 or program.snapshots.len != 0) {
         try writer.print("#include \"zigo_{s}.h\"\n\n", .{package});
     } else {
         try writer.writeByte('\n');
@@ -273,6 +333,25 @@ fn renderPanicSource(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
         try writer.writeAll("    zg_panic_active = 1;\n    if (setjmp(zg_panic_env) != 0) {\n        zg_panic_active = 0;\n        return 3;\n    }\n    uint8_t result = ");
         try writer.print("{s}_impl(", .{projection.symbol});
         for (projection.params, 0..) |parameter, index| {
+            if (index != 0) try writer.writeAll(", ");
+            try writer.writeAll(parameter.name);
+        }
+        try writer.writeAll(");\n    zg_panic_active = 0;\n    return result;\n}\n");
+    }
+    for (program.snapshots) |snapshot| {
+        try writer.writeByte('\n');
+        try writeCSnapshotDeclaration(allocator, writer, program, snapshot, true);
+        try writer.writeAll(";\n");
+        try writeCSnapshotDeclaration(allocator, writer, program, snapshot, false);
+        try writer.writeAll(" {\n    if (");
+        for (snapshot.params, 0..) |parameter, index| {
+            if (index != 0) try writer.writeAll(" || ");
+            try writer.print("{s} == NULL", .{parameter.name});
+        }
+        try writer.writeAll(") return 2;\n");
+        try writer.writeAll("    zg_panic_active = 1;\n    if (setjmp(zg_panic_env) != 0) {\n        zg_panic_active = 0;\n        return 3;\n    }\n    uint8_t result = ");
+        try writer.print("{s}_impl(", .{snapshot.symbol});
+        for (snapshot.params, 0..) |parameter, index| {
             if (index != 0) try writer.writeAll(", ");
             try writer.writeAll(parameter.name);
         }
@@ -383,6 +462,7 @@ fn renderHeader(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         }
         try writer.writeByte('\n');
     }
+    try renderSnapshotTypes(allocator, writer, program);
     for (program.functions) |function| {
         try writeCType(writer, function.ret);
         try writer.print(" {s}(", .{function.symbol});
@@ -403,6 +483,53 @@ fn renderTaggedUnionHeader(allocator: std.mem.Allocator, writer: *std.Io.Writer,
         try writeCProjectionDeclaration(allocator, writer, program, projection, false);
         try writer.writeAll(";\n");
     }
+    for (program.snapshots) |snapshot| {
+        try writeCSnapshotDeclaration(allocator, writer, program, snapshot, false);
+        try writer.writeAll(";\n");
+    }
+}
+
+/// The value snapshot struct as C sees it. Padding is spelled out so the Zig
+/// shim and both Go backends can reproduce the layout without guessing.
+fn renderSnapshotTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
+    for (program.snapshots) |snapshot| {
+        try writer.print("typedef struct {s} {{\n", .{snapshot.type_name});
+        for (snapshot.fields) |field| {
+            try writer.writeAll("    ");
+            try writeSnapshotCMemberType(allocator, writer, program, field);
+            if (field.kind == .padding) {
+                try writer.print(" {s}[{d}];\n", .{ field.name, field.bytes });
+            } else {
+                try writer.print(" {s};\n", .{field.name});
+            }
+        }
+        try writer.print("}} {s};\n\n", .{snapshot.type_name});
+    }
+}
+
+fn writeSnapshotCMemberType(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, field: abi.AbiSnapshot.Field) !void {
+    if (field.node) |node| if (node == .@"enum") {
+        const enum_name = try naming.snakeAlloc(allocator, node.@"enum".ref);
+        defer allocator.free(enum_name);
+        return writer.print("{s}_{s}", .{ program.prefix, enum_name });
+    };
+    try writeCType(writer, field.scalar);
+}
+
+fn writeCSnapshotDeclaration(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    snapshot: abi.AbiSnapshot,
+    implementation: bool,
+) !void {
+    try writeCType(writer, snapshot.ret);
+    try writer.print(" {s}{s}(", .{ snapshot.symbol, if (implementation) "_impl" else "" });
+    for (snapshot.params, 0..) |parameter, index| {
+        if (index != 0) try writer.writeAll(", ");
+        try writeUnionCParam(allocator, writer, program, snapshot.owner.name, parameter);
+    }
+    try writer.writeByte(')');
 }
 
 fn writeCProjectionDeclaration(
@@ -422,8 +549,12 @@ fn writeCProjectionDeclaration(
 }
 
 fn writeProjectionCParam(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, projection: abi.AbiProjection, parameter: abi.AbiParam) !void {
+    try writeUnionCParam(allocator, writer, program, projection.owner.name, parameter);
+}
+
+fn writeUnionCParam(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, owner: []const u8, parameter: abi.AbiParam) !void {
     if (parameter.role == .receiver) {
-        const union_name = try naming.snakeAlloc(allocator, projection.owner.name);
+        const union_name = try naming.snakeAlloc(allocator, owner);
         defer allocator.free(union_name);
         try writer.print("const {s}_{s} *{s}", .{ program.prefix, union_name, parameter.name });
         return;
@@ -1112,14 +1243,19 @@ fn writePuregoAbiType(writer: *std.Io.Writer, scalar: abi.AbiScalar) !void {
         .unsigned_int => |bits| try writer.print("uint{d}", .{bits}),
         .float => |bits| try writer.print("float{d}", .{bits}),
         .@"opaque" => try writer.writeAll("byte"),
+        .snapshot => try writer.writeAll("unsafe.Pointer"),
         .pointer => |pointer| {
-            if (pointer.is_many or pointer.child.* == .@"opaque") return writer.writeAll("unsafe.Pointer");
+            // The snapshot struct crosses as a raw address; purego never needs
+            // to know its Go spelling.
+            if (pointer.is_many or pointer.child.* == .@"opaque" or pointer.child.* == .snapshot)
+                return writer.writeAll("unsafe.Pointer");
             try writer.writeByte('*');
             try writePuregoAbiType(writer, pointer.child.*);
         },
         .callback => try writer.writeAll("uintptr"),
     }
 }
+
 
 fn renderRawTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     for (program.projections) |projection| {
@@ -2187,6 +2323,7 @@ fn writeZigType(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
         .unsigned_int => |bits| try writer.print("u{d}", .{bits}),
         .float => |bits| try writer.print("f{d}", .{bits}),
         .@"opaque" => |name| try writer.print("target.{s}", .{name}),
+        .snapshot => |name| try writer.writeAll(name),
         .pointer => |pointer| {
             try writer.writeAll(if (pointer.is_many) "[*c]" else "*");
             if (pointer.is_const) try writer.writeAll("const ");
@@ -2214,6 +2351,7 @@ fn writeCType(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
         .unsigned_int => |bits| try writer.print("uint{d}_t", .{bits}),
         .float => |bits| try writer.writeAll(if (bits == 32) "float" else "double"),
         .@"opaque" => try writer.writeAll("void"),
+        .snapshot => |name| try writer.writeAll(name),
         .pointer => |pointer| {
             if (pointer.is_const) try writer.writeAll("const ");
             try writeCType(writer, pointer.child.*);
@@ -2250,6 +2388,7 @@ fn writeCgoType(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
         .unsigned_int => |bits| try writer.print("uint{d}_t", .{bits}),
         .float => |bits| try writer.writeAll(if (bits == 32) "float" else "double"),
         .@"opaque" => try writer.writeAll("void"),
+        .snapshot => |name| try writer.writeAll(name),
         .pointer => unreachable,
         .callback => unreachable,
     }

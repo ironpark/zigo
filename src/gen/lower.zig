@@ -140,6 +140,7 @@ pub fn semanticDocumentForBackend(
         };
     }
     const projections = try lowerTaggedUnionProjections(allocator, document, prefix);
+    const snapshots = try lowerTaggedUnionSnapshots(allocator, document, prefix);
     return .{
         .backend = backend,
         .callback_convention = if (backend == .purego) .function_pointer_userdata_v1 else .fixed_go_export,
@@ -149,6 +150,7 @@ pub fn semanticDocumentForBackend(
         .package = package,
         .prefix = prefix,
         .projections = projections,
+        .snapshots = snapshots,
         .types = document.types,
     };
 }
@@ -220,6 +222,138 @@ fn lowerTaggedUnionProjections(allocator: std.mem.Allocator, document: semantic.
         }
     }
     return projections.toOwnedSlice(allocator);
+}
+
+/// Value snapshot layout. zigo owns this struct outright: the tag comes first,
+/// payloads follow in descending width, and every gap is an explicit
+/// `reserved_<n>` member. Ordering by width means no member ever needs implicit
+/// padding, so the C, Zig and Go spellings of the struct agree by construction.
+fn lowerTaggedUnionSnapshots(allocator: std.mem.Allocator, document: semantic.Semantic, prefix: []const u8) ![]const abi.AbiSnapshot {
+    var snapshots: std.ArrayList(abi.AbiSnapshot) = .empty;
+    for (document.types) |*declaration| {
+        if (declaration.kind != .tagged_union or declaration.unionRepr() != .value_snapshot) continue;
+        const type_name = try snapshotTypeNameAlloc(allocator, prefix, declaration.name);
+        const layout = try snapshotLayout(allocator, document, declaration.*);
+
+        const receiver = try projectionReceiver(allocator, declaration.name);
+        const out_child = try allocator.create(abi.AbiScalar);
+        out_child.* = .{ .snapshot = type_name };
+        const params = try allocator.alloc(abi.AbiParam, 2);
+        params[0] = receiver;
+        params[1] = .{
+            .name = "out_snapshot",
+            .role = .payload_out,
+            .scalar = .{ .pointer = .{ .child = out_child, .is_const = false } },
+        };
+        try snapshots.append(allocator, .{
+            .owner = declaration,
+            .symbol = try snapshotSymbolAlloc(allocator, prefix, declaration.name),
+            .type_name = type_name,
+            .fields = layout.fields,
+            .size = layout.size,
+            .alignment = layout.alignment,
+            .params = params,
+            .ret = .bool_u8,
+        });
+    }
+    return snapshots.toOwnedSlice(allocator);
+}
+
+const SnapshotLayout = struct { fields: []const abi.AbiSnapshot.Field, size: usize, alignment: usize };
+
+fn snapshotLayout(allocator: std.mem.Allocator, document: semantic.Semantic, declaration: semantic.TypeDecl) !SnapshotLayout {
+    const Payload = struct { field: *const semantic.TypeField, scalar: abi.AbiScalar, bytes: usize };
+    var payloads: std.ArrayList(Payload) = .empty;
+    defer payloads.deinit(allocator);
+    for (declaration.fields) |*field| {
+        const node = field.type.?;
+        if (node == .void) continue;
+        const scalar = try lowerValue(allocator, document, node);
+        try payloads.append(allocator, .{ .field = field, .scalar = scalar, .bytes = scalarBytes(scalar) });
+    }
+    // A stable descending-width sort keeps declaration order inside each width,
+    // so the layout only ever changes when the variants themselves change.
+    std.mem.sort(Payload, payloads.items, {}, struct {
+        fn lessThan(_: void, lhs: Payload, rhs: Payload) bool {
+            return lhs.bytes > rhs.bytes;
+        }
+    }.lessThan);
+
+    const tag_scalar = try lowerValue(allocator, document, declaration.tag_type.?);
+    const tag_bytes = scalarBytes(tag_scalar);
+    var alignment = tag_bytes;
+    for (payloads.items) |payload| alignment = @max(alignment, payload.bytes);
+
+    var fields: std.ArrayList(abi.AbiSnapshot.Field) = .empty;
+    try fields.append(allocator, .{
+        .kind = .tag,
+        .name = "tag",
+        .bytes = tag_bytes,
+        .scalar = tag_scalar,
+        .node = declaration.tag_type.?,
+    });
+    var offset = tag_bytes;
+    var reserved: usize = 0;
+    if (payloads.items.len != 0) {
+        const gap = padding(offset, payloads.items[0].bytes);
+        if (gap != 0) {
+            try fields.append(allocator, try paddingField(allocator, &reserved, gap));
+            offset += gap;
+        }
+    }
+    for (payloads.items) |payload| {
+        try fields.append(allocator, .{
+            .kind = .payload,
+            .name = payload.field.name,
+            .bytes = payload.bytes,
+            .scalar = payload.scalar,
+            .node = payload.field.type.?,
+            .source = payload.field,
+        });
+        offset += payload.bytes;
+    }
+    const tail = padding(offset, alignment);
+    if (tail != 0) {
+        try fields.append(allocator, try paddingField(allocator, &reserved, tail));
+        offset += tail;
+    }
+    return .{ .fields = try fields.toOwnedSlice(allocator), .size = offset, .alignment = alignment };
+}
+
+fn paddingField(allocator: std.mem.Allocator, counter: *usize, bytes: usize) !abi.AbiSnapshot.Field {
+    const name = try std.fmt.allocPrint(allocator, "reserved_{d}", .{counter.*});
+    counter.* += 1;
+    return .{ .kind = .padding, .name = name, .bytes = bytes, .scalar = .{ .unsigned_int = 8 } };
+}
+
+fn padding(offset: usize, alignment: usize) usize {
+    if (alignment == 0) return 0;
+    const remainder = offset % alignment;
+    return if (remainder == 0) 0 else alignment - remainder;
+}
+
+/// Snapshot members are limited to the scalars the eligibility rule admits, so
+/// every width here is a power of two and equals the member's alignment.
+fn scalarBytes(scalar: abi.AbiScalar) usize {
+    return switch (scalar) {
+        .bool_u8 => 1,
+        .usize, .isize => @sizeOf(usize),
+        .signed_int, .unsigned_int => |bits| bits / 8,
+        .float => |bits| bits / 8,
+        else => unreachable,
+    };
+}
+
+fn snapshotSymbolAlloc(allocator: std.mem.Allocator, prefix: []const u8, type_name: []const u8) ![]u8 {
+    const owner = try naming.snakeAlloc(allocator, type_name);
+    defer allocator.free(owner);
+    return std.fmt.allocPrint(allocator, "{s}_{s}_snapshot", .{ prefix, owner });
+}
+
+fn snapshotTypeNameAlloc(allocator: std.mem.Allocator, prefix: []const u8, type_name: []const u8) ![]u8 {
+    const owner = try naming.snakeAlloc(allocator, type_name);
+    defer allocator.free(owner);
+    return std.fmt.allocPrint(allocator, "{s}_{s}_snapshot_t", .{ prefix, owner });
 }
 
 fn projectionReceiver(allocator: std.mem.Allocator, owner: []const u8) !abi.AbiParam {
@@ -493,4 +627,97 @@ test "mutable tagged union slice projection preserves element mutability" {
     const output_pointer = program.projections[1].params[1].scalar.pointer.child.pointer;
     try std.testing.expect(output_pointer.is_many);
     try std.testing.expect(!output_pointer.is_const);
+}
+
+test "value snapshot lowering orders payloads by width and spells out padding" {
+    const document: semantic.Semantic = .{
+        .package = "signal",
+        .prefix = "zg",
+        .types = &.{
+            .{
+                .fields = &.{
+                    .{ .name = "idle", .type = .{ .void = {} }, .value = 0 },
+                    .{ .name = "ticks", .type = .{ .int = .{ .bits = 32, .signed = false } }, .value = 1 },
+                    .{ .name = "level", .type = .{ .float = .{ .bits = 64 } }, .value = 2 },
+                    .{ .name = "mode", .type = .{ .@"enum" = .{ .ref = "Mode" } }, .value = 3 },
+                },
+                .kind = .tagged_union,
+                .name = "Signal",
+                .tag_type = .{ .@"enum" = .{ .ref = "SignalTag" } },
+                .union_repr = .value_snapshot,
+            },
+            .{
+                .fields = &.{
+                    .{ .name = "idle", .value = 0 },
+                    .{ .name = "ticks", .value = 1 },
+                    .{ .name = "level", .value = 2 },
+                    .{ .name = "mode", .value = 3 },
+                },
+                .kind = .@"enum",
+                .name = "SignalTag",
+                .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+            },
+            .{ .fields = &.{.{ .name = "idle", .value = 0 }}, .kind = .@"enum", .name = "Mode", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
+        },
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try semanticDocument(arena.allocator(), document, "signal", "zg", &.{});
+
+    try std.testing.expectEqual(@as(usize, 1), program.snapshots.len);
+    const snapshot = program.snapshots[0];
+    try std.testing.expectEqualStrings("zg_signal_snapshot", snapshot.symbol);
+    try std.testing.expectEqualStrings("zg_signal_snapshot_t", snapshot.type_name);
+    try std.testing.expectEqual(@as(usize, 24), snapshot.size);
+    try std.testing.expectEqual(@as(usize, 8), snapshot.alignment);
+
+    // tag, padding to the widest payload, then the payloads widest first.
+    const expected = [_]struct { kind: abi.AbiSnapshot.Field.Kind, name: []const u8, bytes: usize }{
+        .{ .kind = .tag, .name = "tag", .bytes = 1 },
+        .{ .kind = .padding, .name = "reserved_0", .bytes = 7 },
+        .{ .kind = .payload, .name = "level", .bytes = 8 },
+        .{ .kind = .payload, .name = "ticks", .bytes = 4 },
+        .{ .kind = .payload, .name = "mode", .bytes = 1 },
+        .{ .kind = .padding, .name = "reserved_1", .bytes = 3 },
+    };
+    try std.testing.expectEqual(expected.len, snapshot.fields.len);
+    for (expected, snapshot.fields) |want, got| {
+        try std.testing.expectEqual(want.kind, got.kind);
+        try std.testing.expectEqualStrings(want.name, got.name);
+        try std.testing.expectEqual(want.bytes, got.bytes);
+    }
+
+    // The void variant carries no payload member, and the snapshot never
+    // replaces the projections.
+    try std.testing.expectEqual(@as(usize, 4), program.projections.len);
+
+    // One call reaches the tag and every payload.
+    try std.testing.expectEqual(@as(usize, 2), snapshot.params.len);
+    try std.testing.expectEqual(abi.AbiParam.Role.receiver, snapshot.params[0].role);
+    try std.testing.expect(snapshot.params[0].scalar.pointer.is_const);
+    try std.testing.expectEqualStrings("zg_signal_snapshot_t", snapshot.params[1].scalar.pointer.child.snapshot);
+    try std.testing.expect(snapshot.ret == .bool_u8);
+}
+
+test "the projection representation lowers no snapshot" {
+    const document: semantic.Semantic = .{
+        .package = "signal",
+        .prefix = "zg",
+        .types = &.{
+            .{
+                .fields = &.{.{ .name = "ticks", .type = .{ .int = .{ .bits = 32, .signed = false } }, .value = 0 }},
+                .kind = .tagged_union,
+                .name = "Signal",
+                .tag_type = .{ .@"enum" = .{ .ref = "SignalTag" } },
+            },
+            .{ .fields = &.{.{ .name = "ticks", .value = 0 }}, .kind = .@"enum", .name = "SignalTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
+        },
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try semanticDocument(arena.allocator(), document, "signal", "zg", &.{});
+    try std.testing.expectEqual(@as(usize, 0), program.snapshots.len);
+    try std.testing.expectEqual(@as(usize, 2), program.projections.len);
 }
