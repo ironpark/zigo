@@ -31,16 +31,7 @@ pub fn reflect(
                     .zig_path = @typeName(T),
                 }),
                 .value => switch (info) {
-                    .@"struct" => |struct_info| try types.append(allocator, .{
-                        .kind = .value_struct,
-                        .layout = switch (struct_info.layout) {
-                            .@"extern" => .@"extern",
-                            .@"packed" => .@"packed",
-                            .auto => null,
-                        },
-                        .name = type_name,
-                        .zig_path = @typeName(T),
-                    }),
+                    .@"struct" => try appendValueStruct(allocator, &types, T, type_name),
                     else => @compileError("zigo value type entries must name a struct"),
                 },
                 .tagged_union, .tagged_union_value => switch (info) {
@@ -354,7 +345,7 @@ fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayLis
             }
             break :blk .{ .@"enum" = .{ .ref = name } };
         },
-        .@"struct" => |info| blk: {
+        .@"struct" => blk: {
             const name = shortTypeName(@typeName(T));
             var exists = false;
             for (types.items) |declaration| {
@@ -363,16 +354,7 @@ fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayLis
                     break;
                 }
             }
-            if (!exists) try types.append(allocator, .{
-                .kind = .value_struct,
-                .layout = switch (info.layout) {
-                    .@"extern" => .@"extern",
-                    .@"packed" => .@"packed",
-                    .auto => null,
-                },
-                .name = name,
-                .zig_path = @typeName(T),
-            });
+            if (!exists) try appendValueStruct(allocator, types, T, name);
             break :blk .{ .value_struct = .{ .ref = name } };
         },
         .@"union" => blk: {
@@ -442,6 +424,39 @@ fn opaqueNameForPath(types: []const semantic.TypeDecl, path: []const u8) ?[]cons
 
 fn isHandleRepr(comptime repr: anytype) bool {
     return repr == .@"opaque" or repr == .tagged_union or repr == .tagged_union_value;
+}
+
+/// A value struct carries its field types into the IR. Validation needs them
+/// to decide whether the struct can cross the C ABI, and lowering needs them
+/// to mirror the struct in the C header.
+fn appendValueStruct(
+    allocator: std.mem.Allocator,
+    types: *std.ArrayList(semantic.TypeDecl),
+    comptime T: type,
+    name: []const u8,
+) !void {
+    const info = @typeInfo(T).@"struct";
+    const index = types.items.len;
+    try types.append(allocator, .{
+        .kind = .value_struct,
+        .layout = switch (info.layout) {
+            .@"extern" => .@"extern",
+            .@"packed" => .@"packed",
+            .auto => null,
+        },
+        .name = name,
+        .zig_path = @typeName(T),
+    });
+    // Reflecting a field can append further types, so the declaration is
+    // updated by index rather than through a held pointer.
+    const fields = try allocator.alloc(semantic.TypeField, info.fields.len);
+    inline for (info.fields, 0..) |field, field_index| {
+        fields[field_index] = .{
+            .name = field.name,
+            .type = try typeNode(allocator, field.type, types),
+        };
+    }
+    types.items[index].fields = fields;
 }
 
 fn appendTaggedUnion(

@@ -383,7 +383,9 @@ fn lowerValue(allocator: std.mem.Allocator, document: semantic.Semantic, node: s
             child.* = .{ .@"opaque" = value.ref };
             break :blk .{ .pointer = .{ .child = child, .is_const = value.@"const" } };
         },
-        else => unreachable,
+        // Validation rejects every node that cannot be lowered, so this is a
+        // backstop against a malformed document rather than a reachable path.
+        else => error.UnsupportedType,
     };
 }
 

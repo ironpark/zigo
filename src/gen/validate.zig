@@ -45,6 +45,13 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .site = .{ .path = "semantic.json", .declaration = function.name },
                 .hint = "declare it as `extern struct`, or expose it as opaque",
             };
+            if (nestedValueStruct(parameter.type)) return .{
+                .severity = .@"error",
+                .code = "ZIGO013",
+                .message = "extern struct is only supported as a whole parameter or return value",
+                .site = .{ .path = "semantic.json", .declaration = function.name },
+                .hint = "pass the struct on its own instead of inside a slice, optional, or callback signature",
+            };
             if (containsNonCFunctionPointer(parameter.type)) return .{
                 .severity = .@"error",
                 .code = "ZIGO004",
@@ -81,6 +88,13 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .site = .{ .path = "semantic.json", .declaration = function.name },
             .hint = "declare it as `extern struct`, or expose it as opaque",
         };
+        if (nestedValueStruct(function.@"return")) return .{
+            .severity = .@"error",
+            .code = "ZIGO013",
+            .message = "extern struct is only supported as a whole parameter or return value",
+            .site = .{ .path = "semantic.json", .declaration = function.name },
+            .hint = "pass the struct on its own instead of inside a slice, optional, or callback signature",
+        };
         if (containsNonCFunctionPointer(function.@"return")) return .{
             .severity = .@"error",
             .code = "ZIGO004",
@@ -104,6 +118,15 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .site = .{ .path = "semantic.json", .declaration = declaration.name },
             .hint = "use void, scalar, enum, opaque-pointer, or numeric-slice payloads",
         };
+        if (declaration.kind == .value_struct and declaration.layout == .@"extern") {
+            if (externStructProblem(document, declaration, 0)) |site| return .{
+                .severity = .@"error",
+                .code = "ZIGO012",
+                .message = "extern struct cannot cross the C ABI",
+                .site = .{ .path = "semantic.json", .declaration = site },
+                .hint = "give every field a bool, integer, float, registered enum, or nested `extern struct` type; an empty struct has no C representation",
+            };
+        }
         if (declaration.kind == .tagged_union and declaration.unionRepr() == .value_snapshot) {
             if (snapshotIneligibleVariant(document, declaration)) |variant| return .{
                 .severity = .@"error",
@@ -263,6 +286,67 @@ fn snapshotPayloadEligible(document: semantic.Semantic, node: semantic.TypeNode)
     };
 }
 
+/// The C mirror of an `extern struct` is a flat record of C-representable
+/// members, so a field must be a scalar, a registered enum, or another
+/// eligible `extern struct`. Returns the offending field, or the struct itself
+/// when it has no fields to mirror.
+fn externStructProblem(document: semantic.Semantic, declaration: semantic.TypeDecl, depth: usize) ?[]const u8 {
+    // A well-formed document cannot nest structs cyclically, but a hand-written
+    // one can; the bound keeps validation total rather than trusting the input.
+    if (depth >= 16) return declaration.name;
+    if (declaration.fields.len == 0) return declaration.name;
+    for (declaration.fields) |field| {
+        const node = field.type orelse return field.name;
+        if (!externStructFieldEligible(document, node, depth)) return field.name;
+    }
+    return null;
+}
+
+fn externStructFieldEligible(document: semantic.Semantic, node: semantic.TypeNode, depth: usize) bool {
+    return switch (node) {
+        .bool => true,
+        .int => |value| integerSupported(value),
+        .float => |value| floatSupported(value),
+        .@"enum" => |value| hasTypeKind(document, value.ref, .@"enum"),
+        .value_struct => |value| for (document.types) |nested| {
+            if (!std.mem.eql(u8, nested.name, value.ref)) continue;
+            break nested.kind == .value_struct and nested.layout == .@"extern" and
+                externStructProblem(document, nested, depth + 1) == null;
+        } else false,
+        else => false,
+    };
+}
+
+/// True when a value struct appears anywhere other than as a whole parameter,
+/// return value, or error-union payload. Those positions lower to a pointer to
+/// the struct; a struct inside a slice or a callback signature does not.
+fn nestedValueStruct(node: semantic.TypeNode) bool {
+    return switch (node) {
+        .error_union => |value| nestedValueStruct(value.payload.*),
+        .slice => |value| containsValueStruct(value.element.*),
+        .optional => |value| containsValueStruct(value.child.*),
+        .callback => |value| blk: {
+            for (value.params) |parameter| if (containsValueStruct(parameter)) break :blk true;
+            break :blk containsValueStruct(value.@"return".*);
+        },
+        else => false,
+    };
+}
+
+fn containsValueStruct(node: semantic.TypeNode) bool {
+    return switch (node) {
+        .value_struct => true,
+        .slice => |value| containsValueStruct(value.element.*),
+        .optional => |value| containsValueStruct(value.child.*),
+        .error_union => |value| containsValueStruct(value.payload.*),
+        .callback => |value| blk: {
+            for (value.params) |parameter| if (containsValueStruct(parameter)) break :blk true;
+            break :blk containsValueStruct(value.@"return".*);
+        },
+        else => false,
+    };
+}
+
 fn integerSupported(value: semantic.Int) bool {
     if (value.is_usize) return value.bits != 0 and value.bits <= 64;
     return value.bits == 8 or value.bits == 16 or value.bits == 32 or value.bits == 64;
@@ -417,7 +501,9 @@ fn unsupportedValueStruct(document: semantic.Semantic, node: semantic.TypeNode) 
         .value_struct => |value| blk: {
             for (document.types) |declaration| {
                 if (declaration.kind == .value_struct and std.mem.eql(u8, declaration.name, value.ref)) {
-                    break :blk if (declaration.layout == null) declaration.name else null;
+                    // Only `extern` has a C layout. `packed` backing is out of
+                    // scope and is rejected with the same diagnostic.
+                    break :blk if (declaration.layout != .@"extern") declaration.name else null;
                 }
             }
             break :blk value.ref;
@@ -442,6 +528,7 @@ test "implemented diagnostic snapshots are stable" {
     var pointer_node: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Thing" } };
     var callback_return: semantic.TypeNode = .{ .void = {} };
     var sample_element: semantic.TypeNode = .{ .int = .{ .bits = 16, .signed = true } };
+    var config_element: semantic.TypeNode = .{ .value_struct = .{ .ref = "Config" } };
     const cases = [_]struct { document: semantic.Semantic, snapshot: []const u8 }{
         .{ .document = .{
             .functions = &.{.{
@@ -562,6 +649,37 @@ test "implemented diagnostic snapshots are stable" {
             },
             .zig_version = "0.16.0",
         }, .snapshot = "error[ZIGO011]: tagged union variant cannot be mirrored into a value snapshot\n  --> semantic.json (samples)\n  hint: use `.repr = .tagged_union`, or give every variant a void, bool, integer, float, or enum payload and a name other than `tag`\n" },
+        .{ .document = .{
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{.{
+                .fields = &.{
+                    .{ .name = "width", .type = .{ .int = .{ .bits = 32, .signed = true } } },
+                    .{ .name = "label", .type = .{ .slice = .{ .@"const" = true, .element = &sample_element } } },
+                },
+                .kind = .value_struct,
+                .layout = .@"extern",
+                .name = "Config",
+            }},
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO012]: extern struct cannot cross the C ABI\n  --> semantic.json (label)\n  hint: give every field a bool, integer, float, registered enum, or nested `extern struct` type; an empty struct has no C representation\n" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "visitAll",
+                .params = &.{.{ .name = "items", .type = .{ .slice = .{ .@"const" = true, .element = &config_element } } }},
+                .@"return" = .{ .void = {} },
+                .symbol = "ignored",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{.{
+                .fields = &.{.{ .name = "width", .type = .{ .int = .{ .bits = 32, .signed = true } } }},
+                .kind = .value_struct,
+                .layout = .@"extern",
+                .name = "Config",
+            }},
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO013]: extern struct is only supported as a whole parameter or return value\n  --> semantic.json (visitAll)\n  hint: pass the struct on its own instead of inside a slice, optional, or callback signature\n" },
     };
     for (cases) |case| {
         const issue = (try findIssue(std.testing.allocator, case.document)) orelse return error.MissingDiagnostic;
@@ -778,7 +896,12 @@ test "referential integrity failures are reported before lowering" {
             .prefix = "zg",
             .types = &.{
                 .{ .kind = .@"opaque", .name = "Thing" },
-                .{ .kind = .value_struct, .name = "Thing", .layout = .@"extern" },
+                .{
+                    .fields = &.{.{ .name = "width", .type = .{ .int = .{ .bits = 32, .signed = true } } }},
+                    .kind = .value_struct,
+                    .name = "Thing",
+                    .layout = .@"extern",
+                },
             },
             .zig_version = "0.16.0",
         }, .declaration = "Thing" },
@@ -970,4 +1093,92 @@ test "an opaque handle payload keeps a union out of the value snapshot represent
     var projection_document = document;
     projection_document.types = &types;
     try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(std.testing.allocator, projection_document));
+}
+
+test "an extern struct of scalars enums and nested structs passes validation" {
+    const document: semantic.Semantic = .{
+        .functions = &.{
+            .{
+                .name = "configure",
+                .params = &.{.{ .name = "config", .type = .{ .value_struct = .{ .ref = "Config" } } }},
+                .@"return" = .{ .void = {} },
+                .symbol = "ignored",
+            },
+            .{
+                .name = "defaultConfig",
+                .params = &.{},
+                .@"return" = .{ .value_struct = .{ .ref = "Config" } },
+                .symbol = "ignored",
+            },
+        },
+        .package = "config",
+        .prefix = "zg",
+        .types = &.{
+            .{
+                .fields = &.{
+                    .{ .name = "width", .type = .{ .int = .{ .bits = 32, .signed = true } } },
+                    .{ .name = "ratio", .type = .{ .float = .{ .bits = 64 } } },
+                    .{ .name = "enabled", .type = .{ .bool = {} } },
+                    .{ .name = "mode", .type = .{ .@"enum" = .{ .ref = "Mode" } } },
+                    .{ .name = "origin", .type = .{ .value_struct = .{ .ref = "Point" } } },
+                },
+                .kind = .value_struct,
+                .layout = .@"extern",
+                .name = "Config",
+            },
+            .{
+                .fields = &.{
+                    .{ .name = "x", .type = .{ .int = .{ .bits = 16, .signed = true } } },
+                    .{ .name = "y", .type = .{ .int = .{ .bits = 16, .signed = true } } },
+                },
+                .kind = .value_struct,
+                .layout = .@"extern",
+                .name = "Point",
+            },
+            .{ .fields = &.{.{ .name = "idle", .value = 0 }}, .kind = .@"enum", .name = "Mode", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
+        },
+        .zig_version = "0.16.0",
+    };
+    try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(std.testing.allocator, document));
+    try semanticDocument(std.testing.allocator, document);
+}
+
+test "a packed struct and an opaque-pointer field stay out of the extern struct path" {
+    const packed_document: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "configure",
+            .params = &.{.{ .name = "config", .type = .{ .value_struct = .{ .ref = "Flags" } } }},
+            .@"return" = .{ .void = {} },
+            .symbol = "ignored",
+        }},
+        .package = "bad",
+        .prefix = "zg",
+        .types = &.{.{
+            .fields = &.{.{ .name = "enabled", .type = .{ .bool = {} } }},
+            .kind = .value_struct,
+            .layout = .@"packed",
+            .name = "Flags",
+        }},
+        .zig_version = "0.16.0",
+    };
+    const packed_issue = (try findIssue(std.testing.allocator, packed_document)) orelse return error.MissingDiagnostic;
+    try std.testing.expectEqualStrings("ZIGO003", packed_issue.code);
+
+    const pointer_document: semantic.Semantic = .{
+        .package = "bad",
+        .prefix = "zg",
+        .types = &.{
+            .{
+                .fields = &.{.{ .name = "owner", .type = .{ .opaque_ptr = .{ .@"const" = true, .nullable = false, .ref = "Thing" } } }},
+                .kind = .value_struct,
+                .layout = .@"extern",
+                .name = "Config",
+            },
+            .{ .kind = .@"opaque", .name = "Thing" },
+        },
+        .zig_version = "0.16.0",
+    };
+    const pointer_issue = (try findIssue(std.testing.allocator, pointer_document)) orelse return error.MissingDiagnostic;
+    try std.testing.expectEqualStrings("ZIGO012", pointer_issue.code);
+    try std.testing.expectEqualStrings("owner", pointer_issue.site.declaration);
 }
