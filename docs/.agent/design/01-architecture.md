@@ -49,22 +49,24 @@ pub fn build(b: *std.Build) void {
         .abi_base  = "HEAD",                     // 계약 검사를 쓸 때만 지정
     });
 
-    b.step("go", "Generate + build Go bindings").dependOn(&go.update.step);
-    b.step("go-check", "Fail if bindings are stale").dependOn(&go.check.step);
-    if (go.abi_check) |abi_check|
-        b.step("abi-check", "Fail on breaking ABI change").dependOn(&abi_check.step);
+    // 관용적 스텝 집합: go, go-check, go-report, go-doctor, go-lib, go-verify
+    // (+ abi_base를 준 경우 abi-check). 직접 배선하려면 반환 필드를 그대로 쓴다.
+    _ = go.addStandardSteps(b, .{});
 }
 ```
 
 ```bash
-zig build go          # 생성 + 정적 라이브러리 빌드
+zig build go          # 생성 + 네이티브 라이브러리 빌드
 cd go && go test ./...
 ```
 
 CI에서는:
 ```bash
-zig build go-check abi-check    # 생성물이 최신인지 + ABI가 안 깨졌는지
+zig build go-verify   # 생성물 최신 여부 + 툴체인 + 네이티브 라이브러리 (+ abi-check)
 ```
+
+`addStandardSteps(b, .{ .name_prefix = "purego" })` 처럼 접두사를 주면 한 프로젝트가
+여러 binding set(예: cgo와 purego)을 동시에 배선할 수 있다.
 
 내부 도구(reflector, generator)는 사용자 빌드 그래프 안에서 컴파일·실행되며
 사용자에게 노출되지 않는다.
@@ -103,7 +105,7 @@ zigo 패키지는 3개를 노출한다.
                        │ addRunArtifact → captureStdOut()
                        ▼
              semantic.json  (LazyPath)
-             layout.json    (LazyPath)
+             layout.json    (LazyPath — 현재 소비되지 않음, 02 §2)
                        │
         ┌──────────────▼───────────────────┐
         │ (B) Run: zigo-gen                │   순수 함수: IR in → 파일 out
@@ -113,6 +115,7 @@ zigo 패키지는 3개를 노출한다.
          ┌─────────────┼──────────────┬──────────────┐
          ▼             ▼              ▼              ▼
  shim.zig+panic.c zigo_mylib.h   go/raw package   go/mylib
+                              (cgo 또는 purego loader)
          │             │              │              │
          │             └──────────────┴──────────────┘
          │                            │
@@ -126,7 +129,7 @@ zigo 패키지는 3개를 노출한다.
          │              └─────────────────────────────┘
          ▼
    ┌──────────────────────────────┐
-   │ (D) addLibrary(.static)      │  shim.zig + panic.c + mylib → libmylib_zigo.a
+   │ (D) addLibrary(static/dyn)   │  shim.zig + panic.c + mylib → libmylib_zigo.{a,dylib,so}
    │     installArtifact          │  → zig-out/lib
    └──────────────────────────────┘
                        │
@@ -170,8 +173,8 @@ reflector는 사용자 라이브러리와 정확히 동일한 조건으로 컴�
 ### (B) Generator — 순수 함수
 
 `zigo-gen`은 IR 파일을 읽어 출력 디렉터리에 파일을 쓴다. 그 외 부작용이 없다.
-내부 프로세스 프로토콜은 `generate`, `check`, `abi-diff` 서브커맨드와 named argument를
-사용한다. 사용자는 이 실행 파일을 직접 호출하지 않고 `addGoBindings`를 통해서만 사용한다.
+내부 프로세스 프로토콜은 `generate`, `check`, `abi-diff`, `report`, `doctor` 서브커맨드와
+named argument를 사용한다. 사용자는 이 실행 파일을 직접 호출하지 않고 `addGoBindings`를 통해서만 사용한다.
 Zig 컴파일러도, 사용자 코드도 모른다.
 
 이 경계를 지키는 이유는 **테스트 가능성**이다. 생성기 테스트가
@@ -236,30 +239,46 @@ pub const Options = struct {
     name: []const u8,                 // Zig 모듈 이름 = C 심볼 유도 기반
     module: *std.Build.Module,        // 관측 대상
     bindings: std.Build.LazyPath,     // bindings.zig
+    source_root: ?std.Build.LazyPath = null,  // AST 이름 보강용 모듈 루트
     go_dir: std.Build.LazyPath,       // 생성물 커밋 위치
     go_module: []const u8,            // Go module path (import 경로 생성용)
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
 
     prefix: []const u8 = "zg",        // C 심볼 접두사
-    link_mode: enum { static, dynamic } = .static,
+    link_mode: LinkMode = .static,     // static | dynamic
+    backend: Backend = .cgo,           // cgo | purego
     cgo_flags: ?CgoFlags = null,      // null이면 빌드 경로에서 자동 계산
     abi_base: ?[]const u8 = null,      // 지정한 경우에만 ABI diff 활성화
     raw_package: RawPackage = .internal,
     auto_cleanup: bool = false,        // Go 1.24+ best-effort cleanup
+    gofmt: ?[]const u8 = null,         // null이면 PATH의 gofmt
+    go_package: ?[]const u8 = null,    // public Go package 이름 재지정
+    library_loading: LibraryLoading = .{},  // purego 전용 런타임 로딩 정책
 };
 
 pub const GoBindings = struct {
-    update: *std.Build.Step.UpdateSourceFiles,  // zig build go
-    check: *std.Build.Step.Run,                 // zig build go-check
-    abi_check: ?*std.Build.Step.Run,            // opt-in zig build abi-check
-    lib: *std.Build.Step.Compile,               // 정적 라이브러리
+    update: *std.Build.Step.UpdateSourceFiles,  // 생성 + 소스 트리 기록
+    check: *std.Build.Step.Run,                 // 스테일 검사
+    abi_check: ?*std.Build.Step.Run,            // abi_base를 준 경우에만
+    report: *std.Build.Step.Run,                // 유효 계약 설명
+    doctor: *std.Build.Step.Run,                // 툴체인 전제 조건 점검
+    lib: *std.Build.Step.Compile,               // 네이티브 바인딩 라이브러리
+    install_library: *std.Build.Step.InstallArtifact,
+    library_filename: []const u8,               // 타깃별 basename
     semantic_json: std.Build.LazyPath,          // 후처리용 노출
+
+    pub fn addStandardSteps(self: GoBindings, b: *std.Build, options: StandardStepOptions) StandardSteps;
 };
 ```
 
-스텝 이름은 zigo가 만들지 않고 **사용자가 `b.step(...)`으로 붙인다.**
-라이브러리가 사용자 빌드의 네임스페이스를 점유하지 않기 위함이다.
+스텝 이름을 zigo가 강제하지 않는다. 필드를 직접 `b.step(...)`에 붙여도 되고,
+`addStandardSteps`로 관용적 이름(`go`, `go-check`, `go-report`, `go-doctor`, `go-lib`,
+`go-verify`, `abi-check`)을 한 번에 등록해도 된다. `name_prefix`로 이름 충돌을 피한다.
+
+`.backend = .purego`는 `.link_mode = .dynamic`을 요구하며 지원 타깃이 네이티브
+macOS/Linux의 amd64·arm64로 좁다. `library_loading`은 purego 백엔드에서만 기본값이
+아닌 값을 가질 수 있다.
 
 `raw_package.path`는 `go_dir` 기준 상대 slash 경로다. 경로 요소에는 영문자, 숫자,
 `_`, `-`, `.`만 허용하며 절대 경로, 역슬래시, 빈 요소와 `.`/`..` 요소는 거부한다.
@@ -294,9 +313,9 @@ C 헤더는 백엔드가 아니라 **cgo가 요구하는 산출물**이다.
     semantic.json       # ✅ 커밋. ABI diff 기준
     errors.lock.json    # ✅ 커밋. 안정 에러코드
   go/
-    go.mod              # 사용자 소유 (없으면 1회 생성)
+    go.mod              # 👤 사용자 소유. 생성기는 만들지 않는다
     internal/raw/       # 🤖 100% 생성. 손대지 말 것
-      raw_gen.go
+      raw_gen.go        # cgo 지시자 또는 purego loader (backend에 따라)
     mylib/
       mylib_gen.go         # 🤖 public callable API
       mylib_type_gen.go    # 🤖 public type API
@@ -335,6 +354,9 @@ pub const bindings = zigo.define(.{
     .types = .{
         .{ .type = lib.Context, .repr = .@"opaque" },
         .{ .type = lib.Format,  .repr = .value },
+        .{ .type = lib.Value,   .repr = .tagged_union },
+    },
+    .specializations = .{
         .{ .name = "FloatBuffer", .type = lib.Buffer(f32) },   // generic 구체화
     },
 
@@ -354,7 +376,9 @@ pub const bindings = zigo.define(.{
 
 - compiler reflection이 공개 함수의 존재와 타입을 결정하고 AST가 소유자별 파라미터 이름과 문서를 보강한다.
 - `.params`는 AST 이름을 고정하거나 `param_meta`의 키를 reflection 단계에서 제공할 때 사용한다.
-- 자동 발견이 맞지 않는 정밀 allowlist는 기존 `.functions` 항목을 사용한다.
+- 자동 발견이 맞지 않는 정밀 allowlist는 `.functions` 항목
+  (`.{ .name = "add", .@"fn" = lib.add }`)을 사용한다. `.overrides`와 `.exclude`의
+  `.path`는 `.discover = .public` 모드에서만 유효하다.
 - 나머지 메타데이터는 선택적이며, 없으면 보수적 기본값(`in`, `borrowed`, `[]byte`).
 - `package`/`prefix`는 build.zig 옵션으로 이동했다 (빌드 배선과 함께 있는 편이 자연스럽다).
 - 이 파일이 **공개 API 계약서**다. 리뷰 대상은 생성된 바인딩이 아니라 이 파일이다.
@@ -421,7 +445,9 @@ ABI COMPATIBLE (1)
 ## 12. 비범위 (v1)
 
 - Go 외 언어 — 비범위
-- 크로스 컴파일 — v2 (reflector 실행 제약, §4 (A))
-- tagged union 자동 변환 — v2
+- 크로스 컴파일 — 미지원 (reflector 실행 제약, §4 (A))
 - allocator를 Go에 노출 — 비범위. 라이브러리 내부 고정 allocator 사용
-- 동적 링크(`.so`/`.dylib`) 배포 시나리오 — v2 (`link_mode` 옵션만 예약)
+- Windows·모바일·purego Tier 2 타깃 — 미지원
+
+설계 초안에서 v2로 미뤘던 tagged union 변환, 동적 링크 배포, purego 백엔드는
+v1에 구현되었다. 상세는 [구현 상태](05-implementation-status.md).

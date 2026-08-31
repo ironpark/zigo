@@ -1,6 +1,11 @@
 # 구현 계획
 
-전제: Zig 0.16.0, Go 1.26. 현재 저장소는 `zig init` 스캐폴드 (`src/root.zig`, `src/main.zig`).
+> **상태:** M0~M8은 모두 완료되었다. 이 문서는 v1을 어떤 순서로 관통했는지에 대한 기록이며,
+> 완료된 결과와 설계 시점과의 차이는 [구현 상태](05-implementation-status.md)에 있다.
+> 아래 디렉터리 구조는 실제 저장소 구조로 갱신했다.
+
+전제: Zig 0.16.0. 생성된 Go 코드는 Go 1.23+ (`auto_cleanup`은 1.24+)를 요구하고
+CI는 Go 1.26.x로 검증한다.
 
 배포 형태: **Zig 패키지 의존성.** 사용자 진입점은 `zigo.addGoBindings(b, .{...})` 하나다.
 
@@ -27,29 +32,30 @@
 
 ## M0 — 골격 + 빌드 API 뼈대
 
+실제 구조 (설계 초안의 파일 분할과는 다르다):
+
 ```text
-build.zig               # ★ 이 파일이 zigo의 공개 API다
+build.zig               # ★ 이 파일이 zigo의 공개 API다. addGoBindings를 직접 구현한다
 src/
-  build_api.zig         # addGoBindings 구현 (build.zig에서 re-export)
   root.zig              # 모듈 "zigo": zigo.define DSL
+  main.zig              # zigo-gen exe 진입
+  build_options.zig     # build.zig와 generator가 공유하는 정책·검증
   reflect/
     main.zig            # reflector root. @import("bindings")
     walk.zig            # comptime 타입 그래프 순회
-    json_out.zig
+    names.zig           # AST 파라미터 이름·doc 보강
   gen/
-    main.zig            # zigo-gen exe 진입 (generate / check / abi-diff)
+    cli.zig             # generate / check / abi-diff / report / doctor 파싱
     ir/
       semantic.zig  abi.zig  errors_lock.zig
-    validate.zig
-    lower.zig
-    emit/
-      emitter.zig  zig_shim.zig  c_header.zig  go_raw.zig  go_public.zig  naming.zig
-    diff.zig
+    validate.zig  lower.zig  emit.zig  naming.zig  diagnostic.zig
+    generator.zig       # prepared set 준비 후 원자적 쓰기
+    sync_check.zig  abi_diff.zig  report.zig  doctor.zig
 examples/
-  01-scalar/ 02-errors/ 03-opaque/ 04-callback/     # 각각 독립 Zig+Go 프로젝트
+  01-scalar/ … 10-tagged-union/   # 각각 독립 Zig+Go 프로젝트
 tests/
-  fixtures/   # IR 입력
-  snapshots/  # 기대 산출물
+  fixtures/          # IR 입력
+  generator_cases/   # 입력 + expected/ 골든 트리
 ```
 
 작업:
@@ -236,8 +242,8 @@ error[ZIGO003]: cannot pass `mylib.Config` by value
 
 1. shim에 panic 핸들러 설치 → `-2 PanicCaught` + `zg_last_error_message()`
 2. `linkSystemLibrary` 관측 → `#cgo LDFLAGS` 반영 (`-framework`, `-lm` 등)
-3. `go.mod` 부트스트랩 (없을 때만 1회 생성, 이후 사용자 소유)
-4. 예제 4종 CI 워크플로 (macOS/Linux)
+3. ~~`go.mod` 부트스트랩~~ — 구현하지 않았다. `go.mod`는 사용자가 작성한다
+4. 예제 CI 워크플로 (macOS/Linux)
 5. cgo 호출 오버헤드 벤치마크를 CI에 기록 (회귀 감지)
 6. README / 예제 문서화
 
@@ -245,12 +251,15 @@ error[ZIGO003]: cannot pass `mylib.Config` by value
 
 ---
 
-## v2 이후
+## v1 이후
+
+초안이 v2로 미뤘던 항목 중 tagged union 변환, 동적 링크 배포(`link_mode = .dynamic`),
+`purego` 백엔드는 v1에 구현되었다. 남은 항목:
 
 - 크로스 컴파일 — 레이아웃 상수를 타깃별 컴파일 산출물에서 추출
-- 동적 링크 배포 시나리오 (`link_mode = .dynamic`)
-- tagged union 변환
-- `purego`/dlopen 백엔드 (cgo 없는 빌드)
+- `layout.json` 기반 헤더 레이아웃 대조 검증 (현재 스텁, 02 §2)
+- `go.mod` 부트스트랩 (현재는 사용자가 작성)
+- Windows·모바일·purego Tier 2 타깃
 - 배치 API 힌트로 cgo 오버헤드 완화
 
 ---
@@ -262,8 +271,8 @@ error[ZIGO003]: cannot pass `mylib.Config` by value
 | reflector | JSON 골든 파일 — Zig 버전 업그레이드 감지기 역할 |
 | validate/lower | IR 픽스처 → IR 골든 + 실패 케이스 스냅샷 |
 | emitter | scalar와 복합 pipeline의 전체 생성 트리 골든 파일 |
-| 빌드 API | 예제 8종이 실제 의존성으로 zigo를 fetch해 빌드 |
-| 통합 | 예제 8종의 `go test` |
+| 빌드 API | 예제 10종이 실제 의존성으로 zigo를 fetch해 빌드 |
+| 통합 | 예제 10종의 `go test` (그중 4종은 purego 패키지도 함께) |
 | 메모리 | allocation failure 전수 검사와 누수 0 검증 |
 | 성능 | cgo 호출 벤치마크 CI 기록 |
 
