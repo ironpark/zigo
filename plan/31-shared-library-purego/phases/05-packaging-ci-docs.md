@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-31T05:11:34Z"
 depends_on:
 - "31-shared-library-purego#4"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Fresh-user instructions reproduce both backends, all generated artifacts and golden fixtures are
 > NEXT: none
