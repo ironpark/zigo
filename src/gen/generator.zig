@@ -701,6 +701,54 @@ test "purego loading policy shapes the generated candidate order" {
     try std.testing.expect(std.mem.indexOf(u8, bare_raw, "\t\"os\"\n") == null);
 }
 
+test "automatic loading and loader visibility shape the generated packages" {
+    const fixture =
+        \\{"functions":[{"name":"add","params":[{"name":"a","type":{"bits":32,"kind":"int","signed":true}}],"return":{"bits":32,"kind":"int","signed":true},"symbol":"ignored"}],"package":"scalar","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    var automatic = std.testing.tmpDir(.{ .iterate = true });
+    defer automatic.cleanup();
+    try generate(std.testing.allocator, std.testing.io, fixture, automatic.dir, .{
+        .package = "scalar",
+        .prefix = "zg",
+        .go_module = "example.com/scalar",
+        .backend = .purego,
+        .library_stem = "scalar_zigo",
+        .library_search_paths = "/opt/app/lib",
+        .library_automatic = true,
+        .library_exported_api = false,
+    });
+    const raw = try automatic.dir.readFileAlloc(std.testing.io, "internal/raw/raw_gen.go", std.testing.allocator, .limited(64 * 1024));
+    defer std.testing.allocator.free(raw);
+    // The first binding call attempts the candidates exactly once.
+    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "func ensureLoaded() {"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "if loadedBindings.Load() != nil || automaticLoadAttempted { return }"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "panic(automaticLoadError)"));
+    const public = try automatic.dir.readFileAlloc(std.testing.io, "scalar/scalar_gen.go", std.testing.allocator, .limited(64 * 1024));
+    defer std.testing.allocator.free(public);
+    try std.testing.expect(std.mem.indexOf(u8, public, "LoadLibrary") == null);
+    try std.testing.expect(std.mem.indexOf(u8, public, "LibraryLoaded") == null);
+    try std.testing.expect(std.mem.indexOf(u8, public, "DefaultLibraryName") == null);
+    // The bound API is unchanged by the policy.
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func Add("));
+
+    var explicit = std.testing.tmpDir(.{ .iterate = true });
+    defer explicit.cleanup();
+    try generate(std.testing.allocator, std.testing.io, fixture, explicit.dir, .{
+        .package = "scalar",
+        .prefix = "zg",
+        .go_module = "example.com/scalar",
+        .backend = .purego,
+        .library_stem = "scalar_zigo",
+    });
+    const explicit_raw = try explicit.dir.readFileAlloc(std.testing.io, "internal/raw/raw_gen.go", std.testing.allocator, .limited(64 * 1024));
+    defer std.testing.allocator.free(explicit_raw);
+    try std.testing.expect(std.mem.indexOf(u8, explicit_raw, "ensureLoaded") == null);
+    try std.testing.expect(std.mem.containsAtLeast(u8, explicit_raw, 1, "call LoadLibrary first"));
+    const explicit_public = try explicit.dir.readFileAlloc(std.testing.io, "scalar/scalar_gen.go", std.testing.allocator, .limited(64 * 1024));
+    defer std.testing.allocator.free(explicit_public);
+    try std.testing.expect(std.mem.containsAtLeast(u8, explicit_public, 1, "func LoadLibrary(path string) error"));
+}
+
 test "purego generation emits an atomic retryable loader and explicit callback ABI" {
     const scalar_fixture =
         \\{"functions":[{"name":"add","params":[{"name":"a","type":{"bits":32,"kind":"int","signed":true}},{"name":"b","type":{"bits":32,"kind":"int","signed":true}}],"return":{"bits":32,"kind":"int","signed":true},"symbol":"ignored"},{"name":"accept","params":[{"name":"value","type":{"const":true,"kind":"opaque_ptr","nullable":true,"ref":"Handle"}}],"return":{"kind":"void"},"symbol":"ignored"}],"package":"scalar","prefix":"zg","types":[{"kind":"opaque","name":"Handle"}],"zig_version":"0.16.0"}

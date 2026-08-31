@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-31T06:06:31Z"
 depends_on:
 - "33-purego-library-loading-policy#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Generated code tries the documented order, a multi-candidate failure names every attempted path,
 > NEXT: none

@@ -733,6 +733,8 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             "// LibraryLoaded reports whether every required native symbol was published.\n" ++
             "func LibraryLoaded() bool { return loadedBindings.Load() != nil }\n\n",
     );
+    if (options.library_automatic)
+        try writer.writeAll("var automaticLoadAttempted bool\nvar automaticLoadError error\n\n");
     try renderPuregoCandidates(allocator, writer, program, options);
     try writer.writeAll(
         "// LoadLibrary atomically loads and registers every required native symbol.\n" ++
@@ -783,7 +785,23 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     for (program.projections, 0..) |_, index|
         try writer.print("\tpurego.RegisterFunc(&next.fnProjection{d}, addrProjection{d})\n", .{ index, index });
     try writer.writeAll("\tloadedBindings.Store(&next)\n\treturn nil\n}\n\n");
-    try writer.writeAll("func bindings() *nativeBindings {\n\tvalue := loadedBindings.Load()\n\tif value == nil { panic(\"zigo: native library is not loaded; call LoadLibrary first\") }\n\treturn value\n}\n\n");
+    if (options.library_automatic) {
+        try writer.writeAll(
+            "// ensureLoaded performs the one automatic load attempt. A later explicit\n" ++
+                "// call can still succeed with a different path.\n" ++
+                "func ensureLoaded() {\n" ++
+                "\tloadMu.Lock()\n\tdefer loadMu.Unlock()\n" ++
+                "\tif loadedBindings.Load() != nil || automaticLoadAttempted { return }\n" ++
+                "\tautomaticLoadAttempted = true\n\tautomaticLoadError = loadLibraryLocked(\"\")\n}\n\n" ++
+                "func bindings() *nativeBindings {\n" ++
+                "\tvalue := loadedBindings.Load()\n" ++
+                "\tif value == nil {\n\t\tensureLoaded()\n\t\tvalue = loadedBindings.Load()\n\t}\n" ++
+                "\tif value == nil { panic(automaticLoadError) }\n\treturn value\n}\n\n",
+        );
+    } else {
+        try writer.writeAll("func bindings() *nativeBindings {\n\tvalue := loadedBindings.Load()\n\tif value == nil { panic(\"zigo: native library is not loaded; call " ++
+            "LoadLibrary first\") }\n\treturn value\n}\n\n");
+    }
     const last_error_name = if (options.raw_colocated) "zigoRawLastErrorMessage" else "LastErrorMessage";
     try writer.print("// {s} returns the most recent native panic message for this binding.\nfunc {s}() string {{\n\tp := bindings().lastError()\n\tif p == 0 {{ return \"\" }}\n\tb := make([]byte, 0, 128)\n\tfor i := uintptr(0); ; i++ {{ c := *(*byte)(unsafe.Pointer(p+i)); if c == 0 {{ return string(b) }}; b = append(b, c) }}\n}}\n", .{ last_error_name, last_error_name });
     for (program.functions) |function| try renderPuregoFunction(allocator, writer, program, function, options);
@@ -1195,7 +1213,8 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         try writeRawImport(writer, options, "");
         try writer.writeByte('\n');
     }
-    if (options.backend == .purego and !options.raw_colocated) try writer.writeAll(
+    // An internal loader keeps the public package limited to the bound API.
+    if (options.backend == .purego and !options.raw_colocated and options.library_exported_api) try writer.writeAll(
         "// LibraryError reports a native shared-library loading failure.\n" ++
             "type LibraryError = raw.LibraryError\n\n" ++
             "// LoadLibrary atomically loads all generated native entry points.\n" ++

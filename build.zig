@@ -466,6 +466,10 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     };
     if (options.backend == .purego) {
         if (options.link_mode != .dynamic) @panic("purego backend requires .link_mode = .dynamic");
+        // A colocated raw package is the public package, so its exported loader
+        // cannot be hidden. Use `.raw_package = .internal` instead.
+        if (!options.library_loading.exported_api and options.raw_package == .colocated)
+            @panic("library_loading.exported_api = false requires a raw package separate from the public package");
         if (!build_options.puregoTargetSupported(options.target.result))
             @panic("purego backend supports native macOS/Linux on amd64/arm64 only");
         const target = options.target.result;

@@ -2,7 +2,7 @@
 depends_on:
 - "33-purego-library-loading-policy#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: An automatic example calls no loader function, a failure names every candidate, the public
 > NEXT: none
