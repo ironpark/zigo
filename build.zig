@@ -478,7 +478,35 @@ fn addGeneratorCases(
         run.addDirectoryArg(cases.path(b, name));
         _ = run.addOutputDirectoryArg(b.fmt("{s}-actual", .{name}));
         test_step.dependOn(&run.step);
+        addGoldenArtifactChecks(b, test_step, cases.path(b, name), name);
     }
+}
+
+/// Compiles the committed golden native artifacts. The tree comparison alone
+/// only proves the bytes are stable, so a `panic.c` that does not compile can be
+/// pinned as the expectation; this catches that before an example does.
+fn addGoldenArtifactChecks(
+    b: *std.Build,
+    test_step: *std.Build.Step,
+    case: std.Build.LazyPath,
+    name: []const u8,
+) void {
+    const expected = case.path(b, "expected");
+    const compile_panic = b.addSystemCommand(&.{ b.graph.zig_exe, "cc", "-c" });
+    compile_panic.setName(b.fmt("golden panic.c compiles ({s})", .{name}));
+    compile_panic.addPrefixedDirectoryArg("-I", expected);
+    compile_panic.addFileArg(expected.path(b, "panic.c"));
+    _ = compile_panic.addPrefixedOutputFileArg("-o", b.fmt("{s}-panic.o", .{name}));
+    compile_panic.expectExitCode(0);
+    test_step.dependOn(&compile_panic.step);
+
+    // The shim imports the user's module, so it cannot be compiled standalone.
+    // Parsing still rejects a shim the emitters rendered as invalid Zig.
+    const parse_shim = b.addSystemCommand(&.{ b.graph.zig_exe, "ast-check" });
+    parse_shim.setName(b.fmt("golden shim.zig parses ({s})", .{name}));
+    parse_shim.addFileArg(expected.path(b, "shim.zig"));
+    parse_shim.expectExitCode(0);
+    test_step.dependOn(&parse_shim.step);
 }
 
 fn matchesAnyFilter(name: []const u8, filters: []const []const u8) bool {
