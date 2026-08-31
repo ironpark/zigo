@@ -82,6 +82,47 @@ func (value ValueTag) String() string {
 	}
 }
 
+// SignalTag represents the corresponding Zig enum.
+type SignalTag uint8
+
+// SignalTagIdle corresponds to the Zig tag idle.
+const SignalTagIdle SignalTag = 0
+
+// SignalTagTicks corresponds to the Zig tag ticks.
+const SignalTagTicks SignalTag = 1
+
+// SignalTagLevel corresponds to the Zig tag level.
+const SignalTagLevel SignalTag = 2
+
+// SignalTagOffset corresponds to the Zig tag offset.
+const SignalTagOffset SignalTag = 3
+
+// SignalTagMode corresponds to the Zig tag mode.
+const SignalTagMode SignalTag = 4
+
+// SignalTagActive corresponds to the Zig tag active.
+const SignalTagActive SignalTag = 5
+
+// String returns the Zig tag name.
+func (value SignalTag) String() string {
+	switch value {
+	case SignalTagIdle:
+		return "idle"
+	case SignalTagTicks:
+		return "ticks"
+	case SignalTagLevel:
+		return "level"
+	case SignalTagOffset:
+		return "offset"
+	case SignalTagMode:
+		return "mode"
+	case SignalTagActive:
+		return "active"
+	default:
+		return "SignalTag(" + strconv.FormatInt(int64(value), 10) + ")"
+	}
+}
+
 // Child is a caller-owned native handle. Call Close when it is no longer needed.
 type Child struct {
 	ptr     unsafe.Pointer
@@ -200,6 +241,66 @@ func (v *Value) Close() {
 		v.ptr = nil
 	})
 	runtime.KeepAlive(v)
+}
+
+// Signal is a caller-owned native handle. Call Close when it is no longer needed.
+type Signal struct {
+	ptr     unsafe.Pointer
+	once    sync.Once
+	cleanup runtime.Cleanup
+}
+
+// SignalRef is a borrowed Signal reference that remains valid only while its parent is open.
+type SignalRef struct {
+	ptr    unsafe.Pointer
+	parent zigoHandle
+}
+
+func (s *Signal) zigoPointer() unsafe.Pointer {
+	if s == nil {
+		return nil
+	}
+	return s.ptr
+}
+
+func (s *SignalRef) zigoPointer() unsafe.Pointer {
+	if s == nil || s.ptr == nil {
+		return nil
+	}
+	if parent := s.parent; parent != nil && parent.zigoPointer() == nil {
+		return nil
+	}
+	return s.ptr
+}
+
+type signalCleanupState struct {
+	ptr unsafe.Pointer
+}
+
+func newSignal(ptr unsafe.Pointer) *Signal {
+	value := &Signal{ptr: ptr}
+	state := signalCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, cleanupSignal, state)
+	return value
+}
+
+func cleanupSignal(state signalCleanupState) {
+	if state.ptr != nil {
+		raw.SignalDeinit(state.ptr)
+	}
+}
+
+// Close releases the native Signal resources. It is safe to call more than once.
+func (s *Signal) Close() {
+	if s == nil {
+		return
+	}
+	s.once.Do(func() {
+		s.cleanup.Stop()
+		cleanupSignal(signalCleanupState{ptr: s.ptr})
+		s.ptr = nil
+	})
+	runtime.KeepAlive(s)
 }
 
 type zigoHandle interface {
@@ -603,4 +704,415 @@ func (v *ValueRef) AsMutableSamples() ([]int16, bool) {
 		panic(err)
 	}
 	return result, matched
+}
+
+// TryTag returns the active tagged-union tag or a typed lifecycle/native error.
+func (s *Signal) TryTag() (SignalTag, error) {
+	defer runtime.KeepAlive(s)
+	ptr, err := zigoCheckedPointer("Signal.Tag receiver", s)
+	if err != nil {
+		return 0, err
+	}
+	result, status := raw.SignalProjectTag(ptr)
+	if status != zigoProjectionSuccess {
+		return 0, zigoProjectionError("Signal.Tag", status)
+	}
+	return SignalTag(result), nil
+}
+
+// Tag returns the active tagged-union tag and panics with a typed error on failure.
+func (s *Signal) Tag() SignalTag {
+	result, err := s.TryTag()
+	if err != nil {
+		panic(err)
+	}
+	return result
+}
+
+// TryAsTicks returns the ticks payload, whether it is active, and any lifecycle/native error.
+func (s *Signal) TryAsTicks() (uint32, bool, error) {
+	defer runtime.KeepAlive(s)
+	ptr, err := zigoCheckedPointer("Signal.AsTicks receiver", s)
+	if err != nil {
+		return 0, false, err
+	}
+	result, status := raw.SignalProjectTicks(ptr)
+	if status == zigoProjectionMismatch {
+		return 0, false, nil
+	}
+	if status != zigoProjectionSuccess {
+		return 0, false, zigoProjectionError("Signal.AsTicks", status)
+	}
+	return result, true, nil
+}
+
+// AsTicks returns the ticks payload when active and panics with a typed error on failure.
+func (s *Signal) AsTicks() (uint32, bool) {
+	result, matched, err := s.TryAsTicks()
+	if err != nil {
+		panic(err)
+	}
+	return result, matched
+}
+
+// TryAsLevel returns the level payload, whether it is active, and any lifecycle/native error.
+func (s *Signal) TryAsLevel() (float64, bool, error) {
+	defer runtime.KeepAlive(s)
+	ptr, err := zigoCheckedPointer("Signal.AsLevel receiver", s)
+	if err != nil {
+		return 0, false, err
+	}
+	result, status := raw.SignalProjectLevel(ptr)
+	if status == zigoProjectionMismatch {
+		return 0, false, nil
+	}
+	if status != zigoProjectionSuccess {
+		return 0, false, zigoProjectionError("Signal.AsLevel", status)
+	}
+	return result, true, nil
+}
+
+// AsLevel returns the level payload when active and panics with a typed error on failure.
+func (s *Signal) AsLevel() (float64, bool) {
+	result, matched, err := s.TryAsLevel()
+	if err != nil {
+		panic(err)
+	}
+	return result, matched
+}
+
+// TryAsOffset returns the offset payload, whether it is active, and any lifecycle/native error.
+func (s *Signal) TryAsOffset() (int16, bool, error) {
+	defer runtime.KeepAlive(s)
+	ptr, err := zigoCheckedPointer("Signal.AsOffset receiver", s)
+	if err != nil {
+		return 0, false, err
+	}
+	result, status := raw.SignalProjectOffset(ptr)
+	if status == zigoProjectionMismatch {
+		return 0, false, nil
+	}
+	if status != zigoProjectionSuccess {
+		return 0, false, zigoProjectionError("Signal.AsOffset", status)
+	}
+	return result, true, nil
+}
+
+// AsOffset returns the offset payload when active and panics with a typed error on failure.
+func (s *Signal) AsOffset() (int16, bool) {
+	result, matched, err := s.TryAsOffset()
+	if err != nil {
+		panic(err)
+	}
+	return result, matched
+}
+
+// TryAsMode returns the mode payload, whether it is active, and any lifecycle/native error.
+func (s *Signal) TryAsMode() (Mode, bool, error) {
+	defer runtime.KeepAlive(s)
+	ptr, err := zigoCheckedPointer("Signal.AsMode receiver", s)
+	if err != nil {
+		return 0, false, err
+	}
+	result, status := raw.SignalProjectMode(ptr)
+	if status == zigoProjectionMismatch {
+		return 0, false, nil
+	}
+	if status != zigoProjectionSuccess {
+		return 0, false, zigoProjectionError("Signal.AsMode", status)
+	}
+	return Mode(result), true, nil
+}
+
+// AsMode returns the mode payload when active and panics with a typed error on failure.
+func (s *Signal) AsMode() (Mode, bool) {
+	result, matched, err := s.TryAsMode()
+	if err != nil {
+		panic(err)
+	}
+	return result, matched
+}
+
+// TryAsActive returns the active payload, whether it is active, and any lifecycle/native error.
+func (s *Signal) TryAsActive() (bool, bool, error) {
+	defer runtime.KeepAlive(s)
+	ptr, err := zigoCheckedPointer("Signal.AsActive receiver", s)
+	if err != nil {
+		return false, false, err
+	}
+	result, status := raw.SignalProjectActive(ptr)
+	if status == zigoProjectionMismatch {
+		return false, false, nil
+	}
+	if status != zigoProjectionSuccess {
+		return false, false, zigoProjectionError("Signal.AsActive", status)
+	}
+	return result != 0, true, nil
+}
+
+// AsActive returns the active payload when active and panics with a typed error on failure.
+func (s *Signal) AsActive() (bool, bool) {
+	result, matched, err := s.TryAsActive()
+	if err != nil {
+		panic(err)
+	}
+	return result, matched
+}
+
+// TryTag returns the active tagged-union tag or a typed lifecycle/native error.
+func (s *SignalRef) TryTag() (SignalTag, error) {
+	defer runtime.KeepAlive(s)
+	ptr, err := zigoCheckedPointer("Signal.Tag receiver", s)
+	if err != nil {
+		return 0, err
+	}
+	result, status := raw.SignalProjectTag(ptr)
+	if status != zigoProjectionSuccess {
+		return 0, zigoProjectionError("Signal.Tag", status)
+	}
+	return SignalTag(result), nil
+}
+
+// Tag returns the active tagged-union tag and panics with a typed error on failure.
+func (s *SignalRef) Tag() SignalTag {
+	result, err := s.TryTag()
+	if err != nil {
+		panic(err)
+	}
+	return result
+}
+
+// TryAsTicks returns the ticks payload, whether it is active, and any lifecycle/native error.
+func (s *SignalRef) TryAsTicks() (uint32, bool, error) {
+	defer runtime.KeepAlive(s)
+	ptr, err := zigoCheckedPointer("Signal.AsTicks receiver", s)
+	if err != nil {
+		return 0, false, err
+	}
+	result, status := raw.SignalProjectTicks(ptr)
+	if status == zigoProjectionMismatch {
+		return 0, false, nil
+	}
+	if status != zigoProjectionSuccess {
+		return 0, false, zigoProjectionError("Signal.AsTicks", status)
+	}
+	return result, true, nil
+}
+
+// AsTicks returns the ticks payload when active and panics with a typed error on failure.
+func (s *SignalRef) AsTicks() (uint32, bool) {
+	result, matched, err := s.TryAsTicks()
+	if err != nil {
+		panic(err)
+	}
+	return result, matched
+}
+
+// TryAsLevel returns the level payload, whether it is active, and any lifecycle/native error.
+func (s *SignalRef) TryAsLevel() (float64, bool, error) {
+	defer runtime.KeepAlive(s)
+	ptr, err := zigoCheckedPointer("Signal.AsLevel receiver", s)
+	if err != nil {
+		return 0, false, err
+	}
+	result, status := raw.SignalProjectLevel(ptr)
+	if status == zigoProjectionMismatch {
+		return 0, false, nil
+	}
+	if status != zigoProjectionSuccess {
+		return 0, false, zigoProjectionError("Signal.AsLevel", status)
+	}
+	return result, true, nil
+}
+
+// AsLevel returns the level payload when active and panics with a typed error on failure.
+func (s *SignalRef) AsLevel() (float64, bool) {
+	result, matched, err := s.TryAsLevel()
+	if err != nil {
+		panic(err)
+	}
+	return result, matched
+}
+
+// TryAsOffset returns the offset payload, whether it is active, and any lifecycle/native error.
+func (s *SignalRef) TryAsOffset() (int16, bool, error) {
+	defer runtime.KeepAlive(s)
+	ptr, err := zigoCheckedPointer("Signal.AsOffset receiver", s)
+	if err != nil {
+		return 0, false, err
+	}
+	result, status := raw.SignalProjectOffset(ptr)
+	if status == zigoProjectionMismatch {
+		return 0, false, nil
+	}
+	if status != zigoProjectionSuccess {
+		return 0, false, zigoProjectionError("Signal.AsOffset", status)
+	}
+	return result, true, nil
+}
+
+// AsOffset returns the offset payload when active and panics with a typed error on failure.
+func (s *SignalRef) AsOffset() (int16, bool) {
+	result, matched, err := s.TryAsOffset()
+	if err != nil {
+		panic(err)
+	}
+	return result, matched
+}
+
+// TryAsMode returns the mode payload, whether it is active, and any lifecycle/native error.
+func (s *SignalRef) TryAsMode() (Mode, bool, error) {
+	defer runtime.KeepAlive(s)
+	ptr, err := zigoCheckedPointer("Signal.AsMode receiver", s)
+	if err != nil {
+		return 0, false, err
+	}
+	result, status := raw.SignalProjectMode(ptr)
+	if status == zigoProjectionMismatch {
+		return 0, false, nil
+	}
+	if status != zigoProjectionSuccess {
+		return 0, false, zigoProjectionError("Signal.AsMode", status)
+	}
+	return Mode(result), true, nil
+}
+
+// AsMode returns the mode payload when active and panics with a typed error on failure.
+func (s *SignalRef) AsMode() (Mode, bool) {
+	result, matched, err := s.TryAsMode()
+	if err != nil {
+		panic(err)
+	}
+	return result, matched
+}
+
+// TryAsActive returns the active payload, whether it is active, and any lifecycle/native error.
+func (s *SignalRef) TryAsActive() (bool, bool, error) {
+	defer runtime.KeepAlive(s)
+	ptr, err := zigoCheckedPointer("Signal.AsActive receiver", s)
+	if err != nil {
+		return false, false, err
+	}
+	result, status := raw.SignalProjectActive(ptr)
+	if status == zigoProjectionMismatch {
+		return false, false, nil
+	}
+	if status != zigoProjectionSuccess {
+		return false, false, zigoProjectionError("Signal.AsActive", status)
+	}
+	return result != 0, true, nil
+}
+
+// AsActive returns the active payload when active and panics with a typed error on failure.
+func (s *SignalRef) AsActive() (bool, bool) {
+	result, matched, err := s.TryAsActive()
+	if err != nil {
+		panic(err)
+	}
+	return result, matched
+}
+
+// SignalSnapshot is a value copy of a Signal: one native call carries the active tag
+// and every scalar payload back together.
+type SignalSnapshot struct {
+	tag    SignalTag
+	level  float64
+	ticks  uint32
+	offset int16
+	mode   Mode
+	active bool
+}
+
+// Tag returns the variant the snapshot captured.
+func (snapshot SignalSnapshot) Tag() SignalTag {
+	return snapshot.tag
+}
+
+// Level returns the level payload and whether it is the captured variant.
+func (snapshot SignalSnapshot) Level() (float64, bool) {
+	return snapshot.level, snapshot.tag == SignalTagLevel
+}
+
+// Ticks returns the ticks payload and whether it is the captured variant.
+func (snapshot SignalSnapshot) Ticks() (uint32, bool) {
+	return snapshot.ticks, snapshot.tag == SignalTagTicks
+}
+
+// Offset returns the offset payload and whether it is the captured variant.
+func (snapshot SignalSnapshot) Offset() (int16, bool) {
+	return snapshot.offset, snapshot.tag == SignalTagOffset
+}
+
+// Mode returns the mode payload and whether it is the captured variant.
+func (snapshot SignalSnapshot) Mode() (Mode, bool) {
+	return snapshot.mode, snapshot.tag == SignalTagMode
+}
+
+// Active returns the active payload and whether it is the captured variant.
+func (snapshot SignalSnapshot) Active() (bool, bool) {
+	return snapshot.active, snapshot.tag == SignalTagActive
+}
+
+// TrySnapshot reads the tag and every payload in one native call, or
+// returns a typed lifecycle/native error.
+func (s *Signal) TrySnapshot() (SignalSnapshot, error) {
+	defer runtime.KeepAlive(s)
+	ptr, err := zigoCheckedPointer("Signal.Snapshot receiver", s)
+	if err != nil {
+		return SignalSnapshot{}, err
+	}
+	data, status := raw.SignalReadSnapshot(ptr)
+	if status != zigoProjectionSuccess {
+		return SignalSnapshot{}, zigoProjectionError("Signal.Snapshot", status)
+	}
+	return SignalSnapshot{
+		tag:    SignalTag(data.Tag),
+		level:  data.Level,
+		ticks:  data.Ticks,
+		offset: data.Offset,
+		mode:   Mode(data.Mode),
+		active: data.Active != 0,
+	}, nil
+}
+
+// Snapshot reads the tag and every payload in one native call and panics
+// with a typed error on failure.
+func (s *Signal) Snapshot() SignalSnapshot {
+	result, err := s.TrySnapshot()
+	if err != nil {
+		panic(err)
+	}
+	return result
+}
+
+// TrySnapshot reads the tag and every payload in one native call, or
+// returns a typed lifecycle/native error.
+func (s *SignalRef) TrySnapshot() (SignalSnapshot, error) {
+	defer runtime.KeepAlive(s)
+	ptr, err := zigoCheckedPointer("Signal.Snapshot receiver", s)
+	if err != nil {
+		return SignalSnapshot{}, err
+	}
+	data, status := raw.SignalReadSnapshot(ptr)
+	if status != zigoProjectionSuccess {
+		return SignalSnapshot{}, zigoProjectionError("Signal.Snapshot", status)
+	}
+	return SignalSnapshot{
+		tag:    SignalTag(data.Tag),
+		level:  data.Level,
+		ticks:  data.Ticks,
+		offset: data.Offset,
+		mode:   Mode(data.Mode),
+		active: data.Active != 0,
+	}, nil
+}
+
+// Snapshot reads the tag and every payload in one native call and panics
+// with a typed error on failure.
+func (s *SignalRef) Snapshot() SignalSnapshot {
+	result, err := s.TrySnapshot()
+	if err != nil {
+		panic(err)
+	}
+	return result
 }

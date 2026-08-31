@@ -78,4 +78,6 @@ func TestPuregoTaggedUnion(t *testing.T) {
 	if got, ok := value.AsSamples(); !ok || len(got) != 0 {
 		t.Fatalf("empty samples = %v, %v", got, ok)
 	}
+
+	assertSignalSnapshots(t)
 }

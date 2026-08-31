@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T09:50:30Z"
 description: Opt-in value snapshot representation for scalar-only tagged unions, keeping projections elsewhere
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-31T09:00:39Z"
 ---
 > NEXT: 표현과 적격 조건 확정. ([Phase 0](phases/00-representation-eligibility.md))
@@ -10,8 +11,8 @@ registered_at: "2026-08-31T09:00:39Z"
 - [x] [Phase 00: Representation and eligibility](phases/00-representation-eligibility.md)
 - [x] [Phase 01: Lowering and native emitters](phases/01-lowering-native-emit.md)
 - [x] [Phase 02: Go surfaces for both backends](phases/02-go-surfaces.md)
-- [ ] [Phase 03: ABI rules](phases/03-abi-rules.md)
-- [ ] [Phase 04: Example and documentation](phases/04-example-docs.md)
+- [x] [Phase 03: ABI rules](phases/03-abi-rules.md)
+- [x] [Phase 04: Example and documentation](phases/04-example-docs.md)
 
 # Shared Verification
 

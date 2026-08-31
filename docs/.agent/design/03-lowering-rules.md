@@ -156,6 +156,57 @@ compatible append다. variant 삭제·순서 변경·이름 변경, 기존 discr
 변경은 breaking type definition change다. 이름 또는 prefix 변경으로 기존 projection 심볼이
 달라지는 경우도 breaking이다.
 
+### 7.1 tagged union 값 스냅샷
+
+projection은 정확하지만 tag 확인과 payload 읽기가 각각 FFI 왕복이다. payload가 전부
+스칼라인 작은 union을 반복해서 들여다보는 Go 코드에는 이 비용이 그대로 쌓인다.
+`.repr = .tagged_union_value`는 같은 union에 **값 스냅샷** 표현을 하나 더 붙여, tag와
+payload를 한 번의 native 호출로 함께 읽게 한다. 기본값은 여전히 `.repr = .tagged_union`이며,
+projection 심볼과 `Tag()`/`As*()`/`TryAs*()`는 그대로 남는다. 스냅샷은 대체가 아니라 추가다.
+
+스냅샷도 Zig union의 메모리 배치를 C로 복제하지 않는다. zigo가 **자기 소유의 `extern
+struct`** 를 정의하고 shim이 active variant를 읽어 그 안으로 옮겨 담는다. tag가 맨 앞에 오고
+payload는 폭이 넓은 것부터 이어지며, 빈 자리는 전부 `reserved_<n>` 멤버로 명시한다. 폭 내림
+차순 배치 덕분에 암묵적 padding이 생기지 않아 C 헤더, Zig shim, Go 구조체 세 표현이 같은
+배치로 맞아떨어진다. shim에는 `@sizeOf`/`@alignOf` comptime 단언이 함께 생성된다.
+
+```c
+typedef struct zg_signal_snapshot_t {
+    zg_signal_tag tag;
+    uint8_t reserved_0[7];
+    double level;
+    uint32_t ticks;
+    int16_t offset;
+    zg_mode mode;
+    uint8_t reserved_1[1];
+} zg_signal_snapshot_t;
+
+uint8_t zg_signal_snapshot(const zg_signal *self, zg_signal_snapshot_t *out_snapshot);
+```
+
+스냅샷은 반환값이 아니라 out 포인터로 넘긴다. aggregate by-value 반환은 ABI마다 규칙이
+다르고 purego는 C struct를 값으로 전달하지 못한다. 상태 코드는 projection과 동일한
+`0/1/2/3`이며, null handle과 null out 포인터는 Zig 호출 전에 거부되고 Zig panic은 status 3과
+`zg_last_error_message()`로 나온다. shim은 채우기 전에 구조체 전체를 0으로 지우므로 비활성
+variant 자리와 padding에 이전 스택 내용이 남지 않는다.
+
+Go에는 `SignalSnapshot` 값 타입과 `TrySnapshot() (SignalSnapshot, error)` / `Snapshot()`이
+생성된다. 스냅샷에서 tag는 `Tag()`로, payload는 `Ticks() (uint32, bool)`처럼 활성 여부를 함께
+돌려주는 접근자로 읽는다. 이 읽기는 순수 Go이므로 추가 FFI 왕복이 없다.
+
+적격 조건은 **모든 variant payload가 void, bool, 정수/부동소수 스칼라, 또는 등록된 enum** 인
+것이다. `bool`은 §1의 스칼라 규칙대로 C ABI에서 `uint8_t`로 내려가고 public Go에서만 `bool`로
+복원되므로 스냅샷도 예외를 두지 않는다. slice·opaque handle·중첩 aggregate·optional·error
+union·callback payload가 하나라도 있으면 스냅샷으로 옮길 평평한 스칼라 복사본이 성립하지
+않으므로 `ZIGO011`이 해당 variant를 지목하고 `.repr = .tagged_union`을 안내한다. 스냅샷
+구조체가 discriminant를 `tag` 멤버로 쓰기 때문에 `tag`라는 이름의 variant도 같은 진단으로
+거부된다.
+
+ABI 판정은 표현마다 다르다. projection union의 끝부분 variant 추가는 여전히 compatible
+append지만, 값 스냅샷 union에서는 구조체의 크기와 배치가 달라지므로 **breaking**이다. 두 표현
+사이를 오가는 전환도 breaking이다. 스냅샷을 선택한다는 것은 variant 추가마다 ABI를 깨겠다는
+선택이므로, variant가 자주 늘어나는 union은 projection에 두는 편이 낫다.
+
 ## 8. 소유권 → Go 매핑
 
 | ownership | Go |

@@ -233,6 +233,45 @@ ABI diff는 기존 순서·tag·payload를 보존한 끝부분 variant 추가를
 분류한다. 삭제, 재정렬, 이름 변경, 기존 tag/payload 변경과 projection prefix 변경은
 breaking이다.
 
+### Tagged union 값 스냅샷
+
+`Tag()`와 `As*()`는 각각 FFI 왕복이므로, payload가 전부 스칼라인 union을 반복해서 읽는
+코드는 왕복 비용을 그대로 지불한다. `.repr = .tagged_union_value`로 등록하면 zigo가 값
+스냅샷 표현을 하나 더 만든다.
+
+```zig
+.types = .{
+    .{ .type = mylib.Signal, .repr = .tagged_union_value },
+},
+```
+
+`TrySnapshot() (SignalSnapshot, error)`와 `Snapshot()`이 tag와 payload를 **native 호출 한
+번**으로 가져오고, 그 뒤의 읽기는 순수 Go다.
+
+```go
+snapshot := signal.Snapshot()      // 여기까지가 유일한 native 호출
+if ticks, ok := snapshot.Ticks(); ok {
+    fmt.Println(snapshot.Tag(), ticks)
+}
+```
+
+`Tag()`는 스냅샷이 담은 variant를, `<Variant>() (payload, bool)`은 payload와 그 variant가
+활성이었는지를 함께 돌려준다. `void` variant는 tag 상수만 가진다. 기존
+`Tag`/`As*`/`TryAs*`는 그대로 남으므로 스냅샷은 대체가 아니라 추가 API다. 상태 코드와 오류
+타입은 projection과 같다.
+
+zigo는 Zig union의 배치를 복제하지 않고 자기 소유의 `extern struct`를 정의한 뒤 shim이
+값을 옮겨 담는다. 그래서 적격 조건이 있다. **모든 variant payload가 void, bool, 정수/부동소수
+스칼라, 또는 등록된 enum**이어야 하고, `tag`라는 이름의 variant는 쓸 수 없다. 스냅샷 구조체가
+discriminant를 `tag` 멤버로 쓰기 때문이다. slice, opaque handle, 중첩 aggregate, optional,
+error union, callback payload가 있으면 생성이 `ZIGO011`로 실패하며 문제가 된 variant와
+`.repr = .tagged_union` 대안을 알려준다.
+
+선택 기준은 ABI다. projection union은 끝부분 variant 추가가 compatible append지만, 값
+스냅샷 union은 구조체의 크기와 배치가 달라지므로 **breaking**이다. 두 표현 사이의 전환도
+breaking이다. variant가 앞으로 늘어날 union은 projection에, 모양이 고정된 작고 뜨거운
+union은 값 스냅샷에 두는 편이 낫다.
+
 지원 payload는 `void`, bool, 정수, float, enum, 등록된 handle pointer, 숫자 slice다.
 숫자 slice는 Zig 메모리 view를 public Go API에 그대로 노출하지 않고 호출마다 복사한다.
 handle payload는 union wrapper에 수명이 묶인 borrowed `*TRef`다. union 자체를 함수 인자나

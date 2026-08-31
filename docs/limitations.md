@@ -24,6 +24,12 @@
 - tagged union은 `.repr = .tagged_union`으로 등록한 뒤 포인터로만 노출한다. 생성된
   `Tag`/`As*`가 active tag를 검사하며 union 레이아웃은 C로 전달하지 않는다. nested
   aggregate, optional, error union, callback 또는 pointer 원소 slice payload는 지원하지 않는다.
+- `.repr = .tagged_union_value`의 값 스냅샷은 모든 variant payload가 void, bool, 정수/부동소수
+  스칼라, 또는 등록된 enum일 때만 쓸 수 있고 `tag`라는 이름의 variant를 허용하지 않는다.
+  그 밖의 payload는 `ZIGO011`로 거부되므로 projection 표현을 쓴다. 스냅샷 union은 variant를
+  추가하면 구조체 배치가 달라져 ABI가 깨진다. 스냅샷 구조체도 Zig union의 배치가 아니라
+  zigo가 정의한 `extern struct`이며, variant 수만큼 멤버를 가지므로 variant가 많은 union은
+  호출마다 그만큼을 복사한다.
 - generic 함수는 구체화 전에는 시그니처가 없으므로 직접 노출할 수 없다. generic 타입은
   `specializations`에 구체화된 타입을 등록한다.
 - `anyerror`, C 호출 규약이 아닌 함수 포인터, Go 포인터를 포함할 수 있는 슬라이스처럼

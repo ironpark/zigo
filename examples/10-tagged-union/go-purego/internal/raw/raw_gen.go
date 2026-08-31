@@ -54,6 +54,14 @@ type nativeBindings struct {
 	fnValueSetChild          func(unsafe.Pointer, unsafe.Pointer)
 	fnValueBorrow            func(unsafe.Pointer) unsafe.Pointer
 	fnValueDeinit            func(unsafe.Pointer)
+	fnSignalCreate           func(uint32, *unsafe.Pointer) int32
+	fnSignalSetIdle          func(unsafe.Pointer)
+	fnSignalSetTicks         func(unsafe.Pointer, uint32)
+	fnSignalSetLevel         func(unsafe.Pointer, float64)
+	fnSignalSetOffset        func(unsafe.Pointer, int16)
+	fnSignalSetMode          func(unsafe.Pointer, uint8)
+	fnSignalSetActive        func(unsafe.Pointer, uint8)
+	fnSignalDeinit           func(unsafe.Pointer)
 	fnLiveValues             func() uintptr
 	fnDivide                 func(float64, float64, *float64) int32
 	fnSum                    func(unsafe.Pointer, uintptr) float64
@@ -65,6 +73,13 @@ type nativeBindings struct {
 	fnProjection4            func(unsafe.Pointer, *unsafe.Pointer, *uintptr) uint8
 	fnProjection5            func(unsafe.Pointer, *unsafe.Pointer) uint8
 	fnProjection6            func(unsafe.Pointer, *unsafe.Pointer, *uintptr) uint8
+	fnProjection7            func(unsafe.Pointer, *uint8) uint8
+	fnProjection8            func(unsafe.Pointer, *uint32) uint8
+	fnProjection9            func(unsafe.Pointer, *float64) uint8
+	fnProjection10           func(unsafe.Pointer, *int16) uint8
+	fnProjection11           func(unsafe.Pointer, *uint8) uint8
+	fnProjection12           func(unsafe.Pointer, *uint8) uint8
+	fnSnapshot0              func(unsafe.Pointer, unsafe.Pointer) uint8
 }
 
 var loadedBindings atomic.Pointer[nativeBindings]
@@ -198,6 +213,38 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_value_deinit", err)
 	}
+	addrSignalCreate, err := purego.Dlsym(handle, "zg_signal_create")
+	if err != nil {
+		return fail("zg_signal_create", err)
+	}
+	addrSignalSetIdle, err := purego.Dlsym(handle, "zg_signal_set_idle")
+	if err != nil {
+		return fail("zg_signal_set_idle", err)
+	}
+	addrSignalSetTicks, err := purego.Dlsym(handle, "zg_signal_set_ticks")
+	if err != nil {
+		return fail("zg_signal_set_ticks", err)
+	}
+	addrSignalSetLevel, err := purego.Dlsym(handle, "zg_signal_set_level")
+	if err != nil {
+		return fail("zg_signal_set_level", err)
+	}
+	addrSignalSetOffset, err := purego.Dlsym(handle, "zg_signal_set_offset")
+	if err != nil {
+		return fail("zg_signal_set_offset", err)
+	}
+	addrSignalSetMode, err := purego.Dlsym(handle, "zg_signal_set_mode")
+	if err != nil {
+		return fail("zg_signal_set_mode", err)
+	}
+	addrSignalSetActive, err := purego.Dlsym(handle, "zg_signal_set_active")
+	if err != nil {
+		return fail("zg_signal_set_active", err)
+	}
+	addrSignalDeinit, err := purego.Dlsym(handle, "zg_signal_deinit")
+	if err != nil {
+		return fail("zg_signal_deinit", err)
+	}
 	addrLiveValues, err := purego.Dlsym(handle, "zg_live_values")
 	if err != nil {
 		return fail("zg_live_values", err)
@@ -242,6 +289,34 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_value_project_mutable_samples", err)
 	}
+	addrProjection7, err := purego.Dlsym(handle, "zg_signal_project_tag")
+	if err != nil {
+		return fail("zg_signal_project_tag", err)
+	}
+	addrProjection8, err := purego.Dlsym(handle, "zg_signal_project_ticks")
+	if err != nil {
+		return fail("zg_signal_project_ticks", err)
+	}
+	addrProjection9, err := purego.Dlsym(handle, "zg_signal_project_level")
+	if err != nil {
+		return fail("zg_signal_project_level", err)
+	}
+	addrProjection10, err := purego.Dlsym(handle, "zg_signal_project_offset")
+	if err != nil {
+		return fail("zg_signal_project_offset", err)
+	}
+	addrProjection11, err := purego.Dlsym(handle, "zg_signal_project_mode")
+	if err != nil {
+		return fail("zg_signal_project_mode", err)
+	}
+	addrProjection12, err := purego.Dlsym(handle, "zg_signal_project_active")
+	if err != nil {
+		return fail("zg_signal_project_active", err)
+	}
+	addrSnapshot0, err := purego.Dlsym(handle, "zg_signal_snapshot")
+	if err != nil {
+		return fail("zg_signal_snapshot", err)
+	}
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.fnChildCreate, addrChildCreate)
@@ -257,6 +332,14 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnValueSetChild, addrValueSetChild)
 	purego.RegisterFunc(&next.fnValueBorrow, addrValueBorrow)
 	purego.RegisterFunc(&next.fnValueDeinit, addrValueDeinit)
+	purego.RegisterFunc(&next.fnSignalCreate, addrSignalCreate)
+	purego.RegisterFunc(&next.fnSignalSetIdle, addrSignalSetIdle)
+	purego.RegisterFunc(&next.fnSignalSetTicks, addrSignalSetTicks)
+	purego.RegisterFunc(&next.fnSignalSetLevel, addrSignalSetLevel)
+	purego.RegisterFunc(&next.fnSignalSetOffset, addrSignalSetOffset)
+	purego.RegisterFunc(&next.fnSignalSetMode, addrSignalSetMode)
+	purego.RegisterFunc(&next.fnSignalSetActive, addrSignalSetActive)
+	purego.RegisterFunc(&next.fnSignalDeinit, addrSignalDeinit)
 	purego.RegisterFunc(&next.fnLiveValues, addrLiveValues)
 	purego.RegisterFunc(&next.fnDivide, addrDivide)
 	purego.RegisterFunc(&next.fnSum, addrSum)
@@ -268,6 +351,13 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnProjection4, addrProjection4)
 	purego.RegisterFunc(&next.fnProjection5, addrProjection5)
 	purego.RegisterFunc(&next.fnProjection6, addrProjection6)
+	purego.RegisterFunc(&next.fnProjection7, addrProjection7)
+	purego.RegisterFunc(&next.fnProjection8, addrProjection8)
+	purego.RegisterFunc(&next.fnProjection9, addrProjection9)
+	purego.RegisterFunc(&next.fnProjection10, addrProjection10)
+	purego.RegisterFunc(&next.fnProjection11, addrProjection11)
+	purego.RegisterFunc(&next.fnProjection12, addrProjection12)
+	purego.RegisterFunc(&next.fnSnapshot0, addrSnapshot0)
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -291,6 +381,17 @@ func LastErrorMessage() string {
 		length++
 	}
 	return string(unsafe.Slice((*byte)(p), length))
+}
+
+// SignalSnapshotData mirrors the zg_signal_snapshot_t value snapshot layout, padding included.
+type SignalSnapshotData struct {
+	Tag    uint8
+	_      [7]byte
+	Level  float64
+	Ticks  uint32
+	Offset int16
+	Mode   uint8
+	Active uint8
 }
 
 // ChildCreate calls the generated purego ABI wrapper for zg_child_create.
@@ -362,6 +463,48 @@ func ValueBorrow(self unsafe.Pointer) unsafe.Pointer {
 // ValueDeinit calls the generated purego ABI wrapper for zg_value_deinit.
 func ValueDeinit(self unsafe.Pointer) {
 	bindings().fnValueDeinit(self)
+}
+
+// SignalCreate calls the generated purego ABI wrapper for zg_signal_create.
+func SignalCreate(initial uint32) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := bindings().fnSignalCreate(initial, &outResult)
+	return outResult, code
+}
+
+// SignalSetIdle calls the generated purego ABI wrapper for zg_signal_set_idle.
+func SignalSetIdle(self unsafe.Pointer) {
+	bindings().fnSignalSetIdle(self)
+}
+
+// SignalSetTicks calls the generated purego ABI wrapper for zg_signal_set_ticks.
+func SignalSetTicks(self unsafe.Pointer, ticks uint32) {
+	bindings().fnSignalSetTicks(self, ticks)
+}
+
+// SignalSetLevel calls the generated purego ABI wrapper for zg_signal_set_level.
+func SignalSetLevel(self unsafe.Pointer, level float64) {
+	bindings().fnSignalSetLevel(self, level)
+}
+
+// SignalSetOffset calls the generated purego ABI wrapper for zg_signal_set_offset.
+func SignalSetOffset(self unsafe.Pointer, offset int16) {
+	bindings().fnSignalSetOffset(self, offset)
+}
+
+// SignalSetMode calls the generated purego ABI wrapper for zg_signal_set_mode.
+func SignalSetMode(self unsafe.Pointer, mode uint8) {
+	bindings().fnSignalSetMode(self, mode)
+}
+
+// SignalSetActive calls the generated purego ABI wrapper for zg_signal_set_active.
+func SignalSetActive(self unsafe.Pointer, active uint8) {
+	bindings().fnSignalSetActive(self, active)
+}
+
+// SignalDeinit calls the generated purego ABI wrapper for zg_signal_deinit.
+func SignalDeinit(self unsafe.Pointer) {
+	bindings().fnSignalDeinit(self)
 }
 
 // LiveValues calls the generated purego ABI wrapper for zg_live_values.
@@ -448,4 +591,56 @@ func ValueProjectMutableSamples(self unsafe.Pointer) ([]int16, uint8) {
 		return nil, status
 	}
 	return unsafe.Slice((*int16)(outValuePtr), int(outValueLen)), status
+}
+
+// SignalProjectTag returns the active tag and a projection status.
+func SignalProjectTag(self unsafe.Pointer) (uint8, uint8) {
+	var outValue uint8
+	status := bindings().fnProjection7(self, &outValue)
+	return outValue, status
+}
+
+// SignalProjectTicks returns the payload and a projection status.
+func SignalProjectTicks(self unsafe.Pointer) (uint32, uint8) {
+	var outValue uint32
+	status := bindings().fnProjection8(self, &outValue)
+	return outValue, status
+}
+
+// SignalProjectLevel returns the payload and a projection status.
+func SignalProjectLevel(self unsafe.Pointer) (float64, uint8) {
+	var outValue float64
+	status := bindings().fnProjection9(self, &outValue)
+	return outValue, status
+}
+
+// SignalProjectOffset returns the payload and a projection status.
+func SignalProjectOffset(self unsafe.Pointer) (int16, uint8) {
+	var outValue int16
+	status := bindings().fnProjection10(self, &outValue)
+	return outValue, status
+}
+
+// SignalProjectMode returns the payload and a projection status.
+func SignalProjectMode(self unsafe.Pointer) (uint8, uint8) {
+	var outValue uint8
+	status := bindings().fnProjection11(self, &outValue)
+	return outValue, status
+}
+
+// SignalProjectActive returns the payload and a projection status.
+func SignalProjectActive(self unsafe.Pointer) (uint8, uint8) {
+	var outValue uint8
+	status := bindings().fnProjection12(self, &outValue)
+	return outValue, status
+}
+
+// SignalReadSnapshot fills a value snapshot in one native call and returns a projection status.
+func SignalReadSnapshot(self unsafe.Pointer) (SignalSnapshotData, uint8) {
+	var out SignalSnapshotData
+	status := bindings().fnSnapshot0(self, unsafe.Pointer(&out))
+	if status != 1 {
+		return SignalSnapshotData{}, status
+	}
+	return out, status
 }

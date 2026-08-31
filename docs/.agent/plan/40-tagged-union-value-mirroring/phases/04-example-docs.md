@@ -1,9 +1,10 @@
 ---
+completed_at: "2026-08-31T09:50:30Z"
 depends_on:
 - "40-tagged-union-value-mirroring#2"
 - "40-tagged-union-value-mirroring#3"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: 예제가 CI에서 두 백엔드로 빌드·테스트된다.
 > NEXT: none

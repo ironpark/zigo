@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-31T09:50:10Z"
 depends_on:
 - "40-tagged-union-value-mirroring#1"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: variant 추가가 projection union에서는 compatible, 값 스냅샷 union에서는 breaking으로
 > NEXT: none

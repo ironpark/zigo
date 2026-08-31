@@ -80,6 +80,51 @@ pub const Value = union(enum(u8)) {
     }
 };
 
+/// Every variant payload is a scalar or an enum, so this union opts into the
+/// value snapshot representation: Go reads the tag and the payload together.
+pub const Signal = union(enum(u8)) {
+    idle,
+    ticks: u32,
+    level: f64,
+    offset: i16,
+    mode: Mode,
+    active: bool,
+
+    pub fn create(initial: u32) CreateError!*Signal {
+        const signal = std.heap.page_allocator.create(Signal) catch return error.OutOfMemory;
+        signal.* = .{ .ticks = initial };
+        return signal;
+    }
+
+    pub fn setIdle(self: *Signal) void {
+        self.* = .idle;
+    }
+
+    pub fn setTicks(self: *Signal, ticks: u32) void {
+        self.* = .{ .ticks = ticks };
+    }
+
+    pub fn setLevel(self: *Signal, level: f64) void {
+        self.* = .{ .level = level };
+    }
+
+    pub fn setOffset(self: *Signal, offset: i16) void {
+        self.* = .{ .offset = offset };
+    }
+
+    pub fn setMode(self: *Signal, mode: Mode) void {
+        self.* = .{ .mode = mode };
+    }
+
+    pub fn setActive(self: *Signal, active: bool) void {
+        self.* = .{ .active = active };
+    }
+
+    pub fn deinit(self: *Signal) void {
+        std.heap.page_allocator.destroy(self);
+    }
+};
+
 pub fn liveValues() usize {
     return live_values.load(.monotonic);
 }
@@ -126,4 +171,21 @@ test "value lifecycle accounting returns to zero" {
     try std.testing.expectEqual(@as(usize, 1), liveValues());
     value.deinit();
     try std.testing.expectEqual(@as(usize, 0), liveValues());
+}
+
+test "the value snapshot union changes variants like any other tagged union" {
+    const signal = try Signal.create(7);
+    defer signal.deinit();
+
+    try std.testing.expectEqual(@as(u32, 7), signal.ticks);
+    signal.setLevel(1.5);
+    try std.testing.expectEqual(@as(f64, 1.5), signal.level);
+    signal.setOffset(-3);
+    try std.testing.expectEqual(@as(i16, -3), signal.offset);
+    signal.setMode(.active);
+    try std.testing.expectEqual(Mode.active, signal.mode);
+    signal.setActive(true);
+    try std.testing.expect(signal.active);
+    signal.setIdle();
+    try std.testing.expectEqual(std.meta.activeTag(signal.*), .idle);
 }

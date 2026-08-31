@@ -95,6 +95,59 @@ func (v *Value) Borrow() *ValueRef {
 	return &ValueRef{ptr: result, parent: v}
 }
 
+// NewSignal creates a caller-owned Signal.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
+func NewSignal(initial uint32) (*Signal, error) {
+	result, code := raw.SignalCreate(initial)
+	if code != 0 {
+		return nil, errorForCode(code)
+	}
+	return newSignal(result), nil
+}
+
+// SetIdle invokes the bound Zig Signal.setIdle operation.
+// It panics with *HandleError if a required handle is nil or closed.
+func (s *Signal) SetIdle() {
+	defer runtime.KeepAlive(s)
+	raw.SignalSetIdle(zigoMustPointer("Signal.SetIdle receiver", s))
+}
+
+// SetTicks invokes the bound Zig Signal.setTicks operation.
+// It panics with *HandleError if a required handle is nil or closed.
+func (s *Signal) SetTicks(ticks uint32) {
+	defer runtime.KeepAlive(s)
+	raw.SignalSetTicks(zigoMustPointer("Signal.SetTicks receiver", s), ticks)
+}
+
+// SetLevel invokes the bound Zig Signal.setLevel operation.
+// It panics with *HandleError if a required handle is nil or closed.
+func (s *Signal) SetLevel(level float64) {
+	defer runtime.KeepAlive(s)
+	raw.SignalSetLevel(zigoMustPointer("Signal.SetLevel receiver", s), level)
+}
+
+// SetOffset invokes the bound Zig Signal.setOffset operation.
+// It panics with *HandleError if a required handle is nil or closed.
+func (s *Signal) SetOffset(offset int16) {
+	defer runtime.KeepAlive(s)
+	raw.SignalSetOffset(zigoMustPointer("Signal.SetOffset receiver", s), offset)
+}
+
+// SetMode invokes the bound Zig Signal.setMode operation.
+// It panics with *HandleError if a required handle is nil or closed.
+func (s *Signal) SetMode(mode Mode) {
+	defer runtime.KeepAlive(s)
+	raw.SignalSetMode(zigoMustPointer("Signal.SetMode receiver", s), uint8(mode))
+}
+
+// SetActive invokes the bound Zig Signal.setActive operation.
+// It panics with *HandleError if a required handle is nil or closed.
+func (s *Signal) SetActive(active bool) {
+	defer runtime.KeepAlive(s)
+	raw.SignalSetActive(zigoMustPointer("Signal.SetActive receiver", s), boolToUint8(active))
+}
+
 // LiveValues invokes the bound Zig liveValues operation.
 func LiveValues() uint {
 	return raw.LiveValues()

@@ -9,6 +9,11 @@
       "deinit": "deinit",
       "init": "create",
       "type": "Value"
+    },
+    {
+      "deinit": "deinit",
+      "init": "create",
+      "type": "Signal"
     }
   ],
   "functions": [
@@ -221,6 +226,166 @@
       "ownership": "borrowed",
       "params": [],
       "receiver": "Value",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_deinit"
+    },
+    {
+      "name": "create",
+      "namespace": "Signal",
+      "ownership": "caller",
+      "params": [
+        {
+          "direction": "in",
+          "name": "initial",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "OutOfMemory"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "Signal"
+        }
+      },
+      "symbol": "zg_create"
+    },
+    {
+      "name": "setIdle",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Signal",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_setIdle"
+    },
+    {
+      "name": "setTicks",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "ticks",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "receiver": "Signal",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_setTicks"
+    },
+    {
+      "name": "setLevel",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "level",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "kind": "float"
+          }
+        }
+      ],
+      "receiver": "Signal",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_setLevel"
+    },
+    {
+      "name": "setOffset",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "offset",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 16,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          }
+        }
+      ],
+      "receiver": "Signal",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_setOffset"
+    },
+    {
+      "name": "setMode",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "mode",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "kind": "enum",
+            "ref": "Mode"
+          }
+        }
+      ],
+      "receiver": "Signal",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_setMode"
+    },
+    {
+      "name": "setActive",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "active",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "receiver": "Signal",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_setActive"
+    },
+    {
+      "name": "deinit",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Signal",
       "return": {
         "kind": "void"
       },
@@ -476,6 +641,107 @@
         "signed": false
       },
       "zig_path": "@typeInfo(root.Value).@\"union\".tag_type.?"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "idle",
+          "type": {
+            "kind": "void"
+          },
+          "value": 0
+        },
+        {
+          "name": "ticks",
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          },
+          "value": 1
+        },
+        {
+          "name": "level",
+          "type": {
+            "bits": 64,
+            "kind": "float"
+          },
+          "value": 2
+        },
+        {
+          "name": "offset",
+          "type": {
+            "bits": 16,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          },
+          "value": 3
+        },
+        {
+          "name": "mode",
+          "type": {
+            "kind": "enum",
+            "ref": "Mode"
+          },
+          "value": 4
+        },
+        {
+          "name": "active",
+          "type": {
+            "kind": "bool"
+          },
+          "value": 5
+        }
+      ],
+      "kind": "tagged_union",
+      "name": "Signal",
+      "tag_type": {
+        "kind": "enum",
+        "ref": "SignalTag"
+      },
+      "union_repr": "value_snapshot",
+      "zig_path": "root.Signal"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "idle",
+          "value": 0
+        },
+        {
+          "name": "ticks",
+          "value": 1
+        },
+        {
+          "name": "level",
+          "value": 2
+        },
+        {
+          "name": "offset",
+          "value": 3
+        },
+        {
+          "name": "mode",
+          "value": 4
+        },
+        {
+          "name": "active",
+          "value": 5
+        }
+      ],
+      "kind": "enum",
+      "name": "SignalTag",
+      "tag_type": {
+        "bits": 8,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "zig_path": "@typeInfo(root.Signal).@\"union\".tag_type.?"
     }
   ],
   "zig_version": "0.16.0"
