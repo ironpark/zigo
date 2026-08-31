@@ -1,14 +1,31 @@
 # 프로젝트 개발
 
-## 기본 검증
+이 문서는 zigo 자체를 수정하는 기여자를 위한 안내입니다. zigo를 라이브러리로 사용하는
+경우에는 [시작 가이드](getting-started.md)를 참고하세요.
 
-저장소 루트에서 Zig 단위 테스트와 스냅샷 하네스를 실행한다.
+## 빠른 검증
+
+저장소 루트에서 Zig 단위 테스트와 스냅샷 테스트를 실행합니다.
 
 ```bash
 zig build test --summary all
 ```
 
-각 예제는 독립 Zig/Go 프로젝트다. 생성물 동기화, ABI와 Go 동작을 함께 검사한다.
+특정 예제를 변경했다면 해당 디렉터리에서 생성물과 Go 동작을 함께 확인합니다.
+
+```bash
+cd examples/05-pipeline
+zig build test go-check abi-check --summary all
+zig build go
+(cd go && go test -count=1 ./...)
+```
+
+`go-check`를 `go`보다 먼저 실행하면 커밋된 생성물이 변경 전부터 오래되어 있었는지 구분하기
+쉽습니다. `go` 실행 후에는 `git status --short`로 의도하지 않은 생성물 변경이 없는지 확인하세요.
+
+## 전체 예제 검증
+
+모든 cgo 예제를 확인하려면 저장소 루트에서 실행합니다.
 
 ```bash
 for example in examples/*; do
@@ -17,9 +34,18 @@ for example in examples/*; do
 done
 ```
 
-## purego 백엔드 검증
+각 예제의 역할은 [예제 선택 가이드](examples.md)에 정리되어 있습니다. 특히 다음 예제는
+변경 범위를 넓게 검증합니다.
 
-purego 바인딩을 가진 예제는 별도 스텝으로 생성하고, C 컴파일러 없이 테스트한다.
+- `05-pipeline`: 여러 타입과 콜백을 조합한 생성 파이프라인
+- `07-event-queue`: 애플리케이션 형태의 수명과 extern struct 값 전달
+- `08-telemetry-hub`: 큰 API 자동 발견과 생성 비용
+- `09-type-relations`: 타입 간 참조
+- `10-tagged-union`: projection과 snapshot 표현
+
+## purego 검증
+
+purego 바인딩을 가진 예제는 공유 라이브러리를 먼저 만들고 cgo를 끈 상태에서 테스트합니다.
 
 ```bash
 for example in examples/04-callback examples/07-event-queue examples/08-telemetry-hub; do
@@ -30,51 +56,27 @@ done
 (cd examples/10-tagged-union && zig build go go-verify -Dpurego --summary all)
 ```
 
-두 백엔드를 등록한 예제는 정적 아카이브와 공유 라이브러리가 같은 `zig-out`에 설치되지만
-서로를 가리지 않는다. cgo 생성물은 아카이브를 경로로 직접 링크하고 purego 헤더는
-별도 이름으로 설치되므로, 두 백엔드를 순서에 상관없이 한 트리에서 검증할 수 있다.
-생성된 purego 테스트는 `ZIGO_LIBRARY_PATH`가 있으면 그 경로를 우선 사용한다.
+`08-telemetry-hub`는 자동 내부 로더가 `../../zig-out/lib`에서 라이브러리를 찾습니다.
+`10-tagged-union`의 로더 실패 경로 테스트는 `ZIGO_TEST_LIBRARY`와
+`ZIGO_TEST_WRONG_LIBRARY`가 없으면 건너뜁니다. CI의 전체 플랫폼 매트릭스와 환경 변수 구성은
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml)이 정본입니다.
 
-`examples/08-telemetry-hub`의 purego 바인딩은 자동 로딩과 내부 로더 정책을 사용하므로
-테스트가 로더를 호출하지 않는다. 라이브러리는 `../../zig-out/lib` search path로 찾으므로
-`zig build purego-go-lib` 이후 패키지 디렉터리에서 테스트를 실행해야 한다.
-
-`examples/10-tagged-union`의 purego 테스트는 `ZIGO_TEST_LIBRARY`에 설치된 라이브러리의
-절대 경로를 요구하며, `ZIGO_TEST_WRONG_LIBRARY`를 함께 주면 심볼 누락 실패 경로까지
-검증한다. 설정하지 않으면 skip한다.
-
-설치된 아티팩트 자체는 저장소 도구로 검사한다.
+공유 라이브러리 자체는 다음 도구로 검사할 수 있습니다. 확장자는 현재 플랫폼에 맞게
+`.dylib` 또는 `.so`를 사용합니다.
 
 ```bash
 tests/inspect_shared_library.sh \
-  examples/04-callback/zig-out/lib/libcallback_zigo.dylib zg_last_error_message
+  examples/04-callback/zig-out/lib/libcallback_zigo.dylib \
+  zg_last_error_message
+
 zig build shared-library-smoke -- \
-  examples/04-callback/zig-out/lib/libcallback_zigo.dylib zg_last_error_message
+  examples/04-callback/zig-out/lib/libcallback_zigo.dylib \
+  zg_last_error_message
 ```
 
-생성된 purego 로더는 플랫폼 파일명을 실행 시점에 고르므로 macOS와 Linux에서 생성물이
-동일해야 한다. CI는 두 OS의 amd64·arm64에서 이 동일성과 `CGO_ENABLED=0` 테스트를 함께
-검사한다.
+## 문서 변경
 
-## 예제 검증
-
-각 예제가 무엇을 다루는지는 [예제](examples.md)에 정리되어 있다. 저장소를 바꾼 뒤에는
-생성물과 ABI가 여전히 일치하는지 예제에서 확인한다.
-
-```bash
-cd examples/05-pipeline      # 07-event-queue, 08-telemetry-hub 도 동일하다
-zig build test
-zig build go
-zig build go-check abi-check
-cd go && go test -count=1 ./...
-```
-
-05-pipeline은 기능 조합의 폭을, 07-event-queue는 애플리케이션 형태의 수명 계약을,
-08-telemetry-hub는 51개 함수 규모에서의 reflection·생성 비용을 각각 회귀 검사한다.
-09-type-relations와 10-tagged-union은 타입 간 참조와 tagged-union accessor를 담당한다.
-
-## 문서 변경 확인
-
-사용자 문서의 명령과 Zig 예제는 현재 `examples/`와 `build.zig`의 공개 옵션을 기준으로
-유지한다. 내부 동작이나 지원 범위를 바꾸면 [사용자 문서](README.md)와
-[설계 문서](.agent/design/README.md)를 함께 갱신한다.
+사용자 문서의 옵션과 명령은 `build.zig`, `examples/`와 CI를 기준으로 확인합니다. 공개 동작이나
+지원 범위를 바꾸면 [사용자 문서 목차](README.md)와 관련
+[설계 문서](.agent/design/README.md)를 함께 갱신하세요. 상대 링크와 제목 앵커도 변경 후
+검사해야 합니다.

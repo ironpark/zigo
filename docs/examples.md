@@ -1,32 +1,61 @@
-# 예제
+# 예제 선택 가이드
 
-`examples/`의 각 디렉터리는 zigo를 `.path = "../.."` 의존성으로 참조하는 독립 프로젝트다.
-번호가 커질수록 다루는 범위가 넓어지며, 01~04는 기능 하나씩을 보여주고 05·07·08은
-애플리케이션 형태의 통합 예제다.
+모든 예제는 독립적으로 빌드되는 Zig/Go 프로젝트입니다. 처음이라면 `01-scalar`로 생성
+흐름을 확인한 뒤, 필요한 기능이 들어 있는 예제로 이동하세요.
 
-각 예제는 해당 디렉터리에서 다음으로 실행한다.
+## 목적에 맞는 예제 찾기
 
-```sh
-zig build go        # 바인딩 생성 + 네이티브 라이브러리 빌드
-cd go && go test ./...
+| 필요한 기능 | 먼저 볼 예제 |
+|---|---|
+| 가장 작은 설정과 함수 호출 | [01-scalar](../examples/01-scalar) |
+| Zig 오류를 Go `error`로 처리 | [02-errors](../examples/02-errors) |
+| 객체 생성, 메서드, `Close` | [03-opaque](../examples/03-opaque) |
+| Go 콜백 또는 generic 구체화 | [04-callback](../examples/04-callback) |
+| 여러 기능을 조합한 라이브러리 | [05-pipeline](../examples/05-pipeline) |
+| 실제 애플리케이션 형태의 수명 관리 | [07-event-queue](../examples/07-event-queue) |
+| 큰 공개 API 자동 발견 | [08-telemetry-hub](../examples/08-telemetry-hub) |
+| 여러 opaque 타입 사이의 참조 | [09-type-relations](../examples/09-type-relations) |
+| tagged union | [10-tagged-union](../examples/10-tagged-union) |
+
+## 실행 방법
+
+대부분의 예제는 같은 명령으로 검증할 수 있습니다.
+
+```bash
+cd examples/01-scalar
+zig build test
+zig build go-check
+zig build go
+(cd go && go test ./...)
 ```
 
-purego 패키지도 함께 배선한 예제(04·07·08)는 `zig build purego-go` 로 생성하고
-`CGO_ENABLED=0` 로 테스트한다. 10-tagged-union은 `zig build -Dpurego go` 로 백엔드를 바꿔
-생성한다. 자세한 절차는 [공유 라이브러리와 purego 백엔드](purego.md)를 참고한다.
+`go-check`는 커밋된 생성물이 최신인지 확인하고, `go`는 생성물을 실제로 갱신합니다. 예제가
+`abi_base`를 설정하므로 저장소 체크아웃 안에서는 `zig build abi-check`도 실행할 수 있습니다.
 
-| 예제 | 다루는 것 |
+purego를 포함한 `04-callback`, `07-event-queue`, `08-telemetry-hub`는 별도 Go 모듈을 만듭니다.
+
+```bash
+zig build purego-go purego-go-verify
+(cd go-purego && CGO_ENABLED=0 go test ./...)
+```
+
+`10-tagged-union`은 `-Dpurego` 옵션으로 같은 생성 경로의 백엔드를 바꿉니다. 세부적인 공유
+라이브러리 로드 전제는 [purego 가이드](purego.md)를 참고하세요.
+
+## 전체 예제
+
+| 예제 | 보여 주는 내용 |
 |---|---|
-| [01-scalar](../examples/01-scalar) | 최소 수직 슬라이스. 자유 함수 `add(i32, i32) i32` 하나. 동위치 raw 패키지와 `-Ddynamic` 로 정적·동적 링크를 함께 확인한다 |
-| [02-errors](../examples/02-errors) | 에러 유니온과 슬라이스. `errors.Is(err, ErrDivideByZero)`, `[]const f64` 합산, enum 왕복. raw 패키지를 `support/ffi` 로 옮긴 예 |
-| [03-opaque](../examples/03-opaque) | opaque handle 수명주기. `NewContext`/`Close` 멱등성, 할당 카운터, `semantic = .utf8_string` 문자열 왕복 |
-| [04-callback](../examples/04-callback) | retained Go 콜백과 generic 구체화(`FloatBuffer`, `IntBuffer`). 콜백 panic이 프로세스를 죽이지 않는지 확인한다. purego 패키지도 함께 생성한다 |
-| [05-pipeline](../examples/05-pipeline) | 통합 파이프라인. opaque 상태 + enum + 슬라이스 + typed error + retained 콜백을 한 API에 모으고, `source_root` 로 AST 이름 보강을 켜며 zlib 링크를 cgo 지시자로 전파한다 |
-| [06-camel-case](../examples/06-camel-case) | 이름 규칙. 바인딩 이름 `HTTPClient` 가 Go package `http_client`, C 심볼 `zg_*` 로 어떻게 정규화되는지 보여준다 |
-| [07-event-queue](../examples/07-event-queue) | 상태를 가진 이벤트 큐. 용량 초과 정책 enum, retained observer 콜백, `auto_cleanup` 안전망, raw 패키지 `bridge/cgo` 배치. `Stats`·`Limits` 로 `extern struct` 를 Go 값처럼 주고받는다. cgo·purego 두 패키지를 동시에 배선한다 |
-| [08-telemetry-hub](../examples/08-telemetry-hub) | 가장 넓은 API 표면. `discover = .public` + 경로 항목, enum 3종과 다수의 error set, 필터·통계·in-place 변환. purego 쪽은 `library_loading` 으로 자동 로딩과 비공개 로더를 시험한다 |
-| [09-type-relations](../examples/09-type-relations) | 한 문서에서 opaque 타입 2종. `Accumulator.absorb` 가 borrowed `*const Counter` 를 받아 소유권과 타입 참조가 독립임을 보여준다 |
-| [10-tagged-union](../examples/10-tagged-union) | union 표현 두 가지. `Value` 는 `.repr = .tagged_union` projection 으로 `TryTag`/`TryAs*` 와 panic 하는 편의 메서드 `Tag`/`As*` 를, `Signal` 은 `.access = .snapshot` 스냅샷으로 `Snapshot()` 한 번에 tag 와 payload 를 제공한다. `-Dpurego` 로 백엔드를 바꿔 생성한다 |
+| [01-scalar](../examples/01-scalar) | 자유 함수 `add(i32, i32) i32`, 동위치 raw 패키지, `-Ddynamic` cgo 동적 링크 |
+| [02-errors](../examples/02-errors) | 에러 유니온, `errors.Is`, 슬라이스, enum, `support/ffi` raw 패키지 |
+| [03-opaque](../examples/03-opaque) | opaque handle, `NewContext`/`Close`, 문자열 의미와 할당 수명 |
+| [04-callback](../examples/04-callback) | retained Go 콜백, 콜백 panic 경계, generic 타입 구체화, purego |
+| [05-pipeline](../examples/05-pipeline) | opaque 상태, enum, 슬라이스, typed error, retained 콜백, AST 이름 보강, system library 링크 전파 |
+| [06-camel-case](../examples/06-camel-case) | Zig·Go·C 사이의 package, 식별자와 심볼 이름 정규화 |
+| [07-event-queue](../examples/07-event-queue) | 이벤트 큐 수명주기, observer 콜백, `auto_cleanup`, extern struct 값, cgo·purego 병행 |
+| [08-telemetry-hub](../examples/08-telemetry-hub) | 51개 함수 자동 발견, 여러 enum/error set, purego 자동 로딩과 비공개 로더 |
+| [09-type-relations](../examples/09-type-relations) | 한 바인딩 문서의 opaque 타입 2종과 borrowed 타입 간 참조 |
+| [10-tagged-union](../examples/10-tagged-union) | projection 방식의 `TryTag`/`TryAs*`와 값 snapshot 방식의 `Snapshot()` |
 
-예제는 CI에서 매 커밋 빌드·테스트되므로 문서와 어긋나면 CI가 먼저 실패한다.
-개별 예제의 상세 설명은 각 디렉터리의 `README.md`(05·07·08·09·10)에 있다.
+예제를 복사해 시작하기보다, 각 예제의 `build.zig`와 `src/bindings.zig`에서 필요한 부분만
+현재 프로젝트로 옮기는 편이 package path와 ABI 정책을 명확하게 유지하기 쉽습니다.

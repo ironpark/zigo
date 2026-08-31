@@ -1,68 +1,103 @@
 # zigo
 
-zigo는 Zig 라이브러리의 공개 API를 관측해 Go 바인딩을 생성한다. Zig의 comptime
-reflection 결과를 바탕으로 C ABI shim, C 헤더, cgo 코드와 Go API를 함께 만든다.
+Zig 라이브러리의 공개 API에서 타입 안전한 Go 바인딩을 생성합니다. 라이브러리 구현을
+수정하지 않고 별도의 `bindings.zig`에 노출 범위를 선언하면, zigo가 C ABI shim과 헤더,
+cgo 코드, 사용하기 편한 Go API를 함께 만듭니다.
 
-> 상태: v1 구현 완료. Zig 0.16.0과 Go 1.23 이상에서 네이티브 macOS/Linux 빌드를 지원한다.
+> 현재 지원 범위: Zig 0.16.0, Go 1.23 이상, 네이티브 macOS/Linux 빌드.
+> Windows와 크로스 컴파일은 아직 지원하지 않습니다.
 
-## 주요 기능
+## 어떤 문제를 해결하나요?
 
-- Zig 라이브러리 소스를 수정하지 않고 `bindings.zig`에서 노출할 API를 선언한다.
-- 스칼라, 슬라이스, 에러 유니온, opaque 타입, tagged-union accessor, generic specialization과 콜백을 지원한다.
-- Go용 raw 계층과 public 계층, C 헤더와 Zig shim을 한 번에 생성한다.
-- `go-check`로 생성물 동기화를 검사하고, 필요하면 `abi-check`를 켜 호환성 파괴를 막는다.
-- opt-in purego 백엔드로 공유 라이브러리를 런타임에 로드해 `CGO_ENABLED=0` Go 빌드를 지원한다.
+- Zig 함수와 타입을 손으로 C ABI에 옮기는 반복 작업을 줄입니다.
+- 스칼라, 슬라이스, 에러 유니온, enum, opaque handle, extern struct, tagged union,
+  generic specialization과 Go 콜백을 하나의 선언 방식으로 다룹니다.
+- 생성된 raw 계층을 감추고 생성자, `Close`, typed error 등 Go다운 공개 API를 제공합니다.
+- `go-check`와 선택적인 `abi-check`로 생성물 누락과 호환성 파괴를 CI에서 찾습니다.
+- 필요하면 purego 백엔드로 `CGO_ENABLED=0` Go 빌드를 지원합니다.
 
 ## 빠른 시작
+
+Zig 라이브러리 프로젝트에서 zigo를 의존성으로 추가합니다.
 
 ```bash
 zig fetch --save git+https://github.com/ironpark/zigo
 ```
 
-```zig
-// build.zig
-const bindings = zigo.addGoBindings(b, .{
-    .name = "mylib",
-    .module = mylib,                          // b.addModule로 만든 대상 모듈
-    .bindings = b.path("src/bindings.zig"),
-    .source_root = b.path("src/root.zig"),
-    .go_dir = b.path("go"),
-    .go_module = "example.com/mylib/go",
-    .target = target,
-    .optimize = optimize,
-});
-_ = bindings.addStandardSteps(b, .{});
-```
+`build.zig`에 바인딩 생성을 연결합니다. 아래는 기본값인 cgo 정적 링크 구성입니다.
 
 ```zig
-// src/bindings.zig — Go에 노출할 선언만 적는다
+const std = @import("std");
+const zigo = @import("zigo");
+
+pub fn build(b: *std.Build) void {
+    const target = b.standardTargetOptions(.{});
+    const optimize = b.standardOptimizeOption(.{});
+    const mylib = b.addModule("mylib", .{
+        .root_source_file = b.path("src/root.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+
+    const bindings = zigo.addGoBindings(b, .{
+        .name = "mylib",
+        .module = mylib,
+        .bindings = b.path("src/bindings.zig"),
+        .go_dir = b.path("go"),
+        .go_module = "example.com/mylib/go",
+        .target = target,
+        .optimize = optimize,
+    });
+    _ = bindings.addStandardSteps(b, .{});
+}
+```
+
+`src/bindings.zig`에는 Go에 노출할 API를 선언합니다.
+
+```zig
 const zigo = @import("zigo");
 const mylib = @import("mylib");
 
 pub const bindings = zigo.define(.{
     .root = mylib,
-    .discover = .public,
+    .functions = .{.{ .path = "root.add" }},
 });
 ```
 
+바인딩을 생성하고 Go 테스트를 실행합니다.
+
 ```bash
-zig build go              # 바인딩 생성 + 네이티브 라이브러리 설치
-cd go && go test ./...
+zig build go
+cd go
+go test ./...
 ```
 
-생성된 Go 소스와 `zigo/` 메타데이터는 저장소에 함께 커밋한다. 전체 절차와 CI 배선은
-[설치와 사용](docs/getting-started.md)에 있다.
+생성된 Go 소스와 `zigo/` 메타데이터는 저장소에 커밋합니다. 전체 설정과 CI 연결은
+[시작 가이드](docs/getting-started.md)에서 이어집니다.
 
-C 컴파일러 없이 Go를 빌드해야 하면 purego 백엔드를 추가로 등록한다. 공개 Go API는
-그대로이고 네이티브 공유 라이브러리를 실행 시점에 로드한다 →
-[공유 라이브러리와 purego 백엔드](docs/purego.md).
+## 백엔드 선택
+
+처음에는 기본값인 `.cgo_static`을 권장합니다.
+
+| 필요한 동작 | `link` 값 | 추가로 알아둘 점 |
+|---|---|---|
+| 하나의 Go 실행 파일에 정적으로 링크 | `.cgo_static` | 기본값이며 별도 설정이 필요 없습니다 |
+| 공유 라이브러리를 cgo로 링크 | `.cgo_dynamic` | 런타임 라이브러리 경로를 배포 환경에서 관리합니다 |
+| C 컴파일러 없이 Go 빌드 | `.purego` | OS·아키텍처별 공유 라이브러리를 함께 배포합니다 |
+
+purego를 선택했다면 [공유 라이브러리와 purego](docs/purego.md)를 먼저 읽어 주세요.
 
 ## 문서
 
-[사용자 문서 목차](docs/README.md)에서 시작한다.
+- [시작 가이드](docs/getting-started.md) — 설치부터 첫 생성, 테스트, CI까지
+- [바인딩 설정](docs/configuration.md) — 빌드 옵션, 타입 선언, 생성물에 대한 전체 참조
+- [예제 선택 가이드](docs/examples.md) — 기능별로 가장 가까운 실행 가능한 예제 찾기
+- [지원 범위와 제한사항](docs/limitations.md) — 타입, ABI, 수명과 플랫폼 제약
+- [사용자 문서 전체 목차](docs/README.md) — 목적별 문서 탐색
+- [프로젝트 개발](docs/development.md) — 저장소 기여자를 위한 검증 절차
 
-- [설치와 사용](docs/getting-started.md) — 의존성 추가부터 CI 게이트까지의 절차
-- [설정과 생성물](docs/configuration.md) — `addGoBindings` 옵션과 선언 메타데이터
-- [예제](docs/examples.md) — 예제 10종이 각각 다루는 범위
-- [제한사항](docs/limitations.md) — 지원 범위와 FFI 계약
-- [설계 문서](docs/.agent/design/README.md) — 내부 아키텍처와 설계 근거
+내부 구조가 궁금하다면 [설계 문서](docs/.agent/design/README.md)를 참고하세요.
+
+## 라이선스
+
+[MIT License](LICENSE)
