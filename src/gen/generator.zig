@@ -645,6 +645,62 @@ test "generated errors lock produces an identical second generation" {
     }
 }
 
+test "purego loading policy shapes the generated candidate order" {
+    const fixture =
+        \\{"functions":[{"name":"add","params":[{"name":"a","type":{"bits":32,"kind":"int","signed":true}}],"return":{"bits":32,"kind":"int","signed":true},"symbol":"ignored"}],"package":"scalar","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    var default_output = std.testing.tmpDir(.{ .iterate = true });
+    defer default_output.cleanup();
+    try generate(std.testing.allocator, std.testing.io, fixture, default_output.dir, .{
+        .package = "scalar",
+        .prefix = "zg",
+        .go_module = "example.com/scalar",
+        .backend = .purego,
+        .library_stem = "scalar_zigo",
+    });
+    const default_raw = try default_output.dir.readFileAlloc(std.testing.io, "internal/raw/raw_gen.go", std.testing.allocator, .limited(64 * 1024));
+    defer std.testing.allocator.free(default_raw);
+    // The package-specific name keeps two zigo packages in one process apart.
+    try std.testing.expect(std.mem.containsAtLeast(u8, default_raw, 1, "var libraryEnvVars = []string{\"ZIGO_SCALAR_LIBRARY_PATH\", \"ZIGO_LIBRARY_PATH\"}"));
+    try std.testing.expect(std.mem.indexOf(u8, default_raw, "librarySearchPaths") == null);
+    try std.testing.expect(std.mem.indexOf(u8, default_raw, "path/filepath") == null);
+
+    var configured = std.testing.tmpDir(.{ .iterate = true });
+    defer configured.cleanup();
+    try generate(std.testing.allocator, std.testing.io, fixture, configured.dir, .{
+        .package = "scalar",
+        .prefix = "zg",
+        .go_module = "example.com/scalar",
+        .backend = .purego,
+        .library_stem = "scalar_zigo",
+        .library_search_paths = "${EXECUTABLE_DIR}/../lib:/opt/app/lib",
+        .library_env_vars = "APP_LIBRARY",
+    });
+    const configured_raw = try configured.dir.readFileAlloc(std.testing.io, "internal/raw/raw_gen.go", std.testing.allocator, .limited(64 * 1024));
+    defer std.testing.allocator.free(configured_raw);
+    try std.testing.expect(std.mem.containsAtLeast(u8, configured_raw, 1, "var libraryEnvVars = []string{\"APP_LIBRARY\"}"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, configured_raw, 1, "var librarySearchPaths = []string{\"${EXECUTABLE_DIR}/../lib\", \"/opt/app/lib\"}"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, configured_raw, 1, "os.Executable()"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, configured_raw, 1, "\"path/filepath\""));
+    try std.testing.expect(std.mem.containsAtLeast(u8, configured_raw, 1, "\"strings\""));
+
+    // An empty environment list removes the lookup and its import.
+    var bare = std.testing.tmpDir(.{ .iterate = true });
+    defer bare.cleanup();
+    try generate(std.testing.allocator, std.testing.io, fixture, bare.dir, .{
+        .package = "scalar",
+        .prefix = "zg",
+        .go_module = "example.com/scalar",
+        .backend = .purego,
+        .library_stem = "scalar_zigo",
+        .library_env_vars = "",
+    });
+    const bare_raw = try bare.dir.readFileAlloc(std.testing.io, "internal/raw/raw_gen.go", std.testing.allocator, .limited(64 * 1024));
+    defer std.testing.allocator.free(bare_raw);
+    try std.testing.expect(std.mem.indexOf(u8, bare_raw, "libraryEnvVars") == null);
+    try std.testing.expect(std.mem.indexOf(u8, bare_raw, "\t\"os\"\n") == null);
+}
+
 test "purego generation emits an atomic retryable loader and explicit callback ABI" {
     const scalar_fixture =
         \\{"functions":[{"name":"add","params":[{"name":"a","type":{"bits":32,"kind":"int","signed":true}},{"name":"b","type":{"bits":32,"kind":"int","signed":true}}],"return":{"bits":32,"kind":"int","signed":true},"symbol":"ignored"},{"name":"accept","params":[{"name":"value","type":{"const":true,"kind":"opaque_ptr","nullable":true,"ref":"Handle"}}],"return":{"kind":"void"},"symbol":"ignored"}],"package":"scalar","prefix":"zg","types":[{"kind":"opaque","name":"Handle"}],"zig_version":"0.16.0"}

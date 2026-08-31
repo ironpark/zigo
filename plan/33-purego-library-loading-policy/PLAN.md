@@ -7,7 +7,7 @@ registered_at: "2026-08-31T05:51:27Z"
 
 # Phases
 
-- [ ] [Phase 00: Loading Policy Option and Plumbing](phases/00-loading-policy-option.md)
+- [x] [Phase 00: Loading Policy Option and Plumbing](phases/00-loading-policy-option.md)
 - [ ] [Phase 01: Candidate Path Resolution](phases/01-candidate-resolution.md)
 - [ ] [Phase 02: Automatic Loading and Loader Visibility](phases/02-automatic-and-visibility.md)
 - [ ] [Phase 03: Example, Documentation, and CI](phases/03-example-docs-ci.md)

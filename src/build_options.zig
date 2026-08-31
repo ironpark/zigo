@@ -60,20 +60,6 @@ pub fn isDefaultLibraryLoading(loading: LibraryLoading) bool {
         !loading.automatic and loading.exported_api;
 }
 
-/// Environment variable a generated package reads before the shared one, so two
-/// zigo purego packages in one process do not resolve to the same file.
-pub fn packageEnvironmentNameAlloc(allocator: std.mem.Allocator, go_package: []const u8) ![]u8 {
-    var name: std.ArrayList(u8) = .empty;
-    errdefer name.deinit(allocator);
-    try name.appendSlice(allocator, "ZIGO_");
-    for (go_package) |character| try name.append(allocator, if (std.ascii.isAlphanumeric(character))
-        std.ascii.toUpper(character)
-    else
-        '_');
-    try name.appendSlice(allocator, "_LIBRARY_PATH");
-    return name.toOwnedSlice(allocator);
-}
-
 pub const RawPackageError = error{
     InvalidPath,
     InvalidComponent,
@@ -172,10 +158,4 @@ test "library loading policies reject unusable combinations" {
     try std.testing.expectError(error.InvalidSearchPath, validateLibraryLoading(.{ .search_paths = &.{"/opt/a:/opt/b"} }, true));
     try std.testing.expectError(error.InvalidEnvironmentName, validateLibraryLoading(.{ .env_vars = &.{"9BAD"} }, true));
     try std.testing.expectError(error.InvalidEnvironmentName, validateLibraryLoading(.{ .env_vars = &.{"BAD-NAME"} }, true));
-}
-
-test "package environment names are derived from the Go package" {
-    const name = try packageEnvironmentNameAlloc(std.testing.allocator, "event_queue");
-    defer std.testing.allocator.free(name);
-    try std.testing.expectEqualStrings("ZIGO_EVENT_QUEUE_LIBRARY_PATH", name);
 }

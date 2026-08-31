@@ -592,23 +592,115 @@ fn libraryStemAlloc(allocator: std.mem.Allocator, program: abi.Program, options:
     return std.fmt.allocPrint(allocator, "{s}_zigo", .{package});
 }
 
+/// Environment variable names the generated loader consults, in order.
+fn libraryEnvNamesAlloc(allocator: std.mem.Allocator, program: abi.Program, options: Options) ![]u8 {
+    if (options.library_env_vars) |names| return allocator.dupe(u8, names);
+    const package = try naming.snakeAlloc(allocator, program.package);
+    defer allocator.free(package);
+    const specific = try naming.libraryPathEnvironmentAlloc(allocator, package);
+    defer allocator.free(specific);
+    return std.fmt.allocPrint(allocator, "{s},ZIGO_LIBRARY_PATH", .{specific});
+}
+
+/// True when any configured search path expands the executable directory.
+fn usesExecutableDir(options: Options) bool {
+    return std.mem.indexOf(u8, options.library_search_paths, executable_dir_token) != null;
+}
+
+const executable_dir_token = "${EXECUTABLE_DIR}";
+
+/// Emits the ordered candidate resolution the loader and the automatic path share.
+fn renderPuregoCandidates(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
+    const env_names = try libraryEnvNamesAlloc(allocator, program, options);
+    defer allocator.free(env_names);
+    if (env_names.len != 0) {
+        try writer.writeAll("// libraryEnvVars are consulted in order when no explicit path is given.\nvar libraryEnvVars = []string{");
+        var names = std.mem.splitScalar(u8, env_names, ',');
+        var index: usize = 0;
+        while (names.next()) |name| : (index += 1) {
+            if (index != 0) try writer.writeAll(", ");
+            try writer.print("\"{s}\"", .{name});
+        }
+        try writer.writeAll("}\n\n");
+    }
+    if (options.library_search_paths.len != 0) {
+        try writer.writeAll("// librarySearchPaths are tried after the environment, in order.\nvar librarySearchPaths = []string{");
+        var paths = std.mem.splitScalar(u8, options.library_search_paths, ':');
+        var index: usize = 0;
+        while (paths.next()) |path| : (index += 1) {
+            if (index != 0) try writer.writeAll(", ");
+            try writer.print("\"{s}\"", .{path});
+        }
+        try writer.writeAll("}\n\n");
+        try writer.writeAll(
+            "// resolveSearchPath joins a directory entry with the platform library\n" ++
+                "// name. It returns \"\" when the entry cannot be formed.\n" ++
+                "func resolveSearchPath(entry string) string {\n",
+        );
+        // The executable lookup is only emitted for a policy that asks for it.
+        if (usesExecutableDir(options)) try writer.print(
+            "\tif strings.Contains(entry, \"{0s}\") {{\n" ++
+                "\t\texecutable, err := os.Executable()\n" ++
+                "\t\tif err != nil {{ return \"\" }}\n" ++
+                "\t\tentry = strings.ReplaceAll(entry, \"{0s}\", filepath.Dir(executable))\n\t}}\n",
+            .{executable_dir_token},
+        );
+        try writer.writeAll(
+            "\tif DefaultLibraryName == \"\" { return \"\" }\n" ++
+                "\tif strings.HasSuffix(entry, filepath.Ext(DefaultLibraryName)) { return entry }\n" ++
+                "\treturn filepath.Join(entry, DefaultLibraryName)\n}\n\n",
+        );
+    }
+    try writer.writeAll(
+        "// libraryCandidates lists the paths a load attempt tries, in order.\n" ++
+            "func libraryCandidates(explicit string) []string {\n" ++
+            "\tif explicit != \"\" { return []string{explicit} }\n" ++
+            "\tcandidates := make([]string, 0, ",
+    );
+    try writer.print("{d})\n", .{@as(usize, 1) +
+        @as(usize, if (env_names.len != 0) 1 else 0) +
+        @as(usize, if (options.library_search_paths.len != 0) 1 else 0)});
+    if (env_names.len != 0) try writer.writeAll(
+        "\tfor _, name := range libraryEnvVars {\n" ++
+            "\t\tif value := os.Getenv(name); value != \"\" { candidates = append(candidates, value) }\n\t}\n",
+    );
+    if (options.library_search_paths.len != 0) try writer.writeAll(
+        "\tfor _, entry := range librarySearchPaths {\n" ++
+            "\t\tif resolved := resolveSearchPath(entry); resolved != \"\" { candidates = append(candidates, resolved) }\n\t}\n",
+    );
+    try writer.writeAll(
+        "\tif DefaultLibraryName != \"\" { candidates = append(candidates, DefaultLibraryName) }\n" ++
+            "\treturn candidates\n}\n\n",
+    );
+}
+
 fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     const library_stem = try libraryStemAlloc(allocator, program, options);
     defer allocator.free(library_stem);
+    const env_names = try libraryEnvNamesAlloc(allocator, program, options);
+    defer allocator.free(env_names);
+    const search_paths = options.library_search_paths.len != 0;
+    // `os` is only reachable through the environment lookup and the executable
+    // directory expansion, so an empty policy must not import it.
+    const needs_os = env_names.len != 0 or usesExecutableDir(options);
+    try writer.print("// Code generated by zigo. DO NOT EDIT.\npackage {s}\n\nimport (\n\t\"errors\"\n\t\"fmt\"\n", .{options.raw_package_name});
+    if (needs_os) try writer.writeAll("\t\"os\"\n");
+    if (search_paths) try writer.writeAll("\t\"path/filepath\"\n");
+    try writer.writeAll("\t\"runtime\"\n");
+    if (search_paths) try writer.writeAll("\t\"strings\"\n");
+    try writer.writeAll("\t\"sync\"\n\t\"sync/atomic\"\n\t\"unsafe\"\n\n\t\"github.com/ebitengine/purego\"\n)\n\n");
     try writer.print(
-        "// Code generated by zigo. DO NOT EDIT.\npackage {s}\n\n" ++
-            "import (\n\t\"errors\"\n\t\"fmt\"\n\t\"os\"\n\t\"runtime\"\n\t\"sync\"\n\t\"sync/atomic\"\n\t\"unsafe\"\n\n\t\"github.com/ebitengine/purego\"\n)\n\n" ++
-            "// DefaultLibraryName is the installed shared-library basename for the running platform.\n" ++
+        "// DefaultLibraryName is the installed shared-library basename for the running platform.\n" ++
             "// It is empty on platforms this backend does not support.\n" ++
             "var DefaultLibraryName = map[string]string{{\"darwin\": \"lib{s}.dylib\", \"linux\": \"lib{s}.so\"}}[runtime.GOOS]\n\n" ++
             "// LibraryError reports a native library loading or symbol resolution failure.\n" ++
             "type LibraryError struct {{\n\tPath string\n\tSymbol string\n\tOperation string\n\tCause error\n}}\n\n" ++
             "// Error describes the failed loading operation.\n" ++
-            "func (err *LibraryError) Error() string {{\n\tif err.Symbol != \"\" {{ return fmt.Sprintf(\"zigo: %s %q from %q: %v\", err.Operation, err.Symbol, err.Path, err.Cause) }}\n\treturn fmt.Sprintf(\"zigo: %s %q: %v\", err.Operation, err.Path, err.Cause)\n}}\n" ++
+            "func (err *LibraryError) Error() string {{\n\tif err.Symbol != \"\" {{ return fmt.Sprintf(\"zigo: %s %q from %q: %v\", err.Operation, err.Symbol, err.Path, err.Cause) }}\n\tif err.Path == \"\" {{ return fmt.Sprintf(\"zigo: %s: %v\", err.Operation, err.Cause) }}\n\treturn fmt.Sprintf(\"zigo: %s %q: %v\", err.Operation, err.Path, err.Cause)\n}}\n" ++
             "// Unwrap returns the platform loader error.\n" ++
             "func (err *LibraryError) Unwrap() error {{ return err.Cause }}\n\n" ++
             "type nativeBindings struct {{\n",
-        .{ options.raw_package_name, library_stem, library_stem },
+        .{ library_stem, library_stem },
     );
     try writer.writeAll("\tlastError func() uintptr\n");
     for (program.functions) |function| {
@@ -639,19 +731,33 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     try writer.writeAll(
         "var loadedBindings atomic.Pointer[nativeBindings]\nvar loadMu sync.Mutex\nvar successfulLibraryPath string\n\n" ++
             "// LibraryLoaded reports whether every required native symbol was published.\n" ++
-            "func LibraryLoaded() bool { return loadedBindings.Load() != nil }\n\n" ++
-            "// LoadLibrary atomically loads and registers every required native symbol.\n" ++
-            "// A failed load leaves the binding retryable; a successful handle is never unloaded.\n" ++
-            "func LoadLibrary(path string) error {\n" ++
-            "\tif path == \"\" { path = os.Getenv(\"ZIGO_LIBRARY_PATH\") }\n" ++
-            "\tif path == \"\" { path = DefaultLibraryName }\n" ++
-            "\tif path == \"\" { return &LibraryError{Path: path, Operation: \"load\", Cause: errors.New(\"this platform has no default zigo shared-library name; pass an explicit path\")} }\n" ++
-            "\tloadMu.Lock()\n\tdefer loadMu.Unlock()\n" ++
-            "\tif loadedBindings.Load() != nil {\n\t\tif path == successfulLibraryPath { return nil }\n\t\treturn &LibraryError{Path: path, Operation: \"load\", Cause: errors.New(\"a different library is already loaded\")}\n\t}\n",
+            "func LibraryLoaded() bool { return loadedBindings.Load() != nil }\n\n",
+    );
+    try renderPuregoCandidates(allocator, writer, program, options);
+    try writer.writeAll(
+        "// LoadLibrary atomically loads and registers every required native symbol.\n" ++
+            "// An empty path uses the configured candidates. A failed load leaves the\n" ++
+            "// binding retryable; a successful handle is never unloaded.\n" ++
+            "func LoadLibrary(path string) error {\n\tloadMu.Lock()\n\tdefer loadMu.Unlock()\n\treturn loadLibraryLocked(path)\n}\n\n" ++
+            "func loadLibraryLocked(explicit string) error {\n" ++
+            "\tcandidates := libraryCandidates(explicit)\n" ++
+            "\tif len(candidates) == 0 { return &LibraryError{Operation: \"load\", Cause: errors.New(\"no shared-library candidate is configured for this platform; pass an explicit path\")} }\n" ++
+            "\tif loadedBindings.Load() != nil {\n" ++
+            "\t\tfor _, candidate := range candidates { if candidate == successfulLibraryPath { return nil } }\n" ++
+            "\t\treturn &LibraryError{Path: candidates[0], Operation: \"load\", Cause: errors.New(\"a different library is already loaded\")}\n\t}\n",
     );
     if (programHasCallbacks(program)) try writer.writeAll("\tensureCallbackDispatchers()\n");
     try writer.writeAll(
-        "\thandle, err := purego.Dlopen(path, purego.RTLD_NOW|purego.RTLD_LOCAL)\n" ++
+        "\tattempts := make([]error, 0, len(candidates))\n" ++
+            "\tfor _, candidate := range candidates {\n" ++
+            "\t\tif err := loadCandidate(candidate); err != nil { attempts = append(attempts, err); continue }\n" ++
+            "\t\tsuccessfulLibraryPath = candidate\n\t\treturn nil\n\t}\n" ++
+            "\t// One candidate keeps the precise path and symbol of its own failure.\n" ++
+            "\tif len(attempts) == 1 { return attempts[0] }\n" ++
+            "\treturn &LibraryError{Operation: \"load\", Cause: errors.Join(attempts...)}\n}\n\n" ++
+            "// loadCandidate publishes the call surface only after every symbol resolves.\n" ++
+            "func loadCandidate(path string) error {\n" ++
+            "\thandle, err := purego.Dlopen(path, purego.RTLD_NOW|purego.RTLD_LOCAL)\n" ++
             "\tif err != nil { return &LibraryError{Path: path, Operation: \"open\", Cause: err} }\n" ++
             "\tfail := func(symbol string, cause error) error { _ = purego.Dlclose(handle); return &LibraryError{Path: path, Symbol: symbol, Operation: \"resolve\", Cause: cause} }\n",
     );
@@ -676,7 +782,7 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     }
     for (program.projections, 0..) |_, index|
         try writer.print("\tpurego.RegisterFunc(&next.fnProjection{d}, addrProjection{d})\n", .{ index, index });
-    try writer.writeAll("\tloadedBindings.Store(&next)\n\tsuccessfulLibraryPath = path\n\treturn nil\n}\n\n");
+    try writer.writeAll("\tloadedBindings.Store(&next)\n\treturn nil\n}\n\n");
     try writer.writeAll("func bindings() *nativeBindings {\n\tvalue := loadedBindings.Load()\n\tif value == nil { panic(\"zigo: native library is not loaded; call LoadLibrary first\") }\n\treturn value\n}\n\n");
     const last_error_name = if (options.raw_colocated) "zigoRawLastErrorMessage" else "LastErrorMessage";
     try writer.print("// {s} returns the most recent native panic message for this binding.\nfunc {s}() string {{\n\tp := bindings().lastError()\n\tif p == 0 {{ return \"\" }}\n\tb := make([]byte, 0, 128)\n\tfor i := uintptr(0); ; i++ {{ c := *(*byte)(unsafe.Pointer(p+i)); if c == 0 {{ return string(b) }}; b = append(b, c) }}\n}}\n", .{ last_error_name, last_error_name });

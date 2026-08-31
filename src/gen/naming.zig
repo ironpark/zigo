@@ -97,3 +97,23 @@ test "naming normalizes symbols and Go initialisms" {
         try std.testing.expectEqualStrings(case.camel, camel);
     }
 }
+
+/// Environment variable a generated purego package reads before the shared
+/// `ZIGO_LIBRARY_PATH`, so two zigo packages in one process stay independent.
+pub fn libraryPathEnvironmentAlloc(allocator: std.mem.Allocator, go_package: []const u8) ![]u8 {
+    var name: std.ArrayList(u8) = .empty;
+    errdefer name.deinit(allocator);
+    try name.appendSlice(allocator, "ZIGO_");
+    for (go_package) |character| try name.append(allocator, if (std.ascii.isAlphanumeric(character))
+        std.ascii.toUpper(character)
+    else
+        '_');
+    try name.appendSlice(allocator, "_LIBRARY_PATH");
+    return name.toOwnedSlice(allocator);
+}
+
+test "library path environment names are derived from the Go package" {
+    const name = try libraryPathEnvironmentAlloc(std.testing.allocator, "event_queue");
+    defer std.testing.allocator.free(name);
+    try std.testing.expectEqualStrings("ZIGO_EVENT_QUEUE_LIBRARY_PATH", name);
+}

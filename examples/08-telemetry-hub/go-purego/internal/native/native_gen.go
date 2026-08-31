@@ -30,6 +30,9 @@ func (err *LibraryError) Error() string {
 	if err.Symbol != "" {
 		return fmt.Sprintf("zigo: %s %q from %q: %v", err.Operation, err.Symbol, err.Path, err.Cause)
 	}
+	if err.Path == "" {
+		return fmt.Sprintf("zigo: %s: %v", err.Operation, err.Cause)
+	}
 	return fmt.Sprintf("zigo: %s %q: %v", err.Operation, err.Path, err.Cause)
 }
 
@@ -208,27 +211,67 @@ var successfulLibraryPath string
 // LibraryLoaded reports whether every required native symbol was published.
 func LibraryLoaded() bool { return loadedBindings.Load() != nil }
 
+// libraryEnvVars are consulted in order when no explicit path is given.
+var libraryEnvVars = []string{"ZIGO_TELEMETRY_HUB_LIBRARY_PATH", "ZIGO_LIBRARY_PATH"}
+
+// libraryCandidates lists the paths a load attempt tries, in order.
+func libraryCandidates(explicit string) []string {
+	if explicit != "" {
+		return []string{explicit}
+	}
+	candidates := make([]string, 0, 2)
+	for _, name := range libraryEnvVars {
+		if value := os.Getenv(name); value != "" {
+			candidates = append(candidates, value)
+		}
+	}
+	if DefaultLibraryName != "" {
+		candidates = append(candidates, DefaultLibraryName)
+	}
+	return candidates
+}
+
 // LoadLibrary atomically loads and registers every required native symbol.
-// A failed load leaves the binding retryable; a successful handle is never unloaded.
+// An empty path uses the configured candidates. A failed load leaves the
+// binding retryable; a successful handle is never unloaded.
 func LoadLibrary(path string) error {
-	if path == "" {
-		path = os.Getenv("ZIGO_LIBRARY_PATH")
-	}
-	if path == "" {
-		path = DefaultLibraryName
-	}
-	if path == "" {
-		return &LibraryError{Path: path, Operation: "load", Cause: errors.New("this platform has no default zigo shared-library name; pass an explicit path")}
-	}
 	loadMu.Lock()
 	defer loadMu.Unlock()
+	return loadLibraryLocked(path)
+}
+
+func loadLibraryLocked(explicit string) error {
+	candidates := libraryCandidates(explicit)
+	if len(candidates) == 0 {
+		return &LibraryError{Operation: "load", Cause: errors.New("no shared-library candidate is configured for this platform; pass an explicit path")}
+	}
 	if loadedBindings.Load() != nil {
-		if path == successfulLibraryPath {
-			return nil
+		for _, candidate := range candidates {
+			if candidate == successfulLibraryPath {
+				return nil
+			}
 		}
-		return &LibraryError{Path: path, Operation: "load", Cause: errors.New("a different library is already loaded")}
+		return &LibraryError{Path: candidates[0], Operation: "load", Cause: errors.New("a different library is already loaded")}
 	}
 	ensureCallbackDispatchers()
+	attempts := make([]error, 0, len(candidates))
+	for _, candidate := range candidates {
+		if err := loadCandidate(candidate); err != nil {
+			attempts = append(attempts, err)
+			continue
+		}
+		successfulLibraryPath = candidate
+		return nil
+	}
+	// One candidate keeps the precise path and symbol of its own failure.
+	if len(attempts) == 1 {
+		return attempts[0]
+	}
+	return &LibraryError{Operation: "load", Cause: errors.Join(attempts...)}
+}
+
+// loadCandidate publishes the call surface only after every symbol resolves.
+func loadCandidate(path string) error {
 	handle, err := purego.Dlopen(path, purego.RTLD_NOW|purego.RTLD_LOCAL)
 	if err != nil {
 		return &LibraryError{Path: path, Operation: "open", Cause: err}
@@ -499,7 +542,6 @@ func LoadLibrary(path string) error {
 	purego.RegisterFunc(&next.fnTelemetryHubDeinit, addrTelemetryHubDeinit)
 	purego.RegisterFunc(&next.fnLiveHubs, addrLiveHubs)
 	loadedBindings.Store(&next)
-	successfulLibraryPath = path
 	return nil
 }
 

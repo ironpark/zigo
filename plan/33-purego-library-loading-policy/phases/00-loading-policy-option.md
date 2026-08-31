@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T05:59:04Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Validation and CLI parsing are unit tested, `go-report` prints the effective policy, and every
 > NEXT: none
