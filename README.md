@@ -126,7 +126,7 @@ OS·아키텍처마다 빌드해야 한다.
 - [공유 라이브러리와 purego 백엔드](docs/wiki/purego.md)
 - [제한사항과 운영 주의사항](docs/wiki/limitations.md)
 - [프로젝트 개발](docs/wiki/development.md)
-- [설계 문서](docs/design/README.md)
+- [설계 문서](docs/.agent/design/README.md)
 - [통합 파이프라인 예제](examples/05-pipeline/README.md)
 - [상태 기반 event queue 예제](examples/07-event-queue/README.md)
 - [51개 함수의 대형 telemetry hub 예제](examples/08-telemetry-hub/README.md)

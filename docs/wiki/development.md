@@ -109,4 +109,4 @@ cd go && go test -count=1 ./...
 
 사용자 문서의 명령과 Zig 예제는 현재 `examples/`와 `build.zig`의 공개 옵션을 기준으로
 유지한다. 내부 동작이나 지원 범위를 바꾸면 [사용자 위키](README.md)와
-[설계 문서](../design/README.md)를 함께 갱신한다.
+[설계 문서](../.agent/design/README.md)를 함께 갱신한다.
