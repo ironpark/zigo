@@ -1986,37 +1986,41 @@ fn renderPublicSnapshots(allocator: std.mem.Allocator, writer: *std.Io.Writer, p
             try writer.print(", bool) {{\n\treturn snapshot.{s}, snapshot.tag == {s}{s}\n}}\n\n", .{ member, tag_type, tag_constant });
         }
 
+        // One reader per union, shared by the owned and borrowed handles.
+        try writer.print(
+            "func zigo{0s}Snapshot(receiver zigoHandle) ({1s}, error) {{\n\tdefer runtime.KeepAlive(receiver)\n" ++
+                "\tptr, err := zigoCheckedPointer(\"{0s}.Snapshot receiver\", receiver)\n\tif err != nil {{\n\t\treturn {1s}{{}}, err\n\t}}\n\tdata, status := ",
+            .{ declaration.name, type_name },
+        );
+        try writeRawReferencePrefix(writer, options);
+        try writer.print(
+            "{0s}(ptr)\n\tif status != zigoProjectionSuccess {{\n\t\treturn {1s}{{}}, zigoProjectionError(\"{2s}.Snapshot\", status)\n\t}}\n\treturn {1s}{{\n\t\ttag: {3s}(data.Tag),\n",
+            .{ raw_function, type_name, declaration.name, tag_type },
+        );
+        for (snapshot.fields) |field| {
+            if (field.kind != .payload) continue;
+            const member = try naming.camelAlloc(allocator, field.name);
+            defer allocator.free(member);
+            const raw_member = try naming.pascalAlloc(allocator, field.name);
+            defer allocator.free(raw_member);
+            try writer.print("\t\t{s}: ", .{member});
+            const temp = try std.fmt.allocPrint(allocator, "data.{s}", .{raw_member});
+            defer allocator.free(temp);
+            try writePublicResultConversion(writer, field.node.?, temp);
+            try writer.writeAll(",\n");
+        }
+        try writer.writeAll("\t}, nil\n}\n\n");
+
         inline for (.{ false, true }) |borrowed| {
             const suffix = if (borrowed) "Ref" else "";
             try writer.print(
                 "// Snapshot reads the tag and every payload in one native call, or\n" ++
-                    "// returns a typed lifecycle/native error.\nfunc ({0s} *{1s}{2s}) Snapshot() ({3s}, error) {{\n" ++
-                    "\tdefer runtime.KeepAlive({0s})\n\tptr, err := zigoCheckedPointer(\"{1s}.Snapshot receiver\", {0s})\n" ++
-                    "\tif err != nil {{\n\t\treturn {3s}{{}}, err\n\t}}\n\tdata, status := ",
+                    "// returns a typed lifecycle/native error.\nfunc ({0s} *{1s}{2s}) Snapshot() ({3s}, error) {{ return zigo{1s}Snapshot({0s}) }}\n\n",
                 .{ recv, declaration.name, suffix, type_name },
             );
-            try writeRawReferencePrefix(writer, options);
-            try writer.print(
-                "{0s}(ptr)\n\tif status != zigoProjectionSuccess {{\n\t\treturn {1s}{{}}, zigoProjectionError(\"{2s}.Snapshot\", status)\n\t}}\n\treturn {1s}{{\n\t\ttag: {3s}(data.Tag),\n",
-                .{ raw_function, type_name, declaration.name, tag_type },
-            );
-            for (snapshot.fields) |field| {
-                if (field.kind != .payload) continue;
-                const member = try naming.camelAlloc(allocator, field.name);
-                defer allocator.free(member);
-                const raw_member = try naming.pascalAlloc(allocator, field.name);
-                defer allocator.free(raw_member);
-                try writer.print("\t\t{s}: ", .{member});
-                const temp = try std.fmt.allocPrint(allocator, "data.{s}", .{raw_member});
-                defer allocator.free(temp);
-                try writePublicResultConversion(writer, field.node.?, temp);
-                try writer.writeAll(",\n");
-            }
-            try writer.writeAll("\t}, nil\n}\n\n");
             try writer.print(
                 "// MustSnapshot reads the tag and every payload in one native call and panics\n" ++
-                    "// with a typed error on failure.\nfunc ({0s} *{1s}{2s}) MustSnapshot() {3s} {{\n" ++
-                    "\tresult, err := {0s}.Snapshot()\n\tif err != nil {{\n\t\tpanic(err)\n\t}}\n\treturn result\n}}\n\n",
+                    "// with a typed error on failure.\nfunc ({0s} *{1s}{2s}) MustSnapshot() {3s} {{ return zigoMust(zigo{1s}Snapshot({0s})) }}\n\n",
                 .{ recv, declaration.name, suffix, type_name },
             );
         }
@@ -2309,6 +2313,20 @@ fn renderPublicTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.I
             "\tdefault:\n" ++
             "\t\treturn &StatusError{Operation: operation, Status: status}\n" ++
             "\t}\n" ++
+            "}\n\n" ++
+            // The Must* accessors differ from their checked counterparts only
+            // in what they do with the error, so they share one wrapper each.
+            "func zigoMust[T any](value T, err error) T {\n" ++
+            "\tif err != nil {\n" ++
+            "\t\tpanic(err)\n" ++
+            "\t}\n" ++
+            "\treturn value\n" ++
+            "}\n\n" ++
+            "func zigoMustMatch[T any](value T, matched bool, err error) (T, bool) {\n" ++
+            "\tif err != nil {\n" ++
+            "\t\tpanic(err)\n" ++
+            "\t}\n" ++
+            "\treturn value, matched\n" ++
             "}\n\n",
     );
     for (program.projections) |tag_projection| {
@@ -2316,60 +2334,88 @@ fn renderPublicTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.I
         const declaration = tag_projection.owner.*;
         const recv = try receiverVariableAlloc(allocator, declaration.name);
         defer allocator.free(recv);
+        const tag_type = declaration.tag_type.?.@"enum".ref;
+
+        // One implementation per projection, reached through the handle
+        // interface so the owned and borrowed methods can both delegate to it.
+        try writer.print(
+            "func zigo{0s}Tag(receiver zigoHandle) ({1s}, error) {{\n\tdefer runtime.KeepAlive(receiver)\n" ++
+                "\tptr, err := zigoCheckedPointer(\"{0s}.Tag receiver\", receiver)\n\tif err != nil {{\n\t\treturn 0, err\n\t}}\n\tresult, status := ",
+            .{ declaration.name, tag_type },
+        );
+        try writeRawReferencePrefix(writer, options);
+        try writer.print(
+            "{0s}ProjectTag(ptr)\n\tif status != zigoProjectionSuccess {{\n\t\treturn 0, zigoProjectionError(\"{0s}.Tag\", status)\n\t}}\n\treturn {1s}(result), nil\n}}\n\n",
+            .{ declaration.name, tag_type },
+        );
         inline for (.{ false, true }) |borrowed| {
-            try writer.print("// Tag returns the active tagged-union tag or a typed lifecycle/native error.\nfunc ({0s} *{1s}{2s}) Tag() ({3s}, error) {{\n\tdefer runtime.KeepAlive({0s})\n\tptr, err := zigoCheckedPointer(\"{1s}.Tag receiver\", {0s})\n\tif err != nil {{\n\t\treturn 0, err\n\t}}\n\tresult, status := ", .{ recv, declaration.name, if (borrowed) "Ref" else "", declaration.tag_type.?.@"enum".ref });
+            const suffix = if (borrowed) "Ref" else "";
+            try writer.print(
+                "// Tag returns the active tagged-union tag or a typed lifecycle/native error.\n" ++
+                    "func ({0s} *{1s}{2s}) Tag() ({3s}, error) {{ return zigo{1s}Tag({0s}) }}\n\n",
+                .{ recv, declaration.name, suffix, tag_type },
+            );
+            try writer.print(
+                "// MustTag returns the active tagged-union tag and panics with a typed error on failure.\n" ++
+                    "func ({0s} *{1s}{2s}) MustTag() {3s} {{ return zigoMust(zigo{1s}Tag({0s})) }}\n\n",
+                .{ recv, declaration.name, suffix, tag_type },
+            );
+        }
+        for (program.projections) |payload_projection| {
+            if (payload_projection.kind != .payload or !std.mem.eql(u8, payload_projection.owner.name, declaration.name)) continue;
+            const field = payload_projection.field.?.*;
+            const payload = field.type.?;
+            const field_name = try naming.pascalAlloc(allocator, field.name);
+            defer allocator.free(field_name);
+
+            try writer.print("func zigo{s}As{s}(receiver zigoHandle) (", .{ declaration.name, field_name });
+            try writePayloadType(writer, payload);
+            try writer.print(", bool, error) {{\n\tdefer runtime.KeepAlive(receiver)\n\tptr, err := zigoCheckedPointer(\"{s}.As{s} receiver\", receiver)\n\tif err != nil {{\n\t\treturn ", .{ declaration.name, field_name });
+            try writer.writeAll(goZero(payload));
+            try writer.writeAll(", false, err\n\t}\n\tresult, status := ");
             try writeRawReferencePrefix(writer, options);
-            try writer.print("{s}ProjectTag(ptr)\n\tif status != zigoProjectionSuccess {{\n\t\treturn 0, zigoProjectionError(\"{s}.Tag\", status)\n\t}}\n\treturn {s}(result), nil\n}}\n\n", .{ declaration.name, declaration.name, declaration.tag_type.?.@"enum".ref });
-            try writer.print("// MustTag returns the active tagged-union tag and panics with a typed error on failure.\nfunc ({0s} *{1s}{2s}) MustTag() {3s} {{\n\tresult, err := {0s}.Tag()\n\tif err != nil {{\n\t\tpanic(err)\n\t}}\n\treturn result\n}}\n\n", .{ recv, declaration.name, if (borrowed) "Ref" else "", declaration.tag_type.?.@"enum".ref });
-            for (program.projections) |payload_projection| {
-                if (payload_projection.kind != .payload or !std.mem.eql(u8, payload_projection.owner.name, declaration.name)) continue;
-                const field = payload_projection.field.?.*;
-                const payload = field.type.?;
-                const field_name = try naming.pascalAlloc(allocator, field.name);
-                defer allocator.free(field_name);
-                try writer.print("// As{1s} returns the {2s} payload, whether it is active, and any lifecycle/native error.\nfunc ({0s} *{3s}{4s}) As{1s}() (", .{ recv, field_name, field.name, declaration.name, if (borrowed) "Ref" else "" });
-                if (payload == .opaque_ptr) {
-                    try writer.print("*{s}Ref", .{payload.opaque_ptr.ref});
-                } else {
-                    try writePublicGoType(writer, payload);
-                }
-                try writer.print(", bool, error) {{\n\tdefer runtime.KeepAlive({0s})\n\tptr, err := zigoCheckedPointer(\"{1s}.As{2s} receiver\", {0s})\n\tif err != nil {{\n\t\treturn ", .{ recv, declaration.name, field_name });
-                try writer.writeAll(goZero(payload));
-                try writer.writeAll(", false, err\n\t}\n\tresult, status := ");
-                try writeRawReferencePrefix(writer, options);
-                try writer.print("{s}Project{s}(ptr)\n\tif status == zigoProjectionMismatch {{\n\t\treturn ", .{ declaration.name, field_name });
-                try writer.writeAll(goZero(payload));
-                try writer.print(", false, nil\n\t}}\n\tif status != zigoProjectionSuccess {{\n\t\treturn ", .{});
-                try writer.writeAll(goZero(payload));
-                try writer.print(", false, zigoProjectionError(\"{s}.As{s}\", status)\n\t}}\n\treturn ", .{ declaration.name, field_name });
-                if (payload == .opaque_ptr) {
-                    try writer.print("&{0s}Ref{{ptr: result, parent: {1s}}}", .{ payload.opaque_ptr.ref, recv });
-                } else if (payload == .slice and payload.slice.element.* == .@"enum") {
-                    try writer.writeAll("func() []");
-                    try writePublicGoType(writer, payload.slice.element.*);
-                    try writer.writeAll(" {\n\t\tconverted := make([]");
-                    try writePublicGoType(writer, payload.slice.element.*);
-                    try writer.writeAll(", len(result))\n\t\tfor i, item := range result {\n\t\t\tconverted[i] = ");
-                    try writePublicGoType(writer, payload.slice.element.*);
-                    try writer.writeAll("(item)\n\t\t}\n\t\treturn converted\n\t}()");
-                } else if (payload == .slice) {
-                    try writer.writeAll("append(");
-                    try writePublicGoType(writer, payload);
-                    try writer.writeAll("(nil), result...)");
-                } else {
-                    try writePublicResultConversion(writer, payload, "result");
-                }
-                try writer.writeAll(", true, nil\n}\n\n");
-                try writer.print("// MustAs{1s} returns the {2s} payload when active and panics with a typed error on failure.\nfunc ({0s} *{3s}{4s}) MustAs{1s}() (", .{ recv, field_name, field.name, declaration.name, if (borrowed) "Ref" else "" });
-                if (payload == .opaque_ptr) {
-                    try writer.print("*{s}Ref", .{payload.opaque_ptr.ref});
-                } else {
-                    try writePublicGoType(writer, payload);
-                }
-                try writer.print(", bool) {{\n\tresult, matched, err := {0s}.As{1s}()\n\tif err != nil {{\n\t\tpanic(err)\n\t}}\n\treturn result, matched\n}}\n\n", .{ recv, field_name });
+            try writer.print("{s}Project{s}(ptr)\n\tif status == zigoProjectionMismatch {{\n\t\treturn ", .{ declaration.name, field_name });
+            try writer.writeAll(goZero(payload));
+            try writer.writeAll(", false, nil\n\t}\n\tif status != zigoProjectionSuccess {\n\t\treturn ");
+            try writer.writeAll(goZero(payload));
+            try writer.print(", false, zigoProjectionError(\"{s}.As{s}\", status)\n\t}}\n\treturn ", .{ declaration.name, field_name });
+            if (payload == .opaque_ptr) {
+                try writer.print("&{s}Ref{{ptr: result, parent: receiver}}", .{payload.opaque_ptr.ref});
+            } else if (payload == .slice and payload.slice.element.* == .@"enum") {
+                try writer.writeAll("func() []");
+                try writePublicGoType(writer, payload.slice.element.*);
+                try writer.writeAll(" {\n\t\tconverted := make([]");
+                try writePublicGoType(writer, payload.slice.element.*);
+                try writer.writeAll(", len(result))\n\t\tfor i, item := range result {\n\t\t\tconverted[i] = ");
+                try writePublicGoType(writer, payload.slice.element.*);
+                try writer.writeAll("(item)\n\t\t}\n\t\treturn converted\n\t}()");
+            } else if (payload == .slice) {
+                try writer.writeAll("append(");
+                try writePublicGoType(writer, payload);
+                try writer.writeAll("(nil), result...)");
+            } else {
+                try writePublicResultConversion(writer, payload, "result");
+            }
+            try writer.writeAll(", true, nil\n}\n\n");
+
+            inline for (.{ false, true }) |borrowed| {
+                const suffix = if (borrowed) "Ref" else "";
+                try writer.print("// As{0s} returns the {1s} payload, whether it is active, and any lifecycle/native error.\nfunc ({2s} *{3s}{4s}) As{0s}() (", .{ field_name, field.name, recv, declaration.name, suffix });
+                try writePayloadType(writer, payload);
+                try writer.print(", bool, error) {{ return zigo{0s}As{1s}({2s}) }}\n\n", .{ declaration.name, field_name, recv });
+                try writer.print("// MustAs{0s} returns the {1s} payload when active and panics with a typed error on failure.\nfunc ({2s} *{3s}{4s}) MustAs{0s}() (", .{ field_name, field.name, recv, declaration.name, suffix });
+                try writePayloadType(writer, payload);
+                try writer.print(", bool) {{ return zigoMustMatch(zigo{0s}As{1s}({2s})) }}\n\n", .{ declaration.name, field_name, recv });
             }
         }
     }
+}
+
+/// A handle payload surfaces as a borrowed reference; everything else keeps
+/// its ordinary public Go type.
+fn writePayloadType(writer: *std.Io.Writer, payload: semantic.TypeNode) !void {
+    if (payload == .opaque_ptr) return writer.print("*{s}Ref", .{payload.opaque_ptr.ref});
+    try writePublicGoType(writer, payload);
 }
 
 /// Resolves every handle a call needs into a local pointer, returning the
@@ -3267,7 +3313,12 @@ test "tagged union emitters generate checked pointer-only projections" {
     try std.testing.expect(std.mem.indexOf(u8, public_types, "append([]int16(nil), result...)") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "ptr, err := zigoCheckedPointer") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "panic(err)") != null);
-    try std.testing.expectEqual(@as(usize, 16), std.mem.count(u8, public_types, "defer runtime.KeepAlive("));
+    // One KeepAlive per projection implementation: the owned and borrowed
+    // methods share it instead of each carrying a copy.
+    try std.testing.expectEqual(@as(usize, 8), std.mem.count(u8, public_types, "defer runtime.KeepAlive("));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, public_types, "func zigoValueTag(receiver zigoHandle)"));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, public_types, "ValueProjectInteger(ptr)"));
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *ValueRef) AsInteger() (int32, bool, error) { return zigoValueAsInteger(v) }") != null);
 
     const public_errors = try renderForTest(renderPublicErrors, program);
     defer std.testing.allocator.free(public_errors);

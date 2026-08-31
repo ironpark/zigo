@@ -145,10 +145,23 @@ func zigoProjectionError(operation string, status uint8) error {
 	}
 }
 
-// Tag returns the active tagged-union tag or a typed lifecycle/native error.
-func (s *Signal) Tag() (SignalTag, error) {
-	defer runtime.KeepAlive(s)
-	ptr, err := zigoCheckedPointer("Signal.Tag receiver", s)
+func zigoMust[T any](value T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return value
+}
+
+func zigoMustMatch[T any](value T, matched bool, err error) (T, bool) {
+	if err != nil {
+		panic(err)
+	}
+	return value, matched
+}
+
+func zigoSignalTag(receiver zigoHandle) (SignalTag, error) {
+	defer runtime.KeepAlive(receiver)
+	ptr, err := zigoCheckedPointer("Signal.Tag receiver", receiver)
 	if err != nil {
 		return 0, err
 	}
@@ -159,19 +172,21 @@ func (s *Signal) Tag() (SignalTag, error) {
 	return SignalTag(result), nil
 }
 
-// MustTag returns the active tagged-union tag and panics with a typed error on failure.
-func (s *Signal) MustTag() SignalTag {
-	result, err := s.Tag()
-	if err != nil {
-		panic(err)
-	}
-	return result
-}
+// Tag returns the active tagged-union tag or a typed lifecycle/native error.
+func (s *Signal) Tag() (SignalTag, error) { return zigoSignalTag(s) }
 
-// AsTicks returns the ticks payload, whether it is active, and any lifecycle/native error.
-func (s *Signal) AsTicks() (uint32, bool, error) {
-	defer runtime.KeepAlive(s)
-	ptr, err := zigoCheckedPointer("Signal.AsTicks receiver", s)
+// MustTag returns the active tagged-union tag and panics with a typed error on failure.
+func (s *Signal) MustTag() SignalTag { return zigoMust(zigoSignalTag(s)) }
+
+// Tag returns the active tagged-union tag or a typed lifecycle/native error.
+func (s *SignalRef) Tag() (SignalTag, error) { return zigoSignalTag(s) }
+
+// MustTag returns the active tagged-union tag and panics with a typed error on failure.
+func (s *SignalRef) MustTag() SignalTag { return zigoMust(zigoSignalTag(s)) }
+
+func zigoSignalAsTicks(receiver zigoHandle) (uint32, bool, error) {
+	defer runtime.KeepAlive(receiver)
+	ptr, err := zigoCheckedPointer("Signal.AsTicks receiver", receiver)
 	if err != nil {
 		return 0, false, err
 	}
@@ -185,172 +200,21 @@ func (s *Signal) AsTicks() (uint32, bool, error) {
 	return result, true, nil
 }
 
+// AsTicks returns the ticks payload, whether it is active, and any lifecycle/native error.
+func (s *Signal) AsTicks() (uint32, bool, error) { return zigoSignalAsTicks(s) }
+
 // MustAsTicks returns the ticks payload when active and panics with a typed error on failure.
-func (s *Signal) MustAsTicks() (uint32, bool) {
-	result, matched, err := s.AsTicks()
-	if err != nil {
-		panic(err)
-	}
-	return result, matched
-}
-
-// AsLevel returns the level payload, whether it is active, and any lifecycle/native error.
-func (s *Signal) AsLevel() (float64, bool, error) {
-	defer runtime.KeepAlive(s)
-	ptr, err := zigoCheckedPointer("Signal.AsLevel receiver", s)
-	if err != nil {
-		return 0, false, err
-	}
-	result, status := raw.SignalProjectLevel(ptr)
-	if status == zigoProjectionMismatch {
-		return 0, false, nil
-	}
-	if status != zigoProjectionSuccess {
-		return 0, false, zigoProjectionError("Signal.AsLevel", status)
-	}
-	return result, true, nil
-}
-
-// MustAsLevel returns the level payload when active and panics with a typed error on failure.
-func (s *Signal) MustAsLevel() (float64, bool) {
-	result, matched, err := s.AsLevel()
-	if err != nil {
-		panic(err)
-	}
-	return result, matched
-}
-
-// AsOffset returns the offset payload, whether it is active, and any lifecycle/native error.
-func (s *Signal) AsOffset() (int16, bool, error) {
-	defer runtime.KeepAlive(s)
-	ptr, err := zigoCheckedPointer("Signal.AsOffset receiver", s)
-	if err != nil {
-		return 0, false, err
-	}
-	result, status := raw.SignalProjectOffset(ptr)
-	if status == zigoProjectionMismatch {
-		return 0, false, nil
-	}
-	if status != zigoProjectionSuccess {
-		return 0, false, zigoProjectionError("Signal.AsOffset", status)
-	}
-	return result, true, nil
-}
-
-// MustAsOffset returns the offset payload when active and panics with a typed error on failure.
-func (s *Signal) MustAsOffset() (int16, bool) {
-	result, matched, err := s.AsOffset()
-	if err != nil {
-		panic(err)
-	}
-	return result, matched
-}
-
-// AsMode returns the mode payload, whether it is active, and any lifecycle/native error.
-func (s *Signal) AsMode() (Mode, bool, error) {
-	defer runtime.KeepAlive(s)
-	ptr, err := zigoCheckedPointer("Signal.AsMode receiver", s)
-	if err != nil {
-		return 0, false, err
-	}
-	result, status := raw.SignalProjectMode(ptr)
-	if status == zigoProjectionMismatch {
-		return 0, false, nil
-	}
-	if status != zigoProjectionSuccess {
-		return 0, false, zigoProjectionError("Signal.AsMode", status)
-	}
-	return Mode(result), true, nil
-}
-
-// MustAsMode returns the mode payload when active and panics with a typed error on failure.
-func (s *Signal) MustAsMode() (Mode, bool) {
-	result, matched, err := s.AsMode()
-	if err != nil {
-		panic(err)
-	}
-	return result, matched
-}
-
-// AsActive returns the active payload, whether it is active, and any lifecycle/native error.
-func (s *Signal) AsActive() (bool, bool, error) {
-	defer runtime.KeepAlive(s)
-	ptr, err := zigoCheckedPointer("Signal.AsActive receiver", s)
-	if err != nil {
-		return false, false, err
-	}
-	result, status := raw.SignalProjectActive(ptr)
-	if status == zigoProjectionMismatch {
-		return false, false, nil
-	}
-	if status != zigoProjectionSuccess {
-		return false, false, zigoProjectionError("Signal.AsActive", status)
-	}
-	return result != 0, true, nil
-}
-
-// MustAsActive returns the active payload when active and panics with a typed error on failure.
-func (s *Signal) MustAsActive() (bool, bool) {
-	result, matched, err := s.AsActive()
-	if err != nil {
-		panic(err)
-	}
-	return result, matched
-}
-
-// Tag returns the active tagged-union tag or a typed lifecycle/native error.
-func (s *SignalRef) Tag() (SignalTag, error) {
-	defer runtime.KeepAlive(s)
-	ptr, err := zigoCheckedPointer("Signal.Tag receiver", s)
-	if err != nil {
-		return 0, err
-	}
-	result, status := raw.SignalProjectTag(ptr)
-	if status != zigoProjectionSuccess {
-		return 0, zigoProjectionError("Signal.Tag", status)
-	}
-	return SignalTag(result), nil
-}
-
-// MustTag returns the active tagged-union tag and panics with a typed error on failure.
-func (s *SignalRef) MustTag() SignalTag {
-	result, err := s.Tag()
-	if err != nil {
-		panic(err)
-	}
-	return result
-}
+func (s *Signal) MustAsTicks() (uint32, bool) { return zigoMustMatch(zigoSignalAsTicks(s)) }
 
 // AsTicks returns the ticks payload, whether it is active, and any lifecycle/native error.
-func (s *SignalRef) AsTicks() (uint32, bool, error) {
-	defer runtime.KeepAlive(s)
-	ptr, err := zigoCheckedPointer("Signal.AsTicks receiver", s)
-	if err != nil {
-		return 0, false, err
-	}
-	result, status := raw.SignalProjectTicks(ptr)
-	if status == zigoProjectionMismatch {
-		return 0, false, nil
-	}
-	if status != zigoProjectionSuccess {
-		return 0, false, zigoProjectionError("Signal.AsTicks", status)
-	}
-	return result, true, nil
-}
+func (s *SignalRef) AsTicks() (uint32, bool, error) { return zigoSignalAsTicks(s) }
 
 // MustAsTicks returns the ticks payload when active and panics with a typed error on failure.
-func (s *SignalRef) MustAsTicks() (uint32, bool) {
-	result, matched, err := s.AsTicks()
-	if err != nil {
-		panic(err)
-	}
-	return result, matched
-}
+func (s *SignalRef) MustAsTicks() (uint32, bool) { return zigoMustMatch(zigoSignalAsTicks(s)) }
 
-// AsLevel returns the level payload, whether it is active, and any lifecycle/native error.
-func (s *SignalRef) AsLevel() (float64, bool, error) {
-	defer runtime.KeepAlive(s)
-	ptr, err := zigoCheckedPointer("Signal.AsLevel receiver", s)
+func zigoSignalAsLevel(receiver zigoHandle) (float64, bool, error) {
+	defer runtime.KeepAlive(receiver)
+	ptr, err := zigoCheckedPointer("Signal.AsLevel receiver", receiver)
 	if err != nil {
 		return 0, false, err
 	}
@@ -364,19 +228,21 @@ func (s *SignalRef) AsLevel() (float64, bool, error) {
 	return result, true, nil
 }
 
-// MustAsLevel returns the level payload when active and panics with a typed error on failure.
-func (s *SignalRef) MustAsLevel() (float64, bool) {
-	result, matched, err := s.AsLevel()
-	if err != nil {
-		panic(err)
-	}
-	return result, matched
-}
+// AsLevel returns the level payload, whether it is active, and any lifecycle/native error.
+func (s *Signal) AsLevel() (float64, bool, error) { return zigoSignalAsLevel(s) }
 
-// AsOffset returns the offset payload, whether it is active, and any lifecycle/native error.
-func (s *SignalRef) AsOffset() (int16, bool, error) {
-	defer runtime.KeepAlive(s)
-	ptr, err := zigoCheckedPointer("Signal.AsOffset receiver", s)
+// MustAsLevel returns the level payload when active and panics with a typed error on failure.
+func (s *Signal) MustAsLevel() (float64, bool) { return zigoMustMatch(zigoSignalAsLevel(s)) }
+
+// AsLevel returns the level payload, whether it is active, and any lifecycle/native error.
+func (s *SignalRef) AsLevel() (float64, bool, error) { return zigoSignalAsLevel(s) }
+
+// MustAsLevel returns the level payload when active and panics with a typed error on failure.
+func (s *SignalRef) MustAsLevel() (float64, bool) { return zigoMustMatch(zigoSignalAsLevel(s)) }
+
+func zigoSignalAsOffset(receiver zigoHandle) (int16, bool, error) {
+	defer runtime.KeepAlive(receiver)
+	ptr, err := zigoCheckedPointer("Signal.AsOffset receiver", receiver)
 	if err != nil {
 		return 0, false, err
 	}
@@ -390,19 +256,21 @@ func (s *SignalRef) AsOffset() (int16, bool, error) {
 	return result, true, nil
 }
 
-// MustAsOffset returns the offset payload when active and panics with a typed error on failure.
-func (s *SignalRef) MustAsOffset() (int16, bool) {
-	result, matched, err := s.AsOffset()
-	if err != nil {
-		panic(err)
-	}
-	return result, matched
-}
+// AsOffset returns the offset payload, whether it is active, and any lifecycle/native error.
+func (s *Signal) AsOffset() (int16, bool, error) { return zigoSignalAsOffset(s) }
 
-// AsMode returns the mode payload, whether it is active, and any lifecycle/native error.
-func (s *SignalRef) AsMode() (Mode, bool, error) {
-	defer runtime.KeepAlive(s)
-	ptr, err := zigoCheckedPointer("Signal.AsMode receiver", s)
+// MustAsOffset returns the offset payload when active and panics with a typed error on failure.
+func (s *Signal) MustAsOffset() (int16, bool) { return zigoMustMatch(zigoSignalAsOffset(s)) }
+
+// AsOffset returns the offset payload, whether it is active, and any lifecycle/native error.
+func (s *SignalRef) AsOffset() (int16, bool, error) { return zigoSignalAsOffset(s) }
+
+// MustAsOffset returns the offset payload when active and panics with a typed error on failure.
+func (s *SignalRef) MustAsOffset() (int16, bool) { return zigoMustMatch(zigoSignalAsOffset(s)) }
+
+func zigoSignalAsMode(receiver zigoHandle) (Mode, bool, error) {
+	defer runtime.KeepAlive(receiver)
+	ptr, err := zigoCheckedPointer("Signal.AsMode receiver", receiver)
 	if err != nil {
 		return 0, false, err
 	}
@@ -416,19 +284,21 @@ func (s *SignalRef) AsMode() (Mode, bool, error) {
 	return Mode(result), true, nil
 }
 
-// MustAsMode returns the mode payload when active and panics with a typed error on failure.
-func (s *SignalRef) MustAsMode() (Mode, bool) {
-	result, matched, err := s.AsMode()
-	if err != nil {
-		panic(err)
-	}
-	return result, matched
-}
+// AsMode returns the mode payload, whether it is active, and any lifecycle/native error.
+func (s *Signal) AsMode() (Mode, bool, error) { return zigoSignalAsMode(s) }
 
-// AsActive returns the active payload, whether it is active, and any lifecycle/native error.
-func (s *SignalRef) AsActive() (bool, bool, error) {
-	defer runtime.KeepAlive(s)
-	ptr, err := zigoCheckedPointer("Signal.AsActive receiver", s)
+// MustAsMode returns the mode payload when active and panics with a typed error on failure.
+func (s *Signal) MustAsMode() (Mode, bool) { return zigoMustMatch(zigoSignalAsMode(s)) }
+
+// AsMode returns the mode payload, whether it is active, and any lifecycle/native error.
+func (s *SignalRef) AsMode() (Mode, bool, error) { return zigoSignalAsMode(s) }
+
+// MustAsMode returns the mode payload when active and panics with a typed error on failure.
+func (s *SignalRef) MustAsMode() (Mode, bool) { return zigoMustMatch(zigoSignalAsMode(s)) }
+
+func zigoSignalAsActive(receiver zigoHandle) (bool, bool, error) {
+	defer runtime.KeepAlive(receiver)
+	ptr, err := zigoCheckedPointer("Signal.AsActive receiver", receiver)
 	if err != nil {
 		return false, false, err
 	}
@@ -442,14 +312,17 @@ func (s *SignalRef) AsActive() (bool, bool, error) {
 	return result != 0, true, nil
 }
 
+// AsActive returns the active payload, whether it is active, and any lifecycle/native error.
+func (s *Signal) AsActive() (bool, bool, error) { return zigoSignalAsActive(s) }
+
 // MustAsActive returns the active payload when active and panics with a typed error on failure.
-func (s *SignalRef) MustAsActive() (bool, bool) {
-	result, matched, err := s.AsActive()
-	if err != nil {
-		panic(err)
-	}
-	return result, matched
-}
+func (s *Signal) MustAsActive() (bool, bool) { return zigoMustMatch(zigoSignalAsActive(s)) }
+
+// AsActive returns the active payload, whether it is active, and any lifecycle/native error.
+func (s *SignalRef) AsActive() (bool, bool, error) { return zigoSignalAsActive(s) }
+
+// MustAsActive returns the active payload when active and panics with a typed error on failure.
+func (s *SignalRef) MustAsActive() (bool, bool) { return zigoMustMatch(zigoSignalAsActive(s)) }
 
 // SignalSnapshot is a value copy of a Signal: one native call carries the active tag
 // and every scalar payload back together.
@@ -492,11 +365,9 @@ func (snapshot SignalSnapshot) Active() (bool, bool) {
 	return snapshot.active, snapshot.tag == SignalTagActive
 }
 
-// Snapshot reads the tag and every payload in one native call, or
-// returns a typed lifecycle/native error.
-func (s *Signal) Snapshot() (SignalSnapshot, error) {
-	defer runtime.KeepAlive(s)
-	ptr, err := zigoCheckedPointer("Signal.Snapshot receiver", s)
+func zigoSignalSnapshot(receiver zigoHandle) (SignalSnapshot, error) {
+	defer runtime.KeepAlive(receiver)
+	ptr, err := zigoCheckedPointer("Signal.Snapshot receiver", receiver)
 	if err != nil {
 		return SignalSnapshot{}, err
 	}
@@ -514,44 +385,18 @@ func (s *Signal) Snapshot() (SignalSnapshot, error) {
 	}, nil
 }
 
+// Snapshot reads the tag and every payload in one native call, or
+// returns a typed lifecycle/native error.
+func (s *Signal) Snapshot() (SignalSnapshot, error) { return zigoSignalSnapshot(s) }
+
 // MustSnapshot reads the tag and every payload in one native call and panics
 // with a typed error on failure.
-func (s *Signal) MustSnapshot() SignalSnapshot {
-	result, err := s.Snapshot()
-	if err != nil {
-		panic(err)
-	}
-	return result
-}
+func (s *Signal) MustSnapshot() SignalSnapshot { return zigoMust(zigoSignalSnapshot(s)) }
 
 // Snapshot reads the tag and every payload in one native call, or
 // returns a typed lifecycle/native error.
-func (s *SignalRef) Snapshot() (SignalSnapshot, error) {
-	defer runtime.KeepAlive(s)
-	ptr, err := zigoCheckedPointer("Signal.Snapshot receiver", s)
-	if err != nil {
-		return SignalSnapshot{}, err
-	}
-	data, status := raw.SignalReadSnapshot(ptr)
-	if status != zigoProjectionSuccess {
-		return SignalSnapshot{}, zigoProjectionError("Signal.Snapshot", status)
-	}
-	return SignalSnapshot{
-		tag: SignalTag(data.Tag),
-		level: data.Level,
-		ticks: data.Ticks,
-		offset: data.Offset,
-		mode: Mode(data.Mode),
-		active: data.Active != 0,
-	}, nil
-}
+func (s *SignalRef) Snapshot() (SignalSnapshot, error) { return zigoSignalSnapshot(s) }
 
 // MustSnapshot reads the tag and every payload in one native call and panics
 // with a typed error on failure.
-func (s *SignalRef) MustSnapshot() SignalSnapshot {
-	result, err := s.Snapshot()
-	if err != nil {
-		panic(err)
-	}
-	return result
-}
+func (s *SignalRef) MustSnapshot() SignalSnapshot { return zigoMust(zigoSignalSnapshot(s)) }

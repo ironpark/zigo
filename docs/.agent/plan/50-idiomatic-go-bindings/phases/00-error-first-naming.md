@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T19:46:32Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: No exported generated identifier panics without a `Must` prefix (verified by
 > NEXT: none
