@@ -2,7 +2,7 @@
 depends_on:
 - "32-cgo-static-link-precision#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: CI runs both backends from one tree in a fixed order that used to fail, and the user documentation
 > NEXT: none

@@ -248,6 +248,10 @@ zig-out/include/zigo_<name>.h
 zig-out/lib/lib<name>_zigo.a
 ```
 
+`.backend = .purego`는 헤더를 `zig-out/include/zigo_<name>_purego.h`로, 라이브러리를
+`zig-out/lib/lib<name>_zigo.dylib`(macOS) 또는 `.so`(Linux)로 설치한다. 이름이 겹치지
+않으므로 두 백엔드를 한 `zig-out`에 함께 설치해도 서로를 덮어쓰지 않는다.
+
 Go 소스와 `zigo/semantic.json`, `zigo/errors.lock.json`은 소스 관리에 포함한다.
 `zig-out/`은 빌드 산출물이므로 커밋하지 않는다. public 패키지에서 위 네 생성 파일을
 제외한 별도 `.go` 파일은 생성기가 덮어쓰지 않으므로 사용자 편의 API를 추가하는 데

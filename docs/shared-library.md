@@ -80,6 +80,11 @@ generated `zg_` symbol is left undefined — an undefined one would mean a cgo
 trampoline dependency that a `CGO_ENABLED=0` process cannot satisfy. The smoke
 loader performs the same symbol check through the real platform loader.
 
+Both backends can install into one prefix. The cgo raw file links
+`lib<name>_zigo.a` by explicit path for a static link mode, and the purego C
+header installs as `zigo_<name>_purego.h`, so neither artifact shadows the
+other and the order of the two builds does not matter.
+
 Because a shared library is target specific, CI needs one job per supported
 OS/architecture pair: macOS and Linux on amd64 and arm64. purego removes the C
 compiler from the Go application build; it does not remove the per-target Zig

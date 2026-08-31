@@ -30,11 +30,10 @@ done
 (cd examples/10-tagged-union && zig build go go-verify -Dpurego --summary all)
 ```
 
-두 백엔드를 등록한 예제는 정적 아카이브와 공유 라이브러리가 같은 `zig-out/lib`에
-설치된다. 공유 라이브러리가 cgo 링크를 가리므로 cgo 테스트와 purego 테스트를 한
-트리에서 연달아 실행하지 말고, 백엔드를 바꿀 때 `rm -rf zig-out` 후 다시 생성하거나
-`--prefix`로 설치 위치를 분리한다. 생성된 purego 테스트는 `ZIGO_LIBRARY_PATH`가 있으면
-그 경로를 우선 사용한다.
+두 백엔드를 등록한 예제는 정적 아카이브와 공유 라이브러리가 같은 `zig-out`에 설치되지만
+서로를 가리지 않는다. cgo 생성물은 아카이브를 경로로 직접 링크하고 purego 헤더는
+별도 이름으로 설치되므로, 두 백엔드를 순서에 상관없이 한 트리에서 검증할 수 있다.
+생성된 purego 테스트는 `ZIGO_LIBRARY_PATH`가 있으면 그 경로를 우선 사용한다.
 
 `examples/10-tagged-union`의 purego 테스트는 `ZIGO_TEST_LIBRARY`에 설치된 라이브러리의
 절대 경로를 요구하며, `ZIGO_TEST_WRONG_LIBRARY`를 함께 주면 심볼 누락 실패 경로까지

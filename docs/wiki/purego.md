@@ -50,11 +50,11 @@ zig build purego-go-verify
 cd go-purego && CGO_ENABLED=0 go test ./...
 ```
 
-> 한 빌드에 두 백엔드를 등록하면 두 아티팩트가 같은 `zig-out/lib`에 설치된다. 이때
-> 공유 라이브러리가 cgo 링크에서 정적 아카이브를 가리므로, 두 백엔드를 같은 트리에서
-> 검증할 때는 `zig build purego-go --prefix zig-out-purego`처럼 설치 위치를 분리하거나
-> 백엔드마다 깨끗한 `zig-out`에서 검사한다. CI는 백엔드별 잡으로 분리해 이 문제를
-> 피한다. 설치 위치를 옮겼다면 테스트에는 `ZIGO_LIBRARY_PATH`로 실제 경로를 알려준다.
+> 한 빌드에 두 백엔드를 등록하면 두 아티팩트가 같은 `zig-out`에 설치되지만 이름이
+> 겹치지 않는다. 정적 바인딩은 `lib<name>_zigo.a`를 경로로 직접 링크하고, purego
+> 헤더는 `zigo_<name>_purego.h`로 설치된다. 따라서 순서에 상관없이 두 백엔드를 한
+> 트리에서 생성하고 테스트할 수 있다. 아티팩트를 다른 위치에 설치했다면 테스트에는
+> `ZIGO_LIBRARY_PATH`로 실제 경로를 알려준다.
 
 `purego-go-verify`는 생성물 최신 상태(`go-check`), 네이티브 라이브러리 설치(`go-lib`),
 `go-doctor`, 그리고 `abi_base`가 설정된 경우 `abi-check`까지 의존한다. purego 백엔드의

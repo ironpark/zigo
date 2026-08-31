@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T05:26:50Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Generated static cgo files name the archive, dynamic and overridden files are unchanged, and
 > NEXT: none

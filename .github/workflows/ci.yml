@@ -144,6 +144,27 @@ jobs:
             ZIGO_TEST_WRONG_LIBRARY="$PWD/../../04-callback/zig-out/lib/libcallback_zigo$suffix" \
               go test ./...
           )
+      - name: Build both backends from one tree
+        shell: bash
+        # A static archive and a shared library with the same base name live in
+        # one zig-out/lib; the cgo link and the C header must still resolve to
+        # the cgo artifacts.
+        run: |
+          set -euo pipefail
+          suffix=.so
+          [[ "$RUNNER_OS" == "macOS" ]] && suffix=.dylib
+
+          (
+            cd examples/07-event-queue
+            rm -rf zig-out
+            zig build go purego-go --summary all
+            test -f "zig-out/lib/libevent_queue_zigo.a"
+            test -f "zig-out/lib/libevent_queue_zigo$suffix"
+            test -f zig-out/include/zigo_event_queue.h
+            test -f zig-out/include/zigo_event_queue_purego.h
+            (cd go && go test ./...)
+            (cd go-purego && CGO_ENABLED=0 go test ./...)
+          )
       - name: Diagnose an incomplete purego deployment
         shell: bash
         run: |
