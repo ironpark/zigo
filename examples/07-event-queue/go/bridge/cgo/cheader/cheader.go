@@ -8,14 +8,16 @@ package cheader
 #include <stddef.h>
 #include "zigo_event_queue.h"
 
-static const size_t offsetof_stats_len = offsetof(zg_stats, len);
-static const size_t offsetof_stats_capacity = offsetof(zg_stats, capacity);
-static const size_t offsetof_stats_dropped = offsetof(zg_stats, dropped);
-static const size_t offsetof_stats_processed = offsetof(zg_stats, processed);
-static const size_t offsetof_stats_policy = offsetof(zg_stats, policy);
-static const size_t offsetof_stats_saturated = offsetof(zg_stats, saturated);
-static const size_t offsetof_limits_capacity = offsetof(zg_limits, capacity);
-static const size_t offsetof_limits_policy = offsetof(zg_limits, policy);
+enum {
+    offsetof_stats_len = offsetof(zg_stats, len),
+    offsetof_stats_capacity = offsetof(zg_stats, capacity),
+    offsetof_stats_dropped = offsetof(zg_stats, dropped),
+    offsetof_stats_processed = offsetof(zg_stats, processed),
+    offsetof_stats_policy = offsetof(zg_stats, policy),
+    offsetof_stats_saturated = offsetof(zg_stats, saturated),
+    offsetof_limits_capacity = offsetof(zg_limits, capacity),
+    offsetof_limits_policy = offsetof(zg_limits, policy),
+};
 */
 import "C"
 
