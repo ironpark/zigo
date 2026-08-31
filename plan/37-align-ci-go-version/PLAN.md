@@ -3,7 +3,7 @@ description: Align example Go module requirements with the Go 1.24 CI toolchain.
 plan_status: in-progress
 registered_at: "2026-08-31T07:20:30Z"
 ---
-> NEXT: Align the two example module requirements with CI and verify their tests. ([Phase 0](phases/00-initial-work.md))
+> NEXT: Upgrade both CI jobs to Go 1.26.x and verify the workflow. ([Phase 0](phases/00-initial-work.md))
 
 # Phases
 
@@ -11,7 +11,7 @@ registered_at: "2026-08-31T07:20:30Z"
 
 # Shared Verification
 
-Search every example `go.mod` for its Go directive, run `go test ./...` in the two affected modules with `GOTOOLCHAIN=local`, and run `git diff --check`.
+Confirm both `actions/setup-go` steps select Go 1.26.x, ensure no Go 1.24.x selector remains in the workflow, parse the YAML, and run `git diff --check`.
 
 # Decisions That Constrain Ordering
 
@@ -19,4 +19,4 @@ The single phase is independent and atomic.
 
 # Next Implementation Target
 
-Align the two example module requirements with CI and verify their tests.
+Upgrade both CI jobs to Go 1.26.x and verify the workflow.
