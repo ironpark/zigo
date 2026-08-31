@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-31T18:12:19Z"
 depends_on:
 - "48-48-abi-owns-c-names#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Every generated artifact is byte-identical to before the plan: `zig build
 > NEXT: none

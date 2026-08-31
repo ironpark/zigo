@@ -73,6 +73,14 @@ pub const AbiFn = struct {
     ret: AbiScalar,
     errors: []const ErrorCode = &.{},
     origin: *const semantic.SemanticFn,
+    /// The mirror the call fills when the function returns an `extern struct`
+    /// directly. Aggregates never cross by value, so the C signature returns
+    /// `void` and takes a `struct_out` pointer instead.
+    ret_struct: ?*const AbiStruct = null,
+    /// The same, for an `extern struct` carried as an error-union payload. It
+    /// is a separate field because the two spell different Go: one returns the
+    /// struct, the other returns it alongside an error code.
+    payload_struct: ?*const AbiStruct = null,
 };
 
 pub const AbiProjection = struct {

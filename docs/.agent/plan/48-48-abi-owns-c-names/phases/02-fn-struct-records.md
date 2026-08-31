@@ -2,7 +2,7 @@
 depends_on:
 - "48-48-abi-owns-c-names#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: No `structRecord(...).?` remains outside the nested-member sites.
 > NEXT: none

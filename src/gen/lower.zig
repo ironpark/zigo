@@ -21,6 +21,9 @@ pub fn semanticDocumentForBackend(
     error_codes: []const abi.ErrorCode,
     backend: abi.Program.Backend,
 ) !abi.Program {
+    // Lowered ahead of the functions, so a function can point at the mirror it
+    // fills rather than making a backend find it again by name.
+    const structs = try lowerValueStructs(allocator, document, prefix);
     const functions = try allocator.alloc(abi.AbiFn, document.functions.len);
     for (document.functions, 0..) |*function, function_index| {
         var params: std.ArrayList(abi.AbiParam) = .empty;
@@ -159,11 +162,19 @@ pub fn semanticDocumentForBackend(
             .ret = return_scalar,
             .errors = function_errors,
             .origin = function,
+            .ret_struct = if (function.@"return" == .value_struct)
+                structRecord(structs, function.@"return".value_struct.ref)
+            else
+                null,
+            .payload_struct = if (function.@"return" == .error_union and
+                function.@"return".error_union.payload.* == .value_struct)
+                structRecord(structs, function.@"return".error_union.payload.value_struct.ref)
+            else
+                null,
         };
     }
     const projections = try lowerTaggedUnionProjections(allocator, document, prefix);
     const snapshots = try lowerTaggedUnionSnapshots(allocator, document, prefix);
-    const structs = try lowerValueStructs(allocator, document, prefix);
     return .{
         .backend = backend,
         .callback_convention = if (backend == .purego) .function_pointer_userdata_v1 else .fixed_go_export,
@@ -330,6 +341,11 @@ fn lowerValueStructs(allocator: std.mem.Allocator, document: semantic.Semantic, 
         });
     }
     return structs.toOwnedSlice(allocator);
+}
+
+fn structRecord(structs: []const abi.AbiStruct, name: []const u8) *const abi.AbiStruct {
+    for (structs) |*record| if (std.mem.eql(u8, record.name, name)) return record;
+    unreachable;
 }
 
 fn appendStructInDependencyOrder(
@@ -976,6 +992,10 @@ test "extern struct parameters and returns lower to pointers with a mirrored lay
     try std.testing.expectEqualStrings("out_result", default_config.params[0].name);
     try std.testing.expect(!default_config.params[0].scalar.pointer.is_const);
     try std.testing.expect(default_config.ret == .void);
+    // The function points at the mirror it fills, so no backend looks it up.
+    try std.testing.expectEqualStrings("Config", default_config.ret_struct.?.name);
+    try std.testing.expect(default_config.payload_struct == null);
+    try std.testing.expect(configure.ret_struct == null);
 
     // A nested struct is emitted before the struct that embeds it, so the C
     // header never names an incomplete type.
@@ -1035,6 +1055,9 @@ test "an extern struct error payload keeps the existing out parameter shape" {
     try std.testing.expectEqual(abi.AbiParam.Role.payload_out, load.params[0].role);
     try std.testing.expect(!load.params[0].scalar.pointer.is_const);
     try std.testing.expectEqualStrings("zg_config", load.params[0].scalar.pointer.child.value_struct.c_name);
+    try std.testing.expect(load.ret_struct == null);
+    try std.testing.expectEqualStrings("Config", load.payload_struct.?.name);
+    try std.testing.expectEqual(&program.structs[0], load.payload_struct.?);
 }
 
 test "a registered but unused extern struct stays out of the generated surface" {

@@ -649,7 +649,7 @@ fn renderRawStructTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
 
 fn writeRawStructFieldType(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, field: abi.AbiStruct.Field) !void {
     if (field.node == .value_struct) {
-        const nested = structRecord(program, field.node.value_struct.ref).?;
+        const nested = structRecord(program, field.node.value_struct.ref);
         const nested_name = try structRawTypeNameAlloc(allocator, nested.name);
         defer allocator.free(nested_name);
         return writer.writeAll(nested_name);
@@ -657,9 +657,11 @@ fn writeRawStructFieldType(allocator: std.mem.Allocator, writer: *std.Io.Writer,
     try writeGoScalar(writer, field.scalar);
 }
 
-fn structRecord(program: abi.Program, name: []const u8) ?abi.AbiStruct {
+/// The lowered mirror a struct member names. Validation rejects a member whose
+/// struct was never lowered, so a missing entry is a malformed program.
+fn structRecord(program: abi.Program, name: []const u8) abi.AbiStruct {
     for (program.structs) |record| if (std.mem.eql(u8, record.name, name)) return record;
-    return null;
+    unreachable;
 }
 
 /// Builds the C value a cgo call passes by address. Converting member by
@@ -670,7 +672,7 @@ fn writeCgoStructConversion(allocator: std.mem.Allocator, writer: *std.Io.Writer
         const member = try naming.pascalAlloc(allocator, field.name);
         defer allocator.free(member);
         if (field.node == .value_struct) {
-            const nested = structRecord(program, field.node.value_struct.ref).?;
+            const nested = structRecord(program, field.node.value_struct.ref);
             const nested_c = try std.fmt.allocPrint(allocator, "{s}{s}", .{ c_name, member });
             defer allocator.free(nested_c);
             const nested_go = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ go_name, member });
@@ -695,7 +697,7 @@ fn writeCgoStructRead(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
         defer allocator.free(member);
         try writer.print("{s}\t{s}: ", .{ indent, member });
         if (field.node == .value_struct) {
-            const nested = structRecord(program, field.node.value_struct.ref).?;
+            const nested = structRecord(program, field.node.value_struct.ref);
             const nested_c = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ c_name, field.name });
             defer allocator.free(nested_c);
             const nested_indent = try std.fmt.allocPrint(allocator, "{s}\t", .{indent});
@@ -776,7 +778,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         }
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (parameter.type == .value_struct) {
-                const record = structRecord(program, parameter.type.value_struct.ref).?;
+                const record = structRecord(program, parameter.type.value_struct.ref);
                 const c_name = try std.fmt.allocPrint(allocator, "c{s}", .{go_names[parameter_index]});
                 defer allocator.free(c_name);
                 try writeCgoStructConversion(allocator, writer, program, record, c_name, go_names[parameter_index]);
@@ -793,15 +795,13 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         }
         const returns_error = function.origin.@"return" == .error_union;
         const error_payload = if (returns_error) function.origin.@"return".error_union.payload.* else semantic.TypeNode{ .void = {} };
-        if (returnsValueStruct(function)) {
-            const record = structRecord(program, function.origin.@"return".value_struct.ref).?;
+        if (function.ret_struct) |record| {
             try writer.print("\tvar outResult C.{s}\n", .{record.c_name});
         }
         if (returns_error and error_payload != .void) {
             if (error_payload == .opaque_ptr) {
                 try writer.writeAll("\tvar outResult unsafe.Pointer\n");
-            } else if (error_payload == .value_struct) {
-                const record = structRecord(program, error_payload.value_struct.ref).?;
+            } else if (function.payload_struct) |record| {
                 try writer.print("\tvar outResult C.{s}\n", .{record.c_name});
             } else {
                 try writer.writeAll("\tvar outResult C.");
@@ -812,7 +812,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         try writer.writeByte('\t');
         if (returns_error) {
             try writer.writeAll("code := int32(");
-        } else if (function.origin.@"return" == .slice or returnsValueStruct(function)) {
+        } else if (function.origin.@"return" == .slice or function.ret_struct != null) {
             // The out parameters are converted after the C call.
         } else if (function.origin.@"return" != .void) {
             try writer.writeAll("return ");
@@ -849,24 +849,22 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         try writer.writeByte(')');
         if (returns_error) try writer.writeByte(')');
         if (!returns_error and function.origin.@"return" != .void and
-            function.origin.@"return" != .slice and !returnsValueStruct(function)) try writer.writeByte(')');
+            function.origin.@"return" != .slice and function.ret_struct == null) try writer.writeByte(')');
         try writer.writeByte('\n');
         if (function.origin.@"return" == .slice) {
             try writer.writeAll("\treturn C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))\n");
         }
-        if (returnsValueStruct(function)) {
-            const record = structRecord(program, function.origin.@"return".value_struct.ref).?;
+        if (function.ret_struct) |record| {
             try writer.writeAll("\treturn ");
-            try writeCgoStructRead(allocator, writer, program, record, "\t", "outResult");
+            try writeCgoStructRead(allocator, writer, program, record.*, "\t", "outResult");
             try writer.writeByte('\n');
         }
         if (returns_error) {
             if (error_payload == .void) {
                 try writer.writeAll("\treturn code\n");
-            } else if (error_payload == .value_struct) {
-                const record = structRecord(program, error_payload.value_struct.ref).?;
+            } else if (function.payload_struct) |record| {
                 try writer.writeAll("\treturn ");
-                try writeCgoStructRead(allocator, writer, program, record, "\t", "outResult");
+                try writeCgoStructRead(allocator, writer, program, record.*, "\t", "outResult");
                 try writer.writeAll(", code\n");
             } else {
                 try writer.writeAll("\treturn ");
@@ -1315,7 +1313,7 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         if (parameter.direction == .out) try writer.print("\tvar {s}Written uintptr\n", .{slice_name});
     };
     if (function.origin.@"return" == .slice) try writer.writeAll("\tvar outResultPtr unsafe.Pointer\n\tvar outResultLen uintptr\n");
-    if (returnsValueStruct(function)) {
+    if (function.ret_struct != null) {
         try writer.writeAll("\tvar outResult ");
         try writeRawGoType(writer, program, function.origin.@"return");
         try writer.writeByte('\n');
@@ -1335,7 +1333,7 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
     try writer.writeByte('\t');
     if (returns_error)
         try writer.writeAll("code := ")
-    else if (function.origin.@"return" != .void and function.origin.@"return" != .slice and !returnsValueStruct(function))
+    else if (function.origin.@"return" != .void and function.origin.@"return" != .slice and function.ret_struct == null)
         try writer.writeAll("result := ");
     try writer.print("bindings().fn{s}(", .{go_name});
     for (function.params, 0..) |parameter, index| {
@@ -1383,7 +1381,7 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         } else {
             try writer.writeAll("\treturn outResult, code\n");
         }
-    } else if (returnsValueStruct(function)) {
+    } else if (function.ret_struct != null) {
         try writer.writeAll("\treturn outResult\n");
     } else if (function.origin.@"return" != .void) {
         try writer.writeAll("\treturn ");
@@ -2484,10 +2482,6 @@ fn writeRawReturnType(writer: *std.Io.Writer, program: abi.Program, function: ab
             try writeRawGoType(writer, program, function.origin.@"return");
         },
     }
-}
-
-fn returnsValueStruct(function: abi.AbiFn) bool {
-    return function.origin.@"return" == .value_struct;
 }
 
 fn writePublicReturnType(writer: *std.Io.Writer, node: semantic.TypeNode) !void {
