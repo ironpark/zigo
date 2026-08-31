@@ -66,20 +66,42 @@ func TestPuregoTaggedUnion(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer value.Close()
-	if got := value.Tag(); got != ValueTagInteger {
+	if got := must(value.Tag()); got != ValueTagInteger {
 		t.Fatalf("tag = %v", got)
 	}
-	if got, ok := value.AsInteger(); !ok || got != 42 {
+	if got, ok := must2(value.AsInteger()); !ok || got != 42 {
 		t.Fatalf("integer = %d, %v", got, ok)
 	}
-	value.SetFlag(true)
-	if got, ok := value.AsFlag(); !ok || !got {
+	if err := value.SetFlag(true); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := must2(value.AsFlag()); !ok || !got {
 		t.Fatalf("flag = %v, %v", got, ok)
 	}
-	value.UseEmptySamples()
-	if got, ok := value.AsSamples(); !ok || len(got) != 0 {
+	if err := value.UseEmptySamples(); err != nil {
+		t.Fatal(err)
+	}
+	if got, ok := must2(value.AsSamples()); !ok || len(got) != 0 {
 		t.Fatalf("empty samples = %v, %v", got, ok)
 	}
 
 	assertSignalSnapshots(t)
+}
+
+// must unwraps a generated call whose only failure mode in these tests would be
+// a nil or closed handle, which the tests establish is not the case.
+func must[T any](value T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return value
+}
+
+// must2 is must for the projection accessors, which also report whether the
+// variant is active.
+func must2[T any](value T, matched bool, err error) (T, bool) {
+	if err != nil {
+		panic(err)
+	}
+	return value, matched
 }

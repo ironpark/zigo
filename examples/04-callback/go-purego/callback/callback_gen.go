@@ -28,23 +28,32 @@ func NewFloatBuffer() (*FloatBuffer, error) {
 }
 
 // Push invokes the bound Zig FloatBuffer.push operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (f *FloatBuffer) Push(value float32) {
+// It returns *HandleError if a required handle is nil or closed.
+func (f *FloatBuffer) Push(value float32) error {
 	if f != nil {
 		f.mu.RLock()
 		defer f.mu.RUnlock()
 	}
-	raw.FloatBufferPush(zigoMustPointer("FloatBuffer.Push receiver", f), value)
+	ptr, err := zigoCheckedPointer("FloatBuffer.Push receiver", f)
+	if err != nil {
+		return err
+	}
+	raw.FloatBufferPush(ptr, value)
+	return nil
 }
 
 // Len invokes the bound Zig FloatBuffer.len operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (f *FloatBuffer) Len() uint {
+// It returns *HandleError if a required handle is nil or closed.
+func (f *FloatBuffer) Len() (uint, error) {
 	if f != nil {
 		f.mu.RLock()
 		defer f.mu.RUnlock()
 	}
-	return raw.FloatBufferLen(zigoMustPointer("FloatBuffer.Len receiver", f))
+	ptr, err := zigoCheckedPointer("FloatBuffer.Len receiver", f)
+	if err != nil {
+		return 0, err
+	}
+	return raw.FloatBufferLen(ptr), nil
 }
 
 // NewIntBuffer creates a caller-owned IntBuffer.
@@ -59,23 +68,32 @@ func NewIntBuffer() (*IntBuffer, error) {
 }
 
 // Push invokes the bound Zig IntBuffer.push operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (i *IntBuffer) Push(value int32) {
+// It returns *HandleError if a required handle is nil or closed.
+func (i *IntBuffer) Push(value int32) error {
 	if i != nil {
 		i.mu.RLock()
 		defer i.mu.RUnlock()
 	}
-	raw.IntBufferPush(zigoMustPointer("IntBuffer.Push receiver", i), value)
+	ptr, err := zigoCheckedPointer("IntBuffer.Push receiver", i)
+	if err != nil {
+		return err
+	}
+	raw.IntBufferPush(ptr, value)
+	return nil
 }
 
 // Len invokes the bound Zig IntBuffer.len operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (i *IntBuffer) Len() uint {
+// It returns *HandleError if a required handle is nil or closed.
+func (i *IntBuffer) Len() (uint, error) {
 	if i != nil {
 		i.mu.RLock()
 		defer i.mu.RUnlock()
 	}
-	return raw.IntBufferLen(zigoMustPointer("IntBuffer.Len receiver", i))
+	ptr, err := zigoCheckedPointer("IntBuffer.Len receiver", i)
+	if err != nil {
+		return 0, err
+	}
+	return raw.IntBufferLen(ptr), nil
 }
 
 // NewCallbackContext creates a caller-owned CallbackContext.
@@ -92,13 +110,17 @@ func NewCallbackContext(callback CallbackContextCallback) (*CallbackContext, err
 }
 
 // Run invokes the bound Zig CallbackContext.run operation.
-// It panics with *HandleError if a required handle is nil or closed.
-func (c *CallbackContext) Run(value int32) int32 {
+// It returns *HandleError if a required handle is nil or closed.
+func (c *CallbackContext) Run(value int32) (int32, error) {
 	if c != nil {
 		c.mu.RLock()
 		defer c.mu.RUnlock()
 	}
-	return raw.CallbackContextRun(zigoMustPointer("CallbackContext.Run receiver", c), value)
+	ptr, err := zigoCheckedPointer("CallbackContext.Run receiver", c)
+	if err != nil {
+		return 0, err
+	}
+	return raw.CallbackContextRun(ptr, value), nil
 }
 
 // PanicNow invokes the bound Zig panicNow operation.

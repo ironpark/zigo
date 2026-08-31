@@ -34,7 +34,11 @@ func TestBorrowedAndRetainedCallbacks(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := context.Run(9); got != 18 {
+	got, err := context.Run(9)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 18 {
 		t.Fatalf("Run(9) = %d, want 18", got)
 	}
 	context.Close()
@@ -52,7 +56,11 @@ func TestCallbackPanicAndConcurrentClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := panicking.Run(1); got != -3 {
+	got, err := panicking.Run(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != -3 {
 		t.Fatalf("panicking callback = %d, want -3", got)
 	}
 	panicking.Close()
@@ -69,7 +77,7 @@ func TestCallbackPanicAndConcurrentClose(t *testing.T) {
 	}
 	var wait sync.WaitGroup
 	wait.Add(2)
-	go func() { defer wait.Done(); _ = context.Run(7) }()
+	go func() { defer wait.Done(); _, _ = context.Run(7) }()
 	<-entered
 	go func() { defer wait.Done(); context.Close() }()
 	close(release)

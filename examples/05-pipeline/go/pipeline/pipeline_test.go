@@ -18,10 +18,10 @@ func TestPipelineEndToEnd(t *testing.T) {
 	}
 	defer pipeline.Close()
 
-	if got := pipeline.Name(); got != "복합 파이프라인" {
+	if got := must(pipeline.Name()); got != "복합 파이프라인" {
 		t.Fatalf("Name() = %q", got)
 	}
-	if got := pipeline.Mode(); got != ModeWeighted {
+	if got := must(pipeline.Mode()); got != ModeWeighted {
 		t.Fatalf("Mode() = %v, want %v", got, ModeWeighted)
 	}
 	got, err := pipeline.Process([]int32{1, 2, 3})
@@ -31,20 +31,20 @@ func TestPipelineEndToEnd(t *testing.T) {
 	if got != 74 {
 		t.Fatalf("Process() = %d, want 74", got)
 	}
-	if got := pipeline.Processed(); got != 3 {
+	if got := must(pipeline.Processed()); got != 3 {
 		t.Fatalf("Processed() = %d, want 3", got)
 	}
-	if got := pipeline.Total(); got != 74 {
+	if got := must(pipeline.Total()); got != 74 {
 		t.Fatalf("Total() = %d, want 74", got)
 	}
 
-	if previous := pipeline.SetEnabled(false); !previous {
+	if previous := must(pipeline.SetEnabled(false)); !previous {
 		t.Fatal("SetEnabled(false) previous = false, want true")
 	}
 	if _, err := pipeline.Process([]int32{1}); !errors.Is(err, ErrDisabled) {
 		t.Fatalf("disabled Process() error = %v, want %v", err, ErrDisabled)
 	}
-	if previous := pipeline.SetEnabled(true); previous {
+	if previous := must(pipeline.SetEnabled(true)); previous {
 		t.Fatal("SetEnabled(true) previous = true, want false")
 	}
 	if _, err := pipeline.Process(nil); !errors.Is(err, ErrEmptyInput) {
@@ -91,7 +91,7 @@ func TestGenericBatchSpecializations(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if got := ints.Len(); got != 3 {
+	if got := must(ints.Len()); got != 3 {
 		t.Fatalf("IntBatch.Len() = %d, want 3", got)
 	}
 
@@ -103,7 +103,7 @@ func TestGenericBatchSpecializations(t *testing.T) {
 	if err := floats.Push(1.25); err != nil {
 		t.Fatal(err)
 	}
-	if got := floats.Len(); got != 1 {
+	if got := must(floats.Len()); got != 1 {
 		t.Fatalf("FloatBatch.Len() = %d, want 1", got)
 	}
 }
@@ -152,6 +152,16 @@ func TestSystemLibraryLinkIsPropagated(t *testing.T) {
 	if got := CompressionBound(1024); got <= 1024 {
 		t.Fatalf("CompressionBound(1024) = %d, want > 1024", got)
 	}
+}
+
+// must unwraps a generated call that reports a nil or closed handle through
+// its error result. A live handle is an invariant of these tests, so a failure
+// is a bug in the test rather than an expected outcome.
+func must[T any](value T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return value
 }
 
 func assertNoLiveResources(t *testing.T) {

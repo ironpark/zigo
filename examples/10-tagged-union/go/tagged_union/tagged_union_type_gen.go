@@ -315,19 +315,11 @@ func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, err
 	return ptr, nil
 }
 
-func zigoMustPointer(operation string, value zigoHandle) unsafe.Pointer {
-	ptr, err := zigoCheckedPointer(operation, value)
-	if err != nil {
-		panic(err)
-	}
-	return ptr
-}
-
-func zigoOptionalPointer(operation string, absent bool, value zigoHandle) unsafe.Pointer {
+func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsafe.Pointer, error) {
 	if absent {
-		return nil
+		return nil, nil
 	}
-	return zigoMustPointer(operation, value)
+	return zigoCheckedPointer(operation, value)
 }
 
 const (
@@ -348,8 +340,8 @@ func zigoProjectionError(operation string, status uint8) error {
 	}
 }
 
-// TryTag returns the active tagged-union tag or a typed lifecycle/native error.
-func (v *Value) TryTag() (ValueTag, error) {
+// Tag returns the active tagged-union tag or a typed lifecycle/native error.
+func (v *Value) Tag() (ValueTag, error) {
 	defer runtime.KeepAlive(v)
 	ptr, err := zigoCheckedPointer("Value.Tag receiver", v)
 	if err != nil {
@@ -362,17 +354,17 @@ func (v *Value) TryTag() (ValueTag, error) {
 	return ValueTag(result), nil
 }
 
-// Tag returns the active tagged-union tag and panics with a typed error on failure.
-func (v *Value) Tag() ValueTag {
-	result, err := v.TryTag()
+// MustTag returns the active tagged-union tag and panics with a typed error on failure.
+func (v *Value) MustTag() ValueTag {
+	result, err := v.Tag()
 	if err != nil {
 		panic(err)
 	}
 	return result
 }
 
-// TryAsInteger returns the integer payload, whether it is active, and any lifecycle/native error.
-func (v *Value) TryAsInteger() (int64, bool, error) {
+// AsInteger returns the integer payload, whether it is active, and any lifecycle/native error.
+func (v *Value) AsInteger() (int64, bool, error) {
 	defer runtime.KeepAlive(v)
 	ptr, err := zigoCheckedPointer("Value.AsInteger receiver", v)
 	if err != nil {
@@ -388,17 +380,17 @@ func (v *Value) TryAsInteger() (int64, bool, error) {
 	return result, true, nil
 }
 
-// AsInteger returns the integer payload when active and panics with a typed error on failure.
-func (v *Value) AsInteger() (int64, bool) {
-	result, matched, err := v.TryAsInteger()
+// MustAsInteger returns the integer payload when active and panics with a typed error on failure.
+func (v *Value) MustAsInteger() (int64, bool) {
+	result, matched, err := v.AsInteger()
 	if err != nil {
 		panic(err)
 	}
 	return result, matched
 }
 
-// TryAsFlag returns the flag payload, whether it is active, and any lifecycle/native error.
-func (v *Value) TryAsFlag() (bool, bool, error) {
+// AsFlag returns the flag payload, whether it is active, and any lifecycle/native error.
+func (v *Value) AsFlag() (bool, bool, error) {
 	defer runtime.KeepAlive(v)
 	ptr, err := zigoCheckedPointer("Value.AsFlag receiver", v)
 	if err != nil {
@@ -414,17 +406,17 @@ func (v *Value) TryAsFlag() (bool, bool, error) {
 	return result != 0, true, nil
 }
 
-// AsFlag returns the flag payload when active and panics with a typed error on failure.
-func (v *Value) AsFlag() (bool, bool) {
-	result, matched, err := v.TryAsFlag()
+// MustAsFlag returns the flag payload when active and panics with a typed error on failure.
+func (v *Value) MustAsFlag() (bool, bool) {
+	result, matched, err := v.AsFlag()
 	if err != nil {
 		panic(err)
 	}
 	return result, matched
 }
 
-// TryAsMode returns the mode payload, whether it is active, and any lifecycle/native error.
-func (v *Value) TryAsMode() (Mode, bool, error) {
+// AsMode returns the mode payload, whether it is active, and any lifecycle/native error.
+func (v *Value) AsMode() (Mode, bool, error) {
 	defer runtime.KeepAlive(v)
 	ptr, err := zigoCheckedPointer("Value.AsMode receiver", v)
 	if err != nil {
@@ -440,17 +432,17 @@ func (v *Value) TryAsMode() (Mode, bool, error) {
 	return Mode(result), true, nil
 }
 
-// AsMode returns the mode payload when active and panics with a typed error on failure.
-func (v *Value) AsMode() (Mode, bool) {
-	result, matched, err := v.TryAsMode()
+// MustAsMode returns the mode payload when active and panics with a typed error on failure.
+func (v *Value) MustAsMode() (Mode, bool) {
+	result, matched, err := v.AsMode()
 	if err != nil {
 		panic(err)
 	}
 	return result, matched
 }
 
-// TryAsSamples returns the samples payload, whether it is active, and any lifecycle/native error.
-func (v *Value) TryAsSamples() ([]int16, bool, error) {
+// AsSamples returns the samples payload, whether it is active, and any lifecycle/native error.
+func (v *Value) AsSamples() ([]int16, bool, error) {
 	defer runtime.KeepAlive(v)
 	ptr, err := zigoCheckedPointer("Value.AsSamples receiver", v)
 	if err != nil {
@@ -466,17 +458,17 @@ func (v *Value) TryAsSamples() ([]int16, bool, error) {
 	return append([]int16(nil), result...), true, nil
 }
 
-// AsSamples returns the samples payload when active and panics with a typed error on failure.
-func (v *Value) AsSamples() ([]int16, bool) {
-	result, matched, err := v.TryAsSamples()
+// MustAsSamples returns the samples payload when active and panics with a typed error on failure.
+func (v *Value) MustAsSamples() ([]int16, bool) {
+	result, matched, err := v.AsSamples()
 	if err != nil {
 		panic(err)
 	}
 	return result, matched
 }
 
-// TryAsChild returns the child payload, whether it is active, and any lifecycle/native error.
-func (v *Value) TryAsChild() (*ChildRef, bool, error) {
+// AsChild returns the child payload, whether it is active, and any lifecycle/native error.
+func (v *Value) AsChild() (*ChildRef, bool, error) {
 	defer runtime.KeepAlive(v)
 	ptr, err := zigoCheckedPointer("Value.AsChild receiver", v)
 	if err != nil {
@@ -492,17 +484,17 @@ func (v *Value) TryAsChild() (*ChildRef, bool, error) {
 	return &ChildRef{ptr: result, parent: v}, true, nil
 }
 
-// AsChild returns the child payload when active and panics with a typed error on failure.
-func (v *Value) AsChild() (*ChildRef, bool) {
-	result, matched, err := v.TryAsChild()
+// MustAsChild returns the child payload when active and panics with a typed error on failure.
+func (v *Value) MustAsChild() (*ChildRef, bool) {
+	result, matched, err := v.AsChild()
 	if err != nil {
 		panic(err)
 	}
 	return result, matched
 }
 
-// TryAsMutableSamples returns the mutableSamples payload, whether it is active, and any lifecycle/native error.
-func (v *Value) TryAsMutableSamples() ([]int16, bool, error) {
+// AsMutableSamples returns the mutableSamples payload, whether it is active, and any lifecycle/native error.
+func (v *Value) AsMutableSamples() ([]int16, bool, error) {
 	defer runtime.KeepAlive(v)
 	ptr, err := zigoCheckedPointer("Value.AsMutableSamples receiver", v)
 	if err != nil {
@@ -518,17 +510,17 @@ func (v *Value) TryAsMutableSamples() ([]int16, bool, error) {
 	return append([]int16(nil), result...), true, nil
 }
 
-// AsMutableSamples returns the mutableSamples payload when active and panics with a typed error on failure.
-func (v *Value) AsMutableSamples() ([]int16, bool) {
-	result, matched, err := v.TryAsMutableSamples()
+// MustAsMutableSamples returns the mutableSamples payload when active and panics with a typed error on failure.
+func (v *Value) MustAsMutableSamples() ([]int16, bool) {
+	result, matched, err := v.AsMutableSamples()
 	if err != nil {
 		panic(err)
 	}
 	return result, matched
 }
 
-// TryTag returns the active tagged-union tag or a typed lifecycle/native error.
-func (v *ValueRef) TryTag() (ValueTag, error) {
+// Tag returns the active tagged-union tag or a typed lifecycle/native error.
+func (v *ValueRef) Tag() (ValueTag, error) {
 	defer runtime.KeepAlive(v)
 	ptr, err := zigoCheckedPointer("Value.Tag receiver", v)
 	if err != nil {
@@ -541,17 +533,17 @@ func (v *ValueRef) TryTag() (ValueTag, error) {
 	return ValueTag(result), nil
 }
 
-// Tag returns the active tagged-union tag and panics with a typed error on failure.
-func (v *ValueRef) Tag() ValueTag {
-	result, err := v.TryTag()
+// MustTag returns the active tagged-union tag and panics with a typed error on failure.
+func (v *ValueRef) MustTag() ValueTag {
+	result, err := v.Tag()
 	if err != nil {
 		panic(err)
 	}
 	return result
 }
 
-// TryAsInteger returns the integer payload, whether it is active, and any lifecycle/native error.
-func (v *ValueRef) TryAsInteger() (int64, bool, error) {
+// AsInteger returns the integer payload, whether it is active, and any lifecycle/native error.
+func (v *ValueRef) AsInteger() (int64, bool, error) {
 	defer runtime.KeepAlive(v)
 	ptr, err := zigoCheckedPointer("Value.AsInteger receiver", v)
 	if err != nil {
@@ -567,17 +559,17 @@ func (v *ValueRef) TryAsInteger() (int64, bool, error) {
 	return result, true, nil
 }
 
-// AsInteger returns the integer payload when active and panics with a typed error on failure.
-func (v *ValueRef) AsInteger() (int64, bool) {
-	result, matched, err := v.TryAsInteger()
+// MustAsInteger returns the integer payload when active and panics with a typed error on failure.
+func (v *ValueRef) MustAsInteger() (int64, bool) {
+	result, matched, err := v.AsInteger()
 	if err != nil {
 		panic(err)
 	}
 	return result, matched
 }
 
-// TryAsFlag returns the flag payload, whether it is active, and any lifecycle/native error.
-func (v *ValueRef) TryAsFlag() (bool, bool, error) {
+// AsFlag returns the flag payload, whether it is active, and any lifecycle/native error.
+func (v *ValueRef) AsFlag() (bool, bool, error) {
 	defer runtime.KeepAlive(v)
 	ptr, err := zigoCheckedPointer("Value.AsFlag receiver", v)
 	if err != nil {
@@ -593,17 +585,17 @@ func (v *ValueRef) TryAsFlag() (bool, bool, error) {
 	return result != 0, true, nil
 }
 
-// AsFlag returns the flag payload when active and panics with a typed error on failure.
-func (v *ValueRef) AsFlag() (bool, bool) {
-	result, matched, err := v.TryAsFlag()
+// MustAsFlag returns the flag payload when active and panics with a typed error on failure.
+func (v *ValueRef) MustAsFlag() (bool, bool) {
+	result, matched, err := v.AsFlag()
 	if err != nil {
 		panic(err)
 	}
 	return result, matched
 }
 
-// TryAsMode returns the mode payload, whether it is active, and any lifecycle/native error.
-func (v *ValueRef) TryAsMode() (Mode, bool, error) {
+// AsMode returns the mode payload, whether it is active, and any lifecycle/native error.
+func (v *ValueRef) AsMode() (Mode, bool, error) {
 	defer runtime.KeepAlive(v)
 	ptr, err := zigoCheckedPointer("Value.AsMode receiver", v)
 	if err != nil {
@@ -619,17 +611,17 @@ func (v *ValueRef) TryAsMode() (Mode, bool, error) {
 	return Mode(result), true, nil
 }
 
-// AsMode returns the mode payload when active and panics with a typed error on failure.
-func (v *ValueRef) AsMode() (Mode, bool) {
-	result, matched, err := v.TryAsMode()
+// MustAsMode returns the mode payload when active and panics with a typed error on failure.
+func (v *ValueRef) MustAsMode() (Mode, bool) {
+	result, matched, err := v.AsMode()
 	if err != nil {
 		panic(err)
 	}
 	return result, matched
 }
 
-// TryAsSamples returns the samples payload, whether it is active, and any lifecycle/native error.
-func (v *ValueRef) TryAsSamples() ([]int16, bool, error) {
+// AsSamples returns the samples payload, whether it is active, and any lifecycle/native error.
+func (v *ValueRef) AsSamples() ([]int16, bool, error) {
 	defer runtime.KeepAlive(v)
 	ptr, err := zigoCheckedPointer("Value.AsSamples receiver", v)
 	if err != nil {
@@ -645,17 +637,17 @@ func (v *ValueRef) TryAsSamples() ([]int16, bool, error) {
 	return append([]int16(nil), result...), true, nil
 }
 
-// AsSamples returns the samples payload when active and panics with a typed error on failure.
-func (v *ValueRef) AsSamples() ([]int16, bool) {
-	result, matched, err := v.TryAsSamples()
+// MustAsSamples returns the samples payload when active and panics with a typed error on failure.
+func (v *ValueRef) MustAsSamples() ([]int16, bool) {
+	result, matched, err := v.AsSamples()
 	if err != nil {
 		panic(err)
 	}
 	return result, matched
 }
 
-// TryAsChild returns the child payload, whether it is active, and any lifecycle/native error.
-func (v *ValueRef) TryAsChild() (*ChildRef, bool, error) {
+// AsChild returns the child payload, whether it is active, and any lifecycle/native error.
+func (v *ValueRef) AsChild() (*ChildRef, bool, error) {
 	defer runtime.KeepAlive(v)
 	ptr, err := zigoCheckedPointer("Value.AsChild receiver", v)
 	if err != nil {
@@ -671,17 +663,17 @@ func (v *ValueRef) TryAsChild() (*ChildRef, bool, error) {
 	return &ChildRef{ptr: result, parent: v}, true, nil
 }
 
-// AsChild returns the child payload when active and panics with a typed error on failure.
-func (v *ValueRef) AsChild() (*ChildRef, bool) {
-	result, matched, err := v.TryAsChild()
+// MustAsChild returns the child payload when active and panics with a typed error on failure.
+func (v *ValueRef) MustAsChild() (*ChildRef, bool) {
+	result, matched, err := v.AsChild()
 	if err != nil {
 		panic(err)
 	}
 	return result, matched
 }
 
-// TryAsMutableSamples returns the mutableSamples payload, whether it is active, and any lifecycle/native error.
-func (v *ValueRef) TryAsMutableSamples() ([]int16, bool, error) {
+// AsMutableSamples returns the mutableSamples payload, whether it is active, and any lifecycle/native error.
+func (v *ValueRef) AsMutableSamples() ([]int16, bool, error) {
 	defer runtime.KeepAlive(v)
 	ptr, err := zigoCheckedPointer("Value.AsMutableSamples receiver", v)
 	if err != nil {
@@ -697,17 +689,17 @@ func (v *ValueRef) TryAsMutableSamples() ([]int16, bool, error) {
 	return append([]int16(nil), result...), true, nil
 }
 
-// AsMutableSamples returns the mutableSamples payload when active and panics with a typed error on failure.
-func (v *ValueRef) AsMutableSamples() ([]int16, bool) {
-	result, matched, err := v.TryAsMutableSamples()
+// MustAsMutableSamples returns the mutableSamples payload when active and panics with a typed error on failure.
+func (v *ValueRef) MustAsMutableSamples() ([]int16, bool) {
+	result, matched, err := v.AsMutableSamples()
 	if err != nil {
 		panic(err)
 	}
 	return result, matched
 }
 
-// TryTag returns the active tagged-union tag or a typed lifecycle/native error.
-func (s *Signal) TryTag() (SignalTag, error) {
+// Tag returns the active tagged-union tag or a typed lifecycle/native error.
+func (s *Signal) Tag() (SignalTag, error) {
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.Tag receiver", s)
 	if err != nil {
@@ -720,17 +712,17 @@ func (s *Signal) TryTag() (SignalTag, error) {
 	return SignalTag(result), nil
 }
 
-// Tag returns the active tagged-union tag and panics with a typed error on failure.
-func (s *Signal) Tag() SignalTag {
-	result, err := s.TryTag()
+// MustTag returns the active tagged-union tag and panics with a typed error on failure.
+func (s *Signal) MustTag() SignalTag {
+	result, err := s.Tag()
 	if err != nil {
 		panic(err)
 	}
 	return result
 }
 
-// TryAsTicks returns the ticks payload, whether it is active, and any lifecycle/native error.
-func (s *Signal) TryAsTicks() (uint32, bool, error) {
+// AsTicks returns the ticks payload, whether it is active, and any lifecycle/native error.
+func (s *Signal) AsTicks() (uint32, bool, error) {
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.AsTicks receiver", s)
 	if err != nil {
@@ -746,17 +738,17 @@ func (s *Signal) TryAsTicks() (uint32, bool, error) {
 	return result, true, nil
 }
 
-// AsTicks returns the ticks payload when active and panics with a typed error on failure.
-func (s *Signal) AsTicks() (uint32, bool) {
-	result, matched, err := s.TryAsTicks()
+// MustAsTicks returns the ticks payload when active and panics with a typed error on failure.
+func (s *Signal) MustAsTicks() (uint32, bool) {
+	result, matched, err := s.AsTicks()
 	if err != nil {
 		panic(err)
 	}
 	return result, matched
 }
 
-// TryAsLevel returns the level payload, whether it is active, and any lifecycle/native error.
-func (s *Signal) TryAsLevel() (float64, bool, error) {
+// AsLevel returns the level payload, whether it is active, and any lifecycle/native error.
+func (s *Signal) AsLevel() (float64, bool, error) {
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.AsLevel receiver", s)
 	if err != nil {
@@ -772,17 +764,17 @@ func (s *Signal) TryAsLevel() (float64, bool, error) {
 	return result, true, nil
 }
 
-// AsLevel returns the level payload when active and panics with a typed error on failure.
-func (s *Signal) AsLevel() (float64, bool) {
-	result, matched, err := s.TryAsLevel()
+// MustAsLevel returns the level payload when active and panics with a typed error on failure.
+func (s *Signal) MustAsLevel() (float64, bool) {
+	result, matched, err := s.AsLevel()
 	if err != nil {
 		panic(err)
 	}
 	return result, matched
 }
 
-// TryAsOffset returns the offset payload, whether it is active, and any lifecycle/native error.
-func (s *Signal) TryAsOffset() (int16, bool, error) {
+// AsOffset returns the offset payload, whether it is active, and any lifecycle/native error.
+func (s *Signal) AsOffset() (int16, bool, error) {
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.AsOffset receiver", s)
 	if err != nil {
@@ -798,17 +790,17 @@ func (s *Signal) TryAsOffset() (int16, bool, error) {
 	return result, true, nil
 }
 
-// AsOffset returns the offset payload when active and panics with a typed error on failure.
-func (s *Signal) AsOffset() (int16, bool) {
-	result, matched, err := s.TryAsOffset()
+// MustAsOffset returns the offset payload when active and panics with a typed error on failure.
+func (s *Signal) MustAsOffset() (int16, bool) {
+	result, matched, err := s.AsOffset()
 	if err != nil {
 		panic(err)
 	}
 	return result, matched
 }
 
-// TryAsMode returns the mode payload, whether it is active, and any lifecycle/native error.
-func (s *Signal) TryAsMode() (Mode, bool, error) {
+// AsMode returns the mode payload, whether it is active, and any lifecycle/native error.
+func (s *Signal) AsMode() (Mode, bool, error) {
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.AsMode receiver", s)
 	if err != nil {
@@ -824,17 +816,17 @@ func (s *Signal) TryAsMode() (Mode, bool, error) {
 	return Mode(result), true, nil
 }
 
-// AsMode returns the mode payload when active and panics with a typed error on failure.
-func (s *Signal) AsMode() (Mode, bool) {
-	result, matched, err := s.TryAsMode()
+// MustAsMode returns the mode payload when active and panics with a typed error on failure.
+func (s *Signal) MustAsMode() (Mode, bool) {
+	result, matched, err := s.AsMode()
 	if err != nil {
 		panic(err)
 	}
 	return result, matched
 }
 
-// TryAsActive returns the active payload, whether it is active, and any lifecycle/native error.
-func (s *Signal) TryAsActive() (bool, bool, error) {
+// AsActive returns the active payload, whether it is active, and any lifecycle/native error.
+func (s *Signal) AsActive() (bool, bool, error) {
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.AsActive receiver", s)
 	if err != nil {
@@ -850,17 +842,17 @@ func (s *Signal) TryAsActive() (bool, bool, error) {
 	return result != 0, true, nil
 }
 
-// AsActive returns the active payload when active and panics with a typed error on failure.
-func (s *Signal) AsActive() (bool, bool) {
-	result, matched, err := s.TryAsActive()
+// MustAsActive returns the active payload when active and panics with a typed error on failure.
+func (s *Signal) MustAsActive() (bool, bool) {
+	result, matched, err := s.AsActive()
 	if err != nil {
 		panic(err)
 	}
 	return result, matched
 }
 
-// TryTag returns the active tagged-union tag or a typed lifecycle/native error.
-func (s *SignalRef) TryTag() (SignalTag, error) {
+// Tag returns the active tagged-union tag or a typed lifecycle/native error.
+func (s *SignalRef) Tag() (SignalTag, error) {
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.Tag receiver", s)
 	if err != nil {
@@ -873,17 +865,17 @@ func (s *SignalRef) TryTag() (SignalTag, error) {
 	return SignalTag(result), nil
 }
 
-// Tag returns the active tagged-union tag and panics with a typed error on failure.
-func (s *SignalRef) Tag() SignalTag {
-	result, err := s.TryTag()
+// MustTag returns the active tagged-union tag and panics with a typed error on failure.
+func (s *SignalRef) MustTag() SignalTag {
+	result, err := s.Tag()
 	if err != nil {
 		panic(err)
 	}
 	return result
 }
 
-// TryAsTicks returns the ticks payload, whether it is active, and any lifecycle/native error.
-func (s *SignalRef) TryAsTicks() (uint32, bool, error) {
+// AsTicks returns the ticks payload, whether it is active, and any lifecycle/native error.
+func (s *SignalRef) AsTicks() (uint32, bool, error) {
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.AsTicks receiver", s)
 	if err != nil {
@@ -899,17 +891,17 @@ func (s *SignalRef) TryAsTicks() (uint32, bool, error) {
 	return result, true, nil
 }
 
-// AsTicks returns the ticks payload when active and panics with a typed error on failure.
-func (s *SignalRef) AsTicks() (uint32, bool) {
-	result, matched, err := s.TryAsTicks()
+// MustAsTicks returns the ticks payload when active and panics with a typed error on failure.
+func (s *SignalRef) MustAsTicks() (uint32, bool) {
+	result, matched, err := s.AsTicks()
 	if err != nil {
 		panic(err)
 	}
 	return result, matched
 }
 
-// TryAsLevel returns the level payload, whether it is active, and any lifecycle/native error.
-func (s *SignalRef) TryAsLevel() (float64, bool, error) {
+// AsLevel returns the level payload, whether it is active, and any lifecycle/native error.
+func (s *SignalRef) AsLevel() (float64, bool, error) {
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.AsLevel receiver", s)
 	if err != nil {
@@ -925,17 +917,17 @@ func (s *SignalRef) TryAsLevel() (float64, bool, error) {
 	return result, true, nil
 }
 
-// AsLevel returns the level payload when active and panics with a typed error on failure.
-func (s *SignalRef) AsLevel() (float64, bool) {
-	result, matched, err := s.TryAsLevel()
+// MustAsLevel returns the level payload when active and panics with a typed error on failure.
+func (s *SignalRef) MustAsLevel() (float64, bool) {
+	result, matched, err := s.AsLevel()
 	if err != nil {
 		panic(err)
 	}
 	return result, matched
 }
 
-// TryAsOffset returns the offset payload, whether it is active, and any lifecycle/native error.
-func (s *SignalRef) TryAsOffset() (int16, bool, error) {
+// AsOffset returns the offset payload, whether it is active, and any lifecycle/native error.
+func (s *SignalRef) AsOffset() (int16, bool, error) {
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.AsOffset receiver", s)
 	if err != nil {
@@ -951,17 +943,17 @@ func (s *SignalRef) TryAsOffset() (int16, bool, error) {
 	return result, true, nil
 }
 
-// AsOffset returns the offset payload when active and panics with a typed error on failure.
-func (s *SignalRef) AsOffset() (int16, bool) {
-	result, matched, err := s.TryAsOffset()
+// MustAsOffset returns the offset payload when active and panics with a typed error on failure.
+func (s *SignalRef) MustAsOffset() (int16, bool) {
+	result, matched, err := s.AsOffset()
 	if err != nil {
 		panic(err)
 	}
 	return result, matched
 }
 
-// TryAsMode returns the mode payload, whether it is active, and any lifecycle/native error.
-func (s *SignalRef) TryAsMode() (Mode, bool, error) {
+// AsMode returns the mode payload, whether it is active, and any lifecycle/native error.
+func (s *SignalRef) AsMode() (Mode, bool, error) {
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.AsMode receiver", s)
 	if err != nil {
@@ -977,17 +969,17 @@ func (s *SignalRef) TryAsMode() (Mode, bool, error) {
 	return Mode(result), true, nil
 }
 
-// AsMode returns the mode payload when active and panics with a typed error on failure.
-func (s *SignalRef) AsMode() (Mode, bool) {
-	result, matched, err := s.TryAsMode()
+// MustAsMode returns the mode payload when active and panics with a typed error on failure.
+func (s *SignalRef) MustAsMode() (Mode, bool) {
+	result, matched, err := s.AsMode()
 	if err != nil {
 		panic(err)
 	}
 	return result, matched
 }
 
-// TryAsActive returns the active payload, whether it is active, and any lifecycle/native error.
-func (s *SignalRef) TryAsActive() (bool, bool, error) {
+// AsActive returns the active payload, whether it is active, and any lifecycle/native error.
+func (s *SignalRef) AsActive() (bool, bool, error) {
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.AsActive receiver", s)
 	if err != nil {
@@ -1003,9 +995,9 @@ func (s *SignalRef) TryAsActive() (bool, bool, error) {
 	return result != 0, true, nil
 }
 
-// AsActive returns the active payload when active and panics with a typed error on failure.
-func (s *SignalRef) AsActive() (bool, bool) {
-	result, matched, err := s.TryAsActive()
+// MustAsActive returns the active payload when active and panics with a typed error on failure.
+func (s *SignalRef) MustAsActive() (bool, bool) {
+	result, matched, err := s.AsActive()
 	if err != nil {
 		panic(err)
 	}
@@ -1053,9 +1045,9 @@ func (snapshot SignalSnapshot) Active() (bool, bool) {
 	return snapshot.active, snapshot.tag == SignalTagActive
 }
 
-// TrySnapshot reads the tag and every payload in one native call, or
+// Snapshot reads the tag and every payload in one native call, or
 // returns a typed lifecycle/native error.
-func (s *Signal) TrySnapshot() (SignalSnapshot, error) {
+func (s *Signal) Snapshot() (SignalSnapshot, error) {
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.Snapshot receiver", s)
 	if err != nil {
@@ -1075,19 +1067,19 @@ func (s *Signal) TrySnapshot() (SignalSnapshot, error) {
 	}, nil
 }
 
-// Snapshot reads the tag and every payload in one native call and panics
+// MustSnapshot reads the tag and every payload in one native call and panics
 // with a typed error on failure.
-func (s *Signal) Snapshot() SignalSnapshot {
-	result, err := s.TrySnapshot()
+func (s *Signal) MustSnapshot() SignalSnapshot {
+	result, err := s.Snapshot()
 	if err != nil {
 		panic(err)
 	}
 	return result
 }
 
-// TrySnapshot reads the tag and every payload in one native call, or
+// Snapshot reads the tag and every payload in one native call, or
 // returns a typed lifecycle/native error.
-func (s *SignalRef) TrySnapshot() (SignalSnapshot, error) {
+func (s *SignalRef) Snapshot() (SignalSnapshot, error) {
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.Snapshot receiver", s)
 	if err != nil {
@@ -1107,10 +1099,10 @@ func (s *SignalRef) TrySnapshot() (SignalSnapshot, error) {
 	}, nil
 }
 
-// Snapshot reads the tag and every payload in one native call and panics
+// MustSnapshot reads the tag and every payload in one native call and panics
 // with a typed error on failure.
-func (s *SignalRef) Snapshot() SignalSnapshot {
-	result, err := s.TrySnapshot()
+func (s *SignalRef) MustSnapshot() SignalSnapshot {
+	result, err := s.Snapshot()
 	if err != nil {
 		panic(err)
 	}

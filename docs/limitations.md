@@ -70,9 +70,9 @@ AST 보강에 사용하는 기본 `bindings.zig`를 읽지 못하면 reflection�
   뜻하지 않는다. Go에서는 `errors.Is(err, ErrNativePanic)`으로 판별한다. 메시지를 수집한 뒤
   현재 작업을 중단한다.
 - 모든 public opaque receiver와 handle 인자는 cgo 진입 전에 nil·closed 상태를 검사한다.
-  오류 반환이 없는 일반 메서드는 `*HandleError`로 panic한다. Tagged-union의 `TryTag`와
-  `TryAs*`는 같은 상태를 error로 반환하며, 편의 메서드 `Tag`와 `As*`만 typed error로
-  panic한다.
+  검사 실패는 `*HandleError`로 반환하며, 오류 반환이 없던 메서드에는 `error` 결과가
+  추가된다. Tagged-union의 `Tag`와 `As*`도 같은 상태를 error로 반환하고, `MustTag`와
+  `MustAs*`만 typed error로 panic한다.
 - tagged-union projection은 별도 status `3`으로 실제 Zig panic을 구분해
   `*NativePanicError`로 반환한다. null handle과 필수 out 파라미터는 status `2`로
   거부하지만, `SIGSEGV` 같은 하드웨어 fault나 손상된 native 메모리까지 복구하지는 않는다.

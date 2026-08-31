@@ -1676,6 +1676,10 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         else
             try allocator.dupe(u8, go_name);
         defer allocator.free(operation);
+        // A nil or closed handle is a caller error, so it leaves through the
+        // return value instead of a panic. Functions that do not touch a
+        // handle keep their plain signature.
+        const needs_handle_check = function.origin.receiver != null or hasOpaqueParameter(function.origin.*);
         try writePublicFunctionDoc(writer, function.origin.*, go_name, constructor);
         if (function.origin.receiver) |receiver| {
             const receiver_name = try receiverVariableAlloc(allocator, receiver);
@@ -1701,11 +1705,17 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         try writer.writeByte(')');
         if (constructor) |value| {
             try writer.print(" (*{s}, error)", .{value.type});
+        } else if (needs_handle_check and function.origin.@"return" != .error_union) {
+            try writeCheckedFunctionReturnType(writer, function.origin.*);
         } else {
             try writePublicFunctionReturnType(writer, function.origin.*);
         }
         try writer.writeAll(" {\n");
         try renderKeepAliveDefers(allocator, writer, program, function, options);
+        // The handle checks run before any callback handle is registered, so
+        // an early return cannot strand a retained callback.
+        if (needs_handle_check)
+            try renderHandleChecks(allocator, writer, function.origin.*, go_names, operation, constructor);
         try renderCallbackHandleSetup(allocator, writer, program, function);
         try writer.writeByte('\t');
         const returns_error = function.origin.@"return" == .error_union;
@@ -1738,10 +1748,8 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         defer allocator.free(raw_name);
         try writer.print("{s}(", .{raw_name});
         var call_index: usize = 0;
-        if (function.origin.receiver) |receiver| {
-            const receiver_name = try receiverVariableAlloc(allocator, receiver);
-            defer allocator.free(receiver_name);
-            try writer.print("zigoMustPointer(\"{s} receiver\", {s})", .{ operation, receiver_name });
+        if (function.origin.receiver != null) {
+            try writer.writeAll("ptr");
             call_index = 1;
         }
         for (function.origin.params, 0..) |parameter, parameter_index| {
@@ -1764,10 +1772,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                     try writer.writeAll(rawGoTypeName(program, parameter.type));
                     try writer.print("({s})", .{go_names[parameter_index]});
                 },
-                .opaque_ptr => |pointer| if (pointer.nullable)
-                    try writer.print("zigoOptionalPointer(\"{s} parameter {s}\", {s} == nil, {s})", .{ operation, go_names[parameter_index], go_names[parameter_index], go_names[parameter_index] })
-                else
-                    try writer.print("zigoMustPointer(\"{s} parameter {s}\", {s})", .{ operation, go_names[parameter_index], go_names[parameter_index] }),
+                .opaque_ptr => try writer.print("{s}Ptr", .{go_names[parameter_index]}),
                 .slice => if (isUtf8Slice(parameter.type, parameter.semantic))
                     try writer.print("[]byte({s})", .{go_names[parameter_index]})
                 else
@@ -1781,12 +1786,15 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         if (!returns_error and function.origin.@"return" == .value_struct) try writer.writeByte(')');
         if (!returns_error and function.origin.@"return" == .bool) try writer.writeAll(" != 0");
         if (!returns_error and isUtf8Slice(function.origin.@"return", function.origin.return_semantic)) try writer.writeByte(')');
+        if (!returns_error and !borrowed_direct and needs_handle_check and function.origin.@"return" != .void) try writer.writeAll(", nil");
         try writer.writeByte('\n');
         if (borrowed_direct) {
             try writer.writeAll("\treturn ");
             try writeBorrowedResult(allocator, writer, function.origin.*, "result");
+            if (needs_handle_check) try writer.writeAll(", nil");
             try writer.writeByte('\n');
         }
+        if (!returns_error and needs_handle_check and function.origin.@"return" == .void) try writer.writeAll("\treturn nil\n");
         if (returns_error) {
             try writer.writeAll("\tif code != 0 {\n");
             if (hasRetainedCallback(function.origin.*)) {
@@ -1981,8 +1989,8 @@ fn renderPublicSnapshots(allocator: std.mem.Allocator, writer: *std.Io.Writer, p
         inline for (.{ false, true }) |borrowed| {
             const suffix = if (borrowed) "Ref" else "";
             try writer.print(
-                "// TrySnapshot reads the tag and every payload in one native call, or\n" ++
-                    "// returns a typed lifecycle/native error.\nfunc ({0s} *{1s}{2s}) TrySnapshot() ({3s}, error) {{\n" ++
+                "// Snapshot reads the tag and every payload in one native call, or\n" ++
+                    "// returns a typed lifecycle/native error.\nfunc ({0s} *{1s}{2s}) Snapshot() ({3s}, error) {{\n" ++
                     "\tdefer runtime.KeepAlive({0s})\n\tptr, err := zigoCheckedPointer(\"{1s}.Snapshot receiver\", {0s})\n" ++
                     "\tif err != nil {{\n\t\treturn {3s}{{}}, err\n\t}}\n\tdata, status := ",
                 .{ recv, declaration.name, suffix, type_name },
@@ -2006,9 +2014,9 @@ fn renderPublicSnapshots(allocator: std.mem.Allocator, writer: *std.Io.Writer, p
             }
             try writer.writeAll("\t}, nil\n}\n\n");
             try writer.print(
-                "// Snapshot reads the tag and every payload in one native call and panics\n" ++
-                    "// with a typed error on failure.\nfunc ({0s} *{1s}{2s}) Snapshot() {3s} {{\n" ++
-                    "\tresult, err := {0s}.TrySnapshot()\n\tif err != nil {{\n\t\tpanic(err)\n\t}}\n\treturn result\n}}\n\n",
+                "// MustSnapshot reads the tag and every payload in one native call and panics\n" ++
+                    "// with a typed error on failure.\nfunc ({0s} *{1s}{2s}) MustSnapshot() {3s} {{\n" ++
+                    "\tresult, err := {0s}.Snapshot()\n\tif err != nil {{\n\t\tpanic(err)\n\t}}\n\treturn result\n}}\n\n",
                 .{ recv, declaration.name, suffix, type_name },
             );
         }
@@ -2270,18 +2278,11 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             "\t}\n" ++
             "\treturn ptr, nil\n" ++
             "}\n\n" ++
-            "func zigoMustPointer(operation string, value zigoHandle) unsafe.Pointer {\n" ++
-            "\tptr, err := zigoCheckedPointer(operation, value)\n" ++
-            "\tif err != nil {\n" ++
-            "\t\tpanic(err)\n" ++
-            "\t}\n" ++
-            "\treturn ptr\n" ++
-            "}\n\n" ++
-            "func zigoOptionalPointer(operation string, absent bool, value zigoHandle) unsafe.Pointer {\n" ++
+            "func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsafe.Pointer, error) {\n" ++
             "\tif absent {\n" ++
-            "\t\treturn nil\n" ++
+            "\t\treturn nil, nil\n" ++
             "\t}\n" ++
-            "\treturn zigoMustPointer(operation, value)\n" ++
+            "\treturn zigoCheckedPointer(operation, value)\n" ++
             "}\n\n",
     );
 }
@@ -2316,17 +2317,17 @@ fn renderPublicTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.I
         const recv = try receiverVariableAlloc(allocator, declaration.name);
         defer allocator.free(recv);
         inline for (.{ false, true }) |borrowed| {
-            try writer.print("// TryTag returns the active tagged-union tag or a typed lifecycle/native error.\nfunc ({0s} *{1s}{2s}) TryTag() ({3s}, error) {{\n\tdefer runtime.KeepAlive({0s})\n\tptr, err := zigoCheckedPointer(\"{1s}.Tag receiver\", {0s})\n\tif err != nil {{\n\t\treturn 0, err\n\t}}\n\tresult, status := ", .{ recv, declaration.name, if (borrowed) "Ref" else "", declaration.tag_type.?.@"enum".ref });
+            try writer.print("// Tag returns the active tagged-union tag or a typed lifecycle/native error.\nfunc ({0s} *{1s}{2s}) Tag() ({3s}, error) {{\n\tdefer runtime.KeepAlive({0s})\n\tptr, err := zigoCheckedPointer(\"{1s}.Tag receiver\", {0s})\n\tif err != nil {{\n\t\treturn 0, err\n\t}}\n\tresult, status := ", .{ recv, declaration.name, if (borrowed) "Ref" else "", declaration.tag_type.?.@"enum".ref });
             try writeRawReferencePrefix(writer, options);
             try writer.print("{s}ProjectTag(ptr)\n\tif status != zigoProjectionSuccess {{\n\t\treturn 0, zigoProjectionError(\"{s}.Tag\", status)\n\t}}\n\treturn {s}(result), nil\n}}\n\n", .{ declaration.name, declaration.name, declaration.tag_type.?.@"enum".ref });
-            try writer.print("// Tag returns the active tagged-union tag and panics with a typed error on failure.\nfunc ({0s} *{1s}{2s}) Tag() {3s} {{\n\tresult, err := {0s}.TryTag()\n\tif err != nil {{\n\t\tpanic(err)\n\t}}\n\treturn result\n}}\n\n", .{ recv, declaration.name, if (borrowed) "Ref" else "", declaration.tag_type.?.@"enum".ref });
+            try writer.print("// MustTag returns the active tagged-union tag and panics with a typed error on failure.\nfunc ({0s} *{1s}{2s}) MustTag() {3s} {{\n\tresult, err := {0s}.Tag()\n\tif err != nil {{\n\t\tpanic(err)\n\t}}\n\treturn result\n}}\n\n", .{ recv, declaration.name, if (borrowed) "Ref" else "", declaration.tag_type.?.@"enum".ref });
             for (program.projections) |payload_projection| {
                 if (payload_projection.kind != .payload or !std.mem.eql(u8, payload_projection.owner.name, declaration.name)) continue;
                 const field = payload_projection.field.?.*;
                 const payload = field.type.?;
                 const field_name = try naming.pascalAlloc(allocator, field.name);
                 defer allocator.free(field_name);
-                try writer.print("// TryAs{1s} returns the {2s} payload, whether it is active, and any lifecycle/native error.\nfunc ({0s} *{3s}{4s}) TryAs{1s}() (", .{ recv, field_name, field.name, declaration.name, if (borrowed) "Ref" else "" });
+                try writer.print("// As{1s} returns the {2s} payload, whether it is active, and any lifecycle/native error.\nfunc ({0s} *{3s}{4s}) As{1s}() (", .{ recv, field_name, field.name, declaration.name, if (borrowed) "Ref" else "" });
                 if (payload == .opaque_ptr) {
                     try writer.print("*{s}Ref", .{payload.opaque_ptr.ref});
                 } else {
@@ -2359,16 +2360,84 @@ fn renderPublicTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.I
                     try writePublicResultConversion(writer, payload, "result");
                 }
                 try writer.writeAll(", true, nil\n}\n\n");
-                try writer.print("// As{1s} returns the {2s} payload when active and panics with a typed error on failure.\nfunc ({0s} *{3s}{4s}) As{1s}() (", .{ recv, field_name, field.name, declaration.name, if (borrowed) "Ref" else "" });
+                try writer.print("// MustAs{1s} returns the {2s} payload when active and panics with a typed error on failure.\nfunc ({0s} *{3s}{4s}) MustAs{1s}() (", .{ recv, field_name, field.name, declaration.name, if (borrowed) "Ref" else "" });
                 if (payload == .opaque_ptr) {
                     try writer.print("*{s}Ref", .{payload.opaque_ptr.ref});
                 } else {
                     try writePublicGoType(writer, payload);
                 }
-                try writer.print(", bool) {{\n\tresult, matched, err := {0s}.TryAs{1s}()\n\tif err != nil {{\n\t\tpanic(err)\n\t}}\n\treturn result, matched\n}}\n\n", .{ recv, field_name });
+                try writer.print(", bool) {{\n\tresult, matched, err := {0s}.As{1s}()\n\tif err != nil {{\n\t\tpanic(err)\n\t}}\n\treturn result, matched\n}}\n\n", .{ recv, field_name });
             }
         }
     }
+}
+
+/// Resolves every handle a call needs into a local pointer, returning the
+/// caller's error on the first nil or closed one.
+fn renderHandleChecks(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    function: semantic.SemanticFn,
+    go_names: []const []const u8,
+    operation: []const u8,
+    constructor: ?semantic.Constructor,
+) !void {
+    if (function.receiver) |receiver| {
+        const receiver_name = try receiverVariableAlloc(allocator, receiver);
+        defer allocator.free(receiver_name);
+        try writer.print("\tptr, err := zigoCheckedPointer(\"{s} receiver\", {s})\n", .{ operation, receiver_name });
+        try writer.writeAll("\tif err != nil {\n\t\t");
+        try writeHandleErrorReturn(writer, function, constructor);
+        try writer.writeAll("\t}\n");
+    }
+    for (function.params, 0..) |parameter, parameter_index| {
+        if (parameter.type != .opaque_ptr) continue;
+        const name = go_names[parameter_index];
+        if (parameter.type.opaque_ptr.nullable) {
+            try writer.print(
+                "\t{0s}Ptr, err := zigoOptionalPointer(\"{1s} parameter {0s}\", {0s} == nil, {0s})\n",
+                .{ name, operation },
+            );
+        } else {
+            try writer.print("\t{0s}Ptr, err := zigoCheckedPointer(\"{1s} parameter {0s}\", {0s})\n", .{ name, operation });
+        }
+        try writer.writeAll("\tif err != nil {\n\t\t");
+        try writeHandleErrorReturn(writer, function, constructor);
+        try writer.writeAll("\t}\n");
+    }
+}
+
+/// The `return` statement a failed handle check uses. It mirrors whatever the
+/// function already returns, with `err` in the error position.
+fn writeHandleErrorReturn(writer: *std.Io.Writer, function: semantic.SemanticFn, constructor: ?semantic.Constructor) !void {
+    if (constructor != null) return writer.writeAll("return nil, err\n");
+    const payload = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
+    if (payload == .void) return writer.writeAll("return err\n");
+    try writer.writeAll("return ");
+    try writePublicZeroValue(writer, function, payload);
+    try writer.writeAll(", err\n");
+}
+
+/// The zero value of a public result type. A UTF-8 slice surfaces as a string,
+/// so its zero is the empty string rather than `nil`.
+fn writePublicZeroValue(writer: *std.Io.Writer, function: semantic.SemanticFn, payload: semantic.TypeNode) !void {
+    if (isUtf8Slice(payload, function.return_semantic)) return writer.writeAll("\"\"");
+    try writeGoZeroValue(writer, payload);
+}
+
+/// The public return type when a nil or closed handle reaches the caller as an
+/// error: a value return grows into a tuple, a void return becomes `error`.
+fn writeCheckedFunctionReturnType(writer: *std.Io.Writer, function: semantic.SemanticFn) !void {
+    if (function.@"return" == .void) return writer.writeAll(" error");
+    try writer.writeAll(" (");
+    if (isUtf8Slice(function.@"return", function.return_semantic)) {
+        try writer.writeAll("string");
+    } else if (function.@"return" == .opaque_ptr and function.ownership == .borrowed) {
+        try writer.print("*{s}Ref", .{function.@"return".opaque_ptr.ref});
+    } else {
+        try writePublicGoType(writer, function.@"return");
+    }
+    try writer.writeAll(", error)");
 }
 
 fn writePublicFunctionReturnType(writer: *std.Io.Writer, function: semantic.SemanticFn) !void {
@@ -2696,7 +2765,7 @@ fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.SemanticFn,
     if (returnsBorrowedHandle(function))
         try writer.writeAll("// The returned reference remains valid only while its parent handle remains open.\n");
     if (function.receiver != null or hasOpaqueParameter(function))
-        try writer.writeAll("// It panics with *HandleError if a required handle is nil or closed.\n");
+        try writer.writeAll("// It returns *HandleError if a required handle is nil or closed.\n");
     if (function.@"return" == .error_union)
         try writer.writeAll("// Native failures are returned as generated error values.\n");
 }
@@ -3188,13 +3257,13 @@ test "tagged union emitters generate checked pointer-only projections" {
     const public_types = try renderForTest(renderPublicTypes, program);
     defer std.testing.allocator.free(public_types);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "\t\"runtime\"\n") != null);
-    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) TryTag() (ValueTag, error)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *ValueRef) TryTag() (ValueTag, error)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) TryAsInteger() (int32, bool, error)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) AsInteger() (int32, bool)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *ValueRef) AsInteger() (int32, bool)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) AsChild() (*ChildRef, bool)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (h *HTTPResult) AsURLValue() (uint64, bool)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) Tag() (ValueTag, error)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *ValueRef) Tag() (ValueTag, error)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) AsInteger() (int32, bool, error)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) MustAsInteger() (int32, bool)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *ValueRef) MustAsInteger() (int32, bool)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) MustAsChild() (*ChildRef, bool)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (h *HTTPResult) MustAsURLValue() (uint64, bool)") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "append([]int16(nil), result...)") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "ptr, err := zigoCheckedPointer") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "panic(err)") != null);

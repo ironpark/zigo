@@ -194,17 +194,9 @@ func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, err
 	return ptr, nil
 }
 
-func zigoMustPointer(operation string, value zigoHandle) unsafe.Pointer {
-	ptr, err := zigoCheckedPointer(operation, value)
-	if err != nil {
-		panic(err)
-	}
-	return ptr
-}
-
-func zigoOptionalPointer(operation string, absent bool, value zigoHandle) unsafe.Pointer {
+func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsafe.Pointer, error) {
 	if absent {
-		return nil
+		return nil, nil
 	}
-	return zigoMustPointer(operation, value)
+	return zigoCheckedPointer(operation, value)
 }

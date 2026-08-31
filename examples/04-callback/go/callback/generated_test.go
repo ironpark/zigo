@@ -14,8 +14,14 @@ func TestGenericSpecializations(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer floatBuffer.Close()
-	floatBuffer.Push(1.5)
-	if got := floatBuffer.Len(); got != 1 {
+	if err := floatBuffer.Push(1.5); err != nil {
+		t.Fatal(err)
+	}
+	got, err := floatBuffer.Len()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != 1 {
 		t.Fatalf("FloatBuffer.Len() = %d, want 1", got)
 	}
 
@@ -24,9 +30,15 @@ func TestGenericSpecializations(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer intBuffer.Close()
-	intBuffer.Push(7)
-	if got := intBuffer.Len(); got != 1 {
-		t.Fatalf("IntBuffer.Len() = %d, want 1", got)
+	if err := intBuffer.Push(7); err != nil {
+		t.Fatal(err)
+	}
+	length, err := intBuffer.Len()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if length != 1 {
+		t.Fatalf("IntBuffer.Len() = %d, want 1", length)
 	}
 }
 
@@ -42,7 +54,11 @@ func TestRetainedCallbackLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		if got := context.Run(7); got != 8 {
+		got, err := context.Run(7)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != 8 {
 			t.Fatalf("Run() = %d, want 8", got)
 		}
 		context.Close()
@@ -70,7 +86,11 @@ func TestCallbackPanicIsContained(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer context.Close()
-	if got := context.Run(1); got != -3 {
+	got, err := context.Run(1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != -3 {
 		t.Fatalf("Run() = %d, want -3", got)
 	}
 }

@@ -130,7 +130,8 @@ generic 함수는 구체화 전에는 signature가 없으므로 직접 노출할
 
 caller-owned pointer를 반환하는 생성 함수와 대응 deinitializer가 있으면 공개 Go API에
 constructor와 멱등 `Close`가 생성됩니다. 모든 receiver와 handle 인자는 native 호출 전에
-nil·closed 상태를 검사합니다. 오류 반환 자리가 없는 메서드는 `*HandleError`로 panic합니다.
+nil·closed 상태를 검사합니다. 검사 결과는 항상 반환값으로 전달되며, 오류 반환 자리가
+없던 메서드에는 `error` 결과가 추가됩니다.
 
 retained callback이나 pointer는 소유 객체의 `Close`까지 유효해야 합니다. 동일 handle의
 호출과 `Close`를 여러 goroutine에서 동시에 수행할 때의 동기화는 호출자 책임입니다.
@@ -171,13 +172,13 @@ out parameter로 낮추고 생성 코드가 주소를 관리합니다.
 
 생성되는 주요 API는 다음과 같습니다.
 
-- `ValueTag`, `TryTag() (ValueTag, error)`, `Tag()`
-- payload variant별 `TryAs<Variant>() (payload, bool, error)`
-- payload variant별 `As<Variant>() (payload, bool)`
+- `ValueTag`, `Tag() (ValueTag, error)`, `MustTag()`
+- payload variant별 `As<Variant>() (payload, bool, error)`
+- payload variant별 `MustAs<Variant>() (payload, bool)`
 
-active tag가 다르면 checked accessor는 `(zero, false, nil)`을 반환하고 payload를 읽지
-않습니다. `Try*`는 handle, native panic과 예기치 않은 status를 error로 반환합니다.
-편의 메서드 `Tag`와 `As*`는 같은 typed error로 panic합니다.
+active tag가 다르면 accessor는 `(zero, false, nil)`을 반환하고 payload를 읽지
+않습니다. 기본 이름은 handle, native panic과 예기치 않은 status를 error로 반환합니다.
+`Must*` 변형은 같은 typed error로 panic합니다.
 
 지원 payload는 `void`, bool, 정수, float, enum, 등록 handle pointer, 숫자 slice입니다.
 숫자 slice는 호출마다 Go memory로 복사하고, handle payload는 union wrapper에 수명이 묶인
@@ -197,11 +198,11 @@ borrowed `*TRef`입니다. union 자체를 함수 값으로 직접 전달하면 
 },
 ```
 
-`TrySnapshot() (SignalSnapshot, error)`와 `Snapshot()`이 tag와 payload를 native 호출 한 번으로
+`Snapshot() (SignalSnapshot, error)`와 `MustSnapshot()`이 tag와 payload를 native 호출 한 번으로
 가져옵니다. 기존 projection API도 그대로 남습니다.
 
 ```go
-snapshot := signal.Snapshot()
+snapshot := signal.MustSnapshot()
 if ticks, ok := snapshot.Ticks(); ok {
     fmt.Println(snapshot.Tag(), ticks)
 }
@@ -241,7 +242,7 @@ if errors.As(err, &panicErr) {
 }
 ```
 
-panic하는 convenience method에서 복구한 값도 `error`이면 같은 규칙으로 판별할 수 있습니다.
+panic하는 `Must*` method에서 복구한 값도 `error`이면 같은 규칙으로 판별할 수 있습니다.
 
 ```go
 defer func() {

@@ -1,9 +1,9 @@
 # Tagged-union accessor example
 
 This example registers `Value` with `.repr = .tagged_union`. zigo reflects its discriminant and
-payloads, then generates checked `TryTag() (ValueTag, error)` and
-`TryAs<Variant>() (payload, bool, error)` methods for both owned `*Value` and borrowed `*ValueRef`
-handles. Compatible `Tag()` and `As<Variant>() (payload, bool)` convenience methods panic with the
+payloads, then generates checked `Tag() (ValueTag, error)` and
+`As<Variant>() (payload, bool, error)` methods for both owned `*Value` and borrowed `*ValueRef`
+handles. `MustTag()` and `MustAs<Variant>() (payload, bool)` companions panic with the
 same typed errors. The Zig union stays behind an opaque C pointer.
 
 The projection ABI distinguishes mismatch, success, invalid input, and Zig panic. Public accessors
@@ -14,8 +14,8 @@ variant mutation, and accessor calls on the same handle.
 
 `Signal` sits alongside `Value` and registers with `.repr = .tagged_union, .access = .snapshot`. Every one of its
 variant payloads is void, a bool, a scalar, or an enum, so zigo also generates a value snapshot: a
-zigo-owned `extern struct` that the shim fills from the active variant. `Snapshot()` and
-`TrySnapshot() (SignalSnapshot, error)` carry the tag and the payload back in a single native call,
+zigo-owned `extern struct` that the shim fills from the active variant. `Snapshot() (SignalSnapshot, error)`
+and its panicking `MustSnapshot()` companion carry the tag and the payload back in a single native call,
 and reading them off the snapshot afterwards is plain Go. The projection accessors stay available on
 the same type; the snapshot is an addition, not a replacement. Appending a variant to a snapshot
 union is a breaking ABI change, because the struct's size and layout move.
