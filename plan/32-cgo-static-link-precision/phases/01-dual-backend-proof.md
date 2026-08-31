@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-08-31T05:28:03Z"
 depends_on:
 - "32-cgo-static-link-precision#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: CI runs both backends from one tree in a fixed order that used to fail, and the user documentation
 > NEXT: none
