@@ -1,9 +1,10 @@
 ---
+completed_at: "2026-08-31T19:59:36Z"
 depends_on:
 - "50-idiomatic-go-bindings#1"
 - "50-idiomatic-go-bindings#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `grep -r "sync.RWMutex" examples/*/go*/*_gen.go` returns nothing; all ten
 > NEXT: none

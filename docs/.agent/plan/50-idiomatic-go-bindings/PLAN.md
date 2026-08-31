@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-08-31T19:59:36Z"
 description: "Make generated Go bindings more idiomatic: Must-naming inversion, handle/ref dedup, enum const blocks, Close() error, regen stale examples"
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-08-31T19:35:34Z"
 ---
 > NEXT: none
@@ -10,7 +11,7 @@ registered_at: "2026-08-31T19:35:34Z"
 - [x] [Phase 00: Error-first naming: base methods return errors, Must variants panic](phases/00-error-first-naming.md)
 - [x] [Phase 01: Deduplicate handle/ref method bodies](phases/01-handle-ref-dedup.md)
 - [x] [Phase 02: Idiomatic small surface: enum blocks, Close() error, helper cleanup](phases/02-enum-and-close-idioms.md)
-- [ ] [Phase 03: Regenerate all examples and retire the stale lifecycle](phases/03-regen-all-examples.md)
+- [x] [Phase 03: Regenerate all examples and retire the stale lifecycle](phases/03-regen-all-examples.md)
 
 # Shared Verification
 
