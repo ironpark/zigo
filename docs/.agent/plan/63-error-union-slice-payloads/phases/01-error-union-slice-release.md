@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-01T23:48:14Z"
 depends_on:
 - "63-error-union-slice-payloads#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: The fallible caller-owned fixture passes on cgo and purego with the leak
 > NEXT: none

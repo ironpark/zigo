@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-01T23:48:14Z"
 depends_on:
 - slice-ownership-and-struct-elements
 description: Lower error-union slice payloads (![]T) to ptr+len out parameters on both backends and integrate caller-owned release
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-01T23:32:57Z"
 ---
 > NEXT: Lower `![]T` payloads to `out_result_ptr`/`out_result_len` and emit the success-only write on both backends. ([Phase 0](phases/00-error-union-slice-lowering.md))
@@ -10,7 +11,7 @@ registered_at: "2026-09-01T23:32:57Z"
 # Phases
 
 - [x] [Phase 00: Lower and emit error-union slice payloads](phases/00-error-union-slice-lowering.md)
-- [ ] [Phase 01: Caller-owned release for error-union slice payloads](phases/01-error-union-slice-release.md)
+- [x] [Phase 01: Caller-owned release for error-union slice payloads](phases/01-error-union-slice-release.md)
 
 # Shared Verification
 
