@@ -110,8 +110,13 @@ type callbackEntry struct {
 	active  int
 }
 
-var callbackRegistryMu sync.Mutex
-var callbackRegistry = make(map[uintptr]*callbackEntry)
+// callbackRegistry maps a userdata token to its entry without a global lock,
+// mirroring the sync.Map behind runtime/cgo.Handle on the cgo backend.
+// Delete races an in-flight acquire safely through the entry's closing flag:
+// an acquire either takes active++ before closing is set, in which case
+// DeleteCallbackHandle waits for it to drain, or it observes closing and
+// reports the token as gone.
+var callbackRegistry sync.Map // uintptr -> *callbackEntry
 var nextCallbackToken atomic.Uint64
 var activeCallbackHandles atomic.Int64
 
@@ -123,9 +128,7 @@ func NewCallbackHandle(value any) uintptr {
 	if token == 0 {
 		token = uintptr(nextCallbackToken.Add(1))
 	}
-	callbackRegistryMu.Lock()
-	callbackRegistry[token] = entry
-	callbackRegistryMu.Unlock()
+	callbackRegistry.Store(token, entry)
 	activeCallbackHandles.Add(1)
 	return token
 }
@@ -135,16 +138,13 @@ func DeleteCallbackHandle(token uintptr) {
 	if token == 0 {
 		return
 	}
-	callbackRegistryMu.Lock()
-	entry := callbackRegistry[token]
-	if entry == nil {
-		callbackRegistryMu.Unlock()
+	stored, loaded := callbackRegistry.LoadAndDelete(token)
+	if !loaded {
 		return
 	}
+	entry := stored.(*callbackEntry)
 	entry.mu.Lock()
 	entry.closing = true
-	delete(callbackRegistry, token)
-	callbackRegistryMu.Unlock()
 	for entry.active != 0 {
 		entry.cond.Wait()
 	}
@@ -157,14 +157,12 @@ func DeleteCallbackHandle(token uintptr) {
 func ActiveCallbackHandleCount() int64 { return activeCallbackHandles.Load() }
 
 func acquireCallback(token uintptr) (*callbackEntry, any, bool) {
-	callbackRegistryMu.Lock()
-	entry := callbackRegistry[token]
-	if entry == nil {
-		callbackRegistryMu.Unlock()
+	stored, loaded := callbackRegistry.Load(token)
+	if !loaded {
 		return nil, nil, false
 	}
+	entry := stored.(*callbackEntry)
 	entry.mu.Lock()
-	callbackRegistryMu.Unlock()
 	if entry.closing {
 		entry.mu.Unlock()
 		return nil, nil, false
