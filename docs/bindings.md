@@ -115,6 +115,29 @@ Go byte buffer를 호출 동안만 native에 전달합니다. 반환 문자열�
 복사합니다. 따라서 Go 포인터가 native 메모리로 넘어가지 않습니다. mutable `[*:0]u8`,
 0이 아닌 sentinel, 기타 many-pointer는 지원하지 않습니다.
 
+## 문자열 slice 매개변수
+
+여러 문자열을 입력으로 넘길 때는 `[]const []const u8`에 `.utf8_string`을 지정하거나,
+element를 `[:0]const u8` 또는 `[*:0]const u8`로 선언할 수 있습니다. 세 형태 모두 public
+Go에서는 `[]string`이 됩니다. 일반 unsentinel 형태는 sidecar에서 의미를 지정해야 합니다.
+
+```zig
+pub fn extractPaths(paths: []const []const u8) usize { /* ... */ }
+
+// bindings.zig
+.{
+    .path = "Context.extractPaths",
+    .params = .{"paths"},
+    .param_meta = .{ .paths = .{ .semantic = .utf8_string } },
+},
+```
+
+native ABI는 `paths_data`, `paths_data_len`, `paths_lens`, `paths_count` 네 scalar 인자로
+내려갑니다. 각 문자열의 바이트 뒤에 NUL을 하나 붙이고 `paths_lens`에는 NUL을 제외한 길이를
+기록합니다. cgo와 purego 모두 pointer-free Go 배열 하나씩만 만들어 호출 중 빌려주며
+문자열별 malloc은 하지 않습니다. 빈 `[]string`과 빈 문자열 원소도 지원합니다. `[]string`
+반환은 지원하지 않습니다.
+
 ## 타입 등록 선택
 
 `repr`은 타입의 ABI 표현을, `access`는 tagged union 내용을 Go에서 읽는 방법을 선택합니다.

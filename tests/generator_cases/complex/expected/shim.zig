@@ -99,3 +99,57 @@ export fn zg_compression_bound_impl(source_len: usize) usize {
 export fn zg_echo_c_string_impl(text: [*:0]const u8) [*:0]const u8 {
     return target.echoCString(text);
 }
+export fn zg_extract_paths_impl(paths_data: [*c]const u8, paths_data_len: usize, paths_lens: [*c]const usize, paths_count: usize, sentinelSlices_data: [*c]const u8, sentinelSlices_data_len: usize, sentinelSlices_lens: [*c]const usize, sentinelSlices_count: usize, sentinelPointers_data: [*c]const u8, sentinelPointers_data_len: usize, sentinelPointers_lens: [*c]const usize, sentinelPointers_count: usize) usize {
+    var zigoString0Stack: [16][]const u8 = undefined;
+    var zigoString0Strings: [][]const u8 = undefined;
+    if (paths_count <= zigoString0Stack.len) {
+        zigoString0Strings = zigoString0Stack[0..paths_count];
+    } else {
+        zigoString0Strings = std.heap.page_allocator.alloc([]const u8, paths_count) catch @panic("zigo: flattened string slice allocation failed");
+    }
+    defer {
+        if (paths_count > zigoString0Stack.len) std.heap.page_allocator.free(zigoString0Strings);
+    }
+    var zigoString0Offset: usize = 0;
+    for (0..paths_count) |i| {
+        const length = paths_lens[i];
+        if (zigoString0Offset >= paths_data_len or length > paths_data_len - zigoString0Offset - 1) @panic("zigo: invalid flattened string slice");
+        zigoString0Strings[i] = paths_data[zigoString0Offset .. zigoString0Offset + length];
+        zigoString0Offset += length + 1;
+    }
+    var zigoString1Stack: [16][:0]const u8 = undefined;
+    var zigoString1Strings: [][:0]const u8 = undefined;
+    if (sentinelSlices_count <= zigoString1Stack.len) {
+        zigoString1Strings = zigoString1Stack[0..sentinelSlices_count];
+    } else {
+        zigoString1Strings = std.heap.page_allocator.alloc([:0]const u8, sentinelSlices_count) catch @panic("zigo: flattened string slice allocation failed");
+    }
+    defer {
+        if (sentinelSlices_count > zigoString1Stack.len) std.heap.page_allocator.free(zigoString1Strings);
+    }
+    var zigoString1Offset: usize = 0;
+    for (0..sentinelSlices_count) |i| {
+        const length = sentinelSlices_lens[i];
+        if (zigoString1Offset >= sentinelSlices_data_len or length > sentinelSlices_data_len - zigoString1Offset - 1) @panic("zigo: invalid flattened string slice");
+        zigoString1Strings[i] = sentinelSlices_data[zigoString1Offset .. zigoString1Offset + length :0];
+        zigoString1Offset += length + 1;
+    }
+    var zigoString2Stack: [16][*:0]const u8 = undefined;
+    var zigoString2Strings: [][*:0]const u8 = undefined;
+    if (sentinelPointers_count <= zigoString2Stack.len) {
+        zigoString2Strings = zigoString2Stack[0..sentinelPointers_count];
+    } else {
+        zigoString2Strings = std.heap.page_allocator.alloc([*:0]const u8, sentinelPointers_count) catch @panic("zigo: flattened string slice allocation failed");
+    }
+    defer {
+        if (sentinelPointers_count > zigoString2Stack.len) std.heap.page_allocator.free(zigoString2Strings);
+    }
+    var zigoString2Offset: usize = 0;
+    for (0..sentinelPointers_count) |i| {
+        const length = sentinelPointers_lens[i];
+        if (zigoString2Offset >= sentinelPointers_data_len or length > sentinelPointers_data_len - zigoString2Offset - 1) @panic("zigo: invalid flattened string slice");
+        zigoString2Strings[i] = @as([*:0]const u8, @ptrCast(sentinelPointers_data + zigoString2Offset));
+        zigoString2Offset += length + 1;
+    }
+    return target.extractPaths(zigoString0Strings, zigoString1Strings, zigoString2Strings);
+}

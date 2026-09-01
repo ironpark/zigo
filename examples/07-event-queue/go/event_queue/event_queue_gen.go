@@ -159,6 +159,21 @@ func SampleCString() string {
 	return raw.EventQueueSampleCString()
 }
 
+// ExtractPaths invokes the bound Zig extractPaths operation.
+func ExtractPaths(paths []string) uint {
+	return raw.EventQueueExtractPaths(paths)
+}
+
+// ExtractSentinelSlices invokes the bound Zig extractSentinelSlices operation.
+func ExtractSentinelSlices(paths []string) uint {
+	return raw.EventQueueExtractSentinelSlices(paths)
+}
+
+// ExtractSentinelPointers invokes the bound Zig extractSentinelPointers operation.
+func ExtractSentinelPointers(paths []string) uint {
+	return raw.EventQueueExtractSentinelPointers(paths)
+}
+
 // AcceptStats accepts a batch of value snapshots so both backends exercise their
 // struct-slice input conversion path.
 // It returns *HandleError if a required handle is nil or closed.

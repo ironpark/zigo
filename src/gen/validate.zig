@@ -93,7 +93,8 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .site = .{ .path = "semantic.json", .declaration = function.name },
                 .hint = "declare the callback with `callconv(.c)`",
             };
-            if (parameter.type == .slice and containsPointer(parameter.type.slice.element.*)) return .{
+            if (parameter.type == .slice and containsPointer(parameter.type.slice.element.*) and
+                !isStringSliceParameter(parameter)) return .{
                 .severity = .@"error",
                 .code = "ZIGO005",
                 .message = "slice element type contains a pointer",
@@ -582,6 +583,21 @@ fn containsPointer(node: semantic.TypeNode) bool {
     };
 }
 
+/// A string slice is the only pointer-bearing slice that may cross the Go
+/// boundary. It is flattened into bytes plus lengths before the native call;
+/// every other pointer-bearing element keeps the ZIGO005 rejection.
+fn isStringSliceParameter(parameter: semantic.Parameter) bool {
+    if (parameter.direction != .in or parameter.type != .slice or !parameter.type.slice.@"const") return false;
+    const element = parameter.type.slice.element.*;
+    if (element != .slice or !element.slice.@"const" or !isByte(element.slice.element.*)) return false;
+    if (element.slice.sentinel) |sentinel| return sentinel == 0;
+    return parameter.semantic == .utf8_string;
+}
+
+fn isByte(node: semantic.TypeNode) bool {
+    return node == .int and !node.int.signed and node.int.bits == 8;
+}
+
 test "implemented diagnostic snapshots are stable" {
     var void_node: semantic.TypeNode = .{ .void = {} };
     var pointer_node: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Thing" } };
@@ -823,6 +839,28 @@ test "scalar extern struct slices are valid while optional structs stay rejected
     const issue = (try findIssue(std.testing.allocator, invalid)).?;
     try std.testing.expectEqualStrings("ZIGO013", issue.code);
     try std.testing.expect(std.mem.containsAtLeast(u8, issue.hint, 1, "direct slice element"));
+}
+
+test "utf8 string slices are the pointer-bearing slice exception" {
+    var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    var string_element: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte } };
+    const strings: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &string_element } };
+    const valid: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "extract",
+            .params = &.{.{ .name = "paths", .semantic = .utf8_string, .type = strings }},
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_extract",
+        }},
+        .package = "good",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    try semanticDocument(std.testing.allocator, valid);
+
+    string_element.slice.sentinel = 1;
+    const issue = (try findIssue(std.testing.allocator, valid)).?;
+    try std.testing.expectEqualStrings("ZIGO005", issue.code);
 }
 
 test "tagged union handles accept supported accessor payloads and constructors" {

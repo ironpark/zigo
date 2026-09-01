@@ -230,6 +230,8 @@ fn typeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
         .@"enum" => |a| std.mem.eql(u8, a.ref, rhs.@"enum".ref),
         .value_struct => |a| std.mem.eql(u8, a.ref, rhs.value_struct.ref),
         .opaque_ptr => |a| a.@"const" == rhs.opaque_ptr.@"const" and a.nullable == rhs.opaque_ptr.nullable and std.mem.eql(u8, a.ref, rhs.opaque_ptr.ref),
+        // sentinel/sentinel_many는 shim이 Zig element 타입을 되살릴 때만 쓰는 주석이고
+        // 하강된 C ABI 모양을 바꾸지 않으므로 시그니처 비교에서 제외한다.
         .slice => |a| a.@"const" == rhs.slice.@"const" and typeEqual(a.element.*, rhs.slice.element.*),
         .optional => |a| typeEqual(a.child.*, rhs.optional.child.*),
         .error_union => |a| a.anyerror == rhs.error_union.anyerror and typeEqual(a.payload.*, rhs.error_union.payload.*),
@@ -259,6 +261,27 @@ fn findType(types: []const semantic.TypeDecl, name: []const u8) ?semantic.TypeDe
 fn findConstructor(constructors: []const semantic.Constructor, type_name: []const u8) ?semantic.Constructor {
     for (constructors) |constructor| if (std.mem.eql(u8, constructor.type, type_name)) return constructor;
     return null;
+}
+
+test "string slice element sentinels are not a signature change" {
+    var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    var plain: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte } };
+    var sentinel: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte, .sentinel = 0 } };
+    const old: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{.{
+        .name = "paths",
+        .params = &.{.{ .name = "p0", .semantic = .utf8_string, .type = .{ .slice = .{ .@"const" = true, .element = &plain } } }},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_paths",
+    }} };
+    const current: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{.{
+        .name = "paths",
+        .params = &.{.{ .name = "p0", .semantic = .utf8_string, .type = .{ .slice = .{ .@"const" = true, .element = &sentinel } } }},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_paths",
+    }} };
+    var report = try diff(std.testing.allocator, old, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 0), report.changes.items.len);
 }
 
 test "parameter type changes are breaking and functions are added" {

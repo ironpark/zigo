@@ -197,3 +197,8 @@ func CompressionBound(sourceLen uint) uint {
 func EchoCString(text string) string {
 	return raw.EchoCString(text)
 }
+
+// ExtractPaths invokes the bound Zig extractPaths operation.
+func ExtractPaths(paths []string, sentinelSlices []string, sentinelPointers []string) uint {
+	return raw.ExtractPaths(paths, sentinelSlices, sentinelPointers)
+}

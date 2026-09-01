@@ -37,6 +37,41 @@ pub fn semanticDocumentForBackend(
             });
         }
         for (function.params, 0..) |parameter, parameter_index| {
+            if (isStringSliceParameter(parameter)) {
+                const data_child = try allocator.create(abi.AbiScalar);
+                data_child.* = try lowerValue(allocator, document, prefix, parameter.type.slice.element.*.slice.element.*);
+                const lengths_child = try allocator.create(abi.AbiScalar);
+                lengths_child.* = .usize;
+                const data_name = try std.fmt.allocPrint(allocator, "{s}_data", .{parameter.name});
+                const data_len_name = try std.fmt.allocPrint(allocator, "{s}_data_len", .{parameter.name});
+                const lengths_name = try std.fmt.allocPrint(allocator, "{s}_lens", .{parameter.name});
+                const count_name = try std.fmt.allocPrint(allocator, "{s}_count", .{parameter.name});
+                try params.append(allocator, .{
+                    .name = data_name,
+                    .role = .string_data,
+                    .scalar = .{ .pointer = .{ .child = data_child, .is_const = true, .is_many = true } },
+                    .source_index = parameter_index,
+                });
+                try params.append(allocator, .{
+                    .name = data_len_name,
+                    .role = .string_data_length,
+                    .scalar = .usize,
+                    .source_index = parameter_index,
+                });
+                try params.append(allocator, .{
+                    .name = lengths_name,
+                    .role = .string_lengths,
+                    .scalar = .{ .pointer = .{ .child = lengths_child, .is_const = true, .is_many = true } },
+                    .source_index = parameter_index,
+                });
+                try params.append(allocator, .{
+                    .name = count_name,
+                    .role = .string_count,
+                    .scalar = .usize,
+                    .source_index = parameter_index,
+                });
+                continue;
+            }
             if (isCStringSlice(parameter.type, parameter.semantic)) {
                 const child = try allocator.create(abi.AbiScalar);
                 child.* = try lowerValue(allocator, document, prefix, parameter.type.slice.element.*);
@@ -637,6 +672,15 @@ fn isCStringSlice(node: semantic.TypeNode, hint: ?semantic.SemanticHint) bool {
         node.slice.element.* == .int and !node.slice.element.int.signed and node.slice.element.int.bits == 8;
 }
 
+fn isStringSliceParameter(parameter: semantic.Parameter) bool {
+    if (parameter.direction != .in or parameter.type != .slice or !parameter.type.slice.@"const") return false;
+    const element = parameter.type.slice.element.*;
+    if (element != .slice or !element.slice.@"const" or
+        element.slice.element.* != .int or element.slice.element.int.signed or element.slice.element.int.bits != 8) return false;
+    if (element.slice.sentinel) |sentinel| return sentinel == 0;
+    return parameter.semantic == .utf8_string;
+}
+
 fn enumDeclaration(document: semantic.Semantic, name: []const u8) semantic.TypeDecl {
     for (document.types) |declaration| if (std.mem.eql(u8, declaration.name, name)) return declaration;
     unreachable;
@@ -768,6 +812,37 @@ test "sentinel byte strings lower to one const C pointer" {
     try std.testing.expect(function.params[0].scalar.pointer.is_const);
     try std.testing.expect(function.ret.pointer.is_c_string);
     try std.testing.expect(function.ret.pointer.is_many);
+}
+
+test "string slice parameters lower to data and length roles" {
+    var byte_node: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    var string_element: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte_node } };
+    const strings: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &string_element } };
+    const document: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "extract",
+            .params = &.{.{ .name = "paths", .semantic = .utf8_string, .type = strings }},
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_extract",
+        }},
+        .package = "strings",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const function = (try semanticDocument(arena.allocator(), document, "strings", "zg", &.{})).functions[0];
+
+    try std.testing.expectEqual(@as(usize, 4), function.params.len);
+    try std.testing.expectEqual(abi.AbiParam.Role.string_data, function.params[0].role);
+    try std.testing.expectEqualStrings("paths_data", function.params[0].name);
+    try std.testing.expectEqual(abi.AbiParam.Role.string_data_length, function.params[1].role);
+    try std.testing.expectEqual(abi.AbiParam.Role.string_lengths, function.params[2].role);
+    try std.testing.expectEqual(abi.AbiParam.Role.string_count, function.params[3].role);
+    try std.testing.expect(function.params[0].scalar.pointer.is_const);
+    try std.testing.expect(function.params[0].scalar.pointer.is_many);
+    try std.testing.expect(function.params[2].scalar.pointer.is_const);
+    try std.testing.expect(function.params[2].scalar.pointer.is_many);
 }
 
 test "tagged union lowering records tag scalar slice and handle projections" {

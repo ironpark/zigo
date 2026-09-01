@@ -178,6 +178,7 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         try writeZigType(writer, function.ret);
         try writer.writeAll(" {\n");
         try writeCallbackBitBindings(allocator, writer, program, function);
+        try writeShimStringSliceSetups(allocator, writer, function);
         try writer.writeAll("    ");
 
         if (function.origin.@"return" == .slice and !isCStringReturn(function.origin.*)) {
@@ -525,7 +526,9 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             },
             .bool => try writer.print("{s} != 0", .{parameter.name}),
             .@"enum" => try writer.print("@enumFromInt({s})", .{parameter.name}),
-            .slice => if (isCStringParameter(parameter))
+            .slice => if (isStringSliceParameter(parameter))
+                try writer.print("zigoString{d}Strings", .{index})
+            else if (isCStringParameter(parameter))
                 try writer.writeAll(parameter.name)
             else
                 try writer.print("if ({s}_len == 0) &.{{}} else {s}_ptr[0..{s}_len]", .{ parameter.name, parameter.name, parameter.name }),
@@ -1039,7 +1042,10 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 defer allocator.free(c_name);
                 try writeCgoStructConversion(allocator, writer, program, record, c_name, go_names[parameter_index]);
             }
-            if (isCStringParameter(parameter)) {
+            if (isStringSliceParameter(parameter)) {
+                try writeCgoStringSliceSetup(writer, go_names[parameter_index]);
+                continue;
+            } else if (isCStringParameter(parameter)) {
                 continue;
             } else if (parameter.type == .slice and parameter.type.slice.element.* == .value_struct) {
                 const slice_name = go_names[parameter_index];
@@ -1135,6 +1141,10 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 .slice_pointer => try writer.print("{s}Ptr", .{go_names[parameter.source_index]}),
                 .slice_length => try writer.print("C.size_t(len({s}))", .{go_names[parameter.source_index]}),
                 .slice_written => try writer.print("&{s}Written", .{go_names[parameter.source_index]}),
+                .string_data => try writer.print("{s}DataPtr", .{go_names[parameter.source_index]}),
+                .string_data_length => try writer.print("C.size_t(len({s}Data))", .{go_names[parameter.source_index]}),
+                .string_lengths => try writer.print("{s}LensPtr", .{go_names[parameter.source_index]}),
+                .string_count => try writer.print("C.size_t(len({s}))", .{go_names[parameter.source_index]}),
                 .payload_out => try writer.writeAll("&outResult"),
                 .return_slice_pointer => try writer.writeAll("&outResultPtr"),
                 .return_slice_length => try writer.writeAll("&outResultLen"),
@@ -1187,6 +1197,35 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
     try renderRawSnapshotTypes(allocator, writer, program);
     try renderRawTaggedUnionAccessors(allocator, writer, program, options);
     try renderRawSnapshotAccessors(allocator, writer, program);
+}
+
+/// cgo keeps the flattened byte and length arrays in Go memory. Both arrays
+/// contain no Go pointers, so the C call can borrow them without allocating a
+/// C string for every element.
+fn writeCgoStringSliceSetup(writer: *std.Io.Writer, name: []const u8) !void {
+    try writer.print(
+        "\tvar {0s}Data []byte\n" ++
+            "\tvar {0s}Lens []C.size_t\n" ++
+            "\tif len({0s}) != 0 {{\n" ++
+            "\t\t{0s}Lens = make([]C.size_t, len({0s}))\n" ++
+            "\t\t{0s}DataLen := 0\n" ++
+            "\t\tfor _, value := range {0s} {{ {0s}DataLen += len(value) + 1 }}\n" ++
+            "\t\t{0s}Data = make([]byte, {0s}DataLen)\n" ++
+            "\t\t{0s}Offset := 0\n" ++
+            "\t\tfor i, value := range {0s} {{\n" ++
+            "\t\t\t{0s}Lens[i] = C.size_t(len(value))\n" ++
+            "\t\t\tcopy({0s}Data[{0s}Offset:], value)\n" ++
+            "\t\t\t{0s}Offset += len(value) + 1\n" ++
+            "\t\t}}\n" ++
+            "\t}}\n" ++
+            "\tvar {0s}DataZero C.uint8_t\n" ++
+            "\t{0s}DataPtr := &{0s}DataZero\n" ++
+            "\tif len({0s}Data) != 0 {{ {0s}DataPtr = (*C.uint8_t)(unsafe.Pointer(&{0s}Data[0])) }}\n" ++
+            "\tvar {0s}LensZero C.size_t\n" ++
+            "\t{0s}LensPtr := &{0s}LensZero\n" ++
+            "\tif len({0s}Lens) != 0 {{ {0s}LensPtr = (*C.size_t)(unsafe.Pointer(&{0s}Lens[0])) }}\n",
+        .{name},
+    );
 }
 
 /// A cgo slice return must not expose native memory. `C.GoBytes` is the byte
@@ -1668,8 +1707,36 @@ fn semanticTypeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
         .float => |value| value.bits == rhs.float.bits,
         .@"enum" => |value| std.mem.eql(u8, value.ref, rhs.@"enum".ref),
         .opaque_ptr => |value| value.@"const" == rhs.opaque_ptr.@"const" and value.nullable == rhs.opaque_ptr.nullable and std.mem.eql(u8, value.ref, rhs.opaque_ptr.ref),
+        .slice => |value| value.@"const" == rhs.slice.@"const" and value.sentinel == rhs.slice.sentinel and
+            value.sentinel_many == rhs.slice.sentinel_many and semanticTypeEqual(value.element.*, rhs.slice.element.*),
         else => false,
     };
+}
+
+/// purego uses the same pointer-free representation as cgo, but the ABI
+/// registration accepts uintptr-sized length arrays and unsafe.Pointer values.
+fn writePuregoStringSliceSetup(writer: *std.Io.Writer, name: []const u8) !void {
+    try writer.print(
+        "\tvar {0s}Data []byte\n" ++
+            "\tvar {0s}Lens []uintptr\n" ++
+            "\tif len({0s}) != 0 {{\n" ++
+            "\t\t{0s}Lens = make([]uintptr, len({0s}))\n" ++
+            "\t\t{0s}DataLen := 0\n" ++
+            "\t\tfor _, value := range {0s} {{ {0s}DataLen += len(value) + 1 }}\n" ++
+            "\t\t{0s}Data = make([]byte, {0s}DataLen)\n" ++
+            "\t\t{0s}Offset := 0\n" ++
+            "\t\tfor i, value := range {0s} {{\n" ++
+            "\t\t\t{0s}Lens[i] = uintptr(len(value))\n" ++
+            "\t\t\tcopy({0s}Data[{0s}Offset:], value)\n" ++
+            "\t\t\t{0s}Offset += len(value) + 1\n" ++
+            "\t\t}}\n" ++
+            "\t}}\n" ++
+            "\tvar {0s}DataPtr unsafe.Pointer\n" ++
+            "\tif len({0s}Data) != 0 {{ {0s}DataPtr = unsafe.Pointer(&{0s}Data[0]) }}\n" ++
+            "\tvar {0s}LensPtr unsafe.Pointer\n" ++
+            "\tif len({0s}Lens) != 0 {{ {0s}LensPtr = unsafe.Pointer(&{0s}Lens[0]) }}\n",
+        .{name},
+    );
 }
 
 fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, function: abi.AbiFn, options: Options) !void {
@@ -1700,6 +1767,10 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
     try writeRawReturnType(writer, program, function);
     try writer.writeAll(" {\n");
     for (function.origin.params, 0..) |parameter, parameter_index| {
+        if (!isStringSliceParameter(parameter)) continue;
+        try writePuregoStringSliceSetup(writer, go_names[parameter_index]);
+    }
+    for (function.origin.params, 0..) |parameter, parameter_index| {
         if (!isCStringParameter(parameter)) continue;
         const name = go_names[parameter_index];
         try writer.print("\t{s}Bytes := make([]byte, len({s})+1)\n\tcopy({s}Bytes, {s})\n\t{s}Ptr := unsafe.Pointer(&{s}Bytes[0])\n", .{
@@ -1712,7 +1783,7 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         });
     }
     for (function.origin.params, 0..) |parameter, parameter_index| if (parameter.type == .slice) {
-        if (isCStringParameter(parameter)) continue;
+        if (isStringSliceParameter(parameter) or isCStringParameter(parameter)) continue;
         const slice_name = go_names[parameter_index];
         try writer.print("\tvar {s}Ptr unsafe.Pointer\n\tif len({s}) != 0 {{ {s}Ptr = unsafe.Pointer(&{s}[0]) }}\n", .{ slice_name, slice_name, slice_name, slice_name });
         if (parameter.direction == .out) try writer.print("\tvar {s}Written uintptr\n", .{slice_name});
@@ -1751,6 +1822,8 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
                 const source_name = go_names[parameter.source_index];
                 if (isCStringParameter(function.origin.params[parameter.source_index])) {
                     try writer.print("{s}Ptr", .{source_name});
+                } else if (isStringSliceParameter(function.origin.params[parameter.source_index])) {
+                    try writer.print("{s}DataPtr", .{source_name});
                 } else if (parameter.scalar == .callback) {
                     try writer.print("{s}Callback", .{source_name});
                 } else if (callbackForUserdataIndex(function.origin.params, parameter.source_index)) |callback_index| {
@@ -1763,6 +1836,10 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
             .slice_pointer => try writer.print("{s}Ptr", .{go_names[parameter.source_index]}),
             .slice_length => try writer.print("uintptr(len({s}))", .{go_names[parameter.source_index]}),
             .slice_written => try writer.print("&{s}Written", .{go_names[parameter.source_index]}),
+            .string_data => try writer.print("{s}DataPtr", .{go_names[parameter.source_index]}),
+            .string_data_length => try writer.print("uintptr(len({s}Data))", .{go_names[parameter.source_index]}),
+            .string_lengths => try writer.print("{s}LensPtr", .{go_names[parameter.source_index]}),
+            .string_count => try writer.print("uintptr(len({s}))", .{go_names[parameter.source_index]}),
             // A struct payload crosses as a raw address, matching the
             // unsafe.Pointer the bindings table declares for it.
             // An aggregate payload crosses as a raw address, exactly as the
@@ -1775,6 +1852,9 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
     }
     try writer.writeAll(")\n");
     for (function.origin.params, 0..) |parameter, parameter_index| {
+        if (isStringSliceParameter(parameter)) {
+            try writer.print("\truntime.KeepAlive({s}Data)\n\truntime.KeepAlive({s}Lens)\n", .{ go_names[parameter_index], go_names[parameter_index] });
+        }
         if (isCStringParameter(parameter)) try writer.print("\truntime.KeepAlive({s}Bytes)\n", .{go_names[parameter_index]});
     }
     if (isCStringReturn(function.origin.*)) {
@@ -2268,6 +2348,8 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                 .opaque_ptr => try writer.print("{s}Ptr", .{go_names[parameter_index]}),
                 .slice => if (isValueStructSlice(parameter.type))
                     try writer.print("{s}Raw", .{go_names[parameter_index]})
+                else if (isStringSliceParameter(parameter))
+                    try writer.writeAll(go_names[parameter_index])
                 else if (isCStringParameter(parameter))
                     try writer.writeAll(go_names[parameter_index])
                 else if (isUtf8Slice(parameter.type, parameter.semantic))
@@ -3531,6 +3613,7 @@ fn writeRawReturnType(writer: *std.Io.Writer, program: abi.Program, function: ab
 }
 
 fn writeRawParameterType(writer: *std.Io.Writer, program: abi.Program, parameter: semantic.Parameter) !void {
+    if (isStringSliceParameter(parameter)) return writer.writeAll("[]string");
     if (isCStringParameter(parameter)) return writer.writeAll("string");
     try writeRawGoType(writer, program, parameter.type);
 }
@@ -3620,6 +3703,7 @@ fn writePublicGoType(writer: *std.Io.Writer, node: semantic.TypeNode) !void {
 }
 
 fn writePublicParameterType(writer: *std.Io.Writer, parameter: semantic.Parameter) !void {
+    if (isStringSliceParameter(parameter)) return writer.writeAll("[]string");
     if (isStringSlice(parameter.type, parameter.semantic)) return writer.writeAll("string");
     try writePublicGoType(writer, parameter.type);
 }
@@ -3704,6 +3788,78 @@ fn writeRetainedCallbackHandles(allocator: std.mem.Allocator, writer: *std.Io.Wr
 
 fn isUtf8Slice(node: semantic.TypeNode, hint: ?semantic.SemanticHint) bool {
     return hint == .utf8_string and node == .slice and isByteType(node.slice.element.*);
+}
+
+const StringSliceForm = enum { unsentinel, sentinel_slice, sentinel_many };
+const string_slice_stack_capacity = 16;
+
+fn stringSliceForm(node: semantic.TypeNode, hint: ?semantic.SemanticHint) ?StringSliceForm {
+    if (node != .slice or !node.slice.@"const") return null;
+    const element = node.slice.element.*;
+    if (element != .slice or !element.slice.@"const" or !isByteType(element.slice.element.*)) return null;
+    if (element.slice.sentinel) |sentinel| {
+        if (sentinel != 0) return null;
+        return if (element.slice.sentinel_many) .sentinel_many else .sentinel_slice;
+    }
+    return if (hint == .utf8_string) .unsentinel else null;
+}
+
+fn isStringSliceParameter(parameter: semantic.Parameter) bool {
+    return parameter.direction == .in and stringSliceForm(parameter.type, parameter.semantic) != null;
+}
+
+fn writeStringSliceElementType(writer: *std.Io.Writer, form: StringSliceForm) !void {
+    switch (form) {
+        .unsentinel => try writer.writeAll("[]const u8"),
+        .sentinel_slice => try writer.writeAll("[:0]const u8"),
+        .sentinel_many => try writer.writeAll("[*:0]const u8"),
+    }
+}
+
+fn writeShimStringSliceSetups(allocator: std.mem.Allocator, writer: *std.Io.Writer, function: abi.AbiFn) !void {
+    for (function.origin.params, 0..) |parameter, parameter_index| {
+        if (!isStringSliceParameter(parameter)) continue;
+        const form = stringSliceForm(parameter.type, parameter.semantic) orelse continue;
+        const base = try std.fmt.allocPrint(allocator, "zigoString{d}", .{parameter_index});
+        defer allocator.free(base);
+        try writer.print("    var {s}Stack: [{d}]", .{ base, string_slice_stack_capacity });
+        try writeStringSliceElementType(writer, form);
+        try writer.writeAll(" = undefined;\n    var ");
+        try writer.print("{s}Strings: []", .{base});
+        try writeStringSliceElementType(writer, form);
+        try writer.print(" = undefined;\n    if ({s}_count <= {s}Stack.len) {{\n        {s}Strings = {s}Stack[0..{s}_count];\n    }} else {{\n        {s}Strings = std.heap.page_allocator.alloc(", .{
+            parameter.name,
+            base,
+            base,
+            base,
+            parameter.name,
+            base,
+        });
+        try writeStringSliceElementType(writer, form);
+        try writer.print(", {s}_count) catch @panic(\"zigo: flattened string slice allocation failed\");\n    }}\n    defer {{\n        if ({s}_count > {s}Stack.len) std.heap.page_allocator.free({s}Strings);\n    }}\n    var {s}Offset: usize = 0;\n    for (0..{s}_count) |i| {{\n        const length = {s}_lens[i];\n        if ({s}Offset >= {s}_data_len or length > {s}_data_len - {s}Offset - 1) @panic(\"zigo: invalid flattened string slice\");\n        {s}Strings[i] = ", .{
+            parameter.name,
+            parameter.name,
+            base,
+            base,
+            base,
+            parameter.name,
+            parameter.name,
+            base,
+            parameter.name,
+            parameter.name,
+            base,
+            base,
+        });
+        switch (form) {
+            .unsentinel, .sentinel_slice => {
+                try writer.print("{s}_data[{s}Offset .. {s}Offset + length", .{ parameter.name, base, base });
+                if (form == .sentinel_slice) try writer.writeAll(" :0");
+                try writer.writeAll("];\n");
+            },
+            .sentinel_many => try writer.print("@as([*:0]const u8, @ptrCast({s}_data + {s}Offset));\n", .{ parameter.name, base }),
+        }
+        try writer.print("        {s}Offset += length + 1;\n    }}\n", .{ base });
+    }
 }
 
 fn isCStringSlice(node: semantic.TypeNode, hint: ?semantic.SemanticHint) bool {

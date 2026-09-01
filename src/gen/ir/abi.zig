@@ -69,7 +69,22 @@ pub const AbiParam = struct {
     scalar: AbiScalar,
     source_index: usize = 0,
 
-    pub const Role = enum { receiver, value, slice_pointer, slice_length, slice_written, payload_out, return_slice_pointer, return_slice_length, struct_in, struct_out };
+    pub const Role = enum {
+        receiver,
+        value,
+        slice_pointer,
+        slice_length,
+        slice_written,
+        string_data,
+        string_data_length,
+        string_lengths,
+        string_count,
+        payload_out,
+        return_slice_pointer,
+        return_slice_length,
+        struct_in,
+        struct_out,
+    };
 };
 
 pub const ErrorCode = struct { code: i32, name: []const u8 };

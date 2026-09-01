@@ -16,6 +16,13 @@ pub const OpaquePtr = struct {
 pub const Slice = struct {
     @"const": bool,
     element: *TypeNode,
+    /// A sentinel on the Zig slice or many-pointer spelling. The semantic
+    /// shape stays a slice so older IR readers can still parse ordinary byte
+    /// slices, while string-slice lowering can reproduce the declared element.
+    sentinel: ?u8 = null,
+    /// True when `sentinel` came from a many pointer (`[*:0]T`) rather than a
+    /// sentinel slice (`[:0]T`). Meaningful only when `sentinel` is present.
+    sentinel_many: bool = false,
 };
 pub const Optional = struct { child: *TypeNode };
 pub const ErrorUnion = struct {
@@ -107,6 +114,14 @@ pub const TypeNode = union(enum) {
                 try jw.write(value.@"const");
                 try jw.objectField("element");
                 try jw.write(value.element.*);
+                if (value.sentinel) |sentinel| {
+                    try jw.objectField("sentinel");
+                    try jw.write(sentinel);
+                    if (value.sentinel_many) {
+                        try jw.objectField("sentinel_many");
+                        try jw.write(true);
+                    }
+                }
                 try writeKind(jw, "slice");
             },
             .value_struct => |value| {
@@ -153,6 +168,11 @@ pub const TypeNode = union(enum) {
         if (std.mem.eql(u8, kind, "slice")) return .{ .slice = .{
             .@"const" = try parseField(bool, allocator, object, "const", options),
             .element = try parseTypePointer(allocator, object, "element", options),
+            .sentinel = if (object.get("sentinel")) |value|
+                try std.json.parseFromValueLeaky(u8, allocator, value, options)
+            else
+                null,
+            .sentinel_many = try parseOptionalField(bool, allocator, object, "sentinel_many", false, options),
         } };
         if (std.mem.eql(u8, kind, "optional")) return .{ .optional = .{
             .child = try parseTypePointer(allocator, object, "child", options),

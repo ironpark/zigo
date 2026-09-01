@@ -351,6 +351,8 @@
               "kind": "int",
               "signed": false
             },
+            "sentinel": 0,
+            "sentinel_many": true,
             "kind": "slice"
           }
         }
@@ -363,6 +365,8 @@
           "kind": "int",
           "signed": false
         },
+        "sentinel": 0,
+        "sentinel_many": true,
         "kind": "slice"
       },
       "return_semantic": "c_string",
@@ -381,10 +385,120 @@
           "kind": "int",
           "signed": false
         },
+        "sentinel": 0,
+        "sentinel_many": true,
         "kind": "slice"
       },
       "return_semantic": "c_string",
       "symbol": "zg_sampleCString"
+    },
+    {
+      "name": "extractPaths",
+      "namespace": "EventQueue",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "paths",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "semantic": "utf8_string",
+          "type": {
+            "const": true,
+            "element": {
+              "const": true,
+              "element": {
+                "bits": 8,
+                "is_usize": false,
+                "kind": "int",
+                "signed": false
+              },
+              "kind": "slice"
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_extractPaths"
+    },
+    {
+      "name": "extractSentinelSlices",
+      "namespace": "EventQueue",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "paths",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "semantic": "utf8_string",
+          "type": {
+            "const": true,
+            "element": {
+              "const": true,
+              "element": {
+                "bits": 8,
+                "is_usize": false,
+                "kind": "int",
+                "signed": false
+              },
+              "sentinel": 0,
+              "kind": "slice"
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_extractSentinelSlices"
+    },
+    {
+      "name": "extractSentinelPointers",
+      "namespace": "EventQueue",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "paths",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "semantic": "utf8_string",
+          "type": {
+            "const": true,
+            "element": {
+              "const": true,
+              "element": {
+                "bits": 8,
+                "is_usize": false,
+                "kind": "int",
+                "signed": false
+              },
+              "sentinel": 0,
+              "sentinel_many": true,
+              "kind": "slice"
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_extractSentinelPointers"
     },
     {
       "doc": "Accepts a batch of value snapshots so both backends exercise their\nstruct-slice input conversion path.",

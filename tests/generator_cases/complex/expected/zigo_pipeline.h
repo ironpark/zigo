@@ -43,6 +43,7 @@ ZIGO_EXPORT void zg_pipeline_deinit(void * self);
 ZIGO_EXPORT size_t zg_live_bytes(void);
 ZIGO_EXPORT size_t zg_compression_bound(size_t source_len);
 ZIGO_EXPORT const char * zg_echo_c_string(const char * text);
+ZIGO_EXPORT size_t zg_extract_paths(const uint8_t * paths_data, size_t paths_data_len, const size_t * paths_lens, size_t paths_count, const uint8_t * sentinelSlices_data, size_t sentinelSlices_data_len, const size_t * sentinelSlices_lens, size_t sentinelSlices_count, const uint8_t * sentinelPointers_data, size_t sentinelPointers_data_len, const size_t * sentinelPointers_lens, size_t sentinelPointers_count);
 ZIGO_EXPORT const char *zg_last_error_message(void);
 
 #endif // ZIGO_pipeline_H

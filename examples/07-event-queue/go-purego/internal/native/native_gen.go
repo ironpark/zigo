@@ -46,30 +46,33 @@ func (err *LibraryError) Is(target error) bool { return target == ErrLibraryLoad
 func (err *LibraryError) Unwrap() error { return err.Cause }
 
 type nativeBindings struct {
-	lastError                 func() unsafe.Pointer
-	fnEventQueueCreate        func(unsafe.Pointer, uintptr, uintptr, uint32, uintptr, uintptr, *unsafe.Pointer) int32
-	fnEventQueueClone         func(unsafe.Pointer, uintptr, uintptr, *unsafe.Pointer) int32
-	fnEventQueueEnqueue       func(unsafe.Pointer, uint64, int32) int32
-	fnEventQueueMergeFrom     func(unsafe.Pointer, unsafe.Pointer, *uintptr) int32
-	fnEventQueueProcess       func(unsafe.Pointer, uintptr, *uintptr) int32
-	fnEventQueueName          func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
-	fnEventQueueSampleValues  func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
-	fnEventQueueEchoCString   func(unsafe.Pointer) unsafe.Pointer
-	fnEventQueueSampleCString func() unsafe.Pointer
-	fnEventQueueAcceptStats   func(unsafe.Pointer, unsafe.Pointer, uintptr) uintptr
-	fnEventQueueEstimate      func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr, *uintptr) int32
-	fnEventQueueSampleStats   func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
-	fnEventQueueLen           func(unsafe.Pointer) uintptr
-	fnEventQueueCapacity      func(unsafe.Pointer) uintptr
-	fnEventQueuePolicy        func(unsafe.Pointer) uint32
-	fnEventQueueDropped       func(unsafe.Pointer) uintptr
-	fnEventQueueProcessed     func(unsafe.Pointer) uintptr
-	fnEventQueueStats         func(unsafe.Pointer, unsafe.Pointer)
-	fnEventQueueLimits        func(unsafe.Pointer, unsafe.Pointer)
-	fnEventQueueApplyLimits   func(unsafe.Pointer, unsafe.Pointer) int32
-	fnEventQueueClear         func(unsafe.Pointer) uintptr
-	fnEventQueueDeinit        func(unsafe.Pointer)
-	fnLiveQueues              func() uintptr
+	lastError                           func() unsafe.Pointer
+	fnEventQueueCreate                  func(unsafe.Pointer, uintptr, uintptr, uint32, uintptr, uintptr, *unsafe.Pointer) int32
+	fnEventQueueClone                   func(unsafe.Pointer, uintptr, uintptr, *unsafe.Pointer) int32
+	fnEventQueueEnqueue                 func(unsafe.Pointer, uint64, int32) int32
+	fnEventQueueMergeFrom               func(unsafe.Pointer, unsafe.Pointer, *uintptr) int32
+	fnEventQueueProcess                 func(unsafe.Pointer, uintptr, *uintptr) int32
+	fnEventQueueName                    func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
+	fnEventQueueSampleValues            func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
+	fnEventQueueEchoCString             func(unsafe.Pointer) unsafe.Pointer
+	fnEventQueueSampleCString           func() unsafe.Pointer
+	fnEventQueueExtractPaths            func(unsafe.Pointer, uintptr, unsafe.Pointer, uintptr) uintptr
+	fnEventQueueExtractSentinelSlices   func(unsafe.Pointer, uintptr, unsafe.Pointer, uintptr) uintptr
+	fnEventQueueExtractSentinelPointers func(unsafe.Pointer, uintptr, unsafe.Pointer, uintptr) uintptr
+	fnEventQueueAcceptStats             func(unsafe.Pointer, unsafe.Pointer, uintptr) uintptr
+	fnEventQueueEstimate                func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr, *uintptr) int32
+	fnEventQueueSampleStats             func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
+	fnEventQueueLen                     func(unsafe.Pointer) uintptr
+	fnEventQueueCapacity                func(unsafe.Pointer) uintptr
+	fnEventQueuePolicy                  func(unsafe.Pointer) uint32
+	fnEventQueueDropped                 func(unsafe.Pointer) uintptr
+	fnEventQueueProcessed               func(unsafe.Pointer) uintptr
+	fnEventQueueStats                   func(unsafe.Pointer, unsafe.Pointer)
+	fnEventQueueLimits                  func(unsafe.Pointer, unsafe.Pointer)
+	fnEventQueueApplyLimits             func(unsafe.Pointer, unsafe.Pointer) int32
+	fnEventQueueClear                   func(unsafe.Pointer) uintptr
+	fnEventQueueDeinit                  func(unsafe.Pointer)
+	fnLiveQueues                        func() uintptr
 }
 
 type callbackEntry struct {
@@ -301,6 +304,18 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_event_queue_sample_c_string", err)
 	}
+	addrEventQueueExtractPaths, err := resolveSymbol(handle, "zg_event_queue_extract_paths")
+	if err != nil {
+		return fail("zg_event_queue_extract_paths", err)
+	}
+	addrEventQueueExtractSentinelSlices, err := resolveSymbol(handle, "zg_event_queue_extract_sentinel_slices")
+	if err != nil {
+		return fail("zg_event_queue_extract_sentinel_slices", err)
+	}
+	addrEventQueueExtractSentinelPointers, err := resolveSymbol(handle, "zg_event_queue_extract_sentinel_pointers")
+	if err != nil {
+		return fail("zg_event_queue_extract_sentinel_pointers", err)
+	}
 	addrEventQueueAcceptStats, err := resolveSymbol(handle, "zg_event_queue_accept_stats")
 	if err != nil {
 		return fail("zg_event_queue_accept_stats", err)
@@ -368,6 +383,9 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnEventQueueSampleValues, addrEventQueueSampleValues)
 	purego.RegisterFunc(&next.fnEventQueueEchoCString, addrEventQueueEchoCString)
 	purego.RegisterFunc(&next.fnEventQueueSampleCString, addrEventQueueSampleCString)
+	purego.RegisterFunc(&next.fnEventQueueExtractPaths, addrEventQueueExtractPaths)
+	purego.RegisterFunc(&next.fnEventQueueExtractSentinelSlices, addrEventQueueExtractSentinelSlices)
+	purego.RegisterFunc(&next.fnEventQueueExtractSentinelPointers, addrEventQueueExtractSentinelPointers)
 	purego.RegisterFunc(&next.fnEventQueueAcceptStats, addrEventQueueAcceptStats)
 	purego.RegisterFunc(&next.fnEventQueueEstimate, addrEventQueueEstimate)
 	purego.RegisterFunc(&next.fnEventQueueSampleStats, addrEventQueueSampleStats)
@@ -513,6 +531,102 @@ func EventQueueEchoCString(text string) string {
 func EventQueueSampleCString() string {
 	result := bindings().fnEventQueueSampleCString()
 	return zigoCStringString(result)
+}
+
+// EventQueueExtractPaths calls the generated purego ABI wrapper for zg_event_queue_extract_paths.
+func EventQueueExtractPaths(paths []string) uint {
+	var pathsData []byte
+	var pathsLens []uintptr
+	if len(paths) != 0 {
+		pathsLens = make([]uintptr, len(paths))
+		pathsDataLen := 0
+		for _, value := range paths {
+			pathsDataLen += len(value) + 1
+		}
+		pathsData = make([]byte, pathsDataLen)
+		pathsOffset := 0
+		for i, value := range paths {
+			pathsLens[i] = uintptr(len(value))
+			copy(pathsData[pathsOffset:], value)
+			pathsOffset += len(value) + 1
+		}
+	}
+	var pathsDataPtr unsafe.Pointer
+	if len(pathsData) != 0 {
+		pathsDataPtr = unsafe.Pointer(&pathsData[0])
+	}
+	var pathsLensPtr unsafe.Pointer
+	if len(pathsLens) != 0 {
+		pathsLensPtr = unsafe.Pointer(&pathsLens[0])
+	}
+	result := bindings().fnEventQueueExtractPaths(pathsDataPtr, uintptr(len(pathsData)), pathsLensPtr, uintptr(len(paths)))
+	runtime.KeepAlive(pathsData)
+	runtime.KeepAlive(pathsLens)
+	return uint(result)
+}
+
+// EventQueueExtractSentinelSlices calls the generated purego ABI wrapper for zg_event_queue_extract_sentinel_slices.
+func EventQueueExtractSentinelSlices(paths []string) uint {
+	var pathsData []byte
+	var pathsLens []uintptr
+	if len(paths) != 0 {
+		pathsLens = make([]uintptr, len(paths))
+		pathsDataLen := 0
+		for _, value := range paths {
+			pathsDataLen += len(value) + 1
+		}
+		pathsData = make([]byte, pathsDataLen)
+		pathsOffset := 0
+		for i, value := range paths {
+			pathsLens[i] = uintptr(len(value))
+			copy(pathsData[pathsOffset:], value)
+			pathsOffset += len(value) + 1
+		}
+	}
+	var pathsDataPtr unsafe.Pointer
+	if len(pathsData) != 0 {
+		pathsDataPtr = unsafe.Pointer(&pathsData[0])
+	}
+	var pathsLensPtr unsafe.Pointer
+	if len(pathsLens) != 0 {
+		pathsLensPtr = unsafe.Pointer(&pathsLens[0])
+	}
+	result := bindings().fnEventQueueExtractSentinelSlices(pathsDataPtr, uintptr(len(pathsData)), pathsLensPtr, uintptr(len(paths)))
+	runtime.KeepAlive(pathsData)
+	runtime.KeepAlive(pathsLens)
+	return uint(result)
+}
+
+// EventQueueExtractSentinelPointers calls the generated purego ABI wrapper for zg_event_queue_extract_sentinel_pointers.
+func EventQueueExtractSentinelPointers(paths []string) uint {
+	var pathsData []byte
+	var pathsLens []uintptr
+	if len(paths) != 0 {
+		pathsLens = make([]uintptr, len(paths))
+		pathsDataLen := 0
+		for _, value := range paths {
+			pathsDataLen += len(value) + 1
+		}
+		pathsData = make([]byte, pathsDataLen)
+		pathsOffset := 0
+		for i, value := range paths {
+			pathsLens[i] = uintptr(len(value))
+			copy(pathsData[pathsOffset:], value)
+			pathsOffset += len(value) + 1
+		}
+	}
+	var pathsDataPtr unsafe.Pointer
+	if len(pathsData) != 0 {
+		pathsDataPtr = unsafe.Pointer(&pathsData[0])
+	}
+	var pathsLensPtr unsafe.Pointer
+	if len(pathsLens) != 0 {
+		pathsLensPtr = unsafe.Pointer(&pathsLens[0])
+	}
+	result := bindings().fnEventQueueExtractSentinelPointers(pathsDataPtr, uintptr(len(pathsData)), pathsLensPtr, uintptr(len(paths)))
+	runtime.KeepAlive(pathsData)
+	runtime.KeepAlive(pathsLens)
+	return uint(result)
 }
 
 // EventQueueAcceptStats calls the generated purego ABI wrapper for zg_event_queue_accept_stats.

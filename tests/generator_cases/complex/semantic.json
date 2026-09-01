@@ -455,6 +455,82 @@
       },
       "return_semantic": "c_string",
       "symbol": "zg_echo_c_string"
+    },
+    {
+      "name": "extractPaths",
+      "params": [
+        {
+          "direction": "in",
+          "name": "paths",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "semantic": "utf8_string",
+          "type": {
+            "const": true,
+            "element": {
+              "const": true,
+              "element": {
+                "bits": 8,
+                "is_usize": false,
+                "kind": "int",
+                "signed": false
+              },
+              "kind": "slice"
+            },
+            "kind": "slice"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "sentinelSlices",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "const": true,
+            "element": {
+              "const": true,
+              "element": {
+                "bits": 8,
+                "is_usize": false,
+                "kind": "int",
+                "signed": false
+              },
+              "sentinel": 0,
+              "kind": "slice"
+            },
+            "kind": "slice"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "sentinelPointers",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "const": true,
+            "element": {
+              "const": true,
+              "element": {
+                "bits": 8,
+                "is_usize": false,
+                "kind": "int",
+                "signed": false
+              },
+              "sentinel": 0,
+              "sentinel_many": true,
+              "kind": "slice"
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_extract_paths"
     }
   ],
   "ir_version": 1,

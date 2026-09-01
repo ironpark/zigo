@@ -108,6 +108,99 @@ func EventQueueSampleCString() string {
 	return C.GoString(C.zg_event_queue_sample_c_string())
 }
 
+// EventQueueExtractPaths calls the generated C ABI wrapper for zg_event_queue_extract_paths.
+func EventQueueExtractPaths(paths []string) uint {
+	var pathsData []byte
+	var pathsLens []C.size_t
+	if len(paths) != 0 {
+		pathsLens = make([]C.size_t, len(paths))
+		pathsDataLen := 0
+		for _, value := range paths {
+			pathsDataLen += len(value) + 1
+		}
+		pathsData = make([]byte, pathsDataLen)
+		pathsOffset := 0
+		for i, value := range paths {
+			pathsLens[i] = C.size_t(len(value))
+			copy(pathsData[pathsOffset:], value)
+			pathsOffset += len(value) + 1
+		}
+	}
+	var pathsDataZero C.uint8_t
+	pathsDataPtr := &pathsDataZero
+	if len(pathsData) != 0 {
+		pathsDataPtr = (*C.uint8_t)(unsafe.Pointer(&pathsData[0]))
+	}
+	var pathsLensZero C.size_t
+	pathsLensPtr := &pathsLensZero
+	if len(pathsLens) != 0 {
+		pathsLensPtr = (*C.size_t)(unsafe.Pointer(&pathsLens[0]))
+	}
+	return uint(C.zg_event_queue_extract_paths(pathsDataPtr, C.size_t(len(pathsData)), pathsLensPtr, C.size_t(len(paths))))
+}
+
+// EventQueueExtractSentinelSlices calls the generated C ABI wrapper for zg_event_queue_extract_sentinel_slices.
+func EventQueueExtractSentinelSlices(paths []string) uint {
+	var pathsData []byte
+	var pathsLens []C.size_t
+	if len(paths) != 0 {
+		pathsLens = make([]C.size_t, len(paths))
+		pathsDataLen := 0
+		for _, value := range paths {
+			pathsDataLen += len(value) + 1
+		}
+		pathsData = make([]byte, pathsDataLen)
+		pathsOffset := 0
+		for i, value := range paths {
+			pathsLens[i] = C.size_t(len(value))
+			copy(pathsData[pathsOffset:], value)
+			pathsOffset += len(value) + 1
+		}
+	}
+	var pathsDataZero C.uint8_t
+	pathsDataPtr := &pathsDataZero
+	if len(pathsData) != 0 {
+		pathsDataPtr = (*C.uint8_t)(unsafe.Pointer(&pathsData[0]))
+	}
+	var pathsLensZero C.size_t
+	pathsLensPtr := &pathsLensZero
+	if len(pathsLens) != 0 {
+		pathsLensPtr = (*C.size_t)(unsafe.Pointer(&pathsLens[0]))
+	}
+	return uint(C.zg_event_queue_extract_sentinel_slices(pathsDataPtr, C.size_t(len(pathsData)), pathsLensPtr, C.size_t(len(paths))))
+}
+
+// EventQueueExtractSentinelPointers calls the generated C ABI wrapper for zg_event_queue_extract_sentinel_pointers.
+func EventQueueExtractSentinelPointers(paths []string) uint {
+	var pathsData []byte
+	var pathsLens []C.size_t
+	if len(paths) != 0 {
+		pathsLens = make([]C.size_t, len(paths))
+		pathsDataLen := 0
+		for _, value := range paths {
+			pathsDataLen += len(value) + 1
+		}
+		pathsData = make([]byte, pathsDataLen)
+		pathsOffset := 0
+		for i, value := range paths {
+			pathsLens[i] = C.size_t(len(value))
+			copy(pathsData[pathsOffset:], value)
+			pathsOffset += len(value) + 1
+		}
+	}
+	var pathsDataZero C.uint8_t
+	pathsDataPtr := &pathsDataZero
+	if len(pathsData) != 0 {
+		pathsDataPtr = (*C.uint8_t)(unsafe.Pointer(&pathsData[0]))
+	}
+	var pathsLensZero C.size_t
+	pathsLensPtr := &pathsLensZero
+	if len(pathsLens) != 0 {
+		pathsLensPtr = (*C.size_t)(unsafe.Pointer(&pathsLens[0]))
+	}
+	return uint(C.zg_event_queue_extract_sentinel_pointers(pathsDataPtr, C.size_t(len(pathsData)), pathsLensPtr, C.size_t(len(paths))))
+}
+
 // EventQueueAcceptStats calls the generated C ABI wrapper for zg_event_queue_accept_stats.
 func EventQueueAcceptStats(self unsafe.Pointer, values []StatsData) uint {
 	var valuesValues []C.zg_stats

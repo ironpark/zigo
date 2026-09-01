@@ -46,6 +46,7 @@ Zig 슬라이스는 C ABI 안전하지 않다. 항상 ptr+len 쌍으로 분해�
 | `[]const u8`, semantic 없음 | `const uint8_t*, size_t` | `[]byte` |
 | `[]const u8`, `semantic=utf8_string` | `const char*, size_t` | `string` |
 | `[*:0]const u8` | `const char*` | `string` |
+| `[]const []const u8`, `[]const [:0]const u8`, `[]const [*:0]const u8` (string slice) | `const uint8_t* p_data, size_t p_data_len, const size_t* p_lens, size_t p_count` | `[]string` |
 
 slice 반환은 cgo와 purego 모두 호출 시점에 native `ptr + len`에서 새 Go slice로 복사한다.
 공개 API가 native 메모리를 alias하지 않으므로, 다음 호출·원본 객체 수명·`Close`와
@@ -60,8 +61,20 @@ Go byte buffer를 호출 동안 고정한다. 반환값은 cgo의 `C.GoString`, 
 복사로 Go `string`이 되므로 native 포인터를 노출하지 않는다. mutable sentinel pointer,
 0이 아닌 sentinel, 그 밖의 many-pointer는 reflection 단계에서 거부한다.
 
-**Go 포인터 규칙 검증:** `element`가 포인터·슬라이스·문자열을 포함하면 하강 실패
-(Go 포인터를 담은 Go 메모리 전달 금지). 진단 메시지에 대안(핸들 배열)을 제시한다.
+string slice 매개변수는 각 문자열의 바이트를 순서대로 이어 붙이고 문자열마다 NUL 하나를
+추가한 `p_data`를 사용한다. `p_data_len`은 NUL을 포함한 전체 바이트 수이고, `p_lens[i]`는
+해당 문자열의 바이트 길이로 NUL을 제외한다. `p_count`는 문자열 개수다. shim은 개수가
+16개 이하이면 고정 스택 배열을, 그보다 크면 `std.heap.page_allocator` 배열을 사용한다.
+fallback 할당이 실패하거나 길이 배열이 버퍼 범위를 벗어나면 zigo panic status로 변환한다.
+Go raw 양쪽은 `[]byte`와 pointer-free 길이 배열을 한 번만 만들며, 문자열별 C malloc은
+사용하지 않는다. 반환에서 `[]string`을 지원하지 않는 것은 이 규칙과 별개다.
+element 원형(`[]const u8` / `[:0]const u8` / `[*:0]const u8`)은 semantic IR의
+`sentinel`/`sentinel_many`로만 남고 C ABI 모양을 바꾸지 않는다. 따라서 abi-check는 이
+두 필드를 시그니처 비교에서 제외하며, element 원형만 바뀐 변경은 breaking이 아니다.
+
+**Go 포인터 규칙 검증:** string slice 예외를 제외하고 `element`가 포인터·슬라이스·문자열을
+포함하면 하강 실패한다(Go 포인터를 담은 Go 메모리 전달 금지). 진단 메시지에 대안(핸들 배열)을
+제시한다.
 
 ## 4. optional
 

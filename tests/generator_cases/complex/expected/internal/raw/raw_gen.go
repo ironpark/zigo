@@ -136,3 +136,67 @@ func EchoCString(text string) string {
 	defer C.free(unsafe.Pointer(textCString))
 	return C.GoString(C.zg_echo_c_string(textCString))
 }
+// ExtractPaths calls the generated C ABI wrapper for zg_extract_paths.
+func ExtractPaths(paths []string, sentinelSlices []string, sentinelPointers []string) uint {
+	var pathsData []byte
+	var pathsLens []C.size_t
+	if len(paths) != 0 {
+		pathsLens = make([]C.size_t, len(paths))
+		pathsDataLen := 0
+		for _, value := range paths { pathsDataLen += len(value) + 1 }
+		pathsData = make([]byte, pathsDataLen)
+		pathsOffset := 0
+		for i, value := range paths {
+			pathsLens[i] = C.size_t(len(value))
+			copy(pathsData[pathsOffset:], value)
+			pathsOffset += len(value) + 1
+		}
+	}
+	var pathsDataZero C.uint8_t
+	pathsDataPtr := &pathsDataZero
+	if len(pathsData) != 0 { pathsDataPtr = (*C.uint8_t)(unsafe.Pointer(&pathsData[0])) }
+	var pathsLensZero C.size_t
+	pathsLensPtr := &pathsLensZero
+	if len(pathsLens) != 0 { pathsLensPtr = (*C.size_t)(unsafe.Pointer(&pathsLens[0])) }
+	var sentinelSlicesData []byte
+	var sentinelSlicesLens []C.size_t
+	if len(sentinelSlices) != 0 {
+		sentinelSlicesLens = make([]C.size_t, len(sentinelSlices))
+		sentinelSlicesDataLen := 0
+		for _, value := range sentinelSlices { sentinelSlicesDataLen += len(value) + 1 }
+		sentinelSlicesData = make([]byte, sentinelSlicesDataLen)
+		sentinelSlicesOffset := 0
+		for i, value := range sentinelSlices {
+			sentinelSlicesLens[i] = C.size_t(len(value))
+			copy(sentinelSlicesData[sentinelSlicesOffset:], value)
+			sentinelSlicesOffset += len(value) + 1
+		}
+	}
+	var sentinelSlicesDataZero C.uint8_t
+	sentinelSlicesDataPtr := &sentinelSlicesDataZero
+	if len(sentinelSlicesData) != 0 { sentinelSlicesDataPtr = (*C.uint8_t)(unsafe.Pointer(&sentinelSlicesData[0])) }
+	var sentinelSlicesLensZero C.size_t
+	sentinelSlicesLensPtr := &sentinelSlicesLensZero
+	if len(sentinelSlicesLens) != 0 { sentinelSlicesLensPtr = (*C.size_t)(unsafe.Pointer(&sentinelSlicesLens[0])) }
+	var sentinelPointersData []byte
+	var sentinelPointersLens []C.size_t
+	if len(sentinelPointers) != 0 {
+		sentinelPointersLens = make([]C.size_t, len(sentinelPointers))
+		sentinelPointersDataLen := 0
+		for _, value := range sentinelPointers { sentinelPointersDataLen += len(value) + 1 }
+		sentinelPointersData = make([]byte, sentinelPointersDataLen)
+		sentinelPointersOffset := 0
+		for i, value := range sentinelPointers {
+			sentinelPointersLens[i] = C.size_t(len(value))
+			copy(sentinelPointersData[sentinelPointersOffset:], value)
+			sentinelPointersOffset += len(value) + 1
+		}
+	}
+	var sentinelPointersDataZero C.uint8_t
+	sentinelPointersDataPtr := &sentinelPointersDataZero
+	if len(sentinelPointersData) != 0 { sentinelPointersDataPtr = (*C.uint8_t)(unsafe.Pointer(&sentinelPointersData[0])) }
+	var sentinelPointersLensZero C.size_t
+	sentinelPointersLensPtr := &sentinelPointersLensZero
+	if len(sentinelPointersLens) != 0 { sentinelPointersLensPtr = (*C.size_t)(unsafe.Pointer(&sentinelPointersLens[0])) }
+	return uint(C.zg_extract_paths(pathsDataPtr, C.size_t(len(pathsData)), pathsLensPtr, C.size_t(len(paths)), sentinelSlicesDataPtr, C.size_t(len(sentinelSlicesData)), sentinelSlicesLensPtr, C.size_t(len(sentinelSlices)), sentinelPointersDataPtr, C.size_t(len(sentinelPointersData)), sentinelPointersLensPtr, C.size_t(len(sentinelPointers))))
+}

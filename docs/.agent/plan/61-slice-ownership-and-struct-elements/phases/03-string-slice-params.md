@@ -2,7 +2,7 @@
 depends_on:
 - "61-slice-ownership-and-struct-elements#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: The three declared element forms lower to `[]string` and round-trip on both
 > NEXT: none

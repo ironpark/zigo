@@ -140,6 +140,24 @@ pub const EventQueue = struct {
         return "sentinel event queue";
     }
 
+    pub fn extractPaths(paths: []const []const u8) usize {
+        var total: usize = 0;
+        for (paths) |path| total += path.len;
+        return total;
+    }
+
+    pub fn extractSentinelSlices(paths: []const [:0]const u8) usize {
+        var total: usize = 0;
+        for (paths) |path| total += path.len;
+        return total;
+    }
+
+    pub fn extractSentinelPointers(paths: []const [*:0]const u8) usize {
+        var total: usize = 0;
+        for (paths) |path| total += std.mem.len(path);
+        return total;
+    }
+
     /// A numeric slice return intentionally points at native storage. The Go
     /// binding must copy it before returning so a caller cannot alias it.
     pub fn sampleValues(_: *EventQueue) []const f32 {

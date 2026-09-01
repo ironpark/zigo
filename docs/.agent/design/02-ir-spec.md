@@ -117,6 +117,11 @@ semantic.json은 "usize다"라는 사실만 기록한다 → 타깃 독립성 �
 하강 시 길이 없는 `const char*`로 바뀐다. 따라서 이 힌트가 붙은 slice에는 별도의
 `*_len` ABI 인자가 없다.
 
+slice 노드의 선택적 `sentinel`/`sentinel_many`는 문자열 slice 매개변수의 element 원형을
+보존한다. `sentinel=0`과 `sentinel_many=false`는 `[:0]const u8`, `true`는
+`[*:0]const u8`를 뜻하고, 두 필드가 없으면 `[]const u8`이다. 이 정보는 하강된 C ABI
+모양을 바꾸지 않고 shim이 원래 Zig element 타입을 다시 만들 때만 사용한다.
+
 모든 `ref`는 같은 문서의 `types`에서 정확히 한 번 선언되어야 하며 노드 종류와 선언
 종류가 일치해야 한다. `enum`은 유효한 정수 `tag_type`을 가져야 한다. constructor의
 `type`은 opaque 또는 tagged-union handle 선언이어야 하고, `init`은 해당 namespace에서 caller-owned non-null

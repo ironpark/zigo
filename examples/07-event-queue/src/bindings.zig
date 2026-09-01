@@ -30,6 +30,13 @@ pub const bindings = zigo.define(.{
         .{ .path = "EventQueue.sampleValues" },
         .{ .path = "EventQueue.echoCString", .params = .{"text"} },
         .{ .path = "EventQueue.sampleCString" },
+        .{
+            .path = "EventQueue.extractPaths",
+            .params = .{"paths"},
+            .param_meta = .{ .paths = .{ .semantic = .utf8_string } },
+        },
+        .{ .path = "EventQueue.extractSentinelSlices", .params = .{"paths"} },
+        .{ .path = "EventQueue.extractSentinelPointers", .params = .{"paths"} },
         .{ .path = "EventQueue.acceptStats", .params = .{"values"} },
         .{
             .path = "EventQueue.estimate",

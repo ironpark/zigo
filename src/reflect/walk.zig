@@ -152,6 +152,10 @@ fn appendFunction(
         // The sentinel is part of the Zig type, so it remains a C string even
         // when a declaration sidecar omits a semantic hint.
         if (isSentinelBytePointer(param.type.?)) reflected.semantic = .c_string;
+        // A collection of sentinel strings is still a string collection even
+        // without sidecar metadata. The unsentinel `[][]const u8` spelling is
+        // intentionally opt-in through `.semantic = .utf8_string`.
+        if (isSentinelStringSlice(param.type.?)) reflected.semantic = .utf8_string;
         params[output_index] = reflected;
     }
     const reflected_return = if (info.return_type) |return_type|
@@ -332,7 +336,11 @@ fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayLis
             .slice => blk: {
                 const element = try allocator.create(semantic.TypeNode);
                 element.* = try typeNode(allocator, info.child, types);
-                break :blk .{ .slice = .{ .@"const" = info.is_const, .element = element } };
+                break :blk .{ .slice = .{
+                    .@"const" = info.is_const,
+                    .element = element,
+                    .sentinel = if (info.child == u8) info.sentinel() else null,
+                } };
             },
             .one => blk: {
                 if (@typeInfo(info.child) == .@"fn") {
@@ -368,7 +376,12 @@ fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayLis
                 );
                 const element = try allocator.create(semantic.TypeNode);
                 element.* = try typeNode(allocator, info.child, types);
-                break :blk .{ .slice = .{ .@"const" = true, .element = element } };
+                break :blk .{ .slice = .{
+                    .@"const" = true,
+                    .element = element,
+                    .sentinel = sentinel,
+                    .sentinel_many = true,
+                } };
             },
             else => @compileError(
                 "zigo supports slices, pointers to declared opaque types, and `[*:0]const u8` sentinel strings; mutable or non-zero-sentinel many pointers are unsupported",
@@ -612,6 +625,21 @@ fn isSentinelBytePointer(comptime T: type) bool {
     return (info.sentinel() orelse return false) == 0;
 }
 
+fn isSentinelStringSlice(comptime T: type) bool {
+    const outer = switch (@typeInfo(T)) {
+        .pointer => |value| value,
+        else => return false,
+    };
+    if (outer.size != .slice or !outer.is_const) return false;
+    const inner = switch (@typeInfo(outer.child)) {
+        .pointer => |value| value,
+        else => return false,
+    };
+    if (!inner.is_const or inner.child != u8) return false;
+    const sentinel = inner.sentinel() orelse return false;
+    return sentinel == 0;
+}
+
 test "scalar reflection matches the semantic JSON golden" {
     const Api = struct {
         pub fn add(a: i32, b: i32) i32 {
@@ -733,6 +761,44 @@ test "sentinel byte pointers reflect as c strings" {
     defer std.testing.allocator.free(json);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"semantic\": \"c_string\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"return_semantic\": \"c_string\"") != null);
+}
+
+test "string slice element spellings survive reflection" {
+    const Fixture = struct {
+        pub fn plain(paths: []const []const u8) usize {
+            return paths.len;
+        }
+
+        pub fn sentinelSlice(paths: []const [:0]const u8) usize {
+            return paths.len;
+        }
+
+        pub fn sentinelMany(paths: []const [*:0]const u8) usize {
+            return paths.len;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .functions = .{
+            .{ .path = "root.plain", .params = .{"paths"}, .param_meta = .{ .paths = .{ .semantic = .utf8_string } } },
+            .{ .path = "root.sentinelSlice", .params = .{"paths"} },
+            .{ .path = "root.sentinelMany", .params = .{"paths"} },
+        },
+    }, "strings", "zg");
+
+    const plain = document.functions[0].params[0].type.slice.element.*.slice;
+    try std.testing.expect(plain.sentinel == null);
+    try std.testing.expectEqual(semantic.SemanticHint.utf8_string, document.functions[0].params[0].semantic.?);
+    const sentinel_slice = document.functions[1].params[0].type.slice.element.*.slice;
+    try std.testing.expectEqual(@as(?u8, 0), sentinel_slice.sentinel);
+    try std.testing.expect(!sentinel_slice.sentinel_many);
+    try std.testing.expectEqual(semantic.SemanticHint.utf8_string, document.functions[1].params[0].semantic.?);
+    const sentinel_many = document.functions[2].params[0].type.slice.element.*.slice;
+    try std.testing.expectEqual(@as(?u8, 0), sentinel_many.sentinel);
+    try std.testing.expect(sentinel_many.sentinel_many);
+    try std.testing.expectEqual(semantic.SemanticHint.utf8_string, document.functions[2].params[0].semantic.?);
 }
 
 test "the snapshot access strategy is recorded only when it is opted into" {

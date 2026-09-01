@@ -264,3 +264,15 @@ ZIGO_EXPORT const char * zg_echo_c_string(const char * text) {
     zg_panic_active = 0;
     return result;
 }
+
+size_t zg_extract_paths_impl(const uint8_t * paths_data, size_t paths_data_len, const size_t * paths_lens, size_t paths_count, const uint8_t * sentinelSlices_data, size_t sentinelSlices_data_len, const size_t * sentinelSlices_lens, size_t sentinelSlices_count, const uint8_t * sentinelPointers_data, size_t sentinelPointers_data_len, const size_t * sentinelPointers_lens, size_t sentinelPointers_count);
+ZIGO_EXPORT size_t zg_extract_paths(const uint8_t * paths_data, size_t paths_data_len, const size_t * paths_lens, size_t paths_count, const uint8_t * sentinelSlices_data, size_t sentinelSlices_data_len, const size_t * sentinelSlices_lens, size_t sentinelSlices_count, const uint8_t * sentinelPointers_data, size_t sentinelPointers_data_len, const size_t * sentinelPointers_lens, size_t sentinelPointers_count) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return 0;
+    }
+    size_t result = zg_extract_paths_impl(paths_data, paths_data_len, paths_lens, paths_count, sentinelSlices_data, sentinelSlices_data_len, sentinelSlices_lens, sentinelSlices_count, sentinelPointers_data, sentinelPointers_data_len, sentinelPointers_lens, sentinelPointers_count);
+    zg_panic_active = 0;
+    return result;
+}
