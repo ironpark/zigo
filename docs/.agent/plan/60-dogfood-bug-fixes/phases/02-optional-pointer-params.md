@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Fixture tests pass with nil and non-nil on both backends; `zig build test` green;
 > NEXT: none

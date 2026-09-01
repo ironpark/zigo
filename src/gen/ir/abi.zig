@@ -23,6 +23,10 @@ pub const AbiScalar = union(enum) {
         child: *const AbiScalar,
         is_const: bool,
         is_many: bool = false,
+        /// A handle argument the caller may leave null. C spells every pointer
+        /// the same way, so this only changes the Zig shim signature, where a
+        /// non-optional pointer would make a null argument illegal.
+        is_optional: bool = false,
     },
     callback: struct {
         params: []const AbiScalar,

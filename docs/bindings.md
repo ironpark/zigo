@@ -152,6 +152,12 @@ nil·closed 상태를 검사합니다. 검사 결과는 항상 반환값으로 �
 pointer가 아니거나, 그 타입에 constructor와 deinitializer가 등록되어 있지 않은
 경우입니다.
 
+`?*T`/`?*const T` 매개변수는 nil을 받을 수 있는 handle 인자가 됩니다. Go에서 nil을
+넘기면 native 쪽에는 NULL이 전달되고 `*HandleError`는 발생하지 않습니다. 다만 optional은
+"인자가 없어도 된다"는 뜻이지 "닫힌 handle을 넘겨도 된다"는 뜻은 아니므로, nil이 아닌 채
+이미 닫힌 handle은 여전히 `*HandleError`입니다. optional은 선언된 opaque type의
+pointer에만 쓸 수 있고, 그 밖의 optional은 reflection 단계에서 거부됩니다.
+
 retained callback이나 pointer는 소유 객체의 `Close`까지 유효해야 합니다.
 
 생성된 handle은 모두 같은 수명주기를 씁니다. 종류에 따라 달라지지 않습니다.

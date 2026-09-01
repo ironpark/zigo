@@ -66,6 +66,37 @@ func (e *EventQueue) Enqueue(id uint64, value int32) error {
 	return nil
 }
 
+// MergeFrom mergeFrom appends another queue's events to this one under the current
+// policy and reports how many were taken. A null source is not an error:
+// it merges nothing, which is what makes the parameter optional.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+func (e *EventQueue) MergeFrom(source *EventQueue) (uint, error) {
+	if e != nil {
+		e.mu.RLock()
+		defer e.mu.RUnlock()
+	}
+	if source != nil {
+		source.mu.RLock()
+		defer source.mu.RUnlock()
+	}
+	defer runtime.KeepAlive(e)
+	defer runtime.KeepAlive(source)
+	ptr, err := zigoCheckedPointer("EventQueue.MergeFrom receiver", e)
+	if err != nil {
+		return 0, err
+	}
+	sourcePtr, err := zigoOptionalPointer("EventQueue.MergeFrom parameter source", source == nil, source)
+	if err != nil {
+		return 0, err
+	}
+	result, code := raw.EventQueueMergeFrom(ptr, sourcePtr)
+	if code != 0 {
+		return 0, errorForCode("EventQueue.MergeFrom", code)
+	}
+	return result, nil
+}
+
 // Process invokes the bound Zig EventQueue.process operation.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.

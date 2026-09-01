@@ -350,6 +350,21 @@ fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayLis
             },
             else => @compileError("zigo supports slices and pointers to declared opaque types"),
         },
+        // Only a pointer to a declared opaque type has a null representation Go
+        // can express: the handle argument is already a pointer, so a nil one
+        // crosses as NULL. Every other optional would need a separate presence
+        // flag in the ABI, which zigo does not generate.
+        .optional => |info| blk: {
+            const child = @typeInfo(info.child);
+            if (child != .pointer or child.pointer.size != .one or @typeInfo(child.pointer.child) == .@"fn")
+                @compileError("zigo supports optionals only on pointers to declared opaque types");
+            const name = opaqueNameForPath(types.items, @typeName(child.pointer.child)) orelse return error.MissingOpaqueType;
+            break :blk .{ .opaque_ptr = .{
+                .@"const" = child.pointer.is_const,
+                .nullable = true,
+                .ref = name,
+            } };
+        },
         .error_union => |info| blk: {
             const payload = try allocator.create(semantic.TypeNode);
             payload.* = try typeNode(allocator, info.payload, types);
@@ -844,4 +859,44 @@ test "discovery selectors use stable owner-qualified paths" {
     try std.testing.expect(comptime declarationPathExists(declaration, "root.update"));
     try std.testing.expect(!comptime declarationPathExists(declaration, "Missing.update"));
     try std.testing.expect(!comptime declarationPathExists(declaration, "root.privateHelper"));
+}
+
+test "an optional opaque pointer parameter reflects as a nullable handle" {
+    const Api = struct {
+        pub const Handle = struct {
+            pub fn create() error{OutOfMemory}!*Handle {
+                return error.OutOfMemory;
+            }
+
+            pub fn deinit(self: *Handle) void {
+                _ = self;
+            }
+
+            pub fn adopt(self: *Handle, other: ?*const Handle, owner: *Handle) void {
+                _ = self;
+                _ = other;
+                _ = owner;
+            }
+        };
+    };
+    const declaration = .{
+        .root = Api,
+        .types = .{.{ .type = Api.Handle, .repr = .@"opaque" }},
+        .functions = .{
+            .{ .path = "Handle.create" },
+            .{ .path = "Handle.deinit" },
+            .{ .path = "Handle.adopt", .params = .{ "other", "owner" } },
+        },
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), declaration, "optional", "zg");
+    const adopt = document.functions[2];
+    try std.testing.expectEqualStrings("adopt", adopt.name);
+    const optional = adopt.params[0].type.opaque_ptr;
+    try std.testing.expect(optional.nullable);
+    try std.testing.expect(optional.@"const");
+    try std.testing.expectEqualStrings("Handle", optional.ref);
+    // The neighbouring non-optional pointer keeps the checked-handle contract.
+    try std.testing.expect(!adopt.params[1].type.opaque_ptr.nullable);
 }

@@ -131,6 +131,48 @@ func TestCloneReturnsAnIndependentOwnedHandle(t *testing.T) {
 	}
 }
 
+// The Zig parameter is `?*const EventQueue`, so a nil handle is a value the
+// API accepts rather than a *HandleError.
+func TestMergeFromAcceptsANilOptionalHandle(t *testing.T) {
+	observer := func(uint64, int32) int32 { return 0 }
+	target, err := NewEventQueue("target", 4, PolicyReject, observer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer target.Close()
+	source, err := NewEventQueue("source", 4, PolicyReject, observer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	if err := source.Enqueue(1, 10); err != nil {
+		t.Fatal(err)
+	}
+	if err := source.Enqueue(2, 20); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, err := target.MergeFrom(nil); err != nil || got != 0 {
+		t.Fatalf("MergeFrom(nil) = (%d, %v), want (0, nil)", got, err)
+	}
+	if got := must(target.Len()); got != 0 {
+		t.Fatalf("Len() after nil merge = %d, want 0", got)
+	}
+	if got, err := target.MergeFrom(source); err != nil || got != 2 {
+		t.Fatalf("MergeFrom(source) = (%d, %v), want (2, nil)", got, err)
+	}
+	if got := must(target.Len()); got != 2 {
+		t.Fatalf("Len() after merge = %d, want 2", got)
+	}
+
+	// Optional only means the argument may be absent; a handle that is present
+	// but already closed is still a caller error.
+	source.Close()
+	if _, err := target.MergeFrom(source); err == nil {
+		t.Fatal("MergeFrom with a closed source returned no error")
+	}
+}
+
 func TestDropOldestPolicy(t *testing.T) {
 	var observed []uint64
 	queue, err := NewEventQueue("lossy", 2, PolicyDropOldest, func(id uint64, _ int32) int32 {

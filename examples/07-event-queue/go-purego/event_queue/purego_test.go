@@ -112,6 +112,32 @@ func TestPuregoCloneOwnsItsObserverHandle(t *testing.T) {
 	}
 }
 
+// The Zig parameter is `?*const EventQueue`, so a nil handle crosses as NULL
+// rather than becoming a *HandleError.
+func TestPuregoMergeFromAcceptsANilOptionalHandle(t *testing.T) {
+	observer := func(uint64, int32) int32 { return 0 }
+	target, err := NewEventQueue("target", 4, PolicyReject, observer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer target.Close()
+	source, err := NewEventQueue("source", 4, PolicyReject, observer)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer source.Close()
+	if err := source.Enqueue(1, 10); err != nil {
+		t.Fatal(err)
+	}
+
+	if got, err := target.MergeFrom(nil); err != nil || got != 0 {
+		t.Fatalf("MergeFrom(nil) = (%d, %v), want (0, nil)", got, err)
+	}
+	if got, err := target.MergeFrom(source); err != nil || got != 1 {
+		t.Fatalf("MergeFrom(source) = (%d, %v), want (1, nil)", got, err)
+	}
+}
+
 func TestPuregoAutomaticCleanup(t *testing.T) {
 	func() {
 		queue, err := NewEventQueue("cleanup", 1, PolicyReject, func(uint64, int32) int32 { return 0 })

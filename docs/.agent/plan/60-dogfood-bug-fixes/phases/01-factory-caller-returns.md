@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-01T20:39:22Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: New fixture compiles and its test passes on both backends; the unsupported-payload
 > NEXT: none

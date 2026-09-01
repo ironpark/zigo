@@ -3606,6 +3606,7 @@ fn writeZigType(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
         .snapshot => |name| try writer.writeAll(name),
         .value_struct => |record| try writer.print("target.{s}", .{record.name}),
         .pointer => |pointer| {
+            if (pointer.is_optional and !pointer.is_many) try writer.writeByte('?');
             try writer.writeAll(if (pointer.is_many) "[*c]" else "*");
             if (pointer.is_const) try writer.writeAll("const ");
             try writeZigType(writer, pointer.child.*);

@@ -50,6 +50,7 @@ type nativeBindings struct {
 	fnEventQueueCreate      func(unsafe.Pointer, uintptr, uintptr, uint32, uintptr, uintptr, *unsafe.Pointer) int32
 	fnEventQueueClone       func(unsafe.Pointer, uintptr, uintptr, *unsafe.Pointer) int32
 	fnEventQueueEnqueue     func(unsafe.Pointer, uint64, int32) int32
+	fnEventQueueMergeFrom   func(unsafe.Pointer, unsafe.Pointer, *uintptr) int32
 	fnEventQueueProcess     func(unsafe.Pointer, uintptr, *uintptr) int32
 	fnEventQueueName        func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
 	fnEventQueueLen         func(unsafe.Pointer) uintptr
@@ -270,6 +271,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_event_queue_enqueue", err)
 	}
+	addrEventQueueMergeFrom, err := resolveSymbol(handle, "zg_event_queue_merge_from")
+	if err != nil {
+		return fail("zg_event_queue_merge_from", err)
+	}
 	addrEventQueueProcess, err := resolveSymbol(handle, "zg_event_queue_process")
 	if err != nil {
 		return fail("zg_event_queue_process", err)
@@ -327,6 +332,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnEventQueueCreate, addrEventQueueCreate)
 	purego.RegisterFunc(&next.fnEventQueueClone, addrEventQueueClone)
 	purego.RegisterFunc(&next.fnEventQueueEnqueue, addrEventQueueEnqueue)
+	purego.RegisterFunc(&next.fnEventQueueMergeFrom, addrEventQueueMergeFrom)
 	purego.RegisterFunc(&next.fnEventQueueProcess, addrEventQueueProcess)
 	purego.RegisterFunc(&next.fnEventQueueName, addrEventQueueName)
 	purego.RegisterFunc(&next.fnEventQueueLen, addrEventQueueLen)
@@ -404,6 +410,13 @@ func EventQueueClone(self unsafe.Pointer, observerCallback, observerToken uintpt
 func EventQueueEnqueue(self unsafe.Pointer, id uint64, value int32) int32 {
 	code := bindings().fnEventQueueEnqueue(self, id, value)
 	return code
+}
+
+// EventQueueMergeFrom calls the generated purego ABI wrapper for zg_event_queue_merge_from.
+func EventQueueMergeFrom(self unsafe.Pointer, source unsafe.Pointer) (uint, int32) {
+	var outResult uintptr
+	code := bindings().fnEventQueueMergeFrom(self, source, &outResult)
+	return uint(outResult), code
 }
 
 // EventQueueProcess calls the generated purego ABI wrapper for zg_event_queue_process.

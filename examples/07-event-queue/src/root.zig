@@ -86,6 +86,19 @@ pub const EventQueue = struct {
         return copy;
     }
 
+    /// mergeFrom appends another queue's events to this one under the current
+    /// policy and reports how many were taken. A null source is not an error:
+    /// it merges nothing, which is what makes the parameter optional.
+    pub fn mergeFrom(self: *EventQueue, source: ?*const EventQueue) EnqueueError!usize {
+        const other = source orelse return 0;
+        var taken: usize = 0;
+        for (other.items.items) |event| {
+            try self.enqueue(event.id, event.value);
+            taken += 1;
+        }
+        return taken;
+    }
+
     pub fn enqueue(self: *EventQueue, id: u64, value: i32) EnqueueError!void {
         if (self.items.items.len == self.capacity_value) switch (self.policy_value) {
             .reject => return error.Full,
@@ -179,6 +192,25 @@ pub const EventQueue = struct {
 
 pub fn liveQueues() usize {
     return live_queues.load(.monotonic);
+}
+
+test "merging from a null source is a no-op" {
+    const observer = struct {
+        fn call(_: u64, _: i32, _: usize) callconv(.c) i32 {
+            return 0;
+        }
+    }.call;
+    const target = try EventQueue.create("target", 4, .reject, &observer, 0);
+    defer target.deinit();
+    const source = try EventQueue.create("source", 4, .reject, &observer, 0);
+    defer source.deinit();
+    try source.enqueue(1, 10);
+    try source.enqueue(2, 20);
+
+    try std.testing.expectEqual(@as(usize, 0), try target.mergeFrom(null));
+    try std.testing.expectEqual(@as(usize, 0), target.len());
+    try std.testing.expectEqual(@as(usize, 2), try target.mergeFrom(source));
+    try std.testing.expectEqual(@as(usize, 2), target.len());
 }
 
 test "a cloned queue owns its own events" {

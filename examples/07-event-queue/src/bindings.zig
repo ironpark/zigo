@@ -24,6 +24,7 @@ pub const bindings = zigo.define(.{
             .returns = .caller,
         },
         .{ .path = "EventQueue.enqueue", .params = .{ "id", "value" } },
+        .{ .path = "EventQueue.mergeFrom", .params = .{"source"} },
         .{ .path = "EventQueue.process", .params = .{"limit"} },
         .{ .path = "EventQueue.name", .semantic = .utf8_string },
         .{ .path = "EventQueue.len" },

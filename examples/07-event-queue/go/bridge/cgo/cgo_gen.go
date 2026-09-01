@@ -60,6 +60,13 @@ func EventQueueEnqueue(self unsafe.Pointer, id uint64, value int32) int32 {
 	return code
 }
 
+// EventQueueMergeFrom calls the generated C ABI wrapper for zg_event_queue_merge_from.
+func EventQueueMergeFrom(self unsafe.Pointer, source unsafe.Pointer) (uint, int32) {
+	var outResult C.size_t
+	code := int32(C.zg_event_queue_merge_from(self, source, &outResult))
+	return uint(outResult), code
+}
+
 // EventQueueProcess calls the generated C ABI wrapper for zg_event_queue_process.
 func EventQueueProcess(self unsafe.Pointer, limit uint) (uint, int32) {
 	var outResult C.size_t

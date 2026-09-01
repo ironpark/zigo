@@ -62,6 +62,9 @@
   밖의 필드나 빈 struct는 `ZIGO012`로 거부된다. struct를 slice 원소, optional, callback
   시그니처 안에 넣으면 `ZIGO013`으로 거부된다. 필드를 하나라도 바꾸면 ABI가 깨진다.
 - `packed struct`의 정수 백킹 노출은 지원하지 않는다. `ZIGO003`으로 거부된다.
+- optional은 선언된 opaque type의 pointer(`?*T`, `?*const T`)에만 쓸 수 있다. handle
+  인자는 이미 pointer라서 nil이 NULL로 그대로 건너가지만, `?i32`나 `?[]u8` 같은 optional은
+  별도의 presence 플래그가 필요해 reflection 단계에서 거부된다.
 - tagged union은 `.repr = .tagged_union`으로 등록한 뒤 포인터로만 노출한다. 생성된
   `Tag`/`As*`가 active tag를 검사하며 union 레이아웃은 C로 전달하지 않는다. nested
   aggregate, optional, error union, callback 또는 pointer 원소 slice payload는 지원하지 않는다.

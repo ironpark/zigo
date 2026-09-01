@@ -594,7 +594,7 @@ fn lowerValue(allocator: std.mem.Allocator, document: semantic.Semantic, prefix:
         .opaque_ptr => |value| blk: {
             const child = try allocator.create(abi.AbiScalar);
             child.* = .{ .@"opaque" = try lowerOpaque(allocator, prefix, value.ref) };
-            break :blk .{ .pointer = .{ .child = child, .is_const = value.@"const" } };
+            break :blk .{ .pointer = .{ .child = child, .is_const = value.@"const", .is_optional = value.nullable } };
         },
         .value_struct => |value| .{ .value_struct = .{
             .name = value.ref,
