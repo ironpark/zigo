@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-01T23:04:33Z"
 depends_on:
 - slice-ownership-and-struct-elements
 description: Document and propagate cgo link flags (pkg-config, lib paths); out-only deep-copied value struct trees; struct append ABI policy
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-01T21:31:55Z"
 ---
 > NEXT: Document link-flag propagation and emit `#cgo pkg-config:` and `-L` lines from the target module. ([Phase 0](phases/00-link-flag-propagation.md))
@@ -10,7 +11,7 @@ registered_at: "2026-09-01T21:31:55Z"
 # Phases
 
 - [x] [Phase 00: Link flag rules and pkg-config propagation](phases/00-link-flag-propagation.md)
-- [ ] [Phase 01: Out-only deep-copied value struct trees](phases/01-out-only-struct-trees.md)
+- [x] [Phase 01: Out-only deep-copied value struct trees](phases/01-out-only-struct-trees.md)
 - [x] [Phase 02: Value struct append ABI policy](phases/02-struct-append-policy.md)
 
 # Shared Verification
