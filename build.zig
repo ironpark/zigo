@@ -1,6 +1,7 @@
 const std = @import("std");
 const build_options = @import("src/build_options.zig");
 const naming = @import("src/gen/naming.zig");
+const go_walk = @import("src/gen/go_walk.zig");
 
 pub const CgoFlags = struct {
     cflags: []const []const u8 = &.{},
@@ -898,7 +899,7 @@ const PublishGeneratedGo = struct {
         var published: std.ArrayList([]const u8) = .empty;
         defer published.deinit(b.allocator);
         var any_miss = false;
-        var walker = try generated_dir.walk(b.allocator);
+        var walker = try go_walk.walk(generated_dir, b.allocator);
         defer walker.deinit();
         while (try walker.next(io)) |entry| {
             if (entry.kind != .file or !std.mem.endsWith(u8, entry.path, ".go")) continue;
@@ -915,7 +916,7 @@ const PublishGeneratedGo = struct {
             any_miss = any_miss or status == .stale;
         }
 
-        var stale_walker = try go_dir.walk(b.allocator);
+        var stale_walker = try go_walk.walk(go_dir, b.allocator);
         defer stale_walker.deinit();
         while (try stale_walker.next(io)) |entry| {
             if (entry.kind != .file or !std.mem.endsWith(u8, entry.path, ".go")) continue;

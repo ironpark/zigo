@@ -1,4 +1,5 @@
 const std = @import("std");
+const go_walk = @import("go_walk.zig");
 
 pub const DifferenceKind = enum { missing, content, obsolete };
 pub const Difference = struct { kind: DifferenceKind, path: []const u8 };
@@ -29,7 +30,7 @@ pub const Result = struct {
 pub fn compare(allocator: std.mem.Allocator, io: std.Io, generated: std.Io.Dir, go_dir: std.Io.Dir) !Result {
     var result: Result = .{};
     errdefer result.deinit(allocator);
-    var walker = try generated.walk(allocator);
+    var walker = try go_walk.walk(generated, allocator);
     defer walker.deinit();
     while (try walker.next(io)) |entry| {
         if (entry.kind != .file or !std.mem.endsWith(u8, entry.path, ".go")) continue;
@@ -46,7 +47,7 @@ pub fn compare(allocator: std.mem.Allocator, io: std.Io, generated: std.Io.Dir, 
         if (!std.mem.eql(u8, expected, actual)) try append(allocator, &result, .content, entry.path);
     }
 
-    var source_walker = try go_dir.walk(allocator);
+    var source_walker = try go_walk.walk(go_dir, allocator);
     defer source_walker.deinit();
     while (try source_walker.next(io)) |entry| {
         if (entry.kind != .file or !std.mem.endsWith(u8, entry.path, ".go")) continue;
@@ -126,4 +127,29 @@ fn expectChangedSource(allocator: std.mem.Allocator, generated: std.Io.Dir, sour
     var result = try compare(allocator, std.testing.io, generated, source);
     defer result.deinit(allocator);
     try std.testing.expectEqual(@as(usize, 1), result.differences.items.len);
+}
+
+test {
+    _ = go_walk;
+}
+
+test "source check ignores generated files inside build caches" {
+    var generated = std.testing.tmpDir(.{ .iterate = true });
+    defer generated.cleanup();
+    var source = std.testing.tmpDir(.{ .iterate = true });
+    defer source.cleanup();
+    try source.dir.createDirPath(std.testing.io, ".zig-cache/o/deadbeef");
+    try source.dir.createDirPath(std.testing.io, "zig-out/gen");
+    try source.dir.writeFile(std.testing.io, .{
+        .sub_path = ".zig-cache/o/deadbeef/cached_gen.go",
+        .data = generated_marker ++ "\npackage cached\n",
+    });
+    try source.dir.writeFile(std.testing.io, .{
+        .sub_path = "zig-out/gen/installed_gen.go",
+        .data = generated_marker ++ "\npackage installed\n",
+    });
+
+    var result = try compare(std.testing.allocator, std.testing.io, generated.dir, source.dir);
+    defer result.deinit(std.testing.allocator);
+    try std.testing.expect(result.matches());
 }
