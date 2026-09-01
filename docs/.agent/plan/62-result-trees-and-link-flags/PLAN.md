@@ -11,7 +11,7 @@ registered_at: "2026-09-01T21:31:55Z"
 
 - [x] [Phase 00: Link flag rules and pkg-config propagation](phases/00-link-flag-propagation.md)
 - [ ] [Phase 01: Out-only deep-copied value struct trees](phases/01-out-only-struct-trees.md)
-- [ ] [Phase 02: Value struct append ABI policy](phases/02-struct-append-policy.md)
+- [x] [Phase 02: Value struct append ABI policy](phases/02-struct-append-policy.md)
 
 # Shared Verification
 

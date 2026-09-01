@@ -1,7 +1,7 @@
 ---
 entry_condition: Plan 61 phases 1 and 4 are done (struct slice elements and slice release exist) and the maintainer confirms the out-only axis over the opaque-accessor alternative.
 perf_phase: false
-status: conditional
+status: in-progress
 ---
 > DONE-WHEN: A three-level out-only tree deep-copies in one call on cgo and purego; in-
 > NEXT: none

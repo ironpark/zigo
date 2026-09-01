@@ -71,6 +71,11 @@
   aggregate, optional, error union, callback 또는 pointer 원소 slice payload는 지원하지 않는다.
 - NUL 종료 문자열은 `[*:0]const u8`만 지원하며 Go에서는 `string`이 된다. mutable 또는
   0이 아닌 sentinel pointer와 그 밖의 many-pointer는 reflection 단계에서 거부된다.
+- 포인터를 품은 결과 트리(문자열 필드, 배열 필드, 중첩 struct 포인터를 가진 struct)는
+  값으로 노출하지 않는다. 필드가 재귀적으로 ABI 안전해야 하므로(`ZIGO012`) 이런 결과는
+  opaque handle로 다시 설계해야 하고, 각 필드 접근이 handle의 `sync.RWMutex` 아래에서
+  native 호출 한 번씩이 된다. 필드가 많은 트리라면 호출 수가 필드 수에 비례하므로, 필요한
+  값만 스칼라로 평탄화해 한 번에 돌려주는 함수를 따로 두는 편이 대개 낫다.
 - `extern struct`에 필드를 추가하는 것은 `abi-check`에서 항상 breaking이다. aggregate는
   포인터로만 건너가고 크기가 따라가지 않으므로, 버퍼를 잡은 쪽과 쓰는 쪽의 필드 수가
   다르면 경계를 넘어 읽거나 쓴다. `.cgo_static`은 native와 Go가 같이 링크되어 실제로는

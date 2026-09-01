@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-01T23:03:19Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Docs explain the hazard; either the option exists with tests and a build-time
 > NEXT: none
