@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-01T12:03:54Z"
 description: "Make the purego callback-invoke hot path lock-free: sync.Map registry matching cgo.Handle semantics, plus drop the redundant sync.Once in Close"
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-01T11:56:49Z"
 ---
 > NEXT: Replace the purego callback registry's global mutex with a sync.Map lookup. ([Phase 0](phases/00-lockfree-registry.md))
@@ -8,7 +9,7 @@ registered_at: "2026-09-01T11:56:49Z"
 # Phases
 
 - [x] [Phase 00: Lock-free registry lookup](phases/00-lockfree-registry.md)
-- [ ] [Phase 01: Drop the redundant Close once and regenerate](phases/01-drop-close-once.md)
+- [x] [Phase 01: Drop the redundant Close once and regenerate](phases/01-drop-close-once.md)
 
 # Shared Verification
 
