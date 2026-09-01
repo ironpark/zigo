@@ -34,3 +34,18 @@ status: in-progress
   direction use is a diagnostic; docs and goldens updated; committed. If the
   maintainer declines, `limitations.md` carries the cost note and the phase is
   marked done with that outcome recorded here.
+
+## Outcome
+
+The maintainer declined the out-only axis, so this phase closes through its
+documented fallback rather than the implementation above. `limitations.md`
+carries the cost note: a pointer-bearing result tree (text fields, array fields,
+nested struct pointers) is not exposed as a value. `ZIGO012` still requires every
+field to be recursively ABI safe, so such a result must be redesigned as an
+opaque handle, and each field access becomes one native call under the handle's
+`sync.RWMutex`. The note also records the practical consequence — call count
+grows with field count — and points at flattening the wanted values into one
+scalar-returning function instead.
+
+No code changed for this phase. If the out-only axis is revisited, the planned
+work above is still the intended design.
