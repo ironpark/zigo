@@ -168,6 +168,15 @@ pub const EventQueue = struct {
         return &.{ 0.25, 1.5, 3.75 };
     }
 
+    /// sampleValuesChecked returns the same samples as `sampleValues`, but an
+    /// empty queue has nothing to sample and fails instead. The generated
+    /// binding must report that error without reading the slice output
+    /// parameters the shim never wrote.
+    pub fn sampleValuesChecked(self: *EventQueue) ProcessError![]const f32 {
+        if (self.items.items.len == 0) return error.Empty;
+        return &.{ 0.25, 1.5, 3.75 };
+    }
+
     /// Hands the caller a freshly allocated buffer. Ownership moves with the
     /// return value, so the generated binding must copy it and then call
     /// `freeSamples` before handing the slice to Go.

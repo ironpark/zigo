@@ -161,6 +161,29 @@ func (e *EventQueue) SampleValues() ([]float32, error) {
 	return raw.EventQueueSampleValues(ptr), nil
 }
 
+// SampleValuesChecked returns the same samples as `sampleValues`, but an
+// empty queue has nothing to sample and fails instead. The generated
+// binding must report that error without reading the slice output
+// parameters the shim never wrote.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+func (e *EventQueue) SampleValuesChecked() ([]float32, error) {
+	if e != nil {
+		e.mu.RLock()
+		defer e.mu.RUnlock()
+	}
+	defer runtime.KeepAlive(e)
+	ptr, err := zigoCheckedPointer("EventQueue.SampleValuesChecked receiver", e)
+	if err != nil {
+		return nil, err
+	}
+	result, code := raw.EventQueueSampleValuesChecked(ptr)
+	if code != 0 {
+		return nil, errorForCode("EventQueue.SampleValuesChecked", code)
+	}
+	return result, nil
+}
+
 // EchoCString sentinel byte pointers use the C string lowering and surface as Go
 // strings without a separate length parameter.
 func EchoCString(text string) string {

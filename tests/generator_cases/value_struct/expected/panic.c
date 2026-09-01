@@ -109,3 +109,15 @@ ZIGO_EXPORT void zg_points(const zg_point * * out_result_ptr, size_t * out_resul
 zg_points_impl(out_result_ptr, out_result_len);
     zg_panic_active = 0;
 }
+
+int32_t zg_points_checked_impl(const zg_point * * out_result_ptr, size_t * out_result_len);
+ZIGO_EXPORT int32_t zg_points_checked(const zg_point * * out_result_ptr, size_t * out_result_len) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return -2;
+    }
+    int32_t result = zg_points_checked_impl(out_result_ptr, out_result_len);
+    zg_panic_active = 0;
+    return result;
+}

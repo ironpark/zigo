@@ -204,9 +204,17 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
                 try writeTargetCall(allocator, writer, program, function);
                 try writer.writeAll(" catch |err| return switch (err) {");
                 try writeErrorSwitch(writer, function);
-                try writer.writeAll("\n    };\n    out_result.* = ");
-                try writeZigReturnConversion(writer, error_union.payload.*, "result");
-                try writer.writeAll(";\n");
+                try writer.writeAll("\n    };\n");
+                // The out parameters stay untouched on the error path: the
+                // early `return` above leaves before either assignment, so a
+                // caller that checks the code first never reads them.
+                if (error_union.payload.* == .slice) {
+                    try writer.writeAll("    out_result_ptr.* = result.ptr;\n    out_result_len.* = result.len;\n");
+                } else {
+                    try writer.writeAll("    out_result.* = ");
+                    try writeZigReturnConversion(writer, error_union.payload.*, "result");
+                    try writer.writeAll(";\n");
+                }
             }
             try writeSliceWrittenAssignments(writer, function);
             try writer.writeAll("    return 0;\n}\n");
@@ -1033,13 +1041,13 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 go_names[parameter_index],
             });
         }
-        if (function.origin.@"return" == .slice and !isCStringReturn(function.origin.*)) {
+        if (sliceReturnElement(function.origin.*)) |element| {
             try writer.writeAll("\tvar outResultPtr *C.");
-            if (function.origin.@"return".slice.element.* == .value_struct) {
-                const record = structRecord(program, function.origin.@"return".slice.element.*.value_struct.ref);
+            if (element == .value_struct) {
+                const record = structRecord(program, element.value_struct.ref);
                 try writer.writeAll(record.c_name);
             } else {
-                try writeCgoType(writer, semanticScalar(program, function.origin.@"return".slice.element.*));
+                try writeCgoType(writer, semanticScalar(program, element));
             }
             try writer.writeAll("\n\tvar outResultLen C.size_t\n");
         }
@@ -1102,7 +1110,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         if (function.ret_struct) |record| {
             try writer.print("\tvar outResult C.{s}\n", .{record.c_name});
         }
-        if (returns_error and error_payload != .void) {
+        if (returns_error and error_payload != .void and error_payload != .slice) {
             if (error_payload == .opaque_ptr) {
                 try writer.writeAll("\tvar outResult unsafe.Pointer\n");
             } else if (function.payload_struct) |record| {
@@ -1116,7 +1124,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         try writer.writeByte('\t');
         if (returns_error) {
             try writer.writeAll("code := int32(");
-        } else if ((function.origin.@"return" == .slice and !isCStringReturn(function.origin.*)) or function.ret_struct != null) {
+        } else if (sliceReturnElement(function.origin.*) != null or function.ret_struct != null) {
             // The out parameters are converted after the C call.
         } else if (isCStringReturn(function.origin.*)) {
             try writer.writeAll("return C.GoString(");
@@ -1164,8 +1172,10 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         if (!returns_error and function.origin.@"return" != .void and
             function.origin.@"return" != .slice and function.ret_struct == null) try writer.writeByte(')');
         try writer.writeByte('\n');
-        if (function.origin.@"return" == .slice and !isCStringReturn(function.origin.*)) {
-            try writeCgoSliceReturn(allocator, writer, program, function.origin.@"return".slice.element.*, "outResultPtr", "outResultLen", function.release_symbol, if (releaseFunction(program, function)) |release| release.origin.receiver != null else false);
+        if (!returns_error) {
+            if (sliceReturnElement(function.origin.*)) |element| {
+                try writeCgoSliceReturn(allocator, writer, program, element, "outResultPtr", "outResultLen", function.release_symbol, if (releaseFunction(program, function)) |release| release.origin.receiver != null else false, "");
+            }
         }
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (parameter.type != .slice or parameter.direction != .out or parameter.type.slice.element.* != .value_struct) continue;
@@ -1189,6 +1199,12 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         if (returns_error) {
             if (error_payload == .void) {
                 try writer.writeAll("\treturn code\n");
+            } else if (sliceReturnElement(function.origin.*)) |element| {
+                // The failure path returns before the copy, so the out
+                // parameters the shim never wrote are never read -- and a
+                // declared release runs only after a successful call.
+                try writer.writeAll("\tif code != 0 {\n\t\treturn nil, code\n\t}\n");
+                try writeCgoSliceReturn(allocator, writer, program, element, "outResultPtr", "outResultLen", function.release_symbol, if (releaseFunction(program, function)) |release| release.origin.receiver != null else false, ", code");
             } else if (function.payload_struct) |record| {
                 try writer.writeAll("\treturn ");
                 try writeCgoStructRead(allocator, writer, program, record.*, "\t", "outResult");
@@ -1248,6 +1264,9 @@ fn writeCgoSliceReturn(
     length_name: []const u8,
     release_symbol: ?[]const u8,
     release_has_receiver: bool,
+    /// Appended to every `return` this writes, so a fallible slice return can
+    /// hand the error code back alongside the copied payload.
+    suffix: []const u8,
 ) !void {
     if (release_symbol) |symbol| {
         const release_receiver = if (release_has_receiver) "self, " else "";
@@ -1257,27 +1276,27 @@ fn writeCgoSliceReturn(
         try writeRawGoType(writer, program, element);
         try writer.print("\n\tif {s} != 0 {{\n", .{length_name});
         try writeCgoSliceCopyInto(allocator, writer, program, element, pointer_name, length_name, "\t\t");
-        try writer.print("\t}}\n\tC.{s}({s}{s}, {s})\n\treturn result\n", .{ symbol, release_receiver, pointer_name, length_name });
+        try writer.print("\t}}\n\tC.{s}({s}{s}, {s})\n\treturn result{s}\n", .{ symbol, release_receiver, pointer_name, length_name, suffix });
         return;
     }
     if (element == .value_struct) {
         const record = structRecord(program, element.value_struct.ref);
-        try writer.print("\tif {s} == 0 {{ return nil }}\n\tcResult := unsafe.Slice((*C.{s})(unsafe.Pointer({s})), int({s}))\n\tresult := make([]", .{ length_name, record.c_name, pointer_name, length_name });
+        try writer.print("\tif {s} == 0 {{ return nil{s} }}\n\tcResult := unsafe.Slice((*C.{s})(unsafe.Pointer({s})), int({s}))\n\tresult := make([]", .{ length_name, suffix, record.c_name, pointer_name, length_name });
         try writeRawGoType(writer, program, element);
         try writer.print(", int({s}))\n\tfor i := range result {{\n\t\tresult[i] = ", .{length_name});
         try writeCgoStructRead(allocator, writer, program, record, "\t\t", "cResult[i]");
-        try writer.writeAll("\n\t}\n\treturn result\n");
+        try writer.print("\n\t}}\n\treturn result{s}\n", .{suffix});
         return;
     }
     if (isByteType(element)) {
-        try writer.print("\treturn C.GoBytes(unsafe.Pointer({s}), C.int({s}))\n", .{ pointer_name, length_name });
+        try writer.print("\treturn C.GoBytes(unsafe.Pointer({s}), C.int({s})){s}\n", .{ pointer_name, length_name, suffix });
         return;
     }
-    try writer.print("\tif {s} == 0 {{ return nil }}\n\tresult := make([]", .{length_name});
+    try writer.print("\tif {s} == 0 {{ return nil{s} }}\n\tresult := make([]", .{ length_name, suffix });
     try writeRawGoType(writer, program, element);
     try writer.print(", int({s}))\n\tcopy(result, unsafe.Slice((*", .{length_name});
     try writeRawGoType(writer, program, element);
-    try writer.print(")(unsafe.Pointer({s})), int({s})))\n\treturn result\n", .{ pointer_name, length_name });
+    try writer.print(")(unsafe.Pointer({s})), int({s})))\n\treturn result{s}\n", .{ pointer_name, length_name, suffix });
 }
 
 /// The lowered release function for a caller-owned slice return, if any. The
@@ -1863,7 +1882,7 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         try writer.print("\tvar {s}Ptr unsafe.Pointer\n\tif len({s}) != 0 {{ {s}Ptr = unsafe.Pointer(&{s}[0]) }}\n", .{ slice_name, slice_name, slice_name, slice_name });
         if (parameter.direction == .out) try writer.print("\tvar {s}Written uintptr\n", .{slice_name});
     };
-    if (function.origin.@"return" == .slice and !isCStringReturn(function.origin.*)) try writer.writeAll("\tvar outResultPtr unsafe.Pointer\n\tvar outResultLen uintptr\n");
+    if (sliceReturnElement(function.origin.*) != null) try writer.writeAll("\tvar outResultPtr unsafe.Pointer\n\tvar outResultLen uintptr\n");
     if (function.ret_struct != null) {
         try writer.writeAll("\tvar outResult ");
         try writeRawGoType(writer, program, function.origin.@"return");
@@ -1871,7 +1890,7 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
     }
     const returns_error = function.origin.@"return" == .error_union;
     const error_payload = if (returns_error) function.origin.@"return".error_union.payload.* else semantic.TypeNode{ .void = {} };
-    if (returns_error and error_payload != .void) {
+    if (returns_error and error_payload != .void and error_payload != .slice) {
         try writer.writeAll("\tvar outResult ");
         if (error_payload == .value_struct)
             try writeRawGoType(writer, program, error_payload)
@@ -1884,7 +1903,7 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
     try writer.writeByte('\t');
     if (returns_error)
         try writer.writeAll("code := ")
-    else if ((function.origin.@"return" != .void and function.origin.@"return" != .slice and function.ret_struct == null) or isCStringReturn(function.origin.*))
+    else if ((function.origin.@"return" != .void and sliceReturnElement(function.origin.*) == null and function.ret_struct == null) or isCStringReturn(function.origin.*))
         try writer.writeAll("result := ");
     try writer.print("bindings().fn{s}(", .{go_name});
     for (function.params, 0..) |parameter, index| {
@@ -1934,34 +1953,17 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
     }
     if (isCStringReturn(function.origin.*)) {
         try writer.writeAll("\treturn zigoCStringString(result)\n");
-    } else if (function.origin.@"return" == .slice) {
-        const element = function.origin.@"return".slice.element.*;
-        if (releaseFunction(program, function)) |release| {
-            // Copy first, then hand the native buffer straight back, so the
-            // returned slice is Go memory before the library frees anything.
-            const release_name = try rawGoNameAlloc(allocator, release.origin.*);
-            defer allocator.free(release_name);
-            try writer.writeAll("\tvar result []");
-            try writeRawGoType(writer, program, element);
-            try writer.writeAll("\n\tif outResultLen != 0 {\n\t\tresult = make([]");
-            try writeRawGoType(writer, program, element);
-            try writer.writeAll(", int(outResultLen))\n\t\tcopy(result, unsafe.Slice((*");
-            try writeRawGoType(writer, program, element);
-            try writer.writeAll(")(outResultPtr), int(outResultLen)))\n\t}\n");
-            try writer.print("\tbindings().fn{s}({s}outResultPtr, outResultLen)\n\treturn result\n", .{
-                release_name,
-                if (release.origin.receiver != null) "self, " else "",
-            });
-        } else {
-            try writer.writeAll("\tif outResultLen == 0 { return nil }\n\tresult := make([]");
-            try writeRawGoType(writer, program, element);
-            try writer.writeAll(", int(outResultLen))\n\tcopy(result, unsafe.Slice((*");
-            try writeRawGoType(writer, program, element);
-            try writer.writeAll(")(outResultPtr), int(outResultLen)))\n\treturn result\n");
-        }
+    } else if (!returns_error and sliceReturnElement(function.origin.*) != null) {
+        try writePuregoSliceReturn(allocator, writer, program, function, sliceReturnElement(function.origin.*).?, "");
     } else if (returns_error) {
         if (error_payload == .void) {
             try writer.writeAll("\treturn code\n");
+        } else if (sliceReturnElement(function.origin.*)) |element| {
+            // The failure path returns before the copy, so the out parameters
+            // the shim never wrote are never read -- and a declared release
+            // runs only after a successful call.
+            try writer.writeAll("\tif code != 0 {\n\t\treturn nil, code\n\t}\n");
+            try writePuregoSliceReturn(allocator, writer, program, function, element, ", code");
         } else if (puregoPayloadNeedsConversion(error_payload)) {
             try writer.writeAll("\treturn ");
             try writeRawResultConversion(writer, program, error_payload, "outResult", options);
@@ -1977,6 +1979,43 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         try writer.writeByte('\n');
     }
     try writer.writeAll("}\n");
+}
+
+/// The purego mirror of `writeCgoSliceReturn`: the native buffer is copied into
+/// Go memory before a declared release hands it back to the library. `suffix` is
+/// appended to every `return`, so a fallible slice return also reports its code.
+fn writePuregoSliceReturn(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    function: abi.AbiFn,
+    element: semantic.TypeNode,
+    suffix: []const u8,
+) !void {
+    if (releaseFunction(program, function)) |release| {
+        // Copy first, then hand the native buffer straight back, so the
+        // returned slice is Go memory before the library frees anything.
+        const release_name = try rawGoNameAlloc(allocator, release.origin.*);
+        defer allocator.free(release_name);
+        try writer.writeAll("\tvar result []");
+        try writeRawGoType(writer, program, element);
+        try writer.writeAll("\n\tif outResultLen != 0 {\n\t\tresult = make([]");
+        try writeRawGoType(writer, program, element);
+        try writer.writeAll(", int(outResultLen))\n\t\tcopy(result, unsafe.Slice((*");
+        try writeRawGoType(writer, program, element);
+        try writer.writeAll(")(outResultPtr), int(outResultLen)))\n\t}\n");
+        try writer.print("\tbindings().fn{s}({s}outResultPtr, outResultLen)\n\treturn result{s}\n", .{
+            release_name,
+            if (release.origin.receiver != null) "self, " else "",
+            suffix,
+        });
+        return;
+    }
+    try writer.print("\tif outResultLen == 0 {{ return nil{s} }}\n\tresult := make([]", .{suffix});
+    try writeRawGoType(writer, program, element);
+    try writer.writeAll(", int(outResultLen))\n\tcopy(result, unsafe.Slice((*");
+    try writeRawGoType(writer, program, element);
+    try writer.print(")(outResultPtr), int(outResultLen)))\n\treturn result{s}\n", .{suffix});
 }
 
 fn puregoPayloadNeedsConversion(node: semantic.TypeNode) bool {
@@ -2486,7 +2525,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             }
             try writer.writeAll("\t\treturn ");
             if (error_payload != .void) {
-                try writeGoZeroValue(writer, error_payload);
+                try writePublicZeroValue(writer, function.origin.*, error_payload);
                 try writer.writeAll(", ");
             }
             try writer.print("errorForCode(\"{s}\", code)\n\t}}\n", .{operation});
@@ -2501,6 +2540,8 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                     try writeOwnedHandleResult(allocator, writer, program, function.origin.*, type_name, "result");
                 } else if (error_payload == .opaque_ptr and function.origin.ownership == .borrowed) {
                     try writeBorrowedResult(allocator, writer, function.origin.*, "result");
+                } else if (isStringSlice(error_payload, function.origin.return_semantic)) {
+                    try writer.writeAll("string(result)");
                 } else {
                     try writePublicResultConversion(writer, error_payload, "result");
                 }
@@ -3969,6 +4010,24 @@ fn isStringSlice(node: semantic.TypeNode, hint: ?semantic.SemanticHint) bool {
 
 fn isCStringParameter(parameter: semantic.Parameter) bool {
     return isCStringSlice(parameter.type, parameter.semantic);
+}
+
+/// The element type a function hands back through `out_result_ptr` and
+/// `out_result_len`, or null when it does not return a slice that way. A
+/// C-string return travels as a plain pointer instead, so it is excluded here.
+fn sliceReturnElement(function: semantic.SemanticFn) ?semantic.TypeNode {
+    if (isCStringReturn(function)) return null;
+    return switch (function.@"return") {
+        .slice => |value| value.element.*,
+        // A sentinel byte pointer payload keeps its own lowering; it has no
+        // length to write into `out_result_len`.
+        .error_union => |value| if (value.payload.* == .slice and
+            !isCStringSlice(value.payload.*, function.return_semantic))
+            value.payload.slice.element.*
+        else
+            null,
+        else => null,
+    };
 }
 
 fn isCStringReturn(function: semantic.SemanticFn) bool {

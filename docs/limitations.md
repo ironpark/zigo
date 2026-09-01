@@ -84,7 +84,9 @@
 - slice 반환에 `.returns = .caller`를 쓰려면 `.release`로 같은 원소 타입의 slice 하나를
   받는 해제 함수를 지정해야 한다. 생성된 코드가 복사 후 즉시 해제하므로 Go에는 해제할
   것이 남지 않고, release 함수 자체는 공개 API에 나오지 않는다. 조건을 어기면 `ZIGO016`이다.
-  error union payload로 오는 slice(`![]T`)는 아직 지원하지 않는다.
+- slice 반환의 원소는 스칼라, 등록된 enum, `extern struct`만 가능하다. 포인터를 포함하는
+  원소는 `ZIGO005`로 거부한다. `![]T`도 같은 규칙을 따르며, `![]string`과 `!?[]T`는
+  지원하지 않는다.
 - string slice 입력은 `[]const []const u8`에 `.utf8_string`을 지정하거나 element를
   `[:0]const u8`/`[*:0]const u8`로 선언해야 하며 Go에서는 `[]string`이 된다. native에는
   NUL을 포함한 평탄화 바이트 버퍼와 길이 배열만 전달한다. `[]string` 반환, mutable outer

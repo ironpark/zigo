@@ -43,6 +43,8 @@ Zig 슬라이스는 C ABI 안전하지 않다. 항상 ptr+len 쌍으로 분해�
 |---|---|---|
 | `[]const T` (in) | `const T* p, size_t p_len` | `p []T` |
 | `[]T` (out) | `T* p, size_t p_len, size_t* p_written` | 반환값 `[]T` (호출자 버퍼 또는 신규 할당) |
+| `[]T` (반환) | `T** out_result_ptr, size_t* out_result_len` | 반환값 `[]T` |
+| `![]T` (반환) | `int32_t` 코드 + `T** out_result_ptr, size_t* out_result_len` | `([]T, error)` |
 | `[]const u8`, semantic 없음 | `const uint8_t*, size_t` | `[]byte` |
 | `[]const u8`, `semantic=utf8_string` | `const char*, size_t` | `string` |
 | `[*:0]const u8` | `const char*` | `string` |
@@ -53,6 +55,12 @@ Zig 슬라이스는 C ABI 안전하지 않다. 항상 ptr+len 쌍으로 분해�
 `ptr, len`으로 release 심볼을 호출한다(길이 0도 포함해 정확히 한 번). release 함수는
 raw 계층에만 내보내고 공개 API에서는 감춘다. abi-check는 release 심볼의 추가·삭제·변경을
 breaking으로 분류한다.
+
+error union의 slice payload(`![]T`)는 같은 이름의 out 파라미터 쌍을 쓰고 반환값만
+정수 코드로 바뀐다. shim은 성공했을 때에만 두 out에 기록하고, raw 계층은 코드가 0이 아니면
+out을 읽지 않고 `nil`과 코드를 돌려준다. 따라서 복사도 release 호출도 성공 경로에서만
+일어난다. 원소는 스칼라·enum·`extern struct`만 허용하며, `![]string`과 `!?[]T`는 지원하지
+않는다.
 
 slice 반환은 cgo와 purego 모두 호출 시점에 native `ptr + len`에서 새 Go slice로 복사한다.
 공개 API가 native 메모리를 alias하지 않으므로, 다음 호출·원본 객체 수명·`Close`와
@@ -118,6 +126,8 @@ func (c *Context) Process(input []float32, output []float32) (int, error)
 
 - 코드는 `errors.lock.json`의 안정 매핑. `@intFromError` 사용 금지.
 - payload가 `void`면 out 파라미터 없음.
+- payload가 slice면 out 파라미터는 §3의 `out_result_ptr`/`out_result_len` 쌍이다.
+  하나의 slice 반환 모양만 존재하므로 shim·헤더·양쪽 raw 계층이 코드를 공유한다.
 - 에러 시 payload out은 **기록하지 않는다** (Go 래퍼가 zero value 반환).
 - Go 에러 타입:
   ```go

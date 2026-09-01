@@ -99,6 +99,12 @@ error입니다.
 반환된 사본만 수정할 수 있습니다. tagged-union의 숫자 slice payload도 같은 복사 계약을
 따릅니다.
 
+실패할 수 있는 slice 반환(`![]T`)도 같은 방식으로 내려갑니다. C 시그니처는 정수 코드를
+반환하고 `T** out_result_ptr, size_t* out_result_len`을 그대로 받으며, 공개 Go는
+`([]T, error)`가 됩니다. 오류일 때 생성된 코드는 out 파라미터를 읽지 않고 `nil`과 오류를
+돌려주므로, native가 아무것도 기록하지 않은 상태를 그대로 안전하게 표현합니다. 원소는
+스칼라·enum·`extern struct`만 쓸 수 있고 `![]string`이나 `!?[]T`는 지원하지 않습니다.
+
 ## Sentinel C 문자열
 
 Zig API가 NUL 종료 포인터를 쓴다면 `[*:0]const u8`를 그대로 노출할 수 있습니다. 이 타입은
@@ -225,8 +231,7 @@ Go slice를 다시 넘기는 실수를 막기 위해서입니다.
 
 `.release`가 없거나, 이름이 가리키는 함수가 없거나, 그 함수의 매개변수가 반환 slice와
 맞지 않으면 `ZIGO016`으로 거부됩니다. slice가 아닌 반환에 `.release`를 붙여도 같은
-코드입니다. abi-check는 release 함수가 바뀌면 breaking으로 봅니다. `![]T`처럼 error
-union 안의 slice payload는 아직 지원하지 않습니다.
+코드입니다. abi-check는 release 함수가 바뀌면 breaking으로 봅니다.
 
 `?*T`/`?*const T` 매개변수는 nil을 받을 수 있는 handle 인자가 됩니다. Go에서 nil을
 넘기면 native 쪽에는 NULL이 전달되고 `*HandleError`는 발생하지 않습니다. 다만 optional은

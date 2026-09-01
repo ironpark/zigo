@@ -332,6 +332,30 @@
       "symbol": "zg_sampleValues"
     },
     {
+      "doc": "sampleValuesChecked returns the same samples as `sampleValues`, but an\nempty queue has nothing to sample and fails instead. The generated\nbinding must report that error without reading the slice output\nparameters the shim never wrote.",
+      "name": "sampleValuesChecked",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "EventQueue",
+      "return": {
+        "error_set": [
+          "Empty",
+          "InvalidLimit",
+          "ObserverPanicked"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": true,
+          "element": {
+            "bits": 32,
+            "kind": "float"
+          },
+          "kind": "slice"
+        }
+      },
+      "symbol": "zg_sampleValuesChecked"
+    },
+    {
       "doc": "Sentinel byte pointers use the C string lowering and surface as Go\nstrings without a separate length parameter.",
       "name": "echoCString",
       "namespace": "EventQueue",

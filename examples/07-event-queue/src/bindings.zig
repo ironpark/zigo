@@ -28,6 +28,7 @@ pub const bindings = zigo.define(.{
         .{ .path = "EventQueue.process", .params = .{"limit"} },
         .{ .path = "EventQueue.name", .semantic = .utf8_string },
         .{ .path = "EventQueue.sampleValues" },
+        .{ .path = "EventQueue.sampleValuesChecked" },
         .{ .path = "EventQueue.echoCString", .params = .{"text"} },
         .{ .path = "EventQueue.sampleCString" },
         .{

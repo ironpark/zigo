@@ -54,6 +54,7 @@ type nativeBindings struct {
 	fnEventQueueProcess                 func(unsafe.Pointer, uintptr, *uintptr) int32
 	fnEventQueueName                    func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
 	fnEventQueueSampleValues            func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
+	fnEventQueueSampleValuesChecked     func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
 	fnEventQueueEchoCString             func(unsafe.Pointer) unsafe.Pointer
 	fnEventQueueSampleCString           func() unsafe.Pointer
 	fnEventQueueExtractPaths            func(unsafe.Pointer, uintptr, unsafe.Pointer, uintptr) uintptr
@@ -299,6 +300,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_event_queue_sample_values", err)
 	}
+	addrEventQueueSampleValuesChecked, err := resolveSymbol(handle, "zg_event_queue_sample_values_checked")
+	if err != nil {
+		return fail("zg_event_queue_sample_values_checked", err)
+	}
 	addrEventQueueEchoCString, err := resolveSymbol(handle, "zg_event_queue_echo_c_string")
 	if err != nil {
 		return fail("zg_event_queue_echo_c_string", err)
@@ -396,6 +401,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnEventQueueProcess, addrEventQueueProcess)
 	purego.RegisterFunc(&next.fnEventQueueName, addrEventQueueName)
 	purego.RegisterFunc(&next.fnEventQueueSampleValues, addrEventQueueSampleValues)
+	purego.RegisterFunc(&next.fnEventQueueSampleValuesChecked, addrEventQueueSampleValuesChecked)
 	purego.RegisterFunc(&next.fnEventQueueEchoCString, addrEventQueueEchoCString)
 	purego.RegisterFunc(&next.fnEventQueueSampleCString, addrEventQueueSampleCString)
 	purego.RegisterFunc(&next.fnEventQueueExtractPaths, addrEventQueueExtractPaths)
@@ -533,6 +539,22 @@ func EventQueueSampleValues(self unsafe.Pointer) []float32 {
 	result := make([]float32, int(outResultLen))
 	copy(result, unsafe.Slice((*float32)(outResultPtr), int(outResultLen)))
 	return result
+}
+
+// EventQueueSampleValuesChecked calls the generated purego ABI wrapper for zg_event_queue_sample_values_checked.
+func EventQueueSampleValuesChecked(self unsafe.Pointer) ([]float32, int32) {
+	var outResultPtr unsafe.Pointer
+	var outResultLen uintptr
+	code := bindings().fnEventQueueSampleValuesChecked(self, &outResultPtr, &outResultLen)
+	if code != 0 {
+		return nil, code
+	}
+	if outResultLen == 0 {
+		return nil, code
+	}
+	result := make([]float32, int(outResultLen))
+	copy(result, unsafe.Slice((*float32)(outResultPtr), int(outResultLen)))
+	return result, code
 }
 
 // EventQueueEchoCString calls the generated purego ABI wrapper for zg_event_queue_echo_c_string.

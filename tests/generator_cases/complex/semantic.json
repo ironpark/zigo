@@ -319,6 +319,26 @@
       "symbol": "zg_sampleValues"
     },
     {
+      "name": "sampleValuesChecked",
+      "ownership": "borrowed",
+      "params": [],
+      "return": {
+        "error_set": [
+          "EmptyInput"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": true,
+          "element": {
+            "bits": 32,
+            "kind": "float"
+          },
+          "kind": "slice"
+        }
+      },
+      "symbol": "zg_sampleValuesChecked"
+    },
+    {
       "name": "takeSamples",
       "ownership": "caller",
       "params": [],

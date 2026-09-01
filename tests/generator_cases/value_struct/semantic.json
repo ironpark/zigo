@@ -44,6 +44,12 @@
       "params": [],
       "return": {"const": true, "element": {"kind": "value_struct", "ref": "Point"}, "kind": "slice"},
       "symbol": "zg_points"
+    },
+    {
+      "name": "pointsChecked",
+      "params": [],
+      "return": {"error_set": ["Invalid"], "kind": "error_union", "payload": {"const": true, "element": {"kind": "value_struct", "ref": "Point"}, "kind": "slice"}},
+      "symbol": "zg_points_checked"
     }
   ],
   "package": "config",

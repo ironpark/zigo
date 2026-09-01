@@ -130,6 +130,25 @@ func Points() []PointData {
 	}
 	return result
 }
+// PointsChecked calls the generated C ABI wrapper for zg_points_checked.
+func PointsChecked() ([]PointData, int32) {
+	var outResultPtr *C.zg_point
+	var outResultLen C.size_t
+	code := int32(C.zg_points_checked(&outResultPtr, &outResultLen))
+	if code != 0 {
+		return nil, code
+	}
+	if outResultLen == 0 { return nil, code }
+	cResult := unsafe.Slice((*C.zg_point)(unsafe.Pointer(outResultPtr)), int(outResultLen))
+	result := make([]PointData, int(outResultLen))
+	for i := range result {
+		result[i] = PointData{
+			X: int16(cResult[i].x),
+			Y: int16(cResult[i].y),
+		}
+	}
+	return result, code
+}
 
 // PointData mirrors the zg_point layout, padding included.
 type PointData struct {

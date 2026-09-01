@@ -102,6 +102,19 @@ func SampleValues() []float32 {
 	copy(result, unsafe.Slice((*float32)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
 	return result
 }
+// SampleValuesChecked calls the generated C ABI wrapper for zg_sample_values_checked.
+func SampleValuesChecked() ([]float32, int32) {
+	var outResultPtr *C.float
+	var outResultLen C.size_t
+	code := int32(C.zg_sample_values_checked(&outResultPtr, &outResultLen))
+	if code != 0 {
+		return nil, code
+	}
+	if outResultLen == 0 { return nil, code }
+	result := make([]float32, int(outResultLen))
+	copy(result, unsafe.Slice((*float32)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
+	return result, code
+}
 // TakeSamples calls the generated C ABI wrapper for zg_take_samples.
 func TakeSamples() []float32 {
 	var outResultPtr *C.float

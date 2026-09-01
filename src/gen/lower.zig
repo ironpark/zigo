@@ -160,27 +160,19 @@ pub fn semanticDocumentForBackend(
             } };
         } else switch (function.@"return") {
             .slice => |slice| result: {
-                const element = try allocator.create(abi.AbiScalar);
-                element.* = try lowerValue(allocator, document, prefix, slice.element.*);
-                const many = try allocator.create(abi.AbiScalar);
-                many.* = .{ .pointer = .{ .child = element, .is_const = slice.@"const", .is_many = true } };
-                try params.append(allocator, .{
-                    .name = "out_result_ptr",
-                    .role = .return_slice_pointer,
-                    .scalar = .{ .pointer = .{ .child = many, .is_const = false } },
-                });
-                const usize_child = try allocator.create(abi.AbiScalar);
-                usize_child.* = .usize;
-                try params.append(allocator, .{
-                    .name = "out_result_len",
-                    .role = .return_slice_length,
-                    .scalar = .{ .pointer = .{ .child = usize_child, .is_const = false } },
-                });
+                try appendSliceReturnOuts(allocator, document, prefix, &params, slice);
                 break :result abi.AbiScalar.void;
             },
             .error_union => |error_union| result: {
                 function_errors = try codesFor(allocator, error_union.error_set, error_codes);
-                if (error_union.payload.* != .void) {
+                // A slice payload takes the same pair of out parameters as a
+                // plain slice return, so every emitter downstream sees one
+                // slice-return shape whether or not the function can fail.
+                if (error_union.payload.* == .slice and
+                    !isCStringSlice(error_union.payload.*, function.return_semantic))
+                {
+                    try appendSliceReturnOuts(allocator, document, prefix, &params, error_union.payload.slice);
+                } else if (error_union.payload.* != .void) {
                     const payload = try allocator.create(abi.AbiScalar);
                     payload.* = try lowerValue(allocator, document, prefix, error_union.payload.*);
                     try params.append(allocator, .{
@@ -649,6 +641,34 @@ fn projectionReceiver(allocator: std.mem.Allocator, prefix: []const u8, owner: [
         .role = .receiver,
         .scalar = .{ .pointer = .{ .child = child, .is_const = true } },
     };
+}
+
+/// The `T** out_result_ptr, size_t* out_result_len` pair a slice return hands
+/// back. Plain `[]T` and the `![]T` payload share it so the C signature, the
+/// shim epilogue and both raw emitters only ever handle one slice-return shape.
+fn appendSliceReturnOuts(
+    allocator: std.mem.Allocator,
+    document: semantic.Semantic,
+    prefix: []const u8,
+    params: *std.ArrayList(abi.AbiParam),
+    slice: semantic.Slice,
+) !void {
+    const element = try allocator.create(abi.AbiScalar);
+    element.* = try lowerValue(allocator, document, prefix, slice.element.*);
+    const many = try allocator.create(abi.AbiScalar);
+    many.* = .{ .pointer = .{ .child = element, .is_const = slice.@"const", .is_many = true } };
+    try params.append(allocator, .{
+        .name = "out_result_ptr",
+        .role = .return_slice_pointer,
+        .scalar = .{ .pointer = .{ .child = many, .is_const = false } },
+    });
+    const usize_child = try allocator.create(abi.AbiScalar);
+    usize_child.* = .usize;
+    try params.append(allocator, .{
+        .name = "out_result_len",
+        .role = .return_slice_length,
+        .scalar = .{ .pointer = .{ .child = usize_child, .is_const = false } },
+    });
 }
 
 fn lowerValue(allocator: std.mem.Allocator, document: semantic.Semantic, prefix: []const u8, node: semantic.TypeNode) !abi.AbiScalar {
@@ -1271,4 +1291,38 @@ test "lowering mints every C type name the header needs" {
     try std.testing.expectEqualStrings("ZG_QUEUE_STATE_IDLE", state.constants[0].c_name);
     try std.testing.expectEqualStrings("ZG_QUEUE_STATE_IN_FLIGHT", state.constants[1].c_name);
     try std.testing.expectEqual(@as(i64, 1), state.constants[1].value);
+}
+
+test "an error-union slice payload lowers to the plain slice return out parameters" {
+    var float_node: semantic.TypeNode = .{ .float = .{ .bits = 32 } };
+    var slice_payload: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &float_node } };
+    const document: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "sampleValuesChecked",
+            .params = &.{},
+            .@"return" = .{ .error_union = .{ .error_set = &.{"Failed"}, .payload = &slice_payload } },
+            .symbol = "ignored",
+        }},
+        .package = "roles",
+        .prefix = "zg",
+        .types = &.{},
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try semanticDocument(arena.allocator(), document, "roles", "zg", &.{.{ .code = 7, .name = "Failed" }});
+
+    const checked = program.functions[0];
+    // The code travels in the return value; the payload uses the same names and
+    // roles a plain `[]T` return would, so no emitter needs a second shape.
+    try std.testing.expect(checked.ret == .signed_int);
+    try std.testing.expectEqual(@as(usize, 2), checked.params.len);
+    try std.testing.expectEqualStrings("out_result_ptr", checked.params[0].name);
+    try std.testing.expectEqual(abi.AbiParam.Role.return_slice_pointer, checked.params[0].role);
+    try std.testing.expect(checked.params[0].scalar.pointer.child.pointer.is_many);
+    try std.testing.expect(checked.params[0].scalar.pointer.child.pointer.is_const);
+    try std.testing.expectEqualStrings("out_result_len", checked.params[1].name);
+    try std.testing.expectEqual(abi.AbiParam.Role.return_slice_length, checked.params[1].role);
+    try std.testing.expect(checked.params[1].scalar.pointer.child.* == .usize);
+    try std.testing.expectEqual(@as(i32, 7), checked.errors[0].code);
 }

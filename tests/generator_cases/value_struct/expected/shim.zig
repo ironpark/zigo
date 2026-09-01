@@ -40,6 +40,14 @@ export fn zg_points_impl(out_result_ptr: *[*c]const target.Point, out_result_len
     out_result_ptr.* = result.ptr;
     out_result_len.* = result.len;
 }
+export fn zg_points_checked_impl(out_result_ptr: *[*c]const target.Point, out_result_len: *usize) i32 {
+    const result = target.pointsChecked() catch |err| return switch (err) {
+        error.Invalid => 1,
+    };
+    out_result_ptr.* = result.ptr;
+    out_result_len.* = result.len;
+    return 0;
+}
 
 /// Fails this compile when a layout zigo reflected on the build host does
 /// not describe the compilation target. The usual cause is a C type whose

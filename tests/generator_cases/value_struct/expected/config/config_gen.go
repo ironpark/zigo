@@ -51,3 +51,13 @@ func FillPoints(output []Point) (uint, error) {
 func Points() []Point {
 	return zigoPointSliceFromRaw(raw.Points())
 }
+
+// PointsChecked invokes the bound Zig pointsChecked operation.
+// Native failures are returned as generated error values.
+func PointsChecked() ([]Point, error) {
+	result, code := raw.PointsChecked()
+	if code != 0 {
+		return nil, errorForCode("PointsChecked", code)
+	}
+	return zigoPointSliceFromRaw(result), nil
+}

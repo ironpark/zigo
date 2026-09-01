@@ -75,6 +75,14 @@ export fn zg_sample_values_impl(out_result_ptr: *[*c]const f32, out_result_len: 
     out_result_ptr.* = result.ptr;
     out_result_len.* = result.len;
 }
+export fn zg_sample_values_checked_impl(out_result_ptr: *[*c]const f32, out_result_len: *usize) i32 {
+    const result = target.sampleValuesChecked() catch |err| return switch (err) {
+        error.EmptyInput => 3,
+    };
+    out_result_ptr.* = result.ptr;
+    out_result_len.* = result.len;
+    return 0;
+}
 export fn zg_take_samples_impl(out_result_ptr: *[*c]f32, out_result_len: *usize) void {
     const result = target.takeSamples();
     out_result_ptr.* = result.ptr;

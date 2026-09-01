@@ -135,6 +135,16 @@ func SampleValues() []float32 {
 	return raw.SampleValues()
 }
 
+// SampleValuesChecked invokes the bound Zig sampleValuesChecked operation.
+// Native failures are returned as generated error values.
+func SampleValuesChecked() ([]float32, error) {
+	result, code := raw.SampleValuesChecked()
+	if code != 0 {
+		return nil, errorForCode("SampleValuesChecked", code)
+	}
+	return result, nil
+}
+
 // TakeSamples invokes the bound Zig takeSamples operation.
 func TakeSamples() []float32 {
 	return raw.TakeSamples()

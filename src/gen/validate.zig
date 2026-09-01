@@ -137,6 +137,18 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .site = .{ .path = "semantic.json", .declaration = function.name },
             .hint = "declare the callback with `callconv(.c)`",
         };
+        // A returned slice crosses as `T*` plus a length, so its element has to
+        // be a value the C ABI can name. The error-union payload uses the same
+        // out parameters and answers to the same rule.
+        if (sliceReturnElement(function)) |element| {
+            if (containsPointer(element)) return .{
+                .severity = .@"error",
+                .code = "ZIGO005",
+                .message = "slice element type contains a pointer",
+                .site = .{ .path = "semantic.json", .declaration = function.name },
+                .hint = "return scalar, enum, or extern-struct elements instead of Go pointers",
+            };
+        }
         // A caller-owned slice is handed over through `release` instead of a
         // handle destructor, so it answers to ZIGO016 rather than ZIGO015.
         if (function.ownership == .caller and isReleasableSliceReturn(function)) {
@@ -466,6 +478,18 @@ fn releaseTargetIssue(document: semantic.Semantic, function: semantic.SemanticFn
     return missing;
 }
 
+/// The element of a slice a function returns through `out_result_ptr` and
+/// `out_result_len`, or null when it returns something else. `![]T` shares the
+/// shape with `[]T`; a sentinel byte pointer keeps its own C-string lowering.
+fn sliceReturnElement(function: semantic.SemanticFn) ?semantic.TypeNode {
+    if (function.return_semantic == .c_string) return null;
+    return switch (function.@"return") {
+        .slice => |value| value.element.*,
+        .error_union => |value| if (value.payload.* == .slice) value.payload.slice.element.* else null,
+        else => null,
+    };
+}
+
 fn typeNodeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
     if (std.meta.activeTag(lhs) != std.meta.activeTag(rhs)) return false;
     return switch (lhs) {
@@ -652,6 +676,7 @@ fn isByte(node: semantic.TypeNode) bool {
 test "implemented diagnostic snapshots are stable" {
     var void_node: semantic.TypeNode = .{ .void = {} };
     var pointer_node: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Thing" } };
+    var pointer_slice_node: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &pointer_node } };
     var callback_return: semantic.TypeNode = .{ .void = {} };
     var sample_element: semantic.TypeNode = .{ .int = .{ .bits = 16, .signed = true } };
     const config_element: semantic.TypeNode = .{ .value_struct = .{ .ref = "Config" } };
@@ -711,6 +736,28 @@ test "implemented diagnostic snapshots are stable" {
             .prefix = "zg",
             .zig_version = "0.16.0",
         }, .snapshot = "error[ZIGO005]: slice element type contains a pointer\n  --> semantic.json (pointers)\n  hint: pass scalar elements or opaque handle values instead of Go pointers\n" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "takePointers",
+                .params = &.{},
+                .@"return" = .{ .slice = .{ .@"const" = true, .element = &pointer_node } },
+                .symbol = "zg_take_pointers",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO005]: slice element type contains a pointer\n  --> semantic.json (takePointers)\n  hint: return scalar, enum, or extern-struct elements instead of Go pointers\n" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "takePointersChecked",
+                .params = &.{},
+                .@"return" = .{ .error_union = .{ .error_set = &.{"Invalid"}, .payload = &pointer_slice_node } },
+                .symbol = "zg_take_pointers_checked",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO005]: slice element type contains a pointer\n  --> semantic.json (takePointersChecked)\n  hint: return scalar, enum, or extern-struct elements instead of Go pointers\n" },
         .{ .document = .{
             .functions = &.{.{
                 .name = "consume",
