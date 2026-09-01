@@ -79,10 +79,9 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, writer: *std.Io.Writer, opt
     // supported Windows toolchain is `CC="zig cc"`, and a cross build adds
     // `-target <triple>` on top of that. Probe the program, report the whole
     // thing -- the arguments are the part a reader needs to see.
-    const cc_command = if (cc_result) |result| if (termSucceeded(result.term)) trimmedOrNull(result.stdout) else null else null;
-    const cc_program = if (cc_command) |command| firstWord(command) else null;
-    const cc_probe_result = if (cc_program) |name| std.process.run(allocator, io, .{
-        .argv = &.{ name, "--version" },
+    const cc_command = stdoutIfSucceeded(cc_result);
+    const cc_probe_result = if (cc_command) |command| std.process.run(allocator, io, .{
+        .argv = &.{ firstWord(command).?, "--version" },
         .stdout_limit = .limited(64 * 1024),
         .stderr_limit = .limited(64 * 1024),
     }) catch null else null;
@@ -107,8 +106,8 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, writer: *std.Io.Writer, opt
     defer if (go_mod_bytes) |bytes| allocator.free(bytes);
     var library_error_buffer: [256]u8 = undefined;
     return render(writer, .{
-        .go_version = if (go_version_result) |result| if (termSucceeded(result.term)) std.mem.trim(u8, result.stdout, " \r\n\t") else null else null,
-        .cgo_enabled = if (cgo_result) |result| if (termSucceeded(result.term)) std.mem.trim(u8, result.stdout, " \r\n\t") else null else null,
+        .go_version = stdoutIfSucceeded(go_version_result),
+        .cgo_enabled = stdoutIfSucceeded(cgo_result),
         .c_compiler = cc_command,
         .c_compiler_available = cc_probe_result != null,
         .gofmt_available = gofmt_result != null,
@@ -278,7 +277,7 @@ const GoVersion = struct {
 };
 
 fn parseGoVersion(output: []const u8) ?GoVersion {
-    var words = std.mem.tokenizeAny(u8, output, " \r\n\t");
+    var words = std.mem.tokenizeAny(u8, output, whitespace);
     while (words.next()) |word| {
         if (word.len < 4 or !std.mem.startsWith(u8, word, "go")) continue;
         const body = word[2..];
@@ -293,13 +292,19 @@ fn parseGoVersion(output: []const u8) ?GoVersion {
     return null;
 }
 
-fn trimmedOrNull(output: []const u8) ?[]const u8 {
-    const trimmed = std.mem.trim(u8, output, " \r\n\t");
+/// The trimmed stdout of a probe that ran and exited zero; null when the
+/// probe could not run, failed, or printed nothing.
+fn stdoutIfSucceeded(result: ?std.process.RunResult) ?[]const u8 {
+    const ran = result orelse return null;
+    if (!termSucceeded(ran.term)) return null;
+    const trimmed = std.mem.trim(u8, ran.stdout, whitespace);
     return if (trimmed.len == 0) null else trimmed;
 }
 
+const whitespace = " \r\n\t";
+
 fn firstWord(output: []const u8) ?[]const u8 {
-    var words = std.mem.tokenizeAny(u8, output, " \r\n\t");
+    var words = std.mem.tokenizeAny(u8, output, whitespace);
     return words.next();
 }
 
@@ -374,28 +379,23 @@ test "doctor distinguishes required failures from optional gofmt" {
 test "doctor reports a multi-word CC in full" {
     // `CC="zig cc"` is the supported Windows toolchain: the probe runs `zig`,
     // but a report that printed only `zig` would hide which driver is in use.
-    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
-    defer output.deinit();
-    try std.testing.expect(try render(&output.writer, .{
+    var probe: Probe = .{
         .go_version = "go version go1.26.0 windows/amd64",
         .cgo_enabled = "1",
         .c_compiler = "zig cc",
         .c_compiler_available = true,
         .gofmt_available = true,
         .native_target = true,
-    }, .cgo));
+    };
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try std.testing.expect(try render(&output.writer, probe, .cgo));
     try std.testing.expect(std.mem.indexOf(u8, output.written(), "PASS C compiler: zig cc\n") != null);
 
+    probe.c_compiler_available = false;
     var missing: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer missing.deinit();
-    try std.testing.expect(!try render(&missing.writer, .{
-        .go_version = "go version go1.26.0 windows/amd64",
-        .cgo_enabled = "1",
-        .c_compiler = "zig cc",
-        .c_compiler_available = false,
-        .gofmt_available = true,
-        .native_target = true,
-    }, .cgo));
+    try std.testing.expect(!try render(&missing.writer, probe, .cgo));
     // The blamed program is the one that was probed, not the whole line.
     try std.testing.expect(std.mem.indexOf(u8, missing.written(), "zig cc is configured by `go env CC` but zig is not executable") != null);
 }

@@ -584,6 +584,9 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
             @panic("`.link = .purego` supports macOS, Linux and Windows on amd64/arm64 only");
     }
     const artifact_package = naming.snakeAlloc(b.allocator, options.name) catch @panic("OOM");
+    // Names the native artifact; the generator spells the same stem into the
+    // `#cgo LDFLAGS` line, so both must come from this one string.
+    const library_stem = b.fmt("{s}_zigo", .{artifact_package});
     const go_package = if (options.go_package) |value| blk: {
         naming.validateGoPackageName(value) catch
             @panic("go_package must be a valid Go package identifier");
@@ -662,7 +665,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         "--raw-package-path",  raw_package.path,
         "--raw-package-name",  raw_package.name,
         "--backend",           @tagName(backend),
-        "--library-stem",      b.fmt("{s}_zigo", .{artifact_package}),
+        "--library-stem",      library_stem,
         "--link-mode",         @tagName(link_mode),
         "--go-package",        go_package,
     });
@@ -724,7 +727,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         .imports = &.{.{ .name = "zigo_target", .module = options.module }},
     });
     const lib = b.addLibrary(.{
-        .name = b.fmt("{s}_zigo", .{artifact_package}),
+        .name = library_stem,
         .linkage = switch (link_mode) {
             .static => .static,
             .dynamic => .dynamic,
@@ -742,7 +745,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         options.target.result.os.tag == .windows;
     const install_lib = b.addInstallArtifact(lib, .{
         .dest_sub_path = if (static_windows_archive)
-            b.fmt("lib{s}_zigo.a", .{artifact_package})
+            b.fmt("lib{s}.a", .{library_stem})
         else
             null,
     });
@@ -968,9 +971,7 @@ fn cgoRelativePath(b: *std.Build, from: []const u8, to: []const u8) []const u8 {
     // host, and the committed bytes must not depend on where generation ran --
     // a Windows-generated `-I${SRCDIR}\..\..\zig-out\include` both differs
     // from the committed file and fails to resolve the header.
-    for (relative) |*byte| {
-        if (byte.* == std.fs.path.sep_windows) byte.* = std.fs.path.sep_posix;
-    }
+    std.mem.replaceScalar(u8, relative, std.fs.path.sep_windows, std.fs.path.sep_posix);
     return b.fmt("${{SRCDIR}}/{s}", .{relative});
 }
 

@@ -88,11 +88,11 @@ jobs:
           CC: zig cc -target x86_64-windows-gnu
         run: |
           set -euo pipefail
-          mkdir -p cross-cgo/01-scalar cross-cgo/07-event-queue
-          (cd examples/01-scalar && zig build go-lib -Dtarget=x86_64-windows-gnu)
-          (cd examples/01-scalar/go && go test -c -o "$GITHUB_WORKSPACE/cross-cgo/01-scalar" ./...)
-          (cd examples/07-event-queue && zig build go-lib -Dtarget=x86_64-windows-gnu)
-          (cd examples/07-event-queue/go && go test -c -o "$GITHUB_WORKSPACE/cross-cgo/07-event-queue" ./...)
+          for example in 01-scalar 07-event-queue; do
+            mkdir -p "cross-cgo/$example"
+            (cd "examples/$example" && zig build go-lib -Dtarget=x86_64-windows-gnu)
+            (cd "examples/$example/go" && go test -c -o "$GITHUB_WORKSPACE/cross-cgo/$example" ./...)
+          done
           # The archive is linked into each executable, so the artifact needs
           # nothing else -- but a missing file here would silently ship an
           # empty artifact, so name what must exist.
