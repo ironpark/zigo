@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-01T17:07:35Z"
 depends_on:
 - "57-host-reflector#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: CI green on both runners with the artifact leg exercising the
 > NEXT: none
