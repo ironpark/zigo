@@ -10,12 +10,38 @@ import (
 // NewEventQueue creates a caller-owned EventQueue.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
-func NewEventQueue(name string, capacity uint, policy Policy, observer EventQueueObserver) (*EventQueue, error) {
-	observerHandle := newEventQueueObserverHandle(observer)
+func NewEventQueue(name string, capacity uint, policy Policy, observer EventQueueCreateObserver) (*EventQueue, error) {
+	observerHandle := newEventQueueCreateObserverHandle(observer)
 	result, code := raw.EventQueueCreate([]byte(name), capacity, uint32(policy), uintptr(observerHandle))
 	if code != 0 {
 		deleteCallbackHandle(observerHandle)
 		return nil, errorForCode("NewEventQueue", code)
+	}
+	return newEventQueue(result, []zigoCallbackHandle{observerHandle}), nil
+}
+
+// Clone clone copies the queued events, name and limits into an independent
+// queue that the caller owns and must close. The copy takes its own
+// observer instead of sharing the original's, so closing either queue
+// never strands the other's callback.
+// The caller must call Close on the returned handle.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+func (e *EventQueue) Clone(observer EventQueueCloneObserver) (*EventQueue, error) {
+	if e != nil {
+		e.mu.RLock()
+		defer e.mu.RUnlock()
+	}
+	defer runtime.KeepAlive(e)
+	ptr, err := zigoCheckedPointer("EventQueue.Clone receiver", e)
+	if err != nil {
+		return nil, err
+	}
+	observerHandle := newEventQueueCloneObserverHandle(observer)
+	result, code := raw.EventQueueClone(ptr, uintptr(observerHandle))
+	if code != 0 {
+		deleteCallbackHandle(observerHandle)
+		return nil, errorForCode("EventQueue.Clone", code)
 	}
 	return newEventQueue(result, []zigoCallbackHandle{observerHandle}), nil
 }

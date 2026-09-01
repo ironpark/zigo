@@ -73,6 +73,45 @@ func TestPuregoRetainedRollbackCloseAndPanic(t *testing.T) {
 	}
 }
 
+// Clone is not named like a constructor; only its `.returns = .caller`
+// metadata makes it hand over an owned handle that carries its own retained
+// observer.
+func TestPuregoCloneOwnsItsObserverHandle(t *testing.T) {
+	queue, err := NewEventQueue("source", 2, PolicyReject, func(uint64, int32) int32 { return 0 })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.Enqueue(1, 10); err != nil {
+		t.Fatal(err)
+	}
+
+	copied, err := queue.Clone(func(uint64, int32) int32 { return 0 })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := LiveQueues(); got != 2 {
+		t.Fatalf("LiveQueues() = %d, want 2", got)
+	}
+	if got := activeCallbackHandleCount(); got != 2 {
+		t.Fatalf("handles after Clone = %d, want 2", got)
+	}
+	if got, err := copied.Process(1); err != nil || got != 1 {
+		t.Fatalf("clone Process(1) = (%d, %v), want (1, nil)", got, err)
+	}
+
+	copied.Close()
+	if got := LiveQueues(); got != 1 {
+		t.Fatalf("LiveQueues() after clone Close = %d, want 1", got)
+	}
+	if got := activeCallbackHandleCount(); got != 1 {
+		t.Fatalf("handles after clone Close = %d, want 1", got)
+	}
+	queue.Close()
+	if got := activeCallbackHandleCount(); got != 0 {
+		t.Fatalf("handles after Close = %d, want 0", got)
+	}
+}
+
 func TestPuregoAutomaticCleanup(t *testing.T) {
 	func() {
 		queue, err := NewEventQueue("cleanup", 1, PolicyReject, func(uint64, int32) int32 { return 0 })

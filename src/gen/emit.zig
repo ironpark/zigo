@@ -1935,6 +1935,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
     for (program.functions) |function| {
         const constructor = constructorForInit(program, function.origin.*);
         if (constructor == null and constructorForDeinit(program, function.origin.*) != null) continue;
+        const owned_type = if (constructor) |value| value.type else ownedOpaqueReturn(program, function.origin.*);
         const go_names = try goParamNamesForAlloc(allocator, function.origin.params);
         defer naming.freeParamNames(allocator, go_names);
         const go_name = if (constructor) |value|
@@ -1951,7 +1952,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         // return value instead of a panic. Functions that do not touch a
         // handle keep their plain signature.
         const needs_handle_check = function.origin.receiver != null or hasOpaqueParameter(function.origin.*);
-        try writePublicFunctionDoc(writer, function.origin.*, go_name, constructor);
+        try writePublicFunctionDoc(writer, function.origin.*, go_name, owned_type);
         if (function.origin.receiver) |receiver| {
             const receiver_name = try receiverVariableAlloc(allocator, receiver);
             defer allocator.free(receiver_name);
@@ -1992,10 +1993,13 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         const returns_error = function.origin.@"return" == .error_union;
         const error_payload = if (returns_error) function.origin.@"return".error_union.payload.* else semantic.TypeNode{ .void = {} };
         const borrowed_direct = function.origin.@"return" == .opaque_ptr and function.origin.ownership == .borrowed;
+        // A caller-owned handle returned without an error union still has to be
+        // wrapped, so it is captured into `result` exactly like a borrowed one.
+        const owned_direct = !returns_error and owned_type != null;
         if (returns_error) {
             if (error_payload == .void) try writer.writeAll("code := ") else try writer.writeAll("result, code := ");
             try writeRawReferencePrefix(writer, options);
-        } else if (borrowed_direct) {
+        } else if (borrowed_direct or owned_direct) {
             try writer.writeAll("result := ");
             try writeRawReferencePrefix(writer, options);
         } else if (isUtf8Slice(function.origin.@"return", function.origin.return_semantic)) {
@@ -2057,11 +2061,14 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         if (!returns_error and function.origin.@"return" == .value_struct) try writer.writeByte(')');
         if (!returns_error and function.origin.@"return" == .bool) try writer.writeAll(" != 0");
         if (!returns_error and isUtf8Slice(function.origin.@"return", function.origin.return_semantic)) try writer.writeByte(')');
-        if (!returns_error and !borrowed_direct and needs_handle_check and function.origin.@"return" != .void) try writer.writeAll(", nil");
+        if (!returns_error and !borrowed_direct and !owned_direct and needs_handle_check and function.origin.@"return" != .void) try writer.writeAll(", nil");
         try writer.writeByte('\n');
-        if (borrowed_direct) {
+        if (borrowed_direct or owned_direct) {
             try writer.writeAll("\treturn ");
-            try writeBorrowedResult(allocator, writer, function.origin.*, "result");
+            if (owned_type) |type_name|
+                try writeOwnedHandleResult(allocator, writer, program, function.origin.*, type_name, "result")
+            else
+                try writeBorrowedResult(allocator, writer, function.origin.*, "result");
             if (needs_handle_check) try writer.writeAll(", nil");
             try writer.writeByte('\n');
         }
@@ -2081,21 +2088,8 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                 try writer.writeAll("\treturn nil\n");
             } else {
                 try writer.writeAll("\treturn ");
-                if (constructor) |value| {
-                    // Every constructed handle goes through its `new` helper,
-                    // which is what registers the cleanup.
-                    try writer.print("new{s}(result", .{value.type});
-                    if (typeOwnsCallbacks(program, value.type)) {
-                        try writer.writeAll(", ");
-                        if (hasRetainedCallback(function.origin.*)) {
-                            try writer.writeAll("[]zigoCallbackHandle{");
-                            try writeRetainedCallbackHandles(allocator, writer, function.origin.*);
-                            try writer.writeByte('}');
-                        } else {
-                            try writer.writeAll("nil");
-                        }
-                    }
-                    try writer.writeByte(')');
+                if (owned_type) |type_name| {
+                    try writeOwnedHandleResult(allocator, writer, program, function.origin.*, type_name, "result");
                 } else if (error_payload == .opaque_ptr and function.origin.ownership == .borrowed) {
                     try writeBorrowedResult(allocator, writer, function.origin.*, "result");
                 } else {
@@ -3484,17 +3478,17 @@ fn continuesSentence(line: []const u8) bool {
     return std.ascii.isLower(line[1]);
 }
 
-fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.SemanticFn, go_name: []const u8, constructor: ?semantic.Constructor) !void {
+fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.SemanticFn, go_name: []const u8, owned_type: ?[]const u8) !void {
     if (function.doc) |doc| {
         try writeGoDoc(writer, go_name, doc);
-    } else if (constructor) |value| {
-        try writer.print("\n// {s} creates a caller-owned {s}.\n", .{ go_name, value.type });
+    } else if (owned_type) |type_name| {
+        try writer.print("\n// {s} creates a caller-owned {s}.\n", .{ go_name, type_name });
     } else if (function.receiver) |receiver| {
         try writer.print("\n// {s} invokes the bound Zig {s}.{s} operation.\n", .{ go_name, receiver, function.name });
     } else {
         try writer.print("\n// {s} invokes the bound Zig {s} operation.\n", .{ go_name, function.name });
     }
-    if (constructor != null)
+    if (owned_type != null)
         try writer.writeAll("// The caller must call Close on the returned handle.\n");
     if (returnsBorrowedHandle(function))
         try writer.writeAll("// The returned reference remains valid only while its parent handle remains open.\n");
@@ -3741,8 +3735,11 @@ fn isAutoCleanupType(program: abi.Program, type_name: []const u8) bool {
 /// types that do not, and only the former need the bookkeeping.
 fn typeOwnsCallbacks(program: abi.Program, type_name: []const u8) bool {
     for (program.functions) |function| {
-        const constructor = constructorForInit(program, function.origin.*) orelse continue;
-        if (!std.mem.eql(u8, constructor.type, type_name)) continue;
+        const produced = if (constructorForInit(program, function.origin.*)) |constructor|
+            constructor.type
+        else
+            ownedOpaqueReturn(program, function.origin.*) orelse continue;
+        if (!std.mem.eql(u8, produced, type_name)) continue;
         if (hasRetainedCallback(function.origin.*)) return true;
     }
     return false;
@@ -3764,7 +3761,9 @@ fn publicNeedsRuntime(program: abi.Program) bool {
 
 fn publicNeedsCgo(program: abi.Program) bool {
     for (program.functions) |function| {
-        if (constructorForInit(program, function.origin.*) != null and hasRetainedCallback(function.origin.*)) return true;
+        const produces_handle = constructorForInit(program, function.origin.*) != null or
+            ownedOpaqueReturn(program, function.origin.*) != null;
+        if (produces_handle and hasRetainedCallback(function.origin.*)) return true;
     }
     return false;
 }
@@ -3926,6 +3925,46 @@ fn constructorForDeinit(program: abi.Program, function: semantic.SemanticFn) ?se
 fn constructorForType(program: abi.Program, type_name: []const u8) ?semantic.Constructor {
     for (program.constructors) |constructor| if (std.mem.eql(u8, constructor.type, type_name)) return constructor;
     return null;
+}
+
+/// The handle type a caller-owned return hands over.
+///
+/// Ownership metadata is authoritative, not the function name: `.returns =
+/// .caller` makes any function a factory, so a `clone` or `openChild` produces
+/// the same owned handle a named constructor does. Registration in
+/// `program.constructors` stays name-based because that list also names the
+/// deinit that `newX` schedules; this is the wider question of which returns
+/// need wrapping at all.
+fn ownedOpaqueReturn(program: abi.Program, function: semantic.SemanticFn) ?[]const u8 {
+    if (function.ownership != .caller) return null;
+    const node = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
+    if (node != .opaque_ptr) return null;
+    if (constructorForType(program, node.opaque_ptr.ref) == null) return null;
+    return node.opaque_ptr.ref;
+}
+
+/// Every constructed handle goes through its `new` helper, which is what
+/// registers the cleanup and adopts the callback handles the call retained.
+fn writeOwnedHandleResult(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    function: semantic.SemanticFn,
+    type_name: []const u8,
+    expression: []const u8,
+) !void {
+    try writer.print("new{s}({s}", .{ type_name, expression });
+    if (typeOwnsCallbacks(program, type_name)) {
+        try writer.writeAll(", ");
+        if (hasRetainedCallback(function)) {
+            try writer.writeAll("[]zigoCallbackHandle{");
+            try writeRetainedCallbackHandles(allocator, writer, function);
+            try writer.writeByte('}');
+        } else {
+            try writer.writeAll("nil");
+        }
+    }
+    try writer.writeByte(')');
 }
 
 fn rawNameForSemanticAlloc(allocator: std.mem.Allocator, program: abi.Program, name: []const u8, receiver: []const u8) !?[]u8 {

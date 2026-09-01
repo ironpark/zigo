@@ -17,6 +17,12 @@ pub const bindings = zigo.define(.{
                 .observer = .{ .retention = .retained },
             },
         },
+        .{
+            .path = "EventQueue.clone",
+            .params = .{ "observer", "userdata" },
+            .param_meta = .{ .observer = .{ .retention = .retained } },
+            .returns = .caller,
+        },
         .{ .path = "EventQueue.enqueue", .params = .{ "id", "value" } },
         .{ .path = "EventQueue.process", .params = .{"limit"} },
         .{ .path = "EventQueue.name", .semantic = .utf8_string },

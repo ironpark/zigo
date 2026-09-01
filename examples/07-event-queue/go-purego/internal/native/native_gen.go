@@ -48,6 +48,7 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError               func() unsafe.Pointer
 	fnEventQueueCreate      func(unsafe.Pointer, uintptr, uintptr, uint32, uintptr, uintptr, *unsafe.Pointer) int32
+	fnEventQueueClone       func(unsafe.Pointer, uintptr, uintptr, *unsafe.Pointer) int32
 	fnEventQueueEnqueue     func(unsafe.Pointer, uint64, int32) int32
 	fnEventQueueProcess     func(unsafe.Pointer, uintptr, *uintptr) int32
 	fnEventQueueName        func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
@@ -261,6 +262,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_event_queue_create_purego_v2", err)
 	}
+	addrEventQueueClone, err := resolveSymbol(handle, "zg_event_queue_clone_purego_v2")
+	if err != nil {
+		return fail("zg_event_queue_clone_purego_v2", err)
+	}
 	addrEventQueueEnqueue, err := resolveSymbol(handle, "zg_event_queue_enqueue")
 	if err != nil {
 		return fail("zg_event_queue_enqueue", err)
@@ -320,6 +325,7 @@ func loadCandidate(path string) error {
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.fnEventQueueCreate, addrEventQueueCreate)
+	purego.RegisterFunc(&next.fnEventQueueClone, addrEventQueueClone)
 	purego.RegisterFunc(&next.fnEventQueueEnqueue, addrEventQueueEnqueue)
 	purego.RegisterFunc(&next.fnEventQueueProcess, addrEventQueueProcess)
 	purego.RegisterFunc(&next.fnEventQueueName, addrEventQueueName)
@@ -384,6 +390,13 @@ func EventQueueCreate(name []uint8, capacity uint, policy uint32, observerCallba
 	}
 	var outResult unsafe.Pointer
 	code := bindings().fnEventQueueCreate(namePtr, uintptr(len(name)), uintptr(capacity), policy, observerCallback, observerToken, &outResult)
+	return outResult, code
+}
+
+// EventQueueClone calls the generated purego ABI wrapper for zg_event_queue_clone_purego_v2.
+func EventQueueClone(self unsafe.Pointer, observerCallback, observerToken uintptr) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := bindings().fnEventQueueClone(self, observerCallback, observerToken, &outResult)
 	return outResult, code
 }
 

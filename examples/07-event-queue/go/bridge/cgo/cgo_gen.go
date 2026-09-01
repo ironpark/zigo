@@ -24,6 +24,17 @@ func zg_event_queue_create_go_callback_observer(p0 C.uint64_t, p1 C.int32_t, p2 
 	return C.int32_t(callback(uint64(p0), int32(p1)))
 }
 
+//export zg_event_queue_clone_go_callback_observer
+func zg_event_queue_clone_go_callback_observer(p0 C.uint64_t, p1 C.int32_t, p2 C.size_t) (result C.int32_t) {
+	defer func() {
+		if recover() != nil {
+			result = C.int32_t(-3)
+		}
+	}()
+	callback := cgo.Handle(p2).Value().(func(uint64, int32) int32)
+	return C.int32_t(callback(uint64(p0), int32(p1)))
+}
+
 // EventQueueCreate calls the generated C ABI wrapper for zg_event_queue_create.
 func EventQueueCreate(name []uint8, capacity uint, policy uint32, observerHandle uintptr) (unsafe.Pointer, int32) {
 	var nameZero C.uint8_t
@@ -33,6 +44,13 @@ func EventQueueCreate(name []uint8, capacity uint, policy uint32, observerHandle
 	}
 	var outResult unsafe.Pointer
 	code := int32(C.zg_event_queue_create(namePtr, C.size_t(len(name)), C.size_t(capacity), C.uint32_t(policy), C.size_t(observerHandle), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+
+// EventQueueClone calls the generated C ABI wrapper for zg_event_queue_clone.
+func EventQueueClone(self unsafe.Pointer, observerHandle uintptr) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := int32(C.zg_event_queue_clone(self, C.size_t(observerHandle), &outResult))
 	return unsafe.Pointer(outResult), code
 }
 

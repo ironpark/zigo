@@ -134,6 +134,24 @@ constructor와 멱등 `Close() error`가 생성됩니다. 반환 error는 항상
 nil·closed 상태를 검사합니다. 검사 결과는 항상 반환값으로 전달되며, 오류 반환 자리가
 없던 메서드에는 `error` 결과가 추가됩니다.
 
+`init`/`create`/`new`/`open` 이름을 쓰지 않는 factory도 `.returns = .caller`를 붙이면
+같은 owned handle을 돌려줍니다. 이름이 아니라 ownership metadata가 기준이므로,
+`clone`이나 `openChild` 같은 메서드도 `newX` helper를 거쳐 cleanup과 retained callback
+등록을 그대로 받습니다.
+
+```zig
+.{
+    .path = "EventQueue.clone",
+    .params = .{ "observer", "userdata" },
+    .param_meta = .{ .observer = .{ .retention = .retained } },
+    .returns = .caller,
+},
+```
+
+감쌀 handle이 없는 `.returns = .caller`는 `ZIGO015`로 거부됩니다. 반환 타입이 opaque
+pointer가 아니거나, 그 타입에 constructor와 deinitializer가 등록되어 있지 않은
+경우입니다.
+
 retained callback이나 pointer는 소유 객체의 `Close`까지 유효해야 합니다.
 
 생성된 handle은 모두 같은 수명주기를 씁니다. 종류에 따라 달라지지 않습니다.

@@ -73,6 +73,19 @@ pub const EventQueue = struct {
         return queue;
     }
 
+    /// clone copies the queued events, name and limits into an independent
+    /// queue that the caller owns and must close. The copy takes its own
+    /// observer instead of sharing the original's, so closing either queue
+    /// never strands the other's callback.
+    pub fn clone(self: *EventQueue, observer: Observer, userdata: usize) CreateError!*EventQueue {
+        const copy = try EventQueue.create(self.name_bytes, self.capacity_value, self.policy_value, observer, userdata);
+        errdefer copy.deinit();
+        copy.items.appendSlice(std.heap.page_allocator, self.items.items) catch return error.OutOfMemory;
+        copy.dropped_count = self.dropped_count;
+        copy.processed_count = self.processed_count;
+        return copy;
+    }
+
     pub fn enqueue(self: *EventQueue, id: u64, value: i32) EnqueueError!void {
         if (self.items.items.len == self.capacity_value) switch (self.policy_value) {
             .reject => return error.Full,
@@ -166,6 +179,27 @@ pub const EventQueue = struct {
 
 pub fn liveQueues() usize {
     return live_queues.load(.monotonic);
+}
+
+test "a cloned queue owns its own events" {
+    const observer = struct {
+        fn call(_: u64, _: i32, _: usize) callconv(.c) i32 {
+            return 0;
+        }
+    }.call;
+    const queue = try EventQueue.create("source", 2, .reject, &observer, 0);
+    defer queue.deinit();
+    try queue.enqueue(1, 10);
+
+    const copy = try queue.clone(&observer, 7);
+    defer copy.deinit();
+    try std.testing.expectEqualStrings("source", copy.name());
+    try std.testing.expectEqual(@as(usize, 1), copy.len());
+    try std.testing.expectEqual(@as(usize, 2), liveQueues());
+
+    try copy.enqueue(2, 20);
+    try std.testing.expectEqual(@as(usize, 2), copy.len());
+    try std.testing.expectEqual(@as(usize, 1), queue.len());
 }
 
 test "reject policy preserves queued events and reports capacity errors" {

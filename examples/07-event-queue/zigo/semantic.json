@@ -118,6 +118,78 @@
       "symbol": "zg_create"
     },
     {
+      "doc": "clone copies the queued events, name and limits into an independent\nqueue that the caller owns and must close. The copy takes its own\nobserver instead of sharing the original's, so closing either queue\nnever strands the other's callback.",
+      "name": "clone",
+      "ownership": "caller",
+      "params": [
+        {
+          "direction": "in",
+          "name": "observer",
+          "name_source": "sidecar",
+          "retention": "retained",
+          "type": {
+            "c_callconv": true,
+            "has_userdata": true,
+            "kind": "callback",
+            "params": [
+              {
+                "bits": 64,
+                "is_usize": false,
+                "kind": "int",
+                "signed": false
+              },
+              {
+                "bits": 32,
+                "is_usize": false,
+                "kind": "int",
+                "signed": true
+              },
+              {
+                "bits": 64,
+                "is_usize": true,
+                "kind": "int",
+                "signed": false
+              }
+            ],
+            "return": {
+              "bits": 32,
+              "is_usize": false,
+              "kind": "int",
+              "signed": true
+            }
+          }
+        },
+        {
+          "direction": "in",
+          "name": "userdata",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "receiver": "EventQueue",
+      "return": {
+        "error_set": [
+          "OutOfMemory",
+          "InvalidName",
+          "InvalidCapacity"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "EventQueue"
+        }
+      },
+      "symbol": "zg_clone"
+    },
+    {
       "name": "enqueue",
       "ownership": "borrowed",
       "params": [

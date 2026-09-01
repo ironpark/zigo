@@ -10,7 +10,8 @@ import (
 	"time"
 )
 
-var _ EventQueueObserver = func(uint64, int32) int32 { return 0 }
+var _ EventQueueCreateObserver = func(uint64, int32) int32 { return 0 }
+var _ EventQueueCloneObserver = func(uint64, int32) int32 { return 0 }
 
 // A generated handle closes like any other Go resource.
 var _ io.Closer = (*EventQueue)(nil)
@@ -76,6 +77,57 @@ func TestRejectQueueEndToEnd(t *testing.T) {
 	want := []observedEvent{{id: 10, value: 100}, {id: 11, value: 200}}
 	if fmt.Sprint(observed) != fmt.Sprint(want) {
 		t.Fatalf("observed = %v, want %v", observed, want)
+	}
+}
+
+// Clone is not named like a constructor; only its `.returns = .caller`
+// metadata makes it hand over an owned handle.
+func TestCloneReturnsAnIndependentOwnedHandle(t *testing.T) {
+	queue, err := NewEventQueue("source", 2, PolicyReject, func(uint64, int32) int32 { return 0 })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queue.Close()
+	if err := queue.Enqueue(1, 10); err != nil {
+		t.Fatal(err)
+	}
+
+	var cloned []observedEvent
+	copied, err := queue.Clone(func(id uint64, value int32) int32 {
+		cloned = append(cloned, observedEvent{id: id, value: value})
+		return 0
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer copied.Close()
+
+	if got := must(copied.Name()); got != "source" {
+		t.Fatalf("clone Name() = %q, want \"source\"", got)
+	}
+	if got := LiveQueues(); got != 2 {
+		t.Fatalf("LiveQueues() = %d, want 2", got)
+	}
+	// The clone drains through its own observer, and the original keeps its
+	// own events, which is what an owned handle rather than an alias means.
+	if got, err := copied.Process(1); err != nil || got != 1 {
+		t.Fatalf("clone Process(1) = (%d, %v), want (1, nil)", got, err)
+	}
+	if fmt.Sprint(cloned) != fmt.Sprint([]observedEvent{{id: 1, value: 10}}) {
+		t.Fatalf("clone observed = %v", cloned)
+	}
+	if got := must(queue.Len()); got != 1 {
+		t.Fatalf("original Len() = %d, want 1", got)
+	}
+
+	if err := copied.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := LiveQueues(); got != 1 {
+		t.Fatalf("LiveQueues() after clone Close = %d, want 1", got)
+	}
+	if _, err := copied.Clone(func(uint64, int32) int32 { return 0 }); err == nil {
+		t.Fatal("Clone on a closed handle returned no error")
 	}
 }
 

@@ -42,8 +42,11 @@ func zigoReadLock(value zigoHandle) func() {
 	return mu.RUnlock
 }
 
-// EventQueueObserver is the Go callback signature accepted by the generated binding.
-type EventQueueObserver func(uint64, int32) int32
+// EventQueueCreateObserver is the Go callback signature accepted by the generated binding.
+type EventQueueCreateObserver func(uint64, int32) int32
+
+// EventQueueCloneObserver is the Go callback signature accepted by the generated binding.
+type EventQueueCloneObserver func(uint64, int32) int32
 
 func boolToUint8(value bool) uint8 {
 	if value {
@@ -56,7 +59,14 @@ var activeCallbackHandles atomic.Int64
 
 type zigoCallbackHandle = cgo.Handle
 
-func newEventQueueObserverHandle(value EventQueueObserver) zigoCallbackHandle {
+func newEventQueueCreateObserverHandle(value EventQueueCreateObserver) zigoCallbackHandle {
+	stored := (func(uint64, int32) int32)(value)
+	handle := cgo.NewHandle(stored)
+	activeCallbackHandles.Add(1)
+	return handle
+}
+
+func newEventQueueCloneObserverHandle(value EventQueueCloneObserver) zigoCallbackHandle {
 	stored := (func(uint64, int32) int32)(value)
 	handle := cgo.NewHandle(stored)
 	activeCallbackHandles.Add(1)

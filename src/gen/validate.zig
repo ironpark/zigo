@@ -136,6 +136,13 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .site = .{ .path = "semantic.json", .declaration = function.name },
             .hint = "declare the callback with `callconv(.c)`",
         };
+        if (function.ownership == .caller and !ownedReturnIsWrappable(document, function)) return .{
+            .severity = .@"error",
+            .code = "ZIGO015",
+            .message = "caller-owned return has no constructed handle to hand over",
+            .site = .{ .path = "semantic.json", .declaration = function.name },
+            .hint = "return a pointer to an opaque type that has both a constructor and a destructor, or drop `.returns = .caller`",
+        };
     }
     for (document.types) |declaration| {
         if (declaration.kind == .@"enum" and !declaration.exhaustive) return .{
@@ -399,6 +406,19 @@ fn hasHandleType(document: semantic.Semantic, name: []const u8) bool {
     return hasTypeKind(document, name, .@"opaque") or hasTypeKind(document, name, .tagged_union);
 }
 
+/// Whether a `.returns = .caller` result can become an owned Go handle. Only a
+/// pointer to a type the binding constructs has a `newX` helper to wrap it and a
+/// destructor for the cleanup to call; anything else would emit a raw pointer
+/// against a typed signature, which does not compile.
+fn ownedReturnIsWrappable(document: semantic.Semantic, function: semantic.SemanticFn) bool {
+    const payload = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
+    if (payload != .opaque_ptr) return false;
+    for (document.constructors) |constructor| {
+        if (std.mem.eql(u8, constructor.type, payload.opaque_ptr.ref)) return true;
+    }
+    return false;
+}
+
 fn hasConstructorInit(document: semantic.Semantic, constructor: semantic.Constructor) bool {
     for (document.functions) |function| {
         if (!std.mem.eql(u8, function.name, constructor.init) or function.receiver != null or
@@ -561,6 +581,7 @@ test "implemented diagnostic snapshots are stable" {
     var callback_return: semantic.TypeNode = .{ .void = {} };
     var sample_element: semantic.TypeNode = .{ .int = .{ .bits = 16, .signed = true } };
     var config_element: semantic.TypeNode = .{ .value_struct = .{ .ref = "Config" } };
+    var byte_element: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
     const cases = [_]struct { document: semantic.Semantic, snapshot: []const u8 }{
         .{ .document = .{
             .functions = &.{.{
@@ -712,6 +733,31 @@ test "implemented diagnostic snapshots are stable" {
             }},
             .zig_version = "0.16.0",
         }, .snapshot = "error[ZIGO013]: extern struct is only supported as a whole parameter or return value\n  --> semantic.json (visitAll)\n  hint: pass the struct on its own instead of inside a slice, optional, or callback signature\n" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "takeName",
+                .ownership = .caller,
+                .params = &.{},
+                .@"return" = .{ .slice = .{ .@"const" = true, .element = &byte_element } },
+                .symbol = "zg_take_name",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO015]: caller-owned return has no constructed handle to hand over\n  --> semantic.json (takeName)\n  hint: return a pointer to an opaque type that has both a constructor and a destructor, or drop `.returns = .caller`\n" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "openThing",
+                .ownership = .caller,
+                .params = &.{},
+                .@"return" = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Thing" } },
+                .symbol = "zg_open_thing",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{.{ .kind = .@"opaque", .name = "Thing" }},
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO015]: caller-owned return has no constructed handle to hand over\n  --> semantic.json (openThing)\n  hint: return a pointer to an opaque type that has both a constructor and a destructor, or drop `.returns = .caller`\n" },
     };
     for (cases) |case| {
         const issue = (try findIssue(std.testing.allocator, case.document)) orelse return error.MissingDiagnostic;

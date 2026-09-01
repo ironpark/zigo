@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-01T20:31:49Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Regression test passes; `zig build test` green; committed.
 > NEXT: none
