@@ -2,6 +2,7 @@
 package opaque
 
 import (
+	"runtime"
 	"sync"
 	"unsafe"
 
@@ -10,8 +11,10 @@ import (
 
 // Context is a caller-owned native handle. Call Close when it is no longer needed.
 type Context struct {
-	ptr  unsafe.Pointer
-	once sync.Once
+	ptr     unsafe.Pointer
+	once    sync.Once
+	mu      sync.RWMutex
+	cleanup runtime.Cleanup
 }
 
 // ContextRef is a borrowed Context reference that remains valid only while its parent is open.
@@ -37,6 +40,23 @@ func (c *ContextRef) zigoPointer() unsafe.Pointer {
 	return c.ptr
 }
 
+type contextCleanupState struct {
+	ptr unsafe.Pointer
+}
+
+func newContext(ptr unsafe.Pointer) *Context {
+	value := &Context{ptr: ptr}
+	state := contextCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, cleanupContext, state)
+	return value
+}
+
+func cleanupContext(state contextCleanupState) {
+	if state.ptr != nil {
+		raw.ContextDeinit(state.ptr)
+	}
+}
+
 // Close releases the native Context resources. It is safe to call more than once.
 // The error result is always nil; it exists so Context satisfies io.Closer.
 func (c *Context) Close() error {
@@ -44,10 +64,12 @@ func (c *Context) Close() error {
 		return nil
 	}
 	c.once.Do(func() {
-		if c.ptr != nil {
-			raw.ContextDeinit(c.ptr)
-			c.ptr = nil
-		}
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.cleanup.Stop()
+		cleanupContext(contextCleanupState{ptr: c.ptr})
+		c.ptr = nil
 	})
+	runtime.KeepAlive(c)
 	return nil
 }

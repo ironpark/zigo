@@ -151,18 +151,25 @@ compatible append는 없다.
 opaque 타입은 다음을 생성한다:
 ```go
 type Context struct {
-    ptr  unsafe.Pointer
-    once sync.Once          // Close 멱등성
+    ptr             unsafe.Pointer
+    once            sync.Once       // Close 멱등성
+    mu              sync.RWMutex    // 호출과 Close 직렬화
+    callbackHandles []zigoCallbackHandle  // 콜백을 받는 생성자를 가진 타입만
+    cleanup         runtime.Cleanup // 생성자가 있는 타입만
 }
 func NewContext(...) (*Context, error)
 func (c *Context) Close()   // deinit 대응 함수가 있을 때만
 ```
 
-`runtime.SetFinalizer`는 붙이지 않는다. `.auto_cleanup = true`인 Go 1.24+ 프로젝트만
-wrapper를 참조하지 않는 별도 resource state로 `runtime.AddCleanup`을 붙인다. 명시적
-`Close()`가 cleanup을 `Stop`하고 같은 해제 루틴을 호출하며, 각 native 호출은
-`runtime.KeepAlive`로 wrapper의 생존 구간을 고정한다. cleanup은 실행 시점과 프로그램
-종료 전 실행을 보장하지 않으므로 `Close()`가 항상 기본 계약이다.
+수명주기는 하나뿐이다. 프로그램에 콜백이 있는지 여부로 다른 형태를 고르지 않고,
+`callbackHandles`만 타입별로 결정한다.
+
+`runtime.SetFinalizer`는 붙이지 않는다. 생성자가 있는 타입은 wrapper를 참조하지 않는 별도
+resource state로 `runtime.AddCleanup`을 붙이므로 생성 코드의 Go 하한은 1.24다. 각 메서드는
+`mu`의 읽기 잠금을 잡고, 명시적 `Close()`는 쓰기 잠금 아래에서 cleanup을 `Stop`하고 같은
+해제 루틴을 호출한다. 각 native 호출은 `runtime.KeepAlive`로 wrapper의 생존 구간도
+고정한다. cleanup은 실행 시점과 프로그램 종료 전 실행을 보장하지 않으므로 `Close()`가 항상
+기본 계약이다.
 
 ## 7. tagged union projection
 

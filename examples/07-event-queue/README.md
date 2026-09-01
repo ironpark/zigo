@@ -28,5 +28,6 @@ test can check the Go mirrors against it directly.
 
 `EventQueue` itself is intentionally not thread-safe. The Go concurrency test creates one
 queue per goroutine rather than sharing a queue without synchronization.
-This example opts into `.auto_cleanup = true`; its forced-GC test demonstrates leak fallback,
-but application code must still call `Close` because cleanup timing is not guaranteed.
+Every generated handle registers a `runtime.AddCleanup` safety net; the forced-GC test here
+demonstrates that fallback, but application code must still call `Close` because cleanup
+timing is not guaranteed.

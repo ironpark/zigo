@@ -2,6 +2,7 @@
 package telemetry_hub
 
 import (
+	"runtime"
 	"sync"
 	"unsafe"
 
@@ -14,6 +15,7 @@ type TelemetryHub struct {
 	once            sync.Once
 	mu              sync.RWMutex
 	callbackHandles []zigoCallbackHandle
+	cleanup         runtime.Cleanup
 }
 
 // TelemetryHubRef is a borrowed TelemetryHub reference that remains valid only while its parent is open.
@@ -39,6 +41,27 @@ func (t *TelemetryHubRef) zigoPointer() unsafe.Pointer {
 	return t.ptr
 }
 
+type telemetryHubCleanupState struct {
+	ptr             unsafe.Pointer
+	callbackHandles []zigoCallbackHandle
+}
+
+func newTelemetryHub(ptr unsafe.Pointer, callbackHandles []zigoCallbackHandle) *TelemetryHub {
+	value := &TelemetryHub{ptr: ptr, callbackHandles: callbackHandles}
+	state := telemetryHubCleanupState{ptr: ptr, callbackHandles: callbackHandles}
+	value.cleanup = runtime.AddCleanup(value, cleanupTelemetryHub, state)
+	return value
+}
+
+func cleanupTelemetryHub(state telemetryHubCleanupState) {
+	if state.ptr != nil {
+		raw.TelemetryHubDeinit(state.ptr)
+	}
+	for _, handle := range state.callbackHandles {
+		deleteCallbackHandle(handle)
+	}
+}
+
 // Close releases the native TelemetryHub resources. It is safe to call more than once.
 // The error result is always nil; it exists so TelemetryHub satisfies io.Closer.
 func (t *TelemetryHub) Close() error {
@@ -48,14 +71,11 @@ func (t *TelemetryHub) Close() error {
 	t.once.Do(func() {
 		t.mu.Lock()
 		defer t.mu.Unlock()
-		if t.ptr != nil {
-			raw.TelemetryHubDeinit(t.ptr)
-			t.ptr = nil
-		}
-		for _, handle := range t.callbackHandles {
-			deleteCallbackHandle(handle)
-		}
+		t.cleanup.Stop()
+		cleanupTelemetryHub(telemetryHubCleanupState{ptr: t.ptr, callbackHandles: t.callbackHandles})
+		t.ptr = nil
 		t.callbackHandles = nil
 	})
+	runtime.KeepAlive(t)
 	return nil
 }

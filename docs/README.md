@@ -22,8 +22,8 @@
 ## 기본 경로와 선택 기능
 
 기본 사용 경로는 `.cgo_static`입니다. Zig와 Go가 설치된 네이티브 macOS/Linux 환경에서
-먼저 이 경로로 동작을 확인하세요. `.cgo_dynamic`, `.purego`, `auto_cleanup`, 자동 API
-발견과 ABI 검사는 필요가 분명할 때 추가하는 선택 기능입니다.
+먼저 이 경로로 동작을 확인하세요. `.cgo_dynamic`, `.purego`, 자동 API 발견과 ABI 검사는
+필요가 분명할 때 추가하는 선택 기능입니다.
 
 프로젝트 내부 구조와 구현 근거는 사용자 문서가 아니라
 [설계 문서](.agent/design/README.md)에 정리되어 있습니다.

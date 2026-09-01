@@ -4,7 +4,7 @@ Zig 라이브러리의 공개 API에서 타입 안전한 Go 바인딩을 생성�
 수정하지 않고 별도의 `bindings.zig`에 노출 범위를 선언하면, zigo가 C ABI shim과 헤더,
 cgo 코드, 사용하기 편한 Go API를 함께 만듭니다.
 
-> 현재 지원 범위: Zig 0.16.0, Go 1.23 이상, 네이티브 macOS/Linux 빌드.
+> 현재 지원 범위: Zig 0.16.0, Go 1.24 이상, 네이티브 macOS/Linux 빌드.
 > Windows와 크로스 컴파일은 아직 지원하지 않습니다.
 
 ## 어떤 문제를 해결하나요?

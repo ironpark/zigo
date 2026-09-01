@@ -2,6 +2,7 @@
 package type_relations
 
 import (
+	"runtime"
 	"sync"
 	"unsafe"
 
@@ -10,8 +11,10 @@ import (
 
 // Counter is a caller-owned native handle. Call Close when it is no longer needed.
 type Counter struct {
-	ptr  unsafe.Pointer
-	once sync.Once
+	ptr     unsafe.Pointer
+	once    sync.Once
+	mu      sync.RWMutex
+	cleanup runtime.Cleanup
 }
 
 // CounterRef is a borrowed Counter reference that remains valid only while its parent is open.
@@ -37,6 +40,23 @@ func (c *CounterRef) zigoPointer() unsafe.Pointer {
 	return c.ptr
 }
 
+type counterCleanupState struct {
+	ptr unsafe.Pointer
+}
+
+func newCounter(ptr unsafe.Pointer) *Counter {
+	value := &Counter{ptr: ptr}
+	state := counterCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, cleanupCounter, state)
+	return value
+}
+
+func cleanupCounter(state counterCleanupState) {
+	if state.ptr != nil {
+		raw.CounterDeinit(state.ptr)
+	}
+}
+
 // Close releases the native Counter resources. It is safe to call more than once.
 // The error result is always nil; it exists so Counter satisfies io.Closer.
 func (c *Counter) Close() error {
@@ -44,18 +64,22 @@ func (c *Counter) Close() error {
 		return nil
 	}
 	c.once.Do(func() {
-		if c.ptr != nil {
-			raw.CounterDeinit(c.ptr)
-			c.ptr = nil
-		}
+		c.mu.Lock()
+		defer c.mu.Unlock()
+		c.cleanup.Stop()
+		cleanupCounter(counterCleanupState{ptr: c.ptr})
+		c.ptr = nil
 	})
+	runtime.KeepAlive(c)
 	return nil
 }
 
 // Accumulator is a caller-owned native handle. Call Close when it is no longer needed.
 type Accumulator struct {
-	ptr  unsafe.Pointer
-	once sync.Once
+	ptr     unsafe.Pointer
+	once    sync.Once
+	mu      sync.RWMutex
+	cleanup runtime.Cleanup
 }
 
 // AccumulatorRef is a borrowed Accumulator reference that remains valid only while its parent is open.
@@ -81,6 +105,23 @@ func (a *AccumulatorRef) zigoPointer() unsafe.Pointer {
 	return a.ptr
 }
 
+type accumulatorCleanupState struct {
+	ptr unsafe.Pointer
+}
+
+func newAccumulator(ptr unsafe.Pointer) *Accumulator {
+	value := &Accumulator{ptr: ptr}
+	state := accumulatorCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, cleanupAccumulator, state)
+	return value
+}
+
+func cleanupAccumulator(state accumulatorCleanupState) {
+	if state.ptr != nil {
+		raw.AccumulatorDeinit(state.ptr)
+	}
+}
+
 // Close releases the native Accumulator resources. It is safe to call more than once.
 // The error result is always nil; it exists so Accumulator satisfies io.Closer.
 func (a *Accumulator) Close() error {
@@ -88,10 +129,12 @@ func (a *Accumulator) Close() error {
 		return nil
 	}
 	a.once.Do(func() {
-		if a.ptr != nil {
-			raw.AccumulatorDeinit(a.ptr)
-			a.ptr = nil
-		}
+		a.mu.Lock()
+		defer a.mu.Unlock()
+		a.cleanup.Stop()
+		cleanupAccumulator(accumulatorCleanupState{ptr: a.ptr})
+		a.ptr = nil
 	})
+	runtime.KeepAlive(a)
 	return nil
 }

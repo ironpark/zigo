@@ -250,7 +250,6 @@ pub const Options = struct {
     cgo_flags: ?CgoFlags = null,      // null이면 빌드 경로에서 자동 계산
     abi_base: ?[]const u8 = null,      // 지정한 경우에만 ABI diff 활성화
     raw_package: RawPackage = .internal,
-    auto_cleanup: bool = false,        // Go 1.24+ best-effort cleanup
     gofmt: ?[]const u8 = null,         // null이면 PATH의 gofmt
     go_package: ?[]const u8 = null,    // public Go package 이름 재지정
     library_loading: LibraryLoading = .{},  // purego 전용 런타임 로딩 정책
@@ -419,7 +418,7 @@ Go func ──▶ cgo.Handle (uintptr) ──▶ C 트램폴린 ──▶ Zig ca
 - `borrowed` 콜백: 호출 후 Handle 해제
 - `retained` 콜백: Handle을 Go 구조체에 보관, `Close()`에서 `Delete()`.
   이 경우 `Close()`를 **강제 생성**하고 미호출 시 누수임을 문서화한다.
-- `.auto_cleanup = true`이면 별도 resource state에 native pointer와 Handle을 복사해
+- 생성자가 있는 타입은 항상 별도 resource state에 native pointer와 Handle을 복사해
   `runtime.AddCleanup`에 등록한다. 이는 Go 1.24+ 누수 안전망이며 `Close()`를 대체하지 않는다.
 
 ---

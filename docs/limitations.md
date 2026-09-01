@@ -5,8 +5,8 @@
 
 ## 지원 환경
 
-- 현재 지원 범위는 Zig 0.16.0, Go 1.23 이상, cgo가 활성화된 네이티브 macOS/Linux다.
-  선택적인 `auto_cleanup`은 Go 1.24 이상이 필요하다.
+- 현재 지원 범위는 Zig 0.16.0, Go 1.24 이상, cgo가 활성화된 네이티브 macOS/Linux다.
+  생성된 handle이 항상 `runtime.AddCleanup`을 등록하므로 Go 1.24가 하한이다.
 - opt-in `.link = .purego`는 Go 빌드에서 C 컴파일러와 cgo를 제거하지만, 지원 범위는
   네이티브 macOS/Linux의 amd64·arm64로 더 좁고 공유 라이브러리 배포를 요구한다.
   Windows, 모바일, purego Tier 2 타깃은 후속 작업이다. 정적 링크는 cgo 전용이다.
@@ -80,12 +80,12 @@ AST 보강에 사용하는 기본 `bindings.zig`를 읽지 못하면 reflection�
   지향 함수를 제공하는 편이 낫다.
 - retained Go 콜백과 포인터는 생성된 `Close` 경로에서 해제될 때까지 유효해야 한다.
   소유 객체는 사용 후 반드시 닫고, 콜백에서 발생한 panic의 전달 규칙도 테스트한다.
-- 동일 handle의 `Close`, tagged-union variant 변경, projection 호출을 여러 goroutine에서
-  동시에 실행하지 않는다. 생성된 `runtime.KeepAlive`는 명시적 lifecycle 작업의 동기화
-  장치가 아니다.
-- `auto_cleanup`은 실행 시점과 프로그램 종료 전 실행을 보장하지 않는다. callback이 소유
-  객체를 캡처하는 강한 참조 순환과 특정 thread에서만 가능한 해제를 해결하지 않으므로
-  명시적 `Close`의 대체로 사용하지 않는다.
+- 생성된 메서드와 `Close`는 handle의 `sync.RWMutex`로 직렬화되지만, tagged-union의
+  projection(`Tag`/`As*`/`Snapshot`/`Variant`)과 borrowed `Ref`는 잠금을 잡지 않는다.
+  이들과 `Close`를 여러 goroutine에서 동시에 실행하지 않는다.
+- `runtime.AddCleanup` 안전망은 실행 시점과 프로그램 종료 전 실행을 보장하지 않는다.
+  callback이 소유 객체를 캡처하는 강한 참조 순환과 특정 thread에서만 가능한 해제를
+  해결하지 않으므로 명시적 `Close`의 대체로 사용하지 않는다.
 - `errors.lock.json`의 정수 코드는 append-only 계약이다. 삭제된 에러의 코드를 다른
   에러에 재사용하지 않는다.
 - purego 백엔드는 기본적으로 바인딩 호출 전에 `LoadLibrary`가 성공해야 한다.

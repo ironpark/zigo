@@ -44,7 +44,6 @@ raw 패키지는 `internal/raw`에서 생성됩니다.
 | `cgo_flags` | 아니요 | 모듈에서 계산 | 생성할 CFLAGS와 LDFLAGS 덮어쓰기 |
 | `gofmt` | 아니요 | `PATH`의 `gofmt` | 생성 코드 포맷에 사용할 실행 파일 |
 | `abi_base` | 아니요 | `null` | ABI 비교 기준 Git ref. 없으면 검사 비활성화 |
-| `auto_cleanup` | 아니요 | `false` | Go 1.24+ `runtime.AddCleanup` 안전망 |
 | `library_loading` | 아니요 | 명시적 로드 | purego 전용 런타임 로딩 정책 |
 
 ## 링크 방식 선택
@@ -144,18 +143,14 @@ Zig reflection에는 함수 파라미터 이름이 없습니다. zigo는 다음 
 
 ## 자동 cleanup
 
-Go 1.24 이상만 지원하는 프로젝트는 caller-owned opaque wrapper에 best-effort cleanup을
-추가할 수 있습니다.
+생성된 caller-owned handle은 옵션 없이 항상 `runtime.AddCleanup` 안전망을 등록합니다.
+그래서 생성 코드의 Go 하한은 1.24입니다. zigo가 새 `go.mod`를 만들면 `go 1.24`를
+기록하고, 기존 `go.mod`는 수정하지 않으므로 직접 버전을 올려야 합니다.
 
-```zig
-.auto_cleanup = true,
-```
-
-zigo가 새 `go.mod`를 만들면 `go 1.24`를 기록합니다. 기존 `go.mod`는 수정하지 않으므로
-직접 버전을 올려야 합니다. 이 옵션은 누수 안전망일 뿐 명시적 `Close`를 대체하지 않습니다.
-cleanup 실행 시점이나 프로그램 종료 전 실행은 보장되지 않으며, 임의 goroutine에서 호출될
-수 있습니다. retained callback의 참조 순환이나 특정 OS thread에서만 가능한 해제에도
-사용하지 마세요.
+안전망은 누수 대비일 뿐 명시적 `Close`를 대체하지 않습니다. 실행 시점이나 프로그램 종료
+전 실행은 보장되지 않으며 임의 goroutine에서 호출될 수 있습니다. retained callback의 참조
+순환이나 특정 OS thread에서만 가능한 해제에도 기대지 마세요. 수명주기 전체는
+[바인딩 작성](bindings.md#opaque-handle)에 정리되어 있습니다.
 
 ## ABI 기준 설정
 

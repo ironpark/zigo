@@ -1,3 +1,3 @@
 module example.com/zigo/type-relations
 
-go 1.23
+go 1.24
