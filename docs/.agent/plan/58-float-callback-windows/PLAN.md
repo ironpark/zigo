@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-01T18:10:46Z"
 description: Support float callback parameters on Windows by bit-marshalling them uniformly across the purego callback ABI, retiring ZIGO014 and restoring 08 to the Windows CI job
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-01T17:41:36Z"
 ---
 > NEXT: Lower float callback parameters to integer bit patterns on every platform. ([Phase 0](phases/00-bits-marshalling.md))
@@ -8,7 +9,7 @@ registered_at: "2026-09-01T17:41:36Z"
 # Phases
 
 - [x] [Phase 00: Uniform bit-marshalled float callback parameters](phases/00-bits-marshalling.md)
-- [ ] [Phase 01: Fidelity tests, CI restoration, docs](phases/01-fidelity-and-ci.md)
+- [x] [Phase 01: Fidelity tests, CI restoration, docs](phases/01-fidelity-and-ci.md)
 
 # Shared Verification
 

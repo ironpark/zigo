@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-01T18:10:46Z"
 depends_on:
 - "58-float-callback-windows#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Windows CI green with 08 in the job — first Windows runtime proof of
 > NEXT: none
