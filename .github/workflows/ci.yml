@@ -134,7 +134,7 @@ jobs:
         run: |
           set -euo pipefail
           libraries=(
-            "04-callback:libcallback_zigo:zg_last_error_message zg_apply_purego_v1"
+            "04-callback:libcallback_zigo:zg_last_error_message zg_apply_purego_v2"
             "07-event-queue:libevent_queue_zigo:zg_last_error_message"
             "08-telemetry-hub:libtelemetry_hub_zigo:zg_last_error_message"
             "10-tagged-union:libtagged_union_zigo:zg_last_error_message"
