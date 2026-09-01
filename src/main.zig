@@ -40,8 +40,8 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
     var parsed = try semantic.Semantic.parse(allocator, semantic_bytes);
     defer parsed.deinit();
     const issue = try validate.findIssue(allocator, parsed.value) orelse
-        if (options.backend == .purego and options.target_os == .windows)
-            validate.puregoWindowsIssue(parsed.value)
+        if (options.backend == .purego)
+            validate.puregoCallbackIssue(parsed.value)
         else
             null;
     if (issue) |found| {
@@ -81,7 +81,6 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
             .static => .static,
             .dynamic => .dynamic,
         },
-        .windows_target = options.target_os == .windows,
         .library_stem = options.library_stem,
         .library_search_paths = options.library_search_paths,
         .library_env_vars = options.library_env_vars,

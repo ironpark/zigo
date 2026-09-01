@@ -257,9 +257,9 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_last_error_message", err)
 	}
-	addrEventQueueCreate, err := resolveSymbol(handle, "zg_event_queue_create_purego_v1")
+	addrEventQueueCreate, err := resolveSymbol(handle, "zg_event_queue_create_purego_v2")
 	if err != nil {
-		return fail("zg_event_queue_create_purego_v1", err)
+		return fail("zg_event_queue_create_purego_v2", err)
 	}
 	addrEventQueueEnqueue, err := resolveSymbol(handle, "zg_event_queue_enqueue")
 	if err != nil {
@@ -376,7 +376,7 @@ type LimitsData struct {
 	Policy   uint32
 }
 
-// EventQueueCreate calls the generated purego ABI wrapper for zg_event_queue_create_purego_v1.
+// EventQueueCreate calls the generated purego ABI wrapper for zg_event_queue_create_purego_v2.
 func EventQueueCreate(name []uint8, capacity uint, policy uint32, observerCallback, observerToken uintptr) (unsafe.Pointer, int32) {
 	var namePtr unsafe.Pointer
 	if len(name) != 0 {

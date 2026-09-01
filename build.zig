@@ -664,7 +664,6 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         "--backend",           @tagName(backend),
         "--library-stem",      b.fmt("{s}_zigo", .{artifact_package}),
         "--link-mode",         @tagName(link_mode),
-        "--target-os",         @tagName(options.target.result.os.tag),
         "--go-package",        go_package,
     });
     if (backend == .purego) addLibraryLoadingArgs(b, generate, options.library_loading);

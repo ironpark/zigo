@@ -158,7 +158,11 @@ pub const AbiStruct = struct {
 
 pub const Program = struct {
     pub const Backend = enum { cgo, purego };
-    pub const CallbackConvention = enum { fixed_go_export, function_pointer_userdata_v1 };
+    /// `function_pointer_userdata_v2` differs from v1 only in how float callback
+    /// parameters travel: as their IEEE-754 bit pattern in a same-width integer
+    /// rather than as a float. The version rides in the exported symbol name, so a
+    /// stale library and regenerated Go fail to resolve instead of misreading bits.
+    pub const CallbackConvention = enum { fixed_go_export, function_pointer_userdata_v1, function_pointer_userdata_v2 };
 
     backend: Backend = .cgo,
     callback_convention: CallbackConvention = .fixed_go_export,

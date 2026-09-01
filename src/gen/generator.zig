@@ -25,7 +25,6 @@ pub const Options = struct {
     link_mode: emit.Options.LinkMode = .static,
     /// Windows constrains the purego callback ABI, so generation rejects a
     /// binding it could only produce a dispatcher that panics for.
-    windows_target: bool = false,
     library_stem: []const u8 = "",
     library_search_paths: []const u8 = "",
     library_env_vars: ?[]const u8 = null,
@@ -46,8 +45,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
     var parsed = try semantic.Semantic.parse(scratch_allocator, semantic_bytes);
     defer parsed.deinit();
     try validate.semanticDocument(scratch_allocator, parsed.value);
-    if (options.backend == .purego and options.windows_target)
-        try validate.puregoWindowsCallbacks(parsed.value);
+    if (options.backend == .purego) try validate.puregoCallbacks(parsed.value);
     var baseline: ?errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(scratch_allocator, bytes) else null;
     defer if (baseline) |*value| value.deinit(scratch_allocator);
     var lock: errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(scratch_allocator, bytes) else .{};
@@ -904,7 +902,7 @@ test "purego generation emits an atomic retryable loader and explicit callback A
     });
     const callback_header = try rejected.dir.readFileAlloc(std.testing.io, "zigo_callbacks.h", std.testing.allocator, .limited(16 * 1024));
     defer std.testing.allocator.free(callback_header);
-    try std.testing.expect(std.mem.containsAtLeast(u8, callback_header, 1, "void zg_install_purego_v1(int32_t (*callback)(int32_t, size_t), size_t userdata)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, callback_header, 1, "void zg_install_purego_v2(int32_t (*callback)(int32_t, size_t), size_t userdata)"));
     const callback_shim = try rejected.dir.readFileAlloc(std.testing.io, "shim.zig", std.testing.allocator, .limited(16 * 1024));
     defer std.testing.allocator.free(callback_shim);
     try std.testing.expect(std.mem.containsAtLeast(u8, callback_shim, 1, "callback: *const fn (i32, usize) callconv(.c) i32, userdata: usize"));
@@ -927,7 +925,7 @@ test "purego generation emits an atomic retryable loader and explicit callback A
     const legacy_header = try legacy.dir.readFileAlloc(std.testing.io, "zigo_callbacks.h", std.testing.allocator, .limited(16 * 1024));
     defer std.testing.allocator.free(legacy_header);
     try std.testing.expect(std.mem.containsAtLeast(u8, legacy_header, 1, "void zg_install(size_t userdata)"));
-    try std.testing.expect(std.mem.indexOf(u8, legacy_header, "zg_install_purego_v1") == null);
+    try std.testing.expect(std.mem.indexOf(u8, legacy_header, "zg_install_purego_v2") == null);
     const legacy_shim = try legacy.dir.readFileAlloc(std.testing.io, "shim.zig", std.testing.allocator, .limited(16 * 1024));
     defer std.testing.allocator.free(legacy_shim);
     try std.testing.expect(std.mem.containsAtLeast(u8, legacy_shim, 1, "extern fn zg_install_go_callback_callback"));

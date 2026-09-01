@@ -4,6 +4,7 @@ package native
 import (
 	"errors"
 	"fmt"
+	"math"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -192,7 +193,7 @@ var callbackDispatchersOnce sync.Once
 
 func ensureCallbackDispatchers() {
 	callbackDispatchersOnce.Do(func() {
-		callbackPointers[0] = purego.NewCallback(func(p0 uint64, p1 float64, p2 uint) (result uintptr) {
+		callbackPointers[0] = purego.NewCallback(func(p0 uint64, p1 uint64, p2 uint) (result uintptr) {
 			defer func() {
 				if recover() != nil {
 					result = callbackResult(-3)
@@ -204,7 +205,7 @@ func ensureCallbackDispatchers() {
 			}
 			defer releaseCallback(entry)
 			callback := stored.(func(uint64, float64) int32)
-			return callbackResult(callback(p0, p1))
+			return callbackResult(callback(p0, math.Float64frombits(p1)))
 		})
 	})
 }
@@ -325,9 +326,9 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_last_error_message", err)
 	}
-	addrTelemetryHubCreate, err := resolveSymbol(handle, "zg_telemetry_hub_create_purego_v1")
+	addrTelemetryHubCreate, err := resolveSymbol(handle, "zg_telemetry_hub_create_purego_v2")
 	if err != nil {
-		return fail("zg_telemetry_hub_create_purego_v1", err)
+		return fail("zg_telemetry_hub_create_purego_v2", err)
 	}
 	addrTelemetryHubRename, err := resolveSymbol(handle, "zg_telemetry_hub_rename")
 	if err != nil {
@@ -623,7 +624,7 @@ func LastErrorMessage() string {
 	return string(unsafe.Slice((*byte)(p), length))
 }
 
-// TelemetryHubCreate calls the generated purego ABI wrapper for zg_telemetry_hub_create_purego_v1.
+// TelemetryHubCreate calls the generated purego ABI wrapper for zg_telemetry_hub_create_purego_v2.
 func TelemetryHubCreate(inputName []uint8, maxSamples uint, initialMode uint32, overflowPolicy uint32, observerCallback, observerToken uintptr) (unsafe.Pointer, int32) {
 	var inputNamePtr unsafe.Pointer
 	if len(inputName) != 0 {

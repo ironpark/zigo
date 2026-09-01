@@ -165,6 +165,7 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
             }
         }
     }
+    if (program.backend == .purego) try renderCallbackBitThunks(allocator, writer, program);
     if (programHasCallbacks(program)) try writer.writeByte('\n');
     for (program.functions) |function| {
         try writer.print("export fn {s}_impl(", .{function.symbol});
@@ -175,11 +176,13 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         }
         try writer.writeAll(") ");
         try writeZigType(writer, function.ret);
-        try writer.writeAll(" {\n    ");
+        try writer.writeAll(" {\n");
+        try writeCallbackBitBindings(allocator, writer, program, function);
+        try writer.writeAll("    ");
 
         if (function.origin.@"return" == .slice) {
             try writer.writeAll("const result = ");
-            try writeTargetCall(allocator, writer, function);
+            try writeTargetCall(allocator, writer, program, function);
             try writer.writeAll(";\n    out_result_ptr.* = result.ptr;\n    out_result_len.* = result.len;\n}\n");
             continue;
         }
@@ -187,13 +190,13 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         if (function.origin.@"return" == .error_union) {
             const error_union = function.origin.@"return".error_union;
             if (error_union.payload.* == .void) {
-                try writeTargetCall(allocator, writer, function);
+                try writeTargetCall(allocator, writer, program, function);
                 try writer.writeAll(" catch |err| return switch (err) {");
                 try writeErrorSwitch(writer, function);
                 try writer.writeAll("\n    };\n");
             } else {
                 try writer.writeAll("const result = ");
-                try writeTargetCall(allocator, writer, function);
+                try writeTargetCall(allocator, writer, program, function);
                 try writer.writeAll(" catch |err| return switch (err) {");
                 try writeErrorSwitch(writer, function);
                 try writer.writeAll("\n    };\n    out_result.* = ");
@@ -210,7 +213,7 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         } else if (function.origin.@"return" != .void) {
             try writer.writeAll("return ");
         }
-        try writeTargetCall(allocator, writer, function);
+        try writeTargetCall(allocator, writer, program, function);
         try writer.writeAll(";\n");
         if (function.origin.@"return" == .void) try writeSliceWrittenAssignments(writer, function);
         try writer.writeAll("}\n");
@@ -489,7 +492,7 @@ fn writeCFunctionDeclaration(writer: *std.Io.Writer, function: abi.AbiFn, implem
     try writer.writeByte(')');
 }
 
-fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, function: abi.AbiFn) !void {
+fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, function: abi.AbiFn) !void {
     const bool_return = function.origin.@"return" == .bool;
     const enum_return = function.origin.@"return" == .@"enum";
     if (bool_return) try writer.writeAll("@intFromBool(");
@@ -508,7 +511,11 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, functio
         if (index != 0) try writer.writeAll(", ");
         switch (parameter.type) {
             .callback => {
-                if (hasCallbackAbiParam(function, index)) {
+                if (needsCallbackBitThunk(program, function, index)) {
+                    const thunk = try callbackThunkNameAlloc(allocator, function, index);
+                    defer allocator.free(thunk);
+                    try writer.print("&{s}", .{thunk});
+                } else if (hasCallbackAbiParam(function, index)) {
                     try writer.writeAll(parameter.name);
                 } else {
                     const name = try callbackTrampolineNameAlloc(allocator, function, index);
@@ -525,6 +532,70 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, functio
     }
     try writer.writeByte(')');
     if (bool_return or enum_return) try writer.writeByte(')');
+}
+
+/// Floats cannot cross the purego callback ABI as floats: Windows compiles a Go
+/// callback through `syscall.NewCallback`, whose `compileCallback` refuses a
+/// floating-point argument on anything but 386. The bits have to be handed over
+/// as integers, and the only code that can convert them is the shim, because the
+/// native side calls the callback pointer directly with real floats.
+///
+/// So a callback carrying floats is not passed through: the native side receives
+/// a static thunk with the natural signature, which `@bitCast`s each float and
+/// forwards to the Go dispatcher. The dispatcher address lives in a global
+/// because a C function pointer has no room for state -- and it can, because Go
+/// builds exactly one dispatcher per callback signature behind a `sync.Once`, so
+/// every bind stores the same address. The userdata token, which does vary per
+/// callback value, still travels in the userdata parameter untouched.
+///
+/// The thunk is emitted on every platform. One wire shape everywhere keeps the
+/// committed generated tree identical no matter which host or target produced it.
+fn renderCallbackBitThunks(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
+    for (program.functions) |function| {
+        for (function.origin.params, 0..) |parameter, parameter_index| {
+            if (!needsCallbackBitThunk(program, function, parameter_index)) continue;
+            const callback = parameter.type.callback;
+            const wire = callbackWireScalar(function, parameter_index) orelse return error.CallbackRequiresUserdata;
+            const binding = try callbackBindingNameAlloc(allocator, function, parameter_index);
+            defer allocator.free(binding);
+            const thunk = try callbackThunkNameAlloc(allocator, function, parameter_index);
+            defer allocator.free(thunk);
+
+            try writer.print("var {s}: std.atomic.Value(?", .{binding});
+            try writeZigType(writer, wire);
+            try writer.writeAll(") = .init(null);\n");
+            try writer.print("fn {s}(", .{thunk});
+            for (callback.params, 0..) |callback_parameter, index| {
+                if (index != 0) try writer.writeAll(", ");
+                try writer.print("p{d}: ", .{index});
+                try writeZigType(writer, semanticScalar(program, callback_parameter));
+            }
+            try writer.writeAll(") callconv(.c) ");
+            try writeZigType(writer, semanticScalar(program, callback.@"return".*));
+            try writer.print(" {{\n    const dispatch = {s}.load(.acquire) orelse @panic(\"zigo: callback invoked before it was installed\");\n    ", .{binding});
+            if (callback.@"return".* != .void) try writer.writeAll("return ");
+            try writer.writeAll("dispatch(");
+            for (callback.params, 0..) |callback_parameter, index| {
+                if (index != 0) try writer.writeAll(", ");
+                if (callback_parameter == .float)
+                    try writer.print("@bitCast(p{d})", .{index})
+                else
+                    try writer.print("p{d}", .{index});
+            }
+            try writer.writeAll(");\n}\n");
+        }
+    }
+}
+
+/// Records the Go dispatcher a thunk forwards to, before the native side can
+/// reach the callback it is being installed for.
+fn writeCallbackBitBindings(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, function: abi.AbiFn) !void {
+    for (function.origin.params, 0..) |parameter, parameter_index| {
+        if (!needsCallbackBitThunk(program, function, parameter_index)) continue;
+        const binding = try callbackBindingNameAlloc(allocator, function, parameter_index);
+        defer allocator.free(binding);
+        try writer.print("    {s}.store({s}, .release);\n", .{ binding, parameter.name });
+    }
 }
 
 fn hasCallbackAbiParam(function: abi.AbiFn, source_index: usize) bool {
@@ -1146,6 +1217,8 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     // directory expansion, so an empty policy must not import it.
     const needs_os = env_names.len != 0 or usesExecutableDir(options);
     try writer.print("// Code generated by zigo. DO NOT EDIT.\npackage {s}\n\nimport (\n\t\"errors\"\n\t\"fmt\"\n", .{options.raw_package_name});
+    // Only the dispatchers that rebuild a float from its bits need `math`.
+    if (programHasFloatCallbackParam(program)) try writer.writeAll("\t\"math\"\n");
     if (needs_os) try writer.writeAll("\t\"os\"\n");
     if (search_paths) try writer.writeAll("\t\"path/filepath\"\n");
     try writer.writeAll("\t\"runtime\"\n");
@@ -1333,7 +1406,13 @@ fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.Io.Wr
             for (callback.params, 0..) |callback_parameter, index| {
                 if (index != 0) try writer.writeAll(", ");
                 try writer.print("p{d} ", .{index});
-                try writeRawGoType(writer, program, callback_parameter);
+                // A float parameter arrives as its IEEE-754 bit pattern in an
+                // integer of the same width; the shim thunk converted it so the
+                // Windows callback compiler never sees a floating-point argument.
+                if (callback_parameter == .float)
+                    try writer.print("uint{d}", .{callback_parameter.float.bits})
+                else
+                    try writeRawGoType(writer, program, callback_parameter);
             }
             // Every dispatcher returns uintptr, including the ones whose Zig
             // callback returns nothing. Windows compiles callbacks through
@@ -1363,9 +1442,12 @@ fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.Io.Wr
             const widens = callbackResultWidens(callback.@"return".*);
             if (widens) try writer.writeAll("return callbackResult(");
             try writer.writeAll("callback(");
-            for (0..userdata_index) |index| {
+            for (callback.params[0..userdata_index], 0..) |callback_parameter, index| {
                 if (index != 0) try writer.writeAll(", ");
-                try writer.print("p{d}", .{index});
+                if (callback_parameter == .float)
+                    try writer.print("math.Float{d}frombits(p{d})", .{ callback_parameter.float.bits, index })
+                else
+                    try writer.print("p{d}", .{index});
             }
             try writer.writeAll(")");
             if (widens) try writer.writeAll(")") else try writer.writeAll("\n\t\t\treturn 0");
@@ -1396,6 +1478,18 @@ fn writeCallbackFailureValue(writer: *std.Io.Writer, node: semantic.TypeNode, pa
 
 /// True when any callback signature returns the signed 32-bit ABI, which is
 /// the only one whose dispatcher needs the widening helper.
+/// True when any callback carries a float parameter, and so any dispatcher has
+/// to rebuild one from its bits.
+fn programHasFloatCallbackParam(program: abi.Program) bool {
+    for (program.functions) |function| {
+        for (function.origin.params) |parameter| {
+            if (parameter.type != .callback) continue;
+            if (callbackHasFloatParam(parameter.type.callback)) return true;
+        }
+    }
+    return false;
+}
+
 fn programHasWideningCallbackResult(program: abi.Program) bool {
     for (program.functions) |function| {
         for (function.origin.params) |parameter| {
@@ -3699,6 +3793,47 @@ fn callbackTrampolineNameAlloc(allocator: std.mem.Allocator, function: abi.AbiFn
     return std.fmt.allocPrint(allocator, "{s}_go_callback_{s}", .{ function.symbol, parameter_name });
 }
 
+/// The static shim function the native side actually receives when a callback
+/// carries floats, and the global holding the Go dispatcher it forwards to.
+fn callbackThunkNameAlloc(allocator: std.mem.Allocator, function: abi.AbiFn, parameter_index: usize) ![]u8 {
+    const parameter_name = try naming.snakeAlloc(allocator, function.origin.params[parameter_index].name);
+    defer allocator.free(parameter_name);
+    return std.fmt.allocPrint(allocator, "{s}_bits_thunk_{s}", .{ function.symbol, parameter_name });
+}
+
+fn callbackBindingNameAlloc(allocator: std.mem.Allocator, function: abi.AbiFn, parameter_index: usize) ![]u8 {
+    const parameter_name = try naming.snakeAlloc(allocator, function.origin.params[parameter_index].name);
+    defer allocator.free(parameter_name);
+    return std.fmt.allocPrint(allocator, "{s}_bits_target_{s}", .{ function.symbol, parameter_name });
+}
+
+/// True when the callback's own parameters include a float, which the purego
+/// callback ABI carries as an integer bit pattern instead.
+fn callbackHasFloatParam(callback: semantic.Callback) bool {
+    for (callback.params) |parameter| if (parameter == .float) return true;
+    return false;
+}
+
+/// The lowered wire signature for a callback parameter: the same shape the
+/// header and the exported shim function spell, with floats already replaced
+/// by integers.
+fn callbackWireScalar(function: abi.AbiFn, source_index: usize) ?abi.AbiScalar {
+    for (function.params) |parameter| {
+        if (parameter.source_index == source_index and parameter.scalar == .callback) return parameter.scalar;
+    }
+    return null;
+}
+
+/// Every purego callback parameter that carries a float needs the shim to sit
+/// between the native caller and Go: the native side calls with real floats and
+/// Go must receive their bits.
+fn needsCallbackBitThunk(program: abi.Program, function: abi.AbiFn, parameter_index: usize) bool {
+    if (program.backend != .purego) return false;
+    const parameter = function.origin.params[parameter_index];
+    if (parameter.type != .callback) return false;
+    return callbackHasFloatParam(parameter.type.callback);
+}
+
 fn callbackTypeNameAlloc(allocator: std.mem.Allocator, program: abi.Program, function: abi.AbiFn, parameter_index: usize) ![]u8 {
     const base = try callbackTypeBaseNameAlloc(allocator, function, parameter_index);
     defer allocator.free(base);
@@ -4044,7 +4179,7 @@ test "a colocated internal loader keeps the loader out of the exported names" {
     };
     const program: abi.Program = .{
         .backend = .purego,
-        .callback_convention = .function_pointer_userdata_v1,
+        .callback_convention = .function_pointer_userdata_v2,
         .functions = &.{.{ .symbol = "zg_ping", .params = &.{}, .ret = .void, .origin = &origin }},
         .package = "hub",
         .prefix = "zg",
@@ -4089,7 +4224,7 @@ test "every entry point the loader resolves is annotated for the COFF export tab
     };
     const program: abi.Program = .{
         .backend = .purego,
-        .callback_convention = .function_pointer_userdata_v1,
+        .callback_convention = .function_pointer_userdata_v2,
         .functions = &.{.{ .symbol = "zg_ping", .params = &.{}, .ret = .void, .origin = &origin }},
         .package = "unit",
         .prefix = "zg",

@@ -14,34 +14,38 @@ pub fn semanticDocument(allocator: std.mem.Allocator, document: semantic.Semanti
     }
 }
 
-/// Windows compiles a Go callback through `syscall.NewCallback`, whose
-/// `compileCallback` rejects a floating-point parameter outright: on anything
-/// but 386 the value arrives in a floating-point register the trampoline does
-/// not spill. purego wraps that function directly, so nothing on the Go side
-/// can rescue such a signature, and the native side would have to hand the
-/// bits over as an integer instead. Generation refuses rather than emitting a
-/// dispatcher that panics from inside purego the first time it loads.
-pub fn puregoWindowsIssue(document: semantic.Semantic) ?diagnostic.Diagnostic {
+/// Every purego callback dispatcher returns one pointer-sized integer, which is
+/// what Windows' `syscall.NewCallback` demands and what the native side reads
+/// back as `int32_t` or ignores. A callback that returns anything else -- a
+/// float, a wider integer -- has nowhere to put its result: the dispatcher would
+/// drop it and the native caller would read whatever the register held.
+/// Generation refuses instead of emitting that silence.
+///
+/// Float *parameters* are no longer a rejection class. They cross as their
+/// IEEE-754 bit pattern through an integer of the same width, converted by the
+/// shim on both ends, so `compileCallback` never sees a floating-point argument
+/// on any platform.
+pub fn puregoCallbackIssue(document: semantic.Semantic) ?diagnostic.Diagnostic {
     for (document.functions) |function| {
         for (function.params) |parameter| {
             if (parameter.type != .callback) continue;
-            for (parameter.type.callback.params) |callback_parameter| {
-                if (callback_parameter != .float) continue;
-                return .{
-                    .severity = .@"error",
-                    .code = "ZIGO014",
-                    .message = "purego callback takes a float parameter, which Windows cannot dispatch",
-                    .site = .{ .path = "semantic.json", .declaration = function.name },
-                    .hint = "pass the value as its integer bit pattern, or build this binding set for macOS or Linux only",
-                };
-            }
+            const result = parameter.type.callback.@"return".*;
+            if (result == .void) continue;
+            if (result == .int and result.int.signed and result.int.bits == 32) continue;
+            return .{
+                .severity = .@"error",
+                .code = "ZIGO014",
+                .message = "purego callback result must be void or a signed 32-bit integer",
+                .site = .{ .path = "semantic.json", .declaration = function.name },
+                .hint = "return `void` or `i32` from the callback, or report the value through userdata",
+            };
         }
     }
     return null;
 }
 
-pub fn puregoWindowsCallbacks(document: semantic.Semantic) !void {
-    if (puregoWindowsIssue(document) != null) return error.InvalidSemantic;
+pub fn puregoCallbacks(document: semantic.Semantic) !void {
+    if (puregoCallbackIssue(document) != null) return error.InvalidSemantic;
 }
 
 pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
@@ -1211,8 +1215,9 @@ test "a packed struct and an opaque-pointer field stay out of the extern struct 
     try std.testing.expectEqualStrings("owner", pointer_issue.site.declaration);
 }
 
-test "a float callback parameter is rejected only for a windows purego target" {
+test "a purego callback result outside the uintptr ABI is rejected" {
     var int32_return: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+    var float_return: semantic.TypeNode = .{ .float = .{ .bits = 64 } };
     const usize_param: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
     const float_callback: semantic.TypeNode = .{ .callback = .{
         .c_callconv = true,
@@ -1231,25 +1236,28 @@ test "a float callback parameter is rejected only for a windows purego target" {
         .prefix = "zg",
         .zig_version = "0.16.0",
     };
-    // The signature is valid on every other platform, so the general validator
-    // must stay silent about it.
+    // A float parameter travels as its bit pattern now, so neither validator
+    // has anything to say about it.
     try std.testing.expect((try findIssue(std.testing.allocator, document)) == null);
-    const issue = puregoWindowsIssue(document) orelse return error.MissingDiagnostic;
-    try std.testing.expectEqualStrings("ZIGO014", issue.code);
-    try std.testing.expectEqualStrings("observe", issue.site.declaration);
+    try std.testing.expect(puregoCallbackIssue(document) == null);
 
-    const integral_callback: semantic.TypeNode = .{ .callback = .{
+    const float_result_callback: semantic.TypeNode = .{ .callback = .{
         .c_callconv = true,
         .has_userdata = true,
         .params = &.{ .{ .int = .{ .bits = 64, .signed = false } }, usize_param },
-        .@"return" = &int32_return,
+        .@"return" = &float_return,
     } };
-    var integral = document;
-    integral.functions = &.{.{
+    var float_result = document;
+    float_result.functions = &.{.{
         .name = "observe",
-        .params = &.{.{ .name = "sink", .type = integral_callback }},
+        .params = &.{.{ .name = "sink", .type = float_result_callback }},
         .@"return" = .{ .void = {} },
         .symbol = "ignored",
     }};
-    try std.testing.expect(puregoWindowsIssue(integral) == null);
+    const issue = puregoCallbackIssue(float_result) orelse return error.MissingDiagnostic;
+    try std.testing.expectEqualStrings("ZIGO014", issue.code);
+    try std.testing.expectEqualStrings("observe", issue.site.declaration);
+    // The result shape is a purego-backend rule, not a platform one, so the
+    // general validator stays silent about it.
+    try std.testing.expect((try findIssue(std.testing.allocator, float_result)) == null);
 }

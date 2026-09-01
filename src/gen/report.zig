@@ -209,7 +209,7 @@ test "report exposes final public names symbols ownership and projections" {
     var purego_output: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer purego_output.deinit();
     try render(std.testing.allocator, &purego_output.writer, document, .{ .backend = .purego });
-    try std.testing.expect(std.mem.indexOf(u8, purego_output.written(), "backend: purego\ncallback ABI: function_pointer_userdata_v1") != null);
+    try std.testing.expect(std.mem.indexOf(u8, purego_output.written(), "backend: purego\ncallback ABI: function_pointer_userdata_v2") != null);
 }
 
 test "purego report states the effective loading policy" {

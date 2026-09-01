@@ -288,9 +288,9 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_int_buffer_deinit", err)
 	}
-	addrCallbackContextCreate, err := resolveSymbol(handle, "zg_callback_context_create_purego_v1")
+	addrCallbackContextCreate, err := resolveSymbol(handle, "zg_callback_context_create_purego_v2")
 	if err != nil {
-		return fail("zg_callback_context_create_purego_v1", err)
+		return fail("zg_callback_context_create_purego_v2", err)
 	}
 	addrCallbackContextRun, err := resolveSymbol(handle, "zg_callback_context_run")
 	if err != nil {
@@ -308,9 +308,9 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_compression_bound", err)
 	}
-	addrApply, err := resolveSymbol(handle, "zg_apply_purego_v1")
+	addrApply, err := resolveSymbol(handle, "zg_apply_purego_v2")
 	if err != nil {
-		return fail("zg_apply_purego_v1", err)
+		return fail("zg_apply_purego_v2", err)
 	}
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
@@ -399,7 +399,7 @@ func IntBufferDeinit(self unsafe.Pointer) {
 	bindings().fnIntBufferDeinit(self)
 }
 
-// CallbackContextCreate calls the generated purego ABI wrapper for zg_callback_context_create_purego_v1.
+// CallbackContextCreate calls the generated purego ABI wrapper for zg_callback_context_create_purego_v2.
 func CallbackContextCreate(callbackCallback, callbackToken uintptr) (unsafe.Pointer, int32) {
 	var outResult unsafe.Pointer
 	code := bindings().fnCallbackContextCreate(callbackCallback, callbackToken, &outResult)
@@ -429,7 +429,7 @@ func CompressionBound(sourceLen uint) uint {
 	return uint(result)
 }
 
-// Apply calls the generated purego ABI wrapper for zg_apply_purego_v1.
+// Apply calls the generated purego ABI wrapper for zg_apply_purego_v2.
 func Apply(value int32, callbackCallback, callbackToken uintptr) int32 {
 	result := bindings().fnApply(value, callbackCallback, callbackToken)
 	return int32(result)

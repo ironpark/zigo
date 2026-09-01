@@ -3,7 +3,6 @@ const std = @import("std");
 pub const Backend = enum { cgo, purego };
 /// Only the distinction the generator acts on: Windows constrains the purego
 /// callback ABI in ways the other systems do not.
-pub const TargetOs = enum { windows, other };
 pub const LinkMode = enum { static, dynamic };
 
 pub const ParseError = error{
@@ -34,7 +33,6 @@ pub const Generate = struct {
     errors_lock_path: ?[]const u8 = null,
     backend: Backend = .cgo,
     link_mode: LinkMode = .static,
-    target_os: TargetOs = .other,
     library_stem: []const u8 = "",
     /// Colon-separated candidate locations, in the order they are tried.
     library_search_paths: []const u8 = "",
@@ -190,7 +188,6 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
     var raw_colocated_seen = false;
     var backend: ?Backend = null;
     var link_mode: ?LinkMode = null;
-    var target_os: ?TargetOs = null;
     var library_stem: ?[]const u8 = null;
     var loading: LibraryLoadingArgs = .{};
 
@@ -238,11 +235,6 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         } else if (std.mem.eql(u8, flag, "--link-mode")) {
             if (link_mode != null) return error.DuplicateArgument;
             link_mode = parseLinkMode(try takeValue(args, &index)) orelse return error.InvalidValue;
-        } else if (std.mem.eql(u8, flag, "--target-os")) {
-            if (target_os != null) return error.DuplicateArgument;
-            // Any name is accepted; only windows changes what is generated.
-            const value = try takeValue(args, &index);
-            target_os = if (std.mem.eql(u8, value, "windows")) .windows else .other;
         } else if (try loading.parseFlag(flag, args, &index)) {
             // handled by the shared loading-policy parser
         } else if (std.mem.eql(u8, flag, "--go-package")) {
@@ -276,7 +268,6 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .errors_lock_path = errors_lock_path,
         .backend = backend orelse .cgo,
         .link_mode = link_mode orelse .static,
-        .target_os = target_os orelse .other,
         .library_stem = library_stem orelse "",
         .library_search_paths = loading.search_paths orelse "",
         .library_env_vars = loading.env_vars,

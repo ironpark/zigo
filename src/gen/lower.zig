@@ -42,7 +42,7 @@ pub fn semanticDocumentForBackend(
                     if (backend == .cgo) continue;
                     const callback_params = try allocator.alloc(abi.AbiScalar, callback.params.len);
                     for (callback.params, 0..) |callback_parameter, callback_index|
-                        callback_params[callback_index] = try lowerValue(allocator, document, prefix, callback_parameter);
+                        callback_params[callback_index] = callbackWireScalar(try lowerValue(allocator, document, prefix, callback_parameter));
                     const callback_return = try allocator.create(abi.AbiScalar);
                     callback_return.* = try lowerValue(allocator, document, prefix, callback.@"return".*);
                     try params.append(allocator, .{
@@ -153,7 +153,7 @@ pub fn semanticDocumentForBackend(
             break :blk try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ prefix, receiver_name, function_name });
         } else try std.fmt.allocPrint(allocator, "{s}_{s}", .{ prefix, function_name });
         const symbol = if (backend == .purego and functionHasCallback(function.*))
-            try std.fmt.allocPrint(allocator, "{s}_purego_v1", .{legacy_symbol})
+            try std.fmt.allocPrint(allocator, "{s}_purego_v2", .{legacy_symbol})
         else
             legacy_symbol;
         functions[function_index] = .{
@@ -177,7 +177,7 @@ pub fn semanticDocumentForBackend(
     const snapshots = try lowerTaggedUnionSnapshots(allocator, document, prefix);
     return .{
         .backend = backend,
-        .callback_convention = if (backend == .purego) .function_pointer_userdata_v1 else .fixed_go_export,
+        .callback_convention = if (backend == .purego) .function_pointer_userdata_v2 else .fixed_go_export,
         .constructors = document.constructors,
         .enums = try lowerEnums(allocator, document, prefix),
         .error_codes = error_codes,
@@ -189,6 +189,19 @@ pub fn semanticDocumentForBackend(
         .snapshots = snapshots,
         .structs = structs,
         .types = document.types,
+    };
+}
+
+/// A float never travels through the purego callback ABI as a float. Windows
+/// compiles a Go callback through `syscall.NewCallback`, whose `compileCallback`
+/// refuses a floating-point argument outright, so every float parameter crosses
+/// as its IEEE-754 bit pattern in an integer of the same width. The lowering is
+/// unconditional -- one wire shape on every platform keeps the committed
+/// generated tree identical no matter which host or `--target-os` produced it.
+fn callbackWireScalar(scalar: abi.AbiScalar) abi.AbiScalar {
+    return switch (scalar) {
+        .float => |bits| .{ .unsigned_int = bits },
+        else => scalar,
     };
 }
 
