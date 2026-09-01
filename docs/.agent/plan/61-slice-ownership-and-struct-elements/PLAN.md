@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-01T22:57:24Z"
 description: Allow extern struct slice elements, string slice params, and caller-owned slice returns with release; fix slice-return copy bugs
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-01T21:30:55Z"
 ---
 > NEXT: Fix the cgo `GoBytes` and purego `unsafe.Slice` slice-return paths and document the copy contract. ([Phase 0](phases/00-slice-return-copies.md))
@@ -11,7 +12,7 @@ registered_at: "2026-09-01T21:30:55Z"
 - [x] [Phase 01: Extern struct slice elements](phases/01-struct-slice-elements.md)
 - [x] [Phase 02: Sentinel byte pointers](phases/02-sentinel-byte-pointers.md)
 - [x] [Phase 03: String slice parameters](phases/03-string-slice-params.md)
-- [ ] [Phase 04: Caller-owned slice returns with release](phases/04-caller-owned-slice-returns.md)
+- [x] [Phase 04: Caller-owned slice returns with release](phases/04-caller-owned-slice-returns.md)
 
 # Shared Verification
 

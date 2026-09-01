@@ -129,6 +129,33 @@ Zig reflection에는 함수 파라미터 이름이 없습니다. zigo는 다음 
 },
 ```
 
+`cgo_flags`는 zigo가 계산한 include 경로와 라이브러리 경로만 대체합니다. module에 붙은
+system library, framework, pkg-config 정보는 그대로 함께 나갑니다. 그것까지 빼려면
+module에서 해당 링크를 하지 마세요.
+
+## 링크 정보가 전달되는 방식
+
+`.cgo_static`과 `.cgo_dynamic`에서 module의 링크 정보는 다음과 같이 생성된 raw 파일의
+cgo 블록으로 옮겨집니다.
+
+| module에 한 일 | 생성된 줄 |
+|---|---|
+| `linkSystemLibrary("z", .{})` | `#cgo LDFLAGS: ... -lz` |
+| `linkSystemLibrary("libcurl", .{ .use_pkg_config = .force })` | `#cgo pkg-config: libcurl` |
+| `addLibraryPath(...)` | `#cgo LDFLAGS: ... -L<경로>` |
+| `linkFramework("CoreFoundation", .{})` | `#cgo darwin LDFLAGS: -framework CoreFoundation` |
+| `linkFramework("Metal", .{ .weak = true })` | `#cgo darwin LDFLAGS: -weak_framework Metal` |
+
+`use_pkg_config = .force`인 system library만 `-l` 대신 `#cgo pkg-config:` 줄로 나갑니다.
+cgo가 pkg-config에게 컴파일·링크 플래그를 직접 묻게 하기 위해서입니다. 기본값 `.yes`는
+"pkg-config를 시도하고 안 되면 `-lname`"이라는 뜻인데 cgo에는 그 fallback이 없으므로
+`-lname`으로 내보냅니다. `.force` 대상이 하나도 없으면 그 줄은 생성되지 않습니다. `rpath`와 추가 include 경로는 전달하지 않으므로 필요하면
+`cgo_flags`로 직접 지정하세요.
+
+`.purego`는 링크 지시자를 전혀 생성하지 않습니다. 시스템 라이브러리는 native 공유
+라이브러리가 이미 링크하고 있어야 합니다. 반대로 `.cgo_static`은 archive를 Go 링크 시점에
+푸는 방식이라, native가 쓰는 시스템 라이브러리가 이 블록에 빠짐없이 있어야 합니다.
+
 ## `gofmt` 선택
 
 모든 생성 Go 파일은 기록 전에 `gofmt`를 거칩니다. 기본값은 `PATH`에서 찾은 실행 파일이며,

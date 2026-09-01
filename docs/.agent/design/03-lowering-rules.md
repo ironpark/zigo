@@ -374,5 +374,33 @@ import "C"
 
 - 경로는 `${SRCDIR}` 상대로만 생성한다. 절대 경로는 커밋되면 다른 머신에서 깨진다.
 - 배포 시 라이브러리를 다른 위치에 두려면 `addGoBindings(.{ .cgo_flags = ... })`로 덮어쓴다.
-- `linkSystemLibrary`는 `-l...`로, `linkFramework`는 Darwin 전용 `-framework ...`로
-  자동 반영한다.
+
+module에 붙은 링크 정보는 입력별로 다음과 같이 전달된다.
+
+| 입력 | 생성 결과 |
+|---|---|
+| `linkSystemLibrary(name, ...)` (`.no`/`.yes`) | `#cgo LDFLAGS`에 `-lname` |
+| `linkSystemLibrary(name, .{ .use_pkg_config = .force })` | `#cgo pkg-config: name` |
+| `addLibraryPath(dir)` (`lib_paths`) | `#cgo LDFLAGS`에 `-Ldir` |
+| `linkFramework(name, .{})` | `#cgo darwin LDFLAGS`에 `-framework name` |
+| `linkFramework(name, .{ .weak = true })` | `#cgo darwin LDFLAGS`에 `-weak_framework name` |
+| `addIncludePath` / `rpaths` | 전달하지 않는다(아래 참고) |
+
+`.force`만 pkg-config 줄로 간다. `.yes`는 "pkg-config를 시도하고 안 되면 `-lname`"이라는
+뜻인데 `#cgo pkg-config:`에는 그 fallback이 없어서, 그대로 옮기면 pkg-config가 없는 머신에서
+빌드가 깨진다.
+
+`#cgo pkg-config:` 줄은 CFLAGS·LDFLAGS 줄보다 먼저 쓴다. cgo가 pkg-config 결과를 같은
+블록의 두 줄과 합치기 때문이다. pkg-config 대상이 없으면 그 줄 자체를 생략한다.
+
+`include_dirs`와 `rpaths`는 zigo가 전달하지 않는다. header는 zigo가 생성한 것 하나만
+필요하고, rpath는 배포 정책이라 빌드 그래프가 정할 일이 아니기 때문이다. 둘 다 필요하면
+`cgo_flags`로 직접 쓴다.
+
+`cgo_flags`는 zigo가 계산한 include·library 경로 부분만 대체하고, module에서 온 system
+library·framework·pkg-config 정보는 그대로 덧붙인다. 이 정보까지 빼려면 module에서 링크
+자체를 하지 않아야 한다.
+
+`.backend = .purego`는 어떤 링크 지시자도 내보내지 않는다. 시스템 라이브러리는 native
+공유 라이브러리 자신이 이미 링크하고 있어야 한다. 반대로 `.cgo_static`은 Go 링크 시점에
+archive를 푸는 것이므로, native가 쓰는 시스템 라이브러리가 이 블록에 모두 나타나야 한다.

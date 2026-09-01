@@ -13,6 +13,7 @@ pub const Options = struct {
     cflags_override: ?[]const u8 = null,
     ldflags_override: ?[]const u8 = null,
     system_ldflags: []const u8 = "",
+    pkg_config_libs: []const u8 = "",
     framework_ldflags: []const u8 = "",
     include_dir: []const u8 = "${SRCDIR}/../../../zig-out/include",
     library_dir: []const u8 = "${SRCDIR}/../../../zig-out/lib",
@@ -80,6 +81,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .cflags_override = options.cflags_override,
         .ldflags_override = options.ldflags_override,
         .system_ldflags = options.system_ldflags,
+        .pkg_config_libs = options.pkg_config_libs,
         .framework_ldflags = options.framework_ldflags,
         .include_dir = options.include_dir,
         .library_dir = options.library_dir,
@@ -294,6 +296,46 @@ test "cgo flag overrides and observed link flags are emitted" {
     try std.testing.expect(std.mem.indexOf(u8, raw, "#cgo CFLAGS: -I/opt/flags/include") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "#cgo LDFLAGS: -L/opt/flags/lib -lflags_zigo -lz") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "#cgo darwin LDFLAGS: -framework CoreFoundation") != null);
+}
+
+test "pkg-config libraries, search paths, and weak frameworks reach the cgo block" {
+    const fixture =
+        \\{"functions":[],"package":"flags","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    try generate(std.testing.allocator, std.testing.io, fixture, temporary.dir, .{
+        .package = "flags",
+        .prefix = "zg",
+        .go_module = "example.com/flags",
+        .library_stem = "flags_zigo",
+        .pkg_config_libs = "libcurl zlib",
+        .system_ldflags = "-L/opt/flags/lib -lm",
+        .framework_ldflags = "-weak_framework Metal",
+    });
+    const raw = try temporary.dir.readFileAlloc(std.testing.io, "internal/raw/raw_gen.go", std.testing.allocator, .limited(16 * 1024));
+    defer std.testing.allocator.free(raw);
+    // pkg-config comes first so its own -I and -l results join the same block.
+    try std.testing.expect(std.mem.indexOf(u8, raw, "#cgo pkg-config: libcurl zlib\n#cgo CFLAGS: ") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "-L/opt/flags/lib -lm") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "#cgo darwin LDFLAGS: -weak_framework Metal") != null);
+}
+
+test "the pkg-config line is omitted when no library asks for it" {
+    const fixture =
+        \\{"functions":[],"package":"flags","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    try generate(std.testing.allocator, std.testing.io, fixture, temporary.dir, .{
+        .package = "flags",
+        .prefix = "zg",
+        .go_module = "example.com/flags",
+        .library_stem = "flags_zigo",
+    });
+    const raw = try temporary.dir.readFileAlloc(std.testing.io, "internal/raw/raw_gen.go", std.testing.allocator, .limited(16 * 1024));
+    defer std.testing.allocator.free(raw);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "pkg-config") == null);
 }
 
 test "static cgo links its archive by path and dynamic cgo keeps the search path" {

@@ -25,6 +25,7 @@ pub const Generate = struct {
     cflags: []const u8 = "",
     ldflags: []const u8 = "",
     system_ldflags: []const u8 = "",
+    pkg_config_libs: []const u8 = "",
     framework_ldflags: []const u8 = "",
     raw_package_path: []const u8 = "internal/raw",
     raw_package_name: []const u8 = "raw",
@@ -178,6 +179,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
     var cflags: ?[]const u8 = null;
     var ldflags: ?[]const u8 = null;
     var system_ldflags: ?[]const u8 = null;
+    var pkg_config_libs: ?[]const u8 = null;
     var framework_ldflags: ?[]const u8 = null;
     var raw_package_path: ?[]const u8 = null;
     var raw_package_name: ?[]const u8 = null;
@@ -219,6 +221,8 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
             try set(&ldflags, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--system-ldflags")) {
             try set(&system_ldflags, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--pkg-config-libs")) {
+            try set(&pkg_config_libs, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--framework-ldflags")) {
             try set(&framework_ldflags, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--raw-package-path")) {
@@ -260,6 +264,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .cflags = cflags orelse "",
         .ldflags = ldflags orelse "",
         .system_ldflags = system_ldflags orelse "",
+        .pkg_config_libs = pkg_config_libs orelse "",
         .framework_ldflags = framework_ldflags orelse "",
         .raw_package_path = raw_package_path orelse "internal/raw",
         .raw_package_name = raw_package_name orelse "raw",

@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Docs describe every input's fate; generated raw file shows `#cgo pkg-config:`
 > NEXT: none

@@ -653,6 +653,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     const ldflags_override = if (options.cgo_flags) |flags| joinFlags(b, flags.ldflags) else "";
     const system_ldflags = systemLibraryFlags(b, options.module);
     const framework_ldflags = frameworkFlags(b, options.module);
+    const pkg_config_libs = pkgConfigLibraries(b, options.module);
     generate.addArgs(&.{
         "--package",           options.name,
         "--prefix",            options.prefix,
@@ -663,6 +664,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         "--ldflags",           ldflags_override,
         "--system-ldflags",    system_ldflags,
         "--framework-ldflags", framework_ldflags,
+        "--pkg-config-libs",   pkg_config_libs,
         "--raw-package-path",  raw_package.path,
         "--raw-package-name",  raw_package.name,
         "--backend",           @tagName(backend),
@@ -980,19 +982,43 @@ fn joinFlags(b: *std.Build, flags: []const []const u8) []const u8 {
     return std.mem.join(b.allocator, " ", flags) catch @panic("OOM");
 }
 
+/// `-l` flags for the system libraries cgo has to name directly, plus a `-L`
+/// for every search path on the module. Only `.force` libraries move to the
+/// pkg-config line: `.yes` means "try pkg-config, otherwise `-lfoo`", and a
+/// `#cgo pkg-config:` entry has no such fallback.
 fn systemLibraryFlags(b: *std.Build, module: *std.Build.Module) []const u8 {
     var flags: std.ArrayList([]const u8) = .empty;
+    for (module.lib_paths.items) |path| {
+        flags.append(b.allocator, b.fmt("-L{s}", .{path.getPath(b)})) catch @panic("OOM");
+    }
     for (module.link_objects.items) |object| switch (object) {
-        .system_lib => |library| flags.append(b.allocator, b.fmt("-l{s}", .{library.name})) catch @panic("OOM"),
+        .system_lib => |library| {
+            if (library.use_pkg_config == .force) continue;
+            flags.append(b.allocator, b.fmt("-l{s}", .{library.name})) catch @panic("OOM");
+        },
         else => {},
     };
     return joinFlags(b, flags.items);
 }
 
+/// pkg-config package names, space separated, for a `#cgo pkg-config:` line.
+/// Only `.force` qualifies; see `systemLibraryFlags` for why.
+fn pkgConfigLibraries(b: *std.Build, module: *std.Build.Module) []const u8 {
+    var names: std.ArrayList([]const u8) = .empty;
+    for (module.link_objects.items) |object| switch (object) {
+        .system_lib => |library| {
+            if (library.use_pkg_config != .force) continue;
+            names.append(b.allocator, library.name) catch @panic("OOM");
+        },
+        else => {},
+    };
+    return joinFlags(b, names.items);
+}
+
 fn frameworkFlags(b: *std.Build, module: *std.Build.Module) []const u8 {
     var flags: std.ArrayList([]const u8) = .empty;
-    for (module.frameworks.keys()) |framework| {
-        flags.append(b.allocator, "-framework") catch @panic("OOM");
+    for (module.frameworks.keys(), module.frameworks.values()) |framework, framework_options| {
+        flags.append(b.allocator, if (framework_options.weak) "-weak_framework" else "-framework") catch @panic("OOM");
         flags.append(b.allocator, framework) catch @panic("OOM");
     }
     return joinFlags(b, flags.items);

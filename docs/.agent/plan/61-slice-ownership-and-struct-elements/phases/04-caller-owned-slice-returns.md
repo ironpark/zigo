@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-01T22:57:24Z"
 depends_on:
 - "61-slice-ownership-and-struct-elements#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `.returns = .caller` with `release` on a slice generates copy-then-free Go on
 > NEXT: none

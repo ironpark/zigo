@@ -65,6 +65,7 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         .cflags_override = if (options.cflags.len == 0) null else options.cflags,
         .ldflags_override = if (options.ldflags.len == 0) null else options.ldflags,
         .system_ldflags = options.system_ldflags,
+        .pkg_config_libs = options.pkg_config_libs,
         .framework_ldflags = options.framework_ldflags,
         .include_dir = options.include_dir,
         .library_dir = options.library_dir,
