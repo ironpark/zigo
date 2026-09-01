@@ -1258,6 +1258,12 @@ fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.Io.Wr
     try writer.print("// {s}ActiveCallbackHandleCount reports the number of live callback tokens.\nfunc {s}ActiveCallbackHandleCount() int64 {{ return activeCallbackHandles.Load() }}\n\n", .{ prefix, prefix });
     try writer.writeAll("func acquireCallback(token uintptr) (*callbackEntry, any, bool) {\n\tstored, loaded := callbackRegistry.Load(token)\n\tif !loaded { return nil, nil, false }\n\tentry := stored.(*callbackEntry)\n\tentry.mu.Lock()\n\tif entry.closing { entry.mu.Unlock(); return nil, nil, false }\n\tentry.active++\n\tvalue := entry.value\n\tentry.mu.Unlock()\n\treturn entry, value, true\n}\n\nfunc releaseCallback(entry *callbackEntry) {\n\tentry.mu.Lock()\n\tentry.active--\n\tif entry.closing && entry.active == 0 { entry.cond.Broadcast() }\n\tentry.mu.Unlock()\n}\n\n");
 
+    if (programHasWideningCallbackResult(program)) try writer.writeAll(
+        "// callbackResult widens a signed 32-bit callback result to the uintptr\n" ++
+            "// every dispatcher must return. The native caller declares the callback as\n" ++
+            "// returning int32_t and reads only the low word, so the value round-trips.\n" ++
+            "func callbackResult(value int32) uintptr { return uintptr(uint32(value)) }\n\n",
+    );
     const count = uniqueCallbackSignatureCount(program);
     try writer.print("var callbackPointers [{d}]uintptr\nvar callbackDispatchersOnce sync.Once\n\nfunc ensureCallbackDispatchers() {{\n\tcallbackDispatchersOnce.Do(func() {{\n", .{count});
     var signature_index: usize = 0;
@@ -1271,26 +1277,20 @@ fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.Io.Wr
                 try writer.print("p{d} ", .{index});
                 try writeRawGoType(writer, program, callback_parameter);
             }
-            try writer.writeByte(')');
-            if (callback.@"return".* != .void) {
-                try writer.writeAll(" (result ");
-                try writeRawGoType(writer, program, callback.@"return".*);
-                try writer.writeByte(')');
-            }
-            try writer.writeAll(" {\n");
-            if (callback.@"return".* != .void) {
-                try writer.writeAll("\t\t\tdefer func() { if recover() != nil { result = ");
-                try writeCallbackFailureValue(writer, callback.@"return".*, true);
-                try writer.writeAll(" } }()\n");
-            } else {
-                try writer.writeAll("\t\t\tdefer func() { _ = recover() }()\n");
-            }
+            // Every dispatcher returns uintptr, including the ones whose Zig
+            // callback returns nothing. Windows compiles callbacks through
+            // `syscall.NewCallback`, which rejects any function that does not
+            // have exactly one pointer-sized result; a narrower result is not
+            // an option, and a void one even less so. The C caller reads only
+            // the low word, so an int32 result survives the widening on both
+            // supported architectures, and a void callback's value is ignored.
+            try writer.writeAll(") (result uintptr) {\n");
+            try writer.writeAll("\t\t\tdefer func() { if recover() != nil { result = ");
+            try writeCallbackFailureValue(writer, callback.@"return".*, true);
+            try writer.writeAll(" } }()\n");
             const userdata_index = callback.params.len - 1;
-            try writer.print("\t\t\tentry, stored, ok := acquireCallback(uintptr(p{d}))\n\t\t\tif !ok {{", .{userdata_index});
-            if (callback.@"return".* != .void) {
-                try writer.writeAll(" return ");
-                try writeCallbackFailureValue(writer, callback.@"return".*, false);
-            } else try writer.writeAll(" return");
+            try writer.print("\t\t\tentry, stored, ok := acquireCallback(uintptr(p{d}))\n\t\t\tif !ok {{ return ", .{userdata_index});
+            try writeCallbackFailureValue(writer, callback.@"return".*, false);
             try writer.writeAll(" }\n\t\t\tdefer releaseCallback(entry)\n\t\t\tcallback := stored.(func(");
             for (callback.params[0..userdata_index], 0..) |callback_parameter, index| {
                 if (index != 0) try writer.writeAll(", ");
@@ -1302,13 +1302,16 @@ fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.Io.Wr
                 try writeRawGoType(writer, program, callback.@"return".*);
             }
             try writer.writeAll(")\n\t\t\t");
-            if (callback.@"return".* != .void) try writer.writeAll("return ");
+            const widens = callbackResultWidens(callback.@"return".*);
+            if (widens) try writer.writeAll("return callbackResult(");
             try writer.writeAll("callback(");
             for (0..userdata_index) |index| {
                 if (index != 0) try writer.writeAll(", ");
                 try writer.print("p{d}", .{index});
             }
-            try writer.writeAll(")\n\t\t})\n");
+            try writer.writeAll(")");
+            if (widens) try writer.writeAll(")") else try writer.writeAll("\n\t\t\treturn 0");
+            try writer.writeAll("\n\t\t})\n");
             signature_index += 1;
         }
     }
@@ -1320,11 +1323,29 @@ fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.Io.Wr
     _ = allocator;
 }
 
+/// The signed 32-bit result is the only callback ABI that carries failure
+/// codes; every other shape reports failure as a plain zero.
+fn callbackResultWidens(node: semantic.TypeNode) bool {
+    return node == .int and node.int.signed and node.int.bits == 32;
+}
+
 fn writeCallbackFailureValue(writer: *std.Io.Writer, node: semantic.TypeNode, panic_value: bool) !void {
-    if (node == .int and node.int.signed and node.int.bits == 32)
-        try writer.writeAll(if (panic_value) "-3" else "-4")
+    if (callbackResultWidens(node))
+        try writer.writeAll(if (panic_value) "callbackResult(-3)" else "callbackResult(-4)")
     else
         try writer.writeAll("0");
+}
+
+/// True when any callback signature returns the signed 32-bit ABI, which is
+/// the only one whose dispatcher needs the widening helper.
+fn programHasWideningCallbackResult(program: abi.Program) bool {
+    for (program.functions) |function| {
+        for (function.origin.params) |parameter| {
+            if (parameter.type != .callback) continue;
+            if (callbackResultWidens(parameter.type.callback.@"return".*)) return true;
+        }
+    }
+    return false;
 }
 
 fn uniqueCallbackSignatureCount(program: abi.Program) usize {

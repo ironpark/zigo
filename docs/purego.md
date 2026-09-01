@@ -280,6 +280,13 @@ purego 백엔드는 콜백 파라미터를 C 함수 포인터와 `uintptr_t` use
   생성된 raw 파일에만 격리한다. 다른 버전을 요구하는 `go.mod`는 `go-doctor`가 경고한다.
 - 지원 범위는 네이티브 macOS/Linux/Windows amd64·arm64다. 모바일과 purego Tier 2
   타깃은 후속 작업이다. Windows에서 cgo 백엔드는 지원하지 않는다.
+- Windows에서는 콜백 파라미터에 부동소수를 쓸 수 없다. Windows의
+  `purego.NewCallback`은 `syscall.NewCallback`을 그대로 감싸고, 그 뒤의
+  `compileCallback`은 386이 아닌 아키텍처에서 부동소수 인자를 거부한다(값이
+  트램폴린이 스필하지 않는 부동소수 레지스터로 전달되기 때문이다). Go 쪽에서
+  우회할 방법이 없으므로 Windows 타깃으로 생성하면 `ZIGO014`로 거부한다. 값을
+  정수 비트 패턴으로 넘기거나 그 바인딩 세트를 macOS/Linux 전용으로 둔다.
+  `examples/08-telemetry-hub`가 이 경우에 해당해 Windows CI에서 제외된다.
 - 정적 링크는 cgo 전용이다.
 - Go race detector는 여전히 cgo를 요구하므로 `CGO_ENABLED=0` 테스트에서는 사용할 수 없다.
   race 커버리지는 cgo 백엔드 테스트에서 확보한다. Windows purego 잡도 마찬가지이고,

@@ -78,6 +78,11 @@ go-purego/internal/raw/raw_load_posix_gen.go    // go:build !windows
 go-purego/internal/raw/raw_load_windows_gen.go  // go:build windows
 ```
 
+콜백 dispatcher는 모든 플랫폼에서 `uintptr` 하나를 반환합니다. Windows의
+`syscall.NewCallback`이 정확히 포인터 크기의 결과 하나를 요구하기 때문이며,
+반환값이 없는 Zig 콜백도 `0`을 돌려줍니다. 네이티브 쪽은 `int32_t` 반환으로
+선언되어 하위 워드만 읽으므로 값은 그대로 왕복합니다.
+
 두 파일은 `openLibrary`, `closeLibrary`, `resolveSymbol` 세 함수를 똑같이 정의하며
 POSIX는 purego의 `Dlopen`/`Dlsym`/`Dlclose`를, Windows는 표준 라이브러리
 `syscall.LoadLibrary`/`GetProcAddress`/`FreeLibrary`를 사용합니다. purego v0.10.2는

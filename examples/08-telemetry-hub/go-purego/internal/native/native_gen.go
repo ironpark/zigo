@@ -182,24 +182,29 @@ func releaseCallback(entry *callbackEntry) {
 	entry.mu.Unlock()
 }
 
+// callbackResult widens a signed 32-bit callback result to the uintptr
+// every dispatcher must return. The native caller declares the callback as
+// returning int32_t and reads only the low word, so the value round-trips.
+func callbackResult(value int32) uintptr { return uintptr(uint32(value)) }
+
 var callbackPointers [1]uintptr
 var callbackDispatchersOnce sync.Once
 
 func ensureCallbackDispatchers() {
 	callbackDispatchersOnce.Do(func() {
-		callbackPointers[0] = purego.NewCallback(func(p0 uint64, p1 float64, p2 uint) (result int32) {
+		callbackPointers[0] = purego.NewCallback(func(p0 uint64, p1 float64, p2 uint) (result uintptr) {
 			defer func() {
 				if recover() != nil {
-					result = -3
+					result = callbackResult(-3)
 				}
 			}()
 			entry, stored, ok := acquireCallback(uintptr(p2))
 			if !ok {
-				return -4
+				return callbackResult(-4)
 			}
 			defer releaseCallback(entry)
 			callback := stored.(func(uint64, float64) int32)
-			return callback(p0, p1)
+			return callbackResult(callback(p0, p1))
 		})
 	})
 }

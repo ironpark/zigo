@@ -39,10 +39,15 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
     const semantic_bytes = try std.Io.Dir.cwd().readFileAlloc(io, options.semantic_path, allocator, .limited(64 * 1024 * 1024));
     var parsed = try semantic.Semantic.parse(allocator, semantic_bytes);
     defer parsed.deinit();
-    if (try validate.findIssue(allocator, parsed.value)) |issue| {
+    const issue = try validate.findIssue(allocator, parsed.value) orelse
+        if (options.backend == .purego and options.target_os == .windows)
+            validate.puregoWindowsIssue(parsed.value)
+        else
+            null;
+    if (issue) |found| {
         var buffer: [1024]u8 = undefined;
         var stderr = std.Io.File.Writer.init(.stderr(), io, &buffer);
-        try issue.render(&stderr.interface);
+        try found.render(&stderr.interface);
         try stderr.interface.flush();
         std.process.exit(1);
     }
@@ -76,6 +81,7 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
             .static => .static,
             .dynamic => .dynamic,
         },
+        .windows_target = options.target_os == .windows,
         .library_stem = options.library_stem,
         .library_search_paths = options.library_search_paths,
         .library_env_vars = options.library_env_vars,

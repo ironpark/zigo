@@ -14,6 +14,36 @@ pub fn semanticDocument(allocator: std.mem.Allocator, document: semantic.Semanti
     }
 }
 
+/// Windows compiles a Go callback through `syscall.NewCallback`, whose
+/// `compileCallback` rejects a floating-point parameter outright: on anything
+/// but 386 the value arrives in a floating-point register the trampoline does
+/// not spill. purego wraps that function directly, so nothing on the Go side
+/// can rescue such a signature, and the native side would have to hand the
+/// bits over as an integer instead. Generation refuses rather than emitting a
+/// dispatcher that panics from inside purego the first time it loads.
+pub fn puregoWindowsIssue(document: semantic.Semantic) ?diagnostic.Diagnostic {
+    for (document.functions) |function| {
+        for (function.params) |parameter| {
+            if (parameter.type != .callback) continue;
+            for (parameter.type.callback.params) |callback_parameter| {
+                if (callback_parameter != .float) continue;
+                return .{
+                    .severity = .@"error",
+                    .code = "ZIGO014",
+                    .message = "purego callback takes a float parameter, which Windows cannot dispatch",
+                    .site = .{ .path = "semantic.json", .declaration = function.name },
+                    .hint = "pass the value as its integer bit pattern, or build this binding set for macOS or Linux only",
+                };
+            }
+        }
+    }
+    return null;
+}
+
+pub fn puregoWindowsCallbacks(document: semantic.Semantic) !void {
+    if (puregoWindowsIssue(document) != null) return error.InvalidSemantic;
+}
+
 pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
     for (document.functions) |function| {
         if (function.@"return" == .error_union and function.@"return".error_union.anyerror) return .{
@@ -1179,4 +1209,47 @@ test "a packed struct and an opaque-pointer field stay out of the extern struct 
     const pointer_issue = (try findIssue(std.testing.allocator, pointer_document)) orelse return error.MissingDiagnostic;
     try std.testing.expectEqualStrings("ZIGO012", pointer_issue.code);
     try std.testing.expectEqualStrings("owner", pointer_issue.site.declaration);
+}
+
+test "a float callback parameter is rejected only for a windows purego target" {
+    var int32_return: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+    const usize_param: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
+    const float_callback: semantic.TypeNode = .{ .callback = .{
+        .c_callconv = true,
+        .has_userdata = true,
+        .params = &.{ .{ .float = .{ .bits = 64 } }, usize_param },
+        .@"return" = &int32_return,
+    } };
+    const document: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "observe",
+            .params = &.{.{ .name = "sink", .type = float_callback }},
+            .@"return" = .{ .void = {} },
+            .symbol = "ignored",
+        }},
+        .package = "hub",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    // The signature is valid on every other platform, so the general validator
+    // must stay silent about it.
+    try std.testing.expect((try findIssue(std.testing.allocator, document)) == null);
+    const issue = puregoWindowsIssue(document) orelse return error.MissingDiagnostic;
+    try std.testing.expectEqualStrings("ZIGO014", issue.code);
+    try std.testing.expectEqualStrings("observe", issue.site.declaration);
+
+    const integral_callback: semantic.TypeNode = .{ .callback = .{
+        .c_callconv = true,
+        .has_userdata = true,
+        .params = &.{ .{ .int = .{ .bits = 64, .signed = false } }, usize_param },
+        .@"return" = &int32_return,
+    } };
+    var integral = document;
+    integral.functions = &.{.{
+        .name = "observe",
+        .params = &.{.{ .name = "sink", .type = integral_callback }},
+        .@"return" = .{ .void = {} },
+        .symbol = "ignored",
+    }};
+    try std.testing.expect(puregoWindowsIssue(integral) == null);
 }

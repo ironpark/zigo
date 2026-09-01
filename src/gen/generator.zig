@@ -23,6 +23,9 @@ pub const Options = struct {
     errors_lock_bytes: ?[]const u8 = null,
     backend: emit.Options.Backend = .cgo,
     link_mode: emit.Options.LinkMode = .static,
+    /// Windows constrains the purego callback ABI, so generation rejects a
+    /// binding it could only produce a dispatcher that panics for.
+    windows_target: bool = false,
     library_stem: []const u8 = "",
     library_search_paths: []const u8 = "",
     library_env_vars: ?[]const u8 = null,
@@ -43,6 +46,8 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
     var parsed = try semantic.Semantic.parse(scratch_allocator, semantic_bytes);
     defer parsed.deinit();
     try validate.semanticDocument(scratch_allocator, parsed.value);
+    if (options.backend == .purego and options.windows_target)
+        try validate.puregoWindowsCallbacks(parsed.value);
     var baseline: ?errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(scratch_allocator, bytes) else null;
     defer if (baseline) |*value| value.deinit(scratch_allocator);
     var lock: errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(scratch_allocator, bytes) else .{};
