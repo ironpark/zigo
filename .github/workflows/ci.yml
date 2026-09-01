@@ -182,11 +182,12 @@ jobs:
   # Windows is a supported purego target, and nothing else proves the
   # build-tagged syscall loader actually loads a DLL. It is deliberately narrow
   # -- purego only, no cgo (mingw linking is unsupported) and no artifact
-  # inspection, since inspect_shared_library.sh is POSIX-only. Two examples are
+  # inspection, since inspect_shared_library.sh is POSIX-only. One example is
   # left to the Ubuntu job: 04-callback links system zlib, which windows-latest
-  # does not provide, and 08-telemetry-hub has a float callback parameter, which
-  # syscall.NewCallback cannot dispatch and the generator now rejects with
-  # ZIGO014 for a windows target. 07-event-queue carries the callback coverage.
+  # does not provide. 08-telemetry-hub rejoined this job once float callback
+  # parameters started crossing as integer bit patterns, and it is the only
+  # coverage anywhere of floats in a Windows callback and in a Windows purego
+  # call.
   purego-windows:
     runs-on: windows-latest
     steps:
@@ -219,27 +220,16 @@ jobs:
         # library, so this also asserts that the doctor passes on Windows.
         run: |
           set -euo pipefail
-          (cd examples/07-event-queue && zig build purego-go purego-go-verify --summary all)
+          for example in 07-event-queue 08-telemetry-hub; do
+            (cd "examples/$example" && zig build purego-go purego-go-verify --summary all)
+          done
           (cd examples/10-tagged-union && zig build go go-verify -Dpurego --summary all)
 
           # Zig installs a DLL into `bin`, not `lib`, and it carries no `lib`
           # prefix -- which is what DefaultLibraryName expects on windows.
           test -f examples/07-event-queue/zig-out/bin/event_queue_zigo.dll
+          test -f examples/08-telemetry-hub/zig-out/bin/telemetry_hub_zigo.dll
           test -f examples/10-tagged-union/zig-out/bin/tagged_union_zigo.dll
-
-          # The float-callback rejection is part of the contract, so assert it
-          # rather than just avoiding it. The build is expected to fail, so its
-          # output is captured before being matched; piping it straight into
-          # grep would let pipefail turn the expected failure into a job
-          # failure.
-          rejection="$(cd examples/08-telemetry-hub && zig build purego-go 2>&1 || true)"
-          if grep -q "ZIGO014" <<<"$rejection"; then
-            echo "08-telemetry-hub correctly rejected: float callback parameter"
-          else
-            echo "expected ZIGO014 for the float callback parameter on windows, got:"
-            echo "$rejection"
-            exit 1
-          fi
       - name: Run the purego examples without cgo
         shell: bash
         # The race detector needs cgo, exactly as on the POSIX purego job.
@@ -247,7 +237,11 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           set -euo pipefail
-          (cd examples/07-event-queue/go-purego && go vet ./... && go test ./...)
+          # 08-telemetry-hub is what proves floats survive a Windows callback
+          # and a Windows purego call; 07 covers the explicit loader policy.
+          for example in 07-event-queue 08-telemetry-hub; do
+            (cd "examples/$example/go-purego" && go vet ./... && go test ./...)
+          done
 
           cd examples/10-tagged-union/go-purego
           go vet ./...

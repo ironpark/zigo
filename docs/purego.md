@@ -237,8 +237,8 @@ library search paths: ${EXECUTABLE_DIR}:${EXECUTABLE_DIR}/../lib:../../zig-out/l
   zig build purego-go-lib                           # 호스트 네이티브
   ```
 
-  생성되는 Go 트리는 타깃과 무관하게 동일하다. 예외는 타깃이 결정하는 진단뿐이다.
-  Windows 타깃에서 부동소수 콜백 파라미터를 `ZIGO014`로 거부하는 것이 그 예다.
+  생성되는 Go 트리는 타깃과 무관하게 동일하다. 타깃에 따라 달라지는 진단도 없으므로
+  어느 호스트에서 어느 타깃으로 생성해도 커밋된 트리는 바이트 단위로 같다.
 
   cgo 백엔드를 `CC="zig cc -target x86_64-windows"`로 크로스 링크하는 방법은 검증하지
   않았다. 후속 작업 후보일 뿐 지원 대상이 아니다.
@@ -291,8 +291,23 @@ library search paths: ${EXECUTABLE_DIR}:${EXECUTABLE_DIR}/../lib:../../zig-out/l
 ## 콜백
 
 purego 백엔드는 콜백 파라미터를 C 함수 포인터와 `uintptr_t` userdata로 낮추고, 콜백을
-받는 네이티브 진입점에 `_purego_v1` 접미사를 붙인다. cgo 백엔드의 심볼과 트램폴린은
+받는 네이티브 진입점에 `_purego_v2` 접미사를 붙인다. cgo 백엔드의 심볼과 트램폴린은
 그대로 유지되므로 기존 cgo ABI는 바뀌지 않는다.
+
+접미사의 버전이 곧 콜백 ABI의 버전이다. 콜백 ABI가 바뀌면 접미사가 올라가므로, 오래된
+라이브러리와 새로 생성한 Go를 섞으면 비트를 잘못 읽는 대신 로드 시점에 심볼을 찾지
+못하고 실패한다. `zigo-gen report`는 이 버전을 `callback ABI:` 줄에 출력한다.
+
+- 부동소수 콜백 파라미터는 같은 폭의 정수에 IEEE-754 비트 패턴으로 실려 건너간다.
+  `f64`는 `uint64_t`, `f32`는 `uint32_t`다. Windows의 `purego.NewCallback`은
+  `syscall.NewCallback`을 그대로 감싸고, 그 뒤의 `compileCallback`은 386이 아닌
+  아키텍처에서 부동소수 인자를 거부하기 때문이다(값이 트램폴린이 스필하지 않는
+  부동소수 레지스터로 전달된다). 변환은 양쪽 끝에서 일어난다. 네이티브 쪽은 여전히
+  진짜 부동소수로 호출하고, shim이 생성한 정적 thunk가 `@bitCast`해서 Go dispatcher로
+  넘기며, dispatcher가 `math.Float64frombits`로 되돌린다. Go에서 쓰는 콜백 타입은
+  그대로 `float64`다.
+- 이 lowering은 모든 플랫폼에 동일하게 적용된다. 타깃마다 다른 ABI를 내보내면 커밋된
+  생성 트리가 호스트·타깃에 따라 달라지기 때문이다.
 
 - 고유한 콜백 시그니처마다 영구 dispatcher를 하나 만든다. `purego.NewCallback` 슬롯은
   회수할 수 없으므로 콜백 값마다 네이티브 콜백을 만들지 않는다.
@@ -307,13 +322,8 @@ purego 백엔드는 콜백 파라미터를 C 함수 포인터와 `uintptr_t` use
   생성된 raw 파일에만 격리한다. 다른 버전을 요구하는 `go.mod`는 `go-doctor`가 경고한다.
 - 지원 범위는 네이티브 macOS/Linux/Windows amd64·arm64다. 모바일과 purego Tier 2
   타깃은 후속 작업이다. Windows에서 cgo 백엔드는 지원하지 않는다.
-- Windows에서는 콜백 파라미터에 부동소수를 쓸 수 없다. Windows의
-  `purego.NewCallback`은 `syscall.NewCallback`을 그대로 감싸고, 그 뒤의
-  `compileCallback`은 386이 아닌 아키텍처에서 부동소수 인자를 거부한다(값이
-  트램폴린이 스필하지 않는 부동소수 레지스터로 전달되기 때문이다). Go 쪽에서
-  우회할 방법이 없으므로 Windows 타깃으로 생성하면 `ZIGO014`로 거부한다. 값을
-  정수 비트 패턴으로 넘기거나 그 바인딩 세트를 macOS/Linux 전용으로 둔다.
-  `examples/08-telemetry-hub`가 이 경우에 해당해 Windows CI에서 제외된다.
+- 콜백 결과는 `void`나 `i32`만 지원하고, 그 밖의 타입은 `ZIGO014`로 거부한다.
+  값은 userdata로 돌려준다.
 - 정적 링크는 cgo 전용이다.
 - Go race detector는 여전히 cgo를 요구하므로 `CGO_ENABLED=0` 테스트에서는 사용할 수 없다.
   race 커버리지는 cgo 백엔드 테스트에서 확보한다. Windows purego 잡도 마찬가지이고,

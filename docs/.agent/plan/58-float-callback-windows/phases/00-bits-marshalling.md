@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-01T17:56:19Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 08 generates and cross-builds for windows from this host; all local
 > NEXT: none

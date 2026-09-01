@@ -2,7 +2,7 @@
 depends_on:
 - "58-float-callback-windows#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Windows CI green with 08 in the job — first Windows runtime proof of
 > NEXT: none

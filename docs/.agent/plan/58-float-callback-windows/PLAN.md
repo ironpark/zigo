@@ -7,7 +7,7 @@ registered_at: "2026-09-01T17:41:36Z"
 
 # Phases
 
-- [ ] [Phase 00: Uniform bit-marshalled float callback parameters](phases/00-bits-marshalling.md)
+- [x] [Phase 00: Uniform bit-marshalled float callback parameters](phases/00-bits-marshalling.md)
 - [ ] [Phase 01: Fidelity tests, CI restoration, docs](phases/01-fidelity-and-ci.md)
 
 # Shared Verification

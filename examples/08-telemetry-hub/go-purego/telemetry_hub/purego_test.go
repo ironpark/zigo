@@ -3,6 +3,7 @@ package telemetry_hub
 import (
 	"errors"
 	"fmt"
+	"math"
 	"sync"
 	"testing"
 )
@@ -91,5 +92,56 @@ func TestPuregoConcurrentIndependentLifecycles(t *testing.T) {
 	}
 	if callbackDispatcherCount() != 1 {
 		t.Fatalf("dispatchers = %d", callbackDispatcherCount())
+	}
+}
+
+// Float callback parameters cross the purego ABI as IEEE-754 bit patterns, so
+// what matters is that the observer sees the exact bits the native side
+// produced -- not a value that merely prints the same. Negative zero and an
+// infinity are the payloads a lossy conversion would quietly normalise away.
+func TestPuregoFloatCallbackParameterIsBitExact(t *testing.T) {
+	observe := func(t *testing.T, mode Mode, configure func(*TelemetryHub) error, push float64) uint64 {
+		t.Helper()
+		var seen []float64
+		hub, err := NewTelemetryHub("bits", 1, mode, OverflowPolicyReject, func(_ uint64, value float64) int32 {
+			seen = append(seen, value)
+			return 0
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer hub.Close()
+		if configure != nil {
+			if err := configure(hub); err != nil {
+				t.Fatal(err)
+			}
+		}
+		if err := hub.Push(1, push); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := hub.ProcessAll(); err != nil {
+			t.Fatal(err)
+		}
+		if len(seen) != 1 {
+			t.Fatalf("observed %d values, want 1", len(seen))
+		}
+		return math.Float64bits(seen[0])
+	}
+
+	ordinary := 3.141592653589793
+	if got := observe(t, ModeRaw, nil, ordinary); got != math.Float64bits(ordinary) {
+		t.Errorf("ordinary value = %#016x, want %#016x", got, math.Float64bits(ordinary))
+	}
+	// The sign bit is the whole point: -0.0 and 0.0 compare equal, so the test
+	// has to look at the bits.
+	negativeZero := math.Copysign(0, -1)
+	if got := observe(t, ModeRaw, nil, negativeZero); got != math.Float64bits(negativeZero) {
+		t.Errorf("negative zero = %#016x, want %#016x", got, math.Float64bits(negativeZero))
+	}
+	// Push refuses a non-finite sample, so the infinity is produced natively:
+	// scaled mode overflows the product into +Inf on the Zig side.
+	toInfinity := func(hub *TelemetryHub) error { return hub.SetScaleFactor(1e308) }
+	if got := observe(t, ModeScaled, toInfinity, 1e308); got != math.Float64bits(math.Inf(1)) {
+		t.Errorf("positive infinity = %#016x, want %#016x", got, math.Float64bits(math.Inf(1)))
 	}
 }

@@ -48,10 +48,21 @@ go get github.com/ebitengine/purego@v0.10.2
 ```
 
 Callback-bearing purego libraries use a versioned native entry point ending in
-`_purego_v1`. Its C signature contains the callback function pointer explicitly,
+`_purego_v2`. Its C signature contains the callback function pointer explicitly,
 followed by the existing integer userdata parameter. Callback types and return
 types are lowered from semantic IR and use the C calling convention. The shared
 library therefore has no unresolved dependency on a Go `//export` trampoline.
+
+The version in that suffix is the callback ABI's version, and it is what makes a
+callback ABI change safe: a stale library and regenerated Go fail to resolve the
+symbol at load instead of misreading bits. `_purego_v2` carries float callback
+parameters as their IEEE-754 bit pattern in an integer of the same width, on
+every platform, because Windows' `compileCallback` refuses a floating-point
+argument. The generated shim converts at both ends -- a static thunk `@bitCast`s
+on the native side, the dispatcher calls `math.Float*frombits` on the Go side --
+so the callback types Go code writes still take real floats. A callback result,
+by contrast, must be `void` or a signed 32-bit integer: every dispatcher returns
+one `uintptr`, so anything else has nowhere to go and is refused with `ZIGO014`.
 
 The cgo backend keeps its original symbols and fixed generated trampolines. This
 dual-symbol strategy avoids changing an existing cgo ABI in place. Binding

@@ -11,11 +11,12 @@
 - opt-in `.link = .purego`는 Go 빌드에서 C 컴파일러와 cgo를 제거하고 네이티브
   macOS/Linux/Windows의 amd64·arm64를 지원하지만, 공유 라이브러리 배포를 요구한다.
   모바일과 purego Tier 2 타깃은 후속 작업이다. 정적 링크는 cgo 전용이다.
-- Windows purego 타깃에서는 콜백 파라미터에 부동소수를 쓸 수 없다. Go 런타임의
-  `compileCallback`이 386이 아닌 아키텍처에서 부동소수 인자를 거부하므로 Go 쪽
-  우회가 불가능하고, 생성 시점에 `ZIGO014`로 거부한다. 정수 비트 패턴으로 넘기거나
-  그 바인딩 세트를 macOS/Linux 전용으로 둔다. 같은 제약 때문에 콜백 dispatcher는
-  모든 플랫폼에서 `uintptr` 하나를 반환한다.
+- purego 콜백의 결과 타입은 `void` 또는 `i32`만 지원한다. Windows의
+  `compileCallback`이 포인터 크기 결과 하나를 요구하므로 콜백 dispatcher는 모든
+  플랫폼에서 `uintptr` 하나를 반환하고, 그 밖의 결과 타입은 실어 보낼 곳이 없다.
+  생성 시점에 `ZIGO014`로 거부한다. 값은 userdata를 통해 돌려준다.
+  부동소수 **파라미터**는 제약이 아니다. 모든 플랫폼에서 같은 폭의 정수에 IEEE-754
+  비트 패턴으로 실려 건너가므로 `compileCallback`은 부동소수 인자를 보지 않는다.
 - purego는 v1 이전 베타 소프트웨어다. zigo는 `github.com/ebitengine/purego v0.10.2`를
   고정해 생성·검증하며 사용을 생성된 raw 파일에만 격리한다. 다른 버전을 요구하는
   `go.mod`는 `go-doctor`가 경고로 보고한다.
