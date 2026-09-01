@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Unit tests pass; no golden doc comment repeats a declaration name; `zig build test`
 > NEXT: none

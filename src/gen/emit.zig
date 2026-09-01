@@ -3449,7 +3449,7 @@ fn isByteType(node: semantic.TypeNode) bool {
     return node == .int and !node.int.signed and node.int.bits == 8;
 }
 
-fn writeGoDoc(writer: *std.Io.Writer, go_name: []const u8, doc: []const u8) !void {
+fn writeGoDoc(writer: *std.Io.Writer, go_name: []const u8, zig_name: []const u8, doc: []const u8) !void {
     try writer.writeByte('\n');
     var lines = std.mem.splitScalar(u8, doc, '\n');
     var first = true;
@@ -3457,18 +3457,37 @@ fn writeGoDoc(writer: *std.Io.Writer, go_name: []const u8, doc: []const u8) !voi
         if (first) {
             // Go doc comments read as one sentence starting with the identifier,
             // so a Zig sentence like "Echoes text" must not keep its capital.
+            const body = withoutLeadingName(line, go_name, zig_name);
+            if (body.len == 0) {
+                try writer.print("// {s}\n", .{go_name});
+                first = false;
+                continue;
+            }
             try writer.print("// {s} ", .{go_name});
-            if (continuesSentence(line)) {
-                try writer.writeByte(std.ascii.toLower(line[0]));
-                try writer.print("{s}\n", .{line[1..]});
+            if (continuesSentence(body)) {
+                try writer.writeByte(std.ascii.toLower(body[0]));
+                try writer.print("{s}\n", .{body[1..]});
             } else {
-                try writer.print("{s}\n", .{line});
+                try writer.print("{s}\n", .{body});
             }
             first = false;
         } else {
             try writer.print("// {s}\n", .{line});
         }
     }
+}
+
+/// Zig doc comments conventionally open with the declaration's own name, and
+/// the Go prefix is unconditional, so the two together read as
+/// "AlgorithmID algorithmId names ...". Dropping a leading word that is the
+/// declaration's name under either naming convention leaves exactly one.
+fn withoutLeadingName(line: []const u8, go_name: []const u8, zig_name: []const u8) []const u8 {
+    const end = std.mem.indexOfScalar(u8, line, ' ') orelse line.len;
+    const word = line[0..end];
+    if (!std.ascii.eqlIgnoreCase(word, go_name) and !std.ascii.eqlIgnoreCase(word, zig_name)) return line;
+    // A doc that is only the name has nothing left to say; the Go prefix
+    // already carries it, so the caller emits the name on its own.
+    return std.mem.trimStart(u8, line[end..], " ");
 }
 
 /// A capitalized ordinary word continues the sentence the identifier starts.
@@ -3480,7 +3499,7 @@ fn continuesSentence(line: []const u8) bool {
 
 fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.SemanticFn, go_name: []const u8, owned_type: ?[]const u8) !void {
     if (function.doc) |doc| {
-        try writeGoDoc(writer, go_name, doc);
+        try writeGoDoc(writer, go_name, function.name, doc);
     } else if (owned_type) |type_name| {
         try writer.print("\n// {s} creates a caller-owned {s}.\n", .{ go_name, type_name });
     } else if (function.receiver) |receiver| {
@@ -4283,5 +4302,70 @@ test "every entry point the loader resolves is annotated for the COFF export tab
         try std.testing.expect(std.mem.indexOf(u8, text, "ZIGO_EXPORT void zg_ping(") != null);
         try std.testing.expect(std.mem.indexOf(u8, text, "ZIGO_EXPORT const char *zg_last_error_message(void)") != null);
         try std.testing.expect(std.mem.indexOf(u8, text, "ZIGO_EXPORT void zg_ping_impl(") == null);
+    }
+}
+
+test "a doc that opens with the declaration's own name is not repeated" {
+    const cases = [_]struct {
+        go_name: []const u8,
+        zig_name: []const u8,
+        doc: []const u8,
+        expected: []const u8,
+    }{
+        // The reported shape: the Zig doc opens with the Zig spelling.
+        .{
+            .go_name = "AlgorithmID",
+            .zig_name = "algorithmId",
+            .doc = "algorithmId names the negotiated algorithm.",
+            .expected = "\n// AlgorithmID names the negotiated algorithm.\n",
+        },
+        // The Go spelling counts too, and so does any other casing of either.
+        .{
+            .go_name = "Clone",
+            .zig_name = "clone",
+            .doc = "Clone copies the queue.",
+            .expected = "\n// Clone copies the queue.\n",
+        },
+        .{
+            .go_name = "AlgorithmID",
+            .zig_name = "algorithmId",
+            .doc = "ALGORITHMID names the negotiated algorithm.",
+            .expected = "\n// AlgorithmID names the negotiated algorithm.\n",
+        },
+        // An unrelated first word keeps the existing behaviour, including the
+        // lowercasing that makes the Go prefix read as one sentence.
+        .{
+            .go_name = "Echo",
+            .zig_name = "echo",
+            .doc = "Echoes UTF-8 text without changing its bytes.",
+            .expected = "\n// Echo echoes UTF-8 text without changing its bytes.\n",
+        },
+        // A name that only prefixes the first word is not the first word.
+        .{
+            .go_name = "Clone",
+            .zig_name = "clone",
+            .doc = "clones the queue.",
+            .expected = "\n// Clone clones the queue.\n",
+        },
+        // Only the first line is rewritten; the rest is copied verbatim.
+        .{
+            .go_name = "Clone",
+            .zig_name = "clone",
+            .doc = "clone copies the queue.\nThe caller owns the copy.",
+            .expected = "\n// Clone copies the queue.\n// The caller owns the copy.\n",
+        },
+        // A doc that is nothing but the name leaves the prefix alone.
+        .{
+            .go_name = "Clone",
+            .zig_name = "clone",
+            .doc = "clone",
+            .expected = "\n// Clone\n",
+        },
+    };
+    for (cases) |case| {
+        var rendered: std.Io.Writer.Allocating = .init(std.testing.allocator);
+        defer rendered.deinit();
+        try writeGoDoc(&rendered.writer, case.go_name, case.zig_name, case.doc);
+        try std.testing.expectEqualStrings(case.expected, rendered.written());
     }
 }

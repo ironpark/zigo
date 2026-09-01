@@ -133,6 +133,10 @@ tagged union이 없으면 union 파일이 아예 만들어지지 않습니다.
 없으면 bound Zig operation과 ownership·lifetime·failure contract를 설명하는 기본 문서를
 생성합니다.
 
+GoDoc은 항상 Go 이름으로 시작하므로, Zig doc의 첫 단어가 그 선언의 이름(Zig 이름이든 Go
+이름이든, 대소문자 무시)이면 그 단어를 빼고 붙입니다. `/// clone copies the queue.`는
+`// Clone clone copies ...`가 아니라 `// Clone copies the queue.`가 됩니다.
+
 callback parameter는 익명 함수가 아니라 생성된 정의 type을 사용합니다. borrowed callback
 handle은 호출 후 즉시 해제하고, retained callback handle은 소유 객체의 멱등 `Close`에서
 해제합니다.

@@ -33,7 +33,7 @@ func NewEventQueue(name string, capacity uint, policy Policy, observer EventQueu
 	return newEventQueue(result, []zigoCallbackHandle{observerHandle}), nil
 }
 
-// Clone clone copies the queued events, name and limits into an independent
+// Clone copies the queued events, name and limits into an independent
 // queue that the caller owns and must close. The copy takes its own
 // observer instead of sharing the original's, so closing either queue
 // never strands the other's callback.
@@ -79,7 +79,7 @@ func (e *EventQueue) Enqueue(id uint64, value int32) error {
 	return nil
 }
 
-// MergeFrom mergeFrom appends another queue's events to this one under the current
+// MergeFrom appends another queue's events to this one under the current
 // policy and reports how many were taken. A null source is not an error:
 // it merges nothing, which is what makes the parameter optional.
 // It returns *HandleError if a required handle is nil or closed.
