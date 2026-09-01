@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-01T15:47:09Z"
 depends_on:
 - "56-windows-purego-support#3"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Nothing computes the installed shared-library path from a hardcoded install
 > NEXT: none
