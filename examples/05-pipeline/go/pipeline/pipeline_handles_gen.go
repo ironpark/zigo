@@ -12,7 +12,6 @@ import (
 // Pipeline is a caller-owned native handle. Call Close when it is no longer needed.
 type Pipeline struct {
 	ptr             unsafe.Pointer
-	once            sync.Once
 	mu              sync.RWMutex
 	callbackHandles []zigoCallbackHandle
 	cleanup         runtime.Cleanup
@@ -82,14 +81,15 @@ func (p *Pipeline) Close() error {
 	if p == nil {
 		return nil
 	}
-	p.once.Do(func() {
-		p.mu.Lock()
-		defer p.mu.Unlock()
-		p.cleanup.Stop()
-		cleanupPipeline(pipelineCleanupState{ptr: p.ptr, callbackHandles: p.callbackHandles})
-		p.ptr = nil
-		p.callbackHandles = nil
-	})
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.ptr == nil {
+		return nil
+	}
+	p.cleanup.Stop()
+	cleanupPipeline(pipelineCleanupState{ptr: p.ptr, callbackHandles: p.callbackHandles})
+	p.ptr = nil
+	p.callbackHandles = nil
 	runtime.KeepAlive(p)
 	return nil
 }
@@ -97,7 +97,6 @@ func (p *Pipeline) Close() error {
 // IntBatch is a caller-owned native handle. Call Close when it is no longer needed.
 type IntBatch struct {
 	ptr     unsafe.Pointer
-	once    sync.Once
 	mu      sync.RWMutex
 	cleanup runtime.Cleanup
 }
@@ -162,13 +161,14 @@ func (i *IntBatch) Close() error {
 	if i == nil {
 		return nil
 	}
-	i.once.Do(func() {
-		i.mu.Lock()
-		defer i.mu.Unlock()
-		i.cleanup.Stop()
-		cleanupIntBatch(intBatchCleanupState{ptr: i.ptr})
-		i.ptr = nil
-	})
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if i.ptr == nil {
+		return nil
+	}
+	i.cleanup.Stop()
+	cleanupIntBatch(intBatchCleanupState{ptr: i.ptr})
+	i.ptr = nil
 	runtime.KeepAlive(i)
 	return nil
 }
@@ -176,7 +176,6 @@ func (i *IntBatch) Close() error {
 // FloatBatch is a caller-owned native handle. Call Close when it is no longer needed.
 type FloatBatch struct {
 	ptr     unsafe.Pointer
-	once    sync.Once
 	mu      sync.RWMutex
 	cleanup runtime.Cleanup
 }
@@ -241,13 +240,14 @@ func (f *FloatBatch) Close() error {
 	if f == nil {
 		return nil
 	}
-	f.once.Do(func() {
-		f.mu.Lock()
-		defer f.mu.Unlock()
-		f.cleanup.Stop()
-		cleanupFloatBatch(floatBatchCleanupState{ptr: f.ptr})
-		f.ptr = nil
-	})
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.ptr == nil {
+		return nil
+	}
+	f.cleanup.Stop()
+	cleanupFloatBatch(floatBatchCleanupState{ptr: f.ptr})
+	f.ptr = nil
 	runtime.KeepAlive(f)
 	return nil
 }

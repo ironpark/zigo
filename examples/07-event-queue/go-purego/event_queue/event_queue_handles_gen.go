@@ -12,7 +12,6 @@ import (
 // EventQueue is a caller-owned native handle. Call Close when it is no longer needed.
 type EventQueue struct {
 	ptr             unsafe.Pointer
-	once            sync.Once
 	mu              sync.RWMutex
 	callbackHandles []zigoCallbackHandle
 	cleanup         runtime.Cleanup
@@ -82,14 +81,15 @@ func (e *EventQueue) Close() error {
 	if e == nil {
 		return nil
 	}
-	e.once.Do(func() {
-		e.mu.Lock()
-		defer e.mu.Unlock()
-		e.cleanup.Stop()
-		cleanupEventQueue(eventQueueCleanupState{ptr: e.ptr, callbackHandles: e.callbackHandles})
-		e.ptr = nil
-		e.callbackHandles = nil
-	})
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.ptr == nil {
+		return nil
+	}
+	e.cleanup.Stop()
+	cleanupEventQueue(eventQueueCleanupState{ptr: e.ptr, callbackHandles: e.callbackHandles})
+	e.ptr = nil
+	e.callbackHandles = nil
 	runtime.KeepAlive(e)
 	return nil
 }

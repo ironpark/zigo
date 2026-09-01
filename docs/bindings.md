@@ -145,7 +145,8 @@ retained callback이나 pointer는 소유 객체의 `Close`까지 유효해야 �
   쓰기 잠금을 잡으므로, 다른 goroutine의 호출이 native 안에 있는 동안에는 해제가
   진행되지 않습니다. 이미 닫힌 handle을 쓰는 호출은 use-after-free 대신 `*HandleError`를
   돌려받습니다.
-- `Close`는 `sync.Once` 뒤에 있어 몇 번 불러도 안전하고, 해제 후 `ptr`을 비웁니다.
+- `Close`는 쓰기 잠금을 잡고 `ptr`이 이미 비어 있으면 그대로 돌아오므로, 동시에
+  여러 번 불러도 해제는 한 번만 일어납니다. 해제 후에는 `ptr`을 비웁니다.
 - 생성자가 만든 handle은 만들어질 때 `runtime.AddCleanup`을 등록합니다. `Close`를 잊고
   handle을 버려도 GC가 회수하는 시점에 native 메모리와 retained callback 등록이 함께
   풀립니다. `Close`가 먼저 실행되면 `cleanup.Stop()`으로 이 안전망을 떼어냅니다.

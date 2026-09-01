@@ -12,7 +12,6 @@ import (
 // Counter is a caller-owned native handle. Call Close when it is no longer needed.
 type Counter struct {
 	ptr     unsafe.Pointer
-	once    sync.Once
 	mu      sync.RWMutex
 	cleanup runtime.Cleanup
 }
@@ -77,13 +76,14 @@ func (c *Counter) Close() error {
 	if c == nil {
 		return nil
 	}
-	c.once.Do(func() {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		c.cleanup.Stop()
-		cleanupCounter(counterCleanupState{ptr: c.ptr})
-		c.ptr = nil
-	})
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.ptr == nil {
+		return nil
+	}
+	c.cleanup.Stop()
+	cleanupCounter(counterCleanupState{ptr: c.ptr})
+	c.ptr = nil
 	runtime.KeepAlive(c)
 	return nil
 }
@@ -91,7 +91,6 @@ func (c *Counter) Close() error {
 // Accumulator is a caller-owned native handle. Call Close when it is no longer needed.
 type Accumulator struct {
 	ptr     unsafe.Pointer
-	once    sync.Once
 	mu      sync.RWMutex
 	cleanup runtime.Cleanup
 }
@@ -156,13 +155,14 @@ func (a *Accumulator) Close() error {
 	if a == nil {
 		return nil
 	}
-	a.once.Do(func() {
-		a.mu.Lock()
-		defer a.mu.Unlock()
-		a.cleanup.Stop()
-		cleanupAccumulator(accumulatorCleanupState{ptr: a.ptr})
-		a.ptr = nil
-	})
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	if a.ptr == nil {
+		return nil
+	}
+	a.cleanup.Stop()
+	cleanupAccumulator(accumulatorCleanupState{ptr: a.ptr})
+	a.ptr = nil
 	runtime.KeepAlive(a)
 	return nil
 }

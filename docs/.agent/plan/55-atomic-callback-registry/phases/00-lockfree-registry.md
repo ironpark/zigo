@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-01T11:59:53Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Regenerated purego trees contain no `callbackRegistryMu`; `zig build
 > NEXT: none

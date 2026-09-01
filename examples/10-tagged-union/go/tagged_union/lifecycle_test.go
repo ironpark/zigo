@@ -152,3 +152,44 @@ func TestConcurrentProjectionsRacingClose(t *testing.T) {
 		t.Fatalf("Signal.Snapshot after Close = %v, want ErrInvalidHandle", err)
 	}
 }
+
+// Close is idempotent through the write lock and the nil-pointer check alone,
+// with no sync.Once in front of it: the losing goroutines block on the lock
+// and then find the pointer already cleared. Run this with -race, where a
+// double release would show up as a native double free.
+func TestConcurrentDoubleClose(t *testing.T) {
+	child, err := NewChild(11)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	const closers = 16
+	var wait sync.WaitGroup
+	start := make(chan struct{})
+	for range closers {
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			<-start
+			for range 4 {
+				if err := child.Close(); err != nil {
+					t.Errorf("Close() = %v, want nil", err)
+				}
+			}
+		}()
+	}
+	close(start)
+	wait.Wait()
+
+	if err := child.Close(); err != nil {
+		t.Fatalf("Close after concurrent Close = %v, want nil", err)
+	}
+	if _, err := child.Get(); !errors.Is(err, ErrInvalidHandle) {
+		t.Fatalf("Get after Close = %v, want ErrInvalidHandle", err)
+	}
+
+	var closed *Child
+	if err := closed.Close(); err != nil {
+		t.Fatalf("Close on a nil handle = %v, want nil", err)
+	}
+}

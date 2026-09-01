@@ -12,7 +12,6 @@ import (
 // Context is a caller-owned native handle. Call Close when it is no longer needed.
 type Context struct {
 	ptr     unsafe.Pointer
-	once    sync.Once
 	mu      sync.RWMutex
 	cleanup runtime.Cleanup
 }
@@ -77,13 +76,14 @@ func (c *Context) Close() error {
 	if c == nil {
 		return nil
 	}
-	c.once.Do(func() {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		c.cleanup.Stop()
-		cleanupContext(contextCleanupState{ptr: c.ptr})
-		c.ptr = nil
-	})
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.ptr == nil {
+		return nil
+	}
+	c.cleanup.Stop()
+	cleanupContext(contextCleanupState{ptr: c.ptr})
+	c.ptr = nil
 	runtime.KeepAlive(c)
 	return nil
 }

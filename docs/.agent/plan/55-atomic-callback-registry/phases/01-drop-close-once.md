@@ -2,7 +2,7 @@
 depends_on:
 - "55-atomic-callback-registry#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: No generated handle struct contains `sync.Once`; concurrent double-Close
 > NEXT: none

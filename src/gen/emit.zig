@@ -2571,7 +2571,7 @@ fn renderPublicHelpers(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
     }
 }
 
-/// One lifecycle for every handle. Fields are `ptr`, `once` and `mu` on any
+/// One lifecycle for every handle. Fields are `ptr` and `mu` on any
 /// handle, `cleanup` on the ones this binding constructs, and
 /// `callbackHandles` only on the ones that retain callbacks. `mu` serializes
 /// Close against in-flight calls; `cleanup` is the safety net for a handle
@@ -2590,9 +2590,8 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         // gofmt aligns a struct's field types on the longest field name, and
         // the goldens are compared unformatted, so the padding is computed
         // from the field set rather than hard-coded per shape.
-        const width = fieldNameWidth(&.{ "ptr", "once", "mu", if (auto_cleanup) "cleanup" else "", if (owns_callbacks) "callbackHandles" else "" });
+        const width = fieldNameWidth(&.{ "ptr", "mu", if (auto_cleanup) "cleanup" else "", if (owns_callbacks) "callbackHandles" else "" });
         try writeStructField(writer, "ptr", width, "unsafe.Pointer");
-        try writeStructField(writer, "once", width, "sync.Once");
         try writeStructField(writer, "mu", width, "sync.RWMutex");
         if (owns_callbacks) try writeStructField(writer, "callbackHandles", width, "[]zigoCallbackHandle");
         if (auto_cleanup) try writeStructField(writer, "cleanup", width, "runtime.Cleanup");
@@ -2637,13 +2636,15 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             try writer.print("{s}(state.ptr)\n\t}}\n", .{raw_deinit});
             if (owns_callbacks) try writer.writeAll("\tfor _, handle := range state.callbackHandles {\n\t\tdeleteCallbackHandle(handle)\n\t}\n");
             try writer.writeAll("}\n\n");
-            try writer.print("// Close releases the native {1s} resources. It is safe to call more than once.\n// The error result is always nil; it exists so {1s} satisfies io.Closer.\nfunc ({0s} *{1s}) Close() error {{\n\tif {0s} == nil {{\n\t\treturn nil\n\t}}\n\t{0s}.once.Do(func() {{\n", .{ recv, declaration.name });
-            try writer.print("\t\t{0s}.mu.Lock()\n\t\tdefer {0s}.mu.Unlock()\n", .{recv});
-            try writer.print("\t\t{0s}.cleanup.Stop()\n\t\tcleanup{1s}({2s}CleanupState{{ptr: {0s}.ptr", .{ recv, declaration.name, private_name });
+            // The write lock plus the nil-pointer check carry idempotency:
+            // a second Close waits for the first, then finds ptr already nil.
+            try writer.print("// Close releases the native {1s} resources. It is safe to call more than once.\n// The error result is always nil; it exists so {1s} satisfies io.Closer.\nfunc ({0s} *{1s}) Close() error {{\n\tif {0s} == nil {{\n\t\treturn nil\n\t}}\n", .{ recv, declaration.name });
+            try writer.print("\t{0s}.mu.Lock()\n\tdefer {0s}.mu.Unlock()\n\tif {0s}.ptr == nil {{\n\t\treturn nil\n\t}}\n", .{recv});
+            try writer.print("\t{0s}.cleanup.Stop()\n\tcleanup{1s}({2s}CleanupState{{ptr: {0s}.ptr", .{ recv, declaration.name, private_name });
             if (owns_callbacks) try writer.print(", callbackHandles: {0s}.callbackHandles", .{recv});
-            try writer.print("}})\n\t\t{0s}.ptr = nil\n", .{recv});
-            if (owns_callbacks) try writer.print("\t\t{0s}.callbackHandles = nil\n", .{recv});
-            try writer.print("\t}})\n\truntime.KeepAlive({0s})\n\treturn nil\n}}\n\n", .{recv});
+            try writer.print("}})\n\t{0s}.ptr = nil\n", .{recv});
+            if (owns_callbacks) try writer.print("\t{0s}.callbackHandles = nil\n", .{recv});
+            try writer.print("\truntime.KeepAlive({0s})\n\treturn nil\n}}\n\n", .{recv});
         }
     }
 }

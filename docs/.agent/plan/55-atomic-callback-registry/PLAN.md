@@ -7,7 +7,7 @@ registered_at: "2026-09-01T11:56:49Z"
 
 # Phases
 
-- [ ] [Phase 00: Lock-free registry lookup](phases/00-lockfree-registry.md)
+- [x] [Phase 00: Lock-free registry lookup](phases/00-lockfree-registry.md)
 - [ ] [Phase 01: Drop the redundant Close once and regenerate](phases/01-drop-close-once.md)
 
 # Shared Verification

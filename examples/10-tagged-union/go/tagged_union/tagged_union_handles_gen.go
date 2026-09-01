@@ -12,7 +12,6 @@ import (
 // Child is a caller-owned native handle. Call Close when it is no longer needed.
 type Child struct {
 	ptr     unsafe.Pointer
-	once    sync.Once
 	mu      sync.RWMutex
 	cleanup runtime.Cleanup
 }
@@ -77,13 +76,14 @@ func (c *Child) Close() error {
 	if c == nil {
 		return nil
 	}
-	c.once.Do(func() {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		c.cleanup.Stop()
-		cleanupChild(childCleanupState{ptr: c.ptr})
-		c.ptr = nil
-	})
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.ptr == nil {
+		return nil
+	}
+	c.cleanup.Stop()
+	cleanupChild(childCleanupState{ptr: c.ptr})
+	c.ptr = nil
 	runtime.KeepAlive(c)
 	return nil
 }
@@ -91,7 +91,6 @@ func (c *Child) Close() error {
 // Value is a caller-owned native handle. Call Close when it is no longer needed.
 type Value struct {
 	ptr     unsafe.Pointer
-	once    sync.Once
 	mu      sync.RWMutex
 	cleanup runtime.Cleanup
 }
@@ -156,13 +155,14 @@ func (v *Value) Close() error {
 	if v == nil {
 		return nil
 	}
-	v.once.Do(func() {
-		v.mu.Lock()
-		defer v.mu.Unlock()
-		v.cleanup.Stop()
-		cleanupValue(valueCleanupState{ptr: v.ptr})
-		v.ptr = nil
-	})
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.ptr == nil {
+		return nil
+	}
+	v.cleanup.Stop()
+	cleanupValue(valueCleanupState{ptr: v.ptr})
+	v.ptr = nil
 	runtime.KeepAlive(v)
 	return nil
 }
@@ -170,7 +170,6 @@ func (v *Value) Close() error {
 // Signal is a caller-owned native handle. Call Close when it is no longer needed.
 type Signal struct {
 	ptr     unsafe.Pointer
-	once    sync.Once
 	mu      sync.RWMutex
 	cleanup runtime.Cleanup
 }
@@ -235,13 +234,14 @@ func (s *Signal) Close() error {
 	if s == nil {
 		return nil
 	}
-	s.once.Do(func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		s.cleanup.Stop()
-		cleanupSignal(signalCleanupState{ptr: s.ptr})
-		s.ptr = nil
-	})
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ptr == nil {
+		return nil
+	}
+	s.cleanup.Stop()
+	cleanupSignal(signalCleanupState{ptr: s.ptr})
+	s.ptr = nil
 	runtime.KeepAlive(s)
 	return nil
 }

@@ -12,7 +12,6 @@ import (
 // CallbackContext is a caller-owned native handle. Call Close when it is no longer needed.
 type CallbackContext struct {
 	ptr             unsafe.Pointer
-	once            sync.Once
 	mu              sync.RWMutex
 	callbackHandles []zigoCallbackHandle
 	cleanup         runtime.Cleanup
@@ -82,14 +81,15 @@ func (c *CallbackContext) Close() error {
 	if c == nil {
 		return nil
 	}
-	c.once.Do(func() {
-		c.mu.Lock()
-		defer c.mu.Unlock()
-		c.cleanup.Stop()
-		cleanupCallbackContext(callbackContextCleanupState{ptr: c.ptr, callbackHandles: c.callbackHandles})
-		c.ptr = nil
-		c.callbackHandles = nil
-	})
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.ptr == nil {
+		return nil
+	}
+	c.cleanup.Stop()
+	cleanupCallbackContext(callbackContextCleanupState{ptr: c.ptr, callbackHandles: c.callbackHandles})
+	c.ptr = nil
+	c.callbackHandles = nil
 	runtime.KeepAlive(c)
 	return nil
 }
@@ -97,7 +97,6 @@ func (c *CallbackContext) Close() error {
 // FloatBuffer is a caller-owned native handle. Call Close when it is no longer needed.
 type FloatBuffer struct {
 	ptr     unsafe.Pointer
-	once    sync.Once
 	mu      sync.RWMutex
 	cleanup runtime.Cleanup
 }
@@ -162,13 +161,14 @@ func (f *FloatBuffer) Close() error {
 	if f == nil {
 		return nil
 	}
-	f.once.Do(func() {
-		f.mu.Lock()
-		defer f.mu.Unlock()
-		f.cleanup.Stop()
-		cleanupFloatBuffer(floatBufferCleanupState{ptr: f.ptr})
-		f.ptr = nil
-	})
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.ptr == nil {
+		return nil
+	}
+	f.cleanup.Stop()
+	cleanupFloatBuffer(floatBufferCleanupState{ptr: f.ptr})
+	f.ptr = nil
 	runtime.KeepAlive(f)
 	return nil
 }
@@ -176,7 +176,6 @@ func (f *FloatBuffer) Close() error {
 // IntBuffer is a caller-owned native handle. Call Close when it is no longer needed.
 type IntBuffer struct {
 	ptr     unsafe.Pointer
-	once    sync.Once
 	mu      sync.RWMutex
 	cleanup runtime.Cleanup
 }
@@ -241,13 +240,14 @@ func (i *IntBuffer) Close() error {
 	if i == nil {
 		return nil
 	}
-	i.once.Do(func() {
-		i.mu.Lock()
-		defer i.mu.Unlock()
-		i.cleanup.Stop()
-		cleanupIntBuffer(intBufferCleanupState{ptr: i.ptr})
-		i.ptr = nil
-	})
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if i.ptr == nil {
+		return nil
+	}
+	i.cleanup.Stop()
+	cleanupIntBuffer(intBufferCleanupState{ptr: i.ptr})
+	i.ptr = nil
 	runtime.KeepAlive(i)
 	return nil
 }

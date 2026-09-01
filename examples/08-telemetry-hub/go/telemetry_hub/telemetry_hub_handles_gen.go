@@ -12,7 +12,6 @@ import (
 // TelemetryHub is a caller-owned native handle. Call Close when it is no longer needed.
 type TelemetryHub struct {
 	ptr             unsafe.Pointer
-	once            sync.Once
 	mu              sync.RWMutex
 	callbackHandles []zigoCallbackHandle
 	cleanup         runtime.Cleanup
@@ -82,14 +81,15 @@ func (t *TelemetryHub) Close() error {
 	if t == nil {
 		return nil
 	}
-	t.once.Do(func() {
-		t.mu.Lock()
-		defer t.mu.Unlock()
-		t.cleanup.Stop()
-		cleanupTelemetryHub(telemetryHubCleanupState{ptr: t.ptr, callbackHandles: t.callbackHandles})
-		t.ptr = nil
-		t.callbackHandles = nil
-	})
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.ptr == nil {
+		return nil
+	}
+	t.cleanup.Stop()
+	cleanupTelemetryHub(telemetryHubCleanupState{ptr: t.ptr, callbackHandles: t.callbackHandles})
+	t.ptr = nil
+	t.callbackHandles = nil
 	runtime.KeepAlive(t)
 	return nil
 }

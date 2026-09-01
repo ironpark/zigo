@@ -12,7 +12,6 @@ import (
 // Signal is a caller-owned native handle. Call Close when it is no longer needed.
 type Signal struct {
 	ptr     unsafe.Pointer
-	once    sync.Once
 	mu      sync.RWMutex
 	cleanup runtime.Cleanup
 }
@@ -77,13 +76,14 @@ func (s *Signal) Close() error {
 	if s == nil {
 		return nil
 	}
-	s.once.Do(func() {
-		s.mu.Lock()
-		defer s.mu.Unlock()
-		s.cleanup.Stop()
-		cleanupSignal(signalCleanupState{ptr: s.ptr})
-		s.ptr = nil
-	})
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.ptr == nil {
+		return nil
+	}
+	s.cleanup.Stop()
+	cleanupSignal(signalCleanupState{ptr: s.ptr})
+	s.ptr = nil
 	runtime.KeepAlive(s)
 	return nil
 }
