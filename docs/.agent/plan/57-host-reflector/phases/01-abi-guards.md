@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-01T17:00:13Z"
 depends_on:
 - "57-host-reflector#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Guards present in every regenerated shim; the divergence fixture fails
 > NEXT: none

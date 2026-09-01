@@ -21,15 +21,28 @@
   `go.mod`는 `go-doctor`가 경고로 보고한다.
 - 공유 라이브러리는 타깃별 아티팩트다. purego는 Go 애플리케이션 빌드에서 C 컴파일러를
   없앨 뿐 하나의 Zig 아티팩트를 여러 타깃에 이식해 주지 않으므로, 배포하는 OS·아키텍처
-  조합마다 해당 호스트에서 빌드하고 CI 잡도 조합마다 필요하다. Windows DLL도 Windows
-  호스트에서 빌드한다.
+  조합마다 아티팩트를 하나씩 만들어야 한다. 다만 그 아티팩트를 만들 호스트는 하나면
+  된다. `zig build go-lib -Dtarget=x86_64-windows`처럼 크로스 컴파일할 수 있고,
+  Windows DLL도 POSIX 호스트에서 만든다.
 - Go race detector는 여전히 cgo를 요구하므로 `CGO_ENABLED=0` 테스트에는 사용할 수 없다.
   Windows purego 테스트도 같은 이유로 race 커버리지를 얻지 못한다.
-- reflector 실행이 빌드에 포함되므로 v1은 크로스 컴파일을 지원하지 않는다. 생성 과정이
-  요청한 타깃으로 빌드한 reflector 실행 파일을 **실행**하기 때문에
-  `zig build go-lib -Dtarget=x86_64-windows`는 POSIX 호스트에서 동작하지 않으며,
-  이는 두 백엔드 모두에 해당한다. Go 쪽 크로스 컴파일은 별개다. 생성된 purego 패키지는
-  순수 Go이므로 C 툴체인 없이 `GOOS=windows CGO_ENABLED=0 go build ./...`로 빌드된다.
+- 크로스 컴파일은 purego 백엔드에서 지원한다. reflector는 **호스트**로 빌드해 실행하고
+  라이브러리와 shim만 `-Dtarget`으로 빌드하므로 `zig build purego-go-lib
+  -Dtarget=x86_64-windows`가 POSIX 호스트에서 동작한다. cgo 백엔드의 크로스 링크는
+  검증하지 않았다. 두 가지가 여기에 따라온다.
+  - 리플렉션이 관찰하는 레이아웃은 **호스트**의 것이다. 지원 타깃은 모두 64비트
+    리틀엔디언이라 고정폭 정수·실수·포인터는 일치하지만 `c_long`·`c_ulong`처럼
+    타깃마다 폭이 다른 C 타입은 어긋난다. 생성된 shim은 mirror하는 모든 `extern
+    struct`의 크기·정렬·필드 오프셋을 comptime으로 고정하므로, 어긋나면 조용히
+    잘못된 ABI를 내보내는 대신 타깃 컴파일이 `zigo ABI guard: ...` 메시지와 함께
+    실패한다. 구조체 밖의 스칼라는 Zig 자신의 타입 오류로 걸리거나 shim 경계에서
+    손실 없이 넓혀진다.
+  - 타깃에 따라 바인딩 표면 자체가 달라지는 경우(`builtin.target`을 comptime으로
+    분기해 export를 늘리거나 줄이는 코드)는 지원하지 않는다. 리플렉션은 호스트 표면
+    하나만 보며, 가드는 레이아웃 차이를 잡지 표면 차이를 잡지 못한다. 그런 바인딩은
+    타깃 호스트에서 생성한다.
+- Go 쪽 크로스 컴파일은 별개다. 생성된 purego 패키지는 순수 Go이므로 C 툴체인 없이
+  `GOOS=windows CGO_ENABLED=0 go build ./...`로 빌드된다.
 - zigo는 Go 바인딩만 생성한다. IR은 다른 언어용 범용 IDL을 목표로 하지 않는다.
 
 ## Zig 타입과 ABI

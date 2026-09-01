@@ -8,7 +8,7 @@ registered_at: "2026-09-01T16:45:19Z"
 # Phases
 
 - [x] [Phase 00: Host-built reflection pipeline](phases/00-host-pipeline.md)
-- [ ] [Phase 01: Comptime ABI guards in the shim](phases/01-abi-guards.md)
+- [x] [Phase 01: Comptime ABI guards in the shim](phases/01-abi-guards.md)
 - [ ] [Phase 02: Cross-build CI leg and docs](phases/02-ci-and-docs.md)
 
 # Shared Verification

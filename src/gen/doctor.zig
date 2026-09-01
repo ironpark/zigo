@@ -153,9 +153,14 @@ pub fn render(writer: *std.Io.Writer, probe: Probe, backend: Options.Backend) !b
     var healthy = true;
     if (probe.native_target) {
         try writer.writeAll("PASS target: native build\n");
+    } else if (backend == .purego) {
+        // The reflection pipeline builds for the host, so a purego library
+        // cross-compiles. What the host cannot do is load a foreign artifact,
+        // so the run-time checks below are skipped rather than failed.
+        try writer.writeAll("SKIP target: cross build; the checks below describe this host, and the cross-built artifact has to be validated on the target\n");
     } else {
         healthy = false;
-        try writer.writeAll("FAIL target: cross compilation is not supported; use the native host target\n");
+        try writer.writeAll("FAIL target: the cgo backend does not support cross compilation; use the native host target\n");
     }
 
     // Generated handles always register `runtime.AddCleanup`, which landed
@@ -180,7 +185,7 @@ pub fn render(writer: *std.Io.Writer, probe: Probe, backend: Options.Backend) !b
 
     if (backend == .purego) {
         try writer.writeAll("PASS purego: no C compiler required at Go build time\n");
-        try renderPurego(writer, probe.purego, &healthy);
+        try renderPurego(writer, probe.purego, probe.native_target, &healthy);
     } else if (probe.cgo_enabled) |enabled| {
         if (std.mem.eql(u8, enabled, "1")) {
             try writer.writeAll("PASS cgo: enabled\n");
@@ -219,7 +224,7 @@ pub fn render(writer: *std.Io.Writer, probe: Probe, backend: Options.Backend) !b
     return healthy;
 }
 
-fn renderPurego(writer: *std.Io.Writer, purego: Purego, healthy: *bool) !void {
+fn renderPurego(writer: *std.Io.Writer, purego: Purego, native_target: bool, healthy: *bool) !void {
     if (purego.platform_supported) {
         try writer.print("PASS purego platform: {s} is supported\n", .{purego.platform});
     } else {
@@ -242,6 +247,8 @@ fn renderPurego(writer: *std.Io.Writer, purego: Purego, healthy: *bool) !void {
         .pinned => try writer.print("PASS purego module: {s} {s}\n", .{ module, version }),
     };
 
+    if (purego.library == null and !native_target)
+        try writer.writeAll("SKIP shared library: a cross-built artifact cannot be loaded on this host\n");
     if (purego.library) |library| switch (library.state) {
         .missing => {
             healthy.* = false;
@@ -316,7 +323,24 @@ test "doctor distinguishes required failures from optional gofmt" {
     try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "install Go 1.24 or newer") != null);
     try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "CGO_ENABLED=1") != null);
     try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "missing-cc is configured") != null);
-    try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "cross compilation is not supported") != null);
+    try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "the cgo backend does not support cross compilation") != null);
+
+    // A purego cross build is supported: the target line and the run-time
+    // library check report SKIP, and neither makes the doctor fail.
+    var cross_purego: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer cross_purego.deinit();
+    try std.testing.expect(try render(&cross_purego.writer, .{
+        .go_version = "go version go1.24.2 linux/amd64",
+        .cgo_enabled = null,
+        .c_compiler = null,
+        .c_compiler_available = false,
+        .gofmt_available = true,
+        .native_target = false,
+        .purego = .{ .module = .{ .path = "go.mod", .state = .pinned } },
+    }, .purego));
+    try std.testing.expect(std.mem.indexOf(u8, cross_purego.written(), "SKIP target: cross build") != null);
+    try std.testing.expect(std.mem.indexOf(u8, cross_purego.written(), "SKIP shared library: a cross-built artifact") != null);
+    try std.testing.expect(std.mem.indexOf(u8, cross_purego.written(), "doctor: ok") != null);
 
     // A missing gofmt is a failure: generation formats through it.
     var unformatted: std.Io.Writer.Allocating = .init(std.testing.allocator);

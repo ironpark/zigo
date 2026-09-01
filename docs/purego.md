@@ -4,10 +4,11 @@ zigo의 기본값 `.cgo_static`은 정적 링크와 cgo 호출을 사용합니�
 네이티브 공유 라이브러리를 runtime에 로드하므로 Go 프로그램을 `CGO_ENABLED=0`으로
 빌드할 수 있습니다. 공개 Go API는 두 backend에서 동일하고 raw 구현과 loader만 달라집니다.
 
-> purego를 사용해도 Zig shared library는 배포할 OS·architecture의 native host에서
-> 빌드해야 합니다. Go 쪽은 다릅니다. 생성된 purego 패키지는 순수 Go이므로 C 툴체인
-> 없이 `GOOS=windows CGO_ENABLED=0 go build ./...`로 빌드할 수 있습니다.
-> 단일 실행 파일이 목적이라면 기본 `.cgo_static`을 사용하세요.
+> Zig shared library는 배포할 OS·architecture 조합마다 하나씩 필요하지만, 한 호스트에서
+> 모두 만들 수 있습니다. `zig build purego-go-lib -Dtarget=x86_64-windows`처럼
+> 크로스 컴파일을 지원합니다. Go 쪽도 마찬가지입니다. 생성된 purego 패키지는 순수
+> Go이므로 C 툴체인 없이 `GOOS=windows CGO_ENABLED=0 go build ./...`로 빌드할 수
+> 있습니다. 단일 실행 파일이 목적이라면 기본 `.cgo_static`을 사용하세요.
 
 | 항목 | `.cgo_static` / `.cgo_dynamic` | `.purego` |
 |---|---|---|
@@ -16,7 +17,7 @@ zigo의 기본값 `.cgo_static`은 정적 링크와 cgo 호출을 사용합니�
 | 네이티브 아티팩트 | 빌드 시 링크 | 실행 시 로드 |
 | 배포 단위 | Go 바이너리 하나 | Go 바이너리 + 플랫폼별 공유 라이브러리 |
 | 추가 Go 의존성 | 없음 | `github.com/ebitengine/purego v0.10.2` |
-| 지원 범위 | 네이티브 macOS/Linux | 네이티브 macOS/Linux/Windows amd64·arm64 |
+| 지원 범위 | 네이티브 macOS/Linux | macOS/Linux/Windows amd64·arm64, 크로스 컴파일 가능 |
 
 ## 빌드 설정
 
@@ -66,6 +67,13 @@ cd go-purego && CGO_ENABLED=0 go test ./...
 - 호스트 플랫폼이 지원 대상(macOS/Linux/Windows, amd64/arm64)인지
 - `go.mod`가 검증된 purego 버전을 요구하는지
 - 설치된 공유 라이브러리가 존재하고 플랫폼 로더로 실제 로드되는지
+
+크로스 빌드에서는 호스트가 외래 아티팩트를 로드할 수 없으므로 마지막 검사를 실패가
+아니라 `SKIP`으로 보고한다. 나머지 검사는 그대로 수행하므로
+`zig build purego-go-verify -Dtarget=x86_64-windows`는 통과한다. 아티팩트의 실행 검증은
+타깃 호스트에서 해야 한다. zigo 자신의 CI가 그렇게 한다. Ubuntu 잡이
+`examples/07-event-queue`의 Windows DLL을 크로스 빌드해 아티팩트로 올리고, Windows 잡이
+그것을 내려받아 `ZIGO_LIBRARY_PATH`로 가리킨 뒤 07의 Go 스위트를 돌린다.
 
 ```
 PASS purego: no C compiler required at Go build time
@@ -217,27 +225,46 @@ library search paths: ${EXECUTABLE_DIR}:${EXECUTABLE_DIR}/../lib:../../zig-out/l
   관례를 따른다. `zig build go-lib`은 DLL을 `zig-out/bin`에, 나머지는
   `zig-out/lib`에 설치한다. 경로를 직접 조립하지 말고 `GoBindings.library_path`를
   읽으면 플랫폼과 무관하게 실제 설치 경로를 얻는다.
-- 배포 대상 OS·아키텍처 조합마다 해당 호스트에서 빌드한다. purego는 Go 애플리케이션
-  빌드에서 C 컴파일러를 제거할 뿐, 하나의 Zig 아티팩트를 여러 타깃에 이식해 주지 않는다.
-  zigo의 reflector가 빌드 중 실행되므로 크로스 컴파일도 지원하지 않는다. 생성 과정이
-  요청한 타깃으로 빌드한 reflector 실행 파일을 실행하기 때문에
-  `zig build go-lib -Dtarget=x86_64-windows`는 POSIX 호스트에서 동작하지 않고, 지원하지
-  않는 타깃 조합과 마찬가지로 빌드 그래프 구성 시점에 실패한다. Windows DLL은 Windows
-  호스트에서 빌드한다.
-- Go 애플리케이션 쪽은 크로스 컴파일된다. 생성된 purego 패키지에는 cgo가 없으므로
+- 배포 대상 OS·아키텍처 조합마다 아티팩트를 하나씩 만들지만, 호스트는 하나면 된다.
+  `-Dtarget`을 넘기면 그 타깃으로 라이브러리를 빌드한다. 리플렉션 파이프라인은 항상
+  호스트로 빌드해 실행하고, `-Dtarget`은 라이브러리·shim·헤더에만 적용된다.
+
+  ```bash
+  # 한 macOS/Linux 호스트에서 세 플랫폼 아티팩트를 모두 만든다.
+  zig build purego-go-lib -Dtarget=x86_64-windows   # -> zig-out/bin/<name>_zigo.dll
+  zig build purego-go-lib -Dtarget=aarch64-windows  # -> zig-out/bin/<name>_zigo.dll
+  zig build purego-go-lib -Dtarget=x86_64-linux-gnu # -> zig-out/lib/lib<name>_zigo.so
+  zig build purego-go-lib                           # 호스트 네이티브
+  ```
+
+  생성되는 Go 트리는 타깃과 무관하게 동일하다. 예외는 타깃이 결정하는 진단뿐이다.
+  Windows 타깃에서 부동소수 콜백 파라미터를 `ZIGO014`로 거부하는 것이 그 예다.
+
+  cgo 백엔드를 `CC="zig cc -target x86_64-windows"`로 크로스 링크하는 방법은 검증하지
+  않았다. 후속 작업 후보일 뿐 지원 대상이 아니다.
+- 크로스 컴파일에서 리플렉션은 **호스트**의 타입 레이아웃을 기록한다. 지원 타깃은 모두
+  64비트 리틀엔디언이므로 고정폭 정수·실수·포인터는 일치하지만, `c_long`·`c_ulong`은
+  Windows에서 4바이트, Linux·macOS에서 8바이트로 갈린다. 생성된 shim은 mirror하는 모든
+  `extern struct`의 크기·정렬·필드 오프셋을 comptime으로 고정하므로 어긋나면 타깃
+  컴파일이 다음처럼 실패한다.
+
+  ```text
+  error: zigo ABI guard: @sizeOf(Sizes) is 8 on this target, but zigo reflected 16
+  on the build host. ... A C type whose width varies by target, such as c_long or
+  c_ulong, is the usual cause; replace it with a fixed-width type.
+  ```
+
+  구조체 밖의 스칼라는 별도 가드가 필요 없다. 파라미터와 콜백은 Zig 자신의 타입
+  오류로 즉시 걸리고, 반환값과 union payload는 shim 경계에서 손실 없이 넓혀진다.
+  반면 타깃에 따라 export 자체가 달라지는 바인딩 표면은 지원하지 않는다. 리플렉션은
+  호스트 표면 하나만 보고, 가드는 레이아웃 차이를 잡지 표면 차이를 잡지 못한다.
+- Go 애플리케이션 쪽은 그대로 크로스 컴파일된다. 생성된 purego 패키지에는 cgo가 없으므로
   어떤 호스트에서든 C 툴체인 없이 빌드할 수 있고, 실행 시 짝이 되는 라이브러리만
   옆에 두면 된다.
 
   ```bash
-  # macOS/Linux 호스트에서 Windows 바이너리를 만든다. C 컴파일러가 필요 없다.
   cd go-purego && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...
-
-  # 짝이 되는 DLL은 Windows 호스트에서 만든다.
-  zig build purego-go-lib   # -> zig-out/bin/<name>_zigo.dll
   ```
-
-  cgo 백엔드를 `CC="zig cc -target x86_64-windows"`로 크로스 링크하는 방법은 검증하지
-  않았다. 후속 작업 후보일 뿐 지원 대상이 아니다.
 - 아티팩트에는 Zig 캐시 경로가 새겨지지 않는다. 런타임 의존성은 바인딩한 Zig 모듈의
   의존성과 생성된 panic 경계가 사용하는 플랫폼 C 런타임뿐이다.
 - 애플리케이션은 배포 레이아웃에 맞는 절대 경로를 `LoadLibrary`에 넘기거나, 플랫폼

@@ -450,7 +450,7 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     doctor.setName("CLI contract (doctor failure)");
     doctor.addArgs(&.{ "doctor", "--go", "/definitely/missing/zigo-go", "--gofmt", "/definitely/missing/zigo-gofmt", "--target", "cross" });
     doctor.expectExitCode(1);
-    doctor.expectStdOutMatch("FAIL target: cross compilation is not supported");
+    doctor.expectStdOutMatch("FAIL target: the cgo backend does not support cross compilation");
     doctor.expectStdOutMatch("FAIL go: executable unavailable");
     doctor.expectStdOutMatch("FAIL gofmt: unavailable");
     doctor.expectStdOutMatch("doctor: failed");
@@ -770,8 +770,11 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     if (backend == .purego) {
         // The purego doctor validates the deployed artifact, so it must run
         // against a freshly installed library and the module that loads it.
+        // A cross-built artifact cannot be loaded here, so it is not offered:
+        // the doctor reports that check as skipped rather than failing it.
         doctor.step.dependOn(&install_lib.step);
-        doctor.addArgs(&.{ "--library", installedLibraryPath(b, install_lib) });
+        if (isRunnableOnHost(options.target.result, b.graph.host.result))
+            doctor.addArgs(&.{ "--library", installedLibraryPath(b, install_lib) });
         doctor.addArgs(&.{ "--go-mod", b.pathFromRoot(go_mod_path) });
     }
     update.step.dependOn(&install_lib.step);

@@ -147,6 +147,18 @@ jobs:
             tests/inspect_shared_library.sh "$library"
             zig build shared-library-smoke -- "$library" $symbols
           done
+      # Reflection builds for the host, so a POSIX runner can produce the
+      # Windows DLL. The Windows job runs 07's suite against this artifact,
+      # which is what proves the cross-built library actually loads and
+      # dispatches callbacks rather than merely linking.
+      - name: Cross-build the Windows DLL for 07-event-queue
+        working-directory: examples/07-event-queue
+        run: zig build purego-go-lib -Dtarget=x86_64-windows-gnu --summary all
+      - uses: actions/upload-artifact@v4
+        with:
+          name: event-queue-windows-dll
+          path: examples/07-event-queue/zig-out/bin/event_queue_zigo.dll
+          if-no-files-found: error
       - name: Run the purego examples without cgo
         shell: bash
         # The race detector still requires cgo, so this job asserts the
@@ -242,3 +254,36 @@ jobs:
           ZIGO_TEST_LIBRARY="$PWD/../zig-out/bin/tagged_union_zigo.dll" \
           ZIGO_TEST_WRONG_LIBRARY="$PWD/../../07-event-queue/zig-out/bin/event_queue_zigo.dll" \
             go test ./...
+
+  # Proves the cross-compiled artifact at runtime, which is the half a POSIX
+  # host cannot check. Deliberately separate from purego-windows so the
+  # existing native legs do not wait on the Ubuntu job: this one needs no Zig
+  # and no generation, only Go and the committed bindings.
+  purego-windows-cross:
+    runs-on: windows-latest
+    needs: purego
+    steps:
+      - name: Keep the checkout free of CRLF rewrites
+        run: git config --global core.autocrlf false
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26.x"
+          cache: false
+      - uses: actions/download-artifact@v4
+        with:
+          name: event-queue-windows-dll
+          path: cross-dll
+      # 07's suite loads ZIGO_LIBRARY_PATH in preference to the zig-out
+      # artifact, so pointing it at the download runs the whole suite --
+      # callbacks included -- against the Ubuntu-cross-built DLL.
+      - name: Run 07-event-queue against the cross-built DLL
+        working-directory: examples/07-event-queue/go-purego
+        shell: bash
+        env:
+          CGO_ENABLED: "0"
+        run: |
+          set -euo pipefail
+          export ZIGO_LIBRARY_PATH="$GITHUB_WORKSPACE/cross-dll/event_queue_zigo.dll"
+          test -f "$ZIGO_LIBRARY_PATH"
+          go test ./...
