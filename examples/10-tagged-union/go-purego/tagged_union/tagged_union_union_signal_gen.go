@@ -8,6 +8,7 @@ import (
 )
 
 func zigoSignalTag(receiver zigoHandle) (SignalTag, error) {
+	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	ptr, err := zigoCheckedPointer("Signal.Tag receiver", receiver)
 	if err != nil {
@@ -33,6 +34,7 @@ func (s *SignalRef) Tag() (SignalTag, error) { return zigoSignalTag(s) }
 func (s *SignalRef) MustTag() SignalTag { return zigoMust(zigoSignalTag(s)) }
 
 func zigoSignalAsTicks(receiver zigoHandle) (uint32, bool, error) {
+	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	ptr, err := zigoCheckedPointer("Signal.AsTicks receiver", receiver)
 	if err != nil {
@@ -61,6 +63,7 @@ func (s *SignalRef) AsTicks() (uint32, bool, error) { return zigoSignalAsTicks(s
 func (s *SignalRef) MustAsTicks() (uint32, bool) { return zigoMustMatch(zigoSignalAsTicks(s)) }
 
 func zigoSignalAsLevel(receiver zigoHandle) (float64, bool, error) {
+	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	ptr, err := zigoCheckedPointer("Signal.AsLevel receiver", receiver)
 	if err != nil {
@@ -89,6 +92,7 @@ func (s *SignalRef) AsLevel() (float64, bool, error) { return zigoSignalAsLevel(
 func (s *SignalRef) MustAsLevel() (float64, bool) { return zigoMustMatch(zigoSignalAsLevel(s)) }
 
 func zigoSignalAsOffset(receiver zigoHandle) (int16, bool, error) {
+	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	ptr, err := zigoCheckedPointer("Signal.AsOffset receiver", receiver)
 	if err != nil {
@@ -117,6 +121,7 @@ func (s *SignalRef) AsOffset() (int16, bool, error) { return zigoSignalAsOffset(
 func (s *SignalRef) MustAsOffset() (int16, bool) { return zigoMustMatch(zigoSignalAsOffset(s)) }
 
 func zigoSignalAsMode(receiver zigoHandle) (Mode, bool, error) {
+	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	ptr, err := zigoCheckedPointer("Signal.AsMode receiver", receiver)
 	if err != nil {
@@ -145,6 +150,7 @@ func (s *SignalRef) AsMode() (Mode, bool, error) { return zigoSignalAsMode(s) }
 func (s *SignalRef) MustAsMode() (Mode, bool) { return zigoMustMatch(zigoSignalAsMode(s)) }
 
 func zigoSignalAsActive(receiver zigoHandle) (bool, bool, error) {
+	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	ptr, err := zigoCheckedPointer("Signal.AsActive receiver", receiver)
 	if err != nil {
@@ -214,6 +220,7 @@ func (snapshot SignalSnapshot) Active() (bool, bool) {
 }
 
 func zigoSignalSnapshot(receiver zigoHandle) (SignalSnapshot, error) {
+	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	ptr, err := zigoCheckedPointer("Signal.Snapshot receiver", receiver)
 	if err != nil {
@@ -299,6 +306,8 @@ type SignalActive struct {
 
 func (SignalActive) isSignalVariant() {}
 
+// The snapshot reader takes the receiver's read lock for its single
+// native call, so tag and payload are always read together.
 func zigoSignalVariant(receiver zigoHandle) (SignalVariant, error) {
 	data, err := zigoSignalSnapshot(receiver)
 	if err != nil {

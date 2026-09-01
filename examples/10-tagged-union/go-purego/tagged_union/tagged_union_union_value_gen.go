@@ -8,6 +8,7 @@ import (
 )
 
 func zigoValueTag(receiver zigoHandle) (ValueTag, error) {
+	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	ptr, err := zigoCheckedPointer("Value.Tag receiver", receiver)
 	if err != nil {
@@ -33,6 +34,7 @@ func (v *ValueRef) Tag() (ValueTag, error) { return zigoValueTag(v) }
 func (v *ValueRef) MustTag() ValueTag { return zigoMust(zigoValueTag(v)) }
 
 func zigoValueAsInteger(receiver zigoHandle) (int64, bool, error) {
+	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	ptr, err := zigoCheckedPointer("Value.AsInteger receiver", receiver)
 	if err != nil {
@@ -61,6 +63,7 @@ func (v *ValueRef) AsInteger() (int64, bool, error) { return zigoValueAsInteger(
 func (v *ValueRef) MustAsInteger() (int64, bool) { return zigoMustMatch(zigoValueAsInteger(v)) }
 
 func zigoValueAsFlag(receiver zigoHandle) (bool, bool, error) {
+	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	ptr, err := zigoCheckedPointer("Value.AsFlag receiver", receiver)
 	if err != nil {
@@ -89,6 +92,7 @@ func (v *ValueRef) AsFlag() (bool, bool, error) { return zigoValueAsFlag(v) }
 func (v *ValueRef) MustAsFlag() (bool, bool) { return zigoMustMatch(zigoValueAsFlag(v)) }
 
 func zigoValueAsMode(receiver zigoHandle) (Mode, bool, error) {
+	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	ptr, err := zigoCheckedPointer("Value.AsMode receiver", receiver)
 	if err != nil {
@@ -117,6 +121,7 @@ func (v *ValueRef) AsMode() (Mode, bool, error) { return zigoValueAsMode(v) }
 func (v *ValueRef) MustAsMode() (Mode, bool) { return zigoMustMatch(zigoValueAsMode(v)) }
 
 func zigoValueAsSamples(receiver zigoHandle) ([]int16, bool, error) {
+	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	ptr, err := zigoCheckedPointer("Value.AsSamples receiver", receiver)
 	if err != nil {
@@ -145,6 +150,7 @@ func (v *ValueRef) AsSamples() ([]int16, bool, error) { return zigoValueAsSample
 func (v *ValueRef) MustAsSamples() ([]int16, bool) { return zigoMustMatch(zigoValueAsSamples(v)) }
 
 func zigoValueAsChild(receiver zigoHandle) (*ChildRef, bool, error) {
+	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	ptr, err := zigoCheckedPointer("Value.AsChild receiver", receiver)
 	if err != nil {
@@ -173,6 +179,7 @@ func (v *ValueRef) AsChild() (*ChildRef, bool, error) { return zigoValueAsChild(
 func (v *ValueRef) MustAsChild() (*ChildRef, bool) { return zigoMustMatch(zigoValueAsChild(v)) }
 
 func zigoValueAsMutableSamples(receiver zigoHandle) ([]int16, bool, error) {
+	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	ptr, err := zigoCheckedPointer("Value.AsMutableSamples receiver", receiver)
 	if err != nil {
@@ -262,6 +269,10 @@ type ValueMutableSamples struct {
 
 func (ValueMutableSamples) isValueVariant() {}
 
+// The builder holds no lock of its own: it delegates to the tag and
+// payload readers, each of which takes the receiver's read lock for its
+// own native call. Locks never nest, so a concurrent Close can never
+// deadlock here; it only makes the payload read report a closed handle.
 func zigoValueVariant(receiver zigoHandle) (ValueVariant, error) {
 	tag, err := zigoValueTag(receiver)
 	if err != nil {

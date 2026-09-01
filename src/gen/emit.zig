@@ -2163,7 +2163,7 @@ fn renderPublicSnapshots(
 
         // One reader per union, shared by the owned and borrowed handles.
         try writer.print(
-            "func zigo{0s}Snapshot(receiver zigoHandle) ({1s}, error) {{\n\tdefer runtime.KeepAlive(receiver)\n" ++
+            "func zigo{0s}Snapshot(receiver zigoHandle) ({1s}, error) {{\n\tdefer zigoReadLock(receiver)()\n\tdefer runtime.KeepAlive(receiver)\n" ++
                 "\tptr, err := zigoCheckedPointer(\"{0s}.Snapshot receiver\", receiver)\n\tif err != nil {{\n\t\treturn {1s}{{}}, err\n\t}}\n\tdata, status := ",
             .{ declaration.name, type_name },
         );
@@ -2330,7 +2330,9 @@ fn renderPublicUnionVariants(
         const snapshot = snapshotForOwner(program, declaration.name);
         if (snapshot) |record| {
             try writer.print(
-                "func zigo{0s}Variant(receiver zigoHandle) ({0s}Variant, error) {{\n" ++
+                "// The snapshot reader takes the receiver's read lock for its single\n" ++
+                    "// native call, so tag and payload are always read together.\n" ++
+                    "func zigo{0s}Variant(receiver zigoHandle) ({0s}Variant, error) {{\n" ++
                     "\tdata, err := zigo{0s}Snapshot(receiver)\n\tif err != nil {{\n\t\treturn nil, err\n\t}}\n\tswitch data.tag {{\n",
                 .{declaration.name},
             );
@@ -2348,7 +2350,11 @@ fn renderPublicUnionVariants(
             }
         } else {
             try writer.print(
-                "func zigo{0s}Variant(receiver zigoHandle) ({0s}Variant, error) {{\n" ++
+                "// The builder holds no lock of its own: it delegates to the tag and\n" ++
+                    "// payload readers, each of which takes the receiver's read lock for its\n" ++
+                    "// own native call. Locks never nest, so a concurrent Close can never\n" ++
+                    "// deadlock here; it only makes the payload read report a closed handle.\n" ++
+                    "func zigo{0s}Variant(receiver zigoHandle) ({0s}Variant, error) {{\n" ++
                     "\ttag, err := zigo{0s}Tag(receiver)\n\tif err != nil {{\n\t\treturn nil, err\n\t}}\n\tswitch tag {{\n",
                 .{declaration.name},
             );
@@ -2601,7 +2607,9 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         defer allocator.free(recv);
         try writer.print(
             "func ({0s} *{1s}) zigoPointer() unsafe.Pointer {{\n\tif {0s} == nil {{\n\t\treturn nil\n\t}}\n\treturn {0s}.ptr\n}}\n\n" ++
-                "func ({0s} *{1s}Ref) zigoPointer() unsafe.Pointer {{\n\tif {0s} == nil || {0s}.ptr == nil {{\n\t\treturn nil\n\t}}\n\tif parent := {0s}.parent; parent != nil && parent.zigoPointer() == nil {{\n\t\treturn nil\n\t}}\n\treturn {0s}.ptr\n}}\n\n",
+                "func ({0s} *{1s}Ref) zigoPointer() unsafe.Pointer {{\n\tif {0s} == nil || {0s}.ptr == nil {{\n\t\treturn nil\n\t}}\n\tif parent := {0s}.parent; parent != nil && parent.zigoPointer() == nil {{\n\t\treturn nil\n\t}}\n\treturn {0s}.ptr\n}}\n\n" ++
+                "func ({0s} *{1s}) zigoLocker() *sync.RWMutex {{\n\tif {0s} == nil {{\n\t\treturn nil\n\t}}\n\treturn &{0s}.mu\n}}\n\n" ++
+                "func ({0s} *{1s}Ref) zigoLocker() *sync.RWMutex {{\n\tif {0s} == nil || {0s}.parent == nil {{\n\t\treturn nil\n\t}}\n\treturn {0s}.parent.zigoLocker()\n}}\n\n",
             .{ recv, declaration.name },
         );
         if (constructorForType(program, declaration.name)) |constructor| {
@@ -2661,6 +2669,7 @@ fn renderGoHandleRuntime(writer: *std.Io.Writer, program: abi.Program) !void {
     if (programHasOpaqueTypes(program)) try writer.writeAll(
         "type zigoHandle interface {\n" ++
             "\tzigoPointer() unsafe.Pointer\n" ++
+            "\tzigoLocker() *sync.RWMutex\n" ++
             "}\n\n" ++
             "func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, error) {\n" ++
             "\tptr := value.zigoPointer()\n" ++
@@ -2674,6 +2683,19 @@ fn renderGoHandleRuntime(writer: *std.Io.Writer, program: abi.Program) !void {
             "\t\treturn nil, nil\n" ++
             "\t}\n" ++
             "\treturn zigoCheckedPointer(operation, value)\n" ++
+            "}\n\n" ++
+            "// zigoReadLock holds the owner's read lock for the rest of the call, so a\n" ++
+            "// concurrent Close cannot release the handle between the pointer check and\n" ++
+            "// the native call. Use it as `defer zigoReadLock(receiver)()`. A borrowed\n" ++
+            "// ref delegates to its parent's lock; a nil receiver or a ref without a\n" ++
+            "// parent locks nothing.\n" ++
+            "func zigoReadLock(value zigoHandle) func() {\n" ++
+            "\tmu := value.zigoLocker()\n" ++
+            "\tif mu == nil {\n" ++
+            "\t\treturn func() {}\n" ++
+            "\t}\n" ++
+            "\tmu.RLock()\n" ++
+            "\treturn mu.RUnlock\n" ++
             "}\n\n",
     );
 }
@@ -2738,7 +2760,7 @@ fn renderPublicTaggedUnionAccessors(
         // One implementation per projection, reached through the handle
         // interface so the owned and borrowed methods can both delegate to it.
         try writer.print(
-            "func zigo{0s}Tag(receiver zigoHandle) ({1s}, error) {{\n\tdefer runtime.KeepAlive(receiver)\n" ++
+            "func zigo{0s}Tag(receiver zigoHandle) ({1s}, error) {{\n\tdefer zigoReadLock(receiver)()\n\tdefer runtime.KeepAlive(receiver)\n" ++
                 "\tptr, err := zigoCheckedPointer(\"{0s}.Tag receiver\", receiver)\n\tif err != nil {{\n\t\treturn 0, err\n\t}}\n\tresult, status := ",
             .{ declaration.name, tag_type },
         );
@@ -2769,7 +2791,7 @@ fn renderPublicTaggedUnionAccessors(
 
             try writer.print("func zigo{s}As{s}(receiver zigoHandle) (", .{ declaration.name, field_name });
             try writePayloadType(writer, payload);
-            try writer.print(", bool, error) {{\n\tdefer runtime.KeepAlive(receiver)\n\tptr, err := zigoCheckedPointer(\"{s}.As{s} receiver\", receiver)\n\tif err != nil {{\n\t\treturn ", .{ declaration.name, field_name });
+            try writer.print(", bool, error) {{\n\tdefer zigoReadLock(receiver)()\n\tdefer runtime.KeepAlive(receiver)\n\tptr, err := zigoCheckedPointer(\"{s}.As{s} receiver\", receiver)\n\tif err != nil {{\n\t\treturn ", .{ declaration.name, field_name });
             try writer.writeAll(goZero(payload));
             try writer.writeAll(", false, err\n\t}\n\tresult, status := ");
             try writeRawReferencePrefix(writer, options);

@@ -40,6 +40,20 @@ func (c *ChildRef) zigoPointer() unsafe.Pointer {
 	return c.ptr
 }
 
+func (c *Child) zigoLocker() *sync.RWMutex {
+	if c == nil {
+		return nil
+	}
+	return &c.mu
+}
+
+func (c *ChildRef) zigoLocker() *sync.RWMutex {
+	if c == nil || c.parent == nil {
+		return nil
+	}
+	return c.parent.zigoLocker()
+}
+
 type childCleanupState struct {
 	ptr unsafe.Pointer
 }
@@ -105,6 +119,20 @@ func (v *ValueRef) zigoPointer() unsafe.Pointer {
 	return v.ptr
 }
 
+func (v *Value) zigoLocker() *sync.RWMutex {
+	if v == nil {
+		return nil
+	}
+	return &v.mu
+}
+
+func (v *ValueRef) zigoLocker() *sync.RWMutex {
+	if v == nil || v.parent == nil {
+		return nil
+	}
+	return v.parent.zigoLocker()
+}
+
 type valueCleanupState struct {
 	ptr unsafe.Pointer
 }
@@ -168,6 +196,20 @@ func (s *SignalRef) zigoPointer() unsafe.Pointer {
 		return nil
 	}
 	return s.ptr
+}
+
+func (s *Signal) zigoLocker() *sync.RWMutex {
+	if s == nil {
+		return nil
+	}
+	return &s.mu
+}
+
+func (s *SignalRef) zigoLocker() *sync.RWMutex {
+	if s == nil || s.parent == nil {
+		return nil
+	}
+	return s.parent.zigoLocker()
 }
 
 type signalCleanupState struct {

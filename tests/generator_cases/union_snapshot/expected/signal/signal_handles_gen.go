@@ -40,6 +40,20 @@ func (s *SignalRef) zigoPointer() unsafe.Pointer {
 	return s.ptr
 }
 
+func (s *Signal) zigoLocker() *sync.RWMutex {
+	if s == nil {
+		return nil
+	}
+	return &s.mu
+}
+
+func (s *SignalRef) zigoLocker() *sync.RWMutex {
+	if s == nil || s.parent == nil {
+		return nil
+	}
+	return s.parent.zigoLocker()
+}
+
 type signalCleanupState struct {
 	ptr unsafe.Pointer
 }
