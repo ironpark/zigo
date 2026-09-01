@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-01T19:14:12Z"
 depends_on:
 - "59-windows-cgo-zigcc#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Doctor reflects reality; docs contain no stale hedges; grep finds no
 > NEXT: none

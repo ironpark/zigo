@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-01T19:14:12Z"
 description: "Native Windows cgo backend using CC=zig cc: spike the build, fix emission/doctor as needed, prove it in Windows CI without mingw"
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-01T18:27:05Z"
 ---
 > NEXT: Run the cgo + zig cc build spike against Windows targets from this host. ([Phase 0](phases/00-spike.md))
@@ -8,8 +9,8 @@ registered_at: "2026-09-01T18:27:05Z"
 # Phases
 
 - [x] [Phase 00: Build spike: cgo + zig cc for Windows, from POSIX](phases/00-spike.md)
-- [ ] [Phase 01: Windows cgo CI job](phases/01-windows-cgo-ci.md)
-- [ ] [Phase 02: Doctor and docs](phases/02-doctor-and-docs.md)
+- [x] [Phase 01: Windows cgo CI job](phases/01-windows-cgo-ci.md)
+- [x] [Phase 02: Doctor and docs](phases/02-doctor-and-docs.md)
 
 # Shared Verification
 
