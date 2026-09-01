@@ -15,6 +15,8 @@ This application-shaped example exposes a bounded Zig event queue as a Go packag
 - sentinel `[*:0]const u8` parameters and returns via `EchoCString` and `SampleCString`.
 - flattened string-slice parameters via `ExtractPaths`, `ExtractSentinelSlices`, and
   `ExtractSentinelPointers`, including empty entries.
+- a caller-owned slice return via `ExtractSamples`, whose declared `freeSamples` release
+  function the binding calls after copying; `LiveSamples` proves nothing leaks.
 
 Run the complete example from this directory:
 

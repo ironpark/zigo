@@ -233,6 +233,17 @@ pub fn semanticDocumentForBackend(
                 null,
         };
     }
+    // The release target is another exported function, so its symbol is only
+    // known once every function has been named.
+    for (functions) |*lowered| {
+        const release = lowered.origin.release orelse continue;
+        for (functions) |candidate| {
+            if (std.mem.eql(u8, candidate.origin.name, release)) {
+                lowered.release_symbol = candidate.symbol;
+                break;
+            }
+        }
+    }
     const projections = try lowerTaggedUnionProjections(allocator, document, prefix);
     const snapshots = try lowerTaggedUnionSnapshots(allocator, document, prefix);
     return .{

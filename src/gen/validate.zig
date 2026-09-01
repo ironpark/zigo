@@ -137,12 +137,23 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .site = .{ .path = "semantic.json", .declaration = function.name },
             .hint = "declare the callback with `callconv(.c)`",
         };
-        if (function.ownership == .caller and !ownedReturnIsWrappable(document, function)) return .{
+        // A caller-owned slice is handed over through `release` instead of a
+        // handle destructor, so it answers to ZIGO016 rather than ZIGO015.
+        if (function.ownership == .caller and isReleasableSliceReturn(function)) {
+            if (releaseTargetIssue(document, function)) |issue| return issue;
+        } else if (function.ownership == .caller and !ownedReturnIsWrappable(document, function)) return .{
             .severity = .@"error",
             .code = "ZIGO015",
             .message = "caller-owned return has no constructed handle to hand over",
             .site = .{ .path = "semantic.json", .declaration = function.name },
             .hint = "return a pointer to an opaque type that has both a constructor and a destructor, or drop `.returns = .caller`",
+        };
+        if (function.release != null and !isReleasableSliceReturn(function)) return .{
+            .severity = .@"error",
+            .code = "ZIGO016",
+            .message = "release function declared on a return that zigo does not free",
+            .site = .{ .path = "semantic.json", .declaration = function.name },
+            .hint = "use `.release` only together with `.returns = .caller` on a slice return",
         };
     }
     for (document.types) |declaration| {
@@ -427,6 +438,46 @@ fn ownedReturnIsWrappable(document: semantic.Semantic, function: semantic.Semant
     return false;
 }
 
+/// A slice return is the one non-handle result zigo can hand over: generated Go
+/// copies it and then calls the declared release function.
+fn isReleasableSliceReturn(function: semantic.SemanticFn) bool {
+    return function.@"return" == .slice and function.return_semantic != .c_string;
+}
+
+/// The release target must exist and take exactly the returned slice, otherwise
+/// the generated free call would pass a pointer the library cannot interpret.
+fn releaseTargetIssue(document: semantic.Semantic, function: semantic.SemanticFn) ?diagnostic.Diagnostic {
+    const missing: diagnostic.Diagnostic = .{
+        .severity = .@"error",
+        .code = "ZIGO016",
+        .message = "caller-owned slice return has no matching release function",
+        .site = .{ .path = "semantic.json", .declaration = function.name },
+        .hint = "add `.release = \"<Type>.<fn>\"` naming an exposed `fn(slice) void` that takes exactly the returned slice type",
+    };
+    const name = function.release orelse return missing;
+    for (document.functions) |candidate| {
+        if (!std.mem.eql(u8, candidate.name, name)) continue;
+        if (candidate.@"return" != .void or candidate.params.len != 1) return missing;
+        const parameter = candidate.params[0];
+        if (parameter.direction != .in or parameter.type != .slice) return missing;
+        if (!typeNodeEqual(parameter.type.slice.element.*, function.@"return".slice.element.*)) return missing;
+        return null;
+    }
+    return missing;
+}
+
+fn typeNodeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
+    if (std.meta.activeTag(lhs) != std.meta.activeTag(rhs)) return false;
+    return switch (lhs) {
+        .void, .bool => true,
+        .int => |value| value.bits == rhs.int.bits and value.signed == rhs.int.signed and value.is_usize == rhs.int.is_usize,
+        .float => |value| value.bits == rhs.float.bits,
+        .@"enum" => |value| std.mem.eql(u8, value.ref, rhs.@"enum".ref),
+        .value_struct => |value| std.mem.eql(u8, value.ref, rhs.value_struct.ref),
+        else => false,
+    };
+}
+
 fn hasConstructorInit(document: semantic.Semantic, constructor: semantic.Constructor) bool {
     for (document.functions) |function| {
         if (!std.mem.eql(u8, function.name, constructor.init) or function.receiver != null or
@@ -607,6 +658,7 @@ test "implemented diagnostic snapshots are stable" {
     var callback_params = [_]semantic.TypeNode{config_element};
     const struct_callback: semantic.TypeNode = .{ .callback = .{ .params = &callback_params, .@"return" = &callback_return, .has_userdata = false } };
     var byte_element: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    var word_element: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
     const cases = [_]struct { document: semantic.Semantic, snapshot: []const u8 }{
         .{ .document = .{
             .functions = &.{.{
@@ -769,7 +821,28 @@ test "implemented diagnostic snapshots are stable" {
             .package = "bad",
             .prefix = "zg",
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO015]: caller-owned return has no constructed handle to hand over\n  --> semantic.json (takeName)\n  hint: return a pointer to an opaque type that has both a constructor and a destructor, or drop `.returns = .caller`\n" },
+        }, .snapshot = "error[ZIGO016]: caller-owned slice return has no matching release function\n  --> semantic.json (takeName)\n  hint: add `.release = \"<Type>.<fn>\"` naming an exposed `fn(slice) void` that takes exactly the returned slice type\n" },
+        .{ .document = .{
+            .functions = &.{
+                .{
+                    .name = "takeBytes",
+                    .ownership = .caller,
+                    .params = &.{},
+                    .release = "freeWords",
+                    .@"return" = .{ .slice = .{ .@"const" = true, .element = &byte_element } },
+                    .symbol = "zg_take_bytes",
+                },
+                .{
+                    .name = "freeWords",
+                    .params = &.{.{ .name = "words", .type = .{ .slice = .{ .@"const" = false, .element = &word_element } } }},
+                    .@"return" = .{ .void = {} },
+                    .symbol = "zg_free_words",
+                },
+            },
+            .package = "bad",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO016]: caller-owned slice return has no matching release function\n  --> semantic.json (takeBytes)\n  hint: add `.release = \"<Type>.<fn>\"` naming an exposed `fn(slice) void` that takes exactly the returned slice type\n" },
         .{ .document = .{
             .functions = &.{.{
                 .name = "openThing",

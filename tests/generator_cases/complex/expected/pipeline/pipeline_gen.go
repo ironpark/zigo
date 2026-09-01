@@ -135,6 +135,11 @@ func SampleValues() []float32 {
 	return raw.SampleValues()
 }
 
+// TakeSamples invokes the bound Zig takeSamples operation.
+func TakeSamples() []float32 {
+	return raw.TakeSamples()
+}
+
 // Mode invokes the bound Zig Pipeline.mode operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (p *Pipeline) Mode() (Mode, error) {

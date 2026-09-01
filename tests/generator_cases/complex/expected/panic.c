@@ -170,6 +170,28 @@ zg_sample_values_impl(out_result_ptr, out_result_len);
     zg_panic_active = 0;
 }
 
+void zg_take_samples_impl(float * * out_result_ptr, size_t * out_result_len);
+ZIGO_EXPORT void zg_take_samples(float * * out_result_ptr, size_t * out_result_len) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return;
+    }
+zg_take_samples_impl(out_result_ptr, out_result_len);
+    zg_panic_active = 0;
+}
+
+void zg_release_samples_impl(float * samples_ptr, size_t samples_len);
+ZIGO_EXPORT void zg_release_samples(float * samples_ptr, size_t samples_len) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return;
+    }
+zg_release_samples_impl(samples_ptr, samples_len);
+    zg_panic_active = 0;
+}
+
 uint32_t zg_pipeline_mode_impl(void * self);
 ZIGO_EXPORT uint32_t zg_pipeline_mode(void * self) {
     zg_panic_active = 1;

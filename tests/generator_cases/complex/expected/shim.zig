@@ -75,6 +75,14 @@ export fn zg_sample_values_impl(out_result_ptr: *[*c]const f32, out_result_len: 
     out_result_ptr.* = result.ptr;
     out_result_len.* = result.len;
 }
+export fn zg_take_samples_impl(out_result_ptr: *[*c]f32, out_result_len: *usize) void {
+    const result = target.takeSamples();
+    out_result_ptr.* = result.ptr;
+    out_result_len.* = result.len;
+}
+export fn zg_release_samples_impl(samples_ptr: [*c]f32, samples_len: usize) void {
+    target.releaseSamples(if (samples_len == 0) &.{} else samples_ptr[0..samples_len]);
+}
 export fn zg_pipeline_mode_impl(self: *target.Pipeline) u32 {
     return @intFromEnum(target.Pipeline.mode(self));
 }

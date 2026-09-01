@@ -37,6 +37,12 @@ pub const bindings = zigo.define(.{
         },
         .{ .path = "EventQueue.extractSentinelSlices", .params = .{"paths"} },
         .{ .path = "EventQueue.extractSentinelPointers", .params = .{"paths"} },
+        .{
+            .path = "EventQueue.extractSamples",
+            .returns = .caller,
+            .release = "EventQueue.freeSamples",
+        },
+        .{ .path = "EventQueue.freeSamples", .params = .{"samples"} },
         .{ .path = "EventQueue.acceptStats", .params = .{"values"} },
         .{
             .path = "EventQueue.estimate",
@@ -55,5 +61,6 @@ pub const bindings = zigo.define(.{
         .{ .path = "EventQueue.clear" },
         .{ .path = "EventQueue.deinit" },
         .{ .path = "root.liveQueues" },
+        .{ .path = "root.liveSamples" },
     },
 });

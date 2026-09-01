@@ -501,6 +501,49 @@
       "symbol": "zg_extractSentinelPointers"
     },
     {
+      "doc": "Hands the caller a freshly allocated buffer. Ownership moves with the\nreturn value, so the generated binding must copy it and then call\n`freeSamples` before handing the slice to Go.",
+      "name": "extractSamples",
+      "ownership": "caller",
+      "params": [],
+      "receiver": "EventQueue",
+      "release": "freeSamples",
+      "return": {
+        "const": false,
+        "element": {
+          "bits": 32,
+          "kind": "float"
+        },
+        "kind": "slice"
+      },
+      "symbol": "zg_extractSamples"
+    },
+    {
+      "doc": "Releases a buffer produced by `extractSamples`.",
+      "name": "freeSamples",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "samples",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "const": false,
+            "element": {
+              "bits": 32,
+              "kind": "float"
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "receiver": "EventQueue",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_freeSamples"
+    },
+    {
       "doc": "Accepts a batch of value snapshots so both backends exercise their\nstruct-slice input conversion path.",
       "name": "acceptStats",
       "ownership": "borrowed",
@@ -730,6 +773,19 @@
         "signed": false
       },
       "symbol": "zg_liveQueues"
+    },
+    {
+      "doc": "Sample buffers still owned by the library. A correct binding returns this to\nzero after every `extractSamples` call.",
+      "name": "liveSamples",
+      "ownership": "borrowed",
+      "params": [],
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_liveSamples"
     }
   ],
   "ir_version": 1,

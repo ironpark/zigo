@@ -75,6 +75,8 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
         if (!std.mem.eql(u8, old.symbol, new.symbol))
             try add(allocator, &report, .breaking, identity, "exported C symbol changed");
         if (!signatureEqual(old, new)) try add(allocator, &report, .breaking, identity, "signature changed");
+        if (!optionalNameEqual(old.release, new.release))
+            try add(allocator, &report, .breaking, identity, "release function changed");
         if (old.ownership != new.ownership or !optionalHintEqual(old.return_semantic, new.return_semantic))
             try add(allocator, &report, .breaking, identity, "return ownership or semantics changed");
         if (!retentionEqual(old.params, new.params))
@@ -245,6 +247,11 @@ fn typeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
 }
 
 fn optionalStringEqual(lhs: ?[]const u8, rhs: ?[]const u8) bool {
+    if ((lhs == null) != (rhs == null)) return false;
+    return lhs == null or std.mem.eql(u8, lhs.?, rhs.?);
+}
+
+fn optionalNameEqual(lhs: ?[]const u8, rhs: ?[]const u8) bool {
     if ((lhs == null) != (rhs == null)) return false;
     return lhs == null or std.mem.eql(u8, lhs.?, rhs.?);
 }

@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-01T22:46:16Z"
 depends_on:
 - "61-slice-ownership-and-struct-elements#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: The three declared element forms lower to `[]string` and round-trip on both
 > NEXT: none

@@ -201,6 +201,30 @@ func EventQueueExtractSentinelPointers(paths []string) uint {
 	return uint(C.zg_event_queue_extract_sentinel_pointers(pathsDataPtr, C.size_t(len(pathsData)), pathsLensPtr, C.size_t(len(paths))))
 }
 
+// EventQueueExtractSamples calls the generated C ABI wrapper for zg_event_queue_extract_samples.
+func EventQueueExtractSamples(self unsafe.Pointer) []float32 {
+	var outResultPtr *C.float
+	var outResultLen C.size_t
+	C.zg_event_queue_extract_samples(self, &outResultPtr, &outResultLen)
+	var result []float32
+	if outResultLen != 0 {
+		result = make([]float32, int(outResultLen))
+		copy(result, unsafe.Slice((*float32)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
+	}
+	C.zg_event_queue_free_samples(self, outResultPtr, outResultLen)
+	return result
+}
+
+// EventQueueFreeSamples calls the generated C ABI wrapper for zg_event_queue_free_samples.
+func EventQueueFreeSamples(self unsafe.Pointer, samples []float32) {
+	var samplesZero C.float
+	samplesPtr := &samplesZero
+	if len(samples) != 0 {
+		samplesPtr = (*C.float)(unsafe.Pointer(&samples[0]))
+	}
+	C.zg_event_queue_free_samples(self, samplesPtr, C.size_t(len(samples)))
+}
+
 // EventQueueAcceptStats calls the generated C ABI wrapper for zg_event_queue_accept_stats.
 func EventQueueAcceptStats(self unsafe.Pointer, values []StatsData) uint {
 	var valuesValues []C.zg_stats
@@ -356,6 +380,11 @@ func EventQueueDeinit(self unsafe.Pointer) {
 // LiveQueues calls the generated C ABI wrapper for zg_live_queues.
 func LiveQueues() uint {
 	return uint(C.zg_live_queues())
+}
+
+// LiveSamples calls the generated C ABI wrapper for zg_live_samples.
+func LiveSamples() uint {
+	return uint(C.zg_live_samples())
 }
 
 // StatsData mirrors the zg_stats layout, padding included.

@@ -174,6 +174,23 @@ func ExtractSentinelPointers(paths []string) uint {
 	return raw.EventQueueExtractSentinelPointers(paths)
 }
 
+// ExtractSamples hands the caller a freshly allocated buffer. Ownership moves with the
+// return value, so the generated binding must copy it and then call
+// `freeSamples` before handing the slice to Go.
+// It returns *HandleError if a required handle is nil or closed.
+func (e *EventQueue) ExtractSamples() ([]float32, error) {
+	if e != nil {
+		e.mu.RLock()
+		defer e.mu.RUnlock()
+	}
+	defer runtime.KeepAlive(e)
+	ptr, err := zigoCheckedPointer("EventQueue.ExtractSamples receiver", e)
+	if err != nil {
+		return nil, err
+	}
+	return raw.EventQueueExtractSamples(ptr), nil
+}
+
 // AcceptStats accepts a batch of value snapshots so both backends exercise their
 // struct-slice input conversion path.
 // It returns *HandleError if a required handle is nil or closed.
@@ -374,4 +391,10 @@ func (e *EventQueue) Clear() (uint, error) {
 // LiveQueues invokes the bound Zig liveQueues operation.
 func LiveQueues() uint {
 	return raw.LiveQueues()
+}
+
+// LiveSamples sample buffers still owned by the library. A correct binding returns this to
+// zero after every `extractSamples` call.
+func LiveSamples() uint {
+	return raw.LiveSamples()
 }

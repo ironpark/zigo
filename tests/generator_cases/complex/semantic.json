@@ -319,6 +319,45 @@
       "symbol": "zg_sampleValues"
     },
     {
+      "name": "takeSamples",
+      "ownership": "caller",
+      "params": [],
+      "release": "releaseSamples",
+      "return": {
+        "const": false,
+        "element": {
+          "bits": 32,
+          "kind": "float"
+        },
+        "kind": "slice"
+      },
+      "symbol": "zg_takeSamples"
+    },
+    {
+      "name": "releaseSamples",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "samples",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "const": false,
+            "element": {
+              "bits": 32,
+              "kind": "float"
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_releaseSamples"
+    },
+    {
       "name": "mode",
       "ownership": "borrowed",
       "params": [],

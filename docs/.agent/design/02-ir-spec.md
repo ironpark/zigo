@@ -117,6 +117,10 @@ semantic.json은 "usize다"라는 사실만 기록한다 → 타깃 독립성 �
 하강 시 길이 없는 `const char*`로 바뀐다. 따라서 이 힌트가 붙은 slice에는 별도의
 `*_len` ABI 인자가 없다.
 
+function의 선택적 `release`는 `.returns = "caller"` slice 반환을 해제하는 함수의 이름을
+담는다. 그 이름은 같은 문서의 `functions`에 있어야 하고, 반환 slice와 같은 원소 타입의
+slice 하나만 받는 void 함수여야 한다. 하강 단계가 이 이름을 상대 함수의 심볼로 바꾼다.
+
 slice 노드의 선택적 `sentinel`/`sentinel_many`는 문자열 slice 매개변수의 element 원형을
 보존한다. `sentinel=0`과 `sentinel_many=false`는 `[:0]const u8`, `true`는
 `[*:0]const u8`를 뜻하고, 두 필드가 없으면 `[]const u8`이다. 이 정보는 하강된 C ABI

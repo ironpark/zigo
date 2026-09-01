@@ -194,9 +194,39 @@ nil·closed 상태를 검사합니다. 검사 결과는 항상 반환값으로 �
 },
 ```
 
-감쌀 handle이 없는 `.returns = .caller`는 `ZIGO015`로 거부됩니다. 반환 타입이 opaque
+감쌀 handle이 없는 `.returns = .caller`는 `ZIGO015`로 거부됩니다(slice 반환은 아래의
+`ZIGO016` 규칙을 따릅니다). 반환 타입이 opaque
 pointer가 아니거나, 그 타입에 constructor와 deinitializer가 등록되어 있지 않은
 경우입니다.
+
+## 호출자 소유 slice 반환
+
+slice 반환은 `.returns = .caller`로 소유권을 넘길 수 있습니다. 이때는 감쌀 handle 대신
+버퍼를 되돌려줄 함수가 필요하므로 `.release`로 그 함수의 경로를 함께 지정합니다. release
+함수는 반환된 slice와 같은 원소 타입의 slice 하나만 받고 아무것도 반환하지 않아야 합니다.
+
+```zig
+pub fn extractSamples(self: *EventQueue) []f32 { /* 새 버퍼를 할당해 반환 */ }
+pub fn freeSamples(_: *EventQueue, samples: []f32) void { /* 버퍼 해제 */ }
+
+// bindings.zig
+.{
+    .path = "EventQueue.extractSamples",
+    .returns = .caller,
+    .release = "EventQueue.freeSamples",
+},
+.{ .path = "EventQueue.freeSamples", .params = .{"samples"} },
+```
+
+생성된 raw 계층은 native가 채운 `ptr, len`을 먼저 Go slice로 복사한 뒤 곧바로 release
+심볼을 같은 `ptr, len`으로 호출합니다. 따라서 반환된 slice는 항상 Go 메모리이고, 호출자가
+따로 해제할 것이 없습니다. release 함수는 공개 Go API에 나타나지 않습니다. 이미 복사된
+Go slice를 다시 넘기는 실수를 막기 위해서입니다.
+
+`.release`가 없거나, 이름이 가리키는 함수가 없거나, 그 함수의 매개변수가 반환 slice와
+맞지 않으면 `ZIGO016`으로 거부됩니다. slice가 아닌 반환에 `.release`를 붙여도 같은
+코드입니다. abi-check는 release 함수가 바뀌면 breaking으로 봅니다. `![]T`처럼 error
+union 안의 slice payload는 아직 지원하지 않습니다.
 
 `?*T`/`?*const T` 매개변수는 nil을 받을 수 있는 handle 인자가 됩니다. Go에서 nil을
 넘기면 native 쪽에는 NULL이 전달되고 `*HandleError`는 발생하지 않습니다. 다만 optional은

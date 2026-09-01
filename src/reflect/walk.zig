@@ -173,6 +173,9 @@ fn appendFunction(
     };
     if (@hasField(@TypeOf(metadata), "semantic")) reflected_function.return_semantic = metadata.semantic;
     if (@hasField(@TypeOf(metadata), "returns")) reflected_function.ownership = metadata.returns;
+    // `.release` addresses the freeing function the same way `.path` does, so
+    // the last segment names it inside the generated document.
+    if (@hasField(@TypeOf(metadata), "release")) reflected_function.release = comptime pathMember(metadata.release);
     if (info.return_type) |return_type| {
         if (isSentinelBytePointer(return_type)) reflected_function.return_semantic = .c_string;
     }

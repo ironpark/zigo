@@ -59,6 +59,8 @@ type nativeBindings struct {
 	fnEventQueueExtractPaths            func(unsafe.Pointer, uintptr, unsafe.Pointer, uintptr) uintptr
 	fnEventQueueExtractSentinelSlices   func(unsafe.Pointer, uintptr, unsafe.Pointer, uintptr) uintptr
 	fnEventQueueExtractSentinelPointers func(unsafe.Pointer, uintptr, unsafe.Pointer, uintptr) uintptr
+	fnEventQueueExtractSamples          func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
+	fnEventQueueFreeSamples             func(unsafe.Pointer, unsafe.Pointer, uintptr)
 	fnEventQueueAcceptStats             func(unsafe.Pointer, unsafe.Pointer, uintptr) uintptr
 	fnEventQueueEstimate                func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr, *uintptr) int32
 	fnEventQueueSampleStats             func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
@@ -73,6 +75,7 @@ type nativeBindings struct {
 	fnEventQueueClear                   func(unsafe.Pointer) uintptr
 	fnEventQueueDeinit                  func(unsafe.Pointer)
 	fnLiveQueues                        func() uintptr
+	fnLiveSamples                       func() uintptr
 }
 
 type callbackEntry struct {
@@ -316,6 +319,14 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_event_queue_extract_sentinel_pointers", err)
 	}
+	addrEventQueueExtractSamples, err := resolveSymbol(handle, "zg_event_queue_extract_samples")
+	if err != nil {
+		return fail("zg_event_queue_extract_samples", err)
+	}
+	addrEventQueueFreeSamples, err := resolveSymbol(handle, "zg_event_queue_free_samples")
+	if err != nil {
+		return fail("zg_event_queue_free_samples", err)
+	}
 	addrEventQueueAcceptStats, err := resolveSymbol(handle, "zg_event_queue_accept_stats")
 	if err != nil {
 		return fail("zg_event_queue_accept_stats", err)
@@ -372,6 +383,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_live_queues", err)
 	}
+	addrLiveSamples, err := resolveSymbol(handle, "zg_live_samples")
+	if err != nil {
+		return fail("zg_live_samples", err)
+	}
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.fnEventQueueCreate, addrEventQueueCreate)
@@ -386,6 +401,8 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnEventQueueExtractPaths, addrEventQueueExtractPaths)
 	purego.RegisterFunc(&next.fnEventQueueExtractSentinelSlices, addrEventQueueExtractSentinelSlices)
 	purego.RegisterFunc(&next.fnEventQueueExtractSentinelPointers, addrEventQueueExtractSentinelPointers)
+	purego.RegisterFunc(&next.fnEventQueueExtractSamples, addrEventQueueExtractSamples)
+	purego.RegisterFunc(&next.fnEventQueueFreeSamples, addrEventQueueFreeSamples)
 	purego.RegisterFunc(&next.fnEventQueueAcceptStats, addrEventQueueAcceptStats)
 	purego.RegisterFunc(&next.fnEventQueueEstimate, addrEventQueueEstimate)
 	purego.RegisterFunc(&next.fnEventQueueSampleStats, addrEventQueueSampleStats)
@@ -400,6 +417,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnEventQueueClear, addrEventQueueClear)
 	purego.RegisterFunc(&next.fnEventQueueDeinit, addrEventQueueDeinit)
 	purego.RegisterFunc(&next.fnLiveQueues, addrLiveQueues)
+	purego.RegisterFunc(&next.fnLiveSamples, addrLiveSamples)
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -629,6 +647,29 @@ func EventQueueExtractSentinelPointers(paths []string) uint {
 	return uint(result)
 }
 
+// EventQueueExtractSamples calls the generated purego ABI wrapper for zg_event_queue_extract_samples.
+func EventQueueExtractSamples(self unsafe.Pointer) []float32 {
+	var outResultPtr unsafe.Pointer
+	var outResultLen uintptr
+	bindings().fnEventQueueExtractSamples(self, &outResultPtr, &outResultLen)
+	var result []float32
+	if outResultLen != 0 {
+		result = make([]float32, int(outResultLen))
+		copy(result, unsafe.Slice((*float32)(outResultPtr), int(outResultLen)))
+	}
+	bindings().fnEventQueueFreeSamples(self, outResultPtr, outResultLen)
+	return result
+}
+
+// EventQueueFreeSamples calls the generated purego ABI wrapper for zg_event_queue_free_samples.
+func EventQueueFreeSamples(self unsafe.Pointer, samples []float32) {
+	var samplesPtr unsafe.Pointer
+	if len(samples) != 0 {
+		samplesPtr = unsafe.Pointer(&samples[0])
+	}
+	bindings().fnEventQueueFreeSamples(self, samplesPtr, uintptr(len(samples)))
+}
+
 // EventQueueAcceptStats calls the generated purego ABI wrapper for zg_event_queue_accept_stats.
 func EventQueueAcceptStats(self unsafe.Pointer, values []StatsData) uint {
 	var valuesPtr unsafe.Pointer
@@ -728,5 +769,11 @@ func EventQueueDeinit(self unsafe.Pointer) {
 // LiveQueues calls the generated purego ABI wrapper for zg_live_queues.
 func LiveQueues() uint {
 	result := bindings().fnLiveQueues()
+	return uint(result)
+}
+
+// LiveSamples calls the generated purego ABI wrapper for zg_live_samples.
+func LiveSamples() uint {
+	result := bindings().fnLiveSamples()
 	return uint(result)
 }

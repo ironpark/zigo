@@ -36,6 +36,10 @@ const Event = struct {
 
 var live_queues: std.atomic.Value(usize) = .init(0);
 
+/// Sample buffers handed to the caller and not yet released. The Go tests read
+/// it to prove the generated binding calls the release function exactly once.
+var live_samples: std.atomic.Value(usize) = .init(0);
+
 pub const EventQueue = struct {
     name_bytes: []u8,
     items: std.ArrayList(Event) = .empty,
@@ -164,6 +168,25 @@ pub const EventQueue = struct {
         return &.{ 0.25, 1.5, 3.75 };
     }
 
+    /// Hands the caller a freshly allocated buffer. Ownership moves with the
+    /// return value, so the generated binding must copy it and then call
+    /// `freeSamples` before handing the slice to Go.
+    pub fn extractSamples(self: *EventQueue) []f32 {
+        const allocator = std.heap.page_allocator;
+        const samples = allocator.alloc(f32, self.items.items.len + 1) catch return &.{};
+        samples[0] = @floatFromInt(self.items.items.len);
+        for (self.items.items, 1..) |event, index| samples[index] = @floatFromInt(event.value);
+        _ = live_samples.fetchAdd(1, .monotonic);
+        return samples;
+    }
+
+    /// Releases a buffer produced by `extractSamples`.
+    pub fn freeSamples(_: *EventQueue, samples: []f32) void {
+        if (samples.len == 0) return;
+        std.heap.page_allocator.free(samples);
+        _ = live_samples.fetchSub(1, .monotonic);
+    }
+
     /// Accepts a batch of value snapshots so both backends exercise their
     /// struct-slice input conversion path.
     pub fn acceptStats(_: *EventQueue, values: []const Stats) usize {
@@ -246,6 +269,12 @@ pub const EventQueue = struct {
         _ = live_queues.fetchSub(1, .monotonic);
     }
 };
+
+/// Sample buffers still owned by the library. A correct binding returns this to
+/// zero after every `extractSamples` call.
+pub fn liveSamples() usize {
+    return live_samples.load(.monotonic);
+}
 
 pub fn liveQueues() usize {
     return live_queues.load(.monotonic);

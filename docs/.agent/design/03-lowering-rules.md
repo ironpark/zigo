@@ -48,6 +48,12 @@ Zig 슬라이스는 C ABI 안전하지 않다. 항상 ptr+len 쌍으로 분해�
 | `[*:0]const u8` | `const char*` | `string` |
 | `[]const []const u8`, `[]const [:0]const u8`, `[]const [*:0]const u8` (string slice) | `const uint8_t* p_data, size_t p_data_len, const size_t* p_lens, size_t p_count` | `[]string` |
 
+`.returns = .caller` slice 반환은 `out_result_ptr`/`out_result_len`을 그대로 쓰고
+`release` 함수의 심볼을 AbiFn에 붙인다. 생성된 raw 계층은 복사를 끝낸 직후 같은
+`ptr, len`으로 release 심볼을 호출한다(길이 0도 포함해 정확히 한 번). release 함수는
+raw 계층에만 내보내고 공개 API에서는 감춘다. abi-check는 release 심볼의 추가·삭제·변경을
+breaking으로 분류한다.
+
 slice 반환은 cgo와 purego 모두 호출 시점에 native `ptr + len`에서 새 Go slice로 복사한다.
 공개 API가 native 메모리를 alias하지 않으므로, 다음 호출·원본 객체 수명·`Close`와
 무관하게 반환값을 보관하고 수정할 수 있다. tagged-union numeric-slice projection도
@@ -286,6 +292,7 @@ append지만, 값 스냅샷 union에서는 구조체의 크기와 배치가 달�
 |---|---|
 | `callee` (호출자가 해제 책임) | `*T` + `Close()` 생성 |
 | `borrowed` | `TRef` 래퍼 (Close 없음, 원본 수명에 종속) |
+| `caller` + slice 반환 | Go 소유 복사본 (raw 계층이 `release`를 대신 호출) |
 
 `borrowed` 반환은 Go 래퍼에 원본 객체 참조를 필드로 심어
 GC가 원본을 조기 수거하지 않게 한다 (`runtime.KeepAlive` 대신 구조적 보장).

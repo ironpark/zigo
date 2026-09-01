@@ -103,6 +103,9 @@ pub const AbiFn = struct {
     /// is a separate field because the two spell different Go: one returns the
     /// struct, the other returns it alongside an error code.
     payload_struct: ?*const AbiStruct = null,
+    /// Symbol of the function that frees a caller-owned slice result. Generated
+    /// Go copies the payload out and then calls this with the same `ptr, len`.
+    release_symbol: ?[]const u8 = null,
 };
 
 pub const AbiProjection = struct {

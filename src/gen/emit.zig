@@ -1157,7 +1157,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
             function.origin.@"return" != .slice and function.ret_struct == null) try writer.writeByte(')');
         try writer.writeByte('\n');
         if (function.origin.@"return" == .slice and !isCStringReturn(function.origin.*)) {
-            try writeCgoSliceReturn(allocator, writer, program, function.origin.@"return".slice.element.*, "outResultPtr", "outResultLen");
+            try writeCgoSliceReturn(allocator, writer, program, function.origin.@"return".slice.element.*, "outResultPtr", "outResultLen", function.release_symbol, if (releaseFunction(program, function)) |release| release.origin.receiver != null else false);
         }
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (parameter.type != .slice or parameter.direction != .out or parameter.type.slice.element.* != .value_struct) continue;
@@ -1238,7 +1238,20 @@ fn writeCgoSliceReturn(
     element: semantic.TypeNode,
     pointer_name: []const u8,
     length_name: []const u8,
+    release_symbol: ?[]const u8,
+    release_has_receiver: bool,
 ) !void {
+    if (release_symbol) |symbol| {
+        const release_receiver = if (release_has_receiver) "self, " else "";
+        // The payload is copied first and released immediately after, so the
+        // returned Go slice never aliases memory the library still owns.
+        try writer.print("\tvar result []", .{});
+        try writeRawGoType(writer, program, element);
+        try writer.print("\n\tif {s} != 0 {{\n", .{length_name});
+        try writeCgoSliceCopyInto(allocator, writer, program, element, pointer_name, length_name, "\t\t");
+        try writer.print("\t}}\n\tC.{s}({s}{s}, {s})\n\treturn result\n", .{ symbol, release_receiver, pointer_name, length_name });
+        return;
+    }
     if (element == .value_struct) {
         const record = structRecord(program, element.value_struct.ref);
         try writer.print("\tif {s} == 0 {{ return nil }}\n\tcResult := unsafe.Slice((*C.{s})(unsafe.Pointer({s})), int({s}))\n\tresult := make([]", .{ length_name, record.c_name, pointer_name, length_name });
@@ -1257,6 +1270,60 @@ fn writeCgoSliceReturn(
     try writer.print(", int({s}))\n\tcopy(result, unsafe.Slice((*", .{length_name});
     try writeRawGoType(writer, program, element);
     try writer.print(")(unsafe.Pointer({s})), int({s})))\n\treturn result\n", .{ pointer_name, length_name });
+}
+
+/// The lowered release function for a caller-owned slice return, if any. The
+/// symbol alone is enough for cgo, but purego calls through the bindings table
+/// and needs the function's Go name and receiver too.
+/// Whether this function is some other function's declared release target.
+fn isReleaseTarget(program: abi.Program, function: semantic.SemanticFn) bool {
+    for (program.functions) |candidate| {
+        const release = candidate.origin.release orelse continue;
+        if (std.mem.eql(u8, release, function.name)) return true;
+    }
+    return false;
+}
+
+fn releaseFunction(program: abi.Program, function: abi.AbiFn) ?abi.AbiFn {
+    const symbol = function.release_symbol orelse return null;
+    for (program.functions) |candidate| {
+        if (std.mem.eql(u8, candidate.symbol, symbol)) return candidate;
+    }
+    return null;
+}
+
+/// Fills an already declared `result` from the native `ptr, len` pair. It exists
+/// so the release path can copy and then free without duplicating the per
+/// element-kind conversion.
+fn writeCgoSliceCopyInto(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    element: semantic.TypeNode,
+    pointer_name: []const u8,
+    length_name: []const u8,
+    indent: []const u8,
+) !void {
+    if (element == .value_struct) {
+        const record = structRecord(program, element.value_struct.ref);
+        try writer.print("{s}cResult := unsafe.Slice((*C.{s})(unsafe.Pointer({s})), int({s}))\n{s}result = make([]", .{ indent, record.c_name, pointer_name, length_name, indent });
+        try writeRawGoType(writer, program, element);
+        try writer.print(", int({s}))\n{s}for i := range result {{\n{s}\tresult[i] = ", .{ length_name, indent, indent });
+        const nested = try std.fmt.allocPrint(allocator, "{s}\t", .{indent});
+        defer allocator.free(nested);
+        try writeCgoStructRead(allocator, writer, program, record, nested, "cResult[i]");
+        try writer.print("\n{s}}}\n", .{indent});
+        return;
+    }
+    if (isByteType(element)) {
+        try writer.print("{s}result = C.GoBytes(unsafe.Pointer({s}), C.int({s}))\n", .{ indent, pointer_name, length_name });
+        return;
+    }
+    try writer.print("{s}result = make([]", .{indent});
+    try writeRawGoType(writer, program, element);
+    try writer.print(", int({s}))\n{s}copy(result, unsafe.Slice((*", .{ length_name, indent });
+    try writeRawGoType(writer, program, element);
+    try writer.print(")(unsafe.Pointer({s})), int({s})))\n", .{ pointer_name, length_name });
 }
 
 /// Base name of the installed native library, without the platform prefix and
@@ -1860,11 +1927,30 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
     if (isCStringReturn(function.origin.*)) {
         try writer.writeAll("\treturn zigoCStringString(result)\n");
     } else if (function.origin.@"return" == .slice) {
-        try writer.writeAll("\tif outResultLen == 0 { return nil }\n\tresult := make([]");
-        try writeRawGoType(writer, program, function.origin.@"return".slice.element.*);
-        try writer.writeAll(", int(outResultLen))\n\tcopy(result, unsafe.Slice((*");
-        try writeRawGoType(writer, program, function.origin.@"return".slice.element.*);
-        try writer.writeAll(")(outResultPtr), int(outResultLen)))\n\treturn result\n");
+        const element = function.origin.@"return".slice.element.*;
+        if (releaseFunction(program, function)) |release| {
+            // Copy first, then hand the native buffer straight back, so the
+            // returned slice is Go memory before the library frees anything.
+            const release_name = try rawGoNameAlloc(allocator, release.origin.*);
+            defer allocator.free(release_name);
+            try writer.writeAll("\tvar result []");
+            try writeRawGoType(writer, program, element);
+            try writer.writeAll("\n\tif outResultLen != 0 {\n\t\tresult = make([]");
+            try writeRawGoType(writer, program, element);
+            try writer.writeAll(", int(outResultLen))\n\t\tcopy(result, unsafe.Slice((*");
+            try writeRawGoType(writer, program, element);
+            try writer.writeAll(")(outResultPtr), int(outResultLen)))\n\t}\n");
+            try writer.print("\tbindings().fn{s}({s}outResultPtr, outResultLen)\n\treturn result\n", .{
+                release_name,
+                if (release.origin.receiver != null) "self, " else "",
+            });
+        } else {
+            try writer.writeAll("\tif outResultLen == 0 { return nil }\n\tresult := make([]");
+            try writeRawGoType(writer, program, element);
+            try writer.writeAll(", int(outResultLen))\n\tcopy(result, unsafe.Slice((*");
+            try writeRawGoType(writer, program, element);
+            try writer.writeAll(")(outResultPtr), int(outResultLen)))\n\treturn result\n");
+        }
     } else if (returns_error) {
         if (error_payload == .void) {
             try writer.writeAll("\treturn code\n");
@@ -2218,6 +2304,9 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
     for (program.functions) |function| {
         const constructor = constructorForInit(program, function.origin.*);
         if (constructor == null and constructorForDeinit(program, function.origin.*) != null) continue;
+        // A release function is called for the caller by the raw layer. Exposing
+        // it publicly would invite freeing a Go-owned copy, so it stays internal.
+        if (isReleaseTarget(program, function.origin.*)) continue;
         const owned_type = if (constructor) |value| value.type else ownedOpaqueReturn(program, function.origin.*);
         const go_names = try goParamNamesForAlloc(allocator, function.origin.params);
         defer naming.freeParamNames(allocator, go_names);

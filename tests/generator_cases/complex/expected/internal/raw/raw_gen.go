@@ -102,6 +102,28 @@ func SampleValues() []float32 {
 	copy(result, unsafe.Slice((*float32)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
 	return result
 }
+// TakeSamples calls the generated C ABI wrapper for zg_take_samples.
+func TakeSamples() []float32 {
+	var outResultPtr *C.float
+	var outResultLen C.size_t
+	C.zg_take_samples(&outResultPtr, &outResultLen)
+	var result []float32
+	if outResultLen != 0 {
+		result = make([]float32, int(outResultLen))
+		copy(result, unsafe.Slice((*float32)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
+	}
+	C.zg_release_samples(outResultPtr, outResultLen)
+	return result
+}
+// ReleaseSamples calls the generated C ABI wrapper for zg_release_samples.
+func ReleaseSamples(samples []float32) {
+	var samplesZero C.float
+	samplesPtr := &samplesZero
+	if len(samples) != 0 {
+		samplesPtr = (*C.float)(unsafe.Pointer(&samples[0]))
+	}
+	C.zg_release_samples(samplesPtr, C.size_t(len(samples)))
+}
 // PipelineMode calls the generated C ABI wrapper for zg_pipeline_mode.
 func PipelineMode(self unsafe.Pointer) uint32 {
 	return uint32(C.zg_pipeline_mode(self))
