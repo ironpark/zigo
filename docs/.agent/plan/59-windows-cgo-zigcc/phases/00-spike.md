@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-01T18:34:04Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Phase notes contain the reproducible spike record and verdict; any
 > NEXT: none

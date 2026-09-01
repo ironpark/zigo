@@ -2,7 +2,7 @@
 depends_on:
 - "59-windows-cgo-zigcc#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: CI green on all runners including the new job; the job's added time
 > NEXT: none

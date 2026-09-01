@@ -7,7 +7,7 @@ registered_at: "2026-09-01T18:27:05Z"
 
 # Phases
 
-- [ ] [Phase 00: Build spike: cgo + zig cc for Windows, from POSIX](phases/00-spike.md)
+- [x] [Phase 00: Build spike: cgo + zig cc for Windows, from POSIX](phases/00-spike.md)
 - [ ] [Phase 01: Windows cgo CI job](phases/01-windows-cgo-ci.md)
 - [ ] [Phase 02: Doctor and docs](phases/02-doctor-and-docs.md)
 
