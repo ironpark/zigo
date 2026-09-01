@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-01T16:34:09Z"
 depends_on:
 - "56-windows-purego-support#5"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Every symbol the generated loader resolves appears in the export table of a
 > NEXT: none
