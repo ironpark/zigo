@@ -559,11 +559,6 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     if (backend == .purego) {
         if (!build_options.puregoTargetSupported(options.target.result))
             @panic("`.link = .purego` supports macOS, Linux and Windows on amd64/arm64 only");
-        // Reflection runs the bindings module as an executable, so generation
-        // needs a target the host can execute. A Windows DLL is therefore built
-        // on Windows; the generated Go tree itself is platform-independent.
-        if (!isRunnableOnHost(options.target.result, b.graph.host.result))
-            @panic("`.link = .purego` requires the native host target");
     }
     const artifact_package = naming.snakeAlloc(b.allocator, options.name) catch @panic("OOM");
     const go_package = if (options.go_package) |value| blk: {
@@ -574,14 +569,19 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     const raw_package = resolveRawPackage(b, options.raw_package, go_package);
     const zigo_dependency = b.dependencyFromBuildZig(@This(), .{});
     const generator = addGenerator(b, zigo_dependency.path("src/main.zig"), b.graph.host, .Debug);
+    // Reflection runs the bindings module as an executable on the host, so the
+    // whole reflection pipeline builds for `b.graph.host` even when the library
+    // targets another platform. The generated Go tree is platform-independent;
+    // reflected layouts are pinned by the shim's comptime ABI guards, which fail
+    // the target compile if a C-variable type diverges.
     const semantic_module = b.createModule(.{
         .root_source_file = zigo_dependency.path("src/gen/ir/semantic.zig"),
-        .target = options.target,
+        .target = b.graph.host,
         .optimize = .Debug,
     });
     const bindings_module = b.createModule(.{
         .root_source_file = options.bindings,
-        .target = options.target,
+        .target = b.graph.host,
         .optimize = options.optimize,
         .imports = &.{
             .{ .name = "zigo", .module = zigo_dependency.module("zigo") },
@@ -592,7 +592,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         .name = "zigo-reflect",
         .root_module = b.createModule(.{
             .root_source_file = zigo_dependency.path("src/reflect/main.zig"),
-            .target = options.target,
+            .target = b.graph.host,
             .optimize = .Debug,
             .imports = &.{
                 .{ .name = "bindings", .module = bindings_module },
