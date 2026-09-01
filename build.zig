@@ -77,6 +77,11 @@ pub const GoBindings = struct {
     install_library: *std.Build.Step.InstallArtifact,
     /// Target-specific basename of the native binding library.
     library_filename: []const u8,
+    /// Full path `install_library` writes the native binding library to.
+    /// Zig installs a shared library to `bin` on Windows and `lib` everywhere
+    /// else, so this is what a consumer should use rather than joining a
+    /// directory of its own choosing with `library_filename`.
+    library_path: []const u8,
     semantic_json: std.Build.LazyPath,
 
     pub const StandardStepOptions = struct {
@@ -742,7 +747,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         // The purego doctor validates the deployed artifact, so it must run
         // against a freshly installed library and the module that loads it.
         doctor.step.dependOn(&install_lib.step);
-        doctor.addArgs(&.{ "--library", b.getInstallPath(.lib, libraryFilename(b, lib.name, options.target.result, link_mode)) });
+        doctor.addArgs(&.{ "--library", installedLibraryPath(b, install_lib) });
         doctor.addArgs(&.{ "--go-mod", b.pathFromRoot(go_mod_path) });
     }
     update.step.dependOn(&install_lib.step);
@@ -762,7 +767,8 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         .doctor = doctor,
         .lib = lib,
         .install_library = install_lib,
-        .library_filename = libraryFilename(b, lib.name, options.target.result, link_mode),
+        .library_filename = install_lib.dest_sub_path,
+        .library_path = installedLibraryPath(b, install_lib),
         .semantic_json = semantic_json,
     };
 }
@@ -781,11 +787,18 @@ fn joinWith(b: *std.Build, values: []const []const u8, separator: []const u8) []
     return std.mem.join(b.allocator, separator, values) catch @panic("OOM");
 }
 
-fn libraryFilename(b: *std.Build, name: []const u8, target: std.Target, mode: LinkMode) []const u8 {
-    return switch (mode) {
-        .static => b.fmt("{s}{s}{s}", .{ target.libPrefix(), name, target.staticLibSuffix() }),
-        .dynamic => b.fmt("{s}{s}{s}", .{ target.libPrefix(), name, target.dynamicLibSuffix() }),
-    };
+/// Where the install step actually puts the native library.
+///
+/// The directory is not always `lib`: `std.Build.Step.InstallArtifact` resolves
+/// a library artifact's destination as `if (artifact.isDll()) .bin else .lib`,
+/// so a Windows DLL installs next to the executables while its import library
+/// stays in `lib`. Reading the decision back off the step keeps zigo's idea of
+/// the path from drifting from Zig's, which is what made `go-doctor` report a
+/// freshly installed DLL as missing.
+fn installedLibraryPath(b: *std.Build, install: *std.Build.Step.InstallArtifact) []const u8 {
+    // `dest_dir` is only null when installation was disabled, which zigo never
+    // does: `addInstallArtifact` is called with the default options.
+    return b.getInstallPath(install.dest_dir.?, install.dest_sub_path);
 }
 
 /// Copies the generated Go tree into the package's Go directory and removes the

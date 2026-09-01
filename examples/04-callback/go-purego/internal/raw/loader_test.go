@@ -7,6 +7,15 @@ import (
 	"testing"
 )
 
+// installDir is the directory `zig build go-lib` installs the shared library
+// into. Zig puts a DLL next to the executables and everything else in lib.
+func installDir() string {
+	if runtime.GOOS == "windows" {
+		return "bin"
+	}
+	return "lib"
+}
+
 func TestCallbackDispatcherIsPermanentAcrossLoadRetry(t *testing.T) {
 	first := CallbackPointer0()
 	if first == 0 || CallbackDispatcherCount() != 1 {
@@ -24,7 +33,7 @@ func TestCallbackDispatcherIsPermanentAcrossLoadRetry(t *testing.T) {
 	_, file, _, _ := runtime.Caller(0)
 	path := os.Getenv("ZIGO_LIBRARY_PATH")
 	if path == "" {
-		path = filepath.Join(filepath.Dir(file), "..", "..", "..", "zig-out", "lib", DefaultLibraryName)
+		path = filepath.Join(filepath.Dir(file), "..", "..", "..", "zig-out", installDir(), DefaultLibraryName)
 	}
 	if err := LoadLibrary(path); err != nil {
 		t.Fatal(err)

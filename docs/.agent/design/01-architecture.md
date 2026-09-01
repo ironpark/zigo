@@ -264,6 +264,7 @@ pub const GoBindings = struct {
     lib: *std.Build.Step.Compile,               // 네이티브 바인딩 라이브러리
     install_library: *std.Build.Step.InstallArtifact,
     library_filename: []const u8,               // 타깃별 basename
+    library_path: []const u8,                   // 설치 경로 (Windows DLL은 bin)
     semantic_json: std.Build.LazyPath,          // 후처리용 노출
 
     pub fn addStandardSteps(self: GoBindings, b: *std.Build, options: StandardStepOptions) StandardSteps;

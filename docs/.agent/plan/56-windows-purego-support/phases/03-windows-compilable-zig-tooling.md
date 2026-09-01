@@ -1,5 +1,5 @@
 ---
-completed_at: "2026-09-01T15:24:48Z"
+completed_at: "2026-09-01T15:39:15Z"
 depends_on:
 - "56-windows-purego-support#1"
 perf_phase: false

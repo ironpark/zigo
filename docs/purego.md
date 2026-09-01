@@ -213,8 +213,10 @@ library search paths: ${EXECUTABLE_DIR}:${EXECUTABLE_DIR}/../lib:../../zig-out/l
 ## 패키징과 배포
 
 - 공유 라이브러리는 타깃별 아티팩트다. 파일명은 macOS `lib<name>_zigo.dylib`,
-  Linux `lib<name>_zigo.so`, Windows `<name>_zigo.dll`이며 `zig build go-lib`이
-  `zig-out/lib`에 설치한다.
+  Linux `lib<name>_zigo.so`, Windows `<name>_zigo.dll`이다. 설치 위치는 Zig의
+  관례를 따른다. `zig build go-lib`은 DLL을 `zig-out/bin`에, 나머지는
+  `zig-out/lib`에 설치한다. 경로를 직접 조립하지 말고 `GoBindings.library_path`를
+  읽으면 플랫폼과 무관하게 실제 설치 경로를 얻는다.
 - 배포 대상 OS·아키텍처 조합마다 해당 호스트에서 빌드한다. purego는 Go 애플리케이션
   빌드에서 C 컴파일러를 제거할 뿐, 하나의 Zig 아티팩트를 여러 타깃에 이식해 주지 않는다.
   zigo의 reflector가 빌드 중 실행되므로 크로스 컴파일도 지원하지 않는다. 생성 과정이
@@ -231,7 +233,7 @@ library search paths: ${EXECUTABLE_DIR}:${EXECUTABLE_DIR}/../lib:../../zig-out/l
   cd go-purego && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...
 
   # 짝이 되는 DLL은 Windows 호스트에서 만든다.
-  zig build purego-go-lib   # -> zig-out/lib/<name>_zigo.dll
+  zig build purego-go-lib   # -> zig-out/bin/<name>_zigo.dll
   ```
 
   cgo 백엔드를 `CC="zig cc -target x86_64-windows"`로 크로스 링크하는 방법은 검증하지

@@ -42,8 +42,13 @@ pub fn build(b: *std.Build) void {
         // The library is found next to the executable when deployed, and in the
         // installed prefix when the tests run from the package directory. The
         // public package therefore exposes no loader at all.
+        //
+        // Both installed prefixes are listed because Zig installs a DLL into
+        // `bin` and everything else into `lib`. Candidates are tried in order
+        // and a miss costs nothing, so one policy covers every platform and the
+        // generated package stays identical on all of them.
         .library_loading = .{
-            .search_paths = &.{ "${EXECUTABLE_DIR}", "${EXECUTABLE_DIR}/../lib", "../../zig-out/lib" },
+            .search_paths = &.{ "${EXECUTABLE_DIR}", "${EXECUTABLE_DIR}/../lib", "../../zig-out/lib", "../../zig-out/bin" },
             .loader = .automatic_internal,
         },
     });

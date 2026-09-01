@@ -210,11 +210,11 @@ jobs:
           done
           (cd examples/10-tagged-union && zig build go go-verify -Dpurego --summary all)
 
-          # The DLL carries no `lib` prefix, which is what DefaultLibraryName
-          # now expects on windows.
-          test -f examples/07-event-queue/zig-out/lib/event_queue_zigo.dll
-          test -f examples/08-telemetry-hub/zig-out/lib/telemetry_hub_zigo.dll
-          test -f examples/10-tagged-union/zig-out/lib/tagged_union_zigo.dll
+          # Zig installs a DLL into `bin`, not `lib`, and it carries no `lib`
+          # prefix -- which is what DefaultLibraryName expects on windows.
+          test -f examples/07-event-queue/zig-out/bin/event_queue_zigo.dll
+          test -f examples/08-telemetry-hub/zig-out/bin/telemetry_hub_zigo.dll
+          test -f examples/10-tagged-union/zig-out/bin/tagged_union_zigo.dll
       - name: Run the purego examples without cgo
         shell: bash
         # The race detector needs cgo, exactly as on the POSIX purego job.
@@ -228,6 +228,6 @@ jobs:
 
           cd examples/10-tagged-union/go-purego
           go vet ./...
-          ZIGO_TEST_LIBRARY="$PWD/../zig-out/lib/tagged_union_zigo.dll" \
-          ZIGO_TEST_WRONG_LIBRARY="$PWD/../../08-telemetry-hub/zig-out/lib/telemetry_hub_zigo.dll" \
+          ZIGO_TEST_LIBRARY="$PWD/../zig-out/bin/tagged_union_zigo.dll" \
+          ZIGO_TEST_WRONG_LIBRARY="$PWD/../../08-telemetry-hub/zig-out/bin/telemetry_hub_zigo.dll" \
             go test ./...

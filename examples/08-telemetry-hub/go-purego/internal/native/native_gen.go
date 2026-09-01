@@ -224,7 +224,7 @@ var automaticLoadError error
 var libraryEnvVars = []string{"ZIGO_TELEMETRY_HUB_LIBRARY_PATH", "ZIGO_LIBRARY_PATH"}
 
 // librarySearchPaths are tried after the environment, in order.
-var librarySearchPaths = []string{"${EXECUTABLE_DIR}", "${EXECUTABLE_DIR}/../lib", "../../zig-out/lib"}
+var librarySearchPaths = []string{"${EXECUTABLE_DIR}", "${EXECUTABLE_DIR}/../lib", "../../zig-out/lib", "../../zig-out/bin"}
 
 // resolveSearchPath joins a directory entry with the platform library
 // name. It returns "" when the entry cannot be formed.

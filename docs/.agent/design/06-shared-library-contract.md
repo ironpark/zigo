@@ -1,12 +1,15 @@
 # Shared-library artifact contract
 
 `Options.link_mode = .dynamic` builds a native shared library and the standard
-`go-lib` step installs it in `zig-out/lib`. The returned `GoBindings` exposes
+`go-lib` step installs it in `zig-out/lib`, or `zig-out/bin` for a Windows DLL. The returned `GoBindings` exposes
 the compile step as `lib`, the install step as `install_library`, and the
-target-specific basename as `library_filename`.
+target-specific basename as `library_filename` and the full installed path as
+`library_path`. Both are read back off the `InstallArtifact` step rather than
+recomputed, because Zig installs a DLL into `bin` and everything else into
+`lib`.
 
-The native filename follows the target ABI: `lib<name>_zigo.dylib` on macOS and
-`lib<name>_zigo.so` on Linux. The library does not embed a Zig-cache path. Its
+The native filename follows the target ABI: `lib<name>_zigo.dylib` on macOS,
+`lib<name>_zigo.so` on Linux, and `<name>_zigo.dll` on Windows. The library does not embed a Zig-cache path. Its
 only runtime dependencies are dependencies of the bound Zig module and the
 platform C runtime used by the generated panic boundary. Applications are
 responsible for passing an explicit path or arranging their platform loader

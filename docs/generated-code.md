@@ -66,7 +66,9 @@ zig-out/lib/lib<name>_zigo.a
 
 purego는 헤더를 `zigo_<name>_purego.h`, 라이브러리를 macOS의
 `lib<name>_zigo.dylib`, Linux의 `lib<name>_zigo.so`, Windows의 `<name>_zigo.dll`로
-설치합니다. Windows 파일명에는 관례대로 `lib` 접두사가 붙지 않습니다. cgo와 purego를
+설치합니다. Windows 파일명에는 관례대로 `lib` 접두사가 붙지 않고, 설치 디렉터리도
+`zig-out/lib`이 아니라 Zig 관례에 따라 `zig-out/bin`입니다(`lib`에는 import
+라이브러리가 들어갑니다). `GoBindings.library_path`가 실제 설치 경로입니다. cgo와 purego를
 한 `zig-out`에 빌드해도 서로 덮어쓰지 않습니다.
 
 purego raw 패키지는 로더 primitive를 build tag로 나눈 파일 두 개를 함께 생성합니다.
