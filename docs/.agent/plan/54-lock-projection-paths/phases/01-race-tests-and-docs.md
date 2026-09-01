@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-01T11:43:54Z"
 depends_on:
 - "54-lock-projection-paths#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: New tests pass under `go test -race`; all fourteen trees pass `go test`,
 > NEXT: none

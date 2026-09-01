@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-01T11:43:54Z"
 description: "Close the last lifecycle gap: union projections and Ref methods take the handle read lock via a zigoLocker accessor on the zigoHandle interface"
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-01T11:35:48Z"
 ---
 > NEXT: Add the zigoLocker accessor and lock the shared projection implementations. ([Phase 0](phases/00-locker-accessor.md))
@@ -8,7 +9,7 @@ registered_at: "2026-09-01T11:35:48Z"
 # Phases
 
 - [x] [Phase 00: Locker accessor and locked projection prologues](phases/00-locker-accessor.md)
-- [ ] [Phase 01: Race coverage and documentation](phases/01-race-tests-and-docs.md)
+- [x] [Phase 01: Race coverage and documentation](phases/01-race-tests-and-docs.md)
 
 # Shared Verification
 
