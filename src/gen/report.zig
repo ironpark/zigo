@@ -9,7 +9,6 @@ pub const Options = struct {
     go_module: []const u8 = "",
     raw_package_path: []const u8 = "internal/raw",
     raw_colocated: bool = false,
-    auto_cleanup: bool = false,
     backend: Backend = .cgo,
     go_package: []const u8 = "",
     library_search_paths: []const u8 = "",
@@ -51,7 +50,7 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
     try writer.print("C prefix: {s}\n", .{document.prefix});
     try writer.print("Zig version: {s}\n", .{document.zig_version});
     try writer.print("raw package: {s}\n", .{if (options.raw_colocated) "colocated" else options.raw_package_path});
-    try writer.print("automatic cleanup: {s}\n", .{if (options.auto_cleanup) "enabled (Go 1.24+)" else "disabled"});
+    try writer.writeAll("automatic cleanup: always on (Go 1.24+)\n");
     try writer.print("backend: {s}\n", .{@tagName(options.backend)});
     try writer.print("callback ABI: {s}\n", .{@tagName(program.callback_convention)});
     if (options.backend == .purego) {
@@ -199,7 +198,7 @@ test "report exposes final public names symbols ownership and projections" {
     };
     var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer output.deinit();
-    try render(std.testing.allocator, &output.writer, document, .{ .go_module = "example.com/sample", .auto_cleanup = true });
+    try render(std.testing.allocator, &output.writer, document, .{ .go_module = "example.com/sample" });
     const actual = output.written();
     try std.testing.expect(std.mem.indexOf(u8, actual, "Value.create -> NewValue | C zs_value_create | return ownership caller") != null);
     try std.testing.expect(std.mem.indexOf(u8, actual, "Value.deinit -> (*Value).Close [lifecycle mapping]") != null);

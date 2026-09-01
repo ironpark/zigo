@@ -24,7 +24,6 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .abi_base = "HEAD",
         .raw_package = "bridge/cgo",
-        .auto_cleanup = true,
     });
     _ = bindings.addStandardSteps(b, .{});
 
@@ -38,7 +37,6 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .abi_base = "HEAD",
         .raw_package = "internal/native",
-        .auto_cleanup = true,
         .link = .purego,
     });
     _ = purego_bindings.addStandardSteps(b, .{ .name_prefix = "purego" });

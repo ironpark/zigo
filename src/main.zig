@@ -66,7 +66,6 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         .raw_package_path = options.raw_package_path,
         .raw_package_name = options.raw_package_name,
         .raw_colocated = options.raw_colocated,
-        .auto_cleanup = options.auto_cleanup,
         .go_package = options.go_package,
         .errors_lock_bytes = errors_lock_bytes,
         .backend = switch (options.backend) {
@@ -174,7 +173,6 @@ fn runReport(allocator: std.mem.Allocator, io: std.Io, options: cli.Report) !voi
         .go_module = options.go_module,
         .raw_package_path = options.raw_package_path,
         .raw_colocated = options.raw_colocated,
-        .auto_cleanup = options.auto_cleanup,
         .backend = switch (options.backend) {
             .cgo => .cgo,
             .purego => .purego,
@@ -195,7 +193,6 @@ fn runDoctor(allocator: std.mem.Allocator, io: std.Io, options: cli.Doctor) !voi
         .go_executable = options.go_executable,
         .gofmt_executable = options.gofmt_executable,
         .native_target = options.native_target,
-        .auto_cleanup = options.auto_cleanup,
         .backend = switch (options.backend) {
             .cgo => .cgo,
             .purego => .purego,

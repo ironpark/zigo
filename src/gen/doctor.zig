@@ -6,7 +6,6 @@ pub const Options = struct {
     go_executable: []const u8 = "go",
     gofmt_executable: []const u8 = "gofmt",
     native_target: bool = true,
-    auto_cleanup: bool = false,
     backend: Backend = .cgo,
     /// Installed shared library validated by the purego backend.
     library_path: ?[]const u8 = null,
@@ -109,7 +108,7 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, writer: *std.Io.Writer, opt
         .gofmt_available = gofmt_result != null,
         .native_target = options.native_target,
         .purego = if (options.backend == .purego) probePurego(options, go_mod_bytes, &library_error_buffer) else .{},
-    }, options.auto_cleanup, options.backend);
+    }, options.backend);
 }
 
 const host_platform = @tagName(@import("builtin").target.os.tag) ++ "/" ++ @tagName(@import("builtin").target.cpu.arch);
@@ -149,7 +148,7 @@ fn probeModule(path: []const u8, contents: ?[]const u8) Purego.Module {
     return .{ .path = path, .state = .missing };
 }
 
-pub fn render(writer: *std.Io.Writer, probe: Probe, auto_cleanup: bool, backend: Options.Backend) !bool {
+pub fn render(writer: *std.Io.Writer, probe: Probe, backend: Options.Backend) !bool {
     var healthy = true;
     if (probe.native_target) {
         try writer.writeAll("PASS target: native build\n");
@@ -158,14 +157,16 @@ pub fn render(writer: *std.Io.Writer, probe: Probe, auto_cleanup: bool, backend:
         try writer.writeAll("FAIL target: cross compilation is not supported; use the native host target\n");
     }
 
-    const minimum_minor: u32 = if (auto_cleanup) 24 else 23;
+    // Generated handles always register `runtime.AddCleanup`, which landed
+    // in Go 1.24.
+    const minimum_minor: u32 = 24;
     if (probe.go_version) |version_output| {
         if (parseGoVersion(version_output)) |version| {
             if (version.major > 1 or (version.major == 1 and version.minor >= minimum_minor)) {
                 try writer.print("PASS go: {s} (minimum 1.{d})\n", .{ version.token, minimum_minor });
             } else {
                 healthy = false;
-                try writer.print("FAIL go: {s} is too old; install Go 1.{d} or newer{s}\n", .{ version.token, minimum_minor, if (auto_cleanup) " for auto_cleanup" else "" });
+                try writer.print("FAIL go: {s} is too old; install Go 1.{d} or newer\n", .{ version.token, minimum_minor });
             }
         } else {
             healthy = false;
@@ -297,7 +298,7 @@ test "doctor distinguishes required failures from optional gofmt" {
         .c_compiler_available = true,
         .gofmt_available = true,
         .native_target = true,
-    }, true, .cgo));
+    }, .cgo));
     try std.testing.expect(std.mem.indexOf(u8, healthy_output.written(), "PASS gofmt") != null);
     try std.testing.expect(std.mem.indexOf(u8, healthy_output.written(), "doctor: ok") != null);
 
@@ -310,8 +311,8 @@ test "doctor distinguishes required failures from optional gofmt" {
         .c_compiler_available = false,
         .gofmt_available = true,
         .native_target = false,
-    }, true, .cgo));
-    try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "install Go 1.24 or newer for auto_cleanup") != null);
+    }, .cgo));
+    try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "install Go 1.24 or newer") != null);
     try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "CGO_ENABLED=1") != null);
     try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "missing-cc is configured") != null);
     try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "cross compilation is not supported") != null);
@@ -326,7 +327,7 @@ test "doctor distinguishes required failures from optional gofmt" {
         .c_compiler_available = true,
         .gofmt_available = false,
         .native_target = true,
-    }, false, .cgo));
+    }, .cgo));
     try std.testing.expect(std.mem.indexOf(u8, unformatted.written(), "FAIL gofmt") != null);
 }
 
@@ -340,7 +341,7 @@ test "purego doctor does not require cgo or a C compiler" {
         .c_compiler_available = false,
         .gofmt_available = true,
         .native_target = true,
-    }, false, .purego));
+    }, .purego));
     try std.testing.expect(std.mem.indexOf(u8, output.written(), "no C compiler required") != null);
 }
 
@@ -363,7 +364,7 @@ test "purego doctor reports artifact, module, and platform problems" {
         .library = .{ .path = "zig-out/lib/libscalar_zigo.so", .state = .missing },
         .module = .{ .path = "go/go.mod", .state = .missing },
     };
-    try std.testing.expect(!try render(&output.writer, probe, false, .purego));
+    try std.testing.expect(!try render(&output.writer, probe, .purego));
     try std.testing.expect(std.mem.indexOf(u8, output.written(), "FAIL purego platform: windows/x86_64 is unsupported") != null);
     try std.testing.expect(std.mem.indexOf(u8, output.written(), "run `go get github.com/ebitengine/purego@v0.10.2`") != null);
     try std.testing.expect(std.mem.indexOf(u8, output.written(), "libscalar_zigo.so is missing; run `zig build go-lib`") != null);
@@ -376,7 +377,7 @@ test "purego doctor reports artifact, module, and platform problems" {
         .library = .{ .path = "zig-out/lib/libscalar_zigo.so", .state = .unloadable, .message = "FileBusy" },
         .module = .{ .path = "go/go.mod", .state = .other_version, .version = "v0.9.0" },
     };
-    try std.testing.expect(!try render(&unloadable.writer, probe, false, .purego));
+    try std.testing.expect(!try render(&unloadable.writer, probe, .purego));
     try std.testing.expect(std.mem.indexOf(u8, unloadable.written(), "could not be loaded: FileBusy") != null);
     try std.testing.expect(std.mem.indexOf(u8, unloadable.written(), "WARN purego module") != null);
 
@@ -388,7 +389,7 @@ test "purego doctor reports artifact, module, and platform problems" {
         .library = .{ .path = "zig-out/lib/libscalar_zigo.dylib", .state = .loadable },
         .module = .{ .path = "go/go.mod", .state = .pinned },
     };
-    try std.testing.expect(try render(&healthy.writer, probe, false, .purego));
+    try std.testing.expect(try render(&healthy.writer, probe, .purego));
     try std.testing.expect(std.mem.indexOf(u8, healthy.written(), "PASS purego module: github.com/ebitengine/purego v0.10.2") != null);
     try std.testing.expect(std.mem.indexOf(u8, healthy.written(), "loads at run time") != null);
     try std.testing.expect(std.mem.indexOf(u8, healthy.written(), "doctor: ok") != null);
@@ -396,7 +397,7 @@ test "purego doctor reports artifact, module, and platform problems" {
     // Nothing to validate means nothing to report.
     var bare: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer bare.deinit();
-    try std.testing.expect(try render(&bare.writer, environment, false, .purego));
+    try std.testing.expect(try render(&bare.writer, environment, .purego));
     try std.testing.expect(std.mem.indexOf(u8, bare.written(), "shared library") == null);
     try std.testing.expect(std.mem.indexOf(u8, bare.written(), "purego module") == null);
 }

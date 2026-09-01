@@ -19,7 +19,6 @@ pub const Options = struct {
     raw_package_path: []const u8 = "internal/raw",
     raw_package_name: []const u8 = "raw",
     raw_colocated: bool = false,
-    auto_cleanup: bool = false,
     go_package: []const u8 = "",
     errors_lock_bytes: ?[]const u8 = null,
     backend: emit.Options.Backend = .cgo,
@@ -84,7 +83,6 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .raw_package_path = options.raw_package_path,
         .raw_package_name = options.raw_package_name,
         .raw_colocated = options.raw_colocated,
-        .auto_cleanup = options.auto_cleanup,
         .go_package = options.go_package,
         .backend = options.backend,
         .link_mode = options.link_mode,
@@ -463,7 +461,6 @@ test "opt-in cleanup isolates state stops explicitly and keeps owners alive" {
         .raw_package_path = "opaque",
         .raw_package_name = "opaque",
         .raw_colocated = true,
-        .auto_cleanup = true,
     });
     const shim = try temporary.dir.readFileAlloc(std.testing.io, "shim.zig", std.testing.allocator, .limited(32 * 1024));
     defer std.testing.allocator.free(shim);

@@ -27,7 +27,6 @@ pub const Generate = struct {
     raw_package_path: []const u8 = "internal/raw",
     raw_package_name: []const u8 = "raw",
     raw_colocated: bool = false,
-    auto_cleanup: bool = false,
     go_package: []const u8 = "",
     errors_lock_path: ?[]const u8 = null,
     backend: Backend = .cgo,
@@ -63,7 +62,6 @@ pub const Report = struct {
     go_module: []const u8 = "",
     raw_package_path: []const u8 = "internal/raw",
     raw_colocated: bool = false,
-    auto_cleanup: bool = false,
     backend: Backend = .cgo,
     go_package: []const u8 = "",
     library_search_paths: []const u8 = "",
@@ -76,7 +74,6 @@ pub const Doctor = struct {
     go_executable: []const u8 = "go",
     gofmt_executable: []const u8 = "gofmt",
     native_target: bool = true,
-    auto_cleanup: bool = false,
     backend: Backend = .cgo,
     library_path: ?[]const u8 = null,
     go_mod_path: ?[]const u8 = null,
@@ -106,7 +103,7 @@ pub fn writeUsage(writer: *std.Io.Writer) std.Io.Writer.Error!void {
         \\  report    --semantic <file> [--go-module <path>] [options]
         \\            [--library-search-paths <a:b>] [--library-env-vars <A,B>]
         \\            [--library-automatic] [--library-internal-api]
-        \\  doctor    [--go <path>] [--gofmt <path>] [--target native|cross] [--auto-cleanup]
+        \\  doctor    [--go <path>] [--gofmt <path>] [--target native|cross]
         \\            [--backend cgo|purego] [--library <path>] [--go-mod <path>]
         \\
     );
@@ -187,8 +184,6 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
     var gofmt_executable: ?[]const u8 = null;
     var raw_colocated = false;
     var raw_colocated_seen = false;
-    var auto_cleanup = false;
-    var auto_cleanup_seen = false;
     var backend: ?Backend = null;
     var link_mode: ?LinkMode = null;
     var library_stem: ?[]const u8 = null;
@@ -202,10 +197,6 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
             if (raw_colocated_seen) return error.DuplicateArgument;
             raw_colocated_seen = true;
             raw_colocated = true;
-        } else if (std.mem.eql(u8, flag, "--auto-cleanup")) {
-            if (auto_cleanup_seen) return error.DuplicateArgument;
-            auto_cleanup_seen = true;
-            auto_cleanup = true;
         } else if (std.mem.eql(u8, flag, "--semantic")) {
             try set(&semantic_path, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--output")) {
@@ -272,7 +263,6 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .raw_package_name = raw_package_name orelse "raw",
         .go_package = go_package orelse "",
         .raw_colocated = raw_colocated,
-        .auto_cleanup = auto_cleanup,
         .errors_lock_path = errors_lock_path,
         .backend = backend orelse .cgo,
         .link_mode = link_mode orelse .static,
@@ -358,8 +348,6 @@ fn parseReport(args: []const []const u8) ParseError!Report {
     var raw_package_path: ?[]const u8 = null;
     var raw_colocated = false;
     var raw_colocated_seen = false;
-    var auto_cleanup = false;
-    var auto_cleanup_seen = false;
     var backend: ?Backend = null;
     var go_package: ?[]const u8 = null;
     var loading: LibraryLoadingArgs = .{};
@@ -381,10 +369,6 @@ fn parseReport(args: []const []const u8) ParseError!Report {
             if (raw_colocated_seen) return error.DuplicateArgument;
             raw_colocated_seen = true;
             raw_colocated = true;
-        } else if (std.mem.eql(u8, flag, "--auto-cleanup")) {
-            if (auto_cleanup_seen) return error.DuplicateArgument;
-            auto_cleanup_seen = true;
-            auto_cleanup = true;
         } else if (std.mem.eql(u8, flag, "--backend")) {
             if (backend != null) return error.DuplicateArgument;
             backend = parseBackend(try takeValue(args, &index)) orelse return error.InvalidValue;
@@ -397,7 +381,6 @@ fn parseReport(args: []const []const u8) ParseError!Report {
         .go_module = go_module orelse "",
         .raw_package_path = raw_package_path orelse "internal/raw",
         .raw_colocated = raw_colocated,
-        .auto_cleanup = auto_cleanup,
         .backend = backend orelse .cgo,
         .go_package = go_package orelse "",
         .library_search_paths = loading.search_paths orelse "",
@@ -412,8 +395,6 @@ fn parseDoctor(args: []const []const u8) ParseError!Doctor {
     var gofmt_executable: ?[]const u8 = null;
     var native_target = true;
     var target_seen = false;
-    var auto_cleanup = false;
-    var auto_cleanup_seen = false;
     var backend: ?Backend = null;
     var library_path: ?[]const u8 = null;
     var go_mod_path: ?[]const u8 = null;
@@ -440,10 +421,6 @@ fn parseDoctor(args: []const []const u8) ParseError!Doctor {
             } else {
                 return error.InvalidValue;
             }
-        } else if (std.mem.eql(u8, flag, "--auto-cleanup")) {
-            if (auto_cleanup_seen) return error.DuplicateArgument;
-            auto_cleanup_seen = true;
-            auto_cleanup = true;
         } else if (std.mem.eql(u8, flag, "--backend")) {
             if (backend != null) return error.DuplicateArgument;
             backend = parseBackend(try takeValue(args, &index)) orelse return error.InvalidValue;
@@ -455,7 +432,6 @@ fn parseDoctor(args: []const []const u8) ParseError!Doctor {
         .go_executable = go_executable orelse "go",
         .gofmt_executable = gofmt_executable orelse "gofmt",
         .native_target = native_target,
-        .auto_cleanup = auto_cleanup,
         .backend = backend orelse .cgo,
         .library_path = library_path,
         .go_mod_path = go_mod_path,
@@ -516,7 +492,6 @@ test "generate command parses named arguments" {
         "--raw-package-name",
         "scalar",
         "--raw-colocated",
-        "--auto-cleanup",
         "--errors-lock",
         "errors.lock.json",
     });
@@ -527,7 +502,6 @@ test "generate command parses named arguments" {
     try std.testing.expectEqualStrings("-Icustom", options.cflags);
     try std.testing.expectEqualStrings("scalar", options.raw_package_path);
     try std.testing.expect(options.raw_colocated);
-    try std.testing.expect(options.auto_cleanup);
     try std.testing.expectEqualStrings("errors.lock.json", options.errors_lock_path.?);
 
     const dynamic_generate = (try parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--link-mode", "dynamic", "--library-stem", "scalar_zigo" })).generate;
@@ -555,7 +529,6 @@ test "generate command retains defaults" {
     try std.testing.expectEqualStrings("scalar", options.go_module);
     try std.testing.expectEqualStrings("internal/raw", options.raw_package_path);
     try std.testing.expect(!options.raw_colocated);
-    try std.testing.expect(!options.auto_cleanup);
     try std.testing.expect(options.errors_lock_path == null);
 }
 
@@ -572,16 +545,14 @@ test "check and abi-diff commands parse named arguments" {
 }
 
 test "report and doctor commands parse effective configuration" {
-    const report = (try parse(&.{ "report", "--semantic", "semantic.json", "--go-module", "example.com/api", "--raw-package-path", "bridge/raw", "--raw-colocated", "--auto-cleanup" })).report;
+    const report = (try parse(&.{ "report", "--semantic", "semantic.json", "--go-module", "example.com/api", "--raw-package-path", "bridge/raw", "--raw-colocated" })).report;
     try std.testing.expectEqualStrings("semantic.json", report.semantic_path);
     try std.testing.expectEqualStrings("example.com/api", report.go_module);
     try std.testing.expect(report.raw_colocated);
-    try std.testing.expect(report.auto_cleanup);
 
-    const doctor = (try parse(&.{ "doctor", "--go", "/tools/go", "--gofmt", "/tools/gofmt", "--target", "cross", "--auto-cleanup" })).doctor;
+    const doctor = (try parse(&.{ "doctor", "--go", "/tools/go", "--gofmt", "/tools/gofmt", "--target", "cross" })).doctor;
     try std.testing.expectEqualStrings("/tools/go", doctor.go_executable);
     try std.testing.expect(!doctor.native_target);
-    try std.testing.expect(doctor.auto_cleanup);
     try std.testing.expect(doctor.library_path == null);
 
     const purego_doctor = (try parse(&.{ "doctor", "--backend", "purego", "--library", "zig-out/lib/libscalar_zigo.so", "--go-mod", "go/go.mod" })).doctor;
@@ -596,8 +567,9 @@ test "parser rejects incomplete unknown and duplicate arguments" {
     try std.testing.expectError(error.MissingRequiredArgument, parse(&.{ "generate", "--semantic", "semantic.json" }));
     try std.testing.expectError(error.MissingValue, parse(&.{ "check", "--generated" }));
     try std.testing.expectError(error.UnknownArgument, parse(&.{ "check", "--wat", "value" }));
+    try std.testing.expectError(error.UnknownArgument, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--auto-cleanup" }));
     try std.testing.expectError(error.DuplicateArgument, parse(&.{ "check", "--generated", "one", "--generated", "two", "--source", "go" }));
-    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar", "--auto-cleanup", "--auto-cleanup" }));
+    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar", "--raw-colocated", "--raw-colocated" }));
     try std.testing.expectError(error.InvalidValue, parse(&.{ "abi-diff", "--base", "old", "--current", "new", "--fail-on", "all" }));
 }
 

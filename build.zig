@@ -49,7 +49,6 @@ pub const Options = struct {
     /// Slash-separated path of the raw package inside `go_dir`. Setting it to
     /// the public package path colocates the two.
     raw_package: []const u8 = "internal/raw",
-    auto_cleanup: bool = false,
     /// `gofmt` used to format generated Go. Defaults to the one on `PATH`.
     gofmt: ?[]const u8 = null,
     /// Public Go package name. Defaults to the snake_case binding name, which
@@ -628,7 +627,6 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     });
     if (backend == .purego) addLibraryLoadingArgs(b, generate, options.library_loading);
     if (raw_package.colocated) generate.addArg("--raw-colocated");
-    if (options.auto_cleanup) generate.addArg("--auto-cleanup");
     const errors_lock_path = "zigo/errors.lock.json";
     const has_errors_lock = blk: {
         b.build_root.handle.access(b.graph.io, errors_lock_path, .{}) catch |err| switch (err) {
@@ -654,14 +652,12 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     report.addArgs(&.{ "--backend", @tagName(backend) });
     if (backend == .purego) addLibraryLoadingArgs(b, report, options.library_loading);
     if (raw_package.colocated) report.addArg("--raw-colocated");
-    if (options.auto_cleanup) report.addArg("--auto-cleanup");
     const doctor = b.addRunArtifact(generator);
     doctor.has_side_effects = true;
     doctor.addArgs(&.{ "doctor", "--target", if (isRunnableOnHost(options.target.result, b.graph.host.result)) "native" else "cross" });
     doctor.addArgs(&.{ "--backend", @tagName(backend) });
     // Report the same gofmt the update step will format with.
     if (options.gofmt) |gofmt| doctor.addArgs(&.{ "--gofmt", gofmt });
-    if (options.auto_cleanup) doctor.addArg("--auto-cleanup");
     const abi_check: ?*std.Build.Step.Run = if (options.abi_base) |abi_base| check: {
         const baseline = b.addSystemCommand(&.{ "git", "show" });
         // The ref can move without changing argv, so this read must not reuse a
@@ -714,7 +710,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     b.build_root.handle.access(b.graph.io, go_mod_path, .{}) catch |err| switch (err) {
         error.FileNotFound => update.addBytesToSource(b.fmt("module {s}\n\ngo {s}\n{s}", .{
             options.go_module,
-            if (options.auto_cleanup) "1.24" else "1.23",
+            "1.24",
             if (backend == .purego) b.fmt("\nrequire {s} {s}\n", .{ build_options.purego_module, build_options.purego_version }) else "",
         }), go_mod_path),
         else => @panic("unable to inspect go.mod"),

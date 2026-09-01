@@ -2,6 +2,7 @@
 package signal
 
 import (
+	"runtime"
 	"sync"
 	"unsafe"
 
@@ -10,8 +11,10 @@ import (
 
 // Signal is a caller-owned native handle. Call Close when it is no longer needed.
 type Signal struct {
-	ptr  unsafe.Pointer
-	once sync.Once
+	ptr     unsafe.Pointer
+	once    sync.Once
+	mu      sync.RWMutex
+	cleanup runtime.Cleanup
 }
 
 // SignalRef is a borrowed Signal reference that remains valid only while its parent is open.
@@ -37,6 +40,23 @@ func (s *SignalRef) zigoPointer() unsafe.Pointer {
 	return s.ptr
 }
 
+type signalCleanupState struct {
+	ptr unsafe.Pointer
+}
+
+func newSignal(ptr unsafe.Pointer) *Signal {
+	value := &Signal{ptr: ptr}
+	state := signalCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, cleanupSignal, state)
+	return value
+}
+
+func cleanupSignal(state signalCleanupState) {
+	if state.ptr != nil {
+		raw.SignalDeinit(state.ptr)
+	}
+}
+
 // Close releases the native Signal resources. It is safe to call more than once.
 // The error result is always nil; it exists so Signal satisfies io.Closer.
 func (s *Signal) Close() error {
@@ -44,10 +64,12 @@ func (s *Signal) Close() error {
 		return nil
 	}
 	s.once.Do(func() {
-		if s.ptr != nil {
-			raw.SignalDeinit(s.ptr)
-			s.ptr = nil
-		}
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		s.cleanup.Stop()
+		cleanupSignal(signalCleanupState{ptr: s.ptr})
+		s.ptr = nil
 	})
+	runtime.KeepAlive(s)
 	return nil
 }

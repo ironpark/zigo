@@ -2,6 +2,7 @@
 package pipeline
 
 import (
+	"runtime"
 	"sync"
 	"unsafe"
 
@@ -14,6 +15,7 @@ type Pipeline struct {
 	once            sync.Once
 	mu              sync.RWMutex
 	callbackHandles []zigoCallbackHandle
+	cleanup         runtime.Cleanup
 }
 
 // PipelineRef is a borrowed Pipeline reference that remains valid only while its parent is open.
@@ -39,6 +41,27 @@ func (p *PipelineRef) zigoPointer() unsafe.Pointer {
 	return p.ptr
 }
 
+type pipelineCleanupState struct {
+	ptr             unsafe.Pointer
+	callbackHandles []zigoCallbackHandle
+}
+
+func newPipeline(ptr unsafe.Pointer, callbackHandles []zigoCallbackHandle) *Pipeline {
+	value := &Pipeline{ptr: ptr, callbackHandles: callbackHandles}
+	state := pipelineCleanupState{ptr: ptr, callbackHandles: callbackHandles}
+	value.cleanup = runtime.AddCleanup(value, cleanupPipeline, state)
+	return value
+}
+
+func cleanupPipeline(state pipelineCleanupState) {
+	if state.ptr != nil {
+		raw.PipelineDeinit(state.ptr)
+	}
+	for _, handle := range state.callbackHandles {
+		deleteCallbackHandle(handle)
+	}
+}
+
 // Close releases the native Pipeline resources. It is safe to call more than once.
 // The error result is always nil; it exists so Pipeline satisfies io.Closer.
 func (p *Pipeline) Close() error {
@@ -48,24 +71,21 @@ func (p *Pipeline) Close() error {
 	p.once.Do(func() {
 		p.mu.Lock()
 		defer p.mu.Unlock()
-		if p.ptr != nil {
-			raw.PipelineDeinit(p.ptr)
-			p.ptr = nil
-		}
-		for _, handle := range p.callbackHandles {
-			deleteCallbackHandle(handle)
-		}
+		p.cleanup.Stop()
+		cleanupPipeline(pipelineCleanupState{ptr: p.ptr, callbackHandles: p.callbackHandles})
+		p.ptr = nil
 		p.callbackHandles = nil
 	})
+	runtime.KeepAlive(p)
 	return nil
 }
 
 // IntBatch is a caller-owned native handle. Call Close when it is no longer needed.
 type IntBatch struct {
-	ptr             unsafe.Pointer
-	once            sync.Once
-	mu              sync.RWMutex
-	callbackHandles []zigoCallbackHandle
+	ptr     unsafe.Pointer
+	once    sync.Once
+	mu      sync.RWMutex
+	cleanup runtime.Cleanup
 }
 
 // IntBatchRef is a borrowed IntBatch reference that remains valid only while its parent is open.
@@ -91,6 +111,23 @@ func (i *IntBatchRef) zigoPointer() unsafe.Pointer {
 	return i.ptr
 }
 
+type intBatchCleanupState struct {
+	ptr unsafe.Pointer
+}
+
+func newIntBatch(ptr unsafe.Pointer) *IntBatch {
+	value := &IntBatch{ptr: ptr}
+	state := intBatchCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, cleanupIntBatch, state)
+	return value
+}
+
+func cleanupIntBatch(state intBatchCleanupState) {
+	if state.ptr != nil {
+		raw.IntBatchDeinit(state.ptr)
+	}
+}
+
 // Close releases the native IntBatch resources. It is safe to call more than once.
 // The error result is always nil; it exists so IntBatch satisfies io.Closer.
 func (i *IntBatch) Close() error {
@@ -100,24 +137,20 @@ func (i *IntBatch) Close() error {
 	i.once.Do(func() {
 		i.mu.Lock()
 		defer i.mu.Unlock()
-		if i.ptr != nil {
-			raw.IntBatchDeinit(i.ptr)
-			i.ptr = nil
-		}
-		for _, handle := range i.callbackHandles {
-			deleteCallbackHandle(handle)
-		}
-		i.callbackHandles = nil
+		i.cleanup.Stop()
+		cleanupIntBatch(intBatchCleanupState{ptr: i.ptr})
+		i.ptr = nil
 	})
+	runtime.KeepAlive(i)
 	return nil
 }
 
 // FloatBatch is a caller-owned native handle. Call Close when it is no longer needed.
 type FloatBatch struct {
-	ptr             unsafe.Pointer
-	once            sync.Once
-	mu              sync.RWMutex
-	callbackHandles []zigoCallbackHandle
+	ptr     unsafe.Pointer
+	once    sync.Once
+	mu      sync.RWMutex
+	cleanup runtime.Cleanup
 }
 
 // FloatBatchRef is a borrowed FloatBatch reference that remains valid only while its parent is open.
@@ -143,6 +176,23 @@ func (f *FloatBatchRef) zigoPointer() unsafe.Pointer {
 	return f.ptr
 }
 
+type floatBatchCleanupState struct {
+	ptr unsafe.Pointer
+}
+
+func newFloatBatch(ptr unsafe.Pointer) *FloatBatch {
+	value := &FloatBatch{ptr: ptr}
+	state := floatBatchCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, cleanupFloatBatch, state)
+	return value
+}
+
+func cleanupFloatBatch(state floatBatchCleanupState) {
+	if state.ptr != nil {
+		raw.FloatBatchDeinit(state.ptr)
+	}
+}
+
 // Close releases the native FloatBatch resources. It is safe to call more than once.
 // The error result is always nil; it exists so FloatBatch satisfies io.Closer.
 func (f *FloatBatch) Close() error {
@@ -152,14 +202,10 @@ func (f *FloatBatch) Close() error {
 	f.once.Do(func() {
 		f.mu.Lock()
 		defer f.mu.Unlock()
-		if f.ptr != nil {
-			raw.FloatBatchDeinit(f.ptr)
-			f.ptr = nil
-		}
-		for _, handle := range f.callbackHandles {
-			deleteCallbackHandle(handle)
-		}
-		f.callbackHandles = nil
+		f.cleanup.Stop()
+		cleanupFloatBatch(floatBatchCleanupState{ptr: f.ptr})
+		f.ptr = nil
 	})
+	runtime.KeepAlive(f)
 	return nil
 }
