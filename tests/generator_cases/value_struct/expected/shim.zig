@@ -25,19 +25,34 @@ export fn zg_load_impl(out_result: *target.Config) i32 {
     return 0;
 }
 
-comptime {
-    std.debug.assert(@sizeOf(target.Point) == 4);
-    std.debug.assert(@alignOf(target.Point) == 2);
-    std.debug.assert(@offsetOf(target.Point, "x") == 0);
-    std.debug.assert(@offsetOf(target.Point, "y") == 2);
+/// Fails this compile when a layout zigo reflected on the build host does
+/// not describe the compilation target. The usual cause is a C type whose
+/// width varies by target -- `c_long` and `c_ulong` are 4 bytes on Windows
+/// and 8 bytes on Linux and macOS, and `c_longdouble` varies too. Use a
+/// fixed-width type in the binding surface, or generate on the target.
+fn zigoAbiGuard(comptime what: []const u8, comptime reflected: usize, comptime actual: usize) void {
+    if (reflected != actual) @compileError(std.fmt.comptimePrint(
+        "zigo ABI guard: {s} is {d} on this target, but zigo reflected {d} on the build host. " ++
+            "The generated C header and Go mirrors use the reflected layout, so this binding " ++
+            "cannot be built for this target. A C type whose width varies by target, such as " ++
+            "c_long or c_ulong, is the usual cause; replace it with a fixed-width type.",
+        .{ what, actual, reflected },
+    ));
 }
 
 comptime {
-    std.debug.assert(@sizeOf(target.Config) == 32);
-    std.debug.assert(@alignOf(target.Config) == 8);
-    std.debug.assert(@offsetOf(target.Config, "enabled") == 0);
-    std.debug.assert(@offsetOf(target.Config, "width") == 4);
-    std.debug.assert(@offsetOf(target.Config, "mode") == 8);
-    std.debug.assert(@offsetOf(target.Config, "ratio") == 16);
-    std.debug.assert(@offsetOf(target.Config, "origin") == 24);
+    zigoAbiGuard("@sizeOf(Point)", 4, @sizeOf(target.Point));
+    zigoAbiGuard("@alignOf(Point)", 2, @alignOf(target.Point));
+    zigoAbiGuard("@offsetOf(Point, \"x\")", 0, @offsetOf(target.Point, "x"));
+    zigoAbiGuard("@offsetOf(Point, \"y\")", 2, @offsetOf(target.Point, "y"));
+}
+
+comptime {
+    zigoAbiGuard("@sizeOf(Config)", 32, @sizeOf(target.Config));
+    zigoAbiGuard("@alignOf(Config)", 8, @alignOf(target.Config));
+    zigoAbiGuard("@offsetOf(Config, \"enabled\")", 0, @offsetOf(target.Config, "enabled"));
+    zigoAbiGuard("@offsetOf(Config, \"width\")", 4, @offsetOf(target.Config, "width"));
+    zigoAbiGuard("@offsetOf(Config, \"mode\")", 8, @offsetOf(target.Config, "mode"));
+    zigoAbiGuard("@offsetOf(Config, \"ratio\")", 16, @offsetOf(target.Config, "ratio"));
+    zigoAbiGuard("@offsetOf(Config, \"origin\")", 24, @offsetOf(target.Config, "origin"));
 }

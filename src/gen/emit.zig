@@ -223,21 +223,49 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
 /// `extern` already fixes the layout on both sides, so the shim asserts rather
 /// than converts: if the Zig struct ever stops matching the C mirror the
 /// generated code fails to build instead of misreading memory.
+///
+/// Reflection runs on the build host, so these are also what makes
+/// cross-compilation safe: a host layout that does not describe the target
+/// fails this compile with a named diagnostic instead of shipping a struct
+/// whose C and Go mirrors disagree with the Zig one.
 fn renderValueStructShim(writer: *std.Io.Writer, program: abi.Program) !void {
+    if (program.structs.len == 0) return;
+    try writer.writeAll(abi_guard_helper);
     for (program.structs) |record| {
         try writer.print(
-            "\ncomptime {{\n    std.debug.assert(@sizeOf(target.{0s}) == {1d});\n    std.debug.assert(@alignOf(target.{0s}) == {2d});\n",
+            "\ncomptime {{\n    zigoAbiGuard(\"@sizeOf({0s})\", {1d}, @sizeOf(target.{0s}));\n" ++
+                "    zigoAbiGuard(\"@alignOf({0s})\", {2d}, @alignOf(target.{0s}));\n",
             .{ record.name, record.size, record.alignment },
         );
         for (record.fields) |field| {
             try writer.print(
-                "    std.debug.assert(@offsetOf(target.{s}, \"{s}\") == {d});\n",
+                "    zigoAbiGuard(\"@offsetOf({0s}, \\\"{1s}\\\")\", {2d}, @offsetOf(target.{0s}, \"{1s}\"));\n",
                 .{ record.name, field.name, field.offset },
             );
         }
         try writer.writeAll("}\n");
     }
 }
+
+/// The guard body, emitted once whenever the shim mirrors at least one user
+/// struct. `@compileError` rather than `std.debug.assert` so the failure names
+/// the struct, the member, both values, and the cause a user can act on --
+/// `assert` reports only "reached unreachable code".
+const abi_guard_helper =
+    "\n/// Fails this compile when a layout zigo reflected on the build host does\n" ++
+    "/// not describe the compilation target. The usual cause is a C type whose\n" ++
+    "/// width varies by target -- `c_long` and `c_ulong` are 4 bytes on Windows\n" ++
+    "/// and 8 bytes on Linux and macOS, and `c_longdouble` varies too. Use a\n" ++
+    "/// fixed-width type in the binding surface, or generate on the target.\n" ++
+    "fn zigoAbiGuard(comptime what: []const u8, comptime reflected: usize, comptime actual: usize) void {\n" ++
+    "    if (reflected != actual) @compileError(std.fmt.comptimePrint(\n" ++
+    "        \"zigo ABI guard: {s} is {d} on this target, but zigo reflected {d} on the build host. \" ++\n" ++
+    "            \"The generated C header and Go mirrors use the reflected layout, so this binding \" ++\n" ++
+    "            \"cannot be built for this target. A C type whose width varies by target, such as \" ++\n" ++
+    "            \"c_long or c_ulong, is the usual cause; replace it with a fixed-width type.\",\n" ++
+    "        .{ what, actual, reflected },\n" ++
+    "    ));\n" ++
+    "}\n";
 
 /// The snapshot struct is zigo's own `extern struct`, never the Zig union's
 /// layout: the shim reads the active variant and copies it in.

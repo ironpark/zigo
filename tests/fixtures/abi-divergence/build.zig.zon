@@ -1,0 +1,8 @@
+.{
+    .name = .zigo_abi_divergence_fixture,
+    .version = "0.0.0",
+    .fingerprint = 0xd96fdfb88da54357,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{ .zigo = .{ .path = "../../.." } },
+    .paths = .{ "build.zig", "build.zig.zon", "src" },
+}

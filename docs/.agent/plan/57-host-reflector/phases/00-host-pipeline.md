@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-01T16:51:14Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Cross go-lib builds succeed from POSIX for supported targets; no
 > NEXT: none

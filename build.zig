@@ -473,6 +473,29 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     invalid_project.expectExitCode(1);
     invalid_project.expectStdErrMatch("error[ZIGO007]: generated C symbol collides with another declaration");
     test_step.dependOn(&invalid_project.step);
+
+    // Reflection observes the build host, so a `c_long` field is 8 bytes here
+    // and 4 on Windows. Natively the shim's guards are trivially true; for a
+    // Windows target they must fail the compile with a message that names the
+    // struct and the cause. On a Windows host there is nothing to diverge
+    // from, so the pair only makes sense on a POSIX host.
+    if (b.graph.host.result.os.tag != .windows) {
+        const divergence_native = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "lib", "--summary", "none" });
+        divergence_native.setName("ABI guard holds natively");
+        divergence_native.setCwd(b.path("tests/fixtures/abi-divergence"));
+        divergence_native.has_side_effects = true;
+        divergence_native.expectExitCode(0);
+        test_step.dependOn(&divergence_native.step);
+
+        const divergence_cross = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "lib", "-Dtarget=x86_64-windows-gnu", "--summary", "none" });
+        divergence_cross.setName("ABI guard rejects a divergent target");
+        divergence_cross.setCwd(b.path("tests/fixtures/abi-divergence"));
+        divergence_cross.has_side_effects = true;
+        divergence_cross.expectExitCode(1);
+        divergence_cross.expectStdErrMatch("zigo ABI guard: @sizeOf(Sizes) is 8 on this target, but zigo reflected 16 on the build host.");
+        divergence_cross.expectStdErrMatch("replace it with a fixed-width type.");
+        test_step.dependOn(&divergence_cross.step);
+    }
 }
 
 fn addGeneratorCases(
