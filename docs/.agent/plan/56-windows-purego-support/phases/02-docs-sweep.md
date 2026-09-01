@@ -2,7 +2,7 @@
 depends_on:
 - "56-windows-purego-support#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: No doc or generated message claims purego is macOS/Linux-only; the
 > NEXT: none
@@ -26,3 +26,17 @@ status: planned
 - No doc or generated message claims purego is macOS/Linux-only; the
   cross-compile recipe is verifiable by copy-paste; `planr overview` shows
   the plan done.
+
+## Notes
+
+- Docs in this repo are Korean, so `docs/bindings.md` in the planned work is
+  really `docs/purego.md` (loader and packaging) plus `docs/generated-code.md`
+  (generated file list and library names). Both were updated, along with
+  `README.md`, `docs/limitations.md`, and `docs/development.md`.
+- The cross-compile section says what is actually true rather than what the
+  plan hoped: the Go side cross-compiles (`GOOS=windows CGO_ENABLED=0 go build
+  ./...`, no C toolchain, verified on the dev host), while the Zig artifact
+  does not, because generation executes a reflector built for the requested
+  target. `CC="zig cc -target ..."` is named as unvalidated future work only.
+- `docs/development.md` now records that `inspect_shared_library.sh` and the
+  smoke loader are POSIX-only, which is why the Windows CI job skips them.

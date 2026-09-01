@@ -62,7 +62,8 @@ done
 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)이 정본입니다.
 
 공유 라이브러리 자체는 다음 도구로 검사할 수 있습니다. 확장자는 현재 플랫폼에 맞게
-`.dylib` 또는 `.so`를 사용합니다.
+`.dylib` 또는 `.so`를 사용합니다. 두 도구 모두 POSIX 전용이므로 Windows CI 잡은
+아티팩트 검사 없이 purego 스위트만 실행합니다.
 
 ```bash
 tests/inspect_shared_library.sh \

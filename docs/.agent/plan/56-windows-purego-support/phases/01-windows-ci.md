@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-01T15:00:40Z"
 depends_on:
 - "56-windows-purego-support#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: CI is green on both runners; the Windows job builds every purego example's
 > NEXT: none

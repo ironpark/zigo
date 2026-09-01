@@ -5,19 +5,26 @@
 
 ## 지원 환경
 
-- 현재 지원 범위는 Zig 0.16.0, Go 1.24 이상, cgo가 활성화된 네이티브 macOS/Linux다.
-  생성된 handle이 항상 `runtime.AddCleanup`을 등록하므로 Go 1.24가 하한이다.
-- opt-in `.link = .purego`는 Go 빌드에서 C 컴파일러와 cgo를 제거하지만, 지원 범위는
-  네이티브 macOS/Linux의 amd64·arm64로 더 좁고 공유 라이브러리 배포를 요구한다.
-  Windows, 모바일, purego Tier 2 타깃은 후속 작업이다. 정적 링크는 cgo 전용이다.
+- 기본 cgo 백엔드의 지원 범위는 Zig 0.16.0, Go 1.24 이상, cgo가 활성화된 네이티브
+  macOS/Linux다. 생성된 handle이 항상 `runtime.AddCleanup`을 등록하므로 Go 1.24가
+  하한이다. Windows에서 cgo는 지원하지 않는다. mingw 링크는 후속 작업이다.
+- opt-in `.link = .purego`는 Go 빌드에서 C 컴파일러와 cgo를 제거하고 네이티브
+  macOS/Linux/Windows의 amd64·arm64를 지원하지만, 공유 라이브러리 배포를 요구한다.
+  모바일과 purego Tier 2 타깃은 후속 작업이다. 정적 링크는 cgo 전용이다.
 - purego는 v1 이전 베타 소프트웨어다. zigo는 `github.com/ebitengine/purego v0.10.2`를
   고정해 생성·검증하며 사용을 생성된 raw 파일에만 격리한다. 다른 버전을 요구하는
   `go.mod`는 `go-doctor`가 경고로 보고한다.
 - 공유 라이브러리는 타깃별 아티팩트다. purego는 Go 애플리케이션 빌드에서 C 컴파일러를
   없앨 뿐 하나의 Zig 아티팩트를 여러 타깃에 이식해 주지 않으므로, 배포하는 OS·아키텍처
-  조합마다 해당 호스트에서 빌드하고 CI 잡도 조합마다 필요하다.
+  조합마다 해당 호스트에서 빌드하고 CI 잡도 조합마다 필요하다. Windows DLL도 Windows
+  호스트에서 빌드한다.
 - Go race detector는 여전히 cgo를 요구하므로 `CGO_ENABLED=0` 테스트에는 사용할 수 없다.
-- reflector 실행이 빌드에 포함되므로 v1은 크로스 컴파일을 지원하지 않는다.
+  Windows purego 테스트도 같은 이유로 race 커버리지를 얻지 못한다.
+- reflector 실행이 빌드에 포함되므로 v1은 크로스 컴파일을 지원하지 않는다. 생성 과정이
+  요청한 타깃으로 빌드한 reflector 실행 파일을 **실행**하기 때문에
+  `zig build go-lib -Dtarget=x86_64-windows`는 POSIX 호스트에서 동작하지 않으며,
+  이는 두 백엔드 모두에 해당한다. Go 쪽 크로스 컴파일은 별개다. 생성된 purego 패키지는
+  순수 Go이므로 C 툴체인 없이 `GOOS=windows CGO_ENABLED=0 go build ./...`로 빌드된다.
 - zigo는 Go 바인딩만 생성한다. IR은 다른 언어용 범용 IDL을 목표로 하지 않는다.
 
 ## Zig 타입과 ABI

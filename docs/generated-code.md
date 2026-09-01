@@ -65,8 +65,23 @@ zig-out/lib/lib<name>_zigo.a
 ```
 
 purego는 헤더를 `zigo_<name>_purego.h`, 라이브러리를 macOS의
-`lib<name>_zigo.dylib` 또는 Linux의 `lib<name>_zigo.so`로 설치합니다. cgo와 purego를
+`lib<name>_zigo.dylib`, Linux의 `lib<name>_zigo.so`, Windows의 `<name>_zigo.dll`로
+설치합니다. Windows 파일명에는 관례대로 `lib` 접두사가 붙지 않습니다. cgo와 purego를
 한 `zig-out`에 빌드해도 서로 덮어쓰지 않습니다.
+
+purego raw 패키지는 로더 primitive를 build tag로 나눈 파일 두 개를 함께 생성합니다.
+
+```text
+go-purego/internal/raw/raw_load_posix_gen.go    // go:build !windows
+go-purego/internal/raw/raw_load_windows_gen.go  // go:build windows
+```
+
+두 파일은 `openLibrary`, `closeLibrary`, `resolveSymbol` 세 함수를 똑같이 정의하며
+POSIX는 purego의 `Dlopen`/`Dlsym`/`Dlclose`를, Windows는 표준 라이브러리
+`syscall.LoadLibrary`/`GetProcAddress`/`FreeLibrary`를 사용합니다. purego v0.10.2는
+Windows용 로딩 API를 공개하지 않으므로 이 선택은 모듈 의존성을 늘리지 않습니다. 후보
+경로 결정, `LoadLibrary`, `*LibraryError` 모양은 공용 파일에 그대로 남으므로 공개
+API는 세 OS에서 동일합니다.
 
 | 위치 | 소유자 | Git에 커밋 |
 |---|---|---:|

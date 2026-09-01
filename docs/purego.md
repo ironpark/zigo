@@ -5,7 +5,9 @@ zigo의 기본값 `.cgo_static`은 정적 링크와 cgo 호출을 사용합니�
 빌드할 수 있습니다. 공개 Go API는 두 backend에서 동일하고 raw 구현과 loader만 달라집니다.
 
 > purego를 사용해도 Zig shared library는 배포할 OS·architecture의 native host에서
-> 빌드해야 합니다. 단일 실행 파일이 목적이라면 기본 `.cgo_static`을 사용하세요.
+> 빌드해야 합니다. Go 쪽은 다릅니다. 생성된 purego 패키지는 순수 Go이므로 C 툴체인
+> 없이 `GOOS=windows CGO_ENABLED=0 go build ./...`로 빌드할 수 있습니다.
+> 단일 실행 파일이 목적이라면 기본 `.cgo_static`을 사용하세요.
 
 | 항목 | `.cgo_static` / `.cgo_dynamic` | `.purego` |
 |---|---|---|
@@ -14,7 +16,7 @@ zigo의 기본값 `.cgo_static`은 정적 링크와 cgo 호출을 사용합니�
 | 네이티브 아티팩트 | 빌드 시 링크 | 실행 시 로드 |
 | 배포 단위 | Go 바이너리 하나 | Go 바이너리 + 플랫폼별 공유 라이브러리 |
 | 추가 Go 의존성 | 없음 | `github.com/ebitengine/purego v0.10.2` |
-| 지원 범위 | 네이티브 macOS/Linux | 네이티브 macOS/Linux amd64·arm64 |
+| 지원 범위 | 네이티브 macOS/Linux | 네이티브 macOS/Linux/Windows amd64·arm64 |
 
 ## 빌드 설정
 
@@ -61,7 +63,7 @@ cd go-purego && CGO_ENABLED=0 go test ./...
 `go-doctor`, 그리고 `abi_base`가 설정된 경우 `abi-check`까지 의존한다. purego 백엔드의
 `go-doctor`는 cgo 대신 다음을 검사한다.
 
-- 호스트 플랫폼이 지원 대상(macOS/Linux, amd64/arm64)인지
+- 호스트 플랫폼이 지원 대상(macOS/Linux/Windows, amd64/arm64)인지
 - `go.mod`가 검증된 purego 버전을 요구하는지
 - 설치된 공유 라이브러리가 존재하고 플랫폼 로더로 실제 로드되는지
 
@@ -107,8 +109,25 @@ if !mylib.LibraryLoaded() {
 호출하면 같은 진단 메시지로 panic한다.
 
 `DefaultLibraryName`은 생성 시점이 아니라 실행 시점에 `runtime.GOOS`로 결정된다. 따라서
-커밋된 생성물은 macOS와 Linux에서 동일하며, 생성물 최신 상태 검사도 두 플랫폼에서 같은
-결과를 낸다.
+커밋된 생성물은 macOS, Linux, Windows에서 동일하며, 생성물 최신 상태 검사도 세 플랫폼에서
+같은 결과를 낸다.
+
+| `GOOS` | `DefaultLibraryName` |
+|---|---|
+| `darwin` | `lib<name>_zigo.dylib` |
+| `linux` | `lib<name>_zigo.so` |
+| `windows` | `<name>_zigo.dll` |
+
+Windows 파일명에는 관례대로 `lib` 접두사가 붙지 않는다. OS별 로더 primitive는 build
+tag로 나뉜 `raw_load_posix_gen.go`(`//go:build !windows`)와
+`raw_load_windows_gen.go`(`//go:build windows`)에 있고, 각각 `openLibrary`,
+`closeLibrary`, `resolveSymbol`을 똑같이 정의한다. POSIX는 purego의
+`Dlopen`/`Dlsym`/`Dlclose`를, Windows는 표준 라이브러리
+`syscall.LoadLibrary`/`GetProcAddress`/`FreeLibrary`를 쓴다. purego v0.10.2는 Windows
+로딩 API를 공개하지 않으므로(`dlfcn.go`가 POSIX 전용이고 `loadSymbol`은 비공개) 이
+선택은 모듈 의존성을 늘리지 않는다. `purego.NewCallback`과 `RegisterFunc`는 Windows를
+Tier 1으로 지원하므로 콜백 경로는 공용 파일에 그대로 남는다. 후보 경로 결정,
+`LoadLibrary`, `*LibraryError` 모양은 세 OS에서 동일하다.
 
 ## 로딩 정책 설정
 
@@ -194,10 +213,29 @@ library search paths: ${EXECUTABLE_DIR}:${EXECUTABLE_DIR}/../lib:../../zig-out/l
 ## 패키징과 배포
 
 - 공유 라이브러리는 타깃별 아티팩트다. 파일명은 macOS `lib<name>_zigo.dylib`,
-  Linux `lib<name>_zigo.so`이며 `zig build go-lib`이 `zig-out/lib`에 설치한다.
+  Linux `lib<name>_zigo.so`, Windows `<name>_zigo.dll`이며 `zig build go-lib`이
+  `zig-out/lib`에 설치한다.
 - 배포 대상 OS·아키텍처 조합마다 해당 호스트에서 빌드한다. purego는 Go 애플리케이션
   빌드에서 C 컴파일러를 제거할 뿐, 하나의 Zig 아티팩트를 여러 타깃에 이식해 주지 않는다.
-  zigo의 reflector가 빌드 중 실행되므로 크로스 컴파일도 지원하지 않는다.
+  zigo의 reflector가 빌드 중 실행되므로 크로스 컴파일도 지원하지 않는다. 생성 과정이
+  요청한 타깃으로 빌드한 reflector 실행 파일을 실행하기 때문에
+  `zig build go-lib -Dtarget=x86_64-windows`는 POSIX 호스트에서 동작하지 않고, 지원하지
+  않는 타깃 조합과 마찬가지로 빌드 그래프 구성 시점에 실패한다. Windows DLL은 Windows
+  호스트에서 빌드한다.
+- Go 애플리케이션 쪽은 크로스 컴파일된다. 생성된 purego 패키지에는 cgo가 없으므로
+  어떤 호스트에서든 C 툴체인 없이 빌드할 수 있고, 실행 시 짝이 되는 라이브러리만
+  옆에 두면 된다.
+
+  ```bash
+  # macOS/Linux 호스트에서 Windows 바이너리를 만든다. C 컴파일러가 필요 없다.
+  cd go-purego && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...
+
+  # 짝이 되는 DLL은 Windows 호스트에서 만든다.
+  zig build purego-go-lib   # -> zig-out/lib/<name>_zigo.dll
+  ```
+
+  cgo 백엔드를 `CC="zig cc -target x86_64-windows"`로 크로스 링크하는 방법은 검증하지
+  않았다. 후속 작업 후보일 뿐 지원 대상이 아니다.
 - 아티팩트에는 Zig 캐시 경로가 새겨지지 않는다. 런타임 의존성은 바인딩한 Zig 모듈의
   의존성과 생성된 panic 경계가 사용하는 플랫폼 C 런타임뿐이다.
 - 애플리케이션은 배포 레이아웃에 맞는 절대 경로를 `LoadLibrary`에 넘기거나, 플랫폼
@@ -238,11 +276,12 @@ purego 백엔드는 콜백 파라미터를 C 함수 포인터와 `uintptr_t` use
 
 - purego는 v1 이전 베타 소프트웨어다. zigo는 `v0.10.2`를 고정해 생성·검증하고, 사용은
   생성된 raw 파일에만 격리한다. 다른 버전을 요구하는 `go.mod`는 `go-doctor`가 경고한다.
-- 초기 지원 범위는 네이티브 macOS/Linux amd64·arm64다. Windows, 모바일, purego Tier 2
-  타깃은 후속 작업이다.
+- 지원 범위는 네이티브 macOS/Linux/Windows amd64·arm64다. 모바일과 purego Tier 2
+  타깃은 후속 작업이다. Windows에서 cgo 백엔드는 지원하지 않는다.
 - 정적 링크는 cgo 전용이다.
 - Go race detector는 여전히 cgo를 요구하므로 `CGO_ENABLED=0` 테스트에서는 사용할 수 없다.
-  race 커버리지는 cgo 백엔드 테스트에서 확보한다.
+  race 커버리지는 cgo 백엔드 테스트에서 확보한다. Windows purego 잡도 마찬가지이고,
+  Windows에는 cgo 백엔드가 없으므로 그 플랫폼에는 race 커버리지가 없다.
 - zigo가 `go.mod`를 새로 만들 때만 purego 요구사항을 기록한다. 이미 있는 모듈은 직접
   `go get github.com/ebitengine/purego@v0.10.2`를 실행한다.
 
