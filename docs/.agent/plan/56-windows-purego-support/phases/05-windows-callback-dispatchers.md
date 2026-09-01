@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-01T16:05:09Z"
 depends_on:
 - "56-windows-purego-support#4"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: No generated dispatcher violates `compileCallback`'s result rule; a payload
 > NEXT: none
