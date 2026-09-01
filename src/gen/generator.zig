@@ -160,11 +160,11 @@ test "bool is lowered to uint8 at the ABI boundary" {
     const public = try temporary.dir.readFileAlloc(std.testing.io, "scalar/scalar_gen.go", std.testing.allocator, .limited(16 * 1024));
     defer std.testing.allocator.free(public);
     try std.testing.expect(std.mem.indexOf(u8, public, "func boolToUint8") == null);
-    const helpers = try temporary.dir.readFileAlloc(std.testing.io, "scalar/scalar_helpers_gen.go", std.testing.allocator, .limited(16 * 1024));
-    defer std.testing.allocator.free(helpers);
+    const runtime_file = try temporary.dir.readFileAlloc(std.testing.io, "scalar/scalar_runtime_gen.go", std.testing.allocator, .limited(16 * 1024));
+    defer std.testing.allocator.free(runtime_file);
     try std.testing.expect(std.mem.containsAtLeast(
         u8,
-        helpers,
+        runtime_file,
         1,
         "func boolToUint8(value bool) uint8 {\n" ++
             "\tif value {\n" ++
@@ -192,11 +192,19 @@ test "public Go filename uses the normalized package name" {
     try temporary.dir.access(std.testing.io, "internal/raw/raw_gen.go", .{});
     try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "http_client/generated.go", .{}));
     try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "internal/raw/cgo.go", .{}));
-    // This binding declares no type, no error, and no helper, so the three
-    // files that would hold them are not written at all.
-    try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "http_client/http_client_type_gen.go", .{}));
-    try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "http_client/http_client_errors_gen.go", .{}));
-    try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "http_client/http_client_helpers_gen.go", .{}));
+    // This binding declares no enum, struct, handle, union, error, or runtime
+    // helper, so none of the concern-scoped files are written at all.
+    for ([_][]const u8{
+        "http_client/http_client_enums_gen.go",
+        "http_client/http_client_structs_gen.go",
+        "http_client/http_client_handles_gen.go",
+        "http_client/http_client_runtime_gen.go",
+        "http_client/http_client_type_gen.go",
+        "http_client/http_client_errors_gen.go",
+        "http_client/http_client_helpers_gen.go",
+    }) |path| {
+        try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, path, .{}));
+    }
 }
 
 test "raw Go package can use a custom relative path" {
@@ -248,7 +256,7 @@ test "raw Go bindings can be colocated without public name collisions" {
     defer std.testing.allocator.free(public);
     try std.testing.expect(std.mem.indexOf(u8, public, "import ") == null);
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "return zigoRawAdd(p0, p1)"));
-    try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "scalar/scalar_helpers_gen.go", .{}));
+    try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "scalar/scalar_runtime_gen.go", .{}));
 }
 
 test "cgo flag overrides and observed link flags are emitted" {
@@ -361,7 +369,7 @@ test "errors enums and slices share one lowered ABI" {
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func Sum(p0 []float64) float64"));
     try std.testing.expect(std.mem.indexOf(u8, public, "func boolToUint8") == null);
     try std.testing.expect(std.mem.indexOf(u8, public, "activeCallbackHandles") == null);
-    const public_types = try temporary.dir.readFileAlloc(std.testing.io, "features/features_type_gen.go", std.testing.allocator, .limited(64 * 1024));
+    const public_types = try temporary.dir.readFileAlloc(std.testing.io, "features/features_enums_gen.go", std.testing.allocator, .limited(64 * 1024));
     defer std.testing.allocator.free(public_types);
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "type Format"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "func (value Format) String() string"));
@@ -402,13 +410,14 @@ test "callbacks use role-specific public types and typed handle helpers" {
     try std.testing.expect(std.mem.indexOf(u8, public, "type SubscribeHandlerCallback") == null);
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func Subscribe(handler SubscribeHandlerCallback)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "defer deleteCallbackHandle(handlerHandle)"));
-    const public_types = try temporary.dir.readFileAlloc(std.testing.io, "callbacks/callbacks_type_gen.go", std.testing.allocator, .limited(64 * 1024));
+    const public_types = try temporary.dir.readFileAlloc(std.testing.io, "callbacks/callbacks_runtime_gen.go", std.testing.allocator, .limited(64 * 1024));
     defer std.testing.allocator.free(public_types);
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "type SubscribeHandlerCallback func(int32) int32"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "type RegistryInstallHandler func(uint64) int32"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "type RegistryReplaceHandler func(uint8) int32"));
-    const helpers = try temporary.dir.readFileAlloc(std.testing.io, "callbacks/callbacks_helpers_gen.go", std.testing.allocator, .limited(64 * 1024));
-    defer std.testing.allocator.free(helpers);
+    // The callback signature types and the handle helpers that wrap them are
+    // one concern, so the runtime file carries both.
+    const helpers = public_types;
     try std.testing.expect(std.mem.containsAtLeast(u8, helpers, 1, "func newSubscribeHandlerCallbackHandle(value SubscribeHandlerCallback) zigoCallbackHandle"));
     try std.testing.expect(std.mem.containsAtLeast(u8, helpers, 1, "stored := (func(int32) int32)(value)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, helpers, 1, "stored := (func(uint64) int32)(value)"));
@@ -465,7 +474,7 @@ test "opt-in cleanup isolates state stops explicitly and keeps owners alive" {
     try std.testing.expect(std.mem.indexOf(u8, public, "context.ptr") == null);
     try std.testing.expect(std.mem.indexOf(u8, public, "type Context struct") == null);
     try std.testing.expect(std.mem.indexOf(u8, public, "zigoRawLastErrorMessage()") == null);
-    const public_types = try temporary.dir.readFileAlloc(std.testing.io, "opaque/opaque_type_gen.go", std.testing.allocator, .limited(32 * 1024));
+    const public_types = try temporary.dir.readFileAlloc(std.testing.io, "opaque/opaque_handles_gen.go", std.testing.allocator, .limited(32 * 1024));
     defer std.testing.allocator.free(public_types);
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "type Context struct"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "type ContextRef struct"));
@@ -510,6 +519,9 @@ test "ZIGO003 validation failure leaves the output tree untouched" {
         .{ .path = "internal/raw/raw_gen.go", .content = "old raw" },
         .{ .path = "bad/bad_gen.go", .content = "old public" },
         .{ .path = "bad/bad_type_gen.go", .content = "old public types" },
+        .{ .path = "bad/bad_enums_gen.go", .content = "old public enums" },
+        .{ .path = "bad/bad_handles_gen.go", .content = "old public handles" },
+        .{ .path = "bad/bad_runtime_gen.go", .content = "old public runtime" },
         .{ .path = "bad/bad_errors_gen.go", .content = "old public errors" },
         .{ .path = "bad/bad_helpers_gen.go", .content = "old public helpers" },
         .{ .path = "errors.lock.json", .content = "old lock" },
@@ -563,8 +575,10 @@ fn expectAllocationFailureLeavesOutputUntouched(allocator: std.mem.Allocator) !v
         .{ .path = "internal/raw/raw_gen.go", .content = "old raw" },
         .{ .path = "atomic/atomic_gen.go", .content = "old public" },
         .{ .path = "atomic/atomic_type_gen.go", .content = "old public types", .rewritten = false },
+        .{ .path = "atomic/atomic_enums_gen.go", .content = "old public enums", .rewritten = false },
+        .{ .path = "atomic/atomic_handles_gen.go", .content = "old public handles", .rewritten = false },
+        .{ .path = "atomic/atomic_runtime_gen.go", .content = "old public runtime", .rewritten = false },
         .{ .path = "atomic/atomic_errors_gen.go", .content = "old public errors", .rewritten = false },
-        .{ .path = "atomic/atomic_helpers_gen.go", .content = "old public helpers", .rewritten = false },
         .{ .path = "errors.lock.json", .content = "old lock" },
     };
     var temporary = std.testing.tmpDir(.{ .iterate = true });
