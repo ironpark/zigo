@@ -12,24 +12,35 @@ typedef uint32_t zg_mode;
 #define ZG_MODE_SUM 0
 #define ZG_MODE_WEIGHTED 1
 
-int32_t zg_int_batch_create(void * * out_result);
-int32_t zg_int_batch_push(void * self, int32_t value);
-size_t zg_int_batch_len(void * self);
-void zg_int_batch_deinit(void * self);
-int32_t zg_float_batch_create(void * * out_result);
-int32_t zg_float_batch_push(void * self, double p0);
-size_t zg_float_batch_len(void * self);
-void zg_float_batch_deinit(void * self);
-int32_t zg_pipeline_create(const uint8_t * name_ptr, size_t name_len, uint32_t mode, size_t userdata, void * * out_result);
-int32_t zg_pipeline_process(void * self, const int32_t * values_ptr, size_t values_len, int64_t * out_result);
-void zg_pipeline_name(void * self, const uint8_t * * out_result_ptr, size_t * out_result_len);
-uint32_t zg_pipeline_mode(void * self);
-uint8_t zg_pipeline_set_enabled(void * self, uint8_t enabled);
-size_t zg_pipeline_processed(void * self);
-int64_t zg_pipeline_total(void * self);
-void zg_pipeline_deinit(void * self);
-size_t zg_live_bytes(void);
-size_t zg_compression_bound(size_t source_len);
-const char *zg_last_error_message(void);
+// ELF and Mach-O export every non-static symbol of a shared library;
+// COFF exports nothing without an explicit annotation, so a DLL built
+// without this would load and then resolve none of its entry points.
+#ifndef ZIGO_EXPORT
+#if defined(_WIN32)
+#define ZIGO_EXPORT __declspec(dllexport)
+#else
+#define ZIGO_EXPORT
+#endif
+#endif
+
+ZIGO_EXPORT int32_t zg_int_batch_create(void * * out_result);
+ZIGO_EXPORT int32_t zg_int_batch_push(void * self, int32_t value);
+ZIGO_EXPORT size_t zg_int_batch_len(void * self);
+ZIGO_EXPORT void zg_int_batch_deinit(void * self);
+ZIGO_EXPORT int32_t zg_float_batch_create(void * * out_result);
+ZIGO_EXPORT int32_t zg_float_batch_push(void * self, double p0);
+ZIGO_EXPORT size_t zg_float_batch_len(void * self);
+ZIGO_EXPORT void zg_float_batch_deinit(void * self);
+ZIGO_EXPORT int32_t zg_pipeline_create(const uint8_t * name_ptr, size_t name_len, uint32_t mode, size_t userdata, void * * out_result);
+ZIGO_EXPORT int32_t zg_pipeline_process(void * self, const int32_t * values_ptr, size_t values_len, int64_t * out_result);
+ZIGO_EXPORT void zg_pipeline_name(void * self, const uint8_t * * out_result_ptr, size_t * out_result_len);
+ZIGO_EXPORT uint32_t zg_pipeline_mode(void * self);
+ZIGO_EXPORT uint8_t zg_pipeline_set_enabled(void * self, uint8_t enabled);
+ZIGO_EXPORT size_t zg_pipeline_processed(void * self);
+ZIGO_EXPORT int64_t zg_pipeline_total(void * self);
+ZIGO_EXPORT void zg_pipeline_deinit(void * self);
+ZIGO_EXPORT size_t zg_live_bytes(void);
+ZIGO_EXPORT size_t zg_compression_bound(size_t source_len);
+ZIGO_EXPORT const char *zg_last_error_message(void);
 
 #endif // ZIGO_pipeline_H

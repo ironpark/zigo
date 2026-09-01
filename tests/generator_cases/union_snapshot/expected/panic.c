@@ -6,6 +6,17 @@
 #include <string.h>
 #include "zigo_signal.h"
 
+// ELF and Mach-O export every non-static symbol of a shared library;
+// COFF exports nothing without an explicit annotation, so a DLL built
+// without this would load and then resolve none of its entry points.
+#ifndef ZIGO_EXPORT
+#if defined(_WIN32)
+#define ZIGO_EXPORT __declspec(dllexport)
+#else
+#define ZIGO_EXPORT
+#endif
+#endif
+
 static _Thread_local jmp_buf zg_panic_env;
 static _Thread_local int zg_panic_active;
 static _Thread_local char zg_panic_message[1024];
@@ -18,10 +29,10 @@ void zg_panic_bridge(const uint8_t *message, size_t length) {
     abort();
 }
 
-const char *zg_last_error_message(void) { return zg_panic_message; }
+ZIGO_EXPORT const char *zg_last_error_message(void) { return zg_panic_message; }
 
 int32_t zg_signal_create_impl(void * * out_result);
-int32_t zg_signal_create(void * * out_result) {
+ZIGO_EXPORT int32_t zg_signal_create(void * * out_result) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -33,7 +44,7 @@ int32_t zg_signal_create(void * * out_result) {
 }
 
 void zg_signal_deinit_impl(void * self);
-void zg_signal_deinit(void * self) {
+ZIGO_EXPORT void zg_signal_deinit(void * self) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -44,7 +55,7 @@ zg_signal_deinit_impl(self);
 }
 
 void zg_signal_set_ticks_impl(void * self, uint32_t ticks);
-void zg_signal_set_ticks(void * self, uint32_t ticks) {
+ZIGO_EXPORT void zg_signal_set_ticks(void * self, uint32_t ticks) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -55,7 +66,7 @@ zg_signal_set_ticks_impl(self, ticks);
 }
 
 void zg_signal_set_mode_impl(void * self, uint8_t mode);
-void zg_signal_set_mode(void * self, uint8_t mode) {
+ZIGO_EXPORT void zg_signal_set_mode(void * self, uint8_t mode) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -66,7 +77,7 @@ zg_signal_set_mode_impl(self, mode);
 }
 
 void zg_signal_set_active_impl(void * self, uint8_t active);
-void zg_signal_set_active(void * self, uint8_t active) {
+ZIGO_EXPORT void zg_signal_set_active(void * self, uint8_t active) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -77,7 +88,7 @@ zg_signal_set_active_impl(self, active);
 }
 
 uint8_t zg_signal_project_tag_impl(const zg_signal *self, uint8_t *out_value);
-uint8_t zg_signal_project_tag(const zg_signal *self, uint8_t *out_value) {
+ZIGO_EXPORT uint8_t zg_signal_project_tag(const zg_signal *self, uint8_t *out_value) {
     if (self == NULL || out_value == NULL) return 2;
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
@@ -90,7 +101,7 @@ uint8_t zg_signal_project_tag(const zg_signal *self, uint8_t *out_value) {
 }
 
 uint8_t zg_signal_project_ticks_impl(const zg_signal *self, uint32_t *out_value);
-uint8_t zg_signal_project_ticks(const zg_signal *self, uint32_t *out_value) {
+ZIGO_EXPORT uint8_t zg_signal_project_ticks(const zg_signal *self, uint32_t *out_value) {
     if (self == NULL || out_value == NULL) return 2;
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
@@ -103,7 +114,7 @@ uint8_t zg_signal_project_ticks(const zg_signal *self, uint32_t *out_value) {
 }
 
 uint8_t zg_signal_project_level_impl(const zg_signal *self, double *out_value);
-uint8_t zg_signal_project_level(const zg_signal *self, double *out_value) {
+ZIGO_EXPORT uint8_t zg_signal_project_level(const zg_signal *self, double *out_value) {
     if (self == NULL || out_value == NULL) return 2;
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
@@ -116,7 +127,7 @@ uint8_t zg_signal_project_level(const zg_signal *self, double *out_value) {
 }
 
 uint8_t zg_signal_project_offset_impl(const zg_signal *self, int16_t *out_value);
-uint8_t zg_signal_project_offset(const zg_signal *self, int16_t *out_value) {
+ZIGO_EXPORT uint8_t zg_signal_project_offset(const zg_signal *self, int16_t *out_value) {
     if (self == NULL || out_value == NULL) return 2;
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
@@ -129,7 +140,7 @@ uint8_t zg_signal_project_offset(const zg_signal *self, int16_t *out_value) {
 }
 
 uint8_t zg_signal_project_mode_impl(const zg_signal *self, uint8_t *out_value);
-uint8_t zg_signal_project_mode(const zg_signal *self, uint8_t *out_value) {
+ZIGO_EXPORT uint8_t zg_signal_project_mode(const zg_signal *self, uint8_t *out_value) {
     if (self == NULL || out_value == NULL) return 2;
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
@@ -142,7 +153,7 @@ uint8_t zg_signal_project_mode(const zg_signal *self, uint8_t *out_value) {
 }
 
 uint8_t zg_signal_project_active_impl(const zg_signal *self, uint8_t *out_value);
-uint8_t zg_signal_project_active(const zg_signal *self, uint8_t *out_value) {
+ZIGO_EXPORT uint8_t zg_signal_project_active(const zg_signal *self, uint8_t *out_value) {
     if (self == NULL || out_value == NULL) return 2;
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
@@ -155,7 +166,7 @@ uint8_t zg_signal_project_active(const zg_signal *self, uint8_t *out_value) {
 }
 
 uint8_t zg_signal_snapshot_impl(const zg_signal *self, zg_signal_snapshot_t *out_snapshot);
-uint8_t zg_signal_snapshot(const zg_signal *self, zg_signal_snapshot_t *out_snapshot) {
+ZIGO_EXPORT uint8_t zg_signal_snapshot(const zg_signal *self, zg_signal_snapshot_t *out_snapshot) {
     if (self == NULL || out_snapshot == NULL) return 2;
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {

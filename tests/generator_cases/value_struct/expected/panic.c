@@ -6,6 +6,17 @@
 #include <string.h>
 #include "zigo_config.h"
 
+// ELF and Mach-O export every non-static symbol of a shared library;
+// COFF exports nothing without an explicit annotation, so a DLL built
+// without this would load and then resolve none of its entry points.
+#ifndef ZIGO_EXPORT
+#if defined(_WIN32)
+#define ZIGO_EXPORT __declspec(dllexport)
+#else
+#define ZIGO_EXPORT
+#endif
+#endif
+
 static _Thread_local jmp_buf zg_panic_env;
 static _Thread_local int zg_panic_active;
 static _Thread_local char zg_panic_message[1024];
@@ -18,10 +29,10 @@ void zg_panic_bridge(const uint8_t *message, size_t length) {
     abort();
 }
 
-const char *zg_last_error_message(void) { return zg_panic_message; }
+ZIGO_EXPORT const char *zg_last_error_message(void) { return zg_panic_message; }
 
 void zg_configure_impl(const zg_config * config);
-void zg_configure(const zg_config * config) {
+ZIGO_EXPORT void zg_configure(const zg_config * config) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -32,7 +43,7 @@ zg_configure_impl(config);
 }
 
 void zg_default_config_impl(zg_config * out_result);
-void zg_default_config(zg_config * out_result) {
+ZIGO_EXPORT void zg_default_config(zg_config * out_result) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -43,7 +54,7 @@ zg_default_config_impl(out_result);
 }
 
 void zg_translate_impl(const zg_point * origin, int16_t dx, zg_point * out_result);
-void zg_translate(const zg_point * origin, int16_t dx, zg_point * out_result) {
+ZIGO_EXPORT void zg_translate(const zg_point * origin, int16_t dx, zg_point * out_result) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -54,7 +65,7 @@ zg_translate_impl(origin, dx, out_result);
 }
 
 int32_t zg_load_impl(zg_config * out_result);
-int32_t zg_load(zg_config * out_result) {
+ZIGO_EXPORT int32_t zg_load(zg_config * out_result) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;

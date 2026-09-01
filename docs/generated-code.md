@@ -78,6 +78,13 @@ go-purego/internal/raw/raw_load_posix_gen.go    // go:build !windows
 go-purego/internal/raw/raw_load_windows_gen.go  // go:build windows
 ```
 
+생성된 C(`panic.c`)와 헤더는 공개 진입점에 `ZIGO_EXPORT`를 붙입니다. ELF와 Mach-O는
+공유 라이브러리의 non-static 심볼을 모두 내보내지만 COFF는 명시적 annotation 없이는
+아무것도 내보내지 않으므로, 이것이 없으면 DLL이 로드는 되고 심볼은 하나도 해석되지
+않습니다. 매크로는 `_WIN32`에서만 `__declspec(dllexport)`로 확장되고 그 밖에서는 비어
+있으므로 생성물은 모든 호스트에서 동일합니다. 대상은 생성된 로더가 이름으로 찾는
+심볼뿐입니다. 내부 `_impl` 절반은 내보내지 않습니다.
+
 콜백 dispatcher는 모든 플랫폼에서 `uintptr` 하나를 반환합니다. Windows의
 `syscall.NewCallback`이 정확히 포인터 크기의 결과 하나를 요구하기 때문이며,
 반환값이 없는 Zig 콜백도 `0`을 돌려줍니다. 네이티브 쪽은 `int32_t` 반환으로

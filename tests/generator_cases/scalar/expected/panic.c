@@ -5,6 +5,17 @@
 #include <stdlib.h>
 #include <string.h>
 
+// ELF and Mach-O export every non-static symbol of a shared library;
+// COFF exports nothing without an explicit annotation, so a DLL built
+// without this would load and then resolve none of its entry points.
+#ifndef ZIGO_EXPORT
+#if defined(_WIN32)
+#define ZIGO_EXPORT __declspec(dllexport)
+#else
+#define ZIGO_EXPORT
+#endif
+#endif
+
 static _Thread_local jmp_buf zg_panic_env;
 static _Thread_local int zg_panic_active;
 static _Thread_local char zg_panic_message[1024];
@@ -17,10 +28,10 @@ void zg_panic_bridge(const uint8_t *message, size_t length) {
     abort();
 }
 
-const char *zg_last_error_message(void) { return zg_panic_message; }
+ZIGO_EXPORT const char *zg_last_error_message(void) { return zg_panic_message; }
 
 int32_t zg_add_impl(int32_t p0, int32_t p1);
-int32_t zg_add(int32_t p0, int32_t p1) {
+ZIGO_EXPORT int32_t zg_add(int32_t p0, int32_t p1) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;

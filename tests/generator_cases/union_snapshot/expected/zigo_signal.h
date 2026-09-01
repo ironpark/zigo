@@ -18,6 +18,17 @@ typedef uint8_t zg_mode;
 #define ZG_MODE_IDLE 0
 #define ZG_MODE_ACTIVE 1
 
+// ELF and Mach-O export every non-static symbol of a shared library;
+// COFF exports nothing without an explicit annotation, so a DLL built
+// without this would load and then resolve none of its entry points.
+#ifndef ZIGO_EXPORT
+#if defined(_WIN32)
+#define ZIGO_EXPORT __declspec(dllexport)
+#else
+#define ZIGO_EXPORT
+#endif
+#endif
+
 typedef struct zg_signal_snapshot_t {
     zg_signal_tag tag;
     uint8_t reserved_0[7];
@@ -28,18 +39,18 @@ typedef struct zg_signal_snapshot_t {
     uint8_t active;
 } zg_signal_snapshot_t;
 
-int32_t zg_signal_create(void * * out_result);
-void zg_signal_deinit(void * self);
-void zg_signal_set_ticks(void * self, uint32_t ticks);
-void zg_signal_set_mode(void * self, uint8_t mode);
-void zg_signal_set_active(void * self, uint8_t active);
-uint8_t zg_signal_project_tag(const zg_signal *self, uint8_t *out_value);
-uint8_t zg_signal_project_ticks(const zg_signal *self, uint32_t *out_value);
-uint8_t zg_signal_project_level(const zg_signal *self, double *out_value);
-uint8_t zg_signal_project_offset(const zg_signal *self, int16_t *out_value);
-uint8_t zg_signal_project_mode(const zg_signal *self, uint8_t *out_value);
-uint8_t zg_signal_project_active(const zg_signal *self, uint8_t *out_value);
-uint8_t zg_signal_snapshot(const zg_signal *self, zg_signal_snapshot_t *out_snapshot);
-const char *zg_last_error_message(void);
+ZIGO_EXPORT int32_t zg_signal_create(void * * out_result);
+ZIGO_EXPORT void zg_signal_deinit(void * self);
+ZIGO_EXPORT void zg_signal_set_ticks(void * self, uint32_t ticks);
+ZIGO_EXPORT void zg_signal_set_mode(void * self, uint8_t mode);
+ZIGO_EXPORT void zg_signal_set_active(void * self, uint8_t active);
+ZIGO_EXPORT uint8_t zg_signal_project_tag(const zg_signal *self, uint8_t *out_value);
+ZIGO_EXPORT uint8_t zg_signal_project_ticks(const zg_signal *self, uint32_t *out_value);
+ZIGO_EXPORT uint8_t zg_signal_project_level(const zg_signal *self, double *out_value);
+ZIGO_EXPORT uint8_t zg_signal_project_offset(const zg_signal *self, int16_t *out_value);
+ZIGO_EXPORT uint8_t zg_signal_project_mode(const zg_signal *self, uint8_t *out_value);
+ZIGO_EXPORT uint8_t zg_signal_project_active(const zg_signal *self, uint8_t *out_value);
+ZIGO_EXPORT uint8_t zg_signal_snapshot(const zg_signal *self, zg_signal_snapshot_t *out_snapshot);
+ZIGO_EXPORT const char *zg_last_error_message(void);
 
 #endif // ZIGO_signal_H

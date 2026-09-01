@@ -5,6 +5,17 @@
 #include <stdlib.h>
 #include <string.h>
 
+// ELF and Mach-O export every non-static symbol of a shared library;
+// COFF exports nothing without an explicit annotation, so a DLL built
+// without this would load and then resolve none of its entry points.
+#ifndef ZIGO_EXPORT
+#if defined(_WIN32)
+#define ZIGO_EXPORT __declspec(dllexport)
+#else
+#define ZIGO_EXPORT
+#endif
+#endif
+
 static _Thread_local jmp_buf zg_panic_env;
 static _Thread_local int zg_panic_active;
 static _Thread_local char zg_panic_message[1024];
@@ -17,10 +28,10 @@ void zg_panic_bridge(const uint8_t *message, size_t length) {
     abort();
 }
 
-const char *zg_last_error_message(void) { return zg_panic_message; }
+ZIGO_EXPORT const char *zg_last_error_message(void) { return zg_panic_message; }
 
 int32_t zg_int_batch_create_impl(void * * out_result);
-int32_t zg_int_batch_create(void * * out_result) {
+ZIGO_EXPORT int32_t zg_int_batch_create(void * * out_result) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -32,7 +43,7 @@ int32_t zg_int_batch_create(void * * out_result) {
 }
 
 int32_t zg_int_batch_push_impl(void * self, int32_t value);
-int32_t zg_int_batch_push(void * self, int32_t value) {
+ZIGO_EXPORT int32_t zg_int_batch_push(void * self, int32_t value) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -44,7 +55,7 @@ int32_t zg_int_batch_push(void * self, int32_t value) {
 }
 
 size_t zg_int_batch_len_impl(void * self);
-size_t zg_int_batch_len(void * self) {
+ZIGO_EXPORT size_t zg_int_batch_len(void * self) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -56,7 +67,7 @@ size_t zg_int_batch_len(void * self) {
 }
 
 void zg_int_batch_deinit_impl(void * self);
-void zg_int_batch_deinit(void * self) {
+ZIGO_EXPORT void zg_int_batch_deinit(void * self) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -67,7 +78,7 @@ zg_int_batch_deinit_impl(self);
 }
 
 int32_t zg_float_batch_create_impl(void * * out_result);
-int32_t zg_float_batch_create(void * * out_result) {
+ZIGO_EXPORT int32_t zg_float_batch_create(void * * out_result) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -79,7 +90,7 @@ int32_t zg_float_batch_create(void * * out_result) {
 }
 
 int32_t zg_float_batch_push_impl(void * self, double p0);
-int32_t zg_float_batch_push(void * self, double p0) {
+ZIGO_EXPORT int32_t zg_float_batch_push(void * self, double p0) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -91,7 +102,7 @@ int32_t zg_float_batch_push(void * self, double p0) {
 }
 
 size_t zg_float_batch_len_impl(void * self);
-size_t zg_float_batch_len(void * self) {
+ZIGO_EXPORT size_t zg_float_batch_len(void * self) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -103,7 +114,7 @@ size_t zg_float_batch_len(void * self) {
 }
 
 void zg_float_batch_deinit_impl(void * self);
-void zg_float_batch_deinit(void * self) {
+ZIGO_EXPORT void zg_float_batch_deinit(void * self) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -114,7 +125,7 @@ zg_float_batch_deinit_impl(self);
 }
 
 int32_t zg_pipeline_create_impl(const uint8_t * name_ptr, size_t name_len, uint32_t mode, size_t userdata, void * * out_result);
-int32_t zg_pipeline_create(const uint8_t * name_ptr, size_t name_len, uint32_t mode, size_t userdata, void * * out_result) {
+ZIGO_EXPORT int32_t zg_pipeline_create(const uint8_t * name_ptr, size_t name_len, uint32_t mode, size_t userdata, void * * out_result) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -126,7 +137,7 @@ int32_t zg_pipeline_create(const uint8_t * name_ptr, size_t name_len, uint32_t m
 }
 
 int32_t zg_pipeline_process_impl(void * self, const int32_t * values_ptr, size_t values_len, int64_t * out_result);
-int32_t zg_pipeline_process(void * self, const int32_t * values_ptr, size_t values_len, int64_t * out_result) {
+ZIGO_EXPORT int32_t zg_pipeline_process(void * self, const int32_t * values_ptr, size_t values_len, int64_t * out_result) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -138,7 +149,7 @@ int32_t zg_pipeline_process(void * self, const int32_t * values_ptr, size_t valu
 }
 
 void zg_pipeline_name_impl(void * self, const uint8_t * * out_result_ptr, size_t * out_result_len);
-void zg_pipeline_name(void * self, const uint8_t * * out_result_ptr, size_t * out_result_len) {
+ZIGO_EXPORT void zg_pipeline_name(void * self, const uint8_t * * out_result_ptr, size_t * out_result_len) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -149,7 +160,7 @@ zg_pipeline_name_impl(self, out_result_ptr, out_result_len);
 }
 
 uint32_t zg_pipeline_mode_impl(void * self);
-uint32_t zg_pipeline_mode(void * self) {
+ZIGO_EXPORT uint32_t zg_pipeline_mode(void * self) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -161,7 +172,7 @@ uint32_t zg_pipeline_mode(void * self) {
 }
 
 uint8_t zg_pipeline_set_enabled_impl(void * self, uint8_t enabled);
-uint8_t zg_pipeline_set_enabled(void * self, uint8_t enabled) {
+ZIGO_EXPORT uint8_t zg_pipeline_set_enabled(void * self, uint8_t enabled) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -173,7 +184,7 @@ uint8_t zg_pipeline_set_enabled(void * self, uint8_t enabled) {
 }
 
 size_t zg_pipeline_processed_impl(void * self);
-size_t zg_pipeline_processed(void * self) {
+ZIGO_EXPORT size_t zg_pipeline_processed(void * self) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -185,7 +196,7 @@ size_t zg_pipeline_processed(void * self) {
 }
 
 int64_t zg_pipeline_total_impl(void * self);
-int64_t zg_pipeline_total(void * self) {
+ZIGO_EXPORT int64_t zg_pipeline_total(void * self) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -197,7 +208,7 @@ int64_t zg_pipeline_total(void * self) {
 }
 
 void zg_pipeline_deinit_impl(void * self);
-void zg_pipeline_deinit(void * self) {
+ZIGO_EXPORT void zg_pipeline_deinit(void * self) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -208,7 +219,7 @@ zg_pipeline_deinit_impl(self);
 }
 
 size_t zg_live_bytes_impl(void);
-size_t zg_live_bytes(void) {
+ZIGO_EXPORT size_t zg_live_bytes(void) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -220,7 +231,7 @@ size_t zg_live_bytes(void) {
 }
 
 size_t zg_compression_bound_impl(size_t source_len);
-size_t zg_compression_bound(size_t source_len) {
+ZIGO_EXPORT size_t zg_compression_bound(size_t source_len) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;

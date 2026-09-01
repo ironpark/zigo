@@ -344,6 +344,9 @@ fn renderPanicSource(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
     } else {
         try writer.writeByte('\n');
     }
+    // The header defines the same macro under the same guard, so including it
+    // above or not makes no difference here.
+    try writeExportMacro(writer);
     try writer.writeAll(
         "static _Thread_local jmp_buf zg_panic_env;\n" ++
             "static _Thread_local int zg_panic_active;\n" ++
@@ -355,7 +358,7 @@ fn renderPanicSource(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
             "    if (zg_panic_active) longjmp(zg_panic_env, 1);\n" ++
             "    abort();\n" ++
             "}\n\n" ++
-            "const char *zg_last_error_message(void) { return zg_panic_message; }\n",
+            "ZIGO_EXPORT const char *zg_last_error_message(void) { return zg_panic_message; }\n",
     );
     for (program.functions) |function| {
         try writer.writeByte('\n');
@@ -425,7 +428,29 @@ fn renderPanicSource(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
     }
 }
 
+/// Writes the C signature of a generated entry point. The public wrapper is
+/// what the generated Go loader resolves by name, so it carries the export
+/// annotation; the `_impl` half is internal to the artifact and must not.
+/// `ZIGO_EXPORT` marks the symbols a consumer resolves out of the built
+/// artifact. It expands to nothing outside Windows, so the generated C is the
+/// same text on every host and only the Windows compiler acts on it.
+fn writeExportMacro(writer: *std.Io.Writer) !void {
+    try writer.writeAll(
+        "// ELF and Mach-O export every non-static symbol of a shared library;\n" ++
+            "// COFF exports nothing without an explicit annotation, so a DLL built\n" ++
+            "// without this would load and then resolve none of its entry points.\n" ++
+            "#ifndef ZIGO_EXPORT\n" ++
+            "#if defined(_WIN32)\n" ++
+            "#define ZIGO_EXPORT __declspec(dllexport)\n" ++
+            "#else\n" ++
+            "#define ZIGO_EXPORT\n" ++
+            "#endif\n" ++
+            "#endif\n\n",
+    );
+}
+
 fn writeCFunctionDeclaration(writer: *std.Io.Writer, function: abi.AbiFn, implementation: bool) !void {
+    if (!implementation) try writer.writeAll("ZIGO_EXPORT ");
     try writeCType(writer, function.ret);
     try writer.print(" {s}{s}(", .{ function.symbol, if (implementation) "_impl" else "" });
     if (function.params.len == 0) try writer.writeAll("void");
@@ -522,9 +547,11 @@ fn renderHeader(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             try writer.print("#define {s} {d}\n", .{ constant.c_name, constant.value });
         try writer.writeByte('\n');
     }
+    try writeExportMacro(writer);
     try renderValueStructTypes(writer, program);
     try renderSnapshotTypes(writer, program);
     for (program.functions) |function| {
+        try writer.writeAll("ZIGO_EXPORT ");
         try writeCType(writer, function.ret);
         try writer.print(" {s}(", .{function.symbol});
         if (function.params.len == 0) try writer.writeAll("void");
@@ -535,7 +562,7 @@ fn renderHeader(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         try writer.writeAll(");\n");
     }
     try renderTaggedUnionHeader(writer, program);
-    try writer.writeAll("const char *zg_last_error_message(void);\n");
+    try writer.writeAll("ZIGO_EXPORT const char *zg_last_error_message(void);\n");
     try writer.print("\n#endif // ZIGO_{s}_H\n", .{package});
 }
 
@@ -608,6 +635,9 @@ fn writeCUnionDeclaration(
     ret: abi.AbiScalar,
     implementation: bool,
 ) !void {
+    // Same split as writeCFunctionDeclaration: the public wrapper is resolved
+    // by name out of the artifact, the `_impl` half never is.
+    if (!implementation) try writer.writeAll("ZIGO_EXPORT ");
     try writeCType(writer, ret);
     try writer.print(" {s}{s}(", .{ symbol, if (implementation) "_impl" else "" });
     for (params, 0..) |parameter, index| {
@@ -4020,4 +4050,35 @@ test "a colocated internal loader keeps the loader out of the exported names" {
     exported_options.library_exported_api = true;
     try renderRaw(std.testing.allocator, &exported.writer, program, exported_options);
     try std.testing.expect(std.mem.indexOf(u8, exported.written(), "func LoadLibrary(") != null);
+}
+
+test "every entry point the loader resolves is annotated for the COFF export table" {
+    const origin: semantic.SemanticFn = .{
+        .name = "ping",
+        .params = &.{},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_ping",
+    };
+    const program: abi.Program = .{
+        .backend = .purego,
+        .callback_convention = .function_pointer_userdata_v1,
+        .functions = &.{.{ .symbol = "zg_ping", .params = &.{}, .ret = .void, .origin = &origin }},
+        .package = "unit",
+        .prefix = "zg",
+    };
+    const options: Options = .{ .go_module = "example.com/unit", .backend = .purego };
+
+    inline for (.{ renderPanicSource, renderHeader }) |render| {
+        var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+        defer output.deinit();
+        try render(std.testing.allocator, &output.writer, program, options);
+        const text = output.written();
+        try std.testing.expect(std.mem.indexOf(u8, text, "#define ZIGO_EXPORT __declspec(dllexport)") != null);
+        // The public wrapper is what the generated loader looks up by name;
+        // the `_impl` half is internal to the artifact and must stay unexported
+        // so the DLL publishes exactly the documented surface.
+        try std.testing.expect(std.mem.indexOf(u8, text, "ZIGO_EXPORT void zg_ping(") != null);
+        try std.testing.expect(std.mem.indexOf(u8, text, "ZIGO_EXPORT const char *zg_last_error_message(void)") != null);
+        try std.testing.expect(std.mem.indexOf(u8, text, "ZIGO_EXPORT void zg_ping_impl(") == null);
+    }
 }

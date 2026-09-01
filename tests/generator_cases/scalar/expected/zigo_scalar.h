@@ -5,7 +5,18 @@
 #include <stddef.h>
 #include <stdint.h>
 
-int32_t zg_add(int32_t p0, int32_t p1);
-const char *zg_last_error_message(void);
+// ELF and Mach-O export every non-static symbol of a shared library;
+// COFF exports nothing without an explicit annotation, so a DLL built
+// without this would load and then resolve none of its entry points.
+#ifndef ZIGO_EXPORT
+#if defined(_WIN32)
+#define ZIGO_EXPORT __declspec(dllexport)
+#else
+#define ZIGO_EXPORT
+#endif
+#endif
+
+ZIGO_EXPORT int32_t zg_add(int32_t p0, int32_t p1);
+ZIGO_EXPORT const char *zg_last_error_message(void);
 
 #endif // ZIGO_scalar_H

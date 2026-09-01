@@ -9,6 +9,17 @@ typedef uint8_t zg_mode;
 #define ZG_MODE_IDLE 0
 #define ZG_MODE_ACTIVE 1
 
+// ELF and Mach-O export every non-static symbol of a shared library;
+// COFF exports nothing without an explicit annotation, so a DLL built
+// without this would load and then resolve none of its entry points.
+#ifndef ZIGO_EXPORT
+#if defined(_WIN32)
+#define ZIGO_EXPORT __declspec(dllexport)
+#else
+#define ZIGO_EXPORT
+#endif
+#endif
+
 typedef struct zg_point {
     int16_t x;
     int16_t y;
@@ -22,10 +33,10 @@ typedef struct zg_config {
     zg_point origin;
 } zg_config;
 
-void zg_configure(const zg_config * config);
-void zg_default_config(zg_config * out_result);
-void zg_translate(const zg_point * origin, int16_t dx, zg_point * out_result);
-int32_t zg_load(zg_config * out_result);
-const char *zg_last_error_message(void);
+ZIGO_EXPORT void zg_configure(const zg_config * config);
+ZIGO_EXPORT void zg_default_config(zg_config * out_result);
+ZIGO_EXPORT void zg_translate(const zg_point * origin, int16_t dx, zg_point * out_result);
+ZIGO_EXPORT int32_t zg_load(zg_config * out_result);
+ZIGO_EXPORT const char *zg_last_error_message(void);
 
 #endif // ZIGO_config_H
