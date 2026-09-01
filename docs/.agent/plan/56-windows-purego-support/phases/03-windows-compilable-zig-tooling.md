@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-01T15:24:48Z"
 depends_on:
 - "56-windows-purego-support#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build check -Dtarget=x86_64-windows-gnu` compiles every artifact with
 > NEXT: none
