@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-01T20:46:46Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Unit tests pass; no golden doc comment repeats a declaration name; `zig build test`
 > NEXT: none
