@@ -64,6 +64,11 @@ zig-out/include/zigo_<name>.h
 zig-out/lib/lib<name>_zigo.a
 ```
 
+정적 아카이브 이름은 Windows 타깃에서도 `lib<name>_zigo.a`입니다. Zig 관례라면
+`<name>_zigo.lib`가 되겠지만, 생성된 `#cgo LDFLAGS` 줄이 모든 호스트에서 같은 경로를
+써야 하므로 설치 시점에 이름을 맞춥니다. `zig cc`는 Windows에서도 `.a` 확장자의 COFF
+아카이브를 그대로 링크합니다.
+
 purego는 헤더를 `zigo_<name>_purego.h`, 라이브러리를 macOS의
 `lib<name>_zigo.dylib`, Linux의 `lib<name>_zigo.so`, Windows의 `<name>_zigo.dll`로
 설치합니다. Windows 파일명에는 관례대로 `lib` 접두사가 붙지 않고, 설치 디렉터리도

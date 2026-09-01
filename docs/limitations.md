@@ -5,9 +5,12 @@
 
 ## 지원 환경
 
-- 기본 cgo 백엔드의 지원 범위는 Zig 0.16.0, Go 1.24 이상, cgo가 활성화된 네이티브
-  macOS/Linux다. 생성된 handle이 항상 `runtime.AddCleanup`을 등록하므로 Go 1.24가
-  하한이다. Windows에서 cgo는 지원하지 않는다. mingw 링크는 후속 작업이다.
+- 기본 cgo 백엔드의 지원 범위는 Zig 0.16.0, Go 1.24 이상, cgo가 활성화된
+  macOS/Linux/Windows다. 생성된 handle이 항상 `runtime.AddCleanup`을 등록하므로
+  Go 1.24가 하한이다. Windows는 amd64에 gnu ABI 전용이고 `CC="zig cc"`를 요구한다.
+  mingw-w64를 따로 설치할 필요는 없다. zigo 사용자는 이미 Zig를 갖고 있고 `zig cc`가
+  mingw 헤더·CRT·링커를 함께 제공하기 때문이다. MSVC ABI(`-target *-windows-msvc`),
+  386, arm32는 지원하지 않는다. 레시피는 [시작 가이드](getting-started.md)에 있다.
 - opt-in `.link = .purego`는 Go 빌드에서 C 컴파일러와 cgo를 제거하고 네이티브
   macOS/Linux/Windows의 amd64·arm64를 지원하지만, 공유 라이브러리 배포를 요구한다.
   모바일과 purego Tier 2 타깃은 후속 작업이다. 정적 링크는 cgo 전용이다.
@@ -27,10 +30,13 @@
   Windows DLL도 POSIX 호스트에서 만든다.
 - Go race detector는 여전히 cgo를 요구하므로 `CGO_ENABLED=0` 테스트에는 사용할 수 없다.
   Windows purego 테스트도 같은 이유로 race 커버리지를 얻지 못한다.
-- 크로스 컴파일은 purego 백엔드에서 지원한다. reflector는 **호스트**로 빌드해 실행하고
+- 크로스 컴파일은 두 백엔드 모두에서 동작한다. reflector는 **호스트**로 빌드해 실행하고
   라이브러리와 shim만 `-Dtarget`으로 빌드하므로 `zig build purego-go-lib
-  -Dtarget=x86_64-windows`가 POSIX 호스트에서 동작한다. cgo 백엔드의 크로스 링크는
-  검증하지 않았다. 두 가지가 여기에 따라온다.
+  -Dtarget=x86_64-windows`가 POSIX 호스트에서 동작한다. cgo 백엔드도 POSIX 호스트에서
+  `-Dtarget=x86_64-windows-gnu`로 정적 아카이브를 만들고 `GOOS=windows
+  CC="zig cc -target x86_64-windows-gnu"`로 링크할 수 있다. 다만 `go-doctor`는 크로스
+  빌드에서 cgo 백엔드를 검증하지 못하므로(관찰할 수 없는 `GOOS`·`CC` 조합에 달려 있다)
+  `FAIL target`을 보고한다. 결과물은 타깃에서 실행해 확인한다. 두 가지가 여기에 따라온다.
   - 리플렉션이 관찰하는 레이아웃은 **호스트**의 것이다. 지원 타깃은 모두 64비트
     리틀엔디언이라 고정폭 정수·실수·포인터는 일치하지만 `c_long`·`c_ulong`처럼
     타깃마다 폭이 다른 C 타입은 어긋난다. 생성된 shim은 mirror하는 모든 `extern

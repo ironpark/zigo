@@ -17,7 +17,7 @@ zigo의 기본값 `.cgo_static`은 정적 링크와 cgo 호출을 사용합니�
 | 네이티브 아티팩트 | 빌드 시 링크 | 실행 시 로드 |
 | 배포 단위 | Go 바이너리 하나 | Go 바이너리 + 플랫폼별 공유 라이브러리 |
 | 추가 Go 의존성 | 없음 | `github.com/ebitengine/purego v0.10.2` |
-| 지원 범위 | 네이티브 macOS/Linux | macOS/Linux/Windows amd64·arm64, 크로스 컴파일 가능 |
+| 지원 범위 | macOS/Linux amd64·arm64, Windows amd64(`CC="zig cc"`), 크로스 컴파일 가능 | macOS/Linux/Windows amd64·arm64, 크로스 컴파일 가능 |
 
 ## 빌드 설정
 
@@ -321,13 +321,13 @@ purego 백엔드는 콜백 파라미터를 C 함수 포인터와 `uintptr_t` use
 - purego는 v1 이전 베타 소프트웨어다. zigo는 `v0.10.2`를 고정해 생성·검증하고, 사용은
   생성된 raw 파일에만 격리한다. 다른 버전을 요구하는 `go.mod`는 `go-doctor`가 경고한다.
 - 지원 범위는 네이티브 macOS/Linux/Windows amd64·arm64다. 모바일과 purego Tier 2
-  타깃은 후속 작업이다. Windows에서 cgo 백엔드는 지원하지 않는다.
+  타깃은 후속 작업이다. Windows에서는 cgo 백엔드도 `CC="zig cc"`로 쓸 수 있으므로
+  (amd64, gnu ABI), 이 표의 선택 기준은 Windows에서도 다른 플랫폼과 같다.
 - 콜백 결과는 `void`나 `i32`만 지원하고, 그 밖의 타입은 `ZIGO014`로 거부한다.
   값은 userdata로 돌려준다.
 - 정적 링크는 cgo 전용이다.
 - Go race detector는 여전히 cgo를 요구하므로 `CGO_ENABLED=0` 테스트에서는 사용할 수 없다.
-  race 커버리지는 cgo 백엔드 테스트에서 확보한다. Windows purego 잡도 마찬가지이고,
-  Windows에는 cgo 백엔드가 없으므로 그 플랫폼에는 race 커버리지가 없다.
+  race 커버리지는 cgo 백엔드 테스트에서 확보한다. Windows purego 잡도 마찬가지다.
 - zigo가 `go.mod`를 새로 만들 때만 purego 요구사항을 기록한다. 이미 있는 모듈은 직접
   `go get github.com/ebitengine/purego@v0.10.2`를 실행한다.
 

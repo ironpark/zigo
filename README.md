@@ -4,9 +4,11 @@ Zig 라이브러리의 공개 API에서 타입 안전한 Go 바인딩을 생성�
 수정하지 않고 별도의 `bindings.zig`에 노출 범위를 선언하면, zigo가 C ABI shim과 헤더,
 cgo 코드, 사용하기 편한 Go API를 함께 만듭니다.
 
-> 현재 지원 범위: Zig 0.16.0, Go 1.24 이상, 네이티브 빌드. 기본 cgo 백엔드는
-> macOS/Linux, opt-in `.link = .purego`는 macOS/Linux/Windows의 amd64·arm64를
-> 지원합니다. Zig 아티팩트의 크로스 컴파일은 아직 지원하지 않습니다.
+> 현재 지원 범위: Zig 0.16.0, Go 1.24 이상. 기본 cgo 백엔드는 macOS/Linux와
+> Windows(amd64, `CC="zig cc"`)를, opt-in `.link = .purego`는
+> macOS/Linux/Windows의 amd64·arm64를 지원합니다. Windows cgo에는 mingw-w64가
+> 필요하지 않습니다. 자세한 내용은 [시작 가이드](docs/getting-started.md)를
+> 보세요.
 
 ## 어떤 문제를 해결하나요?
 

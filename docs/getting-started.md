@@ -8,7 +8,9 @@
 
 - Zig 0.16.0
 - Go 1.24 이상과 Go 배포판에 포함된 `gofmt`
-- C 컴파일러를 사용할 수 있고 cgo가 활성화된 네이티브 macOS 또는 Linux 환경
+- C 컴파일러를 사용할 수 있고 cgo가 활성화된 네이티브 macOS, Linux 또는 Windows 환경.
+  Windows에서는 `CC="zig cc"`가 그 C 컴파일러 역할을 하므로 mingw-w64를 따로 설치할
+  필요가 없습니다. [Windows에서 cgo 백엔드 쓰기](#windows에서-cgo-백엔드-쓰기)를 보세요.
 
 다음 명령으로 현재 환경을 확인할 수 있습니다.
 
@@ -20,6 +22,40 @@ go env CGO_ENABLED CC
 
 purego도 Zig 공유 라이브러리를 현재 호스트에서 빌드해야 합니다. 먼저 이 가이드의 기본
 경로를 완료한 뒤 [purego 가이드](purego.md)로 이동하는 것을 권장합니다.
+
+### Windows에서 cgo 백엔드 쓰기
+
+Windows의 cgo는 gcc 호환 C 툴체인을 요구합니다. mingw-w64를 설치하는 대신 이미 갖고
+있는 Zig를 그대로 쓰면 됩니다. `zig cc`는 gcc 호환 clang 드라이버이고 mingw 헤더와
+CRT, 링커를 함께 들고 다닙니다. 추가 `CGO_CFLAGS`나 `CGO_LDFLAGS`는 필요 없습니다.
+
+```powershell
+$env:CGO_ENABLED = "1"
+$env:CC = "zig cc"
+zig build go
+cd go
+go test ./...
+```
+
+POSIX 호스트에서 Windows용으로 크로스 빌드할 수도 있습니다. 정적 아카이브를 타깃으로
+빌드한 다음 같은 타깃을 `CC`에 실어 링크합니다.
+
+```bash
+zig build go-lib -Dtarget=x86_64-windows-gnu
+cd go
+CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
+  CC="zig cc -target x86_64-windows-gnu" go build ./...
+```
+
+주의할 점:
+
+- amd64에 gnu ABI 전용입니다. `-target *-windows-msvc`, 386, arm32는 지원하지
+  않습니다.
+- 정적 아카이브는 Windows 타깃에서도 `zig-out/lib/lib<name>_zigo.a`로 설치됩니다.
+  생성된 `#cgo LDFLAGS` 줄이 모든 호스트에서 같은 이름을 쓰기 때문입니다.
+- 크로스 빌드에서는 `go-doctor`가 `FAIL target`을 보고합니다. `GOOS`와 `CC` 조합을
+  관찰할 수 없어 검증할 방법이 없기 때문이지, 링크가 안 된다는 뜻이 아닙니다. 결과
+  실행 파일은 타깃에서 실행해 확인하세요.
 
 ## 1. zigo 의존성 추가
 
