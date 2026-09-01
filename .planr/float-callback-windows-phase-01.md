@@ -2,6 +2,11 @@
 depends_on:
 - "58-float-callback-windows#0"
 perf_phase: false
+planr_base: sha256:61139565030e54d439cdd9a9379f5056eebd4cf5d4d9096c38850bed7d91f9a4
+planr_edit: "float-callback-windows#1"
+planr_phase: 1
+planr_slug: fidelity-and-ci
+planr_target: docs/.agent/plan/58-float-callback-windows/phases/01-fidelity-and-ci.md
 status: in-progress
 ---
 > DONE-WHEN: Windows CI green with 08 in the job — first Windows runtime proof of
@@ -29,23 +34,3 @@ status: in-progress
   float callback params AND float purego-call args; fidelity tests
   green on both OSes; docs updated; `planr overview` shows the plan
   done.
-
-## Notes
-
-- Fidelity test lives in 08-telemetry-hub's purego suite
-  (`TestPuregoFloatCallbackParameterIsBitExact`) and compares
-  `math.Float64bits`, so a lossy conversion cannot pass by printing the
-  same. Negative zero catches a dropped sign bit. `Push` refuses a
-  non-finite sample, so the +Inf case is produced natively instead:
-  scaled mode overflows `1e308 * 1e308` on the Zig side, which also
-  makes the assertion cover a value the Go side never constructed.
-- CI: 08 rejoined the `purego-windows` generation and suite legs; the
-  ZIGO014 assertion block is gone, since nothing is refused for a
-  windows target any more. The 07 cross-artifact job is untouched.
-- One CI-only breakage from the ABI bump: the shared-artifact smoke
-  check named `zg_apply_purego_v1` for 04-callback. Fixed to v2 in a
-  follow-up commit; nothing else in the workflow named a versioned
-  symbol.
-- Windows CI green with 08 in the job (run 33541504364, all four jobs):
-  the first runtime proof that float callback parameters and float
-  purego call arguments both work on Windows.
