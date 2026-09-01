@@ -450,7 +450,7 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     doctor.setName("CLI contract (doctor failure)");
     doctor.addArgs(&.{ "doctor", "--go", "/definitely/missing/zigo-go", "--gofmt", "/definitely/missing/zigo-gofmt", "--target", "cross" });
     doctor.expectExitCode(1);
-    doctor.expectStdOutMatch("FAIL target: the cgo backend does not support cross compilation");
+    doctor.expectStdOutMatch("FAIL target: the cgo backend cannot be validated from a cross build");
     doctor.expectStdOutMatch("FAIL go: executable unavailable");
     doctor.expectStdOutMatch("FAIL gofmt: unavailable");
     doctor.expectStdOutMatch("doctor: failed");
@@ -963,6 +963,14 @@ fn sourcePath(b: *std.Build, directory: std.Build.LazyPath, child: []const u8) [
 
 fn cgoRelativePath(b: *std.Build, from: []const u8, to: []const u8) []const u8 {
     const relative = std.fs.path.relative(b.allocator, "", null, from, to) catch @panic("OOM");
+    // `std.fs.path.relative` answers in the host separator, but this string is
+    // baked into a generated `#cgo` flag. cgo expects forward slashes on every
+    // host, and the committed bytes must not depend on where generation ran --
+    // a Windows-generated `-I${SRCDIR}\..\..\zig-out\include` both differs
+    // from the committed file and fails to resolve the header.
+    for (relative) |*byte| {
+        if (byte.* == std.fs.path.sep_windows) byte.* = std.fs.path.sep_posix;
+    }
     return b.fmt("${{SRCDIR}}/{s}", .{relative});
 }
 

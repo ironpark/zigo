@@ -353,6 +353,17 @@ jobs:
           # a regression fails here rather than in an opaque link error.
           test -f examples/01-scalar/zig-out/lib/libscalar_zigo.a
           test -f examples/07-event-queue/zig-out/lib/libevent_queue_zigo.a
+
+          # go-check above compares the regeneration against whatever `zig
+          # build go` just wrote, so it cannot see a host-dependent generator.
+          # This can: the committed bytes must survive generation on Windows.
+          # It is what catches a path baked in with the host separator.
+          if [[ -n "$(git status --porcelain --untracked-files=all -- examples)" ]]; then
+            echo "Generation on Windows produced different bytes than the committed files."
+            git status --short -- examples
+            git diff -- examples
+            exit 1
+          fi
       # Temporary: surfaces the resolved cgo flags as annotations while the
       # native Windows include path is being diagnosed.
       - name: Diagnose the cgo include path
