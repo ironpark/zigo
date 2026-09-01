@@ -75,8 +75,13 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, writer: *std.Io.Writer, opt
         allocator.free(result.stdout);
         allocator.free(result.stderr);
     };
-    const cc_name = if (cc_result) |result| if (termSucceeded(result.term)) firstWord(result.stdout) else null else null;
-    const cc_probe_result = if (cc_name) |name| std.process.run(allocator, io, .{
+    // `go env CC` can be a whole command line rather than one program: the
+    // supported Windows toolchain is `CC="zig cc"`, and a cross build adds
+    // `-target <triple>` on top of that. Probe the program, report the whole
+    // thing -- the arguments are the part a reader needs to see.
+    const cc_command = if (cc_result) |result| if (termSucceeded(result.term)) trimmedOrNull(result.stdout) else null else null;
+    const cc_program = if (cc_command) |command| firstWord(command) else null;
+    const cc_probe_result = if (cc_program) |name| std.process.run(allocator, io, .{
         .argv = &.{ name, "--version" },
         .stdout_limit = .limited(64 * 1024),
         .stderr_limit = .limited(64 * 1024),
@@ -104,7 +109,7 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, writer: *std.Io.Writer, opt
     return render(writer, .{
         .go_version = if (go_version_result) |result| if (termSucceeded(result.term)) std.mem.trim(u8, result.stdout, " \r\n\t") else null else null,
         .cgo_enabled = if (cgo_result) |result| if (termSucceeded(result.term)) std.mem.trim(u8, result.stdout, " \r\n\t") else null else null,
-        .c_compiler = cc_name,
+        .c_compiler = cc_command,
         .c_compiler_available = cc_probe_result != null,
         .gofmt_available = gofmt_result != null,
         .native_target = options.native_target,
@@ -160,7 +165,11 @@ pub fn render(writer: *std.Io.Writer, probe: Probe, backend: Options.Backend) !b
         try writer.writeAll("SKIP target: cross build; the checks below describe this host, and the cross-built artifact has to be validated on the target\n");
     } else {
         healthy = false;
-        try writer.writeAll("FAIL target: the cgo backend does not support cross compilation; use the native host target\n");
+        // The archive itself cross-builds, and `CC="zig cc -target <triple>"`
+        // links it -- but that needs GOOS, CGO_ENABLED and a -target-carrying
+        // CC on the Go side, none of which this invocation can observe. So the
+        // check stays a failure and points at the recipe instead of guessing.
+        try writer.writeAll("FAIL target: the cgo backend cannot be validated from a cross build; use the native host target, or follow the cross recipe in docs/getting-started.md and validate on the target\n");
     }
 
     // Generated handles always register `runtime.AddCleanup`, which landed
@@ -205,7 +214,7 @@ pub fn render(writer: *std.Io.Writer, probe: Probe, backend: Options.Backend) !b
             try writer.print("PASS C compiler: {s}\n", .{compiler});
         } else {
             healthy = false;
-            try writer.print("FAIL C compiler: {s} is configured by `go env CC` but is not executable\n", .{compiler});
+            try writer.print("FAIL C compiler: {s} is configured by `go env CC` but {s} is not executable\n", .{ compiler, firstWord(compiler) orelse compiler });
         }
     } else {
         healthy = false;
@@ -284,6 +293,11 @@ fn parseGoVersion(output: []const u8) ?GoVersion {
     return null;
 }
 
+fn trimmedOrNull(output: []const u8) ?[]const u8 {
+    const trimmed = std.mem.trim(u8, output, " \r\n\t");
+    return if (trimmed.len == 0) null else trimmed;
+}
+
 fn firstWord(output: []const u8) ?[]const u8 {
     var words = std.mem.tokenizeAny(u8, output, " \r\n\t");
     return words.next();
@@ -308,6 +322,7 @@ test "doctor distinguishes required failures from optional gofmt" {
         .native_target = true,
     }, .cgo));
     try std.testing.expect(std.mem.indexOf(u8, healthy_output.written(), "PASS gofmt") != null);
+    try std.testing.expect(std.mem.indexOf(u8, healthy_output.written(), "PASS C compiler: cc\n") != null);
     try std.testing.expect(std.mem.indexOf(u8, healthy_output.written(), "doctor: ok") != null);
 
     var failed_output: std.Io.Writer.Allocating = .init(std.testing.allocator);
@@ -323,7 +338,7 @@ test "doctor distinguishes required failures from optional gofmt" {
     try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "install Go 1.24 or newer") != null);
     try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "CGO_ENABLED=1") != null);
     try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "missing-cc is configured") != null);
-    try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "the cgo backend does not support cross compilation") != null);
+    try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "the cgo backend cannot be validated from a cross build") != null);
 
     // A purego cross build is supported: the target line and the run-time
     // library check report SKIP, and neither makes the doctor fail.
@@ -354,6 +369,35 @@ test "doctor distinguishes required failures from optional gofmt" {
         .native_target = true,
     }, .cgo));
     try std.testing.expect(std.mem.indexOf(u8, unformatted.written(), "FAIL gofmt") != null);
+}
+
+test "doctor reports a multi-word CC in full" {
+    // `CC="zig cc"` is the supported Windows toolchain: the probe runs `zig`,
+    // but a report that printed only `zig` would hide which driver is in use.
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try std.testing.expect(try render(&output.writer, .{
+        .go_version = "go version go1.26.0 windows/amd64",
+        .cgo_enabled = "1",
+        .c_compiler = "zig cc",
+        .c_compiler_available = true,
+        .gofmt_available = true,
+        .native_target = true,
+    }, .cgo));
+    try std.testing.expect(std.mem.indexOf(u8, output.written(), "PASS C compiler: zig cc\n") != null);
+
+    var missing: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer missing.deinit();
+    try std.testing.expect(!try render(&missing.writer, .{
+        .go_version = "go version go1.26.0 windows/amd64",
+        .cgo_enabled = "1",
+        .c_compiler = "zig cc",
+        .c_compiler_available = false,
+        .gofmt_available = true,
+        .native_target = true,
+    }, .cgo));
+    // The blamed program is the one that was probed, not the whole line.
+    try std.testing.expect(std.mem.indexOf(u8, missing.written(), "zig cc is configured by `go env CC` but zig is not executable") != null);
 }
 
 test "purego doctor does not require cgo or a C compiler" {
