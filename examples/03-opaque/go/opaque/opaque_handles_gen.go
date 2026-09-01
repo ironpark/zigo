@@ -40,6 +40,20 @@ func (c *ContextRef) zigoPointer() unsafe.Pointer {
 	return c.ptr
 }
 
+func (c *Context) zigoLocker() *sync.RWMutex {
+	if c == nil {
+		return nil
+	}
+	return &c.mu
+}
+
+func (c *ContextRef) zigoLocker() *sync.RWMutex {
+	if c == nil || c.parent == nil {
+		return nil
+	}
+	return c.parent.zigoLocker()
+}
+
 type contextCleanupState struct {
 	ptr unsafe.Pointer
 }

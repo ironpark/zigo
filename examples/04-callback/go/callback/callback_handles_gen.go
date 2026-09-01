@@ -41,6 +41,20 @@ func (c *CallbackContextRef) zigoPointer() unsafe.Pointer {
 	return c.ptr
 }
 
+func (c *CallbackContext) zigoLocker() *sync.RWMutex {
+	if c == nil {
+		return nil
+	}
+	return &c.mu
+}
+
+func (c *CallbackContextRef) zigoLocker() *sync.RWMutex {
+	if c == nil || c.parent == nil {
+		return nil
+	}
+	return c.parent.zigoLocker()
+}
+
 type callbackContextCleanupState struct {
 	ptr             unsafe.Pointer
 	callbackHandles []zigoCallbackHandle
@@ -111,6 +125,20 @@ func (f *FloatBufferRef) zigoPointer() unsafe.Pointer {
 	return f.ptr
 }
 
+func (f *FloatBuffer) zigoLocker() *sync.RWMutex {
+	if f == nil {
+		return nil
+	}
+	return &f.mu
+}
+
+func (f *FloatBufferRef) zigoLocker() *sync.RWMutex {
+	if f == nil || f.parent == nil {
+		return nil
+	}
+	return f.parent.zigoLocker()
+}
+
 type floatBufferCleanupState struct {
 	ptr unsafe.Pointer
 }
@@ -174,6 +202,20 @@ func (i *IntBufferRef) zigoPointer() unsafe.Pointer {
 		return nil
 	}
 	return i.ptr
+}
+
+func (i *IntBuffer) zigoLocker() *sync.RWMutex {
+	if i == nil {
+		return nil
+	}
+	return &i.mu
+}
+
+func (i *IntBufferRef) zigoLocker() *sync.RWMutex {
+	if i == nil || i.parent == nil {
+		return nil
+	}
+	return i.parent.zigoLocker()
 }
 
 type intBufferCleanupState struct {

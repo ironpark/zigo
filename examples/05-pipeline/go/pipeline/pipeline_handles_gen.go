@@ -41,6 +41,20 @@ func (p *PipelineRef) zigoPointer() unsafe.Pointer {
 	return p.ptr
 }
 
+func (p *Pipeline) zigoLocker() *sync.RWMutex {
+	if p == nil {
+		return nil
+	}
+	return &p.mu
+}
+
+func (p *PipelineRef) zigoLocker() *sync.RWMutex {
+	if p == nil || p.parent == nil {
+		return nil
+	}
+	return p.parent.zigoLocker()
+}
+
 type pipelineCleanupState struct {
 	ptr             unsafe.Pointer
 	callbackHandles []zigoCallbackHandle
@@ -111,6 +125,20 @@ func (i *IntBatchRef) zigoPointer() unsafe.Pointer {
 	return i.ptr
 }
 
+func (i *IntBatch) zigoLocker() *sync.RWMutex {
+	if i == nil {
+		return nil
+	}
+	return &i.mu
+}
+
+func (i *IntBatchRef) zigoLocker() *sync.RWMutex {
+	if i == nil || i.parent == nil {
+		return nil
+	}
+	return i.parent.zigoLocker()
+}
+
 type intBatchCleanupState struct {
 	ptr unsafe.Pointer
 }
@@ -174,6 +202,20 @@ func (f *FloatBatchRef) zigoPointer() unsafe.Pointer {
 		return nil
 	}
 	return f.ptr
+}
+
+func (f *FloatBatch) zigoLocker() *sync.RWMutex {
+	if f == nil {
+		return nil
+	}
+	return &f.mu
+}
+
+func (f *FloatBatchRef) zigoLocker() *sync.RWMutex {
+	if f == nil || f.parent == nil {
+		return nil
+	}
+	return f.parent.zigoLocker()
 }
 
 type floatBatchCleanupState struct {

@@ -41,6 +41,20 @@ func (t *TelemetryHubRef) zigoPointer() unsafe.Pointer {
 	return t.ptr
 }
 
+func (t *TelemetryHub) zigoLocker() *sync.RWMutex {
+	if t == nil {
+		return nil
+	}
+	return &t.mu
+}
+
+func (t *TelemetryHubRef) zigoLocker() *sync.RWMutex {
+	if t == nil || t.parent == nil {
+		return nil
+	}
+	return t.parent.zigoLocker()
+}
+
 type telemetryHubCleanupState struct {
 	ptr             unsafe.Pointer
 	callbackHandles []zigoCallbackHandle

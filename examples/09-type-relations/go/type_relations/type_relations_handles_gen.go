@@ -40,6 +40,20 @@ func (c *CounterRef) zigoPointer() unsafe.Pointer {
 	return c.ptr
 }
 
+func (c *Counter) zigoLocker() *sync.RWMutex {
+	if c == nil {
+		return nil
+	}
+	return &c.mu
+}
+
+func (c *CounterRef) zigoLocker() *sync.RWMutex {
+	if c == nil || c.parent == nil {
+		return nil
+	}
+	return c.parent.zigoLocker()
+}
+
 type counterCleanupState struct {
 	ptr unsafe.Pointer
 }
@@ -103,6 +117,20 @@ func (a *AccumulatorRef) zigoPointer() unsafe.Pointer {
 		return nil
 	}
 	return a.ptr
+}
+
+func (a *Accumulator) zigoLocker() *sync.RWMutex {
+	if a == nil {
+		return nil
+	}
+	return &a.mu
+}
+
+func (a *AccumulatorRef) zigoLocker() *sync.RWMutex {
+	if a == nil || a.parent == nil {
+		return nil
+	}
+	return a.parent.zigoLocker()
 }
 
 type accumulatorCleanupState struct {

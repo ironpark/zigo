@@ -138,7 +138,10 @@ retained callback이나 pointer는 소유 객체의 `Close`까지 유효해야 �
 
 생성된 handle은 모두 같은 수명주기를 씁니다. 종류에 따라 달라지지 않습니다.
 
-- 모든 메서드는 native 호출 동안 handle의 `sync.RWMutex` 읽기 잠금을 잡습니다. `Close`는
+- 모든 메서드와 tagged-union projection(`Tag`/`As*`/`Snapshot`/`Variant`), borrowed
+  `Ref`의 모든 호출은 native 호출 동안 소유 handle의 `sync.RWMutex` 읽기 잠금을 잡습니다.
+  projection과 `Ref`는 `zigoHandle` 인터페이스의 `zigoLocker()`로 소유자의 잠금에
+  닿고, `Ref`는 부모 사슬을 따라 위임합니다. `Close`는
   쓰기 잠금을 잡으므로, 다른 goroutine의 호출이 native 안에 있는 동안에는 해제가
   진행되지 않습니다. 이미 닫힌 handle을 쓰는 호출은 use-after-free 대신 `*HandleError`를
   돌려받습니다.
@@ -148,10 +151,10 @@ retained callback이나 pointer는 소유 객체의 `Close`까지 유효해야 �
   풀립니다. `Close`가 먼저 실행되면 `cleanup.Stop()`으로 이 안전망을 떼어냅니다.
 - 콜백을 받는 생성자를 가진 타입만 `callbackHandles`를 들고 다닙니다.
 
-안전망은 실행 시점을 보장하지 않으므로 명시적 `Close`를 대체하지 않습니다. 또한 borrowed
-`Ref`는 잠금을 잡지 않고 부모의 유효성만 검사하므로, 부모를 닫는 일과 `Ref` 사용을 동시에
-하지 않는 책임은 여전히 호출자에게 있습니다. tagged-union의 `Tag`/`As*`/`Snapshot`/
-`Variant` projection도 잠금을 잡지 않습니다.
+안전망은 실행 시점을 보장하지 않으므로 명시적 `Close`를 대체하지 않습니다. 잠금은
+receiver와 그 부모 사슬에만 걸립니다. handle을 인자로 받는 호출은 여러 잠금을 잡는 순서
+문제를 피하려고 인자를 잠그지 않으므로, 인자로 넘긴 handle을 같은 시점에 닫지 않는 책임은
+호출자에게 있습니다.
 
 ## Extern struct 값
 

@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-01T11:39:45Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Regenerated example 10 shows the locker on `Value`, `ValueRef`, `Signal`,
 > NEXT: none

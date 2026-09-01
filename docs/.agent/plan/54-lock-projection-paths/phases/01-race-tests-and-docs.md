@@ -2,7 +2,7 @@
 depends_on:
 - "54-lock-projection-paths#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: New tests pass under `go test -race`; all fourteen trees pass `go test`,
 > NEXT: none

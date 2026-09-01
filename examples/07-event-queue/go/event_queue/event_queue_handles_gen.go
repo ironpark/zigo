@@ -41,6 +41,20 @@ func (e *EventQueueRef) zigoPointer() unsafe.Pointer {
 	return e.ptr
 }
 
+func (e *EventQueue) zigoLocker() *sync.RWMutex {
+	if e == nil {
+		return nil
+	}
+	return &e.mu
+}
+
+func (e *EventQueueRef) zigoLocker() *sync.RWMutex {
+	if e == nil || e.parent == nil {
+		return nil
+	}
+	return e.parent.zigoLocker()
+}
+
 type eventQueueCleanupState struct {
 	ptr             unsafe.Pointer
 	callbackHandles []zigoCallbackHandle

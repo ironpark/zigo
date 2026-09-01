@@ -3,12 +3,14 @@ package telemetry_hub
 
 import (
 	"runtime/cgo"
+	"sync"
 	"sync/atomic"
 	"unsafe"
 )
 
 type zigoHandle interface {
 	zigoPointer() unsafe.Pointer
+	zigoLocker() *sync.RWMutex
 }
 
 func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, error) {
@@ -24,6 +26,20 @@ func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsaf
 		return nil, nil
 	}
 	return zigoCheckedPointer(operation, value)
+}
+
+// zigoReadLock holds the owner's read lock for the rest of the call, so a
+// concurrent Close cannot release the handle between the pointer check and
+// the native call. Use it as `defer zigoReadLock(receiver)()`. A borrowed
+// ref delegates to its parent's lock; a nil receiver or a ref without a
+// parent locks nothing.
+func zigoReadLock(value zigoHandle) func() {
+	mu := value.zigoLocker()
+	if mu == nil {
+		return func() {}
+	}
+	mu.RLock()
+	return mu.RUnlock
 }
 
 // TelemetryHubObserver is the Go callback signature accepted by the generated binding.

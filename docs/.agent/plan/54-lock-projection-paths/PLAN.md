@@ -7,7 +7,7 @@ registered_at: "2026-09-01T11:35:48Z"
 
 # Phases
 
-- [ ] [Phase 00: Locker accessor and locked projection prologues](phases/00-locker-accessor.md)
+- [x] [Phase 00: Locker accessor and locked projection prologues](phases/00-locker-accessor.md)
 - [ ] [Phase 01: Race coverage and documentation](phases/01-race-tests-and-docs.md)
 
 # Shared Verification

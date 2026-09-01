@@ -80,9 +80,10 @@ AST 보강에 사용하는 기본 `bindings.zig`를 읽지 못하면 reflection�
   지향 함수를 제공하는 편이 낫다.
 - retained Go 콜백과 포인터는 생성된 `Close` 경로에서 해제될 때까지 유효해야 한다.
   소유 객체는 사용 후 반드시 닫고, 콜백에서 발생한 panic의 전달 규칙도 테스트한다.
-- 생성된 메서드와 `Close`는 handle의 `sync.RWMutex`로 직렬화되지만, tagged-union의
-  projection(`Tag`/`As*`/`Snapshot`/`Variant`)과 borrowed `Ref`는 잠금을 잡지 않는다.
-  이들과 `Close`를 여러 goroutine에서 동시에 실행하지 않는다.
+- 생성된 메서드, tagged-union projection(`Tag`/`As*`/`Snapshot`/`Variant`), borrowed
+  `Ref`, 그리고 `Close`는 모두 소유 handle의 `sync.RWMutex`로 직렬화된다. 다만 잠기는
+  것은 receiver(와 `Ref`의 부모 사슬)뿐이다. handle을 **인자**로 받는 호출은 그 인자를
+  잠그지 않으므로, 인자로 넘긴 handle을 다른 goroutine에서 동시에 닫지 않는다.
 - `runtime.AddCleanup` 안전망은 실행 시점과 프로그램 종료 전 실행을 보장하지 않는다.
   callback이 소유 객체를 캡처하는 강한 참조 순환과 특정 thread에서만 가능한 해제를
   해결하지 않으므로 명시적 `Close`의 대체로 사용하지 않는다.
