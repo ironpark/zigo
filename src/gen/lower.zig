@@ -37,6 +37,22 @@ pub fn semanticDocumentForBackend(
             });
         }
         for (function.params, 0..) |parameter, parameter_index| {
+            if (isCStringSlice(parameter.type, parameter.semantic)) {
+                const child = try allocator.create(abi.AbiScalar);
+                child.* = try lowerValue(allocator, document, prefix, parameter.type.slice.element.*);
+                try params.append(allocator, .{
+                    .name = parameter.name,
+                    .role = .value,
+                    .scalar = .{ .pointer = .{
+                        .child = child,
+                        .is_const = true,
+                        .is_many = true,
+                        .is_c_string = true,
+                    } },
+                    .source_index = parameter_index,
+                });
+                continue;
+            }
             switch (parameter.type) {
                 .callback => |callback| {
                     if (backend == .cgo) continue;
@@ -98,7 +114,16 @@ pub fn semanticDocumentForBackend(
         }
 
         var function_errors: []const abi.ErrorCode = &.{};
-        const return_scalar = switch (function.@"return") {
+        const return_scalar = if (isCStringSlice(function.@"return", function.return_semantic)) blk: {
+            const child = try allocator.create(abi.AbiScalar);
+            child.* = try lowerValue(allocator, document, prefix, function.@"return".slice.element.*);
+            break :blk abi.AbiScalar{ .pointer = .{
+                .child = child,
+                .is_const = true,
+                .is_many = true,
+                .is_c_string = true,
+            } };
+        } else switch (function.@"return") {
             .slice => |slice| result: {
                 const element = try allocator.create(abi.AbiScalar);
                 element.* = try lowerValue(allocator, document, prefix, slice.element.*);
@@ -607,6 +632,11 @@ fn lowerValue(allocator: std.mem.Allocator, document: semantic.Semantic, prefix:
     };
 }
 
+fn isCStringSlice(node: semantic.TypeNode, hint: ?semantic.SemanticHint) bool {
+    return hint == .c_string and node == .slice and node.slice.@"const" and
+        node.slice.element.* == .int and !node.slice.element.int.signed and node.slice.element.int.bits == 8;
+}
+
 fn enumDeclaration(document: semantic.Semantic, name: []const u8) semantic.TypeDecl {
     for (document.types) |declaration| if (std.mem.eql(u8, declaration.name, name)) return declaration;
     unreachable;
@@ -710,6 +740,34 @@ test "semantic lowering assigns receiver slice return error and scalar ABI roles
     try std.testing.expect(sizes.params[1].scalar == .isize);
     try std.testing.expect(sizes.ret == .unsigned_int);
     try std.testing.expectEqual(@as(u16, 16), sizes.ret.unsigned_int);
+}
+
+test "sentinel byte strings lower to one const C pointer" {
+    var byte_node: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    const c_string: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte_node } };
+    const document: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "echo",
+            .params = &.{.{ .name = "text", .semantic = .c_string, .type = c_string }},
+            .@"return" = c_string,
+            .return_semantic = .c_string,
+            .symbol = "ignored",
+        }},
+        .package = "sentinel",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const function = (try semanticDocument(arena.allocator(), document, "sentinel", "zg", &.{})).functions[0];
+
+    try std.testing.expectEqual(@as(usize, 1), function.params.len);
+    try std.testing.expectEqual(abi.AbiParam.Role.value, function.params[0].role);
+    try std.testing.expect(function.params[0].scalar.pointer.is_c_string);
+    try std.testing.expect(function.params[0].scalar.pointer.is_many);
+    try std.testing.expect(function.params[0].scalar.pointer.is_const);
+    try std.testing.expect(function.ret.pointer.is_c_string);
+    try std.testing.expect(function.ret.pointer.is_many);
 }
 
 test "tagged union lowering records tag scalar slice and handle projections" {

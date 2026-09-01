@@ -130,6 +130,16 @@ pub const EventQueue = struct {
         return self.name_bytes;
     }
 
+    /// Sentinel byte pointers use the C string lowering and surface as Go
+    /// strings without a separate length parameter.
+    pub fn echoCString(text: [*:0]const u8) [*:0]const u8 {
+        return text;
+    }
+
+    pub fn sampleCString() [*:0]const u8 {
+        return "sentinel event queue";
+    }
+
     /// A numeric slice return intentionally points at native storage. The Go
     /// binding must copy it before returning so a caller cannot alias it.
     pub fn sampleValues(_: *EventQueue) []const f32 {

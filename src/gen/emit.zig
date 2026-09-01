@@ -180,7 +180,7 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         try writeCallbackBitBindings(allocator, writer, program, function);
         try writer.writeAll("    ");
 
-        if (function.origin.@"return" == .slice) {
+        if (function.origin.@"return" == .slice and !isCStringReturn(function.origin.*)) {
             try writer.writeAll("const result = ");
             try writeTargetCall(allocator, writer, program, function);
             try writer.writeAll(";\n    out_result_ptr.* = result.ptr;\n    out_result_len.* = result.len;\n}\n");
@@ -525,7 +525,10 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             },
             .bool => try writer.print("{s} != 0", .{parameter.name}),
             .@"enum" => try writer.print("@enumFromInt({s})", .{parameter.name}),
-            .slice => try writer.print("if ({s}_len == 0) &.{{}} else {s}_ptr[0..{s}_len]", .{ parameter.name, parameter.name, parameter.name }),
+            .slice => if (isCStringParameter(parameter))
+                try writer.writeAll(parameter.name)
+            else
+                try writer.print("if ({s}_len == 0) &.{{}} else {s}_ptr[0..{s}_len]", .{ parameter.name, parameter.name, parameter.name }),
             .value_struct => try writer.print("{s}.*", .{parameter.name}),
             else => try writer.writeAll(parameter.name),
         }
@@ -975,6 +978,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
     }
     if (options.system_ldflags.len != 0) try writer.print(" {s}", .{options.system_ldflags});
     if (options.framework_ldflags.len != 0) try writer.print("\n#cgo darwin LDFLAGS: {s}", .{options.framework_ldflags});
+    if (programHasCString(program)) try writer.writeAll("\n#include <stdlib.h>");
     try writer.print("\n#include \"zigo_{s}.h\"\n*/\nimport \"C\"\n", .{package});
     if (programHasCallbacks(program)) try writer.writeAll("import \"runtime/cgo\"\n");
     if (programNeedsUnsafe(program)) try writer.writeAll("import \"unsafe\"\n");
@@ -1003,14 +1007,22 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 try writer.print("{s}Handle uintptr", .{go_names[parameter_index]});
             } else {
                 try writer.print("{s} ", .{go_names[parameter_index]});
-                try writeRawGoType(writer, program, parameter.type);
+                try writeRawParameterType(writer, program, parameter);
             }
             raw_parameter_index += 1;
         }
         try writer.writeByte(')');
         try writeRawReturnType(writer, program, function);
         try writer.writeAll(" {\n");
-        if (function.origin.@"return" == .slice) {
+        for (function.origin.params, 0..) |parameter, parameter_index| {
+            if (!isCStringParameter(parameter)) continue;
+            try writer.print("\t{s}CString := C.CString({s})\n\tdefer C.free(unsafe.Pointer({s}CString))\n", .{
+                go_names[parameter_index],
+                go_names[parameter_index],
+                go_names[parameter_index],
+            });
+        }
+        if (function.origin.@"return" == .slice and !isCStringReturn(function.origin.*)) {
             try writer.writeAll("\tvar outResultPtr *C.");
             if (function.origin.@"return".slice.element.* == .value_struct) {
                 const record = structRecord(program, function.origin.@"return".slice.element.*.value_struct.ref);
@@ -1027,7 +1039,9 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 defer allocator.free(c_name);
                 try writeCgoStructConversion(allocator, writer, program, record, c_name, go_names[parameter_index]);
             }
-            if (parameter.type == .slice and parameter.type.slice.element.* == .value_struct) {
+            if (isCStringParameter(parameter)) {
+                continue;
+            } else if (parameter.type == .slice and parameter.type.slice.element.* == .value_struct) {
                 const slice_name = go_names[parameter_index];
                 const record = structRecord(program, parameter.type.slice.element.*.value_struct.ref);
                 const c_value_name = try std.fmt.allocPrint(allocator, "c{s}", .{slice_name});
@@ -1088,8 +1102,10 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         try writer.writeByte('\t');
         if (returns_error) {
             try writer.writeAll("code := int32(");
-        } else if (function.origin.@"return" == .slice or function.ret_struct != null) {
+        } else if ((function.origin.@"return" == .slice and !isCStringReturn(function.origin.*)) or function.ret_struct != null) {
             // The out parameters are converted after the C call.
+        } else if (isCStringReturn(function.origin.*)) {
+            try writer.writeAll("return C.GoString(");
         } else if (function.origin.@"return" != .void) {
             try writer.writeAll("return ");
             try writeRawConversionPrefix(writer, program, function.origin.@"return");
@@ -1106,6 +1122,8 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                         try writer.writeAll("C.");
                         try writeCgoType(writer, parameter.scalar);
                         try writer.print("({s}Handle)", .{go_names[callback_index]});
+                    } else if (isCStringParameter(function.origin.params[parameter.source_index])) {
+                        try writer.print("{s}CString", .{go_names[parameter.source_index]});
                     } else if (parameter.scalar == .pointer) {
                         try writer.writeAll(go_names[parameter.source_index]);
                     } else {
@@ -1124,10 +1142,11 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         }
         try writer.writeByte(')');
         if (returns_error) try writer.writeByte(')');
+        if (!returns_error and isCStringReturn(function.origin.*)) try writer.writeByte(')');
         if (!returns_error and function.origin.@"return" != .void and
             function.origin.@"return" != .slice and function.ret_struct == null) try writer.writeByte(')');
         try writer.writeByte('\n');
-        if (function.origin.@"return" == .slice) {
+        if (function.origin.@"return" == .slice and !isCStringReturn(function.origin.*)) {
             try writeCgoSliceReturn(allocator, writer, program, function.origin.@"return".slice.element.*, "outResultPtr", "outResultLen");
         }
         for (function.origin.params, 0..) |parameter, parameter_index| {
@@ -1461,6 +1480,14 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         "\tp := bindings().lastError()\n\tif p == nil {{ return \"\" }}\n" ++
         "\tlength := 0\n\tfor *(*byte)(unsafe.Add(p, length)) != 0 {{ length++ }}\n" ++
         "\treturn string(unsafe.Slice((*byte)(p), length))\n}}\n", .{ last_error_name, last_error_name });
+    if (programHasCString(program)) try writer.writeAll(
+        "\nfunc zigoCStringString(p unsafe.Pointer) string {\n" ++
+            "\tif p == nil { return \"\" }\n" ++
+            "\tlength := 0\n" ++
+            "\tfor *(*byte)(unsafe.Add(p, length)) != 0 { length++ }\n" ++
+            "\treturn string(unsafe.Slice((*byte)(p), length))\n" ++
+            "}\n",
+    );
     try renderRawStructTypes(allocator, writer, program);
     try renderRawSnapshotTypes(allocator, writer, program);
     for (program.functions) |function| {
@@ -1665,19 +1692,32 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
             try writer.print("{s}Callback, {s}Token uintptr", .{ go_names[parameter_index], go_names[parameter_index] });
         } else {
             try writer.print("{s} ", .{go_names[parameter_index]});
-            try writeRawGoType(writer, program, parameter.type);
+            try writeRawParameterType(writer, program, parameter);
         }
         parameter_count += 1;
     }
     try writer.writeByte(')');
     try writeRawReturnType(writer, program, function);
     try writer.writeAll(" {\n");
+    for (function.origin.params, 0..) |parameter, parameter_index| {
+        if (!isCStringParameter(parameter)) continue;
+        const name = go_names[parameter_index];
+        try writer.print("\t{s}Bytes := make([]byte, len({s})+1)\n\tcopy({s}Bytes, {s})\n\t{s}Ptr := unsafe.Pointer(&{s}Bytes[0])\n", .{
+            name,
+            name,
+            name,
+            name,
+            name,
+            name,
+        });
+    }
     for (function.origin.params, 0..) |parameter, parameter_index| if (parameter.type == .slice) {
+        if (isCStringParameter(parameter)) continue;
         const slice_name = go_names[parameter_index];
         try writer.print("\tvar {s}Ptr unsafe.Pointer\n\tif len({s}) != 0 {{ {s}Ptr = unsafe.Pointer(&{s}[0]) }}\n", .{ slice_name, slice_name, slice_name, slice_name });
         if (parameter.direction == .out) try writer.print("\tvar {s}Written uintptr\n", .{slice_name});
     };
-    if (function.origin.@"return" == .slice) try writer.writeAll("\tvar outResultPtr unsafe.Pointer\n\tvar outResultLen uintptr\n");
+    if (function.origin.@"return" == .slice and !isCStringReturn(function.origin.*)) try writer.writeAll("\tvar outResultPtr unsafe.Pointer\n\tvar outResultLen uintptr\n");
     if (function.ret_struct != null) {
         try writer.writeAll("\tvar outResult ");
         try writeRawGoType(writer, program, function.origin.@"return");
@@ -1698,7 +1738,7 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
     try writer.writeByte('\t');
     if (returns_error)
         try writer.writeAll("code := ")
-    else if (function.origin.@"return" != .void and function.origin.@"return" != .slice and function.ret_struct == null)
+    else if ((function.origin.@"return" != .void and function.origin.@"return" != .slice and function.ret_struct == null) or isCStringReturn(function.origin.*))
         try writer.writeAll("result := ");
     try writer.print("bindings().fn{s}(", .{go_name});
     for (function.params, 0..) |parameter, index| {
@@ -1709,7 +1749,9 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
             .struct_out => try writer.writeAll("unsafe.Pointer(&outResult)"),
             .value => {
                 const source_name = go_names[parameter.source_index];
-                if (parameter.scalar == .callback) {
+                if (isCStringParameter(function.origin.params[parameter.source_index])) {
+                    try writer.print("{s}Ptr", .{source_name});
+                } else if (parameter.scalar == .callback) {
                     try writer.print("{s}Callback", .{source_name});
                 } else if (callbackForUserdataIndex(function.origin.params, parameter.source_index)) |callback_index| {
                     try writer.print("{s}Token", .{go_names[callback_index]});
@@ -1732,7 +1774,12 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         }
     }
     try writer.writeAll(")\n");
-    if (function.origin.@"return" == .slice) {
+    for (function.origin.params, 0..) |parameter, parameter_index| {
+        if (isCStringParameter(parameter)) try writer.print("\truntime.KeepAlive({s}Bytes)\n", .{go_names[parameter_index]});
+    }
+    if (isCStringReturn(function.origin.*)) {
+        try writer.writeAll("\treturn zigoCStringString(result)\n");
+    } else if (function.origin.@"return" == .slice) {
         try writer.writeAll("\tif outResultLen == 0 { return nil }\n\tresult := make([]");
         try writeRawGoType(writer, program, function.origin.@"return".slice.element.*);
         try writer.writeAll(", int(outResultLen))\n\tcopy(result, unsafe.Slice((*");
@@ -2167,6 +2214,9 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         } else if (captures_return) {
             try writer.writeAll("result := ");
             try writeRawReferencePrefix(writer, options);
+        } else if (isCStringReturn(function.origin.*)) {
+            try writer.writeAll("return ");
+            try writeRawReferencePrefix(writer, options);
         } else if (isUtf8Slice(function.origin.@"return", function.origin.return_semantic)) {
             try writer.writeAll("return string(");
             try writeRawReferencePrefix(writer, options);
@@ -2218,6 +2268,8 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                 .opaque_ptr => try writer.print("{s}Ptr", .{go_names[parameter_index]}),
                 .slice => if (isValueStructSlice(parameter.type))
                     try writer.print("{s}Raw", .{go_names[parameter_index]})
+                else if (isCStringParameter(parameter))
+                    try writer.writeAll(go_names[parameter_index])
                 else if (isUtf8Slice(parameter.type, parameter.semantic))
                     try writer.print("[]byte({s})", .{go_names[parameter_index]})
                 else
@@ -3325,7 +3377,7 @@ fn writeHandleErrorReturn(writer: *std.Io.Writer, function: semantic.SemanticFn,
 /// The zero value of a public result type. A UTF-8 slice surfaces as a string,
 /// so its zero is the empty string rather than `nil`.
 fn writePublicZeroValue(writer: *std.Io.Writer, function: semantic.SemanticFn, payload: semantic.TypeNode) !void {
-    if (isUtf8Slice(payload, function.return_semantic)) return writer.writeAll("\"\"");
+    if (isStringSlice(payload, function.return_semantic)) return writer.writeAll("\"\"");
     try writeGoZeroValue(writer, payload);
 }
 
@@ -3334,7 +3386,7 @@ fn writePublicZeroValue(writer: *std.Io.Writer, function: semantic.SemanticFn, p
 fn writeCheckedFunctionReturnType(writer: *std.Io.Writer, function: semantic.SemanticFn) !void {
     if (function.@"return" == .void) return writer.writeAll(" error");
     try writer.writeAll(" (");
-    if (isUtf8Slice(function.@"return", function.return_semantic)) {
+    if (isStringSlice(function.@"return", function.return_semantic)) {
         try writer.writeAll("string");
     } else if (function.@"return" == .opaque_ptr and function.ownership == .borrowed) {
         try writer.print("*{s}Ref", .{function.@"return".opaque_ptr.ref});
@@ -3345,7 +3397,7 @@ fn writeCheckedFunctionReturnType(writer: *std.Io.Writer, function: semantic.Sem
 }
 
 fn writePublicFunctionReturnType(writer: *std.Io.Writer, function: semantic.SemanticFn) !void {
-    if (isUtf8Slice(function.@"return", function.return_semantic)) {
+    if (isStringSlice(function.@"return", function.return_semantic)) {
         try writer.writeAll(" string");
         return;
     }
@@ -3357,7 +3409,7 @@ fn writePublicFunctionReturnType(writer: *std.Io.Writer, function: semantic.Sema
         try writer.print(" (*{s}Ref, error)", .{function.@"return".error_union.payload.opaque_ptr.ref});
         return;
     }
-    try writePublicReturnType(writer, function.@"return");
+    try writePublicReturnType(writer, function.@"return", function.return_semantic);
 }
 
 fn writeBorrowedResult(allocator: std.mem.Allocator, writer: *std.Io.Writer, function: semantic.SemanticFn, expression: []const u8) !void {
@@ -3459,6 +3511,7 @@ fn writeRawTypeReferencePrefix(writer: *std.Io.Writer, options: Options) !void {
 }
 
 fn writeRawReturnType(writer: *std.Io.Writer, program: abi.Program, function: abi.AbiFn) !void {
+    if (isCStringReturn(function.origin.*)) return writer.writeAll(" string");
     switch (function.origin.@"return") {
         .void => {},
         .error_union => |value| {
@@ -3477,7 +3530,12 @@ fn writeRawReturnType(writer: *std.Io.Writer, program: abi.Program, function: ab
     }
 }
 
-fn writePublicReturnType(writer: *std.Io.Writer, node: semantic.TypeNode) !void {
+fn writeRawParameterType(writer: *std.Io.Writer, program: abi.Program, parameter: semantic.Parameter) !void {
+    if (isCStringParameter(parameter)) return writer.writeAll("string");
+    try writeRawGoType(writer, program, parameter.type);
+}
+
+fn writePublicReturnType(writer: *std.Io.Writer, node: semantic.TypeNode, hint: ?semantic.SemanticHint) !void {
     switch (node) {
         .void => {},
         .error_union => |value| {
@@ -3485,7 +3543,10 @@ fn writePublicReturnType(writer: *std.Io.Writer, node: semantic.TypeNode) !void 
                 try writer.writeAll(" error");
             } else {
                 try writer.writeAll(" (");
-                try writePublicGoType(writer, value.payload.*);
+                if (isStringSlice(value.payload.*, hint))
+                    try writer.writeAll("string")
+                else
+                    try writePublicGoType(writer, value.payload.*);
                 try writer.writeAll(", error)");
             }
         },
@@ -3559,7 +3620,7 @@ fn writePublicGoType(writer: *std.Io.Writer, node: semantic.TypeNode) !void {
 }
 
 fn writePublicParameterType(writer: *std.Io.Writer, parameter: semantic.Parameter) !void {
-    if (isUtf8Slice(parameter.type, parameter.semantic)) return writer.writeAll("string");
+    if (isStringSlice(parameter.type, parameter.semantic)) return writer.writeAll("string");
     try writePublicGoType(writer, parameter.type);
 }
 
@@ -3643,6 +3704,22 @@ fn writeRetainedCallbackHandles(allocator: std.mem.Allocator, writer: *std.Io.Wr
 
 fn isUtf8Slice(node: semantic.TypeNode, hint: ?semantic.SemanticHint) bool {
     return hint == .utf8_string and node == .slice and isByteType(node.slice.element.*);
+}
+
+fn isCStringSlice(node: semantic.TypeNode, hint: ?semantic.SemanticHint) bool {
+    return hint == .c_string and node == .slice and node.slice.@"const" and isByteType(node.slice.element.*);
+}
+
+fn isStringSlice(node: semantic.TypeNode, hint: ?semantic.SemanticHint) bool {
+    return isUtf8Slice(node, hint) or isCStringSlice(node, hint);
+}
+
+fn isCStringParameter(parameter: semantic.Parameter) bool {
+    return isCStringSlice(parameter.type, parameter.semantic);
+}
+
+fn isCStringReturn(function: semantic.SemanticFn) bool {
+    return isCStringSlice(function.@"return", function.return_semantic);
 }
 
 fn isByteType(node: semantic.TypeNode) bool {
@@ -3826,7 +3903,7 @@ fn writeZigType(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
         .value_struct => |record| try writer.print("target.{s}", .{record.name}),
         .pointer => |pointer| {
             if (pointer.is_optional and !pointer.is_many) try writer.writeByte('?');
-            try writer.writeAll(if (pointer.is_many) "[*c]" else "*");
+            try writer.writeAll(if (pointer.is_c_string) "[*:0]" else if (pointer.is_many) "[*c]" else "*");
             if (pointer.is_const) try writer.writeAll("const ");
             try writeZigType(writer, pointer.child.*);
         },
@@ -3855,6 +3932,7 @@ fn writeCType(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
         .snapshot => |name| try writer.writeAll(name),
         .value_struct => |record| try writer.writeAll(record.c_name),
         .pointer => |pointer| {
+            if (pointer.is_c_string) return writer.writeAll("const char *");
             if (pointer.is_const) try writer.writeAll("const ");
             try writeCType(writer, pointer.child.*);
             try writer.writeAll(" *");
@@ -3920,6 +3998,14 @@ fn programHasSlices(program: abi.Program) bool {
     for (program.functions) |function| {
         for (function.origin.params) |parameter| if (parameter.type == .slice) return true;
         if (function.origin.@"return" == .slice) return true;
+    }
+    return false;
+}
+
+fn programHasCString(program: abi.Program) bool {
+    for (program.functions) |function| {
+        for (function.origin.params) |parameter| if (isCStringParameter(parameter)) return true;
+        if (isCStringReturn(function.origin.*)) return true;
     }
     return false;
 }

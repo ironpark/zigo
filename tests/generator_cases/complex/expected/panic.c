@@ -252,3 +252,15 @@ ZIGO_EXPORT size_t zg_compression_bound(size_t source_len) {
     zg_panic_active = 0;
     return result;
 }
+
+const char * zg_echo_c_string_impl(const char * text);
+ZIGO_EXPORT const char * zg_echo_c_string(const char * text) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return 0;
+    }
+    const char * result = zg_echo_c_string_impl(text);
+    zg_panic_active = 0;
+    return result;
+}

@@ -112,6 +112,11 @@ IR은 세 가지 역할을 한다: **reflector ↔ generator 프로세스 경계
 `is_usize`는 별도 플래그로 둔다. 타깃별 비트폭은 layout 파일에 있으므로
 semantic.json은 "usize다"라는 사실만 기록한다 → 타깃 독립성 유지.
 
+`semantic`/`return_semantic`의 `c_string`은 reflector가 발견한
+`[*:0]const u8`를 표시한다. 타입 노드는 byte slice 모양을 유지하되 이 힌트가 있으면
+하강 시 길이 없는 `const char*`로 바뀐다. 따라서 이 힌트가 붙은 slice에는 별도의
+`*_len` ABI 인자가 없다.
+
 모든 `ref`는 같은 문서의 `types`에서 정확히 한 번 선언되어야 하며 노드 종류와 선언
 종류가 일치해야 한다. `enum`은 유효한 정수 `tag_type`을 가져야 한다. constructor의
 `type`은 opaque 또는 tagged-union handle 선언이어야 하고, `init`은 해당 namespace에서 caller-owned non-null

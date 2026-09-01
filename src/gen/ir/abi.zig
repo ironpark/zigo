@@ -23,6 +23,9 @@ pub const AbiScalar = union(enum) {
         child: *const AbiScalar,
         is_const: bool,
         is_many: bool = false,
+        /// A sentinel byte pointer. C spells it `const char *`, while the
+        /// generated Zig shim keeps the `[*:0]const u8` contract.
+        is_c_string: bool = false,
         /// A handle argument the caller may leave null. C spells every pointer
         /// the same way, so this only changes the Zig shim signature, where a
         /// non-optional pointer would make a null argument illegal.

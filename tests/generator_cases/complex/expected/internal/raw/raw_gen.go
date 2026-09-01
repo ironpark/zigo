@@ -4,6 +4,7 @@ package raw
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libpipeline_zigo.a -lz
+#include <stdlib.h>
 #include "zigo_pipeline.h"
 */
 import "C"
@@ -128,4 +129,10 @@ func LiveBytes() uint {
 // CompressionBound calls the generated C ABI wrapper for zg_compression_bound.
 func CompressionBound(sourceLen uint) uint {
 	return uint(C.zg_compression_bound(C.size_t(sourceLen)))
+}
+// EchoCString calls the generated C ABI wrapper for zg_echo_c_string.
+func EchoCString(text string) string {
+	textCString := C.CString(text)
+	defer C.free(unsafe.Pointer(textCString))
+	return C.GoString(C.zg_echo_c_string(textCString))
 }

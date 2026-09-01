@@ -192,3 +192,8 @@ func LiveBytes() uint {
 func CompressionBound(sourceLen uint) uint {
 	return raw.CompressionBound(sourceLen)
 }
+
+// EchoCString invokes the bound Zig echoCString operation.
+func EchoCString(text string) string {
+	return raw.EchoCString(text)
+}

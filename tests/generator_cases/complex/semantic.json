@@ -421,6 +421,40 @@
         "signed": false
       },
       "symbol": "zg_compressionBound"
+    },
+    {
+      "name": "echoCString",
+      "params": [
+        {
+          "direction": "in",
+          "name": "text",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "semantic": "c_string",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": {
+        "const": true,
+        "element": {
+          "bits": 8,
+          "is_usize": false,
+          "kind": "int",
+          "signed": false
+        },
+        "kind": "slice"
+      },
+      "return_semantic": "c_string",
+      "symbol": "zg_echo_c_string"
     }
   ],
   "ir_version": 1,

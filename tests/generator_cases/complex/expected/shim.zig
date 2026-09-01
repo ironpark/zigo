@@ -96,3 +96,6 @@ export fn zg_live_bytes_impl() usize {
 export fn zg_compression_bound_impl(source_len: usize) usize {
     return target.compressionBound(source_len);
 }
+export fn zg_echo_c_string_impl(text: [*:0]const u8) [*:0]const u8 {
+    return target.echoCString(text);
+}

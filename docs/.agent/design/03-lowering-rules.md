@@ -54,6 +54,12 @@ slice 반환은 cgo와 purego 모두 호출 시점에 native `ptr + len`에서 �
 **out 슬라이스에 `p_written`을 항상 추가**하는 이유: Zig의 `!usize` 반환이 흔히
 "쓴 개수"를 의미하나 이를 신뢰할 수 없으므로, 명시적 out 파라미터로 계약을 고정한다.
 
+`[*:0]const u8`는 `semantic=c_string`으로 기록되는 별도 길이 없는 문자열이다. cgo raw는
+호출 중 `C.CString`으로 임시 C 메모리를 만들고 즉시 해제하며, purego raw는 NUL을 붙인
+Go byte buffer를 호출 동안 고정한다. 반환값은 cgo의 `C.GoString`, purego의 NUL 탐색과
+복사로 Go `string`이 되므로 native 포인터를 노출하지 않는다. mutable sentinel pointer,
+0이 아닌 sentinel, 그 밖의 many-pointer는 reflection 단계에서 거부한다.
+
 **Go 포인터 규칙 검증:** `element`가 포인터·슬라이스·문자열을 포함하면 하강 실패
 (Go 포인터를 담은 Go 메모리 전달 금지). 진단 메시지에 대안(핸들 배열)을 제시한다.
 

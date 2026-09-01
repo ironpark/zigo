@@ -161,6 +161,17 @@ func (e *EventQueue) SampleValues() ([]float32, error) {
 	return raw.EventQueueSampleValues(ptr), nil
 }
 
+// EchoCString sentinel byte pointers use the C string lowering and surface as Go
+// strings without a separate length parameter.
+func EchoCString(text string) string {
+	return raw.EventQueueEchoCString(text)
+}
+
+// SampleCString invokes the bound Zig sampleCString operation.
+func SampleCString() string {
+	return raw.EventQueueSampleCString()
+}
+
 // AcceptStats accepts a batch of value snapshots so both backends exercise their
 // struct-slice input conversion path.
 // It returns *HandleError if a required handle is nil or closed.

@@ -69,6 +69,8 @@
 - tagged union은 `.repr = .tagged_union`으로 등록한 뒤 포인터로만 노출한다. 생성된
   `Tag`/`As*`가 active tag를 검사하며 union 레이아웃은 C로 전달하지 않는다. nested
   aggregate, optional, error union, callback 또는 pointer 원소 slice payload는 지원하지 않는다.
+- NUL 종료 문자열은 `[*:0]const u8`만 지원하며 Go에서는 `string`이 된다. mutable 또는
+  0이 아닌 sentinel pointer와 그 밖의 many-pointer는 reflection 단계에서 거부된다.
 - `.access = .snapshot`의 값 스냅샷은 모든 variant payload가 void, bool, 정수/부동소수
   스칼라, 또는 등록된 enum일 때만 쓸 수 있고 `tag`라는 이름의 variant를 허용하지 않는다.
   그 밖의 payload는 `ZIGO011`로 거부되므로 projection 표현을 쓴다. 스냅샷 union은 variant를

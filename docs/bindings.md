@@ -99,6 +99,22 @@ error입니다.
 반환된 사본만 수정할 수 있습니다. tagged-union의 숫자 slice payload도 같은 복사 계약을
 따릅니다.
 
+## Sentinel C 문자열
+
+Zig API가 NUL 종료 포인터를 쓴다면 `[*:0]const u8`를 그대로 노출할 수 있습니다. 이 타입은
+별도 `.semantic` 메타데이터 없이 `string`으로 반영됩니다.
+
+```zig
+pub fn echoCString(text: [*:0]const u8) [*:0]const u8 {
+    return text;
+}
+```
+
+cgo raw는 호출 중 `C.CString`을 만들고 호출이 끝나면 `free`하며, purego raw는 NUL을 붙인
+Go byte buffer를 호출 동안만 native에 전달합니다. 반환 문자열도 호출 시점에 Go `string`으로
+복사합니다. 따라서 Go 포인터가 native 메모리로 넘어가지 않습니다. mutable `[*:0]u8`,
+0이 아닌 sentinel, 기타 many-pointer는 지원하지 않습니다.
+
 ## 타입 등록 선택
 
 `repr`은 타입의 ABI 표현을, `access`는 tagged union 내용을 Go에서 읽는 방법을 선택합니다.

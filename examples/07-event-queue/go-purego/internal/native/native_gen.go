@@ -46,28 +46,30 @@ func (err *LibraryError) Is(target error) bool { return target == ErrLibraryLoad
 func (err *LibraryError) Unwrap() error { return err.Cause }
 
 type nativeBindings struct {
-	lastError                func() unsafe.Pointer
-	fnEventQueueCreate       func(unsafe.Pointer, uintptr, uintptr, uint32, uintptr, uintptr, *unsafe.Pointer) int32
-	fnEventQueueClone        func(unsafe.Pointer, uintptr, uintptr, *unsafe.Pointer) int32
-	fnEventQueueEnqueue      func(unsafe.Pointer, uint64, int32) int32
-	fnEventQueueMergeFrom    func(unsafe.Pointer, unsafe.Pointer, *uintptr) int32
-	fnEventQueueProcess      func(unsafe.Pointer, uintptr, *uintptr) int32
-	fnEventQueueName         func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
-	fnEventQueueSampleValues func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
-	fnEventQueueAcceptStats  func(unsafe.Pointer, unsafe.Pointer, uintptr) uintptr
-	fnEventQueueEstimate     func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr, *uintptr) int32
-	fnEventQueueSampleStats  func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
-	fnEventQueueLen          func(unsafe.Pointer) uintptr
-	fnEventQueueCapacity     func(unsafe.Pointer) uintptr
-	fnEventQueuePolicy       func(unsafe.Pointer) uint32
-	fnEventQueueDropped      func(unsafe.Pointer) uintptr
-	fnEventQueueProcessed    func(unsafe.Pointer) uintptr
-	fnEventQueueStats        func(unsafe.Pointer, unsafe.Pointer)
-	fnEventQueueLimits       func(unsafe.Pointer, unsafe.Pointer)
-	fnEventQueueApplyLimits  func(unsafe.Pointer, unsafe.Pointer) int32
-	fnEventQueueClear        func(unsafe.Pointer) uintptr
-	fnEventQueueDeinit       func(unsafe.Pointer)
-	fnLiveQueues             func() uintptr
+	lastError                 func() unsafe.Pointer
+	fnEventQueueCreate        func(unsafe.Pointer, uintptr, uintptr, uint32, uintptr, uintptr, *unsafe.Pointer) int32
+	fnEventQueueClone         func(unsafe.Pointer, uintptr, uintptr, *unsafe.Pointer) int32
+	fnEventQueueEnqueue       func(unsafe.Pointer, uint64, int32) int32
+	fnEventQueueMergeFrom     func(unsafe.Pointer, unsafe.Pointer, *uintptr) int32
+	fnEventQueueProcess       func(unsafe.Pointer, uintptr, *uintptr) int32
+	fnEventQueueName          func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
+	fnEventQueueSampleValues  func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
+	fnEventQueueEchoCString   func(unsafe.Pointer) unsafe.Pointer
+	fnEventQueueSampleCString func() unsafe.Pointer
+	fnEventQueueAcceptStats   func(unsafe.Pointer, unsafe.Pointer, uintptr) uintptr
+	fnEventQueueEstimate      func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr, *uintptr) int32
+	fnEventQueueSampleStats   func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
+	fnEventQueueLen           func(unsafe.Pointer) uintptr
+	fnEventQueueCapacity      func(unsafe.Pointer) uintptr
+	fnEventQueuePolicy        func(unsafe.Pointer) uint32
+	fnEventQueueDropped       func(unsafe.Pointer) uintptr
+	fnEventQueueProcessed     func(unsafe.Pointer) uintptr
+	fnEventQueueStats         func(unsafe.Pointer, unsafe.Pointer)
+	fnEventQueueLimits        func(unsafe.Pointer, unsafe.Pointer)
+	fnEventQueueApplyLimits   func(unsafe.Pointer, unsafe.Pointer) int32
+	fnEventQueueClear         func(unsafe.Pointer) uintptr
+	fnEventQueueDeinit        func(unsafe.Pointer)
+	fnLiveQueues              func() uintptr
 }
 
 type callbackEntry struct {
@@ -291,6 +293,14 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_event_queue_sample_values", err)
 	}
+	addrEventQueueEchoCString, err := resolveSymbol(handle, "zg_event_queue_echo_c_string")
+	if err != nil {
+		return fail("zg_event_queue_echo_c_string", err)
+	}
+	addrEventQueueSampleCString, err := resolveSymbol(handle, "zg_event_queue_sample_c_string")
+	if err != nil {
+		return fail("zg_event_queue_sample_c_string", err)
+	}
 	addrEventQueueAcceptStats, err := resolveSymbol(handle, "zg_event_queue_accept_stats")
 	if err != nil {
 		return fail("zg_event_queue_accept_stats", err)
@@ -356,6 +366,8 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnEventQueueProcess, addrEventQueueProcess)
 	purego.RegisterFunc(&next.fnEventQueueName, addrEventQueueName)
 	purego.RegisterFunc(&next.fnEventQueueSampleValues, addrEventQueueSampleValues)
+	purego.RegisterFunc(&next.fnEventQueueEchoCString, addrEventQueueEchoCString)
+	purego.RegisterFunc(&next.fnEventQueueSampleCString, addrEventQueueSampleCString)
 	purego.RegisterFunc(&next.fnEventQueueAcceptStats, addrEventQueueAcceptStats)
 	purego.RegisterFunc(&next.fnEventQueueEstimate, addrEventQueueEstimate)
 	purego.RegisterFunc(&next.fnEventQueueSampleStats, addrEventQueueSampleStats)
@@ -385,6 +397,17 @@ func bindings() *nativeBindings {
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string {
 	p := bindings().lastError()
+	if p == nil {
+		return ""
+	}
+	length := 0
+	for *(*byte)(unsafe.Add(p, length)) != 0 {
+		length++
+	}
+	return string(unsafe.Slice((*byte)(p), length))
+}
+
+func zigoCStringString(p unsafe.Pointer) string {
 	if p == nil {
 		return ""
 	}
@@ -474,6 +497,22 @@ func EventQueueSampleValues(self unsafe.Pointer) []float32 {
 	result := make([]float32, int(outResultLen))
 	copy(result, unsafe.Slice((*float32)(outResultPtr), int(outResultLen)))
 	return result
+}
+
+// EventQueueEchoCString calls the generated purego ABI wrapper for zg_event_queue_echo_c_string.
+func EventQueueEchoCString(text string) string {
+	textBytes := make([]byte, len(text)+1)
+	copy(textBytes, text)
+	textPtr := unsafe.Pointer(&textBytes[0])
+	result := bindings().fnEventQueueEchoCString(textPtr)
+	runtime.KeepAlive(textBytes)
+	return zigoCStringString(result)
+}
+
+// EventQueueSampleCString calls the generated purego ABI wrapper for zg_event_queue_sample_c_string.
+func EventQueueSampleCString() string {
+	result := bindings().fnEventQueueSampleCString()
+	return zigoCStringString(result)
 }
 
 // EventQueueAcceptStats calls the generated purego ABI wrapper for zg_event_queue_accept_stats.

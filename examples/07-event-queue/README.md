@@ -12,6 +12,7 @@ This application-shaped example exposes a bounded Zig event queue as a Go packag
   values while the C ABI takes pointers.
 - scalar-only `extern struct` slices via `AcceptStats`, `Estimate`, and `SampleStats`, including
   input, an out buffer and written count, and copied returns.
+- sentinel `[*:0]const u8` parameters and returns via `EchoCString` and `SampleCString`.
 
 Run the complete example from this directory:
 

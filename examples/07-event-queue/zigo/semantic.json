@@ -332,6 +332,61 @@
       "symbol": "zg_sampleValues"
     },
     {
+      "doc": "Sentinel byte pointers use the C string lowering and surface as Go\nstrings without a separate length parameter.",
+      "name": "echoCString",
+      "namespace": "EventQueue",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "text",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "semantic": "c_string",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": {
+        "const": true,
+        "element": {
+          "bits": 8,
+          "is_usize": false,
+          "kind": "int",
+          "signed": false
+        },
+        "kind": "slice"
+      },
+      "return_semantic": "c_string",
+      "symbol": "zg_echoCString"
+    },
+    {
+      "name": "sampleCString",
+      "namespace": "EventQueue",
+      "ownership": "borrowed",
+      "params": [],
+      "return": {
+        "const": true,
+        "element": {
+          "bits": 8,
+          "is_usize": false,
+          "kind": "int",
+          "signed": false
+        },
+        "kind": "slice"
+      },
+      "return_semantic": "c_string",
+      "symbol": "zg_sampleCString"
+    },
+    {
       "doc": "Accepts a batch of value snapshots so both backends exercise their\nstruct-slice input conversion path.",
       "name": "acceptStats",
       "ownership": "borrowed",

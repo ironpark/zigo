@@ -42,6 +42,7 @@ ZIGO_EXPORT int64_t zg_pipeline_total(void * self);
 ZIGO_EXPORT void zg_pipeline_deinit(void * self);
 ZIGO_EXPORT size_t zg_live_bytes(void);
 ZIGO_EXPORT size_t zg_compression_bound(size_t source_len);
+ZIGO_EXPORT const char * zg_echo_c_string(const char * text);
 ZIGO_EXPORT const char *zg_last_error_message(void);
 
 #endif // ZIGO_pipeline_H

@@ -170,7 +170,7 @@ fn functionIdentity(allocator: std.mem.Allocator, function: semantic.SemanticFn)
 fn signatureEqual(lhs: semantic.SemanticFn, rhs: semantic.SemanticFn) bool {
     if (lhs.params.len != rhs.params.len or !typeEqual(lhs.@"return", rhs.@"return")) return false;
     for (lhs.params, rhs.params) |a, b| {
-        if (a.direction != b.direction or !typeEqual(a.type, b.type)) return false;
+        if (a.direction != b.direction or a.semantic != b.semantic or !typeEqual(a.type, b.type)) return false;
     }
     return true;
 }

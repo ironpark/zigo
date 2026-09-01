@@ -134,10 +134,11 @@ fn appendFunction(
             metadata.params[output_index]
         else
             try std.fmt.allocPrint(allocator, "p{d}", .{output_index});
+        const parameter_type = try typeNode(allocator, param.type.?, types);
         var reflected: semantic.Parameter = .{
             .name = parameter_name,
             .name_source = if (has_sidecar) .sidecar else .fallback,
-            .type = try typeNode(allocator, param.type.?, types),
+            .type = parameter_type,
         };
         if (has_sidecar and @hasField(@TypeOf(metadata), "param_meta")) {
             const meta = metadata.param_meta;
@@ -148,19 +149,29 @@ fn appendFunction(
                 if (@hasField(@TypeOf(value), "semantic")) reflected.semantic = value.semantic;
             }
         }
+        // The sentinel is part of the Zig type, so it remains a C string even
+        // when a declaration sidecar omits a semantic hint.
+        if (isSentinelBytePointer(param.type.?)) reflected.semantic = .c_string;
         params[output_index] = reflected;
     }
+    const reflected_return = if (info.return_type) |return_type|
+        try typeNode(allocator, return_type, types)
+    else
+        semantic.TypeNode{ .void = {} };
     var reflected_function: semantic.SemanticFn = .{
         .has_comptime_params = if (info.is_generic) true else null,
         .name = function_name,
         .namespace = if (receiver == null) discovered_owner else null,
         .params = params,
         .receiver = receiver,
-        .@"return" = if (info.return_type) |return_type| try typeNode(allocator, return_type, types) else .{ .void = {} },
+        .@"return" = reflected_return,
         .symbol = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ prefix, function_name }),
     };
     if (@hasField(@TypeOf(metadata), "semantic")) reflected_function.return_semantic = metadata.semantic;
     if (@hasField(@TypeOf(metadata), "returns")) reflected_function.ownership = metadata.returns;
+    if (info.return_type) |return_type| {
+        if (isSentinelBytePointer(return_type)) reflected_function.return_semantic = .c_string;
+    }
     try functions.append(allocator, reflected_function);
 }
 
@@ -348,7 +359,20 @@ fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayLis
                     .ref = name,
                 } };
             },
-            else => @compileError("zigo supports slices and pointers to declared opaque types"),
+            .many => blk: {
+                const sentinel = info.sentinel() orelse @compileError(
+                    "zigo supports slices, pointers to declared opaque types, and `[*:0]const u8` sentinel strings; mutable or non-zero-sentinel many pointers are unsupported",
+                );
+                if (info.child != u8 or !info.is_const or sentinel != 0) @compileError(
+                    "zigo supports slices, pointers to declared opaque types, and `[*:0]const u8` sentinel strings; mutable or non-zero-sentinel many pointers are unsupported",
+                );
+                const element = try allocator.create(semantic.TypeNode);
+                element.* = try typeNode(allocator, info.child, types);
+                break :blk .{ .slice = .{ .@"const" = true, .element = element } };
+            },
+            else => @compileError(
+                "zigo supports slices, pointers to declared opaque types, and `[*:0]const u8` sentinel strings; mutable or non-zero-sentinel many pointers are unsupported",
+            ),
         },
         // Only a pointer to a declared opaque type has a null representation Go
         // can express: the handle argument is already a pointer, so a nil one
@@ -579,6 +603,15 @@ fn shortTypeName(full_name: []const u8) []const u8 {
     return if (std.mem.lastIndexOfScalar(u8, full_name, '.')) |index| full_name[index + 1 ..] else full_name;
 }
 
+fn isSentinelBytePointer(comptime T: type) bool {
+    const info = switch (@typeInfo(T)) {
+        .pointer => |value| value,
+        else => return false,
+    };
+    if (info.size != .many or info.child != u8 or !info.is_const) return false;
+    return (info.sentinel() orelse return false) == 0;
+}
+
 test "scalar reflection matches the semantic JSON golden" {
     const Api = struct {
         pub fn add(a: i32, b: i32) i32 {
@@ -678,6 +711,28 @@ test "reflection preserves invalid declarations for generator diagnostics" {
     try std.testing.expectEqual(true, document.functions[0].has_comptime_params.?);
     try std.testing.expect(!document.functions[1].params[0].type.callback.c_callconv);
     try std.testing.expectEqual(semantic.TypeKind.tagged_union, document.types[0].kind);
+}
+
+test "sentinel byte pointers reflect as c strings" {
+    const Fixture = struct {
+        pub fn echo(text: [*:0]const u8) [*:0]const u8 {
+            return text;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .functions = .{.{ .path = "root.echo", .params = .{"text"} }},
+    }, "sentinel", "zg");
+
+    try std.testing.expectEqual(@as(u16, 8), document.functions[0].params[0].type.slice.element.*.int.bits);
+    try std.testing.expectEqual(semantic.SemanticHint.c_string, document.functions[0].params[0].semantic.?);
+    try std.testing.expectEqual(semantic.SemanticHint.c_string, document.functions[0].return_semantic.?);
+    const json = try document.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(json);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"semantic\": \"c_string\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"return_semantic\": \"c_string\"") != null);
 }
 
 test "the snapshot access strategy is recorded only when it is opted into" {

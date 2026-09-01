@@ -4,6 +4,7 @@ package cgo
 /*
 #cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
 #cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libevent_queue_zigo.a
+#include <stdlib.h>
 #include "zigo_event_queue.h"
 */
 import "C"
@@ -93,6 +94,18 @@ func EventQueueSampleValues(self unsafe.Pointer) []float32 {
 	result := make([]float32, int(outResultLen))
 	copy(result, unsafe.Slice((*float32)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
 	return result
+}
+
+// EventQueueEchoCString calls the generated C ABI wrapper for zg_event_queue_echo_c_string.
+func EventQueueEchoCString(text string) string {
+	textCString := C.CString(text)
+	defer C.free(unsafe.Pointer(textCString))
+	return C.GoString(C.zg_event_queue_echo_c_string(textCString))
+}
+
+// EventQueueSampleCString calls the generated C ABI wrapper for zg_event_queue_sample_c_string.
+func EventQueueSampleCString() string {
+	return C.GoString(C.zg_event_queue_sample_c_string())
 }
 
 // EventQueueAcceptStats calls the generated C ABI wrapper for zg_event_queue_accept_stats.

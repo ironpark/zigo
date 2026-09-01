@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-01T22:23:38Z"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: `[*:0]const u8` parameters and returns generate and pass on cgo and purego;
 > NEXT: none
