@@ -201,7 +201,10 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/gen/doctor.zig"),
         .target = target,
         .optimize = optimize,
-        .imports = &.{.{ .name = "build_options", .module = build_options_module }},
+        .imports = &.{
+            .{ .name = "build_options", .module = build_options_module },
+            .{ .name = "dynamic_library", .module = generator_modules.dynamic_library },
+        },
     });
     const tests = b.addTest(.{ .root_module = b.createModule(.{
         .root_source_file = b.path("tests/test.zig"),
@@ -252,6 +255,8 @@ pub fn build(b: *std.Build) void {
     const run_report_tests = b.addRunArtifact(report_tests);
     const doctor_tests = b.addTest(.{ .root_module = doctor_module, .filters = test_filters });
     const run_doctor_tests = b.addRunArtifact(doctor_tests);
+    const dynamic_library_tests = b.addTest(.{ .root_module = generator_modules.dynamic_library, .filters = test_filters });
+    const run_dynamic_library_tests = b.addRunArtifact(dynamic_library_tests);
     const test_step = b.step("test", "Run unit and snapshot harness tests");
     const godoc_audit = b.addSystemCommand(&.{ "go", "run", "./tests/godoc_audit/main.go" });
     godoc_audit.addArgs(&.{
@@ -290,6 +295,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_lower_tests.step);
     test_step.dependOn(&run_report_tests.step);
     test_step.dependOn(&run_doctor_tests.step);
+    test_step.dependOn(&run_dynamic_library_tests.step);
     addProcessContractTests(b, test_step, generator);
 
     const generator_case_runner = b.addExecutable(.{
@@ -320,6 +326,7 @@ pub fn build(b: *std.Build) void {
     check_step.dependOn(&lower_tests.step);
     check_step.dependOn(&report_tests.step);
     check_step.dependOn(&doctor_tests.step);
+    check_step.dependOn(&dynamic_library_tests.step);
     check_step.dependOn(&generator_case_runner.step);
 
     const snapshot_exe = b.addExecutable(.{
@@ -341,8 +348,12 @@ pub fn build(b: *std.Build) void {
             .root_source_file = b.path("tests/shared_library_smoke.zig"),
             .target = target,
             .optimize = optimize,
+            .imports = &.{.{ .name = "dynamic_library", .module = generator_modules.dynamic_library }},
         }),
     });
+    // The smoke loader only runs on POSIX, but it shares the loader helper with
+    // the doctor probe, so it must compile wherever `check` does.
+    check_step.dependOn(&shared_smoke.step);
     const run_shared_smoke = b.addRunArtifact(shared_smoke);
     run_shared_smoke.has_side_effects = true;
     if (b.args) |args| run_shared_smoke.addArgs(args);
@@ -938,6 +949,7 @@ fn addGenerator(
 
 const GeneratorModules = struct {
     build_options: *std.Build.Module,
+    dynamic_library: *std.Build.Module,
     semantic: *std.Build.Module,
     abi: *std.Build.Module,
     diagnostic: *std.Build.Module,
@@ -955,6 +967,11 @@ fn createGeneratorModules(
 ) GeneratorModules {
     const build_options_module = b.createModule(.{
         .root_source_file = source_root.path(b, "build_options.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
+    const dynamic_library_module = b.createModule(.{
+        .root_source_file = source_root.path(b, "dynamic_library.zig"),
         .target = target,
         .optimize = optimize,
     });
@@ -1003,6 +1020,7 @@ fn createGeneratorModules(
     });
     return .{
         .build_options = build_options_module,
+        .dynamic_library = dynamic_library_module,
         .semantic = semantic_module,
         .abi = abi_module,
         .diagnostic = diagnostic_module,
@@ -1028,6 +1046,7 @@ fn addGeneratorWithModules(
             .optimize = optimize,
             .imports = &.{
                 .{ .name = "build_options", .module = modules.build_options },
+                .{ .name = "dynamic_library", .module = modules.dynamic_library },
                 .{ .name = "semantic", .module = modules.semantic },
                 .{ .name = "abi", .module = modules.abi },
                 .{ .name = "diagnostic", .module = modules.diagnostic },

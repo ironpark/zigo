@@ -25,6 +25,13 @@ jobs:
         run: zig build check --summary all
       - name: Zig unit and snapshot tests
         run: zig build test --summary all
+      # Catches a Windows-only compile break here rather than on the Windows
+      # runner, where it costs a whole job. Both arches, since purego supports
+      # windows/arm64 too.
+      - name: Compile all Zig artifacts for Windows
+        run: |
+          zig build check -Dtarget=x86_64-windows-gnu --summary all
+          zig build check -Dtarget=aarch64-windows-gnu --summary all
       - name: Check, generate, and test all examples
         shell: bash
         run: |
@@ -182,8 +189,16 @@ jobs:
         with:
           go-version: "1.26.x"
           cache: false
-      - name: Zig unit and snapshot tests
-        run: zig build test --summary all
+      # `check` compiles every artifact without running any of them. That is
+      # exactly the regression that broke this job's first run -- doctor.zig
+      # referencing std.DynLib, which has no Windows implementation -- and it
+      # skips what `test` would drag in here: the cgo generation fixture and
+      # the Go-based godoc audit, neither of which this plan supports on
+      # Windows. Test *behaviour* is platform-independent and stays on Ubuntu;
+      # what is Windows-specific is that the tooling compiles, and that the
+      # loader really loads a DLL, which the Go suites below prove.
+      - name: Compile all Zig artifacts
+        run: zig build check --summary all
       - name: Generate, build, and validate the purego bindings
         shell: bash
         # go-verify covers staleness, the toolchain doctor, and the native

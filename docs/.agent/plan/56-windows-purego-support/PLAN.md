@@ -1,7 +1,6 @@
 ---
-completed_at: "2026-09-01T15:02:36Z"
 description: "Windows support via the purego backend: build-tagged LoadLibrary loader, .dll naming, platform gate + doctor, Windows CI, and a zig-cc cross-compile story"
-plan_status: done
+plan_status: in-progress
 registered_at: "2026-09-01T14:47:54Z"
 ---
 > NEXT: Emit the build-tagged Windows loader and open the platform gate. ([Phase 0](phases/00-windows-loader.md))
@@ -11,6 +10,7 @@ registered_at: "2026-09-01T14:47:54Z"
 - [x] [Phase 00: Windows loader emission and platform gate](phases/00-windows-loader.md)
 - [x] [Phase 01: Windows CI job with native and cross-built DLLs](phases/01-windows-ci.md)
 - [x] [Phase 02: Cross-compile documentation and platform docs sweep](phases/02-docs-sweep.md)
+- [ ] [Phase 03: Windows-compilable Zig tooling](phases/03-windows-compilable-zig-tooling.md)
 
 # Shared Verification
 

@@ -1,5 +1,6 @@
 const std = @import("std");
 const build_options = @import("build_options");
+const dynamic_library = @import("dynamic_library");
 
 pub const Options = struct {
     pub const Backend = enum { cgo, purego };
@@ -123,7 +124,7 @@ fn probePurego(options: Options, go_mod_bytes: ?[]const u8, message_buffer: []u8
 
 /// Loads the installed shared library exactly like the generated Go loader does.
 fn probeLibrary(path: []const u8, message_buffer: []u8) Purego.Library {
-    var library = std.DynLib.open(path) catch |err| return .{
+    var library = dynamic_library.Library.open(path) catch |err| return .{
         .path = path,
         .state = if (err == error.FileNotFound) .missing else .unloadable,
         .message = std.fmt.bufPrint(message_buffer, "{t}", .{err}) catch @errorName(err),

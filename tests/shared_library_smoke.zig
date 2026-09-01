@@ -1,4 +1,5 @@
 const std = @import("std");
+const dynamic_library = @import("dynamic_library");
 
 /// Loads an installed zigo shared library with the platform loader and checks
 /// that every requested symbol resolves. Usage:
@@ -14,7 +15,7 @@ pub fn main(init: std.process.Init) !void {
     var stdout = std.Io.File.Writer.init(.stdout(), init.io, &stdout_buffer);
     const writer = &stdout.interface;
 
-    var library = std.DynLib.open(args[1]) catch |err| {
+    var library = dynamic_library.Library.open(args[1]) catch |err| {
         try writer.print("FAIL load: {s}: {t}\n", .{ args[1], err });
         try writer.flush();
         return err;
@@ -26,7 +27,7 @@ pub fn main(init: std.process.Init) !void {
     for (args[2..]) |symbol| {
         const name = try allocator.dupeZ(u8, symbol);
         defer allocator.free(name);
-        if (library.lookup(*const anyopaque, name) == null) {
+        if (library.lookup(name) == null) {
             missing = true;
             try writer.print("FAIL symbol: {s} is not exported\n", .{symbol});
         } else {
@@ -35,7 +36,7 @@ pub fn main(init: std.process.Init) !void {
     }
     // A resolvable name that was never generated would mean the loader is
     // matching symbols it should not, so the negative case is checked too.
-    if (library.lookup(*const anyopaque, "zg_symbol_that_does_not_exist") != null) {
+    if (library.lookup("zg_symbol_that_does_not_exist") != null) {
         missing = true;
         try writer.writeAll("FAIL symbol: an undefined name resolved\n");
     }
