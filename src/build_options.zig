@@ -7,7 +7,7 @@ pub const purego_version = "v0.10.2";
 /// Native platforms the purego backend supports. `build.zig` applies it to the
 /// requested target; `doctor` applies it to the host it runs on.
 pub fn puregoTargetSupported(target: std.Target) bool {
-    return (target.os.tag == .macos or target.os.tag == .linux) and
+    return (target.os.tag == .macos or target.os.tag == .linux or target.os.tag == .windows) and
         (target.cpu.arch == .x86_64 or target.cpu.arch == .aarch64);
 }
 
@@ -118,14 +118,15 @@ test "raw package paths reject unsafe forms and components" {
 
 test "purego target support covers the documented desktop matrix" {
     var target = @import("builtin").target;
-    for ([_]std.Target.Os.Tag{ .macos, .linux }) |os| {
+    for ([_]std.Target.Os.Tag{ .macos, .linux, .windows }) |os| {
         for ([_]std.Target.Cpu.Arch{ .aarch64, .x86_64 }) |arch| {
             target.os.tag = os;
             target.cpu.arch = arch;
             try std.testing.expect(puregoTargetSupported(target));
         }
     }
-    target.os.tag = .windows;
+    target.os.tag = .freebsd;
+    target.cpu.arch = .x86_64;
     try std.testing.expect(!puregoTargetSupported(target));
     target.os.tag = .linux;
     target.cpu.arch = .riscv64;

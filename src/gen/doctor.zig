@@ -223,7 +223,7 @@ fn renderPurego(writer: *std.Io.Writer, purego: Purego, healthy: *bool) !void {
         try writer.print("PASS purego platform: {s} is supported\n", .{purego.platform});
     } else {
         healthy.* = false;
-        try writer.print("FAIL purego platform: {s} is unsupported; purego bindings require macOS or Linux on amd64/arm64\n", .{purego.platform});
+        try writer.print("FAIL purego platform: {s} is unsupported; purego bindings require macOS, Linux, or Windows on amd64/arm64\n", .{purego.platform});
     }
 
     const module = build_options.purego_module;
@@ -359,13 +359,13 @@ test "purego doctor reports artifact, module, and platform problems" {
     defer output.deinit();
     var probe = environment;
     probe.purego = .{
-        .platform = "windows/x86_64",
+        .platform = "freebsd/x86_64",
         .platform_supported = false,
         .library = .{ .path = "zig-out/lib/libscalar_zigo.so", .state = .missing },
         .module = .{ .path = "go/go.mod", .state = .missing },
     };
     try std.testing.expect(!try render(&output.writer, probe, .purego));
-    try std.testing.expect(std.mem.indexOf(u8, output.written(), "FAIL purego platform: windows/x86_64 is unsupported") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output.written(), "FAIL purego platform: freebsd/x86_64 is unsupported") != null);
     try std.testing.expect(std.mem.indexOf(u8, output.written(), "run `go get github.com/ebitengine/purego@v0.10.2`") != null);
     try std.testing.expect(std.mem.indexOf(u8, output.written(), "libscalar_zigo.so is missing; run `zig build go-lib`") != null);
 

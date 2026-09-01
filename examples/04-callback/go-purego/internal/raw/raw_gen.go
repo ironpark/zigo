@@ -15,7 +15,7 @@ import (
 
 // DefaultLibraryName is the installed shared-library basename for the running platform.
 // It is empty on platforms this backend does not support.
-var DefaultLibraryName = map[string]string{"darwin": "libcallback_zigo.dylib", "linux": "libcallback_zigo.so"}[runtime.GOOS]
+var DefaultLibraryName = map[string]string{"darwin": "libcallback_zigo.dylib", "linux": "libcallback_zigo.so", "windows": "callback_zigo.dll"}[runtime.GOOS]
 
 // ErrLibraryLoad identifies a shared-library load or symbol resolution failure.
 var ErrLibraryLoad = errors.New("zigo: shared library unavailable")
@@ -239,71 +239,71 @@ func loadLibraryLocked(explicit string) error {
 
 // loadCandidate publishes the call surface only after every symbol resolves.
 func loadCandidate(path string) error {
-	handle, err := purego.Dlopen(path, purego.RTLD_NOW|purego.RTLD_LOCAL)
+	handle, err := openLibrary(path)
 	if err != nil {
 		return &LibraryError{Path: path, Operation: "open", Cause: err}
 	}
 	fail := func(symbol string, cause error) error {
-		_ = purego.Dlclose(handle)
+		closeLibrary(handle)
 		return &LibraryError{Path: path, Symbol: symbol, Operation: "resolve", Cause: cause}
 	}
-	addrLastError, err := purego.Dlsym(handle, "zg_last_error_message")
+	addrLastError, err := resolveSymbol(handle, "zg_last_error_message")
 	if err != nil {
 		return fail("zg_last_error_message", err)
 	}
-	addrFloatBufferCreate, err := purego.Dlsym(handle, "zg_float_buffer_create")
+	addrFloatBufferCreate, err := resolveSymbol(handle, "zg_float_buffer_create")
 	if err != nil {
 		return fail("zg_float_buffer_create", err)
 	}
-	addrFloatBufferPush, err := purego.Dlsym(handle, "zg_float_buffer_push")
+	addrFloatBufferPush, err := resolveSymbol(handle, "zg_float_buffer_push")
 	if err != nil {
 		return fail("zg_float_buffer_push", err)
 	}
-	addrFloatBufferLen, err := purego.Dlsym(handle, "zg_float_buffer_len")
+	addrFloatBufferLen, err := resolveSymbol(handle, "zg_float_buffer_len")
 	if err != nil {
 		return fail("zg_float_buffer_len", err)
 	}
-	addrFloatBufferDeinit, err := purego.Dlsym(handle, "zg_float_buffer_deinit")
+	addrFloatBufferDeinit, err := resolveSymbol(handle, "zg_float_buffer_deinit")
 	if err != nil {
 		return fail("zg_float_buffer_deinit", err)
 	}
-	addrIntBufferCreate, err := purego.Dlsym(handle, "zg_int_buffer_create")
+	addrIntBufferCreate, err := resolveSymbol(handle, "zg_int_buffer_create")
 	if err != nil {
 		return fail("zg_int_buffer_create", err)
 	}
-	addrIntBufferPush, err := purego.Dlsym(handle, "zg_int_buffer_push")
+	addrIntBufferPush, err := resolveSymbol(handle, "zg_int_buffer_push")
 	if err != nil {
 		return fail("zg_int_buffer_push", err)
 	}
-	addrIntBufferLen, err := purego.Dlsym(handle, "zg_int_buffer_len")
+	addrIntBufferLen, err := resolveSymbol(handle, "zg_int_buffer_len")
 	if err != nil {
 		return fail("zg_int_buffer_len", err)
 	}
-	addrIntBufferDeinit, err := purego.Dlsym(handle, "zg_int_buffer_deinit")
+	addrIntBufferDeinit, err := resolveSymbol(handle, "zg_int_buffer_deinit")
 	if err != nil {
 		return fail("zg_int_buffer_deinit", err)
 	}
-	addrCallbackContextCreate, err := purego.Dlsym(handle, "zg_callback_context_create_purego_v1")
+	addrCallbackContextCreate, err := resolveSymbol(handle, "zg_callback_context_create_purego_v1")
 	if err != nil {
 		return fail("zg_callback_context_create_purego_v1", err)
 	}
-	addrCallbackContextRun, err := purego.Dlsym(handle, "zg_callback_context_run")
+	addrCallbackContextRun, err := resolveSymbol(handle, "zg_callback_context_run")
 	if err != nil {
 		return fail("zg_callback_context_run", err)
 	}
-	addrCallbackContextDeinit, err := purego.Dlsym(handle, "zg_callback_context_deinit")
+	addrCallbackContextDeinit, err := resolveSymbol(handle, "zg_callback_context_deinit")
 	if err != nil {
 		return fail("zg_callback_context_deinit", err)
 	}
-	addrPanicNow, err := purego.Dlsym(handle, "zg_panic_now")
+	addrPanicNow, err := resolveSymbol(handle, "zg_panic_now")
 	if err != nil {
 		return fail("zg_panic_now", err)
 	}
-	addrCompressionBound, err := purego.Dlsym(handle, "zg_compression_bound")
+	addrCompressionBound, err := resolveSymbol(handle, "zg_compression_bound")
 	if err != nil {
 		return fail("zg_compression_bound", err)
 	}
-	addrApply, err := purego.Dlsym(handle, "zg_apply_purego_v1")
+	addrApply, err := resolveSymbol(handle, "zg_apply_purego_v1")
 	if err != nil {
 		return fail("zg_apply_purego_v1", err)
 	}

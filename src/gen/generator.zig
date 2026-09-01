@@ -264,6 +264,9 @@ test "raw Go bindings can be colocated without public name collisions" {
     try std.testing.expect(std.mem.indexOf(u8, public, "import ") == null);
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "return zigoRawAdd(p0, p1)"));
     try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "scalar/scalar_runtime_gen.go", .{}));
+    // The build-tagged loader halves belong to the purego backend alone.
+    try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "scalar/scalar_cgo_load_posix_gen.go", .{}));
+    try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "scalar/scalar_cgo_load_windows_gen.go", .{}));
 }
 
 test "cgo flag overrides and observed link flags are emitted" {
@@ -858,9 +861,27 @@ test "purego generation emits an atomic retryable loader and explicit callback A
     try std.testing.expect(std.mem.indexOf(u8, raw, "type LibraryError struct") != null);
     // The committed loader must be identical on every supported host, so the
     // platform basename is selected at run time instead of at generation time.
-    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "map[string]string{\"darwin\": \"libscalar_zigo.dylib\", \"linux\": \"libscalar_zigo.so\"}[runtime.GOOS]"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "map[string]string{\"darwin\": \"libscalar_zigo.dylib\", \"linux\": \"libscalar_zigo.so\", \"windows\": \"scalar_zigo.dll\"}[runtime.GOOS]"));
     try std.testing.expect(std.mem.indexOf(u8, raw, "loadedBindings.Store(&next)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, raw, "purego.Dlclose(handle)") != null);
+    // The OS-specific primitives live in the build-tagged companions, so the
+    // shared file names them but never names a platform loader.
+    try std.testing.expect(std.mem.indexOf(u8, raw, "closeLibrary(handle)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "purego.Dlopen") == null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "purego.Dlsym") == null);
+    const posix_loader = try temporary.dir.readFileAlloc(std.testing.io, "internal/raw/raw_load_posix_gen.go", std.testing.allocator, .limited(16 * 1024));
+    defer std.testing.allocator.free(posix_loader);
+    try std.testing.expect(std.mem.containsAtLeast(u8, posix_loader, 1, "//go:build !windows"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, posix_loader, 1, "purego.Dlopen(path, purego.RTLD_NOW|purego.RTLD_LOCAL)"));
+    const windows_loader = try temporary.dir.readFileAlloc(std.testing.io, "internal/raw/raw_load_windows_gen.go", std.testing.allocator, .limited(16 * 1024));
+    defer std.testing.allocator.free(windows_loader);
+    try std.testing.expect(std.mem.containsAtLeast(u8, windows_loader, 1, "//go:build windows"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, windows_loader, 1, "syscall.LoadLibrary(path)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, windows_loader, 1, "syscall.GetProcAddress(syscall.Handle(handle), symbol)"));
+    // Both halves must publish exactly the same internal contract.
+    for ([_][]const u8{ "func openLibrary(path string) (uintptr, error)", "func closeLibrary(handle uintptr)", "func resolveSymbol(handle uintptr, symbol string) (uintptr, error)" }) |declaration| {
+        try std.testing.expect(std.mem.indexOf(u8, posix_loader, declaration) != null);
+        try std.testing.expect(std.mem.indexOf(u8, windows_loader, declaration) != null);
+    }
     try std.testing.expect(std.mem.indexOf(u8, raw, "different library is already loaded") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "fnAdd func(int32, int32) int32") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "func Accept(value unsafe.Pointer)") != null);

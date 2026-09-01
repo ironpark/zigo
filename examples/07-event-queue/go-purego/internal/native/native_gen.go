@@ -15,7 +15,7 @@ import (
 
 // DefaultLibraryName is the installed shared-library basename for the running platform.
 // It is empty on platforms this backend does not support.
-var DefaultLibraryName = map[string]string{"darwin": "libevent_queue_zigo.dylib", "linux": "libevent_queue_zigo.so"}[runtime.GOOS]
+var DefaultLibraryName = map[string]string{"darwin": "libevent_queue_zigo.dylib", "linux": "libevent_queue_zigo.so", "windows": "event_queue_zigo.dll"}[runtime.GOOS]
 
 // ErrLibraryLoad identifies a shared-library load or symbol resolution failure.
 var ErrLibraryLoad = errors.New("zigo: shared library unavailable")
@@ -240,75 +240,75 @@ func loadLibraryLocked(explicit string) error {
 
 // loadCandidate publishes the call surface only after every symbol resolves.
 func loadCandidate(path string) error {
-	handle, err := purego.Dlopen(path, purego.RTLD_NOW|purego.RTLD_LOCAL)
+	handle, err := openLibrary(path)
 	if err != nil {
 		return &LibraryError{Path: path, Operation: "open", Cause: err}
 	}
 	fail := func(symbol string, cause error) error {
-		_ = purego.Dlclose(handle)
+		closeLibrary(handle)
 		return &LibraryError{Path: path, Symbol: symbol, Operation: "resolve", Cause: cause}
 	}
-	addrLastError, err := purego.Dlsym(handle, "zg_last_error_message")
+	addrLastError, err := resolveSymbol(handle, "zg_last_error_message")
 	if err != nil {
 		return fail("zg_last_error_message", err)
 	}
-	addrEventQueueCreate, err := purego.Dlsym(handle, "zg_event_queue_create_purego_v1")
+	addrEventQueueCreate, err := resolveSymbol(handle, "zg_event_queue_create_purego_v1")
 	if err != nil {
 		return fail("zg_event_queue_create_purego_v1", err)
 	}
-	addrEventQueueEnqueue, err := purego.Dlsym(handle, "zg_event_queue_enqueue")
+	addrEventQueueEnqueue, err := resolveSymbol(handle, "zg_event_queue_enqueue")
 	if err != nil {
 		return fail("zg_event_queue_enqueue", err)
 	}
-	addrEventQueueProcess, err := purego.Dlsym(handle, "zg_event_queue_process")
+	addrEventQueueProcess, err := resolveSymbol(handle, "zg_event_queue_process")
 	if err != nil {
 		return fail("zg_event_queue_process", err)
 	}
-	addrEventQueueName, err := purego.Dlsym(handle, "zg_event_queue_name")
+	addrEventQueueName, err := resolveSymbol(handle, "zg_event_queue_name")
 	if err != nil {
 		return fail("zg_event_queue_name", err)
 	}
-	addrEventQueueLen, err := purego.Dlsym(handle, "zg_event_queue_len")
+	addrEventQueueLen, err := resolveSymbol(handle, "zg_event_queue_len")
 	if err != nil {
 		return fail("zg_event_queue_len", err)
 	}
-	addrEventQueueCapacity, err := purego.Dlsym(handle, "zg_event_queue_capacity")
+	addrEventQueueCapacity, err := resolveSymbol(handle, "zg_event_queue_capacity")
 	if err != nil {
 		return fail("zg_event_queue_capacity", err)
 	}
-	addrEventQueuePolicy, err := purego.Dlsym(handle, "zg_event_queue_policy")
+	addrEventQueuePolicy, err := resolveSymbol(handle, "zg_event_queue_policy")
 	if err != nil {
 		return fail("zg_event_queue_policy", err)
 	}
-	addrEventQueueDropped, err := purego.Dlsym(handle, "zg_event_queue_dropped")
+	addrEventQueueDropped, err := resolveSymbol(handle, "zg_event_queue_dropped")
 	if err != nil {
 		return fail("zg_event_queue_dropped", err)
 	}
-	addrEventQueueProcessed, err := purego.Dlsym(handle, "zg_event_queue_processed")
+	addrEventQueueProcessed, err := resolveSymbol(handle, "zg_event_queue_processed")
 	if err != nil {
 		return fail("zg_event_queue_processed", err)
 	}
-	addrEventQueueStats, err := purego.Dlsym(handle, "zg_event_queue_stats")
+	addrEventQueueStats, err := resolveSymbol(handle, "zg_event_queue_stats")
 	if err != nil {
 		return fail("zg_event_queue_stats", err)
 	}
-	addrEventQueueLimits, err := purego.Dlsym(handle, "zg_event_queue_limits")
+	addrEventQueueLimits, err := resolveSymbol(handle, "zg_event_queue_limits")
 	if err != nil {
 		return fail("zg_event_queue_limits", err)
 	}
-	addrEventQueueApplyLimits, err := purego.Dlsym(handle, "zg_event_queue_apply_limits")
+	addrEventQueueApplyLimits, err := resolveSymbol(handle, "zg_event_queue_apply_limits")
 	if err != nil {
 		return fail("zg_event_queue_apply_limits", err)
 	}
-	addrEventQueueClear, err := purego.Dlsym(handle, "zg_event_queue_clear")
+	addrEventQueueClear, err := resolveSymbol(handle, "zg_event_queue_clear")
 	if err != nil {
 		return fail("zg_event_queue_clear", err)
 	}
-	addrEventQueueDeinit, err := purego.Dlsym(handle, "zg_event_queue_deinit")
+	addrEventQueueDeinit, err := resolveSymbol(handle, "zg_event_queue_deinit")
 	if err != nil {
 		return fail("zg_event_queue_deinit", err)
 	}
-	addrLiveQueues, err := purego.Dlsym(handle, "zg_live_queues")
+	addrLiveQueues, err := resolveSymbol(handle, "zg_live_queues")
 	if err != nil {
 		return fail("zg_live_queues", err)
 	}

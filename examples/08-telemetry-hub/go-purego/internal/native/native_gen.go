@@ -17,7 +17,7 @@ import (
 
 // DefaultLibraryName is the installed shared-library basename for the running platform.
 // It is empty on platforms this backend does not support.
-var DefaultLibraryName = map[string]string{"darwin": "libtelemetry_hub_zigo.dylib", "linux": "libtelemetry_hub_zigo.so"}[runtime.GOOS]
+var DefaultLibraryName = map[string]string{"darwin": "libtelemetry_hub_zigo.dylib", "linux": "libtelemetry_hub_zigo.so", "windows": "telemetry_hub_zigo.dll"}[runtime.GOOS]
 
 // ErrLibraryLoad identifies a shared-library load or symbol resolution failure.
 var ErrLibraryLoad = errors.New("zigo: shared library unavailable")
@@ -308,219 +308,219 @@ func loadLibraryLocked(explicit string) error {
 
 // loadCandidate publishes the call surface only after every symbol resolves.
 func loadCandidate(path string) error {
-	handle, err := purego.Dlopen(path, purego.RTLD_NOW|purego.RTLD_LOCAL)
+	handle, err := openLibrary(path)
 	if err != nil {
 		return &LibraryError{Path: path, Operation: "open", Cause: err}
 	}
 	fail := func(symbol string, cause error) error {
-		_ = purego.Dlclose(handle)
+		closeLibrary(handle)
 		return &LibraryError{Path: path, Symbol: symbol, Operation: "resolve", Cause: cause}
 	}
-	addrLastError, err := purego.Dlsym(handle, "zg_last_error_message")
+	addrLastError, err := resolveSymbol(handle, "zg_last_error_message")
 	if err != nil {
 		return fail("zg_last_error_message", err)
 	}
-	addrTelemetryHubCreate, err := purego.Dlsym(handle, "zg_telemetry_hub_create_purego_v1")
+	addrTelemetryHubCreate, err := resolveSymbol(handle, "zg_telemetry_hub_create_purego_v1")
 	if err != nil {
 		return fail("zg_telemetry_hub_create_purego_v1", err)
 	}
-	addrTelemetryHubRename, err := purego.Dlsym(handle, "zg_telemetry_hub_rename")
+	addrTelemetryHubRename, err := resolveSymbol(handle, "zg_telemetry_hub_rename")
 	if err != nil {
 		return fail("zg_telemetry_hub_rename", err)
 	}
-	addrTelemetryHubName, err := purego.Dlsym(handle, "zg_telemetry_hub_name")
+	addrTelemetryHubName, err := resolveSymbol(handle, "zg_telemetry_hub_name")
 	if err != nil {
 		return fail("zg_telemetry_hub_name", err)
 	}
-	addrTelemetryHubCapacity, err := purego.Dlsym(handle, "zg_telemetry_hub_capacity")
+	addrTelemetryHubCapacity, err := resolveSymbol(handle, "zg_telemetry_hub_capacity")
 	if err != nil {
 		return fail("zg_telemetry_hub_capacity", err)
 	}
-	addrTelemetryHubLen, err := purego.Dlsym(handle, "zg_telemetry_hub_len")
+	addrTelemetryHubLen, err := resolveSymbol(handle, "zg_telemetry_hub_len")
 	if err != nil {
 		return fail("zg_telemetry_hub_len", err)
 	}
-	addrTelemetryHubIsEmpty, err := purego.Dlsym(handle, "zg_telemetry_hub_is_empty")
+	addrTelemetryHubIsEmpty, err := resolveSymbol(handle, "zg_telemetry_hub_is_empty")
 	if err != nil {
 		return fail("zg_telemetry_hub_is_empty", err)
 	}
-	addrTelemetryHubIsFull, err := purego.Dlsym(handle, "zg_telemetry_hub_is_full")
+	addrTelemetryHubIsFull, err := resolveSymbol(handle, "zg_telemetry_hub_is_full")
 	if err != nil {
 		return fail("zg_telemetry_hub_is_full", err)
 	}
-	addrTelemetryHubMode, err := purego.Dlsym(handle, "zg_telemetry_hub_mode")
+	addrTelemetryHubMode, err := resolveSymbol(handle, "zg_telemetry_hub_mode")
 	if err != nil {
 		return fail("zg_telemetry_hub_mode", err)
 	}
-	addrTelemetryHubSetMode, err := purego.Dlsym(handle, "zg_telemetry_hub_set_mode")
+	addrTelemetryHubSetMode, err := resolveSymbol(handle, "zg_telemetry_hub_set_mode")
 	if err != nil {
 		return fail("zg_telemetry_hub_set_mode", err)
 	}
-	addrTelemetryHubOverflowPolicy, err := purego.Dlsym(handle, "zg_telemetry_hub_overflow_policy")
+	addrTelemetryHubOverflowPolicy, err := resolveSymbol(handle, "zg_telemetry_hub_overflow_policy")
 	if err != nil {
 		return fail("zg_telemetry_hub_overflow_policy", err)
 	}
-	addrTelemetryHubSetOverflowPolicy, err := purego.Dlsym(handle, "zg_telemetry_hub_set_overflow_policy")
+	addrTelemetryHubSetOverflowPolicy, err := resolveSymbol(handle, "zg_telemetry_hub_set_overflow_policy")
 	if err != nil {
 		return fail("zg_telemetry_hub_set_overflow_policy", err)
 	}
-	addrTelemetryHubEnabled, err := purego.Dlsym(handle, "zg_telemetry_hub_enabled")
+	addrTelemetryHubEnabled, err := resolveSymbol(handle, "zg_telemetry_hub_enabled")
 	if err != nil {
 		return fail("zg_telemetry_hub_enabled", err)
 	}
-	addrTelemetryHubSetEnabled, err := purego.Dlsym(handle, "zg_telemetry_hub_set_enabled")
+	addrTelemetryHubSetEnabled, err := resolveSymbol(handle, "zg_telemetry_hub_set_enabled")
 	if err != nil {
 		return fail("zg_telemetry_hub_set_enabled", err)
 	}
-	addrTelemetryHubThreshold, err := purego.Dlsym(handle, "zg_telemetry_hub_threshold")
+	addrTelemetryHubThreshold, err := resolveSymbol(handle, "zg_telemetry_hub_threshold")
 	if err != nil {
 		return fail("zg_telemetry_hub_threshold", err)
 	}
-	addrTelemetryHubSetThreshold, err := purego.Dlsym(handle, "zg_telemetry_hub_set_threshold")
+	addrTelemetryHubSetThreshold, err := resolveSymbol(handle, "zg_telemetry_hub_set_threshold")
 	if err != nil {
 		return fail("zg_telemetry_hub_set_threshold", err)
 	}
-	addrTelemetryHubScaleFactor, err := purego.Dlsym(handle, "zg_telemetry_hub_scale_factor")
+	addrTelemetryHubScaleFactor, err := resolveSymbol(handle, "zg_telemetry_hub_scale_factor")
 	if err != nil {
 		return fail("zg_telemetry_hub_scale_factor", err)
 	}
-	addrTelemetryHubSetScaleFactor, err := purego.Dlsym(handle, "zg_telemetry_hub_set_scale_factor")
+	addrTelemetryHubSetScaleFactor, err := resolveSymbol(handle, "zg_telemetry_hub_set_scale_factor")
 	if err != nil {
 		return fail("zg_telemetry_hub_set_scale_factor", err)
 	}
-	addrTelemetryHubOffset, err := purego.Dlsym(handle, "zg_telemetry_hub_offset")
+	addrTelemetryHubOffset, err := resolveSymbol(handle, "zg_telemetry_hub_offset")
 	if err != nil {
 		return fail("zg_telemetry_hub_offset", err)
 	}
-	addrTelemetryHubSetOffset, err := purego.Dlsym(handle, "zg_telemetry_hub_set_offset")
+	addrTelemetryHubSetOffset, err := resolveSymbol(handle, "zg_telemetry_hub_set_offset")
 	if err != nil {
 		return fail("zg_telemetry_hub_set_offset", err)
 	}
-	addrTelemetryHubPush, err := purego.Dlsym(handle, "zg_telemetry_hub_push")
+	addrTelemetryHubPush, err := resolveSymbol(handle, "zg_telemetry_hub_push")
 	if err != nil {
 		return fail("zg_telemetry_hub_push", err)
 	}
-	addrTelemetryHubPushWithSeverity, err := purego.Dlsym(handle, "zg_telemetry_hub_push_with_severity")
+	addrTelemetryHubPushWithSeverity, err := resolveSymbol(handle, "zg_telemetry_hub_push_with_severity")
 	if err != nil {
 		return fail("zg_telemetry_hub_push_with_severity", err)
 	}
-	addrTelemetryHubPushBatch, err := purego.Dlsym(handle, "zg_telemetry_hub_push_batch")
+	addrTelemetryHubPushBatch, err := resolveSymbol(handle, "zg_telemetry_hub_push_batch")
 	if err != nil {
 		return fail("zg_telemetry_hub_push_batch", err)
 	}
-	addrTelemetryHubProcess, err := purego.Dlsym(handle, "zg_telemetry_hub_process")
+	addrTelemetryHubProcess, err := resolveSymbol(handle, "zg_telemetry_hub_process")
 	if err != nil {
 		return fail("zg_telemetry_hub_process", err)
 	}
-	addrTelemetryHubProcessAll, err := purego.Dlsym(handle, "zg_telemetry_hub_process_all")
+	addrTelemetryHubProcessAll, err := resolveSymbol(handle, "zg_telemetry_hub_process_all")
 	if err != nil {
 		return fail("zg_telemetry_hub_process_all", err)
 	}
-	addrTelemetryHubClear, err := purego.Dlsym(handle, "zg_telemetry_hub_clear")
+	addrTelemetryHubClear, err := resolveSymbol(handle, "zg_telemetry_hub_clear")
 	if err != nil {
 		return fail("zg_telemetry_hub_clear", err)
 	}
-	addrTelemetryHubResetStatistics, err := purego.Dlsym(handle, "zg_telemetry_hub_reset_statistics")
+	addrTelemetryHubResetStatistics, err := resolveSymbol(handle, "zg_telemetry_hub_reset_statistics")
 	if err != nil {
 		return fail("zg_telemetry_hub_reset_statistics", err)
 	}
-	addrTelemetryHubAccepted, err := purego.Dlsym(handle, "zg_telemetry_hub_accepted")
+	addrTelemetryHubAccepted, err := resolveSymbol(handle, "zg_telemetry_hub_accepted")
 	if err != nil {
 		return fail("zg_telemetry_hub_accepted", err)
 	}
-	addrTelemetryHubRejected, err := purego.Dlsym(handle, "zg_telemetry_hub_rejected")
+	addrTelemetryHubRejected, err := resolveSymbol(handle, "zg_telemetry_hub_rejected")
 	if err != nil {
 		return fail("zg_telemetry_hub_rejected", err)
 	}
-	addrTelemetryHubDropped, err := purego.Dlsym(handle, "zg_telemetry_hub_dropped")
+	addrTelemetryHubDropped, err := resolveSymbol(handle, "zg_telemetry_hub_dropped")
 	if err != nil {
 		return fail("zg_telemetry_hub_dropped", err)
 	}
-	addrTelemetryHubProcessed, err := purego.Dlsym(handle, "zg_telemetry_hub_processed")
+	addrTelemetryHubProcessed, err := resolveSymbol(handle, "zg_telemetry_hub_processed")
 	if err != nil {
 		return fail("zg_telemetry_hub_processed", err)
 	}
-	addrTelemetryHubFiltered, err := purego.Dlsym(handle, "zg_telemetry_hub_filtered")
+	addrTelemetryHubFiltered, err := resolveSymbol(handle, "zg_telemetry_hub_filtered")
 	if err != nil {
 		return fail("zg_telemetry_hub_filtered", err)
 	}
-	addrTelemetryHubSum, err := purego.Dlsym(handle, "zg_telemetry_hub_sum")
+	addrTelemetryHubSum, err := resolveSymbol(handle, "zg_telemetry_hub_sum")
 	if err != nil {
 		return fail("zg_telemetry_hub_sum", err)
 	}
-	addrTelemetryHubMinimum, err := purego.Dlsym(handle, "zg_telemetry_hub_minimum")
+	addrTelemetryHubMinimum, err := resolveSymbol(handle, "zg_telemetry_hub_minimum")
 	if err != nil {
 		return fail("zg_telemetry_hub_minimum", err)
 	}
-	addrTelemetryHubMaximum, err := purego.Dlsym(handle, "zg_telemetry_hub_maximum")
+	addrTelemetryHubMaximum, err := resolveSymbol(handle, "zg_telemetry_hub_maximum")
 	if err != nil {
 		return fail("zg_telemetry_hub_maximum", err)
 	}
-	addrTelemetryHubAverage, err := purego.Dlsym(handle, "zg_telemetry_hub_average")
+	addrTelemetryHubAverage, err := resolveSymbol(handle, "zg_telemetry_hub_average")
 	if err != nil {
 		return fail("zg_telemetry_hub_average", err)
 	}
-	addrTelemetryHubFirstID, err := purego.Dlsym(handle, "zg_telemetry_hub_first_id")
+	addrTelemetryHubFirstID, err := resolveSymbol(handle, "zg_telemetry_hub_first_id")
 	if err != nil {
 		return fail("zg_telemetry_hub_first_id", err)
 	}
-	addrTelemetryHubFirstValue, err := purego.Dlsym(handle, "zg_telemetry_hub_first_value")
+	addrTelemetryHubFirstValue, err := resolveSymbol(handle, "zg_telemetry_hub_first_value")
 	if err != nil {
 		return fail("zg_telemetry_hub_first_value", err)
 	}
-	addrTelemetryHubLastID, err := purego.Dlsym(handle, "zg_telemetry_hub_last_id")
+	addrTelemetryHubLastID, err := resolveSymbol(handle, "zg_telemetry_hub_last_id")
 	if err != nil {
 		return fail("zg_telemetry_hub_last_id", err)
 	}
-	addrTelemetryHubLastValue, err := purego.Dlsym(handle, "zg_telemetry_hub_last_value")
+	addrTelemetryHubLastValue, err := resolveSymbol(handle, "zg_telemetry_hub_last_value")
 	if err != nil {
 		return fail("zg_telemetry_hub_last_value", err)
 	}
-	addrTelemetryHubLastSeverity, err := purego.Dlsym(handle, "zg_telemetry_hub_last_severity")
+	addrTelemetryHubLastSeverity, err := resolveSymbol(handle, "zg_telemetry_hub_last_severity")
 	if err != nil {
 		return fail("zg_telemetry_hub_last_severity", err)
 	}
-	addrTelemetryHubCountAbove, err := purego.Dlsym(handle, "zg_telemetry_hub_count_above")
+	addrTelemetryHubCountAbove, err := resolveSymbol(handle, "zg_telemetry_hub_count_above")
 	if err != nil {
 		return fail("zg_telemetry_hub_count_above", err)
 	}
-	addrTelemetryHubCountBelow, err := purego.Dlsym(handle, "zg_telemetry_hub_count_below")
+	addrTelemetryHubCountBelow, err := resolveSymbol(handle, "zg_telemetry_hub_count_below")
 	if err != nil {
 		return fail("zg_telemetry_hub_count_below", err)
 	}
-	addrTelemetryHubContainsAbove, err := purego.Dlsym(handle, "zg_telemetry_hub_contains_above")
+	addrTelemetryHubContainsAbove, err := resolveSymbol(handle, "zg_telemetry_hub_contains_above")
 	if err != nil {
 		return fail("zg_telemetry_hub_contains_above", err)
 	}
-	addrTelemetryHubContainsBelow, err := purego.Dlsym(handle, "zg_telemetry_hub_contains_below")
+	addrTelemetryHubContainsBelow, err := resolveSymbol(handle, "zg_telemetry_hub_contains_below")
 	if err != nil {
 		return fail("zg_telemetry_hub_contains_below", err)
 	}
-	addrTelemetryHubScaleValues, err := purego.Dlsym(handle, "zg_telemetry_hub_scale_values")
+	addrTelemetryHubScaleValues, err := resolveSymbol(handle, "zg_telemetry_hub_scale_values")
 	if err != nil {
 		return fail("zg_telemetry_hub_scale_values", err)
 	}
-	addrTelemetryHubOffsetValues, err := purego.Dlsym(handle, "zg_telemetry_hub_offset_values")
+	addrTelemetryHubOffsetValues, err := resolveSymbol(handle, "zg_telemetry_hub_offset_values")
 	if err != nil {
 		return fail("zg_telemetry_hub_offset_values", err)
 	}
-	addrTelemetryHubClampValues, err := purego.Dlsym(handle, "zg_telemetry_hub_clamp_values")
+	addrTelemetryHubClampValues, err := resolveSymbol(handle, "zg_telemetry_hub_clamp_values")
 	if err != nil {
 		return fail("zg_telemetry_hub_clamp_values", err)
 	}
-	addrTelemetryHubAbsoluteValues, err := purego.Dlsym(handle, "zg_telemetry_hub_absolute_values")
+	addrTelemetryHubAbsoluteValues, err := resolveSymbol(handle, "zg_telemetry_hub_absolute_values")
 	if err != nil {
 		return fail("zg_telemetry_hub_absolute_values", err)
 	}
-	addrTelemetryHubNegateValues, err := purego.Dlsym(handle, "zg_telemetry_hub_negate_values")
+	addrTelemetryHubNegateValues, err := resolveSymbol(handle, "zg_telemetry_hub_negate_values")
 	if err != nil {
 		return fail("zg_telemetry_hub_negate_values", err)
 	}
-	addrTelemetryHubDeinit, err := purego.Dlsym(handle, "zg_telemetry_hub_deinit")
+	addrTelemetryHubDeinit, err := resolveSymbol(handle, "zg_telemetry_hub_deinit")
 	if err != nil {
 		return fail("zg_telemetry_hub_deinit", err)
 	}
-	addrLiveHubs, err := purego.Dlsym(handle, "zg_live_hubs")
+	addrLiveHubs, err := resolveSymbol(handle, "zg_live_hubs")
 	if err != nil {
 		return fail("zg_live_hubs", err)
 	}

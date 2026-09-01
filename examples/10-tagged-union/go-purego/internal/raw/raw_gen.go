@@ -15,7 +15,7 @@ import (
 
 // DefaultLibraryName is the installed shared-library basename for the running platform.
 // It is empty on platforms this backend does not support.
-var DefaultLibraryName = map[string]string{"darwin": "libtagged_union_zigo.dylib", "linux": "libtagged_union_zigo.so"}[runtime.GOOS]
+var DefaultLibraryName = map[string]string{"darwin": "libtagged_union_zigo.dylib", "linux": "libtagged_union_zigo.so", "windows": "tagged_union_zigo.dll"}[runtime.GOOS]
 
 // ErrLibraryLoad identifies a shared-library load or symbol resolution failure.
 var ErrLibraryLoad = errors.New("zigo: shared library unavailable")
@@ -155,171 +155,171 @@ func loadLibraryLocked(explicit string) error {
 
 // loadCandidate publishes the call surface only after every symbol resolves.
 func loadCandidate(path string) error {
-	handle, err := purego.Dlopen(path, purego.RTLD_NOW|purego.RTLD_LOCAL)
+	handle, err := openLibrary(path)
 	if err != nil {
 		return &LibraryError{Path: path, Operation: "open", Cause: err}
 	}
 	fail := func(symbol string, cause error) error {
-		_ = purego.Dlclose(handle)
+		closeLibrary(handle)
 		return &LibraryError{Path: path, Symbol: symbol, Operation: "resolve", Cause: cause}
 	}
-	addrLastError, err := purego.Dlsym(handle, "zg_last_error_message")
+	addrLastError, err := resolveSymbol(handle, "zg_last_error_message")
 	if err != nil {
 		return fail("zg_last_error_message", err)
 	}
-	addrChildCreate, err := purego.Dlsym(handle, "zg_child_create")
+	addrChildCreate, err := resolveSymbol(handle, "zg_child_create")
 	if err != nil {
 		return fail("zg_child_create", err)
 	}
-	addrChildGet, err := purego.Dlsym(handle, "zg_child_get")
+	addrChildGet, err := resolveSymbol(handle, "zg_child_get")
 	if err != nil {
 		return fail("zg_child_get", err)
 	}
-	addrChildDeinit, err := purego.Dlsym(handle, "zg_child_deinit")
+	addrChildDeinit, err := resolveSymbol(handle, "zg_child_deinit")
 	if err != nil {
 		return fail("zg_child_deinit", err)
 	}
-	addrValueCreate, err := purego.Dlsym(handle, "zg_value_create")
+	addrValueCreate, err := resolveSymbol(handle, "zg_value_create")
 	if err != nil {
 		return fail("zg_value_create", err)
 	}
-	addrValueSetNone, err := purego.Dlsym(handle, "zg_value_set_none")
+	addrValueSetNone, err := resolveSymbol(handle, "zg_value_set_none")
 	if err != nil {
 		return fail("zg_value_set_none", err)
 	}
-	addrValueSetFlag, err := purego.Dlsym(handle, "zg_value_set_flag")
+	addrValueSetFlag, err := resolveSymbol(handle, "zg_value_set_flag")
 	if err != nil {
 		return fail("zg_value_set_flag", err)
 	}
-	addrValueSetMode, err := purego.Dlsym(handle, "zg_value_set_mode")
+	addrValueSetMode, err := resolveSymbol(handle, "zg_value_set_mode")
 	if err != nil {
 		return fail("zg_value_set_mode", err)
 	}
-	addrValueUsePresetSamples, err := purego.Dlsym(handle, "zg_value_use_preset_samples")
+	addrValueUsePresetSamples, err := resolveSymbol(handle, "zg_value_use_preset_samples")
 	if err != nil {
 		return fail("zg_value_use_preset_samples", err)
 	}
-	addrValueUseEmptySamples, err := purego.Dlsym(handle, "zg_value_use_empty_samples")
+	addrValueUseEmptySamples, err := resolveSymbol(handle, "zg_value_use_empty_samples")
 	if err != nil {
 		return fail("zg_value_use_empty_samples", err)
 	}
-	addrValueUseMutableSamples, err := purego.Dlsym(handle, "zg_value_use_mutable_samples")
+	addrValueUseMutableSamples, err := resolveSymbol(handle, "zg_value_use_mutable_samples")
 	if err != nil {
 		return fail("zg_value_use_mutable_samples", err)
 	}
-	addrValueSetChild, err := purego.Dlsym(handle, "zg_value_set_child")
+	addrValueSetChild, err := resolveSymbol(handle, "zg_value_set_child")
 	if err != nil {
 		return fail("zg_value_set_child", err)
 	}
-	addrValueBorrow, err := purego.Dlsym(handle, "zg_value_borrow")
+	addrValueBorrow, err := resolveSymbol(handle, "zg_value_borrow")
 	if err != nil {
 		return fail("zg_value_borrow", err)
 	}
-	addrValueDeinit, err := purego.Dlsym(handle, "zg_value_deinit")
+	addrValueDeinit, err := resolveSymbol(handle, "zg_value_deinit")
 	if err != nil {
 		return fail("zg_value_deinit", err)
 	}
-	addrSignalCreate, err := purego.Dlsym(handle, "zg_signal_create")
+	addrSignalCreate, err := resolveSymbol(handle, "zg_signal_create")
 	if err != nil {
 		return fail("zg_signal_create", err)
 	}
-	addrSignalSetIdle, err := purego.Dlsym(handle, "zg_signal_set_idle")
+	addrSignalSetIdle, err := resolveSymbol(handle, "zg_signal_set_idle")
 	if err != nil {
 		return fail("zg_signal_set_idle", err)
 	}
-	addrSignalSetTicks, err := purego.Dlsym(handle, "zg_signal_set_ticks")
+	addrSignalSetTicks, err := resolveSymbol(handle, "zg_signal_set_ticks")
 	if err != nil {
 		return fail("zg_signal_set_ticks", err)
 	}
-	addrSignalSetLevel, err := purego.Dlsym(handle, "zg_signal_set_level")
+	addrSignalSetLevel, err := resolveSymbol(handle, "zg_signal_set_level")
 	if err != nil {
 		return fail("zg_signal_set_level", err)
 	}
-	addrSignalSetOffset, err := purego.Dlsym(handle, "zg_signal_set_offset")
+	addrSignalSetOffset, err := resolveSymbol(handle, "zg_signal_set_offset")
 	if err != nil {
 		return fail("zg_signal_set_offset", err)
 	}
-	addrSignalSetMode, err := purego.Dlsym(handle, "zg_signal_set_mode")
+	addrSignalSetMode, err := resolveSymbol(handle, "zg_signal_set_mode")
 	if err != nil {
 		return fail("zg_signal_set_mode", err)
 	}
-	addrSignalSetActive, err := purego.Dlsym(handle, "zg_signal_set_active")
+	addrSignalSetActive, err := resolveSymbol(handle, "zg_signal_set_active")
 	if err != nil {
 		return fail("zg_signal_set_active", err)
 	}
-	addrSignalDeinit, err := purego.Dlsym(handle, "zg_signal_deinit")
+	addrSignalDeinit, err := resolveSymbol(handle, "zg_signal_deinit")
 	if err != nil {
 		return fail("zg_signal_deinit", err)
 	}
-	addrLiveValues, err := purego.Dlsym(handle, "zg_live_values")
+	addrLiveValues, err := resolveSymbol(handle, "zg_live_values")
 	if err != nil {
 		return fail("zg_live_values", err)
 	}
-	addrDivide, err := purego.Dlsym(handle, "zg_divide")
+	addrDivide, err := resolveSymbol(handle, "zg_divide")
 	if err != nil {
 		return fail("zg_divide", err)
 	}
-	addrSum, err := purego.Dlsym(handle, "zg_sum")
+	addrSum, err := resolveSymbol(handle, "zg_sum")
 	if err != nil {
 		return fail("zg_sum", err)
 	}
-	addrPanicError, err := purego.Dlsym(handle, "zg_panic_error")
+	addrPanicError, err := resolveSymbol(handle, "zg_panic_error")
 	if err != nil {
 		return fail("zg_panic_error", err)
 	}
-	addrProjection0, err := purego.Dlsym(handle, "zg_value_project_tag")
+	addrProjection0, err := resolveSymbol(handle, "zg_value_project_tag")
 	if err != nil {
 		return fail("zg_value_project_tag", err)
 	}
-	addrProjection1, err := purego.Dlsym(handle, "zg_value_project_integer")
+	addrProjection1, err := resolveSymbol(handle, "zg_value_project_integer")
 	if err != nil {
 		return fail("zg_value_project_integer", err)
 	}
-	addrProjection2, err := purego.Dlsym(handle, "zg_value_project_flag")
+	addrProjection2, err := resolveSymbol(handle, "zg_value_project_flag")
 	if err != nil {
 		return fail("zg_value_project_flag", err)
 	}
-	addrProjection3, err := purego.Dlsym(handle, "zg_value_project_mode")
+	addrProjection3, err := resolveSymbol(handle, "zg_value_project_mode")
 	if err != nil {
 		return fail("zg_value_project_mode", err)
 	}
-	addrProjection4, err := purego.Dlsym(handle, "zg_value_project_samples")
+	addrProjection4, err := resolveSymbol(handle, "zg_value_project_samples")
 	if err != nil {
 		return fail("zg_value_project_samples", err)
 	}
-	addrProjection5, err := purego.Dlsym(handle, "zg_value_project_child")
+	addrProjection5, err := resolveSymbol(handle, "zg_value_project_child")
 	if err != nil {
 		return fail("zg_value_project_child", err)
 	}
-	addrProjection6, err := purego.Dlsym(handle, "zg_value_project_mutable_samples")
+	addrProjection6, err := resolveSymbol(handle, "zg_value_project_mutable_samples")
 	if err != nil {
 		return fail("zg_value_project_mutable_samples", err)
 	}
-	addrProjection7, err := purego.Dlsym(handle, "zg_signal_project_tag")
+	addrProjection7, err := resolveSymbol(handle, "zg_signal_project_tag")
 	if err != nil {
 		return fail("zg_signal_project_tag", err)
 	}
-	addrProjection8, err := purego.Dlsym(handle, "zg_signal_project_ticks")
+	addrProjection8, err := resolveSymbol(handle, "zg_signal_project_ticks")
 	if err != nil {
 		return fail("zg_signal_project_ticks", err)
 	}
-	addrProjection9, err := purego.Dlsym(handle, "zg_signal_project_level")
+	addrProjection9, err := resolveSymbol(handle, "zg_signal_project_level")
 	if err != nil {
 		return fail("zg_signal_project_level", err)
 	}
-	addrProjection10, err := purego.Dlsym(handle, "zg_signal_project_offset")
+	addrProjection10, err := resolveSymbol(handle, "zg_signal_project_offset")
 	if err != nil {
 		return fail("zg_signal_project_offset", err)
 	}
-	addrProjection11, err := purego.Dlsym(handle, "zg_signal_project_mode")
+	addrProjection11, err := resolveSymbol(handle, "zg_signal_project_mode")
 	if err != nil {
 		return fail("zg_signal_project_mode", err)
 	}
-	addrProjection12, err := purego.Dlsym(handle, "zg_signal_project_active")
+	addrProjection12, err := resolveSymbol(handle, "zg_signal_project_active")
 	if err != nil {
 		return fail("zg_signal_project_active", err)
 	}
-	addrSnapshot0, err := purego.Dlsym(handle, "zg_signal_snapshot")
+	addrSnapshot0, err := resolveSymbol(handle, "zg_signal_snapshot")
 	if err != nil {
 		return fail("zg_signal_snapshot", err)
 	}

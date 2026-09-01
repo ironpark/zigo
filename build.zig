@@ -542,9 +542,11 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     };
     if (backend == .purego) {
         if (!build_options.puregoTargetSupported(options.target.result))
-            @panic("`.link = .purego` supports native macOS/Linux on amd64/arm64 only");
-        const target = options.target.result;
-        if (!isRunnableOnHost(target, b.graph.host.result))
+            @panic("`.link = .purego` supports macOS, Linux and Windows on amd64/arm64 only");
+        // Reflection runs the bindings module as an executable, so generation
+        // needs a target the host can execute. A Windows DLL is therefore built
+        // on Windows; the generated Go tree itself is platform-independent.
+        if (!isRunnableOnHost(options.target.result, b.graph.host.result))
             @panic("`.link = .purego` requires the native host target");
     }
     const artifact_package = naming.snakeAlloc(b.allocator, options.name) catch @panic("OOM");
