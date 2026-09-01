@@ -70,6 +70,11 @@ export fn zg_pipeline_name_impl(self: *target.Pipeline, out_result_ptr: *[*c]con
     out_result_ptr.* = result.ptr;
     out_result_len.* = result.len;
 }
+export fn zg_sample_values_impl(out_result_ptr: *[*c]const f32, out_result_len: *usize) void {
+    const result = target.sampleValues();
+    out_result_ptr.* = result.ptr;
+    out_result_len.* = result.len;
+}
 export fn zg_pipeline_mode_impl(self: *target.Pipeline) u32 {
     return @intFromEnum(target.Pipeline.mode(self));
 }

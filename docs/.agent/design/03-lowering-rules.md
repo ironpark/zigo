@@ -47,6 +47,10 @@ Zig 슬라이스는 C ABI 안전하지 않다. 항상 ptr+len 쌍으로 분해�
 | `[]const u8`, `semantic=utf8_string` | `const char*, size_t` | `string` |
 | `[*:0]const u8` | `const char*` | `string` |
 
+slice 반환은 cgo와 purego 모두 호출 시점에 native `ptr + len`에서 새 Go slice로 복사한다.
+공개 API가 native 메모리를 alias하지 않으므로, 다음 호출·원본 객체 수명·`Close`와
+무관하게 반환값을 보관하고 수정할 수 있다. tagged-union numeric-slice projection도
+동일하게 Go-owned copy를 반환한다.
 **out 슬라이스에 `p_written`을 항상 추가**하는 이유: Zig의 `!usize` 반환이 흔히
 "쓴 개수"를 의미하나 이를 신뢰할 수 없으므로, 명시적 out 파라미터로 계약을 고정한다.
 

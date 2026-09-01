@@ -91,6 +91,16 @@ func PipelineName(self unsafe.Pointer) []uint8 {
 	C.zg_pipeline_name(self, &outResultPtr, &outResultLen)
 	return C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))
 }
+// SampleValues calls the generated C ABI wrapper for zg_sample_values.
+func SampleValues() []float32 {
+	var outResultPtr *C.float
+	var outResultLen C.size_t
+	C.zg_sample_values(&outResultPtr, &outResultLen)
+	if outResultLen == 0 { return nil }
+	result := make([]float32, int(outResultLen))
+	copy(result, unsafe.Slice((*float32)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
+	return result
+}
 // PipelineMode calls the generated C ABI wrapper for zg_pipeline_mode.
 func PipelineMode(self unsafe.Pointer) uint32 {
 	return uint32(C.zg_pipeline_mode(self))

@@ -92,6 +92,13 @@ error입니다.
 확실히 식별하려면 같은 항목에 `params`도 적으세요. 이름은 명시적 `params`, 대상 source AST,
 `p0` fallback 순으로 결정됩니다.
 
+## 슬라이스 반환 소유권
+
+슬라이스를 반환하는 함수는 호출 시점에 native 메모리에서 Go가 소유한 새 사본을 만듭니다.
+따라서 반환된 `[]T`는 다음 native 호출이나 원본 객체의 `Close`와 독립적이며, 호출자는
+반환된 사본만 수정할 수 있습니다. tagged-union의 숫자 slice payload도 같은 복사 계약을
+따릅니다.
+
 ## 타입 등록 선택
 
 `repr`은 타입의 ABI 표현을, `access`는 tagged union 내용을 Go에서 읽는 방법을 선택합니다.

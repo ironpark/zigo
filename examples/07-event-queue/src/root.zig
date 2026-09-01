@@ -130,6 +130,12 @@ pub const EventQueue = struct {
         return self.name_bytes;
     }
 
+    /// A numeric slice return intentionally points at native storage. The Go
+    /// binding must copy it before returning so a caller cannot alias it.
+    pub fn sampleValues(_: *EventQueue) []const f32 {
+        return &.{ 0.25, 1.5, 3.75 };
+    }
+
     pub fn len(self: *EventQueue) usize {
         return self.items.items.len;
     }

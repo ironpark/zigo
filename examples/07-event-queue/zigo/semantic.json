@@ -316,6 +316,22 @@
       "symbol": "zg_name"
     },
     {
+      "doc": "A numeric slice return intentionally points at native storage. The Go\nbinding must copy it before returning so a caller cannot alias it.",
+      "name": "sampleValues",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "EventQueue",
+      "return": {
+        "const": true,
+        "element": {
+          "bits": 32,
+          "kind": "float"
+        },
+        "kind": "slice"
+      },
+      "symbol": "zg_sampleValues"
+    },
+    {
       "name": "len",
       "ownership": "borrowed",
       "params": [],

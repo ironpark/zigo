@@ -82,6 +82,19 @@ func EventQueueName(self unsafe.Pointer) []uint8 {
 	return C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))
 }
 
+// EventQueueSampleValues calls the generated C ABI wrapper for zg_event_queue_sample_values.
+func EventQueueSampleValues(self unsafe.Pointer) []float32 {
+	var outResultPtr *C.float
+	var outResultLen C.size_t
+	C.zg_event_queue_sample_values(self, &outResultPtr, &outResultLen)
+	if outResultLen == 0 {
+		return nil
+	}
+	result := make([]float32, int(outResultLen))
+	copy(result, unsafe.Slice((*float32)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
+	return result
+}
+
 // EventQueueLen calls the generated C ABI wrapper for zg_event_queue_len.
 func EventQueueLen(self unsafe.Pointer) uint {
 	return uint(C.zg_event_queue_len(self))

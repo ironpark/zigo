@@ -46,24 +46,25 @@ func (err *LibraryError) Is(target error) bool { return target == ErrLibraryLoad
 func (err *LibraryError) Unwrap() error { return err.Cause }
 
 type nativeBindings struct {
-	lastError               func() unsafe.Pointer
-	fnEventQueueCreate      func(unsafe.Pointer, uintptr, uintptr, uint32, uintptr, uintptr, *unsafe.Pointer) int32
-	fnEventQueueClone       func(unsafe.Pointer, uintptr, uintptr, *unsafe.Pointer) int32
-	fnEventQueueEnqueue     func(unsafe.Pointer, uint64, int32) int32
-	fnEventQueueMergeFrom   func(unsafe.Pointer, unsafe.Pointer, *uintptr) int32
-	fnEventQueueProcess     func(unsafe.Pointer, uintptr, *uintptr) int32
-	fnEventQueueName        func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
-	fnEventQueueLen         func(unsafe.Pointer) uintptr
-	fnEventQueueCapacity    func(unsafe.Pointer) uintptr
-	fnEventQueuePolicy      func(unsafe.Pointer) uint32
-	fnEventQueueDropped     func(unsafe.Pointer) uintptr
-	fnEventQueueProcessed   func(unsafe.Pointer) uintptr
-	fnEventQueueStats       func(unsafe.Pointer, unsafe.Pointer)
-	fnEventQueueLimits      func(unsafe.Pointer, unsafe.Pointer)
-	fnEventQueueApplyLimits func(unsafe.Pointer, unsafe.Pointer) int32
-	fnEventQueueClear       func(unsafe.Pointer) uintptr
-	fnEventQueueDeinit      func(unsafe.Pointer)
-	fnLiveQueues            func() uintptr
+	lastError                func() unsafe.Pointer
+	fnEventQueueCreate       func(unsafe.Pointer, uintptr, uintptr, uint32, uintptr, uintptr, *unsafe.Pointer) int32
+	fnEventQueueClone        func(unsafe.Pointer, uintptr, uintptr, *unsafe.Pointer) int32
+	fnEventQueueEnqueue      func(unsafe.Pointer, uint64, int32) int32
+	fnEventQueueMergeFrom    func(unsafe.Pointer, unsafe.Pointer, *uintptr) int32
+	fnEventQueueProcess      func(unsafe.Pointer, uintptr, *uintptr) int32
+	fnEventQueueName         func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
+	fnEventQueueSampleValues func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
+	fnEventQueueLen          func(unsafe.Pointer) uintptr
+	fnEventQueueCapacity     func(unsafe.Pointer) uintptr
+	fnEventQueuePolicy       func(unsafe.Pointer) uint32
+	fnEventQueueDropped      func(unsafe.Pointer) uintptr
+	fnEventQueueProcessed    func(unsafe.Pointer) uintptr
+	fnEventQueueStats        func(unsafe.Pointer, unsafe.Pointer)
+	fnEventQueueLimits       func(unsafe.Pointer, unsafe.Pointer)
+	fnEventQueueApplyLimits  func(unsafe.Pointer, unsafe.Pointer) int32
+	fnEventQueueClear        func(unsafe.Pointer) uintptr
+	fnEventQueueDeinit       func(unsafe.Pointer)
+	fnLiveQueues             func() uintptr
 }
 
 type callbackEntry struct {
@@ -283,6 +284,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_event_queue_name", err)
 	}
+	addrEventQueueSampleValues, err := resolveSymbol(handle, "zg_event_queue_sample_values")
+	if err != nil {
+		return fail("zg_event_queue_sample_values", err)
+	}
 	addrEventQueueLen, err := resolveSymbol(handle, "zg_event_queue_len")
 	if err != nil {
 		return fail("zg_event_queue_len", err)
@@ -335,6 +340,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnEventQueueMergeFrom, addrEventQueueMergeFrom)
 	purego.RegisterFunc(&next.fnEventQueueProcess, addrEventQueueProcess)
 	purego.RegisterFunc(&next.fnEventQueueName, addrEventQueueName)
+	purego.RegisterFunc(&next.fnEventQueueSampleValues, addrEventQueueSampleValues)
 	purego.RegisterFunc(&next.fnEventQueueLen, addrEventQueueLen)
 	purego.RegisterFunc(&next.fnEventQueueCapacity, addrEventQueueCapacity)
 	purego.RegisterFunc(&next.fnEventQueuePolicy, addrEventQueuePolicy)
@@ -434,7 +440,22 @@ func EventQueueName(self unsafe.Pointer) []uint8 {
 	if outResultLen == 0 {
 		return nil
 	}
-	return unsafe.Slice((*uint8)(outResultPtr), int(outResultLen))
+	result := make([]uint8, int(outResultLen))
+	copy(result, unsafe.Slice((*uint8)(outResultPtr), int(outResultLen)))
+	return result
+}
+
+// EventQueueSampleValues calls the generated purego ABI wrapper for zg_event_queue_sample_values.
+func EventQueueSampleValues(self unsafe.Pointer) []float32 {
+	var outResultPtr unsafe.Pointer
+	var outResultLen uintptr
+	bindings().fnEventQueueSampleValues(self, &outResultPtr, &outResultLen)
+	if outResultLen == 0 {
+		return nil
+	}
+	result := make([]float32, int(outResultLen))
+	copy(result, unsafe.Slice((*float32)(outResultPtr), int(outResultLen)))
+	return result
 }
 
 // EventQueueLen calls the generated purego ABI wrapper for zg_event_queue_len.

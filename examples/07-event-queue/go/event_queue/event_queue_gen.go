@@ -132,6 +132,22 @@ func (e *EventQueue) Name() (string, error) {
 	return string(raw.EventQueueName(ptr)), nil
 }
 
+// SampleValues A numeric slice return intentionally points at native storage. The Go
+// binding must copy it before returning so a caller cannot alias it.
+// It returns *HandleError if a required handle is nil or closed.
+func (e *EventQueue) SampleValues() ([]float32, error) {
+	if e != nil {
+		e.mu.RLock()
+		defer e.mu.RUnlock()
+	}
+	defer runtime.KeepAlive(e)
+	ptr, err := zigoCheckedPointer("EventQueue.SampleValues receiver", e)
+	if err != nil {
+		return nil, err
+	}
+	return raw.EventQueueSampleValues(ptr), nil
+}
+
 // Len invokes the bound Zig EventQueue.len operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (e *EventQueue) Len() (uint, error) {

@@ -305,6 +305,20 @@
       "symbol": "zg_name"
     },
     {
+      "name": "sampleValues",
+      "ownership": "borrowed",
+      "params": [],
+      "return": {
+        "const": true,
+        "element": {
+          "bits": 32,
+          "kind": "float"
+        },
+        "kind": "slice"
+      },
+      "symbol": "zg_sampleValues"
+    },
+    {
       "name": "mode",
       "ownership": "borrowed",
       "params": [],

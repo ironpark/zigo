@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-01T21:42:46Z"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: A non-`u8` slice return compiles and round-trips on cgo and purego; goldens
 > NEXT: none

@@ -27,6 +27,7 @@ pub const bindings = zigo.define(.{
         .{ .path = "EventQueue.mergeFrom", .params = .{"source"} },
         .{ .path = "EventQueue.process", .params = .{"limit"} },
         .{ .path = "EventQueue.name", .semantic = .utf8_string },
+        .{ .path = "EventQueue.sampleValues" },
         .{ .path = "EventQueue.len" },
         .{ .path = "EventQueue.capacity" },
         .{ .path = "EventQueue.policy" },

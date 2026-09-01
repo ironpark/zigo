@@ -7,7 +7,7 @@ registered_at: "2026-09-01T21:30:55Z"
 
 # Phases
 
-- [ ] [Phase 00: Fix slice-return copies](phases/00-slice-return-copies.md)
+- [x] [Phase 00: Fix slice-return copies](phases/00-slice-return-copies.md)
 - [ ] [Phase 01: Extern struct slice elements](phases/01-struct-slice-elements.md)
 - [ ] [Phase 02: Sentinel byte pointers](phases/02-sentinel-byte-pointers.md)
 - [ ] [Phase 03: String slice parameters](phases/03-string-slice-params.md)

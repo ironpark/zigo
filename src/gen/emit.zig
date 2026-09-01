@@ -1079,7 +1079,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
             function.origin.@"return" != .slice and function.ret_struct == null) try writer.writeByte(')');
         try writer.writeByte('\n');
         if (function.origin.@"return" == .slice) {
-            try writer.writeAll("\treturn C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))\n");
+            try writeCgoSliceReturn(writer, program, function.origin.@"return".slice.element.*, "outResultPtr", "outResultLen");
         }
         if (function.ret_struct) |record| {
             try writer.writeAll("\treturn ");
@@ -1105,6 +1105,27 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
     try renderRawSnapshotTypes(allocator, writer, program);
     try renderRawTaggedUnionAccessors(allocator, writer, program, options);
     try renderRawSnapshotAccessors(allocator, writer, program);
+}
+
+/// A cgo slice return must not expose native memory. `C.GoBytes` is the byte
+/// special case; every other element gets a typed Go allocation so the result
+/// has the same element type as the raw function signature.
+fn writeCgoSliceReturn(
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    element: semantic.TypeNode,
+    pointer_name: []const u8,
+    length_name: []const u8,
+) !void {
+    if (isByteType(element)) {
+        try writer.print("\treturn C.GoBytes(unsafe.Pointer({s}), C.int({s}))\n", .{ pointer_name, length_name });
+        return;
+    }
+    try writer.print("\tif {s} == 0 {{ return nil }}\n\tresult := make([]", .{length_name});
+    try writeRawGoType(writer, program, element);
+    try writer.print(", int({s}))\n\tcopy(result, unsafe.Slice((*", .{length_name});
+    try writeRawGoType(writer, program, element);
+    try writer.print(")(unsafe.Pointer({s})), int({s})))\n\treturn result\n", .{ pointer_name, length_name });
 }
 
 /// Base name of the installed native library, without the platform prefix and
@@ -1639,9 +1660,11 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
     }
     try writer.writeAll(")\n");
     if (function.origin.@"return" == .slice) {
-        try writer.writeAll("\tif outResultLen == 0 { return nil }\n\treturn unsafe.Slice((*");
+        try writer.writeAll("\tif outResultLen == 0 { return nil }\n\tresult := make([]");
         try writeRawGoType(writer, program, function.origin.@"return".slice.element.*);
-        try writer.writeAll(")(outResultPtr), int(outResultLen))\n");
+        try writer.writeAll(", int(outResultLen))\n\tcopy(result, unsafe.Slice((*");
+        try writeRawGoType(writer, program, function.origin.@"return".slice.element.*);
+        try writer.writeAll(")(outResultPtr), int(outResultLen)))\n\treturn result\n");
     } else if (returns_error) {
         if (error_payload == .void) {
             try writer.writeAll("\treturn code\n");
@@ -1688,9 +1711,11 @@ fn renderPuregoProjections(allocator: std.mem.Allocator, writer: *std.Io.Writer,
                 if (payload == .slice) {
                     try writer.writeAll("\tvar outValuePtr unsafe.Pointer\n\tvar outValueLen uintptr\n");
                     try writer.print("\tstatus := bindings().fnProjection{d}(self, &outValuePtr, &outValueLen)\n", .{projection_index});
-                    try writer.writeAll("\tif status != 1 || outValueLen == 0 { return nil, status }\n\treturn unsafe.Slice((*");
+                    try writer.writeAll("\tif status != 1 || outValueLen == 0 { return nil, status }\n\tresult := make([]");
                     try writeRawGoType(writer, program, payload.slice.element.*);
-                    try writer.writeAll(")(outValuePtr), int(outValueLen)), status\n");
+                    try writer.writeAll(", int(outValueLen))\n\tcopy(result, unsafe.Slice((*");
+                    try writeRawGoType(writer, program, payload.slice.element.*);
+                    try writer.writeAll(")(outValuePtr), int(outValueLen)))\n\treturn result, status\n");
                 } else {
                     try writer.writeAll("\tvar outValue ");
                     try writeRawGoType(writer, program, payload);
@@ -1829,9 +1854,16 @@ fn renderRawTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.Io.W
                     try writeCgoType(writer, semanticScalar(program, payload.slice.element.*));
                     try writer.writeAll("\n\tvar outValueLen C.size_t\n\tstatus := C.");
                     try writer.print("{s}((*C.{s})(self), &outValuePtr, &outValueLen)\n", .{ projection.symbol, union_c_name });
-                    try writer.writeAll("\tif status != 1 {\n\t\treturn nil, uint8(status)\n\t}\n\treturn unsafe.Slice((*");
-                    try writeRawGoType(writer, program, payload.slice.element.*);
-                    try writer.writeAll(")(unsafe.Pointer(outValuePtr)), int(outValueLen)), uint8(status)\n");
+                    try writer.writeAll("\tif status != 1 {\n\t\treturn nil, uint8(status)\n\t}\n");
+                    if (isByteType(payload.slice.element.*)) {
+                        try writer.writeAll("\treturn C.GoBytes(unsafe.Pointer(outValuePtr), C.int(outValueLen)), uint8(status)\n");
+                    } else {
+                        try writer.writeAll("\tif outValueLen == 0 { return nil, uint8(status) }\n\tresult := make([]");
+                        try writeRawGoType(writer, program, payload.slice.element.*);
+                        try writer.writeAll(", int(outValueLen))\n\tcopy(result, unsafe.Slice((*");
+                        try writeRawGoType(writer, program, payload.slice.element.*);
+                        try writer.writeAll(")(unsafe.Pointer(outValuePtr)), int(outValueLen)))\n\treturn result, uint8(status)\n");
+                    }
                 } else {
                     if (payload == .opaque_ptr) {
                         try writer.writeAll("\tvar outValue unsafe.Pointer\n");
@@ -3717,7 +3749,10 @@ fn writeIntegerName(writer: *std.Io.Writer, signed: bool, bits: u16, c_name: boo
 }
 
 fn programHasSlices(program: abi.Program) bool {
-    for (program.functions) |function| for (function.origin.params) |parameter| if (parameter.type == .slice) return true;
+    for (program.functions) |function| {
+        for (function.origin.params) |parameter| if (parameter.type == .slice) return true;
+        if (function.origin.@"return" == .slice) return true;
+    }
     return false;
 }
 
@@ -4092,7 +4127,8 @@ test "tagged union emitters generate checked pointer-only projections" {
     try std.testing.expect(std.mem.indexOf(u8, raw, "func ValueProjectInteger(self unsafe.Pointer) (int32, uint8)") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "func HTTPResultProjectURLValue(self unsafe.Pointer) (uint64, uint8)") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "if status != 1") != null);
-    try std.testing.expect(std.mem.indexOf(u8, raw, "unsafe.Slice((*int16)(unsafe.Pointer(outValuePtr)), int(outValueLen))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "result := make([]int16, int(outValueLen))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "copy(result, unsafe.Slice((*int16)(unsafe.Pointer(outValuePtr)), int(outValueLen)))") != null);
 
     const public_types = try renderUnionFilesForTest(program);
     defer std.testing.allocator.free(public_types);

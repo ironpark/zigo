@@ -80,6 +80,21 @@ func TestRejectQueueEndToEnd(t *testing.T) {
 	}
 }
 
+func TestNumericSliceReturnIsCopied(t *testing.T) {
+	queue, err := NewEventQueue("samples", 2, PolicyReject, func(uint64, int32) int32 { return 0 })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queue.Close()
+
+	first := must(queue.SampleValues())
+	first[0] = 99
+	second := must(queue.SampleValues())
+	if second[0] != 0.25 {
+		t.Fatalf("SampleValues() aliased native memory: second[0] = %v", second[0])
+	}
+}
+
 // Clone is not named like a constructor; only its `.returns = .caller`
 // metadata makes it hand over an owned handle.
 func TestCloneReturnsAnIndependentOwnedHandle(t *testing.T) {

@@ -130,6 +130,11 @@ func (p *Pipeline) Name() (string, error) {
 	return string(raw.PipelineName(ptr)), nil
 }
 
+// SampleValues invokes the bound Zig sampleValues operation.
+func SampleValues() []float32 {
+	return raw.SampleValues()
+}
+
 // Mode invokes the bound Zig Pipeline.mode operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (p *Pipeline) Mode() (Mode, error) {
