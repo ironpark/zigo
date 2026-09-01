@@ -243,6 +243,29 @@ pub fn variantTypeNameAlloc(
     return candidate;
 }
 
+/// File-name stem for one tagged union's generated file. The caller places it
+/// in `<package>_union_<stem>_gen.go`, so the `union` segment already keeps a
+/// union named `type` or `errors` clear of the concern-scoped files; only two
+/// unions normalizing to the same stem need resolving, and a numeric suffix
+/// does that in declaration order.
+pub fn unionFileStemAlloc(
+    allocator: std.mem.Allocator,
+    union_name: []const u8,
+    taken: []const []const u8,
+) error{ InvalidName, OutOfMemory }![]u8 {
+    const base = try snakeAlloc(allocator, union_name);
+    errdefer allocator.free(base);
+    if (base.len == 0) return error.InvalidName;
+    if (!containsConstName(taken, base)) return base;
+    defer allocator.free(base);
+    var suffix: usize = 2;
+    while (true) : (suffix += 1) {
+        const candidate = try std.fmt.allocPrint(allocator, "{s}_{d}", .{ base, suffix });
+        if (!containsConstName(taken, candidate)) return candidate;
+        allocator.free(candidate);
+    }
+}
+
 fn containsConstName(names: []const []const u8, value: []const u8) bool {
     for (names) |name| if (std.mem.eql(u8, name, value)) return true;
     return false;
@@ -263,4 +286,22 @@ test "variant type names derive from the union and resolve clashes deterministic
         try std.testing.expectEqualStrings(case.expected, name);
     }
     try std.testing.expectError(error.InvalidName, variantTypeNameAlloc(std.testing.allocator, "Value", "_", &taken));
+}
+
+test "union file stems normalize and resolve clashes deterministically" {
+    const first = try unionFileStemAlloc(std.testing.allocator, "HTTPResult", &.{});
+    defer std.testing.allocator.free(first);
+    try std.testing.expectEqualStrings("http_result", first);
+
+    // A union named like a reserved concern is safe: the caller's `union`
+    // segment separates `<pkg>_union_type_gen.go` from `<pkg>_type_gen.go`.
+    const reserved = try unionFileStemAlloc(std.testing.allocator, "Type", &.{});
+    defer std.testing.allocator.free(reserved);
+    try std.testing.expectEqualStrings("type", reserved);
+
+    // Two unions can normalize to the same stem; the later one is suffixed.
+    const taken = [_][]const u8{ "http_result", "http_result_2" };
+    const clash = try unionFileStemAlloc(std.testing.allocator, "httpResult", &taken);
+    defer std.testing.allocator.free(clash);
+    try std.testing.expectEqualStrings("http_result_3", clash);
 }

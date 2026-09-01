@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-01T10:49:35Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Regenerated example 03 (no unions) shows the new file set with no union or
 > NEXT: none

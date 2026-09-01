@@ -110,6 +110,15 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
             } else contents,
         });
     }
+    // The tagged-union files are not in the emitter table: how many there are
+    // depends on the bindings, so they are rendered per union.
+    for (try emit.unionFilesAlloc(scratch_allocator, program, emitter_options)) |file| {
+        const body = std.mem.trimEnd(u8, file.contents, "\n");
+        try prepared.append(scratch_allocator, .{
+            .path = file.path,
+            .contents = try std.fmt.allocPrint(scratch_allocator, "{s}\n", .{body}),
+        });
+    }
     const serialized_lock = try lock.serialize(scratch_allocator);
     try prepared.append(scratch_allocator, .{ .path = "errors.lock.json", .contents = serialized_lock });
 
@@ -574,7 +583,6 @@ fn expectAllocationFailureLeavesOutputUntouched(allocator: std.mem.Allocator) !v
         .{ .path = "zigo_atomic.h", .content = "old header" },
         .{ .path = "internal/raw/raw_gen.go", .content = "old raw" },
         .{ .path = "atomic/atomic_gen.go", .content = "old public" },
-        .{ .path = "atomic/atomic_type_gen.go", .content = "old public types", .rewritten = false },
         .{ .path = "atomic/atomic_enums_gen.go", .content = "old public enums", .rewritten = false },
         .{ .path = "atomic/atomic_handles_gen.go", .content = "old public handles", .rewritten = false },
         .{ .path = "atomic/atomic_runtime_gen.go", .content = "old public runtime", .rewritten = false },

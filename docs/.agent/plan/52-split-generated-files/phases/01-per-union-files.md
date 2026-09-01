@@ -2,7 +2,7 @@
 depends_on:
 - "52-split-generated-files#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Example 10 emits `tagged_union_union_value_gen.go` and
 > NEXT: none
