@@ -71,6 +71,11 @@
   aggregate, optional, error union, callback 또는 pointer 원소 slice payload는 지원하지 않는다.
 - NUL 종료 문자열은 `[*:0]const u8`만 지원하며 Go에서는 `string`이 된다. mutable 또는
   0이 아닌 sentinel pointer와 그 밖의 many-pointer는 reflection 단계에서 거부된다.
+- `extern struct`에 필드를 추가하는 것은 `abi-check`에서 항상 breaking이다. aggregate는
+  포인터로만 건너가고 크기가 따라가지 않으므로, 버퍼를 잡은 쪽과 쓰는 쪽의 필드 수가
+  다르면 경계를 넘어 읽거나 쓴다. `.cgo_static`은 native와 Go가 같이 링크되어 실제로는
+  안전하지만, 링크 방식별로 판정을 낮추는 opt-in은 두지 않기로 했다. 판정을 링크 설정에
+  의존하게 만들면 같은 semantic 변경이 프로젝트마다 다르게 평가되기 때문이다.
 - slice 반환에 `.returns = .caller`를 쓰려면 `.release`로 같은 원소 타입의 slice 하나를
   받는 해제 함수를 지정해야 한다. 생성된 코드가 복사 후 즉시 해제하므로 Go에는 해제할
   것이 남지 않고, release 함수 자체는 공개 API에 나오지 않는다. 조건을 어기면 `ZIGO016`이다.

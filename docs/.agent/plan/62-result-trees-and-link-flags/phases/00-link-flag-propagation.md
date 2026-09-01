@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-01T23:02:02Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Docs describe every input's fate; generated raw file shows `#cgo pkg-config:`
 > NEXT: none

@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Docs explain the hazard; either the option exists with tests and a build-time
 > NEXT: none

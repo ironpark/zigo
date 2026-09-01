@@ -162,6 +162,24 @@ void zg_default_config(zg_config *out_result);
 배치에 의존하지 않고, purego는 미러의 주소를 그대로 넘기므로 배치가 계약이다. 그래서
 미러에는 하강 단계에서 계산한 offset으로부터 패딩을 명시한다.
 
+#### 필드 추가는 breaking이다
+
+`extern struct` 끝에 필드를 하나 더 붙이는 것은 abi-check에서 `.breaking`으로 분류한다.
+enum variant 추가나 error 추가처럼 compatible로 볼 수 없는 이유는 aggregate가 포인터로
+건너가기 때문이다. C 경계에는 `T*`만 있고 크기는 따라가지 않으므로, 어느 쪽이 버퍼를
+할당했는지가 곧 계약이다.
+
+- out 자리(`T *out_result`)에서는 Go가 버퍼를 잡는다. native만 새 필드를 아는 상태로
+  갱신되면 native가 옛 Go 버퍼 뒤로 써서 인접 메모리를 덮는다.
+- in 자리(`const T *`)에서는 native가 옛 Go 버퍼 뒤를 읽어 쓰레기 값을 새 필드로 본다.
+- purego 미러는 배치 자체가 계약이므로(§6.1) 이 어긋남을 잡아낼 방법이 없다.
+
+`.cgo_static`은 archive를 Go 링크 시점에 함께 묶으므로 native와 Go가 항상 같은 세대다.
+그래서 정적 cgo만 놓고 보면 필드 추가가 실제로 안전하다. 그러나 abi-check는 링크 방식을
+가정하지 않고 판정하므로 기본값은 계속 breaking이다. 이를 compatible로 낮추는 opt-in을
+둔다면 `.cgo_static`에서만 받아들이고 그 밖의 `link`에서는 빌드 단계에서 거부해야 한다.
+현재는 그 옵션을 두지 않는다.
+
 레이아웃은 `extern`이 이미 고정한다. 헤더는 사용자의 필드를 사용자의 순서대로 미러링하고,
 재정렬하거나 패딩을 지어내지 않는다. 중첩 struct는 자신을 품는 struct보다 먼저 나온다.
 shim에는 `@sizeOf`/`@alignOf`/`@offsetOf` comptime 단언이 함께 생성되어, Zig 타입이 미러와
