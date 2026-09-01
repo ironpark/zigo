@@ -227,6 +227,28 @@ func (e *EventQueue) ExtractSamples() ([]float32, error) {
 	return raw.EventQueueExtractSamples(ptr), nil
 }
 
+// ExtractSamplesChecked hands over a buffer exactly like `extractSamples`,
+// but an empty queue fails before allocating anything. Nothing is handed
+// over on that path, so the generated binding must not call `freeSamples`.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+func (e *EventQueue) ExtractSamplesChecked() ([]float32, error) {
+	if e != nil {
+		e.mu.RLock()
+		defer e.mu.RUnlock()
+	}
+	defer runtime.KeepAlive(e)
+	ptr, err := zigoCheckedPointer("EventQueue.ExtractSamplesChecked receiver", e)
+	if err != nil {
+		return nil, err
+	}
+	result, code := raw.EventQueueExtractSamplesChecked(ptr)
+	if code != 0 {
+		return nil, errorForCode("EventQueue.ExtractSamplesChecked", code)
+	}
+	return result, nil
+}
+
 // AcceptStats accepts a batch of value snapshots so both backends exercise their
 // struct-slice input conversion path.
 // It returns *HandleError if a required handle is nil or closed.

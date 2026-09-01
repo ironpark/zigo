@@ -542,6 +542,31 @@
       "symbol": "zg_extractSamples"
     },
     {
+      "doc": "extractSamplesChecked hands over a buffer exactly like `extractSamples`,\nbut an empty queue fails before allocating anything. Nothing is handed\nover on that path, so the generated binding must not call `freeSamples`.",
+      "name": "extractSamplesChecked",
+      "ownership": "caller",
+      "params": [],
+      "receiver": "EventQueue",
+      "release": "freeSamples",
+      "return": {
+        "error_set": [
+          "Empty",
+          "InvalidLimit",
+          "ObserverPanicked"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "element": {
+            "bits": 32,
+            "kind": "float"
+          },
+          "kind": "slice"
+        }
+      },
+      "symbol": "zg_extractSamplesChecked"
+    },
+    {
       "doc": "Releases a buffer produced by `extractSamples`.",
       "name": "freeSamples",
       "ownership": "borrowed",

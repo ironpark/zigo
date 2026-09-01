@@ -37,6 +37,7 @@ ZIGO_EXPORT void zg_pipeline_name(void * self, const uint8_t * * out_result_ptr,
 ZIGO_EXPORT void zg_sample_values(const float * * out_result_ptr, size_t * out_result_len);
 ZIGO_EXPORT int32_t zg_sample_values_checked(const float * * out_result_ptr, size_t * out_result_len);
 ZIGO_EXPORT void zg_take_samples(float * * out_result_ptr, size_t * out_result_len);
+ZIGO_EXPORT int32_t zg_take_samples_checked(float * * out_result_ptr, size_t * out_result_len);
 ZIGO_EXPORT void zg_release_samples(float * samples_ptr, size_t samples_len);
 ZIGO_EXPORT uint32_t zg_pipeline_mode(void * self);
 ZIGO_EXPORT uint8_t zg_pipeline_set_enabled(void * self, uint8_t enabled);

@@ -128,6 +128,22 @@ func TakeSamples() []float32 {
 	C.zg_release_samples(outResultPtr, outResultLen)
 	return result
 }
+// TakeSamplesChecked calls the generated C ABI wrapper for zg_take_samples_checked.
+func TakeSamplesChecked() ([]float32, int32) {
+	var outResultPtr *C.float
+	var outResultLen C.size_t
+	code := int32(C.zg_take_samples_checked(&outResultPtr, &outResultLen))
+	if code != 0 {
+		return nil, code
+	}
+	var result []float32
+	if outResultLen != 0 {
+		result = make([]float32, int(outResultLen))
+		copy(result, unsafe.Slice((*float32)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
+	}
+	C.zg_release_samples(outResultPtr, outResultLen)
+	return result, code
+}
 // ReleaseSamples calls the generated C ABI wrapper for zg_release_samples.
 func ReleaseSamples(samples []float32) {
 	var samplesZero C.float

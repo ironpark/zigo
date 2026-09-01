@@ -150,6 +150,16 @@ func TakeSamples() []float32 {
 	return raw.TakeSamples()
 }
 
+// TakeSamplesChecked invokes the bound Zig takeSamplesChecked operation.
+// Native failures are returned as generated error values.
+func TakeSamplesChecked() ([]float32, error) {
+	result, code := raw.TakeSamplesChecked()
+	if code != 0 {
+		return nil, errorForCode("TakeSamplesChecked", code)
+	}
+	return result, nil
+}
+
 // Mode invokes the bound Zig Pipeline.mode operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (p *Pipeline) Mode() (Mode, error) {

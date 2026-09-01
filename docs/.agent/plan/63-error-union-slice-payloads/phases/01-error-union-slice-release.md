@@ -2,7 +2,7 @@
 depends_on:
 - "63-error-union-slice-payloads#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: The fallible caller-owned fixture passes on cgo and purego with the leak
 > NEXT: none

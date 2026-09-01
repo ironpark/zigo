@@ -61,6 +61,7 @@ type nativeBindings struct {
 	fnEventQueueExtractSentinelSlices   func(unsafe.Pointer, uintptr, unsafe.Pointer, uintptr) uintptr
 	fnEventQueueExtractSentinelPointers func(unsafe.Pointer, uintptr, unsafe.Pointer, uintptr) uintptr
 	fnEventQueueExtractSamples          func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
+	fnEventQueueExtractSamplesChecked   func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
 	fnEventQueueFreeSamples             func(unsafe.Pointer, unsafe.Pointer, uintptr)
 	fnEventQueueAcceptStats             func(unsafe.Pointer, unsafe.Pointer, uintptr) uintptr
 	fnEventQueueEstimate                func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr, *uintptr) int32
@@ -328,6 +329,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_event_queue_extract_samples", err)
 	}
+	addrEventQueueExtractSamplesChecked, err := resolveSymbol(handle, "zg_event_queue_extract_samples_checked")
+	if err != nil {
+		return fail("zg_event_queue_extract_samples_checked", err)
+	}
 	addrEventQueueFreeSamples, err := resolveSymbol(handle, "zg_event_queue_free_samples")
 	if err != nil {
 		return fail("zg_event_queue_free_samples", err)
@@ -408,6 +413,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnEventQueueExtractSentinelSlices, addrEventQueueExtractSentinelSlices)
 	purego.RegisterFunc(&next.fnEventQueueExtractSentinelPointers, addrEventQueueExtractSentinelPointers)
 	purego.RegisterFunc(&next.fnEventQueueExtractSamples, addrEventQueueExtractSamples)
+	purego.RegisterFunc(&next.fnEventQueueExtractSamplesChecked, addrEventQueueExtractSamplesChecked)
 	purego.RegisterFunc(&next.fnEventQueueFreeSamples, addrEventQueueFreeSamples)
 	purego.RegisterFunc(&next.fnEventQueueAcceptStats, addrEventQueueAcceptStats)
 	purego.RegisterFunc(&next.fnEventQueueEstimate, addrEventQueueEstimate)
@@ -681,6 +687,23 @@ func EventQueueExtractSamples(self unsafe.Pointer) []float32 {
 	}
 	bindings().fnEventQueueFreeSamples(self, outResultPtr, outResultLen)
 	return result
+}
+
+// EventQueueExtractSamplesChecked calls the generated purego ABI wrapper for zg_event_queue_extract_samples_checked.
+func EventQueueExtractSamplesChecked(self unsafe.Pointer) ([]float32, int32) {
+	var outResultPtr unsafe.Pointer
+	var outResultLen uintptr
+	code := bindings().fnEventQueueExtractSamplesChecked(self, &outResultPtr, &outResultLen)
+	if code != 0 {
+		return nil, code
+	}
+	var result []float32
+	if outResultLen != 0 {
+		result = make([]float32, int(outResultLen))
+		copy(result, unsafe.Slice((*float32)(outResultPtr), int(outResultLen)))
+	}
+	bindings().fnEventQueueFreeSamples(self, outResultPtr, outResultLen)
+	return result, code
 }
 
 // EventQueueFreeSamples calls the generated purego ABI wrapper for zg_event_queue_free_samples.

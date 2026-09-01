@@ -9,7 +9,7 @@ registered_at: "2026-09-01T23:32:57Z"
 
 # Phases
 
-- [ ] [Phase 00: Lower and emit error-union slice payloads](phases/00-error-union-slice-lowering.md)
+- [x] [Phase 00: Lower and emit error-union slice payloads](phases/00-error-union-slice-lowering.md)
 - [ ] [Phase 01: Caller-owned release for error-union slice payloads](phases/01-error-union-slice-release.md)
 
 # Shared Verification

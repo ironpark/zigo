@@ -189,6 +189,14 @@ pub const EventQueue = struct {
         return samples;
     }
 
+    /// extractSamplesChecked hands over a buffer exactly like `extractSamples`,
+    /// but an empty queue fails before allocating anything. Nothing is handed
+    /// over on that path, so the generated binding must not call `freeSamples`.
+    pub fn extractSamplesChecked(self: *EventQueue) ProcessError![]f32 {
+        if (self.items.items.len == 0) return error.Empty;
+        return self.extractSamples();
+    }
+
     /// Releases a buffer produced by `extractSamples`.
     pub fn freeSamples(_: *EventQueue, samples: []f32) void {
         if (samples.len == 0) return;

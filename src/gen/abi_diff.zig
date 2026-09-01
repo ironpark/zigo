@@ -457,6 +457,41 @@ test "appending an error is ABI compatible" {
     try std.testing.expectEqual(ChangeKind.compatible, report.changes.items[0].kind);
 }
 
+test "changing the release function of a fallible slice return is breaking" {
+    var float_node: semantic.TypeNode = .{ .float = .{ .bits = 32 } };
+    var slice_payload: semantic.TypeNode = .{ .slice = .{ .@"const" = false, .element = &float_node } };
+    const extract: semantic.SemanticFn = .{
+        .name = "extractSamplesChecked",
+        .ownership = .caller,
+        .params = &.{},
+        .release = "freeSamples",
+        .@"return" = .{ .error_union = .{ .error_set = &.{"Empty"}, .payload = &slice_payload } },
+        .symbol = "zg_extract_samples_checked",
+    };
+    var renamed = extract;
+    renamed.release = "releaseSamples";
+    const base: semantic.Semantic = .{
+        .package = "demo",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+        .functions = &.{extract},
+    };
+    const current: semantic.Semantic = .{
+        .package = "demo",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+        .functions = &.{renamed},
+    };
+    // The buffer is freed by whichever symbol the generated Go calls, so
+    // pointing the return at a different one is an ABI break even though the
+    // C signature is untouched.
+    var report = try diff(std.testing.allocator, base, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 1), report.changes.items.len);
+    try std.testing.expectEqual(ChangeKind.breaking, report.changes.items[0].kind);
+    try std.testing.expectEqualStrings("release function changed", report.changes.items[0].detail);
+}
+
 test "document identity and exported symbol changes are breaking" {
     const base: semantic.Semantic = .{
         .package = "demo",

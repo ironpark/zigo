@@ -229,9 +229,26 @@ pub fn freeSamples(_: *EventQueue, samples: []f32) void { /* 버퍼 해제 */ }
 따로 해제할 것이 없습니다. release 함수는 공개 Go API에 나타나지 않습니다. 이미 복사된
 Go slice를 다시 넘기는 실수를 막기 위해서입니다.
 
+`![]T` 반환에도 같은 조합을 쓸 수 있습니다. 이때 복사와 release는 모두 성공했을 때에만
+일어납니다. 오류 코드가 돌아오면 생성된 코드는 out 파라미터를 읽지 않고 release도 부르지
+않은 채 `nil`과 오류를 돌려주므로, 아무것도 넘겨받지 않은 실패 경로에서 존재하지 않는
+버퍼를 해제하는 일이 없습니다.
+
+```zig
+pub fn extractSamplesChecked(self: *EventQueue) ProcessError![]f32 { /* 실패 또는 새 버퍼 */ }
+
+// bindings.zig
+.{
+    .path = "EventQueue.extractSamplesChecked",
+    .returns = .caller,
+    .release = "EventQueue.freeSamples",
+},
+```
+
 `.release`가 없거나, 이름이 가리키는 함수가 없거나, 그 함수의 매개변수가 반환 slice와
-맞지 않으면 `ZIGO016`으로 거부됩니다. slice가 아닌 반환에 `.release`를 붙여도 같은
-코드입니다. abi-check는 release 함수가 바뀌면 breaking으로 봅니다.
+맞지 않으면 `ZIGO016`으로 거부됩니다. `![]T`는 payload slice의 원소 타입으로 비교합니다.
+slice가 아닌 반환에 `.release`를 붙여도 같은 코드입니다. abi-check는 release 함수가 바뀌면
+breaking으로 봅니다.
 
 `?*T`/`?*const T` 매개변수는 nil을 받을 수 있는 handle 인자가 됩니다. Go에서 nil을
 넘기면 native 쪽에는 NULL이 전달되고 `*HandleError`는 발생하지 않습니다. 다만 optional은

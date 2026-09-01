@@ -451,9 +451,10 @@ fn ownedReturnIsWrappable(document: semantic.Semantic, function: semantic.Semant
 }
 
 /// A slice return is the one non-handle result zigo can hand over: generated Go
-/// copies it and then calls the declared release function.
+/// copies it and then calls the declared release function. A fallible slice
+/// return hands over the same buffer, so `![]T` qualifies on the same terms.
 fn isReleasableSliceReturn(function: semantic.SemanticFn) bool {
-    return function.@"return" == .slice and function.return_semantic != .c_string;
+    return sliceReturnElement(function) != null;
 }
 
 /// The release target must exist and take exactly the returned slice, otherwise
@@ -472,7 +473,7 @@ fn releaseTargetIssue(document: semantic.Semantic, function: semantic.SemanticFn
         if (candidate.@"return" != .void or candidate.params.len != 1) return missing;
         const parameter = candidate.params[0];
         if (parameter.direction != .in or parameter.type != .slice) return missing;
-        if (!typeNodeEqual(parameter.type.slice.element.*, function.@"return".slice.element.*)) return missing;
+        if (!typeNodeEqual(parameter.type.slice.element.*, sliceReturnElement(function).?)) return missing;
         return null;
     }
     return missing;
@@ -683,6 +684,7 @@ test "implemented diagnostic snapshots are stable" {
     var callback_params = [_]semantic.TypeNode{config_element};
     const struct_callback: semantic.TypeNode = .{ .callback = .{ .params = &callback_params, .@"return" = &callback_return, .has_userdata = false } };
     var byte_element: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    var byte_slice_node: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte_element } };
     var word_element: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
     const cases = [_]struct { document: semantic.Semantic, snapshot: []const u8 }{
         .{ .document = .{
@@ -890,6 +892,39 @@ test "implemented diagnostic snapshots are stable" {
             .prefix = "zg",
             .zig_version = "0.16.0",
         }, .snapshot = "error[ZIGO016]: caller-owned slice return has no matching release function\n  --> semantic.json (takeBytes)\n  hint: add `.release = \"<Type>.<fn>\"` naming an exposed `fn(slice) void` that takes exactly the returned slice type\n" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "takeNameChecked",
+                .ownership = .caller,
+                .params = &.{},
+                .@"return" = .{ .error_union = .{ .error_set = &.{"Invalid"}, .payload = &byte_slice_node } },
+                .symbol = "zg_take_name_checked",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO016]: caller-owned slice return has no matching release function\n  --> semantic.json (takeNameChecked)\n  hint: add `.release = \"<Type>.<fn>\"` naming an exposed `fn(slice) void` that takes exactly the returned slice type\n" },
+        .{ .document = .{
+            .functions = &.{
+                .{
+                    .name = "takeBytesChecked",
+                    .ownership = .caller,
+                    .params = &.{},
+                    .release = "freeWords",
+                    .@"return" = .{ .error_union = .{ .error_set = &.{"Invalid"}, .payload = &byte_slice_node } },
+                    .symbol = "zg_take_bytes_checked",
+                },
+                .{
+                    .name = "freeWords",
+                    .params = &.{.{ .name = "words", .type = .{ .slice = .{ .@"const" = false, .element = &word_element } } }},
+                    .@"return" = .{ .void = {} },
+                    .symbol = "zg_free_words",
+                },
+            },
+            .package = "bad",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO016]: caller-owned slice return has no matching release function\n  --> semantic.json (takeBytesChecked)\n  hint: add `.release = \"<Type>.<fn>\"` naming an exposed `fn(slice) void` that takes exactly the returned slice type\n" },
         .{ .document = .{
             .functions = &.{.{
                 .name = "openThing",

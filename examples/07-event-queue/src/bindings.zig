@@ -43,6 +43,11 @@ pub const bindings = zigo.define(.{
             .returns = .caller,
             .release = "EventQueue.freeSamples",
         },
+        .{
+            .path = "EventQueue.extractSamplesChecked",
+            .returns = .caller,
+            .release = "EventQueue.freeSamples",
+        },
         .{ .path = "EventQueue.freeSamples", .params = .{"samples"} },
         .{ .path = "EventQueue.acceptStats", .params = .{"values"} },
         .{

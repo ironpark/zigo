@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-01T23:44:55Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `![]T` generates, compiles, and round-trips on both backends including the
 > NEXT: none
