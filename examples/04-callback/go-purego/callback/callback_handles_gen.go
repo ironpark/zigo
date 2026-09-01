@@ -2,6 +2,7 @@
 package callback
 
 import (
+	"runtime"
 	"sync"
 	"unsafe"
 
@@ -14,6 +15,7 @@ type CallbackContext struct {
 	once            sync.Once
 	mu              sync.RWMutex
 	callbackHandles []zigoCallbackHandle
+	cleanup         runtime.Cleanup
 }
 
 // CallbackContextRef is a borrowed CallbackContext reference that remains valid only while its parent is open.
@@ -39,6 +41,27 @@ func (c *CallbackContextRef) zigoPointer() unsafe.Pointer {
 	return c.ptr
 }
 
+type callbackContextCleanupState struct {
+	ptr             unsafe.Pointer
+	callbackHandles []zigoCallbackHandle
+}
+
+func newCallbackContext(ptr unsafe.Pointer, callbackHandles []zigoCallbackHandle) *CallbackContext {
+	value := &CallbackContext{ptr: ptr, callbackHandles: callbackHandles}
+	state := callbackContextCleanupState{ptr: ptr, callbackHandles: callbackHandles}
+	value.cleanup = runtime.AddCleanup(value, cleanupCallbackContext, state)
+	return value
+}
+
+func cleanupCallbackContext(state callbackContextCleanupState) {
+	if state.ptr != nil {
+		raw.CallbackContextDeinit(state.ptr)
+	}
+	for _, handle := range state.callbackHandles {
+		deleteCallbackHandle(handle)
+	}
+}
+
 // Close releases the native CallbackContext resources. It is safe to call more than once.
 // The error result is always nil; it exists so CallbackContext satisfies io.Closer.
 func (c *CallbackContext) Close() error {
@@ -48,24 +71,21 @@ func (c *CallbackContext) Close() error {
 	c.once.Do(func() {
 		c.mu.Lock()
 		defer c.mu.Unlock()
-		if c.ptr != nil {
-			raw.CallbackContextDeinit(c.ptr)
-			c.ptr = nil
-		}
-		for _, handle := range c.callbackHandles {
-			deleteCallbackHandle(handle)
-		}
+		c.cleanup.Stop()
+		cleanupCallbackContext(callbackContextCleanupState{ptr: c.ptr, callbackHandles: c.callbackHandles})
+		c.ptr = nil
 		c.callbackHandles = nil
 	})
+	runtime.KeepAlive(c)
 	return nil
 }
 
 // FloatBuffer is a caller-owned native handle. Call Close when it is no longer needed.
 type FloatBuffer struct {
-	ptr             unsafe.Pointer
-	once            sync.Once
-	mu              sync.RWMutex
-	callbackHandles []zigoCallbackHandle
+	ptr     unsafe.Pointer
+	once    sync.Once
+	mu      sync.RWMutex
+	cleanup runtime.Cleanup
 }
 
 // FloatBufferRef is a borrowed FloatBuffer reference that remains valid only while its parent is open.
@@ -91,6 +111,23 @@ func (f *FloatBufferRef) zigoPointer() unsafe.Pointer {
 	return f.ptr
 }
 
+type floatBufferCleanupState struct {
+	ptr unsafe.Pointer
+}
+
+func newFloatBuffer(ptr unsafe.Pointer) *FloatBuffer {
+	value := &FloatBuffer{ptr: ptr}
+	state := floatBufferCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, cleanupFloatBuffer, state)
+	return value
+}
+
+func cleanupFloatBuffer(state floatBufferCleanupState) {
+	if state.ptr != nil {
+		raw.FloatBufferDeinit(state.ptr)
+	}
+}
+
 // Close releases the native FloatBuffer resources. It is safe to call more than once.
 // The error result is always nil; it exists so FloatBuffer satisfies io.Closer.
 func (f *FloatBuffer) Close() error {
@@ -100,24 +137,20 @@ func (f *FloatBuffer) Close() error {
 	f.once.Do(func() {
 		f.mu.Lock()
 		defer f.mu.Unlock()
-		if f.ptr != nil {
-			raw.FloatBufferDeinit(f.ptr)
-			f.ptr = nil
-		}
-		for _, handle := range f.callbackHandles {
-			deleteCallbackHandle(handle)
-		}
-		f.callbackHandles = nil
+		f.cleanup.Stop()
+		cleanupFloatBuffer(floatBufferCleanupState{ptr: f.ptr})
+		f.ptr = nil
 	})
+	runtime.KeepAlive(f)
 	return nil
 }
 
 // IntBuffer is a caller-owned native handle. Call Close when it is no longer needed.
 type IntBuffer struct {
-	ptr             unsafe.Pointer
-	once            sync.Once
-	mu              sync.RWMutex
-	callbackHandles []zigoCallbackHandle
+	ptr     unsafe.Pointer
+	once    sync.Once
+	mu      sync.RWMutex
+	cleanup runtime.Cleanup
 }
 
 // IntBufferRef is a borrowed IntBuffer reference that remains valid only while its parent is open.
@@ -143,6 +176,23 @@ func (i *IntBufferRef) zigoPointer() unsafe.Pointer {
 	return i.ptr
 }
 
+type intBufferCleanupState struct {
+	ptr unsafe.Pointer
+}
+
+func newIntBuffer(ptr unsafe.Pointer) *IntBuffer {
+	value := &IntBuffer{ptr: ptr}
+	state := intBufferCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, cleanupIntBuffer, state)
+	return value
+}
+
+func cleanupIntBuffer(state intBufferCleanupState) {
+	if state.ptr != nil {
+		raw.IntBufferDeinit(state.ptr)
+	}
+}
+
 // Close releases the native IntBuffer resources. It is safe to call more than once.
 // The error result is always nil; it exists so IntBuffer satisfies io.Closer.
 func (i *IntBuffer) Close() error {
@@ -152,14 +202,10 @@ func (i *IntBuffer) Close() error {
 	i.once.Do(func() {
 		i.mu.Lock()
 		defer i.mu.Unlock()
-		if i.ptr != nil {
-			raw.IntBufferDeinit(i.ptr)
-			i.ptr = nil
-		}
-		for _, handle := range i.callbackHandles {
-			deleteCallbackHandle(handle)
-		}
-		i.callbackHandles = nil
+		i.cleanup.Stop()
+		cleanupIntBuffer(intBufferCleanupState{ptr: i.ptr})
+		i.ptr = nil
 	})
+	runtime.KeepAlive(i)
 	return nil
 }

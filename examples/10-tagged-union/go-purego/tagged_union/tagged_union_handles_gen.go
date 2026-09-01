@@ -13,6 +13,7 @@ import (
 type Child struct {
 	ptr     unsafe.Pointer
 	once    sync.Once
+	mu      sync.RWMutex
 	cleanup runtime.Cleanup
 }
 
@@ -63,6 +64,8 @@ func (c *Child) Close() error {
 		return nil
 	}
 	c.once.Do(func() {
+		c.mu.Lock()
+		defer c.mu.Unlock()
 		c.cleanup.Stop()
 		cleanupChild(childCleanupState{ptr: c.ptr})
 		c.ptr = nil
@@ -75,6 +78,7 @@ func (c *Child) Close() error {
 type Value struct {
 	ptr     unsafe.Pointer
 	once    sync.Once
+	mu      sync.RWMutex
 	cleanup runtime.Cleanup
 }
 
@@ -125,6 +129,8 @@ func (v *Value) Close() error {
 		return nil
 	}
 	v.once.Do(func() {
+		v.mu.Lock()
+		defer v.mu.Unlock()
 		v.cleanup.Stop()
 		cleanupValue(valueCleanupState{ptr: v.ptr})
 		v.ptr = nil
@@ -137,6 +143,7 @@ func (v *Value) Close() error {
 type Signal struct {
 	ptr     unsafe.Pointer
 	once    sync.Once
+	mu      sync.RWMutex
 	cleanup runtime.Cleanup
 }
 
@@ -187,6 +194,8 @@ func (s *Signal) Close() error {
 		return nil
 	}
 	s.once.Do(func() {
+		s.mu.Lock()
+		defer s.mu.Unlock()
 		s.cleanup.Stop()
 		cleanupSignal(signalCleanupState{ptr: s.ptr})
 		s.ptr = nil
