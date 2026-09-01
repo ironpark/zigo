@@ -364,17 +364,6 @@ jobs:
             git diff -- examples
             exit 1
           fi
-      # Temporary: surfaces the resolved cgo flags as annotations while the
-      # native Windows include path is being diagnosed.
-      - name: Diagnose the cgo include path
-        shell: bash
-        run: |
-          set -uo pipefail
-          echo "::warning::include dir: $(ls examples/01-scalar/zig-out/include 2>&1 | tr '\n' ' ')"
-          cd examples/01-scalar/go
-          echo "::warning::pkg dir: $(go list -f '{{.Dir}}' ./scalar 2>&1 | tr '\n' ' ')"
-          echo "::warning::cgo cflags: $(go list -f '{{.CgoCFLAGS}}' ./scalar 2>&1 | tr '\n' ' ')"
-          echo "::warning::cgo ldflags: $(go list -f '{{.CgoLDFLAGS}}' ./scalar 2>&1 | tr '\n' ' ')"
       - name: Run the cgo examples
         shell: bash
         # No CGO_CFLAGS or CGO_LDFLAGS: cgo's compile and link stages both go

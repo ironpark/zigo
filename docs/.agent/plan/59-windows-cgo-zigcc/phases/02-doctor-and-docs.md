@@ -2,7 +2,7 @@
 depends_on:
 - "59-windows-cgo-zigcc#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Doctor reflects reality; docs contain no stale hedges; grep finds no
 > NEXT: none
