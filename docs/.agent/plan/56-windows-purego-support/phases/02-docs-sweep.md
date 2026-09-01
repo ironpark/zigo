@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-01T15:02:36Z"
 depends_on:
 - "56-windows-purego-support#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: No doc or generated message claims purego is macOS/Linux-only; the
 > NEXT: none
