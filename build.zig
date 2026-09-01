@@ -733,7 +733,19 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     });
     lib.root_module.addCSourceFile(.{ .file = generated_dir.path(b, "panic.c"), .flags = &.{"-fno-sanitize=undefined"} });
     lib.root_module.linkSystemLibrary("c", .{});
-    const install_lib = b.addInstallArtifact(lib, .{});
+    // Zig names a Windows static archive `<name>.lib`, but the generated cgo
+    // `#cgo LDFLAGS` line spells the archive `lib<name>.a` on every host so the
+    // emitted block stays identical across targets. `zig cc` links a `.a`
+    // archive on Windows just as happily, so rename the install instead of
+    // teaching the generator a per-OS filename.
+    const static_windows_archive = link_mode == .static and
+        options.target.result.os.tag == .windows;
+    const install_lib = b.addInstallArtifact(lib, .{
+        .dest_sub_path = if (static_windows_archive)
+            b.fmt("lib{s}_zigo.a", .{artifact_package})
+        else
+            null,
+    });
     const header_name = b.fmt("zigo_{s}.h", .{artifact_package});
     // A purego binding set declares the `_purego_v1` entry points, so it must not
     // overwrite the cgo header when both backends install into one prefix.
