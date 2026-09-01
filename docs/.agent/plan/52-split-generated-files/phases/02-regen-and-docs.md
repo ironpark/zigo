@@ -2,7 +2,7 @@
 depends_on:
 - "52-split-generated-files#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: No `_type_gen.go` or `_helpers_gen.go` remains under `examples/`; all ten
 > NEXT: none

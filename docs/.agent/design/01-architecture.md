@@ -316,22 +316,29 @@ C 헤더는 백엔드가 아니라 **cgo가 요구하는 산출물**이다.
     internal/raw/       # 🤖 100% 생성. 손대지 말 것
       raw_gen.go        # cgo 지시자 또는 purego loader (backend에 따라)
     mylib/
-      mylib_gen.go         # 🤖 public callable API
-      mylib_type_gen.go    # 🤖 public type API
-      mylib_errors_gen.go  # 🤖 package error API
-      mylib_helpers_gen.go # 🤖 private runtime support
-      custom.go            # 👤 사용자 소유
+      mylib_gen.go              # 🤖 public callable API
+      mylib_enums_gen.go        # 🤖 enum type API
+      mylib_structs_gen.go      # 🤖 value struct API
+      mylib_handles_gen.go      # 🤖 handle/Ref lifecycle API
+      mylib_runtime_gen.go      # 🤖 private runtime support
+      mylib_union_value_gen.go  # 🤖 tagged union 하나마다 한 파일
+      mylib_errors_gen.go       # 🤖 package error API
+      custom.go                 # 👤 사용자 소유
   zig-out/
     lib/libmylib_zigo.a
     include/zigo_mylib.h
 ```
 
-**덧쓰기 규칙:** `internal/raw`는 `raw_gen.go`, public package `mylib`은 callable API용
-`mylib_gen.go`, enum·callback·opaque handle/Ref와 그 타입 고유 메서드용
-`mylib_type_gen.go`, package error용 `mylib_errors_gen.go`를 사용한다. error 파일은 단일
+**덧쓰기 규칙:** `internal/raw`는 `raw_gen.go`, public package `mylib`은 관심사별로 파일을
+나눈다. callable API는 `mylib_gen.go`, enum은 `mylib_enums_gen.go`, `extern struct` value
+type은 `mylib_structs_gen.go`, opaque handle/Ref와 그 lifecycle 메서드는
+`mylib_handles_gen.go`, package error는 `mylib_errors_gen.go`를 사용한다. error 파일은 단일
 `Error` 타입, 안정적인 `Err*` 값과 code 변환을 함께 소유하며 Zig error set별로 나누지
-않는다. bool ABI 변환과 callback handle 수명 관리는 `mylib_helpers_gen.go`에 둔다. 그
-밖의 `custom.go` 같은 파일은 사용자 소유이며 생성기가 수정하지 않는다.
+않는다. handle interface, projection status, `Must*` wrapper, bool ABI 변환, callback type과
+handle 수명 관리처럼 바인딩 규모와 무관하게 고정된 부분은 `mylib_runtime_gen.go`에 둔다.
+tagged union은 하나마다 `mylib_union_<union>_gen.go` 한 파일을 가지므로 union이 늘어도 한
+파일이 커지지 않는다. 선언이 하나도 없는 파일은 만들지 않는다. 그 밖의 `custom.go` 같은
+파일은 사용자 소유이며 생성기가 수정하지 않는다.
 
 `.raw_package = .{ .path = "support/ffi" }`이면 raw 파일은
 `go/support/ffi/ffi_gen.go`에 생성되고 public 파일은 해당 package를 `raw` 별칭으로 import한다.

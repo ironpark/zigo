@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-01T10:54:54Z"
 depends_on:
 - "52-split-generated-files#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Example 10 emits `tagged_union_union_value_gen.go` and
 > NEXT: none

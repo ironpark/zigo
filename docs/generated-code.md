@@ -52,9 +52,12 @@ zig build go-report
 go/go.mod
 go/internal/raw/raw_gen.go
 go/<package>/<package>_gen.go
-go/<package>/<package>_type_gen.go
+go/<package>/<package>_enums_gen.go
+go/<package>/<package>_structs_gen.go
+go/<package>/<package>_handles_gen.go
+go/<package>/<package>_runtime_gen.go
+go/<package>/<package>_union_<union>_gen.go
 go/<package>/<package>_errors_gen.go
-go/<package>/<package>_helpers_gen.go
 zigo/semantic.json
 zigo/errors.lock.json
 zig-out/include/zigo_<name>.h
@@ -79,10 +82,18 @@ API를 작성할 수 있으며, zigo는 marker가 없는 사용자 파일을 덮
 ## 생성 파일의 역할
 
 - `<package>_gen.go`: 공개 함수와 method
-- `<package>_type_gen.go`: enum, callback type, opaque handle/Ref, 타입별 method
+- `<package>_enums_gen.go`: enum type, 상수, `String()`
+- `<package>_structs_gen.go`: `extern struct` 공개 value type과 raw 변환
+- `<package>_handles_gen.go`: opaque handle/Ref type과 lifecycle method
+- `<package>_runtime_gen.go`: handle interface, projection status, `Must*`
+  wrapper, bool 변환, callback type과 handle 등 private runtime support
+- `<package>_union_<union>_gen.go`: tagged union 하나마다 projection, snapshot,
+  sealed variant type
 - `<package>_errors_gen.go`: error type, `Err*` sentinel, code 변환
-- `<package>_helpers_gen.go`: bool 변환과 callback handle 등 private runtime support
 - raw `_gen.go`: C ABI 또는 purego symbol 호출 계층
+
+선언이 하나도 없는 파일은 생성하지 않습니다. enum이 없으면 `_enums_gen.go`가,
+tagged union이 없으면 union 파일이 아예 만들어지지 않습니다.
 
 모든 exported 선언에는 GoDoc이 생성됩니다. Zig source doc이 있으면 AST 보강 결과를 사용하고,
 없으면 bound Zig operation과 ownership·lifetime·failure contract를 설명하는 기본 문서를
