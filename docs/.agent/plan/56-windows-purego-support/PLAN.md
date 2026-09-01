@@ -7,7 +7,7 @@ registered_at: "2026-09-01T14:47:54Z"
 
 # Phases
 
-- [ ] [Phase 00: Windows loader emission and platform gate](phases/00-windows-loader.md)
+- [x] [Phase 00: Windows loader emission and platform gate](phases/00-windows-loader.md)
 - [ ] [Phase 01: Windows CI job with native and cross-built DLLs](phases/01-windows-ci.md)
 - [ ] [Phase 02: Cross-compile documentation and platform docs sweep](phases/02-docs-sweep.md)
 

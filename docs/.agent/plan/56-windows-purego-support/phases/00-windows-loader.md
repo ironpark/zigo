@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-01T14:58:29Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Regenerated purego trees contain the two tagged loader files with
 > NEXT: none
