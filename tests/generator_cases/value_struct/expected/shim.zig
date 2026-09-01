@@ -24,6 +24,22 @@ export fn zg_load_impl(out_result: *target.Config) i32 {
     out_result.* = result;
     return 0;
 }
+export fn zg_accept_points_impl(values_ptr: [*c]const target.Point, values_len: usize) void {
+    target.acceptPoints(if (values_len == 0) &.{} else values_ptr[0..values_len]);
+}
+export fn zg_fill_points_impl(output_ptr: [*c]target.Point, output_len: usize, output_written: *usize, out_result: *usize) i32 {
+    const result = target.fillPoints(if (output_len == 0) &.{} else output_ptr[0..output_len]) catch |err| return switch (err) {
+        error.Invalid => 1,
+    };
+    out_result.* = result;
+    output_written.* = output_len;
+    return 0;
+}
+export fn zg_points_impl(out_result_ptr: *[*c]const target.Point, out_result_len: *usize) void {
+    const result = target.points();
+    out_result_ptr.* = result.ptr;
+    out_result_len.* = result.len;
+}
 
 /// Fails this compile when a layout zigo reflected on the build host does
 /// not describe the compilation target. The usual cause is a C type whose

@@ -84,7 +84,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .code = "ZIGO013",
                 .message = "extern struct is only supported as a whole parameter or return value",
                 .site = .{ .path = "semantic.json", .declaration = function.name },
-                .hint = "pass the struct on its own instead of inside a slice, optional, or callback signature",
+                .hint = "pass the struct on its own or as a direct slice element; optional and callback signatures are not supported",
             };
             if (containsNonCFunctionPointer(parameter.type)) return .{
                 .severity = .@"error",
@@ -127,7 +127,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .code = "ZIGO013",
             .message = "extern struct is only supported as a whole parameter or return value",
             .site = .{ .path = "semantic.json", .declaration = function.name },
-            .hint = "pass the struct on its own instead of inside a slice, optional, or callback signature",
+            .hint = "pass the struct on its own or as a direct slice element; optional and callback signatures are not supported",
         };
         if (containsNonCFunctionPointer(function.@"return")) return .{
             .severity = .@"error",
@@ -360,13 +360,20 @@ fn externStructFieldEligible(document: semantic.Semantic, node: semantic.TypeNod
 }
 
 /// True when a value struct appears anywhere other than as a whole parameter,
-/// return value, or error-union payload. Those positions lower to a pointer to
-/// the struct; a struct inside a slice or a callback signature does not.
+/// return value, error-union payload, or direct slice element. Those positions
+/// lower to a pointer to the struct (or a pointer-plus-length pair for slices);
+/// optional and callback signatures still do not have an aggregate ABI shape.
 fn nestedValueStruct(node: semantic.TypeNode) bool {
     return switch (node) {
-        // These two positions lower to a pointer, so a struct here is fine;
-        // anywhere it is merely contained is not.
+        // A direct value-struct node is a supported aggregate position.
         .value_struct => false,
+        // The slice lowering already carries the element as `T*`; only the
+        // direct element is allowed. A slice of optional/slice/callback values
+        // would still contain the struct in an unsupported nested position.
+        .slice => |value| switch (value.element.*) {
+            .value_struct => false,
+            else => containsValueStruct(value.element.*),
+        },
         .error_union => |value| nestedValueStruct(value.payload.*),
         else => containsValueStruct(node),
     };
@@ -580,7 +587,9 @@ test "implemented diagnostic snapshots are stable" {
     var pointer_node: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Thing" } };
     var callback_return: semantic.TypeNode = .{ .void = {} };
     var sample_element: semantic.TypeNode = .{ .int = .{ .bits = 16, .signed = true } };
-    var config_element: semantic.TypeNode = .{ .value_struct = .{ .ref = "Config" } };
+    const config_element: semantic.TypeNode = .{ .value_struct = .{ .ref = "Config" } };
+    var callback_params = [_]semantic.TypeNode{config_element};
+    const struct_callback: semantic.TypeNode = .{ .callback = .{ .params = &callback_params, .@"return" = &callback_return, .has_userdata = false } };
     var byte_element: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
     const cases = [_]struct { document: semantic.Semantic, snapshot: []const u8 }{
         .{ .document = .{
@@ -719,7 +728,7 @@ test "implemented diagnostic snapshots are stable" {
         .{ .document = .{
             .functions = &.{.{
                 .name = "visitAll",
-                .params = &.{.{ .name = "items", .type = .{ .slice = .{ .@"const" = true, .element = &config_element } } }},
+                .params = &.{.{ .name = "visitor", .type = struct_callback }},
                 .@"return" = .{ .void = {} },
                 .symbol = "ignored",
             }},
@@ -732,7 +741,7 @@ test "implemented diagnostic snapshots are stable" {
                 .name = "Config",
             }},
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO013]: extern struct is only supported as a whole parameter or return value\n  --> semantic.json (visitAll)\n  hint: pass the struct on its own instead of inside a slice, optional, or callback signature\n" },
+        }, .snapshot = "error[ZIGO013]: extern struct is only supported as a whole parameter or return value\n  --> semantic.json (visitAll)\n  hint: pass the struct on its own or as a direct slice element; optional and callback signatures are not supported\n" },
         .{ .document = .{
             .functions = &.{.{
                 .name = "takeName",
@@ -765,6 +774,55 @@ test "implemented diagnostic snapshots are stable" {
         defer std.testing.allocator.free(rendered);
         try std.testing.expectEqualStrings(case.snapshot, rendered);
     }
+}
+
+test "scalar extern struct slices are valid while optional structs stay rejected" {
+    var element: semantic.TypeNode = .{ .value_struct = .{ .ref = "Point" } };
+    const document: semantic.Semantic = .{
+        .functions = &.{
+            .{
+                .name = "consume",
+                .params = &.{.{ .name = "values", .type = .{ .slice = .{ .@"const" = true, .element = &element } } }},
+                .@"return" = .{ .slice = .{ .@"const" = true, .element = &element } },
+                .symbol = "zg_consume",
+            },
+        },
+        .package = "good",
+        .prefix = "zg",
+        .types = &.{.{
+            .fields = &.{
+                .{ .name = "x", .type = .{ .int = .{ .bits = 32, .signed = true } } },
+                .{ .name = "y", .type = .{ .float = .{ .bits = 64 } } },
+            },
+            .kind = .value_struct,
+            .layout = .@"extern",
+            .name = "Point",
+        }},
+        .zig_version = "0.16.0",
+    };
+    try semanticDocument(std.testing.allocator, document);
+
+    const optional: semantic.TypeNode = .{ .optional = .{ .child = &element } };
+    const invalid: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "optional",
+            .params = &.{.{ .name = "value", .type = optional }},
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_optional",
+        }},
+        .package = "bad",
+        .prefix = "zg",
+        .types = &.{.{
+            .fields = &.{.{ .name = "x", .type = .{ .int = .{ .bits = 32, .signed = true } } }},
+            .kind = .value_struct,
+            .layout = .@"extern",
+            .name = "Point",
+        }},
+        .zig_version = "0.16.0",
+    };
+    const issue = (try findIssue(std.testing.allocator, invalid)).?;
+    try std.testing.expectEqualStrings("ZIGO013", issue.code);
+    try std.testing.expect(std.mem.containsAtLeast(u8, issue.hint, 1, "direct slice element"));
 }
 
 test "tagged union handles accept supported accessor payloads and constructors" {

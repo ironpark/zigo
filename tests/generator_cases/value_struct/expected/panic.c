@@ -75,3 +75,37 @@ ZIGO_EXPORT int32_t zg_load(zg_config * out_result) {
     zg_panic_active = 0;
     return result;
 }
+
+void zg_accept_points_impl(const zg_point * values_ptr, size_t values_len);
+ZIGO_EXPORT void zg_accept_points(const zg_point * values_ptr, size_t values_len) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return;
+    }
+zg_accept_points_impl(values_ptr, values_len);
+    zg_panic_active = 0;
+}
+
+int32_t zg_fill_points_impl(zg_point * output_ptr, size_t output_len, size_t * output_written, size_t * out_result);
+ZIGO_EXPORT int32_t zg_fill_points(zg_point * output_ptr, size_t output_len, size_t * output_written, size_t * out_result) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return -2;
+    }
+    int32_t result = zg_fill_points_impl(output_ptr, output_len, output_written, out_result);
+    zg_panic_active = 0;
+    return result;
+}
+
+void zg_points_impl(const zg_point * * out_result_ptr, size_t * out_result_len);
+ZIGO_EXPORT void zg_points(const zg_point * * out_result_ptr, size_t * out_result_len) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return;
+    }
+zg_points_impl(out_result_ptr, out_result_len);
+    zg_panic_active = 0;
+}

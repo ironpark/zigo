@@ -145,8 +145,10 @@ shim에는 `@sizeOf`/`@alignOf`/`@offsetOf` comptime 단언이 함께 생성되�
 필드는 재귀적으로 ABI 안전해야 한다. bool, 정수/부동소수 스칼라, 등록된 enum, 그리고 다시
 적격한 `extern struct` 만 허용한다. slice·포인터·optional·error union·callback·일반 struct
 필드는 `ZIGO012`가 문제된 필드를 지목하며 거부한다. 필드가 하나도 없는 struct는 C 표현이
-없으므로 같은 진단으로 거부한다. struct는 파라미터·반환·error union payload 자리에서만
-쓸 수 있고, slice 원소나 optional, callback 시그니처 안에 들어가면 `ZIGO013`으로 거부한다.
+없으므로 같은 진단으로 거부한다. struct는 파라미터·반환·error union payload 자리와 직접
+`slice` 원소 자리에서 쓸 수 있다. 후자는 `const T*`/`T*`와 `size_t` 길이로 내려가며 cgo는
+멤버별 C 임시 배열을, purego는 `<T>Data` 미러 배열을 사용한다. optional이나 callback
+시그니처 안에 들어가면 `ZIGO013`으로 거부한다.
 
 ABI 판정은 단순하다. 필드 추가·삭제·순서 변경·타입 변경은 모두 struct의 크기나 offset을
 움직이므로 **전부 breaking**이다. enum 값 추가나 projection union의 variant 추가와 달리

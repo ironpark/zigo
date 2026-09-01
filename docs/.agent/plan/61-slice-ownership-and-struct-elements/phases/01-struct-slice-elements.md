@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-01T22:04:38Z"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: `[]const T` in, `[]T` out (with `written`), and `[]const T` return with an
 > NEXT: none

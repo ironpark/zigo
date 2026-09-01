@@ -332,6 +332,88 @@
       "symbol": "zg_sampleValues"
     },
     {
+      "doc": "Accepts a batch of value snapshots so both backends exercise their\nstruct-slice input conversion path.",
+      "name": "acceptStats",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "values",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "const": true,
+            "element": {
+              "kind": "value_struct",
+              "ref": "Stats"
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "receiver": "EventQueue",
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_acceptStats"
+    },
+    {
+      "doc": "Fills one value snapshot per queued event. The return value is the\nnumber of output entries written, while the explicit out metadata keeps\nthe slice capacity visible in the C ABI.",
+      "name": "estimate",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "out",
+          "name": "output",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "const": false,
+            "element": {
+              "kind": "value_struct",
+              "ref": "Stats"
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "receiver": "EventQueue",
+      "return": {
+        "error_set": [
+          "Empty",
+          "InvalidLimit",
+          "ObserverPanicked"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "is_usize": true,
+          "kind": "int",
+          "signed": false
+        }
+      },
+      "symbol": "zg_estimate"
+    },
+    {
+      "doc": "Returns value snapshots from native storage; the generated Go binding\nmust copy each struct before exposing the slice.",
+      "name": "sampleStats",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "EventQueue",
+      "return": {
+        "const": true,
+        "element": {
+          "kind": "value_struct",
+          "ref": "Stats"
+        },
+        "kind": "slice"
+      },
+      "symbol": "zg_sampleStats"
+    },
+    {
       "name": "len",
       "ownership": "borrowed",
       "params": [],

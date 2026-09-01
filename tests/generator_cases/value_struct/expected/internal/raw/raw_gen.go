@@ -7,6 +7,7 @@ package raw
 #include "zigo_config.h"
 */
 import "C"
+import "unsafe"
 
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
@@ -65,6 +66,69 @@ func Load() (ConfigData, int32) {
 			Y: int16(outResult.origin.y),
 		},
 	}, code
+}
+// AcceptPoints calls the generated C ABI wrapper for zg_accept_points.
+func AcceptPoints(values []PointData) {
+	var valuesValues []C.zg_point
+	if len(values) != 0 {
+		valuesValues = make([]C.zg_point, len(values))
+		for i := range values {
+			var cvalues C.zg_point
+			cvalues.x = C.int16_t(values[i].X)
+			cvalues.y = C.int16_t(values[i].Y)
+			valuesValues[i] = cvalues
+		}
+	}
+	var valuesZero C.zg_point
+	valuesPtr := &valuesZero
+	if len(values) != 0 {
+		valuesPtr = (*C.zg_point)(unsafe.Pointer(&valuesValues[0]))
+	}
+	C.zg_accept_points(valuesPtr, C.size_t(len(values)))
+}
+// FillPoints calls the generated C ABI wrapper for zg_fill_points.
+func FillPoints(output []PointData) (uint, int32) {
+	var outputValues []C.zg_point
+	if len(output) != 0 {
+		outputValues = make([]C.zg_point, len(output))
+		for i := range output {
+			var coutput C.zg_point
+			coutput.x = C.int16_t(output[i].X)
+			coutput.y = C.int16_t(output[i].Y)
+			outputValues[i] = coutput
+		}
+	}
+	var outputZero C.zg_point
+	outputPtr := &outputZero
+	if len(output) != 0 {
+		outputPtr = (*C.zg_point)(unsafe.Pointer(&outputValues[0]))
+	}
+	var outputWritten C.size_t
+	var outResult C.size_t
+	code := int32(C.zg_fill_points(outputPtr, C.size_t(len(output)), &outputWritten, &outResult))
+	for i := 0; i < int(outputWritten) && i < len(output); i++ {
+		output[i] = PointData{
+			X: int16(outputValues[i].x),
+			Y: int16(outputValues[i].y),
+		}
+	}
+	return uint(outResult), code
+}
+// Points calls the generated C ABI wrapper for zg_points.
+func Points() []PointData {
+	var outResultPtr *C.zg_point
+	var outResultLen C.size_t
+	C.zg_points(&outResultPtr, &outResultLen)
+	if outResultLen == 0 { return nil }
+	cResult := unsafe.Slice((*C.zg_point)(unsafe.Pointer(outResultPtr)), int(outResultLen))
+	result := make([]PointData, int(outResultLen))
+	for i := range result {
+		result[i] = PointData{
+			X: int16(cResult[i].x),
+			Y: int16(cResult[i].y),
+		}
+	}
+	return result
 }
 
 // PointData mirrors the zg_point layout, padding included.

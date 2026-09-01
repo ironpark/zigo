@@ -54,6 +54,9 @@ type nativeBindings struct {
 	fnEventQueueProcess      func(unsafe.Pointer, uintptr, *uintptr) int32
 	fnEventQueueName         func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
 	fnEventQueueSampleValues func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
+	fnEventQueueAcceptStats  func(unsafe.Pointer, unsafe.Pointer, uintptr) uintptr
+	fnEventQueueEstimate     func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr, *uintptr) int32
+	fnEventQueueSampleStats  func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
 	fnEventQueueLen          func(unsafe.Pointer) uintptr
 	fnEventQueueCapacity     func(unsafe.Pointer) uintptr
 	fnEventQueuePolicy       func(unsafe.Pointer) uint32
@@ -288,6 +291,18 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_event_queue_sample_values", err)
 	}
+	addrEventQueueAcceptStats, err := resolveSymbol(handle, "zg_event_queue_accept_stats")
+	if err != nil {
+		return fail("zg_event_queue_accept_stats", err)
+	}
+	addrEventQueueEstimate, err := resolveSymbol(handle, "zg_event_queue_estimate")
+	if err != nil {
+		return fail("zg_event_queue_estimate", err)
+	}
+	addrEventQueueSampleStats, err := resolveSymbol(handle, "zg_event_queue_sample_stats")
+	if err != nil {
+		return fail("zg_event_queue_sample_stats", err)
+	}
 	addrEventQueueLen, err := resolveSymbol(handle, "zg_event_queue_len")
 	if err != nil {
 		return fail("zg_event_queue_len", err)
@@ -341,6 +356,9 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnEventQueueProcess, addrEventQueueProcess)
 	purego.RegisterFunc(&next.fnEventQueueName, addrEventQueueName)
 	purego.RegisterFunc(&next.fnEventQueueSampleValues, addrEventQueueSampleValues)
+	purego.RegisterFunc(&next.fnEventQueueAcceptStats, addrEventQueueAcceptStats)
+	purego.RegisterFunc(&next.fnEventQueueEstimate, addrEventQueueEstimate)
+	purego.RegisterFunc(&next.fnEventQueueSampleStats, addrEventQueueSampleStats)
 	purego.RegisterFunc(&next.fnEventQueueLen, addrEventQueueLen)
 	purego.RegisterFunc(&next.fnEventQueueCapacity, addrEventQueueCapacity)
 	purego.RegisterFunc(&next.fnEventQueuePolicy, addrEventQueuePolicy)
@@ -455,6 +473,41 @@ func EventQueueSampleValues(self unsafe.Pointer) []float32 {
 	}
 	result := make([]float32, int(outResultLen))
 	copy(result, unsafe.Slice((*float32)(outResultPtr), int(outResultLen)))
+	return result
+}
+
+// EventQueueAcceptStats calls the generated purego ABI wrapper for zg_event_queue_accept_stats.
+func EventQueueAcceptStats(self unsafe.Pointer, values []StatsData) uint {
+	var valuesPtr unsafe.Pointer
+	if len(values) != 0 {
+		valuesPtr = unsafe.Pointer(&values[0])
+	}
+	result := bindings().fnEventQueueAcceptStats(self, valuesPtr, uintptr(len(values)))
+	return uint(result)
+}
+
+// EventQueueEstimate calls the generated purego ABI wrapper for zg_event_queue_estimate.
+func EventQueueEstimate(self unsafe.Pointer, output []StatsData) (uint, int32) {
+	var outputPtr unsafe.Pointer
+	if len(output) != 0 {
+		outputPtr = unsafe.Pointer(&output[0])
+	}
+	var outputWritten uintptr
+	var outResult uintptr
+	code := bindings().fnEventQueueEstimate(self, outputPtr, uintptr(len(output)), &outputWritten, &outResult)
+	return uint(outResult), code
+}
+
+// EventQueueSampleStats calls the generated purego ABI wrapper for zg_event_queue_sample_stats.
+func EventQueueSampleStats(self unsafe.Pointer) []StatsData {
+	var outResultPtr unsafe.Pointer
+	var outResultLen uintptr
+	bindings().fnEventQueueSampleStats(self, &outResultPtr, &outResultLen)
+	if outResultLen == 0 {
+		return nil
+	}
+	result := make([]StatsData, int(outResultLen))
+	copy(result, unsafe.Slice((*StatsData)(outResultPtr), int(outResultLen)))
 	return result
 }
 

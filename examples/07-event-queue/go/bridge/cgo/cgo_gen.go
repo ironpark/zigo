@@ -95,6 +95,90 @@ func EventQueueSampleValues(self unsafe.Pointer) []float32 {
 	return result
 }
 
+// EventQueueAcceptStats calls the generated C ABI wrapper for zg_event_queue_accept_stats.
+func EventQueueAcceptStats(self unsafe.Pointer, values []StatsData) uint {
+	var valuesValues []C.zg_stats
+	if len(values) != 0 {
+		valuesValues = make([]C.zg_stats, len(values))
+		for i := range values {
+			var cvalues C.zg_stats
+			cvalues.len = C.uint32_t(values[i].Len)
+			cvalues.capacity = C.uint32_t(values[i].Capacity)
+			cvalues.dropped = C.uint32_t(values[i].Dropped)
+			cvalues.processed = C.uint32_t(values[i].Processed)
+			cvalues.policy = C.uint32_t(values[i].Policy)
+			cvalues.saturated = C.uint8_t(values[i].Saturated)
+			valuesValues[i] = cvalues
+		}
+	}
+	var valuesZero C.zg_stats
+	valuesPtr := &valuesZero
+	if len(values) != 0 {
+		valuesPtr = (*C.zg_stats)(unsafe.Pointer(&valuesValues[0]))
+	}
+	return uint(C.zg_event_queue_accept_stats(self, valuesPtr, C.size_t(len(values))))
+}
+
+// EventQueueEstimate calls the generated C ABI wrapper for zg_event_queue_estimate.
+func EventQueueEstimate(self unsafe.Pointer, output []StatsData) (uint, int32) {
+	var outputValues []C.zg_stats
+	if len(output) != 0 {
+		outputValues = make([]C.zg_stats, len(output))
+		for i := range output {
+			var coutput C.zg_stats
+			coutput.len = C.uint32_t(output[i].Len)
+			coutput.capacity = C.uint32_t(output[i].Capacity)
+			coutput.dropped = C.uint32_t(output[i].Dropped)
+			coutput.processed = C.uint32_t(output[i].Processed)
+			coutput.policy = C.uint32_t(output[i].Policy)
+			coutput.saturated = C.uint8_t(output[i].Saturated)
+			outputValues[i] = coutput
+		}
+	}
+	var outputZero C.zg_stats
+	outputPtr := &outputZero
+	if len(output) != 0 {
+		outputPtr = (*C.zg_stats)(unsafe.Pointer(&outputValues[0]))
+	}
+	var outputWritten C.size_t
+	var outResult C.size_t
+	code := int32(C.zg_event_queue_estimate(self, outputPtr, C.size_t(len(output)), &outputWritten, &outResult))
+	for i := 0; i < int(outputWritten) && i < len(output); i++ {
+		output[i] = StatsData{
+			Len:       uint32(outputValues[i].len),
+			Capacity:  uint32(outputValues[i].capacity),
+			Dropped:   uint32(outputValues[i].dropped),
+			Processed: uint32(outputValues[i].processed),
+			Policy:    uint32(outputValues[i].policy),
+			Saturated: uint8(outputValues[i].saturated),
+		}
+	}
+	return uint(outResult), code
+}
+
+// EventQueueSampleStats calls the generated C ABI wrapper for zg_event_queue_sample_stats.
+func EventQueueSampleStats(self unsafe.Pointer) []StatsData {
+	var outResultPtr *C.zg_stats
+	var outResultLen C.size_t
+	C.zg_event_queue_sample_stats(self, &outResultPtr, &outResultLen)
+	if outResultLen == 0 {
+		return nil
+	}
+	cResult := unsafe.Slice((*C.zg_stats)(unsafe.Pointer(outResultPtr)), int(outResultLen))
+	result := make([]StatsData, int(outResultLen))
+	for i := range result {
+		result[i] = StatsData{
+			Len:       uint32(cResult[i].len),
+			Capacity:  uint32(cResult[i].capacity),
+			Dropped:   uint32(cResult[i].dropped),
+			Processed: uint32(cResult[i].processed),
+			Policy:    uint32(cResult[i].policy),
+			Saturated: uint8(cResult[i].saturated),
+		}
+	}
+	return result
+}
+
 // EventQueueLen calls the generated C ABI wrapper for zg_event_queue_len.
 func EventQueueLen(self unsafe.Pointer) uint {
 	return uint(C.zg_event_queue_len(self))

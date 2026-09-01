@@ -49,6 +49,34 @@ func zigoStatsFromRaw(value raw.StatsData) Stats {
 	}
 }
 
+func zigoStatsSliceToRaw(values []Stats) []raw.StatsData {
+	result := make([]raw.StatsData, len(values))
+	for i := range values {
+		result[i] = zigoStatsToRaw(values[i])
+	}
+	return result
+}
+
+func zigoStatsSliceFromRaw(values []raw.StatsData) []Stats {
+	result := make([]Stats, len(values))
+	for i := range values {
+		result[i] = zigoStatsFromRaw(values[i])
+	}
+	return result
+}
+
+func zigoStatsSliceCopyFromRaw(dst []Stats, values []raw.StatsData, count int) {
+	if count > len(dst) {
+		count = len(dst)
+	}
+	if count > len(values) {
+		count = len(values)
+	}
+	for i := 0; i < count; i++ {
+		dst[i] = zigoStatsFromRaw(values[i])
+	}
+}
+
 func zigoLimitsToRaw(value Limits) raw.LimitsData {
 	return raw.LimitsData{
 		Capacity: value.Capacity,
@@ -60,5 +88,33 @@ func zigoLimitsFromRaw(value raw.LimitsData) Limits {
 	return Limits{
 		Capacity: value.Capacity,
 		Policy:   Policy(value.Policy),
+	}
+}
+
+func zigoLimitsSliceToRaw(values []Limits) []raw.LimitsData {
+	result := make([]raw.LimitsData, len(values))
+	for i := range values {
+		result[i] = zigoLimitsToRaw(values[i])
+	}
+	return result
+}
+
+func zigoLimitsSliceFromRaw(values []raw.LimitsData) []Limits {
+	result := make([]Limits, len(values))
+	for i := range values {
+		result[i] = zigoLimitsFromRaw(values[i])
+	}
+	return result
+}
+
+func zigoLimitsSliceCopyFromRaw(dst []Limits, values []raw.LimitsData, count int) {
+	if count > len(dst) {
+		count = len(dst)
+	}
+	if count > len(values) {
+		count = len(values)
+	}
+	for i := 0; i < count; i++ {
+		dst[i] = zigoLimitsFromRaw(values[i])
 	}
 }

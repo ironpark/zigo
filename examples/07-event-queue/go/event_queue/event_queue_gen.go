@@ -148,6 +148,63 @@ func (e *EventQueue) SampleValues() ([]float32, error) {
 	return raw.EventQueueSampleValues(ptr), nil
 }
 
+// AcceptStats accepts a batch of value snapshots so both backends exercise their
+// struct-slice input conversion path.
+// It returns *HandleError if a required handle is nil or closed.
+func (e *EventQueue) AcceptStats(values []Stats) (uint, error) {
+	if e != nil {
+		e.mu.RLock()
+		defer e.mu.RUnlock()
+	}
+	defer runtime.KeepAlive(e)
+	ptr, err := zigoCheckedPointer("EventQueue.AcceptStats receiver", e)
+	if err != nil {
+		return 0, err
+	}
+	valuesRaw := zigoStatsSliceToRaw(values)
+	return raw.EventQueueAcceptStats(ptr, valuesRaw), nil
+}
+
+// Estimate fills one value snapshot per queued event. The return value is the
+// number of output entries written, while the explicit out metadata keeps
+// the slice capacity visible in the C ABI.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+func (e *EventQueue) Estimate(output []Stats) (uint, error) {
+	if e != nil {
+		e.mu.RLock()
+		defer e.mu.RUnlock()
+	}
+	defer runtime.KeepAlive(e)
+	ptr, err := zigoCheckedPointer("EventQueue.Estimate receiver", e)
+	if err != nil {
+		return 0, err
+	}
+	outputRaw := zigoStatsSliceToRaw(output)
+	result, code := raw.EventQueueEstimate(ptr, outputRaw)
+	if code != 0 {
+		return 0, errorForCode("EventQueue.Estimate", code)
+	}
+	zigoStatsSliceCopyFromRaw(output, outputRaw, int(result))
+	return result, nil
+}
+
+// SampleStats returns value snapshots from native storage; the generated Go binding
+// must copy each struct before exposing the slice.
+// It returns *HandleError if a required handle is nil or closed.
+func (e *EventQueue) SampleStats() ([]Stats, error) {
+	if e != nil {
+		e.mu.RLock()
+		defer e.mu.RUnlock()
+	}
+	defer runtime.KeepAlive(e)
+	ptr, err := zigoCheckedPointer("EventQueue.SampleStats receiver", e)
+	if err != nil {
+		return nil, err
+	}
+	return zigoStatsSliceFromRaw(raw.EventQueueSampleStats(ptr)), nil
+}
+
 // Len invokes the bound Zig EventQueue.len operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (e *EventQueue) Len() (uint, error) {

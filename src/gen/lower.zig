@@ -402,6 +402,7 @@ fn mentionsValueStruct(document: semantic.Semantic, node: semantic.TypeNode, nam
             }
             break :blk false;
         },
+        .slice => |value| mentionsValueStruct(document, value.element.*, name),
         .error_union => |value| mentionsValueStruct(document, value.payload.*, name),
         else => false,
     };

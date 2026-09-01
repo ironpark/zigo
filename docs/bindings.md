@@ -70,7 +70,7 @@ error입니다.
 | `path` | `root.<name>` 또는 `<Type>.<name>` 선언 경로 |
 | `name` | 공개 Go 함수 이름 override |
 | `params` | 함수 파라미터 이름 목록 |
-| `param_meta` | 파라미터별 `semantic`과 `retention` |
+| `param_meta` | 파라미터별 `semantic`, `retention`, `direction` |
 | `semantic` | 반환값 의미. 예: `.utf8_string` |
 | `returns` | 반환 pointer의 ownership |
 
@@ -209,8 +209,25 @@ out parameter로 낮추고 생성 코드가 주소를 관리합니다.
 
 모든 field가 bool, 정수/부동소수 scalar, 등록 enum, 또는 다시 적격한 `extern struct`여야
 합니다. slice, pointer, optional, error union, callback, 일반 struct field와 빈 struct는
-`ZIGO012`로 거부됩니다. 값 struct를 slice 원소, optional, callback signature 안에 두면
-`ZIGO013`입니다. field 추가·삭제·재정렬·타입 변경은 모두 breaking ABI 변경입니다.
+`ZIGO012`로 거부됩니다. 이런 scalar-only struct는 직접 slice 원소로도 사용할 수 있습니다.
+다만 optional이나 callback signature 안에 값을 넣으면 `ZIGO013`입니다. field
+추가·삭제·재정렬·타입 변경은 모두 breaking ABI 변경입니다.
+
+```zig
+pub fn estimate(output: []Stats) !usize { /* ... */ }
+
+// bindings.zig
+.{
+    .path = "Context.estimate",
+    .params = .{"output"},
+    .param_meta = .{ .output = .{ .direction = .out } },
+},
+```
+
+직접 slice 원소인 `extern struct`는 C에서 `const T*`/`T*`와 길이로 전달됩니다. Go public
+API는 `[]T`를 받고, out slice는 native가 기록한 개수만큼 호출자 버퍼에 복사합니다.
+반환 slice도 `[]T`의 새 사본이며 native 메모리를 alias하지 않습니다.
+out slice로 선언하려면 해당 파라미터에 `param_meta.direction = .out`을 명시해야 합니다.
 
 ## Tagged union projection
 

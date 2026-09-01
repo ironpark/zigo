@@ -26,6 +26,24 @@
       "params": [],
       "return": {"error_set": ["Invalid"], "kind": "error_union", "payload": {"kind": "value_struct", "ref": "Config"}},
       "symbol": "ignored"
+    },
+    {
+      "name": "acceptPoints",
+      "params": [{"name": "values", "type": {"const": true, "element": {"kind": "value_struct", "ref": "Point"}, "kind": "slice"}}],
+      "return": {"kind": "void"},
+      "symbol": "zg_accept_points"
+    },
+    {
+      "name": "fillPoints",
+      "params": [{"direction": "out", "name": "output", "type": {"const": false, "element": {"kind": "value_struct", "ref": "Point"}, "kind": "slice"}}],
+      "return": {"error_set": ["Invalid"], "kind": "error_union", "payload": {"bits": 64, "is_usize": true, "kind": "int", "signed": false}},
+      "symbol": "zg_fill_points"
+    },
+    {
+      "name": "points",
+      "params": [],
+      "return": {"const": true, "element": {"kind": "value_struct", "ref": "Point"}, "kind": "slice"},
+      "symbol": "zg_points"
     }
   ],
   "package": "config",

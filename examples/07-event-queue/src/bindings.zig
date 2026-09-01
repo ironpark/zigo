@@ -28,6 +28,13 @@ pub const bindings = zigo.define(.{
         .{ .path = "EventQueue.process", .params = .{"limit"} },
         .{ .path = "EventQueue.name", .semantic = .utf8_string },
         .{ .path = "EventQueue.sampleValues" },
+        .{ .path = "EventQueue.acceptStats", .params = .{"values"} },
+        .{
+            .path = "EventQueue.estimate",
+            .params = .{"output"},
+            .param_meta = .{ .output = .{ .direction = .out } },
+        },
+        .{ .path = "EventQueue.sampleStats" },
         .{ .path = "EventQueue.len" },
         .{ .path = "EventQueue.capacity" },
         .{ .path = "EventQueue.policy" },

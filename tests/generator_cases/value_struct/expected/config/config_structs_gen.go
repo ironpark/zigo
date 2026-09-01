@@ -39,6 +39,30 @@ func zigoPointFromRaw(value raw.PointData) Point {
 	}
 }
 
+func zigoPointSliceToRaw(values []Point) []raw.PointData {
+	result := make([]raw.PointData, len(values))
+	for i := range values {
+		result[i] = zigoPointToRaw(values[i])
+	}
+	return result
+}
+
+func zigoPointSliceFromRaw(values []raw.PointData) []Point {
+	result := make([]Point, len(values))
+	for i := range values {
+		result[i] = zigoPointFromRaw(values[i])
+	}
+	return result
+}
+
+func zigoPointSliceCopyFromRaw(dst []Point, values []raw.PointData, count int) {
+	if count > len(dst) { count = len(dst) }
+	if count > len(values) { count = len(values) }
+	for i := 0; i < count; i++ {
+		dst[i] = zigoPointFromRaw(values[i])
+	}
+}
+
 func zigoConfigToRaw(value Config) raw.ConfigData {
 	return raw.ConfigData{
 		Enabled: boolToUint8(value.Enabled),
@@ -56,5 +80,29 @@ func zigoConfigFromRaw(value raw.ConfigData) Config {
 		Mode: Mode(value.Mode),
 		Ratio: value.Ratio,
 		Origin: zigoPointFromRaw(value.Origin),
+	}
+}
+
+func zigoConfigSliceToRaw(values []Config) []raw.ConfigData {
+	result := make([]raw.ConfigData, len(values))
+	for i := range values {
+		result[i] = zigoConfigToRaw(values[i])
+	}
+	return result
+}
+
+func zigoConfigSliceFromRaw(values []raw.ConfigData) []Config {
+	result := make([]Config, len(values))
+	for i := range values {
+		result[i] = zigoConfigFromRaw(values[i])
+	}
+	return result
+}
+
+func zigoConfigSliceCopyFromRaw(dst []Config, values []raw.ConfigData, count int) {
+	if count > len(dst) { count = len(dst) }
+	if count > len(values) { count = len(values) }
+	for i := 0; i < count; i++ {
+		dst[i] = zigoConfigFromRaw(values[i])
 	}
 }

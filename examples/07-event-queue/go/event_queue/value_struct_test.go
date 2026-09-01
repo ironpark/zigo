@@ -51,3 +51,49 @@ func TestValueStructParametersAndReturns(t *testing.T) {
 	defer queue.Close()
 	assertValueStructRoundTrip(t, queue)
 }
+
+func TestValueStructSlices(t *testing.T) {
+	queue, err := NewEventQueue("estimate", 4, PolicyReject, func(uint64, int32) int32 { return 0 })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queue.Close()
+	if err := queue.Enqueue(1, 10); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.Enqueue(2, 20); err != nil {
+		t.Fatal(err)
+	}
+
+	output := make([]Stats, 2)
+	if written, err := queue.Estimate(output); err != nil || written != 2 {
+		t.Fatalf("Estimate() = (%d, %v), want (2, nil)", written, err)
+	}
+	for index, value := range output {
+		if value.Len != 2 || value.Capacity != 4 || value.Policy != PolicyReject || value.Saturated {
+			t.Fatalf("Estimate()[%d] = %+v, want queue summary", index, value)
+		}
+	}
+}
+
+func TestValueStructSliceInputAndReturn(t *testing.T) {
+	queue, err := NewEventQueue("slice-values", 4, PolicyReject, func(uint64, int32) int32 { return 0 })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queue.Close()
+
+	input := []Stats{{Len: 1, Capacity: 4, Policy: PolicyReject}, {Len: 2, Capacity: 4, Policy: PolicyDropOldest}}
+	if got := must(queue.AcceptStats(input)); got != 2 {
+		t.Fatalf("AcceptStats() = %d, want 2", got)
+	}
+	first := must(queue.SampleStats())
+	if len(first) != 2 || first[0].Capacity != 4 {
+		t.Fatalf("SampleStats() = %+v, want two snapshots", first)
+	}
+	first[0].Capacity = 99
+	second := must(queue.SampleStats())
+	if second[0].Capacity != 4 {
+		t.Fatalf("SampleStats() aliased native memory: second[0] = %+v", second[0])
+	}
+}

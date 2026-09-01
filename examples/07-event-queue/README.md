@@ -10,6 +10,8 @@ This application-shaped example exposes a bounded Zig event queue as a Go packag
 - a custom raw cgo package at `go/bridge/cgo`;
 - `extern struct` parameters and returns via `Stats`, `Limits`, `ApplyLimits`, exposed as Go
   values while the C ABI takes pointers.
+- scalar-only `extern struct` slices via `AcceptStats`, `Estimate`, and `SampleStats`, including
+  input, an out buffer and written count, and copied returns.
 
 Run the complete example from this directory:
 

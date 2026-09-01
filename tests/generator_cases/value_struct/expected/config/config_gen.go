@@ -28,3 +28,26 @@ func Load() (Config, error) {
 	}
 	return zigoConfigFromRaw(result), nil
 }
+
+// AcceptPoints invokes the bound Zig acceptPoints operation.
+func AcceptPoints(values []Point) {
+	valuesRaw := zigoPointSliceToRaw(values)
+	raw.AcceptPoints(valuesRaw)
+}
+
+// FillPoints invokes the bound Zig fillPoints operation.
+// Native failures are returned as generated error values.
+func FillPoints(output []Point) (uint, error) {
+	outputRaw := zigoPointSliceToRaw(output)
+	result, code := raw.FillPoints(outputRaw)
+	if code != 0 {
+		return 0, errorForCode("FillPoints", code)
+	}
+	zigoPointSliceCopyFromRaw(output, outputRaw, int(result))
+	return result, nil
+}
+
+// Points invokes the bound Zig points operation.
+func Points() []Point {
+	return zigoPointSliceFromRaw(raw.Points())
+}

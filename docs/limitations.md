@@ -59,8 +59,9 @@
 - zigo는 어떤 aggregate도 C 경계를 값으로 넘기지 않는다. `extern struct` 파라미터는
   `const T*`, 반환은 `T*` out 파라미터로 내려가며 값 의미는 Go 쪽에서만 유지된다. 필드는
   bool, 정수/부동소수 스칼라, 등록된 enum, 또는 다시 적격한 `extern struct`여야 하고, 그
-  밖의 필드나 빈 struct는 `ZIGO012`로 거부된다. struct를 slice 원소, optional, callback
-  시그니처 안에 넣으면 `ZIGO013`으로 거부된다. 필드를 하나라도 바꾸면 ABI가 깨진다.
+  밖의 필드나 빈 struct는 `ZIGO012`로 거부된다. scalar-only struct는 직접 slice 원소로
+  사용할 수 있지만, optional이나 callback 시그니처 안에 넣으면 `ZIGO013`으로 거부된다.
+  필드를 하나라도 바꾸면 ABI가 깨진다.
 - `packed struct`의 정수 백킹 노출은 지원하지 않는다. `ZIGO003`으로 거부된다.
 - optional은 선언된 opaque type의 pointer(`?*T`, `?*const T`)에만 쓸 수 있다. handle
   인자는 이미 pointer라서 nil이 NULL로 그대로 건너가지만, `?i32`나 `?[]u8` 같은 optional은

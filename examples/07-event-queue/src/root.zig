@@ -136,6 +136,29 @@ pub const EventQueue = struct {
         return &.{ 0.25, 1.5, 3.75 };
     }
 
+    /// Accepts a batch of value snapshots so both backends exercise their
+    /// struct-slice input conversion path.
+    pub fn acceptStats(_: *EventQueue, values: []const Stats) usize {
+        return values.len;
+    }
+
+    /// Fills one value snapshot per queued event. The return value is the
+    /// number of output entries written, while the explicit out metadata keeps
+    /// the slice capacity visible in the C ABI.
+    pub fn estimate(self: *EventQueue, output: []Stats) ProcessError!usize {
+        if (output.len < self.items.items.len) return error.InvalidLimit;
+        const summary = self.stats();
+        for (output[0..self.items.items.len]) |*entry| entry.* = summary;
+        return self.items.items.len;
+    }
+
+    /// Returns value snapshots from native storage; the generated Go binding
+    /// must copy each struct before exposing the slice.
+    pub fn sampleStats(self: *EventQueue) []const Stats {
+        const summary = self.stats();
+        return &.{ summary, summary };
+    }
+
     pub fn len(self: *EventQueue) usize {
         return self.items.items.len;
     }
