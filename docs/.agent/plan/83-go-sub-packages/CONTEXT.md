@@ -5,7 +5,7 @@
 - **공용 런타임**: 생성 트리에 `internal/<raw>/…` 옆 `internal/lifecycle`(이름은 phase 1에서 확정) 패키지를 두고 지금 패키지마다 비공개로 찍던 것을 exported로 옮긴다: handle 인터페이스, `CheckedPointer`/`OptionalPointer`/`PoisonAfterPanic`, `NativePanicError`, 오류 코드→오류 변환, `RangeError`, `CallbackError`, 스트림 어댑터, 취소 플래그. 각 공개 패키지는 `type NativePanicError = lifecycle.NativePanicError`, `var ErrClosed = lifecycle.ErrClosed`처럼 alias/재선언으로 자기 표면을 유지해 **단일 패키지일 때의 공개 API가 바뀌지 않는다**. handle 구조체는 소유 패키지에서 정의하고 exported 인터페이스를 구현한다.
 - **패키지 간 참조**: 타입 참조는 `import "<module>/<path>"` + 한정 이름. import 목록은 참조 그래프에서 계산. 순환은 진단(새 ZIGO 코드).
 - **이름 충돌 검사(ZIGO024)**는 패키지 단위로.
-- **purego**: `internal/native`는 이미 공용이므로 각 패키지가 그대로 import. 콜백 레지스트리·로더도 공용 유지.
+- **purego**: `internal/native`는 심볼 로더·네이티브 함수 테이블·콜백 토큰 레지스트리와 트램폴린 상태를 계속 소유한다. `internal/lifecycle`은 백엔드와 무관한 핸들 계약·오류 형식·스트림/취소 공용 도우미만 소유하며, purego 공개 패키지는 필요한 경우 두 internal 패키지를 모두 import한다.
 - **build.zig**: 패키지별 출력 디렉터리, stale 정리가 모든 패키지 디렉터리를 포함, `go_package_doc`은 기본 패키지용이고 하위 패키지 doc은 선언의 `.doc`.
 - **abi_diff**: 패키지 배정 변경은 Go 표면 breaking.
 - **예제**: 09-type-relations(namespace `text.unicode`, handle 둘, enum/struct)를 `text` 하위 패키지로 나누거나 07에 적용해 cgo·purego 커버.
@@ -24,6 +24,6 @@
 ## Target structure and invariants
 
 - 기본 패키지 하나 + 0개 이상의 하위 패키지. 모두 `go_dir` 아래, 모두 같은 raw/native/lifecycle 내부 패키지를 쓴다.
-- 단일 패키지 바인딩의 공개 API와 생성물은 바뀌지 않는다(공용 런타임으로의 이동은 `.packages`가 있을 때만 활성화하거나, 항상 활성화하되 alias로 표면을 보존하고 골든을 갱신한다 — phase 1에서 결정해 여기 기록).
+- 공용 런타임은 `.packages`가 하나라도 선언된 바인딩에서만 활성화한다. `.packages`가 없는 단일 패키지 바인딩은 기존 생성물을 바이트 단위로 유지한다. 활성화된 경우 공개 패키지는 `internal/lifecycle`의 형식 alias와 sentinel 변수를 재선언해 기존 공개 API 이름을 유지한다.
 - 패키지 간 의존은 DAG여야 하며, 진단은 순환에 참여하는 선언을 이름으로 적는다.
 - 타입과 그 메서드는 한 패키지에 있다.
