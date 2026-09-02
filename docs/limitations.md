@@ -51,6 +51,13 @@
 - Go 쪽 크로스 컴파일은 별개다. 생성된 purego 패키지는 순수 Go이므로 C 툴체인 없이
   `GOOS=windows CGO_ENABLED=0 go build ./...`로 빌드된다.
 - zigo는 Go 바인딩만 생성한다. IR은 다른 언어용 범용 IDL을 목표로 하지 않는다.
+- Go 파라미터 이름과 함수 본문이 만드는 지역 이름의 충돌 검사는 아직 함수 전체의 이름
+  할당기가 아니다. 고정 목록의 `err`, `code`, `result` 등은 `err_`, `code_`, `result_`로
+  escape하지만, handle receiver 검사에서 생기는 `ptr`이나 파라미터에서 파생되는
+  `<name>Ptr`·`<name>Raw`·`<name>Handle` 같은 이름까지 모두 예약하지는 않는다. `.params`로
+  이름을 지정할 때 이런 생성 local과 같은 이름은 피해야 하며, 생성 뒤 `go vet ./...` 또는
+  `go test ./...`로 확인한다. receiver 자체와 파라미터의 충돌만 별도의 접두 확장 규칙으로
+  처리한다.
 - 한 Go 실행 파일에 zigo 바인딩을 둘 이상 링크하려면 `prefix`가 서로 달라야 한다.
   생성되는 C 심볼은 런타임 것(`<prefix>_panic_bridge`, `<prefix>_last_error_message`)
   까지 전부 접두사를 쓰므로, 기본값 `zg`를 둘 다 쓰면 정적 링크에서 중복 심볼로 실패한다.

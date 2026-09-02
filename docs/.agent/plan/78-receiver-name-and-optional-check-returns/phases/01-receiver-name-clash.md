@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T14:37:35Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 충돌 골든이 컴파일되고 기존 예제 `go-check` 변화 없음, 커밋.
 > NEXT: none

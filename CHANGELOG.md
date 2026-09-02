@@ -20,6 +20,12 @@
 
 ### Fixed
 
+- method receiver의 한 글자 이름이 같은 함수의 파라미터와 겹쳐(`Terminal.setTitle(t)` 등)
+  컴파일되지 않던 문제를 고쳤습니다. receiver 타입 snake_case 이름의 가장 짧은 비충돌
+  접두사를 쓰고 모든 함수 emit 경로가 같은 이름을 공유합니다.
+- handle·승격 정수 범위·optional handle 파라미터 검사가 실패할 때 optional 반환의 presence
+  값이 빠져 Go 반환값 개수가 부족하던 문제를 고쳤습니다. 직접 optional과 error union 안의
+  optional 모두 이제 `zero, false, err`를 반환합니다.
 - `addStandardSteps`가 네이티브 바인딩 라이브러리를 기본 `install` 스텝에도 연결합니다.
   plain `zig build` 뒤에 `zig-out/lib`를 바로 사용할 수 있으며,
   `.install_library_by_default = false`로 이 연결을 끌 수 있습니다.
