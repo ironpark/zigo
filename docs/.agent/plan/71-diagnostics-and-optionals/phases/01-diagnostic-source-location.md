@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T09:36:54Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: CLI 테스트 통과, 기존 진단 스냅샷이 위치를 포함하도록 갱신.
 > NEXT: none
