@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T05:08:36Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 예제 전부에서 `symbol` 중복이 0이고 헤더 이름과 일치하는 테스트 통과.
 > NEXT: none

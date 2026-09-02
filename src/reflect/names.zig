@@ -106,7 +106,9 @@ fn scanSource(allocator: std.mem.Allocator, source: []const u8, functions: []sem
         if (visited[raw_index]) continue;
         var buffer: [1]std.zig.Ast.Node.Index = undefined;
         const proto = tree.fullFnProto(&buffer, node) orelse continue;
-        try enrichMatches(allocator, tree, proto, null, functions, matched, false);
+        const doc = try declDocAlloc(allocator, tree, proto.firstToken());
+        defer if (doc) |value| allocator.free(value);
+        try enrichMatches(allocator, tree, proto, null, functions, matched, false, doc);
     }
     return 0;
 }
@@ -120,13 +122,36 @@ fn scanMembers(
     visited: []bool,
     matched: []bool,
 ) !void {
+    // A run of declarations written with no blank line between them reads as
+    // one documented group in Zig source, so an undocumented member of the run
+    // inherits the doc the run opened with.
+    var group_doc: ?[]const u8 = null;
+    defer if (group_doc) |doc| allocator.free(doc);
+    var group_end: ?usize = null;
     for (members) |node| {
         var fn_buffer: [1]std.zig.Ast.Node.Index = undefined;
         if (tree.fullFnProto(&fn_buffer, node)) |proto| {
             visited[@intFromEnum(node)] = true;
-            try enrichMatches(allocator, tree, proto, owner, functions, matched, true);
+            const first_token = proto.firstToken();
+            const own_doc = try declDocAlloc(allocator, tree, first_token);
+            const adjacent = if (group_end) |end|
+                !hasBlankLine(tree.source[end..tree.tokenStart(first_token)])
+            else
+                false;
+            if (own_doc) |doc| {
+                if (group_doc) |previous| allocator.free(previous);
+                group_doc = doc;
+            } else if (!adjacent) {
+                if (group_doc) |previous| allocator.free(previous);
+                group_doc = null;
+            }
+            try enrichMatches(allocator, tree, proto, owner, functions, matched, true, group_doc);
+            group_end = declarationEnd(tree, node);
             continue;
         }
+        if (group_doc) |previous| allocator.free(previous);
+        group_doc = null;
+        group_end = null;
 
         const variable = tree.fullVarDecl(node) orelse continue;
         const init_node = variable.ast.init_node.unwrap() orelse continue;
@@ -145,6 +170,7 @@ fn enrichMatches(
     functions: []semantic.SemanticFn,
     matched: []bool,
     qualified: bool,
+    doc: ?[]const u8,
 ) !void {
     const name_token = proto.name_token orelse return;
     const declaration_name = tree.tokenSlice(name_token);
@@ -175,7 +201,9 @@ fn enrichMatches(
             }
             function.params = updated_params;
         }
-        if (function.doc == null) function.doc = try docCommentAlloc(allocator, tree, proto.firstToken());
+        if (function.doc == null) {
+            if (doc) |value| function.doc = try allocator.dupe(u8, value);
+        }
         matched[index] = true;
     }
 }
@@ -187,6 +215,15 @@ fn functionOwner(function: semantic.SemanticFn) ?[]const u8 {
 fn optionalStringEqual(lhs: ?[]const u8, rhs: ?[]const u8) bool {
     if (lhs == null or rhs == null) return lhs == null and rhs == null;
     return std.mem.eql(u8, lhs.?, rhs.?);
+}
+
+/// The doc a declaration carries in its own right: the `///` block Zig
+/// attaches to it, or failing that the ordinary `//` lines written directly
+/// above it with no blank line in between. Plain comments are not tokens, so
+/// the second form has to be read back out of the source bytes.
+fn declDocAlloc(allocator: std.mem.Allocator, tree: std.zig.Ast, first_token: std.zig.Ast.TokenIndex) !?[]const u8 {
+    if (try docCommentAlloc(allocator, tree, first_token)) |doc| return doc;
+    return groupCommentAlloc(allocator, tree, first_token);
 }
 
 fn docCommentAlloc(allocator: std.mem.Allocator, tree: std.zig.Ast, first_token: std.zig.Ast.TokenIndex) !?[]const u8 {
@@ -203,6 +240,58 @@ fn docCommentAlloc(allocator: std.mem.Allocator, tree: std.zig.Ast, first_token:
         try result.writer.writeAll(std.mem.trimStart(u8, raw[3..], " "));
     }
     return try result.toOwnedSlice();
+}
+
+fn groupCommentAlloc(allocator: std.mem.Allocator, tree: std.zig.Ast, first_token: std.zig.Ast.TokenIndex) !?[]const u8 {
+    const start = if (first_token == 0) 0 else tokenEnd(tree, first_token - 1);
+    const region = tree.source[start..tree.tokenStart(first_token)];
+    var lines: std.ArrayList([]const u8) = .empty;
+    defer lines.deinit(allocator);
+    var iterator = std.mem.splitScalar(u8, region, '\n');
+    while (iterator.next()) |line| try lines.append(allocator, std.mem.trim(u8, line, " \t\r"));
+    // The last split is the indentation on the declaration's own line, and the
+    // first is whatever trailed the previous declaration; neither is a comment.
+    if (lines.items.len < 2) return null;
+    var index = lines.items.len - 1;
+    while (index > 0 and isGroupComment(lines.items[index - 1])) index -= 1;
+    if (index == lines.items.len - 1) return null;
+    var result: std.Io.Writer.Allocating = .init(allocator);
+    errdefer result.deinit();
+    for (lines.items[index .. lines.items.len - 1], 0..) |line, offset| {
+        if (offset != 0) try result.writer.writeByte('\n');
+        try result.writer.writeAll(std.mem.trimStart(u8, line[2..], " "));
+    }
+    return try result.toOwnedSlice();
+}
+
+/// `///` is a token the parser already handed us, `////` is a plain separator
+/// rule and `//!` documents the container, so only bare `//` lines count here.
+fn isGroupComment(line: []const u8) bool {
+    if (!std.mem.startsWith(u8, line, "//")) return false;
+    if (std.mem.startsWith(u8, line, "///")) return false;
+    if (std.mem.startsWith(u8, line, "//!")) return false;
+    return true;
+}
+
+fn hasBlankLine(gap: []const u8) bool {
+    var newlines: usize = 0;
+    for (gap) |character| switch (character) {
+        '\n' => {
+            newlines += 1;
+            if (newlines > 1) return true;
+        },
+        ' ', '\t', '\r' => {},
+        else => newlines = 0,
+    };
+    return false;
+}
+
+fn tokenEnd(tree: std.zig.Ast, token: std.zig.Ast.TokenIndex) usize {
+    return tree.tokenStart(token) + tree.tokenSlice(token).len;
+}
+
+fn declarationEnd(tree: std.zig.Ast, node: std.zig.Ast.Node.Index) usize {
+    return tokenEnd(tree, tree.lastToken(node));
 }
 
 test "AST names and docs enrich only fallback metadata" {
@@ -236,6 +325,62 @@ test "AST names and docs enrich only fallback metadata" {
     try std.testing.expectEqualStrings("left", document.functions[0].params[0].name);
     try std.testing.expectEqualStrings("chosen", document.functions[0].params[1].name);
     try std.testing.expectEqualStrings("Adds two values.", document.functions[0].doc.?);
+}
+
+test "docs come from `///`, from a plain `//` group, and from the run above" {
+    const source =
+        \\pub const Flags = struct {
+        \\    /// Reports whether the flag is set.
+        \\    pub fn isSet(self: *Flags) bool { _ = self; return true; }
+        \\    // The selection flag bits shared by the setters below.
+        \\    pub fn select(self: *Flags) void { _ = self; }
+        \\    pub fn selectSilent(self: *Flags) void { _ = self; }
+        \\    pub fn selectLoud(self: *Flags) void { _ = self; }
+        \\
+        \\    pub fn detached(self: *Flags) void { _ = self; }
+        \\};
+    ;
+    const names = [_][]const u8{ "isSet", "select", "selectSilent", "selectLoud", "detached" };
+    var functions: [names.len]semantic.SemanticFn = undefined;
+    for (&functions, names) |*function, name| function.* = .{
+        .name = name,
+        .params = &.{},
+        .receiver = "Flags",
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_flags",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), source, &functions));
+    try std.testing.expectEqualStrings("Reports whether the flag is set.", functions[0].doc.?);
+    const group = "The selection flag bits shared by the setters below.";
+    try std.testing.expectEqualStrings(group, functions[1].doc.?);
+    // The two undocumented setters continue the run, so they share its doc.
+    try std.testing.expectEqualStrings(group, functions[2].doc.?);
+    try std.testing.expectEqualStrings(group, functions[3].doc.?);
+    // The blank line closes the run, so nothing carries past it.
+    try std.testing.expect(functions[4].doc == null);
+}
+
+test "a multi-line `//` group keeps its lines and ignores `//!` and `////`" {
+    const source =
+        \\//! Container documentation, not a declaration doc.
+        \\
+        \\////////////////////////////////////////
+        \\// Splits the input.
+        \\// The second line stays attached.
+        \\pub fn split(value: i32) void { _ = value; }
+    ;
+    var functions = [_]semantic.SemanticFn{.{
+        .name = "split",
+        .params = &.{.{ .name = "p0", .type = .{ .int = .{ .bits = 32, .signed = true } } }},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_split",
+    }};
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), source, &functions));
+    try std.testing.expectEqualStrings("Splits the input.\nThe second line stays attached.", functions[0].doc.?);
 }
 
 test "AST enrichment distinguishes methods by lexical owner" {

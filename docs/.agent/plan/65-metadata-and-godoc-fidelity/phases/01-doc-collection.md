@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 위 네 fixture 테스트가 기대한 doc을 반환한다.
 > NEXT: none
