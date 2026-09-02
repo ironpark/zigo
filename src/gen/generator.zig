@@ -24,6 +24,7 @@ pub const Options = struct {
     raw_package_name: []const u8 = "raw",
     raw_colocated: bool = false,
     go_package: []const u8 = "",
+    go_package_path: []const u8 = "",
     go_package_doc: []const u8 = "",
     errors_lock_bytes: ?[]const u8 = null,
     backend: emit.Options.Backend = .cgo,
@@ -100,6 +101,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .raw_package_name = options.raw_package_name,
         .raw_colocated = options.raw_colocated,
         .go_package = options.go_package,
+        .go_package_path = options.go_package_path,
         .go_package_doc = options.go_package_doc,
         .backend = options.backend,
         .link_mode = options.link_mode,
@@ -259,7 +261,46 @@ test "raw Go package can use a custom relative path" {
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "return raw.Add(p0, p1)"));
 }
 
-test "raw Go bindings can be colocated without public name collisions" {
+test "public Go package can be published at the module root" {
+    const fixture =
+        \\{"functions":[{"name":"add","params":[{"name":"p0","type":{"bits":32,"kind":"int","signed":true}},{"name":"p1","type":{"bits":32,"kind":"int","signed":true}}],"return":{"bits":32,"kind":"int","signed":true},"symbol":"ignored"}],"package":"scalar","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    try generate(std.testing.allocator, std.testing.io, fixture, temporary.dir, .{
+        .package = "scalar",
+        .prefix = "zg",
+        .go_module = "example.com/zigo/scalar",
+        .go_package_path = ".",
+    });
+    const public = try temporary.dir.readFileAlloc(std.testing.io, "scalar_gen.go", std.testing.allocator, .limited(16 * 1024));
+    defer std.testing.allocator.free(public);
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "package scalar"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "\"example.com/zigo/scalar/internal/raw\""));
+    try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "scalar/scalar_gen.go", .{}));
+}
+
+test "public Go package can be published at a nested path independent of its name" {
+    const fixture =
+        \\{"functions":[{"name":"add","params":[],"return":{"bits":32,"kind":"int","signed":true},"symbol":"ignored"}],"package":"scalar","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    try generate(std.testing.allocator, std.testing.io, fixture, temporary.dir, .{
+        .package = "scalar",
+        .prefix = "zg",
+        .go_module = "example.com/zigo/scalar",
+        .go_package = "mathapi",
+        .go_package_path = "api/v1",
+    });
+    const public = try temporary.dir.readFileAlloc(std.testing.io, "api/v1/mathapi_gen.go", std.testing.allocator, .limited(16 * 1024));
+    defer std.testing.allocator.free(public);
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "package mathapi"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "\"example.com/zigo/scalar/internal/raw\""));
+    try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "mathapi/mathapi_gen.go", .{}));
+}
+
+test "raw Go bindings colocate at the public package path without public name collisions" {
     const fixture =
         \\{"functions":[{"name":"add","params":[{"name":"p0","type":{"bits":32,"kind":"int","signed":true}},{"name":"p1","type":{"bits":32,"kind":"int","signed":true}}],"return":{"bits":32,"kind":"int","signed":true},"symbol":"ignored"}],"package":"scalar","prefix":"zg","zig_version":"0.16.0"}
     ;
@@ -271,23 +312,24 @@ test "raw Go bindings can be colocated without public name collisions" {
         .package = "scalar",
         .prefix = "zg",
         .go_module = "example.com/zigo/scalar",
-        .raw_package_path = "scalar",
+        .raw_package_path = "api/v1",
         .raw_package_name = "scalar",
         .raw_colocated = true,
+        .go_package_path = "api/v1",
     });
-    const raw = try temporary.dir.readFileAlloc(std.testing.io, "scalar/scalar_cgo_gen.go", std.testing.allocator, .limited(16 * 1024));
+    const raw = try temporary.dir.readFileAlloc(std.testing.io, "api/v1/scalar_cgo_gen.go", std.testing.allocator, .limited(16 * 1024));
     defer std.testing.allocator.free(raw);
     try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "package scalar"));
     try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "func zigoRawAdd("));
     try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "func zigoRawLastErrorMessage()"));
-    const public = try temporary.dir.readFileAlloc(std.testing.io, "scalar/scalar_gen.go", std.testing.allocator, .limited(16 * 1024));
+    const public = try temporary.dir.readFileAlloc(std.testing.io, "api/v1/scalar_gen.go", std.testing.allocator, .limited(16 * 1024));
     defer std.testing.allocator.free(public);
     try std.testing.expect(std.mem.indexOf(u8, public, "import ") == null);
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "return zigoRawAdd(p0, p1)"));
-    try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "scalar/scalar_runtime_gen.go", .{}));
+    try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "api/v1/scalar_runtime_gen.go", .{}));
     // The build-tagged loader halves belong to the purego backend alone.
-    try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "scalar/scalar_cgo_load_posix_gen.go", .{}));
-    try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "scalar/scalar_cgo_load_windows_gen.go", .{}));
+    try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "api/v1/scalar_cgo_load_posix_gen.go", .{}));
+    try std.testing.expectError(error.FileNotFound, temporary.dir.access(std.testing.io, "api/v1/scalar_cgo_load_windows_gen.go", .{}));
 }
 
 test "cgo flag overrides and observed link flags are emitted" {

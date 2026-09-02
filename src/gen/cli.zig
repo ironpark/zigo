@@ -33,6 +33,7 @@ pub const Generate = struct {
     raw_package_name: []const u8 = "raw",
     raw_colocated: bool = false,
     go_package: []const u8 = "",
+    go_package_path: []const u8 = "",
     go_package_doc: []const u8 = "",
     errors_lock_path: ?[]const u8 = null,
     backend: Backend = .cgo,
@@ -70,6 +71,7 @@ pub const Report = struct {
     raw_colocated: bool = false,
     backend: Backend = .cgo,
     go_package: []const u8 = "",
+    go_package_path: []const u8 = "",
     library_search_paths: []const u8 = "",
     library_env_vars: ?[]const u8 = null,
     library_automatic: bool = false,
@@ -189,6 +191,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
     var raw_package_path: ?[]const u8 = null;
     var raw_package_name: ?[]const u8 = null;
     var go_package: ?[]const u8 = null;
+    var go_package_path: ?[]const u8 = null;
     var go_package_doc: ?[]const u8 = null;
     var errors_lock_path: ?[]const u8 = null;
     var gofmt_executable: ?[]const u8 = null;
@@ -240,6 +243,8 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
             try set(&raw_package_path, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--go-package")) {
             try set(&go_package, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--go-package-path")) {
+            try set(&go_package_path, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--go-package-doc")) {
             try set(&go_package_doc, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--raw-package-name")) {
@@ -284,6 +289,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .raw_package_path = raw_package_path orelse "internal/raw",
         .raw_package_name = raw_package_name orelse "raw",
         .go_package = go_package orelse "",
+        .go_package_path = go_package_path orelse go_package orelse "",
         .go_package_doc = go_package_doc orelse "",
         .raw_colocated = raw_colocated,
         .errors_lock_path = errors_lock_path,
@@ -373,6 +379,7 @@ fn parseReport(args: []const []const u8) ParseError!Report {
     var raw_colocated_seen = false;
     var backend: ?Backend = null;
     var go_package: ?[]const u8 = null;
+    var go_package_path: ?[]const u8 = null;
     var loading: LibraryLoadingArgs = .{};
     var index: usize = 0;
     while (index < args.len) {
@@ -388,6 +395,8 @@ fn parseReport(args: []const []const u8) ParseError!Report {
             try set(&raw_package_path, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--go-package")) {
             try set(&go_package, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--go-package-path")) {
+            try set(&go_package_path, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--raw-colocated")) {
             if (raw_colocated_seen) return error.DuplicateArgument;
             raw_colocated_seen = true;
@@ -406,6 +415,7 @@ fn parseReport(args: []const []const u8) ParseError!Report {
         .raw_colocated = raw_colocated,
         .backend = backend orelse .cgo,
         .go_package = go_package orelse "",
+        .go_package_path = go_package_path orelse go_package orelse "",
         .library_search_paths = loading.search_paths orelse "",
         .library_env_vars = loading.env_vars,
         .library_automatic = loading.automatic,
@@ -498,6 +508,10 @@ test "generate command parses named arguments" {
         "zs",
         "--go-module",
         "example.com/scalar",
+        "--go-package",
+        "scalarapi",
+        "--go-package-path",
+        ".",
         "--include-dir",
         "include",
         "--library-dir",
@@ -524,6 +538,8 @@ test "generate command parses named arguments" {
     try std.testing.expectEqualStrings("semantic.json", options.semantic_path);
     try std.testing.expectEqualStrings("scalar", options.package);
     try std.testing.expectEqualStrings("example.com/scalar", options.go_module);
+    try std.testing.expectEqualStrings("scalarapi", options.go_package);
+    try std.testing.expectEqualStrings(".", options.go_package_path);
     try std.testing.expectEqualStrings("-Icustom", options.cflags);
     try std.testing.expectEqualStrings("-Wl,--as-needed", options.extra_ldflags);
     try std.testing.expectEqualStrings("scalar", options.raw_package_path);
@@ -554,8 +570,12 @@ test "generate command retains defaults" {
     try std.testing.expectEqualStrings("zg", options.prefix);
     try std.testing.expectEqualStrings("scalar", options.go_module);
     try std.testing.expectEqualStrings("internal/raw", options.raw_package_path);
+    try std.testing.expectEqualStrings("", options.go_package_path);
     try std.testing.expect(!options.raw_colocated);
     try std.testing.expect(options.errors_lock_path == null);
+
+    const named = (try parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar", "--go-package", "scalarapi" })).generate;
+    try std.testing.expectEqualStrings("scalarapi", named.go_package_path);
 }
 
 test "check and abi-diff commands parse named arguments" {
@@ -571,9 +591,10 @@ test "check and abi-diff commands parse named arguments" {
 }
 
 test "report and doctor commands parse effective configuration" {
-    const report = (try parse(&.{ "report", "--semantic", "semantic.json", "--go-module", "example.com/api", "--raw-package-path", "bridge/raw", "--raw-colocated" })).report;
+    const report = (try parse(&.{ "report", "--semantic", "semantic.json", "--go-module", "example.com/api", "--raw-package-path", "bridge/raw", "--go-package", "api", "--go-package-path", ".", "--raw-colocated" })).report;
     try std.testing.expectEqualStrings("semantic.json", report.semantic_path);
     try std.testing.expectEqualStrings("example.com/api", report.go_module);
+    try std.testing.expectEqualStrings(".", report.go_package_path);
     try std.testing.expect(report.raw_colocated);
 
     const doctor = (try parse(&.{ "doctor", "--go", "/tools/go", "--gofmt", "/tools/gofmt", "--target", "cross" })).doctor;

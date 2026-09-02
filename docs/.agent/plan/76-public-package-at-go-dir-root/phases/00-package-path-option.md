@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 세 경우의 generator 테스트 통과, 전 예제 `go-check` 변화 없음, 커밋.
 > NEXT: none

@@ -11,6 +11,7 @@ pub const Options = struct {
     raw_colocated: bool = false,
     backend: Backend = .cgo,
     go_package: []const u8 = "",
+    go_package_path: []const u8 = "",
     library_search_paths: []const u8 = "",
     library_env_vars: ?[]const u8 = null,
     library_automatic: bool = false,
@@ -44,7 +45,14 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
             try scratch_allocator.dupe(u8, options.go_package)
         else
             try naming.snakeAlloc(scratch_allocator, document.package);
+        const go_package_path = if (options.go_package_path.len != 0) options.go_package_path else go_package;
         try writer.print("Go package: {s}\n", .{go_package});
+        try writer.print("Go package path: {s}\n", .{go_package_path});
+        if (options.go_module.len != 0) try writer.print("Go import path: {s}{s}{s}\n", .{
+            options.go_module,
+            if (std.mem.eql(u8, go_package_path, ".")) "" else "/",
+            if (std.mem.eql(u8, go_package_path, ".")) "" else go_package_path,
+        });
     }
     if (options.go_module.len != 0) try writer.print("go module: {s}\n", .{options.go_module});
     try writer.print("C prefix: {s}\n", .{document.prefix});
@@ -205,6 +213,7 @@ test "report exposes final public names symbols ownership and projections" {
     defer output.deinit();
     try render(std.testing.allocator, &output.writer, document, .{ .go_module = "example.com/sample" });
     const actual = output.written();
+    try std.testing.expect(std.mem.indexOf(u8, actual, "Go package path: sample\nGo import path: example.com/sample/sample\n") != null);
     try std.testing.expect(std.mem.indexOf(u8, actual, "Value.create -> NewValue | C zs_value_create | return ownership caller") != null);
     try std.testing.expect(std.mem.indexOf(u8, actual, "Value.deinit -> (*Value).Close [lifecycle mapping]") != null);
     try std.testing.expect(std.mem.indexOf(u8, actual, "input:slice/retained/ast") != null);

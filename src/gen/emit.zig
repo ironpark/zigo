@@ -29,6 +29,9 @@ pub const Options = struct {
     library_stem: []const u8 = "",
     /// Public Go package name. Empty derives it from the binding name.
     go_package: []const u8 = "",
+    /// Public package path below the module root. Empty defaults to the public
+    /// package name; `.` publishes at the module root.
+    go_package_path: []const u8 = "",
     /// Body of the generated `// Package ...` doc. Empty falls back to the
     /// `//!` container doc of the bindings file, then to a default sentence.
     go_package_doc: []const u8 = "",
@@ -78,7 +81,9 @@ fn rawPath(allocator: std.mem.Allocator, program: abi.Program, options: Options)
     if (options.raw_colocated) {
         const package = try publicPackageAlloc(allocator, program, options);
         defer allocator.free(package);
-        return std.fmt.allocPrint(allocator, "{s}/{s}_{s}_gen.go", .{ package, package, @tagName(options.backend) });
+        const filename = try std.fmt.allocPrint(allocator, "{s}_{s}_gen.go", .{ package, @tagName(options.backend) });
+        defer allocator.free(filename);
+        return publicFilePathAlloc(allocator, program, options, filename);
     }
     return std.fmt.allocPrint(allocator, "{s}/{s}_gen.go", .{ options.raw_package_path, options.raw_package_name });
 }
@@ -90,7 +95,9 @@ fn rawConcernPathAlloc(allocator: std.mem.Allocator, program: abi.Program, optio
     if (options.raw_colocated) {
         const package = try publicPackageAlloc(allocator, program, options);
         defer allocator.free(package);
-        return std.fmt.allocPrint(allocator, "{s}/{s}_{s}_{s}_gen.go", .{ package, package, @tagName(options.backend), concern });
+        const filename = try std.fmt.allocPrint(allocator, "{s}_{s}_{s}_gen.go", .{ package, @tagName(options.backend), concern });
+        defer allocator.free(filename);
+        return publicFilePathAlloc(allocator, program, options, filename);
     }
     return std.fmt.allocPrint(allocator, "{s}/{s}_{s}_gen.go", .{ options.raw_package_path, options.raw_package_name, concern });
 }
@@ -106,7 +113,9 @@ fn rawLoadWindowsPath(allocator: std.mem.Allocator, program: abi.Program, option
 fn publicPath(allocator: std.mem.Allocator, program: abi.Program, options: Options) ![]u8 {
     const package = try publicPackageAlloc(allocator, program, options);
     defer allocator.free(package);
-    return std.fmt.allocPrint(allocator, "{s}/{s}_gen.go", .{ package, package });
+    const filename = try std.fmt.allocPrint(allocator, "{s}_gen.go", .{package});
+    defer allocator.free(filename);
+    return publicFilePathAlloc(allocator, program, options, filename);
 }
 
 fn publicEnumsPath(allocator: std.mem.Allocator, program: abi.Program, options: Options) ![]u8 {
@@ -138,13 +147,24 @@ fn publicUnionPathAlloc(allocator: std.mem.Allocator, program: abi.Program, opti
 fn publicConcernPathAlloc(allocator: std.mem.Allocator, program: abi.Program, options: Options, concern: []const u8) ![]u8 {
     const package = try publicPackageAlloc(allocator, program, options);
     defer allocator.free(package);
-    return std.fmt.allocPrint(allocator, "{s}/{s}_{s}_gen.go", .{ package, package, concern });
+    const filename = try std.fmt.allocPrint(allocator, "{s}_{s}_gen.go", .{ package, concern });
+    defer allocator.free(filename);
+    return publicFilePathAlloc(allocator, program, options, filename);
 }
 
 fn publicErrorsPath(allocator: std.mem.Allocator, program: abi.Program, options: Options) ![]u8 {
     const package = try publicPackageAlloc(allocator, program, options);
     defer allocator.free(package);
-    return std.fmt.allocPrint(allocator, "{s}/{s}_errors_gen.go", .{ package, package });
+    const filename = try std.fmt.allocPrint(allocator, "{s}_errors_gen.go", .{package});
+    defer allocator.free(filename);
+    return publicFilePathAlloc(allocator, program, options, filename);
+}
+
+fn publicFilePathAlloc(allocator: std.mem.Allocator, program: abi.Program, options: Options, filename: []const u8) ![]u8 {
+    const path = try publicPackagePathAlloc(allocator, program, options);
+    defer allocator.free(path);
+    if (std.mem.eql(u8, path, ".")) return allocator.dupe(u8, filename);
+    return std.fmt.allocPrint(allocator, "{s}/{s}", .{ path, filename });
 }
 
 fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, _: Options) !void {
@@ -1169,6 +1189,11 @@ fn writeProjectionCType(writer: *std.Io.Writer, value: abi.AbiScalar, wrote_poin
 fn publicPackageAlloc(allocator: std.mem.Allocator, program: abi.Program, options: Options) ![]u8 {
     if (options.go_package.len != 0) return allocator.dupe(u8, options.go_package);
     return naming.snakeAlloc(allocator, program.package);
+}
+
+fn publicPackagePathAlloc(allocator: std.mem.Allocator, program: abi.Program, options: Options) ![]u8 {
+    if (options.go_package_path.len != 0) return allocator.dupe(u8, options.go_package_path);
+    return publicPackageAlloc(allocator, program, options);
 }
 
 /// Go parameter names for one function, computed once per emitted function.

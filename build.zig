@@ -61,6 +61,9 @@ pub const Options = struct {
     /// can contain underscores; set it to choose an idiomatic Go name. The C
     /// header and the native library keep the binding name either way.
     go_package: ?[]const u8 = null,
+    /// Slash-separated public package path inside `go_dir`. Defaults to
+    /// `go_package`; `.` publishes the package at the `go_dir` root.
+    go_package_path: ?[]const u8 = null,
     /// Body of the generated `// Package ...` doc. Null falls back to the `//!`
     /// container doc of the bindings file, then to a default sentence.
     go_package_doc: ?[]const u8 = null,
@@ -740,7 +743,8 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
             @panic("go_package must be a valid Go package identifier");
         break :blk value;
     } else artifact_package;
-    const raw_package = resolveRawPackage(b, options.raw_package, go_package);
+    const go_package_path = resolveGoPackagePath(options.go_package_path orelse go_package);
+    const raw_package = resolveRawPackage(b, options.raw_package, go_package_path, go_package);
     const zigo_dependency = b.dependencyFromBuildZig(@This(), .{});
     const generator = addGenerator(b, zigo_dependency.path("src/main.zig"), b.graph.host, .Debug);
     // Reflection runs the bindings module as an executable on the host, so the
@@ -830,6 +834,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         "--library-stem",      library_stem,
         "--link-mode",         @tagName(link_mode),
         "--go-package",        go_package,
+        "--go-package-path",   go_package_path,
         "--go-package-doc",    options.go_package_doc orelse "",
     });
     if (static_link_inputs.paths.len != 0) generate.addArg("--ldflags-external");
@@ -856,7 +861,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     const report = b.addRunArtifact(generator);
     report.addArgs(&.{ "report", "--semantic" });
     report.addFileArg(semantic_json);
-    report.addArgs(&.{ "--go-module", options.go_module, "--raw-package-path", raw_package.path, "--go-package", go_package });
+    report.addArgs(&.{ "--go-module", options.go_module, "--raw-package-path", raw_package.path, "--go-package", go_package, "--go-package-path", go_package_path });
     report.addArgs(&.{ "--backend", @tagName(backend) });
     if (backend == .purego) addLibraryLoadingArgs(b, report, options.library_loading);
     if (raw_package.colocated) report.addArg("--raw-colocated");
@@ -1208,10 +1213,22 @@ fn isRunnableOnHost(target: std.Target, host: std.Target) bool {
     return target.cpu.arch == host.cpu.arch and target.os.tag == host.os.tag and target.abi == host.abi;
 }
 
-/// Colocation is not a separate option: naming the public package as the raw
-/// package path is what colocates them.
-fn resolveRawPackage(b: *std.Build, path: []const u8, go_package: []const u8) ResolvedRawPackage {
-    if (std.mem.eql(u8, path, go_package)) return .{ .path = go_package, .name = go_package, .colocated = true };
+fn resolveGoPackagePath(path: []const u8) []const u8 {
+    if (std.mem.eql(u8, path, ".")) return path;
+    build_options.validateRawPackagePath(path) catch |err| switch (err) {
+        error.InvalidPath => @panic("go_package_path must be '.' or a non-empty relative slash-separated path"),
+        error.InvalidComponent => @panic("go_package_path must not contain empty, '.' or '..' components"),
+        error.InvalidCharacter => @panic("go_package_path components may contain only ASCII letters, digits, '_', '-' and '.'"),
+    };
+    return path;
+}
+
+/// Colocation is not a separate option: naming the public package path as the
+/// raw package path is what colocates them.
+fn resolveRawPackage(b: *std.Build, path: []const u8, go_package_path: []const u8, go_package: []const u8) ResolvedRawPackage {
+    if (std.mem.eql(u8, path, go_package_path)) return .{ .path = go_package_path, .name = go_package, .colocated = true };
+    if (std.mem.eql(u8, path, "."))
+        @panic("raw_package may be '.' only when go_package_path is also '.' (colocated)");
     build_options.validateRawPackagePath(path) catch |err| switch (err) {
         error.InvalidPath => @panic("raw_package must be a non-empty relative slash-separated path"),
         error.InvalidComponent => @panic("raw_package must not contain empty, '.' or '..' components"),
