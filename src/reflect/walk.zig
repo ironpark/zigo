@@ -230,6 +230,7 @@ fn appendFunction(
                 if (@hasField(@TypeOf(value), "retention")) reflected.retention = value.retention;
                 if (@hasField(@TypeOf(value), "semantic")) reflected.semantic = value.semantic;
                 if (@hasField(@TypeOf(value), "written")) reflected.written = value.written;
+                if (@hasField(@TypeOf(value), "buffer")) reflected.buffer = value.buffer;
             }
         }
         // The sentinel is part of the Zig type, so it remains a C string even
@@ -571,6 +572,13 @@ fn typeNode(
                 } };
             },
             .one => blk: {
+                // `*std.Io.Writer` and `*std.Io.Reader` are concrete structs in
+                // Zig 0.16, so type identity settles it. They are matched ahead
+                // of the opaque-handle rule: neither is a registered type, and
+                // without this the author would be told to register a std type
+                // rather than that the position is the problem.
+                if (info.child == std.Io.Writer) break :blk .{ .io_stream = .{ .direction = .writer } };
+                if (info.child == std.Io.Reader) break :blk .{ .io_stream = .{ .direction = .reader } };
                 if (@typeInfo(info.child) == .@"fn") {
                     const function_info = @typeInfo(info.child).@"fn";
                     const callback_params = try allocator.alloc(semantic.TypeNode, function_info.params.len);
@@ -1584,4 +1592,38 @@ test "without an allocator a value-returning init is left alone" {
     // the struct rather than a lifetime decision zigo made for them.
     try std.testing.expectEqual(@as(?semantic.Boxed, null), document.functions[0].boxed);
     try std.testing.expectEqualStrings("Terminal", document.functions[0].@"return".value_struct.ref);
+}
+
+test "std.Io.Writer and std.Io.Reader parameters reflect as stream nodes" {
+    const Fixture = struct {
+        pub fn dump(w: *std.Io.Writer) error{WriteFailed}!void {
+            try w.writeAll("x");
+        }
+        pub fn load(r: *std.Io.Reader) error{ReadFailed}!usize {
+            return r.discardRemaining() catch error.ReadFailed;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .functions = .{
+            .{ .path = "root.dump", .params = .{"w"} },
+            .{ .path = "root.load", .params = .{"r"}, .param_meta = .{ .r = .{ .buffer = 8192 } } },
+        },
+    }, "stream", "zg");
+
+    try std.testing.expectEqual(
+        semantic.StreamDirection.writer,
+        document.functions[0].params[0].type.io_stream.direction,
+    );
+    // An unset buffer stays absent from the document; the default lives in one
+    // place rather than being baked into every reflection.
+    try std.testing.expectEqual(@as(?u32, null), document.functions[0].params[0].buffer);
+    try std.testing.expectEqual(semantic.default_stream_buffer, document.functions[0].params[0].bufferSize());
+    try std.testing.expectEqual(
+        semantic.StreamDirection.reader,
+        document.functions[1].params[0].type.io_stream.direction,
+    );
+    try std.testing.expectEqual(@as(u32, 8192), document.functions[1].params[0].bufferSize());
 }

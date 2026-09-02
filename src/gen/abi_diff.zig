@@ -88,6 +88,8 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
             try add(allocator, &report, .breaking, identity, "parameter retention changed");
         if (!writtenEqual(old.params, new.params))
             try add(allocator, &report, .breaking, identity, "parameter written hint changed (C signature)");
+        if (!streamBufferEqual(old.params, new.params))
+            try add(allocator, &report, .compatible, identity, "stream staging buffer resized");
         try compareErrors(allocator, &report, identity, old.@"return", new.@"return");
     }
     for (current.functions) |new| if (findFunction(base.functions, new) == null) {
@@ -268,6 +270,17 @@ fn writtenEqual(lhs: []const semantic.Parameter, rhs: []const semantic.Parameter
     return true;
 }
 
+/// The staging buffer behind a stream parameter is a shim-internal size, not
+/// part of any signature, so resizing it is reported rather than refused.
+fn streamBufferEqual(lhs: []const semantic.Parameter, rhs: []const semantic.Parameter) bool {
+    if (lhs.len != rhs.len) return false;
+    for (lhs, rhs) |a, b| {
+        if (a.type != .io_stream or b.type != .io_stream) continue;
+        if (a.bufferSize() != b.bufferSize()) return false;
+    }
+    return true;
+}
+
 fn compareErrors(allocator: std.mem.Allocator, report: *Report, subject: []const u8, old_node: semantic.TypeNode, new_node: semantic.TypeNode) !void {
     if (old_node != .error_union or new_node != .error_union) return;
     const old = old_node.error_union.error_set;
@@ -315,6 +328,10 @@ fn typeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
         .int => |a| a.bits == rhs.int.bits and a.signed == rhs.int.signed and a.is_usize == rhs.int.is_usize,
         .float => |a| a.bits == rhs.float.bits,
         .@"enum" => |a| std.mem.eql(u8, a.ref, rhs.@"enum".ref),
+        // The staging buffer rides on the parameter, not here: the direction
+        // is the whole of the lowered C shape, so a resized buffer leaves the
+        // signature alone and is reported as compatible instead.
+        .io_stream => |a| a.direction == rhs.io_stream.direction,
         .value_struct => |a| std.mem.eql(u8, a.ref, rhs.value_struct.ref),
         .opaque_ptr => |a| a.@"const" == rhs.opaque_ptr.@"const" and a.nullable == rhs.opaque_ptr.nullable and std.mem.eql(u8, a.ref, rhs.opaque_ptr.ref),
         // sentinel/sentinel_many는 shim이 Zig element 타입을 되살릴 때만 쓰는 주석이고
@@ -821,4 +838,46 @@ test "giving an infallible function a handle changes its C ABI" {
     var report = try diff(std.testing.allocator, base, current);
     defer report.deinit(std.testing.allocator);
     try std.testing.expect(report.hasBreaking());
+}
+
+test "a resized stream buffer is compatible while the direction is breaking" {
+    const writer: semantic.TypeNode = .{ .io_stream = .{ .direction = .writer } };
+    const reader: semantic.TypeNode = .{ .io_stream = .{ .direction = .reader } };
+    const old: []const semantic.SemanticFn = &.{.{
+        .name = "dump",
+        .params = &.{.{ .name = "w", .type = writer }},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_dump",
+    }};
+    const resized: []const semantic.SemanticFn = &.{.{
+        .name = "dump",
+        .params = &.{.{ .buffer = 4096, .name = "w", .type = writer }},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_dump",
+    }};
+    const flipped: []const semantic.SemanticFn = &.{.{
+        .name = "dump",
+        .params = &.{.{ .name = "w", .type = reader }},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_dump",
+    }};
+
+    var buffer_report = try diff(
+        std.testing.allocator,
+        .{ .functions = old, .package = "stream", .prefix = "zg", .zig_version = "0.16.0" },
+        .{ .functions = resized, .package = "stream", .prefix = "zg", .zig_version = "0.16.0" },
+    );
+    defer buffer_report.deinit(std.testing.allocator);
+    try std.testing.expect(!buffer_report.hasBreaking());
+    try std.testing.expectEqual(@as(usize, 1), buffer_report.changes.items.len);
+    try std.testing.expectEqual(ChangeKind.compatible, buffer_report.changes.items[0].kind);
+    try std.testing.expectEqualStrings("stream staging buffer resized", buffer_report.changes.items[0].detail);
+
+    var direction_report = try diff(
+        std.testing.allocator,
+        .{ .functions = old, .package = "stream", .prefix = "zg", .zig_version = "0.16.0" },
+        .{ .functions = flipped, .package = "stream", .prefix = "zg", .zig_version = "0.16.0" },
+    );
+    defer direction_report.deinit(std.testing.allocator);
+    try std.testing.expect(direction_report.hasBreaking());
 }

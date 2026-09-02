@@ -118,6 +118,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                         "set `.io = \"<declaration path>\"` in the binding",
                 };
             }
+            if (try streamParameterIssue(allocator, function, parameter)) |issue| return issue;
             if (containsTaggedUnionValue(document, parameter.type)) return .{
                 .severity = .@"error",
                 .code = "ZIGO006",
@@ -162,6 +163,13 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .hint = "expose a release, clear, close, destroy, or deinit function for the retained value",
             };
         }
+        if (containsIoStream(function.@"return")) return .{
+            .severity = .@"error",
+            .code = "ZIGO023",
+            .message = "`*std.Io.Writer` and `*std.Io.Reader` are only supported as whole parameters",
+            .site = .{ .path = "semantic.json", .declaration = try functionDeclarationAlloc(allocator, function) },
+            .hint = "the shim adapter lives on the call stack, so a stream cannot be returned; take the stream as a parameter instead",
+        };
         if (containsTaggedUnionValue(document, function.@"return")) return .{
             .severity = .@"error",
             .code = "ZIGO006",
@@ -239,6 +247,17 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
         };
     }
     for (document.types) |declaration| {
+        for (declaration.fields) |field| {
+            const node = field.type orelse continue;
+            if (!containsIoStream(node)) continue;
+            return .{
+                .severity = .@"error",
+                .code = "ZIGO023",
+                .message = try std.fmt.allocPrint(allocator, "`*std.Io.Writer` and `*std.Io.Reader` are only supported as whole parameters, not in field `{s}`", .{field.name}),
+                .site = .{ .path = "semantic.json", .declaration = declaration.name },
+                .hint = "the shim adapter lives on the call stack, so a stream cannot be stored; take the stream as a parameter of the function that uses it",
+            };
+        }
         if (declaration.kind == .@"enum" and !declaration.exhaustive) return .{
             .severity = .@"error",
             .code = "ZIGO002",
@@ -332,6 +351,80 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
         }
     }
     return null;
+}
+
+/// Every rejection a stream parameter can earn, in the order the author is
+/// most likely to have caused them. A stream is a call-scoped adapter the shim
+/// builds on its own stack around a Go callback, which is what every one of
+/// these limits comes back to: nothing may outlive the call, and nothing may
+/// carry the adapter anywhere the shim cannot see.
+fn streamParameterIssue(
+    allocator: std.mem.Allocator,
+    function: semantic.SemanticFn,
+    parameter: semantic.Parameter,
+) !?diagnostic.Diagnostic {
+    // A document that validates must not allocate, so the declaration text is
+    // only built once something is known to be wrong with it.
+    const offends = (parameter.type != .io_stream and containsIoStream(parameter.type)) or
+        (parameter.type == .io_stream and parameter.retention == .retained) or
+        (parameter.buffer != null and parameter.type != .io_stream) or
+        (parameter.buffer != null and (parameter.buffer.? < semantic.min_stream_buffer or parameter.buffer.? > semantic.max_stream_buffer));
+    if (!offends) return null;
+    const declaration = try functionDeclarationAlloc(allocator, function);
+    if (parameter.type != .io_stream and containsIoStream(parameter.type)) return .{
+        .severity = .@"error",
+        .code = "ZIGO023",
+        .message = try std.fmt.allocPrint(
+            allocator,
+            "`*std.Io.Writer` and `*std.Io.Reader` are only supported as whole parameters, not inside parameter `{s}`",
+            .{parameter.name},
+        ),
+        .site = .{ .path = "semantic.json", .declaration = declaration },
+        .hint = "pass the stream as its own parameter; it cannot travel inside an optional, a slice, a callback signature, or a union payload",
+    };
+    if (parameter.type == .io_stream and parameter.retention == .retained) return .{
+        .severity = .@"error",
+        .code = "ZIGO023",
+        .message = try std.fmt.allocPrint(allocator, "stream parameter `{s}` cannot be retained", .{parameter.name}),
+        .site = .{ .path = "semantic.json", .declaration = declaration },
+        .hint = "drop `.retention = .retained`; the shim adapter lives on the call stack and is invalid once the call returns",
+    };
+    const buffer = parameter.buffer orelse return null;
+    if (parameter.type != .io_stream) return .{
+        .severity = .@"error",
+        .code = "ZIGO023",
+        .message = try std.fmt.allocPrint(allocator, "buffer hint declared on parameter `{s}`, which is not a stream", .{parameter.name}),
+        .site = .{ .path = "semantic.json", .declaration = declaration },
+        .hint = "use `.buffer` only on a `*std.Io.Writer` or `*std.Io.Reader` parameter",
+    };
+    if (buffer < semantic.min_stream_buffer or buffer > semantic.max_stream_buffer) return .{
+        .severity = .@"error",
+        .code = "ZIGO023",
+        .message = try std.fmt.allocPrint(
+            allocator,
+            "stream buffer {d} on parameter `{s}` is outside {d}..{d}",
+            .{ buffer, parameter.name, semantic.min_stream_buffer, semantic.max_stream_buffer },
+        ),
+        .site = .{ .path = "semantic.json", .declaration = declaration },
+        .hint = "choose a buffer between 4096 and 16777216 bytes, or drop `.buffer` for the 65536 default",
+    };
+    return null;
+}
+
+/// True when a stream appears anywhere in the node, including as the node
+/// itself. Callers that allow the whole-parameter position test the tag first.
+fn containsIoStream(node: semantic.TypeNode) bool {
+    return switch (node) {
+        .io_stream => true,
+        .slice => |value| containsIoStream(value.element.*),
+        .optional => |value| containsIoStream(value.child.*),
+        .error_union => |value| containsIoStream(value.payload.*),
+        .callback => |value| blk: {
+            for (value.params) |parameter| if (containsIoStream(parameter)) break :blk true;
+            break :blk containsIoStream(value.@"return".*);
+        },
+        else => false,
+    };
 }
 
 /// Names that reach Go verbatim -- a registered type's name -- have to be Go
@@ -430,7 +523,7 @@ const Offense = struct {
 /// width C cannot name is still a rejection there.
 fn typeOffense(allocator: std.mem.Allocator, node: semantic.TypeNode, promotable: bool) error{OutOfMemory}!?Offense {
     switch (node) {
-        .void, .bool, .@"enum", .opaque_ptr, .value_struct => return null,
+        .void, .bool, .@"enum", .opaque_ptr, .value_struct, .io_stream => return null,
         .int => |value| {
             if (integerSupported(value)) return null;
             if (promotable and promotableInteger(value)) return null;
@@ -2100,4 +2193,116 @@ test "a purego callback result outside the uintptr ABI is rejected" {
     // The result shape is a purego-backend rule, not a platform one, so the
     // general validator stays silent about it.
     try std.testing.expect((try findIssue(std.testing.allocator, float_result)) == null);
+}
+
+test "stream parameters are accepted only as whole call-scoped parameters" {
+    const writer: semantic.TypeNode = .{ .io_stream = .{ .direction = .writer } };
+    const reader: semantic.TypeNode = .{ .io_stream = .{ .direction = .reader } };
+    const stream_child: semantic.TypeNode = writer;
+    const stream_return: semantic.TypeNode = reader;
+    var callback_return: semantic.TypeNode = .{ .void = {} };
+    var callback_params = [_]semantic.TypeNode{writer};
+    const count: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
+
+    const accepted: semantic.Semantic = .{
+        .functions = &.{
+            .{
+                .name = "dump",
+                .params = &.{.{ .name = "w", .type = writer }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_dump",
+            },
+            .{
+                .name = "load",
+                .params = &.{.{ .buffer = 4096, .name = "r", .type = reader }},
+                .@"return" = count,
+                .symbol = "zg_load",
+            },
+        },
+        .package = "stream",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(std.testing.allocator, accepted));
+
+    const rejected = [_]struct { document: semantic.Semantic, message: []const u8 }{
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "open",
+                .params = &.{},
+                .@"return" = stream_return,
+                .symbol = "zg_open",
+            }},
+            .package = "stream",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .message = "`*std.Io.Writer` and `*std.Io.Reader` are only supported as whole parameters" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "visit",
+                .params = &.{.{ .name = "callback", .type = .{ .callback = .{
+                    .has_userdata = false,
+                    .params = &callback_params,
+                    .@"return" = &callback_return,
+                } } }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_visit",
+            }},
+            .package = "stream",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .message = "`*std.Io.Writer` and `*std.Io.Reader` are only supported as whole parameters, not inside parameter `callback`" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "keep",
+                .params = &.{.{ .name = "w", .retention = .retained, .type = writer }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_keep",
+            }},
+            .package = "stream",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .message = "stream parameter `w` cannot be retained" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "sink",
+                .params = &.{.{ .buffer = 512, .name = "w", .type = writer }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_sink",
+            }},
+            .package = "stream",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .message = "stream buffer 512 on parameter `w` is outside 4096..16777216" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "count",
+                .params = &.{.{ .buffer = 8192, .name = "n", .type = count }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_count",
+            }},
+            .package = "stream",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .message = "buffer hint declared on parameter `n`, which is not a stream" },
+        .{ .document = .{
+            .functions = &.{},
+            .package = "stream",
+            .prefix = "zg",
+            .types = &.{.{
+                .fields = &.{.{ .name = "sink", .type = stream_child }},
+                .kind = .value_struct,
+                .layout = .@"extern",
+                .name = "Pipe",
+            }},
+            .zig_version = "0.16.0",
+        }, .message = "`*std.Io.Writer` and `*std.Io.Reader` are only supported as whole parameters, not in field `sink`" },
+    };
+    for (rejected) |case| {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const issue = (try findIssue(scratch.allocator(), case.document)) orelse return error.MissingDiagnostic;
+        try std.testing.expectEqualStrings("ZIGO023", issue.code);
+        try std.testing.expectEqualStrings(case.message, issue.message);
+    }
 }

@@ -25,6 +25,11 @@ pub const Slice = struct {
     sentinel_many: bool = false,
 };
 pub const Optional = struct { child: *TypeNode };
+/// Which direction a `*std.Io.Writer` / `*std.Io.Reader` parameter streams.
+/// The two lower to different fixed callback signatures, so the direction is
+/// the whole of the type: neither side carries a payload type.
+pub const StreamDirection = enum { writer, reader };
+pub const IoStream = struct { direction: StreamDirection };
 pub const ErrorUnion = struct {
     anyerror: bool = false,
     error_set: []const []const u8,
@@ -48,6 +53,7 @@ pub const TypeNode = union(enum) {
     error_union: ErrorUnion,
     float: Float,
     int: Int,
+    io_stream: IoStream,
     opaque_ptr: OpaquePtr,
     optional: Optional,
     slice: Slice,
@@ -103,6 +109,10 @@ pub const TypeNode = union(enum) {
                 try jw.objectField("signed");
                 try jw.write(value.signed);
             },
+            .io_stream => |value| try writeKind(jw, switch (value.direction) {
+                .writer => "io_writer",
+                .reader => "io_reader",
+            }),
             .opaque_ptr => |value| {
                 try jw.objectField("const");
                 try jw.write(value.@"const");
@@ -168,6 +178,8 @@ pub const TypeNode = union(enum) {
         if (std.mem.eql(u8, kind, "value_struct")) return .{ .value_struct = .{
             .ref = try parseField([]const u8, allocator, object, "ref", options),
         } };
+        if (std.mem.eql(u8, kind, "io_writer")) return .{ .io_stream = .{ .direction = .writer } };
+        if (std.mem.eql(u8, kind, "io_reader")) return .{ .io_stream = .{ .direction = .reader } };
         if (std.mem.eql(u8, kind, "opaque_ptr")) return .{ .opaque_ptr = .{
             .@"const" = try parseField(bool, allocator, object, "const", options),
             .nullable = try parseField(bool, allocator, object, "nullable", options),
@@ -236,6 +248,11 @@ pub const Ownership = enum { borrowed, caller, library };
 pub const Written = enum { all, @"return" };
 
 pub const Parameter = struct {
+    /// Bytes of shim-side staging buffer behind an `*std.Io.Writer` or
+    /// `*std.Io.Reader` parameter, from `param_meta.<name>.buffer`. Only the
+    /// buffer size changes; the C signature does not, so this is an ABI
+    /// compatible knob rather than part of the shape.
+    buffer: ?u32 = null,
     direction: Direction = .in,
     /// Set when the shim supplies this argument. An injected parameter is
     /// absent from the C and Go signatures, so adding or removing one is a
@@ -247,6 +264,12 @@ pub const Parameter = struct {
     semantic: ?SemanticHint = null,
     type: TypeNode,
     written: ?Written = null,
+
+    /// The staging buffer a stream parameter was declared with, or the
+    /// default when it kept it.
+    pub fn bufferSize(self: Parameter) u32 {
+        return self.buffer orelse default_stream_buffer;
+    }
 
     /// The written hint a parameter was declared with. Parameters that keep
     /// the default never carry the field.
@@ -260,6 +283,19 @@ pub const Parameter = struct {
 /// with the binding's allocator and hands Go a pointer; the paired `deinit`
 /// frees that storage after running the Zig destructor.
 pub const Boxed = enum { create, destroy };
+
+/// The staging buffer a stream parameter gets without asking. 64 KiB is large
+/// enough that a Go `Write` costs one boundary crossing per 64 KiB of payload
+/// and small enough to sit on the shim's stack.
+pub const default_stream_buffer: u32 = 65536;
+/// Below this a buffer stops amortizing the boundary crossing; above it the
+/// staging array stops being a plausible object at all.
+pub const min_stream_buffer: u32 = 4096;
+pub const max_stream_buffer: u32 = 16 * 1024 * 1024;
+/// Above this the staging buffer is heap allocated rather than declared as a
+/// stack array, because a shim frame that large is a stack overflow waiting
+/// for a deep call.
+pub const stream_heap_threshold: u32 = 256 * 1024;
 
 pub const SemanticFn = struct {
     /// Set on the two halves of a boxed constructor pair.
@@ -353,3 +389,33 @@ pub const Semantic = struct {
         return std.json.parseFromValue(Semantic, allocator, dynamic.value, .{});
     }
 };
+
+test "stream parameters round-trip through the semantic document" {
+    const document: Semantic = .{
+        .functions = &.{.{
+            .name = "dump",
+            .params = &.{
+                .{ .name = "w", .type = .{ .io_stream = .{ .direction = .writer } } },
+                .{ .buffer = 8192, .name = "r", .type = .{ .io_stream = .{ .direction = .reader } } },
+            },
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_dump",
+        }},
+        .package = "stream",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    const bytes = try document.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"kind\": \"io_writer\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"kind\": \"io_reader\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"buffer\": 8192") != null);
+
+    var parsed = try Semantic.parse(std.testing.allocator, bytes);
+    defer parsed.deinit();
+    const params = parsed.value.functions[0].params;
+    try std.testing.expectEqual(StreamDirection.writer, params[0].type.io_stream.direction);
+    try std.testing.expectEqual(@as(?u32, null), params[0].buffer);
+    try std.testing.expectEqual(StreamDirection.reader, params[1].type.io_stream.direction);
+    try std.testing.expectEqual(@as(u32, 8192), params[1].buffer.?);
+}

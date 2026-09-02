@@ -171,6 +171,10 @@ fn typeName(node: semantic.TypeNode) []const u8 {
         .error_union => "error_union",
         .optional => "optional",
         .callback => "callback",
+        .io_stream => |value| switch (value.direction) {
+            .writer => "io_writer",
+            .reader => "io_reader",
+        },
         .slice => "slice",
         .int => "int",
         .float => "float",
