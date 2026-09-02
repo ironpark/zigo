@@ -10,10 +10,12 @@ pub const bindings = zigo.define(.{
         .{ .type = library.EventQueue, .repr = .@"opaque" },
         .{ .type = library.Stats, .repr = .value },
         .{ .type = library.Limits, .repr = .value },
+        .{ .type = library.QueueSignal, .repr = .enumeration, .exhaustive = false },
         .{ .type = library.Ticker, .repr = .@"opaque" },
         .{ .type = library.Stream, .repr = .@"opaque" },
     },
     .functions = .{
+        .{ .path = "root.echoQueueSignal", .params = .{"signal"} },
         .{
             .path = "EventQueue.create",
             .params = .{ "name", "capacity", "policy", "observer", "userdata" },

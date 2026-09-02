@@ -25,3 +25,25 @@ func (value Policy) String() string {
 		return "Policy(" + strconv.Itoa(int(value)) + ")"
 	}
 }
+
+// QueueSignal represents the corresponding Zig open enum; values outside the named constants are valid.
+type QueueSignal uint8
+
+const (
+	// QueueSignalPause corresponds to the Zig tag pause.
+	QueueSignalPause QueueSignal = 0
+	// QueueSignalContinueProcessing corresponds to the Zig tag continue_processing.
+	QueueSignalContinueProcessing QueueSignal = 1
+)
+
+// String returns the Zig tag name.
+func (value QueueSignal) String() string {
+	switch value {
+	case QueueSignalPause:
+		return "pause"
+	case QueueSignalContinueProcessing:
+		return "continue_processing"
+	default:
+		return "QueueSignal(" + strconv.Itoa(int(value)) + ")"
+	}
+}

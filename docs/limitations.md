@@ -127,6 +127,10 @@
 - tagged union은 `.repr = .tagged_union`으로 등록한 뒤 포인터로만 노출한다. 생성된
   `Tag`/`As*`가 active tag를 검사하며 union 레이아웃은 C로 전달하지 않는다. nested
   aggregate, optional, error union, callback 또는 pointer 원소 slice payload는 지원하지 않는다.
+- non-exhaustive enum은 `.repr = .enumeration, .exhaustive = false`로 명시 등록한 경우에만
+  노출한다. 그때 이름 붙은 tag 밖의 값도 유효하며 파라미터·반환·struct 필드·slice 원소에서
+  정수 그대로 왕복한다. opt-in이 없으면 `ZIGO002`다. non-exhaustive tag를 가진 tagged union은
+  projection과 snapshot이 닫힌 tag 집합을 전제로 하므로 opt-in 대상이 아니며 계속 거부한다.
 - NUL 종료 문자열은 `[*:0]const u8`만 지원하며 Go에서는 `string`이 된다. mutable 또는
   0이 아닌 sentinel pointer와 그 밖의 many-pointer는 reflection 단계에서 거부된다.
 - 포인터를 품은 결과 트리(문자열 필드, 배열 필드, 중첩 struct 포인터를 가진 struct)는
@@ -181,6 +185,9 @@ error[ZIGO018]: unsupported integer width `u21` in parameter `cp`
   hint: use an 8, 16, 32, or 64-bit integer, or `usize`
 ```
 
+- `ZIGO002` — non-exhaustive enum을 opt-in 없이 노출했다. enum을 exhaustive로 만들거나
+  `.types`에 `.repr = .enumeration, .exhaustive = false`로 등록한다. tagged union의
+  non-exhaustive tag에는 이 opt-in을 적용할 수 없다.
 - `ZIGO018` — C ABI가 이름 붙일 수 없는 정수·실수 폭이다. 중첩된 위치는 `the slice element
   of parameter \`cps\``처럼 도달 경로까지 적는다.
 - `ZIGO019` — 지원하지 않는 타입이다. optional이 매개변수·반환·error payload가 아닌
@@ -218,6 +225,8 @@ error[ZIGO018]: unsupported integer width `u21` in parameter `cp`
   단 함수가 그 타입의 pointer를 반환하지 않거나, `.destroys`를 단 함수가 그 타입의
   pointer를 (주입 파라미터를 제외한) 첫 파라미터로 받지 않거나 void를 반환하지 않거나, 한 타입에 대해 한쪽만
   선언했거나, 같은 타입을 둘이 겹쳐 선언했다. 메시지가 이들을 구분한다.
+- `ZIGO029` — 실제로는 exhaustive인 enum 등록에 `.exhaustive = false`를 붙였다. opt-in을
+  제거하거나 Zig enum을 non-exhaustive로 바꾼다.
 
 `ZIGO027`과 `ZIGO028`은 reflection이 문서를 만들기 전에 걸리므로 `semantic.json` 자리가
 아니라 선언 경로를 가리키며, 생성기는 이 진단을 출력하고 종료한다.

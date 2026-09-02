@@ -129,6 +129,11 @@ func zg_event_queue_clone_go_callback_observer(p0 C.uint64_t, p1 C.int32_t, p2 C
 	return C.int32_t(callback(uint64(p0), int32(p1)))
 }
 
+// EchoQueueSignal calls the generated C ABI wrapper for zg_echo_queue_signal.
+func EchoQueueSignal(signal uint8) uint8 {
+	return uint8(C.zg_echo_queue_signal(C.uint8_t(signal)))
+}
+
 // EventQueueCreate calls the generated C ABI wrapper for zg_event_queue_create.
 func EventQueueCreate(name []uint8, capacity uint, policy uint32, observerHandle uintptr) (unsafe.Pointer, int32) {
 	var nameZero C.uint8_t

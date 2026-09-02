@@ -51,6 +51,7 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 
 type nativeBindings struct {
 	lastError                           func() unsafe.Pointer
+	fnEchoQueueSignal                   func(uint8) uint8
 	fnEventQueueCreate                  func(unsafe.Pointer, uintptr, uintptr, uint32, uintptr, uintptr, *unsafe.Pointer) int32
 	fnEventQueueClone                   func(unsafe.Pointer, uintptr, uintptr, *unsafe.Pointer) int32
 	fnEventQueueNewStream               func(unsafe.Pointer, *unsafe.Pointer) int32
@@ -324,6 +325,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_last_error_message", err)
 	}
+	addrEchoQueueSignal, err := resolveSymbol(handle, "zg_echo_queue_signal")
+	if err != nil {
+		return fail("zg_echo_queue_signal", err)
+	}
 	addrEventQueueCreate, err := resolveSymbol(handle, "zg_event_queue_create_purego_v2")
 	if err != nil {
 		return fail("zg_event_queue_create_purego_v2", err)
@@ -506,6 +511,7 @@ func loadCandidate(path string) error {
 	}
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
+	purego.RegisterFunc(&next.fnEchoQueueSignal, addrEchoQueueSignal)
 	purego.RegisterFunc(&next.fnEventQueueCreate, addrEventQueueCreate)
 	purego.RegisterFunc(&next.fnEventQueueClone, addrEventQueueClone)
 	purego.RegisterFunc(&next.fnEventQueueNewStream, addrEventQueueNewStream)
@@ -646,6 +652,12 @@ func zigoUintptrsPtr(lens []uintptr) unsafe.Pointer {
 		return nil
 	}
 	return unsafe.Pointer(&lens[0])
+}
+
+// EchoQueueSignal calls the generated purego ABI wrapper for zg_echo_queue_signal.
+func EchoQueueSignal(signal uint8) uint8 {
+	result := bindings().fnEchoQueueSignal(signal)
+	return uint8(result)
 }
 
 // EventQueueCreate calls the generated purego ABI wrapper for zg_event_queue_create_purego_v2.

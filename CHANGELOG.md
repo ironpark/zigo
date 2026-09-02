@@ -8,6 +8,10 @@
 
 ### Added
 
+- `.types`의 enum 등록에 `.exhaustive = false` opt-in을 추가했습니다. Zig non-exhaustive enum을
+  cgo와 purego에서 이름 붙은 상수 밖의 값까지 그대로 왕복하며, 생성된 Go `String()`은
+  미지의 값을 `Type(N)`으로 표시합니다. opt-in이 없으면 기존 `ZIGO002`가 유지되고,
+  exhaustive enum에 잘못 붙이면 `ZIGO029`입니다.
 - 다른 handle의 메서드인 생성자를 지원합니다. 예를 들어 allocator가 주입되는
   `fn newStream(gpa, terminal: *Terminal) !*Stream`은
   `func (t *Terminal) NewStream() (*Stream, error)`가 되고, 반환된 `Stream`은 자신의

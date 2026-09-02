@@ -86,6 +86,16 @@ func TestPuregoNumericSliceReturnIsCopied(t *testing.T) {
 	}
 }
 
+func TestPuregoOpenEnumRoundTrip(t *testing.T) {
+	unknown := QueueSignal(77)
+	if got := EchoQueueSignal(unknown); got != unknown {
+		t.Fatalf("EchoQueueSignal(77) = %d, want 77", got)
+	}
+	if got := unknown.String(); got != "QueueSignal(77)" {
+		t.Fatalf("QueueSignal(77).String() = %q, want %q", got, "QueueSignal(77)")
+	}
+}
+
 // Clone is not named like a constructor; only its `.returns = .caller`
 // metadata makes it hand over an owned handle that carries its own retained
 // observer.

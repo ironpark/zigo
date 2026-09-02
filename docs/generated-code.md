@@ -297,6 +297,12 @@ bool 필드가 있는 struct는 캐스트하지 않으므로 이 단정도 생�
 - `<package>_errors_gen.go`: error type, `Err*` sentinel, code 변환
 - raw `_gen.go`: C ABI 또는 purego symbol 호출 계층
 
+enum은 정수 기반 Go 타입, 이름 붙은 상수, `String()`으로 생성됩니다. opt-in한 open enum의
+GoDoc은 이름 붙은 상수 밖의 값도 유효하다고 명시하며, 그런 값의 `String()`은
+`EraseDisplay(42)`처럼 `Type(N)`을 반환합니다. cgo와 purego 모두 정수 값을 검사하거나
+좁히지 않고 왕복시킵니다. `abi-check`는 exhaustive enum과 open enum 사이의 변경을 양방향
+breaking으로 보고합니다.
+
 선언이 하나도 없는 파일은 생성하지 않습니다. enum이 없으면 `_enums_gen.go`가,
 tagged union이 없으면 union 파일이 아예 만들어지지 않습니다.
 

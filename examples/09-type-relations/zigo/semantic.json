@@ -226,7 +226,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 80,
+        "line": 92,
         "column": 8
       },
       "symbol": "zg_live_objects"
@@ -241,7 +241,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 71,
+        "line": 79,
         "column": 8
       },
       "symbol": "zg_default_cursor_style"
@@ -257,7 +257,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 76,
+            "line": 84,
             "column": 26
           },
           "type": {
@@ -271,10 +271,40 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 76,
+        "line": 84,
         "column": 8
       },
       "symbol": "zg_cursor_style_blinks"
+    },
+    {
+      "name": "echoEraseDisplay",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "value",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 88,
+            "column": 25
+          },
+          "type": {
+            "kind": "enum",
+            "ref": "EraseDisplay"
+          }
+        }
+      ],
+      "return": {
+        "kind": "enum",
+        "ref": "EraseDisplay"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 88,
+        "column": 8
+      },
+      "symbol": "zg_echo_erase_display"
     },
     {
       "doc": "Reports how many cells a run of codepoints occupies.",
@@ -288,7 +318,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 96,
+            "line": 108,
             "column": 21
           },
           "type": {
@@ -304,7 +334,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 96,
+            "line": 108,
             "column": 33
           },
           "type": {
@@ -323,7 +353,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 96,
+        "line": 108,
         "column": 12
       },
       "symbol": "zg_text_run_width"
@@ -340,7 +370,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 90,
+            "line": 102,
             "column": 31
           },
           "type": {
@@ -359,7 +389,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 90,
+        "line": 102,
         "column": 16
       },
       "symbol": "zg_text_unicode_codepoint_width"
@@ -375,7 +405,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 111,
+            "line": 123,
             "column": 20
           },
           "type": {
@@ -400,7 +430,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 111,
+        "line": 123,
         "column": 8
       },
       "symbol": "zg_double_width"
@@ -416,7 +446,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 116,
+            "line": 128,
             "column": 15
           },
           "type": {
@@ -435,7 +465,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 116,
+        "line": 128,
         "column": 8
       },
       "symbol": "zg_invert"
@@ -451,7 +481,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 121,
+            "line": 133,
             "column": 23
           },
           "type": {
@@ -469,7 +499,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 121,
+        "line": 133,
         "column": 8
       },
       "symbol": "zg_style_or_default"
@@ -485,7 +515,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 126,
+            "line": 138,
             "column": 22
           },
           "type": {
@@ -506,7 +536,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 126,
+        "line": 138,
         "column": 8
       },
       "symbol": "zg_blinking_style"
@@ -522,7 +552,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 132,
+            "line": 144,
             "column": 19
           },
           "type": {
@@ -539,7 +569,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 132,
+            "line": 144,
             "column": 35
           },
           "type": {
@@ -559,7 +589,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 132,
+        "line": 144,
         "column": 8
       },
       "symbol": "zg_shift_point"
@@ -575,7 +605,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 140,
+            "line": 152,
             "column": 21
           },
           "type": {
@@ -592,7 +622,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 140,
+            "line": 152,
             "column": 37
           },
           "type": {
@@ -618,7 +648,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 140,
+        "line": 152,
         "column": 8
       },
       "symbol": "zg_checked_shift"
@@ -635,7 +665,7 @@
           "retention": "borrowed",
           "semantic": "utf8_string",
           "source": {
-            "line": 148,
+            "line": 160,
             "column": 21
           },
           "type": {
@@ -661,7 +691,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 148,
+        "line": 160,
         "column": 8
       },
       "symbol": "zg_describe_text"
@@ -677,7 +707,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 154,
+            "line": 166,
             "column": 18
           },
           "type": {
@@ -703,7 +733,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 154,
+        "line": 166,
         "column": 8
       },
       "symbol": "zg_sum_or_zero"
@@ -719,7 +749,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 165,
+            "line": 177,
             "column": 22
           },
           "type": {
@@ -745,7 +775,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 165,
+        "line": 177,
         "column": 8
       },
       "symbol": "zg_leading_digits"
@@ -761,7 +791,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 171,
+            "line": 183,
             "column": 18
           },
           "type": {
@@ -789,7 +819,7 @@
       "return_semantic": "utf8_string",
       "source": {
         "path": "root.zig",
-        "line": 171,
+        "line": 183,
         "column": 8
       },
       "symbol": "zg_style_name"
@@ -838,6 +868,29 @@
         "signed": false
       },
       "zig_path": "root.Enum(@as([*]const []const u8, @ptrCast(&root.style_names))[0..3])"
+    },
+    {
+      "exhaustive": false,
+      "fields": [
+        {
+          "name": "below",
+          "value": 0
+        },
+        {
+          "name": "above",
+          "value": 1
+        }
+      ],
+      "kind": "enum",
+      "name": "EraseDisplay",
+      "open": true,
+      "tag_type": {
+        "bits": 8,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "zig_path": "root.EraseDisplay"
     },
     {
       "exhaustive": true,

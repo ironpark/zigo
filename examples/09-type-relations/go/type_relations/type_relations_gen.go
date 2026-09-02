@@ -129,6 +129,11 @@ func CursorStyleBlinks(style CursorStyle) bool {
 	return raw.CursorStyleBlinks(uint8(style)) != 0
 }
 
+// EchoEraseDisplay calls the Zig function echoEraseDisplay.
+func EchoEraseDisplay(value EraseDisplay) EraseDisplay {
+	return EraseDisplay(raw.EchoEraseDisplay(uint8(value)))
+}
+
 // RunWidth
 // Reports how many cells a run of codepoints occupies.
 // A native panic is returned as *NativePanicError.

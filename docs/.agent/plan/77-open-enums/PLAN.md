@@ -7,7 +7,7 @@ registered_at: "2026-09-02T14:13:46Z"
 
 # Phases
 
-- [ ] [Phase 00: opt-in 등록과 검증](phases/00-open-enum-opt-in.md)
+- [x] [Phase 00: opt-in 등록과 검증](phases/00-open-enum-opt-in.md)
 - [ ] [Phase 01: 예제와 문서](phases/01-example-and-docs.md)
 
 # Shared Verification

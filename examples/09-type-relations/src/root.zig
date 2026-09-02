@@ -68,6 +68,14 @@ const style_names = [_][]const u8{ "block", "bar", "underline", "hollow" };
 
 pub const CursorStyle = Enum(style_names[0..3]);
 
+/// Terminal input can carry erase modes newer than this library knows. The
+/// catch-all keeps converting those bytes with `@enumFromInt` well-defined.
+pub const EraseDisplay = enum(u8) {
+    below,
+    above,
+    _,
+};
+
 pub fn defaultCursorStyle() CursorStyle {
     return .block;
 }
@@ -75,6 +83,10 @@ pub fn defaultCursorStyle() CursorStyle {
 /// Reports whether a cursor of this style blinks.
 pub fn cursorStyleBlinks(style: CursorStyle) bool {
     return style != .block;
+}
+
+pub fn echoEraseDisplay(value: EraseDisplay) EraseDisplay {
+    return value;
 }
 
 pub fn liveObjects() usize {
@@ -227,6 +239,11 @@ test "a generated enum still behaves like an ordinary Zig enum" {
     try std.testing.expectEqual(CursorStyle.block, defaultCursorStyle());
     try std.testing.expect(cursorStyleBlinks(.bar));
     try std.testing.expect(!cursorStyleBlinks(.block));
+}
+
+test "a non-exhaustive enum accepts unnamed values" {
+    const unknown: EraseDisplay = @enumFromInt(42);
+    try std.testing.expectEqual(@as(u8, 42), @intFromEnum(echoEraseDisplay(unknown)));
 }
 
 test "a nested namespace is reachable through its dotted path" {

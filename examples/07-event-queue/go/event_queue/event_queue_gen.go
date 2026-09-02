@@ -13,6 +13,11 @@ import (
 	raw "example.com/zigo/event-queue/bridge/cgo"
 )
 
+// EchoQueueSignal calls the Zig function echoQueueSignal.
+func EchoQueueSignal(signal QueueSignal) QueueSignal {
+	return QueueSignal(raw.EchoQueueSignal(uint8(signal)))
+}
+
 // NewEventQueue creates a caller-owned EventQueue.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.

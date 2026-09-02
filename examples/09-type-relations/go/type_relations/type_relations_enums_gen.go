@@ -29,3 +29,25 @@ func (value CursorStyle) String() string {
 		return "CursorStyle(" + strconv.Itoa(int(value)) + ")"
 	}
 }
+
+// EraseDisplay represents the corresponding Zig open enum; values outside the named constants are valid.
+type EraseDisplay uint8
+
+const (
+	// EraseDisplayBelow corresponds to the Zig tag below.
+	EraseDisplayBelow EraseDisplay = 0
+	// EraseDisplayAbove corresponds to the Zig tag above.
+	EraseDisplayAbove EraseDisplay = 1
+)
+
+// String returns the Zig tag name.
+func (value EraseDisplay) String() string {
+	switch value {
+	case EraseDisplayBelow:
+		return "below"
+	case EraseDisplayAbove:
+		return "above"
+	default:
+		return "EraseDisplay(" + strconv.Itoa(int(value)) + ")"
+	}
+}

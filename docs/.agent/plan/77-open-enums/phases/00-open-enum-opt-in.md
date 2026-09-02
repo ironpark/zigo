@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T14:50:53Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 골든·단위 테스트 통과, 기존 예제 `go-check` 변화 없음, 커밋.
 > NEXT: none

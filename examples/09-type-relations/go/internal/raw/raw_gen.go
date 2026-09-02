@@ -84,6 +84,11 @@ func CursorStyleBlinks(style uint8) uint8 {
 	return uint8(C.zg_cursor_style_blinks(C.uint8_t(style)))
 }
 
+// EchoEraseDisplay calls the generated C ABI wrapper for zg_echo_erase_display.
+func EchoEraseDisplay(value uint8) uint8 {
+	return uint8(C.zg_echo_erase_display(C.uint8_t(value)))
+}
+
 // TextRunWidth calls the generated C ABI wrapper for zg_text_run_width.
 func TextRunWidth(first uint32, second uint32) (uint16, int32) {
 	var outResult C.uint16_t

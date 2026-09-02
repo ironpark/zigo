@@ -26,6 +26,11 @@ func LibraryLoaded() bool { return raw.LibraryLoaded() }
 // LoadLibrary falls back to it when no explicit path and no ZIGO_LIBRARY_PATH are set.
 var DefaultLibraryName = raw.DefaultLibraryName
 
+// EchoQueueSignal calls the Zig function echoQueueSignal.
+func EchoQueueSignal(signal QueueSignal) QueueSignal {
+	return QueueSignal(raw.EchoQueueSignal(uint8(signal)))
+}
+
 // NewEventQueue creates a caller-owned EventQueue.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.

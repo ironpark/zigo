@@ -26,7 +26,7 @@ pub const bindings = zigo.define(.{
 | 그룹 | 역할 |
 |---|---|
 | `root` | 경로를 해석할 기준 module. 항상 필요 |
-| `types` | opaque handle, extern struct 값, tagged union 등록 |
+| `types` | opaque handle, extern struct 값, enum, tagged union, callback 등록 |
 | `functions` | 노출할 함수와 추가 메타데이터 |
 
 `root.<name>`은 module 자유 함수를, `<Type>.<name>`은 등록 타입의 함수를 가리킵니다. 경로가
@@ -285,6 +285,7 @@ native ABI는 `paths_data`, `paths_data_len`, `paths_lens`, `paths_count` 네 sc
 ## 타입 등록 선택
 
 `repr`은 타입의 ABI 표현을, `access`는 tagged union 내용을 Go에서 읽는 방법을 선택합니다.
+enum 항목의 `exhaustive = false`는 Zig의 non-exhaustive enum을 그대로 공개하는 opt-in입니다.
 
 | `repr` | 용도 |
 |---|---|
@@ -551,6 +552,25 @@ Go `CursorStyle`, C `zg_cursor_style`, `semantic.json`의 `"name": "CursorStyle"
 이름을 따릅니다. `.name`을 생략하면 자동 등록과 같은 이름을 쓰되, 등록 자체는 signature가
 그 타입에 닿기 전에 이뤄집니다. 등록된 enum은 컨테이너로 walk되지 않으므로 `.discover`가
 켜져 있어도 enum 안의 선언은 발견되지 않습니다. 예제는 `09-type-relations`에 있습니다.
+
+Zig enum이 `enum(u8) { below, above, _ }`처럼 non-exhaustive이면 자동 등록이나 보통의
+`.enumeration` 등록은 `ZIGO002`로 거부됩니다. 이름 붙은 tag 밖의 정수도 API 계약에 포함하려면
+등록 항목에 opt-in을 적습니다.
+
+```zig
+.types = .{
+    .{
+        .name = "EraseDisplay",
+        .type = library.EraseDisplay,
+        .repr = .enumeration,
+        .exhaustive = false,
+    },
+},
+```
+
+이 옵션은 실제 Zig 타입도 non-exhaustive일 때만 유효합니다. exhaustive enum에 붙이면
+`ZIGO029`이며, 생략한 기존 등록은 그대로 exhaustive 계약입니다. tagged union의 tag가
+non-exhaustive인 경우에는 이 opt-in을 적용하지 않으며 계속 거부합니다.
 
 ## Opaque handle
 

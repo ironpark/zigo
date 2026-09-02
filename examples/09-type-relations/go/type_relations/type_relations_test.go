@@ -91,6 +91,16 @@ func TestRegisteredEnum(t *testing.T) {
 	}
 }
 
+func TestOpenEnumRoundTrip(t *testing.T) {
+	unknown := EraseDisplay(42)
+	if got := EchoEraseDisplay(unknown); got != unknown {
+		t.Fatalf("EchoEraseDisplay(42) = %d, want 42", got)
+	}
+	if got := unknown.String(); got != "EraseDisplay(42)" {
+		t.Fatalf("EraseDisplay(42).String() = %q, want %q", got, "EraseDisplay(42)")
+	}
+}
+
 // A `?T` parameter is a Go pointer: nil is the Zig `null`, and a non-nil one
 // carries the value. A `?T` return is a value plus a presence flag, so an
 // absent result is never confused with a zero one.

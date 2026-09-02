@@ -9,6 +9,16 @@ pub const Policy = enum(u32) {
     drop_oldest,
 };
 
+pub const QueueSignal = enum(u8) {
+    pause,
+    continue_processing,
+    _,
+};
+
+pub fn echoQueueSignal(signal: QueueSignal) QueueSignal {
+    return signal;
+}
+
 pub const Observer = *const fn (id: u64, value: i32, userdata: usize) callconv(.c) i32;
 
 /// Counters read back in one call. `extern` fixes the layout, which is what
