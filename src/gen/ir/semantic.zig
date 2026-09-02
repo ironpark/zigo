@@ -363,6 +363,10 @@ pub const StreamAccessor = struct {
 pub const SemanticFn = struct {
     /// Set on the two halves of a boxed constructor pair.
     boxed: ?Boxed = null,
+    /// Set only when a receiver constructor returns a handle whose lifetime
+    /// must end before the receiver's. Omitted when false so old semantic
+    /// documents remain byte-identical.
+    child_of_receiver: ?bool = null,
     /// The parameter `.cancel = .{ .param = "..." }` named, verbatim. Kept on
     /// the function so a name that matches nothing can still be reported, and
     /// so `abi-diff` sees the Go signature gain or lose its `ctx`.
@@ -412,6 +416,10 @@ pub const SemanticFn = struct {
     /// with, or the container it was declared in.
     pub fn goOwner(self: SemanticFn) ?[]const u8 {
         return self.go_owner orelse self.namespace;
+    }
+
+    pub fn childOfReceiver(self: SemanticFn) bool {
+        return self.child_of_receiver orelse false;
     }
 };
 
@@ -520,4 +528,25 @@ test "stream parameters round-trip through the semantic document" {
     try std.testing.expectEqual(@as(?u32, null), params[0].buffer);
     try std.testing.expectEqual(StreamDirection.reader, params[1].type.io_stream.direction);
     try std.testing.expectEqual(@as(u32, 8192), params[1].buffer.?);
+}
+
+test "child-of-receiver metadata is emitted only when enabled" {
+    const base: SemanticFn = .{
+        .name = "newChild",
+        .params = &.{},
+        .receiver = "Parent",
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_parent_new_child",
+    };
+    var dependent = base;
+    dependent.child_of_receiver = true;
+    const document: Semantic = .{
+        .functions = &.{ base, dependent },
+        .package = "handles",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    const bytes = try document.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, bytes, "\"child_of_receiver\": true"));
 }

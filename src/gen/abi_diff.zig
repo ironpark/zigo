@@ -100,6 +100,10 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
         // gains or loses its leading `ctx`, so every call site moves.
         if (!optionalNameEqual(old.cancel, new.cancel))
             try add(allocator, &report, .breaking, identity, "cancellation surface changed");
+        // The native signature is unchanged, but generated Go gains or loses
+        // the parent/child Close ordering contract.
+        if (old.childOfReceiver() != new.childOfReceiver())
+            try add(allocator, &report, .compatible, identity, "dependent handle lifetime Go surface changed");
         if (!writtenEqual(old.params, new.params))
             try add(allocator, &report, .breaking, identity, "parameter written hint changed (C signature)");
         if (!streamBufferEqual(old.params, new.params))
@@ -905,6 +909,32 @@ test "unchanged semantic contract has an empty report" {
     defer report.deinit(std.testing.allocator);
     try std.testing.expectEqual(@as(usize, 0), report.changes.items.len);
     try std.testing.expect(!report.hasBreaking());
+}
+
+test "dependent lifetime changes are ABI compatible Go-surface changes" {
+    const plain: semantic.SemanticFn = .{
+        .name = "newChild",
+        .params = &.{},
+        .receiver = "Parent",
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_parent_new_child",
+    };
+    var dependent = plain;
+    dependent.child_of_receiver = true;
+    const base: semantic.Semantic = .{ .package = "handles", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{plain} };
+    const current: semantic.Semantic = .{ .package = "handles", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{dependent} };
+
+    var gained = try diff(std.testing.allocator, base, current);
+    defer gained.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 1), gained.changes.items.len);
+    try std.testing.expectEqual(ChangeKind.compatible, gained.changes.items[0].kind);
+    try std.testing.expectEqualStrings("dependent handle lifetime Go surface changed", gained.changes.items[0].detail);
+    try std.testing.expect(!gained.hasBreaking());
+
+    var lost = try diff(std.testing.allocator, current, base);
+    defer lost.deinit(std.testing.allocator);
+    try std.testing.expectEqual(ChangeKind.compatible, lost.changes.items[0].kind);
+    try std.testing.expect(!lost.hasBreaking());
 }
 
 test "diff cleans up every partial allocation failure" {

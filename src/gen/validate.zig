@@ -96,6 +96,14 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .site = functionSite(function),
             .hint = "bind a concrete specialization instead of the generic function",
         };
+        if (function.childOfReceiver() and
+            (function.receiver == null or constructorInitFor(document, function) == null)) return .{
+            .severity = .@"error",
+            .code = "ZIGO030",
+            .message = "child-of-receiver metadata requires a receiver constructor",
+            .site = functionSite(function),
+            .hint = "use `.child_of_receiver = true` only on a constructor method that returns its paired caller-owned handle",
+        };
         for (function.params) |parameter| {
             if (parameter.injected) |injection| {
                 const configured = switch (injection) {
@@ -2039,6 +2047,38 @@ test "implemented diagnostic snapshots are stable" {
         defer std.testing.allocator.free(rendered);
         try std.testing.expectEqualStrings(case.snapshot, rendered);
     }
+}
+
+test "child-of-receiver metadata on a non-receiver constructor has a stable diagnostic" {
+    var child: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Child" } };
+    const document: semantic.Semantic = .{
+        .constructors = &.{.{ .type = "Child", .init = "newChild", .deinit = "freeChild" }},
+        .functions = &.{
+            .{
+                .child_of_receiver = true,
+                .go_owner = "Child",
+                .name = "newChild",
+                .ownership = .caller,
+                .params = &.{},
+                .@"return" = .{ .error_union = .{ .error_set = &.{}, .payload = &child } },
+                .symbol = "zg_new_child",
+            },
+            .{ .name = "freeChild", .params = &.{}, .receiver = "Child", .@"return" = .{ .void = {} }, .symbol = "zg_child_free_child" },
+        },
+        .package = "bad",
+        .prefix = "zg",
+        .types = &.{.{ .kind = .@"opaque", .name = "Child" }},
+        .zig_version = "0.16.0",
+    };
+    const issue = (try findIssue(std.testing.allocator, document)) orelse return error.MissingDiagnostic;
+    const rendered = try issue.renderAlloc(std.testing.allocator);
+    defer std.testing.allocator.free(rendered);
+    try std.testing.expectEqualStrings(
+        "error[ZIGO030]: child-of-receiver metadata requires a receiver constructor\n" ++
+            "  --> semantic.json (newChild)\n" ++
+            "  hint: use `.child_of_receiver = true` only on a constructor method that returns its paired caller-owned handle\n",
+        rendered,
+    );
 }
 
 test "names zigo case-converts are judged on the Go spelling, not the Zig one" {

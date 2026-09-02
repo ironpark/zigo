@@ -1,0 +1,62 @@
+{
+  "constructors": [
+    { "deinit": "freeParent", "init": "newParent", "type": "Parent" },
+    { "deinit": "freeChild", "init": "newChild", "type": "Child" }
+  ],
+  "functions": [
+    {
+      "go_owner": "Parent",
+      "name": "newParent",
+      "ownership": "caller",
+      "params": [],
+      "return": {
+        "error_set": [],
+        "kind": "error_union",
+        "payload": { "const": false, "kind": "opaque_ptr", "nullable": false, "ref": "Parent" }
+      },
+      "symbol": "ignored"
+    },
+    {
+      "name": "freeParent",
+      "params": [],
+      "receiver": "Parent",
+      "return": { "kind": "void" },
+      "symbol": "ignored"
+    },
+    {
+      "child_of_receiver": true,
+      "go_owner": "Child",
+      "name": "newChild",
+      "ownership": "caller",
+      "params": [],
+      "receiver": "Parent",
+      "return": {
+        "error_set": [],
+        "kind": "error_union",
+        "payload": { "const": false, "kind": "opaque_ptr", "nullable": false, "ref": "Child" }
+      },
+      "symbol": "ignored"
+    },
+    {
+      "name": "freeChild",
+      "params": [],
+      "receiver": "Child",
+      "return": { "kind": "void" },
+      "symbol": "ignored"
+    },
+    {
+      "name": "touch",
+      "params": [],
+      "receiver": "Child",
+      "return": { "kind": "void" },
+      "symbol": "ignored"
+    }
+  ],
+  "package": "dependent_handle",
+  "prefix": "zg",
+  "types": [
+    { "kind": "opaque", "name": "Parent" },
+    { "kind": "opaque", "name": "Child" }
+  ],
+  "zig_version": "0.16.0"
+}

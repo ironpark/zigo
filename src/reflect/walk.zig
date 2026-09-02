@@ -369,6 +369,8 @@ fn appendFunction(
         .symbol = try naming.functionSymbolAlloc(allocator, prefix, receiver orelse discovered_owner, function_name),
         .zig_path = comptime zigCallPath(receiver, discovered_owner, source_name, function_name),
     };
+    if (@hasField(@TypeOf(metadata), "child_of_receiver") and metadata.child_of_receiver)
+        reflected_function.child_of_receiver = true;
     if (boxed_type != null) reflected_function.ownership = .caller;
     if (@hasField(@TypeOf(metadata), "semantic")) reflected_function.return_semantic = metadata.semantic;
     if (@hasField(@TypeOf(metadata), "returns")) reflected_function.ownership = metadata.returns;
@@ -2011,6 +2013,39 @@ test "a root-level constructor keeps its Zig call path while Go groups it" {
     try std.testing.expectEqualStrings("Terminal", constructor.goOwner().?);
     try std.testing.expectEqual(@as(?[]const u8, null), constructor.namespace);
     try std.testing.expectEqualStrings("zg_new", constructor.symbol);
+}
+
+test "a receiver constructor reflects its dependent lifetime opt-in" {
+    const Fixture = struct {
+        const Parent = opaque {};
+        const Child = opaque {};
+
+        pub fn newChild(parent: *Parent) *Child {
+            _ = parent;
+            unreachable;
+        }
+
+        pub fn freeChild(child: *Child) void {
+            _ = child;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{
+            .{ .name = "Parent", .type = Fixture.Parent, .repr = .@"opaque" },
+            .{ .name = "Child", .type = Fixture.Child, .repr = .@"opaque" },
+        },
+        .functions = .{
+            .{ .path = "root.newChild", .constructs = "Child", .child_of_receiver = true },
+            .{ .path = "root.freeChild", .destroys = "Child" },
+        },
+    }, "handles", "zg");
+
+    try std.testing.expect(document.functions[0].childOfReceiver());
+    const json = try document.serialize(arena.allocator());
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"child_of_receiver\": true") != null);
 }
 
 test "`.constructs` and `.destroys` pair functions the name rule never would" {

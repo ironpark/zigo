@@ -307,6 +307,8 @@ pub fn build(b: *std.Build) void {
         "tests/generator_cases/cancel/expected",
         "tests/generator_cases/cancel_purego/expected",
         "tests/generator_cases/complex/expected",
+        "tests/generator_cases/dependent_handle/expected",
+        "tests/generator_cases/dependent_handle_purego/expected",
         "tests/generator_cases/injection/expected",
         "tests/generator_cases/narrow_int/expected",
         "tests/generator_cases/nested_namespace/expected",
