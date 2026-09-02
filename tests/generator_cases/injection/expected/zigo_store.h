@@ -5,6 +5,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+typedef struct zg_cursor zg_cursor;
 typedef struct zg_store zg_store;
 // ELF and Mach-O export every non-static symbol of a shared library;
 // COFF exports nothing without an explicit annotation, so a DLL built
@@ -20,6 +21,8 @@ typedef struct zg_store zg_store;
 ZIGO_EXPORT int32_t zg_store_open(const uint8_t * name_ptr, size_t name_len, zg_store * * out_result);
 ZIGO_EXPORT int32_t zg_store_flush(zg_store * self);
 ZIGO_EXPORT int32_t zg_store_deinit(zg_store * self);
+ZIGO_EXPORT int32_t zg_cursor_init(uint32_t column, zg_cursor * * out_result);
+ZIGO_EXPORT int32_t zg_cursor_deinit(zg_cursor * self);
 ZIGO_EXPORT const char *zg_last_error_message(void);
 
 #endif // ZIGO_store_H

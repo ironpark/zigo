@@ -268,6 +268,22 @@ Go에서 `NewStore(name string) (*Store, error)`가 됩니다. 문자열 값(`"g
 쓸지는 zigo가 대신 정할 문제가 아닙니다. 주입 파라미터는 `semantic.json`에
 `"injected": "allocator"`로 남고, 주입 여부가 바뀌면 `abi-diff`가 breaking으로 봅니다.
 
+### 값으로 반환하는 `init`
+
+`pub fn init(gpa: Allocator, options: Options) !Terminal`처럼 값을 반환하는 생성자는 C로
+표현할 수 없습니다. `.allocator`가 설정되어 있고 반환 타입이 `.repr = .@"opaque"`로 등록된
+struct라면, zigo가 그 값을 상자에 담습니다: shim이 `alloc.create(T)`로 저장 공간을 만들고
+`T.init(...)`의 결과를 거기에 넣어 포인터를 돌려주며, 짝이 되는 `deinit` 래퍼가 Zig
+`deinit`을 부른 뒤 `alloc.destroy`까지 합니다. Go에서는 다른 생성자와 똑같이
+`NewTerminal(...) (*Terminal, error)`와 `Close()`입니다.
+
+상자에 담는 데 필요한 할당은 zigo 자신의 것이므로, 실패는 Zig 함수가 선언하지 않은 error를
+지어내는 대신 panic으로 보고합니다 — 생성자는 언제나 `error`를 반환하므로 Go에는
+`*NativePanicError`로 도착합니다.
+
+`.allocator`가 없으면 이 변환은 일어나지 않고, 반환 struct는 지금까지처럼 값 struct로
+판정되어 그 자리에서 거부됩니다. 저장 공간의 수명을 정하는 것은 바인딩 작성자의 몫입니다.
+
 ### Enum 이름 지정
 
 enum은 signature에 나타나기만 해도 자동으로 등록되며, 이름은 `@typeName`의 마지막 점 뒤

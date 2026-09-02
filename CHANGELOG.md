@@ -27,6 +27,9 @@
   Go 식별자가 될 수 없는 것이 있으면 `ZIGO021`이 Zig 타입 경로와 함께 거부합니다. 이전에는
   `@typeName`이 `...[0..4])`로 끝나는 comptime 생성 타입의 이름이 그대로 `.go` 파일에 실려
   gofmt에서야 터졌습니다. (계획 69)
+- `.allocator`가 설정되어 있으면 값으로 반환하는 `init`(`T`/`!T`)도 생성자로 인정됩니다.
+  shim이 `create`/`init`/실패 시 `destroy`를 하고, 짝 `deinit` 래퍼가 `deinit` 뒤에
+  `destroy`까지 합니다. Go에서는 다른 handle과 같은 `New…`/`Close` 쌍입니다. (계획 69)
 - 바인딩의 `.allocator`와 `.io`로 `std.mem.Allocator`, `std.Io` 파라미터를 주입할 수
   있습니다. 그 파라미터는 C와 Go 시그니처에서 빠지고 shim이 지정한 식을 넘깁니다. 설정
   없이 만나면 `ZIGO022`로 거부합니다. (계획 69)

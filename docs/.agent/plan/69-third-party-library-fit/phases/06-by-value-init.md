@@ -2,7 +2,7 @@
 depends_on:
 - "69-third-party-library-fit#5"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: fixture 골든 통과, gostty facade 없이 `Terminal` 생성·해제 Go 테스트 통과 보고.
 > NEXT: none

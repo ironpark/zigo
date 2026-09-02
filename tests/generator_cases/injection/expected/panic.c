@@ -77,3 +77,27 @@ ZIGO_EXPORT int32_t zg_store_deinit(zg_store * self) {
     zg_panic_active = 0;
     return result;
 }
+
+int32_t zg_cursor_init_impl(uint32_t column, zg_cursor * * out_result);
+ZIGO_EXPORT int32_t zg_cursor_init(uint32_t column, zg_cursor * * out_result) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return -2;
+    }
+    int32_t result = zg_cursor_init_impl(column, out_result);
+    zg_panic_active = 0;
+    return result;
+}
+
+int32_t zg_cursor_deinit_impl(zg_cursor * self);
+ZIGO_EXPORT int32_t zg_cursor_deinit(zg_cursor * self) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return -2;
+    }
+    int32_t result = zg_cursor_deinit_impl(self);
+    zg_panic_active = 0;
+    return result;
+}

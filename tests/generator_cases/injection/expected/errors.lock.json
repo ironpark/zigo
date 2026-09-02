@@ -1,9 +1,10 @@
 {
   "codes": {
+    "Invalid": 2,
     "OutOfMemory": 1
   },
   "ir_version": 1,
-  "next_code": 2,
+  "next_code": 3,
   "reserved": {
     "-1": "Unknown",
     "-2": "PanicCaught",

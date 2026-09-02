@@ -115,6 +115,14 @@ pub fn reflect(
             });
             function.namespace = type_name;
             function.ownership = .caller;
+            // The storage the shim allocated is the shim's to free, so the
+            // paired destructor runs the Zig `deinit` and then destroys it.
+            if (function.boxed == .create) {
+                for (functions.items) |*candidate| {
+                    if (candidate.receiver != null and std.mem.eql(u8, candidate.receiver.?, type_name) and
+                        std.mem.eql(u8, candidate.name, destructor.name)) candidate.boxed = .destroy;
+                }
+            }
             break;
         }
     }
@@ -233,11 +241,25 @@ fn appendFunction(
         if (isSentinelStringSlice(param.type.?)) reflected.semantic = .utf8_string;
         params[output_index] = reflected;
     }
-    const reflected_return = if (info.return_type) |return_type|
+    // A Zig `init` that returns its value has no C representation, so with an
+    // allocator to hand zigo boxes it: the shim allocates the storage and the
+    // binding hands Go a handle. The decision is made before the return type
+    // is walked, because walking it would register a value struct C cannot
+    // carry and reject the whole binding instead.
+    const boxed_type = comptime boxedConstructorName(declaration, info, function_name);
+    const reflected_return = if (boxed_type) |type_name| blk: {
+        const payload = try allocator.create(semantic.TypeNode);
+        payload.* = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = type_name } };
+        break :blk semantic.TypeNode{ .error_union = .{
+            .error_set = comptime boxedErrorNames(info),
+            .payload = payload,
+        } };
+    } else if (info.return_type) |return_type|
         try typeNode(allocator, return_type, types, comptime std.fmt.comptimePrint("`{s}{s}` return value", .{ owner_label, function_label }))
     else
         semantic.TypeNode{ .void = {} };
     var reflected_function: semantic.SemanticFn = .{
+        .boxed = if (boxed_type != null) .create else null,
         .has_comptime_params = if (info.is_generic) true else null,
         .name = function_name,
         .namespace = if (receiver == null) discovered_owner else null,
@@ -246,6 +268,7 @@ fn appendFunction(
         .@"return" = reflected_return,
         .symbol = try naming.functionSymbolAlloc(allocator, prefix, receiver orelse discovered_owner, function_name),
     };
+    if (boxed_type != null) reflected_function.ownership = .caller;
     if (@hasField(@TypeOf(metadata), "semantic")) reflected_function.return_semantic = metadata.semantic;
     if (@hasField(@TypeOf(metadata), "returns")) reflected_function.ownership = metadata.returns;
     // `.release` addresses the freeing function the same way `.path` does, so
@@ -255,6 +278,45 @@ fn appendFunction(
         if (isSentinelBytePointer(return_type)) reflected_function.return_semantic = .c_string;
     }
     try functions.append(allocator, reflected_function);
+}
+
+/// The registered handle name a value-returning constructor is boxed into,
+/// or null when this is not one. Boxing needs three things at once: a
+/// constructor name, a return of the registered type by value, and an
+/// allocator the binding chose to own the storage. Without the allocator the
+/// function is left alone, so the rejection the author sees still names the
+/// struct rather than a decision zigo made for them.
+fn boxedConstructorName(comptime declaration: anytype, comptime info: std.builtin.Type.Fn, comptime function_name: []const u8) ?[]const u8 {
+    if (injectionExpression(declaration, "allocator") == null) return null;
+    if (!isConstructorName(function_name)) return null;
+    const return_type = info.return_type orelse return null;
+    const value_type = switch (@typeInfo(return_type)) {
+        .error_union => |error_union| error_union.payload,
+        else => return_type,
+    };
+    if (@typeInfo(value_type) != .@"struct") return null;
+    if (!@hasField(@TypeOf(declaration), "types")) return null;
+    inline for (declaration.types) |entry| {
+        if (entry.repr == .@"opaque" and entry.type == value_type) return typeEntryName(entry);
+    }
+    return null;
+}
+
+/// The Zig error names a boxed constructor can fail with. Running out of
+/// memory is not among them: the allocation the shim adds is zigo's own, and
+/// it reports that as a panic rather than inventing an error the Zig function
+/// never declared.
+fn boxedErrorNames(comptime info: std.builtin.Type.Fn) []const []const u8 {
+    const return_type = info.return_type orelse return &.{};
+    const error_union = switch (@typeInfo(return_type)) {
+        .error_union => |value| value,
+        else => return &.{},
+    };
+    const errors = @typeInfo(error_union.error_set).error_set orelse return &.{};
+    comptime var names: [errors.len][]const u8 = undefined;
+    inline for (errors, 0..) |entry, index| names[index] = entry.name;
+    const frozen = names;
+    return &frozen;
 }
 
 fn discoverContainer(
@@ -1458,4 +1520,68 @@ test "a declaration path becomes an expression against the bound module" {
     }, "store", "zg");
 
     try std.testing.expectEqualStrings("target.gpa", document.allocator.?);
+}
+
+test "a value-returning init is boxed into a caller-owned handle" {
+    const Fixture = struct {
+        const Terminal = struct {
+            columns: u32,
+
+            pub fn init(gpa: std.mem.Allocator, columns: u32) error{Invalid}!Terminal {
+                _ = gpa;
+                return .{ .columns = columns };
+            }
+
+            pub fn deinit(self: *Terminal) void {
+                _ = self;
+            }
+        };
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .allocator = .smp_allocator,
+        .root = Fixture,
+        .types = .{.{ .type = Fixture.Terminal, .repr = .@"opaque" }},
+        .functions = .{
+            .{ .path = "Terminal.init", .params = .{ "gpa", "columns" } },
+            .{ .path = "Terminal.deinit" },
+        },
+    }, "terminal", "zg");
+
+    // `Terminal.init` returns a `Terminal`, which has no C representation. It
+    // reaches the IR as `!*Terminal` because the shim owns the storage.
+    const init_fn = document.functions[0];
+    try std.testing.expectEqual(semantic.Boxed.create, init_fn.boxed.?);
+    try std.testing.expectEqual(semantic.Ownership.caller, init_fn.ownership);
+    try std.testing.expectEqualStrings("Terminal", init_fn.@"return".error_union.payload.opaque_ptr.ref);
+    try std.testing.expectEqualStrings("Invalid", init_fn.@"return".error_union.error_set[0]);
+    // The allocator parameter still disappears from every generated signature.
+    try std.testing.expectEqual(semantic.Injection.allocator, init_fn.params[0].injected.?);
+    try std.testing.expectEqual(semantic.Boxed.destroy, document.functions[1].boxed.?);
+    try std.testing.expectEqualStrings("Terminal", document.constructors[0].type);
+}
+
+test "without an allocator a value-returning init is left alone" {
+    const Fixture = struct {
+        const Terminal = struct {
+            columns: u32,
+
+            pub fn init(columns: u32) Terminal {
+                return .{ .columns = columns };
+            }
+        };
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{.{ .type = Fixture.Terminal, .repr = .@"opaque" }},
+        .functions = .{.{ .path = "Terminal.init", .params = .{"columns"} }},
+    }, "terminal", "zg");
+
+    // Left as the value struct it is, so the diagnostic the author sees names
+    // the struct rather than a lifetime decision zigo made for them.
+    try std.testing.expectEqual(@as(?semantic.Boxed, null), document.functions[0].boxed);
+    try std.testing.expectEqualStrings("Terminal", document.functions[0].@"return".value_struct.ref);
 }

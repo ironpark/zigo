@@ -831,7 +831,10 @@ fn hasConstructorDeinit(document: semantic.Semantic, constructor: semantic.Const
     for (document.functions) |function| {
         if (!std.mem.eql(u8, function.name, constructor.deinit) or
             !std.mem.eql(u8, function.receiver orelse "", constructor.type)) continue;
-        return function.params.len == 0 and function.@"return" == .void;
+        // An injected parameter is not part of the C signature, so a
+        // destructor that takes the allocator back is still a destructor.
+        for (function.params) |parameter| if (parameter.injected == null) return false;
+        return function.@"return" == .void;
     }
     return false;
 }

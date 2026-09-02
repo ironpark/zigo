@@ -193,6 +193,11 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         try writeNarrowIntegerGuards(writer, function);
         try writer.writeAll("    ");
 
+        if (function.origin.boxed == .create) {
+            try writeBoxedConstructor(allocator, writer, program, function);
+            continue;
+        }
+
         if (function.origin.@"return" == .slice and !isCStringReturn(function.origin.*)) {
             try writer.writeAll("const result = ");
             try writeTargetCall(allocator, writer, program, function);
@@ -221,6 +226,10 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
                 }
             }
             try writeSliceWrittenAssignments(writer, function);
+            // The storage was allocated by the shim, so the shim is what frees
+            // it, after the Zig destructor has had the object.
+            if (function.origin.boxed == .destroy)
+                try writer.print("    {s}.destroy(self);\n", .{program.allocator.?});
             try writer.writeAll("    return 0;\n}\n");
             continue;
         }
@@ -743,6 +752,37 @@ fn hasOutSliceParam(function: abi.AbiFn) bool {
 /// `catch |err| return switch (err)` in one line stays the shape for a function
 /// with nothing to clear. One with output slices needs a block so the zeros go
 /// out before the early return.
+/// The body of a boxed constructor: the Zig function returns its value, so the
+/// shim gives that value a home the caller can hold a pointer to. Allocation
+/// failure is zigo's own, not something the Zig signature declared, so it is
+/// reported as a panic -- which reaches Go as `*NativePanicError` because a
+/// constructor always carries an `error`.
+fn writeBoxedConstructor(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    function: abi.AbiFn,
+) !void {
+    const type_name = function.origin.@"return".error_union.payload.opaque_ptr.ref;
+    // The same `target.<name>` spelling the generated signatures already use
+    // for a registered handle.
+    const zig_type = try std.fmt.allocPrint(allocator, "target.{s}", .{type_name});
+    defer allocator.free(zig_type);
+    const source = program.allocator.?;
+    try writer.print(
+        "const boxed = {s}.create({s}) catch @panic(\"zigo: out of memory boxing {s}\");\n",
+        .{ source, zig_type, type_name },
+    );
+    try writer.writeAll("    boxed.* = ");
+    try writeTargetCall(allocator, writer, program, function);
+    if (function.origin.@"return".error_union.error_set.len != 0) {
+        try writer.print(" catch |err| {{\n        {s}.destroy(boxed);\n        return switch (err) {{", .{source});
+        for (function.errors) |entry| try writer.print("\n            error.{s} => {d},", .{ entry.name, entry.code });
+        try writer.writeAll("\n        };\n    }");
+    }
+    try writer.writeAll(";\n    out_result.* = boxed;\n    return 0;\n}\n");
+}
+
 fn writeShimErrorCatch(writer: *std.Io.Writer, function: abi.AbiFn) !void {
     // A checked infallible function was given the status ABI so that a panic
     // has somewhere to go. The Zig call it wraps returns no error union, so

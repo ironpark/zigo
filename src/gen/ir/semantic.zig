@@ -255,7 +255,15 @@ pub const Parameter = struct {
     }
 };
 
+/// Which half of a boxed constructor pair a function is. A Zig `init` that
+/// returns its value has no C representation, so the shim allocates storage
+/// with the binding's allocator and hands Go a pointer; the paired `deinit`
+/// frees that storage after running the Zig destructor.
+pub const Boxed = enum { create, destroy };
+
 pub const SemanticFn = struct {
+    /// Set on the two halves of a boxed constructor pair.
+    boxed: ?Boxed = null,
     doc: ?[]const u8 = null,
     has_comptime_params: ?bool = null,
     name: []const u8,

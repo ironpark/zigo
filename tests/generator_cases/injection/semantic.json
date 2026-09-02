@@ -1,7 +1,8 @@
 {
   "allocator": "std.heap.smp_allocator",
   "constructors": [
-    {"deinit": "deinit", "init": "open", "type": "Store"}
+    {"deinit": "deinit", "init": "open", "type": "Store"},
+    {"deinit": "deinit", "init": "init", "type": "Cursor"}
   ],
   "functions": [
     {
@@ -44,11 +45,36 @@
       "receiver": "Store",
       "return": {"kind": "void"},
       "symbol": "ignored"
+    },
+    {
+      "boxed": "create",
+      "doc": "Builds a cursor the shim boxes so Go can hold a handle to it.",
+      "name": "init",
+      "namespace": "Cursor",
+      "ownership": "caller",
+      "params": [
+        {"injected": "allocator", "name": "alloc", "type": {"kind": "void"}},
+        {"name": "column", "type": {"bits": 32, "is_usize": false, "kind": "int", "signed": false}}
+      ],
+      "return": {
+        "error_set": ["Invalid"],
+        "kind": "error_union",
+        "payload": {"const": false, "kind": "opaque_ptr", "nullable": false, "ref": "Cursor"}
+      },
+      "symbol": "ignored"
+    },
+    {
+      "boxed": "destroy",
+      "name": "deinit",
+      "params": [],
+      "receiver": "Cursor",
+      "return": {"kind": "void"},
+      "symbol": "ignored"
     }
   ],
   "io": "target.io",
   "package": "store",
   "prefix": "zg",
-  "types": [{"kind": "opaque", "name": "Store"}],
+  "types": [{"kind": "opaque", "name": "Cursor"}, {"kind": "opaque", "name": "Store"}],
   "zig_version": "0.16.0"
 }

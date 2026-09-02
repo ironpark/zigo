@@ -10,6 +10,117 @@ import (
 	"example.com/zigo/store/internal/raw"
 )
 
+// Cursor is a caller-owned native handle. Call Close when it is no longer needed.
+type Cursor struct {
+	ptr     unsafe.Pointer
+	mu      sync.Mutex
+	active  int
+	closed  bool
+	poison  *NativePanicError
+	cleanup runtime.Cleanup
+}
+
+// zigoAcquire pins c open for one native call and hands back its pointer;
+// the call ends with zigoRelease. A nil, closed, or poisoned handle is the error.
+func (c *Cursor) zigoAcquire(operation string) (unsafe.Pointer, error) {
+	if c == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed || c.ptr == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	if c.poison != nil {
+		return nil, c.poison.poisoned(operation)
+	}
+	c.active++
+	return c.ptr, nil
+}
+
+func (c *Cursor) zigoRelease() {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	c.active--
+	state, release := c.zigoTakeLocked()
+	c.mu.Unlock()
+	if release {
+		cleanupCursor(state)
+	}
+}
+
+// zigoPoison marks c unusable: a Zig panic unwound through native frames
+// without running their defers, so the state behind it is unknown.
+func (c *Cursor) zigoPoison(cause *NativePanicError) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.poison == nil {
+		c.poison = cause
+		c.cleanup.Stop()
+	}
+}
+
+type cursorCleanupState struct {
+	ptr unsafe.Pointer
+}
+
+func newCursor(ptr unsafe.Pointer) *Cursor {
+	value := &Cursor{ptr: ptr}
+	state := cursorCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, cleanupCursor, state)
+	return value
+}
+
+func cleanupCursor(state cursorCleanupState) {
+	if state.ptr != nil {
+		raw.CursorDeinit(state.ptr)
+	}
+}
+
+// Close releases the native Cursor resources. It is safe to call more than once.
+// The error result is always nil; it exists so Cursor satisfies io.Closer.
+// Close does not wait: a call still inside native keeps the resources until it
+// returns, and every call made after Close fails with *HandleError.
+func (c *Cursor) Close() error {
+	if c == nil {
+		return nil
+	}
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return nil
+	}
+	c.closed = true
+	c.cleanup.Stop()
+	state, release := c.zigoTakeLocked()
+	c.mu.Unlock()
+	if release {
+		cleanupCursor(state)
+	}
+	runtime.KeepAlive(c)
+	return nil
+}
+
+// zigoTakeLocked hands out what is left to release once c is closed and no
+// call is inside native; mu must be held. A poisoned handle keeps its native
+// object: releasing state a panic left half-changed could fault, so it leaks.
+func (c *Cursor) zigoTakeLocked() (cursorCleanupState, bool) {
+	if !c.closed || c.active != 0 || c.ptr == nil {
+		return cursorCleanupState{}, false
+	}
+	state := cursorCleanupState{ptr: c.ptr}
+	c.ptr = nil
+	if c.poison != nil {
+		state.ptr = nil
+	}
+	return state, true
+}
+
 // Store is a caller-owned native handle. Call Close when it is no longer needed.
 type Store struct {
 	ptr     unsafe.Pointer

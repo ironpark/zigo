@@ -36,3 +36,14 @@ func StoreDeinit(self unsafe.Pointer) int32 {
 	code := int32(C.zg_store_deinit((*C.zg_store)(self)))
 	return code
 }
+// CursorInit calls the generated C ABI wrapper for zg_cursor_init.
+func CursorInit(column uint32) (unsafe.Pointer, int32) {
+	var outResult *C.zg_cursor
+	code := int32(C.zg_cursor_init(C.uint32_t(column), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+// CursorDeinit calls the generated C ABI wrapper for zg_cursor_deinit.
+func CursorDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_cursor_deinit((*C.zg_cursor)(self)))
+	return code
+}

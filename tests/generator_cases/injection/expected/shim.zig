@@ -23,3 +23,19 @@ export fn zg_store_deinit_impl(self: *target.Store) i32 {
     target.Store.deinit(self);
     return 0;
 }
+export fn zg_cursor_init_impl(column: u32, out_result: **target.Cursor) i32 {
+    const boxed = std.heap.smp_allocator.create(target.Cursor) catch @panic("zigo: out of memory boxing Cursor");
+    boxed.* = target.Cursor.init(std.heap.smp_allocator, column) catch |err| {
+        std.heap.smp_allocator.destroy(boxed);
+        return switch (err) {
+            error.Invalid => 2,
+        };
+    };
+    out_result.* = boxed;
+    return 0;
+}
+export fn zg_cursor_deinit_impl(self: *target.Cursor) i32 {
+    target.Cursor.deinit(self);
+    std.heap.smp_allocator.destroy(self);
+    return 0;
+}

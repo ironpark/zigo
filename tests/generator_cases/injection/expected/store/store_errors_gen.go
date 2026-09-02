@@ -85,6 +85,8 @@ func (err *Error) Is(target error) bool {
 
 // ErrOutOfMemory represents Zig error.OutOfMemory.
 var ErrOutOfMemory = &Error{Code: 1, Name: "OutOfMemory"}
+// ErrInvalid represents Zig error.Invalid.
+var ErrInvalid = &Error{Code: 2, Name: "Invalid"}
 
 func errorForCode(operation string, code int32) error {
 	switch code {
@@ -92,6 +94,8 @@ func errorForCode(operation string, code int32) error {
 		return &NativePanicError{Operation: operation, Message: raw.LastErrorMessage()}
 	case 1:
 		return &Error{Code: 1, Name: "OutOfMemory", Operation: operation}
+	case 2:
+		return &Error{Code: 2, Name: "Invalid", Operation: operation}
 	default:
 		return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
 	}

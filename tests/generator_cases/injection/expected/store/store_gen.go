@@ -42,3 +42,17 @@ func (s *Store) Flush() error {
 	}
 	return nil
 }
+
+// NewCursor
+// Builds a cursor the shim boxes so Go can hold a handle to it.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
+func NewCursor(column uint32) (*Cursor, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	result, code := raw.CursorInit(column)
+	if code != 0 {
+		return nil, errorForCode("NewCursor", code)
+	}
+	return newCursor(result), nil
+}
