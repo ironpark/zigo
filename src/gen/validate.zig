@@ -1238,7 +1238,7 @@ fn typeNodeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
 
 fn hasConstructorInit(document: semantic.Semantic, constructor: semantic.Constructor) bool {
     for (document.functions) |function| {
-        if (!std.mem.eql(u8, function.name, constructor.init) or function.receiver != null or
+        if (!std.mem.eql(u8, function.name, constructor.init) or
             !std.mem.eql(u8, function.goOwner() orelse "", constructor.type)) continue;
         if (function.ownership != .caller or function.@"return" != .error_union) return false;
         const payload = function.@"return".error_union.payload.*;
@@ -1260,13 +1260,12 @@ fn hasConstructorDeinit(document: semantic.Semantic, constructor: semantic.Const
     return false;
 }
 
-/// The constructor pairing a receiverless function serves as `.init` for, if
-/// any. A boxed `create` reaches the public API as `New<Type>` rather than the
+/// The constructor a function serves as `.init` for, if any. A boxed `create`
+/// reaches the public API as `New<Type>` rather than the
 /// pascal-cased Zig name, so the collision check must resolve it the same way
 /// or it would flag two unrelated constructors (`Counter.create`,
 /// `Context.create`) as though they shared a Go identifier.
 fn constructorInitFor(document: semantic.Semantic, function: semantic.SemanticFn) ?semantic.Constructor {
-    if (function.receiver != null) return null;
     for (document.constructors) |constructor| {
         if (std.mem.eql(u8, constructor.init, function.name) and
             std.mem.eql(u8, constructor.type, function.goOwner() orelse "")) return constructor;

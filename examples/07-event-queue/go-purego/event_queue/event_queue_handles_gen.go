@@ -237,3 +237,114 @@ func (t *Ticker) zigoTakeLocked() (tickerCleanupState, bool) {
 	}
 	return state, true
 }
+
+// Stream is a caller-owned native handle. Call Close when it is no longer needed.
+type Stream struct {
+	ptr     unsafe.Pointer
+	mu      sync.Mutex
+	active  int
+	closed  bool
+	poison  *NativePanicError
+	cleanup runtime.Cleanup
+}
+
+// zigoAcquire pins s open for one native call and hands back its pointer;
+// the call ends with zigoRelease. A nil, closed, or poisoned handle is the error.
+func (s *Stream) zigoAcquire(operation string) (unsafe.Pointer, error) {
+	if s == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.ptr == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	if s.poison != nil {
+		return nil, s.poison.poisoned(operation)
+	}
+	s.active++
+	return s.ptr, nil
+}
+
+func (s *Stream) zigoRelease() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.active--
+	state, release := s.zigoTakeLocked()
+	s.mu.Unlock()
+	if release {
+		cleanupStream(state)
+	}
+}
+
+// zigoPoison marks s unusable: a Zig panic unwound through native frames
+// without running their defers, so the state behind it is unknown.
+func (s *Stream) zigoPoison(cause *NativePanicError) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.poison == nil {
+		s.poison = cause
+		s.cleanup.Stop()
+	}
+}
+
+type streamCleanupState struct {
+	ptr unsafe.Pointer
+}
+
+func newStream(ptr unsafe.Pointer) *Stream {
+	value := &Stream{ptr: ptr}
+	state := streamCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, cleanupStream, state)
+	return value
+}
+
+func cleanupStream(state streamCleanupState) {
+	if state.ptr != nil {
+		raw.StreamFreeStream(state.ptr)
+	}
+}
+
+// Close releases the native Stream resources. It is safe to call more than once.
+// The error result is always nil; it exists so Stream satisfies io.Closer.
+// Close does not wait: a call still inside native keeps the resources until it
+// returns, and every call made after Close fails with *HandleError.
+func (s *Stream) Close() error {
+	if s == nil {
+		return nil
+	}
+	s.mu.Lock()
+	if s.closed {
+		s.mu.Unlock()
+		return nil
+	}
+	s.closed = true
+	s.cleanup.Stop()
+	state, release := s.zigoTakeLocked()
+	s.mu.Unlock()
+	if release {
+		cleanupStream(state)
+	}
+	runtime.KeepAlive(s)
+	return nil
+}
+
+// zigoTakeLocked hands out what is left to release once s is closed and no
+// call is inside native; mu must be held. A poisoned handle keeps its native
+// object: releasing state a panic left half-changed could fault, so it leaks.
+func (s *Stream) zigoTakeLocked() (streamCleanupState, bool) {
+	if !s.closed || s.active != 0 || s.ptr == nil {
+		return streamCleanupState{}, false
+	}
+	state := streamCleanupState{ptr: s.ptr}
+	s.ptr = nil
+	if s.poison != nil {
+		state.ptr = nil
+	}
+	return state, true
+}

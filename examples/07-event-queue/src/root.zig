@@ -45,6 +45,7 @@ var live_samples: std.atomic.Value(usize) = .init(0);
 var live_limits: std.atomic.Value(usize) = .init(0);
 
 var live_tickers: std.atomic.Value(usize) = .init(0);
+var live_streams: std.atomic.Value(usize) = .init(0);
 
 pub const EventQueue = struct {
     name_bytes: []u8,
@@ -94,6 +95,15 @@ pub const EventQueue = struct {
         copy.dropped_count = self.dropped_count;
         copy.processed_count = self.processed_count;
         return copy;
+    }
+
+    /// Opens a stream owned by the caller. The allocator is injected before
+    /// the receiver, matching APIs where one handle constructs another.
+    pub fn newStream(gpa: std.mem.Allocator, terminal: *EventQueue) CreateError!*Stream {
+        const stream = gpa.create(Stream) catch return error.OutOfMemory;
+        stream.* = .{ .capacity_value = @intCast(terminal.capacity_value) };
+        _ = live_streams.fetchAdd(1, .monotonic);
+        return stream;
     }
 
     /// mergeFrom appends another queue's events to this one under the current
@@ -344,6 +354,23 @@ pub const EventQueue = struct {
         _ = live_queues.fetchSub(1, .monotonic);
     }
 };
+
+pub const Stream = struct {
+    capacity_value: u32,
+
+    pub fn capacity(self: *Stream) u32 {
+        return self.capacity_value;
+    }
+};
+
+pub fn freeStream(gpa: std.mem.Allocator, stream: *Stream) void {
+    gpa.destroy(stream);
+    _ = live_streams.fetchSub(1, .monotonic);
+}
+
+pub fn liveStreams() usize {
+    return live_streams.load(.monotonic);
+}
 
 /// Sample buffers still owned by the library. A correct binding returns this to
 /// zero after every `extractSamples` call.

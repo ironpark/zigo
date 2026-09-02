@@ -148,6 +148,26 @@ func EventQueueClone(self unsafe.Pointer, observerHandle uintptr) (unsafe.Pointe
 	return unsafe.Pointer(outResult), code
 }
 
+// EventQueueNewStream calls the generated C ABI wrapper for zg_event_queue_new_stream.
+func EventQueueNewStream(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult *C.zg_stream
+	code := int32(C.zg_event_queue_new_stream((*C.zg_event_queue)(self), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+
+// StreamCapacity calls the generated C ABI wrapper for zg_stream_capacity.
+func StreamCapacity(self unsafe.Pointer) (uint32, int32) {
+	var outResult C.uint32_t
+	code := int32(C.zg_stream_capacity((*C.zg_stream)(self), &outResult))
+	return uint32(outResult), code
+}
+
+// StreamFreeStream calls the generated C ABI wrapper for zg_stream_free_stream.
+func StreamFreeStream(self unsafe.Pointer) int32 {
+	code := int32(C.zg_stream_free_stream((*C.zg_stream)(self)))
+	return code
+}
+
 // EventQueueEnqueue calls the generated C ABI wrapper for zg_event_queue_enqueue.
 func EventQueueEnqueue(self unsafe.Pointer, id uint64, value int32) int32 {
 	code := int32(C.zg_event_queue_enqueue((*C.zg_event_queue)(self), C.uint64_t(id), C.int32_t(value)))
@@ -541,6 +561,11 @@ func TickerAdvance(self unsafe.Pointer, steps uint32) (uint32, int32) {
 // LiveTickers calls the generated C ABI wrapper for zg_live_tickers.
 func LiveTickers() uint {
 	return uint(C.zg_live_tickers())
+}
+
+// LiveStreams calls the generated C ABI wrapper for zg_live_streams.
+func LiveStreams() uint {
+	return uint(C.zg_live_streams())
 }
 
 // LiveQueues calls the generated C ABI wrapper for zg_live_queues.

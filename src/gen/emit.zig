@@ -6921,7 +6921,6 @@ fn receiverVariableAlloc(allocator: std.mem.Allocator, receiver: []const u8) ![]
 }
 
 fn constructorForInit(program: abi.Program, function: semantic.SemanticFn) ?semantic.Constructor {
-    if (function.receiver != null) return null;
     for (program.constructors) |constructor| {
         if (std.mem.eql(u8, constructor.init, function.name) and
             std.mem.eql(u8, constructor.type, function.goOwner() orelse "")) return constructor;

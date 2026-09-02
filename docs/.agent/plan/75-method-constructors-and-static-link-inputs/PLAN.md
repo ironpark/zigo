@@ -8,7 +8,7 @@ registered_at: "2026-09-02T13:45:42Z"
 # Phases
 
 - [x] [Phase 00: 기본 install에 바인딩 라이브러리](phases/00-install-by-default.md)
-- [ ] [Phase 01: extra_ldflags와 정적 링크 입력 수집](phases/01-static-link-inputs.md)
+- [x] [Phase 01: extra_ldflags와 정적 링크 입력 수집](phases/01-static-link-inputs.md)
 - [ ] [Phase 02: receiver를 가진 생성자](phases/02-method-constructors.md)
 - [ ] [Phase 03: 문서와 CHANGELOG](phases/03-docs.md)
 - [ ] [Phase 04: doctor의 미해결 심볼 진단](phases/04-doctor-undefined-symbols.md)

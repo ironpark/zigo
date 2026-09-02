@@ -59,6 +59,49 @@ func (e *EventQueue) Clone(observer EventQueueCloneObserver) (*EventQueue, error
 	return newEventQueue(result, []zigoCallbackHandle{observerHandle}), nil
 }
 
+// NewStream
+// Opens a stream owned by the caller. The allocator is injected before
+// the receiver, matching APIs where one handle constructs another.
+// The caller must call Close on the returned handle.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+func (e *EventQueue) NewStream() (*Stream, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("EventQueue.NewStream receiver", e)
+	if err != nil {
+		return nil, err
+	}
+	defer e.zigoRelease()
+	result, code := raw.EventQueueNewStream(ptr)
+	for _, handle := range e.callbackHandles {
+		zigoRethrowCallbackPanic("EventQueue.NewStream", handle)
+	}
+	if code != 0 {
+		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.NewStream", code), e)
+	}
+	return newStream(result), nil
+}
+
+// Capacity calls the Zig function Stream.capacity.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (s *Stream) Capacity() (uint32, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Stream.Capacity receiver", s)
+	if err != nil {
+		return 0, err
+	}
+	defer s.zigoRelease()
+	result, code := raw.StreamCapacity(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("Stream.Capacity", code), s)
+	}
+	return result, nil
+}
+
 // Enqueue calls the Zig function EventQueue.enqueue.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
@@ -698,6 +741,11 @@ func (t *Ticker) Advance(steps uint32) (uint32, error) {
 // Tickers still owned by the library.
 func LiveTickers() uint {
 	return raw.LiveTickers()
+}
+
+// LiveStreams calls the Zig function liveStreams.
+func LiveStreams() uint {
+	return raw.LiveStreams()
 }
 
 // LiveQueues calls the Zig function liveQueues.

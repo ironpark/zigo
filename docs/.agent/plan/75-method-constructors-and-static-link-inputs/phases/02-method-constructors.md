@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `func (t *Terminal) NewStream() (*Stream, error)`가 생성되어 cgo·purego 통과, 커밋.
 > NEXT: none

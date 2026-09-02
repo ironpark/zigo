@@ -11,6 +11,7 @@ pub const bindings = zigo.define(.{
         .{ .type = library.Stats, .repr = .value },
         .{ .type = library.Limits, .repr = .value },
         .{ .type = library.Ticker, .repr = .@"opaque" },
+        .{ .type = library.Stream, .repr = .@"opaque" },
     },
     .functions = .{
         .{
@@ -27,6 +28,9 @@ pub const bindings = zigo.define(.{
             .param_meta = .{ .observer = .{ .retention = .retained } },
             .returns = .caller,
         },
+        .{ .path = "EventQueue.newStream", .constructs = "Stream" },
+        .{ .path = "Stream.capacity" },
+        .{ .path = "root.freeStream", .destroys = "Stream" },
         .{ .path = "EventQueue.enqueue", .params = .{ "id", "value" } },
         .{ .path = "EventQueue.mergeFrom", .params = .{"source"} },
         .{ .path = "EventQueue.process", .params = .{"limit"} },
@@ -95,6 +99,7 @@ pub const bindings = zigo.define(.{
         .{ .path = "root.freeTicker", .destroys = "Ticker" },
         .{ .path = "root.tickerAdvance", .name = "advance", .params = .{"steps"} },
         .{ .path = "root.liveTickers" },
+        .{ .path = "root.liveStreams" },
         .{ .path = "root.liveQueues" },
         .{ .path = "root.liveSamples" },
         .{ .path = "root.liveLimits" },

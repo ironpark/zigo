@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T14:05:49Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 정적 링크 입력이 있는 예제가 `go test` 통과, `extra_ldflags` 골든/테스트 추가, 전 예제 녹색, 커밋.
 > NEXT: none

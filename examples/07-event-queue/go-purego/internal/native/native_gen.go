@@ -53,6 +53,9 @@ type nativeBindings struct {
 	lastError                           func() unsafe.Pointer
 	fnEventQueueCreate                  func(unsafe.Pointer, uintptr, uintptr, uint32, uintptr, uintptr, *unsafe.Pointer) int32
 	fnEventQueueClone                   func(unsafe.Pointer, uintptr, uintptr, *unsafe.Pointer) int32
+	fnEventQueueNewStream               func(unsafe.Pointer, *unsafe.Pointer) int32
+	fnStreamCapacity                    func(unsafe.Pointer, *uint32) int32
+	fnStreamFreeStream                  func(unsafe.Pointer) int32
 	fnEventQueueEnqueue                 func(unsafe.Pointer, uint64, int32) int32
 	fnEventQueueMergeFrom               func(unsafe.Pointer, unsafe.Pointer, *uintptr) int32
 	fnEventQueueProcess                 func(unsafe.Pointer, uintptr, *uintptr) int32
@@ -89,6 +92,7 @@ type nativeBindings struct {
 	fnTickerFreeTicker                  func(unsafe.Pointer) int32
 	fnTickerAdvance                     func(unsafe.Pointer, uint32, *uint32) int32
 	fnLiveTickers                       func() uintptr
+	fnLiveStreams                       func() uintptr
 	fnLiveQueues                        func() uintptr
 	fnLiveSamples                       func() uintptr
 	fnLiveLimits                        func() uintptr
@@ -328,6 +332,18 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_event_queue_clone_purego_v2", err)
 	}
+	addrEventQueueNewStream, err := resolveSymbol(handle, "zg_event_queue_new_stream")
+	if err != nil {
+		return fail("zg_event_queue_new_stream", err)
+	}
+	addrStreamCapacity, err := resolveSymbol(handle, "zg_stream_capacity")
+	if err != nil {
+		return fail("zg_stream_capacity", err)
+	}
+	addrStreamFreeStream, err := resolveSymbol(handle, "zg_stream_free_stream")
+	if err != nil {
+		return fail("zg_stream_free_stream", err)
+	}
 	addrEventQueueEnqueue, err := resolveSymbol(handle, "zg_event_queue_enqueue")
 	if err != nil {
 		return fail("zg_event_queue_enqueue", err)
@@ -472,6 +488,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_live_tickers", err)
 	}
+	addrLiveStreams, err := resolveSymbol(handle, "zg_live_streams")
+	if err != nil {
+		return fail("zg_live_streams", err)
+	}
 	addrLiveQueues, err := resolveSymbol(handle, "zg_live_queues")
 	if err != nil {
 		return fail("zg_live_queues", err)
@@ -488,6 +508,9 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.fnEventQueueCreate, addrEventQueueCreate)
 	purego.RegisterFunc(&next.fnEventQueueClone, addrEventQueueClone)
+	purego.RegisterFunc(&next.fnEventQueueNewStream, addrEventQueueNewStream)
+	purego.RegisterFunc(&next.fnStreamCapacity, addrStreamCapacity)
+	purego.RegisterFunc(&next.fnStreamFreeStream, addrStreamFreeStream)
 	purego.RegisterFunc(&next.fnEventQueueEnqueue, addrEventQueueEnqueue)
 	purego.RegisterFunc(&next.fnEventQueueMergeFrom, addrEventQueueMergeFrom)
 	purego.RegisterFunc(&next.fnEventQueueProcess, addrEventQueueProcess)
@@ -524,6 +547,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnTickerFreeTicker, addrTickerFreeTicker)
 	purego.RegisterFunc(&next.fnTickerAdvance, addrTickerAdvance)
 	purego.RegisterFunc(&next.fnLiveTickers, addrLiveTickers)
+	purego.RegisterFunc(&next.fnLiveStreams, addrLiveStreams)
 	purego.RegisterFunc(&next.fnLiveQueues, addrLiveQueues)
 	purego.RegisterFunc(&next.fnLiveSamples, addrLiveSamples)
 	purego.RegisterFunc(&next.fnLiveLimits, addrLiveLimits)
@@ -640,6 +664,26 @@ func EventQueueClone(self unsafe.Pointer, observerCallback, observerToken uintpt
 	var outResult unsafe.Pointer
 	code := bindings().fnEventQueueClone(self, observerCallback, observerToken, &outResult)
 	return outResult, code
+}
+
+// EventQueueNewStream calls the generated purego ABI wrapper for zg_event_queue_new_stream.
+func EventQueueNewStream(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := bindings().fnEventQueueNewStream(self, &outResult)
+	return outResult, code
+}
+
+// StreamCapacity calls the generated purego ABI wrapper for zg_stream_capacity.
+func StreamCapacity(self unsafe.Pointer) (uint32, int32) {
+	var outResult uint32
+	code := bindings().fnStreamCapacity(self, &outResult)
+	return outResult, code
+}
+
+// StreamFreeStream calls the generated purego ABI wrapper for zg_stream_free_stream.
+func StreamFreeStream(self unsafe.Pointer) int32 {
+	code := bindings().fnStreamFreeStream(self)
+	return code
 }
 
 // EventQueueEnqueue calls the generated purego ABI wrapper for zg_event_queue_enqueue.
@@ -996,6 +1040,12 @@ func TickerAdvance(self unsafe.Pointer, steps uint32) (uint32, int32) {
 // LiveTickers calls the generated purego ABI wrapper for zg_live_tickers.
 func LiveTickers() uint {
 	result := bindings().fnLiveTickers()
+	return uint(result)
+}
+
+// LiveStreams calls the generated purego ABI wrapper for zg_live_streams.
+func LiveStreams() uint {
+	result := bindings().fnLiveStreams()
 	return uint(result)
 }
 
