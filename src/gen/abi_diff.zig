@@ -244,6 +244,10 @@ fn functionIdentity(allocator: std.mem.Allocator, function: semantic.SemanticFn)
 fn signatureEqual(lhs: semantic.SemanticFn, rhs: semantic.SemanticFn) bool {
     if (lhs.params.len != rhs.params.len or !typeEqual(lhs.@"return", rhs.@"return")) return false;
     for (lhs.params, rhs.params) |a, b| {
+        // An injected parameter is absent from the C signature, so turning
+        // one into an ordinary parameter (or the reverse) moves the ABI even
+        // though the Zig type did not.
+        if (a.injected != b.injected) return false;
         if (a.direction != b.direction or a.semantic != b.semantic or !typeEqual(a.type, b.type)) return false;
     }
     return true;

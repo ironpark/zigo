@@ -1,0 +1,5 @@
+{
+  "package": "store",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/store"
+}

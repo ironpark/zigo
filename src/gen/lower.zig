@@ -39,6 +39,9 @@ pub fn semanticDocumentForBackend(
             });
         }
         for (function.params, 0..) |parameter, parameter_index| {
+            // The shim writes the value itself, so the parameter is absent
+            // from the C signature and from everything derived from it.
+            if (parameter.injected != null) continue;
             if (isStringSliceParameter(parameter)) {
                 const data_child = try allocator.create(abi.AbiScalar);
                 data_child.* = try lowerValue(allocator, document, prefix, parameter.type.slice.element.*.slice.element.*);
@@ -247,7 +250,9 @@ pub fn semanticDocumentForBackend(
         .backend = backend,
         .callback_convention = if (backend == .purego) .function_pointer_userdata_v2 else .fixed_go_export,
         .constructors = document.constructors,
+        .allocator = document.allocator,
         .doc = document.doc,
+        .io = document.io,
         .enums = try lowerEnums(allocator, document, prefix),
         .error_codes = error_codes,
         .handles = try lowerHandles(allocator, document, prefix),

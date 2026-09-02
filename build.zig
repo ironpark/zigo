@@ -281,6 +281,7 @@ pub fn build(b: *std.Build) void {
     const godoc_audit = b.addSystemCommand(&.{ "go", "run", "./tests/godoc_audit/main.go" });
     godoc_audit.addArgs(&.{
         "tests/generator_cases/complex/expected",
+        "tests/generator_cases/injection/expected",
         "tests/generator_cases/narrow_int/expected",
         "tests/generator_cases/nested_namespace/expected",
         "tests/generator_cases/scalar/expected",

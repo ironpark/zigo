@@ -1,0 +1,54 @@
+{
+  "allocator": "std.heap.smp_allocator",
+  "constructors": [
+    {"deinit": "deinit", "init": "open", "type": "Store"}
+  ],
+  "functions": [
+    {
+      "doc": "Opens a store that owns its own memory.",
+      "name": "open",
+      "namespace": "Store",
+      "ownership": "caller",
+      "params": [
+        {"injected": "allocator", "name": "alloc", "type": {"kind": "void"}},
+        {
+          "name": "name",
+          "semantic": "utf8_string",
+          "type": {
+            "const": true,
+            "element": {"bits": 8, "is_usize": false, "kind": "int", "signed": false},
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": {
+        "error_set": ["OutOfMemory"],
+        "kind": "error_union",
+        "payload": {"const": false, "kind": "opaque_ptr", "nullable": false, "ref": "Store"}
+      },
+      "symbol": "ignored"
+    },
+    {
+      "doc": "Writes pending records out through the injected Io.",
+      "name": "flush",
+      "params": [
+        {"injected": "io", "name": "io", "type": {"kind": "void"}}
+      ],
+      "receiver": "Store",
+      "return": {"kind": "void"},
+      "symbol": "ignored"
+    },
+    {
+      "name": "deinit",
+      "params": [],
+      "receiver": "Store",
+      "return": {"kind": "void"},
+      "symbol": "ignored"
+    }
+  ],
+  "io": "target.io",
+  "package": "store",
+  "prefix": "zg",
+  "types": [{"kind": "opaque", "name": "Store"}],
+  "zig_version": "0.16.0"
+}

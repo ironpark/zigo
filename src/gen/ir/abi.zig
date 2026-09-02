@@ -207,6 +207,9 @@ pub const Program = struct {
     /// stale library and regenerated Go fail to resolve instead of misreading bits.
     pub const CallbackConvention = enum { fixed_go_export, function_pointer_userdata_v1, function_pointer_userdata_v2 };
 
+    /// The Zig expression the shim passes for injected `std.mem.Allocator`
+    /// and `std.Io` parameters, carried straight through from the document.
+    allocator: ?[]const u8 = null,
     backend: Backend = .cgo,
     callback_convention: CallbackConvention = .fixed_go_export,
     constructors: []const semantic.Constructor = &.{},
@@ -215,6 +218,7 @@ pub const Program = struct {
     error_codes: []const ErrorCode = &.{},
     handles: []const AbiOpaque = &.{},
     functions: []const AbiFn,
+    io: ?[]const u8 = null,
     package: []const u8,
     prefix: []const u8,
     projections: []const AbiProjection = &.{},

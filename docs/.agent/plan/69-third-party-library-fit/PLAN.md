@@ -13,7 +13,7 @@ registered_at: "2026-09-02T07:14:37Z"
 - [x] [Phase 00: 유도 Go 식별자 검증](phases/00-identifier-validation.md)
 - [x] [Phase 01: enum을 `.types`에 등록](phases/01-enum-registration.md)
 - [x] [Phase 02: 승격 정수의 Go 사전검사](phases/02-narrow-int-precheck.md)
-- [ ] [Phase 03: checked infallible 함수의 패닉 가시성](phases/03-panic-visibility.md)
+- [x] [Phase 03: checked infallible 함수의 패닉 가시성](phases/03-panic-visibility.md)
 - [x] [Phase 04: 패키지 doc 순서에 `bindings.zig` 복귀](phases/04-package-doc-order.md)
 - [ ] [Phase 05: Allocator/Io 주입](phases/05-allocator-injection.md)
 - [ ] [Phase 06: 값 반환 `init`을 caller-owned pointer로](phases/06-by-value-init.md)

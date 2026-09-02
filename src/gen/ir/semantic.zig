@@ -223,6 +223,10 @@ fn parseTypePointer(allocator: std.mem.Allocator, object: std.json.ObjectMap, na
 }
 
 pub const NameSource = enum { ast, fallback, sidecar };
+/// A parameter the shim fills in rather than one the caller passes. Zig types
+/// like `std.mem.Allocator` have no C representation, so the binding names the
+/// value once and every generated signature drops the parameter.
+pub const Injection = enum { allocator, io };
 pub const Direction = enum { in, inout, out };
 pub const Retention = enum { borrowed, retained };
 pub const SemanticHint = enum { c_string, opaque_bytes, utf8_string };
@@ -233,6 +237,10 @@ pub const Written = enum { all, @"return" };
 
 pub const Parameter = struct {
     direction: Direction = .in,
+    /// Set when the shim supplies this argument. An injected parameter is
+    /// absent from the C and Go signatures, so adding or removing one is a
+    /// breaking change even though nothing about the Zig type moved.
+    injected: ?Injection = null,
     name: []const u8,
     name_source: NameSource = .fallback,
     retention: Retention = .borrowed,
@@ -304,11 +312,18 @@ pub const Constructor = struct {
 };
 
 pub const Semantic = struct {
+    /// The Zig expression the shim passes for `std.mem.Allocator` parameters.
+    /// Set by the binding's `.allocator`; without it, a function that takes an
+    /// allocator is refused rather than guessed at.
+    allocator: ?[]const u8 = null,
     constructors: []const Constructor = &.{},
     /// The `//!` container doc of the bindings file, if it has one. It becomes
     /// the generated Go package doc unless `go_package_doc` overrides it.
     doc: ?[]const u8 = null,
     functions: []const SemanticFn = &.{},
+    /// The Zig expression the shim passes for `std.Io` parameters, from the
+    /// binding's `.io`.
+    io: ?[]const u8 = null,
     ir_version: u32 = 1,
     package: []const u8,
     prefix: []const u8,

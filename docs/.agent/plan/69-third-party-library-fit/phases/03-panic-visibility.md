@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-02T07:46:45Z"
 depends_on:
 - "69-third-party-library-fit#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: checked 함수 전부에서 패닉이 `error`로 도달하고 poison된다는 테스트 통과. 순수 함수 abort 테스트 통과.
 > NEXT: none

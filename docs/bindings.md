@@ -245,6 +245,29 @@ generic 타입은 구체화한 타입에 고유 이름을 붙여 등록합니다
 
 generic 함수는 구체화 전에는 signature가 없으므로 직접 노출할 수 없습니다.
 
+### Allocator와 Io 주입
+
+`std.mem.Allocator`와 `std.Io`는 C로 표현할 수 없습니다. 바인딩이 값을 한 번 정하면
+그 파라미터는 C와 Go 시그니처에서 빠지고 shim이 채웁니다.
+
+```zig
+pub const bindings = zigo.define(.{
+    .root = library,
+    .allocator = .smp_allocator, // 또는 .c_allocator, .page_allocator, 또는 "gpa" 같은 선언 경로
+    .io = "io", // 선언 경로만 받습니다. std에는 기본 Io가 없습니다
+    // ...
+});
+```
+
+`fn open(gpa: Allocator, name: []const u8) !*Store`는 C에서
+`int32_t zg_store_open(const uint8_t *name_ptr, size_t name_len, zg_store **out_result)`,
+Go에서 `NewStore(name string) (*Store, error)`가 됩니다. 문자열 값(`"gpa"`)은 바인딩된
+루트 모듈 기준으로 해석되며, `.functions`의 경로와 같은 기준입니다.
+
+기본값은 없습니다. 설정 없이 그런 파라미터를 만나면 `ZIGO022`로 거부합니다 — 어떤 메모리를
+쓸지는 zigo가 대신 정할 문제가 아닙니다. 주입 파라미터는 `semantic.json`에
+`"injected": "allocator"`로 남고, 주입 여부가 바뀌면 `abi-diff`가 breaking으로 봅니다.
+
 ### Enum 이름 지정
 
 enum은 signature에 나타나기만 해도 자동으로 등록되며, 이름은 `@typeName`의 마지막 점 뒤

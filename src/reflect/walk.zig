@@ -120,13 +120,47 @@ pub fn reflect(
     }
 
     return .{
+        .allocator = comptime injectionExpression(declaration, "allocator"),
         .constructors = try constructors.toOwnedSlice(allocator),
         .functions = try functions.toOwnedSlice(allocator),
+        .io = comptime injectionExpression(declaration, "io"),
         .package = package_name,
         .prefix = prefix,
         .types = try types.toOwnedSlice(allocator),
         .zig_version = @import("builtin").zig_version_string,
     };
+}
+
+/// The Zig expression the shim writes for an injected argument. `.allocator`
+/// takes one of the three std allocators by name or a path into the bound
+/// module; `.io` takes a path only, because `std` has no default `Io`. There
+/// is no default for either: an allocator nobody chose is a lifetime decision
+/// zigo has no business making.
+fn injectionExpression(comptime declaration: anytype, comptime field: []const u8) ?[]const u8 {
+    if (!@hasField(@TypeOf(declaration), field)) return null;
+    const value = @field(declaration, field);
+    if (@TypeOf(value) == @TypeOf(.enum_literal)) {
+        if (!std.mem.eql(u8, field, "allocator"))
+            @compileError("zigo `." ++ field ++ "` must be a declaration path string");
+        return switch (value) {
+            .c_allocator => "std.heap.c_allocator",
+            .page_allocator => "std.heap.page_allocator",
+            .smp_allocator => "std.heap.smp_allocator",
+            else => @compileError("zigo `.allocator` must be .c_allocator, .page_allocator, .smp_allocator, or a declaration path string"),
+        };
+    }
+    // A path is resolved against the bound module, the same root every
+    // `.functions` path resolves against.
+    return "target." ++ value;
+}
+
+/// The parameters zigo fills in rather than exposing. Zig spells them as
+/// ordinary arguments, but neither has a C representation, so a binding that
+/// wants them names the value once instead of per call.
+fn injectionFor(comptime T: type) ?semantic.Injection {
+    if (T == std.mem.Allocator) return .allocator;
+    if (T == std.Io) return .io;
+    return null;
 }
 
 fn appendFunction(
@@ -166,11 +200,16 @@ fn appendFunction(
             metadata.params[output_index]
         else
             try std.fmt.allocPrint(allocator, "p{d}", .{output_index});
-        const parameter_type = try typeNode(allocator, param.type.?, types, comptime std.fmt.comptimePrint(
+        const injection = comptime injectionFor(param.type.?);
+        // An injected parameter never reaches C, so it is not walked as a
+        // type: `std.mem.Allocator` is a struct with a vtable pointer, and
+        // reflecting it would fail long before validation could explain why.
+        const parameter_type = if (injection != null) semantic.TypeNode{ .void = {} } else try typeNode(allocator, param.type.?, types, comptime std.fmt.comptimePrint(
             "`{s}{s}` parameter `{s}`",
             .{ owner_label, function_label, if (has_sidecar) metadata.params[output_index] else std.fmt.comptimePrint("p{d}", .{output_index}) },
         ));
         var reflected: semantic.Parameter = .{
+            .injected = injection,
             .name = parameter_name,
             .name_source = if (has_sidecar) .sidecar else .fallback,
             .type = parameter_type,
@@ -1375,4 +1414,48 @@ test "an unregistered generated enum is named from @typeName and rejected downst
     // its message points at the Zig path recorded here.
     try std.testing.expect(!naming.isGoIdentifier(document.types[0].name));
     try std.testing.expect(std.mem.endsWith(u8, document.types[0].zig_path.?, "[0..2])"));
+}
+
+test "an allocator parameter is injected rather than exposed" {
+    const Fixture = struct {
+        const Store = opaque {};
+        pub fn open(gpa: std.mem.Allocator, name: []const u8) error{OutOfMemory}!*Store {
+            _ = gpa;
+            _ = name;
+            unreachable;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .allocator = .smp_allocator,
+        .root = Fixture,
+        .types = .{.{ .name = "Store", .type = Fixture.Store, .repr = .@"opaque" }},
+        .functions = .{.{ .path = "root.open", .params = .{ "gpa", "name" } }},
+    }, "store", "zg");
+
+    try std.testing.expectEqualStrings("std.heap.smp_allocator", document.allocator.?);
+    try std.testing.expectEqual(semantic.Injection.allocator, document.functions[0].params[0].injected.?);
+    // Nothing walked the allocator's type: it never reaches C, so it carries
+    // the one node that means "no C representation needed".
+    try std.testing.expectEqual(semantic.TypeNode.void, document.functions[0].params[0].type);
+    try std.testing.expectEqual(@as(?semantic.Injection, null), document.functions[0].params[1].injected);
+}
+
+test "a declaration path becomes an expression against the bound module" {
+    const Fixture = struct {
+        pub const gpa: std.mem.Allocator = undefined;
+        pub fn touch(allocator: std.mem.Allocator) void {
+            _ = allocator;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .allocator = "gpa",
+        .root = Fixture,
+        .functions = .{.{ .path = "root.touch", .params = .{"allocator"} }},
+    }, "store", "zg");
+
+    try std.testing.expectEqualStrings("target.gpa", document.allocator.?);
 }

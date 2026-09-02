@@ -140,6 +140,9 @@ error[ZIGO018]: unsupported integer width `u21` in parameter `cp`
   of parameter \`cps\``처럼 도달 경로까지 적는다.
 - `ZIGO019` — 지원하지 않는 타입이다. optional은 opaque pointer 위에서만 표현할 수 있다.
 - `ZIGO020` — `semantic.json`의 IR 버전이 이 zigo와 맞지 않는다. 다시 생성한다.
+- `ZIGO022` — `std.mem.Allocator`나 `std.Io` 파라미터를 만났는데 바인딩이 `.allocator`나
+  `.io`를 정하지 않았다. 이 두 타입만 주입 대상이며, 그 밖의 Zig 전용 타입은 여전히
+  `ZIGO019`다.
 - `ZIGO021` — 이름이 비어 있거나 Go 식별자가 아니다. package, prefix, 함수 이름의 공백과,
   reflection이 유도했든 `.name`으로 준 것이든 생성될 Go 이름이 모두 여기서 검사된다.
   등록된 타입 이름은 Go에 그대로 나가므로 쓰인 철자 그대로, 필드·enum tag·함수 이름은

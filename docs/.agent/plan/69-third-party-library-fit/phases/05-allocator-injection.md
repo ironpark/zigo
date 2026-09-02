@@ -2,7 +2,7 @@
 depends_on:
 - "69-third-party-library-fit#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: fixture가 Allocator 없는 C/Go 시그니처로 생성되고 shim이 지정 allocator를 넘긴다.
 > NEXT: none

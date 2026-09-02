@@ -552,6 +552,15 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     }
     for (function.origin.params, 0..) |parameter, index| {
         if (index != 0) try writer.writeAll(", ");
+        // An injected argument has no C parameter behind it; the shim is the
+        // one place the binding's chosen expression is written out.
+        if (parameter.injected) |injection| {
+            try writer.writeAll(switch (injection) {
+                .allocator => program.allocator orelse "@compileError(\"zigo: no allocator\")",
+                .io => program.io orelse "@compileError(\"zigo: no io\")",
+            });
+            continue;
+        }
         switch (parameter.type) {
             .callback => {
                 if (needsCallbackBitThunk(program, function, index)) {
@@ -1149,6 +1158,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         }
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (callbackForUserdata(function.origin.params, parameter_index) != null) continue;
+            if (parameter.injected != null) continue;
             if (raw_parameter_index != 0) try writer.writeAll(", ");
             if (parameter.type == .callback) {
                 try writer.print("{s}Handle uintptr", .{go_names[parameter_index]});
@@ -2136,6 +2146,7 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
     }
     for (function.origin.params, 0..) |parameter, parameter_index| {
         if (callbackForUserdata(function.origin.params, parameter_index) != null) continue;
+        if (parameter.injected != null) continue;
         if (parameter_count != 0) try writer.writeAll(", ");
         if (parameter.type == .callback) {
             try writer.print("{s}Callback, {s}Token uintptr", .{ go_names[parameter_index], go_names[parameter_index] });
@@ -2755,6 +2766,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         var public_parameter_index: usize = 0;
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (callbackForUserdata(function.origin.params, parameter_index) != null) continue;
+            if (parameter.injected != null) continue;
             if (public_parameter_index != 0) try writer.writeAll(", ");
             try writer.print("{s} ", .{go_names[parameter_index]});
             if (parameter.type == .callback) {
@@ -2853,6 +2865,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         }
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (callbackForUserdata(function.origin.params, parameter_index) != null) continue;
+            if (parameter.injected != null) continue;
             if (call_index != 0) try writer.writeAll(", ");
             switch (parameter.type) {
                 .callback => {

@@ -27,6 +27,9 @@
   Go 식별자가 될 수 없는 것이 있으면 `ZIGO021`이 Zig 타입 경로와 함께 거부합니다. 이전에는
   `@typeName`이 `...[0..4])`로 끝나는 comptime 생성 타입의 이름이 그대로 `.go` 파일에 실려
   gofmt에서야 터졌습니다. (계획 69)
+- 바인딩의 `.allocator`와 `.io`로 `std.mem.Allocator`, `std.Io` 파라미터를 주입할 수
+  있습니다. 그 파라미터는 C와 Go 시그니처에서 빠지고 shim이 지정한 식을 넘깁니다. 설정
+  없이 만나면 `ZIGO022`로 거부합니다. (계획 69)
 - `.types`에 `.repr = .enumeration`으로 enum을 등록하고 `.name`으로 Go/C 이름을 지정할 수
   있습니다. `@typeName`이 이름이 아닌 comptime 생성 enum(ghostty의 `lib.Enum(...)`)을 facade
   없이 바인딩할 수 있습니다. 이미 등록된 enum은 signature가 닿을 때 Zig 경로로 조회되므로

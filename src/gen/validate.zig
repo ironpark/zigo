@@ -97,6 +97,27 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .hint = "bind a concrete specialization instead of the generic function",
         };
         for (function.params) |parameter| {
+            if (parameter.injected) |injection| {
+                const configured = switch (injection) {
+                    .allocator => document.allocator,
+                    .io => document.io,
+                };
+                if (configured != null) continue;
+                return .{
+                    .severity = .@"error",
+                    .code = "ZIGO022",
+                    .message = try std.fmt.allocPrint(
+                        allocator,
+                        "parameter `{s}` needs a {s} the binding has not named",
+                        .{ parameter.name, if (injection == .allocator) "`std.mem.Allocator`" else "`std.Io`" },
+                    ),
+                    .site = .{ .path = "semantic.json", .declaration = function.name },
+                    .hint = if (injection == .allocator)
+                        "set `.allocator = .c_allocator`, `.page_allocator`, `.smp_allocator`, or a declaration path in the binding"
+                    else
+                        "set `.io = \"<declaration path>\"` in the binding",
+                };
+            }
             if (containsTaggedUnionValue(document, parameter.type)) return .{
                 .severity = .@"error",
                 .code = "ZIGO006",
@@ -1340,6 +1361,28 @@ test "implemented diagnostic snapshots are stable" {
             }},
             .zig_version = "0.16.0",
         }, .snapshot = "error[ZIGO021]: registered type name `4])` from Zig type `vt.lib.Enum([_][]const u8{ \"block\", \"bar\" }[0..4])` is not a valid Go identifier\n  --> semantic.json (4]))\n  hint: register the type in `.types` with an explicit `.name` that is a Go identifier\n" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "open",
+                .params = &.{.{ .injected = .allocator, .name = "alloc", .type = .{ .void = {} } }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_open",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO022]: parameter `alloc` needs a `std.mem.Allocator` the binding has not named\n  --> semantic.json (open)\n  hint: set `.allocator = .c_allocator`, `.page_allocator`, `.smp_allocator`, or a declaration path in the binding\n" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "flush",
+                .params = &.{.{ .injected = .io, .name = "io", .type = .{ .void = {} } }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_flush",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO022]: parameter `io` needs a `std.Io` the binding has not named\n  --> semantic.json (flush)\n  hint: set `.io = \"<declaration path>\"` in the binding\n" },
         .{ .document = .{
             .package = "bad",
             .prefix = "zg",
