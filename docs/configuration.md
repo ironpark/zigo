@@ -23,7 +23,9 @@ _ = bindings.addStandardSteps(b, .{});
 ```
 
 필수 옵션만 사용하면 cgo가 정적 아카이브를 링크하고, 공개 Go 패키지는 `name`에서,
-raw 패키지는 `internal/raw`에서 생성됩니다.
+raw 패키지는 `internal/raw`에서 생성됩니다. `addStandardSteps`는 기본 `install` 스텝에도
+네이티브 바인딩 라이브러리를 연결하므로 plain `zig build`만 실행해도 `zig-out/lib`에
+라이브러리가 설치됩니다.
 
 ## 전체 옵션
 
@@ -201,6 +203,16 @@ cgo가 pkg-config에게 컴파일·링크 플래그를 직접 묻게 하기 위�
 _ = admin_bindings.addStandardSteps(b, .{ .name_prefix = "admin" });
 // admin-go, admin-go-check, admin-go-report, admin-go-doctor,
 // admin-go-lib, admin-go-verify, admin-abi-check
+```
+
+상위 빌드가 라이브러리 설치를 별도로 관리한다면 기본 install 연결만 끌 수 있습니다.
+`admin-go-lib` 스텝은 이 설정과 무관하게 계속 라이브러리를 설치합니다.
+
+```zig
+_ = admin_bindings.addStandardSteps(b, .{
+    .name_prefix = "admin",
+    .install_library_by_default = false,
+});
 ```
 
 전체 스텝의 역할은 [생성물과 CI 관리](generated-code.md#표준-빌드-스텝)에서 확인할 수 있습니다.

@@ -4,6 +4,14 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Fixed
+
+- `addStandardSteps`가 네이티브 바인딩 라이브러리를 기본 `install` 스텝에도 연결합니다.
+  plain `zig build` 뒤에 `zig-out/lib`를 바로 사용할 수 있으며,
+  `.install_library_by_default = false`로 이 연결을 끌 수 있습니다.
+
 ## [0.3.3] - 2026-09-02
 
 ### Fixed

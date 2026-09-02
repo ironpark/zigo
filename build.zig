@@ -93,6 +93,9 @@ pub const GoBindings = struct {
         /// For example, `.name_prefix = "admin"` registers `admin-go` and
         /// `admin-go-check` instead of `go` and `go-check`.
         name_prefix: ?[]const u8 = null,
+        /// Installs the native binding library as part of the default install
+        /// step. Disable this when the caller manages installation separately.
+        install_library_by_default: bool = true,
     };
 
     pub const StandardSteps = struct {
@@ -122,6 +125,9 @@ pub const GoBindings = struct {
         doctor.dependOn(&self.doctor.step);
         const library = b.step(standardStepName(b, options.name_prefix, "go-lib"), "Build and install the native Go binding library");
         library.dependOn(&self.install_library.step);
+        if (options.install_library_by_default) {
+            b.getInstallStep().dependOn(&self.install_library.step);
+        }
         const abi_check = if (self.abi_check) |run| step: {
             const value = b.step(standardStepName(b, options.name_prefix, "abi-check"), "Fail on a breaking Go binding ABI change");
             value.dependOn(&run.step);
