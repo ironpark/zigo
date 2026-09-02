@@ -8,6 +8,10 @@
 
 ### Added
 
+- 자유 함수 메타데이터의 `.receiver`와 `.receiver`/`.strip_prefix`/`.functions` group을
+  추가했습니다. 등록 opaque pointer를 첫 비주입 파라미터로 받는 자유 함수를 cgo와 purego의
+  method로 붙이고, group의 공통 Zig 접두사를 기본 Go 이름에서 제거할 수 있습니다. 잘못된
+  receiver 또는 접두사는 `ZIGO038`로 진단합니다.
 - opaque 타입 등록의 `.fields` 메타데이터로 bool·정수·실수·등록 enum 필드의 getter와 선택적
   setter를 생성합니다. dotted path는 struct 값과 non-optional single pointer를 통과할 수
   있으며 cgo와 purego, ABI 검사에 동일하게 반영됩니다. 잘못된 경로와 지원하지 않는 타입은

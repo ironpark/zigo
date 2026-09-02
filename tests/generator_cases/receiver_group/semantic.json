@@ -1,0 +1,24 @@
+{
+  "functions": [
+    {
+      "name": "selectAll",
+      "params": [],
+      "receiver": "Screen",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_screen_select_all",
+      "zig_path": "screenSelectAll"
+    }
+  ],
+  "package": "display",
+  "prefix": "zg",
+  "types": [
+    {
+      "kind": "opaque",
+      "name": "Screen",
+      "zig_path": "upstream.Screen"
+    }
+  ],
+  "zig_version": "0.16.0-dev"
+}

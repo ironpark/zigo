@@ -1816,6 +1816,21 @@
       "symbol": "zg_ticker_advance"
     },
     {
+      "name": "elapsed",
+      "package": "types",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Ticker",
+      "return": {
+        "bits": 32,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "zig_path": "tickerElapsed",
+      "symbol": "zg_ticker_elapsed"
+    },
+    {
       "doc": "Exercises cross-package handle and value-struct parameters without making\nthis free function a Ticker method.",
       "name": "inspectTicker",
       "ownership": "borrowed",
@@ -1826,7 +1841,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 526,
+            "line": 531,
             "column": 22
           },
           "type": {
@@ -1840,7 +1855,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 526,
+            "line": 531,
             "column": 40
           },
           "type": {
@@ -1857,7 +1872,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 526,
+        "line": 531,
         "column": 8
       },
       "symbol": "zg_inspect_ticker"
@@ -1876,7 +1891,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 531,
+        "line": 536,
         "column": 8
       },
       "symbol": "zg_live_tickers"

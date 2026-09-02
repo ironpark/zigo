@@ -95,20 +95,7 @@ pub fn reflect(
         try discoverContainer(allocator, &functions, &types, &pairings, declaration, prefix, declaration.root, null, "root");
     } else {
         inline for (declaration.functions) |entry| {
-            const owner = comptime pathOwner(entry.path);
-            const member = comptime pathMember(entry.path);
-            try appendFunction(
-                allocator,
-                &functions,
-                &types,
-                &pairings,
-                declaration,
-                prefix,
-                member,
-                @field(comptime pathContainer(declaration, owner), member),
-                entry,
-                owner,
-            );
+            try appendSelectedEntry(allocator, &functions, &types, &pairings, declaration, prefix, entry, null, null);
         }
     }
 
@@ -159,6 +146,59 @@ pub fn reflect(
         .types = try types.toOwnedSlice(allocator),
         .zig_version = @import("builtin").zig_version_string,
     };
+}
+
+fn appendSelectedEntry(
+    allocator: std.mem.Allocator,
+    functions: *std.ArrayList(semantic.SemanticFn),
+    types: *std.ArrayList(semantic.TypeDecl),
+    pairings: *std.ArrayList(Pairing),
+    comptime declaration: anytype,
+    prefix: []const u8,
+    comptime entry: anytype,
+    comptime inherited_receiver: ?[]const u8,
+    comptime inherited_prefix: ?[]const u8,
+) !void {
+    if (comptime isStringEntry(@TypeOf(entry))) {
+        return appendSelectedPath(allocator, functions, types, pairings, declaration, prefix, entry, .{}, inherited_receiver, inherited_prefix);
+    }
+    if (@hasField(@TypeOf(entry), "functions")) {
+        inline for (entry.functions) |nested| {
+            try appendSelectedEntry(allocator, functions, types, pairings, declaration, prefix, nested, entry.receiver, entry.strip_prefix);
+        }
+        return;
+    }
+    try appendSelectedPath(allocator, functions, types, pairings, declaration, prefix, entry.path, entry, inherited_receiver, inherited_prefix);
+}
+
+fn appendSelectedPath(
+    allocator: std.mem.Allocator,
+    functions: *std.ArrayList(semantic.SemanticFn),
+    types: *std.ArrayList(semantic.TypeDecl),
+    pairings: *std.ArrayList(Pairing),
+    comptime declaration: anytype,
+    prefix: []const u8,
+    comptime path: []const u8,
+    comptime metadata: anytype,
+    comptime inherited_receiver: ?[]const u8,
+    comptime inherited_prefix: ?[]const u8,
+) !void {
+    const owner = comptime pathOwner(path);
+    const member = comptime pathMember(path);
+    try appendFunction(
+        allocator,
+        functions,
+        types,
+        pairings,
+        declaration,
+        prefix,
+        member,
+        @field(comptime pathContainer(declaration, owner), member),
+        metadata,
+        owner,
+        comptime if (@hasField(@TypeOf(metadata), "receiver")) metadata.receiver else inherited_receiver,
+        inherited_prefix,
+    );
 }
 
 fn appendFieldAccessors(
@@ -551,6 +591,8 @@ fn appendFunction(
     comptime function_value: anytype,
     comptime metadata: anytype,
     comptime discovered_owner: ?[]const u8,
+    comptime explicit_receiver: ?[]const u8,
+    comptime strip_prefix: ?[]const u8,
 ) !void {
     const info = switch (@typeInfo(@TypeOf(function_value))) {
         .@"fn" => |info| info,
@@ -558,12 +600,21 @@ fn appendFunction(
     };
     // `.path` addresses the declaration; `.name` only renames it on the Go
     // side, so there is still exactly one way to say which function is meant.
-    const function_name = if (@hasField(@TypeOf(metadata), "name")) metadata.name else source_name;
+    const stripped_name: ?[]const u8 = comptime if (strip_prefix) |value| naming.stripFunctionPrefix(source_name, value) else source_name;
+    if (strip_prefix != null and stripped_name == null)
+        return receiverIssue(allocator, "function `{s}` does not begin with group prefix `{s}`", .{ source_name, strip_prefix.? });
+    const function_name = if (@hasField(@TypeOf(metadata), "name")) metadata.name else stripped_name orelse unreachable;
     // The receiver is the first parameter Go would see: an injected
     // `std.mem.Allocator` or `std.Io` ahead of the handle never reaches the
     // C signature, so it does not stop the function from being a method.
-    const receiver_index = comptime receiverIndex(info, declaration);
-    const receiver = comptime if (receiver_index) |index| receiverNameAt(info, declaration, index) else null;
+    const inferred_receiver_index = comptime receiverIndex(info, declaration);
+    const receiver_index = comptime if (explicit_receiver != null) firstNonInjectedIndex(info) else inferred_receiver_index;
+    if (explicit_receiver) |expected| {
+        const actual = comptime if (receiver_index) |index| receiverNameAt(info, declaration, index) else null;
+        if (actual == null or !std.mem.eql(u8, actual.?, expected))
+            return receiverIssue(allocator, "function `{s}` declares `.receiver = \"{s}\"` but its first non-injected parameter is not `*{s}` or `*const {s}`", .{ source_name, expected, expected, expected });
+    }
+    const receiver: ?[]const u8 = comptime explicit_receiver orelse if (receiver_index) |index| receiverNameAt(info, declaration, index) else null;
     // What the message calls the declaration: the owner it was reached through
     // plus the source name, which is the spelling the binding's `.path` uses.
     const owner_label = comptime if (receiver) |value|
@@ -769,6 +820,24 @@ fn pairingMessageAlloc(allocator: std.mem.Allocator, comptime detail: []const u8
     );
 }
 
+/// Explicit receiver and receiver-group metadata is checked while the Zig
+/// signature is still available, before semantic.json exists.
+fn receiverIssue(allocator: std.mem.Allocator, comptime detail: []const u8, args: anytype) error{ ReceiverMetadata, OutOfMemory } {
+    const message = try receiverMessageAlloc(allocator, detail, args);
+    defer allocator.free(message);
+    if (!@import("builtin").is_test) std.debug.print("{s}", .{message});
+    return error.ReceiverMetadata;
+}
+
+fn receiverMessageAlloc(allocator: std.mem.Allocator, comptime detail: []const u8, args: anytype) ![]u8 {
+    return std.fmt.allocPrint(
+        allocator,
+        "error[ZIGO038]: " ++ detail ++ "\n" ++
+            "  hint: name a registered opaque type whose pointer is the function's first parameter after any injected `std.mem.Allocator` or `std.Io`\n",
+        args,
+    );
+}
+
 /// Where the shim has to reach to call this declaration, when the owner and
 /// the Go name do not already spell it. A handle first parameter makes a
 /// function a method in Go wherever it is declared, and `.name` renames it for
@@ -859,13 +928,13 @@ fn discoverContainer(
         comptime var adjusted = false;
         if (@hasField(@TypeOf(declaration), "functions")) {
             inline for (declaration.functions) |entry| {
-                if (comptime std.mem.eql(u8, entry.path, path)) {
+                if (comptime functionEntryContainsPath(entry, path)) {
                     adjusted = true;
-                    try appendFunction(allocator, functions, types, pairings, declaration, prefix, candidate.name, value, entry, owner);
+                    _ = try appendDiscoveredEntry(allocator, functions, types, pairings, declaration, prefix, path, candidate.name, value, owner, entry, null, null);
                 }
             }
         }
-        if (!adjusted) try appendFunction(allocator, functions, types, pairings, declaration, prefix, candidate.name, value, .{}, owner);
+        if (!adjusted) try appendFunction(allocator, functions, types, pairings, declaration, prefix, candidate.name, value, .{}, owner, null, null);
     }
     if (comptime !discoveryRecursive(declaration)) return;
     inline for (comptime std.meta.declarations(Container)) |candidate| {
@@ -883,6 +952,47 @@ fn discoverContainer(
             path_prefix ++ "." ++ candidate.name,
         );
     }
+}
+
+fn functionEntryContainsPath(comptime entry: anytype, comptime path: []const u8) bool {
+    if (comptime isStringEntry(@TypeOf(entry))) return std.mem.eql(u8, entry, path);
+    if (@hasField(@TypeOf(entry), "functions")) {
+        inline for (entry.functions) |nested| if (functionEntryContainsPath(nested, path)) return true;
+        return false;
+    }
+    return std.mem.eql(u8, entry.path, path);
+}
+
+fn appendDiscoveredEntry(
+    allocator: std.mem.Allocator,
+    functions: *std.ArrayList(semantic.SemanticFn),
+    types: *std.ArrayList(semantic.TypeDecl),
+    pairings: *std.ArrayList(Pairing),
+    comptime declaration: anytype,
+    prefix: []const u8,
+    comptime path: []const u8,
+    comptime source_name: []const u8,
+    comptime function_value: anytype,
+    comptime owner: ?[]const u8,
+    comptime entry: anytype,
+    comptime inherited_receiver: ?[]const u8,
+    comptime inherited_prefix: ?[]const u8,
+) !bool {
+    if (comptime isStringEntry(@TypeOf(entry))) {
+        if (!std.mem.eql(u8, entry, path)) return false;
+        try appendFunction(allocator, functions, types, pairings, declaration, prefix, source_name, function_value, .{}, owner, inherited_receiver, inherited_prefix);
+        return true;
+    }
+    if (@hasField(@TypeOf(entry), "functions")) {
+        var matched = false;
+        inline for (entry.functions) |nested| {
+            matched = try appendDiscoveredEntry(allocator, functions, types, pairings, declaration, prefix, path, source_name, function_value, owner, nested, entry.receiver, entry.strip_prefix) or matched;
+        }
+        return matched;
+    }
+    if (!std.mem.eql(u8, entry.path, path)) return false;
+    try appendFunction(allocator, functions, types, pairings, declaration, prefix, source_name, function_value, entry, owner, comptime if (@hasField(@TypeOf(entry), "receiver")) entry.receiver else inherited_receiver, inherited_prefix);
+    return true;
 }
 
 /// A declaration is a namespace of its container only when it was written
@@ -937,19 +1047,7 @@ fn typeEntryName(comptime entry: anytype) []const u8 {
 fn validateSelectors(comptime declaration: anytype) void {
     if (@TypeOf(declaration.root) != type) @compileError("zigo `.root` must be a module or container type");
     if (@hasField(@TypeOf(declaration), "functions")) {
-        inline for (declaration.functions, 0..) |entry, index| {
-            if (!@hasField(@TypeOf(entry), "path")) @compileError("zigo function entries require `.path`");
-            if (!declarationPathExists(declaration, entry.path)) {
-                @compileError("zigo path does not name a public function: " ++ entry.path ++
-                    " (use `root.<name>` for a function in `.root`, or `<Type>.<name>` for one in a registered type)");
-            }
-            inline for (declaration.functions, 0..) |previous, previous_index| {
-                if (previous_index < index and std.mem.eql(u8, previous.path, entry.path)) @compileError("duplicate zigo function path: " ++ entry.path);
-            }
-            if (selectorContains(declaration, "exclude", entry.path)) {
-                @compileError("zigo path cannot be both listed and excluded: " ++ entry.path);
-            }
-        }
+        inline for (declaration.functions) |entry| validateFunctionEntry(declaration, entry, false);
     }
     if (!discoveryEnabled(declaration)) {
         if (@hasField(@TypeOf(declaration), "exclude")) {
@@ -967,6 +1065,58 @@ fn validateSelectors(comptime declaration: anytype) void {
             }
         }
     }
+}
+
+fn validateFunctionEntry(comptime declaration: anytype, comptime entry: anytype, comptime nested: bool) void {
+    if (comptime isStringEntry(@TypeOf(entry))) {
+        if (!nested) @compileError("zigo function entries require `.path`");
+        validateFunctionPath(declaration, entry);
+        return;
+    }
+    if (@hasField(@TypeOf(entry), "functions")) {
+        if (nested) @compileError("zigo function groups cannot be nested");
+        if (!@hasField(@TypeOf(entry), "receiver") or !@hasField(@TypeOf(entry), "strip_prefix"))
+            @compileError("zigo function groups require `.receiver`, `.strip_prefix`, and `.functions`");
+        if (@hasField(@TypeOf(entry), "params") or @hasField(@TypeOf(entry), "param_meta"))
+            @compileError("zigo function groups put `.params` and `.param_meta` on nested function entries");
+        inline for (entry.functions) |child| validateFunctionEntry(declaration, child, true);
+        return;
+    }
+    if (!@hasField(@TypeOf(entry), "path")) @compileError("zigo function entries require `.path`");
+    validateFunctionPath(declaration, entry.path);
+}
+
+fn validateFunctionPath(comptime declaration: anytype, comptime path: []const u8) void {
+    if (!declarationPathExists(declaration, path)) {
+        @compileError("zigo path does not name a public function: " ++ path ++
+            " (use `root.<name>` for a function in `.root`, or `<Type>.<name>` for one in a registered type)");
+    }
+    if (countFunctionPath(declaration.functions, path) > 1) @compileError("duplicate zigo function path: " ++ path);
+    if (selectorContains(declaration, "exclude", path)) @compileError("zigo path cannot be both listed and excluded: " ++ path);
+}
+
+fn countFunctionPath(comptime entries: anytype, comptime path: []const u8) usize {
+    var count: usize = 0;
+    inline for (entries) |entry| {
+        if (comptime isStringEntry(@TypeOf(entry))) {
+            if (std.mem.eql(u8, entry, path)) count += 1;
+        } else if (@hasField(@TypeOf(entry), "functions")) {
+            count += countFunctionPath(entry.functions, path);
+        } else if (@hasField(@TypeOf(entry), "path") and std.mem.eql(u8, entry.path, path)) {
+            count += 1;
+        }
+    }
+    return count;
+}
+
+fn isStringEntry(comptime T: type) bool {
+    return switch (@typeInfo(T)) {
+        .pointer => |pointer| switch (@typeInfo(pointer.child)) {
+            .array => |array| array.child == u8,
+            else => pointer.size == .slice and pointer.child == u8,
+        },
+        else => false,
+    };
 }
 
 /// `root.<name>` for a function in `.root`, `<Type>.<name>` for one in a
@@ -1339,6 +1489,14 @@ fn receiverIndex(comptime info: std.builtin.Type.Fn, comptime declaration: anyty
         const T = parameter.type orelse return null;
         if (injectionFor(T) != null) continue;
         return if (receiverNameAt(info, declaration, index) != null) index else null;
+    }
+    return null;
+}
+
+fn firstNonInjectedIndex(comptime info: std.builtin.Type.Fn) ?usize {
+    inline for (info.params, 0..) |parameter, index| {
+        const T = parameter.type orelse return null;
+        if (injectionFor(T) == null) return index;
     }
     return null;
 }
@@ -2440,6 +2598,121 @@ test "explicit borrowed return is recorded without changing ownership defaults" 
     };
     const implicit_json = try std.json.Stringify.valueAlloc(arena.allocator(), implicit, .{ .whitespace = .indent_2, .emit_null_optional_fields = false });
     try std.testing.expect(std.mem.indexOf(u8, implicit_json, "borrowed_return") == null);
+}
+
+test "function groups attach free functions and strip their shared prefix" {
+    const Fixture = struct {
+        const Screen = opaque {};
+
+        pub fn screenSelectAll(screen: *Screen) void {
+            _ = screen;
+        }
+
+        pub fn screenClearSelection(screen: *const Screen) void {
+            _ = screen;
+        }
+
+        pub fn screenMove(gpa: std.mem.Allocator, screen: *Screen, count: u32) void {
+            _ = gpa;
+            _ = screen;
+            _ = count;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .allocator = .smp_allocator,
+        .root = Fixture,
+        .types = .{.{ .type = Fixture.Screen, .repr = .@"opaque" }},
+        .functions = .{.{
+            .receiver = "Screen",
+            .strip_prefix = "screen",
+            .functions = .{
+                "root.screenSelectAll",
+                .{ .path = "root.screenClearSelection", .name = "wipe" },
+                .{ .path = "root.screenMove", .params = .{"count"} },
+            },
+        }},
+    }, "display", "zg");
+
+    try std.testing.expectEqual(@as(usize, 3), document.functions.len);
+    try std.testing.expectEqualStrings("selectAll", document.functions[0].name);
+    try std.testing.expectEqualStrings("wipe", document.functions[1].name);
+    try std.testing.expectEqualStrings("move", document.functions[2].name);
+    for (document.functions) |function| try std.testing.expectEqualStrings("Screen", function.receiver.?);
+    try std.testing.expectEqualStrings("screenSelectAll", document.functions[0].zig_path.?);
+    try std.testing.expectEqualStrings("zg_screen_select_all", document.functions[0].symbol);
+    try std.testing.expectEqual(@as(?usize, 1), document.functions[2].receiver_at);
+    try std.testing.expectEqual(semantic.Injection.allocator, document.functions[2].params[0].injected.?);
+    try std.testing.expectEqualStrings("count", document.functions[2].params[1].name);
+}
+
+test "per-function explicit receivers validate the first non-injected parameter" {
+    const Fixture = struct {
+        const Screen = opaque {};
+        const Search = opaque {};
+
+        pub fn matchCount(gpa: std.mem.Allocator, search: *Search) u32 {
+            _ = gpa;
+            _ = search;
+            return 0;
+        }
+    };
+    const types = .{
+        .{ .type = Fixture.Screen, .repr = .@"opaque" },
+        .{ .type = Fixture.Search, .repr = .@"opaque" },
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .allocator = .smp_allocator,
+        .root = Fixture,
+        .types = types,
+        .functions = .{.{ .path = "root.matchCount", .receiver = "Search" }},
+    }, "search", "zg");
+    try std.testing.expectEqualStrings("Search", document.functions[0].receiver.?);
+    try std.testing.expectEqual(@as(?usize, 1), document.functions[0].receiver_at);
+
+    try std.testing.expectError(error.ReceiverMetadata, reflect(arena.allocator(), .{
+        .allocator = .smp_allocator,
+        .root = Fixture,
+        .types = types,
+        .functions = .{.{ .path = "root.matchCount", .receiver = "Screen" }},
+    }, "search", "zg"));
+}
+
+test "receiver metadata diagnostics use ZIGO038" {
+    const mismatch = try receiverMessageAlloc(
+        std.testing.allocator,
+        "function `{s}` declares `.receiver = \"{s}\"` but its first non-injected parameter is not `*{s}` or `*const {s}`",
+        .{ "screenSelectAll", "Screen", "Screen", "Screen" },
+    );
+    defer std.testing.allocator.free(mismatch);
+    try std.testing.expectEqualStrings(
+        "error[ZIGO038]: function `screenSelectAll` declares `.receiver = \"Screen\"` but its first non-injected parameter is not `*Screen` or `*const Screen`\n" ++
+            "  hint: name a registered opaque type whose pointer is the function's first parameter after any injected `std.mem.Allocator` or `std.Io`\n",
+        mismatch,
+    );
+}
+
+test "function groups reject paths without their prefix" {
+    const Fixture = struct {
+        const Screen = opaque {};
+        pub fn selectAll(screen: *Screen) void {
+            _ = screen;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectError(error.ReceiverMetadata, reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{.{ .type = Fixture.Screen, .repr = .@"opaque" }},
+        .functions = .{.{
+            .receiver = "Screen",
+            .strip_prefix = "screen",
+            .functions = .{"root.selectAll"},
+        }},
+    }, "display", "zg"));
 }
 
 test "an injected argument ahead of the handle does not stop a function being a method" {

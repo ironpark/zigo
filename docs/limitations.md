@@ -271,8 +271,10 @@ error[ZIGO018]: unsupported integer width `u21` in parameter `cp`
 - `ZIGO037` — opaque 타입의 `.fields` 경로가 없거나, struct 값 또는 non-optional single
   pointer 이외의 값을 가로지르거나, bool·정수·실수·등록 enum 이외의 타입에서 끝난다.
   메시지는 경로와, 경로가 해석된 경우 지원하지 않는 필드 타입을 함께 적는다.
+- `ZIGO038` — 명시한 함수 receiver가 등록 opaque 타입의 첫 비주입 pointer 파라미터와
+  일치하지 않거나, receiver group의 함수 이름이 `strip_prefix`로 시작하지 않는다.
 
-`ZIGO027`, `ZIGO028`, `ZIGO037`은 reflection이 문서를 만들기 전에 걸리므로 `semantic.json` 자리가
+`ZIGO027`, `ZIGO028`, `ZIGO037`, `ZIGO038`은 reflection이 문서를 만들기 전에 걸리므로 `semantic.json` 자리가
 아니라 선언 경로를 가리키며, 생성기는 이 진단을 출력하고 종료한다.
 
 리플렉션 단계의 거부는 `bindings.zig`를 빌드할 때의 `@compileError`로 나오며, 제약과 함께

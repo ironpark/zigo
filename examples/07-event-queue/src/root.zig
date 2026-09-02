@@ -521,6 +521,11 @@ pub fn tickerAdvance(ticker: *Ticker, steps: u32) u32 {
     return ticker.elapsed / ticker.interval;
 }
 
+/// Reports the raw elapsed tick count.
+pub fn tickerElapsed(ticker: *const Ticker) u32 {
+    return ticker.elapsed;
+}
+
 /// Exercises cross-package handle and value-struct parameters without making
 /// this free function a Ticker method.
 pub fn inspectTicker(info: TickerInfo, ticker: *Ticker) TickerInfo {
@@ -538,6 +543,7 @@ test "a ticker counts whole intervals and is freed by its own destructor" {
     try std.testing.expectEqual(@as(u32, 0), tickerAdvance(ticker, 3));
     try std.testing.expectEqual(@as(u32, 1), tickerAdvance(ticker, 1));
     try std.testing.expectEqual(@as(u32, 2), tickerAdvance(ticker, 4));
+    try std.testing.expectEqual(@as(u32, 8), tickerElapsed(ticker));
     try std.testing.expectError(error.InvalidInterval, newTicker(0));
 }
 

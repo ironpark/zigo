@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Group and per-entry receivers produce Go methods with stripped names on both backends; verification loop green.
 > NEXT: none

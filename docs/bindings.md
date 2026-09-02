@@ -147,6 +147,9 @@ error입니다.
 |---|---|
 | `path` | `root.<name>` 또는 `<Type>.<name>` 선언 경로 |
 | `name` | 공개 Go 함수 이름 override |
+| `receiver` | 자유 함수를 method로 붙일 등록 opaque 타입 이름 |
+| `strip_prefix` | 함수 group에서 기본 Go 이름을 만들 때 제거할 공통 접두사 |
+| `functions` | `receiver`/`strip_prefix`를 공유하는 함수 경로 또는 메타데이터 항목 목록 |
 | `params` | Go가 넘기는 파라미터의 이름 목록 |
 | `constructs` | 이 함수가 만드는 opaque 타입 이름 |
 | `destroys` | 이 함수가 없애는 opaque 타입 이름 |
@@ -157,6 +160,31 @@ error입니다.
 
 문자열 의미, 반환 pointer ownership, retained pointer와 callback 수명은 타입만으로 결정할 수
 없으므로 명시해야 합니다.
+
+등록 타입을 선언한 upstream module을 고칠 수 없을 때는 자유 함수의 첫 번째 비주입
+파라미터를 receiver로 지정할 수 있습니다. `.receiver = "Screen"`이면
+`std.mem.Allocator`나 `std.Io` 뒤의 첫 파라미터가 `*Screen` 또는 `*const Screen`인지
+reflection이 확인하고, 이후 단계는 타입 안에 선언된 method와 똑같이 처리합니다.
+
+```zig
+.functions = .{
+    .{ .path = "root.searchMatchCount", .receiver = "Search" },
+    .{
+        .receiver = "Screen",
+        .strip_prefix = "screen",
+        .functions = .{
+            "root.screenSelectAll",
+            .{ .path = "root.screenClearSelection", .name = "clear" },
+        },
+    },
+},
+```
+
+group은 Zig 함수 이름에서 `strip_prefix`를 제거하고 남은 첫 글자를 소문자로 바꾼 뒤 기존
+Go casing 규칙을 적용합니다(`screenSelectAll` → `selectAll` → `SelectAll`). nested 항목의
+`.name`은 이 기본값을 덮어씁니다. group 자체에는 `params`나 `param_meta`를 둘 수 없고 각
+nested 항목에 둡니다. receiver 타입이나 첫 파라미터가 맞지 않거나 함수 이름에 접두사가
+없으면 `ZIGO038`입니다.
 
 ```zig
 .{

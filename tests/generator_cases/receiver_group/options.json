@@ -1,0 +1,5 @@
+{
+  "package": "display",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/display"
+}

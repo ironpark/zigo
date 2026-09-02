@@ -105,6 +105,7 @@ type nativeBindings struct {
 	fnNewTicker                         func(uint32, *unsafe.Pointer) int32
 	fnTickerFreeTicker                  func(unsafe.Pointer) int32
 	fnTickerAdvance                     func(unsafe.Pointer, uint32, *uint32) int32
+	fnTickerElapsed                     func(unsafe.Pointer, *uint32) int32
 	fnInspectTicker                     func(unsafe.Pointer, unsafe.Pointer, unsafe.Pointer) int32
 	fnLiveTickers                       func() uintptr
 	fnLiveStreams                       func() uintptr
@@ -556,6 +557,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_ticker_advance", err)
 	}
+	addrTickerElapsed, err := resolveSymbol(handle, "zg_ticker_elapsed")
+	if err != nil {
+		return fail("zg_ticker_elapsed", err)
+	}
 	addrInspectTicker, err := resolveSymbol(handle, "zg_inspect_ticker")
 	if err != nil {
 		return fail("zg_inspect_ticker", err)
@@ -640,6 +645,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnNewTicker, addrNewTicker)
 	purego.RegisterFunc(&next.fnTickerFreeTicker, addrTickerFreeTicker)
 	purego.RegisterFunc(&next.fnTickerAdvance, addrTickerAdvance)
+	purego.RegisterFunc(&next.fnTickerElapsed, addrTickerElapsed)
 	purego.RegisterFunc(&next.fnInspectTicker, addrInspectTicker)
 	purego.RegisterFunc(&next.fnLiveTickers, addrLiveTickers)
 	purego.RegisterFunc(&next.fnLiveStreams, addrLiveStreams)
@@ -1244,6 +1250,13 @@ func TickerFreeTicker(self unsafe.Pointer) int32 {
 func TickerAdvance(self unsafe.Pointer, steps uint32) (uint32, int32) {
 	var outResult uint32
 	code := bindings().fnTickerAdvance(self, steps, &outResult)
+	return outResult, code
+}
+
+// TickerElapsed calls the generated purego ABI wrapper for zg_ticker_elapsed.
+func TickerElapsed(self unsafe.Pointer) (uint32, int32) {
+	var outResult uint32
+	code := bindings().fnTickerElapsed(self, &outResult)
 	return outResult, code
 }
 

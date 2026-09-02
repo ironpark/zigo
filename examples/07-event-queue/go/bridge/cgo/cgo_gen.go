@@ -677,6 +677,13 @@ func TickerAdvance(self unsafe.Pointer, steps uint32) (uint32, int32) {
 	return uint32(outResult), code
 }
 
+// TickerElapsed calls the generated C ABI wrapper for zg_ticker_elapsed.
+func TickerElapsed(self unsafe.Pointer) (uint32, int32) {
+	var outResult C.uint32_t
+	code := int32(C.zg_ticker_elapsed((*C.zg_ticker)(self), &outResult))
+	return uint32(outResult), code
+}
+
 // InspectTicker calls the generated C ABI wrapper for zg_inspect_ticker.
 func InspectTicker(info TickerInfoData, ticker unsafe.Pointer) (TickerInfoData, int32) {
 	var cinfo C.zg_ticker_info

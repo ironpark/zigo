@@ -129,8 +129,15 @@ pub const bindings = zigo.define(.{
         // A constructor and destructor declared beside their type rather than
         // inside it, paired by naming the type instead of by their spelling.
         .{ .path = "root.newTicker", .params = .{"interval"}, .constructs = "Ticker" },
-        .{ .path = "root.freeTicker", .destroys = "Ticker" },
-        .{ .path = "root.tickerAdvance", .name = "advance", .params = .{"steps"} },
+        .{ .path = "root.freeTicker", .receiver = "Ticker", .destroys = "Ticker" },
+        .{
+            .receiver = "Ticker",
+            .strip_prefix = "ticker",
+            .functions = .{
+                .{ .path = "root.tickerAdvance", .params = .{"steps"} },
+                "root.tickerElapsed",
+            },
+        },
         .{ .path = "root.inspectTicker", .params = .{ "info", "ticker" } },
         .{ .path = "root.liveTickers" },
         .{ .path = "root.liveStreams" },

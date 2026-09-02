@@ -23,6 +23,9 @@ func TestPairedFreeFunctionsBecomeAConstructorAndClose(t *testing.T) {
 	if elapsed != 0 {
 		t.Fatalf("elapsed = %d, want 0", elapsed)
 	}
+	if raw, err := ticker.Elapsed(); err != nil || raw != 3 {
+		t.Fatalf("Elapsed() = (%d, %v), want (3, nil)", raw, err)
+	}
 	if elapsed, err = ticker.Advance(5); err != nil {
 		t.Fatal(err)
 	} else if elapsed != 2 {

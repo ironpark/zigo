@@ -41,6 +41,24 @@ func (t *Ticker) Advance(steps uint32) (uint32, error) {
 	return result, nil
 }
 
+// Elapsed calls the Zig function Ticker.elapsed.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (t *Ticker) Elapsed() (uint32, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Ticker.Elapsed receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	defer t.zigoRelease()
+	result, code := raw.TickerElapsed(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("Ticker.Elapsed", code), t)
+	}
+	return result, nil
+}
+
 // LiveTickers
 // Tickers still owned by the library.
 func LiveTickers() uint {

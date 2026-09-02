@@ -148,6 +148,17 @@ pub fn camelAlloc(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     return output.toOwnedSlice(allocator);
 }
 
+/// Removes a metadata group's shared Zig prefix and restores the ordinary
+/// lower-camel spelling consumed by the rest of the naming pipeline.
+pub fn stripFunctionPrefix(comptime input: []const u8, comptime prefix: []const u8) ?[]const u8 {
+    if (!std.mem.startsWith(u8, input, prefix) or input.len == prefix.len) return null;
+    const suffix = input[prefix.len..];
+    comptime var output: [suffix.len]u8 = suffix[0..suffix.len].*;
+    if (output[0] >= 'A' and output[0] <= 'Z') output[0] += 'a' - 'A';
+    const frozen = output;
+    return &frozen;
+}
+
 fn initialism(word: []const u8) ?[]const u8 {
     const table = [_]struct { lower: []const u8, canonical: []const u8 }{
         .{ .lower = "id", .canonical = "ID" },
@@ -176,6 +187,13 @@ test "naming normalizes symbols and Go initialisms" {
         try std.testing.expectEqualStrings(case.pascal, pascal);
         try std.testing.expectEqualStrings(case.camel, camel);
     }
+}
+
+test "function group prefixes are stripped and lower-cased" {
+    try std.testing.expectEqualStrings("selectAll", stripFunctionPrefix("screenSelectAll", "screen").?);
+    try std.testing.expectEqualStrings("uRL", stripFunctionPrefix("screenURL", "screen").?);
+    try std.testing.expect(stripFunctionPrefix("selectAll", "screen") == null);
+    try std.testing.expect(stripFunctionPrefix("screen", "screen") == null);
 }
 
 /// Environment variable a generated purego package reads before the shared
