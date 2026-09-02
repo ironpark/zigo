@@ -133,35 +133,35 @@ func EventQueueCreate(name []uint8, capacity uint, policy uint32, observerHandle
 	if len(name) != 0 {
 		namePtr = (*C.uint8_t)(unsafe.Pointer(&name[0]))
 	}
-	var outResult unsafe.Pointer
+	var outResult *C.zg_event_queue
 	code := int32(C.zg_event_queue_create(namePtr, C.size_t(len(name)), C.size_t(capacity), C.uint32_t(policy), C.size_t(observerHandle), &outResult))
 	return unsafe.Pointer(outResult), code
 }
 
 // EventQueueClone calls the generated C ABI wrapper for zg_event_queue_clone.
 func EventQueueClone(self unsafe.Pointer, observerHandle uintptr) (unsafe.Pointer, int32) {
-	var outResult unsafe.Pointer
-	code := int32(C.zg_event_queue_clone(self, C.size_t(observerHandle), &outResult))
+	var outResult *C.zg_event_queue
+	code := int32(C.zg_event_queue_clone((*C.zg_event_queue)(self), C.size_t(observerHandle), &outResult))
 	return unsafe.Pointer(outResult), code
 }
 
 // EventQueueEnqueue calls the generated C ABI wrapper for zg_event_queue_enqueue.
 func EventQueueEnqueue(self unsafe.Pointer, id uint64, value int32) int32 {
-	code := int32(C.zg_event_queue_enqueue(self, C.uint64_t(id), C.int32_t(value)))
+	code := int32(C.zg_event_queue_enqueue((*C.zg_event_queue)(self), C.uint64_t(id), C.int32_t(value)))
 	return code
 }
 
 // EventQueueMergeFrom calls the generated C ABI wrapper for zg_event_queue_merge_from.
 func EventQueueMergeFrom(self unsafe.Pointer, source unsafe.Pointer) (uint, int32) {
 	var outResult C.size_t
-	code := int32(C.zg_event_queue_merge_from(self, source, &outResult))
+	code := int32(C.zg_event_queue_merge_from((*C.zg_event_queue)(self), (*C.zg_event_queue)(source), &outResult))
 	return uint(outResult), code
 }
 
 // EventQueueProcess calls the generated C ABI wrapper for zg_event_queue_process.
 func EventQueueProcess(self unsafe.Pointer, limit uint) (uint, int32) {
 	var outResult C.size_t
-	code := int32(C.zg_event_queue_process(self, C.size_t(limit), &outResult))
+	code := int32(C.zg_event_queue_process((*C.zg_event_queue)(self), C.size_t(limit), &outResult))
 	return uint(outResult), code
 }
 
@@ -169,7 +169,7 @@ func EventQueueProcess(self unsafe.Pointer, limit uint) (uint, int32) {
 func EventQueueName(self unsafe.Pointer) []uint8 {
 	var outResultPtr *C.uint8_t
 	var outResultLen C.size_t
-	C.zg_event_queue_name(self, &outResultPtr, &outResultLen)
+	C.zg_event_queue_name((*C.zg_event_queue)(self), &outResultPtr, &outResultLen)
 	return C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))
 }
 
@@ -177,7 +177,7 @@ func EventQueueName(self unsafe.Pointer) []uint8 {
 func EventQueueSampleValues(self unsafe.Pointer) []float32 {
 	var outResultPtr *C.float
 	var outResultLen C.size_t
-	C.zg_event_queue_sample_values(self, &outResultPtr, &outResultLen)
+	C.zg_event_queue_sample_values((*C.zg_event_queue)(self), &outResultPtr, &outResultLen)
 	if outResultLen == 0 {
 		return nil
 	}
@@ -190,7 +190,7 @@ func EventQueueSampleValues(self unsafe.Pointer) []float32 {
 func EventQueueSampleValuesChecked(self unsafe.Pointer) ([]float32, int32) {
 	var outResultPtr *C.float
 	var outResultLen C.size_t
-	code := int32(C.zg_event_queue_sample_values_checked(self, &outResultPtr, &outResultLen))
+	code := int32(C.zg_event_queue_sample_values_checked((*C.zg_event_queue)(self), &outResultPtr, &outResultLen))
 	if code != 0 {
 		return nil, code
 	}
@@ -241,13 +241,13 @@ func EventQueueExtractSentinelPointers(paths []string) uint {
 func EventQueueExtractSamples(self unsafe.Pointer) []float32 {
 	var outResultPtr *C.float
 	var outResultLen C.size_t
-	C.zg_event_queue_extract_samples(self, &outResultPtr, &outResultLen)
+	C.zg_event_queue_extract_samples((*C.zg_event_queue)(self), &outResultPtr, &outResultLen)
 	var result []float32
 	if outResultLen != 0 {
 		result = make([]float32, int(outResultLen))
 		copy(result, unsafe.Slice((*float32)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
 	}
-	C.zg_event_queue_free_samples(self, outResultPtr, outResultLen)
+	C.zg_event_queue_free_samples((*C.zg_event_queue)(self), outResultPtr, outResultLen)
 	return result
 }
 
@@ -255,7 +255,7 @@ func EventQueueExtractSamples(self unsafe.Pointer) []float32 {
 func EventQueueExtractSamplesChecked(self unsafe.Pointer) ([]float32, int32) {
 	var outResultPtr *C.float
 	var outResultLen C.size_t
-	code := int32(C.zg_event_queue_extract_samples_checked(self, &outResultPtr, &outResultLen))
+	code := int32(C.zg_event_queue_extract_samples_checked((*C.zg_event_queue)(self), &outResultPtr, &outResultLen))
 	if code != 0 {
 		return nil, code
 	}
@@ -264,7 +264,7 @@ func EventQueueExtractSamplesChecked(self unsafe.Pointer) ([]float32, int32) {
 		result = make([]float32, int(outResultLen))
 		copy(result, unsafe.Slice((*float32)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
 	}
-	C.zg_event_queue_free_samples(self, outResultPtr, outResultLen)
+	C.zg_event_queue_free_samples((*C.zg_event_queue)(self), outResultPtr, outResultLen)
 	return result, code
 }
 
@@ -275,7 +275,7 @@ func EventQueueFreeSamples(self unsafe.Pointer, samples []float32) {
 	if len(samples) != 0 {
 		samplesPtr = (*C.float)(unsafe.Pointer(&samples[0]))
 	}
-	C.zg_event_queue_free_samples(self, samplesPtr, C.size_t(len(samples)))
+	C.zg_event_queue_free_samples((*C.zg_event_queue)(self), samplesPtr, C.size_t(len(samples)))
 }
 
 // EventQueueAcceptStats calls the generated C ABI wrapper for zg_event_queue_accept_stats.
@@ -299,7 +299,7 @@ func EventQueueAcceptStats(self unsafe.Pointer, values []StatsData) uint {
 	if len(values) != 0 {
 		valuesPtr = (*C.zg_stats)(unsafe.Pointer(&valuesValues[0]))
 	}
-	return uint(C.zg_event_queue_accept_stats(self, valuesPtr, C.size_t(len(values))))
+	return uint(C.zg_event_queue_accept_stats((*C.zg_event_queue)(self), valuesPtr, C.size_t(len(values))))
 }
 
 // EventQueueEstimate calls the generated C ABI wrapper for zg_event_queue_estimate.
@@ -325,7 +325,7 @@ func EventQueueEstimate(self unsafe.Pointer, output []StatsData) (uint, int32) {
 	}
 	var outputWritten C.size_t
 	var outResult C.size_t
-	code := int32(C.zg_event_queue_estimate(self, outputPtr, C.size_t(len(output)), &outputWritten, &outResult))
+	code := int32(C.zg_event_queue_estimate((*C.zg_event_queue)(self), outputPtr, C.size_t(len(output)), &outputWritten, &outResult))
 	for i := 0; i < int(outputWritten) && i < len(output); i++ {
 		output[i] = StatsData{
 			Len:       uint32(outputValues[i].len),
@@ -343,7 +343,7 @@ func EventQueueEstimate(self unsafe.Pointer, output []StatsData) (uint, int32) {
 func EventQueueSampleStats(self unsafe.Pointer) []StatsData {
 	var outResultPtr *C.zg_stats
 	var outResultLen C.size_t
-	C.zg_event_queue_sample_stats(self, &outResultPtr, &outResultLen)
+	C.zg_event_queue_sample_stats((*C.zg_event_queue)(self), &outResultPtr, &outResultLen)
 	if outResultLen == 0 {
 		return nil
 	}
@@ -364,33 +364,33 @@ func EventQueueSampleStats(self unsafe.Pointer) []StatsData {
 
 // EventQueueLen calls the generated C ABI wrapper for zg_event_queue_len.
 func EventQueueLen(self unsafe.Pointer) uint {
-	return uint(C.zg_event_queue_len(self))
+	return uint(C.zg_event_queue_len((*C.zg_event_queue)(self)))
 }
 
 // EventQueueCapacity calls the generated C ABI wrapper for zg_event_queue_capacity.
 func EventQueueCapacity(self unsafe.Pointer) uint {
-	return uint(C.zg_event_queue_capacity(self))
+	return uint(C.zg_event_queue_capacity((*C.zg_event_queue)(self)))
 }
 
 // EventQueuePolicy calls the generated C ABI wrapper for zg_event_queue_policy.
 func EventQueuePolicy(self unsafe.Pointer) uint32 {
-	return uint32(C.zg_event_queue_policy(self))
+	return uint32(C.zg_event_queue_policy((*C.zg_event_queue)(self)))
 }
 
 // EventQueueDropped calls the generated C ABI wrapper for zg_event_queue_dropped.
 func EventQueueDropped(self unsafe.Pointer) uint {
-	return uint(C.zg_event_queue_dropped(self))
+	return uint(C.zg_event_queue_dropped((*C.zg_event_queue)(self)))
 }
 
 // EventQueueProcessed calls the generated C ABI wrapper for zg_event_queue_processed.
 func EventQueueProcessed(self unsafe.Pointer) uint {
-	return uint(C.zg_event_queue_processed(self))
+	return uint(C.zg_event_queue_processed((*C.zg_event_queue)(self)))
 }
 
 // EventQueueStats calls the generated C ABI wrapper for zg_event_queue_stats.
 func EventQueueStats(self unsafe.Pointer) StatsData {
 	var outResult C.zg_stats
-	C.zg_event_queue_stats(self, &outResult)
+	C.zg_event_queue_stats((*C.zg_event_queue)(self), &outResult)
 	return StatsData{
 		Len:       uint32(outResult.len),
 		Capacity:  uint32(outResult.capacity),
@@ -404,7 +404,7 @@ func EventQueueStats(self unsafe.Pointer) StatsData {
 // EventQueueLimits calls the generated C ABI wrapper for zg_event_queue_limits.
 func EventQueueLimits(self unsafe.Pointer) LimitsData {
 	var outResult C.zg_limits
-	C.zg_event_queue_limits(self, &outResult)
+	C.zg_event_queue_limits((*C.zg_event_queue)(self), &outResult)
 	return LimitsData{
 		Capacity: uint32(outResult.capacity),
 		Policy:   uint32(outResult.policy),
@@ -416,18 +416,18 @@ func EventQueueApplyLimits(self unsafe.Pointer, updated LimitsData) int32 {
 	var cupdated C.zg_limits
 	cupdated.capacity = C.uint32_t(updated.Capacity)
 	cupdated.policy = C.uint32_t(updated.Policy)
-	code := int32(C.zg_event_queue_apply_limits(self, &cupdated))
+	code := int32(C.zg_event_queue_apply_limits((*C.zg_event_queue)(self), &cupdated))
 	return code
 }
 
 // EventQueueClear calls the generated C ABI wrapper for zg_event_queue_clear.
 func EventQueueClear(self unsafe.Pointer) uint {
-	return uint(C.zg_event_queue_clear(self))
+	return uint(C.zg_event_queue_clear((*C.zg_event_queue)(self)))
 }
 
 // EventQueueDeinit calls the generated C ABI wrapper for zg_event_queue_deinit.
 func EventQueueDeinit(self unsafe.Pointer) {
-	C.zg_event_queue_deinit(self)
+	C.zg_event_queue_deinit((*C.zg_event_queue)(self))
 }
 
 // LiveQueues calls the generated C ABI wrapper for zg_live_queues.

@@ -78,63 +78,63 @@ func zg_apply_go_callback_callback(p0 C.int32_t, p1 C.size_t) (result C.int32_t)
 
 // FloatBufferCreate calls the generated C ABI wrapper for zg_float_buffer_create.
 func FloatBufferCreate() (unsafe.Pointer, int32) {
-	var outResult unsafe.Pointer
+	var outResult *C.zg_float_buffer
 	code := int32(C.zg_float_buffer_create(&outResult))
 	return unsafe.Pointer(outResult), code
 }
 
 // FloatBufferPush calls the generated C ABI wrapper for zg_float_buffer_push.
 func FloatBufferPush(self unsafe.Pointer, value float32) {
-	C.zg_float_buffer_push(self, C.float(value))
+	C.zg_float_buffer_push((*C.zg_float_buffer)(self), C.float(value))
 }
 
 // FloatBufferLen calls the generated C ABI wrapper for zg_float_buffer_len.
 func FloatBufferLen(self unsafe.Pointer) uint {
-	return uint(C.zg_float_buffer_len(self))
+	return uint(C.zg_float_buffer_len((*C.zg_float_buffer)(self)))
 }
 
 // FloatBufferDeinit calls the generated C ABI wrapper for zg_float_buffer_deinit.
 func FloatBufferDeinit(self unsafe.Pointer) {
-	C.zg_float_buffer_deinit(self)
+	C.zg_float_buffer_deinit((*C.zg_float_buffer)(self))
 }
 
 // IntBufferCreate calls the generated C ABI wrapper for zg_int_buffer_create.
 func IntBufferCreate() (unsafe.Pointer, int32) {
-	var outResult unsafe.Pointer
+	var outResult *C.zg_int_buffer
 	code := int32(C.zg_int_buffer_create(&outResult))
 	return unsafe.Pointer(outResult), code
 }
 
 // IntBufferPush calls the generated C ABI wrapper for zg_int_buffer_push.
 func IntBufferPush(self unsafe.Pointer, value int32) {
-	C.zg_int_buffer_push(self, C.int32_t(value))
+	C.zg_int_buffer_push((*C.zg_int_buffer)(self), C.int32_t(value))
 }
 
 // IntBufferLen calls the generated C ABI wrapper for zg_int_buffer_len.
 func IntBufferLen(self unsafe.Pointer) uint {
-	return uint(C.zg_int_buffer_len(self))
+	return uint(C.zg_int_buffer_len((*C.zg_int_buffer)(self)))
 }
 
 // IntBufferDeinit calls the generated C ABI wrapper for zg_int_buffer_deinit.
 func IntBufferDeinit(self unsafe.Pointer) {
-	C.zg_int_buffer_deinit(self)
+	C.zg_int_buffer_deinit((*C.zg_int_buffer)(self))
 }
 
 // CallbackContextCreate calls the generated C ABI wrapper for zg_callback_context_create.
 func CallbackContextCreate(callbackHandle uintptr) (unsafe.Pointer, int32) {
-	var outResult unsafe.Pointer
+	var outResult *C.zg_callback_context
 	code := int32(C.zg_callback_context_create(C.size_t(callbackHandle), &outResult))
 	return unsafe.Pointer(outResult), code
 }
 
 // CallbackContextRun calls the generated C ABI wrapper for zg_callback_context_run.
 func CallbackContextRun(self unsafe.Pointer, value int32) int32 {
-	return int32(C.zg_callback_context_run(self, C.int32_t(value)))
+	return int32(C.zg_callback_context_run((*C.zg_callback_context)(self), C.int32_t(value)))
 }
 
 // CallbackContextDeinit calls the generated C ABI wrapper for zg_callback_context_deinit.
 func CallbackContextDeinit(self unsafe.Pointer) {
-	C.zg_callback_context_deinit(self)
+	C.zg_callback_context_deinit((*C.zg_callback_context)(self))
 }
 
 // PanicNow calls the generated C ABI wrapper for zg_panic_now.

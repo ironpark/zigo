@@ -14,19 +14,19 @@ func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
 // ContextCreate calls the generated C ABI wrapper for zg_context_create.
 func ContextCreate() (unsafe.Pointer, int32) {
-	var outResult unsafe.Pointer
+	var outResult *C.zg_context
 	code := int32(C.zg_context_create(&outResult))
 	return unsafe.Pointer(outResult), code
 }
 
 // ContextAdd calls the generated C ABI wrapper for zg_context_add.
 func ContextAdd(self unsafe.Pointer, value int64) int64 {
-	return int64(C.zg_context_add(self, C.int64_t(value)))
+	return int64(C.zg_context_add((*C.zg_context)(self), C.int64_t(value)))
 }
 
 // ContextDeinit calls the generated C ABI wrapper for zg_context_deinit.
 func ContextDeinit(self unsafe.Pointer) {
-	C.zg_context_deinit(self)
+	C.zg_context_deinit((*C.zg_context)(self))
 }
 
 // LiveBytes calls the generated C ABI wrapper for zg_live_bytes.

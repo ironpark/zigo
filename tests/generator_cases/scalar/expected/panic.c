@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include "zigo_scalar.h"
 
 // ELF and Mach-O export every non-static symbol of a shared library;
 // COFF exports nothing without an explicit annotation, so a DLL built

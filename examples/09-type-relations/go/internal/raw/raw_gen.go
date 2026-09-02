@@ -14,46 +14,46 @@ func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
 // CounterCreate calls the generated C ABI wrapper for zg_counter_create.
 func CounterCreate(initial int64) (unsafe.Pointer, int32) {
-	var outResult unsafe.Pointer
+	var outResult *C.zg_counter
 	code := int32(C.zg_counter_create(C.int64_t(initial), &outResult))
 	return unsafe.Pointer(outResult), code
 }
 
 // CounterGet calls the generated C ABI wrapper for zg_counter_get.
 func CounterGet(self unsafe.Pointer) int64 {
-	return int64(C.zg_counter_get(self))
+	return int64(C.zg_counter_get((*C.zg_counter)(self)))
 }
 
 // CounterAdd calls the generated C ABI wrapper for zg_counter_add.
 func CounterAdd(self unsafe.Pointer, delta int64) int64 {
-	return int64(C.zg_counter_add(self, C.int64_t(delta)))
+	return int64(C.zg_counter_add((*C.zg_counter)(self), C.int64_t(delta)))
 }
 
 // CounterDeinit calls the generated C ABI wrapper for zg_counter_deinit.
 func CounterDeinit(self unsafe.Pointer) {
-	C.zg_counter_deinit(self)
+	C.zg_counter_deinit((*C.zg_counter)(self))
 }
 
 // AccumulatorCreate calls the generated C ABI wrapper for zg_accumulator_create.
 func AccumulatorCreate() (unsafe.Pointer, int32) {
-	var outResult unsafe.Pointer
+	var outResult *C.zg_accumulator
 	code := int32(C.zg_accumulator_create(&outResult))
 	return unsafe.Pointer(outResult), code
 }
 
 // AccumulatorAbsorb calls the generated C ABI wrapper for zg_accumulator_absorb.
 func AccumulatorAbsorb(self unsafe.Pointer, counter unsafe.Pointer) int64 {
-	return int64(C.zg_accumulator_absorb(self, counter))
+	return int64(C.zg_accumulator_absorb((*C.zg_accumulator)(self), (*C.zg_counter)(counter)))
 }
 
 // AccumulatorTotal calls the generated C ABI wrapper for zg_accumulator_total.
 func AccumulatorTotal(self unsafe.Pointer) int64 {
-	return int64(C.zg_accumulator_total(self))
+	return int64(C.zg_accumulator_total((*C.zg_accumulator)(self)))
 }
 
 // AccumulatorDeinit calls the generated C ABI wrapper for zg_accumulator_deinit.
 func AccumulatorDeinit(self unsafe.Pointer) {
-	C.zg_accumulator_deinit(self)
+	C.zg_accumulator_deinit((*C.zg_accumulator)(self))
 }
 
 // LiveObjects calls the generated C ABI wrapper for zg_live_objects.

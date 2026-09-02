@@ -31,8 +31,8 @@ void zg_panic_bridge(const uint8_t *message, size_t length) {
 
 ZIGO_EXPORT const char *zg_last_error_message(void) { return zg_panic_message; }
 
-int32_t zg_signal_create_impl(void * * out_result);
-ZIGO_EXPORT int32_t zg_signal_create(void * * out_result) {
+int32_t zg_signal_create_impl(zg_signal * * out_result);
+ZIGO_EXPORT int32_t zg_signal_create(zg_signal * * out_result) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -43,8 +43,8 @@ ZIGO_EXPORT int32_t zg_signal_create(void * * out_result) {
     return result;
 }
 
-void zg_signal_deinit_impl(void * self);
-ZIGO_EXPORT void zg_signal_deinit(void * self) {
+void zg_signal_deinit_impl(zg_signal * self);
+ZIGO_EXPORT void zg_signal_deinit(zg_signal * self) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -54,8 +54,8 @@ zg_signal_deinit_impl(self);
     zg_panic_active = 0;
 }
 
-void zg_signal_set_ticks_impl(void * self, uint32_t ticks);
-ZIGO_EXPORT void zg_signal_set_ticks(void * self, uint32_t ticks) {
+void zg_signal_set_ticks_impl(zg_signal * self, uint32_t ticks);
+ZIGO_EXPORT void zg_signal_set_ticks(zg_signal * self, uint32_t ticks) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -65,8 +65,8 @@ zg_signal_set_ticks_impl(self, ticks);
     zg_panic_active = 0;
 }
 
-void zg_signal_set_mode_impl(void * self, uint8_t mode);
-ZIGO_EXPORT void zg_signal_set_mode(void * self, uint8_t mode) {
+void zg_signal_set_mode_impl(zg_signal * self, uint8_t mode);
+ZIGO_EXPORT void zg_signal_set_mode(zg_signal * self, uint8_t mode) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
@@ -76,8 +76,8 @@ zg_signal_set_mode_impl(self, mode);
     zg_panic_active = 0;
 }
 
-void zg_signal_set_active_impl(void * self, uint8_t active);
-ZIGO_EXPORT void zg_signal_set_active(void * self, uint8_t active) {
+void zg_signal_set_active_impl(zg_signal * self, uint8_t active);
+ZIGO_EXPORT void zg_signal_set_active(zg_signal * self, uint8_t active) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;

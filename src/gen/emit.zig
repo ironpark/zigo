@@ -387,11 +387,8 @@ fn renderPanicSource(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
         "#include <stdint.h>\n" ++
         "#include <stdlib.h>\n" ++
         "#include <string.h>\n");
-    if (program.projections.len != 0 or program.snapshots.len != 0 or program.structs.len != 0) {
-        try writer.print("#include \"zigo_{s}.h\"\n\n", .{package});
-    } else {
-        try writer.writeByte('\n');
-    }
+    // The header carries the handle typedefs every wrapper signature names.
+    try writer.print("#include \"zigo_{s}.h\"\n\n", .{package});
     // The header defines the same macro under the same guard, so including it
     // above or not makes no difference here.
     try writeExportMacro(writer);
@@ -1117,7 +1114,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         }
         if (returns_error and error_payload != .void and error_payload != .slice) {
             if (error_payload == .opaque_ptr) {
-                try writer.writeAll("\tvar outResult unsafe.Pointer\n");
+                try writer.print("\tvar outResult *C.{s}\n", .{payloadOutHandleCName(function)});
             } else if (function.payload_struct) |record| {
                 try writer.print("\tvar outResult C.{s}\n", .{record.c_name});
             } else {
@@ -1141,7 +1138,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         for (function.params, 0..) |parameter, index| {
             if (index != 0) try writer.writeAll(", ");
             switch (parameter.role) {
-                .receiver => try writer.writeAll("self"),
+                .receiver => try writeCgoHandleArgument(writer, parameter.scalar, "self"),
                 .struct_in => try writer.print("&c{s}", .{go_names[parameter.source_index]}),
                 .struct_out => try writer.writeAll("&outResult"),
                 .value => {
@@ -1152,7 +1149,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                     } else if (isCStringParameter(function.origin.params[parameter.source_index])) {
                         try writer.print("{s}CString", .{go_names[parameter.source_index]});
                     } else if (parameter.scalar == .pointer) {
-                        try writer.writeAll(go_names[parameter.source_index]);
+                        try writeCgoHandleArgument(writer, parameter.scalar, go_names[parameter.source_index]);
                     } else {
                         try writer.writeAll("C.");
                         try writeCgoType(writer, parameter.scalar);
@@ -1179,7 +1176,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         try writer.writeByte('\n');
         if (!returns_error) {
             if (sliceReturnElement(function.origin.*)) |element| {
-                try writeCgoSliceReturn(allocator, writer, program, element, "outResultPtr", "outResultLen", function.release_symbol, if (releaseFunction(program, function)) |release| release.origin.receiver != null else false, "");
+                try writeCgoSliceReturn(allocator, writer, program, element, "outResultPtr", "outResultLen", function.release_symbol, releaseReceiverCName(program, function), "");
             }
         }
         for (function.origin.params, 0..) |parameter, parameter_index| {
@@ -1209,7 +1206,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 // parameters the shim never wrote are never read -- and a
                 // declared release runs only after a successful call.
                 try writer.writeAll("\tif code != 0 {\n\t\treturn nil, code\n\t}\n");
-                try writeCgoSliceReturn(allocator, writer, program, element, "outResultPtr", "outResultLen", function.release_symbol, if (releaseFunction(program, function)) |release| release.origin.receiver != null else false, ", code");
+                try writeCgoSliceReturn(allocator, writer, program, element, "outResultPtr", "outResultLen", function.release_symbol, releaseReceiverCName(program, function), ", code");
             } else if (function.payload_struct) |record| {
                 try writer.writeAll("\treturn ");
                 try writeCgoStructRead(allocator, writer, program, record.*, "\t", "outResult");
@@ -1314,20 +1311,22 @@ fn writeCgoSliceReturn(
     pointer_name: []const u8,
     length_name: []const u8,
     release_symbol: ?[]const u8,
-    release_has_receiver: bool,
+    /// The C typedef of the release function's receiver, when it has one.
+    release_receiver_c_name: ?[]const u8,
     /// Appended to every `return` this writes, so a fallible slice return can
     /// hand the error code back alongside the copied payload.
     suffix: []const u8,
 ) !void {
     if (release_symbol) |symbol| {
-        const release_receiver = if (release_has_receiver) "self, " else "";
         // The payload is copied first and released immediately after, so the
         // returned Go slice never aliases memory the library still owns.
         try writer.print("\tvar result []", .{});
         try writeRawGoType(writer, program, element);
         try writer.print("\n\tif {s} != 0 {{\n", .{length_name});
         try writeCgoSliceCopyInto(allocator, writer, program, element, pointer_name, length_name, "\t\t");
-        try writer.print("\t}}\n\tC.{s}({s}{s}, {s})\n\treturn result{s}\n", .{ symbol, release_receiver, pointer_name, length_name, suffix });
+        try writer.print("\t}}\n\tC.{s}(", .{symbol});
+        if (release_receiver_c_name) |c_name| try writer.print("(*C.{s})(self), ", .{c_name});
+        try writer.print("{s}, {s})\n\treturn result{s}\n", .{ pointer_name, length_name, suffix });
         return;
     }
     if (element == .value_struct) {
@@ -2287,7 +2286,7 @@ fn renderRawTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.Io.W
                     }
                 } else {
                     if (payload == .opaque_ptr) {
-                        try writer.writeAll("\tvar outValue unsafe.Pointer\n");
+                        try writer.print("\tvar outValue *C.{s}\n", .{handleRecord(program, payload.opaque_ptr.ref).c_name});
                     } else {
                         try writer.writeAll("\tvar outValue C.");
                         try writeCgoType(writer, semanticScalar(program, payload));
@@ -4482,7 +4481,9 @@ fn writeCType(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
         .signed_int => |bits| try writer.print("int{d}_t", .{bits}),
         .unsigned_int => |bits| try writer.print("uint{d}_t", .{bits}),
         .float => |bits| try writer.writeAll(if (bits == 32) "float" else "double"),
-        .@"opaque" => try writer.writeAll("void"),
+        // The handle's own typedef, so a C consumer cannot hand one type's
+        // handle to another's function. The projections already spell it.
+        .@"opaque" => |handle| try writer.writeAll(handle.c_name),
         .snapshot => |name| try writer.writeAll(name),
         .value_struct => |record| try writer.writeAll(record.c_name),
         .pointer => |pointer| {
@@ -4510,6 +4511,35 @@ fn writeCParam(writer: *std.Io.Writer, value: abi.AbiScalar, name: []const u8) !
         try writeCType(writer, parameter);
     }
     try writer.writeByte(')');
+}
+
+/// A handle argument crosses cgo as the header's typedef pointer, converted
+/// from the unsafe.Pointer the raw signature carries; anything else passes
+/// as it is.
+/// The C typedef of the receiver a function's release counterpart takes,
+/// or null when the release is a free function or there is none.
+fn releaseReceiverCName(program: abi.Program, function: abi.AbiFn) ?[]const u8 {
+    const release = releaseFunction(program, function) orelse return null;
+    const receiver = release.origin.receiver orelse return null;
+    return handleRecord(program, receiver).c_name;
+}
+
+fn writeCgoHandleArgument(writer: *std.Io.Writer, scalar: abi.AbiScalar, name: []const u8) !void {
+    if (scalar == .pointer and scalar.pointer.child.* == .@"opaque") {
+        try writer.print("(*C.{s})({s})", .{ scalar.pointer.child.@"opaque".c_name, name });
+        return;
+    }
+    try writer.writeAll(name);
+}
+
+/// The typedef behind a constructor's `out_result`, so the raw layer can
+/// declare the local the C side writes through.
+fn payloadOutHandleCName(function: abi.AbiFn) []const u8 {
+    for (function.params) |parameter| {
+        if (parameter.role != .payload_out) continue;
+        return parameter.scalar.pointer.child.pointer.child.@"opaque".c_name;
+    }
+    unreachable;
 }
 
 fn writeCgoType(writer: *std.Io.Writer, value: abi.AbiScalar) !void {

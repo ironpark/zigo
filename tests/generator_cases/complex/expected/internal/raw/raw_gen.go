@@ -115,41 +115,41 @@ func zg_pipeline_create_go_callback_callback(p0 C.int32_t, p1 C.size_t) (result 
 
 // IntBatchCreate calls the generated C ABI wrapper for zg_int_batch_create.
 func IntBatchCreate() (unsafe.Pointer, int32) {
-	var outResult unsafe.Pointer
+	var outResult *C.zg_int_batch
 	code := int32(C.zg_int_batch_create(&outResult))
 	return unsafe.Pointer(outResult), code
 }
 // IntBatchPush calls the generated C ABI wrapper for zg_int_batch_push.
 func IntBatchPush(self unsafe.Pointer, value int32) int32 {
-	code := int32(C.zg_int_batch_push(self, C.int32_t(value)))
+	code := int32(C.zg_int_batch_push((*C.zg_int_batch)(self), C.int32_t(value)))
 	return code
 }
 // IntBatchLen calls the generated C ABI wrapper for zg_int_batch_len.
 func IntBatchLen(self unsafe.Pointer) uint {
-	return uint(C.zg_int_batch_len(self))
+	return uint(C.zg_int_batch_len((*C.zg_int_batch)(self)))
 }
 // IntBatchDeinit calls the generated C ABI wrapper for zg_int_batch_deinit.
 func IntBatchDeinit(self unsafe.Pointer) {
-	C.zg_int_batch_deinit(self)
+	C.zg_int_batch_deinit((*C.zg_int_batch)(self))
 }
 // FloatBatchCreate calls the generated C ABI wrapper for zg_float_batch_create.
 func FloatBatchCreate() (unsafe.Pointer, int32) {
-	var outResult unsafe.Pointer
+	var outResult *C.zg_float_batch
 	code := int32(C.zg_float_batch_create(&outResult))
 	return unsafe.Pointer(outResult), code
 }
 // FloatBatchPush calls the generated C ABI wrapper for zg_float_batch_push.
 func FloatBatchPush(self unsafe.Pointer, p0 float64) int32 {
-	code := int32(C.zg_float_batch_push(self, C.double(p0)))
+	code := int32(C.zg_float_batch_push((*C.zg_float_batch)(self), C.double(p0)))
 	return code
 }
 // FloatBatchLen calls the generated C ABI wrapper for zg_float_batch_len.
 func FloatBatchLen(self unsafe.Pointer) uint {
-	return uint(C.zg_float_batch_len(self))
+	return uint(C.zg_float_batch_len((*C.zg_float_batch)(self)))
 }
 // FloatBatchDeinit calls the generated C ABI wrapper for zg_float_batch_deinit.
 func FloatBatchDeinit(self unsafe.Pointer) {
-	C.zg_float_batch_deinit(self)
+	C.zg_float_batch_deinit((*C.zg_float_batch)(self))
 }
 // PipelineCreate calls the generated C ABI wrapper for zg_pipeline_create.
 func PipelineCreate(name []uint8, mode uint32, callbackHandle uintptr) (unsafe.Pointer, int32) {
@@ -158,7 +158,7 @@ func PipelineCreate(name []uint8, mode uint32, callbackHandle uintptr) (unsafe.P
 	if len(name) != 0 {
 		namePtr = (*C.uint8_t)(unsafe.Pointer(&name[0]))
 	}
-	var outResult unsafe.Pointer
+	var outResult *C.zg_pipeline
 	code := int32(C.zg_pipeline_create(namePtr, C.size_t(len(name)), C.uint32_t(mode), C.size_t(callbackHandle), &outResult))
 	return unsafe.Pointer(outResult), code
 }
@@ -170,14 +170,14 @@ func PipelineProcess(self unsafe.Pointer, values []int32) (int64, int32) {
 		valuesPtr = (*C.int32_t)(unsafe.Pointer(&values[0]))
 	}
 	var outResult C.int64_t
-	code := int32(C.zg_pipeline_process(self, valuesPtr, C.size_t(len(values)), &outResult))
+	code := int32(C.zg_pipeline_process((*C.zg_pipeline)(self), valuesPtr, C.size_t(len(values)), &outResult))
 	return int64(outResult), code
 }
 // PipelineName calls the generated C ABI wrapper for zg_pipeline_name.
 func PipelineName(self unsafe.Pointer) []uint8 {
 	var outResultPtr *C.uint8_t
 	var outResultLen C.size_t
-	C.zg_pipeline_name(self, &outResultPtr, &outResultLen)
+	C.zg_pipeline_name((*C.zg_pipeline)(self), &outResultPtr, &outResultLen)
 	return C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))
 }
 // SampleValues calls the generated C ABI wrapper for zg_sample_values.
@@ -243,23 +243,23 @@ func ReleaseSamples(samples []float32) {
 }
 // PipelineMode calls the generated C ABI wrapper for zg_pipeline_mode.
 func PipelineMode(self unsafe.Pointer) uint32 {
-	return uint32(C.zg_pipeline_mode(self))
+	return uint32(C.zg_pipeline_mode((*C.zg_pipeline)(self)))
 }
 // PipelineSetEnabled calls the generated C ABI wrapper for zg_pipeline_set_enabled.
 func PipelineSetEnabled(self unsafe.Pointer, enabled uint8) uint8 {
-	return uint8(C.zg_pipeline_set_enabled(self, C.uint8_t(enabled)))
+	return uint8(C.zg_pipeline_set_enabled((*C.zg_pipeline)(self), C.uint8_t(enabled)))
 }
 // PipelineProcessed calls the generated C ABI wrapper for zg_pipeline_processed.
 func PipelineProcessed(self unsafe.Pointer) uint {
-	return uint(C.zg_pipeline_processed(self))
+	return uint(C.zg_pipeline_processed((*C.zg_pipeline)(self)))
 }
 // PipelineTotal calls the generated C ABI wrapper for zg_pipeline_total.
 func PipelineTotal(self unsafe.Pointer) int64 {
-	return int64(C.zg_pipeline_total(self))
+	return int64(C.zg_pipeline_total((*C.zg_pipeline)(self)))
 }
 // PipelineDeinit calls the generated C ABI wrapper for zg_pipeline_deinit.
 func PipelineDeinit(self unsafe.Pointer) {
-	C.zg_pipeline_deinit(self)
+	C.zg_pipeline_deinit((*C.zg_pipeline)(self))
 }
 // LiveBytes calls the generated C ABI wrapper for zg_live_bytes.
 func LiveBytes() uint {
