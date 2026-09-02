@@ -22,6 +22,10 @@
           "name": "initial",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 10,
+            "column": 19
+          },
           "type": {
             "bits": 64,
             "is_usize": false,
@@ -42,6 +46,11 @@
           "ref": "Counter"
         }
       },
+      "source": {
+        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "line": 10,
+        "column": 12
+      },
       "symbol": "zg_counter_create"
     },
     {
@@ -55,6 +64,11 @@
         "kind": "int",
         "signed": true
       },
+      "source": {
+        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "line": 17,
+        "column": 12
+      },
       "symbol": "zg_counter_get"
     },
     {
@@ -66,6 +80,10 @@
           "name": "delta",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 21,
+            "column": 32
+          },
           "type": {
             "bits": 64,
             "is_usize": false,
@@ -81,6 +99,11 @@
         "kind": "int",
         "signed": true
       },
+      "source": {
+        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "line": 21,
+        "column": 12
+      },
       "symbol": "zg_counter_add"
     },
     {
@@ -90,6 +113,11 @@
       "receiver": "Counter",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "line": 26,
+        "column": 12
       },
       "symbol": "zg_counter_deinit"
     },
@@ -110,6 +138,11 @@
           "ref": "Accumulator"
         }
       },
+      "source": {
+        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "line": 35,
+        "column": 12
+      },
       "symbol": "zg_accumulator_create"
     },
     {
@@ -122,6 +155,10 @@
           "name": "counter",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 43,
+            "column": 39
+          },
           "type": {
             "const": true,
             "kind": "opaque_ptr",
@@ -137,6 +174,11 @@
         "kind": "int",
         "signed": true
       },
+      "source": {
+        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "line": 43,
+        "column": 12
+      },
       "symbol": "zg_accumulator_absorb"
     },
     {
@@ -150,6 +192,11 @@
         "kind": "int",
         "signed": true
       },
+      "source": {
+        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "line": 48,
+        "column": 12
+      },
       "symbol": "zg_accumulator_total"
     },
     {
@@ -159,6 +206,11 @@
       "receiver": "Accumulator",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "line": 52,
+        "column": 12
       },
       "symbol": "zg_accumulator_deinit"
     },
@@ -172,6 +224,11 @@
         "kind": "int",
         "signed": false
       },
+      "source": {
+        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "line": 80,
+        "column": 8
+      },
       "symbol": "zg_live_objects"
     },
     {
@@ -181,6 +238,11 @@
       "return": {
         "kind": "enum",
         "ref": "CursorStyle"
+      },
+      "source": {
+        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "line": 71,
+        "column": 8
       },
       "symbol": "zg_default_cursor_style"
     },
@@ -194,6 +256,10 @@
           "name": "style",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 76,
+            "column": 26
+          },
           "type": {
             "kind": "enum",
             "ref": "CursorStyle"
@@ -202,6 +268,11 @@
       ],
       "return": {
         "kind": "bool"
+      },
+      "source": {
+        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "line": 76,
+        "column": 8
       },
       "symbol": "zg_cursor_style_blinks"
     },
@@ -216,6 +287,10 @@
           "name": "first",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 96,
+            "column": 21
+          },
           "type": {
             "bits": 21,
             "is_usize": false,
@@ -228,6 +303,10 @@
           "name": "second",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 96,
+            "column": 33
+          },
           "type": {
             "bits": 21,
             "is_usize": false,
@@ -242,6 +321,11 @@
         "kind": "int",
         "signed": false
       },
+      "source": {
+        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "line": 96,
+        "column": 12
+      },
       "symbol": "zg_text_run_width"
     },
     {
@@ -255,6 +339,10 @@
           "name": "cp",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 90,
+            "column": 31
+          },
           "type": {
             "bits": 21,
             "is_usize": false,
@@ -269,7 +357,271 @@
         "kind": "int",
         "signed": false
       },
+      "source": {
+        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "line": 90,
+        "column": 16
+      },
       "symbol": "zg_text_unicode_codepoint_width"
+    },
+    {
+      "doc": "A `?u32` on both sides: absent in, absent out.",
+      "name": "doubleWidth",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "value",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 111,
+            "column": 20
+          },
+          "type": {
+            "child": {
+              "bits": 32,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "optional"
+          }
+        }
+      ],
+      "return": {
+        "child": {
+          "bits": 32,
+          "is_usize": false,
+          "kind": "int",
+          "signed": false
+        },
+        "kind": "optional"
+      },
+      "source": {
+        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "line": 111,
+        "column": 8
+      },
+      "symbol": "zg_double_width"
+    },
+    {
+      "doc": "An optional bool has three states at the boundary, and Go sees all three.",
+      "name": "invert",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "value",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 116,
+            "column": 15
+          },
+          "type": {
+            "child": {
+              "kind": "bool"
+            },
+            "kind": "optional"
+          }
+        }
+      ],
+      "return": {
+        "child": {
+          "kind": "bool"
+        },
+        "kind": "optional"
+      },
+      "source": {
+        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "line": 116,
+        "column": 8
+      },
+      "symbol": "zg_invert"
+    },
+    {
+      "doc": "An optional enum resolves to the default style when it is absent.",
+      "name": "styleOrDefault",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "style",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 121,
+            "column": 23
+          },
+          "type": {
+            "child": {
+              "kind": "enum",
+              "ref": "CursorStyle"
+            },
+            "kind": "optional"
+          }
+        }
+      ],
+      "return": {
+        "kind": "enum",
+        "ref": "CursorStyle"
+      },
+      "source": {
+        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "line": 121,
+        "column": 8
+      },
+      "symbol": "zg_style_or_default"
+    },
+    {
+      "doc": "An optional enum on the way out: only a blinking style is reported.",
+      "name": "blinkingStyle",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "style",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 126,
+            "column": 22
+          },
+          "type": {
+            "child": {
+              "kind": "enum",
+              "ref": "CursorStyle"
+            },
+            "kind": "optional"
+          }
+        }
+      ],
+      "return": {
+        "child": {
+          "kind": "enum",
+          "ref": "CursorStyle"
+        },
+        "kind": "optional"
+      },
+      "source": {
+        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "line": 126,
+        "column": 8
+      },
+      "symbol": "zg_blinking_style"
+    },
+    {
+      "doc": "A whole `extern struct` in and out, presence carried alongside.",
+      "name": "shiftPoint",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "origin",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 132,
+            "column": 19
+          },
+          "type": {
+            "child": {
+              "kind": "value_struct",
+              "ref": "Point"
+            },
+            "kind": "optional"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "delta",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 132,
+            "column": 35
+          },
+          "type": {
+            "bits": 16,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          }
+        }
+      ],
+      "return": {
+        "child": {
+          "kind": "value_struct",
+          "ref": "Point"
+        },
+        "kind": "optional"
+      },
+      "source": {
+        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "line": 132,
+        "column": 8
+      },
+      "symbol": "zg_shift_point"
+    },
+    {
+      "doc": "An optional payload inside an error union: the status code carries the\nerror and a separate flag carries presence, so all three outcomes are\ndistinguishable.",
+      "name": "checkedShift",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "origin",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 140,
+            "column": 21
+          },
+          "type": {
+            "child": {
+              "kind": "value_struct",
+              "ref": "Point"
+            },
+            "kind": "optional"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "delta",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 140,
+            "column": 37
+          },
+          "type": {
+            "bits": 16,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "Overflow"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "child": {
+            "kind": "value_struct",
+            "ref": "Point"
+          },
+          "kind": "optional"
+        }
+      },
+      "source": {
+        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "line": 140,
+        "column": 8
+      },
+      "symbol": "zg_checked_shift"
     }
   ],
   "ir_version": 1,
@@ -315,6 +667,33 @@
         "signed": false
       },
       "zig_path": "root.Enum(@as([*]const []const u8, @ptrCast(&root.style_names))[0..3])"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "x",
+          "type": {
+            "bits": 16,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "bits": 16,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          }
+        }
+      ],
+      "kind": "value_struct",
+      "layout": "extern",
+      "name": "Point",
+      "zig_path": "root.Point"
     }
   ],
   "zig_version": "0.16.0"

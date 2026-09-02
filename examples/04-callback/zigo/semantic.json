@@ -34,6 +34,11 @@
           "ref": "FloatBuffer"
         }
       },
+      "source": {
+        "path": "./examples/04-callback/src/root.zig",
+        "line": 10,
+        "column": 16
+      },
       "symbol": "zg_float_buffer_create"
     },
     {
@@ -45,6 +50,10 @@
           "name": "value",
           "name_source": "ast",
           "retention": "borrowed",
+          "source": {
+            "line": 16,
+            "column": 34
+          },
           "type": {
             "bits": 32,
             "kind": "float"
@@ -54,6 +63,11 @@
       "receiver": "FloatBuffer",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "./examples/04-callback/src/root.zig",
+        "line": 16,
+        "column": 16
       },
       "symbol": "zg_float_buffer_push"
     },
@@ -68,6 +82,11 @@
         "kind": "int",
         "signed": false
       },
+      "source": {
+        "path": "./examples/04-callback/src/root.zig",
+        "line": 20,
+        "column": 16
+      },
       "symbol": "zg_float_buffer_len"
     },
     {
@@ -77,6 +96,11 @@
       "receiver": "FloatBuffer",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "./examples/04-callback/src/root.zig",
+        "line": 24,
+        "column": 16
       },
       "symbol": "zg_float_buffer_deinit"
     },
@@ -97,6 +121,11 @@
           "ref": "IntBuffer"
         }
       },
+      "source": {
+        "path": "./examples/04-callback/src/root.zig",
+        "line": 10,
+        "column": 16
+      },
       "symbol": "zg_int_buffer_create"
     },
     {
@@ -108,6 +137,10 @@
           "name": "value",
           "name_source": "ast",
           "retention": "borrowed",
+          "source": {
+            "line": 16,
+            "column": 34
+          },
           "type": {
             "bits": 32,
             "is_usize": false,
@@ -119,6 +152,11 @@
       "receiver": "IntBuffer",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "./examples/04-callback/src/root.zig",
+        "line": 16,
+        "column": 16
       },
       "symbol": "zg_int_buffer_push"
     },
@@ -133,6 +171,11 @@
         "kind": "int",
         "signed": false
       },
+      "source": {
+        "path": "./examples/04-callback/src/root.zig",
+        "line": 20,
+        "column": 16
+      },
       "symbol": "zg_int_buffer_len"
     },
     {
@@ -142,6 +185,11 @@
       "receiver": "IntBuffer",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "./examples/04-callback/src/root.zig",
+        "line": 24,
+        "column": 16
       },
       "symbol": "zg_int_buffer_deinit"
     },
@@ -155,6 +203,10 @@
           "name": "callback",
           "name_source": "sidecar",
           "retention": "retained",
+          "source": {
+            "line": 44,
+            "column": 19
+          },
           "type": {
             "c_callconv": true,
             "has_userdata": true,
@@ -187,6 +239,10 @@
           "name": "userdata",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 44,
+            "column": 39
+          },
           "type": {
             "bits": 64,
             "is_usize": true,
@@ -207,6 +263,11 @@
           "ref": "CallbackContext"
         }
       },
+      "source": {
+        "path": "./examples/04-callback/src/root.zig",
+        "line": 44,
+        "column": 12
+      },
       "symbol": "zg_callback_context_create"
     },
     {
@@ -218,6 +279,10 @@
           "name": "value",
           "name_source": "ast",
           "retention": "borrowed",
+          "source": {
+            "line": 50,
+            "column": 40
+          },
           "type": {
             "bits": 32,
             "is_usize": false,
@@ -233,6 +298,11 @@
         "kind": "int",
         "signed": true
       },
+      "source": {
+        "path": "./examples/04-callback/src/root.zig",
+        "line": 50,
+        "column": 12
+      },
       "symbol": "zg_callback_context_run"
     },
     {
@@ -242,6 +312,11 @@
       "receiver": "CallbackContext",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "./examples/04-callback/src/root.zig",
+        "line": 54,
+        "column": 12
       },
       "symbol": "zg_callback_context_deinit"
     },
@@ -258,6 +333,11 @@
           "kind": "void"
         }
       },
+      "source": {
+        "path": "./examples/04-callback/src/root.zig",
+        "line": 59,
+        "column": 8
+      },
       "symbol": "zg_panic_now"
     },
     {
@@ -269,6 +349,10 @@
           "name": "source_len",
           "name_source": "ast",
           "retention": "borrowed",
+          "source": {
+            "line": 65,
+            "column": 25
+          },
           "type": {
             "bits": 64,
             "is_usize": true,
@@ -283,6 +367,11 @@
         "kind": "int",
         "signed": false
       },
+      "source": {
+        "path": "./examples/04-callback/src/root.zig",
+        "line": 65,
+        "column": 8
+      },
       "symbol": "zg_compression_bound"
     },
     {
@@ -294,6 +383,10 @@
           "name": "value",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 36,
+            "column": 14
+          },
           "type": {
             "bits": 32,
             "is_usize": false,
@@ -306,6 +399,10 @@
           "name": "callback",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 36,
+            "column": 26
+          },
           "type": {
             "c_callconv": true,
             "has_userdata": true,
@@ -338,6 +435,10 @@
           "name": "userdata",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 36,
+            "column": 46
+          },
           "type": {
             "bits": 64,
             "is_usize": true,
@@ -351,6 +452,11 @@
         "is_usize": false,
         "kind": "int",
         "signed": true
+      },
+      "source": {
+        "path": "./examples/04-callback/src/root.zig",
+        "line": 36,
+        "column": 8
       },
       "symbol": "zg_apply"
     }

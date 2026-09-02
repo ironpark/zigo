@@ -633,21 +633,41 @@ fn typeNode(
                 "zigo supports slices, pointers to declared opaque types, and `[*:0]const u8` sentinel strings; mutable or non-zero-sentinel many pointers are unsupported, at " ++ context,
             ),
         },
-        // Only a pointer to a declared opaque type has a null representation Go
-        // can express: the handle argument is already a pointer, so a nil one
-        // crosses as NULL. Every other optional would need a separate presence
-        // flag in the ABI, which zigo does not generate.
+        // A pointer to a declared opaque type has a null representation Go can
+        // express directly: the handle argument is already a pointer, so a nil
+        // one crosses as NULL. It keeps reflecting straight to `opaque_ptr`
+        // rather than through the `optional` node below, unchanged from before
+        // this type was extended.
+        //
+        // Every other optional (bool, integer, float, enum, or an `extern
+        // struct`) reflects to the `optional` node instead: presence and value
+        // travel together, either as a single nullable pointer parameter or as
+        // a `bool` plus an out parameter on return -- lowering and generation
+        // decide which. A slice, callback, tagged union, or another optional
+        // has no such shape yet, so it stays a compile error until zigo grows
+        // one (planned separately from this phase).
         .optional => |info| blk: {
             const child = @typeInfo(info.child);
-            if (child != .pointer or child.pointer.size != .one or @typeInfo(child.pointer.child) == .@"fn")
-                @compileError("zigo supports optionals only on pointers to declared opaque types, at " ++ context);
-            const name = opaqueNameForPath(types.items, @typeName(child.pointer.child)) orelse
-                return missingOpaqueType(@typeName(child.pointer.child), context);
-            break :blk .{ .opaque_ptr = .{
-                .@"const" = child.pointer.is_const,
-                .nullable = true,
-                .ref = name,
-            } };
+            if (child == .pointer and child.pointer.size == .one and @typeInfo(child.pointer.child) != .@"fn") {
+                const name = opaqueNameForPath(types.items, @typeName(child.pointer.child)) orelse
+                    return missingOpaqueType(@typeName(child.pointer.child), context);
+                break :blk .{ .opaque_ptr = .{
+                    .@"const" = child.pointer.is_const,
+                    .nullable = true,
+                    .ref = name,
+                } };
+            }
+            const allowed = switch (child) {
+                .bool, .int, .float, .@"enum" => true,
+                .@"struct" => |value| value.layout == .@"extern",
+                else => false,
+            };
+            if (!allowed) @compileError(
+                "zigo supports optionals on pointers to declared opaque types, bool, integers, floats, enums, and extern structs, at " ++ context,
+            );
+            const child_node = try allocator.create(semantic.TypeNode);
+            child_node.* = try typeNode(allocator, info.child, types, context ++ " (optional child)");
+            break :blk .{ .optional = .{ .child = child_node } };
         },
         .error_union => |info| blk: {
             const payload = try allocator.create(semantic.TypeNode);

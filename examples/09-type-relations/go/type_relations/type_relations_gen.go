@@ -163,3 +163,77 @@ func CodepointWidth(cp uint32) (uint8, error) {
 	}
 	return result, nil
 }
+
+// DoubleWidth
+// A `?u32` on both sides: absent in, absent out.
+func DoubleWidth(value *uint32) (uint32, bool) {
+	zigoResult, zigoHas := raw.DoubleWidth(value)
+	return zigoResult, zigoHas
+}
+
+// Invert
+// An optional bool has three states at the boundary, and Go sees all three.
+func Invert(value *bool) (bool, bool) {
+	var valueRaw *uint8
+	if value != nil {
+		valueRawValue := boolToUint8(*value)
+		valueRaw = &valueRawValue
+	}
+	zigoResult, zigoHas := raw.Invert(valueRaw)
+	return zigoResult != 0, zigoHas
+}
+
+// StyleOrDefault
+// An optional enum resolves to the default style when it is absent.
+func StyleOrDefault(style *CursorStyle) CursorStyle {
+	var styleRaw *uint8
+	if style != nil {
+		styleRawValue := uint8(*style)
+		styleRaw = &styleRawValue
+	}
+	return CursorStyle(raw.StyleOrDefault(styleRaw))
+}
+
+// BlinkingStyle
+// An optional enum on the way out: only a blinking style is reported.
+func BlinkingStyle(style *CursorStyle) (CursorStyle, bool) {
+	var styleRaw *uint8
+	if style != nil {
+		styleRawValue := uint8(*style)
+		styleRaw = &styleRawValue
+	}
+	zigoResult, zigoHas := raw.BlinkingStyle(styleRaw)
+	return CursorStyle(zigoResult), zigoHas
+}
+
+// ShiftPoint
+// A whole `extern struct` in and out, presence carried alongside.
+func ShiftPoint(origin *Point, delta int16) (Point, bool) {
+	var originRaw *raw.PointData
+	if origin != nil {
+		originRawValue := zigoPointToRaw(*origin)
+		originRaw = &originRawValue
+	}
+	zigoResult, zigoHas := raw.ShiftPoint(originRaw, delta)
+	return zigoPointFromRaw(zigoResult), zigoHas
+}
+
+// CheckedShift
+// An optional payload inside an error union: the status code carries the
+// error and a separate flag carries presence, so all three outcomes are
+// distinguishable.
+// Native failures are returned as generated error values.
+func CheckedShift(origin *Point, delta int16) (Point, bool, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	var originRaw *raw.PointData
+	if origin != nil {
+		originRawValue := zigoPointToRaw(*origin)
+		originRaw = &originRawValue
+	}
+	result, zigoHas, code := raw.CheckedShift(originRaw, delta)
+	if code != 0 {
+		return Point{}, false, errorForCode("CheckedShift", code)
+	}
+	return zigoPointFromRaw(result), zigoHas, nil
+}

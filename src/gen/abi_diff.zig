@@ -881,3 +881,55 @@ test "a resized stream buffer is compatible while the direction is breaking" {
     defer direction_report.deinit(std.testing.allocator);
     try std.testing.expect(direction_report.hasBreaking());
 }
+
+test "making a parameter or a return optional is breaking" {
+    var word: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+    const optional_word: semantic.TypeNode = .{ .optional = .{ .child = &word } };
+    // `?T` grows the C signature: a parameter gains a nullable pointer in
+    // place of the value, and a return trades its value for a presence flag
+    // plus an out parameter. Neither is something an existing caller links
+    // against unchanged.
+    const plain: []const semantic.SemanticFn = &.{.{
+        .name = "double",
+        .params = &.{.{ .name = "value", .type = word }},
+        .@"return" = word,
+        .symbol = "zg_double",
+    }};
+    const optional_param: []const semantic.SemanticFn = &.{.{
+        .name = "double",
+        .params = &.{.{ .name = "value", .type = optional_word }},
+        .@"return" = word,
+        .symbol = "zg_double",
+    }};
+    const optional_return: []const semantic.SemanticFn = &.{.{
+        .name = "double",
+        .params = &.{.{ .name = "value", .type = word }},
+        .@"return" = optional_word,
+        .symbol = "zg_double",
+    }};
+
+    var parameter_report = try diff(
+        std.testing.allocator,
+        .{ .functions = plain, .package = "demo", .prefix = "zg", .zig_version = "0.16.0" },
+        .{ .functions = optional_param, .package = "demo", .prefix = "zg", .zig_version = "0.16.0" },
+    );
+    defer parameter_report.deinit(std.testing.allocator);
+    try std.testing.expect(parameter_report.hasBreaking());
+
+    var return_report = try diff(
+        std.testing.allocator,
+        .{ .functions = plain, .package = "demo", .prefix = "zg", .zig_version = "0.16.0" },
+        .{ .functions = optional_return, .package = "demo", .prefix = "zg", .zig_version = "0.16.0" },
+    );
+    defer return_report.deinit(std.testing.allocator);
+    try std.testing.expect(return_report.hasBreaking());
+
+    // The same optional on both sides is not a change at all.
+    var stable_report = try diff(
+        std.testing.allocator,
+        .{ .functions = optional_param, .package = "demo", .prefix = "zg", .zig_version = "0.16.0" },
+        .{ .functions = optional_param, .package = "demo", .prefix = "zg", .zig_version = "0.16.0" },
+    );
+    defer stable_report.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 0), stable_report.changes.items.len);
+}

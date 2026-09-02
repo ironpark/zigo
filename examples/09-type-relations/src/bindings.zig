@@ -9,6 +9,7 @@ pub const bindings = zigo.define(.{
         // The enum has no name of its own: `@typeName` ends in the slice
         // expression that built it. `.name` is what Go and C get called.
         .{ .name = "CursorStyle", .type = library.CursorStyle, .repr = .enumeration },
+        .{ .type = library.Point, .repr = .value },
     },
     .functions = .{
         .{ .path = "Counter.create", .params = .{"initial"} },
@@ -24,5 +25,11 @@ pub const bindings = zigo.define(.{
         .{ .path = "root.cursorStyleBlinks", .params = .{"style"} },
         .{ .path = "root.text.runWidth", .params = .{ "first", "second" } },
         .{ .path = "root.text.unicode.codepointWidth", .params = .{"cp"} },
+        .{ .path = "root.doubleWidth", .params = .{"value"} },
+        .{ .path = "root.invert", .params = .{"value"} },
+        .{ .path = "root.styleOrDefault", .params = .{"style"} },
+        .{ .path = "root.blinkingStyle", .params = .{"style"} },
+        .{ .path = "root.shiftPoint", .params = .{ "origin", "delta" } },
+        .{ .path = "root.checkedShift", .params = .{ "origin", "delta" } },
     },
 });

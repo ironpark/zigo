@@ -447,8 +447,45 @@ breaking으로 봅니다.
 `?*T`/`?*const T` 매개변수는 nil을 받을 수 있는 handle 인자가 됩니다. Go에서 nil을
 넘기면 native 쪽에는 NULL이 전달되고 `*HandleError`는 발생하지 않습니다. 다만 optional은
 "인자가 없어도 된다"는 뜻이지 "닫힌 handle을 넘겨도 된다"는 뜻은 아니므로, nil이 아닌 채
-이미 닫힌 handle은 여전히 `*HandleError`입니다. optional은 선언된 opaque type의
-pointer에만 쓸 수 있고, 그 밖의 optional은 reflection 단계에서 거부됩니다.
+이미 닫힌 handle은 여전히 `*HandleError`입니다.
+
+### optional
+
+`?T`는 매개변수, 반환값, error union payload 이 세 자리에서만 쓸 수 있습니다. `T`로는
+bool, 정수(승격 대상인 좁은 정수 포함), 부동소수, 등록 enum, `extern struct`, 그리고
+선언된 opaque type의 pointer를 지원합니다.
+
+| Zig | C | Go |
+| --- | --- | --- |
+| 매개변수 `?T` (scalar·bool·enum) | `const T *x` (NULL = 부재) | `*T` (nil = 부재) |
+| 매개변수 `?ExternStruct` | `const T *x` (NULL = 부재) | `*T` (nil = 부재) |
+| 매개변수 `?*Handle` | `T *x` | `*Handle` |
+| 반환 `?T` | `bool` 반환 + `T *out_result` | `(T, bool)` |
+| 반환 `E!?T` | `int32_t` 상태 + `bool *out_result_has` + `T *out_result` | `(T, bool, error)` |
+
+```zig
+pub fn shiftPoint(origin: ?Point, delta: i16) ?Point { /* ... */ }
+```
+
+```go
+origin := Point{X: 1, Y: 2}
+shifted, ok := ShiftPoint(&origin, 2) // ok == true
+_, ok = ShiftPoint(nil, 2)            // ok == false
+```
+
+부재와 "값이 0인 present"는 서로 다릅니다. 값 자체가 아니라 presence 플래그가 그것을
+가리므로, `DoubleWidth(&zero)`는 `0, true`를, `DoubleWidth(nil)`은 `_, false`를
+돌려줍니다. error union과 결합할 때도 마찬가지로 error·부재·값이 각각 구별됩니다.
+
+scalar optional을 Go에서 `*T`로 적는 것은 의도한 선택입니다. 제네릭 `Optional[T]` 래퍼를
+두는 대신 언어가 이미 가진 nil 포인터를 그대로 씁니다.
+
+`abi-check`는 `T`와 `?T` 사이의 변경을 breaking으로 봅니다. C 시그니처가 통째로 달라지기
+때문입니다.
+
+`extern struct`의 field, callback signature, slice 원소(`[]?T`), optional의
+optional(`??T`)에는 presence를 실을 자리가 없어 `ZIGO019`로 거부됩니다. reflection이
+표현할 수 없는 child(slice, tagged union 등)는 그보다 앞선 컴파일 오류입니다.
 
 retained callback이나 pointer는 소유 객체의 `Close`까지 유효해야 합니다.
 
@@ -506,7 +543,8 @@ out parameter로 낮추고 생성 코드가 주소를 관리합니다.
 모든 field가 bool, 정수/부동소수 scalar, 등록 enum, 또는 다시 적격한 `extern struct`여야
 합니다. slice, pointer, optional, error union, callback, 일반 struct field와 빈 struct는
 `ZIGO012`로 거부됩니다. 이런 scalar-only struct는 직접 slice 원소로도 사용할 수 있습니다.
-다만 optional이나 callback signature 안에 값을 넣으면 `ZIGO013`입니다. field
+다만 callback signature 안에 값을 넣으면 `ZIGO013`입니다. `?ExternStruct`는 통째로
+nullable pointer 하나로 내려가므로 매개변수·반환·error payload 자리에서 지원합니다. field
 추가·삭제·재정렬·타입 변경은 모두 breaking ABI 변경입니다.
 
 ```zig

@@ -231,6 +231,23 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
             continue;
         }
 
+        // A plain `?T` return puts presence in the C return value and the
+        // value in an out parameter, so an absent result leaves `out_result`
+        // untouched and reports 0.
+        if (function.origin.@"return" == .optional) {
+            const child = function.origin.@"return".optional.child.*;
+            try writer.writeAll("const result = ");
+            try writeTargetCall(allocator, writer, program, function);
+            try writer.writeAll(" orelse {\n");
+            try writeSliceWrittenZeros(writer, function);
+            try writer.writeAll("        return 0;\n    };\n    out_result.* = ");
+            try writeZigReturnConversion(writer, child, "result");
+            try writer.writeAll(";\n");
+            try writeSliceWrittenAssignments(writer, function);
+            try writer.writeAll("    return 1;\n}\n");
+            continue;
+        }
+
         if (function.origin.@"return" == .error_union) {
             const error_union = function.origin.@"return".error_union;
             if (error_union.payload.* == .void) {
@@ -245,6 +262,13 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
                 // caller that checks the code first never reads them.
                 if (error_union.payload.* == .slice) {
                     try writer.writeAll("    out_result_ptr.* = result.ptr;\n    out_result_len.* = result.len;\n");
+                } else if (error_union.payload.* == .optional) {
+                    // The status code is spent on the error, so presence needs
+                    // its own out parameter; the value one stays untouched
+                    // when the payload is absent.
+                    try writer.writeAll("    if (result) |zigo_value| {\n        out_result_has.* = 1;\n        out_result.* = ");
+                    try writeZigReturnConversion(writer, error_union.payload.optional.child.*, "zigo_value");
+                    try writer.writeAll(";\n    } else {\n        out_result_has.* = 0;\n    }\n");
                 } else {
                     try writer.writeAll("    out_result.* = ");
                     try writeZigReturnConversion(writer, error_union.payload.*, "result");
@@ -651,6 +675,7 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             else
                 try writer.print("if ({s}_len == 0) &.{{}} else {s}_ptr[0..{s}_len]", .{ parameter.name, parameter.name, parameter.name }),
             .value_struct => try writer.print("{s}.*", .{parameter.name}),
+            .optional => |optional| try writeShimOptionalArgument(writer, parameter.name, optional.child.*),
             else => if (abi.narrowInt(parameter.type) != null)
                 try writer.print("@intCast({s})", .{parameter.name})
             else
@@ -747,6 +772,22 @@ fn writeZigReturnConversion(writer: *std.Io.Writer, node: semantic.TypeNode, exp
     }
 }
 
+/// Rebuilds a `?T` argument from the nullable pointer the C boundary carries
+/// it in: a NULL pointer is the Zig `null`, and a non-NULL one is dereferenced
+/// and converted exactly as the bare `T` parameter of the same type would be.
+fn writeShimOptionalArgument(writer: *std.Io.Writer, name: []const u8, child: semantic.TypeNode) !void {
+    try writer.print("if ({0s}) |zigo_{0s}| ", .{name});
+    switch (child) {
+        .bool => try writer.print("zigo_{s}.* != 0", .{name}),
+        .@"enum" => try writer.print("@enumFromInt(zigo_{s}.*)", .{name}),
+        else => if (abi.narrowInt(child) != null)
+            try writer.print("@intCast(zigo_{s}.*)", .{name})
+        else
+            try writer.print("zigo_{s}.*", .{name}),
+    }
+    try writer.writeAll(" else null");
+}
+
 /// A parameter declared narrower than the C integer carrying it can arrive
 /// holding a value the Zig type cannot represent. There is no status code to
 /// spend on it -- a function without an error union has nowhere to put one --
@@ -754,8 +795,28 @@ fn writeZigReturnConversion(writer: *std.Io.Writer, node: semantic.TypeNode, exp
 /// `NativePanicError` at the call site that caused it.
 fn writeNarrowIntegerGuards(writer: *std.Io.Writer, function: abi.AbiFn) !void {
     for (function.origin.params) |parameter| {
-        const narrow = abi.narrowInt(parameter.type) orelse continue;
+        // A `?T` argument carries the same narrow integer one pointer deeper,
+        // and an absent one has no value to check at all, so the guard reads
+        // through the pointer and runs only when it is non-NULL.
+        const optional = parameter.type == .optional;
+        const node = if (optional) parameter.type.optional.child.* else parameter.type;
+        const narrow = abi.narrowInt(node) orelse continue;
         const spelling: u8 = if (narrow.signed) 'i' else 'u';
+        if (optional) {
+            try writer.print("    if ({s}) |zigo_narrow| ", .{parameter.name});
+            if (narrow.signed) {
+                try writer.print(
+                    "if (zigo_narrow.* < std.math.minInt({0c}{1d}) or zigo_narrow.* > std.math.maxInt({0c}{1d})) @panic(\"zigo: argument `{2s}` is out of range for {0c}{1d}\");\n",
+                    .{ spelling, narrow.bits, parameter.name },
+                );
+            } else {
+                try writer.print(
+                    "if (zigo_narrow.* > std.math.maxInt({0c}{1d})) @panic(\"zigo: argument `{2s}` is out of range for {0c}{1d}\");\n",
+                    .{ spelling, narrow.bits, parameter.name },
+                );
+            }
+            continue;
+        }
         if (narrow.signed) {
             try writer.print(
                 "    if ({0s} < std.math.minInt({1c}{2d}) or {0s} > std.math.maxInt({1c}{2d})) @panic(\"zigo: argument `{0s}` is out of range for {1c}{2d}\");\n",
@@ -1291,6 +1352,33 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 defer allocator.free(c_name);
                 try writeCgoStructConversion(allocator, writer, program, record, c_name, go_names[parameter_index]);
             }
+            if (parameter.type == .optional) {
+                // The C side takes one nullable pointer, so an absent value is
+                // a nil one and a present value is copied into a local of the
+                // C type -- the Go mirror and the C type are different types
+                // even when they have the same width.
+                const name = go_names[parameter_index];
+                const child = parameter.type.optional.child.*;
+                if (child == .value_struct) {
+                    const record = structRecord(program, child.value_struct.ref);
+                    try writer.print("\tvar {s}Ptr *C.{s}\n\tif {s} != nil {{\n", .{ name, record.c_name, name });
+                    const c_name = try std.fmt.allocPrint(allocator, "c{s}", .{name});
+                    defer allocator.free(c_name);
+                    const go_value = try std.fmt.allocPrint(allocator, "(*{s})", .{name});
+                    defer allocator.free(go_value);
+                    try writeCgoStructConversionIndented(allocator, writer, program, record, c_name, go_value, "\t\t");
+                    try writer.print("\t\t{s}Ptr = &{s}\n\t}}\n", .{ name, c_name });
+                } else {
+                    try writer.print("\tvar {s}Value C.", .{name});
+                    try writeCgoType(writer, semanticScalar(program, child));
+                    try writer.print("\n\tvar {s}Ptr *C.", .{name});
+                    try writeCgoType(writer, semanticScalar(program, child));
+                    try writer.print("\n\tif {0s} != nil {{\n\t\t{0s}Value = C.", .{name});
+                    try writeCgoType(writer, semanticScalar(program, child));
+                    try writer.print("(*{0s})\n\t\t{0s}Ptr = &{0s}Value\n\t}}\n", .{name});
+                }
+                continue;
+            }
             if (isStringSliceParameter(parameter)) {
                 try writeCgoStringSliceSetup(writer, go_names[parameter_index]);
                 continue;
@@ -1361,9 +1449,27 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         const error_payload = if (returns_error) function.origin.@"return".error_union.payload.* else semantic.TypeNode{ .void = {} };
         if (function.ret_struct) |record| {
             try writer.print("\tvar outResult C.{s}\n", .{record.c_name});
+        } else if (function.ret_optional) {
+            // A scalar `?T` return still needs an out parameter to carry the
+            // value; only the struct case declares one above.
+            try writer.writeAll("\tvar outResult C.");
+            try writeCgoType(writer, semanticScalar(program, function.origin.@"return".optional.child.*));
+            try writer.writeByte('\n');
         }
         if (returns_error and error_payload != .void and error_payload != .slice) {
-            if (error_payload == .opaque_ptr) {
+            if (error_payload == .optional) {
+                try writer.writeAll("\tvar outResultHas C.");
+                try writeCgoType(writer, .bool_u8);
+                try writer.writeByte('\n');
+                const child = error_payload.optional.child.*;
+                if (function.payload_struct) |record| {
+                    try writer.print("\tvar outResult C.{s}\n", .{record.c_name});
+                } else {
+                    try writer.writeAll("\tvar outResult C.");
+                    try writeCgoType(writer, semanticScalar(program, child));
+                    try writer.writeByte('\n');
+                }
+            } else if (error_payload == .opaque_ptr) {
                 try writer.print("\tvar outResult *C.{s}\n", .{payloadOutHandleCName(function)});
             } else if (function.payload_struct) |record| {
                 try writer.print("\tvar outResult C.{s}\n", .{record.c_name});
@@ -1376,7 +1482,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         // A copied output slice is read back after the call, so a plain result
         // has to be named rather than returned straight out of the call
         // expression -- otherwise the copy would sit after the `return`.
-        const binds_raw_result = !returns_error and
+        const binds_raw_result = !returns_error and !function.ret_optional and
             sliceReturnElement(function.origin.*) == null and
             function.ret_struct == null and
             function.origin.@"return" != .void and
@@ -1384,6 +1490,10 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         try writer.writeByte('\t');
         if (returns_error) {
             try writer.writeAll("code := int32(");
+        } else if (function.ret_optional) {
+            // The C call's own return is the presence bool; the value comes
+            // back through `outResult` (or the struct read below).
+            try writer.writeAll("outResultHas := ");
         } else if (sliceReturnElement(function.origin.*) != null or function.ret_struct != null) {
             // The out parameters are converted after the C call.
         } else if (isCStringReturn(function.origin.*)) {
@@ -1422,6 +1532,8 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 .string_lengths => try writer.print("{s}LensPtr", .{go_names[parameter.source_index]}),
                 .string_count => try writer.print("C.size_t(len({s}))", .{go_names[parameter.source_index]}),
                 .payload_out => try writer.writeAll("&outResult"),
+                .optional_in => try writer.print("{s}Ptr", .{go_names[parameter.source_index]}),
+                .payload_has_out => try writer.writeAll("&outResultHas"),
                 .return_slice_pointer => try writer.writeAll("&outResultPtr"),
                 .return_slice_length => try writer.writeAll("&outResultLen"),
                 // cgo binds the trampoline by its `//export` name inside the
@@ -1438,11 +1550,21 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         if (returns_error) try writer.writeByte(')');
         if (!returns_error and isCStringReturn(function.origin.*)) try writer.writeByte(')');
         if (!returns_error and function.origin.@"return" != .void and
-            function.origin.@"return" != .slice and function.ret_struct == null) try writer.writeByte(')');
+            function.origin.@"return" != .slice and function.ret_struct == null and !function.ret_optional) try writer.writeByte(')');
+        if (!returns_error and function.ret_optional) try writer.writeAll(" != 0");
         try writer.writeByte('\n');
         if (!returns_error) {
             if (sliceReturnElement(function.origin.*)) |element| {
                 try writeCgoSliceReturn(allocator, writer, program, element, "outResultPtr", "outResultLen", function.release_symbol, releaseReceiverCName(program, function), "");
+            } else if (function.ret_optional) {
+                try writer.writeAll("\treturn ");
+                if (function.ret_struct) |record| {
+                    try writeCgoStructRead(allocator, writer, program, record.*, "\t", "outResult");
+                } else {
+                    try writeRawConversionPrefix(writer, program, function.origin.@"return".optional.child.*);
+                    try writer.writeAll("outResult)");
+                }
+                try writer.writeAll(", outResultHas\n");
             }
         }
         for (function.origin.params, 0..) |parameter, parameter_index| {
@@ -1469,9 +1591,9 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
             try writer.writeAll("\n\t}\n");
         }
         if (binds_raw_result) try writer.writeAll("\treturn result\n");
-        if (function.ret_struct) |record| {
+        if (function.ret_struct != null and !function.ret_optional) {
             try writer.writeAll("\treturn ");
-            try writeCgoStructRead(allocator, writer, program, record.*, "\t", "outResult");
+            try writeCgoStructRead(allocator, writer, program, function.ret_struct.?.*, "\t", "outResult");
             try writer.writeByte('\n');
         }
         if (returns_error) {
@@ -1483,6 +1605,15 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 // declared release runs only after a successful call.
                 try writer.writeAll("\tif code != 0 {\n\t\treturn nil, code\n\t}\n");
                 try writeCgoSliceReturn(allocator, writer, program, element, "outResultPtr", "outResultLen", function.release_symbol, releaseReceiverCName(program, function), ", code");
+            } else if (error_payload == .optional) {
+                try writer.writeAll("\treturn ");
+                if (function.payload_struct) |record| {
+                    try writeCgoStructRead(allocator, writer, program, record.*, "\t", "outResult");
+                } else {
+                    try writeRawConversionPrefix(writer, program, error_payload.optional.child.*);
+                    try writer.writeAll("outResult)");
+                }
+                try writer.writeAll(", outResultHas != 0, code\n");
             } else if (function.payload_struct) |record| {
                 try writer.writeAll("\treturn ");
                 try writeCgoStructRead(allocator, writer, program, record.*, "\t", "outResult");
@@ -2343,26 +2474,39 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         if (hasWrittenOutParam(parameter)) try writer.print("\tvar {s}Written uintptr\n", .{slice_name});
     };
     if (sliceReturnElement(function.origin.*) != null) try writer.writeAll("\tvar outResultPtr unsafe.Pointer\n\tvar outResultLen uintptr\n");
-    if (function.ret_struct != null) {
+    // A `?T` return carries its value in an out parameter whatever `T` is, so
+    // the declaration reads through the optional rather than spelling the
+    // pointer the public layer sees.
+    if (function.ret_struct != null or function.ret_optional) {
         try writer.writeAll("\tvar outResult ");
-        try writeRawGoType(writer, program, function.origin.@"return");
+        try writeRawGoType(writer, program, if (function.ret_optional)
+            function.origin.@"return".optional.child.*
+        else
+            function.origin.@"return");
         try writer.writeByte('\n');
     }
     const returns_error = function.origin.@"return" == .error_union;
     const error_payload = if (returns_error) function.origin.@"return".error_union.payload.* else semantic.TypeNode{ .void = {} };
     if (returns_error and error_payload != .void and error_payload != .slice) {
+        // Presence is its own out parameter here: the status code is already
+        // spent on the error.
+        if (error_payload == .optional) try writer.writeAll("\tvar outResultHas uint8\n");
+        const payload = if (error_payload == .optional) error_payload.optional.child.* else error_payload;
         try writer.writeAll("\tvar outResult ");
-        if (error_payload == .value_struct)
-            try writeRawGoType(writer, program, error_payload)
-        else if (puregoPayloadNeedsConversion(error_payload))
-            try writePuregoAbiType(writer, semanticScalar(program, error_payload))
+        if (payload == .value_struct)
+            try writeRawGoType(writer, program, payload)
+        else if (puregoPayloadNeedsConversion(payload))
+            try writePuregoAbiType(writer, semanticScalar(program, payload))
         else
-            try writeRawGoType(writer, program, error_payload);
+            try writeRawGoType(writer, program, payload);
         try writer.writeByte('\n');
     }
     try writer.writeByte('\t');
     if (returns_error)
         try writer.writeAll("code := ")
+    else if (function.ret_optional)
+        // The call's own result is the presence flag.
+        try writer.writeAll("result := ")
     else if ((function.origin.@"return" != .void and sliceReturnElement(function.origin.*) == null and function.ret_struct == null) or isCStringReturn(function.origin.*))
         try writer.writeAll("result := ");
     try writer.print("bindings().fn{s}(", .{go_name});
@@ -2400,6 +2544,14 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
             // lowered scalar for this parameter already says.
             .payload_out => try writer.writeAll(if (parameter.scalar == .pointer and
                 parameter.scalar.pointer.child.* == .value_struct) "unsafe.Pointer(&outResult)" else "&outResult"),
+            // An `extern struct` optional crosses as a raw address, matching
+            // the unsafe.Pointer the bindings table declares; a nil Go pointer
+            // converts to a nil unsafe.Pointer, which is the absent case.
+            .optional_in => if (parameter.scalar == .pointer and parameter.scalar.pointer.child.* == .value_struct)
+                try writer.print("unsafe.Pointer({s})", .{go_names[parameter.source_index]})
+            else
+                try writer.writeAll(go_names[parameter.source_index]),
+            .payload_has_out => try writer.writeAll("&outResultHas"),
             .return_slice_pointer => try writer.writeAll("&outResultPtr"),
             .return_slice_length => try writer.writeAll("&outResultLen"),
             .stream_callback => try writer.print("{s}Callback", .{go_names[parameter.source_index]}),
@@ -2430,6 +2582,13 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
             // runs only after a successful call.
             try writer.writeAll("\tif code != 0 {\n\t\treturn nil, code\n\t}\n");
             try writePuregoSliceReturn(allocator, writer, program, function, element, ", code");
+        } else if (error_payload == .optional) {
+            try writer.writeAll("\treturn ");
+            if (puregoPayloadNeedsConversion(error_payload.optional.child.*))
+                try writeRawResultConversion(writer, program, error_payload.optional.child.*, "outResult", options)
+            else
+                try writer.writeAll("outResult");
+            try writer.writeAll(", outResultHas != 0, code\n");
         } else if (puregoPayloadNeedsConversion(error_payload)) {
             try writer.writeAll("\treturn ");
             try writeRawResultConversion(writer, program, error_payload, "outResult", options);
@@ -2437,6 +2596,8 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         } else {
             try writer.writeAll("\treturn outResult, code\n");
         }
+    } else if (function.ret_optional) {
+        try writer.writeAll("\treturn outResult, result != 0\n");
     } else if (function.ret_struct != null) {
         try writer.writeAll("\treturn outResult\n");
     } else if (function.origin.@"return" != .void) {
@@ -2908,6 +3069,52 @@ fn writePublicCapturedReturn(writer: *std.Io.Writer, program: abi.Program, funct
 
 /// Whether the public function file reinterprets a slice rather than copying
 /// it, which is the one `unsafe` use it can have.
+/// Whether the public spelling of a `?T` differs from the raw one, so the
+/// pointer has to be rebuilt over a converted value rather than handed over as
+/// it is. Integers and floats share both spellings; a bool, an enum, and an
+/// `extern struct` do not.
+fn publicOptionalNeedsConversion(child: semantic.TypeNode) bool {
+    return switch (child) {
+        .bool, .@"enum", .value_struct => true,
+        else => false,
+    };
+}
+
+/// Rebuilds an optional parameter in its raw spelling ahead of the call. A nil
+/// argument stays nil -- absence is the same on both sides -- and a present one
+/// is converted into a local whose address travels instead.
+fn writePublicOptionalRawSetup(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    options: Options,
+    child: semantic.TypeNode,
+    name: []const u8,
+) !void {
+    if (!publicOptionalNeedsConversion(child)) return;
+    try writer.print("\tvar {s}Raw *", .{name});
+    if (child == .value_struct) {
+        const record = structRecord(program, child.value_struct.ref);
+        const raw_type = try structRawTypeNameAlloc(allocator, record.name);
+        defer allocator.free(raw_type);
+        try writeRawTypeReferencePrefix(writer, options);
+        try writer.writeAll(raw_type);
+    } else {
+        try writeRawGoType(writer, program, child);
+    }
+    try writer.print("\n\tif {0s} != nil {{\n\t\t{0s}RawValue := ", .{name});
+    switch (child) {
+        .bool => try writer.print("boolToUint8(*{s})", .{name}),
+        .@"enum" => {
+            try writer.writeAll(rawGoTypeName(program, child));
+            try writer.print("(*{s})", .{name});
+        },
+        .value_struct => |value| try writer.print("zigo{s}ToRaw(*{s})", .{ value.ref, name }),
+        else => unreachable,
+    }
+    try writer.print("\n\t\t{0s}Raw = &{0s}RawValue\n\t}}\n", .{name});
+}
+
 fn publicNeedsUnsafe(program: abi.Program) bool {
     for (program.functions) |function| {
         for (function.origin.params) |parameter| {
@@ -3057,6 +3264,10 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             if (!isValueStructSlice(parameter.type)) continue;
             try writePublicSliceRawSetup(allocator, writer, program, options, parameter, go_names[parameter_index]);
         }
+        for (function.origin.params, 0..) |parameter, parameter_index| {
+            if (parameter.type != .optional) continue;
+            try writePublicOptionalRawSetup(allocator, writer, program, options, parameter.type.optional.child.*, go_names[parameter_index]);
+        }
         try writer.writeByte('\t');
         const returns_error = function.origin.@"return" == .error_union;
         const error_payload = if (returns_error) function.origin.@"return".error_union.payload.* else semantic.TypeNode{ .void = {} };
@@ -3070,13 +3281,23 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         const captures_return = !returns_error and !borrowed_direct and !owned_direct and
             (hasOutValueStructSlice(function.origin.*) or needs_rethrow) and function.origin.@"return" != .void;
         if (returns_error) {
-            if (error_payload == .void) try writer.writeAll("code := ") else try writer.writeAll("result, code := ");
+            if (error_payload == .void)
+                try writer.writeAll("code := ")
+            else if (error_payload == .optional)
+                try writer.writeAll("result, zigoHas, code := ")
+            else
+                try writer.writeAll("result, code := ");
             try writeRawReferencePrefix(writer, options);
         } else if (borrowed_direct or owned_direct) {
             try writer.writeAll("result := ");
             try writeRawReferencePrefix(writer, options);
         } else if (captures_return) {
             try writer.writeAll("result := ");
+            try writeRawReferencePrefix(writer, options);
+        } else if (function.origin.@"return" == .optional) {
+            // Presence comes back beside the value, so both are named and the
+            // value is converted into its public spelling on the way out.
+            try writer.writeAll("zigoResult, zigoHas := ");
             try writeRawReferencePrefix(writer, options);
         } else if (isCStringReturn(function.origin.*)) {
             try writer.writeAll("return ");
@@ -3143,6 +3364,10 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                     try writer.print("({s})", .{go_names[parameter_index]});
                 },
                 .opaque_ptr => try writer.print("{s}Ptr", .{go_names[parameter_index]}),
+                .optional => |optional| if (publicOptionalNeedsConversion(optional.child.*))
+                    try writer.print("{s}Raw", .{go_names[parameter_index]})
+                else
+                    try writer.writeAll(go_names[parameter_index]),
                 .slice => if (isValueStructSlice(parameter.type))
                     try writer.print("{s}Raw", .{go_names[parameter_index]})
                 else if (isStringSliceParameter(parameter))
@@ -3163,7 +3388,8 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         if (!returns_error and !captures_return and isValueStructSlice(function.origin.@"return")) try writer.writeByte(')');
         if (!returns_error and !captures_return and function.origin.@"return" == .bool) try writer.writeAll(" != 0");
         if (!returns_error and !captures_return and isUtf8Slice(function.origin.@"return", function.origin.return_semantic)) try writer.writeByte(')');
-        if (!returns_error and !captures_return and !borrowed_direct and !owned_direct and needs_check and function.origin.@"return" != .void) try writer.writeAll(", nil");
+        if (!returns_error and !captures_return and !borrowed_direct and !owned_direct and needs_check and
+            function.origin.@"return" != .void and function.origin.@"return" != .optional) try writer.writeAll(", nil");
         try writer.writeByte('\n');
         if (needs_rethrow) try renderCallbackRethrows(allocator, writer, program, function.origin.*, operation);
         // Before the status check: a stream that failed is the caller's own
@@ -3171,6 +3397,13 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         if (has_stream) try renderStreamErrorChecks(allocator, writer, function.origin.*, go_names, operation, constructor);
         if (!returns_error and hasOutValueStructSlice(function.origin.*)) {
             try writePublicValueStructSliceCopyBacks(writer, program, function.origin.*, go_names);
+        }
+        if (!returns_error and function.origin.@"return" == .optional) {
+            try writer.writeAll("\treturn ");
+            try writePublicResultConversion(writer, program, function.origin.@"return".optional.child.*, "zigoResult");
+            try writer.writeAll(", zigoHas");
+            if (needs_check) try writer.writeAll(", nil");
+            try writer.writeByte('\n');
         }
         if (captures_return) try writePublicCapturedReturn(writer, program, function.origin.*, needs_check);
         if (borrowed_direct or owned_direct) {
@@ -3192,6 +3425,9 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             if (error_payload != .void) {
                 try writePublicZeroValue(writer, function.origin.*, error_payload);
                 try writer.writeAll(", ");
+                // The presence flag sits between the value and the error, and
+                // a failed call has no value at all.
+                if (error_payload == .optional) try writer.writeAll("false, ");
             }
             try writeErrorForCode(allocator, writer, function.origin.*, go_names, operation);
             try writer.writeAll("\t}\n");
@@ -3208,6 +3444,9 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                     try writeBorrowedResult(allocator, writer, function.origin.*, "result");
                 } else if (isStringSlice(error_payload, function.origin.return_semantic)) {
                     try writer.writeAll("string(result)");
+                } else if (error_payload == .optional) {
+                    try writePublicResultConversion(writer, program, error_payload.optional.child.*, "result");
+                    try writer.writeAll(", zigoHas");
                 } else {
                     try writePublicResultConversion(writer, program, error_payload, "result");
                 }
@@ -4635,6 +4874,9 @@ fn renderRangeChecks(
 /// so its zero is the empty string rather than `nil`.
 fn writePublicZeroValue(writer: *std.Io.Writer, function: semantic.SemanticFn, payload: semantic.TypeNode) !void {
     if (isStringSlice(payload, function.return_semantic)) return writer.writeAll("\"\"");
+    // A `?T` payload returns the zero of `T` beside a false presence flag:
+    // there is no zero value of the optional itself to write.
+    if (payload == .optional) return writeGoZeroValue(writer, payload.optional.child.*);
     try writeGoZeroValue(writer, payload);
 }
 
@@ -4642,6 +4884,12 @@ fn writePublicZeroValue(writer: *std.Io.Writer, function: semantic.SemanticFn, p
 /// error: a value return grows into a tuple, a void return becomes `error`.
 fn writeCheckedFunctionReturnType(writer: *std.Io.Writer, function: semantic.SemanticFn) !void {
     if (function.@"return" == .void) return writer.writeAll(" error");
+    if (function.@"return" == .optional) {
+        try writer.writeAll(" (");
+        try writePublicGoType(writer, function.@"return".optional.child.*);
+        try writer.writeAll(", bool, error)");
+        return;
+    }
     try writer.writeAll(" (");
     if (isStringSlice(function.@"return", function.return_semantic)) {
         try writer.writeAll("string");
@@ -4792,11 +5040,20 @@ fn writeRawReturnType(writer: *std.Io.Writer, program: abi.Program, function: ab
         .error_union => |value| {
             if (value.payload.* == .void) {
                 try writer.writeAll(" int32");
+            } else if (value.payload.* == .optional) {
+                try writer.writeAll(" (");
+                try writeRawGoType(writer, program, value.payload.optional.child.*);
+                try writer.writeAll(", bool, int32)");
             } else {
                 try writer.writeAll(" (");
                 try writeRawGoType(writer, program, value.payload.*);
                 try writer.writeAll(", int32)");
             }
+        },
+        .optional => |value| {
+            try writer.writeAll(" (");
+            try writeRawGoType(writer, program, value.child.*);
+            try writer.writeAll(", bool)");
         },
         else => {
             try writer.writeByte(' ');
@@ -4817,6 +5074,10 @@ fn writePublicReturnType(writer: *std.Io.Writer, node: semantic.TypeNode, hint: 
         .error_union => |value| {
             if (value.payload.* == .void) {
                 try writer.writeAll(" error");
+            } else if (value.payload.* == .optional) {
+                try writer.writeAll(" (");
+                try writePublicGoType(writer, value.payload.optional.child.*);
+                try writer.writeAll(", bool, error)");
             } else {
                 try writer.writeAll(" (");
                 if (isStringSlice(value.payload.*, hint))
@@ -4825,6 +5086,11 @@ fn writePublicReturnType(writer: *std.Io.Writer, node: semantic.TypeNode, hint: 
                     try writePublicGoType(writer, value.payload.*);
                 try writer.writeAll(", error)");
             }
+        },
+        .optional => |value| {
+            try writer.writeAll(" (");
+            try writePublicGoType(writer, value.child.*);
+            try writer.writeAll(", bool)");
         },
         else => {
             try writer.writeByte(' ');
@@ -4868,6 +5134,12 @@ fn writeRawGoType(writer: *std.Io.Writer, program: abi.Program, node: semantic.T
         .@"enum" => try writer.writeAll(rawGoTypeName(program, node)),
         .opaque_ptr => try writer.writeAll("unsafe.Pointer"),
         .value_struct => |value| try writer.print("{s}{s}", .{ value.ref, raw_struct_suffix }),
+        // `?T` crosses the C ABI as one nullable pointer, and the raw layer
+        // spells it the same way: a nil Go pointer stands for `null`.
+        .optional => |value| {
+            try writer.writeByte('*');
+            try writeRawGoType(writer, program, value.child.*);
+        },
         else => try writeGoScalar(writer, semanticScalar(program, node)),
     }
 }
@@ -4897,6 +5169,13 @@ fn writePublicGoType(writer: *std.Io.Writer, node: semantic.TypeNode) !void {
         .float => |value| try writer.print("float{d}", .{value.bits}),
         .opaque_ptr => |value| try writer.print("*{s}", .{value.ref}),
         .value_struct => |value| try writer.writeAll(value.ref),
+        // `?T` is spelled `*T` in public Go too: nil stands for absent, a
+        // non-nil pointer carries the value, for both scalar and extern
+        // struct children.
+        .optional => |value| {
+            try writer.writeByte('*');
+            try writePublicGoType(writer, value.child.*);
+        },
         else => unreachable,
     }
 }
@@ -6021,7 +6300,11 @@ fn programNeedsBoolHelper(program: abi.Program) bool {
     for (program.structs) |record| {
         for (record.fields) |field| if (field.node == .bool) return true;
     }
-    for (program.functions) |function| for (function.origin.params) |parameter| if (parameter.type == .bool) return true;
+    // A `?bool` parameter converts the same way, one pointer deeper.
+    for (program.functions) |function| for (function.origin.params) |parameter| {
+        if (parameter.type == .bool) return true;
+        if (parameter.type == .optional and parameter.type.optional.child.* == .bool) return true;
+    };
     return false;
 }
 

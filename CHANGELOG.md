@@ -23,6 +23,16 @@
 
 ### Added
 
+- scalar·bool·enum·`extern struct` optional(`?T`)을 매개변수, 반환값, error union
+  payload 자리에서 지원합니다. 이전에는 선언된 opaque type의 pointer(`?*T`)만 가능했고
+  나머지는 reflection 단계의 컴파일 오류였습니다. 매개변수는 nullable pointer
+  하나(`const T *`, NULL = 부재)로, 반환은 presence `bool` 반환 + `T *out_result`로,
+  `E!?T`는 상태 코드 + `bool *out_result_has` + `T *out_result`로 내려갑니다. Go에서는
+  매개변수가 `*T`(nil = 부재), 반환이 `(T, bool)` 또는 `(T, bool, error)`가 되므로 부재와
+  "값이 0인 present"가 구별됩니다. cgo와 purego 모두 지원하며, 새 kind가 늘어난 것이라
+  기존 바인딩의 ABI는 그대로입니다. `extern struct`의 field, callback signature, slice
+  원소(`[]?T`), optional의 optional은 `ZIGO019`로 거부합니다. `abi-check`는 `T`와 `?T`
+  사이의 변경을 breaking으로 봅니다. (계획 71)
 - `*std.Io.Writer`/`*std.Io.Reader` 파라미터를 지원합니다. Go에서는 `io.Writer`/`io.Reader`가
   되고, shim이 만든 어댑터가 staging 버퍼(기본 65536, `param_meta.<name>.buffer`로 조정,
   4096..16777216)를 채울 때만 Go로 건너갑니다 — 총 `N` 바이트 출력의 `Write` 호출은

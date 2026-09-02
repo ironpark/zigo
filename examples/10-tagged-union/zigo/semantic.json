@@ -27,6 +27,10 @@
           "name": "value",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 14,
+            "column": 19
+          },
           "type": {
             "bits": 32,
             "is_usize": false,
@@ -47,6 +51,11 @@
           "ref": "Child"
         }
       },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 14,
+        "column": 12
+      },
       "symbol": "zg_child_create"
     },
     {
@@ -60,6 +69,11 @@
         "kind": "int",
         "signed": true
       },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 20,
+        "column": 12
+      },
       "symbol": "zg_child_get"
     },
     {
@@ -69,6 +83,11 @@
       "receiver": "Child",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 24,
+        "column": 12
       },
       "symbol": "zg_child_deinit"
     },
@@ -82,6 +101,10 @@
           "name": "initial",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 38,
+            "column": 19
+          },
           "type": {
             "bits": 64,
             "is_usize": false,
@@ -102,6 +125,11 @@
           "ref": "Value"
         }
       },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 38,
+        "column": 12
+      },
       "symbol": "zg_value_create"
     },
     {
@@ -111,6 +139,11 @@
       "receiver": "Value",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 45,
+        "column": 12
       },
       "symbol": "zg_value_set_none"
     },
@@ -123,6 +156,10 @@
           "name": "flag",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 49,
+            "column": 34
+          },
           "type": {
             "kind": "bool"
           }
@@ -131,6 +168,11 @@
       "receiver": "Value",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 49,
+        "column": 12
       },
       "symbol": "zg_value_set_flag"
     },
@@ -143,6 +185,10 @@
           "name": "mode",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 53,
+            "column": 34
+          },
           "type": {
             "kind": "enum",
             "ref": "Mode"
@@ -152,6 +198,11 @@
       "receiver": "Value",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 53,
+        "column": 12
       },
       "symbol": "zg_value_set_mode"
     },
@@ -163,6 +214,11 @@
       "return": {
         "kind": "void"
       },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 57,
+        "column": 12
+      },
       "symbol": "zg_value_use_preset_samples"
     },
     {
@@ -173,6 +229,11 @@
       "return": {
         "kind": "void"
       },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 61,
+        "column": 12
+      },
       "symbol": "zg_value_use_empty_samples"
     },
     {
@@ -182,6 +243,11 @@
       "receiver": "Value",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 65,
+        "column": 12
       },
       "symbol": "zg_value_use_mutable_samples"
     },
@@ -194,6 +260,10 @@
           "name": "child",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 69,
+            "column": 35
+          },
           "type": {
             "const": true,
             "kind": "opaque_ptr",
@@ -205,6 +275,11 @@
       "receiver": "Value",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 69,
+        "column": 12
       },
       "symbol": "zg_value_set_child"
     },
@@ -219,6 +294,11 @@
         "nullable": false,
         "ref": "Value"
       },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 73,
+        "column": 12
+      },
       "symbol": "zg_value_borrow"
     },
     {
@@ -228,6 +308,11 @@
       "receiver": "Value",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 77,
+        "column": 12
       },
       "symbol": "zg_value_deinit"
     },
@@ -241,6 +326,10 @@
           "name": "initial",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 93,
+            "column": 19
+          },
           "type": {
             "bits": 32,
             "is_usize": false,
@@ -261,6 +350,11 @@
           "ref": "Signal"
         }
       },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 93,
+        "column": 12
+      },
       "symbol": "zg_signal_create"
     },
     {
@@ -270,6 +364,11 @@
       "receiver": "Signal",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 99,
+        "column": 12
       },
       "symbol": "zg_signal_set_idle"
     },
@@ -282,6 +381,10 @@
           "name": "ticks",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 103,
+            "column": 36
+          },
           "type": {
             "bits": 32,
             "is_usize": false,
@@ -294,6 +397,11 @@
       "return": {
         "kind": "void"
       },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 103,
+        "column": 12
+      },
       "symbol": "zg_signal_set_ticks"
     },
     {
@@ -305,6 +413,10 @@
           "name": "level",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 107,
+            "column": 36
+          },
           "type": {
             "bits": 64,
             "kind": "float"
@@ -314,6 +426,11 @@
       "receiver": "Signal",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 107,
+        "column": 12
       },
       "symbol": "zg_signal_set_level"
     },
@@ -326,6 +443,10 @@
           "name": "offset",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 111,
+            "column": 37
+          },
           "type": {
             "bits": 16,
             "is_usize": false,
@@ -338,6 +459,11 @@
       "return": {
         "kind": "void"
       },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 111,
+        "column": 12
+      },
       "symbol": "zg_signal_set_offset"
     },
     {
@@ -349,6 +475,10 @@
           "name": "mode",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 115,
+            "column": 35
+          },
           "type": {
             "kind": "enum",
             "ref": "Mode"
@@ -358,6 +488,11 @@
       "receiver": "Signal",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 115,
+        "column": 12
       },
       "symbol": "zg_signal_set_mode"
     },
@@ -370,6 +505,10 @@
           "name": "active",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 119,
+            "column": 37
+          },
           "type": {
             "kind": "bool"
           }
@@ -378,6 +517,11 @@
       "receiver": "Signal",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 119,
+        "column": 12
       },
       "symbol": "zg_signal_set_active"
     },
@@ -388,6 +532,11 @@
       "receiver": "Signal",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 123,
+        "column": 12
       },
       "symbol": "zg_signal_deinit"
     },
@@ -401,6 +550,11 @@
         "kind": "int",
         "signed": false
       },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 128,
+        "column": 8
+      },
       "symbol": "zg_live_values"
     },
     {
@@ -412,6 +566,10 @@
           "name": "numerator",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 132,
+            "column": 15
+          },
           "type": {
             "bits": 64,
             "kind": "float"
@@ -422,6 +580,10 @@
           "name": "denominator",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 132,
+            "column": 31
+          },
           "type": {
             "bits": 64,
             "kind": "float"
@@ -438,6 +600,11 @@
           "kind": "float"
         }
       },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 132,
+        "column": 8
+      },
       "symbol": "zg_divide"
     },
     {
@@ -449,6 +616,10 @@
           "name": "values",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 137,
+            "column": 12
+          },
           "type": {
             "const": true,
             "element": {
@@ -462,6 +633,11 @@
       "return": {
         "bits": 64,
         "kind": "float"
+      },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 137,
+        "column": 8
       },
       "symbol": "zg_sum"
     },
@@ -477,6 +653,11 @@
         "payload": {
           "kind": "void"
         }
+      },
+      "source": {
+        "path": "./examples/10-tagged-union/src/root.zig",
+        "line": 143,
+        "column": 8
       },
       "symbol": "zg_panic_error"
     }

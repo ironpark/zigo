@@ -102,6 +102,16 @@ pub const AbiParam = struct {
         return_slice_length,
         struct_in,
         struct_out,
+        /// A `?T` parameter: `T` lowered behind a nullable pointer, `NULL`
+        /// standing for the Zig `null`. Scalar and `extern struct` children
+        /// share this role -- both cross as one pointer argument, so the
+        /// scalar case needs no separate presence flag.
+        optional_in,
+        /// The `bool *` out parameter carrying presence for an error-union
+        /// payload of `?T`: `out_result` (the existing `payload_out` or
+        /// `struct_out` role) still carries the value, written only when this
+        /// is true.
+        payload_has_out,
         /// The three parts of a `*std.Io.Writer` / `*std.Io.Reader`
         /// parameter. cgo binds the trampoline by name and carries only the
         /// userdata token; purego passes the dispatcher pointer as well. The
@@ -130,6 +140,14 @@ pub const AbiFn = struct {
     /// is a separate field because the two spell different Go: one returns the
     /// struct, the other returns it alongside an error code.
     payload_struct: ?*const AbiStruct = null,
+    /// True when the return itself is `?T` (not inside an error union): the C
+    /// return becomes `bool` (presence) instead of `void`, with the value
+    /// written through `out_result` (or `ret_struct`'s pointer) only when true.
+    ret_optional: bool = false,
+    /// True when an error-union return's payload is `?T`: an extra
+    /// `payload_has_out` parameter carries presence alongside the existing
+    /// `payload_out`/`struct_out` value pointer.
+    payload_optional: bool = false,
     /// Symbol of the function that frees a caller-owned slice result. Generated
     /// Go copies the payload out and then calls this with the same `ptr, len`.
     release_symbol: ?[]const u8 = null,

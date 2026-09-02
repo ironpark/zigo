@@ -129,6 +129,26 @@ API를 작성할 수 있으며, zigo는 marker가 없는 사용자 파일을 덮
 않으므로 판정은 계속 breaking입니다. 필드를 더해야 한다면 새 struct와 새 함수를 추가하거나,
 소비자와 native를 같은 시점에 배포하세요.
 
+## optional의 C 표현
+
+`?T`는 presence와 값을 함께 나릅니다. 어느 쪽도 값 하나에 겹쳐 넣지 않으므로 부재와
+"값이 0인 present"가 언제나 구별됩니다.
+
+- 매개변수는 nullable pointer 하나입니다. `?u32`는 `const int32_t *value`, `?Point`는
+  `const zg_point *origin`이 되고, NULL이 부재입니다. scalar에도 별도의 `bool has_x`를
+  두지 않는 이유는 포인터 하나가 이미 두 상태를 다 담기 때문이고, 덕분에 `extern struct`
+  optional과 lowering이 한 갈래로 유지됩니다.
+- 반환은 presence를 C 반환값으로 올립니다. `?T`를 돌려주는 함수는 `uint8_t`를 반환하고
+  값은 `T *out_result`로 씁니다. 부재일 때 shim은 `out_result`를 건드리지 않습니다.
+- error union과 겹치면 상태 코드가 이미 error에 쓰이므로 presence가 자기 out parameter를
+  갖습니다: `int32_t f(..., uint8_t *out_result_has, T *out_result)`.
+
+purego도 같은 시그니처를 씁니다. scalar child는 `*T`로, `extern struct` child는
+`unsafe.Pointer`로 바인딩 테이블에 선언됩니다.
+
+`semantic.json`은 기존 `optional` 노드를 그대로 씁니다. `abi-check`는 `T`와 `?T`의
+교체를 breaking으로 봅니다.
+
 ## `std.Io` 스트림 어댑터
 
 `*std.Io.Writer`/`*std.Io.Reader` 파라미터는 고정 시그니처 콜백 하나로 내려갑니다.

@@ -1,0 +1,60 @@
+{
+  "functions": [
+    {
+      "name": "double",
+      "params": [{"name": "value", "type": {"kind": "optional", "child": {"bits": 32, "kind": "int", "signed": true}}}],
+      "return": {"kind": "optional", "child": {"bits": 32, "kind": "int", "signed": true}},
+      "symbol": "zg_double"
+    },
+    {
+      "name": "flag",
+      "params": [{"name": "value", "type": {"kind": "optional", "child": {"kind": "bool"}}}],
+      "return": {"kind": "bool"},
+      "symbol": "zg_flag"
+    },
+    {
+      "name": "pickMode",
+      "params": [{"name": "value", "type": {"kind": "optional", "child": {"kind": "enum", "ref": "Mode"}}}],
+      "return": {"kind": "optional", "child": {"kind": "enum", "ref": "Mode"}},
+      "symbol": "zg_pick_mode"
+    },
+    {
+      "name": "checkedDouble",
+      "params": [{"name": "value", "type": {"kind": "optional", "child": {"bits": 32, "kind": "int", "signed": true}}}],
+      "return": {"error_set": ["Invalid"], "kind": "error_union", "payload": {"kind": "optional", "child": {"bits": 32, "kind": "int", "signed": true}}},
+      "symbol": "zg_checked_double"
+    },
+    {
+      "name": "shiftPoint",
+      "params": [{"name": "origin", "type": {"kind": "optional", "child": {"kind": "value_struct", "ref": "Point"}}}],
+      "return": {"kind": "optional", "child": {"kind": "value_struct", "ref": "Point"}},
+      "symbol": "zg_shift_point"
+    },
+    {
+      "name": "checkedPoint",
+      "params": [{"name": "origin", "type": {"kind": "optional", "child": {"kind": "value_struct", "ref": "Point"}}}],
+      "return": {"error_set": ["Invalid"], "kind": "error_union", "payload": {"kind": "optional", "child": {"kind": "value_struct", "ref": "Point"}}},
+      "symbol": "zg_checked_point"
+    }
+  ],
+  "package": "optional",
+  "prefix": "zg",
+  "types": [
+    {
+      "fields": [
+        {"name": "x", "type": {"bits": 16, "kind": "int", "signed": true}},
+        {"name": "y", "type": {"bits": 16, "kind": "int", "signed": true}}
+      ],
+      "kind": "value_struct",
+      "layout": "extern",
+      "name": "Point"
+    },
+    {
+      "fields": [{"name": "idle", "value": 0}, {"name": "active", "value": 1}],
+      "kind": "enum",
+      "name": "Mode",
+      "tag_type": {"bits": 8, "kind": "int", "signed": false}
+    }
+  ],
+  "zig_version": "0.16.0"
+}

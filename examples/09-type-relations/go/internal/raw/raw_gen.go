@@ -97,3 +97,99 @@ func TextUnicodeCodepointWidth(cp uint32) (uint8, int32) {
 	code := int32(C.zg_text_unicode_codepoint_width(C.uint32_t(cp), &outResult))
 	return uint8(outResult), code
 }
+
+// DoubleWidth calls the generated C ABI wrapper for zg_double_width.
+func DoubleWidth(value *uint32) (uint32, bool) {
+	var valueValue C.uint32_t
+	var valuePtr *C.uint32_t
+	if value != nil {
+		valueValue = C.uint32_t(*value)
+		valuePtr = &valueValue
+	}
+	var outResult C.uint32_t
+	outResultHas := C.zg_double_width(valuePtr, &outResult) != 0
+	return uint32(outResult), outResultHas
+}
+
+// Invert calls the generated C ABI wrapper for zg_invert.
+func Invert(value *uint8) (uint8, bool) {
+	var valueValue C.uint8_t
+	var valuePtr *C.uint8_t
+	if value != nil {
+		valueValue = C.uint8_t(*value)
+		valuePtr = &valueValue
+	}
+	var outResult C.uint8_t
+	outResultHas := C.zg_invert(valuePtr, &outResult) != 0
+	return uint8(outResult), outResultHas
+}
+
+// StyleOrDefault calls the generated C ABI wrapper for zg_style_or_default.
+func StyleOrDefault(style *uint8) uint8 {
+	var styleValue C.uint8_t
+	var stylePtr *C.uint8_t
+	if style != nil {
+		styleValue = C.uint8_t(*style)
+		stylePtr = &styleValue
+	}
+	return uint8(C.zg_style_or_default(stylePtr))
+}
+
+// BlinkingStyle calls the generated C ABI wrapper for zg_blinking_style.
+func BlinkingStyle(style *uint8) (uint8, bool) {
+	var styleValue C.uint8_t
+	var stylePtr *C.uint8_t
+	if style != nil {
+		styleValue = C.uint8_t(*style)
+		stylePtr = &styleValue
+	}
+	var outResult C.uint8_t
+	outResultHas := C.zg_blinking_style(stylePtr, &outResult) != 0
+	return uint8(outResult), outResultHas
+}
+
+// ShiftPoint calls the generated C ABI wrapper for zg_shift_point.
+func ShiftPoint(origin *PointData, delta int16) (PointData, bool) {
+	var originPtr *C.zg_point
+	if origin != nil {
+		var corigin C.zg_point
+		corigin.x = C.int16_t((*origin).X)
+		corigin.y = C.int16_t((*origin).Y)
+		originPtr = &corigin
+	}
+	var outResult C.zg_point
+	outResultHas := C.zg_shift_point(originPtr, C.int16_t(delta), &outResult) != 0
+	return PointData{
+		X: int16(outResult.x),
+		Y: int16(outResult.y),
+	}, outResultHas
+}
+
+// CheckedShift calls the generated C ABI wrapper for zg_checked_shift.
+func CheckedShift(origin *PointData, delta int16) (PointData, bool, int32) {
+	var originPtr *C.zg_point
+	if origin != nil {
+		var corigin C.zg_point
+		corigin.x = C.int16_t((*origin).X)
+		corigin.y = C.int16_t((*origin).Y)
+		originPtr = &corigin
+	}
+	var outResultHas C.uint8_t
+	var outResult C.zg_point
+	code := int32(C.zg_checked_shift(originPtr, C.int16_t(delta), &outResultHas, &outResult))
+	return PointData{
+		X: int16(outResult.x),
+		Y: int16(outResult.y),
+	}, outResultHas != 0, code
+}
+
+// PointData mirrors the zg_point layout, padding included.
+type PointData struct {
+	X int16
+	Y int16
+}
+
+// PointData crosses to C as a cast, so it must match zg_point byte for byte.
+var _ = [1]struct{}{}[unsafe.Sizeof(PointData{})-unsafe.Sizeof(C.zg_point{})]
+var _ = [1]struct{}{}[unsafe.Offsetof(PointData{}.X)-unsafe.Offsetof(C.zg_point{}.x)]
+var _ = [1]struct{}{}[unsafe.Offsetof(PointData{}.Y)-unsafe.Offsetof(C.zg_point{}.y)]

@@ -83,9 +83,12 @@
 - 스트림 콜백은 native 호출 안에서 같은 스레드로 동기 호출된다. 대상 Zig 함수가 어댑터를
   다른 스레드로 넘기거나 호출이 끝난 뒤까지 들고 있으면 동작은 정의되지 않는다.
 - `packed struct`의 정수 백킹 노출은 지원하지 않는다. `ZIGO003`으로 거부된다.
-- optional은 선언된 opaque type의 pointer(`?*T`, `?*const T`)에만 쓸 수 있다. handle
-  인자는 이미 pointer라서 nil이 NULL로 그대로 건너가지만, `?i32`나 `?[]u8` 같은 optional은
-  별도의 presence 플래그가 필요해 reflection 단계에서 거부된다.
+- optional은 매개변수, 반환값, error union payload 자리에서만 쓸 수 있고, child는 bool,
+  정수, 부동소수, 등록 enum, `extern struct`, 선언된 opaque type의 pointer만 지원한다.
+  매개변수는 nullable pointer 하나로(NULL = 부재), 반환은 presence `bool`과 out
+  parameter로 내려간다. `extern struct`의 field, callback signature, slice
+  원소(`[]?T`), optional의 optional(`??T`)은 presence를 실을 자리가 없어 `ZIGO019`로
+  거부된다. `?[]T`와 `?[:0]const u8` 같은 slice·문자열 optional은 아직 지원하지 않는다.
 - tagged union은 `.repr = .tagged_union`으로 등록한 뒤 포인터로만 노출한다. 생성된
   `Tag`/`As*`가 active tag를 검사하며 union 레이아웃은 C로 전달하지 않는다. nested
   aggregate, optional, error union, callback 또는 pointer 원소 slice payload는 지원하지 않는다.
@@ -145,7 +148,8 @@ error[ZIGO018]: unsupported integer width `u21` in parameter `cp`
 
 - `ZIGO018` — C ABI가 이름 붙일 수 없는 정수·실수 폭이다. 중첩된 위치는 `the slice element
   of parameter \`cps\``처럼 도달 경로까지 적는다.
-- `ZIGO019` — 지원하지 않는 타입이다. optional은 opaque pointer 위에서만 표현할 수 있다.
+- `ZIGO019` — 지원하지 않는 타입이다. optional이 매개변수·반환·error payload가 아닌
+  자리에 있으면 실을 presence 자리가 없다는 힌트와 함께 이 코드로 거부된다.
 - `ZIGO020` — `semantic.json`의 IR 버전이 이 zigo와 맞지 않는다. 다시 생성한다.
 - `ZIGO022` — `std.mem.Allocator`나 `std.Io` 파라미터를 만났는데 바인딩이 `.allocator`나
   `.io`를 정하지 않았다. 이 두 타입만 주입 대상이며, 그 밖의 Zig 전용 타입은 여전히

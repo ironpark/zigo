@@ -90,3 +90,74 @@ func TestRegisteredEnum(t *testing.T) {
 		t.Fatal("CursorStyleBlinks disagrees with the Zig function")
 	}
 }
+
+// A `?T` parameter is a Go pointer: nil is the Zig `null`, and a non-nil one
+// carries the value. A `?T` return is a value plus a presence flag, so an
+// absent result is never confused with a zero one.
+func TestOptionalScalars(t *testing.T) {
+	value := uint32(21)
+	if got, ok := DoubleWidth(&value); !ok || got != 42 {
+		t.Fatalf("DoubleWidth(21) = %d, %v, want 42, true", got, ok)
+	}
+	// A present zero is still present: the flag, not the value, says so.
+	zero := uint32(0)
+	if got, ok := DoubleWidth(&zero); !ok || got != 0 {
+		t.Fatalf("DoubleWidth(0) = %d, %v, want 0, true", got, ok)
+	}
+	if got, ok := DoubleWidth(nil); ok {
+		t.Fatalf("DoubleWidth(nil) = %d, %v, want _, false", got, ok)
+	}
+
+	flag := true
+	if got, ok := Invert(&flag); !ok || got {
+		t.Fatalf("Invert(true) = %v, %v, want false, true", got, ok)
+	}
+	if got, ok := Invert(nil); ok {
+		t.Fatalf("Invert(nil) = %v, %v, want _, false", got, ok)
+	}
+}
+
+// An optional enum keeps its Go enum type on both sides of the boundary.
+func TestOptionalEnum(t *testing.T) {
+	if got := StyleOrDefault(nil); got != CursorStyleBlock {
+		t.Fatalf("StyleOrDefault(nil) = %v, want CursorStyleBlock", got)
+	}
+	style := CursorStyleBar
+	if got := StyleOrDefault(&style); got != CursorStyleBar {
+		t.Fatalf("StyleOrDefault(bar) = %v, want CursorStyleBar", got)
+	}
+	if got, ok := BlinkingStyle(&style); !ok || got != CursorStyleBar {
+		t.Fatalf("BlinkingStyle(bar) = %v, %v, want CursorStyleBar, true", got, ok)
+	}
+	block := CursorStyleBlock
+	if _, ok := BlinkingStyle(&block); ok {
+		t.Fatal("BlinkingStyle(block) reported a value, want absent")
+	}
+	if _, ok := BlinkingStyle(nil); ok {
+		t.Fatal("BlinkingStyle(nil) reported a value, want absent")
+	}
+}
+
+// A whole extern struct crosses behind one nullable pointer, and an error
+// union over it keeps the error and the absence apart.
+func TestOptionalStruct(t *testing.T) {
+	origin := Point{X: 1, Y: 2}
+	if got, ok := ShiftPoint(&origin, 2); !ok || got != (Point{X: 3, Y: 4}) {
+		t.Fatalf("ShiftPoint({1,2}, 2) = %+v, %v, want {3,4}, true", got, ok)
+	}
+	if _, ok := ShiftPoint(nil, 2); ok {
+		t.Fatal("ShiftPoint(nil, 2) reported a value, want absent")
+	}
+
+	got, ok, err := CheckedShift(&origin, 1)
+	if err != nil || !ok || got != (Point{X: 2, Y: 3}) {
+		t.Fatalf("CheckedShift({1,2}, 1) = %+v, %v, %v, want {2,3}, true, nil", got, ok, err)
+	}
+	// Absent is not an error: the code is 0 and only the flag is false.
+	if _, ok, err := CheckedShift(nil, 1); err != nil || ok {
+		t.Fatalf("CheckedShift(nil, 1) = _, %v, %v, want false, nil", ok, err)
+	}
+	if _, _, err := CheckedShift(&origin, 2000); err == nil {
+		t.Fatal("CheckedShift({1,2}, 2000) returned no error, want Overflow")
+	}
+}

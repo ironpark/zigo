@@ -621,6 +621,26 @@ fn typeOffense(allocator: std.mem.Allocator, node: semantic.TypeNode, promotable
             return Offense{ .node = node, .reason = if (promotableInteger(value)) .narrow_position else .unsupported };
         },
         .float => |value| return if (floatSupported(value)) null else Offense{ .node = node },
+        // `?T` only has an ABI shape as a whole parameter, return value, or
+        // error payload -- `promotable` doubles as "is this that position"
+        // for every caller here, so a slice element or callback signature
+        // reaches this the same way a bare unsupported type would. The
+        // allowed children are the ones `walk.zig` can reflect: bool, an
+        // integer (narrow ones promoted exactly as a bare parameter would
+        // be), float, enum, or an extern struct (checked for `extern`-ness by
+        // `unsupportedValueStruct`, not here).
+        .optional => |value| {
+            if (!promotable) return Offense{ .node = node };
+            return switch (value.child.*) {
+                .bool, .@"enum", .value_struct => null,
+                .int => |integer| if (integerSupported(integer) or promotableInteger(integer))
+                    null
+                else
+                    Offense{ .node = value.child.*, .reason = .unsupported },
+                .float => |float| if (floatSupported(float)) null else Offense{ .node = value.child.* },
+                else => Offense{ .node = node },
+            };
+        },
         .slice => |value| return wrapOffense(allocator, try typeOffense(allocator, value.element.*, false), "the slice element"),
         .error_union => |value| return wrapOffense(allocator, try typeOffense(allocator, value.payload.*, promotable), "the error payload"),
         .callback => |value| {
@@ -632,7 +652,6 @@ fn typeOffense(allocator: std.mem.Allocator, node: semantic.TypeNode, promotable
             }
             return wrapOffense(allocator, try typeOffense(allocator, value.@"return".*, false), "the callback return value");
         },
-        else => return Offense{ .node = node },
     }
 }
 
@@ -680,6 +699,16 @@ fn offenseDiagnostic(
             .message = try std.fmt.allocPrint(allocator, "unsupported float width `{s}` in {s}", .{ spelling, location }),
             .site = functionSiteFor(function, declaration),
             .hint = "use `f32` or `f64`",
+        },
+        // `?T` has a C shape only as a whole parameter, return value, or
+        // error payload; anywhere else there is nowhere to put presence, so
+        // the generic hint would send the reader looking for the wrong fix.
+        .optional => .{
+            .severity = .@"error",
+            .code = "ZIGO019",
+            .message = try std.fmt.allocPrint(allocator, "unsupported optional in {s}", .{location}),
+            .site = functionSiteFor(function, declaration),
+            .hint = "zigo carries an optional only as a whole parameter, return value, or error payload, and only over a bool, integer, float, enum, extern struct, or pointer to a declared opaque type",
         },
         else => .{
             .severity = .@"error",
@@ -896,6 +925,14 @@ fn nestedValueStruct(node: semantic.TypeNode) bool {
         .slice => |value| switch (value.element.*) {
             .value_struct => false,
             else => containsValueStruct(value.element.*),
+        },
+        // `?ExternStruct` lowers to a single nullable pointer, the same
+        // aggregate-friendly shape a bare value struct gets, so the whole
+        // position is supported; only a struct nested *inside* the child
+        // (there is none reachable today) would still be unsupported.
+        .optional => |value| switch (value.child.*) {
+            .value_struct => false,
+            else => containsValueStruct(value.child.*),
         },
         .error_union => |value| nestedValueStruct(value.payload.*),
         else => containsValueStruct(node),
@@ -1222,7 +1259,7 @@ test "implemented diagnostic snapshots are stable" {
     var byte_element: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
     var byte_slice_node: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte_element } };
     var word_element: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
-    const word_slice_node: semantic.TypeNode = .{ .slice = .{ .@"const" = false, .element = &word_element } };
+    var word_slice_node: semantic.TypeNode = .{ .slice = .{ .@"const" = false, .element = &word_element } };
     const count_node: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
     var wide_element: semantic.TypeNode = .{ .int = .{ .bits = 21, .signed = false } };
     const wide_slice_node: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &wide_element } };
@@ -1560,7 +1597,7 @@ test "implemented diagnostic snapshots are stable" {
         .{ .document = .{
             .functions = &.{.{
                 .name = "maybe",
-                .params = &.{.{ .name = "value", .type = .{ .optional = .{ .child = &word_element } } }},
+                .params = &.{.{ .name = "value", .type = .{ .optional = .{ .child = &word_slice_node } } }},
                 .@"return" = .{ .void = {} },
                 .receiver = "Thing",
                 .symbol = "zg_thing_maybe",
@@ -1569,7 +1606,7 @@ test "implemented diagnostic snapshots are stable" {
             .prefix = "zg",
             .types = &.{.{ .kind = .@"opaque", .name = "Thing" }},
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO019]: unsupported type `optional` in parameter `value`\n  --> semantic.json (Thing.maybe)\n  hint: use a bool, integer, float, enum, opaque pointer, extern struct, slice, or callback type\n" },
+        }, .snapshot = "error[ZIGO019]: unsupported optional in parameter `value`\n  --> semantic.json (Thing.maybe)\n  hint: zigo carries an optional only as a whole parameter, return value, or error payload, and only over a bool, integer, float, enum, extern struct, or pointer to a declared opaque type\n" },
         .{ .document = .{
             .ir_version = 2,
             .package = "bad",
@@ -1746,7 +1783,7 @@ test "a written hint is accepted on an out slice of a counting function" {
     try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(std.testing.allocator, document));
 }
 
-test "scalar extern struct slices are valid while optional structs stay rejected" {
+test "scalar extern struct slices and whole optional structs are valid while an optional slice element stays rejected" {
     var element: semantic.TypeNode = .{ .value_struct = .{ .ref = "Point" } };
     const document: semantic.Semantic = .{
         .functions = &.{
@@ -1772,22 +1809,44 @@ test "scalar extern struct slices are valid while optional structs stay rejected
     };
     try semanticDocument(std.testing.allocator, document);
 
+    // A whole `?Point` parameter is a supported position: it lowers to a
+    // single nullable pointer, the same shape a bare `Point` gets.
+    const point_types = [_]semantic.TypeDecl{.{
+        .fields = &.{.{ .name = "x", .type = .{ .int = .{ .bits = 32, .signed = true } } }},
+        .kind = .value_struct,
+        .layout = .@"extern",
+        .name = "Point",
+    }};
     const optional: semantic.TypeNode = .{ .optional = .{ .child = &element } };
-    const invalid: semantic.Semantic = .{
+    const valid: semantic.Semantic = .{
         .functions = &.{.{
             .name = "optional",
             .params = &.{.{ .name = "value", .type = optional }},
             .@"return" = .{ .void = {} },
             .symbol = "zg_optional",
         }},
+        .package = "good",
+        .prefix = "zg",
+        .types = &point_types,
+        .zig_version = "0.16.0",
+    };
+    try semanticDocument(std.testing.allocator, valid);
+
+    // `[]?Point`: the struct is nested inside an optional slice element,
+    // which has no C ABI shape -- `?T` only lowers as a whole parameter,
+    // return value, or error payload.
+    var optional_element: semantic.TypeNode = optional;
+    const optional_slice: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &optional_element } };
+    const invalid: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "consumeOptional",
+            .params = &.{.{ .name = "values", .type = optional_slice }},
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_consume_optional",
+        }},
         .package = "bad",
         .prefix = "zg",
-        .types = &.{.{
-            .fields = &.{.{ .name = "x", .type = .{ .int = .{ .bits = 32, .signed = true } } }},
-            .kind = .value_struct,
-            .layout = .@"extern",
-            .name = "Point",
-        }},
+        .types = &point_types,
         .zig_version = "0.16.0",
     };
     const issue = (try findIssue(std.testing.allocator, invalid)).?;
@@ -2561,4 +2620,114 @@ test "stream parameters are accepted only as whole call-scoped parameters" {
         try std.testing.expectEqualStrings("ZIGO023", issue.code);
         try std.testing.expectEqualStrings(case.message, issue.message);
     }
+}
+
+test "an optional is rejected everywhere it has no presence to carry" {
+    var word: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+    var optional_word: semantic.TypeNode = .{ .optional = .{ .child = &word } };
+    var void_node: semantic.TypeNode = .{ .void = {} };
+
+    // A slice element: the lowered `T*, len` pair has room for the elements
+    // and nothing else.
+    const slice_of_optional: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &optional_word } };
+    // A callback signature: the function pointer's C type is fixed by the
+    // callback declaration, so there is no second argument to add.
+    const callback_of_optional: semantic.TypeNode = .{ .callback = .{
+        .has_userdata = false,
+        .params = &.{optional_word},
+        .@"return" = &void_node,
+    } };
+    // An optional of an optional collapses to one presence flag in C, which
+    // could not tell the two levels apart.
+    const nested_optional: semantic.TypeNode = .{ .optional = .{ .child = &optional_word } };
+
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
+    for ([_]semantic.TypeNode{ slice_of_optional, callback_of_optional, nested_optional }) |node| {
+        const document: semantic.Semantic = .{
+            .functions = &.{.{
+                .name = "take",
+                .params = &.{.{ .name = "value", .type = node }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_take",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        };
+        const issue = (try findIssue(scratch.allocator(), document)).?;
+        try std.testing.expectEqualStrings("ZIGO019", issue.code);
+    }
+
+    // An `extern struct` field: the C mirror is a flat record, and a presence
+    // flag beside the member would change its layout.
+    const struct_document: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "take",
+            .params = &.{.{ .name = "value", .type = .{ .value_struct = .{ .ref = "Point" } } }},
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_take",
+        }},
+        .package = "bad",
+        .prefix = "zg",
+        .types = &.{.{
+            .fields = &.{.{ .name = "x", .type = optional_word }},
+            .kind = .value_struct,
+            .layout = .@"extern",
+            .name = "Point",
+        }},
+        .zig_version = "0.16.0",
+    };
+    const struct_issue = (try findIssue(scratch.allocator(), struct_document)).?;
+    try std.testing.expect(struct_issue.severity == .@"error");
+}
+
+test "an optional is accepted as a whole parameter, return value, and error payload" {
+    var word: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+    var optional_word: semantic.TypeNode = .{ .optional = .{ .child = &word } };
+    var flag: semantic.TypeNode = .{ .bool = {} };
+    var mode: semantic.TypeNode = .{ .@"enum" = .{ .ref = "Mode" } };
+    var point: semantic.TypeNode = .{ .value_struct = .{ .ref = "Point" } };
+    // A narrow integer is promoted inside an optional exactly as it is bare,
+    // because both travel in the same widened C parameter.
+    var narrow: semantic.TypeNode = .{ .int = .{ .bits = 12, .signed = false } };
+    const document: semantic.Semantic = .{
+        .functions = &.{
+            .{
+                .name = "double",
+                .params = &.{.{ .name = "value", .type = optional_word }},
+                .@"return" = optional_word,
+                .symbol = "zg_double",
+            },
+            .{
+                .name = "checked",
+                .params = &.{
+                    .{ .name = "flag", .type = .{ .optional = .{ .child = &flag } } },
+                    .{ .name = "mode", .type = .{ .optional = .{ .child = &mode } } },
+                    .{ .name = "point", .type = .{ .optional = .{ .child = &point } } },
+                    .{ .name = "narrow", .type = .{ .optional = .{ .child = &narrow } } },
+                },
+                .@"return" = .{ .error_union = .{ .error_set = &.{"Invalid"}, .payload = &optional_word } },
+                .symbol = "zg_checked",
+            },
+        },
+        .package = "good",
+        .prefix = "zg",
+        .types = &.{
+            .{
+                .fields = &.{.{ .name = "x", .type = .{ .int = .{ .bits = 32, .signed = true } } }},
+                .kind = .value_struct,
+                .layout = .@"extern",
+                .name = "Point",
+            },
+            .{
+                .fields = &.{.{ .name = "idle", .value = 0 }},
+                .kind = .@"enum",
+                .name = "Mode",
+                .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+            },
+        },
+        .zig_version = "0.16.0",
+    };
+    try semanticDocument(std.testing.allocator, document);
 }

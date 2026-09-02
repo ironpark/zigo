@@ -152,6 +152,22 @@ pub fn semanticDocumentForBackend(
                         .source_index = parameter_index,
                     });
                 },
+                // `?T` crosses as one nullable pointer, `NULL` standing for
+                // `null`: a bool, integer, float, enum, or extern struct all
+                // fit behind the same single argument, so no separate
+                // presence flag is needed on the parameter side (only the
+                // return side needs one, because a return has nowhere else to
+                // put a pointer's absence).
+                .optional => |optional| {
+                    const child = try allocator.create(abi.AbiScalar);
+                    child.* = try lowerValue(allocator, document, prefix, optional.child.*);
+                    try params.append(allocator, .{
+                        .name = parameter.name,
+                        .role = .optional_in,
+                        .scalar = .{ .pointer = .{ .child = child, .is_const = true, .is_optional = true } },
+                        .source_index = parameter_index,
+                    });
+                },
                 else => try params.append(allocator, .{
                     .name = parameter.name,
                     .scalar = try lowerValue(allocator, document, prefix, parameter.type),
@@ -184,6 +200,27 @@ pub fn semanticDocumentForBackend(
                     !isCStringSlice(error_union.payload.*, function.return_semantic))
                 {
                     try appendSliceReturnOuts(allocator, document, prefix, &params, error_union.payload.slice);
+                } else if (error_union.payload.* == .optional) {
+                    // `!?T`: the status code alone cannot carry both the error
+                    // and the optional's own presence, so presence gets its
+                    // own out parameter alongside the value.
+                    const optional = error_union.payload.optional;
+                    const has_child = try allocator.create(abi.AbiScalar);
+                    has_child.* = .bool_u8;
+                    try params.append(allocator, .{
+                        .name = "out_result_has",
+                        .role = .payload_has_out,
+                        .scalar = .{ .pointer = .{ .child = has_child, .is_const = false } },
+                        .source_index = function.params.len,
+                    });
+                    const payload = try allocator.create(abi.AbiScalar);
+                    payload.* = try lowerValue(allocator, document, prefix, optional.child.*);
+                    try params.append(allocator, .{
+                        .name = "out_result",
+                        .role = if (optional.child.* == .value_struct) .struct_out else .payload_out,
+                        .scalar = .{ .pointer = .{ .child = payload, .is_const = false } },
+                        .source_index = function.params.len,
+                    });
                 } else if (error_union.payload.* != .void) {
                     const payload = try allocator.create(abi.AbiScalar);
                     payload.* = try lowerValue(allocator, document, prefix, error_union.payload.*);
@@ -205,6 +242,19 @@ pub fn semanticDocumentForBackend(
                     .scalar = .{ .pointer = .{ .child = child, .is_const = false } },
                 });
                 break :result abi.AbiScalar.void;
+            },
+            // Plain `?T` (no error union): presence becomes the C return
+            // value -- `bool` instead of `void` -- and the value travels
+            // through the same out parameter an error-union payload would use.
+            .optional => |optional| result: {
+                const child = try allocator.create(abi.AbiScalar);
+                child.* = try lowerValue(allocator, document, prefix, optional.child.*);
+                try params.append(allocator, .{
+                    .name = "out_result",
+                    .role = if (optional.child.* == .value_struct) .struct_out else .payload_out,
+                    .scalar = .{ .pointer = .{ .child = child, .is_const = false } },
+                });
+                break :result abi.AbiScalar.bool_u8;
             },
             else => try lowerValue(allocator, document, prefix, function.@"return"),
         };
@@ -228,13 +278,22 @@ pub fn semanticDocumentForBackend(
             .origin = function,
             .ret_struct = if (function.@"return" == .value_struct)
                 structRecord(structs, function.@"return".value_struct.ref)
+            else if (function.@"return" == .optional and function.@"return".optional.child.* == .value_struct)
+                structRecord(structs, function.@"return".optional.child.value_struct.ref)
             else
                 null,
+            .ret_optional = function.@"return" == .optional,
             .payload_struct = if (function.@"return" == .error_union and
                 function.@"return".error_union.payload.* == .value_struct)
                 structRecord(structs, function.@"return".error_union.payload.value_struct.ref)
+            else if (function.@"return" == .error_union and
+                function.@"return".error_union.payload.* == .optional and
+                function.@"return".error_union.payload.optional.child.* == .value_struct)
+                structRecord(structs, function.@"return".error_union.payload.optional.child.value_struct.ref)
             else
                 null,
+            .payload_optional = function.@"return" == .error_union and
+                function.@"return".error_union.payload.* == .optional,
         };
     }
     // The release target is another exported function, so its symbol is only
@@ -574,6 +633,7 @@ fn mentionsValueStruct(document: semantic.Semantic, node: semantic.TypeNode, nam
         },
         .slice => |value| mentionsValueStruct(document, value.element.*, name),
         .error_union => |value| mentionsValueStruct(document, value.payload.*, name),
+        .optional => |value| mentionsValueStruct(document, value.child.*, name),
         else => false,
     };
 }

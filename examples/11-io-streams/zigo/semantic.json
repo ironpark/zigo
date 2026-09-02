@@ -25,6 +25,11 @@
           "ref": "Document"
         }
       },
+      "source": {
+        "path": "./examples/11-io-streams/src/root.zig",
+        "line": 14,
+        "column": 12
+      },
       "symbol": "zg_document_create"
     },
     {
@@ -34,6 +39,11 @@
       "receiver": "Document",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "./examples/11-io-streams/src/root.zig",
+        "line": 20,
+        "column": 12
       },
       "symbol": "zg_document_deinit"
     },
@@ -46,6 +56,10 @@
           "name": "line",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 26,
+            "column": 36
+          },
           "type": {
             "const": true,
             "element": {
@@ -68,6 +82,11 @@
           "kind": "void"
         }
       },
+      "source": {
+        "path": "./examples/11-io-streams/src/root.zig",
+        "line": 26,
+        "column": 12
+      },
       "symbol": "zg_document_append"
     },
     {
@@ -81,6 +100,11 @@
         "kind": "int",
         "signed": false
       },
+      "source": {
+        "path": "./examples/11-io-streams/src/root.zig",
+        "line": 32,
+        "column": 12
+      },
       "symbol": "zg_document_count"
     },
     {
@@ -93,6 +117,10 @@
           "name": "w",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 40,
+            "column": 34
+          },
           "type": {
             "kind": "io_writer"
           }
@@ -108,6 +136,11 @@
           "kind": "void"
         }
       },
+      "source": {
+        "path": "./examples/11-io-streams/src/root.zig",
+        "line": 40,
+        "column": 12
+      },
       "symbol": "zg_document_dump"
     },
     {
@@ -121,6 +154,10 @@
           "name": "r",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 50,
+            "column": 34
+          },
           "type": {
             "kind": "io_reader"
           }
@@ -140,6 +177,11 @@
           "signed": false
         }
       },
+      "source": {
+        "path": "./examples/11-io-streams/src/root.zig",
+        "line": 50,
+        "column": 12
+      },
       "symbol": "zg_document_load"
     },
     {
@@ -152,6 +194,10 @@
           "name": "w",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 70,
+            "column": 15
+          },
           "type": {
             "kind": "io_writer"
           }
@@ -161,6 +207,10 @@
           "name": "width",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 70,
+            "column": 34
+          },
           "type": {
             "bits": 32,
             "is_usize": false,
@@ -178,6 +228,11 @@
           "kind": "void"
         }
       },
+      "source": {
+        "path": "./examples/11-io-streams/src/root.zig",
+        "line": 70,
+        "column": 8
+      },
       "symbol": "zg_banner"
     },
     {
@@ -190,6 +245,10 @@
           "name": "r",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 78,
+            "column": 12
+          },
           "type": {
             "kind": "io_reader"
           }
@@ -199,6 +258,10 @@
           "name": "w",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 78,
+            "column": 31
+          },
           "type": {
             "kind": "io_writer"
           }
@@ -216,6 +279,11 @@
           "kind": "int",
           "signed": false
         }
+      },
+      "source": {
+        "path": "./examples/11-io-streams/src/root.zig",
+        "line": 78,
+        "column": 8
       },
       "symbol": "zg_tee"
     }

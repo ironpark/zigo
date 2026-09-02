@@ -98,6 +98,71 @@ pub const text = struct {
     }
 };
 
+/// An `extern struct` is a flat C record, so a whole one can travel behind a
+/// nullable pointer even though a `?` inside it could not.
+pub const Point = extern struct {
+    x: i16,
+    y: i16,
+};
+
+pub const ShiftError = error{Overflow};
+
+/// A `?u32` on both sides: absent in, absent out.
+pub fn doubleWidth(value: ?u32) ?u32 {
+    return if (value) |width| width * 2 else null;
+}
+
+/// An optional bool has three states at the boundary, and Go sees all three.
+pub fn invert(value: ?bool) ?bool {
+    return if (value) |flag| !flag else null;
+}
+
+/// An optional enum resolves to the default style when it is absent.
+pub fn styleOrDefault(style: ?CursorStyle) CursorStyle {
+    return style orelse defaultCursorStyle();
+}
+
+/// An optional enum on the way out: only a blinking style is reported.
+pub fn blinkingStyle(style: ?CursorStyle) ?CursorStyle {
+    const resolved = style orelse return null;
+    return if (cursorStyleBlinks(resolved)) resolved else null;
+}
+
+/// A whole `extern struct` in and out, presence carried alongside.
+pub fn shiftPoint(origin: ?Point, delta: i16) ?Point {
+    const point = origin orelse return null;
+    return .{ .x = point.x + delta, .y = point.y + delta };
+}
+
+/// An optional payload inside an error union: the status code carries the
+/// error and a separate flag carries presence, so all three outcomes are
+/// distinguishable.
+pub fn checkedShift(origin: ?Point, delta: i16) ShiftError!?Point {
+    const point = origin orelse return null;
+    if (delta > 1000) return error.Overflow;
+    return .{ .x = point.x + delta, .y = point.y + delta };
+}
+
+test "an optional crosses as a value or as its absence" {
+    try std.testing.expectEqual(@as(?u32, 84), doubleWidth(42));
+    try std.testing.expectEqual(@as(?u32, null), doubleWidth(null));
+    try std.testing.expectEqual(@as(?bool, false), invert(true));
+    try std.testing.expectEqual(@as(?bool, null), invert(null));
+    try std.testing.expectEqual(CursorStyle.block, styleOrDefault(null));
+    try std.testing.expectEqual(CursorStyle.bar, styleOrDefault(.bar));
+    try std.testing.expectEqual(@as(?CursorStyle, .bar), blinkingStyle(.bar));
+    try std.testing.expectEqual(@as(?CursorStyle, null), blinkingStyle(.block));
+    try std.testing.expectEqual(@as(?CursorStyle, null), blinkingStyle(null));
+}
+
+test "an optional extern struct keeps presence separate from its value" {
+    try std.testing.expectEqual(Point{ .x = 3, .y = 4 }, shiftPoint(.{ .x = 1, .y = 2 }, 2).?);
+    try std.testing.expectEqual(@as(?Point, null), shiftPoint(null, 2));
+    try std.testing.expectEqual(Point{ .x = 2, .y = 3 }, (try checkedShift(.{ .x = 1, .y = 2 }, 1)).?);
+    try std.testing.expectEqual(@as(?Point, null), try checkedShift(null, 1));
+    try std.testing.expectError(error.Overflow, checkedShift(.{ .x = 1, .y = 2 }, 2000));
+}
+
 test "one opaque receiver accepts another exposed opaque type" {
     const counter = try Counter.create(40);
     defer counter.deinit();
