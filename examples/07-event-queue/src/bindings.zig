@@ -59,6 +59,12 @@ pub const bindings = zigo.define(.{
         .{ .path = "EventQueue.name", .semantic = .utf8_string },
         .{ .path = "EventQueue.sampleValues" },
         .{ .path = "EventQueue.sampleValuesChecked" },
+        .{
+            .path = "EventQueue.selectionString",
+            .returns = .caller,
+            .release = "EventQueue.freeSelectionString",
+        },
+        .{ .path = "EventQueue.freeSelectionString", .params = .{"value"} },
         .{ .path = "EventQueue.echoCString", .params = .{"text"} },
         .{ .path = "EventQueue.sampleCString" },
         .{
@@ -126,5 +132,6 @@ pub const bindings = zigo.define(.{
         .{ .path = "root.liveQueues" },
         .{ .path = "root.liveSamples" },
         .{ .path = "root.liveLimits" },
+        .{ .path = "root.liveSelectionStrings" },
     },
 });

@@ -390,7 +390,7 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
                 if (error_union.payload.* == .slice) {
                     try writer.writeAll("    out_result_ptr.* = result.ptr;\n    out_result_len.* = result.len;\n");
                 } else if (isOptionalSlice(error_union.payload.*) and
-                    !isCStringSlice(error_union.payload.*, function.origin.return_semantic))
+                    !isCStringReturn(function.origin.*))
                 {
                     try writer.writeAll("    if (result) |zigo_value| {\n        out_result_ptr.* = zigo_value.ptr;\n" ++
                         "        out_result_len.* = zigo_value.len;\n    } else {\n        out_result_ptr.* = null;\n" ++
@@ -4050,14 +4050,14 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                         try writeOwnedHandleResult(allocator, writer, program, function.origin.*, type_name, "result");
                     } else if (error_payload == .opaque_ptr and returnsBorrowedHandle(function.origin.*)) {
                         try writeBorrowedResult(allocator, writer, function.origin.*, go_names, "result");
-                    } else if (isStringSlice(error_payload, function.origin.return_semantic)) {
-                        try writer.writeAll("string(result)");
                     } else if (error_payload == .optional) {
                         if (isStringSlice(error_payload.optional.child.*, function.origin.return_semantic))
                             try writer.writeAll("string(result)")
                         else
                             try writePublicResultConversion(writer, program, error_payload.optional.child.*, "result");
                         try writer.writeAll(", zigoHas");
+                    } else if (isStringSlice(error_payload, function.origin.return_semantic)) {
+                        try writer.writeAll("string(result)");
                     } else {
                         try writePublicResultConversion(writer, program, error_payload, "result");
                     }
@@ -6777,11 +6777,9 @@ fn sliceReturnElement(function: semantic.SemanticFn) ?semantic.TypeNode {
         .optional => |value| if (value.child.* == .slice) value.child.slice.element.* else null,
         // A sentinel byte pointer payload keeps its own lowering; it has no
         // length to write into `out_result_len`.
-        .error_union => |value| if (value.payload.* == .slice and
-            !isCStringSlice(value.payload.*, function.return_semantic))
+        .error_union => |value| if (value.payload.* == .slice)
             value.payload.slice.element.*
-        else if (isOptionalSlice(value.payload.*) and
-            !isCStringSlice(value.payload.*, function.return_semantic))
+        else if (isOptionalSlice(value.payload.*))
             value.payload.optional.child.slice.element.*
         else
             null,
@@ -6790,7 +6788,9 @@ fn sliceReturnElement(function: semantic.SemanticFn) ?semantic.TypeNode {
 }
 
 fn isCStringReturn(function: semantic.SemanticFn) bool {
-    return isCStringSlice(function.@"return", function.return_semantic);
+    if (function.ownership == .caller and function.release != null) return false;
+    const payload = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
+    return isCStringSlice(payload, function.return_semantic);
 }
 
 fn isByteType(node: semantic.TypeNode) bool {

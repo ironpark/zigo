@@ -80,3 +80,30 @@ func TestFallibleCallerOwnedSliceReleasesOnlyOnSuccess(t *testing.T) {
 		t.Fatalf("LiveSamples() = %d after two successful calls, want 0", got)
 	}
 }
+
+func TestOptionalCallerOwnedSlicePresenceAndRelease(t *testing.T) {
+	queue, err := NewEventQueue("selected", 4, PolicyReject, func(uint64, int32) int32 { return 0 })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queue.Close()
+
+	data, present, err := queue.SelectionString()
+	if err != nil || present || data != nil {
+		t.Fatalf("SelectionString() absent = (%v, %v, %v), want (nil, false, nil)", data, present, err)
+	}
+	if got := LiveSelectionStrings(); got != 0 {
+		t.Fatalf("LiveSelectionStrings() after absent result = %d, want 0", got)
+	}
+
+	if err := queue.Enqueue(1, 7); err != nil {
+		t.Fatal(err)
+	}
+	data, present, err = queue.SelectionString()
+	if err != nil || !present || string(data) != "selected" {
+		t.Fatalf("SelectionString() present = (%q, %v, %v), want (selected, true, nil)", data, present, err)
+	}
+	if got := LiveSelectionStrings(); got != 0 {
+		t.Fatalf("LiveSelectionStrings() after present result = %d, want 0", got)
+	}
+}

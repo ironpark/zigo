@@ -50,6 +50,10 @@ type nativeBindings struct {
 	fnDigits func(uint32, *unsafe.Pointer, *uintptr)
 	fnName func(uint32, *unsafe.Pointer, *uintptr)
 	fnCheckedDigits func(uint32, *unsafe.Pointer, *uintptr) int32
+	fnTakeOwned func(*unsafe.Pointer, *uintptr) int32
+	fnFreeOwned func(unsafe.Pointer, uintptr)
+	fnTakeOwnedCString func(*unsafe.Pointer, *uintptr) int32
+	fnFreeOwnedCString func(unsafe.Pointer, uintptr)
 }
 
 var loadedBindings atomic.Pointer[nativeBindings]
@@ -119,6 +123,14 @@ func loadCandidate(path string) error {
 	if err != nil { return fail("zg_name", err) }
 	addrCheckedDigits, err := resolveSymbol(handle, "zg_checked_digits")
 	if err != nil { return fail("zg_checked_digits", err) }
+	addrTakeOwned, err := resolveSymbol(handle, "zg_take_owned")
+	if err != nil { return fail("zg_take_owned", err) }
+	addrFreeOwned, err := resolveSymbol(handle, "zg_free_owned")
+	if err != nil { return fail("zg_free_owned", err) }
+	addrTakeOwnedCString, err := resolveSymbol(handle, "zg_take_owned_c_string")
+	if err != nil { return fail("zg_take_owned_c_string", err) }
+	addrFreeOwnedCString, err := resolveSymbol(handle, "zg_free_owned_c_string")
+	if err != nil { return fail("zg_free_owned_c_string", err) }
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.fnMeasure, addrMeasure)
@@ -127,6 +139,10 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnDigits, addrDigits)
 	purego.RegisterFunc(&next.fnName, addrName)
 	purego.RegisterFunc(&next.fnCheckedDigits, addrCheckedDigits)
+	purego.RegisterFunc(&next.fnTakeOwned, addrTakeOwned)
+	purego.RegisterFunc(&next.fnFreeOwned, addrFreeOwned)
+	purego.RegisterFunc(&next.fnTakeOwnedCString, addrTakeOwnedCString)
+	purego.RegisterFunc(&next.fnFreeOwnedCString, addrFreeOwnedCString)
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -239,4 +255,54 @@ func CheckedDigits(count uint32) ([]int32, bool, int32) {
 	result := make([]int32, int(outResultLen))
 	copy(result, unsafe.Slice((*int32)(outResultPtr), int(outResultLen)))
 	return result, true, code
+}
+
+// TakeOwned calls the generated purego ABI wrapper for zg_take_owned.
+func TakeOwned() ([]uint8, bool, int32) {
+	var outResultPtr unsafe.Pointer
+	var outResultLen uintptr
+	code := bindings().fnTakeOwned(&outResultPtr, &outResultLen)
+	if code != 0 {
+		return nil, false, code
+	}
+	if outResultPtr == nil { return nil, false, code }
+	var result []uint8
+	if outResultLen != 0 {
+		result = make([]uint8, int(outResultLen))
+		copy(result, unsafe.Slice((*uint8)(outResultPtr), int(outResultLen)))
+	}
+	bindings().fnFreeOwned(outResultPtr, outResultLen)
+	return result, true, code
+}
+
+// FreeOwned calls the generated purego ABI wrapper for zg_free_owned.
+func FreeOwned(value []uint8) {
+	var valuePtr unsafe.Pointer
+	if len(value) != 0 { valuePtr = unsafe.Pointer(&value[0]) }
+	bindings().fnFreeOwned(valuePtr, uintptr(len(value)))
+}
+
+// TakeOwnedCString calls the generated purego ABI wrapper for zg_take_owned_c_string.
+func TakeOwnedCString() ([]uint8, bool, int32) {
+	var outResultPtr unsafe.Pointer
+	var outResultLen uintptr
+	code := bindings().fnTakeOwnedCString(&outResultPtr, &outResultLen)
+	if code != 0 {
+		return nil, false, code
+	}
+	if outResultPtr == nil { return nil, false, code }
+	var result []uint8
+	if outResultLen != 0 {
+		result = make([]uint8, int(outResultLen))
+		copy(result, unsafe.Slice((*uint8)(outResultPtr), int(outResultLen)))
+	}
+	bindings().fnFreeOwnedCString(outResultPtr, outResultLen)
+	return result, true, code
+}
+
+// FreeOwnedCString calls the generated purego ABI wrapper for zg_free_owned_c_string.
+func FreeOwnedCString(value []uint8) {
+	var valuePtr unsafe.Pointer
+	if len(value) != 0 { valuePtr = unsafe.Pointer(&value[0]) }
+	bindings().fnFreeOwnedCString(valuePtr, uintptr(len(value)))
 }

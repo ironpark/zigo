@@ -73,6 +73,8 @@ type nativeBindings struct {
 	fnEventQueueName                    func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
 	fnEventQueueSampleValues            func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
 	fnEventQueueSampleValuesChecked     func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
+	fnEventQueueSelectionString         func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
+	fnEventQueueFreeSelectionString     func(unsafe.Pointer, unsafe.Pointer, uintptr) int32
 	fnEventQueueEchoCString             func(unsafe.Pointer) unsafe.Pointer
 	fnEventQueueSampleCString           func() unsafe.Pointer
 	fnEventQueueExtractPaths            func(unsafe.Pointer, uintptr, unsafe.Pointer, uintptr) uintptr
@@ -108,6 +110,7 @@ type nativeBindings struct {
 	fnLiveQueues                        func() uintptr
 	fnLiveSamples                       func() uintptr
 	fnLiveLimits                        func() uintptr
+	fnLiveSelectionStrings              func() uintptr
 }
 
 type callbackEntry struct {
@@ -424,6 +427,14 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_event_queue_sample_values_checked", err)
 	}
+	addrEventQueueSelectionString, err := resolveSymbol(handle, "zg_event_queue_selection_string")
+	if err != nil {
+		return fail("zg_event_queue_selection_string", err)
+	}
+	addrEventQueueFreeSelectionString, err := resolveSymbol(handle, "zg_event_queue_free_selection_string")
+	if err != nil {
+		return fail("zg_event_queue_free_selection_string", err)
+	}
 	addrEventQueueEchoCString, err := resolveSymbol(handle, "zg_event_queue_echo_c_string")
 	if err != nil {
 		return fail("zg_event_queue_echo_c_string", err)
@@ -564,6 +575,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_live_limits", err)
 	}
+	addrLiveSelectionStrings, err := resolveSymbol(handle, "zg_live_selection_strings")
+	if err != nil {
+		return fail("zg_live_selection_strings", err)
+	}
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.fnEchoQueueSignal, addrEchoQueueSignal)
@@ -588,6 +603,8 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnEventQueueName, addrEventQueueName)
 	purego.RegisterFunc(&next.fnEventQueueSampleValues, addrEventQueueSampleValues)
 	purego.RegisterFunc(&next.fnEventQueueSampleValuesChecked, addrEventQueueSampleValuesChecked)
+	purego.RegisterFunc(&next.fnEventQueueSelectionString, addrEventQueueSelectionString)
+	purego.RegisterFunc(&next.fnEventQueueFreeSelectionString, addrEventQueueFreeSelectionString)
 	purego.RegisterFunc(&next.fnEventQueueEchoCString, addrEventQueueEchoCString)
 	purego.RegisterFunc(&next.fnEventQueueSampleCString, addrEventQueueSampleCString)
 	purego.RegisterFunc(&next.fnEventQueueExtractPaths, addrEventQueueExtractPaths)
@@ -623,6 +640,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnLiveQueues, addrLiveQueues)
 	purego.RegisterFunc(&next.fnLiveSamples, addrLiveSamples)
 	purego.RegisterFunc(&next.fnLiveLimits, addrLiveLimits)
+	purego.RegisterFunc(&next.fnLiveSelectionStrings, addrLiveSelectionStrings)
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -902,6 +920,36 @@ func EventQueueSampleValuesChecked(self unsafe.Pointer) ([]float32, int32) {
 	result := make([]float32, int(outResultLen))
 	copy(result, unsafe.Slice((*float32)(outResultPtr), int(outResultLen)))
 	return result, code
+}
+
+// EventQueueSelectionString calls the generated purego ABI wrapper for zg_event_queue_selection_string.
+func EventQueueSelectionString(self unsafe.Pointer) ([]uint8, bool, int32) {
+	var outResultPtr unsafe.Pointer
+	var outResultLen uintptr
+	code := bindings().fnEventQueueSelectionString(self, &outResultPtr, &outResultLen)
+	if code != 0 {
+		return nil, false, code
+	}
+	if outResultPtr == nil {
+		return nil, false, code
+	}
+	var result []uint8
+	if outResultLen != 0 {
+		result = make([]uint8, int(outResultLen))
+		copy(result, unsafe.Slice((*uint8)(outResultPtr), int(outResultLen)))
+	}
+	bindings().fnEventQueueFreeSelectionString(self, outResultPtr, outResultLen)
+	return result, true, code
+}
+
+// EventQueueFreeSelectionString calls the generated purego ABI wrapper for zg_event_queue_free_selection_string.
+func EventQueueFreeSelectionString(self unsafe.Pointer, value []uint8) int32 {
+	var valuePtr unsafe.Pointer
+	if len(value) != 0 {
+		valuePtr = unsafe.Pointer(&value[0])
+	}
+	code := bindings().fnEventQueueFreeSelectionString(self, valuePtr, uintptr(len(value)))
+	return code
 }
 
 // EventQueueEchoCString calls the generated purego ABI wrapper for zg_event_queue_echo_c_string.
@@ -1221,5 +1269,11 @@ func LiveSamples() uint {
 // LiveLimits calls the generated purego ABI wrapper for zg_live_limits.
 func LiveLimits() uint {
 	result := bindings().fnLiveLimits()
+	return uint(result)
+}
+
+// LiveSelectionStrings calls the generated purego ABI wrapper for zg_live_selection_strings.
+func LiveSelectionStrings() uint {
+	result := bindings().fnLiveSelectionStrings()
 	return uint(result)
 }

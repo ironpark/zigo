@@ -66,3 +66,27 @@ func CheckedDigits(count uint32) ([]int32, bool, error) {
 	}
 	return result, zigoHas, nil
 }
+
+// TakeOwned calls the Zig function takeOwned.
+// Native failures are returned as generated error values.
+func TakeOwned() ([]byte, bool, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	result, zigoHas, code := raw.TakeOwned()
+	if code != 0 {
+		return nil, false, errorForCode("TakeOwned", code)
+	}
+	return result, zigoHas, nil
+}
+
+// TakeOwnedCString calls the Zig function takeOwnedCString.
+// Native failures are returned as generated error values.
+func TakeOwnedCString() (string, bool, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	result, zigoHas, code := raw.TakeOwnedCString()
+	if code != 0 {
+		return "", false, errorForCode("TakeOwnedCString", code)
+	}
+	return string(result), zigoHas, nil
+}

@@ -1515,13 +1515,19 @@ fn onlyExposedParameter(params: []const semantic.Parameter) ?semantic.Parameter 
 }
 
 /// The element of a slice a function returns through `out_result_ptr` and
-/// `out_result_len`, or null when it returns something else. `![]T` shares the
-/// shape with `[]T`; a sentinel byte pointer keeps its own C-string lowering.
+/// `out_result_len`, or null when it returns something else. Optional and
+/// error-union wrappers do not change the ownership of the underlying slice.
 fn sliceReturnElement(function: semantic.SemanticFn) ?semantic.TypeNode {
-    if (function.return_semantic == .c_string) return null;
-    return switch (function.@"return") {
+    const payload = switch (function.@"return") {
+        .error_union => |value| value.payload.*,
+        else => function.@"return",
+    };
+    const slice = switch (payload) {
+        .optional => |value| value.child.*,
+        else => payload,
+    };
+    return switch (slice) {
         .slice => |value| value.element.*,
-        .error_union => |value| if (value.payload.* == .slice) value.payload.slice.element.* else null,
         else => null,
     };
 }
@@ -2391,6 +2397,51 @@ test "a release target may take the allocator zigo injects" {
     var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer scratch.deinit();
     try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(scratch.allocator(), document));
+}
+
+test "caller-owned optional slices use the underlying slice release contract" {
+    var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    var bytes: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte } };
+    var c_string: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte, .sentinel = 0 } };
+    var optional_bytes: semantic.TypeNode = .{ .optional = .{ .child = &bytes } };
+    var optional_c_string: semantic.TypeNode = .{ .optional = .{ .child = &c_string } };
+    const document: semantic.Semantic = .{
+        .functions = &.{
+            .{
+                .name = "takeBytes",
+                .ownership = .caller,
+                .params = &.{},
+                .release = "freeBytes",
+                .@"return" = .{ .error_union = .{ .error_set = &.{"Invalid"}, .payload = &optional_bytes } },
+                .symbol = "zg_take_bytes",
+            },
+            .{
+                .name = "takeCString",
+                .ownership = .caller,
+                .params = &.{},
+                .release = "freeCString",
+                .@"return" = .{ .error_union = .{ .error_set = &.{"Invalid"}, .payload = &optional_c_string } },
+                .return_semantic = .c_string,
+                .symbol = "zg_take_c_string",
+            },
+            .{
+                .name = "freeBytes",
+                .params = &.{.{ .name = "value", .type = bytes }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_free_bytes",
+            },
+            .{
+                .name = "freeCString",
+                .params = &.{.{ .name = "value", .type = c_string }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_free_c_string",
+            },
+        },
+        .package = "good",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    try semanticDocument(std.testing.allocator, document);
 }
 
 test "a written hint is accepted on an out slice of a counting function" {

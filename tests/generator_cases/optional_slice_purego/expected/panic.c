@@ -111,3 +111,49 @@ ZIGO_EXPORT int32_t zg_checked_digits(uint32_t count, const int32_t * * out_resu
     zg_panic_active = 0;
     return result;
 }
+
+int32_t zg_take_owned_impl(const uint8_t * * out_result_ptr, size_t * out_result_len);
+ZIGO_EXPORT int32_t zg_take_owned(const uint8_t * * out_result_ptr, size_t * out_result_len) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return -2;
+    }
+    int32_t result = zg_take_owned_impl(out_result_ptr, out_result_len);
+    zg_panic_active = 0;
+    return result;
+}
+
+void zg_free_owned_impl(const uint8_t * value_ptr, size_t value_len);
+ZIGO_EXPORT void zg_free_owned(const uint8_t * value_ptr, size_t value_len) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        zg_panic_fatal();
+    }
+zg_free_owned_impl(value_ptr, value_len);
+    zg_panic_active = 0;
+}
+
+int32_t zg_take_owned_c_string_impl(const uint8_t * * out_result_ptr, size_t * out_result_len);
+ZIGO_EXPORT int32_t zg_take_owned_c_string(const uint8_t * * out_result_ptr, size_t * out_result_len) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return -2;
+    }
+    int32_t result = zg_take_owned_c_string_impl(out_result_ptr, out_result_len);
+    zg_panic_active = 0;
+    return result;
+}
+
+void zg_free_owned_c_string_impl(const uint8_t * value_ptr, size_t value_len);
+ZIGO_EXPORT void zg_free_owned_c_string(const uint8_t * value_ptr, size_t value_len) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        zg_panic_fatal();
+    }
+zg_free_owned_c_string_impl(value_ptr, value_len);
+    zg_panic_active = 0;
+}

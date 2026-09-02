@@ -53,6 +53,7 @@ var live_samples: std.atomic.Value(usize) = .init(0);
 /// The same idea for `extractLimits`, whose result the Go side reinterprets
 /// rather than copying a second time.
 var live_limits: std.atomic.Value(usize) = .init(0);
+var live_selection_strings: std.atomic.Value(usize) = .init(0);
 
 var live_tickers: std.atomic.Value(usize) = .init(0);
 var live_streams: std.atomic.Value(usize) = .init(0);
@@ -265,6 +266,20 @@ pub const EventQueue = struct {
         return &.{ 0.25, 1.5, 3.75 };
     }
 
+    /// A fallible optional slice with caller ownership. An empty queue has no
+    /// selection; otherwise Go copies and releases the allocated name.
+    pub fn selectionString(self: *EventQueue, gpa: std.mem.Allocator) CreateError!?[]const u8 {
+        if (self.items.items.len == 0) return null;
+        const result = try gpa.dupe(u8, self.name_bytes);
+        _ = live_selection_strings.fetchAdd(1, .monotonic);
+        return result;
+    }
+
+    pub fn freeSelectionString(_: *EventQueue, gpa: std.mem.Allocator, value: []const u8) void {
+        gpa.free(value);
+        _ = live_selection_strings.fetchSub(1, .monotonic);
+    }
+
     /// Hands the caller a freshly allocated buffer. Ownership moves with the
     /// return value, so the generated binding must copy it and then call
     /// `freeSamples` before handing the slice to Go.
@@ -452,6 +467,10 @@ pub fn liveSamples() usize {
 
 pub fn liveLimits() usize {
     return live_limits.load(.monotonic);
+}
+
+pub fn liveSelectionStrings() usize {
+    return live_selection_strings.load(.monotonic);
 }
 
 pub fn liveQueues() usize {

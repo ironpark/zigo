@@ -414,6 +414,30 @@ func (e *EventQueue) SampleValuesChecked() ([]float32, error) {
 	return result, nil
 }
 
+// SelectionString
+// A fallible optional slice with caller ownership. An empty queue has no
+// selection; otherwise Go copies and releases the allocated name.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+func (e *EventQueue) SelectionString() ([]byte, bool, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("EventQueue.SelectionString receiver", e)
+	if err != nil {
+		return nil, false, err
+	}
+	defer e.zigoRelease()
+	result, zigoHas, code := raw.EventQueueSelectionString(ptr)
+	for _, handle := range e.callbackHandles {
+		zigoRethrowCallbackPanic("EventQueue.SelectionString", handle)
+	}
+	if code != 0 {
+		return nil, false, zigoPoisonAfterPanic(errorForCode("EventQueue.SelectionString", code), e)
+	}
+	return result, zigoHas, nil
+}
+
 // EchoCString
 // Sentinel byte pointers use the C string lowering and surface as Go
 // strings without a separate length parameter.
@@ -908,4 +932,9 @@ func LiveSamples() uint {
 // LiveLimits calls the Zig function liveLimits.
 func LiveLimits() uint {
 	return raw.LiveLimits()
+}
+
+// LiveSelectionStrings calls the Zig function liveSelectionStrings.
+func LiveSelectionStrings() uint {
+	return raw.LiveSelectionStrings()
 }

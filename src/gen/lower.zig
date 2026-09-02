@@ -240,7 +240,9 @@ pub fn semanticDocumentForBackend(
         }
 
         var function_errors: []const abi.ErrorCode = &.{};
-        const return_scalar = if (isCStringSlice(function.@"return", function.return_semantic)) blk: {
+        const caller_owned_c_string = function.ownership == .caller and function.release != null and
+            returnContainsCStringSlice(function.@"return", function.return_semantic);
+        const return_scalar = if (isCStringSlice(function.@"return", function.return_semantic) and !caller_owned_c_string) blk: {
             const child = try allocator.create(abi.AbiScalar);
             child.* = try lowerValue(allocator, document, prefix, function.@"return".slice.element.*);
             break :blk abi.AbiScalar{ .pointer = .{
@@ -260,12 +262,12 @@ pub fn semanticDocumentForBackend(
                 // plain slice return, so every emitter downstream sees one
                 // slice-return shape whether or not the function can fail.
                 if (error_union.payload.* == .slice and
-                    !isCStringSlice(error_union.payload.*, function.return_semantic))
+                    (!isCStringSlice(error_union.payload.*, function.return_semantic) or caller_owned_c_string))
                 {
                     try appendSliceReturnOuts(allocator, document, prefix, &params, error_union.payload.slice, false);
                 } else if (error_union.payload.* == .optional and
                     error_union.payload.optional.child.* == .slice and
-                    !isCStringSlice(error_union.payload.optional.child.*, function.return_semantic))
+                    (!isCStringSlice(error_union.payload.optional.child.*, function.return_semantic) or caller_owned_c_string))
                 {
                     // `E!?[]T`: the returned pointer is already nullable, so
                     // absence needs no flag of its own.
@@ -317,7 +319,7 @@ pub fn semanticDocumentForBackend(
             // absent slice, which a length of zero cannot be confused with.
             .optional => |optional| result: {
                 if (optional.child.* == .slice and
-                    !isCStringSlice(optional.child.*, function.return_semantic))
+                    (!isCStringSlice(optional.child.*, function.return_semantic) or caller_owned_c_string))
                 {
                     try appendSliceReturnOuts(allocator, document, prefix, &params, optional.child.slice, true);
                     break :result abi.AbiScalar{ .void = {} };
@@ -1014,6 +1016,12 @@ fn lowerValue(allocator: std.mem.Allocator, document: semantic.Semantic, prefix:
 fn isCStringSlice(node: semantic.TypeNode, hint: ?semantic.SemanticHint) bool {
     return hint == .c_string and node == .slice and node.slice.@"const" and
         node.slice.element.* == .int and !node.slice.element.int.signed and node.slice.element.int.bits == 8;
+}
+
+fn returnContainsCStringSlice(node: semantic.TypeNode, hint: ?semantic.SemanticHint) bool {
+    const payload = if (node == .error_union) node.error_union.payload.* else node;
+    const child = if (payload == .optional) payload.optional.child.* else payload;
+    return isCStringSlice(child, hint);
 }
 
 fn isStringSliceParameter(parameter: semantic.Parameter) bool {

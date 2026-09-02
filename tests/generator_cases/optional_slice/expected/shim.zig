@@ -48,3 +48,35 @@ export fn zg_checked_digits_impl(count: u32, out_result_ptr: *[*c]const i32, out
     }
     return 0;
 }
+export fn zg_take_owned_impl(out_result_ptr: *[*c]const u8, out_result_len: *usize) i32 {
+    const result = target.takeOwned() catch |err| return switch (err) {
+        error.Invalid => 1,
+    };
+    if (result) |zigo_value| {
+        out_result_ptr.* = zigo_value.ptr;
+        out_result_len.* = zigo_value.len;
+    } else {
+        out_result_ptr.* = null;
+        out_result_len.* = 0;
+    }
+    return 0;
+}
+export fn zg_free_owned_impl(value_ptr: [*c]const u8, value_len: usize) void {
+    target.freeOwned(if (value_len == 0) &.{} else value_ptr[0..value_len]);
+}
+export fn zg_take_owned_c_string_impl(out_result_ptr: *[*c]const u8, out_result_len: *usize) i32 {
+    const result = target.takeOwnedCString() catch |err| return switch (err) {
+        error.Invalid => 1,
+    };
+    if (result) |zigo_value| {
+        out_result_ptr.* = zigo_value.ptr;
+        out_result_len.* = zigo_value.len;
+    } else {
+        out_result_ptr.* = null;
+        out_result_len.* = 0;
+    }
+    return 0;
+}
+export fn zg_free_owned_c_string_impl(value_ptr: [*c]const u8, value_len: usize) void {
+    target.freeOwnedCString(if (value_len == 0) &.{} else value_ptr[0..value_len]);
+}

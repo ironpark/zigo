@@ -22,6 +22,10 @@ ZIGO_EXPORT int32_t zg_total(const int32_t * values_ptr, size_t values_len);
 ZIGO_EXPORT void zg_digits(uint32_t count, const int32_t * * out_result_ptr, size_t * out_result_len);
 ZIGO_EXPORT void zg_name(uint32_t count, const uint8_t * * out_result_ptr, size_t * out_result_len);
 ZIGO_EXPORT int32_t zg_checked_digits(uint32_t count, const int32_t * * out_result_ptr, size_t * out_result_len);
+ZIGO_EXPORT int32_t zg_take_owned(const uint8_t * * out_result_ptr, size_t * out_result_len);
+ZIGO_EXPORT void zg_free_owned(const uint8_t * value_ptr, size_t value_len);
+ZIGO_EXPORT int32_t zg_take_owned_c_string(const uint8_t * * out_result_ptr, size_t * out_result_len);
+ZIGO_EXPORT void zg_free_owned_c_string(const uint8_t * value_ptr, size_t value_len);
 ZIGO_EXPORT const char *zg_last_error_message(void);
 
 #endif // ZIGO_optslice_H

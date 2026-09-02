@@ -93,3 +93,53 @@ func CheckedDigits(count uint32) ([]int32, bool, int32) {
 	copy(result, unsafe.Slice((*int32)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
 	return result, true, code
 }
+// TakeOwned calls the generated C ABI wrapper for zg_take_owned.
+func TakeOwned() ([]uint8, bool, int32) {
+	var outResultPtr *C.uint8_t
+	var outResultLen C.size_t
+	code := int32(C.zg_take_owned(&outResultPtr, &outResultLen))
+	if code != 0 {
+		return nil, false, code
+	}
+	if outResultPtr == nil { return nil, false, code }
+	var result []uint8
+	if outResultLen != 0 {
+		result = C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))
+	}
+	C.zg_free_owned(outResultPtr, outResultLen)
+	return result, true, code
+}
+// FreeOwned calls the generated C ABI wrapper for zg_free_owned.
+func FreeOwned(value []uint8) {
+	var valueZero C.uint8_t
+	valuePtr := &valueZero
+	if len(value) != 0 {
+		valuePtr = (*C.uint8_t)(unsafe.Pointer(&value[0]))
+	}
+	C.zg_free_owned(valuePtr, C.size_t(len(value)))
+}
+// TakeOwnedCString calls the generated C ABI wrapper for zg_take_owned_c_string.
+func TakeOwnedCString() ([]uint8, bool, int32) {
+	var outResultPtr *C.uint8_t
+	var outResultLen C.size_t
+	code := int32(C.zg_take_owned_c_string(&outResultPtr, &outResultLen))
+	if code != 0 {
+		return nil, false, code
+	}
+	if outResultPtr == nil { return nil, false, code }
+	var result []uint8
+	if outResultLen != 0 {
+		result = C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))
+	}
+	C.zg_free_owned_c_string(outResultPtr, outResultLen)
+	return result, true, code
+}
+// FreeOwnedCString calls the generated C ABI wrapper for zg_free_owned_c_string.
+func FreeOwnedCString(value []uint8) {
+	var valueZero C.uint8_t
+	valuePtr := &valueZero
+	if len(value) != 0 {
+		valuePtr = (*C.uint8_t)(unsafe.Pointer(&value[0]))
+	}
+	C.zg_free_owned_c_string(valuePtr, C.size_t(len(value)))
+}

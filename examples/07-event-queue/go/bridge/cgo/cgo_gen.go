@@ -301,6 +301,36 @@ func EventQueueSampleValuesChecked(self unsafe.Pointer) ([]float32, int32) {
 	return result, code
 }
 
+// EventQueueSelectionString calls the generated C ABI wrapper for zg_event_queue_selection_string.
+func EventQueueSelectionString(self unsafe.Pointer) ([]uint8, bool, int32) {
+	var outResultPtr *C.uint8_t
+	var outResultLen C.size_t
+	code := int32(C.zg_event_queue_selection_string((*C.zg_event_queue)(self), &outResultPtr, &outResultLen))
+	if code != 0 {
+		return nil, false, code
+	}
+	if outResultPtr == nil {
+		return nil, false, code
+	}
+	var result []uint8
+	if outResultLen != 0 {
+		result = C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))
+	}
+	C.zg_event_queue_free_selection_string((*C.zg_event_queue)(self), outResultPtr, outResultLen)
+	return result, true, code
+}
+
+// EventQueueFreeSelectionString calls the generated C ABI wrapper for zg_event_queue_free_selection_string.
+func EventQueueFreeSelectionString(self unsafe.Pointer, value []uint8) int32 {
+	var valueZero C.uint8_t
+	valuePtr := &valueZero
+	if len(value) != 0 {
+		valuePtr = (*C.uint8_t)(unsafe.Pointer(&value[0]))
+	}
+	code := int32(C.zg_event_queue_free_selection_string((*C.zg_event_queue)(self), valuePtr, C.size_t(len(value))))
+	return code
+}
+
 // EventQueueEchoCString calls the generated C ABI wrapper for zg_event_queue_echo_c_string.
 func EventQueueEchoCString(text string) string {
 	textCString := zigoCString(text)
@@ -664,6 +694,11 @@ func LiveSamples() uint {
 // LiveLimits calls the generated C ABI wrapper for zg_live_limits.
 func LiveLimits() uint {
 	return uint(C.zg_live_limits())
+}
+
+// LiveSelectionStrings calls the generated C ABI wrapper for zg_live_selection_strings.
+func LiveSelectionStrings() uint {
+	return uint(C.zg_live_selection_strings())
 }
 
 // StatsData mirrors the zg_stats layout, padding included.

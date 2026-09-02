@@ -36,6 +36,35 @@
       "params": [{"name": "count", "type": {"bits": 32, "kind": "int", "signed": false}}],
       "return": {"error_set": ["Invalid"], "kind": "error_union", "payload": {"kind": "optional", "child": {"kind": "slice", "const": true, "element": {"bits": 32, "kind": "int", "signed": true}}}},
       "symbol": "zg_checked_digits"
+    },
+    {
+      "name": "takeOwned",
+      "ownership": "caller",
+      "params": [],
+      "release": "freeOwned",
+      "return": {"error_set": ["Invalid"], "kind": "error_union", "payload": {"kind": "optional", "child": {"kind": "slice", "const": true, "element": {"bits": 8, "kind": "int", "signed": false}}}},
+      "symbol": "zg_take_owned"
+    },
+    {
+      "name": "freeOwned",
+      "params": [{"name": "value", "type": {"kind": "slice", "const": true, "element": {"bits": 8, "kind": "int", "signed": false}}}],
+      "return": {"kind": "void"},
+      "symbol": "zg_free_owned"
+    },
+    {
+      "name": "takeOwnedCString",
+      "ownership": "caller",
+      "params": [],
+      "release": "freeOwnedCString",
+      "return": {"error_set": ["Invalid"], "kind": "error_union", "payload": {"kind": "optional", "child": {"kind": "slice", "const": true, "sentinel": 0, "element": {"bits": 8, "kind": "int", "signed": false}}}},
+      "return_semantic": "c_string",
+      "symbol": "zg_take_owned_c_string"
+    },
+    {
+      "name": "freeOwnedCString",
+      "params": [{"name": "value", "type": {"kind": "slice", "const": true, "sentinel": 0, "element": {"bits": 8, "kind": "int", "signed": false}}}],
+      "return": {"kind": "void"},
+      "symbol": "zg_free_owned_c_string"
     }
   ],
   "package": "optslice",
