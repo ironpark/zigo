@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T06:34:33Z"
 description: N단계 바인딩 경로, 비 2의거듭제곱 정수 폭 승격, 위치 정보가 있는 생성기 진단
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-02T06:00:06Z"
 ---
 > NEXT: `supported()`를 `findIssue`의 `ZIGO018`/`ZIGO019` 진단으로 흡수하고 walk.zig의 comptime 메시지에 경로·파라미터를 넣는다. ([Phase 0](phases/00-located-diagnostics.md))
@@ -9,7 +10,7 @@ registered_at: "2026-09-02T06:00:06Z"
 
 - [x] [Phase 00: 지원되지 않는 타입을 위치 있는 진단으로](phases/00-located-diagnostics.md)
 - [x] [Phase 01: 비 2의거듭제곱 정수 폭 승격](phases/01-int-width-promotion.md)
-- [ ] [Phase 02: N단계 바인딩 경로](phases/02-nested-paths.md)
+- [x] [Phase 02: N단계 바인딩 경로](phases/02-nested-paths.md)
 
 # Shared Verification
 
