@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 typedef struct zg_parent zg_parent;
+typedef struct zg_view zg_view;
 typedef struct zg_child zg_child;
 // ELF and Mach-O export every non-static symbol of a shared library;
 // COFF exports nothing without an explicit annotation, so a DLL built
@@ -20,7 +21,8 @@ typedef struct zg_child zg_child;
 
 ZIGO_EXPORT int32_t zg_new_parent(zg_parent * * out_result);
 ZIGO_EXPORT int32_t zg_parent_free_parent(zg_parent * self);
-ZIGO_EXPORT int32_t zg_parent_new_child(zg_parent * self, zg_child * * out_result);
+ZIGO_EXPORT int32_t zg_parent_view(zg_parent * self, zg_view * * out_result);
+ZIGO_EXPORT int32_t zg_view_new_child(zg_view * self, zg_child * * out_result);
 ZIGO_EXPORT int32_t zg_child_free_child(zg_child * self);
 ZIGO_EXPORT int32_t zg_child_touch(zg_child * self);
 ZIGO_EXPORT const char *zg_last_error_message(void);

@@ -67,21 +67,21 @@ func (p *Parent) zigoPoison(cause *NativePanicError) {
 }
 
 // zigoAcquireChild reserves one dependent child atomically with the call pin.
-func (p *Parent) zigoAcquireChild(operation string) (unsafe.Pointer, error) {
+func (p *Parent) zigoAcquireChild(operation string) (unsafe.Pointer, zigoChildHandle, error) {
 	if p == nil {
-		return nil, &HandleError{Operation: operation}
+		return nil, nil, &HandleError{Operation: operation}
 	}
 	p.mu.Lock()
 	defer p.mu.Unlock()
 	if p.closed || p.ptr == nil {
-		return nil, &HandleError{Operation: operation}
+		return nil, nil, &HandleError{Operation: operation}
 	}
 	if p.poison != nil {
-		return nil, p.poison.poisoned(operation)
+		return nil, nil, p.poison.poisoned(operation)
 	}
 	p.active++
 	p.children++
-	return p.ptr, nil
+	return p.ptr, p, nil
 }
 
 func (p *Parent) zigoDropChild() {
@@ -128,6 +128,11 @@ func (p *Parent) Close() error {
 		p.mu.Unlock()
 		return &HandleInUseError{Operation: "Parent.Close", Children: children}
 	}
+	if p.active != 0 {
+		active := p.active
+		p.mu.Unlock()
+		return &HandleInUseError{Operation: "Parent.Close", Children: active}
+	}
 	p.closed = true
 	p.cleanup.Stop()
 	state, release := p.zigoTakeLocked()
@@ -154,6 +159,162 @@ func (p *Parent) zigoTakeLocked() (parentCleanupState, bool) {
 	return state, true
 }
 
+// View represents a native Zig handle.
+type View struct {
+	ptr      unsafe.Pointer
+	mu       sync.Mutex
+	active   int
+	children int
+	closed   bool
+	poison   *NativePanicError
+	owner    zigoHandle
+}
+
+func newBorrowedView(ptr unsafe.Pointer, owner zigoHandle) *View {
+	return &View{ptr: ptr, owner: owner}
+}
+
+// zigoAcquire pins v and its parent open for one native call.
+func (v *View) zigoAcquire(operation string) (unsafe.Pointer, error) {
+	if v == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	v.mu.Lock()
+	var parent zigoHandle
+	parent = v.owner
+	v.mu.Unlock()
+	if parent != nil {
+		if _, err := parent.zigoAcquire(operation); err != nil {
+			return nil, err
+		}
+	}
+	v.mu.Lock()
+	if v.closed || v.ptr == nil {
+		v.mu.Unlock()
+		if parent != nil {
+			parent.zigoRelease()
+		}
+		return nil, &HandleError{Operation: operation}
+	}
+	if v.poison != nil {
+		err := v.poison.poisoned(operation)
+		v.mu.Unlock()
+		if parent != nil {
+			parent.zigoRelease()
+		}
+		return nil, err
+	}
+	v.active++
+	ptr := v.ptr
+	v.mu.Unlock()
+	return ptr, nil
+}
+
+func (v *View) zigoRelease() {
+	if v == nil {
+		return
+	}
+	v.mu.Lock()
+	v.active--
+	var parent zigoHandle
+	parent = v.owner
+	v.mu.Unlock()
+	if parent != nil { parent.zigoRelease() }
+}
+
+// zigoPoison marks v unusable: a Zig panic unwound through native frames
+// without running their defers, so the state behind it is unknown.
+func (v *View) zigoPoison(cause *NativePanicError) {
+	if v == nil {
+		return
+	}
+	v.mu.Lock()
+	var parent zigoHandle
+	parent = v.owner
+	if v.poison == nil {
+		v.poison = cause
+	}
+	v.mu.Unlock()
+	if parent != nil {
+		parent.zigoPoison(cause)
+	}
+}
+
+// zigoAcquireChild reserves one dependent child on the ultimate owning handle.
+func (v *View) zigoAcquireChild(operation string) (unsafe.Pointer, zigoChildHandle, error) {
+	if v == nil {
+		return nil, nil, &HandleError{Operation: operation}
+	}
+	v.mu.Lock()
+	parent := v.owner
+	v.mu.Unlock()
+	if parent != nil {
+		childParent, ok := parent.(zigoChildHandle)
+		if !ok {
+			return nil, nil, &HandleError{Operation: operation}
+		}
+		_, reservation, err := childParent.zigoAcquireChild(operation)
+		if err != nil {
+			return nil, nil, err
+		}
+		v.mu.Lock()
+		if v.closed || v.ptr == nil {
+			v.mu.Unlock()
+			childParent.zigoRelease()
+			reservation.zigoDropChild()
+			return nil, nil, &HandleError{Operation: operation}
+		}
+		if v.poison != nil {
+			err := v.poison.poisoned(operation)
+			v.mu.Unlock()
+			childParent.zigoRelease()
+			reservation.zigoDropChild()
+			return nil, nil, err
+		}
+		v.active++
+		ptr := v.ptr
+		v.mu.Unlock()
+		return ptr, reservation, nil
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	if v.closed || v.ptr == nil {
+		return nil, nil, &HandleError{Operation: operation}
+	}
+	if v.poison != nil {
+		return nil, nil, v.poison.poisoned(operation)
+	}
+	v.active++
+	v.children++
+	return v.ptr, v, nil
+}
+
+func (v *View) zigoDropChild() {
+	if v == nil {
+		return
+	}
+	v.mu.Lock()
+	v.children--
+	v.mu.Unlock()
+}
+
+// Close detaches this borrowed View view without releasing native resources.
+func (v *View) Close() error {
+	if v == nil { return nil }
+	v.mu.Lock()
+	if v.closed { v.mu.Unlock(); return nil }
+	if v.active != 0 {
+		active := v.active
+		v.mu.Unlock()
+		return &HandleInUseError{Operation: "View.Close", Children: active}
+	}
+	v.closed = true
+	v.ptr = nil
+	v.owner = nil
+	v.mu.Unlock()
+	return nil
+}
+
 // Child is a caller-owned native handle. Call Close when it is no longer needed.
 type Child struct {
 	ptr     unsafe.Pointer
@@ -161,7 +322,7 @@ type Child struct {
 	active  int
 	closed  bool
 	poison  *NativePanicError
-	parent  *Parent
+	parent  zigoChildHandle
 	cleanup runtime.Cleanup
 }
 
@@ -237,12 +398,12 @@ func (c *Child) zigoPoison(cause *NativePanicError) {
 
 type childCleanupState struct {
 	ptr    unsafe.Pointer
-	parent *Parent
+	parent zigoChildHandle
 }
 
-func newChild(ptr unsafe.Pointer, parent *Parent) *Child {
+func newChild(ptr unsafe.Pointer, parent zigoChildHandle) *Child {
 	value := &Child{ptr: ptr, parent: parent}
-	state := childCleanupState{ptr: ptr}
+	state := childCleanupState{ptr: ptr, parent: parent}
 	value.cleanup = runtime.AddCleanup(value, cleanupChild, state)
 	return value
 }

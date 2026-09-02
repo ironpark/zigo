@@ -23,30 +23,49 @@ func NewParent() (*Parent, error) {
 	return newParent(result), nil
 }
 
+// View calls the Zig function Parent.view.
+// The returned reference remains valid only while its parent handle remains open.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (p *Parent) View() (*View, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Parent.View receiver", p)
+	if err != nil {
+		return nil, err
+	}
+	defer p.zigoRelease()
+	result, code := raw.ParentView(ptr)
+	if code != 0 {
+		return nil, zigoPoisonAfterPanic(errorForCode("Parent.View", code), p)
+	}
+	return newBorrowedView(result, p), nil
+}
+
 // NewChild creates a caller-owned Child.
 // The caller must call Close on the returned handle.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
-func (p *Parent) NewChild() (*Child, error) {
+func (v *View) NewChild() (*Child, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	ptr, err := p.zigoAcquireChild("Parent.NewChild receiver")
+	ptr, zigoChildParent, err := v.zigoAcquireChild("View.NewChild receiver")
 	if err != nil {
 		return nil, err
 	}
 	zigoChildCreated := false
 	defer func() {
-		p.zigoRelease()
+		v.zigoRelease()
 		if !zigoChildCreated {
-			p.zigoDropChild()
+			zigoChildParent.zigoDropChild()
 		}
 	}()
-	result, code := raw.ParentNewChild(ptr)
+	result, code := raw.ViewNewChild(ptr)
 	if code != 0 {
-		return nil, zigoPoisonAfterPanic(errorForCode("Parent.NewChild", code), p)
+		return nil, zigoPoisonAfterPanic(errorForCode("View.NewChild", code), v)
 	}
 	zigoChildCreated = true
-	return newChild(result, p), nil
+	return newChild(result, zigoChildParent), nil
 }
 
 // Touch calls the Zig function Child.touch.

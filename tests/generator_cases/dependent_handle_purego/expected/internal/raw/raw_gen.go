@@ -46,7 +46,8 @@ type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	fnNewParent func(*unsafe.Pointer) int32
 	fnParentFreeParent func(unsafe.Pointer) int32
-	fnParentNewChild func(unsafe.Pointer, *unsafe.Pointer) int32
+	fnParentView func(unsafe.Pointer, *unsafe.Pointer) int32
+	fnViewNewChild func(unsafe.Pointer, *unsafe.Pointer) int32
 	fnChildFreeChild func(unsafe.Pointer) int32
 	fnChildTouch func(unsafe.Pointer) int32
 }
@@ -110,8 +111,10 @@ func loadCandidate(path string) error {
 	if err != nil { return fail("zg_new_parent", err) }
 	addrParentFreeParent, err := resolveSymbol(handle, "zg_parent_free_parent")
 	if err != nil { return fail("zg_parent_free_parent", err) }
-	addrParentNewChild, err := resolveSymbol(handle, "zg_parent_new_child")
-	if err != nil { return fail("zg_parent_new_child", err) }
+	addrParentView, err := resolveSymbol(handle, "zg_parent_view")
+	if err != nil { return fail("zg_parent_view", err) }
+	addrViewNewChild, err := resolveSymbol(handle, "zg_view_new_child")
+	if err != nil { return fail("zg_view_new_child", err) }
 	addrChildFreeChild, err := resolveSymbol(handle, "zg_child_free_child")
 	if err != nil { return fail("zg_child_free_child", err) }
 	addrChildTouch, err := resolveSymbol(handle, "zg_child_touch")
@@ -120,7 +123,8 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.fnNewParent, addrNewParent)
 	purego.RegisterFunc(&next.fnParentFreeParent, addrParentFreeParent)
-	purego.RegisterFunc(&next.fnParentNewChild, addrParentNewChild)
+	purego.RegisterFunc(&next.fnParentView, addrParentView)
+	purego.RegisterFunc(&next.fnViewNewChild, addrViewNewChild)
 	purego.RegisterFunc(&next.fnChildFreeChild, addrChildFreeChild)
 	purego.RegisterFunc(&next.fnChildTouch, addrChildTouch)
 	loadedBindings.Store(&next)
@@ -155,10 +159,17 @@ func ParentFreeParent(self unsafe.Pointer) int32 {
 	return code
 }
 
-// ParentNewChild calls the generated purego ABI wrapper for zg_parent_new_child.
-func ParentNewChild(self unsafe.Pointer) (unsafe.Pointer, int32) {
+// ParentView calls the generated purego ABI wrapper for zg_parent_view.
+func ParentView(self unsafe.Pointer) (unsafe.Pointer, int32) {
 	var outResult unsafe.Pointer
-	code := bindings().fnParentNewChild(self, &outResult)
+	code := bindings().fnParentView(self, &outResult)
+	return outResult, code
+}
+
+// ViewNewChild calls the generated purego ABI wrapper for zg_view_new_child.
+func ViewNewChild(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := bindings().fnViewNewChild(self, &outResult)
 	return outResult, code
 }
 

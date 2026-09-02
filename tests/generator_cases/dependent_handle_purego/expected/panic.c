@@ -66,14 +66,26 @@ ZIGO_EXPORT int32_t zg_parent_free_parent(zg_parent * self) {
     return result;
 }
 
-int32_t zg_parent_new_child_impl(zg_parent * self, zg_child * * out_result);
-ZIGO_EXPORT int32_t zg_parent_new_child(zg_parent * self, zg_child * * out_result) {
+int32_t zg_parent_view_impl(zg_parent * self, zg_view * * out_result);
+ZIGO_EXPORT int32_t zg_parent_view(zg_parent * self, zg_view * * out_result) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
         return -2;
     }
-    int32_t result = zg_parent_new_child_impl(self, out_result);
+    int32_t result = zg_parent_view_impl(self, out_result);
+    zg_panic_active = 0;
+    return result;
+}
+
+int32_t zg_view_new_child_impl(zg_view * self, zg_child * * out_result);
+ZIGO_EXPORT int32_t zg_view_new_child(zg_view * self, zg_child * * out_result) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return -2;
+    }
+    int32_t result = zg_view_new_child_impl(self, out_result);
     zg_panic_active = 0;
     return result;
 }

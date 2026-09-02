@@ -13,6 +13,12 @@ type zigoHandle interface {
 	zigoPoison(cause *NativePanicError)
 }
 
+type zigoChildHandle interface {
+	zigoHandle
+	zigoAcquireChild(operation string) (unsafe.Pointer, zigoChildHandle, error)
+	zigoDropChild()
+}
+
 // zigoCheckedPointer pins value open for the rest of the call and hands back
 // its native pointer; the caller defers zigoRelease. A nil, closed, or
 // poisoned handle is the error instead, and nothing is pinned.

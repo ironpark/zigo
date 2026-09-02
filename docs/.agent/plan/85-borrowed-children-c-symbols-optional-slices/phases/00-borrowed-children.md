@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 재현 테스트가 통과, 전 예제 녹색, 커밋.
 > NEXT: none

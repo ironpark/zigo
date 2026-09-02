@@ -180,6 +180,20 @@ func BorrowBoxDeinit(self unsafe.Pointer) int32 {
 	return code
 }
 
+// BorrowViewView calls the generated C ABI wrapper for zg_borrow_view_view.
+func BorrowViewView(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult *C.zg_borrow_view
+	code := int32(C.zg_borrow_view_view((*C.zg_borrow_view)(self), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+
+// BorrowViewNewChild calls the generated C ABI wrapper for zg_borrow_view_new_child.
+func BorrowViewNewChild(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult *C.zg_borrow_child
+	code := int32(C.zg_borrow_view_new_child((*C.zg_borrow_view)(self), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+
 // BorrowViewGet calls the generated C ABI wrapper for zg_borrow_view_get.
 func BorrowViewGet(self unsafe.Pointer) (int32, int32) {
 	var outResult C.int32_t
@@ -191,6 +205,24 @@ func BorrowViewGet(self unsafe.Pointer) (int32, int32) {
 func BorrowViewExplode(self unsafe.Pointer) int32 {
 	code := int32(C.zg_borrow_view_explode((*C.zg_borrow_view)(self)))
 	return code
+}
+
+// BorrowChildGet calls the generated C ABI wrapper for zg_borrow_child_get.
+func BorrowChildGet(self unsafe.Pointer) (int32, int32) {
+	var outResult C.int32_t
+	code := int32(C.zg_borrow_child_get((*C.zg_borrow_child)(self), &outResult))
+	return int32(outResult), code
+}
+
+// BorrowChildDeinit calls the generated C ABI wrapper for zg_borrow_child_deinit.
+func BorrowChildDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_borrow_child_deinit((*C.zg_borrow_child)(self)))
+	return code
+}
+
+// LiveBorrowChildren calls the generated C ABI wrapper for zg_live_borrow_children.
+func LiveBorrowChildren() uint {
+	return uint(C.zg_live_borrow_children())
 }
 
 // StreamCapacity calls the generated C ABI wrapper for zg_stream_capacity.

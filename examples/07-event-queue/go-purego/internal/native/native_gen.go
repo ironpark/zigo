@@ -58,8 +58,13 @@ type nativeBindings struct {
 	fnBorrowBoxCreate                   func(int32, *unsafe.Pointer) int32
 	fnBorrowBoxView                     func(unsafe.Pointer, *unsafe.Pointer) int32
 	fnBorrowBoxDeinit                   func(unsafe.Pointer) int32
+	fnBorrowViewView                    func(unsafe.Pointer, *unsafe.Pointer) int32
+	fnBorrowViewNewChild                func(unsafe.Pointer, *unsafe.Pointer) int32
 	fnBorrowViewGet                     func(unsafe.Pointer, *int32) int32
 	fnBorrowViewExplode                 func(unsafe.Pointer) int32
+	fnBorrowChildGet                    func(unsafe.Pointer, *int32) int32
+	fnBorrowChildDeinit                 func(unsafe.Pointer) int32
+	fnLiveBorrowChildren                func() uintptr
 	fnStreamCapacity                    func(unsafe.Pointer, *uint32) int32
 	fnStreamFreeStream                  func(unsafe.Pointer) int32
 	fnEventQueueEnqueue                 func(unsafe.Pointer, uint64, int32) int32
@@ -359,6 +364,14 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_borrow_box_deinit", err)
 	}
+	addrBorrowViewView, err := resolveSymbol(handle, "zg_borrow_view_view")
+	if err != nil {
+		return fail("zg_borrow_view_view", err)
+	}
+	addrBorrowViewNewChild, err := resolveSymbol(handle, "zg_borrow_view_new_child")
+	if err != nil {
+		return fail("zg_borrow_view_new_child", err)
+	}
 	addrBorrowViewGet, err := resolveSymbol(handle, "zg_borrow_view_get")
 	if err != nil {
 		return fail("zg_borrow_view_get", err)
@@ -366,6 +379,18 @@ func loadCandidate(path string) error {
 	addrBorrowViewExplode, err := resolveSymbol(handle, "zg_borrow_view_explode")
 	if err != nil {
 		return fail("zg_borrow_view_explode", err)
+	}
+	addrBorrowChildGet, err := resolveSymbol(handle, "zg_borrow_child_get")
+	if err != nil {
+		return fail("zg_borrow_child_get", err)
+	}
+	addrBorrowChildDeinit, err := resolveSymbol(handle, "zg_borrow_child_deinit")
+	if err != nil {
+		return fail("zg_borrow_child_deinit", err)
+	}
+	addrLiveBorrowChildren, err := resolveSymbol(handle, "zg_live_borrow_children")
+	if err != nil {
+		return fail("zg_live_borrow_children", err)
 	}
 	addrStreamCapacity, err := resolveSymbol(handle, "zg_stream_capacity")
 	if err != nil {
@@ -548,8 +573,13 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnBorrowBoxCreate, addrBorrowBoxCreate)
 	purego.RegisterFunc(&next.fnBorrowBoxView, addrBorrowBoxView)
 	purego.RegisterFunc(&next.fnBorrowBoxDeinit, addrBorrowBoxDeinit)
+	purego.RegisterFunc(&next.fnBorrowViewView, addrBorrowViewView)
+	purego.RegisterFunc(&next.fnBorrowViewNewChild, addrBorrowViewNewChild)
 	purego.RegisterFunc(&next.fnBorrowViewGet, addrBorrowViewGet)
 	purego.RegisterFunc(&next.fnBorrowViewExplode, addrBorrowViewExplode)
+	purego.RegisterFunc(&next.fnBorrowChildGet, addrBorrowChildGet)
+	purego.RegisterFunc(&next.fnBorrowChildDeinit, addrBorrowChildDeinit)
+	purego.RegisterFunc(&next.fnLiveBorrowChildren, addrLiveBorrowChildren)
 	purego.RegisterFunc(&next.fnStreamCapacity, addrStreamCapacity)
 	purego.RegisterFunc(&next.fnStreamFreeStream, addrStreamFreeStream)
 	purego.RegisterFunc(&next.fnEventQueueEnqueue, addrEventQueueEnqueue)
@@ -747,6 +777,20 @@ func BorrowBoxDeinit(self unsafe.Pointer) int32 {
 	return code
 }
 
+// BorrowViewView calls the generated purego ABI wrapper for zg_borrow_view_view.
+func BorrowViewView(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := bindings().fnBorrowViewView(self, &outResult)
+	return outResult, code
+}
+
+// BorrowViewNewChild calls the generated purego ABI wrapper for zg_borrow_view_new_child.
+func BorrowViewNewChild(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := bindings().fnBorrowViewNewChild(self, &outResult)
+	return outResult, code
+}
+
 // BorrowViewGet calls the generated purego ABI wrapper for zg_borrow_view_get.
 func BorrowViewGet(self unsafe.Pointer) (int32, int32) {
 	var outResult int32
@@ -758,6 +802,25 @@ func BorrowViewGet(self unsafe.Pointer) (int32, int32) {
 func BorrowViewExplode(self unsafe.Pointer) int32 {
 	code := bindings().fnBorrowViewExplode(self)
 	return code
+}
+
+// BorrowChildGet calls the generated purego ABI wrapper for zg_borrow_child_get.
+func BorrowChildGet(self unsafe.Pointer) (int32, int32) {
+	var outResult int32
+	code := bindings().fnBorrowChildGet(self, &outResult)
+	return outResult, code
+}
+
+// BorrowChildDeinit calls the generated purego ABI wrapper for zg_borrow_child_deinit.
+func BorrowChildDeinit(self unsafe.Pointer) int32 {
+	code := bindings().fnBorrowChildDeinit(self)
+	return code
+}
+
+// LiveBorrowChildren calls the generated purego ABI wrapper for zg_live_borrow_children.
+func LiveBorrowChildren() uint {
+	result := bindings().fnLiveBorrowChildren()
+	return uint(result)
 }
 
 // StreamCapacity calls the generated purego ABI wrapper for zg_stream_capacity.

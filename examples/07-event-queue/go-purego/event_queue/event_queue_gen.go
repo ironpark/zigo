@@ -89,7 +89,7 @@ func (e *EventQueue) Clone(observer EventQueueCloneObserver) (*EventQueue, error
 func (e *EventQueue) NewStream() (*Stream, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	ptr, err := e.zigoAcquireChild("EventQueue.NewStream receiver")
+	ptr, zigoChildParent, err := e.zigoAcquireChild("EventQueue.NewStream receiver")
 	if err != nil {
 		return nil, err
 	}
@@ -97,7 +97,7 @@ func (e *EventQueue) NewStream() (*Stream, error) {
 	defer func() {
 		e.zigoRelease()
 		if !zigoChildCreated {
-			e.zigoDropChild()
+			zigoChildParent.ZigoDropChild()
 		}
 	}()
 	result, code := raw.EventQueueNewStream(ptr)
@@ -108,7 +108,7 @@ func (e *EventQueue) NewStream() (*Stream, error) {
 		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.NewStream", code), e)
 	}
 	zigoChildCreated = true
-	return newStream(result, e), nil
+	return newStream(result, zigoChildParent), nil
 }
 
 // NewBorrowBox creates a caller-owned BorrowBox.
@@ -141,6 +141,51 @@ func (b *BorrowBox) View() (*BorrowView, error) {
 		return nil, zigoPoisonAfterPanic(errorForCode("BorrowBox.View", code), b)
 	}
 	return newBorrowedBorrowView(result, b), nil
+}
+
+// View calls the Zig function BorrowView.view.
+// The returned reference remains valid only while its parent handle remains open.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (b *BorrowView) View() (*BorrowView, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("BorrowView.View receiver", b)
+	if err != nil {
+		return nil, err
+	}
+	defer b.zigoRelease()
+	result, code := raw.BorrowViewView(ptr)
+	if code != 0 {
+		return nil, zigoPoisonAfterPanic(errorForCode("BorrowView.View", code), b)
+	}
+	return newBorrowedBorrowView(result, b), nil
+}
+
+// NewBorrowChild creates a caller-owned BorrowChild.
+// The caller must call Close on the returned handle.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+func (b *BorrowView) NewBorrowChild() (*BorrowChild, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, zigoChildParent, err := b.zigoAcquireChild("BorrowView.NewBorrowChild receiver")
+	if err != nil {
+		return nil, err
+	}
+	zigoChildCreated := false
+	defer func() {
+		b.zigoRelease()
+		if !zigoChildCreated {
+			zigoChildParent.ZigoDropChild()
+		}
+	}()
+	result, code := raw.BorrowViewNewChild(ptr)
+	if code != 0 {
+		return nil, zigoPoisonAfterPanic(errorForCode("BorrowView.NewBorrowChild", code), b)
+	}
+	zigoChildCreated = true
+	return newBorrowChild(result, zigoChildParent), nil
 }
 
 // Get calls the Zig function BorrowView.get.
@@ -177,6 +222,29 @@ func (b *BorrowView) Explode() error {
 		return zigoPoisonAfterPanic(errorForCode("BorrowView.Explode", code), b)
 	}
 	return nil
+}
+
+// Get calls the Zig function BorrowChild.get.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (b *BorrowChild) Get() (int32, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("BorrowChild.Get receiver", b)
+	if err != nil {
+		return 0, err
+	}
+	defer b.zigoRelease()
+	result, code := raw.BorrowChildGet(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("BorrowChild.Get", code), b)
+	}
+	return result, nil
+}
+
+// LiveBorrowChildren calls the Zig function liveBorrowChildren.
+func LiveBorrowChildren() uint {
+	return raw.LiveBorrowChildren()
 }
 
 // Capacity calls the Zig function Stream.capacity.

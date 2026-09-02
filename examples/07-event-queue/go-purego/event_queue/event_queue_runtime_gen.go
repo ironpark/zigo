@@ -11,6 +11,8 @@ import (
 
 type zigoHandle = lifecycle.Handle
 
+type zigoChildHandle = lifecycle.ChildHandle
+
 func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, error) {
 	return lifecycle.CheckedPointer(operation, value)
 }

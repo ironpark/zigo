@@ -17,8 +17,13 @@ export fn zg_parent_free_parent_impl(self: *target.Parent) i32 {
     target.Parent.freeParent(self);
     return 0;
 }
-export fn zg_parent_new_child_impl(self: *target.Parent, out_result: **target.Child) i32 {
-    const result = target.Parent.newChild(self);
+export fn zg_parent_view_impl(self: *target.Parent, out_result: **target.View) i32 {
+    const result = target.Parent.view(self);
+    out_result.* = result;
+    return 0;
+}
+export fn zg_view_new_child_impl(self: *target.View, out_result: **target.Child) i32 {
+    const result = target.View.newChild(self);
     out_result.* = result;
     return 0;
 }

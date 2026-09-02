@@ -26,10 +26,16 @@ func ParentFreeParent(self unsafe.Pointer) int32 {
 	code := int32(C.zg_parent_free_parent((*C.zg_parent)(self)))
 	return code
 }
-// ParentNewChild calls the generated C ABI wrapper for zg_parent_new_child.
-func ParentNewChild(self unsafe.Pointer) (unsafe.Pointer, int32) {
+// ParentView calls the generated C ABI wrapper for zg_parent_view.
+func ParentView(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult *C.zg_view
+	code := int32(C.zg_parent_view((*C.zg_parent)(self), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+// ViewNewChild calls the generated C ABI wrapper for zg_view_new_child.
+func ViewNewChild(self unsafe.Pointer) (unsafe.Pointer, int32) {
 	var outResult *C.zg_child
-	code := int32(C.zg_parent_new_child((*C.zg_parent)(self), &outResult))
+	code := int32(C.zg_view_new_child((*C.zg_view)(self), &outResult))
 	return unsafe.Pointer(outResult), code
 }
 // ChildFreeChild calls the generated C ABI wrapper for zg_child_free_child.

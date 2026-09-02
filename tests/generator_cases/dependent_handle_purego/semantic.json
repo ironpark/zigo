@@ -24,12 +24,20 @@
       "symbol": "ignored"
     },
     {
+      "borrowed_return": true,
+      "name": "view",
+      "params": [],
+      "receiver": "Parent",
+      "return": { "const": false, "kind": "opaque_ptr", "nullable": false, "ref": "View" },
+      "symbol": "ignored"
+    },
+    {
       "child_of_receiver": true,
       "go_owner": "Child",
       "name": "newChild",
       "ownership": "caller",
       "params": [],
-      "receiver": "Parent",
+      "receiver": "View",
       "return": {
         "error_set": [],
         "kind": "error_union",
@@ -56,6 +64,7 @@
   "prefix": "zg",
   "types": [
     { "kind": "opaque", "name": "Parent" },
+    { "kind": "opaque", "name": "View" },
     { "kind": "opaque", "name": "Child" }
   ],
   "zig_version": "0.16.0"

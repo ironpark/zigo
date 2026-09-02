@@ -27,6 +27,12 @@ type Handle interface {
 	ZigoPoison(cause *NativePanicError)
 }
 
+type ChildHandle interface {
+	Handle
+	ZigoAcquireChild(operation string) (unsafe.Pointer, ChildHandle, error)
+	ZigoDropChild()
+}
+
 func CheckedPointer(operation string, value Handle) (unsafe.Pointer, error) {
 	return value.ZigoAcquire(operation)
 }
