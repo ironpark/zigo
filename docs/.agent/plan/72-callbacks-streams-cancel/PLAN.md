@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-02T11:35:57Z"
 depends_on:
 - io-stream-params
 description: callback의 Go error 표면화, []byte 무콜백 Reader, Zig가 내주는 스트림, 취소 규약
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-02T07:40:11Z"
 ---
 > NEXT: 70의 스트림 ABI에 슬라이스 변형을 넣어 `[]byte` 입력이 콜백 없이 넘어가게 한다. ([Phase 1](phases/01-bytes-reader-fast-path.md))
@@ -12,7 +13,7 @@ registered_at: "2026-09-02T07:40:11Z"
 - [x] [Phase 00: callback의 Go error 표면화](phases/00-callback-go-error.md)
 - [x] [Phase 01: `[]byte` 무콜백 Reader 경로](phases/01-bytes-reader-fast-path.md)
 - [x] [Phase 02: Zig가 내주는 스트림](phases/02-stream-returns.md)
-- [ ] [Phase 03: 취소 규약](phases/03-cancellation.md)
+- [x] [Phase 03: 취소 규약](phases/03-cancellation.md)
 
 # Shared Verification
 

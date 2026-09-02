@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T11:35:57Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 취소 테스트 통과, 취소 없는 함수의 골든 불변.
 > NEXT: none
