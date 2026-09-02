@@ -18,7 +18,7 @@ registered_at: "2026-09-02T05:01:41Z"
 
 # Decisions That Constrain Ordering
 
-단일 phase. 계획 65와 독립이지만 `0.1.0` 태그 뒤에 진행한다.
+단일 phase. 계획 65 완료 뒤 handoff로 진행하고, 이 계획까지 끝난 뒤 `0.1.0` 태그를 붙인다.
 
 # Next Implementation Target
 
