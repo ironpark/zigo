@@ -245,6 +245,10 @@ pub fn build(b: *std.Build) void {
     const run_reflect_walk_tests = b.addRunArtifact(reflect_walk_tests);
     const reflect_names_tests = b.addTest(.{ .root_module = reflect_names_module, .filters = test_filters });
     const run_reflect_names_tests = b.addRunArtifact(reflect_names_tests);
+    // naming is a shared module now, so its tests run here once instead of
+    // once per module that used to import the file.
+    const naming_tests = b.addTest(.{ .root_module = generator_modules.naming, .filters = test_filters });
+    const run_naming_tests = b.addRunArtifact(naming_tests);
     const abi_diff_tests = b.addTest(.{ .root_module = generator_modules.abi_diff, .filters = test_filters });
     const run_abi_diff_tests = b.addRunArtifact(abi_diff_tests);
     const errors_lock_tests = b.addTest(.{ .root_module = generator_modules.errors_lock, .filters = test_filters });
@@ -326,6 +330,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_generator_tests.step);
     test_step.dependOn(&run_reflect_walk_tests.step);
     test_step.dependOn(&run_reflect_names_tests.step);
+    test_step.dependOn(&run_naming_tests.step);
     test_step.dependOn(&run_abi_diff_tests.step);
     test_step.dependOn(&run_errors_lock_tests.step);
     test_step.dependOn(&run_diagnostic_tests.step);
