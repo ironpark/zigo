@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 정적 링크 입력이 있는 예제가 `go test` 통과, `extra_ldflags` 골든/테스트 추가, 전 예제 녹색, 커밋.
 > NEXT: none
