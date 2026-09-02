@@ -4,6 +4,15 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [0.3.1] - 2026-09-02
+
+### Fixed
+
+- `semantic.json`의 `source.path`가 생성기를 호출한 디렉터리에 따라 달라지던 문제를
+  고쳤습니다. 이제 `bindings.zig`가 있는 디렉터리 기준 상대 경로를 `/` 구분자로 기록하므로
+  같은 소스는 어디서, 어느 OS에서 생성해도 같은 바이트가 나옵니다. 0.3.0으로 생성한
+  `semantic.json`은 재생성해야 `go-check`가 통과합니다.
+
 ## [0.3.0] - 2026-09-02
 
 ### Breaking
@@ -172,6 +181,7 @@
 - 생성된 Go doc이 식별자로 시작하지 않는 문장을 두 줄 형식으로 내고, `//` 그룹 주석과
   빈 줄 없이 이어진 선언의 doc 공유를 지원합니다. 모든 생성 패키지에 패키지 doc이 있습니다.
 
+[0.3.1]: https://github.com/ironpark/zigo/compare/0.3.0...0.3.1
 [0.3.0]: https://github.com/ironpark/zigo/compare/0.2.0...0.3.0
 [0.2.0]: https://github.com/ironpark/zigo/compare/0.1.0...0.2.0
 [0.1.0]: https://github.com/ironpark/zigo/releases/tag/0.1.0
