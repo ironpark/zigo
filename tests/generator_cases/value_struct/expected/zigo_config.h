@@ -42,6 +42,7 @@ ZIGO_EXPORT int32_t zg_fill_points(zg_point * output_ptr, size_t output_len, siz
 ZIGO_EXPORT void zg_fill_all_points(zg_point * output_ptr, size_t output_len, size_t * output_written);
 ZIGO_EXPORT void zg_accept_configs(const zg_config * values_ptr, size_t values_len);
 ZIGO_EXPORT size_t zg_fill_configs(zg_config * output_ptr, size_t output_len, size_t * output_written);
+ZIGO_EXPORT void zg_configs(const zg_config * * out_result_ptr, size_t * out_result_len);
 ZIGO_EXPORT void zg_points(const zg_point * * out_result_ptr, size_t * out_result_len);
 ZIGO_EXPORT int32_t zg_points_checked(const zg_point * * out_result_ptr, size_t * out_result_len);
 ZIGO_EXPORT const char *zg_last_error_message(void);

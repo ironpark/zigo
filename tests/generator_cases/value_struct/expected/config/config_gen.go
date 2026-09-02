@@ -86,9 +86,14 @@ func FillConfigs(output []Config) uint {
 	return result
 }
 
+// Configs calls the Zig function configs.
+func Configs() []Config {
+	return zigoConfigSliceFromRaw(raw.Configs())
+}
+
 // Points calls the Zig function points.
 func Points() []Point {
-	return zigoPointSliceFromRaw(raw.Points())
+	return zigoPointSliceView(raw.Points())
 }
 
 // PointsChecked calls the Zig function pointsChecked.
@@ -100,5 +105,5 @@ func PointsChecked() ([]Point, error) {
 	if code != 0 {
 		return nil, errorForCode("PointsChecked", code)
 	}
-	return zigoPointSliceFromRaw(result), nil
+	return zigoPointSliceView(result), nil
 }

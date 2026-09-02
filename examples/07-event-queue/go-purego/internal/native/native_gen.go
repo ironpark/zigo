@@ -67,11 +67,14 @@ type nativeBindings struct {
 	fnEventQueueExtractSamples          func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
 	fnEventQueueExtractSamplesChecked   func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
 	fnEventQueueFreeSamples             func(unsafe.Pointer, unsafe.Pointer, uintptr)
+	fnEventQueueExtractLimits           func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
+	fnEventQueueFreeLimits              func(unsafe.Pointer, unsafe.Pointer, uintptr)
 	fnEventQueueAcceptStats             func(unsafe.Pointer, unsafe.Pointer, uintptr) uintptr
 	fnEventQueueExtractSamplesInto      func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr) uintptr
 	fnEventQueueLimitsInto              func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr) uintptr
 	fnEventQueueEstimate                func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr, *uintptr) int32
 	fnEventQueueSampleStats             func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
+	fnEventQueueSampleLimits            func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
 	fnEventQueueLen                     func(unsafe.Pointer) uintptr
 	fnEventQueueCapacity                func(unsafe.Pointer) uintptr
 	fnEventQueuePolicy                  func(unsafe.Pointer) uint32
@@ -84,6 +87,7 @@ type nativeBindings struct {
 	fnEventQueueDeinit                  func(unsafe.Pointer)
 	fnLiveQueues                        func() uintptr
 	fnLiveSamples                       func() uintptr
+	fnLiveLimits                        func() uintptr
 }
 
 type callbackEntry struct {
@@ -376,6 +380,14 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_event_queue_free_samples", err)
 	}
+	addrEventQueueExtractLimits, err := resolveSymbol(handle, "zg_event_queue_extract_limits")
+	if err != nil {
+		return fail("zg_event_queue_extract_limits", err)
+	}
+	addrEventQueueFreeLimits, err := resolveSymbol(handle, "zg_event_queue_free_limits")
+	if err != nil {
+		return fail("zg_event_queue_free_limits", err)
+	}
 	addrEventQueueAcceptStats, err := resolveSymbol(handle, "zg_event_queue_accept_stats")
 	if err != nil {
 		return fail("zg_event_queue_accept_stats", err)
@@ -395,6 +407,10 @@ func loadCandidate(path string) error {
 	addrEventQueueSampleStats, err := resolveSymbol(handle, "zg_event_queue_sample_stats")
 	if err != nil {
 		return fail("zg_event_queue_sample_stats", err)
+	}
+	addrEventQueueSampleLimits, err := resolveSymbol(handle, "zg_event_queue_sample_limits")
+	if err != nil {
+		return fail("zg_event_queue_sample_limits", err)
 	}
 	addrEventQueueLen, err := resolveSymbol(handle, "zg_event_queue_len")
 	if err != nil {
@@ -444,6 +460,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_live_samples", err)
 	}
+	addrLiveLimits, err := resolveSymbol(handle, "zg_live_limits")
+	if err != nil {
+		return fail("zg_live_limits", err)
+	}
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.fnEventQueueCreate, addrEventQueueCreate)
@@ -462,11 +482,14 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnEventQueueExtractSamples, addrEventQueueExtractSamples)
 	purego.RegisterFunc(&next.fnEventQueueExtractSamplesChecked, addrEventQueueExtractSamplesChecked)
 	purego.RegisterFunc(&next.fnEventQueueFreeSamples, addrEventQueueFreeSamples)
+	purego.RegisterFunc(&next.fnEventQueueExtractLimits, addrEventQueueExtractLimits)
+	purego.RegisterFunc(&next.fnEventQueueFreeLimits, addrEventQueueFreeLimits)
 	purego.RegisterFunc(&next.fnEventQueueAcceptStats, addrEventQueueAcceptStats)
 	purego.RegisterFunc(&next.fnEventQueueExtractSamplesInto, addrEventQueueExtractSamplesInto)
 	purego.RegisterFunc(&next.fnEventQueueLimitsInto, addrEventQueueLimitsInto)
 	purego.RegisterFunc(&next.fnEventQueueEstimate, addrEventQueueEstimate)
 	purego.RegisterFunc(&next.fnEventQueueSampleStats, addrEventQueueSampleStats)
+	purego.RegisterFunc(&next.fnEventQueueSampleLimits, addrEventQueueSampleLimits)
 	purego.RegisterFunc(&next.fnEventQueueLen, addrEventQueueLen)
 	purego.RegisterFunc(&next.fnEventQueueCapacity, addrEventQueueCapacity)
 	purego.RegisterFunc(&next.fnEventQueuePolicy, addrEventQueuePolicy)
@@ -479,6 +502,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnEventQueueDeinit, addrEventQueueDeinit)
 	purego.RegisterFunc(&next.fnLiveQueues, addrLiveQueues)
 	purego.RegisterFunc(&next.fnLiveSamples, addrLiveSamples)
+	purego.RegisterFunc(&next.fnLiveLimits, addrLiveLimits)
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -744,6 +768,29 @@ func EventQueueFreeSamples(self unsafe.Pointer, samples []float32) {
 	bindings().fnEventQueueFreeSamples(self, samplesPtr, uintptr(len(samples)))
 }
 
+// EventQueueExtractLimits calls the generated purego ABI wrapper for zg_event_queue_extract_limits.
+func EventQueueExtractLimits(self unsafe.Pointer) []LimitsData {
+	var outResultPtr unsafe.Pointer
+	var outResultLen uintptr
+	bindings().fnEventQueueExtractLimits(self, &outResultPtr, &outResultLen)
+	var result []LimitsData
+	if outResultLen != 0 {
+		result = make([]LimitsData, int(outResultLen))
+		copy(result, unsafe.Slice((*LimitsData)(outResultPtr), int(outResultLen)))
+	}
+	bindings().fnEventQueueFreeLimits(self, outResultPtr, outResultLen)
+	return result
+}
+
+// EventQueueFreeLimits calls the generated purego ABI wrapper for zg_event_queue_free_limits.
+func EventQueueFreeLimits(self unsafe.Pointer, rows []LimitsData) {
+	var rowsPtr unsafe.Pointer
+	if len(rows) != 0 {
+		rowsPtr = unsafe.Pointer(&rows[0])
+	}
+	bindings().fnEventQueueFreeLimits(self, rowsPtr, uintptr(len(rows)))
+}
+
 // EventQueueAcceptStats calls the generated purego ABI wrapper for zg_event_queue_accept_stats.
 func EventQueueAcceptStats(self unsafe.Pointer, values []StatsData) uint {
 	var valuesPtr unsafe.Pointer
@@ -798,6 +845,19 @@ func EventQueueSampleStats(self unsafe.Pointer) []StatsData {
 	}
 	result := make([]StatsData, int(outResultLen))
 	copy(result, unsafe.Slice((*StatsData)(outResultPtr), int(outResultLen)))
+	return result
+}
+
+// EventQueueSampleLimits calls the generated purego ABI wrapper for zg_event_queue_sample_limits.
+func EventQueueSampleLimits(self unsafe.Pointer) []LimitsData {
+	var outResultPtr unsafe.Pointer
+	var outResultLen uintptr
+	bindings().fnEventQueueSampleLimits(self, &outResultPtr, &outResultLen)
+	if outResultLen == 0 {
+		return nil
+	}
+	result := make([]LimitsData, int(outResultLen))
+	copy(result, unsafe.Slice((*LimitsData)(outResultPtr), int(outResultLen)))
 	return result
 }
 
@@ -871,5 +931,11 @@ func LiveQueues() uint {
 // LiveSamples calls the generated purego ABI wrapper for zg_live_samples.
 func LiveSamples() uint {
 	result := bindings().fnLiveSamples()
+	return uint(result)
+}
+
+// LiveLimits calls the generated purego ABI wrapper for zg_live_limits.
+func LiveLimits() uint {
+	result := bindings().fnLiveLimits()
 	return uint(result)
 }

@@ -153,6 +153,28 @@ func FillConfigs(output []ConfigData) uint {
 	}
 	return result
 }
+// Configs calls the generated C ABI wrapper for zg_configs.
+func Configs() []ConfigData {
+	var outResultPtr *C.zg_config
+	var outResultLen C.size_t
+	C.zg_configs(&outResultPtr, &outResultLen)
+	if outResultLen == 0 { return nil }
+	cResult := unsafe.Slice((*C.zg_config)(unsafe.Pointer(outResultPtr)), int(outResultLen))
+	result := make([]ConfigData, int(outResultLen))
+	for i := range result {
+		result[i] = ConfigData{
+			Enabled: uint8(cResult[i].enabled),
+			Width: int32(cResult[i].width),
+			Mode: uint8(cResult[i].mode),
+			Ratio: float64(cResult[i].ratio),
+			Origin: PointData{
+				X: int16(cResult[i].origin.x),
+				Y: int16(cResult[i].origin.y),
+			},
+		}
+	}
+	return result
+}
 // Points calls the generated C ABI wrapper for zg_points.
 func Points() []PointData {
 	var outResultPtr *C.zg_point

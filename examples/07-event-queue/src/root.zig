@@ -40,6 +40,10 @@ var live_queues: std.atomic.Value(usize) = .init(0);
 /// it to prove the generated binding calls the release function exactly once.
 var live_samples: std.atomic.Value(usize) = .init(0);
 
+/// The same idea for `extractLimits`, whose result the Go side reinterprets
+/// rather than copying a second time.
+var live_limits: std.atomic.Value(usize) = .init(0);
+
 pub const EventQueue = struct {
     name_bytes: []u8,
     items: std.ArrayList(Event) = .empty,
@@ -218,6 +222,28 @@ pub const EventQueue = struct {
         return written;
     }
 
+    /// Caller-owned limit rows. `Limits` has no bool field, so the generated
+    /// binding copies the buffer once, releases it, and reinterprets that copy
+    /// as `[]Limits` instead of converting every row again.
+    pub fn extractLimits(self: *EventQueue) []Limits {
+        const allocator = std.heap.page_allocator;
+        const rows = allocator.alloc(Limits, self.items.items.len) catch return &.{};
+        const current = self.limits();
+        for (rows, 0..) |*row, index| row.* = .{
+            .capacity = current.capacity + @as(u32, @intCast(index)),
+            .policy = current.policy,
+        };
+        _ = live_limits.fetchAdd(1, .monotonic);
+        return rows;
+    }
+
+    /// Releases a buffer produced by `extractLimits`.
+    pub fn freeLimits(_: *EventQueue, rows: []Limits) void {
+        if (rows.len == 0) return;
+        std.heap.page_allocator.free(rows);
+        _ = live_limits.fetchSub(1, .monotonic);
+    }
+
     /// Releases a buffer produced by `extractSamples`.
     pub fn freeSamples(_: *EventQueue, samples: []f32) void {
         if (samples.len == 0) return;
@@ -246,6 +272,13 @@ pub const EventQueue = struct {
     pub fn sampleStats(self: *EventQueue) []const Stats {
         const summary = self.stats();
         return &.{ summary, summary };
+    }
+
+    /// Borrowed limit rows from native storage. The raw layer still copies
+    /// them out of native memory; only the public layer's second copy is gone.
+    pub fn sampleLimits(self: *EventQueue) []const Limits {
+        const current = self.limits();
+        return &.{ current, .{ .capacity = current.capacity + 1, .policy = current.policy } };
     }
 
     pub fn len(self: *EventQueue) usize {
@@ -312,6 +345,10 @@ pub const EventQueue = struct {
 /// zero after every `extractSamples` call.
 pub fn liveSamples() usize {
     return live_samples.load(.monotonic);
+}
+
+pub fn liveLimits() usize {
+    return live_limits.load(.monotonic);
 }
 
 pub fn liveQueues() usize {

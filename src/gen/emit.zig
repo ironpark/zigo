@@ -2495,6 +2495,13 @@ fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
     }
 }
 
+/// The helper the public layer calls to turn a `[]TData` into `[]T`. A castable
+/// element reinterprets the allocation the raw layer already owns, so the name
+/// says view rather than copy; anything else still converts element by element.
+fn publicSliceFromRawSuffix(program: abi.Program, element: []const u8) []const u8 {
+    return if (isCastableStruct(program, structRecord(program, element))) "SliceView" else "SliceFromRaw";
+}
+
 fn isValueStructSlice(node: semantic.TypeNode) bool {
     return node == .slice and node.slice.element.* == .value_struct;
 }
@@ -2573,12 +2580,12 @@ fn writePublicValueStructSliceCopyBacks(
     }
 }
 
-fn writePublicCapturedReturn(writer: *std.Io.Writer, function: semantic.SemanticFn, needs_handle_check: bool) !void {
+fn writePublicCapturedReturn(writer: *std.Io.Writer, program: abi.Program, function: semantic.SemanticFn, needs_handle_check: bool) !void {
     try writer.writeAll("\treturn ");
     switch (function.@"return") {
         .value_struct => |value| try writer.print("zigo{s}FromRaw(result)", .{value.ref}),
         .slice => |value| if (value.element.* == .value_struct)
-            try writer.print("zigo{s}SliceFromRaw(result)", .{value.element.*.value_struct.ref})
+            try writer.print("zigo{s}{s}(result)", .{ value.element.*.value_struct.ref, publicSliceFromRawSuffix(program, value.element.*.value_struct.ref) })
         else if (isUtf8Slice(function.@"return", function.return_semantic))
             try writer.writeAll("string(result)")
         else
@@ -2750,7 +2757,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                 try writer.print("return zigo{s}FromRaw(", .{function.origin.@"return".value_struct.ref});
                 try writeRawReferencePrefix(writer, options);
             } else if (isValueStructSlice(function.origin.@"return")) {
-                try writer.print("return zigo{s}SliceFromRaw(", .{function.origin.@"return".slice.element.*.value_struct.ref});
+                try writer.print("return zigo{s}{s}(", .{ function.origin.@"return".slice.element.*.value_struct.ref, publicSliceFromRawSuffix(program, function.origin.@"return".slice.element.*.value_struct.ref) });
                 try writeRawReferencePrefix(writer, options);
             } else {
                 try writer.writeAll("return ");
@@ -2814,7 +2821,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         if (!returns_error and hasOutValueStructSlice(function.origin.*)) {
             try writePublicValueStructSliceCopyBacks(writer, program, function.origin.*, go_names);
         }
-        if (captures_return) try writePublicCapturedReturn(writer, function.origin.*, needs_handle_check);
+        if (captures_return) try writePublicCapturedReturn(writer, program, function.origin.*, needs_handle_check);
         if (borrowed_direct or owned_direct) {
             try writer.writeAll("\treturn ");
             if (owned_type) |type_name|
@@ -2851,7 +2858,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                 } else if (isStringSlice(error_payload, function.origin.return_semantic)) {
                     try writer.writeAll("string(result)");
                 } else {
-                    try writePublicResultConversion(writer, error_payload, "result");
+                    try writePublicResultConversion(writer, program, error_payload, "result");
                 }
                 try writer.writeAll(", nil\n");
             }
@@ -3138,7 +3145,7 @@ fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer
                 else => {
                     const expression = try std.fmt.allocPrint(allocator, "value.{s}", .{member});
                     defer allocator.free(expression);
-                    try writePublicResultConversion(writer, field.node, expression);
+                    try writePublicResultConversion(writer, program, field.node, expression);
                 },
             }
             try writer.writeAll(",\n");
@@ -3151,9 +3158,18 @@ fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer
         try writeRawTypeReferencePrefix(writer, options);
         try writer.print("{s}, len(values))\n\tfor i := range values {{\n\t\tresult[i] = zigo{s}ToRaw(values[i])\n\t}}\n\treturn result\n}}\n\n", .{ raw_type, record.name });
 
-        try writer.print("func zigo{s}SliceFromRaw(values []", .{record.name});
-        try writeRawTypeReferencePrefix(writer, options);
-        try writer.print("{s}) []{s} {{\n\tresult := make([]{s}, len(values))\n\tfor i := range values {{\n\t\tresult[i] = zigo{s}FromRaw(values[i])\n\t}}\n\treturn result\n}}\n\n", .{ raw_type, record.name, record.name, record.name });
+        // A castable element makes the conversion a reinterpretation of the
+        // allocation the raw layer already copied into, so the copying variant
+        // would be dead code and is not emitted at all.
+        if (isCastableStruct(program, record)) {
+            try writer.print("// zigo{s}SliceView reinterprets a slice the raw layer already owns as\n// []{s} without copying it again.\nfunc zigo{s}SliceView(values []", .{ record.name, record.name, record.name });
+            try writeRawTypeReferencePrefix(writer, options);
+            try writer.print("{s}) []{s} {{\n\tif len(values) == 0 {{\n\t\treturn nil\n\t}}\n\treturn unsafe.Slice((*{s})(unsafe.Pointer(&values[0])), len(values))\n}}\n\n", .{ raw_type, record.name, record.name });
+        } else {
+            try writer.print("func zigo{s}SliceFromRaw(values []", .{record.name});
+            try writeRawTypeReferencePrefix(writer, options);
+            try writer.print("{s}) []{s} {{\n\tresult := make([]{s}, len(values))\n\tfor i := range values {{\n\t\tresult[i] = zigo{s}FromRaw(values[i])\n\t}}\n\treturn result\n}}\n\n", .{ raw_type, record.name, record.name, record.name });
+        }
 
         try writer.print("func zigo{s}SliceCopyFromRaw(dst []{s}, values []", .{ record.name, record.name });
         try writeRawTypeReferencePrefix(writer, options);
@@ -3228,7 +3244,7 @@ fn renderPublicSnapshots(
             try writer.print("\t\t{s}: ", .{member});
             const temp = try std.fmt.allocPrint(allocator, "data.{s}", .{raw_member});
             defer allocator.free(temp);
-            try writePublicResultConversion(writer, field.node.?, temp);
+            try writePublicResultConversion(writer, program, field.node.?, temp);
             try writer.writeAll(",\n");
         }
         try writer.writeAll("\t}, nil\n}\n\n");
@@ -4006,7 +4022,7 @@ fn renderPublicTaggedUnionAccessors(
                 try writePublicGoType(writer, payload);
                 try writer.writeAll("(nil), result...)");
             } else {
-                try writePublicResultConversion(writer, payload, "result");
+                try writePublicResultConversion(writer, program, payload, "result");
             }
             try writer.writeAll(", true, nil\n}\n\n");
 
@@ -4310,12 +4326,12 @@ fn writeRawResultConversion(writer: *std.Io.Writer, program: abi.Program, node: 
     try writer.print("({s})", .{expression});
 }
 
-fn writePublicResultConversion(writer: *std.Io.Writer, node: semantic.TypeNode, expression: []const u8) !void {
+fn writePublicResultConversion(writer: *std.Io.Writer, program: abi.Program, node: semantic.TypeNode, expression: []const u8) !void {
     switch (node) {
         .bool => try writer.print("{s} != 0", .{expression}),
         .value_struct => |value| try writer.print("zigo{s}FromRaw({s})", .{ value.ref, expression }),
         .slice => |value| if (value.element.* == .value_struct)
-            try writer.print("zigo{s}SliceFromRaw({s})", .{ value.element.*.value_struct.ref, expression })
+            try writer.print("zigo{s}{s}({s})", .{ value.element.*.value_struct.ref, publicSliceFromRawSuffix(program, value.element.*.value_struct.ref), expression })
         else
             try writer.writeAll(expression),
         .@"enum" => |value| try writer.print("{s}({s})", .{ value.ref, expression }),
@@ -5802,4 +5818,92 @@ test "a scalar-only struct slice crosses as a cast while a bool-bearing one is c
     try std.testing.expect(std.mem.indexOf(u8, public, "zigoPointSliceCopyFromRaw(") == null);
     try std.testing.expect(std.mem.indexOf(u8, public, "outputRaw := make([]raw.FlaggedData, len(output))") != null);
     try std.testing.expect(std.mem.indexOf(u8, public, "zigoFlaggedSliceCopyFromRaw(output, outputRaw, int(result))") != null);
+}
+
+test "a returned struct slice is reinterpreted for a castable element and copied otherwise" {
+    var point: semantic.TypeNode = .{ .value_struct = .{ .ref = "Point" } };
+    var flagged: semantic.TypeNode = .{ .value_struct = .{ .ref = "Flagged" } };
+    var point_slice: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &point } };
+    const document: semantic.Semantic = .{
+        .package = "shapes",
+        .prefix = "zg",
+        .functions = &.{
+            .{
+                .name = "points",
+                .params = &.{},
+                .@"return" = .{ .slice = .{ .@"const" = true, .element = &point } },
+                .symbol = "zg_points",
+            },
+            .{
+                .name = "flaggedAll",
+                .params = &.{},
+                .@"return" = .{ .slice = .{ .@"const" = true, .element = &flagged } },
+                .symbol = "zg_flagged_all",
+            },
+            .{
+                .name = "pointsChecked",
+                .params = &.{},
+                .@"return" = .{ .error_union = .{ .error_set = &.{"Invalid"}, .payload = &point_slice } },
+                .symbol = "zg_points_checked",
+            },
+            .{
+                // An `.out` parameter forces the return into a named result, so
+                // the reinterpretation has to hold on that path too.
+                .name = "collect",
+                .params = &.{.{
+                    .direction = .out,
+                    .name = "output",
+                    .type = .{ .slice = .{ .@"const" = false, .element = &flagged } },
+                    .written = .all,
+                }},
+                .@"return" = .{ .slice = .{ .@"const" = true, .element = &point } },
+                .symbol = "zg_collect",
+            },
+        },
+        .types = &.{
+            .{
+                .fields = &.{
+                    .{ .name = "x", .type = .{ .int = .{ .bits = 16, .signed = true } } },
+                    .{ .name = "y", .type = .{ .int = .{ .bits = 16, .signed = true } } },
+                },
+                .kind = .value_struct,
+                .layout = .@"extern",
+                .name = "Point",
+            },
+            .{
+                .fields = &.{
+                    .{ .name = "ready", .type = .{ .bool = {} } },
+                    .{ .name = "count", .type = .{ .int = .{ .bits = 32, .signed = true } } },
+                },
+                .kind = .value_struct,
+                .layout = .@"extern",
+                .name = "Flagged",
+            },
+        },
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try @import("lower.zig").semanticDocument(arena.allocator(), document, "shapes", "zg", &.{.{ .code = 1, .name = "Invalid" }});
+
+    const public = try renderForTest(renderPublic, program);
+    defer std.testing.allocator.free(public);
+    // The raw layer already copied into a Go allocation, so the public layer
+    // hands that same memory back under the public element type.
+    try std.testing.expect(std.mem.indexOf(u8, public, "return zigoPointSliceView(raw.Points())") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public, "return zigoPointSliceView(result), nil") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public, "return zigoPointSliceView(result)\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public, "zigoPointSliceFromRaw(") == null);
+    // A bool-bearing element cannot be reinterpreted and keeps the copy.
+    try std.testing.expect(std.mem.indexOf(u8, public, "return zigoFlaggedSliceFromRaw(raw.FlaggedAll())") != null);
+
+    const structs = try renderForTest(renderPublicStructsFile, program);
+    defer std.testing.allocator.free(structs);
+    // The copying helper would be dead code for a castable element, so only
+    // the view is emitted for it and only the copy for the other.
+    try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoPointSliceFromRaw(") == null);
+    try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoPointSliceView(values []raw.PointData) []Point {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, structs, "return unsafe.Slice((*Point)(unsafe.Pointer(&values[0])), len(values))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoFlaggedSliceFromRaw(values []raw.FlaggedData) []Flagged {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoFlaggedSliceView(") == null);
 }

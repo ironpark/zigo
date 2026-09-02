@@ -1,6 +1,6 @@
 ---
 perf_phase: true
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 측정 목표 세 항목의 테스트 통과.
 > NEXT: none

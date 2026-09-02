@@ -58,12 +58,13 @@ func zigoPointSliceToRaw(values []Point) []raw.PointData {
 	return result
 }
 
-func zigoPointSliceFromRaw(values []raw.PointData) []Point {
-	result := make([]Point, len(values))
-	for i := range values {
-		result[i] = zigoPointFromRaw(values[i])
+// zigoPointSliceView reinterprets a slice the raw layer already owns as
+// []Point without copying it again.
+func zigoPointSliceView(values []raw.PointData) []Point {
+	if len(values) == 0 {
+		return nil
 	}
-	return result
+	return unsafe.Slice((*Point)(unsafe.Pointer(&values[0])), len(values))
 }
 
 func zigoPointSliceCopyFromRaw(dst []Point, values []raw.PointData, count int) {

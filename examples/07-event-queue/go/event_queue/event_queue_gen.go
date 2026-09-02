@@ -276,6 +276,26 @@ func (e *EventQueue) ExtractSamplesChecked() ([]float32, error) {
 	return result, nil
 }
 
+// ExtractLimits
+// Caller-owned limit rows. `Limits` has no bool field, so the generated
+// binding copies the buffer once, releases it, and reinterprets that copy
+// as `[]Limits` instead of converting every row again.
+// It returns *HandleError if a required handle is nil or closed.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+func (e *EventQueue) ExtractLimits() ([]Limits, error) {
+	defer runtime.KeepAlive(e)
+	ptr, err := zigoCheckedPointer("EventQueue.ExtractLimits receiver", e)
+	if err != nil {
+		return nil, err
+	}
+	defer e.zigoRelease()
+	result := raw.EventQueueExtractLimits(ptr)
+	for _, handle := range e.callbackHandles {
+		zigoRethrowCallbackPanic("EventQueue.ExtractLimits", handle)
+	}
+	return zigoLimitsSliceView(result), nil
+}
+
 // AcceptStats
 // Accepts a batch of value snapshots so both backends exercise their
 // struct-slice input conversion path.
@@ -386,6 +406,25 @@ func (e *EventQueue) SampleStats() ([]Stats, error) {
 		zigoRethrowCallbackPanic("EventQueue.SampleStats", handle)
 	}
 	return zigoStatsSliceFromRaw(result), nil
+}
+
+// SampleLimits
+// Borrowed limit rows from native storage. The raw layer still copies
+// them out of native memory; only the public layer's second copy is gone.
+// It returns *HandleError if a required handle is nil or closed.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+func (e *EventQueue) SampleLimits() ([]Limits, error) {
+	defer runtime.KeepAlive(e)
+	ptr, err := zigoCheckedPointer("EventQueue.SampleLimits receiver", e)
+	if err != nil {
+		return nil, err
+	}
+	defer e.zigoRelease()
+	result := raw.EventQueueSampleLimits(ptr)
+	for _, handle := range e.callbackHandles {
+		zigoRethrowCallbackPanic("EventQueue.SampleLimits", handle)
+	}
+	return zigoLimitsSliceView(result), nil
 }
 
 // Len calls the Zig function EventQueue.len.
@@ -557,4 +596,9 @@ func LiveQueues() uint {
 // zero after every `extractSamples` call.
 func LiveSamples() uint {
 	return raw.LiveSamples()
+}
+
+// LiveLimits calls the Zig function liveLimits.
+func LiveLimits() uint {
+	return raw.LiveLimits()
 }

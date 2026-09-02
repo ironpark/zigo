@@ -110,12 +110,13 @@ func zigoLimitsSliceToRaw(values []Limits) []raw.LimitsData {
 	return result
 }
 
-func zigoLimitsSliceFromRaw(values []raw.LimitsData) []Limits {
-	result := make([]Limits, len(values))
-	for i := range values {
-		result[i] = zigoLimitsFromRaw(values[i])
+// zigoLimitsSliceView reinterprets a slice the raw layer already owns as
+// []Limits without copying it again.
+func zigoLimitsSliceView(values []raw.LimitsData) []Limits {
+	if len(values) == 0 {
+		return nil
 	}
-	return result
+	return unsafe.Slice((*Limits)(unsafe.Pointer(&values[0])), len(values))
 }
 
 func zigoLimitsSliceCopyFromRaw(dst []Limits, values []raw.LimitsData, count int) {

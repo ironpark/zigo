@@ -151,3 +151,55 @@ func TestValueStructOutSliceStopsAtWritten(t *testing.T) {
 		t.Fatalf("ExtractSamplesInto(short) = %d, want 0", short)
 	}
 }
+
+// A castable element (no bool field) is handed back by reinterpreting the copy
+// the raw layer already made, so the values must still match and the slice must
+// still be independent of both the handle and the native buffer.
+func TestCastableStructSliceReturnKeepsItsValues(t *testing.T) {
+	queue, err := NewEventQueue("limits-view", 4, PolicyReject, func(uint64, int32) int32 { return 0 })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queue.Close()
+
+	borrowed := must(queue.SampleLimits())
+	if len(borrowed) != 2 {
+		t.Fatalf("SampleLimits() = %+v, want two rows", borrowed)
+	}
+	if borrowed[0] != (Limits{Capacity: 4, Policy: PolicyReject}) {
+		t.Fatalf("SampleLimits()[0] = %+v, want the queue limits", borrowed[0])
+	}
+	if borrowed[1] != (Limits{Capacity: 5, Policy: PolicyReject}) {
+		t.Fatalf("SampleLimits()[1] = %+v, want the queue limits plus one", borrowed[1])
+	}
+	borrowed[0].Capacity = 99
+	if again := must(queue.SampleLimits()); again[0].Capacity != 4 {
+		t.Fatalf("SampleLimits() aliased native memory: again[0] = %+v", again[0])
+	}
+
+	// `.returns = .caller` copies the native buffer, releases it, and only then
+	// reinterprets the copy, so the values outlive the release.
+	if err := queue.Enqueue(1, 10); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.Enqueue(2, 20); err != nil {
+		t.Fatal(err)
+	}
+	owned := must(queue.ExtractLimits())
+	if len(owned) != 2 {
+		t.Fatalf("ExtractLimits() = %+v, want two rows", owned)
+	}
+	for index, row := range owned {
+		want := Limits{Capacity: 4 + uint32(index), Policy: PolicyReject}
+		if row != want {
+			t.Fatalf("ExtractLimits()[%d] = %+v, want %+v", index, row, want)
+		}
+	}
+	if got := LiveLimits(); got != 0 {
+		t.Fatalf("LiveLimits() = %d after the call, want 0", got)
+	}
+	owned[0].Capacity = 99
+	if second := must(queue.ExtractLimits()); second[0].Capacity != 4 {
+		t.Fatalf("ExtractLimits() aliased released memory: second[0] = %+v", second[0])
+	}
+}

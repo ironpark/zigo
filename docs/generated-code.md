@@ -142,6 +142,12 @@ bool 필드가 없는 `extern struct`는 Go mirror(`TData`)와 공개 타입 `T`
 즉 두 백엔드가 같은 경로를 씁니다. native는 호출자의 버퍼에 직접 쓰고, 돌아오는 복사도
 없습니다.
 
+반환 방향도 같은 배치를 씁니다. raw 계층은 반환 slice를 Go 힙으로 한 번 복사해
+핸들 수명과 끊어 놓고(`.returns = .caller`는 복사한 뒤 release합니다), 공개 계층은 그
+결과를 `zigo{T}SliceView`로 `[]T`로 재해석하기만 합니다. 복사는 계층 전체에서 한 번뿐이고,
+길이가 0이면 `nil`입니다. bool 필드가 있는 원소만 공개 계층에서 `zigo{T}SliceFromRaw`로
+원소별 변환을 계속 씁니다.
+
 배치가 같다는 전제는 생성 코드가 compile 시점에 못 박습니다. shim의 `zigoAbiGuard`가
 Zig 타입을 헤더에 대해 고정하고, cgo raw 파일이 `TData`를 `C.x`에 대해, 공개 struct 파일이
 `T`를 `TData`에 대해 크기와 필드 offset까지 단정합니다.

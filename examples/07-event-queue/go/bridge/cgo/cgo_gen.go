@@ -281,6 +281,30 @@ func EventQueueFreeSamples(self unsafe.Pointer, samples []float32) {
 	C.zg_event_queue_free_samples((*C.zg_event_queue)(self), samplesPtr, C.size_t(len(samples)))
 }
 
+// EventQueueExtractLimits calls the generated C ABI wrapper for zg_event_queue_extract_limits.
+func EventQueueExtractLimits(self unsafe.Pointer) []LimitsData {
+	var outResultPtr *C.zg_limits
+	var outResultLen C.size_t
+	C.zg_event_queue_extract_limits((*C.zg_event_queue)(self), &outResultPtr, &outResultLen)
+	var result []LimitsData
+	if outResultLen != 0 {
+		result = make([]LimitsData, int(outResultLen))
+		copy(result, unsafe.Slice((*LimitsData)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
+	}
+	C.zg_event_queue_free_limits((*C.zg_event_queue)(self), outResultPtr, outResultLen)
+	return result
+}
+
+// EventQueueFreeLimits calls the generated C ABI wrapper for zg_event_queue_free_limits.
+func EventQueueFreeLimits(self unsafe.Pointer, rows []LimitsData) {
+	var rowsZero C.zg_limits
+	rowsPtr := &rowsZero
+	if len(rows) != 0 {
+		rowsPtr = (*C.zg_limits)(unsafe.Pointer(&rows[0]))
+	}
+	C.zg_event_queue_free_limits((*C.zg_event_queue)(self), rowsPtr, C.size_t(len(rows)))
+}
+
 // EventQueueAcceptStats calls the generated C ABI wrapper for zg_event_queue_accept_stats.
 func EventQueueAcceptStats(self unsafe.Pointer, values []StatsData) uint {
 	var valuesValues []C.zg_stats
@@ -377,6 +401,19 @@ func EventQueueSampleStats(self unsafe.Pointer) []StatsData {
 	return result
 }
 
+// EventQueueSampleLimits calls the generated C ABI wrapper for zg_event_queue_sample_limits.
+func EventQueueSampleLimits(self unsafe.Pointer) []LimitsData {
+	var outResultPtr *C.zg_limits
+	var outResultLen C.size_t
+	C.zg_event_queue_sample_limits((*C.zg_event_queue)(self), &outResultPtr, &outResultLen)
+	if outResultLen == 0 {
+		return nil
+	}
+	result := make([]LimitsData, int(outResultLen))
+	copy(result, unsafe.Slice((*LimitsData)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
+	return result
+}
+
 // EventQueueLen calls the generated C ABI wrapper for zg_event_queue_len.
 func EventQueueLen(self unsafe.Pointer) uint {
 	return uint(C.zg_event_queue_len((*C.zg_event_queue)(self)))
@@ -453,6 +490,11 @@ func LiveQueues() uint {
 // LiveSamples calls the generated C ABI wrapper for zg_live_samples.
 func LiveSamples() uint {
 	return uint(C.zg_live_samples())
+}
+
+// LiveLimits calls the generated C ABI wrapper for zg_live_limits.
+func LiveLimits() uint {
+	return uint(C.zg_live_limits())
 }
 
 // StatsData mirrors the zg_stats layout, padding included.

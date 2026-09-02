@@ -58,6 +58,12 @@
       "symbol": "zg_fill_configs"
     },
     {
+      "name": "configs",
+      "params": [],
+      "return": {"const": true, "element": {"kind": "value_struct", "ref": "Config"}, "kind": "slice"},
+      "symbol": "zg_configs"
+    },
+    {
       "name": "points",
       "params": [],
       "return": {"const": true, "element": {"kind": "value_struct", "ref": "Point"}, "kind": "slice"},

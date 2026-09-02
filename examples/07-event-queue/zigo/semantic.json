@@ -593,6 +593,49 @@
       "symbol": "zg_event_queue_free_samples"
     },
     {
+      "doc": "Caller-owned limit rows. `Limits` has no bool field, so the generated\nbinding copies the buffer once, releases it, and reinterprets that copy\nas `[]Limits` instead of converting every row again.",
+      "name": "extractLimits",
+      "ownership": "caller",
+      "params": [],
+      "receiver": "EventQueue",
+      "release": "freeLimits",
+      "return": {
+        "const": false,
+        "element": {
+          "kind": "value_struct",
+          "ref": "Limits"
+        },
+        "kind": "slice"
+      },
+      "symbol": "zg_event_queue_extract_limits"
+    },
+    {
+      "doc": "Releases a buffer produced by `extractLimits`.",
+      "name": "freeLimits",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "rows",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "const": false,
+            "element": {
+              "kind": "value_struct",
+              "ref": "Limits"
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "receiver": "EventQueue",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_event_queue_free_limits"
+    },
+    {
       "doc": "Accepts a batch of value snapshots so both backends exercise their\nstruct-slice input conversion path.",
       "name": "acceptStats",
       "ownership": "borrowed",
@@ -734,6 +777,22 @@
         "kind": "slice"
       },
       "symbol": "zg_event_queue_sample_stats"
+    },
+    {
+      "doc": "Borrowed limit rows from native storage. The raw layer still copies\nthem out of native memory; only the public layer's second copy is gone.",
+      "name": "sampleLimits",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "EventQueue",
+      "return": {
+        "const": true,
+        "element": {
+          "kind": "value_struct",
+          "ref": "Limits"
+        },
+        "kind": "slice"
+      },
+      "symbol": "zg_event_queue_sample_limits"
     },
     {
       "name": "len",
@@ -896,6 +955,18 @@
         "signed": false
       },
       "symbol": "zg_live_samples"
+    },
+    {
+      "name": "liveLimits",
+      "ownership": "borrowed",
+      "params": [],
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_live_limits"
     }
   ],
   "ir_version": 1,

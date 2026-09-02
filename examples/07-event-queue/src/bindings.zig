@@ -49,6 +49,12 @@ pub const bindings = zigo.define(.{
             .release = "EventQueue.freeSamples",
         },
         .{ .path = "EventQueue.freeSamples", .params = .{"samples"} },
+        .{
+            .path = "EventQueue.extractLimits",
+            .returns = .caller,
+            .release = "EventQueue.freeLimits",
+        },
+        .{ .path = "EventQueue.freeLimits", .params = .{"rows"} },
         .{ .path = "EventQueue.acceptStats", .params = .{"values"} },
         // The `...Into(dst)` shape: the caller owns the buffer, and the result
         // says how much of it was filled.
@@ -68,6 +74,7 @@ pub const bindings = zigo.define(.{
             .param_meta = .{ .output = .{ .direction = .out, .written = .@"return" } },
         },
         .{ .path = "EventQueue.sampleStats" },
+        .{ .path = "EventQueue.sampleLimits" },
         .{ .path = "EventQueue.len" },
         .{ .path = "EventQueue.capacity" },
         .{ .path = "EventQueue.policy" },
@@ -80,5 +87,6 @@ pub const bindings = zigo.define(.{
         .{ .path = "EventQueue.deinit" },
         .{ .path = "root.liveQueues" },
         .{ .path = "root.liveSamples" },
+        .{ .path = "root.liveLimits" },
     },
 });

@@ -50,6 +50,11 @@ export fn zg_fill_configs_impl(output_ptr: [*c]target.Config, output_len: usize,
     output_written.* = result;
     return result;
 }
+export fn zg_configs_impl(out_result_ptr: *[*c]const target.Config, out_result_len: *usize) void {
+    const result = target.configs();
+    out_result_ptr.* = result.ptr;
+    out_result_len.* = result.len;
+}
 export fn zg_points_impl(out_result_ptr: *[*c]const target.Point, out_result_len: *usize) void {
     const result = target.points();
     out_result_ptr.* = result.ptr;
