@@ -2,7 +2,7 @@
 depends_on:
 - "67-consume-ghostty-vt#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `u21` fixture 골든: 헤더 `uint32_t`, Go `uint32`, shim 범위검사·`@intCast`, `semantic.json` `bits: 21`.
 > NEXT: none

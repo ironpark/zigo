@@ -1,13 +1,20 @@
 {
   "functions": [
     {
-      "name": "codepointWidth",
+      "name": "codepointWidths",
       "namespace": "unicode",
       "params": [
-        { "name": "cp", "type": { "bits": 21, "is_usize": false, "kind": "int", "signed": false } }
+        {
+          "name": "cps",
+          "type": {
+            "const": true,
+            "element": { "bits": 21, "is_usize": false, "kind": "int", "signed": false },
+            "kind": "slice"
+          }
+        }
       ],
-      "return": { "bits": 8, "is_usize": false, "kind": "int", "signed": true },
-      "symbol": "zg_unicode_codepoint_width"
+      "return": { "kind": "void" },
+      "symbol": "zg_unicode_codepoint_widths"
     }
   ],
   "package": "bad",

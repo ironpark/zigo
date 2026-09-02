@@ -1,0 +1,5 @@
+{
+  "package": "narrow_int",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/narrow-int"
+}

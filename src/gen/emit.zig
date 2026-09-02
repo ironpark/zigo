@@ -190,6 +190,7 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         try writer.writeAll(" {\n");
         try writeCallbackBitBindings(allocator, writer, program, function);
         try writeShimStringSliceSetups(allocator, writer, function);
+        try writeNarrowIntegerGuards(writer, function);
         try writer.writeAll("    ");
 
         if (function.origin.@"return" == .slice and !isCStringReturn(function.origin.*)) {
@@ -237,7 +238,12 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         } else if (function.origin.@"return" != .void) {
             try writer.writeAll("return ");
         }
+        // Narrowing never happens here: the result travels in a wider C
+        // integer, so the cast is always in range.
+        const narrow_return = abi.narrowInt(function.origin.@"return") != null;
+        if (narrow_return) try writer.writeAll("@intCast(");
         try writeTargetCall(allocator, writer, program, function);
+        if (narrow_return) try writer.writeByte(')');
         try writer.writeAll(";\n");
         try writeSliceWrittenAssignments(writer, function, "result");
         if (binds_result) try writer.writeAll("    return result;\n");
@@ -558,7 +564,10 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             else
                 try writer.print("if ({s}_len == 0) &.{{}} else {s}_ptr[0..{s}_len]", .{ parameter.name, parameter.name, parameter.name }),
             .value_struct => try writer.print("{s}.*", .{parameter.name}),
-            else => try writer.writeAll(parameter.name),
+            else => if (abi.narrowInt(parameter.type) != null)
+                try writer.print("@intCast({s})", .{parameter.name})
+            else
+                try writer.writeAll(parameter.name),
         }
     }
     try writer.writeByte(')');
@@ -644,7 +653,33 @@ fn writeZigReturnConversion(writer: *std.Io.Writer, node: semantic.TypeNode, exp
     switch (node) {
         .bool => try writer.print("@intFromBool({s})", .{expression}),
         .@"enum" => try writer.print("@intFromEnum({s})", .{expression}),
-        else => try writer.writeAll(expression),
+        else => if (abi.narrowInt(node) != null)
+            try writer.print("@intCast({s})", .{expression})
+        else
+            try writer.writeAll(expression),
+    }
+}
+
+/// A parameter declared narrower than the C integer carrying it can arrive
+/// holding a value the Zig type cannot represent. There is no status code to
+/// spend on it -- a function without an error union has nowhere to put one --
+/// so the shim panics, and the existing panic bridge turns that into a Go
+/// `NativePanicError` at the call site that caused it.
+fn writeNarrowIntegerGuards(writer: *std.Io.Writer, function: abi.AbiFn) !void {
+    for (function.origin.params) |parameter| {
+        const narrow = abi.narrowInt(parameter.type) orelse continue;
+        const spelling: u8 = if (narrow.signed) 'i' else 'u';
+        if (narrow.signed) {
+            try writer.print(
+                "    if ({0s} < std.math.minInt({1c}{2d}) or {0s} > std.math.maxInt({1c}{2d})) @panic(\"zigo: argument `{0s}` is out of range for {1c}{2d}\");\n",
+                .{ parameter.name, spelling, narrow.bits },
+            );
+        } else {
+            try writer.print(
+                "    if ({0s} > std.math.maxInt({1c}{2d})) @panic(\"zigo: argument `{0s}` is out of range for {1c}{2d}\");\n",
+                .{ parameter.name, spelling, narrow.bits },
+            );
+        }
     }
 }
 
@@ -4369,7 +4404,9 @@ fn writePublicGoType(writer: *std.Io.Writer, node: semantic.TypeNode) !void {
         .int => |integer| if (integer.is_usize)
             try writer.writeAll(if (integer.signed) "int" else "uint")
         else
-            try writeIntegerName(writer, integer.signed, integer.bits, false),
+            // Go spells only the widths C names, so a narrow Zig integer
+            // shows up in the public API as the one carrying it.
+            try writeIntegerName(writer, integer.signed, abi.promotedIntBits(integer.bits), false),
         .float => |value| try writer.print("float{d}", .{value.bits}),
         .opaque_ptr => |value| try writer.print("*{s}", .{value.ref}),
         .value_struct => |value| try writer.writeAll(value.ref),
@@ -4785,7 +4822,14 @@ fn rawGoZero(node: semantic.TypeNode) []const u8 {
 fn semanticScalar(program: abi.Program, node: semantic.TypeNode) abi.AbiScalar {
     return switch (node) {
         .bool => .bool_u8,
-        .int => |value| if (value.is_usize) (if (value.signed) .isize else .usize) else if (value.signed) .{ .signed_int = value.bits } else .{ .unsigned_int = value.bits },
+        // The promoted width, matching what lowering put in the ABI, so a
+        // narrow integer spells the same C, Zig, and Go type everywhere.
+        .int => |value| if (value.is_usize)
+            (if (value.signed) .isize else .usize)
+        else if (value.signed)
+            .{ .signed_int = abi.promotedIntBits(value.bits) }
+        else
+            .{ .unsigned_int = abi.promotedIntBits(value.bits) },
         .float => |value| .{ .float = value.bits },
         .@"enum" => |value| semanticScalar(program, enumDecl(program, value.ref).tag_type.?),
         .opaque_ptr => |value| .{ .@"opaque" = handleRecord(program, value.ref) },

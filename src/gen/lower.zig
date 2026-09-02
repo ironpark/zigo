@@ -679,9 +679,9 @@ fn lowerValue(allocator: std.mem.Allocator, document: semantic.Semantic, prefix:
         .int => |value| if (value.is_usize)
             (if (value.signed) .isize else .usize)
         else if (value.signed)
-            .{ .signed_int = value.bits }
+            .{ .signed_int = abi.promotedIntBits(value.bits) }
         else
-            .{ .unsigned_int = value.bits },
+            .{ .unsigned_int = abi.promotedIntBits(value.bits) },
         .float => |value| .{ .float = value.bits },
         .@"enum" => |value| lowerValue(allocator, document, prefix, enumDeclaration(document, value.ref).tag_type.?),
         .opaque_ptr => |value| blk: {

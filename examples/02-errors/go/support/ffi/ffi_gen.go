@@ -36,3 +36,10 @@ func Sum(values []float64) float64 {
 func NormalizeFormat(value uint32) uint32 {
 	return uint32(C.zg_normalize_format(C.uint32_t(value)))
 }
+
+// CodepointWidth calls the generated C ABI wrapper for zg_codepoint_width.
+func CodepointWidth(cp uint32) (uint32, int32) {
+	var outResult C.uint32_t
+	code := int32(C.zg_codepoint_width(C.uint32_t(cp), &outResult))
+	return uint32(outResult), code
+}

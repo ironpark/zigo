@@ -232,6 +232,21 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .hint = "use void, scalar, enum, opaque-pointer, or numeric-slice payloads",
         };
         if (declaration.kind == .value_struct and declaration.layout == .@"extern") {
+            // A width zigo would promote elsewhere gets its own message here:
+            // the field is mirrored into C byte for byte, with no shim in
+            // between to convert it.
+            for (declaration.fields) |field| {
+                const node = field.type orelse continue;
+                if (node != .int or integerSupported(node.int) or !promotableInteger(node.int)) continue;
+                const spelling = try zigSpellingAlloc(allocator, node);
+                return .{
+                    .severity = .@"error",
+                    .code = "ZIGO018",
+                    .message = try std.fmt.allocPrint(allocator, "cannot promote integer width `{s}` in field `{s}`", .{ spelling, field.name }),
+                    .site = .{ .path = "semantic.json", .declaration = declaration.name },
+                    .hint = "an `extern struct` is mirrored into C field by field; use an 8, 16, 32, or 64-bit integer here",
+                };
+            }
             if (externStructProblem(document, declaration, 0)) |site| return .{
                 .severity = .@"error",
                 .code = "ZIGO012",
@@ -283,15 +298,15 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
     // diagnostics above keep naming the declarations they always did.
     for (document.functions) |function| {
         for (function.params) |parameter| {
-            if (try typeOffense(allocator, parameter.type)) |offense| {
+            if (try typeOffense(allocator, parameter.type, true)) |offense| {
                 const root = try std.fmt.allocPrint(allocator, "parameter `{s}`", .{parameter.name});
                 const location = try locationAlloc(allocator, offense.context, root);
-                return try offenseDiagnostic(allocator, function, offense.node, location);
+                return try offenseDiagnostic(allocator, function, offense, location);
             }
         }
-        if (try typeOffense(allocator, function.@"return")) |offense| {
+        if (try typeOffense(allocator, function.@"return", true)) |offense| {
             const location = try locationAlloc(allocator, offense.context, "the return value");
-            return try offenseDiagnostic(allocator, function, offense.node, location);
+            return try offenseDiagnostic(allocator, function, offense, location);
         }
     }
     return null;
@@ -303,23 +318,35 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
 const Offense = struct {
     node: semantic.TypeNode,
     context: ?[]const u8 = null,
+    reason: Reason = .unsupported,
+
+    /// `narrow_position` is a width zigo does promote, found where it cannot:
+    /// the two need different hints because only one of them is about the type.
+    const Reason = enum { unsupported, narrow_position };
 };
 
-fn typeOffense(allocator: std.mem.Allocator, node: semantic.TypeNode) error{OutOfMemory}!?Offense {
+/// `promotable` is true only where the shim stands between Zig and C and can
+/// convert a single value. Nested positions are mirrored byte for byte, so a
+/// width C cannot name is still a rejection there.
+fn typeOffense(allocator: std.mem.Allocator, node: semantic.TypeNode, promotable: bool) error{OutOfMemory}!?Offense {
     switch (node) {
         .void, .bool, .@"enum", .opaque_ptr, .value_struct => return null,
-        .int => |value| return if (integerSupported(value)) null else Offense{ .node = node },
+        .int => |value| {
+            if (integerSupported(value)) return null;
+            if (promotable and promotableInteger(value)) return null;
+            return Offense{ .node = node, .reason = if (promotableInteger(value)) .narrow_position else .unsupported };
+        },
         .float => |value| return if (floatSupported(value)) null else Offense{ .node = node },
-        .slice => |value| return wrapOffense(allocator, try typeOffense(allocator, value.element.*), "the slice element"),
-        .error_union => |value| return wrapOffense(allocator, try typeOffense(allocator, value.payload.*), "the error payload"),
+        .slice => |value| return wrapOffense(allocator, try typeOffense(allocator, value.element.*, false), "the slice element"),
+        .error_union => |value| return wrapOffense(allocator, try typeOffense(allocator, value.payload.*, promotable), "the error payload"),
         .callback => |value| {
             for (value.params, 0..) |parameter, index| {
-                if (try typeOffense(allocator, parameter)) |found| {
+                if (try typeOffense(allocator, parameter, false)) |found| {
                     const label = try std.fmt.allocPrint(allocator, "callback parameter {d}", .{index});
                     return wrapOffense(allocator, found, label);
                 }
             }
-            return wrapOffense(allocator, try typeOffense(allocator, value.@"return".*), "the callback return value");
+            return wrapOffense(allocator, try typeOffense(allocator, value.@"return".*, false), "the callback return value");
         },
         else => return Offense{ .node = node },
     }
@@ -327,10 +354,11 @@ fn typeOffense(allocator: std.mem.Allocator, node: semantic.TypeNode) error{OutO
 
 fn wrapOffense(allocator: std.mem.Allocator, found: ?Offense, label: []const u8) error{OutOfMemory}!?Offense {
     const offense = found orelse return null;
-    const context = offense.context orelse return Offense{ .node = offense.node, .context = label };
+    const context = offense.context orelse return Offense{ .node = offense.node, .context = label, .reason = offense.reason };
     return Offense{
         .node = offense.node,
         .context = try std.fmt.allocPrint(allocator, "{s} of {s}", .{ context, label }),
+        .reason = offense.reason,
     };
 }
 
@@ -342,18 +370,25 @@ fn locationAlloc(allocator: std.mem.Allocator, context: ?[]const u8, root: []con
 fn offenseDiagnostic(
     allocator: std.mem.Allocator,
     function: semantic.SemanticFn,
-    node: semantic.TypeNode,
+    offense: Offense,
     location: []const u8,
 ) !diagnostic.Diagnostic {
+    const node = offense.node;
     const spelling = try zigSpellingAlloc(allocator, node);
     const declaration = try functionDeclarationAlloc(allocator, function);
     return switch (node) {
-        .int => .{
+        .int => if (offense.reason == .narrow_position) .{
+            .severity = .@"error",
+            .code = "ZIGO018",
+            .message = try std.fmt.allocPrint(allocator, "cannot promote integer width `{s}` in {s}", .{ spelling, location }),
+            .site = .{ .path = "semantic.json", .declaration = declaration },
+            .hint = "zigo widens a narrow integer only as a whole parameter, return value, or error payload; use an 8, 16, 32, or 64-bit integer here",
+        } else .{
             .severity = .@"error",
             .code = "ZIGO018",
             .message = try std.fmt.allocPrint(allocator, "unsupported integer width `{s}` in {s}", .{ spelling, location }),
             .site = .{ .path = "semantic.json", .declaration = declaration },
-            .hint = "use an 8, 16, 32, or 64-bit integer, or `usize`",
+            .hint = "use an integer of 64 bits or fewer",
         },
         .float => .{
             .severity = .@"error",
@@ -577,9 +612,19 @@ fn containsValueStruct(node: semantic.TypeNode) bool {
     };
 }
 
+/// The widths C can name directly. Every position that mirrors bytes into C --
+/// an `extern struct` field, a slice element, a callback signature -- answers
+/// to this one, because those have no shim between the two spellings.
 fn integerSupported(value: semantic.Int) bool {
     if (value.is_usize) return value.bits != 0 and value.bits <= 64;
     return value.bits == 8 or value.bits == 16 or value.bits == 32 or value.bits == 64;
+}
+
+/// A whole parameter, return value, or error payload passes through the shim,
+/// which range-checks the value and casts it, so any width Zig can spell up to
+/// 64 bits crosses in the next C integer that exists.
+fn promotableInteger(value: semantic.Int) bool {
+    return !value.is_usize and value.bits >= 1 and value.bits <= 64;
 }
 
 fn floatSupported(value: semantic.Float) bool {
@@ -835,6 +880,7 @@ test "implemented diagnostic snapshots are stable" {
     const count_node: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
     var wide_element: semantic.TypeNode = .{ .int = .{ .bits = 21, .signed = false } };
     const wide_slice_node: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &wide_element } };
+    var wide_callback_params = [_]semantic.TypeNode{.{ .int = .{ .bits = 21, .signed = false } }};
     const cases = [_]struct { document: semantic.Semantic, snapshot: []const u8 }{
         .{ .document = .{
             .functions = &.{.{
@@ -1113,14 +1159,14 @@ test "implemented diagnostic snapshots are stable" {
             .functions = &.{.{
                 .name = "codepointWidth",
                 .namespace = "unicode",
-                .params = &.{.{ .name = "cp", .type = .{ .int = .{ .bits = 21, .signed = false } } }},
+                .params = &.{.{ .name = "cp", .type = .{ .int = .{ .bits = 128, .signed = false } } }},
                 .@"return" = .{ .int = .{ .bits = 8, .signed = true } },
                 .symbol = "zg_unicode_codepoint_width",
             }},
             .package = "bad",
             .prefix = "zg",
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO018]: unsupported integer width `u21` in parameter `cp`\n  --> semantic.json (unicode.codepointWidth)\n  hint: use an 8, 16, 32, or 64-bit integer, or `usize`\n" },
+        }, .snapshot = "error[ZIGO018]: unsupported integer width `u128` in parameter `cp`\n  --> semantic.json (unicode.codepointWidth)\n  hint: use an integer of 64 bits or fewer\n" },
         .{ .document = .{
             .functions = &.{.{
                 .name = "widths",
@@ -1131,7 +1177,29 @@ test "implemented diagnostic snapshots are stable" {
             .package = "bad",
             .prefix = "zg",
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO018]: unsupported integer width `u21` in the slice element of parameter `cps`\n  --> semantic.json (widths)\n  hint: use an 8, 16, 32, or 64-bit integer, or `usize`\n" },
+        }, .snapshot = "error[ZIGO018]: cannot promote integer width `u21` in the slice element of parameter `cps`\n  --> semantic.json (widths)\n  hint: zigo widens a narrow integer only as a whole parameter, return value, or error payload; use an 8, 16, 32, or 64-bit integer here\n" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "onCodepoint",
+                .params = &.{.{ .name = "callback", .type = .{ .callback = .{ .has_userdata = false, .params = &wide_callback_params, .@"return" = &callback_return } } }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_on_codepoint",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO018]: cannot promote integer width `u21` in callback parameter 0 of parameter `callback`\n  --> semantic.json (onCodepoint)\n  hint: zigo widens a narrow integer only as a whole parameter, return value, or error payload; use an 8, 16, 32, or 64-bit integer here\n" },
+        .{ .document = .{
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{.{
+                .fields = &.{.{ .name = "codepoint", .type = .{ .int = .{ .bits = 21, .signed = false } } }},
+                .kind = .value_struct,
+                .layout = .@"extern",
+                .name = "Cell",
+            }},
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO018]: cannot promote integer width `u21` in field `codepoint`\n  --> semantic.json (Cell)\n  hint: an `extern struct` is mirrored into C field by field; use an 8, 16, 32, or 64-bit integer here\n" },
         .{ .document = .{
             .functions = &.{.{
                 .name = "extended",
@@ -1189,6 +1257,33 @@ test "implemented diagnostic snapshots are stable" {
         defer std.testing.allocator.free(rendered);
         try std.testing.expectEqualStrings(case.snapshot, rendered);
     }
+}
+
+test "a narrow integer is accepted where the shim can promote it" {
+    var payload: semantic.TypeNode = .{ .int = .{ .bits = 21, .signed = false } };
+    const document: semantic.Semantic = .{
+        .functions = &.{
+            .{
+                .name = "codepointWidth",
+                .namespace = "unicode",
+                .params = &.{.{ .name = "cp", .type = .{ .int = .{ .bits = 21, .signed = false } } }},
+                .@"return" = .{ .int = .{ .bits = 24, .signed = true } },
+                .symbol = "zg_unicode_codepoint_width",
+            },
+            .{
+                .name = "decode",
+                .params = &.{},
+                .@"return" = .{ .error_union = .{ .error_set = &.{"Invalid"}, .payload = &payload } },
+                .symbol = "zg_decode",
+            },
+        },
+        .package = "narrow",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
+    try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(scratch.allocator(), document));
 }
 
 test "a written hint is accepted on an out slice of a counting function" {

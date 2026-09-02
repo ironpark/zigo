@@ -281,6 +281,7 @@ pub fn build(b: *std.Build) void {
     const godoc_audit = b.addSystemCommand(&.{ "go", "run", "./tests/godoc_audit/main.go" });
     godoc_audit.addArgs(&.{
         "tests/generator_cases/complex/expected",
+        "tests/generator_cases/narrow_int/expected",
         "tests/generator_cases/scalar/expected",
         "tests/generator_cases/union_snapshot/expected",
         "tests/generator_cases/value_struct/expected",
@@ -444,8 +445,8 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     _ = unsupported_width.addOutputDirectoryArg("unsupported-width-output");
     unsupported_width.addArgs(&.{ "--package", "bad" });
     unsupported_width.expectExitCode(1);
-    unsupported_width.expectStdErrMatch("error[ZIGO018]: unsupported integer width `u21` in parameter `cp`");
-    unsupported_width.expectStdErrMatch("--> semantic.json (unicode.codepointWidth)");
+    unsupported_width.expectStdErrMatch("error[ZIGO018]: cannot promote integer width `u21` in the slice element of parameter `cps`");
+    unsupported_width.expectStdErrMatch("--> semantic.json (unicode.codepointWidths)");
     test_step.dependOn(&unsupported_width.step);
 
     const stale = b.addRunArtifact(generator);

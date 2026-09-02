@@ -83,6 +83,38 @@
         "ref": "Format"
       },
       "symbol": "zg_normalize_format"
+    },
+    {
+      "doc": "A Unicode codepoint is `u21` in Zig, which C cannot name. zigo carries it\nin a `uint32_t` and the shim range-checks the value on the way in, so a Go\ncaller that passes something wider gets a native panic rather than a\ntruncated codepoint.",
+      "name": "codepointWidth",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "cp",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 21,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "NotPrintable"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 21,
+          "is_usize": false,
+          "kind": "int",
+          "signed": false
+        }
+      },
+      "symbol": "zg_codepoint_width"
     }
   ],
   "ir_version": 1,

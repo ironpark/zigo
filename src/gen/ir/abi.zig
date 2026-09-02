@@ -1,5 +1,23 @@
 const semantic = @import("semantic");
 
+/// C can only name 8, 16, 32, and 64-bit integers, so a Zig width outside that
+/// set travels in the next one that exists. The declared width is still what
+/// the value means, which is why the shim range-checks on the way in.
+pub fn promotedIntBits(bits: u16) u16 {
+    if (bits <= 8) return 8;
+    if (bits <= 16) return 16;
+    if (bits <= 32) return 32;
+    return 64;
+}
+
+/// The declared integer, when it is narrower than the C type carrying it.
+pub fn narrowInt(node: semantic.TypeNode) ?semantic.Int {
+    if (node != .int) return null;
+    const value = node.int;
+    if (value.is_usize or promotedIntBits(value.bits) == value.bits) return null;
+    return value;
+}
+
 pub const AbiScalar = union(enum) {
     void,
     bool_u8,

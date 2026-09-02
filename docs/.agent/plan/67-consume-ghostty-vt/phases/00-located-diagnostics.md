@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T06:12:52Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `grep -n "return error.Unsupported" src/gen/validate.zig`가 비어 있고, 진단 골든 테스트가 통과한다.
 > NEXT: none

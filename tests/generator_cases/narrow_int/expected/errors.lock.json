@@ -1,10 +1,9 @@
 {
   "codes": {
-    "DivideByZero": 1,
-    "NotPrintable": 2
+    "Invalid": 1
   },
   "ir_version": 1,
-  "next_code": 3,
+  "next_code": 2,
   "reserved": {
     "-1": "Unknown",
     "-2": "PanicCaught",

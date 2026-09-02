@@ -1,0 +1,38 @@
+{
+  "functions": [
+    {
+      "doc": "Reports the display width of a codepoint.",
+      "name": "codepointWidth",
+      "params": [
+        {"name": "cp", "type": {"bits": 21, "is_usize": false, "kind": "int", "signed": false}}
+      ],
+      "return": {"bits": 8, "is_usize": false, "kind": "int", "signed": true},
+      "symbol": "ignored"
+    },
+    {
+      "doc": "Rounds a signed offset into the narrow range it is stored in.",
+      "name": "clampOffset",
+      "params": [
+        {"name": "offset", "type": {"bits": 24, "is_usize": false, "kind": "int", "signed": true}}
+      ],
+      "return": {"bits": 24, "is_usize": false, "kind": "int", "signed": true},
+      "symbol": "ignored"
+    },
+    {
+      "doc": "Decodes the next codepoint, or fails on malformed input.",
+      "name": "decode",
+      "params": [
+        {"name": "byte", "type": {"bits": 8, "is_usize": false, "kind": "int", "signed": false}}
+      ],
+      "return": {
+        "error_set": ["Invalid"],
+        "kind": "error_union",
+        "payload": {"bits": 21, "is_usize": false, "kind": "int", "signed": false}
+      },
+      "symbol": "ignored"
+    }
+  ],
+  "package": "narrow_int",
+  "prefix": "zg",
+  "zig_version": "0.16.0"
+}

@@ -30,3 +30,19 @@ func Sum(values []float64) float64 {
 func NormalizeFormat(value Format) Format {
 	return Format(raw.NormalizeFormat(uint32(value)))
 }
+
+// CodepointWidth
+// A Unicode codepoint is `u21` in Zig, which C cannot name. zigo carries it
+// in a `uint32_t` and the shim range-checks the value on the way in, so a Go
+// caller that passes something wider gets a native panic rather than a
+// truncated codepoint.
+// Native failures are returned as generated error values.
+func CodepointWidth(cp uint32) (uint32, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	result, code := raw.CodepointWidth(cp)
+	if code != 0 {
+		return 0, errorForCode("CodepointWidth", code)
+	}
+	return result, nil
+}
