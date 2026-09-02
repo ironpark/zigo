@@ -25,6 +25,19 @@
   "prefix": "zg",
   "types": [
     {
+      "fields": [{"name": "enter", "value": 0}, {"name": "escape", "value": 1}],
+      "kind": "enum",
+      "name": "Key",
+      "package": "model",
+      "tag_type": {"bits": 8, "kind": "int", "signed": false}
+    },
+    {
+      "fields": [{"name": "ansi", "value": 0}, {"name": "iso", "value": 1}],
+      "kind": "enum",
+      "name": "Keyboard",
+      "tag_type": {"bits": 8, "kind": "int", "signed": false}
+    },
+    {
       "fields": [{"name": "idle", "value": 0}, {"name": "active", "value": 1}],
       "kind": "enum",
       "name": "Mode",

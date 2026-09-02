@@ -4,6 +4,28 @@ package model
 
 import "strconv"
 
+// Key represents the corresponding Zig enum.
+type Key uint8
+
+const (
+	// KeyEnter corresponds to the Zig tag enter.
+	KeyEnter Key = 0
+	// KeyEscape corresponds to the Zig tag escape.
+	KeyEscape Key = 1
+)
+
+// String returns the Zig tag name.
+func (value Key) String() string {
+	switch value {
+	case KeyEnter:
+		return "enter"
+	case KeyEscape:
+		return "escape"
+	default:
+		return "Key(" + strconv.Itoa(int(value)) + ")"
+	}
+}
+
 // Mode represents the corresponding Zig enum.
 type Mode uint8
 

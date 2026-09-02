@@ -16,6 +16,10 @@
 - `.returns = .caller`와 `.release`를 `?[]T`, `!?[]T`, `?[:0]const u8`,
   `!?[:0]const u8` 반환에도 적용합니다. 부재·오류 경로에서는 release하지 않고, 존재하는
   값만 Go 메모리로 복사한 뒤 release합니다.
+- `.packages`로 나눈 공개 패키지의 enum·struct·runtime 파일이 쓰지 않는 패키지 import를 붙여
+  import 순환(`import cycle not allowed`)을 만들던 문제를 고쳤습니다. 타입 이름을 부분 문자열로
+  찾던 판정을 버리고, 본문을 먼저 한정한 뒤 실제로 쓰인 `zigo_pkg_*`/`zigo_default` 선택자만
+  import합니다.
 
 ## [0.6.0] - 2026-09-03
 

@@ -4086,8 +4086,12 @@ fn renderPublicFile(
     var body: std.Io.Writer.Allocating = .init(allocator);
     defer body.deinit();
     try renderBody(allocator, &body.writer, program, options);
-    const text = body.written();
-    if (text.len == 0) return;
+    if (body.written().len == 0) return;
+    // Qualify first, then read the imports off the qualified text: the import
+    // block has to answer for the selectors the file really uses, not for
+    // type names that merely occur as substrings of other identifiers.
+    const text = try qualifyPublicTypesAlloc(allocator, body.written(), program, options);
+    defer allocator.free(text);
     try writePublicImports(writer, text, program, options);
     try writer.writeAll(text);
 }
@@ -4118,12 +4122,14 @@ fn writePublicImports(writer: *std.Io.Writer, body: []const u8, program: abi.Pro
     // package with another name is imported under that alias.
     const raw = !options.raw_colocated and bodyUsesQualifier(body, "raw");
     const lifecycle = bodyUsesQualifier(body, "lifecycle");
-    const default_foreign = options.active_package != null and options.active_package.?.len != 0 and bodyReferencesPackageTypes(body, program, "");
+    const default_foreign = bodyUsesQualifier(body, "zigo_default");
     var foreign: std.ArrayList(semantic.Package) = .empty;
     defer foreign.deinit(std.heap.page_allocator);
     if (options.active_package != null) if (program.packages) |packages| for (packages) |package| {
         if (std.mem.eql(u8, package.name, options.active_package.?)) continue;
-        if (bodyReferencesPackageTypes(body, program, package.name)) try foreign.append(std.heap.page_allocator, package);
+        var qualifier_buffer: [256]u8 = undefined;
+        const qualifier = std.fmt.bufPrint(&qualifier_buffer, "zigo_pkg_{s}", .{package.name}) catch continue;
+        if (bodyUsesQualifier(body, qualifier)) try foreign.append(std.heap.page_allocator, package);
     };
     if (count == 0 and !raw and !lifecycle and !default_foreign and foreign.items.len == 0) return writer.writeByte('\n');
     if (count + @as(usize, @intFromBool(raw)) + @as(usize, @intFromBool(lifecycle)) + @as(usize, @intFromBool(default_foreign)) + foreign.items.len == 1) {
@@ -4247,6 +4253,13 @@ pub fn qualifyPublicTypesAlloc(allocator: std.mem.Allocator, source: []const u8,
         const begin = index;
         while (index < source.len and isGoIdentifierByte(source[index])) index += 1;
         const identifier = source[begin..index];
+        // An identifier behind a selector is a member, not a type: a field
+        // that happens to share a type's name, or a name this pass already
+        // qualified. Leaving it alone is what makes the pass idempotent.
+        if (begin != 0 and source[begin - 1] == '.') {
+            try output.writer.writeAll(identifier);
+            continue;
+        }
         var qualifier: ?[]const u8 = null;
         for (program.types) |declaration| {
             if (!std.mem.eql(u8, declaration.name, identifier) or packageMatches(declaration.package, options.active_package)) continue;
@@ -4323,14 +4336,6 @@ fn nodeReferencesType(node: semantic.TypeNode, target: []const u8) bool {
 fn typeHasPackage(program: abi.Program, name: []const u8, target: []const u8) bool {
     for (program.types) |declaration| if (std.mem.eql(u8, declaration.name, name))
         return if (declaration.package) |package| std.mem.eql(u8, package, target) else target.len == 0;
-    return false;
-}
-
-fn bodyReferencesPackageTypes(body: []const u8, program: abi.Program, target: []const u8) bool {
-    for (program.types) |declaration| {
-        const matches = if (declaration.package) |package| std.mem.eql(u8, package, target) else target.len == 0;
-        if (matches and std.mem.indexOf(u8, body, declaration.name) != null) return true;
-    }
     return false;
 }
 

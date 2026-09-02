@@ -5,6 +5,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
+typedef uint8_t zg_key;
+#define ZG_KEY_ENTER 0
+#define ZG_KEY_ESCAPE 1
+
+typedef uint8_t zg_keyboard;
+#define ZG_KEYBOARD_ANSI 0
+#define ZG_KEYBOARD_ISO 1
+
 typedef uint8_t zg_mode;
 #define ZG_MODE_IDLE 0
 #define ZG_MODE_ACTIVE 1
