@@ -1,0 +1,76 @@
+# Changelog
+
+형식은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/)를 따르고, 버전은
+[Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
+생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
+
+## [0.2.0] - 2026-09-02
+
+### Breaking
+
+- `.written = .return`인 out 슬라이스 파라미터는 C 시그니처에서 `_written` out 파라미터를
+  더 이상 갖지 않습니다. 쓴 개수는 함수의 반환값 하나로만 전달됩니다. `abi-check`는
+  `.all`과 `.return` 사이의 변경을 breaking으로 보고합니다. (계획 68)
+- `u21`, `i24` 같은 2의 거듭제곱이 아닌 정수 폭이 C 경계에서 다음 2의 거듭제곱으로
+  승격됩니다(`u21` → `uint32_t`, Go `uint32`). 이전에는 거부됐으므로 기존 바인딩의 ABI는
+  바뀌지 않지만, `semantic.json`의 `bits`는 원래 폭을 유지하고 폭 변경은 breaking입니다.
+  (계획 67)
+
+### Added
+
+- 바인딩 경로가 임의 깊이의 네임스페이스 struct를 따라갑니다. `root.unicode.codepointWidth`
+  같은 경로가 동작하며, 네임스페이스는 C 심볼(`zg_unicode_codepoint_width`), raw Go 이름,
+  `semantic.json` identity(`unicode.codepointWidth`)에 반영됩니다. 공개 Go 이름은 마지막
+  세그먼트만 씁니다. `.discover = .recursive`로 중첩 컨테이너 발견을 켤 수 있고, 기본값
+  `.public`은 그대로 1단계입니다. (계획 67)
+- 지원되지 않는 타입이 위치 있는 진단으로 보고됩니다. `ZIGO018`(정수·실수 폭),
+  `ZIGO019`(타입), `ZIGO020`(IR 버전), `ZIGO021`(이름)이 함수, 파라미터, Zig 타입 철자를
+  담아 출력되며 스택 트레이스 대신 진단만 나옵니다. reflection 단계의 `@compileError`도
+  함수 경로와 파라미터 이름을 포함합니다. (계획 67)
+- 범위를 벗어난 승격 정수 인자는 shim이 검사해 기존 패닉 브리지를 통해 Go
+  `NativePanicError`로 돌아옵니다. extern struct 필드, 슬라이스 원소, callback 시그니처의
+  비 2의 거듭제곱 폭은 이유를 담은 `ZIGO018`로 계속 거부됩니다. (계획 67)
+- `LockOSThread` 비용 벤치마크가 07-event-queue에 추가됐고 결과가 `docs/limitations.md`에
+  기록됐습니다. 가벼운 error union 호출에서 약 2%라 패닉 메시지 ABI는 바꾸지 않았습니다.
+  (계획 68)
+
+### Changed
+
+- 패키지 doc의 fallback 소스가 `bindings.zig`의 `//!`에서 라이브러리 루트 모듈의 `//!`로
+  바뀌었습니다. 순서는 `go_package_doc` 옵션, 루트 모듈 `//!`, 기본 문장입니다. (계획 68)
+- handle을 획득하는 호출 경로에서 잉여 `defer runtime.KeepAlive`가 제거됐습니다.
+  `defer x.zigoRelease()`가 이미 handle을 함수 끝까지 붙잡습니다. `Close`와 Go 메모리를 C에
+  넘기는 경우의 `KeepAlive`는 유지됩니다. (계획 68)
+- Go 타입 이름이 선언 폭이 아닌 승격 폭으로 표기됩니다. (계획 67)
+
+## [0.1.0] - 2026-09-02
+
+첫 태그 릴리스입니다. 이 릴리스까지의 주요 내용은 다음과 같습니다.
+
+### Handle 모델
+
+- handle은 잠금 대신 호출 수를 셉니다. `Close`는 표시만 하고 마지막으로 나가는 호출이
+  자원을 해제하므로 어떤 호출자도 다른 호출자를 기다리지 않습니다.
+- Zig 패닉이 통과한 handle은 poison되어 이후 호출이 `NativePanicError`로 거부되며,
+  native 자원은 해제하지 않고 남깁니다.
+- 런타임 심볼에 접두어가 붙어 두 바인딩이 한 바이너리를 공유할 수 있습니다.
+
+### 슬라이스와 extern struct
+
+- out 슬라이스 파라미터에 `.written = .return` 힌트가 추가됐습니다. native가 반환한
+  개수만 채워지고 그 뒤 원소는 호출 전 값 그대로입니다.
+- bool 필드가 없는 extern struct 슬라이스는 cgo에서도 캐스트 한 번으로 넘어가고, Go 쪽
+  컴파일 시점 레이아웃 가드가 그 근거를 고정합니다. 반환 경로도 raw 계층이 소유한 할당을
+  재해석해 두 번째 복사를 하지 않습니다.
+- 에러 유니온 슬라이스 payload, 호출자 소유 슬라이스 반환과 해제 함수, 문자열 슬라이스
+  파라미터, sentinel C 문자열을 지원합니다.
+
+### 메타데이터와 문서
+
+- `semantic.json`의 `symbol`이 실제 export 심볼과 일치합니다. `abi-check`는 옛 규칙에서
+  새 규칙으로의 1회 정정을 compatible로 봅니다.
+- 생성된 Go doc이 식별자로 시작하지 않는 문장을 두 줄 형식으로 내고, `//` 그룹 주석과
+  빈 줄 없이 이어진 선언의 doc 공유를 지원합니다. 모든 생성 패키지에 패키지 doc이 있습니다.
+
+[0.2.0]: https://github.com/ironpark/zigo/compare/0.1.0...0.2.0
+[0.1.0]: https://github.com/ironpark/zigo/releases/tag/0.1.0
