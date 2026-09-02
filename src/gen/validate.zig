@@ -35,7 +35,7 @@ pub fn puregoCallbackIssue(document: semantic.Semantic) ?diagnostic.Diagnostic {
                 .severity = .@"error",
                 .code = "ZIGO014",
                 .message = "purego callback result must be void or a signed 32-bit integer",
-                .site = .{ .path = "semantic.json", .declaration = function.name },
+                .site = functionSite(function),
                 .hint = "return `void` or `i32` from the callback, or report the value through userdata",
             };
         }
@@ -86,14 +86,14 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .severity = .@"error",
             .code = "ZIGO001",
             .message = "cannot expose an anyerror return with stable ABI codes",
-            .site = .{ .path = "semantic.json", .declaration = function.name },
+            .site = functionSite(function),
             .hint = "use an explicit error set in the Zig function signature",
         };
         if (function.has_comptime_params == true) return .{
             .severity = .@"error",
             .code = "ZIGO008",
             .message = "cannot expose a function with comptime parameters",
-            .site = .{ .path = "semantic.json", .declaration = function.name },
+            .site = functionSite(function),
             .hint = "bind a concrete specialization instead of the generic function",
         };
         for (function.params) |parameter| {
@@ -111,7 +111,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                         "parameter `{s}` needs a {s} the binding has not named",
                         .{ parameter.name, if (injection == .allocator) "`std.mem.Allocator`" else "`std.Io`" },
                     ),
-                    .site = .{ .path = "semantic.json", .declaration = function.name },
+                    .site = functionSite(function),
                     .hint = if (injection == .allocator)
                         "set `.allocator = .c_allocator`, `.page_allocator`, `.smp_allocator`, or a declaration path in the binding"
                     else
@@ -123,28 +123,28 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .severity = .@"error",
                 .code = "ZIGO006",
                 .message = "cannot pass a tagged union by value",
-                .site = .{ .path = "semantic.json", .declaration = function.name },
+                .site = functionSite(function),
                 .hint = "register it with `.repr = .tagged_union` and expose pointers to the union",
             };
             if (unsupportedValueStruct(document, parameter.type) != null) return .{
                 .severity = .@"error",
                 .code = "ZIGO003",
                 .message = "cannot pass a non-extern struct by value",
-                .site = .{ .path = "semantic.json", .declaration = function.name },
+                .site = functionSite(function),
                 .hint = "declare it as `extern struct`, or expose it as opaque",
             };
             if (nestedValueStruct(parameter.type)) return .{
                 .severity = .@"error",
                 .code = "ZIGO013",
                 .message = "extern struct is only supported as a whole parameter or return value",
-                .site = .{ .path = "semantic.json", .declaration = function.name },
+                .site = functionSite(function),
                 .hint = "pass the struct on its own or as a direct slice element; optional and callback signatures are not supported",
             };
             if (containsNonCFunctionPointer(parameter.type)) return .{
                 .severity = .@"error",
                 .code = "ZIGO004",
                 .message = "function pointer does not use the C calling convention",
-                .site = .{ .path = "semantic.json", .declaration = function.name },
+                .site = functionSite(function),
                 .hint = "declare the callback with `callconv(.c)`",
             };
             if (parameter.type == .slice and containsPointer(parameter.type.slice.element.*) and
@@ -152,14 +152,14 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .severity = .@"error",
                 .code = "ZIGO005",
                 .message = "slice element type contains a pointer",
-                .site = .{ .path = "semantic.json", .declaration = function.name },
+                .site = functionSite(function),
                 .hint = "pass scalar elements or opaque handle values instead of Go pointers",
             };
             if (parameter.retention == .retained and containsPointer(parameter.type) and !hasMatchingRelease(document, function)) return .{
                 .severity = .@"error",
                 .code = "ZIGO009",
                 .message = "retained pointer has no matching release function",
-                .site = .{ .path = "semantic.json", .declaration = function.name },
+                .site = functionSite(function),
                 .hint = "expose a release, clear, close, destroy, or deinit function for the retained value",
             };
         }
@@ -167,35 +167,35 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .severity = .@"error",
             .code = "ZIGO023",
             .message = "`*std.Io.Writer` and `*std.Io.Reader` are only supported as whole parameters",
-            .site = .{ .path = "semantic.json", .declaration = try functionDeclarationAlloc(allocator, function) },
+            .site = functionSiteFor(function, try functionDeclarationAlloc(allocator, function)),
             .hint = "the shim adapter lives on the call stack, so a stream cannot be returned; take the stream as a parameter instead",
         };
         if (containsTaggedUnionValue(document, function.@"return")) return .{
             .severity = .@"error",
             .code = "ZIGO006",
             .message = "cannot return a tagged union by value",
-            .site = .{ .path = "semantic.json", .declaration = function.name },
+            .site = functionSite(function),
             .hint = "register it with `.repr = .tagged_union` and expose pointers to the union",
         };
         if (unsupportedValueStruct(document, function.@"return") != null) return .{
             .severity = .@"error",
             .code = "ZIGO003",
             .message = "cannot pass a non-extern struct by value",
-            .site = .{ .path = "semantic.json", .declaration = function.name },
+            .site = functionSite(function),
             .hint = "declare it as `extern struct`, or expose it as opaque",
         };
         if (nestedValueStruct(function.@"return")) return .{
             .severity = .@"error",
             .code = "ZIGO013",
             .message = "extern struct is only supported as a whole parameter or return value",
-            .site = .{ .path = "semantic.json", .declaration = function.name },
+            .site = functionSite(function),
             .hint = "pass the struct on its own or as a direct slice element; optional and callback signatures are not supported",
         };
         if (containsNonCFunctionPointer(function.@"return")) return .{
             .severity = .@"error",
             .code = "ZIGO004",
             .message = "function pointer does not use the C calling convention",
-            .site = .{ .path = "semantic.json", .declaration = function.name },
+            .site = functionSite(function),
             .hint = "declare the callback with `callconv(.c)`",
         };
         // A returned slice crosses as `T*` plus a length, so its element has to
@@ -206,7 +206,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .severity = .@"error",
                 .code = "ZIGO005",
                 .message = "slice element type contains a pointer",
-                .site = .{ .path = "semantic.json", .declaration = function.name },
+                .site = functionSite(function),
                 .hint = "return scalar, enum, or extern-struct elements instead of Go pointers",
             };
         }
@@ -218,7 +218,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .severity = .@"error",
             .code = "ZIGO015",
             .message = "caller-owned return has no constructed handle to hand over",
-            .site = .{ .path = "semantic.json", .declaration = function.name },
+            .site = functionSite(function),
             .hint = "return a pointer to an opaque type that has both a constructor and a destructor, or drop `.returns = .caller`",
         };
         for (function.params) |parameter| {
@@ -227,14 +227,14 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .severity = .@"error",
                 .code = "ZIGO017",
                 .message = "written hint declared on a parameter that is not an output slice",
-                .site = .{ .path = "semantic.json", .declaration = function.name },
+                .site = functionSite(function),
                 .hint = "add `.direction = .out` to the parameter, or drop `.written`",
             };
             if (parameter.writtenHint() == .@"return" and !returnsCount(function.@"return")) return .{
                 .severity = .@"error",
                 .code = "ZIGO017",
                 .message = "`.written = .return` needs a `usize` result to report the count",
-                .site = .{ .path = "semantic.json", .declaration = function.name },
+                .site = functionSite(function),
                 .hint = "return `usize` or `!usize` from the function, or use the default `.written = .all`",
             };
         }
@@ -242,7 +242,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .severity = .@"error",
             .code = "ZIGO016",
             .message = "release function declared on a return that zigo does not free",
-            .site = .{ .path = "semantic.json", .declaration = function.name },
+            .site = functionSite(function),
             .hint = "use `.release` only together with `.returns = .caller` on a slice return",
         };
     }
@@ -316,7 +316,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .severity = .@"error",
                 .code = "ZIGO007",
                 .message = "generated C symbol collides with another declaration",
-                .site = .{ .path = "semantic.json", .declaration = function.name },
+                .site = functionSite(function),
                 .hint = "rename one declaration or assign the APIs distinct receiver types",
             };
         }
@@ -351,7 +351,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                     "public Go name `{s}` collides between type `{s}` and function `{s}`",
                     .{ function_name, declaration.zig_path orelse declaration.name, function_path },
                 ),
-                .site = .{ .path = "semantic.json", .declaration = function_path },
+                .site = functionSiteFor(function, function_path),
                 .hint = "rename the function, or register the type with a `.name` that resolves to a different Go identifier",
             };
         }
@@ -380,7 +380,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                     "public Go name `{s}` collides between `{s}` and `{s}`",
                     .{ name, previous_path, function_path },
                 ),
-                .site = .{ .path = "semantic.json", .declaration = function_path },
+                .site = functionSiteFor(function, function_path),
                 .hint = "rename one declaration, or give it a `.name` that resolves to a different Go identifier",
             };
         }
@@ -459,14 +459,14 @@ fn streamParameterIssue(
             "`*std.Io.Writer` and `*std.Io.Reader` are only supported as whole parameters, not inside parameter `{s}`",
             .{parameter.name},
         ),
-        .site = .{ .path = "semantic.json", .declaration = declaration },
+        .site = functionSiteFor(function, declaration),
         .hint = "pass the stream as its own parameter; it cannot travel inside an optional, a slice, a callback signature, or a union payload",
     };
     if (parameter.type == .io_stream and parameter.retention == .retained) return .{
         .severity = .@"error",
         .code = "ZIGO023",
         .message = try std.fmt.allocPrint(allocator, "stream parameter `{s}` cannot be retained", .{parameter.name}),
-        .site = .{ .path = "semantic.json", .declaration = declaration },
+        .site = functionSiteFor(function, declaration),
         .hint = "drop `.retention = .retained`; the shim adapter lives on the call stack and is invalid once the call returns",
     };
     const buffer = parameter.buffer orelse return null;
@@ -474,7 +474,7 @@ fn streamParameterIssue(
         .severity = .@"error",
         .code = "ZIGO023",
         .message = try std.fmt.allocPrint(allocator, "buffer hint declared on parameter `{s}`, which is not a stream", .{parameter.name}),
-        .site = .{ .path = "semantic.json", .declaration = declaration },
+        .site = functionSiteFor(function, declaration),
         .hint = "use `.buffer` only on a `*std.Io.Writer` or `*std.Io.Reader` parameter",
     };
     if (buffer < semantic.min_stream_buffer or buffer > semantic.max_stream_buffer) return .{
@@ -485,7 +485,7 @@ fn streamParameterIssue(
             "stream buffer {d} on parameter `{s}` is outside {d}..{d}",
             .{ buffer, parameter.name, semantic.min_stream_buffer, semantic.max_stream_buffer },
         ),
-        .site = .{ .path = "semantic.json", .declaration = declaration },
+        .site = functionSiteFor(function, declaration),
         .hint = "choose a buffer between 4096 and 16777216 bytes, or drop `.buffer` for the 65536 default",
     };
     return null;
@@ -549,6 +549,7 @@ fn identifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?
             .spelling = function.name,
             .convert = true,
             .declaration = function.name,
+            .source = function.source,
             .hint = "give the entry a `.name` that converts to a Go identifier",
         })) |issue| return issue;
     }
@@ -563,6 +564,10 @@ const NameCheck = struct {
     convert: bool = false,
     declaration: []const u8,
     zig_path: ?[]const u8 = null,
+    /// Set only when the check is a function name; a type or field name check
+    /// has no `SemanticFn` to source a location from, so it keeps pointing at
+    /// `semantic.json`.
+    source: ?semantic.SourceLocation = null,
     hint: []const u8,
 };
 
@@ -576,11 +581,17 @@ fn nameIssue(allocator: std.mem.Allocator, check: NameCheck) !?diagnostic.Diagno
         try std.fmt.allocPrint(allocator, "{s} `{s}` from Zig type `{s}` is not a valid Go identifier", .{ check.label, check.spelling, path })
     else
         try std.fmt.allocPrint(allocator, "{s} `{s}` is not a valid Go identifier", .{ check.label, check.spelling });
+    const site: diagnostic.Site = if (check.source) |source| .{
+        .path = source.path,
+        .declaration = check.declaration,
+        .line = source.line,
+        .column = source.column,
+    } else .{ .path = "semantic.json", .declaration = check.declaration };
     return .{
         .severity = .@"error",
         .code = "ZIGO021",
         .message = message,
-        .site = .{ .path = "semantic.json", .declaration = check.declaration },
+        .site = site,
         .hint = check.hint,
     };
 }
@@ -654,27 +665,27 @@ fn offenseDiagnostic(
             .severity = .@"error",
             .code = "ZIGO018",
             .message = try std.fmt.allocPrint(allocator, "cannot promote integer width `{s}` in {s}", .{ spelling, location }),
-            .site = .{ .path = "semantic.json", .declaration = declaration },
+            .site = functionSiteFor(function, declaration),
             .hint = "zigo widens a narrow integer only as a whole parameter, return value, or error payload; use an 8, 16, 32, or 64-bit integer here",
         } else .{
             .severity = .@"error",
             .code = "ZIGO018",
             .message = try std.fmt.allocPrint(allocator, "unsupported integer width `{s}` in {s}", .{ spelling, location }),
-            .site = .{ .path = "semantic.json", .declaration = declaration },
+            .site = functionSiteFor(function, declaration),
             .hint = "use an integer of 64 bits or fewer",
         },
         .float => .{
             .severity = .@"error",
             .code = "ZIGO018",
             .message = try std.fmt.allocPrint(allocator, "unsupported float width `{s}` in {s}", .{ spelling, location }),
-            .site = .{ .path = "semantic.json", .declaration = declaration },
+            .site = functionSiteFor(function, declaration),
             .hint = "use `f32` or `f64`",
         },
         else => .{
             .severity = .@"error",
             .code = "ZIGO019",
             .message = try std.fmt.allocPrint(allocator, "unsupported type `{s}` in {s}", .{ spelling, location }),
-            .site = .{ .path = "semantic.json", .declaration = declaration },
+            .site = functionSiteFor(function, declaration),
             .hint = "use a bool, integer, float, enum, opaque pointer, extern struct, slice, or callback type",
         },
     };
@@ -691,6 +702,26 @@ fn zigSpellingAlloc(allocator: std.mem.Allocator, node: semantic.TypeNode) ![]co
         .float => |value| try std.fmt.allocPrint(allocator, "f{d}", .{value.bits}),
         else => try allocator.dupe(u8, @tagName(node)),
     };
+}
+
+/// The `Site` a function- or parameter-level diagnostic points at: the
+/// function's own AST location when `names.zig` recorded one, else the
+/// `semantic.json` fallback every diagnostic used before source locations
+/// existed. `declaration` stays whatever the caller already had -- usually
+/// `function.name` or a dotted owner path -- so this only ever changes
+/// `path`/`line`/`column`.
+fn functionSiteFor(function: semantic.SemanticFn, declaration: []const u8) diagnostic.Site {
+    if (function.source) |source| return .{
+        .path = source.path,
+        .declaration = declaration,
+        .line = source.line,
+        .column = source.column,
+    };
+    return .{ .path = "semantic.json", .declaration = declaration };
+}
+
+fn functionSite(function: semantic.SemanticFn) diagnostic.Site {
+    return functionSiteFor(function, function.name);
 }
 
 fn functionDeclarationAlloc(allocator: std.mem.Allocator, function: semantic.SemanticFn) ![]const u8 {
@@ -949,7 +980,7 @@ fn releaseTargetIssue(document: semantic.Semantic, function: semantic.SemanticFn
         .severity = .@"error",
         .code = "ZIGO016",
         .message = "caller-owned slice return has no matching release function",
-        .site = .{ .path = "semantic.json", .declaration = function.name },
+        .site = functionSite(function),
         .hint = "add `.release = \"<Type>.<fn>\"` naming an exposed `fn(slice) void` that takes exactly the returned slice type",
     };
     const name = function.release orelse return missing;

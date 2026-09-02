@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: CLI 테스트 통과, 기존 진단 스냅샷이 위치를 포함하도록 갱신.
 > NEXT: none

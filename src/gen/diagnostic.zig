@@ -5,6 +5,12 @@ pub const Severity = enum { warning, @"error" };
 pub const Site = struct {
     path: []const u8,
     declaration: []const u8,
+    /// Set together, from an AST token location `names.zig` recorded. Absent
+    /// whenever the declaration that raised the diagnostic has no known
+    /// source position (or none was threaded through), in which case
+    /// rendering falls back to naming `semantic.json` the way it always has.
+    line: ?u32 = null,
+    column: ?u32 = null,
 };
 
 pub const Diagnostic = struct {
@@ -15,9 +21,15 @@ pub const Diagnostic = struct {
     hint: []const u8,
 
     pub fn render(self: Diagnostic, writer: *std.Io.Writer) std.Io.Writer.Error!void {
-        try writer.print("{s}[{s}]: {s}\n  --> {s} ({s})\n  hint: {s}\n", .{
-            @tagName(self.severity), self.code, self.message, self.site.path, self.site.declaration, self.hint,
-        });
+        if (self.site.line) |line| {
+            try writer.print("{s}[{s}]: {s}\n  --> {s}:{d}:{d} ({s})\n  hint: {s}\n", .{
+                @tagName(self.severity), self.code, self.message, self.site.path, line, self.site.column orelse 0, self.site.declaration, self.hint,
+            });
+        } else {
+            try writer.print("{s}[{s}]: {s}\n  --> {s} ({s})\n  hint: {s}\n", .{
+                @tagName(self.severity), self.code, self.message, self.site.path, self.site.declaration, self.hint,
+            });
+        }
     }
 
     pub fn renderAlloc(self: Diagnostic, allocator: std.mem.Allocator) ![]u8 {
@@ -41,6 +53,19 @@ test "diagnostic rendering includes actionable context" {
     try std.testing.expect(std.mem.indexOf(u8, rendered, "error[ZIGO003]") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered, "src/bindings.zig:3") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered, "hint:") != null);
+}
+
+test "a site with a source location renders path:line:col" {
+    const diagnostic: Diagnostic = .{
+        .severity = .@"error",
+        .code = "ZIGO018",
+        .message = "unsupported integer width `u128` in parameter `cp`",
+        .site = .{ .path = "src/bindings.zig", .declaration = "unicode.codepointWidth", .line = 12, .column = 5 },
+        .hint = "use an integer of 64 bits or fewer",
+    };
+    const rendered = try diagnostic.renderAlloc(std.testing.allocator);
+    defer std.testing.allocator.free(rendered);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "--> src/bindings.zig:12:5 (unicode.codepointWidth)") != null);
 }
 
 test "allocated diagnostic rendering propagates OOM" {

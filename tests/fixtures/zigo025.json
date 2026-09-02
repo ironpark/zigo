@@ -1,0 +1,24 @@
+{
+  "functions": [
+    {
+      "name": "codepointWidths",
+      "namespace": "unicode",
+      "params": [
+        {
+          "name": "cps",
+          "type": {
+            "const": true,
+            "element": { "bits": 21, "is_usize": false, "kind": "int", "signed": false },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": { "kind": "void" },
+      "source": { "path": "src/bindings.zig", "line": 12, "column": 5 },
+      "symbol": "zg_unicode_codepoint_widths"
+    }
+  ],
+  "package": "bad",
+  "prefix": "zg",
+  "zig_version": "0.16.0"
+}

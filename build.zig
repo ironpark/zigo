@@ -454,6 +454,21 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     unsupported_width.expectStdErrMatch("--> semantic.json (unicode.codepointWidths)");
     test_step.dependOn(&unsupported_width.step);
 
+    // A function with a `source` location (from `names.zig`'s AST scan)
+    // points a diagnostic at `bindings.zig:LINE:COL` instead of the
+    // `semantic.json` fallback the case above uses.
+    const located_diagnostic = b.addRunArtifact(generator);
+    located_diagnostic.setName("CLI contract (diagnostic source location)");
+    located_diagnostic.addArgs(&.{ "generate", "--semantic" });
+    located_diagnostic.addFileArg(b.path("tests/fixtures/zigo025.json"));
+    located_diagnostic.addArg("--output");
+    _ = located_diagnostic.addOutputDirectoryArg("located-diagnostic-output");
+    located_diagnostic.addArgs(&.{ "--package", "bad" });
+    located_diagnostic.expectExitCode(1);
+    located_diagnostic.expectStdErrMatch("error[ZIGO018]: cannot promote integer width `u21` in the slice element of parameter `cps`");
+    located_diagnostic.expectStdErrMatch("--> src/bindings.zig:12:5 (unicode.codepointWidths)");
+    test_step.dependOn(&located_diagnostic.step);
+
     // A name reflection derived from `@typeName` can be something Go cannot
     // parse. The diagnostic has to arrive before generation, not as a gofmt
     // failure over a file that should never have been written.

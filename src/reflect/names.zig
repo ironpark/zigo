@@ -104,7 +104,7 @@ fn scanSourceWithDiagnostics(
     path: []const u8,
     diagnostics: *std.Io.Writer,
 ) !bool {
-    const parse_error_count = try scanSource(allocator, source, functions);
+    const parse_error_count = try scanSource(allocator, source, functions, path);
     if (parse_error_count != 0) {
         try diagnostics.print("error: zigo could not enrich names from {s}: {d} Zig parse error(s)\n", .{ path, parse_error_count });
         return true;
@@ -116,7 +116,7 @@ fn writeReadError(writer: *std.Io.Writer, path: []const u8, err: anyerror) !void
     try writer.print("error: zigo could not read enrichment source {s}: {s}\n", .{ path, @errorName(err) });
 }
 
-fn scanSource(allocator: std.mem.Allocator, source: []const u8, functions: []semantic.SemanticFn) !usize {
+fn scanSource(allocator: std.mem.Allocator, source: []const u8, functions: []semantic.SemanticFn, path: []const u8) !usize {
     const terminated = try allocator.dupeZ(u8, source);
     defer allocator.free(terminated);
     var tree = try std.zig.Ast.parse(allocator, terminated, .zig);
@@ -130,7 +130,7 @@ fn scanSource(allocator: std.mem.Allocator, source: []const u8, functions: []sem
     defer allocator.free(matched);
     @memset(matched, false);
 
-    try scanMembers(allocator, tree, tree.rootDecls(), null, functions, visited, matched);
+    try scanMembers(allocator, tree, tree.rootDecls(), null, functions, visited, matched, path);
 
     // Generic type factories contain methods in anonymous containers rather
     // than a named source-level owner. Give those remaining declarations a
@@ -142,7 +142,7 @@ fn scanSource(allocator: std.mem.Allocator, source: []const u8, functions: []sem
         const proto = tree.fullFnProto(&buffer, node) orelse continue;
         const doc = try declDocAlloc(allocator, tree, proto.firstToken());
         defer if (doc) |value| allocator.free(value);
-        try enrichMatches(allocator, tree, proto, null, functions, matched, false, doc);
+        try enrichMatches(allocator, tree, proto, null, functions, matched, false, doc, path);
     }
     return 0;
 }
@@ -155,6 +155,7 @@ fn scanMembers(
     functions: []semantic.SemanticFn,
     visited: []bool,
     matched: []bool,
+    path: []const u8,
 ) !void {
     // A run of declarations written with no blank line between them reads as
     // one documented group in Zig source, so an undocumented member of the run
@@ -179,7 +180,7 @@ fn scanMembers(
                 if (group_doc) |previous| allocator.free(previous);
                 group_doc = null;
             }
-            try enrichMatches(allocator, tree, proto, owner, functions, matched, true, group_doc);
+            try enrichMatches(allocator, tree, proto, owner, functions, matched, true, group_doc, path);
             group_end = declarationEnd(tree, node);
             continue;
         }
@@ -200,7 +201,7 @@ fn scanMembers(
         else
             try allocator.dupe(u8, declaration_name);
         defer allocator.free(nested_owner);
-        try scanMembers(allocator, tree, container.ast.members, nested_owner, functions, visited, matched);
+        try scanMembers(allocator, tree, container.ast.members, nested_owner, functions, visited, matched, path);
     }
 }
 
@@ -213,14 +214,20 @@ fn enrichMatches(
     matched: []bool,
     qualified: bool,
     doc: ?[]const u8,
+    path: []const u8,
 ) !void {
     const name_token = proto.name_token orelse return;
     const declaration_name = tree.tokenSlice(name_token);
     var iterator = proto.iterate(&tree);
     var names: std.ArrayList([]const u8) = .empty;
     defer names.deinit(allocator);
+    var name_tokens: std.ArrayList(std.zig.Ast.TokenIndex) = .empty;
+    defer name_tokens.deinit(allocator);
     while (iterator.next()) |parameter| {
-        if (parameter.name_token) |token| try names.append(allocator, tree.tokenSlice(token));
+        if (parameter.name_token) |token| {
+            try names.append(allocator, tree.tokenSlice(token));
+            try name_tokens.append(allocator, token);
+        }
     }
 
     for (functions, 0..) |*function, index| {
@@ -229,22 +236,32 @@ fn enrichMatches(
         const receiver_count: usize = @intFromBool(function.receiver != null);
         if (names.items.len != function.params.len + receiver_count) continue;
 
-        var needs_names = false;
-        for (function.params) |parameter| if (parameter.name_source == .fallback) {
-            needs_names = true;
+        var needs_update = false;
+        for (function.params) |parameter| if (parameter.name_source == .fallback or parameter.source == null) {
+            needs_update = true;
             break;
         };
-        if (needs_names) {
+        if (needs_update) {
             const updated_params = try allocator.dupe(semantic.Parameter, function.params);
             for (updated_params, 0..) |*parameter, parameter_index| {
-                if (parameter.name_source != .fallback) continue;
-                parameter.name = try allocator.dupe(u8, names.items[parameter_index + receiver_count]);
-                parameter.name_source = .ast;
+                if (parameter.name_source == .fallback) {
+                    parameter.name = try allocator.dupe(u8, names.items[parameter_index + receiver_count]);
+                    parameter.name_source = .ast;
+                }
+                if (parameter.source == null) {
+                    const token = name_tokens.items[parameter_index + receiver_count];
+                    const location = tree.tokenLocation(0, token);
+                    parameter.source = .{ .line = @intCast(location.line + 1), .column = @intCast(location.column + 1) };
+                }
             }
             function.params = updated_params;
         }
         if (function.doc == null) {
             if (doc) |value| function.doc = try allocator.dupe(u8, value);
+        }
+        if (function.source == null) {
+            const location = tree.tokenLocation(0, name_token);
+            function.source = .{ .path = try allocator.dupe(u8, path), .line = @intCast(location.line + 1), .column = @intCast(location.column + 1) };
         }
         matched[index] = true;
     }
@@ -357,16 +374,21 @@ test "AST names and docs enrich only fallback metadata" {
     };
     const functions = try std.testing.allocator.dupe(semantic.SemanticFn, document.functions);
     defer std.testing.allocator.free(functions);
-    try std.testing.expectEqual(@as(usize, 0), try scanSource(std.testing.allocator, source, functions));
+    try std.testing.expectEqual(@as(usize, 0), try scanSource(std.testing.allocator, source, functions, "bindings.zig"));
     document.functions = functions;
     const ast_name = document.functions[0].params[0].name;
     defer std.testing.allocator.free(document.functions[0].params);
     defer std.testing.allocator.free(ast_name);
     defer std.testing.allocator.free(document.functions[0].doc.?);
+    defer std.testing.allocator.free(document.functions[0].source.?.path);
     try std.testing.expectEqual(.ast, document.functions[0].params[0].name_source);
     try std.testing.expectEqualStrings("left", document.functions[0].params[0].name);
     try std.testing.expectEqualStrings("chosen", document.functions[0].params[1].name);
     try std.testing.expectEqualStrings("Adds two values.", document.functions[0].doc.?);
+    try std.testing.expectEqualStrings("bindings.zig", document.functions[0].source.?.path);
+    try std.testing.expectEqual(@as(u32, 2), document.functions[0].source.?.line);
+    try std.testing.expectEqual(@as(u32, 8), document.functions[0].source.?.column);
+    try std.testing.expectEqual(@as(u32, 2), document.functions[0].params[0].source.?.line);
 }
 
 test "docs come from `///`, from a plain `//` group, and from the run above" {
@@ -393,7 +415,7 @@ test "docs come from `///`, from a plain `//` group, and from the run above" {
     };
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), source, &functions));
+    try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), source, &functions, "bindings.zig"));
     try std.testing.expectEqualStrings("Reports whether the flag is set.", functions[0].doc.?);
     const group = "The selection flag bits shared by the setters below.";
     try std.testing.expectEqualStrings(group, functions[1].doc.?);
@@ -421,7 +443,7 @@ test "a multi-line `//` group keeps its lines and ignores `//!` and `////`" {
     }};
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), source, &functions));
+    try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), source, &functions, "bindings.zig"));
     try std.testing.expectEqualStrings("Splits the input.\nThe second line stays attached.", functions[0].doc.?);
 }
 
@@ -454,7 +476,7 @@ test "AST enrichment distinguishes methods by lexical owner" {
     };
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), source, &functions));
+    try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), source, &functions, "bindings.zig"));
     try std.testing.expectEqualStrings("alpha_amount", functions[0].params[0].name);
     try std.testing.expectEqualStrings("Uses an alpha amount.", functions[0].doc.?);
     try std.testing.expectEqualStrings("beta_amount", functions[1].params[0].name);
@@ -487,7 +509,7 @@ test "AST enrichment applies a generic factory method to every specialization" {
     };
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), source, &functions));
+    try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), source, &functions, "bindings.zig"));
     try std.testing.expectEqualStrings("value", functions[0].params[0].name);
     try std.testing.expectEqualStrings("value", functions[1].params[0].name);
     try std.testing.expectEqual(.ast, functions[0].params[0].name_source);

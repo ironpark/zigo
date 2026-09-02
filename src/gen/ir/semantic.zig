@@ -247,6 +247,14 @@ pub const Ownership = enum { borrowed, caller, library };
 /// the whole buffer, `.return` trusts the function's `usize` result.
 pub const Written = enum { all, @"return" };
 
+/// A parameter's location in the source that declared it, from
+/// `names.zig`'s AST scan. Unlike `SourceLocation` this carries no path: a
+/// parameter's path is always its owning function's.
+pub const ParamSourceLocation = struct {
+    line: u32,
+    column: u32,
+};
+
 pub const Parameter = struct {
     /// Bytes of shim-side staging buffer behind an `*std.Io.Writer` or
     /// `*std.Io.Reader` parameter, from `param_meta.<name>.buffer`. Only the
@@ -262,6 +270,11 @@ pub const Parameter = struct {
     name_source: NameSource = .fallback,
     retention: Retention = .borrowed,
     semantic: ?SemanticHint = null,
+    /// Where the parameter's name token sits in the source `names.zig`
+    /// scanned it from. A diagnostic without this falls back to
+    /// `semantic.json` for its location, just like a function without
+    /// `SemanticFn.source`.
+    source: ?ParamSourceLocation = null,
     type: TypeNode,
     written: ?Written = null,
 
@@ -297,6 +310,17 @@ pub const max_stream_buffer: u32 = 16 * 1024 * 1024;
 /// for a deep call.
 pub const stream_heap_threshold: u32 = 256 * 1024;
 
+/// Where a function's name token sits in the source `names.zig` scanned it
+/// from. Set at most once per function, the same way `doc` is: the first
+/// source file that resolves the declaration wins. A diagnostic sourced from
+/// a `SemanticFn` without this field still renders against `semantic.json`,
+/// exactly as it did before this field existed.
+pub const SourceLocation = struct {
+    path: []const u8,
+    line: u32,
+    column: u32,
+};
+
 pub const SemanticFn = struct {
     /// Set on the two halves of a boxed constructor pair.
     boxed: ?Boxed = null,
@@ -313,6 +337,10 @@ pub const SemanticFn = struct {
     release: ?[]const u8 = null,
     @"return": TypeNode,
     return_semantic: ?SemanticHint = null,
+    /// The function declaration's source location, from `names.zig`. Purely
+    /// diagnostic: it has no bearing on the generated ABI, so `abi_diff`
+    /// ignores it.
+    source: ?SourceLocation = null,
     symbol: []const u8,
 };
 

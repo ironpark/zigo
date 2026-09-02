@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T09:26:21Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: fixture가 거부되고 `.name` 부여 fixture는 통과한다.
 > NEXT: none
