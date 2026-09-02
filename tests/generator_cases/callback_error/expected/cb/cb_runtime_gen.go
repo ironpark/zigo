@@ -52,6 +52,9 @@ type HubObserver func(int32) (int32, error)
 // ApplyObserverCallback is the Go callback signature accepted by the generated binding.
 type ApplyObserverCallback func(int32) (int32, error)
 
+// NotifyObserverCallback is the Go callback signature accepted by the generated binding.
+type NotifyObserverCallback func(int32)
+
 var activeCallbackHandles atomic.Int64
 
 type zigoCallbackHandle = cgo.Handle
@@ -65,6 +68,13 @@ func newHubObserverHandle(value HubObserver) zigoCallbackHandle {
 
 func newApplyObserverCallbackHandle(value ApplyObserverCallback) zigoCallbackHandle {
 	stored := (func(int32) (int32, error))(value)
+	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
+	activeCallbackHandles.Add(1)
+	return handle
+}
+
+func newNotifyObserverCallbackHandle(value NotifyObserverCallback) zigoCallbackHandle {
+	stored := (func(int32))(value)
 	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
 	activeCallbackHandles.Add(1)
 	return handle

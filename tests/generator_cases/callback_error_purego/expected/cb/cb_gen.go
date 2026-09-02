@@ -86,3 +86,12 @@ func Apply(value int32, observer ApplyObserverCallback) (int32, error) {
 	}
 	return result, nil
 }
+
+// Notify calls the Zig function notify.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+func Notify(value int32, observer NotifyObserverCallback) {
+	observerHandle := newNotifyObserverCallbackHandle(observer)
+	defer deleteCallbackHandle(observerHandle)
+	raw.Notify(value, raw.CallbackPointer1(), uintptr(observerHandle))
+	zigoRethrowCallbackPanic("Notify", observerHandle)
+}

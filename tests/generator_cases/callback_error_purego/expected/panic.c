@@ -89,3 +89,14 @@ ZIGO_EXPORT int32_t zg_apply_purego_v2(int32_t value, int32_t (*observer)(int32_
     zg_panic_active = 0;
     return result;
 }
+
+void zg_notify_purego_v2_impl(int32_t value, void (*observer)(int32_t, size_t), size_t userdata);
+ZIGO_EXPORT void zg_notify_purego_v2(int32_t value, void (*observer)(int32_t, size_t), size_t userdata) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        zg_panic_fatal();
+    }
+zg_notify_purego_v2_impl(value, observer, userdata);
+    zg_panic_active = 0;
+}

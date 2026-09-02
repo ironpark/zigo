@@ -60,8 +60,16 @@ func TestBorrowedAndRetainedCallbacks(t *testing.T) {
 	if got := activeCallbackHandleCount(); got != 0 {
 		t.Fatalf("retained callback handles = %d, want 0", got)
 	}
-	if got := callbackDispatcherCount(); got != 1 {
-		t.Fatalf("permanent callback dispatchers = %d, want one unique signature", got)
+	if got := callbackDispatcherCount(); got != 2 {
+		t.Fatalf("permanent callback dispatchers = %d, want two unique signatures", got)
+	}
+}
+
+func TestVoidCallback(t *testing.T) {
+	var got int32
+	Notify(42, func(value int32) { got = value })
+	if got != 42 {
+		t.Fatalf("void callback received %d, want 42", got)
 	}
 }
 

@@ -89,3 +89,14 @@ ZIGO_EXPORT int32_t zg_apply(int32_t value, size_t userdata) {
     zg_panic_active = 0;
     return result;
 }
+
+void zg_notify_impl(int32_t value, size_t userdata);
+ZIGO_EXPORT void zg_notify(int32_t value, size_t userdata) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        zg_panic_fatal();
+    }
+zg_notify_impl(value, userdata);
+    zg_panic_active = 0;
+}

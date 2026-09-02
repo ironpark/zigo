@@ -3413,13 +3413,20 @@ fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
                 try writer.print("p{d} C.", .{index});
                 try writeCgoType(writer, semanticScalar(program, callback_parameter));
             }
-            try writer.writeAll(") (result C.");
-            try writeCgoType(writer, semanticScalar(program, callback.@"return".*));
-            try writer.print(") {{\n\tstate := cgo.Handle(p{d}).Value().(*{s}CallbackState)\n\tdefer func() {{\n\t\tif value := recover(); value != nil {{\n\t\t\tstate.record(value)\n", .{ callback.params.len - 1, prefix });
-            if (callback.@"return".* == .int and callback.@"return".int.signed and callback.@"return".int.bits == 32) {
-                try writer.writeAll("\t\t\tresult = C.int32_t(-3)\n");
+            if (callback.@"return".* == .void) {
+                try writer.writeByte(')');
             } else {
-                try writer.writeAll("\t\t\tresult = 0\n");
+                try writer.writeAll(") (result C.");
+                try writeCgoType(writer, semanticScalar(program, callback.@"return".*));
+                try writer.writeByte(')');
+            }
+            try writer.print(" {{\n\tstate := cgo.Handle(p{d}).Value().(*{s}CallbackState)\n\tdefer func() {{\n\t\tif value := recover(); value != nil {{\n\t\t\tstate.record(value)\n", .{ callback.params.len - 1, prefix });
+            if (callback.@"return".* != .void) {
+                if (callback.@"return".* == .int and callback.@"return".int.signed and callback.@"return".int.bits == 32) {
+                    try writer.writeAll("\t\t\tresult = C.int32_t(-3)\n");
+                } else {
+                    try writer.writeAll("\t\t\tresult = 0\n");
+                }
             }
             const go_error = callbackHasGoError(program, parameter);
             try writer.writeAll("\t\t}\n\t}()\n\tcallback := state.Fn.(func(");
@@ -3433,14 +3440,18 @@ fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
                 try writer.writeAll(" (");
                 try writeRawGoType(writer, program, callback.@"return".*);
                 try writer.writeAll(", error)");
-            } else {
-                if (callback.@"return".* != .void) try writer.writeByte(' ');
+            } else if (callback.@"return".* != .void) {
+                try writer.writeByte(' ');
                 try writeRawGoType(writer, program, callback.@"return".*);
             }
             try writer.writeAll(")\n\t");
-            if (go_error) try writer.writeAll("value, err := ") else try writer.writeAll("return C.");
-            if (!go_error) try writeCgoType(writer, semanticScalar(program, callback.@"return".*));
-            if (!go_error) try writer.writeAll("(");
+            if (go_error) {
+                try writer.writeAll("value, err := ");
+            } else if (callback.@"return".* != .void) {
+                try writer.writeAll("return C.");
+                try writeCgoType(writer, semanticScalar(program, callback.@"return".*));
+                try writer.writeByte('(');
+            }
             try writer.writeAll("callback(");
             for (callback.params[0..value_count], 0..) |callback_parameter, index| {
                 if (index != 0) try writer.writeAll(", ");
@@ -3449,7 +3460,8 @@ fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
             }
             try writer.writeAll(")");
             if (!go_error) {
-                try writer.writeAll(")\n}\n\n");
+                if (callback.@"return".* != .void) try writer.writeByte(')');
+                try writer.writeAll("\n}\n\n");
                 continue;
             }
             // The error costs the result: `-5` says "the Go side failed" and
@@ -6997,6 +7009,7 @@ fn rawGoZero(node: semantic.TypeNode) []const u8 {
 
 fn semanticScalar(program: abi.Program, node: semantic.TypeNode) abi.AbiScalar {
     return switch (node) {
+        .void => .void,
         .bool => .bool_u8,
         // The promoted width, matching what lowering put in the ABI, so a
         // narrow integer spells the same C, Zig, and Go type everywhere.

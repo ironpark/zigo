@@ -172,6 +172,43 @@
         "signed": true
       },
       "symbol": "zg_apply"
+    },
+    {
+      "name": "notify",
+      "params": [
+        {
+          "direction": "in",
+          "name": "value",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": { "bits": 32, "is_usize": false, "kind": "int", "signed": true }
+        },
+        {
+          "direction": "in",
+          "name": "observer",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "c_callconv": true,
+            "has_userdata": true,
+            "kind": "callback",
+            "params": [
+              { "bits": 32, "is_usize": false, "kind": "int", "signed": true },
+              { "bits": 64, "is_usize": true, "kind": "int", "signed": false }
+            ],
+            "return": { "kind": "void" }
+          }
+        },
+        {
+          "direction": "in",
+          "name": "userdata",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": { "bits": 64, "is_usize": true, "kind": "int", "signed": false }
+        }
+      ],
+      "return": { "kind": "void" },
+      "symbol": "zg_notify"
     }
   ],
   "package": "cb",

@@ -10,6 +10,7 @@ pub const bindings = zigo.define(.{
         // One Go type for every parameter of this signature, named after the
         // Zig alias: the alias itself has no reflectable name.
         .{ .name = "Observer", .type = library.Observer, .repr = .callback },
+        .{ .name = "VoidObserver", .type = library.VoidObserver, .repr = .callback },
     },
     .functions = .{
         .{ .path = "FloatBuffer.create" },
@@ -36,6 +37,10 @@ pub const bindings = zigo.define(.{
             .path = "root.apply",
             .params = .{ "value", "callback", "userdata" },
             .param_meta = .{ .callback = .{ .go_error = true } },
+        },
+        .{
+            .path = "root.notify",
+            .params = .{ "value", "callback", "userdata" },
         },
     },
 });

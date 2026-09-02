@@ -27,3 +27,6 @@ export fn zg_hub_deinit_impl(self: *target.Hub) i32 {
 export fn zg_apply_purego_v2_impl(value: i32, observer: *const fn (i32, usize) callconv(.c) i32, userdata: usize) i32 {
     return target.apply(value, observer, userdata);
 }
+export fn zg_notify_purego_v2_impl(value: i32, observer: *const fn (i32, usize) callconv(.c) void, userdata: usize) void {
+    target.notify(value, observer, userdata);
+}

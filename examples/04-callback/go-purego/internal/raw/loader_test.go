@@ -18,7 +18,8 @@ func installDir() string {
 
 func TestCallbackDispatcherIsPermanentAcrossLoadRetry(t *testing.T) {
 	first := CallbackPointer0()
-	if first == 0 || CallbackDispatcherCount() != 1 {
+	second := CallbackPointer1()
+	if first == 0 || second == 0 || CallbackDispatcherCount() != 2 {
 		t.Fatal("callback dispatcher was not initialized")
 	}
 	if err := LoadLibrary(filepath.Join(t.TempDir(), "missing-library")); err == nil {
@@ -38,7 +39,7 @@ func TestCallbackDispatcherIsPermanentAcrossLoadRetry(t *testing.T) {
 	if err := LoadLibrary(path); err != nil {
 		t.Fatal(err)
 	}
-	if !LibraryLoaded() || CallbackPointer0() != first {
+	if !LibraryLoaded() || CallbackPointer0() != first || CallbackPointer1() != second {
 		t.Fatal("successful retry did not preserve dispatcher and publish atomically")
 	}
 }

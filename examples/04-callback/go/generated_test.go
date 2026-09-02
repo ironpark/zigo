@@ -9,6 +9,15 @@ import (
 
 // Both callback parameters share the declared Observer type.
 var _ Observer = func(int32) (int32, error) { return 0, nil }
+var _ VoidObserver = func(int32) {}
+
+func TestVoidCallback(t *testing.T) {
+	var got int32
+	Notify(42, func(value int32) { got = value })
+	if got != 42 {
+		t.Fatalf("void callback received %d, want 42", got)
+	}
+}
 
 // Generated handles close like any other Go resource.
 var (

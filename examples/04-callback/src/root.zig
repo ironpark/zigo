@@ -32,9 +32,14 @@ pub const FloatBuffer = Buffer(f32);
 pub const IntBuffer = Buffer(i32);
 
 pub const Observer = *const fn (value: i32, userdata: usize) callconv(.c) i32;
+pub const VoidObserver = *const fn (value: i32, userdata: usize) callconv(.c) void;
 
 pub fn apply(value: i32, callback: Observer, userdata: usize) i32 {
     return callback(value, userdata);
+}
+
+pub fn notify(value: i32, callback: VoidObserver, userdata: usize) void {
+    callback(value, userdata);
 }
 
 pub const CallbackContext = struct {
@@ -81,4 +86,14 @@ test "generic specializations and callback context" {
     defer context.deinit();
     try std.testing.expectEqual(@as(i32, 8), context.run(7));
     try std.testing.expectEqual(@as(i32, 9), apply(8, &callback, 0));
+
+    var notified: i32 = 0;
+    const void_callback = struct {
+        fn call(value: i32, userdata: usize) callconv(.c) void {
+            const output: *i32 = @ptrFromInt(userdata);
+            output.* = value;
+        }
+    }.call;
+    notify(10, &void_callback, @intFromPtr(&notified));
+    try std.testing.expectEqual(@as(i32, 10), notified);
 }

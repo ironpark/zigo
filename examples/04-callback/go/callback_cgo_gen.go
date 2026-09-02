@@ -113,6 +113,18 @@ func zg_apply_go_callback_callback(p0 C.int32_t, p1 C.size_t) (result C.int32_t)
 	return C.int32_t(value)
 }
 
+//export zg_notify_go_callback_callback
+func zg_notify_go_callback_callback(p0 C.int32_t, p1 C.size_t) {
+	state := cgo.Handle(p1).Value().(*zigoRawCallbackState)
+	defer func() {
+		if value := recover(); value != nil {
+			state.record(value)
+		}
+	}()
+	callback := state.Fn.(func(int32))
+	callback(int32(p0))
+}
+
 // zigoRawFloatBufferCreate calls the generated C ABI wrapper for zg_float_buffer_create.
 func zigoRawFloatBufferCreate() (unsafe.Pointer, int32) {
 	var outResult *C.zg_float_buffer
@@ -199,4 +211,9 @@ func zigoRawCompressionBound(sourceLen uint) uint {
 // zigoRawApply calls the generated C ABI wrapper for zg_apply.
 func zigoRawApply(value int32, callbackHandle uintptr) int32 {
 	return int32(C.zg_apply(C.int32_t(value), C.size_t(callbackHandle)))
+}
+
+// zigoRawNotify calls the generated C ABI wrapper for zg_notify.
+func zigoRawNotify(value int32, callbackHandle uintptr) {
+	C.zg_notify(C.int32_t(value), C.size_t(callbackHandle))
 }

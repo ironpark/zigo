@@ -65,6 +65,7 @@ type nativeBindings struct {
 	fnPanicNow              func() int32
 	fnCompressionBound      func(uintptr) uintptr
 	fnApply                 func(int32, uintptr, uintptr) int32
+	fnNotify                func(int32, uintptr, uintptr)
 }
 
 type callbackEntry struct {
@@ -214,7 +215,7 @@ func releaseCallback(entry *callbackEntry) {
 // returning int32_t and reads only the low word, so the value round-trips.
 func callbackResult(value int32) uintptr { return uintptr(uint32(value)) }
 
-var callbackPointers [1]uintptr
+var callbackPointers [2]uintptr
 var callbackDispatchersOnce sync.Once
 
 func ensureCallbackDispatchers() {
@@ -239,11 +240,30 @@ func ensureCallbackDispatchers() {
 			}
 			return callbackResult(value)
 		})
+		callbackPointers[1] = purego.NewCallback(func(p0 int32, p1 uint) (result uintptr) {
+			entry, stored, ok := acquireCallback(uintptr(p1))
+			if !ok {
+				return 0
+			}
+			defer releaseCallback(entry)
+			defer func() {
+				if value := recover(); value != nil {
+					entry.record(value)
+					result = 0
+				}
+			}()
+			callback := stored.(func(int32))
+			callback(p0)
+			return 0
+		})
 	})
 }
 
 // CallbackPointer0 returns the permanent dispatcher for callback ABI signature 0.
 func CallbackPointer0() uintptr { ensureCallbackDispatchers(); return callbackPointers[0] }
+
+// CallbackPointer1 returns the permanent dispatcher for callback ABI signature 1.
+func CallbackPointer1() uintptr { ensureCallbackDispatchers(); return callbackPointers[1] }
 
 // CallbackDispatcherCount reports the number of unique callback ABI dispatchers.
 func CallbackDispatcherCount() int { ensureCallbackDispatchers(); return len(callbackPointers) }
@@ -384,6 +404,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_apply_purego_v2", err)
 	}
+	addrNotify, err := resolveSymbol(handle, "zg_notify_purego_v2")
+	if err != nil {
+		return fail("zg_notify_purego_v2", err)
+	}
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.fnFloatBufferCreate, addrFloatBufferCreate)
@@ -400,6 +424,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnPanicNow, addrPanicNow)
 	purego.RegisterFunc(&next.fnCompressionBound, addrCompressionBound)
 	purego.RegisterFunc(&next.fnApply, addrApply)
+	purego.RegisterFunc(&next.fnNotify, addrNotify)
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -513,4 +538,9 @@ func CompressionBound(sourceLen uint) uint {
 func Apply(value int32, callbackCallback, callbackToken uintptr) int32 {
 	result := bindings().fnApply(value, callbackCallback, callbackToken)
 	return int32(result)
+}
+
+// Notify calls the generated purego ABI wrapper for zg_notify_purego_v2.
+func Notify(value int32, callbackCallback, callbackToken uintptr) {
+	bindings().fnNotify(value, callbackCallback, callbackToken)
 }

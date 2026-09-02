@@ -47,10 +47,17 @@ func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error {
 // Observer is the Go callback signature accepted by the generated binding.
 type Observer func(int32) (int32, error)
 
+// VoidObserver is the Go callback signature accepted by the generated binding.
+type VoidObserver func(int32)
+
 type zigoCallbackHandle = uintptr
 
 func newObserverHandle(value Observer) zigoCallbackHandle {
 	return raw.NewCallbackHandle((func(int32) (int32, error))(value))
+}
+
+func newVoidObserverHandle(value VoidObserver) zigoCallbackHandle {
+	return raw.NewCallbackHandle((func(int32))(value))
 }
 
 func deleteCallbackHandle(handle zigoCallbackHandle) { raw.DeleteCallbackHandle(handle) }

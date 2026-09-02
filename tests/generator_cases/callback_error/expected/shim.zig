@@ -10,6 +10,7 @@ pub const panic = std.debug.FullPanic(panicHandler);
 
 extern fn zg_hub_create_go_callback_observer(p0: i32, p1: usize) callconv(.c) i32;
 extern fn zg_apply_go_callback_observer(p0: i32, p1: usize) callconv(.c) i32;
+extern fn zg_notify_go_callback_observer(p0: i32, p1: usize) callconv(.c) void;
 
 export fn zg_hub_create_impl(userdata: usize, out_result: **target.Hub) i32 {
     const result = target.Hub.create(&zg_hub_create_go_callback_observer, userdata) catch |err| return switch (err) {
@@ -29,4 +30,7 @@ export fn zg_hub_deinit_impl(self: *target.Hub) i32 {
 }
 export fn zg_apply_impl(value: i32, userdata: usize) i32 {
     return target.apply(value, &zg_apply_go_callback_observer, userdata);
+}
+export fn zg_notify_impl(value: i32, userdata: usize) void {
+    target.notify(value, &zg_notify_go_callback_observer, userdata);
 }
