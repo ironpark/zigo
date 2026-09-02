@@ -640,6 +640,32 @@ nil·closed 상태를 검사합니다. 검사 결과는 항상 반환값으로 �
 },
 ```
 
+### Receiver가 소유하는 borrowed handle 반환
+
+메서드가 receiver 내부의 opaque 객체를 가리키는 `*T`, `?*T`, `!*T`, `!?*T`를 반환하면
+`.returns = .borrowed`를 명시할 수 있습니다. `T`는 opaque 타입으로 등록되어야 하며,
+반환된 Go 값은 projection 전용 `*TRef`가 아니라 T의 일반 handle인 `*T`입니다.
+
+```zig
+pub fn screen(self: *Terminal) ?*Screen { return self.active_screen; }
+
+.{ .path = "Terminal.screen", .returns = .borrowed },
+```
+
+optional 반환은 `(*Screen, bool, error)`가 됩니다. false이면 handle은 nil입니다. borrowed
+handle은 native 자원을 소유하지 않으므로 `Close()`가 destructor를 호출하지 않고 view만
+분리합니다. `Close()`를 생략해도 native 자원을 누수시키지 않습니다. 부모 `Close()`는 진행
+중인 view 호출이 있으면 `ErrHandleInUse`를 반환하고, 그렇지 않으면 부모를 닫습니다. 그 뒤
+모든 view 호출은 `ErrInvalidHandle`을 감싼 `*HandleError`로 실패합니다. view를 통과한 native
+panic은 부모도 poison합니다.
+
+`.returns`의 기본 enum 값은 역사적으로 `.borrowed`이므로, 명시 여부는 별도 계약입니다.
+`semantic.json`에는 명시한 함수에만 `borrowed_return: true`가 나타납니다. receiver 없는
+함수, 등록 opaque pointer가 아닌 반환에 붙인 opt-in은 각각 `ZIGO033`, `ZIGO034`이고,
+constructor가 아닌 메서드가 opaque pointer ownership을 생략하면 `ZIGO035`가 `.borrowed`와
+`.caller` 중 하나를 고르라고 안내합니다. borrowed와 caller 사이 변경은 `abi-check`에서
+breaking입니다.
+
 ### 다른 handle의 메서드인 생성자
 
 생성 함수가 새 타입 안에 있을 필요는 없습니다. 주입 파라미터를 건너뛴 첫 handle 파라미터는
@@ -823,7 +849,7 @@ retained callback이나 pointer는 소유 객체의 `Close`까지 유효해야 �
 생성된 handle은 모두 같은 수명주기를 씁니다. 종류에 따라 달라지지 않습니다.
 
 - 모든 메서드와 tagged-union projection(`Tag`/`As*`/`Snapshot`/`Variant`), borrowed
-  `Ref`의 모든 호출은 native 호출 전에 handle을 **획득**하고(`zigoAcquire`) 돌아온 뒤
+  handle/`Ref`의 모든 호출은 native 호출 전에 handle을 **획득**하고(`zigoAcquire`) 돌아온 뒤
   놓습니다(`zigoRelease`). 획득은 handle의 `sync.Mutex` 아래에서 진행 중 호출 수를
   하나 늘리는 것뿐이고, 그 잠금은 native 호출 동안 잡혀 있지 않습니다. `Ref`는 부모
   사슬을 따라 부모를 획득합니다. 이미 닫힌 handle을 쓰는 호출은 use-after-free 대신
@@ -834,6 +860,10 @@ retained callback이나 pointer는 소유 객체의 `Close`까지 유효해야 �
   받습니다. 그래서 어느 goroutine의 `Close`도 다른 goroutine의 호출을 막지 못합니다.
   긴 native 호출이 handle을 쓰는 동안 다른 스레드가 `cancel` 같은 메서드를 부르는 타입에
   특히 중요합니다. 동시에 여러 번 불러도 해제는 한 번만 일어납니다.
+- `.returns = .borrowed` view는 자신의 owner도 함께 획득합니다. view를 반환하는 부모는 진행
+  중 호출이 있으면 `Close`에서 `*HandleInUseError`를 반환하므로 view의 native 호출과 부모
+  destructor가 경합하지 않습니다. 호출이 없을 때 부모가 닫히면 owner 획득이 실패하므로 이미
+  받은 모든 view가 즉시 무효가 됩니다. view 자체의 `Close`는 조기 detach일 뿐입니다.
 - native 호출이 Zig panic으로 끝나면(`*NativePanicError`) 그 호출이 닿은 모든 handle,
   즉 receiver와 handle 인자, projection의 소유자가 **poison** 됩니다. panic은 `longjmp`로
   native 프레임을 건너뛰어 그 안의 `defer`/`errdefer`가 실행되지 않았으므로 handle 뒤의

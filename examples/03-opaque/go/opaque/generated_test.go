@@ -1,6 +1,7 @@
 package opaque
 
 import (
+	"errors"
 	"io"
 	"testing"
 )
@@ -46,6 +47,29 @@ func TestOpaqueLifecycle(t *testing.T) {
 	}
 	if got := LiveBytes(); got != 0 {
 		t.Fatalf("LiveBytes() = %d, want 0", got)
+	}
+}
+
+func TestBorrowedContextViewIsInvalidatedByParentClose(t *testing.T) {
+	context, err := NewContext()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := context.SetTotal(19); err != nil {
+		t.Fatal(err)
+	}
+	view, err := context.BorrowView()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := view.Total(); err != nil || got != 19 {
+		t.Fatalf("view.Total() = (%d, %v), want (19, nil)", got, err)
+	}
+	if err := context.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := view.Total(); !errors.Is(err, ErrInvalidHandle) {
+		t.Fatalf("view.Total() after parent Close = %v, want ErrInvalidHandle", err)
 	}
 }
 

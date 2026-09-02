@@ -19,6 +19,7 @@
 ## Target structure and invariants
 
 - **결정 기록(2026-09-03)**: 위의 뷰 무효화 정책을 선택했다. 대안인 child-refusal 정책은 빌린 값을 받을 때마다 명시적으로 `Close()`해야 해서 ownership이 없는 view에 ownership-like 의무를 만들므로 채택하지 않았다. 부모 close와 view native call이 경합하면 대기 대신 기존 `ErrHandleInUse`를 사용한다.
+- **구현 세부 차이**: 부모가 각 view 포인터의 registry를 보관해 `closed` bit를 일일이 쓰는 대신, 각 view가 부모 lifecycle interface를 보관하고 모든 acquire를 부모에 위임한다. 따라서 부모 `Close()` 뒤에는 기존 view가 부모 acquire에서 즉시 실패해 같은 view-invalidation 의미를 낸다. registry가 부모→view 강한 참조와 GC 부담을 만들지 않는 장점이 있다. view를 반환하는 부모는 active call이 하나라도 있으면 보수적으로 `ErrHandleInUse`를 반환하므로, view call뿐 아니라 같은 부모의 다른 native call과도 destructor가 경합하지 않는다.
 - 빌린 handle은 네이티브 자원을 소유하지 않는다. 소멸자를 절대 부르지 않는다.
 - 부모가 닫힌 뒤 빌린 handle의 모든 연산은 오류를 돌려주고(포인터를 만지지 않음), 부모가 poison되면 빌린 handle도 poison된다.
 - 뷰가 네이티브 호출 중일 때 부모가 닫히는 경합은 불가능해야 한다(부모 Close가 뷰의 `active`를 확인).

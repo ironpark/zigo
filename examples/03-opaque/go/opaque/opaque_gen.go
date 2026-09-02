@@ -80,6 +80,43 @@ func (co *Context) SetTotal(c int64) error {
 	return nil
 }
 
+// BorrowView calls the Zig function Context.borrowView.
+// The returned reference remains valid only while its parent handle remains open.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (c *Context) BorrowView() (*ContextView, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Context.BorrowView receiver", c)
+	if err != nil {
+		return nil, err
+	}
+	defer c.zigoRelease()
+	result, code := raw.ContextBorrowView(ptr)
+	if code != 0 {
+		return nil, zigoPoisonAfterPanic(errorForCode("Context.BorrowView", code), c)
+	}
+	return newBorrowedContextView(result, c), nil
+}
+
+// Total calls the Zig function ContextView.total.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (c *ContextView) Total() (int64, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("ContextView.Total receiver", c)
+	if err != nil {
+		return 0, err
+	}
+	defer c.zigoRelease()
+	result, code := raw.ContextViewTotal(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("ContextView.Total", code), c)
+	}
+	return result, nil
+}
+
 // Crash panics inside a method: what leaves a handle poisoned.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.

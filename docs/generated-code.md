@@ -345,6 +345,20 @@ receiver나 handle parameter에 `runtime.KeepAlive`를 따로 걸지 않습니�
 붙잡는 것과, 문자열·slice 데이터처럼 Go 메모리의 포인터를 native에 넘긴 동안 그 메모리를
 붙잡는 것.
 
+| handle 종류 | native 자원 소유 | `Close` | 부모가 닫힌 뒤 |
+|---|---:|---|---|
+| 일반 caller-owned | 예 | destructor를 한 번 호출 | 자신의 호출이 `HandleError` |
+| `.child_of_receiver` 자식 | 예 | destructor 후 부모 등록 해제 | 열린 자식이 있으면 부모 Close 거부 |
+| `.returns = .borrowed` view | 아니요 | view 조기 detach, destructor 없음 | view 호출이 `HandleError` |
+| tagged-union `*TRef` | 아니요 | 제공하지 않음 | projection 호출이 `HandleError` |
+
+borrowed view는 일반 `*T` handle 구조를 쓰되 owner lifecycle interface를 보관합니다. 호출은
+owner를 먼저 acquire하고 view를 acquire하며, release는 역으로 둘을 놓습니다. view를 반환하는
+부모의 `Close`는 active 호출이 있으면 `*HandleInUseError`로 거부되므로 destructor가 view의
+native 호출과 경합하지 않습니다. view를 통한 panic은 owner에 poison을 전달합니다. 이 계약은
+단일 package에서는 package-local helper로, `.packages`가 있으면 `internal/lifecycle` interface로
+같게 생성됩니다.
+
 `.child_of_receiver = true`인 constructor는 receiver 획득과 같은 잠금 안에서 자식 하나를
 예약합니다. 성공하면 생성된 자식의 `parent` 참조와 부모의 `children` 카운트로 예약을
 넘기고, 실패하면 예약을 되돌립니다. 그래서 constructor와 부모 `Close`가 동시에 실행돼도
@@ -400,6 +414,9 @@ receiver 앞에 주입 파라미터가 선언된 함수(`fn free(gpa: Allocator,
 `child_of_receiver: true`는 설정한 constructor에만 나타납니다. gain/loss는 C signature를
 움직이지 않지만 부모 `Close`의 동작과 생성된 Go handle 구조를 바꾸므로 ABI-compatible
 Go-surface 변경으로 보고됩니다.
+`borrowed_return: true`도 `.returns = .borrowed`를 명시한 함수에만 나타납니다. 생략된
+`ownership: borrowed`와 구분되며, borrowed/caller 변경은 공개 Go handle의 cleanup 계약을
+바꾸므로 breaking입니다.
 
 하위 패키지가 선언되면 최상위 `packages` 배열은 `{path,name,doc}`을 기록하고, 각 type과
 function은 기본 패키지가 아닐 때만 `package` 이름을 기록합니다. 기본 패키지의 필드는 생략되어

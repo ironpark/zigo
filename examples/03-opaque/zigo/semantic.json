@@ -27,7 +27,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 10,
+        "line": 19,
         "column": 12
       },
       "symbol": "zg_context_create"
@@ -42,7 +42,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 17,
+            "line": 27,
             "column": 32
           },
           "type": {
@@ -62,7 +62,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 17,
+        "line": 27,
         "column": 12
       },
       "symbol": "zg_context_add"
@@ -77,7 +77,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 22,
+            "line": 32,
             "column": 45
           },
           "type": {
@@ -97,7 +97,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 22,
+        "line": 32,
         "column": 12
       },
       "symbol": "zg_context_maybe_total"
@@ -112,7 +112,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 26,
+            "line": 36,
             "column": 37
           },
           "type": {
@@ -129,10 +129,47 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 26,
+        "line": 36,
         "column": 12
       },
       "symbol": "zg_context_set_total"
+    },
+    {
+      "borrowed_return": true,
+      "name": "borrowView",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Context",
+      "return": {
+        "const": false,
+        "kind": "opaque_ptr",
+        "nullable": false,
+        "ref": "ContextView"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 40,
+        "column": 12
+      },
+      "symbol": "zg_context_borrow_view"
+    },
+    {
+      "name": "total",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "ContextView",
+      "return": {
+        "bits": 64,
+        "is_usize": false,
+        "kind": "int",
+        "signed": true
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 10,
+        "column": 12
+      },
+      "symbol": "zg_context_view_total"
     },
     {
       "doc": "crash panics inside a method: what leaves a handle poisoned.",
@@ -151,7 +188,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 31,
+        "line": 45,
         "column": 12
       },
       "symbol": "zg_context_crash"
@@ -170,7 +207,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 39,
+        "line": 53,
         "column": 12
       },
       "symbol": "zg_context_crash_infallible"
@@ -185,7 +222,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 44,
+        "line": 58,
         "column": 12
       },
       "symbol": "zg_context_deinit"
@@ -200,7 +237,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 54,
+        "line": 68,
         "column": 8
       },
       "symbol": "zg_crash_fatal"
@@ -217,7 +254,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 58,
+        "line": 72,
         "column": 8
       },
       "symbol": "zg_live_bytes"
@@ -234,7 +271,7 @@
           "retention": "borrowed",
           "semantic": "utf8_string",
           "source": {
-            "line": 63,
+            "line": 77,
             "column": 13
           },
           "type": {
@@ -262,7 +299,7 @@
       "return_semantic": "utf8_string",
       "source": {
         "path": "root.zig",
-        "line": 63,
+        "line": 77,
         "column": 8
       },
       "symbol": "zg_echo"
@@ -303,6 +340,13 @@
       "kind": "opaque",
       "name": "Context",
       "zig_path": "root.Context"
+    },
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "opaque",
+      "name": "ContextView",
+      "zig_path": "root.ContextView"
     }
   ],
   "zig_version": "0.16.0"

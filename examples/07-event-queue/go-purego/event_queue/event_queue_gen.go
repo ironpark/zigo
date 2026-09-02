@@ -111,6 +111,74 @@ func (e *EventQueue) NewStream() (*Stream, error) {
 	return newStream(result, e), nil
 }
 
+// NewBorrowBox creates a caller-owned BorrowBox.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
+func NewBorrowBox(value int32) (*BorrowBox, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	result, code := raw.BorrowBoxCreate(value)
+	if code != 0 {
+		return nil, errorForCode("NewBorrowBox", code)
+	}
+	return newBorrowBox(result), nil
+}
+
+// View calls the Zig function BorrowBox.view.
+// The returned reference remains valid only while its parent handle remains open.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (b *BorrowBox) View() (*BorrowView, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("BorrowBox.View receiver", b)
+	if err != nil {
+		return nil, err
+	}
+	defer b.zigoRelease()
+	result, code := raw.BorrowBoxView(ptr)
+	if code != 0 {
+		return nil, zigoPoisonAfterPanic(errorForCode("BorrowBox.View", code), b)
+	}
+	return newBorrowedBorrowView(result, b), nil
+}
+
+// Get calls the Zig function BorrowView.get.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (b *BorrowView) Get() (int32, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("BorrowView.Get receiver", b)
+	if err != nil {
+		return 0, err
+	}
+	defer b.zigoRelease()
+	result, code := raw.BorrowViewGet(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("BorrowView.Get", code), b)
+	}
+	return result, nil
+}
+
+// Explode calls the Zig function BorrowView.explode.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (b *BorrowView) Explode() error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("BorrowView.Explode receiver", b)
+	if err != nil {
+		return err
+	}
+	defer b.zigoRelease()
+	code := raw.BorrowViewExplode(ptr)
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("BorrowView.Explode", code), b)
+	}
+	return nil
+}
+
 // Capacity calls the Zig function Stream.capacity.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.

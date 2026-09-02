@@ -323,3 +323,245 @@ func (s *Stream) zigoTakeLocked() (streamCleanupState, bool) {
 	}
 	return state, true
 }
+
+// BorrowBox is a caller-owned native handle. Call Close when it is no longer needed.
+type BorrowBox struct {
+	ptr     unsafe.Pointer
+	mu      sync.Mutex
+	active  int
+	closed  bool
+	poison  *NativePanicError
+	cleanup runtime.Cleanup
+}
+
+// zigoAcquire pins b open for one native call and hands back its pointer;
+// the call ends with zigoRelease. A nil, closed, or poisoned handle is the error.
+func (b *BorrowBox) zigoAcquire(operation string) (unsafe.Pointer, error) {
+	if b == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.closed || b.ptr == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	if b.poison != nil {
+		return nil, b.poison.Poisoned(operation)
+	}
+	b.active++
+	return b.ptr, nil
+}
+
+func (b *BorrowBox) zigoRelease() {
+	if b == nil {
+		return
+	}
+	b.mu.Lock()
+	b.active--
+	state, release := b.zigoTakeLocked()
+	b.mu.Unlock()
+	if release {
+		cleanupBorrowBox(state)
+	}
+}
+
+// zigoPoison marks b unusable: a Zig panic unwound through native frames
+// without running their defers, so the state behind it is unknown.
+func (b *BorrowBox) zigoPoison(cause *NativePanicError) {
+	if b == nil {
+		return
+	}
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	if b.poison == nil {
+		b.poison = cause
+		b.cleanup.Stop()
+	}
+}
+
+// ZigoAcquire implements the shared lifecycle handle contract.
+func (b *BorrowBox) ZigoAcquire(operation string) (unsafe.Pointer, error) {
+	return b.zigoAcquire(operation)
+}
+
+// ZigoRelease implements the shared lifecycle handle contract.
+func (b *BorrowBox) ZigoRelease() { b.zigoRelease() }
+
+// ZigoPoison implements the shared lifecycle handle contract.
+func (b *BorrowBox) ZigoPoison(cause *NativePanicError) { b.zigoPoison(cause) }
+
+type borrowBoxCleanupState struct {
+	ptr unsafe.Pointer
+}
+
+func newBorrowBox(ptr unsafe.Pointer) *BorrowBox {
+	value := &BorrowBox{ptr: ptr}
+	state := borrowBoxCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, cleanupBorrowBox, state)
+	return value
+}
+
+func cleanupBorrowBox(state borrowBoxCleanupState) {
+	if state.ptr != nil {
+		raw.BorrowBoxDeinit(state.ptr)
+	}
+}
+
+// Close releases the native BorrowBox resources. It is safe to call more than once.
+// The error result is always nil; it exists so BorrowBox satisfies io.Closer.
+// Close does not wait: a call still inside native keeps the resources until it
+// returns, and every call made after Close fails with *HandleError.
+func (b *BorrowBox) Close() error {
+	if b == nil {
+		return nil
+	}
+	b.mu.Lock()
+	if b.closed {
+		b.mu.Unlock()
+		return nil
+	}
+	if b.active != 0 {
+		active := b.active
+		b.mu.Unlock()
+		return &HandleInUseError{Operation: "BorrowBox.Close", Children: active}
+	}
+	b.closed = true
+	b.cleanup.Stop()
+	state, release := b.zigoTakeLocked()
+	b.mu.Unlock()
+	if release {
+		cleanupBorrowBox(state)
+	}
+	runtime.KeepAlive(b)
+	return nil
+}
+
+// zigoTakeLocked hands out what is left to release once b is closed and no
+// call is inside native; mu must be held. A poisoned handle keeps its native
+// object: releasing state a panic left half-changed could fault, so it leaks.
+func (b *BorrowBox) zigoTakeLocked() (borrowBoxCleanupState, bool) {
+	if !b.closed || b.active != 0 || b.ptr == nil {
+		return borrowBoxCleanupState{}, false
+	}
+	state := borrowBoxCleanupState{ptr: b.ptr}
+	b.ptr = nil
+	if b.poison != nil {
+		state.ptr = nil
+	}
+	return state, true
+}
+
+// BorrowView represents a native Zig handle.
+type BorrowView struct {
+	ptr    unsafe.Pointer
+	mu     sync.Mutex
+	active int
+	closed bool
+	poison *NativePanicError
+	owner  zigoHandle
+}
+
+func newBorrowedBorrowView(ptr unsafe.Pointer, owner zigoHandle) *BorrowView {
+	return &BorrowView{ptr: ptr, owner: owner}
+}
+
+// zigoAcquire pins b and its parent open for one native call.
+func (b *BorrowView) zigoAcquire(operation string) (unsafe.Pointer, error) {
+	if b == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	b.mu.Lock()
+	var parent zigoHandle
+	parent = b.owner
+	b.mu.Unlock()
+	if parent != nil {
+		if _, err := parent.ZigoAcquire(operation); err != nil {
+			return nil, err
+		}
+	}
+	b.mu.Lock()
+	if b.closed || b.ptr == nil {
+		b.mu.Unlock()
+		if parent != nil {
+			parent.ZigoRelease()
+		}
+		return nil, &HandleError{Operation: operation}
+	}
+	if b.poison != nil {
+		err := b.poison.Poisoned(operation)
+		b.mu.Unlock()
+		if parent != nil {
+			parent.ZigoRelease()
+		}
+		return nil, err
+	}
+	b.active++
+	ptr := b.ptr
+	b.mu.Unlock()
+	return ptr, nil
+}
+
+func (b *BorrowView) zigoRelease() {
+	if b == nil {
+		return
+	}
+	b.mu.Lock()
+	b.active--
+	var parent zigoHandle
+	parent = b.owner
+	b.mu.Unlock()
+	if parent != nil {
+		parent.ZigoRelease()
+	}
+}
+
+// zigoPoison marks b unusable: a Zig panic unwound through native frames
+// without running their defers, so the state behind it is unknown.
+func (b *BorrowView) zigoPoison(cause *NativePanicError) {
+	if b == nil {
+		return
+	}
+	b.mu.Lock()
+	var parent zigoHandle
+	parent = b.owner
+	if b.poison == nil {
+		b.poison = cause
+	}
+	b.mu.Unlock()
+	if parent != nil {
+		parent.ZigoPoison(cause)
+	}
+}
+
+// ZigoAcquire implements the shared lifecycle handle contract.
+func (b *BorrowView) ZigoAcquire(operation string) (unsafe.Pointer, error) {
+	return b.zigoAcquire(operation)
+}
+
+// ZigoRelease implements the shared lifecycle handle contract.
+func (b *BorrowView) ZigoRelease() { b.zigoRelease() }
+
+// ZigoPoison implements the shared lifecycle handle contract.
+func (b *BorrowView) ZigoPoison(cause *NativePanicError) { b.zigoPoison(cause) }
+
+// Close detaches this borrowed BorrowView view without releasing native resources.
+func (b *BorrowView) Close() error {
+	if b == nil {
+		return nil
+	}
+	b.mu.Lock()
+	if b.closed {
+		b.mu.Unlock()
+		return nil
+	}
+	if b.active != 0 {
+		active := b.active
+		b.mu.Unlock()
+		return &HandleInUseError{Operation: "BorrowView.Close", Children: active}
+	}
+	b.closed = true
+	b.ptr = nil
+	b.owner = nil
+	b.mu.Unlock()
+	return nil
+}

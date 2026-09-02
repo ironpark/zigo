@@ -43,6 +43,20 @@ func ContextSetTotal(self unsafe.Pointer, c int64) int32 {
 	return code
 }
 
+// ContextBorrowView calls the generated C ABI wrapper for zg_context_borrow_view.
+func ContextBorrowView(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult *C.zg_context_view
+	code := int32(C.zg_context_borrow_view((*C.zg_context)(self), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+
+// ContextViewTotal calls the generated C ABI wrapper for zg_context_view_total.
+func ContextViewTotal(self unsafe.Pointer) (int64, int32) {
+	var outResult C.int64_t
+	code := int32(C.zg_context_view_total((*C.zg_context_view)(self), &outResult))
+	return int64(outResult), code
+}
+
 // ContextCrash calls the generated C ABI wrapper for zg_context_crash.
 func ContextCrash(self unsafe.Pointer) int32 {
 	code := int32(C.zg_context_crash((*C.zg_context)(self)))

@@ -4,12 +4,22 @@ pub const CreateError = error{OutOfMemory};
 
 var live_bytes: std.atomic.Value(usize) = .init(0);
 
+pub const ContextView = struct {
+    context: *Context,
+
+    pub fn total(self: *ContextView) i64 {
+        return self.context.total;
+    }
+};
+
 pub const Context = struct {
     total: i64 = 0,
+    view_value: ContextView = undefined,
 
     pub fn create() CreateError!*Context {
         const value = std.heap.page_allocator.create(Context) catch return error.OutOfMemory;
         value.* = .{};
+        value.view_value = .{ .context = value };
         _ = live_bytes.fetchAdd(@sizeOf(Context), .monotonic);
         return value;
     }
@@ -25,6 +35,10 @@ pub const Context = struct {
 
     pub fn setTotal(self: *Context, c: i64) void {
         self.total = c;
+    }
+
+    pub fn borrowView(self: *Context) *ContextView {
+        return &self.view_value;
     }
 
     /// crash panics inside a method: what leaves a handle poisoned.

@@ -95,6 +95,11 @@ func (c *Context) Close() error {
 		c.mu.Unlock()
 		return nil
 	}
+	if c.active != 0 {
+		active := c.active
+		c.mu.Unlock()
+		return &HandleInUseError{Operation: "Context.Close", Children: active}
+	}
 	c.closed = true
 	c.cleanup.Stop()
 	state, release := c.zigoTakeLocked()
@@ -119,4 +124,108 @@ func (c *Context) zigoTakeLocked() (contextCleanupState, bool) {
 		state.ptr = nil
 	}
 	return state, true
+}
+
+// ContextView represents a native Zig handle.
+type ContextView struct {
+	ptr    unsafe.Pointer
+	mu     sync.Mutex
+	active int
+	closed bool
+	poison *NativePanicError
+	owner  zigoHandle
+}
+
+func newBorrowedContextView(ptr unsafe.Pointer, owner zigoHandle) *ContextView {
+	return &ContextView{ptr: ptr, owner: owner}
+}
+
+// zigoAcquire pins c and its parent open for one native call.
+func (c *ContextView) zigoAcquire(operation string) (unsafe.Pointer, error) {
+	if c == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	c.mu.Lock()
+	var parent zigoHandle
+	parent = c.owner
+	c.mu.Unlock()
+	if parent != nil {
+		if _, err := parent.zigoAcquire(operation); err != nil {
+			return nil, err
+		}
+	}
+	c.mu.Lock()
+	if c.closed || c.ptr == nil {
+		c.mu.Unlock()
+		if parent != nil {
+			parent.zigoRelease()
+		}
+		return nil, &HandleError{Operation: operation}
+	}
+	if c.poison != nil {
+		err := c.poison.poisoned(operation)
+		c.mu.Unlock()
+		if parent != nil {
+			parent.zigoRelease()
+		}
+		return nil, err
+	}
+	c.active++
+	ptr := c.ptr
+	c.mu.Unlock()
+	return ptr, nil
+}
+
+func (c *ContextView) zigoRelease() {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	c.active--
+	var parent zigoHandle
+	parent = c.owner
+	c.mu.Unlock()
+	if parent != nil {
+		parent.zigoRelease()
+	}
+}
+
+// zigoPoison marks c unusable: a Zig panic unwound through native frames
+// without running their defers, so the state behind it is unknown.
+func (c *ContextView) zigoPoison(cause *NativePanicError) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	var parent zigoHandle
+	parent = c.owner
+	if c.poison == nil {
+		c.poison = cause
+	}
+	c.mu.Unlock()
+	if parent != nil {
+		parent.zigoPoison(cause)
+	}
+}
+
+// Close detaches this borrowed ContextView view without releasing native resources.
+func (c *ContextView) Close() error {
+	if c == nil {
+		return nil
+	}
+	c.mu.Lock()
+	if c.closed {
+		c.mu.Unlock()
+		return nil
+	}
+	if c.active != 0 {
+		active := c.active
+		c.mu.Unlock()
+		return &HandleInUseError{Operation: "ContextView.Close", Children: active}
+	}
+	c.closed = true
+	c.ptr = nil
+	c.owner = nil
+	c.mu.Unlock()
+	return nil
 }

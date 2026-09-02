@@ -55,6 +55,11 @@ type nativeBindings struct {
 	fnEventQueueCreate                  func(unsafe.Pointer, uintptr, uintptr, uint32, uintptr, uintptr, *unsafe.Pointer) int32
 	fnEventQueueClone                   func(unsafe.Pointer, uintptr, uintptr, *unsafe.Pointer) int32
 	fnEventQueueNewStream               func(unsafe.Pointer, *unsafe.Pointer) int32
+	fnBorrowBoxCreate                   func(int32, *unsafe.Pointer) int32
+	fnBorrowBoxView                     func(unsafe.Pointer, *unsafe.Pointer) int32
+	fnBorrowBoxDeinit                   func(unsafe.Pointer) int32
+	fnBorrowViewGet                     func(unsafe.Pointer, *int32) int32
+	fnBorrowViewExplode                 func(unsafe.Pointer) int32
 	fnStreamCapacity                    func(unsafe.Pointer, *uint32) int32
 	fnStreamFreeStream                  func(unsafe.Pointer) int32
 	fnEventQueueEnqueue                 func(unsafe.Pointer, uint64, int32) int32
@@ -342,6 +347,26 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_event_queue_new_stream", err)
 	}
+	addrBorrowBoxCreate, err := resolveSymbol(handle, "zg_borrow_box_create")
+	if err != nil {
+		return fail("zg_borrow_box_create", err)
+	}
+	addrBorrowBoxView, err := resolveSymbol(handle, "zg_borrow_box_view")
+	if err != nil {
+		return fail("zg_borrow_box_view", err)
+	}
+	addrBorrowBoxDeinit, err := resolveSymbol(handle, "zg_borrow_box_deinit")
+	if err != nil {
+		return fail("zg_borrow_box_deinit", err)
+	}
+	addrBorrowViewGet, err := resolveSymbol(handle, "zg_borrow_view_get")
+	if err != nil {
+		return fail("zg_borrow_view_get", err)
+	}
+	addrBorrowViewExplode, err := resolveSymbol(handle, "zg_borrow_view_explode")
+	if err != nil {
+		return fail("zg_borrow_view_explode", err)
+	}
 	addrStreamCapacity, err := resolveSymbol(handle, "zg_stream_capacity")
 	if err != nil {
 		return fail("zg_stream_capacity", err)
@@ -520,6 +545,11 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnEventQueueCreate, addrEventQueueCreate)
 	purego.RegisterFunc(&next.fnEventQueueClone, addrEventQueueClone)
 	purego.RegisterFunc(&next.fnEventQueueNewStream, addrEventQueueNewStream)
+	purego.RegisterFunc(&next.fnBorrowBoxCreate, addrBorrowBoxCreate)
+	purego.RegisterFunc(&next.fnBorrowBoxView, addrBorrowBoxView)
+	purego.RegisterFunc(&next.fnBorrowBoxDeinit, addrBorrowBoxDeinit)
+	purego.RegisterFunc(&next.fnBorrowViewGet, addrBorrowViewGet)
+	purego.RegisterFunc(&next.fnBorrowViewExplode, addrBorrowViewExplode)
 	purego.RegisterFunc(&next.fnStreamCapacity, addrStreamCapacity)
 	purego.RegisterFunc(&next.fnStreamFreeStream, addrStreamFreeStream)
 	purego.RegisterFunc(&next.fnEventQueueEnqueue, addrEventQueueEnqueue)
@@ -695,6 +725,39 @@ func EventQueueNewStream(self unsafe.Pointer) (unsafe.Pointer, int32) {
 	var outResult unsafe.Pointer
 	code := bindings().fnEventQueueNewStream(self, &outResult)
 	return outResult, code
+}
+
+// BorrowBoxCreate calls the generated purego ABI wrapper for zg_borrow_box_create.
+func BorrowBoxCreate(value int32) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := bindings().fnBorrowBoxCreate(value, &outResult)
+	return outResult, code
+}
+
+// BorrowBoxView calls the generated purego ABI wrapper for zg_borrow_box_view.
+func BorrowBoxView(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := bindings().fnBorrowBoxView(self, &outResult)
+	return outResult, code
+}
+
+// BorrowBoxDeinit calls the generated purego ABI wrapper for zg_borrow_box_deinit.
+func BorrowBoxDeinit(self unsafe.Pointer) int32 {
+	code := bindings().fnBorrowBoxDeinit(self)
+	return code
+}
+
+// BorrowViewGet calls the generated purego ABI wrapper for zg_borrow_view_get.
+func BorrowViewGet(self unsafe.Pointer) (int32, int32) {
+	var outResult int32
+	code := bindings().fnBorrowViewGet(self, &outResult)
+	return outResult, code
+}
+
+// BorrowViewExplode calls the generated purego ABI wrapper for zg_borrow_view_explode.
+func BorrowViewExplode(self unsafe.Pointer) int32 {
+	code := bindings().fnBorrowViewExplode(self)
+	return code
 }
 
 // StreamCapacity calls the generated purego ABI wrapper for zg_stream_capacity.

@@ -8,6 +8,10 @@
 
 ### Added
 
+- receiver 메서드의 `.returns = .borrowed`로 등록 opaque pointer를 부모 수명에 묶인 일반 Go
+  handle로 반환할 수 있습니다. cgo와 purego 모두 부모 Close 무효화, active-call 경합 방지,
+  poison 전파, optional `(*T, bool, error)`를 지원하며 명시·오용은 semantic metadata와
+  `ZIGO033`–`ZIGO035` 진단으로 구분합니다.
 - `bindings.zig`의 `.packages`로 등록 타입, namespace, 함수를 기본 공개 Go 패키지 아래의
   하위 패키지로 나눌 수 있습니다. 패키지 간 타입은 import path와 한정 이름으로 생성되며,
   순환은 `ZIGO032`로 거부합니다. cgo와 purego는 `internal/lifecycle`의 handle·error 계약을

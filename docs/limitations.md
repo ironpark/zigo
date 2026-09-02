@@ -167,6 +167,9 @@
 - slice 반환의 원소는 스칼라, 등록된 enum, `extern struct`만 가능하다. 포인터를 포함하는
   원소는 `ZIGO005`로 거부한다. `![]T`도 같은 규칙을 따르며, `![]string`과 `!?[]T`는
   지원하지 않는다.
+- `.returns = .borrowed`는 receiver가 있는 메서드의 등록 opaque pointer 반환에만 쓸 수 있다.
+  자유 함수에는 수명을 묶을 owner가 없고, slice·scalar·struct 반환은 borrowed handle이
+  아니다. borrowed view를 caller-owned로 승격하거나 부모보다 오래 살게 만드는 API는 없다.
 - string slice 입력은 `[]const []const u8`에 `.utf8_string`을 지정하거나 element를
   `[:0]const u8`/`[*:0]const u8`로 선언해야 하며 Go에서는 `[]string`이 된다. native에는
   NUL을 포함한 평탄화 바이트 버퍼와 길이 배열만 전달한다. `[]string` 반환, mutable outer
@@ -253,6 +256,12 @@ error[ZIGO018]: unsupported integer width `u21` in parameter `cp`
   타입과 그 메서드·constructor·destructor를 서로 다른 패키지로 나누려 했다.
 - `ZIGO032` — 공개 패키지 타입 참조 그래프에 import cycle이 있다. 메시지는 순환을 만든
   선언과 `a -> b -> a` 형태의 패키지 경로를 함께 적는다.
+- `ZIGO033` — `.returns = .borrowed`를 receiver 없는 함수에 붙였다.
+- `ZIGO034` — `.returns = .borrowed` 반환이 등록 opaque 타입의 `*T`, `?*T`, `!*T`, `!?*T`가
+  아니다.
+- `ZIGO035` — constructor가 아닌 메서드가 opaque pointer를 반환하면서 `.returns`를
+  생략했다. receiver-owned view면 `.borrowed`, ownership transfer면 constructor/destructor와
+  `.caller`를 명시한다.
 
 `ZIGO027`과 `ZIGO028`은 reflection이 문서를 만들기 전에 걸리므로 `semantic.json` 자리가
 아니라 선언 경로를 가리키며, 생성기는 이 진단을 출력하고 종료한다.
@@ -349,7 +358,7 @@ namespace가 들어가지 않으므로, 서로 다른 namespace의 같은 함수
 - retained Go 콜백과 포인터는 생성된 `Close` 경로에서 해제될 때까지 유효해야 한다.
   소유 객체는 사용 후 반드시 닫고, 콜백에서 발생한 panic의 전달 규칙도 테스트한다.
 - handle은 잠금이 아니라 진행 중 호출 수로 지켜진다. 생성된 메서드, tagged-union
-  projection(`Tag`/`As*`/`Snapshot`/`Variant`), borrowed `Ref`는 호출 전에 receiver와
+  projection(`Tag`/`As*`/`Snapshot`/`Variant`), borrowed handle/`Ref`는 호출 전에 receiver와
   handle 인자를 획득하고 돌아온 뒤 놓으며, `Close`는 표시만 하고 마지막 호출이 돌아올 때
   해제된다. 어떤 호출도 다른 goroutine의 native 호출 뒤에서 기다리지 않는다. 특히
   `Close`가 대기 중이라고 해서 이후의 호출(예: 다른 스레드의 `cancel`)이 막히지 않고,
@@ -361,6 +370,9 @@ namespace가 들어가지 않으므로, 서로 다른 namespace의 같은 함수
   **닫지 않은 자식이 GC되더라도 부모의 자식 카운트를 내리는 것으로 처리하지 않는다**.
   cleanup 안전망의 실행 시점은 보장되지 않고 수명 순서를 대신할 수 없으므로, 이런 자식은
   반드시 `Close`하고 나서 부모를 닫아야 한다.
+- `.returns = .borrowed` view는 child handle과 달리 native 자원을 소유하지 않으며 매번
+  `Close`할 의무가 없다. 부모가 닫히면 자동으로 무효화된다. 다만 view의 native 호출이 진행
+  중이면 부모 `Close`는 `ErrHandleInUse`로 거부되며, 호출이 끝난 뒤 다시 닫아야 한다.
 - `runtime.AddCleanup` 안전망은 실행 시점과 프로그램 종료 전 실행을 보장하지 않는다.
   callback이 소유 객체를 캡처하는 강한 참조 순환과 특정 thread에서만 가능한 해제를
   해결하지 않으므로 명시적 `Close`의 대체로 사용하지 않는다.

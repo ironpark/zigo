@@ -3976,14 +3976,14 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         if (captures_return) try writePublicCapturedReturn(writer, program, function.origin.*, needs_check);
         if (borrowed_direct or owned_direct) {
             if (function.origin.childOfReceiver()) try writer.writeAll("\tzigoChildCreated = true\n");
-            if (borrowed_direct and function.origin.@"return".opaque_ptr.nullable)
+            if (returnsBorrowedView(function.origin.*) and function.origin.@"return".opaque_ptr.nullable)
                 try writer.writeAll("\tif result == nil {\n\t\treturn nil, false, nil\n\t}\n");
             try writer.writeAll("\treturn ");
             if (owned_type) |type_name|
                 try writeOwnedHandleResult(allocator, writer, program, function.origin.*, go_names, type_name, "result")
             else
                 try writeBorrowedResult(allocator, writer, function.origin.*, go_names, "result");
-            if (borrowed_direct and function.origin.@"return".opaque_ptr.nullable) try writer.writeAll(", true");
+            if (returnsBorrowedView(function.origin.*) and function.origin.@"return".opaque_ptr.nullable) try writer.writeAll(", true");
             if (needs_check) try writer.writeAll(", nil");
             try writer.writeByte('\n');
         }
@@ -4031,7 +4031,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                 if (streamAccessorOp(function.origin.*) == .read)
                     try writer.writeAll("\tif result == 0 {\n\t\treturn 0, io.EOF\n\t}\n");
                 if (function.origin.childOfReceiver()) try writer.writeAll("\tzigoChildCreated = true\n");
-                if (error_payload == .opaque_ptr and error_payload.opaque_ptr.nullable and returnsBorrowedHandle(function.origin.*)) {
+                if (error_payload == .opaque_ptr and error_payload.opaque_ptr.nullable and returnsBorrowedView(function.origin.*)) {
                     try writer.writeAll("\tif result == nil {\n\t\treturn nil, false, nil\n\t}\n\treturn ");
                     try writeBorrowedResult(allocator, writer, function.origin.*, go_names, "result");
                     try writer.writeAll(", true, nil\n");
@@ -5538,11 +5538,11 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         if (has_refs) try writer.print(
             "func ({0s} *{1s}Ref) zigoAcquire(operation string) (unsafe.Pointer, error) {{\n" ++
                 "\tif {0s} == nil || {0s}.ptr == nil {{\n\t\treturn nil, &HandleError{{Operation: operation}}\n\t}}\n" ++
-                "\tif {0s}.parent != nil {{\n\t\tif _, err := {0s}.parent.{2s}(operation); err != nil {{\n\t\t\treturn nil, err\n\t\t}}\n\t}}\n" ++
+                "\tif {0s}.parent != nil {{\n\t\tif _, err := {0s}.parent.zigoAcquire(operation); err != nil {{\n\t\t\treturn nil, err\n\t\t}}\n\t}}\n" ++
                 "\treturn {0s}.ptr, nil\n}}\n\n" ++
-                "func ({0s} *{1s}Ref) zigoRelease() {{\n\tif {0s} != nil && {0s}.parent != nil {{\n\t\t{0s}.parent.{3s}()\n\t}}\n}}\n\n" ++
-                "func ({0s} *{1s}Ref) zigoPoison(cause *NativePanicError) {{\n\tif {0s} != nil && {0s}.parent != nil {{\n\t\t{0s}.parent.{4s}(cause)\n\t}}\n}}\n\n",
-            .{ recv, declaration.name, parent_acquire_method, parent_release_method, parent_poison_method },
+                "func ({0s} *{1s}Ref) zigoRelease() {{\n\tif {0s} != nil && {0s}.parent != nil {{\n\t\t{0s}.parent.zigoRelease()\n\t}}\n}}\n\n" ++
+                "func ({0s} *{1s}Ref) zigoPoison(cause *NativePanicError) {{\n\tif {0s} != nil && {0s}.parent != nil {{\n\t\t{0s}.parent.zigoPoison(cause)\n\t}}\n}}\n\n",
+            .{ recv, declaration.name },
         );
         if (has_refs and options.shared_lifecycle) try writer.print(
             "// ZigoAcquire implements the shared lifecycle handle contract.\n" ++
@@ -6011,7 +6011,7 @@ fn writePublicFailureValues(writer: *std.Io.Writer, function: semantic.SemanticF
     try writePublicZeroValue(writer, function, payload);
     try writer.writeAll(", ");
     if (payload == .optional or
-        (payload == .opaque_ptr and payload.opaque_ptr.nullable and returnsBorrowedHandle(function)))
+        (payload == .opaque_ptr and payload.opaque_ptr.nullable and returnsBorrowedView(function)))
         try writer.writeAll("false, ");
 }
 
@@ -6026,13 +6026,15 @@ fn writeCheckedFunctionReturnType(writer: *std.Io.Writer, function: semantic.Sem
         return;
     }
     try writer.writeAll(" (");
-    if (returnsBorrowedHandle(function) and function.@"return".opaque_ptr.nullable) {
+    if (returnsBorrowedView(function) and function.@"return".opaque_ptr.nullable) {
         try writer.print("*{s}, bool, error)", .{function.@"return".opaque_ptr.ref});
         return;
     } else if (isStringSlice(function.@"return", function.return_semantic)) {
         try writer.writeAll("string");
-    } else if (returnsBorrowedHandle(function)) {
+    } else if (returnsBorrowedView(function)) {
         try writer.print("*{s}", .{function.@"return".opaque_ptr.ref});
+    } else if (returnsBorrowedHandle(function)) {
+        try writer.print("*{s}Ref", .{function.@"return".opaque_ptr.ref});
     } else {
         try writePublicGoType(writer, function.@"return");
     }
@@ -6046,19 +6048,27 @@ fn writePublicFunctionReturnType(writer: *std.Io.Writer, function: semantic.Sema
         try writer.writeAll(" string");
         return;
     }
-    if (function.@"return" == .opaque_ptr and returnsBorrowedHandle(function)) {
+    if (function.@"return" == .opaque_ptr and returnsBorrowedView(function)) {
         if (function.@"return".opaque_ptr.nullable)
             try writer.print(" (*{s}, bool)", .{function.@"return".opaque_ptr.ref})
         else
             try writer.print(" *{s}", .{function.@"return".opaque_ptr.ref});
         return;
     }
-    if (function.@"return" == .error_union and function.@"return".error_union.payload.* == .opaque_ptr and returnsBorrowedHandle(function)) {
+    if (function.@"return" == .opaque_ptr and returnsBorrowedHandle(function)) {
+        try writer.print(" *{s}Ref", .{function.@"return".opaque_ptr.ref});
+        return;
+    }
+    if (function.@"return" == .error_union and function.@"return".error_union.payload.* == .opaque_ptr and returnsBorrowedView(function)) {
         const pointer = function.@"return".error_union.payload.opaque_ptr;
         if (pointer.nullable)
             try writer.print(" (*{s}, bool, error)", .{pointer.ref})
         else
             try writer.print(" (*{s}, error)", .{pointer.ref});
+        return;
+    }
+    if (function.@"return" == .error_union and function.@"return".error_union.payload.* == .opaque_ptr and returnsBorrowedHandle(function)) {
+        try writer.print(" (*{s}Ref, error)", .{function.@"return".error_union.payload.opaque_ptr.ref});
         return;
     }
     try writePublicReturnType(writer, function.@"return", function.return_semantic);
@@ -6074,7 +6084,10 @@ fn writeBorrowedResult(
     const node = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
     const parent = if (function.receiver) |receiver| try receiverVariableAlloc(allocator, receiver, go_names) else null;
     defer if (parent) |value| allocator.free(value);
-    try writer.print("newBorrowed{s}({s}, {s})", .{ node.opaque_ptr.ref, expression, parent orelse "nil" });
+    if (function.returnsBorrowedHandle())
+        try writer.print("newBorrowed{s}({s}, {s})", .{ node.opaque_ptr.ref, expression, parent orelse "nil" })
+    else
+        try writer.print("&{s}Ref{{ptr: {s}, parent: {s}}}", .{ node.opaque_ptr.ref, expression, parent orelse "nil" });
 }
 
 fn renderGoEnums(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
@@ -6893,7 +6906,11 @@ fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.SemanticFn,
 
 fn returnsBorrowedHandle(function: semantic.SemanticFn) bool {
     const node = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
-    return node == .opaque_ptr and function.returnsBorrowedHandle();
+    return node == .opaque_ptr and function.ownership == .borrowed;
+}
+
+fn returnsBorrowedView(function: semantic.SemanticFn) bool {
+    return returnsBorrowedHandle(function) and function.returnsBorrowedHandle();
 }
 
 fn hasOpaqueParameter(function: semantic.SemanticFn) bool {
@@ -7783,7 +7800,7 @@ fn typeHasDependentChildren(program: abi.Program, type_name: []const u8) bool {
 
 fn programHasDependentHandles(program: abi.Program) bool {
     for (program.functions) |function| {
-        if (function.origin.childOfReceiver() or returnsBorrowedHandle(function.origin.*)) return true;
+        if (function.origin.childOfReceiver() or returnsBorrowedView(function.origin.*)) return true;
     }
     return false;
 }
@@ -7801,6 +7818,12 @@ fn programHasDependentHandles(program: abi.Program) bool {
 /// whose payload is that handle. Nothing else can construct one, so a type
 /// without either gets no Ref type at all.
 fn typeHasBorrowedRefs(program: abi.Program, type_name: []const u8) bool {
+    for (program.functions) |function| {
+        const origin = function.origin.*;
+        if (!returnsBorrowedHandle(origin) or returnsBorrowedView(origin)) continue;
+        const node = if (origin.@"return" == .error_union) origin.@"return".error_union.payload.* else origin.@"return";
+        if (std.mem.eql(u8, node.opaque_ptr.ref, type_name)) return true;
+    }
     for (program.projections) |projection| {
         if (projection.kind != .payload) continue;
         const field = projection.field orelse continue;
@@ -7813,7 +7836,7 @@ fn typeHasBorrowedRefs(program: abi.Program, type_name: []const u8) bool {
 fn typeCanBeBorrowed(program: abi.Program, type_name: []const u8) bool {
     for (program.functions) |function| {
         const origin = function.origin.*;
-        if (!returnsBorrowedHandle(origin)) continue;
+        if (!returnsBorrowedView(origin)) continue;
         const node = if (origin.@"return" == .error_union) origin.@"return".error_union.payload.* else origin.@"return";
         if (std.mem.eql(u8, node.opaque_ptr.ref, type_name)) return true;
     }
@@ -7822,7 +7845,7 @@ fn typeCanBeBorrowed(program: abi.Program, type_name: []const u8) bool {
 
 fn typeReturnsBorrowedViews(program: abi.Program, type_name: []const u8) bool {
     for (program.functions) |function| {
-        if (returnsBorrowedHandle(function.origin.*) and
+        if (returnsBorrowedView(function.origin.*) and
             std.mem.eql(u8, function.origin.receiver orelse "", type_name)) return true;
     }
     return false;

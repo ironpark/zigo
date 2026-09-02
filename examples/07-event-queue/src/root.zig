@@ -57,6 +57,39 @@ var live_limits: std.atomic.Value(usize) = .init(0);
 var live_tickers: std.atomic.Value(usize) = .init(0);
 var live_streams: std.atomic.Value(usize) = .init(0);
 
+/// A small owner/view pair used to demonstrate receiver-borrowed handle
+/// returns. BorrowView is embedded in BorrowBox, so it has no resource or
+/// destructor of its own and becomes invalid when the box is destroyed.
+pub const BorrowView = struct {
+    value: i32,
+
+    pub fn get(self: *BorrowView) i32 {
+        return self.value;
+    }
+
+    pub fn explode(_: *BorrowView) void {
+        @panic("borrowed view panic");
+    }
+};
+
+pub const BorrowBox = struct {
+    view_value: BorrowView,
+
+    pub fn create(value: i32) error{OutOfMemory}!*BorrowBox {
+        const box = std.heap.page_allocator.create(BorrowBox) catch return error.OutOfMemory;
+        box.* = .{ .view_value = .{ .value = value } };
+        return box;
+    }
+
+    pub fn view(self: *BorrowBox) *BorrowView {
+        return &self.view_value;
+    }
+
+    pub fn deinit(self: *BorrowBox) void {
+        std.heap.page_allocator.destroy(self);
+    }
+};
+
 pub const EventQueue = struct {
     name_bytes: []u8,
     items: std.ArrayList(Event) = .empty,

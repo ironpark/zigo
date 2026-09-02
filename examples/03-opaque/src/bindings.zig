@@ -8,12 +8,15 @@ pub const bindings = zigo.define(.{
     .root = library,
     .types = .{
         .{ .type = library.Context, .repr = .@"opaque" },
+        .{ .type = library.ContextView, .repr = .@"opaque" },
     },
     .functions = .{
         .{ .path = "Context.create" },
         .{ .path = "Context.add", .params = .{"value"} },
         .{ .path = "Context.maybeTotal", .params = .{"present"} },
         .{ .path = "Context.setTotal", .params = .{"c"} },
+        .{ .path = "Context.borrowView", .returns = .borrowed },
+        .{ .path = "ContextView.total" },
         .{ .path = "Context.crash" },
         .{ .path = "Context.crashInfallible" },
         .{ .path = "Context.deinit" },
