@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-02T23:26:44Z"
 depends_on:
 - "89-value-union-struct-payloads#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: A function returning a value union works on both backends; verification loop green.
 > NEXT: none

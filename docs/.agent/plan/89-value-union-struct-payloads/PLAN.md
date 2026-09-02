@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T23:26:44Z"
 description: widen by-value tagged unions to C-representable struct payloads, omitted variants, and value returns
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-02T22:15:54Z"
 ---
 > NEXT: Accept struct payloads and omitted variants in by-value unions. ([Phase 0](phases/00-struct-payloads.md))
@@ -8,7 +9,7 @@ registered_at: "2026-09-02T22:15:54Z"
 # Phases
 
 - [x] [Phase 00: Struct payloads and omitted variants](phases/00-struct-payloads.md)
-- [ ] [Phase 01: Value union returns](phases/01-value-returns.md)
+- [x] [Phase 01: Value union returns](phases/01-value-returns.md)
 
 # Shared Verification
 
