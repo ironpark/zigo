@@ -456,3 +456,8 @@ type LimitsData struct {
 	Capacity uint32
 	Policy   uint32
 }
+
+// LimitsData crosses to C as a cast, so it must match zg_limits byte for byte.
+var _ = [1]struct{}{}[unsafe.Sizeof(LimitsData{})-unsafe.Sizeof(C.zg_limits{})]
+var _ = [1]struct{}{}[unsafe.Offsetof(LimitsData{}.Capacity)-unsafe.Offsetof(C.zg_limits{}.capacity)]
+var _ = [1]struct{}{}[unsafe.Offsetof(LimitsData{}.Policy)-unsafe.Offsetof(C.zg_limits{}.policy)]

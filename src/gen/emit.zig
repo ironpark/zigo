@@ -852,6 +852,21 @@ fn writeRawStructFieldType(allocator: std.mem.Allocator, writer: *std.Io.Writer,
     try writeGoScalar(writer, field.scalar);
 }
 
+/// An `extern struct` whose Go mirror is a bit-for-bit copy of the C layout, so
+/// a slice of it can cross as a cast instead of a field-by-field copy. `bool`
+/// is the one field kind Go spells differently from C -- one Go `bool` against
+/// the mirror's `uint8` -- so a struct carrying one anywhere keeps the copy.
+/// The generated layout guards turn the assumption into a compile error rather
+/// than leaving it implicit.
+fn isCastableStruct(program: abi.Program, record: abi.AbiStruct) bool {
+    for (record.fields) |field| {
+        if (field.node == .bool) return false;
+        if (field.node == .value_struct and
+            !isCastableStruct(program, structRecord(program, field.node.value_struct.ref))) return false;
+    }
+    return true;
+}
+
 /// The lowered mirror a struct member names. Validation rejects a member whose
 /// struct was never lowered, so a missing entry is a malformed program.
 fn structRecord(program: abi.Program, name: []const u8) abi.AbiStruct {
@@ -1220,9 +1235,35 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         try writer.writeAll("}\n");
     }
     try renderRawStructTypes(allocator, writer, program);
+    try renderCgoStructLayoutGuards(allocator, writer, program);
     try renderRawSnapshotTypes(allocator, writer, program);
     try renderRawTaggedUnionAccessors(allocator, writer, program, options);
     try renderRawSnapshotAccessors(allocator, writer, program);
+}
+
+/// Closes the layout chain the cast path rests on: the Zig ABI guard pins the
+/// native struct against the header, and these pin the Go mirror against what
+/// cgo made of that header. A mismatch is an index out of range at compile
+/// time, naming the struct that drifted.
+fn renderCgoStructLayoutGuards(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
+    for (program.structs) |record| {
+        if (!isCastableStruct(program, record)) continue;
+        const type_name = try structRawTypeNameAlloc(allocator, record.name);
+        defer allocator.free(type_name);
+        try writer.print(
+            "\n// {s} crosses to C as a cast, so it must match {s} byte for byte.\n" ++
+                "var _ = [1]struct{{}}{{}}[unsafe.Sizeof({s}{{}})-unsafe.Sizeof(C.{s}{{}})]\n",
+            .{ type_name, record.c_name, type_name, record.c_name },
+        );
+        for (record.fields) |field| {
+            const member = try naming.pascalAlloc(allocator, field.name);
+            defer allocator.free(member);
+            try writer.print(
+                "var _ = [1]struct{{}}{{}}[unsafe.Offsetof({s}{{}}.{s})-unsafe.Offsetof(C.{s}{{}}.{s})]\n",
+                .{ type_name, member, record.c_name, field.name },
+            );
+        }
+    }
 }
 
 /// cgo keeps the flattened byte and length arrays in Go memory. Both arrays
@@ -2860,6 +2901,36 @@ fn renderUnionFile(
 /// The public face of an `extern struct` is an ordinary Go value type. The
 /// pointer that actually crosses the boundary is taken inside the generated
 /// call, so callers never see it.
+/// The public half of the layout chain. A slice of a castable struct is
+/// reinterpreted as its raw mirror rather than copied element by element, so
+/// the two types have to agree on size and on every field offset. Go evaluates
+/// these indices at compile time, which makes a drift a build failure instead
+/// of a misread buffer.
+fn renderPublicStructLayoutGuards(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    options: Options,
+    record: abi.AbiStruct,
+) !void {
+    if (!isCastableStruct(program, record)) return;
+    const raw_type = try structRawTypeNameAlloc(allocator, record.name);
+    defer allocator.free(raw_type);
+    try writer.print("// {s} is reinterpreted as ", .{record.name});
+    try writeRawTypeReferencePrefix(writer, options);
+    try writer.print("{s} instead of copied, so the two\n// layouts must stay identical.\nvar _ = [1]struct{{}}{{}}[unsafe.Sizeof({s}{{}})-unsafe.Sizeof(", .{ raw_type, record.name });
+    try writeRawTypeReferencePrefix(writer, options);
+    try writer.print("{s}{{}})]\n", .{raw_type});
+    for (record.fields) |field| {
+        const member = try naming.pascalAlloc(allocator, field.name);
+        defer allocator.free(member);
+        try writer.print("var _ = [1]struct{{}}{{}}[unsafe.Offsetof({s}{{}}.{s})-unsafe.Offsetof(", .{ record.name, member });
+        try writeRawTypeReferencePrefix(writer, options);
+        try writer.print("{s}{{}}.{s})]\n", .{ raw_type, member });
+    }
+    try writer.writeByte('\n');
+}
+
 fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     for (program.structs) |record| {
         try writer.print("// {s} mirrors the Zig `extern struct` of the same name.\ntype {s} struct {{\n", .{ record.name, record.name });
@@ -2871,6 +2942,7 @@ fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer
             try writer.writeByte('\n');
         }
         try writer.writeAll("}\n\n");
+        try renderPublicStructLayoutGuards(allocator, writer, program, options, record);
     }
     for (program.structs) |record| {
         const raw_type = try structRawTypeNameAlloc(allocator, record.name);
@@ -4876,6 +4948,8 @@ fn publicTypeNameExists(program: abi.Program, name: []const u8) bool {
 
 fn programNeedsUnsafe(program: abi.Program) bool {
     if (programHasSlices(program) or programHasOpaqueTypes(program)) return true;
+    // The layout guards a castable struct carries are spelled with `unsafe`.
+    for (program.structs) |record| if (isCastableStruct(program, record)) return true;
     for (program.functions) |function| {
         if (function.origin.receiver != null) return true;
         for (function.origin.params) |parameter| if (parameter.type == .opaque_ptr) return true;

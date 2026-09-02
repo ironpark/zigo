@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T04:34:14Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `.written = .return`이 `semantic.json`에 `"written": "return"`으로 나오고, 옛 JSON이 그대로 읽힌다.
 > NEXT: none

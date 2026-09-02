@@ -7,7 +7,7 @@ registered_at: "2026-09-02T04:29:27Z"
 
 # Phases
 
-- [ ] [Phase 00: `.written` 메타데이터와 진단, abi_diff](phases/00-written-metadata.md)
+- [x] [Phase 00: `.written` 메타데이터와 진단, abi_diff](phases/00-written-metadata.md)
 - [ ] [Phase 01: shim의 `written` 기록과 공개 계층의 되돌리기 규칙](phases/01-shim-written.md)
 - [ ] [Phase 02: Go 쪽 레이아웃 가드와 캐스트 적격 predicate](phases/02-go-layout-guard.md)
 - [ ] [Phase 03: 캐스트 경로와 out 무복사 진입](phases/03-cast-path.md)

@@ -286,6 +286,15 @@ pub fn build(b: *std.Build) void {
         "examples/08-telemetry-hub/go-purego",
     });
     test_step.dependOn(&godoc_audit.step);
+    // The generated layout guard is only worth anything if a divergent layout
+    // actually stops the Go build. This fixture is the golden's public struct
+    // with its fields swapped, so compiling it has to fail.
+    const layout_guard = b.addSystemCommand(&.{ "go", "build", "./..." });
+    layout_guard.setName("divergent struct layout fails the Go build");
+    layout_guard.setCwd(b.path("tests/layout_guard"));
+    layout_guard.expectExitCode(1);
+    layout_guard.expectStdErrMatch("index 2 out of bounds");
+    test_step.dependOn(&layout_guard.step);
     test_step.dependOn(&run_tests.step);
     test_step.dependOn(&run_generator_tests.step);
     test_step.dependOn(&run_reflect_walk_tests.step);
