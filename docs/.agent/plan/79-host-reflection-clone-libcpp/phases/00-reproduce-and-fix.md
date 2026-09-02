@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T17:40:09Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 예제가 네이티브·크로스에서 통과, 전 예제 녹색, 커밋.
 > NEXT: none

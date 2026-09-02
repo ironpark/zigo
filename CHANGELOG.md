@@ -4,6 +4,15 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Fixed
+
+- 호스트 reflection module이 `linkLibrary`로 붙인 정적 라이브러리의 설치 헤더와
+  libc/libc++ 설정을 잃던 0.4.0 회귀를 고쳤습니다. 정적 라이브러리의 호스트 변형을 복제해
+  연결하므로, 호출자 C/C++ 소스가 해당 라이브러리를 통해 libc++를 쓰는 경우에도 네이티브와
+  크로스 `go-lib` 생성이 동작합니다.
+
 ## [0.4.1] - 2026-09-03
 
 ### Fixed

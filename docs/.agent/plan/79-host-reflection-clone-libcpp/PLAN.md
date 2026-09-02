@@ -7,7 +7,7 @@ registered_at: "2026-09-02T17:32:43Z"
 
 # Phases
 
-- [ ] [Phase 00: 회귀 재현과 수정](phases/00-reproduce-and-fix.md)
+- [x] [Phase 00: 회귀 재현과 수정](phases/00-reproduce-and-fix.md)
 - [ ] [Phase 01: 문서와 CHANGELOG](phases/01-docs.md)
 
 # Shared Verification

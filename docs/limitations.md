@@ -37,6 +37,10 @@
   CC="zig cc -target x86_64-windows-gnu"`로 링크할 수 있다. 다만 `go-doctor`는 크로스
   빌드에서 cgo 백엔드를 검증하지 못하므로(관찰할 수 없는 `GOOS`·`CC` 조합에 달려 있다)
   `FAIL target`을 보고한다. 결과물은 타깃에서 실행해 확인한다. 두 가지가 여기에 따라온다.
+  `linkLibrary`로 붙인 정적 라이브러리는 reflection용 호스트 변형을 만들며, 재귀적인 module
+  설정과 설치 헤더, libc/libc++ 요구를 보존한다. 동적 라이브러리와 `.static_path` archive는
+  호스트 reflector에 링크하지 않으므로 reflection 중 실제로 그 심볼을 호출하는 코드는
+  지원하지 않는다.
   - 리플렉션이 관찰하는 레이아웃은 **호스트**의 것이다. 지원 타깃은 모두 64비트
     리틀엔디언이라 고정폭 정수·실수·포인터는 일치하지만 `c_long`·`c_ulong`처럼
     타깃마다 폭이 다른 C 타입은 어긋난다. 생성된 shim은 mirror하는 모든 `extern

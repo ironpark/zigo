@@ -201,7 +201,11 @@ cgo가 pkg-config에게 컴파일·링크 플래그를 직접 묻게 하기 위�
 기록되며, 파일은 `.gitignore`와 `go-check` 대상이 아니고 `zig build`, `go-lib`, `go-check`,
 `go`가 artifact와 함께 갱신합니다. 나머지 생성 파일은 다른 OS에서 byte-for-byte 비교할 수
 있습니다. reflector는 호스트용으로 module을 복제해 실행하므로, 대상 전용 정적 입력이 있어도
-`-Dtarget`으로 크로스 컴파일할 수 있습니다.
+`-Dtarget`으로 크로스 컴파일할 수 있습니다. `linkLibrary`로 붙인 정적 라이브러리는
+`root_module`과 설치 헤더를 호스트용 정적 라이브러리로 한 번 더 복제해 연결합니다. 따라서
+호출자 module의 C/C++ 소스가 그 라이브러리의 헤더, `link_libc` 또는 `link_libcpp` 설정에
+의존해도 reflection 컴파일에서 유지됩니다. 동적 라이브러리와 `addObjectFile`로 붙인 미리
+빌드된 archive는 호스트 실행 파일에 연결하지 않습니다.
 
 ## `gofmt` 선택
 
