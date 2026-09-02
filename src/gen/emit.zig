@@ -3152,24 +3152,26 @@ fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer
         }
         try writer.writeAll("\t}\n}\n\n");
 
+        // A castable element crosses in both directions as a reinterpretation:
+        // parameters are passed as the caller's memory, and returns are the
+        // allocation the raw layer already copied into. The copying helpers
+        // would be dead code for such a type and are not emitted at all.
+        if (isCastableStruct(program, record)) {
+            try writer.print("// zigo{s}SliceView reinterprets a slice the raw layer already owns as\n// []{s} without copying it again.\nfunc zigo{s}SliceView(values []", .{ record.name, record.name, record.name });
+            try writeRawTypeReferencePrefix(writer, options);
+            try writer.print("{s}) []{s} {{\n\tif len(values) == 0 {{\n\t\treturn nil\n\t}}\n\treturn unsafe.Slice((*{s})(unsafe.Pointer(&values[0])), len(values))\n}}\n\n", .{ raw_type, record.name, record.name });
+            continue;
+        }
+
         try writer.print("func zigo{s}SliceToRaw(values []{s}) []", .{ record.name, record.name });
         try writeRawTypeReferencePrefix(writer, options);
         try writer.print("{s} {{\n\tresult := make([]", .{raw_type});
         try writeRawTypeReferencePrefix(writer, options);
         try writer.print("{s}, len(values))\n\tfor i := range values {{\n\t\tresult[i] = zigo{s}ToRaw(values[i])\n\t}}\n\treturn result\n}}\n\n", .{ raw_type, record.name });
 
-        // A castable element makes the conversion a reinterpretation of the
-        // allocation the raw layer already copied into, so the copying variant
-        // would be dead code and is not emitted at all.
-        if (isCastableStruct(program, record)) {
-            try writer.print("// zigo{s}SliceView reinterprets a slice the raw layer already owns as\n// []{s} without copying it again.\nfunc zigo{s}SliceView(values []", .{ record.name, record.name, record.name });
-            try writeRawTypeReferencePrefix(writer, options);
-            try writer.print("{s}) []{s} {{\n\tif len(values) == 0 {{\n\t\treturn nil\n\t}}\n\treturn unsafe.Slice((*{s})(unsafe.Pointer(&values[0])), len(values))\n}}\n\n", .{ raw_type, record.name, record.name });
-        } else {
-            try writer.print("func zigo{s}SliceFromRaw(values []", .{record.name});
-            try writeRawTypeReferencePrefix(writer, options);
-            try writer.print("{s}) []{s} {{\n\tresult := make([]{s}, len(values))\n\tfor i := range values {{\n\t\tresult[i] = zigo{s}FromRaw(values[i])\n\t}}\n\treturn result\n}}\n\n", .{ raw_type, record.name, record.name, record.name });
-        }
+        try writer.print("func zigo{s}SliceFromRaw(values []", .{record.name});
+        try writeRawTypeReferencePrefix(writer, options);
+        try writer.print("{s}) []{s} {{\n\tresult := make([]{s}, len(values))\n\tfor i := range values {{\n\t\tresult[i] = zigo{s}FromRaw(values[i])\n\t}}\n\treturn result\n}}\n\n", .{ raw_type, record.name, record.name, record.name });
 
         try writer.print("func zigo{s}SliceCopyFromRaw(dst []{s}, values []", .{ record.name, record.name });
         try writeRawTypeReferencePrefix(writer, options);
@@ -5902,6 +5904,8 @@ test "a returned struct slice is reinterpreted for a castable element and copied
     // The copying helper would be dead code for a castable element, so only
     // the view is emitted for it and only the copy for the other.
     try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoPointSliceFromRaw(") == null);
+    try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoPointSliceToRaw(") == null);
+    try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoPointSliceCopyFromRaw(") == null);
     try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoPointSliceView(values []raw.PointData) []Point {") != null);
     try std.testing.expect(std.mem.indexOf(u8, structs, "return unsafe.Slice((*Point)(unsafe.Pointer(&values[0])), len(values))") != null);
     try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoFlaggedSliceFromRaw(values []raw.FlaggedData) []Flagged {") != null);
