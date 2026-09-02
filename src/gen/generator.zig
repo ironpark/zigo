@@ -168,7 +168,7 @@ fn appendEmitters(allocator: std.mem.Allocator, prepared: *std.ArrayList(Prepare
         defer rendered.deinit();
         try emitter.render(allocator, &rendered.writer, program, options);
         const rendered_contents = try rendered.toOwnedSlice();
-        const contents = if (qualify_public)
+        const contents = if (qualify_public and !emitter.qualifies_internally)
             try emit.qualifyPublicTypesAlloc(allocator, rendered_contents, program, options)
         else
             rendered_contents;
@@ -184,7 +184,7 @@ fn appendEmitters(allocator: std.mem.Allocator, prepared: *std.ArrayList(Prepare
 
 fn appendPublicPackage(allocator: std.mem.Allocator, prepared: *std.ArrayList(PreparedFile), full_program: abi.Program, options: emit.Options) !void {
     var functions: std.ArrayList(abi.AbiFn) = .empty;
-    for (full_program.functions) |function| if (packageMatches(function.origin.package, options.active_package)) try functions.append(allocator, function);
+    for (full_program.functions) |function| if (emit.packageMatches(function.origin.package, options.active_package)) try functions.append(allocator, function);
     var program = full_program;
     program.functions = try functions.toOwnedSlice(allocator);
     try appendEmitters(allocator, prepared, program, options, &emit.public_emitters, true);
@@ -200,10 +200,6 @@ fn appendPublicPackage(allocator: std.mem.Allocator, prepared: *std.ArrayList(Pr
     }
 }
 
-fn packageMatches(package: ?[]const u8, active: ?[]const u8) bool {
-    const selected = active orelse return true;
-    return if (package) |name| std.mem.eql(u8, name, selected) else selected.len == 0;
-}
 
 test "split documents emit package directories shared lifecycle and cross imports" {
     const fixture =

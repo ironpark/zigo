@@ -80,12 +80,12 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
                 try add(allocator, &report, .breaking, identity, "exported C symbol changed");
         }
         if (!signatureEqual(old, new)) try add(allocator, &report, .breaking, identity, "signature changed");
-        if (!optionalNameEqual(old.release, new.release))
+        if (!semantic.optionalStringEqual(old.release, new.release))
             try add(allocator, &report, .breaking, identity, "release function changed");
         // The C symbol does not move, but the Go surface does: the function
         // becomes (or stops being) a type's constructor, so every call site
         // that named it changes.
-        if (!optionalNameEqual(old.goOwner(), new.goOwner()))
+        if (!semantic.optionalStringEqual(old.goOwner(), new.goOwner()))
             try add(allocator, &report, .breaking, identity, "Go owner changed");
         if (old.ownership != new.ownership or old.returnsBorrowedHandle() != new.returnsBorrowedHandle() or
             !optionalHintEqual(old.return_semantic, new.return_semantic))
@@ -99,9 +99,9 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
             try add(allocator, &report, .breaking, identity, "callback Go error surface changed");
         // The C signature keeps its flag parameter either way, but the Go one
         // gains or loses its leading `ctx`, so every call site moves.
-        if (!optionalNameEqual(old.cancel, new.cancel))
+        if (!semantic.optionalStringEqual(old.cancel, new.cancel))
             try add(allocator, &report, .breaking, identity, "cancellation surface changed");
-        if (!optionalNameEqual(old.package, new.package))
+        if (!semantic.optionalStringEqual(old.package, new.package))
             try add(allocator, &report, .breaking, identity, "Go package assignment changed");
         // The native signature is unchanged, but generated Go gains or loses
         // the parent/child Close ordering contract.
@@ -124,11 +124,11 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
             try add(allocator, &report, .breaking, old.name, "type removed");
             continue;
         };
-        if (!optionalNameEqual(old.package, new.package))
+        if (!semantic.optionalStringEqual(old.package, new.package))
             try add(allocator, &report, .breaking, old.name, "Go package assignment changed");
         switch (classifyTypeChange(old, new)) {
             .equal => {},
-            .appended => if (old.kind == .tagged_union and taggedUnionUsedByValue(base, old.name))
+            .appended => if (old.kind == .tagged_union and base.taggedUnionUsedByValue(old.name))
                 try add(
                     allocator,
                     &report,
@@ -172,14 +172,6 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
     return report;
 }
 
-fn taggedUnionUsedByValue(document: semantic.Semantic, name: []const u8) bool {
-    for (document.functions) |function| {
-        for (function.params) |parameter| {
-            if (parameter.type == .value_struct and std.mem.eql(u8, parameter.type.value_struct.ref, name)) return true;
-        }
-    }
-    return false;
-}
 
 test "backend switching is an explicit breaking ABI change" {
     const document: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0" };
@@ -270,8 +262,8 @@ fn isSymbolMetadataCorrection(
 fn findFunction(functions: []const semantic.SemanticFn, wanted: semantic.SemanticFn) ?semantic.SemanticFn {
     for (functions) |function| {
         if (std.mem.eql(u8, function.name, wanted.name) and
-            optionalStringEqual(function.receiver, wanted.receiver) and
-            optionalStringEqual(function.namespace, wanted.namespace)) return function;
+            semantic.optionalStringEqual(function.receiver, wanted.receiver) and
+            semantic.optionalStringEqual(function.namespace, wanted.namespace)) return function;
     }
     return null;
 }
@@ -444,15 +436,7 @@ fn typeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
     };
 }
 
-fn optionalStringEqual(lhs: ?[]const u8, rhs: ?[]const u8) bool {
-    if ((lhs == null) != (rhs == null)) return false;
-    return lhs == null or std.mem.eql(u8, lhs.?, rhs.?);
-}
 
-fn optionalNameEqual(lhs: ?[]const u8, rhs: ?[]const u8) bool {
-    if ((lhs == null) != (rhs == null)) return false;
-    return lhs == null or std.mem.eql(u8, lhs.?, rhs.?);
-}
 
 fn optionalHintEqual(lhs: ?semantic.SemanticHint, rhs: ?semantic.SemanticHint) bool {
     return lhs == rhs;

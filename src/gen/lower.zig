@@ -516,7 +516,7 @@ fn lowerTaggedUnionProjections(allocator: std.mem.Allocator, document: semantic.
     var projections: std.ArrayList(abi.AbiProjection) = .empty;
     for (document.types) |*declaration| {
         if (declaration.kind != .tagged_union) continue;
-        if (taggedUnionUsedByValue(document, declaration.name) and !taggedUnionUsedAsHandle(document, declaration.name)) continue;
+        if (document.isValueOnlyTaggedUnion(declaration.name)) continue;
         const tag_params = try allocator.alloc(abi.AbiParam, 2);
         tag_params[0] = try projectionReceiver(allocator, prefix, declaration.name);
         const tag_output = try allocator.create(abi.AbiScalar);
@@ -577,38 +577,8 @@ fn lowerTaggedUnionProjections(allocator: std.mem.Allocator, document: semantic.
     return projections.toOwnedSlice(allocator);
 }
 
-fn taggedUnionUsedAsHandle(document: semantic.Semantic, name: []const u8) bool {
-    for (document.constructors) |constructor| if (std.mem.eql(u8, constructor.type, name)) return true;
-    for (document.functions) |function| {
-        if (function.receiver) |receiver| if (std.mem.eql(u8, receiver, name)) return true;
-        for (function.params) |parameter| if (containsHandleReference(parameter.type, name)) return true;
-        if (containsHandleReference(function.@"return", name)) return true;
-    }
-    return false;
-}
 
-fn taggedUnionUsedByValue(document: semantic.Semantic, name: []const u8) bool {
-    for (document.functions) |function| {
-        for (function.params) |parameter| {
-            if (parameter.type == .value_struct and std.mem.eql(u8, parameter.type.value_struct.ref, name)) return true;
-        }
-    }
-    return false;
-}
 
-fn containsHandleReference(node: semantic.TypeNode, name: []const u8) bool {
-    return switch (node) {
-        .opaque_ptr => |value| std.mem.eql(u8, value.ref, name),
-        .slice => |value| containsHandleReference(value.element.*, name),
-        .optional => |value| containsHandleReference(value.child.*, name),
-        .error_union => |value| containsHandleReference(value.payload.*, name),
-        .callback => |value| blk: {
-            for (value.params) |parameter| if (containsHandleReference(parameter, name)) break :blk true;
-            break :blk containsHandleReference(value.@"return".*, name);
-        },
-        else => false,
-    };
-}
 
 /// Value snapshot layout. zigo owns this struct outright: the tag comes first,
 /// payloads follow in descending width, and every gap is an explicit
@@ -692,7 +662,7 @@ fn lowerValueStructs(allocator: std.mem.Allocator, document: semantic.Semantic, 
     defer ordered.deinit(allocator);
     for (document.types) |*declaration| {
         if (declaration.kind != .value_struct or declaration.layout != .@"extern") continue;
-        if (!valueStructUsed(document, declaration.name)) continue;
+        if (!document.valueStructUsed(declaration.name)) continue;
         try appendStructInDependencyOrder(allocator, document, declaration, &ordered);
     }
     for (ordered.items) |declaration| {
@@ -718,7 +688,7 @@ fn lowerValueStructs(allocator: std.mem.Allocator, document: semantic.Semantic, 
         try structs.append(allocator, .{
             .owner = declaration,
             .name = declaration.name,
-            .c_name = try cTypeNameAlloc(allocator, prefix, declaration.name),
+            .c_name = try naming.cTypeNameAlloc(allocator, prefix, declaration.name),
             .fields = fields,
             .size = offset + padding(offset, alignment),
             .alignment = alignment,
@@ -751,34 +721,7 @@ fn appendStructInDependencyOrder(
     try ordered.append(allocator, declaration);
 }
 
-/// Only structs a function actually mentions reach the header, so registering
-/// a type without using it adds nothing to the generated surface.
-fn valueStructUsed(document: semantic.Semantic, name: []const u8) bool {
-    for (document.functions) |function| {
-        for (function.params) |parameter| if (mentionsValueStruct(document, parameter.type, name)) return true;
-        if (mentionsValueStruct(document, function.@"return", name)) return true;
-    }
-    return false;
-}
 
-fn mentionsValueStruct(document: semantic.Semantic, node: semantic.TypeNode, name: []const u8) bool {
-    return switch (node) {
-        .value_struct => |value| blk: {
-            if (std.mem.eql(u8, value.ref, name)) break :blk true;
-            for (document.types) |declaration| {
-                if (declaration.kind != .value_struct or !std.mem.eql(u8, declaration.name, value.ref)) continue;
-                for (declaration.fields) |field| {
-                    if (field.type) |child| if (mentionsValueStruct(document, child, name)) break :blk true;
-                }
-            }
-            break :blk false;
-        },
-        .slice => |value| mentionsValueStruct(document, value.element.*, name),
-        .error_union => |value| mentionsValueStruct(document, value.payload.*, name),
-        .optional => |value| mentionsValueStruct(document, value.child.*, name),
-        else => false,
-    };
-}
 
 /// A nested struct is lowered before the struct that embeds it, so its final
 /// size and alignment are already recorded and never recomputed here.
@@ -796,7 +739,7 @@ fn memberLayout(lowered: []const abi.AbiStruct, node: semantic.TypeNode, scalar:
 
 /// Every C name a backend needs for an `opaque` or tagged union handle.
 fn lowerOpaque(allocator: std.mem.Allocator, prefix: []const u8, name: []const u8) !abi.AbiOpaque {
-    return .{ .name = name, .c_name = try cTypeNameAlloc(allocator, prefix, name) };
+    return .{ .name = name, .c_name = try naming.cTypeNameAlloc(allocator, prefix, name) };
 }
 
 /// The handle typedefs the header declares, in declaration order. A tagged
@@ -816,7 +759,7 @@ fn lowerEnums(allocator: std.mem.Allocator, document: semantic.Semantic, prefix:
     var enums: std.ArrayList(abi.AbiEnum) = .empty;
     for (document.types) |declaration| {
         if (declaration.kind != .@"enum") continue;
-        const c_name = try cTypeNameAlloc(allocator, prefix, declaration.name);
+        const c_name = try naming.cTypeNameAlloc(allocator, prefix, declaration.name);
         const constants = try allocator.alloc(abi.AbiEnum.Constant, declaration.fields.len);
         for (declaration.fields, 0..) |field, index| {
             const member = try naming.snakeAlloc(allocator, field.name);
@@ -839,11 +782,6 @@ fn lowerEnums(allocator: std.mem.Allocator, document: semantic.Semantic, prefix:
     return enums.toOwnedSlice(allocator);
 }
 
-fn cTypeNameAlloc(allocator: std.mem.Allocator, prefix: []const u8, type_name: []const u8) ![]u8 {
-    const owner = try naming.snakeAlloc(allocator, type_name);
-    defer allocator.free(owner);
-    return std.fmt.allocPrint(allocator, "{s}_{s}", .{ prefix, owner });
-}
 
 const SnapshotLayout = struct { fields: []const abi.AbiSnapshot.Field, size: usize, alignment: usize };
 
@@ -1005,7 +943,7 @@ fn lowerValue(allocator: std.mem.Allocator, document: semantic.Semantic, prefix:
         },
         .value_struct => |value| .{ .value_struct = .{
             .name = value.ref,
-            .c_name = try cTypeNameAlloc(allocator, prefix, value.ref),
+            .c_name = try naming.cTypeNameAlloc(allocator, prefix, value.ref),
         } },
         // Validation rejects every node that cannot be lowered, so this is a
         // backstop against a malformed document rather than a reachable path.

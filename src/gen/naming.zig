@@ -98,6 +98,26 @@ test "function symbols carry the owning type and normalize to snake_case" {
     try std.testing.expectEqualStrings("zg_deinit", legacy);
 }
 
+/// The C type name a declaration exports: `<prefix>_<snake_case_name>`.
+/// A Go import path segment that may be absent. An empty or `.` base means the
+/// module root, so it contributes neither a separator nor a component — the
+/// alternative spells `"{module}/."`, which is not an import path.
+pub const PathSegment = struct {
+    separator: []const u8,
+    value: []const u8,
+};
+
+pub fn optionalPathSegment(base: []const u8) PathSegment {
+    if (base.len == 0 or std.mem.eql(u8, base, ".")) return .{ .separator = "", .value = "" };
+    return .{ .separator = "/", .value = base };
+}
+
+pub fn cTypeNameAlloc(allocator: std.mem.Allocator, prefix: []const u8, type_name: []const u8) ![]u8 {
+    const owner = try snakeAlloc(allocator, type_name);
+    defer allocator.free(owner);
+    return std.fmt.allocPrint(allocator, "{s}_{s}", .{ prefix, owner });
+}
+
 pub fn projectionSymbolAlloc(allocator: std.mem.Allocator, prefix: []const u8, type_name: []const u8, projection: []const u8) ![]u8 {
     const owner = try snakeAlloc(allocator, type_name);
     defer allocator.free(owner);

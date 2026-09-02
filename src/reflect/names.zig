@@ -248,7 +248,7 @@ fn enrichMatches(
 
     for (functions, 0..) |*function, index| {
         if (matched[index] or !std.mem.eql(u8, function.name, declaration_name)) continue;
-        if (qualified and !optionalStringEqual(functionOwner(function.*), source_owner)) continue;
+        if (qualified and !semantic.optionalStringEqual(functionOwner(function.*), source_owner)) continue;
         const receiver_count: usize = @intFromBool(function.receiver != null);
         if (names.items.len != function.params.len + receiver_count) continue;
 
@@ -287,10 +287,6 @@ fn functionOwner(function: semantic.SemanticFn) ?[]const u8 {
     return function.receiver orelse function.namespace;
 }
 
-fn optionalStringEqual(lhs: ?[]const u8, rhs: ?[]const u8) bool {
-    if (lhs == null or rhs == null) return lhs == null and rhs == null;
-    return std.mem.eql(u8, lhs.?, rhs.?);
-}
 
 /// The doc a declaration carries in its own right: the `///` block Zig
 /// attaches to it, or failing that the ordinary `//` lines written directly

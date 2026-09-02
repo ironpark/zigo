@@ -221,7 +221,7 @@ fn reflectPackages(
             const base = std.fs.path.basename(entry.path);
             break :blk try naming.snakeAlloc(allocator, base);
         };
-        if (!validPackagePath(entry.path)) return packageIssue("invalid package path `{s}`", .{entry.path});
+        if (!semantic.validPackagePath(entry.path)) return packageIssue("invalid package path `{s}`", .{entry.path});
         if (!naming.isGoIdentifier(name)) return packageIssue("package name `{s}` is not a valid Go identifier", .{name});
         for (packages.items) |previous| {
             if (std.mem.eql(u8, previous.path, entry.path)) return packageIssue("duplicate package path `{s}`", .{entry.path});
@@ -286,15 +286,6 @@ fn reflectPackages(
     return packages.toOwnedSlice(allocator);
 }
 
-fn validPackagePath(path: []const u8) bool {
-    if (path.len == 0 or std.fs.path.isAbsolute(path) or std.mem.indexOfScalar(u8, path, '\\') != null) return false;
-    var components = std.mem.splitScalar(u8, path, '/');
-    while (components.next()) |component| {
-        if (component.len == 0 or std.mem.eql(u8, component, ".") or std.mem.eql(u8, component, "..")) return false;
-        for (component) |character| if (!(std.ascii.isAlphanumeric(character) or character == '_' or character == '-' or character == '.')) return false;
-    }
-    return true;
-}
 
 fn packageIssue(comptime detail: []const u8, args: anytype) error{PackageDeclaration} {
     if (!@import("builtin").is_test) std.debug.print("error[ZIGO031]: " ++ detail ++ "\n  hint: each `.packages` entry must uniquely select existing declarations and keep owned functions with their type\n", args);
@@ -1115,54 +1106,47 @@ fn missingOpaqueType(comptime type_name: []const u8, comptime context: []const u
     return error.MissingOpaqueType;
 }
 
-/// Whether `index` is the receiver parameter, which the reflected `params`
-/// leave out.
-fn isReceiverIndex(comptime receiver_index: ?usize, comptime index: usize) bool {
-    return receiver_index != null and receiver_index.? == index;
+/// The two parameter filters the walk needs. `concrete` drops the receiver and
+/// anything reflection cannot name a type for; `exposed` additionally drops
+/// what zigo injects, because an injected argument has no C parameter and no
+/// Go argument, so a binding that had to name it would be naming a value it
+/// never passes.
+const ParamFilter = enum { concrete, exposed };
+
+/// Counts matching parameters, or -- given a `target_index` -- how many precede
+/// it, which is that parameter's slot in the filtered list.
+fn paramSlot(
+    comptime info: std.builtin.Type.Fn,
+    comptime receiver_index: ?usize,
+    comptime filter: ParamFilter,
+    comptime target_index: ?usize,
+) usize {
+    if (info.is_generic and target_index == null) return 0;
+    var count: usize = 0;
+    inline for (info.params, 0..) |parameter, index| {
+        if (target_index) |target| if (index == target) return count;
+        if (receiver_index == index or parameter.is_generic or parameter.type == null) continue;
+        if (filter == .exposed and injectionFor(parameter.type.?) != null) continue;
+        count += 1;
+    }
+    if (target_index != null) unreachable;
+    return count;
 }
 
 fn concreteParamCount(comptime info: std.builtin.Type.Fn, comptime receiver_index: ?usize) usize {
-    if (info.is_generic) return 0;
-    var count: usize = 0;
-    inline for (info.params, 0..) |parameter, index| {
-        if (!isReceiverIndex(receiver_index, index) and !parameter.is_generic and parameter.type != null) count += 1;
-    }
-    return count;
+    return paramSlot(info, receiver_index, .concrete, null);
 }
 
 fn concreteParamIndex(comptime info: std.builtin.Type.Fn, comptime receiver_index: ?usize, comptime target_index: usize) usize {
-    var count: usize = 0;
-    inline for (info.params, 0..) |parameter, index| {
-        if (index == target_index) return count;
-        if (!isReceiverIndex(receiver_index, index) and !parameter.is_generic and parameter.type != null) count += 1;
-    }
-    unreachable;
+    return paramSlot(info, receiver_index, .concrete, target_index);
 }
 
-/// The parameters `.params` names: the concrete ones, minus the receiver and
-/// minus everything zigo injects. An injected argument has no C parameter and
-/// no Go argument, so a binding that had to name it would be naming a value it
-/// never passes.
 fn exposedParamCount(comptime info: std.builtin.Type.Fn, comptime receiver_index: ?usize) usize {
-    if (info.is_generic) return 0;
-    var count: usize = 0;
-    inline for (info.params, 0..) |parameter, index| {
-        if (isReceiverIndex(receiver_index, index) or parameter.is_generic or parameter.type == null) continue;
-        if (injectionFor(parameter.type.?) != null) continue;
-        count += 1;
-    }
-    return count;
+    return paramSlot(info, receiver_index, .exposed, null);
 }
 
 fn exposedParamIndex(comptime info: std.builtin.Type.Fn, comptime receiver_index: ?usize, comptime target_index: usize) usize {
-    var count: usize = 0;
-    inline for (info.params, 0..) |parameter, index| {
-        if (index == target_index) return count;
-        if (isReceiverIndex(receiver_index, index) or parameter.is_generic or parameter.type == null) continue;
-        if (injectionFor(parameter.type.?) != null) continue;
-        count += 1;
-    }
-    unreachable;
+    return paramSlot(info, receiver_index, .exposed, target_index);
 }
 
 /// What a `.params` list of the wrong length is told. Reflection runs before

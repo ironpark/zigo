@@ -48,10 +48,11 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
         const go_package_path = if (options.go_package_path.len != 0) options.go_package_path else go_package;
         try writer.print("Go package: {s}\n", .{go_package});
         try writer.print("Go package path: {s}\n", .{go_package_path});
+        const base = naming.optionalPathSegment(go_package_path);
         if (options.go_module.len != 0) try writer.print("Go import path: {s}{s}{s}\n", .{
             options.go_module,
-            if (std.mem.eql(u8, go_package_path, ".")) "" else "/",
-            if (std.mem.eql(u8, go_package_path, ".")) "" else go_package_path,
+            base.separator,
+            base.value,
         });
     }
     if (options.go_module.len != 0) try writer.print("go module: {s}\n", .{options.go_module});

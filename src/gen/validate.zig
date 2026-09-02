@@ -165,7 +165,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             };
             const tagged_union_value = taggedUnionValueDeclaration(document, parameter.type);
             if (tagged_union_value) |declaration| {
-                if (taggedUnionUsedAsHandle(document, declaration.name)) return .{
+                if (document.taggedUnionUsedAsHandle(declaration.name)) return .{
                     .severity = .@"error",
                     .code = "ZIGO006",
                     .message = "cannot use one tagged union as both a value parameter and a pointer handle",
@@ -332,7 +332,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .hint = "make the enum exhaustive, or register it with `.exhaustive = false`",
         };
         if (declaration.kind == .tagged_union and
-            (!taggedUnionUsedByValue(document, declaration.name) or taggedUnionUsedAsHandle(document, declaration.name)) and
+            !document.isValueOnlyTaggedUnion(declaration.name) and
             !taggedUnionAccessorsSupported(document, declaration)) return .{
             .severity = .@"error",
             .code = "ZIGO006",
@@ -392,7 +392,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
     for (document.types) |declaration| {
         for (document.functions) |function| {
             if (function.receiver != null) continue;
-            if (!optionalStringEqual(declaration.package, function.package)) continue;
+            if (!semantic.optionalStringEqual(declaration.package, function.package)) continue;
             const function_name = try effectivePublicFunctionNameAlloc(allocator, document, function);
             defer allocator.free(function_name);
             if (!std.mem.eql(u8, function_name, declaration.name)) continue;
@@ -420,7 +420,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             if (constructorDeinitFor(document, previous) != null) continue;
             const previous_bucket = previous.receiver orelse "";
             if (!std.mem.eql(u8, bucket, previous_bucket)) continue;
-            if (!optionalStringEqual(function.package, previous.package)) continue;
+            if (!semantic.optionalStringEqual(function.package, previous.package)) continue;
             const previous_name = try effectivePublicFunctionNameAlloc(allocator, document, previous);
             defer allocator.free(previous_name);
             if (!std.mem.eql(u8, name, previous_name)) continue;
@@ -512,7 +512,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
 fn packageMetadataIssue(document: semantic.Semantic) ?diagnostic.Diagnostic {
     const packages = document.packages orelse return null;
     for (packages, 0..) |package, index| {
-        if (!naming.isGoIdentifier(package.name) or !validPackagePath(package.path)) return .{
+        if (!naming.isGoIdentifier(package.name) or !semantic.validPackagePath(package.path)) return .{
             .severity = .@"error",
             .code = "ZIGO031",
             .message = "semantic document contains an invalid public package declaration",
@@ -532,7 +532,7 @@ fn packageMetadataIssue(document: semantic.Semantic) ?diagnostic.Diagnostic {
         if (!hasPackage(packages, name)) return unknownPackage(name);
         const owner = function.receiver orelse function.goOwner() orelse continue;
         for (document.types) |declaration| if (std.mem.eql(u8, declaration.name, owner)) {
-            if (!optionalStringEqual(declaration.package, function.package)) return .{
+            if (!semantic.optionalStringEqual(declaration.package, function.package)) return .{
                 .severity = .@"error",
                 .code = "ZIGO031",
                 .message = "a function is split from its owning type",
@@ -559,20 +559,7 @@ fn unknownPackage(name: []const u8) diagnostic.Diagnostic {
     };
 }
 
-fn optionalStringEqual(lhs: ?[]const u8, rhs: ?[]const u8) bool {
-    if (lhs == null or rhs == null) return lhs == null and rhs == null;
-    return std.mem.eql(u8, lhs.?, rhs.?);
-}
 
-fn validPackagePath(path: []const u8) bool {
-    if (path.len == 0 or std.fs.path.isAbsolute(path) or std.mem.indexOfScalar(u8, path, '\\') != null) return false;
-    var components = std.mem.splitScalar(u8, path, '/');
-    while (components.next()) |component| {
-        if (component.len == 0 or std.mem.eql(u8, component, ".") or std.mem.eql(u8, component, "..")) return false;
-        for (component) |character| if (!(std.ascii.isAlphanumeric(character) or character == '_' or character == '-' or character == '.')) return false;
-    }
-    return true;
-}
 
 fn packageCycleIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
     const packages = document.packages orelse return null;
@@ -911,10 +898,6 @@ fn identifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?
     return null;
 }
 
-const CIdentifier = struct {
-    name: []const u8,
-    declaration: []const u8,
-};
 
 /// The C header has one ordinary identifier namespace shared by typedefs,
 /// exported functions, and macros. Check the exact names lowering will emit
@@ -929,19 +912,21 @@ fn cIdentifierBackendIssue(allocator: std.mem.Allocator, document: semantic.Sema
     defer scratch_arena.deinit();
     const scratch = scratch_arena.allocator();
 
-    var identifiers: std.ArrayList(CIdentifier) = .empty;
+    // Keyed by the emitted C name so a collision costs one lookup rather than a
+    // scan of every identifier collected so far.
+    var identifiers: std.StringHashMapUnmanaged([]const u8) = .empty;
 
     for (document.types) |declaration| {
         const emits_handle = declaration.kind == .@"opaque" or (declaration.kind == .tagged_union and
-            !(taggedUnionUsedByValue(document, declaration.name) and !taggedUnionUsedAsHandle(document, declaration.name)));
-        const emits_struct = declaration.kind == .value_struct and valueStructUsed(document, declaration.name);
+            !document.isValueOnlyTaggedUnion(declaration.name));
+        const emits_struct = declaration.kind == .value_struct and document.valueStructUsed(declaration.name);
         if (emits_handle or declaration.kind == .@"enum" or emits_struct) {
-            const name = try cTypeNameAlloc(scratch, document.prefix, declaration.name);
+            const name = try naming.cTypeNameAlloc(scratch, document.prefix, declaration.name);
             const label = try std.fmt.allocPrint(scratch, "type `{s}`", .{declaration.name});
             if (try addCIdentifier(allocator, scratch, &identifiers, name, label)) |issue| return issue;
         }
         if (declaration.kind == .@"enum") for (declaration.fields) |field| {
-            const type_name = try cTypeNameAlloc(scratch, document.prefix, declaration.name);
+            const type_name = try naming.cTypeNameAlloc(scratch, document.prefix, declaration.name);
             const member = try naming.snakeAlloc(scratch, field.name);
             const combined = try std.fmt.allocPrint(scratch, "{s}_{s}", .{ type_name, member });
             const name = try std.ascii.allocUpperString(scratch, combined);
@@ -960,7 +945,7 @@ fn cIdentifierBackendIssue(allocator: std.mem.Allocator, document: semantic.Sema
     }
     for (document.types) |declaration| {
         if (declaration.kind != .tagged_union) continue;
-        if (!(taggedUnionUsedByValue(document, declaration.name) and !taggedUnionUsedAsHandle(document, declaration.name))) {
+        if (!document.isValueOnlyTaggedUnion(declaration.name)) {
             const tag = try naming.projectionSymbolAlloc(scratch, document.prefix, declaration.name, "tag");
             const tag_label = try std.fmt.allocPrint(scratch, "tag projection `{s}`", .{declaration.name});
             if (try addCIdentifier(allocator, scratch, &identifiers, tag, tag_label)) |issue| return issue;
@@ -988,32 +973,26 @@ fn cIdentifierBackendIssue(allocator: std.mem.Allocator, document: semantic.Sema
 fn addCIdentifier(
     allocator: std.mem.Allocator,
     scratch: std.mem.Allocator,
-    identifiers: *std.ArrayList(CIdentifier),
+    identifiers: *std.StringHashMapUnmanaged([]const u8),
     name: []const u8,
     declaration: []const u8,
 ) !?diagnostic.Diagnostic {
-    for (identifiers.items) |previous| {
-        if (!std.mem.eql(u8, previous.name, name)) continue;
-        return .{
-            .severity = .@"error",
-            .code = "ZIGO036",
-            .message = try std.fmt.allocPrint(
-                allocator,
-                "C identifier `{s}` collides between {s} and {s}",
-                .{ name, previous.declaration, declaration },
-            ),
-            .site = .{ .path = "semantic.json", .declaration = try allocator.dupe(u8, declaration) },
-            .hint = "give one declaration a distinct `.name`, or choose a different binding `.prefix`",
-        };
-    }
-    try identifiers.append(scratch, .{ .name = name, .declaration = declaration });
+    const entry = try identifiers.getOrPut(scratch, name);
+    if (entry.found_existing) return .{
+        .severity = .@"error",
+        .code = "ZIGO036",
+        .message = try std.fmt.allocPrint(
+            allocator,
+            "C identifier `{s}` collides between {s} and {s}",
+            .{ name, entry.value_ptr.*, declaration },
+        ),
+        .site = .{ .path = "semantic.json", .declaration = try allocator.dupe(u8, declaration) },
+        .hint = "give one declaration a distinct `.name`, or choose a different binding `.prefix`",
+    };
+    entry.value_ptr.* = declaration;
     return null;
 }
 
-fn cTypeNameAlloc(allocator: std.mem.Allocator, prefix: []const u8, type_name: []const u8) ![]u8 {
-    const owner = try naming.snakeAlloc(allocator, type_name);
-    return std.fmt.allocPrint(allocator, "{s}_{s}", .{ prefix, owner });
-}
 
 fn functionHasCallback(function: semantic.SemanticFn) bool {
     for (function.params) |parameter| {
@@ -1022,32 +1001,7 @@ fn functionHasCallback(function: semantic.SemanticFn) bool {
     return false;
 }
 
-fn valueStructUsed(document: semantic.Semantic, name: []const u8) bool {
-    for (document.functions) |function| {
-        for (function.params) |parameter| if (mentionsValueStruct(document, parameter.type, name)) return true;
-        if (mentionsValueStruct(document, function.@"return", name)) return true;
-    }
-    return false;
-}
 
-fn mentionsValueStruct(document: semantic.Semantic, node: semantic.TypeNode, name: []const u8) bool {
-    return switch (node) {
-        .value_struct => |value| blk: {
-            if (std.mem.eql(u8, value.ref, name)) break :blk true;
-            for (document.types) |declaration| {
-                if (declaration.kind != .value_struct or !std.mem.eql(u8, declaration.name, value.ref)) continue;
-                for (declaration.fields) |field| if (field.type) |child| {
-                    if (mentionsValueStruct(document, child, name)) break :blk true;
-                };
-            }
-            break :blk false;
-        },
-        .slice => |value| mentionsValueStruct(document, value.element.*, name),
-        .error_union => |value| mentionsValueStruct(document, value.payload.*, name),
-        .optional => |value| mentionsValueStruct(document, value.child.*, name),
-        else => false,
-    };
-}
 
 const NameCheck = struct {
     label: []const u8,
@@ -1370,38 +1324,8 @@ fn taggedUnionValuePayloadSupported(document: semantic.Semantic, node: semantic.
     };
 }
 
-fn taggedUnionUsedAsHandle(document: semantic.Semantic, name: []const u8) bool {
-    for (document.constructors) |constructor| if (std.mem.eql(u8, constructor.type, name)) return true;
-    for (document.functions) |function| {
-        if (function.receiver) |receiver| if (std.mem.eql(u8, receiver, name)) return true;
-        for (function.params) |parameter| if (containsHandleReference(parameter.type, name)) return true;
-        if (containsHandleReference(function.@"return", name)) return true;
-    }
-    return false;
-}
 
-fn taggedUnionUsedByValue(document: semantic.Semantic, name: []const u8) bool {
-    for (document.functions) |function| {
-        for (function.params) |parameter| {
-            if (parameter.type == .value_struct and std.mem.eql(u8, parameter.type.value_struct.ref, name)) return true;
-        }
-    }
-    return false;
-}
 
-fn containsHandleReference(node: semantic.TypeNode, name: []const u8) bool {
-    return switch (node) {
-        .opaque_ptr => |value| std.mem.eql(u8, value.ref, name),
-        .slice => |value| containsHandleReference(value.element.*, name),
-        .optional => |value| containsHandleReference(value.child.*, name),
-        .error_union => |value| containsHandleReference(value.payload.*, name),
-        .callback => |value| blk: {
-            for (value.params) |parameter| if (containsHandleReference(parameter, name)) break :blk true;
-            break :blk containsHandleReference(value.@"return".*, name);
-        },
-        else => false,
-    };
-}
 
 fn taggedUnionAccessorsSupported(document: semantic.Semantic, declaration: semantic.TypeDecl) bool {
     const tag = declaration.tag_type orelse return false;

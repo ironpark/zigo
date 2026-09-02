@@ -519,7 +519,103 @@ pub const Semantic = struct {
         defer dynamic.deinit();
         return std.json.parseFromValue(Semantic, allocator, dynamic.value, .{});
     }
+
+    /// A tagged union crosses the boundary by value when a function takes it as
+    /// a snapshot parameter.
+    pub fn taggedUnionUsedByValue(self: Semantic, name: []const u8) bool {
+        for (self.functions) |function| if (functionPassesByValue(function, name)) return true;
+        return false;
+    }
+
+    /// ...and as a handle when it is constructed, received, or reachable from
+    /// any parameter or return type. Both can be true at once.
+    pub fn taggedUnionUsedAsHandle(self: Semantic, name: []const u8) bool {
+        for (self.constructors) |constructor| if (std.mem.eql(u8, constructor.type, name)) return true;
+        for (self.functions) |function| if (functionUsesAsHandle(function, name)) return true;
+        return false;
+    }
+
+    /// Value-only unions get a snapshot struct instead of an opaque handle.
+    pub fn isValueOnlyTaggedUnion(self: Semantic, name: []const u8) bool {
+        return self.taggedUnionUsedByValue(name) and !self.taggedUnionUsedAsHandle(name);
+    }
+
+    /// Only structs a function actually mentions reach the header, so registering
+    /// a type without using it adds nothing to the generated surface.
+    pub fn valueStructUsed(self: Semantic, name: []const u8) bool {
+        for (self.functions) |function| {
+            for (function.params) |parameter| if (self.mentionsValueStruct(parameter.type, name)) return true;
+            if (self.mentionsValueStruct(function.@"return", name)) return true;
+        }
+        return false;
+    }
+
+    pub fn mentionsValueStruct(self: Semantic, node: TypeNode, name: []const u8) bool {
+        return switch (node) {
+            .value_struct => |value| blk: {
+                if (std.mem.eql(u8, value.ref, name)) break :blk true;
+                for (self.types) |declaration| {
+                    if (declaration.kind != .value_struct or !std.mem.eql(u8, declaration.name, value.ref)) continue;
+                    for (declaration.fields) |field| if (field.type) |child| {
+                        if (self.mentionsValueStruct(child, name)) break :blk true;
+                    };
+                }
+                break :blk false;
+            },
+            .slice => |value| self.mentionsValueStruct(value.element.*, name),
+            .error_union => |value| self.mentionsValueStruct(value.payload.*, name),
+            .optional => |value| self.mentionsValueStruct(value.child.*, name),
+            else => false,
+        };
+    }
 };
+
+pub fn optionalStringEqual(lhs: ?[]const u8, rhs: ?[]const u8) bool {
+    if (lhs == null or rhs == null) return lhs == null and rhs == null;
+    return std.mem.eql(u8, lhs.?, rhs.?);
+}
+
+/// The grammar a `.packages` entry's import path must follow: relative, `/`
+/// separated, and made of identifier-safe components.
+pub fn validPackagePath(path: []const u8) bool {
+    if (path.len == 0 or std.fs.path.isAbsolute(path) or std.mem.indexOfScalar(u8, path, '\\') != null) return false;
+    var components = std.mem.splitScalar(u8, path, '/');
+    while (components.next()) |component| {
+        if (component.len == 0 or std.mem.eql(u8, component, ".") or std.mem.eql(u8, component, "..")) return false;
+        for (component) |character| if (!(std.ascii.isAlphanumeric(character) or character == '_' or character == '-' or character == '.')) return false;
+    }
+    return true;
+}
+
+/// The by-value and as-handle rules, per function, so callers holding lowered
+/// functions can apply the same rule to their `origin` without a `Semantic`.
+pub fn functionPassesByValue(function: SemanticFn, name: []const u8) bool {
+    for (function.params) |parameter| {
+        if (parameter.type == .value_struct and std.mem.eql(u8, parameter.type.value_struct.ref, name)) return true;
+    }
+    return false;
+}
+
+pub fn functionUsesAsHandle(function: SemanticFn, name: []const u8) bool {
+    if (function.receiver) |receiver| if (std.mem.eql(u8, receiver, name)) return true;
+    for (function.params) |parameter| if (containsHandleReference(parameter.type, name)) return true;
+    return containsHandleReference(function.@"return", name);
+}
+
+/// Whether `node` reaches the type `name` in a position that needs a handle.
+pub fn containsHandleReference(node: TypeNode, name: []const u8) bool {
+    return switch (node) {
+        .opaque_ptr => |value| std.mem.eql(u8, value.ref, name),
+        .slice => |value| containsHandleReference(value.element.*, name),
+        .optional => |value| containsHandleReference(value.child.*, name),
+        .error_union => |value| containsHandleReference(value.payload.*, name),
+        .callback => |value| blk: {
+            for (value.params) |parameter| if (containsHandleReference(parameter, name)) break :blk true;
+            break :blk containsHandleReference(value.@"return".*, name);
+        },
+        else => false,
+    };
+}
 
 test "stream parameters round-trip through the semantic document" {
     const document: Semantic = .{

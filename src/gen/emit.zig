@@ -54,6 +54,8 @@ pub const Options = struct {
 pub const Emitter = struct {
     pathAlloc: *const fn (std.mem.Allocator, abi.Program, Options) anyerror![]u8,
     render: *const fn (std.mem.Allocator, *std.Io.Writer, abi.Program, Options) anyerror!void,
+    /// True when `render` already ran `qualifyPublicTypesAlloc` over its output.
+    qualifies_internally: bool = false,
 };
 
 pub const core_emitters = [_]Emitter{
@@ -66,12 +68,16 @@ pub const core_emitters = [_]Emitter{
     .{ .pathAlloc = lifecyclePath, .render = renderLifecycle },
 };
 
+/// `qualifies_internally` marks the emitters that route through
+/// `renderPublicFile`, which has to qualify before it can read the import block
+/// off the body. Re-running the pass over their output would be a second full
+/// scan of every generated file for no change.
 pub const public_emitters = [_]Emitter{
     .{ .pathAlloc = publicPath, .render = renderPublic },
-    .{ .pathAlloc = publicEnumsPath, .render = renderPublicEnumsFile },
-    .{ .pathAlloc = publicStructsPath, .render = renderPublicStructsFile },
-    .{ .pathAlloc = publicHandlesPath, .render = renderPublicHandlesFile },
-    .{ .pathAlloc = publicRuntimePath, .render = renderPublicRuntimeFile },
+    .{ .pathAlloc = publicEnumsPath, .render = renderPublicEnumsFile, .qualifies_internally = true },
+    .{ .pathAlloc = publicStructsPath, .render = renderPublicStructsFile, .qualifies_internally = true },
+    .{ .pathAlloc = publicHandlesPath, .render = renderPublicHandlesFile, .qualifies_internally = true },
+    .{ .pathAlloc = publicRuntimePath, .render = renderPublicRuntimeFile, .qualifies_internally = true },
     .{ .pathAlloc = publicErrorsPath, .render = renderPublicErrors },
 };
 
@@ -3658,10 +3664,10 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
     };
     const default_foreign = options.active_package != null and options.active_package.?.len != 0 and programReferencesPackage(program, options.active_package.?, "");
     var foreign: std.ArrayList(semantic.Package) = .empty;
-    defer foreign.deinit(std.heap.page_allocator);
+    defer foreign.deinit(allocator);
     if (options.active_package != null) if (program.packages) |packages| for (packages) |foreign_package| {
         if (std.mem.eql(u8, foreign_package.name, options.active_package.?)) continue;
-        if (programReferencesPackage(program, options.active_package.?, foreign_package.name)) try foreign.append(std.heap.page_allocator, foreign_package);
+        if (programReferencesPackage(program, options.active_package.?, foreign_package.name)) try foreign.append(allocator, foreign_package);
     };
     const import_count = @as(usize, @intFromBool(needs_io)) + @as(usize, @intFromBool(needs_runtime)) +
         @as(usize, @intFromBool(needs_unsafe)) + @as(usize, @intFromBool(needs_raw)) +
@@ -4092,7 +4098,7 @@ fn renderPublicFile(
     // type names that merely occur as substrings of other identifiers.
     const text = try qualifyPublicTypesAlloc(allocator, body.written(), program, options);
     defer allocator.free(text);
-    try writePublicImports(writer, text, program, options);
+    try writePublicImports(allocator, writer, text, program, options);
     try writer.writeAll(text);
 }
 
@@ -4110,7 +4116,7 @@ const public_std_imports = [_]struct { qualifier: []const u8, path: []const u8 }
     .{ .qualifier = "unsafe", .path = "unsafe" },
 };
 
-fn writePublicImports(writer: *std.Io.Writer, body: []const u8, program: abi.Program, options: Options) !void {
+fn writePublicImports(allocator: std.mem.Allocator, writer: *std.Io.Writer, body: []const u8, program: abi.Program, options: Options) !void {
     var needed: [public_std_imports.len][]const u8 = undefined;
     var count: usize = 0;
     for (public_std_imports) |entry| {
@@ -4124,12 +4130,12 @@ fn writePublicImports(writer: *std.Io.Writer, body: []const u8, program: abi.Pro
     const lifecycle = bodyUsesQualifier(body, "lifecycle");
     const default_foreign = bodyUsesQualifier(body, "zigo_default");
     var foreign: std.ArrayList(semantic.Package) = .empty;
-    defer foreign.deinit(std.heap.page_allocator);
+    defer foreign.deinit(allocator);
     if (options.active_package != null) if (program.packages) |packages| for (packages) |package| {
         if (std.mem.eql(u8, package.name, options.active_package.?)) continue;
         var qualifier_buffer: [256]u8 = undefined;
         const qualifier = std.fmt.bufPrint(&qualifier_buffer, "zigo_pkg_{s}", .{package.name}) catch continue;
-        if (bodyUsesQualifier(body, qualifier)) try foreign.append(std.heap.page_allocator, package);
+        if (bodyUsesQualifier(body, qualifier)) try foreign.append(allocator, package);
     };
     if (count == 0 and !raw and !lifecycle and !default_foreign and foreign.items.len == 0) return writer.writeByte('\n');
     if (count + @as(usize, @intFromBool(raw)) + @as(usize, @intFromBool(lifecycle)) + @as(usize, @intFromBool(default_foreign)) + foreign.items.len == 1) {
@@ -4163,12 +4169,8 @@ fn writePublicImports(writer: *std.Io.Writer, body: []const u8, program: abi.Pro
 }
 
 fn writeDefaultPackageImport(writer: *std.Io.Writer, options: Options, indent: []const u8) !void {
-    try writer.print("{s}zigo_default \"{s}{s}{s}\"\n", .{
-        indent,
-        options.go_module,
-        if (options.default_package_path.len == 0 or std.mem.eql(u8, options.default_package_path, ".")) "" else "/",
-        if (options.default_package_path.len == 0 or std.mem.eql(u8, options.default_package_path, ".")) "" else options.default_package_path,
-    });
+    const base = naming.optionalPathSegment(options.default_package_path);
+    try writer.print("{s}zigo_default \"{s}{s}{s}\"\n", .{ indent, options.go_module, base.separator, base.value });
 }
 
 /// True when the body uses `qualifier.` as a package selector in code. Line
@@ -4207,13 +4209,13 @@ fn bodyUsesQualifier(body: []const u8, qualifier: []const u8) bool {
 }
 
 fn writeForeignImport(writer: *std.Io.Writer, package: semantic.Package, options: Options, indent: []const u8) !void {
-    const base = options.default_package_path;
+    const base = naming.optionalPathSegment(options.default_package_path);
     try writer.print("{s}zigo_pkg_{s} \"{s}{s}{s}/{s}\"\n", .{
         indent,
         package.name,
         options.go_module,
-        if (base.len == 0 or std.mem.eql(u8, base, ".")) "" else "/",
-        if (base.len == 0 or std.mem.eql(u8, base, ".")) "" else base,
+        base.separator,
+        base.value,
         package.path,
     });
 }
@@ -4224,6 +4226,11 @@ fn writeForeignImport(writer: *std.Io.Writer, package: semantic.Package, options
 /// making split-package imports explicit and collision-free.
 pub fn qualifyPublicTypesAlloc(allocator: std.mem.Allocator, source: []const u8, program: abi.Program, options: Options) ![]u8 {
     if (options.active_package == null) return allocator.dupe(u8, source);
+    // One name -> owning package index up front: the scan below asks this
+    // question for every identifier token in the file.
+    var owners: std.StringHashMapUnmanaged(?[]const u8) = .empty;
+    defer owners.deinit(allocator);
+    for (program.types) |declaration| try owners.put(allocator, declaration.name, declaration.package);
     var output: std.Io.Writer.Allocating = .init(allocator);
     defer output.deinit();
     var index: usize = 0;
@@ -4260,77 +4267,68 @@ pub fn qualifyPublicTypesAlloc(allocator: std.mem.Allocator, source: []const u8,
             try output.writer.writeAll(identifier);
             continue;
         }
-        var qualifier: ?[]const u8 = null;
-        for (program.types) |declaration| {
-            if (!std.mem.eql(u8, declaration.name, identifier) or packageMatches(declaration.package, options.active_package)) continue;
-            qualifier = declaration.package;
-            break;
+        if (owners.get(identifier)) |owner| {
+            if (!packageMatches(owner, options.active_package)) {
+                if (owner) |package_name|
+                    try output.writer.print("zigo_pkg_{s}.", .{package_name})
+                else if (options.active_package.?.len != 0)
+                    try output.writer.writeAll("zigo_default.");
+            }
         }
-        if (qualifier) |package_name|
-            try output.writer.print("zigo_pkg_{s}.", .{package_name})
-        else if (qualifier == null and typeHasPackage(program, identifier, "") and options.active_package.?.len != 0)
-            try output.writer.writeAll("zigo_default.");
         try output.writer.writeAll(identifier);
     }
     return output.toOwnedSlice();
 }
 
-fn programReferencesPackage(program: abi.Program, active: []const u8, target: []const u8) bool {
+/// The one traversal both reference questions need: every type name a package
+/// can reach through its functions and its own declarations. The two callers
+/// differ only in what they ask about the name at the leaf.
+const RefLeaf = union(enum) {
+    /// The named type is declared in `package`.
+    package: []const u8,
+    /// The named type is `name`.
+    name: []const u8,
+};
+
+fn programReferences(program: abi.Program, active: []const u8, leaf: RefLeaf) bool {
     for (program.functions) |function| {
-        for (function.origin.params) |parameter| if (nodeReferencesPackage(program, parameter.type, target)) return true;
-        if (nodeReferencesPackage(program, function.origin.@"return", target)) return true;
+        for (function.origin.params) |parameter| if (nodeReferences(program, parameter.type, leaf)) return true;
+        if (nodeReferences(program, function.origin.@"return", leaf)) return true;
     }
     for (program.types) |declaration| {
         if (!packageMatches(declaration.package, active)) continue;
-        if (declaration.tag_type) |node| if (nodeReferencesPackage(program, node, target)) return true;
-        for (declaration.fields) |field| if (field.type) |node| if (nodeReferencesPackage(program, node, target)) return true;
+        if (declaration.tag_type) |node| if (nodeReferences(program, node, leaf)) return true;
+        for (declaration.fields) |field| if (field.type) |node| if (nodeReferences(program, node, leaf)) return true;
     }
     return false;
 }
 
-fn nodeReferencesPackage(program: abi.Program, node: semantic.TypeNode, target: []const u8) bool {
-    switch (node) {
-        .@"enum" => |value| return typeHasPackage(program, value.ref, target),
-        .opaque_ptr => |value| return typeHasPackage(program, value.ref, target),
-        .value_struct => |value| return typeHasPackage(program, value.ref, target),
-        .slice => |value| return nodeReferencesPackage(program, value.element.*, target),
-        .optional => |value| return nodeReferencesPackage(program, value.child.*, target),
-        .error_union => |value| return nodeReferencesPackage(program, value.payload.*, target),
+fn nodeReferences(program: abi.Program, node: semantic.TypeNode, leaf: RefLeaf) bool {
+    const referenced: []const u8 = switch (node) {
+        .@"enum" => |value| value.ref,
+        .opaque_ptr => |value| value.ref,
+        .value_struct => |value| value.ref,
+        .slice => |value| return nodeReferences(program, value.element.*, leaf),
+        .optional => |value| return nodeReferences(program, value.child.*, leaf),
+        .error_union => |value| return nodeReferences(program, value.payload.*, leaf),
         .callback => |value| {
-            for (value.params) |parameter| if (nodeReferencesPackage(program, parameter, target)) return true;
-            return nodeReferencesPackage(program, value.@"return".*, target);
+            for (value.params) |parameter| if (nodeReferences(program, parameter, leaf)) return true;
+            return nodeReferences(program, value.@"return".*, leaf);
         },
         else => return false,
-    }
+    };
+    return switch (leaf) {
+        .package => |target| typeHasPackage(program, referenced, target),
+        .name => |target| std.mem.eql(u8, referenced, target),
+    };
+}
+
+fn programReferencesPackage(program: abi.Program, active: []const u8, target: []const u8) bool {
+    return programReferences(program, active, .{ .package = target });
 }
 
 fn programReferencesType(program: abi.Program, active: []const u8, target: []const u8) bool {
-    for (program.functions) |function| {
-        for (function.origin.params) |parameter| if (nodeReferencesType(parameter.type, target)) return true;
-        if (nodeReferencesType(function.origin.@"return", target)) return true;
-    }
-    for (program.types) |declaration| {
-        if (!packageMatches(declaration.package, active)) continue;
-        if (declaration.tag_type) |node| if (nodeReferencesType(node, target)) return true;
-        for (declaration.fields) |field| if (field.type) |node| if (nodeReferencesType(node, target)) return true;
-    }
-    return false;
-}
-
-fn nodeReferencesType(node: semantic.TypeNode, target: []const u8) bool {
-    return switch (node) {
-        .@"enum" => |value| std.mem.eql(u8, value.ref, target),
-        .opaque_ptr => |value| std.mem.eql(u8, value.ref, target),
-        .value_struct => |value| std.mem.eql(u8, value.ref, target),
-        .slice => |value| nodeReferencesType(value.element.*, target),
-        .optional => |value| nodeReferencesType(value.child.*, target),
-        .error_union => |value| nodeReferencesType(value.payload.*, target),
-        .callback => |value| blk: {
-            for (value.params) |parameter| if (nodeReferencesType(parameter, target)) break :blk true;
-            break :blk nodeReferencesType(value.@"return".*, target);
-        },
-        else => false,
-    };
+    return programReferences(program, active, .{ .name = target });
 }
 
 fn typeHasPackage(program: abi.Program, name: []const u8, target: []const u8) bool {
@@ -4430,7 +4428,7 @@ fn renderUnionFile(
     try renderPublicUnionVariants(allocator, &body.writer, program, entry);
     const text = body.written();
     if (text.len == 0) return;
-    try writePublicImports(writer, text, program, options);
+    try writePublicImports(allocator, writer, text, program, options);
     try writer.writeAll(text);
 }
 
@@ -4574,8 +4572,6 @@ fn renderPublicTaggedUnionValues(allocator: std.mem.Allocator, writer: *std.Io.W
         for (declaration.fields) |field| {
             const constructor = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(constructor);
-            const tag_constant = try naming.pascalAlloc(allocator, field.name);
-            defer allocator.free(tag_constant);
             const payload = field.type.?;
             const argument_name = if (payload == .int or payload == .float) "n" else "value";
             try writer.print("// {s}{s} constructs the {s} variant.\nfunc {s}{s}(", .{ declaration.name, constructor, field.name, declaration.name, constructor });
@@ -4583,7 +4579,7 @@ fn renderPublicTaggedUnionValues(allocator: std.mem.Allocator, writer: *std.Io.W
                 try writer.print("{s} ", .{argument_name});
                 try writePublicGoType(writer, payload);
             }
-            try writer.print(") {0s} {{\n\treturn {0s}{{tag: {1s}{2s}", .{ declaration.name, tag_type, tag_constant });
+            try writer.print(") {0s} {{\n\treturn {0s}{{tag: {1s}{2s}", .{ declaration.name, tag_type, constructor });
             if (payload != .void) {
                 const member = try naming.camelAlloc(allocator, field.name);
                 defer allocator.free(member);
@@ -5427,16 +5423,20 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         // A call pins the handle open with zigoAcquire and lets go with
         // zigoRelease; `mu` is dropped in between, so nothing that happens
         // inside native can make another goroutine wait on this handle.
-        if (can_be_borrowed) {
+        if (can_be_borrowed or dependent_parent != null) {
             try writer.print(
                 "// zigoAcquire pins {0s} and its parent open for one native call.\n" ++
                     "func ({0s} *{1s}) zigoAcquire(operation string) (unsafe.Pointer, error) {{\n" ++
                     "\tif {0s} == nil {{\n\t\treturn nil, &HandleError{{Operation: operation}}\n\t}}\n" ++
-                    "\t{0s}.mu.Lock()\n\tvar parent zigoHandle\n",
+                    "\t{0s}.mu.Lock()\n",
                 .{ recv, declaration.name },
             );
-            if (can_be_borrowed) try writer.print("\tparent = {0s}.owner\n", .{recv});
-            if (dependent_parent != null) try writer.print("\tif parent == nil {{\n\t\tparent = {0s}.parent\n\t}}\n", .{recv});
+            // A borrowed handle may have either an owner or a dependency parent;
+            // a purely dependent one only ever has the latter.
+            if (can_be_borrowed) {
+                try writer.print("\tvar parent zigoHandle\n\tparent = {0s}.owner\n", .{recv});
+                if (dependent_parent != null) try writer.print("\tif parent == nil {{\n\t\tparent = {0s}.parent\n\t}}\n", .{recv});
+            } else try writer.print("\tparent := {0s}.parent\n", .{recv});
             try writer.print(
                 "\t{0s}.mu.Unlock()\n" ++
                     "\tif parent != nil {{\n\t\tif _, err := parent.{2s}(operation); err != nil {{\n\t\t\treturn nil, err\n\t\t}}\n\t}}\n" ++
@@ -5445,19 +5445,6 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                     "\tif {0s}.poison != nil {{\n\t\terr := {0s}.poison.{1s}(operation)\n\t\t{0s}.mu.Unlock()\n\t\tif parent != nil {{\n\t\t\tparent.{3s}()\n\t\t}}\n\t\treturn nil, err\n\t}}\n" ++
                     "\t{0s}.active++\n\tptr := {0s}.ptr\n\t{0s}.mu.Unlock()\n\treturn ptr, nil\n}}\n\n",
                 .{ recv, poison_method, parent_acquire_method, parent_release_method },
-            );
-        } else if (dependent_parent != null) {
-            try writer.print(
-                "// zigoAcquire pins {0s} and its parent open for one native call.\n" ++
-                    "func ({0s} *{1s}) zigoAcquire(operation string) (unsafe.Pointer, error) {{\n" ++
-                    "\tif {0s} == nil {{\n\t\treturn nil, &HandleError{{Operation: operation}}\n\t}}\n" ++
-                    "\t{0s}.mu.Lock()\n\tparent := {0s}.parent\n\t{0s}.mu.Unlock()\n" ++
-                    "\tif parent != nil {{\n\t\tif _, err := parent.{3s}(operation); err != nil {{\n\t\t\treturn nil, err\n\t\t}}\n\t}}\n" ++
-                    "\t{0s}.mu.Lock()\n" ++
-                    "\tif {0s}.closed || {0s}.ptr == nil {{\n\t\t{0s}.mu.Unlock()\n\t\tif parent != nil {{\n\t\t\tparent.{4s}()\n\t\t}}\n\t\treturn nil, &HandleError{{Operation: operation}}\n\t}}\n" ++
-                    "\tif {0s}.poison != nil {{\n\t\terr := {0s}.poison.{2s}(operation)\n\t\t{0s}.mu.Unlock()\n\t\tif parent != nil {{\n\t\t\tparent.{4s}()\n\t\t}}\n\t\treturn nil, err\n\t}}\n" ++
-                    "\t{0s}.active++\n\tptr := {0s}.ptr\n\t{0s}.mu.Unlock()\n\treturn ptr, nil\n}}\n\n",
-                .{ recv, declaration.name, poison_method, parent_acquire_method, parent_release_method },
             );
         } else {
             try writer.print(
@@ -5477,20 +5464,16 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         try writer.print("func ({0s} *{1s}) zigoRelease() {{\n\tif {0s} == nil {{\n\t\treturn\n\t}}\n\t{0s}.mu.Lock()\n\t{0s}.active--\n", .{ recv, declaration.name });
         if (auto_cleanup) {
             if (can_be_borrowed) {
-                try writer.writeAll("\tvar parent zigoHandle\n");
-                if (can_be_borrowed) try writer.print("\tparent = {0s}.owner\n", .{recv});
+                try writer.print("\tvar parent zigoHandle\n\tparent = {0s}.owner\n", .{recv});
                 if (dependent_parent != null) try writer.print("\tif parent == nil {{ parent = {0s}.parent }}\n", .{recv});
             } else if (dependent_parent != null) try writer.print("\tparent := {0s}.parent\n", .{recv});
             try writer.print("\tstate, release := {0s}.zigoTakeLocked()\n\t{0s}.mu.Unlock()\n\tif release {{\n\t\tcleanup{1s}(state)\n\t}}\n", .{ recv, declaration.name });
-            if (can_be_borrowed)
-                try writer.print("\tif parent != nil {{\n\t\tparent.{s}()\n\t}}\n", .{parent_release_method})
-            else if (dependent_parent != null)
+            if (can_be_borrowed or dependent_parent != null)
                 try writer.print("\tif parent != nil {{\n\t\tparent.{s}()\n\t}}\n", .{parent_release_method});
             try writer.writeAll("}\n\n");
         } else {
             if (can_be_borrowed) {
-                try writer.writeAll("\tvar parent zigoHandle\n");
-                try writer.print("\tparent = {0s}.owner\n", .{recv});
+                try writer.print("\tvar parent zigoHandle\n\tparent = {0s}.owner\n", .{recv});
                 if (dependent_parent != null) try writer.print("\tif parent == nil {{ parent = {0s}.parent }}\n", .{recv});
             }
             try writer.print("\t{0s}.mu.Unlock()\n", .{recv});
@@ -5504,8 +5487,7 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             .{ recv, declaration.name },
         );
         if (can_be_borrowed) {
-            try writer.writeAll("\tvar parent zigoHandle\n");
-            try writer.print("\tparent = {0s}.owner\n", .{recv});
+            try writer.print("\tvar parent zigoHandle\n\tparent = {0s}.owner\n", .{recv});
             if (dependent_parent != null) try writer.print("\tif parent == nil {{ parent = {0s}.parent }}\n", .{recv});
         } else if (dependent_parent != null) try writer.print("\tparent := {0s}.parent\n", .{recv});
         if (dependent_parent == null and !can_be_borrowed) try writer.print("\tdefer {0s}.mu.Unlock()\n", .{recv});
@@ -5517,9 +5499,7 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                 try writer.print("\t\t{0s}.cleanup.Stop()\n", .{recv});
         }
         try writer.writeAll("\t}\n");
-        if (can_be_borrowed)
-            try writer.print("\t{0s}.mu.Unlock()\n\tif parent != nil {{\n\t\tparent.{1s}(cause)\n\t}}\n", .{ recv, parent_poison_method })
-        else if (dependent_parent != null)
+        if (can_be_borrowed or dependent_parent != null)
             try writer.print("\t{0s}.mu.Unlock()\n\tif parent != nil {{\n\t\tparent.{1s}(cause)\n\t}}\n", .{ recv, parent_poison_method });
         try writer.writeAll("}\n\n");
         if (options.shared_lifecycle) try writer.print(
@@ -6292,7 +6272,7 @@ fn writeRawParameterType(writer: *std.Io.Writer, program: abi.Program, parameter
     try writeRawGoType(writer, program, parameter.type);
 }
 
-fn packageMatches(package: ?[]const u8, active: ?[]const u8) bool {
+pub fn packageMatches(package: ?[]const u8, active: ?[]const u8) bool {
     const selected = active orelse return true;
     return if (package) |name| std.mem.eql(u8, name, selected) else selected.len == 0;
 }
@@ -7090,42 +7070,21 @@ fn writePublicTaggedUnionRawArguments(
     }
 }
 
+
+
+
+
+/// The `semantic.Semantic` rule applied to lowered functions: a tagged union
+/// that only ever crosses by value gets a snapshot struct, not a handle.
 fn isValueOnlyTaggedUnion(program: abi.Program, name: []const u8) bool {
-    const declaration = enumDecl(program, name);
-    return declaration.kind == .tagged_union and taggedUnionUsedByValue(program, name) and !taggedUnionUsedAsHandle(program, name);
-}
-
-fn taggedUnionUsedByValue(program: abi.Program, name: []const u8) bool {
+    if (enumDecl(program, name).kind != .tagged_union) return false;
+    var by_value = false;
+    for (program.constructors) |constructor| if (std.mem.eql(u8, constructor.type, name)) return false;
     for (program.functions) |function| {
-        for (function.origin.params) |parameter| {
-            if (parameter.type == .value_struct and std.mem.eql(u8, parameter.type.value_struct.ref, name)) return true;
-        }
+        if (semantic.functionUsesAsHandle(function.origin.*, name)) return false;
+        by_value = by_value or semantic.functionPassesByValue(function.origin.*, name);
     }
-    return false;
-}
-
-fn taggedUnionUsedAsHandle(program: abi.Program, name: []const u8) bool {
-    for (program.constructors) |constructor| if (std.mem.eql(u8, constructor.type, name)) return true;
-    for (program.functions) |function| {
-        if (function.origin.receiver) |receiver| if (std.mem.eql(u8, receiver, name)) return true;
-        for (function.origin.params) |parameter| if (containsHandleReference(parameter.type, name)) return true;
-        if (containsHandleReference(function.origin.@"return", name)) return true;
-    }
-    return false;
-}
-
-fn containsHandleReference(node: semantic.TypeNode, name: []const u8) bool {
-    return switch (node) {
-        .opaque_ptr => |value| std.mem.eql(u8, value.ref, name),
-        .slice => |value| containsHandleReference(value.element.*, name),
-        .optional => |value| containsHandleReference(value.child.*, name),
-        .error_union => |value| containsHandleReference(value.payload.*, name),
-        .callback => |value| blk: {
-            for (value.params) |parameter| if (containsHandleReference(parameter, name)) break :blk true;
-            break :blk containsHandleReference(value.@"return".*, name);
-        },
-        else => false,
-    };
+    return by_value;
 }
 
 fn writeZigType(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
