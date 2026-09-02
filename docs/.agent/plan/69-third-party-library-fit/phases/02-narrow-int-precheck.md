@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 범위 밖 값이 cgo 호출 없이 `ErrOutOfRange`로 돌아오는 테스트 통과.
 > NEXT: none

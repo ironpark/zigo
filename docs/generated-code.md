@@ -213,7 +213,8 @@ handle은 호출 후 즉시 해제하고, retained callback handle은 소유 객
 - 공개 Go 함수 이름은 namespace를 붙이지 않습니다. 중첩 namespace의 함수도
   `CodepointWidth`처럼 함수 이름만 씁니다.
 - C가 이름 붙일 수 없는 정수 폭(`u21`)은 파라미터·반환값에서 다음 폭으로 승격되어
-  `uint32`로 나오고, shim이 진입 시점에 범위를 검사합니다.
+  `uint32`로 나옵니다. 승격된 파라미터가 있는 함수는 공개 시그니처에 `error`가 붙고,
+  범위 검사는 cgo 호출 전 Go에서 이뤄져 `*RangeError`를 돌려줍니다.
 - 모든 생성 source는 기록 전 `gofmt`로 포맷됩니다.
 
 `go-check`도 같은 `gofmt` 결과와 비교합니다. 사용자 소유 Go 파일은 포맷하거나 검사하지

@@ -15,6 +15,9 @@ var ErrInvalidHandle = errors.New("zigo: nil or closed handle")
 // ErrNativePanic identifies a Zig panic caught at the native boundary.
 var ErrNativePanic = errors.New("zigo: native panic")
 
+// ErrOutOfRange identifies an argument outside the range of the Zig integer that carries it.
+var ErrOutOfRange = errors.New("zigo: argument out of range")
+
 // HandleError reports which generated operation received an invalid handle.
 type HandleError struct {
 	// Operation names the generated operation and offending receiver or parameter.
@@ -57,6 +60,26 @@ func (err *NativePanicError) poisoned(operation string) error {
 	}
 	return &NativePanicError{Operation: operation, Message: message}
 }
+
+// RangeError reports an argument the narrower Zig integer behind a parameter
+// cannot represent. The check runs in Go, so the native library is never
+// called with the value.
+type RangeError struct {
+	// Operation names the generated call.
+	Operation string
+	// Parameter names the offending Go parameter.
+	Parameter string
+	// Type is how Zig spells the integer the value has to fit, such as "u21".
+	Type string
+}
+
+// Error implements error.
+func (err *RangeError) Error() string {
+	return "zigo: " + err.Operation + ": argument " + err.Parameter + " is out of range for " + err.Type
+}
+
+// Unwrap returns ErrOutOfRange for errors.Is classification.
+func (err *RangeError) Unwrap() error { return ErrOutOfRange }
 
 // Error is a stable Zig error-set value returned by the generated binding.
 // Classify it with errors.Is against the Err* sentinels; a returned value

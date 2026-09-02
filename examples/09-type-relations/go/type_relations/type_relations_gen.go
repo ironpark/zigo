@@ -92,12 +92,21 @@ func LiveObjects() uint {
 
 // RunWidth
 // Reports how many cells a run of codepoints occupies.
-func RunWidth(first uint32, second uint32) uint16 {
-	return raw.TextRunWidth(first, second)
+func RunWidth(first uint32, second uint32) (uint16, error) {
+	if first > 2097151 {
+		return 0, &RangeError{Operation: "RunWidth", Parameter: "first", Type: "u21"}
+	}
+	if second > 2097151 {
+		return 0, &RangeError{Operation: "RunWidth", Parameter: "second", Type: "u21"}
+	}
+	return raw.TextRunWidth(first, second), nil
 }
 
 // CodepointWidth
 // Reports how many terminal cells a codepoint occupies.
-func CodepointWidth(cp uint32) uint8 {
-	return raw.TextUnicodeCodepointWidth(cp)
+func CodepointWidth(cp uint32) (uint8, error) {
+	if cp > 2097151 {
+		return 0, &RangeError{Operation: "CodepointWidth", Parameter: "cp", Type: "u21"}
+	}
+	return raw.TextUnicodeCodepointWidth(cp), nil
 }

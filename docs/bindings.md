@@ -152,10 +152,14 @@ C는 8, 16, 32, 64비트 정수만 이름 붙일 수 있습니다. `u21`이나 `
 | `usize`, `isize` | `size_t`, `ptrdiff_t` | `uint`, `int` |
 
 `semantic.json`에는 원래 폭(`"bits": 21`)이 그대로 기록되므로 `abi-diff`는 21 → 32 변경을
-여전히 breaking으로 봅니다. shim이 진입 시점에 범위를 검사하므로, Go가 `u21`에 담기지 않는
-값을 넘기면 잘리는 대신 native panic이 납니다. 그 호출은 `errors.Is(err, ErrNativePanic)`으로
-판별합니다(오류를 반환하지 않는 함수는 panic을 보고할 자리가 없습니다.
-[제한사항](limitations.md#런타임-주의사항) 참고).
+여전히 breaking으로 봅니다.
+
+승격된 파라미터가 하나라도 있으면 그 함수의 공개 Go 시그니처는 `error`를 하나 더 반환합니다.
+범위 검사는 Go에서, cgo 호출 이전에 이뤄지므로 `u21`에 담기지 않는 값은 native를 건드리지도
+않고 `*RangeError`로 돌아옵니다. `errors.Is(err, ErrOutOfRange)`로 판별하고, `errors.As`로
+`Operation`, `Parameter`, `Type`(`"u21"`)을 읽습니다. native 호출이 없었으므로
+`LastErrorMessage()`도 그대로입니다. shim도 같은 검사를 유지하지만, 그것은 raw 패키지를
+직접 부르는 코드를 위한 두 번째 방어선입니다.
 
 승격은 값 하나가 shim을 지나갈 때만 가능합니다. `extern struct` 필드, slice 원소(`[]u21`),
 콜백 시그니처는 C로 바이트 그대로 비추므로 그 자리의 비정규 폭은 `ZIGO018`로 거부됩니다.

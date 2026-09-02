@@ -8,8 +8,11 @@ import "example.com/zigo/nested-namespace/internal/raw"
 
 // CodepointWidth
 // Reports the display width of a codepoint.
-func CodepointWidth(cp uint32) uint8 {
-	return raw.UnicodeCodepointWidth(cp)
+func CodepointWidth(cp uint32) (uint8, error) {
+	if cp > 2097151 {
+		return 0, &RangeError{Operation: "CodepointWidth", Parameter: "cp", Type: "u21"}
+	}
+	return raw.UnicodeCodepointWidth(cp), nil
 }
 
 // Breaks

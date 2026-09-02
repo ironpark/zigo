@@ -6,12 +6,22 @@
 
 ## [Unreleased]
 
+### Breaking
+
+- 승격된 정수 파라미터(`u21`, `i24` 등)를 받는 함수의 공개 Go 시그니처가 `error`를 하나 더
+  반환합니다. 범위 검사가 shim이 아니라 cgo 호출 이전의 Go에서 일어나므로, 범위 밖 인자는
+  native를 부르지 않고 `*RangeError`(`errors.Is(err, ErrOutOfRange)`)로 돌아옵니다. C ABI는
+  바뀌지 않습니다. (계획 69)
+
 ### Added
 
 - 생성될 Go 이름이 생성 전에 검사됩니다. 등록된 타입 이름, 필드·enum tag 이름, 함수 이름 중
   Go 식별자가 될 수 없는 것이 있으면 `ZIGO021`이 Zig 타입 경로와 함께 거부합니다. 이전에는
   `@typeName`이 `...[0..4])`로 끝나는 comptime 생성 타입의 이름이 그대로 `.go` 파일에 실려
   gofmt에서야 터졌습니다. (계획 69)
+- 승격된 정수 파라미터를 가진 바인딩의 errors 파일에 `ErrOutOfRange` sentinel과 `RangeError`
+  타입이 생성됩니다. `Operation`, `Parameter`, `Type`으로 어떤 인자가 어떤 Zig 폭을 넘겼는지
+  알 수 있습니다. (계획 69)
 
 ### Changed
 

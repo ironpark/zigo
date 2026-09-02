@@ -2723,6 +2723,12 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         // return value instead of a panic. Functions that do not touch a
         // handle keep their plain signature.
         const needs_handle_check = function.origin.receiver != null or hasOpaqueParameter(function.origin.*);
+        // A promoted integer parameter is checked in Go, before the cgo call,
+        // so an out-of-range argument costs nothing native and the caller gets
+        // a `RangeError` rather than a panic the C wrapper would swallow. Both
+        // reasons grow the signature the same way.
+        const needs_range_check = hasNarrowIntParameter(function.origin.*);
+        const needs_check = needs_handle_check or needs_range_check;
         try writePublicFunctionDoc(writer, function.origin.*, go_name, owned_type, functionReachesCallbacks(program, function.origin.*));
         if (function.origin.receiver) |receiver| {
             const receiver_name = try receiverVariableAlloc(allocator, receiver);
@@ -2748,7 +2754,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         try writer.writeByte(')');
         if (constructor) |value| {
             try writer.print(" (*{s}, error)", .{value.type});
-        } else if (needs_handle_check and function.origin.@"return" != .error_union) {
+        } else if (needs_check and function.origin.@"return" != .error_union) {
             try writeCheckedFunctionReturnType(writer, function.origin.*);
         } else {
             try writePublicFunctionReturnType(writer, function.origin.*);
@@ -2762,6 +2768,11 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         // errorForCode reads the panic message out of native thread-local
         // storage in a second cgo call, so the goroutine must stay on the
         // thread that made the first one until it has been read.
+        // Before the thread pin, because a rejected argument costs no cgo call
+        // at all: nothing native has run, so there is no panic message to read
+        // back off this thread.
+        if (needs_range_check)
+            try renderRangeChecks(allocator, writer, function.origin.*, go_names, operation, constructor);
         if (function.origin.@"return" == .error_union)
             try writer.writeAll("\truntime.LockOSThread()\n\tdefer runtime.UnlockOSThread()\n");
         // The handle checks run before any callback handle is registered, so
@@ -2866,23 +2877,23 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         if (!returns_error and !captures_return and isValueStructSlice(function.origin.@"return")) try writer.writeByte(')');
         if (!returns_error and !captures_return and function.origin.@"return" == .bool) try writer.writeAll(" != 0");
         if (!returns_error and !captures_return and isUtf8Slice(function.origin.@"return", function.origin.return_semantic)) try writer.writeByte(')');
-        if (!returns_error and !captures_return and !borrowed_direct and !owned_direct and needs_handle_check and function.origin.@"return" != .void) try writer.writeAll(", nil");
+        if (!returns_error and !captures_return and !borrowed_direct and !owned_direct and needs_check and function.origin.@"return" != .void) try writer.writeAll(", nil");
         try writer.writeByte('\n');
         if (needs_rethrow) try renderCallbackRethrows(allocator, writer, program, function.origin.*, operation);
         if (!returns_error and hasOutValueStructSlice(function.origin.*)) {
             try writePublicValueStructSliceCopyBacks(writer, program, function.origin.*, go_names);
         }
-        if (captures_return) try writePublicCapturedReturn(writer, program, function.origin.*, needs_handle_check);
+        if (captures_return) try writePublicCapturedReturn(writer, program, function.origin.*, needs_check);
         if (borrowed_direct or owned_direct) {
             try writer.writeAll("\treturn ");
             if (owned_type) |type_name|
                 try writeOwnedHandleResult(allocator, writer, program, function.origin.*, type_name, "result")
             else
                 try writeBorrowedResult(allocator, writer, function.origin.*, "result");
-            if (needs_handle_check) try writer.writeAll(", nil");
+            if (needs_check) try writer.writeAll(", nil");
             try writer.writeByte('\n');
         }
-        if (!returns_error and needs_handle_check and function.origin.@"return" == .void) try writer.writeAll("\treturn nil\n");
+        if (!returns_error and needs_check and function.origin.@"return" == .void) try writer.writeAll("\treturn nil\n");
         if (returns_error) {
             try writer.writeAll("\tif code != 0 {\n");
             if (hasRetainedCallback(function.origin.*)) {
@@ -3540,13 +3551,16 @@ fn renderPublicErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
     const has_codes = program.error_codes.len != 0;
     const has_status = programHasTaggedUnionTypes(program);
     const has_callbacks = programHasCallbacks(program);
+    // A promoted integer parameter is range-checked in Go, and the refusal
+    // needs somewhere to come from even in a binding with no other errors.
+    const has_ranges = programHasNarrowIntParameter(program);
     // The raw package declares the loader sentinel. A colocated raw package is
     // the public package, so it needs no alias.
     const has_library = options.backend == .purego and !options.raw_colocated;
     // A Zig panic reaches Go from two boundaries: a projection status and an
     // error-returning call. Both report it as the same error, so the file is
     // needed whenever either exists.
-    if (!has_handles and !has_codes and !has_library and !has_callbacks) return;
+    if (!has_handles and !has_codes and !has_library and !has_callbacks and !has_ranges) return;
     // errorForCode names an unrecognized code with its number; the callback
     // panic error prints the recovered value.
     const raw_import = (has_codes or has_library) and !options.raw_colocated;
@@ -3570,11 +3584,12 @@ fn renderPublicErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
         .status = has_status,
         .library = has_library,
         .callbacks = has_callbacks,
+        .ranges = has_ranges,
     }, options);
     try renderGoErrors(allocator, writer, program, options);
 }
 
-const SentinelSet = struct { handles: bool, panics: bool, status: bool, library: bool, callbacks: bool = false };
+const SentinelSet = struct { handles: bool, panics: bool, status: bool, library: bool, callbacks: bool = false, ranges: bool = false };
 
 /// One discrimination rule: every generated error is classified with
 /// `errors.Is` against an exported sentinel, and `errors.As` is only for
@@ -3595,6 +3610,10 @@ fn renderGoSentinels(writer: *std.Io.Writer, set: SentinelSet, options: Options)
     if (set.callbacks) try writer.writeAll(
         "// ErrCallbackPanic identifies a panic raised by a Go callback inside a native call.\n" ++
             "var ErrCallbackPanic = errors.New(\"zigo: callback panic\")\n",
+    );
+    if (set.ranges) try writer.writeAll(
+        "// ErrOutOfRange identifies an argument outside the range of the Zig integer that carries it.\n" ++
+            "var ErrOutOfRange = errors.New(\"zigo: argument out of range\")\n",
     );
     if (set.library) {
         try writer.writeAll("// ErrLibraryLoad identifies a shared-library load or symbol resolution failure.\nvar ErrLibraryLoad = ");
@@ -3637,6 +3656,20 @@ fn renderGoSentinels(writer: *std.Io.Writer, set: SentinelSet, options: Options)
             "\t}\n" ++
             "\treturn &NativePanicError{Operation: operation, Message: message}\n" ++
             "}\n\n",
+    );
+    if (set.ranges) try writer.writeAll(
+        "// RangeError reports an argument the narrower Zig integer behind a parameter\n" ++
+            "// cannot represent. The check runs in Go, so the native library is never\n" ++
+            "// called with the value.\n" ++
+            "type RangeError struct {\n" ++
+            "\t// Operation names the generated call.\n\tOperation string\n" ++
+            "\t// Parameter names the offending Go parameter.\n\tParameter string\n" ++
+            "\t// Type is how Zig spells the integer the value has to fit, such as \"u21\".\n\tType string\n" ++
+            "}\n\n" ++
+            "// Error implements error.\nfunc (err *RangeError) Error() string {\n" ++
+            "\treturn \"zigo: \" + err.Operation + \": argument \" + err.Parameter + \" is out of range for \" + err.Type\n" ++
+            "}\n\n" ++
+            "// Unwrap returns ErrOutOfRange for errors.Is classification.\nfunc (err *RangeError) Unwrap() error { return ErrOutOfRange }\n\n",
     );
     if (set.status) try writer.writeAll(
         "// StatusError reports a native status code this binding does not recognize.\n" ++
@@ -4164,12 +4197,71 @@ fn writeErrorForCode(
 /// The `return` statement a failed handle check uses. It mirrors whatever the
 /// function already returns, with `err` in the error position.
 fn writeHandleErrorReturn(writer: *std.Io.Writer, function: semantic.SemanticFn, constructor: ?semantic.Constructor) !void {
-    if (constructor != null) return writer.writeAll("return nil, err\n");
+    try writeCheckedErrorReturn(writer, function, constructor, "err");
+}
+
+/// The same shape as `writeHandleErrorReturn`, with the error written out as
+/// an expression. A range check has its error in hand and no `err` binding to
+/// spend a line on.
+fn writeCheckedErrorReturn(
+    writer: *std.Io.Writer,
+    function: semantic.SemanticFn,
+    constructor: ?semantic.Constructor,
+    error_expression: []const u8,
+) !void {
+    if (constructor != null) return writer.print("return nil, {s}\n", .{error_expression});
     const payload = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
-    if (payload == .void) return writer.writeAll("return err\n");
+    if (payload == .void) return writer.print("return {s}\n", .{error_expression});
     try writer.writeAll("return ");
     try writePublicZeroValue(writer, function, payload);
-    try writer.writeAll(", err\n");
+    try writer.print(", {s}\n", .{error_expression});
+}
+
+/// Whether any parameter is declared narrower than the C integer that carries
+/// it, which is what makes the Go signature grow an `error`.
+fn hasNarrowIntParameter(function: semantic.SemanticFn) bool {
+    for (function.params) |parameter| if (abi.narrowInt(parameter.type) != null) return true;
+    return false;
+}
+
+fn programHasNarrowIntParameter(program: abi.Program) bool {
+    for (program.functions) |function| if (hasNarrowIntParameter(function.origin.*)) return true;
+    return false;
+}
+
+/// The range a promoted parameter must fit, checked in Go before the call. The
+/// shim keeps its own guard as a second line of defence -- native code can be
+/// reached through the raw package -- but the public API never spends a cgo
+/// call on an argument it can already see is wrong, and never leaves the
+/// caller reading `LastErrorMessage` to find out why.
+fn renderRangeChecks(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    function: semantic.SemanticFn,
+    go_names: []const []const u8,
+    operation: []const u8,
+    constructor: ?semantic.Constructor,
+) !void {
+    for (function.params, 0..) |parameter, parameter_index| {
+        const narrow = abi.narrowInt(parameter.type) orelse continue;
+        const name = go_names[parameter_index];
+        const spelling: u8 = if (narrow.signed) 'i' else 'u';
+        if (narrow.signed) {
+            const limit = @as(i128, 1) << @intCast(narrow.bits - 1);
+            try writer.print("\tif {0s} < {1d} || {0s} > {2d} {{\n\t\t", .{ name, -limit, limit - 1 });
+        } else {
+            const limit = (@as(u128, 1) << @intCast(narrow.bits)) - 1;
+            try writer.print("\tif {0s} > {1d} {{\n\t\t", .{ name, limit });
+        }
+        var expression: std.Io.Writer.Allocating = .init(allocator);
+        defer expression.deinit();
+        try expression.writer.print(
+            "&RangeError{{Operation: \"{s}\", Parameter: \"{s}\", Type: \"{c}{d}\"}}",
+            .{ operation, name, spelling, narrow.bits },
+        );
+        try writeCheckedErrorReturn(writer, function, constructor, expression.written());
+        try writer.writeAll("\t}\n");
+    }
 }
 
 /// The zero value of a public result type. A UTF-8 slice surfaces as a string,

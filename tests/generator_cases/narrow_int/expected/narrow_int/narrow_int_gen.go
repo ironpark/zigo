@@ -12,14 +12,20 @@ import (
 
 // CodepointWidth
 // Reports the display width of a codepoint.
-func CodepointWidth(cp uint32) int8 {
-	return raw.CodepointWidth(cp)
+func CodepointWidth(cp uint32) (int8, error) {
+	if cp > 2097151 {
+		return 0, &RangeError{Operation: "CodepointWidth", Parameter: "cp", Type: "u21"}
+	}
+	return raw.CodepointWidth(cp), nil
 }
 
 // ClampOffset
 // Rounds a signed offset into the narrow range it is stored in.
-func ClampOffset(offset int32) int32 {
-	return raw.ClampOffset(offset)
+func ClampOffset(offset int32) (int32, error) {
+	if offset < -8388608 || offset > 8388607 {
+		return 0, &RangeError{Operation: "ClampOffset", Parameter: "offset", Type: "i24"}
+	}
+	return raw.ClampOffset(offset), nil
 }
 
 // Decode

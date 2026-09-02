@@ -38,6 +38,9 @@ func NormalizeFormat(value Format) Format {
 // truncated codepoint.
 // Native failures are returned as generated error values.
 func CodepointWidth(cp uint32) (uint32, error) {
+	if cp > 2097151 {
+		return 0, &RangeError{Operation: "CodepointWidth", Parameter: "cp", Type: "u21"}
+	}
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	result, code := raw.CodepointWidth(cp)

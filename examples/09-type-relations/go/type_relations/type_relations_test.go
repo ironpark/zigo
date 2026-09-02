@@ -67,10 +67,10 @@ func TestIndependentLifecycles(t *testing.T) {
 // `root.text.unicode.codepointWidth`, so the nested namespaces cross the
 // boundary without a hand-written flattening facade in Zig.
 func TestNestedNamespaces(t *testing.T) {
-	if got := CodepointWidth(0x1100); got != 2 {
-		t.Fatalf("CodepointWidth(0x1100) = %d, want 2", got)
+	if got, err := CodepointWidth(0x1100); err != nil || got != 2 {
+		t.Fatalf("CodepointWidth(0x1100) = %d, %v, want 2, nil", got, err)
 	}
-	if got := RunWidth(0x1100, 'a'); got != 3 {
-		t.Fatalf("RunWidth(0x1100, 'a') = %d, want 3", got)
+	if got, err := RunWidth(0x1100, 'a'); err != nil || got != 3 {
+		t.Fatalf("RunWidth(0x1100, 'a') = %d, %v, want 3, nil", got, err)
 	}
 }
