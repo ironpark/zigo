@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T23:03:15Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Group and per-entry receivers produce Go methods with stripped names on both backends; verification loop green.
 > NEXT: none
