@@ -37,7 +37,7 @@ raw 패키지는 `internal/raw`에서 생성됩니다.
 | `target` | 예 | — | 네이티브 라이브러리 타깃 |
 | `optimize` | 예 | — | 네이티브 라이브러리 최적화 모드 |
 | `source_root` | 아니요 | 자동 탐색 | AST 파라미터 이름·GoDoc 보강에 사용할 실제 Zig root |
-| `prefix` | 아니요 | `"zg"` | 생성 C 심볼 접두사 |
+| `prefix` | 아니요 | `"zg"` | 생성 C 심볼 접두사. 바인딩 함수뿐 아니라 zigo 런타임 심볼(`<prefix>_panic_bridge`, `<prefix>_last_error_message`)에도 붙으므로, 한 실행 파일에 링크되는 바인딩마다 다른 값을 준다 |
 | `link` | 아니요 | `.cgo_static` | `.cgo_static`, `.cgo_dynamic`, `.purego` 중 하나 |
 | `go_package` | 아니요 | `name`의 snake_case | 공개 Go 패키지 이름과 하위 디렉터리 |
 | `raw_package` | 아니요 | `"internal/raw"` | `go_dir` 기준 raw Go 패키지 경로 |

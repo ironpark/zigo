@@ -506,8 +506,14 @@ fn addGeneratorCases(
     test_filters: []const []const u8,
 ) void {
     const cases_path = b.pathFromRoot("tests/generator_cases");
-    var directory = std.Io.Dir.cwd().openDir(b.graph.io, cases_path, .{ .iterate = true }) catch |err|
-        std.debug.panic("unable to open generator cases at '{s}': {}", .{ cases_path, err });
+    var directory = std.Io.Dir.cwd().openDir(b.graph.io, cases_path, .{ .iterate = true }) catch |err| switch (err) {
+        // A consumer's copy of this package carries only what `.paths`
+        // lists -- build.zig, build.zig.zon and src -- so the cases are not
+        // there, and the consumer never runs this test step. Register
+        // nothing rather than fail its whole build graph.
+        error.FileNotFound => return,
+        else => std.debug.panic("unable to open generator cases at '{s}': {}", .{ cases_path, err }),
+    };
     defer directory.close(b.graph.io);
 
     var names: std.ArrayList([]const u8) = .empty;

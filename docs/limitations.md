@@ -51,6 +51,9 @@
 - Go 쪽 크로스 컴파일은 별개다. 생성된 purego 패키지는 순수 Go이므로 C 툴체인 없이
   `GOOS=windows CGO_ENABLED=0 go build ./...`로 빌드된다.
 - zigo는 Go 바인딩만 생성한다. IR은 다른 언어용 범용 IDL을 목표로 하지 않는다.
+- 한 Go 실행 파일에 zigo 바인딩을 둘 이상 링크하려면 `prefix`가 서로 달라야 한다.
+  생성되는 C 심볼은 런타임 것(`<prefix>_panic_bridge`, `<prefix>_last_error_message`)
+  까지 전부 접두사를 쓰므로, 기본값 `zg`를 둘 다 쓰면 정적 링크에서 중복 심볼로 실패한다.
 
 ## Zig 타입과 ABI
 
