@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T08:17:38Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: fixture 6종(writer, reader, 반환 위치, 필드 위치, callback 위치, retained)이 기대대로 통과·거부된다.
 > NEXT: none

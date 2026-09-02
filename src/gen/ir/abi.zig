@@ -102,6 +102,15 @@ pub const AbiParam = struct {
         return_slice_length,
         struct_in,
         struct_out,
+        /// The three parts of a `*std.Io.Writer` / `*std.Io.Reader`
+        /// parameter. cgo binds the trampoline by name and carries only the
+        /// userdata token; purego passes the dispatcher pointer as well. The
+        /// `stream_data` pair is reserved on a reader for the byte-slice fast
+        /// path: the shim already honours it, and generated Go passes null.
+        stream_callback,
+        stream_data,
+        stream_data_length,
+        stream_userdata,
     };
 };
 

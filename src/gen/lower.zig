@@ -93,6 +93,10 @@ pub fn semanticDocumentForBackend(
                 });
                 continue;
             }
+            if (parameter.type == .io_stream) {
+                try appendStreamParams(allocator, &params, backend, parameter, parameter_index);
+                continue;
+            }
             switch (parameter.type) {
                 .callback => |callback| {
                     if (backend == .cgo) continue;
@@ -280,8 +284,65 @@ fn callbackWireScalar(scalar: abi.AbiScalar) abi.AbiScalar {
 }
 
 fn functionHasCallback(function: semantic.SemanticFn) bool {
-    for (function.params) |parameter| if (parameter.type == .callback) return true;
+    // A stream parameter counts: under purego it too carries a Go dispatcher
+    // pointer, so it answers to the same versioned symbol as a user callback.
+    for (function.params) |parameter| {
+        if (parameter.type == .callback or parameter.type == .io_stream) return true;
+    }
     return false;
+}
+
+/// The C parameters one stream parameter lowers to. A writer needs only the
+/// Go value behind it; a reader also carries the byte-slice pair that lets a
+/// caller hand its bytes over directly instead of being read a chunk at a
+/// time. Both shapes are fixed by the direction, so nothing about the Zig
+/// signature can change them.
+fn appendStreamParams(
+    allocator: std.mem.Allocator,
+    params: *std.ArrayList(abi.AbiParam),
+    backend: abi.Program.Backend,
+    parameter: semantic.Parameter,
+    parameter_index: usize,
+) !void {
+    const direction = parameter.type.io_stream.direction;
+    if (backend == .purego) {
+        const byte = try allocator.create(abi.AbiScalar);
+        byte.* = .{ .unsigned_int = 8 };
+        const callback_params = try allocator.alloc(abi.AbiScalar, 3);
+        callback_params[0] = .{ .pointer = .{ .child = byte, .is_const = direction == .writer, .is_many = true } };
+        callback_params[1] = .usize;
+        callback_params[2] = .usize;
+        const callback_return = try allocator.create(abi.AbiScalar);
+        callback_return.* = .{ .signed_int = 32 };
+        try params.append(allocator, .{
+            .name = try std.fmt.allocPrint(allocator, "{s}_fn", .{parameter.name}),
+            .role = .stream_callback,
+            .scalar = .{ .callback = .{ .params = callback_params, .ret = callback_return } },
+            .source_index = parameter_index,
+        });
+    }
+    if (direction == .reader) {
+        const byte = try allocator.create(abi.AbiScalar);
+        byte.* = .{ .unsigned_int = 8 };
+        try params.append(allocator, .{
+            .name = try std.fmt.allocPrint(allocator, "{s}_data", .{parameter.name}),
+            .role = .stream_data,
+            .scalar = .{ .pointer = .{ .child = byte, .is_const = true, .is_many = true } },
+            .source_index = parameter_index,
+        });
+        try params.append(allocator, .{
+            .name = try std.fmt.allocPrint(allocator, "{s}_data_len", .{parameter.name}),
+            .role = .stream_data_length,
+            .scalar = .usize,
+            .source_index = parameter_index,
+        });
+    }
+    try params.append(allocator, .{
+        .name = try std.fmt.allocPrint(allocator, "{s}_userdata", .{parameter.name}),
+        .role = .stream_userdata,
+        .scalar = .usize,
+        .source_index = parameter_index,
+    });
 }
 
 fn lowerTaggedUnionProjections(allocator: std.mem.Allocator, document: semantic.Semantic, prefix: []const u8) ![]const abi.AbiProjection {

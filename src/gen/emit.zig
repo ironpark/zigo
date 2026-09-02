@@ -176,8 +176,20 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
             }
         }
     }
+    if (program.backend == .cgo) {
+        for ([_]semantic.StreamDirection{ .writer, .reader }) |direction| {
+            if (!programHasStreamDirection(program, direction)) continue;
+            const trampoline = try streamTrampolineNameAlloc(allocator, program, direction);
+            defer allocator.free(trampoline);
+            if (direction == .writer)
+                try writer.print("extern fn {s}(ptr: [*]const u8, len: usize, userdata: usize) callconv(.c) i32;\n", .{trampoline})
+            else
+                try writer.print("extern fn {s}(ptr: [*]u8, cap: usize, userdata: usize) callconv(.c) i32;\n", .{trampoline});
+        }
+    }
     if (program.backend == .purego) try renderCallbackBitThunks(allocator, writer, program);
     if (programHasCallbacks(program)) try writer.writeByte('\n');
+    if (programHasStreams(program)) try writer.writeAll(stream_adapters);
     for (program.functions) |function| {
         try writer.print("export fn {s}_impl(", .{function.symbol});
         for (function.params, 0..) |parameter, index| {
@@ -189,6 +201,7 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         try writeZigType(writer, function.ret);
         try writer.writeAll(" {\n");
         try writeCallbackBitBindings(allocator, writer, program, function);
+        try writeShimStreamSetups(allocator, writer, program, function);
         try writeShimStringSliceSetups(allocator, writer, function);
         try writeNarrowIntegerGuards(writer, function);
         try writer.writeAll("    ");
@@ -294,6 +307,30 @@ fn renderValueStructShim(writer: *std.Io.Writer, program: abi.Program) !void {
 /// struct. `@compileError` rather than `std.debug.assert` so the failure names
 /// the struct, the member, both values, and the cause a user can act on --
 /// `assert` reports only "reached unreachable code".
+/// The `std.Io` adapters the shim wraps around a Go `io.Writer` or
+/// `io.Reader`, taken verbatim from `stream_adapter.zig`. They live in a real
+/// Zig file rather than in a string here so the drain and stream contracts are
+/// compiled and tested where they are written; this embeds the region between
+/// its markers, so the generated shim and the tested code cannot drift apart.
+///
+/// One copy per shim file, not per function: the signature is fixed by the
+/// direction, so every stream parameter in the binding shares it.
+const stream_adapters = blk: {
+    // Scanning a few kilobytes for the markers is well past Zig's default
+    // comptime branch quota.
+    @setEvalBranchQuota(100_000);
+    const source = @embedFile("stream_adapter.zig");
+    const opening = "// zigo:adapters-begin\n";
+    const closing = "// zigo:adapters-end\n";
+    const first = std.mem.indexOf(u8, source, opening).? + opening.len;
+    const last = std.mem.indexOf(u8, source, closing).?;
+    break :blk source[first..last];
+};
+
+test {
+    _ = @import("stream_adapter.zig");
+}
+
 const abi_guard_helper =
     "\n/// Fails this compile when a layout zigo reflected on the build host does\n" ++
     "/// not describe the compilation target. The usual cause is a C type whose\n" ++
@@ -583,6 +620,14 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                     defer allocator.free(name);
                     try writer.print("&{s}", .{name});
                 }
+            },
+            .io_stream => |stream| {
+                const adapter_name = try streamAdapterNameAlloc(allocator, parameter.name);
+                defer allocator.free(adapter_name);
+                if (stream.direction == .writer)
+                    try writer.print("&{s}.interface", .{adapter_name})
+                else
+                    try writer.print("{s}_interface", .{adapter_name});
             },
             .bool => try writer.print("{s} != 0", .{parameter.name}),
             .@"enum" => try writer.print("@enumFromInt({s})", .{parameter.name}),
@@ -1200,7 +1245,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
             if (callbackForUserdata(function.origin.params, parameter_index) != null) continue;
             if (parameter.injected != null) continue;
             if (raw_parameter_index != 0) try writer.writeAll(", ");
-            if (parameter.type == .callback) {
+            if (parameter.type == .callback or parameter.type == .io_stream) {
                 try writer.print("{s}Handle uintptr", .{go_names[parameter_index]});
             } else {
                 try writer.print("{s} ", .{go_names[parameter_index]});
@@ -1365,6 +1410,14 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 .payload_out => try writer.writeAll("&outResult"),
                 .return_slice_pointer => try writer.writeAll("&outResultPtr"),
                 .return_slice_length => try writer.writeAll("&outResultLen"),
+                // cgo binds the trampoline by its `//export` name inside the
+                // shim, so nothing about it travels in the call.
+                .stream_callback => unreachable,
+                // Reserved for the byte-slice fast path; today every reader is
+                // read a chunk at a time through the trampoline.
+                .stream_data => try writer.writeAll("nil"),
+                .stream_data_length => try writer.writeAll("C.size_t(0)"),
+                .stream_userdata => try writer.print("C.size_t({s}Handle)", .{go_names[parameter.source_index]}),
             }
         }
         try writer.writeByte(')');
@@ -2190,6 +2243,8 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         if (parameter_count != 0) try writer.writeAll(", ");
         if (parameter.type == .callback) {
             try writer.print("{s}Callback, {s}Token uintptr", .{ go_names[parameter_index], go_names[parameter_index] });
+        } else if (parameter.type == .io_stream) {
+            try writer.print("{s}Callback, {s}Handle uintptr", .{ go_names[parameter_index], go_names[parameter_index] });
         } else {
             try writer.print("{s} ", .{go_names[parameter_index]});
             try writeRawParameterType(writer, program, parameter);
@@ -2274,6 +2329,12 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
                 parameter.scalar.pointer.child.* == .value_struct) "unsafe.Pointer(&outResult)" else "&outResult"),
             .return_slice_pointer => try writer.writeAll("&outResultPtr"),
             .return_slice_length => try writer.writeAll("&outResultLen"),
+            .stream_callback => try writer.print("{s}Callback", .{go_names[parameter.source_index]}),
+            // Reserved for the byte-slice fast path; today every reader is
+            // read a chunk at a time through the dispatcher.
+            .stream_data => try writer.writeAll("unsafe.Pointer(nil)"),
+            .stream_data_length => try writer.writeAll("uintptr(0)"),
+            .stream_userdata => try writer.print("{s}Handle", .{go_names[parameter.source_index]}),
         }
     }
     try writer.writeAll(")\n");
@@ -5198,6 +5259,110 @@ fn programHasOpaqueTypes(program: abi.Program) bool {
     return false;
 }
 
+fn programHasStreams(program: abi.Program) bool {
+    for (program.functions) |function| {
+        for (function.origin.params) |parameter| if (parameter.type == .io_stream) return true;
+    }
+    return false;
+}
+
+fn programHasStreamDirection(program: abi.Program, direction: semantic.StreamDirection) bool {
+    for (program.functions) |function| {
+        for (function.origin.params) |parameter| {
+            if (parameter.type == .io_stream and parameter.type.io_stream.direction == direction) return true;
+        }
+    }
+    return false;
+}
+
+/// The fixed `//export` symbol a cgo stream trampoline is bound by. One pair
+/// per binding rather than one per parameter: the signature is decided by the
+/// direction, so every writer in the binding shares a trampoline.
+fn streamTrampolineNameAlloc(allocator: std.mem.Allocator, program: abi.Program, direction: semantic.StreamDirection) ![]u8 {
+    return std.fmt.allocPrint(allocator, "{s}_zigo_stream_{s}", .{
+        program.prefix,
+        if (direction == .writer) "write" else "read",
+    });
+}
+
+/// The shim's local names for one stream parameter: its staging buffer, the
+/// adapter built on it, and the `*std.Io.Reader` the target call receives when
+/// a reader may also arrive as a plain byte slice.
+fn streamBufferNameAlloc(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
+    return std.fmt.allocPrint(allocator, "{s}_stream_buffer", .{name});
+}
+
+fn streamAdapterNameAlloc(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
+    return std.fmt.allocPrint(allocator, "{s}_stream", .{name});
+}
+
+/// The allocator a staging buffer too large for the shim's stack comes from.
+/// The binding's own allocator when it named one, so a program that routes
+/// every allocation through an arena keeps doing so.
+fn streamHeapAllocator(program: abi.Program) []const u8 {
+    return program.allocator orelse "std.heap.c_allocator";
+}
+
+/// The buffer, adapter, and byte-slice branch for every stream parameter,
+/// written ahead of the target call that receives them.
+fn writeShimStreamSetups(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, function: abi.AbiFn) !void {
+    for (function.origin.params) |parameter| {
+        if (parameter.type != .io_stream) continue;
+        const direction = parameter.type.io_stream.direction;
+        const size = parameter.bufferSize();
+        const buffer_name = try streamBufferNameAlloc(allocator, parameter.name);
+        defer allocator.free(buffer_name);
+        const adapter_name = try streamAdapterNameAlloc(allocator, parameter.name);
+        defer allocator.free(adapter_name);
+        // A stack array this large would be a stack overflow waiting for a
+        // deep call, so past the threshold the buffer is heap allocated for
+        // the duration of the call and freed on the way out.
+        if (size > semantic.stream_heap_threshold) {
+            const heap = streamHeapAllocator(program);
+            try writer.print(
+                "    const {0s} = {1s}.alloc(u8, {2d}) catch @panic(\"zigo: out of memory allocating the `{3s}` stream buffer\");\n" ++
+                    "    defer {1s}.free({0s});\n",
+                .{ buffer_name, heap, size, parameter.name },
+            );
+        } else {
+            try writer.print("    var {s}: [{d}]u8 = undefined;\n", .{ buffer_name, size });
+        }
+        try writer.print("    var {s}: Zigo{s}Adapter = .init(", .{
+            adapter_name,
+            if (direction == .writer) "Writer" else "Reader",
+        });
+        if (size > semantic.stream_heap_threshold)
+            try writer.writeAll(buffer_name)
+        else
+            try writer.print("&{s}", .{buffer_name});
+        if (program.backend == .purego) {
+            try writer.print(", {s}_fn", .{parameter.name});
+        } else {
+            const trampoline = try streamTrampolineNameAlloc(allocator, program, direction);
+            defer allocator.free(trampoline);
+            try writer.print(", &{s}", .{trampoline});
+        }
+        try writer.print(", {s}_userdata);\n", .{parameter.name});
+        if (direction == .writer) {
+            // Whatever is still buffered when the target function returns has
+            // to reach Go, whether or not that function flushed for itself. A
+            // failure here is already recorded on the Go side, which is what
+            // the public wrapper reports, so there is nothing to raise.
+            try writer.print("    defer {s}.interface.flush() catch {{}};\n", .{adapter_name});
+        } else {
+            // Reserved for the byte-slice fast path: a caller that can hand
+            // its bytes over directly passes them here and is never called
+            // back. Generated Go passes null today, so this is the C shape
+            // the fast path will need rather than a second one later.
+            try writer.print(
+                "    var {0s}_fixed: std.Io.Reader = if ({1s}_data != null) .fixed({1s}_data[0..{1s}_data_len]) else undefined;\n" ++
+                    "    const {0s}_interface: *std.Io.Reader = if ({1s}_data != null) &{0s}_fixed else &{0s}.interface;\n",
+                .{ adapter_name, parameter.name },
+            );
+        }
+    }
+}
+
 fn programHasCallbacks(program: abi.Program) bool {
     for (program.functions) |function| {
         for (function.origin.params) |parameter| if (parameter.type == .callback) return true;
@@ -6164,4 +6329,73 @@ test "a returned struct slice is reinterpreted for a castable element and copied
     try std.testing.expect(std.mem.indexOf(u8, structs, "return unsafe.Slice((*Point)(unsafe.Pointer(&values[0])), len(values))") != null);
     try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoFlaggedSliceFromRaw(values []raw.FlaggedData) []Flagged {") != null);
     try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoFlaggedSliceView(") == null);
+}
+
+test "a stream parameter becomes a shim adapter and a fixed callback ABI" {
+    var count: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
+    var nothing: semantic.TypeNode = .{ .void = {} };
+    const document: semantic.Semantic = .{
+        .functions = &.{
+            .{
+                .name = "dump",
+                .params = &.{.{ .name = "w", .type = .{ .io_stream = .{ .direction = .writer } } }},
+                .receiver = "Document",
+                .@"return" = .{ .error_union = .{ .error_set = &.{"WriteFailed"}, .payload = &nothing } },
+                .symbol = "zg_document_dump",
+            },
+            .{
+                .name = "load",
+                .params = &.{.{ .buffer = 8192, .name = "r", .type = .{ .io_stream = .{ .direction = .reader } } }},
+                .receiver = "Document",
+                .@"return" = .{ .error_union = .{ .error_set = &.{"ReadFailed"}, .payload = &count } },
+                .symbol = "zg_document_load",
+            },
+            .{
+                .name = "banner",
+                .params = &.{.{ .buffer = 1024 * 1024, .name = "out", .type = .{ .io_stream = .{ .direction = .writer } } }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_banner",
+            },
+        },
+        .package = "stream",
+        .prefix = "zg",
+        .types = &.{.{ .kind = .@"opaque", .name = "Document" }},
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try @import("lower.zig").semanticDocument(arena.allocator(), document, "stream", "zg", &.{
+        .{ .code = 1, .name = "WriteFailed" },
+        .{ .code = 2, .name = "ReadFailed" },
+    });
+
+    const shim = try renderForTest(renderShim, program);
+    defer std.testing.allocator.free(shim);
+    // One trampoline per direction, bound by name, and one copy of the
+    // adapters however many parameters use them.
+    try std.testing.expect(std.mem.indexOf(u8, shim, "extern fn zg_zigo_stream_write(ptr: [*]const u8, len: usize, userdata: usize) callconv(.c) i32;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, shim, "extern fn zg_zigo_stream_read(ptr: [*]u8, cap: usize, userdata: usize) callconv(.c) i32;") != null);
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, shim, "const ZigoWriterAdapter = struct {"));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, shim, "const ZigoReaderAdapter = struct {"));
+
+    // A default-sized buffer is a stack array; the megabyte one is not.
+    try std.testing.expect(std.mem.indexOf(u8, shim, "    var w_stream_buffer: [65536]u8 = undefined;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, shim, "    var r_stream_buffer: [8192]u8 = undefined;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, shim, "const out_stream_buffer = std.heap.c_allocator.alloc(u8, 1048576) catch @panic(") != null);
+    try std.testing.expect(std.mem.indexOf(u8, shim, "defer std.heap.c_allocator.free(out_stream_buffer);") != null);
+
+    try std.testing.expect(std.mem.indexOf(u8, shim, "var w_stream: ZigoWriterAdapter = .init(&w_stream_buffer, &zg_zigo_stream_write, w_userdata);") != null);
+    // Whatever the target function left buffered still has to reach Go.
+    try std.testing.expect(std.mem.indexOf(u8, shim, "defer w_stream.interface.flush() catch {};") != null);
+    try std.testing.expect(std.mem.indexOf(u8, shim, "target.Document.dump(self, &w_stream.interface)") != null);
+    // The reserved byte-slice path: the shim already honours it, so adding it
+    // later costs no C parameter.
+    try std.testing.expect(std.mem.indexOf(u8, shim, "var r_stream_fixed: std.Io.Reader = if (r_data != null) .fixed(r_data[0..r_data_len]) else undefined;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, shim, "target.Document.load(self, r_stream_interface)") != null);
+
+    const header = try renderForTest(renderHeader, program);
+    defer std.testing.allocator.free(header);
+    try std.testing.expect(std.mem.indexOf(u8, header, "int32_t zg_document_dump(zg_document * self, size_t w_userdata);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, header, "int32_t zg_document_load(zg_document * self, const uint8_t * r_data, size_t r_data_len, size_t r_userdata, size_t * out_result);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, header, "void zg_banner(size_t out_userdata);") != null);
 }
