@@ -1,9 +1,10 @@
 ---
+completed_at: "2026-09-02T08:02:11Z"
 depends_on:
 - consume-ghostty-vt
 - ultrasync-followups
 description: Go 식별자 검증과 enum 등록, 승격 정수의 Go 사전검사, infallible 함수의 패닉 가시성, 패키지 doc 순서, allocator 주입
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-02T07:14:37Z"
 ---
 > NEXT: reflection이 유도한 모든 Go 이름을 `ZIGO021`로 검증해 `4])` 같은 이름이 생성 전에 거부되게 한다. ([Phase 0](phases/00-identifier-validation.md))
@@ -16,7 +17,7 @@ registered_at: "2026-09-02T07:14:37Z"
 - [x] [Phase 03: checked infallible 함수의 패닉 가시성](phases/03-panic-visibility.md)
 - [x] [Phase 04: 패키지 doc 순서에 `bindings.zig` 복귀](phases/04-package-doc-order.md)
 - [x] [Phase 05: Allocator/Io 주입](phases/05-allocator-injection.md)
-- [ ] [Phase 06: 값 반환 `init`을 caller-owned pointer로](phases/06-by-value-init.md)
+- [x] [Phase 06: 값 반환 `init`을 caller-owned pointer로](phases/06-by-value-init.md)
 
 # Shared Verification
 
