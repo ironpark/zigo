@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T09:40:04Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 워크플로 파일이 `actionlint`(있으면) 또는 YAML 검증을 통과하고 문서가 갱신됐다. 실제 검증은 다음 태그에서.
 > NEXT: none

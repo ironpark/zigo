@@ -13,7 +13,7 @@ registered_at: "2026-09-02T07:40:11Z"
 - [x] [Phase 01: 진단의 소스 위치](phases/01-diagnostic-source-location.md)
 - [ ] [Phase 02: 스칼라·enum·extern struct optional](phases/02-scalar-optionals.md)
 - [ ] [Phase 03: 슬라이스·문자열 optional](phases/03-slice-optionals.md)
-- [ ] [Phase 04: 태그 릴리즈 자동화와 fetch 고정](phases/04-release-automation.md)
+- [x] [Phase 04: 태그 릴리즈 자동화와 fetch 고정](phases/04-release-automation.md)
 
 # Shared Verification
 
