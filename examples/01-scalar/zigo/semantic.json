@@ -12,7 +12,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 3,
+            "line": 5,
             "column": 12
           },
           "type": {
@@ -28,7 +28,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 3,
+            "line": 5,
             "column": 20
           },
           "type": {
@@ -47,7 +47,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 3,
+        "line": 5,
         "column": 8
       },
       "symbol": "zg_add"

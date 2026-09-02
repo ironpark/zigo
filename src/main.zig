@@ -68,6 +68,8 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         .go_module = options.go_module,
         .cflags_override = if (options.cflags.len == 0) null else options.cflags,
         .ldflags_override = if (options.ldflags.len == 0) null else options.ldflags,
+        .extra_ldflags = options.extra_ldflags,
+        .ldflags_external = options.ldflags_external,
         .system_ldflags = options.system_ldflags,
         .pkg_config_libs = options.pkg_config_libs,
         .framework_ldflags = options.framework_ldflags,

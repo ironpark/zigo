@@ -24,6 +24,8 @@ pub const Generate = struct {
     library_dir: []const u8 = "${SRCDIR}/../../../zig-out/lib",
     cflags: []const u8 = "",
     ldflags: []const u8 = "",
+    extra_ldflags: []const u8 = "",
+    ldflags_external: bool = false,
     system_ldflags: []const u8 = "",
     pkg_config_libs: []const u8 = "",
     framework_ldflags: []const u8 = "",
@@ -179,6 +181,8 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
     var library_dir: ?[]const u8 = null;
     var cflags: ?[]const u8 = null;
     var ldflags: ?[]const u8 = null;
+    var extra_ldflags: ?[]const u8 = null;
+    var ldflags_external = false;
     var system_ldflags: ?[]const u8 = null;
     var pkg_config_libs: ?[]const u8 = null;
     var framework_ldflags: ?[]const u8 = null;
@@ -221,6 +225,11 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
             try set(&cflags, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--ldflags")) {
             try set(&ldflags, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--extra-ldflags")) {
+            try set(&extra_ldflags, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--ldflags-external")) {
+            if (ldflags_external) return error.DuplicateArgument;
+            ldflags_external = true;
         } else if (std.mem.eql(u8, flag, "--system-ldflags")) {
             try set(&system_ldflags, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--pkg-config-libs")) {
@@ -267,6 +276,8 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .library_dir = library_dir orelse "${SRCDIR}/../../../zig-out/lib",
         .cflags = cflags orelse "",
         .ldflags = ldflags orelse "",
+        .extra_ldflags = extra_ldflags orelse "",
+        .ldflags_external = ldflags_external,
         .system_ldflags = system_ldflags orelse "",
         .pkg_config_libs = pkg_config_libs orelse "",
         .framework_ldflags = framework_ldflags orelse "",
@@ -495,6 +506,8 @@ test "generate command parses named arguments" {
         "-Icustom",
         "--ldflags",
         "-Lcustom",
+        "--extra-ldflags",
+        "-Wl,--as-needed",
         "--system-ldflags",
         "-lz",
         "--framework-ldflags",
@@ -512,6 +525,7 @@ test "generate command parses named arguments" {
     try std.testing.expectEqualStrings("scalar", options.package);
     try std.testing.expectEqualStrings("example.com/scalar", options.go_module);
     try std.testing.expectEqualStrings("-Icustom", options.cflags);
+    try std.testing.expectEqualStrings("-Wl,--as-needed", options.extra_ldflags);
     try std.testing.expectEqualStrings("scalar", options.raw_package_path);
     try std.testing.expect(options.raw_colocated);
     try std.testing.expectEqualStrings("errors.lock.json", options.errors_lock_path.?);

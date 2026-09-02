@@ -3,9 +3,14 @@ const build_options = @import("src/build_options.zig");
 const naming = @import("src/gen/naming.zig");
 const go_walk = @import("src/gen/go_walk.zig");
 
+const volatile_cgo_link_file = "zigo_link_inputs_gen.go";
+
 pub const CgoFlags = struct {
     cflags: []const []const u8 = &.{},
     ldflags: []const []const u8 = &.{},
+    /// Additional linker flags appended after zigo's default (or overridden)
+    /// binding-library flags.
+    extra_ldflags: []const []const u8 = &.{},
 };
 
 const LinkMode = enum { static, dynamic };
@@ -793,7 +798,12 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     if (options.gofmt) |gofmt| generate.addArgs(&.{ "--gofmt", gofmt });
     const cflags_override = if (options.cgo_flags) |flags| joinFlags(b, flags.cflags) else "";
     const ldflags_override = if (options.cgo_flags) |flags| joinFlags(b, flags.ldflags) else "";
+    const extra_ldflags = if (options.cgo_flags) |flags| joinFlags(b, flags.extra_ldflags) else "";
     const system_ldflags = systemLibraryFlags(b, options.module);
+    const static_link_inputs = if (backend == .cgo and link_mode == .static and ldflags_override.len == 0)
+        staticLibraryInputs(b, options.module)
+    else
+        StaticLinkInputs.empty;
     const framework_ldflags = frameworkFlags(b, options.module);
     const pkg_config_libs = pkgConfigLibraries(b, options.module);
     generate.addArgs(&.{
@@ -804,6 +814,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         "--library-dir",       library_dir,
         "--cflags",            cflags_override,
         "--ldflags",           ldflags_override,
+        "--extra-ldflags",     extra_ldflags,
         "--system-ldflags",    system_ldflags,
         "--framework-ldflags", framework_ldflags,
         "--pkg-config-libs",   pkg_config_libs,
@@ -815,6 +826,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         "--go-package",        go_package,
         "--go-package-doc",    options.go_package_doc orelse "",
     });
+    if (static_link_inputs.paths.len != 0) generate.addArg("--ldflags-external");
     if (backend == .purego) addLibraryLoadingArgs(b, generate, options.library_loading);
     if (raw_package.colocated) generate.addArg("--raw-colocated");
     const errors_lock_path = "zigo/errors.lock.json";
@@ -903,6 +915,18 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     else
         header_name;
     const install_header = b.addInstallHeaderFile(generated_dir.path(b, header_name), installed_header_name);
+    const volatile_link_flags = if (static_link_inputs.paths.len != 0) flags: {
+        const relative_path = b.pathJoin(&.{ raw_package.path, volatile_cgo_link_file });
+        const publish_flags = PublishCgoLinkFlags.create(b, .{
+            .output_path = sourcePath(b, options.go_dir, relative_path),
+            .package = raw_package.name,
+            .binding_archive = b.fmt("{s}/lib{s}.a", .{ library_dir, library_stem }),
+            .static_archives = static_link_inputs.paths,
+            .extra_ldflags = extra_ldflags,
+            .system_ldflags = system_ldflags,
+        });
+        break :flags publish_flags;
+    } else null;
     const publish = PublishGeneratedGo.create(b, generated_dir, sourcePath(b, options.go_dir, "."));
     const update = b.addUpdateSourceFiles();
     update.step.dependOn(&publish.step);
@@ -939,6 +963,12 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     }
     update.step.dependOn(&install_lib.step);
     update.step.dependOn(&install_header.step);
+    if (volatile_link_flags) |flags| {
+        update.step.dependOn(&flags.step);
+        check.step.dependOn(&flags.step);
+        install_lib.step.dependOn(&flags.step);
+        for (static_link_inputs.paths) |path| path.addStepDependencies(&install_lib.step);
+    }
     check.step.dependOn(&lib.step);
     if (abi_check) |run| run.step.dependOn(&lib.step);
 
@@ -987,6 +1017,89 @@ fn installedLibraryPath(b: *std.Build, install: *std.Build.Step.InstallArtifact)
     // does: `addInstallArtifact` is called with the default options.
     return b.getInstallPath(install.dest_dir.?, install.dest_sub_path);
 }
+
+/// Publishes the machine-local cgo directive that names static archive inputs.
+/// It deliberately lives outside the checked generator tree: Zig cache paths
+/// are absolute and differ across hosts, while `go-check` must be byte-stable.
+const PublishCgoLinkFlags = struct {
+    step: std.Build.Step,
+    output_path: []const u8,
+    package: []const u8,
+    binding_archive: []const u8,
+    static_archives: []const std.Build.LazyPath,
+    extra_ldflags: []const u8,
+    system_ldflags: []const u8,
+
+    const PublishOptions = struct {
+        output_path: []const u8,
+        package: []const u8,
+        binding_archive: []const u8,
+        static_archives: []const std.Build.LazyPath,
+        extra_ldflags: []const u8,
+        system_ldflags: []const u8,
+    };
+
+    fn create(b: *std.Build, options: PublishOptions) *PublishCgoLinkFlags {
+        const self = b.allocator.create(PublishCgoLinkFlags) catch @panic("OOM");
+        self.* = .{
+            .step = std.Build.Step.init(.{
+                .id = .custom,
+                .name = "PublishCgoLinkFlags",
+                .owner = b,
+                .makeFn = make,
+            }),
+            .output_path = options.output_path,
+            .package = options.package,
+            .binding_archive = options.binding_archive,
+            .static_archives = options.static_archives,
+            .extra_ldflags = options.extra_ldflags,
+            .system_ldflags = options.system_ldflags,
+        };
+        for (options.static_archives) |path| path.addStepDependencies(&self.step);
+        return self;
+    }
+
+    fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
+        _ = options;
+        const b = step.owner;
+        const io = b.graph.io;
+        const self: *PublishCgoLinkFlags = @fieldParentPtr("step", step);
+        var output: std.Io.Writer.Allocating = .init(b.allocator);
+        try output.writer.print(
+            "// Code generated by zigo. DO NOT EDIT.\n" ++
+                "// This machine-local file is intentionally excluded from go-check.\n\n" ++
+                "package {s}\n\n/*\n#cgo LDFLAGS: {s}",
+            .{ self.package, self.binding_archive },
+        );
+        for (self.static_archives) |path| {
+            const absolute = std.Io.Dir.cwd().realPathFileAlloc(io, path.getPath2(b, step), b.allocator) catch |err| {
+                return step.fail("unable to resolve static link input '{s}': {t}", .{ path.getPath2(b, step), err });
+            };
+            try output.writer.print(" {s}", .{absolute});
+        }
+        if (self.extra_ldflags.len != 0) try output.writer.print(" {s}", .{self.extra_ldflags});
+        if (self.system_ldflags.len != 0) try output.writer.print(" {s}", .{self.system_ldflags});
+        try output.writer.writeAll("\n*/\nimport \"C\"\n");
+        const contents = try output.toOwnedSlice();
+
+        if (std.fs.path.dirname(self.output_path)) |dirname| {
+            b.build_root.handle.createDirPath(io, dirname) catch |err| {
+                return step.fail("unable to make path '{f}{s}': {t}", .{ b.build_root, dirname, err });
+            };
+        }
+        const existing = b.build_root.handle.readFileAlloc(io, self.output_path, b.allocator, .limited(16 * 1024 * 1024)) catch null;
+        if (existing) |bytes| {
+            if (std.mem.eql(u8, bytes, contents)) {
+                step.result_cached = true;
+                return;
+            }
+        }
+        b.build_root.handle.writeFile(io, .{ .sub_path = self.output_path, .data = contents }) catch |err| {
+            return step.fail("unable to write file '{f}{s}': {t}", .{ b.build_root, self.output_path, err });
+        };
+        step.result_cached = false;
+    }
+};
 
 /// Copies the generated Go tree into the package's Go directory and removes the
 /// generated files a previous run left behind.
@@ -1068,6 +1181,7 @@ const PublishGeneratedGo = struct {
             for (published.items) |sub_path| {
                 if (std.mem.eql(u8, sub_path, entry.path)) break;
             } else {
+                if (std.mem.eql(u8, std.fs.path.basename(entry.path), volatile_cgo_link_file)) continue;
                 // Only zigo's own output is removed; anything the user wrote in
                 // the same directory carries no marker and is left alone.
                 const contents = go_dir.readFileAlloc(io, entry.path, b.allocator, .limited(64 * 1024 * 1024)) catch continue;
@@ -1123,6 +1237,28 @@ fn cgoRelativePath(b: *std.Build, from: []const u8, to: []const u8) []const u8 {
 
 fn joinFlags(b: *std.Build, flags: []const []const u8) []const u8 {
     return std.mem.join(b.allocator, " ", flags) catch @panic("OOM");
+}
+
+const StaticLinkInputs = struct {
+    paths: []const std.Build.LazyPath,
+
+    const empty: StaticLinkInputs = .{ .paths = &.{} };
+};
+
+/// Static libraries that Zig records as inputs are not folded into another
+/// static archive. cgo must therefore name each input again when it links the
+/// final Go executable.
+fn staticLibraryInputs(b: *std.Build, module: *std.Build.Module) StaticLinkInputs {
+    var paths: std.ArrayList(std.Build.LazyPath) = .empty;
+    for (module.link_objects.items) |object| {
+        const path: std.Build.LazyPath = switch (object) {
+            .other_step => |compile| if (compile.isStaticLibrary()) compile.getEmittedBin() else continue,
+            .static_path => |candidate| candidate,
+            else => continue,
+        };
+        paths.append(b.allocator, path) catch @panic("OOM");
+    }
+    return .{ .paths = paths.items };
 }
 
 /// `-l` flags for the system libraries cgo has to name directly, plus a `-L`

@@ -14,6 +14,7 @@ zig-out/
 *.dylib
 *.dll
 *.exe
+zigo_link_inputs_gen.go
 coverage/
 
 # Local source references

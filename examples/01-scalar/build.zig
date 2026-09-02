@@ -10,6 +10,19 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
+    const support = b.addLibrary(.{
+        .name = "scalar_support",
+        .linkage = .static,
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+        }),
+    });
+    support.root_module.addCSourceFile(.{
+        .file = b.path("src/support.c"),
+        .flags = &.{"-fno-sanitize=undefined"},
+    });
+    scalar.linkLibrary(support);
     const tests = b.addTest(.{ .root_module = scalar });
     b.step("test", "Run the Zig scalar tests").dependOn(&b.addRunArtifact(tests).step);
 

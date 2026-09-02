@@ -13,6 +13,8 @@ pub const Options = struct {
     go_module: []const u8,
     cflags_override: ?[]const u8 = null,
     ldflags_override: ?[]const u8 = null,
+    extra_ldflags: []const u8 = "",
+    ldflags_external: bool = false,
     system_ldflags: []const u8 = "",
     pkg_config_libs: []const u8 = "",
     framework_ldflags: []const u8 = "",
@@ -87,6 +89,8 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .go_module = options.go_module,
         .cflags_override = options.cflags_override,
         .ldflags_override = options.ldflags_override,
+        .extra_ldflags = options.extra_ldflags,
+        .ldflags_external = options.ldflags_external,
         .system_ldflags = options.system_ldflags,
         .pkg_config_libs = options.pkg_config_libs,
         .framework_ldflags = options.framework_ldflags,
@@ -300,13 +304,14 @@ test "cgo flag overrides and observed link flags are emitted" {
         .go_module = "example.com/flags",
         .cflags_override = "-I/opt/flags/include",
         .ldflags_override = "-L/opt/flags/lib -lflags_zigo",
+        .extra_ldflags = "-Wl,--as-needed",
         .system_ldflags = "-lz",
         .framework_ldflags = "-framework CoreFoundation",
     });
     const raw = try temporary.dir.readFileAlloc(std.testing.io, "internal/raw/raw_gen.go", std.testing.allocator, .limited(16 * 1024));
     defer std.testing.allocator.free(raw);
     try std.testing.expect(std.mem.indexOf(u8, raw, "#cgo CFLAGS: -I/opt/flags/include") != null);
-    try std.testing.expect(std.mem.indexOf(u8, raw, "#cgo LDFLAGS: -L/opt/flags/lib -lflags_zigo -lz") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "#cgo LDFLAGS: -L/opt/flags/lib -lflags_zigo -Wl,--as-needed -lz") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "#cgo darwin LDFLAGS: -framework CoreFoundation") != null);
 }
 

@@ -21,4 +21,5 @@
 - 생성자는 receiver를 가질 수 있다. `semantic.json`은 이미 `receiver: "Terminal"`, `go_owner: "Stream"`을 기록하므로 스키마 변경 없이 validate와 emit만 넓힌다. `constructors[]`의 `type`은 반환 타입이다.
 - 정적 백엔드 LDFLAGS 순서: 바인딩 아카이브 → 모듈의 정적 링크 입력(선언 순서, 절대 경로) → `extra_ldflags` → `system_ldflags`. `ldflags`(override)는 앞 두 항목만 대체하고 `extra_ldflags`·`system_ldflags`는 그대로 붙는다.
 - `.other_step`의 Compile 아티팩트는 `getEmittedBin()`의 절대 경로를 쓰고 install_library 스텝이 그 아티팩트에 의존하게 해 순서를 보장한다. 캐시 경로가 raw 파일에 들어가므로 `go-check`의 바이트 비교와 충돌하면 LDFLAGS 줄만 별도 생성 파일로 분리하는 것을 검토하고, 결정을 여기에 기록한다.
+- 결정: 정적 입력이 있는 cgo binding만 `zigo_link_inputs_gen.go`를 raw package에 build-time으로 발행한다. 이 파일은 바인딩 archive → 선언 순서의 canonical absolute static archive → `extra_ldflags` → system flags 순서를 담고 `.gitignore`, `go-check`, stale cleanup에서 제외한다. 나머지 생성 파일은 cache 경로를 전혀 담지 않아 Linux/Windows 재생성도 byte-stable하다. `ldflags` override가 있으면 기본 binding archive와 자동 수집 archive를 함께 대체하므로 이 volatile 파일을 만들지 않고, override 뒤에 extra/system flags를 붙인다.
 - 기본 install에 라이브러리를 거는 것은 `StandardStepOptions.install_library_by_default = true`로 끌 수 있다.

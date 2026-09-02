@@ -9,6 +9,10 @@ pub const Options = struct {
     go_module: []const u8,
     cflags_override: ?[]const u8 = null,
     ldflags_override: ?[]const u8 = null,
+    extra_ldflags: []const u8 = "",
+    /// The build integration emits the complete LDFLAGS line into a volatile
+    /// Go file when it contains machine-local static archive paths.
+    ldflags_external: bool = false,
     system_ldflags: []const u8 = "",
     framework_ldflags: []const u8 = "",
     /// Space-separated pkg-config package names. They become a `#cgo
@@ -1374,20 +1378,23 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         try writer.writeAll(flags)
     else
         try writer.print("-I{s}", .{options.include_dir});
-    try writer.writeAll("\n#cgo LDFLAGS: ");
-    if (options.ldflags_override) |flags|
-        try writer.writeAll(flags)
-    else {
-        const stem = try libraryStemAlloc(allocator, program, options);
-        defer allocator.free(stem);
-        // Naming the archive keeps a same-named shared library in the install
-        // directory from satisfying a static link instead.
-        if (options.link_mode == .static)
-            try writer.print("{s}/lib{s}.a", .{ options.library_dir, stem })
-        else
-            try writer.print("-L{s} -l{s}", .{ options.library_dir, stem });
+    if (!options.ldflags_external) {
+        try writer.writeAll("\n#cgo LDFLAGS: ");
+        if (options.ldflags_override) |flags|
+            try writer.writeAll(flags)
+        else {
+            const stem = try libraryStemAlloc(allocator, program, options);
+            defer allocator.free(stem);
+            // Naming the archive keeps a same-named shared library in the install
+            // directory from satisfying a static link instead.
+            if (options.link_mode == .static)
+                try writer.print("{s}/lib{s}.a", .{ options.library_dir, stem })
+            else
+                try writer.print("-L{s} -l{s}", .{ options.library_dir, stem });
+        }
+        if (options.extra_ldflags.len != 0) try writer.print(" {s}", .{options.extra_ldflags});
+        if (options.system_ldflags.len != 0) try writer.print(" {s}", .{options.system_ldflags});
     }
-    if (options.system_ldflags.len != 0) try writer.print(" {s}", .{options.system_ldflags});
     if (options.framework_ldflags.len != 0) try writer.print("\n#cgo darwin LDFLAGS: {s}", .{options.framework_ldflags});
     if (programHasCString(program)) try writer.writeAll("\n#include <stdlib.h>");
     try writer.print("\n#include \"zigo_{s}.h\"\n*/\nimport \"C\"\n", .{package});
