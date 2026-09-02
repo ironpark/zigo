@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `.return` fixture 헤더·shim·raw·purego에 `_written`/`Written` 부재 단정, `.all` fixture는 유지, abi_diff breaking 테스트 통과.
 > NEXT: none

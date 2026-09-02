@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 위 테스트 통과, 01-scalar 생성물이 루트 doc을 담는다.
 > NEXT: none

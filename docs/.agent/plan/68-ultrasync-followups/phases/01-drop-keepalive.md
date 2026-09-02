@@ -1,6 +1,6 @@
 ---
 perf_phase: true
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 단정 통과, 예제 전부 통과.
 > NEXT: none
