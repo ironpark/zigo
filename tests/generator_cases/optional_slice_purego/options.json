@@ -1,0 +1,6 @@
+{
+  "backend": "purego",
+  "package": "optslice",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/optslice"
+}

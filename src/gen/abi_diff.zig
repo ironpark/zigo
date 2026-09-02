@@ -924,6 +924,32 @@ test "making a parameter or a return optional is breaking" {
     defer return_report.deinit(std.testing.allocator);
     try std.testing.expect(return_report.hasBreaking());
 
+    // A slice carries absence in its own pointer rather than in an extra
+    // parameter, so `[]T` and `?[]T` share a C signature -- but not a Go one,
+    // and the raw layer's return arity differs, so it is still breaking.
+    var element: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+    var slice: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &element } };
+    const optional_slice: semantic.TypeNode = .{ .optional = .{ .child = &slice } };
+    const plain_slice: []const semantic.SemanticFn = &.{.{
+        .name = "digits",
+        .params = &.{},
+        .@"return" = slice,
+        .symbol = "zg_digits",
+    }};
+    const optional_slice_fn: []const semantic.SemanticFn = &.{.{
+        .name = "digits",
+        .params = &.{},
+        .@"return" = optional_slice,
+        .symbol = "zg_digits",
+    }};
+    var slice_report = try diff(
+        std.testing.allocator,
+        .{ .functions = plain_slice, .package = "demo", .prefix = "zg", .zig_version = "0.16.0" },
+        .{ .functions = optional_slice_fn, .package = "demo", .prefix = "zg", .zig_version = "0.16.0" },
+    );
+    defer slice_report.deinit(std.testing.allocator);
+    try std.testing.expect(slice_report.hasBreaking());
+
     // The same optional on both sides is not a change at all.
     var stable_report = try diff(
         std.testing.allocator,

@@ -1,0 +1,44 @@
+{
+  "functions": [
+    {
+      "name": "measure",
+      "params": [{"name": "text", "semantic": "utf8_string", "type": {"kind": "optional", "child": {"kind": "slice", "const": true, "element": {"bits": 8, "kind": "int", "signed": false}}}}],
+      "return": {"bits": 64, "kind": "int", "is_usize": true, "signed": false},
+      "symbol": "zg_measure"
+    },
+    {
+      "name": "label",
+      "params": [{"name": "text", "semantic": "c_string", "type": {"kind": "optional", "child": {"kind": "slice", "const": true, "sentinel": 0, "element": {"bits": 8, "kind": "int", "signed": false}}}}],
+      "return": {"bits": 64, "kind": "int", "is_usize": true, "signed": false},
+      "symbol": "zg_label"
+    },
+    {
+      "name": "total",
+      "params": [{"name": "values", "type": {"kind": "optional", "child": {"kind": "slice", "const": true, "element": {"bits": 32, "kind": "int", "signed": true}}}}],
+      "return": {"bits": 32, "kind": "int", "signed": true},
+      "symbol": "zg_total"
+    },
+    {
+      "name": "digits",
+      "params": [{"name": "count", "type": {"bits": 32, "kind": "int", "signed": false}}],
+      "return": {"kind": "optional", "child": {"kind": "slice", "const": true, "element": {"bits": 32, "kind": "int", "signed": true}}},
+      "symbol": "zg_digits"
+    },
+    {
+      "name": "name",
+      "params": [{"name": "count", "type": {"bits": 32, "kind": "int", "signed": false}}],
+      "return": {"kind": "optional", "child": {"kind": "slice", "const": true, "element": {"bits": 8, "kind": "int", "signed": false}}},
+      "return_semantic": "utf8_string",
+      "symbol": "zg_name"
+    },
+    {
+      "name": "checkedDigits",
+      "params": [{"name": "count", "type": {"bits": 32, "kind": "int", "signed": false}}],
+      "return": {"error_set": ["Invalid"], "kind": "error_union", "payload": {"kind": "optional", "child": {"kind": "slice", "const": true, "element": {"bits": 32, "kind": "int", "signed": true}}}},
+      "symbol": "zg_checked_digits"
+    }
+  ],
+  "package": "optslice",
+  "prefix": "zg",
+  "zig_version": "0.16.0"
+}

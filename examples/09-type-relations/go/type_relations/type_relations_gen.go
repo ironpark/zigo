@@ -237,3 +237,41 @@ func CheckedShift(origin *Point, delta int16) (Point, bool, error) {
 	}
 	return zigoPointFromRaw(result), zigoHas, nil
 }
+
+// DescribeText
+// A `?[]const u8` parameter: the slice's own pointer carries absence, so an
+// absent text and an empty one are different arguments.
+func DescribeText(label *string) uint8 {
+	var labelRaw *[]byte
+	if label != nil {
+		labelRawValue := []byte(*label)
+		labelRaw = &labelRawValue
+	}
+	return raw.DescribeText(labelRaw)
+}
+
+// SumOrZero
+// A `?[]const i32` parameter, summed when present.
+func SumOrZero(values *[]int32) int64 {
+	return raw.SumOrZero(values)
+}
+
+// LeadingDigits
+// A `?[]const i32` return over static storage: absent above the table, and
+// an empty-but-present slice at zero.
+func LeadingDigits(count uint32) ([]int32, bool) {
+	zigoResult, zigoHas := raw.LeadingDigits(count)
+	return zigoResult, zigoHas
+}
+
+// StyleName
+// A `?[]const u8` return, which Go sees as `(string, bool)`.
+func StyleName(style *CursorStyle) (string, bool) {
+	var styleRaw *uint8
+	if style != nil {
+		styleRawValue := uint8(*style)
+		styleRaw = &styleRawValue
+	}
+	zigoResult, zigoHas := raw.StyleName(styleRaw)
+	return string(zigoResult), zigoHas
+}

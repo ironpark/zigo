@@ -31,5 +31,13 @@ pub const bindings = zigo.define(.{
         .{ .path = "root.blinkingStyle", .params = .{"style"} },
         .{ .path = "root.shiftPoint", .params = .{ "origin", "delta" } },
         .{ .path = "root.checkedShift", .params = .{ "origin", "delta" } },
+        .{
+            .path = "root.describeText",
+            .params = .{"label"},
+            .param_meta = .{ .label = .{ .semantic = .utf8_string } },
+        },
+        .{ .path = "root.sumOrZero", .params = .{"values"} },
+        .{ .path = "root.leadingDigits", .params = .{"count"} },
+        .{ .path = "root.styleName", .params = .{"style"}, .semantic = .utf8_string },
     },
 });

@@ -11,7 +11,7 @@ registered_at: "2026-09-02T07:40:11Z"
 
 - [x] [Phase 00: 공개 Go 이름 충돌 진단](phases/00-public-name-collision.md)
 - [x] [Phase 01: 진단의 소스 위치](phases/01-diagnostic-source-location.md)
-- [ ] [Phase 02: 스칼라·enum·extern struct optional](phases/02-scalar-optionals.md)
+- [x] [Phase 02: 스칼라·enum·extern struct optional](phases/02-scalar-optionals.md)
 - [ ] [Phase 03: 슬라이스·문자열 optional](phases/03-slice-optionals.md)
 - [x] [Phase 04: 태그 릴리즈 자동화와 fetch 고정](phases/04-release-automation.md)
 

@@ -415,6 +415,26 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
         .site = .{ .path = "semantic.json", .declaration = declaration },
         .hint = "regenerate semantic.json from matching bindings and source declarations",
     };
+    // An `.out` slice is a buffer the caller already allocated, so making it
+    // optional asks the callee to decide whether that buffer exists -- there
+    // is no shape for that, and no reading of it the two sides would agree on.
+    for (document.functions) |function| {
+        for (function.params) |parameter| {
+            if (parameter.direction != .out or parameter.type != .optional) continue;
+            const declaration = try functionDeclarationAlloc(allocator, function);
+            return .{
+                .severity = .@"error",
+                .code = "ZIGO019",
+                .message = try std.fmt.allocPrint(
+                    allocator,
+                    "output parameter `{s}` cannot be optional",
+                    .{parameter.name},
+                ),
+                .site = functionSiteFor(function, declaration),
+                .hint = "an output buffer is supplied by the caller; drop the `?` or make the function return the optional instead",
+            };
+        }
+    }
     // Types the C ABI cannot name are reported last so that the sharper
     // diagnostics above keep naming the declarations they always did.
     for (document.functions) |function| {
@@ -638,6 +658,14 @@ fn typeOffense(allocator: std.mem.Allocator, node: semantic.TypeNode, promotable
                 else
                     Offense{ .node = value.child.*, .reason = .unsupported },
                 .float => |float| if (floatSupported(float)) null else Offense{ .node = value.child.* },
+                // `?[]T` spends the slice's own pointer on absence, so the
+                // element rules are exactly the slice ones. A slice of slices
+                // is the exception: its lowering builds a second array of
+                // pointers, and there is no NULL left to mean absent.
+                .slice => |slice| if (slice.element.* == .slice)
+                    Offense{ .node = node }
+                else
+                    wrapOffense(allocator, try typeOffense(allocator, slice.element.*, false), "the slice element"),
                 else => Offense{ .node = node },
             };
         },
@@ -930,6 +958,10 @@ fn nestedValueStruct(node: semantic.TypeNode) bool {
         // aggregate-friendly shape a bare value struct gets, so the whole
         // position is supported; only a struct nested *inside* the child
         // (there is none reachable today) would still be unsupported.
+        // `?ExternStruct` lowers to a single nullable pointer, the same
+        // aggregate-friendly shape a bare value struct gets. `?[]Point` does
+        // not: the optional slice lowering has no place for the element
+        // conversion the bare slice one performs.
         .optional => |value| switch (value.child.*) {
             .value_struct => false,
             else => containsValueStruct(value.child.*),
@@ -1259,7 +1291,8 @@ test "implemented diagnostic snapshots are stable" {
     var byte_element: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
     var byte_slice_node: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte_element } };
     var word_element: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
-    var word_slice_node: semantic.TypeNode = .{ .slice = .{ .@"const" = false, .element = &word_element } };
+    const word_slice_node: semantic.TypeNode = .{ .slice = .{ .@"const" = false, .element = &word_element } };
+    var optional_word_node: semantic.TypeNode = .{ .optional = .{ .child = &word_element } };
     const count_node: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
     var wide_element: semantic.TypeNode = .{ .int = .{ .bits = 21, .signed = false } };
     const wide_slice_node: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &wide_element } };
@@ -1597,7 +1630,7 @@ test "implemented diagnostic snapshots are stable" {
         .{ .document = .{
             .functions = &.{.{
                 .name = "maybe",
-                .params = &.{.{ .name = "value", .type = .{ .optional = .{ .child = &word_slice_node } } }},
+                .params = &.{.{ .name = "value", .type = .{ .optional = .{ .child = &optional_word_node } } }},
                 .@"return" = .{ .void = {} },
                 .receiver = "Thing",
                 .symbol = "zg_thing_maybe",
@@ -2730,4 +2763,77 @@ test "an optional is accepted as a whole parameter, return value, and error payl
         .zig_version = "0.16.0",
     };
     try semanticDocument(std.testing.allocator, document);
+}
+
+test "an optional slice is accepted while its unsupported combinations are not" {
+    var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    var word: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+    var point: semantic.TypeNode = .{ .value_struct = .{ .ref = "Point" } };
+    var bytes: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte } };
+    var words: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &word } };
+    const points: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &point } };
+    const strings: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &bytes } };
+    const point_types = [_]semantic.TypeDecl{.{
+        .fields = &.{.{ .name = "x", .type = .{ .int = .{ .bits = 32, .signed = true } } }},
+        .kind = .value_struct,
+        .layout = .@"extern",
+        .name = "Point",
+    }};
+
+    // `?[]T` in and out: the slice's own pointer is what says "present".
+    const document: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "total",
+            .params = &.{.{ .name = "values", .type = .{ .optional = .{ .child = &words } } }},
+            .@"return" = .{ .optional = .{ .child = &bytes } },
+            .symbol = "zg_total",
+        }},
+        .package = "good",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    try semanticDocument(std.testing.allocator, document);
+
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
+
+    // An `.out` slice is the caller's own buffer, so it cannot be absent.
+    const out_document: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "fill",
+            .params = &.{.{
+                .name = "buffer",
+                .direction = .out,
+                .type = .{ .optional = .{ .child = &words } },
+            }},
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_fill",
+        }},
+        .package = "bad",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    const out_issue = (try findIssue(scratch.allocator(), out_document)).?;
+    try std.testing.expectEqualStrings("ZIGO019", out_issue.code);
+    try std.testing.expect(std.mem.containsAtLeast(u8, out_issue.message, 1, "cannot be optional"));
+
+    // A slice of slices builds a second array of pointers, and there is no
+    // NULL left over to mean absent. A slice of extern structs is rejected for
+    // the same reason the bare nested position is.
+    for ([_]semantic.TypeNode{ strings, points }) |child| {
+        var node = child;
+        const rejected: semantic.Semantic = .{
+            .functions = &.{.{
+                .name = "take",
+                .params = &.{.{ .name = "values", .type = .{ .optional = .{ .child = &node } } }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_take",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .types = &point_types,
+            .zig_version = "0.16.0",
+        };
+        try std.testing.expect((try findIssue(scratch.allocator(), rejected)) != null);
+    }
 }

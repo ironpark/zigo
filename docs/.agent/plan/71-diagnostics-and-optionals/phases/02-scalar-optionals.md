@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T10:15:47Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: fixture 골든과 예제 테스트가 cgo·purego에서 통과.
 > NEXT: none

@@ -462,6 +462,10 @@ bool, 정수(승격 대상인 좁은 정수 포함), 부동소수, 등록 enum, 
 | 매개변수 `?*Handle` | `T *x` | `*Handle` |
 | 반환 `?T` | `bool` 반환 + `T *out_result` | `(T, bool)` |
 | 반환 `E!?T` | `int32_t` 상태 + `bool *out_result_has` + `T *out_result` | `(T, bool, error)` |
+| 매개변수 `?[]T` | `const T *x_ptr, size_t x_len` (`x_ptr == NULL` = 부재) | `*[]T` |
+| 매개변수 `?[]const u8`(utf8)·`?[:0]const u8` | 같음 / `const char *x` | `*string` |
+| 반환 `?[]T` | `T **out_result_ptr, size_t *out_result_len` (NULL = 부재) | `([]T, bool)` |
+| 반환 `?[]const u8`(utf8) | 같음 | `(string, bool)` |
 
 ```zig
 pub fn shiftPoint(origin: ?Point, delta: i16) ?Point { /* ... */ }
@@ -472,6 +476,12 @@ origin := Point{X: 1, Y: 2}
 shifted, ok := ShiftPoint(&origin, 2) // ok == true
 _, ok = ShiftPoint(nil, 2)            // ok == false
 ```
+
+슬라이스·문자열 optional은 presence 플래그를 따로 두지 않습니다. 슬라이스가 이미 포인터를
+갖고 있으므로 그 포인터가 NULL인 것이 부재이고, 길이 0인 **존재하는** 슬라이스와 구별됩니다.
+Go에서 `[]T`나 `string`이 아니라 `*[]T`·`*string`인 이유도 같습니다 — nil 슬라이스와 빈
+슬라이스는 Go에서 이 구별을 표현하지 못합니다. 반환 `?[]T`는 기존 슬라이스 반환의 소유권
+규칙(`.release` 포함)을 그대로 따르고 presence만 더합니다.
 
 부재와 "값이 0인 present"는 서로 다릅니다. 값 자체가 아니라 presence 플래그가 그것을
 가리므로, `DoubleWidth(&zero)`는 `0, true`를, `DoubleWidth(nil)`은 `_, false`를
@@ -484,7 +494,9 @@ scalar optional을 Go에서 `*T`로 적는 것은 의도한 선택입니다. 제
 때문입니다.
 
 `extern struct`의 field, callback signature, slice 원소(`[]?T`), optional의
-optional(`??T`)에는 presence를 실을 자리가 없어 `ZIGO019`로 거부됩니다. reflection이
+optional(`??T`), `.out` 슬라이스 매개변수(버퍼는 호출자가 잡습니다), 슬라이스의
+슬라이스(`?[][]const u8`), `extern struct` 슬라이스(`?[]Point`)에는 presence를 실을 자리가
+없어 `ZIGO019`(구조체가 걸린 경우 `ZIGO013`)로 거부됩니다. reflection이
 표현할 수 없는 child(slice, tagged union 등)는 그보다 앞선 컴파일 오류입니다.
 
 retained callback이나 pointer는 소유 객체의 `Close`까지 유효해야 합니다.

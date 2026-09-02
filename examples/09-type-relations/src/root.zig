@@ -143,6 +143,53 @@ pub fn checkedShift(origin: ?Point, delta: i16) ShiftError!?Point {
     return .{ .x = point.x + delta, .y = point.y + delta };
 }
 
+/// A `?[]const u8` parameter: the slice's own pointer carries absence, so an
+/// absent text and an empty one are different arguments.
+pub fn describeText(label: ?[]const u8) u8 {
+    const value = label orelse return 0;
+    return if (value.len == 0) 1 else 2;
+}
+
+/// A `?[]const i32` parameter, summed when present.
+pub fn sumOrZero(values: ?[]const i32) i64 {
+    const slice = values orelse return -1;
+    var total: i64 = 0;
+    for (slice) |value| total += value;
+    return total;
+}
+
+const digit_table = [_]i32{ 0, 1, 2, 3, 4 };
+
+/// A `?[]const i32` return over static storage: absent above the table, and
+/// an empty-but-present slice at zero.
+pub fn leadingDigits(count: u32) ?[]const i32 {
+    if (count > digit_table.len) return null;
+    return digit_table[0..count];
+}
+
+/// A `?[]const u8` return, which Go sees as `(string, bool)`.
+pub fn styleName(style: ?CursorStyle) ?[]const u8 {
+    return switch (style orelse return null) {
+        .block => "block",
+        .bar => "bar",
+        .underline => "underline",
+    };
+}
+
+test "an optional slice keeps absence apart from emptiness" {
+    try std.testing.expectEqual(@as(u8, 0), describeText(null));
+    try std.testing.expectEqual(@as(u8, 1), describeText(""));
+    try std.testing.expectEqual(@as(u8, 2), describeText("hi"));
+    try std.testing.expectEqual(@as(i64, -1), sumOrZero(null));
+    try std.testing.expectEqual(@as(i64, 0), sumOrZero(&.{}));
+    try std.testing.expectEqual(@as(i64, 6), sumOrZero(&.{ 1, 2, 3 }));
+    try std.testing.expectEqual(@as(usize, 0), leadingDigits(0).?.len);
+    try std.testing.expectEqual(@as(usize, 3), leadingDigits(3).?.len);
+    try std.testing.expectEqual(@as(?[]const i32, null), leadingDigits(99));
+    try std.testing.expectEqualStrings("bar", styleName(.bar).?);
+    try std.testing.expectEqual(@as(?[]const u8, null), styleName(null));
+}
+
 test "an optional crosses as a value or as its absence" {
     try std.testing.expectEqual(@as(?u32, 84), doubleWidth(42));
     try std.testing.expectEqual(@as(?u32, null), doubleWidth(null));

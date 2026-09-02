@@ -183,6 +183,69 @@ func CheckedShift(origin *PointData, delta int16) (PointData, bool, int32) {
 	}, outResultHas != 0, code
 }
 
+// DescribeText calls the generated C ABI wrapper for zg_describe_text.
+func DescribeText(label *[]uint8) uint8 {
+	var labelZero C.uint8_t
+	var labelLen C.size_t
+	var labelPtr *C.uint8_t
+	if label != nil {
+		labelPtr = &labelZero
+		labelLen = C.size_t(len(*label))
+		if labelLen != 0 {
+			labelPtr = (*C.uint8_t)(unsafe.Pointer(&(*label)[0]))
+		}
+	}
+	return uint8(C.zg_describe_text(labelPtr, labelLen))
+}
+
+// SumOrZero calls the generated C ABI wrapper for zg_sum_or_zero.
+func SumOrZero(values *[]int32) int64 {
+	var valuesZero C.int32_t
+	var valuesLen C.size_t
+	var valuesPtr *C.int32_t
+	if values != nil {
+		valuesPtr = &valuesZero
+		valuesLen = C.size_t(len(*values))
+		if valuesLen != 0 {
+			valuesPtr = (*C.int32_t)(unsafe.Pointer(&(*values)[0]))
+		}
+	}
+	return int64(C.zg_sum_or_zero(valuesPtr, valuesLen))
+}
+
+// LeadingDigits calls the generated C ABI wrapper for zg_leading_digits.
+func LeadingDigits(count uint32) ([]int32, bool) {
+	var outResultPtr *C.int32_t
+	var outResultLen C.size_t
+	C.zg_leading_digits(C.uint32_t(count), &outResultPtr, &outResultLen)
+	if outResultPtr == nil {
+		return nil, false
+	}
+	if outResultLen == 0 {
+		return nil, true
+	}
+	result := make([]int32, int(outResultLen))
+	copy(result, unsafe.Slice((*int32)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
+	return result, true
+}
+
+// StyleName calls the generated C ABI wrapper for zg_style_name.
+func StyleName(style *uint8) ([]uint8, bool) {
+	var outResultPtr *C.uint8_t
+	var outResultLen C.size_t
+	var styleValue C.uint8_t
+	var stylePtr *C.uint8_t
+	if style != nil {
+		styleValue = C.uint8_t(*style)
+		stylePtr = &styleValue
+	}
+	C.zg_style_name(stylePtr, &outResultPtr, &outResultLen)
+	if outResultPtr == nil {
+		return nil, false
+	}
+	return C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen)), true
+}
+
 // PointData mirrors the zg_point layout, padding included.
 type PointData struct {
 	X int16

@@ -23,6 +23,13 @@
 
 ### Added
 
+- slice·문자열 optional(`?[]T`, `?[]const u8`, `?[:0]const u8`)을 매개변수, 반환값,
+  error union payload 자리에서 지원합니다. presence 플래그를 더하지 않고 slice 자신의
+  포인터가 부재를 나릅니다(`ptr == NULL`), 그래서 부재와 길이 0인 존재하는 slice가
+  구별됩니다. Go에서는 매개변수가 `*[]T`/`*string`, 반환이 `([]T, bool)`/`(string, bool)`
+  입니다. 반환은 기존 슬라이스 반환의 소유권 규칙(`.release` 포함)을 그대로 따릅니다.
+  cgo와 purego 모두 지원합니다. `.out` slice를 optional로 만들거나, slice의 slice와
+  `extern struct` slice를 optional로 만드는 것은 거부합니다. (계획 71)
 - scalar·bool·enum·`extern struct` optional(`?T`)을 매개변수, 반환값, error union
   payload 자리에서 지원합니다. 이전에는 선언된 opaque type의 pointer(`?*T`)만 가능했고
   나머지는 reflection 단계의 컴파일 오류였습니다. 매개변수는 nullable pointer

@@ -286,6 +286,8 @@ pub fn build(b: *std.Build) void {
         "tests/generator_cases/nested_namespace/expected",
         "tests/generator_cases/optional/expected",
         "tests/generator_cases/optional_purego/expected",
+        "tests/generator_cases/optional_slice/expected",
+        "tests/generator_cases/optional_slice_purego/expected",
         "tests/generator_cases/scalar/expected",
         "tests/generator_cases/union_snapshot/expected",
         "tests/generator_cases/value_struct/expected",

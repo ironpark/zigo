@@ -47,7 +47,7 @@
         }
       },
       "source": {
-        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "path": "./examples/09-type-relations/src/root.zig",
         "line": 10,
         "column": 12
       },
@@ -65,7 +65,7 @@
         "signed": true
       },
       "source": {
-        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "path": "./examples/09-type-relations/src/root.zig",
         "line": 17,
         "column": 12
       },
@@ -100,7 +100,7 @@
         "signed": true
       },
       "source": {
-        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "path": "./examples/09-type-relations/src/root.zig",
         "line": 21,
         "column": 12
       },
@@ -115,7 +115,7 @@
         "kind": "void"
       },
       "source": {
-        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "path": "./examples/09-type-relations/src/root.zig",
         "line": 26,
         "column": 12
       },
@@ -139,7 +139,7 @@
         }
       },
       "source": {
-        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "path": "./examples/09-type-relations/src/root.zig",
         "line": 35,
         "column": 12
       },
@@ -175,7 +175,7 @@
         "signed": true
       },
       "source": {
-        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "path": "./examples/09-type-relations/src/root.zig",
         "line": 43,
         "column": 12
       },
@@ -193,7 +193,7 @@
         "signed": true
       },
       "source": {
-        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "path": "./examples/09-type-relations/src/root.zig",
         "line": 48,
         "column": 12
       },
@@ -208,7 +208,7 @@
         "kind": "void"
       },
       "source": {
-        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "path": "./examples/09-type-relations/src/root.zig",
         "line": 52,
         "column": 12
       },
@@ -225,7 +225,7 @@
         "signed": false
       },
       "source": {
-        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "path": "./examples/09-type-relations/src/root.zig",
         "line": 80,
         "column": 8
       },
@@ -240,7 +240,7 @@
         "ref": "CursorStyle"
       },
       "source": {
-        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "path": "./examples/09-type-relations/src/root.zig",
         "line": 71,
         "column": 8
       },
@@ -270,7 +270,7 @@
         "kind": "bool"
       },
       "source": {
-        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "path": "./examples/09-type-relations/src/root.zig",
         "line": 76,
         "column": 8
       },
@@ -322,7 +322,7 @@
         "signed": false
       },
       "source": {
-        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "path": "./examples/09-type-relations/src/root.zig",
         "line": 96,
         "column": 12
       },
@@ -358,7 +358,7 @@
         "signed": false
       },
       "source": {
-        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "path": "./examples/09-type-relations/src/root.zig",
         "line": 90,
         "column": 16
       },
@@ -399,7 +399,7 @@
         "kind": "optional"
       },
       "source": {
-        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "path": "./examples/09-type-relations/src/root.zig",
         "line": 111,
         "column": 8
       },
@@ -434,7 +434,7 @@
         "kind": "optional"
       },
       "source": {
-        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "path": "./examples/09-type-relations/src/root.zig",
         "line": 116,
         "column": 8
       },
@@ -468,7 +468,7 @@
         "ref": "CursorStyle"
       },
       "source": {
-        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "path": "./examples/09-type-relations/src/root.zig",
         "line": 121,
         "column": 8
       },
@@ -505,7 +505,7 @@
         "kind": "optional"
       },
       "source": {
-        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "path": "./examples/09-type-relations/src/root.zig",
         "line": 126,
         "column": 8
       },
@@ -558,7 +558,7 @@
         "kind": "optional"
       },
       "source": {
-        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "path": "./examples/09-type-relations/src/root.zig",
         "line": 132,
         "column": 8
       },
@@ -617,11 +617,182 @@
         }
       },
       "source": {
-        "path": "/Users/ironpark/Projects/Personal/open-source/zigo/examples/09-type-relations/src/root.zig",
+        "path": "./examples/09-type-relations/src/root.zig",
         "line": 140,
         "column": 8
       },
       "symbol": "zg_checked_shift"
+    },
+    {
+      "doc": "A `?[]const u8` parameter: the slice's own pointer carries absence, so an\nabsent text and an empty one are different arguments.",
+      "name": "describeText",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "label",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "semantic": "utf8_string",
+          "source": {
+            "line": 148,
+            "column": 21
+          },
+          "type": {
+            "child": {
+              "const": true,
+              "element": {
+                "bits": 8,
+                "is_usize": false,
+                "kind": "int",
+                "signed": false
+              },
+              "kind": "slice"
+            },
+            "kind": "optional"
+          }
+        }
+      ],
+      "return": {
+        "bits": 8,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "source": {
+        "path": "./examples/09-type-relations/src/root.zig",
+        "line": 148,
+        "column": 8
+      },
+      "symbol": "zg_describe_text"
+    },
+    {
+      "doc": "A `?[]const i32` parameter, summed when present.",
+      "name": "sumOrZero",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "values",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 154,
+            "column": 18
+          },
+          "type": {
+            "child": {
+              "const": true,
+              "element": {
+                "bits": 32,
+                "is_usize": false,
+                "kind": "int",
+                "signed": true
+              },
+              "kind": "slice"
+            },
+            "kind": "optional"
+          }
+        }
+      ],
+      "return": {
+        "bits": 64,
+        "is_usize": false,
+        "kind": "int",
+        "signed": true
+      },
+      "source": {
+        "path": "./examples/09-type-relations/src/root.zig",
+        "line": 154,
+        "column": 8
+      },
+      "symbol": "zg_sum_or_zero"
+    },
+    {
+      "doc": "A `?[]const i32` return over static storage: absent above the table, and\nan empty-but-present slice at zero.",
+      "name": "leadingDigits",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "count",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 165,
+            "column": 22
+          },
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "child": {
+          "const": true,
+          "element": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          },
+          "kind": "slice"
+        },
+        "kind": "optional"
+      },
+      "source": {
+        "path": "./examples/09-type-relations/src/root.zig",
+        "line": 165,
+        "column": 8
+      },
+      "symbol": "zg_leading_digits"
+    },
+    {
+      "doc": "A `?[]const u8` return, which Go sees as `(string, bool)`.",
+      "name": "styleName",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "style",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 171,
+            "column": 18
+          },
+          "type": {
+            "child": {
+              "kind": "enum",
+              "ref": "CursorStyle"
+            },
+            "kind": "optional"
+          }
+        }
+      ],
+      "return": {
+        "child": {
+          "const": true,
+          "element": {
+            "bits": 8,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          },
+          "kind": "slice"
+        },
+        "kind": "optional"
+      },
+      "return_semantic": "utf8_string",
+      "source": {
+        "path": "./examples/09-type-relations/src/root.zig",
+        "line": 171,
+        "column": 8
+      },
+      "symbol": "zg_style_name"
     }
   ],
   "ir_version": 1,

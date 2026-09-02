@@ -143,6 +143,13 @@ API를 작성할 수 있으며, zigo는 marker가 없는 사용자 파일을 덮
 - error union과 겹치면 상태 코드가 이미 error에 쓰이므로 presence가 자기 out parameter를
   갖습니다: `int32_t f(..., uint8_t *out_result_has, T *out_result)`.
 
+`?[]T`는 다릅니다. slice는 이미 포인터를 갖고 있으므로 presence 플래그를 더하지 않고
+그 포인터의 NULL을 부재로 씁니다. 매개변수는 `const T *x_ptr, size_t x_len` 그대로이고,
+반환은 `T **out_result_ptr, size_t *out_result_len`에 NULL을 쓰는 것으로 부재를 알립니다.
+길이 0인 **존재하는** slice는 여전히 non-NULL 포인터로 건너가므로 두 상태가 섞이지
+않습니다 — 생성된 Go raw 계층이 존재하지만 비어 있는 slice에 대해 자기 자리 표시자 주소를
+넘기는 이유입니다.
+
 purego도 같은 시그니처를 씁니다. scalar child는 `*T`로, `extern struct` child는
 `unsafe.Pointer`로 바인딩 테이블에 선언됩니다.
 

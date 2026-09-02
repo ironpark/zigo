@@ -88,7 +88,12 @@
   매개변수는 nullable pointer 하나로(NULL = 부재), 반환은 presence `bool`과 out
   parameter로 내려간다. `extern struct`의 field, callback signature, slice
   원소(`[]?T`), optional의 optional(`??T`)은 presence를 실을 자리가 없어 `ZIGO019`로
-  거부된다. `?[]T`와 `?[:0]const u8` 같은 slice·문자열 optional은 아직 지원하지 않는다.
+  거부된다.
+- slice·문자열 optional(`?[]T`, `?[]const u8`, `?[:0]const u8`)은 slice 자신의 포인터가
+  부재를 나른다: `ptr == NULL`이 부재이고 길이 0인 존재하는 slice와 구별된다. Go에서는
+  `*[]T`/`*string`이 되고 반환은 `([]T, bool)`/`(string, bool)`이다. `.out` slice를
+  optional로 만들거나(버퍼는 호출자가 잡는다), slice의 slice(`?[][]const u8`),
+  `extern struct` slice(`?[]Point`)를 optional로 만드는 것은 거부된다.
 - tagged union은 `.repr = .tagged_union`으로 등록한 뒤 포인터로만 노출한다. 생성된
   `Tag`/`As*`가 active tag를 검사하며 union 레이아웃은 C로 전달하지 않는다. nested
   aggregate, optional, error union, callback 또는 pointer 원소 slice payload는 지원하지 않는다.

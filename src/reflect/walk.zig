@@ -660,10 +660,16 @@ fn typeNode(
             const allowed = switch (child) {
                 .bool, .int, .float, .@"enum" => true,
                 .@"struct" => |value| value.layout == .@"extern",
+                // A slice already carries a pointer, so absence rides on that
+                // pointer being NULL -- which is why an empty slice and an
+                // absent one stay different. A sentinel many pointer reflects
+                // to the same `slice` node and works the same way.
+                .pointer => |value| value.size == .slice or
+                    (value.size == .many and value.is_const and value.sentinel() != null),
                 else => false,
             };
             if (!allowed) @compileError(
-                "zigo supports optionals on pointers to declared opaque types, bool, integers, floats, enums, and extern structs, at " ++ context,
+                "zigo supports optionals on pointers to declared opaque types, bool, integers, floats, enums, extern structs, and slices, at " ++ context,
             );
             const child_node = try allocator.create(semantic.TypeNode);
             child_node.* = try typeNode(allocator, info.child, types, context ++ " (optional child)");

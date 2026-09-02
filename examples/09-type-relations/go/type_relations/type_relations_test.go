@@ -161,3 +161,54 @@ func TestOptionalStruct(t *testing.T) {
 		t.Fatal("CheckedShift({1,2}, 2000) returned no error, want Overflow")
 	}
 }
+
+// An optional slice is a Go pointer to the slice or string, which is the only
+// spelling that separates "no argument" from "an empty one": both a nil and an
+// empty `[]byte` would otherwise cross as the same thing.
+func TestOptionalSliceParameters(t *testing.T) {
+	if got := DescribeText(nil); got != 0 {
+		t.Fatalf("DescribeText(nil) = %d, want 0", got)
+	}
+	empty := ""
+	if got := DescribeText(&empty); got != 1 {
+		t.Fatalf("DescribeText(&\"\") = %d, want 1", got)
+	}
+	text := "hi"
+	if got := DescribeText(&text); got != 2 {
+		t.Fatalf("DescribeText(&\"hi\") = %d, want 2", got)
+	}
+
+	if got := SumOrZero(nil); got != -1 {
+		t.Fatalf("SumOrZero(nil) = %d, want -1", got)
+	}
+	none := []int32{}
+	if got := SumOrZero(&none); got != 0 {
+		t.Fatalf("SumOrZero(&[]) = %d, want 0", got)
+	}
+	values := []int32{1, 2, 3}
+	if got := SumOrZero(&values); got != 6 {
+		t.Fatalf("SumOrZero(&[1,2,3]) = %d, want 6", got)
+	}
+}
+
+// A `?[]T` return is a slice plus a presence flag, so an absent result and an
+// empty one are told apart by the flag rather than by the length.
+func TestOptionalSliceReturns(t *testing.T) {
+	if got, ok := LeadingDigits(3); !ok || len(got) != 3 || got[2] != 2 {
+		t.Fatalf("LeadingDigits(3) = %v, %v, want [0 1 2], true", got, ok)
+	}
+	if got, ok := LeadingDigits(0); !ok || len(got) != 0 {
+		t.Fatalf("LeadingDigits(0) = %v, %v, want empty, true", got, ok)
+	}
+	if got, ok := LeadingDigits(99); ok {
+		t.Fatalf("LeadingDigits(99) = %v, %v, want _, false", got, ok)
+	}
+
+	style := CursorStyleBar
+	if got, ok := StyleName(&style); !ok || got != "bar" {
+		t.Fatalf("StyleName(bar) = %q, %v, want \"bar\", true", got, ok)
+	}
+	if _, ok := StyleName(nil); ok {
+		t.Fatal("StyleName(nil) reported a value, want absent")
+	}
+}

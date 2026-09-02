@@ -2,7 +2,7 @@
 depends_on:
 - "71-diagnostics-and-optionals#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: fixture 통과, 부재와 빈 슬라이스가 구별되는 Go 테스트.
 > NEXT: none

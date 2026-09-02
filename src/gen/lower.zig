@@ -42,6 +42,47 @@ pub fn semanticDocumentForBackend(
             // The shim writes the value itself, so the parameter is absent
             // from the C signature and from everything derived from it.
             if (parameter.injected != null) continue;
+            // `?[]T` reuses the slice lowering whole: the same pointer and
+            // length cross, and absence rides on the pointer being NULL, so
+            // an absent slice and an empty one stay different.
+            if (parameter.type == .optional and parameter.type.optional.child.* == .slice) {
+                const slice_node = parameter.type.optional.child.*;
+                const element = try allocator.create(abi.AbiScalar);
+                element.* = try lowerValue(allocator, document, prefix, slice_node.slice.element.*);
+                if (isCStringSlice(slice_node, parameter.semantic)) {
+                    try params.append(allocator, .{
+                        .name = parameter.name,
+                        .role = .value,
+                        .scalar = .{ .pointer = .{
+                            .child = element,
+                            .is_const = true,
+                            .is_many = true,
+                            .is_c_string = true,
+                            .is_optional = true,
+                        } },
+                        .source_index = parameter_index,
+                    });
+                    continue;
+                }
+                try params.append(allocator, .{
+                    .name = try std.fmt.allocPrint(allocator, "{s}_ptr", .{parameter.name}),
+                    .role = .slice_pointer,
+                    .scalar = .{ .pointer = .{
+                        .child = element,
+                        .is_const = slice_node.slice.@"const",
+                        .is_many = true,
+                        .is_optional = true,
+                    } },
+                    .source_index = parameter_index,
+                });
+                try params.append(allocator, .{
+                    .name = try std.fmt.allocPrint(allocator, "{s}_len", .{parameter.name}),
+                    .role = .slice_length,
+                    .scalar = .usize,
+                    .source_index = parameter_index,
+                });
+                continue;
+            }
             if (isStringSliceParameter(parameter)) {
                 const data_child = try allocator.create(abi.AbiScalar);
                 data_child.* = try lowerValue(allocator, document, prefix, parameter.type.slice.element.*.slice.element.*);
@@ -188,7 +229,7 @@ pub fn semanticDocumentForBackend(
             } };
         } else switch (function.@"return") {
             .slice => |slice| result: {
-                try appendSliceReturnOuts(allocator, document, prefix, &params, slice);
+                try appendSliceReturnOuts(allocator, document, prefix, &params, slice, false);
                 break :result abi.AbiScalar.void;
             },
             .error_union => |error_union| result: {
@@ -199,7 +240,14 @@ pub fn semanticDocumentForBackend(
                 if (error_union.payload.* == .slice and
                     !isCStringSlice(error_union.payload.*, function.return_semantic))
                 {
-                    try appendSliceReturnOuts(allocator, document, prefix, &params, error_union.payload.slice);
+                    try appendSliceReturnOuts(allocator, document, prefix, &params, error_union.payload.slice, false);
+                } else if (error_union.payload.* == .optional and
+                    error_union.payload.optional.child.* == .slice and
+                    !isCStringSlice(error_union.payload.optional.child.*, function.return_semantic))
+                {
+                    // `E!?[]T`: the returned pointer is already nullable, so
+                    // absence needs no flag of its own.
+                    try appendSliceReturnOuts(allocator, document, prefix, &params, error_union.payload.optional.child.slice, true);
                 } else if (error_union.payload.* == .optional) {
                     // `!?T`: the status code alone cannot carry both the error
                     // and the optional's own presence, so presence gets its
@@ -243,10 +291,15 @@ pub fn semanticDocumentForBackend(
                 });
                 break :result abi.AbiScalar.void;
             },
-            // Plain `?T` (no error union): presence becomes the C return
-            // value -- `bool` instead of `void` -- and the value travels
-            // through the same out parameter an error-union payload would use.
+            // `?[]T` hands back a nullable pointer and a length: NULL is the
+            // absent slice, which a length of zero cannot be confused with.
             .optional => |optional| result: {
+                if (optional.child.* == .slice and
+                    !isCStringSlice(optional.child.*, function.return_semantic))
+                {
+                    try appendSliceReturnOuts(allocator, document, prefix, &params, optional.child.slice, true);
+                    break :result abi.AbiScalar{ .void = {} };
+                }
                 const child = try allocator.create(abi.AbiScalar);
                 child.* = try lowerValue(allocator, document, prefix, optional.child.*);
                 try params.append(allocator, .{
@@ -282,7 +335,9 @@ pub fn semanticDocumentForBackend(
                 structRecord(structs, function.@"return".optional.child.value_struct.ref)
             else
                 null,
-            .ret_optional = function.@"return" == .optional,
+            // A slice optional carries absence in its own pointer, so it
+            // takes none of the presence machinery a scalar one needs.
+            .ret_optional = function.@"return" == .optional and function.@"return".optional.child.* != .slice,
             .payload_struct = if (function.@"return" == .error_union and
                 function.@"return".error_union.payload.* == .value_struct)
                 structRecord(structs, function.@"return".error_union.payload.value_struct.ref)
@@ -293,7 +348,8 @@ pub fn semanticDocumentForBackend(
             else
                 null,
             .payload_optional = function.@"return" == .error_union and
-                function.@"return".error_union.payload.* == .optional,
+                function.@"return".error_union.payload.* == .optional and
+                function.@"return".error_union.payload.optional.child.* != .slice,
         };
     }
     // The release target is another exported function, so its symbol is only
@@ -819,11 +875,17 @@ fn appendSliceReturnOuts(
     prefix: []const u8,
     params: *std.ArrayList(abi.AbiParam),
     slice: semantic.Slice,
+    is_optional: bool,
 ) !void {
     const element = try allocator.create(abi.AbiScalar);
     element.* = try lowerValue(allocator, document, prefix, slice.element.*);
     const many = try allocator.create(abi.AbiScalar);
-    many.* = .{ .pointer = .{ .child = element, .is_const = slice.@"const", .is_many = true } };
+    many.* = .{ .pointer = .{
+        .child = element,
+        .is_const = slice.@"const",
+        .is_many = true,
+        .is_optional = is_optional,
+    } };
     try params.append(allocator, .{
         .name = "out_result_ptr",
         .role = .return_slice_pointer,
