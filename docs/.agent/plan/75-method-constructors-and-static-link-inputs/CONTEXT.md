@@ -23,3 +23,9 @@
 - `.other_step`의 Compile 아티팩트는 `getEmittedBin()`의 절대 경로를 쓰고 install_library 스텝이 그 아티팩트에 의존하게 해 순서를 보장한다. 캐시 경로가 raw 파일에 들어가므로 `go-check`의 바이트 비교와 충돌하면 LDFLAGS 줄만 별도 생성 파일로 분리하는 것을 검토하고, 결정을 여기에 기록한다.
 - 결정: 정적 입력이 있는 cgo binding만 `zigo_link_inputs_gen.go`를 raw package에 build-time으로 발행한다. 이 파일은 바인딩 archive → 선언 순서의 canonical absolute static archive → `extra_ldflags` → system flags 순서를 담고 `.gitignore`, `go-check`, stale cleanup에서 제외한다. 나머지 생성 파일은 cache 경로를 전혀 담지 않아 Linux/Windows 재생성도 byte-stable하다. `ldflags` override가 있으면 기본 binding archive와 자동 수집 archive를 함께 대체하므로 이 volatile 파일을 만들지 않고, override 뒤에 extra/system flags를 붙인다.
 - 기본 install에 라이브러리를 거는 것은 `StandardStepOptions.install_library_by_default = true`로 끌 수 있다.
+
+## Implementation outcomes and deviations
+
+- Cache 경로 결정은 위 invariant대로 volatile `zigo_link_inputs_gen.go` 분리를 택했다. checked-in raw Go와 `semantic.json`은 계속 플랫폼 독립적이다.
+- 정적 C fixture 자체의 산술 overflow instrumentation이 `__ubsan_handle_add_overflow`를 요구해 archive 전달 검증과 섞였으므로 fixture C 파일에는 `-fno-sanitize=undefined`를 썼다. runtime archive가 module link object로 붙는 실제 프로젝트에서는 같은 수집 경로로 전달되며, 관찰할 수 없는 runtime은 문서화한 `extra_ldflags` escape hatch를 쓴다.
+- Phase 4 entry condition은 충족되지 않았다. Phase 1 뒤 남은 링크 실패가 없고 위 UBSan 사례의 원인도 명확히 구분됐으므로 doctor의 `nm -u` 진단은 구현하지 않는다.
