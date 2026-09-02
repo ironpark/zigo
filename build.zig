@@ -480,7 +480,7 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     _ = invalid_semantic.addOutputDirectoryArg("invalid-semantic-output");
     invalid_semantic.addArgs(&.{ "--package", "bad" });
     invalid_semantic.expectExitCode(1);
-    invalid_semantic.expectStdErrMatch("error[ZIGO007]: generated C symbol collides with another declaration");
+    invalid_semantic.expectStdErrMatch("error[ZIGO036]: C identifier `zg_lookup_id` collides between function `lookupID` and function `lookup_id`");
     test_step.dependOn(&invalid_semantic.step);
 
     // An unsupported type used to leave validation as a bare error, which the
@@ -616,11 +616,11 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     test_step.dependOn(&purego_doctor.step);
 
     const invalid_project = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "go", "--summary", "none" });
-    invalid_project.setName("invalid project contract (ZIGO007)");
+    invalid_project.setName("invalid project contract (ZIGO036)");
     invalid_project.setCwd(b.path("tests/fixtures/invalid-project"));
     invalid_project.has_side_effects = true;
     invalid_project.expectExitCode(1);
-    invalid_project.expectStdErrMatch("error[ZIGO007]: generated C symbol collides with another declaration");
+    invalid_project.expectStdErrMatch("error[ZIGO036]: C identifier `fixture_ping` collides between function `ping` and function `ping_`");
     test_step.dependOn(&invalid_project.step);
 
     // Reflection observes the build host, so a `c_long` field is 8 bytes here

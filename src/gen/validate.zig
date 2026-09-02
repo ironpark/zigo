@@ -374,21 +374,6 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             };
         }
     }
-    for (document.functions, 0..) |function, index| {
-        const symbol = try functionSymbolAlloc(allocator, document.prefix, function);
-        defer allocator.free(symbol);
-        for (document.functions[0..index]) |previous| {
-            const previous_symbol = try functionSymbolAlloc(allocator, document.prefix, previous);
-            defer allocator.free(previous_symbol);
-            if (std.mem.eql(u8, symbol, previous_symbol)) return .{
-                .severity = .@"error",
-                .code = "ZIGO007",
-                .message = "generated C symbol collides with another declaration",
-                .site = functionSite(function),
-                .hint = "rename one declaration or assign the APIs distinct receiver types",
-            };
-        }
-    }
     if (try findGeneratedAccessorCollision(allocator, document)) |declaration| return .{
         .severity = .@"error",
         .code = "ZIGO007",
@@ -505,6 +490,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             };
         }
     }
+    if (try cIdentifierIssue(allocator, document)) |issue| return issue;
     // Types the C ABI cannot name are reported last so that the sharper
     // diagnostics above keep naming the declarations they always did.
     for (document.functions) |function| {
@@ -923,6 +909,144 @@ fn identifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?
         })) |issue| return issue;
     }
     return null;
+}
+
+const CIdentifier = struct {
+    name: []const u8,
+    declaration: []const u8,
+};
+
+/// The C header has one ordinary identifier namespace shared by typedefs,
+/// exported functions, and macros. Check the exact names lowering will emit
+/// for both backends before generation writes an uncompilable header.
+fn cIdentifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+    if (try cIdentifierBackendIssue(allocator, document, false)) |issue| return issue;
+    return cIdentifierBackendIssue(allocator, document, true);
+}
+
+fn cIdentifierBackendIssue(allocator: std.mem.Allocator, document: semantic.Semantic, purego: bool) !?diagnostic.Diagnostic {
+    var scratch_arena = std.heap.ArenaAllocator.init(allocator);
+    defer scratch_arena.deinit();
+    const scratch = scratch_arena.allocator();
+
+    var identifiers: std.ArrayList(CIdentifier) = .empty;
+
+    for (document.types) |declaration| {
+        const emits_handle = declaration.kind == .@"opaque" or (declaration.kind == .tagged_union and
+            !(taggedUnionUsedByValue(document, declaration.name) and !taggedUnionUsedAsHandle(document, declaration.name)));
+        const emits_struct = declaration.kind == .value_struct and valueStructUsed(document, declaration.name);
+        if (emits_handle or declaration.kind == .@"enum" or emits_struct) {
+            const name = try cTypeNameAlloc(scratch, document.prefix, declaration.name);
+            const label = try std.fmt.allocPrint(scratch, "type `{s}`", .{declaration.name});
+            if (try addCIdentifier(allocator, scratch, &identifiers, name, label)) |issue| return issue;
+        }
+        if (declaration.kind == .@"enum") for (declaration.fields) |field| {
+            const type_name = try cTypeNameAlloc(scratch, document.prefix, declaration.name);
+            const member = try naming.snakeAlloc(scratch, field.name);
+            const combined = try std.fmt.allocPrint(scratch, "{s}_{s}", .{ type_name, member });
+            const name = try std.ascii.allocUpperString(scratch, combined);
+            const label = try std.fmt.allocPrint(scratch, "enum constant `{s}.{s}`", .{ declaration.name, field.name });
+            if (try addCIdentifier(allocator, scratch, &identifiers, name, label)) |issue| return issue;
+        };
+    }
+    for (document.functions) |function| {
+        const base = try functionSymbolAlloc(scratch, document.prefix, function);
+        const name = if (purego and functionHasCallback(function))
+            try std.fmt.allocPrint(scratch, "{s}_purego_v2", .{base})
+        else
+            base;
+        const label = try std.fmt.allocPrint(scratch, "function `{s}`", .{try functionDeclarationAlloc(scratch, function)});
+        if (try addCIdentifier(allocator, scratch, &identifiers, name, label)) |issue| return issue;
+    }
+    for (document.types) |declaration| {
+        if (declaration.kind != .tagged_union) continue;
+        if (!(taggedUnionUsedByValue(document, declaration.name) and !taggedUnionUsedAsHandle(document, declaration.name))) {
+            const tag = try naming.projectionSymbolAlloc(scratch, document.prefix, declaration.name, "tag");
+            const tag_label = try std.fmt.allocPrint(scratch, "tag projection `{s}`", .{declaration.name});
+            if (try addCIdentifier(allocator, scratch, &identifiers, tag, tag_label)) |issue| return issue;
+            for (declaration.fields) |field| {
+                if (field.type.? == .void) continue;
+                const name = try naming.projectionSymbolAlloc(scratch, document.prefix, declaration.name, field.name);
+                const label = try std.fmt.allocPrint(scratch, "payload projection `{s}.{s}`", .{ declaration.name, field.name });
+                if (try addCIdentifier(allocator, scratch, &identifiers, name, label)) |issue| return issue;
+            }
+        }
+        if (declaration.accessStrategy() == .snapshot) {
+            const owner = try naming.snakeAlloc(scratch, declaration.name);
+            const symbol = try std.fmt.allocPrint(scratch, "{s}_{s}_snapshot", .{ document.prefix, owner });
+            const symbol_label = try std.fmt.allocPrint(scratch, "snapshot function `{s}`", .{declaration.name});
+            if (try addCIdentifier(allocator, scratch, &identifiers, symbol, symbol_label)) |issue| return issue;
+            const type_name = try std.fmt.allocPrint(scratch, "{s}_t", .{symbol});
+            const type_label = try std.fmt.allocPrint(scratch, "snapshot type `{s}`", .{declaration.name});
+            if (try addCIdentifier(allocator, scratch, &identifiers, type_name, type_label)) |issue| return issue;
+        }
+    }
+    const last_error = try std.fmt.allocPrint(scratch, "{s}_last_error_message", .{document.prefix});
+    return addCIdentifier(allocator, scratch, &identifiers, last_error, "generated last-error function");
+}
+
+fn addCIdentifier(
+    allocator: std.mem.Allocator,
+    scratch: std.mem.Allocator,
+    identifiers: *std.ArrayList(CIdentifier),
+    name: []const u8,
+    declaration: []const u8,
+) !?diagnostic.Diagnostic {
+    for (identifiers.items) |previous| {
+        if (!std.mem.eql(u8, previous.name, name)) continue;
+        return .{
+            .severity = .@"error",
+            .code = "ZIGO036",
+            .message = try std.fmt.allocPrint(
+                allocator,
+                "C identifier `{s}` collides between {s} and {s}",
+                .{ name, previous.declaration, declaration },
+            ),
+            .site = .{ .path = "semantic.json", .declaration = try allocator.dupe(u8, declaration) },
+            .hint = "give one declaration a distinct `.name`, or choose a different binding `.prefix`",
+        };
+    }
+    try identifiers.append(scratch, .{ .name = name, .declaration = declaration });
+    return null;
+}
+
+fn cTypeNameAlloc(allocator: std.mem.Allocator, prefix: []const u8, type_name: []const u8) ![]u8 {
+    const owner = try naming.snakeAlloc(allocator, type_name);
+    return std.fmt.allocPrint(allocator, "{s}_{s}", .{ prefix, owner });
+}
+
+fn functionHasCallback(function: semantic.SemanticFn) bool {
+    for (function.params) |parameter| {
+        if (parameter.type == .callback or parameter.type == .io_stream) return true;
+    }
+    return false;
+}
+
+fn valueStructUsed(document: semantic.Semantic, name: []const u8) bool {
+    for (document.functions) |function| {
+        for (function.params) |parameter| if (mentionsValueStruct(document, parameter.type, name)) return true;
+        if (mentionsValueStruct(document, function.@"return", name)) return true;
+    }
+    return false;
+}
+
+fn mentionsValueStruct(document: semantic.Semantic, node: semantic.TypeNode, name: []const u8) bool {
+    return switch (node) {
+        .value_struct => |value| blk: {
+            if (std.mem.eql(u8, value.ref, name)) break :blk true;
+            for (document.types) |declaration| {
+                if (declaration.kind != .value_struct or !std.mem.eql(u8, declaration.name, value.ref)) continue;
+                for (declaration.fields) |field| if (field.type) |child| {
+                    if (mentionsValueStruct(document, child, name)) break :blk true;
+                };
+            }
+            break :blk false;
+        },
+        .slice => |value| mentionsValueStruct(document, value.element.*, name),
+        .error_union => |value| mentionsValueStruct(document, value.payload.*, name),
+        .optional => |value| mentionsValueStruct(document, value.child.*, name),
+        else => false,
+    };
 }
 
 const NameCheck = struct {
@@ -1887,7 +2011,7 @@ test "implemented diagnostic snapshots are stable" {
             .package = "bad",
             .prefix = "zg",
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO007]: generated C symbol collides with another declaration\n  --> semantic.json (lookup_id)\n  hint: rename one declaration or assign the APIs distinct receiver types\n" },
+        }, .snapshot = "error[ZIGO036]: C identifier `zg_lookup_id` collides between function `lookupID` and function `lookup_id`\n  --> semantic.json (function `lookup_id`)\n  hint: give one declaration a distinct `.name`, or choose a different binding `.prefix`\n" },
         .{ .document = .{
             .functions = &.{.{
                 .has_comptime_params = true,
@@ -2812,6 +2936,41 @@ test "symbol collision validation propagates every allocation failure" {
     try std.testing.checkAllAllocationFailures(std.testing.allocator, expectSymbolCollision, .{});
 }
 
+test "C typedef and function symbol collisions have a stable diagnostic" {
+    const document: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "select",
+            .params = &.{},
+            .receiver = "Search",
+            .@"return" = .{ .void = {} },
+            .symbol = "ignored",
+        }},
+        .package = "bad",
+        .prefix = "zg",
+        .types = &.{
+            .{ .kind = .@"opaque", .name = "Search" },
+            .{
+                .fields = &.{.{ .name = "none", .value = 0 }},
+                .kind = .@"enum",
+                .name = "SearchSelect",
+                .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+            },
+        },
+        .zig_version = "0.16.0",
+    };
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
+    const issue = (try findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
+    const rendered = try issue.renderAlloc(std.testing.allocator);
+    defer std.testing.allocator.free(rendered);
+    try std.testing.expectEqualStrings(
+        "error[ZIGO036]: C identifier `zg_search_select` collides between type `SearchSelect` and function `Search.select`\n" ++
+            "  --> semantic.json (function `Search.select`)\n" ++
+            "  hint: give one declaration a distinct `.name`, or choose a different binding `.prefix`\n",
+        rendered,
+    );
+}
+
 test "referential integrity failures are reported before lowering" {
     var callback_return: semantic.TypeNode = .{ .@"enum" = .{ .ref = "MissingMode" } };
     var optional_child: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "WrongKind" } };
@@ -3056,8 +3215,10 @@ fn expectSymbolCollision(allocator: std.mem.Allocator) !void {
         .prefix = "zg",
         .zig_version = "0.16.0",
     };
-    const issue = (try findIssue(allocator, document)) orelse return error.MissingDiagnostic;
-    try std.testing.expectEqualStrings("ZIGO007", issue.code);
+    var scratch = std.heap.ArenaAllocator.init(allocator);
+    defer scratch.deinit();
+    const issue = (try findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
+    try std.testing.expectEqualStrings("ZIGO036", issue.code);
 }
 
 test "a variant named tag collides with the snapshot discriminant member" {

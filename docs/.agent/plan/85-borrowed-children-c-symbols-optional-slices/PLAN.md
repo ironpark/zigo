@@ -9,7 +9,7 @@ registered_at: "2026-09-02T20:35:34Z"
 
 - [x] [Phase 00: 빌린 뷰의 자식 카운트](phases/00-borrowed-children.md)
 - [ ] [Phase 01: C 심볼 공간 진단](phases/01-c-symbol-space.md)
-- [ ] [Phase 02: optional slice의 caller 소유권](phases/02-optional-slice-caller.md)
+- [x] [Phase 02: optional slice의 caller 소유권](phases/02-optional-slice-caller.md)
 - [ ] [Phase 03: 문서와 CHANGELOG](phases/03-docs.md)
 
 # Shared Verification

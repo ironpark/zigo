@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 스냅샷 통과, 기존 예제 진단 없음, 커밋.
 > NEXT: none
