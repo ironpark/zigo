@@ -23,6 +23,10 @@ pub const Context = struct {
         return if (present) self.total else null;
     }
 
+    pub fn setTotal(self: *Context, c: i64) void {
+        self.total = c;
+    }
+
     /// crash panics inside a method: what leaves a handle poisoned.
     pub fn crash(self: *Context) CreateError!void {
         _ = self;

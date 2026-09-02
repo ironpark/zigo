@@ -7,7 +7,7 @@ registered_at: "2026-09-02T14:15:41Z"
 
 # Phases
 
-- [ ] [Phase 00: optional 반환의 검사 실패 경로](phases/00-optional-check-returns.md)
+- [x] [Phase 00: optional 반환의 검사 실패 경로](phases/00-optional-check-returns.md)
 - [ ] [Phase 01: receiver 변수명 충돌 회피](phases/01-receiver-name-clash.md)
 - [ ] [Phase 02: 문서와 CHANGELOG](phases/02-docs.md)
 

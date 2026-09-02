@@ -62,6 +62,24 @@ func (c *Context) MaybeTotal(present bool) (int64, bool, error) {
 	return result, zigoHas, nil
 }
 
+// SetTotal calls the Zig function Context.setTotal.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (co *Context) SetTotal(c int64) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Context.SetTotal receiver", co)
+	if err != nil {
+		return err
+	}
+	defer co.zigoRelease()
+	code := raw.ContextSetTotal(ptr, c)
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Context.SetTotal", code), co)
+	}
+	return nil
+}
+
 // Crash panics inside a method: what leaves a handle poisoned.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.

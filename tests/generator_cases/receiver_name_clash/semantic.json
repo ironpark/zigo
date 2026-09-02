@@ -1,0 +1,47 @@
+{
+  "functions": [
+    {
+      "name": "setTitle",
+      "params": [
+        {
+          "name": "t",
+          "type": {
+            "const": true,
+            "element": {"bits": 8, "is_usize": false, "kind": "int", "signed": false},
+            "kind": "slice"
+          }
+        }
+      ],
+      "receiver": "Terminal",
+      "return": {"error_set": ["Invalid"], "kind": "error_union", "payload": {"kind": "void"}},
+      "symbol": "zg_terminal_set_title"
+    },
+    {
+      "name": "collideAll",
+      "params": [
+        {"name": "t", "type": {"bits": 32, "is_usize": false, "kind": "int", "signed": true}},
+        {"name": "te", "type": {"bits": 32, "is_usize": false, "kind": "int", "signed": true}},
+        {"name": "ter", "type": {"bits": 32, "is_usize": false, "kind": "int", "signed": true}},
+        {"name": "term", "type": {"bits": 32, "is_usize": false, "kind": "int", "signed": true}},
+        {"name": "termi", "type": {"bits": 32, "is_usize": false, "kind": "int", "signed": true}},
+        {"name": "termin", "type": {"bits": 32, "is_usize": false, "kind": "int", "signed": true}},
+        {"name": "termina", "type": {"bits": 32, "is_usize": false, "kind": "int", "signed": true}},
+        {"name": "terminal", "type": {"bits": 32, "is_usize": false, "kind": "int", "signed": true}}
+      ],
+      "receiver": "Terminal",
+      "return": {"kind": "void"},
+      "symbol": "zg_terminal_collide_all"
+    },
+    {
+      "name": "clear",
+      "params": [],
+      "receiver": "Terminal",
+      "return": {"kind": "void"},
+      "symbol": "zg_terminal_clear"
+    }
+  ],
+  "package": "receiver_name_clash",
+  "prefix": "zg",
+  "types": [{"kind": "opaque", "name": "Terminal"}],
+  "zig_version": "0.16.0"
+}

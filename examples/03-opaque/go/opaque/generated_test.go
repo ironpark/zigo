@@ -32,6 +32,12 @@ func TestOpaqueLifecycle(t *testing.T) {
 		if got, present, err := context.MaybeTotal(false); err != nil || present || got != 0 {
 			t.Fatalf("MaybeTotal(false) = (%d, %t, %v), want (0, false, nil)", got, present, err)
 		}
+		if err := context.SetTotal(7); err != nil {
+			t.Fatal(err)
+		}
+		if got, present, err := context.MaybeTotal(true); err != nil || !present || got != 7 {
+			t.Fatalf("MaybeTotal(true) after SetTotal = (%d, %t, %v), want (7, true, nil)", got, present, err)
+		}
 		context.Close()
 		if got, present, err := context.MaybeTotal(true); err == nil || present || got != 0 {
 			t.Fatalf("closed MaybeTotal(true) = (%d, %t, %v), want (0, false, error)", got, present, err)

@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 충돌 골든이 컴파일되고 기존 예제 `go-check` 변화 없음, 커밋.
 > NEXT: none

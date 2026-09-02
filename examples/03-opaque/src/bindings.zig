@@ -13,6 +13,7 @@ pub const bindings = zigo.define(.{
         .{ .path = "Context.create" },
         .{ .path = "Context.add", .params = .{"value"} },
         .{ .path = "Context.maybeTotal", .params = .{"present"} },
+        .{ .path = "Context.setTotal", .params = .{"c"} },
         .{ .path = "Context.crash" },
         .{ .path = "Context.crashInfallible" },
         .{ .path = "Context.deinit" },

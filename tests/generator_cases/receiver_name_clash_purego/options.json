@@ -1,0 +1,6 @@
+{
+  "backend": "purego",
+  "package": "receiver_name_clash",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/receiver-name-clash"
+}

@@ -103,6 +103,38 @@
       "symbol": "zg_context_maybe_total"
     },
     {
+      "name": "setTotal",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "c",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 26,
+            "column": 37
+          },
+          "type": {
+            "bits": 64,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          }
+        }
+      ],
+      "receiver": "Context",
+      "return": {
+        "kind": "void"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 26,
+        "column": 12
+      },
+      "symbol": "zg_context_set_total"
+    },
+    {
       "doc": "crash panics inside a method: what leaves a handle poisoned.",
       "name": "crash",
       "ownership": "borrowed",
@@ -119,7 +151,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 27,
+        "line": 31,
         "column": 12
       },
       "symbol": "zg_context_crash"
@@ -138,7 +170,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 35,
+        "line": 39,
         "column": 12
       },
       "symbol": "zg_context_crash_infallible"
@@ -153,7 +185,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 40,
+        "line": 44,
         "column": 12
       },
       "symbol": "zg_context_deinit"
@@ -168,7 +200,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 50,
+        "line": 54,
         "column": 8
       },
       "symbol": "zg_crash_fatal"
@@ -185,7 +217,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 54,
+        "line": 58,
         "column": 8
       },
       "symbol": "zg_live_bytes"
@@ -202,7 +234,7 @@
           "retention": "borrowed",
           "semantic": "utf8_string",
           "source": {
-            "line": 59,
+            "line": 63,
             "column": 13
           },
           "type": {
@@ -230,7 +262,7 @@
       "return_semantic": "utf8_string",
       "source": {
         "path": "root.zig",
-        "line": 59,
+        "line": 63,
         "column": 8
       },
       "symbol": "zg_echo"

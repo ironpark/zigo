@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T14:28:19Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 새 골든의 Go가 `go vet` 통과, 전 예제 녹색, 커밋.
 > NEXT: none

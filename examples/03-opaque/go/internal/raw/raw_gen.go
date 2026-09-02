@@ -37,6 +37,12 @@ func ContextMaybeTotal(self unsafe.Pointer, present uint8) (int64, bool, int32) 
 	return int64(outResult), outResultHas != 0, code
 }
 
+// ContextSetTotal calls the generated C ABI wrapper for zg_context_set_total.
+func ContextSetTotal(self unsafe.Pointer, c int64) int32 {
+	code := int32(C.zg_context_set_total((*C.zg_context)(self), C.int64_t(c)))
+	return code
+}
+
 // ContextCrash calls the generated C ABI wrapper for zg_context_crash.
 func ContextCrash(self unsafe.Pointer) int32 {
 	code := int32(C.zg_context_crash((*C.zg_context)(self)))

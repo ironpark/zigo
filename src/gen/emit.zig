@@ -3500,6 +3500,11 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         const owned_type = if (constructor) |value| value.type else ownedOpaqueReturn(program, function.origin.*);
         const go_names = try goParamNamesForAlloc(allocator, function.origin.params);
         defer naming.freeParamNames(allocator, go_names);
+        const receiver_name = if (function.origin.receiver) |receiver|
+            try receiverVariableAlloc(allocator, receiver, go_names)
+        else
+            null;
+        defer if (receiver_name) |name| allocator.free(name);
         const go_name = if (constructor) |value|
             try std.fmt.allocPrint(allocator, "New{s}", .{value.type})
         else
@@ -3530,9 +3535,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         const needs_check = needs_handle_check or needs_range_check or has_stream or has_callback_error;
         try writePublicFunctionDoc(writer, function.origin.*, go_name, owned_type, functionReachesCallbacks(program, function.origin.*), has_callback_error);
         if (function.origin.receiver) |receiver| {
-            const receiver_name = try receiverVariableAlloc(allocator, receiver);
-            defer allocator.free(receiver_name);
-            try writer.print("func ({s} *{s}) {s}(", .{ receiver_name, receiver, go_name });
+            try writer.print("func ({s} *{s}) {s}(", .{ receiver_name.?, receiver, go_name });
         } else {
             try writer.print("func {s}(", .{go_name});
         }
@@ -3758,7 +3761,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             if (owned_type) |type_name|
                 try writeOwnedHandleResult(allocator, writer, program, function.origin.*, type_name, "result")
             else
-                try writeBorrowedResult(allocator, writer, function.origin.*, "result");
+                try writeBorrowedResult(allocator, writer, function.origin.*, go_names, "result");
             if (needs_check) try writer.writeAll(", nil");
             try writer.writeByte('\n');
         }
@@ -3809,7 +3812,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                 if (owned_type) |type_name| {
                     try writeOwnedHandleResult(allocator, writer, program, function.origin.*, type_name, "result");
                 } else if (error_payload == .opaque_ptr and function.origin.ownership == .borrowed) {
-                    try writeBorrowedResult(allocator, writer, function.origin.*, "result");
+                    try writeBorrowedResult(allocator, writer, function.origin.*, go_names, "result");
                 } else if (isStringSlice(error_payload, function.origin.return_semantic)) {
                     try writer.writeAll("string(result)");
                 } else if (error_payload == .optional) {
@@ -4158,7 +4161,7 @@ fn renderPublicSnapshots(
         defer allocator.free(type_name);
         const raw_function = try snapshotRawFunctionNameAlloc(allocator, snapshot);
         defer allocator.free(raw_function);
-        const recv = try receiverVariableAlloc(allocator, declaration.name);
+        const recv = try receiverVariableAlloc(allocator, declaration.name, &.{});
         defer allocator.free(recv);
 
         try writer.print(
@@ -4324,7 +4327,7 @@ fn renderPublicUnionVariants(
         const declaration = entry.owner;
         const variant_names = entry;
         const tag_type = declaration.tag_type.?.@"enum".ref;
-        const recv = try receiverVariableAlloc(allocator, declaration.name);
+        const recv = try receiverVariableAlloc(allocator, declaration.name, &.{});
         defer allocator.free(recv);
 
         try writer.print(
@@ -4897,7 +4900,7 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             .{ declaration.name, declaration.name, declaration.name },
         );
         // One receiver name per type, matching the methods emitted elsewhere.
-        const recv = try receiverVariableAlloc(allocator, declaration.name);
+        const recv = try receiverVariableAlloc(allocator, declaration.name, &.{});
         defer allocator.free(recv);
         // A call pins the handle open with zigoAcquire and lets go with
         // zigoRelease; `mu` is dropped in between, so nothing that happens
@@ -5105,7 +5108,7 @@ fn renderPublicTaggedUnionAccessors(
         if (tag_projection.kind != .tag) continue;
         const declaration = tag_projection.owner.*;
         if (!std.mem.eql(u8, declaration.name, owner.name)) continue;
-        const recv = try receiverVariableAlloc(allocator, declaration.name);
+        const recv = try receiverVariableAlloc(allocator, declaration.name, &.{});
         defer allocator.free(recv);
         const tag_type = declaration.tag_type.?.@"enum".ref;
 
@@ -5208,7 +5211,7 @@ fn renderHandleChecks(
     constructor: ?semantic.Constructor,
 ) !void {
     if (function.receiver) |receiver| {
-        const receiver_name = try receiverVariableAlloc(allocator, receiver);
+        const receiver_name = try receiverVariableAlloc(allocator, receiver, go_names);
         defer allocator.free(receiver_name);
         try writer.print("\tptr, err := zigoCheckedPointer(\"{s} receiver\", {s})\n", .{ operation, receiver_name });
         try writer.writeAll("\tif err != nil {\n\t\t");
@@ -5245,7 +5248,7 @@ fn writeErrorForCode(
     if (function.receiver == null and !hasOpaqueParameter(function)) return writer.print("errorForCode(\"{s}\", code)\n", .{operation});
     try writer.print("zigoPoisonAfterPanic(errorForCode(\"{s}\", code)", .{operation});
     if (function.receiver) |receiver| {
-        const receiver_name = try receiverVariableAlloc(allocator, receiver);
+        const receiver_name = try receiverVariableAlloc(allocator, receiver, go_names);
         defer allocator.free(receiver_name);
         try writer.print(", {s}", .{receiver_name});
     }
@@ -5382,9 +5385,15 @@ fn writePublicFunctionReturnType(writer: *std.Io.Writer, function: semantic.Sema
     try writePublicReturnType(writer, function.@"return", function.return_semantic);
 }
 
-fn writeBorrowedResult(allocator: std.mem.Allocator, writer: *std.Io.Writer, function: semantic.SemanticFn, expression: []const u8) !void {
+fn writeBorrowedResult(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    function: semantic.SemanticFn,
+    go_names: []const []const u8,
+    expression: []const u8,
+) !void {
     const node = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
-    const parent = if (function.receiver) |receiver| try receiverVariableAlloc(allocator, receiver) else null;
+    const parent = if (function.receiver) |receiver| try receiverVariableAlloc(allocator, receiver, go_names) else null;
     defer if (parent) |value| allocator.free(value);
     try writer.print("&{s}Ref{{ptr: {s}, parent: {s}}}", .{ node.opaque_ptr.ref, expression, parent orelse "nil" });
 }
@@ -5717,7 +5726,7 @@ fn renderCallbackRethrows(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
     }
     if (function.receiver) |receiver| {
         if (typeOwnsCallbacks(program, receiver)) {
-            const receiver_name = try receiverVariableAlloc(allocator, receiver);
+            const receiver_name = try receiverVariableAlloc(allocator, receiver, go_names);
             defer allocator.free(receiver_name);
             try writer.print("\tfor _, handle := range {s}.callbackHandles {{\n\t\tzigoRethrowCallbackPanic(\"{s}\", handle)\n\t}}\n", .{ receiver_name, operation });
         }
@@ -5838,7 +5847,7 @@ fn renderCallbackErrorChecks(
     }
     if (function.receiver) |receiver| {
         if (typeOwnsErrorCallbacks(program, receiver)) {
-            const receiver_name = try receiverVariableAlloc(allocator, receiver);
+            const receiver_name = try receiverVariableAlloc(allocator, receiver, go_names);
             defer allocator.free(receiver_name);
             try writer.print("\tfor _, handle := range {s}.callbackHandles {{\n\t\tif err := zigoCallbackError(\"{s}\", \"callback\", handle); err != nil {{\n\t\t\t", .{ receiver_name, operation });
             try writeCheckedErrorReturn(writer, function, constructor, "err");
@@ -6916,10 +6925,35 @@ fn ownerPascalAlloc(allocator: std.mem.Allocator, owner: []const u8) ![]u8 {
     return name.toOwnedSlice(allocator);
 }
 
-fn receiverVariableAlloc(allocator: std.mem.Allocator, receiver: []const u8) ![]u8 {
+fn receiverVariableAlloc(allocator: std.mem.Allocator, receiver: []const u8, go_names: []const []const u8) ![]u8 {
     const snake = try naming.snakeAlloc(allocator, receiver);
     defer allocator.free(snake);
-    return allocator.dupe(u8, snake[0..@min(snake.len, 1)]);
+    for (1..snake.len + 1) |length| {
+        const candidate = snake[0..length];
+        var collides = false;
+        for (go_names) |name| {
+            if (std.mem.eql(u8, candidate, name)) {
+                collides = true;
+                break;
+            }
+        }
+        if (!collides) return allocator.dupe(u8, candidate);
+    }
+    return allocator.dupe(u8, "recv");
+}
+
+test "receiver names extend past parameters and retain the short default" {
+    const short = try receiverVariableAlloc(std.testing.allocator, "Terminal", &.{});
+    defer std.testing.allocator.free(short);
+    try std.testing.expectEqualStrings("t", short);
+
+    const extended = try receiverVariableAlloc(std.testing.allocator, "Terminal", &.{"t"});
+    defer std.testing.allocator.free(extended);
+    try std.testing.expectEqualStrings("te", extended);
+
+    const fallback = try receiverVariableAlloc(std.testing.allocator, "Terminal", &.{ "terminal", "termina", "termin", "termi", "term", "ter", "te", "t" });
+    defer std.testing.allocator.free(fallback);
+    try std.testing.expectEqualStrings("recv", fallback);
 }
 
 fn constructorForInit(program: abi.Program, function: semantic.SemanticFn) ?semantic.Constructor {
