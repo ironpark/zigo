@@ -1,9 +1,10 @@
 ---
+completed_at: "2026-09-02T13:04:46Z"
 depends_on:
 - "73-explicit-ctor-pairing-and-injection-arity#0"
 - "73-explicit-ctor-pairing-and-injection-arity#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 문서에 남은 옛 안내 없음(`grep`으로 확인), `zig build test` 녹색, 커밋.
 > NEXT: none

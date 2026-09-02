@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T13:04:46Z"
 description: 명시적 생성자/소멸자 메타(.constructs/.destroys), root 생성자의 Zig 호출 경로 수정, 주입 파라미터를 .params 인덱싱과 .release 매칭에서 제외
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-02T12:34:21Z"
 ---
 > NEXT: 주입 파라미터를 `.params` 인덱싱과 `.release` 매칭에서 제외하고 길이 불일치를 ZIGO027 진단으로 낸다. ([Phase 0](phases/00-injection-arity.md))
@@ -10,7 +11,7 @@ registered_at: "2026-09-02T12:34:21Z"
 - [x] [Phase 00: 주입 파라미터 arity와 release 매칭](phases/00-injection-arity.md)
 - [x] [Phase 01: 생성자 Zig 호출 경로 분리](phases/01-constructor-call-path.md)
 - [x] [Phase 02: .constructs / .destroys 메타](phases/02-explicit-pairing-meta.md)
-- [ ] [Phase 03: 문서와 CHANGELOG](phases/03-docs.md)
+- [x] [Phase 03: 문서와 CHANGELOG](phases/03-docs.md)
 
 # Shared Verification
 
