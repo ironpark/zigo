@@ -450,6 +450,21 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     unsupported_width.expectStdErrMatch("--> semantic.json (unicode.codepointWidths)");
     test_step.dependOn(&unsupported_width.step);
 
+    // A name reflection derived from `@typeName` can be something Go cannot
+    // parse. The diagnostic has to arrive before generation, not as a gofmt
+    // failure over a file that should never have been written.
+    const invalid_identifier = b.addRunArtifact(generator);
+    invalid_identifier.setName("CLI contract (invalid Go identifier)");
+    invalid_identifier.addArgs(&.{ "generate", "--semantic" });
+    invalid_identifier.addFileArg(b.path("tests/fixtures/zigo021.json"));
+    invalid_identifier.addArg("--output");
+    _ = invalid_identifier.addOutputDirectoryArg("invalid-identifier-output");
+    invalid_identifier.addArgs(&.{ "--package", "bad" });
+    invalid_identifier.expectExitCode(1);
+    invalid_identifier.expectStdErrMatch("error[ZIGO021]: registered type name `4])` from Zig type `vt.lib.Enum(");
+    invalid_identifier.expectStdErrMatch("hint: register the type in `.types` with an explicit `.name`");
+    test_step.dependOn(&invalid_identifier.step);
+
     const stale = b.addRunArtifact(generator);
     stale.setName("CLI contract (stale generated files)");
     stale.addArgs(&.{ "check", "--generated" });

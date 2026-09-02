@@ -73,6 +73,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
         .site = .{ .path = "semantic.json", .declaration = "prefix" },
         .hint = "give the binding a symbol prefix",
     };
+    if (try identifierIssue(allocator, document)) |issue| return issue;
     for (document.functions) |function| {
         if (function.name.len == 0) return .{
             .severity = .@"error",
@@ -310,6 +311,84 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
         }
     }
     return null;
+}
+
+/// Names that reach Go verbatim -- a registered type's name -- have to be Go
+/// identifiers already, because nothing stands between them and the `type`
+/// declaration they become. Names zigo case-converts are judged on the
+/// converted spelling instead, so a Zig field called `type` stays legal as the
+/// Go field `Type`. Either way the check runs before generation, because a
+/// name reflection derived from `@typeName` can be something like `4])` and
+/// the only thing worse than rejecting it is writing it into a `.go` file.
+fn identifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+    for (document.types) |declaration| {
+        if (try nameIssue(allocator, .{
+            .label = "registered type name",
+            .spelling = declaration.name,
+            .declaration = if (declaration.name.len == 0) "types" else declaration.name,
+            .zig_path = declaration.zig_path,
+            .hint = "register the type in `.types` with an explicit `.name` that is a Go identifier",
+        })) |issue| return issue;
+        const member_label = switch (declaration.kind) {
+            .@"enum" => "enum tag",
+            .tagged_union => "union variant",
+            .error_set => "error name",
+            else => "field name",
+        };
+        for (declaration.fields) |field| {
+            if (try nameIssue(allocator, .{
+                .label = member_label,
+                .spelling = field.name,
+                .convert = true,
+                .declaration = declaration.name,
+                .zig_path = declaration.zig_path,
+                .hint = "rename the declaration in Zig so its name converts to a Go identifier",
+            })) |issue| return issue;
+        }
+    }
+    for (document.functions) |function| {
+        // An empty function name has its own diagnostic below, and it says
+        // more than "this is not an identifier" would.
+        if (function.name.len == 0) continue;
+        if (try nameIssue(allocator, .{
+            .label = "function name",
+            .spelling = function.name,
+            .convert = true,
+            .declaration = function.name,
+            .hint = "give the entry a `.name` that converts to a Go identifier",
+        })) |issue| return issue;
+    }
+    return null;
+}
+
+const NameCheck = struct {
+    label: []const u8,
+    spelling: []const u8,
+    /// True when zigo pascal-cases the name on its way into Go, which decides
+    /// whether the written spelling or the converted one is judged.
+    convert: bool = false,
+    declaration: []const u8,
+    zig_path: ?[]const u8 = null,
+    hint: []const u8,
+};
+
+fn nameIssue(allocator: std.mem.Allocator, check: NameCheck) !?diagnostic.Diagnostic {
+    // A document that validates must not leak: callers are only asked for a
+    // scratch arena because a *rejection* builds strings, not an acceptance.
+    const candidate = if (check.convert) try naming.pascalAlloc(allocator, check.spelling) else check.spelling;
+    defer if (check.convert) allocator.free(candidate);
+    if (naming.isGoIdentifier(candidate)) return null;
+    const message = if (check.zig_path) |path|
+        try std.fmt.allocPrint(allocator, "{s} `{s}` from Zig type `{s}` is not a valid Go identifier", .{ check.label, check.spelling, path })
+    else
+        try std.fmt.allocPrint(allocator, "{s} `{s}` is not a valid Go identifier", .{ check.label, check.spelling });
+    return .{
+        .severity = .@"error",
+        .code = "ZIGO021",
+        .message = message,
+        .site = .{ .path = "semantic.json", .declaration = check.declaration },
+        .hint = check.hint,
+    };
 }
 
 /// The type the C ABI cannot name, plus how it was reached from the parameter
@@ -1246,6 +1325,27 @@ test "implemented diagnostic snapshots are stable" {
             .prefix = "zg",
             .zig_version = "0.16.0",
         }, .snapshot = "error[ZIGO021]: exposed function has an empty name\n  --> semantic.json (functions)\n  hint: expose a named declaration\n" },
+        // `@typeName` of a comptime-generated enum ends in the slice
+        // expression that built it, and the last dotted segment of that is
+        // not a name at all.
+        .{ .document = .{
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{.{
+                .fields = &.{ .{ .name = "block", .value = 0 }, .{ .name = "bar", .value = 1 } },
+                .kind = .@"enum",
+                .name = "4])",
+                .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+                .zig_path = "vt.lib.Enum([_][]const u8{ \"block\", \"bar\" }[0..4])",
+            }},
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO021]: registered type name `4])` from Zig type `vt.lib.Enum([_][]const u8{ \"block\", \"bar\" }[0..4])` is not a valid Go identifier\n  --> semantic.json (4]))\n  hint: register the type in `.types` with an explicit `.name` that is a Go identifier\n" },
+        .{ .document = .{
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{.{ .kind = .@"opaque", .name = "range" }},
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO021]: registered type name `range` is not a valid Go identifier\n  --> semantic.json (range)\n  hint: register the type in `.types` with an explicit `.name` that is a Go identifier\n" },
     };
     // A located diagnostic names the declaration and the parameter it found,
     // so its strings come from the arena the caller is expected to pass.
@@ -1257,6 +1357,32 @@ test "implemented diagnostic snapshots are stable" {
         defer std.testing.allocator.free(rendered);
         try std.testing.expectEqualStrings(case.snapshot, rendered);
     }
+}
+
+test "names zigo case-converts are judged on the Go spelling, not the Zig one" {
+    const document: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "range",
+            .params = &.{},
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_range",
+        }},
+        .package = "keywords",
+        .prefix = "zg",
+        .types = &.{.{
+            .fields = &.{ .{ .name = "type", .value = 0 }, .{ .name = "go_to", .value = 1 } },
+            .kind = .@"enum",
+            .name = "Kind",
+            .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+        }},
+        .zig_version = "0.16.0",
+    };
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
+    // `range` becomes `Range`, `type` becomes `Type`: Go keywords in Zig
+    // spelling never reach Go, so rejecting them here would reject working
+    // bindings.
+    try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(scratch.allocator(), document));
 }
 
 test "a narrow integer is accepted where the shim can promote it" {

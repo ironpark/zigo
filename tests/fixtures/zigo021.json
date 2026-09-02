@@ -1,0 +1,25 @@
+{
+  "functions": [
+    {
+      "name": "cursorStyle",
+      "params": [],
+      "return": { "kind": "enum", "ref": "4])" },
+      "symbol": "zg_cursor_style"
+    }
+  ],
+  "package": "bad",
+  "prefix": "zg",
+  "types": [
+    {
+      "fields": [
+        { "name": "block", "value": 0 },
+        { "name": "bar", "value": 1 }
+      ],
+      "kind": "enum",
+      "name": "4])",
+      "tag_type": { "bits": 8, "is_usize": false, "kind": "int", "signed": false },
+      "zig_path": "vt.lib.Enum([_][]const u8{ \"block\", \"bar\" }[0..4])"
+    }
+  ],
+  "zig_version": "0.16.0"
+}
