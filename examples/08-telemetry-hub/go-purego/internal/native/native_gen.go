@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"runtime/debug"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -104,11 +105,14 @@ type nativeBindings struct {
 }
 
 type callbackEntry struct {
-	mu      sync.Mutex
-	cond    *sync.Cond
-	value   any
-	closing bool
-	active  int
+	mu         sync.Mutex
+	cond       *sync.Cond
+	value      any
+	closing    bool
+	active     int
+	panicked   bool
+	panicValue any
+	panicStack []byte
 }
 
 // callbackRegistry maps a userdata token to its entry without a global lock,
@@ -157,6 +161,35 @@ func DeleteCallbackHandle(token uintptr) {
 // ActiveCallbackHandleCount reports the number of live callback tokens.
 func ActiveCallbackHandleCount() int64 { return activeCallbackHandles.Load() }
 
+// record keeps the first panic a callback raised until the generated caller takes it.
+func (entry *callbackEntry) record(value any) {
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	if entry.panicked {
+		return
+	}
+	entry.panicked = true
+	entry.panicValue = value
+	entry.panicStack = debug.Stack()
+}
+
+// TakeCallbackPanic returns and clears the panic the callback behind token recorded.
+func TakeCallbackPanic(token uintptr) (any, []byte, bool) {
+	stored, loaded := callbackRegistry.Load(token)
+	if !loaded {
+		return nil, nil, false
+	}
+	entry := stored.(*callbackEntry)
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	if !entry.panicked {
+		return nil, nil, false
+	}
+	value, stack := entry.panicValue, entry.panicStack
+	entry.panicValue, entry.panicStack, entry.panicked = nil, nil, false
+	return value, stack, true
+}
+
 func acquireCallback(token uintptr) (*callbackEntry, any, bool) {
 	stored, loaded := callbackRegistry.Load(token)
 	if !loaded {
@@ -194,16 +227,17 @@ var callbackDispatchersOnce sync.Once
 func ensureCallbackDispatchers() {
 	callbackDispatchersOnce.Do(func() {
 		callbackPointers[0] = purego.NewCallback(func(p0 uint64, p1 uint64, p2 uint) (result uintptr) {
-			defer func() {
-				if recover() != nil {
-					result = callbackResult(-3)
-				}
-			}()
 			entry, stored, ok := acquireCallback(uintptr(p2))
 			if !ok {
 				return callbackResult(-4)
 			}
 			defer releaseCallback(entry)
+			defer func() {
+				if value := recover(); value != nil {
+					entry.record(value)
+					result = callbackResult(-3)
+				}
+			}()
 			callback := stored.(func(uint64, float64) int32)
 			return callbackResult(callback(p0, math.Float64frombits(p1)))
 		})
@@ -653,7 +687,9 @@ func TelemetryHubName(self unsafe.Pointer) []uint8 {
 	if outResultLen == 0 {
 		return nil
 	}
-	return unsafe.Slice((*uint8)(outResultPtr), int(outResultLen))
+	result := make([]uint8, int(outResultLen))
+	copy(result, unsafe.Slice((*uint8)(outResultPtr), int(outResultLen)))
+	return result
 }
 
 // TelemetryHubCapacity calls the generated purego ABI wrapper for zg_telemetry_hub_capacity.

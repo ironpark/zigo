@@ -16,24 +16,8 @@ type Context struct {
 	cleanup runtime.Cleanup
 }
 
-// ContextRef is a borrowed Context reference that remains valid only while its parent is open.
-type ContextRef struct {
-	ptr    unsafe.Pointer
-	parent zigoHandle
-}
-
 func (c *Context) zigoPointer() unsafe.Pointer {
 	if c == nil {
-		return nil
-	}
-	return c.ptr
-}
-
-func (c *ContextRef) zigoPointer() unsafe.Pointer {
-	if c == nil || c.ptr == nil {
-		return nil
-	}
-	if parent := c.parent; parent != nil && parent.zigoPointer() == nil {
 		return nil
 	}
 	return c.ptr
@@ -44,13 +28,6 @@ func (c *Context) zigoLocker() *sync.RWMutex {
 		return nil
 	}
 	return &c.mu
-}
-
-func (c *ContextRef) zigoLocker() *sync.RWMutex {
-	if c == nil || c.parent == nil {
-		return nil
-	}
-	return c.parent.zigoLocker()
 }
 
 type contextCleanupState struct {

@@ -17,24 +17,8 @@ type TelemetryHub struct {
 	cleanup         runtime.Cleanup
 }
 
-// TelemetryHubRef is a borrowed TelemetryHub reference that remains valid only while its parent is open.
-type TelemetryHubRef struct {
-	ptr    unsafe.Pointer
-	parent zigoHandle
-}
-
 func (t *TelemetryHub) zigoPointer() unsafe.Pointer {
 	if t == nil {
-		return nil
-	}
-	return t.ptr
-}
-
-func (t *TelemetryHubRef) zigoPointer() unsafe.Pointer {
-	if t == nil || t.ptr == nil {
-		return nil
-	}
-	if parent := t.parent; parent != nil && parent.zigoPointer() == nil {
 		return nil
 	}
 	return t.ptr
@@ -45,13 +29,6 @@ func (t *TelemetryHub) zigoLocker() *sync.RWMutex {
 		return nil
 	}
 	return &t.mu
-}
-
-func (t *TelemetryHubRef) zigoLocker() *sync.RWMutex {
-	if t == nil || t.parent == nil {
-		return nil
-	}
-	return t.parent.zigoLocker()
 }
 
 type telemetryHubCleanupState struct {

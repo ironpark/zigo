@@ -6,6 +6,8 @@ import (
 	"sync"
 	"sync/atomic"
 	"unsafe"
+
+	raw "example.com/zigo/event-queue/bridge/cgo"
 )
 
 type zigoHandle interface {
@@ -28,20 +30,6 @@ func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsaf
 	return zigoCheckedPointer(operation, value)
 }
 
-// zigoReadLock holds the owner's read lock for the rest of the call, so a
-// concurrent Close cannot release the handle between the pointer check and
-// the native call. Use it as `defer zigoReadLock(receiver)()`. A borrowed
-// ref delegates to its parent's lock; a nil receiver or a ref without a
-// parent locks nothing.
-func zigoReadLock(value zigoHandle) func() {
-	mu := value.zigoLocker()
-	if mu == nil {
-		return func() {}
-	}
-	mu.RLock()
-	return mu.RUnlock
-}
-
 // EventQueueCreateObserver is the Go callback signature accepted by the generated binding.
 type EventQueueCreateObserver func(uint64, int32) int32
 
@@ -61,14 +49,14 @@ type zigoCallbackHandle = cgo.Handle
 
 func newEventQueueCreateObserverHandle(value EventQueueCreateObserver) zigoCallbackHandle {
 	stored := (func(uint64, int32) int32)(value)
-	handle := cgo.NewHandle(stored)
+	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
 	activeCallbackHandles.Add(1)
 	return handle
 }
 
 func newEventQueueCloneObserverHandle(value EventQueueCloneObserver) zigoCallbackHandle {
 	stored := (func(uint64, int32) int32)(value)
-	handle := cgo.NewHandle(stored)
+	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
 	activeCallbackHandles.Add(1)
 	return handle
 }
@@ -79,3 +67,12 @@ func deleteCallbackHandle(handle zigoCallbackHandle) {
 }
 
 func activeCallbackHandleCount() int64 { return activeCallbackHandles.Load() }
+
+// zigoRethrowCallbackPanic resumes a panic that a Go callback raised inside
+// the native call that has just returned. The trampoline recovered it so the
+// native frames could unwind; the caller sees it as a *CallbackPanicError.
+func zigoRethrowCallbackPanic(operation string, handle zigoCallbackHandle) {
+	if value, stack, ok := raw.TakeCallbackPanic(handle); ok {
+		panic(&CallbackPanicError{Operation: operation, Value: value, Stack: stack})
+	}
+}

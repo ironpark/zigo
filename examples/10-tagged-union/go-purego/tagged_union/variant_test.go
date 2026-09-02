@@ -180,17 +180,15 @@ func assertSignalVariants(t *testing.T) {
 	assertHandlePanicIn(t, "Signal.Snapshot receiver", func() { signal.MustVariant() })
 }
 
-// Both the owned handle and the borrowed reference of every union carry the
-// accessor pair, whether or not this example can hand out the reference.
+// Every union's owned handle carries the accessor pair. A borrowed
+// reference would carry it too, but this example hands none out, so no
+// Ref type is generated for either union.
 var (
 	_ variantReader[ValueVariant]  = (*Value)(nil)
-	_ variantReader[ValueVariant]  = (*ValueRef)(nil)
 	_ variantReader[SignalVariant] = (*Signal)(nil)
-	_ variantReader[SignalVariant] = (*SignalRef)(nil)
 )
 
-// variantReader is the accessor pair every generated union carries, on both the
-// owned handle and the borrowed reference.
+// variantReader is the accessor pair every generated union carries.
 type variantReader[T comparable] interface {
 	Variant() (T, error)
 	MustVariant() T

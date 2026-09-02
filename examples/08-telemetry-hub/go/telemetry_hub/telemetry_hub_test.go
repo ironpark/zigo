@@ -215,9 +215,7 @@ func TestScaledFilteringProcessingAndObserverPanic(t *testing.T) {
 	if err := panicking.Push(1, 42); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := panicking.ProcessAll(); !errors.Is(err, ErrObserverPanicked) {
-		t.Fatalf("panicking observer error=%v, want %v", err, ErrObserverPanicked)
-	}
+	expectCallbackPanic(t, "TelemetryHub.ProcessAll", "deliberate observer panic", func() { _, _ = panicking.ProcessAll() })
 	if must(panicking.Len()) != 1 {
 		t.Fatalf("observer panic consumed sample: len=%d", must(panicking.Len()))
 	}
@@ -307,4 +305,37 @@ func assertNoLiveResources(t *testing.T) {
 	if got := LiveHubs(); got != 0 {
 		t.Fatalf("LiveHubs()=%d, want 0", got)
 	}
+}
+
+// expectCallbackPanic runs call and requires it to panic with the
+// *CallbackPanicError the binding rethrows for a Go callback panic. It
+// returns the error for further inspection.
+func expectCallbackPanic(t *testing.T, operation string, value any, call func()) *CallbackPanicError {
+	t.Helper()
+	var recovered any
+	func() {
+		defer func() { recovered = recover() }()
+		call()
+	}()
+	err, ok := recovered.(error)
+	if !ok {
+		t.Fatalf("recovered %v (%T), want *CallbackPanicError", recovered, recovered)
+	}
+	var panicErr *CallbackPanicError
+	if !errors.As(err, &panicErr) {
+		t.Fatalf("recovered %v, want *CallbackPanicError", err)
+	}
+	if !errors.Is(err, ErrCallbackPanic) {
+		t.Fatalf("errors.Is(%v, ErrCallbackPanic) = false", err)
+	}
+	if panicErr.Operation != operation {
+		t.Fatalf("Operation = %q, want %q", panicErr.Operation, operation)
+	}
+	if panicErr.Value != value {
+		t.Fatalf("Value = %v, want %v", panicErr.Value, value)
+	}
+	if len(panicErr.Stack) == 0 {
+		t.Fatal("Stack is empty")
+	}
+	return panicErr
 }

@@ -12,6 +12,8 @@ import (
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 func NewIntBatch() (*IntBatch, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	result, code := raw.IntBatchCreate()
 	if code != 0 {
 		return nil, errorForCode("NewIntBatch", code)
@@ -25,6 +27,8 @@ func NewIntBatch() (*IntBatch, error) {
 func (i *IntBatch) Push(value int32) error {
 	if i != nil { i.mu.RLock(); defer i.mu.RUnlock() }
 	defer runtime.KeepAlive(i)
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("IntBatch.Push receiver", i)
 	if err != nil {
 		return err
@@ -52,6 +56,8 @@ func (i *IntBatch) Len() (uint, error) {
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 func NewFloatBatch() (*FloatBatch, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	result, code := raw.FloatBatchCreate()
 	if code != 0 {
 		return nil, errorForCode("NewFloatBatch", code)
@@ -65,6 +71,8 @@ func NewFloatBatch() (*FloatBatch, error) {
 func (f *FloatBatch) Push(p0 float64) error {
 	if f != nil { f.mu.RLock(); defer f.mu.RUnlock() }
 	defer runtime.KeepAlive(f)
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("FloatBatch.Push receiver", f)
 	if err != nil {
 		return err
@@ -91,9 +99,13 @@ func (f *FloatBatch) Len() (uint, error) {
 // NewPipeline creates a caller-owned Pipeline.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func NewPipeline(name string, mode Mode, callback PipelineCallback) (*Pipeline, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	callbackHandle := newPipelineCallbackHandle(callback)
 	result, code := raw.PipelineCreate([]byte(name), uint32(mode), uintptr(callbackHandle))
+	zigoRethrowCallbackPanic("NewPipeline", callbackHandle)
 	if code != 0 {
 		deleteCallbackHandle(callbackHandle)
 		return nil, errorForCode("NewPipeline", code)
@@ -104,14 +116,20 @@ func NewPipeline(name string, mode Mode, callback PipelineCallback) (*Pipeline, 
 // Process invokes the bound Zig Pipeline.process operation.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (p *Pipeline) Process(values []int32) (int64, error) {
 	if p != nil { p.mu.RLock(); defer p.mu.RUnlock() }
 	defer runtime.KeepAlive(p)
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Pipeline.Process receiver", p)
 	if err != nil {
 		return 0, err
 	}
 	result, code := raw.PipelineProcess(ptr, values)
+	for _, handle := range p.callbackHandles {
+		zigoRethrowCallbackPanic("Pipeline.Process", handle)
+	}
 	if code != 0 {
 		return 0, errorForCode("Pipeline.Process", code)
 	}
@@ -120,6 +138,7 @@ func (p *Pipeline) Process(values []int32) (int64, error) {
 
 // Name invokes the bound Zig Pipeline.name operation.
 // It returns *HandleError if a required handle is nil or closed.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (p *Pipeline) Name() (string, error) {
 	if p != nil { p.mu.RLock(); defer p.mu.RUnlock() }
 	defer runtime.KeepAlive(p)
@@ -127,7 +146,11 @@ func (p *Pipeline) Name() (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return string(raw.PipelineName(ptr)), nil
+	result := raw.PipelineName(ptr)
+	for _, handle := range p.callbackHandles {
+		zigoRethrowCallbackPanic("Pipeline.Name", handle)
+	}
+	return string(result), nil
 }
 
 // SampleValues invokes the bound Zig sampleValues operation.
@@ -138,6 +161,8 @@ func SampleValues() []float32 {
 // SampleValuesChecked invokes the bound Zig sampleValuesChecked operation.
 // Native failures are returned as generated error values.
 func SampleValuesChecked() ([]float32, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	result, code := raw.SampleValuesChecked()
 	if code != 0 {
 		return nil, errorForCode("SampleValuesChecked", code)
@@ -153,6 +178,8 @@ func TakeSamples() []float32 {
 // TakeSamplesChecked invokes the bound Zig takeSamplesChecked operation.
 // Native failures are returned as generated error values.
 func TakeSamplesChecked() ([]float32, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	result, code := raw.TakeSamplesChecked()
 	if code != 0 {
 		return nil, errorForCode("TakeSamplesChecked", code)
@@ -162,6 +189,7 @@ func TakeSamplesChecked() ([]float32, error) {
 
 // Mode invokes the bound Zig Pipeline.mode operation.
 // It returns *HandleError if a required handle is nil or closed.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (p *Pipeline) Mode() (Mode, error) {
 	if p != nil { p.mu.RLock(); defer p.mu.RUnlock() }
 	defer runtime.KeepAlive(p)
@@ -169,11 +197,16 @@ func (p *Pipeline) Mode() (Mode, error) {
 	if err != nil {
 		return 0, err
 	}
-	return Mode(raw.PipelineMode(ptr)), nil
+	result := raw.PipelineMode(ptr)
+	for _, handle := range p.callbackHandles {
+		zigoRethrowCallbackPanic("Pipeline.Mode", handle)
+	}
+	return Mode(result), nil
 }
 
 // SetEnabled invokes the bound Zig Pipeline.setEnabled operation.
 // It returns *HandleError if a required handle is nil or closed.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (p *Pipeline) SetEnabled(enabled bool) (bool, error) {
 	if p != nil { p.mu.RLock(); defer p.mu.RUnlock() }
 	defer runtime.KeepAlive(p)
@@ -181,11 +214,16 @@ func (p *Pipeline) SetEnabled(enabled bool) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	return raw.PipelineSetEnabled(ptr, boolToUint8(enabled)) != 0, nil
+	result := raw.PipelineSetEnabled(ptr, boolToUint8(enabled))
+	for _, handle := range p.callbackHandles {
+		zigoRethrowCallbackPanic("Pipeline.SetEnabled", handle)
+	}
+	return result != 0, nil
 }
 
 // Processed invokes the bound Zig Pipeline.processed operation.
 // It returns *HandleError if a required handle is nil or closed.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (p *Pipeline) Processed() (uint, error) {
 	if p != nil { p.mu.RLock(); defer p.mu.RUnlock() }
 	defer runtime.KeepAlive(p)
@@ -193,11 +231,16 @@ func (p *Pipeline) Processed() (uint, error) {
 	if err != nil {
 		return 0, err
 	}
-	return raw.PipelineProcessed(ptr), nil
+	result := raw.PipelineProcessed(ptr)
+	for _, handle := range p.callbackHandles {
+		zigoRethrowCallbackPanic("Pipeline.Processed", handle)
+	}
+	return result, nil
 }
 
 // Total invokes the bound Zig Pipeline.total operation.
 // It returns *HandleError if a required handle is nil or closed.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (p *Pipeline) Total() (int64, error) {
 	if p != nil { p.mu.RLock(); defer p.mu.RUnlock() }
 	defer runtime.KeepAlive(p)
@@ -205,7 +248,11 @@ func (p *Pipeline) Total() (int64, error) {
 	if err != nil {
 		return 0, err
 	}
-	return raw.PipelineTotal(ptr), nil
+	result := raw.PipelineTotal(ptr)
+	for _, handle := range p.callbackHandles {
+		zigoRethrowCallbackPanic("Pipeline.Total", handle)
+	}
+	return result, nil
 }
 
 // LiveBytes invokes the bound Zig liveBytes operation.

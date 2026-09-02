@@ -1007,12 +1007,12 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
     if (options.framework_ldflags.len != 0) try writer.print("\n#cgo darwin LDFLAGS: {s}", .{options.framework_ldflags});
     if (programHasCString(program)) try writer.writeAll("\n#include <stdlib.h>");
     try writer.print("\n#include \"zigo_{s}.h\"\n*/\nimport \"C\"\n", .{package});
-    if (programHasCallbacks(program)) try writer.writeAll("import \"runtime/cgo\"\n");
+    if (programHasCallbacks(program)) try writer.writeAll("import \"runtime/cgo\"\nimport \"runtime/debug\"\nimport \"sync\"\n");
     if (programNeedsUnsafe(program)) try writer.writeAll("import \"unsafe\"\n");
     try writer.writeByte('\n');
     const last_error_name = if (options.raw_colocated) "zigoRawLastErrorMessage" else "LastErrorMessage";
     try writer.print("// {0s} returns the most recent native panic message for this binding.\nfunc {0s}() string {{ return C.GoString(C.{1s}_last_error_message()) }}\n\n", .{ last_error_name, program.prefix });
-    try renderRawCallbacks(allocator, writer, program);
+    try renderRawCallbacks(allocator, writer, program, options);
 
     for (program.functions) |function| {
         const go_name = try rawGoNameAlloc(allocator, function.origin.*);
@@ -1476,6 +1476,7 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     if (needs_os) try writer.writeAll("\t\"os\"\n");
     if (search_paths) try writer.writeAll("\t\"path/filepath\"\n");
     try writer.writeAll("\t\"runtime\"\n");
+    if (programHasCallbacks(program)) try writer.writeAll("\t\"runtime/debug\"\n");
     if (search_paths) try writer.writeAll("\t\"strings\"\n");
     try writer.writeAll("\t\"sync\"\n\t\"sync/atomic\"\n\t\"unsafe\"\n\n\t\"github.com/ebitengine/purego\"\n)\n\n");
     try writer.print(
@@ -1643,7 +1644,7 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
 fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     const prefix = if (options.raw_colocated) "zigoRaw" else "";
     try writer.writeAll(
-        "type callbackEntry struct {\n\tmu sync.Mutex\n\tcond *sync.Cond\n\tvalue any\n\tclosing bool\n\tactive int\n}\n\n" ++
+        "type callbackEntry struct {\n\tmu sync.Mutex\n\tcond *sync.Cond\n\tvalue any\n\tclosing bool\n\tactive int\n\tpanicked bool\n\tpanicValue any\n\tpanicStack []byte\n}\n\n" ++
             "// callbackRegistry maps a userdata token to its entry without a global lock,\n// mirroring the sync.Map behind runtime/cgo.Handle on the cgo backend.\n// Delete races an in-flight acquire safely through the entry's closing flag:\n// an acquire either takes active++ before closing is set, in which case\n// DeleteCallbackHandle waits for it to drain, or it observes closing and\n// reports the token as gone.\nvar callbackRegistry sync.Map // uintptr -> *callbackEntry\nvar nextCallbackToken atomic.Uint64\nvar activeCallbackHandles atomic.Int64\n\n",
     );
     try writer.print("// {s}NewCallbackHandle stores a callback value and returns its native userdata token.\nfunc {s}NewCallbackHandle(value any) uintptr {{\n", .{ prefix, prefix });
@@ -1651,6 +1652,9 @@ fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.Io.Wr
     try writer.print("// {s}DeleteCallbackHandle releases a callback token after in-flight calls finish.\nfunc {s}DeleteCallbackHandle(token uintptr) {{\n", .{ prefix, prefix });
     try writer.writeAll("\tif token == 0 { return }\n\tstored, loaded := callbackRegistry.LoadAndDelete(token)\n\tif !loaded { return }\n\tentry := stored.(*callbackEntry)\n\tentry.mu.Lock()\n\tentry.closing = true\n\tfor entry.active != 0 { entry.cond.Wait() }\n\tentry.value = nil\n\tentry.mu.Unlock()\n\tactiveCallbackHandles.Add(-1)\n}\n\n");
     try writer.print("// {s}ActiveCallbackHandleCount reports the number of live callback tokens.\nfunc {s}ActiveCallbackHandleCount() int64 {{ return activeCallbackHandles.Load() }}\n\n", .{ prefix, prefix });
+    try writer.writeAll("// record keeps the first panic a callback raised until the generated caller takes it.\nfunc (entry *callbackEntry) record(value any) {\n\tentry.mu.Lock()\n\tdefer entry.mu.Unlock()\n\tif entry.panicked { return }\n\tentry.panicked = true\n\tentry.panicValue = value\n\tentry.panicStack = debug.Stack()\n}\n\n");
+    try writer.print("// {s}TakeCallbackPanic returns and clears the panic the callback behind token recorded.\nfunc {s}TakeCallbackPanic(token uintptr) (any, []byte, bool) {{\n", .{ prefix, prefix });
+    try writer.writeAll("\tstored, loaded := callbackRegistry.Load(token)\n\tif !loaded { return nil, nil, false }\n\tentry := stored.(*callbackEntry)\n\tentry.mu.Lock()\n\tdefer entry.mu.Unlock()\n\tif !entry.panicked { return nil, nil, false }\n\tvalue, stack := entry.panicValue, entry.panicStack\n\tentry.panicValue, entry.panicStack, entry.panicked = nil, nil, false\n\treturn value, stack, true\n}\n\n");
     try writer.writeAll("func acquireCallback(token uintptr) (*callbackEntry, any, bool) {\n\tstored, loaded := callbackRegistry.Load(token)\n\tif !loaded { return nil, nil, false }\n\tentry := stored.(*callbackEntry)\n\tentry.mu.Lock()\n\tif entry.closing { entry.mu.Unlock(); return nil, nil, false }\n\tentry.active++\n\tvalue := entry.value\n\tentry.mu.Unlock()\n\treturn entry, value, true\n}\n\nfunc releaseCallback(entry *callbackEntry) {\n\tentry.mu.Lock()\n\tentry.active--\n\tif entry.closing && entry.active == 0 { entry.cond.Broadcast() }\n\tentry.mu.Unlock()\n}\n\n");
 
     if (programHasWideningCallbackResult(program)) try writer.writeAll(
@@ -1686,13 +1690,15 @@ fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.Io.Wr
             // the low word, so an int32 result survives the widening on both
             // supported architectures, and a void callback's value is ignored.
             try writer.writeAll(") (result uintptr) {\n");
-            try writer.writeAll("\t\t\tdefer func() { if recover() != nil { result = ");
-            try writeCallbackFailureValue(writer, callback.@"return".*, true);
-            try writer.writeAll(" } }()\n");
             const userdata_index = callback.params.len - 1;
             try writer.print("\t\t\tentry, stored, ok := acquireCallback(uintptr(p{d}))\n\t\t\tif !ok {{ return ", .{userdata_index});
             try writeCallbackFailureValue(writer, callback.@"return".*, false);
-            try writer.writeAll(" }\n\t\t\tdefer releaseCallback(entry)\n\t\t\tcallback := stored.(func(");
+            try writer.writeAll(" }\n\t\t\tdefer releaseCallback(entry)\n");
+            // Recovered after the entry is acquired so the panic has somewhere
+            // to be recorded; nothing before this point can panic.
+            try writer.writeAll("\t\t\tdefer func() { if value := recover(); value != nil { entry.record(value); result = ");
+            try writeCallbackFailureValue(writer, callback.@"return".*, true);
+            try writer.writeAll(" } }()\n\t\t\tcallback := stored.(func(");
             for (callback.params[0..userdata_index], 0..) |callback_parameter, index| {
                 if (index != 0) try writer.writeAll(", ");
                 try writeRawGoType(writer, program, callback_parameter);
@@ -2227,7 +2233,22 @@ fn renderRawTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.Io.W
     }
 }
 
-fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
+/// The cgo trampolines. Each recovers a panic in the Go callback -- a panic
+/// cannot unwind native frames -- and records it on the callback's state so
+/// the generated caller can rethrow it once the native call has returned.
+fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
+    if (!programHasCallbacks(program)) return;
+    const prefix = if (options.raw_colocated) "zigoRaw" else "";
+    try writer.print(
+        "// {0s}CallbackState carries one Go callback across the native boundary, and\n" ++
+            "// the panic it raises there until the generated caller rethrows it. The\n" ++
+            "// trampoline has to recover: a panic cannot unwind native frames.\n" ++
+            "type {0s}CallbackState struct {{\n\tFn       any\n\tmu       sync.Mutex\n\tvalue    any\n\tstack    []byte\n\tpanicked bool\n}}\n\n" ++
+            "func (state *{0s}CallbackState) record(value any) {{\n\tstate.mu.Lock()\n\tdefer state.mu.Unlock()\n\tif state.panicked {{\n\t\treturn\n\t}}\n\tstate.panicked = true\n\tstate.value = value\n\tstate.stack = debug.Stack()\n}}\n\n" ++
+            "// {0s}TakeCallbackPanic returns and clears the panic the callback behind handle recorded.\n" ++
+            "func {0s}TakeCallbackPanic(handle cgo.Handle) (any, []byte, bool) {{\n\tstate := handle.Value().(*{0s}CallbackState)\n\tstate.mu.Lock()\n\tdefer state.mu.Unlock()\n\tif !state.panicked {{\n\t\treturn nil, nil, false\n\t}}\n\tvalue, stack := state.value, state.stack\n\tstate.value, state.stack, state.panicked = nil, nil, false\n\treturn value, stack, true\n}}\n\n",
+        .{prefix},
+    );
     for (program.functions) |function| {
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (parameter.type != .callback) continue;
@@ -2243,15 +2264,13 @@ fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
             }
             try writer.writeAll(") (result C.");
             try writeCgoType(writer, semanticScalar(program, callback.@"return".*));
-            try writer.writeAll(") {\n\tdefer func() {\n\t\tif recover() != nil {\n");
+            try writer.print(") {{\n\tstate := cgo.Handle(p{d}).Value().(*{s}CallbackState)\n\tdefer func() {{\n\t\tif value := recover(); value != nil {{\n\t\t\tstate.record(value)\n", .{ callback.params.len - 1, prefix });
             if (callback.@"return".* == .int and callback.@"return".int.signed and callback.@"return".int.bits == 32) {
                 try writer.writeAll("\t\t\tresult = C.int32_t(-3)\n");
             } else {
                 try writer.writeAll("\t\t\tresult = 0\n");
             }
-            try writer.writeAll("\t\t}\n\t}()\n\tcallback := cgo.Handle(");
-            try writer.print("p{d}", .{callback.params.len - 1});
-            try writer.writeAll(").Value().(func(");
+            try writer.writeAll("\t\t}\n\t}()\n\tcallback := state.Fn.(func(");
             const value_count = callback.params.len - 1;
             for (callback.params[0..value_count], 0..) |callback_parameter, index| {
                 if (index != 0) try writer.writeAll(", ");
@@ -2381,7 +2400,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         // return value instead of a panic. Functions that do not touch a
         // handle keep their plain signature.
         const needs_handle_check = function.origin.receiver != null or hasOpaqueParameter(function.origin.*);
-        try writePublicFunctionDoc(writer, function.origin.*, go_name, owned_type);
+        try writePublicFunctionDoc(writer, function.origin.*, go_name, owned_type, functionReachesCallbacks(program, function.origin.*));
         if (function.origin.receiver) |receiver| {
             const receiver_name = try receiverVariableAlloc(allocator, receiver);
             defer allocator.free(receiver_name);
@@ -2413,6 +2432,11 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         }
         try writer.writeAll(" {\n");
         try renderKeepAliveDefers(allocator, writer, program, function);
+        // errorForCode reads the panic message out of native thread-local
+        // storage in a second cgo call, so the goroutine must stay on the
+        // thread that made the first one until it has been read.
+        if (function.origin.@"return" == .error_union)
+            try writer.writeAll("\truntime.LockOSThread()\n\tdefer runtime.UnlockOSThread()\n");
         // The handle checks run before any callback handle is registered, so
         // an early return cannot strand a retained callback.
         if (needs_handle_check)
@@ -2429,8 +2453,11 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         // A caller-owned handle returned without an error union still has to be
         // wrapped, so it is captured into `result` exactly like a borrowed one.
         const owned_direct = !returns_error and owned_type != null;
+        // A callback panic is rethrown after the call, so a call that can reach
+        // one cannot be the return expression itself.
+        const needs_rethrow = functionReachesCallbacks(program, function.origin.*);
         const captures_return = !returns_error and !borrowed_direct and !owned_direct and
-            hasOutValueStructSlice(function.origin.*) and function.origin.@"return" != .void;
+            (hasOutValueStructSlice(function.origin.*) or needs_rethrow) and function.origin.@"return" != .void;
         if (returns_error) {
             if (error_payload == .void) try writer.writeAll("code := ") else try writer.writeAll("result, code := ");
             try writeRawReferencePrefix(writer, options);
@@ -2514,10 +2541,11 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         if (!returns_error and !captures_return and isUtf8Slice(function.origin.@"return", function.origin.return_semantic)) try writer.writeByte(')');
         if (!returns_error and !captures_return and !borrowed_direct and !owned_direct and needs_handle_check and function.origin.@"return" != .void) try writer.writeAll(", nil");
         try writer.writeByte('\n');
+        if (needs_rethrow) try renderCallbackRethrows(allocator, writer, program, function.origin.*, operation);
         if (!returns_error and hasOutValueStructSlice(function.origin.*)) {
             try writePublicValueStructSliceCopyBacks(writer, function.origin.*, go_names);
-            if (captures_return) try writePublicCapturedReturn(writer, function.origin.*, needs_handle_check);
         }
+        if (captures_return) try writePublicCapturedReturn(writer, function.origin.*, needs_handle_check);
         if (borrowed_direct or owned_direct) {
             try writer.writeAll("\treturn ");
             if (owned_type) |type_name|
@@ -2881,7 +2909,7 @@ fn renderPublicSnapshots(
 
         // One reader per union, shared by the owned and borrowed handles.
         try writer.print(
-            "func zigo{0s}Snapshot(receiver zigoHandle) ({1s}, error) {{\n\tdefer zigoReadLock(receiver)()\n\tdefer runtime.KeepAlive(receiver)\n" ++
+            "func zigo{0s}Snapshot(receiver zigoHandle) ({1s}, error) {{\n\tdefer zigoReadLock(receiver)()\n\tdefer runtime.KeepAlive(receiver)\n\truntime.LockOSThread()\n\tdefer runtime.UnlockOSThread()\n" ++
                 "\tptr, err := zigoCheckedPointer(\"{0s}.Snapshot receiver\", receiver)\n\tif err != nil {{\n\t\treturn {1s}{{}}, err\n\t}}\n\tdata, status := ",
             .{ declaration.name, type_name },
         );
@@ -2905,17 +2933,19 @@ fn renderPublicSnapshots(
         try writer.writeAll("\t}, nil\n}\n\n");
 
         inline for (.{ false, true }) |borrowed| {
-            const suffix = if (borrowed) "Ref" else "";
-            try writer.print(
-                "// Snapshot reads the tag and every payload in one native call, or\n" ++
-                    "// returns a typed lifecycle/native error.\nfunc ({0s} *{1s}{2s}) Snapshot() ({3s}, error) {{ return zigo{1s}Snapshot({0s}) }}\n\n",
-                .{ recv, declaration.name, suffix, type_name },
-            );
-            try writer.print(
-                "// MustSnapshot reads the tag and every payload in one native call and panics\n" ++
-                    "// with a typed error on failure.\nfunc ({0s} *{1s}{2s}) MustSnapshot() {3s} {{ return zigoMust(zigo{1s}Snapshot({0s})) }}\n\n",
-                .{ recv, declaration.name, suffix, type_name },
-            );
+            if (!borrowed or typeHasBorrowedRefs(program, declaration.name)) {
+                const suffix = if (borrowed) "Ref" else "";
+                try writer.print(
+                    "// Snapshot reads the tag and every payload in one native call, or\n" ++
+                        "// returns a typed lifecycle/native error.\nfunc ({0s} *{1s}{2s}) Snapshot() ({3s}, error) {{ return zigo{1s}Snapshot({0s}) }}\n\n",
+                    .{ recv, declaration.name, suffix, type_name },
+                );
+                try writer.print(
+                    "// MustSnapshot reads the tag and every payload in one native call and panics\n" ++
+                        "// with a typed error on failure.\nfunc ({0s} *{1s}{2s}) MustSnapshot() {3s} {{ return zigoMust(zigo{1s}Snapshot({0s})) }}\n\n",
+                    .{ recv, declaration.name, suffix, type_name },
+                );
+            }
         }
     }
 }
@@ -3098,17 +3128,19 @@ fn renderPublicUnionVariants(
         );
 
         inline for (.{ false, true }) |borrowed| {
-            const suffix = if (borrowed) "Ref" else "";
-            try writer.print(
-                "// Variant returns the active variant as a concrete {1s}Variant, or a typed\n" ++
-                    "// lifecycle/native error.\nfunc ({0s} *{1s}{2s}) Variant() ({1s}Variant, error) {{ return zigo{1s}Variant({0s}) }}\n\n",
-                .{ recv, declaration.name, suffix },
-            );
-            try writer.print(
-                "// MustVariant returns the active variant as a concrete {1s}Variant and panics\n" ++
-                    "// with a typed error on failure.\nfunc ({0s} *{1s}{2s}) MustVariant() {1s}Variant {{ return zigoMust(zigo{1s}Variant({0s})) }}\n\n",
-                .{ recv, declaration.name, suffix },
-            );
+            if (!borrowed or typeHasBorrowedRefs(program, declaration.name)) {
+                const suffix = if (borrowed) "Ref" else "";
+                try writer.print(
+                    "// Variant returns the active variant as a concrete {1s}Variant, or a typed\n" ++
+                        "// lifecycle/native error.\nfunc ({0s} *{1s}{2s}) Variant() ({1s}Variant, error) {{ return zigo{1s}Variant({0s}) }}\n\n",
+                    .{ recv, declaration.name, suffix },
+                );
+                try writer.print(
+                    "// MustVariant returns the active variant as a concrete {1s}Variant and panics\n" ++
+                        "// with a typed error on failure.\nfunc ({0s} *{1s}{2s}) MustVariant() {1s}Variant {{ return zigoMust(zigo{1s}Variant({0s})) }}\n\n",
+                    .{ recv, declaration.name, suffix },
+                );
+            }
         }
     }
 }
@@ -3137,20 +3169,23 @@ fn renderPublicErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
     const has_handles = programHasOpaqueTypes(program);
     const has_codes = program.error_codes.len != 0;
     const has_status = programHasTaggedUnionTypes(program);
+    const has_callbacks = programHasCallbacks(program);
     // The raw package declares the loader sentinel. A colocated raw package is
     // the public package, so it needs no alias.
     const has_library = options.backend == .purego and !options.raw_colocated;
     // A Zig panic reaches Go from two boundaries: a projection status and an
     // error-returning call. Both report it as the same error, so the file is
     // needed whenever either exists.
-    if (!has_handles and !has_codes and !has_library) return;
-    // errorForCode names an unrecognized code with its number.
+    if (!has_handles and !has_codes and !has_library and !has_callbacks) return;
+    // errorForCode names an unrecognized code with its number; the callback
+    // panic error prints the recovered value.
     const raw_import = (has_codes or has_library) and !options.raw_colocated;
-    const import_count = 1 + @as(usize, @intFromBool(has_codes)) + @as(usize, @intFromBool(raw_import));
+    const import_count = 1 + @as(usize, @intFromBool(has_codes)) + @as(usize, @intFromBool(has_callbacks)) + @as(usize, @intFromBool(raw_import));
     if (import_count == 1) {
         try writer.writeAll("\nimport \"errors\"\n");
     } else {
         try writer.writeAll("\nimport (\n\t\"errors\"\n");
+        if (has_callbacks) try writer.writeAll("\t\"fmt\"\n");
         if (has_codes) try writer.writeAll("\t\"strconv\"\n");
         if (raw_import) {
             try writer.writeByte('\n');
@@ -3164,11 +3199,12 @@ fn renderPublicErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
         .panics = has_handles or has_codes,
         .status = has_status,
         .library = has_library,
+        .callbacks = has_callbacks,
     }, options);
     try renderGoErrors(allocator, writer, program, options);
 }
 
-const SentinelSet = struct { handles: bool, panics: bool, status: bool, library: bool };
+const SentinelSet = struct { handles: bool, panics: bool, status: bool, library: bool, callbacks: bool = false };
 
 /// One discrimination rule: every generated error is classified with
 /// `errors.Is` against an exported sentinel, and `errors.As` is only for
@@ -3185,6 +3221,10 @@ fn renderGoSentinels(writer: *std.Io.Writer, set: SentinelSet, options: Options)
     if (set.status) try writer.writeAll(
         "// ErrNativeStatus identifies a native status this binding does not recognize.\n" ++
             "var ErrNativeStatus = errors.New(\"zigo: unrecognized native status\")\n",
+    );
+    if (set.callbacks) try writer.writeAll(
+        "// ErrCallbackPanic identifies a panic raised by a Go callback inside a native call.\n" ++
+            "var ErrCallbackPanic = errors.New(\"zigo: callback panic\")\n",
     );
     if (set.library) {
         try writer.writeAll("// ErrLibraryLoad identifies a shared-library load or symbol resolution failure.\nvar ErrLibraryLoad = ");
@@ -3228,6 +3268,30 @@ fn renderGoSentinels(writer: *std.Io.Writer, set: SentinelSet, options: Options)
             "}\n\n" ++
             "// Unwrap returns ErrNativeStatus for errors.Is classification.\nfunc (err *StatusError) Unwrap() error { return ErrNativeStatus }\n\n",
     );
+    // Rethrown rather than returned: a callback panic is the caller's own Go
+    // code failing, and the generated call cannot know whether that is
+    // recoverable. Unwrap reaches the original value when it is an error, so
+    // `errors.Is` on a recovered value sees both this sentinel and the cause.
+    if (set.callbacks) try writer.writeAll(
+        "// CallbackPanicError is what a generated call panics with after a Go callback\n" ++
+            "// panicked inside it. The trampoline recovers the panic so the native frames\n" ++
+            "// can unwind, and the call rethrows it once the native code has returned.\n" ++
+            "type CallbackPanicError struct {\n" ++
+            "\t// Operation names the generated call the callback was running under.\n\tOperation string\n" ++
+            "\t// Value is the original panic value.\n\tValue any\n" ++
+            "\t// Stack is the callback goroutine's stack where the panic was recovered.\n\tStack []byte\n" ++
+            "}\n\n" ++
+            "// Error implements error.\nfunc (err *CallbackPanicError) Error() string {\n" ++
+            "\treturn \"zigo: \" + err.Operation + \": callback panic: \" + fmt.Sprint(err.Value)\n" ++
+            "}\n\n" ++
+            "// Is reports ErrCallbackPanic for errors.Is classification.\nfunc (err *CallbackPanicError) Is(target error) bool { return target == ErrCallbackPanic }\n\n" ++
+            "// Unwrap returns the original panic value when it is an error, so errors.Is and errors.As reach it.\nfunc (err *CallbackPanicError) Unwrap() error {\n" ++
+            "\tif cause, ok := err.Value.(error); ok {\n" ++
+            "\t\treturn cause\n" ++
+            "\t}\n" ++
+            "\treturn nil\n" ++
+            "}\n\n",
+    );
 }
 
 fn renderPublicHelpers(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
@@ -3264,7 +3328,8 @@ fn renderPublicHelpers(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
             try writer.writeAll("ActiveCallbackHandleCount() }\n");
             try writer.writeAll("func callbackDispatcherCount() int { return ");
             try writeRawReferencePrefix(writer, options);
-            try writer.writeAll("CallbackDispatcherCount() }\n");
+            try writer.writeAll("CallbackDispatcherCount() }\n\n");
+            try writeRethrowHelper(writer, options);
             return;
         }
         try writer.writeAll("var activeCallbackHandles atomic.Int64\n\n");
@@ -3276,7 +3341,9 @@ fn renderPublicHelpers(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
                 defer allocator.free(callback_name);
                 try writer.print("func new{s}Handle(value {s}) zigoCallbackHandle {{\n\tstored := (", .{ callback_name, callback_name });
                 try writePublicCallbackType(writer, parameter.type.callback);
-                try writer.writeAll(")(value)\n\thandle := cgo.NewHandle(stored)\n\tactiveCallbackHandles.Add(1)\n\treturn handle\n}\n\n");
+                try writer.writeAll(")(value)\n\thandle := cgo.NewHandle(&");
+                try writeRawReferencePrefix(writer, options);
+                try writer.writeAll("CallbackState{Fn: stored})\n\tactiveCallbackHandles.Add(1)\n\treturn handle\n}\n\n");
             }
         }
         try writer.writeAll(
@@ -3284,9 +3351,31 @@ fn renderPublicHelpers(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
                 "\thandle.Delete()\n" ++
                 "\tactiveCallbackHandles.Add(-1)\n" ++
                 "}\n\n" ++
-                "func activeCallbackHandleCount() int64 { return activeCallbackHandles.Load() }\n",
+                "func activeCallbackHandleCount() int64 { return activeCallbackHandles.Load() }\n\n",
         );
+        try writeRethrowHelper(writer, options);
     }
+}
+
+/// The one place a recovered callback panic resumes. It runs after the native
+/// call has returned, on the calling goroutine, so the panic unwinds Go frames
+/// only. The generated caller emits a call per callback the native code could
+/// have reached: the ones passed to the call and the ones its handles retain.
+fn writeRethrowHelper(writer: *std.Io.Writer, options: Options) !void {
+    try writer.writeAll(
+        "// zigoRethrowCallbackPanic resumes a panic that a Go callback raised inside\n" ++
+            "// the native call that has just returned. The trampoline recovered it so the\n" ++
+            "// native frames could unwind; the caller sees it as a *CallbackPanicError.\n" ++
+            "func zigoRethrowCallbackPanic(operation string, handle zigoCallbackHandle) {\n" ++
+            "\tif value, stack, ok := ",
+    );
+    try writeRawReferencePrefix(writer, options);
+    try writer.writeAll(
+        "TakeCallbackPanic(handle); ok {\n" ++
+            "\t\tpanic(&CallbackPanicError{Operation: operation, Value: value, Stack: stack})\n" ++
+            "\t}\n" ++
+            "}\n",
+    );
 }
 
 /// One lifecycle for every handle. Fields are `ptr` and `mu` on any
@@ -3313,9 +3402,11 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         try writeStructField(writer, "mu", width, "sync.RWMutex");
         if (owns_callbacks) try writeStructField(writer, "callbackHandles", width, "[]zigoCallbackHandle");
         if (auto_cleanup) try writeStructField(writer, "cleanup", width, "runtime.Cleanup");
-        try writer.print(
-            "}}\n\n" ++
-                "// {s}Ref is a borrowed {s} reference that remains valid only while its parent is open.\n" ++
+        try writer.writeAll("}\n\n");
+        // The borrowed reference exists only when something hands one out.
+        const has_refs = typeHasBorrowedRefs(program, declaration.name);
+        if (has_refs) try writer.print(
+            "// {s}Ref is a borrowed {s} reference that remains valid only while its parent is open.\n" ++
                 "type {s}Ref struct {{\n\tptr    unsafe.Pointer\n\tparent zigoHandle\n}}\n\n",
             .{ declaration.name, declaration.name, declaration.name },
         );
@@ -3323,10 +3414,19 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         const recv = try receiverVariableAlloc(allocator, declaration.name);
         defer allocator.free(recv);
         try writer.print(
-            "func ({0s} *{1s}) zigoPointer() unsafe.Pointer {{\n\tif {0s} == nil {{\n\t\treturn nil\n\t}}\n\treturn {0s}.ptr\n}}\n\n" ++
-                "func ({0s} *{1s}Ref) zigoPointer() unsafe.Pointer {{\n\tif {0s} == nil || {0s}.ptr == nil {{\n\t\treturn nil\n\t}}\n\tif parent := {0s}.parent; parent != nil && parent.zigoPointer() == nil {{\n\t\treturn nil\n\t}}\n\treturn {0s}.ptr\n}}\n\n" ++
-                "func ({0s} *{1s}) zigoLocker() *sync.RWMutex {{\n\tif {0s} == nil {{\n\t\treturn nil\n\t}}\n\treturn &{0s}.mu\n}}\n\n" ++
-                "func ({0s} *{1s}Ref) zigoLocker() *sync.RWMutex {{\n\tif {0s} == nil || {0s}.parent == nil {{\n\t\treturn nil\n\t}}\n\treturn {0s}.parent.zigoLocker()\n}}\n\n",
+            "func ({0s} *{1s}) zigoPointer() unsafe.Pointer {{\n\tif {0s} == nil {{\n\t\treturn nil\n\t}}\n\treturn {0s}.ptr\n}}\n\n",
+            .{ recv, declaration.name },
+        );
+        if (has_refs) try writer.print(
+            "func ({0s} *{1s}Ref) zigoPointer() unsafe.Pointer {{\n\tif {0s} == nil || {0s}.ptr == nil {{\n\t\treturn nil\n\t}}\n\tif parent := {0s}.parent; parent != nil && parent.zigoPointer() == nil {{\n\t\treturn nil\n\t}}\n\treturn {0s}.ptr\n}}\n\n",
+            .{ recv, declaration.name },
+        );
+        try writer.print(
+            "func ({0s} *{1s}) zigoLocker() *sync.RWMutex {{\n\tif {0s} == nil {{\n\t\treturn nil\n\t}}\n\treturn &{0s}.mu\n}}\n\n",
+            .{ recv, declaration.name },
+        );
+        if (has_refs) try writer.print(
+            "func ({0s} *{1s}Ref) zigoLocker() *sync.RWMutex {{\n\tif {0s} == nil || {0s}.parent == nil {{\n\t\treturn nil\n\t}}\n\treturn {0s}.parent.zigoLocker()\n}}\n\n",
             .{ recv, declaration.name },
         );
         if (constructorForType(program, declaration.name)) |constructor| {
@@ -3402,8 +3502,12 @@ fn renderGoHandleRuntime(writer: *std.Io.Writer, program: abi.Program) !void {
             "\t\treturn nil, nil\n" ++
             "\t}\n" ++
             "\treturn zigoCheckedPointer(operation, value)\n" ++
-            "}\n\n" ++
-            "// zigoReadLock holds the owner's read lock for the rest of the call, so a\n" ++
+            "}\n\n",
+    );
+    // Only the union accessors reach a handle through the interface; the
+    // generated methods lock their receiver by name.
+    if (program.projections.len != 0 or program.snapshots.len != 0) try writer.writeAll(
+        "// zigoReadLock holds the owner's read lock for the rest of the call, so a\n" ++
             "// concurrent Close cannot release the handle between the pointer check and\n" ++
             "// the native call. Use it as `defer zigoReadLock(receiver)()`. A borrowed\n" ++
             "// ref delegates to its parent's lock; a nil receiver or a ref without a\n" ++
@@ -3479,7 +3583,7 @@ fn renderPublicTaggedUnionAccessors(
         // One implementation per projection, reached through the handle
         // interface so the owned and borrowed methods can both delegate to it.
         try writer.print(
-            "func zigo{0s}Tag(receiver zigoHandle) ({1s}, error) {{\n\tdefer zigoReadLock(receiver)()\n\tdefer runtime.KeepAlive(receiver)\n" ++
+            "func zigo{0s}Tag(receiver zigoHandle) ({1s}, error) {{\n\tdefer zigoReadLock(receiver)()\n\tdefer runtime.KeepAlive(receiver)\n\truntime.LockOSThread()\n\tdefer runtime.UnlockOSThread()\n" ++
                 "\tptr, err := zigoCheckedPointer(\"{0s}.Tag receiver\", receiver)\n\tif err != nil {{\n\t\treturn 0, err\n\t}}\n\tresult, status := ",
             .{ declaration.name, tag_type },
         );
@@ -3489,17 +3593,19 @@ fn renderPublicTaggedUnionAccessors(
             .{ declaration.name, tag_type },
         );
         inline for (.{ false, true }) |borrowed| {
-            const suffix = if (borrowed) "Ref" else "";
-            try writer.print(
-                "// Tag returns the active tagged-union tag or a typed lifecycle/native error.\n" ++
-                    "func ({0s} *{1s}{2s}) Tag() ({3s}, error) {{ return zigo{1s}Tag({0s}) }}\n\n",
-                .{ recv, declaration.name, suffix, tag_type },
-            );
-            try writer.print(
-                "// MustTag returns the active tagged-union tag and panics with a typed error on failure.\n" ++
-                    "func ({0s} *{1s}{2s}) MustTag() {3s} {{ return zigoMust(zigo{1s}Tag({0s})) }}\n\n",
-                .{ recv, declaration.name, suffix, tag_type },
-            );
+            if (!borrowed or typeHasBorrowedRefs(program, declaration.name)) {
+                const suffix = if (borrowed) "Ref" else "";
+                try writer.print(
+                    "// Tag returns the active tagged-union tag or a typed lifecycle/native error.\n" ++
+                        "func ({0s} *{1s}{2s}) Tag() ({3s}, error) {{ return zigo{1s}Tag({0s}) }}\n\n",
+                    .{ recv, declaration.name, suffix, tag_type },
+                );
+                try writer.print(
+                    "// MustTag returns the active tagged-union tag and panics with a typed error on failure.\n" ++
+                        "func ({0s} *{1s}{2s}) MustTag() {3s} {{ return zigoMust(zigo{1s}Tag({0s})) }}\n\n",
+                    .{ recv, declaration.name, suffix, tag_type },
+                );
+            }
         }
         for (program.projections) |payload_projection| {
             if (payload_projection.kind != .payload or !std.mem.eql(u8, payload_projection.owner.name, declaration.name)) continue;
@@ -3510,7 +3616,7 @@ fn renderPublicTaggedUnionAccessors(
 
             try writer.print("func zigo{s}As{s}(receiver zigoHandle) (", .{ declaration.name, field_name });
             try writePayloadType(writer, payload);
-            try writer.print(", bool, error) {{\n\tdefer zigoReadLock(receiver)()\n\tdefer runtime.KeepAlive(receiver)\n\tptr, err := zigoCheckedPointer(\"{s}.As{s} receiver\", receiver)\n\tif err != nil {{\n\t\treturn ", .{ declaration.name, field_name });
+            try writer.print(", bool, error) {{\n\tdefer zigoReadLock(receiver)()\n\tdefer runtime.KeepAlive(receiver)\n\truntime.LockOSThread()\n\tdefer runtime.UnlockOSThread()\n\tptr, err := zigoCheckedPointer(\"{s}.As{s} receiver\", receiver)\n\tif err != nil {{\n\t\treturn ", .{ declaration.name, field_name });
             try writer.writeAll(goZero(payload));
             try writer.writeAll(", false, err\n\t}\n\tresult, status := ");
             try writeRawReferencePrefix(writer, options);
@@ -3539,13 +3645,15 @@ fn renderPublicTaggedUnionAccessors(
             try writer.writeAll(", true, nil\n}\n\n");
 
             inline for (.{ false, true }) |borrowed| {
-                const suffix = if (borrowed) "Ref" else "";
-                try writer.print("// As{0s} returns the {1s} payload, whether it is active, and any lifecycle/native error.\nfunc ({2s} *{3s}{4s}) As{0s}() (", .{ field_name, field.name, recv, declaration.name, suffix });
-                try writePayloadType(writer, payload);
-                try writer.print(", bool, error) {{ return zigo{0s}As{1s}({2s}) }}\n\n", .{ declaration.name, field_name, recv });
-                try writer.print("// MustAs{0s} returns the {1s} payload when active and panics with a typed error on failure.\nfunc ({2s} *{3s}{4s}) MustAs{0s}() (", .{ field_name, field.name, recv, declaration.name, suffix });
-                try writePayloadType(writer, payload);
-                try writer.print(", bool) {{ return zigoMustMatch(zigo{0s}As{1s}({2s})) }}\n\n", .{ declaration.name, field_name, recv });
+                if (!borrowed or typeHasBorrowedRefs(program, declaration.name)) {
+                    const suffix = if (borrowed) "Ref" else "";
+                    try writer.print("// As{0s} returns the {1s} payload, whether it is active, and any lifecycle/native error.\nfunc ({2s} *{3s}{4s}) As{0s}() (", .{ field_name, field.name, recv, declaration.name, suffix });
+                    try writePayloadType(writer, payload);
+                    try writer.print(", bool, error) {{ return zigo{0s}As{1s}({2s}) }}\n\n", .{ declaration.name, field_name, recv });
+                    try writer.print("// MustAs{0s} returns the {1s} payload when active and panics with a typed error on failure.\nfunc ({2s} *{3s}{4s}) MustAs{0s}() (", .{ field_name, field.name, recv, declaration.name, suffix });
+                    try writePayloadType(writer, payload);
+                    try writer.print(", bool) {{ return zigoMustMatch(zigo{0s}As{1s}({2s})) }}\n\n", .{ declaration.name, field_name, recv });
+                }
             }
         }
     }
@@ -3870,6 +3978,44 @@ fn writePublicCallbackType(writer: *std.Io.Writer, callback: semantic.Callback) 
     }
 }
 
+/// True when native code running under this call can invoke a Go callback:
+/// one passed to the call, or one retained by a handle the call touches.
+fn functionReachesCallbacks(program: abi.Program, function: semantic.SemanticFn) bool {
+    if (function.receiver) |receiver| {
+        if (typeOwnsCallbacks(program, receiver)) return true;
+    }
+    for (function.params) |parameter| switch (parameter.type) {
+        .callback => return true,
+        .opaque_ptr => |pointer| if (typeOwnsCallbacks(program, pointer.ref)) return true,
+        else => {},
+    };
+    return false;
+}
+
+/// After the native call: rethrow any panic a reachable callback recorded.
+/// The retained handles are walked under the read lock the call already
+/// holds, so Close cannot release them meanwhile.
+fn renderCallbackRethrows(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, function: semantic.SemanticFn, operation: []const u8) !void {
+    const go_names = try goParamNamesForAlloc(allocator, function.params);
+    defer naming.freeParamNames(allocator, go_names);
+    for (function.params, 0..) |parameter, parameter_index| {
+        if (parameter.type != .callback) continue;
+        try writer.print("\tzigoRethrowCallbackPanic(\"{s}\", {s}Handle)\n", .{ operation, go_names[parameter_index] });
+    }
+    if (function.receiver) |receiver| {
+        if (typeOwnsCallbacks(program, receiver)) {
+            const receiver_name = try receiverVariableAlloc(allocator, receiver);
+            defer allocator.free(receiver_name);
+            try writer.print("\tfor _, handle := range {s}.callbackHandles {{\n\t\tzigoRethrowCallbackPanic(\"{s}\", handle)\n\t}}\n", .{ receiver_name, operation });
+        }
+    }
+    for (function.params, 0..) |parameter, parameter_index| switch (parameter.type) {
+        .opaque_ptr => |pointer| if (typeOwnsCallbacks(program, pointer.ref))
+            try writer.print("\tif {0s} != nil {{\n\t\tfor _, handle := range {0s}.callbackHandles {{\n\t\t\tzigoRethrowCallbackPanic(\"{1s}\", handle)\n\t\t}}\n\t}}\n", .{ go_names[parameter_index], operation }),
+        else => {},
+    };
+}
+
 fn renderCallbackHandleSetup(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, function: abi.AbiFn) !void {
     const go_names = try goParamNamesForAlloc(allocator, function.origin.params);
     defer naming.freeParamNames(allocator, go_names);
@@ -4096,7 +4242,7 @@ fn continuesSentence(line: []const u8) bool {
     return std.ascii.isLower(line[1]);
 }
 
-fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.SemanticFn, go_name: []const u8, owned_type: ?[]const u8) !void {
+fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.SemanticFn, go_name: []const u8, owned_type: ?[]const u8, reaches_callbacks: bool) !void {
     if (function.doc) |doc| {
         try writeGoDoc(writer, go_name, function.name, doc);
     } else if (owned_type) |type_name| {
@@ -4114,6 +4260,8 @@ fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.SemanticFn,
         try writer.writeAll("// It returns *HandleError if a required handle is nil or closed.\n");
     if (function.@"return" == .error_union)
         try writer.writeAll("// Native failures are returned as generated error values.\n");
+    if (reaches_callbacks)
+        try writer.writeAll("// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.\n");
 }
 
 fn returnsBorrowedHandle(function: semantic.SemanticFn) bool {
@@ -4379,6 +4527,8 @@ fn typeOwnsCallbacks(program: abi.Program, type_name: []const u8) bool {
 fn publicNeedsRuntime(program: abi.Program) bool {
     for (program.functions) |function| {
         if (constructorForInit(program, function.origin.*) == null and constructorForDeinit(program, function.origin.*) != null) continue;
+        if (isReleaseTarget(program, function.origin.*)) continue;
+        if (function.origin.@"return" == .error_union) return true;
         if (function.origin.receiver) |receiver| {
             if (isAutoCleanupType(program, receiver)) return true;
         }
@@ -4566,6 +4716,26 @@ fn constructorForType(program: abi.Program, type_name: []const u8) ?semantic.Con
 /// `program.constructors` stays name-based because that list also names the
 /// deinit that `newX` schedules; this is the wider question of which returns
 /// need wrapping at all.
+/// True when some generated code hands out a `{name}Ref`: a function that
+/// returns the handle without ownership, or a tagged-union payload projection
+/// whose payload is that handle. Nothing else can construct one, so a type
+/// without either gets no Ref type at all.
+fn typeHasBorrowedRefs(program: abi.Program, type_name: []const u8) bool {
+    for (program.functions) |function| {
+        const origin = function.origin.*;
+        if (!returnsBorrowedHandle(origin)) continue;
+        const node = if (origin.@"return" == .error_union) origin.@"return".error_union.payload.* else origin.@"return";
+        if (std.mem.eql(u8, node.opaque_ptr.ref, type_name)) return true;
+    }
+    for (program.projections) |projection| {
+        if (projection.kind != .payload) continue;
+        const field = projection.field orelse continue;
+        const payload = field.type orelse continue;
+        if (payload == .opaque_ptr and std.mem.eql(u8, payload.opaque_ptr.ref, type_name)) return true;
+    }
+    return false;
+}
+
 fn ownedOpaqueReturn(program: abi.Program, function: semantic.SemanticFn) ?[]const u8 {
     if (function.ownership != .caller) return null;
     const node = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
@@ -4710,10 +4880,12 @@ test "tagged union emitters generate checked pointer-only projections" {
     defer std.testing.allocator.free(public_types);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "\t\"runtime\"\n") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) Tag() (ValueTag, error)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *ValueRef) Tag() (ValueTag, error)") != null);
+    // No function or projection hands out a borrowed Value, so it has no Ref
+    // surface; Child is a projection payload, so it does.
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *ValueRef) Tag() (ValueTag, error)") == null);
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "ValueRef") == null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) AsInteger() (int32, bool, error)") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) MustAsInteger() (int32, bool)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *ValueRef) MustAsInteger() (int32, bool)") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) MustAsChild() (*ChildRef, bool)") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "func (h *HTTPResult) MustAsURLValue() (uint64, bool)") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "append([]int16(nil), result...)") != null);
@@ -4728,7 +4900,6 @@ test "tagged union emitters generate checked pointer-only projections" {
     try std.testing.expectEqual(@as(usize, 8), std.mem.count(u8, public_types, "defer runtime.KeepAlive("));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, public_types, "func zigoValueTag(receiver zigoHandle)"));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, public_types, "ValueProjectInteger(ptr)"));
-    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *ValueRef) AsInteger() (int32, bool, error) { return zigoValueAsInteger(v) }") != null);
 
     // The sealed variant hierarchy sits beside the projections: one concrete
     // type per Zig variant, and a builder that reads the tag and then only
@@ -4741,9 +4912,7 @@ test "tagged union emitters generate checked pointer-only projections" {
     try std.testing.expect(std.mem.indexOf(u8, public_types, "tag, err := zigoValueTag(receiver)") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "payload, matched, err := zigoValueAsInteger(receiver)") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) Variant() (ValueVariant, error) { return zigoValueVariant(v) }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *ValueRef) Variant() (ValueVariant, error) { return zigoValueVariant(v) }") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) MustVariant() ValueVariant { return zigoMust(zigoValueVariant(v)) }") != null);
-    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *ValueRef) MustVariant() ValueVariant { return zigoMust(zigoValueVariant(v)) }") != null);
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, public_types, "func zigoValueVariant(receiver zigoHandle)"));
 
     const public_errors = try renderForTest(renderPublicErrors, program);
@@ -4838,7 +5007,8 @@ test "snapshot-backed unions build their variants from one native call" {
     try std.testing.expect(std.mem.indexOf(u8, body, "return SignalActive{Value: data.active}, nil") != null);
     // The projection surface stays: the fast path is additive.
     try std.testing.expect(std.mem.indexOf(u8, public_types, "func (s *Signal) AsTicks() (uint32, bool, error)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, public_types, "func (s *SignalRef) MustVariant() SignalVariant { return zigoMust(zigoSignalVariant(s)) }") != null);
+    // Nothing hands out a borrowed Signal, so the Ref surface is not generated.
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "SignalRef") == null);
 }
 
 test "a colocated internal loader keeps the loader out of the exported names" {

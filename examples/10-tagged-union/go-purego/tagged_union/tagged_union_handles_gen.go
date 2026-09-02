@@ -174,24 +174,8 @@ type Signal struct {
 	cleanup runtime.Cleanup
 }
 
-// SignalRef is a borrowed Signal reference that remains valid only while its parent is open.
-type SignalRef struct {
-	ptr    unsafe.Pointer
-	parent zigoHandle
-}
-
 func (s *Signal) zigoPointer() unsafe.Pointer {
 	if s == nil {
-		return nil
-	}
-	return s.ptr
-}
-
-func (s *SignalRef) zigoPointer() unsafe.Pointer {
-	if s == nil || s.ptr == nil {
-		return nil
-	}
-	if parent := s.parent; parent != nil && parent.zigoPointer() == nil {
 		return nil
 	}
 	return s.ptr
@@ -202,13 +186,6 @@ func (s *Signal) zigoLocker() *sync.RWMutex {
 		return nil
 	}
 	return &s.mu
-}
-
-func (s *SignalRef) zigoLocker() *sync.RWMutex {
-	if s == nil || s.parent == nil {
-		return nil
-	}
-	return s.parent.zigoLocker()
 }
 
 type signalCleanupState struct {

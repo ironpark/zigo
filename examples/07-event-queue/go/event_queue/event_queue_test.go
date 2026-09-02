@@ -235,7 +235,7 @@ func TestConstructorFailuresReleaseObserver(t *testing.T) {
 	assertNoLiveQueueResources(t)
 }
 
-func TestObserverPanicBecomesTypedError(t *testing.T) {
+func TestObserverPanicIsRethrown(t *testing.T) {
 	queue, err := NewEventQueue("panic", 1, PolicyReject, func(uint64, int32) int32 {
 		panic("deliberate observer panic")
 	})
@@ -245,9 +245,9 @@ func TestObserverPanicBecomesTypedError(t *testing.T) {
 	if err := queue.Enqueue(1, 10); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := queue.Process(1); !errors.Is(err, ErrObserverPanicked) {
-		t.Fatalf("Process() error = %v, want %v", err, ErrObserverPanicked)
-	}
+	// The Zig side answers -3 with ObserverPanicked and leaves the event in
+	// place; the Go caller sees the panic itself, then a consistent queue.
+	expectCallbackPanic(t, "EventQueue.Process", "deliberate observer panic", func() { _, _ = queue.Process(1) })
 	if got := must(queue.Len()); got != 1 {
 		t.Fatalf("Len() after observer panic = %d, want 1", got)
 	}
@@ -363,4 +363,37 @@ func assertNoLiveQueueResources(t *testing.T) {
 	if got := LiveQueues(); got != 0 {
 		t.Fatalf("LiveQueues() = %d, want 0", got)
 	}
+}
+
+// expectCallbackPanic runs call and requires it to panic with the
+// *CallbackPanicError the binding rethrows for a Go callback panic. It
+// returns the error for further inspection.
+func expectCallbackPanic(t *testing.T, operation string, value any, call func()) *CallbackPanicError {
+	t.Helper()
+	var recovered any
+	func() {
+		defer func() { recovered = recover() }()
+		call()
+	}()
+	err, ok := recovered.(error)
+	if !ok {
+		t.Fatalf("recovered %v (%T), want *CallbackPanicError", recovered, recovered)
+	}
+	var panicErr *CallbackPanicError
+	if !errors.As(err, &panicErr) {
+		t.Fatalf("recovered %v, want *CallbackPanicError", err)
+	}
+	if !errors.Is(err, ErrCallbackPanic) {
+		t.Fatalf("errors.Is(%v, ErrCallbackPanic) = false", err)
+	}
+	if panicErr.Operation != operation {
+		t.Fatalf("Operation = %q, want %q", panicErr.Operation, operation)
+	}
+	if panicErr.Value != value {
+		t.Fatalf("Value = %v, want %v", panicErr.Value, value)
+	}
+	if len(panicErr.Stack) == 0 {
+		t.Fatal("Stack is empty")
+	}
+	return panicErr
 }

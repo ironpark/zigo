@@ -207,7 +207,12 @@ func ValueProjectSamples(self unsafe.Pointer) ([]int16, uint8) {
 	if status != 1 {
 		return nil, uint8(status)
 	}
-	return unsafe.Slice((*int16)(unsafe.Pointer(outValuePtr)), int(outValueLen)), uint8(status)
+	if outValueLen == 0 {
+		return nil, uint8(status)
+	}
+	result := make([]int16, int(outValueLen))
+	copy(result, unsafe.Slice((*int16)(unsafe.Pointer(outValuePtr)), int(outValueLen)))
+	return result, uint8(status)
 }
 
 // ValueProjectChild returns the payload and a projection status.
@@ -228,7 +233,12 @@ func ValueProjectMutableSamples(self unsafe.Pointer) ([]int16, uint8) {
 	if status != 1 {
 		return nil, uint8(status)
 	}
-	return unsafe.Slice((*int16)(unsafe.Pointer(outValuePtr)), int(outValueLen)), uint8(status)
+	if outValueLen == 0 {
+		return nil, uint8(status)
+	}
+	result := make([]int16, int(outValueLen))
+	copy(result, unsafe.Slice((*int16)(unsafe.Pointer(outValuePtr)), int(outValueLen)))
+	return result, uint8(status)
 }
 
 // SignalProjectTag returns the active tag and a projection status.

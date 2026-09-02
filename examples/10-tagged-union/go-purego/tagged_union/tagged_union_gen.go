@@ -24,6 +24,8 @@ var DefaultLibraryName = raw.DefaultLibraryName
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 func NewChild(value int32) (*Child, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	result, code := raw.ChildCreate(value)
 	if code != 0 {
 		return nil, errorForCode("NewChild", code)
@@ -50,6 +52,8 @@ func (c *Child) Get() (int32, error) {
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 func NewValue(initial int64) (*Value, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	result, code := raw.ValueCreate(initial)
 	if code != 0 {
 		return nil, errorForCode("NewValue", code)
@@ -199,6 +203,8 @@ func (v *Value) Borrow() (*ValueRef, error) {
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 func NewSignal(initial uint32) (*Signal, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	result, code := raw.SignalCreate(initial)
 	if code != 0 {
 		return nil, errorForCode("NewSignal", code)
@@ -310,6 +316,8 @@ func LiveValues() uint {
 // Divide invokes the bound Zig divide operation.
 // Native failures are returned as generated error values.
 func Divide(numerator float64, denominator float64) (float64, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	result, code := raw.Divide(numerator, denominator)
 	if code != 0 {
 		return 0, errorForCode("Divide", code)
@@ -325,6 +333,8 @@ func Sum(values []float64) float64 {
 // PanicError invokes the bound Zig panicError operation.
 // Native failures are returned as generated error values.
 func PanicError() error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	code := raw.PanicError()
 	if code != 0 {
 		return errorForCode("PanicError", code)

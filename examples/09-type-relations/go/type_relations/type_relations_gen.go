@@ -11,6 +11,8 @@ import (
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 func NewCounter(initial int64) (*Counter, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	result, code := raw.CounterCreate(initial)
 	if code != 0 {
 		return nil, errorForCode("NewCounter", code)
@@ -52,6 +54,8 @@ func (c *Counter) Add(delta int64) (int64, error) {
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 func NewAccumulator() (*Accumulator, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	result, code := raw.AccumulatorCreate()
 	if code != 0 {
 		return nil, errorForCode("NewAccumulator", code)

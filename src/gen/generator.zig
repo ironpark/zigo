@@ -480,9 +480,9 @@ test "callbacks use role-specific public types and typed handle helpers" {
     try std.testing.expect(std.mem.indexOf(u8, helpers, "value any") == null);
     const raw = try temporary.dir.readFileAlloc(std.testing.io, "internal/raw/raw_gen.go", std.testing.allocator, .limited(64 * 1024));
     defer std.testing.allocator.free(raw);
-    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, ".Value().(func(int32) int32)"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, ".Value().(func(uint64) int32)"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, ".Value().(func(uint8) int32)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "state.Fn.(func(int32) int32)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "state.Fn.(func(uint64) int32)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, raw, 1, "state.Fn.(func(uint8) int32)"));
 }
 
 test "opt-in cleanup isolates state stops explicitly and keeps owners alive" {
@@ -531,7 +531,8 @@ test "opt-in cleanup isolates state stops explicitly and keeps owners alive" {
     const public_types = try temporary.dir.readFileAlloc(std.testing.io, "opaque/opaque_handles_gen.go", std.testing.allocator, .limited(32 * 1024));
     defer std.testing.allocator.free(public_types);
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "type Context struct"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "type ContextRef struct"));
+    // Nothing hands out a borrowed Context, so no Ref type is generated for it.
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "type ContextRef struct") == null);
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "cleanup         runtime.Cleanup"));
     try std.testing.expect(std.mem.containsAtLeast(
         u8,
@@ -555,7 +556,7 @@ test "opt-in cleanup isolates state stops explicitly and keeps owners alive" {
     const public_errors = try temporary.dir.readFileAlloc(std.testing.io, "opaque/opaque_errors_gen.go", std.testing.allocator, .limited(32 * 1024));
     defer std.testing.allocator.free(public_errors);
     try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "zigoRawLastErrorMessage()"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "\t\"errors\"\n\t\"strconv\"\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "\t\"errors\"\n\t\"fmt\"\n\t\"strconv\"\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "type HandleError struct"));
     const raw = try temporary.dir.readFileAlloc(std.testing.io, "opaque/opaque_cgo_gen.go", std.testing.allocator, .limited(32 * 1024));
     defer std.testing.allocator.free(raw);

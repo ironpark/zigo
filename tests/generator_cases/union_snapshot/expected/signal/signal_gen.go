@@ -12,6 +12,8 @@ import (
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 func NewSignal() (*Signal, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	result, code := raw.SignalCreate()
 	if code != 0 {
 		return nil, errorForCode("NewSignal", code)

@@ -130,7 +130,15 @@ AST 보강에 사용하는 기본 `bindings.zig`를 읽지 못하면 reflection�
 
 - Zig panic은 C 경계에서 오류 코드 `-2`와 마지막 오류 메시지로 변환되지만 정상 복구를
   뜻하지 않는다. Go에서는 `errors.Is(err, ErrNativePanic)`으로 판별한다. 메시지를 수집한 뒤
-  현재 작업을 중단한다.
+  현재 작업을 중단한다. 메시지는 native 쪽 thread-local에 남으므로, error를 반환하는 생성
+  함수와 union accessor는 호출 동안 `runtime.LockOSThread`로 goroutine을 그 thread에
+  고정한다. 호출당 비용은 작지만 0은 아니다.
+- Go 콜백의 panic은 trampoline이 복구해 native에는 `-3`(부호 있는 32비트 결과)으로 전달하고,
+  native 호출이 돌아온 뒤 `*CallbackPanicError`로 **다시 일으킨다**. native가 `-3`을 자기
+  error로 바꿔도 Go 호출자는 error가 아니라 panic을 본다. 다시 일어나는 시점은 그 호출이
+  돌아온 뒤이므로, native가 콜백 실패를 무시하고 계속 진행하면 그 진행은 이미 끝난 뒤다.
+  생성된 호출 밖에서 — 예컨대 native가 만든 thread에서 — 호출된 retained 콜백의 panic은
+  그 handle의 다음 method 호출에서 다시 일어난다.
 - 모든 public opaque receiver와 handle 인자는 cgo 진입 전에 nil·closed 상태를 검사한다.
   검사 실패는 `*HandleError`로 반환하며, 오류 반환이 없던 메서드에는 `error` 결과가
   추가된다. Tagged-union의 `Tag`와 `As*`도 같은 상태를 error로 반환하고, `MustTag`와
@@ -158,7 +166,8 @@ AST 보강에 사용하는 기본 `bindings.zig`를 읽지 못하면 reflection�
   수명 동안 언로드하지 않는다. `LoadLibrary`는 임의의 네이티브 코드를 로드하므로
   애플리케이션이 통제하는 경로만 넘긴다.
 - purego 콜백은 고유 시그니처마다 영구 dispatcher를 만든다. 콜백 panic은 부호 있는
-  32비트 콜백 결과에서 `-3`, 이미 해제된 토큰 호출은 `-4`로 변환된다. 세부 사항은
+  32비트 콜백 결과에서 `-3`으로 native에 전달된 뒤 위 규칙대로 다시 일어나고, 이미
+  해제된 토큰 호출은 `-4`로 변환된다. 세부 사항은
   [공유 라이브러리와 purego](purego.md)에 있다.
 
 ## 생성물 관리

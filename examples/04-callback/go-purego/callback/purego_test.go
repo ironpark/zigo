@@ -1,6 +1,7 @@
 package callback
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -65,13 +66,7 @@ func TestCallbackPanicAndConcurrentClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	got, err := panicking.Run(1)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if got != -3 {
-		t.Fatalf("panicking callback = %d, want -3", got)
-	}
+	expectCallbackPanic(t, "CallbackContext.Run", "boom", func() { _, _ = panicking.Run(1) })
 	panicking.Close()
 
 	entered := make(chan struct{})
@@ -94,4 +89,37 @@ func TestCallbackPanicAndConcurrentClose(t *testing.T) {
 	if got := activeCallbackHandleCount(); got != 0 {
 		t.Fatalf("callback handles after concurrent Close = %d", got)
 	}
+}
+
+// expectCallbackPanic runs call and requires it to panic with the
+// *CallbackPanicError the binding rethrows for a Go callback panic. It
+// returns the error for further inspection.
+func expectCallbackPanic(t *testing.T, operation string, value any, call func()) *CallbackPanicError {
+	t.Helper()
+	var recovered any
+	func() {
+		defer func() { recovered = recover() }()
+		call()
+	}()
+	err, ok := recovered.(error)
+	if !ok {
+		t.Fatalf("recovered %v (%T), want *CallbackPanicError", recovered, recovered)
+	}
+	var panicErr *CallbackPanicError
+	if !errors.As(err, &panicErr) {
+		t.Fatalf("recovered %v, want *CallbackPanicError", err)
+	}
+	if !errors.Is(err, ErrCallbackPanic) {
+		t.Fatalf("errors.Is(%v, ErrCallbackPanic) = false", err)
+	}
+	if panicErr.Operation != operation {
+		t.Fatalf("Operation = %q, want %q", panicErr.Operation, operation)
+	}
+	if panicErr.Value != value {
+		t.Fatalf("Value = %v, want %v", panicErr.Value, value)
+	}
+	if len(panicErr.Stack) == 0 {
+		t.Fatal("Stack is empty")
+	}
+	return panicErr
 }

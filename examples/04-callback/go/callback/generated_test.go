@@ -88,19 +88,56 @@ func TestBorrowedCallbackLifecycle(t *testing.T) {
 	}
 }
 
-func TestCallbackPanicIsContained(t *testing.T) {
+func TestCallbackPanicIsRethrown(t *testing.T) {
+	// The trampoline answers the native caller with -3 so it can unwind, then
+	// the generated call resumes the panic on the calling goroutine with the
+	// original value attached.
 	context, err := NewCallbackContext(func(int32) int32 { panic("boom") })
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer context.Close()
-	got, err := context.Run(1)
-	if err != nil {
-		t.Fatal(err)
+	expectCallbackPanic(t, "CallbackContext.Run", "boom", func() { _, _ = context.Run(1) })
+
+	// A borrowed callback rethrows through the plain function too, and the
+	// handle it was registered under does not leak.
+	expectCallbackPanic(t, "Apply", "borrowed", func() { Apply(1, func(int32) int32 { panic("borrowed") }) })
+	if got := activeCallbackHandleCount(); got != 1 {
+		t.Fatalf("active callback handles = %d, want 1 (the context)", got)
 	}
-	if got != -3 {
-		t.Fatalf("Run() = %d, want -3", got)
+}
+
+// expectCallbackPanic runs call and requires it to panic with the
+// *CallbackPanicError the binding rethrows for a Go callback panic. It
+// returns the error for further inspection.
+func expectCallbackPanic(t *testing.T, operation string, value any, call func()) *CallbackPanicError {
+	t.Helper()
+	var recovered any
+	func() {
+		defer func() { recovered = recover() }()
+		call()
+	}()
+	err, ok := recovered.(error)
+	if !ok {
+		t.Fatalf("recovered %v (%T), want *CallbackPanicError", recovered, recovered)
 	}
+	var panicErr *CallbackPanicError
+	if !errors.As(err, &panicErr) {
+		t.Fatalf("recovered %v, want *CallbackPanicError", err)
+	}
+	if !errors.Is(err, ErrCallbackPanic) {
+		t.Fatalf("errors.Is(%v, ErrCallbackPanic) = false", err)
+	}
+	if panicErr.Operation != operation {
+		t.Fatalf("Operation = %q, want %q", panicErr.Operation, operation)
+	}
+	if panicErr.Value != value {
+		t.Fatalf("Value = %v, want %v", panicErr.Value, value)
+	}
+	if len(panicErr.Stack) == 0 {
+		t.Fatal("Stack is empty")
+	}
+	return panicErr
 }
 
 func TestZigPanicIsDiagnosable(t *testing.T) {

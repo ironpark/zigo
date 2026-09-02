@@ -420,6 +420,7 @@ snapshot을 선택하세요.
 | `ErrNativePanic` | Zig panic | `*NativePanicError` |
 | `ErrNativeStatus` | 알려지지 않은 native status | `*StatusError` |
 | `ErrLibraryLoad` | purego library·symbol load 실패 | `*LibraryError` |
+| `ErrCallbackPanic` | Go 콜백 안에서 발생한 panic (반환이 아니라 **rethrow**) | `*CallbackPanicError` |
 | `Err<ZigError>` | Zig error set 값 | `*Error` |
 
 ```go
@@ -436,6 +437,33 @@ if errors.As(err, &panicErr) {
 ```
 
 panic하는 `Must*` method에서 복구한 값도 `error`이면 같은 규칙으로 판별할 수 있습니다.
+
+### Go 콜백의 panic
+
+Go 콜백이 native 호출 안에서 panic하면 trampoline이 그것을 복구합니다 — panic은 native
+frame을 풀 수 없기 때문입니다. native 쪽은 부호 있는 32비트 결과에서 `-3`을 받아 스스로
+정리하고 반환할 수 있고, 그 호출이 돌아온 직후 생성된 함수가 **같은 goroutine에서 panic을
+다시 일으킵니다**. 다시 일어난 값은 `*CallbackPanicError`이며 원래 panic 값(`Value`)과 복구
+시점의 stack(`Stack`)을 담습니다. `Unwrap`은 `Value`가 `error`일 때 그것을 돌려주므로
+`errors.Is`·`errors.As`가 원인까지 닿습니다.
+
+```go
+defer func() {
+    if recovered := recover(); recovered != nil {
+        var panicErr *CallbackPanicError
+        if err, ok := recovered.(error); ok && errors.As(err, &panicErr) {
+            log.Print(panicErr.Operation, panicErr.Value, string(panicErr.Stack))
+            return
+        }
+        panic(recovered)
+    }
+}()
+```
+
+이 규칙은 콜백을 인자로 받은 호출과, 콜백을 retained로 보유한 handle의 모든 method에
+적용됩니다. native 코드가 `-3`을 자기 error로 바꿔 반환하더라도 Go 호출자는 그 error가
+아니라 panic을 봅니다 — 콜백의 panic은 호출자 자신의 Go 코드가 실패한 것이고, 생성된 호출은
+그것이 복구 가능한지 판단할 수 없기 때문입니다.
 
 ```go
 defer func() {

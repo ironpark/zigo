@@ -11,6 +11,8 @@ import (
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 func NewContext() (*Context, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	result, code := raw.ContextCreate()
 	if code != 0 {
 		return nil, errorForCode("NewContext", code)

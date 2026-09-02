@@ -134,7 +134,8 @@ API를 작성할 수 있으며, zigo는 marker가 없는 사용자 파일을 덮
 - `<package>_gen.go`: 공개 함수와 method
 - `<package>_enums_gen.go`: enum type, 상수, `String()`
 - `<package>_structs_gen.go`: `extern struct` 공개 value type과 raw 변환
-- `<package>_handles_gen.go`: opaque handle/Ref type과 lifecycle method
+- `<package>_handles_gen.go`: opaque handle type과 lifecycle method. borrowed `<T>Ref`는
+  그것을 내주는 함수나 projection이 있는 type에만 생성된다
 - `<package>_runtime_gen.go`: handle interface, projection status, `Must*`
   wrapper, bool 변환, callback type과 handle 등 private runtime support
 - `<package>_union_<union>_gen.go`: tagged union 하나마다 projection, snapshot,

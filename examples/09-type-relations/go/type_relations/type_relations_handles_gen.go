@@ -16,24 +16,8 @@ type Counter struct {
 	cleanup runtime.Cleanup
 }
 
-// CounterRef is a borrowed Counter reference that remains valid only while its parent is open.
-type CounterRef struct {
-	ptr    unsafe.Pointer
-	parent zigoHandle
-}
-
 func (c *Counter) zigoPointer() unsafe.Pointer {
 	if c == nil {
-		return nil
-	}
-	return c.ptr
-}
-
-func (c *CounterRef) zigoPointer() unsafe.Pointer {
-	if c == nil || c.ptr == nil {
-		return nil
-	}
-	if parent := c.parent; parent != nil && parent.zigoPointer() == nil {
 		return nil
 	}
 	return c.ptr
@@ -44,13 +28,6 @@ func (c *Counter) zigoLocker() *sync.RWMutex {
 		return nil
 	}
 	return &c.mu
-}
-
-func (c *CounterRef) zigoLocker() *sync.RWMutex {
-	if c == nil || c.parent == nil {
-		return nil
-	}
-	return c.parent.zigoLocker()
 }
 
 type counterCleanupState struct {
@@ -95,24 +72,8 @@ type Accumulator struct {
 	cleanup runtime.Cleanup
 }
 
-// AccumulatorRef is a borrowed Accumulator reference that remains valid only while its parent is open.
-type AccumulatorRef struct {
-	ptr    unsafe.Pointer
-	parent zigoHandle
-}
-
 func (a *Accumulator) zigoPointer() unsafe.Pointer {
 	if a == nil {
-		return nil
-	}
-	return a.ptr
-}
-
-func (a *AccumulatorRef) zigoPointer() unsafe.Pointer {
-	if a == nil || a.ptr == nil {
-		return nil
-	}
-	if parent := a.parent; parent != nil && parent.zigoPointer() == nil {
 		return nil
 	}
 	return a.ptr
@@ -123,13 +84,6 @@ func (a *Accumulator) zigoLocker() *sync.RWMutex {
 		return nil
 	}
 	return &a.mu
-}
-
-func (a *AccumulatorRef) zigoLocker() *sync.RWMutex {
-	if a == nil || a.parent == nil {
-		return nil
-	}
-	return a.parent.zigoLocker()
 }
 
 type accumulatorCleanupState struct {

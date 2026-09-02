@@ -17,24 +17,8 @@ type Pipeline struct {
 	cleanup         runtime.Cleanup
 }
 
-// PipelineRef is a borrowed Pipeline reference that remains valid only while its parent is open.
-type PipelineRef struct {
-	ptr    unsafe.Pointer
-	parent zigoHandle
-}
-
 func (p *Pipeline) zigoPointer() unsafe.Pointer {
 	if p == nil {
-		return nil
-	}
-	return p.ptr
-}
-
-func (p *PipelineRef) zigoPointer() unsafe.Pointer {
-	if p == nil || p.ptr == nil {
-		return nil
-	}
-	if parent := p.parent; parent != nil && parent.zigoPointer() == nil {
 		return nil
 	}
 	return p.ptr
@@ -45,13 +29,6 @@ func (p *Pipeline) zigoLocker() *sync.RWMutex {
 		return nil
 	}
 	return &p.mu
-}
-
-func (p *PipelineRef) zigoLocker() *sync.RWMutex {
-	if p == nil || p.parent == nil {
-		return nil
-	}
-	return p.parent.zigoLocker()
 }
 
 type pipelineCleanupState struct {
@@ -101,24 +78,8 @@ type IntBatch struct {
 	cleanup runtime.Cleanup
 }
 
-// IntBatchRef is a borrowed IntBatch reference that remains valid only while its parent is open.
-type IntBatchRef struct {
-	ptr    unsafe.Pointer
-	parent zigoHandle
-}
-
 func (i *IntBatch) zigoPointer() unsafe.Pointer {
 	if i == nil {
-		return nil
-	}
-	return i.ptr
-}
-
-func (i *IntBatchRef) zigoPointer() unsafe.Pointer {
-	if i == nil || i.ptr == nil {
-		return nil
-	}
-	if parent := i.parent; parent != nil && parent.zigoPointer() == nil {
 		return nil
 	}
 	return i.ptr
@@ -129,13 +90,6 @@ func (i *IntBatch) zigoLocker() *sync.RWMutex {
 		return nil
 	}
 	return &i.mu
-}
-
-func (i *IntBatchRef) zigoLocker() *sync.RWMutex {
-	if i == nil || i.parent == nil {
-		return nil
-	}
-	return i.parent.zigoLocker()
 }
 
 type intBatchCleanupState struct {
@@ -180,24 +134,8 @@ type FloatBatch struct {
 	cleanup runtime.Cleanup
 }
 
-// FloatBatchRef is a borrowed FloatBatch reference that remains valid only while its parent is open.
-type FloatBatchRef struct {
-	ptr    unsafe.Pointer
-	parent zigoHandle
-}
-
 func (f *FloatBatch) zigoPointer() unsafe.Pointer {
 	if f == nil {
-		return nil
-	}
-	return f.ptr
-}
-
-func (f *FloatBatchRef) zigoPointer() unsafe.Pointer {
-	if f == nil || f.ptr == nil {
-		return nil
-	}
-	if parent := f.parent; parent != nil && parent.zigoPointer() == nil {
 		return nil
 	}
 	return f.ptr
@@ -208,13 +146,6 @@ func (f *FloatBatch) zigoLocker() *sync.RWMutex {
 		return nil
 	}
 	return &f.mu
-}
-
-func (f *FloatBatchRef) zigoLocker() *sync.RWMutex {
-	if f == nil || f.parent == nil {
-		return nil
-	}
-	return f.parent.zigoLocker()
 }
 
 type floatBatchCleanupState struct {

@@ -8,19 +8,58 @@ package raw
 */
 import "C"
 import "runtime/cgo"
+import "runtime/debug"
+import "sync"
 import "unsafe"
 
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// CallbackState carries one Go callback across the native boundary, and
+// the panic it raises there until the generated caller rethrows it. The
+// trampoline has to recover: a panic cannot unwind native frames.
+type CallbackState struct {
+	Fn       any
+	mu       sync.Mutex
+	value    any
+	stack    []byte
+	panicked bool
+}
+
+func (state *CallbackState) record(value any) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if state.panicked {
+		return
+	}
+	state.panicked = true
+	state.value = value
+	state.stack = debug.Stack()
+}
+
+// TakeCallbackPanic returns and clears the panic the callback behind handle recorded.
+func TakeCallbackPanic(handle cgo.Handle) (any, []byte, bool) {
+	state := handle.Value().(*CallbackState)
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if !state.panicked {
+		return nil, nil, false
+	}
+	value, stack := state.value, state.stack
+	state.value, state.stack, state.panicked = nil, nil, false
+	return value, stack, true
+}
+
 //export zg_pipeline_create_go_callback_callback
 func zg_pipeline_create_go_callback_callback(p0 C.int32_t, p1 C.size_t) (result C.int32_t) {
+	state := cgo.Handle(p1).Value().(*CallbackState)
 	defer func() {
-		if recover() != nil {
+		if value := recover(); value != nil {
+			state.record(value)
 			result = C.int32_t(-3)
 		}
 	}()
-	callback := cgo.Handle(p1).Value().(func(int32) int32)
+	callback := state.Fn.(func(int32) int32)
 	return C.int32_t(callback(int32(p0)))
 }
 

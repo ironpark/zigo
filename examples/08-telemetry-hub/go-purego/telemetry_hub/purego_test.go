@@ -45,9 +45,7 @@ func TestPuregoTelemetryPipelineAndPanic(t *testing.T) {
 	if err := panicking.Push(1, 2); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := panicking.ProcessAll(); !errors.Is(err, ErrObserverPanicked) {
-		t.Fatalf("panic error = %v", err)
-	}
+	expectCallbackPanic(t, "TelemetryHub.ProcessAll", "observer", func() { _, _ = panicking.ProcessAll() })
 	panicking.Close()
 	if activeCallbackHandleCount() != 0 {
 		t.Fatalf("callback leak = %d", activeCallbackHandleCount())
@@ -144,4 +142,37 @@ func TestPuregoFloatCallbackParameterIsBitExact(t *testing.T) {
 	if got := observe(t, ModeScaled, toInfinity, 1e308); got != math.Float64bits(math.Inf(1)) {
 		t.Errorf("positive infinity = %#016x, want %#016x", got, math.Float64bits(math.Inf(1)))
 	}
+}
+
+// expectCallbackPanic runs call and requires it to panic with the
+// *CallbackPanicError the binding rethrows for a Go callback panic. It
+// returns the error for further inspection.
+func expectCallbackPanic(t *testing.T, operation string, value any, call func()) *CallbackPanicError {
+	t.Helper()
+	var recovered any
+	func() {
+		defer func() { recovered = recover() }()
+		call()
+	}()
+	err, ok := recovered.(error)
+	if !ok {
+		t.Fatalf("recovered %v (%T), want *CallbackPanicError", recovered, recovered)
+	}
+	var panicErr *CallbackPanicError
+	if !errors.As(err, &panicErr) {
+		t.Fatalf("recovered %v, want *CallbackPanicError", err)
+	}
+	if !errors.Is(err, ErrCallbackPanic) {
+		t.Fatalf("errors.Is(%v, ErrCallbackPanic) = false", err)
+	}
+	if panicErr.Operation != operation {
+		t.Fatalf("Operation = %q, want %q", panicErr.Operation, operation)
+	}
+	if panicErr.Value != value {
+		t.Fatalf("Value = %v, want %v", panicErr.Value, value)
+	}
+	if len(panicErr.Stack) == 0 {
+		t.Fatal("Stack is empty")
+	}
+	return panicErr
 }
