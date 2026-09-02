@@ -35,6 +35,7 @@
       "fields": [{"name": "ansi", "value": 0}, {"name": "iso", "value": 1}],
       "kind": "enum",
       "name": "Keyboard",
+      "package": "model",
       "tag_type": {"bits": 8, "kind": "int", "signed": false}
     },
     {

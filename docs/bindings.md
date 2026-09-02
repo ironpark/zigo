@@ -87,9 +87,10 @@ snapshot typedef, enum 상수, tagged-union projection, last-error 함수까지 
         .path = "types",
         .name = "types", // 생략하면 path의 마지막 요소를 snake_case로 변환
         .doc = "Package types contains shared values and handles.",
-        .types = .{ "Ticker", "TickerInfo" },
-        .namespaces = .{"text.unicode"},
+        .types = .{ "Ticker", "Key*" },
+        .namespaces = .{"text.*"},
         .functions = .{"root.liveTickers"},
+        .closure = true,
     },
 },
 ```
@@ -98,6 +99,20 @@ snapshot typedef, enum 상수, tagged-union projection, last-error 함수까지 
 `go_owner`인 타입, 가장 긴 `namespaces` 접두사, 기본 패키지 순서로 결정됩니다. 타입의 메서드,
 constructor, destructor, tagged-union projection은 언제나 그 타입과 같은 패키지에 있어야 하며
 명시적인 함수 배정으로 떼어 놓으면 `ZIGO031`입니다.
+
+`types`와 `namespaces` selector의 마지막 `*`는 prefix pattern입니다. 예를 들어 `"Key*"`는
+`Key`, `Keyboard`, `KeyEvent`를 선택하고, `"text.*"`는 그 prefix로 시작하는 namespace를
+선택합니다. 정확한 이름은 모든 package에서 pattern보다 먼저 적용되고, 같은 종류 안에서는 더
+긴 prefix가 우선합니다. 어떤 선언도 찾지 못한 pattern은 오타나 낡은 설정으로 보고
+`ZIGO041`로 거부합니다.
+
+`.closure = true`는 그 package에 배정된 함수와 타입에서 도달할 수 있는 등록 타입을 전이적으로
+같은 package에 넣습니다. 함수의 parameter와 return, optional/error-union payload, callback
+이름·parameter·return, tagged-union과 value-struct field, `.constructs`/`.destroys` 대상,
+opaque `.fields` accessor가 사용하는 타입을 모두 따라갑니다. 정확한 이름이나 pattern으로 다른
+package에 먼저 배정된 타입은 이동하지 않습니다. 아직 배정되지 않은 한 타입을 두 closure
+package가 요구하면 둘의 이름을 포함한 `ZIGO042`가 발생하므로, 그 타입을 한 package에
+명시적으로 배정해 경계를 정합니다. 이 순서는 declaration 순서와 무관합니다.
 
 다른 공개 패키지의 타입을 쓰는 시그니처는 `<go_module>/<go_package_path>/<path>`를 import하고
 한정 이름으로 적습니다. 이 의존 그래프는 DAG여야 하며 순환은 관련 선언과 경로를 적은

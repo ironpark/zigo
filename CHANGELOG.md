@@ -8,6 +8,10 @@
 
 ### Added
 
+- `.packages`의 `types`와 `namespaces`에 trailing `*` prefix pattern을 추가하고, 선택된
+  함수·타입에서 signature, union payload, callback, lifecycle target, field accessor를 따라
+  등록 타입을 함께 배정하는 `.closure = true`를 추가했습니다. 빈 pattern은 `ZIGO041`, 두
+  closure package의 모호한 소유권은 양쪽 package를 적는 `ZIGO042`로 진단합니다.
 - `param_meta.<파라미터>.flatten`으로 plain Zig options struct의 bool·정수·실수·등록 enum
   field와 그 optional을 개별 Go/C 인자로 펼칠 수 있습니다. shim은 선택한 field만 struct
   literal에 적어 나머지 Zig default를 보존하며, default 없는 미선택 field는 `ZIGO040`으로

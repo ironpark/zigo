@@ -9,8 +9,12 @@ pub const bindings = zigo.define(.{
     .packages = .{.{
         .path = "types",
         .doc = "Package types contains event-queue values and the standalone Ticker handle.",
-        .types = .{ "QueueSignal", "Ticker", "TickerInfo" },
-        .functions = .{"root.liveTickers"},
+        // The prefix pattern selects QueueSignal without enumerating future
+        // Queue* values. Closure follows newTicker's lifecycle target and
+        // pulls in Ticker, which no longer needs to be listed by hand.
+        .types = .{ "Queue*", "TickerInfo" },
+        .functions = .{ "root.liveTickers", "root.newTicker" },
+        .closure = true,
     }},
     .types = .{
         .{ .type = library.EventQueue, .repr = .@"opaque" },

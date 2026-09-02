@@ -133,7 +133,7 @@ pub fn reflect(
         }
     }
 
-    const packages = try reflectPackages(allocator, declaration, types.items, functions.items);
+    const packages = try reflectPackages(allocator, declaration, types.items, functions.items, pairings.items);
 
     return .{
         .allocator = comptime injectionExpression(declaration, "allocator"),
@@ -411,11 +411,149 @@ test "packages reject invalid paths and missing selectors" {
     }, "sample", "zg"));
 }
 
+test "package patterns yield to exact names and diagnose empty matches" {
+    const Key = enum(u8) { plain };
+    const Keyboard = enum(u8) { ansi };
+    const Api = struct {
+        pub const text = struct {
+            pub const unicode = struct {
+                pub fn width() void {}
+            };
+        };
+        pub const texture = struct {
+            pub fn load() void {}
+        };
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Api,
+        .discover = .recursive,
+        .types = .{
+            .{ .type = Key, .repr = .enumeration },
+            .{ .type = Keyboard, .repr = .enumeration },
+        },
+        .packages = .{
+            .{ .path = "patterns", .types = .{"Key*"}, .namespaces = .{"text*"} },
+            .{ .path = "exact", .types = .{"Keyboard"}, .namespaces = .{"text.unicode"} },
+        },
+    }, "sample", "zg");
+    try std.testing.expectEqualStrings("patterns", document.types[0].package.?);
+    try std.testing.expectEqualStrings("exact", document.types[1].package.?);
+    for (document.functions) |function| {
+        if (std.mem.eql(u8, function.name, "width")) try std.testing.expectEqualStrings("exact", function.package.?);
+        if (std.mem.eql(u8, function.name, "load")) try std.testing.expectEqualStrings("patterns", function.package.?);
+    }
+
+    try std.testing.expectError(error.PackageDeclaration, reflect(arena.allocator(), .{
+        .root = Api,
+        .discover = .recursive,
+        .types = .{.{ .type = Key, .repr = .enumeration }},
+        .packages = .{.{ .path = "missing", .types = .{"Mouse*"} }},
+    }, "sample", "zg"));
+    try std.testing.expectError(error.PackageDeclaration, reflect(arena.allocator(), .{
+        .root = Api,
+        .discover = .recursive,
+        .packages = .{.{ .path = "missing", .namespaces = .{"audio*"} }},
+    }, "sample", "zg"));
+}
+
+test "package closure follows signatures callbacks payloads pairings and field accessors" {
+    const Mode = enum(u8) { idle, active };
+    const Payload = extern struct { mode: Mode };
+    const Event = union(enum) { payload: Payload, stopped };
+    const Callback = *const fn (Payload) callconv(.c) void;
+    const Box = struct {
+        mode: Mode,
+    };
+    const Api = struct {
+        pub fn process(event: Event, callback: Callback) void {
+            _ = event;
+            _ = callback;
+        }
+        pub fn makeBox() *Box {
+            unreachable;
+        }
+        pub fn freeBox(box: *Box) void {
+            _ = box;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Api,
+        .types = .{
+            .{ .type = Mode, .repr = .enumeration },
+            .{ .type = Payload, .repr = .value },
+            .{ .type = Event, .repr = .tagged_union },
+            .{ .type = Callback, .repr = .callback, .name = "Callback" },
+            .{ .type = Box, .repr = .@"opaque", .fields = .{.{ .path = "mode" }} },
+        },
+        .functions = .{
+            .{ .path = "root.process", .params = .{ "event", "callback" } },
+            .{ .path = "root.makeBox", .params = .{}, .constructs = "Box" },
+            .{ .path = "root.freeBox", .params = .{}, .destroys = "Box" },
+        },
+        .packages = .{.{
+            .path = "events",
+            .functions = .{ "root.process", "root.makeBox" },
+            .closure = true,
+        }},
+    }, "sample", "zg");
+    for (document.types) |type_decl| try std.testing.expectEqualStrings("events", type_decl.package.?);
+    for (document.functions) |function| {
+        if (function.receiver != null or function.goOwner() != null or
+            std.mem.eql(u8, function.name, "process") or std.mem.eql(u8, function.name, "makeBox"))
+            try std.testing.expectEqualStrings("events", function.package.?);
+    }
+}
+
+test "package closure respects explicit assignments and rejects competing claims" {
+    const Shared = enum(u8) { value };
+    const Api = struct {
+        pub fn left() Shared {
+            return .value;
+        }
+        pub fn right() Shared {
+            return .value;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const explicit = try reflect(arena.allocator(), .{
+        .root = Api,
+        .types = .{.{ .type = Shared, .repr = .enumeration }},
+        .functions = .{
+            .{ .path = "root.left" },
+            .{ .path = "root.right" },
+        },
+        .packages = .{
+            .{ .path = "left", .functions = .{"root.left"}, .closure = true },
+            .{ .path = "shared", .types = .{"Shared"} },
+        },
+    }, "sample", "zg");
+    try std.testing.expectEqualStrings("shared", explicit.types[0].package.?);
+
+    try std.testing.expectError(error.PackageDeclaration, reflect(arena.allocator(), .{
+        .root = Api,
+        .types = .{.{ .type = Shared, .repr = .enumeration }},
+        .functions = .{
+            .{ .path = "root.left" },
+            .{ .path = "root.right" },
+        },
+        .packages = .{
+            .{ .path = "left", .functions = .{"root.left"}, .closure = true },
+            .{ .path = "right", .functions = .{"root.right"}, .closure = true },
+        },
+    }, "sample", "zg"));
+}
+
 fn reflectPackages(
     allocator: std.mem.Allocator,
     comptime declaration: anytype,
     types: []semantic.TypeDecl,
     functions: []semantic.SemanticFn,
+    pairings: []const Pairing,
 ) ![]const semantic.Package {
     if (!@hasField(@TypeOf(declaration), "packages")) return &.{};
     var packages: std.ArrayList(semantic.Package) = .empty;
@@ -437,8 +575,12 @@ fn reflectPackages(
         });
     }
 
+    // Exact type names are resolved globally before any pattern. This makes an
+    // exact assignment win even when the package carrying a matching pattern
+    // appears first in the declaration.
     inline for (declaration.packages, 0..) |entry, package_index| {
         if (@hasField(@TypeOf(entry), "types")) inline for (entry.types) |selector| {
+            if (comptime isPrefixPattern(selector)) continue;
             var found = false;
             for (types) |*type_decl| if (std.mem.eql(u8, type_decl.name, selector)) {
                 if (type_decl.package != null) return packageIssue("type `{s}` is assigned to more than one package", .{selector});
@@ -449,6 +591,41 @@ fn reflectPackages(
         };
     }
 
+    // A type pattern uses longest-prefix precedence. Equal matching patterns
+    // in different packages are ambiguous rather than declaration-order wins.
+    for (types) |*type_decl| {
+        if (type_decl.package != null) continue;
+        var best_package: ?usize = null;
+        var best_length: usize = 0;
+        inline for (declaration.packages, 0..) |entry, package_index| {
+            if (@hasField(@TypeOf(entry), "types")) inline for (entry.types) |selector| {
+                if (comptime !isPrefixPattern(selector)) continue;
+                const prefix = patternPrefix(selector);
+                if (std.mem.startsWith(u8, type_decl.name, prefix)) {
+                    if (best_package != null and prefix.len == best_length and best_package.? != package_index)
+                        return packageIssue("type `{s}` is selected by patterns in more than one package", .{type_decl.name});
+                    if (best_package == null or prefix.len > best_length) {
+                        best_package = package_index;
+                        best_length = prefix.len;
+                    }
+                }
+            };
+        }
+        if (best_package) |package_index| type_decl.package = packages.items[package_index].name;
+    }
+    inline for (declaration.packages) |entry| {
+        if (@hasField(@TypeOf(entry), "types")) inline for (entry.types) |selector| {
+            if (comptime !isPrefixPattern(selector)) continue;
+            var found = false;
+            for (types) |type_decl| if (std.mem.startsWith(u8, type_decl.name, patternPrefix(selector))) {
+                found = true;
+            };
+            if (!found) return packagePatternIssue("type", selector);
+        };
+    }
+
+    // An explicitly listed function outranks both exact namespace selectors
+    // and namespace patterns.
     inline for (declaration.packages, 0..) |entry, package_index| {
         if (@hasField(@TypeOf(entry), "functions")) inline for (entry.functions) |selector| {
             var found = false;
@@ -466,27 +643,206 @@ fn reflectPackages(
         };
     }
 
+    // Exact namespaces retain their existing longest-prefix behavior. Pattern
+    // selectors are considered only when no exact namespace selected a
+    // function, then use the same longest-prefix rule.
+    for (functions) |*function| {
+        if (function.package != null or function.namespace == null) continue;
+        var best_package: ?usize = null;
+        var best_length: usize = 0;
+        inline for (declaration.packages, 0..) |entry, package_index| {
+            if (@hasField(@TypeOf(entry), "namespaces")) inline for (entry.namespaces) |selector| {
+                if (comptime isPrefixPattern(selector)) continue;
+                if (namespaceMatches(function.namespace.?, selector)) {
+                    if (best_package != null and selector.len == best_length and best_package.? != package_index)
+                        return packageIssue("namespace `{s}` is assigned to more than one package", .{selector});
+                    if (best_package == null or selector.len > best_length) {
+                        best_package = package_index;
+                        best_length = selector.len;
+                    }
+                }
+            };
+        }
+        if (best_package) |package_index| function.package = packages.items[package_index].name;
+    }
+    for (functions) |*function| {
+        if (function.package != null or function.namespace == null) continue;
+        var best_package: ?usize = null;
+        var best_length: usize = 0;
+        inline for (declaration.packages, 0..) |entry, package_index| {
+            if (@hasField(@TypeOf(entry), "namespaces")) inline for (entry.namespaces) |selector| {
+                if (comptime !isPrefixPattern(selector)) continue;
+                const prefix = patternPrefix(selector);
+                if (std.mem.startsWith(u8, function.namespace.?, prefix)) {
+                    if (best_package != null and prefix.len == best_length and best_package.? != package_index)
+                        return packageIssue("namespace `{s}` is selected by patterns in more than one package", .{function.namespace.?});
+                    if (best_package == null or prefix.len > best_length) {
+                        best_package = package_index;
+                        best_length = prefix.len;
+                    }
+                }
+            };
+        }
+        if (best_package) |package_index| function.package = packages.items[package_index].name;
+    }
+    inline for (declaration.packages) |entry| {
+        if (@hasField(@TypeOf(entry), "namespaces")) inline for (entry.namespaces) |selector| {
+            if (comptime !isPrefixPattern(selector)) continue;
+            var found = false;
+            for (functions) |function| if (function.namespace) |namespace| {
+                if (std.mem.startsWith(u8, namespace, patternPrefix(selector))) found = true;
+            };
+            if (!found) return packagePatternIssue("namespace", selector);
+        };
+    }
+
+    // Methods and generated accessors follow an already assigned owner before
+    // closure roots are collected.
     for (functions) |*function| {
         if (function.receiver orelse function.goOwner()) |owner| if (typePackage(types, owner)) |owner_package| {
             if (function.package) |explicit| if (!std.mem.eql(u8, explicit, owner_package))
                 return packageIssue("function `{s}` cannot be split from owning type `{s}`", .{ function.name, owner });
             function.package = owner_package;
-            continue;
         };
-        if (function.package != null) continue;
-        var best_name: ?[]const u8 = null;
-        var best_length: usize = 0;
-        inline for (declaration.packages, 0..) |entry, package_index| {
-            if (@hasField(@TypeOf(entry), "namespaces")) inline for (entry.namespaces) |prefix| {
-                if (function.namespace) |namespace| if (namespaceMatches(namespace, prefix) and prefix.len > best_length) {
-                    best_length = prefix.len;
-                    best_name = packages.items[package_index].name;
-                };
-            };
+    }
+
+    // Compute every closure against the same explicit/pattern assignment
+    // snapshot. Only after all candidates are known do we mutate the types.
+    const closure_count = declaration.packages.len;
+    const reachability = try allocator.alloc(bool, closure_count * types.len);
+    defer allocator.free(reachability);
+    @memset(reachability, false);
+    inline for (declaration.packages, 0..) |entry, package_index| {
+        if (@hasField(@TypeOf(entry), "closure") and entry.closure) {
+            const row = reachability[package_index * types.len ..][0..types.len];
+            findPackageClosure(types, functions, pairings, packages.items[package_index].name, row);
         }
-        function.package = best_name;
+    }
+    for (types, 0..) |*type_decl, type_index| {
+        if (type_decl.package != null) continue;
+        var owner: ?usize = null;
+        inline for (declaration.packages, 0..) |entry, package_index| {
+            if (@hasField(@TypeOf(entry), "closure") and entry.closure and reachability[package_index * types.len + type_index]) {
+                if (owner) |previous| return packageClosureIssue(type_decl.name, packages.items[previous].name, packages.items[package_index].name);
+                owner = package_index;
+            }
+        }
+        if (owner) |package_index| type_decl.package = packages.items[package_index].name;
+    }
+
+    // Types added by closure bring their methods with them just like an exact
+    // or pattern assignment.
+    for (functions) |*function| {
+        if (function.receiver orelse function.goOwner()) |owner| if (typePackage(types, owner)) |owner_package| {
+            if (function.package) |explicit| if (!std.mem.eql(u8, explicit, owner_package))
+                return packageIssue("function `{s}` cannot be split from owning type `{s}`", .{ function.name, owner });
+            function.package = owner_package;
+        };
     }
     return packages.toOwnedSlice(allocator);
+}
+
+fn isPrefixPattern(selector: []const u8) bool {
+    return selector.len != 0 and selector[selector.len - 1] == '*';
+}
+
+fn patternPrefix(selector: []const u8) []const u8 {
+    return selector[0 .. selector.len - 1];
+}
+
+fn packagePatternIssue(kind: []const u8, selector: []const u8) error{PackageDeclaration} {
+    if (!@import("builtin").is_test) std.debug.print(
+        "error[ZIGO041]: package {s} pattern `{s}` matches no declaration\n" ++
+            "  hint: trailing `*` matches a declaration-name prefix; remove or correct a pattern that selects nothing\n",
+        .{ kind, selector },
+    );
+    return error.PackageDeclaration;
+}
+
+fn packageClosureIssue(type_name: []const u8, first: []const u8, second: []const u8) error{PackageDeclaration} {
+    if (!@import("builtin").is_test) std.debug.print(
+        "error[ZIGO042]: type `{s}` is reachable from closure packages `{s}` and `{s}`\n" ++
+            "  hint: assign the type explicitly to one package, or remove one closure root\n",
+        .{ type_name, first, second },
+    );
+    return error.PackageDeclaration;
+}
+
+fn findPackageClosure(
+    types: []const semantic.TypeDecl,
+    functions: []const semantic.SemanticFn,
+    pairings: []const Pairing,
+    package_name: []const u8,
+    reachable: []bool,
+) void {
+    for (types, 0..) |type_decl, index| {
+        if (type_decl.package) |assigned| {
+            if (std.mem.eql(u8, assigned, package_name)) reachable[index] = true;
+        }
+    }
+    var changed = true;
+    while (changed) {
+        changed = false;
+        for (functions, 0..) |function, function_index| {
+            var visit = if (function.package) |assigned| std.mem.eql(u8, assigned, package_name) else false;
+            if (!visit) {
+                if (function.receiver) |owner| visit = reachableType(types, reachable, owner);
+                if (!visit) {
+                    if (function.goOwner()) |owner| visit = reachableType(types, reachable, owner);
+                }
+            }
+            if (!visit) continue;
+            if (function.receiver) |owner| changed = markClosureType(types, reachable, package_name, owner) or changed;
+            if (function.goOwner()) |owner| changed = markClosureType(types, reachable, package_name, owner) or changed;
+            for (function.params) |parameter| changed = markClosureNode(types, reachable, package_name, parameter.type) or changed;
+            changed = markClosureNode(types, reachable, package_name, function.@"return") or changed;
+            for (pairings) |pairing| if (pairing.index == function_index) {
+                changed = markClosureType(types, reachable, package_name, pairing.type) or changed;
+            };
+        }
+        for (types, 0..) |type_decl, index| {
+            if (!reachable[index]) continue;
+            if (type_decl.backing_type) |node| changed = markClosureNode(types, reachable, package_name, node) or changed;
+            if (type_decl.tag_type) |node| changed = markClosureNode(types, reachable, package_name, node) or changed;
+            for (type_decl.fields) |field| if (field.type) |node| {
+                changed = markClosureNode(types, reachable, package_name, node) or changed;
+            };
+        }
+    }
+}
+
+fn reachableType(types: []const semantic.TypeDecl, reachable: []const bool, name: []const u8) bool {
+    for (types, 0..) |type_decl, index| if (std.mem.eql(u8, type_decl.name, name)) return reachable[index];
+    return false;
+}
+
+fn markClosureType(types: []const semantic.TypeDecl, reachable: []bool, package_name: []const u8, name: []const u8) bool {
+    for (types, 0..) |type_decl, index| {
+        if (!std.mem.eql(u8, type_decl.name, name)) continue;
+        if (type_decl.package) |assigned| if (!std.mem.eql(u8, assigned, package_name)) return false;
+        if (reachable[index]) return false;
+        reachable[index] = true;
+        return true;
+    }
+    return false;
+}
+
+fn markClosureNode(types: []const semantic.TypeDecl, reachable: []bool, package_name: []const u8, node: semantic.TypeNode) bool {
+    return switch (node) {
+        .@"enum" => |value| markClosureType(types, reachable, package_name, value.ref),
+        .opaque_ptr => |value| markClosureType(types, reachable, package_name, value.ref),
+        .value_struct => |value| markClosureType(types, reachable, package_name, value.ref),
+        .slice => |value| markClosureNode(types, reachable, package_name, value.element.*),
+        .optional => |value| markClosureNode(types, reachable, package_name, value.child.*),
+        .error_union => |value| markClosureNode(types, reachable, package_name, value.payload.*),
+        .callback => |value| blk: {
+            var changed = if (value.ref) |name| markClosureType(types, reachable, package_name, name) else false;
+            for (value.params) |parameter| changed = markClosureNode(types, reachable, package_name, parameter) or changed;
+            changed = markClosureNode(types, reachable, package_name, value.@"return".*) or changed;
+            break :blk changed;
+        },
+        else => false,
+    };
 }
 
 fn packageIssue(comptime detail: []const u8, args: anytype) error{PackageDeclaration} {
