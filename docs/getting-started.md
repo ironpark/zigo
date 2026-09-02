@@ -167,7 +167,8 @@ cd go
 go test ./...
 ```
 
-생성된 공개 패키지의 실제 import path는 `<go_module>/<go_package>`입니다. `go_package`를
+생성된 공개 패키지의 실제 import path는 기본적으로 `<go_module>/<go_package>`입니다.
+`go_package_path = "."`이면 `<go_module>`, 다른 경로이면 `<go_module>/<go_package_path>`입니다. `go_package`를
 지정하지 않았다면 `name`을 snake_case로 정규화한 값이 사용됩니다.
 
 ## 5. 일상 개발 흐름

@@ -41,7 +41,8 @@ raw 패키지는 `internal/raw`에서 생성됩니다. `addStandardSteps`는 기
 | `source_root` | 아니요 | 자동 탐색 | AST 파라미터 이름·GoDoc 보강에 사용할 실제 Zig root |
 | `prefix` | 아니요 | `"zg"` | 생성 C 심볼 접두사. 바인딩 함수뿐 아니라 zigo 런타임 심볼(`<prefix>_panic_bridge`, `<prefix>_last_error_message`)에도 붙으므로, 한 실행 파일에 링크되는 바인딩마다 다른 값을 준다 |
 | `link` | 아니요 | `.cgo_static` | `.cgo_static`, `.cgo_dynamic`, `.purego` 중 하나 |
-| `go_package` | 아니요 | `name`의 snake_case | 공개 Go 패키지 이름과 하위 디렉터리 |
+| `go_package` | 아니요 | `name`의 snake_case | 공개 Go 패키지 이름 |
+| `go_package_path` | 아니요 | `go_package` | `go_dir` 기준 공개 Go 패키지 경로. `"."`은 모듈 루트 |
 | `go_package_doc` | 아니요 | `bindings.zig`의 `//!`, 없으면 루트 모듈(`source_root`)의 `//!` | 생성된 공개 패키지의 `// Package …` doc 본문 |
 | `raw_package` | 아니요 | `"internal/raw"` | `go_dir` 기준 raw Go 패키지 경로 |
 | `cgo_flags` | 아니요 | 모듈에서 계산 | 생성할 CFLAGS/LDFLAGS 덮어쓰기와 추가 LDFLAGS |
@@ -62,7 +63,7 @@ raw 패키지는 `internal/raw`에서 생성됩니다. `addStandardSteps`는 기
 purego는 정적 링크와 조합되지 않습니다. 지원 플랫폼, 로딩 정책과 배포 방법은
 [공유 라이브러리와 purego](purego.md)를 참고하세요.
 
-## 공개 Go 패키지 이름
+## 공개 Go 패키지 이름과 경로
 
 기본 패키지 이름은 `name`의 snake_case입니다. `event_queue`처럼 밑줄이 생겨 Go 관례와
 맞지 않는다면 명시적으로 바꿉니다.
@@ -72,11 +73,31 @@ purego는 정적 링크와 조합되지 않습니다. 지원 플랫폼, 로딩 �
 .go_package = "eventqueue",
 ```
 
-이 옵션은 공개 패키지 이름과 디렉터리만 바꿉니다. C 헤더
+`go_package`는 소스의 `package` 절에 쓰는 이름만 정합니다. C 헤더
 `zigo_event_queue.h`와 네이티브 라이브러리 `libevent_queue_zigo.a`는 계속 `name`을 사용합니다.
 유효한 Go 식별자가 아니면 빌드 그래프 생성 시점에 실패합니다.
 
-생성된 공개 패키지의 import path는 `<go_module>/<go_package>`입니다.
+`go_package_path`는 `go_dir` 안의 생성 위치를 별도로 정합니다. 기본값은 `go_package`라서
+기존 구성의 생성 경로와 바이트는 바뀌지 않습니다. 중첩 경로도 사용할 수 있습니다.
+
+```zig
+.go_package = "eventqueue",
+.go_package_path = "api/events", // go/api/events/eventqueue_gen.go
+```
+
+모듈 루트에 공개 패키지를 생성하려면 `"."`을 지정합니다. 패키지 이름은 그대로
+`go_package`입니다. `04-callback`의 cgo·purego 구성이 이 형태를 검증합니다.
+
+```zig
+.go_dir = b.path("go"),
+.go_module = "example.com/mylib",
+.go_package = "mylib",
+.go_package_path = ".", // go/mylib_gen.go
+```
+
+공개 import path는 `go_package_path == "."`이면 `<go_module>`, 그 밖에는
+`<go_module>/<go_package_path>`입니다. 경로는 `raw_package`와 같은 portable
+slash-separated 상대 경로 규칙을 따르며 `"."`만 루트 표기로 따로 허용합니다.
 
 ## raw Go 패키지 위치
 
@@ -94,16 +115,22 @@ raw 패키지는 C ABI 또는 purego 함수 포인터를 담는 내부 계층입
 .raw_package = "support/ffi",
 ```
 
-공개 패키지와 같은 경로를 지정하면 한 패키지에 함께 생성합니다.
+`go_package_path`와 같은 경로를 지정하면 한 패키지에 함께 생성합니다.
 
 ```zig
-// go/mylib/mylib_cgo_gen.go — go_package가 "mylib"일 때
-.raw_package = "mylib",
+// go/api/mylib_cgo_gen.go
+.go_package = "mylib",
+.go_package_path = "api",
+.raw_package = "api",
 ```
 
-경로는 `go_dir` 기준의 slash-separated 상대 경로여야 합니다. 절대 경로, 빈 요소, `.`,
-`..`, 역슬래시는 허용하지 않습니다. 경로를 바꾼 뒤에는 이전 `_gen.go` 파일을 삭제하세요.
-`go-check`가 남은 zigo 생성 파일을 오래된 파일로 보고합니다.
+루트에서도 colocate하려면 두 옵션을 모두 `"."`으로 둡니다. `raw_package = "."`만 단독으로
+지정하면 raw 계층을 루트에 노출하는 모호한 구성이므로 빌드 그래프 생성 시점에 실패합니다.
+
+그 밖의 경로는 `go_dir` 기준의 slash-separated 상대 경로여야 합니다. 절대 경로, 빈 요소,
+`.` 또는 `..` 요소, 역슬래시는 허용하지 않습니다. 경로를 바꾼 뒤 `zig build go`를 실행하면
+marker가 있는 이전 zigo 생성 파일만 정리합니다. `go.mod`와 marker가 없는 사용자 Go 파일은
+유지됩니다.
 
 ## 소스 이름과 문서 보강
 

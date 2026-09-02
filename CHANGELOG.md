@@ -8,6 +8,9 @@
 
 ### Added
 
+- `go_package_path` 옵션을 추가했습니다. 공개 Go 패키지 이름과 생성 경로를 분리하며,
+  `"."`을 지정하면 `go_dir`의 모듈 루트에 생성되어 `<go_module>` 자체로 import할 수
+  있습니다. 같은 경로의 `raw_package`는 계속 colocate됩니다.
 - `.types`의 enum 등록에 `.exhaustive = false` opt-in을 추가했습니다. Zig non-exhaustive enum을
   cgo와 purego에서 이름 붙은 상수 밖의 값까지 그대로 왕복하며, 생성된 Go `String()`은
   미지의 값을 `Type(N)`으로 표시합니다. opt-in이 없으면 기존 `ZIGO002`가 유지되고,

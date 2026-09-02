@@ -106,9 +106,11 @@ pub fn writeUsage(writer: *std.Io.Writer) std.Io.Writer.Error!void {
         \\
         \\commands:
         \\  generate  --semantic <file> --output <dir> --package <name> [--gofmt <path>] [options]
+        \\            [--go-package <name>] [--go-package-path <path>]
         \\  check     --generated <dir> --source <dir>
         \\  abi-diff  --base <file> --current <file> [--base-backend cgo|purego] [--current-backend cgo|purego] [--json] [--fail-on breaking]
         \\  report    --semantic <file> [--go-module <path>] [options]
+        \\            [--go-package <name>] [--go-package-path <path>]
         \\            [--library-search-paths <a:b>] [--library-env-vars <A,B>]
         \\            [--library-automatic] [--library-internal-api]
         \\  doctor    [--go <path>] [--gofmt <path>] [--target native|cross]

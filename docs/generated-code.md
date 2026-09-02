@@ -52,18 +52,23 @@ zig build go-report
 go/go.mod
 go/internal/raw/raw_gen.go
 go/internal/raw/zigo_link_inputs_gen.go  # 정적 입력이 있을 때만, machine-local
-go/<package>/<package>_gen.go
-go/<package>/<package>_enums_gen.go
-go/<package>/<package>_structs_gen.go
-go/<package>/<package>_handles_gen.go
-go/<package>/<package>_runtime_gen.go
-go/<package>/<package>_union_<union>_gen.go
-go/<package>/<package>_errors_gen.go
+go/<package-path>/<package>_gen.go
+go/<package-path>/<package>_enums_gen.go
+go/<package-path>/<package>_structs_gen.go
+go/<package-path>/<package>_handles_gen.go
+go/<package-path>/<package>_runtime_gen.go
+go/<package-path>/<package>_union_<union>_gen.go
+go/<package-path>/<package>_errors_gen.go
 zigo/semantic.json
 zigo/errors.lock.json
 zig-out/include/zigo_<name>.h
 zig-out/lib/lib<name>_zigo.a
 ```
+
+`<package-path>`는 기본적으로 `<package>`와 같습니다. `go_package_path = "."`이면 이 경로
+요소가 사라져 `go/<package>_gen.go`처럼 `go_dir` 루트에 생성됩니다. raw 패키지 경로는
+별도 `raw_package`가 계속 정합니다. 둘을 같은 경로(루트에서는 둘 다 `"."`)로 두면 raw
+구현도 공개 패키지에 colocate됩니다.
 
 `zigo_link_inputs_gen.go`는 다른 생성 파일과 달리 commit하지 않습니다. module이 별도 정적
 archive를 링크할 때만 build step이 실제 절대 경로로 다시 쓰며, `go-check`는 이 파일을
@@ -116,7 +121,9 @@ API는 세 OS에서 동일합니다.
 | `zig-out/` | 빌드 캐시/출력 | 아니요 |
 
 생성 파일을 직접 수정하지 마세요. 공개 패키지에 별도 `.go` 파일을 추가해 사용자 편의
-API를 작성할 수 있으며, zigo는 marker가 없는 사용자 파일을 덮어쓰지 않습니다.
+API를 작성할 수 있습니다. stale 정리는 생성 marker가 있는 파일만 삭제하므로 루트 발행
+중에도 `go.mod`와 marker가 없는 사용자 파일을 보존합니다. 단, 생성될 파일과 **같은
+파일명**을 사용하면 갱신 대상이 되므로 피해야 합니다.
 
 ## `extern struct`에 필드를 더하는 일
 

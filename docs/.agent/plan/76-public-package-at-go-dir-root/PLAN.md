@@ -8,7 +8,7 @@ registered_at: "2026-09-02T13:52:31Z"
 # Phases
 
 - [x] [Phase 00: 패키지 경로 옵션과 생성 경로](phases/00-package-path-option.md)
-- [ ] [Phase 01: 루트 발행 예제](phases/01-root-package-example.md)
+- [x] [Phase 01: 루트 발행 예제](phases/01-root-package-example.md)
 - [ ] [Phase 02: 문서와 CHANGELOG](phases/02-docs.md)
 
 # Shared Verification

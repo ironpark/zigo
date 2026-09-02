@@ -23,3 +23,15 @@
 - colocation 판정은 `raw_package == go_package_path`. `raw_package = "."`은 colocation 표기로만 허용하고 단독으로는 거부한다(`internal/raw`를 루트에 둘 이유가 없다).
 - Go의 `internal/` 규칙상 `<go_dir>/internal/raw`는 `<go_dir>` 루트 패키지에서 import 가능하다.
 - 루트 발행 시 생성 파일 이름이 사용자의 루트 파일과 충돌하지 않도록 기존 접미(`_cgo_gen.go` 등)를 유지한다.
+
+## Implementation outcome and deviations
+
+- 신규 12나 기존 03 대신, 이미 cgo와 purego를 함께 검증하는 `04-callback`을 루트 발행
+  예제로 전환했다. 새 CI 열거 항목을 늘리지 않으면서 두 backend의 모듈 루트 import를 같은
+  API로 검증하기 위한 선택이다.
+- cgo 구성은 `go_package_path = raw_package = "."`으로 두어 `raw_source_dir == go_dir`일 때
+  생성되는 `${SRCDIR}/../zig-out/{include,lib}` 경로까지 통합 검증한다. purego 공개 패키지도
+  루트에 두되 raw는 기본 `internal/raw`에 유지했다. 기존 purego loader/registry 내부 테스트를
+  보존하면서 루트 공개 패키지가 internal raw를 import하는 조합도 함께 검증하기 위해서다.
+- `zig build go` 뒤에도 기존 `go.mod`와 hand-written 루트 테스트가 남고, CI가 생성 후 Git
+  상태를 검사하는 기존 흐름으로 cleanup 보존 계약을 고정한다.

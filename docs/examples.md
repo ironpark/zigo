@@ -52,7 +52,7 @@ zig build purego-go purego-go-verify
 | [01-scalar](../examples/01-scalar) | 자유 함수 `add(i32, i32) i32`, 동위치 raw 패키지, `-Ddynamic` cgo 동적 링크 |
 | [02-errors](../examples/02-errors) | 에러 유니온, `errors.Is`, 슬라이스, enum, `support/ffi` raw 패키지 |
 | [03-opaque](../examples/03-opaque) | opaque handle, `NewContext`/`Close`, 문자열 의미와 할당 수명 |
-| [04-callback](../examples/04-callback) | retained Go 콜백, 콜백 panic 경계, generic 타입 구체화, purego |
+| [04-callback](../examples/04-callback) | 모듈 루트 공개 패키지와 colocated cgo raw, retained Go 콜백, 콜백 panic 경계, generic 타입 구체화, purego |
 | [05-pipeline](../examples/05-pipeline) | opaque 상태, enum, 슬라이스, typed error, retained 콜백, AST 이름 보강, system library 링크 전파 |
 | [06-camel-case](../examples/06-camel-case) | Zig·Go·C 사이의 package, 식별자와 심볼 이름 정규화 |
 | [07-event-queue](../examples/07-event-queue) | 이벤트 큐 수명주기, observer 콜백, 강제 GC로 확인하는 cleanup 안전망, extern struct 값, cgo·purego 병행 |
