@@ -163,10 +163,15 @@ Zig doc 주석은 형식만 조정되고 본문은 그대로 옮겨진다. Go do
 문자열, 반환 포인터 소유권, retained 포인터와 콜백 수명은 타입만으로 결정할 수 없다.
 `semantic`, `returns`, `param_meta.retention`을 통해 계약을 명시해야 한다.
 
+바인딩 경로는 임의 깊이의 namespace struct를 따라간다. `semantic.json`의 `namespace`는 점으로
+이은 경로를 담고 심볼·raw Go 이름·ABI identity가 모두 거기서 파생된다. 공개 Go 함수 이름에는
+namespace가 들어가지 않으므로, 서로 다른 namespace의 같은 함수 이름은 `.name`으로 구분한다.
+
 `.discover = .public`은 공개 Zig API와 바인딩 API가 같은 프로젝트를 위한 opt-in 정책이다.
 공개 helper나 지원하지 않는 generic 함수까지 발견될 수 있으므로 `exclude`로 의도를
 명시한다. 일부 함수만 안정적으로 노출해야 하는 라이브러리는 명시적인 `functions` 목록을
-유지한다.
+유지한다. namespace struct 안까지 내려가는 `.discover = .recursive`도 opt-in이며, 기본값은
+바뀌지 않는다.
 
 ## 런타임 주의사항
 

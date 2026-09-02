@@ -184,7 +184,15 @@ fn scanMembers(
         var container_buffer: [2]std.zig.Ast.Node.Index = undefined;
         const container = tree.fullContainerDecl(&container_buffer, init_node) orelse continue;
         const declaration_name = tree.tokenSlice(variable.ast.mut_token + 1);
-        try scanMembers(allocator, tree, container.ast.members, declaration_name, functions, visited, matched);
+        // A namespace inside a namespace owns its functions under the joined
+        // lexical path, which is exactly what the binding recorded as the
+        // reflected owner, so the two still compare as equal.
+        const nested_owner = if (owner) |parent|
+            try std.fmt.allocPrint(allocator, "{s}.{s}", .{ parent, declaration_name })
+        else
+            try allocator.dupe(u8, declaration_name);
+        defer allocator.free(nested_owner);
+        try scanMembers(allocator, tree, container.ast.members, nested_owner, functions, visited, matched);
     }
 }
 

@@ -50,12 +50,23 @@ pub fn functionSymbolAlloc(
 ) ![]u8 {
     const name = try snakeAlloc(allocator, function_name);
     defer allocator.free(name);
-    if (owner) |value| {
-        const owner_name = try snakeAlloc(allocator, value);
+    const owner_path = owner orelse return std.fmt.allocPrint(allocator, "{s}_{s}", .{ prefix, name });
+    // An owner is a dotted path once a binding names a nested namespace, and
+    // each segment converts on its own: `unicode.codepointWidth` under prefix
+    // `zg` is `zg_unicode_codepoint_width`. A single segment is unchanged.
+    var symbol: std.ArrayList(u8) = .empty;
+    errdefer symbol.deinit(allocator);
+    try symbol.appendSlice(allocator, prefix);
+    var segments = std.mem.splitScalar(u8, owner_path, '.');
+    while (segments.next()) |segment| {
+        const owner_name = try snakeAlloc(allocator, segment);
         defer allocator.free(owner_name);
-        return std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ prefix, owner_name, name });
+        try symbol.append(allocator, '_');
+        try symbol.appendSlice(allocator, owner_name);
     }
-    return std.fmt.allocPrint(allocator, "{s}_{s}", .{ prefix, name });
+    try symbol.append(allocator, '_');
+    try symbol.appendSlice(allocator, name);
+    return symbol.toOwnedSlice(allocator);
 }
 
 /// The symbol `semantic.json` carried before the rule was unified: the prefix

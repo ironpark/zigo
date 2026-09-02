@@ -69,10 +69,10 @@ pub fn reflect(
             inline for (declaration.types) |entry| {
                 // A callback type is a signature, not a container to walk.
                 if (comptime entry.repr != .callback)
-                    try discoverContainer(allocator, &functions, &types, declaration, prefix, entry.type, comptime typeEntryName(entry));
+                    try discoverContainer(allocator, &functions, &types, declaration, prefix, entry.type, comptime typeEntryName(entry), comptime typeEntryName(entry));
             }
         }
-        try discoverContainer(allocator, &functions, &types, declaration, prefix, declaration.root, null);
+        try discoverContainer(allocator, &functions, &types, declaration, prefix, declaration.root, null, "root");
     } else {
         inline for (declaration.functions) |entry| {
             const owner = comptime pathOwner(entry.path);
@@ -216,11 +216,15 @@ fn discoverContainer(
     prefix: []const u8,
     comptime Container: type,
     comptime owner: ?[]const u8,
+    /// How a binding spells this container in `.functions` and `.exclude`:
+    /// `root` for the module itself, the entry name for a registered type,
+    /// and those plus every namespace segment below them.
+    comptime path_prefix: []const u8,
 ) !void {
     inline for (comptime std.meta.declarations(Container)) |candidate| {
         const value = @field(Container, candidate.name);
         if (@typeInfo(@TypeOf(value)) != .@"fn") continue;
-        const path = comptime declarationPath(owner, candidate.name);
+        const path = path_prefix ++ "." ++ candidate.name;
         if (comptime selectorContains(declaration, "exclude", path)) continue;
         comptime var adjusted = false;
         if (@hasField(@TypeOf(declaration), "functions")) {
@@ -233,13 +237,51 @@ fn discoverContainer(
         }
         if (!adjusted) try appendFunction(allocator, functions, types, declaration, prefix, candidate.name, value, .{}, owner);
     }
+    if (comptime !discoveryRecursive(declaration)) return;
+    inline for (comptime std.meta.declarations(Container)) |candidate| {
+        const value = @field(Container, candidate.name);
+        if (@TypeOf(value) != type or comptime !isNestedContainer(Container, value)) continue;
+        try discoverContainer(
+            allocator,
+            functions,
+            types,
+            declaration,
+            prefix,
+            value,
+            comptime if (owner) |parent| parent ++ "." ++ candidate.name else candidate.name,
+            path_prefix ++ "." ++ candidate.name,
+        );
+    }
+}
+
+/// A declaration is a namespace of its container only when it was written
+/// inside it. Comparing the mangled type names is what tells that apart from
+/// an `@This()` alias, a re-export, or an imported module -- all of which
+/// would otherwise make discovery walk in circles or leave the binding.
+fn isNestedContainer(comptime Container: type, comptime Child: type) bool {
+    if (!isContainer(Child)) return false;
+    const parent = @typeName(Container);
+    const child = @typeName(Child);
+    return child.len > parent.len + 1 and
+        std.mem.startsWith(u8, child, parent) and child[parent.len] == '.' and
+        std.mem.indexOfScalar(u8, child[parent.len + 1 ..], '.') == null;
 }
 
 fn discoveryEnabled(comptime declaration: anytype) bool {
     if (!@hasField(@TypeOf(declaration), "discover")) return false;
-    if (declaration.discover != .public) @compileError("zigo `.discover` must be `.public`");
+    if (declaration.discover != .public and declaration.discover != .recursive)
+        @compileError("zigo `.discover` must be `.public` or `.recursive`");
     if (@TypeOf(declaration.root) != type) @compileError("zigo `.root` must be a module or container type");
     return true;
+}
+
+/// `.public` finds the functions declared directly in the root and in each
+/// registered type. `.recursive` also descends into the namespace structs
+/// those containers declare. It stays opt-in because turning it on would
+/// otherwise silently widen an existing binding's exported surface.
+fn discoveryRecursive(comptime declaration: anytype) bool {
+    if (!@hasField(@TypeOf(declaration), "discover")) return false;
+    return declaration.discover == .recursive;
 }
 
 /// The access strategy a `types` entry chose. Defaults keep the axis out of
@@ -297,13 +339,19 @@ fn validateSelectors(comptime declaration: anytype) void {
 }
 
 /// `root.<name>` for a function in `.root`, `<Type>.<name>` for one in a
-/// registered type. The same grammar addresses a declaration whether the
-/// binding lists functions explicitly or discovers them.
+/// registered type, and any number of container segments in between:
+/// `root.unicode.codepointWidth` names a function in the `unicode` namespace
+/// struct. The same grammar addresses a declaration whether the binding lists
+/// functions explicitly or discovers them. The owner keeps its dots, which is
+/// what makes the namespace, the C symbol and the ABI identity agree without
+/// any of them learning a second spelling.
 fn pathOwner(comptime path: []const u8) ?[]const u8 {
     const index = comptime std.mem.lastIndexOfScalar(u8, path, '.') orelse
         @compileError("zigo path must be `root.<name>` or `<Type>.<name>`: " ++ path);
     const owner = path[0..index];
-    return if (std.mem.eql(u8, owner, "root")) null else owner;
+    if (std.mem.eql(u8, owner, "root")) return null;
+    if (std.mem.startsWith(u8, owner, "root.")) return owner["root.".len..];
+    return owner;
 }
 
 fn pathMember(comptime path: []const u8) []const u8 {
@@ -313,31 +361,66 @@ fn pathMember(comptime path: []const u8) []const u8 {
 }
 
 fn pathContainer(comptime declaration: anytype, comptime owner: ?[]const u8) type {
-    const name = owner orelse return declaration.root;
+    const path = owner orelse return declaration.root;
+    comptime {
+        var iterator = std.mem.splitScalar(u8, path, '.');
+        const head = iterator.first();
+        var Container: type = registeredContainer(declaration, head) orelse
+            rootContainerChild(declaration.root, head, path);
+        while (iterator.next()) |segment| Container = rootContainerChild(Container, segment, path);
+        return Container;
+    }
+}
+
+/// The first segment of an owner may name a registered `types` entry, which is
+/// how `<Type>.<name>` has always addressed a method. Everything after it is
+/// an ordinary public container declaration.
+fn registeredContainer(comptime declaration: anytype, comptime name: []const u8) ?type {
     if (@hasField(@TypeOf(declaration), "types")) {
         inline for (declaration.types) |entry| {
             if (comptime entry.repr != .callback and std.mem.eql(u8, typeEntryName(entry), name)) return entry.type;
         }
     }
-    @compileError("zigo path names a type that is not registered in `.types`: " ++ name);
+    return null;
+}
+
+fn rootContainerChild(comptime Container: type, comptime name: []const u8, comptime path: []const u8) type {
+    if (!isContainer(Container) or !@hasDecl(Container, name) or @TypeOf(@field(Container, name)) != type)
+        @compileError("zigo path segment `" ++ name ++ "` does not name a public container type or a registered `.types` entry: " ++ path);
+    return @field(Container, name);
+}
+
+fn isContainer(comptime T: type) bool {
+    return switch (@typeInfo(T)) {
+        .@"struct", .@"union", .@"enum", .@"opaque" => true,
+        else => false,
+    };
 }
 
 fn declarationPathExists(comptime declaration: anytype, comptime wanted: []const u8) bool {
-    if (@hasField(@TypeOf(declaration), "types")) {
-        inline for (declaration.types) |entry| {
-            if (comptime entry.repr == .callback) continue;
-            if (containerHasPath(entry.type, comptime typeEntryName(entry), wanted)) return true;
-        }
+    comptime {
+        const dot = std.mem.indexOfScalar(u8, wanted, '.') orelse return false;
+        const head = wanted[0..dot];
+        const rest = wanted[dot + 1 ..];
+        if (std.mem.eql(u8, head, "root")) return containerHasPath(declaration.root, rest);
+        if (registeredContainer(declaration, head)) |Container| return containerHasPath(Container, rest);
+        return false;
     }
-    return containerHasPath(declaration.root, null, wanted);
 }
 
-fn containerHasPath(comptime Container: type, comptime owner: ?[]const u8, comptime wanted: []const u8) bool {
-    inline for (comptime std.meta.declarations(Container)) |candidate| {
-        if (@typeInfo(@TypeOf(@field(Container, candidate.name))) != .@"fn") continue;
-        if (std.mem.eql(u8, declarationPath(owner, candidate.name), wanted)) return true;
+/// Follows the remaining segments through public container declarations and
+/// reports whether the last one names a public function. Resolving the path
+/// the caller asked for, rather than enumerating everything reachable, is what
+/// keeps a container that refers back to itself from unrolling forever.
+fn containerHasPath(comptime Container: type, comptime rest: []const u8) bool {
+    comptime {
+        if (!isContainer(Container)) return false;
+        const dot = std.mem.indexOfScalar(u8, rest, '.') orelse
+            return @hasDecl(Container, rest) and @typeInfo(@TypeOf(@field(Container, rest))) == .@"fn";
+        const head = rest[0..dot];
+        if (!@hasDecl(Container, head) or @TypeOf(@field(Container, head)) != type) return false;
+        return containerHasPath(@field(Container, head), rest[dot + 1 ..]);
     }
-    return false;
 }
 
 fn selectorContains(comptime declaration: anytype, comptime field_name: []const u8, comptime path: []const u8) bool {
@@ -346,10 +429,6 @@ fn selectorContains(comptime declaration: anytype, comptime field_name: []const 
         if (std.mem.eql(u8, candidate, path)) return true;
     }
     return false;
-}
-
-fn declarationPath(comptime owner: ?[]const u8, comptime name: []const u8) []const u8 {
-    return if (owner) |value| value ++ "." ++ name else "root." ++ name;
 }
 
 /// `context` names the parameter, return value, or field the type was reached
@@ -1062,6 +1141,119 @@ test "discovery selectors use stable owner-qualified paths" {
     try std.testing.expect(comptime declarationPathExists(declaration, "root.update"));
     try std.testing.expect(!comptime declarationPathExists(declaration, "Missing.update"));
     try std.testing.expect(!comptime declarationPathExists(declaration, "root.privateHelper"));
+}
+
+test "a nested namespace path reflects with a dotted owner" {
+    const Api = struct {
+        pub const unicode = struct {
+            /// Reports the display width of a codepoint.
+            pub fn codepointWidth(cp: u21) u8 {
+                return if (cp < 0x1100) 1 else 2;
+            }
+
+            pub const grapheme = struct {
+                pub fn breaks(before: u21, after: u21) bool {
+                    return before != after;
+                }
+            };
+        };
+    };
+    const declaration = .{
+        .root = Api,
+        .functions = .{
+            .{ .path = "root.unicode.codepointWidth", .params = .{"cp"} },
+            .{ .path = "root.unicode.grapheme.breaks" },
+        },
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), declaration, "text", "zg");
+
+    try std.testing.expectEqualStrings("codepointWidth", document.functions[0].name);
+    try std.testing.expectEqualStrings("unicode", document.functions[0].namespace.?);
+    try std.testing.expect(document.functions[0].receiver == null);
+    try std.testing.expectEqualStrings("zg_unicode_codepoint_width", document.functions[0].symbol);
+    try std.testing.expectEqualStrings("cp", document.functions[0].params[0].name);
+
+    try std.testing.expectEqualStrings("breaks", document.functions[1].name);
+    try std.testing.expectEqualStrings("unicode.grapheme", document.functions[1].namespace.?);
+    try std.testing.expectEqualStrings("zg_unicode_grapheme_breaks", document.functions[1].symbol);
+}
+
+test "nested paths resolve only through public container segments" {
+    const Api = struct {
+        pub const unicode = struct {
+            pub fn codepointWidth(cp: u21) u8 {
+                return if (cp < 0x1100) 1 else 2;
+            }
+
+            pub const grapheme = struct {
+                pub fn breaks(before: u21, after: u21) bool {
+                    return before != after;
+                }
+            };
+        };
+
+        pub fn topLevel() void {}
+    };
+    const declaration = .{ .root = Api, .functions = .{.{ .path = "root.topLevel" }} };
+    try std.testing.expect(comptime declarationPathExists(declaration, "root.unicode.codepointWidth"));
+    try std.testing.expect(comptime declarationPathExists(declaration, "root.unicode.grapheme.breaks"));
+    try std.testing.expect(comptime declarationPathExists(declaration, "root.topLevel"));
+    try std.testing.expect(!comptime declarationPathExists(declaration, "root.unicode.missing"));
+    try std.testing.expect(!comptime declarationPathExists(declaration, "root.missing.codepointWidth"));
+    // A function is not a container, so a path cannot continue through one.
+    try std.testing.expect(!comptime declarationPathExists(declaration, "root.topLevel.more"));
+}
+
+test "recursive discovery is opt-in and stops at the module boundary" {
+    const Api = struct {
+        pub const osc = struct {
+            pub fn parse(byte: u8) u8 {
+                return byte;
+            }
+
+            /// An alias back to its own container would make an exhaustive
+            /// walk loop; discovery only follows declarations written inside.
+            pub const Self = @This();
+        };
+
+        pub fn topLevel() void {}
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const shallow = try reflect(arena.allocator(), .{ .root = Api, .discover = .public }, "term", "zg");
+    try std.testing.expectEqual(@as(usize, 1), shallow.functions.len);
+    try std.testing.expectEqualStrings("topLevel", shallow.functions[0].name);
+
+    const deep = try reflect(arena.allocator(), .{ .root = Api, .discover = .recursive }, "term", "zg");
+    try std.testing.expectEqual(@as(usize, 2), deep.functions.len);
+    try std.testing.expectEqualStrings("topLevel", deep.functions[0].name);
+    try std.testing.expectEqualStrings("parse", deep.functions[1].name);
+    try std.testing.expectEqualStrings("osc", deep.functions[1].namespace.?);
+    try std.testing.expectEqualStrings("zg_osc_parse", deep.functions[1].symbol);
+}
+
+test "recursive discovery honours an exclusion on a nested path" {
+    const Api = struct {
+        pub const osc = struct {
+            pub fn parse(byte: u8) u8 {
+                return byte;
+            }
+
+            pub fn internalHelper() void {}
+        };
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Api,
+        .discover = .recursive,
+        .exclude = .{"root.osc.internalHelper"},
+    }, "term", "zg");
+    try std.testing.expectEqual(@as(usize, 1), document.functions.len);
+    try std.testing.expectEqualStrings("parse", document.functions[0].name);
 }
 
 test "an optional opaque pointer parameter reflects as a nullable handle" {

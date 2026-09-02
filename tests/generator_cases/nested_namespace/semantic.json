@@ -1,0 +1,38 @@
+{
+  "functions": [
+    {
+      "doc": "Reports the display width of a codepoint.",
+      "name": "codepointWidth",
+      "namespace": "unicode",
+      "params": [
+        {"name": "cp", "type": {"bits": 21, "is_usize": false, "kind": "int", "signed": false}}
+      ],
+      "return": {"bits": 8, "is_usize": false, "kind": "int", "signed": false},
+      "symbol": "ignored"
+    },
+    {
+      "doc": "Reports whether a grapheme cluster breaks between two codepoints.",
+      "name": "breaks",
+      "namespace": "unicode.grapheme",
+      "params": [
+        {"name": "before", "type": {"bits": 32, "is_usize": false, "kind": "int", "signed": false}},
+        {"name": "after", "type": {"bits": 32, "is_usize": false, "kind": "int", "signed": false}}
+      ],
+      "return": {"kind": "bool"},
+      "symbol": "ignored"
+    },
+    {
+      "doc": "Parses one OSC byte.",
+      "name": "parse",
+      "namespace": "osc.parser.state",
+      "params": [
+        {"name": "byte", "type": {"bits": 8, "is_usize": false, "kind": "int", "signed": false}}
+      ],
+      "return": {"bits": 8, "is_usize": false, "kind": "int", "signed": false},
+      "symbol": "ignored"
+    }
+  ],
+  "package": "nested_namespace",
+  "prefix": "zg",
+  "zig_version": "0.16.0"
+}

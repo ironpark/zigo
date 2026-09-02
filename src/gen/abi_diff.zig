@@ -390,6 +390,29 @@ test "parameter type changes are breaking and functions are added" {
     try std.testing.expectEqual(ChangeKind.added, report.changes.items[1].kind);
 }
 
+test "a nested namespace reports its dotted identity and keeps a narrow width breaking" {
+    const old: semantic.Semantic = .{ .package = "text", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{.{
+        .name = "breaks",
+        .namespace = "unicode.grapheme",
+        .params = &.{.{ .name = "cp", .type = .{ .int = .{ .bits = 21, .signed = false } } }},
+        .@"return" = .{ .bool = {} },
+        .symbol = "zg_unicode_grapheme_breaks",
+    }} };
+    const current: semantic.Semantic = .{ .package = "text", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{.{
+        .name = "breaks",
+        .namespace = "unicode.grapheme",
+        .params = &.{.{ .name = "cp", .type = .{ .int = .{ .bits = 32, .signed = false } } }},
+        .@"return" = .{ .bool = {} },
+        .symbol = "zg_unicode_grapheme_breaks",
+    }} };
+    var report = try diff(std.testing.allocator, old, current);
+    defer report.deinit(std.testing.allocator);
+    // The C signature is `uint32_t` either way, but the declared width is what
+    // the value means, so widening it is still a contract change.
+    try std.testing.expect(report.hasBreaking());
+    try std.testing.expectEqualStrings("unicode.grapheme.breaks", report.changes.items[0].subject);
+}
+
 test "tagged union variant payload changes are breaking" {
     const old: semantic.Semantic = .{
         .package = "variant",

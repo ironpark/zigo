@@ -33,6 +33,31 @@ pub const bindings = zigo.define(.{
 공개 함수를 가리키지 않으면 compile error입니다. 함수 항목의 `.name`은 경로가 아니라 생성할
 Go 이름만 바꿉니다.
 
+경로는 임의 깊이의 namespace struct를 따라갑니다. 루트에 `pub fn` 없이 API를 struct로
+묶는 module은 Zig 호출자가 쓰는 것과 같은 철자를 그대로 씁니다.
+
+```zig
+.functions = .{
+    .{ .path = "root.unicode.codepointWidth", .params = .{"cp"} },
+    .{ .path = "root.osc.parser.parse" },
+},
+```
+
+마지막 segment 앞의 모든 segment는 공개 container 타입(struct, union, enum, opaque)이어야
+합니다. 첫 segment만 `root` 또는 등록된 `.types` 항목 이름으로 해석되고, 나머지는 그 안의
+공개 선언입니다. namespace는 `semantic.json`에 점으로 이어진 경로(`"unicode"`,
+`"osc.parser"`)로 기록되며 여기서 나머지 이름이 모두 파생됩니다.
+
+| 경로 | C 심볼 | raw Go | ABI identity |
+|---|---|---|---|
+| `root.version` | `zg_version` | `Version` | `version` |
+| `Context.create` | `zg_context_create` | `ContextCreate` | `Context.create` |
+| `root.unicode.codepointWidth` | `zg_unicode_codepoint_width` | `UnicodeCodepointWidth` | `unicode.codepointWidth` |
+| `root.osc.parser.parse` | `zg_osc_parser_parse` | `OscParserParse` | `osc.parser.parse` |
+
+공개 Go 함수 이름은 namespace를 붙이지 않고 함수 이름만 씁니다(`CodepointWidth`). 서로 다른
+namespace에 같은 이름의 함수가 있다면 `.name`으로 하나를 바꿉니다.
+
 ## 명시 목록과 자동 발견
 
 안정적인 공개 API가 중요하다면 `functions`에 함수를 명시하세요. 목록에 없는 함수는 노출되지
@@ -54,6 +79,12 @@ pub const bindings = zigo.define(.{
     .exclude = .{"Context.debugState"},
 });
 ```
+
+`.discover = .public`은 한 단계만 봅니다. namespace struct 안까지 내려가려면
+`.discover = .recursive`를 씁니다. 기본값을 바꾸지 않는 이유는 기존 바인딩의 노출 표면이
+조용히 넓어지지 않게 하기 위해서입니다. 재귀 발견은 container 안에 **작성된** 선언만
+따라가므로 `@This()` alias나 다시 내보낸 import를 건너뜁니다. 중첩 경로도 `exclude`에
+같은 철자로 적습니다(`"root.osc.internalHelper"`).
 
 자동 발견은 등록한 타입의 공개 함수, 이어서 `root` module의 공개 함수를 찾습니다.
 `functions`는 발견 대상을 제한하지 않고 메타데이터를 붙이며, `exclude`가 제외 대상을

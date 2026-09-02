@@ -282,6 +282,7 @@ pub fn build(b: *std.Build) void {
     godoc_audit.addArgs(&.{
         "tests/generator_cases/complex/expected",
         "tests/generator_cases/narrow_int/expected",
+        "tests/generator_cases/nested_namespace/expected",
         "tests/generator_cases/scalar/expected",
         "tests/generator_cases/union_snapshot/expected",
         "tests/generator_cases/value_struct/expected",

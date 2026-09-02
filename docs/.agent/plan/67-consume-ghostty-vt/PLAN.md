@@ -8,7 +8,7 @@ registered_at: "2026-09-02T06:00:06Z"
 # Phases
 
 - [x] [Phase 00: 지원되지 않는 타입을 위치 있는 진단으로](phases/00-located-diagnostics.md)
-- [ ] [Phase 01: 비 2의거듭제곱 정수 폭 승격](phases/01-int-width-promotion.md)
+- [x] [Phase 01: 비 2의거듭제곱 정수 폭 승격](phases/01-int-width-promotion.md)
 - [ ] [Phase 02: N단계 바인딩 경로](phases/02-nested-paths.md)
 
 # Shared Verification

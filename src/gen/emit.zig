@@ -5164,7 +5164,8 @@ fn callbackTypeNameAlloc(allocator: std.mem.Allocator, program: abi.Program, fun
     }
 
     const qualified = if (duplicate_base and (function.origin.receiver orelse function.origin.namespace) != null) blk: {
-        const owner = (function.origin.receiver orelse function.origin.namespace).?;
+        const owner = try ownerPascalAlloc(allocator, (function.origin.receiver orelse function.origin.namespace).?);
+        defer allocator.free(owner);
         const function_name = try naming.pascalAlloc(allocator, function.origin.name);
         defer allocator.free(function_name);
         const parameter_name = try naming.pascalAlloc(allocator, function.origin.params[parameter_index].name);
@@ -5199,7 +5200,9 @@ fn callbackTypeBaseNameAlloc(allocator: std.mem.Allocator, function: abi.AbiFn, 
     const parameter_name = try naming.pascalAlloc(allocator, function.origin.params[parameter_index].name);
     defer allocator.free(parameter_name);
     if (function.origin.receiver orelse function.origin.namespace) |owner| {
-        return std.fmt.allocPrint(allocator, "{s}{s}", .{ owner, parameter_name });
+        const owner_name = try ownerPascalAlloc(allocator, owner);
+        defer allocator.free(owner_name);
+        return std.fmt.allocPrint(allocator, "{s}{s}", .{ owner_name, parameter_name });
     }
     const function_name = try naming.pascalAlloc(allocator, function.origin.name);
     defer allocator.free(function_name);
@@ -5231,8 +5234,26 @@ fn programNeedsUnsafe(program: abi.Program) bool {
 fn rawGoNameAlloc(allocator: std.mem.Allocator, function: semantic.SemanticFn) ![]u8 {
     const function_name = try naming.pascalAlloc(allocator, function.name);
     defer allocator.free(function_name);
-    if (function.receiver orelse function.namespace) |receiver| return std.fmt.allocPrint(allocator, "{s}{s}", .{ receiver, function_name });
-    return allocator.dupe(u8, function_name);
+    const owner = function.receiver orelse function.namespace orelse return allocator.dupe(u8, function_name);
+    const owner_name = try ownerPascalAlloc(allocator, owner);
+    defer allocator.free(owner_name);
+    return std.fmt.allocPrint(allocator, "{s}{s}", .{ owner_name, function_name });
+}
+
+/// An owner is a dotted path once a binding names a nested namespace. Each
+/// segment becomes one Pascal word, so `unicode.codepointWidth` reaches the
+/// raw layer as `UnicodeCodepointWidth`. A registered type name is already one
+/// Pascal word, which is why single-segment owners come out unchanged.
+fn ownerPascalAlloc(allocator: std.mem.Allocator, owner: []const u8) ![]u8 {
+    var name: std.ArrayList(u8) = .empty;
+    errdefer name.deinit(allocator);
+    var segments = std.mem.splitScalar(u8, owner, '.');
+    while (segments.next()) |segment| {
+        const word = try naming.pascalAlloc(allocator, segment);
+        defer allocator.free(word);
+        try name.appendSlice(allocator, word);
+    }
+    return name.toOwnedSlice(allocator);
 }
 
 fn receiverVariableAlloc(allocator: std.mem.Allocator, receiver: []const u8) ![]u8 {

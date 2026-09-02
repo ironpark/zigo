@@ -59,6 +59,23 @@ pub fn liveObjects() usize {
     return live_objects.load(.monotonic);
 }
 
+/// Grouping an API under namespace structs instead of a flat root is ordinary
+/// Zig, and a binding addresses it with the same dotted path the Zig caller
+/// writes: `root.text.unicode.codepointWidth`.
+pub const text = struct {
+    pub const unicode = struct {
+        /// Reports how many terminal cells a codepoint occupies.
+        pub fn codepointWidth(cp: u21) u8 {
+            return if (cp < 0x1100) 1 else 2;
+        }
+    };
+
+    /// Reports how many cells a run of codepoints occupies.
+    pub fn runWidth(first: u21, second: u21) u16 {
+        return @as(u16, unicode.codepointWidth(first)) + unicode.codepointWidth(second);
+    }
+};
+
 test "one opaque receiver accepts another exposed opaque type" {
     const counter = try Counter.create(40);
     defer counter.deinit();
@@ -70,6 +87,11 @@ test "one opaque receiver accepts another exposed opaque type" {
     try std.testing.expectEqual(@as(i64, 82), accumulator.absorb(counter));
     try std.testing.expectEqual(@as(i64, 82), accumulator.total());
     try std.testing.expectEqual(@as(usize, 2), liveObjects());
+}
+
+test "a nested namespace is reachable through its dotted path" {
+    try std.testing.expectEqual(@as(u8, 2), text.unicode.codepointWidth(0x1100));
+    try std.testing.expectEqual(@as(u16, 3), text.runWidth(0x1100, 'a'));
 }
 
 test "independent type lifecycles return the shared count to zero" {

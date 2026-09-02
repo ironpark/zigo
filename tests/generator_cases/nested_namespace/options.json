@@ -1,0 +1,5 @@
+{
+  "package": "nested_namespace",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/nested-namespace"
+}

@@ -63,3 +63,13 @@ func AccumulatorDeinit(self unsafe.Pointer) {
 func LiveObjects() uint {
 	return uint(C.zg_live_objects())
 }
+
+// TextRunWidth calls the generated C ABI wrapper for zg_text_run_width.
+func TextRunWidth(first uint32, second uint32) uint16 {
+	return uint16(C.zg_text_run_width(C.uint32_t(first), C.uint32_t(second)))
+}
+
+// TextUnicodeCodepointWidth calls the generated C ABI wrapper for zg_text_unicode_codepoint_width.
+func TextUnicodeCodepointWidth(cp uint32) uint8 {
+	return uint8(C.zg_text_unicode_codepoint_width(C.uint32_t(cp)))
+}

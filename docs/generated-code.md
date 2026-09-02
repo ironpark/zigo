@@ -195,6 +195,10 @@ handle은 호출 후 즉시 해제하고, retained callback handle은 소유 객
 - Go keyword나 생성 local과 충돌하면 `type_`, `code_`처럼 escape합니다.
 - 변환 후 이름이 겹치면 뒤쪽 이름에 숫자를 붙입니다.
 - 한 type의 receiver 이름은 모든 생성 파일에서 동일합니다.
+- 공개 Go 함수 이름은 namespace를 붙이지 않습니다. 중첩 namespace의 함수도
+  `CodepointWidth`처럼 함수 이름만 씁니다.
+- C가 이름 붙일 수 없는 정수 폭(`u21`)은 파라미터·반환값에서 다음 폭으로 승격되어
+  `uint32`로 나오고, shim이 진입 시점에 범위를 검사합니다.
 - 모든 생성 source는 기록 전 `gofmt`로 포맷됩니다.
 
 `go-check`도 같은 `gofmt` 결과와 비교합니다. 사용자 소유 Go 파일은 포맷하거나 검사하지
@@ -208,7 +212,10 @@ handle은 호출 후 즉시 해제하고, retained callback handle은 소유 객
 
 함수의 `symbol` 필드는 그 함수가 export되는 C 심볼 이름입니다. 규칙은 하나뿐이고
 (`{prefix}_{owner}_{name}`, owner는 `receiver` 또는 `namespace`, 모두 snake_case로
-정규화), 소유 타입이 없으면 `{prefix}_{name}`입니다. 헤더, 링커, 심볼 충돌 검사, 그리고
+정규화), 소유 타입이 없으면 `{prefix}_{name}`입니다. `namespace`가 중첩 경로를 담고 있으면
+segment마다 따로 정규화해 `_`로 잇습니다 — `unicode.codepointWidth`는
+`zg_unicode_codepoint_width`입니다. raw Go 이름도 같은 segment 단위로 Pascal 결합해
+`UnicodeCodepointWidth`가 되고, ABI identity는 `unicode.codepointWidth`입니다. 헤더, 링커, 심볼 충돌 검사, 그리고
 이 메타데이터가 모두 같은 규칙 함수(`naming.functionSymbolAlloc`)에서 이름을 받습니다.
 백엔드가 덧붙이는 장식은 포함하지 않습니다 — purego의 callback 변형이 쓰는 `_purego_v2`
 접미는 lowering 단계의 산물이므로 `symbol`에는 나타나지 않습니다.

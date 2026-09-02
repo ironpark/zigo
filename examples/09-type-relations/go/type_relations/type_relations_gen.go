@@ -94,3 +94,15 @@ func (a *Accumulator) Total() (int64, error) {
 func LiveObjects() uint {
 	return raw.LiveObjects()
 }
+
+// RunWidth
+// Reports how many cells a run of codepoints occupies.
+func RunWidth(first uint32, second uint32) uint16 {
+	return raw.TextRunWidth(first, second)
+}
+
+// CodepointWidth
+// Reports how many terminal cells a codepoint occupies.
+func CodepointWidth(cp uint32) uint8 {
+	return raw.TextUnicodeCodepointWidth(cp)
+}

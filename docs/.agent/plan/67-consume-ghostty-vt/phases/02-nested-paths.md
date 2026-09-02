@@ -2,7 +2,7 @@
 depends_on:
 - "67-consume-ghostty-vt#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `root.unicode.codepointWidth`·3단계 fixture 골든에 심볼·Go 이름·identity·doc이 기대대로 있고, 기존 골든이 불변이다.
 > NEXT: none

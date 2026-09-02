@@ -62,3 +62,15 @@ func TestIndependentLifecycles(t *testing.T) {
 		t.Fatalf("LiveObjects() = %d, want 0", got)
 	}
 }
+
+// The binding reaches these through `root.text.runWidth` and
+// `root.text.unicode.codepointWidth`, so the nested namespaces cross the
+// boundary without a hand-written flattening facade in Zig.
+func TestNestedNamespaces(t *testing.T) {
+	if got := CodepointWidth(0x1100); got != 2 {
+		t.Fatalf("CodepointWidth(0x1100) = %d, want 2", got)
+	}
+	if got := RunWidth(0x1100, 'a'); got != 3 {
+		t.Fatalf("RunWidth(0x1100, 'a') = %d, want 3", got)
+	}
+}

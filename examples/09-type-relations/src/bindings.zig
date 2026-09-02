@@ -17,5 +17,7 @@ pub const bindings = zigo.define(.{
         .{ .path = "Accumulator.total" },
         .{ .path = "Accumulator.deinit" },
         .{ .path = "root.liveObjects" },
+        .{ .path = "root.text.runWidth", .params = .{ "first", "second" } },
+        .{ .path = "root.text.unicode.codepointWidth", .params = .{"cp"} },
     },
 });
