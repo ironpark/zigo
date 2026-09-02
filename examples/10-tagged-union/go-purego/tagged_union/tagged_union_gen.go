@@ -33,7 +33,7 @@ func NewChild(value int32) (*Child, error) {
 	return newChild(result), nil
 }
 
-// Get invokes the bound Zig Child.get operation.
+// Get calls the Zig function Child.get.
 // It returns *HandleError if a required handle is nil or closed.
 func (c *Child) Get() (int32, error) {
 	defer runtime.KeepAlive(c)
@@ -58,7 +58,7 @@ func NewValue(initial int64) (*Value, error) {
 	return newValue(result), nil
 }
 
-// SetNone invokes the bound Zig Value.setNone operation.
+// SetNone calls the Zig function Value.setNone.
 // It returns *HandleError if a required handle is nil or closed.
 func (v *Value) SetNone() error {
 	defer runtime.KeepAlive(v)
@@ -71,7 +71,7 @@ func (v *Value) SetNone() error {
 	return nil
 }
 
-// SetFlag invokes the bound Zig Value.setFlag operation.
+// SetFlag calls the Zig function Value.setFlag.
 // It returns *HandleError if a required handle is nil or closed.
 func (v *Value) SetFlag(flag bool) error {
 	defer runtime.KeepAlive(v)
@@ -84,7 +84,7 @@ func (v *Value) SetFlag(flag bool) error {
 	return nil
 }
 
-// SetMode invokes the bound Zig Value.setMode operation.
+// SetMode calls the Zig function Value.setMode.
 // It returns *HandleError if a required handle is nil or closed.
 func (v *Value) SetMode(mode Mode) error {
 	defer runtime.KeepAlive(v)
@@ -97,7 +97,7 @@ func (v *Value) SetMode(mode Mode) error {
 	return nil
 }
 
-// UsePresetSamples invokes the bound Zig Value.usePresetSamples operation.
+// UsePresetSamples calls the Zig function Value.usePresetSamples.
 // It returns *HandleError if a required handle is nil or closed.
 func (v *Value) UsePresetSamples() error {
 	defer runtime.KeepAlive(v)
@@ -110,7 +110,7 @@ func (v *Value) UsePresetSamples() error {
 	return nil
 }
 
-// UseEmptySamples invokes the bound Zig Value.useEmptySamples operation.
+// UseEmptySamples calls the Zig function Value.useEmptySamples.
 // It returns *HandleError if a required handle is nil or closed.
 func (v *Value) UseEmptySamples() error {
 	defer runtime.KeepAlive(v)
@@ -123,7 +123,7 @@ func (v *Value) UseEmptySamples() error {
 	return nil
 }
 
-// UseMutableSamples invokes the bound Zig Value.useMutableSamples operation.
+// UseMutableSamples calls the Zig function Value.useMutableSamples.
 // It returns *HandleError if a required handle is nil or closed.
 func (v *Value) UseMutableSamples() error {
 	defer runtime.KeepAlive(v)
@@ -136,7 +136,7 @@ func (v *Value) UseMutableSamples() error {
 	return nil
 }
 
-// SetChild invokes the bound Zig Value.setChild operation.
+// SetChild calls the Zig function Value.setChild.
 // It returns *HandleError if a required handle is nil or closed.
 func (v *Value) SetChild(child *Child) error {
 	defer runtime.KeepAlive(v)
@@ -155,7 +155,7 @@ func (v *Value) SetChild(child *Child) error {
 	return nil
 }
 
-// Borrow invokes the bound Zig Value.borrow operation.
+// Borrow calls the Zig function Value.borrow.
 // The returned reference remains valid only while its parent handle remains open.
 // It returns *HandleError if a required handle is nil or closed.
 func (v *Value) Borrow() (*ValueRef, error) {
@@ -182,7 +182,7 @@ func NewSignal(initial uint32) (*Signal, error) {
 	return newSignal(result), nil
 }
 
-// SetIdle invokes the bound Zig Signal.setIdle operation.
+// SetIdle calls the Zig function Signal.setIdle.
 // It returns *HandleError if a required handle is nil or closed.
 func (s *Signal) SetIdle() error {
 	defer runtime.KeepAlive(s)
@@ -195,7 +195,7 @@ func (s *Signal) SetIdle() error {
 	return nil
 }
 
-// SetTicks invokes the bound Zig Signal.setTicks operation.
+// SetTicks calls the Zig function Signal.setTicks.
 // It returns *HandleError if a required handle is nil or closed.
 func (s *Signal) SetTicks(ticks uint32) error {
 	defer runtime.KeepAlive(s)
@@ -208,7 +208,7 @@ func (s *Signal) SetTicks(ticks uint32) error {
 	return nil
 }
 
-// SetLevel invokes the bound Zig Signal.setLevel operation.
+// SetLevel calls the Zig function Signal.setLevel.
 // It returns *HandleError if a required handle is nil or closed.
 func (s *Signal) SetLevel(level float64) error {
 	defer runtime.KeepAlive(s)
@@ -221,7 +221,7 @@ func (s *Signal) SetLevel(level float64) error {
 	return nil
 }
 
-// SetOffset invokes the bound Zig Signal.setOffset operation.
+// SetOffset calls the Zig function Signal.setOffset.
 // It returns *HandleError if a required handle is nil or closed.
 func (s *Signal) SetOffset(offset int16) error {
 	defer runtime.KeepAlive(s)
@@ -234,7 +234,7 @@ func (s *Signal) SetOffset(offset int16) error {
 	return nil
 }
 
-// SetMode invokes the bound Zig Signal.setMode operation.
+// SetMode calls the Zig function Signal.setMode.
 // It returns *HandleError if a required handle is nil or closed.
 func (s *Signal) SetMode(mode Mode) error {
 	defer runtime.KeepAlive(s)
@@ -247,7 +247,7 @@ func (s *Signal) SetMode(mode Mode) error {
 	return nil
 }
 
-// SetActive invokes the bound Zig Signal.setActive operation.
+// SetActive calls the Zig function Signal.setActive.
 // It returns *HandleError if a required handle is nil or closed.
 func (s *Signal) SetActive(active bool) error {
 	defer runtime.KeepAlive(s)
@@ -260,12 +260,12 @@ func (s *Signal) SetActive(active bool) error {
 	return nil
 }
 
-// LiveValues invokes the bound Zig liveValues operation.
+// LiveValues calls the Zig function liveValues.
 func LiveValues() uint {
 	return raw.LiveValues()
 }
 
-// Divide invokes the bound Zig divide operation.
+// Divide calls the Zig function divide.
 // Native failures are returned as generated error values.
 func Divide(numerator float64, denominator float64) (float64, error) {
 	runtime.LockOSThread()
@@ -277,12 +277,12 @@ func Divide(numerator float64, denominator float64) (float64, error) {
 	return result, nil
 }
 
-// Sum invokes the bound Zig sum operation.
+// Sum calls the Zig function sum.
 func Sum(values []float64) float64 {
 	return raw.Sum(values)
 }
 
-// PanicError invokes the bound Zig panicError operation.
+// PanicError calls the Zig function panicError.
 // Native failures are returned as generated error values.
 func PanicError() error {
 	runtime.LockOSThread()

@@ -9,22 +9,22 @@ import (
 )
 
 
-// Configure invokes the bound Zig configure operation.
+// Configure calls the Zig function configure.
 func Configure(config Config) {
 	raw.Configure(zigoConfigToRaw(config))
 }
 
-// DefaultConfig invokes the bound Zig defaultConfig operation.
+// DefaultConfig calls the Zig function defaultConfig.
 func DefaultConfig() Config {
 	return zigoConfigFromRaw(raw.DefaultConfig())
 }
 
-// Translate invokes the bound Zig translate operation.
+// Translate calls the Zig function translate.
 func Translate(origin Point, dx int16) Point {
 	return zigoPointFromRaw(raw.Translate(zigoPointToRaw(origin), dx))
 }
 
-// Load invokes the bound Zig load operation.
+// Load calls the Zig function load.
 // Native failures are returned as generated error values.
 func Load() (Config, error) {
 	runtime.LockOSThread()
@@ -36,7 +36,7 @@ func Load() (Config, error) {
 	return zigoConfigFromRaw(result), nil
 }
 
-// AcceptPoints invokes the bound Zig acceptPoints operation.
+// AcceptPoints calls the Zig function acceptPoints.
 func AcceptPoints(values []Point) {
 	var valuesRaw []raw.PointData
 	if len(values) != 0 {
@@ -45,7 +45,7 @@ func AcceptPoints(values []Point) {
 	raw.AcceptPoints(valuesRaw)
 }
 
-// FillPoints invokes the bound Zig fillPoints operation.
+// FillPoints calls the Zig function fillPoints.
 // Native failures are returned as generated error values.
 func FillPoints(output []Point) (uint, error) {
 	runtime.LockOSThread()
@@ -61,7 +61,7 @@ func FillPoints(output []Point) (uint, error) {
 	return result, nil
 }
 
-// FillAllPoints invokes the bound Zig fillAllPoints operation.
+// FillAllPoints calls the Zig function fillAllPoints.
 func FillAllPoints(output []Point) {
 	var outputRaw []raw.PointData
 	if len(output) != 0 {
@@ -70,13 +70,13 @@ func FillAllPoints(output []Point) {
 	raw.FillAllPoints(outputRaw)
 }
 
-// AcceptConfigs invokes the bound Zig acceptConfigs operation.
+// AcceptConfigs calls the Zig function acceptConfigs.
 func AcceptConfigs(values []Config) {
 	valuesRaw := zigoConfigSliceToRaw(values)
 	raw.AcceptConfigs(valuesRaw)
 }
 
-// FillConfigs invokes the bound Zig fillConfigs operation.
+// FillConfigs calls the Zig function fillConfigs.
 func FillConfigs(output []Config) uint {
 	outputRaw := make([]raw.ConfigData, len(output))
 	result := raw.FillConfigs(outputRaw)
@@ -84,12 +84,12 @@ func FillConfigs(output []Config) uint {
 	return result
 }
 
-// Points invokes the bound Zig points operation.
+// Points calls the Zig function points.
 func Points() []Point {
 	return zigoPointSliceFromRaw(raw.Points())
 }
 
-// PointsChecked invokes the bound Zig pointsChecked operation.
+// PointsChecked calls the Zig function pointsChecked.
 // Native failures are returned as generated error values.
 func PointsChecked() ([]Point, error) {
 	runtime.LockOSThread()

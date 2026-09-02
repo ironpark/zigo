@@ -4,7 +4,7 @@ package scalar
 import "example.com/zigo/scalar/internal/raw"
 
 
-// Add invokes the bound Zig add operation.
+// Add calls the Zig function add.
 func Add(p0 int32, p1 int32) int32 {
 	return raw.Add(p0, p1)
 }

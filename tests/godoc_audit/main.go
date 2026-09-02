@@ -75,12 +75,37 @@ func firstDoc(primary, fallback *ast.CommentGroup) *ast.CommentGroup {
 	return fallback
 }
 
+// A generated doc either splices the body onto the identifier ("Len reports
+// ...") or, when the body is a sentence of its own, opens with the identifier
+// alone on the first line. Both start at the identifier, which is what godoc
+// asks for.
 func documents(group *ast.CommentGroup, name string) bool {
 	if group == nil {
 		return false
 	}
 	text := strings.TrimSpace(group.Text())
-	return text == name || strings.HasPrefix(text, name+" ")
+	if text == name {
+		return true
+	}
+	first, rest, _ := strings.Cut(text, "\n")
+	if strings.TrimSpace(first) == name {
+		return strings.TrimSpace(rest) != ""
+	}
+	return strings.HasPrefix(text, name+" ") && !splicesNounPhrase(text, name)
+}
+
+// Words that can only open a sentence, never continue one that began with the
+// identifier. "SelectionSilent the selection flag bits" is the shape this
+// catches: a doc that was lowercased and glued onto the name.
+var sentenceOpeners = map[string]bool{
+	"the": true, "a": true, "an": true, "this": true, "these": true,
+	"those": true, "it": true, "its": true, "their": true, "there": true,
+}
+
+func splicesNounPhrase(text, name string) bool {
+	body := strings.TrimSpace(strings.TrimPrefix(text, name))
+	word, _, _ := strings.Cut(body, " ")
+	return sentenceOpeners[word]
 }
 
 func report(fset *token.FileSet, position token.Pos, path, name string) {

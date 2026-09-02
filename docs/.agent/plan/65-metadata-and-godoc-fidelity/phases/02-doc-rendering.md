@@ -2,7 +2,7 @@
 depends_on:
 - "65-metadata-and-godoc-fidelity#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `SelectionSilent the …` 류 접합이 어떤 골든에도 없다(테스트로 단정).
 > NEXT: none

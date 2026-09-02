@@ -20,7 +20,7 @@ func NewContext() (*Context, error) {
 	return newContext(result), nil
 }
 
-// Add invokes the bound Zig Context.add operation.
+// Add calls the Zig function Context.add.
 // It returns *HandleError if a required handle is nil or closed.
 func (c *Context) Add(value int64) (int64, error) {
 	defer runtime.KeepAlive(c)
@@ -51,17 +51,18 @@ func (c *Context) Crash() error {
 	return nil
 }
 
-// LiveBytes invokes the bound Zig liveBytes operation.
+// LiveBytes calls the Zig function liveBytes.
 func LiveBytes() uint {
 	return raw.LiveBytes()
 }
 
-// Echo echoes UTF-8 text without changing its bytes.
+// Echo
+// Echoes UTF-8 text without changing its bytes.
 func Echo(text string) string {
 	return string(raw.Echo([]byte(text)))
 }
 
-// Fallback invokes the bound Zig fallback operation.
+// Fallback calls the Zig function fallback.
 func Fallback(p0 int64) int64 {
 	return raw.Fallback(p0)
 }

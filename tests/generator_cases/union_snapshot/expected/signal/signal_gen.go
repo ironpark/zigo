@@ -21,7 +21,7 @@ func NewSignal() (*Signal, error) {
 	return newSignal(result), nil
 }
 
-// SetTicks invokes the bound Zig Signal.setTicks operation.
+// SetTicks calls the Zig function Signal.setTicks.
 // It returns *HandleError if a required handle is nil or closed.
 func (s *Signal) SetTicks(ticks uint32) error {
 	defer runtime.KeepAlive(s)
@@ -34,7 +34,7 @@ func (s *Signal) SetTicks(ticks uint32) error {
 	return nil
 }
 
-// SetMode invokes the bound Zig Signal.setMode operation.
+// SetMode calls the Zig function Signal.setMode.
 // It returns *HandleError if a required handle is nil or closed.
 func (s *Signal) SetMode(mode Mode) error {
 	defer runtime.KeepAlive(s)
@@ -47,7 +47,7 @@ func (s *Signal) SetMode(mode Mode) error {
 	return nil
 }
 
-// SetActive invokes the bound Zig Signal.setActive operation.
+// SetActive calls the Zig function Signal.setActive.
 // It returns *HandleError if a required handle is nil or closed.
 func (s *Signal) SetActive(active bool) error {
 	defer runtime.KeepAlive(s)

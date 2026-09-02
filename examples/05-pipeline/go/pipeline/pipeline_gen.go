@@ -20,7 +20,7 @@ func NewIntBatch() (*IntBatch, error) {
 	return newIntBatch(result), nil
 }
 
-// Push invokes the bound Zig IntBatch.push operation.
+// Push calls the Zig function IntBatch.push.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (i *IntBatch) Push(value int32) error {
@@ -39,7 +39,7 @@ func (i *IntBatch) Push(value int32) error {
 	return nil
 }
 
-// Len invokes the bound Zig IntBatch.len operation.
+// Len calls the Zig function IntBatch.len.
 // It returns *HandleError if a required handle is nil or closed.
 func (i *IntBatch) Len() (uint, error) {
 	defer runtime.KeepAlive(i)
@@ -64,7 +64,7 @@ func NewFloatBatch() (*FloatBatch, error) {
 	return newFloatBatch(result), nil
 }
 
-// Push invokes the bound Zig FloatBatch.push operation.
+// Push calls the Zig function FloatBatch.push.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (f *FloatBatch) Push(value float64) error {
@@ -83,7 +83,7 @@ func (f *FloatBatch) Push(value float64) error {
 	return nil
 }
 
-// Len invokes the bound Zig FloatBatch.len operation.
+// Len calls the Zig function FloatBatch.len.
 // It returns *HandleError if a required handle is nil or closed.
 func (f *FloatBatch) Len() (uint, error) {
 	defer runtime.KeepAlive(f)
@@ -112,7 +112,7 @@ func NewPipeline(name string, mode Mode, callback PipelineCallback) (*Pipeline, 
 	return newPipeline(result, []zigoCallbackHandle{callbackHandle}), nil
 }
 
-// Process invokes the bound Zig Pipeline.process operation.
+// Process calls the Zig function Pipeline.process.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -135,7 +135,7 @@ func (p *Pipeline) Process(values []int32) (int64, error) {
 	return result, nil
 }
 
-// Name invokes the bound Zig Pipeline.name operation.
+// Name calls the Zig function Pipeline.name.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (p *Pipeline) Name() (string, error) {
@@ -152,7 +152,7 @@ func (p *Pipeline) Name() (string, error) {
 	return string(result), nil
 }
 
-// Mode invokes the bound Zig Pipeline.mode operation.
+// Mode calls the Zig function Pipeline.mode.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (p *Pipeline) Mode() (Mode, error) {
@@ -169,7 +169,7 @@ func (p *Pipeline) Mode() (Mode, error) {
 	return Mode(result), nil
 }
 
-// SetEnabled invokes the bound Zig Pipeline.setEnabled operation.
+// SetEnabled calls the Zig function Pipeline.setEnabled.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (p *Pipeline) SetEnabled(enabled bool) (bool, error) {
@@ -186,7 +186,7 @@ func (p *Pipeline) SetEnabled(enabled bool) (bool, error) {
 	return result != 0, nil
 }
 
-// Processed invokes the bound Zig Pipeline.processed operation.
+// Processed calls the Zig function Pipeline.processed.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (p *Pipeline) Processed() (uint, error) {
@@ -203,7 +203,7 @@ func (p *Pipeline) Processed() (uint, error) {
 	return result, nil
 }
 
-// Total invokes the bound Zig Pipeline.total operation.
+// Total calls the Zig function Pipeline.total.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (p *Pipeline) Total() (int64, error) {
@@ -220,12 +220,12 @@ func (p *Pipeline) Total() (int64, error) {
 	return result, nil
 }
 
-// LiveBytes invokes the bound Zig liveBytes operation.
+// LiveBytes calls the Zig function liveBytes.
 func LiveBytes() uint {
 	return raw.LiveBytes()
 }
 
-// CompressionBound invokes the bound Zig compressionBound operation.
+// CompressionBound calls the Zig function compressionBound.
 func CompressionBound(sourceLen uint) uint {
 	return raw.CompressionBound(sourceLen)
 }

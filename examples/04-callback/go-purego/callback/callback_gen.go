@@ -33,7 +33,7 @@ func NewFloatBuffer() (*FloatBuffer, error) {
 	return newFloatBuffer(result), nil
 }
 
-// Push invokes the bound Zig FloatBuffer.push operation.
+// Push calls the Zig function FloatBuffer.push.
 // It returns *HandleError if a required handle is nil or closed.
 func (f *FloatBuffer) Push(value float32) error {
 	defer runtime.KeepAlive(f)
@@ -46,7 +46,7 @@ func (f *FloatBuffer) Push(value float32) error {
 	return nil
 }
 
-// Len invokes the bound Zig FloatBuffer.len operation.
+// Len calls the Zig function FloatBuffer.len.
 // It returns *HandleError if a required handle is nil or closed.
 func (f *FloatBuffer) Len() (uint, error) {
 	defer runtime.KeepAlive(f)
@@ -71,7 +71,7 @@ func NewIntBuffer() (*IntBuffer, error) {
 	return newIntBuffer(result), nil
 }
 
-// Push invokes the bound Zig IntBuffer.push operation.
+// Push calls the Zig function IntBuffer.push.
 // It returns *HandleError if a required handle is nil or closed.
 func (i *IntBuffer) Push(value int32) error {
 	defer runtime.KeepAlive(i)
@@ -84,7 +84,7 @@ func (i *IntBuffer) Push(value int32) error {
 	return nil
 }
 
-// Len invokes the bound Zig IntBuffer.len operation.
+// Len calls the Zig function IntBuffer.len.
 // It returns *HandleError if a required handle is nil or closed.
 func (i *IntBuffer) Len() (uint, error) {
 	defer runtime.KeepAlive(i)
@@ -113,7 +113,7 @@ func NewCallbackContext(callback Observer) (*CallbackContext, error) {
 	return newCallbackContext(result, []zigoCallbackHandle{callbackHandle}), nil
 }
 
-// Run invokes the bound Zig CallbackContext.run operation.
+// Run calls the Zig function CallbackContext.run.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (c *CallbackContext) Run(value int32) (int32, error) {
@@ -130,7 +130,7 @@ func (c *CallbackContext) Run(value int32) (int32, error) {
 	return result, nil
 }
 
-// PanicNow invokes the bound Zig panicNow operation.
+// PanicNow calls the Zig function panicNow.
 // Native failures are returned as generated error values.
 func PanicNow() error {
 	runtime.LockOSThread()
@@ -142,12 +142,12 @@ func PanicNow() error {
 	return nil
 }
 
-// CompressionBound invokes the bound Zig compressionBound operation.
+// CompressionBound calls the Zig function compressionBound.
 func CompressionBound(sourceLen uint) uint {
 	return raw.CompressionBound(sourceLen)
 }
 
-// Apply invokes the bound Zig apply operation.
+// Apply calls the Zig function apply.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func Apply(value int32, callback Observer) int32 {
 	callbackHandle := newObserverHandle(callback)

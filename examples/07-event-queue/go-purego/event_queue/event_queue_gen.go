@@ -68,7 +68,7 @@ func (e *EventQueue) Clone(observer EventQueueCloneObserver) (*EventQueue, error
 	return newEventQueue(result, []zigoCallbackHandle{observerHandle}), nil
 }
 
-// Enqueue invokes the bound Zig EventQueue.enqueue operation.
+// Enqueue calls the Zig function EventQueue.enqueue.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -127,7 +127,7 @@ func (e *EventQueue) MergeFrom(source *EventQueue) (uint, error) {
 	return result, nil
 }
 
-// Process invokes the bound Zig EventQueue.process operation.
+// Process calls the Zig function EventQueue.process.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -150,7 +150,7 @@ func (e *EventQueue) Process(limit uint) (uint, error) {
 	return result, nil
 }
 
-// Name invokes the bound Zig EventQueue.name operation.
+// Name calls the Zig function EventQueue.name.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) Name() (string, error) {
@@ -167,7 +167,8 @@ func (e *EventQueue) Name() (string, error) {
 	return string(result), nil
 }
 
-// SampleValues A numeric slice return intentionally points at native storage. The Go
+// SampleValues
+// A numeric slice return intentionally points at native storage. The Go
 // binding must copy it before returning so a caller cannot alias it.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -211,33 +212,35 @@ func (e *EventQueue) SampleValuesChecked() ([]float32, error) {
 	return result, nil
 }
 
-// EchoCString sentinel byte pointers use the C string lowering and surface as Go
+// EchoCString
+// Sentinel byte pointers use the C string lowering and surface as Go
 // strings without a separate length parameter.
 func EchoCString(text string) string {
 	return raw.EventQueueEchoCString(text)
 }
 
-// SampleCString invokes the bound Zig sampleCString operation.
+// SampleCString calls the Zig function sampleCString.
 func SampleCString() string {
 	return raw.EventQueueSampleCString()
 }
 
-// ExtractPaths invokes the bound Zig extractPaths operation.
+// ExtractPaths calls the Zig function extractPaths.
 func ExtractPaths(paths []string) uint {
 	return raw.EventQueueExtractPaths(paths)
 }
 
-// ExtractSentinelSlices invokes the bound Zig extractSentinelSlices operation.
+// ExtractSentinelSlices calls the Zig function extractSentinelSlices.
 func ExtractSentinelSlices(paths []string) uint {
 	return raw.EventQueueExtractSentinelSlices(paths)
 }
 
-// ExtractSentinelPointers invokes the bound Zig extractSentinelPointers operation.
+// ExtractSentinelPointers calls the Zig function extractSentinelPointers.
 func ExtractSentinelPointers(paths []string) uint {
 	return raw.EventQueueExtractSentinelPointers(paths)
 }
 
-// ExtractSamples hands the caller a freshly allocated buffer. Ownership moves with the
+// ExtractSamples
+// Hands the caller a freshly allocated buffer. Ownership moves with the
 // return value, so the generated binding must copy it and then call
 // `freeSamples` before handing the slice to Go.
 // It returns *HandleError if a required handle is nil or closed.
@@ -281,7 +284,8 @@ func (e *EventQueue) ExtractSamplesChecked() ([]float32, error) {
 	return result, nil
 }
 
-// AcceptStats accepts a batch of value snapshots so both backends exercise their
+// AcceptStats
+// Accepts a batch of value snapshots so both backends exercise their
 // struct-slice input conversion path.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -300,7 +304,8 @@ func (e *EventQueue) AcceptStats(values []Stats) (uint, error) {
 	return result, nil
 }
 
-// ExtractSamplesInto the same samples as `extractSamples`, written into a buffer the caller
+// ExtractSamplesInto
+// The same samples as `extractSamples`, written into a buffer the caller
 // already has. Nothing is allocated and nothing has to be released: the
 // result says how many entries were filled, and everything past that is
 // still whatever the caller left there.
@@ -320,7 +325,8 @@ func (e *EventQueue) ExtractSamplesInto(dst []float32) (uint, error) {
 	return result, nil
 }
 
-// LimitsInto one `Limits` row per queued event, up to what the buffer holds. `Limits`
+// LimitsInto
+// One `Limits` row per queued event, up to what the buffer holds. `Limits`
 // has no bool field, so both backends hand the buffer's address straight
 // to the native call and neither direction copies.
 // It returns *HandleError if a required handle is nil or closed.
@@ -343,7 +349,8 @@ func (e *EventQueue) LimitsInto(dst []Limits) (uint, error) {
 	return result, nil
 }
 
-// Estimate fills one value snapshot per queued event. The return value is the
+// Estimate
+// Fills one value snapshot per queued event. The return value is the
 // number of output entries written, while the explicit out metadata keeps
 // the slice capacity visible in the C ABI.
 // It returns *HandleError if a required handle is nil or closed.
@@ -370,7 +377,8 @@ func (e *EventQueue) Estimate(output []Stats) (uint, error) {
 	return result, nil
 }
 
-// SampleStats returns value snapshots from native storage; the generated Go binding
+// SampleStats
+// Returns value snapshots from native storage; the generated Go binding
 // must copy each struct before exposing the slice.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -388,7 +396,7 @@ func (e *EventQueue) SampleStats() ([]Stats, error) {
 	return zigoStatsSliceFromRaw(result), nil
 }
 
-// Len invokes the bound Zig EventQueue.len operation.
+// Len calls the Zig function EventQueue.len.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) Len() (uint, error) {
@@ -405,7 +413,7 @@ func (e *EventQueue) Len() (uint, error) {
 	return result, nil
 }
 
-// Capacity invokes the bound Zig EventQueue.capacity operation.
+// Capacity calls the Zig function EventQueue.capacity.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) Capacity() (uint, error) {
@@ -422,7 +430,7 @@ func (e *EventQueue) Capacity() (uint, error) {
 	return result, nil
 }
 
-// Policy invokes the bound Zig EventQueue.policy operation.
+// Policy calls the Zig function EventQueue.policy.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) Policy() (Policy, error) {
@@ -439,7 +447,7 @@ func (e *EventQueue) Policy() (Policy, error) {
 	return Policy(result), nil
 }
 
-// Dropped invokes the bound Zig EventQueue.dropped operation.
+// Dropped calls the Zig function EventQueue.dropped.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) Dropped() (uint, error) {
@@ -456,7 +464,7 @@ func (e *EventQueue) Dropped() (uint, error) {
 	return result, nil
 }
 
-// Processed invokes the bound Zig EventQueue.processed operation.
+// Processed calls the Zig function EventQueue.processed.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) Processed() (uint, error) {
@@ -473,7 +481,7 @@ func (e *EventQueue) Processed() (uint, error) {
 	return result, nil
 }
 
-// Stats invokes the bound Zig EventQueue.stats operation.
+// Stats calls the Zig function EventQueue.stats.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) Stats() (Stats, error) {
@@ -490,7 +498,7 @@ func (e *EventQueue) Stats() (Stats, error) {
 	return zigoStatsFromRaw(result), nil
 }
 
-// Limits invokes the bound Zig EventQueue.limits operation.
+// Limits calls the Zig function EventQueue.limits.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) Limits() (Limits, error) {
@@ -507,7 +515,7 @@ func (e *EventQueue) Limits() (Limits, error) {
 	return zigoLimitsFromRaw(result), nil
 }
 
-// ApplyLimits invokes the bound Zig EventQueue.applyLimits operation.
+// ApplyLimits calls the Zig function EventQueue.applyLimits.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -530,7 +538,7 @@ func (e *EventQueue) ApplyLimits(updated Limits) error {
 	return nil
 }
 
-// Clear invokes the bound Zig EventQueue.clear operation.
+// Clear calls the Zig function EventQueue.clear.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) Clear() (uint, error) {
@@ -547,12 +555,13 @@ func (e *EventQueue) Clear() (uint, error) {
 	return result, nil
 }
 
-// LiveQueues invokes the bound Zig liveQueues operation.
+// LiveQueues calls the Zig function liveQueues.
 func LiveQueues() uint {
 	return raw.LiveQueues()
 }
 
-// LiveSamples sample buffers still owned by the library. A correct binding returns this to
+// LiveSamples
+// Sample buffers still owned by the library. A correct binding returns this to
 // zero after every `extractSamples` call.
 func LiveSamples() uint {
 	return raw.LiveSamples()

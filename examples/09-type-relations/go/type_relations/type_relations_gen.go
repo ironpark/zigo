@@ -20,7 +20,7 @@ func NewCounter(initial int64) (*Counter, error) {
 	return newCounter(result), nil
 }
 
-// Get invokes the bound Zig Counter.get operation.
+// Get calls the Zig function Counter.get.
 // It returns *HandleError if a required handle is nil or closed.
 func (c *Counter) Get() (int64, error) {
 	defer runtime.KeepAlive(c)
@@ -32,7 +32,7 @@ func (c *Counter) Get() (int64, error) {
 	return raw.CounterGet(ptr), nil
 }
 
-// Add invokes the bound Zig Counter.add operation.
+// Add calls the Zig function Counter.add.
 // It returns *HandleError if a required handle is nil or closed.
 func (c *Counter) Add(delta int64) (int64, error) {
 	defer runtime.KeepAlive(c)
@@ -57,7 +57,8 @@ func NewAccumulator() (*Accumulator, error) {
 	return newAccumulator(result), nil
 }
 
-// Absorb adds the current value of another exposed opaque type.
+// Absorb
+// Adds the current value of another exposed opaque type.
 // It returns *HandleError if a required handle is nil or closed.
 func (a *Accumulator) Absorb(counter *Counter) (int64, error) {
 	defer runtime.KeepAlive(a)
@@ -75,7 +76,7 @@ func (a *Accumulator) Absorb(counter *Counter) (int64, error) {
 	return raw.AccumulatorAbsorb(ptr, counterPtr), nil
 }
 
-// Total invokes the bound Zig Accumulator.total operation.
+// Total calls the Zig function Accumulator.total.
 // It returns *HandleError if a required handle is nil or closed.
 func (a *Accumulator) Total() (int64, error) {
 	defer runtime.KeepAlive(a)
@@ -87,7 +88,7 @@ func (a *Accumulator) Total() (int64, error) {
 	return raw.AccumulatorTotal(ptr), nil
 }
 
-// LiveObjects invokes the bound Zig liveObjects operation.
+// LiveObjects calls the Zig function liveObjects.
 func LiveObjects() uint {
 	return raw.LiveObjects()
 }

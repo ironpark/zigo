@@ -4577,26 +4577,27 @@ fn writeGoDoc(writer: *std.Io.Writer, go_name: []const u8, zig_name: []const u8,
     var lines = std.mem.splitScalar(u8, doc, '\n');
     var first = true;
     while (lines.next()) |line| {
-        if (first) {
-            // Go doc comments read as one sentence starting with the identifier,
-            // so a Zig sentence like "Echoes text" must not keep its capital.
-            const body = withoutLeadingName(line, go_name, zig_name);
-            if (body.len == 0) {
-                try writer.print("// {s}\n", .{go_name});
-                first = false;
-                continue;
-            }
-            try writer.print("// {s} ", .{go_name});
-            if (continuesSentence(body)) {
-                try writer.writeByte(std.ascii.toLower(body[0]));
-                try writer.print("{s}\n", .{body[1..]});
-            } else {
-                try writer.print("{s}\n", .{body});
-            }
-            first = false;
-        } else {
+        if (!first) {
             try writer.print("// {s}\n", .{line});
+            continue;
         }
+        first = false;
+        const body = withoutLeadingName(line, go_name, zig_name);
+        // A doc that is only the declaration's name has nothing left to say.
+        if (body.len == 0) {
+            try writer.print("// {s}\n", .{go_name});
+            continue;
+        }
+        // Splicing onto the Go identifier only reads as one sentence when the
+        // Zig text was written to continue from a name: either it repeated the
+        // name, or it opens with a lowercase verb. A capitalized sentence is a
+        // sentence of its own, so it gets its own line rather than being
+        // lowercased into "SelectionSilent the selection flag bits".
+        if (body.ptr != line.ptr or std.ascii.isLower(body[0])) {
+            try writer.print("// {s} {s}\n", .{ go_name, body });
+            continue;
+        }
+        try writer.print("// {s}\n// {s}\n", .{ go_name, body });
     }
 }
 
@@ -4608,16 +4609,7 @@ fn withoutLeadingName(line: []const u8, go_name: []const u8, zig_name: []const u
     const end = std.mem.indexOfScalar(u8, line, ' ') orelse line.len;
     const word = line[0..end];
     if (!std.ascii.eqlIgnoreCase(word, go_name) and !std.ascii.eqlIgnoreCase(word, zig_name)) return line;
-    // A doc that is only the name has nothing left to say; the Go prefix
-    // already carries it, so the caller emits the name on its own.
     return std.mem.trimStart(u8, line[end..], " ");
-}
-
-/// A capitalized ordinary word continues the sentence the identifier starts.
-/// An acronym or a name that is already capitalized in Zig is left alone.
-fn continuesSentence(line: []const u8) bool {
-    if (line.len < 2 or !std.ascii.isUpper(line[0])) return false;
-    return std.ascii.isLower(line[1]);
 }
 
 fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.SemanticFn, go_name: []const u8, owned_type: ?[]const u8, reaches_callbacks: bool) !void {
@@ -4626,9 +4618,9 @@ fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.SemanticFn,
     } else if (owned_type) |type_name| {
         try writer.print("\n// {s} creates a caller-owned {s}.\n", .{ go_name, type_name });
     } else if (function.receiver) |receiver| {
-        try writer.print("\n// {s} invokes the bound Zig {s}.{s} operation.\n", .{ go_name, receiver, function.name });
+        try writer.print("\n// {s} calls the Zig function {s}.{s}.\n", .{ go_name, receiver, function.name });
     } else {
-        try writer.print("\n// {s} invokes the bound Zig {s} operation.\n", .{ go_name, function.name });
+        try writer.print("\n// {s} calls the Zig function {s}.\n", .{ go_name, function.name });
     }
     if (owned_type != null)
         try writer.writeAll("// The caller must call Close on the returned handle.\n");
@@ -5577,13 +5569,27 @@ test "a doc that opens with the declaration's own name is not repeated" {
             .doc = "ALGORITHMID names the negotiated algorithm.",
             .expected = "\n// AlgorithmID names the negotiated algorithm.\n",
         },
-        // An unrelated first word keeps the existing behaviour, including the
-        // lowercasing that makes the Go prefix read as one sentence.
+        // A capitalized sentence stands on its own line rather than being
+        // lowercased into the identifier.
         .{
             .go_name = "Echo",
             .zig_name = "echo",
             .doc = "Echoes UTF-8 text without changing its bytes.",
-            .expected = "\n// Echo echoes UTF-8 text without changing its bytes.\n",
+            .expected = "\n// Echo\n// Echoes UTF-8 text without changing its bytes.\n",
+        },
+        // The reported breakage: a noun phrase must never be spliced.
+        .{
+            .go_name = "SelectionSilent",
+            .zig_name = "selectionSilent",
+            .doc = "The selection flag bits shared by the setters below.",
+            .expected = "\n// SelectionSilent\n// The selection flag bits shared by the setters below.\n",
+        },
+        // A lowercase verb was written to continue from a name, so it splices.
+        .{
+            .go_name = "Len",
+            .zig_name = "len",
+            .doc = "reports how many events are queued.",
+            .expected = "\n// Len reports how many events are queued.\n",
         },
         // A name that only prefixes the first word is not the first word.
         .{

@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T05:11:29Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 위 네 fixture 테스트가 기대한 doc을 반환한다.
 > NEXT: none

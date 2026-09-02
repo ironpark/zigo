@@ -7,7 +7,7 @@ import (
 	raw "example.com/zigo/errors/support/ffi"
 )
 
-// Divide invokes the bound Zig divide operation.
+// Divide calls the Zig function divide.
 // Native failures are returned as generated error values.
 func Divide(numerator float64, denominator float64) (float64, error) {
 	runtime.LockOSThread()
@@ -19,12 +19,12 @@ func Divide(numerator float64, denominator float64) (float64, error) {
 	return result, nil
 }
 
-// Sum invokes the bound Zig sum operation.
+// Sum calls the Zig function sum.
 func Sum(values []float64) float64 {
 	return raw.Sum(values)
 }
 
-// NormalizeFormat invokes the bound Zig normalizeFormat operation.
+// NormalizeFormat calls the Zig function normalizeFormat.
 func NormalizeFormat(value Format) Format {
 	return Format(raw.NormalizeFormat(uint32(value)))
 }

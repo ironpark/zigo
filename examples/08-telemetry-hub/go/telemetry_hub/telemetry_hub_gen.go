@@ -24,7 +24,7 @@ func NewTelemetryHub(inputName string, maxSamples uint, initialMode Mode, overfl
 	return newTelemetryHub(result, []zigoCallbackHandle{observerHandle}), nil
 }
 
-// Rename invokes the bound Zig TelemetryHub.rename operation.
+// Rename calls the Zig function TelemetryHub.rename.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -47,7 +47,7 @@ func (t *TelemetryHub) Rename(newName string) error {
 	return nil
 }
 
-// Name invokes the bound Zig TelemetryHub.name operation.
+// Name calls the Zig function TelemetryHub.name.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Name() (string, error) {
@@ -64,7 +64,7 @@ func (t *TelemetryHub) Name() (string, error) {
 	return string(result), nil
 }
 
-// Capacity invokes the bound Zig TelemetryHub.capacity operation.
+// Capacity calls the Zig function TelemetryHub.capacity.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Capacity() (uint, error) {
@@ -81,7 +81,7 @@ func (t *TelemetryHub) Capacity() (uint, error) {
 	return result, nil
 }
 
-// Len invokes the bound Zig TelemetryHub.len operation.
+// Len calls the Zig function TelemetryHub.len.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Len() (uint, error) {
@@ -98,7 +98,7 @@ func (t *TelemetryHub) Len() (uint, error) {
 	return result, nil
 }
 
-// IsEmpty invokes the bound Zig TelemetryHub.isEmpty operation.
+// IsEmpty calls the Zig function TelemetryHub.isEmpty.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) IsEmpty() (bool, error) {
@@ -115,7 +115,7 @@ func (t *TelemetryHub) IsEmpty() (bool, error) {
 	return result != 0, nil
 }
 
-// IsFull invokes the bound Zig TelemetryHub.isFull operation.
+// IsFull calls the Zig function TelemetryHub.isFull.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) IsFull() (bool, error) {
@@ -132,7 +132,7 @@ func (t *TelemetryHub) IsFull() (bool, error) {
 	return result != 0, nil
 }
 
-// Mode invokes the bound Zig TelemetryHub.mode operation.
+// Mode calls the Zig function TelemetryHub.mode.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Mode() (Mode, error) {
@@ -149,7 +149,7 @@ func (t *TelemetryHub) Mode() (Mode, error) {
 	return Mode(result), nil
 }
 
-// SetMode invokes the bound Zig TelemetryHub.setMode operation.
+// SetMode calls the Zig function TelemetryHub.setMode.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) SetMode(newMode Mode) (Mode, error) {
@@ -166,7 +166,7 @@ func (t *TelemetryHub) SetMode(newMode Mode) (Mode, error) {
 	return Mode(result), nil
 }
 
-// OverflowPolicy invokes the bound Zig TelemetryHub.overflowPolicy operation.
+// OverflowPolicy calls the Zig function TelemetryHub.overflowPolicy.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) OverflowPolicy() (OverflowPolicy, error) {
@@ -183,7 +183,7 @@ func (t *TelemetryHub) OverflowPolicy() (OverflowPolicy, error) {
 	return OverflowPolicy(result), nil
 }
 
-// SetOverflowPolicy invokes the bound Zig TelemetryHub.setOverflowPolicy operation.
+// SetOverflowPolicy calls the Zig function TelemetryHub.setOverflowPolicy.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) SetOverflowPolicy(newPolicy OverflowPolicy) (OverflowPolicy, error) {
@@ -200,7 +200,7 @@ func (t *TelemetryHub) SetOverflowPolicy(newPolicy OverflowPolicy) (OverflowPoli
 	return OverflowPolicy(result), nil
 }
 
-// Enabled invokes the bound Zig TelemetryHub.enabled operation.
+// Enabled calls the Zig function TelemetryHub.enabled.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Enabled() (bool, error) {
@@ -217,7 +217,7 @@ func (t *TelemetryHub) Enabled() (bool, error) {
 	return result != 0, nil
 }
 
-// SetEnabled invokes the bound Zig TelemetryHub.setEnabled operation.
+// SetEnabled calls the Zig function TelemetryHub.setEnabled.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) SetEnabled(newEnabled bool) (bool, error) {
@@ -234,7 +234,7 @@ func (t *TelemetryHub) SetEnabled(newEnabled bool) (bool, error) {
 	return result != 0, nil
 }
 
-// Threshold invokes the bound Zig TelemetryHub.threshold operation.
+// Threshold calls the Zig function TelemetryHub.threshold.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Threshold() (float64, error) {
@@ -251,7 +251,7 @@ func (t *TelemetryHub) Threshold() (float64, error) {
 	return result, nil
 }
 
-// SetThreshold invokes the bound Zig TelemetryHub.setThreshold operation.
+// SetThreshold calls the Zig function TelemetryHub.setThreshold.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -274,7 +274,7 @@ func (t *TelemetryHub) SetThreshold(newThreshold float64) error {
 	return nil
 }
 
-// ScaleFactor invokes the bound Zig TelemetryHub.scaleFactor operation.
+// ScaleFactor calls the Zig function TelemetryHub.scaleFactor.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) ScaleFactor() (float64, error) {
@@ -291,7 +291,7 @@ func (t *TelemetryHub) ScaleFactor() (float64, error) {
 	return result, nil
 }
 
-// SetScaleFactor invokes the bound Zig TelemetryHub.setScaleFactor operation.
+// SetScaleFactor calls the Zig function TelemetryHub.setScaleFactor.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -314,7 +314,7 @@ func (t *TelemetryHub) SetScaleFactor(newFactor float64) error {
 	return nil
 }
 
-// Offset invokes the bound Zig TelemetryHub.offset operation.
+// Offset calls the Zig function TelemetryHub.offset.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Offset() (float64, error) {
@@ -331,7 +331,7 @@ func (t *TelemetryHub) Offset() (float64, error) {
 	return result, nil
 }
 
-// SetOffset invokes the bound Zig TelemetryHub.setOffset operation.
+// SetOffset calls the Zig function TelemetryHub.setOffset.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -354,7 +354,7 @@ func (t *TelemetryHub) SetOffset(newOffset float64) error {
 	return nil
 }
 
-// Push invokes the bound Zig TelemetryHub.push operation.
+// Push calls the Zig function TelemetryHub.push.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -377,7 +377,7 @@ func (t *TelemetryHub) Push(id uint64, value float64) error {
 	return nil
 }
 
-// PushWithSeverity invokes the bound Zig TelemetryHub.pushWithSeverity operation.
+// PushWithSeverity calls the Zig function TelemetryHub.pushWithSeverity.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -400,7 +400,7 @@ func (t *TelemetryHub) PushWithSeverity(id uint64, value float64, severity Sever
 	return nil
 }
 
-// PushBatch invokes the bound Zig TelemetryHub.pushBatch operation.
+// PushBatch calls the Zig function TelemetryHub.pushBatch.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -423,7 +423,7 @@ func (t *TelemetryHub) PushBatch(values []float64) error {
 	return nil
 }
 
-// Process invokes the bound Zig TelemetryHub.process operation.
+// Process calls the Zig function TelemetryHub.process.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -446,7 +446,7 @@ func (t *TelemetryHub) Process(limit uint) (uint, error) {
 	return result, nil
 }
 
-// ProcessAll invokes the bound Zig TelemetryHub.processAll operation.
+// ProcessAll calls the Zig function TelemetryHub.processAll.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -469,7 +469,7 @@ func (t *TelemetryHub) ProcessAll() (uint, error) {
 	return result, nil
 }
 
-// Clear invokes the bound Zig TelemetryHub.clear operation.
+// Clear calls the Zig function TelemetryHub.clear.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Clear() (uint, error) {
@@ -486,7 +486,7 @@ func (t *TelemetryHub) Clear() (uint, error) {
 	return result, nil
 }
 
-// ResetStatistics invokes the bound Zig TelemetryHub.resetStatistics operation.
+// ResetStatistics calls the Zig function TelemetryHub.resetStatistics.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) ResetStatistics() error {
@@ -503,7 +503,7 @@ func (t *TelemetryHub) ResetStatistics() error {
 	return nil
 }
 
-// Accepted invokes the bound Zig TelemetryHub.accepted operation.
+// Accepted calls the Zig function TelemetryHub.accepted.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Accepted() (uint, error) {
@@ -520,7 +520,7 @@ func (t *TelemetryHub) Accepted() (uint, error) {
 	return result, nil
 }
 
-// Rejected invokes the bound Zig TelemetryHub.rejected operation.
+// Rejected calls the Zig function TelemetryHub.rejected.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Rejected() (uint, error) {
@@ -537,7 +537,7 @@ func (t *TelemetryHub) Rejected() (uint, error) {
 	return result, nil
 }
 
-// Dropped invokes the bound Zig TelemetryHub.dropped operation.
+// Dropped calls the Zig function TelemetryHub.dropped.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Dropped() (uint, error) {
@@ -554,7 +554,7 @@ func (t *TelemetryHub) Dropped() (uint, error) {
 	return result, nil
 }
 
-// Processed invokes the bound Zig TelemetryHub.processed operation.
+// Processed calls the Zig function TelemetryHub.processed.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Processed() (uint, error) {
@@ -571,7 +571,7 @@ func (t *TelemetryHub) Processed() (uint, error) {
 	return result, nil
 }
 
-// Filtered invokes the bound Zig TelemetryHub.filtered operation.
+// Filtered calls the Zig function TelemetryHub.filtered.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Filtered() (uint, error) {
@@ -588,7 +588,7 @@ func (t *TelemetryHub) Filtered() (uint, error) {
 	return result, nil
 }
 
-// Sum invokes the bound Zig TelemetryHub.sum operation.
+// Sum calls the Zig function TelemetryHub.sum.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Sum() (float64, error) {
@@ -605,7 +605,7 @@ func (t *TelemetryHub) Sum() (float64, error) {
 	return result, nil
 }
 
-// Minimum invokes the bound Zig TelemetryHub.minimum operation.
+// Minimum calls the Zig function TelemetryHub.minimum.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -628,7 +628,7 @@ func (t *TelemetryHub) Minimum() (float64, error) {
 	return result, nil
 }
 
-// Maximum invokes the bound Zig TelemetryHub.maximum operation.
+// Maximum calls the Zig function TelemetryHub.maximum.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -651,7 +651,7 @@ func (t *TelemetryHub) Maximum() (float64, error) {
 	return result, nil
 }
 
-// Average invokes the bound Zig TelemetryHub.average operation.
+// Average calls the Zig function TelemetryHub.average.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -674,7 +674,7 @@ func (t *TelemetryHub) Average() (float64, error) {
 	return result, nil
 }
 
-// FirstID invokes the bound Zig TelemetryHub.firstId operation.
+// FirstID calls the Zig function TelemetryHub.firstId.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -697,7 +697,7 @@ func (t *TelemetryHub) FirstID() (uint64, error) {
 	return result, nil
 }
 
-// FirstValue invokes the bound Zig TelemetryHub.firstValue operation.
+// FirstValue calls the Zig function TelemetryHub.firstValue.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -720,7 +720,7 @@ func (t *TelemetryHub) FirstValue() (float64, error) {
 	return result, nil
 }
 
-// LastID invokes the bound Zig TelemetryHub.lastId operation.
+// LastID calls the Zig function TelemetryHub.lastId.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -743,7 +743,7 @@ func (t *TelemetryHub) LastID() (uint64, error) {
 	return result, nil
 }
 
-// LastValue invokes the bound Zig TelemetryHub.lastValue operation.
+// LastValue calls the Zig function TelemetryHub.lastValue.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -766,7 +766,7 @@ func (t *TelemetryHub) LastValue() (float64, error) {
 	return result, nil
 }
 
-// LastSeverity invokes the bound Zig TelemetryHub.lastSeverity operation.
+// LastSeverity calls the Zig function TelemetryHub.lastSeverity.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -789,7 +789,7 @@ func (t *TelemetryHub) LastSeverity() (Severity, error) {
 	return Severity(result), nil
 }
 
-// CountAbove invokes the bound Zig TelemetryHub.countAbove operation.
+// CountAbove calls the Zig function TelemetryHub.countAbove.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -812,7 +812,7 @@ func (t *TelemetryHub) CountAbove(boundary float64) (uint, error) {
 	return result, nil
 }
 
-// CountBelow invokes the bound Zig TelemetryHub.countBelow operation.
+// CountBelow calls the Zig function TelemetryHub.countBelow.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -835,7 +835,7 @@ func (t *TelemetryHub) CountBelow(boundary float64) (uint, error) {
 	return result, nil
 }
 
-// ContainsAbove invokes the bound Zig TelemetryHub.containsAbove operation.
+// ContainsAbove calls the Zig function TelemetryHub.containsAbove.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -858,7 +858,7 @@ func (t *TelemetryHub) ContainsAbove(boundary float64) (bool, error) {
 	return result != 0, nil
 }
 
-// ContainsBelow invokes the bound Zig TelemetryHub.containsBelow operation.
+// ContainsBelow calls the Zig function TelemetryHub.containsBelow.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -881,7 +881,7 @@ func (t *TelemetryHub) ContainsBelow(boundary float64) (bool, error) {
 	return result != 0, nil
 }
 
-// ScaleValues invokes the bound Zig TelemetryHub.scaleValues operation.
+// ScaleValues calls the Zig function TelemetryHub.scaleValues.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -904,7 +904,7 @@ func (t *TelemetryHub) ScaleValues(factor float64) error {
 	return nil
 }
 
-// OffsetValues invokes the bound Zig TelemetryHub.offsetValues operation.
+// OffsetValues calls the Zig function TelemetryHub.offsetValues.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -927,7 +927,7 @@ func (t *TelemetryHub) OffsetValues(delta float64) error {
 	return nil
 }
 
-// ClampValues invokes the bound Zig TelemetryHub.clampValues operation.
+// ClampValues calls the Zig function TelemetryHub.clampValues.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -950,7 +950,7 @@ func (t *TelemetryHub) ClampValues(lower float64, upper float64) error {
 	return nil
 }
 
-// AbsoluteValues invokes the bound Zig TelemetryHub.absoluteValues operation.
+// AbsoluteValues calls the Zig function TelemetryHub.absoluteValues.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) AbsoluteValues() error {
@@ -967,7 +967,7 @@ func (t *TelemetryHub) AbsoluteValues() error {
 	return nil
 }
 
-// NegateValues invokes the bound Zig TelemetryHub.negateValues operation.
+// NegateValues calls the Zig function TelemetryHub.negateValues.
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) NegateValues() error {
@@ -984,7 +984,7 @@ func (t *TelemetryHub) NegateValues() error {
 	return nil
 }
 
-// LiveHubs invokes the bound Zig liveHubs operation.
+// LiveHubs calls the Zig function liveHubs.
 func LiveHubs() uint {
 	return raw.LiveHubs()
 }
