@@ -197,25 +197,51 @@ fn appendFunction(
     else if (discovered_owner) |value| value ++ "." else "";
     const function_label = source_name;
     const first_param: usize = if (receiver != null) 1 else 0;
+    const has_sidecar = @hasField(@TypeOf(metadata), "params");
+    // `.params` names what Go sees, so the count it has to match leaves out
+    // the receiver and every injected argument. Saying so here, before the
+    // names are indexed, is what keeps a short list from failing as a
+    // comptime tuple index inside zigo instead of as a binding error.
+    if (comptime has_sidecar and metadata.params.len != exposedParamCount(info, first_param)) {
+        return paramNameCountMismatch(comptime paramNameCountMessage(
+            owner_label ++ function_label,
+            metadata.params.len,
+            exposedParamCount(info, first_param),
+        ));
+    }
     const params = try allocator.alloc(semantic.Parameter, comptime concreteParamCount(info, first_param));
     inline for (info.params, 0..) |param, param_index| {
         if (param_index < first_param) continue;
         if (info.is_generic) continue;
         if (param.is_generic or param.type == null) continue;
         const output_index = comptime concreteParamIndex(info, first_param, param_index);
-        const has_sidecar = @hasField(@TypeOf(metadata), "params");
-        const parameter_name = if (has_sidecar)
-            metadata.params[output_index]
+        const injection = comptime injectionFor(param.type.?);
+        // Where this parameter falls in `.params`, which counts only the
+        // parameters Go is given.
+        const sidecar_index = comptime exposedParamIndex(info, first_param, param_index);
+        const named_by_sidecar = comptime injection == null and has_sidecar and sidecar_index < metadata.params.len;
+        // An injected parameter is never named by the binding -- it has no
+        // C parameter to name -- so it carries the name of what fills it,
+        // which is what a diagnostic about it has to say anyway.
+        const parameter_name = if (comptime injection) |value|
+            @tagName(value)
+        else if (named_by_sidecar)
+            metadata.params[sidecar_index]
         else
             try std.fmt.allocPrint(allocator, "p{d}", .{output_index});
-        const injection = comptime injectionFor(param.type.?);
+        // The same name as a comptime string, for the messages `typeNode`
+        // builds while walking this parameter.
+        const parameter_label = comptime if (named_by_sidecar)
+            metadata.params[sidecar_index]
+        else
+            std.fmt.comptimePrint("p{d}", .{output_index});
         // The cancellation flag is opt-in by name rather than by type: the
         // meta is what says "give Go a `ctx` and poll this", and the type
         // check below is what makes it sound. Recognising it here keeps
         // `typeNode` from rejecting `*const std.atomic.Value(u32)` as an
         // unregistered struct pointer and reporting the wrong thing.
-        const names_cancel = comptime has_sidecar and @hasField(@TypeOf(metadata), "cancel") and
-            std.mem.eql(u8, metadata.cancel.param, parameter_name);
+        const names_cancel = comptime named_by_sidecar and @hasField(@TypeOf(metadata), "cancel") and
+            std.mem.eql(u8, metadata.cancel.param, metadata.params[sidecar_index]);
         const is_cancel_flag = comptime names_cancel and isCancelFlag(param.type.?);
         // An injected parameter never reaches C, so it is not walked as a
         // type: `std.mem.Allocator` is a struct with a vtable pointer, and
@@ -224,16 +250,16 @@ fn appendFunction(
             .void = {},
         } else try typeNode(allocator, param.type.?, types, comptime std.fmt.comptimePrint(
             "`{s}{s}` parameter `{s}`",
-            .{ owner_label, function_label, if (has_sidecar) metadata.params[output_index] else std.fmt.comptimePrint("p{d}", .{output_index}) },
+            .{ owner_label, function_label, parameter_label },
         ));
         var reflected: semantic.Parameter = .{
             .cancel = if (names_cancel) true else null,
             .injected = injection,
             .name = parameter_name,
-            .name_source = if (has_sidecar) .sidecar else .fallback,
+            .name_source = if (named_by_sidecar) .sidecar else .fallback,
             .type = parameter_type,
         };
-        if (has_sidecar and @hasField(@TypeOf(metadata), "param_meta")) {
+        if (named_by_sidecar and @hasField(@TypeOf(metadata), "param_meta")) {
             const meta = metadata.param_meta;
             if (@hasField(@TypeOf(meta), parameter_name)) {
                 const value = @field(meta, parameter_name);
@@ -779,6 +805,53 @@ fn concreteParamIndex(comptime info: std.builtin.Type.Fn, comptime first_param: 
         if (index >= first_param and !parameter.is_generic and parameter.type != null) count += 1;
     }
     unreachable;
+}
+
+/// The parameters `.params` names: the concrete ones, minus the receiver and
+/// minus everything zigo injects. An injected argument has no C parameter and
+/// no Go argument, so a binding that had to name it would be naming a value it
+/// never passes.
+fn exposedParamCount(comptime info: std.builtin.Type.Fn, comptime first_param: usize) usize {
+    if (info.is_generic) return 0;
+    var count: usize = 0;
+    inline for (info.params, 0..) |parameter, index| {
+        if (index < first_param or parameter.is_generic or parameter.type == null) continue;
+        if (injectionFor(parameter.type.?) != null) continue;
+        count += 1;
+    }
+    return count;
+}
+
+fn exposedParamIndex(comptime info: std.builtin.Type.Fn, comptime first_param: usize, comptime target_index: usize) usize {
+    var count: usize = 0;
+    inline for (info.params, 0..) |parameter, index| {
+        if (index == target_index) return count;
+        if (index < first_param or parameter.is_generic or parameter.type == null) continue;
+        if (injectionFor(parameter.type.?) != null) continue;
+        count += 1;
+    }
+    unreachable;
+}
+
+/// What a `.params` list of the wrong length is told. Reflection runs before
+/// there is a `semantic.json` to point at, so the declaration is named by the
+/// path the binding used and the text carries the diagnostic code the rest of
+/// the generator reports under.
+fn paramNameCountMessage(comptime declaration: []const u8, comptime named: usize, comptime exposed: usize) []const u8 {
+    return std.fmt.comptimePrint(
+        "error[ZIGO027]: `.params` names {d} parameter{s} but `{s}` exposes {d}\n" ++
+            "  --> {s}\n" ++
+            "  hint: `.params` names only the parameters Go passes: leave out the receiver and any injected `std.mem.Allocator` or `std.Io`\n",
+        .{ named, if (named == 1) "" else "s", declaration, exposed, declaration },
+    );
+}
+
+fn paramNameCountMismatch(comptime message: []const u8) error{ParamNameCount} {
+    // The message is the whole diagnostic, so it goes out the moment it is
+    // built -- except under `zig test`, where the case that asserts the error
+    // would otherwise leave the report itself on the build's stderr.
+    if (!@import("builtin").is_test) std.debug.print("{s}", .{message});
+    return error.ParamNameCount;
 }
 
 fn receiverName(comptime info: std.builtin.Type.Fn, comptime declaration: anytype) ?[]const u8 {
@@ -1555,7 +1628,7 @@ test "an allocator parameter is injected rather than exposed" {
         .allocator = .smp_allocator,
         .root = Fixture,
         .types = .{.{ .name = "Store", .type = Fixture.Store, .repr = .@"opaque" }},
-        .functions = .{.{ .path = "root.open", .params = .{ "gpa", "name" } }},
+        .functions = .{.{ .path = "root.open", .params = .{"name"} }},
     }, "store", "zg");
 
     try std.testing.expectEqualStrings("std.heap.smp_allocator", document.allocator.?);
@@ -1564,6 +1637,49 @@ test "an allocator parameter is injected rather than exposed" {
     // the one node that means "no C representation needed".
     try std.testing.expectEqual(semantic.TypeNode.void, document.functions[0].params[0].type);
     try std.testing.expectEqual(@as(?semantic.Injection, null), document.functions[0].params[1].injected);
+}
+
+test "`.params` names only what Go passes, and a wrong count is reported" {
+    const Fixture = struct {
+        pub fn freeString(gpa: std.mem.Allocator, str: []const u8) void {
+            _ = gpa;
+            _ = str;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .allocator = .smp_allocator,
+        .root = Fixture,
+        .functions = .{.{ .path = "root.freeString", .params = .{"str"} }},
+    }, "text", "zg");
+
+    // The injected parameter keeps its place in the Zig call, and carries the
+    // name of what fills it rather than one the binding had to invent.
+    const params = document.functions[0].params;
+    try std.testing.expectEqual(@as(usize, 2), params.len);
+    try std.testing.expectEqual(semantic.Injection.allocator, params[0].injected.?);
+    try std.testing.expectEqualStrings("allocator", params[0].name);
+    try std.testing.expectEqual(semantic.NameSource.fallback, params[0].name_source);
+    try std.testing.expectEqualStrings("str", params[1].name);
+    try std.testing.expectEqual(semantic.NameSource.sidecar, params[1].name_source);
+
+    // Naming the injected parameter as well is the mistake ZIGO027 explains,
+    // rather than a comptime tuple index inside zigo.
+    try std.testing.expectError(error.ParamNameCount, reflect(arena.allocator(), .{
+        .allocator = .smp_allocator,
+        .root = Fixture,
+        .functions = .{.{ .path = "root.freeString", .params = .{ "gpa", "str" } }},
+    }, "text", "zg"));
+}
+
+test "the parameter count message names the declaration and the code" {
+    try std.testing.expectEqualStrings(
+        \\error[ZIGO027]: `.params` names 2 parameters but `root.freeString` exposes 1
+        \\  --> root.freeString
+        \\  hint: `.params` names only the parameters Go passes: leave out the receiver and any injected `std.mem.Allocator` or `std.Io`
+        \\
+    , comptime paramNameCountMessage("root.freeString", 2, 1));
 }
 
 test "a declaration path becomes an expression against the bound module" {
@@ -1578,7 +1694,7 @@ test "a declaration path becomes an expression against the bound module" {
     const document = try reflect(arena.allocator(), .{
         .allocator = "gpa",
         .root = Fixture,
-        .functions = .{.{ .path = "root.touch", .params = .{"allocator"} }},
+        .functions = .{.{ .path = "root.touch" }},
     }, "store", "zg");
 
     try std.testing.expectEqualStrings("target.gpa", document.allocator.?);
@@ -1606,7 +1722,7 @@ test "a value-returning init is boxed into a caller-owned handle" {
         .root = Fixture,
         .types = .{.{ .type = Fixture.Terminal, .repr = .@"opaque" }},
         .functions = .{
-            .{ .path = "Terminal.init", .params = .{ "gpa", "columns" } },
+            .{ .path = "Terminal.init", .params = .{"columns"} },
             .{ .path = "Terminal.deinit" },
         },
     }, "terminal", "zg");

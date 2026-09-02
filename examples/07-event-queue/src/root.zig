@@ -237,10 +237,12 @@ pub const EventQueue = struct {
         return rows;
     }
 
-    /// Releases a buffer produced by `extractLimits`.
-    pub fn freeLimits(_: *EventQueue, rows: []Limits) void {
+    /// Releases a buffer produced by `extractLimits`. The allocator is a
+    /// parameter here, the way a library that does not own a global one
+    /// writes it; the binding names the allocator once and zigo passes it.
+    pub fn freeLimits(_: *EventQueue, gpa: std.mem.Allocator, rows: []Limits) void {
         if (rows.len == 0) return;
-        std.heap.page_allocator.free(rows);
+        gpa.free(rows);
         _ = live_limits.fetchSub(1, .monotonic);
     }
 

@@ -1187,13 +1187,29 @@ fn releaseTargetIssue(document: semantic.Semantic, function: semantic.SemanticFn
     const name = function.release orelse return missing;
     for (document.functions) |candidate| {
         if (!std.mem.eql(u8, candidate.name, name)) continue;
-        if (candidate.@"return" != .void or candidate.params.len != 1) return missing;
-        const parameter = candidate.params[0];
+        if (candidate.@"return" != .void) return missing;
+        // An injected argument is not part of the signature the release call
+        // has to match: the shim fills it in, so a `fn(gpa, slice) void` frees
+        // exactly the same slice a `fn(slice) void` does.
+        const parameter = onlyExposedParameter(candidate.params) orelse return missing;
         if (parameter.direction != .in or parameter.type != .slice) return missing;
         if (!typeNodeEqual(parameter.type.slice.element.*, sliceReturnElement(function).?)) return missing;
         return null;
     }
     return missing;
+}
+
+/// The one parameter a release target passes on from Go, or null when it takes
+/// any other number of them. Injected arguments do not count: they never reach
+/// the C signature the release call goes through.
+fn onlyExposedParameter(params: []const semantic.Parameter) ?semantic.Parameter {
+    var found: ?semantic.Parameter = null;
+    for (params) |parameter| {
+        if (parameter.injected != null) continue;
+        if (found != null) return null;
+        found = parameter;
+    }
+    return found;
 }
 
 /// The element of a slice a function returns through `out_result_ptr` and
@@ -1908,6 +1924,38 @@ test "a narrow integer is accepted where the shim can promote it" {
             },
         },
         .package = "narrow",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
+    try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(scratch.allocator(), document));
+}
+
+test "a release target may take the allocator zigo injects" {
+    var byte_element: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    const document: semantic.Semantic = .{
+        .allocator = "std.heap.smp_allocator",
+        .functions = &.{
+            .{
+                .name = "render",
+                .ownership = .caller,
+                .params = &.{},
+                .release = "freeString",
+                .@"return" = .{ .slice = .{ .@"const" = true, .element = &byte_element } },
+                .symbol = "zg_render",
+            },
+            .{
+                .name = "freeString",
+                .params = &.{
+                    .{ .injected = .allocator, .name = "allocator", .type = .{ .void = {} } },
+                    .{ .name = "str", .type = .{ .slice = .{ .@"const" = true, .element = &byte_element } } },
+                },
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_free_string",
+            },
+        },
+        .package = "render",
         .prefix = "zg",
         .zig_version = "0.16.0",
     };

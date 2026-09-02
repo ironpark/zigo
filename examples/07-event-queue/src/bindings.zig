@@ -2,6 +2,9 @@ const zigo = @import("zigo");
 const library = @import("event_queue");
 
 pub const bindings = zigo.define(.{
+    // `freeLimits` takes its allocator as a parameter; naming it here is what
+    // lets the shim fill it in rather than exposing it to Go.
+    .allocator = .page_allocator,
     .root = library,
     .types = .{
         .{ .type = library.EventQueue, .repr = .@"opaque" },

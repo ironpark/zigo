@@ -252,48 +252,91 @@ fn functionIdentity(allocator: std.mem.Allocator, function: semantic.SemanticFn)
         allocator.dupe(u8, function.name);
 }
 
-fn signatureEqual(lhs: semantic.SemanticFn, rhs: semantic.SemanticFn) bool {
-    if (lhs.params.len != rhs.params.len or !typeEqual(lhs.@"return", rhs.@"return")) return false;
-    for (lhs.params, rhs.params) |a, b| {
-        // An injected parameter is absent from the C signature, so turning
-        // one into an ordinary parameter (or the reverse) moves the ABI even
-        // though the Zig type did not.
-        if (a.injected != b.injected) return false;
-        if (a.direction != b.direction or a.semantic != b.semantic or !typeEqual(a.type, b.type)) return false;
+/// The parameters a comparison sees. An injected argument has no C parameter
+/// and no Go argument behind it, so it is not part of any signature: gaining
+/// or losing one moves nothing, while turning an ordinary parameter into an
+/// injected one (or the reverse) shows up here as a parameter appearing or
+/// disappearing, which is exactly what it is.
+const ExposedParams = struct {
+    params: []const semantic.Parameter,
+    index: usize = 0,
+
+    fn next(self: *ExposedParams) ?semantic.Parameter {
+        while (self.index < self.params.len) {
+            const parameter = self.params[self.index];
+            self.index += 1;
+            if (parameter.injected == null) return parameter;
+        }
+        return null;
     }
-    return true;
+};
+
+fn exposedParams(params: []const semantic.Parameter) ExposedParams {
+    return .{ .params = params };
+}
+
+/// Walks two exposed parameter lists in step, stopping at the first pair
+/// `matches` rejects and at any difference in length.
+fn exposedParamsMatch(
+    lhs: []const semantic.Parameter,
+    rhs: []const semantic.Parameter,
+    matches: fn (semantic.Parameter, semantic.Parameter) bool,
+) bool {
+    var old = exposedParams(lhs);
+    var new = exposedParams(rhs);
+    while (true) {
+        const a = old.next();
+        const b = new.next();
+        if (a == null or b == null) return a == null and b == null;
+        if (!matches(a.?, b.?)) return false;
+    }
+}
+
+fn signatureEqual(lhs: semantic.SemanticFn, rhs: semantic.SemanticFn) bool {
+    if (!typeEqual(lhs.@"return", rhs.@"return")) return false;
+    return exposedParamsMatch(lhs.params, rhs.params, struct {
+        fn matches(a: semantic.Parameter, b: semantic.Parameter) bool {
+            return a.direction == b.direction and a.semantic == b.semantic and typeEqual(a.type, b.type);
+        }
+    }.matches);
 }
 
 fn goErrorEqual(lhs: []const semantic.Parameter, rhs: []const semantic.Parameter) bool {
-    if (lhs.len != rhs.len) return false;
-    for (lhs, rhs) |a, b| if (a.goError() != b.goError()) return false;
-    return true;
+    return exposedParamsMatch(lhs, rhs, struct {
+        fn matches(a: semantic.Parameter, b: semantic.Parameter) bool {
+            return a.goError() == b.goError();
+        }
+    }.matches);
 }
 
 fn retentionEqual(lhs: []const semantic.Parameter, rhs: []const semantic.Parameter) bool {
-    if (lhs.len != rhs.len) return false;
-    for (lhs, rhs) |a, b| if (a.retention != b.retention) return false;
-    return true;
+    return exposedParamsMatch(lhs, rhs, struct {
+        fn matches(a: semantic.Parameter, b: semantic.Parameter) bool {
+            return a.retention == b.retention;
+        }
+    }.matches);
 }
 
 /// Only an `.all` output slice carries a `{name}_written` out parameter, so
 /// changing the hint adds or removes a C parameter and breaks every caller
 /// linked against the old signature.
 fn writtenEqual(lhs: []const semantic.Parameter, rhs: []const semantic.Parameter) bool {
-    if (lhs.len != rhs.len) return false;
-    for (lhs, rhs) |a, b| if (a.writtenHint() != b.writtenHint()) return false;
-    return true;
+    return exposedParamsMatch(lhs, rhs, struct {
+        fn matches(a: semantic.Parameter, b: semantic.Parameter) bool {
+            return a.writtenHint() == b.writtenHint();
+        }
+    }.matches);
 }
 
 /// The staging buffer behind a stream parameter is a shim-internal size, not
 /// part of any signature, so resizing it is reported rather than refused.
 fn streamBufferEqual(lhs: []const semantic.Parameter, rhs: []const semantic.Parameter) bool {
-    if (lhs.len != rhs.len) return false;
-    for (lhs, rhs) |a, b| {
-        if (a.type != .io_stream or b.type != .io_stream) continue;
-        if (a.bufferSize() != b.bufferSize()) return false;
-    }
-    return true;
+    return exposedParamsMatch(lhs, rhs, struct {
+        fn matches(a: semantic.Parameter, b: semantic.Parameter) bool {
+            if (a.type != .io_stream or b.type != .io_stream) return true;
+            return a.bufferSize() == b.bufferSize();
+        }
+    }.matches);
 }
 
 fn containsName(names: []const []const u8, wanted: []const u8) bool {
