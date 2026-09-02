@@ -17,3 +17,11 @@
 
 - 값 파라미터는 handle과 무관하다: 소유권·poison 없음, 복사로 전달.
 - 슬롯 평탄화는 결정적이며 abi_diff는 variant 추가를 breaking으로 본다(C 시그니처가 늘어남).
+
+## Implementation deviations
+
+- 한 등록 union을 pointer handle과 값 파라미터로 동시에 쓰면 공개 Go 타입 이름과 method
+  surface가 충돌하므로 ZIGO006으로 거부한다. 값 전달이 필요하면 scalar-payload union을
+  별도 타입으로 등록한다. value-only union에는 handle/projection 파일을 생성하지 않는다.
+- 값 payload 정수는 현재 C scalar 하강이 직접 지원하는 8/16/32/64비트와
+  `isize`/`usize`로 제한한다. 임의 폭 정수 승격은 union payload slot에는 적용하지 않는다.

@@ -8,5 +8,5 @@ import "example.com/zigo/viewport/internal/raw"
 
 // Apply calls the Zig function apply.
 func Apply(behavior ScrollViewport) int64 {
-	return raw.Apply(zigoScrollViewportToRaw(behavior))
+	return raw.Apply(uint8(behavior.tag), behavior.delta, behavior.page, behavior.ratio, boolToUint8(behavior.animated), uint8(behavior.mode))
 }

@@ -2,7 +2,7 @@
 depends_on:
 - "81-tagged-union-value-params#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 예제 10 cgo·purego 통과, 문서 갱신, 커밋.
 > NEXT: none

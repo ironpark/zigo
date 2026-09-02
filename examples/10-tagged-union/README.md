@@ -20,12 +20,19 @@ and reading them off the snapshot afterwards is plain Go. The projection accesso
 the same type; the snapshot is an addition, not a replacement. Appending a variant to a snapshot
 union is a breaking ABI change, because the struct's size and layout move.
 
+`ScrollViewport` demonstrates the value-parameter form. Because every payload is void or scalar,
+zigo generates a plain Go value with `ScrollViewportTop()`, `ScrollViewportBottom()`,
+`ScrollViewportDelta(n)`, `ScrollViewportPage(n)`, and `Tag()`. The C ABI flattens the value into its
+tag followed by one slot for each payload-bearing variant; the Zig shim rebuilds the active variant.
+This value has no handle lifecycle or validity checks, and adding a variant is a breaking ABI change.
+
 This example also enables Go 1.24 `runtime.AddCleanup` as a leak fallback. Explicit `Close` remains
 the deterministic lifecycle contract, including when projections are in use.
 
-The tests cover scalar and enum variants, wrong-variant access, a copied numeric-slice payload, and
-an opaque child payload. They also verify output preservation and lifecycle rejection. Void variants
-have a tag constant but no payload accessor.
+The tests cover scalar and enum variants, wrong-variant access, a copied numeric-slice payload, an
+opaque child payload, and calls using every `ScrollViewport` value variant in both cgo and purego.
+They also verify output preservation and lifecycle rejection. Void projection variants have a tag
+constant but no payload accessor.
 
 ```sh
 zig build test

@@ -7,6 +7,7 @@ pub const bindings = zigo.define(.{
         .{ .type = library.Child, .repr = .@"opaque" },
         .{ .type = library.Value, .repr = .tagged_union },
         .{ .type = library.Signal, .repr = .tagged_union, .access = .snapshot },
+        .{ .type = library.ScrollViewport, .repr = .tagged_union },
     },
     .functions = .{
         .{ .path = "Child.create", .params = .{"value"} },
@@ -33,6 +34,7 @@ pub const bindings = zigo.define(.{
         .{ .path = "root.liveValues" },
         .{ .path = "root.divide", .params = .{ "numerator", "denominator" } },
         .{ .path = "root.sum", .params = .{"values"} },
+        .{ .path = "root.scrollAmount", .params = .{"behavior"} },
         .{ .path = "root.panicError" },
     },
 });

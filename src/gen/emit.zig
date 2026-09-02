@@ -819,9 +819,9 @@ fn writeTaggedUnionValueArgument(
 ) !void {
     const declaration = enumDecl(program, function.origin.params[source_index].type.value_struct.ref);
     const tag_name = taggedUnionAbiParam(function, source_index, .union_tag, null).name;
-    try writer.print("switch (@as(target.{s}, @enumFromInt({s}))) {{\n", .{ declaration.tag_type.?.@"enum".ref, tag_name });
+    try writer.print("switch ({s}) {{\n", .{tag_name});
     for (declaration.fields) |field| {
-        try writer.print("        .{s} => ", .{field.name});
+        try writer.print("        {d} => ", .{field.value.?});
         const payload = field.type.?;
         if (payload == .void) {
             try writer.print("target.{s}.{s},\n", .{ declaration.name, field.name });
@@ -1099,7 +1099,7 @@ fn renderHeader(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
     // Declaration order, so handle and enum typedefs interleave the way the
     // user wrote them; the names themselves come from lowering.
     for (program.types) |declaration| {
-        if (isHandleType(declaration)) {
+        if (isHandleType(declaration) and !isValueOnlyTaggedUnion(program, declaration.name)) {
             const handle = handleRecord(program, declaration.name);
             try writer.print("typedef struct {s} {s};\n", .{ handle.c_name, handle.c_name });
             continue;
@@ -3808,7 +3808,10 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                 },
                 .cancel_flag => try writer.writeAll("&zigoCancel"),
                 .bool => try writer.print("boolToUint8({s})", .{go_names[parameter_index]}),
-                .value_struct => |value| try writer.print("zigo{s}ToRaw({s})", .{ value.ref, go_names[parameter_index] }),
+                .value_struct => |value| if (isTaggedUnionValue(program, parameter.type))
+                    try writePublicTaggedUnionRawArguments(allocator, writer, program, enumDecl(program, value.ref), go_names[parameter_index])
+                else
+                    try writer.print("zigo{s}ToRaw({s})", .{ value.ref, go_names[parameter_index] }),
                 .@"enum" => {
                     try writer.writeAll(rawGoTypeName(program, parameter.type));
                     try writer.print("({s})", .{go_names[parameter_index]});
@@ -4248,6 +4251,45 @@ fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer
         try writer.print("func zigo{s}SliceCopyFromRaw(dst []{s}, values []", .{ record.name, record.name });
         try writeRawTypeReferencePrefix(writer, options);
         try writer.print("{s}, count int) {{\n\tif count > len(dst) {{ count = len(dst) }}\n\tif count > len(values) {{ count = len(values) }}\n\tfor i := 0; i < count; i++ {{\n\t\tdst[i] = zigo{s}FromRaw(values[i])\n\t}}\n}}\n\n", .{ raw_type, record.name });
+    }
+    try renderPublicTaggedUnionValues(allocator, writer, program);
+}
+
+fn renderPublicTaggedUnionValues(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
+    for (program.types) |declaration| {
+        if (!isValueOnlyTaggedUnion(program, declaration.name)) continue;
+        const tag_type = declaration.tag_type.?.@"enum".ref;
+        try writer.print("// {0s} is a tagged-union value passed to native code by copy.\ntype {0s} struct {{\n\ttag {1s}\n", .{ declaration.name, tag_type });
+        for (declaration.fields) |field| {
+            const payload = field.type.?;
+            if (payload == .void) continue;
+            const member = try naming.camelAlloc(allocator, field.name);
+            defer allocator.free(member);
+            try writer.print("\t{s} ", .{member});
+            try writePublicGoType(writer, payload);
+            try writer.writeByte('\n');
+        }
+        try writer.print("}}\n\n// Tag returns the active {s} variant.\nfunc (value {s}) Tag() {s} {{ return value.tag }}\n\n", .{ declaration.name, declaration.name, tag_type });
+        for (declaration.fields) |field| {
+            const constructor = try naming.pascalAlloc(allocator, field.name);
+            defer allocator.free(constructor);
+            const tag_constant = try naming.pascalAlloc(allocator, field.name);
+            defer allocator.free(tag_constant);
+            const payload = field.type.?;
+            const argument_name = if (payload == .int or payload == .float) "n" else "value";
+            try writer.print("// {s}{s} constructs the {s} variant.\nfunc {s}{s}(", .{ declaration.name, constructor, field.name, declaration.name, constructor });
+            if (payload != .void) {
+                try writer.print("{s} ", .{argument_name});
+                try writePublicGoType(writer, payload);
+            }
+            try writer.print(") {0s} {{\n\treturn {0s}{{tag: {1s}{2s}", .{ declaration.name, tag_type, tag_constant });
+            if (payload != .void) {
+                const member = try naming.camelAlloc(allocator, field.name);
+                defer allocator.free(member);
+                try writer.print(", {s}: {s}", .{ member, argument_name });
+            }
+            try writer.writeAll("}\n}\n\n");
+        }
     }
 }
 
@@ -4974,6 +5016,7 @@ fn writeRethrowHelper(writer: *std.Io.Writer, options: Options) !void {
 fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     for (program.types) |declaration| {
         if (!isHandleType(declaration)) continue;
+        if (isValueOnlyTaggedUnion(program, declaration.name)) continue;
         const owns_callbacks = typeOwnsCallbacks(program, declaration.name);
         // Owning a constructor is what gives a handle Close and the cleanup net.
         const constructor = constructorForType(program, declaration.name);
@@ -6414,6 +6457,70 @@ fn isTaggedUnionValue(program: abi.Program, node: semantic.TypeNode) bool {
     return node == .value_struct and enumDecl(program, node.value_struct.ref).kind == .tagged_union;
 }
 
+fn writePublicTaggedUnionRawArguments(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    declaration: semantic.TypeDecl,
+    value_name: []const u8,
+) !void {
+    try writer.writeAll(rawGoTypeName(program, declaration.tag_type.?));
+    try writer.print("({s}.tag)", .{value_name});
+    for (declaration.fields) |field| {
+        const payload = field.type.?;
+        if (payload == .void) continue;
+        const member = try naming.camelAlloc(allocator, field.name);
+        defer allocator.free(member);
+        try writer.writeAll(", ");
+        switch (payload) {
+            .bool => try writer.print("boolToUint8({s}.{s})", .{ value_name, member }),
+            .@"enum" => {
+                try writer.writeAll(rawGoTypeName(program, payload));
+                try writer.print("({s}.{s})", .{ value_name, member });
+            },
+            else => try writer.print("{s}.{s}", .{ value_name, member }),
+        }
+    }
+}
+
+fn isValueOnlyTaggedUnion(program: abi.Program, name: []const u8) bool {
+    const declaration = enumDecl(program, name);
+    return declaration.kind == .tagged_union and taggedUnionUsedByValue(program, name) and !taggedUnionUsedAsHandle(program, name);
+}
+
+fn taggedUnionUsedByValue(program: abi.Program, name: []const u8) bool {
+    for (program.functions) |function| {
+        for (function.origin.params) |parameter| {
+            if (parameter.type == .value_struct and std.mem.eql(u8, parameter.type.value_struct.ref, name)) return true;
+        }
+    }
+    return false;
+}
+
+fn taggedUnionUsedAsHandle(program: abi.Program, name: []const u8) bool {
+    for (program.constructors) |constructor| if (std.mem.eql(u8, constructor.type, name)) return true;
+    for (program.functions) |function| {
+        if (function.origin.receiver) |receiver| if (std.mem.eql(u8, receiver, name)) return true;
+        for (function.origin.params) |parameter| if (containsHandleReference(parameter.type, name)) return true;
+        if (containsHandleReference(function.origin.@"return", name)) return true;
+    }
+    return false;
+}
+
+fn containsHandleReference(node: semantic.TypeNode, name: []const u8) bool {
+    return switch (node) {
+        .opaque_ptr => |value| std.mem.eql(u8, value.ref, name),
+        .slice => |value| containsHandleReference(value.element.*, name),
+        .optional => |value| containsHandleReference(value.child.*, name),
+        .error_union => |value| containsHandleReference(value.payload.*, name),
+        .callback => |value| blk: {
+            for (value.params) |parameter| if (containsHandleReference(parameter, name)) break :blk true;
+            break :blk containsHandleReference(value.@"return".*, name);
+        },
+        else => false,
+    };
+}
+
 fn writeZigType(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
     switch (value) {
         .void => try writer.writeAll("void"),
@@ -6575,7 +6682,9 @@ fn programHasEnums(program: abi.Program) bool {
 }
 
 fn programHasOpaqueTypes(program: abi.Program) bool {
-    for (program.types) |declaration| if (isHandleType(declaration)) return true;
+    for (program.types) |declaration| {
+        if (isHandleType(declaration) and !isValueOnlyTaggedUnion(program, declaration.name)) return true;
+    }
     return false;
 }
 
@@ -6835,8 +6944,7 @@ fn streamHandleName(direction: semantic.StreamDirection) []const u8 {
 }
 
 fn programHasTaggedUnionTypes(program: abi.Program) bool {
-    for (program.types) |declaration| if (declaration.kind == .tagged_union) return true;
-    return false;
+    return program.projections.len != 0 or program.snapshots.len != 0;
 }
 
 /// Every constructed handle carries the `runtime.AddCleanup` safety net, so

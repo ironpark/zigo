@@ -132,9 +132,15 @@
   `*[]T`/`*string`이 되고 반환은 `([]T, bool)`/`(string, bool)`이다. `.out` slice를
   optional로 만들거나(버퍼는 호출자가 잡는다), slice의 slice(`?[][]const u8`),
   `extern struct` slice(`?[]Point`)를 optional로 만드는 것은 거부된다.
-- tagged union은 `.repr = .tagged_union`으로 등록한 뒤 포인터로만 노출한다. 생성된
-  `Tag`/`As*`가 active tag를 검사하며 union 레이아웃은 C로 전달하지 않는다. nested
-  aggregate, optional, error union, callback 또는 pointer 원소 slice payload는 지원하지 않는다.
+- tagged union은 `.repr = .tagged_union`으로 등록한다. pointer handle 표현은 생성된
+  `Tag`/`As*`가 active tag를 검사하며 union 레이아웃을 C로 전달하지 않는다. 모든 payload가
+  void, bool, 8/16/32/64비트 정수, `isize`/`usize`, 부동소수 scalar, 또는 등록 enum인 union은
+  함수의 전체 매개변수로 값을 직접 전달할 수도 있다. 이때 C ABI는 tag와 선언 순서의
+  non-void payload slot으로 평탄화하고 Go에는 variant constructor와 `Tag()`가 있는 value
+  type을 생성한다. variant 추가는 signature가 늘어나는 breaking change다. slice, pointer,
+  struct payload는 `ZIGO006`으로 계속 거부하며, union 값 반환과 중첩 union 값도 지원하지
+  않는다. 같은 등록 union을 pointer handle과 값 매개변수 양쪽으로 동시에 쓰는 것도
+  지원하지 않으므로 값 전달용 scalar union을 별도 타입으로 둔다.
 - non-exhaustive enum은 `.repr = .enumeration, .exhaustive = false`로 명시 등록한 경우에만
   노출한다. 그때 이름 붙은 tag 밖의 값도 유효하며 파라미터·반환·struct 필드·slice 원소에서
   정수 그대로 왕복한다. opt-in이 없으면 `ZIGO002`다. non-exhaustive tag를 가진 tagged union은

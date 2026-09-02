@@ -294,7 +294,8 @@ bool 필드가 있는 struct는 캐스트하지 않으므로 이 단정도 생�
 
 - `<package>_gen.go`: 공개 함수와 method
 - `<package>_enums_gen.go`: enum type, 상수, `String()`
-- `<package>_structs_gen.go`: `extern struct` 공개 value type과 raw 변환
+- `<package>_structs_gen.go`: `extern struct` 공개 value type과 raw 변환, 값 매개변수로
+  쓰는 tagged union의 variant constructor와 `Tag()` accessor
 - `<package>_handles_gen.go`: opaque handle type과 lifecycle method. borrowed `<T>Ref`는
   그것을 내주는 함수나 projection이 있는 type에만 생성된다
 - `<package>_runtime_gen.go`: handle interface, projection status, `Must*`
@@ -312,6 +313,11 @@ breaking으로 보고합니다.
 
 선언이 하나도 없는 파일은 생성하지 않습니다. enum이 없으면 `_enums_gen.go`가,
 tagged union이 없으면 union 파일이 아예 만들어지지 않습니다.
+
+scalar/void payload만 가진 tagged union 값 매개변수는 C에서 tag 정수와 variant 선언
+순서의 non-void payload slot들로 평탄화됩니다. raw cgo와 purego 함수는 같은 순서를 쓰고,
+Zig shim이 tag를 switch해 원래 union 값을 재구성합니다. variant를 추가하면 C signature와
+semantic ABI가 함께 커지므로 `abi-check`는 breaking으로 판정합니다.
 
 모든 exported 선언에는 GoDoc이 생성됩니다. Zig source doc이 있으면 AST 보강 결과를 사용하고,
 없으면 bound Zig operation과 ownership·lifetime·failure contract를 설명하는 기본 문서를

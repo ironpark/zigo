@@ -7,7 +7,7 @@ registered_at: "2026-09-02T17:32:43Z"
 
 # Phases
 
-- [ ] [Phase 00: 적격성과 ABI 설계](phases/00-eligibility-and-abi.md)
+- [x] [Phase 00: 적격성과 ABI 설계](phases/00-eligibility-and-abi.md)
 - [ ] [Phase 01: Go 값 타입과 purego, 예제, 문서](phases/01-go-surface-and-docs.md)
 
 # Shared Verification

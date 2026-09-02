@@ -74,6 +74,7 @@ type nativeBindings struct {
 	fnLiveValues             func() uintptr
 	fnDivide                 func(float64, float64, *float64) int32
 	fnSum                    func(unsafe.Pointer, uintptr) float64
+	fnScrollAmount           func(uint8, int, uintptr) int
 	fnPanicError             func() int32
 	fnProjection0            func(unsafe.Pointer, *uint8) uint8
 	fnProjection1            func(unsafe.Pointer, *int64) uint8
@@ -266,6 +267,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_sum", err)
 	}
+	addrScrollAmount, err := resolveSymbol(handle, "zg_scroll_amount")
+	if err != nil {
+		return fail("zg_scroll_amount", err)
+	}
 	addrPanicError, err := resolveSymbol(handle, "zg_panic_error")
 	if err != nil {
 		return fail("zg_panic_error", err)
@@ -352,6 +357,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnLiveValues, addrLiveValues)
 	purego.RegisterFunc(&next.fnDivide, addrDivide)
 	purego.RegisterFunc(&next.fnSum, addrSum)
+	purego.RegisterFunc(&next.fnScrollAmount, addrScrollAmount)
 	purego.RegisterFunc(&next.fnPanicError, addrPanicError)
 	purego.RegisterFunc(&next.fnProjection0, addrProjection0)
 	purego.RegisterFunc(&next.fnProjection1, addrProjection1)
@@ -555,6 +561,12 @@ func Sum(values []float64) float64 {
 	}
 	result := bindings().fnSum(valuesPtr, uintptr(len(values)))
 	return float64(result)
+}
+
+// ScrollAmount calls the generated purego ABI wrapper for zg_scroll_amount.
+func ScrollAmount(behavior_tag uint8, behavior_delta int, behavior_page uint) int {
+	result := bindings().fnScrollAmount(behavior_tag, behavior_delta, uintptr(behavior_page))
+	return int(result)
 }
 
 // PanicError calls the generated purego ABI wrapper for zg_panic_error.

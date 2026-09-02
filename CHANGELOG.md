@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- payload가 모두 void, scalar, 또는 등록 enum인 tagged union을 함수 매개변수 값으로
+  전달할 수 있습니다. cgo와 purego 모두 variant constructor와 `Tag()`를 제공하고,
+  C ABI는 tag와 variant별 payload slot으로 결정적으로 평탄화합니다.
+
 ### Fixed
 
 - 같은 잘린 `@typeName`을 가진 서로 다른 comptime 생성 enum이 첫 번째 등록 타입 하나로

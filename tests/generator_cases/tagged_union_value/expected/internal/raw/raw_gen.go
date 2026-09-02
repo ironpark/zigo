@@ -10,7 +10,6 @@ package raw
 #include "zigo_viewport.h"
 */
 import "C"
-import "unsafe"
 
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }

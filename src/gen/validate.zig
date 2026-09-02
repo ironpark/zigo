@@ -133,6 +133,13 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             };
             const tagged_union_value = taggedUnionValueDeclaration(document, parameter.type);
             if (tagged_union_value) |declaration| {
+                if (taggedUnionUsedAsHandle(document, declaration.name)) return .{
+                    .severity = .@"error",
+                    .code = "ZIGO006",
+                    .message = "cannot use one tagged union as both a value parameter and a pointer handle",
+                    .site = functionSite(function),
+                    .hint = "register a separate scalar-payload union type for the value parameter",
+                };
                 if (taggedUnionValueIneligibleVariant(document, declaration)) |variant| return .{
                     .severity = .@"error",
                     .code = "ZIGO006",
@@ -1049,7 +1056,7 @@ fn taggedUnionValueIneligibleVariant(document: semantic.Semantic, declaration: s
 fn taggedUnionValuePayloadSupported(document: semantic.Semantic, node: semantic.TypeNode) bool {
     return switch (node) {
         .bool => true,
-        .int => |value| if (value.is_usize) value.bits != 0 and value.bits <= 64 else promotableInteger(value),
+        .int => |value| integerSupported(value),
         .float => |value| floatSupported(value),
         .@"enum" => |value| hasTypeKind(document, value.ref, .@"enum"),
         else => false,
@@ -1637,9 +1644,44 @@ test "implemented diagnostic snapshots are stable" {
             }},
             .package = "bad",
             .prefix = "zg",
-            .types = &.{.{ .kind = .tagged_union, .name = "Value" }},
+            .types = &.{
+                .{ .fields = &.{.{ .name = "bytes", .type = byte_slice_node, .value = 0 }}, .kind = .tagged_union, .name = "Value", .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } } },
+                .{ .fields = &.{.{ .name = "bytes", .value = 0 }}, .kind = .@"enum", .name = "ValueTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
+            },
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO006]: cannot pass a tagged union by value\n  --> semantic.json (consume)\n  hint: variant `Value` has a payload that is not void, bool, integer, float, or registered enum\n" },
+        }, .snapshot = "error[ZIGO006]: cannot pass a tagged union by value\n  --> semantic.json (consume)\n  hint: variant `bytes` has a payload that is not void, bool, integer, float, or registered enum\n" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "consume",
+                .params = &.{.{ .name = "value", .type = .{ .value_struct = .{ .ref = "Value" } } }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_consume",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{
+                .{ .fields = &.{.{ .name = "child", .type = pointer_node, .value = 0 }}, .kind = .tagged_union, .name = "Value", .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } } },
+                .{ .fields = &.{.{ .name = "child", .value = 0 }}, .kind = .@"enum", .name = "ValueTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
+                .{ .kind = .@"opaque", .name = "Thing" },
+            },
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO006]: cannot pass a tagged union by value\n  --> semantic.json (consume)\n  hint: variant `child` has a payload that is not void, bool, integer, float, or registered enum\n" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "consume",
+                .params = &.{.{ .name = "value", .type = .{ .value_struct = .{ .ref = "Value" } } }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_consume",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{
+                .{ .fields = &.{.{ .name = "config", .type = .{ .value_struct = .{ .ref = "Config" } }, .value = 0 }}, .kind = .tagged_union, .name = "Value", .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } } },
+                .{ .fields = &.{.{ .name = "config", .value = 0 }}, .kind = .@"enum", .name = "ValueTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
+                .{ .fields = &.{.{ .name = "count", .type = .{ .int = .{ .bits = 32, .signed = false } } }}, .kind = .value_struct, .layout = .@"extern", .name = "Config" },
+            },
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO006]: cannot pass a tagged union by value\n  --> semantic.json (consume)\n  hint: variant `config` has a payload that is not void, bool, integer, float, or registered enum\n" },
         .{ .document = .{
             .functions = &.{
                 .{ .name = "lookupID", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "ignored" },
@@ -2265,7 +2307,7 @@ test "tagged union value parameters accept only scalar and void payloads" {
             .{
                 .fields = &.{
                     .{ .name = "none", .type = .{ .void = {} }, .value = 0 },
-                    .{ .name = "small", .type = .{ .int = .{ .bits = 21, .signed = true } }, .value = 1 },
+                    .{ .name = "small", .type = .{ .int = .{ .bits = 32, .signed = true } }, .value = 1 },
                     .{ .name = "active", .type = .{ .bool = {} }, .value = 2 },
                     .{ .name = "mode", .type = .{ .@"enum" = .{ .ref = "Mode" } }, .value = 3 },
                 },

@@ -1,0 +1,55 @@
+{
+  "functions": [
+    {
+      "name": "apply",
+      "params": [
+        {
+          "name": "behavior",
+          "type": { "kind": "value_struct", "ref": "ScrollViewport" }
+        }
+      ],
+      "return": { "bits": 64, "kind": "int", "signed": true },
+      "symbol": "ignored"
+    }
+  ],
+  "package": "viewport",
+  "prefix": "zg",
+  "types": [
+    {
+      "fields": [
+        { "name": "top", "type": { "kind": "void" }, "value": 0 },
+        { "name": "delta", "type": { "bits": 64, "is_usize": true, "kind": "int", "signed": true }, "value": 1 },
+        { "name": "page", "type": { "bits": 64, "is_usize": true, "kind": "int", "signed": false }, "value": 2 },
+        { "name": "ratio", "type": { "bits": 64, "kind": "float" }, "value": 3 },
+        { "name": "animated", "type": { "kind": "bool" }, "value": 4 },
+        { "name": "mode", "type": { "kind": "enum", "ref": "Mode" }, "value": 5 }
+      ],
+      "kind": "tagged_union",
+      "name": "ScrollViewport",
+      "tag_type": { "kind": "enum", "ref": "ScrollViewportTag" }
+    },
+    {
+      "fields": [
+        { "name": "top", "value": 0 },
+        { "name": "delta", "value": 1 },
+        { "name": "page", "value": 2 },
+        { "name": "ratio", "value": 3 },
+        { "name": "animated", "value": 4 },
+        { "name": "mode", "value": 5 }
+      ],
+      "kind": "enum",
+      "name": "ScrollViewportTag",
+      "tag_type": { "bits": 8, "kind": "int", "signed": false }
+    },
+    {
+      "fields": [
+        { "name": "instant", "value": 0 },
+        { "name": "smooth", "value": 1 }
+      ],
+      "kind": "enum",
+      "name": "Mode",
+      "tag_type": { "bits": 8, "kind": "int", "signed": false }
+    }
+  ],
+  "zig_version": "0.16.0"
+}

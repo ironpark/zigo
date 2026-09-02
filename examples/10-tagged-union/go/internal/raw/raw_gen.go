@@ -168,6 +168,11 @@ func Sum(values []float64) float64 {
 	return float64(C.zg_sum(valuesPtr, C.size_t(len(values))))
 }
 
+// ScrollAmount calls the generated C ABI wrapper for zg_scroll_amount.
+func ScrollAmount(behavior_tag uint8, behavior_delta int, behavior_page uint) int {
+	return int(C.zg_scroll_amount(C.uint8_t(behavior_tag), C.ptrdiff_t(behavior_delta), C.size_t(behavior_page)))
+}
+
 // PanicError calls the generated C ABI wrapper for zg_panic_error.
 func PanicError() int32 {
 	code := int32(C.zg_panic_error())

@@ -917,11 +917,38 @@ active tag가 다르면 accessor는 `(zero, false, nil)`을 반환하고 payload
 
 지원 payload는 `void`, bool, 정수, float, enum, 등록 handle pointer, 숫자 slice입니다.
 숫자 slice는 호출마다 Go memory로 복사하고, handle payload는 union wrapper에 수명이 묶인
-borrowed `*TRef`입니다. union 자체를 함수 값으로 직접 전달하면 `ZIGO006`이며 pointer로
-노출해야 합니다.
+borrowed `*TRef`입니다. union을 pointer handle로 쓰는 경우에는 이 규칙이 그대로 적용됩니다.
 
-기존 순서·tag·payload를 보존한 끝부분 variant 추가는 compatible append입니다. 삭제,
-재정렬, 이름·tag·payload 변경은 breaking입니다.
+모든 payload가 `void`, bool, C로 표현 가능한 정수/부동소수 scalar, 또는 등록 enum인
+union은 함수의 전체 매개변수로 값을 직접 전달할 수 있습니다.
+
+```zig
+pub const ScrollViewport = union(enum(u8)) {
+    top,
+    bottom,
+    delta: isize,
+    page: usize,
+};
+
+pub fn scrollViewport(behavior: ScrollViewport) void { ... }
+```
+
+```go
+scrollViewport(ScrollViewportTop())
+scrollViewport(ScrollViewportDelta(-3))
+```
+
+이 값 표현은 `ScrollViewportTop()`, `ScrollViewportDelta(n)`처럼 variant별 constructor와
+`Tag()` accessor를 제공합니다. handle 검사, ownership, poison 상태는 없습니다. C ABI에서는
+tag 정수 뒤에 payload가 있는 각 variant의 slot을 선언 순서대로 붙이고, shim이 tag에 맞는
+union 값을 재구성합니다. 따라서 variant 추가도 C signature를 늘리는 breaking change입니다.
+slice, pointer, struct 같은 payload가 하나라도 있으면 `ZIGO006`이 해당 variant를 지목합니다.
+같은 등록 union을 pointer handle과 값 매개변수 양쪽 표현으로 동시에 쓰는 것은 지원하지
+않으므로, 값 전달용 scalar union을 별도 타입으로 선언해야 합니다. tagged union 값 반환과
+다른 타입 안에 중첩된 union 값도 아직 지원하지 않습니다.
+
+pointer projection 표현에서 기존 순서·tag·payload를 보존한 끝부분 variant 추가는 compatible
+append입니다. 삭제, 재정렬, 이름·tag·payload 변경은 breaking입니다.
 
 ### Variant 타입과 type switch
 

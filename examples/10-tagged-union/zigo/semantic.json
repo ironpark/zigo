@@ -552,7 +552,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 128,
+        "line": 146,
         "column": 8
       },
       "symbol": "zg_live_values"
@@ -567,7 +567,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 132,
+            "line": 150,
             "column": 15
           },
           "type": {
@@ -581,7 +581,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 132,
+            "line": 150,
             "column": 31
           },
           "type": {
@@ -602,7 +602,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 132,
+        "line": 150,
         "column": 8
       },
       "symbol": "zg_divide"
@@ -617,7 +617,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 137,
+            "line": 155,
             "column": 12
           },
           "type": {
@@ -636,10 +636,42 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 137,
+        "line": 155,
         "column": 8
       },
       "symbol": "zg_sum"
+    },
+    {
+      "name": "scrollAmount",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "behavior",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 137,
+            "column": 21
+          },
+          "type": {
+            "kind": "value_struct",
+            "ref": "ScrollViewport"
+          }
+        }
+      ],
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": true
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 137,
+        "column": 8
+      },
+      "symbol": "zg_scroll_amount"
     },
     {
       "name": "panicError",
@@ -656,7 +688,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 143,
+        "line": 161,
         "column": 8
       },
       "symbol": "zg_panic_error"
@@ -923,6 +955,82 @@
         "signed": false
       },
       "zig_path": "@typeInfo(root.Signal).@\"union\".tag_type.?"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "top",
+          "type": {
+            "kind": "void"
+          },
+          "value": 0
+        },
+        {
+          "name": "bottom",
+          "type": {
+            "kind": "void"
+          },
+          "value": 1
+        },
+        {
+          "name": "delta",
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": true
+          },
+          "value": 2
+        },
+        {
+          "name": "page",
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          },
+          "value": 3
+        }
+      ],
+      "kind": "tagged_union",
+      "name": "ScrollViewport",
+      "tag_type": {
+        "kind": "enum",
+        "ref": "ScrollViewportTag"
+      },
+      "zig_path": "root.ScrollViewport"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "top",
+          "value": 0
+        },
+        {
+          "name": "bottom",
+          "value": 1
+        },
+        {
+          "name": "delta",
+          "value": 2
+        },
+        {
+          "name": "page",
+          "value": 3
+        }
+      ],
+      "kind": "enum",
+      "name": "ScrollViewportTag",
+      "tag_type": {
+        "bits": 8,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "zig_path": "@typeInfo(root.ScrollViewport).@\"union\".tag_type.?"
     }
   ],
   "zig_version": "0.16.0"

@@ -125,6 +125,24 @@ pub const Signal = union(enum(u8)) {
     }
 };
 
+/// A value-only tagged union. zigo flattens it to a tag and one scalar slot
+/// per payload instead of exposing it as a pointer handle.
+pub const ScrollViewport = union(enum(u8)) {
+    top,
+    bottom,
+    delta: isize,
+    page: usize,
+};
+
+pub fn scrollAmount(behavior: ScrollViewport) isize {
+    return switch (behavior) {
+        .top => 1,
+        .bottom => 2,
+        .delta => |value| value,
+        .page => |value| @intCast(value),
+    };
+}
+
 pub fn liveValues() usize {
     return live_values.load(.monotonic);
 }
@@ -188,4 +206,11 @@ test "the value snapshot union changes variants like any other tagged union" {
     try std.testing.expect(signal.active);
     signal.setIdle();
     try std.testing.expectEqual(std.meta.activeTag(signal.*), .idle);
+}
+
+test "scalar payload tagged unions pass by value" {
+    try std.testing.expectEqual(@as(isize, 1), scrollAmount(.top));
+    try std.testing.expectEqual(@as(isize, 2), scrollAmount(.bottom));
+    try std.testing.expectEqual(@as(isize, -4), scrollAmount(.{ .delta = -4 }));
+    try std.testing.expectEqual(@as(isize, 3), scrollAmount(.{ .page = 3 }));
 }

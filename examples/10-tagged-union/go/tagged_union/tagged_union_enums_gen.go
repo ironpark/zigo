@@ -109,3 +109,33 @@ func (value SignalTag) String() string {
 		return "SignalTag(" + strconv.Itoa(int(value)) + ")"
 	}
 }
+
+// ScrollViewportTag represents the corresponding Zig enum.
+type ScrollViewportTag uint8
+
+const (
+	// ScrollViewportTagTop corresponds to the Zig tag top.
+	ScrollViewportTagTop ScrollViewportTag = 0
+	// ScrollViewportTagBottom corresponds to the Zig tag bottom.
+	ScrollViewportTagBottom ScrollViewportTag = 1
+	// ScrollViewportTagDelta corresponds to the Zig tag delta.
+	ScrollViewportTagDelta ScrollViewportTag = 2
+	// ScrollViewportTagPage corresponds to the Zig tag page.
+	ScrollViewportTagPage ScrollViewportTag = 3
+)
+
+// String returns the Zig tag name.
+func (value ScrollViewportTag) String() string {
+	switch value {
+	case ScrollViewportTagTop:
+		return "top"
+	case ScrollViewportTagBottom:
+		return "bottom"
+	case ScrollViewportTagDelta:
+		return "delta"
+	case ScrollViewportTagPage:
+		return "page"
+	default:
+		return "ScrollViewportTag(" + strconv.Itoa(int(value)) + ")"
+	}
+}
