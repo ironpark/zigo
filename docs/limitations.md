@@ -65,6 +65,16 @@
   밖의 필드나 빈 struct는 `ZIGO012`로 거부된다. scalar-only struct는 직접 slice 원소로
   사용할 수 있지만, optional이나 callback 시그니처 안에 넣으면 `ZIGO013`으로 거부된다.
   필드를 하나라도 바꾸면 ABI가 깨진다.
+- slice 원소인 `extern struct`는 bool 필드가 없을 때만 주소를 그대로 넘기는 캐스트 경로를
+  쓴다. Go의 `bool`과 C의 `uint8_t`는 폭은 같아도 같은 타입이 아니므로, bool 필드가 하나라도
+  있으면 원소별 복사 경로로 남는다. 캐스트 경로는 생성된 compile 시점 layout 단정이
+  지키므로, Go와 C의 배치가 어긋나면 바인딩이 컴파일되지 않는다.
+- `.direction = .out` slice에 `.written = .@"return"`을 쓰려면 반환 payload가
+  `usize`(또는 `!usize`)여야 하고, `.out`이 아닌 파라미터에는 붙일 수 없다. 둘 다
+  `ZIGO017`로 거부된다.
+- native 메모리를 그대로 들여다보는 뷰 반환은 제공하지 않는다. 반환된 slice의 수명이
+  native 객체의 수명에 묶이면 Go 쪽에서 그 규칙을 강제할 방법이 없기 때문이며, 복사를
+  피하고 싶다면 `.direction = .out` 파라미터로 결과를 받는다.
 - `packed struct`의 정수 백킹 노출은 지원하지 않는다. `ZIGO003`으로 거부된다.
 - optional은 선언된 opaque type의 pointer(`?*T`, `?*const T`)에만 쓸 수 있다. handle
   인자는 이미 pointer라서 nil이 NULL로 그대로 건너가지만, `?i32`나 `?[]u8` 같은 optional은

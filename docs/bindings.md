@@ -70,7 +70,7 @@ error입니다.
 | `path` | `root.<name>` 또는 `<Type>.<name>` 선언 경로 |
 | `name` | 공개 Go 함수 이름 override |
 | `params` | 함수 파라미터 이름 목록 |
-| `param_meta` | 파라미터별 `semantic`, `retention`, `direction` |
+| `param_meta` | 파라미터별 `semantic`, `retention`, `direction`, `written` |
 | `semantic` | 반환값 의미. 예: `.utf8_string` |
 | `returns` | 반환 pointer의 ownership |
 
@@ -113,7 +113,8 @@ alias라 reflection이 이름을 알 수 없으니, 하나의 이름을 원하�
 슬라이스를 반환하는 함수는 호출 시점에 native 메모리에서 Go가 소유한 새 사본을 만듭니다.
 따라서 반환된 `[]T`는 다음 native 호출이나 원본 객체의 `Close`와 독립적이며, 호출자는
 반환된 사본만 수정할 수 있습니다. tagged-union의 숫자 slice payload도 같은 복사 계약을
-따릅니다.
+따릅니다. 이 복사가 부담이라면 결과를 `.direction = .out` 파라미터로 받는
+[`...Into(dst)` 패턴](#큰-결과는-out-파라미터로)을 쓰세요.
 
 실패할 수 있는 slice 반환(`![]T`)도 같은 방식으로 내려갑니다. C 시그니처는 정수 코드를
 반환하고 `T** out_result_ptr, size_t* out_result_len`을 그대로 받으며, 공개 Go는
@@ -339,14 +340,54 @@ pub fn estimate(output: []Stats) !usize { /* ... */ }
 .{
     .path = "Context.estimate",
     .params = .{"output"},
-    .param_meta = .{ .output = .{ .direction = .out } },
+    .param_meta = .{ .output = .{ .direction = .out, .written = .@"return" } },
 },
 ```
 
 직접 slice 원소인 `extern struct`는 C에서 `const T*`/`T*`와 길이로 전달됩니다. Go public
-API는 `[]T`를 받고, out slice는 native가 기록한 개수만큼 호출자 버퍼에 복사합니다.
-반환 slice도 `[]T`의 새 사본이며 native 메모리를 alias하지 않습니다.
+API는 `[]T`를 받습니다. bool field가 없는 struct는 Go mirror가 C layout과 byte 단위로
+같으므로 slice 주소를 그대로 넘깁니다 — 들어갈 때도 나올 때도 복사가 없고, native는
+호출자의 버퍼에 직접 씁니다. 이 동일성은 생성된 compile 시점 layout 단정이 지키므로,
+어긋나면 Go build가 실패합니다. bool field가 있는 struct만 원소별 복사 경로를 씁니다.
+반환 slice는 어느 쪽이든 `[]T`의 새 사본이며 native 메모리를 alias하지 않습니다.
 out slice로 선언하려면 해당 파라미터에 `param_meta.direction = .out`을 명시해야 합니다.
+
+### 얼마나 채워졌는가: `written`
+
+`.direction = .out`인 slice는 기본값 `.written = .all`로, 호출이 끝나면 버퍼 전체가
+채워진 것으로 봅니다. `.written = .@"return"`을 붙이면 함수가 반환한 개수만큼만
+채워진 것으로 보고, **그 뒤의 원소는 호출 전 값 그대로**입니다 — `io.Reader`와 같은
+모양입니다. 오류로 끝난 호출은 0을 보고하므로 버퍼는 전혀 건드려지지 않습니다.
+
+`.@"return"`은 반환 payload가 `usize`(또는 `!usize`)일 때만 쓸 수 있고, `.out`이 아닌
+파라미터에 붙이면 `ZIGO017`로 거부됩니다.
+
+### 큰 결과는 out 파라미터로
+
+slice를 반환하면 호출마다 Go 쪽 할당과 복사가 한 번씩 일어납니다. 결과가 크거나 호출이
+잦다면 호출자가 버퍼를 재사용하는 `...Into(dst)` 모양이 낫습니다.
+
+```zig
+pub fn extractSamplesInto(self: *Queue, dst: []f32) usize {
+    const wanted = self.items.len + 1;
+    if (dst.len < wanted) return 0;
+    // ... dst[0..wanted] 를 채운다
+    return wanted;
+}
+
+// bindings.zig
+.{
+    .path = "Queue.extractSamplesInto",
+    .params = .{"dst"},
+    .param_meta = .{ .dst = .{ .direction = .out, .written = .@"return" } },
+},
+```
+
+```go
+buf := make([]float32, 1024) // 한 번 할당해 계속 재사용
+n, err := queue.ExtractSamplesInto(buf)
+// buf[:n] 이 이번 호출의 결과, buf[n:] 는 그대로
+```
 
 ## Tagged union projection
 

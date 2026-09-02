@@ -129,6 +129,31 @@ API를 작성할 수 있으며, zigo는 marker가 없는 사용자 파일을 덮
 않으므로 판정은 계속 breaking입니다. 필드를 더해야 한다면 새 struct와 새 함수를 추가하거나,
 소비자와 native를 같은 시점에 배포하세요.
 
+## 값 struct slice의 캐스트 경로
+
+bool 필드가 없는 `extern struct`는 Go mirror(`TData`)와 공개 타입 `T`, 그리고 C struct가
+모두 같은 배치를 가집니다. 이런 원소의 slice 파라미터는 어느 계층에서도 복사하지 않고
+주소만 넘어갑니다.
+
+- 공개 계층: `[]T`를 `unsafe.Slice`로 `[]TData`로 재해석합니다.
+- cgo raw 계층: `(*C.x)(unsafe.Pointer(&values[0]))`를 넘깁니다.
+- purego raw 계층: 원래부터 mirror의 주소를 넘겼으므로 그대로입니다.
+
+즉 두 백엔드가 같은 경로를 씁니다. native는 호출자의 버퍼에 직접 쓰고, 돌아오는 복사도
+없습니다.
+
+배치가 같다는 전제는 생성 코드가 compile 시점에 못 박습니다. shim의 `zigoAbiGuard`가
+Zig 타입을 헤더에 대해 고정하고, cgo raw 파일이 `TData`를 `C.x`에 대해, 공개 struct 파일이
+`T`를 `TData`에 대해 크기와 필드 offset까지 단정합니다.
+
+```go
+var _ = [1]struct{}{}[unsafe.Sizeof(Point{})-unsafe.Sizeof(raw.PointData{})]
+var _ = [1]struct{}{}[unsafe.Offsetof(Point{}.X)-unsafe.Offsetof(raw.PointData{}.X)]
+```
+
+배열 index가 상수로 평가되므로 배치가 어긋나면 `go build`가 그 자리에서 실패합니다.
+bool 필드가 있는 struct는 캐스트하지 않으므로 이 단정도 생성되지 않습니다.
+
 ## 생성 파일의 역할
 
 - `<package>_gen.go`: 공개 함수와 method
