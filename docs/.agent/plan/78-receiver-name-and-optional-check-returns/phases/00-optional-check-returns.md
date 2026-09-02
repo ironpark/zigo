@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 새 골든의 Go가 `go vet` 통과, 전 예제 녹색, 커밋.
 > NEXT: none

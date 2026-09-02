@@ -1,0 +1,47 @@
+{
+  "functions": [
+    {
+      "name": "password",
+      "params": [],
+      "receiver": "Terminal",
+      "return": {
+        "child": {"bits": 32, "is_usize": false, "kind": "int", "signed": true},
+        "kind": "optional"
+      },
+      "symbol": "zg_terminal_password"
+    },
+    {
+      "name": "checkedLevel",
+      "params": [
+        {"name": "level", "type": {"bits": 7, "is_usize": false, "kind": "int", "signed": false}}
+      ],
+      "return": {
+        "error_set": ["Invalid"],
+        "kind": "error_union",
+        "payload": {
+          "child": {"bits": 32, "is_usize": false, "kind": "int", "signed": true},
+          "kind": "optional"
+        }
+      },
+      "symbol": "zg_checked_level"
+    },
+    {
+      "name": "terminalValue",
+      "params": [
+        {
+          "name": "terminal",
+          "type": {"const": true, "kind": "opaque_ptr", "nullable": true, "ref": "Terminal"}
+        }
+      ],
+      "return": {
+        "child": {"bits": 32, "is_usize": false, "kind": "int", "signed": true},
+        "kind": "optional"
+      },
+      "symbol": "zg_terminal_value"
+    }
+  ],
+  "package": "optional_return_checks",
+  "prefix": "zg",
+  "types": [{"kind": "opaque", "name": "Terminal"}],
+  "zig_version": "0.16.0"
+}

@@ -19,6 +19,10 @@ pub const Context = struct {
         return self.total;
     }
 
+    pub fn maybeTotal(self: *const Context, present: bool) ?i64 {
+        return if (present) self.total else null;
+    }
+
     /// crash panics inside a method: what leaves a handle poisoned.
     pub fn crash(self: *Context) CreateError!void {
         _ = self;

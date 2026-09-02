@@ -3779,19 +3779,13 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                 try writeErrorForCode(allocator, writer, function.origin.*, go_names, operation);
                 try writer.writeAll("\t\tif errors.Is(zigoErr, ErrCanceled) && ctx.Err() != nil {\n\t\t\treturn ");
                 if (error_payload != .void) {
-                    try writePublicZeroValue(writer, function.origin.*, error_payload);
-                    try writer.writeAll(", ");
-                    if (error_payload == .optional) try writer.writeAll("false, ");
+                    try writePublicFailureValues(writer, function.origin.*, error_payload);
                 }
                 try writer.writeAll("ctx.Err()\n\t\t}\n");
             }
             try writer.writeAll("\t\treturn ");
             if (error_payload != .void) {
-                try writePublicZeroValue(writer, function.origin.*, error_payload);
-                try writer.writeAll(", ");
-                // The presence flag sits between the value and the error, and
-                // a failed call has no value at all.
-                if (error_payload == .optional) try writer.writeAll("false, ");
+                try writePublicFailureValues(writer, function.origin.*, error_payload);
             }
             if (cancellable)
                 try writer.writeAll("zigoErr\n")
@@ -5280,8 +5274,8 @@ fn writeCheckedErrorReturn(
     const payload = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
     if (payload == .void) return writer.print("return {s}\n", .{error_expression});
     try writer.writeAll("return ");
-    try writePublicZeroValue(writer, function, payload);
-    try writer.print(", {s}\n", .{error_expression});
+    try writePublicFailureValues(writer, function, payload);
+    try writer.print("{s}\n", .{error_expression});
 }
 
 /// Whether any parameter is declared narrower than the C integer that carries
@@ -5339,6 +5333,14 @@ fn writePublicZeroValue(writer: *std.Io.Writer, function: semantic.SemanticFn, p
     // there is no zero value of the optional itself to write.
     if (payload == .optional) return writeGoZeroValue(writer, payload.optional.child.*);
     try writeGoZeroValue(writer, payload);
+}
+
+/// The result values that precede an error on a failed public call. Optional
+/// payloads include their presence flag between the zero value and the error.
+fn writePublicFailureValues(writer: *std.Io.Writer, function: semantic.SemanticFn, payload: semantic.TypeNode) !void {
+    try writePublicZeroValue(writer, function, payload);
+    try writer.writeAll(", ");
+    if (payload == .optional) try writer.writeAll("false, ");
 }
 
 /// The public return type when a nil or closed handle reaches the caller as an

@@ -29,6 +29,14 @@ func ContextAdd(self unsafe.Pointer, value int64) (int64, int32) {
 	return int64(outResult), code
 }
 
+// ContextMaybeTotal calls the generated C ABI wrapper for zg_context_maybe_total.
+func ContextMaybeTotal(self unsafe.Pointer, present uint8) (int64, bool, int32) {
+	var outResultHas C.uint8_t
+	var outResult C.int64_t
+	code := int32(C.zg_context_maybe_total((*C.zg_context)(self), C.uint8_t(present), &outResultHas, &outResult))
+	return int64(outResult), outResultHas != 0, code
+}
+
 // ContextCrash calls the generated C ABI wrapper for zg_context_crash.
 func ContextCrash(self unsafe.Pointer) int32 {
 	code := int32(C.zg_context_crash((*C.zg_context)(self)))

@@ -1,0 +1,5 @@
+{
+  "package": "optional_return_checks",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/optional-return-checks"
+}

@@ -311,6 +311,8 @@ pub fn build(b: *std.Build) void {
         "tests/generator_cases/optional_purego/expected",
         "tests/generator_cases/optional_slice/expected",
         "tests/generator_cases/optional_slice_purego/expected",
+        "tests/generator_cases/optional_return_checks/expected",
+        "tests/generator_cases/optional_return_checks_purego/expected",
         "tests/generator_cases/root_constructor/expected",
         "tests/generator_cases/scalar/expected",
         "tests/generator_cases/union_snapshot/expected",
