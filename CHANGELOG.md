@@ -4,6 +4,16 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Fixed
+
+- 같은 잘린 `@typeName`을 가진 서로 다른 comptime 생성 enum이 첫 번째 등록 타입 하나로
+  합쳐지던 문제를 고쳤습니다. 등록 타입을 comptime identity로 연결하고 충돌하는
+  `semantic.json`의 `zig_path`에는 등록 이름을 붙여 구분합니다.
+- 숫자로 시작하는 enum tag를 단독 Go 식별자로 검사해 거부하던 문제를 고쳤습니다. 이제
+  `80_cols`는 실제 생성되는 전체 상수 이름(`DeccolmMode80Cols`)으로 검증합니다.
+
 ## [0.4.2] - 2026-09-03
 
 ### Fixed

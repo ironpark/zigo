@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T17:59:40Z"
 description: comptime enum identity를 @typeName 문자열이 아닌 타입으로 판별하고, enum tag 식별자 검사를 실제 emit 이름 기준으로 변경
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-02T17:32:43Z"
 ---
 > NEXT: 등록 타입 판별을 `@typeName` 문자열 비교에서 comptime 타입 동일성으로 바꾼다. ([Phase 0](phases/00-type-identity.md))
@@ -9,7 +10,7 @@ registered_at: "2026-09-02T17:32:43Z"
 
 - [x] [Phase 00: 타입 identity](phases/00-type-identity.md)
 - [x] [Phase 01: emit 이름 기준 식별자 검사](phases/01-emitted-name-check.md)
-- [ ] [Phase 02: 문서와 CHANGELOG](phases/02-docs.md)
+- [x] [Phase 02: 문서와 CHANGELOG](phases/02-docs.md)
 
 # Shared Verification
 

@@ -209,8 +209,11 @@ error[ZIGO018]: unsupported integer width `u21` in parameter `cp`
   파라미터에 붙었다. 메시지가 넷을 구분한다.
 - `ZIGO021` — 이름이 비어 있거나 Go 식별자가 아니다. package, prefix, 함수 이름의 공백과,
   reflection이 유도했든 `.name`으로 준 것이든 생성될 Go 이름이 모두 여기서 검사된다.
-  등록된 타입 이름은 Go에 그대로 나가므로 쓰인 철자 그대로, 필드·enum tag·함수 이름은
-  zigo가 PascalCase로 바꾼 뒤의 철자로 판단한다(Zig의 `type` 필드는 Go `Type`이라 통과한다).
+  등록된 타입 이름은 Go에 그대로 나가므로 쓰인 철자 그대로, 필드·함수 이름은 zigo가
+  PascalCase로 바꾼 뒤의 철자로 판단한다(Zig의 `type` 필드는 Go `Type`이라 통과한다).
+  enum tag는 실제 상수 철자 `<Type><Pascal(tag)>` 전체를 검사하므로 `80_cols`도
+  `DeccolmMode80Cols`처럼 유효한 이름이 되면 통과한다. Pascal 변환 결과가 비는 tag처럼 실제
+  생성 이름을 만들 수 없는 경우는 계속 거부한다.
   `@typeName`이 식별자가 아닌 comptime 생성 타입(`lib.Enum(...)[0..4])`)은 `.types`에
   `.name`과 함께 등록해 이름을 준다. 메시지는 Zig 타입 경로를 함께 적는다.
 - `ZIGO024` — 공개 Go 이름이 충돌한다. receiver가 없는 함수는 namespace가 아니라 마지막

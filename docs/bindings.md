@@ -553,6 +553,12 @@ Go `CursorStyle`, C `zg_cursor_style`, `semantic.json`의 `"name": "CursorStyle"
 그 타입에 닿기 전에 이뤄집니다. 등록된 enum은 컨테이너로 walk되지 않으므로 `.discover`가
 켜져 있어도 enum 안의 선언은 발견되지 않습니다. 예제는 `09-type-relations`에 있습니다.
 
+등록된 enum은 `@typeName` 문자열이 아니라 Zig의 comptime 타입 identity로 signature와
+연결됩니다. 따라서 comptime 생성기가 서로 다른 enum에 같은(잘린) `@typeName`을 주더라도
+각 파라미터와 반환값은 등록한 Go 타입을 유지합니다. 이 경우 `semantic.json`의 진단용
+`zig_path`에는 `#CursorStyle`처럼 등록 이름이 붙어 서로 구분됩니다. 같은 Zig 타입을 서로
+다른 이름으로 두 번 등록하는 것은 여전히 허용되지 않습니다.
+
 Zig enum이 `enum(u8) { below, above, _ }`처럼 non-exhaustive이면 자동 등록이나 보통의
 `.enumeration` 등록은 `ZIGO002`로 거부됩니다. 이름 붙은 tag 밖의 정수도 API 계약에 포함하려면
 등록 항목에 opt-in을 적습니다.
