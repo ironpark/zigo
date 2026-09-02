@@ -3,6 +3,11 @@ depends_on:
 - "68-ultrasync-followups#3"
 entry_condition: phase 3 벤치마크에서 LockOSThread 쌍이 가벼운 error union 호출 총비용의 10% 이상
 perf_phase: true
+planr_base: sha256:6f4b0bc8513ab23a8d4ae9b4238d44179c701d1c074eb1308b5e1ce618f04de6
+planr_edit: "ultrasync-followups#4"
+planr_phase: 4
+planr_slug: panic-message-abi
+planr_target: docs/.agent/plan/68-ultrasync-followups/phases/04-panic-message-abi.md
 status: conditional
 ---
 > DONE-WHEN: 진입 조건이 성립하지 않아 진행하지 않는다. 그 판단이 `docs/limitations.md`에 수치와 함께 남아 있다.
