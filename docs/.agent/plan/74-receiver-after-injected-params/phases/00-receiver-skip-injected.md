@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T13:27:12Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: allocator-first 소멸자 골든이 통과하고 전 검증 루프 녹색, 커밋.
 > NEXT: none
