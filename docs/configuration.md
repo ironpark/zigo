@@ -199,9 +199,10 @@ cgo가 pkg-config에게 컴파일·링크 플래그를 직접 묻게 하기 위�
 `.purego`는 링크 지시자를 전혀 생성하지 않습니다. 시스템 라이브러리는 native 공유
 라이브러리가 이미 링크하고 있어야 합니다. 반대로 `.cgo_static`은 archive를 Go 링크 시점에
 푸는 방식이라, native가 쓰는 시스템 라이브러리가 이 블록에 빠짐없이 있어야 합니다. Zig는
-정적 archive 안에 다른 archive를 합치지 않으므로 zigo는 module의 `.other_step` 정적
-라이브러리와 `.static_path` 입력을 선언 순서대로 다시 적고, binding install이 그 artifact에
-의존하게 합니다. fat archive를 만들지는 않습니다.
+정적 archive 안에 다른 archive를 합치지 않으므로 zigo는 module과 module이 import하는 모든
+module의 `.other_step` 정적 라이브러리와 `.static_path` 입력을 의존 먼저 순서로 다시 적고,
+binding install이 그 artifact에 의존하게 합니다. 같은 라이브러리에 여러 import를 거쳐 닿아도
+한 번만 적습니다. fat archive를 만들지는 않습니다.
 
 각 정적 입력은 binding archive와 같은 `zig-out/lib`에 `lib<name>.a`로 설치되고(`.other_step`은
 라이브러리 이름, `.static_path`는 파일 이름에서 `lib` 접두사와 확장자를 뺀 것), cgo 줄에는

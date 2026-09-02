@@ -5,10 +5,19 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const dynamic = b.option(bool, "dynamic", "Build a runtime-loadable shared binding library") orelse false;
+    // The C++ pieces live on a module `scalar` imports, not on `scalar`
+    // itself: the binding library's static link inputs are gathered through
+    // imports, and this is the layout that exercises it.
+    const scalar_bridge = b.createModule(.{
+        .root_source_file = b.path("src/bridge.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     const scalar = b.addModule("scalar", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
         .optimize = optimize,
+        .imports = &.{.{ .name = "scalar_bridge", .module = scalar_bridge }},
     });
     const support = b.addLibrary(.{
         .name = "scalar_support",
@@ -24,8 +33,8 @@ pub fn build(b: *std.Build) void {
         .flags = &.{"-fno-sanitize=undefined"},
     });
     support.installHeader(b.path("src/support.hpp"), "support.hpp");
-    scalar.linkLibrary(support);
-    scalar.addCSourceFile(.{
+    scalar_bridge.linkLibrary(support);
+    scalar_bridge.addCSourceFile(.{
         .file = b.path("src/bridge.cpp"),
         .flags = &.{"-fno-sanitize=undefined"},
     });

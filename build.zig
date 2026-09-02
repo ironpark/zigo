@@ -999,6 +999,10 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     }
     update.step.dependOn(&install_lib.step);
     update.step.dependOn(&install_header.step);
+    // The archive is useless to cgo without the header beside it, so every
+    // step that installs the library (`go-lib`, the default `install`)
+    // installs the header as well.
+    install_lib.step.dependOn(&install_header.step);
     if (volatile_link_flags) |flags| {
         update.step.dependOn(&flags.step);
         check.step.dependOn(&flags.step);
@@ -1373,23 +1377,47 @@ fn hostReflectionLibrary(
 /// Static libraries that Zig records as inputs are not folded into another
 /// static archive. cgo must therefore name each input again when it links the
 /// final Go executable.
+///
+/// Inputs are gathered from the module and everything it imports, in
+/// dependency-first order: a library attached to an imported module (ghostty
+/// hangs simdutf and highway on `ghostty-vt`, and the binding imports that)
+/// is just as much a link input as one attached to the module itself.
 fn staticLibraryInputs(b: *std.Build, module: *std.Build.Module) StaticLinkInputs {
-    var paths: std.ArrayList(std.Build.LazyPath) = .empty;
-    var names: std.ArrayList([]const u8) = .empty;
-    for (module.link_objects.items) |object| {
-        const path: std.Build.LazyPath, const name: []const u8 = switch (object) {
-            .other_step => |compile| if (compile.isStaticLibrary()) .{ compile.getEmittedBin(), compile.name } else continue,
-            .static_path => |candidate| .{ candidate, archiveStem(std.fs.path.basename(candidate.getDisplayName())) },
-            else => continue,
-        };
-        for (names.items) |existing| {
-            if (std.mem.eql(u8, existing, name)) @panic(b.fmt("two static link inputs would both install as lib{s}.a", .{name}));
-        }
-        paths.append(b.allocator, path) catch @panic("OOM");
-        names.append(b.allocator, name) catch @panic("OOM");
-    }
-    return .{ .paths = paths.items, .names = names.items };
+    var inputs: StaticInputCollector = .{};
+    var seen: std.AutoHashMapUnmanaged(*std.Build.Module, void) = .empty;
+    inputs.collect(b, module, &seen);
+    return .{ .paths = inputs.paths.items, .names = inputs.names.items };
 }
+
+const StaticInputCollector = struct {
+    paths: std.ArrayList(std.Build.LazyPath) = .empty,
+    names: std.ArrayList([]const u8) = .empty,
+    compiles: std.ArrayList(*std.Build.Step.Compile) = .empty,
+
+    fn collect(self: *StaticInputCollector, b: *std.Build, module: *std.Build.Module, seen: *std.AutoHashMapUnmanaged(*std.Build.Module, void)) void {
+        if (seen.contains(module)) return;
+        seen.put(b.allocator, module, {}) catch @panic("OOM");
+        for (module.import_table.values()) |import| self.collect(b, import, seen);
+        for (module.link_objects.items) |object| {
+            const path: std.Build.LazyPath, const name: []const u8 = switch (object) {
+                .other_step => |compile| blk: {
+                    if (!compile.isStaticLibrary()) continue;
+                    // One library reached through two imports is one input.
+                    if (std.mem.indexOfScalar(*std.Build.Step.Compile, self.compiles.items, compile) != null) continue;
+                    self.compiles.append(b.allocator, compile) catch @panic("OOM");
+                    break :blk .{ compile.getEmittedBin(), compile.name };
+                },
+                .static_path => |candidate| .{ candidate, archiveStem(std.fs.path.basename(candidate.getDisplayName())) },
+                else => continue,
+            };
+            for (self.names.items) |existing| {
+                if (std.mem.eql(u8, existing, name)) @panic(b.fmt("two static link inputs would both install as lib{s}.a", .{name}));
+            }
+            self.paths.append(b.allocator, path) catch @panic("OOM");
+            self.names.append(b.allocator, name) catch @panic("OOM");
+        }
+    }
+};
 
 /// `libfoo.a`, `foo.lib` and `foo.a` all install as `libfoo.a`.
 fn archiveStem(file_name: []const u8) []const u8 {

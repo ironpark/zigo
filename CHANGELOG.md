@@ -16,6 +16,14 @@
   배정은 필드를 생략해 기존 단일 패키지 문서를 유지하고, `abi-diff`는 패키지 이동을 breaking
   Go surface 변경으로 보고합니다.
 
+### Fixed
+
+- `.cgo_static`의 정적 링크 입력을 module이 import하는 module에서도 수집합니다. 라이브러리가
+  자기 C/C++ 의존성을 자신의 module에 붙이고 바인딩이 그 module을 import하는 경우(ghostty-vt의
+  simdutf, highway)에도 archive가 cgo 링크 줄에 들어갑니다.
+- `go-lib`와 기본 `install`이 라이브러리와 함께 헤더도 설치합니다. 이전에는 `go` 스텝만 헤더를
+  설치해, 새 체크아웃에서 `zig build go-lib` 직후의 `go test`가 헤더를 찾지 못했습니다.
+
 ## [0.5.0] - 2026-09-03
 
 ### Added
