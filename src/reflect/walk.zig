@@ -32,11 +32,16 @@ pub fn reflect(
             const info = @typeInfo(T);
             const type_name = if (@hasField(@TypeOf(entry), "name")) entry.name else shortTypeName(@typeName(T));
             switch (entry.repr) {
-                .@"opaque" => try types.append(allocator, .{
-                    .kind = .@"opaque",
-                    .name = type_name,
-                    .zig_path = try registeredZigPath(allocator, declaration, T, type_name),
-                }),
+                .@"opaque" => {
+                    try types.append(allocator, .{
+                        .kind = .@"opaque",
+                        .name = type_name,
+                        .zig_path = try registeredZigPath(allocator, declaration, T, type_name),
+                    });
+                    if (@hasField(@TypeOf(entry), "fields")) inline for (entry.fields) |field| {
+                        try appendFieldAccessors(allocator, &functions, &types, declaration, prefix, T, type_name, field);
+                    };
+                },
                 .value => switch (info) {
                     .@"struct" => try appendValueStruct(allocator, &types, declaration, T, type_name, try registeredZigPath(allocator, declaration, T, type_name)),
                     else => @compileError("zigo value type entries must name a struct"),
@@ -72,6 +77,8 @@ pub fn reflect(
                 },
                 else => @compileError("zigo type repr must be .opaque, .value, .enumeration, .tagged_union, or .callback"),
             }
+            if (entry.repr != .@"opaque" and @hasField(@TypeOf(entry), "fields"))
+                @compileError("zigo `.fields` metadata is supported only on `.repr = .opaque` type entries");
         }
     }
     if (comptime discoveryEnabled(declaration)) {
@@ -151,6 +158,132 @@ pub fn reflect(
         .types = try types.toOwnedSlice(allocator),
         .zig_version = @import("builtin").zig_version_string,
     };
+}
+
+fn appendFieldAccessors(
+    allocator: std.mem.Allocator,
+    functions: *std.ArrayList(semantic.SemanticFn),
+    types: *std.ArrayList(semantic.TypeDecl),
+    comptime declaration: anytype,
+    prefix: []const u8,
+    comptime Owner: type,
+    owner_name: []const u8,
+    comptime metadata: anytype,
+) !void {
+    if (!@hasField(@TypeOf(metadata), "path"))
+        @compileError("zigo field entries require `.path`");
+    const path = metadata.path;
+    const resolved = comptime fieldPathType(Owner, path);
+    if (resolved == null) return fieldAccessIssue(allocator, path, null);
+    const Leaf = resolved.?;
+    if (!comptime supportedFieldLeaf(declaration, Leaf))
+        return fieldAccessIssue(allocator, path, Leaf);
+    if (@hasField(@TypeOf(metadata), "set") and metadata.set and !comptime fieldPathWritable(Owner, path))
+        return fieldAccessIssue(allocator, path, null);
+
+    const name = if (@hasField(@TypeOf(metadata), "name")) metadata.name else fieldPathMember(path);
+    const field_type = try typeNode(
+        allocator,
+        declaration,
+        Leaf,
+        types,
+        comptime "field `" ++ path ++ "`",
+    );
+    try functions.append(allocator, .{
+        .doc = if (@hasField(@TypeOf(metadata), "doc")) metadata.doc else null,
+        .field_access = .{ .path = path },
+        .name = name,
+        .params = &.{},
+        .receiver = owner_name,
+        .@"return" = field_type,
+        .symbol = try naming.functionSymbolAlloc(allocator, prefix, owner_name, name),
+    });
+
+    if (@hasField(@TypeOf(metadata), "set") and metadata.set) {
+        const setter_name = try setterNameAlloc(allocator, name);
+        const params = try allocator.alloc(semantic.Parameter, 1);
+        params[0] = .{ .name = "v", .name_source = .sidecar, .type = field_type };
+        try functions.append(allocator, .{
+            .doc = if (@hasField(@TypeOf(metadata), "doc")) metadata.doc else null,
+            .field_access = .{ .path = path, .setter = true },
+            .name = setter_name,
+            .params = params,
+            .receiver = owner_name,
+            .@"return" = .{ .void = {} },
+            .symbol = try naming.functionSymbolAlloc(allocator, prefix, owner_name, setter_name),
+        });
+    }
+}
+
+fn setterNameAlloc(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
+    if (name.len == 0) return allocator.dupe(u8, "set");
+    const result = try allocator.alloc(u8, name.len + 3);
+    @memcpy(result[0..3], "set");
+    result[3] = std.ascii.toUpper(name[0]);
+    @memcpy(result[4..], name[1..]);
+    return result;
+}
+
+fn fieldPathMember(comptime path: []const u8) []const u8 {
+    return if (std.mem.lastIndexOfScalar(u8, path, '.')) |index| path[index + 1 ..] else path;
+}
+
+/// Resolve one field segment at a time. A pointer is accepted only between
+/// segments, and only when it is a non-optional single pointer to a struct.
+fn fieldPathType(comptime Current: type, comptime path: []const u8) ?type {
+    if (path.len == 0) return null;
+    const Container = switch (@typeInfo(Current)) {
+        .pointer => |pointer| if (pointer.size == .one and @typeInfo(pointer.child) == .@"struct") pointer.child else return null,
+        .@"struct" => Current,
+        else => return null,
+    };
+    const dot = std.mem.indexOfScalar(u8, path, '.');
+    const segment = if (dot) |index| path[0..index] else path;
+    if (segment.len == 0 or !@hasField(Container, segment)) return null;
+    const Field = @FieldType(Container, segment);
+    if (dot) |index| return fieldPathType(Field, path[index + 1 ..]);
+    return Field;
+}
+
+fn fieldPathWritable(comptime Current: type, comptime path: []const u8) bool {
+    const Container = switch (@typeInfo(Current)) {
+        .pointer => |pointer| if (pointer.size == .one and !pointer.is_const and @typeInfo(pointer.child) == .@"struct") pointer.child else return false,
+        .@"struct" => Current,
+        else => return false,
+    };
+    const dot = std.mem.indexOfScalar(u8, path, '.');
+    const segment = if (dot) |index| path[0..index] else path;
+    if (segment.len == 0 or !@hasField(Container, segment)) return false;
+    if (dot) |index| return fieldPathWritable(@FieldType(Container, segment), path[index + 1 ..]);
+    return true;
+}
+
+fn supportedFieldLeaf(comptime declaration: anytype, comptime T: type) bool {
+    return switch (@typeInfo(T)) {
+        .bool, .int, .float => true,
+        .@"enum" => registeredTypeName(declaration, T, .enumeration) != null,
+        else => false,
+    };
+}
+
+fn fieldAccessIssue(allocator: std.mem.Allocator, comptime path: []const u8, comptime T: ?type) error{ FieldAccess, OutOfMemory } {
+    const message = try fieldAccessMessageAlloc(allocator, path, T);
+    defer allocator.free(message);
+    if (!@import("builtin").is_test) std.debug.print("{s}", .{message});
+    return error.FieldAccess;
+}
+
+fn fieldAccessMessageAlloc(allocator: std.mem.Allocator, comptime path: []const u8, comptime T: ?type) ![]u8 {
+    const detail = if (T) |Field|
+        comptime " resolves to unsupported type `" ++ @typeName(Field) ++ "`"
+    else
+        " is unknown or crosses something other than a plain struct or non-optional single pointer";
+    return std.fmt.allocPrint(
+        allocator,
+        "error[ZIGO037]: field path `{s}`{s}\n" ++
+            "  hint: paths may cross struct values or non-optional single pointers and must end at a bool, integer, float, or registered enum\n",
+        .{ path, detail },
+    );
 }
 
 test "packages assign explicit functions owning types and longest namespaces" {
@@ -2496,4 +2629,72 @@ test "std.Io.Writer and std.Io.Reader parameters reflect as stream nodes" {
         document.functions[1].params[0].type.io_stream.direction,
     );
     try std.testing.expectEqual(@as(u32, 8192), document.functions[1].params[0].bufferSize());
+}
+
+test "opaque fields reflect nested value and pointer accessors" {
+    const Style = enum(u8) { block, bar };
+    const Cursor = struct { x: u16, style: Style };
+    const Screen = struct { cursor: *Cursor };
+    const Terminal = struct { enabled: bool, screen: Screen };
+    const Fixture = struct {};
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{
+            .{ .type = Style, .repr = .enumeration },
+            .{ .type = Terminal, .repr = .@"opaque", .fields = .{
+                .{ .path = "enabled" },
+                .{ .path = "screen.cursor.x", .name = "cursorX" },
+                .{ .path = "screen.cursor.style", .name = "cursorStyle", .set = true, .doc = "Current cursor style." },
+            } },
+        },
+        .functions = .{},
+    }, "terminal", "zg");
+
+    try std.testing.expectEqual(@as(usize, 4), document.functions.len);
+    try std.testing.expectEqualStrings("enabled", document.functions[0].name);
+    try std.testing.expectEqualStrings("Terminal", document.functions[0].receiver.?);
+    try std.testing.expectEqualStrings("screen.cursor.x", document.functions[1].field_access.?.path);
+    try std.testing.expectEqual(semantic.TypeNode{ .int = .{ .signed = false, .bits = 16 } }, document.functions[1].@"return");
+    try std.testing.expectEqualStrings("cursorStyle", document.functions[2].name);
+    try std.testing.expectEqualStrings("Style", document.functions[2].@"return".@"enum".ref);
+    try std.testing.expectEqualStrings("setCursorStyle", document.functions[3].name);
+    try std.testing.expect(document.functions[3].field_access.?.setter);
+    try std.testing.expectEqualStrings("v", document.functions[3].params[0].name);
+    try std.testing.expectEqualStrings("Current cursor style.", document.functions[3].doc.?);
+}
+
+test "invalid opaque field paths and leaf types use ZIGO037" {
+    const Terminal = struct { label: []const u8 };
+    const Fixture = struct {};
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    try std.testing.expectError(error.FieldAccess, reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{.{ .type = Terminal, .repr = .@"opaque", .fields = .{.{ .path = "missing" }} }},
+        .functions = .{},
+    }, "terminal", "zg"));
+    try std.testing.expectError(error.FieldAccess, reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{.{ .type = Terminal, .repr = .@"opaque", .fields = .{.{ .path = "label" }} }},
+        .functions = .{},
+    }, "terminal", "zg"));
+
+    const unknown = try fieldAccessMessageAlloc(std.testing.allocator, "screen.cursor.x", null);
+    defer std.testing.allocator.free(unknown);
+    try std.testing.expectEqualStrings(
+        "error[ZIGO037]: field path `screen.cursor.x` is unknown or crosses something other than a plain struct or non-optional single pointer\n" ++
+            "  hint: paths may cross struct values or non-optional single pointers and must end at a bool, integer, float, or registered enum\n",
+        unknown,
+    );
+    const unsupported = try fieldAccessMessageAlloc(std.testing.allocator, "label", []const u8);
+    defer std.testing.allocator.free(unsupported);
+    try std.testing.expectEqualStrings(
+        "error[ZIGO037]: field path `label` resolves to unsupported type `[]const u8`\n" ++
+            "  hint: paths may cross struct values or non-optional single pointers and must end at a bool, integer, float, or registered enum\n",
+        unsupported,
+    );
 }

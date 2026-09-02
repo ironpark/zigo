@@ -360,6 +360,14 @@ pub const StreamAccessor = struct {
     pub const Op = enum { write, flush, read };
 };
 
+/// A function synthesized from an opaque type's `.fields` metadata. It is an
+/// ordinary method everywhere except the Zig shim: there is no declaration to
+/// call, so the shim reads or writes this path on the receiver instead.
+pub const FieldAccess = struct {
+    path: []const u8,
+    setter: bool = false,
+};
+
 pub const SemanticFn = struct {
     /// Set on the two halves of a boxed constructor pair.
     boxed: ?Boxed = null,
@@ -376,6 +384,7 @@ pub const SemanticFn = struct {
     /// the function so a name that matches nothing can still be reported, and
     /// so `abi-diff` sees the Go signature gain or lose its `ctx`.
     cancel: ?[]const u8 = null,
+    field_access: ?FieldAccess = null,
     /// Set on a function synthesized from a stream-returning method. Never
     /// present in a `semantic.json` on disk: the document records the Zig
     /// method, and the expansion happens between parsing and lowering.
