@@ -1,0 +1,6 @@
+{
+  "backend": "purego",
+  "package": "flattened_options",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/flattened-options"
+}

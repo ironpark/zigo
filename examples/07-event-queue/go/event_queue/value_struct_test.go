@@ -2,6 +2,23 @@ package event_queue
 
 import "testing"
 
+func TestFlattenedOptionsConstructBoxedValue(t *testing.T) {
+	terminal, err := NewTerminal(120, 40, 8<<20)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer terminal.Close()
+	if got := must(terminal.Cols()); got != 120 {
+		t.Fatalf("Cols() = %d, want 120", got)
+	}
+	if got := must(terminal.Rows()); got != 40 {
+		t.Fatalf("Rows() = %d, want 40", got)
+	}
+	if got := must(terminal.MaxScrollbackBytes()); got != 8<<20 {
+		t.Fatalf("MaxScrollbackBytes() = %d, want %d", got, 8<<20)
+	}
+}
+
 // assertValueStructRoundTrip exercises the `extern struct` path. Go sees plain
 // values; the pointer the C ABI wants is taken inside the generated code.
 func assertValueStructRoundTrip(t *testing.T, queue *EventQueue) {

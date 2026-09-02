@@ -693,6 +693,15 @@ fn appendFunction(
                 if (@hasField(@TypeOf(value), "written")) reflected.written = value.written;
                 if (@hasField(@TypeOf(value), "buffer")) reflected.buffer = value.buffer;
                 if (@hasField(@TypeOf(value), "go_error")) reflected.go_error = value.go_error;
+                if (@hasField(@TypeOf(value), "flatten")) reflected.flatten = try reflectFlattenedFields(
+                    allocator,
+                    declaration,
+                    param.type.?,
+                    types,
+                    value.flatten,
+                    owner_label ++ function_label,
+                    parameter_label,
+                );
             }
         }
         // A cancel parameter whose spelling did not match keeps the `void`
@@ -781,6 +790,67 @@ fn appendFunction(
         try pairings.append(allocator, .{ .index = functions.items.len, .kind = .destroys, .type = type_name });
     }
     try functions.append(allocator, reflected_function);
+}
+
+fn reflectFlattenedFields(
+    allocator: std.mem.Allocator,
+    comptime declaration: anytype,
+    comptime T: type,
+    types: *std.ArrayList(semantic.TypeDecl),
+    comptime selected: anytype,
+    comptime function_label: []const u8,
+    comptime parameter_label: []const u8,
+) ![]const semantic.FlattenedField {
+    const info = switch (@typeInfo(T)) {
+        .@"struct" => |value| value,
+        else => return flattenIssue(allocator, "`{s}` parameter `{s}` is not a struct", .{ function_label, parameter_label }),
+    };
+    const result = try allocator.alloc(semantic.FlattenedField, selected.len);
+    inline for (selected, 0..) |field_name, selected_index| {
+        inline for (selected, 0..) |earlier, earlier_index| if (earlier_index < selected_index and std.mem.eql(u8, earlier, field_name))
+            return flattenIssue(allocator, "`{s}` parameter `{s}` names field `{s}` more than once", .{ function_label, parameter_label, field_name });
+        const maybe_field: ?std.builtin.Type.StructField = comptime blk: {
+            for (info.fields) |candidate| if (std.mem.eql(u8, candidate.name, field_name)) break :blk candidate;
+            break :blk null;
+        };
+        const field = maybe_field orelse return flattenIssue(allocator, "`{s}` parameter `{s}` has no field `{s}`", .{ function_label, parameter_label, field_name });
+        const leaf = comptime if (@typeInfo(field.type) == .optional) @typeInfo(field.type).optional.child else field.type;
+        const allowed = comptime switch (@typeInfo(leaf)) {
+            .bool, .int, .float => true,
+            .@"enum" => registeredTypeName(declaration, leaf, .enumeration) != null,
+            else => false,
+        };
+        if (!allowed) return flattenIssue(allocator, "`{s}` parameter `{s}` field `{s}` is not a supported scalar or registered enum", .{ function_label, parameter_label, field_name });
+        result[selected_index] = .{
+            .name = field_name,
+            .type = try typeNode(allocator, declaration, field.type, types, "flattened field `" ++ field_name ++ "`"),
+        };
+    }
+    inline for (info.fields) |field| {
+        const listed = comptime blk: {
+            for (selected) |field_name| if (std.mem.eql(u8, field.name, field_name)) break :blk true;
+            break :blk false;
+        };
+        if (!listed and field.default_value_ptr == null)
+            return flattenIssue(allocator, "`{s}` parameter `{s}` leaves required field `{s}` unlisted", .{ function_label, parameter_label, field.name });
+    }
+    return result;
+}
+
+fn flattenIssue(allocator: std.mem.Allocator, comptime detail: []const u8, args: anytype) error{ FlattenedParameter, OutOfMemory } {
+    const message = try flattenMessageAlloc(allocator, detail, args);
+    defer allocator.free(message);
+    if (!@import("builtin").is_test) std.debug.print("{s}", .{message});
+    return error.FlattenedParameter;
+}
+
+fn flattenMessageAlloc(allocator: std.mem.Allocator, comptime detail: []const u8, args: anytype) ![]u8 {
+    return std.fmt.allocPrint(
+        allocator,
+        "error[ZIGO040]: " ++ detail ++ "\n" ++
+            "  hint: flatten only bool, integer, float, registered enum, or optional scalar fields, and give every unlisted field a default\n",
+        args,
+    );
 }
 
 /// One half of a `.constructs`/`.destroys` claim, and the function that made
@@ -2850,12 +2920,22 @@ test "the pairing message names the declaration and the code" {
 
 test "a value-returning init is boxed into a caller-owned handle" {
     const Fixture = struct {
+        const Mode = enum(u8) { normal, alternate };
+        const Options = struct {
+            columns: u32,
+            rows: u16 = 24,
+            enabled: bool = true,
+            scale: f32 = 1,
+            mode: Mode = .normal,
+            maybe_limit: ?u32 = null,
+            label: []const u8 = "default",
+        };
         const Terminal = struct {
             columns: u32,
 
-            pub fn init(gpa: std.mem.Allocator, columns: u32) error{Invalid}!Terminal {
+            pub fn init(gpa: std.mem.Allocator, options: Options) error{Invalid}!Terminal {
                 _ = gpa;
-                return .{ .columns = columns };
+                return .{ .columns = options.columns };
             }
 
             pub fn deinit(self: *Terminal) void {
@@ -2868,9 +2948,16 @@ test "a value-returning init is boxed into a caller-owned handle" {
     const document = try reflect(arena.allocator(), .{
         .allocator = .smp_allocator,
         .root = Fixture,
-        .types = .{.{ .type = Fixture.Terminal, .repr = .@"opaque" }},
+        .types = .{
+            .{ .type = Fixture.Terminal, .repr = .@"opaque" },
+            .{ .type = Fixture.Mode, .repr = .enumeration },
+        },
         .functions = .{
-            .{ .path = "Terminal.init", .params = .{"columns"} },
+            .{
+                .path = "Terminal.init",
+                .params = .{"options"},
+                .param_meta = .{ .options = .{ .flatten = .{ "columns", "rows", "enabled", "scale", "mode", "maybe_limit" } } },
+            },
             .{ .path = "Terminal.deinit" },
         },
     }, "terminal", "zg");
@@ -2884,8 +2971,38 @@ test "a value-returning init is boxed into a caller-owned handle" {
     try std.testing.expectEqualStrings("Invalid", init_fn.@"return".error_union.error_set[0]);
     // The allocator parameter still disappears from every generated signature.
     try std.testing.expectEqual(semantic.Injection.allocator, init_fn.params[0].injected.?);
+    try std.testing.expectEqual(@as(usize, 6), init_fn.params[1].flatten.?.len);
+    try std.testing.expectEqualStrings("columns", init_fn.params[1].flatten.?[0].name);
+    try std.testing.expect(init_fn.params[1].flatten.?[5].type == .optional);
     try std.testing.expectEqual(semantic.Boxed.destroy, document.functions[1].boxed.?);
     try std.testing.expectEqualStrings("Terminal", document.constructors[0].type);
+}
+
+test "flattened struct parameters reject unlisted required fields" {
+    const Fixture = struct {
+        const Options = struct { columns: u32, rows: u16 };
+        pub fn configure(options: Options) void {
+            _ = options;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectError(error.FlattenedParameter, reflect(arena.allocator(), .{
+        .root = Fixture,
+        .functions = .{.{
+            .path = "root.configure",
+            .params = .{"options"},
+            .param_meta = .{ .options = .{ .flatten = .{"columns"} } },
+        }},
+    }, "terminal", "zg"));
+    const message = try flattenMessageAlloc(
+        std.testing.allocator,
+        "`{s}` parameter `{s}` leaves required field `{s}` unlisted",
+        .{ "configure", "options", "rows" },
+    );
+    defer std.testing.allocator.free(message);
+    try std.testing.expect(std.mem.indexOf(u8, message, "error[ZIGO040]") != null);
+    try std.testing.expect(std.mem.indexOf(u8, message, "required field `rows`") != null);
 }
 
 test "without an allocator a value-returning init is left alone" {

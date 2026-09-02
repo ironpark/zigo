@@ -190,7 +190,22 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .site = functionSite(function),
                 .hint = "pass an eligible tagged union as a whole parameter; nested tagged-union values are not supported",
             };
-            if (tagged_union_value == null and unsupportedValueStruct(document, parameter.type) != null) return .{
+            if (parameter.flatten) |fields| {
+                if (parameter.type != .value_struct) return .{
+                    .severity = .@"error",
+                    .code = "ZIGO040",
+                    .message = "flatten metadata requires a struct parameter",
+                    .site = functionSite(function),
+                    .hint = "apply `.flatten` only to a plain struct parameter",
+                };
+                for (fields) |field| if (!isFlattenLeaf(field.type)) return .{
+                    .severity = .@"error",
+                    .code = "ZIGO040",
+                    .message = try std.fmt.allocPrint(allocator, "flattened field `{s}` has an unsupported type", .{field.name}),
+                    .site = functionSite(function),
+                    .hint = "flatten only bool, integer, float, registered enum, or optional scalar fields",
+                };
+            } else if (tagged_union_value == null and unsupportedValueStruct(document, parameter.type) != null) return .{
                 .severity = .@"error",
                 .code = "ZIGO003",
                 .message = "cannot pass a non-extern struct by value",
@@ -1797,6 +1812,11 @@ fn unsupportedValueStruct(document: semantic.Semantic, node: semantic.TypeNode) 
         .error_union => |value| unsupportedValueStruct(document, value.payload.*),
         else => null,
     };
+}
+
+fn isFlattenLeaf(node: semantic.TypeNode) bool {
+    const leaf = if (node == .optional) node.optional.child.* else node;
+    return leaf == .bool or leaf == .int or leaf == .float or leaf == .@"enum";
 }
 
 fn containsPointer(node: semantic.TypeNode) bool {

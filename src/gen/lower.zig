@@ -43,6 +43,24 @@ pub fn semanticDocumentForBackend(
             // The shim writes the value itself, so the parameter is absent
             // from the C signature and from everything derived from it.
             if (parameter.injected != null) continue;
+            if (parameter.flatten) |fields| {
+                for (fields, 0..) |field, field_index| {
+                    const name = try flattenedFieldNameAlloc(allocator, function.*, parameter_index, field.name);
+                    const scalar = if (field.type == .optional) blk: {
+                        const child = try allocator.create(abi.AbiScalar);
+                        child.* = try lowerValue(allocator, document, prefix, field.type.optional.child.*);
+                        break :blk abi.AbiScalar{ .pointer = .{ .child = child, .is_const = true, .is_optional = true } };
+                    } else try lowerValue(allocator, document, prefix, field.type);
+                    try params.append(allocator, .{
+                        .field_index = field_index,
+                        .name = name,
+                        .role = .flattened_field,
+                        .scalar = scalar,
+                        .source_index = parameter_index,
+                    });
+                }
+                continue;
+            }
             // `?[]T` reuses the slice lowering whole: the same pointer and
             // length cross, and absence rides on the pointer being NULL, so
             // an absent slice and an empty one stay different.
@@ -415,6 +433,23 @@ pub fn semanticDocumentForBackend(
         .structs = structs,
         .types = document.types,
     };
+}
+
+fn flattenedFieldNameAlloc(
+    allocator: std.mem.Allocator,
+    function: semantic.SemanticFn,
+    source_index: usize,
+    field_name: []const u8,
+) ![]u8 {
+    var collisions: usize = 0;
+    for (function.params) |parameter| {
+        if (parameter.injected == null and parameter.flatten == null and std.mem.eql(u8, parameter.name, field_name)) collisions += 1;
+        if (parameter.flatten) |fields| for (fields) |field| if (std.mem.eql(u8, field.name, field_name)) {
+            collisions += 1;
+        };
+    }
+    if (collisions <= 1) return allocator.dupe(u8, field_name);
+    return std.fmt.allocPrint(allocator, "{s}_{s}", .{ function.params[source_index].name, field_name });
 }
 
 fn appendTaggedUnionValueParams(

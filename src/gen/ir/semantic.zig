@@ -263,6 +263,14 @@ pub const ParamSourceLocation = struct {
     column: u32,
 };
 
+/// One scalar field selected from a struct parameter by
+/// `param_meta.<name>.flatten`. The original parameter type remains on
+/// `Parameter.type`; this list describes the Go/C arguments that replace it.
+pub const FlattenedField = struct {
+    name: []const u8,
+    type: TypeNode,
+};
+
 pub const Parameter = struct {
     /// Bytes of shim-side staging buffer behind an `*std.Io.Writer` or
     /// `*std.Io.Reader` parameter, from `param_meta.<name>.buffer`. Only the
@@ -270,6 +278,9 @@ pub const Parameter = struct {
     /// compatible knob rather than part of the shape.
     buffer: ?u32 = null,
     direction: Direction = .in,
+    /// Selected fields of a plain struct parameter, in metadata order.
+    /// Absent means the parameter crosses in its ordinary shape.
+    flatten: ?[]const FlattenedField = null,
     /// Set on the parameter `.cancel = .{ .param = "..." }` named. The type
     /// node says whether the Zig spelling was the one the contract requires;
     /// this says the binding asked for it, so a mismatch can be reported

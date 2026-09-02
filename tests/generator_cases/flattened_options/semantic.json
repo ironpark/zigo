@@ -1,0 +1,50 @@
+{
+  "functions": [
+    {
+      "name": "configure",
+      "params": [
+        {
+          "name": "options",
+          "flatten": [
+            {"name": "enabled", "type": {"kind": "bool"}},
+            {"name": "rows", "type": {"bits": 16, "is_usize": false, "kind": "int", "signed": false}},
+            {"name": "scale", "type": {"bits": 32, "kind": "float"}},
+            {"name": "mode", "type": {"kind": "enum", "ref": "Mode"}},
+            {"name": "limit", "type": {"child": {"bits": 32, "is_usize": false, "kind": "int", "signed": false}, "kind": "optional"}}
+          ],
+          "type": {"kind": "value_struct", "ref": "Options"}
+        },
+        {
+          "name": "rows",
+          "type": {"bits": 32, "is_usize": false, "kind": "int", "signed": false}
+        }
+      ],
+      "return": {"kind": "void"},
+      "symbol": "ignored"
+    }
+  ],
+  "package": "flattened_options",
+  "prefix": "zg",
+  "types": [
+    {
+      "exhaustive": true,
+      "fields": [{"name": "normal", "value": 0}, {"name": "alternate", "value": 1}],
+      "kind": "enum",
+      "name": "Mode",
+      "tag_type": {"bits": 8, "is_usize": false, "kind": "int", "signed": false}
+    },
+    {
+      "fields": [
+        {"name": "enabled", "type": {"kind": "bool"}},
+        {"name": "rows", "type": {"bits": 16, "is_usize": false, "kind": "int", "signed": false}},
+        {"name": "scale", "type": {"bits": 32, "kind": "float"}},
+        {"name": "mode", "type": {"kind": "enum", "ref": "Mode"}},
+        {"name": "limit", "type": {"child": {"bits": 32, "is_usize": false, "kind": "int", "signed": false}, "kind": "optional"}}
+      ],
+      "kind": "value_struct",
+      "name": "Options",
+      "zig_path": "root.Options"
+    }
+  ],
+  "zig_version": "0.16.0"
+}

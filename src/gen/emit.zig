@@ -960,6 +960,17 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             });
             continue;
         }
+        if (parameter.flatten) |fields| {
+            try writer.print("target.{s}{{", .{parameter.type.value_struct.ref});
+            for (fields, 0..) |field, field_index| {
+                const abi_parameter = flattenedAbiParam(function, index, field_index);
+                if (field_index != 0) try writer.writeByte(',');
+                try writer.print(" .{s} = ", .{field.name});
+                try writeFlattenedShimValue(writer, abi_parameter.name, field.type);
+            }
+            try writer.writeAll(" }");
+            continue;
+        }
         switch (parameter.type) {
             .callback => {
                 if (needsCallbackBitThunk(program, function, index)) {
@@ -1016,6 +1027,24 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         try writer.writeAll(", self");
     try writer.writeByte(')');
     if (bool_return or enum_return) try writer.writeByte(')');
+}
+
+fn flattenedAbiParam(function: abi.AbiFn, source_index: usize, field_index: usize) abi.AbiParam {
+    for (function.params) |parameter| if (parameter.role == .flattened_field and
+        parameter.source_index == source_index and parameter.field_index.? == field_index) return parameter;
+    unreachable;
+}
+
+fn writeFlattenedShimValue(writer: *std.Io.Writer, name: []const u8, node: semantic.TypeNode) !void {
+    if (node == .optional) return writeShimOptionalArgument(writer, name, node.optional.child.*);
+    switch (node) {
+        .bool => try writer.print("{s} != 0", .{name}),
+        .@"enum" => try writer.print("@enumFromInt({s})", .{name}),
+        else => if (abi.narrowInt(node) != null)
+            try writer.print("@intCast({s})", .{name})
+        else
+            try writer.writeAll(name),
+    }
 }
 
 fn writeTaggedUnionValueArgument(
@@ -1213,7 +1242,28 @@ fn writeShimOptionalArgument(writer: *std.Io.Writer, name: []const u8, child: se
 /// so the shim panics, and the existing panic bridge turns that into a Go
 /// `NativePanicError` at the call site that caused it.
 fn writeNarrowIntegerGuards(writer: *std.Io.Writer, function: abi.AbiFn) !void {
-    for (function.origin.params) |parameter| {
+    for (function.origin.params, 0..) |parameter, parameter_index| {
+        if (parameter.flatten) |fields| {
+            for (fields, 0..) |field, field_index| {
+                const optional_field = field.type == .optional;
+                const field_node = if (optional_field) field.type.optional.child.* else field.type;
+                const narrow_field = abi.narrowInt(field_node) orelse continue;
+                const abi_parameter = flattenedAbiParam(function, parameter_index, field_index);
+                const spelling: u8 = if (narrow_field.signed) 'i' else 'u';
+                if (optional_field) {
+                    try writer.print("    if ({s}) |zigo_narrow| ", .{abi_parameter.name});
+                    if (narrow_field.signed)
+                        try writer.print("if (zigo_narrow.* < std.math.minInt({0c}{1d}) or zigo_narrow.* > std.math.maxInt({0c}{1d})) @panic(\"zigo: argument `{2s}` is out of range for {0c}{1d}\");\n", .{ spelling, narrow_field.bits, abi_parameter.name })
+                    else
+                        try writer.print("if (zigo_narrow.* > std.math.maxInt({0c}{1d})) @panic(\"zigo: argument `{2s}` is out of range for {0c}{1d}\");\n", .{ spelling, narrow_field.bits, abi_parameter.name });
+                } else if (narrow_field.signed) {
+                    try writer.print("    if ({0s} < std.math.minInt({1c}{2d}) or {0s} > std.math.maxInt({1c}{2d})) @panic(\"zigo: argument `{0s}` is out of range for {1c}{2d}\");\n", .{ abi_parameter.name, spelling, narrow_field.bits });
+                } else {
+                    try writer.print("    if ({0s} > std.math.maxInt({1c}{2d})) @panic(\"zigo: argument `{0s}` is out of range for {1c}{2d}\");\n", .{ abi_parameter.name, spelling, narrow_field.bits });
+                }
+            }
+            continue;
+        }
         // A `?T` argument carries the same narrow integer one pointer deeper,
         // and an absent one has no value to check at all, so the guard reads
         // through the pointer and runs only when it is non-NULL.
@@ -1502,6 +1552,16 @@ fn goParamNamesForAlloc(allocator: std.mem.Allocator, params: []const semantic.P
     return naming.goParamNamesAlloc(allocator, zig_names);
 }
 
+fn flattenedGoNameAlloc(allocator: std.mem.Allocator, abi_name: []const u8) ![]u8 {
+    const names = try naming.goParamNamesAlloc(allocator, &.{abi_name});
+    defer allocator.free(names);
+    return names[0];
+}
+
+fn flattenedField(parameter: semantic.Parameter, abi_parameter: abi.AbiParam) semantic.FlattenedField {
+    return parameter.flatten.?[abi_parameter.field_index.?];
+}
+
 /// Suffix of the raw Go mirror of an `extern struct`. Named once so the
 /// declaration and every reference to it cannot drift apart.
 const raw_struct_suffix = "Data";
@@ -1746,6 +1806,18 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (callbackForUserdata(function.origin.params, parameter_index) != null) continue;
             if (parameter.injected != null) continue;
+            if (parameter.flatten) |fields| {
+                for (fields, 0..) |field, field_index| {
+                    const abi_parameter = flattenedAbiParam(function, parameter_index, field_index);
+                    const name = try flattenedGoNameAlloc(allocator, abi_parameter.name);
+                    defer allocator.free(name);
+                    if (raw_parameter_index != 0) try writer.writeAll(", ");
+                    try writer.print("{s} ", .{name});
+                    try writeRawGoType(writer, program, field.type);
+                    raw_parameter_index += 1;
+                }
+                continue;
+            }
             if (isTaggedUnionValue(program, parameter.type)) {
                 for (function.params) |abi_parameter| {
                     if (abi_parameter.source_index != parameter_index or
@@ -1807,12 +1879,25 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
             try writer.writeAll("\n\tvar outResultLen C.size_t\n");
         }
         for (function.origin.params, 0..) |parameter, parameter_index| {
-            if (parameter.type == .value_struct and !isTaggedUnionValue(program, parameter.type)) {
+            if (parameter.flatten == null and parameter.type == .value_struct and !isTaggedUnionValue(program, parameter.type)) {
                 const record = structRecord(program, parameter.type.value_struct.ref);
                 const c_name = try std.fmt.allocPrint(allocator, "c{s}", .{go_names[parameter_index]});
                 defer allocator.free(c_name);
                 try writeCgoStructConversion(allocator, writer, program, record, c_name, go_names[parameter_index]);
             }
+            if (parameter.flatten) |fields| for (fields, 0..) |field, field_index| {
+                if (field.type != .optional) continue;
+                const abi_parameter = flattenedAbiParam(function, parameter_index, field_index);
+                const name = try flattenedGoNameAlloc(allocator, abi_parameter.name);
+                defer allocator.free(name);
+                try writer.print("\tvar {0s}Value C.", .{name});
+                try writeCgoType(writer, semanticScalar(program, field.type.optional.child.*));
+                try writer.print("\n\tvar {0s}Ptr *C.", .{name});
+                try writeCgoType(writer, semanticScalar(program, field.type.optional.child.*));
+                try writer.print("\n\tif {0s} != nil {{\n\t\t{0s}Value = C.", .{name});
+                try writeCgoType(writer, semanticScalar(program, field.type.optional.child.*));
+                try writer.print("(*{0s})\n\t\t{0s}Ptr = &{0s}Value\n\t}}\n", .{name});
+            };
             // An optional slice reuses the slice setup below; only a scalar
             // or struct optional needs a local of the C type to point at.
             if (parameter.type == .optional and parameter.type.optional.child.* != .slice) {
@@ -1986,6 +2071,18 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
             if (index != 0) try writer.writeAll(", ");
             switch (parameter.role) {
                 .receiver => try writeCgoHandleArgument(writer, parameter.scalar, "self"),
+                .flattened_field => {
+                    const field = flattenedField(function.origin.params[parameter.source_index], parameter);
+                    const name = try flattenedGoNameAlloc(allocator, parameter.name);
+                    defer allocator.free(name);
+                    if (field.type == .optional) {
+                        try writer.print("{s}Ptr", .{name});
+                    } else {
+                        try writer.writeAll("C.");
+                        try writeCgoType(writer, parameter.scalar);
+                        try writer.print("({s})", .{name});
+                    }
+                },
                 .struct_in => try writer.print("&c{s}", .{go_names[parameter.source_index]}),
                 .union_tag, .union_payload => {
                     try writer.writeAll("C.");
@@ -2999,6 +3096,18 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
     for (function.origin.params, 0..) |parameter, parameter_index| {
         if (callbackForUserdata(function.origin.params, parameter_index) != null) continue;
         if (parameter.injected != null) continue;
+        if (parameter.flatten) |fields| {
+            for (fields, 0..) |field, field_index| {
+                const abi_parameter = flattenedAbiParam(function, parameter_index, field_index);
+                const name = try flattenedGoNameAlloc(allocator, abi_parameter.name);
+                defer allocator.free(name);
+                if (parameter_count != 0) try writer.writeAll(", ");
+                try writer.print("{s} ", .{name});
+                try writeRawGoType(writer, program, field.type);
+                parameter_count += 1;
+            }
+            continue;
+        }
         if (isTaggedUnionValue(program, parameter.type)) {
             for (function.params) |abi_parameter| {
                 if (abi_parameter.source_index != parameter_index or
@@ -3115,6 +3224,14 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         if (index != 0) try writer.writeAll(", ");
         switch (parameter.role) {
             .receiver => try writer.writeAll("self"),
+            .flattened_field => {
+                const name = try flattenedGoNameAlloc(allocator, parameter.name);
+                defer allocator.free(name);
+                if (parameter.scalar == .usize)
+                    try writer.print("uintptr({s})", .{name})
+                else
+                    try writer.writeAll(name);
+            },
             .struct_in => try writer.print("unsafe.Pointer(&{s})", .{go_names[parameter.source_index]}),
             .union_tag, .union_payload => if (parameter.scalar == .usize)
                 try writer.print("uintptr({s})", .{parameter.name})
@@ -3949,6 +4066,18 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             if (callbackForUserdata(function.origin.params, parameter_index) != null) continue;
             if (parameter.injected != null) continue;
             if (parameter.type == .cancel_flag) continue;
+            if (parameter.flatten) |fields| {
+                for (fields, 0..) |field, field_index| {
+                    const abi_parameter = flattenedAbiParam(function, parameter_index, field_index);
+                    const name = try flattenedGoNameAlloc(allocator, abi_parameter.name);
+                    defer allocator.free(name);
+                    if (public_parameter_index != 0) try writer.writeAll(", ");
+                    try writer.print("{s} ", .{name});
+                    try writePublicGoType(scope, writer, field.type);
+                    public_parameter_index += 1;
+                }
+                continue;
+            }
             if (public_parameter_index != 0) try writer.writeAll(", ");
             try writer.print("{s} ", .{go_names[parameter_index]});
             if (parameter.type == .callback) {
@@ -3982,7 +4111,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         // back off this thread.
         if (function.origin.cancel != null) try renderCancelSetup(writer, options);
         if (needs_range_check)
-            try renderRangeChecks(scope, allocator, writer, function.origin.*, go_names, operation, constructor);
+            try renderRangeChecks(scope, allocator, writer, function, go_names, operation, constructor);
         if (has_stream)
             try renderStreamNilChecks(scope, allocator, writer, function.origin.*, go_names, operation, constructor);
         if (function.origin.@"return" == .error_union)
@@ -3997,6 +4126,13 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             try writePublicSliceRawSetup(allocator, writer, program, options, parameter, go_names[parameter_index]);
         }
         for (function.origin.params, 0..) |parameter, parameter_index| {
+            if (parameter.flatten) |fields| for (fields, 0..) |field, field_index| {
+                if (field.type != .optional) continue;
+                const abi_parameter = flattenedAbiParam(function, parameter_index, field_index);
+                const name = try flattenedGoNameAlloc(allocator, abi_parameter.name);
+                defer allocator.free(name);
+                try writePublicOptionalRawSetup(allocator, writer, program, options, field.type.optional.child.*, name);
+            };
             if (parameter.type != .optional) continue;
             if (publicOptionalStringNeedsBytes(parameter)) {
                 try writer.print(
@@ -4074,6 +4210,27 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (callbackForUserdata(function.origin.params, parameter_index) != null) continue;
             if (parameter.injected != null) continue;
+            if (parameter.flatten) |fields| {
+                for (fields, 0..) |field, field_index| {
+                    const abi_parameter = flattenedAbiParam(function, parameter_index, field_index);
+                    const name = try flattenedGoNameAlloc(allocator, abi_parameter.name);
+                    defer allocator.free(name);
+                    if (call_index != 0) try writer.writeAll(", ");
+                    const node = if (field.type == .optional) field.type.optional.child.* else field.type;
+                    if (field.type == .optional and publicOptionalNeedsConversion(node)) {
+                        try writer.print("{s}Raw", .{name});
+                    } else switch (node) {
+                        .bool => try writer.print("boolToUint8({s})", .{name}),
+                        .@"enum" => {
+                            try writer.writeAll(rawGoTypeName(program, node));
+                            try writer.print("({s})", .{name});
+                        },
+                        else => try writer.writeAll(name),
+                    }
+                    call_index += 1;
+                }
+                continue;
+            }
             if (call_index != 0) try writer.writeAll(", ");
             switch (parameter.type) {
                 .callback => {
@@ -6235,7 +6392,13 @@ fn writeCheckedErrorReturn(
 /// Whether any parameter is declared narrower than the C integer that carries
 /// it, which is what makes the Go signature grow an `error`.
 fn hasNarrowIntParameter(function: semantic.SemanticFn) bool {
-    for (function.params) |parameter| if (abi.narrowInt(parameter.type) != null) return true;
+    for (function.params) |parameter| {
+        if (abi.narrowInt(parameter.type) != null) return true;
+        if (parameter.flatten) |fields| for (fields) |field| {
+            const node = if (field.type == .optional) field.type.optional.child.* else field.type;
+            if (abi.narrowInt(node) != null) return true;
+        };
+    }
     return false;
 }
 
@@ -6253,12 +6416,37 @@ fn renderRangeChecks(
     scope: PublicScope,
     allocator: std.mem.Allocator,
     writer: *std.Io.Writer,
-    function: semantic.SemanticFn,
+    function: abi.AbiFn,
     go_names: []const []const u8,
     operation: []const u8,
     constructor: ?semantic.Constructor,
 ) !void {
-    for (function.params, 0..) |parameter, parameter_index| {
+    for (function.origin.params, 0..) |parameter, parameter_index| {
+        if (parameter.flatten) |fields| {
+            for (fields, 0..) |field, field_index| {
+                const node = if (field.type == .optional) field.type.optional.child.* else field.type;
+                const narrow_field = abi.narrowInt(node) orelse continue;
+                const abi_parameter = flattenedAbiParam(function, parameter_index, field_index);
+                const name = try flattenedGoNameAlloc(allocator, abi_parameter.name);
+                defer allocator.free(name);
+                const spelling: u8 = if (narrow_field.signed) 'i' else 'u';
+                if (field.type == .optional) try writer.print("\tif {s} != nil {{\n\t", .{name});
+                if (narrow_field.signed) {
+                    const limit = @as(i128, 1) << @intCast(narrow_field.bits - 1);
+                    try writer.print("\tif {3s}{0s} < {1d} || {3s}{0s} > {2d} {{\n\t\t", .{ name, -limit, limit - 1, if (field.type == .optional) "*" else "" });
+                } else {
+                    const limit = (@as(u128, 1) << @intCast(narrow_field.bits)) - 1;
+                    try writer.print("\tif {2s}{0s} > {1d} {{\n\t\t", .{ name, limit, if (field.type == .optional) "*" else "" });
+                }
+                var expression: std.Io.Writer.Allocating = .init(allocator);
+                defer expression.deinit();
+                try expression.writer.print("&RangeError{{Operation: \"{s}\", Parameter: \"{s}\", Type: \"{c}{d}\"}}", .{ operation, name, spelling, narrow_field.bits });
+                try writeCheckedErrorReturn(scope, writer, function.origin.*, constructor, expression.written());
+                try writer.writeAll("\t}\n");
+                if (field.type == .optional) try writer.writeAll("\t}\n");
+            }
+            continue;
+        }
         const narrow = abi.narrowInt(parameter.type) orelse continue;
         const name = go_names[parameter_index];
         const spelling: u8 = if (narrow.signed) 'i' else 'u';
@@ -6275,7 +6463,7 @@ fn renderRangeChecks(
             "&RangeError{{Operation: \"{s}\", Parameter: \"{s}\", Type: \"{c}{d}\"}}",
             .{ operation, name, spelling, narrow.bits },
         );
-        try writeCheckedErrorReturn(scope, writer, function, constructor, expression.written());
+        try writeCheckedErrorReturn(scope, writer, function.origin.*, constructor, expression.written());
         try writer.writeAll("\t}\n");
     }
 }

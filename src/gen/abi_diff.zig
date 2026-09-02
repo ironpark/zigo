@@ -319,9 +319,18 @@ fn signatureEqual(lhs: semantic.SemanticFn, rhs: semantic.SemanticFn) bool {
     if (!typeEqual(lhs.@"return", rhs.@"return")) return false;
     return exposedParamsMatch(lhs.params, rhs.params, struct {
         fn matches(a: semantic.Parameter, b: semantic.Parameter) bool {
-            return a.direction == b.direction and a.semantic == b.semantic and typeEqual(a.type, b.type);
+            return a.direction == b.direction and a.semantic == b.semantic and typeEqual(a.type, b.type) and flattenEqual(a.flatten, b.flatten);
         }
     }.matches);
+}
+
+fn flattenEqual(lhs: ?[]const semantic.FlattenedField, rhs: ?[]const semantic.FlattenedField) bool {
+    if (lhs == null or rhs == null) return lhs == null and rhs == null;
+    if (lhs.?.len != rhs.?.len) return false;
+    for (lhs.?, rhs.?) |a, b| {
+        if (!std.mem.eql(u8, a.name, b.name) or !typeEqual(a.type, b.type)) return false;
+    }
+    return true;
 }
 
 fn goErrorEqual(lhs: []const semantic.Parameter, rhs: []const semantic.Parameter) bool {
@@ -500,6 +509,30 @@ test "parameter type changes are breaking and functions are added" {
     try std.testing.expectEqual(@as(usize, 2), report.changes.items.len);
     try std.testing.expect(report.hasBreaking());
     try std.testing.expectEqual(ChangeKind.added, report.changes.items[1].kind);
+}
+
+test "adding a flattened struct field is breaking" {
+    const u32_node: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = false } };
+    const u16_node: semantic.TypeNode = .{ .int = .{ .bits = 16, .signed = false } };
+    const old_fields = [_]semantic.FlattenedField{.{ .name = "cols", .type = u32_node }};
+    const new_fields = [_]semantic.FlattenedField{
+        .{ .name = "cols", .type = u32_node },
+        .{ .name = "rows", .type = u16_node },
+    };
+    const old_fn: semantic.SemanticFn = .{
+        .name = "init",
+        .params = &.{.{ .name = "options", .flatten = &old_fields, .type = .{ .value_struct = .{ .ref = "Options" } } }},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_init",
+    };
+    var new_fn = old_fn;
+    new_fn.params = &.{.{ .name = "options", .flatten = &new_fields, .type = .{ .value_struct = .{ .ref = "Options" } } }};
+    const base: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{old_fn} };
+    const current: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{new_fn} };
+    var report = try diff(std.testing.allocator, base, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expect(report.hasBreaking());
+    try std.testing.expectEqualStrings("signature changed", report.changes.items[0].detail);
 }
 
 test "adding a field accessor is a compatible function append" {

@@ -238,6 +238,40 @@ func LiveBorrowChildren() uint {
 	return uint(C.zg_live_borrow_children())
 }
 
+// TerminalInit calls the generated C ABI wrapper for zg_terminal_init.
+func TerminalInit(cols uint16, rows uint16, maxScrollbackBytes uint) (unsafe.Pointer, int32) {
+	var outResult *C.zg_terminal
+	code := int32(C.zg_terminal_init(C.uint16_t(cols), C.uint16_t(rows), C.size_t(maxScrollbackBytes), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+
+// TerminalCols calls the generated C ABI wrapper for zg_terminal_cols.
+func TerminalCols(self unsafe.Pointer) (uint16, int32) {
+	var outResult C.uint16_t
+	code := int32(C.zg_terminal_cols((*C.zg_terminal)(self), &outResult))
+	return uint16(outResult), code
+}
+
+// TerminalRows calls the generated C ABI wrapper for zg_terminal_rows.
+func TerminalRows(self unsafe.Pointer) (uint16, int32) {
+	var outResult C.uint16_t
+	code := int32(C.zg_terminal_rows((*C.zg_terminal)(self), &outResult))
+	return uint16(outResult), code
+}
+
+// TerminalMaxScrollbackBytes calls the generated C ABI wrapper for zg_terminal_max_scrollback_bytes.
+func TerminalMaxScrollbackBytes(self unsafe.Pointer) (uint, int32) {
+	var outResult C.size_t
+	code := int32(C.zg_terminal_max_scrollback_bytes((*C.zg_terminal)(self), &outResult))
+	return uint(outResult), code
+}
+
+// TerminalDeinit calls the generated C ABI wrapper for zg_terminal_deinit.
+func TerminalDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_terminal_deinit((*C.zg_terminal)(self)))
+	return code
+}
+
 // StreamCapacity calls the generated C ABI wrapper for zg_stream_capacity.
 func StreamCapacity(self unsafe.Pointer) (uint32, int32) {
 	var outResult C.uint32_t

@@ -82,6 +82,8 @@ pub const AbiEnum = struct {
 };
 
 pub const AbiParam = struct {
+    /// Index in `Parameter.flatten` for a flattened struct field.
+    field_index: ?usize = null,
     name: []const u8,
     role: Role = .value,
     scalar: AbiScalar,
@@ -89,6 +91,7 @@ pub const AbiParam = struct {
 
     pub const Role = enum {
         receiver,
+        flattened_field,
         value,
         slice_pointer,
         slice_length,

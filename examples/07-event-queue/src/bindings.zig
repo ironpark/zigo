@@ -23,6 +23,7 @@ pub const bindings = zigo.define(.{
         .{ .type = library.BorrowBox, .repr = .@"opaque" },
         .{ .type = library.BorrowView, .repr = .@"opaque" },
         .{ .type = library.BorrowChild, .repr = .@"opaque" },
+        .{ .type = library.Terminal, .repr = .@"opaque" },
     },
     .functions = .{
         .{ .path = "root.echoQueueSignal", .params = .{"signal"} },
@@ -51,6 +52,15 @@ pub const bindings = zigo.define(.{
         .{ .path = "BorrowChild.get" },
         .{ .path = "BorrowChild.deinit", .destroys = "BorrowChild" },
         .{ .path = "root.liveBorrowChildren" },
+        .{
+            .path = "Terminal.init",
+            .params = .{"options"},
+            .param_meta = .{ .options = .{ .flatten = .{ "cols", "rows", "max_scrollback_bytes" } } },
+        },
+        .{ .path = "Terminal.cols" },
+        .{ .path = "Terminal.rows" },
+        .{ .path = "Terminal.maxScrollbackBytes" },
+        .{ .path = "Terminal.deinit" },
         .{ .path = "Stream.capacity" },
         .{ .path = "root.freeStream", .destroys = "Stream" },
         .{ .path = "EventQueue.enqueue", .params = .{ "id", "value" } },

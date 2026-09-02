@@ -247,6 +247,73 @@ func LiveBorrowChildren() uint {
 	return raw.LiveBorrowChildren()
 }
 
+// NewTerminal creates a caller-owned Terminal.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
+func NewTerminal(cols uint16, rows uint16, maxScrollbackBytes uint) (*Terminal, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	result, code := raw.TerminalInit(cols, rows, maxScrollbackBytes)
+	if code != 0 {
+		return nil, errorForCode("NewTerminal", code)
+	}
+	return newTerminal(result), nil
+}
+
+// Cols calls the Zig function Terminal.cols.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (t *Terminal) Cols() (uint16, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Terminal.Cols receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	defer t.zigoRelease()
+	result, code := raw.TerminalCols(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("Terminal.Cols", code), t)
+	}
+	return result, nil
+}
+
+// Rows calls the Zig function Terminal.rows.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (t *Terminal) Rows() (uint16, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Terminal.Rows receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	defer t.zigoRelease()
+	result, code := raw.TerminalRows(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("Terminal.Rows", code), t)
+	}
+	return result, nil
+}
+
+// MaxScrollbackBytes calls the Zig function Terminal.maxScrollbackBytes.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (t *Terminal) MaxScrollbackBytes() (uint, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Terminal.MaxScrollbackBytes receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	defer t.zigoRelease()
+	result, code := raw.TerminalMaxScrollbackBytes(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("Terminal.MaxScrollbackBytes", code), t)
+	}
+	return result, nil
+}
+
 // Capacity calls the Zig function Stream.capacity.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.

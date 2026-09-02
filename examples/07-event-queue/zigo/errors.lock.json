@@ -2,6 +2,7 @@
   "codes": {
     "Empty": 5,
     "Full": 4,
+    "Invalid": 9,
     "InvalidCapacity": 3,
     "InvalidInterval": 8,
     "InvalidLimit": 6,
@@ -10,7 +11,7 @@
     "OutOfMemory": 1
   },
   "ir_version": 1,
-  "next_code": 9,
+  "next_code": 10,
   "reserved": {
     "-1": "Unknown",
     "-2": "PanicCaught",

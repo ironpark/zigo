@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: A boxed value `init(gpa, Options)` binds as `NewTerminal(cols, rows, ...)` on both backends; verification loop green.
 > NEXT: none

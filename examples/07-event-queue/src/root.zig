@@ -39,6 +39,45 @@ pub const Limits = extern struct {
     policy: Policy,
 };
 
+/// A plain Zig options struct. Only the selected scalar fields cross the Go
+/// boundary; the title remains at its Zig default.
+pub const TerminalOptions = struct {
+    cols: u16,
+    rows: u16 = 24,
+    max_scrollback_bytes: usize = 1024 * 1024,
+    title: []const u8 = "zigo",
+};
+
+pub const Terminal = struct {
+    cols_value: u16,
+    rows_value: u16,
+    scrollback_value: usize,
+
+    pub fn init(gpa: std.mem.Allocator, options: TerminalOptions) error{Invalid}!Terminal {
+        _ = gpa;
+        if (options.cols == 0 or options.rows == 0) return error.Invalid;
+        return .{
+            .cols_value = options.cols,
+            .rows_value = options.rows,
+            .scrollback_value = options.max_scrollback_bytes,
+        };
+    }
+
+    pub fn cols(self: *const Terminal) u16 {
+        return self.cols_value;
+    }
+
+    pub fn rows(self: *const Terminal) u16 {
+        return self.rows_value;
+    }
+
+    pub fn maxScrollbackBytes(self: *const Terminal) usize {
+        return self.scrollback_value;
+    }
+
+    pub fn deinit(_: *Terminal) void {}
+};
+
 const Event = struct {
     id: u64,
     value: i32,

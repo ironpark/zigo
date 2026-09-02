@@ -851,3 +851,125 @@ func (b *BorrowChild) zigoTakeLocked() (borrowChildCleanupState, bool) {
 	}
 	return state, true
 }
+
+// Terminal is a caller-owned native handle. Call Close when it is no longer needed.
+type Terminal struct {
+	ptr     unsafe.Pointer
+	mu      sync.Mutex
+	active  int
+	closed  bool
+	poison  *NativePanicError
+	cleanup runtime.Cleanup
+}
+
+// zigoAcquire pins t open for one native call and hands back its pointer;
+// the call ends with zigoRelease. A nil, closed, or poisoned handle is the error.
+func (t *Terminal) zigoAcquire(operation string) (unsafe.Pointer, error) {
+	if t == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed || t.ptr == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	if t.poison != nil {
+		return nil, t.poison.Poisoned(operation)
+	}
+	t.active++
+	return t.ptr, nil
+}
+
+func (t *Terminal) zigoRelease() {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	t.active--
+	state, release := t.zigoTakeLocked()
+	t.mu.Unlock()
+	if release {
+		cleanupTerminal(state)
+	}
+}
+
+// zigoPoison marks t unusable: a Zig panic unwound through native frames
+// without running their defers, so the state behind it is unknown.
+func (t *Terminal) zigoPoison(cause *NativePanicError) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.poison == nil {
+		t.poison = cause
+		t.cleanup.Stop()
+	}
+}
+
+// ZigoAcquire implements the shared lifecycle handle contract.
+func (t *Terminal) ZigoAcquire(operation string) (unsafe.Pointer, error) {
+	return t.zigoAcquire(operation)
+}
+
+// ZigoRelease implements the shared lifecycle handle contract.
+func (t *Terminal) ZigoRelease() { t.zigoRelease() }
+
+// ZigoPoison implements the shared lifecycle handle contract.
+func (t *Terminal) ZigoPoison(cause *NativePanicError) { t.zigoPoison(cause) }
+
+type terminalCleanupState struct {
+	ptr unsafe.Pointer
+}
+
+func newTerminal(ptr unsafe.Pointer) *Terminal {
+	value := &Terminal{ptr: ptr}
+	state := terminalCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, cleanupTerminal, state)
+	return value
+}
+
+func cleanupTerminal(state terminalCleanupState) {
+	if state.ptr != nil {
+		raw.TerminalDeinit(state.ptr)
+	}
+}
+
+// Close releases the native Terminal resources. It is safe to call more than once.
+// The error result is always nil; it exists so Terminal satisfies io.Closer.
+// Close does not wait: a call still inside native keeps the resources until it
+// returns, and every call made after Close fails with *HandleError.
+func (t *Terminal) Close() error {
+	if t == nil {
+		return nil
+	}
+	t.mu.Lock()
+	if t.closed {
+		t.mu.Unlock()
+		return nil
+	}
+	t.closed = true
+	t.cleanup.Stop()
+	state, release := t.zigoTakeLocked()
+	t.mu.Unlock()
+	if release {
+		cleanupTerminal(state)
+	}
+	runtime.KeepAlive(t)
+	return nil
+}
+
+// zigoTakeLocked hands out what is left to release once t is closed and no
+// call is inside native; mu must be held. A poisoned handle keeps its native
+// object: releasing state a panic left half-changed could fault, so it leaks.
+func (t *Terminal) zigoTakeLocked() (terminalCleanupState, bool) {
+	if !t.closed || t.active != 0 || t.ptr == nil {
+		return terminalCleanupState{}, false
+	}
+	state := terminalCleanupState{ptr: t.ptr}
+	t.ptr = nil
+	if t.poison != nil {
+		state.ptr = nil
+	}
+	return state, true
+}

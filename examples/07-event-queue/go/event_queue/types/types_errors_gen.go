@@ -79,6 +79,9 @@ var ErrObserverPanicked = &Error{Code: 7, Name: "ObserverPanicked"}
 // ErrInvalidInterval represents Zig error.InvalidInterval.
 var ErrInvalidInterval = &Error{Code: 8, Name: "InvalidInterval"}
 
+// ErrInvalid represents Zig error.Invalid.
+var ErrInvalid = &Error{Code: 9, Name: "Invalid"}
+
 func errorForCode(operation string, code int32) error {
 	switch code {
 	case -2:
@@ -99,6 +102,8 @@ func errorForCode(operation string, code int32) error {
 		return &Error{Code: 7, Name: "ObserverPanicked", Operation: operation}
 	case 8:
 		return &Error{Code: 8, Name: "InvalidInterval", Operation: operation}
+	case 9:
+		return &Error{Code: 9, Name: "Invalid", Operation: operation}
 	default:
 		return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
 	}

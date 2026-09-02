@@ -154,7 +154,7 @@ error입니다.
 | `constructs` | 이 함수가 만드는 opaque 타입 이름 |
 | `destroys` | 이 함수가 없애는 opaque 타입 이름 |
 | `child_of_receiver` | 생성된 handle이 receiver보다 먼저 닫혀야 하는지 여부 |
-| `param_meta` | 파라미터별 `semantic`, `retention`, `direction`, `written`, `buffer` |
+| `param_meta` | 파라미터별 `semantic`, `retention`, `direction`, `written`, `buffer`, `flatten` |
 | `semantic` | 반환값 의미. 예: `.utf8_string` |
 | `returns` | 반환 pointer의 ownership |
 
@@ -205,6 +205,27 @@ nested 항목에 둡니다. receiver 타입이나 첫 파라미터가 맞지 않
 `param_meta`의 field는 파라미터 이름과 일치해야 합니다. 해당 이름을 reflection 단계에서
 확실히 식별하려면 같은 항목에 `params`도 적으세요. 이름은 명시적 `params`, 대상 source AST,
 `p0` fallback 순으로 결정됩니다.
+
+plain struct 파라미터에서 일부 scalar field만 Go 인자로 받고 싶으면 `flatten`에 field 이름을
+순서대로 적습니다. `params`는 flatten 뒤의 인자 수가 아니라 원래 struct 파라미터 하나를
+셉니다. field 이름이 다른 파라미터나 다른 flattened field와 겹치지 않으면 그대로 Go 이름이
+되고, 겹치면 `<파라미터>_<field>`가 됩니다.
+
+```zig
+.{
+    .path = "Terminal.init",
+    .params = .{"options"},
+    .param_meta = .{
+        .options = .{ .flatten = .{ "cols", "rows", "max_scrollback_bytes" } },
+    },
+}
+```
+
+허용되는 leaf는 bool, 정수, 실수, 등록 enum과 그 optional입니다. optional scalar는 일반
+optional 파라미터처럼 Go에서 `*T`이며 `nil`이 Zig의 `null`입니다. nested struct, slice,
+string은 flatten할 수 없습니다. 목록에 없는 field는 모두 Zig default를 가져야 하며, 그렇지
+않으면 reflection이 그 field 이름과 함께 `ZIGO040`을 냅니다. 이 기능은 생성자뿐 아니라 모든
+함수 파라미터에 적용됩니다.
 
 ### 콜백 타입 이름
 
@@ -624,6 +645,12 @@ struct라면, zigo가 그 값을 상자에 담습니다: shim이 `alloc.create(T
 `T.init(...)`의 결과를 거기에 넣어 포인터를 돌려주며, 짝이 되는 `deinit` 래퍼가 Zig
 `deinit`을 부른 뒤 `alloc.destroy`까지 합니다. Go에서는 다른 생성자와 똑같이
 `NewTerminal(...) (*Terminal, error)`와 `Close()`입니다.
+
+`Options`가 C layout이 아니거나 slice 같은 내부 설정을 담아 struct 자체를 Go에 노출할 수
+없다면 위의 `param_meta.options.flatten`을 함께 사용하십시오. Go 생성자는 선택한 field를
+개별 인자로 받고, shim은 선택한 field만 적은 `Options{ .cols = ..., ... }`를 만듭니다. 따라서
+나머지는 Zig 선언의 default로 채워집니다. 선택 field를 추가하면 C와 Go 함수 시그니처가
+늘어나므로 `abi-diff`는 breaking으로 보고합니다.
 
 상자에 담는 데 필요한 할당은 zigo 자신의 것이므로, 실패는 Zig 함수가 선언하지 않은 error를
 지어내는 대신 panic으로 보고합니다 — 생성자는 언제나 `error`를 반환하므로 Go에는

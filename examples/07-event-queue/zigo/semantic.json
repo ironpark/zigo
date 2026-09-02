@@ -25,6 +25,11 @@
       "deinit": "deinit",
       "init": "create",
       "type": "BorrowBox"
+    },
+    {
+      "deinit": "deinit",
+      "init": "init",
+      "type": "Terminal"
     }
   ],
   "functions": [
@@ -70,7 +75,7 @@
           "retention": "borrowed",
           "semantic": "utf8_string",
           "source": {
-            "line": 134,
+            "line": 173,
             "column": 9
           },
           "type": {
@@ -90,7 +95,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 135,
+            "line": 174,
             "column": 9
           },
           "type": {
@@ -106,7 +111,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 136,
+            "line": 175,
             "column": 9
           },
           "type": {
@@ -120,7 +125,7 @@
           "name_source": "sidecar",
           "retention": "retained",
           "source": {
-            "line": 137,
+            "line": 176,
             "column": 9
           },
           "type": {
@@ -161,7 +166,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 138,
+            "line": 177,
             "column": 9
           },
           "type": {
@@ -188,7 +193,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 133,
+        "line": 172,
         "column": 12
       },
       "symbol": "zg_event_queue_create"
@@ -204,7 +209,7 @@
           "name_source": "sidecar",
           "retention": "retained",
           "source": {
-            "line": 164,
+            "line": 203,
             "column": 37
           },
           "type": {
@@ -245,7 +250,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 164,
+            "line": 203,
             "column": 57
           },
           "type": {
@@ -273,7 +278,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 164,
+        "line": 203,
         "column": 12
       },
       "symbol": "zg_event_queue_clone"
@@ -292,7 +297,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 175,
+            "line": 214,
             "column": 46
           },
           "type": {
@@ -318,7 +323,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 175,
+        "line": 214,
         "column": 12
       },
       "symbol": "zg_event_queue_new_stream"
@@ -334,7 +339,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 108,
+            "line": 147,
             "column": 19
           },
           "type": {
@@ -359,7 +364,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 108,
+        "line": 147,
         "column": 12
       },
       "symbol": "zg_borrow_box_create"
@@ -378,7 +383,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 114,
+        "line": 153,
         "column": 12
       },
       "symbol": "zg_borrow_box_view"
@@ -393,7 +398,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 118,
+        "line": 157,
         "column": 12
       },
       "symbol": "zg_borrow_box_deinit"
@@ -412,7 +417,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 81,
+        "line": 120,
         "column": 12
       },
       "symbol": "zg_borrow_view_view"
@@ -438,7 +443,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 85,
+        "line": 124,
         "column": 12
       },
       "symbol": "zg_borrow_view_new_child"
@@ -456,7 +461,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 92,
+        "line": 131,
         "column": 12
       },
       "symbol": "zg_borrow_view_get"
@@ -471,7 +476,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 96,
+        "line": 135,
         "column": 12
       },
       "symbol": "zg_borrow_view_explode"
@@ -489,7 +494,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 65,
+        "line": 104,
         "column": 12
       },
       "symbol": "zg_borrow_child_get"
@@ -504,7 +509,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 69,
+        "line": 108,
         "column": 12
       },
       "symbol": "zg_borrow_child_deinit"
@@ -521,10 +526,163 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 101,
+        "line": 140,
         "column": 8
       },
       "symbol": "zg_live_borrow_children"
+    },
+    {
+      "boxed": "create",
+      "name": "init",
+      "namespace": "Terminal",
+      "ownership": "caller",
+      "params": [
+        {
+          "direction": "in",
+          "injected": "allocator",
+          "name": "gpa",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "source": {
+            "line": 56,
+            "column": 17
+          },
+          "type": {
+            "kind": "void"
+          }
+        },
+        {
+          "direction": "in",
+          "flatten": [
+            {
+              "name": "cols",
+              "type": {
+                "bits": 16,
+                "is_usize": false,
+                "kind": "int",
+                "signed": false
+              }
+            },
+            {
+              "name": "rows",
+              "type": {
+                "bits": 16,
+                "is_usize": false,
+                "kind": "int",
+                "signed": false
+              }
+            },
+            {
+              "name": "max_scrollback_bytes",
+              "type": {
+                "bits": 64,
+                "is_usize": true,
+                "kind": "int",
+                "signed": false
+              }
+            }
+          ],
+          "name": "options",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 56,
+            "column": 41
+          },
+          "type": {
+            "kind": "value_struct",
+            "ref": "TerminalOptions"
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "Invalid"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "Terminal"
+        }
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 56,
+        "column": 12
+      },
+      "symbol": "zg_terminal_init"
+    },
+    {
+      "name": "cols",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Terminal",
+      "return": {
+        "bits": 16,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 66,
+        "column": 12
+      },
+      "symbol": "zg_terminal_cols"
+    },
+    {
+      "name": "rows",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Terminal",
+      "return": {
+        "bits": 16,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 70,
+        "column": 12
+      },
+      "symbol": "zg_terminal_rows"
+    },
+    {
+      "name": "maxScrollbackBytes",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Terminal",
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 74,
+        "column": 12
+      },
+      "symbol": "zg_terminal_max_scrollback_bytes"
+    },
+    {
+      "boxed": "destroy",
+      "name": "deinit",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Terminal",
+      "return": {
+        "kind": "void"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 78,
+        "column": 12
+      },
+      "symbol": "zg_terminal_deinit"
     },
     {
       "name": "capacity",
@@ -539,7 +697,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 453,
+        "line": 492,
         "column": 12
       },
       "symbol": "zg_stream_capacity"
@@ -555,7 +713,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 458,
+            "line": 497,
             "column": 43
           },
           "type": {
@@ -570,7 +728,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 458,
+        "line": 497,
         "column": 8
       },
       "zig_path": "freeStream",
@@ -586,7 +744,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 195,
+            "line": 234,
             "column": 39
           },
           "type": {
@@ -602,7 +760,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 195,
+            "line": 234,
             "column": 48
           },
           "type": {
@@ -625,7 +783,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 195,
+        "line": 234,
         "column": 12
       },
       "symbol": "zg_event_queue_enqueue"
@@ -641,7 +799,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 185,
+            "line": 224,
             "column": 41
           },
           "type": {
@@ -667,7 +825,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 185,
+        "line": 224,
         "column": 12
       },
       "symbol": "zg_event_queue_merge_from"
@@ -682,7 +840,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 206,
+            "line": 245,
             "column": 39
           },
           "type": {
@@ -710,7 +868,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 206,
+        "line": 245,
         "column": 12
       },
       "symbol": "zg_event_queue_process"
@@ -725,7 +883,7 @@
           "name_source": "sidecar",
           "retention": "retained",
           "source": {
-            "line": 222,
+            "line": 261,
             "column": 43
           },
           "type": {
@@ -766,7 +924,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 222,
+            "line": 261,
             "column": 63
           },
           "type": {
@@ -783,7 +941,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 222,
+        "line": 261,
         "column": 12
       },
       "symbol": "zg_event_queue_set_observer"
@@ -806,7 +964,7 @@
       "return_semantic": "utf8_string",
       "source": {
         "path": "root.zig",
-        "line": 227,
+        "line": 266,
         "column": 12
       },
       "symbol": "zg_event_queue_name"
@@ -827,7 +985,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 261,
+        "line": 300,
         "column": 12
       },
       "symbol": "zg_event_queue_sample_values"
@@ -856,7 +1014,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 269,
+        "line": 308,
         "column": 12
       },
       "symbol": "zg_event_queue_sample_values_checked"
@@ -873,7 +1031,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 276,
+            "line": 315,
             "column": 47
           },
           "type": {
@@ -906,7 +1064,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 276,
+        "line": 315,
         "column": 12
       },
       "symbol": "zg_event_queue_selection_string"
@@ -922,7 +1080,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 283,
+            "line": 322,
             "column": 48
           },
           "type": {
@@ -935,7 +1093,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 283,
+            "line": 322,
             "column": 72
           },
           "type": {
@@ -956,7 +1114,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 283,
+        "line": 322,
         "column": 12
       },
       "symbol": "zg_event_queue_free_selection_string"
@@ -974,7 +1132,7 @@
           "retention": "borrowed",
           "semantic": "c_string",
           "source": {
-            "line": 233,
+            "line": 272,
             "column": 24
           },
           "type": {
@@ -1006,7 +1164,7 @@
       "return_semantic": "c_string",
       "source": {
         "path": "root.zig",
-        "line": 233,
+        "line": 272,
         "column": 12
       },
       "symbol": "zg_event_queue_echo_c_string"
@@ -1031,7 +1189,7 @@
       "return_semantic": "c_string",
       "source": {
         "path": "root.zig",
-        "line": 237,
+        "line": 276,
         "column": 12
       },
       "symbol": "zg_event_queue_sample_c_string"
@@ -1048,7 +1206,7 @@
           "retention": "borrowed",
           "semantic": "utf8_string",
           "source": {
-            "line": 241,
+            "line": 280,
             "column": 25
           },
           "type": {
@@ -1075,7 +1233,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 241,
+        "line": 280,
         "column": 12
       },
       "symbol": "zg_event_queue_extract_paths"
@@ -1092,7 +1250,7 @@
           "retention": "borrowed",
           "semantic": "utf8_string",
           "source": {
-            "line": 247,
+            "line": 286,
             "column": 34
           },
           "type": {
@@ -1120,7 +1278,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 247,
+        "line": 286,
         "column": 12
       },
       "symbol": "zg_event_queue_extract_sentinel_slices"
@@ -1137,7 +1295,7 @@
           "retention": "borrowed",
           "semantic": "utf8_string",
           "source": {
-            "line": 253,
+            "line": 292,
             "column": 36
           },
           "type": {
@@ -1166,7 +1324,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 253,
+        "line": 292,
         "column": 12
       },
       "symbol": "zg_event_queue_extract_sentinel_pointers"
@@ -1188,7 +1346,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 291,
+        "line": 330,
         "column": 12
       },
       "symbol": "zg_event_queue_extract_samples"
@@ -1218,7 +1376,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 303,
+        "line": 342,
         "column": 12
       },
       "symbol": "zg_event_queue_extract_samples_checked"
@@ -1234,7 +1392,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 354,
+            "line": 393,
             "column": 40
           },
           "type": {
@@ -1253,7 +1411,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 354,
+        "line": 393,
         "column": 12
       },
       "symbol": "zg_event_queue_free_samples"
@@ -1275,7 +1433,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 332,
+        "line": 371,
         "column": 12
       },
       "symbol": "zg_event_queue_extract_limits"
@@ -1292,7 +1450,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 347,
+            "line": 386,
             "column": 39
           },
           "type": {
@@ -1305,7 +1463,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 347,
+            "line": 386,
             "column": 63
           },
           "type": {
@@ -1324,7 +1482,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 347,
+        "line": 386,
         "column": 12
       },
       "symbol": "zg_event_queue_free_limits"
@@ -1340,7 +1498,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 362,
+            "line": 401,
             "column": 40
           },
           "type": {
@@ -1362,7 +1520,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 362,
+        "line": 401,
         "column": 12
       },
       "symbol": "zg_event_queue_accept_stats"
@@ -1378,7 +1536,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 312,
+            "line": 351,
             "column": 50
           },
           "type": {
@@ -1401,7 +1559,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 312,
+        "line": 351,
         "column": 12
       },
       "symbol": "zg_event_queue_extract_samples_into"
@@ -1417,7 +1575,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 323,
+            "line": 362,
             "column": 42
           },
           "type": {
@@ -1440,7 +1598,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 323,
+        "line": 362,
         "column": 12
       },
       "symbol": "zg_event_queue_limits_into"
@@ -1456,7 +1614,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 369,
+            "line": 408,
             "column": 40
           },
           "type": {
@@ -1487,7 +1645,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 369,
+        "line": 408,
         "column": 12
       },
       "symbol": "zg_event_queue_estimate"
@@ -1508,7 +1666,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 378,
+        "line": 417,
         "column": 12
       },
       "symbol": "zg_event_queue_sample_stats"
@@ -1529,7 +1687,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 385,
+        "line": 424,
         "column": 12
       },
       "symbol": "zg_event_queue_sample_limits"
@@ -1547,7 +1705,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 390,
+        "line": 429,
         "column": 12
       },
       "symbol": "zg_event_queue_len"
@@ -1565,7 +1723,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 394,
+        "line": 433,
         "column": 12
       },
       "symbol": "zg_event_queue_capacity"
@@ -1581,7 +1739,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 398,
+        "line": 437,
         "column": 12
       },
       "symbol": "zg_event_queue_policy"
@@ -1599,7 +1757,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 402,
+        "line": 441,
         "column": 12
       },
       "symbol": "zg_event_queue_dropped"
@@ -1617,7 +1775,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 406,
+        "line": 445,
         "column": 12
       },
       "symbol": "zg_event_queue_processed"
@@ -1633,7 +1791,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 410,
+        "line": 449,
         "column": 12
       },
       "symbol": "zg_event_queue_stats"
@@ -1649,7 +1807,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 431,
+        "line": 470,
         "column": 12
       },
       "symbol": "zg_event_queue_limits"
@@ -1664,7 +1822,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 421,
+            "line": 460,
             "column": 43
           },
           "type": {
@@ -1687,7 +1845,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 421,
+        "line": 460,
         "column": 12
       },
       "symbol": "zg_event_queue_apply_limits"
@@ -1705,7 +1863,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 435,
+        "line": 474,
         "column": 12
       },
       "symbol": "zg_event_queue_clear"
@@ -1720,7 +1878,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 441,
+        "line": 480,
         "column": 12
       },
       "symbol": "zg_event_queue_deinit"
@@ -1738,7 +1896,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 504,
+            "line": 543,
             "column": 18
           },
           "type": {
@@ -1764,7 +1922,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 504,
+        "line": 543,
         "column": 8
       },
       "symbol": "zg_new_ticker"
@@ -1781,7 +1939,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 513,
+        "line": 552,
         "column": 8
       },
       "zig_path": "freeTicker",
@@ -1841,7 +1999,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 531,
+            "line": 570,
             "column": 22
           },
           "type": {
@@ -1855,7 +2013,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 531,
+            "line": 570,
             "column": 40
           },
           "type": {
@@ -1872,7 +2030,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 531,
+        "line": 570,
         "column": 8
       },
       "symbol": "zg_inspect_ticker"
@@ -1891,7 +2049,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 536,
+        "line": 575,
         "column": 8
       },
       "symbol": "zg_live_tickers"
@@ -1908,7 +2066,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 463,
+        "line": 502,
         "column": 8
       },
       "symbol": "zg_live_streams"
@@ -1925,7 +2083,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 481,
+        "line": 520,
         "column": 8
       },
       "symbol": "zg_live_queues"
@@ -1943,7 +2101,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 469,
+        "line": 508,
         "column": 8
       },
       "symbol": "zg_live_samples"
@@ -1960,7 +2118,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 473,
+        "line": 512,
         "column": 8
       },
       "symbol": "zg_live_limits"
@@ -1977,7 +2135,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 477,
+        "line": 516,
         "column": 8
       },
       "symbol": "zg_live_selection_strings"
@@ -2193,6 +2351,61 @@
       "kind": "opaque",
       "name": "BorrowChild",
       "zig_path": "root.BorrowChild"
+    },
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "opaque",
+      "name": "Terminal",
+      "zig_path": "root.Terminal"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "cols",
+          "type": {
+            "bits": 16,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "rows",
+          "type": {
+            "bits": 16,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "max_scrollback_bytes",
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "title",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "kind": "value_struct",
+      "name": "TerminalOptions",
+      "zig_path": "root.TerminalOptions"
     }
   ],
   "zig_version": "0.16.0"

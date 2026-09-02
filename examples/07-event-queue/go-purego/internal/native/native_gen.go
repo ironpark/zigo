@@ -65,6 +65,11 @@ type nativeBindings struct {
 	fnBorrowChildGet                    func(unsafe.Pointer, *int32) int32
 	fnBorrowChildDeinit                 func(unsafe.Pointer) int32
 	fnLiveBorrowChildren                func() uintptr
+	fnTerminalInit                      func(uint16, uint16, uintptr, *unsafe.Pointer) int32
+	fnTerminalCols                      func(unsafe.Pointer, *uint16) int32
+	fnTerminalRows                      func(unsafe.Pointer, *uint16) int32
+	fnTerminalMaxScrollbackBytes        func(unsafe.Pointer, *uintptr) int32
+	fnTerminalDeinit                    func(unsafe.Pointer) int32
 	fnStreamCapacity                    func(unsafe.Pointer, *uint32) int32
 	fnStreamFreeStream                  func(unsafe.Pointer) int32
 	fnEventQueueEnqueue                 func(unsafe.Pointer, uint64, int32) int32
@@ -397,6 +402,26 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_live_borrow_children", err)
 	}
+	addrTerminalInit, err := resolveSymbol(handle, "zg_terminal_init")
+	if err != nil {
+		return fail("zg_terminal_init", err)
+	}
+	addrTerminalCols, err := resolveSymbol(handle, "zg_terminal_cols")
+	if err != nil {
+		return fail("zg_terminal_cols", err)
+	}
+	addrTerminalRows, err := resolveSymbol(handle, "zg_terminal_rows")
+	if err != nil {
+		return fail("zg_terminal_rows", err)
+	}
+	addrTerminalMaxScrollbackBytes, err := resolveSymbol(handle, "zg_terminal_max_scrollback_bytes")
+	if err != nil {
+		return fail("zg_terminal_max_scrollback_bytes", err)
+	}
+	addrTerminalDeinit, err := resolveSymbol(handle, "zg_terminal_deinit")
+	if err != nil {
+		return fail("zg_terminal_deinit", err)
+	}
 	addrStreamCapacity, err := resolveSymbol(handle, "zg_stream_capacity")
 	if err != nil {
 		return fail("zg_stream_capacity", err)
@@ -605,6 +630,11 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnBorrowChildGet, addrBorrowChildGet)
 	purego.RegisterFunc(&next.fnBorrowChildDeinit, addrBorrowChildDeinit)
 	purego.RegisterFunc(&next.fnLiveBorrowChildren, addrLiveBorrowChildren)
+	purego.RegisterFunc(&next.fnTerminalInit, addrTerminalInit)
+	purego.RegisterFunc(&next.fnTerminalCols, addrTerminalCols)
+	purego.RegisterFunc(&next.fnTerminalRows, addrTerminalRows)
+	purego.RegisterFunc(&next.fnTerminalMaxScrollbackBytes, addrTerminalMaxScrollbackBytes)
+	purego.RegisterFunc(&next.fnTerminalDeinit, addrTerminalDeinit)
 	purego.RegisterFunc(&next.fnStreamCapacity, addrStreamCapacity)
 	purego.RegisterFunc(&next.fnStreamFreeStream, addrStreamFreeStream)
 	purego.RegisterFunc(&next.fnEventQueueEnqueue, addrEventQueueEnqueue)
@@ -851,6 +881,40 @@ func BorrowChildDeinit(self unsafe.Pointer) int32 {
 func LiveBorrowChildren() uint {
 	result := bindings().fnLiveBorrowChildren()
 	return uint(result)
+}
+
+// TerminalInit calls the generated purego ABI wrapper for zg_terminal_init.
+func TerminalInit(cols uint16, rows uint16, maxScrollbackBytes uint) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := bindings().fnTerminalInit(cols, rows, uintptr(maxScrollbackBytes), &outResult)
+	return outResult, code
+}
+
+// TerminalCols calls the generated purego ABI wrapper for zg_terminal_cols.
+func TerminalCols(self unsafe.Pointer) (uint16, int32) {
+	var outResult uint16
+	code := bindings().fnTerminalCols(self, &outResult)
+	return outResult, code
+}
+
+// TerminalRows calls the generated purego ABI wrapper for zg_terminal_rows.
+func TerminalRows(self unsafe.Pointer) (uint16, int32) {
+	var outResult uint16
+	code := bindings().fnTerminalRows(self, &outResult)
+	return outResult, code
+}
+
+// TerminalMaxScrollbackBytes calls the generated purego ABI wrapper for zg_terminal_max_scrollback_bytes.
+func TerminalMaxScrollbackBytes(self unsafe.Pointer) (uint, int32) {
+	var outResult uintptr
+	code := bindings().fnTerminalMaxScrollbackBytes(self, &outResult)
+	return uint(outResult), code
+}
+
+// TerminalDeinit calls the generated purego ABI wrapper for zg_terminal_deinit.
+func TerminalDeinit(self unsafe.Pointer) int32 {
+	code := bindings().fnTerminalDeinit(self)
+	return code
 }
 
 // StreamCapacity calls the generated purego ABI wrapper for zg_stream_capacity.

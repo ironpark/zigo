@@ -8,6 +8,10 @@
 
 ### Added
 
+- `param_meta.<파라미터>.flatten`으로 plain Zig options struct의 bool·정수·실수·등록 enum
+  field와 그 optional을 개별 Go/C 인자로 펼칠 수 있습니다. shim은 선택한 field만 struct
+  literal에 적어 나머지 Zig default를 보존하며, default 없는 미선택 field는 `ZIGO040`으로
+  진단합니다. cgo와 purego, boxed value `init`, `abi-diff`에 동일하게 반영됩니다.
 - by-value tagged union에 integer-backed `packed struct` payload와 재귀적인 scalar
   `extern struct` payload를 지원합니다. `.omit_variants`로 교차할 수 없는 variant를
   C/Go surface에서 제외할 수 있고, 같은 snapshot layout을 쓰는 값 반환도 cgo와 purego에서
