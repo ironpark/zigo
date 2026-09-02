@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-02T19:48:15Z"
 depends_on:
 - "83-go-sub-packages#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 예제 통과, 문서 갱신, 전 예제 녹색, 커밋.
 > NEXT: none

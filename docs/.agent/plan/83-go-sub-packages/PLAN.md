@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T19:48:15Z"
 description: 타입·namespace·함수를 별도 공개 Go 패키지로 나누는 .packages 선언과 공용 lifecycle 런타임 패키지
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-02T19:05:03Z"
 ---
 > NEXT: cgo 백엔드의 lifecycle 헬퍼·오류를 공용 `internal/lifecycle` 패키지로 옮기고 공개 API를 alias로 보존한다. ([Phase 1](phases/01-shared-runtime.md))
@@ -10,7 +11,7 @@ registered_at: "2026-09-02T19:05:03Z"
 - [x] [Phase 00: 선언과 semantic.json](phases/00-declaration-and-semantic.md)
 - [x] [Phase 01: 공용 lifecycle 런타임](phases/01-shared-runtime.md)
 - [x] [Phase 02: 패키지별 emit과 순환 진단](phases/02-per-package-emit.md)
-- [ ] [Phase 03: 예제, 문서, CHANGELOG](phases/03-example-and-docs.md)
+- [x] [Phase 03: 예제, 문서, CHANGELOG](phases/03-example-and-docs.md)
 
 # Shared Verification
 
