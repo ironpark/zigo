@@ -608,7 +608,10 @@ Zig에서의 호출 경로는 서로 다른 축이며, `semantic.json`은 전자
 - `.constructs`와 `.destroys`는 `.types`에 등록된 opaque 타입 이름을 받습니다.
 - `.constructs`를 붙인 함수는 그 타입의 pointer(또는 `!*T`)를 반환해야 하고,
   `.destroys`를 붙인 함수는 그 타입의 pointer를 첫 파라미터로 받고 아무것도 반환하지
-  않아야 합니다.
+  않아야 합니다. 주입 파라미터(`std.mem.Allocator`, `std.Io`)는 세지 않으므로
+  `fn freeTerminal(gpa: Allocator, self: *Terminal) void`도 됩니다. 이는 메서드 판정
+  일반에 적용되는 규칙입니다: 주입 파라미터를 건너뛴 첫 파라미터가 handle이면 receiver이고,
+  shim은 `self`를 Zig가 선언한 자리에 넣어 부릅니다.
 - 한 타입에 대해 둘 다 있어야 짝이 됩니다. 한쪽만 있거나, 같은 타입에 둘이 겹치거나,
   시그니처가 위 조건에 맞지 않으면 `ZIGO028`입니다.
 - 메타를 적지 않은 함수에는 `init`/`create`/`new`/`open` + `deinit`/`destroy`/`close`

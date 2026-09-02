@@ -385,6 +385,12 @@ pub const SemanticFn = struct {
     ownership: Ownership = .borrowed,
     params: []const Parameter,
     receiver: ?[]const u8 = null,
+    /// How many entries of `params` Zig declared ahead of the receiver. Only
+    /// injected arguments can precede it, so this is absent (zero) unless an
+    /// allocator or io comes before the handle, as in
+    /// `fn free(gpa: Allocator, self: *T) void`. The shim passes `self` at
+    /// this position; C and Go never see the difference.
+    receiver_at: ?usize = null,
     /// Name of the function that frees a `.returns = .caller` slice result.
     /// Generated Go copies the payload and then calls this symbol, so the
     /// public API never hands native memory to the caller.

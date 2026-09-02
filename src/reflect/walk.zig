@@ -236,36 +236,39 @@ fn appendFunction(
     // `.path` addresses the declaration; `.name` only renames it on the Go
     // side, so there is still exactly one way to say which function is meant.
     const function_name = if (@hasField(@TypeOf(metadata), "name")) metadata.name else source_name;
-    const receiver = comptime receiverName(info, declaration);
+    // The receiver is the first parameter Go would see: an injected
+    // `std.mem.Allocator` or `std.Io` ahead of the handle never reaches the
+    // C signature, so it does not stop the function from being a method.
+    const receiver_index = comptime receiverIndex(info, declaration);
+    const receiver = comptime if (receiver_index) |index| receiverNameAt(info, declaration, index) else null;
     // What the message calls the declaration: the owner it was reached through
     // plus the source name, which is the spelling the binding's `.path` uses.
     const owner_label = comptime if (receiver) |value|
         value ++ "."
     else if (discovered_owner) |value| value ++ "." else "";
     const function_label = source_name;
-    const first_param: usize = if (receiver != null) 1 else 0;
     const has_sidecar = @hasField(@TypeOf(metadata), "params");
     // `.params` names what Go sees, so the count it has to match leaves out
     // the receiver and every injected argument. Saying so here, before the
     // names are indexed, is what keeps a short list from failing as a
     // comptime tuple index inside zigo instead of as a binding error.
-    if (comptime has_sidecar and metadata.params.len != exposedParamCount(info, first_param)) {
+    if (comptime has_sidecar and metadata.params.len != exposedParamCount(info, receiver_index)) {
         return paramNameCountMismatch(comptime paramNameCountMessage(
             owner_label ++ function_label,
             metadata.params.len,
-            exposedParamCount(info, first_param),
+            exposedParamCount(info, receiver_index),
         ));
     }
-    const params = try allocator.alloc(semantic.Parameter, comptime concreteParamCount(info, first_param));
+    const params = try allocator.alloc(semantic.Parameter, comptime concreteParamCount(info, receiver_index));
     inline for (info.params, 0..) |param, param_index| {
-        if (param_index < first_param) continue;
+        if (receiver_index != null and param_index == receiver_index.?) continue;
         if (info.is_generic) continue;
         if (param.is_generic or param.type == null) continue;
-        const output_index = comptime concreteParamIndex(info, first_param, param_index);
+        const output_index = comptime concreteParamIndex(info, receiver_index, param_index);
         const injection = comptime injectionFor(param.type.?);
         // Where this parameter falls in `.params`, which counts only the
         // parameters Go is given.
-        const sidecar_index = comptime exposedParamIndex(info, first_param, param_index);
+        const sidecar_index = comptime exposedParamIndex(info, receiver_index, param_index);
         const named_by_sidecar = comptime injection == null and has_sidecar and sidecar_index < metadata.params.len;
         // An injected parameter is never named by the binding -- it has no
         // C parameter to name -- so it carries the name of what fills it,
@@ -359,6 +362,9 @@ fn appendFunction(
         .namespace = if (receiver == null) discovered_owner else null,
         .params = params,
         .receiver = receiver,
+        // The shim passes `self` where Zig declared it; only injected
+        // arguments can sit ahead of it, and they are counted here.
+        .receiver_at = comptime if (receiver_index != null and receiver_index.? != 0) receiver_index.? else null,
         .@"return" = reflected_return,
         .symbol = try naming.functionSymbolAlloc(allocator, prefix, receiver orelse discovered_owner, function_name),
         .zig_path = comptime zigCallPath(receiver, discovered_owner, source_name, function_name),
@@ -390,7 +396,7 @@ fn appendFunction(
         if (!comptime isRegisteredHandle(declaration, type_name))
             return pairingIssue(allocator, "`{s}{s}` declares `.destroys = \"{s}\"`, which is not a registered opaque type", .{ owner_label, function_label, type_name });
         if (!std.mem.eql(u8, reflected_function.receiver orelse "", type_name))
-            return pairingIssue(allocator, "`{s}{s}` declares `.destroys = \"{s}\"` but does not take `*{s}` as its first parameter", .{ owner_label, function_label, type_name, type_name });
+            return pairingIssue(allocator, "`{s}{s}` declares `.destroys = \"{s}\"` but does not take `*{s}` as its first parameter after any injected argument", .{ owner_label, function_label, type_name, type_name });
         if (reflected_function.@"return" != .void)
             return pairingIssue(allocator, "`{s}{s}` declares `.destroys = \"{s}\"` but does not return void", .{ owner_label, function_label, type_name });
         try pairings.append(allocator, .{ .index = functions.items.len, .kind = .destroys, .type = type_name });
@@ -932,20 +938,26 @@ fn missingOpaqueType(comptime type_name: []const u8, comptime context: []const u
     return error.MissingOpaqueType;
 }
 
-fn concreteParamCount(comptime info: std.builtin.Type.Fn, comptime first_param: usize) usize {
+/// Whether `index` is the receiver parameter, which the reflected `params`
+/// leave out.
+fn isReceiverIndex(comptime receiver_index: ?usize, comptime index: usize) bool {
+    return receiver_index != null and receiver_index.? == index;
+}
+
+fn concreteParamCount(comptime info: std.builtin.Type.Fn, comptime receiver_index: ?usize) usize {
     if (info.is_generic) return 0;
     var count: usize = 0;
     inline for (info.params, 0..) |parameter, index| {
-        if (index >= first_param and !parameter.is_generic and parameter.type != null) count += 1;
+        if (!isReceiverIndex(receiver_index, index) and !parameter.is_generic and parameter.type != null) count += 1;
     }
     return count;
 }
 
-fn concreteParamIndex(comptime info: std.builtin.Type.Fn, comptime first_param: usize, comptime target_index: usize) usize {
+fn concreteParamIndex(comptime info: std.builtin.Type.Fn, comptime receiver_index: ?usize, comptime target_index: usize) usize {
     var count: usize = 0;
     inline for (info.params, 0..) |parameter, index| {
         if (index == target_index) return count;
-        if (index >= first_param and !parameter.is_generic and parameter.type != null) count += 1;
+        if (!isReceiverIndex(receiver_index, index) and !parameter.is_generic and parameter.type != null) count += 1;
     }
     unreachable;
 }
@@ -954,22 +966,22 @@ fn concreteParamIndex(comptime info: std.builtin.Type.Fn, comptime first_param: 
 /// minus everything zigo injects. An injected argument has no C parameter and
 /// no Go argument, so a binding that had to name it would be naming a value it
 /// never passes.
-fn exposedParamCount(comptime info: std.builtin.Type.Fn, comptime first_param: usize) usize {
+fn exposedParamCount(comptime info: std.builtin.Type.Fn, comptime receiver_index: ?usize) usize {
     if (info.is_generic) return 0;
     var count: usize = 0;
     inline for (info.params, 0..) |parameter, index| {
-        if (index < first_param or parameter.is_generic or parameter.type == null) continue;
+        if (isReceiverIndex(receiver_index, index) or parameter.is_generic or parameter.type == null) continue;
         if (injectionFor(parameter.type.?) != null) continue;
         count += 1;
     }
     return count;
 }
 
-fn exposedParamIndex(comptime info: std.builtin.Type.Fn, comptime first_param: usize, comptime target_index: usize) usize {
+fn exposedParamIndex(comptime info: std.builtin.Type.Fn, comptime receiver_index: ?usize, comptime target_index: usize) usize {
     var count: usize = 0;
     inline for (info.params, 0..) |parameter, index| {
         if (index == target_index) return count;
-        if (index < first_param or parameter.is_generic or parameter.type == null) continue;
+        if (isReceiverIndex(receiver_index, index) or parameter.is_generic or parameter.type == null) continue;
         if (injectionFor(parameter.type.?) != null) continue;
         count += 1;
     }
@@ -997,9 +1009,19 @@ fn paramNameCountMismatch(comptime message: []const u8) error{ParamNameCount} {
     return error.ParamNameCount;
 }
 
-fn receiverName(comptime info: std.builtin.Type.Fn, comptime declaration: anytype) ?[]const u8 {
-    if (info.params.len == 0) return null;
-    const T = info.params[0].type orelse return null;
+/// The index of the receiver parameter: the first parameter that is not an
+/// injected argument, when it is a pointer to a registered handle.
+fn receiverIndex(comptime info: std.builtin.Type.Fn, comptime declaration: anytype) ?usize {
+    inline for (info.params, 0..) |parameter, index| {
+        const T = parameter.type orelse return null;
+        if (injectionFor(T) != null) continue;
+        return if (receiverNameAt(info, declaration, index) != null) index else null;
+    }
+    return null;
+}
+
+fn receiverNameAt(comptime info: std.builtin.Type.Fn, comptime declaration: anytype, comptime index: usize) ?[]const u8 {
+    const T = info.params[index].type orelse return null;
     const pointer = switch (@typeInfo(T)) {
         .pointer => |pointer| pointer,
         else => return null,
@@ -1913,6 +1935,52 @@ test "`.constructs` and `.destroys` pair functions the name rule never would" {
     // The destructor is a method in Go, so its path is the one that moved.
     try std.testing.expectEqualStrings("Terminal", document.functions[1].receiver.?);
     try std.testing.expectEqualStrings("releaseTerminal", document.functions[1].zig_path.?);
+}
+
+test "an injected argument ahead of the handle does not stop a function being a method" {
+    const Fixture = struct {
+        const Terminal = opaque {};
+
+        pub fn makeTerminal(columns: u32) error{Invalid}!*Terminal {
+            _ = columns;
+            unreachable;
+        }
+
+        pub fn releaseTerminal(gpa: std.mem.Allocator, self: *Terminal) void {
+            _ = gpa;
+            _ = self;
+        }
+
+        pub fn resize(gpa: std.mem.Allocator, self: *Terminal, columns: u32) void {
+            _ = gpa;
+            _ = self;
+            _ = columns;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{.{ .name = "Terminal", .type = Fixture.Terminal, .repr = .@"opaque" }},
+        .functions = .{
+            .{ .path = "root.makeTerminal", .params = .{"columns"}, .constructs = "Terminal" },
+            .{ .path = "root.releaseTerminal", .destroys = "Terminal" },
+            .{ .path = "root.resize", .params = .{"columns"} },
+        },
+    }, "terminal", "zg");
+
+    try std.testing.expectEqual(@as(usize, 1), document.constructors.len);
+    try std.testing.expectEqualStrings("releaseTerminal", document.constructors[0].deinit);
+    // The destructor: one injected entry ahead of the receiver, nothing exposed.
+    try std.testing.expectEqualStrings("Terminal", document.functions[1].receiver.?);
+    try std.testing.expectEqual(@as(?usize, 1), document.functions[1].receiver_at);
+    try std.testing.expectEqual(@as(usize, 1), document.functions[1].params.len);
+    try std.testing.expectEqual(semantic.Injection.allocator, document.functions[1].params[0].injected.?);
+    // The method: `.params` still names only what Go passes.
+    try std.testing.expectEqualStrings("Terminal", document.functions[2].receiver.?);
+    try std.testing.expectEqual(@as(?usize, 1), document.functions[2].receiver_at);
+    try std.testing.expectEqual(@as(usize, 2), document.functions[2].params.len);
+    try std.testing.expectEqualStrings("columns", document.functions[2].params[1].name);
 }
 
 test "a `.constructs` claim the signatures do not support is refused" {

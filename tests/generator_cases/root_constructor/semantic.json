@@ -41,8 +41,17 @@
     {
       "doc": "Releases a terminal newTerminal returned.",
       "name": "freeTerminal",
-      "params": [],
+      "params": [
+        {
+          "injected": "allocator",
+          "name": "allocator",
+          "type": {
+            "kind": "void"
+          }
+        }
+      ],
       "receiver": "Terminal",
+      "receiver_at": 1,
       "return": {
         "kind": "void"
       },

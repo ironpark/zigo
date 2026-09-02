@@ -4,6 +4,15 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Fixed
+
+- 주입 파라미터(`std.mem.Allocator`, `std.Io`)가 handle보다 앞에 선언된 함수
+  (`fn freeTerminal(gpa: Allocator, self: *Terminal) void`)도 메서드와 `.destroys` 대상으로
+  인식합니다. receiver 판정이 주입 파라미터를 건너뛰고, shim은 `self`를 Zig가 선언한
+  자리에 넣어 호출합니다. `semantic.json`은 이 경우에만 `receiver_at`을 적습니다.
+
 ## [0.3.2] - 2026-09-02
 
 ### Added

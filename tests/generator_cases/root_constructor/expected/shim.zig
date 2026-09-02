@@ -16,7 +16,7 @@ export fn zg_new_terminal_impl(columns: u32, out_result: **target.Terminal) i32 
     return 0;
 }
 export fn zg_terminal_free_terminal_impl(self: *target.Terminal) i32 {
-    target.freeTerminal(self);
+    target.freeTerminal(std.heap.smp_allocator, self);
     return 0;
 }
 export fn zg_terminal_resize_impl(self: *target.Terminal, columns: u32) i32 {

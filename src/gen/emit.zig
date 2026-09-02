@@ -708,13 +708,17 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         const path = try zigCallPathAlloc(allocator, function.origin.*);
         defer allocator.free(path);
         try writer.print("target.{s}(", .{path});
-        if (function.origin.receiver != null) {
+        if (function.origin.receiver != null and function.origin.receiver_at == null) {
             try writer.writeAll("self");
             if (function.origin.params.len != 0) try writer.writeAll(", ");
         }
     }
     for (function.origin.params, 0..) |parameter, index| {
         if (index != 0) try writer.writeAll(", ");
+        // `self` goes where Zig declared it: after the injected arguments
+        // that came first in the signature, if any did.
+        if (function.origin.receiver != null and function.origin.receiver_at == index and index != 0)
+            try writer.writeAll("self, ");
         // An injected argument has no C parameter behind it; the shim is the
         // one place the binding's chosen expression is written out.
         if (parameter.injected) |injection| {
@@ -772,6 +776,9 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                 try writer.writeAll(parameter.name),
         }
     }
+    // A receiver declared last, behind nothing but injected arguments.
+    if (function.origin.receiver != null and function.origin.receiver_at == function.origin.params.len and function.origin.params.len != 0)
+        try writer.writeAll(", self");
     try writer.writeByte(')');
     if (bool_return or enum_return) try writer.writeByte(')');
 }

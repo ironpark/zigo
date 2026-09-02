@@ -341,6 +341,9 @@ handle은 호출 후 즉시 해제하고, retained callback handle은 소유 객
 `.constructs`로 짝지었을 때처럼 둘이 다를 때만 문서에 나타납니다. shim이 부를 Zig 선언이
 `<소유자>.<이름>`으로 적히지 않는 경우(타입 밖에 선언된 소멸자, `.name`으로 이름을 바꾼
 함수)에는 `zig_path`가 그 경로를 그대로 적습니다. 둘 다 기본값과 같으면 생략됩니다.
+receiver 앞에 주입 파라미터가 선언된 함수(`fn free(gpa: Allocator, self: *T) void`)는
+`receiver_at`에 receiver 앞의 `params` 항목 수를 적고, shim은 그 자리에 `self`를 넣어
+호출합니다. C와 Go 시그니처는 영향을 받지 않으므로 이 필드도 `abi-diff` 대상이 아닙니다.
 
 주입 파라미터는 C 시그니처에도 Go 시그니처에도 없으므로 `abi-diff`는 그것을 빼고 비교하고,
 `go_owner`가 바뀌면 Go 표면이 움직이므로 breaking으로 봅니다.

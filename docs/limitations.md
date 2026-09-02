@@ -203,7 +203,7 @@ error[ZIGO018]: unsupported integer width `u21` in parameter `cp`
   적지 않는다. 메시지는 적은 개수와 기대 개수, 그리고 선언 경로를 적는다.
 - `ZIGO028` — `.constructs`/`.destroys`가 등록되지 않은 타입을 가리키거나, `.constructs`를
   단 함수가 그 타입의 pointer를 반환하지 않거나, `.destroys`를 단 함수가 그 타입의
-  pointer를 첫 파라미터로 받지 않거나 void를 반환하지 않거나, 한 타입에 대해 한쪽만
+  pointer를 (주입 파라미터를 제외한) 첫 파라미터로 받지 않거나 void를 반환하지 않거나, 한 타입에 대해 한쪽만
   선언했거나, 같은 타입을 둘이 겹쳐 선언했다. 메시지가 이들을 구분한다.
 
 `ZIGO027`과 `ZIGO028`은 reflection이 문서를 만들기 전에 걸리므로 `semantic.json` 자리가
