@@ -179,7 +179,25 @@ namespace가 들어가지 않으므로, 서로 다른 namespace의 같은 함수
   뜻하지 않는다. Go에서는 `errors.Is(err, ErrNativePanic)`으로 판별한다. 메시지를 수집한 뒤
   현재 작업을 중단한다. 메시지는 native 쪽 thread-local에 남으므로, error를 반환하는 생성
   함수와 union accessor는 호출 동안 `runtime.LockOSThread`로 goroutine을 그 thread에
-  고정한다. 호출당 비용은 작지만 0은 아니다.
+  고정한다. 그 비용은 측정했다(아래).
+
+  `examples/07-event-queue`의 `lock_os_thread_bench_test.go`가 그 비용을 잰다. 생성된
+  `EventQueue.Enqueue`와, `LockOSThread` 쌍만 뺀 손으로 쓴 같은 함수를 비교한다
+  (Apple M1 Ultra, macOS 15, Go 1.27, `go test -bench . -benchmem -count=5`):
+
+  | 백엔드 | 생성 경로 | `LockOSThread` 없음 | 차이 | 비율 |
+  | --- | --- | --- | --- | --- |
+  | cgo | 289.2 ns/op | 284.4 ns/op | +4.8 ns | 1.7% |
+  | purego | 516.0 ns/op | 505.6 ns/op | +10.4 ns | 2.0% |
+
+  `LockOSThread`/`UnlockOSThread` 쌍만 따로 재면 4.2 ns/op이고, 세 벤치마크 모두
+  호출당 추가 할당이 없다(cgo 0 B/op, purego는 두 경로 모두 304 B/op로 동일).
+
+  즉 스레드 고정은 가벼운 error union 호출 총비용의 2% 안쪽이다. 계획 68이 정한
+  기준(10% 이상)에 못 미치므로, 패닉 메시지 전달 ABI(전역 슬롯 배열이나 호출자 버퍼
+  포인터)로 바꾸지 않는다. 그 변경은 breaking이고 `{prefix}_last_error_message`를
+  없애야 하는데, 2%를 위해 치를 값이 아니다. 호출 비용을 지배하는 것은 경계 통과 자체다.
+
 - panic은 `longjmp`로 native 프레임을 빠져나오므로 그 프레임들의 `defer`/`errdefer`는
   실행되지 않는다. 잠금·할당·파일 핸들이 새고 객체는 반쯤 바뀐 채 남을 수 있다. 그래서
   `-2`로 끝난 호출이 닿은 모든 handle(receiver, handle 인자, projection의 소유자)은

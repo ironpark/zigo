@@ -2,7 +2,7 @@
 depends_on:
 - "68-ultrasync-followups#1"
 perf_phase: true
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 벤치마크가 저장소에 있고 결과와 판단이 문서에 기록됐다. phase 4 상태가 결과에 맞게 설정됐다(`planr phase set`).
 > NEXT: none

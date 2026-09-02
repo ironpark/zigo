@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T06:46:58Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `.return` fixture 헤더·shim·raw·purego에 `_written`/`Written` 부재 단정, `.all` fixture는 유지, abi_diff breaking 테스트 통과.
 > NEXT: none
