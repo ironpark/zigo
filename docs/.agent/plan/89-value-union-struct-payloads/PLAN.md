@@ -7,7 +7,7 @@ registered_at: "2026-09-02T22:15:54Z"
 
 # Phases
 
-- [ ] [Phase 00: Struct payloads and omitted variants](phases/00-struct-payloads.md)
+- [x] [Phase 00: Struct payloads and omitted variants](phases/00-struct-payloads.md)
 - [ ] [Phase 01: Value union returns](phases/01-value-returns.md)
 
 # Shared Verification

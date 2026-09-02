@@ -18,10 +18,42 @@ func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 func Apply(behavior_tag uint8, behavior_delta int, behavior_page uint, behavior_ratio float64, behavior_animated uint8, behavior_mode uint8, behavior_rgb uint32, behavior_region_x int16, behavior_region_enabled uint8) int64 {
 	return int64(C.zg_apply(C.uint8_t(behavior_tag), C.ptrdiff_t(behavior_delta), C.size_t(behavior_page), C.double(behavior_ratio), C.uint8_t(behavior_animated), C.uint8_t(behavior_mode), C.uint32_t(behavior_rgb), C.int16_t(behavior_region_x), C.uint8_t(behavior_region_enabled)))
 }
+// Current calls the generated C ABI wrapper for zg_current.
+func Current() (ScrollViewportData, int32) {
+	var outResult C.zg_scroll_viewport_snapshot_t
+	code := int32(C.zg_current(&outResult))
+	return ScrollViewportData{
+		Tag: uint8(outResult.tag),
+		Delta: int(outResult.delta),
+		Page: uint(outResult.page),
+		Ratio: float64(outResult.ratio),
+		Animated: uint8(outResult.animated),
+		Mode: uint8(outResult.mode),
+		Rgb: uint32(outResult.rgb),
+		RegionX: int16(outResult.region_x),
+		RegionEnabled: uint8(outResult.region_enabled),
+	}, code
+}
 
 // RegionData mirrors the zg_region layout, padding included.
 type RegionData struct {
 	X int16
 	Enabled uint8
 	_ [1]byte
+}
+
+// ScrollViewportData mirrors the zg_scroll_viewport_snapshot_t layout, padding included.
+type ScrollViewportData struct {
+	Tag uint8
+	_ [7]byte
+	Delta int
+	Page uint
+	Ratio float64
+	Animated uint8
+	Mode uint8
+	_ [2]byte
+	Rgb uint32
+	RegionX int16
+	RegionEnabled uint8
+	_ [5]byte
 }

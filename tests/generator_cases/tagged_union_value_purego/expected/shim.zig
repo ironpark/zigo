@@ -21,6 +21,56 @@ export fn zg_apply_impl(behavior_tag: u8, behavior_delta: isize, behavior_page: 
         else => @panic("zigo: invalid tag for argument `behavior`"),
     });
 }
+export fn zg_current_impl(out_result: *zg_scroll_viewport_snapshot_t) i32 {
+    const result = target.current();
+    out_result.* = std.mem.zeroes(zg_scroll_viewport_snapshot_t);
+    switch (result) {
+        .top => out_result.tag = 0,
+        .delta => |value| {
+            out_result.tag = 1;
+            out_result.delta = value;
+        },
+        .page => |value| {
+            out_result.tag = 2;
+            out_result.page = value;
+        },
+        .ratio => |value| {
+            out_result.tag = 3;
+            out_result.ratio = value;
+        },
+        .animated => |value| {
+            out_result.tag = 4;
+            out_result.animated = @intFromBool(value);
+        },
+        .mode => |value| {
+            out_result.tag = 5;
+            out_result.mode = @intFromEnum(value);
+        },
+        .rgb => |value| {
+            out_result.tag = 6;
+            out_result.rgb = @intCast(@as(u24, @bitCast(value)));
+        },
+        .region => |value| {
+            out_result.tag = 7;
+            out_result.region_x = value.x;
+            out_result.region_enabled = @intFromBool(value.enabled);
+        },
+        .unknown => return -3,
+    }
+    return 0;
+}
+
+const zg_scroll_viewport_snapshot_t = extern struct {
+    tag: u8,
+    delta: isize,
+    page: usize,
+    ratio: f64,
+    animated: u8,
+    mode: u8,
+    rgb: u32,
+    region_x: i16,
+    region_enabled: u8,
+};
 
 /// Fails this compile when a layout zigo reflected on the build host does
 /// not describe the compilation target. The usual cause is a C type whose

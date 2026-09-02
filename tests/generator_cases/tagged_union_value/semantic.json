@@ -17,6 +17,12 @@
         "signed": true
       },
       "symbol": "ignored"
+    },
+    {
+      "name": "current",
+      "params": [],
+      "return": { "kind": "value_struct", "ref": "ScrollViewport" },
+      "symbol": "ignored"
     }
   ],
   "package": "viewport",

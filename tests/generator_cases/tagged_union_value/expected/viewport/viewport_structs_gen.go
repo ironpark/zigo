@@ -65,6 +65,29 @@ func zigoRegionSliceCopyFromRaw(dst []Region, values []raw.RegionData, count int
 	}
 }
 
+func zigoScrollViewportFromRaw(value raw.ScrollViewportData) ScrollViewport {
+	switch ScrollViewportTag(value.Tag) {
+	case ScrollViewportTagTop:
+		return ScrollViewportTop()
+	case ScrollViewportTagDelta:
+		return ScrollViewportDelta(value.Delta)
+	case ScrollViewportTagPage:
+		return ScrollViewportPage(value.Page)
+	case ScrollViewportTagRatio:
+		return ScrollViewportRatio(value.Ratio)
+	case ScrollViewportTagAnimated:
+		return ScrollViewportAnimated(value.Animated != 0)
+	case ScrollViewportTagMode:
+		return ScrollViewportMode(Mode(value.Mode))
+	case ScrollViewportTagRgb:
+		return ScrollViewportRgb(RGB{R: uint8((uint64(value.Rgb) >> 0) & 0xff), G: uint8((uint64(value.Rgb) >> 8) & 0xff), B: uint8((uint64(value.Rgb) >> 16) & 0xff)})
+	case ScrollViewportTagRegion:
+		return ScrollViewportRegion(Region{X: value.RegionX, Enabled: value.RegionEnabled != 0})
+	default:
+		return ScrollViewport{}
+	}
+}
+
 // ScrollViewport is a tagged-union value passed to native code by copy.
 type ScrollViewport struct {
 	tag ScrollViewportTag

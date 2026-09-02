@@ -229,14 +229,34 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
         }
         if (try streamReturnIssue(allocator, function)) |issue| return issue;
         if (try cancelIssue(allocator, function)) |issue| return issue;
-        if (containsTaggedUnionValue(document, function.@"return")) return .{
+        if (taggedUnionValueDeclaration(document, function.@"return")) |declaration| {
+            if (document.taggedUnionUsedAsHandle(declaration.name)) return .{
+                .severity = .@"error",
+                .code = "ZIGO006",
+                .message = "cannot use one tagged union as both a value return and a pointer handle",
+                .site = functionSite(function),
+                .hint = "register a separate union type for the value return",
+            };
+            if (taggedUnionValueIneligibleVariant(document, declaration)) |variant| return .{
+                .severity = .@"error",
+                .code = "ZIGO006",
+                .message = "cannot return a tagged union by value",
+                .site = functionSite(function),
+                .hint = try std.fmt.allocPrint(
+                    allocator,
+                    "variant `{s}` has an unsupported value payload; omit it with `.omit_variants` or use void, scalar, enum, packed struct, or extern struct payloads",
+                    .{variant},
+                ),
+            };
+        } else if (containsTaggedUnionValue(document, function.@"return")) return .{
             .severity = .@"error",
             .code = "ZIGO006",
             .message = "cannot return a tagged union by value",
             .site = functionSite(function),
-            .hint = "register it with `.repr = .tagged_union` and expose pointers to the union",
+            .hint = "return an eligible tagged union directly; nested tagged-union values are not supported",
         };
-        if (unsupportedValueStruct(document, function.@"return") != null) return .{
+        if (taggedUnionValueDeclaration(document, function.@"return") == null and
+            unsupportedValueStruct(document, function.@"return") != null) return .{
             .severity = .@"error",
             .code = "ZIGO003",
             .message = "cannot pass a non-extern struct by value",

@@ -22,7 +22,7 @@ pub fn semanticDocumentForBackend(
     backend: abi.Program.Backend,
 ) !abi.Program {
     var document = source_document;
-    document.functions = try promoteCheckedFunctions(allocator, document.functions);
+    document.functions = try promoteCheckedFunctions(allocator, source_document, document.functions);
     // Lowered ahead of the functions, so a function can point at the mirror it
     // fills rather than making a backend find it again by name.
     const structs = try lowerValueStructs(allocator, document, prefix);
@@ -296,7 +296,12 @@ pub fn semanticDocumentForBackend(
                     });
                 } else if (error_union.payload.* != .void) {
                     const payload = try allocator.create(abi.AbiScalar);
-                    payload.* = try lowerValue(allocator, document, prefix, error_union.payload.*);
+                    if (taggedUnionValueDeclaration(document, error_union.payload.*)) |declaration| {
+                        const record = structRecord(structs, declaration.name);
+                        payload.* = .{ .snapshot = record.c_name };
+                    } else {
+                        payload.* = try lowerValue(allocator, document, prefix, error_union.payload.*);
+                    }
                     try params.append(allocator, .{
                         .name = "out_result",
                         .role = .payload_out,
@@ -375,6 +380,7 @@ pub fn semanticDocumentForBackend(
             .payload_optional = function.@"return" == .error_union and
                 function.@"return".error_union.payload.* == .optional and
                 function.@"return".error_union.payload.optional.child.* != .slice,
+            .value_union_return = taggedUnionValueDeclaration(source_document, source_document.functions[function_index].@"return") != null,
         };
     }
     // The release target is another exported function, so its symbol is only
@@ -658,11 +664,16 @@ fn lowerTaggedUnionSnapshots(allocator: std.mem.Allocator, document: semantic.Se
 ///
 /// Doing it here rather than in each emitter means the shim, the header, the
 /// raw layer, the public layer, and both backends all see one shape.
-fn promoteCheckedFunctions(allocator: std.mem.Allocator, functions: []const semantic.SemanticFn) ![]const semantic.SemanticFn {
+fn promoteCheckedFunctions(
+    allocator: std.mem.Allocator,
+    document: semantic.Semantic,
+    functions: []const semantic.SemanticFn,
+) ![]const semantic.SemanticFn {
     const promoted = try allocator.alloc(semantic.SemanticFn, functions.len);
     for (functions, 0..) |function, index| {
         promoted[index] = function;
-        if (function.@"return" == .error_union or !reportsPanics(function)) continue;
+        const value_union_return = taggedUnionValueDeclaration(document, function.@"return") != null;
+        if (function.@"return" == .error_union or (!reportsPanics(function) and !value_union_return)) continue;
         const payload = try allocator.create(semantic.TypeNode);
         payload.* = function.@"return";
         promoted[index].@"return" = .{ .error_union = .{ .error_set = &.{}, .payload = payload } };
@@ -723,7 +734,84 @@ fn lowerValueStructs(allocator: std.mem.Allocator, document: semantic.Semantic, 
             .alignment = alignment,
         });
     }
+    for (document.types) |*declaration| {
+        if (declaration.kind != .tagged_union or !taggedUnionReturnedByValue(document, declaration.name)) continue;
+        var fields: std.ArrayList(abi.AbiStruct.Field) = .empty;
+        var offset: usize = 0;
+        var alignment: usize = 1;
+        try appendValueUnionReturnField(
+            allocator,
+            document,
+            prefix,
+            &fields,
+            declaration.tag_type.?,
+            "tag",
+            &offset,
+            &alignment,
+        );
+        for (declaration.fields) |field| {
+            if (declaration.variantOmitted(field.name) or field.type.? == .void) continue;
+            try appendValueUnionReturnField(
+                allocator,
+                document,
+                prefix,
+                &fields,
+                field.type.?,
+                field.name,
+                &offset,
+                &alignment,
+            );
+        }
+        try structs.append(allocator, .{
+            .owner = declaration,
+            .name = declaration.name,
+            .c_name = try snapshotTypeNameAlloc(allocator, prefix, declaration.name),
+            .fields = try fields.toOwnedSlice(allocator),
+            .size = offset + padding(offset, alignment),
+            .alignment = alignment,
+        });
+    }
     return structs.toOwnedSlice(allocator);
+}
+
+fn appendValueUnionReturnField(
+    allocator: std.mem.Allocator,
+    document: semantic.Semantic,
+    prefix: []const u8,
+    fields: *std.ArrayList(abi.AbiStruct.Field),
+    node: semantic.TypeNode,
+    name: []const u8,
+    offset: *usize,
+    alignment: *usize,
+) !void {
+    if (node == .value_struct) {
+        const declaration = typeDeclaration(document, node.value_struct.ref);
+        if (declaration.layout == .@"packed") {
+            return appendValueUnionReturnField(allocator, document, prefix, fields, declaration.backing_type.?, name, offset, alignment);
+        }
+        for (declaration.fields) |field| {
+            const child_name = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ name, field.name });
+            try appendValueUnionReturnField(allocator, document, prefix, fields, field.type.?, child_name, offset, alignment);
+        }
+        return;
+    }
+    const scalar = try lowerValue(allocator, document, prefix, node);
+    const bytes = scalarBytes(scalar);
+    offset.* += padding(offset.*, bytes);
+    try fields.append(allocator, .{
+        .name = name,
+        .scalar = scalar,
+        .node = node,
+        .offset = offset.*,
+        .bytes = bytes,
+    });
+    offset.* += bytes;
+    alignment.* = @max(alignment.*, bytes);
+}
+
+fn taggedUnionReturnedByValue(document: semantic.Semantic, name: []const u8) bool {
+    for (document.functions) |function| if (semantic.typeIsNamedValue(function.@"return", name)) return true;
+    return false;
 }
 
 fn structRecord(structs: []const abi.AbiStruct, name: []const u8) *const abi.AbiStruct {
@@ -1008,6 +1096,12 @@ fn enumDeclaration(document: semantic.Semantic, name: []const u8) semantic.TypeD
 fn typeDeclaration(document: semantic.Semantic, name: []const u8) semantic.TypeDecl {
     for (document.types) |declaration| if (std.mem.eql(u8, declaration.name, name)) return declaration;
     unreachable;
+}
+
+fn taggedUnionValueDeclaration(document: semantic.Semantic, node: semantic.TypeNode) ?semantic.TypeDecl {
+    if (node != .value_struct) return null;
+    const declaration = typeDeclaration(document, node.value_struct.ref);
+    return if (declaration.kind == .tagged_union) declaration else null;
 }
 
 fn codesFor(allocator: std.mem.Allocator, names: []const []const u8, all_codes: []const abi.ErrorCode) ![]const abi.ErrorCode {

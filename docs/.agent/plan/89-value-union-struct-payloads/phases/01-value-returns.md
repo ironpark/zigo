@@ -2,7 +2,7 @@
 depends_on:
 - "89-value-union-struct-payloads#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: A function returning a value union works on both backends; verification loop green.
 > NEXT: none

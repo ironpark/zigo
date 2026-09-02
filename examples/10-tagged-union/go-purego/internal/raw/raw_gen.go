@@ -75,6 +75,7 @@ type nativeBindings struct {
 	fnDivide                 func(float64, float64, *float64) int32
 	fnSum                    func(unsafe.Pointer, uintptr) float64
 	fnScrollAmount           func(uint8, int, uintptr, uint32, int16, int16, uint16) int
+	fnCurrentViewport        func(uint8, unsafe.Pointer) int32
 	fnPanicError             func() int32
 	fnProjection0            func(unsafe.Pointer, *uint8) uint8
 	fnProjection1            func(unsafe.Pointer, *int64) uint8
@@ -271,6 +272,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_scroll_amount", err)
 	}
+	addrCurrentViewport, err := resolveSymbol(handle, "zg_current_viewport")
+	if err != nil {
+		return fail("zg_current_viewport", err)
+	}
 	addrPanicError, err := resolveSymbol(handle, "zg_panic_error")
 	if err != nil {
 		return fail("zg_panic_error", err)
@@ -358,6 +363,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnDivide, addrDivide)
 	purego.RegisterFunc(&next.fnSum, addrSum)
 	purego.RegisterFunc(&next.fnScrollAmount, addrScrollAmount)
+	purego.RegisterFunc(&next.fnCurrentViewport, addrCurrentViewport)
 	purego.RegisterFunc(&next.fnPanicError, addrPanicError)
 	purego.RegisterFunc(&next.fnProjection0, addrProjection0)
 	purego.RegisterFunc(&next.fnProjection1, addrProjection1)
@@ -408,6 +414,19 @@ type PointData struct {
 type RegionData struct {
 	Origin PointData
 	Width  uint16
+}
+
+// ScrollViewportData mirrors the zg_scroll_viewport_snapshot_t layout, padding included.
+type ScrollViewportData struct {
+	Tag           uint8
+	_             [7]byte
+	Delta         int
+	Page          uint
+	Rgb           uint32
+	RegionOriginX int16
+	RegionOriginY int16
+	RegionWidth   uint16
+	_             [6]byte
 }
 
 // SignalSnapshotData mirrors the zg_signal_snapshot_t value snapshot layout, padding included.
@@ -579,6 +598,13 @@ func Sum(values []float64) float64 {
 func ScrollAmount(behavior_tag uint8, behavior_delta int, behavior_page uint, behavior_rgb uint32, behavior_region_origin_x int16, behavior_region_origin_y int16, behavior_region_width uint16) int {
 	result := bindings().fnScrollAmount(behavior_tag, behavior_delta, uintptr(behavior_page), behavior_rgb, behavior_region_origin_x, behavior_region_origin_y, behavior_region_width)
 	return int(result)
+}
+
+// CurrentViewport calls the generated purego ABI wrapper for zg_current_viewport.
+func CurrentViewport(kind uint8) (ScrollViewportData, int32) {
+	var outResult ScrollViewportData
+	code := bindings().fnCurrentViewport(kind, unsafe.Pointer(&outResult))
+	return outResult, code
 }
 
 // PanicError calls the generated purego ABI wrapper for zg_panic_error.

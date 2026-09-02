@@ -35,6 +35,7 @@ pub const bindings = zigo.define(.{
         .{ .path = "root.divide", .params = .{ "numerator", "denominator" } },
         .{ .path = "root.sum", .params = .{"values"} },
         .{ .path = "root.scrollAmount", .params = .{"behavior"} },
+        .{ .path = "root.currentViewport", .params = .{"kind"} },
         .{ .path = "root.panicError" },
     },
 });

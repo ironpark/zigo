@@ -382,6 +382,28 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
 
         if (function.origin.@"return" == .error_union) {
             const error_union = function.origin.@"return".error_union;
+            if (function.value_union_return) {
+                const declaration = enumDecl(program, error_union.payload.*.value_struct.ref);
+                try writer.writeAll("const result = ");
+                try writeTargetCall(allocator, writer, program, function);
+                try writer.print(";\n    out_result.* = std.mem.zeroes({s});\n    switch (result) {{\n", .{function.payload_struct.?.c_name});
+                for (declaration.fields) |field| {
+                    if (declaration.variantOmitted(field.name)) {
+                        try writer.print("        .{s} => return -3,\n", .{field.name});
+                        continue;
+                    }
+                    try writer.print("        .{s} => ", .{field.name});
+                    if (field.type.? == .void) {
+                        try writer.print("out_result.tag = {d},\n", .{field.value.?});
+                        continue;
+                    }
+                    try writer.print("|value| {{\n            out_result.tag = {d};", .{field.value.?});
+                    try writeValueUnionReturnAssignments(allocator, writer, program, field.type.?, field.name, "value");
+                    try writer.writeAll("\n        },\n");
+                }
+                try writer.writeAll("    }\n    return 0;\n}\n");
+                continue;
+            }
             if (error_union.payload.* == .void) {
                 try writeTargetCall(allocator, writer, program, function);
                 try writeShimErrorCatch(writer, function);
@@ -451,6 +473,47 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
     try renderValueStructShim(writer, program);
 }
 
+fn writeValueUnionReturnAssignments(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    node: semantic.TypeNode,
+    field_name: []const u8,
+    expression: []const u8,
+) !void {
+    if (node == .value_struct) {
+        const declaration = enumDecl(program, node.value_struct.ref);
+        if (declaration.layout == .@"packed") {
+            const backing = declaration.backing_type.?.int;
+            try writer.print("\n            out_result.{s} = @intCast(@as({c}{d}, @bitCast({s})));", .{
+                field_name,
+                if (backing.signed) @as(u8, 'i') else @as(u8, 'u'),
+                backing.bits,
+                expression,
+            });
+            return;
+        }
+        for (declaration.fields) |field| {
+            const child_name = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ field_name, field.name });
+            defer allocator.free(child_name);
+            const child_expression = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ expression, field.name });
+            defer allocator.free(child_expression);
+            try writeValueUnionReturnAssignments(allocator, writer, program, field.type.?, child_name, child_expression);
+        }
+        return;
+    }
+    try writer.print("\n            out_result.{s} = ", .{field_name});
+    switch (node) {
+        .bool => try writer.print("@intFromBool({s})", .{expression}),
+        .@"enum" => try writer.print("@intFromEnum({s})", .{expression}),
+        else => if (abi.narrowInt(node) != null)
+            try writer.print("@intCast({s})", .{expression})
+        else
+            try writer.writeAll(expression),
+    }
+    try writer.writeByte(';');
+}
+
 fn writeFieldAccess(writer: *std.Io.Writer, function: abi.AbiFn, access: semantic.FieldAccess) !void {
     const checked = function.origin.@"return" == .error_union;
     if (access.setter) {
@@ -501,8 +564,19 @@ fn writeFieldAccess(writer: *std.Io.Writer, function: abi.AbiFn, access: semanti
 /// whose C and Go mirrors disagree with the Zig one.
 fn renderValueStructShim(writer: *std.Io.Writer, program: abi.Program) !void {
     if (program.structs.len == 0) return;
+    for (program.structs) |record| {
+        if (record.owner.kind != .tagged_union) continue;
+        try writer.print("\nconst {s} = extern struct {{\n", .{record.c_name});
+        for (record.fields) |field| {
+            try writer.print("    {s}: ", .{field.name});
+            try writeZigType(writer, field.scalar);
+            try writer.writeAll(",\n");
+        }
+        try writer.writeAll("};\n");
+    }
     try writer.writeAll(abi_guard_helper);
     for (program.structs) |record| {
+        if (record.owner.kind == .tagged_union) continue;
         try writer.print(
             "\ncomptime {{\n    zigoAbiGuard(\"@sizeOf({0s})\", {1d}, @sizeOf(target.{0s}));\n" ++
                 "    zigoAbiGuard(\"@alignOf({0s})\", {2d}, @alignOf(target.{0s}));\n",
@@ -3077,7 +3151,10 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
             // An aggregate payload crosses as a raw address, exactly as the
             // lowered scalar for this parameter already says.
             .payload_out => try writer.writeAll(if (parameter.scalar == .pointer and
-                parameter.scalar.pointer.child.* == .value_struct) "unsafe.Pointer(&outResult)" else "&outResult"),
+                (parameter.scalar.pointer.child.* == .value_struct or parameter.scalar.pointer.child.* == .snapshot))
+                "unsafe.Pointer(&outResult)"
+            else
+                "&outResult"),
             // An `extern struct` optional crosses as a raw address, matching
             // the unsafe.Pointer the bindings table declares; a nil Go pointer
             // converts to a nil unsafe.Pointer, which is the absent case.
@@ -4529,6 +4606,7 @@ fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer
         try writer.writeAll("(result)\n}\n\n");
     }
     for (program.structs) |record| {
+        if (record.owner.kind == .tagged_union) continue;
         if (!typeBelongsToPackage(program, record.name, options.active_package)) continue;
         try writer.print("// {s} mirrors the Zig `extern struct` of the same name.\ntype {s} struct {{\n", .{ record.name, record.name });
         for (record.fields) |field| {
@@ -4542,6 +4620,11 @@ fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer
         try renderPublicStructLayoutGuards(allocator, writer, program, options, record);
     }
     for (program.structs) |record| {
+        if (record.owner.kind == .tagged_union) {
+            if (typeBelongsToPackage(program, record.name, options.active_package))
+                try renderValueUnionFromRaw(allocator, writer, program, options, record);
+            continue;
+        }
         if (!typeBelongsToPackage(program, record.name, options.active_package) and
             !(options.active_package != null and programReferencesType(program, options.active_package.?, record.name))) continue;
         const raw_type = try structRawTypeNameAlloc(allocator, record.name);
@@ -4617,6 +4700,89 @@ fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer
         try writer.print("{s}, count int) {{\n\tif count > len(dst) {{ count = len(dst) }}\n\tif count > len(values) {{ count = len(values) }}\n\tfor i := 0; i < count; i++ {{\n\t\tdst[i] = zigo{s}FromRaw(values[i])\n\t}}\n}}\n\n", .{ raw_type, record.name });
     }
     try renderPublicTaggedUnionValues(allocator, writer, program, options);
+}
+
+fn renderValueUnionFromRaw(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    options: Options,
+    record: abi.AbiStruct,
+) !void {
+    const declaration = record.owner.*;
+    const raw_type = try structRawTypeNameAlloc(allocator, record.name);
+    defer allocator.free(raw_type);
+    try writer.print("func zigo{s}FromRaw(value ", .{declaration.name});
+    try writeRawTypeReferencePrefix(writer, options);
+    try writer.print("{s}) {s} {{\n\tswitch {s}(value.Tag) {{\n", .{
+        raw_type,
+        declaration.name,
+        declaration.tag_type.?.@"enum".ref,
+    });
+    for (declaration.fields) |field| {
+        if (declaration.variantOmitted(field.name)) continue;
+        const constructor = try naming.pascalAlloc(allocator, field.name);
+        defer allocator.free(constructor);
+        try writer.print("\tcase {s}{s}:\n\t\treturn {s}{s}(", .{
+            declaration.tag_type.?.@"enum".ref,
+            constructor,
+            declaration.name,
+            constructor,
+        });
+        if (field.type.? != .void)
+            try writeValueUnionPayloadFromRaw(allocator, writer, program, options, field.type.?, field.name, "value");
+        try writer.writeAll(")\n");
+    }
+    try writer.print("\tdefault:\n\t\treturn {s}{{}}\n\t}}\n}}\n\n", .{declaration.name});
+}
+
+fn writeValueUnionPayloadFromRaw(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    options: Options,
+    node: semantic.TypeNode,
+    field_name: []const u8,
+    raw_value: []const u8,
+) !void {
+    if (node == .value_struct) {
+        const declaration = enumDecl(program, node.value_struct.ref);
+        try writer.print("{s}{{", .{declaration.name});
+        var bit_offset: u16 = 0;
+        for (declaration.fields, 0..) |field, index| {
+            if (index != 0) try writer.writeAll(", ");
+            const member = try naming.pascalAlloc(allocator, field.name);
+            defer allocator.free(member);
+            try writer.print("{s}: ", .{member});
+            if (declaration.layout == .@"packed") {
+                const raw_member = try naming.pascalAlloc(allocator, field_name);
+                defer allocator.free(raw_member);
+                const bits = semanticBitWidth(program, field.type.?);
+                try writePublicGoType(.{ .program = program, .options = options }, writer, field.type.?);
+                try writer.print("((uint64({s}.{s}) >> {d}) & 0x{x})", .{ raw_value, raw_member, bit_offset, bitMask(bits) });
+                bit_offset += bits;
+            } else {
+                const child_name = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ field_name, field.name });
+                defer allocator.free(child_name);
+                try writeValueUnionPayloadFromRaw(allocator, writer, program, options, field.type.?, child_name, raw_value);
+            }
+        }
+        try writer.writeByte('}');
+        return;
+    }
+    const raw_member = try naming.pascalAlloc(allocator, field_name);
+    defer allocator.free(raw_member);
+    const expression = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ raw_value, raw_member });
+    defer allocator.free(expression);
+    switch (node) {
+        .bool => try writer.print("{s} != 0", .{expression}),
+        .@"enum" => {
+            try writer.print("{s}(", .{node.@"enum".ref});
+            try writer.writeAll(expression);
+            try writer.writeByte(')');
+        },
+        else => try writer.writeAll(expression),
+    }
 }
 
 fn renderPublicTaggedUnionValues(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
@@ -6305,12 +6471,19 @@ fn renderGoErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, program:
     try writer.writeAll("\nfunc errorForCode(operation string, code int32) error {\n\tswitch code {\n\tcase -2:\n\t\treturn &NativePanicError{Operation: operation, Message: ");
     try writeRawReferencePrefix(writer, options);
     try writer.writeAll("LastErrorMessage()}\n");
+    if (programHasValueUnionReturn(program))
+        try writer.writeAll("\tcase -3:\n\t\treturn &Error{Code: -3, Name: \"OmittedVariant\", Operation: operation}\n");
     for (program.error_codes) |entry| {
         const name = try naming.pascalAlloc(allocator, entry.name);
         defer allocator.free(name);
         try writer.print("\tcase {d}:\n\t\treturn &Error{{Code: {d}, Name: \"{s}\", Operation: operation}}\n", .{ entry.code, entry.code, entry.name });
     }
     try writer.writeAll("\tdefault:\n\t\treturn &Error{Code: code, Name: \"Unknown(\" + strconv.Itoa(int(code)) + \")\", Operation: operation}\n\t}\n}\n");
+}
+
+fn programHasValueUnionReturn(program: abi.Program) bool {
+    for (program.functions) |function| if (function.value_union_return) return true;
+    return false;
 }
 
 fn writeRawImport(writer: *std.Io.Writer, options: Options, indent: []const u8) !void {

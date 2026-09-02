@@ -35,7 +35,20 @@ typedef struct zg_region {
     uint8_t enabled;
 } zg_region;
 
+typedef struct zg_scroll_viewport_snapshot_t {
+    zg_scroll_viewport_tag tag;
+    ptrdiff_t delta;
+    size_t page;
+    double ratio;
+    uint8_t animated;
+    zg_mode mode;
+    uint32_t rgb;
+    int16_t region_x;
+    uint8_t region_enabled;
+} zg_scroll_viewport_snapshot_t;
+
 ZIGO_EXPORT int64_t zg_apply(uint8_t behavior_tag, ptrdiff_t behavior_delta, size_t behavior_page, double behavior_ratio, uint8_t behavior_animated, uint8_t behavior_mode, uint32_t behavior_rgb, int16_t behavior_region_x, uint8_t behavior_region_enabled);
+ZIGO_EXPORT int32_t zg_current(zg_scroll_viewport_snapshot_t * out_result);
 ZIGO_EXPORT const char *zg_last_error_message(void);
 
 #endif // ZIGO_viewport_H

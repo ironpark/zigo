@@ -45,6 +45,7 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	fnApply func(uint8, int, uintptr, float64, uint8, uint8, uint32, int16, uint8) int64
+	fnCurrent func(unsafe.Pointer) int32
 }
 
 var loadedBindings atomic.Pointer[nativeBindings]
@@ -104,9 +105,12 @@ func loadCandidate(path string) error {
 	if err != nil { return fail("zg_last_error_message", err) }
 	addrApply, err := resolveSymbol(handle, "zg_apply")
 	if err != nil { return fail("zg_apply", err) }
+	addrCurrent, err := resolveSymbol(handle, "zg_current")
+	if err != nil { return fail("zg_current", err) }
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.fnApply, addrApply)
+	purego.RegisterFunc(&next.fnCurrent, addrCurrent)
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -133,8 +137,31 @@ type RegionData struct {
 	_ [1]byte
 }
 
+// ScrollViewportData mirrors the zg_scroll_viewport_snapshot_t layout, padding included.
+type ScrollViewportData struct {
+	Tag uint8
+	_ [7]byte
+	Delta int
+	Page uint
+	Ratio float64
+	Animated uint8
+	Mode uint8
+	_ [2]byte
+	Rgb uint32
+	RegionX int16
+	RegionEnabled uint8
+	_ [5]byte
+}
+
 // Apply calls the generated purego ABI wrapper for zg_apply.
 func Apply(behavior_tag uint8, behavior_delta int, behavior_page uint, behavior_ratio float64, behavior_animated uint8, behavior_mode uint8, behavior_rgb uint32, behavior_region_x int16, behavior_region_enabled uint8) int64 {
 	result := bindings().fnApply(behavior_tag, behavior_delta, uintptr(behavior_page), behavior_ratio, behavior_animated, behavior_mode, behavior_rgb, behavior_region_x, behavior_region_enabled)
 	return int64(result)
+}
+
+// Current calls the generated purego ABI wrapper for zg_current.
+func Current() (ScrollViewportData, int32) {
+	var outResult ScrollViewportData
+	code := bindings().fnCurrent(unsafe.Pointer(&outResult))
+	return outResult, code
 }

@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T23:13:36Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: A union shaped like `sgr.Attribute` (minus its slice-carrying variant, via `.omit_variants`) binds as a value parameter and round-trips in Go tests on both backends.
 > NEXT: none

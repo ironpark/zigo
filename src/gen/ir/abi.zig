@@ -157,6 +157,8 @@ pub const AbiFn = struct {
     /// `payload_has_out` parameter carries presence alongside the existing
     /// `payload_out`/`struct_out` value pointer.
     payload_optional: bool = false,
+    /// This synthetic error-union payload is a tagged-union return snapshot.
+    value_union_return: bool = false,
     /// Symbol of the function that frees a caller-owned slice result. Generated
     /// Go copies the payload out and then calls this with the same `ptr, len`.
     release_symbol: ?[]const u8 = null,

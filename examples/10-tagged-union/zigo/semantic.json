@@ -552,7 +552,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 172,
+        "line": 180,
         "column": 8
       },
       "symbol": "zg_live_values"
@@ -567,7 +567,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 176,
+            "line": 184,
             "column": 15
           },
           "type": {
@@ -581,7 +581,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 176,
+            "line": 184,
             "column": 31
           },
           "type": {
@@ -602,7 +602,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 176,
+        "line": 184,
         "column": 8
       },
       "symbol": "zg_divide"
@@ -617,7 +617,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 181,
+            "line": 189,
             "column": 12
           },
           "type": {
@@ -636,7 +636,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 181,
+        "line": 189,
         "column": 8
       },
       "symbol": "zg_sum"
@@ -674,6 +674,38 @@
       "symbol": "zg_scroll_amount"
     },
     {
+      "name": "currentViewport",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "kind",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 152,
+            "column": 24
+          },
+          "type": {
+            "bits": 8,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "kind": "value_struct",
+        "ref": "ScrollViewport"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 152,
+        "column": 8
+      },
+      "symbol": "zg_current_viewport"
+    },
+    {
       "name": "panicError",
       "ownership": "borrowed",
       "params": [],
@@ -688,7 +720,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 187,
+        "line": 195,
         "column": 8
       },
       "symbol": "zg_panic_error"

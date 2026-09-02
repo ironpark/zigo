@@ -351,6 +351,18 @@ func ScrollAmount(behavior ScrollViewport) int {
 	return raw.ScrollAmount(uint8(behavior.tag), behavior.delta, behavior.page, zigoRGBToBacking(behavior.rgb), behavior.region.Origin.X, behavior.region.Origin.Y, behavior.region.Width)
 }
 
+// CurrentViewport calls the Zig function currentViewport.
+// A native panic is returned as *NativePanicError.
+func CurrentViewport(kind uint8) (ScrollViewport, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	result, code := raw.CurrentViewport(kind)
+	if code != 0 {
+		return ScrollViewport{}, errorForCode("CurrentViewport", code)
+	}
+	return zigoScrollViewportFromRaw(result), nil
+}
+
 // PanicError calls the Zig function panicError.
 // Native failures are returned as generated error values.
 func PanicError() error {

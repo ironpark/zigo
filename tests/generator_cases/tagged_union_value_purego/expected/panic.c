@@ -53,3 +53,15 @@ ZIGO_EXPORT int64_t zg_apply(uint8_t behavior_tag, ptrdiff_t behavior_delta, siz
     zg_panic_active = 0;
     return result;
 }
+
+int32_t zg_current_impl(zg_scroll_viewport_snapshot_t * out_result);
+ZIGO_EXPORT int32_t zg_current(zg_scroll_viewport_snapshot_t * out_result) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return -2;
+    }
+    int32_t result = zg_current_impl(out_result);
+    zg_panic_active = 0;
+    return result;
+}

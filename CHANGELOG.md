@@ -8,6 +8,11 @@
 
 ### Added
 
+- by-value tagged union에 integer-backed `packed struct` payload와 재귀적인 scalar
+  `extern struct` payload를 지원합니다. `.omit_variants`로 교차할 수 없는 variant를
+  C/Go surface에서 제외할 수 있고, 같은 snapshot layout을 쓰는 값 반환도 cgo와 purego에서
+  지원합니다. 반환값의 active tag가 제외된 variant이면 typed `OmittedVariant` error를
+  반환합니다.
 - 자유 함수 메타데이터의 `.receiver`와 `.receiver`/`.strip_prefix`/`.functions` group을
   추가했습니다. 등록 opaque pointer를 첫 비주입 파라미터로 받는 자유 함수를 cgo와 purego의
   method로 붙이고, group의 공통 Zig 접두사를 기본 Go 이름에서 제거할 수 있습니다. 잘못된

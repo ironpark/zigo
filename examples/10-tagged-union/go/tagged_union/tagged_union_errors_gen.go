@@ -117,6 +117,8 @@ func errorForCode(operation string, code int32) error {
 	switch code {
 	case -2:
 		return &NativePanicError{Operation: operation, Message: raw.LastErrorMessage()}
+	case -3:
+		return &Error{Code: -3, Name: "OmittedVariant", Operation: operation}
 	case 1:
 		return &Error{Code: 1, Name: "OutOfMemory", Operation: operation}
 	case 2:

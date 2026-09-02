@@ -173,6 +173,21 @@ func ScrollAmount(behavior_tag uint8, behavior_delta int, behavior_page uint, be
 	return int(C.zg_scroll_amount(C.uint8_t(behavior_tag), C.ptrdiff_t(behavior_delta), C.size_t(behavior_page), C.uint32_t(behavior_rgb), C.int16_t(behavior_region_origin_x), C.int16_t(behavior_region_origin_y), C.uint16_t(behavior_region_width)))
 }
 
+// CurrentViewport calls the generated C ABI wrapper for zg_current_viewport.
+func CurrentViewport(kind uint8) (ScrollViewportData, int32) {
+	var outResult C.zg_scroll_viewport_snapshot_t
+	code := int32(C.zg_current_viewport(C.uint8_t(kind), &outResult))
+	return ScrollViewportData{
+		Tag:           uint8(outResult.tag),
+		Delta:         int(outResult.delta),
+		Page:          uint(outResult.page),
+		Rgb:           uint32(outResult.rgb),
+		RegionOriginX: int16(outResult.region_origin_x),
+		RegionOriginY: int16(outResult.region_origin_y),
+		RegionWidth:   uint16(outResult.region_width),
+	}, code
+}
+
 // PanicError calls the generated C ABI wrapper for zg_panic_error.
 func PanicError() int32 {
 	code := int32(C.zg_panic_error())
@@ -191,6 +206,19 @@ type RegionData struct {
 	Width  uint16
 }
 
+// ScrollViewportData mirrors the zg_scroll_viewport_snapshot_t layout, padding included.
+type ScrollViewportData struct {
+	Tag           uint8
+	_             [7]byte
+	Delta         int
+	Page          uint
+	Rgb           uint32
+	RegionOriginX int16
+	RegionOriginY int16
+	RegionWidth   uint16
+	_             [6]byte
+}
+
 // PointData crosses to C as a cast, so it must match zg_point byte for byte.
 var _ = [1]struct{}{}[unsafe.Sizeof(PointData{})-unsafe.Sizeof(C.zg_point{})]
 var _ = [1]struct{}{}[unsafe.Offsetof(PointData{}.X)-unsafe.Offsetof(C.zg_point{}.x)]
@@ -200,6 +228,16 @@ var _ = [1]struct{}{}[unsafe.Offsetof(PointData{}.Y)-unsafe.Offsetof(C.zg_point{
 var _ = [1]struct{}{}[unsafe.Sizeof(RegionData{})-unsafe.Sizeof(C.zg_region{})]
 var _ = [1]struct{}{}[unsafe.Offsetof(RegionData{}.Origin)-unsafe.Offsetof(C.zg_region{}.origin)]
 var _ = [1]struct{}{}[unsafe.Offsetof(RegionData{}.Width)-unsafe.Offsetof(C.zg_region{}.width)]
+
+// ScrollViewportData crosses to C as a cast, so it must match zg_scroll_viewport_snapshot_t byte for byte.
+var _ = [1]struct{}{}[unsafe.Sizeof(ScrollViewportData{})-unsafe.Sizeof(C.zg_scroll_viewport_snapshot_t{})]
+var _ = [1]struct{}{}[unsafe.Offsetof(ScrollViewportData{}.Tag)-unsafe.Offsetof(C.zg_scroll_viewport_snapshot_t{}.tag)]
+var _ = [1]struct{}{}[unsafe.Offsetof(ScrollViewportData{}.Delta)-unsafe.Offsetof(C.zg_scroll_viewport_snapshot_t{}.delta)]
+var _ = [1]struct{}{}[unsafe.Offsetof(ScrollViewportData{}.Page)-unsafe.Offsetof(C.zg_scroll_viewport_snapshot_t{}.page)]
+var _ = [1]struct{}{}[unsafe.Offsetof(ScrollViewportData{}.Rgb)-unsafe.Offsetof(C.zg_scroll_viewport_snapshot_t{}.rgb)]
+var _ = [1]struct{}{}[unsafe.Offsetof(ScrollViewportData{}.RegionOriginX)-unsafe.Offsetof(C.zg_scroll_viewport_snapshot_t{}.region_origin_x)]
+var _ = [1]struct{}{}[unsafe.Offsetof(ScrollViewportData{}.RegionOriginY)-unsafe.Offsetof(C.zg_scroll_viewport_snapshot_t{}.region_origin_y)]
+var _ = [1]struct{}{}[unsafe.Offsetof(ScrollViewportData{}.RegionWidth)-unsafe.Offsetof(C.zg_scroll_viewport_snapshot_t{}.region_width)]
 
 // SignalSnapshotData mirrors the zg_signal_snapshot_t value snapshot layout, padding included.
 type SignalSnapshotData struct {

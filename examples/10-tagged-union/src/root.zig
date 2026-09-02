@@ -149,6 +149,14 @@ pub fn scrollAmount(behavior: ScrollViewport) isize {
     };
 }
 
+pub fn currentViewport(kind: u8) ScrollViewport {
+    return switch (kind) {
+        0 => .{ .rgb = .{ .r = 5, .g = 6, .b = 7 } },
+        1 => .{ .region = .{ .origin = .{ .x = 2, .y = 3 }, .width = 4 } },
+        else => .{ .unknown = .{ .bytes = "not exported" } },
+    };
+}
+
 pub const RGB = packed struct(u24) {
     r: u8,
     g: u8,
@@ -241,4 +249,10 @@ test "scalar payload tagged unions pass by value" {
     try std.testing.expectEqual(@as(isize, 3), scrollAmount(.{ .page = 3 }));
     try std.testing.expectEqual(@as(isize, 18), scrollAmount(.{ .rgb = .{ .r = 5, .g = 6, .b = 7 } }));
     try std.testing.expectEqual(@as(isize, 9), scrollAmount(.{ .region = .{ .origin = .{ .x = 2, .y = 3 }, .width = 4 } }));
+}
+
+test "value tagged unions return by snapshot" {
+    try std.testing.expectEqual(@as(isize, 18), scrollAmount(currentViewport(0)));
+    try std.testing.expectEqual(@as(isize, 9), scrollAmount(currentViewport(1)));
+    try std.testing.expectEqual(std.meta.activeTag(currentViewport(2)), .unknown);
 }

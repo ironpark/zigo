@@ -11,8 +11,6 @@ import (
 
 // ErrNativePanic identifies a Zig panic caught at the native boundary.
 var ErrNativePanic = errors.New("zigo: native panic")
-// ErrLibraryLoad identifies a shared-library load or symbol resolution failure.
-var ErrLibraryLoad = raw.ErrLibraryLoad
 
 // NativePanicError reports a Zig panic caught at the native boundary.
 type NativePanicError struct {
