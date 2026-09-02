@@ -220,7 +220,7 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
                     try writer.writeAll(";\n");
                 }
             }
-            try writeSliceWrittenAssignments(writer, function, "result");
+            try writeSliceWrittenAssignments(writer, function);
             try writer.writeAll("    return 0;\n}\n");
             continue;
         }
@@ -245,7 +245,7 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         try writeTargetCall(allocator, writer, program, function);
         if (narrow_return) try writer.writeByte(')');
         try writer.writeAll(";\n");
-        try writeSliceWrittenAssignments(writer, function, "result");
+        try writeSliceWrittenAssignments(writer, function);
         if (binds_result) try writer.writeAll("    return result;\n");
         try writer.writeAll("}\n");
     }
@@ -683,19 +683,16 @@ fn writeNarrowIntegerGuards(writer: *std.Io.Writer, function: abi.AbiFn) !void {
     }
 }
 
-/// Reports how much of each `.out` slice the caller may read back. `.all` hands
-/// the whole buffer over, which is what a function that fills every element
-/// wants; `.return` reports the count the function itself returned. The public
-/// layer copies exactly this many elements, so whatever sat past it in the
-/// caller's slice is still there afterwards.
-fn writeSliceWrittenAssignments(writer: *std.Io.Writer, function: abi.AbiFn, result: []const u8) !void {
+/// Reports how much of each `.all` slice the caller may read back: the whole
+/// buffer, which is what a function that fills every element wants. `.return`
+/// reports its count through the function's own return value and so has no
+/// `_written` parameter at all. The public layer copies exactly the reported
+/// count, so whatever sat past it in the caller's slice is still there
+/// afterwards.
+fn writeSliceWrittenAssignments(writer: *std.Io.Writer, function: abi.AbiFn) !void {
     for (function.origin.params) |parameter| {
-        if (parameter.type != .slice or parameter.direction != .out) continue;
-        try writer.print("    {s}_written.* = ", .{parameter.name});
-        switch (parameter.writtenHint()) {
-            .all => try writer.print("{s}_len;\n", .{parameter.name}),
-            .@"return" => try writer.print("{s};\n", .{result}),
-        }
+        if (!hasWrittenOutParam(parameter)) continue;
+        try writer.print("    {0s}_written.* = {0s}_len;\n", .{parameter.name});
     }
 }
 
@@ -703,14 +700,22 @@ fn writeSliceWrittenAssignments(writer: *std.Io.Writer, function: abi.AbiFn, res
 /// output slice reports zero and the caller's buffer stays as it was.
 fn writeSliceWrittenZeros(writer: *std.Io.Writer, function: abi.AbiFn) !void {
     for (function.origin.params) |parameter| {
-        if (parameter.type != .slice or parameter.direction != .out) continue;
+        if (!hasWrittenOutParam(parameter)) continue;
         try writer.print("        {s}_written.* = 0;\n", .{parameter.name});
     }
 }
 
+/// Only an `.all` out slice carries a `_written` out parameter across the C
+/// boundary; see writeSliceWrittenAssignments.
+fn hasWrittenOutParam(parameter: semantic.Parameter) bool {
+    return parameter.type == .slice and parameter.direction == .out and parameter.writtenHint() == .all;
+}
+
+/// Only an `.all` slice makes the shim do anything extra around the call, so
+/// this asks about the `_written` parameter rather than the direction.
 fn hasOutSliceParam(function: abi.AbiFn) bool {
     for (function.origin.params) |parameter| {
-        if (parameter.type == .slice and parameter.direction == .out) return true;
+        if (hasWrittenOutParam(parameter)) return true;
     }
     return false;
 }
@@ -1217,7 +1222,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                         c_values_name,
                     });
                 }
-                if (parameter.direction == .out) try writer.print("\tvar {s}Written C.size_t\n", .{slice_name});
+                if (hasWrittenOutParam(parameter)) try writer.print("\tvar {s}Written C.size_t\n", .{slice_name});
             } else if (parameter.type == .slice) {
                 const slice_name = go_names[parameter_index];
                 try writer.print("\tvar {s}Zero C.", .{slice_name});
@@ -1225,7 +1230,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 try writer.print("\n\t{s}Ptr := &{s}Zero\n\tif len({s}) != 0 {{\n\t\t{s}Ptr = (*C.", .{ slice_name, slice_name, slice_name, slice_name });
                 try writeCgoType(writer, semanticScalar(program, parameter.type.slice.element.*));
                 try writer.print(")(unsafe.Pointer(&{s}[0]))\n\t}}\n", .{slice_name});
-                if (parameter.direction == .out) try writer.print("\tvar {s}Written C.size_t\n", .{slice_name});
+                if (hasWrittenOutParam(parameter)) try writer.print("\tvar {s}Written C.size_t\n", .{slice_name});
             }
         }
         const returns_error = function.origin.@"return" == .error_union;
@@ -1320,7 +1325,14 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
             const c_value_name = try std.fmt.allocPrint(allocator, "{s}[i]", .{c_values_name});
             defer allocator.free(c_value_name);
             const record = structRecord(program, parameter.type.slice.element.*.value_struct.ref);
-            try writer.print("\tfor i := 0; i < int({s}Written) && i < len({s}); i++ {{\n\t\t{s}[i] = ", .{ slice_name, slice_name, slice_name });
+            // `.all` reads the count out of the `_written` out parameter;
+            // `.return` has none, and the count is the call's own result.
+            const written_count = if (parameter.writtenHint() == .all)
+                try std.fmt.allocPrint(allocator, "int({s}Written)", .{slice_name})
+            else
+                try allocator.dupe(u8, if (returns_error) "int(outResult)" else "int(result)");
+            defer allocator.free(written_count);
+            try writer.print("\tfor i := 0; i < {s} && i < len({s}); i++ {{\n\t\t{s}[i] = ", .{ written_count, slice_name, slice_name });
             try writeCgoStructRead(allocator, writer, program, record, "\t\t", c_value_name);
             try writer.writeAll("\n\t}\n");
         }
@@ -2134,7 +2146,7 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         if (isStringSliceParameter(parameter) or isCStringParameter(parameter)) continue;
         const slice_name = go_names[parameter_index];
         try writer.print("\tvar {s}Ptr unsafe.Pointer\n\tif len({s}) != 0 {{ {s}Ptr = unsafe.Pointer(&{s}[0]) }}\n", .{ slice_name, slice_name, slice_name, slice_name });
-        if (parameter.direction == .out) try writer.print("\tvar {s}Written uintptr\n", .{slice_name});
+        if (hasWrittenOutParam(parameter)) try writer.print("\tvar {s}Written uintptr\n", .{slice_name});
     };
     if (sliceReturnElement(function.origin.*) != null) try writer.writeAll("\tvar outResultPtr unsafe.Pointer\n\tvar outResultLen uintptr\n");
     if (function.ret_struct != null) {
@@ -5851,6 +5863,16 @@ test "a scalar-only struct slice crosses as a cast while a bool-bearing one is c
     defer arena.deinit();
     const program = try @import("lower.zig").semanticDocument(arena.allocator(), document, "shapes", "zg", &.{});
 
+    // A `.return` slice reports its count through the return value, so no
+    // `_written` parameter reaches the header or the shim.
+    const header = try renderForTest(renderHeader, program);
+    defer std.testing.allocator.free(header);
+    try std.testing.expect(std.mem.indexOf(u8, header, "ZIGO_EXPORT size_t zg_fill_points(zg_point * output_ptr, size_t output_len);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, header, "output_written") == null);
+    const shim = try renderForTest(renderShim, program);
+    defer std.testing.allocator.free(shim);
+    try std.testing.expect(std.mem.indexOf(u8, shim, "output_written") == null);
+
     const raw = try renderForTest(renderRaw, program);
     defer std.testing.allocator.free(raw);
     // The scalar-only element points the C call at the caller's own slice and
@@ -5861,7 +5883,10 @@ test "a scalar-only struct slice crosses as a cast while a bool-bearing one is c
     // never converted on the way in.
     try std.testing.expect(std.mem.indexOf(u8, raw, "outputValues = make([]C.zg_flagged, len(output))") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "coutput.ready = ") == null);
-    try std.testing.expect(std.mem.indexOf(u8, raw, "for i := 0; i < int(outputWritten) && i < len(output); i++ {") != null);
+    // `.return` carries the count in the call's own result, so the raw layer
+    // reads that rather than an `_written` out parameter it no longer has.
+    try std.testing.expect(std.mem.indexOf(u8, raw, "for i := 0; i < int(result) && i < len(output); i++ {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "outputWritten") == null);
 
     const public = try renderForTest(renderPublic, program);
     defer std.testing.allocator.free(public);

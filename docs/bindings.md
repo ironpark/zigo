@@ -414,6 +414,12 @@ out slice로 선언하려면 해당 파라미터에 `param_meta.direction = .out
 `.@"return"`은 반환 payload가 `usize`(또는 `!usize`)일 때만 쓸 수 있고, `.out`이 아닌
 파라미터에 붙이면 `ZIGO017`로 거부됩니다.
 
+`written`은 C 시그니처의 일부입니다. `.all`인 out slice는 `{name}_written`
+(`size_t *`) 출력 파라미터를 하나 더 받지만, `.@"return"`은 개수를 함수의 반환값으로
+알리므로 그 파라미터가 없습니다. 따라서 `.all`과 `.@"return"` 사이를 오가는 변경은
+어느 방향이든 breaking이고, `abi-check`는 이를
+`parameter written hint changed (C signature)`로 보고합니다.
+
 ### 큰 결과는 out 파라미터로
 
 slice를 반환하면 호출마다 Go 쪽 할당과 복사가 한 번씩 일어납니다. 결과가 크거나 호출이

@@ -129,6 +129,14 @@ API를 작성할 수 있으며, zigo는 marker가 없는 사용자 파일을 덮
 않으므로 판정은 계속 breaking입니다. 필드를 더해야 한다면 새 struct와 새 함수를 추가하거나,
 소비자와 native를 같은 시점에 배포하세요.
 
+## out slice가 채운 개수
+
+`.direction = .out` slice가 얼마나 채워졌는지는 `written` 힌트가 정합니다. 기본값
+`.all`은 C 시그니처에 `{name}_written`(`size_t *`) 파라미터를 하나 더 붙이고, shim이
+거기에 버퍼 길이를(오류 경로에서는 0을) 씁니다. `.@"return"`은 개수를 함수의 반환값으로
+알리므로 파라미터를 붙이지 않고, raw 계층도 그 반환값을 그대로 읽습니다. 두 힌트의 C
+시그니처가 다르므로 힌트를 바꾸는 것은 breaking입니다.
+
 ## 값 struct slice의 캐스트 경로
 
 bool 필드가 없는 `extern struct`는 Go mirror(`TData`)와 공개 타입 `T`, 그리고 C struct가

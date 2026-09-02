@@ -86,9 +86,8 @@ func FillPoints(output []PointData) (uint, int32) {
 	if len(output) != 0 {
 		outputPtr = (*C.zg_point)(unsafe.Pointer(&output[0]))
 	}
-	var outputWritten C.size_t
 	var outResult C.size_t
-	code := int32(C.zg_fill_points(outputPtr, C.size_t(len(output)), &outputWritten, &outResult))
+	code := int32(C.zg_fill_points(outputPtr, C.size_t(len(output)), &outResult))
 	return uint(outResult), code
 }
 // FillAllPoints calls the generated C ABI wrapper for zg_fill_all_points.
@@ -137,9 +136,8 @@ func FillConfigs(output []ConfigData) uint {
 	if len(output) != 0 {
 		outputPtr = (*C.zg_config)(unsafe.Pointer(&outputValues[0]))
 	}
-	var outputWritten C.size_t
-	result := uint(C.zg_fill_configs(outputPtr, C.size_t(len(output)), &outputWritten))
-	for i := 0; i < int(outputWritten) && i < len(output); i++ {
+	result := uint(C.zg_fill_configs(outputPtr, C.size_t(len(output))))
+	for i := 0; i < int(result) && i < len(output); i++ {
 		output[i] = ConfigData{
 			Enabled: uint8(outputValues[i].enabled),
 			Width: int32(outputValues[i].width),

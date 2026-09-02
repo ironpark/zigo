@@ -117,7 +117,10 @@ pub fn semanticDocumentForBackend(
                         .scalar = .usize,
                         .source_index = parameter_index,
                     });
-                    if (parameter.direction == .out) {
+                    // `.return` reports the count through the function's own
+                    // return value, so it needs no out parameter; only `.all`
+                    // has something extra to report.
+                    if (parameter.direction == .out and parameter.writtenHint() == .all) {
                         const usize_child = try allocator.create(abi.AbiScalar);
                         usize_child.* = .usize;
                         try params.append(allocator, .{

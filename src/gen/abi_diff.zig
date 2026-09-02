@@ -87,7 +87,7 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
         if (!retentionEqual(old.params, new.params))
             try add(allocator, &report, .breaking, identity, "parameter retention changed");
         if (!writtenEqual(old.params, new.params))
-            try add(allocator, &report, .compatible, identity, "parameter written hint changed");
+            try add(allocator, &report, .breaking, identity, "parameter written hint changed (C signature)");
         try compareErrors(allocator, &report, identity, old.@"return", new.@"return");
     }
     for (current.functions) |new| if (findFunction(base.functions, new) == null) {
@@ -255,9 +255,9 @@ fn retentionEqual(lhs: []const semantic.Parameter, rhs: []const semantic.Paramet
     return true;
 }
 
-/// How much of an output slice comes back is a contract between the shim and
-/// the public layer, not part of the exported signature, so either direction
-/// of the change keeps callers linking.
+/// Only an `.all` output slice carries a `{name}_written` out parameter, so
+/// changing the hint adds or removes a C parameter and breaks every caller
+/// linked against the old signature.
 fn writtenEqual(lhs: []const semantic.Parameter, rhs: []const semantic.Parameter) bool {
     if (lhs.len != rhs.len) return false;
     for (lhs, rhs) |a, b| if (a.writtenHint() != b.writtenHint()) return false;
@@ -650,7 +650,7 @@ test "constructor mapping changes break while additions are compatible" {
     try std.testing.expectEqual(ChangeKind.added, report.changes.items[1].kind);
 }
 
-test "changing the written hint of an output slice is ABI compatible" {
+test "changing the written hint of an output slice breaks the C signature" {
     var element: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
     const count: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
     const slice: semantic.TypeNode = .{ .slice = .{ .@"const" = false, .element = &element } };
@@ -666,16 +666,19 @@ test "changing the written hint of an output slice is ABI compatible" {
         .@"return" = count,
         .symbol = "zg_fill",
     }} };
+    // `.all` takes a `dst_written` out parameter and `.return` does not, so
+    // either direction drops or adds a C parameter.
     var forward = try diff(std.testing.allocator, old, current);
     defer forward.deinit(std.testing.allocator);
     try std.testing.expectEqual(@as(usize, 1), forward.changes.items.len);
-    try std.testing.expectEqual(ChangeKind.compatible, forward.changes.items[0].kind);
-    try std.testing.expect(!forward.hasBreaking());
+    try std.testing.expectEqual(ChangeKind.breaking, forward.changes.items[0].kind);
+    try std.testing.expectEqualStrings("parameter written hint changed (C signature)", forward.changes.items[0].detail);
+    try std.testing.expect(forward.hasBreaking());
 
     var backward = try diff(std.testing.allocator, current, old);
     defer backward.deinit(std.testing.allocator);
     try std.testing.expectEqual(@as(usize, 1), backward.changes.items.len);
-    try std.testing.expectEqual(ChangeKind.compatible, backward.changes.items[0].kind);
+    try std.testing.expectEqual(ChangeKind.breaking, backward.changes.items[0].kind);
 }
 
 test "unchanged semantic contract has an empty report" {

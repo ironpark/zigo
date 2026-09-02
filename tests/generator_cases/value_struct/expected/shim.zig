@@ -27,15 +27,11 @@ export fn zg_load_impl(out_result: *target.Config) i32 {
 export fn zg_accept_points_impl(values_ptr: [*c]const target.Point, values_len: usize) void {
     target.acceptPoints(if (values_len == 0) &.{} else values_ptr[0..values_len]);
 }
-export fn zg_fill_points_impl(output_ptr: [*c]target.Point, output_len: usize, output_written: *usize, out_result: *usize) i32 {
-    const result = target.fillPoints(if (output_len == 0) &.{} else output_ptr[0..output_len]) catch |err| {
-        output_written.* = 0;
-        return switch (err) {
-            error.Invalid => 1,
-        };
+export fn zg_fill_points_impl(output_ptr: [*c]target.Point, output_len: usize, out_result: *usize) i32 {
+    const result = target.fillPoints(if (output_len == 0) &.{} else output_ptr[0..output_len]) catch |err| return switch (err) {
+        error.Invalid => 1,
     };
     out_result.* = result;
-    output_written.* = result;
     return 0;
 }
 export fn zg_fill_all_points_impl(output_ptr: [*c]target.Point, output_len: usize, output_written: *usize) void {
@@ -45,10 +41,8 @@ export fn zg_fill_all_points_impl(output_ptr: [*c]target.Point, output_len: usiz
 export fn zg_accept_configs_impl(values_ptr: [*c]const target.Config, values_len: usize) void {
     target.acceptConfigs(if (values_len == 0) &.{} else values_ptr[0..values_len]);
 }
-export fn zg_fill_configs_impl(output_ptr: [*c]target.Config, output_len: usize, output_written: *usize) usize {
-    const result = target.fillConfigs(if (output_len == 0) &.{} else output_ptr[0..output_len]);
-    output_written.* = result;
-    return result;
+export fn zg_fill_configs_impl(output_ptr: [*c]target.Config, output_len: usize) usize {
+    return target.fillConfigs(if (output_len == 0) &.{} else output_ptr[0..output_len]);
 }
 export fn zg_configs_impl(out_result_ptr: *[*c]const target.Config, out_result_len: *usize) void {
     const result = target.configs();

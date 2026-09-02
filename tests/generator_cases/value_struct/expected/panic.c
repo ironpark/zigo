@@ -87,14 +87,14 @@ zg_accept_points_impl(values_ptr, values_len);
     zg_panic_active = 0;
 }
 
-int32_t zg_fill_points_impl(zg_point * output_ptr, size_t output_len, size_t * output_written, size_t * out_result);
-ZIGO_EXPORT int32_t zg_fill_points(zg_point * output_ptr, size_t output_len, size_t * output_written, size_t * out_result) {
+int32_t zg_fill_points_impl(zg_point * output_ptr, size_t output_len, size_t * out_result);
+ZIGO_EXPORT int32_t zg_fill_points(zg_point * output_ptr, size_t output_len, size_t * out_result) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
         return -2;
     }
-    int32_t result = zg_fill_points_impl(output_ptr, output_len, output_written, out_result);
+    int32_t result = zg_fill_points_impl(output_ptr, output_len, out_result);
     zg_panic_active = 0;
     return result;
 }
@@ -121,14 +121,14 @@ zg_accept_configs_impl(values_ptr, values_len);
     zg_panic_active = 0;
 }
 
-size_t zg_fill_configs_impl(zg_config * output_ptr, size_t output_len, size_t * output_written);
-ZIGO_EXPORT size_t zg_fill_configs(zg_config * output_ptr, size_t output_len, size_t * output_written) {
+size_t zg_fill_configs_impl(zg_config * output_ptr, size_t output_len);
+ZIGO_EXPORT size_t zg_fill_configs(zg_config * output_ptr, size_t output_len) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
         return 0;
     }
-    size_t result = zg_fill_configs_impl(output_ptr, output_len, output_written);
+    size_t result = zg_fill_configs_impl(output_ptr, output_len);
     zg_panic_active = 0;
     return result;
 }

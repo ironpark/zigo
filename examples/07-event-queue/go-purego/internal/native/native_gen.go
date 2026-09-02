@@ -70,9 +70,9 @@ type nativeBindings struct {
 	fnEventQueueExtractLimits           func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
 	fnEventQueueFreeLimits              func(unsafe.Pointer, unsafe.Pointer, uintptr)
 	fnEventQueueAcceptStats             func(unsafe.Pointer, unsafe.Pointer, uintptr) uintptr
-	fnEventQueueExtractSamplesInto      func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr) uintptr
-	fnEventQueueLimitsInto              func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr) uintptr
-	fnEventQueueEstimate                func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr, *uintptr) int32
+	fnEventQueueExtractSamplesInto      func(unsafe.Pointer, unsafe.Pointer, uintptr) uintptr
+	fnEventQueueLimitsInto              func(unsafe.Pointer, unsafe.Pointer, uintptr) uintptr
+	fnEventQueueEstimate                func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr) int32
 	fnEventQueueSampleStats             func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
 	fnEventQueueSampleLimits            func(unsafe.Pointer, *unsafe.Pointer, *uintptr)
 	fnEventQueueLen                     func(unsafe.Pointer) uintptr
@@ -807,8 +807,7 @@ func EventQueueExtractSamplesInto(self unsafe.Pointer, dst []float32) uint {
 	if len(dst) != 0 {
 		dstPtr = unsafe.Pointer(&dst[0])
 	}
-	var dstWritten uintptr
-	result := bindings().fnEventQueueExtractSamplesInto(self, dstPtr, uintptr(len(dst)), &dstWritten)
+	result := bindings().fnEventQueueExtractSamplesInto(self, dstPtr, uintptr(len(dst)))
 	return uint(result)
 }
 
@@ -818,8 +817,7 @@ func EventQueueLimitsInto(self unsafe.Pointer, dst []LimitsData) uint {
 	if len(dst) != 0 {
 		dstPtr = unsafe.Pointer(&dst[0])
 	}
-	var dstWritten uintptr
-	result := bindings().fnEventQueueLimitsInto(self, dstPtr, uintptr(len(dst)), &dstWritten)
+	result := bindings().fnEventQueueLimitsInto(self, dstPtr, uintptr(len(dst)))
 	return uint(result)
 }
 
@@ -829,9 +827,8 @@ func EventQueueEstimate(self unsafe.Pointer, output []StatsData) (uint, int32) {
 	if len(output) != 0 {
 		outputPtr = unsafe.Pointer(&output[0])
 	}
-	var outputWritten uintptr
 	var outResult uintptr
-	code := bindings().fnEventQueueEstimate(self, outputPtr, uintptr(len(output)), &outputWritten, &outResult)
+	code := bindings().fnEventQueueEstimate(self, outputPtr, uintptr(len(output)), &outResult)
 	return uint(outResult), code
 }
 

@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T06:42:22Z"
 perf_phase: true
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 단정 통과, 예제 전부 통과.
 > NEXT: none
