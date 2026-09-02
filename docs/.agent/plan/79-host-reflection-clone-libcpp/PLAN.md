@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T17:41:11Z"
 description: 호스트 reflection 모듈 복제가 .other_step 라이브러리의 libc++/include 설정을 잃는 0.4.0 회귀 수정
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-02T17:32:43Z"
 ---
 > NEXT: C++ 라이브러리를 `linkLibrary`로 붙인 예제로 회귀를 재현하고 `hostReflectionModule`을 고친다. ([Phase 0](phases/00-reproduce-and-fix.md))
@@ -8,7 +9,7 @@ registered_at: "2026-09-02T17:32:43Z"
 # Phases
 
 - [x] [Phase 00: 회귀 재현과 수정](phases/00-reproduce-and-fix.md)
-- [ ] [Phase 01: 문서와 CHANGELOG](phases/01-docs.md)
+- [x] [Phase 01: 문서와 CHANGELOG](phases/01-docs.md)
 
 # Shared Verification
 
