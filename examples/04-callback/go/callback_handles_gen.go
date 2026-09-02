@@ -6,8 +6,6 @@ import (
 	"runtime"
 	"sync"
 	"unsafe"
-
-	"example.com/zigo/callback/internal/raw"
 )
 
 // CallbackContext is a caller-owned native handle. Call Close when it is no longer needed.
@@ -80,7 +78,7 @@ func newCallbackContext(ptr unsafe.Pointer, callbackHandles []zigoCallbackHandle
 
 func cleanupCallbackContext(state callbackContextCleanupState) {
 	if state.ptr != nil {
-		raw.CallbackContextDeinit(state.ptr)
+		zigoRawCallbackContextDeinit(state.ptr)
 	}
 	for _, handle := range state.callbackHandles {
 		deleteCallbackHandle(handle)
@@ -195,7 +193,7 @@ func newFloatBuffer(ptr unsafe.Pointer) *FloatBuffer {
 
 func cleanupFloatBuffer(state floatBufferCleanupState) {
 	if state.ptr != nil {
-		raw.FloatBufferDeinit(state.ptr)
+		zigoRawFloatBufferDeinit(state.ptr)
 	}
 }
 
@@ -306,7 +304,7 @@ func newIntBuffer(ptr unsafe.Pointer) *IntBuffer {
 
 func cleanupIntBuffer(state intBufferCleanupState) {
 	if state.ptr != nil {
-		raw.IntBufferDeinit(state.ptr)
+		zigoRawIntBufferDeinit(state.ptr)
 	}
 }
 

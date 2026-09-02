@@ -6,8 +6,6 @@ import (
 	"errors"
 	"fmt"
 	"strconv"
-
-	"example.com/zigo/callback/internal/raw"
 )
 
 // ErrInvalidHandle identifies a nil, closed, or invalid borrowed handle.
@@ -149,7 +147,7 @@ var ErrOutOfMemory = &Error{Code: 1, Name: "OutOfMemory"}
 func errorForCode(operation string, code int32) error {
 	switch code {
 	case -2:
-		return &NativePanicError{Operation: operation, Message: raw.LastErrorMessage()}
+		return &NativePanicError{Operation: operation, Message: zigoRawLastErrorMessage()}
 	case 1:
 		return &Error{Code: 1, Name: "OutOfMemory", Operation: operation}
 	default:

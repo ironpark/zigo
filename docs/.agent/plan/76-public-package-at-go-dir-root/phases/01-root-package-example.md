@@ -2,7 +2,7 @@
 depends_on:
 - "76-public-package-at-go-dir-root#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 예제가 cgo·purego 통과, 골든·semantic.json 커밋.
 > NEXT: none
