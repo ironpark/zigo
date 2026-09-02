@@ -2,7 +2,7 @@
 depends_on:
 - "69-third-party-library-fit#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 위 fixture 골든과 예제 통과, 문서 갱신.
 > NEXT: none

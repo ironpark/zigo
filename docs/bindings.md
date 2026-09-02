@@ -226,6 +226,7 @@ native ABI는 `paths_data`, `paths_data_len`, `paths_lens`, `paths_count` 네 sc
 | `.@"opaque"` | pointer handle과 수명주기 |
 | `.value` | 적격한 `extern struct`의 Go 값 mirror |
 | `.tagged_union` | pointer handle을 통한 tagged union 접근 |
+| `.enumeration` | enum에 Go 타입 이름을 부여. `.name` 선택 |
 | `.callback` | `*const fn` alias에 Go 타입 이름을 부여. `.name` 필수 |
 
 | `access` | 용도 |
@@ -243,6 +244,25 @@ generic 타입은 구체화한 타입에 고유 이름을 붙여 등록합니다
 ```
 
 generic 함수는 구체화 전에는 signature가 없으므로 직접 노출할 수 없습니다.
+
+### Enum 이름 지정
+
+enum은 signature에 나타나기만 해도 자동으로 등록되며, 이름은 `@typeName`의 마지막 점 뒤
+segment에서 옵니다. 보통은 그것이 곧 타입 이름이지만, comptime 함수가 만든 enum은
+`@typeName`이 그것을 만든 식으로 끝나므로(ghostty의 `lib.Enum(...)`은
+`lib.Enum(...[0..4])`가 됩니다) 이름이 될 수 없는 문자열이 나옵니다. 그런 타입은 `ZIGO021`로
+거부되고, `.repr = .enumeration`으로 등록해 이름을 줍니다.
+
+```zig
+.types = .{
+    .{ .name = "CursorStyle", .type = library.CursorStyle, .repr = .enumeration },
+},
+```
+
+Go `CursorStyle`, C `zg_cursor_style`, `semantic.json`의 `"name": "CursorStyle"`이 모두 이
+이름을 따릅니다. `.name`을 생략하면 자동 등록과 같은 이름을 쓰되, 등록 자체는 signature가
+그 타입에 닿기 전에 이뤄집니다. 등록된 enum은 컨테이너로 walk되지 않으므로 `.discover`가
+켜져 있어도 enum 안의 선언은 발견되지 않습니다. 예제는 `09-type-relations`에 있습니다.
 
 ## Opaque handle
 

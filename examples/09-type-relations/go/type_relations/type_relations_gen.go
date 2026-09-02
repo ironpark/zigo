@@ -90,6 +90,17 @@ func LiveObjects() uint {
 	return raw.LiveObjects()
 }
 
+// DefaultCursorStyle calls the Zig function defaultCursorStyle.
+func DefaultCursorStyle() CursorStyle {
+	return CursorStyle(raw.DefaultCursorStyle())
+}
+
+// CursorStyleBlinks
+// Reports whether a cursor of this style blinks.
+func CursorStyleBlinks(style CursorStyle) bool {
+	return raw.CursorStyleBlinks(uint8(style)) != 0
+}
+
 // RunWidth
 // Reports how many cells a run of codepoints occupies.
 func RunWidth(first uint32, second uint32) (uint16, error) {

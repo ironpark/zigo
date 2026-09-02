@@ -175,6 +175,37 @@
       "symbol": "zg_live_objects"
     },
     {
+      "name": "defaultCursorStyle",
+      "ownership": "borrowed",
+      "params": [],
+      "return": {
+        "kind": "enum",
+        "ref": "CursorStyle"
+      },
+      "symbol": "zg_default_cursor_style"
+    },
+    {
+      "doc": "Reports whether a cursor of this style blinks.",
+      "name": "cursorStyleBlinks",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "style",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "kind": "enum",
+            "ref": "CursorStyle"
+          }
+        }
+      ],
+      "return": {
+        "kind": "bool"
+      },
+      "symbol": "zg_cursor_style_blinks"
+    },
+    {
       "doc": "Reports how many cells a run of codepoints occupies.",
       "name": "runWidth",
       "namespace": "text",
@@ -258,6 +289,32 @@
       "kind": "opaque",
       "name": "Accumulator",
       "zig_path": "root.Accumulator"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "block",
+          "value": 0
+        },
+        {
+          "name": "bar",
+          "value": 1
+        },
+        {
+          "name": "underline",
+          "value": 2
+        }
+      ],
+      "kind": "enum",
+      "name": "CursorStyle",
+      "tag_type": {
+        "bits": 8,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "zig_path": "root.Enum(@as([*]const []const u8, @ptrCast(&root.style_names))[0..3])"
     }
   ],
   "zig_version": "0.16.0"

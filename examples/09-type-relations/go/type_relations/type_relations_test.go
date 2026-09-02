@@ -74,3 +74,19 @@ func TestNestedNamespaces(t *testing.T) {
 		t.Fatalf("RunWidth(0x1100, 'a') = %d, %v, want 3, nil", got, err)
 	}
 }
+
+// The Zig enum was built by a comptime function, so it has no name of its own:
+// `@typeName` ends in the slice expression that produced it. The binding
+// registered it with `.name = "CursorStyle"`, which is the only reason a Go
+// type by that name exists at all.
+func TestRegisteredEnum(t *testing.T) {
+	if got := DefaultCursorStyle(); got != CursorStyleBlock {
+		t.Fatalf("DefaultCursorStyle() = %v, want CursorStyleBlock", got)
+	}
+	if got := CursorStyleBar.String(); got != "bar" {
+		t.Fatalf("CursorStyleBar.String() = %q, want \"bar\"", got)
+	}
+	if !CursorStyleBlinks(CursorStyleUnderline) || CursorStyleBlinks(CursorStyleBlock) {
+		t.Fatal("CursorStyleBlinks disagrees with the Zig function")
+	}
+}

@@ -55,6 +55,28 @@ pub const Accumulator = struct {
     }
 };
 
+/// A library that builds its enums from a table of names gives them a
+/// `@typeName` that ends in the slice expression rather than in a name -- this
+/// is the shape ghostty's `lib.Enum(...)` has. Nothing here is a Go identifier,
+/// so the binding registers the type and supplies the name.
+pub fn Enum(comptime names: []const []const u8) type {
+    _ = names;
+    return enum(u8) { block, bar, underline };
+}
+
+const style_names = [_][]const u8{ "block", "bar", "underline", "hollow" };
+
+pub const CursorStyle = Enum(style_names[0..3]);
+
+pub fn defaultCursorStyle() CursorStyle {
+    return .block;
+}
+
+/// Reports whether a cursor of this style blinks.
+pub fn cursorStyleBlinks(style: CursorStyle) bool {
+    return style != .block;
+}
+
 pub fn liveObjects() usize {
     return live_objects.load(.monotonic);
 }
@@ -87,6 +109,12 @@ test "one opaque receiver accepts another exposed opaque type" {
     try std.testing.expectEqual(@as(i64, 82), accumulator.absorb(counter));
     try std.testing.expectEqual(@as(i64, 82), accumulator.total());
     try std.testing.expectEqual(@as(usize, 2), liveObjects());
+}
+
+test "a generated enum still behaves like an ordinary Zig enum" {
+    try std.testing.expectEqual(CursorStyle.block, defaultCursorStyle());
+    try std.testing.expect(cursorStyleBlinks(.bar));
+    try std.testing.expect(!cursorStyleBlinks(.block));
 }
 
 test "a nested namespace is reachable through its dotted path" {

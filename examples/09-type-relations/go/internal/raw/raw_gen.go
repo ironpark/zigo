@@ -64,6 +64,16 @@ func LiveObjects() uint {
 	return uint(C.zg_live_objects())
 }
 
+// DefaultCursorStyle calls the generated C ABI wrapper for zg_default_cursor_style.
+func DefaultCursorStyle() uint8 {
+	return uint8(C.zg_default_cursor_style())
+}
+
+// CursorStyleBlinks calls the generated C ABI wrapper for zg_cursor_style_blinks.
+func CursorStyleBlinks(style uint8) uint8 {
+	return uint8(C.zg_cursor_style_blinks(C.uint8_t(style)))
+}
+
 // TextRunWidth calls the generated C ABI wrapper for zg_text_run_width.
 func TextRunWidth(first uint32, second uint32) uint16 {
 	return uint16(C.zg_text_run_width(C.uint32_t(first), C.uint32_t(second)))

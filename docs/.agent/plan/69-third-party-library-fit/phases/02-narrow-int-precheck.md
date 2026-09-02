@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T07:32:54Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 범위 밖 값이 cgo 호출 없이 `ErrOutOfRange`로 돌아오는 테스트 통과.
 > NEXT: none

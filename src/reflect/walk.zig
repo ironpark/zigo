@@ -38,6 +38,15 @@ pub fn reflect(
                     .@"struct" => try appendValueStruct(allocator, &types, T, type_name),
                     else => @compileError("zigo value type entries must name a struct"),
                 },
+                // An enum registered here is not walked for declarations --
+                // like a callback entry, it exists to name a type, not to
+                // contribute functions. What it buys is the `.name`: an enum
+                // built by a comptime function has a `@typeName` that ends in
+                // the expression that built it, and no name of its own.
+                .enumeration => switch (info) {
+                    .@"enum" => try appendEnum(allocator, &types, T, type_name),
+                    else => @compileError("zigo enumeration type entries must name an enum"),
+                },
                 .tagged_union => switch (info) {
                     .@"union" => |union_info| {
                         if (union_info.tag_type == null) @compileError("zigo tagged_union type entries must name a tagged union");
@@ -58,7 +67,7 @@ pub fn reflect(
                         .zig_path = @typeName(T),
                     });
                 },
-                else => @compileError("zigo type repr must be .opaque, .value, .tagged_union, or .callback"),
+                else => @compileError("zigo type repr must be .opaque, .value, .enumeration, .tagged_union, or .callback"),
             }
         }
     }
@@ -67,8 +76,9 @@ pub fn reflect(
         // `functions` attach metadata to what it finds.
         if (@hasField(@TypeOf(declaration), "types")) {
             inline for (declaration.types) |entry| {
-                // A callback type is a signature, not a container to walk.
-                if (comptime entry.repr != .callback)
+                // A callback type is a signature and an enum is a name, not
+                // containers to walk.
+                if (comptime entry.repr != .callback and entry.repr != .enumeration)
                     try discoverContainer(allocator, &functions, &types, declaration, prefix, entry.type, comptime typeEntryName(entry), comptime typeEntryName(entry));
             }
         }
@@ -378,7 +388,7 @@ fn pathContainer(comptime declaration: anytype, comptime owner: ?[]const u8) typ
 fn registeredContainer(comptime declaration: anytype, comptime name: []const u8) ?type {
     if (@hasField(@TypeOf(declaration), "types")) {
         inline for (declaration.types) |entry| {
-            if (comptime entry.repr != .callback and std.mem.eql(u8, typeEntryName(entry), name)) return entry.type;
+            if (comptime entry.repr != .callback and entry.repr != .enumeration and std.mem.eql(u8, typeEntryName(entry), name)) return entry.type;
         }
     }
     return null;
@@ -545,26 +555,21 @@ fn typeNode(
                 .payload = payload,
             } };
         },
-        .@"enum" => |info| blk: {
+        .@"enum" => blk: {
+            // A registered entry is found by Zig path, so an enum the binding
+            // named keeps that name wherever a signature reaches it. Only a
+            // type nobody registered is named from `@typeName`.
+            for (types.items) |declaration| {
+                if (declaration.kind == .@"enum" and std.mem.eql(u8, declaration.zig_path orelse "", @typeName(T))) {
+                    break :blk .{ .@"enum" = .{ .ref = declaration.name } };
+                }
+            }
             const name = shortTypeName(@typeName(T));
             var exists = false;
             for (types.items) |declaration| {
                 if (std.mem.eql(u8, declaration.name, name)) exists = true;
             }
-            if (!exists) {
-                const fields = try allocator.alloc(semantic.TypeField, info.fields.len);
-                inline for (info.fields, 0..) |field, index| fields[index] = .{ .name = field.name, .value = @intCast(field.value) };
-                const tag_type = try allocator.create(semantic.TypeNode);
-                tag_type.* = try typeNode(allocator, info.tag_type, types, context ++ " (enum tag type)");
-                try types.append(allocator, .{
-                    .exhaustive = info.is_exhaustive,
-                    .fields = fields,
-                    .kind = .@"enum",
-                    .name = name,
-                    .tag_type = tag_type.*,
-                    .zig_path = @typeName(T),
-                });
-            }
+            if (!exists) try appendEnum(allocator, types, T, name);
             break :blk .{ .@"enum" = .{ .ref = name } };
         },
         .@"struct" => blk: {
@@ -667,6 +672,28 @@ fn isHandleRepr(comptime repr: anytype) bool {
 /// A value struct carries its field types into the IR. Validation needs them
 /// to decide whether the struct can cross the C ABI, and lowering needs them
 /// to mirror the struct in the C header.
+/// One place an enum becomes a `TypeDecl`, whether the binding registered it
+/// or a signature reached it.
+fn appendEnum(
+    allocator: std.mem.Allocator,
+    types: *std.ArrayList(semantic.TypeDecl),
+    comptime T: type,
+    name: []const u8,
+) !void {
+    const info = @typeInfo(T).@"enum";
+    const fields = try allocator.alloc(semantic.TypeField, info.fields.len);
+    inline for (info.fields, 0..) |field, index| fields[index] = .{ .name = field.name, .value = @intCast(field.value) };
+    const tag_type = try typeNode(allocator, info.tag_type, types, "the tag type of enum `" ++ @typeName(T) ++ "`");
+    try types.append(allocator, .{
+        .exhaustive = info.is_exhaustive,
+        .fields = fields,
+        .kind = .@"enum",
+        .name = name,
+        .tag_type = tag_type,
+        .zig_path = @typeName(T),
+    });
+}
+
 fn appendValueStruct(
     allocator: std.mem.Allocator,
     types: *std.ArrayList(semantic.TypeDecl),
@@ -1294,4 +1321,58 @@ test "an optional opaque pointer parameter reflects as a nullable handle" {
     try std.testing.expectEqualStrings("Handle", optional.ref);
     // The neighbouring non-optional pointer keeps the checked-handle contract.
     try std.testing.expect(!adopt.params[1].type.opaque_ptr.nullable);
+}
+
+/// An enum a comptime function built: `@typeName` ends in the expression that
+/// produced it, so its last dotted segment is not a name at all. This is the
+/// shape `lib.Enum(...)` has in real third-party Zig libraries.
+fn GeneratedEnum(comptime names: []const []const u8) type {
+    _ = names;
+    return enum(u8) { block, bar };
+}
+
+const generated_enum_names = [_][]const u8{ "block", "bar", "underline", "hollow" };
+
+test "a registered enum keeps its name wherever a signature reaches it" {
+    const Style = GeneratedEnum(generated_enum_names[0..2]);
+    const Fixture = struct {
+        pub fn current() Style {
+            unreachable;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{.{ .name = "CursorStyle", .type = Style, .repr = .enumeration }},
+        .functions = .{.{ .path = "root.current" }},
+    }, "cursor", "zg");
+
+    try std.testing.expectEqual(@as(usize, 1), document.types.len);
+    try std.testing.expectEqual(semantic.TypeKind.@"enum", document.types[0].kind);
+    try std.testing.expectEqualStrings("CursorStyle", document.types[0].name);
+    try std.testing.expectEqualStrings("block", document.types[0].fields[0].name);
+    // The signature must reach the registered declaration by Zig path rather
+    // than appending a second one named from `@typeName`.
+    try std.testing.expectEqualStrings("CursorStyle", document.functions[0].@"return".@"enum".ref);
+}
+
+test "an unregistered generated enum is named from @typeName and rejected downstream" {
+    const Style = GeneratedEnum(generated_enum_names[0..2]);
+    const Fixture = struct {
+        pub fn current() Style {
+            unreachable;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .functions = .{.{ .path = "root.current" }},
+    }, "cursor", "zg");
+
+    // Reflection still records what it saw; `ZIGO021` is what refuses it, and
+    // its message points at the Zig path recorded here.
+    try std.testing.expect(!naming.isGoIdentifier(document.types[0].name));
+    try std.testing.expect(std.mem.endsWith(u8, document.types[0].zig_path.?, "[0..2])"));
 }
