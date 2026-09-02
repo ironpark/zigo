@@ -53,7 +53,7 @@ pub const bindings = zigo.define(.{
         .{
             .path = "EventQueue.estimate",
             .params = .{"output"},
-            .param_meta = .{ .output = .{ .direction = .out } },
+            .param_meta = .{ .output = .{ .direction = .out, .written = .@"return" } },
         },
         .{ .path = "EventQueue.sampleStats" },
         .{ .path = "EventQueue.len" },

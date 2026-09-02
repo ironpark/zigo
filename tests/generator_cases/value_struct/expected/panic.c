@@ -99,6 +99,17 @@ ZIGO_EXPORT int32_t zg_fill_points(zg_point * output_ptr, size_t output_len, siz
     return result;
 }
 
+void zg_fill_all_points_impl(zg_point * output_ptr, size_t output_len, size_t * output_written);
+ZIGO_EXPORT void zg_fill_all_points(zg_point * output_ptr, size_t output_len, size_t * output_written) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return;
+    }
+zg_fill_all_points_impl(output_ptr, output_len, output_written);
+    zg_panic_active = 0;
+}
+
 void zg_points_impl(const zg_point * * out_result_ptr, size_t * out_result_len);
 ZIGO_EXPORT void zg_points(const zg_point * * out_result_ptr, size_t * out_result_len) {
     zg_panic_active = 1;

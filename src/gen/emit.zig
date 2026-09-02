@@ -200,15 +200,11 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
             const error_union = function.origin.@"return".error_union;
             if (error_union.payload.* == .void) {
                 try writeTargetCall(allocator, writer, program, function);
-                try writer.writeAll(" catch |err| return switch (err) {");
-                try writeErrorSwitch(writer, function);
-                try writer.writeAll("\n    };\n");
+                try writeShimErrorCatch(writer, function);
             } else {
                 try writer.writeAll("const result = ");
                 try writeTargetCall(allocator, writer, program, function);
-                try writer.writeAll(" catch |err| return switch (err) {");
-                try writeErrorSwitch(writer, function);
-                try writer.writeAll("\n    };\n");
+                try writeShimErrorCatch(writer, function);
                 // The out parameters stay untouched on the error path: the
                 // early `return` above leaves before either assignment, so a
                 // caller that checks the code first never reads them.
@@ -220,19 +216,28 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
                     try writer.writeAll(";\n");
                 }
             }
-            try writeSliceWrittenAssignments(writer, function);
+            try writeSliceWrittenAssignments(writer, function, "result");
             try writer.writeAll("    return 0;\n}\n");
             continue;
         }
 
+        // A plain result has to be named before the written counts can quote
+        // it, so a function with output slices binds it and returns the binding
+        // rather than returning the call directly.
+        const binds_result = function.origin.@"return" != .void and
+            function.origin.@"return" != .value_struct and
+            hasOutSliceParam(function);
         if (function.origin.@"return" == .value_struct) {
             try writer.writeAll("out_result.* = ");
+        } else if (binds_result) {
+            try writer.writeAll("const result = ");
         } else if (function.origin.@"return" != .void) {
             try writer.writeAll("return ");
         }
         try writeTargetCall(allocator, writer, program, function);
         try writer.writeAll(";\n");
-        if (function.origin.@"return" == .void) try writeSliceWrittenAssignments(writer, function);
+        try writeSliceWrittenAssignments(writer, function, "result");
+        if (binds_result) try writer.writeAll("    return result;\n");
         try writer.writeAll("}\n");
     }
     try renderTaggedUnionShim(writer, program);
@@ -640,12 +645,53 @@ fn writeZigReturnConversion(writer: *std.Io.Writer, node: semantic.TypeNode, exp
     }
 }
 
-fn writeSliceWrittenAssignments(writer: *std.Io.Writer, function: abi.AbiFn) !void {
+/// Reports how much of each `.out` slice the caller may read back. `.all` hands
+/// the whole buffer over, which is what a function that fills every element
+/// wants; `.return` reports the count the function itself returned. The public
+/// layer copies exactly this many elements, so whatever sat past it in the
+/// caller's slice is still there afterwards.
+fn writeSliceWrittenAssignments(writer: *std.Io.Writer, function: abi.AbiFn, result: []const u8) !void {
     for (function.origin.params) |parameter| {
-        if (parameter.type == .slice and parameter.direction == .out) {
-            try writer.print("    {s}_written.* = {s}_len;\n", .{ parameter.name, parameter.name });
+        if (parameter.type != .slice or parameter.direction != .out) continue;
+        try writer.print("    {s}_written.* = ", .{parameter.name});
+        switch (parameter.writtenHint()) {
+            .all => try writer.print("{s}_len;\n", .{parameter.name}),
+            .@"return" => try writer.print("{s};\n", .{result}),
         }
     }
+}
+
+/// The error path has no count to report and no elements to hand back, so every
+/// output slice reports zero and the caller's buffer stays as it was.
+fn writeSliceWrittenZeros(writer: *std.Io.Writer, function: abi.AbiFn) !void {
+    for (function.origin.params) |parameter| {
+        if (parameter.type != .slice or parameter.direction != .out) continue;
+        try writer.print("        {s}_written.* = 0;\n", .{parameter.name});
+    }
+}
+
+fn hasOutSliceParam(function: abi.AbiFn) bool {
+    for (function.origin.params) |parameter| {
+        if (parameter.type == .slice and parameter.direction == .out) return true;
+    }
+    return false;
+}
+
+/// `catch |err| return switch (err)` in one line stays the shape for a function
+/// with nothing to clear. One with output slices needs a block so the zeros go
+/// out before the early return.
+fn writeShimErrorCatch(writer: *std.Io.Writer, function: abi.AbiFn) !void {
+    if (!hasOutSliceParam(function)) {
+        try writer.writeAll(" catch |err| return switch (err) {");
+        try writeErrorSwitch(writer, function);
+        try writer.writeAll("\n    };\n");
+        return;
+    }
+    try writer.writeAll(" catch |err| {\n");
+    try writeSliceWrittenZeros(writer, function);
+    try writer.writeAll("        return switch (err) {");
+    for (function.errors) |entry| try writer.print("\n            error.{s} => {d},", .{ entry.name, entry.code });
+    try writer.writeAll("\n        };\n    };\n");
 }
 
 fn renderHeader(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, _: Options) !void {
@@ -2415,10 +2461,9 @@ fn hasOutValueStructSlice(function: semantic.SemanticFn) bool {
     return false;
 }
 
-fn isCountReturn(node: semantic.TypeNode) bool {
-    return node == .int and node.int.is_usize and !node.int.signed;
-}
-
+/// The public layer copies back exactly as many elements as the shim reported
+/// written, which is why both read the same `.written` hint rather than each
+/// guessing from the return type.
 fn writePublicValueStructSliceCopyBacks(
     writer: *std.Io.Writer,
     function: semantic.SemanticFn,
@@ -2428,11 +2473,10 @@ fn writePublicValueStructSliceCopyBacks(
         if (parameter.direction != .out or !isValueStructSlice(parameter.type)) continue;
         const name = go_names[parameter_index];
         try writer.print("\tzigo{s}SliceCopyFromRaw({s}, {s}Raw, ", .{ parameter.type.slice.element.*.value_struct.ref, name, name });
-        const return_node = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
-        if (isCountReturn(return_node))
-            try writer.writeAll("int(result)")
-        else
-            try writer.print("len({s})", .{name});
+        switch (parameter.writtenHint()) {
+            .all => try writer.print("len({s})", .{name}),
+            .@"return" => try writer.writeAll("int(result)"),
+        }
         try writer.writeAll(")\n");
     }
 }

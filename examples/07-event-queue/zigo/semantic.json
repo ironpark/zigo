@@ -638,7 +638,8 @@
               "ref": "Stats"
             },
             "kind": "slice"
-          }
+          },
+          "written": "return"
         }
       ],
       "receiver": "EventQueue",

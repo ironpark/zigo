@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T04:39:28Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 적격 타입의 골든에 Go 쪽 단정이 생성되고, bool 필드 struct(`Config`)에는 생성되지 않는다.
 > NEXT: none

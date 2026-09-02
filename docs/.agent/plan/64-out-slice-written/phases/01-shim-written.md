@@ -2,7 +2,7 @@
 depends_on:
 - "64-out-slice-written#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: shim 골든에 `output_written.* = result`(성공)와 오류 경로 `0`이 있고, `.all` fixture는 `= output_len`을 유지한다.
 > NEXT: none

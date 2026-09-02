@@ -28,12 +28,19 @@ export fn zg_accept_points_impl(values_ptr: [*c]const target.Point, values_len: 
     target.acceptPoints(if (values_len == 0) &.{} else values_ptr[0..values_len]);
 }
 export fn zg_fill_points_impl(output_ptr: [*c]target.Point, output_len: usize, output_written: *usize, out_result: *usize) i32 {
-    const result = target.fillPoints(if (output_len == 0) &.{} else output_ptr[0..output_len]) catch |err| return switch (err) {
-        error.Invalid => 1,
+    const result = target.fillPoints(if (output_len == 0) &.{} else output_ptr[0..output_len]) catch |err| {
+        output_written.* = 0;
+        return switch (err) {
+            error.Invalid => 1,
+        };
     };
     out_result.* = result;
-    output_written.* = output_len;
+    output_written.* = result;
     return 0;
+}
+export fn zg_fill_all_points_impl(output_ptr: [*c]target.Point, output_len: usize, output_written: *usize) void {
+    target.fillAllPoints(if (output_len == 0) &.{} else output_ptr[0..output_len]);
+    output_written.* = output_len;
 }
 export fn zg_points_impl(out_result_ptr: *[*c]const target.Point, out_result_len: *usize) void {
     const result = target.points();

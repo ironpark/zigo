@@ -55,6 +55,13 @@ func FillPoints(output []Point) (uint, error) {
 	return result, nil
 }
 
+// FillAllPoints invokes the bound Zig fillAllPoints operation.
+func FillAllPoints(output []Point) {
+	outputRaw := zigoPointSliceToRaw(output)
+	raw.FillAllPoints(outputRaw)
+	zigoPointSliceCopyFromRaw(output, outputRaw, len(output))
+}
+
 // Points invokes the bound Zig points operation.
 func Points() []Point {
 	return zigoPointSliceFromRaw(raw.Points())

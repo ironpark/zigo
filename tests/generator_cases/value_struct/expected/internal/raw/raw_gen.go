@@ -114,6 +114,32 @@ func FillPoints(output []PointData) (uint, int32) {
 	}
 	return uint(outResult), code
 }
+// FillAllPoints calls the generated C ABI wrapper for zg_fill_all_points.
+func FillAllPoints(output []PointData) {
+	var outputValues []C.zg_point
+	if len(output) != 0 {
+		outputValues = make([]C.zg_point, len(output))
+		for i := range output {
+			var coutput C.zg_point
+			coutput.x = C.int16_t(output[i].X)
+			coutput.y = C.int16_t(output[i].Y)
+			outputValues[i] = coutput
+		}
+	}
+	var outputZero C.zg_point
+	outputPtr := &outputZero
+	if len(output) != 0 {
+		outputPtr = (*C.zg_point)(unsafe.Pointer(&outputValues[0]))
+	}
+	var outputWritten C.size_t
+	C.zg_fill_all_points(outputPtr, C.size_t(len(output)), &outputWritten)
+	for i := 0; i < int(outputWritten) && i < len(output); i++ {
+		output[i] = PointData{
+			X: int16(outputValues[i].x),
+			Y: int16(outputValues[i].y),
+		}
+	}
+}
 // Points calls the generated C ABI wrapper for zg_points.
 func Points() []PointData {
 	var outResultPtr *C.zg_point

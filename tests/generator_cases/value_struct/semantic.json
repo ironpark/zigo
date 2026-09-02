@@ -35,9 +35,15 @@
     },
     {
       "name": "fillPoints",
-      "params": [{"direction": "out", "name": "output", "type": {"const": false, "element": {"kind": "value_struct", "ref": "Point"}, "kind": "slice"}}],
+      "params": [{"direction": "out", "name": "output", "type": {"const": false, "element": {"kind": "value_struct", "ref": "Point"}, "kind": "slice"}, "written": "return"}],
       "return": {"error_set": ["Invalid"], "kind": "error_union", "payload": {"bits": 64, "is_usize": true, "kind": "int", "signed": false}},
       "symbol": "zg_fill_points"
+    },
+    {
+      "name": "fillAllPoints",
+      "params": [{"direction": "out", "name": "output", "type": {"const": false, "element": {"kind": "value_struct", "ref": "Point"}, "kind": "slice"}}],
+      "return": {"kind": "void"},
+      "symbol": "zg_fill_all_points"
     },
     {
       "name": "points",
