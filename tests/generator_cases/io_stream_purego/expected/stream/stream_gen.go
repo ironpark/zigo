@@ -69,7 +69,8 @@ func (d *Document) Load(r io.Reader) (uint, error) {
 	defer d.zigoRelease()
 	rHandle := newZigoReaderHandle(r)
 	defer deleteCallbackHandle(rHandle)
-	result, code := raw.DocumentLoad(ptr, raw.StreamReaderCallbackPointer(), uintptr(rHandle))
+	rData := zigoReaderBytes(r)
+	result, code := raw.DocumentLoad(ptr, raw.StreamReaderCallbackPointer(), uintptr(rHandle), rData)
 	zigoRethrowCallbackPanic("Document.Load", rHandle)
 	if err := zigoStreamError("Document.Load", "r", rHandle); err != nil {
 		return 0, err

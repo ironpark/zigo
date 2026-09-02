@@ -169,9 +169,12 @@ cgo에서는 C 시그니처에 userdata만 실리고 shim이 바인딩마다 하
 심볼(`<prefix>_zigo_stream_write`, `_read`)을 이름으로 참조합니다. purego에서는 dispatcher
 포인터가 userdata 앞에 함께 실리고, 진입점은 다른 콜백과 같이 `_purego_v2` 접미사를 받습니다.
 reader에는 `(const uint8_t *<name>_data, size_t <name>_data_len)` 한 쌍이 더 붙어 있습니다.
-호출자가 바이트를 그대로 넘길 수 있을 때 콜백을 아예 건너뛰는 경로를 위한 자리로, shim은
-이미 이를 처리하지만(널이 아니면 `std.Io.Reader.fixed`) 생성된 Go는 지금 항상 널을 넘깁니다.
-나중에 그 경로를 붙일 때 C 시그니처가 바뀌지 않도록 미리 잡아 둔 자리입니다.
+이것이 무콜백 경로입니다: `_data`가 널이 아니면 shim은 `std.Io.Reader.fixed`로 그 슬라이스를
+감싸고 트램폴린을 한 번도 부르지 않으며, 널이면 예전처럼 어댑터를 씁니다. 생성된 Go는
+`io.Reader`가 `zigoBytes() []byte`나 `Bytes() []byte`를 가질 때만 슬라이스를 채웁니다
+(`zigoReaderBytes` 헬퍼). 빈 슬라이스도 "없음"과 구별해야 하므로 길이 0일 때는 raw 계층의
+`zigoEmptyStreamData` 주소를 넘겨 포인터가 널이 되지 않게 합니다. 이 경로는 소비한 바이트
+수를 되돌려 주지 않으므로 Go reader는 전진하지 않습니다.
 
 shim은 어댑터 타입 두 개를 파일당 한 번만 내고, 파라미터마다 staging 버퍼와 어댑터를 만들어
 `&adapter.interface`를 대상 함수에 넘깁니다. writer 어댑터의 `drain`은 버퍼에 들어가는

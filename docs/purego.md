@@ -325,6 +325,10 @@ dispatcher가 하나씩 있고(`StreamWriterCallbackPointer`, `StreamReaderCallb
 스트림 값은 사용자 콜백과 같은 토큰 레지스트리에 들어간다. 스트림은 항상 call-scoped이므로
 토큰은 호출이 끝나면 삭제된다. 결과는 `i32`라 `ZIGO014` 제약을 그대로 만족한다. 스트림
 파라미터를 받는 진입점도 `_purego_v2` 접미사를 받는다.
+reader의 무콜백 경로도 그대로 쓴다: 공개 래퍼가 `zigoReaderBytes`로 슬라이스를 얻어 raw
+함수에 `[]byte`로 넘기고, raw가 그 주소와 길이를 dispatcher 포인터·토큰과 함께 실어 보낸다.
+슬라이스가 살아 있도록 호출 뒤에 `runtime.KeepAlive`를 부른다. 이 경로에서는 dispatcher가
+한 번도 불리지 않는다.
 
 ## 알려진 제약
 

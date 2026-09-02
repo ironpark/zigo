@@ -115,7 +115,8 @@ func (d *Document) Load(r io.Reader) (uint, error) {
 	defer d.zigoRelease()
 	rHandle := newZigoReaderHandle(r)
 	defer deleteCallbackHandle(rHandle)
-	result, code := raw.DocumentLoad(ptr, uintptr(rHandle))
+	rData := zigoReaderBytes(r)
+	result, code := raw.DocumentLoad(ptr, uintptr(rHandle), rData)
 	zigoRethrowCallbackPanic("Document.Load", rHandle)
 	if err := zigoStreamError("Document.Load", "r", rHandle); err != nil {
 		return 0, err
@@ -166,9 +167,10 @@ func Tee(r io.Reader, w io.Writer) (uint, error) {
 	defer runtime.UnlockOSThread()
 	rHandle := newZigoReaderHandle(r)
 	defer deleteCallbackHandle(rHandle)
+	rData := zigoReaderBytes(r)
 	wHandle := newZigoWriterHandle(w)
 	defer deleteCallbackHandle(wHandle)
-	result, code := raw.Tee(uintptr(rHandle), uintptr(wHandle))
+	result, code := raw.Tee(uintptr(rHandle), rData, uintptr(wHandle))
 	zigoRethrowCallbackPanic("Tee", rHandle)
 	zigoRethrowCallbackPanic("Tee", wHandle)
 	if err := zigoStreamError("Tee", "r", rHandle); err != nil {

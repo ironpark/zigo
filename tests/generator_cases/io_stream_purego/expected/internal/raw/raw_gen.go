@@ -294,6 +294,11 @@ func LastErrorMessage() string {
 	return string(unsafe.Slice((*byte)(p), length))
 }
 
+// zigoEmptyStreamData is what a present but empty byte-slice reader points
+// at. The shim tells the fast path from the dispatcher path by the pointer
+// being non-NULL, so an empty stream still needs an address.
+var zigoEmptyStreamData byte
+
 // DocumentDump calls the generated purego ABI wrapper for zg_document_dump_purego_v2.
 func DocumentDump(self unsafe.Pointer, wCallback, wHandle uintptr) int32 {
 	code := bindings().fnDocumentDump(self, wCallback, wHandle)
@@ -301,9 +306,18 @@ func DocumentDump(self unsafe.Pointer, wCallback, wHandle uintptr) int32 {
 }
 
 // DocumentLoad calls the generated purego ABI wrapper for zg_document_load_purego_v2.
-func DocumentLoad(self unsafe.Pointer, rCallback, rHandle uintptr) (uint, int32) {
+func DocumentLoad(self unsafe.Pointer, rCallback, rHandle uintptr, rData []byte) (uint, int32) {
+	var rDataPtr unsafe.Pointer
+	if rData != nil {
+		if len(rData) != 0 {
+			rDataPtr = unsafe.Pointer(&rData[0])
+		} else {
+			rDataPtr = unsafe.Pointer(&zigoEmptyStreamData)
+		}
+	}
 	var outResult uintptr
-	code := bindings().fnDocumentLoad(self, rCallback, unsafe.Pointer(nil), uintptr(0), rHandle, &outResult)
+	code := bindings().fnDocumentLoad(self, rCallback, rDataPtr, uintptr(len(rData)), rHandle, &outResult)
+	runtime.KeepAlive(rData)
 	return uint(outResult), code
 }
 

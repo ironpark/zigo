@@ -1348,6 +1348,10 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
             if (raw_parameter_index != 0) try writer.writeAll(", ");
             if (parameter.type == .callback or parameter.type == .io_stream) {
                 try writer.print("{s}Handle uintptr", .{go_names[parameter_index]});
+                // A reader also carries the byte-slice fast path: a non-nil
+                // slice is handed to the shim whole and the trampoline is
+                // never called.
+                if (isReaderStream(parameter)) try writer.print(", {s}Data []byte", .{go_names[parameter_index]});
             } else {
                 try writer.print("{s} ", .{go_names[parameter_index]});
                 try writeRawParameterType(writer, program, parameter);
@@ -1367,6 +1371,16 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 continue;
             }
             try writer.print("\t{s}CString := zigoCString({s})\n", .{ name, name });
+        }
+        for (function.origin.params, 0..) |parameter, parameter_index| {
+            if (!isReaderStream(parameter)) continue;
+            // A nil slice means "no fast path"; a non-nil but empty one still
+            // has to reach the shim as a non-NULL pointer, or the shim would
+            // read it as the callback path rather than as an empty stream.
+            try writer.print(
+                "\tvar {0s}DataPtr *C.uint8_t\n\tif {0s}Data != nil {{\n\t\tif len({0s}Data) != 0 {{\n\t\t\t{0s}DataPtr = (*C.uint8_t)(unsafe.Pointer(&{0s}Data[0]))\n\t\t}} else {{\n\t\t\t{0s}DataPtr = (*C.uint8_t)(unsafe.Pointer(&zigoEmptyStreamData))\n\t\t}}\n\t}}\n",
+                .{go_names[parameter_index]},
+            );
         }
         if (sliceReturnElement(function.origin.*)) |element| {
             try writer.writeAll("\tvar outResultPtr *C.");
@@ -1593,10 +1607,11 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 // cgo binds the trampoline by its `//export` name inside the
                 // shim, so nothing about it travels in the call.
                 .stream_callback => unreachable,
-                // Reserved for the byte-slice fast path; today every reader is
-                // read a chunk at a time through the trampoline.
-                .stream_data => try writer.writeAll("nil"),
-                .stream_data_length => try writer.writeAll("C.size_t(0)"),
+                // The byte-slice fast path: non-NULL when the Go reader could
+                // hand its remaining bytes over whole, and then the shim wraps
+                // them with `Reader.fixed` instead of calling the trampoline.
+                .stream_data => try writer.print("{s}DataPtr", .{go_names[parameter.source_index]}),
+                .stream_data_length => try writer.print("C.size_t(len({s}Data))", .{go_names[parameter.source_index]}),
                 .stream_userdata => try writer.print("C.size_t({s}Handle)", .{go_names[parameter.source_index]}),
             }
         }
@@ -1742,6 +1757,12 @@ fn programHasStringSliceParam(program: abi.Program) bool {
 /// holds a Go pointer, so the native call may borrow it for its duration
 /// and nothing is allocated on the C heap or freed afterwards.
 fn renderCgoStringHelpers(writer: *std.Io.Writer, program: abi.Program) !void {
+    if (programHasReaderStream(program)) try writer.writeAll(
+        "// zigoEmptyStreamData is what a present but empty byte-slice reader points\n" ++
+            "// at. The shim tells the fast path from the trampoline path by the pointer\n" ++
+            "// being non-NULL, so an empty stream still needs an address.\n" ++
+            "var zigoEmptyStreamData byte\n\n",
+    );
     if (programHasCString(program)) try writer.writeAll(
         "// zigoCString copies value into a NUL-terminated Go buffer the native call\n" ++
             "// may read for its duration.\n" ++
@@ -2459,6 +2480,12 @@ fn writePuregoStringSliceSetup(writer: *std.Io.Writer, name: []const u8) !void {
 /// representation, with the length array sized for the uintptr ABI and an
 /// empty slice passing nil.
 fn renderPuregoStringHelpers(writer: *std.Io.Writer, program: abi.Program) !void {
+    if (programHasReaderStream(program)) try writer.writeAll(
+        "\n// zigoEmptyStreamData is what a present but empty byte-slice reader points\n" ++
+            "// at. The shim tells the fast path from the dispatcher path by the pointer\n" ++
+            "// being non-NULL, so an empty stream still needs an address.\n" ++
+            "var zigoEmptyStreamData byte\n",
+    );
     if (programHasCString(program)) try writer.writeAll(
         "// zigoCStringBytes copies value into a NUL-terminated Go buffer the native\n" ++
             "// call may read for its duration.\n" ++
@@ -2526,6 +2553,7 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
             try writer.print("{s}Callback, {s}Token uintptr", .{ go_names[parameter_index], go_names[parameter_index] });
         } else if (parameter.type == .io_stream) {
             try writer.print("{s}Callback, {s}Handle uintptr", .{ go_names[parameter_index], go_names[parameter_index] });
+            if (isReaderStream(parameter)) try writer.print(", {s}Data []byte", .{go_names[parameter_index]});
         } else {
             try writer.print("{s} ", .{go_names[parameter_index]});
             try writeRawParameterType(writer, program, parameter);
@@ -2538,6 +2566,16 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
     for (function.origin.params, 0..) |parameter, parameter_index| {
         if (!isStringSliceParameter(parameter)) continue;
         try writePuregoStringSliceSetup(writer, go_names[parameter_index]);
+    }
+    for (function.origin.params, 0..) |parameter, parameter_index| {
+        if (!isReaderStream(parameter)) continue;
+        // A nil slice means "no fast path"; a non-nil but empty one still has
+        // to reach the shim as a non-NULL pointer, or the shim would read it
+        // as the callback path rather than as an empty stream.
+        try writer.print(
+            "\tvar {0s}DataPtr unsafe.Pointer\n\tif {0s}Data != nil {{\n\t\tif len({0s}Data) != 0 {{\n\t\t\t{0s}DataPtr = unsafe.Pointer(&{0s}Data[0])\n\t\t}} else {{\n\t\t\t{0s}DataPtr = unsafe.Pointer(&zigoEmptyStreamData)\n\t\t}}\n\t}}\n",
+            .{go_names[parameter_index]},
+        );
     }
     for (function.origin.params, 0..) |parameter, parameter_index| {
         if (!isCStringParameter(parameter)) continue;
@@ -2657,10 +2695,11 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
             .return_slice_pointer => try writer.writeAll("&outResultPtr"),
             .return_slice_length => try writer.writeAll("&outResultLen"),
             .stream_callback => try writer.print("{s}Callback", .{go_names[parameter.source_index]}),
-            // Reserved for the byte-slice fast path; today every reader is
-            // read a chunk at a time through the dispatcher.
-            .stream_data => try writer.writeAll("unsafe.Pointer(nil)"),
-            .stream_data_length => try writer.writeAll("uintptr(0)"),
+            // The byte-slice fast path: non-NULL when the Go reader could hand
+            // its remaining bytes over whole, and then the shim wraps them
+            // with `Reader.fixed` instead of calling the dispatcher.
+            .stream_data => try writer.print("{s}DataPtr", .{go_names[parameter.source_index]}),
+            .stream_data_length => try writer.print("uintptr(len({s}Data))", .{go_names[parameter.source_index]}),
             .stream_userdata => try writer.print("{s}Handle", .{go_names[parameter.source_index]}),
         }
     }
@@ -2670,6 +2709,7 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
             try writer.print("\truntime.KeepAlive({s}Data)\n\truntime.KeepAlive({s}Lens)\n", .{ go_names[parameter_index], go_names[parameter_index] });
         }
         if (isCStringParameter(parameter)) try writer.print("\truntime.KeepAlive({s}Bytes)\n", .{go_names[parameter_index]});
+        if (isReaderStream(parameter)) try writer.print("\truntime.KeepAlive({s}Data)\n", .{go_names[parameter_index]});
     }
     if (isCStringReturn(function.origin.*)) {
         try writer.writeAll("\treturn zigoCStringString(result)\n");
@@ -3476,6 +3516,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                     } else {
                         try writer.print("uintptr({s}Handle)", .{go_names[parameter_index]});
                     }
+                    if (stream.direction == .reader) try writer.print(", {s}Data", .{go_names[parameter_index]});
                 },
                 .bool => try writer.print("boolToUint8({s})", .{go_names[parameter_index]}),
                 .value_struct => |value| try writer.print("zigo{s}ToRaw({s})", .{ value.ref, go_names[parameter_index] }),
@@ -4433,6 +4474,7 @@ fn renderPublicHelpers(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
             try writer.writeAll("CallbackDispatcherCount() }\n\n");
             try writeRethrowHelper(writer, options);
             try writeStreamErrorHelper(writer, program, options);
+            try writeReaderBytesHelper(writer, program);
             return;
         }
         try writer.writeAll("var activeCallbackHandles atomic.Int64\n\n");
@@ -4460,6 +4502,7 @@ fn renderPublicHelpers(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
         );
         try writeRethrowHelper(writer, options);
         try writeStreamErrorHelper(writer, program, options);
+        try writeReaderBytesHelper(writer, program);
     }
 }
 
@@ -4483,6 +4526,41 @@ fn writeStreamHandleConstructors(writer: *std.Io.Writer, program: abi.Program, o
             try writer.print("CallbackState{{{s}: value}})\n\tactiveCallbackHandles.Add(1)\n\treturn handle\n}}\n\n", .{name});
         }
     }
+}
+
+/// The byte-slice fast path. A reader that can produce its remaining bytes in
+/// one piece is handed over as a slice, and the native call reads it without
+/// crossing back into Go even once. Two interfaces qualify: `Bytes() []byte`,
+/// which `*bytes.Buffer` already has and which by convention means "the bytes
+/// still to be read", and `zigoBytes() []byte`, which a caller adds to opt a
+/// type of their own in. Everything else -- `*bytes.Reader`, files, sockets --
+/// keeps the trampoline path.
+///
+/// A reader taking this path is NOT advanced: the ABI reports no consumed
+/// count, so there is nothing to advance it by. See docs/limitations.md.
+fn writeReaderBytesHelper(writer: *std.Io.Writer, program: abi.Program) !void {
+    if (!programHasReaderStream(program)) return;
+    try writer.writeAll(
+        "\n// zigoReaderBytes returns the bytes a reader can hand over whole, or nil\n" ++
+            "// when it cannot and the native call has to read it a chunk at a time.\n" ++
+            "// The slice is never nil when the fast path applies, so an empty reader\n" ++
+            "// is still told apart from one that has to be streamed.\n" ++
+            "func zigoReaderBytes(value io.Reader) []byte {\n" ++
+            "\tvar data []byte\n" ++
+            "\tswitch source := value.(type) {\n" ++
+            "\tcase interface{ zigoBytes() []byte }:\n" ++
+            "\t\tdata = source.zigoBytes()\n" ++
+            "\tcase interface{ Bytes() []byte }:\n" ++
+            "\t\tdata = source.Bytes()\n" ++
+            "\tdefault:\n" ++
+            "\t\treturn nil\n" ++
+            "\t}\n" ++
+            "\tif data == nil {\n" ++
+            "\t\treturn []byte{}\n" ++
+            "\t}\n" ++
+            "\treturn data\n" ++
+            "}\n\n",
+    );
 }
 
 /// The one place a Go stream's own error becomes the call's result. It
@@ -5447,6 +5525,8 @@ fn renderCallbackHandleSetup(allocator: std.mem.Allocator, writer: *std.Io.Write
                 go_names[parameter_index],
                 streamHandleName(parameter.type.io_stream.direction),
             });
+            if (isReaderStream(parameter))
+                try writer.print("\t{0s}Data := zigoReaderBytes({0s})\n", .{go_names[parameter_index]});
             continue;
         }
         if (parameter.type != .callback) continue;
@@ -6132,6 +6212,20 @@ fn programHasCallbacks(program: abi.Program) bool {
 
 fn functionHasStream(function: semantic.SemanticFn) bool {
     for (function.params) |parameter| if (parameter.type == .io_stream) return true;
+    return false;
+}
+
+/// True for a `*std.Io.Reader` parameter, the only direction with a
+/// byte-slice fast path: a Go reader that can hand its remaining bytes over
+/// in one piece crosses as a slice and costs no trampoline call at all.
+fn isReaderStream(parameter: semantic.Parameter) bool {
+    return parameter.type == .io_stream and parameter.type.io_stream.direction == .reader;
+}
+
+fn programHasReaderStream(program: abi.Program) bool {
+    for (program.functions) |function| {
+        for (function.origin.params) |parameter| if (isReaderStream(parameter)) return true;
+    }
     return false;
 }
 
@@ -7165,8 +7259,8 @@ test "a stream parameter becomes a shim adapter and a fixed callback ABI" {
     // Whatever the target function left buffered still has to reach Go.
     try std.testing.expect(std.mem.indexOf(u8, shim, "defer w_stream.interface.flush() catch {};") != null);
     try std.testing.expect(std.mem.indexOf(u8, shim, "target.Document.dump(self, &w_stream.interface)") != null);
-    // The reserved byte-slice path: the shim already honours it, so adding it
-    // later costs no C parameter.
+    // The byte-slice fast path: a non-NULL `r_data` is read with `fixed` and
+    // the trampoline is never called.
     try std.testing.expect(std.mem.indexOf(u8, shim, "var r_stream_fixed: std.Io.Reader = if (r_data != null) .fixed(r_data[0..r_data_len]) else undefined;") != null);
     try std.testing.expect(std.mem.indexOf(u8, shim, "target.Document.load(self, r_stream_interface)") != null);
 
@@ -7186,6 +7280,12 @@ test "a stream parameter becomes a shim adapter and a fixed callback ABI" {
     try std.testing.expect(std.mem.indexOf(u8, raw, "\tif err == nil || err == io.EOF {\n\t\treturn C.int32_t(0)\n\t}") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "\t\t\tresult = C.int32_t(-3)") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "func TakeStreamError(handle cgo.Handle) (error, bool)") != null);
+    // Only a reader carries the byte-slice fast path, and a present-but-empty
+    // slice still crosses as a non-NULL pointer.
+    try std.testing.expect(std.mem.indexOf(u8, raw, "func DocumentLoad(self unsafe.Pointer, rHandle uintptr, rData []byte) (uint, int32) {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "func DocumentDump(self unsafe.Pointer, wHandle uintptr) int32 {") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "rDataPtr = (*C.uint8_t)(unsafe.Pointer(&zigoEmptyStreamData))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "C.zg_document_load((*C.zg_document)(self), rDataPtr, C.size_t(len(rData)), C.size_t(rHandle), &outResult)") != null);
 
     const public = try renderForTest(renderPublic, program);
     defer std.testing.allocator.free(public);
@@ -7197,6 +7297,17 @@ test "a stream parameter becomes a shim adapter and a fixed callback ABI" {
     try std.testing.expect(std.mem.indexOf(u8, public, "\tif w == nil {\n\t\treturn &StreamError{Operation: \"Document.Dump\", Parameter: \"w\", Err: ErrNilStream}\n\t}") != null);
     try std.testing.expect(std.mem.indexOf(u8, public, "\twHandle := newZigoWriterHandle(w)\n\tdefer deleteCallbackHandle(wHandle)") != null);
     // The stream's own error is taken before the native status is judged.
+    // A reader is offered to the fast path; a writer has none to be offered.
+    try std.testing.expect(std.mem.indexOf(u8, public, "\trData := zigoReaderBytes(r)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public, "zigoReaderBytes(w)") == null);
+
+    const runtime_body = try renderForTest(renderPublicRuntimeBody, program);
+    defer std.testing.allocator.free(runtime_body);
+    // `zigoBytes()` outranks `Bytes()`, so a caller can opt a type in even
+    // when it already has a `Bytes()` that means something else.
+    const zigo_bytes = std.mem.indexOf(u8, runtime_body, "case interface{ zigoBytes() []byte }:").?;
+    const bytes = std.mem.indexOf(u8, runtime_body, "case interface{ Bytes() []byte }:").?;
+    try std.testing.expect(zigo_bytes < bytes);
     const rethrow = std.mem.indexOf(u8, public, "zigoRethrowCallbackPanic(\"Document.Dump\"").?;
     const stream_error = std.mem.indexOf(u8, public, "zigoStreamError(\"Document.Dump\", \"w\", wHandle)").?;
     const status = std.mem.indexOf(u8, public, "errorForCode(\"Document.Dump\"").?;

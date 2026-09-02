@@ -235,3 +235,96 @@ func TestStreamHandlesAreReleased(t *testing.T) {
 		t.Fatalf("%d stream handles outlived the call", live)
 	}
 }
+
+// countingBuffer is a *bytes.Buffer wearing a counter. Bytes() is what puts
+// it on the no-callback fast path, so what the counter records is whether the
+// native call ever had to come back into Go for more input.
+type countingBuffer struct {
+	buffer bytes.Buffer
+	reads  int
+}
+
+func (b *countingBuffer) Read(p []byte) (int, error) { b.reads++; return b.buffer.Read(p) }
+func (b *countingBuffer) Bytes() []byte              { return b.buffer.Bytes() }
+
+// countingReader has no Bytes(), so it is the control: the same payload read
+// through the trampoline, which must cost at least one crossing.
+type countingReader struct {
+	reader io.Reader
+	reads  int
+}
+
+func (r *countingReader) Read(p []byte) (int, error) { r.reads++; return r.reader.Read(p) }
+
+// zigoBytesReader opts into the fast path with the documented hook rather
+// than with Bytes(), which it deliberately does not have.
+type zigoBytesReader struct {
+	data  []byte
+	reads int
+}
+
+func (r *zigoBytesReader) Read(p []byte) (int, error) { r.reads++; return 0, io.EOF }
+func (r *zigoBytesReader) zigoBytes() []byte          { return r.data }
+
+// The measurable promise of the fast path: a reader that can hand its bytes
+// over whole is read by the native side without re-entering Go at all.
+func TestBytesReaderCostsNoCallback(t *testing.T) {
+	source := &countingBuffer{}
+	source.buffer.WriteString("alpha\nbeta\ngamma\n")
+
+	document := newDocumentWithLines(t, nil)
+	read, err := document.Load(source)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if read != uint(len("alpha\nbeta\ngamma\n")) {
+		t.Fatalf("Load consumed %d bytes", read)
+	}
+	if source.reads != 0 {
+		t.Fatalf("Load cost %d Read calls; a bytes.Buffer must cost none", source.reads)
+	}
+	count, err := document.Count()
+	if err != nil {
+		t.Fatalf("Count: %v", err)
+	}
+	if count != 3 {
+		t.Fatalf("Load read %d lines, want 3", count)
+	}
+}
+
+func TestNonBytesReaderStillCrossesForItsInput(t *testing.T) {
+	source := &countingReader{reader: strings.NewReader("alpha\nbeta\n")}
+	document := newDocumentWithLines(t, nil)
+	if _, err := document.Load(source); err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if source.reads == 0 {
+		t.Fatal("a reader without Bytes() was not read through the trampoline")
+	}
+}
+
+// An empty buffer is present-but-empty rather than absent: it takes the fast
+// path and ends the stream immediately instead of falling back to callbacks.
+func TestEmptyBytesReaderCostsNoCallback(t *testing.T) {
+	source := &countingBuffer{}
+	document := newDocumentWithLines(t, nil)
+	read, err := document.Load(source)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if read != 0 || source.reads != 0 {
+		t.Fatalf("Load consumed %d bytes over %d Read calls", read, source.reads)
+	}
+}
+
+func TestZigoBytesHookOptsIntoTheFastPath(t *testing.T) {
+	source := &zigoBytesReader{data: []byte("alpha\nbeta\n")}
+	document := newDocumentWithLines(t, nil)
+	read, err := document.Load(source)
+	if err != nil {
+		t.Fatalf("Load: %v", err)
+	}
+	if read != uint(len(source.data)) || source.reads != 0 {
+		t.Fatalf("Load consumed %d bytes over %d Read calls", read, source.reads)
+	}
+}

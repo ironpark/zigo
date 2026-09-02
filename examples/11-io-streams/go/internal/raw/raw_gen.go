@@ -19,6 +19,11 @@ import "unsafe"
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// zigoEmptyStreamData is what a present but empty byte-slice reader points
+// at. The shim tells the fast path from the trampoline path by the pointer
+// being non-NULL, so an empty stream still needs an address.
+var zigoEmptyStreamData byte
+
 // CallbackState carries one Go callback across the native boundary, and
 // the panic it raises there until the generated caller rethrows it. The
 // trampoline has to recover: a panic cannot unwind native frames.
@@ -159,9 +164,17 @@ func DocumentDump(self unsafe.Pointer, wHandle uintptr) int32 {
 }
 
 // DocumentLoad calls the generated C ABI wrapper for zg_document_load.
-func DocumentLoad(self unsafe.Pointer, rHandle uintptr) (uint, int32) {
+func DocumentLoad(self unsafe.Pointer, rHandle uintptr, rData []byte) (uint, int32) {
+	var rDataPtr *C.uint8_t
+	if rData != nil {
+		if len(rData) != 0 {
+			rDataPtr = (*C.uint8_t)(unsafe.Pointer(&rData[0]))
+		} else {
+			rDataPtr = (*C.uint8_t)(unsafe.Pointer(&zigoEmptyStreamData))
+		}
+	}
 	var outResult C.size_t
-	code := int32(C.zg_document_load((*C.zg_document)(self), nil, C.size_t(0), C.size_t(rHandle), &outResult))
+	code := int32(C.zg_document_load((*C.zg_document)(self), rDataPtr, C.size_t(len(rData)), C.size_t(rHandle), &outResult))
 	return uint(outResult), code
 }
 
@@ -172,8 +185,16 @@ func Banner(wHandle uintptr, width uint32) int32 {
 }
 
 // Tee calls the generated C ABI wrapper for zg_tee.
-func Tee(rHandle uintptr, wHandle uintptr) (uint, int32) {
+func Tee(rHandle uintptr, rData []byte, wHandle uintptr) (uint, int32) {
+	var rDataPtr *C.uint8_t
+	if rData != nil {
+		if len(rData) != 0 {
+			rDataPtr = (*C.uint8_t)(unsafe.Pointer(&rData[0]))
+		} else {
+			rDataPtr = (*C.uint8_t)(unsafe.Pointer(&zigoEmptyStreamData))
+		}
+	}
 	var outResult C.size_t
-	code := int32(C.zg_tee(nil, C.size_t(0), C.size_t(rHandle), C.size_t(wHandle), &outResult))
+	code := int32(C.zg_tee(rDataPtr, C.size_t(len(rData)), C.size_t(rHandle), C.size_t(wHandle), &outResult))
 	return uint(outResult), code
 }

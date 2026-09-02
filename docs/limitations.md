@@ -82,6 +82,11 @@
   Go `io.ReaderAt`/`io.Seeker`는 지원하지 않는다.
 - 스트림 콜백은 native 호출 안에서 같은 스레드로 동기 호출된다. 대상 Zig 함수가 어댑터를
   다른 스레드로 넘기거나 호출이 끝난 뒤까지 들고 있으면 동작은 정의되지 않는다.
+- `io.Reader` 인자가 `Bytes() []byte`나 `zigoBytes() []byte`를 가지면 남은 바이트가
+  슬라이스 하나로 넘어가고 콜백은 0회다. 이 경로에서는 zigo가 Go reader를 **전진시키지
+  않는다** — ABI가 소비한 바이트 수를 보고하지 않기 때문이다. 호출 뒤에도 `*bytes.Buffer`에는
+  같은 바이트가 남아 있으므로, 소비 위치가 중요한 reader는 빠른 경로에 들어가지 않는
+  타입(`bytes.NewReader` 등)으로 넘긴다.
 - `packed struct`의 정수 백킹 노출은 지원하지 않는다. `ZIGO003`으로 거부된다.
 - optional은 매개변수, 반환값, error union payload 자리에서만 쓸 수 있고, child는 bool,
   정수, 부동소수, 등록 enum, `extern struct`, 선언된 opaque type의 pointer만 지원한다.

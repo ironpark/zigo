@@ -88,3 +88,23 @@ func zigoStreamError(operation string, parameter string, handle zigoCallbackHand
 	}
 	return nil
 }
+
+// zigoReaderBytes returns the bytes a reader can hand over whole, or nil
+// when it cannot and the native call has to read it a chunk at a time.
+// The slice is never nil when the fast path applies, so an empty reader
+// is still told apart from one that has to be streamed.
+func zigoReaderBytes(value io.Reader) []byte {
+	var data []byte
+	switch source := value.(type) {
+	case interface{ zigoBytes() []byte }:
+		data = source.zigoBytes()
+	case interface{ Bytes() []byte }:
+		data = source.Bytes()
+	default:
+		return nil
+	}
+	if data == nil {
+		return []byte{}
+	}
+	return data
+}

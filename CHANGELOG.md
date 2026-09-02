@@ -23,6 +23,13 @@
 
 ### Added
 
+- `*std.Io.Reader` 파라미터에 무콜백 경로가 생겼습니다. Go `io.Reader`가 `Bytes() []byte`
+  (`*bytes.Buffer`)나 `zigoBytes() []byte`(직접 정의한 타입을 위한 훅)를 가지면 남은 바이트가
+  슬라이스 하나로 넘어가고, shim이 `std.Io.Reader.fixed`로 감싸므로 경계를 넘는 콜백이
+  **0회**입니다. C ABI는 계획 70이 미리 잡아 둔 `(<name>_data, <name>_data_len)` 자리를 그대로
+  쓰므로 바뀌지 않습니다. 이 경로에서는 소비한 바이트 수가 보고되지 않아 Go reader가
+  전진하지 않습니다. 그 밖의 reader는 예전처럼 트램폴린으로 읽습니다. (계획 72)
+
 - slice·문자열 optional(`?[]T`, `?[]const u8`, `?[:0]const u8`)을 매개변수, 반환값,
   error union payload 자리에서 지원합니다. presence 플래그를 더하지 않고 slice 자신의
   포인터가 부재를 나릅니다(`ptr == NULL`), 그래서 부재와 길이 0인 존재하는 slice가
