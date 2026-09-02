@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T14:39:33Z"
 description: receiver 변수명이 파라미터와 충돌하지 않게 밀고, handle/range 검사 실패 경로가 optional 반환의 presence 값을 함께 돌려주도록 수정
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-02T14:15:41Z"
 ---
 > NEXT: handle/range 검사 실패 경로가 optional 반환의 presence 값을 함께 돌려주게 한다. ([Phase 0](phases/00-optional-check-returns.md))
@@ -9,7 +10,7 @@ registered_at: "2026-09-02T14:15:41Z"
 
 - [x] [Phase 00: optional 반환의 검사 실패 경로](phases/00-optional-check-returns.md)
 - [x] [Phase 01: receiver 변수명 충돌 회피](phases/01-receiver-name-clash.md)
-- [ ] [Phase 02: 문서와 CHANGELOG](phases/02-docs.md)
+- [x] [Phase 02: 문서와 CHANGELOG](phases/02-docs.md)
 
 # Shared Verification
 
