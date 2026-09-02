@@ -20,7 +20,7 @@ const ZigoWriterAdapter = struct {
     /// nothing left to say to it, and a panicked frame must not be re-entered.
     failed: bool = false,
 
-    const vtable: std.Io.Writer.VTable = .{ .drain = drain };
+    const vtable: std.Io.Writer.VTable = .{ .drain = drain, .flush = flush };
 
     fn init(
         buffer: []u8,
@@ -43,24 +43,54 @@ const ZigoWriterAdapter = struct {
         }
     }
 
-    /// `buffer[0..end]` is consumed first, then every slice of `data` in
-    /// order, then the last one `splat` more times. The returned count covers
-    /// `data` only: the buffered bytes were logically written already.
+    /// Refills rather than forwards. A slice that still fits behind what is
+    /// buffered is copied there instead of crossing on its own, which is what
+    /// makes the crossings proportional to the payload rather than to the
+    /// number of writes: a caller writing forty bytes at a time costs one
+    /// crossing per buffer, not one per write. Only a slice at least as large
+    /// as the whole buffer is handed over directly, because buffering it
+    /// would cost a copy and save nothing.
+    fn push(self: *ZigoWriterAdapter, w: *std.Io.Writer, bytes: []const u8) std.Io.Writer.Error!void {
+        if (bytes.len == 0) return;
+        if (bytes.len >= w.buffer.len) {
+            try self.send(w.buffered());
+            w.end = 0;
+            return self.send(bytes);
+        }
+        if (w.end + bytes.len > w.buffer.len) {
+            try self.send(w.buffered());
+            w.end = 0;
+        }
+        @memcpy(w.buffer[w.end..][0..bytes.len], bytes);
+        w.end += bytes.len;
+    }
+
+    /// `buffer[0..end]` is written before `data`, then every slice of `data`
+    /// in order, then the last one `splat` more times. The returned count
+    /// covers `data` only: the buffered bytes were logically written already.
+    /// What "written" means here is "accepted", buffered or crossed, which is
+    /// what lets the buffer do its job.
     fn drain(w: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
         const self: *ZigoWriterAdapter = @fieldParentPtr("interface", w);
-        try self.send(w.buffered());
-        w.end = 0;
         var written: usize = 0;
         for (data[0 .. data.len - 1]) |bytes| {
-            try self.send(bytes);
+            try self.push(w, bytes);
             written += bytes.len;
         }
         const last = data[data.len - 1];
         for (0..splat) |_| {
-            try self.send(last);
+            try self.push(w, last);
             written += last.len;
         }
         return written;
+    }
+
+    /// Its own rather than `defaultFlush`, which drains until `end` is zero:
+    /// a drain that buffers would never make that true.
+    fn flush(w: *std.Io.Writer) std.Io.Writer.Error!void {
+        const self: *ZigoWriterAdapter = @fieldParentPtr("interface", w);
+        try self.send(w.buffered());
+        w.end = 0;
     }
 };
 
@@ -158,7 +188,7 @@ const Sink = struct {
     }
 };
 
-test "drain consumes the buffer first, then data, then the splat repeats" {
+test "drain buffers what fits and repeats the splat slice" {
     var sink: Sink = .{};
     defer sink.deinit(std.testing.allocator);
     var buffer: [8]u8 = undefined;
@@ -170,14 +200,12 @@ test "drain consumes the buffer first, then data, then the splat repeats" {
     _ = try ZigoWriterAdapter.drain(&adapter.interface, &.{ "cd", "ef" }, 3);
     try adapter.interface.flush();
 
-    // The buffer, then every slice but the last, then the last one `splat`
-    // times -- three, not one plus three.
-    try std.testing.expectEqual(@as(usize, 5), sink.calls.items.len);
-    try std.testing.expectEqualStrings("ab", sink.calls.items[0]);
-    try std.testing.expectEqualStrings("cd", sink.calls.items[1]);
-    try std.testing.expectEqualStrings("ef", sink.calls.items[2]);
-    try std.testing.expectEqualStrings("ef", sink.calls.items[3]);
-    try std.testing.expectEqualStrings("ef", sink.calls.items[4]);
+    // Order, and the splat repeated three times rather than once plus three.
+    // A buffer of 8 holds "ab" + "cd" + "ef", so the fourth "ef" is what
+    // forces the first crossing.
+    try std.testing.expectEqualStrings("abcdefef", sink.calls.items[0]);
+    try std.testing.expectEqualStrings("ef", sink.calls.items[1]);
+    try std.testing.expectEqual(@as(usize, 2), sink.calls.items.len);
 }
 
 test "the drain result counts data bytes and never the buffered ones" {
@@ -187,8 +215,9 @@ test "the drain result counts data bytes and never the buffered ones" {
     var adapter: ZigoWriterAdapter = .init(&buffer, Sink.write, @intFromPtr(&sink));
     try adapter.interface.writeAll("xyz");
     const written = try ZigoWriterAdapter.drain(&adapter.interface, &.{"1234"}, 2);
+    // Eight bytes of `data` were accepted; the three that were already
+    // buffered are not part of the count.
     try std.testing.expectEqual(@as(usize, 8), written);
-    try std.testing.expectEqual(@as(usize, 0), adapter.interface.end);
 }
 
 test "a payload larger than the buffer costs one crossing per buffer" {

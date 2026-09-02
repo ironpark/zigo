@@ -129,6 +129,34 @@ API를 작성할 수 있으며, zigo는 marker가 없는 사용자 파일을 덮
 않으므로 판정은 계속 breaking입니다. 필드를 더해야 한다면 새 struct와 새 함수를 추가하거나,
 소비자와 native를 같은 시점에 배포하세요.
 
+## `std.Io` 스트림 어댑터
+
+`*std.Io.Writer`/`*std.Io.Reader` 파라미터는 고정 시그니처 콜백 하나로 내려갑니다.
+
+| 방향 | 콜백 | 결과 |
+|---|---|---|
+| writer | `i32 (const uint8_t *ptr, size_t len, size_t userdata)` | `0` 성공, `-1` Go error 저장, `-3` Go panic |
+| reader | `i32 (uint8_t *ptr, size_t capacity, size_t userdata)` | `n >= 0` 읽은 바이트(`0`은 스트림 끝), `-1` error, `-3` panic |
+
+cgo에서는 C 시그니처에 userdata만 실리고 shim이 바인딩마다 하나씩 있는 고정 `//export`
+심볼(`<prefix>_zigo_stream_write`, `_read`)을 이름으로 참조합니다. purego에서는 dispatcher
+포인터가 userdata 앞에 함께 실리고, 진입점은 다른 콜백과 같이 `_purego_v2` 접미사를 받습니다.
+reader에는 `(const uint8_t *<name>_data, size_t <name>_data_len)` 한 쌍이 더 붙어 있습니다.
+호출자가 바이트를 그대로 넘길 수 있을 때 콜백을 아예 건너뛰는 경로를 위한 자리로, shim은
+이미 이를 처리하지만(널이 아니면 `std.Io.Reader.fixed`) 생성된 Go는 지금 항상 널을 넘깁니다.
+나중에 그 경로를 붙일 때 C 시그니처가 바뀌지 않도록 미리 잡아 둔 자리입니다.
+
+shim은 어댑터 타입 두 개를 파일당 한 번만 내고, 파라미터마다 staging 버퍼와 어댑터를 만들어
+`&adapter.interface`를 대상 함수에 넘깁니다. writer 어댑터의 `drain`은 버퍼에 들어가는
+조각은 버퍼에 채우고 버퍼보다 큰 조각만 그대로 넘기므로, 경계를 넘는 횟수는 호출자가 몇
+번 썼는지가 아니라 총량과 버퍼 크기가 정합니다. 함수가 돌아오기 전에 `defer`로 `flush`합니다.
+reader 어댑터의 `stream`은 대상 writer의 쓰기 가능한 영역을 Go가 직접 채우게 하므로 읽기당
+복사가 없습니다. `-1`이나 `-3`을 한 번 받은 어댑터는 이후 Go를 다시 부르지 않습니다.
+
+Go 쪽에서는 `CallbackState`(cgo)와 토큰 레지스트리 항목(purego)이 스트림 값과 저장된 error를
+함께 들고, 공개 래퍼가 native 호출 뒤 `TakeStreamError`로 그것을 가져와 `*StreamError`로
+반환합니다. 이 검사는 native 상태 코드 검사보다 먼저 일어납니다.
+
 ## out slice가 채운 개수
 
 `.direction = .out` slice가 얼마나 채워졌는지는 `written` 힌트가 정합니다. 기본값

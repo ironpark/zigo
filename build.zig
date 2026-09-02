@@ -298,6 +298,8 @@ pub fn build(b: *std.Build) void {
         "examples/09-type-relations/go",
         "examples/10-tagged-union/go",
         "examples/10-tagged-union/go-purego",
+        "examples/11-io-streams/go",
+        "examples/11-io-streams/go-purego",
         "examples/04-callback/go-purego",
         "examples/07-event-queue/go-purego",
         "examples/08-telemetry-hub/go-purego",
@@ -318,6 +320,7 @@ pub fn build(b: *std.Build) void {
         "examples/08-telemetry-hub",
         "examples/09-type-relations",
         "examples/10-tagged-union",
+        "examples/11-io-streams",
     });
     test_step.dependOn(&symbol_audit.step);
     // The generated layout guard is only worth anything if a divergent layout

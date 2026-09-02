@@ -318,6 +318,14 @@ purego 백엔드는 콜백 파라미터를 C 함수 포인터와 `uintptr_t` use
   하는 값일 뿐이고, 호출이 돌아오면 생성된 함수가 그 panic을 `*CallbackPanicError`로 다시
   일으킨다 — cgo 백엔드와 같은 규칙이다.
 
+### `std.Io` 스트림
+
+`*std.Io.Writer`/`*std.Io.Reader` 파라미터도 같은 메커니즘을 쓴다. 방향마다 영구
+dispatcher가 하나씩 있고(`StreamWriterCallbackPointer`, `StreamReaderCallbackPointer`),
+스트림 값은 사용자 콜백과 같은 토큰 레지스트리에 들어간다. 스트림은 항상 call-scoped이므로
+토큰은 호출이 끝나면 삭제된다. 결과는 `i32`라 `ZIGO014` 제약을 그대로 만족한다. 스트림
+파라미터를 받는 진입점도 `_purego_v2` 접미사를 받는다.
+
 ## 알려진 제약
 
 - purego는 v1 이전 베타 소프트웨어다. zigo는 `v0.10.2`를 고정해 생성·검증하고, 사용은

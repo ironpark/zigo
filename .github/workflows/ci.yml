@@ -47,6 +47,7 @@ jobs:
             examples/08-telemetry-hub
             examples/09-type-relations
             examples/10-tagged-union
+            examples/11-io-streams
           )
 
           for example in "${examples[@]}"; do
@@ -124,7 +125,7 @@ jobs:
         # keep the default explicit loader, so both policies are exercised.
         run: |
           set -euo pipefail
-          for example in 04-callback 08-telemetry-hub; do
+          for example in 04-callback 08-telemetry-hub 11-io-streams; do
             (cd "examples/$example" && zig build purego-go purego-go-verify --summary all)
           done
           (cd examples/10-tagged-union && zig build go go-verify -Dpurego --summary all)
@@ -168,6 +169,7 @@ jobs:
             "07-event-queue:libevent_queue_zigo:zg_last_error_message"
             "08-telemetry-hub:libtelemetry_hub_zigo:zg_last_error_message"
             "10-tagged-union:libtagged_union_zigo:zg_last_error_message"
+            "11-io-streams:libstreams_zigo:zg_last_error_message zg_document_dump_purego_v2"
           )
           for entry in "${libraries[@]}"; do
             read -r example stem symbols <<<"${entry//:/ }"
@@ -197,7 +199,7 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           set -euo pipefail
-          for example in 04-callback 08-telemetry-hub; do
+          for example in 04-callback 08-telemetry-hub 11-io-streams; do
             # vet must stay clean: generated code should not need suppressions.
             (cd "examples/$example/go-purego" && go vet ./... && go test ./...)
           done

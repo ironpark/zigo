@@ -1,0 +1,10 @@
+.{
+    .name = .streams_example,
+    .version = "0.0.0",
+    .fingerprint = 0x5a83c11892b598b2,
+    .minimum_zig_version = "0.16.0",
+    .dependencies = .{
+        .zigo = .{ .path = "../.." },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "src", "go", "go-purego", "zigo" },
+}

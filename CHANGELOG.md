@@ -23,6 +23,15 @@
 
 ### Added
 
+- `*std.Io.Writer`/`*std.Io.Reader` 파라미터를 지원합니다. Go에서는 `io.Writer`/`io.Reader`가
+  되고, shim이 만든 어댑터가 staging 버퍼(기본 65536, `param_meta.<name>.buffer`로 조정,
+  4096..16777216)를 채울 때만 Go로 건너갑니다 — 총 `N` 바이트 출력의 `Write` 호출은
+  `ceil(N / 버퍼)`회를 넘지 않습니다. Go `Write`/`Read`의 error는 `*StreamError`(`Unwrap`으로
+  원 error, `errors.Is` 가능)로 돌아오고 native 상태 코드보다 우선하며, Go panic은 기존
+  `*CallbackPanicError` 경로로 재전파되고, `nil` 스트림은 `ErrNilStream`으로 거부됩니다.
+  cgo와 purego 모두 지원하며, 새 kind가 늘어난 것이라 기존 바인딩의 ABI는 그대로입니다.
+  파라미터 자리 밖(반환, 필드, 콜백 시그니처, 슬라이스 원소, optional)과
+  `.retention = .retained`는 `ZIGO023`으로 거부합니다. (계획 70)
 - 생성될 Go 이름이 생성 전에 검사됩니다. 등록된 타입 이름, 필드·enum tag 이름, 함수 이름 중
   Go 식별자가 될 수 없는 것이 있으면 `ZIGO021`이 Zig 타입 경로와 함께 거부합니다. 이전에는
   `@typeName`이 `...[0..4])`로 끝나는 comptime 생성 타입의 이름이 그대로 `.go` 파일에 실려

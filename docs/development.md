@@ -42,6 +42,7 @@ done
 - `08-telemetry-hub`: 큰 API 자동 발견과 생성 비용
 - `09-type-relations`: 타입 간 참조
 - `10-tagged-union`: projection과 snapshot 표현
+- `11-io-streams`: `std.Io` 스트림 파라미터와 Go `io.Writer`/`io.Reader`
 
 ## purego 검증
 

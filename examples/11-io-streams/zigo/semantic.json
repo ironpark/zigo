@@ -1,0 +1,236 @@
+{
+  "constructors": [
+    {
+      "deinit": "deinit",
+      "init": "create",
+      "type": "Document"
+    }
+  ],
+  "doc": "A library that reads and writes through `std.Io` streams rather than\nthrough buffers it owns. Everything here takes a `*std.Io.Writer` or a\n`*std.Io.Reader` and never learns where the bytes came from or went.",
+  "functions": [
+    {
+      "name": "create",
+      "namespace": "Document",
+      "ownership": "caller",
+      "params": [],
+      "return": {
+        "error_set": [
+          "OutOfMemory"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "Document"
+        }
+      },
+      "symbol": "zg_document_create"
+    },
+    {
+      "name": "deinit",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Document",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_document_deinit"
+    },
+    {
+      "name": "append",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "line",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "receiver": "Document",
+      "return": {
+        "error_set": [
+          "OutOfMemory"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "void"
+        }
+      },
+      "symbol": "zg_document_append"
+    },
+    {
+      "name": "count",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Document",
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_document_count"
+    },
+    {
+      "doc": "Writes every line out, newline separated. The output is far larger than\nthe shim's staging buffer for a document of any size, which is the\npoint: the buffer is what keeps the crossings proportional to the\npayload rather than to the number of `writeAll` calls.",
+      "name": "dump",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "w",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "kind": "io_writer"
+          }
+        }
+      ],
+      "receiver": "Document",
+      "return": {
+        "error_set": [
+          "WriteFailed"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "void"
+        }
+      },
+      "symbol": "zg_document_dump"
+    },
+    {
+      "doc": "Reads newline-terminated lines until the stream ends, and reports how\nmany bytes it consumed. A trailing fragment with no newline is not a\nline: `dump` always terminates, so a stream this can read always does.",
+      "name": "load",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "buffer": 4096,
+          "direction": "in",
+          "name": "r",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "kind": "io_reader"
+          }
+        }
+      ],
+      "receiver": "Document",
+      "return": {
+        "error_set": [
+          "ReadFailed",
+          "TooLarge"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "is_usize": true,
+          "kind": "int",
+          "signed": false
+        }
+      },
+      "symbol": "zg_document_load"
+    },
+    {
+      "doc": "A free function taking a stream, so the example covers the shape that has\nno receiver and no error union of its own.",
+      "name": "banner",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "w",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "kind": "io_writer"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "width",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "WriteFailed"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "void"
+        }
+      },
+      "symbol": "zg_banner"
+    },
+    {
+      "doc": "Copies a reader into a writer, so one call exercises both directions at\nonce and the byte count comes back through the return value.",
+      "name": "tee",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "r",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "kind": "io_reader"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "w",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "kind": "io_writer"
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "ReadFailed",
+          "TooLarge"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "is_usize": true,
+          "kind": "int",
+          "signed": false
+        }
+      },
+      "symbol": "zg_tee"
+    }
+  ],
+  "ir_version": 1,
+  "package": "streams",
+  "prefix": "zg",
+  "types": [
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "opaque",
+      "name": "Document",
+      "zig_path": "root.Document"
+    }
+  ],
+  "zig_version": "0.16.0"
+}

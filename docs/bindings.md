@@ -101,7 +101,7 @@ error입니다.
 | `path` | `root.<name>` 또는 `<Type>.<name>` 선언 경로 |
 | `name` | 공개 Go 함수 이름 override |
 | `params` | 함수 파라미터 이름 목록 |
-| `param_meta` | 파라미터별 `semantic`, `retention`, `direction`, `written` |
+| `param_meta` | 파라미터별 `semantic`, `retention`, `direction`, `written`, `buffer` |
 | `semantic` | 반환값 의미. 예: `.utf8_string` |
 | `returns` | 반환 pointer의 ownership |
 
@@ -267,6 +267,56 @@ Go에서 `NewStore(name string) (*Store, error)`가 됩니다. 문자열 값(`"g
 기본값은 없습니다. 설정 없이 그런 파라미터를 만나면 `ZIGO022`로 거부합니다 — 어떤 메모리를
 쓸지는 zigo가 대신 정할 문제가 아닙니다. 주입 파라미터는 `semantic.json`에
 `"injected": "allocator"`로 남고, 주입 여부가 바뀌면 `abi-diff`가 breaking으로 봅니다.
+
+### `std.Io` 스트림 파라미터
+
+`*std.Io.Writer`와 `*std.Io.Reader` 파라미터는 Go의 `io.Writer`와 `io.Reader`가 됩니다.
+등록도 메타데이터도 필요 없습니다 — 타입 자체가 결정합니다.
+
+```zig
+// Zig
+pub fn dump(self: *Document, w: *std.Io.Writer) error{WriteFailed}!void { ... }
+pub fn load(self: *Document, r: *std.Io.Reader) error{ReadFailed}!usize { ... }
+```
+
+```go
+// Go
+func (d *Document) Dump(w io.Writer) error
+func (d *Document) Load(r io.Reader) (uint, error)
+```
+
+shim이 파라미터마다 어댑터를 만들어 대상 함수에 넘깁니다. 어댑터는 staging 버퍼를 들고
+있고, 버퍼가 찰 때만 Go의 `Write`/`Read`를 부릅니다. Zig 쪽이 한 줄씩 `writeAll`을 해도
+경계를 넘는 횟수는 버퍼 크기가 정합니다: 총 `N` 바이트를 쓰면 `Write` 호출은
+`ceil(N / 버퍼)`회를 넘지 않습니다. 함수가 돌아오기 전에 shim이 `flush`하므로 대상 함수가
+직접 flush하지 않아도 남은 바이트가 나갑니다.
+
+버퍼 크기는 `param_meta.<name>.buffer`로 바꿉니다. 기본값 65536, 최소 4096, 최대 16 MiB이며,
+범위 밖은 `ZIGO023`으로 거부합니다. 262144바이트를 넘으면 스택 배열 대신 힙에서 잡습니다 —
+바인딩이 `.allocator`를 정했으면 그 allocator, 아니면 `std.heap.c_allocator`입니다.
+
+```zig
+.{ .path = "Document.load", .params = .{"r"}, .param_meta = .{ .r = .{ .buffer = 4096 } } }
+```
+
+**실패와 panic.** Go `Write`가 error를 반환하면 그 error가 저장되고, native 호출이 끝난 뒤
+공개 함수가 `*StreamError`로 감싸 돌려줍니다. native 결과보다 우선합니다: 출력이 도착하지
+않은 작업에 라이브러리가 성공을 보고했더라도 호출자가 원하는 것은 자기 error입니다.
+`Unwrap`이 원래 error를 내주므로 `errors.Is`가 그대로 통합니다. short write는
+`io.ErrShortWrite`입니다. Go `Read`가 `0, io.EOF`를 주면 스트림 끝이고, 그 외의 error는
+`*StreamError`로 돌아옵니다. Go 쪽이 panic하면 기존 콜백 경로와 같이
+`*CallbackPanicError`로 재전파되며, 어댑터는 panic한 프레임을 두 번 부르지 않습니다.
+`nil` 스트림은 native를 부르기 전에 `ErrNilStream`을 감싼 `*StreamError`로 거부합니다.
+
+스트림 파라미터가 있는 함수는 Zig 반환 타입과 무관하게 Go에서 `error`를 함께 반환합니다.
+
+**스레드.** 콜백은 native 호출 안에서 같은 스레드로 동기 호출되므로, Go 값은 호출한
+goroutine이 계속 소유합니다. 대상 함수가 어댑터를 다른 스레드로 넘겨 호출이 끝난 뒤에도
+쓰면 동작은 정의되지 않습니다.
+
+**허용되지 않는 위치.** 어댑터가 호출 스택에 살기 때문에 스트림은 파라미터 자리에서만,
+그리고 call-scoped로만 쓸 수 있습니다. 반환 타입, extern struct 필드, 콜백 시그니처, 슬라이스
+원소, optional, `.retention = .retained`는 각각 이유를 담은 `ZIGO023`으로 거부합니다.
 
 ### 값으로 반환하는 `init`
 

@@ -20,7 +20,7 @@ const ZigoWriterAdapter = struct {
     /// nothing left to say to it, and a panicked frame must not be re-entered.
     failed: bool = false,
 
-    const vtable: std.Io.Writer.VTable = .{ .drain = drain };
+    const vtable: std.Io.Writer.VTable = .{ .drain = drain, .flush = flush };
 
     fn init(
         buffer: []u8,
@@ -43,24 +43,54 @@ const ZigoWriterAdapter = struct {
         }
     }
 
-    /// `buffer[0..end]` is consumed first, then every slice of `data` in
-    /// order, then the last one `splat` more times. The returned count covers
-    /// `data` only: the buffered bytes were logically written already.
+    /// Refills rather than forwards. A slice that still fits behind what is
+    /// buffered is copied there instead of crossing on its own, which is what
+    /// makes the crossings proportional to the payload rather than to the
+    /// number of writes: a caller writing forty bytes at a time costs one
+    /// crossing per buffer, not one per write. Only a slice at least as large
+    /// as the whole buffer is handed over directly, because buffering it
+    /// would cost a copy and save nothing.
+    fn push(self: *ZigoWriterAdapter, w: *std.Io.Writer, bytes: []const u8) std.Io.Writer.Error!void {
+        if (bytes.len == 0) return;
+        if (bytes.len >= w.buffer.len) {
+            try self.send(w.buffered());
+            w.end = 0;
+            return self.send(bytes);
+        }
+        if (w.end + bytes.len > w.buffer.len) {
+            try self.send(w.buffered());
+            w.end = 0;
+        }
+        @memcpy(w.buffer[w.end..][0..bytes.len], bytes);
+        w.end += bytes.len;
+    }
+
+    /// `buffer[0..end]` is written before `data`, then every slice of `data`
+    /// in order, then the last one `splat` more times. The returned count
+    /// covers `data` only: the buffered bytes were logically written already.
+    /// What "written" means here is "accepted", buffered or crossed, which is
+    /// what lets the buffer do its job.
     fn drain(w: *std.Io.Writer, data: []const []const u8, splat: usize) std.Io.Writer.Error!usize {
         const self: *ZigoWriterAdapter = @fieldParentPtr("interface", w);
-        try self.send(w.buffered());
-        w.end = 0;
         var written: usize = 0;
         for (data[0 .. data.len - 1]) |bytes| {
-            try self.send(bytes);
+            try self.push(w, bytes);
             written += bytes.len;
         }
         const last = data[data.len - 1];
         for (0..splat) |_| {
-            try self.send(last);
+            try self.push(w, last);
             written += last.len;
         }
         return written;
+    }
+
+    /// Its own rather than `defaultFlush`, which drains until `end` is zero:
+    /// a drain that buffers would never make that true.
+    fn flush(w: *std.Io.Writer) std.Io.Writer.Error!void {
+        const self: *ZigoWriterAdapter = @fieldParentPtr("interface", w);
+        try self.send(w.buffered());
+        w.end = 0;
     }
 };
 

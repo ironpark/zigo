@@ -75,6 +75,13 @@
 - native 메모리를 그대로 들여다보는 뷰 반환은 제공하지 않는다. 반환된 slice의 수명이
   native 객체의 수명에 묶이면 Go 쪽에서 그 규칙을 강제할 방법이 없기 때문이며, 복사를
   피하고 싶다면 `.direction = .out` 파라미터로 결과를 받는다.
+- `*std.Io.Writer`/`*std.Io.Reader`는 파라미터 자리에서만, call-scoped로만 쓸 수 있다. shim이
+  만드는 어댑터가 호출 스택에 살기 때문이다. 반환 타입, extern struct 필드, 콜백 시그니처,
+  슬라이스 원소, optional, `.retention = .retained`는 `ZIGO023`으로 거부된다. Zig가 스트림을
+  돌려주는 API, handle에 보관되는 스트림, `std.Io.File`/fd 전달, `sendFile` 최적화,
+  Go `io.ReaderAt`/`io.Seeker`는 지원하지 않는다.
+- 스트림 콜백은 native 호출 안에서 같은 스레드로 동기 호출된다. 대상 Zig 함수가 어댑터를
+  다른 스레드로 넘기거나 호출이 끝난 뒤까지 들고 있으면 동작은 정의되지 않는다.
 - `packed struct`의 정수 백킹 노출은 지원하지 않는다. `ZIGO003`으로 거부된다.
 - optional은 선언된 opaque type의 pointer(`?*T`, `?*const T`)에만 쓸 수 있다. handle
   인자는 이미 pointer라서 nil이 NULL로 그대로 건너가지만, `?i32`나 `?[]u8` 같은 optional은
@@ -143,6 +150,9 @@ error[ZIGO018]: unsupported integer width `u21` in parameter `cp`
 - `ZIGO022` — `std.mem.Allocator`나 `std.Io` 파라미터를 만났는데 바인딩이 `.allocator`나
   `.io`를 정하지 않았다. 이 두 타입만 주입 대상이며, 그 밖의 Zig 전용 타입은 여전히
   `ZIGO019`다.
+- `ZIGO023` — `*std.Io.Writer`/`*std.Io.Reader`를 쓸 수 없는 자리에 썼거나, 스트림에
+  `.retention = .retained`를 달았거나, `buffer`가 4096..16777216 밖이거나 스트림이 아닌
+  파라미터에 붙었다. 메시지가 넷을 구분한다.
 - `ZIGO021` — 이름이 비어 있거나 Go 식별자가 아니다. package, prefix, 함수 이름의 공백과,
   reflection이 유도했든 `.name`으로 준 것이든 생성될 Go 이름이 모두 여기서 검사된다.
   등록된 타입 이름은 Go에 그대로 나가므로 쓰인 철자 그대로, 필드·enum tag·함수 이름은
