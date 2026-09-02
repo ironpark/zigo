@@ -4,6 +4,19 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Fixed
+
+- borrowed view를 receiver로 삼는 `.child_of_receiver = true` constructor가 view와 실제
+  owning handle의 카운터를 섞던 문제를 고쳤습니다. 이제 임의 깊이의 borrowed view를
+  통과해도 자식 예약과 해제가 같은 owning handle에 적용됩니다.
+- 등록 타입의 C typedef, 함수·projection·snapshot 심볼, enum 상수가 같은 C 식별자로
+  정규화되면 깨진 헤더를 생성하는 대신 `ZIGO036`으로 두 선언을 함께 진단합니다.
+- `.returns = .caller`와 `.release`를 `?[]T`, `!?[]T`, `?[:0]const u8`,
+  `!?[:0]const u8` 반환에도 적용합니다. 부재·오류 경로에서는 release하지 않고, 존재하는
+  값만 Go 메모리로 복사한 뒤 release합니다.
+
 ## [0.6.0] - 2026-09-03
 
 ### Added

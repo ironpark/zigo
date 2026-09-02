@@ -18,3 +18,16 @@
 - 자식 카운트는 항상 소유 handle 하나에서만 증감하고, 뷰 계층이 몇 단이든 같은 대상에 도달한다.
 - C 식별자 공간은 헤더 하나 안에서 유일해야 하며 진단이 생성 전에 이를 보장한다.
 - optional slice의 소유권 의미는 slice와 같고, 부재는 release를 부르지 않는다.
+
+## Implementation notes and deviations
+
+- Phase 0 재현에서 borrowed view의 기존 `zigoAcquireChild`가 view-local `active`/`children`을
+  증가시킨 뒤 `zigoRelease`는 owner로 위임해, 증가하지 않은 owning handle의 active를
+  감소시키는 비대칭도 확인했다. 계획의 허용안 중 최종 owning handle을 reservation owner로
+  반환·저장하는 방식을 택했고, cleanup 경로가 parent 예약을 보존하지 않던 누락도 함께 고쳤다.
+- Phase 1은 별도 ABI IR을 만드는 대신 lower와 같은 naming 함수와 emission 조건을 validator에서
+  사용해 cgo/purego의 실제 header 식별자 집합을 각각 계산했다. 기존의 더 구체적인 semantic·Go
+  진단이 우선하도록 C 식별자 검사는 validator 후반에 둔다.
+- Phase 2는 validation unwrap만으로 충분하지 않았다. caller-owned optional c_string도
+  pointer+length 반환을 사용하도록 lower를 조정하고, 공개 error+optional tuple이 presence를
+  보존하도록 emit 분기 순서를 함께 수정했다.

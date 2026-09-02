@@ -620,7 +620,7 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     invalid_project.setCwd(b.path("tests/fixtures/invalid-project"));
     invalid_project.has_side_effects = true;
     invalid_project.expectExitCode(1);
-    invalid_project.expectStdErrMatch("error[ZIGO036]: C identifier `fixture_ping` collides between function `ping` and function `ping_`");
+    invalid_project.expectStdErrMatch("error[ZIGO036]: C identifier `zg_lookup_id` collides between function `lookupID` and function `lookup_id`");
     test_step.dependOn(&invalid_project.step);
 
     // Reflection observes the build host, so a `c_long` field is 8 bytes here

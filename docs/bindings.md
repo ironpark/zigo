@@ -69,6 +69,13 @@ receiver가 없는 함수(namespace 함수와 최상위 함수)는 모두 같은
 생성기는 이런 충돌을 생성 시점에 `ZIGO024`로 거부하며, 메시지에 충돌하는 두 Zig 경로를 모두
 적습니다. 함수는 `.name`으로, 타입은 `.types`의 `.name`으로 한쪽 이름을 바꿔 충돌을 없앱니다.
 
+C 헤더의 이름 공간도 별도로 검사합니다. 함수 심볼뿐 아니라 handle·enum·`extern struct`·
+snapshot typedef, enum 상수, tagged-union projection, last-error 함수까지 실제 lowering된
+식별자를 한 공간에 모읍니다. 예를 들어 타입 `SearchSelect`와 `Search.select`가 둘 다
+`zg_search_select`가 되면 `ZIGO036`이 두 선언을 함께 지목합니다. 한 선언의 `.name`을
+바꾸거나 바인딩 `.prefix`를 달리해 해결합니다. cgo와 purego에서 실제로 내보내는 이름을 각각
+검사하므로 callback dispatcher suffix도 포함됩니다.
+
 ## 공개 Go 하위 패키지
 
 `.packages`는 기본 공개 패키지 아래에 타입·namespace·함수를 나눕니다. 선택되지 않은 선언은
@@ -659,6 +666,12 @@ handle은 native 자원을 소유하지 않으므로 `Close()`가 destructor를 
 모든 view 호출은 `ErrInvalidHandle`을 감싼 `*HandleError`로 실패합니다. view를 통과한 native
 panic은 부모도 poison합니다.
 
+borrowed view가 다시 borrowed view를 반환해도 owner 사슬은 최종 owning handle까지 이어집니다.
+그 view를 receiver로 `.child_of_receiver = true` 자식을 만들면 자식 예약과 `Close`의 해제가
+모두 그 최종 owner에 적용됩니다. 따라서 열린 자식 하나는 최종 owner의 `Close`에서 정확히
+`Children == 1`로 보이고, 자식을 닫은 뒤에는 owner도 닫힙니다. view를 보관하거나 닫는 것만으로는
+자식 수가 변하지 않습니다.
+
 `.returns`의 기본 enum 값은 역사적으로 `.borrowed`이므로, 명시 여부는 별도 계약입니다.
 `semantic.json`에는 명시한 함수에만 `borrowed_return: true`가 나타납니다. receiver 없는
 함수, 등록 opaque pointer가 아닌 반환에 붙인 opt-in은 각각 `ZIGO033`, `ZIGO034`이고,
@@ -769,6 +782,12 @@ Go slice를 다시 넘기는 실수를 막기 위해서입니다.
 않은 채 `nil`과 오류를 돌려주므로, 아무것도 넘겨받지 않은 실패 경로에서 존재하지 않는
 버퍼를 해제하는 일이 없습니다.
 
+optional slice도 같은 소유권 규칙을 따릅니다. `?[]T`는 `([]T, bool)`, `!?[]T`는
+`([]T, bool, error)`가 되며, sentinel c_string variant는 각각 `(string, bool)`과
+`(string, bool, error)`입니다. 부재는 `nil, false`(문자열은 `"", false`), error union의
+실패는 zero value, `false`, error로 돌아옵니다. 생성 코드는 성공하면서 존재하는 값만 복사하고
+release하므로 부재와 오류 경로에서는 release 함수가 호출되지 않습니다.
+
 ```zig
 pub fn extractSamplesChecked(self: *EventQueue) ProcessError![]f32 { /* 실패 또는 새 버퍼 */ }
 
@@ -825,8 +844,9 @@ _, ok = ShiftPoint(nil, 2)            // ok == false
 슬라이스·문자열 optional은 presence 플래그를 따로 두지 않습니다. 슬라이스가 이미 포인터를
 갖고 있으므로 그 포인터가 NULL인 것이 부재이고, 길이 0인 **존재하는** 슬라이스와 구별됩니다.
 Go에서 `[]T`나 `string`이 아니라 `*[]T`·`*string`인 이유도 같습니다 — nil 슬라이스와 빈
-슬라이스는 Go에서 이 구별을 표현하지 못합니다. 반환 `?[]T`는 기존 슬라이스 반환의 소유권
-규칙(`.release` 포함)을 그대로 따르고 presence만 더합니다.
+슬라이스는 Go에서 이 구별을 표현하지 못합니다. 반환 `?[]T`와 `!?[]T`는 기존 슬라이스 반환의
+소유권 규칙(`.release` 포함)을 그대로 따르고 presence만 더합니다. caller-owned `!?[]T`의
+공개 결과는 `([]T, bool, error)`입니다.
 
 부재와 "값이 0인 present"는 서로 다릅니다. 값 자체가 아니라 presence 플래그가 그것을
 가리므로, `DoubleWidth(&zero)`는 `0, true`를, `DoubleWidth(nil)`은 `_, false`를

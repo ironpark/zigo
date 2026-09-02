@@ -173,6 +173,11 @@ API를 작성할 수 있습니다. stale 정리는 생성 marker가 있는 파�
 않습니다 — 생성된 Go raw 계층이 존재하지만 비어 있는 slice에 대해 자기 자리 표시자 주소를
 넘기는 이유입니다.
 
+caller-owned optional slice는 이 포인터 표현에 기존 copy/release 경로를 결합합니다.
+`?[]T`와 `!?[]T` 모두 포인터가 non-NULL인 성공 경로에서만 Go 메모리로 복사하고 release
+심볼을 호출합니다. 부재나 error에서는 out buffer를 읽거나 release하지 않습니다. 공개 결과는
+`([]T, bool)`/`([]T, bool, error)`이고, c_string variant는 `string`을 반환합니다.
+
 purego도 같은 시그니처를 씁니다. scalar child는 `*T`로, `extern struct` child는
 `unsafe.Pointer`로 바인딩 테이블에 선언됩니다.
 
@@ -359,6 +364,11 @@ native 호출과 경합하지 않습니다. view를 통한 panic은 owner에 poi
 단일 package에서는 package-local helper로, `.packages`가 있으면 `internal/lifecycle` interface로
 같게 생성됩니다.
 
+borrowed view를 receiver로 자식을 예약할 때는 중간 view의 로컬 카운터에 예약을 남기지 않습니다.
+`zigoAcquireChild`가 owner 사슬을 재귀적으로 따라가 최종 owning handle을 획득하고, 그 정확한
+reservation owner를 생성된 자식에 저장합니다. 정상 `Close`와 cleanup은 저장된 같은 대상에
+drop하므로 여러 단계 view에서도 카운터가 음수가 되거나 다른 handle에 남지 않습니다.
+
 `.child_of_receiver = true`인 constructor는 receiver 획득과 같은 잠금 안에서 자식 하나를
 예약합니다. 성공하면 생성된 자식의 `parent` 참조와 부모의 `children` 카운트로 예약을
 넘기고, 실패하면 예약을 되돌립니다. 그래서 constructor와 부모 `Close`가 동시에 실행돼도
@@ -388,6 +398,11 @@ handle은 호출 후 즉시 해제하고, retained callback handle은 소유 객
   `uint32`로 나옵니다. 승격된 파라미터가 있는 함수는 공개 시그니처에 `error`가 붙고,
   범위 검사는 cgo 호출 전 Go에서 이뤄져 `*RangeError`를 돌려줍니다.
 - 모든 생성 source는 기록 전 `gofmt`로 포맷됩니다.
+
+C 헤더는 typedef, 함수, enum macro가 충돌할 수 있는 식별자 공간을 lowering 결과 그대로
+검사합니다. handle·enum·value struct·snapshot typedef, 함수·projection·snapshot·last-error
+심볼, enum 상수를 cgo와 purego별로 모으고 중복이면 `ZIGO036`을 냅니다. 진단은 두 선언과
+충돌한 최종 C 이름을 보여 주며 `.name` 또는 `.prefix` 변경을 안내합니다.
 
 `go-check`도 같은 `gofmt` 결과와 비교합니다. 사용자 소유 Go 파일은 포맷하거나 검사하지
 않습니다.

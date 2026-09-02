@@ -134,7 +134,9 @@
   부재를 나른다: `ptr == NULL`이 부재이고 길이 0인 존재하는 slice와 구별된다. Go에서는
   `*[]T`/`*string`이 되고 반환은 `([]T, bool)`/`(string, bool)`이다. `.out` slice를
   optional로 만들거나(버퍼는 호출자가 잡는다), slice의 slice(`?[][]const u8`),
-  `extern struct` slice(`?[]Point`)를 optional로 만드는 것은 거부된다.
+  `extern struct` slice(`?[]Point`)를 optional로 만드는 것은 거부된다. caller-owned
+  `?[]T`/`!?[]T`는 `.release`가 필요하고, 성공하면서 존재하는 값에만 복사와 release를
+  수행한다. Go 결과는 `([]T, bool)`/`([]T, bool, error)`이며 c_string은 `string`을 쓴다.
 - tagged union은 `.repr = .tagged_union`으로 등록한다. pointer handle 표현은 생성된
   `Tag`/`As*`가 active tag를 검사하며 union 레이아웃을 C로 전달하지 않는다. 모든 payload가
   void, bool, 8/16/32/64비트 정수, `isize`/`usize`, 부동소수 scalar, 또는 등록 enum인 union은
@@ -163,9 +165,10 @@
 - slice 반환에 `.returns = .caller`를 쓰려면 `.release`로 같은 원소 타입의 slice 하나를
   받는 해제 함수를 지정해야 한다. 생성된 코드가 복사 후 즉시 해제하므로 Go에는 해제할
   것이 남지 않고, release 함수 자체는 공개 API에 나오지 않는다. 조건을 어기면 `ZIGO016`이다.
-  `![]T`에도 쓸 수 있으며, 이때 복사와 release는 성공 경로에서만 일어난다.
+  `![]T`, `?[]T`, `!?[]T`에도 쓸 수 있으며, 복사와 release는 성공하면서 값이 존재하는
+  경로에서만 일어난다.
 - slice 반환의 원소는 스칼라, 등록된 enum, `extern struct`만 가능하다. 포인터를 포함하는
-  원소는 `ZIGO005`로 거부한다. `![]T`도 같은 규칙을 따르며, `![]string`과 `!?[]T`는
+  원소는 `ZIGO005`로 거부한다. `![]T`와 `!?[]T`도 같은 규칙을 따르며, `![]string`은
   지원하지 않는다.
 - `.returns = .borrowed`는 receiver가 있는 메서드의 등록 opaque pointer 반환에만 쓸 수 있다.
   자유 함수에는 수명을 묶을 owner가 없고, slice·scalar·struct 반환은 borrowed handle이
@@ -262,6 +265,9 @@ error[ZIGO018]: unsupported integer width `u21` in parameter `cp`
 - `ZIGO035` — constructor가 아닌 메서드가 opaque pointer를 반환하면서 `.returns`를
   생략했다. receiver-owned view면 `.borrowed`, ownership transfer면 constructor/destructor와
   `.caller`를 명시한다.
+- `ZIGO036` — lowering 뒤 C 식별자가 충돌한다. 함수 심볼, handle·enum·struct·snapshot
+  typedef, enum 상수, projection, runtime helper를 함께 검사하며 진단이 두 선언을 지목한다.
+  `.name`이나 바인딩 `.prefix`를 바꿔 구분한다.
 
 `ZIGO027`과 `ZIGO028`은 reflection이 문서를 만들기 전에 걸리므로 `semantic.json` 자리가
 아니라 선언 경로를 가리키며, 생성기는 이 진단을 출력하고 종료한다.
@@ -370,6 +376,8 @@ namespace가 들어가지 않으므로, 서로 다른 namespace의 같은 함수
   **닫지 않은 자식이 GC되더라도 부모의 자식 카운트를 내리는 것으로 처리하지 않는다**.
   cleanup 안전망의 실행 시점은 보장되지 않고 수명 순서를 대신할 수 없으므로, 이런 자식은
   반드시 `Close`하고 나서 부모를 닫아야 한다.
+- borrowed view를 receiver로 자식을 만들면 view 깊이와 관계없이 최종 owning handle에 자식
+  하나를 예약하고 같은 handle에서 해제한다. view 자체를 보관하는 것은 자식 수에 포함되지 않는다.
 - `.returns = .borrowed` view는 child handle과 달리 native 자원을 소유하지 않으며 매번
   `Close`할 의무가 없다. 부모가 닫히면 자동으로 무효화된다. 다만 view의 native 호출이 진행
   중이면 부모 `Close`는 `ErrHandleInUse`로 거부되며, 호출이 끝난 뒤 다시 닫아야 한다.

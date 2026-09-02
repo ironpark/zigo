@@ -374,6 +374,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             };
         }
     }
+    if (try cIdentifierIssue(allocator, document)) |issue| return issue;
     if (try findGeneratedAccessorCollision(allocator, document)) |declaration| return .{
         .severity = .@"error",
         .code = "ZIGO007",
@@ -490,7 +491,6 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             };
         }
     }
-    if (try cIdentifierIssue(allocator, document)) |issue| return issue;
     // Types the C ABI cannot name are reported last so that the sharper
     // diagnostics above keep naming the declarations they always did.
     for (document.functions) |function| {
@@ -2890,9 +2890,11 @@ test "tagged union generated accessor collisions are rejected" {
         },
         .zig_version = "0.16.0",
     };
-    const issue = (try findIssue(std.testing.allocator, document)).?;
-    try std.testing.expectEqualStrings("ZIGO007", issue.code);
-    try std.testing.expectEqualStrings("projectTag", issue.site.declaration);
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
+    const issue = (try findIssue(scratch.allocator(), document)).?;
+    try std.testing.expectEqualStrings("ZIGO036", issue.code);
+    try std.testing.expectEqualStrings("tag projection `Value`", issue.site.declaration);
 }
 
 test "normalized tagged union type and variant collisions are rejected" {
@@ -2926,9 +2928,11 @@ test "normalized tagged union type and variant collisions are rejected" {
             .zig_version = "0.16.0",
         },
     };
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
     for (cases) |document| {
-        const issue = (try findIssue(std.testing.allocator, document)).?;
-        try std.testing.expectEqualStrings("ZIGO007", issue.code);
+        const issue = (try findIssue(scratch.allocator(), document)).?;
+        try std.testing.expectEqualStrings("ZIGO036", issue.code);
     }
 }
 
@@ -3160,7 +3164,7 @@ test "two enum tags that pascal-case to the same identifier collide" {
     var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer scratch.deinit();
     const issue = (try findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
-    try std.testing.expectEqualStrings("ZIGO024", issue.code);
+    try std.testing.expectEqualStrings("ZIGO036", issue.code);
 }
 
 test "a constructor pair does not collide with itself across two different types" {
