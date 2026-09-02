@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-02T08:38:23Z"
 depends_on:
 - "70-io-stream-params#1"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: 골든 Go가 `go vet`을 통과하고 시그니처·error 경로 단정이 통과한다.
 > NEXT: none

@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-02T08:38:21Z"
 depends_on:
 - "70-io-stream-params#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 골든 shim이 컴파일되고 `drain`/`stream` 계약(버퍼 선소비, splat, EndOfStream)을 shim 단위 테스트(Zig test)로 검증한다.
 > NEXT: none

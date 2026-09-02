@@ -10,8 +10,8 @@ registered_at: "2026-09-02T07:33:36Z"
 # Phases
 
 - [x] [Phase 00: 스트림 파라미터 인식과 IR](phases/00-stream-ir.md)
-- [ ] [Phase 01: shim 어댑터와 lowering](phases/01-shim-adapters.md)
-- [ ] [Phase 02: Go 트램폴린과 공개 래퍼](phases/02-go-side.md)
+- [x] [Phase 01: shim 어댑터와 lowering](phases/01-shim-adapters.md)
+- [x] [Phase 02: Go 트램폴린과 공개 래퍼](phases/02-go-side.md)
 - [ ] [Phase 03: 예제, 테스트, 문서](phases/03-example-and-docs.md)
 
 # Shared Verification

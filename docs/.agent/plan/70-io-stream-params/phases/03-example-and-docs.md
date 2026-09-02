@@ -2,7 +2,7 @@
 depends_on:
 - "70-io-stream-params#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 새 예제가 cgo·purego 양쪽에서 `zig build test go-check abi-check` + `go vet` + `go test` 통과. 문서 갱신.
 > NEXT: none
