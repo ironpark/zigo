@@ -1,0 +1,6 @@
+{
+  "backend": "purego",
+  "package": "job",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/job"
+}

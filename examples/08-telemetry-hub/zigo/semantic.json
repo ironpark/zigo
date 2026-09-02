@@ -19,7 +19,7 @@
           "retention": "borrowed",
           "semantic": "utf8_string",
           "source": {
-            "line": 58,
+            "line": 59,
             "column": 9
           },
           "type": {
@@ -39,7 +39,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 59,
+            "line": 60,
             "column": 9
           },
           "type": {
@@ -55,7 +55,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 60,
+            "line": 61,
             "column": 9
           },
           "type": {
@@ -69,7 +69,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 61,
+            "line": 62,
             "column": 9
           },
           "type": {
@@ -83,7 +83,7 @@
           "name_source": "sidecar",
           "retention": "retained",
           "source": {
-            "line": 62,
+            "line": 63,
             "column": 9
           },
           "type": {
@@ -122,7 +122,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 63,
+            "line": 64,
             "column": 9
           },
           "type": {
@@ -149,7 +149,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 57,
+        "line": 58,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_create"
@@ -165,7 +165,7 @@
           "retention": "borrowed",
           "semantic": "utf8_string",
           "source": {
-            "line": 85,
+            "line": 86,
             "column": 40
           },
           "type": {
@@ -193,7 +193,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 85,
+        "line": 86,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_rename"
@@ -216,10 +216,66 @@
       "return_semantic": "utf8_string",
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 93,
+        "line": 94,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_name"
+    },
+    {
+      "cancel": "cancel",
+      "doc": "A deliberately long fold, polling a cancellation flag between rounds.\nThe flag is Go's: a goroutine watching `ctx.Done()` raises it while\nthis is running, and the only thing that has to be true for that to be\nsafe is that this reads it atomically and never writes it.",
+      "name": "reduce",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "rounds",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 102,
+            "column": 40
+          },
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "direction": "in",
+          "cancel": true,
+          "name": "cancel",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 102,
+            "column": 53
+          },
+          "type": {
+            "kind": "cancel_flag"
+          }
+        }
+      ],
+      "receiver": "TelemetryHub",
+      "return": {
+        "error_set": [
+          "Canceled",
+          "Empty"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "kind": "float"
+        }
+      },
+      "source": {
+        "path": "./examples/08-telemetry-hub/src/root.zig",
+        "line": 102,
+        "column": 12
+      },
+      "symbol": "zg_telemetry_hub_reduce"
     },
     {
       "name": "capacity",
@@ -234,7 +290,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 97,
+        "line": 113,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_capacity"
@@ -252,7 +308,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 101,
+        "line": 117,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_len"
@@ -267,7 +323,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 105,
+        "line": 121,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_is_empty"
@@ -282,7 +338,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 109,
+        "line": 125,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_is_full"
@@ -298,7 +354,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 113,
+        "line": 129,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_mode"
@@ -313,7 +369,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 117,
+            "line": 133,
             "column": 41
           },
           "type": {
@@ -329,7 +385,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 117,
+        "line": 133,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_set_mode"
@@ -345,7 +401,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 123,
+        "line": 139,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_overflow_policy"
@@ -360,7 +416,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 127,
+            "line": 143,
             "column": 51
           },
           "type": {
@@ -376,7 +432,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 127,
+        "line": 143,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_set_overflow_policy"
@@ -391,7 +447,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 133,
+        "line": 149,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_enabled"
@@ -406,7 +462,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 137,
+            "line": 153,
             "column": 44
           },
           "type": {
@@ -420,7 +476,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 137,
+        "line": 153,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_set_enabled"
@@ -436,7 +492,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 143,
+        "line": 159,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_threshold"
@@ -451,7 +507,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 147,
+            "line": 163,
             "column": 46
           },
           "type": {
@@ -473,7 +529,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 147,
+        "line": 163,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_set_threshold"
@@ -489,7 +545,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 152,
+        "line": 168,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_scale_factor"
@@ -504,7 +560,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 156,
+            "line": 172,
             "column": 48
           },
           "type": {
@@ -526,7 +582,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 156,
+        "line": 172,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_set_scale_factor"
@@ -542,7 +598,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 161,
+        "line": 177,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_offset"
@@ -557,7 +613,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 165,
+            "line": 181,
             "column": 43
           },
           "type": {
@@ -579,7 +635,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 165,
+        "line": 181,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_set_offset"
@@ -594,7 +650,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 170,
+            "line": 186,
             "column": 38
           },
           "type": {
@@ -610,7 +666,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 170,
+            "line": 186,
             "column": 47
           },
           "type": {
@@ -633,7 +689,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 170,
+        "line": 186,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_push"
@@ -648,7 +704,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 174,
+            "line": 190,
             "column": 50
           },
           "type": {
@@ -664,7 +720,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 174,
+            "line": 190,
             "column": 59
           },
           "type": {
@@ -678,7 +734,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 174,
+            "line": 190,
             "column": 71
           },
           "type": {
@@ -701,7 +757,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 174,
+        "line": 190,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_push_with_severity"
@@ -716,7 +772,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 188,
+            "line": 204,
             "column": 43
           },
           "type": {
@@ -743,7 +799,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 188,
+        "line": 204,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_push_batch"
@@ -758,7 +814,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 209,
+            "line": 225,
             "column": 41
           },
           "type": {
@@ -786,7 +842,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 209,
+        "line": 225,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_process"
@@ -812,7 +868,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 231,
+        "line": 247,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_process_all"
@@ -830,7 +886,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 236,
+        "line": 252,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_clear"
@@ -845,7 +901,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 242,
+        "line": 258,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_reset_statistics"
@@ -863,7 +919,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 250,
+        "line": 266,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_accepted"
@@ -881,7 +937,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 254,
+        "line": 270,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_rejected"
@@ -899,7 +955,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 258,
+        "line": 274,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_dropped"
@@ -917,7 +973,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 262,
+        "line": 278,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_processed"
@@ -935,7 +991,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 266,
+        "line": 282,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_filtered"
@@ -951,7 +1007,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 270,
+        "line": 286,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_sum"
@@ -963,8 +1019,8 @@
       "receiver": "TelemetryHub",
       "return": {
         "error_set": [
-          "InvalidRange",
-          "Empty"
+          "Empty",
+          "InvalidRange"
         ],
         "kind": "error_union",
         "payload": {
@@ -974,7 +1030,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 276,
+        "line": 292,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_minimum"
@@ -986,8 +1042,8 @@
       "receiver": "TelemetryHub",
       "return": {
         "error_set": [
-          "InvalidRange",
-          "Empty"
+          "Empty",
+          "InvalidRange"
         ],
         "kind": "error_union",
         "payload": {
@@ -997,7 +1053,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 283,
+        "line": 299,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_maximum"
@@ -1009,8 +1065,8 @@
       "receiver": "TelemetryHub",
       "return": {
         "error_set": [
-          "InvalidRange",
-          "Empty"
+          "Empty",
+          "InvalidRange"
         ],
         "kind": "error_union",
         "payload": {
@@ -1020,7 +1076,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 290,
+        "line": 306,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_average"
@@ -1032,8 +1088,8 @@
       "receiver": "TelemetryHub",
       "return": {
         "error_set": [
-          "InvalidRange",
-          "Empty"
+          "Empty",
+          "InvalidRange"
         ],
         "kind": "error_union",
         "payload": {
@@ -1045,7 +1101,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 295,
+        "line": 311,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_first_id"
@@ -1057,8 +1113,8 @@
       "receiver": "TelemetryHub",
       "return": {
         "error_set": [
-          "InvalidRange",
-          "Empty"
+          "Empty",
+          "InvalidRange"
         ],
         "kind": "error_union",
         "payload": {
@@ -1068,7 +1124,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 300,
+        "line": 316,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_first_value"
@@ -1080,8 +1136,8 @@
       "receiver": "TelemetryHub",
       "return": {
         "error_set": [
-          "InvalidRange",
-          "Empty"
+          "Empty",
+          "InvalidRange"
         ],
         "kind": "error_union",
         "payload": {
@@ -1093,7 +1149,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 305,
+        "line": 321,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_last_id"
@@ -1105,8 +1161,8 @@
       "receiver": "TelemetryHub",
       "return": {
         "error_set": [
-          "InvalidRange",
-          "Empty"
+          "Empty",
+          "InvalidRange"
         ],
         "kind": "error_union",
         "payload": {
@@ -1116,7 +1172,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 310,
+        "line": 326,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_last_value"
@@ -1128,8 +1184,8 @@
       "receiver": "TelemetryHub",
       "return": {
         "error_set": [
-          "InvalidRange",
-          "Empty"
+          "Empty",
+          "InvalidRange"
         ],
         "kind": "error_union",
         "payload": {
@@ -1139,7 +1195,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 315,
+        "line": 331,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_last_severity"
@@ -1154,7 +1210,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 320,
+            "line": 336,
             "column": 44
           },
           "type": {
@@ -1179,7 +1235,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 320,
+        "line": 336,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_count_above"
@@ -1194,7 +1250,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 327,
+            "line": 343,
             "column": 44
           },
           "type": {
@@ -1219,7 +1275,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 327,
+        "line": 343,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_count_below"
@@ -1234,7 +1290,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 334,
+            "line": 350,
             "column": 47
           },
           "type": {
@@ -1256,7 +1312,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 334,
+        "line": 350,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_contains_above"
@@ -1271,7 +1327,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 338,
+            "line": 354,
             "column": 47
           },
           "type": {
@@ -1293,7 +1349,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 338,
+        "line": 354,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_contains_below"
@@ -1308,7 +1364,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 342,
+            "line": 358,
             "column": 45
           },
           "type": {
@@ -1330,7 +1386,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 342,
+        "line": 358,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_scale_values"
@@ -1345,7 +1401,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 347,
+            "line": 363,
             "column": 46
           },
           "type": {
@@ -1367,7 +1423,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 347,
+        "line": 363,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_offset_values"
@@ -1382,7 +1438,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 352,
+            "line": 368,
             "column": 45
           },
           "type": {
@@ -1396,7 +1452,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 352,
+            "line": 368,
             "column": 57
           },
           "type": {
@@ -1418,7 +1474,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 352,
+        "line": 368,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_clamp_values"
@@ -1433,7 +1489,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 358,
+        "line": 374,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_absolute_values"
@@ -1448,7 +1504,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 362,
+        "line": 378,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_negate_values"
@@ -1463,7 +1519,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 366,
+        "line": 382,
         "column": 12
       },
       "symbol": "zg_telemetry_hub_deinit"
@@ -1480,7 +1536,7 @@
       },
       "source": {
         "path": "./examples/08-telemetry-hub/src/root.zig",
-        "line": 397,
+        "line": 413,
         "column": 8
       },
       "symbol": "zg_live_hubs"

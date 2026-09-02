@@ -23,6 +23,14 @@
 
 ### Added
 
+- 함수 메타 `.cancel = .{ .param = "..." }`로 긴 native 호출을 Go `context.Context`로 끊을 수
+  있습니다. 지정한 파라미터(타입은 `*const std.atomic.Value(u32)`)는 Go 시그니처에서 사라지고
+  `ctx context.Context`가 첫 인자가 됩니다. 호출마다 Go가 플래그 워드를 하나 만들고
+  `ctx.Done()`을 감시하는 goroutine이 그것을 세우며(호출이 끝나면 정리), Zig가
+  `error.Canceled`를 돌려주고 ctx가 실제로 취소됐으면 `ctx.Err()`가 반환됩니다. 폴링은 원자적
+  load 하나라 경계를 넘지 않습니다. 취소는 협조적이라 대상 함수가 플래그를 읽어야 합니다.
+  `.cancel`이 없는 함수의 생성물은 바이트 그대로입니다. (계획 72)
+
 - Zig 메서드가 스트림을 **내주는** 방향을 지원합니다. `fn writer(self) *std.Io.Writer`는
   handle에 `Write([]byte) (int, error)`와 `Flush() error`를, `fn reader(self) *std.Io.Reader`는
   `Read([]byte) (int, error)`(끝은 `io.EOF`)를 생성하므로 `io.Copy`가 양방향으로 그대로

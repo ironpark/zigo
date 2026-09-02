@@ -1,11 +1,13 @@
 package telemetry_hub
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"math"
 	"sync"
 	"testing"
+	"time"
 )
 
 // This binding set uses an automatic loading policy with an internal loader, so
@@ -175,4 +177,86 @@ func expectCallbackPanic(t *testing.T, operation string, value any, call func())
 		t.Fatal("Stack is empty")
 	}
 	return panicErr
+}
+
+// newReduceHub is a hub with enough samples that Reduce over many rounds
+// spends real time inside native code, which is what makes cancelling it
+// mid-flight observable rather than a race the test always loses.
+func newReduceHub(t *testing.T) *TelemetryHub {
+	t.Helper()
+	hub, err := NewTelemetryHub("cancel", 64, ModeRaw, OverflowPolicyDropOldest, func(uint64, float64) int32 { return 0 })
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { hub.Close() })
+	for i := 0; i < 64; i++ {
+		if err := hub.Push(uint64(i), float64(i)); err != nil {
+			t.Fatalf("Push: %v", err)
+		}
+	}
+	return hub
+}
+
+func TestReduceRunsToCompletionWithoutCancellation(t *testing.T) {
+	hub := newReduceHub(t)
+	total, err := hub.Reduce(context.Background(), 10)
+	if err != nil {
+		t.Fatalf("Reduce: %v", err)
+	}
+	// 64 samples of 0..63 summed ten times.
+	if want := float64(10 * 63 * 64 / 2); total != want {
+		t.Fatalf("Reduce = %v, want %v", total, want)
+	}
+}
+
+// An already-cancelled context is the deterministic half: the flag is raised
+// before the call, native stops at its first polling point, and the error the
+// caller gets is the context's own rather than the library's.
+func TestReduceWithACancelledContextStopsImmediately(t *testing.T) {
+	hub := newReduceHub(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	total, err := hub.Reduce(ctx, 1<<30)
+	if !errors.Is(err, context.Canceled) {
+		t.Fatalf("Reduce with a cancelled context returned %v, %v", total, err)
+	}
+	if total != 0 {
+		t.Fatalf("Reduce returned %v alongside its error", total)
+	}
+	// The handle is untouched by the stop: it was a clean return, not a panic.
+	if _, err := hub.Len(); err != nil {
+		t.Fatalf("Len after a cancelled Reduce: %v", err)
+	}
+}
+
+// The other half: cancelled while native code is already running, which is
+// what the polling contract exists for.
+func TestReduceIsCancelledMidFlight(t *testing.T) {
+	hub := newReduceHub(t)
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		time.Sleep(20 * time.Millisecond)
+		cancel()
+	}()
+
+	started := time.Now()
+	// Enough rounds that finishing would take far longer than the test does.
+	if _, err := hub.Reduce(ctx, 1<<31-1); !errors.Is(err, context.Canceled) {
+		t.Fatalf("Reduce returned %v, want context.Canceled", err)
+	}
+	if elapsed := time.Since(started); elapsed > 10*time.Second {
+		t.Fatalf("Reduce took %v to notice the cancellation", elapsed)
+	}
+}
+
+// A deadline is a cancellation too, and the caller gets the reason their
+// context gives rather than a single flattened "canceled".
+func TestReduceReportsADeadlineAsItsOwnError(t *testing.T) {
+	hub := newReduceHub(t)
+	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
+	defer cancel()
+	if _, err := hub.Reduce(ctx, 1<<31-1); !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("Reduce returned %v, want context.DeadlineExceeded", err)
+	}
 }

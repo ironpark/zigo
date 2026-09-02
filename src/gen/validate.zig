@@ -120,6 +120,17 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             }
             if (try streamParameterIssue(allocator, function, parameter)) |issue| return issue;
             if (try callbackGoErrorIssue(allocator, function, parameter)) |issue| return issue;
+            if (parameter.type == .cancel_flag and !(parameter.cancel orelse false)) return .{
+                .severity = .@"error",
+                .code = "ZIGO026",
+                .message = try std.fmt.allocPrint(
+                    allocator,
+                    "parameter `{s}` is a cancellation flag but no `.cancel` names it",
+                    .{parameter.name},
+                ),
+                .site = functionSiteFor(function, try functionDeclarationAlloc(allocator, function)),
+                .hint = "name it with `.cancel` on the function, or drop the parameter",
+            };
             if (containsTaggedUnionValue(document, parameter.type)) return .{
                 .severity = .@"error",
                 .code = "ZIGO006",
@@ -165,6 +176,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             };
         }
         if (try streamReturnIssue(allocator, function)) |issue| return issue;
+        if (try cancelIssue(allocator, function)) |issue| return issue;
         if (containsTaggedUnionValue(document, function.@"return")) return .{
             .severity = .@"error",
             .code = "ZIGO006",
@@ -452,6 +464,55 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
 /// most likely to have caused them. A stream is a call-scoped adapter the shim
 /// builds on its own stack around a Go callback, which is what every one of
 /// these limits comes back to: nothing may outlive the call, and nothing may
+/// `.cancel = .{ .param = "..." }` is what turns a long native call into one
+/// Go can stop: the wrapper takes a `ctx`, a goroutine watching `ctx.Done()`
+/// raises the flag, and the Zig side polls it. All three parts have to line
+/// up, so all three are checked: the name has to reach a parameter, that
+/// parameter has to be the flag the shim knows how to pass, and the function
+/// has to have a way of saying it stopped.
+fn cancelIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !?diagnostic.Diagnostic {
+    const named = function.cancel orelse return null;
+    const declaration = try functionDeclarationAlloc(allocator, function);
+    var target: ?semantic.Parameter = null;
+    for (function.params) |parameter| {
+        if (parameter.cancel orelse false) target = parameter;
+    }
+    const parameter = target orelse return .{
+        .severity = .@"error",
+        .code = "ZIGO026",
+        .message = try std.fmt.allocPrint(allocator, "`.cancel` names `{s}`, which is not a parameter of this function", .{named}),
+        .site = functionSiteFor(function, declaration),
+        .hint = "name one of the function's own parameters, spelled as it is in `.params`",
+    };
+    if (parameter.type != .cancel_flag) return .{
+        .severity = .@"error",
+        .code = "ZIGO026",
+        .message = try std.fmt.allocPrint(
+            allocator,
+            "cancellation parameter `{s}` is not a `*const std.atomic.Value(u32)`",
+            .{parameter.name},
+        ),
+        .site = functionSiteFor(function, declaration),
+        .hint = "declare it as `*const std.atomic.Value(u32)` and poll it; Go writes the same four bytes with sync/atomic",
+    };
+    if (!functionErrorSetHas(function, "Canceled")) return .{
+        .severity = .@"error",
+        .code = "ZIGO026",
+        .message = "a cancellable function must be able to report `error.Canceled`",
+        .site = functionSiteFor(function, declaration),
+        .hint = "return an error union whose set contains `Canceled`; generated Go maps it back to `ctx.Err()`",
+    };
+    return null;
+}
+
+fn functionErrorSetHas(function: semantic.SemanticFn, name: []const u8) bool {
+    if (function.@"return" != .error_union) return false;
+    for (function.@"return".error_union.error_set) |value| {
+        if (std.mem.eql(u8, value, name)) return true;
+    }
+    return false;
+}
+
 /// A method may hand a stream out: `fn writer(self) *std.Io.Writer` becomes
 /// Go `Write`/`Flush`, and `fn reader(self) *std.Io.Reader` becomes `Read`.
 /// The pointer never crosses -- each generated operation asks the object for
@@ -705,7 +766,7 @@ const Offense = struct {
 /// width C cannot name is still a rejection there.
 fn typeOffense(allocator: std.mem.Allocator, node: semantic.TypeNode, promotable: bool) error{OutOfMemory}!?Offense {
     switch (node) {
-        .void, .bool, .@"enum", .opaque_ptr, .value_struct, .io_stream => return null,
+        .void, .bool, .@"enum", .opaque_ptr, .value_struct, .io_stream, .cancel_flag => return null,
         .int => |value| {
             if (integerSupported(value)) return null;
             if (promotable and promotableInteger(value)) return null;
@@ -3012,4 +3073,85 @@ test "a Go error on a callback is refused unless the Zig result is i32" {
         .zig_version = "0.16.0",
     };
     try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(scratch.allocator(), document));
+}
+
+test "a cancellable function has to name a flag its shim can pass and an error it can report" {
+    const flag: semantic.TypeNode = .{ .cancel_flag = {} };
+    const rounds: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = false } };
+    const payload = struct {
+        var node: semantic.TypeNode = .{ .void = {} };
+    };
+
+    const Case = struct {
+        function: semantic.SemanticFn,
+        message: []const u8,
+    };
+    const rejected = [_]Case{
+        // A name that reaches nothing: the author probably renamed the
+        // parameter and left the meta behind.
+        .{ .function = .{
+            .cancel = "stop",
+            .name = "crunch",
+            .params = &.{.{ .name = "rounds", .type = rounds }},
+            .@"return" = .{ .error_union = .{ .error_set = &.{"Canceled"}, .payload = &payload.node } },
+            .symbol = "zg_crunch",
+        }, .message = "`.cancel` names `stop`, which is not a parameter of this function" },
+        // Named, but not the type the contract is written against.
+        .{ .function = .{
+            .cancel = "cancel",
+            .name = "crunch",
+            .params = &.{.{ .cancel = true, .name = "cancel", .type = rounds }},
+            .@"return" = .{ .error_union = .{ .error_set = &.{"Canceled"}, .payload = &payload.node } },
+            .symbol = "zg_crunch",
+        }, .message = "cancellation parameter `cancel` is not a `*const std.atomic.Value(u32)`" },
+        // Nothing to say with: a cancelled call has no way to report that it
+        // stopped rather than finished.
+        .{ .function = .{
+            .cancel = "cancel",
+            .name = "crunch",
+            .params = &.{.{ .cancel = true, .name = "cancel", .type = flag }},
+            .@"return" = .{ .error_union = .{ .error_set = &.{"Empty"}, .payload = &payload.node } },
+            .symbol = "zg_crunch",
+        }, .message = "a cancellable function must be able to report `error.Canceled`" },
+        // The flag without the meta: the C parameter would be there with no
+        // Go `ctx` to raise it.
+        .{ .function = .{
+            .name = "crunch",
+            .params = &.{.{ .name = "cancel", .type = flag }},
+            .@"return" = .{ .error_union = .{ .error_set = &.{"Canceled"}, .payload = &payload.node } },
+            .symbol = "zg_crunch",
+        }, .message = "parameter `cancel` is a cancellation flag but no `.cancel` names it" },
+    };
+    for (rejected) |case| {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const document: semantic.Semantic = .{
+            .functions = &.{case.function},
+            .package = "job",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        };
+        const issue = (try findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
+        try std.testing.expectEqualStrings("ZIGO026", issue.code);
+        try std.testing.expectEqualStrings(case.message, issue.message);
+    }
+
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
+    const accepted: semantic.Semantic = .{
+        .functions = &.{.{
+            .cancel = "cancel",
+            .name = "crunch",
+            .params = &.{
+                .{ .name = "rounds", .type = rounds },
+                .{ .cancel = true, .name = "cancel", .type = flag },
+            },
+            .@"return" = .{ .error_union = .{ .error_set = &.{ "Canceled", "Empty" }, .payload = &payload.node } },
+            .symbol = "zg_crunch",
+        }},
+        .package = "job",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(scratch.allocator(), accepted));
 }

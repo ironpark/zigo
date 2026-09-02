@@ -179,6 +179,7 @@ fn typeName(node: semantic.TypeNode) []const u8 {
         .int => "int",
         .float => "float",
         .bool => "bool",
+        .cancel_flag => "cancel_flag",
         .void => "void",
     };
 }

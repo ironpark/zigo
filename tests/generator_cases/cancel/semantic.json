@@ -1,0 +1,70 @@
+{
+  "functions": [
+    {
+      "cancel": "cancel",
+      "name": "crunch",
+      "params": [
+        {
+          "direction": "in",
+          "name": "rounds",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "cancel": true,
+          "direction": "in",
+          "name": "cancel",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "kind": "cancel_flag"
+          }
+        }
+      ],
+      "receiver": "Job",
+      "return": {
+        "error_set": [
+          "Canceled",
+          "Empty"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "kind": "float"
+        }
+      },
+      "symbol": "zg_job_crunch"
+    },
+    {
+      "name": "total",
+      "params": [],
+      "receiver": "Job",
+      "return": {
+        "error_set": [
+          "Empty"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "kind": "float"
+        }
+      },
+      "symbol": "zg_job_total"
+    }
+  ],
+  "package": "job",
+  "prefix": "zg",
+  "types": [
+    {
+      "kind": "opaque",
+      "name": "Job"
+    }
+  ],
+  "zig_version": "0.16.0"
+}

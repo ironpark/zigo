@@ -6,6 +6,7 @@ pub const ConfigError = error{ NonFinite, InvalidRange };
 pub const PushError = error{ Disabled, Full, NonFinite };
 pub const ProcessError = error{ Empty, InvalidLimit, ObserverPanicked };
 pub const QueryError = error{ Empty, InvalidRange };
+pub const ReduceError = error{ Empty, Canceled };
 
 pub const Mode = enum(u32) {
     raw,
@@ -92,6 +93,21 @@ pub const TelemetryHub = struct {
 
     pub fn name(self: *TelemetryHub) []const u8 {
         return self.name_bytes;
+    }
+
+    /// A deliberately long fold, polling a cancellation flag between rounds.
+    /// The flag is Go's: a goroutine watching `ctx.Done()` raises it while
+    /// this is running, and the only thing that has to be true for that to be
+    /// safe is that this reads it atomically and never writes it.
+    pub fn reduce(self: *TelemetryHub, rounds: u32, cancel: *const std.atomic.Value(u32)) ReduceError!f64 {
+        if (self.samples.items.len == 0) return error.Empty;
+        var total: f64 = 0;
+        var round: u32 = 0;
+        while (round < rounds) : (round += 1) {
+            if (cancel.load(.monotonic) != 0) return error.Canceled;
+            for (self.samples.items) |sample| total += sample.value;
+        }
+        return total;
     }
 
     pub fn capacity(self: *TelemetryHub) usize {

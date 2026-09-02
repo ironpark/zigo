@@ -4,7 +4,10 @@
 package telemetry_hub
 
 import (
+	"context"
+	"errors"
 	"runtime"
+	"sync/atomic"
 
 	raw "example.com/zigo/telemetry-hub-purego/internal/native"
 )
@@ -68,6 +71,55 @@ func (t *TelemetryHub) Name() (string, error) {
 		return "", zigoPoisonAfterPanic(errorForCode("TelemetryHub.Name", code), t)
 	}
 	return string(result), nil
+}
+
+// Reduce
+// A deliberately long fold, polling a cancellation flag between rounds.
+// The flag is Go's: a goroutine watching `ctx.Done()` raises it while
+// this is running, and the only thing that has to be true for that to be
+// safe is that this reads it atomically and never writes it.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+// Cancelling ctx stops the native call at its next polling point; the call
+// then returns ctx.Err() rather than the library's own Canceled error.
+func (t *TelemetryHub) Reduce(ctx context.Context, rounds uint32) (float64, error) {
+	var zigoCancel uint32
+	var zigoPinner runtime.Pinner
+	zigoPinner.Pin(&zigoCancel)
+	defer zigoPinner.Unpin()
+	if ctx.Err() != nil {
+		atomic.StoreUint32(&zigoCancel, 1)
+	} else if zigoDone := ctx.Done(); zigoDone != nil {
+		zigoStop := make(chan struct{})
+		defer close(zigoStop)
+		go func() {
+			select {
+			case <-zigoDone:
+				atomic.StoreUint32(&zigoCancel, 1)
+			case <-zigoStop:
+			}
+		}()
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("TelemetryHub.Reduce receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	defer t.zigoRelease()
+	result, code := raw.TelemetryHubReduce(ptr, rounds, &zigoCancel)
+	for _, handle := range t.callbackHandles {
+		zigoRethrowCallbackPanic("TelemetryHub.Reduce", handle)
+	}
+	if code != 0 {
+		zigoErr := zigoPoisonAfterPanic(errorForCode("TelemetryHub.Reduce", code), t)
+		if errors.Is(zigoErr, ErrCanceled) && ctx.Err() != nil {
+			return 0, ctx.Err()
+		}
+		return 0, zigoErr
+	}
+	return result, nil
 }
 
 // Capacity calls the Zig function TelemetryHub.capacity.

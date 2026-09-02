@@ -95,6 +95,10 @@
   않는다** — ABI가 소비한 바이트 수를 보고하지 않기 때문이다. 호출 뒤에도 `*bytes.Buffer`에는
   같은 바이트가 남아 있으므로, 소비 위치가 중요한 reader는 빠른 경로에 들어가지 않는
   타입(`bytes.NewReader` 등)으로 넘긴다.
+- 취소는 **협조적**이다. `.cancel` 함수가 플래그를 폴링하지 않으면 아무 일도 일어나지
+  않는다 — zigo는 native 스레드를 강제로 중단하지 않고, 그럴 수 있는 안전한 방법도 없다.
+  폴링 간격이 곧 취소 지연이다. 플래그의 주소는 호출 동안만 유효하므로 대상 함수가 그것을
+  보관하거나 다른 스레드로 넘겨 호출 뒤에 읽으면 동작은 정의되지 않는다.
 - `packed struct`의 정수 백킹 노출은 지원하지 않는다. `ZIGO003`으로 거부된다.
 - optional은 매개변수, 반환값, error union payload 자리에서만 쓸 수 있고, child는 bool,
   정수, 부동소수, 등록 enum, `extern struct`, 선언된 opaque type의 pointer만 지원한다.
@@ -190,6 +194,9 @@ error[ZIGO018]: unsupported integer width `u21` in parameter `cp`
 - `ZIGO025` — `param_meta.<이름>.go_error`를 콜백이 아닌 파라미터에 달았거나, 콜백의 Zig
   반환 타입이 `i32`가 아니다. Go error는 결과 자리에 `-5`로 실려 건너가므로 `i32` 결과가
   없는 콜백은 그것을 알릴 방법이 없다.
+- `ZIGO026` — `.cancel`이 존재하지 않는 파라미터를 가리키거나, 그 파라미터 타입이
+  `*const std.atomic.Value(u32)`가 아니거나, 함수의 error set에 `Canceled`가 없거나,
+  취소 플래그 파라미터가 있는데 `.cancel`이 그것을 가리키지 않는다.
 
 리플렉션 단계의 거부는 `bindings.zig`를 빌드할 때의 `@compileError`로 나오며, 제약과 함께
 그것이 걸린 선언·파라미터를 적는다(`... , at \`Terminal.write\` parameter \`bytes\``).

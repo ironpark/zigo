@@ -134,6 +134,17 @@ pub fn semanticDocumentForBackend(
                 });
                 continue;
             }
+            if (parameter.type == .cancel_flag) {
+                const child = try allocator.create(abi.AbiScalar);
+                child.* = .{ .unsigned_int = 32 };
+                try params.append(allocator, .{
+                    .name = parameter.name,
+                    .role = .cancel_flag,
+                    .scalar = .{ .pointer = .{ .child = child, .is_const = true } },
+                    .source_index = parameter_index,
+                });
+                continue;
+            }
             if (parameter.type == .io_stream) {
                 try appendStreamParams(allocator, &params, backend, parameter, parameter_index);
                 continue;

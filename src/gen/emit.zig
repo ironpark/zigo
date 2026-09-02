@@ -733,6 +733,9 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                 else
                     try writer.print("{s}_interface", .{adapter_name});
             },
+            // The shim's parameter is a `[*c]const u32`; the target function
+            // wants the atomic wrapper over the same four bytes.
+            .cancel_flag => try writer.print("@ptrCast({s})", .{parameter.name}),
             .bool => try writer.print("{s} != 0", .{parameter.name}),
             .@"enum" => try writer.print("@enumFromInt({s})", .{parameter.name}),
             .slice => if (isStringSliceParameter(parameter))
@@ -1394,7 +1397,9 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
             if (callbackForUserdata(function.origin.params, parameter_index) != null) continue;
             if (parameter.injected != null) continue;
             if (raw_parameter_index != 0) try writer.writeAll(", ");
-            if (parameter.type == .callback or parameter.type == .io_stream) {
+            if (parameter.type == .cancel_flag) {
+                try writer.print("{s} *uint32", .{go_names[parameter_index]});
+            } else if (parameter.type == .callback or parameter.type == .io_stream) {
                 try writer.print("{s}Handle uintptr", .{go_names[parameter_index]});
                 // A reader also carries the byte-slice fast path: a non-nil
                 // slice is handed to the shim whole and the trampoline is
@@ -1658,6 +1663,10 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 // The byte-slice fast path: non-NULL when the Go reader could
                 // hand its remaining bytes over whole, and then the shim wraps
                 // them with `Reader.fixed` instead of calling the trampoline.
+                // Go owns the word and hands over its address; cgo allows it
+                // because the memory holds no Go pointers, and the call is the
+                // whole of the time it has to stay valid.
+                .cancel_flag => try writer.print("(*C.uint32_t)(unsafe.Pointer({s}))", .{go_names[parameter.source_index]}),
                 .stream_data => try writer.print("{s}DataPtr", .{go_names[parameter.source_index]}),
                 .stream_data_length => try writer.print("C.size_t(len({s}Data))", .{go_names[parameter.source_index]}),
                 .stream_userdata => try writer.print("C.size_t({s}Handle)", .{go_names[parameter.source_index]}),
@@ -2625,7 +2634,9 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         if (callbackForUserdata(function.origin.params, parameter_index) != null) continue;
         if (parameter.injected != null) continue;
         if (parameter_count != 0) try writer.writeAll(", ");
-        if (parameter.type == .callback) {
+        if (parameter.type == .cancel_flag) {
+            try writer.print("{s} *uint32", .{go_names[parameter_index]});
+        } else if (parameter.type == .callback) {
             try writer.print("{s}Callback, {s}Token uintptr", .{ go_names[parameter_index], go_names[parameter_index] });
         } else if (parameter.type == .io_stream) {
             try writer.print("{s}Callback, {s}Handle uintptr", .{ go_names[parameter_index], go_names[parameter_index] });
@@ -2774,6 +2785,7 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
             // The byte-slice fast path: non-NULL when the Go reader could hand
             // its remaining bytes over whole, and then the shim wraps them
             // with `Reader.fixed` instead of calling the dispatcher.
+            .cancel_flag => try writer.writeAll(go_names[parameter.source_index]),
             .stream_data => try writer.print("{s}DataPtr", .{go_names[parameter.source_index]}),
             .stream_data_length => try writer.print("uintptr(len({s}Data))", .{go_names[parameter.source_index]}),
             .stream_userdata => try writer.print("{s}Handle", .{go_names[parameter.source_index]}),
@@ -2786,6 +2798,7 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         }
         if (isCStringParameter(parameter)) try writer.print("\truntime.KeepAlive({s}Bytes)\n", .{go_names[parameter_index]});
         if (isReaderStream(parameter)) try writer.print("\truntime.KeepAlive({s}Data)\n", .{go_names[parameter_index]});
+        if (parameter.type == .cancel_flag) try writer.print("\truntime.KeepAlive({s})\n", .{go_names[parameter_index]});
     }
     if (isCStringReturn(function.origin.*)) {
         try writer.writeAll("\treturn zigoCStringString(result)\n");
@@ -3410,15 +3423,21 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
     const needs_raw = !options.raw_colocated;
     // A stream parameter is spelled with the caller's own `io` interfaces.
     const needs_io = programHasStreams(program) or programHasStreamRead(program);
+    // A cancellable call takes a `context.Context`, matches the native error
+    // against a sentinel, and raises its flag with an atomic store.
+    const needs_cancel = programHasCancellation(program);
     const import_count = @as(usize, @intFromBool(needs_io)) + @as(usize, @intFromBool(needs_runtime)) +
-        @as(usize, @intFromBool(needs_unsafe)) + @as(usize, @intFromBool(needs_raw));
+        @as(usize, @intFromBool(needs_unsafe)) + @as(usize, @intFromBool(needs_raw)) +
+        @as(usize, @intFromBool(needs_cancel)) * 3;
     if (import_count > 1) {
         try writer.writeAll("import (\n");
+        if (needs_cancel) try writer.writeAll("\t\"context\"\n\t\"errors\"\n");
         if (needs_io) try writer.writeAll("\t\"io\"\n");
         if (needs_runtime) try writer.writeAll("\t\"runtime\"\n");
+        if (needs_cancel) try writer.writeAll("\t\"sync/atomic\"\n");
         if (needs_unsafe) try writer.writeAll("\t\"unsafe\"\n");
         if (needs_raw) {
-            if (needs_io or needs_runtime or needs_unsafe) try writer.writeByte('\n');
+            if (needs_io or needs_runtime or needs_unsafe or needs_cancel) try writer.writeByte('\n');
             try writeRawImport(writer, options, "\t");
         }
         try writer.writeAll(")\n\n");
@@ -3491,9 +3510,17 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             try writer.print("func {s}(", .{go_name});
         }
         var public_parameter_index: usize = 0;
+        // A cancellable call takes the context first, the way every Go API
+        // that can be cancelled does. The flag behind it is the binding's
+        // business, so the parameter carrying it is not in the signature.
+        if (function.origin.cancel != null) {
+            try writer.writeAll("ctx context.Context");
+            public_parameter_index = 1;
+        }
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (callbackForUserdata(function.origin.params, parameter_index) != null) continue;
             if (parameter.injected != null) continue;
+            if (parameter.type == .cancel_flag) continue;
             if (public_parameter_index != 0) try writer.writeAll(", ");
             try writer.print("{s} ", .{go_names[parameter_index]});
             if (parameter.type == .callback) {
@@ -3525,6 +3552,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         // Before the thread pin, because a rejected argument costs no cgo call
         // at all: nothing native has run, so there is no panic message to read
         // back off this thread.
+        if (function.origin.cancel != null) try renderCancelSetup(writer, options);
         if (needs_range_check)
             try renderRangeChecks(allocator, writer, function.origin.*, go_names, operation, constructor);
         if (has_stream)
@@ -3641,6 +3669,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                     }
                     if (stream.direction == .reader) try writer.print(", {s}Data", .{go_names[parameter_index]});
                 },
+                .cancel_flag => try writer.writeAll("&zigoCancel"),
                 .bool => try writer.print("boolToUint8({s})", .{go_names[parameter_index]}),
                 .value_struct => |value| try writer.print("zigo{s}ToRaw({s})", .{ value.ref, go_names[parameter_index] }),
                 .@"enum" => {
@@ -3712,6 +3741,23 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             if (hasRetainedCallback(function.origin.*)) {
                 try writeDeleteRetainedCallbacks(allocator, writer, function.origin.*);
             }
+            // A stop the caller asked for is the caller's own answer, not the
+            // library's: `context.Canceled` or `context.DeadlineExceeded`,
+            // whichever their context says. The Zig error is still what the
+            // native side reported, so it only gives way when the context
+            // agrees that it was cancelled.
+            const cancellable = function.origin.cancel != null;
+            if (cancellable) {
+                try writer.writeAll("\t\tzigoErr := ");
+                try writeErrorForCode(allocator, writer, function.origin.*, go_names, operation);
+                try writer.writeAll("\t\tif errors.Is(zigoErr, ErrCanceled) && ctx.Err() != nil {\n\t\t\treturn ");
+                if (error_payload != .void) {
+                    try writePublicZeroValue(writer, function.origin.*, error_payload);
+                    try writer.writeAll(", ");
+                    if (error_payload == .optional) try writer.writeAll("false, ");
+                }
+                try writer.writeAll("ctx.Err()\n\t\t}\n");
+            }
             try writer.writeAll("\t\treturn ");
             if (error_payload != .void) {
                 try writePublicZeroValue(writer, function.origin.*, error_payload);
@@ -3720,7 +3766,10 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                 // a failed call has no value at all.
                 if (error_payload == .optional) try writer.writeAll("false, ");
             }
-            try writeErrorForCode(allocator, writer, function.origin.*, go_names, operation);
+            if (cancellable)
+                try writer.writeAll("zigoErr\n")
+            else
+                try writeErrorForCode(allocator, writer, function.origin.*, go_names, operation);
             try writer.writeAll("\t}\n");
             if (hasOutValueStructSlice(function.origin.*)) {
                 try writePublicValueStructSliceCopyBacks(writer, program, function.origin.*, go_names);
@@ -5700,6 +5749,40 @@ fn renderStreamErrorChecks(
     _ = allocator;
 }
 
+/// The cancellation flag and the goroutine that raises it. The word is Go's,
+/// declared on this frame, and the native call borrows its address for exactly
+/// as long as it runs -- which is what makes handing a Go pointer to C legal
+/// here: the word holds no Go pointers and nothing keeps it afterwards.
+///
+/// A context that can never be cancelled costs no goroutine at all, and one
+/// that already is raises the flag without starting one: the native call still
+/// happens, sees the flag at its first polling point, and returns having done
+/// nothing, which is the same answer by the same path.
+fn renderCancelSetup(writer: *std.Io.Writer, options: Options) !void {
+    try writer.writeAll("\tvar zigoCancel uint32\n");
+    // cgo pins a Go pointer it passes to C for the duration of the call, so
+    // the address the native side polls cannot move under it. purego makes no
+    // such promise -- it is an ordinary Go call into machine code -- so the
+    // word is pinned explicitly there.
+    if (options.backend == .purego)
+        try writer.writeAll("\tvar zigoPinner runtime.Pinner\n\tzigoPinner.Pin(&zigoCancel)\n\tdefer zigoPinner.Unpin()\n");
+    try writer.writeAll(
+        "\tif ctx.Err() != nil {\n" ++
+            "\t\tatomic.StoreUint32(&zigoCancel, 1)\n" ++
+            "\t} else if zigoDone := ctx.Done(); zigoDone != nil {\n" ++
+            "\t\tzigoStop := make(chan struct{})\n" ++
+            "\t\tdefer close(zigoStop)\n" ++
+            "\t\tgo func() {\n" ++
+            "\t\t\tselect {\n" ++
+            "\t\t\tcase <-zigoDone:\n" ++
+            "\t\t\t\tatomic.StoreUint32(&zigoCancel, 1)\n" ++
+            "\t\t\tcase <-zigoStop:\n" ++
+            "\t\t\t}\n" ++
+            "\t\t}()\n" ++
+            "\t}\n",
+    );
+}
+
 /// After the native call: the error a reachable Go callback returned, if one
 /// did. Mirrors the panic rethrow, including the walk over a handle's retained
 /// callbacks -- a retained callback's error is reported by the next call that
@@ -6069,6 +6152,11 @@ fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.SemanticFn,
         try writer.writeAll("// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.\n");
     if (reaches_callback_errors)
         try writer.writeAll("// An error a Go callback returned is returned as *CallbackError once the native call returns.\n");
+    if (function.cancel != null)
+        try writer.writeAll(
+            "// Cancelling ctx stops the native call at its next polling point; the call\n" ++
+                "// then returns ctx.Err() rather than the library's own Canceled error.\n",
+        );
 }
 
 fn returnsBorrowedHandle(function: semantic.SemanticFn) bool {
@@ -6461,6 +6549,13 @@ fn programHasCallbacks(program: abi.Program) bool {
 
 fn functionHasStream(function: semantic.SemanticFn) bool {
     for (function.params) |parameter| if (parameter.type == .io_stream) return true;
+    return false;
+}
+
+/// True when some generated function takes a `context.Context` to be stopped
+/// through.
+fn programHasCancellation(program: abi.Program) bool {
+    for (program.functions) |function| if (function.origin.cancel != null) return true;
     return false;
 }
 

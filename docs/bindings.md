@@ -437,6 +437,75 @@ union이나 optional 안이 아니라 **반환 타입 그 자체**여야 합니�
 `semantic.json`에는 Zig 메서드(`Sink.writer`)가 그대로 기록되고, 연산으로의 확장은 파싱과
 lowering 사이에서 일어납니다. `abi-diff`가 비교하는 것은 Zig 표면입니다.
 
+## 취소 (`.cancel`)
+
+긴 native 호출을 Go의 `context.Context`로 끊을 수 있습니다. 함수 메타 `.cancel`이 어느
+파라미터가 취소 플래그인지 말하면, 그 파라미터는 Go 시그니처에서 사라지고 대신
+`ctx context.Context`가 **첫 인자**로 들어옵니다.
+
+```zig
+// Zig — 플래그를 폴링하는 것은 대상 함수의 책임이다.
+pub const ReduceError = error{ Empty, Canceled };
+
+pub fn reduce(self: *Hub, rounds: u32, cancel: *const std.atomic.Value(u32)) ReduceError!f64 {
+    var round: u32 = 0;
+    while (round < rounds) : (round += 1) {
+        if (cancel.load(.monotonic) != 0) return error.Canceled;
+        // ... 실제 작업 ...
+    }
+    return total;
+}
+```
+
+```zig
+.{
+    .path = "Hub.reduce",
+    .params = .{ "rounds", "cancel" },
+    .cancel = .{ .param = "cancel" },
+}
+```
+
+```go
+func (h *Hub) Reduce(ctx context.Context, rounds uint32) (float64, error)
+
+ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+defer cancel()
+total, err := hub.Reduce(ctx, 1 << 30)
+errors.Is(err, context.DeadlineExceeded) // true
+```
+
+**설계.** 플래그는 **Go가 소유하는 `uint32` 한 워드**입니다. 폴링 함수 포인터를 넘기는
+방식과 비교해 이쪽을 골랐습니다: 폴링은 원자적 load 하나라 경계를 넘지 않고, 아무리 촘촘히
+검사해도 공짜입니다. 함수 포인터라면 폴링마다 Go로 되돌아가야 하고, 그것은 취소 검사에
+정확히 어울리지 않는 비용입니다. purego에도 새 dispatcher가 필요 없습니다.
+
+**타입은 `*const std.atomic.Value(u32)`입니다.** `Value(bool)`이 아닌 이유는 Go 쪽입니다:
+플래그는 native가 읽는 동안 다른 goroutine이 씁니다. Go의 `sync/atomic`은 32비트에서
+시작하므로 1바이트를 원자적으로 쓸 방법이 없습니다. `extern struct { raw: u32 }`와 Go의
+`uint32`는 지원하는 모든 타깃에서 같은 4바이트라, 어느 쪽도 레이아웃을 짐작하지 않습니다.
+C 시그니처는 `const uint32_t *`입니다.
+
+**생성되는 Go.** 호출마다 워드를 하나 만들고, `ctx.Done()`을 기다리는 goroutine이 그것을
+`atomic.StoreUint32`로 세웁니다. goroutine은 호출이 끝나면 `defer close`로 정리되고,
+`context.Background()`처럼 취소될 수 없는 ctx는 goroutine을 만들지 않습니다. 이미 취소된
+ctx는 호출 전에 플래그를 세우므로 native가 첫 폴링 지점에서 곧장 멈춥니다. 주소는 호출
+동안만 유효하며, cgo는 C에 넘긴 Go 포인터를 호출 동안 고정해 주고 purego 백엔드는
+`runtime.Pinner`로 직접 고정합니다.
+
+**error 매핑.** 대상 함수의 error set에 `Canceled`가 있어야 합니다(`ZIGO026`). native가
+`error.Canceled`를 돌려주고 `ctx.Err() != nil`이면 공개 함수는 `ctx.Err()`를 반환합니다 —
+`context.Canceled` 또는 `context.DeadlineExceeded`, 호출자의 ctx가 말하는 것 그대로입니다.
+ctx가 멀쩡한데 native가 `Canceled`를 돌려줬다면 그것은 라이브러리의 error이므로 `ErrCanceled`가
+그대로 나옵니다.
+
+**검증(`ZIGO026`).** `.cancel`이 없는 파라미터를 가리키거나, 그 파라미터 타입이
+`*const std.atomic.Value(u32)`가 아니거나, error set에 `Canceled`가 없거나, 반대로 플래그
+파라미터가 있는데 `.cancel`이 그것을 가리키지 않으면 거부합니다.
+
+C ABI는 `.cancel`이 붙은 함수에만 파라미터가 하나 늘어나므로, 붙지 않은 함수의 생성물은
+바이트 그대로입니다. `abi-diff`는 `.cancel`이 붙거나 떨어지는 것을 breaking으로 봅니다 —
+Go 시그니처의 `ctx`가 생기거나 사라지기 때문입니다.
+
 ### 값으로 반환하는 `init`
 
 `pub fn init(gpa: Allocator, options: Options) !Terminal`처럼 값을 반환하는 생성자는 C로

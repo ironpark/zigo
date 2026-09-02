@@ -22,5 +22,13 @@ pub const bindings = zigo.define(.{
             .param_meta = .{ .new_name = .{ .semantic = .utf8_string } },
         },
         .{ .path = "TelemetryHub.name", .semantic = .utf8_string },
+        // A long call Go can stop. `.cancel` names the parameter that carries
+        // the flag: it leaves the Go signature, a `ctx context.Context` takes
+        // its place, and a goroutine watching `ctx.Done()` raises it.
+        .{
+            .path = "TelemetryHub.reduce",
+            .params = .{ "rounds", "cancel" },
+            .cancel = .{ .param = "cancel" },
+        },
     },
 });

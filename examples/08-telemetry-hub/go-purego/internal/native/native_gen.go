@@ -57,6 +57,7 @@ type nativeBindings struct {
 	fnTelemetryHubCreate            func(unsafe.Pointer, uintptr, uintptr, uint32, uint32, uintptr, uintptr, *unsafe.Pointer) int32
 	fnTelemetryHubRename            func(unsafe.Pointer, unsafe.Pointer, uintptr) int32
 	fnTelemetryHubName              func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
+	fnTelemetryHubReduce            func(unsafe.Pointer, uint32, *uint32, *float64) int32
 	fnTelemetryHubCapacity          func(unsafe.Pointer, *uintptr) int32
 	fnTelemetryHubLen               func(unsafe.Pointer, *uintptr) int32
 	fnTelemetryHubIsEmpty           func(unsafe.Pointer, *uint8) int32
@@ -375,6 +376,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_telemetry_hub_name", err)
 	}
+	addrTelemetryHubReduce, err := resolveSymbol(handle, "zg_telemetry_hub_reduce")
+	if err != nil {
+		return fail("zg_telemetry_hub_reduce", err)
+	}
 	addrTelemetryHubCapacity, err := resolveSymbol(handle, "zg_telemetry_hub_capacity")
 	if err != nil {
 		return fail("zg_telemetry_hub_capacity", err)
@@ -572,6 +577,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnTelemetryHubCreate, addrTelemetryHubCreate)
 	purego.RegisterFunc(&next.fnTelemetryHubRename, addrTelemetryHubRename)
 	purego.RegisterFunc(&next.fnTelemetryHubName, addrTelemetryHubName)
+	purego.RegisterFunc(&next.fnTelemetryHubReduce, addrTelemetryHubReduce)
 	purego.RegisterFunc(&next.fnTelemetryHubCapacity, addrTelemetryHubCapacity)
 	purego.RegisterFunc(&next.fnTelemetryHubLen, addrTelemetryHubLen)
 	purego.RegisterFunc(&next.fnTelemetryHubIsEmpty, addrTelemetryHubIsEmpty)
@@ -696,6 +702,14 @@ func TelemetryHubName(self unsafe.Pointer) ([]uint8, int32) {
 	result := make([]uint8, int(outResultLen))
 	copy(result, unsafe.Slice((*uint8)(outResultPtr), int(outResultLen)))
 	return result, code
+}
+
+// TelemetryHubReduce calls the generated purego ABI wrapper for zg_telemetry_hub_reduce.
+func TelemetryHubReduce(self unsafe.Pointer, rounds uint32, cancel *uint32) (float64, int32) {
+	var outResult float64
+	code := bindings().fnTelemetryHubReduce(self, rounds, cancel, &outResult)
+	runtime.KeepAlive(cancel)
+	return outResult, code
 }
 
 // TelemetryHubCapacity calls the generated purego ABI wrapper for zg_telemetry_hub_capacity.

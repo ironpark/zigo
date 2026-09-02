@@ -100,6 +100,13 @@ func TelemetryHubName(self unsafe.Pointer) ([]uint8, int32) {
 	return C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen)), code
 }
 
+// TelemetryHubReduce calls the generated C ABI wrapper for zg_telemetry_hub_reduce.
+func TelemetryHubReduce(self unsafe.Pointer, rounds uint32, cancel *uint32) (float64, int32) {
+	var outResult C.double
+	code := int32(C.zg_telemetry_hub_reduce((*C.zg_telemetry_hub)(self), C.uint32_t(rounds), (*C.uint32_t)(unsafe.Pointer(cancel)), &outResult))
+	return float64(outResult), code
+}
+
 // TelemetryHubCapacity calls the generated C ABI wrapper for zg_telemetry_hub_capacity.
 func TelemetryHubCapacity(self unsafe.Pointer) (uint, int32) {
 	var outResult C.size_t

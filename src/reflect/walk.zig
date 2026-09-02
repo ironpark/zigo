@@ -209,14 +209,25 @@ fn appendFunction(
         else
             try std.fmt.allocPrint(allocator, "p{d}", .{output_index});
         const injection = comptime injectionFor(param.type.?);
+        // The cancellation flag is opt-in by name rather than by type: the
+        // meta is what says "give Go a `ctx` and poll this", and the type
+        // check below is what makes it sound. Recognising it here keeps
+        // `typeNode` from rejecting `*const std.atomic.Value(u32)` as an
+        // unregistered struct pointer and reporting the wrong thing.
+        const names_cancel = comptime has_sidecar and @hasField(@TypeOf(metadata), "cancel") and
+            std.mem.eql(u8, metadata.cancel.param, parameter_name);
+        const is_cancel_flag = comptime names_cancel and isCancelFlag(param.type.?);
         // An injected parameter never reaches C, so it is not walked as a
         // type: `std.mem.Allocator` is a struct with a vtable pointer, and
         // reflecting it would fail long before validation could explain why.
-        const parameter_type = if (injection != null) semantic.TypeNode{ .void = {} } else try typeNode(allocator, param.type.?, types, comptime std.fmt.comptimePrint(
+        const parameter_type = if (injection != null or names_cancel) semantic.TypeNode{
+            .void = {},
+        } else try typeNode(allocator, param.type.?, types, comptime std.fmt.comptimePrint(
             "`{s}{s}` parameter `{s}`",
             .{ owner_label, function_label, if (has_sidecar) metadata.params[output_index] else std.fmt.comptimePrint("p{d}", .{output_index}) },
         ));
         var reflected: semantic.Parameter = .{
+            .cancel = if (names_cancel) true else null,
             .injected = injection,
             .name = parameter_name,
             .name_source = if (has_sidecar) .sidecar else .fallback,
@@ -234,9 +245,12 @@ fn appendFunction(
                 if (@hasField(@TypeOf(value), "go_error")) reflected.go_error = value.go_error;
             }
         }
+        // A cancel parameter whose spelling did not match keeps the `void`
+        // above, and validation names it. One that did becomes its own node.
+        if (is_cancel_flag) reflected.type = .{ .cancel_flag = {} };
         // The sentinel is part of the Zig type, so it remains a C string even
         // when a declaration sidecar omits a semantic hint.
-        if (isSentinelBytePointer(param.type.?)) reflected.semantic = .c_string;
+        if (!names_cancel and isSentinelBytePointer(param.type.?)) reflected.semantic = .c_string;
         // A collection of sentinel strings is still a string collection even
         // without sidecar metadata. The unsentinel `[][]const u8` spelling is
         // intentionally opt-in through `.semantic = .utf8_string`.
@@ -276,6 +290,7 @@ fn appendFunction(
     // `.release` addresses the freeing function the same way `.path` does, so
     // the last segment names it inside the generated document.
     if (@hasField(@TypeOf(metadata), "release")) reflected_function.release = comptime pathMember(metadata.release);
+    if (@hasField(@TypeOf(metadata), "cancel")) reflected_function.cancel = metadata.cancel.param;
     if (info.return_type) |return_type| {
         if (isSentinelBytePointer(return_type)) reflected_function.return_semantic = .c_string;
     }
@@ -938,6 +953,18 @@ fn isDestructorName(name: []const u8) bool {
 
 fn shortTypeName(full_name: []const u8) []const u8 {
     return if (std.mem.lastIndexOfScalar(u8, full_name, '.')) |index| full_name[index + 1 ..] else full_name;
+}
+
+/// The one Zig spelling a cancellation flag may have. `std.atomic.Value(u32)`
+/// rather than `Value(bool)`: the flag is written from a Go goroutine while
+/// native code reads it, and Go has no atomic operation on a single byte --
+/// `sync/atomic` starts at 32 bits. An `extern struct { raw: u32 }` and a Go
+/// `uint32` are the same four bytes on every supported target, so the two
+/// sides can share one word without either of them guessing at a layout.
+fn isCancelFlag(comptime T: type) bool {
+    const info = @typeInfo(T);
+    if (info != .pointer or info.pointer.size != .one) return false;
+    return info.pointer.child == std.atomic.Value(u32);
 }
 
 fn isSentinelBytePointer(comptime T: type) bool {

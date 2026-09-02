@@ -326,6 +326,13 @@ purego 백엔드는 콜백 파라미터를 C 함수 포인터와 `uintptr_t` use
 `go_error`가 시그니처의 성질인 이유가 여기 있다: dispatcher 하나가 두 가지 Go 타입을 동시에
 단정할 수는 없다.
 
+### 취소 플래그
+
+`.cancel` 함수의 플래그는 Go가 소유하는 `uint32` 한 워드이고, purego는 그 주소를 그대로
+바인딩 테이블의 `*uint32` 인자로 넘긴다. dispatcher도 콜백도 필요 없다. 다만 cgo와 달리
+purego에는 "C에 넘긴 Go 포인터를 호출 동안 고정한다"는 보장이 없으므로, 생성된 공개
+래퍼가 `runtime.Pinner`로 워드를 직접 고정하고 raw 계층이 호출 뒤 `runtime.KeepAlive`한다.
+
 ### `std.Io` 스트림
 
 `*std.Io.Writer`/`*std.Io.Reader` 파라미터도 같은 메커니즘을 쓴다. 방향마다 영구

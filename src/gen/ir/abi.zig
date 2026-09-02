@@ -117,6 +117,10 @@ pub const AbiParam = struct {
         /// userdata token; purego passes the dispatcher pointer as well. The
         /// `stream_data` pair is reserved on a reader for the byte-slice fast
         /// path: the shim already honours it, and generated Go passes null.
+        /// The `const uint32_t *` a cancellable call polls. Go owns the word
+        /// and raises it from a goroutine watching `ctx.Done()`; the address
+        /// is valid only for the call, which is all the contract asks for.
+        cancel_flag,
         stream_callback,
         stream_data,
         stream_data_length,

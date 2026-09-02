@@ -156,6 +156,22 @@ purego도 같은 시그니처를 씁니다. scalar child는 `*T`로, `extern str
 `semantic.json`은 기존 `optional` 노드를 그대로 씁니다. `abi-check`는 `T`와 `?T`의
 교체를 breaking으로 봅니다.
 
+## 취소 플래그
+
+`.cancel = .{ .param = "..." }`이 붙은 함수는 C 시그니처에 `const uint32_t *<이름>`을
+그대로 유지하고, Go 공개 시그니처에서는 그 파라미터가 사라지고 `ctx context.Context`가
+첫 인자로 들어옵니다. shim은 포인터를 `@ptrCast`로 `*const std.atomic.Value(u32)`에
+맞춰 대상 함수에 넘길 뿐, 아무것도 만들지 않습니다 — 워드는 Go의 것입니다.
+
+생성된 Go는 호출 프레임에 `var zigoCancel uint32`를 두고, `ctx.Done()`을 기다리는
+goroutine이 `atomic.StoreUint32`로 그것을 세웁니다(`zigoStop` 채널로 호출 종료 시 정리).
+이미 취소된 ctx는 goroutine 없이 호출 전에 세우고, 취소될 수 없는 ctx는 goroutine을
+만들지 않습니다. cgo는 C에 넘긴 Go 포인터를 호출 동안 고정하므로 그대로 넘기고, purego
+백엔드는 보장이 없으므로 `runtime.Pinner`로 고정하고 호출 뒤 `runtime.KeepAlive`합니다.
+
+상태 코드가 `Canceled`로 풀리고 `ctx.Err() != nil`이면 공개 래퍼는 `ctx.Err()`를 반환합니다.
+`.cancel`이 없는 함수의 생성물은 바이트 그대로입니다.
+
 ## Zig가 내주는 스트림
 
 `fn writer(self) *std.Io.Writer`는 파싱과 lowering 사이에서 연산으로 확장됩니다

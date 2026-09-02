@@ -91,6 +91,10 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
         // stops compiling. Breaking on the surface consumers actually write.
         if (!goErrorEqual(old.params, new.params))
             try add(allocator, &report, .breaking, identity, "callback Go error surface changed");
+        // The C signature keeps its flag parameter either way, but the Go one
+        // gains or loses its leading `ctx`, so every call site moves.
+        if (!optionalNameEqual(old.cancel, new.cancel))
+            try add(allocator, &report, .breaking, identity, "cancellation surface changed");
         if (!writtenEqual(old.params, new.params))
             try add(allocator, &report, .breaking, identity, "parameter written hint changed (C signature)");
         if (!streamBufferEqual(old.params, new.params))
@@ -292,16 +296,22 @@ fn streamBufferEqual(lhs: []const semantic.Parameter, rhs: []const semantic.Para
     return true;
 }
 
+fn containsName(names: []const []const u8, wanted: []const u8) bool {
+    for (names) |name| if (std.mem.eql(u8, name, wanted)) return true;
+    return false;
+}
+
 fn compareErrors(allocator: std.mem.Allocator, report: *Report, subject: []const u8, old_node: semantic.TypeNode, new_node: semantic.TypeNode) !void {
     if (old_node != .error_union or new_node != .error_union) return;
     const old = old_node.error_union.error_set;
     const new = new_node.error_union.error_set;
-    if (new.len < old.len) {
-        try add(allocator, report, .breaking, subject, "error removed or error code reassigned");
-        return;
-    }
-    for (old, 0..) |name, index| {
-        if (!std.mem.eql(u8, name, new[index])) {
+    // Membership rather than position. The wire code for an error name is
+    // pinned by `errors.lock.json`, which travels with `semantic.json`, so a
+    // set whose members are the same carries the same codes however the two
+    // documents happen to have ordered them -- and Zig's reflection order for
+    // an error set moves when unrelated sets are declared around it.
+    for (old) |name| {
+        if (!containsName(new, name)) {
             try add(allocator, report, .breaking, subject, "error removed or error code reassigned");
             return;
         }
@@ -335,7 +345,7 @@ fn typeFieldEqual(lhs: semantic.TypeField, rhs: semantic.TypeField) bool {
 fn typeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
     if (std.meta.activeTag(lhs) != std.meta.activeTag(rhs)) return false;
     return switch (lhs) {
-        .void, .bool => true,
+        .void, .bool, .cancel_flag => true,
         .int => |a| a.bits == rhs.int.bits and a.signed == rhs.int.signed and a.is_usize == rhs.int.is_usize,
         .float => |a| a.bits == rhs.float.bits,
         .@"enum" => |a| std.mem.eql(u8, a.ref, rhs.@"enum".ref),
@@ -969,4 +979,84 @@ test "making a parameter or a return optional is breaking" {
     );
     defer stable_report.deinit(std.testing.allocator);
     try std.testing.expectEqual(@as(usize, 0), stable_report.changes.items.len);
+}
+
+test "an error set that only changed order is not a break" {
+    var payload: semantic.TypeNode = .{ .void = {} };
+    const Sets = struct {
+        fn document(comptime names: []const []const u8) semantic.Semantic {
+            return .{
+                .functions = &.{.{
+                    .name = "query",
+                    .params = &.{},
+                    .receiver = "Hub",
+                    .@"return" = .{ .error_union = .{ .error_set = names, .payload = undefined } },
+                    .symbol = "zg_hub_query",
+                }},
+                .package = "hub",
+                .prefix = "zg",
+                .zig_version = "0.16.0",
+            };
+        }
+    };
+    var base = Sets.document(&.{ "InvalidRange", "Empty" });
+    var reordered = Sets.document(&.{ "Empty", "InvalidRange" });
+    var appended = Sets.document(&.{ "Empty", "Canceled", "InvalidRange" });
+    var removed = Sets.document(&.{"Empty"});
+    for ([_]*semantic.Semantic{ &base, &reordered, &appended, &removed }) |document| {
+        var functions = @constCast(document.functions);
+        functions[0].@"return".error_union.payload = &payload;
+    }
+
+    // Declaring an unrelated error set moves Zig's reflection order for this
+    // one, and the codes are pinned by errors.lock.json either way.
+    var same = try diff(std.testing.allocator, base, reordered);
+    defer same.deinit(std.testing.allocator);
+    try std.testing.expect(!same.hasBreaking());
+    try std.testing.expectEqual(@as(usize, 0), same.changes.items.len);
+
+    // A member added anywhere is still just an addition.
+    var grew = try diff(std.testing.allocator, base, appended);
+    defer grew.deinit(std.testing.allocator);
+    try std.testing.expect(!grew.hasBreaking());
+    try std.testing.expectEqualStrings("error appended", grew.changes.items[0].detail);
+
+    // A member that is gone is still a break: callers matched on it.
+    var shrank = try diff(std.testing.allocator, base, removed);
+    defer shrank.deinit(std.testing.allocator);
+    try std.testing.expect(shrank.hasBreaking());
+}
+
+test "adding or removing cancellation is a Go signature break" {
+    var payload: semantic.TypeNode = .{ .void = {} };
+    const flag: semantic.TypeNode = .{ .cancel_flag = {} };
+    const errors = [_][]const u8{"Canceled"};
+    const plain: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "crunch",
+            .params = &.{.{ .name = "cancel", .type = flag }},
+            .receiver = "Job",
+            .@"return" = .{ .error_union = .{ .error_set = &errors, .payload = &payload } },
+            .symbol = "zg_job_crunch",
+        }},
+        .package = "job",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    var cancellable = plain;
+    const functions = try std.testing.allocator.alloc(semantic.SemanticFn, 1);
+    defer std.testing.allocator.free(functions);
+    functions[0] = plain.functions[0];
+    functions[0].cancel = "cancel";
+    const params = try std.testing.allocator.alloc(semantic.Parameter, 1);
+    defer std.testing.allocator.free(params);
+    params[0] = .{ .cancel = true, .name = "cancel", .type = flag };
+    functions[0].params = params;
+    cancellable.functions = functions;
+
+    // The C signature is identical; the Go one gains a leading ctx.
+    var report = try diff(std.testing.allocator, plain, cancellable);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expect(report.hasBreaking());
+    try std.testing.expectEqualStrings("cancellation surface changed", report.changes.items[0].detail);
 }

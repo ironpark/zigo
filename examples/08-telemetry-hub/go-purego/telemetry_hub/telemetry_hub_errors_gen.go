@@ -150,6 +150,9 @@ var ErrInvalidLimit = &Error{Code: 9, Name: "InvalidLimit"}
 // ErrObserverPanicked represents Zig error.ObserverPanicked.
 var ErrObserverPanicked = &Error{Code: 10, Name: "ObserverPanicked"}
 
+// ErrCanceled represents Zig error.Canceled.
+var ErrCanceled = &Error{Code: 11, Name: "Canceled"}
+
 func errorForCode(operation string, code int32) error {
 	switch code {
 	case -2:
@@ -174,6 +177,8 @@ func errorForCode(operation string, code int32) error {
 		return &Error{Code: 9, Name: "InvalidLimit", Operation: operation}
 	case 10:
 		return &Error{Code: 10, Name: "ObserverPanicked", Operation: operation}
+	case 11:
+		return &Error{Code: 11, Name: "Canceled", Operation: operation}
 	default:
 		return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
 	}

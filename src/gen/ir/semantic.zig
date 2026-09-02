@@ -49,6 +49,12 @@ pub const Callback = struct {
 pub const TypeNode = union(enum) {
     bool: void,
     callback: Callback,
+    /// The cancellation flag a `.cancel` function polls. Its Zig spelling is
+    /// `*const std.atomic.Value(u32)` and it crosses as `const uint32_t *`;
+    /// it is its own node because neither the pointer nor the atomic wrapper
+    /// is a shape the generic lowering can carry, and because Go builds the
+    /// flag itself rather than being handed one.
+    cancel_flag: void,
     @"enum": Ref,
     error_union: ErrorUnion,
     float: Float,
@@ -64,6 +70,7 @@ pub const TypeNode = union(enum) {
         try jw.beginObject();
         switch (self) {
             .bool => try writeKind(jw, "bool"),
+            .cancel_flag => try writeKind(jw, "cancel_flag"),
             .callback => |value| {
                 try jw.objectField("c_callconv");
                 try jw.write(value.c_callconv);
@@ -164,6 +171,7 @@ pub const TypeNode = union(enum) {
         };
         if (std.mem.eql(u8, kind, "void")) return .{ .void = {} };
         if (std.mem.eql(u8, kind, "bool")) return .{ .bool = {} };
+        if (std.mem.eql(u8, kind, "cancel_flag")) return .{ .cancel_flag = {} };
         if (std.mem.eql(u8, kind, "int")) return .{ .int = .{
             .bits = try parseField(u16, allocator, object, "bits", options),
             .is_usize = try parseOptionalField(bool, allocator, object, "is_usize", false, options),
@@ -262,6 +270,11 @@ pub const Parameter = struct {
     /// compatible knob rather than part of the shape.
     buffer: ?u32 = null,
     direction: Direction = .in,
+    /// Set on the parameter `.cancel = .{ .param = "..." }` named. The type
+    /// node says whether the Zig spelling was the one the contract requires;
+    /// this says the binding asked for it, so a mismatch can be reported
+    /// against the parameter the author meant rather than passed over.
+    cancel: ?bool = null,
     /// Opt-in from `param_meta.<name>.go_error`: the Go callback type behind
     /// this parameter returns `(i32, error)` rather than `i32`, and an error
     /// it returns is stored and handed back by the public wrapper. Optional
@@ -350,6 +363,10 @@ pub const StreamAccessor = struct {
 pub const SemanticFn = struct {
     /// Set on the two halves of a boxed constructor pair.
     boxed: ?Boxed = null,
+    /// The parameter `.cancel = .{ .param = "..." }` named, verbatim. Kept on
+    /// the function so a name that matches nothing can still be reported, and
+    /// so `abi-diff` sees the Go signature gain or lose its `ctx`.
+    cancel: ?[]const u8 = null,
     /// Set on a function synthesized from a stream-returning method. Never
     /// present in a `semantic.json` on disk: the document records the Zig
     /// method, and the expansion happens between parsing and lowering.

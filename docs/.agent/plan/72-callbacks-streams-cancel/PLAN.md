@@ -11,7 +11,7 @@ registered_at: "2026-09-02T07:40:11Z"
 
 - [x] [Phase 00: callback의 Go error 표면화](phases/00-callback-go-error.md)
 - [x] [Phase 01: `[]byte` 무콜백 Reader 경로](phases/01-bytes-reader-fast-path.md)
-- [ ] [Phase 02: Zig가 내주는 스트림](phases/02-stream-returns.md)
+- [x] [Phase 02: Zig가 내주는 스트림](phases/02-stream-returns.md)
 - [ ] [Phase 03: 취소 규약](phases/03-cancellation.md)
 
 # Shared Verification
