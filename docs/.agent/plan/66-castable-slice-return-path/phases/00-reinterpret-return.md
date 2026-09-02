@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T05:42:17Z"
 perf_phase: true
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 측정 목표 세 항목의 테스트 통과.
 > NEXT: none
