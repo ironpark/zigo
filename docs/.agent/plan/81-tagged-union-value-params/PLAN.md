@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T18:29:56Z"
 description: payload가 스칼라/void뿐인 tagged union을 값 파라미터로 받는 경로
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-02T17:32:43Z"
 ---
 > NEXT: 스칼라 payload tagged union의 값 파라미터 적격성과 C 평탄화를 설계·구현한다. ([Phase 0](phases/00-eligibility-and-abi.md))
@@ -8,7 +9,7 @@ registered_at: "2026-09-02T17:32:43Z"
 # Phases
 
 - [x] [Phase 00: 적격성과 ABI 설계](phases/00-eligibility-and-abi.md)
-- [ ] [Phase 01: Go 값 타입과 purego, 예제, 문서](phases/01-go-surface-and-docs.md)
+- [x] [Phase 01: Go 값 타입과 purego, 예제, 문서](phases/01-go-surface-and-docs.md)
 
 # Shared Verification
 
