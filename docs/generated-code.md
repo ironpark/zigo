@@ -334,6 +334,14 @@ receiver나 handle parameter에 `runtime.KeepAlive`를 따로 걸지 않습니�
 붙잡는 것과, 문자열·slice 데이터처럼 Go 메모리의 포인터를 native에 넘긴 동안 그 메모리를
 붙잡는 것.
 
+`.child_of_receiver = true`인 constructor는 receiver 획득과 같은 잠금 안에서 자식 하나를
+예약합니다. 성공하면 생성된 자식의 `parent` 참조와 부모의 `children` 카운트로 예약을
+넘기고, 실패하면 예약을 되돌립니다. 그래서 constructor와 부모 `Close`가 동시에 실행돼도
+자식이 부모 해제 뒤에 생길 수 없습니다. 부모 `Close`는 `children != 0`이면 상태를 닫힘으로
+바꾸지 않고 `*HandleInUseError`(`ErrHandleInUse`)를 반환합니다. 자식 `Close`는 진행 중 호출이
+끝나 native destructor가 실행된 뒤에만 부모 카운트를 내립니다. 자식 호출은 부모도 함께
+acquire/release하므로 부모의 closed·poison 상태를 그대로 따릅니다.
+
 callback parameter는 익명 함수가 아니라 생성된 정의 type을 사용합니다. borrowed callback
 handle은 호출 후 즉시 해제하고, retained callback handle은 소유 객체의 멱등 `Close`에서
 해제합니다.
@@ -378,6 +386,9 @@ receiver 앞에 주입 파라미터가 선언된 함수(`fn free(gpa: Allocator,
 
 주입 파라미터는 C 시그니처에도 Go 시그니처에도 없으므로 `abi-diff`는 그것을 빼고 비교하고,
 `go_owner`가 바뀌면 Go 표면이 움직이므로 breaking으로 봅니다.
+`child_of_receiver: true`는 설정한 constructor에만 나타납니다. gain/loss는 C signature를
+움직이지 않지만 부모 `Close`의 동작과 생성된 Go handle 구조를 바꾸므로 ABI-compatible
+Go-surface 변경으로 보고됩니다.
 
 함수의 `symbol` 필드는 그 함수가 export되는 C 심볼 이름입니다. 규칙은 하나뿐이고
 (`{prefix}_{owner}_{name}`, owner는 `receiver` 또는 `namespace`, 모두 snake_case로

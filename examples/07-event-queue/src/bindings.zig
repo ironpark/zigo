@@ -30,7 +30,7 @@ pub const bindings = zigo.define(.{
             .param_meta = .{ .observer = .{ .retention = .retained } },
             .returns = .caller,
         },
-        .{ .path = "EventQueue.newStream", .constructs = "Stream" },
+        .{ .path = "EventQueue.newStream", .constructs = "Stream", .child_of_receiver = true },
         .{ .path = "Stream.capacity" },
         .{ .path = "root.freeStream", .destroys = "Stream" },
         .{ .path = "EventQueue.enqueue", .params = .{ "id", "value" } },

@@ -15,6 +15,7 @@ type EventQueue struct {
 	ptr             unsafe.Pointer
 	mu              sync.Mutex
 	active          int
+	children        int
 	closed          bool
 	poison          *NativePanicError
 	callbackHandles []zigoCallbackHandle
@@ -66,6 +67,33 @@ func (e *EventQueue) zigoPoison(cause *NativePanicError) {
 	}
 }
 
+// zigoAcquireChild reserves one dependent child atomically with the call pin.
+func (e *EventQueue) zigoAcquireChild(operation string) (unsafe.Pointer, error) {
+	if e == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.closed || e.ptr == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	if e.poison != nil {
+		return nil, e.poison.poisoned(operation)
+	}
+	e.active++
+	e.children++
+	return e.ptr, nil
+}
+
+func (e *EventQueue) zigoDropChild() {
+	if e == nil {
+		return
+	}
+	e.mu.Lock()
+	e.children--
+	e.mu.Unlock()
+}
+
 type eventQueueCleanupState struct {
 	ptr             unsafe.Pointer
 	callbackHandles []zigoCallbackHandle
@@ -88,7 +116,7 @@ func cleanupEventQueue(state eventQueueCleanupState) {
 }
 
 // Close releases the native EventQueue resources. It is safe to call more than once.
-// The error result is always nil; it exists so EventQueue satisfies io.Closer.
+// It returns *HandleInUseError while dependent children remain open.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (e *EventQueue) Close() error {
@@ -99,6 +127,11 @@ func (e *EventQueue) Close() error {
 	if e.closed {
 		e.mu.Unlock()
 		return nil
+	}
+	if e.children != 0 {
+		children := e.children
+		e.mu.Unlock()
+		return &HandleInUseError{Operation: "EventQueue.Close", Children: children}
 	}
 	e.closed = true
 	e.cleanup.Stop()
@@ -245,25 +278,43 @@ type Stream struct {
 	active  int
 	closed  bool
 	poison  *NativePanicError
+	parent  *EventQueue
 	cleanup runtime.Cleanup
 }
 
-// zigoAcquire pins s open for one native call and hands back its pointer;
-// the call ends with zigoRelease. A nil, closed, or poisoned handle is the error.
+// zigoAcquire pins s and its parent open for one native call.
 func (s *Stream) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	if s == nil {
 		return nil, &HandleError{Operation: operation}
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	parent := s.parent
+	s.mu.Unlock()
+	if parent != nil {
+		if _, err := parent.zigoAcquire(operation); err != nil {
+			return nil, err
+		}
+	}
+	s.mu.Lock()
 	if s.closed || s.ptr == nil {
+		s.mu.Unlock()
+		if parent != nil {
+			parent.zigoRelease()
+		}
 		return nil, &HandleError{Operation: operation}
 	}
 	if s.poison != nil {
-		return nil, s.poison.poisoned(operation)
+		err := s.poison.poisoned(operation)
+		s.mu.Unlock()
+		if parent != nil {
+			parent.zigoRelease()
+		}
+		return nil, err
 	}
 	s.active++
-	return s.ptr, nil
+	ptr := s.ptr
+	s.mu.Unlock()
+	return ptr, nil
 }
 
 func (s *Stream) zigoRelease() {
@@ -272,10 +323,14 @@ func (s *Stream) zigoRelease() {
 	}
 	s.mu.Lock()
 	s.active--
+	parent := s.parent
 	state, release := s.zigoTakeLocked()
 	s.mu.Unlock()
 	if release {
 		cleanupStream(state)
+	}
+	if parent != nil {
+		parent.zigoRelease()
 	}
 }
 
@@ -286,19 +341,24 @@ func (s *Stream) zigoPoison(cause *NativePanicError) {
 		return
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	parent := s.parent
 	if s.poison == nil {
 		s.poison = cause
 		s.cleanup.Stop()
 	}
+	s.mu.Unlock()
+	if parent != nil {
+		parent.zigoPoison(cause)
+	}
 }
 
 type streamCleanupState struct {
-	ptr unsafe.Pointer
+	ptr    unsafe.Pointer
+	parent *EventQueue
 }
 
-func newStream(ptr unsafe.Pointer) *Stream {
-	value := &Stream{ptr: ptr}
+func newStream(ptr unsafe.Pointer, parent *EventQueue) *Stream {
+	value := &Stream{ptr: ptr, parent: parent}
 	state := streamCleanupState{ptr: ptr}
 	value.cleanup = runtime.AddCleanup(value, cleanupStream, state)
 	return value
@@ -307,6 +367,9 @@ func newStream(ptr unsafe.Pointer) *Stream {
 func cleanupStream(state streamCleanupState) {
 	if state.ptr != nil {
 		raw.StreamFreeStream(state.ptr)
+	}
+	if state.parent != nil {
+		state.parent.zigoDropChild()
 	}
 }
 
@@ -341,8 +404,9 @@ func (s *Stream) zigoTakeLocked() (streamCleanupState, bool) {
 	if !s.closed || s.active != 0 || s.ptr == nil {
 		return streamCleanupState{}, false
 	}
-	state := streamCleanupState{ptr: s.ptr}
+	state := streamCleanupState{ptr: s.ptr, parent: s.parent}
 	s.ptr = nil
+	s.parent = nil
 	if s.poison != nil {
 		state.ptr = nil
 	}

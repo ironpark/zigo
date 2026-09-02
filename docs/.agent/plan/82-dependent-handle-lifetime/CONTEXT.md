@@ -14,5 +14,10 @@
 
 ## Target structure and invariants
 
-- 자식은 부모의 strong 참조가 아니라 카운트만 올린다(부모 Close를 막는 것이 목적).
+- 구현 결정: 최초 계획의 "strong 참조가 아니라 카운트만"이라는 문구와 달리, 사용자 요구대로
+  자식은 `parent *Parent` strong 참조와 카운트를 함께 가진다. 참조는 부모의 GC를 막고
+  projection과 같은 acquire/poison 전달에 쓰이며, 카운트는 부모 `Close`를 거부한다.
+- 동시성 결정: constructor는 native 호출 뒤가 아니라 receiver 획득과 같은 lock 안에서 자식
+  카운트를 예약한다. 성공 시 예약을 자식에게 넘기고 실패 시 되돌려, constructor와 부모
+  `Close`가 경합할 때 해제된 부모 뒤에 자식이 만들어지는 틈을 없앤다.
 - 자식이 닫히지 않은 채 GC되는 경우는 다루지 않는다(문서화).

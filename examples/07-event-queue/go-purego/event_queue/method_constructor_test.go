@@ -24,8 +24,22 @@ func TestMethodConstructorOwnsReturnedHandle(t *testing.T) {
 	if live := LiveStreams(); live != 1 {
 		t.Fatalf("live streams = %d, want 1", live)
 	}
+	if err := queue.Close(); !errors.Is(err, ErrHandleInUse) {
+		t.Fatalf("queue Close with open stream = %v, want ErrHandleInUse", err)
+	} else {
+		var inUse *HandleInUseError
+		if !errors.As(err, &inUse) || inUse.Children != 1 {
+			t.Fatalf("queue Close error = %#v, want HandleInUseError with one child", err)
+		}
+	}
+	if capacity, err := stream.Capacity(); err != nil || capacity != 7 {
+		t.Fatalf("stream after refused parent Close = (%d, %v), want (7, nil)", capacity, err)
+	}
 	if err := stream.Close(); err != nil {
 		t.Fatal(err)
+	}
+	if err := queue.Close(); err != nil {
+		t.Fatalf("queue Close after stream Close = %v", err)
 	}
 	if live := LiveStreams(); live != 0 {
 		t.Fatalf("live streams after Close = %d, want 0", live)

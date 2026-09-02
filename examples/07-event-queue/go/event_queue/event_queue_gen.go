@@ -74,11 +74,17 @@ func (e *EventQueue) Clone(observer EventQueueCloneObserver) (*EventQueue, error
 func (e *EventQueue) NewStream() (*Stream, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	ptr, err := zigoCheckedPointer("EventQueue.NewStream receiver", e)
+	ptr, err := e.zigoAcquireChild("EventQueue.NewStream receiver")
 	if err != nil {
 		return nil, err
 	}
-	defer e.zigoRelease()
+	zigoChildCreated := false
+	defer func() {
+		e.zigoRelease()
+		if !zigoChildCreated {
+			e.zigoDropChild()
+		}
+	}()
 	result, code := raw.EventQueueNewStream(ptr)
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.NewStream", handle)
@@ -86,7 +92,8 @@ func (e *EventQueue) NewStream() (*Stream, error) {
 	if code != 0 {
 		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.NewStream", code), e)
 	}
-	return newStream(result), nil
+	zigoChildCreated = true
+	return newStream(result, e), nil
 }
 
 // Capacity calls the Zig function Stream.capacity.

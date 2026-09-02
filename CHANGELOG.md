@@ -8,6 +8,11 @@
 
 ### Added
 
+- receiver constructor의 `.child_of_receiver = true` 메타를 추가했습니다. 생성된 자식 handle은
+  부모를 참조하고 열린 자식 수를 등록하며, 부모 `Close`는 자식이 남아 있으면
+  `ErrHandleInUse`를 감싼 `*HandleInUseError`를 반환합니다. 자식을 닫은 뒤 부모를 다시 닫을
+  수 있고, 부모의 poison 상태는 자식 호출에도 전파됩니다. cgo와 purego가 같은 수명 규칙을
+  사용하며 `semantic.json`에는 opt-in한 constructor에만 필드가 기록됩니다.
 - payload가 모두 void, scalar, 또는 등록 enum인 tagged union을 함수 매개변수 값으로
   전달할 수 있습니다. cgo와 purego 모두 variant constructor와 `Tag()`를 제공하고,
   C ABI는 tag와 variant별 payload slot으로 결정적으로 평탄화합니다.

@@ -269,6 +269,7 @@
       "symbol": "zg_event_queue_clone"
     },
     {
+      "child_of_receiver": true,
       "doc": "Opens a stream owned by the caller. The allocator is injected before\nthe receiver, matching APIs where one handle constructs another.",
       "go_owner": "Stream",
       "name": "newStream",

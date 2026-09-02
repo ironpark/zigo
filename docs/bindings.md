@@ -114,6 +114,7 @@ error입니다.
 | `params` | Go가 넘기는 파라미터의 이름 목록 |
 | `constructs` | 이 함수가 만드는 opaque 타입 이름 |
 | `destroys` | 이 함수가 없애는 opaque 타입 이름 |
+| `child_of_receiver` | 생성된 handle이 receiver보다 먼저 닫혀야 하는지 여부 |
 | `param_meta` | 파라미터별 `semantic`, `retention`, `direction`, `written`, `buffer` |
 | `semantic` | 반환값 의미. 예: `.utf8_string` |
 | `returns` | 반환 pointer의 ownership |
@@ -589,8 +590,9 @@ non-exhaustive인 경우에는 이 opt-in을 적용하지 않으며 계속 거�
 ```
 
 caller-owned pointer를 반환하는 생성 함수와 대응 deinitializer가 있으면 공개 Go API에
-constructor와 멱등 `Close() error`가 생성됩니다. 반환 error는 항상 nil이며 handle이
-`io.Closer`를 만족시키기 위한 것입니다. 모든 receiver와 handle 인자는 native 호출 전에
+constructor와 멱등 `Close() error`가 생성됩니다. 보통 반환 error는 항상 nil이며 handle이
+`io.Closer`를 만족시키기 위한 것입니다. 단, 아래의 `child_of_receiver` 관계를 가진 부모는
+열린 자식이 있으면 `*HandleInUseError`를 반환합니다. 모든 receiver와 handle 인자는 native 호출 전에
 nil·closed 상태를 검사합니다. 검사 결과는 항상 반환값으로 전달되며, 오류 반환 자리가
 없던 메서드에는 `error` 결과가 추가됩니다.
 
@@ -617,15 +619,29 @@ nil·closed 상태를 검사합니다. 검사 결과는 항상 반환값으로 �
 ```zig
 pub fn newStream(gpa: std.mem.Allocator, terminal: *Terminal) !*Stream { ... }
 
-.{ .path = "Terminal.newStream", .constructs = "Stream" },
+.{
+    .path = "Terminal.newStream",
+    .constructs = "Stream",
+    .child_of_receiver = true,
+},
 .{ .path = "root.freeStream", .destroys = "Stream" },
 ```
 
 Go에는 `func (t *Terminal) NewStream() (*Stream, error)`가 생깁니다. 호출 중에는 `Terminal`을
 다른 메서드와 똑같이 acquire/release하고 native panic이면 그 receiver를 poison합니다. 반환된
 `Stream`은 별개의 caller-owned handle이며 cleanup과 멱등 `Close()`를 등록하고 `freeStream`으로
-해제됩니다. `semantic.json`은 두 관계를 섞지 않고 `receiver: "Terminal"`,
-`go_owner: "Stream"`으로 기록합니다.
+해제됩니다. `.child_of_receiver = true`이면 생성된 `Stream`은 부모 `Terminal` 참조를 보관하고,
+열린 자식 수를 부모에 등록합니다. 자식을 닫기 전에 부모를 닫으면 `Close`가
+`*HandleInUseError`를 반환하며 `errors.Is(err, ErrHandleInUse)`로 분류할 수 있습니다. 자동으로
+자식을 닫지는 않습니다. 자식 `Close`가 native destructor를 끝낸 뒤 카운트를 내리므로, 그 뒤
+부모 `Close`를 다시 부르면 정상적으로 해제됩니다. 부모가 native panic으로 poison되면 자식의
+호출도 같은 `*NativePanicError`로 거부됩니다.
+
+이 메타는 receiver를 가진 constructor에만 쓸 수 있습니다. 자유 함수나 constructor가 아닌
+함수에 붙이면 `ZIGO030`입니다. `semantic.json`은 opt-in한 생성자에만
+`child_of_receiver: true`를 기록하고, 두 관계를 섞지 않고 `receiver: "Terminal"`,
+`go_owner: "Stream"`으로도 기록합니다. 이 필드의 추가·삭제는 C ABI를 바꾸지 않지만
+`abi-diff`가 Go surface의 ABI-compatible 변경으로 보고합니다.
 
 ### 타입 밖에 선언된 생성자와 소멸자
 

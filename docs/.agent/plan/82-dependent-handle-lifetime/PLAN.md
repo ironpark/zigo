@@ -7,7 +7,7 @@ registered_at: "2026-09-02T17:32:43Z"
 
 # Phases
 
-- [ ] [Phase 00: 메타와 Go handle 구조](phases/00-child-handles.md)
+- [x] [Phase 00: 메타와 Go handle 구조](phases/00-child-handles.md)
 - [ ] [Phase 01: 예제와 문서](phases/01-example-and-docs.md)
 
 # Shared Verification
