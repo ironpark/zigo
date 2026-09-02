@@ -379,7 +379,10 @@ acquire/release하므로 부모의 closed·poison 상태를 그대로 따릅니�
 
 callback parameter는 익명 함수가 아니라 생성된 정의 type을 사용합니다. borrowed callback
 handle은 호출 후 즉시 해제하고, retained callback handle은 소유 객체의 멱등 `Close`에서
-해제합니다.
+해제합니다. retained callback을 받는 method는 native 등록이 성공한 뒤 함수·파라미터별
+slot을 새 handle로 교체하고 이전 handle을 해제합니다. cgo에서는 기존 constructor 경로와
+같이 native 호출이 반환된 시점을 이전 callback에 새 호출이 들어오지 않는 경계로 사용하고,
+purego registry는 이미 진행 중인 호출이 끝날 때까지 기다립니다.
 
 ## Go 이름과 포맷
 

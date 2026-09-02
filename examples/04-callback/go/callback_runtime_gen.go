@@ -69,6 +69,9 @@ func newVoidObserverHandle(value VoidObserver) zigoCallbackHandle {
 }
 
 func deleteCallbackHandle(handle zigoCallbackHandle) {
+	if handle == 0 {
+		return
+	}
 	handle.Delete()
 	activeCallbackHandles.Add(-1)
 }
@@ -79,6 +82,9 @@ func activeCallbackHandleCount() int64 { return activeCallbackHandles.Load() }
 // the native call that has just returned. The trampoline recovered it so the
 // native frames could unwind; the caller sees it as a *CallbackPanicError.
 func zigoRethrowCallbackPanic(operation string, handle zigoCallbackHandle) {
+	if handle == 0 {
+		return
+	}
 	if value, stack, ok := zigoRawTakeCallbackPanic(handle); ok {
 		panic(&CallbackPanicError{Operation: operation, Value: value, Stack: stack})
 	}
@@ -88,6 +94,9 @@ func zigoRethrowCallbackPanic(operation string, handle zigoCallbackHandle) {
 // inside the native call that has just finished, wrapped so the caller can
 // match it with errors.Is.
 func zigoCallbackError(operation string, callback string, handle zigoCallbackHandle) error {
+	if handle == 0 {
+		return nil
+	}
 	if err, ok := zigoRawTakeCallbackError(handle); ok {
 		return &CallbackError{Operation: operation, Callback: callback, Err: err}
 	}

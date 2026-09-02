@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T22:15:59Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: A `void`-returning callback generates and its Go test invokes it on both backends; no `unreachable` reachable from a `.void` callback result; `zig build test` green.
 > NEXT: none

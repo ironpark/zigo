@@ -9,6 +9,7 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
 pub const panic = std.debug.FullPanic(panicHandler);
 
 extern fn zg_hub_create_go_callback_observer(p0: i32, p1: usize) callconv(.c) i32;
+extern fn zg_hub_set_observer_go_callback_observer(p0: i32, p1: usize) callconv(.c) i32;
 extern fn zg_apply_go_callback_observer(p0: i32, p1: usize) callconv(.c) i32;
 extern fn zg_notify_go_callback_observer(p0: i32, p1: usize) callconv(.c) void;
 
@@ -22,6 +23,10 @@ export fn zg_hub_create_impl(userdata: usize, out_result: **target.Hub) i32 {
 export fn zg_hub_run_impl(self: *target.Hub, value: i32, out_result: *i32) i32 {
     const result = target.Hub.run(self, value);
     out_result.* = result;
+    return 0;
+}
+export fn zg_hub_set_observer_impl(self: *target.Hub, userdata: usize) i32 {
+    target.Hub.setObserver(self, &zg_hub_set_observer_go_callback_observer, userdata);
     return 0;
 }
 export fn zg_hub_deinit_impl(self: *target.Hub) i32 {

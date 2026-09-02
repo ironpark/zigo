@@ -29,6 +29,9 @@ type EventQueueCreateObserver func(uint64, int32) int32
 // EventQueueCloneObserver is the Go callback signature accepted by the generated binding.
 type EventQueueCloneObserver func(uint64, int32) int32
 
+// EventQueueSetObserverObserver is the Go callback signature accepted by the generated binding.
+type EventQueueSetObserverObserver func(uint64, int32) int32
+
 func boolToUint8(value bool) uint8 {
 	if value {
 		return 1
@@ -46,6 +49,10 @@ func newEventQueueCloneObserverHandle(value EventQueueCloneObserver) zigoCallbac
 	return raw.NewCallbackHandle((func(uint64, int32) int32)(value))
 }
 
+func newEventQueueSetObserverObserverHandle(value EventQueueSetObserverObserver) zigoCallbackHandle {
+	return raw.NewCallbackHandle((func(uint64, int32) int32)(value))
+}
+
 func deleteCallbackHandle(handle zigoCallbackHandle) { raw.DeleteCallbackHandle(handle) }
 
 func activeCallbackHandleCount() int64 { return raw.ActiveCallbackHandleCount() }
@@ -55,6 +62,9 @@ func callbackDispatcherCount() int     { return raw.CallbackDispatcherCount() }
 // the native call that has just returned. The trampoline recovered it so the
 // native frames could unwind; the caller sees it as a *CallbackPanicError.
 func zigoRethrowCallbackPanic(operation string, handle zigoCallbackHandle) {
+	if handle == 0 {
+		return
+	}
 	if value, stack, ok := raw.TakeCallbackPanic(handle); ok {
 		panic(&CallbackPanicError{Operation: operation, Value: value, Stack: stack})
 	}

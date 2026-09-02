@@ -219,6 +219,11 @@ pub const EventQueue = struct {
         return delivered;
     }
 
+    pub fn setObserver(self: *EventQueue, observer: Observer, userdata: usize) void {
+        self.observer = observer;
+        self.userdata = userdata;
+    }
+
     pub fn name(self: *EventQueue) []const u8 {
         return self.name_bytes;
     }

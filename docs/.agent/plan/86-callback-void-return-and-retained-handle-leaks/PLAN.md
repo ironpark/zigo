@@ -7,7 +7,7 @@ registered_at: "2026-09-02T22:10:46Z"
 
 # Phases
 
-- [ ] [Phase 00: Void callback results](phases/00-void-callback-results.md)
+- [x] [Phase 00: Void callback results](phases/00-void-callback-results.md)
 - [ ] [Phase 01: Retained callback ownership on methods](phases/01-retained-callback-ownership.md)
 
 # Shared Verification

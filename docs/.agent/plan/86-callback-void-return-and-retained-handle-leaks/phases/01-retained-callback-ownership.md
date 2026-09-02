@@ -2,7 +2,7 @@
 depends_on:
 - "86-callback-void-return-and-retained-handle-leaks#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Re-registering a retained callback on a method no longer leaks; Close/cleanup release method-registered handles; example Go tests on cgo and purego prove the count returns to zero; full verification loop green.
 > NEXT: none

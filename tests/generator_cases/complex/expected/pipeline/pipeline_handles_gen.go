@@ -21,6 +21,22 @@ type Pipeline struct {
 	cleanup         runtime.Cleanup
 }
 
+func (p *Pipeline) zigoCallbackHandle(slot int) zigoCallbackHandle {
+	p.mu.Lock()
+	handle := p.callbackHandles[slot]
+	p.mu.Unlock()
+	return handle
+}
+
+// zigoReplaceCallbackHandle swaps one generation-time callback slot under the handle lock.
+func (p *Pipeline) zigoReplaceCallbackHandle(slot int, handle zigoCallbackHandle) zigoCallbackHandle {
+	p.mu.Lock()
+	previous := p.callbackHandles[slot]
+	p.callbackHandles[slot] = handle
+	p.mu.Unlock()
+	return previous
+}
+
 // zigoAcquire pins p open for one native call and hands back its pointer;
 // the call ends with zigoRelease. A nil, closed, or poisoned handle is the error.
 func (p *Pipeline) zigoAcquire(operation string) (unsafe.Pointer, error) {

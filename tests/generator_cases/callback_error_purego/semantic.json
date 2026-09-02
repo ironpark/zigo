@@ -97,6 +97,38 @@
       "symbol": "zg_hub_run"
     },
     {
+      "name": "setObserver",
+      "params": [
+        {
+          "direction": "in",
+          "go_error": true,
+          "name": "observer",
+          "name_source": "sidecar",
+          "retention": "retained",
+          "type": {
+            "c_callconv": true,
+            "has_userdata": true,
+            "kind": "callback",
+            "params": [
+              { "bits": 32, "is_usize": false, "kind": "int", "signed": true },
+              { "bits": 64, "is_usize": true, "kind": "int", "signed": false }
+            ],
+            "return": { "bits": 32, "is_usize": false, "kind": "int", "signed": true }
+          }
+        },
+        {
+          "direction": "in",
+          "name": "userdata",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": { "bits": 64, "is_usize": true, "kind": "int", "signed": false }
+        }
+      ],
+      "receiver": "Hub",
+      "return": { "kind": "void" },
+      "symbol": "zg_hub_set_observer"
+    },
+    {
       "name": "deinit",
       "params": [],
       "receiver": "Hub",

@@ -311,8 +311,11 @@ purego 백엔드는 콜백 파라미터를 C 함수 포인터와 `uintptr_t` use
 
 - 고유한 콜백 시그니처마다 영구 dispatcher를 하나 만든다. `purego.NewCallback` 슬롯은
   회수할 수 없으므로 콜백 값마다 네이티브 콜백을 만들지 않는다.
+- `void` callback도 Windows callback ABI를 위해 내부 dispatcher에서는 `uintptr(0)`을
+  돌려주지만, shim과 native callback 시그니처는 `void`이고 그 값은 읽지 않는다.
 - 콜백 값은 동기화된 정수 토큰 레지스트리에 저장한다. borrowed 토큰은 호출이 끝나면,
-  retained 토큰은 `Close`나 자동 cleanup에서 삭제된다. 삭제는 진행 중인 호출을 기다린다.
+  retained 토큰은 소유 handle의 함수·파라미터별 slot에 저장되어 재등록 성공 시 교체되고,
+  `Close`나 자동 cleanup에서 삭제된다. 삭제는 진행 중인 호출을 기다린다.
 - 콜백에서 발생한 panic은 부호 있는 32비트 결과를 가진 콜백 ABI에서 `-3`으로, 이미
   해제된 토큰 호출은 `-4`로 결정적으로 변환된다. `-3`은 native가 정리하고 반환할 수 있게
   하는 값일 뿐이고, 호출이 돌아오면 생성된 함수가 그 panic을 `*CallbackPanicError`로 다시

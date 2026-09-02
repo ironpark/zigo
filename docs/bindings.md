@@ -194,6 +194,10 @@ alias라 reflection이 이름을 알 수 없으니, 하나의 이름을 원하�
 같은 시그니처의 모든 콜백 파라미터가 `Observer` 하나로 생성됩니다. 시그니처가 같은 alias
 둘을 등록하면 먼저 등록한 이름이 둘 다에 쓰입니다 — Zig에게는 같은 타입입니다.
 
+콜백 반환은 scalar뿐 아니라 `void`도 지원합니다. `*const fn (..., userdata: usize)
+callconv(.c) void`는 Go에서 반환값 없는 `func(...)`가 되고, cgo와 purego 모두 native 호출이
+돌아온 뒤 같은 panic 전달과 수명 규칙을 적용합니다.
+
 ### 콜백이 돌려주는 Go error
 
 기본적으로 Go 콜백은 Zig 시그니처가 말하는 값만 돌려줍니다. `param_meta.<이름>.go_error`를
@@ -895,7 +899,11 @@ retained callback이나 pointer는 소유 객체의 `Close`까지 유효해야 �
 - 생성자가 만든 handle은 만들어질 때 `runtime.AddCleanup`을 등록합니다. `Close`를 잊고
   handle을 버려도 GC가 회수하는 시점에 native 메모리와 retained callback 등록이 함께
   풀립니다. `Close`가 먼저 실행되면 `cleanup.Stop()`으로 이 안전망을 떼어냅니다.
-- 콜백을 받는 생성자를 가진 타입만 `callbackHandles`를 들고 다닙니다.
+- retained callback을 받는 생성자나 method가 있는 타입은 함수·파라미터별 고정 slot의
+  `callbackHandles`를 들고 다닙니다. 생성자는 자기 slot을 채우고, 기존 handle의 method는
+  native 등록이 성공한 뒤 해당 slot을 교체해 이전 callback handle을 해제합니다. 다른
+  함수나 다른 callback 파라미터의 slot은 독립적이며, `Close`와 cleanup은 모든 slot을
+  해제합니다.
 
 안전망은 실행 시점을 보장하지 않으므로 명시적 `Close`를 대체하지 않습니다. 획득은
 receiver뿐 아니라 handle **인자**에도 걸리므로, 인자로 넘긴 handle을 다른 goroutine이

@@ -70,6 +70,7 @@ type nativeBindings struct {
 	fnEventQueueEnqueue                 func(unsafe.Pointer, uint64, int32) int32
 	fnEventQueueMergeFrom               func(unsafe.Pointer, unsafe.Pointer, *uintptr) int32
 	fnEventQueueProcess                 func(unsafe.Pointer, uintptr, *uintptr) int32
+	fnEventQueueSetObserver             func(unsafe.Pointer, uintptr, uintptr) int32
 	fnEventQueueName                    func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
 	fnEventQueueSampleValues            func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
 	fnEventQueueSampleValuesChecked     func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
@@ -415,6 +416,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_event_queue_process", err)
 	}
+	addrEventQueueSetObserver, err := resolveSymbol(handle, "zg_event_queue_set_observer_purego_v2")
+	if err != nil {
+		return fail("zg_event_queue_set_observer_purego_v2", err)
+	}
 	addrEventQueueName, err := resolveSymbol(handle, "zg_event_queue_name")
 	if err != nil {
 		return fail("zg_event_queue_name", err)
@@ -600,6 +605,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnEventQueueEnqueue, addrEventQueueEnqueue)
 	purego.RegisterFunc(&next.fnEventQueueMergeFrom, addrEventQueueMergeFrom)
 	purego.RegisterFunc(&next.fnEventQueueProcess, addrEventQueueProcess)
+	purego.RegisterFunc(&next.fnEventQueueSetObserver, addrEventQueueSetObserver)
 	purego.RegisterFunc(&next.fnEventQueueName, addrEventQueueName)
 	purego.RegisterFunc(&next.fnEventQueueSampleValues, addrEventQueueSampleValues)
 	purego.RegisterFunc(&next.fnEventQueueSampleValuesChecked, addrEventQueueSampleValuesChecked)
@@ -872,6 +878,12 @@ func EventQueueProcess(self unsafe.Pointer, limit uint) (uint, int32) {
 	var outResult uintptr
 	code := bindings().fnEventQueueProcess(self, uintptr(limit), &outResult)
 	return uint(outResult), code
+}
+
+// EventQueueSetObserver calls the generated purego ABI wrapper for zg_event_queue_set_observer_purego_v2.
+func EventQueueSetObserver(self unsafe.Pointer, observerCallback, observerToken uintptr) int32 {
+	code := bindings().fnEventQueueSetObserver(self, observerCallback, observerToken)
+	return code
 }
 
 // EventQueueName calls the generated purego ABI wrapper for zg_event_queue_name.

@@ -47,6 +47,7 @@ type nativeBindings struct {
 	lastError func() unsafe.Pointer
 	fnHubCreate func(uintptr, uintptr, *unsafe.Pointer) int32
 	fnHubRun func(unsafe.Pointer, int32, *int32) int32
+	fnHubSetObserver func(unsafe.Pointer, uintptr, uintptr) int32
 	fnHubDeinit func(unsafe.Pointer) int32
 	fnApply func(int32, uintptr, uintptr) int32
 	fnNotify func(int32, uintptr, uintptr)
@@ -266,6 +267,8 @@ func loadCandidate(path string) error {
 	if err != nil { return fail("zg_hub_create_purego_v2", err) }
 	addrHubRun, err := resolveSymbol(handle, "zg_hub_run")
 	if err != nil { return fail("zg_hub_run", err) }
+	addrHubSetObserver, err := resolveSymbol(handle, "zg_hub_set_observer_purego_v2")
+	if err != nil { return fail("zg_hub_set_observer_purego_v2", err) }
 	addrHubDeinit, err := resolveSymbol(handle, "zg_hub_deinit")
 	if err != nil { return fail("zg_hub_deinit", err) }
 	addrApply, err := resolveSymbol(handle, "zg_apply_purego_v2")
@@ -276,6 +279,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.fnHubCreate, addrHubCreate)
 	purego.RegisterFunc(&next.fnHubRun, addrHubRun)
+	purego.RegisterFunc(&next.fnHubSetObserver, addrHubSetObserver)
 	purego.RegisterFunc(&next.fnHubDeinit, addrHubDeinit)
 	purego.RegisterFunc(&next.fnApply, addrApply)
 	purego.RegisterFunc(&next.fnNotify, addrNotify)
@@ -310,6 +314,12 @@ func HubRun(self unsafe.Pointer, value int32) (int32, int32) {
 	var outResult int32
 	code := bindings().fnHubRun(self, value, &outResult)
 	return outResult, code
+}
+
+// HubSetObserver calls the generated purego ABI wrapper for zg_hub_set_observer_purego_v2.
+func HubSetObserver(self unsafe.Pointer, observerCallback, observerToken uintptr) int32 {
+	code := bindings().fnHubSetObserver(self, observerCallback, observerToken)
+	return code
 }
 
 // HubDeinit calls the generated purego ABI wrapper for zg_hub_deinit.

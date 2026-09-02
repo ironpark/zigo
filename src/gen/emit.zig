@@ -4004,17 +4004,18 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                 try writer.writeAll("\tif result == nil {\n\t\treturn nil, false, nil\n\t}\n");
             try writer.writeAll("\treturn ");
             if (owned_type) |type_name|
-                try writeOwnedHandleResult(allocator, writer, program, function.origin.*, type_name, "result")
+                try writeOwnedHandleResult(allocator, writer, program, function, type_name, "result")
             else
                 try writeBorrowedResult(allocator, writer, function.origin.*, go_names, "result");
             if (returnsBorrowedView(function.origin.*) and function.origin.@"return".opaque_ptr.nullable) try writer.writeAll(", true");
             if (needs_check) try writer.writeAll(", nil");
             try writer.writeByte('\n');
         }
+        if (!returns_error) try writeAdoptRetainedMethodCallbacks(allocator, writer, program, function);
         if (!returns_error and needs_check and function.origin.@"return" == .void) try writer.writeAll("\treturn nil\n");
         if (returns_error) {
             try writer.writeAll("\tif code != 0 {\n");
-            if (hasRetainedCallback(function.origin.*)) {
+            if (hasRetainedCallback(function.origin.*) and !retainedCallbacksBelongToReceiver(program, function.origin.*)) {
                 try writeDeleteRetainedCallbacks(allocator, writer, function.origin.*);
             }
             // A stop the caller asked for is the caller's own answer, not the
@@ -4041,6 +4042,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             else
                 try writeErrorForCode(allocator, writer, function.origin.*, go_names, operation);
             try writer.writeAll("\t}\n");
+            try writeAdoptRetainedMethodCallbacks(allocator, writer, program, function);
             if (hasOutValueStructSlice(function.origin.*)) {
                 try writePublicValueStructSliceCopyBacks(writer, program, function.origin.*, go_names);
             }
@@ -4062,7 +4064,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                 } else {
                     try writer.writeAll("\treturn ");
                     if (owned_type) |type_name| {
-                        try writeOwnedHandleResult(allocator, writer, program, function.origin.*, type_name, "result");
+                        try writeOwnedHandleResult(allocator, writer, program, function, type_name, "result");
                     } else if (error_payload == .opaque_ptr and returnsBorrowedHandle(function.origin.*)) {
                         try writeBorrowedResult(allocator, writer, function.origin.*, go_names, "result");
                     } else if (error_payload == .optional) {
@@ -5183,6 +5185,7 @@ fn renderPublicHelpers(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
         try writeStreamHandleConstructors(writer, program, options);
         try writer.writeAll(
             "func deleteCallbackHandle(handle zigoCallbackHandle) {\n" ++
+                "\tif handle == 0 { return }\n" ++
                 "\thandle.Delete()\n" ++
                 "\tactiveCallbackHandles.Add(-1)\n" ++
                 "}\n\n" ++
@@ -5227,6 +5230,7 @@ fn writeCallbackErrorHelper(writer: *std.Io.Writer, program: abi.Program, option
             "// inside the native call that has just finished, wrapped so the caller can\n" ++
             "// match it with errors.Is.\n" ++
             "func zigoCallbackError(operation string, callback string, handle zigoCallbackHandle) error {\n" ++
+            "\tif handle == 0 { return nil }\n" ++
             "\tif err, ok := ",
     );
     try writeRawReferencePrefix(writer, options);
@@ -5305,6 +5309,7 @@ fn writeRethrowHelper(writer: *std.Io.Writer, options: Options) !void {
             "// the native call that has just returned. The trampoline recovered it so the\n" ++
             "// native frames could unwind; the caller sees it as a *CallbackPanicError.\n" ++
             "func zigoRethrowCallbackPanic(operation string, handle zigoCallbackHandle) {\n" ++
+            "\tif handle == 0 { return }\n" ++
             "\tif value, stack, ok := ",
     );
     try writeRawReferencePrefix(writer, options);
@@ -5377,6 +5382,15 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             "func newBorrowed{0s}(ptr unsafe.Pointer, owner zigoHandle) *{0s} {{\n" ++
                 "\treturn &{0s}{{ptr: ptr, owner: owner}}\n}}\n\n",
             .{declaration.name},
+        );
+        if (owns_callbacks) try writer.print(
+            "func ({0s} *{1s}) zigoCallbackHandle(slot int) zigoCallbackHandle {{\n" ++
+                "\t{0s}.mu.Lock()\n\thandle := {0s}.callbackHandles[slot]\n\t{0s}.mu.Unlock()\n\treturn handle\n}}\n\n" ++
+                "// zigoReplaceCallbackHandle swaps one generation-time callback slot under the handle lock.\n" ++
+                "func ({0s} *{1s}) zigoReplaceCallbackHandle(slot int, handle zigoCallbackHandle) zigoCallbackHandle {{\n" ++
+                "\t{0s}.mu.Lock()\n\tprevious := {0s}.callbackHandles[slot]\n\t{0s}.callbackHandles[slot] = handle\n\t{0s}.mu.Unlock()\n" ++
+                "\treturn previous\n}}\n\n",
+            .{ recv, declaration.name },
         );
         // A call pins the handle open with zigoAcquire and lets go with
         // zigoRelease; `mu` is dropped in between, so nothing that happens
@@ -6454,8 +6468,8 @@ fn functionReachesCallbacks(program: abi.Program, function: semantic.SemanticFn)
 }
 
 /// After the native call: rethrow any panic a reachable callback recorded.
-/// The retained handles are walked under the read lock the call already
-/// holds, so Close cannot release them meanwhile.
+/// The receiver is pinned for the call, and each retained slot is read under
+/// its mutex so a concurrent re-registration cannot race the scan.
 fn renderCallbackRethrows(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, function: semantic.SemanticFn, operation: []const u8) !void {
     const go_names = try goParamNamesForAlloc(allocator, function.params);
     defer naming.freeParamNames(allocator, go_names);
@@ -6467,12 +6481,12 @@ fn renderCallbackRethrows(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
         if (typeOwnsCallbacks(program, receiver)) {
             const receiver_name = try receiverVariableAlloc(allocator, receiver, go_names);
             defer allocator.free(receiver_name);
-            try writer.print("\tfor _, handle := range {s}.callbackHandles {{\n\t\tzigoRethrowCallbackPanic(\"{s}\", handle)\n\t}}\n", .{ receiver_name, operation });
+            try writer.print("\tfor slot := range {d} {{\n\t\tzigoRethrowCallbackPanic(\"{s}\", {s}.zigoCallbackHandle(slot))\n\t}}\n", .{ retainedCallbackSlotCount(program, receiver), operation, receiver_name });
         }
     }
     for (function.params, 0..) |parameter, parameter_index| switch (parameter.type) {
         .opaque_ptr => |pointer| if (typeOwnsCallbacks(program, pointer.ref))
-            try writer.print("\tif {0s} != nil {{\n\t\tfor _, handle := range {0s}.callbackHandles {{\n\t\t\tzigoRethrowCallbackPanic(\"{1s}\", handle)\n\t\t}}\n\t}}\n", .{ go_names[parameter_index], operation }),
+            try writer.print("\tif {0s} != nil {{\n\t\tfor slot := range {2d} {{\n\t\t\tzigoRethrowCallbackPanic(\"{1s}\", {0s}.zigoCallbackHandle(slot))\n\t\t}}\n\t}}\n", .{ go_names[parameter_index], operation, retainedCallbackSlotCount(program, pointer.ref) }),
         else => {},
     };
 }
@@ -6582,7 +6596,8 @@ fn renderCallbackErrorChecks(
         try writer.print("\tif err := zigoCallbackError(\"{s}\", \"{s}\", {s}Handle); err != nil {{\n", .{ operation, name, name });
         // A retained callback is only deleted on the success path, so an early
         // return here has to release it exactly as the status check does.
-        if (hasRetainedCallback(function)) try writeDeleteRetainedCallbacks(allocator, writer, function);
+        if (hasRetainedCallback(function) and !retainedCallbacksBelongToReceiver(program, function))
+            try writeDeleteRetainedCallbacks(allocator, writer, function);
         try writer.writeAll("\t\t");
         try writeCheckedErrorReturn(scope, writer, function, constructor, "err");
         try writer.writeAll("\t}\n");
@@ -6591,7 +6606,7 @@ fn renderCallbackErrorChecks(
         if (typeOwnsErrorCallbacks(program, receiver)) {
             const receiver_name = try receiverVariableAlloc(allocator, receiver, go_names);
             defer allocator.free(receiver_name);
-            try writer.print("\tfor _, handle := range {s}.callbackHandles {{\n\t\tif err := zigoCallbackError(\"{s}\", \"callback\", handle); err != nil {{\n\t\t\t", .{ receiver_name, operation });
+            try writer.print("\tfor slot := range {d} {{\n\t\tif err := zigoCallbackError(\"{s}\", \"callback\", {s}.zigoCallbackHandle(slot)); err != nil {{\n\t\t\t", .{ retainedCallbackSlotCount(program, receiver), operation, receiver_name });
             try writeCheckedErrorReturn(scope, writer, function, constructor, "err");
             try writer.writeAll("\t\t}\n\t}\n");
         }
@@ -6600,7 +6615,7 @@ fn renderCallbackErrorChecks(
         if (parameter.type != .opaque_ptr) continue;
         if (!typeOwnsErrorCallbacks(program, parameter.type.opaque_ptr.ref)) continue;
         const name = go_names[parameter_index];
-        try writer.print("\tif {0s} != nil {{\n\t\tfor _, handle := range {0s}.callbackHandles {{\n\t\t\tif err := zigoCallbackError(\"{1s}\", \"callback\", handle); err != nil {{\n\t\t\t\t", .{ name, operation });
+        try writer.print("\tif {0s} != nil {{\n\t\tfor slot := range {2d} {{\n\t\t\tif err := zigoCallbackError(\"{1s}\", \"callback\", {0s}.zigoCallbackHandle(slot)); err != nil {{\n\t\t\t\t", .{ name, operation, retainedCallbackSlotCount(program, parameter.type.opaque_ptr.ref) });
         try writeCheckedErrorReturn(scope, writer, function, constructor, "err");
         try writer.writeAll("\t\t\t}\n\t\t}\n\t}\n");
     }
@@ -6627,6 +6642,12 @@ fn renderCallbackHandleSetup(allocator: std.mem.Allocator, writer: *std.Io.Write
         try writer.print("\t{s}Handle := new{s}Handle({s})\n", .{ go_names[parameter_index], callback_name, go_names[parameter_index] });
         if (parameter.retention == .borrowed) {
             try writer.print("\tdefer deleteCallbackHandle({s}Handle)\n", .{go_names[parameter_index]});
+        } else if (retainedCallbacksBelongToReceiver(program, function.origin.*)) {
+            try writer.print(
+                "\t{0s}HandleAdopted := false\n" ++
+                    "\tdefer func() {{ if !{0s}HandleAdopted {{ deleteCallbackHandle({0s}Handle) }} }}()\n",
+                .{go_names[parameter_index]},
+            );
         }
     }
 }
@@ -6640,15 +6661,34 @@ fn writeDeleteRetainedCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Wr
     }
 }
 
-fn writeRetainedCallbackHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, function: semantic.SemanticFn) !void {
-    const go_names = try goParamNamesForAlloc(allocator, function.params);
+/// Once a retaining method has successfully returned, native code has replaced
+/// the callback pointer for this slot. Publish the matching Go handle under the
+/// receiver lock, then release the displaced handle after dropping the lock.
+fn writeAdoptRetainedMethodCallbacks(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    function: abi.AbiFn,
+) !void {
+    const receiver = function.origin.receiver orelse return;
+    const owner = retainedCallbackOwner(program, function) orelse return;
+    if (!std.mem.eql(u8, owner, receiver)) return;
+    // A method that constructs an owned result transfers its retained callbacks
+    // to that result, not to its receiver.
+    if (constructorForInit(program, function.origin.*) != null or ownedOpaqueReturn(program, function.origin.*) != null) return;
+    const go_names = try goParamNamesForAlloc(allocator, function.origin.params);
     defer naming.freeParamNames(allocator, go_names);
-    var index: usize = 0;
-    for (function.params, 0..) |parameter, parameter_index| {
+    const receiver_name = try receiverVariableAlloc(allocator, receiver, go_names);
+    defer allocator.free(receiver_name);
+    for (function.origin.params, 0..) |parameter, parameter_index| {
         if (parameter.type != .callback or parameter.retention != .retained) continue;
-        if (index != 0) try writer.writeAll(", ");
-        try writer.print("{s}Handle", .{go_names[parameter_index]});
-        index += 1;
+        const slot = retainedCallbackSlot(program, function, parameter_index) orelse unreachable;
+        try writer.print(
+            "\t{0s}PreviousHandle := {1s}.zigoReplaceCallbackHandle({2d}, {0s}Handle)\n" ++
+                "\t{0s}HandleAdopted = true\n" ++
+                "\tdeleteCallbackHandle({0s}PreviousHandle)\n",
+            .{ go_names[parameter_index], receiver_name, slot },
+        );
     }
 }
 
@@ -7469,11 +7509,8 @@ fn callbackHasGoError(program: abi.Program, parameter: semantic.Parameter) bool 
 /// exactly as a retained callback's panic does.
 fn typeOwnsErrorCallbacks(program: abi.Program, type_name: []const u8) bool {
     for (program.functions) |function| {
-        const produced = if (constructorForInit(program, function.origin.*)) |constructor|
-            constructor.type
-        else
-            ownedOpaqueReturn(program, function.origin.*) orelse continue;
-        if (!std.mem.eql(u8, produced, type_name)) continue;
+        const owner = retainedCallbackOwner(program, function) orelse continue;
+        if (!std.mem.eql(u8, owner, type_name)) continue;
         for (function.origin.params) |parameter| {
             if (parameter.retention == .retained and callbackHasGoError(program, parameter)) return true;
         }
@@ -7530,14 +7567,53 @@ fn isAutoCleanupType(program: abi.Program, type_name: []const u8) bool {
 /// types that do not, and only the former need the bookkeeping.
 fn typeOwnsCallbacks(program: abi.Program, type_name: []const u8) bool {
     for (program.functions) |function| {
-        const produced = if (constructorForInit(program, function.origin.*)) |constructor|
-            constructor.type
-        else
-            ownedOpaqueReturn(program, function.origin.*) orelse continue;
-        if (!std.mem.eql(u8, produced, type_name)) continue;
+        const owner = retainedCallbackOwner(program, function) orelse continue;
+        if (!std.mem.eql(u8, owner, type_name)) continue;
         if (hasRetainedCallback(function.origin.*)) return true;
     }
     return false;
+}
+
+/// The handle that owns callbacks retained by one function. Constructors and
+/// caller-owned handle returns transfer them to the new result; an ordinary
+/// retaining method transfers them to its receiver.
+fn retainedCallbackOwner(program: abi.Program, function: abi.AbiFn) ?[]const u8 {
+    if (!hasRetainedCallback(function.origin.*)) return null;
+    if (constructorForInit(program, function.origin.*)) |constructor| return constructor.type;
+    if (ownedOpaqueReturn(program, function.origin.*)) |owned| return owned;
+    return function.origin.receiver;
+}
+
+fn retainedCallbacksBelongToReceiver(program: abi.Program, function: semantic.SemanticFn) bool {
+    if (!hasRetainedCallback(function) or function.receiver == null) return false;
+    return constructorForInit(program, function) == null and ownedOpaqueReturn(program, function) == null;
+}
+
+fn retainedCallbackSlotCount(program: abi.Program, type_name: []const u8) usize {
+    var count: usize = 0;
+    for (program.functions) |function| {
+        const owner = retainedCallbackOwner(program, function) orelse continue;
+        if (!std.mem.eql(u8, owner, type_name)) continue;
+        for (function.origin.params) |parameter| {
+            if (parameter.type == .callback and parameter.retention == .retained) count += 1;
+        }
+    }
+    return count;
+}
+
+fn retainedCallbackSlot(program: abi.Program, wanted: abi.AbiFn, wanted_parameter: usize) ?usize {
+    const wanted_owner = retainedCallbackOwner(program, wanted) orelse return null;
+    var slot: usize = 0;
+    for (program.functions) |function| {
+        const owner = retainedCallbackOwner(program, function) orelse continue;
+        if (!std.mem.eql(u8, owner, wanted_owner)) continue;
+        for (function.origin.params, 0..) |parameter, parameter_index| {
+            if (parameter.type != .callback or parameter.retention != .retained) continue;
+            if (function.origin == wanted.origin and parameter_index == wanted_parameter) return slot;
+            slot += 1;
+        }
+    }
+    return null;
 }
 
 fn publicNeedsRuntime(program: abi.Program) bool {
@@ -7896,23 +7972,32 @@ fn writeOwnedHandleResult(
     allocator: std.mem.Allocator,
     writer: *std.Io.Writer,
     program: abi.Program,
-    function: semantic.SemanticFn,
+    function: abi.AbiFn,
     type_name: []const u8,
     expression: []const u8,
 ) !void {
     try writer.print("new{s}({s}", .{ type_name, expression });
-    if (function.childOfReceiver()) {
+    if (function.origin.childOfReceiver()) {
         try writer.writeAll(", zigoChildParent");
     }
     if (typeOwnsCallbacks(program, type_name)) {
-        try writer.writeAll(", ");
-        if (hasRetainedCallback(function)) {
-            try writer.writeAll("[]zigoCallbackHandle{");
-            try writeRetainedCallbackHandles(allocator, writer, function);
-            try writer.writeByte('}');
-        } else {
-            try writer.writeAll("nil");
+        const go_names = try goParamNamesForAlloc(allocator, function.origin.params);
+        defer naming.freeParamNames(allocator, go_names);
+        try writer.writeAll(", []zigoCallbackHandle{");
+        const slot_count = retainedCallbackSlotCount(program, type_name);
+        for (0..slot_count) |slot| {
+            if (slot != 0) try writer.writeAll(", ");
+            var wrote = false;
+            for (function.origin.params, 0..) |parameter, parameter_index| {
+                if (parameter.type != .callback or parameter.retention != .retained) continue;
+                if (retainedCallbackSlot(program, function, parameter_index).? != slot) continue;
+                try writer.print("{s}Handle", .{go_names[parameter_index]});
+                wrote = true;
+                break;
+            }
+            if (!wrote) try writer.writeByte('0');
         }
+        try writer.writeByte('}');
     }
     try writer.writeByte(')');
 }

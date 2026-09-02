@@ -256,6 +256,29 @@ func TestObserverPanicIsRethrown(t *testing.T) {
 	assertNoLiveQueueResources(t)
 }
 
+func TestRetainedMethodCallbackHandlesAreReplacedAndClosed(t *testing.T) {
+	before := activeCallbackHandleCount()
+	queue, err := NewEventQueue("replace observer", 1, PolicyReject, func(uint64, int32) int32 { return 0 })
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.SetObserver(func(uint64, int32) int32 { return 1 }); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.SetObserver(func(uint64, int32) int32 { return 2 }); err != nil {
+		t.Fatal(err)
+	}
+	if got := activeCallbackHandleCount(); got != before+2 {
+		t.Fatalf("active callback handles after replacement = %d, want %d", got, before+2)
+	}
+	if err := queue.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if got := activeCallbackHandleCount(); got != before {
+		t.Fatalf("active callback handles after Close = %d, want %d", got, before)
+	}
+}
+
 func TestConcurrentIndependentQueueLifecycles(t *testing.T) {
 	const workers = 8
 	const iterations = 30

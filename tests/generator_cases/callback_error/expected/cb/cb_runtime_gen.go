@@ -46,8 +46,11 @@ func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error {
 	return err
 }
 
-// HubObserver is the Go callback signature accepted by the generated binding.
-type HubObserver func(int32) (int32, error)
+// HubCreateObserver is the Go callback signature accepted by the generated binding.
+type HubCreateObserver func(int32) (int32, error)
+
+// HubSetObserverObserver is the Go callback signature accepted by the generated binding.
+type HubSetObserverObserver func(int32) (int32, error)
 
 // ApplyObserverCallback is the Go callback signature accepted by the generated binding.
 type ApplyObserverCallback func(int32) (int32, error)
@@ -59,7 +62,14 @@ var activeCallbackHandles atomic.Int64
 
 type zigoCallbackHandle = cgo.Handle
 
-func newHubObserverHandle(value HubObserver) zigoCallbackHandle {
+func newHubCreateObserverHandle(value HubCreateObserver) zigoCallbackHandle {
+	stored := (func(int32) (int32, error))(value)
+	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
+	activeCallbackHandles.Add(1)
+	return handle
+}
+
+func newHubSetObserverObserverHandle(value HubSetObserverObserver) zigoCallbackHandle {
 	stored := (func(int32) (int32, error))(value)
 	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
 	activeCallbackHandles.Add(1)
@@ -81,6 +91,7 @@ func newNotifyObserverCallbackHandle(value NotifyObserverCallback) zigoCallbackH
 }
 
 func deleteCallbackHandle(handle zigoCallbackHandle) {
+	if handle == 0 { return }
 	handle.Delete()
 	activeCallbackHandles.Add(-1)
 }
@@ -91,6 +102,7 @@ func activeCallbackHandleCount() int64 { return activeCallbackHandles.Load() }
 // the native call that has just returned. The trampoline recovered it so the
 // native frames could unwind; the caller sees it as a *CallbackPanicError.
 func zigoRethrowCallbackPanic(operation string, handle zigoCallbackHandle) {
+	if handle == 0 { return }
 	if value, stack, ok := raw.TakeCallbackPanic(handle); ok {
 		panic(&CallbackPanicError{Operation: operation, Value: value, Stack: stack})
 	}
@@ -100,6 +112,7 @@ func zigoRethrowCallbackPanic(operation string, handle zigoCallbackHandle) {
 // inside the native call that has just finished, wrapped so the caller can
 // match it with errors.Is.
 func zigoCallbackError(operation string, callback string, handle zigoCallbackHandle) error {
+	if handle == 0 { return nil }
 	if err, ok := raw.TakeCallbackError(handle); ok {
 		return &CallbackError{Operation: operation, Callback: callback, Err: err}
 	}

@@ -21,6 +21,22 @@ type TelemetryHub struct {
 	cleanup         runtime.Cleanup
 }
 
+func (t *TelemetryHub) zigoCallbackHandle(slot int) zigoCallbackHandle {
+	t.mu.Lock()
+	handle := t.callbackHandles[slot]
+	t.mu.Unlock()
+	return handle
+}
+
+// zigoReplaceCallbackHandle swaps one generation-time callback slot under the handle lock.
+func (t *TelemetryHub) zigoReplaceCallbackHandle(slot int, handle zigoCallbackHandle) zigoCallbackHandle {
+	t.mu.Lock()
+	previous := t.callbackHandles[slot]
+	t.callbackHandles[slot] = handle
+	t.mu.Unlock()
+	return previous
+}
+
 // zigoAcquire pins t open for one native call and hands back its pointer;
 // the call ends with zigoRelease. A nil, closed, or poisoned handle is the error.
 func (t *TelemetryHub) zigoAcquire(operation string) (unsafe.Pointer, error) {

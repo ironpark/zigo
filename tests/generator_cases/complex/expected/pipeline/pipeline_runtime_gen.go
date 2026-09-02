@@ -68,6 +68,7 @@ func newPipelineCallbackHandle(value PipelineCallback) zigoCallbackHandle {
 }
 
 func deleteCallbackHandle(handle zigoCallbackHandle) {
+	if handle == 0 { return }
 	handle.Delete()
 	activeCallbackHandles.Add(-1)
 }
@@ -78,6 +79,7 @@ func activeCallbackHandleCount() int64 { return activeCallbackHandles.Load() }
 // the native call that has just returned. The trampoline recovered it so the
 // native frames could unwind; the caller sees it as a *CallbackPanicError.
 func zigoRethrowCallbackPanic(operation string, handle zigoCallbackHandle) {
+	if handle == 0 { return }
 	if value, stack, ok := raw.TakeCallbackPanic(handle); ok {
 		panic(&CallbackPanicError{Operation: operation, Value: value, Stack: stack})
 	}

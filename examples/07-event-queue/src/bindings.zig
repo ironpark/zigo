@@ -56,6 +56,11 @@ pub const bindings = zigo.define(.{
         .{ .path = "EventQueue.enqueue", .params = .{ "id", "value" } },
         .{ .path = "EventQueue.mergeFrom", .params = .{"source"} },
         .{ .path = "EventQueue.process", .params = .{"limit"} },
+        .{
+            .path = "EventQueue.setObserver",
+            .params = .{ "observer", "userdata" },
+            .param_meta = .{ .observer = .{ .retention = .retained } },
+        },
         .{ .path = "EventQueue.name", .semantic = .utf8_string },
         .{ .path = "EventQueue.sampleValues" },
         .{ .path = "EventQueue.sampleValuesChecked" },

@@ -4,6 +4,21 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Added
+
+- `void`를 반환하는 Zig callback을 cgo와 purego에서 지원합니다. 생성된 C/Zig trampoline과
+  Go callback 타입도 반환값 없이 생성되며, purego dispatcher의 내부 반환값은 native에서
+  무시됩니다.
+
+### Fixed
+
+- 기존 handle의 method로 retained callback을 다시 등록할 때 이전 `cgo.Handle` 또는 purego
+  callback token이 남던 누수를 고쳤습니다. callback은 함수·파라미터별 slot에 교체되고,
+  이전 등록은 성공한 native 호출 뒤 해제되며, 남은 모든 slot은 `Close`와 자동 cleanup에서
+  해제됩니다. `.packages`의 공유 lifecycle에서도 같은 규칙을 사용합니다.
+
 ## [0.6.2] - 2026-09-03
 
 ### Fixed

@@ -44,8 +44,11 @@ func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error {
 	return err
 }
 
-// HubObserver is the Go callback signature accepted by the generated binding.
-type HubObserver func(int32) (int32, error)
+// HubCreateObserver is the Go callback signature accepted by the generated binding.
+type HubCreateObserver func(int32) (int32, error)
+
+// HubSetObserverObserver is the Go callback signature accepted by the generated binding.
+type HubSetObserverObserver func(int32) (int32, error)
 
 // ApplyObserverCallback is the Go callback signature accepted by the generated binding.
 type ApplyObserverCallback func(int32) (int32, error)
@@ -55,7 +58,11 @@ type NotifyObserverCallback func(int32)
 
 type zigoCallbackHandle = uintptr
 
-func newHubObserverHandle(value HubObserver) zigoCallbackHandle {
+func newHubCreateObserverHandle(value HubCreateObserver) zigoCallbackHandle {
+	return raw.NewCallbackHandle((func(int32) (int32, error))(value))
+}
+
+func newHubSetObserverObserverHandle(value HubSetObserverObserver) zigoCallbackHandle {
 	return raw.NewCallbackHandle((func(int32) (int32, error))(value))
 }
 
@@ -76,6 +83,7 @@ func callbackDispatcherCount() int { return raw.CallbackDispatcherCount() }
 // the native call that has just returned. The trampoline recovered it so the
 // native frames could unwind; the caller sees it as a *CallbackPanicError.
 func zigoRethrowCallbackPanic(operation string, handle zigoCallbackHandle) {
+	if handle == 0 { return }
 	if value, stack, ok := raw.TakeCallbackPanic(handle); ok {
 		panic(&CallbackPanicError{Operation: operation, Value: value, Stack: stack})
 	}
@@ -85,6 +93,7 @@ func zigoRethrowCallbackPanic(operation string, handle zigoCallbackHandle) {
 // inside the native call that has just finished, wrapped so the caller can
 // match it with errors.Is.
 func zigoCallbackError(operation string, callback string, handle zigoCallbackHandle) error {
+	if handle == 0 { return nil }
 	if err, ok := raw.TakeCallbackError(handle); ok {
 		return &CallbackError{Operation: operation, Callback: callback, Err: err}
 	}

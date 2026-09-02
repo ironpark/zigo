@@ -97,6 +97,24 @@ func zg_hub_create_go_callback_observer(p0 C.int32_t, p1 C.size_t) (result C.int
 	return C.int32_t(value)
 }
 
+//export zg_hub_set_observer_go_callback_observer
+func zg_hub_set_observer_go_callback_observer(p0 C.int32_t, p1 C.size_t) (result C.int32_t) {
+	state := cgo.Handle(p1).Value().(*CallbackState)
+	defer func() {
+		if value := recover(); value != nil {
+			state.record(value)
+			result = C.int32_t(-3)
+		}
+	}()
+	callback := state.Fn.(func(int32) (int32, error))
+	value, err := callback(int32(p0))
+	if err != nil {
+		state.recordErr(err)
+		return C.int32_t(-5)
+	}
+	return C.int32_t(value)
+}
+
 //export zg_apply_go_callback_observer
 func zg_apply_go_callback_observer(p0 C.int32_t, p1 C.size_t) (result C.int32_t) {
 	state := cgo.Handle(p1).Value().(*CallbackState)
@@ -138,6 +156,11 @@ func HubRun(self unsafe.Pointer, value int32) (int32, int32) {
 	var outResult C.int32_t
 	code := int32(C.zg_hub_run((*C.zg_hub)(self), C.int32_t(value), &outResult))
 	return int32(outResult), code
+}
+// HubSetObserver calls the generated C ABI wrapper for zg_hub_set_observer.
+func HubSetObserver(self unsafe.Pointer, observerHandle uintptr) int32 {
+	code := int32(C.zg_hub_set_observer((*C.zg_hub)(self), C.size_t(observerHandle)))
+	return code
 }
 // HubDeinit calls the generated C ABI wrapper for zg_hub_deinit.
 func HubDeinit(self unsafe.Pointer) int32 {

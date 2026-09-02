@@ -66,6 +66,18 @@ ZIGO_EXPORT int32_t zg_hub_run(zg_hub * self, int32_t value, int32_t * out_resul
     return result;
 }
 
+int32_t zg_hub_set_observer_impl(zg_hub * self, size_t userdata);
+ZIGO_EXPORT int32_t zg_hub_set_observer(zg_hub * self, size_t userdata) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return -2;
+    }
+    int32_t result = zg_hub_set_observer_impl(self, userdata);
+    zg_panic_active = 0;
+    return result;
+}
+
 int32_t zg_hub_deinit_impl(zg_hub * self);
 ZIGO_EXPORT int32_t zg_hub_deinit(zg_hub * self) {
     zg_panic_active = 1;

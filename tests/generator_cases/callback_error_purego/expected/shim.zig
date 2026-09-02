@@ -20,6 +20,10 @@ export fn zg_hub_run_impl(self: *target.Hub, value: i32, out_result: *i32) i32 {
     out_result.* = result;
     return 0;
 }
+export fn zg_hub_set_observer_purego_v2_impl(self: *target.Hub, observer: *const fn (i32, usize) callconv(.c) i32, userdata: usize) i32 {
+    target.Hub.setObserver(self, observer, userdata);
+    return 0;
+}
 export fn zg_hub_deinit_impl(self: *target.Hub) i32 {
     target.Hub.deinit(self);
     return 0;

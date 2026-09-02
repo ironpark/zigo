@@ -23,6 +23,22 @@ type EventQueue struct {
 	cleanup         runtime.Cleanup
 }
 
+func (e *EventQueue) zigoCallbackHandle(slot int) zigoCallbackHandle {
+	e.mu.Lock()
+	handle := e.callbackHandles[slot]
+	e.mu.Unlock()
+	return handle
+}
+
+// zigoReplaceCallbackHandle swaps one generation-time callback slot under the handle lock.
+func (e *EventQueue) zigoReplaceCallbackHandle(slot int, handle zigoCallbackHandle) zigoCallbackHandle {
+	e.mu.Lock()
+	previous := e.callbackHandles[slot]
+	e.callbackHandles[slot] = handle
+	e.mu.Unlock()
+	return previous
+}
+
 // zigoAcquire pins e open for one native call and hands back its pointer;
 // the call ends with zigoRelease. A nil, closed, or poisoned handle is the error.
 func (e *EventQueue) zigoAcquire(operation string) (unsafe.Pointer, error) {

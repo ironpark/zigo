@@ -19,6 +19,7 @@ typedef struct zg_hub zg_hub;
 
 ZIGO_EXPORT int32_t zg_hub_create_purego_v2(int32_t (*observer)(int32_t, size_t), size_t userdata, zg_hub * * out_result);
 ZIGO_EXPORT int32_t zg_hub_run(zg_hub * self, int32_t value, int32_t * out_result);
+ZIGO_EXPORT int32_t zg_hub_set_observer_purego_v2(zg_hub * self, int32_t (*observer)(int32_t, size_t), size_t userdata);
 ZIGO_EXPORT int32_t zg_hub_deinit(zg_hub * self);
 ZIGO_EXPORT int32_t zg_apply_purego_v2(int32_t value, int32_t (*observer)(int32_t, size_t), size_t userdata);
 ZIGO_EXPORT void zg_notify_purego_v2(int32_t value, void (*observer)(int32_t, size_t), size_t userdata);

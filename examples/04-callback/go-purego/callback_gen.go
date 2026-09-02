@@ -156,11 +156,11 @@ func (c *CallbackContext) Run(value int32) (int32, error) {
 	}
 	defer c.zigoRelease()
 	result, code := raw.CallbackContextRun(ptr, value)
-	for _, handle := range c.callbackHandles {
-		zigoRethrowCallbackPanic("CallbackContext.Run", handle)
+	for slot := range 1 {
+		zigoRethrowCallbackPanic("CallbackContext.Run", c.zigoCallbackHandle(slot))
 	}
-	for _, handle := range c.callbackHandles {
-		if err := zigoCallbackError("CallbackContext.Run", "callback", handle); err != nil {
+	for slot := range 1 {
+		if err := zigoCallbackError("CallbackContext.Run", "callback", c.zigoCallbackHandle(slot)); err != nil {
 			return 0, err
 		}
 	}
