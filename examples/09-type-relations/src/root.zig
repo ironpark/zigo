@@ -67,9 +67,14 @@ pub fn Enum(comptime names: []const []const u8) type {
 
 pub const CursorStyle = Enum(([_][]const u8{ "block", "bar", "underline" })[0..3]);
 pub const CharsetSlot = Enum(([_][]const u8{ "block", "bar", "g2" })[0..3]);
+pub const DeccolmMode = enum(u8) { @"80_cols", @"132_cols" };
 
 pub fn configureStyles(slot: CharsetSlot, style: CursorStyle) bool {
     return slot == .block and style != .block;
+}
+
+pub fn isWideColumns(mode: DeccolmMode) bool {
+    return mode == .@"132_cols";
 }
 
 /// Terminal input can carry erase modes newer than this library knows. The
@@ -244,6 +249,7 @@ test "a generated enum still behaves like an ordinary Zig enum" {
     try std.testing.expect(cursorStyleBlinks(.bar));
     try std.testing.expect(!cursorStyleBlinks(.block));
     try std.testing.expect(configureStyles(.block, .bar));
+    try std.testing.expect(isWideColumns(.@"132_cols"));
 }
 
 test "a non-exhaustive enum accepts unnamed values" {

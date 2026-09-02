@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T17:56:28Z"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: `80_cols` tag가 생성되고 `go vet` 통과, 커밋.
 > NEXT: none

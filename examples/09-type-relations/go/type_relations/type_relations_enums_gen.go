@@ -56,6 +56,28 @@ func (value CharsetSlot) String() string {
 	}
 }
 
+// DeccolmMode represents the corresponding Zig enum.
+type DeccolmMode uint8
+
+const (
+	// DeccolmMode80Cols corresponds to the Zig tag 80_cols.
+	DeccolmMode80Cols DeccolmMode = 0
+	// DeccolmMode132Cols corresponds to the Zig tag 132_cols.
+	DeccolmMode132Cols DeccolmMode = 1
+)
+
+// String returns the Zig tag name.
+func (value DeccolmMode) String() string {
+	switch value {
+	case DeccolmMode80Cols:
+		return "80_cols"
+	case DeccolmMode132Cols:
+		return "132_cols"
+	default:
+		return "DeccolmMode(" + strconv.Itoa(int(value)) + ")"
+	}
+}
+
 // EraseDisplay represents the corresponding Zig open enum; values outside the named constants are valid.
 type EraseDisplay uint8
 

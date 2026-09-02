@@ -693,6 +693,11 @@ fn identifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?
                 .label = member_label,
                 .spelling = field.name,
                 .convert = true,
+                // Enum constants are emitted as <Type><Pascal(tag)>; a tag
+                // may therefore start with a digit while the full name does
+                // not. Other converted members are emitted on their type and
+                // still have to stand as identifiers themselves.
+                .prefix = if (declaration.kind == .@"enum") declaration.name else null,
                 .declaration = declaration.name,
                 .zig_path = declaration.zig_path,
                 .hint = "rename the declaration in Zig so its name converts to a Go identifier",
@@ -721,6 +726,8 @@ const NameCheck = struct {
     /// True when zigo pascal-cases the name on its way into Go, which decides
     /// whether the written spelling or the converted one is judged.
     convert: bool = false,
+    /// Prefix included in the actual emitted identifier after conversion.
+    prefix: ?[]const u8 = null,
     declaration: []const u8,
     zig_path: ?[]const u8 = null,
     /// Set only when the check is a function name; a type or field name check
@@ -733,9 +740,20 @@ const NameCheck = struct {
 fn nameIssue(allocator: std.mem.Allocator, check: NameCheck) !?diagnostic.Diagnostic {
     // A document that validates must not leak: callers are only asked for a
     // scratch arena because a *rejection* builds strings, not an acceptance.
-    const candidate = if (check.convert) try naming.pascalAlloc(allocator, check.spelling) else check.spelling;
-    defer if (check.convert) allocator.free(candidate);
-    if (naming.isGoIdentifier(candidate)) return null;
+    var converted: ?[]u8 = null;
+    defer if (converted) |value| allocator.free(value);
+    var candidate = check.spelling;
+    if (check.convert) {
+        const suffix = try naming.pascalAlloc(allocator, check.spelling);
+        if (check.prefix) |prefix| {
+            defer allocator.free(suffix);
+            converted = try std.fmt.allocPrint(allocator, "{s}{s}", .{ prefix, suffix });
+        } else converted = suffix;
+        candidate = converted.?;
+        // An empty conversion would emit no member spelling at all (and, for
+        // an enum, collide with the type name), even when a prefix is valid.
+        if (suffix.len != 0 and naming.isGoIdentifier(candidate)) return null;
+    } else if (naming.isGoIdentifier(candidate)) return null;
     const message = if (check.zig_path) |path|
         try std.fmt.allocPrint(allocator, "{s} `{s}` from Zig type `{s}` is not a valid Go identifier", .{ check.label, check.spelling, path })
     else
@@ -1838,6 +1856,17 @@ test "implemented diagnostic snapshots are stable" {
             .zig_version = "0.16.0",
         }, .snapshot = "error[ZIGO021]: registered type name `4])` from Zig type `vt.lib.Enum([_][]const u8{ \"block\", \"bar\" }[0..4])` is not a valid Go identifier\n  --> semantic.json (4]))\n  hint: register the type in `.types` with an explicit `.name` that is a Go identifier\n" },
         .{ .document = .{
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{.{
+                .fields = &.{.{ .name = "_", .value = 0 }},
+                .kind = .@"enum",
+                .name = "Mode",
+                .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+            }},
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO021]: enum tag `_` is not a valid Go identifier\n  --> semantic.json (Mode)\n  hint: rename the declaration in Zig so its name converts to a Go identifier\n" },
+        .{ .document = .{
             .functions = &.{.{
                 .name = "open",
                 .params = &.{.{ .injected = .allocator, .name = "alloc", .type = .{ .void = {} } }},
@@ -1902,7 +1931,7 @@ test "names zigo case-converts are judged on the Go spelling, not the Zig one" {
         .package = "keywords",
         .prefix = "zg",
         .types = &.{.{
-            .fields = &.{ .{ .name = "type", .value = 0 }, .{ .name = "go_to", .value = 1 } },
+            .fields = &.{ .{ .name = "type", .value = 0 }, .{ .name = "go_to", .value = 1 }, .{ .name = "80_cols", .value = 2 } },
             .kind = .@"enum",
             .name = "Kind",
             .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
@@ -1911,9 +1940,9 @@ test "names zigo case-converts are judged on the Go spelling, not the Zig one" {
     };
     var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer scratch.deinit();
-    // `range` becomes `Range`, `type` becomes `Type`: Go keywords in Zig
-    // spelling never reach Go, so rejecting them here would reject working
-    // bindings.
+    // `range` becomes `Range`, `type` becomes `KindType`, and `80_cols`
+    // becomes `Kind80Cols`: Zig spellings that are invalid alone need not be
+    // rejected when their emitted Go identifiers are valid.
     try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(scratch.allocator(), document));
 }
 

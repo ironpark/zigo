@@ -8,7 +8,7 @@ registered_at: "2026-09-02T17:32:43Z"
 # Phases
 
 - [x] [Phase 00: 타입 identity](phases/00-type-identity.md)
-- [ ] [Phase 01: emit 이름 기준 식별자 검사](phases/01-emitted-name-check.md)
+- [x] [Phase 01: emit 이름 기준 식별자 검사](phases/01-emitted-name-check.md)
 - [ ] [Phase 02: 문서와 CHANGELOG](phases/02-docs.md)
 
 # Shared Verification

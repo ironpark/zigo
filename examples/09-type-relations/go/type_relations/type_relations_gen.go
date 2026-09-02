@@ -134,6 +134,11 @@ func ConfigureStyles(slot CharsetSlot, style CursorStyle) bool {
 	return raw.ConfigureStyles(uint8(slot), uint8(style)) != 0
 }
 
+// IsWideColumns calls the Zig function isWideColumns.
+func IsWideColumns(mode DeccolmMode) bool {
+	return raw.IsWideColumns(uint8(mode)) != 0
+}
+
 // EchoEraseDisplay calls the Zig function echoEraseDisplay.
 func EchoEraseDisplay(value EraseDisplay) EraseDisplay {
 	return EraseDisplay(raw.EchoEraseDisplay(uint8(value)))

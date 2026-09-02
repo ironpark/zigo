@@ -92,6 +92,9 @@ func TestRegisteredEnum(t *testing.T) {
 	if !ConfigureStyles(CharsetSlotBlock, CursorStyleBar) {
 		t.Fatal("ConfigureStyles did not preserve the two distinct generated enum types")
 	}
+	if !IsWideColumns(DeccolmMode132Cols) || IsWideColumns(DeccolmMode80Cols) {
+		t.Fatal("numeric-leading enum tags did not preserve their values")
+	}
 }
 
 func TestOpenEnumRoundTrip(t *testing.T) {

@@ -89,6 +89,11 @@ func ConfigureStyles(slot uint8, style uint8) uint8 {
 	return uint8(C.zg_configure_styles(C.uint8_t(slot), C.uint8_t(style)))
 }
 
+// IsWideColumns calls the generated C ABI wrapper for zg_is_wide_columns.
+func IsWideColumns(mode uint8) uint8 {
+	return uint8(C.zg_is_wide_columns(C.uint8_t(mode)))
+}
+
 // EchoEraseDisplay calls the generated C ABI wrapper for zg_echo_erase_display.
 func EchoEraseDisplay(value uint8) uint8 {
 	return uint8(C.zg_echo_erase_display(C.uint8_t(value)))
