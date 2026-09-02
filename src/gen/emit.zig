@@ -4639,8 +4639,9 @@ fn isByteType(node: semantic.TypeNode) bool {
 
 /// Every generated Go package gets exactly one `// Package ...` doc, on the
 /// file that carries the package's own API. The body comes from
-/// `go_package_doc`, then from the `//!` container doc of the bindings file,
-/// and finally from a plain statement of what the package is.
+/// `go_package_doc`, then from the `//!` container doc reflection picked --
+/// the bindings file's, or the library root module's when the bindings file
+/// has none -- and finally from a plain statement of what the package is.
 fn writePublicPackageDoc(writer: *std.Io.Writer, package: []const u8, program: abi.Program, options: Options) !void {
     const body = if (options.go_package_doc.len != 0)
         options.go_package_doc

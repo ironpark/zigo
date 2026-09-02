@@ -6,6 +6,7 @@
       "type": "Context"
     }
   ],
+  "doc": "Handles that live in Zig and travel through Go as opaque pointers.\nThis block sits in the bindings file, which zigo reads before the library's\nroot module: it is the one file the binding's author owns.",
   "functions": [
     {
       "name": "create",

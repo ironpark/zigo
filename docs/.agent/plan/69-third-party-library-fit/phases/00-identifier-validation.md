@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T07:21:29Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 두 fixture가 `ZIGO021`로 거부되고 메시지에 Zig 타입 경로가 있다.
 > NEXT: none

@@ -18,11 +18,16 @@ pub fn apply(
     const functions = try allocator.dupe(semantic.SemanticFn, document.functions);
     var has_errors = try scanSourceWithDiagnostics(allocator, bindings_source, functions, bindings_path, diagnostics);
 
+    // The bindings file is the one file the binding's author owns, so its
+    // `//!` speaks to Go readers. The root module's `//!` is only reached when
+    // the bindings file has none -- for a library someone else wrote, that
+    // text addresses Zig users and the author is expected to say something
+    // better in `bindings.zig`.
+    if (document.doc == null) document.doc = try containerDocAlloc(allocator, bindings_source);
+
     const directory = std.fs.path.dirname(bindings_path) orelse ".";
     const root_path = source_root_path orelse try std.fs.path.join(allocator, &.{ directory, "root.zig" });
-    if (std.mem.eql(u8, root_path, bindings_path)) {
-        if (document.doc == null) document.doc = try containerDocAlloc(allocator, bindings_source);
-    } else {
+    if (!std.mem.eql(u8, root_path, bindings_path)) {
         if (std.Io.Dir.cwd().readFileAlloc(io, root_path, allocator, .limited(8 * 1024 * 1024))) |root_source| {
             if (document.doc == null) document.doc = try containerDocAlloc(allocator, root_source);
             has_errors = try scanSourceWithDiagnostics(allocator, root_source, functions, root_path, diagnostics) or has_errors;
@@ -66,9 +71,9 @@ pub fn writeWarnings(writer: *std.Io.Writer, document: semantic.Semantic) !void 
     }
 }
 
-/// The `//!` block at the top of the library's root module documents the
-/// library itself, which is what the generated Go package doc should say. The
-/// bindings file's own `//!` describes the declaration list and is not read.
+/// The `//!` block at the top of a Zig file, joined into one paragraph run.
+/// `apply` reads it from the bindings file first and from the library's root
+/// module only as a fallback.
 fn containerDocAlloc(allocator: std.mem.Allocator, source: []const u8) !?[]const u8 {
     var result: std.Io.Writer.Allocating = .init(allocator);
     errdefer result.deinit();
@@ -560,13 +565,40 @@ test "auxiliary read and parse failures identify their source paths" {
     try std.testing.expectEqual(.fallback, document.functions[0].params[0].name_source);
 }
 
-test "package doc comes from the root module, not the bindings file" {
+test "the bindings file's own block is the package doc" {
     var temporary = std.testing.tmpDir(.{ .iterate = true });
     defer temporary.cleanup();
     try temporary.dir.writeFile(std.testing.io, .{
         .sub_path = "bindings.zig",
-        .data = "//! Declaration list for the bindings.\nconst x = 0;\n",
+        .data = "//! Bindings for the terminal library, written for Go readers.\nconst x = 0;\n",
     });
+    try temporary.dir.writeFile(std.testing.io, .{
+        .sub_path = "root.zig",
+        .data = "//! Library root documentation.\n//! Second line.\npub fn add(a: i32) i32 {\n    return a;\n}\n",
+    });
+    const bindings_path = try std.fmt.allocPrint(std.testing.allocator, ".zig-cache/tmp/{s}/bindings.zig", .{temporary.sub_path});
+    defer std.testing.allocator.free(bindings_path);
+
+    var document: semantic.Semantic = .{
+        .package = "names",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var diagnostics: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer diagnostics.deinit();
+    try apply(arena.allocator(), std.testing.io, &document, bindings_path, null, &diagnostics.writer);
+
+    // The bindings file is what the binding's author owns; the root module
+    // belongs to whoever wrote the library being bound.
+    try std.testing.expectEqualStrings("Bindings for the terminal library, written for Go readers.", document.doc.?);
+}
+
+test "the root module block is the package doc when the bindings file has none" {
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "bindings.zig", .data = "const x = 0;\n" });
     try temporary.dir.writeFile(std.testing.io, .{
         .sub_path = "root.zig",
         .data = "//! Library root documentation.\n//! Second line.\npub fn add(a: i32) i32 {\n    return a;\n}\n",
@@ -588,10 +620,10 @@ test "package doc comes from the root module, not the bindings file" {
     try std.testing.expectEqualStrings("Library root documentation.\nSecond line.", document.doc.?);
 }
 
-test "an explicit package doc wins over the root module block" {
+test "an explicit package doc wins over both container blocks" {
     var temporary = std.testing.tmpDir(.{ .iterate = true });
     defer temporary.cleanup();
-    try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "bindings.zig", .data = "const x = 0;\n" });
+    try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "bindings.zig", .data = "//! Bindings block.\nconst x = 0;\n" });
     try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "root.zig", .data = "//! Library root documentation.\n" });
     const bindings_path = try std.fmt.allocPrint(std.testing.allocator, ".zig-cache/tmp/{s}/bindings.zig", .{temporary.sub_path});
     defer std.testing.allocator.free(bindings_path);
@@ -611,12 +643,12 @@ test "an explicit package doc wins over the root module block" {
     try std.testing.expectEqualStrings("Configured package doc.", document.doc.?);
 }
 
-test "a bindings file without a root module contributes no package doc" {
+test "no container block anywhere leaves the package doc to the default sentence" {
     var temporary = std.testing.tmpDir(.{ .iterate = true });
     defer temporary.cleanup();
     try temporary.dir.writeFile(std.testing.io, .{
         .sub_path = "bindings.zig",
-        .data = "//! Declaration list for the bindings.\nconst x = 0;\n",
+        .data = "const x = 0;\n",
     });
     const bindings_path = try std.fmt.allocPrint(std.testing.allocator, ".zig-cache/tmp/{s}/bindings.zig", .{temporary.sub_path});
     defer std.testing.allocator.free(bindings_path);

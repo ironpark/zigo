@@ -1,3 +1,6 @@
+//! Handles that live in Zig and travel through Go as opaque pointers.
+//! This block sits in the bindings file, which zigo reads before the library's
+//! root module: it is the one file the binding's author owns.
 const zigo = @import("zigo");
 const library = @import("opaque");
 
