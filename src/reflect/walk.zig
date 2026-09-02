@@ -543,7 +543,10 @@ fn appendFunction(
         reflected_function.child_of_receiver = true;
     if (boxed_type != null) reflected_function.ownership = .caller;
     if (@hasField(@TypeOf(metadata), "semantic")) reflected_function.return_semantic = metadata.semantic;
-    if (@hasField(@TypeOf(metadata), "returns")) reflected_function.ownership = metadata.returns;
+    if (@hasField(@TypeOf(metadata), "returns")) {
+        reflected_function.ownership = metadata.returns;
+        if (metadata.returns == .borrowed) reflected_function.borrowed_return = true;
+    }
     // `.release` addresses the freeing function the same way `.path` does, so
     // the last segment names it inside the generated document.
     if (@hasField(@TypeOf(metadata), "release")) reflected_function.release = comptime pathMember(metadata.release);
@@ -2255,6 +2258,42 @@ test "`.constructs` and `.destroys` pair functions the name rule never would" {
     // The destructor is a method in Go, so its path is the one that moved.
     try std.testing.expectEqualStrings("Terminal", document.functions[1].receiver.?);
     try std.testing.expectEqualStrings("releaseTerminal", document.functions[1].zig_path.?);
+}
+
+test "explicit borrowed return is recorded without changing ownership defaults" {
+    const Fixture = struct {
+        const Parent = opaque {};
+        const View = opaque {};
+
+        pub fn view(self: *Parent) ?*View {
+            _ = self;
+            return null;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{
+            .{ .name = "Parent", .type = Fixture.Parent, .repr = .@"opaque" },
+            .{ .name = "View", .type = Fixture.View, .repr = .@"opaque" },
+        },
+        .functions = .{.{ .path = "root.view", .returns = .borrowed }},
+    }, "borrowed", "zg");
+
+    try std.testing.expect(document.functions[0].returnsBorrowedHandle());
+    try std.testing.expectEqual(semantic.Ownership.borrowed, document.functions[0].ownership);
+    const json = try document.serialize(arena.allocator());
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"borrowed_return\": true") != null);
+
+    const implicit = semantic.SemanticFn{
+        .name = "implicit",
+        .params = &.{},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_implicit",
+    };
+    const implicit_json = try std.json.Stringify.valueAlloc(arena.allocator(), implicit, .{ .whitespace = .indent_2, .emit_null_optional_fields = false });
+    try std.testing.expect(std.mem.indexOf(u8, implicit_json, "borrowed_return") == null);
 }
 
 test "an injected argument ahead of the handle does not stop a function being a method" {

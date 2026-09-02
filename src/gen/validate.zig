@@ -106,6 +106,28 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .site = functionSite(function),
             .hint = "use `.child_of_receiver = true` only on a constructor method that returns its paired caller-owned handle",
         };
+        if (function.returnsBorrowedHandle() and function.receiver == null) return .{
+            .severity = .@"error",
+            .code = "ZIGO033",
+            .message = "borrowed return has no receiver to own its lifetime",
+            .site = functionSite(function),
+            .hint = "use `.returns = .borrowed` only on a method, or use `.returns = .caller` with a constructor and destructor",
+        };
+        if (function.returnsBorrowedHandle() and borrowedOpaqueReturn(document, function) == null) return .{
+            .severity = .@"error",
+            .code = "ZIGO034",
+            .message = "borrowed return is not a registered opaque handle",
+            .site = functionSite(function),
+            .hint = "return `*T`, `?*T`, `!*T`, or `!?*T` where T is a registered opaque type, or drop `.returns = .borrowed`",
+        };
+        if (!function.returnsBorrowedHandle() and function.ownership == .borrowed and
+            borrowedOpaqueReturn(document, function) != null) return .{
+            .severity = .@"error",
+            .code = "ZIGO035",
+            .message = "opaque handle return has no explicit ownership",
+            .site = functionSite(function),
+            .hint = "add `.returns = .borrowed` for a receiver-owned view, or pair `.returns = .caller` with its constructor and destructor",
+        };
         for (function.params) |parameter| {
             if (parameter.injected) |injection| {
                 const configured = switch (injection) {
@@ -1419,6 +1441,14 @@ fn hasHandleType(document: semantic.Semantic, name: []const u8) bool {
     return hasTypeKind(document, name, .@"opaque") or hasTypeKind(document, name, .tagged_union);
 }
 
+/// The registered opaque type behind a borrowed result. Optional pointers are
+/// represented by `opaque_ptr.nullable`; error unions wrap the same node.
+fn borrowedOpaqueReturn(document: semantic.Semantic, function: semantic.SemanticFn) ?[]const u8 {
+    const payload = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
+    if (payload != .opaque_ptr or !hasTypeKind(document, payload.opaque_ptr.ref, .@"opaque")) return null;
+    return payload.opaque_ptr.ref;
+}
+
 /// Whether a `.returns = .caller` result can become an owned Go handle. Only a
 /// pointer to a type the binding constructs has a `newX` helper to wrap it and a
 /// destructor for the cleanup to call; anything else would emit a raw pointer
@@ -2232,6 +2262,50 @@ test "child-of-receiver metadata on a non-receiver constructor has a stable diag
             "  hint: use `.child_of_receiver = true` only on a constructor method that returns its paired caller-owned handle\n",
         rendered,
     );
+}
+
+test "borrowed return ownership diagnostics are stable" {
+    const pointer: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "View" } };
+    const base: semantic.Semantic = .{
+        .package = "bad",
+        .prefix = "zg",
+        .types = &.{.{ .kind = .@"opaque", .name = "View" }},
+        .zig_version = "0.16.0",
+    };
+    const cases = [_]struct { function: semantic.SemanticFn, snapshot: []const u8 }{
+        .{ .function = .{
+            .borrowed_return = true,
+            .name = "view",
+            .params = &.{},
+            .@"return" = pointer,
+            .symbol = "zg_view",
+        }, .snapshot = "error[ZIGO033]: borrowed return has no receiver to own its lifetime\n  --> semantic.json (view)\n  hint: use `.returns = .borrowed` only on a method, or use `.returns = .caller` with a constructor and destructor\n" },
+        .{ .function = .{
+            .borrowed_return = true,
+            .name = "count",
+            .params = &.{},
+            .receiver = "Owner",
+            .@"return" = .{ .int = .{ .bits = 32, .signed = false } },
+            .symbol = "zg_owner_count",
+        }, .snapshot = "error[ZIGO034]: borrowed return is not a registered opaque handle\n  --> semantic.json (count)\n  hint: return `*T`, `?*T`, `!*T`, or `!?*T` where T is a registered opaque type, or drop `.returns = .borrowed`\n" },
+        .{ .function = .{
+            .name = "view",
+            .params = &.{},
+            .receiver = "Owner",
+            .@"return" = pointer,
+            .symbol = "zg_owner_view",
+        }, .snapshot = "error[ZIGO035]: opaque handle return has no explicit ownership\n  --> semantic.json (view)\n  hint: add `.returns = .borrowed` for a receiver-owned view, or pair `.returns = .caller` with its constructor and destructor\n" },
+    };
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
+    for (cases) |case| {
+        var document = base;
+        document.functions = @as(*const [1]semantic.SemanticFn, &case.function);
+        const issue = (try findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
+        const rendered = try issue.renderAlloc(std.testing.allocator);
+        defer std.testing.allocator.free(rendered);
+        try std.testing.expectEqualStrings(case.snapshot, rendered);
+    }
 }
 
 test "names zigo case-converts are judged on the Go spelling, not the Zig one" {

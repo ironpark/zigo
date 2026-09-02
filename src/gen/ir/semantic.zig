@@ -363,6 +363,11 @@ pub const StreamAccessor = struct {
 pub const SemanticFn = struct {
     /// Set on the two halves of a boxed constructor pair.
     boxed: ?Boxed = null,
+    /// Set only when function metadata explicitly says `.returns = .borrowed`.
+    /// `ownership` defaults to borrowed for historical documents, so this
+    /// separate bit distinguishes a deliberate borrowed-handle contract from
+    /// metadata that made no lifetime choice.
+    borrowed_return: ?bool = null,
     /// Set only when a receiver constructor returns a handle whose lifetime
     /// must end before the receiver's. Omitted when false so old semantic
     /// documents remain byte-identical.
@@ -422,6 +427,10 @@ pub const SemanticFn = struct {
 
     pub fn childOfReceiver(self: SemanticFn) bool {
         return self.child_of_receiver orelse false;
+    }
+
+    pub fn returnsBorrowedHandle(self: SemanticFn) bool {
+        return self.borrowed_return orelse false;
     }
 };
 
