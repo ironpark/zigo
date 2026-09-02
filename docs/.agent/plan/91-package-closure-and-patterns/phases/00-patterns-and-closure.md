@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T23:56:46Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: A package declared with a pattern and closure pulls in the expected types with no manual list; verification loop green.
 > NEXT: none
