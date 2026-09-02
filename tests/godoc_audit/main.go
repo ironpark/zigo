@@ -26,7 +26,7 @@ func main() {
 			if walkErr != nil {
 				return walkErr
 			}
-			if entry.IsDir() || !strings.HasSuffix(path, "_gen.go") {
+			if entry.IsDir() || !strings.HasSuffix(path, "_gen.go") || strings.Contains(filepath.ToSlash(path), "/internal/") {
 				return nil
 			}
 			file, err := parser.ParseFile(fset, path, nil, parser.ParseComments)

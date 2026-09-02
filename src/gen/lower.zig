@@ -399,6 +399,7 @@ pub fn semanticDocumentForBackend(
         .handles = try lowerHandles(allocator, document, prefix),
         .functions = functions,
         .package = package,
+        .packages = document.packages,
         .prefix = prefix,
         .projections = projections,
         .snapshots = snapshots,

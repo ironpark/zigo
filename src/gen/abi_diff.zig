@@ -100,6 +100,8 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
         // gains or loses its leading `ctx`, so every call site moves.
         if (!optionalNameEqual(old.cancel, new.cancel))
             try add(allocator, &report, .breaking, identity, "cancellation surface changed");
+        if (!optionalNameEqual(old.package, new.package))
+            try add(allocator, &report, .breaking, identity, "Go package assignment changed");
         // The native signature is unchanged, but generated Go gains or loses
         // the parent/child Close ordering contract.
         if (old.childOfReceiver() != new.childOfReceiver())
@@ -121,6 +123,8 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
             try add(allocator, &report, .breaking, old.name, "type removed");
             continue;
         };
+        if (!optionalNameEqual(old.package, new.package))
+            try add(allocator, &report, .breaking, old.name, "Go package assignment changed");
         switch (classifyTypeChange(old, new)) {
             .equal => {},
             .appended => if (old.kind == .tagged_union and taggedUnionUsedByValue(base, old.name))

@@ -1,0 +1,46 @@
+{
+  "functions": [
+    {
+      "name": "useMode",
+      "params": [{"name": "mode", "type": {"kind": "enum", "ref": "Mode"}}],
+      "return": {"kind": "void"},
+      "symbol": "zg_use_mode"
+    },
+    {
+      "name": "inspectPoint",
+      "params": [{"name": "point", "type": {"kind": "value_struct", "ref": "Point"}}],
+      "return": {"kind": "value_struct", "ref": "Point"},
+      "symbol": "zg_inspect_point"
+    },
+    {
+      "name": "reset",
+      "package": "model",
+      "params": [],
+      "return": {"kind": "void"},
+      "symbol": "zg_model_reset"
+    }
+  ],
+  "package": "packages",
+  "packages": [{"doc": "Package model contains shared values.", "name": "model", "path": "model"}],
+  "prefix": "zg",
+  "types": [
+    {
+      "fields": [{"name": "idle", "value": 0}, {"name": "active", "value": 1}],
+      "kind": "enum",
+      "name": "Mode",
+      "package": "model",
+      "tag_type": {"bits": 8, "kind": "int", "signed": false}
+    },
+    {
+      "fields": [
+        {"name": "x", "type": {"bits": 32, "kind": "int", "signed": true}},
+        {"name": "y", "type": {"bits": 32, "kind": "int", "signed": true}}
+      ],
+      "kind": "value_struct",
+      "layout": "extern",
+      "name": "Point",
+      "package": "model"
+    }
+  ],
+  "zig_version": "0.16.0"
+}

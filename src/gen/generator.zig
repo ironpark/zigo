@@ -3,6 +3,7 @@ const emit = @import("emit.zig");
 const abi = @import("abi");
 const errors_lock = @import("errors_lock");
 const lower = @import("lower.zig");
+const naming = @import("naming");
 const semantic = @import("semantic");
 const stream_return = @import("stream_return.zig");
 const validate = @import("validate.zig");
@@ -88,7 +89,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .cgo => .cgo,
         .purego => .purego,
     });
-    const emitter_options: emit.Options = .{
+    var emitter_options: emit.Options = .{
         .go_module = options.go_module,
         .cflags_override = options.cflags_override,
         .ldflags_override = options.ldflags_override,
@@ -102,7 +103,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .raw_package_path = options.raw_package_path,
         .raw_package_name = options.raw_package_name,
         .raw_colocated = options.raw_colocated,
-        .shared_lifecycle = options.shared_lifecycle,
+        .shared_lifecycle = options.shared_lifecycle or document.packages != null,
         .lifecycle_package_path = options.lifecycle_package_path,
         .go_package = options.go_package,
         .go_package_path = options.go_package_path,
@@ -117,28 +118,25 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
     };
     var prepared: std.ArrayList(PreparedFile) = .empty;
     defer prepared.deinit(scratch_allocator);
-    for (emit.all) |emitter| {
-        const relative_path = try emitter.pathAlloc(scratch_allocator, program, emitter_options);
-        var rendered: std.Io.Writer.Allocating = .init(scratch_allocator);
-        defer rendered.deinit();
-        try emitter.render(scratch_allocator, &rendered.writer, program, emitter_options);
-        const contents = try rendered.toOwnedSlice();
-        try prepared.append(scratch_allocator, .{
-            .path = relative_path,
-            .contents = if (std.mem.endsWith(u8, relative_path, ".go")) blk: {
-                const body = std.mem.trimEnd(u8, contents, "\n");
-                break :blk try std.fmt.allocPrint(scratch_allocator, "{s}\n", .{body});
-            } else contents,
-        });
-    }
-    // The tagged-union files are not in the emitter table: how many there are
-    // depends on the bindings, so they are rendered per union.
-    for (try emit.unionFilesAlloc(scratch_allocator, program, emitter_options)) |file| {
-        const body = std.mem.trimEnd(u8, file.contents, "\n");
-        try prepared.append(scratch_allocator, .{
-            .path = file.path,
-            .contents = try std.fmt.allocPrint(scratch_allocator, "{s}\n", .{body}),
-        });
+    emitter_options.default_package_path = if (options.go_package_path.len != 0) options.go_package_path else if (options.go_package.len != 0) options.go_package else try naming.snakeAlloc(scratch_allocator, document.package);
+    try appendEmitters(scratch_allocator, &prepared, program, emitter_options, &emit.core_emitters, false);
+    if (document.packages) |packages| {
+        emitter_options.active_package = "";
+        try appendPublicPackage(scratch_allocator, &prepared, program, emitter_options);
+        const base_path = emitter_options.default_package_path;
+        for (packages) |package| {
+            var package_options = emitter_options;
+            package_options.active_package = package.name;
+            package_options.go_package = package.name;
+            package_options.go_package_path = if (std.mem.eql(u8, base_path, "."))
+                package.path
+            else
+                try std.fmt.allocPrint(scratch_allocator, "{s}/{s}", .{ base_path, package.path });
+            package_options.go_package_doc = package.doc orelse "";
+            try appendPublicPackage(scratch_allocator, &prepared, program, package_options);
+        }
+    } else {
+        try appendPublicPackage(scratch_allocator, &prepared, program, emitter_options);
     }
     const serialized_lock = try lock.serialize(scratch_allocator);
     try prepared.append(scratch_allocator, .{ .path = "errors.lock.json", .contents = serialized_lock });
@@ -163,6 +161,71 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
     }
 }
 
+fn appendEmitters(allocator: std.mem.Allocator, prepared: *std.ArrayList(PreparedFile), program: abi.Program, options: emit.Options, emitters: []const emit.Emitter, qualify_public: bool) !void {
+    for (emitters) |emitter| {
+        const relative_path = try emitter.pathAlloc(allocator, program, options);
+        var rendered: std.Io.Writer.Allocating = .init(allocator);
+        defer rendered.deinit();
+        try emitter.render(allocator, &rendered.writer, program, options);
+        const rendered_contents = try rendered.toOwnedSlice();
+        const contents = if (qualify_public)
+            try emit.qualifyPublicTypesAlloc(allocator, rendered_contents, program, options)
+        else
+            rendered_contents;
+        try prepared.append(allocator, .{
+            .path = relative_path,
+            .contents = if (std.mem.endsWith(u8, relative_path, ".go")) blk: {
+                const body = std.mem.trimEnd(u8, contents, "\n");
+                break :blk try std.fmt.allocPrint(allocator, "{s}\n", .{body});
+            } else contents,
+        });
+    }
+}
+
+fn appendPublicPackage(allocator: std.mem.Allocator, prepared: *std.ArrayList(PreparedFile), full_program: abi.Program, options: emit.Options) !void {
+    var functions: std.ArrayList(abi.AbiFn) = .empty;
+    for (full_program.functions) |function| if (packageMatches(function.origin.package, options.active_package)) try functions.append(allocator, function);
+    var program = full_program;
+    program.functions = try functions.toOwnedSlice(allocator);
+    try appendEmitters(allocator, prepared, program, options, &emit.public_emitters, true);
+    // The tagged-union files are not in the emitter table: how many there are
+    // depends on the bindings, so they are rendered per union.
+    for (try emit.unionFilesAlloc(allocator, program, options)) |file| {
+        const qualified = try emit.qualifyPublicTypesAlloc(allocator, file.contents, program, options);
+        const body = std.mem.trimEnd(u8, qualified, "\n");
+        try prepared.append(allocator, .{
+            .path = file.path,
+            .contents = try std.fmt.allocPrint(allocator, "{s}\n", .{body}),
+        });
+    }
+}
+
+fn packageMatches(package: ?[]const u8, active: ?[]const u8) bool {
+    const selected = active orelse return true;
+    return if (package) |name| std.mem.eql(u8, name, selected) else selected.len == 0;
+}
+
+test "split documents emit package directories shared lifecycle and cross imports" {
+    const fixture =
+        \\{"functions":[{"name":"useMode","package":"text","ownership":"borrowed","params":[{"direction":"in","name":"mode","name_source":"fallback","retention":"borrowed","type":{"kind":"enum","ref":"Mode"}}],"return":{"kind":"void"},"symbol":"zg_use_mode"}],"ir_version":1,"package":"sample","packages":[{"name":"text","path":"text"}],"prefix":"zg","types":[{"exhaustive":true,"fields":[{"name":"plain","value":0}],"kind":"enum","name":"Mode","tag_type":{"bits":32,"is_usize":false,"kind":"int","signed":false}}],"zig_version":"0.16.0"}
+    ;
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    try generate(std.testing.allocator, std.testing.io, fixture, temporary.dir, .{
+        .package = "sample",
+        .prefix = "zg",
+        .go_module = "example.com/sample",
+    });
+    const lifecycle = try temporary.dir.readFileAlloc(std.testing.io, "internal/lifecycle/lifecycle_gen.go", std.testing.allocator, .limited(32 * 1024));
+    defer std.testing.allocator.free(lifecycle);
+    try std.testing.expect(std.mem.indexOf(u8, lifecycle, "package lifecycle") != null);
+    const child = try temporary.dir.readFileAlloc(std.testing.io, "sample/text/text_gen.go", std.testing.allocator, .limited(32 * 1024));
+    defer std.testing.allocator.free(child);
+    try std.testing.expect(std.mem.indexOf(u8, child, "zigo_default \"example.com/sample/sample\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, child, "mode zigo_default.Mode") != null);
+    _ = try temporary.dir.statFile(std.testing.io, "sample/sample_enums_gen.go", .{});
+}
+
 /// True for a Go file that got no further than its own prelude. Every emitter
 /// writes the marker and the `package` clause before deciding it has nothing to
 /// declare, so this is the shape that decision leaves behind.
@@ -172,12 +235,14 @@ fn declaresNothing(path: []const u8, contents: []const u8) bool {
     var lines = std.mem.splitScalar(u8, std.mem.trimEnd(u8, contents, "\n"), '\n');
     if (!std.mem.startsWith(u8, lines.first(), "// Code generated by zigo.")) return false;
     // The prelude may carry blank lines and a package doc before the clause.
+    var has_package_doc = false;
     const package_line = while (lines.next()) |line| {
+        if (std.mem.startsWith(u8, line, "// Package ")) has_package_doc = true;
         if (line.len == 0 or std.mem.startsWith(u8, line, "//")) continue;
         break line;
     } else return false;
     if (!std.mem.startsWith(u8, package_line, "package ")) return false;
-    return lines.next() == null;
+    return !has_package_doc and lines.next() == null;
 }
 
 test "bool is lowered to uint8 at the ABI boundary" {

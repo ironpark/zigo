@@ -324,6 +324,8 @@ pub fn build(b: *std.Build) void {
         "tests/generator_cases/receiver_name_clash_purego/expected",
         "tests/generator_cases/root_constructor/expected",
         "tests/generator_cases/scalar/expected",
+        "tests/generator_cases/sub_packages/expected",
+        "tests/generator_cases/sub_packages_purego/expected",
         "tests/generator_cases/union_snapshot/expected",
         "tests/generator_cases/value_struct/expected",
         "examples/01-scalar/go",

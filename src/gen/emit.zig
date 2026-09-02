@@ -39,6 +39,10 @@ pub const Options = struct {
     /// Body of the generated `// Package ...` doc. Empty falls back to the
     /// `//!` container doc of the bindings file, then to a default sentence.
     go_package_doc: []const u8 = "",
+    /// Null renders the legacy single package; empty selects the default package
+    /// of a split document; a value selects that named sub-package.
+    active_package: ?[]const u8 = null,
+    default_package_path: []const u8 = "",
     /// Colon-separated purego candidate locations, in the order they are tried.
     library_search_paths: []const u8 = "",
     /// Comma-separated environment variable names. `null` selects the defaults.
@@ -52,7 +56,7 @@ pub const Emitter = struct {
     render: *const fn (std.mem.Allocator, *std.Io.Writer, abi.Program, Options) anyerror!void,
 };
 
-pub const all = [_]Emitter{
+pub const core_emitters = [_]Emitter{
     .{ .pathAlloc = shimPath, .render = renderShim },
     .{ .pathAlloc = panicSourcePath, .render = renderPanicSource },
     .{ .pathAlloc = headerPath, .render = renderHeader },
@@ -60,6 +64,9 @@ pub const all = [_]Emitter{
     .{ .pathAlloc = rawLoadPosixPath, .render = renderRawLoadPosix },
     .{ .pathAlloc = rawLoadWindowsPath, .render = renderRawLoadWindows },
     .{ .pathAlloc = lifecyclePath, .render = renderLifecycle },
+};
+
+pub const public_emitters = [_]Emitter{
     .{ .pathAlloc = publicPath, .render = renderPublic },
     .{ .pathAlloc = publicEnumsPath, .render = renderPublicEnumsFile },
     .{ .pathAlloc = publicStructsPath, .render = renderPublicStructsFile },
@@ -102,6 +109,7 @@ fn renderLifecycle(_: std.mem.Allocator, writer: *std.Io.Writer, _: abi.Program,
             "func PoisonAfterPanic(err error, handles ...Handle) error {\n" ++
             "\tif cause, ok := err.(*NativePanicError); ok { for _, handle := range handles { handle.ZigoPoison(cause) } }\n" ++
             "\treturn err\n}\n\n" ++
+            "func Release(handle Handle) { handle.ZigoRelease() }\n\n" ++
             "type HandleError struct { Operation string }\n" ++
             "func (err *HandleError) Error() string { return \"zigo: \" + err.Operation + \": nil or closed handle\" }\n" ++
             "func (err *HandleError) Unwrap() error { return ErrInvalidHandle }\n\n" ++
@@ -128,7 +136,10 @@ fn renderLifecycle(_: std.mem.Allocator, writer: *std.Io.Writer, _: abi.Program,
             "type CallbackPanicError struct { Operation string; Value any; Stack []byte }\n" ++
             "func (err *CallbackPanicError) Error() string { return \"zigo: \" + err.Operation + \": callback panic: \" + fmt.Sprint(err.Value) }\n" ++
             "func (err *CallbackPanicError) Is(target error) bool { return target == ErrCallbackPanic }\n" ++
-            "func (err *CallbackPanicError) Unwrap() error { if cause, ok := err.Value.(error); ok { return cause }; return nil }\n",
+            "func (err *CallbackPanicError) Unwrap() error { if cause, ok := err.Value.(error); ok { return cause }; return nil }\n\n" ++
+            "type Error struct { Code int32; Name, Operation string }\n" ++
+            "func (err *Error) Error() string { if err.Operation == \"\" { return err.Name }; return \"zigo: \" + err.Operation + \": \" + err.Name }\n" ++
+            "func (err *Error) Is(target error) bool { other, ok := target.(*Error); return ok && err.Code == other.Code }\n",
     );
 }
 
@@ -3629,9 +3640,16 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
     // A cancellable call takes a `context.Context`, matches the native error
     // against a sentinel, and raises its flag with an atomic store.
     const needs_cancel = programHasCancellation(program);
+    const default_foreign = options.active_package != null and options.active_package.?.len != 0 and programReferencesPackage(program, options.active_package.?, "");
+    var foreign: std.ArrayList(semantic.Package) = .empty;
+    defer foreign.deinit(std.heap.page_allocator);
+    if (options.active_package != null) if (program.packages) |packages| for (packages) |foreign_package| {
+        if (std.mem.eql(u8, foreign_package.name, options.active_package.?)) continue;
+        if (programReferencesPackage(program, options.active_package.?, foreign_package.name)) try foreign.append(std.heap.page_allocator, foreign_package);
+    };
     const import_count = @as(usize, @intFromBool(needs_io)) + @as(usize, @intFromBool(needs_runtime)) +
         @as(usize, @intFromBool(needs_unsafe)) + @as(usize, @intFromBool(needs_raw)) +
-        @as(usize, @intFromBool(needs_cancel)) * 3;
+        @as(usize, @intFromBool(needs_cancel)) * 3 + @as(usize, @intFromBool(default_foreign)) + foreign.items.len;
     if (import_count > 1) {
         try writer.writeAll("import (\n");
         if (needs_cancel) try writer.writeAll("\t\"context\"\n\t\"errors\"\n");
@@ -3643,6 +3661,8 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             if (needs_io or needs_runtime or needs_unsafe or needs_cancel) try writer.writeByte('\n');
             try writeRawImport(writer, options, "\t");
         }
+        if (default_foreign) try writeDefaultPackageImport(writer, options, "\t");
+        for (foreign.items) |foreign_package| try writeForeignImport(writer, foreign_package, options, "\t");
         try writer.writeAll(")\n\n");
     } else if (needs_io) {
         try writer.writeAll("import \"io\"\n\n");
@@ -3653,6 +3673,14 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
     } else if (needs_raw) {
         try writer.writeAll("import ");
         try writeRawImport(writer, options, "");
+        try writer.writeByte('\n');
+    } else if (default_foreign) {
+        try writer.writeAll("import ");
+        try writeDefaultPackageImport(writer, options, "");
+        try writer.writeByte('\n');
+    } else if (foreign.items.len == 1) {
+        try writer.writeAll("import ");
+        try writeForeignImport(writer, foreign.items[0], options, "");
         try writer.writeByte('\n');
     }
     // An internal loader keeps the public package limited to the bound API.
@@ -3768,7 +3796,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         // The handle checks run before any callback handle is registered, so
         // an early return cannot strand a retained callback.
         if (needs_handle_check)
-            try renderHandleChecks(allocator, writer, function.origin.*, go_names, operation, constructor);
+            try renderHandleChecks(allocator, writer, function.origin.*, go_names, operation, constructor, options);
         try renderCallbackHandleSetup(allocator, writer, program, function);
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (!isValueStructSlice(parameter.type)) continue;
@@ -4031,7 +4059,7 @@ fn renderPublicFile(
     try renderBody(allocator, &body.writer, program, options);
     const text = body.written();
     if (text.len == 0) return;
-    try writePublicImports(writer, text, options);
+    try writePublicImports(writer, text, program, options);
     try writer.writeAll(text);
 }
 
@@ -4049,7 +4077,7 @@ const public_std_imports = [_]struct { qualifier: []const u8, path: []const u8 }
     .{ .qualifier = "unsafe", .path = "unsafe" },
 };
 
-fn writePublicImports(writer: *std.Io.Writer, body: []const u8, options: Options) !void {
+fn writePublicImports(writer: *std.Io.Writer, body: []const u8, program: abi.Program, options: Options) !void {
     var needed: [public_std_imports.len][]const u8 = undefined;
     var count: usize = 0;
     for (public_std_imports) |entry| {
@@ -4060,11 +4088,25 @@ fn writePublicImports(writer: *std.Io.Writer, body: []const u8, options: Options
     // The raw package is always reached through the `raw` qualifier: a raw
     // package with another name is imported under that alias.
     const raw = !options.raw_colocated and bodyUsesQualifier(body, "raw");
-    if (count == 0 and !raw) return writer.writeByte('\n');
-    if (count + @as(usize, @intFromBool(raw)) == 1) {
+    const lifecycle = bodyUsesQualifier(body, "lifecycle");
+    const default_foreign = options.active_package != null and options.active_package.?.len != 0 and (programReferencesPackage(program, options.active_package.?, "") or bodyReferencesPackageTypes(body, program, ""));
+    var foreign: std.ArrayList(semantic.Package) = .empty;
+    defer foreign.deinit(std.heap.page_allocator);
+    if (options.active_package != null) if (program.packages) |packages| for (packages) |package| {
+        if (std.mem.eql(u8, package.name, options.active_package.?)) continue;
+        if (programReferencesPackage(program, options.active_package.?, package.name) or bodyReferencesPackageTypes(body, program, package.name)) try foreign.append(std.heap.page_allocator, package);
+    };
+    if (count == 0 and !raw and !lifecycle and !default_foreign and foreign.items.len == 0) return writer.writeByte('\n');
+    if (count + @as(usize, @intFromBool(raw)) + @as(usize, @intFromBool(lifecycle)) + @as(usize, @intFromBool(default_foreign)) + foreign.items.len == 1) {
         try writer.writeAll("\nimport ");
         if (raw) {
             try writeRawImport(writer, options, "");
+        } else if (foreign.items.len == 1) {
+            try writeForeignImport(writer, foreign.items[0], options, "");
+        } else if (default_foreign) {
+            try writeDefaultPackageImport(writer, options, "");
+        } else if (lifecycle) {
+            try writer.print("\"{s}/{s}\"\n", .{ options.go_module, options.lifecycle_package_path });
         } else {
             try writer.print("\"{s}\"\n", .{needed[0]});
         }
@@ -4076,7 +4118,22 @@ fn writePublicImports(writer: *std.Io.Writer, body: []const u8, options: Options
         if (count != 0) try writer.writeByte('\n');
         try writeRawImport(writer, options, "\t");
     }
+    if (lifecycle) try writer.print("\tlifecycle \"{s}/{s}\"\n", .{ options.go_module, options.lifecycle_package_path });
+    if (default_foreign) try writeDefaultPackageImport(writer, options, "\t");
+    if (foreign.items.len != 0) {
+        if (count != 0 or raw) try writer.writeByte('\n');
+        for (foreign.items) |package| try writeForeignImport(writer, package, options, "\t");
+    }
     try writer.writeAll(")\n\n");
+}
+
+fn writeDefaultPackageImport(writer: *std.Io.Writer, options: Options, indent: []const u8) !void {
+    try writer.print("{s}zigo_default \"{s}{s}{s}\"\n", .{
+        indent,
+        options.go_module,
+        if (options.default_package_path.len == 0 or std.mem.eql(u8, options.default_package_path, ".")) "" else "/",
+        if (options.default_package_path.len == 0 or std.mem.eql(u8, options.default_package_path, ".")) "" else options.default_package_path,
+    });
 }
 
 /// True when the body uses `qualifier.` as a package selector in code. Line
@@ -4114,6 +4171,140 @@ fn bodyUsesQualifier(body: []const u8, qualifier: []const u8) bool {
     return false;
 }
 
+fn writeForeignImport(writer: *std.Io.Writer, package: semantic.Package, options: Options, indent: []const u8) !void {
+    const base = options.default_package_path;
+    try writer.print("{s}zigo_pkg_{s} \"{s}{s}{s}/{s}\"\n", .{
+        indent,
+        package.name,
+        options.go_module,
+        if (base.len == 0 or std.mem.eql(u8, base, ".")) "" else "/",
+        if (base.len == 0 or std.mem.eql(u8, base, ".")) "" else base,
+        package.path,
+    });
+}
+
+/// Qualifies references to types owned by another public package. Emitters use
+/// the declaration's bare Go name internally; this final lexical pass keeps
+/// their rendering logic shared with legacy single-package output while
+/// making split-package imports explicit and collision-free.
+pub fn qualifyPublicTypesAlloc(allocator: std.mem.Allocator, source: []const u8, program: abi.Program, options: Options) ![]u8 {
+    if (options.active_package == null) return allocator.dupe(u8, source);
+    var output: std.Io.Writer.Allocating = .init(allocator);
+    defer output.deinit();
+    var index: usize = 0;
+    while (index < source.len) {
+        if (source[index] == '/' and index + 1 < source.len and source[index + 1] == '/') {
+            const end = std.mem.indexOfScalarPos(u8, source, index, '\n') orelse source.len;
+            try output.writer.writeAll(source[index..end]);
+            index = end;
+            continue;
+        }
+        if (source[index] == '`' or source[index] == '"' or source[index] == '\'') {
+            const quote = source[index];
+            const begin = index;
+            index += 1;
+            while (index < source.len and source[index] != quote) : (index += 1) {
+                if (quote != '`' and source[index] == '\\' and index + 1 < source.len) index += 1;
+            }
+            if (index < source.len) index += 1;
+            try output.writer.writeAll(source[begin..index]);
+            continue;
+        }
+        if (!isGoIdentifierByte(source[index])) {
+            try output.writer.writeByte(source[index]);
+            index += 1;
+            continue;
+        }
+        const begin = index;
+        while (index < source.len and isGoIdentifierByte(source[index])) index += 1;
+        const identifier = source[begin..index];
+        var qualifier: ?[]const u8 = null;
+        for (program.types) |declaration| {
+            if (!std.mem.eql(u8, declaration.name, identifier) or packageMatches(declaration.package, options.active_package)) continue;
+            qualifier = declaration.package;
+            break;
+        }
+        if (qualifier) |package_name|
+            try output.writer.print("zigo_pkg_{s}.", .{package_name})
+        else if (qualifier == null and typeHasPackage(program, identifier, "") and options.active_package.?.len != 0)
+            try output.writer.writeAll("zigo_default.");
+        try output.writer.writeAll(identifier);
+    }
+    return output.toOwnedSlice();
+}
+
+fn programReferencesPackage(program: abi.Program, active: []const u8, target: []const u8) bool {
+    for (program.functions) |function| {
+        for (function.origin.params) |parameter| if (nodeReferencesPackage(program, parameter.type, target)) return true;
+        if (nodeReferencesPackage(program, function.origin.@"return", target)) return true;
+    }
+    for (program.types) |declaration| {
+        if (!packageMatches(declaration.package, active)) continue;
+        if (declaration.tag_type) |node| if (nodeReferencesPackage(program, node, target)) return true;
+        for (declaration.fields) |field| if (field.type) |node| if (nodeReferencesPackage(program, node, target)) return true;
+    }
+    return false;
+}
+
+fn nodeReferencesPackage(program: abi.Program, node: semantic.TypeNode, target: []const u8) bool {
+    switch (node) {
+        .@"enum" => |value| return typeHasPackage(program, value.ref, target),
+        .opaque_ptr => |value| return typeHasPackage(program, value.ref, target),
+        .value_struct => |value| return typeHasPackage(program, value.ref, target),
+        .slice => |value| return nodeReferencesPackage(program, value.element.*, target),
+        .optional => |value| return nodeReferencesPackage(program, value.child.*, target),
+        .error_union => |value| return nodeReferencesPackage(program, value.payload.*, target),
+        .callback => |value| {
+            for (value.params) |parameter| if (nodeReferencesPackage(program, parameter, target)) return true;
+            return nodeReferencesPackage(program, value.@"return".*, target);
+        },
+        else => return false,
+    }
+}
+
+fn programReferencesType(program: abi.Program, active: []const u8, target: []const u8) bool {
+    for (program.functions) |function| {
+        for (function.origin.params) |parameter| if (nodeReferencesType(parameter.type, target)) return true;
+        if (nodeReferencesType(function.origin.@"return", target)) return true;
+    }
+    for (program.types) |declaration| {
+        if (!packageMatches(declaration.package, active)) continue;
+        if (declaration.tag_type) |node| if (nodeReferencesType(node, target)) return true;
+        for (declaration.fields) |field| if (field.type) |node| if (nodeReferencesType(node, target)) return true;
+    }
+    return false;
+}
+
+fn nodeReferencesType(node: semantic.TypeNode, target: []const u8) bool {
+    return switch (node) {
+        .@"enum" => |value| std.mem.eql(u8, value.ref, target),
+        .opaque_ptr => |value| std.mem.eql(u8, value.ref, target),
+        .value_struct => |value| std.mem.eql(u8, value.ref, target),
+        .slice => |value| nodeReferencesType(value.element.*, target),
+        .optional => |value| nodeReferencesType(value.child.*, target),
+        .error_union => |value| nodeReferencesType(value.payload.*, target),
+        .callback => |value| blk: {
+            for (value.params) |parameter| if (nodeReferencesType(parameter, target)) break :blk true;
+            break :blk nodeReferencesType(value.@"return".*, target);
+        },
+        else => false,
+    };
+}
+
+fn typeHasPackage(program: abi.Program, name: []const u8, target: []const u8) bool {
+    for (program.types) |declaration| if (std.mem.eql(u8, declaration.name, name))
+        return if (declaration.package) |package| std.mem.eql(u8, package, target) else target.len == 0;
+    return false;
+}
+
+fn bodyReferencesPackageTypes(body: []const u8, program: abi.Program, target: []const u8) bool {
+    for (program.types) |declaration| {
+        const matches = if (declaration.package) |package| std.mem.eql(u8, package, target) else target.len == 0;
+        if (matches and std.mem.indexOf(u8, body, declaration.name) != null) return true;
+    }
+    return false;
+}
+
 fn isGoIdentifierByte(byte: u8) bool {
     return byte == '_' or std.ascii.isAlphanumeric(byte);
 }
@@ -4122,8 +4313,8 @@ fn renderPublicEnumsFile(allocator: std.mem.Allocator, writer: *std.Io.Writer, p
     try renderPublicFile(allocator, writer, program, options, renderPublicEnumsBody);
 }
 
-fn renderPublicEnumsBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, _: Options) !void {
-    try renderGoEnums(allocator, writer, program);
+fn renderPublicEnumsBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
+    try renderGoEnums(allocator, writer, program, options);
 }
 
 fn renderPublicStructsFile(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
@@ -4142,7 +4333,7 @@ fn renderPublicRuntimeFile(allocator: std.mem.Allocator, writer: *std.Io.Writer,
 /// projections take, the projection status vocabulary, the `Must*` wrappers,
 /// and the callback plumbing. None of it grows with the binding.
 fn renderPublicRuntimeBody(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
-    try renderGoHandleRuntime(writer, program);
+    try renderGoHandleRuntime(writer, program, options);
     try renderGoProjectionRuntime(writer, program, options);
     try renderGoCallbackTypes(allocator, writer, program);
     try renderPublicHelpers(allocator, writer, program, options);
@@ -4175,6 +4366,7 @@ pub fn unionFilesAlloc(allocator: std.mem.Allocator, program: abi.Program, optio
         stems.deinit(allocator);
     }
     for (variants) |entry| {
+        if (!packageMatches(entry.owner.package, options.active_package)) continue;
         const stem = try naming.unionFileStemAlloc(allocator, entry.owner.name, @ptrCast(stems.items));
         try stems.append(allocator, stem);
         const path = try publicUnionPathAlloc(allocator, program, options, stem);
@@ -4204,7 +4396,7 @@ fn renderUnionFile(
     try renderPublicUnionVariants(allocator, &body.writer, program, entry);
     const text = body.written();
     if (text.len == 0) return;
-    try writePublicImports(writer, text, options);
+    try writePublicImports(writer, text, program, options);
     try writer.writeAll(text);
 }
 
@@ -4243,6 +4435,7 @@ fn renderPublicStructLayoutGuards(
 
 fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     for (program.structs) |record| {
+        if (!typeBelongsToPackage(program, record.name, options.active_package)) continue;
         try writer.print("// {s} mirrors the Zig `extern struct` of the same name.\ntype {s} struct {{\n", .{ record.name, record.name });
         for (record.fields) |field| {
             const member = try naming.pascalAlloc(allocator, field.name);
@@ -4255,6 +4448,8 @@ fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer
         try renderPublicStructLayoutGuards(allocator, writer, program, options, record);
     }
     for (program.structs) |record| {
+        if (!typeBelongsToPackage(program, record.name, options.active_package) and
+            !(options.active_package != null and programReferencesType(program, options.active_package.?, record.name))) continue;
         const raw_type = try structRawTypeNameAlloc(allocator, record.name);
         defer allocator.free(raw_type);
         try writer.print("func zigo{s}ToRaw(value {s}) ", .{ record.name, record.name });
@@ -4323,11 +4518,12 @@ fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer
         try writeRawTypeReferencePrefix(writer, options);
         try writer.print("{s}, count int) {{\n\tif count > len(dst) {{ count = len(dst) }}\n\tif count > len(values) {{ count = len(values) }}\n\tfor i := 0; i < count; i++ {{\n\t\tdst[i] = zigo{s}FromRaw(values[i])\n\t}}\n}}\n\n", .{ raw_type, record.name });
     }
-    try renderPublicTaggedUnionValues(allocator, writer, program);
+    try renderPublicTaggedUnionValues(allocator, writer, program, options);
 }
 
-fn renderPublicTaggedUnionValues(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
+fn renderPublicTaggedUnionValues(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     for (program.types) |declaration| {
+        if (!packageMatches(declaration.package, options.active_package)) continue;
         if (!isValueOnlyTaggedUnion(program, declaration.name)) continue;
         const tag_type = declaration.tag_type.?.@"enum".ref;
         try writer.print("// {0s} is a tagged-union value passed to native code by copy.\ntype {0s} struct {{\n\ttag {1s}\n", .{ declaration.name, tag_type });
@@ -4690,6 +4886,44 @@ fn renderPublicErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
     // error-returning call. Both report it as the same error, so the file is
     // needed whenever either exists.
     if (!has_handles and !has_codes and !has_library and !has_callbacks and !has_ranges and !has_streams) return;
+    if (options.shared_lifecycle) {
+        const raw_import = has_library and !options.raw_colocated;
+        const import_count = 1 + @as(usize, @intFromBool(has_codes)) + @as(usize, @intFromBool(raw_import));
+        if (import_count == 1) {
+            try writer.print("\nimport lifecycle \"{s}/{s}\"\n\n", .{ options.go_module, options.lifecycle_package_path });
+        } else {
+            try writer.writeAll("\nimport (\n");
+            if (has_codes) try writer.writeAll("\t\"strconv\"\n");
+            if (has_codes and raw_import) try writer.writeByte('\n');
+            try writer.print("\tlifecycle \"{s}/{s}\"\n", .{ options.go_module, options.lifecycle_package_path });
+            if (raw_import) try writeRawImport(writer, options, "\t");
+            try writer.writeAll(")\n\n");
+        }
+        try writer.writeAll("var (\n" ++
+            "\t// ErrInvalidHandle identifies a nil or closed handle.\n\tErrInvalidHandle = lifecycle.ErrInvalidHandle\n" ++
+            "\t// ErrHandleInUse identifies a handle with open children.\n\tErrHandleInUse = lifecycle.ErrHandleInUse\n" ++
+            "\t// ErrNativePanic identifies a panic crossing the native boundary.\n\tErrNativePanic = lifecycle.ErrNativePanic\n" ++
+            "\t// ErrNativeStatus identifies an unknown native status.\n\tErrNativeStatus = lifecycle.ErrNativeStatus\n" ++
+            "\t// ErrCallbackPanic identifies a panic recovered from a callback.\n\tErrCallbackPanic = lifecycle.ErrCallbackPanic\n" ++
+            "\t// ErrCallbackFailed identifies a callback-reported failure.\n\tErrCallbackFailed = lifecycle.ErrCallbackFailed\n" ++
+            "\t// ErrOutOfRange identifies an argument outside its Zig range.\n\tErrOutOfRange = lifecycle.ErrOutOfRange\n" ++
+            "\t// ErrNilStream identifies a nil stream argument.\n\tErrNilStream = lifecycle.ErrNilStream\n)\n\n" ++
+            "// HandleError reports a nil or closed handle.\ntype HandleError = lifecycle.HandleError\n" ++
+            "// HandleInUseError reports a handle with open children.\ntype HandleInUseError = lifecycle.HandleInUseError\n" ++
+            "// NativePanicError reports a Zig panic at the native boundary.\ntype NativePanicError = lifecycle.NativePanicError\n" ++
+            "// RangeError reports an argument outside its Zig range.\ntype RangeError = lifecycle.RangeError\n" ++
+            "// StreamError reports an error returned by a Go stream.\ntype StreamError = lifecycle.StreamError\n" ++
+            "// CallbackError reports an error returned by a Go callback.\ntype CallbackError = lifecycle.CallbackError\n" ++
+            "// StatusError reports an unrecognized native status.\ntype StatusError = lifecycle.StatusError\n" ++
+            "// CallbackPanicError reports a panic recovered from a Go callback.\ntype CallbackPanicError = lifecycle.CallbackPanicError\n" ++
+            "// Error reports a named Zig error code.\ntype Error = lifecycle.Error\n\n");
+        if (has_library) {
+            try writer.writeAll("// ErrLibraryLoad identifies a native library loading failure.\nvar ErrLibraryLoad = ");
+            try writeRawReferencePrefix(writer, options);
+            try writer.writeAll("ErrLibraryLoad\n\n");
+        }
+        return renderGoErrors(allocator, writer, program, options);
+    }
     // errorForCode names an unrecognized code with its number; the callback
     // panic error prints the recovered value.
     const raw_import = (has_codes or has_library) and !options.raw_colocated;
@@ -5104,6 +5338,7 @@ fn writeRethrowHelper(writer: *std.Io.Writer, options: Options) !void {
 /// `cleanup` is the safety net for a handle the caller drops without closing.
 fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     for (program.types) |declaration| {
+        if (!packageMatches(declaration.package, options.active_package)) continue;
         if (!isHandleType(declaration)) continue;
         if (isValueOnlyTaggedUnion(program, declaration.name)) continue;
         const owns_callbacks = typeOwnsCallbacks(program, declaration.name);
@@ -5112,6 +5347,7 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         // Owning a constructor is what gives a handle Close and the cleanup net.
         const constructor = constructorForType(program, declaration.name);
         const auto_cleanup = constructor != null;
+        const poison_method = if (options.shared_lifecycle) "Poisoned" else "poisoned";
         if (auto_cleanup) {
             try writer.print("// {s} is a caller-owned native handle. Call Close when it is no longer needed.\n", .{declaration.name});
         } else {
@@ -5161,9 +5397,9 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                     "\tif parent != nil {{\n\t\tif _, err := parent.zigoAcquire(operation); err != nil {{\n\t\t\treturn nil, err\n\t\t}}\n\t}}\n" ++
                     "\t{0s}.mu.Lock()\n" ++
                     "\tif {0s}.closed || {0s}.ptr == nil {{\n\t\t{0s}.mu.Unlock()\n\t\tif parent != nil {{\n\t\t\tparent.zigoRelease()\n\t\t}}\n\t\treturn nil, &HandleError{{Operation: operation}}\n\t}}\n" ++
-                    "\tif {0s}.poison != nil {{\n\t\terr := {0s}.poison.poisoned(operation)\n\t\t{0s}.mu.Unlock()\n\t\tif parent != nil {{\n\t\t\tparent.zigoRelease()\n\t\t}}\n\t\treturn nil, err\n\t}}\n" ++
+                    "\tif {0s}.poison != nil {{\n\t\terr := {0s}.poison.{2s}(operation)\n\t\t{0s}.mu.Unlock()\n\t\tif parent != nil {{\n\t\t\tparent.zigoRelease()\n\t\t}}\n\t\treturn nil, err\n\t}}\n" ++
                     "\t{0s}.active++\n\tptr := {0s}.ptr\n\t{0s}.mu.Unlock()\n\treturn ptr, nil\n}}\n\n",
-                .{ recv, declaration.name },
+                .{ recv, declaration.name, poison_method },
             );
         } else {
             try writer.print(
@@ -5173,9 +5409,9 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                     "\tif {0s} == nil {{\n\t\treturn nil, &HandleError{{Operation: operation}}\n\t}}\n" ++
                     "\t{0s}.mu.Lock()\n\tdefer {0s}.mu.Unlock()\n" ++
                     "\tif {0s}.closed || {0s}.ptr == nil {{\n\t\treturn nil, &HandleError{{Operation: operation}}\n\t}}\n" ++
-                    "\tif {0s}.poison != nil {{\n\t\treturn nil, {0s}.poison.poisoned(operation)\n\t}}\n" ++
+                    "\tif {0s}.poison != nil {{\n\t\treturn nil, {0s}.poison.{2s}(operation)\n\t}}\n" ++
                     "\t{0s}.active++\n\treturn {0s}.ptr, nil\n}}\n\n",
-                .{ recv, declaration.name },
+                .{ recv, declaration.name, poison_method },
             );
         }
         // The last call out of a closed handle is the one that releases it, so
@@ -5202,6 +5438,12 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         try writer.writeAll("\t}\n");
         if (dependent_parent != null) try writer.print("\t{0s}.mu.Unlock()\n\tif parent != nil {{\n\t\tparent.zigoPoison(cause)\n\t}}\n", .{recv});
         try writer.writeAll("}\n\n");
+        if (options.shared_lifecycle) try writer.print(
+            "func ({0s} *{1s}) ZigoAcquire(operation string) (unsafe.Pointer, error) {{ return {0s}.zigoAcquire(operation) }}\n" ++
+                "func ({0s} *{1s}) ZigoRelease() {{ {0s}.zigoRelease() }}\n" ++
+                "func ({0s} *{1s}) ZigoPoison(cause *NativePanicError) {{ {0s}.zigoPoison(cause) }}\n\n",
+            .{ recv, declaration.name },
+        );
 
         if (has_dependent_children) try writer.print(
             "// zigoAcquireChild reserves one dependent child atomically with the call pin.\n" ++
@@ -5223,6 +5465,12 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                 "\treturn {0s}.ptr, nil\n}}\n\n" ++
                 "func ({0s} *{1s}Ref) zigoRelease() {{\n\tif {0s} != nil && {0s}.parent != nil {{\n\t\t{0s}.parent.zigoRelease()\n\t}}\n}}\n\n" ++
                 "func ({0s} *{1s}Ref) zigoPoison(cause *NativePanicError) {{\n\tif {0s} != nil && {0s}.parent != nil {{\n\t\t{0s}.parent.zigoPoison(cause)\n\t}}\n}}\n\n",
+            .{ recv, declaration.name },
+        );
+        if (has_refs and options.shared_lifecycle) try writer.print(
+            "func ({0s} *{1s}Ref) ZigoAcquire(operation string) (unsafe.Pointer, error) {{ return {0s}.zigoAcquire(operation) }}\n" ++
+                "func ({0s} *{1s}Ref) ZigoRelease() {{ {0s}.zigoRelease() }}\n" ++
+                "func ({0s} *{1s}Ref) ZigoPoison(cause *NativePanicError) {{ {0s}.zigoPoison(cause) }}\n\n",
             .{ recv, declaration.name },
         );
         if (constructor) |owned| {
@@ -5318,8 +5566,15 @@ fn writeStructField(writer: *std.Io.Writer, name: []const u8, width: usize, type
 /// The handle interface and its two pointer checks. Every projection and
 /// operation reaches a handle through this, so it lives with the runtime
 /// rather than with the handle types themselves.
-fn renderGoHandleRuntime(writer: *std.Io.Writer, program: abi.Program) !void {
-    if (programHasOpaqueTypes(program)) try writer.writeAll(
+fn renderGoHandleRuntime(writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
+    if (!programHasOpaqueTypes(program)) return;
+    if (options.shared_lifecycle) return writer.writeAll(
+        "type zigoHandle = lifecycle.Handle\n\n" ++
+            "func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, error) { return lifecycle.CheckedPointer(operation, value) }\n" ++
+            "func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsafe.Pointer, error) { return lifecycle.OptionalPointer(operation, absent, value) }\n" ++
+            "func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error { return lifecycle.PoisonAfterPanic(err, handles...) }\n\n",
+    );
+    try writer.writeAll(
         "// zigoHandle is what every handle and borrowed reference offers a generated\n" ++
             "// call: pin it open for the native call, let it go afterwards, and mark it\n" ++
             "// unusable when the call ended in a Zig panic.\n" ++
@@ -5509,6 +5764,7 @@ fn renderHandleChecks(
     go_names: []const []const u8,
     operation: []const u8,
     constructor: ?semantic.Constructor,
+    options: Options,
 ) !void {
     if (function.receiver) |receiver| {
         const receiver_name = try receiverVariableAlloc(allocator, receiver, go_names);
@@ -5541,7 +5797,10 @@ fn renderHandleChecks(
         }
         try writer.writeAll("\tif err != nil {\n\t\t");
         try writeHandleErrorReturn(writer, function, constructor);
-        try writer.print("\t}}\n\tdefer {s}.zigoRelease()\n", .{name});
+        if (options.shared_lifecycle)
+            try writer.print("\t}}\n\tdefer lifecycle.Release({s})\n", .{name})
+        else
+            try writer.print("\t}}\n\tdefer {s}.zigoRelease()\n", .{name});
     }
 }
 
@@ -5708,8 +5967,9 @@ fn writeBorrowedResult(
     try writer.print("&{s}Ref{{ptr: {s}, parent: {s}}}", .{ node.opaque_ptr.ref, expression, parent orelse "nil" });
 }
 
-fn renderGoEnums(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
+fn renderGoEnums(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     for (program.types) |declaration| {
+        if (!packageMatches(declaration.package, options.active_package)) continue;
         if (declaration.kind != .@"enum") continue;
         if (declaration.open == true) {
             try writer.print("// {s} represents the corresponding Zig open enum; values outside the named constants are valid.\ntype {s} ", .{ declaration.name, declaration.name });
@@ -5772,7 +6032,7 @@ fn renderGoErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, program:
     if (!programReturnsErrorUnion(program) and program.error_codes.len == 0) return;
     // Emitted even with no named Zig errors: `errorForCode` still has to have
     // something to say about a status code nothing in the lock file explains.
-    try writer.writeAll(
+    if (!options.shared_lifecycle) try writer.writeAll(
         "// Error is a stable Zig error-set value returned by the generated binding.\n" ++
             "// Classify it with errors.Is against the Err* sentinels; a returned value\n" ++
             "// also names the operation it came from.\n" ++
@@ -5857,6 +6117,16 @@ fn writeRawParameterType(writer: *std.Io.Writer, program: abi.Program, parameter
     if (isCStringParameter(parameter))
         return writer.writeAll(if (isOptionalSlice(parameter.type)) "*string" else "string");
     try writeRawGoType(writer, program, parameter.type);
+}
+
+fn packageMatches(package: ?[]const u8, active: ?[]const u8) bool {
+    const selected = active orelse return true;
+    return if (package) |name| std.mem.eql(u8, name, selected) else selected.len == 0;
+}
+
+fn typeBelongsToPackage(program: abi.Program, name: []const u8, active: ?[]const u8) bool {
+    for (program.types) |declaration| if (std.mem.eql(u8, declaration.name, name)) return packageMatches(declaration.package, active);
+    return false;
 }
 
 fn writePublicReturnType(writer: *std.Io.Writer, node: semantic.TypeNode, hint: ?semantic.SemanticHint) !void {

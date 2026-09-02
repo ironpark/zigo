@@ -256,6 +256,7 @@ pub const Program = struct {
     functions: []const AbiFn,
     io: ?[]const u8 = null,
     package: []const u8,
+    packages: ?[]const semantic.Package = null,
     prefix: []const u8,
     projections: []const AbiProjection = &.{},
     snapshots: []const AbiSnapshot = &.{},

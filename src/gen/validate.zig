@@ -74,6 +74,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
         .hint = "give the binding a symbol prefix",
     };
     if (packageMetadataIssue(document)) |issue| return issue;
+    if (try packageCycleIssue(allocator, document)) |issue| return issue;
     if (try identifierIssue(allocator, document)) |issue| return issue;
     for (document.functions) |function| {
         if (function.name.len == 0) return .{
@@ -383,6 +384,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
     for (document.types) |declaration| {
         for (document.functions) |function| {
             if (function.receiver != null) continue;
+            if (!optionalStringEqual(declaration.package, function.package)) continue;
             const function_name = try effectivePublicFunctionNameAlloc(allocator, document, function);
             defer allocator.free(function_name);
             if (!std.mem.eql(u8, function_name, declaration.name)) continue;
@@ -410,6 +412,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             if (constructorDeinitFor(document, previous) != null) continue;
             const previous_bucket = previous.receiver orelse "";
             if (!std.mem.eql(u8, bucket, previous_bucket)) continue;
+            if (!optionalStringEqual(function.package, previous.package)) continue;
             const previous_name = try effectivePublicFunctionNameAlloc(allocator, document, previous);
             defer allocator.free(previous_name);
             if (!std.mem.eql(u8, name, previous_name)) continue;
@@ -561,6 +564,90 @@ fn validPackagePath(path: []const u8) bool {
         for (component) |character| if (!(std.ascii.isAlphanumeric(character) or character == '_' or character == '-' or character == '.')) return false;
     }
     return true;
+}
+
+fn packageCycleIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+    const packages = document.packages orelse return null;
+    const count = packages.len + 1;
+    const edges = try allocator.alloc(?[]const u8, count * count);
+    @memset(edges, null);
+    for (document.functions) |function| {
+        const from = packageIndex(packages, function.package);
+        for (function.params) |parameter| addTypeEdges(document, packages, edges, count, from, parameter.type, function.name);
+        addTypeEdges(document, packages, edges, count, from, function.@"return", function.name);
+    }
+    for (document.types) |declaration| {
+        const from = packageIndex(packages, declaration.package);
+        if (declaration.tag_type) |node| addTypeEdges(document, packages, edges, count, from, node, declaration.name);
+        for (declaration.fields) |field| if (field.type) |node| addTypeEdges(document, packages, edges, count, from, node, declaration.name);
+    }
+    const state = try allocator.alloc(u8, count);
+    @memset(state, 0);
+    const stack = try allocator.alloc(usize, count);
+    for (0..count) |index| if (state[index] == 0) if (try visitPackage(allocator, packages, edges, count, state, stack, 0, index)) |issue| return issue;
+    return null;
+}
+
+fn visitPackage(allocator: std.mem.Allocator, packages: []const semantic.Package, edges: []const ?[]const u8, count: usize, state: []u8, stack: []usize, depth: usize, current: usize) !?diagnostic.Diagnostic {
+    state[current] = 1;
+    stack[depth] = current;
+    for (0..count) |next| {
+        const declaration = edges[current * count + next] orelse continue;
+        if (state[next] == 1) {
+            var start: usize = 0;
+            while (stack[start] != next) : (start += 1) {}
+            var path: std.Io.Writer.Allocating = .init(allocator);
+            for (stack[start .. depth + 1], 0..) |item, offset| {
+                if (offset != 0) try path.writer.writeAll(" -> ");
+                try path.writer.writeAll(packageName(packages, item));
+            }
+            try path.writer.print(" -> {s}", .{packageName(packages, next)});
+            return .{
+                .severity = .@"error",
+                .code = "ZIGO032",
+                .message = try std.fmt.allocPrint(allocator, "public package import cycle involves declaration `{s}`", .{declaration}),
+                .site = .{ .path = "semantic.json", .declaration = declaration },
+                .hint = try std.fmt.allocPrint(allocator, "move the declarations so the package graph is acyclic: {s}", .{path.written()}),
+            };
+        }
+        if (state[next] == 0) if (try visitPackage(allocator, packages, edges, count, state, stack, depth + 1, next)) |issue| return issue;
+    }
+    state[current] = 2;
+    return null;
+}
+
+fn packageIndex(packages: []const semantic.Package, package: ?[]const u8) usize {
+    const name = package orelse return 0;
+    for (packages, 0..) |entry, index| if (std.mem.eql(u8, entry.name, name)) return index + 1;
+    return 0;
+}
+
+fn packageName(packages: []const semantic.Package, index: usize) []const u8 {
+    return if (index == 0) "default" else packages[index - 1].name;
+}
+
+fn addTypeEdges(document: semantic.Semantic, packages: []const semantic.Package, edges: []?[]const u8, count: usize, from: usize, node: semantic.TypeNode, declaration: []const u8) void {
+    switch (node) {
+        .@"enum" => |value| addNamedEdge(document, packages, edges, count, from, value.ref, declaration),
+        .opaque_ptr => |value| addNamedEdge(document, packages, edges, count, from, value.ref, declaration),
+        .value_struct => |value| addNamedEdge(document, packages, edges, count, from, value.ref, declaration),
+        .slice => |value| addTypeEdges(document, packages, edges, count, from, value.element.*, declaration),
+        .optional => |value| addTypeEdges(document, packages, edges, count, from, value.child.*, declaration),
+        .error_union => |value| addTypeEdges(document, packages, edges, count, from, value.payload.*, declaration),
+        .callback => |value| {
+            for (value.params) |parameter| addTypeEdges(document, packages, edges, count, from, parameter, declaration);
+            addTypeEdges(document, packages, edges, count, from, value.@"return".*, declaration);
+        },
+        else => {},
+    }
+}
+
+fn addNamedEdge(document: semantic.Semantic, packages: []const semantic.Package, edges: []?[]const u8, count: usize, from: usize, name: []const u8, declaration: []const u8) void {
+    for (document.types) |type_decl| if (std.mem.eql(u8, type_decl.name, name)) {
+        const to = packageIndex(packages, type_decl.package);
+        if (from != to) edges[from * count + to] = declaration;
+        return;
+    };
 }
 
 /// Every rejection a stream parameter can earn, in the order the author is
@@ -3553,4 +3640,33 @@ test "a cancellable function has to name a flag its shim can pass and an error i
         .zig_version = "0.16.0",
     };
     try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(scratch.allocator(), accepted));
+}
+
+test "cross-package type cycles are diagnosed with the package path" {
+    const a_ref = semantic.TypeNode{ .value_struct = .{ .ref = "A" } };
+    const b_ref = semantic.TypeNode{ .value_struct = .{ .ref = "B" } };
+    const document: semantic.Semantic = .{
+        .package = "cycle",
+        .packages = &.{
+            .{ .name = "a", .path = "a" },
+            .{ .name = "b", .path = "b" },
+        },
+        .prefix = "zg",
+        .types = &.{
+            .{ .fields = &.{.{ .name = "b", .type = b_ref }}, .kind = .value_struct, .name = "A", .package = "a" },
+            .{ .fields = &.{.{ .name = "a", .type = a_ref }}, .kind = .value_struct, .name = "B", .package = "b" },
+        },
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const issue = (try findIssue(arena.allocator(), document)).?;
+    const rendered = try issue.renderAlloc(std.testing.allocator);
+    defer std.testing.allocator.free(rendered);
+    try std.testing.expectEqualStrings(
+        "error[ZIGO032]: public package import cycle involves declaration `B`\n" ++
+            "  --> semantic.json (B)\n" ++
+            "  hint: move the declarations so the package graph is acyclic: a -> b -> a\n",
+        rendered,
+    );
 }
