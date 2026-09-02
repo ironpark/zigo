@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T23:42:22Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: A boxed value `init(gpa, Options)` binds as `NewTerminal(cols, rows, ...)` on both backends; verification loop green.
 > NEXT: none
