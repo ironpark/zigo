@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T22:32:17Z"
 description: reject void callback returns with a diagnostic; release retained callback handles when re-registered or when the owning handle closes
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-02T22:10:46Z"
 ---
 > NEXT: Make `void` callback results generate on both backends instead of panicking. ([Phase 0](phases/00-void-callback-results.md))
@@ -8,7 +9,7 @@ registered_at: "2026-09-02T22:10:46Z"
 # Phases
 
 - [x] [Phase 00: Void callback results](phases/00-void-callback-results.md)
-- [ ] [Phase 01: Retained callback ownership on methods](phases/01-retained-callback-ownership.md)
+- [x] [Phase 01: Retained callback ownership on methods](phases/01-retained-callback-ownership.md)
 
 # Shared Verification
 
