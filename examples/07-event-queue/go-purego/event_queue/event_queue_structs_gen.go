@@ -6,6 +6,8 @@ import (
 	"unsafe"
 
 	raw "example.com/zigo/event-queue-purego/internal/native"
+
+	zigo_pkg_types "example.com/zigo/event-queue-purego/event_queue/types"
 )
 
 // Stats mirrors the Zig `extern struct` of the same name.
@@ -109,4 +111,27 @@ func zigoLimitsSliceView(values []raw.LimitsData) []Limits {
 		return nil
 	}
 	return unsafe.Slice((*Limits)(unsafe.Pointer(&values[0])), len(values))
+}
+
+func zigoTickerInfoToRaw(value zigo_pkg_types.TickerInfo) raw.TickerInfoData {
+	return raw.TickerInfoData{
+		Interval: value.Interval,
+		Ticks:    value.Ticks,
+	}
+}
+
+func zigoTickerInfoFromRaw(value raw.TickerInfoData) zigo_pkg_types.TickerInfo {
+	return zigo_pkg_types.TickerInfo{
+		Interval: value.Interval,
+		Ticks:    value.Ticks,
+	}
+}
+
+// zigoTickerInfoSliceView reinterprets a slice the raw layer already owns as
+// []TickerInfo without copying it again.
+func zigoTickerInfoSliceView(values []raw.TickerInfoData) []zigo_pkg_types.TickerInfo {
+	if len(values) == 0 {
+		return nil
+	}
+	return unsafe.Slice((*zigo_pkg_types.TickerInfo)(unsafe.Pointer(&values[0])), len(values))
 }

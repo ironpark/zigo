@@ -69,6 +69,9 @@
   `go.mod`와 사용자 Go 파일을 보존하지만, `<go_package>_gen.go` 같은 생성 파일명과 사용자가
   만든 파일명이 같으면 생성 단계가 그 파일을 갱신 대상으로 본다. 루트 발행 시 이 이름들은
   생성기 전용으로 비워 둔다.
+- 공개 하위 패키지 의존은 DAG만 지원한다. 두 패키지가 서로의 타입을 시그니처나 등록 타입
+  필드에서 참조하면 Go import cycle이 되므로 생성 전에 `ZIGO032`로 거부한다. 공통 값 타입을
+  세 번째 하위 패키지로 옮기거나 의존 방향을 하나로 정해야 한다.
 - `.cgo_static`은 module에 붙은 별도 정적 archive를 최종 cgo LDFLAGS에 나열하지만 fat
   archive로 병합하지 않는다. 따라서 바인딩 archive 하나만 복사해 다른 링커에서 독립적으로
   쓰는 배포물은 만들지 않는다. `compiler_rt`나 `ubsan_rt`가 module의 `.other_step` 또는
@@ -227,7 +230,8 @@ error[ZIGO018]: unsupported integer width `u21` in parameter `cp`
   namespace 함수와 등록된 타입이 이름을 나눠 가질 수 있다. 메서드는 receiver별로 이름
   공간이 나뉘므로 다른 receiver의 같은 메서드 이름은 충돌이 아니다. 같은 enum 안에서
   두 tag가 PascalCase로 같은 이름이 되는 경우도 여기서 잡는다. 메시지는 충돌하는 두 Zig
-  경로를 모두 적으며, `.name`으로 한쪽 이름을 바꾸면 통과한다.
+  경로를 모두 적으며, `.name`으로 한쪽 이름을 바꾸면 통과한다. 충돌 범위는 공개 패키지
+  하나이므로 서로 다른 `.packages` 항목에서는 같은 이름을 쓸 수 있다.
 - `ZIGO025` — `param_meta.<이름>.go_error`를 콜백이 아닌 파라미터에 달았거나, 콜백의 Zig
   반환 타입이 `i32`가 아니다. Go error는 결과 자리에 `-5`로 실려 건너가므로 `i32` 결과가
   없는 콜백은 그것을 알릴 방법이 없다.
@@ -244,6 +248,11 @@ error[ZIGO018]: unsupported integer width `u21` in parameter `cp`
   선언했거나, 같은 타입을 둘이 겹쳐 선언했다. 메시지가 이들을 구분한다.
 - `ZIGO029` — 실제로는 exhaustive인 enum 등록에 `.exhaustive = false`를 붙였다. opt-in을
   제거하거나 Zig enum을 non-exhaustive로 바꾼다.
+- `ZIGO030` — `.child_of_receiver = true`를 receiver constructor가 아닌 함수에 붙였다.
+- `ZIGO031` — `.packages`의 경로·이름·selector가 잘못됐거나, 같은 선언을 중복 선택했거나,
+  타입과 그 메서드·constructor·destructor를 서로 다른 패키지로 나누려 했다.
+- `ZIGO032` — 공개 패키지 타입 참조 그래프에 import cycle이 있다. 메시지는 순환을 만든
+  선언과 `a -> b -> a` 형태의 패키지 경로를 함께 적는다.
 
 `ZIGO027`과 `ZIGO028`은 reflection이 문서를 만들기 전에 걸리므로 `semantic.json` 자리가
 아니라 선언 경로를 가리키며, 생성기는 이 진단을 출력하고 종료한다.

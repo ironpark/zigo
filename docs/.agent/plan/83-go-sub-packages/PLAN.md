@@ -9,7 +9,7 @@ registered_at: "2026-09-02T19:05:03Z"
 
 - [x] [Phase 00: 선언과 semantic.json](phases/00-declaration-and-semantic.md)
 - [x] [Phase 01: 공용 lifecycle 런타임](phases/01-shared-runtime.md)
-- [ ] [Phase 02: 패키지별 emit과 순환 진단](phases/02-per-package-emit.md)
+- [x] [Phase 02: 패키지별 emit과 순환 진단](phases/02-per-package-emit.md)
 - [ ] [Phase 03: 예제, 문서, CHANGELOG](phases/03-example-and-docs.md)
 
 # Shared Verification

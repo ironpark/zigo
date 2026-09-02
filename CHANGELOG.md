@@ -4,6 +4,18 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Added
+
+- `bindings.zig`의 `.packages`로 등록 타입, namespace, 함수를 기본 공개 Go 패키지 아래의
+  하위 패키지로 나눌 수 있습니다. 패키지 간 타입은 import path와 한정 이름으로 생성되며,
+  순환은 `ZIGO032`로 거부합니다. cgo와 purego는 `internal/lifecycle`의 handle·error 계약을
+  공유하고 각 공개 패키지에서 기존 error type과 sentinel 이름을 다시 제공합니다.
+- `semantic.json`에 opt-in `packages`와 선언별 `package` 필드를 추가했습니다. 기본 패키지
+  배정은 필드를 생략해 기존 단일 패키지 문서를 유지하고, `abi-diff`는 패키지 이동을 breaking
+  Go surface 변경으로 보고합니다.
+
 ## [0.5.0] - 2026-09-03
 
 ### Added

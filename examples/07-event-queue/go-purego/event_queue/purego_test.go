@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"testing"
+
+	eventtypes "example.com/zigo/event-queue-purego/event_queue/types"
 	"time"
 )
 
@@ -87,7 +89,7 @@ func TestPuregoNumericSliceReturnIsCopied(t *testing.T) {
 }
 
 func TestPuregoOpenEnumRoundTrip(t *testing.T) {
-	unknown := QueueSignal(77)
+	unknown := eventtypes.QueueSignal(77)
 	if got := EchoQueueSignal(unknown); got != unknown {
 		t.Fatalf("EchoQueueSignal(77) = %d, want 77", got)
 	}

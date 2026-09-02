@@ -1,9 +1,10 @@
 ---
+completed_at: "2026-09-02T19:36:00Z"
 depends_on:
 - "83-go-sub-packages#0"
 - "83-go-sub-packages#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 골든 통과, 순환 진단 스냅샷, 커밋.
 > NEXT: none

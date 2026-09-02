@@ -52,6 +52,7 @@ zig build go-report
 go/go.mod
 go/internal/raw/raw_gen.go
 go/internal/raw/zigo_link_inputs_gen.go  # 정적 입력이 있을 때만, machine-local
+go/internal/lifecycle/lifecycle_gen.go   # .packages를 선언했을 때
 go/<package-path>/<package>_gen.go
 go/<package-path>/<package>_enums_gen.go
 go/<package-path>/<package>_structs_gen.go
@@ -59,6 +60,8 @@ go/<package-path>/<package>_handles_gen.go
 go/<package-path>/<package>_runtime_gen.go
 go/<package-path>/<package>_union_<union>_gen.go
 go/<package-path>/<package>_errors_gen.go
+go/<package-path>/<sub-path>/<sub-package>_gen.go
+go/<package-path>/<sub-path>/<sub-package>_*_gen.go
 zigo/semantic.json
 zigo/errors.lock.json
 zig-out/include/zigo_<name>.h
@@ -69,6 +72,14 @@ zig-out/lib/lib<name>_zigo.a
 요소가 사라져 `go/<package>_gen.go`처럼 `go_dir` 루트에 생성됩니다. raw 패키지 경로는
 별도 `raw_package`가 계속 정합니다. 둘을 같은 경로(루트에서는 둘 다 `"."`)로 두면 raw
 구현도 공개 패키지에 colocate됩니다.
+
+`.packages`가 있으면 `internal/lifecycle`이 모든 공개 패키지가 공유하는 handle 계약, pointer
+검사와 poison 전파, 오류 형식과 sentinel identity를 소유합니다. 각 공개 패키지는 기존 공개
+이름을 type alias와 sentinel 변수로 다시 내보내므로 어느 패키지의 sentinel을 사용해도
+`errors.Is`가 같은 error code를 찾습니다. cgo의 C 호출 계층은 `internal/raw`에 남고,
+purego의 로더·함수 테이블·callback token registry는 설정한 `internal/native` 같은 raw
+패키지에 남습니다. `.packages`가 없는 기존 단일 패키지는 shared lifecycle을 만들지 않아
+생성 바이트와 공개 API를 유지합니다.
 
 `zigo_link_inputs_gen.go`는 다른 생성 파일과 달리 commit하지 않습니다. module이 별도 정적
 archive를 링크할 때만 build step이 실제 절대 경로로 다시 쓰며, `go-check`는 이 파일을
@@ -389,6 +400,11 @@ receiver 앞에 주입 파라미터가 선언된 함수(`fn free(gpa: Allocator,
 `child_of_receiver: true`는 설정한 constructor에만 나타납니다. gain/loss는 C signature를
 움직이지 않지만 부모 `Close`의 동작과 생성된 Go handle 구조를 바꾸므로 ABI-compatible
 Go-surface 변경으로 보고됩니다.
+
+하위 패키지가 선언되면 최상위 `packages` 배열은 `{path,name,doc}`을 기록하고, 각 type과
+function은 기본 패키지가 아닐 때만 `package` 이름을 기록합니다. 기본 패키지의 필드는 생략되어
+기존 단일 패키지 문서는 바이트 단위로 그대로입니다. type이나 function의 `package` 변경은
+Go import path가 달라지는 breaking 변경입니다.
 
 함수의 `symbol` 필드는 그 함수가 export되는 C 심볼 이름입니다. 규칙은 하나뿐이고
 (`{prefix}_{owner}_{name}`, owner는 `receiver` 또는 `namespace`, 모두 snake_case로

@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"unsafe"
 
+	zigo_pkg_types "example.com/zigo/event-queue-purego/event_queue/types"
+	lifecycle "example.com/zigo/event-queue-purego/internal/lifecycle"
 	raw "example.com/zigo/event-queue-purego/internal/native"
 )
 
@@ -27,8 +29,8 @@ func LibraryLoaded() bool { return raw.LibraryLoaded() }
 var DefaultLibraryName = raw.DefaultLibraryName
 
 // EchoQueueSignal calls the Zig function echoQueueSignal.
-func EchoQueueSignal(signal QueueSignal) QueueSignal {
-	return QueueSignal(raw.EchoQueueSignal(uint8(signal)))
+func EchoQueueSignal(signal zigo_pkg_types.QueueSignal) zigo_pkg_types.QueueSignal {
+	return zigo_pkg_types.QueueSignal(raw.EchoQueueSignal(uint8(signal)))
 }
 
 // NewEventQueue creates a caller-owned EventQueue.
@@ -167,7 +169,7 @@ func (e *EventQueue) MergeFrom(source *EventQueue) (uint, error) {
 	if err != nil {
 		return 0, err
 	}
-	defer source.zigoRelease()
+	defer lifecycle.Release(source)
 	result, code := raw.EventQueueMergeFrom(ptr, sourcePtr)
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.MergeFrom", handle)
@@ -730,42 +732,24 @@ func (e *EventQueue) Clear() (uint, error) {
 	return result, nil
 }
 
-// NewTicker
-// Opens a ticker the caller owns.
-// The caller must call Close on the returned handle.
-// Native failures are returned as generated error values.
-func NewTicker(interval uint32) (*Ticker, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
-	result, code := raw.NewTicker(interval)
-	if code != 0 {
-		return nil, errorForCode("NewTicker", code)
-	}
-	return newTicker(result), nil
-}
-
-// Advance calls the Zig function Ticker.advance.
+// InspectTicker
+// Exercises cross-package handle and value-struct parameters without making
+// this free function a Ticker method.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
-func (t *Ticker) Advance(steps uint32) (uint32, error) {
+func InspectTicker(info zigo_pkg_types.TickerInfo, ticker *zigo_pkg_types.Ticker) (zigo_pkg_types.TickerInfo, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	ptr, err := zigoCheckedPointer("Ticker.Advance receiver", t)
+	tickerPtr, err := zigoCheckedPointer("InspectTicker parameter ticker", ticker)
 	if err != nil {
-		return 0, err
+		return zigo_pkg_types.TickerInfo{}, err
 	}
-	defer t.zigoRelease()
-	result, code := raw.TickerAdvance(ptr, steps)
+	defer lifecycle.Release(ticker)
+	result, code := raw.InspectTicker(zigoTickerInfoToRaw(info), tickerPtr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Ticker.Advance", code), t)
+		return zigo_pkg_types.TickerInfo{}, zigoPoisonAfterPanic(errorForCode("InspectTicker", code), ticker)
 	}
-	return result, nil
-}
-
-// LiveTickers
-// Tickers still owned by the library.
-func LiveTickers() uint {
-	return raw.LiveTickers()
+	return zigoTickerInfoFromRaw(result), nil
 }
 
 // LiveStreams calls the Zig function liveStreams.

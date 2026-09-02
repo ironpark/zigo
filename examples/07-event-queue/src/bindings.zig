@@ -6,12 +6,19 @@ pub const bindings = zigo.define(.{
     // lets the shim fill it in rather than exposing it to Go.
     .allocator = .page_allocator,
     .root = library,
+    .packages = .{.{
+        .path = "types",
+        .doc = "Package types contains event-queue values and the standalone Ticker handle.",
+        .types = .{ "QueueSignal", "Ticker", "TickerInfo" },
+        .functions = .{"root.liveTickers"},
+    }},
     .types = .{
         .{ .type = library.EventQueue, .repr = .@"opaque" },
         .{ .type = library.Stats, .repr = .value },
         .{ .type = library.Limits, .repr = .value },
         .{ .type = library.QueueSignal, .repr = .enumeration, .exhaustive = false },
         .{ .type = library.Ticker, .repr = .@"opaque" },
+        .{ .type = library.TickerInfo, .repr = .value },
         .{ .type = library.Stream, .repr = .@"opaque" },
     },
     .functions = .{
@@ -100,6 +107,7 @@ pub const bindings = zigo.define(.{
         .{ .path = "root.newTicker", .params = .{"interval"}, .constructs = "Ticker" },
         .{ .path = "root.freeTicker", .destroys = "Ticker" },
         .{ .path = "root.tickerAdvance", .name = "advance", .params = .{"steps"} },
+        .{ .path = "root.inspectTicker", .params = .{ "info", "ticker" } },
         .{ .path = "root.liveTickers" },
         .{ .path = "root.liveStreams" },
         .{ .path = "root.liveQueues" },

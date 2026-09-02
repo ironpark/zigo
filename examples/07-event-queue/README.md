@@ -21,7 +21,10 @@ This application-shaped example exposes a bounded Zig event queue as a Go packag
   that the shim fills in and Go never sees.
 - a `Ticker` whose constructor and destructor are free functions beside the type, paired
   by `.constructs = "Ticker"` / `.destroys = "Ticker"` and reaching Go as `NewTicker` and
-  `(*Ticker).Close`.
+  `(*Ticker).Close` in the `event_queue/types` sub-package;
+- `.packages` cross-references: the default package accepts the sub-package's `Ticker` handle
+  and `TickerInfo` value, and its `EchoQueueSignal` uses the sub-package's open enum. Both
+  public packages expose sentinels backed by the shared `internal/lifecycle` runtime.
 
 Run the complete example from this directory:
 

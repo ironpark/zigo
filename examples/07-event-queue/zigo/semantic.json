@@ -1343,6 +1343,7 @@
       "doc": "Opens a ticker the caller owns.",
       "go_owner": "Ticker",
       "name": "newTicker",
+      "package": "types",
       "ownership": "caller",
       "params": [
         {
@@ -1351,7 +1352,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 411,
+            "line": 418,
             "column": 18
           },
           "type": {
@@ -1377,7 +1378,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 411,
+        "line": 418,
         "column": 8
       },
       "symbol": "zg_new_ticker"
@@ -1385,6 +1386,7 @@
     {
       "doc": "Releases a ticker `newTicker` returned.",
       "name": "freeTicker",
+      "package": "types",
       "ownership": "borrowed",
       "params": [],
       "receiver": "Ticker",
@@ -1393,7 +1395,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 420,
+        "line": 427,
         "column": 8
       },
       "zig_path": "freeTicker",
@@ -1401,6 +1403,7 @@
     },
     {
       "name": "advance",
+      "package": "types",
       "ownership": "borrowed",
       "params": [
         {
@@ -1427,8 +1430,56 @@
       "symbol": "zg_ticker_advance"
     },
     {
+      "doc": "Exercises cross-package handle and value-struct parameters without making\nthis free function a Ticker method.",
+      "name": "inspectTicker",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "info",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 440,
+            "column": 22
+          },
+          "type": {
+            "kind": "value_struct",
+            "ref": "TickerInfo"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "ticker",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 440,
+            "column": 40
+          },
+          "type": {
+            "const": false,
+            "kind": "opaque_ptr",
+            "nullable": false,
+            "ref": "Ticker"
+          }
+        }
+      ],
+      "return": {
+        "kind": "value_struct",
+        "ref": "TickerInfo"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 440,
+        "column": 8
+      },
+      "symbol": "zg_inspect_ticker"
+    },
+    {
       "doc": "Tickers still owned by the library.",
       "name": "liveTickers",
+      "package": "types",
       "ownership": "borrowed",
       "params": [],
       "return": {
@@ -1439,7 +1490,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 432,
+        "line": 445,
         "column": 8
       },
       "symbol": "zg_live_tickers"
@@ -1516,6 +1567,13 @@
   ],
   "ir_version": 1,
   "package": "event_queue",
+  "packages": [
+    {
+      "doc": "Package types contains event-queue values and the standalone Ticker handle.",
+      "name": "types",
+      "path": "types"
+    }
+  ],
   "prefix": "zg",
   "types": [
     {
@@ -1644,6 +1702,7 @@
       ],
       "kind": "enum",
       "name": "QueueSignal",
+      "package": "types",
       "open": true,
       "tag_type": {
         "bits": 8,
@@ -1658,7 +1717,36 @@
       "fields": [],
       "kind": "opaque",
       "name": "Ticker",
+      "package": "types",
       "zig_path": "root.Ticker"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "interval",
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "ticks",
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "kind": "value_struct",
+      "layout": "extern",
+      "name": "TickerInfo",
+      "package": "types",
+      "zig_path": "root.TickerInfo"
     },
     {
       "exhaustive": true,

@@ -3640,6 +3640,13 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
     // A cancellable call takes a `context.Context`, matches the native error
     // against a sentinel, and raises its flag with an atomic store.
     const needs_cancel = programHasCancellation(program);
+    var needs_lifecycle = false;
+    if (options.shared_lifecycle) for (program.functions) |function| {
+        if (hasOpaqueParameter(function.origin.*)) {
+            needs_lifecycle = true;
+            break;
+        }
+    };
     const default_foreign = options.active_package != null and options.active_package.?.len != 0 and programReferencesPackage(program, options.active_package.?, "");
     var foreign: std.ArrayList(semantic.Package) = .empty;
     defer foreign.deinit(std.heap.page_allocator);
@@ -3649,7 +3656,8 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
     };
     const import_count = @as(usize, @intFromBool(needs_io)) + @as(usize, @intFromBool(needs_runtime)) +
         @as(usize, @intFromBool(needs_unsafe)) + @as(usize, @intFromBool(needs_raw)) +
-        @as(usize, @intFromBool(needs_cancel)) * 3 + @as(usize, @intFromBool(default_foreign)) + foreign.items.len;
+        @as(usize, @intFromBool(needs_cancel)) * 3 + @as(usize, @intFromBool(needs_lifecycle)) +
+        @as(usize, @intFromBool(default_foreign)) + foreign.items.len;
     if (import_count > 1) {
         try writer.writeAll("import (\n");
         if (needs_cancel) try writer.writeAll("\t\"context\"\n\t\"errors\"\n");
@@ -3661,6 +3669,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             if (needs_io or needs_runtime or needs_unsafe or needs_cancel) try writer.writeByte('\n');
             try writeRawImport(writer, options, "\t");
         }
+        if (needs_lifecycle) try writer.print("\tlifecycle \"{s}/{s}\"\n", .{ options.go_module, options.lifecycle_package_path });
         if (default_foreign) try writeDefaultPackageImport(writer, options, "\t");
         for (foreign.items) |foreign_package| try writeForeignImport(writer, foreign_package, options, "\t");
         try writer.writeAll(")\n\n");
@@ -3674,6 +3683,8 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         try writer.writeAll("import ");
         try writeRawImport(writer, options, "");
         try writer.writeByte('\n');
+    } else if (needs_lifecycle) {
+        try writer.print("import lifecycle \"{s}/{s}\"\n\n", .{ options.go_module, options.lifecycle_package_path });
     } else if (default_foreign) {
         try writer.writeAll("import ");
         try writeDefaultPackageImport(writer, options, "");
@@ -4089,12 +4100,12 @@ fn writePublicImports(writer: *std.Io.Writer, body: []const u8, program: abi.Pro
     // package with another name is imported under that alias.
     const raw = !options.raw_colocated and bodyUsesQualifier(body, "raw");
     const lifecycle = bodyUsesQualifier(body, "lifecycle");
-    const default_foreign = options.active_package != null and options.active_package.?.len != 0 and (programReferencesPackage(program, options.active_package.?, "") or bodyReferencesPackageTypes(body, program, ""));
+    const default_foreign = options.active_package != null and options.active_package.?.len != 0 and bodyReferencesPackageTypes(body, program, "");
     var foreign: std.ArrayList(semantic.Package) = .empty;
     defer foreign.deinit(std.heap.page_allocator);
     if (options.active_package != null) if (program.packages) |packages| for (packages) |package| {
         if (std.mem.eql(u8, package.name, options.active_package.?)) continue;
-        if (programReferencesPackage(program, options.active_package.?, package.name) or bodyReferencesPackageTypes(body, program, package.name)) try foreign.append(std.heap.page_allocator, package);
+        if (bodyReferencesPackageTypes(body, program, package.name)) try foreign.append(std.heap.page_allocator, package);
     };
     if (count == 0 and !raw and !lifecycle and !default_foreign and foreign.items.len == 0) return writer.writeByte('\n');
     if (count + @as(usize, @intFromBool(raw)) + @as(usize, @intFromBool(lifecycle)) + @as(usize, @intFromBool(default_foreign)) + foreign.items.len == 1) {
@@ -4887,7 +4898,7 @@ fn renderPublicErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
     // needed whenever either exists.
     if (!has_handles and !has_codes and !has_library and !has_callbacks and !has_ranges and !has_streams) return;
     if (options.shared_lifecycle) {
-        const raw_import = has_library and !options.raw_colocated;
+        const raw_import = (has_codes or has_library) and !options.raw_colocated;
         const import_count = 1 + @as(usize, @intFromBool(has_codes)) + @as(usize, @intFromBool(raw_import));
         if (import_count == 1) {
             try writer.print("\nimport lifecycle \"{s}/{s}\"\n\n", .{ options.go_module, options.lifecycle_package_path });
@@ -5439,8 +5450,11 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         if (dependent_parent != null) try writer.print("\t{0s}.mu.Unlock()\n\tif parent != nil {{\n\t\tparent.zigoPoison(cause)\n\t}}\n", .{recv});
         try writer.writeAll("}\n\n");
         if (options.shared_lifecycle) try writer.print(
-            "func ({0s} *{1s}) ZigoAcquire(operation string) (unsafe.Pointer, error) {{ return {0s}.zigoAcquire(operation) }}\n" ++
+            "// ZigoAcquire implements the shared lifecycle handle contract.\n" ++
+                "func ({0s} *{1s}) ZigoAcquire(operation string) (unsafe.Pointer, error) {{ return {0s}.zigoAcquire(operation) }}\n" ++
+                "// ZigoRelease implements the shared lifecycle handle contract.\n" ++
                 "func ({0s} *{1s}) ZigoRelease() {{ {0s}.zigoRelease() }}\n" ++
+                "// ZigoPoison implements the shared lifecycle handle contract.\n" ++
                 "func ({0s} *{1s}) ZigoPoison(cause *NativePanicError) {{ {0s}.zigoPoison(cause) }}\n\n",
             .{ recv, declaration.name },
         );
@@ -5451,10 +5465,10 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                 "\tif {0s} == nil {{\n\t\treturn nil, &HandleError{{Operation: operation}}\n\t}}\n" ++
                 "\t{0s}.mu.Lock()\n\tdefer {0s}.mu.Unlock()\n" ++
                 "\tif {0s}.closed || {0s}.ptr == nil {{\n\t\treturn nil, &HandleError{{Operation: operation}}\n\t}}\n" ++
-                "\tif {0s}.poison != nil {{\n\t\treturn nil, {0s}.poison.poisoned(operation)\n\t}}\n" ++
+                "\tif {0s}.poison != nil {{\n\t\treturn nil, {0s}.poison.{2s}(operation)\n\t}}\n" ++
                 "\t{0s}.active++\n\t{0s}.children++\n\treturn {0s}.ptr, nil\n}}\n\n" ++
                 "func ({0s} *{1s}) zigoDropChild() {{\n\tif {0s} == nil {{\n\t\treturn\n\t}}\n\t{0s}.mu.Lock()\n\t{0s}.children--\n\t{0s}.mu.Unlock()\n}}\n\n",
-            .{ recv, declaration.name },
+            .{ recv, declaration.name, poison_method },
         );
         // A borrowed reference is only as open as its parent: it pins the
         // parent for the call, and a panic through it poisons the parent.
@@ -5468,8 +5482,11 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             .{ recv, declaration.name },
         );
         if (has_refs and options.shared_lifecycle) try writer.print(
-            "func ({0s} *{1s}Ref) ZigoAcquire(operation string) (unsafe.Pointer, error) {{ return {0s}.zigoAcquire(operation) }}\n" ++
+            "// ZigoAcquire implements the shared lifecycle handle contract.\n" ++
+                "func ({0s} *{1s}Ref) ZigoAcquire(operation string) (unsafe.Pointer, error) {{ return {0s}.zigoAcquire(operation) }}\n" ++
+                "// ZigoRelease implements the shared lifecycle handle contract.\n" ++
                 "func ({0s} *{1s}Ref) ZigoRelease() {{ {0s}.zigoRelease() }}\n" ++
+                "// ZigoPoison implements the shared lifecycle handle contract.\n" ++
                 "func ({0s} *{1s}Ref) ZigoPoison(cause *NativePanicError) {{ {0s}.zigoPoison(cause) }}\n\n",
             .{ recv, declaration.name },
         );

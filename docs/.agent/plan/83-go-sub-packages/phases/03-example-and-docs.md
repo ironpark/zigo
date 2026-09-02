@@ -2,7 +2,7 @@
 depends_on:
 - "83-go-sub-packages#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 예제 통과, 문서 갱신, 전 예제 녹색, 커밋.
 > NEXT: none

@@ -563,6 +563,19 @@ func TickerAdvance(self unsafe.Pointer, steps uint32) (uint32, int32) {
 	return uint32(outResult), code
 }
 
+// InspectTicker calls the generated C ABI wrapper for zg_inspect_ticker.
+func InspectTicker(info TickerInfoData, ticker unsafe.Pointer) (TickerInfoData, int32) {
+	var cinfo C.zg_ticker_info
+	cinfo.interval = C.uint32_t(info.Interval)
+	cinfo.ticks = C.uint32_t(info.Ticks)
+	var outResult C.zg_ticker_info
+	code := int32(C.zg_inspect_ticker(&cinfo, (*C.zg_ticker)(ticker), &outResult))
+	return TickerInfoData{
+		Interval: uint32(outResult.interval),
+		Ticks:    uint32(outResult.ticks),
+	}, code
+}
+
 // LiveTickers calls the generated C ABI wrapper for zg_live_tickers.
 func LiveTickers() uint {
 	return uint(C.zg_live_tickers())
@@ -605,7 +618,18 @@ type LimitsData struct {
 	Policy   uint32
 }
 
+// TickerInfoData mirrors the zg_ticker_info layout, padding included.
+type TickerInfoData struct {
+	Interval uint32
+	Ticks    uint32
+}
+
 // LimitsData crosses to C as a cast, so it must match zg_limits byte for byte.
 var _ = [1]struct{}{}[unsafe.Sizeof(LimitsData{})-unsafe.Sizeof(C.zg_limits{})]
 var _ = [1]struct{}{}[unsafe.Offsetof(LimitsData{}.Capacity)-unsafe.Offsetof(C.zg_limits{}.capacity)]
 var _ = [1]struct{}{}[unsafe.Offsetof(LimitsData{}.Policy)-unsafe.Offsetof(C.zg_limits{}.policy)]
+
+// TickerInfoData crosses to C as a cast, so it must match zg_ticker_info byte for byte.
+var _ = [1]struct{}{}[unsafe.Sizeof(TickerInfoData{})-unsafe.Sizeof(C.zg_ticker_info{})]
+var _ = [1]struct{}{}[unsafe.Offsetof(TickerInfoData{}.Interval)-unsafe.Offsetof(C.zg_ticker_info{}.interval)]
+var _ = [1]struct{}{}[unsafe.Offsetof(TickerInfoData{}.Ticks)-unsafe.Offsetof(C.zg_ticker_info{}.ticks)]

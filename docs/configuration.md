@@ -99,6 +99,11 @@ purego는 정적 링크와 조합되지 않습니다. 지원 플랫폼, 로딩 �
 `<go_module>/<go_package_path>`입니다. 경로는 `raw_package`와 같은 portable
 slash-separated 상대 경로 규칙을 따르며 `"."`만 루트 표기로 따로 허용합니다.
 
+`bindings.zig`의 [`.packages`](bindings.md#공개-go-하위-패키지)가 있으면 각 `path`는 이
+기본 경로 아래에 생성됩니다. 예를 들어 `go_package_path = "api"`와 `.path = "types"`는
+`<go_module>/api/types`입니다. `go_package_doc`은 기본 패키지에만 적용되고, 하위 패키지는
+각 항목의 `.doc`을 사용하며 없으면 기본 package 문장을 생성합니다.
+
 ## raw Go 패키지 위치
 
 raw 패키지는 C ABI 또는 purego 함수 포인터를 담는 내부 계층입니다. 기본 위치는
@@ -131,6 +136,10 @@ raw 패키지는 C ABI 또는 purego 함수 포인터를 담는 내부 계층입
 `.` 또는 `..` 요소, 역슬래시는 허용하지 않습니다. 경로를 바꾼 뒤 `zig build go`를 실행하면
 marker가 있는 이전 zigo 생성 파일만 정리합니다. `go.mod`와 marker가 없는 사용자 Go 파일은
 유지됩니다.
+
+하위 공개 패키지도 별도 예외 없이 `go_dir` 전체 marker walk에 포함됩니다. `.packages`에서
+경로를 없애거나 옮긴 뒤 `zig build go`를 실행하면 옛 하위 디렉터리의 생성 파일은 제거되고,
+그 디렉터리의 사용자 파일은 보존됩니다.
 
 ## 소스 이름과 문서 보강
 

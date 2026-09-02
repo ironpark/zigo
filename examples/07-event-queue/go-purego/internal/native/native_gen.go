@@ -92,6 +92,7 @@ type nativeBindings struct {
 	fnNewTicker                         func(uint32, *unsafe.Pointer) int32
 	fnTickerFreeTicker                  func(unsafe.Pointer) int32
 	fnTickerAdvance                     func(unsafe.Pointer, uint32, *uint32) int32
+	fnInspectTicker                     func(unsafe.Pointer, unsafe.Pointer, unsafe.Pointer) int32
 	fnLiveTickers                       func() uintptr
 	fnLiveStreams                       func() uintptr
 	fnLiveQueues                        func() uintptr
@@ -489,6 +490,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_ticker_advance", err)
 	}
+	addrInspectTicker, err := resolveSymbol(handle, "zg_inspect_ticker")
+	if err != nil {
+		return fail("zg_inspect_ticker", err)
+	}
 	addrLiveTickers, err := resolveSymbol(handle, "zg_live_tickers")
 	if err != nil {
 		return fail("zg_live_tickers", err)
@@ -552,6 +557,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnNewTicker, addrNewTicker)
 	purego.RegisterFunc(&next.fnTickerFreeTicker, addrTickerFreeTicker)
 	purego.RegisterFunc(&next.fnTickerAdvance, addrTickerAdvance)
+	purego.RegisterFunc(&next.fnInspectTicker, addrInspectTicker)
 	purego.RegisterFunc(&next.fnLiveTickers, addrLiveTickers)
 	purego.RegisterFunc(&next.fnLiveStreams, addrLiveStreams)
 	purego.RegisterFunc(&next.fnLiveQueues, addrLiveQueues)
@@ -608,6 +614,12 @@ type StatsData struct {
 type LimitsData struct {
 	Capacity uint32
 	Policy   uint32
+}
+
+// TickerInfoData mirrors the zg_ticker_info layout, padding included.
+type TickerInfoData struct {
+	Interval uint32
+	Ticks    uint32
 }
 
 // zigoCStringBytes copies value into a NUL-terminated Go buffer the native
@@ -1046,6 +1058,13 @@ func TickerFreeTicker(self unsafe.Pointer) int32 {
 func TickerAdvance(self unsafe.Pointer, steps uint32) (uint32, int32) {
 	var outResult uint32
 	code := bindings().fnTickerAdvance(self, steps, &outResult)
+	return outResult, code
+}
+
+// InspectTicker calls the generated purego ABI wrapper for zg_inspect_ticker.
+func InspectTicker(info TickerInfoData, ticker unsafe.Pointer) (TickerInfoData, int32) {
+	var outResult TickerInfoData
+	code := bindings().fnInspectTicker(unsafe.Pointer(&info), ticker, unsafe.Pointer(&outResult))
 	return outResult, code
 }
 

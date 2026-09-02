@@ -405,6 +405,13 @@ pub const Ticker = struct {
     elapsed: u32 = 0,
 };
 
+/// A value exchanged by the default package while its Ticker handle lives in
+/// the `types` sub-package.
+pub const TickerInfo = extern struct {
+    interval: u32,
+    ticks: u32,
+};
+
 pub const TickerError = error{ InvalidInterval, OutOfMemory };
 
 /// Opens a ticker the caller owns.
@@ -426,6 +433,12 @@ pub fn freeTicker(ticker: *Ticker) void {
 pub fn tickerAdvance(ticker: *Ticker, steps: u32) u32 {
     ticker.elapsed += steps;
     return ticker.elapsed / ticker.interval;
+}
+
+/// Exercises cross-package handle and value-struct parameters without making
+/// this free function a Ticker method.
+pub fn inspectTicker(info: TickerInfo, ticker: *Ticker) TickerInfo {
+    return .{ .interval = ticker.interval, .ticks = info.ticks + ticker.elapsed };
 }
 
 /// Tickers still owned by the library.

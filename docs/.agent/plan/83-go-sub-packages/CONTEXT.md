@@ -27,3 +27,20 @@
 - 공용 런타임은 `.packages`가 하나라도 선언된 바인딩에서만 활성화한다. `.packages`가 없는 단일 패키지 바인딩은 기존 생성물을 바이트 단위로 유지한다. 활성화된 경우 공개 패키지는 `internal/lifecycle`의 형식 alias와 sentinel 변수를 재선언해 기존 공개 API 이름을 유지한다.
 - 패키지 간 의존은 DAG여야 하며, 진단은 순환에 참여하는 선언을 이름으로 적는다.
 - 타입과 그 메서드는 한 패키지에 있다.
+
+## Implemented decisions and deviations
+
+- 교차 패키지 import는 선언된 package name을 그대로 노출하지 않고 생성기 전용 alias
+  `zigo_pkg_<name>`(기본 패키지는 `zigo_default`)를 사용한다. 사용자 파라미터나 표준 패키지
+  이름과의 우연한 충돌을 피하면서 모든 타입 참조는 명시적으로 한정된다.
+- cgo와 purego 모두 `.packages`가 있을 때만 `internal/lifecycle`을 생성한다. purego의
+  loader/function table/callback registry는 raw로 설정한 `internal/native`에 남는다.
+- 최초 계획의 “stream adapters, cancel flag를 lifecycle로 이동”은 구현 중 범위를 좁혔다.
+  공유 identity와 package 간 호출에 필요한 handle 계약·pointer 검사·poison·오류 형식은
+  lifecycle이 소유하지만, stream callback 연결과 cancel word는 각 호출 wrapper의 package-local
+  코드로 유지한다. 둘은 호출마다 생성되고 raw callback registry에 직접 연결되어 공유 상태나
+  package 간 타입 identity가 없으므로 옮기면 오히려 lifecycle이 backend raw 계층에 의존한다.
+- 예제 07은 의존 방향을 기본 패키지 → `types` 하나로 유지한다. `QueueSignal`, `Ticker`,
+  `TickerInfo`를 옮기고 기본 패키지의 `EchoQueueSignal`/`InspectTicker`가 enum, handle, struct를
+  참조한다. 반대 방향 참조도 동시에 넣으면 의도적으로 금지한 Go import cycle이 되므로 넣지
+  않았다.

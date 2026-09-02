@@ -69,6 +69,35 @@ receiver가 없는 함수(namespace 함수와 최상위 함수)는 모두 같은
 생성기는 이런 충돌을 생성 시점에 `ZIGO024`로 거부하며, 메시지에 충돌하는 두 Zig 경로를 모두
 적습니다. 함수는 `.name`으로, 타입은 `.types`의 `.name`으로 한쪽 이름을 바꿔 충돌을 없앱니다.
 
+## 공개 Go 하위 패키지
+
+`.packages`는 기본 공개 패키지 아래에 타입·namespace·함수를 나눕니다. 선택되지 않은 선언은
+기본 패키지에 남습니다.
+
+```zig
+.packages = .{
+    .{
+        .path = "types",
+        .name = "types", // 생략하면 path의 마지막 요소를 snake_case로 변환
+        .doc = "Package types contains shared values and handles.",
+        .types = .{ "Ticker", "TickerInfo" },
+        .namespaces = .{"text.unicode"},
+        .functions = .{"root.liveTickers"},
+    },
+},
+```
+
+`path`는 `go_package_path` 기준 상대 경로입니다. 함수 배정은 명시적인 `functions`, receiver나
+`go_owner`인 타입, 가장 긴 `namespaces` 접두사, 기본 패키지 순서로 결정됩니다. 타입의 메서드,
+constructor, destructor, tagged-union projection은 언제나 그 타입과 같은 패키지에 있어야 하며
+명시적인 함수 배정으로 떼어 놓으면 `ZIGO031`입니다.
+
+다른 공개 패키지의 타입을 쓰는 시그니처는 `<go_module>/<go_package_path>/<path>`를 import하고
+한정 이름으로 적습니다. 이 의존 그래프는 DAG여야 하며 순환은 관련 선언과 경로를 적은
+`ZIGO032` 진단입니다. `ZIGO024` 이름 충돌 검사도 패키지별로 적용되므로 서로 다른 공개
+패키지는 같은 Go 이름을 사용할 수 있습니다. 패키지 배정을 바꾸면 import path와 Go 표면이
+움직이므로 `abi-diff`는 breaking으로 보고합니다.
+
 ## 명시 목록과 자동 발견
 
 안정적인 공개 API가 중요하다면 `functions`에 함수를 명시하세요. 목록에 없는 함수는 노출되지
