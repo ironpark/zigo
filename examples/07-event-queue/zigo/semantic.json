@@ -622,6 +622,66 @@
       "symbol": "zg_acceptStats"
     },
     {
+      "doc": "The same samples as `extractSamples`, written into a buffer the caller\nalready has. Nothing is allocated and nothing has to be released: the\nresult says how many entries were filled, and everything past that is\nstill whatever the caller left there.",
+      "name": "extractSamplesInto",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "out",
+          "name": "dst",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "const": false,
+            "element": {
+              "bits": 32,
+              "kind": "float"
+            },
+            "kind": "slice"
+          },
+          "written": "return"
+        }
+      ],
+      "receiver": "EventQueue",
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_extractSamplesInto"
+    },
+    {
+      "doc": "One `Limits` row per queued event, up to what the buffer holds. `Limits`\nhas no bool field, so both backends hand the buffer's address straight\nto the native call and neither direction copies.",
+      "name": "limitsInto",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "out",
+          "name": "dst",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "const": false,
+            "element": {
+              "kind": "value_struct",
+              "ref": "Limits"
+            },
+            "kind": "slice"
+          },
+          "written": "return"
+        }
+      ],
+      "receiver": "EventQueue",
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_limitsInto"
+    },
+    {
       "doc": "Fills one value snapshot per queued event. The return value is the\nnumber of output entries written, while the explicit out metadata keeps\nthe slice capacity visible in the C ABI.",
       "name": "estimate",
       "ownership": "borrowed",

@@ -3,6 +3,7 @@ package config
 
 import (
 	"runtime"
+	"unsafe"
 
 	"example.com/zigo/config/internal/raw"
 )

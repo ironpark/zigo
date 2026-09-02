@@ -197,6 +197,27 @@ pub const EventQueue = struct {
         return self.extractSamples();
     }
 
+    /// The same samples as `extractSamples`, written into a buffer the caller
+    /// already has. Nothing is allocated and nothing has to be released: the
+    /// result says how many entries were filled, and everything past that is
+    /// still whatever the caller left there.
+    pub fn extractSamplesInto(self: *EventQueue, dst: []f32) usize {
+        const wanted = self.items.items.len + 1;
+        if (dst.len < wanted) return 0;
+        dst[0] = @floatFromInt(self.items.items.len);
+        for (self.items.items, 1..) |event, index| dst[index] = @floatFromInt(event.value);
+        return wanted;
+    }
+
+    /// One `Limits` row per queued event, up to what the buffer holds. `Limits`
+    /// has no bool field, so both backends hand the buffer's address straight
+    /// to the native call and neither direction copies.
+    pub fn limitsInto(self: *EventQueue, dst: []Limits) usize {
+        const written = @min(dst.len, self.items.items.len);
+        for (dst[0..written]) |*entry| entry.* = self.limits();
+        return written;
+    }
+
     /// Releases a buffer produced by `extractSamples`.
     pub fn freeSamples(_: *EventQueue, samples: []f32) void {
         if (samples.len == 0) return;

@@ -97,3 +97,57 @@ func TestPuregoValueStructSliceInputAndReturn(t *testing.T) {
 		t.Fatalf("SampleStats() aliased native memory: second[0] = %+v", second[0])
 	}
 }
+
+// The `...Into(dst)` contract: the call fills exactly as many entries as it
+// reports written, and leaves everything past that alone. Nothing is allocated
+// on either side, and `Limits` has no bool field, so the buffer itself is what
+// the native call writes into.
+func TestPuregoValueStructOutSliceStopsAtWritten(t *testing.T) {
+	queue, err := NewEventQueue("written", 8, PolicyReject, func(uint64, int32) int32 { return 0 })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer queue.Close()
+	if err := queue.Enqueue(1, 10); err != nil {
+		t.Fatal(err)
+	}
+	if err := queue.Enqueue(2, 20); err != nil {
+		t.Fatal(err)
+	}
+
+	sentinel := Limits{Capacity: 4242, Policy: PolicyDropOldest}
+	dst := []Limits{sentinel, sentinel, sentinel, sentinel}
+	written := must(queue.LimitsInto(dst))
+	if written != 2 {
+		t.Fatalf("LimitsInto() = %d, want 2", written)
+	}
+	for index, value := range dst[:written] {
+		if value.Capacity != 8 || value.Policy != PolicyReject {
+			t.Fatalf("LimitsInto()[%d] = %+v, want the queue limits", index, value)
+		}
+	}
+	for index, value := range dst[written:] {
+		if value != sentinel {
+			t.Fatalf("LimitsInto() overwrote element %d past written: %+v", int(written)+index, value)
+		}
+	}
+
+	// A scalar buffer follows the same rule, and a buffer too small to hold
+	// the result reports nothing written rather than a partial answer.
+	samples := []float32{-1, -1, -1, -1, -1}
+	filled := must(queue.ExtractSamplesInto(samples))
+	if filled != 3 {
+		t.Fatalf("ExtractSamplesInto() = %d, want 3", filled)
+	}
+	if samples[0] != 2 || samples[1] != 10 || samples[2] != 20 {
+		t.Fatalf("ExtractSamplesInto() filled %v, want the count followed by the values", samples[:filled])
+	}
+	for index, value := range samples[filled:] {
+		if value != -1 {
+			t.Fatalf("ExtractSamplesInto() overwrote element %d past written: %v", int(filled)+index, value)
+		}
+	}
+	if short := must(queue.ExtractSamplesInto(make([]float32, 1))); short != 0 {
+		t.Fatalf("ExtractSamplesInto(short) = %d, want 0", short)
+	}
+}

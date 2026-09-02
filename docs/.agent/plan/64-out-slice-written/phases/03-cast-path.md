@@ -1,9 +1,10 @@
 ---
+completed_at: "2026-09-02T04:49:33Z"
 depends_on:
 - "64-out-slice-written#1"
 - "64-out-slice-written#2"
 perf_phase: true
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 적격 타입 슬라이스 파라미터의 cgo raw 골든에 필드별 복사 루프가 없다.
 > NEXT: none

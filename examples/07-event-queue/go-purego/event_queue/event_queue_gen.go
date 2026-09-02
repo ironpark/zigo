@@ -3,6 +3,7 @@ package event_queue
 
 import (
 	"runtime"
+	"unsafe"
 
 	raw "example.com/zigo/event-queue-purego/internal/native"
 )
@@ -295,6 +296,49 @@ func (e *EventQueue) AcceptStats(values []Stats) (uint, error) {
 	result := raw.EventQueueAcceptStats(ptr, valuesRaw)
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.AcceptStats", handle)
+	}
+	return result, nil
+}
+
+// ExtractSamplesInto the same samples as `extractSamples`, written into a buffer the caller
+// already has. Nothing is allocated and nothing has to be released: the
+// result says how many entries were filled, and everything past that is
+// still whatever the caller left there.
+// It returns *HandleError if a required handle is nil or closed.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+func (e *EventQueue) ExtractSamplesInto(dst []float32) (uint, error) {
+	defer runtime.KeepAlive(e)
+	ptr, err := zigoCheckedPointer("EventQueue.ExtractSamplesInto receiver", e)
+	if err != nil {
+		return 0, err
+	}
+	defer e.zigoRelease()
+	result := raw.EventQueueExtractSamplesInto(ptr, dst)
+	for _, handle := range e.callbackHandles {
+		zigoRethrowCallbackPanic("EventQueue.ExtractSamplesInto", handle)
+	}
+	return result, nil
+}
+
+// LimitsInto one `Limits` row per queued event, up to what the buffer holds. `Limits`
+// has no bool field, so both backends hand the buffer's address straight
+// to the native call and neither direction copies.
+// It returns *HandleError if a required handle is nil or closed.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+func (e *EventQueue) LimitsInto(dst []Limits) (uint, error) {
+	defer runtime.KeepAlive(e)
+	ptr, err := zigoCheckedPointer("EventQueue.LimitsInto receiver", e)
+	if err != nil {
+		return 0, err
+	}
+	defer e.zigoRelease()
+	var dstRaw []raw.LimitsData
+	if len(dst) != 0 {
+		dstRaw = unsafe.Slice((*raw.LimitsData)(unsafe.Pointer(&dst[0])), len(dst))
+	}
+	result := raw.EventQueueLimitsInto(ptr, dstRaw)
+	for _, handle := range e.callbackHandles {
+		zigoRethrowCallbackPanic("EventQueue.LimitsInto", handle)
 	}
 	return result, nil
 }
