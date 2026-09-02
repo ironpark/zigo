@@ -185,6 +185,13 @@ GoDoc은 항상 Go 이름으로 시작하므로, Zig doc의 첫 단어가 그 �
 이름이든, 대소문자 무시)이면 그 단어를 빼고 붙입니다. `/// clone copies the queue.`는
 `// Clone clone copies ...`가 아니라 `// Clone copies the queue.`가 됩니다.
 
+호출 중 handle의 수명은 handle 검사가 붙이는 `defer x.zigoRelease()`가 지킵니다. 그
+defer가 `x`를 붙잡고 native 호출 뒤에 역참조하므로 함수가 끝날 때까지 살아 있고,
+receiver나 handle parameter에 `runtime.KeepAlive`를 따로 걸지 않습니다. 생성 코드에
+남는 `runtime.KeepAlive`는 두 가지뿐입니다: `Close`가 `cleanup.Stop()` 뒤 자기 자신을
+붙잡는 것과, 문자열·slice 데이터처럼 Go 메모리의 포인터를 native에 넘긴 동안 그 메모리를
+붙잡는 것.
+
 callback parameter는 익명 함수가 아니라 생성된 정의 type을 사용합니다. borrowed callback
 handle은 호출 후 즉시 해제하고, retained callback handle은 소유 객체의 멱등 `Close`에서
 해제합니다.

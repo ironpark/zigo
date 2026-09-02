@@ -26,7 +26,6 @@ func NewSignal() (*Signal, error) {
 // SetTicks calls the Zig function Signal.setTicks.
 // It returns *HandleError if a required handle is nil or closed.
 func (s *Signal) SetTicks(ticks uint32) error {
-	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.SetTicks receiver", s)
 	if err != nil {
 		return err
@@ -39,7 +38,6 @@ func (s *Signal) SetTicks(ticks uint32) error {
 // SetMode calls the Zig function Signal.setMode.
 // It returns *HandleError if a required handle is nil or closed.
 func (s *Signal) SetMode(mode Mode) error {
-	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.SetMode receiver", s)
 	if err != nil {
 		return err
@@ -52,7 +50,6 @@ func (s *Signal) SetMode(mode Mode) error {
 // SetActive calls the Zig function Signal.setActive.
 // It returns *HandleError if a required handle is nil or closed.
 func (s *Signal) SetActive(active bool) error {
-	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.SetActive receiver", s)
 	if err != nil {
 		return err

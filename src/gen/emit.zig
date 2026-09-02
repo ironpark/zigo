@@ -2742,7 +2742,11 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             try writePublicFunctionReturnType(writer, function.origin.*);
         }
         try writer.writeAll(" {\n");
-        try renderKeepAliveDefers(allocator, writer, program, function);
+        // No runtime.KeepAlive for handles here: renderHandleChecks emits a
+        // `defer x.zigoRelease()` per acquired handle, which already holds the
+        // handle live to the end of the function. What still needs KeepAlive is
+        // (a) Close, which must outlive cleanup.Stop, and (b) Go memory whose
+        // pointer was handed to native for the duration of the call.
         // errorForCode reads the panic message out of native thread-local
         // storage in a second cgo call, so the goroutine must stay on the
         // thread that made the first one until it has been read.
@@ -3263,7 +3267,7 @@ fn renderPublicSnapshots(
 
         // One reader per union, shared by the owned and borrowed handles.
         try writer.print(
-            "func zigo{0s}Snapshot(receiver zigoHandle) ({1s}, error) {{\n\tdefer runtime.KeepAlive(receiver)\n\truntime.LockOSThread()\n\tdefer runtime.UnlockOSThread()\n" ++
+            "func zigo{0s}Snapshot(receiver zigoHandle) ({1s}, error) {{\n\truntime.LockOSThread()\n\tdefer runtime.UnlockOSThread()\n" ++
                 "\tptr, err := zigoCheckedPointer(\"{0s}.Snapshot receiver\", receiver)\n\tif err != nil {{\n\t\treturn {1s}{{}}, err\n\t}}\n\tdefer receiver.zigoRelease()\n\tdata, status := ",
             .{ declaration.name, type_name },
         );
@@ -4002,7 +4006,7 @@ fn renderPublicTaggedUnionAccessors(
         // One implementation per projection, reached through the handle
         // interface so the owned and borrowed methods can both delegate to it.
         try writer.print(
-            "func zigo{0s}Tag(receiver zigoHandle) ({1s}, error) {{\n\tdefer runtime.KeepAlive(receiver)\n\truntime.LockOSThread()\n\tdefer runtime.UnlockOSThread()\n" ++
+            "func zigo{0s}Tag(receiver zigoHandle) ({1s}, error) {{\n\truntime.LockOSThread()\n\tdefer runtime.UnlockOSThread()\n" ++
                 "\tptr, err := zigoCheckedPointer(\"{0s}.Tag receiver\", receiver)\n\tif err != nil {{\n\t\treturn 0, err\n\t}}\n\tdefer receiver.zigoRelease()\n\tresult, status := ",
             .{ declaration.name, tag_type },
         );
@@ -4035,7 +4039,7 @@ fn renderPublicTaggedUnionAccessors(
 
             try writer.print("func zigo{s}As{s}(receiver zigoHandle) (", .{ declaration.name, field_name });
             try writePayloadType(writer, payload);
-            try writer.print(", bool, error) {{\n\tdefer runtime.KeepAlive(receiver)\n\truntime.LockOSThread()\n\tdefer runtime.UnlockOSThread()\n\tptr, err := zigoCheckedPointer(\"{s}.As{s} receiver\", receiver)\n\tif err != nil {{\n\t\treturn ", .{ declaration.name, field_name });
+            try writer.print(", bool, error) {{\n\truntime.LockOSThread()\n\tdefer runtime.UnlockOSThread()\n\tptr, err := zigoCheckedPointer(\"{s}.As{s} receiver\", receiver)\n\tif err != nil {{\n\t\treturn ", .{ declaration.name, field_name });
             try writer.writeAll(goZero(payload));
             try writer.writeAll(", false, err\n\t}\n\tdefer receiver.zigoRelease()\n\tresult, status := ");
             try writeRawReferencePrefix(writer, options);
@@ -4484,23 +4488,6 @@ fn renderCallbackHandleSetup(allocator: std.mem.Allocator, writer: *std.Io.Write
             try writer.print("\tdefer deleteCallbackHandle({s}Handle)\n", .{go_names[parameter_index]});
         }
     }
-}
-
-fn renderKeepAliveDefers(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, function: abi.AbiFn) !void {
-    const go_names = try goParamNamesForAlloc(allocator, function.origin.params);
-    defer naming.freeParamNames(allocator, go_names);
-    if (function.origin.receiver) |receiver| {
-        if (isAutoCleanupType(program, receiver)) {
-            const receiver_name = try receiverVariableAlloc(allocator, receiver);
-            defer allocator.free(receiver_name);
-            try writer.print("\tdefer runtime.KeepAlive({s})\n", .{receiver_name});
-        }
-    }
-    for (function.origin.params, 0..) |parameter, parameter_index| switch (parameter.type) {
-        .opaque_ptr => |pointer| if (isAutoCleanupType(program, pointer.ref))
-            try writer.print("\tdefer runtime.KeepAlive({s})\n", .{go_names[parameter_index]}),
-        else => {},
-    };
 }
 
 fn writeDeleteRetainedCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, function: semantic.SemanticFn) !void {
@@ -5471,9 +5458,9 @@ test "tagged union emitters generate checked pointer-only projections" {
     // The Must* wrappers are runtime, not per-union, so they moved with it.
     try std.testing.expect(std.mem.indexOf(u8, public_runtime, "panic(err)") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "panic(err)") == null);
-    // One KeepAlive per projection implementation: the owned and borrowed
-    // methods share it instead of each carrying a copy.
-    try std.testing.expectEqual(@as(usize, 8), std.mem.count(u8, public_types, "defer runtime.KeepAlive("));
+    // Handles stay alive through the `defer receiver.zigoRelease()` the handle
+    // check emits, so no generated method defers a KeepAlive on one.
+    try std.testing.expectEqual(@as(usize, 0), std.mem.count(u8, public_types, "defer runtime.KeepAlive("));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, public_types, "func zigoValueTag(receiver zigoHandle)"));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, public_types, "ValueProjectInteger(ptr)"));
 

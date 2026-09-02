@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T06:38:52Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 위 테스트 통과, 01-scalar 생성물이 루트 doc을 담는다.
 > NEXT: none

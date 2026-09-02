@@ -25,7 +25,6 @@ func NewContext() (*Context, error) {
 // Add calls the Zig function Context.add.
 // It returns *HandleError if a required handle is nil or closed.
 func (c *Context) Add(value int64) (int64, error) {
-	defer runtime.KeepAlive(c)
 	ptr, err := zigoCheckedPointer("Context.Add receiver", c)
 	if err != nil {
 		return 0, err
@@ -38,7 +37,6 @@ func (c *Context) Add(value int64) (int64, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (c *Context) Crash() error {
-	defer runtime.KeepAlive(c)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Context.Crash receiver", c)

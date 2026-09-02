@@ -559,8 +559,10 @@ test "opt-in cleanup isolates state stops explicitly and keeps owners alive" {
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func NewContext(callback ContextCallback) (*Context, error)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "zigoRawContextCreate("));
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "return newContext(result, []zigoCallbackHandle{callbackHandle}), nil"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "defer runtime.KeepAlive(c)"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "defer runtime.KeepAlive(context)"));
+    // The handle check's `defer x.zigoRelease()` keeps a handle alive for the
+    // whole call, so no method defers a KeepAlive on the receiver or a handle
+    // parameter.
+    try std.testing.expect(std.mem.indexOf(u8, public, "defer runtime.KeepAlive(") == null);
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "ptr, err := zigoCheckedPointer(\"Context.Touch receiver\", c)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "contextPtr, err := zigoCheckedPointer(\"Use parameter context\", context)"));
     try std.testing.expect(std.mem.indexOf(u8, public, "c.ptr") == null);

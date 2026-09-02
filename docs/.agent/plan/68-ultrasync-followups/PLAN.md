@@ -10,7 +10,7 @@ registered_at: "2026-09-02T06:10:00Z"
 
 # Phases
 
-- [ ] [Phase 00: 패키지 doc fallback을 루트 모듈 `//!`로](phases/00-package-doc-source.md)
+- [x] [Phase 00: 패키지 doc fallback을 루트 모듈 `//!`로](phases/00-package-doc-source.md)
 - [ ] [Phase 01: handle 획득 경로의 `KeepAlive` 제거](phases/01-drop-keepalive.md)
 - [ ] [Phase 02: `.return` out 슬라이스에서 `_written` 제거](phases/02-return-drops-written.md)
 - [ ] [Phase 03: `LockOSThread` 비용 측정](phases/03-lock-os-thread-benchmark.md)

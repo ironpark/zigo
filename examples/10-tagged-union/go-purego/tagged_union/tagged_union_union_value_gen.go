@@ -9,7 +9,6 @@ import (
 )
 
 func zigoValueTag(receiver zigoHandle) (ValueTag, error) {
-	defer runtime.KeepAlive(receiver)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Value.Tag receiver", receiver)
@@ -37,7 +36,6 @@ func (v *ValueRef) Tag() (ValueTag, error) { return zigoValueTag(v) }
 func (v *ValueRef) MustTag() ValueTag { return zigoMust(zigoValueTag(v)) }
 
 func zigoValueAsInteger(receiver zigoHandle) (int64, bool, error) {
-	defer runtime.KeepAlive(receiver)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Value.AsInteger receiver", receiver)
@@ -68,7 +66,6 @@ func (v *ValueRef) AsInteger() (int64, bool, error) { return zigoValueAsInteger(
 func (v *ValueRef) MustAsInteger() (int64, bool) { return zigoMustMatch(zigoValueAsInteger(v)) }
 
 func zigoValueAsFlag(receiver zigoHandle) (bool, bool, error) {
-	defer runtime.KeepAlive(receiver)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Value.AsFlag receiver", receiver)
@@ -99,7 +96,6 @@ func (v *ValueRef) AsFlag() (bool, bool, error) { return zigoValueAsFlag(v) }
 func (v *ValueRef) MustAsFlag() (bool, bool) { return zigoMustMatch(zigoValueAsFlag(v)) }
 
 func zigoValueAsMode(receiver zigoHandle) (Mode, bool, error) {
-	defer runtime.KeepAlive(receiver)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Value.AsMode receiver", receiver)
@@ -130,7 +126,6 @@ func (v *ValueRef) AsMode() (Mode, bool, error) { return zigoValueAsMode(v) }
 func (v *ValueRef) MustAsMode() (Mode, bool) { return zigoMustMatch(zigoValueAsMode(v)) }
 
 func zigoValueAsSamples(receiver zigoHandle) ([]int16, bool, error) {
-	defer runtime.KeepAlive(receiver)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Value.AsSamples receiver", receiver)
@@ -161,7 +156,6 @@ func (v *ValueRef) AsSamples() ([]int16, bool, error) { return zigoValueAsSample
 func (v *ValueRef) MustAsSamples() ([]int16, bool) { return zigoMustMatch(zigoValueAsSamples(v)) }
 
 func zigoValueAsChild(receiver zigoHandle) (*ChildRef, bool, error) {
-	defer runtime.KeepAlive(receiver)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Value.AsChild receiver", receiver)
@@ -192,7 +186,6 @@ func (v *ValueRef) AsChild() (*ChildRef, bool, error) { return zigoValueAsChild(
 func (v *ValueRef) MustAsChild() (*ChildRef, bool) { return zigoMustMatch(zigoValueAsChild(v)) }
 
 func zigoValueAsMutableSamples(receiver zigoHandle) ([]int16, bool, error) {
-	defer runtime.KeepAlive(receiver)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Value.AsMutableSamples receiver", receiver)

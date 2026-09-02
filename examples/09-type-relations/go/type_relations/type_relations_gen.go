@@ -25,7 +25,6 @@ func NewCounter(initial int64) (*Counter, error) {
 // Get calls the Zig function Counter.get.
 // It returns *HandleError if a required handle is nil or closed.
 func (c *Counter) Get() (int64, error) {
-	defer runtime.KeepAlive(c)
 	ptr, err := zigoCheckedPointer("Counter.Get receiver", c)
 	if err != nil {
 		return 0, err
@@ -37,7 +36,6 @@ func (c *Counter) Get() (int64, error) {
 // Add calls the Zig function Counter.add.
 // It returns *HandleError if a required handle is nil or closed.
 func (c *Counter) Add(delta int64) (int64, error) {
-	defer runtime.KeepAlive(c)
 	ptr, err := zigoCheckedPointer("Counter.Add receiver", c)
 	if err != nil {
 		return 0, err
@@ -63,8 +61,6 @@ func NewAccumulator() (*Accumulator, error) {
 // Adds the current value of another exposed opaque type.
 // It returns *HandleError if a required handle is nil or closed.
 func (a *Accumulator) Absorb(counter *Counter) (int64, error) {
-	defer runtime.KeepAlive(a)
-	defer runtime.KeepAlive(counter)
 	ptr, err := zigoCheckedPointer("Accumulator.Absorb receiver", a)
 	if err != nil {
 		return 0, err
@@ -81,7 +77,6 @@ func (a *Accumulator) Absorb(counter *Counter) (int64, error) {
 // Total calls the Zig function Accumulator.total.
 // It returns *HandleError if a required handle is nil or closed.
 func (a *Accumulator) Total() (int64, error) {
-	defer runtime.KeepAlive(a)
 	ptr, err := zigoCheckedPointer("Accumulator.Total receiver", a)
 	if err != nil {
 		return 0, err
