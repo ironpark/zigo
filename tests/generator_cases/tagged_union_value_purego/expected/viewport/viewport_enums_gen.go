@@ -20,6 +20,10 @@ const (
 	ScrollViewportTagAnimated ScrollViewportTag = 4
 	// ScrollViewportTagMode corresponds to the Zig tag mode.
 	ScrollViewportTagMode ScrollViewportTag = 5
+	// ScrollViewportTagRgb corresponds to the Zig tag rgb.
+	ScrollViewportTagRgb ScrollViewportTag = 6
+	// ScrollViewportTagRegion corresponds to the Zig tag region.
+	ScrollViewportTagRegion ScrollViewportTag = 7
 )
 
 // String returns the Zig tag name.
@@ -37,6 +41,10 @@ func (value ScrollViewportTag) String() string {
 		return "animated"
 	case ScrollViewportTagMode:
 		return "mode"
+	case ScrollViewportTagRgb:
+		return "rgb"
+	case ScrollViewportTagRegion:
+		return "region"
 	default:
 		return "ScrollViewportTag(" + strconv.Itoa(int(value)) + ")"
 	}

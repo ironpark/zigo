@@ -169,8 +169,8 @@ func Sum(values []float64) float64 {
 }
 
 // ScrollAmount calls the generated C ABI wrapper for zg_scroll_amount.
-func ScrollAmount(behavior_tag uint8, behavior_delta int, behavior_page uint) int {
-	return int(C.zg_scroll_amount(C.uint8_t(behavior_tag), C.ptrdiff_t(behavior_delta), C.size_t(behavior_page)))
+func ScrollAmount(behavior_tag uint8, behavior_delta int, behavior_page uint, behavior_rgb uint32, behavior_region_origin_x int16, behavior_region_origin_y int16, behavior_region_width uint16) int {
+	return int(C.zg_scroll_amount(C.uint8_t(behavior_tag), C.ptrdiff_t(behavior_delta), C.size_t(behavior_page), C.uint32_t(behavior_rgb), C.int16_t(behavior_region_origin_x), C.int16_t(behavior_region_origin_y), C.uint16_t(behavior_region_width)))
 }
 
 // PanicError calls the generated C ABI wrapper for zg_panic_error.
@@ -178,6 +178,28 @@ func PanicError() int32 {
 	code := int32(C.zg_panic_error())
 	return code
 }
+
+// PointData mirrors the zg_point layout, padding included.
+type PointData struct {
+	X int16
+	Y int16
+}
+
+// RegionData mirrors the zg_region layout, padding included.
+type RegionData struct {
+	Origin PointData
+	Width  uint16
+}
+
+// PointData crosses to C as a cast, so it must match zg_point byte for byte.
+var _ = [1]struct{}{}[unsafe.Sizeof(PointData{})-unsafe.Sizeof(C.zg_point{})]
+var _ = [1]struct{}{}[unsafe.Offsetof(PointData{}.X)-unsafe.Offsetof(C.zg_point{}.x)]
+var _ = [1]struct{}{}[unsafe.Offsetof(PointData{}.Y)-unsafe.Offsetof(C.zg_point{}.y)]
+
+// RegionData crosses to C as a cast, so it must match zg_region byte for byte.
+var _ = [1]struct{}{}[unsafe.Sizeof(RegionData{})-unsafe.Sizeof(C.zg_region{})]
+var _ = [1]struct{}{}[unsafe.Offsetof(RegionData{}.Origin)-unsafe.Offsetof(C.zg_region{}.origin)]
+var _ = [1]struct{}{}[unsafe.Offsetof(RegionData{}.Width)-unsafe.Offsetof(C.zg_region{}.width)]
 
 // SignalSnapshotData mirrors the zg_signal_snapshot_t value snapshot layout, padding included.
 type SignalSnapshotData struct {

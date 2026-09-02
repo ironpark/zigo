@@ -12,6 +12,8 @@ typedef uint8_t zg_scroll_viewport_tag;
 #define ZG_SCROLL_VIEWPORT_TAG_RATIO 3
 #define ZG_SCROLL_VIEWPORT_TAG_ANIMATED 4
 #define ZG_SCROLL_VIEWPORT_TAG_MODE 5
+#define ZG_SCROLL_VIEWPORT_TAG_RGB 6
+#define ZG_SCROLL_VIEWPORT_TAG_REGION 7
 
 typedef uint8_t zg_mode;
 #define ZG_MODE_INSTANT 0
@@ -28,7 +30,12 @@ typedef uint8_t zg_mode;
 #endif
 #endif
 
-ZIGO_EXPORT int64_t zg_apply(uint8_t behavior_tag, ptrdiff_t behavior_delta, size_t behavior_page, double behavior_ratio, uint8_t behavior_animated, uint8_t behavior_mode);
+typedef struct zg_region {
+    int16_t x;
+    uint8_t enabled;
+} zg_region;
+
+ZIGO_EXPORT int64_t zg_apply(uint8_t behavior_tag, ptrdiff_t behavior_delta, size_t behavior_page, double behavior_ratio, uint8_t behavior_animated, uint8_t behavior_mode, uint32_t behavior_rgb, int16_t behavior_region_x, uint8_t behavior_region_enabled);
 ZIGO_EXPORT const char *zg_last_error_message(void);
 
 #endif // ZIGO_viewport_H

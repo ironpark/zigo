@@ -42,14 +42,14 @@ void zg_panic_bridge(const uint8_t *message, size_t length) {
 
 ZIGO_EXPORT const char *zg_last_error_message(void) { return zg_panic_message; }
 
-int64_t zg_apply_impl(uint8_t behavior_tag, ptrdiff_t behavior_delta, size_t behavior_page, double behavior_ratio, uint8_t behavior_animated, uint8_t behavior_mode);
-ZIGO_EXPORT int64_t zg_apply(uint8_t behavior_tag, ptrdiff_t behavior_delta, size_t behavior_page, double behavior_ratio, uint8_t behavior_animated, uint8_t behavior_mode) {
+int64_t zg_apply_impl(uint8_t behavior_tag, ptrdiff_t behavior_delta, size_t behavior_page, double behavior_ratio, uint8_t behavior_animated, uint8_t behavior_mode, uint32_t behavior_rgb, int16_t behavior_region_x, uint8_t behavior_region_enabled);
+ZIGO_EXPORT int64_t zg_apply(uint8_t behavior_tag, ptrdiff_t behavior_delta, size_t behavior_page, double behavior_ratio, uint8_t behavior_animated, uint8_t behavior_mode, uint32_t behavior_rgb, int16_t behavior_region_x, uint8_t behavior_region_enabled) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
         zg_panic_fatal();
     }
-    int64_t result = zg_apply_impl(behavior_tag, behavior_delta, behavior_page, behavior_ratio, behavior_animated, behavior_mode);
+    int64_t result = zg_apply_impl(behavior_tag, behavior_delta, behavior_page, behavior_ratio, behavior_animated, behavior_mode, behavior_rgb, behavior_region_x, behavior_region_enabled);
     zg_panic_active = 0;
     return result;
 }

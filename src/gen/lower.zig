@@ -427,15 +427,46 @@ fn appendTaggedUnionValueParams(
         .source_index = parameter_index,
     });
     for (declaration.fields) |field| {
+        if (declaration.variantOmitted(field.name)) continue;
         const payload = field.type.?;
         if (payload == .void) continue;
-        try params.append(allocator, .{
-            .name = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ parameter.name, field.name }),
-            .role = .union_payload,
-            .scalar = try lowerValue(allocator, document, prefix, payload),
-            .source_index = parameter_index,
-        });
+        const slot_name = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ parameter.name, field.name });
+        try appendTaggedUnionPayloadParams(allocator, document, prefix, params, payload, slot_name, parameter_index);
     }
+}
+
+fn appendTaggedUnionPayloadParams(
+    allocator: std.mem.Allocator,
+    document: semantic.Semantic,
+    prefix: []const u8,
+    params: *std.ArrayList(abi.AbiParam),
+    node: semantic.TypeNode,
+    slot_name: []const u8,
+    source_index: usize,
+) !void {
+    if (node == .value_struct) {
+        const declaration = typeDeclaration(document, node.value_struct.ref);
+        if (declaration.layout == .@"packed") {
+            try params.append(allocator, .{
+                .name = slot_name,
+                .role = .union_payload,
+                .scalar = try lowerValue(allocator, document, prefix, declaration.backing_type.?),
+                .source_index = source_index,
+            });
+            return;
+        }
+        for (declaration.fields) |field| {
+            const child_name = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ slot_name, field.name });
+            try appendTaggedUnionPayloadParams(allocator, document, prefix, params, field.type.?, child_name, source_index);
+        }
+        return;
+    }
+    try params.append(allocator, .{
+        .name = slot_name,
+        .role = .union_payload,
+        .scalar = try lowerValue(allocator, document, prefix, node),
+        .source_index = source_index,
+    });
 }
 
 /// A float never travels through the purego callback ABI as a float. Windows
@@ -757,22 +788,25 @@ fn lowerEnums(allocator: std.mem.Allocator, document: semantic.Semantic, prefix:
         if (declaration.kind != .@"enum") continue;
         const c_name = try naming.cTypeNameAlloc(allocator, prefix, declaration.name);
         const constants = try allocator.alloc(abi.AbiEnum.Constant, declaration.fields.len);
-        for (declaration.fields, 0..) |field, index| {
+        var constant_count: usize = 0;
+        for (declaration.fields) |field| {
+            if (declaration.variantOmitted(field.name)) continue;
             const member = try naming.snakeAlloc(allocator, field.name);
             defer allocator.free(member);
             const combined = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ c_name, member });
             defer allocator.free(combined);
-            constants[index] = .{
+            constants[constant_count] = .{
                 .name = field.name,
                 .c_name = try std.ascii.allocUpperString(allocator, combined),
                 .value = field.value.?,
             };
+            constant_count += 1;
         }
         try enums.append(allocator, .{
             .name = declaration.name,
             .c_name = c_name,
             .tag = try lowerValue(allocator, document, prefix, declaration.tag_type.?),
-            .constants = constants,
+            .constants = constants[0..constant_count],
         });
     }
     return enums.toOwnedSlice(allocator);

@@ -132,6 +132,9 @@ pub const ScrollViewport = union(enum(u8)) {
     bottom,
     delta: isize,
     page: usize,
+    rgb: RGB,
+    region: Region,
+    unknown: Unknown,
 };
 
 pub fn scrollAmount(behavior: ScrollViewport) isize {
@@ -140,8 +143,31 @@ pub fn scrollAmount(behavior: ScrollViewport) isize {
         .bottom => 2,
         .delta => |value| value,
         .page => |value| @intCast(value),
+        .rgb => |value| @as(isize, value.r) + value.g + value.b,
+        .region => |value| value.origin.x + value.origin.y + @as(isize, value.width),
+        .unknown => |value| @intCast(value.bytes.len),
     };
 }
+
+pub const RGB = packed struct(u24) {
+    r: u8,
+    g: u8,
+    b: u8,
+};
+
+pub const Point = extern struct {
+    x: i16,
+    y: i16,
+};
+
+pub const Region = extern struct {
+    origin: Point,
+    width: u16,
+};
+
+pub const Unknown = struct {
+    bytes: []const u8,
+};
 
 pub fn liveValues() usize {
     return live_values.load(.monotonic);
@@ -213,4 +239,6 @@ test "scalar payload tagged unions pass by value" {
     try std.testing.expectEqual(@as(isize, 2), scrollAmount(.bottom));
     try std.testing.expectEqual(@as(isize, -4), scrollAmount(.{ .delta = -4 }));
     try std.testing.expectEqual(@as(isize, 3), scrollAmount(.{ .page = 3 }));
+    try std.testing.expectEqual(@as(isize, 18), scrollAmount(.{ .rgb = .{ .r = 5, .g = 6, .b = 7 } }));
+    try std.testing.expectEqual(@as(isize, 9), scrollAmount(.{ .region = .{ .origin = .{ .x = 2, .y = 3 }, .width = 4 } }));
 }

@@ -392,6 +392,8 @@ const TypeChange = enum { equal, appended, snapshot_appended, access_changed, br
 /// struct, so the same append changes that struct's size and layout.
 fn classifyTypeChange(lhs: semantic.TypeDecl, rhs: semantic.TypeDecl) TypeChange {
     if (lhs.kind != rhs.kind or lhs.layout != rhs.layout or lhs.exhaustive != rhs.exhaustive or lhs.open != rhs.open) return .breaking;
+    if (!optionalTypeEqual(lhs.backing_type, rhs.backing_type)) return .breaking;
+    if (!optionalStringsEqual(lhs.omitted_variants, rhs.omitted_variants)) return .breaking;
     if (lhs.accessStrategy() != rhs.accessStrategy()) return .access_changed;
     if ((lhs.tag_type == null) != (rhs.tag_type == null)) return .breaking;
     if (lhs.tag_type) |tag| if (!typeEqual(tag, rhs.tag_type.?)) return .breaking;
@@ -401,6 +403,18 @@ fn classifyTypeChange(lhs: semantic.TypeDecl, rhs: semantic.TypeDecl) TypeChange
     if (lhs.kind == .@"enum") return .appended;
     if (lhs.kind != .tagged_union) return .breaking;
     return if (lhs.accessStrategy() == .snapshot) .snapshot_appended else .appended;
+}
+
+fn optionalTypeEqual(lhs: ?semantic.TypeNode, rhs: ?semantic.TypeNode) bool {
+    if (lhs == null or rhs == null) return lhs == null and rhs == null;
+    return typeEqual(lhs.?, rhs.?);
+}
+
+fn optionalStringsEqual(lhs: ?[]const []const u8, rhs: ?[]const []const u8) bool {
+    if (lhs == null or rhs == null) return lhs == null and rhs == null;
+    if (lhs.?.len != rhs.?.len) return false;
+    for (lhs.?, rhs.?) |a, b| if (!std.mem.eql(u8, a, b)) return false;
+    return true;
 }
 
 fn typeFieldEqual(lhs: semantic.TypeField, rhs: semantic.TypeField) bool {

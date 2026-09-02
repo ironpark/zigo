@@ -2,11 +2,108 @@
 
 package tagged_union
 
+import (
+	"unsafe"
+
+	"example.com/zigo/tagged-union/internal/raw"
+)
+
+// RGB mirrors the Zig packed struct of the same name.
+type RGB struct {
+	R uint8
+	G uint8
+	B uint8
+}
+
+func zigoRGBToBacking(value RGB) uint32 {
+	var result uint64
+	result |= (uint64(value.R) & 0xff) << 0
+	result |= (uint64(value.G) & 0xff) << 8
+	result |= (uint64(value.B) & 0xff) << 16
+	return uint32(result)
+}
+
+// Point mirrors the Zig `extern struct` of the same name.
+type Point struct {
+	// X corresponds to the Zig field x.
+	X int16
+	// Y corresponds to the Zig field y.
+	Y int16
+}
+
+// Point is reinterpreted as raw.PointData instead of copied, so the two
+// layouts must stay identical.
+var _ = [1]struct{}{}[unsafe.Sizeof(Point{})-unsafe.Sizeof(raw.PointData{})]
+var _ = [1]struct{}{}[unsafe.Offsetof(Point{}.X)-unsafe.Offsetof(raw.PointData{}.X)]
+var _ = [1]struct{}{}[unsafe.Offsetof(Point{}.Y)-unsafe.Offsetof(raw.PointData{}.Y)]
+
+// Region mirrors the Zig `extern struct` of the same name.
+type Region struct {
+	// Origin corresponds to the Zig field origin.
+	Origin Point
+	// Width corresponds to the Zig field width.
+	Width uint16
+}
+
+// Region is reinterpreted as raw.RegionData instead of copied, so the two
+// layouts must stay identical.
+var _ = [1]struct{}{}[unsafe.Sizeof(Region{})-unsafe.Sizeof(raw.RegionData{})]
+var _ = [1]struct{}{}[unsafe.Offsetof(Region{}.Origin)-unsafe.Offsetof(raw.RegionData{}.Origin)]
+var _ = [1]struct{}{}[unsafe.Offsetof(Region{}.Width)-unsafe.Offsetof(raw.RegionData{}.Width)]
+
+func zigoPointToRaw(value Point) raw.PointData {
+	return raw.PointData{
+		X: value.X,
+		Y: value.Y,
+	}
+}
+
+func zigoPointFromRaw(value raw.PointData) Point {
+	return Point{
+		X: value.X,
+		Y: value.Y,
+	}
+}
+
+// zigoPointSliceView reinterprets a slice the raw layer already owns as
+// []Point without copying it again.
+func zigoPointSliceView(values []raw.PointData) []Point {
+	if len(values) == 0 {
+		return nil
+	}
+	return unsafe.Slice((*Point)(unsafe.Pointer(&values[0])), len(values))
+}
+
+func zigoRegionToRaw(value Region) raw.RegionData {
+	return raw.RegionData{
+		Origin: zigoPointToRaw(value.Origin),
+		Width:  value.Width,
+	}
+}
+
+func zigoRegionFromRaw(value raw.RegionData) Region {
+	return Region{
+		Origin: zigoPointFromRaw(value.Origin),
+		Width:  value.Width,
+	}
+}
+
+// zigoRegionSliceView reinterprets a slice the raw layer already owns as
+// []Region without copying it again.
+func zigoRegionSliceView(values []raw.RegionData) []Region {
+	if len(values) == 0 {
+		return nil
+	}
+	return unsafe.Slice((*Region)(unsafe.Pointer(&values[0])), len(values))
+}
+
 // ScrollViewport is a tagged-union value passed to native code by copy.
 type ScrollViewport struct {
-	tag   ScrollViewportTag
-	delta int
-	page  uint
+	tag    ScrollViewportTag
+	delta  int
+	page   uint
+	rgb    RGB
+	region Region
 }
 
 // Tag returns the active ScrollViewport variant.
@@ -30,4 +127,14 @@ func ScrollViewportDelta(n int) ScrollViewport {
 // ScrollViewportPage constructs the page variant.
 func ScrollViewportPage(n uint) ScrollViewport {
 	return ScrollViewport{tag: ScrollViewportTagPage, page: n}
+}
+
+// ScrollViewportRgb constructs the rgb variant.
+func ScrollViewportRgb(value RGB) ScrollViewport {
+	return ScrollViewport{tag: ScrollViewportTagRgb, rgb: value}
+}
+
+// ScrollViewportRegion constructs the region variant.
+func ScrollViewportRegion(value Region) ScrollViewport {
+	return ScrollViewport{tag: ScrollViewportTagRegion, region: value}
 }

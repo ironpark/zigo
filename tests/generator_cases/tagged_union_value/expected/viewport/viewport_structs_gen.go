@@ -2,6 +2,69 @@
 
 package viewport
 
+import "example.com/zigo/viewport/internal/raw"
+
+// RGB mirrors the Zig packed struct of the same name.
+type RGB struct {
+	R uint8
+	G uint8
+	B uint8
+}
+
+func zigoRGBToBacking(value RGB) uint32 {
+	var result uint64
+	result |= (uint64(value.R) & 0xff) << 0
+	result |= (uint64(value.G) & 0xff) << 8
+	result |= (uint64(value.B) & 0xff) << 16
+	return uint32(result)
+}
+
+// Region mirrors the Zig `extern struct` of the same name.
+type Region struct {
+	// X corresponds to the Zig field x.
+	X int16
+	// Enabled corresponds to the Zig field enabled.
+	Enabled bool
+}
+
+func zigoRegionToRaw(value Region) raw.RegionData {
+	return raw.RegionData{
+		X: value.X,
+		Enabled: boolToUint8(value.Enabled),
+	}
+}
+
+func zigoRegionFromRaw(value raw.RegionData) Region {
+	return Region{
+		X: value.X,
+		Enabled: value.Enabled != 0,
+	}
+}
+
+func zigoRegionSliceToRaw(values []Region) []raw.RegionData {
+	result := make([]raw.RegionData, len(values))
+	for i := range values {
+		result[i] = zigoRegionToRaw(values[i])
+	}
+	return result
+}
+
+func zigoRegionSliceFromRaw(values []raw.RegionData) []Region {
+	result := make([]Region, len(values))
+	for i := range values {
+		result[i] = zigoRegionFromRaw(values[i])
+	}
+	return result
+}
+
+func zigoRegionSliceCopyFromRaw(dst []Region, values []raw.RegionData, count int) {
+	if count > len(dst) { count = len(dst) }
+	if count > len(values) { count = len(values) }
+	for i := 0; i < count; i++ {
+		dst[i] = zigoRegionFromRaw(values[i])
+	}
+}
+
 // ScrollViewport is a tagged-union value passed to native code by copy.
 type ScrollViewport struct {
 	tag ScrollViewportTag
@@ -10,6 +73,8 @@ type ScrollViewport struct {
 	ratio float64
 	animated bool
 	mode Mode
+	rgb RGB
+	region Region
 }
 
 // Tag returns the active ScrollViewport variant.
@@ -43,4 +108,14 @@ func ScrollViewportAnimated(value bool) ScrollViewport {
 // ScrollViewportMode constructs the mode variant.
 func ScrollViewportMode(value Mode) ScrollViewport {
 	return ScrollViewport{tag: ScrollViewportTagMode, mode: value}
+}
+
+// ScrollViewportRgb constructs the rgb variant.
+func ScrollViewportRgb(value RGB) ScrollViewport {
+	return ScrollViewport{tag: ScrollViewportTagRgb, rgb: value}
+}
+
+// ScrollViewportRegion constructs the region variant.
+func ScrollViewportRegion(value Region) ScrollViewport {
+	return ScrollViewport{tag: ScrollViewportTagRegion, region: value}
 }

@@ -348,7 +348,7 @@ func Sum(values []float64) float64 {
 
 // ScrollAmount calls the Zig function scrollAmount.
 func ScrollAmount(behavior ScrollViewport) int {
-	return raw.ScrollAmount(uint8(behavior.tag), behavior.delta, behavior.page)
+	return raw.ScrollAmount(uint8(behavior.tag), behavior.delta, behavior.page, zigoRGBToBacking(behavior.rgb), behavior.region.Origin.X, behavior.region.Origin.Y, behavior.region.Width)
 }
 
 // PanicError calls the Zig function panicError.

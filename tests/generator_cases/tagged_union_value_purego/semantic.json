@@ -22,10 +22,14 @@
         { "name": "page", "type": { "bits": 64, "is_usize": true, "kind": "int", "signed": false }, "value": 2 },
         { "name": "ratio", "type": { "bits": 64, "kind": "float" }, "value": 3 },
         { "name": "animated", "type": { "kind": "bool" }, "value": 4 },
-        { "name": "mode", "type": { "kind": "enum", "ref": "Mode" }, "value": 5 }
+        { "name": "mode", "type": { "kind": "enum", "ref": "Mode" }, "value": 5 },
+        { "name": "rgb", "type": { "kind": "value_struct", "ref": "RGB" }, "value": 6 },
+        { "name": "region", "type": { "kind": "value_struct", "ref": "Region" }, "value": 7 },
+        { "name": "unknown", "type": { "const": true, "element": { "bits": 8, "kind": "int", "signed": false }, "kind": "slice" }, "value": 8 }
       ],
       "kind": "tagged_union",
       "name": "ScrollViewport",
+      "omitted_variants": ["unknown"],
       "tag_type": { "kind": "enum", "ref": "ScrollViewportTag" }
     },
     {
@@ -35,11 +39,35 @@
         { "name": "page", "value": 2 },
         { "name": "ratio", "value": 3 },
         { "name": "animated", "value": 4 },
-        { "name": "mode", "value": 5 }
+        { "name": "mode", "value": 5 },
+        { "name": "rgb", "value": 6 },
+        { "name": "region", "value": 7 },
+        { "name": "unknown", "value": 8 }
       ],
       "kind": "enum",
       "name": "ScrollViewportTag",
+      "omitted_variants": ["unknown"],
       "tag_type": { "bits": 8, "kind": "int", "signed": false }
+    },
+    {
+      "backing_type": { "bits": 24, "kind": "int", "signed": false },
+      "fields": [
+        { "name": "r", "type": { "bits": 8, "kind": "int", "signed": false } },
+        { "name": "g", "type": { "bits": 8, "kind": "int", "signed": false } },
+        { "name": "b", "type": { "bits": 8, "kind": "int", "signed": false } }
+      ],
+      "kind": "value_struct",
+      "layout": "packed",
+      "name": "RGB"
+    },
+    {
+      "fields": [
+        { "name": "x", "type": { "bits": 16, "kind": "int", "signed": true } },
+        { "name": "enabled", "type": { "kind": "bool" } }
+      ],
+      "kind": "value_struct",
+      "layout": "extern",
+      "name": "Region"
     },
     {
       "fields": [

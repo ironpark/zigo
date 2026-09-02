@@ -920,7 +920,7 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             else
                 try writer.print("if ({s}_len == 0) &.{{}} else {s}_ptr[0..{s}_len]", .{ parameter.name, parameter.name, parameter.name }),
             .value_struct => |value| if (enumDecl(program, value.ref).kind == .tagged_union)
-                try writeTaggedUnionValueArgument(writer, program, function, index, parameter.name)
+                try writeTaggedUnionValueArgument(allocator, writer, program, function, index, parameter.name)
             else
                 try writer.print("{s}.*", .{parameter.name}),
             .optional => |optional| if (optional.child.* == .slice) {
@@ -945,6 +945,7 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
 }
 
 fn writeTaggedUnionValueArgument(
+    allocator: std.mem.Allocator,
     writer: *std.Io.Writer,
     program: abi.Program,
     function: abi.AbiFn,
@@ -955,25 +956,63 @@ fn writeTaggedUnionValueArgument(
     const tag_name = taggedUnionAbiParam(function, source_index, .union_tag, null).name;
     try writer.print("switch ({s}) {{\n", .{tag_name});
     for (declaration.fields) |field| {
+        if (declaration.variantOmitted(field.name)) continue;
         try writer.print("        {d} => ", .{field.value.?});
         const payload = field.type.?;
         if (payload == .void) {
             try writer.print("target.{s}.{s},\n", .{ declaration.name, field.name });
             continue;
         }
-        const slot = taggedUnionAbiParam(function, source_index, .union_payload, field.name);
         try writer.print("target.{s}{{ .{s} = ", .{ declaration.name, field.name });
-        switch (payload) {
-            .bool => try writer.print("{s} != 0", .{slot.name}),
-            .@"enum" => try writer.print("@enumFromInt({s})", .{slot.name}),
-            else => if (abi.narrowInt(payload) != null)
-                try writer.print("@intCast({s})", .{slot.name})
-            else
-                try writer.writeAll(slot.name),
-        }
+        const slot_name = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ parameter_name, field.name });
+        defer allocator.free(slot_name);
+        try writeTaggedUnionPayloadArgument(allocator, writer, program, function, source_index, payload, slot_name);
         try writer.writeAll(" },\n");
     }
     try writer.print("        else => @panic(\"zigo: invalid tag for argument `{s}`\"),\n    }}", .{parameter_name});
+}
+
+fn writeTaggedUnionPayloadArgument(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    function: abi.AbiFn,
+    source_index: usize,
+    node: semantic.TypeNode,
+    slot_name: []const u8,
+) !void {
+    if (node == .value_struct) {
+        const declaration = enumDecl(program, node.value_struct.ref);
+        if (declaration.layout == .@"packed") {
+            const slot = taggedUnionAbiParam(function, source_index, .union_payload, slot_name);
+            const backing = declaration.backing_type.?.int;
+            try writer.print("@bitCast(@as({c}{d}, @truncate({s})))", .{
+                if (backing.signed) @as(u8, 'i') else @as(u8, 'u'),
+                backing.bits,
+                slot.name,
+            });
+            return;
+        }
+        try writer.print("target.{s}{{", .{declaration.name});
+        for (declaration.fields, 0..) |field, index| {
+            if (index != 0) try writer.writeAll(",");
+            const child_name = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ slot_name, field.name });
+            defer allocator.free(child_name);
+            try writer.print(" .{s} = ", .{field.name});
+            try writeTaggedUnionPayloadArgument(allocator, writer, program, function, source_index, field.type.?, child_name);
+        }
+        try writer.writeAll(" }");
+        return;
+    }
+    const slot = taggedUnionAbiParam(function, source_index, .union_payload, slot_name);
+    switch (node) {
+        .bool => try writer.print("{s} != 0", .{slot.name}),
+        .@"enum" => try writer.print("@enumFromInt({s})", .{slot.name}),
+        else => if (abi.narrowInt(node) != null)
+            try writer.print("@intCast({s})", .{slot.name})
+        else
+            try writer.writeAll(slot.name),
+    }
 }
 
 fn taggedUnionAbiParam(
@@ -985,7 +1024,7 @@ fn taggedUnionAbiParam(
     for (function.params) |parameter| {
         if (parameter.source_index != source_index or parameter.role != role) continue;
         if (field_name) |field| {
-            if (!std.mem.endsWith(u8, parameter.name, field)) continue;
+            if (!std.mem.eql(u8, parameter.name, field)) continue;
         }
         return parameter;
     }
@@ -4462,6 +4501,33 @@ fn renderPublicStructLayoutGuards(
 
 fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     const scope: PublicScope = .{ .program = program, .options = options };
+    for (program.types) |declaration| {
+        if (declaration.kind != .value_struct or declaration.layout != .@"packed") continue;
+        if (!typeBelongsToPackage(program, declaration.name, options.active_package)) continue;
+        try writer.print("// {s} mirrors the Zig packed struct of the same name.\ntype {s} struct {{\n", .{ declaration.name, declaration.name });
+        for (declaration.fields) |field| {
+            const member = try naming.pascalAlloc(allocator, field.name);
+            defer allocator.free(member);
+            try writer.print("\t{s} ", .{member});
+            try writePublicGoType(scope, writer, field.type.?);
+            try writer.writeByte('\n');
+        }
+        try writer.writeAll("}\n\n");
+        try writer.print("func zigo{s}ToBacking(value {s}) ", .{ declaration.name, declaration.name });
+        try writeRawGoType(writer, program, declaration.backing_type.?);
+        try writer.writeAll(" {\n\tvar result uint64\n");
+        var bit_offset: u16 = 0;
+        for (declaration.fields) |field| {
+            const member = try naming.pascalAlloc(allocator, field.name);
+            defer allocator.free(member);
+            const bits = semanticBitWidth(program, field.type.?);
+            try writer.print("\tresult |= (uint64(value.{s}) & 0x{x}) << {d}\n", .{ member, bitMask(bits), bit_offset });
+            bit_offset += bits;
+        }
+        try writer.writeAll("\treturn ");
+        try writeRawGoType(writer, program, declaration.backing_type.?);
+        try writer.writeAll("(result)\n}\n\n");
+    }
     for (program.structs) |record| {
         if (!typeBelongsToPackage(program, record.name, options.active_package)) continue;
         try writer.print("// {s} mirrors the Zig `extern struct` of the same name.\ntype {s} struct {{\n", .{ record.name, record.name });
@@ -4561,6 +4627,7 @@ fn renderPublicTaggedUnionValues(allocator: std.mem.Allocator, writer: *std.Io.W
         const tag_type = declaration.tag_type.?.@"enum".ref;
         try writer.print("// {0s} is a tagged-union value passed to native code by copy.\ntype {0s} struct {{\n\ttag {1s}\n", .{ declaration.name, tag_type });
         for (declaration.fields) |field| {
+            if (declaration.variantOmitted(field.name)) continue;
             const payload = field.type.?;
             if (payload == .void) continue;
             const member = try naming.camelAlloc(allocator, field.name);
@@ -4571,6 +4638,7 @@ fn renderPublicTaggedUnionValues(allocator: std.mem.Allocator, writer: *std.Io.W
         }
         try writer.print("}}\n\n// Tag returns the active {s} variant.\nfunc (value {s}) Tag() {s} {{ return value.tag }}\n\n", .{ declaration.name, declaration.name, tag_type });
         for (declaration.fields) |field| {
+            if (declaration.variantOmitted(field.name)) continue;
             const constructor = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(constructor);
             const payload = field.type.?;
@@ -6157,12 +6225,14 @@ fn renderGoEnums(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
         // comment so godoc still names it.
         try writer.writeAll("const (\n");
         for (declaration.fields) |field| {
+            if (declaration.variantOmitted(field.name)) continue;
             const field_name = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(field_name);
             try writer.print("\t// {s}{s} corresponds to the Zig tag {s}.\n\t{s}{s} {s} = {d}\n", .{ declaration.name, field_name, field.name, declaration.name, field_name, declaration.name, field.value.? });
         }
         try writer.print(")\n\n// String returns the Zig tag name.\nfunc (value {s}) String() string {{\n\tswitch value {{\n", .{declaration.name});
         for (declaration.fields) |field| {
+            if (declaration.variantOmitted(field.name)) continue;
             const field_name = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(field_name);
             try writer.print("\tcase {s}{s}:\n\t\treturn \"{s}\"\n", .{ declaration.name, field_name, field.name });
@@ -7166,20 +7236,61 @@ fn writePublicTaggedUnionRawArguments(
     try writer.writeAll(rawGoTypeName(program, declaration.tag_type.?));
     try writer.print("({s}.tag)", .{value_name});
     for (declaration.fields) |field| {
+        if (declaration.variantOmitted(field.name)) continue;
         const payload = field.type.?;
         if (payload == .void) continue;
         const member = try naming.camelAlloc(allocator, field.name);
         defer allocator.free(member);
-        try writer.writeAll(", ");
-        switch (payload) {
-            .bool => try writer.print("boolToUint8({s}.{s})", .{ value_name, member }),
-            .@"enum" => {
-                try writer.writeAll(rawGoTypeName(program, payload));
-                try writer.print("({s}.{s})", .{ value_name, member });
-            },
-            else => try writer.print("{s}.{s}", .{ value_name, member }),
-        }
+        const expression = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ value_name, member });
+        defer allocator.free(expression);
+        try writePublicTaggedUnionPayloadRawArguments(allocator, writer, program, payload, expression);
     }
+}
+
+fn writePublicTaggedUnionPayloadRawArguments(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    node: semantic.TypeNode,
+    expression: []const u8,
+) !void {
+    if (node == .value_struct) {
+        const declaration = enumDecl(program, node.value_struct.ref);
+        if (declaration.layout == .@"packed") {
+            try writer.print(", zigo{s}ToBacking({s})", .{ declaration.name, expression });
+            return;
+        }
+        for (declaration.fields) |field| {
+            const member = try naming.pascalAlloc(allocator, field.name);
+            defer allocator.free(member);
+            const child = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ expression, member });
+            defer allocator.free(child);
+            try writePublicTaggedUnionPayloadRawArguments(allocator, writer, program, field.type.?, child);
+        }
+        return;
+    }
+    try writer.writeAll(", ");
+    switch (node) {
+        .bool => try writer.print("boolToUint8({s})", .{expression}),
+        .@"enum" => {
+            try writer.writeAll(rawGoTypeName(program, node));
+            try writer.print("({s})", .{expression});
+        },
+        else => try writer.writeAll(expression),
+    }
+}
+
+fn semanticBitWidth(program: abi.Program, node: semantic.TypeNode) u16 {
+    return switch (node) {
+        .bool => 1,
+        .int => |value| value.bits,
+        .@"enum" => |value| semanticBitWidth(program, enumDecl(program, value.ref).tag_type.?),
+        else => unreachable,
+    };
+}
+
+fn bitMask(bits: u16) u64 {
+    return if (bits == 64) std.math.maxInt(u64) else (@as(u64, 1) << @intCast(bits)) - 1;
 }
 
 /// The `semantic.Semantic` rule applied to lowered functions: a tagged union

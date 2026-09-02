@@ -122,6 +122,10 @@ const (
 	ScrollViewportTagDelta ScrollViewportTag = 2
 	// ScrollViewportTagPage corresponds to the Zig tag page.
 	ScrollViewportTagPage ScrollViewportTag = 3
+	// ScrollViewportTagRgb corresponds to the Zig tag rgb.
+	ScrollViewportTagRgb ScrollViewportTag = 4
+	// ScrollViewportTagRegion corresponds to the Zig tag region.
+	ScrollViewportTagRegion ScrollViewportTag = 5
 )
 
 // String returns the Zig tag name.
@@ -135,6 +139,10 @@ func (value ScrollViewportTag) String() string {
 		return "delta"
 	case ScrollViewportTagPage:
 		return "page"
+	case ScrollViewportTagRgb:
+		return "rgb"
+	case ScrollViewportTagRegion:
+		return "region"
 	default:
 		return "ScrollViewportTag(" + strconv.Itoa(int(value)) + ")"
 	}

@@ -21,5 +21,5 @@ var DefaultLibraryName = raw.DefaultLibraryName
 
 // Apply calls the Zig function apply.
 func Apply(behavior ScrollViewport) int64 {
-	return raw.Apply(uint8(behavior.tag), behavior.delta, behavior.page, behavior.ratio, boolToUint8(behavior.animated), uint8(behavior.mode))
+	return raw.Apply(uint8(behavior.tag), behavior.delta, behavior.page, behavior.ratio, boolToUint8(behavior.animated), uint8(behavior.mode), zigoRGBToBacking(behavior.rgb), behavior.region.X, boolToUint8(behavior.region.Enabled))
 }

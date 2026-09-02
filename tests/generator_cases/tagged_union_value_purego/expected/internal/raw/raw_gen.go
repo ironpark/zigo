@@ -44,7 +44,7 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
-	fnApply func(uint8, int, uintptr, float64, uint8, uint8) int64
+	fnApply func(uint8, int, uintptr, float64, uint8, uint8, uint32, int16, uint8) int64
 }
 
 var loadedBindings atomic.Pointer[nativeBindings]
@@ -126,8 +126,15 @@ func LastErrorMessage() string {
 	return string(unsafe.Slice((*byte)(p), length))
 }
 
+// RegionData mirrors the zg_region layout, padding included.
+type RegionData struct {
+	X int16
+	Enabled uint8
+	_ [1]byte
+}
+
 // Apply calls the generated purego ABI wrapper for zg_apply.
-func Apply(behavior_tag uint8, behavior_delta int, behavior_page uint, behavior_ratio float64, behavior_animated uint8, behavior_mode uint8) int64 {
-	result := bindings().fnApply(behavior_tag, behavior_delta, uintptr(behavior_page), behavior_ratio, behavior_animated, behavior_mode)
+func Apply(behavior_tag uint8, behavior_delta int, behavior_page uint, behavior_ratio float64, behavior_animated uint8, behavior_mode uint8, behavior_rgb uint32, behavior_region_x int16, behavior_region_enabled uint8) int64 {
+	result := bindings().fnApply(behavior_tag, behavior_delta, uintptr(behavior_page), behavior_ratio, behavior_animated, behavior_mode, behavior_rgb, behavior_region_x, behavior_region_enabled)
 	return int64(result)
 }

@@ -179,7 +179,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                     .site = functionSite(function),
                     .hint = try std.fmt.allocPrint(
                         allocator,
-                        "variant `{s}` has a payload that is not void, bool, integer, float, or registered enum",
+                        "variant `{s}` has an unsupported value payload; omit it with `.omit_variants` or use void, scalar, enum, packed struct, or extern struct payloads",
                         .{variant},
                     ),
                 };
@@ -306,6 +306,26 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
         };
     }
     for (document.types) |declaration| {
+        if (declaration.omitted_variants) |omitted| {
+            for (omitted, 0..) |name, index| {
+                var found = false;
+                for (declaration.fields) |field| if (std.mem.eql(u8, field.name, name)) {
+                    found = true;
+                    break;
+                };
+                for (omitted[0..index]) |earlier| if (std.mem.eql(u8, earlier, name)) {
+                    found = false;
+                    break;
+                };
+                if (!found) return .{
+                    .severity = .@"error",
+                    .code = "ZIGO039",
+                    .message = "invalid omitted tagged-union variant",
+                    .site = .{ .path = "semantic.json", .declaration = declaration.name },
+                    .hint = try std.fmt.allocPrint(allocator, "name `{s}` exactly once in `.omit_variants` and ensure it is a variant of the registered union", .{name}),
+                };
+            }
+        }
         for (declaration.fields) |field| {
             const node = field.type orelse continue;
             if (!containsIoStream(node)) continue;
@@ -1302,6 +1322,7 @@ fn taggedUnionValueDeclaration(document: semantic.Semantic, node: semantic.TypeN
 fn taggedUnionValueIneligibleVariant(document: semantic.Semantic, declaration: semantic.TypeDecl) ?[]const u8 {
     if (declaration.fields.len == 0) return declaration.name;
     for (declaration.fields) |field| {
+        if (declaration.variantOmitted(field.name)) continue;
         const payload = field.type orelse return field.name;
         if (payload != .void and !taggedUnionValuePayloadSupported(document, payload)) return field.name;
     }
@@ -1314,6 +1335,14 @@ fn taggedUnionValuePayloadSupported(document: semantic.Semantic, node: semantic.
         .int => |value| integerSupported(value),
         .float => |value| floatSupported(value),
         .@"enum" => |value| hasTypeKind(document, value.ref, .@"enum"),
+        .value_struct => |value| for (document.types) |declaration| {
+            if (!std.mem.eql(u8, declaration.name, value.ref) or declaration.kind != .value_struct) continue;
+            break switch (declaration.layout orelse return false) {
+                .@"packed" => declaration.backing_type != null and declaration.backing_type.? == .int and
+                    promotableInteger(declaration.backing_type.?.int),
+                .@"extern" => externStructProblem(document, declaration, 0) == null,
+            };
+        } else false,
         else => false,
     };
 }
@@ -1885,7 +1914,7 @@ test "implemented diagnostic snapshots are stable" {
                 .{ .fields = &.{.{ .name = "bytes", .value = 0 }}, .kind = .@"enum", .name = "ValueTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
             },
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO006]: cannot pass a tagged union by value\n  --> semantic.json (consume)\n  hint: variant `bytes` has a payload that is not void, bool, integer, float, or registered enum\n" },
+        }, .snapshot = "error[ZIGO006]: cannot pass a tagged union by value\n  --> semantic.json (consume)\n  hint: variant `bytes` has an unsupported value payload; omit it with `.omit_variants` or use void, scalar, enum, packed struct, or extern struct payloads\n" },
         .{ .document = .{
             .functions = &.{.{
                 .name = "consume",
@@ -1901,23 +1930,7 @@ test "implemented diagnostic snapshots are stable" {
                 .{ .kind = .@"opaque", .name = "Thing" },
             },
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO006]: cannot pass a tagged union by value\n  --> semantic.json (consume)\n  hint: variant `child` has a payload that is not void, bool, integer, float, or registered enum\n" },
-        .{ .document = .{
-            .functions = &.{.{
-                .name = "consume",
-                .params = &.{.{ .name = "value", .type = .{ .value_struct = .{ .ref = "Value" } } }},
-                .@"return" = .{ .void = {} },
-                .symbol = "zg_consume",
-            }},
-            .package = "bad",
-            .prefix = "zg",
-            .types = &.{
-                .{ .fields = &.{.{ .name = "config", .type = .{ .value_struct = .{ .ref = "Config" } }, .value = 0 }}, .kind = .tagged_union, .name = "Value", .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } } },
-                .{ .fields = &.{.{ .name = "config", .value = 0 }}, .kind = .@"enum", .name = "ValueTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
-                .{ .fields = &.{.{ .name = "count", .type = .{ .int = .{ .bits = 32, .signed = false } } }}, .kind = .value_struct, .layout = .@"extern", .name = "Config" },
-            },
-            .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO006]: cannot pass a tagged union by value\n  --> semantic.json (consume)\n  hint: variant `config` has a payload that is not void, bool, integer, float, or registered enum\n" },
+        }, .snapshot = "error[ZIGO006]: cannot pass a tagged union by value\n  --> semantic.json (consume)\n  hint: variant `child` has an unsupported value payload; omit it with `.omit_variants` or use void, scalar, enum, packed struct, or extern struct payloads\n" },
         .{ .document = .{
             .functions = &.{
                 .{ .name = "lookupID", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "ignored" },
@@ -2700,7 +2713,6 @@ test "tagged union value parameter names the first ineligible payload" {
     const cases = [_]struct { name: []const u8, payload: semantic.TypeNode }{
         .{ .name = "bytes", .payload = .{ .slice = .{ .@"const" = true, .element = &byte } } },
         .{ .name = "child", .payload = .{ .opaque_ptr = .{ .@"const" = true, .nullable = false, .ref = "Child" } } },
-        .{ .name = "config", .payload = .{ .value_struct = .{ .ref = "Config" } } },
     };
     for (cases) |case| {
         var arena = std.heap.ArenaAllocator.init(std.testing.allocator);

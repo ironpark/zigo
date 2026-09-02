@@ -74,7 +74,7 @@ type nativeBindings struct {
 	fnLiveValues             func() uintptr
 	fnDivide                 func(float64, float64, *float64) int32
 	fnSum                    func(unsafe.Pointer, uintptr) float64
-	fnScrollAmount           func(uint8, int, uintptr) int
+	fnScrollAmount           func(uint8, int, uintptr, uint32, int16, int16, uint16) int
 	fnPanicError             func() int32
 	fnProjection0            func(unsafe.Pointer, *uint8) uint8
 	fnProjection1            func(unsafe.Pointer, *int64) uint8
@@ -398,6 +398,18 @@ func LastErrorMessage() string {
 	return string(unsafe.Slice((*byte)(p), length))
 }
 
+// PointData mirrors the zg_point layout, padding included.
+type PointData struct {
+	X int16
+	Y int16
+}
+
+// RegionData mirrors the zg_region layout, padding included.
+type RegionData struct {
+	Origin PointData
+	Width  uint16
+}
+
 // SignalSnapshotData mirrors the zg_signal_snapshot_t value snapshot layout, padding included.
 type SignalSnapshotData struct {
 	Tag    uint8
@@ -564,8 +576,8 @@ func Sum(values []float64) float64 {
 }
 
 // ScrollAmount calls the generated purego ABI wrapper for zg_scroll_amount.
-func ScrollAmount(behavior_tag uint8, behavior_delta int, behavior_page uint) int {
-	result := bindings().fnScrollAmount(behavior_tag, behavior_delta, uintptr(behavior_page))
+func ScrollAmount(behavior_tag uint8, behavior_delta int, behavior_page uint, behavior_rgb uint32, behavior_region_origin_x int16, behavior_region_origin_y int16, behavior_region_width uint16) int {
+	result := bindings().fnScrollAmount(behavior_tag, behavior_delta, uintptr(behavior_page), behavior_rgb, behavior_region_origin_x, behavior_region_origin_y, behavior_region_width)
 	return int(result)
 }
 

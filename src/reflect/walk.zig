@@ -58,7 +58,7 @@ pub fn reflect(
                 .tagged_union => switch (info) {
                     .@"union" => |union_info| {
                         if (union_info.tag_type == null) @compileError("zigo tagged_union type entries must name a tagged union");
-                        try appendTaggedUnion(allocator, &types, declaration, T, type_name, comptime accessStrategy(entry), try registeredZigPath(allocator, declaration, T, type_name));
+                        try appendTaggedUnion(allocator, &types, declaration, T, type_name, comptime accessStrategy(entry), comptime omittedVariants(entry), try registeredZigPath(allocator, declaration, T, type_name));
                     },
                     else => @compileError("zigo tagged_union type entries must name a tagged union"),
                 },
@@ -1398,7 +1398,7 @@ fn typeNode(
                 }
             }
             if (@typeInfo(T).@"union".tag_type == null) @compileError("zigo cannot reflect an untagged union, at " ++ context);
-            try appendTaggedUnion(allocator, types, declaration, T, name, .projection, @typeName(T));
+            try appendTaggedUnion(allocator, types, declaration, T, name, .projection, &.{}, @typeName(T));
             break :blk .{ .value_struct = .{ .ref = name } };
         },
         else => @compileError("zigo supports scalars, enums, slices, opaque pointers, structs, and error unions, at " ++ context),
@@ -1628,6 +1628,10 @@ fn appendValueStruct(
     const info = @typeInfo(T).@"struct";
     const index = types.items.len;
     try types.append(allocator, .{
+        .backing_type = if (info.layout == .@"packed")
+            try typeNode(allocator, declaration, info.backing_integer.?, types, "packed struct backing integer")
+        else
+            null,
         .kind = .value_struct,
         .layout = switch (info.layout) {
             .@"extern" => .@"extern",
@@ -1662,6 +1666,7 @@ fn appendTaggedUnion(
     comptime T: type,
     name: []const u8,
     access: semantic.Access,
+    omitted_variants: []const []const u8,
     zig_path: []const u8,
 ) !void {
     const info = @typeInfo(T).@"union";
@@ -1673,6 +1678,7 @@ fn appendTaggedUnion(
     try types.append(allocator, .{
         .kind = .tagged_union,
         .name = name,
+        .omitted_variants = if (omitted_variants.len == 0) null else omitted_variants,
         // The default strategy stays absent from semantic.json, so a type that
         // does not choose one leaves its document unchanged.
         .access = if (access == .projection) null else access,
@@ -1706,9 +1712,15 @@ fn appendTaggedUnion(
         .fields = tag_fields,
         .kind = .@"enum",
         .name = tag_name,
+        .omitted_variants = if (omitted_variants.len == 0) null else omitted_variants,
         .tag_type = integer_tag,
         .zig_path = @typeName(Tag),
     });
+}
+
+fn omittedVariants(comptime entry: anytype) []const []const u8 {
+    if (!@hasField(@TypeOf(entry), "omit_variants")) return &.{};
+    return &entry.omit_variants;
 }
 
 fn returnedOpaqueName(node: semantic.TypeNode) ?[]const u8 {

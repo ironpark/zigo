@@ -462,11 +462,15 @@ pub const TypeField = struct {
 };
 pub const TypeDecl = struct {
     access: ?Access = null,
+    /// Integer storage used by a packed struct. Absent for every other type.
+    backing_type: ?TypeNode = null,
     exhaustive: bool = true,
     fields: []const TypeField = &.{},
     kind: TypeKind,
     layout: ?Layout = null,
     name: []const u8,
+    /// Union variants deliberately excluded from the generated boundary.
+    omitted_variants: ?[]const []const u8 = null,
     /// Public sub-package name. Absent means the binding's default package.
     package: ?[]const u8 = null,
     /// Present only when the binding explicitly opts a non-exhaustive Zig
@@ -479,6 +483,13 @@ pub const TypeDecl = struct {
     /// one never carry the field.
     pub fn accessStrategy(self: TypeDecl) Access {
         return self.access orelse .projection;
+    }
+
+    pub fn variantOmitted(self: TypeDecl, name: []const u8) bool {
+        for (self.omitted_variants orelse &.{}) |candidate| {
+            if (std.mem.eql(u8, candidate, name)) return true;
+        }
+        return false;
     }
 };
 pub const Constructor = struct {
@@ -532,7 +543,9 @@ pub const Semantic = struct {
     /// A tagged union crosses the boundary by value when a function takes it as
     /// a snapshot parameter.
     pub fn taggedUnionUsedByValue(self: Semantic, name: []const u8) bool {
-        for (self.functions) |function| if (functionPassesByValue(function, name)) return true;
+        for (self.functions) |function| {
+            if (functionPassesByValue(function, name) or typeIsNamedValue(function.@"return", name)) return true;
+        }
         return false;
     }
 
@@ -564,7 +577,8 @@ pub const Semantic = struct {
             .value_struct => |value| blk: {
                 if (std.mem.eql(u8, value.ref, name)) break :blk true;
                 for (self.types) |declaration| {
-                    if (declaration.kind != .value_struct or !std.mem.eql(u8, declaration.name, value.ref)) continue;
+                    if ((declaration.kind != .value_struct and declaration.kind != .tagged_union) or
+                        !std.mem.eql(u8, declaration.name, value.ref)) continue;
                     for (declaration.fields) |field| if (field.type) |child| {
                         if (self.mentionsValueStruct(child, name)) break :blk true;
                     };
@@ -603,6 +617,14 @@ pub fn functionPassesByValue(function: SemanticFn, name: []const u8) bool {
         if (parameter.type == .value_struct and std.mem.eql(u8, parameter.type.value_struct.ref, name)) return true;
     }
     return false;
+}
+
+pub fn typeIsNamedValue(node: TypeNode, name: []const u8) bool {
+    return switch (node) {
+        .value_struct => |value| std.mem.eql(u8, value.ref, name),
+        .error_union => |value| typeIsNamedValue(value.payload.*, name),
+        else => false,
+    };
 }
 
 pub fn functionUsesAsHandle(function: SemanticFn, name: []const u8) bool {

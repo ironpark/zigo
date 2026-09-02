@@ -8,7 +8,7 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
 }
 pub const panic = std.debug.FullPanic(panicHandler);
 
-export fn zg_apply_impl(behavior_tag: u8, behavior_delta: isize, behavior_page: usize, behavior_ratio: f64, behavior_animated: u8, behavior_mode: u8) i64 {
+export fn zg_apply_impl(behavior_tag: u8, behavior_delta: isize, behavior_page: usize, behavior_ratio: f64, behavior_animated: u8, behavior_mode: u8, behavior_rgb: u32, behavior_region_x: i16, behavior_region_enabled: u8) i64 {
     return target.apply(switch (behavior_tag) {
         0 => target.ScrollViewport.top,
         1 => target.ScrollViewport{ .delta = behavior_delta },
@@ -16,6 +16,30 @@ export fn zg_apply_impl(behavior_tag: u8, behavior_delta: isize, behavior_page: 
         3 => target.ScrollViewport{ .ratio = behavior_ratio },
         4 => target.ScrollViewport{ .animated = behavior_animated != 0 },
         5 => target.ScrollViewport{ .mode = @enumFromInt(behavior_mode) },
+        6 => target.ScrollViewport{ .rgb = @bitCast(@as(u24, @truncate(behavior_rgb))) },
+        7 => target.ScrollViewport{ .region = target.Region{ .x = behavior_region_x, .enabled = behavior_region_enabled != 0 } },
         else => @panic("zigo: invalid tag for argument `behavior`"),
     });
+}
+
+/// Fails this compile when a layout zigo reflected on the build host does
+/// not describe the compilation target. The usual cause is a C type whose
+/// width varies by target -- `c_long` and `c_ulong` are 4 bytes on Windows
+/// and 8 bytes on Linux and macOS, and `c_longdouble` varies too. Use a
+/// fixed-width type in the binding surface, or generate on the target.
+fn zigoAbiGuard(comptime what: []const u8, comptime reflected: usize, comptime actual: usize) void {
+    if (reflected != actual) @compileError(std.fmt.comptimePrint(
+        "zigo ABI guard: {s} is {d} on this target, but zigo reflected {d} on the build host. " ++
+            "The generated C header and Go mirrors use the reflected layout, so this binding " ++
+            "cannot be built for this target. A C type whose width varies by target, such as " ++
+            "c_long or c_ulong, is the usual cause; replace it with a fixed-width type.",
+        .{ what, actual, reflected },
+    ));
+}
+
+comptime {
+    zigoAbiGuard("@sizeOf(Region)", 4, @sizeOf(target.Region));
+    zigoAbiGuard("@alignOf(Region)", 2, @alignOf(target.Region));
+    zigoAbiGuard("@offsetOf(Region, \"x\")", 0, @offsetOf(target.Region, "x"));
+    zigoAbiGuard("@offsetOf(Region, \"enabled\")", 2, @offsetOf(target.Region, "enabled"));
 }

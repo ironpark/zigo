@@ -552,7 +552,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 146,
+        "line": 172,
         "column": 8
       },
       "symbol": "zg_live_values"
@@ -567,7 +567,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 150,
+            "line": 176,
             "column": 15
           },
           "type": {
@@ -581,7 +581,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 150,
+            "line": 176,
             "column": 31
           },
           "type": {
@@ -602,7 +602,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 150,
+        "line": 176,
         "column": 8
       },
       "symbol": "zg_divide"
@@ -617,7 +617,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 155,
+            "line": 181,
             "column": 12
           },
           "type": {
@@ -636,7 +636,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 155,
+        "line": 181,
         "column": 8
       },
       "symbol": "zg_sum"
@@ -651,7 +651,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 137,
+            "line": 140,
             "column": 21
           },
           "type": {
@@ -668,7 +668,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 137,
+        "line": 140,
         "column": 8
       },
       "symbol": "zg_scroll_amount"
@@ -688,7 +688,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 161,
+        "line": 187,
         "column": 8
       },
       "symbol": "zg_panic_error"
@@ -992,15 +992,157 @@
             "signed": false
           },
           "value": 3
+        },
+        {
+          "name": "rgb",
+          "type": {
+            "kind": "value_struct",
+            "ref": "RGB"
+          },
+          "value": 4
+        },
+        {
+          "name": "region",
+          "type": {
+            "kind": "value_struct",
+            "ref": "Region"
+          },
+          "value": 5
+        },
+        {
+          "name": "unknown",
+          "type": {
+            "kind": "value_struct",
+            "ref": "Unknown"
+          },
+          "value": 6
         }
       ],
       "kind": "tagged_union",
       "name": "ScrollViewport",
+      "omitted_variants": [
+        "unknown"
+      ],
       "tag_type": {
         "kind": "enum",
         "ref": "ScrollViewportTag"
       },
       "zig_path": "root.ScrollViewport"
+    },
+    {
+      "backing_type": {
+        "bits": 24,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "r",
+          "type": {
+            "bits": 8,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "g",
+          "type": {
+            "bits": 8,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "b",
+          "type": {
+            "bits": 8,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "kind": "value_struct",
+      "layout": "packed",
+      "name": "RGB",
+      "zig_path": "root.RGB"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "origin",
+          "type": {
+            "kind": "value_struct",
+            "ref": "Point"
+          }
+        },
+        {
+          "name": "width",
+          "type": {
+            "bits": 16,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "kind": "value_struct",
+      "layout": "extern",
+      "name": "Region",
+      "zig_path": "root.Region"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "x",
+          "type": {
+            "bits": 16,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "bits": 16,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          }
+        }
+      ],
+      "kind": "value_struct",
+      "layout": "extern",
+      "name": "Point",
+      "zig_path": "root.Point"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "bytes",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "kind": "value_struct",
+      "name": "Unknown",
+      "zig_path": "root.Unknown"
     },
     {
       "exhaustive": true,
@@ -1020,10 +1162,25 @@
         {
           "name": "page",
           "value": 3
+        },
+        {
+          "name": "rgb",
+          "value": 4
+        },
+        {
+          "name": "region",
+          "value": 5
+        },
+        {
+          "name": "unknown",
+          "value": 6
         }
       ],
       "kind": "enum",
       "name": "ScrollViewportTag",
+      "omitted_variants": [
+        "unknown"
+      ],
       "tag_type": {
         "bits": 8,
         "is_usize": false,

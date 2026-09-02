@@ -15,6 +15,13 @@ import "C"
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
 // Apply calls the generated C ABI wrapper for zg_apply.
-func Apply(behavior_tag uint8, behavior_delta int, behavior_page uint, behavior_ratio float64, behavior_animated uint8, behavior_mode uint8) int64 {
-	return int64(C.zg_apply(C.uint8_t(behavior_tag), C.ptrdiff_t(behavior_delta), C.size_t(behavior_page), C.double(behavior_ratio), C.uint8_t(behavior_animated), C.uint8_t(behavior_mode)))
+func Apply(behavior_tag uint8, behavior_delta int, behavior_page uint, behavior_ratio float64, behavior_animated uint8, behavior_mode uint8, behavior_rgb uint32, behavior_region_x int16, behavior_region_enabled uint8) int64 {
+	return int64(C.zg_apply(C.uint8_t(behavior_tag), C.ptrdiff_t(behavior_delta), C.size_t(behavior_page), C.double(behavior_ratio), C.uint8_t(behavior_animated), C.uint8_t(behavior_mode), C.uint32_t(behavior_rgb), C.int16_t(behavior_region_x), C.uint8_t(behavior_region_enabled)))
+}
+
+// RegionData mirrors the zg_region layout, padding included.
+type RegionData struct {
+	X int16
+	Enabled uint8
+	_ [1]byte
 }
