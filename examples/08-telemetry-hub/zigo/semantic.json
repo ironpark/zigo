@@ -123,7 +123,7 @@
           "ref": "TelemetryHub"
         }
       },
-      "symbol": "zg_create"
+      "symbol": "zg_telemetry_hub_create"
     },
     {
       "name": "rename",
@@ -158,7 +158,7 @@
           "kind": "void"
         }
       },
-      "symbol": "zg_rename"
+      "symbol": "zg_telemetry_hub_rename"
     },
     {
       "name": "name",
@@ -176,7 +176,7 @@
         "kind": "slice"
       },
       "return_semantic": "utf8_string",
-      "symbol": "zg_name"
+      "symbol": "zg_telemetry_hub_name"
     },
     {
       "name": "capacity",
@@ -189,7 +189,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_capacity"
+      "symbol": "zg_telemetry_hub_capacity"
     },
     {
       "name": "len",
@@ -202,7 +202,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_len"
+      "symbol": "zg_telemetry_hub_len"
     },
     {
       "name": "isEmpty",
@@ -212,7 +212,7 @@
       "return": {
         "kind": "bool"
       },
-      "symbol": "zg_isEmpty"
+      "symbol": "zg_telemetry_hub_is_empty"
     },
     {
       "name": "isFull",
@@ -222,7 +222,7 @@
       "return": {
         "kind": "bool"
       },
-      "symbol": "zg_isFull"
+      "symbol": "zg_telemetry_hub_is_full"
     },
     {
       "name": "mode",
@@ -233,7 +233,7 @@
         "kind": "enum",
         "ref": "Mode"
       },
-      "symbol": "zg_mode"
+      "symbol": "zg_telemetry_hub_mode"
     },
     {
       "name": "setMode",
@@ -255,7 +255,7 @@
         "kind": "enum",
         "ref": "Mode"
       },
-      "symbol": "zg_setMode"
+      "symbol": "zg_telemetry_hub_set_mode"
     },
     {
       "name": "overflowPolicy",
@@ -266,7 +266,7 @@
         "kind": "enum",
         "ref": "OverflowPolicy"
       },
-      "symbol": "zg_overflowPolicy"
+      "symbol": "zg_telemetry_hub_overflow_policy"
     },
     {
       "name": "setOverflowPolicy",
@@ -288,7 +288,7 @@
         "kind": "enum",
         "ref": "OverflowPolicy"
       },
-      "symbol": "zg_setOverflowPolicy"
+      "symbol": "zg_telemetry_hub_set_overflow_policy"
     },
     {
       "name": "enabled",
@@ -298,7 +298,7 @@
       "return": {
         "kind": "bool"
       },
-      "symbol": "zg_enabled"
+      "symbol": "zg_telemetry_hub_enabled"
     },
     {
       "name": "setEnabled",
@@ -318,7 +318,7 @@
       "return": {
         "kind": "bool"
       },
-      "symbol": "zg_setEnabled"
+      "symbol": "zg_telemetry_hub_set_enabled"
     },
     {
       "name": "threshold",
@@ -329,7 +329,7 @@
         "bits": 64,
         "kind": "float"
       },
-      "symbol": "zg_threshold"
+      "symbol": "zg_telemetry_hub_threshold"
     },
     {
       "name": "setThreshold",
@@ -357,7 +357,7 @@
           "kind": "void"
         }
       },
-      "symbol": "zg_setThreshold"
+      "symbol": "zg_telemetry_hub_set_threshold"
     },
     {
       "name": "scaleFactor",
@@ -368,7 +368,7 @@
         "bits": 64,
         "kind": "float"
       },
-      "symbol": "zg_scaleFactor"
+      "symbol": "zg_telemetry_hub_scale_factor"
     },
     {
       "name": "setScaleFactor",
@@ -396,7 +396,7 @@
           "kind": "void"
         }
       },
-      "symbol": "zg_setScaleFactor"
+      "symbol": "zg_telemetry_hub_set_scale_factor"
     },
     {
       "name": "offset",
@@ -407,7 +407,7 @@
         "bits": 64,
         "kind": "float"
       },
-      "symbol": "zg_offset"
+      "symbol": "zg_telemetry_hub_offset"
     },
     {
       "name": "setOffset",
@@ -435,7 +435,7 @@
           "kind": "void"
         }
       },
-      "symbol": "zg_setOffset"
+      "symbol": "zg_telemetry_hub_set_offset"
     },
     {
       "name": "push",
@@ -476,7 +476,7 @@
           "kind": "void"
         }
       },
-      "symbol": "zg_push"
+      "symbol": "zg_telemetry_hub_push"
     },
     {
       "name": "pushWithSeverity",
@@ -527,7 +527,7 @@
           "kind": "void"
         }
       },
-      "symbol": "zg_pushWithSeverity"
+      "symbol": "zg_telemetry_hub_push_with_severity"
     },
     {
       "name": "pushBatch",
@@ -560,7 +560,7 @@
           "kind": "void"
         }
       },
-      "symbol": "zg_pushBatch"
+      "symbol": "zg_telemetry_hub_push_batch"
     },
     {
       "name": "process",
@@ -594,7 +594,7 @@
           "signed": false
         }
       },
-      "symbol": "zg_process"
+      "symbol": "zg_telemetry_hub_process"
     },
     {
       "name": "processAll",
@@ -615,7 +615,7 @@
           "signed": false
         }
       },
-      "symbol": "zg_processAll"
+      "symbol": "zg_telemetry_hub_process_all"
     },
     {
       "name": "clear",
@@ -628,7 +628,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_clear"
+      "symbol": "zg_telemetry_hub_clear"
     },
     {
       "name": "resetStatistics",
@@ -638,7 +638,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_resetStatistics"
+      "symbol": "zg_telemetry_hub_reset_statistics"
     },
     {
       "name": "accepted",
@@ -651,7 +651,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_accepted"
+      "symbol": "zg_telemetry_hub_accepted"
     },
     {
       "name": "rejected",
@@ -664,7 +664,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_rejected"
+      "symbol": "zg_telemetry_hub_rejected"
     },
     {
       "name": "dropped",
@@ -677,7 +677,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_dropped"
+      "symbol": "zg_telemetry_hub_dropped"
     },
     {
       "name": "processed",
@@ -690,7 +690,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_processed"
+      "symbol": "zg_telemetry_hub_processed"
     },
     {
       "name": "filtered",
@@ -703,7 +703,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_filtered"
+      "symbol": "zg_telemetry_hub_filtered"
     },
     {
       "name": "sum",
@@ -714,7 +714,7 @@
         "bits": 64,
         "kind": "float"
       },
-      "symbol": "zg_sum"
+      "symbol": "zg_telemetry_hub_sum"
     },
     {
       "name": "minimum",
@@ -732,7 +732,7 @@
           "kind": "float"
         }
       },
-      "symbol": "zg_minimum"
+      "symbol": "zg_telemetry_hub_minimum"
     },
     {
       "name": "maximum",
@@ -750,7 +750,7 @@
           "kind": "float"
         }
       },
-      "symbol": "zg_maximum"
+      "symbol": "zg_telemetry_hub_maximum"
     },
     {
       "name": "average",
@@ -768,7 +768,7 @@
           "kind": "float"
         }
       },
-      "symbol": "zg_average"
+      "symbol": "zg_telemetry_hub_average"
     },
     {
       "name": "firstId",
@@ -788,7 +788,7 @@
           "signed": false
         }
       },
-      "symbol": "zg_firstId"
+      "symbol": "zg_telemetry_hub_first_id"
     },
     {
       "name": "firstValue",
@@ -806,7 +806,7 @@
           "kind": "float"
         }
       },
-      "symbol": "zg_firstValue"
+      "symbol": "zg_telemetry_hub_first_value"
     },
     {
       "name": "lastId",
@@ -826,7 +826,7 @@
           "signed": false
         }
       },
-      "symbol": "zg_lastId"
+      "symbol": "zg_telemetry_hub_last_id"
     },
     {
       "name": "lastValue",
@@ -844,7 +844,7 @@
           "kind": "float"
         }
       },
-      "symbol": "zg_lastValue"
+      "symbol": "zg_telemetry_hub_last_value"
     },
     {
       "name": "lastSeverity",
@@ -862,7 +862,7 @@
           "ref": "Severity"
         }
       },
-      "symbol": "zg_lastSeverity"
+      "symbol": "zg_telemetry_hub_last_severity"
     },
     {
       "name": "countAbove",
@@ -893,7 +893,7 @@
           "signed": false
         }
       },
-      "symbol": "zg_countAbove"
+      "symbol": "zg_telemetry_hub_count_above"
     },
     {
       "name": "countBelow",
@@ -924,7 +924,7 @@
           "signed": false
         }
       },
-      "symbol": "zg_countBelow"
+      "symbol": "zg_telemetry_hub_count_below"
     },
     {
       "name": "containsAbove",
@@ -952,7 +952,7 @@
           "kind": "bool"
         }
       },
-      "symbol": "zg_containsAbove"
+      "symbol": "zg_telemetry_hub_contains_above"
     },
     {
       "name": "containsBelow",
@@ -980,7 +980,7 @@
           "kind": "bool"
         }
       },
-      "symbol": "zg_containsBelow"
+      "symbol": "zg_telemetry_hub_contains_below"
     },
     {
       "name": "scaleValues",
@@ -1008,7 +1008,7 @@
           "kind": "void"
         }
       },
-      "symbol": "zg_scaleValues"
+      "symbol": "zg_telemetry_hub_scale_values"
     },
     {
       "name": "offsetValues",
@@ -1036,7 +1036,7 @@
           "kind": "void"
         }
       },
-      "symbol": "zg_offsetValues"
+      "symbol": "zg_telemetry_hub_offset_values"
     },
     {
       "name": "clampValues",
@@ -1074,7 +1074,7 @@
           "kind": "void"
         }
       },
-      "symbol": "zg_clampValues"
+      "symbol": "zg_telemetry_hub_clamp_values"
     },
     {
       "name": "absoluteValues",
@@ -1084,7 +1084,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_absoluteValues"
+      "symbol": "zg_telemetry_hub_absolute_values"
     },
     {
       "name": "negateValues",
@@ -1094,7 +1094,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_negateValues"
+      "symbol": "zg_telemetry_hub_negate_values"
     },
     {
       "name": "deinit",
@@ -1104,7 +1104,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_deinit"
+      "symbol": "zg_telemetry_hub_deinit"
     },
     {
       "name": "liveHubs",
@@ -1116,7 +1116,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_liveHubs"
+      "symbol": "zg_live_hubs"
     }
   ],
   "ir_version": 1,

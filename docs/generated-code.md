@@ -200,6 +200,18 @@ handle은 호출 후 즉시 해제하고, retained callback handle은 소유 객
 `go-check`는 `go_dir`의 Go 생성 파일만 비교하므로 metadata도 `go` 실행 후 같은 commit에
 포함되었는지 리뷰에서 확인해야 합니다.
 
+함수의 `symbol` 필드는 그 함수가 export되는 C 심볼 이름입니다. 규칙은 하나뿐이고
+(`{prefix}_{owner}_{name}`, owner는 `receiver` 또는 `namespace`, 모두 snake_case로
+정규화), 소유 타입이 없으면 `{prefix}_{name}`입니다. 헤더, 링커, 심볼 충돌 검사, 그리고
+이 메타데이터가 모두 같은 규칙 함수(`naming.functionSymbolAlloc`)에서 이름을 받습니다.
+백엔드가 덧붙이는 장식은 포함하지 않습니다 — purego의 callback 변형이 쓰는 `_purego_v2`
+접미는 lowering 단계의 산물이므로 `symbol`에는 나타나지 않습니다.
+
+0.x의 이전 판은 소유 타입을 빠뜨린 `{prefix}_{name}`을 기록해 같은 문서 안에서
+`zg_deinit` 같은 이름이 중복됐습니다. `abi-check`는 옛 값이 그 옛 규칙과 일치하고 새 값이
+현재 규칙과 일치하는 경우에 한해 이를 `exported C symbol metadata corrected`라는
+compatible 변경으로 보고합니다. 실제로 심볼이 옮겨간 변경은 그대로 breaking입니다.
+
 `errors.lock.json`은 Zig error set 이름에 배정한 양수 code를 보존하는 append-only
 상태입니다. 기존 이름의 삭제·변경·code 재사용은 거부됩니다. 새 오류가 생기면 Go 생성물과
 lock 변경을 같은 커밋에 포함하세요.

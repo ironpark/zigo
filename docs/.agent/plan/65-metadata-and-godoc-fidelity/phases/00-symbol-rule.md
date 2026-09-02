@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 예제 전부에서 `symbol` 중복이 0이고 헤더 이름과 일치하는 테스트 통과.
 > NEXT: none

@@ -1,4 +1,5 @@
 const std = @import("std");
+const naming = @import("naming");
 const semantic = @import("semantic");
 
 pub const Backend = enum { cgo, purego };
@@ -72,8 +73,12 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
         };
         const identity = try functionIdentity(allocator, old);
         defer allocator.free(identity);
-        if (!std.mem.eql(u8, old.symbol, new.symbol))
-            try add(allocator, &report, .breaking, identity, "exported C symbol changed");
+        if (!std.mem.eql(u8, old.symbol, new.symbol)) {
+            if (try isSymbolMetadataCorrection(allocator, current.prefix, old, new))
+                try add(allocator, &report, .compatible, identity, "exported C symbol metadata corrected")
+            else
+                try add(allocator, &report, .breaking, identity, "exported C symbol changed");
+        }
         if (!signatureEqual(old, new)) try add(allocator, &report, .breaking, identity, "signature changed");
         if (!optionalNameEqual(old.release, new.release))
             try add(allocator, &report, .breaking, identity, "release function changed");
@@ -142,6 +147,48 @@ test "backend switching is an explicit breaking ABI change" {
     try std.testing.expectEqualStrings("binding backend and callback ABI convention changed", report.changes.items[0].detail);
 }
 
+test "the one-time symbol metadata correction is compatible, a rename is not" {
+    const params: []const semantic.Parameter = &.{};
+    const base_fn: semantic.SemanticFn = .{
+        .name = "deinit",
+        .receiver = "Counter",
+        .params = params,
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_deinit",
+    };
+    var corrected = base_fn;
+    corrected.symbol = "zg_counter_deinit";
+    const base: semantic.Semantic = .{
+        .package = "demo",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+        .functions = &.{base_fn},
+    };
+    const current: semantic.Semantic = .{
+        .package = "demo",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+        .functions = &.{corrected},
+    };
+    var report = try diff(std.testing.allocator, base, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expect(!report.hasBreaking());
+    try std.testing.expectEqualStrings("exported C symbol metadata corrected", report.changes.items[0].detail);
+
+    var renamed = base_fn;
+    renamed.symbol = "zg_counter_dispose";
+    const moved: semantic.Semantic = .{
+        .package = "demo",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+        .functions = &.{renamed},
+    };
+    var rename_report = try diff(std.testing.allocator, base, moved);
+    defer rename_report.deinit(std.testing.allocator);
+    try std.testing.expect(rename_report.hasBreaking());
+    try std.testing.expectEqualStrings("exported C symbol changed", rename_report.changes.items[0].detail);
+}
+
 fn add(allocator: std.mem.Allocator, report: *Report, kind: ChangeKind, subject: []const u8, detail: []const u8) !void {
     const owned_subject = try allocator.dupe(u8, subject);
     errdefer allocator.free(owned_subject);
@@ -152,6 +199,29 @@ fn add(allocator: std.mem.Allocator, report: *Report, kind: ChangeKind, subject:
         .subject = owned_subject,
         .detail = owned_detail,
     });
+}
+
+/// Documents written before the symbol rule was unified recorded
+/// `{prefix}_{name}`, dropping the owning type. Recomputing both spellings
+/// tells that one-time metadata correction apart from a genuine rename: the
+/// exported C symbol never moved, only the field that reported it.
+fn isSymbolMetadataCorrection(
+    allocator: std.mem.Allocator,
+    prefix: []const u8,
+    old: semantic.SemanticFn,
+    new: semantic.SemanticFn,
+) !bool {
+    const legacy = try naming.legacyFunctionSymbolAlloc(allocator, prefix, old.name);
+    defer allocator.free(legacy);
+    if (!std.mem.eql(u8, old.symbol, legacy)) return false;
+    const corrected = try naming.functionSymbolAlloc(
+        allocator,
+        prefix,
+        new.receiver orelse new.namespace,
+        new.name,
+    );
+    defer allocator.free(corrected);
+    return std.mem.eql(u8, new.symbol, corrected);
 }
 
 fn findFunction(functions: []const semantic.SemanticFn, wanted: semantic.SemanticFn) ?semantic.SemanticFn {

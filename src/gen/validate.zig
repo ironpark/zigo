@@ -1,7 +1,7 @@
 const std = @import("std");
 const diagnostic = @import("diagnostic");
 const semantic = @import("semantic");
-const naming = @import("naming.zig");
+const naming = @import("naming");
 
 pub fn semanticDocument(allocator: std.mem.Allocator, document: semantic.Semantic) !void {
     if (document.ir_version != 1) return error.UnsupportedIrVersion;
@@ -583,14 +583,7 @@ fn isReleaseName(name: []const u8) bool {
 }
 
 fn functionSymbolAlloc(allocator: std.mem.Allocator, prefix: []const u8, function: semantic.SemanticFn) ![]u8 {
-    const function_name = try naming.snakeAlloc(allocator, function.name);
-    defer allocator.free(function_name);
-    if (function.receiver orelse function.namespace) |owner| {
-        const owner_name = try naming.snakeAlloc(allocator, owner);
-        defer allocator.free(owner_name);
-        return std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ prefix, owner_name, function_name });
-    }
-    return std.fmt.allocPrint(allocator, "{s}_{s}", .{ prefix, function_name });
+    return naming.functionSymbolAlloc(allocator, prefix, function.receiver orelse function.namespace, function.name);
 }
 
 fn findGeneratedAccessorCollision(allocator: std.mem.Allocator, document: semantic.Semantic) !?[]const u8 {

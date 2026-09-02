@@ -38,6 +38,55 @@ pub fn pascalAlloc(allocator: std.mem.Allocator, input: []const u8) ![]u8 {
     return output.toOwnedSlice(allocator);
 }
 
+/// The one rule for the C symbol a bound function is exported under. The
+/// header, the linker, `semantic.json` metadata and the collision check all
+/// read the name from here. Backend decorations such as purego's `_purego_v2`
+/// suffix are added by the lowering step, not by this rule.
+pub fn functionSymbolAlloc(
+    allocator: std.mem.Allocator,
+    prefix: []const u8,
+    owner: ?[]const u8,
+    function_name: []const u8,
+) ![]u8 {
+    const name = try snakeAlloc(allocator, function_name);
+    defer allocator.free(name);
+    if (owner) |value| {
+        const owner_name = try snakeAlloc(allocator, value);
+        defer allocator.free(owner_name);
+        return std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ prefix, owner_name, name });
+    }
+    return std.fmt.allocPrint(allocator, "{s}_{s}", .{ prefix, name });
+}
+
+/// The symbol `semantic.json` carried before the rule was unified: the prefix
+/// joined to the unconverted Zig function name, with the owning type dropped.
+/// `abi_diff` uses it to tell a metadata correction from a real ABI change.
+pub fn legacyFunctionSymbolAlloc(
+    allocator: std.mem.Allocator,
+    prefix: []const u8,
+    function_name: []const u8,
+) ![]u8 {
+    return std.fmt.allocPrint(allocator, "{s}_{s}", .{ prefix, function_name });
+}
+
+test "function symbols carry the owning type and normalize to snake_case" {
+    const cases = [_]struct { owner: ?[]const u8, name: []const u8, symbol: []const u8 }{
+        .{ .owner = null, .name = "liveObjects", .symbol = "zg_live_objects" },
+        .{ .owner = "Counter", .name = "deinit", .symbol = "zg_counter_deinit" },
+        .{ .owner = "EventQueue", .name = "pushEvent", .symbol = "zg_event_queue_push_event" },
+    };
+    for (cases) |case| {
+        const symbol = try functionSymbolAlloc(std.testing.allocator, "zg", case.owner, case.name);
+        defer std.testing.allocator.free(symbol);
+        try std.testing.expectEqualStrings(case.symbol, symbol);
+    }
+    // Two methods that share a name on different types must not collide, which
+    // is exactly what the pre-correction metadata rule did.
+    const legacy = try legacyFunctionSymbolAlloc(std.testing.allocator, "zg", "deinit");
+    defer std.testing.allocator.free(legacy);
+    try std.testing.expectEqualStrings("zg_deinit", legacy);
+}
+
 pub fn projectionSymbolAlloc(allocator: std.mem.Allocator, prefix: []const u8, type_name: []const u8, projection: []const u8) ![]u8 {
     const owner = try snakeAlloc(allocator, type_name);
     defer allocator.free(owner);

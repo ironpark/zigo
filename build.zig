@@ -154,7 +154,10 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/reflect/walk.zig"),
         .target = target,
         .optimize = optimize,
-        .imports = &.{.{ .name = "semantic", .module = generator_modules.semantic }},
+        .imports = &.{
+            .{ .name = "naming", .module = generator_modules.naming },
+            .{ .name = "semantic", .module = generator_modules.semantic },
+        },
     });
     const reflect_names_module = b.createModule(.{
         .root_source_file = b.path("src/reflect/names.zig"),
@@ -172,6 +175,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .imports = &.{
+            .{ .name = "naming", .module = generator_modules.naming },
             .{ .name = "semantic", .module = generator_modules.semantic },
             .{ .name = "abi", .module = generator_modules.abi },
         },
@@ -181,6 +185,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .imports = &.{
+            .{ .name = "naming", .module = generator_modules.naming },
             .{ .name = "diagnostic", .module = generator_modules.diagnostic },
             .{ .name = "semantic", .module = generator_modules.semantic },
         },
@@ -190,6 +195,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .imports = &.{
+            .{ .name = "naming", .module = generator_modules.naming },
             .{ .name = "abi", .module = generator_modules.abi },
             .{ .name = "semantic", .module = generator_modules.semantic },
         },
@@ -199,6 +205,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .imports = &.{
+            .{ .name = "naming", .module = generator_modules.naming },
             .{ .name = "abi", .module = generator_modules.abi },
             .{ .name = "semantic", .module = generator_modules.semantic },
         },
@@ -286,6 +293,23 @@ pub fn build(b: *std.Build) void {
         "examples/08-telemetry-hub/go-purego",
     });
     test_step.dependOn(&godoc_audit.step);
+    // The `symbol` field is the linker name consumers read out of
+    // `semantic.json`, so it has to stay unique and match what the generated
+    // bindings actually call.
+    const symbol_audit = b.addSystemCommand(&.{ "go", "run", "./tests/symbol_audit/main.go" });
+    symbol_audit.addArgs(&.{
+        "examples/01-scalar",
+        "examples/02-errors",
+        "examples/03-opaque",
+        "examples/04-callback",
+        "examples/05-pipeline",
+        "examples/06-camel-case",
+        "examples/07-event-queue",
+        "examples/08-telemetry-hub",
+        "examples/09-type-relations",
+        "examples/10-tagged-union",
+    });
+    test_step.dependOn(&symbol_audit.step);
     // The generated layout guard is only worth anything if a divergent layout
     // actually stops the Go build. This fixture is the golden's public struct
     // with its fields swapped, so compiling it has to fail.
@@ -621,6 +645,11 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         .target = b.graph.host,
         .optimize = .Debug,
     });
+    const naming_module = b.createModule(.{
+        .root_source_file = zigo_dependency.path("src/gen/naming.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
     const bindings_module = b.createModule(.{
         .root_source_file = options.bindings,
         .target = b.graph.host,
@@ -638,6 +667,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
             .optimize = .Debug,
             .imports = &.{
                 .{ .name = "bindings", .module = bindings_module },
+                .{ .name = "naming", .module = naming_module },
                 .{ .name = "semantic", .module = semantic_module },
             },
         }),
@@ -1053,6 +1083,7 @@ const GeneratorModules = struct {
     build_options: *std.Build.Module,
     dynamic_library: *std.Build.Module,
     semantic: *std.Build.Module,
+    naming: *std.Build.Module,
     abi: *std.Build.Module,
     diagnostic: *std.Build.Module,
     errors_lock: *std.Build.Module,
@@ -1088,6 +1119,11 @@ fn createGeneratorModules(
         .optimize = optimize,
         .imports = &.{.{ .name = "semantic", .module = semantic_module }},
     });
+    const naming_module = b.createModule(.{
+        .root_source_file = source_root.path(b, "gen/naming.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     const diagnostic_module = b.createModule(.{
         .root_source_file = source_root.path(b, "gen/diagnostic.zig"),
         .target = target,
@@ -1102,7 +1138,10 @@ fn createGeneratorModules(
         .root_source_file = source_root.path(b, "gen/abi_diff.zig"),
         .target = target,
         .optimize = optimize,
-        .imports = &.{.{ .name = "semantic", .module = semantic_module }},
+        .imports = &.{
+            .{ .name = "naming", .module = naming_module },
+            .{ .name = "semantic", .module = semantic_module },
+        },
     });
     const sync_check_module = b.createModule(.{
         .root_source_file = source_root.path(b, "gen/sync_check.zig"),
@@ -1115,6 +1154,7 @@ fn createGeneratorModules(
         .optimize = optimize,
         .imports = &.{
             .{ .name = "semantic", .module = semantic_module },
+            .{ .name = "naming", .module = naming_module },
             .{ .name = "abi", .module = abi_module },
             .{ .name = "diagnostic", .module = diagnostic_module },
             .{ .name = "errors_lock", .module = errors_lock_module },
@@ -1124,6 +1164,7 @@ fn createGeneratorModules(
         .build_options = build_options_module,
         .dynamic_library = dynamic_library_module,
         .semantic = semantic_module,
+        .naming = naming_module,
         .abi = abi_module,
         .diagnostic = diagnostic_module,
         .errors_lock = errors_lock_module,
@@ -1150,6 +1191,7 @@ fn addGeneratorWithModules(
                 .{ .name = "build_options", .module = modules.build_options },
                 .{ .name = "dynamic_library", .module = modules.dynamic_library },
                 .{ .name = "semantic", .module = modules.semantic },
+                .{ .name = "naming", .module = modules.naming },
                 .{ .name = "abi", .module = modules.abi },
                 .{ .name = "diagnostic", .module = modules.diagnostic },
                 .{ .name = "errors_lock", .module = modules.errors_lock },

@@ -18,3 +18,6 @@ coverage/
 
 # Local source references
 ref/
+
+# planr phase locks
+.planr.lock

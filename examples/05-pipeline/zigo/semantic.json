@@ -34,7 +34,7 @@
           "ref": "IntBatch"
         }
       },
-      "symbol": "zg_create"
+      "symbol": "zg_int_batch_create"
     },
     {
       "name": "push",
@@ -63,7 +63,7 @@
           "kind": "void"
         }
       },
-      "symbol": "zg_push"
+      "symbol": "zg_int_batch_push"
     },
     {
       "name": "len",
@@ -76,7 +76,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_len"
+      "symbol": "zg_int_batch_len"
     },
     {
       "name": "deinit",
@@ -86,7 +86,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_deinit"
+      "symbol": "zg_int_batch_deinit"
     },
     {
       "name": "create",
@@ -105,7 +105,7 @@
           "ref": "FloatBatch"
         }
       },
-      "symbol": "zg_create"
+      "symbol": "zg_float_batch_create"
     },
     {
       "name": "push",
@@ -132,7 +132,7 @@
           "kind": "void"
         }
       },
-      "symbol": "zg_push"
+      "symbol": "zg_float_batch_push"
     },
     {
       "name": "len",
@@ -145,7 +145,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_len"
+      "symbol": "zg_float_batch_len"
     },
     {
       "name": "deinit",
@@ -155,7 +155,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_deinit"
+      "symbol": "zg_float_batch_deinit"
     },
     {
       "name": "create",
@@ -246,7 +246,7 @@
           "ref": "Pipeline"
         }
       },
-      "symbol": "zg_create"
+      "symbol": "zg_pipeline_create"
     },
     {
       "name": "process",
@@ -284,7 +284,7 @@
           "signed": true
         }
       },
-      "symbol": "zg_process"
+      "symbol": "zg_pipeline_process"
     },
     {
       "name": "name",
@@ -302,7 +302,7 @@
         "kind": "slice"
       },
       "return_semantic": "utf8_string",
-      "symbol": "zg_name"
+      "symbol": "zg_pipeline_name"
     },
     {
       "name": "mode",
@@ -313,7 +313,7 @@
         "kind": "enum",
         "ref": "Mode"
       },
-      "symbol": "zg_mode"
+      "symbol": "zg_pipeline_mode"
     },
     {
       "name": "setEnabled",
@@ -333,7 +333,7 @@
       "return": {
         "kind": "bool"
       },
-      "symbol": "zg_setEnabled"
+      "symbol": "zg_pipeline_set_enabled"
     },
     {
       "name": "processed",
@@ -346,7 +346,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_processed"
+      "symbol": "zg_pipeline_processed"
     },
     {
       "name": "total",
@@ -359,7 +359,7 @@
         "kind": "int",
         "signed": true
       },
-      "symbol": "zg_total"
+      "symbol": "zg_pipeline_total"
     },
     {
       "name": "deinit",
@@ -369,7 +369,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_deinit"
+      "symbol": "zg_pipeline_deinit"
     },
     {
       "name": "liveBytes",
@@ -381,7 +381,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_liveBytes"
+      "symbol": "zg_live_bytes"
     },
     {
       "name": "compressionBound",
@@ -406,7 +406,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_compressionBound"
+      "symbol": "zg_compression_bound"
     }
   ],
   "ir_version": 1,

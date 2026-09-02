@@ -115,7 +115,7 @@
           "ref": "EventQueue"
         }
       },
-      "symbol": "zg_create"
+      "symbol": "zg_event_queue_create"
     },
     {
       "doc": "clone copies the queued events, name and limits into an independent\nqueue that the caller owns and must close. The copy takes its own\nobserver instead of sharing the original's, so closing either queue\nnever strands the other's callback.",
@@ -187,7 +187,7 @@
           "ref": "EventQueue"
         }
       },
-      "symbol": "zg_clone"
+      "symbol": "zg_event_queue_clone"
     },
     {
       "name": "enqueue",
@@ -228,7 +228,7 @@
           "kind": "void"
         }
       },
-      "symbol": "zg_enqueue"
+      "symbol": "zg_event_queue_enqueue"
     },
     {
       "doc": "mergeFrom appends another queue's events to this one under the current\npolicy and reports how many were taken. A null source is not an error:\nit merges nothing, which is what makes the parameter optional.",
@@ -261,7 +261,7 @@
           "signed": false
         }
       },
-      "symbol": "zg_mergeFrom"
+      "symbol": "zg_event_queue_merge_from"
     },
     {
       "name": "process",
@@ -295,7 +295,7 @@
           "signed": false
         }
       },
-      "symbol": "zg_process"
+      "symbol": "zg_event_queue_process"
     },
     {
       "name": "name",
@@ -313,7 +313,7 @@
         "kind": "slice"
       },
       "return_semantic": "utf8_string",
-      "symbol": "zg_name"
+      "symbol": "zg_event_queue_name"
     },
     {
       "doc": "A numeric slice return intentionally points at native storage. The Go\nbinding must copy it before returning so a caller cannot alias it.",
@@ -329,7 +329,7 @@
         },
         "kind": "slice"
       },
-      "symbol": "zg_sampleValues"
+      "symbol": "zg_event_queue_sample_values"
     },
     {
       "doc": "sampleValuesChecked returns the same samples as `sampleValues`, but an\nempty queue has nothing to sample and fails instead. The generated\nbinding must report that error without reading the slice output\nparameters the shim never wrote.",
@@ -353,7 +353,7 @@
           "kind": "slice"
         }
       },
-      "symbol": "zg_sampleValuesChecked"
+      "symbol": "zg_event_queue_sample_values_checked"
     },
     {
       "doc": "Sentinel byte pointers use the C string lowering and surface as Go\nstrings without a separate length parameter.",
@@ -394,7 +394,7 @@
         "kind": "slice"
       },
       "return_semantic": "c_string",
-      "symbol": "zg_echoCString"
+      "symbol": "zg_event_queue_echo_c_string"
     },
     {
       "name": "sampleCString",
@@ -414,7 +414,7 @@
         "kind": "slice"
       },
       "return_semantic": "c_string",
-      "symbol": "zg_sampleCString"
+      "symbol": "zg_event_queue_sample_c_string"
     },
     {
       "name": "extractPaths",
@@ -449,7 +449,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_extractPaths"
+      "symbol": "zg_event_queue_extract_paths"
     },
     {
       "name": "extractSentinelSlices",
@@ -485,7 +485,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_extractSentinelSlices"
+      "symbol": "zg_event_queue_extract_sentinel_slices"
     },
     {
       "name": "extractSentinelPointers",
@@ -522,7 +522,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_extractSentinelPointers"
+      "symbol": "zg_event_queue_extract_sentinel_pointers"
     },
     {
       "doc": "Hands the caller a freshly allocated buffer. Ownership moves with the\nreturn value, so the generated binding must copy it and then call\n`freeSamples` before handing the slice to Go.",
@@ -539,7 +539,7 @@
         },
         "kind": "slice"
       },
-      "symbol": "zg_extractSamples"
+      "symbol": "zg_event_queue_extract_samples"
     },
     {
       "doc": "extractSamplesChecked hands over a buffer exactly like `extractSamples`,\nbut an empty queue fails before allocating anything. Nothing is handed\nover on that path, so the generated binding must not call `freeSamples`.",
@@ -564,7 +564,7 @@
           "kind": "slice"
         }
       },
-      "symbol": "zg_extractSamplesChecked"
+      "symbol": "zg_event_queue_extract_samples_checked"
     },
     {
       "doc": "Releases a buffer produced by `extractSamples`.",
@@ -590,7 +590,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_freeSamples"
+      "symbol": "zg_event_queue_free_samples"
     },
     {
       "doc": "Accepts a batch of value snapshots so both backends exercise their\nstruct-slice input conversion path.",
@@ -619,7 +619,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_acceptStats"
+      "symbol": "zg_event_queue_accept_stats"
     },
     {
       "doc": "The same samples as `extractSamples`, written into a buffer the caller\nalready has. Nothing is allocated and nothing has to be released: the\nresult says how many entries were filled, and everything past that is\nstill whatever the caller left there.",
@@ -649,7 +649,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_extractSamplesInto"
+      "symbol": "zg_event_queue_extract_samples_into"
     },
     {
       "doc": "One `Limits` row per queued event, up to what the buffer holds. `Limits`\nhas no bool field, so both backends hand the buffer's address straight\nto the native call and neither direction copies.",
@@ -679,7 +679,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_limitsInto"
+      "symbol": "zg_event_queue_limits_into"
     },
     {
       "doc": "Fills one value snapshot per queued event. The return value is the\nnumber of output entries written, while the explicit out metadata keeps\nthe slice capacity visible in the C ABI.",
@@ -717,7 +717,7 @@
           "signed": false
         }
       },
-      "symbol": "zg_estimate"
+      "symbol": "zg_event_queue_estimate"
     },
     {
       "doc": "Returns value snapshots from native storage; the generated Go binding\nmust copy each struct before exposing the slice.",
@@ -733,7 +733,7 @@
         },
         "kind": "slice"
       },
-      "symbol": "zg_sampleStats"
+      "symbol": "zg_event_queue_sample_stats"
     },
     {
       "name": "len",
@@ -746,7 +746,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_len"
+      "symbol": "zg_event_queue_len"
     },
     {
       "name": "capacity",
@@ -759,7 +759,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_capacity"
+      "symbol": "zg_event_queue_capacity"
     },
     {
       "name": "policy",
@@ -770,7 +770,7 @@
         "kind": "enum",
         "ref": "Policy"
       },
-      "symbol": "zg_policy"
+      "symbol": "zg_event_queue_policy"
     },
     {
       "name": "dropped",
@@ -783,7 +783,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_dropped"
+      "symbol": "zg_event_queue_dropped"
     },
     {
       "name": "processed",
@@ -796,7 +796,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_processed"
+      "symbol": "zg_event_queue_processed"
     },
     {
       "name": "stats",
@@ -807,7 +807,7 @@
         "kind": "value_struct",
         "ref": "Stats"
       },
-      "symbol": "zg_stats"
+      "symbol": "zg_event_queue_stats"
     },
     {
       "name": "limits",
@@ -818,7 +818,7 @@
         "kind": "value_struct",
         "ref": "Limits"
       },
-      "symbol": "zg_limits"
+      "symbol": "zg_event_queue_limits"
     },
     {
       "name": "applyLimits",
@@ -847,7 +847,7 @@
           "kind": "void"
         }
       },
-      "symbol": "zg_applyLimits"
+      "symbol": "zg_event_queue_apply_limits"
     },
     {
       "name": "clear",
@@ -860,7 +860,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_clear"
+      "symbol": "zg_event_queue_clear"
     },
     {
       "name": "deinit",
@@ -870,7 +870,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_deinit"
+      "symbol": "zg_event_queue_deinit"
     },
     {
       "name": "liveQueues",
@@ -882,7 +882,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_liveQueues"
+      "symbol": "zg_live_queues"
     },
     {
       "doc": "Sample buffers still owned by the library. A correct binding returns this to\nzero after every `extractSamples` call.",
@@ -895,7 +895,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_liveSamples"
+      "symbol": "zg_live_samples"
     }
   ],
   "ir_version": 1,

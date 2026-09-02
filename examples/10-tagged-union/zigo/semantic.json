@@ -47,7 +47,7 @@
           "ref": "Child"
         }
       },
-      "symbol": "zg_create"
+      "symbol": "zg_child_create"
     },
     {
       "name": "get",
@@ -60,7 +60,7 @@
         "kind": "int",
         "signed": true
       },
-      "symbol": "zg_get"
+      "symbol": "zg_child_get"
     },
     {
       "name": "deinit",
@@ -70,7 +70,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_deinit"
+      "symbol": "zg_child_deinit"
     },
     {
       "name": "create",
@@ -102,7 +102,7 @@
           "ref": "Value"
         }
       },
-      "symbol": "zg_create"
+      "symbol": "zg_value_create"
     },
     {
       "name": "setNone",
@@ -112,7 +112,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_setNone"
+      "symbol": "zg_value_set_none"
     },
     {
       "name": "setFlag",
@@ -132,7 +132,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_setFlag"
+      "symbol": "zg_value_set_flag"
     },
     {
       "name": "setMode",
@@ -153,7 +153,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_setMode"
+      "symbol": "zg_value_set_mode"
     },
     {
       "name": "usePresetSamples",
@@ -163,7 +163,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_usePresetSamples"
+      "symbol": "zg_value_use_preset_samples"
     },
     {
       "name": "useEmptySamples",
@@ -173,7 +173,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_useEmptySamples"
+      "symbol": "zg_value_use_empty_samples"
     },
     {
       "name": "useMutableSamples",
@@ -183,7 +183,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_useMutableSamples"
+      "symbol": "zg_value_use_mutable_samples"
     },
     {
       "name": "setChild",
@@ -206,7 +206,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_setChild"
+      "symbol": "zg_value_set_child"
     },
     {
       "name": "borrow",
@@ -219,7 +219,7 @@
         "nullable": false,
         "ref": "Value"
       },
-      "symbol": "zg_borrow"
+      "symbol": "zg_value_borrow"
     },
     {
       "name": "deinit",
@@ -229,7 +229,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_deinit"
+      "symbol": "zg_value_deinit"
     },
     {
       "name": "create",
@@ -261,7 +261,7 @@
           "ref": "Signal"
         }
       },
-      "symbol": "zg_create"
+      "symbol": "zg_signal_create"
     },
     {
       "name": "setIdle",
@@ -271,7 +271,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_setIdle"
+      "symbol": "zg_signal_set_idle"
     },
     {
       "name": "setTicks",
@@ -294,7 +294,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_setTicks"
+      "symbol": "zg_signal_set_ticks"
     },
     {
       "name": "setLevel",
@@ -315,7 +315,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_setLevel"
+      "symbol": "zg_signal_set_level"
     },
     {
       "name": "setOffset",
@@ -338,7 +338,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_setOffset"
+      "symbol": "zg_signal_set_offset"
     },
     {
       "name": "setMode",
@@ -359,7 +359,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_setMode"
+      "symbol": "zg_signal_set_mode"
     },
     {
       "name": "setActive",
@@ -379,7 +379,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_setActive"
+      "symbol": "zg_signal_set_active"
     },
     {
       "name": "deinit",
@@ -389,7 +389,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_deinit"
+      "symbol": "zg_signal_deinit"
     },
     {
       "name": "liveValues",
@@ -401,7 +401,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_liveValues"
+      "symbol": "zg_live_values"
     },
     {
       "name": "divide",
@@ -478,7 +478,7 @@
           "kind": "void"
         }
       },
-      "symbol": "zg_panicError"
+      "symbol": "zg_panic_error"
     }
   ],
   "ir_version": 1,

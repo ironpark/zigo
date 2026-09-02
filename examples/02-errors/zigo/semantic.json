@@ -82,7 +82,7 @@
         "kind": "enum",
         "ref": "Format"
       },
-      "symbol": "zg_normalizeFormat"
+      "symbol": "zg_normalize_format"
     }
   ],
   "ir_version": 1,

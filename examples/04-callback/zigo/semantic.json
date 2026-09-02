@@ -34,7 +34,7 @@
           "ref": "FloatBuffer"
         }
       },
-      "symbol": "zg_create"
+      "symbol": "zg_float_buffer_create"
     },
     {
       "name": "push",
@@ -55,7 +55,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_push"
+      "symbol": "zg_float_buffer_push"
     },
     {
       "name": "len",
@@ -68,7 +68,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_len"
+      "symbol": "zg_float_buffer_len"
     },
     {
       "name": "deinit",
@@ -78,7 +78,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_deinit"
+      "symbol": "zg_float_buffer_deinit"
     },
     {
       "name": "create",
@@ -97,7 +97,7 @@
           "ref": "IntBuffer"
         }
       },
-      "symbol": "zg_create"
+      "symbol": "zg_int_buffer_create"
     },
     {
       "name": "push",
@@ -120,7 +120,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_push"
+      "symbol": "zg_int_buffer_push"
     },
     {
       "name": "len",
@@ -133,7 +133,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_len"
+      "symbol": "zg_int_buffer_len"
     },
     {
       "name": "deinit",
@@ -143,7 +143,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_deinit"
+      "symbol": "zg_int_buffer_deinit"
     },
     {
       "name": "create",
@@ -207,7 +207,7 @@
           "ref": "CallbackContext"
         }
       },
-      "symbol": "zg_create"
+      "symbol": "zg_callback_context_create"
     },
     {
       "name": "run",
@@ -233,7 +233,7 @@
         "kind": "int",
         "signed": true
       },
-      "symbol": "zg_run"
+      "symbol": "zg_callback_context_run"
     },
     {
       "name": "deinit",
@@ -243,7 +243,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_deinit"
+      "symbol": "zg_callback_context_deinit"
     },
     {
       "name": "panicNow",
@@ -258,7 +258,7 @@
           "kind": "void"
         }
       },
-      "symbol": "zg_panicNow"
+      "symbol": "zg_panic_now"
     },
     {
       "name": "compressionBound",
@@ -283,7 +283,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_compressionBound"
+      "symbol": "zg_compression_bound"
     },
     {
       "name": "apply",

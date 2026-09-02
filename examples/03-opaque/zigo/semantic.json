@@ -24,7 +24,7 @@
           "ref": "Context"
         }
       },
-      "symbol": "zg_create"
+      "symbol": "zg_context_create"
     },
     {
       "name": "add",
@@ -50,7 +50,7 @@
         "kind": "int",
         "signed": true
       },
-      "symbol": "zg_add"
+      "symbol": "zg_context_add"
     },
     {
       "doc": "crash panics inside a method: what leaves a handle poisoned.",
@@ -67,7 +67,7 @@
           "kind": "void"
         }
       },
-      "symbol": "zg_crash"
+      "symbol": "zg_context_crash"
     },
     {
       "name": "deinit",
@@ -77,7 +77,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_deinit"
+      "symbol": "zg_context_deinit"
     },
     {
       "name": "liveBytes",
@@ -89,7 +89,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_liveBytes"
+      "symbol": "zg_live_bytes"
     },
     {
       "doc": "Echoes UTF-8 text without changing its bytes.",

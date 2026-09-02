@@ -1,7 +1,7 @@
 const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
-const naming = @import("naming.zig");
+const naming = @import("naming");
 
 pub fn semanticDocument(
     allocator: std.mem.Allocator,
@@ -196,18 +196,18 @@ pub fn semanticDocumentForBackend(
             },
             else => try lowerValue(allocator, document, prefix, function.@"return"),
         };
-        const function_name = try naming.snakeAlloc(allocator, function.name);
-        defer allocator.free(function_name);
-        const symbol_owner = function.receiver orelse function.namespace;
-        const legacy_symbol = if (symbol_owner) |owner| blk: {
-            const receiver_name = try naming.snakeAlloc(allocator, owner);
-            defer allocator.free(receiver_name);
-            break :blk try std.fmt.allocPrint(allocator, "{s}_{s}_{s}", .{ prefix, receiver_name, function_name });
-        } else try std.fmt.allocPrint(allocator, "{s}_{s}", .{ prefix, function_name });
+        // The undecorated name comes from the shared rule that also fills
+        // `semantic.json`; only the purego callback ABI decorates it further.
+        const base_symbol = try naming.functionSymbolAlloc(
+            allocator,
+            prefix,
+            function.receiver orelse function.namespace,
+            function.name,
+        );
         const symbol = if (backend == .purego and functionHasCallback(function.*))
-            try std.fmt.allocPrint(allocator, "{s}_purego_v2", .{legacy_symbol})
+            try std.fmt.allocPrint(allocator, "{s}_purego_v2", .{base_symbol})
         else
-            legacy_symbol;
+            base_symbol;
         functions[function_index] = .{
             .symbol = symbol,
             .params = try params.toOwnedSlice(allocator),

@@ -1,4 +1,5 @@
 const std = @import("std");
+const naming = @import("naming");
 const semantic = @import("semantic");
 
 pub fn reflect(
@@ -185,7 +186,7 @@ fn appendFunction(
         .params = params,
         .receiver = receiver,
         .@"return" = reflected_return,
-        .symbol = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ prefix, function_name }),
+        .symbol = try naming.functionSymbolAlloc(allocator, prefix, receiver orelse discovered_owner, function_name),
     };
     if (@hasField(@TypeOf(metadata), "semantic")) reflected_function.return_semantic = metadata.semantic;
     if (@hasField(@TypeOf(metadata), "returns")) reflected_function.ownership = metadata.returns;

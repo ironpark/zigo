@@ -24,7 +24,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_statusCode"
+      "symbol": "zg_status_code"
     }
   ],
   "ir_version": 1,

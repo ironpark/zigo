@@ -42,7 +42,7 @@
           "ref": "Counter"
         }
       },
-      "symbol": "zg_create"
+      "symbol": "zg_counter_create"
     },
     {
       "name": "get",
@@ -55,7 +55,7 @@
         "kind": "int",
         "signed": true
       },
-      "symbol": "zg_get"
+      "symbol": "zg_counter_get"
     },
     {
       "name": "add",
@@ -81,7 +81,7 @@
         "kind": "int",
         "signed": true
       },
-      "symbol": "zg_add"
+      "symbol": "zg_counter_add"
     },
     {
       "name": "deinit",
@@ -91,7 +91,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_deinit"
+      "symbol": "zg_counter_deinit"
     },
     {
       "name": "create",
@@ -110,7 +110,7 @@
           "ref": "Accumulator"
         }
       },
-      "symbol": "zg_create"
+      "symbol": "zg_accumulator_create"
     },
     {
       "doc": "Adds the current value of another exposed opaque type.",
@@ -137,7 +137,7 @@
         "kind": "int",
         "signed": true
       },
-      "symbol": "zg_absorb"
+      "symbol": "zg_accumulator_absorb"
     },
     {
       "name": "total",
@@ -150,7 +150,7 @@
         "kind": "int",
         "signed": true
       },
-      "symbol": "zg_total"
+      "symbol": "zg_accumulator_total"
     },
     {
       "name": "deinit",
@@ -160,7 +160,7 @@
       "return": {
         "kind": "void"
       },
-      "symbol": "zg_deinit"
+      "symbol": "zg_accumulator_deinit"
     },
     {
       "name": "liveObjects",
@@ -172,7 +172,7 @@
         "kind": "int",
         "signed": false
       },
-      "symbol": "zg_liveObjects"
+      "symbol": "zg_live_objects"
     }
   ],
   "ir_version": 1,
