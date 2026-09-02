@@ -3473,8 +3473,10 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     for (program.types) |declaration| {
         if (!isHandleType(declaration)) continue;
         const owns_callbacks = typeOwnsCallbacks(program, declaration.name);
-        const auto_cleanup = isAutoCleanupType(program, declaration.name);
-        if (constructorForType(program, declaration.name) != null) {
+        // Owning a constructor is what gives a handle Close and the cleanup net.
+        const constructor = constructorForType(program, declaration.name);
+        const auto_cleanup = constructor != null;
+        if (auto_cleanup) {
             try writer.print("// {s} is a caller-owned native handle. Call Close when it is no longer needed.\n", .{declaration.name});
         } else {
             try writer.print("// {s} represents a native Zig handle.\n", .{declaration.name});
@@ -3505,7 +3507,6 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         // One receiver name per type, matching the methods emitted elsewhere.
         const recv = try receiverVariableAlloc(allocator, declaration.name);
         defer allocator.free(recv);
-        const has_close = constructorForType(program, declaration.name) != null;
         // A call pins the handle open with zigoAcquire and lets go with
         // zigoRelease; `mu` is dropped in between, so nothing that happens
         // inside native can make another goroutine wait on this handle.
@@ -3520,16 +3521,13 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                 "\t{0s}.active++\n\treturn {0s}.ptr, nil\n}}\n\n",
             .{ recv, declaration.name },
         );
-        if (has_close) {
-            try writer.print(
-                "func ({0s} *{1s}) zigoRelease() {{\n\tif {0s} == nil {{\n\t\treturn\n\t}}\n\t{0s}.mu.Lock()\n\t{0s}.active--\n\tstate, release := {0s}.zigoTakeLocked()\n\t{0s}.mu.Unlock()\n\tif release {{\n\t\tcleanup{1s}(state)\n\t}}\n}}\n\n",
-                .{ recv, declaration.name },
-            );
+        // The last call out of a closed handle is the one that releases it, so
+        // only a handle with Close has anything to do after the decrement.
+        try writer.print("func ({0s} *{1s}) zigoRelease() {{\n\tif {0s} == nil {{\n\t\treturn\n\t}}\n\t{0s}.mu.Lock()\n\t{0s}.active--\n", .{ recv, declaration.name });
+        if (auto_cleanup) {
+            try writer.print("\tstate, release := {0s}.zigoTakeLocked()\n\t{0s}.mu.Unlock()\n\tif release {{\n\t\tcleanup{1s}(state)\n\t}}\n}}\n\n", .{ recv, declaration.name });
         } else {
-            try writer.print(
-                "func ({0s} *{1s}) zigoRelease() {{\n\tif {0s} == nil {{\n\t\treturn\n\t}}\n\t{0s}.mu.Lock()\n\t{0s}.active--\n\t{0s}.mu.Unlock()\n}}\n\n",
-                .{ recv, declaration.name },
-            );
+            try writer.print("\t{0s}.mu.Unlock()\n}}\n\n", .{recv});
         }
         try writer.print(
             "// zigoPoison marks {0s} unusable: a Zig panic unwound through native frames\n" ++
@@ -3550,8 +3548,8 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                 "func ({0s} *{1s}Ref) zigoPoison(cause *NativePanicError) {{\n\tif {0s} != nil && {0s}.parent != nil {{\n\t\t{0s}.parent.zigoPoison(cause)\n\t}}\n}}\n\n",
             .{ recv, declaration.name },
         );
-        if (constructorForType(program, declaration.name)) |constructor| {
-            const raw_deinit = try rawNameForSemanticAlloc(allocator, program, constructor.deinit, constructor.type) orelse continue;
+        if (constructor) |owned| {
+            const raw_deinit = try rawNameForSemanticAlloc(allocator, program, owned.deinit, owned.type) orelse continue;
             defer allocator.free(raw_deinit);
             const private_name = try naming.camelAlloc(allocator, declaration.name);
             defer allocator.free(private_name);
@@ -3645,7 +3643,7 @@ fn renderGoHandleRuntime(writer: *std.Io.Writer, program: abi.Program) !void {
             "\tif absent {\n" ++
             "\t\treturn nil, nil\n" ++
             "\t}\n" ++
-            "\treturn value.zigoAcquire(operation)\n" ++
+            "\treturn zigoCheckedPointer(operation, value)\n" ++
             "}\n\n" ++
             "// zigoPoisonAfterPanic marks every handle a call reached unusable when that\n" ++
             "// call ended in a Zig panic: the panic unwound the native frames without\n" ++
@@ -3852,9 +3850,7 @@ fn writeErrorForCode(
     go_names: []const []const u8,
     operation: []const u8,
 ) !void {
-    var handle_count: usize = @intFromBool(function.receiver != null);
-    for (function.params) |parameter| handle_count += @intFromBool(parameter.type == .opaque_ptr);
-    if (handle_count == 0) return writer.print("errorForCode(\"{s}\", code)\n", .{operation});
+    if (function.receiver == null and !hasOpaqueParameter(function)) return writer.print("errorForCode(\"{s}\", code)\n", .{operation});
     try writer.print("zigoPoisonAfterPanic(errorForCode(\"{s}\", code)", .{operation});
     if (function.receiver) |receiver| {
         const receiver_name = try receiverVariableAlloc(allocator, receiver);

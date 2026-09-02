@@ -23,7 +23,7 @@ func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsaf
 	if absent {
 		return nil, nil
 	}
-	return value.zigoAcquire(operation)
+	return zigoCheckedPointer(operation, value)
 }
 
 // zigoPoisonAfterPanic marks every handle a call reached unusable when that
