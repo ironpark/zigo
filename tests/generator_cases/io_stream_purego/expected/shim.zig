@@ -135,6 +135,17 @@ const ZigoReaderAdapter = struct {
     }
 };
 
+fn zg_sink_write_stream(self: *target.Sink, bytes: []const u8) std.Io.Writer.Error!isize {
+    try target.Sink.writer(self).writeAll(bytes);
+    return @intCast(bytes.len);
+}
+fn zg_sink_flush_stream(self: *target.Sink) std.Io.Writer.Error!void {
+    return target.Sink.writer(self).flush();
+}
+fn zg_sink_read_stream(self: *target.Sink, buffer: []u8) std.Io.Reader.ShortError!isize {
+    return @intCast(try target.Sink.reader(self).readSliceShort(buffer));
+}
+
 export fn zg_document_dump_purego_v2_impl(self: *target.Document, w_fn: *const fn ([*c]const u8, usize, usize) callconv(.c) i32, w_userdata: usize) i32 {
     var w_stream_buffer: [65536]u8 = undefined;
     var w_stream: ZigoWriterAdapter = .init(&w_stream_buffer, @ptrCast(w_fn), w_userdata);
@@ -161,4 +172,24 @@ export fn zg_banner_purego_v2_impl(out_fn: *const fn ([*c]const u8, usize, usize
     var out_stream: ZigoWriterAdapter = .init(out_stream_buffer, @ptrCast(out_fn), out_userdata);
     defer out_stream.interface.flush() catch {};
     target.banner(&out_stream.interface, width);
+}
+export fn zg_sink_write_impl(self: *target.Sink, bytes_ptr: [*c]const u8, bytes_len: usize, out_result: *isize) i32 {
+    const result = zg_sink_write_stream(self, if (bytes_len == 0) &.{} else bytes_ptr[0..bytes_len]) catch |err| return switch (err) {
+        error.WriteFailed => 1,
+    };
+    out_result.* = result;
+    return 0;
+}
+export fn zg_sink_flush_impl(self: *target.Sink) i32 {
+    zg_sink_flush_stream(self) catch |err| return switch (err) {
+        error.WriteFailed => 1,
+    };
+    return 0;
+}
+export fn zg_sink_read_impl(self: *target.Sink, buffer_ptr: [*c]u8, buffer_len: usize, out_result: *isize) i32 {
+    const result = zg_sink_read_stream(self, if (buffer_len == 0) &.{} else buffer_ptr[0..buffer_len]) catch |err| return switch (err) {
+        error.ReadFailed => 2,
+    };
+    out_result.* = result;
+    return 0;
 }

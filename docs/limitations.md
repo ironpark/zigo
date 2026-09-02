@@ -75,11 +75,14 @@
 - native 메모리를 그대로 들여다보는 뷰 반환은 제공하지 않는다. 반환된 slice의 수명이
   native 객체의 수명에 묶이면 Go 쪽에서 그 규칙을 강제할 방법이 없기 때문이며, 복사를
   피하고 싶다면 `.direction = .out` 파라미터로 결과를 받는다.
-- `*std.Io.Writer`/`*std.Io.Reader`는 파라미터 자리에서만, call-scoped로만 쓸 수 있다. shim이
-  만드는 어댑터가 호출 스택에 살기 때문이다. 반환 타입, extern struct 필드, 콜백 시그니처,
-  슬라이스 원소, optional, `.retention = .retained`는 `ZIGO023`으로 거부된다. Zig가 스트림을
-  돌려주는 API, handle에 보관되는 스트림, `std.Io.File`/fd 전달, `sendFile` 최적화,
-  Go `io.ReaderAt`/`io.Seeker`는 지원하지 않는다.
+- `*std.Io.Writer`/`*std.Io.Reader`를 **받는** 자리는 파라미터뿐이고 call-scoped만 된다. shim이
+  만드는 어댑터가 호출 스택에 살기 때문이다. extern struct 필드, 콜백 시그니처, 슬라이스
+  원소, optional, `.retention = .retained`는 `ZIGO023`으로 거부된다. handle에 보관되는 스트림,
+  `std.Io.File`/fd 전달, `sendFile` 최적화, Go `io.ReaderAt`/`io.Seeker`는 지원하지 않는다.
+- 스트림을 **내주는** 쪽(`fn writer(self) *std.Io.Writer`)은 파라미터 없는 메서드여야 하고
+  스트림이 반환 타입 그 자체여야 한다(error union·optional 안은 `ZIGO023`). 포인터는 Go로
+  건너가지 않고 handle의 `Write`/`Flush`/`Read`가 생성되며, 매 호출마다 접근자를 다시
+  부른다. 한 타입이 같은 방향의 스트림을 둘 내주면 Go 메서드 이름이 겹쳐 `ZIGO024`다.
 - `.go_error` 콜백이 error를 돌려주면 native 쪽은 결과로 `-5`를 받는다. 대상 Zig 함수가
   그것을 어떻게 다루는지는 zigo가 강제하지 않는다 — 계속 콜백을 부르는 함수는 계속 불린다.
   Go error가 나면 멈춰야 하는 API라면 Zig 쪽이 `-5`를 검사해야 한다. `go_error`는 하나의

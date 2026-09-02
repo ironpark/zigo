@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T11:03:38Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: fixture·예제 테스트 통과, 기존 골든 불변.
 > NEXT: none

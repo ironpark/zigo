@@ -164,13 +164,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .hint = "expose a release, clear, close, destroy, or deinit function for the retained value",
             };
         }
-        if (containsIoStream(function.@"return")) return .{
-            .severity = .@"error",
-            .code = "ZIGO023",
-            .message = "`*std.Io.Writer` and `*std.Io.Reader` are only supported as whole parameters",
-            .site = functionSiteFor(function, try functionDeclarationAlloc(allocator, function)),
-            .hint = "the shim adapter lives on the call stack, so a stream cannot be returned; take the stream as a parameter instead",
-        };
+        if (try streamReturnIssue(allocator, function)) |issue| return issue;
         if (containsTaggedUnionValue(document, function.@"return")) return .{
             .severity = .@"error",
             .code = "ZIGO006",
@@ -458,6 +452,39 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
 /// most likely to have caused them. A stream is a call-scoped adapter the shim
 /// builds on its own stack around a Go callback, which is what every one of
 /// these limits comes back to: nothing may outlive the call, and nothing may
+/// A method may hand a stream out: `fn writer(self) *std.Io.Writer` becomes
+/// Go `Write`/`Flush`, and `fn reader(self) *std.Io.Reader` becomes `Read`.
+/// The pointer never crosses -- each generated operation asks the object for
+/// the stream again -- so the rules are about what makes that possible: it has
+/// to be the whole return of a method that takes nothing else, because there
+/// is no call for extra arguments to travel on.
+fn streamReturnIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !?diagnostic.Diagnostic {
+    if (!containsIoStream(function.@"return")) return null;
+    const declaration = try functionDeclarationAlloc(allocator, function);
+    if (function.@"return" != .io_stream) return .{
+        .severity = .@"error",
+        .code = "ZIGO023",
+        .message = "`*std.Io.Writer` and `*std.Io.Reader` can only be returned on their own",
+        .site = functionSiteFor(function, declaration),
+        .hint = "return the stream directly from a method; it cannot travel inside an error union, an optional, a slice, or a struct",
+    };
+    if (function.receiver == null) return .{
+        .severity = .@"error",
+        .code = "ZIGO023",
+        .message = "only a method can return a `*std.Io.Writer` or `*std.Io.Reader`",
+        .site = functionSiteFor(function, declaration),
+        .hint = "the generated operations re-fetch the stream from the receiver on every call, so there has to be a receiver",
+    };
+    if (function.params.len != 0) return .{
+        .severity = .@"error",
+        .code = "ZIGO023",
+        .message = "a stream-returning method cannot take parameters",
+        .site = functionSiteFor(function, declaration),
+        .hint = "the generated `Write`/`Read`/`Flush` methods have nowhere to carry them; take the arguments on the method that uses the stream instead",
+    };
+    return null;
+}
+
 /// `go_error` widens the Go callback type to `(i32, error)` and spends the
 /// native result to say so: the trampoline returns `-5` instead of whatever
 /// the callback computed. That only works when the native result is an `i32`
@@ -2592,6 +2619,7 @@ test "stream parameters are accepted only as whole call-scoped parameters" {
     const reader: semantic.TypeNode = .{ .io_stream = .{ .direction = .reader } };
     const stream_child: semantic.TypeNode = writer;
     const stream_return: semantic.TypeNode = reader;
+    var fallible_stream: semantic.TypeNode = reader;
     var callback_return: semantic.TypeNode = .{ .void = {} };
     var callback_params = [_]semantic.TypeNode{writer};
     const count: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
@@ -2618,6 +2646,7 @@ test "stream parameters are accepted only as whole call-scoped parameters" {
     try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(std.testing.allocator, accepted));
 
     const rejected = [_]struct { document: semantic.Semantic, message: []const u8 }{
+        // A free function has no object to ask for the stream again.
         .{ .document = .{
             .functions = &.{.{
                 .name = "open",
@@ -2628,7 +2657,33 @@ test "stream parameters are accepted only as whole call-scoped parameters" {
             .package = "stream",
             .prefix = "zg",
             .zig_version = "0.16.0",
-        }, .message = "`*std.Io.Writer` and `*std.Io.Reader` are only supported as whole parameters" },
+        }, .message = "only a method can return a `*std.Io.Writer` or `*std.Io.Reader`" },
+        // The generated `Write`/`Read`/`Flush` have nowhere to carry them.
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "open",
+                .params = &.{.{ .name = "mode", .type = count }},
+                .receiver = "Doc",
+                .@"return" = stream_return,
+                .symbol = "zg_doc_open",
+            }},
+            .package = "stream",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .message = "a stream-returning method cannot take parameters" },
+        // Only on its own: an error union has no lowering for the pointer.
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "open",
+                .params = &.{},
+                .receiver = "Doc",
+                .@"return" = .{ .error_union = .{ .error_set = &.{"Closed"}, .payload = &fallible_stream } },
+                .symbol = "zg_doc_open",
+            }},
+            .package = "stream",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .message = "`*std.Io.Writer` and `*std.Io.Reader` can only be returned on their own" },
         .{ .document = .{
             .functions = &.{.{
                 .name = "visit",

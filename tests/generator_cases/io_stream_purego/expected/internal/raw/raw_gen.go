@@ -49,6 +49,9 @@ type nativeBindings struct {
 	fnDocumentDump func(unsafe.Pointer, uintptr, uintptr) int32
 	fnDocumentLoad func(unsafe.Pointer, uintptr, unsafe.Pointer, uintptr, uintptr, *uintptr) int32
 	fnBanner func(uintptr, uintptr, int32)
+	fnSinkWrite func(unsafe.Pointer, unsafe.Pointer, uintptr, *int) int32
+	fnSinkFlush func(unsafe.Pointer) int32
+	fnSinkRead func(unsafe.Pointer, unsafe.Pointer, uintptr, *int) int32
 }
 
 type callbackEntry struct {
@@ -271,11 +274,20 @@ func loadCandidate(path string) error {
 	if err != nil { return fail("zg_document_load_purego_v2", err) }
 	addrBanner, err := resolveSymbol(handle, "zg_banner_purego_v2")
 	if err != nil { return fail("zg_banner_purego_v2", err) }
+	addrSinkWrite, err := resolveSymbol(handle, "zg_sink_write")
+	if err != nil { return fail("zg_sink_write", err) }
+	addrSinkFlush, err := resolveSymbol(handle, "zg_sink_flush")
+	if err != nil { return fail("zg_sink_flush", err) }
+	addrSinkRead, err := resolveSymbol(handle, "zg_sink_read")
+	if err != nil { return fail("zg_sink_read", err) }
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.fnDocumentDump, addrDocumentDump)
 	purego.RegisterFunc(&next.fnDocumentLoad, addrDocumentLoad)
 	purego.RegisterFunc(&next.fnBanner, addrBanner)
+	purego.RegisterFunc(&next.fnSinkWrite, addrSinkWrite)
+	purego.RegisterFunc(&next.fnSinkFlush, addrSinkFlush)
+	purego.RegisterFunc(&next.fnSinkRead, addrSinkRead)
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -325,4 +337,28 @@ func DocumentLoad(self unsafe.Pointer, rCallback, rHandle uintptr, rData []byte)
 // Banner calls the generated purego ABI wrapper for zg_banner_purego_v2.
 func Banner(outCallback, outHandle uintptr, width int32) {
 	bindings().fnBanner(outCallback, outHandle, width)
+}
+
+// SinkWrite calls the generated purego ABI wrapper for zg_sink_write.
+func SinkWrite(self unsafe.Pointer, bytes []uint8) (int, int32) {
+	var bytesPtr unsafe.Pointer
+	if len(bytes) != 0 { bytesPtr = unsafe.Pointer(&bytes[0]) }
+	var outResult int
+	code := bindings().fnSinkWrite(self, bytesPtr, uintptr(len(bytes)), &outResult)
+	return int(outResult), code
+}
+
+// SinkFlush calls the generated purego ABI wrapper for zg_sink_flush.
+func SinkFlush(self unsafe.Pointer) int32 {
+	code := bindings().fnSinkFlush(self)
+	return code
+}
+
+// SinkRead calls the generated purego ABI wrapper for zg_sink_read.
+func SinkRead(self unsafe.Pointer, buffer []uint8) (int, int32) {
+	var bufferPtr unsafe.Pointer
+	if len(buffer) != 0 { bufferPtr = unsafe.Pointer(&buffer[0]) }
+	var outResult int
+	code := bindings().fnSinkRead(self, bufferPtr, uintptr(len(buffer)), &outResult)
+	return int(outResult), code
 }

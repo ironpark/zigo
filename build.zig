@@ -193,6 +193,12 @@ pub fn build(b: *std.Build) void {
             .{ .name = "semantic", .module = generator_modules.semantic },
         },
     });
+    const stream_return_module = b.createModule(.{
+        .root_source_file = b.path("src/gen/stream_return.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "semantic", .module = generator_modules.semantic }},
+    });
     const lower_module = b.createModule(.{
         .root_source_file = b.path("src/gen/lower.zig"),
         .target = target,
@@ -271,6 +277,8 @@ pub fn build(b: *std.Build) void {
     const run_validate_tests = b.addRunArtifact(validate_tests);
     const lower_tests = b.addTest(.{ .root_module = lower_module, .filters = test_filters });
     const run_lower_tests = b.addRunArtifact(lower_tests);
+    const stream_return_tests = b.addTest(.{ .root_module = stream_return_module, .filters = test_filters });
+    const run_stream_return_tests = b.addRunArtifact(stream_return_tests);
     const report_tests = b.addTest(.{ .root_module = report_module, .filters = test_filters });
     const run_report_tests = b.addRunArtifact(report_tests);
     const doctor_tests = b.addTest(.{ .root_module = doctor_module, .filters = test_filters });
@@ -352,6 +360,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_emit_tests.step);
     test_step.dependOn(&run_validate_tests.step);
     test_step.dependOn(&run_lower_tests.step);
+    test_step.dependOn(&run_stream_return_tests.step);
     test_step.dependOn(&run_report_tests.step);
     test_step.dependOn(&run_doctor_tests.step);
     test_step.dependOn(&run_dynamic_library_tests.step);
@@ -383,6 +392,7 @@ pub fn build(b: *std.Build) void {
     check_step.dependOn(&emit_tests.step);
     check_step.dependOn(&validate_tests.step);
     check_step.dependOn(&lower_tests.step);
+    check_step.dependOn(&stream_return_tests.step);
     check_step.dependOn(&report_tests.step);
     check_step.dependOn(&doctor_tests.step);
     check_step.dependOn(&dynamic_library_tests.step);

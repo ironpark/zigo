@@ -23,6 +23,14 @@
 
 ### Added
 
+- Zig 메서드가 스트림을 **내주는** 방향을 지원합니다. `fn writer(self) *std.Io.Writer`는
+  handle에 `Write([]byte) (int, error)`와 `Flush() error`를, `fn reader(self) *std.Io.Reader`는
+  `Read([]byte) (int, error)`(끝은 `io.EOF`)를 생성하므로 `io.Copy`가 양방향으로 그대로
+  동작합니다. 포인터는 Go로 건너가지 않고 shim이 매 호출마다 접근자를 다시 부르므로 보관된
+  스트림이 상할 일이 없고, 수명은 receiver handle의 기존 획득·해제·poison 규칙이 답합니다.
+  스트림 반환은 파라미터 없는 메서드에서 반환 타입 그 자체여야 하며, 아니면 `ZIGO023`입니다.
+  (계획 72)
+
 - Go 콜백이 `error`를 돌려줄 수 있습니다. `param_meta.<이름>.go_error = true`를 켜면 Go 콜백
   타입이 `func(...) (i32, error)`가 되고, 콜백이 돌려준 error는 native 호출이 끝난 뒤 공개
   함수에서 `*CallbackError`(`errors.Is(err, ErrCallbackFailed)`, `Unwrap`으로 원래 error)로

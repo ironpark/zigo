@@ -199,3 +199,71 @@ func Tee(rHandle uintptr, rData []byte, wHandle uintptr) (uint, int32) {
 	code := int32(C.zg_tee(rDataPtr, C.size_t(len(rData)), C.size_t(rHandle), C.size_t(wHandle), &outResult))
 	return uint(outResult), code
 }
+
+// SinkCreate calls the generated C ABI wrapper for zg_sink_create.
+func SinkCreate() (unsafe.Pointer, int32) {
+	var outResult *C.zg_sink
+	code := int32(C.zg_sink_create(&outResult))
+	return unsafe.Pointer(outResult), code
+}
+
+// SinkWrite calls the generated C ABI wrapper for zg_sink_write.
+func SinkWrite(self unsafe.Pointer, bytes []uint8) (int, int32) {
+	var bytesZero C.uint8_t
+	bytesPtr := &bytesZero
+	if len(bytes) != 0 {
+		bytesPtr = (*C.uint8_t)(unsafe.Pointer(&bytes[0]))
+	}
+	var outResult C.ptrdiff_t
+	code := int32(C.zg_sink_write((*C.zg_sink)(self), bytesPtr, C.size_t(len(bytes)), &outResult))
+	return int(outResult), code
+}
+
+// SinkFlush calls the generated C ABI wrapper for zg_sink_flush.
+func SinkFlush(self unsafe.Pointer) int32 {
+	code := int32(C.zg_sink_flush((*C.zg_sink)(self)))
+	return code
+}
+
+// SinkCount calls the generated C ABI wrapper for zg_sink_count.
+func SinkCount(self unsafe.Pointer) (uint, int32) {
+	var outResult C.size_t
+	code := int32(C.zg_sink_count((*C.zg_sink)(self), &outResult))
+	return uint(outResult), code
+}
+
+// SinkDeinit calls the generated C ABI wrapper for zg_sink_deinit.
+func SinkDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_sink_deinit((*C.zg_sink)(self)))
+	return code
+}
+
+// SourceCreate calls the generated C ABI wrapper for zg_source_create.
+func SourceCreate(bytes []uint8) (unsafe.Pointer, int32) {
+	var bytesZero C.uint8_t
+	bytesPtr := &bytesZero
+	if len(bytes) != 0 {
+		bytesPtr = (*C.uint8_t)(unsafe.Pointer(&bytes[0]))
+	}
+	var outResult *C.zg_source
+	code := int32(C.zg_source_create(bytesPtr, C.size_t(len(bytes)), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+
+// SourceRead calls the generated C ABI wrapper for zg_source_read.
+func SourceRead(self unsafe.Pointer, buffer []uint8) (int, int32) {
+	var bufferZero C.uint8_t
+	bufferPtr := &bufferZero
+	if len(buffer) != 0 {
+		bufferPtr = (*C.uint8_t)(unsafe.Pointer(&buffer[0]))
+	}
+	var outResult C.ptrdiff_t
+	code := int32(C.zg_source_read((*C.zg_source)(self), bufferPtr, C.size_t(len(buffer)), &outResult))
+	return int(outResult), code
+}
+
+// SourceDeinit calls the generated C ABI wrapper for zg_source_deinit.
+func SourceDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_source_deinit((*C.zg_source)(self)))
+	return code
+}

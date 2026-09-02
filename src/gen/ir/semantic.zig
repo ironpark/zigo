@@ -333,9 +333,27 @@ pub const SourceLocation = struct {
     column: u32,
 };
 
+/// One operation of a stream a Zig method hands out. A `fn writer(self)
+/// *std.Io.Writer` has no C representation of its own -- the pointer belongs
+/// to the object and outliving it is undefined -- so it is expanded into the
+/// operations Go needs to satisfy `io.Writer`/`io.Reader`, each of which asks
+/// the object for the stream again rather than storing what it got.
+pub const StreamAccessor = struct {
+    /// The Zig method that hands the stream over, called afresh every time.
+    accessor: []const u8,
+    direction: StreamDirection,
+    op: Op,
+
+    pub const Op = enum { write, flush, read };
+};
+
 pub const SemanticFn = struct {
     /// Set on the two halves of a boxed constructor pair.
     boxed: ?Boxed = null,
+    /// Set on a function synthesized from a stream-returning method. Never
+    /// present in a `semantic.json` on disk: the document records the Zig
+    /// method, and the expansion happens between parsing and lowering.
+    stream_accessor: ?StreamAccessor = null,
     doc: ?[]const u8 = null,
     has_comptime_params: ?bool = null,
     name: []const u8,

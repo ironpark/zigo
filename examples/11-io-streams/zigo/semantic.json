@@ -4,6 +4,16 @@
       "deinit": "deinit",
       "init": "create",
       "type": "Document"
+    },
+    {
+      "deinit": "deinit",
+      "init": "create",
+      "type": "Sink"
+    },
+    {
+      "deinit": "deinit",
+      "init": "create",
+      "type": "Source"
     }
   ],
   "doc": "A library that reads and writes through `std.Io` streams rather than\nthrough buffers it owns. Everything here takes a `*std.Io.Writer` or a\n`*std.Io.Reader` and never learns where the bytes came from or went.",
@@ -195,7 +205,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 70,
+            "line": 122,
             "column": 15
           },
           "type": {
@@ -208,7 +218,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 70,
+            "line": 122,
             "column": 34
           },
           "type": {
@@ -230,7 +240,7 @@
       },
       "source": {
         "path": "./examples/11-io-streams/src/root.zig",
-        "line": 70,
+        "line": 122,
         "column": 8
       },
       "symbol": "zg_banner"
@@ -246,7 +256,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 78,
+            "line": 130,
             "column": 12
           },
           "type": {
@@ -259,7 +269,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 78,
+            "line": 130,
             "column": 31
           },
           "type": {
@@ -282,10 +292,158 @@
       },
       "source": {
         "path": "./examples/11-io-streams/src/root.zig",
-        "line": 78,
+        "line": 130,
         "column": 8
       },
       "symbol": "zg_tee"
+    },
+    {
+      "name": "create",
+      "namespace": "Sink",
+      "ownership": "caller",
+      "params": [],
+      "return": {
+        "error_set": [
+          "OutOfMemory"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "Sink"
+        }
+      },
+      "source": {
+        "path": "./examples/11-io-streams/src/root.zig",
+        "line": 75,
+        "column": 12
+      },
+      "symbol": "zg_sink_create"
+    },
+    {
+      "doc": "Re-fetched by every generated operation rather than stored anywhere.",
+      "name": "writer",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Sink",
+      "return": {
+        "kind": "io_writer"
+      },
+      "source": {
+        "path": "./examples/11-io-streams/src/root.zig",
+        "line": 87,
+        "column": 12
+      },
+      "symbol": "zg_sink_writer"
+    },
+    {
+      "name": "count",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Sink",
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "source": {
+        "path": "./examples/11-io-streams/src/root.zig",
+        "line": 91,
+        "column": 12
+      },
+      "symbol": "zg_sink_count"
+    },
+    {
+      "name": "deinit",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Sink",
+      "return": {
+        "kind": "void"
+      },
+      "source": {
+        "path": "./examples/11-io-streams/src/root.zig",
+        "line": 81,
+        "column": 12
+      },
+      "symbol": "zg_sink_deinit"
+    },
+    {
+      "name": "create",
+      "namespace": "Source",
+      "ownership": "caller",
+      "params": [
+        {
+          "direction": "in",
+          "name": "bytes",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 102,
+            "column": 19
+          },
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "OutOfMemory"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "Source"
+        }
+      },
+      "source": {
+        "path": "./examples/11-io-streams/src/root.zig",
+        "line": 102,
+        "column": 12
+      },
+      "symbol": "zg_source_create"
+    },
+    {
+      "name": "reader",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Source",
+      "return": {
+        "kind": "io_reader"
+      },
+      "source": {
+        "path": "./examples/11-io-streams/src/root.zig",
+        "line": 115,
+        "column": 12
+      },
+      "symbol": "zg_source_reader"
+    },
+    {
+      "name": "deinit",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Source",
+      "return": {
+        "kind": "void"
+      },
+      "source": {
+        "path": "./examples/11-io-streams/src/root.zig",
+        "line": 110,
+        "column": 12
+      },
+      "symbol": "zg_source_deinit"
     }
   ],
   "ir_version": 1,
@@ -298,6 +456,20 @@
       "kind": "opaque",
       "name": "Document",
       "zig_path": "root.Document"
+    },
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "opaque",
+      "name": "Sink",
+      "zig_path": "root.Sink"
+    },
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "opaque",
+      "name": "Source",
+      "zig_path": "root.Source"
     }
   ],
   "zig_version": "0.16.0"

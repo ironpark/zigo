@@ -76,3 +76,39 @@ ZIGO_EXPORT void zg_banner_purego_v2(int32_t (*out_fn)(const uint8_t *, size_t, 
 zg_banner_purego_v2_impl(out_fn, out_userdata, width);
     zg_panic_active = 0;
 }
+
+int32_t zg_sink_write_impl(zg_sink * self, const uint8_t * bytes_ptr, size_t bytes_len, ptrdiff_t * out_result);
+ZIGO_EXPORT int32_t zg_sink_write(zg_sink * self, const uint8_t * bytes_ptr, size_t bytes_len, ptrdiff_t * out_result) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return -2;
+    }
+    int32_t result = zg_sink_write_impl(self, bytes_ptr, bytes_len, out_result);
+    zg_panic_active = 0;
+    return result;
+}
+
+int32_t zg_sink_flush_impl(zg_sink * self);
+ZIGO_EXPORT int32_t zg_sink_flush(zg_sink * self) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return -2;
+    }
+    int32_t result = zg_sink_flush_impl(self);
+    zg_panic_active = 0;
+    return result;
+}
+
+int32_t zg_sink_read_impl(zg_sink * self, uint8_t * buffer_ptr, size_t buffer_len, ptrdiff_t * out_result);
+ZIGO_EXPORT int32_t zg_sink_read(zg_sink * self, uint8_t * buffer_ptr, size_t buffer_len, ptrdiff_t * out_result) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return -2;
+    }
+    int32_t result = zg_sink_read_impl(self, buffer_ptr, buffer_len, out_result);
+    zg_panic_active = 0;
+    return result;
+}

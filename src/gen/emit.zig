@@ -203,6 +203,7 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
     }
     if (wrote_prelude) try writer.writeByte('\n');
     if (programHasStreams(program)) try writer.writeAll(stream_adapters);
+    try renderStreamAccessorHelpers(allocator, writer, program);
     for (program.functions) |function| {
         try writer.print("export fn {s}_impl(", .{function.symbol});
         for (function.params, 0..) |parameter, index| {
@@ -604,6 +605,49 @@ fn renderPanicSource(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
     }
 }
 
+/// One helper per operation of a stream a method hands out. The helper is
+/// what makes the operation an ordinary Zig call the rest of the shim can
+/// render: it asks the object for the stream, uses it, and returns the count
+/// as the `isize` Go wants. The stream is fetched inside the helper and
+/// nowhere else, so nothing outlives the call it was fetched for.
+fn renderStreamAccessorHelpers(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
+    var wrote = false;
+    for (program.functions) |function| {
+        const accessor = function.origin.stream_accessor orelse continue;
+        const receiver = function.origin.receiver.?;
+        const name = try streamAccessorHelperNameAlloc(allocator, function);
+        defer allocator.free(name);
+        wrote = true;
+        switch (accessor.op) {
+            .write => try writer.print(
+                "fn {0s}(self: *target.{1s}, bytes: []const u8) std.Io.Writer.Error!isize {{\n" ++
+                    "    try target.{1s}.{2s}(self).writeAll(bytes);\n" ++
+                    "    return @intCast(bytes.len);\n}}\n",
+                .{ name, receiver, accessor.accessor },
+            ),
+            .flush => try writer.print(
+                "fn {0s}(self: *target.{1s}) std.Io.Writer.Error!void {{\n" ++
+                    "    return target.{1s}.{2s}(self).flush();\n}}\n",
+                .{ name, receiver, accessor.accessor },
+            ),
+            // `readSliceShort` fills what it can and reports a short count at
+            // the end of the stream rather than an error, which is exactly
+            // the shape `io.Reader` wants: generated Go turns a zero into
+            // `io.EOF` and leaves every other count alone.
+            .read => try writer.print(
+                "fn {0s}(self: *target.{1s}, buffer: []u8) std.Io.Reader.ShortError!isize {{\n" ++
+                    "    return @intCast(try target.{1s}.{2s}(self).readSliceShort(buffer));\n}}\n",
+                .{ name, receiver, accessor.accessor },
+            ),
+        }
+    }
+    if (wrote) try writer.writeByte('\n');
+}
+
+fn streamAccessorHelperNameAlloc(allocator: std.mem.Allocator, function: abi.AbiFn) ![]const u8 {
+    return std.fmt.allocPrint(allocator, "{s}_stream", .{function.symbol});
+}
+
 /// Writes the C signature of a generated entry point. The public wrapper is
 /// what the generated Go loader resolves by name, so it carries the export
 /// annotation; the `_impl` half is internal to the artifact and must not.
@@ -642,8 +686,12 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     const enum_return = function.origin.@"return" == .@"enum";
     if (bool_return) try writer.writeAll("@intFromBool(");
     if (enum_return) try writer.writeAll("@intFromEnum(");
-    const namespace = function.origin.receiver orelse function.origin.namespace;
-    if (namespace) |receiver| {
+    if (function.origin.stream_accessor != null) {
+        const helper = try streamAccessorHelperNameAlloc(allocator, function);
+        defer allocator.free(helper);
+        try writer.print("{s}(self", .{helper});
+        if (function.origin.params.len != 0) try writer.writeAll(", ");
+    } else if (function.origin.receiver orelse function.origin.namespace) |receiver| {
         try writer.print("target.{s}.{s}(", .{ receiver, function.origin.name });
         if (function.origin.receiver != null) {
             try writer.writeAll("self");
@@ -3361,7 +3409,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
     const needs_unsafe = publicNeedsUnsafe(program);
     const needs_raw = !options.raw_colocated;
     // A stream parameter is spelled with the caller's own `io` interfaces.
-    const needs_io = programHasStreams(program);
+    const needs_io = programHasStreams(program) or programHasStreamRead(program);
     const import_count = @as(usize, @intFromBool(needs_io)) + @as(usize, @intFromBool(needs_runtime)) +
         @as(usize, @intFromBool(needs_unsafe)) + @as(usize, @intFromBool(needs_raw));
     if (import_count > 1) {
@@ -3680,6 +3728,13 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             if (error_payload == .void) {
                 try writer.writeAll("\treturn nil\n");
             } else {
+                // `io.Reader` says a read that returns nothing has hit the end
+                // of the stream, and says so with `io.EOF` rather than with a
+                // count of zero alone. `readSliceShort` reports the end the
+                // same way, as a short count, so the two only have to be
+                // spelled for each other here.
+                if (streamAccessorOp(function.origin.*) == .read)
+                    try writer.writeAll("\tif result == 0 {\n\t\treturn 0, io.EOF\n\t}\n");
                 try writer.writeAll("\treturn ");
                 if (owned_type) |type_name| {
                     try writeOwnedHandleResult(allocator, writer, program, function.origin.*, type_name, "result");
@@ -5969,7 +6024,25 @@ fn withoutLeadingName(line: []const u8, go_name: []const u8, zig_name: []const u
 }
 
 fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.SemanticFn, go_name: []const u8, owned_type: ?[]const u8, reaches_callbacks: bool, reaches_callback_errors: bool) !void {
-    if (function.doc) |doc| {
+    if (function.stream_accessor) |accessor| {
+        // "calls the Zig function Sink.write" would name something that does
+        // not exist: the Zig side has a `writer()`, and this is one of the
+        // operations the binding built on top of it.
+        try writer.print("\n// {s} {s} the stream {s}.{s}() hands out, satisfying {s}.\n", .{
+            go_name,
+            switch (accessor.op) {
+                .write => "writes to",
+                .flush => "flushes",
+                .read => "reads from",
+            },
+            function.receiver.?,
+            accessor.accessor,
+            if (accessor.direction == .writer) "io.Writer" else "io.Reader",
+        });
+        try writer.writeAll("// The stream is fetched from the receiver on every call and never stored.\n");
+        if (accessor.op == .read)
+            try writer.writeAll("// The end of the stream is reported as io.EOF.\n");
+    } else if (function.doc) |doc| {
         try writeGoDoc(writer, go_name, function.name, doc);
     } else if (owned_type) |type_name| {
         try writer.print("\n// {s} creates a caller-owned {s}.\n", .{ go_name, type_name });
@@ -6388,6 +6461,20 @@ fn programHasCallbacks(program: abi.Program) bool {
 
 fn functionHasStream(function: semantic.SemanticFn) bool {
     for (function.params) |parameter| if (parameter.type == .io_stream) return true;
+    return false;
+}
+
+/// The stream operation a function was synthesized for, if it was.
+fn streamAccessorOp(function: semantic.SemanticFn) ?semantic.StreamAccessor.Op {
+    const accessor = function.stream_accessor orelse return null;
+    return accessor.op;
+}
+
+/// True when the public package generates a `Read` that has to name `io.EOF`.
+fn programHasStreamRead(program: abi.Program) bool {
+    for (program.functions) |function| {
+        if (streamAccessorOp(function.origin.*) == .read) return true;
+    }
     return false;
 }
 

@@ -65,6 +65,58 @@ pub const Document = struct {
     }
 };
 
+/// The other direction: an object that *hands out* a `std.Io.Writer` instead
+/// of taking one. The pointer belongs to the sink, so it never crosses to Go;
+/// the binding generates `Write` and `Flush` on the handle, and each of them
+/// calls `writer()` again.
+pub const Sink = struct {
+    inner: std.Io.Writer.Allocating,
+
+    pub fn create() error{OutOfMemory}!*Sink {
+        const value = try std.heap.c_allocator.create(Sink);
+        value.* = .{ .inner = .init(std.heap.c_allocator) };
+        return value;
+    }
+
+    pub fn deinit(self: *Sink) void {
+        self.inner.deinit();
+        std.heap.c_allocator.destroy(self);
+    }
+
+    /// Re-fetched by every generated operation rather than stored anywhere.
+    pub fn writer(self: *Sink) *std.Io.Writer {
+        return &self.inner.writer;
+    }
+
+    pub fn count(self: *Sink) usize {
+        return self.inner.written().len;
+    }
+};
+
+/// The reading mirror of `Sink`: it owns the bytes and hands out a reader over
+/// them, so Go gets a `Read` that satisfies `io.Reader`.
+pub const Source = struct {
+    bytes: []u8,
+    inner: std.Io.Reader,
+
+    pub fn create(bytes: []const u8) error{OutOfMemory}!*Source {
+        const value = try std.heap.c_allocator.create(Source);
+        errdefer std.heap.c_allocator.destroy(value);
+        const copy = try std.heap.c_allocator.dupe(u8, bytes);
+        value.* = .{ .bytes = copy, .inner = .fixed(copy) };
+        return value;
+    }
+
+    pub fn deinit(self: *Source) void {
+        std.heap.c_allocator.free(self.bytes);
+        std.heap.c_allocator.destroy(self);
+    }
+
+    pub fn reader(self: *Source) *std.Io.Reader {
+        return &self.inner;
+    }
+};
+
 /// A free function taking a stream, so the example covers the shape that has
 /// no receiver and no error union of its own.
 pub fn banner(w: *std.Io.Writer, width: u32) DumpError!void {
@@ -98,4 +150,18 @@ test "a document round-trips through a fixed buffer" {
     var reader: std.Io.Reader = .fixed(writer.buffered());
     try std.testing.expectEqual(@as(usize, 11), try restored.load(&reader));
     try std.testing.expectEqual(@as(usize, 2), restored.count());
+}
+
+test "a sink and a source hand their streams out" {
+    const sink = try Sink.create();
+    defer sink.deinit();
+    try sink.writer().writeAll("hello");
+    try sink.writer().flush();
+    try std.testing.expectEqual(@as(usize, 5), sink.count());
+
+    const source = try Source.create("hello");
+    defer source.deinit();
+    var buffer: [8]u8 = undefined;
+    try std.testing.expectEqual(@as(usize, 5), try source.reader().readSliceShort(&buffer));
+    try std.testing.expectEqualStrings("hello", buffer[0..5]);
 }

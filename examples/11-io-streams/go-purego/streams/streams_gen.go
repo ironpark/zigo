@@ -197,3 +197,108 @@ func Tee(r io.Reader, w io.Writer) (uint, error) {
 	}
 	return result, nil
 }
+
+// NewSink creates a caller-owned Sink.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
+func NewSink() (*Sink, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	result, code := raw.SinkCreate()
+	if code != 0 {
+		return nil, errorForCode("NewSink", code)
+	}
+	return newSink(result), nil
+}
+
+// Write writes to the stream Sink.writer() hands out, satisfying io.Writer.
+// The stream is fetched from the receiver on every call and never stored.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+func (s *Sink) Write(bytes []byte) (int, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Sink.Write receiver", s)
+	if err != nil {
+		return 0, err
+	}
+	defer s.zigoRelease()
+	result, code := raw.SinkWrite(ptr, bytes)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("Sink.Write", code), s)
+	}
+	return result, nil
+}
+
+// Flush flushes the stream Sink.writer() hands out, satisfying io.Writer.
+// The stream is fetched from the receiver on every call and never stored.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+func (s *Sink) Flush() error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Sink.Flush receiver", s)
+	if err != nil {
+		return err
+	}
+	defer s.zigoRelease()
+	code := raw.SinkFlush(ptr)
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Sink.Flush", code), s)
+	}
+	return nil
+}
+
+// Count calls the Zig function Sink.count.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (s *Sink) Count() (uint, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Sink.Count receiver", s)
+	if err != nil {
+		return 0, err
+	}
+	defer s.zigoRelease()
+	result, code := raw.SinkCount(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("Sink.Count", code), s)
+	}
+	return result, nil
+}
+
+// NewSource creates a caller-owned Source.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
+func NewSource(bytes []byte) (*Source, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	result, code := raw.SourceCreate(bytes)
+	if code != 0 {
+		return nil, errorForCode("NewSource", code)
+	}
+	return newSource(result), nil
+}
+
+// Read reads from the stream Source.reader() hands out, satisfying io.Reader.
+// The stream is fetched from the receiver on every call and never stored.
+// The end of the stream is reported as io.EOF.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+func (s *Source) Read(buffer []byte) (int, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Source.Read receiver", s)
+	if err != nil {
+		return 0, err
+	}
+	defer s.zigoRelease()
+	result, code := raw.SourceRead(ptr, buffer)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("Source.Read", code), s)
+	}
+	if result == 0 {
+		return 0, io.EOF
+	}
+	return result, nil
+}

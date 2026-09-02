@@ -394,8 +394,48 @@ goroutine이 계속 소유합니다. 대상 함수가 어댑터를 다른 스레
 쓰면 동작은 정의되지 않습니다.
 
 **허용되지 않는 위치.** 어댑터가 호출 스택에 살기 때문에 스트림은 파라미터 자리에서만,
-그리고 call-scoped로만 쓸 수 있습니다. 반환 타입, extern struct 필드, 콜백 시그니처, 슬라이스
-원소, optional, `.retention = .retained`는 각각 이유를 담은 `ZIGO023`으로 거부합니다.
+그리고 call-scoped로만 쓸 수 있습니다. extern struct 필드, 콜백 시그니처, 슬라이스 원소,
+optional, `.retention = .retained`는 각각 이유를 담은 `ZIGO023`으로 거부합니다. 반환 위치는
+아래의 규칙을 따릅니다.
+
+### Zig가 내주는 스트림
+
+메서드가 스트림을 **내줄** 수도 있습니다. 포인터 자체는 Go로 건너가지 않습니다 — 그것은
+객체의 것이고, 객체보다 오래 사는 Go 값은 안전하게 만들 수 없기 때문입니다. 대신 Go가
+그 스트림에 실제로 원하는 것, 즉 `io.Writer`·`io.Reader`가 요구하는 메서드를 handle에
+생성합니다.
+
+```zig
+// Zig
+pub fn writer(self: *Sink) *std.Io.Writer { return &self.inner.writer; }
+pub fn reader(self: *Source) *std.Io.Reader { return &self.inner; }
+```
+
+```go
+// Go
+func (s *Sink) Write(bytes []byte) (int, error)
+func (s *Sink) Flush() error
+func (s *Source) Read(buffer []byte) (int, error)
+
+io.Copy(sink, src)   // 둘 다 그대로 표준 인터페이스다
+io.Copy(dst, source)
+```
+
+메서드마다 shim이 `writer()`/`reader()`를 **다시 부릅니다**. 포인터를 어디에도 보관하지
+않으므로 상하지 않고, 수명 질문은 receiver handle의 기존 획득/해제/poison 규칙이 그대로
+답합니다 — 닫힌 handle의 `Write`는 다른 메서드와 똑같이 `ErrInvalidHandle`입니다.
+
+`Read`는 `io.Reader` 규약을 따릅니다: 스트림 끝은 0바이트가 아니라 `io.EOF`입니다. Zig 쪽은
+`readSliceShort`가 짧은 개수로 끝을 알리고, 그 0을 Go가 `io.EOF`로 옮깁니다.
+
+규칙: 스트림 반환은 **메서드**여야 하고(생성된 연산이 receiver에게 다시 물어야 하므로),
+**파라미터가 없어야 하며**(`Write`/`Read`/`Flush`에 그것을 실을 자리가 없습니다), error
+union이나 optional 안이 아니라 **반환 타입 그 자체**여야 합니다. 셋 다 `ZIGO023`입니다.
+한 타입이 writer 하나와 reader 하나를 함께 낼 수는 있지만, 같은 방향을 둘 내면 Go 이름이
+겹쳐 `ZIGO024`가 됩니다.
+
+`semantic.json`에는 Zig 메서드(`Sink.writer`)가 그대로 기록되고, 연산으로의 확장은 파싱과
+lowering 사이에서 일어납니다. `abi-diff`가 비교하는 것은 Zig 표면입니다.
 
 ### 값으로 반환하는 `init`
 

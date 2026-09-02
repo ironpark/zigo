@@ -150,3 +150,30 @@ func DocumentLoad(self unsafe.Pointer, rHandle uintptr, rData []byte) (uint, int
 func Banner(outHandle uintptr, width int32) {
 	C.zg_banner(C.size_t(outHandle), C.int32_t(width))
 }
+// SinkWrite calls the generated C ABI wrapper for zg_sink_write.
+func SinkWrite(self unsafe.Pointer, bytes []uint8) (int, int32) {
+	var bytesZero C.uint8_t
+	bytesPtr := &bytesZero
+	if len(bytes) != 0 {
+		bytesPtr = (*C.uint8_t)(unsafe.Pointer(&bytes[0]))
+	}
+	var outResult C.ptrdiff_t
+	code := int32(C.zg_sink_write((*C.zg_sink)(self), bytesPtr, C.size_t(len(bytes)), &outResult))
+	return int(outResult), code
+}
+// SinkFlush calls the generated C ABI wrapper for zg_sink_flush.
+func SinkFlush(self unsafe.Pointer) int32 {
+	code := int32(C.zg_sink_flush((*C.zg_sink)(self)))
+	return code
+}
+// SinkRead calls the generated C ABI wrapper for zg_sink_read.
+func SinkRead(self unsafe.Pointer, buffer []uint8) (int, int32) {
+	var bufferZero C.uint8_t
+	bufferPtr := &bufferZero
+	if len(buffer) != 0 {
+		bufferPtr = (*C.uint8_t)(unsafe.Pointer(&buffer[0]))
+	}
+	var outResult C.ptrdiff_t
+	code := int32(C.zg_sink_read((*C.zg_sink)(self), bufferPtr, C.size_t(len(buffer)), &outResult))
+	return int(outResult), code
+}

@@ -55,3 +55,52 @@ func (d *Document) zigoPoison(cause *NativePanicError) {
 		d.poison = cause
 	}
 }
+
+// Sink represents a native Zig handle.
+type Sink struct {
+	ptr    unsafe.Pointer
+	mu     sync.Mutex
+	active int
+	closed bool
+	poison *NativePanicError
+}
+
+// zigoAcquire pins s open for one native call and hands back its pointer;
+// the call ends with zigoRelease. A nil, closed, or poisoned handle is the error.
+func (s *Sink) zigoAcquire(operation string) (unsafe.Pointer, error) {
+	if s == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.ptr == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	if s.poison != nil {
+		return nil, s.poison.poisoned(operation)
+	}
+	s.active++
+	return s.ptr, nil
+}
+
+func (s *Sink) zigoRelease() {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	s.active--
+	s.mu.Unlock()
+}
+
+// zigoPoison marks s unusable: a Zig panic unwound through native frames
+// without running their defers, so the state behind it is unknown.
+func (s *Sink) zigoPoison(cause *NativePanicError) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.poison == nil {
+		s.poison = cause
+	}
+}

@@ -156,6 +156,25 @@ purego도 같은 시그니처를 씁니다. scalar child는 `*T`로, `extern str
 `semantic.json`은 기존 `optional` 노드를 그대로 씁니다. `abi-check`는 `T`와 `?T`의
 교체를 breaking으로 봅니다.
 
+## Zig가 내주는 스트림
+
+`fn writer(self) *std.Io.Writer`는 파싱과 lowering 사이에서 연산으로 확장됩니다
+(`src/gen/stream_return.zig`): writer는 `write`·`flush` 둘, reader는 `read` 하나입니다.
+확장된 함수는 그때부터 평범한 메서드라 헤더·shim·raw·공개 Go가 모두 기존 경로를 씁니다.
+`semantic.json`에는 확장 전의 Zig 메서드가 남으므로 `abi-diff`는 Zig 표면을 비교합니다.
+
+| Zig | C | Go |
+|---|---|---|
+| `fn writer(self) *std.Io.Writer` | `int32_t <p>_<t>_write(T*, const uint8_t*, size_t, ptrdiff_t*)` | `Write([]byte) (int, error)` |
+| | `int32_t <p>_<t>_flush(T*)` | `Flush() error` |
+| `fn reader(self) *std.Io.Reader` | `int32_t <p>_<t>_read(T*, uint8_t*, size_t, ptrdiff_t*)` | `Read([]byte) (int, error)` |
+
+개수는 `usize`가 아니라 `isize`(`ptrdiff_t`)입니다. Go가 그것을 `int`로 적어야
+`io.Writer`·`io.Reader`를 만족하기 때문입니다. shim은 연산마다 헬퍼
+(`<symbol>_stream`)를 하나 내고, 그 안에서 접근자를 **다시 불러** 스트림을 얻습니다 —
+포인터는 헬퍼 밖으로 나가지 않습니다. `read`는 `readSliceShort`를 쓰므로 스트림 끝이
+짧은 개수로 오고, 공개 Go가 0을 `io.EOF`로 옮깁니다.
+
 ## 콜백이 돌려주는 Go error
 
 `param_meta.<이름>.go_error`가 켜진 콜백은 Go 타입이 `func(...) (i32, error)`가 되고, C

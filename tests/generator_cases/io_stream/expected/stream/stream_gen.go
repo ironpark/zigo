@@ -83,3 +83,64 @@ func Banner(out io.Writer, width int32) error {
 	}
 	return nil
 }
+
+// Write writes to the stream Sink.writer() hands out, satisfying io.Writer.
+// The stream is fetched from the receiver on every call and never stored.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+func (s *Sink) Write(bytes []byte) (int, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Sink.Write receiver", s)
+	if err != nil {
+		return 0, err
+	}
+	defer s.zigoRelease()
+	result, code := raw.SinkWrite(ptr, bytes)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("Sink.Write", code), s)
+	}
+	return result, nil
+}
+
+// Flush flushes the stream Sink.writer() hands out, satisfying io.Writer.
+// The stream is fetched from the receiver on every call and never stored.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+func (s *Sink) Flush() error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Sink.Flush receiver", s)
+	if err != nil {
+		return err
+	}
+	defer s.zigoRelease()
+	code := raw.SinkFlush(ptr)
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Sink.Flush", code), s)
+	}
+	return nil
+}
+
+// Read reads from the stream Sink.reader() hands out, satisfying io.Reader.
+// The stream is fetched from the receiver on every call and never stored.
+// The end of the stream is reported as io.EOF.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+func (s *Sink) Read(buffer []byte) (int, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Sink.Read receiver", s)
+	if err != nil {
+		return 0, err
+	}
+	defer s.zigoRelease()
+	result, code := raw.SinkRead(ptr, buffer)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("Sink.Read", code), s)
+	}
+	if result == 0 {
+		return 0, io.EOF
+	}
+	return result, nil
+}

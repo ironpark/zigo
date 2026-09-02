@@ -19,7 +19,10 @@ type document struct {
 		Name      string `json:"name"`
 		Receiver  string `json:"receiver"`
 		Namespace string `json:"namespace"`
-		Symbol    string `json:"symbol"`
+		Return    struct {
+			Kind string `json:"kind"`
+		} `json:"return"`
+		Symbol string `json:"symbol"`
 	} `json:"functions"`
 }
 
@@ -70,11 +73,37 @@ func audit(root string) error {
 		if !strings.HasPrefix(function.Symbol, parsed.Prefix+"_") {
 			return fmt.Errorf("%s: symbol %s does not carry the %s prefix", identity, function.Symbol, parsed.Prefix)
 		}
+		// A method that hands a stream out exports nothing under its own
+		// name: it becomes the operations Go needs, each of which suffixes
+		// the recorded symbol. Any one of them proves the name is the base
+		// the generator actually built on.
+		if suffixes, ok := streamOperations[function.Return.Kind]; ok {
+			// The operations are named for what they do rather than for the
+			// accessor, so they share its owner prefix and replace its last
+			// segment: `zg_sink_writer` is the base for `zg_sink_write`.
+			cut := strings.LastIndex(function.Symbol, "_")
+			if cut < 0 {
+				return fmt.Errorf("%s: symbol %s has no owner segment to build its stream operations on", identity, function.Symbol)
+			}
+			for _, suffix := range suffixes {
+				if !exported[function.Symbol[:cut]+suffix] {
+					return fmt.Errorf("%s: symbol %s%s is not called by the generated bindings", identity, function.Symbol[:cut], suffix)
+				}
+			}
+			continue
+		}
 		if !exported[function.Symbol] {
 			return fmt.Errorf("%s: symbol %s is not called by the generated bindings", identity, function.Symbol)
 		}
 	}
 	return nil
+}
+
+// The operations each stream direction is expanded into, by the return kind
+// `semantic.json` records for the method that hands the stream out.
+var streamOperations = map[string][]string{
+	"io_writer": {"_write", "_flush"},
+	"io_reader": {"_read"},
 }
 
 var callPattern = regexp.MustCompile(`\bC\.([A-Za-z_][A-Za-z0-9_]*)`)

@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 typedef struct zg_document zg_document;
+typedef struct zg_sink zg_sink;
 // ELF and Mach-O export every non-static symbol of a shared library;
 // COFF exports nothing without an explicit annotation, so a DLL built
 // without this would load and then resolve none of its entry points.
@@ -20,6 +21,9 @@ typedef struct zg_document zg_document;
 ZIGO_EXPORT int32_t zg_document_dump_purego_v2(zg_document * self, int32_t (*w_fn)(const uint8_t *, size_t, size_t), size_t w_userdata);
 ZIGO_EXPORT int32_t zg_document_load_purego_v2(zg_document * self, int32_t (*r_fn)(uint8_t *, size_t, size_t), const uint8_t * r_data, size_t r_data_len, size_t r_userdata, size_t * out_result);
 ZIGO_EXPORT void zg_banner_purego_v2(int32_t (*out_fn)(const uint8_t *, size_t, size_t), size_t out_userdata, int32_t width);
+ZIGO_EXPORT int32_t zg_sink_write(zg_sink * self, const uint8_t * bytes_ptr, size_t bytes_len, ptrdiff_t * out_result);
+ZIGO_EXPORT int32_t zg_sink_flush(zg_sink * self);
+ZIGO_EXPORT int32_t zg_sink_read(zg_sink * self, uint8_t * buffer_ptr, size_t buffer_len, ptrdiff_t * out_result);
 ZIGO_EXPORT const char *zg_last_error_message(void);
 
 #endif // ZIGO_stream_H

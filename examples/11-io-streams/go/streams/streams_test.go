@@ -328,3 +328,123 @@ func TestZigoBytesHookOptsIntoTheFastPath(t *testing.T) {
 		t.Fatalf("Load consumed %d bytes over %d Read calls", read, source.reads)
 	}
 }
+
+// The other direction: Zig hands the stream out and Go gets the interface.
+// io.Copy is the whole assertion -- it only compiles if the handle really is
+// an io.Writer and an io.Reader.
+var (
+	_ io.Writer = (*Sink)(nil)
+	_ io.Reader = (*Source)(nil)
+)
+
+func TestSinkIsAnIoWriter(t *testing.T) {
+	sink, err := NewSink()
+	if err != nil {
+		t.Fatalf("NewSink: %v", err)
+	}
+	defer sink.Close()
+
+	payload := strings.Repeat("stream me ", 5000)
+	written, err := io.Copy(sink, strings.NewReader(payload))
+	if err != nil {
+		t.Fatalf("io.Copy into the sink: %v", err)
+	}
+	if written != int64(len(payload)) {
+		t.Fatalf("io.Copy wrote %d bytes, want %d", written, len(payload))
+	}
+	if err := sink.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	count, err := sink.Count()
+	if err != nil {
+		t.Fatalf("Count: %v", err)
+	}
+	if count != uint(len(payload)) {
+		t.Fatalf("the sink holds %d bytes, want %d", count, len(payload))
+	}
+}
+
+func TestSourceIsAnIoReader(t *testing.T) {
+	payload := strings.Repeat("read me 0123456789 ", 3000)
+	source, err := NewSource([]byte(payload))
+	if err != nil {
+		t.Fatalf("NewSource: %v", err)
+	}
+	defer source.Close()
+
+	var out bytes.Buffer
+	read, err := io.Copy(&out, source)
+	if err != nil {
+		t.Fatalf("io.Copy out of the source: %v", err)
+	}
+	if read != int64(len(payload)) || out.String() != payload {
+		t.Fatalf("io.Copy read %d bytes", read)
+	}
+	// The end of the stream is io.EOF and stays io.EOF, not a zero-length
+	// success the caller would spin on.
+	var scratch [8]byte
+	if n, err := source.Read(scratch[:]); n != 0 || !errors.Is(err, io.EOF) {
+		t.Fatalf("Read past the end returned %d, %v", n, err)
+	}
+}
+
+// Both directions in one copy, straight from a Zig-owned reader into a
+// Zig-owned writer with no Go buffer in between beyond io.Copy's own.
+func TestCopyFromSourceToSink(t *testing.T) {
+	payload := strings.Repeat("both ways ", 4000)
+	source, err := NewSource([]byte(payload))
+	if err != nil {
+		t.Fatalf("NewSource: %v", err)
+	}
+	defer source.Close()
+	sink, err := NewSink()
+	if err != nil {
+		t.Fatalf("NewSink: %v", err)
+	}
+	defer sink.Close()
+
+	copied, err := io.Copy(sink, source)
+	if err != nil {
+		t.Fatalf("io.Copy: %v", err)
+	}
+	if copied != int64(len(payload)) {
+		t.Fatalf("io.Copy moved %d bytes, want %d", copied, len(payload))
+	}
+	if err := sink.Flush(); err != nil {
+		t.Fatalf("Flush: %v", err)
+	}
+	count, err := sink.Count()
+	if err != nil {
+		t.Fatalf("Count: %v", err)
+	}
+	if count != uint(len(payload)) {
+		t.Fatalf("the sink holds %d bytes, want %d", count, len(payload))
+	}
+}
+
+// The stream is fetched from the object on every operation and never stored,
+// so a closed handle refuses exactly like any other method does -- there is no
+// dangling `*std.Io.Writer` for it to reach through.
+func TestClosedStreamHandleIsRefused(t *testing.T) {
+	sink, err := NewSink()
+	if err != nil {
+		t.Fatalf("NewSink: %v", err)
+	}
+	sink.Close()
+	if _, err := sink.Write([]byte("gone")); !errors.Is(err, ErrInvalidHandle) {
+		t.Fatalf("Write after Close returned %v, want ErrInvalidHandle", err)
+	}
+	if err := sink.Flush(); !errors.Is(err, ErrInvalidHandle) {
+		t.Fatalf("Flush after Close returned %v, want ErrInvalidHandle", err)
+	}
+
+	source, err := NewSource([]byte("gone"))
+	if err != nil {
+		t.Fatalf("NewSource: %v", err)
+	}
+	source.Close()
+	var scratch [4]byte
+	if _, err := source.Read(scratch[:]); !errors.Is(err, ErrInvalidHandle) {
+		t.Fatalf("Read after Close returned %v, want ErrInvalidHandle", err)
+	}
+}

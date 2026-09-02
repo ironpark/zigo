@@ -4,6 +4,7 @@ const abi = @import("abi");
 const errors_lock = @import("errors_lock");
 const lower = @import("lower.zig");
 const semantic = @import("semantic");
+const stream_return = @import("stream_return.zig");
 const validate = @import("validate.zig");
 
 pub const Options = struct {
@@ -48,13 +49,18 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
     defer parsed.deinit();
     try validate.semanticDocument(scratch_allocator, parsed.value);
     if (options.backend == .purego) try validate.puregoCallbacks(parsed.value);
+    // Validation judged the Zig surface the document records; everything below
+    // works on the expansion, where a stream-returning method has become the
+    // `Write`/`Flush`/`Read` operations that carry it. The error-set collection
+    // below has to see them: their `WriteFailed`/`ReadFailed` need codes too.
+    const document = try stream_return.expand(scratch_allocator, parsed.value);
     var baseline: ?errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(scratch_allocator, bytes) else null;
     defer if (baseline) |*value| value.deinit(scratch_allocator);
     var lock: errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(scratch_allocator, bytes) else .{};
     defer lock.deinit(scratch_allocator);
     var error_names: std.ArrayList([]const u8) = .empty;
     defer error_names.deinit(scratch_allocator);
-    for (parsed.value.functions) |function| switch (function.@"return") {
+    for (document.functions) |function| switch (function.@"return") {
         .error_union => |value| for (value.error_set) |name| {
             var exists = false;
             for (error_names.items) |existing| {
@@ -73,7 +79,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
             return lhs.code < rhs.code;
         }
     }.lessThan);
-    const program = try lower.semanticDocumentForBackend(scratch_allocator, parsed.value, options.package, options.prefix, abi_codes, switch (options.backend) {
+    const program = try lower.semanticDocumentForBackend(scratch_allocator, document, options.package, options.prefix, abi_codes, switch (options.backend) {
         .cgo => .cgo,
         .purego => .purego,
     });
