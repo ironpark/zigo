@@ -82,3 +82,29 @@ zig build shared-library-smoke -- \
 지원 범위를 바꾸면 [사용자 문서 목차](README.md)와 관련
 [설계 문서](.agent/design/README.md)를 함께 갱신하세요. 상대 링크와 제목 앵커도 변경 후
 검사해야 합니다.
+
+## 릴리즈 절차
+
+릴리즈는 `0.*` 형태의 태그를 푸시하면
+[`.github/workflows/release.yml`](../.github/workflows/release.yml)이 자동으로 처리합니다. 그
+전에 다음을 순서대로 합니다.
+
+1. **CHANGELOG 절 작성**: `CHANGELOG.md`의 `## [Unreleased]` 아래 항목을 이번 릴리즈로
+   옮기고, `## [x.y.z] - YYYY-MM-DD` 절로 바꿉니다. `### Breaking`/`### Added`/`### Changed`
+   같은 [Keep a Changelog](https://keepachangelog.com/ko/1.1.0/) 분류를 유지하세요.
+   `release.yml`은 `scripts/extract-changelog-section.sh`로 이 절만 그대로 추출해 GitHub
+   릴리즈 노트로 씁니다.
+2. **`build.zig.zon` 버전**: `.version` 필드를 같은 `x.y.z`로 올립니다.
+3. **커밋과 태그**: 위 변경을 커밋하고 `git tag x.y.z`로 태그한 뒤 `git push && git push
+   --tags`로 태그를 푸시합니다. 태그 이름은 `v` 접두어 없이 `CHANGELOG.md`의 절 이름과
+   정확히 같아야 `extract-changelog-section.sh`가 절을 찾습니다.
+4. **fetch 안내 갱신**: README와 [시작 가이드](getting-started.md)의
+   `zig fetch --save git+https://github.com/ironpark/zigo#<태그>` 줄을 새 태그로 바꾸고, 이
+   문서 변경도 릴리즈에 포함시킵니다(태그 자체는 재태그하지 않으므로 다음 커밋에 실려도
+   됩니다).
+
+태그 푸시가 일으키는 워크플로는 `zig build test --summary all`을 돌리고, 그 절을 추출해
+`gh release create`(`GITHUB_TOKEN`, 저장소 기본 권한)로 GitHub 릴리즈를 만듭니다. 실제 태그
+없이 워크플로 로직만 확인하려면 GitHub Actions에서 `Release` 워크플로를 `workflow_dispatch`로
+수동 실행하세요 — 이미 `CHANGELOG.md`에 절이 있는 버전(예: 현재는 `0.2.0`)을 입력하면 빌드와
+절 추출만 검증하고 릴리즈는 만들지 않습니다.

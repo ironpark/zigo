@@ -1,0 +1,81 @@
+name: Release
+
+# Runs the release checks and cuts a GitHub release from a `0.*` tag push.
+# `workflow_dispatch` runs the same checks without pushing a tag or creating
+# a release, so the workflow can be exercised before the next real tag
+# exists -- pick a `version` that already has a CHANGELOG.md section (e.g.
+# the current `0.2.0`) to dry-run the changelog extraction.
+on:
+  push:
+    tags:
+      - "0.*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: >-
+          Version to dry-run against (must match a "## [x.y.z]" section in
+          CHANGELOG.md). No release is created; this only exercises the
+          build and the changelog extraction.
+        required: true
+        default: "0.2.0"
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+
+      - name: Resolve the release version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            version="${{ inputs.version }}"
+            echo "dry_run=true" >> "$GITHUB_OUTPUT"
+          else
+            # Strip a leading "v" in case a future tag is spelled "v0.3.0";
+            # today's tags (0.1.0, 0.2.0) already match this unchanged.
+            version="${GITHUB_REF_NAME#v}"
+            echo "dry_run=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Zig unit and snapshot tests
+        run: zig build test --summary all
+
+      - name: Extract the CHANGELOG section for this version
+        id: notes
+        shell: bash
+        run: |
+          set -euo pipefail
+          notes_file="$(mktemp)"
+          ./scripts/extract-changelog-section.sh "${{ steps.version.outputs.version }}" CHANGELOG.md > "$notes_file"
+          echo "Extracted release notes:"
+          cat "$notes_file"
+          echo "path=$notes_file" >> "$GITHUB_OUTPUT"
+
+      - name: Dry run summary
+        if: steps.version.outputs.dry_run == 'true'
+        shell: bash
+        run: |
+          echo "workflow_dispatch dry run for version ${{ steps.version.outputs.version }}."
+          echo "Tests passed and the CHANGELOG section above extracted cleanly."
+          echo "No tag was pushed, so no GitHub release is created."
+
+      - name: Create the GitHub release
+        if: steps.version.outputs.dry_run == 'false'
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh release create "${{ github.ref_name }}" \
+            --title "${{ github.ref_name }}" \
+            --notes-file "${{ steps.notes.outputs.path }}"
