@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T14:57:48Z"
 description: 비exhaustive enum을 .exhaustive = false opt-in으로 명명 상수를 가진 Go 정수 타입으로 노출
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-02T14:13:46Z"
 ---
 > NEXT: 타입 등록의 `.exhaustive = false` opt-in을 반영하고 ZIGO002를 완화한다. ([Phase 0](phases/00-open-enum-opt-in.md))
@@ -8,7 +9,7 @@ registered_at: "2026-09-02T14:13:46Z"
 # Phases
 
 - [x] [Phase 00: opt-in 등록과 검증](phases/00-open-enum-opt-in.md)
-- [ ] [Phase 01: 예제와 문서](phases/01-example-and-docs.md)
+- [x] [Phase 01: 예제와 문서](phases/01-example-and-docs.md)
 
 # Shared Verification
 

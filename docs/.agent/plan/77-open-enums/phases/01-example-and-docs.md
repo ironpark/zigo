@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-02T14:57:48Z"
 depends_on:
 - "77-open-enums#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 예제 통과, 문서 갱신, `zig build test` 녹색, 커밋.
 > NEXT: none
