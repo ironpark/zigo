@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `.written = .return`이 `semantic.json`에 `"written": "return"`으로 나오고, 옛 JSON이 그대로 읽힌다.
 > NEXT: none

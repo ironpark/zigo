@@ -148,3 +148,20 @@ test "error lock appends codes and rejects edited mappings" {
     }
     try std.testing.expectError(error.ErrorMappingChanged, current.validateAgainst(baseline));
 }
+
+test "the written hint round trips and defaults to all when absent" {
+    const document =
+        \\{"functions":[{"name":"fill","params":[{"direction":"out","name":"dst","type":{"const":false,"element":{"bits":32,"kind":"int","signed":true},"kind":"slice"},"written":"return"},{"name":"limit","type":{"bits":64,"is_usize":true,"kind":"int","signed":false}}],"return":{"bits":64,"is_usize":true,"kind":"int","signed":false},"symbol":"zg_fill"}],"package":"written","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    var parsed = try semantic.Semantic.parse(std.testing.allocator, document);
+    defer parsed.deinit();
+    const params = parsed.value.functions[0].params;
+    try std.testing.expectEqual(semantic.Written.@"return", params[0].writtenHint());
+    try std.testing.expectEqual(@as(?semantic.Written, null), params[1].written);
+    try std.testing.expectEqual(semantic.Written.all, params[1].writtenHint());
+
+    const serialized = try parsed.value.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(serialized);
+    try std.testing.expect(std.mem.indexOf(u8, serialized, "\"written\": \"return\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, serialized, "\"written\": \"all\"") == null);
+}

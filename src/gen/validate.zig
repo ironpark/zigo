@@ -160,6 +160,23 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .site = .{ .path = "semantic.json", .declaration = function.name },
             .hint = "return a pointer to an opaque type that has both a constructor and a destructor, or drop `.returns = .caller`",
         };
+        for (function.params) |parameter| {
+            if (parameter.written == null) continue;
+            if (parameter.direction != .out) return .{
+                .severity = .@"error",
+                .code = "ZIGO017",
+                .message = "written hint declared on a parameter that is not an output slice",
+                .site = .{ .path = "semantic.json", .declaration = function.name },
+                .hint = "add `.direction = .out` to the parameter, or drop `.written`",
+            };
+            if (parameter.writtenHint() == .@"return" and !returnsCount(function.@"return")) return .{
+                .severity = .@"error",
+                .code = "ZIGO017",
+                .message = "`.written = .return` needs a `usize` result to report the count",
+                .site = .{ .path = "semantic.json", .declaration = function.name },
+                .hint = "return `usize` or `!usize` from the function, or use the default `.written = .all`",
+            };
+        }
         if (function.release != null and !isReleasableSliceReturn(function)) return .{
             .severity = .@"error",
             .code = "ZIGO016",
@@ -454,6 +471,13 @@ fn ownedReturnIsWrappable(document: semantic.Semantic, function: semantic.Semant
 /// A slice return is the one non-handle result zigo can hand over: generated Go
 /// copies it and then calls the declared release function. A fallible slice
 /// return hands over the same buffer, so `![]T` qualifies on the same terms.
+/// The count a `.written = .return` parameter reads back from. An error union
+/// reports it through its payload; the error path writes zero instead.
+fn returnsCount(node: semantic.TypeNode) bool {
+    const payload = if (node == .error_union) node.error_union.payload.* else node;
+    return payload == .int and payload.int.is_usize;
+}
+
 fn isReleasableSliceReturn(function: semantic.SemanticFn) bool {
     return sliceReturnElement(function) != null;
 }
@@ -687,6 +711,8 @@ test "implemented diagnostic snapshots are stable" {
     var byte_element: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
     var byte_slice_node: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte_element } };
     var word_element: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+    const word_slice_node: semantic.TypeNode = .{ .slice = .{ .@"const" = false, .element = &word_element } };
+    const count_node: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
     const cases = [_]struct { document: semantic.Semantic, snapshot: []const u8 }{
         .{ .document = .{
             .functions = &.{.{
@@ -939,6 +965,28 @@ test "implemented diagnostic snapshots are stable" {
             .types = &.{.{ .kind = .@"opaque", .name = "Thing" }},
             .zig_version = "0.16.0",
         }, .snapshot = "error[ZIGO015]: caller-owned return has no constructed handle to hand over\n  --> semantic.json (openThing)\n  hint: return a pointer to an opaque type that has both a constructor and a destructor, or drop `.returns = .caller`\n" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "readInto",
+                .params = &.{.{ .name = "source", .type = word_slice_node, .written = .@"return" }},
+                .@"return" = count_node,
+                .symbol = "zg_read_into",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO017]: written hint declared on a parameter that is not an output slice\n  --> semantic.json (readInto)\n  hint: add `.direction = .out` to the parameter, or drop `.written`\n" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "fillInto",
+                .params = &.{.{ .direction = .out, .name = "dst", .type = word_slice_node, .written = .@"return" }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_fill_into",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO017]: `.written = .return` needs a `usize` result to report the count\n  --> semantic.json (fillInto)\n  hint: return `usize` or `!usize` from the function, or use the default `.written = .all`\n" },
     };
     for (cases) |case| {
         const issue = (try findIssue(std.testing.allocator, case.document)) orelse return error.MissingDiagnostic;
@@ -946,6 +994,38 @@ test "implemented diagnostic snapshots are stable" {
         defer std.testing.allocator.free(rendered);
         try std.testing.expectEqualStrings(case.snapshot, rendered);
     }
+}
+
+test "a written hint is accepted on an out slice of a counting function" {
+    var element: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+    var count: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
+    const slice: semantic.TypeNode = .{ .slice = .{ .@"const" = false, .element = &element } };
+    const document: semantic.Semantic = .{
+        .functions = &.{
+            .{
+                .name = "fill",
+                .params = &.{.{ .direction = .out, .name = "dst", .type = slice, .written = .@"return" }},
+                .@"return" = count,
+                .symbol = "zg_fill",
+            },
+            .{
+                .name = "fillChecked",
+                .params = &.{.{ .direction = .out, .name = "dst", .type = slice, .written = .@"return" }},
+                .@"return" = .{ .error_union = .{ .error_set = &.{"Invalid"}, .payload = &count } },
+                .symbol = "zg_fill_checked",
+            },
+            .{
+                .name = "fillAll",
+                .params = &.{.{ .direction = .out, .name = "dst", .type = slice }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_fill_all",
+            },
+        },
+        .package = "written",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(std.testing.allocator, document));
 }
 
 test "scalar extern struct slices are valid while optional structs stay rejected" {

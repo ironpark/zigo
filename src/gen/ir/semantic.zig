@@ -227,6 +227,9 @@ pub const Direction = enum { in, inout, out };
 pub const Retention = enum { borrowed, retained };
 pub const SemanticHint = enum { c_string, opaque_bytes, utf8_string };
 pub const Ownership = enum { borrowed, caller, library };
+/// How much of an `.out` slice the shim reports back as written. `.all` keeps
+/// the whole buffer, `.return` trusts the function's `usize` result.
+pub const Written = enum { all, @"return" };
 
 pub const Parameter = struct {
     direction: Direction = .in,
@@ -235,6 +238,13 @@ pub const Parameter = struct {
     retention: Retention = .borrowed,
     semantic: ?SemanticHint = null,
     type: TypeNode,
+    written: ?Written = null,
+
+    /// The written hint a parameter was declared with. Parameters that keep
+    /// the default never carry the field.
+    pub fn writtenHint(self: Parameter) Written {
+        return self.written orelse .all;
+    }
 };
 
 pub const SemanticFn = struct {

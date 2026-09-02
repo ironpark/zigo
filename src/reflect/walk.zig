@@ -162,6 +162,7 @@ fn appendFunction(
                 if (@hasField(@TypeOf(value), "direction")) reflected.direction = value.direction;
                 if (@hasField(@TypeOf(value), "retention")) reflected.retention = value.retention;
                 if (@hasField(@TypeOf(value), "semantic")) reflected.semantic = value.semantic;
+                if (@hasField(@TypeOf(value), "written")) reflected.written = value.written;
             }
         }
         // The sentinel is part of the Zig type, so it remains a C string even

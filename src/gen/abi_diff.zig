@@ -81,6 +81,8 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
             try add(allocator, &report, .breaking, identity, "return ownership or semantics changed");
         if (!retentionEqual(old.params, new.params))
             try add(allocator, &report, .breaking, identity, "parameter retention changed");
+        if (!writtenEqual(old.params, new.params))
+            try add(allocator, &report, .compatible, identity, "parameter written hint changed");
         try compareErrors(allocator, &report, identity, old.@"return", new.@"return");
     }
     for (current.functions) |new| if (findFunction(base.functions, new) == null) {
@@ -180,6 +182,15 @@ fn signatureEqual(lhs: semantic.SemanticFn, rhs: semantic.SemanticFn) bool {
 fn retentionEqual(lhs: []const semantic.Parameter, rhs: []const semantic.Parameter) bool {
     if (lhs.len != rhs.len) return false;
     for (lhs, rhs) |a, b| if (a.retention != b.retention) return false;
+    return true;
+}
+
+/// How much of an output slice comes back is a contract between the shim and
+/// the public layer, not part of the exported signature, so either direction
+/// of the change keeps callers linking.
+fn writtenEqual(lhs: []const semantic.Parameter, rhs: []const semantic.Parameter) bool {
+    if (lhs.len != rhs.len) return false;
+    for (lhs, rhs) |a, b| if (a.writtenHint() != b.writtenHint()) return false;
     return true;
 }
 
@@ -544,6 +555,34 @@ test "constructor mapping changes break while additions are compatible" {
     try std.testing.expectEqual(@as(usize, 2), report.changes.items.len);
     try std.testing.expectEqual(ChangeKind.breaking, report.changes.items[0].kind);
     try std.testing.expectEqual(ChangeKind.added, report.changes.items[1].kind);
+}
+
+test "changing the written hint of an output slice is ABI compatible" {
+    var element: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+    const count: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
+    const slice: semantic.TypeNode = .{ .slice = .{ .@"const" = false, .element = &element } };
+    const old: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{.{
+        .name = "fill",
+        .params = &.{.{ .direction = .out, .name = "dst", .type = slice }},
+        .@"return" = count,
+        .symbol = "zg_fill",
+    }} };
+    const current: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{.{
+        .name = "fill",
+        .params = &.{.{ .direction = .out, .name = "dst", .type = slice, .written = .@"return" }},
+        .@"return" = count,
+        .symbol = "zg_fill",
+    }} };
+    var forward = try diff(std.testing.allocator, old, current);
+    defer forward.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 1), forward.changes.items.len);
+    try std.testing.expectEqual(ChangeKind.compatible, forward.changes.items[0].kind);
+    try std.testing.expect(!forward.hasBreaking());
+
+    var backward = try diff(std.testing.allocator, current, old);
+    defer backward.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 1), backward.changes.items.len);
+    try std.testing.expectEqual(ChangeKind.compatible, backward.changes.items[0].kind);
 }
 
 test "unchanged semantic contract has an empty report" {
