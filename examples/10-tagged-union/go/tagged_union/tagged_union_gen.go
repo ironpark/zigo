@@ -24,13 +24,20 @@ func NewChild(value int32) (*Child, error) {
 
 // Get calls the Zig function Child.get.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (c *Child) Get() (int32, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Child.Get receiver", c)
 	if err != nil {
 		return 0, err
 	}
 	defer c.zigoRelease()
-	return raw.ChildGet(ptr), nil
+	result, code := raw.ChildGet(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("Child.Get", code), c)
+	}
+	return result, nil
 }
 
 // NewValue creates a caller-owned Value.
@@ -48,79 +55,118 @@ func NewValue(initial int64) (*Value, error) {
 
 // SetNone calls the Zig function Value.setNone.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (v *Value) SetNone() error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Value.SetNone receiver", v)
 	if err != nil {
 		return err
 	}
 	defer v.zigoRelease()
-	raw.ValueSetNone(ptr)
+	code := raw.ValueSetNone(ptr)
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Value.SetNone", code), v)
+	}
 	return nil
 }
 
 // SetFlag calls the Zig function Value.setFlag.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (v *Value) SetFlag(flag bool) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Value.SetFlag receiver", v)
 	if err != nil {
 		return err
 	}
 	defer v.zigoRelease()
-	raw.ValueSetFlag(ptr, boolToUint8(flag))
+	code := raw.ValueSetFlag(ptr, boolToUint8(flag))
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Value.SetFlag", code), v)
+	}
 	return nil
 }
 
 // SetMode calls the Zig function Value.setMode.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (v *Value) SetMode(mode Mode) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Value.SetMode receiver", v)
 	if err != nil {
 		return err
 	}
 	defer v.zigoRelease()
-	raw.ValueSetMode(ptr, uint8(mode))
+	code := raw.ValueSetMode(ptr, uint8(mode))
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Value.SetMode", code), v)
+	}
 	return nil
 }
 
 // UsePresetSamples calls the Zig function Value.usePresetSamples.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (v *Value) UsePresetSamples() error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Value.UsePresetSamples receiver", v)
 	if err != nil {
 		return err
 	}
 	defer v.zigoRelease()
-	raw.ValueUsePresetSamples(ptr)
+	code := raw.ValueUsePresetSamples(ptr)
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Value.UsePresetSamples", code), v)
+	}
 	return nil
 }
 
 // UseEmptySamples calls the Zig function Value.useEmptySamples.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (v *Value) UseEmptySamples() error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Value.UseEmptySamples receiver", v)
 	if err != nil {
 		return err
 	}
 	defer v.zigoRelease()
-	raw.ValueUseEmptySamples(ptr)
+	code := raw.ValueUseEmptySamples(ptr)
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Value.UseEmptySamples", code), v)
+	}
 	return nil
 }
 
 // UseMutableSamples calls the Zig function Value.useMutableSamples.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (v *Value) UseMutableSamples() error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Value.UseMutableSamples receiver", v)
 	if err != nil {
 		return err
 	}
 	defer v.zigoRelease()
-	raw.ValueUseMutableSamples(ptr)
+	code := raw.ValueUseMutableSamples(ptr)
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Value.UseMutableSamples", code), v)
+	}
 	return nil
 }
 
 // SetChild calls the Zig function Value.setChild.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (v *Value) SetChild(child *Child) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Value.SetChild receiver", v)
 	if err != nil {
 		return err
@@ -131,20 +177,29 @@ func (v *Value) SetChild(child *Child) error {
 		return err
 	}
 	defer child.zigoRelease()
-	raw.ValueSetChild(ptr, childPtr)
+	code := raw.ValueSetChild(ptr, childPtr)
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Value.SetChild", code), v, child)
+	}
 	return nil
 }
 
 // Borrow calls the Zig function Value.borrow.
 // The returned reference remains valid only while its parent handle remains open.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (v *Value) Borrow() (*ValueRef, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Value.Borrow receiver", v)
 	if err != nil {
 		return nil, err
 	}
 	defer v.zigoRelease()
-	result := raw.ValueBorrow(ptr)
+	result, code := raw.ValueBorrow(ptr)
+	if code != 0 {
+		return nil, zigoPoisonAfterPanic(errorForCode("Value.Borrow", code), v)
+	}
 	return &ValueRef{ptr: result, parent: v}, nil
 }
 
@@ -163,73 +218,109 @@ func NewSignal(initial uint32) (*Signal, error) {
 
 // SetIdle calls the Zig function Signal.setIdle.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (s *Signal) SetIdle() error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Signal.SetIdle receiver", s)
 	if err != nil {
 		return err
 	}
 	defer s.zigoRelease()
-	raw.SignalSetIdle(ptr)
+	code := raw.SignalSetIdle(ptr)
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Signal.SetIdle", code), s)
+	}
 	return nil
 }
 
 // SetTicks calls the Zig function Signal.setTicks.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (s *Signal) SetTicks(ticks uint32) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Signal.SetTicks receiver", s)
 	if err != nil {
 		return err
 	}
 	defer s.zigoRelease()
-	raw.SignalSetTicks(ptr, ticks)
+	code := raw.SignalSetTicks(ptr, ticks)
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Signal.SetTicks", code), s)
+	}
 	return nil
 }
 
 // SetLevel calls the Zig function Signal.setLevel.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (s *Signal) SetLevel(level float64) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Signal.SetLevel receiver", s)
 	if err != nil {
 		return err
 	}
 	defer s.zigoRelease()
-	raw.SignalSetLevel(ptr, level)
+	code := raw.SignalSetLevel(ptr, level)
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Signal.SetLevel", code), s)
+	}
 	return nil
 }
 
 // SetOffset calls the Zig function Signal.setOffset.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (s *Signal) SetOffset(offset int16) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Signal.SetOffset receiver", s)
 	if err != nil {
 		return err
 	}
 	defer s.zigoRelease()
-	raw.SignalSetOffset(ptr, offset)
+	code := raw.SignalSetOffset(ptr, offset)
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Signal.SetOffset", code), s)
+	}
 	return nil
 }
 
 // SetMode calls the Zig function Signal.setMode.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (s *Signal) SetMode(mode Mode) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Signal.SetMode receiver", s)
 	if err != nil {
 		return err
 	}
 	defer s.zigoRelease()
-	raw.SignalSetMode(ptr, uint8(mode))
+	code := raw.SignalSetMode(ptr, uint8(mode))
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Signal.SetMode", code), s)
+	}
 	return nil
 }
 
 // SetActive calls the Zig function Signal.setActive.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (s *Signal) SetActive(active bool) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Signal.SetActive receiver", s)
 	if err != nil {
 		return err
 	}
 	defer s.zigoRelease()
-	raw.SignalSetActive(ptr, boolToUint8(active))
+	code := raw.SignalSetActive(ptr, boolToUint8(active))
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Signal.SetActive", code), s)
+	}
 	return nil
 }
 

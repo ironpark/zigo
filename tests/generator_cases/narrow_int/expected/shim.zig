@@ -8,13 +8,17 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
 }
 pub const panic = std.debug.FullPanic(panicHandler);
 
-export fn zg_codepoint_width_impl(cp: u32) i8 {
+export fn zg_codepoint_width_impl(cp: u32, out_result: *i8) i32 {
     if (cp > std.math.maxInt(u21)) @panic("zigo: argument `cp` is out of range for u21");
-    return target.codepointWidth(@intCast(cp));
+    const result = target.codepointWidth(@intCast(cp));
+    out_result.* = result;
+    return 0;
 }
-export fn zg_clamp_offset_impl(offset: i32) i32 {
+export fn zg_clamp_offset_impl(offset: i32, out_result: *i32) i32 {
     if (offset < std.math.minInt(i24) or offset > std.math.maxInt(i24)) @panic("zigo: argument `offset` is out of range for i24");
-    return @intCast(target.clampOffset(@intCast(offset)));
+    const result = target.clampOffset(@intCast(offset));
+    out_result.* = @intCast(result);
+    return 0;
 }
 export fn zg_decode_impl(byte: u8, out_result: *u32) i32 {
     const result = target.decode(byte) catch |err| return switch (err) {

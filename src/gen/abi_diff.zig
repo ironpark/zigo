@@ -787,3 +787,34 @@ test "every extern struct field change is breaking" {
         try std.testing.expectEqualStrings("type definition changed", report.changes.items[0].detail);
     }
 }
+
+test "giving an infallible function a handle changes its C ABI" {
+    var payload: semantic.TypeNode = .{ .int = .{ .bits = 64, .signed = true } };
+    _ = &payload;
+    const plain: semantic.SemanticFn = .{
+        .name = "total",
+        .params = &.{},
+        .@"return" = .{ .int = .{ .bits = 64, .signed = true } },
+        .symbol = "zg_total",
+    };
+    // A receiver is not just one more argument: a function that can be handed
+    // a nil handle needs an `error` in Go, and that turns its C signature into
+    // a status return with an `out_result`.
+    var checked = plain;
+    checked.receiver = "Counter";
+    const base: semantic.Semantic = .{
+        .functions = &.{plain},
+        .package = "demo",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    const current: semantic.Semantic = .{
+        .functions = &.{checked},
+        .package = "demo",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    var report = try diff(std.testing.allocator, base, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expect(report.hasBreaking());
+}

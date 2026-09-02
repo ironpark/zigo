@@ -23,13 +23,16 @@ func ChildCreate(value int32) (unsafe.Pointer, int32) {
 }
 
 // ChildGet calls the generated C ABI wrapper for zg_child_get.
-func ChildGet(self unsafe.Pointer) int32 {
-	return int32(C.zg_child_get((*C.zg_child)(self)))
+func ChildGet(self unsafe.Pointer) (int32, int32) {
+	var outResult C.int32_t
+	code := int32(C.zg_child_get((*C.zg_child)(self), &outResult))
+	return int32(outResult), code
 }
 
 // ChildDeinit calls the generated C ABI wrapper for zg_child_deinit.
-func ChildDeinit(self unsafe.Pointer) {
-	C.zg_child_deinit((*C.zg_child)(self))
+func ChildDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_child_deinit((*C.zg_child)(self)))
+	return code
 }
 
 // ValueCreate calls the generated C ABI wrapper for zg_value_create.
@@ -40,48 +43,58 @@ func ValueCreate(initial int64) (unsafe.Pointer, int32) {
 }
 
 // ValueSetNone calls the generated C ABI wrapper for zg_value_set_none.
-func ValueSetNone(self unsafe.Pointer) {
-	C.zg_value_set_none((*C.zg_value)(self))
+func ValueSetNone(self unsafe.Pointer) int32 {
+	code := int32(C.zg_value_set_none((*C.zg_value)(self)))
+	return code
 }
 
 // ValueSetFlag calls the generated C ABI wrapper for zg_value_set_flag.
-func ValueSetFlag(self unsafe.Pointer, flag uint8) {
-	C.zg_value_set_flag((*C.zg_value)(self), C.uint8_t(flag))
+func ValueSetFlag(self unsafe.Pointer, flag uint8) int32 {
+	code := int32(C.zg_value_set_flag((*C.zg_value)(self), C.uint8_t(flag)))
+	return code
 }
 
 // ValueSetMode calls the generated C ABI wrapper for zg_value_set_mode.
-func ValueSetMode(self unsafe.Pointer, mode uint8) {
-	C.zg_value_set_mode((*C.zg_value)(self), C.uint8_t(mode))
+func ValueSetMode(self unsafe.Pointer, mode uint8) int32 {
+	code := int32(C.zg_value_set_mode((*C.zg_value)(self), C.uint8_t(mode)))
+	return code
 }
 
 // ValueUsePresetSamples calls the generated C ABI wrapper for zg_value_use_preset_samples.
-func ValueUsePresetSamples(self unsafe.Pointer) {
-	C.zg_value_use_preset_samples((*C.zg_value)(self))
+func ValueUsePresetSamples(self unsafe.Pointer) int32 {
+	code := int32(C.zg_value_use_preset_samples((*C.zg_value)(self)))
+	return code
 }
 
 // ValueUseEmptySamples calls the generated C ABI wrapper for zg_value_use_empty_samples.
-func ValueUseEmptySamples(self unsafe.Pointer) {
-	C.zg_value_use_empty_samples((*C.zg_value)(self))
+func ValueUseEmptySamples(self unsafe.Pointer) int32 {
+	code := int32(C.zg_value_use_empty_samples((*C.zg_value)(self)))
+	return code
 }
 
 // ValueUseMutableSamples calls the generated C ABI wrapper for zg_value_use_mutable_samples.
-func ValueUseMutableSamples(self unsafe.Pointer) {
-	C.zg_value_use_mutable_samples((*C.zg_value)(self))
+func ValueUseMutableSamples(self unsafe.Pointer) int32 {
+	code := int32(C.zg_value_use_mutable_samples((*C.zg_value)(self)))
+	return code
 }
 
 // ValueSetChild calls the generated C ABI wrapper for zg_value_set_child.
-func ValueSetChild(self unsafe.Pointer, child unsafe.Pointer) {
-	C.zg_value_set_child((*C.zg_value)(self), (*C.zg_child)(child))
+func ValueSetChild(self unsafe.Pointer, child unsafe.Pointer) int32 {
+	code := int32(C.zg_value_set_child((*C.zg_value)(self), (*C.zg_child)(child)))
+	return code
 }
 
 // ValueBorrow calls the generated C ABI wrapper for zg_value_borrow.
-func ValueBorrow(self unsafe.Pointer) unsafe.Pointer {
-	return unsafe.Pointer(C.zg_value_borrow((*C.zg_value)(self)))
+func ValueBorrow(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult *C.zg_value
+	code := int32(C.zg_value_borrow((*C.zg_value)(self), &outResult))
+	return unsafe.Pointer(outResult), code
 }
 
 // ValueDeinit calls the generated C ABI wrapper for zg_value_deinit.
-func ValueDeinit(self unsafe.Pointer) {
-	C.zg_value_deinit((*C.zg_value)(self))
+func ValueDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_value_deinit((*C.zg_value)(self)))
+	return code
 }
 
 // SignalCreate calls the generated C ABI wrapper for zg_signal_create.
@@ -92,38 +105,45 @@ func SignalCreate(initial uint32) (unsafe.Pointer, int32) {
 }
 
 // SignalSetIdle calls the generated C ABI wrapper for zg_signal_set_idle.
-func SignalSetIdle(self unsafe.Pointer) {
-	C.zg_signal_set_idle((*C.zg_signal)(self))
+func SignalSetIdle(self unsafe.Pointer) int32 {
+	code := int32(C.zg_signal_set_idle((*C.zg_signal)(self)))
+	return code
 }
 
 // SignalSetTicks calls the generated C ABI wrapper for zg_signal_set_ticks.
-func SignalSetTicks(self unsafe.Pointer, ticks uint32) {
-	C.zg_signal_set_ticks((*C.zg_signal)(self), C.uint32_t(ticks))
+func SignalSetTicks(self unsafe.Pointer, ticks uint32) int32 {
+	code := int32(C.zg_signal_set_ticks((*C.zg_signal)(self), C.uint32_t(ticks)))
+	return code
 }
 
 // SignalSetLevel calls the generated C ABI wrapper for zg_signal_set_level.
-func SignalSetLevel(self unsafe.Pointer, level float64) {
-	C.zg_signal_set_level((*C.zg_signal)(self), C.double(level))
+func SignalSetLevel(self unsafe.Pointer, level float64) int32 {
+	code := int32(C.zg_signal_set_level((*C.zg_signal)(self), C.double(level)))
+	return code
 }
 
 // SignalSetOffset calls the generated C ABI wrapper for zg_signal_set_offset.
-func SignalSetOffset(self unsafe.Pointer, offset int16) {
-	C.zg_signal_set_offset((*C.zg_signal)(self), C.int16_t(offset))
+func SignalSetOffset(self unsafe.Pointer, offset int16) int32 {
+	code := int32(C.zg_signal_set_offset((*C.zg_signal)(self), C.int16_t(offset)))
+	return code
 }
 
 // SignalSetMode calls the generated C ABI wrapper for zg_signal_set_mode.
-func SignalSetMode(self unsafe.Pointer, mode uint8) {
-	C.zg_signal_set_mode((*C.zg_signal)(self), C.uint8_t(mode))
+func SignalSetMode(self unsafe.Pointer, mode uint8) int32 {
+	code := int32(C.zg_signal_set_mode((*C.zg_signal)(self), C.uint8_t(mode)))
+	return code
 }
 
 // SignalSetActive calls the generated C ABI wrapper for zg_signal_set_active.
-func SignalSetActive(self unsafe.Pointer, active uint8) {
-	C.zg_signal_set_active((*C.zg_signal)(self), C.uint8_t(active))
+func SignalSetActive(self unsafe.Pointer, active uint8) int32 {
+	code := int32(C.zg_signal_set_active((*C.zg_signal)(self), C.uint8_t(active)))
+	return code
 }
 
 // SignalDeinit calls the generated C ABI wrapper for zg_signal_deinit.
-func SignalDeinit(self unsafe.Pointer) {
-	C.zg_signal_deinit((*C.zg_signal)(self))
+func SignalDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_signal_deinit((*C.zg_signal)(self)))
+	return code
 }
 
 // LiveValues calls the generated C ABI wrapper for zg_live_values.

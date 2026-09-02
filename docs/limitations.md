@@ -183,6 +183,14 @@ namespace가 들어가지 않으므로, 서로 다른 namespace의 같은 함수
 
 ## 런타임 주의사항
 
+- **패닉 규칙**: 생성된 Go 시그니처에 `error`가 있으면 native 패닉은 모두 그 `error`로
+  도달하고(그 호출이 닿은 handle은 poison된다), 없으면 패닉은 Zig 의미 그대로 fatal이다 —
+  메시지를 stderr에 적고 프로세스를 `abort()`한다. `error`가 붙는 경우는 세 가지다: Zig가
+  error union을 반환할 때, receiver나 handle 파라미터가 있을 때, 승격된 정수 파라미터가
+  있을 때. 이 함수들은 모두 상태 코드 + `out_result` 모양의 C ABI를 쓴다. 그래서
+  "handle을 받지만 오류를 반환하지 않는 함수"의 패닉이 조용한 성공으로 돌아오는 일은
+  없다. 아무 것도 받지 않는 자유 함수의 패닉을 error로 받고 싶으면 Zig 쪽을 error union으로
+  바꾼다.
 - Zig panic은 C 경계에서 오류 코드 `-2`와 마지막 오류 메시지로 변환되지만 정상 복구를
   뜻하지 않는다. Go에서는 `errors.Is(err, ErrNativePanic)`으로 판별한다. 메시지를 수집한 뒤
   현재 작업을 중단한다. 메시지는 native 쪽 thread-local에 남으므로, error를 반환하는 생성

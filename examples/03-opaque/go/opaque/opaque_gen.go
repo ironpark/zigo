@@ -28,13 +28,20 @@ func NewContext() (*Context, error) {
 
 // Add calls the Zig function Context.add.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (c *Context) Add(value int64) (int64, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Context.Add receiver", c)
 	if err != nil {
 		return 0, err
 	}
 	defer c.zigoRelease()
-	return raw.ContextAdd(ptr, value), nil
+	result, code := raw.ContextAdd(ptr, value)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("Context.Add", code), c)
+	}
+	return result, nil
 }
 
 // Crash panics inside a method: what leaves a handle poisoned.
@@ -53,6 +60,35 @@ func (c *Context) Crash() error {
 		return zigoPoisonAfterPanic(errorForCode("Context.Crash", code), c)
 	}
 	return nil
+}
+
+// CrashInfallible panics from a method that returns no error union.
+// Its Go signature still carries an `error` -- the handle check has to
+// be reportable -- so the panic reaches the caller through that.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (c *Context) CrashInfallible() (int64, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Context.CrashInfallible receiver", c)
+	if err != nil {
+		return 0, err
+	}
+	defer c.zigoRelease()
+	result, code := raw.ContextCrashInfallible(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("Context.CrashInfallible", code), c)
+	}
+	return result, nil
+}
+
+// CrashFatal
+// A free function with no handle and no promoted integer has no `error` in
+// its Go signature, so a panic here has nowhere to be reported. Zig calls
+// that fatal, and so does zigo: the message goes to stderr and the process
+// aborts.
+func CrashFatal() {
+	raw.CrashFatal()
 }
 
 // LiveBytes calls the Zig function liveBytes.

@@ -8,9 +8,11 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
 }
 pub const panic = std.debug.FullPanic(panicHandler);
 
-export fn zg_unicode_codepoint_width_impl(cp: u32) u8 {
+export fn zg_unicode_codepoint_width_impl(cp: u32, out_result: *u8) i32 {
     if (cp > std.math.maxInt(u21)) @panic("zigo: argument `cp` is out of range for u21");
-    return target.unicode.codepointWidth(@intCast(cp));
+    const result = target.unicode.codepointWidth(@intCast(cp));
+    out_result.* = result;
+    return 0;
 }
 export fn zg_unicode_grapheme_breaks_impl(before: u32, after: u32) u8 {
     return @intFromBool(target.unicode.grapheme.breaks(before, after));

@@ -2,6 +2,7 @@
 #include <setjmp.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "zigo_config.h"
@@ -21,12 +22,22 @@ static _Thread_local jmp_buf zg_panic_env;
 static _Thread_local int zg_panic_active;
 static _Thread_local char zg_panic_message[1024];
 
+// A panic with nowhere to be reported is what Zig says it is: fatal.
+// The message is written out first so the process does not die silent.
+_Noreturn static void zg_panic_fatal(void) {
+    fputs("zigo: native panic: ", stderr);
+    fputs(zg_panic_message, stderr);
+    fputc('\n', stderr);
+    fflush(stderr);
+    abort();
+}
+
 void zg_panic_bridge(const uint8_t *message, size_t length) {
     size_t count = length < sizeof(zg_panic_message) - 1 ? length : sizeof(zg_panic_message) - 1;
     memcpy(zg_panic_message, message, count);
     zg_panic_message[count] = '\0';
     if (zg_panic_active) longjmp(zg_panic_env, 1);
-    abort();
+    zg_panic_fatal();
 }
 
 ZIGO_EXPORT const char *zg_last_error_message(void) { return zg_panic_message; }
@@ -36,7 +47,7 @@ ZIGO_EXPORT void zg_configure(const zg_config * config) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return;
+        zg_panic_fatal();
     }
 zg_configure_impl(config);
     zg_panic_active = 0;
@@ -47,7 +58,7 @@ ZIGO_EXPORT void zg_default_config(zg_config * out_result) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return;
+        zg_panic_fatal();
     }
 zg_default_config_impl(out_result);
     zg_panic_active = 0;
@@ -58,7 +69,7 @@ ZIGO_EXPORT void zg_translate(const zg_point * origin, int16_t dx, zg_point * ou
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return;
+        zg_panic_fatal();
     }
 zg_translate_impl(origin, dx, out_result);
     zg_panic_active = 0;
@@ -81,7 +92,7 @@ ZIGO_EXPORT void zg_accept_points(const zg_point * values_ptr, size_t values_len
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return;
+        zg_panic_fatal();
     }
 zg_accept_points_impl(values_ptr, values_len);
     zg_panic_active = 0;
@@ -104,7 +115,7 @@ ZIGO_EXPORT void zg_fill_all_points(zg_point * output_ptr, size_t output_len, si
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return;
+        zg_panic_fatal();
     }
 zg_fill_all_points_impl(output_ptr, output_len, output_written);
     zg_panic_active = 0;
@@ -115,7 +126,7 @@ ZIGO_EXPORT void zg_accept_configs(const zg_config * values_ptr, size_t values_l
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return;
+        zg_panic_fatal();
     }
 zg_accept_configs_impl(values_ptr, values_len);
     zg_panic_active = 0;
@@ -126,7 +137,7 @@ ZIGO_EXPORT size_t zg_fill_configs(zg_config * output_ptr, size_t output_len) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return 0;
+        zg_panic_fatal();
     }
     size_t result = zg_fill_configs_impl(output_ptr, output_len);
     zg_panic_active = 0;
@@ -138,7 +149,7 @@ ZIGO_EXPORT void zg_configs(const zg_config * * out_result_ptr, size_t * out_res
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return;
+        zg_panic_fatal();
     }
 zg_configs_impl(out_result_ptr, out_result_len);
     zg_panic_active = 0;
@@ -149,7 +160,7 @@ ZIGO_EXPORT void zg_points(const zg_point * * out_result_ptr, size_t * out_resul
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return;
+        zg_panic_fatal();
     }
 zg_points_impl(out_result_ptr, out_result_len);
     zg_panic_active = 0;

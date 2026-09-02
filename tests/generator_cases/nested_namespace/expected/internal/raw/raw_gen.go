@@ -15,8 +15,10 @@ import "C"
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
 // UnicodeCodepointWidth calls the generated C ABI wrapper for zg_unicode_codepoint_width.
-func UnicodeCodepointWidth(cp uint32) uint8 {
-	return uint8(C.zg_unicode_codepoint_width(C.uint32_t(cp)))
+func UnicodeCodepointWidth(cp uint32) (uint8, int32) {
+	var outResult C.uint8_t
+	code := int32(C.zg_unicode_codepoint_width(C.uint32_t(cp), &outResult))
+	return uint8(outResult), code
 }
 // UnicodeGraphemeBreaks calls the generated C ABI wrapper for zg_unicode_grapheme_breaks.
 func UnicodeGraphemeBreaks(before uint32, after uint32) uint8 {

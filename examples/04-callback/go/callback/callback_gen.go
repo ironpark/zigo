@@ -24,25 +24,38 @@ func NewFloatBuffer() (*FloatBuffer, error) {
 
 // Push calls the Zig function FloatBuffer.push.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (f *FloatBuffer) Push(value float32) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("FloatBuffer.Push receiver", f)
 	if err != nil {
 		return err
 	}
 	defer f.zigoRelease()
-	raw.FloatBufferPush(ptr, value)
+	code := raw.FloatBufferPush(ptr, value)
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("FloatBuffer.Push", code), f)
+	}
 	return nil
 }
 
 // Len calls the Zig function FloatBuffer.len.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (f *FloatBuffer) Len() (uint, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("FloatBuffer.Len receiver", f)
 	if err != nil {
 		return 0, err
 	}
 	defer f.zigoRelease()
-	return raw.FloatBufferLen(ptr), nil
+	result, code := raw.FloatBufferLen(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("FloatBuffer.Len", code), f)
+	}
+	return result, nil
 }
 
 // NewIntBuffer creates a caller-owned IntBuffer.
@@ -60,25 +73,38 @@ func NewIntBuffer() (*IntBuffer, error) {
 
 // Push calls the Zig function IntBuffer.push.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (i *IntBuffer) Push(value int32) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("IntBuffer.Push receiver", i)
 	if err != nil {
 		return err
 	}
 	defer i.zigoRelease()
-	raw.IntBufferPush(ptr, value)
+	code := raw.IntBufferPush(ptr, value)
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("IntBuffer.Push", code), i)
+	}
 	return nil
 }
 
 // Len calls the Zig function IntBuffer.len.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (i *IntBuffer) Len() (uint, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("IntBuffer.Len receiver", i)
 	if err != nil {
 		return 0, err
 	}
 	defer i.zigoRelease()
-	return raw.IntBufferLen(ptr), nil
+	result, code := raw.IntBufferLen(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("IntBuffer.Len", code), i)
+	}
+	return result, nil
 }
 
 // NewCallbackContext creates a caller-owned CallbackContext.
@@ -100,16 +126,22 @@ func NewCallbackContext(callback Observer) (*CallbackContext, error) {
 
 // Run calls the Zig function CallbackContext.run.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (c *CallbackContext) Run(value int32) (int32, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("CallbackContext.Run receiver", c)
 	if err != nil {
 		return 0, err
 	}
 	defer c.zigoRelease()
-	result := raw.CallbackContextRun(ptr, value)
+	result, code := raw.CallbackContextRun(ptr, value)
 	for _, handle := range c.callbackHandles {
 		zigoRethrowCallbackPanic("CallbackContext.Run", handle)
+	}
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("CallbackContext.Run", code), c)
 	}
 	return result, nil
 }

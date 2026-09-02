@@ -23,8 +23,10 @@ func ContextCreate() (unsafe.Pointer, int32) {
 }
 
 // ContextAdd calls the generated C ABI wrapper for zg_context_add.
-func ContextAdd(self unsafe.Pointer, value int64) int64 {
-	return int64(C.zg_context_add((*C.zg_context)(self), C.int64_t(value)))
+func ContextAdd(self unsafe.Pointer, value int64) (int64, int32) {
+	var outResult C.int64_t
+	code := int32(C.zg_context_add((*C.zg_context)(self), C.int64_t(value), &outResult))
+	return int64(outResult), code
 }
 
 // ContextCrash calls the generated C ABI wrapper for zg_context_crash.
@@ -33,9 +35,22 @@ func ContextCrash(self unsafe.Pointer) int32 {
 	return code
 }
 
+// ContextCrashInfallible calls the generated C ABI wrapper for zg_context_crash_infallible.
+func ContextCrashInfallible(self unsafe.Pointer) (int64, int32) {
+	var outResult C.int64_t
+	code := int32(C.zg_context_crash_infallible((*C.zg_context)(self), &outResult))
+	return int64(outResult), code
+}
+
 // ContextDeinit calls the generated C ABI wrapper for zg_context_deinit.
-func ContextDeinit(self unsafe.Pointer) {
-	C.zg_context_deinit((*C.zg_context)(self))
+func ContextDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_context_deinit((*C.zg_context)(self)))
+	return code
+}
+
+// CrashFatal calls the generated C ABI wrapper for zg_crash_fatal.
+func CrashFatal() {
+	C.zg_crash_fatal()
 }
 
 // LiveBytes calls the generated C ABI wrapper for zg_live_bytes.

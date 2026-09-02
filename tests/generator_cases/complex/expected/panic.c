@@ -2,6 +2,7 @@
 #include <setjmp.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "zigo_pipeline.h"
@@ -21,12 +22,22 @@ static _Thread_local jmp_buf zg_panic_env;
 static _Thread_local int zg_panic_active;
 static _Thread_local char zg_panic_message[1024];
 
+// A panic with nowhere to be reported is what Zig says it is: fatal.
+// The message is written out first so the process does not die silent.
+_Noreturn static void zg_panic_fatal(void) {
+    fputs("zigo: native panic: ", stderr);
+    fputs(zg_panic_message, stderr);
+    fputc('\n', stderr);
+    fflush(stderr);
+    abort();
+}
+
 void zg_panic_bridge(const uint8_t *message, size_t length) {
     size_t count = length < sizeof(zg_panic_message) - 1 ? length : sizeof(zg_panic_message) - 1;
     memcpy(zg_panic_message, message, count);
     zg_panic_message[count] = '\0';
     if (zg_panic_active) longjmp(zg_panic_env, 1);
-    abort();
+    zg_panic_fatal();
 }
 
 ZIGO_EXPORT const char *zg_last_error_message(void) { return zg_panic_message; }
@@ -55,27 +66,28 @@ ZIGO_EXPORT int32_t zg_int_batch_push(zg_int_batch * self, int32_t value) {
     return result;
 }
 
-size_t zg_int_batch_len_impl(zg_int_batch * self);
-ZIGO_EXPORT size_t zg_int_batch_len(zg_int_batch * self) {
+int32_t zg_int_batch_len_impl(zg_int_batch * self, size_t * out_result);
+ZIGO_EXPORT int32_t zg_int_batch_len(zg_int_batch * self, size_t * out_result) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return 0;
+        return -2;
     }
-    size_t result = zg_int_batch_len_impl(self);
+    int32_t result = zg_int_batch_len_impl(self, out_result);
     zg_panic_active = 0;
     return result;
 }
 
-void zg_int_batch_deinit_impl(zg_int_batch * self);
-ZIGO_EXPORT void zg_int_batch_deinit(zg_int_batch * self) {
+int32_t zg_int_batch_deinit_impl(zg_int_batch * self);
+ZIGO_EXPORT int32_t zg_int_batch_deinit(zg_int_batch * self) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return;
+        return -2;
     }
-zg_int_batch_deinit_impl(self);
+    int32_t result = zg_int_batch_deinit_impl(self);
     zg_panic_active = 0;
+    return result;
 }
 
 int32_t zg_float_batch_create_impl(zg_float_batch * * out_result);
@@ -102,27 +114,28 @@ ZIGO_EXPORT int32_t zg_float_batch_push(zg_float_batch * self, double p0) {
     return result;
 }
 
-size_t zg_float_batch_len_impl(zg_float_batch * self);
-ZIGO_EXPORT size_t zg_float_batch_len(zg_float_batch * self) {
+int32_t zg_float_batch_len_impl(zg_float_batch * self, size_t * out_result);
+ZIGO_EXPORT int32_t zg_float_batch_len(zg_float_batch * self, size_t * out_result) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return 0;
+        return -2;
     }
-    size_t result = zg_float_batch_len_impl(self);
+    int32_t result = zg_float_batch_len_impl(self, out_result);
     zg_panic_active = 0;
     return result;
 }
 
-void zg_float_batch_deinit_impl(zg_float_batch * self);
-ZIGO_EXPORT void zg_float_batch_deinit(zg_float_batch * self) {
+int32_t zg_float_batch_deinit_impl(zg_float_batch * self);
+ZIGO_EXPORT int32_t zg_float_batch_deinit(zg_float_batch * self) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return;
+        return -2;
     }
-zg_float_batch_deinit_impl(self);
+    int32_t result = zg_float_batch_deinit_impl(self);
     zg_panic_active = 0;
+    return result;
 }
 
 int32_t zg_pipeline_create_impl(const uint8_t * name_ptr, size_t name_len, uint32_t mode, size_t userdata, zg_pipeline * * out_result);
@@ -149,15 +162,16 @@ ZIGO_EXPORT int32_t zg_pipeline_process(zg_pipeline * self, const int32_t * valu
     return result;
 }
 
-void zg_pipeline_name_impl(zg_pipeline * self, const uint8_t * * out_result_ptr, size_t * out_result_len);
-ZIGO_EXPORT void zg_pipeline_name(zg_pipeline * self, const uint8_t * * out_result_ptr, size_t * out_result_len) {
+int32_t zg_pipeline_name_impl(zg_pipeline * self, const uint8_t * * out_result_ptr, size_t * out_result_len);
+ZIGO_EXPORT int32_t zg_pipeline_name(zg_pipeline * self, const uint8_t * * out_result_ptr, size_t * out_result_len) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return;
+        return -2;
     }
-zg_pipeline_name_impl(self, out_result_ptr, out_result_len);
+    int32_t result = zg_pipeline_name_impl(self, out_result_ptr, out_result_len);
     zg_panic_active = 0;
+    return result;
 }
 
 void zg_sample_values_impl(const float * * out_result_ptr, size_t * out_result_len);
@@ -165,7 +179,7 @@ ZIGO_EXPORT void zg_sample_values(const float * * out_result_ptr, size_t * out_r
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return;
+        zg_panic_fatal();
     }
 zg_sample_values_impl(out_result_ptr, out_result_len);
     zg_panic_active = 0;
@@ -188,7 +202,7 @@ ZIGO_EXPORT void zg_take_samples(float * * out_result_ptr, size_t * out_result_l
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return;
+        zg_panic_fatal();
     }
 zg_take_samples_impl(out_result_ptr, out_result_len);
     zg_panic_active = 0;
@@ -211,69 +225,70 @@ ZIGO_EXPORT void zg_release_samples(float * samples_ptr, size_t samples_len) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return;
+        zg_panic_fatal();
     }
 zg_release_samples_impl(samples_ptr, samples_len);
     zg_panic_active = 0;
 }
 
-uint32_t zg_pipeline_mode_impl(zg_pipeline * self);
-ZIGO_EXPORT uint32_t zg_pipeline_mode(zg_pipeline * self) {
+int32_t zg_pipeline_mode_impl(zg_pipeline * self, uint32_t * out_result);
+ZIGO_EXPORT int32_t zg_pipeline_mode(zg_pipeline * self, uint32_t * out_result) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return 0;
+        return -2;
     }
-    uint32_t result = zg_pipeline_mode_impl(self);
+    int32_t result = zg_pipeline_mode_impl(self, out_result);
     zg_panic_active = 0;
     return result;
 }
 
-uint8_t zg_pipeline_set_enabled_impl(zg_pipeline * self, uint8_t enabled);
-ZIGO_EXPORT uint8_t zg_pipeline_set_enabled(zg_pipeline * self, uint8_t enabled) {
+int32_t zg_pipeline_set_enabled_impl(zg_pipeline * self, uint8_t enabled, uint8_t * out_result);
+ZIGO_EXPORT int32_t zg_pipeline_set_enabled(zg_pipeline * self, uint8_t enabled, uint8_t * out_result) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return 0;
+        return -2;
     }
-    uint8_t result = zg_pipeline_set_enabled_impl(self, enabled);
+    int32_t result = zg_pipeline_set_enabled_impl(self, enabled, out_result);
     zg_panic_active = 0;
     return result;
 }
 
-size_t zg_pipeline_processed_impl(zg_pipeline * self);
-ZIGO_EXPORT size_t zg_pipeline_processed(zg_pipeline * self) {
+int32_t zg_pipeline_processed_impl(zg_pipeline * self, size_t * out_result);
+ZIGO_EXPORT int32_t zg_pipeline_processed(zg_pipeline * self, size_t * out_result) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return 0;
+        return -2;
     }
-    size_t result = zg_pipeline_processed_impl(self);
+    int32_t result = zg_pipeline_processed_impl(self, out_result);
     zg_panic_active = 0;
     return result;
 }
 
-int64_t zg_pipeline_total_impl(zg_pipeline * self);
-ZIGO_EXPORT int64_t zg_pipeline_total(zg_pipeline * self) {
+int32_t zg_pipeline_total_impl(zg_pipeline * self, int64_t * out_result);
+ZIGO_EXPORT int32_t zg_pipeline_total(zg_pipeline * self, int64_t * out_result) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return 0;
+        return -2;
     }
-    int64_t result = zg_pipeline_total_impl(self);
+    int32_t result = zg_pipeline_total_impl(self, out_result);
     zg_panic_active = 0;
     return result;
 }
 
-void zg_pipeline_deinit_impl(zg_pipeline * self);
-ZIGO_EXPORT void zg_pipeline_deinit(zg_pipeline * self) {
+int32_t zg_pipeline_deinit_impl(zg_pipeline * self);
+ZIGO_EXPORT int32_t zg_pipeline_deinit(zg_pipeline * self) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return;
+        return -2;
     }
-zg_pipeline_deinit_impl(self);
+    int32_t result = zg_pipeline_deinit_impl(self);
     zg_panic_active = 0;
+    return result;
 }
 
 size_t zg_live_bytes_impl(void);
@@ -281,7 +296,7 @@ ZIGO_EXPORT size_t zg_live_bytes(void) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return 0;
+        zg_panic_fatal();
     }
     size_t result = zg_live_bytes_impl();
     zg_panic_active = 0;
@@ -293,7 +308,7 @@ ZIGO_EXPORT size_t zg_compression_bound(size_t source_len) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return 0;
+        zg_panic_fatal();
     }
     size_t result = zg_compression_bound_impl(source_len);
     zg_panic_active = 0;
@@ -305,7 +320,7 @@ ZIGO_EXPORT const char * zg_echo_c_string(const char * text) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return 0;
+        zg_panic_fatal();
     }
     const char * result = zg_echo_c_string_impl(text);
     zg_panic_active = 0;
@@ -317,7 +332,7 @@ ZIGO_EXPORT size_t zg_extract_paths(const uint8_t * paths_data, size_t paths_dat
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return 0;
+        zg_panic_fatal();
     }
     size_t result = zg_extract_paths_impl(paths_data, paths_data_len, paths_lens, paths_count, sentinelSlices_data, sentinelSlices_data_len, sentinelSlices_lens, sentinelSlices_count, sentinelPointers_data, sentinelPointers_data_len, sentinelPointers_lens, sentinelPointers_count);
     zg_panic_active = 0;

@@ -40,10 +40,10 @@ typedef struct zg_signal_snapshot_t {
 } zg_signal_snapshot_t;
 
 ZIGO_EXPORT int32_t zg_signal_create(zg_signal * * out_result);
-ZIGO_EXPORT void zg_signal_deinit(zg_signal * self);
-ZIGO_EXPORT void zg_signal_set_ticks(zg_signal * self, uint32_t ticks);
-ZIGO_EXPORT void zg_signal_set_mode(zg_signal * self, uint8_t mode);
-ZIGO_EXPORT void zg_signal_set_active(zg_signal * self, uint8_t active);
+ZIGO_EXPORT int32_t zg_signal_deinit(zg_signal * self);
+ZIGO_EXPORT int32_t zg_signal_set_ticks(zg_signal * self, uint32_t ticks);
+ZIGO_EXPORT int32_t zg_signal_set_mode(zg_signal * self, uint8_t mode);
+ZIGO_EXPORT int32_t zg_signal_set_active(zg_signal * self, uint8_t active);
 ZIGO_EXPORT uint8_t zg_signal_project_tag(const zg_signal *self, uint8_t *out_value);
 ZIGO_EXPORT uint8_t zg_signal_project_ticks(const zg_signal *self, uint32_t *out_value);
 ZIGO_EXPORT uint8_t zg_signal_project_level(const zg_signal *self, double *out_value);

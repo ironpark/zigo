@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-02T07:37:26Z"
 depends_on:
 - "69-third-party-library-fit#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 위 fixture 골든과 예제 통과, 문서 갱신.
 > NEXT: none

@@ -8,6 +8,14 @@
 
 ### Breaking
 
+- 공개 Go 시그니처에 `error`가 있는 모든 함수의 C ABI가 상태 코드 반환 + `out_result`
+  파라미터로 통일됐습니다. 이전에는 error union을 반환하는 함수만 그랬고, handle이나 승격
+  정수 때문에 `error`가 붙은 함수는 C 래퍼의 패닉 착지점에 돌려줄 상태가 없어 zero value를
+  반환했습니다 — 즉 fatal한 Zig 패닉이 조용한 성공이 됐고 handle도 poison되지 않았습니다.
+  이제 그런 함수의 패닉은 `*NativePanicError`로 돌아오고 handle을 poison합니다. C 헤더와
+  raw Go 계층의 시그니처가 바뀌므로 직접 링크하는 코드는 재생성이 필요합니다. (계획 69)
+- `error`를 반환하지 않는 순수 함수의 패닉은 이제 메시지를 stderr에 적고 `abort()`합니다.
+  이전에는 zero value를 반환했습니다. (계획 69)
 - 승격된 정수 파라미터(`u21`, `i24` 등)를 받는 함수의 공개 Go 시그니처가 `error`를 하나 더
   반환합니다. 범위 검사가 shim이 아니라 cgo 호출 이전의 Go에서 일어나므로, 범위 밖 인자는
   native를 부르지 않고 `*RangeError`(`errors.Is(err, ErrOutOfRange)`)로 돌아옵니다. C ABI는

@@ -16,8 +16,8 @@
 #endif
 #endif
 
-ZIGO_EXPORT int8_t zg_codepoint_width(uint32_t cp);
-ZIGO_EXPORT int32_t zg_clamp_offset(int32_t offset);
+ZIGO_EXPORT int32_t zg_codepoint_width(uint32_t cp, int8_t * out_result);
+ZIGO_EXPORT int32_t zg_clamp_offset(int32_t offset, int32_t * out_result);
 ZIGO_EXPORT int32_t zg_decode(uint8_t byte, uint32_t * out_result);
 ZIGO_EXPORT const char *zg_last_error_message(void);
 

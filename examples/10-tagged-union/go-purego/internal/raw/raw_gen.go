@@ -51,26 +51,26 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError                func() unsafe.Pointer
 	fnChildCreate            func(int32, *unsafe.Pointer) int32
-	fnChildGet               func(unsafe.Pointer) int32
-	fnChildDeinit            func(unsafe.Pointer)
+	fnChildGet               func(unsafe.Pointer, *int32) int32
+	fnChildDeinit            func(unsafe.Pointer) int32
 	fnValueCreate            func(int64, *unsafe.Pointer) int32
-	fnValueSetNone           func(unsafe.Pointer)
-	fnValueSetFlag           func(unsafe.Pointer, uint8)
-	fnValueSetMode           func(unsafe.Pointer, uint8)
-	fnValueUsePresetSamples  func(unsafe.Pointer)
-	fnValueUseEmptySamples   func(unsafe.Pointer)
-	fnValueUseMutableSamples func(unsafe.Pointer)
-	fnValueSetChild          func(unsafe.Pointer, unsafe.Pointer)
-	fnValueBorrow            func(unsafe.Pointer) unsafe.Pointer
-	fnValueDeinit            func(unsafe.Pointer)
+	fnValueSetNone           func(unsafe.Pointer) int32
+	fnValueSetFlag           func(unsafe.Pointer, uint8) int32
+	fnValueSetMode           func(unsafe.Pointer, uint8) int32
+	fnValueUsePresetSamples  func(unsafe.Pointer) int32
+	fnValueUseEmptySamples   func(unsafe.Pointer) int32
+	fnValueUseMutableSamples func(unsafe.Pointer) int32
+	fnValueSetChild          func(unsafe.Pointer, unsafe.Pointer) int32
+	fnValueBorrow            func(unsafe.Pointer, *unsafe.Pointer) int32
+	fnValueDeinit            func(unsafe.Pointer) int32
 	fnSignalCreate           func(uint32, *unsafe.Pointer) int32
-	fnSignalSetIdle          func(unsafe.Pointer)
-	fnSignalSetTicks         func(unsafe.Pointer, uint32)
-	fnSignalSetLevel         func(unsafe.Pointer, float64)
-	fnSignalSetOffset        func(unsafe.Pointer, int16)
-	fnSignalSetMode          func(unsafe.Pointer, uint8)
-	fnSignalSetActive        func(unsafe.Pointer, uint8)
-	fnSignalDeinit           func(unsafe.Pointer)
+	fnSignalSetIdle          func(unsafe.Pointer) int32
+	fnSignalSetTicks         func(unsafe.Pointer, uint32) int32
+	fnSignalSetLevel         func(unsafe.Pointer, float64) int32
+	fnSignalSetOffset        func(unsafe.Pointer, int16) int32
+	fnSignalSetMode          func(unsafe.Pointer, uint8) int32
+	fnSignalSetActive        func(unsafe.Pointer, uint8) int32
+	fnSignalDeinit           func(unsafe.Pointer) int32
 	fnLiveValues             func() uintptr
 	fnDivide                 func(float64, float64, *float64) int32
 	fnSum                    func(unsafe.Pointer, uintptr) float64
@@ -411,14 +411,16 @@ func ChildCreate(value int32) (unsafe.Pointer, int32) {
 }
 
 // ChildGet calls the generated purego ABI wrapper for zg_child_get.
-func ChildGet(self unsafe.Pointer) int32 {
-	result := bindings().fnChildGet(self)
-	return int32(result)
+func ChildGet(self unsafe.Pointer) (int32, int32) {
+	var outResult int32
+	code := bindings().fnChildGet(self, &outResult)
+	return outResult, code
 }
 
 // ChildDeinit calls the generated purego ABI wrapper for zg_child_deinit.
-func ChildDeinit(self unsafe.Pointer) {
-	bindings().fnChildDeinit(self)
+func ChildDeinit(self unsafe.Pointer) int32 {
+	code := bindings().fnChildDeinit(self)
+	return code
 }
 
 // ValueCreate calls the generated purego ABI wrapper for zg_value_create.
@@ -429,49 +431,58 @@ func ValueCreate(initial int64) (unsafe.Pointer, int32) {
 }
 
 // ValueSetNone calls the generated purego ABI wrapper for zg_value_set_none.
-func ValueSetNone(self unsafe.Pointer) {
-	bindings().fnValueSetNone(self)
+func ValueSetNone(self unsafe.Pointer) int32 {
+	code := bindings().fnValueSetNone(self)
+	return code
 }
 
 // ValueSetFlag calls the generated purego ABI wrapper for zg_value_set_flag.
-func ValueSetFlag(self unsafe.Pointer, flag uint8) {
-	bindings().fnValueSetFlag(self, flag)
+func ValueSetFlag(self unsafe.Pointer, flag uint8) int32 {
+	code := bindings().fnValueSetFlag(self, flag)
+	return code
 }
 
 // ValueSetMode calls the generated purego ABI wrapper for zg_value_set_mode.
-func ValueSetMode(self unsafe.Pointer, mode uint8) {
-	bindings().fnValueSetMode(self, mode)
+func ValueSetMode(self unsafe.Pointer, mode uint8) int32 {
+	code := bindings().fnValueSetMode(self, mode)
+	return code
 }
 
 // ValueUsePresetSamples calls the generated purego ABI wrapper for zg_value_use_preset_samples.
-func ValueUsePresetSamples(self unsafe.Pointer) {
-	bindings().fnValueUsePresetSamples(self)
+func ValueUsePresetSamples(self unsafe.Pointer) int32 {
+	code := bindings().fnValueUsePresetSamples(self)
+	return code
 }
 
 // ValueUseEmptySamples calls the generated purego ABI wrapper for zg_value_use_empty_samples.
-func ValueUseEmptySamples(self unsafe.Pointer) {
-	bindings().fnValueUseEmptySamples(self)
+func ValueUseEmptySamples(self unsafe.Pointer) int32 {
+	code := bindings().fnValueUseEmptySamples(self)
+	return code
 }
 
 // ValueUseMutableSamples calls the generated purego ABI wrapper for zg_value_use_mutable_samples.
-func ValueUseMutableSamples(self unsafe.Pointer) {
-	bindings().fnValueUseMutableSamples(self)
+func ValueUseMutableSamples(self unsafe.Pointer) int32 {
+	code := bindings().fnValueUseMutableSamples(self)
+	return code
 }
 
 // ValueSetChild calls the generated purego ABI wrapper for zg_value_set_child.
-func ValueSetChild(self unsafe.Pointer, child unsafe.Pointer) {
-	bindings().fnValueSetChild(self, child)
+func ValueSetChild(self unsafe.Pointer, child unsafe.Pointer) int32 {
+	code := bindings().fnValueSetChild(self, child)
+	return code
 }
 
 // ValueBorrow calls the generated purego ABI wrapper for zg_value_borrow.
-func ValueBorrow(self unsafe.Pointer) unsafe.Pointer {
-	result := bindings().fnValueBorrow(self)
-	return result
+func ValueBorrow(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := bindings().fnValueBorrow(self, &outResult)
+	return outResult, code
 }
 
 // ValueDeinit calls the generated purego ABI wrapper for zg_value_deinit.
-func ValueDeinit(self unsafe.Pointer) {
-	bindings().fnValueDeinit(self)
+func ValueDeinit(self unsafe.Pointer) int32 {
+	code := bindings().fnValueDeinit(self)
+	return code
 }
 
 // SignalCreate calls the generated purego ABI wrapper for zg_signal_create.
@@ -482,38 +493,45 @@ func SignalCreate(initial uint32) (unsafe.Pointer, int32) {
 }
 
 // SignalSetIdle calls the generated purego ABI wrapper for zg_signal_set_idle.
-func SignalSetIdle(self unsafe.Pointer) {
-	bindings().fnSignalSetIdle(self)
+func SignalSetIdle(self unsafe.Pointer) int32 {
+	code := bindings().fnSignalSetIdle(self)
+	return code
 }
 
 // SignalSetTicks calls the generated purego ABI wrapper for zg_signal_set_ticks.
-func SignalSetTicks(self unsafe.Pointer, ticks uint32) {
-	bindings().fnSignalSetTicks(self, ticks)
+func SignalSetTicks(self unsafe.Pointer, ticks uint32) int32 {
+	code := bindings().fnSignalSetTicks(self, ticks)
+	return code
 }
 
 // SignalSetLevel calls the generated purego ABI wrapper for zg_signal_set_level.
-func SignalSetLevel(self unsafe.Pointer, level float64) {
-	bindings().fnSignalSetLevel(self, level)
+func SignalSetLevel(self unsafe.Pointer, level float64) int32 {
+	code := bindings().fnSignalSetLevel(self, level)
+	return code
 }
 
 // SignalSetOffset calls the generated purego ABI wrapper for zg_signal_set_offset.
-func SignalSetOffset(self unsafe.Pointer, offset int16) {
-	bindings().fnSignalSetOffset(self, offset)
+func SignalSetOffset(self unsafe.Pointer, offset int16) int32 {
+	code := bindings().fnSignalSetOffset(self, offset)
+	return code
 }
 
 // SignalSetMode calls the generated purego ABI wrapper for zg_signal_set_mode.
-func SignalSetMode(self unsafe.Pointer, mode uint8) {
-	bindings().fnSignalSetMode(self, mode)
+func SignalSetMode(self unsafe.Pointer, mode uint8) int32 {
+	code := bindings().fnSignalSetMode(self, mode)
+	return code
 }
 
 // SignalSetActive calls the generated purego ABI wrapper for zg_signal_set_active.
-func SignalSetActive(self unsafe.Pointer, active uint8) {
-	bindings().fnSignalSetActive(self, active)
+func SignalSetActive(self unsafe.Pointer, active uint8) int32 {
+	code := bindings().fnSignalSetActive(self, active)
+	return code
 }
 
 // SignalDeinit calls the generated purego ABI wrapper for zg_signal_deinit.
-func SignalDeinit(self unsafe.Pointer) {
-	bindings().fnSignalDeinit(self)
+func SignalDeinit(self unsafe.Pointer) int32 {
+	code := bindings().fnSignalDeinit(self)
+	return code
 }
 
 // LiveValues calls the generated purego ABI wrapper for zg_live_values.

@@ -15,12 +15,16 @@ import "C"
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
 // CodepointWidth calls the generated C ABI wrapper for zg_codepoint_width.
-func CodepointWidth(cp uint32) int8 {
-	return int8(C.zg_codepoint_width(C.uint32_t(cp)))
+func CodepointWidth(cp uint32) (int8, int32) {
+	var outResult C.int8_t
+	code := int32(C.zg_codepoint_width(C.uint32_t(cp), &outResult))
+	return int8(outResult), code
 }
 // ClampOffset calls the generated C ABI wrapper for zg_clamp_offset.
-func ClampOffset(offset int32) int32 {
-	return int32(C.zg_clamp_offset(C.int32_t(offset)))
+func ClampOffset(offset int32) (int32, int32) {
+	var outResult C.int32_t
+	code := int32(C.zg_clamp_offset(C.int32_t(offset), &outResult))
+	return int32(outResult), code
 }
 // Decode calls the generated C ABI wrapper for zg_decode.
 func Decode(byte uint8) (uint32, int32) {

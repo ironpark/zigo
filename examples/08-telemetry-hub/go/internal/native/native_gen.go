@@ -90,66 +90,91 @@ func TelemetryHubRename(self unsafe.Pointer, newName []uint8) int32 {
 }
 
 // TelemetryHubName calls the generated C ABI wrapper for zg_telemetry_hub_name.
-func TelemetryHubName(self unsafe.Pointer) []uint8 {
+func TelemetryHubName(self unsafe.Pointer) ([]uint8, int32) {
 	var outResultPtr *C.uint8_t
 	var outResultLen C.size_t
-	C.zg_telemetry_hub_name((*C.zg_telemetry_hub)(self), &outResultPtr, &outResultLen)
-	return C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))
+	code := int32(C.zg_telemetry_hub_name((*C.zg_telemetry_hub)(self), &outResultPtr, &outResultLen))
+	if code != 0 {
+		return nil, code
+	}
+	return C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen)), code
 }
 
 // TelemetryHubCapacity calls the generated C ABI wrapper for zg_telemetry_hub_capacity.
-func TelemetryHubCapacity(self unsafe.Pointer) uint {
-	return uint(C.zg_telemetry_hub_capacity((*C.zg_telemetry_hub)(self)))
+func TelemetryHubCapacity(self unsafe.Pointer) (uint, int32) {
+	var outResult C.size_t
+	code := int32(C.zg_telemetry_hub_capacity((*C.zg_telemetry_hub)(self), &outResult))
+	return uint(outResult), code
 }
 
 // TelemetryHubLen calls the generated C ABI wrapper for zg_telemetry_hub_len.
-func TelemetryHubLen(self unsafe.Pointer) uint {
-	return uint(C.zg_telemetry_hub_len((*C.zg_telemetry_hub)(self)))
+func TelemetryHubLen(self unsafe.Pointer) (uint, int32) {
+	var outResult C.size_t
+	code := int32(C.zg_telemetry_hub_len((*C.zg_telemetry_hub)(self), &outResult))
+	return uint(outResult), code
 }
 
 // TelemetryHubIsEmpty calls the generated C ABI wrapper for zg_telemetry_hub_is_empty.
-func TelemetryHubIsEmpty(self unsafe.Pointer) uint8 {
-	return uint8(C.zg_telemetry_hub_is_empty((*C.zg_telemetry_hub)(self)))
+func TelemetryHubIsEmpty(self unsafe.Pointer) (uint8, int32) {
+	var outResult C.uint8_t
+	code := int32(C.zg_telemetry_hub_is_empty((*C.zg_telemetry_hub)(self), &outResult))
+	return uint8(outResult), code
 }
 
 // TelemetryHubIsFull calls the generated C ABI wrapper for zg_telemetry_hub_is_full.
-func TelemetryHubIsFull(self unsafe.Pointer) uint8 {
-	return uint8(C.zg_telemetry_hub_is_full((*C.zg_telemetry_hub)(self)))
+func TelemetryHubIsFull(self unsafe.Pointer) (uint8, int32) {
+	var outResult C.uint8_t
+	code := int32(C.zg_telemetry_hub_is_full((*C.zg_telemetry_hub)(self), &outResult))
+	return uint8(outResult), code
 }
 
 // TelemetryHubMode calls the generated C ABI wrapper for zg_telemetry_hub_mode.
-func TelemetryHubMode(self unsafe.Pointer) uint32 {
-	return uint32(C.zg_telemetry_hub_mode((*C.zg_telemetry_hub)(self)))
+func TelemetryHubMode(self unsafe.Pointer) (uint32, int32) {
+	var outResult C.uint32_t
+	code := int32(C.zg_telemetry_hub_mode((*C.zg_telemetry_hub)(self), &outResult))
+	return uint32(outResult), code
 }
 
 // TelemetryHubSetMode calls the generated C ABI wrapper for zg_telemetry_hub_set_mode.
-func TelemetryHubSetMode(self unsafe.Pointer, newMode uint32) uint32 {
-	return uint32(C.zg_telemetry_hub_set_mode((*C.zg_telemetry_hub)(self), C.uint32_t(newMode)))
+func TelemetryHubSetMode(self unsafe.Pointer, newMode uint32) (uint32, int32) {
+	var outResult C.uint32_t
+	code := int32(C.zg_telemetry_hub_set_mode((*C.zg_telemetry_hub)(self), C.uint32_t(newMode), &outResult))
+	return uint32(outResult), code
 }
 
 // TelemetryHubOverflowPolicy calls the generated C ABI wrapper for zg_telemetry_hub_overflow_policy.
-func TelemetryHubOverflowPolicy(self unsafe.Pointer) uint32 {
-	return uint32(C.zg_telemetry_hub_overflow_policy((*C.zg_telemetry_hub)(self)))
+func TelemetryHubOverflowPolicy(self unsafe.Pointer) (uint32, int32) {
+	var outResult C.uint32_t
+	code := int32(C.zg_telemetry_hub_overflow_policy((*C.zg_telemetry_hub)(self), &outResult))
+	return uint32(outResult), code
 }
 
 // TelemetryHubSetOverflowPolicy calls the generated C ABI wrapper for zg_telemetry_hub_set_overflow_policy.
-func TelemetryHubSetOverflowPolicy(self unsafe.Pointer, newPolicy uint32) uint32 {
-	return uint32(C.zg_telemetry_hub_set_overflow_policy((*C.zg_telemetry_hub)(self), C.uint32_t(newPolicy)))
+func TelemetryHubSetOverflowPolicy(self unsafe.Pointer, newPolicy uint32) (uint32, int32) {
+	var outResult C.uint32_t
+	code := int32(C.zg_telemetry_hub_set_overflow_policy((*C.zg_telemetry_hub)(self), C.uint32_t(newPolicy), &outResult))
+	return uint32(outResult), code
 }
 
 // TelemetryHubEnabled calls the generated C ABI wrapper for zg_telemetry_hub_enabled.
-func TelemetryHubEnabled(self unsafe.Pointer) uint8 {
-	return uint8(C.zg_telemetry_hub_enabled((*C.zg_telemetry_hub)(self)))
+func TelemetryHubEnabled(self unsafe.Pointer) (uint8, int32) {
+	var outResult C.uint8_t
+	code := int32(C.zg_telemetry_hub_enabled((*C.zg_telemetry_hub)(self), &outResult))
+	return uint8(outResult), code
 }
 
 // TelemetryHubSetEnabled calls the generated C ABI wrapper for zg_telemetry_hub_set_enabled.
-func TelemetryHubSetEnabled(self unsafe.Pointer, newEnabled uint8) uint8 {
-	return uint8(C.zg_telemetry_hub_set_enabled((*C.zg_telemetry_hub)(self), C.uint8_t(newEnabled)))
+func TelemetryHubSetEnabled(self unsafe.Pointer, newEnabled uint8) (uint8, int32) {
+	var outResult C.uint8_t
+	code := int32(C.zg_telemetry_hub_set_enabled((*C.zg_telemetry_hub)(self), C.uint8_t(newEnabled), &outResult))
+	return uint8(outResult), code
 }
 
 // TelemetryHubThreshold calls the generated C ABI wrapper for zg_telemetry_hub_threshold.
-func TelemetryHubThreshold(self unsafe.Pointer) float64 {
-	return float64(C.zg_telemetry_hub_threshold((*C.zg_telemetry_hub)(self)))
+func TelemetryHubThreshold(self unsafe.Pointer) (float64, int32) {
+	var outResult C.double
+	code := int32(C.zg_telemetry_hub_threshold((*C.zg_telemetry_hub)(self), &outResult))
+	return float64(outResult), code
 }
 
 // TelemetryHubSetThreshold calls the generated C ABI wrapper for zg_telemetry_hub_set_threshold.
@@ -159,8 +184,10 @@ func TelemetryHubSetThreshold(self unsafe.Pointer, newThreshold float64) int32 {
 }
 
 // TelemetryHubScaleFactor calls the generated C ABI wrapper for zg_telemetry_hub_scale_factor.
-func TelemetryHubScaleFactor(self unsafe.Pointer) float64 {
-	return float64(C.zg_telemetry_hub_scale_factor((*C.zg_telemetry_hub)(self)))
+func TelemetryHubScaleFactor(self unsafe.Pointer) (float64, int32) {
+	var outResult C.double
+	code := int32(C.zg_telemetry_hub_scale_factor((*C.zg_telemetry_hub)(self), &outResult))
+	return float64(outResult), code
 }
 
 // TelemetryHubSetScaleFactor calls the generated C ABI wrapper for zg_telemetry_hub_set_scale_factor.
@@ -170,8 +197,10 @@ func TelemetryHubSetScaleFactor(self unsafe.Pointer, newFactor float64) int32 {
 }
 
 // TelemetryHubOffset calls the generated C ABI wrapper for zg_telemetry_hub_offset.
-func TelemetryHubOffset(self unsafe.Pointer) float64 {
-	return float64(C.zg_telemetry_hub_offset((*C.zg_telemetry_hub)(self)))
+func TelemetryHubOffset(self unsafe.Pointer) (float64, int32) {
+	var outResult C.double
+	code := int32(C.zg_telemetry_hub_offset((*C.zg_telemetry_hub)(self), &outResult))
+	return float64(outResult), code
 }
 
 // TelemetryHubSetOffset calls the generated C ABI wrapper for zg_telemetry_hub_set_offset.
@@ -218,43 +247,58 @@ func TelemetryHubProcessAll(self unsafe.Pointer) (uint, int32) {
 }
 
 // TelemetryHubClear calls the generated C ABI wrapper for zg_telemetry_hub_clear.
-func TelemetryHubClear(self unsafe.Pointer) uint {
-	return uint(C.zg_telemetry_hub_clear((*C.zg_telemetry_hub)(self)))
+func TelemetryHubClear(self unsafe.Pointer) (uint, int32) {
+	var outResult C.size_t
+	code := int32(C.zg_telemetry_hub_clear((*C.zg_telemetry_hub)(self), &outResult))
+	return uint(outResult), code
 }
 
 // TelemetryHubResetStatistics calls the generated C ABI wrapper for zg_telemetry_hub_reset_statistics.
-func TelemetryHubResetStatistics(self unsafe.Pointer) {
-	C.zg_telemetry_hub_reset_statistics((*C.zg_telemetry_hub)(self))
+func TelemetryHubResetStatistics(self unsafe.Pointer) int32 {
+	code := int32(C.zg_telemetry_hub_reset_statistics((*C.zg_telemetry_hub)(self)))
+	return code
 }
 
 // TelemetryHubAccepted calls the generated C ABI wrapper for zg_telemetry_hub_accepted.
-func TelemetryHubAccepted(self unsafe.Pointer) uint {
-	return uint(C.zg_telemetry_hub_accepted((*C.zg_telemetry_hub)(self)))
+func TelemetryHubAccepted(self unsafe.Pointer) (uint, int32) {
+	var outResult C.size_t
+	code := int32(C.zg_telemetry_hub_accepted((*C.zg_telemetry_hub)(self), &outResult))
+	return uint(outResult), code
 }
 
 // TelemetryHubRejected calls the generated C ABI wrapper for zg_telemetry_hub_rejected.
-func TelemetryHubRejected(self unsafe.Pointer) uint {
-	return uint(C.zg_telemetry_hub_rejected((*C.zg_telemetry_hub)(self)))
+func TelemetryHubRejected(self unsafe.Pointer) (uint, int32) {
+	var outResult C.size_t
+	code := int32(C.zg_telemetry_hub_rejected((*C.zg_telemetry_hub)(self), &outResult))
+	return uint(outResult), code
 }
 
 // TelemetryHubDropped calls the generated C ABI wrapper for zg_telemetry_hub_dropped.
-func TelemetryHubDropped(self unsafe.Pointer) uint {
-	return uint(C.zg_telemetry_hub_dropped((*C.zg_telemetry_hub)(self)))
+func TelemetryHubDropped(self unsafe.Pointer) (uint, int32) {
+	var outResult C.size_t
+	code := int32(C.zg_telemetry_hub_dropped((*C.zg_telemetry_hub)(self), &outResult))
+	return uint(outResult), code
 }
 
 // TelemetryHubProcessed calls the generated C ABI wrapper for zg_telemetry_hub_processed.
-func TelemetryHubProcessed(self unsafe.Pointer) uint {
-	return uint(C.zg_telemetry_hub_processed((*C.zg_telemetry_hub)(self)))
+func TelemetryHubProcessed(self unsafe.Pointer) (uint, int32) {
+	var outResult C.size_t
+	code := int32(C.zg_telemetry_hub_processed((*C.zg_telemetry_hub)(self), &outResult))
+	return uint(outResult), code
 }
 
 // TelemetryHubFiltered calls the generated C ABI wrapper for zg_telemetry_hub_filtered.
-func TelemetryHubFiltered(self unsafe.Pointer) uint {
-	return uint(C.zg_telemetry_hub_filtered((*C.zg_telemetry_hub)(self)))
+func TelemetryHubFiltered(self unsafe.Pointer) (uint, int32) {
+	var outResult C.size_t
+	code := int32(C.zg_telemetry_hub_filtered((*C.zg_telemetry_hub)(self), &outResult))
+	return uint(outResult), code
 }
 
 // TelemetryHubSum calls the generated C ABI wrapper for zg_telemetry_hub_sum.
-func TelemetryHubSum(self unsafe.Pointer) float64 {
-	return float64(C.zg_telemetry_hub_sum((*C.zg_telemetry_hub)(self)))
+func TelemetryHubSum(self unsafe.Pointer) (float64, int32) {
+	var outResult C.double
+	code := int32(C.zg_telemetry_hub_sum((*C.zg_telemetry_hub)(self), &outResult))
+	return float64(outResult), code
 }
 
 // TelemetryHubMinimum calls the generated C ABI wrapper for zg_telemetry_hub_minimum.
@@ -360,18 +404,21 @@ func TelemetryHubClampValues(self unsafe.Pointer, lower float64, upper float64) 
 }
 
 // TelemetryHubAbsoluteValues calls the generated C ABI wrapper for zg_telemetry_hub_absolute_values.
-func TelemetryHubAbsoluteValues(self unsafe.Pointer) {
-	C.zg_telemetry_hub_absolute_values((*C.zg_telemetry_hub)(self))
+func TelemetryHubAbsoluteValues(self unsafe.Pointer) int32 {
+	code := int32(C.zg_telemetry_hub_absolute_values((*C.zg_telemetry_hub)(self)))
+	return code
 }
 
 // TelemetryHubNegateValues calls the generated C ABI wrapper for zg_telemetry_hub_negate_values.
-func TelemetryHubNegateValues(self unsafe.Pointer) {
-	C.zg_telemetry_hub_negate_values((*C.zg_telemetry_hub)(self))
+func TelemetryHubNegateValues(self unsafe.Pointer) int32 {
+	code := int32(C.zg_telemetry_hub_negate_values((*C.zg_telemetry_hub)(self)))
+	return code
 }
 
 // TelemetryHubDeinit calls the generated C ABI wrapper for zg_telemetry_hub_deinit.
-func TelemetryHubDeinit(self unsafe.Pointer) {
-	C.zg_telemetry_hub_deinit((*C.zg_telemetry_hub)(self))
+func TelemetryHubDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_telemetry_hub_deinit((*C.zg_telemetry_hub)(self)))
+	return code
 }
 
 // LiveHubs calls the generated C ABI wrapper for zg_live_hubs.

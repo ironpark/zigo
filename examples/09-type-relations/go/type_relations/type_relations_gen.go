@@ -24,24 +24,38 @@ func NewCounter(initial int64) (*Counter, error) {
 
 // Get calls the Zig function Counter.get.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (c *Counter) Get() (int64, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Counter.Get receiver", c)
 	if err != nil {
 		return 0, err
 	}
 	defer c.zigoRelease()
-	return raw.CounterGet(ptr), nil
+	result, code := raw.CounterGet(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("Counter.Get", code), c)
+	}
+	return result, nil
 }
 
 // Add calls the Zig function Counter.add.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (c *Counter) Add(delta int64) (int64, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Counter.Add receiver", c)
 	if err != nil {
 		return 0, err
 	}
 	defer c.zigoRelease()
-	return raw.CounterAdd(ptr, delta), nil
+	result, code := raw.CounterAdd(ptr, delta)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("Counter.Add", code), c)
+	}
+	return result, nil
 }
 
 // NewAccumulator creates a caller-owned Accumulator.
@@ -60,7 +74,10 @@ func NewAccumulator() (*Accumulator, error) {
 // Absorb
 // Adds the current value of another exposed opaque type.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (a *Accumulator) Absorb(counter *Counter) (int64, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Accumulator.Absorb receiver", a)
 	if err != nil {
 		return 0, err
@@ -71,18 +88,29 @@ func (a *Accumulator) Absorb(counter *Counter) (int64, error) {
 		return 0, err
 	}
 	defer counter.zigoRelease()
-	return raw.AccumulatorAbsorb(ptr, counterPtr), nil
+	result, code := raw.AccumulatorAbsorb(ptr, counterPtr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("Accumulator.Absorb", code), a, counter)
+	}
+	return result, nil
 }
 
 // Total calls the Zig function Accumulator.total.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (a *Accumulator) Total() (int64, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Accumulator.Total receiver", a)
 	if err != nil {
 		return 0, err
 	}
 	defer a.zigoRelease()
-	return raw.AccumulatorTotal(ptr), nil
+	result, code := raw.AccumulatorTotal(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("Accumulator.Total", code), a)
+	}
+	return result, nil
 }
 
 // LiveObjects calls the Zig function liveObjects.
@@ -103,6 +131,7 @@ func CursorStyleBlinks(style CursorStyle) bool {
 
 // RunWidth
 // Reports how many cells a run of codepoints occupies.
+// A native panic is returned as *NativePanicError.
 func RunWidth(first uint32, second uint32) (uint16, error) {
 	if first > 2097151 {
 		return 0, &RangeError{Operation: "RunWidth", Parameter: "first", Type: "u21"}
@@ -110,14 +139,27 @@ func RunWidth(first uint32, second uint32) (uint16, error) {
 	if second > 2097151 {
 		return 0, &RangeError{Operation: "RunWidth", Parameter: "second", Type: "u21"}
 	}
-	return raw.TextRunWidth(first, second), nil
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	result, code := raw.TextRunWidth(first, second)
+	if code != 0 {
+		return 0, errorForCode("RunWidth", code)
+	}
+	return result, nil
 }
 
 // CodepointWidth
 // Reports how many terminal cells a codepoint occupies.
+// A native panic is returned as *NativePanicError.
 func CodepointWidth(cp uint32) (uint8, error) {
 	if cp > 2097151 {
 		return 0, &RangeError{Operation: "CodepointWidth", Parameter: "cp", Type: "u21"}
 	}
-	return raw.TextUnicodeCodepointWidth(cp), nil
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	result, code := raw.TextUnicodeCodepointWidth(cp)
+	if code != 0 {
+		return 0, errorForCode("CodepointWidth", code)
+	}
+	return result, nil
 }

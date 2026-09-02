@@ -12,20 +12,34 @@ import (
 
 // CodepointWidth
 // Reports the display width of a codepoint.
+// A native panic is returned as *NativePanicError.
 func CodepointWidth(cp uint32) (int8, error) {
 	if cp > 2097151 {
 		return 0, &RangeError{Operation: "CodepointWidth", Parameter: "cp", Type: "u21"}
 	}
-	return raw.CodepointWidth(cp), nil
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	result, code := raw.CodepointWidth(cp)
+	if code != 0 {
+		return 0, errorForCode("CodepointWidth", code)
+	}
+	return result, nil
 }
 
 // ClampOffset
 // Rounds a signed offset into the narrow range it is stored in.
+// A native panic is returned as *NativePanicError.
 func ClampOffset(offset int32) (int32, error) {
 	if offset < -8388608 || offset > 8388607 {
 		return 0, &RangeError{Operation: "ClampOffset", Parameter: "offset", Type: "i24"}
 	}
-	return raw.ClampOffset(offset), nil
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	result, code := raw.ClampOffset(offset)
+	if code != 0 {
+		return 0, errorForCode("ClampOffset", code)
+	}
+	return result, nil
 }
 
 // Decode

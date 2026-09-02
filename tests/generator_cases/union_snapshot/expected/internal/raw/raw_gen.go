@@ -22,20 +22,24 @@ func SignalCreate() (unsafe.Pointer, int32) {
 	return unsafe.Pointer(outResult), code
 }
 // SignalDeinit calls the generated C ABI wrapper for zg_signal_deinit.
-func SignalDeinit(self unsafe.Pointer) {
-	C.zg_signal_deinit((*C.zg_signal)(self))
+func SignalDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_signal_deinit((*C.zg_signal)(self)))
+	return code
 }
 // SignalSetTicks calls the generated C ABI wrapper for zg_signal_set_ticks.
-func SignalSetTicks(self unsafe.Pointer, ticks uint32) {
-	C.zg_signal_set_ticks((*C.zg_signal)(self), C.uint32_t(ticks))
+func SignalSetTicks(self unsafe.Pointer, ticks uint32) int32 {
+	code := int32(C.zg_signal_set_ticks((*C.zg_signal)(self), C.uint32_t(ticks)))
+	return code
 }
 // SignalSetMode calls the generated C ABI wrapper for zg_signal_set_mode.
-func SignalSetMode(self unsafe.Pointer, mode uint8) {
-	C.zg_signal_set_mode((*C.zg_signal)(self), C.uint8_t(mode))
+func SignalSetMode(self unsafe.Pointer, mode uint8) int32 {
+	code := int32(C.zg_signal_set_mode((*C.zg_signal)(self), C.uint8_t(mode)))
+	return code
 }
 // SignalSetActive calls the generated C ABI wrapper for zg_signal_set_active.
-func SignalSetActive(self unsafe.Pointer, active uint8) {
-	C.zg_signal_set_active((*C.zg_signal)(self), C.uint8_t(active))
+func SignalSetActive(self unsafe.Pointer, active uint8) int32 {
+	code := int32(C.zg_signal_set_active((*C.zg_signal)(self), C.uint8_t(active)))
+	return code
 }
 
 // SignalSnapshotData mirrors the zg_signal_snapshot_t value snapshot layout, padding included.

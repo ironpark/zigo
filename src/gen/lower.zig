@@ -15,12 +15,14 @@ pub fn semanticDocument(
 
 pub fn semanticDocumentForBackend(
     allocator: std.mem.Allocator,
-    document: semantic.Semantic,
+    source_document: semantic.Semantic,
     package: []const u8,
     prefix: []const u8,
     error_codes: []const abi.ErrorCode,
     backend: abi.Program.Backend,
 ) !abi.Program {
+    var document = source_document;
+    document.functions = try promoteCheckedFunctions(allocator, document.functions);
     // Lowered ahead of the functions, so a function can point at the mirror it
     // fills rather than making a backend find it again by name.
     const structs = try lowerValueStructs(allocator, document, prefix);
@@ -380,6 +382,41 @@ fn lowerTaggedUnionSnapshots(allocator: std.mem.Allocator, document: semantic.Se
 /// user's order: `extern` already means C layout, so nothing is reordered or
 /// padded here. Size and alignment are computed with the same rules the C
 /// compiler applies, purely so the shim can assert the Zig type still agrees.
+/// A function whose public Go signature already carries an `error` gets the
+/// same C ABI as one that returns an error union: a status code, with the
+/// result moved into `out_result`. That is the only place a native panic can
+/// be reported from, and without it the C wrapper's `longjmp` landing pad has
+/// nothing to say and returns a zero value -- turning Zig's fatal panic into a
+/// silent success. The rewritten error set is empty: there are no Zig errors
+/// to name, only the `-2` the panic bridge produces.
+///
+/// Doing it here rather than in each emitter means the shim, the header, the
+/// raw layer, the public layer, and both backends all see one shape.
+fn promoteCheckedFunctions(allocator: std.mem.Allocator, functions: []const semantic.SemanticFn) ![]const semantic.SemanticFn {
+    const promoted = try allocator.alloc(semantic.SemanticFn, functions.len);
+    for (functions, 0..) |function, index| {
+        promoted[index] = function;
+        if (function.@"return" == .error_union or !reportsPanics(function)) continue;
+        const payload = try allocator.create(semantic.TypeNode);
+        payload.* = function.@"return";
+        promoted[index].@"return" = .{ .error_union = .{ .error_set = &.{}, .payload = payload } };
+    }
+    return promoted;
+}
+
+/// The rule the whole binding is built on: a Go signature with an `error` in
+/// it reports every native panic through that error. A handle parameter or
+/// receiver puts one there (a nil or closed handle has to be reportable), and
+/// so does a promoted integer parameter (an out-of-range argument has to be).
+fn reportsPanics(function: semantic.SemanticFn) bool {
+    if (function.receiver != null) return true;
+    for (function.params) |parameter| {
+        if (parameter.type == .opaque_ptr) return true;
+        if (abi.narrowInt(parameter.type) != null) return true;
+    }
+    return false;
+}
+
 fn lowerValueStructs(allocator: std.mem.Allocator, document: semantic.Semantic, prefix: []const u8) ![]const abi.AbiStruct {
     var structs: std.ArrayList(abi.AbiStruct) = .empty;
     // A C struct must be complete before another names it by value, so a

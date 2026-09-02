@@ -23,11 +23,14 @@ export fn zg_int_batch_push_impl(self: *target.IntBatch, value: i32) i32 {
     };
     return 0;
 }
-export fn zg_int_batch_len_impl(self: *target.IntBatch) usize {
-    return target.IntBatch.len(self);
+export fn zg_int_batch_len_impl(self: *target.IntBatch, out_result: *usize) i32 {
+    const result = target.IntBatch.len(self);
+    out_result.* = result;
+    return 0;
 }
-export fn zg_int_batch_deinit_impl(self: *target.IntBatch) void {
+export fn zg_int_batch_deinit_impl(self: *target.IntBatch) i32 {
     target.IntBatch.deinit(self);
+    return 0;
 }
 export fn zg_float_batch_create_impl(out_result: **target.FloatBatch) i32 {
     const result = target.FloatBatch.create() catch |err| return switch (err) {
@@ -42,11 +45,14 @@ export fn zg_float_batch_push_impl(self: *target.FloatBatch, p0: f64) i32 {
     };
     return 0;
 }
-export fn zg_float_batch_len_impl(self: *target.FloatBatch) usize {
-    return target.FloatBatch.len(self);
+export fn zg_float_batch_len_impl(self: *target.FloatBatch, out_result: *usize) i32 {
+    const result = target.FloatBatch.len(self);
+    out_result.* = result;
+    return 0;
 }
-export fn zg_float_batch_deinit_impl(self: *target.FloatBatch) void {
+export fn zg_float_batch_deinit_impl(self: *target.FloatBatch) i32 {
     target.FloatBatch.deinit(self);
+    return 0;
 }
 export fn zg_pipeline_create_impl(name_ptr: [*c]const u8, name_len: usize, mode: u32, userdata: usize, out_result: **target.Pipeline) i32 {
     const result = target.Pipeline.create(if (name_len == 0) &.{} else name_ptr[0..name_len], @enumFromInt(mode), &zg_pipeline_create_go_callback_callback, userdata) catch |err| return switch (err) {
@@ -65,10 +71,11 @@ export fn zg_pipeline_process_impl(self: *target.Pipeline, values_ptr: [*c]const
     out_result.* = result;
     return 0;
 }
-export fn zg_pipeline_name_impl(self: *target.Pipeline, out_result_ptr: *[*c]const u8, out_result_len: *usize) void {
+export fn zg_pipeline_name_impl(self: *target.Pipeline, out_result_ptr: *[*c]const u8, out_result_len: *usize) i32 {
     const result = target.Pipeline.name(self);
     out_result_ptr.* = result.ptr;
     out_result_len.* = result.len;
+    return 0;
 }
 export fn zg_sample_values_impl(out_result_ptr: *[*c]const f32, out_result_len: *usize) void {
     const result = target.sampleValues();
@@ -99,20 +106,29 @@ export fn zg_take_samples_checked_impl(out_result_ptr: *[*c]f32, out_result_len:
 export fn zg_release_samples_impl(samples_ptr: [*c]f32, samples_len: usize) void {
     target.releaseSamples(if (samples_len == 0) &.{} else samples_ptr[0..samples_len]);
 }
-export fn zg_pipeline_mode_impl(self: *target.Pipeline) u32 {
-    return @intFromEnum(target.Pipeline.mode(self));
+export fn zg_pipeline_mode_impl(self: *target.Pipeline, out_result: *u32) i32 {
+    const result = target.Pipeline.mode(self);
+    out_result.* = @intFromEnum(result);
+    return 0;
 }
-export fn zg_pipeline_set_enabled_impl(self: *target.Pipeline, enabled: u8) u8 {
-    return @intFromBool(target.Pipeline.setEnabled(self, enabled != 0));
+export fn zg_pipeline_set_enabled_impl(self: *target.Pipeline, enabled: u8, out_result: *u8) i32 {
+    const result = target.Pipeline.setEnabled(self, enabled != 0);
+    out_result.* = @intFromBool(result);
+    return 0;
 }
-export fn zg_pipeline_processed_impl(self: *target.Pipeline) usize {
-    return target.Pipeline.processed(self);
+export fn zg_pipeline_processed_impl(self: *target.Pipeline, out_result: *usize) i32 {
+    const result = target.Pipeline.processed(self);
+    out_result.* = result;
+    return 0;
 }
-export fn zg_pipeline_total_impl(self: *target.Pipeline) i64 {
-    return target.Pipeline.total(self);
+export fn zg_pipeline_total_impl(self: *target.Pipeline, out_result: *i64) i32 {
+    const result = target.Pipeline.total(self);
+    out_result.* = result;
+    return 0;
 }
-export fn zg_pipeline_deinit_impl(self: *target.Pipeline) void {
+export fn zg_pipeline_deinit_impl(self: *target.Pipeline) i32 {
     target.Pipeline.deinit(self);
+    return 0;
 }
 export fn zg_live_bytes_impl() usize {
     return target.liveBytes();

@@ -15,17 +15,21 @@ export fn zg_signal_create_impl(out_result: **target.Signal) i32 {
     out_result.* = result;
     return 0;
 }
-export fn zg_signal_deinit_impl(self: *target.Signal) void {
+export fn zg_signal_deinit_impl(self: *target.Signal) i32 {
     target.Signal.deinit(self);
+    return 0;
 }
-export fn zg_signal_set_ticks_impl(self: *target.Signal, ticks: u32) void {
+export fn zg_signal_set_ticks_impl(self: *target.Signal, ticks: u32) i32 {
     target.Signal.setTicks(self, ticks);
+    return 0;
 }
-export fn zg_signal_set_mode_impl(self: *target.Signal, mode: u8) void {
+export fn zg_signal_set_mode_impl(self: *target.Signal, mode: u8) i32 {
     target.Signal.setMode(self, @enumFromInt(mode));
+    return 0;
 }
-export fn zg_signal_set_active_impl(self: *target.Signal, active: u8) void {
+export fn zg_signal_set_active_impl(self: *target.Signal, active: u8) i32 {
     target.Signal.setActive(self, active != 0);
+    return 0;
 }
 export fn zg_signal_project_tag_impl(self: *const target.Signal, out_value: *u8) u8 {
     out_value.* = @intFromEnum(std.meta.activeTag(self.*));

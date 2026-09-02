@@ -23,18 +23,23 @@ func CounterCreate(initial int64) (unsafe.Pointer, int32) {
 }
 
 // CounterGet calls the generated C ABI wrapper for zg_counter_get.
-func CounterGet(self unsafe.Pointer) int64 {
-	return int64(C.zg_counter_get((*C.zg_counter)(self)))
+func CounterGet(self unsafe.Pointer) (int64, int32) {
+	var outResult C.int64_t
+	code := int32(C.zg_counter_get((*C.zg_counter)(self), &outResult))
+	return int64(outResult), code
 }
 
 // CounterAdd calls the generated C ABI wrapper for zg_counter_add.
-func CounterAdd(self unsafe.Pointer, delta int64) int64 {
-	return int64(C.zg_counter_add((*C.zg_counter)(self), C.int64_t(delta)))
+func CounterAdd(self unsafe.Pointer, delta int64) (int64, int32) {
+	var outResult C.int64_t
+	code := int32(C.zg_counter_add((*C.zg_counter)(self), C.int64_t(delta), &outResult))
+	return int64(outResult), code
 }
 
 // CounterDeinit calls the generated C ABI wrapper for zg_counter_deinit.
-func CounterDeinit(self unsafe.Pointer) {
-	C.zg_counter_deinit((*C.zg_counter)(self))
+func CounterDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_counter_deinit((*C.zg_counter)(self)))
+	return code
 }
 
 // AccumulatorCreate calls the generated C ABI wrapper for zg_accumulator_create.
@@ -45,18 +50,23 @@ func AccumulatorCreate() (unsafe.Pointer, int32) {
 }
 
 // AccumulatorAbsorb calls the generated C ABI wrapper for zg_accumulator_absorb.
-func AccumulatorAbsorb(self unsafe.Pointer, counter unsafe.Pointer) int64 {
-	return int64(C.zg_accumulator_absorb((*C.zg_accumulator)(self), (*C.zg_counter)(counter)))
+func AccumulatorAbsorb(self unsafe.Pointer, counter unsafe.Pointer) (int64, int32) {
+	var outResult C.int64_t
+	code := int32(C.zg_accumulator_absorb((*C.zg_accumulator)(self), (*C.zg_counter)(counter), &outResult))
+	return int64(outResult), code
 }
 
 // AccumulatorTotal calls the generated C ABI wrapper for zg_accumulator_total.
-func AccumulatorTotal(self unsafe.Pointer) int64 {
-	return int64(C.zg_accumulator_total((*C.zg_accumulator)(self)))
+func AccumulatorTotal(self unsafe.Pointer) (int64, int32) {
+	var outResult C.int64_t
+	code := int32(C.zg_accumulator_total((*C.zg_accumulator)(self), &outResult))
+	return int64(outResult), code
 }
 
 // AccumulatorDeinit calls the generated C ABI wrapper for zg_accumulator_deinit.
-func AccumulatorDeinit(self unsafe.Pointer) {
-	C.zg_accumulator_deinit((*C.zg_accumulator)(self))
+func AccumulatorDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_accumulator_deinit((*C.zg_accumulator)(self)))
+	return code
 }
 
 // LiveObjects calls the generated C ABI wrapper for zg_live_objects.
@@ -75,11 +85,15 @@ func CursorStyleBlinks(style uint8) uint8 {
 }
 
 // TextRunWidth calls the generated C ABI wrapper for zg_text_run_width.
-func TextRunWidth(first uint32, second uint32) uint16 {
-	return uint16(C.zg_text_run_width(C.uint32_t(first), C.uint32_t(second)))
+func TextRunWidth(first uint32, second uint32) (uint16, int32) {
+	var outResult C.uint16_t
+	code := int32(C.zg_text_run_width(C.uint32_t(first), C.uint32_t(second), &outResult))
+	return uint16(outResult), code
 }
 
 // TextUnicodeCodepointWidth calls the generated C ABI wrapper for zg_text_unicode_codepoint_width.
-func TextUnicodeCodepointWidth(cp uint32) uint8 {
-	return uint8(C.zg_text_unicode_codepoint_width(C.uint32_t(cp)))
+func TextUnicodeCodepointWidth(cp uint32) (uint8, int32) {
+	var outResult C.uint8_t
+	code := int32(C.zg_text_unicode_codepoint_width(C.uint32_t(cp), &outResult))
+	return uint8(outResult), code
 }

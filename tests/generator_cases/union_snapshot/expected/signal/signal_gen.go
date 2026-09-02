@@ -25,36 +25,54 @@ func NewSignal() (*Signal, error) {
 
 // SetTicks calls the Zig function Signal.setTicks.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (s *Signal) SetTicks(ticks uint32) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Signal.SetTicks receiver", s)
 	if err != nil {
 		return err
 	}
 	defer s.zigoRelease()
-	raw.SignalSetTicks(ptr, ticks)
+	code := raw.SignalSetTicks(ptr, ticks)
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Signal.SetTicks", code), s)
+	}
 	return nil
 }
 
 // SetMode calls the Zig function Signal.setMode.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (s *Signal) SetMode(mode Mode) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Signal.SetMode receiver", s)
 	if err != nil {
 		return err
 	}
 	defer s.zigoRelease()
-	raw.SignalSetMode(ptr, uint8(mode))
+	code := raw.SignalSetMode(ptr, uint8(mode))
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Signal.SetMode", code), s)
+	}
 	return nil
 }
 
 // SetActive calls the Zig function Signal.setActive.
 // It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
 func (s *Signal) SetActive(active bool) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Signal.SetActive receiver", s)
 	if err != nil {
 		return err
 	}
 	defer s.zigoRelease()
-	raw.SignalSetActive(ptr, boolToUint8(active))
+	code := raw.SignalSetActive(ptr, boolToUint8(active))
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Signal.SetActive", code), s)
+	}
 	return nil
 }

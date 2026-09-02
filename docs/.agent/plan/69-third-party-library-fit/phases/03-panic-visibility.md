@@ -2,7 +2,7 @@
 depends_on:
 - "69-third-party-library-fit#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: checked 함수 전부에서 패닉이 `error`로 도달하고 poison된다는 테스트 통과. 순수 함수 abort 테스트 통과.
 > NEXT: none

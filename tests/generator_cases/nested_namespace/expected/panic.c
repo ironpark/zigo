@@ -2,6 +2,7 @@
 #include <setjmp.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include "zigo_nested_namespace.h"
@@ -21,24 +22,34 @@ static _Thread_local jmp_buf zg_panic_env;
 static _Thread_local int zg_panic_active;
 static _Thread_local char zg_panic_message[1024];
 
+// A panic with nowhere to be reported is what Zig says it is: fatal.
+// The message is written out first so the process does not die silent.
+_Noreturn static void zg_panic_fatal(void) {
+    fputs("zigo: native panic: ", stderr);
+    fputs(zg_panic_message, stderr);
+    fputc('\n', stderr);
+    fflush(stderr);
+    abort();
+}
+
 void zg_panic_bridge(const uint8_t *message, size_t length) {
     size_t count = length < sizeof(zg_panic_message) - 1 ? length : sizeof(zg_panic_message) - 1;
     memcpy(zg_panic_message, message, count);
     zg_panic_message[count] = '\0';
     if (zg_panic_active) longjmp(zg_panic_env, 1);
-    abort();
+    zg_panic_fatal();
 }
 
 ZIGO_EXPORT const char *zg_last_error_message(void) { return zg_panic_message; }
 
-uint8_t zg_unicode_codepoint_width_impl(uint32_t cp);
-ZIGO_EXPORT uint8_t zg_unicode_codepoint_width(uint32_t cp) {
+int32_t zg_unicode_codepoint_width_impl(uint32_t cp, uint8_t * out_result);
+ZIGO_EXPORT int32_t zg_unicode_codepoint_width(uint32_t cp, uint8_t * out_result) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return 0;
+        return -2;
     }
-    uint8_t result = zg_unicode_codepoint_width_impl(cp);
+    int32_t result = zg_unicode_codepoint_width_impl(cp, out_result);
     zg_panic_active = 0;
     return result;
 }
@@ -48,7 +59,7 @@ ZIGO_EXPORT uint8_t zg_unicode_grapheme_breaks(uint32_t before, uint32_t after) 
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return 0;
+        zg_panic_fatal();
     }
     uint8_t result = zg_unicode_grapheme_breaks_impl(before, after);
     zg_panic_active = 0;
@@ -60,7 +71,7 @@ ZIGO_EXPORT uint8_t zg_osc_parser_state_parse(uint8_t byte) {
     zg_panic_active = 1;
     if (setjmp(zg_panic_env) != 0) {
         zg_panic_active = 0;
-        return 0;
+        zg_panic_fatal();
     }
     uint8_t result = zg_osc_parser_state_parse_impl(byte);
     zg_panic_active = 0;

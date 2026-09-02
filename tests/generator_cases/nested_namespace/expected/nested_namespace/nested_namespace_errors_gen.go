@@ -2,10 +2,36 @@
 
 package nested_namespace
 
-import "errors"
+import (
+	"errors"
+	"strconv"
 
+	"example.com/zigo/nested-namespace/internal/raw"
+)
+
+// ErrNativePanic identifies a Zig panic caught at the native boundary.
+var ErrNativePanic = errors.New("zigo: native panic")
 // ErrOutOfRange identifies an argument outside the range of the Zig integer that carries it.
 var ErrOutOfRange = errors.New("zigo: argument out of range")
+
+// NativePanicError reports a Zig panic caught at the native boundary.
+type NativePanicError struct {
+	// Operation names the generated call or projection.
+	Operation string
+	// Message is the native panic message when available.
+	Message string
+}
+
+// Error implements error.
+func (err *NativePanicError) Error() string {
+	if err.Message == "" {
+		return "zigo: " + err.Operation + ": native panic"
+	}
+	return "zigo: " + err.Operation + ": native panic: " + err.Message
+}
+
+// Unwrap returns ErrNativePanic for errors.Is classification.
+func (err *NativePanicError) Unwrap() error { return ErrNativePanic }
 
 // RangeError reports an argument the narrower Zig integer behind a parameter
 // cannot represent. The check runs in Go, so the native library is never
@@ -26,3 +52,39 @@ func (err *RangeError) Error() string {
 
 // Unwrap returns ErrOutOfRange for errors.Is classification.
 func (err *RangeError) Unwrap() error { return ErrOutOfRange }
+
+// Error is a stable Zig error-set value returned by the generated binding.
+// Classify it with errors.Is against the Err* sentinels; a returned value
+// also names the operation it came from.
+type Error struct {
+	// Code is the stable integer stored in errors.lock.json.
+	Code int32
+	// Name is the Zig error name.
+	Name string
+	// Operation names the generated call that returned the error. It is
+	// empty on the package-level sentinels.
+	Operation string
+}
+
+// Error implements error.
+func (err *Error) Error() string {
+	if err.Operation == "" {
+		return err.Name
+	}
+	return "zigo: " + err.Operation + ": " + err.Name
+}
+// Is compares generated errors by stable code.
+func (err *Error) Is(target error) bool {
+	other, ok := target.(*Error)
+	return ok && err.Code == other.Code
+}
+
+
+func errorForCode(operation string, code int32) error {
+	switch code {
+	case -2:
+		return &NativePanicError{Operation: operation, Message: raw.LastErrorMessage()}
+	default:
+		return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
+	}
+}

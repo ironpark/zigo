@@ -13,7 +13,9 @@ pub const bindings = zigo.define(.{
         .{ .path = "Context.create" },
         .{ .path = "Context.add", .params = .{"value"} },
         .{ .path = "Context.crash" },
+        .{ .path = "Context.crashInfallible" },
         .{ .path = "Context.deinit" },
+        .{ .path = "root.crashFatal" },
         .{ .path = "root.liveBytes" },
         .{
             .path = "root.echo",

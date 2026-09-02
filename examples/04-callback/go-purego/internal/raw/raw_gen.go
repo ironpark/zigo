@@ -52,16 +52,16 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError               func() unsafe.Pointer
 	fnFloatBufferCreate     func(*unsafe.Pointer) int32
-	fnFloatBufferPush       func(unsafe.Pointer, float32)
-	fnFloatBufferLen        func(unsafe.Pointer) uintptr
-	fnFloatBufferDeinit     func(unsafe.Pointer)
+	fnFloatBufferPush       func(unsafe.Pointer, float32) int32
+	fnFloatBufferLen        func(unsafe.Pointer, *uintptr) int32
+	fnFloatBufferDeinit     func(unsafe.Pointer) int32
 	fnIntBufferCreate       func(*unsafe.Pointer) int32
-	fnIntBufferPush         func(unsafe.Pointer, int32)
-	fnIntBufferLen          func(unsafe.Pointer) uintptr
-	fnIntBufferDeinit       func(unsafe.Pointer)
+	fnIntBufferPush         func(unsafe.Pointer, int32) int32
+	fnIntBufferLen          func(unsafe.Pointer, *uintptr) int32
+	fnIntBufferDeinit       func(unsafe.Pointer) int32
 	fnCallbackContextCreate func(uintptr, uintptr, *unsafe.Pointer) int32
-	fnCallbackContextRun    func(unsafe.Pointer, int32) int32
-	fnCallbackContextDeinit func(unsafe.Pointer)
+	fnCallbackContextRun    func(unsafe.Pointer, int32, *int32) int32
+	fnCallbackContextDeinit func(unsafe.Pointer) int32
 	fnPanicNow              func() int32
 	fnCompressionBound      func(uintptr) uintptr
 	fnApply                 func(int32, uintptr, uintptr) int32
@@ -398,19 +398,22 @@ func FloatBufferCreate() (unsafe.Pointer, int32) {
 }
 
 // FloatBufferPush calls the generated purego ABI wrapper for zg_float_buffer_push.
-func FloatBufferPush(self unsafe.Pointer, value float32) {
-	bindings().fnFloatBufferPush(self, value)
+func FloatBufferPush(self unsafe.Pointer, value float32) int32 {
+	code := bindings().fnFloatBufferPush(self, value)
+	return code
 }
 
 // FloatBufferLen calls the generated purego ABI wrapper for zg_float_buffer_len.
-func FloatBufferLen(self unsafe.Pointer) uint {
-	result := bindings().fnFloatBufferLen(self)
-	return uint(result)
+func FloatBufferLen(self unsafe.Pointer) (uint, int32) {
+	var outResult uintptr
+	code := bindings().fnFloatBufferLen(self, &outResult)
+	return uint(outResult), code
 }
 
 // FloatBufferDeinit calls the generated purego ABI wrapper for zg_float_buffer_deinit.
-func FloatBufferDeinit(self unsafe.Pointer) {
-	bindings().fnFloatBufferDeinit(self)
+func FloatBufferDeinit(self unsafe.Pointer) int32 {
+	code := bindings().fnFloatBufferDeinit(self)
+	return code
 }
 
 // IntBufferCreate calls the generated purego ABI wrapper for zg_int_buffer_create.
@@ -421,19 +424,22 @@ func IntBufferCreate() (unsafe.Pointer, int32) {
 }
 
 // IntBufferPush calls the generated purego ABI wrapper for zg_int_buffer_push.
-func IntBufferPush(self unsafe.Pointer, value int32) {
-	bindings().fnIntBufferPush(self, value)
+func IntBufferPush(self unsafe.Pointer, value int32) int32 {
+	code := bindings().fnIntBufferPush(self, value)
+	return code
 }
 
 // IntBufferLen calls the generated purego ABI wrapper for zg_int_buffer_len.
-func IntBufferLen(self unsafe.Pointer) uint {
-	result := bindings().fnIntBufferLen(self)
-	return uint(result)
+func IntBufferLen(self unsafe.Pointer) (uint, int32) {
+	var outResult uintptr
+	code := bindings().fnIntBufferLen(self, &outResult)
+	return uint(outResult), code
 }
 
 // IntBufferDeinit calls the generated purego ABI wrapper for zg_int_buffer_deinit.
-func IntBufferDeinit(self unsafe.Pointer) {
-	bindings().fnIntBufferDeinit(self)
+func IntBufferDeinit(self unsafe.Pointer) int32 {
+	code := bindings().fnIntBufferDeinit(self)
+	return code
 }
 
 // CallbackContextCreate calls the generated purego ABI wrapper for zg_callback_context_create_purego_v2.
@@ -444,14 +450,16 @@ func CallbackContextCreate(callbackCallback, callbackToken uintptr) (unsafe.Poin
 }
 
 // CallbackContextRun calls the generated purego ABI wrapper for zg_callback_context_run.
-func CallbackContextRun(self unsafe.Pointer, value int32) int32 {
-	result := bindings().fnCallbackContextRun(self, value)
-	return int32(result)
+func CallbackContextRun(self unsafe.Pointer, value int32) (int32, int32) {
+	var outResult int32
+	code := bindings().fnCallbackContextRun(self, value, &outResult)
+	return outResult, code
 }
 
 // CallbackContextDeinit calls the generated purego ABI wrapper for zg_callback_context_deinit.
-func CallbackContextDeinit(self unsafe.Pointer) {
-	bindings().fnCallbackContextDeinit(self)
+func CallbackContextDeinit(self unsafe.Pointer) int32 {
+	code := bindings().fnCallbackContextDeinit(self)
+	return code
 }
 
 // PanicNow calls the generated purego ABI wrapper for zg_panic_now.

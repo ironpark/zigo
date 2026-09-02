@@ -71,6 +71,20 @@
       "symbol": "zg_context_crash"
     },
     {
+      "doc": "crashInfallible panics from a method that returns no error union.\nIts Go signature still carries an `error` -- the handle check has to\nbe reportable -- so the panic reaches the caller through that.",
+      "name": "crashInfallible",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Context",
+      "return": {
+        "bits": 64,
+        "is_usize": false,
+        "kind": "int",
+        "signed": true
+      },
+      "symbol": "zg_context_crash_infallible"
+    },
+    {
       "name": "deinit",
       "ownership": "borrowed",
       "params": [],
@@ -79,6 +93,16 @@
         "kind": "void"
       },
       "symbol": "zg_context_deinit"
+    },
+    {
+      "doc": "A free function with no handle and no promoted integer has no `error` in\nits Go signature, so a panic here has nowhere to be reported. Zig calls\nthat fatal, and so does zigo: the message goes to stderr and the process\naborts.",
+      "name": "crashFatal",
+      "ownership": "borrowed",
+      "params": [],
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_crash_fatal"
     },
     {
       "name": "liveBytes",
