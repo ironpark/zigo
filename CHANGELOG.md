@@ -4,6 +4,14 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Fixed
+
+- 공용 lifecycle 렌더러의 단위 테스트가 초기화되지 않은 program을 읽어 Linux에서 죽던 문제를
+  고쳤습니다. 생성물 변화는 없으며, 0.6.1 태그는 이 테스트 때문에 CI와 릴리스가 실패해 GitHub
+  릴리스가 만들어지지 않았습니다.
+
 ## [0.6.1] - 2026-09-03
 
 ### Fixed

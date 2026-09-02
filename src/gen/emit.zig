@@ -8716,7 +8716,9 @@ test "a stream parameter becomes a shim adapter and a fixed callback ABI" {
 }
 
 test "shared lifecycle is opt-in and contains cross-package identities" {
-    const program: abi.Program = undefined;
+    // An empty program, not `undefined`: the lifecycle renderer reads the
+    // function list to decide whether child-handle support is needed.
+    const program: abi.Program = .{ .functions = &.{}, .package = "unit", .prefix = "zg" };
     var disabled: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer disabled.deinit();
     try renderLifecycle(std.testing.allocator, &disabled.writer, program, .{ .go_module = "example.com/unit" });
