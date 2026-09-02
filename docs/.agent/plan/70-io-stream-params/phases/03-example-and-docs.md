@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-02T09:04:00Z"
 depends_on:
 - "70-io-stream-params#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 새 예제가 cgo·purego 양쪽에서 `zig build test go-check abi-check` + `go vet` + `go test` 통과. 문서 갱신.
 > NEXT: none

@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-02T09:04:00Z"
 depends_on:
 - third-party-library-fit
 description: "*std.Io.Writer / *std.Io.Reader 파라미터를 Go io.Writer / io.Reader로 연동"
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-02T07:33:36Z"
 ---
 > NEXT: `*std.Io.Writer`/`*std.Io.Reader` 파라미터를 반영·직렬화·검증하는 IR을 만든다. ([Phase 0](phases/00-stream-ir.md))
@@ -12,7 +13,7 @@ registered_at: "2026-09-02T07:33:36Z"
 - [x] [Phase 00: 스트림 파라미터 인식과 IR](phases/00-stream-ir.md)
 - [x] [Phase 01: shim 어댑터와 lowering](phases/01-shim-adapters.md)
 - [x] [Phase 02: Go 트램폴린과 공개 래퍼](phases/02-go-side.md)
-- [ ] [Phase 03: 예제, 테스트, 문서](phases/03-example-and-docs.md)
+- [x] [Phase 03: 예제, 테스트, 문서](phases/03-example-and-docs.md)
 
 # Shared Verification
 
