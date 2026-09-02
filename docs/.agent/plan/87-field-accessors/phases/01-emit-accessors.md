@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-02T22:47:32Z"
 depends_on:
 - "87-field-accessors#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Example Go tests pass on cgo and purego; full verification loop green.
 > NEXT: none

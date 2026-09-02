@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T22:47:32Z"
 description: generate getters and optional setters for scalar and enum fields of opaque types via .fields with dotted paths
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-02T22:15:54Z"
 ---
 > NEXT: Reflect `.fields` into synthesized accessor functions with a diagnostic for unsupported paths. ([Phase 0](phases/00-reflect-fields.md))
@@ -8,7 +9,7 @@ registered_at: "2026-09-02T22:15:54Z"
 # Phases
 
 - [x] [Phase 00: Reflect and validate fields](phases/00-reflect-fields.md)
-- [ ] [Phase 01: Emit accessors on both backends](phases/01-emit-accessors.md)
+- [x] [Phase 01: Emit accessors on both backends](phases/01-emit-accessors.md)
 
 # Shared Verification
 
