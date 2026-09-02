@@ -52,7 +52,7 @@
         }
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 14,
         "column": 12
       },
@@ -70,7 +70,7 @@
         "signed": true
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 20,
         "column": 12
       },
@@ -85,7 +85,7 @@
         "kind": "void"
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 24,
         "column": 12
       },
@@ -126,7 +126,7 @@
         }
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 38,
         "column": 12
       },
@@ -141,7 +141,7 @@
         "kind": "void"
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 45,
         "column": 12
       },
@@ -170,7 +170,7 @@
         "kind": "void"
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 49,
         "column": 12
       },
@@ -200,7 +200,7 @@
         "kind": "void"
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 53,
         "column": 12
       },
@@ -215,7 +215,7 @@
         "kind": "void"
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 57,
         "column": 12
       },
@@ -230,7 +230,7 @@
         "kind": "void"
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 61,
         "column": 12
       },
@@ -245,7 +245,7 @@
         "kind": "void"
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 65,
         "column": 12
       },
@@ -277,7 +277,7 @@
         "kind": "void"
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 69,
         "column": 12
       },
@@ -295,7 +295,7 @@
         "ref": "Value"
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 73,
         "column": 12
       },
@@ -310,7 +310,7 @@
         "kind": "void"
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 77,
         "column": 12
       },
@@ -351,7 +351,7 @@
         }
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 93,
         "column": 12
       },
@@ -366,7 +366,7 @@
         "kind": "void"
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 99,
         "column": 12
       },
@@ -398,7 +398,7 @@
         "kind": "void"
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 103,
         "column": 12
       },
@@ -428,7 +428,7 @@
         "kind": "void"
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 107,
         "column": 12
       },
@@ -460,7 +460,7 @@
         "kind": "void"
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 111,
         "column": 12
       },
@@ -490,7 +490,7 @@
         "kind": "void"
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 115,
         "column": 12
       },
@@ -519,7 +519,7 @@
         "kind": "void"
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 119,
         "column": 12
       },
@@ -534,7 +534,7 @@
         "kind": "void"
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 123,
         "column": 12
       },
@@ -551,7 +551,7 @@
         "signed": false
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 128,
         "column": 8
       },
@@ -601,7 +601,7 @@
         }
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 132,
         "column": 8
       },
@@ -635,7 +635,7 @@
         "kind": "float"
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 137,
         "column": 8
       },
@@ -655,7 +655,7 @@
         }
       },
       "source": {
-        "path": "./examples/10-tagged-union/src/root.zig",
+        "path": "root.zig",
         "line": 143,
         "column": 8
       },

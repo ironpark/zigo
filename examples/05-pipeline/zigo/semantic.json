@@ -34,6 +34,11 @@
           "ref": "IntBatch"
         }
       },
+      "source": {
+        "path": "root.zig",
+        "line": 104,
+        "column": 16
+      },
       "symbol": "zg_int_batch_create"
     },
     {
@@ -45,6 +50,10 @@
           "name": "value",
           "name_source": "ast",
           "retention": "borrowed",
+          "source": {
+            "line": 110,
+            "column": 34
+          },
           "type": {
             "bits": 32,
             "is_usize": false,
@@ -63,6 +72,11 @@
           "kind": "void"
         }
       },
+      "source": {
+        "path": "root.zig",
+        "line": 110,
+        "column": 16
+      },
       "symbol": "zg_int_batch_push"
     },
     {
@@ -76,6 +90,11 @@
         "kind": "int",
         "signed": false
       },
+      "source": {
+        "path": "root.zig",
+        "line": 114,
+        "column": 16
+      },
       "symbol": "zg_int_batch_len"
     },
     {
@@ -85,6 +104,11 @@
       "receiver": "IntBatch",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 90,
+        "column": 12
       },
       "symbol": "zg_int_batch_deinit"
     },
@@ -105,6 +129,11 @@
           "ref": "FloatBatch"
         }
       },
+      "source": {
+        "path": "root.zig",
+        "line": 104,
+        "column": 16
+      },
       "symbol": "zg_float_batch_create"
     },
     {
@@ -116,6 +145,10 @@
           "name": "value",
           "name_source": "ast",
           "retention": "borrowed",
+          "source": {
+            "line": 110,
+            "column": 34
+          },
           "type": {
             "bits": 64,
             "kind": "float"
@@ -132,6 +165,11 @@
           "kind": "void"
         }
       },
+      "source": {
+        "path": "root.zig",
+        "line": 110,
+        "column": 16
+      },
       "symbol": "zg_float_batch_push"
     },
     {
@@ -145,6 +183,11 @@
         "kind": "int",
         "signed": false
       },
+      "source": {
+        "path": "root.zig",
+        "line": 114,
+        "column": 16
+      },
       "symbol": "zg_float_batch_len"
     },
     {
@@ -154,6 +197,11 @@
       "receiver": "FloatBatch",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 90,
+        "column": 12
       },
       "symbol": "zg_float_batch_deinit"
     },
@@ -168,6 +216,10 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "semantic": "utf8_string",
+          "source": {
+            "line": 26,
+            "column": 9
+          },
           "type": {
             "const": true,
             "element": {
@@ -184,6 +236,10 @@
           "name": "mode",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 27,
+            "column": 9
+          },
           "type": {
             "kind": "enum",
             "ref": "Mode"
@@ -194,6 +250,10 @@
           "name": "callback",
           "name_source": "sidecar",
           "retention": "retained",
+          "source": {
+            "line": 28,
+            "column": 9
+          },
           "type": {
             "c_callconv": true,
             "has_userdata": true,
@@ -225,6 +285,10 @@
           "name": "userdata",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 29,
+            "column": 9
+          },
           "type": {
             "bits": 64,
             "is_usize": true,
@@ -246,6 +310,11 @@
           "ref": "Pipeline"
         }
       },
+      "source": {
+        "path": "root.zig",
+        "line": 25,
+        "column": 12
+      },
       "symbol": "zg_pipeline_create"
     },
     {
@@ -257,6 +326,10 @@
           "name": "values",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 48,
+            "column": 37
+          },
           "type": {
             "const": true,
             "element": {
@@ -284,6 +357,11 @@
           "signed": true
         }
       },
+      "source": {
+        "path": "root.zig",
+        "line": 48,
+        "column": 12
+      },
       "symbol": "zg_pipeline_process"
     },
     {
@@ -302,6 +380,11 @@
         "kind": "slice"
       },
       "return_semantic": "utf8_string",
+      "source": {
+        "path": "root.zig",
+        "line": 68,
+        "column": 12
+      },
       "symbol": "zg_pipeline_name"
     },
     {
@@ -312,6 +395,11 @@
       "return": {
         "kind": "enum",
         "ref": "Mode"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 72,
+        "column": 12
       },
       "symbol": "zg_pipeline_mode"
     },
@@ -324,6 +412,10 @@
           "name": "enabled",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 76,
+            "column": 40
+          },
           "type": {
             "kind": "bool"
           }
@@ -332,6 +424,11 @@
       "receiver": "Pipeline",
       "return": {
         "kind": "bool"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 76,
+        "column": 12
       },
       "symbol": "zg_pipeline_set_enabled"
     },
@@ -346,6 +443,11 @@
         "kind": "int",
         "signed": false
       },
+      "source": {
+        "path": "root.zig",
+        "line": 82,
+        "column": 12
+      },
       "symbol": "zg_pipeline_processed"
     },
     {
@@ -359,6 +461,11 @@
         "kind": "int",
         "signed": true
       },
+      "source": {
+        "path": "root.zig",
+        "line": 86,
+        "column": 12
+      },
       "symbol": "zg_pipeline_total"
     },
     {
@@ -368,6 +475,11 @@
       "receiver": "Pipeline",
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 90,
+        "column": 12
       },
       "symbol": "zg_pipeline_deinit"
     },
@@ -381,6 +493,11 @@
         "kind": "int",
         "signed": false
       },
+      "source": {
+        "path": "root.zig",
+        "line": 128,
+        "column": 8
+      },
       "symbol": "zg_live_bytes"
     },
     {
@@ -392,6 +509,10 @@
           "name": "source_len",
           "name_source": "ast",
           "retention": "borrowed",
+          "source": {
+            "line": 134,
+            "column": 25
+          },
           "type": {
             "bits": 64,
             "is_usize": true,
@@ -405,6 +526,11 @@
         "is_usize": true,
         "kind": "int",
         "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 134,
+        "column": 8
       },
       "symbol": "zg_compression_bound"
     }

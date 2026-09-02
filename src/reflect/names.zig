@@ -16,7 +16,8 @@ pub fn apply(
         return err;
     };
     const functions = try allocator.dupe(semantic.SemanticFn, document.functions);
-    var has_errors = try scanSourceWithDiagnostics(allocator, bindings_source, functions, bindings_path, diagnostics);
+    const directory = std.fs.path.dirname(bindings_path) orelse ".";
+    var has_errors = try scanSourceWithDiagnostics(allocator, bindings_source, functions, try recordedPathAlloc(allocator, directory, bindings_path), diagnostics);
 
     // The bindings file is the one file the binding's author owns, so its
     // `//!` speaks to Go readers. The root module's `//!` is only reached when
@@ -25,12 +26,11 @@ pub fn apply(
     // better in `bindings.zig`.
     if (document.doc == null) document.doc = try containerDocAlloc(allocator, bindings_source);
 
-    const directory = std.fs.path.dirname(bindings_path) orelse ".";
     const root_path = source_root_path orelse try std.fs.path.join(allocator, &.{ directory, "root.zig" });
     if (!std.mem.eql(u8, root_path, bindings_path)) {
         if (std.Io.Dir.cwd().readFileAlloc(io, root_path, allocator, .limited(8 * 1024 * 1024))) |root_source| {
             if (document.doc == null) document.doc = try containerDocAlloc(allocator, root_source);
-            has_errors = try scanSourceWithDiagnostics(allocator, root_source, functions, root_path, diagnostics) or has_errors;
+            has_errors = try scanSourceWithDiagnostics(allocator, root_source, functions, try recordedPathAlloc(allocator, directory, root_path), diagnostics) or has_errors;
         } else |err| switch (err) {
             error.FileNotFound => {},
             else => {
@@ -50,7 +50,7 @@ pub fn apply(
         if (!std.mem.endsWith(u8, referenced, ".zig")) continue;
         const path = try std.fs.path.join(allocator, &.{ directory, referenced });
         if (std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(8 * 1024 * 1024))) |source| {
-            has_errors = try scanSourceWithDiagnostics(allocator, source, functions, path, diagnostics) or has_errors;
+            has_errors = try scanSourceWithDiagnostics(allocator, source, functions, try recordedPathAlloc(allocator, directory, path), diagnostics) or has_errors;
         } else |err| {
             try writeReadError(diagnostics, path, err);
             has_errors = true;
@@ -110,6 +110,22 @@ fn scanSourceWithDiagnostics(
         return true;
     }
     return false;
+}
+
+/// The path recorded in `semantic.json` and shown in diagnostics. It is
+/// relative to the bindings file's directory with `/` separators, so the
+/// generated metadata does not depend on where the generator was invoked or
+/// on the host's path separator -- CI regenerates every example on Linux and
+/// Windows and compares bytes.
+fn recordedPathAlloc(allocator: std.mem.Allocator, directory: []const u8, path: []const u8) ![]const u8 {
+    var relative = path;
+    if (std.mem.startsWith(u8, path, directory)) {
+        const rest = path[directory.len..];
+        if (rest.len > 0 and (rest[0] == '/' or rest[0] == '\\')) relative = rest[1..];
+    }
+    const recorded = try allocator.dupe(u8, relative);
+    std.mem.replaceScalar(u8, recorded, '\\', '/');
+    return recorded;
 }
 
 fn writeReadError(writer: *std.Io.Writer, path: []const u8, err: anyerror) !void {
@@ -687,4 +703,20 @@ test "no container block anywhere leaves the package doc to the default sentence
     try apply(arena.allocator(), std.testing.io, &document, bindings_path, null, &diagnostics.writer);
 
     try std.testing.expect(document.doc == null);
+}
+
+test "recorded source paths are relative to the bindings directory with slash separators" {
+    const allocator = std.testing.allocator;
+    const cases = [_]struct { directory: []const u8, path: []const u8, expected: []const u8 }{
+        .{ .directory = "/home/runner/work/zigo/examples/04-callback/src", .path = "/home/runner/work/zigo/examples/04-callback/src/root.zig", .expected = "root.zig" },
+        .{ .directory = "./examples/04-callback/src", .path = "./examples/04-callback/src/sub/extra.zig", .expected = "sub/extra.zig" },
+        .{ .directory = "C:\\work\\zigo\\src", .path = "C:\\work\\zigo\\src\\root.zig", .expected = "root.zig" },
+        .{ .directory = ".", .path = "bindings.zig", .expected = "bindings.zig" },
+        .{ .directory = "/a/src", .path = "/elsewhere/root.zig", .expected = "/elsewhere/root.zig" },
+    };
+    for (cases) |case| {
+        const recorded = try recordedPathAlloc(allocator, case.directory, case.path);
+        defer allocator.free(recorded);
+        try std.testing.expectEqualStrings(case.expected, recorded);
+    }
 }

@@ -10,6 +10,10 @@
           "name": "retry_count",
           "name_source": "ast",
           "retention": "borrowed",
+          "source": {
+            "line": 1,
+            "column": 19
+          },
           "type": {
             "bits": 32,
             "is_usize": false,
@@ -23,6 +27,11 @@
         "is_usize": false,
         "kind": "int",
         "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 1,
+        "column": 8
       },
       "symbol": "zg_status_code"
     }

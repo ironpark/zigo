@@ -11,6 +11,10 @@
           "name": "a",
           "name_source": "ast",
           "retention": "borrowed",
+          "source": {
+            "line": 3,
+            "column": 12
+          },
           "type": {
             "bits": 32,
             "is_usize": false,
@@ -23,6 +27,10 @@
           "name": "b",
           "name_source": "ast",
           "retention": "borrowed",
+          "source": {
+            "line": 3,
+            "column": 20
+          },
           "type": {
             "bits": 32,
             "is_usize": false,
@@ -36,6 +44,11 @@
         "is_usize": false,
         "kind": "int",
         "signed": true
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 3,
+        "column": 8
       },
       "symbol": "zg_add"
     }

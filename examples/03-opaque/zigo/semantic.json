@@ -25,6 +25,11 @@
           "ref": "Context"
         }
       },
+      "source": {
+        "path": "root.zig",
+        "line": 10,
+        "column": 12
+      },
       "symbol": "zg_context_create"
     },
     {
@@ -36,6 +41,10 @@
           "name": "value",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 17,
+            "column": 32
+          },
           "type": {
             "bits": 64,
             "is_usize": false,
@@ -50,6 +59,11 @@
         "is_usize": false,
         "kind": "int",
         "signed": true
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 17,
+        "column": 12
       },
       "symbol": "zg_context_add"
     },
@@ -68,6 +82,11 @@
           "kind": "void"
         }
       },
+      "source": {
+        "path": "root.zig",
+        "line": 23,
+        "column": 12
+      },
       "symbol": "zg_context_crash"
     },
     {
@@ -82,6 +101,11 @@
         "kind": "int",
         "signed": true
       },
+      "source": {
+        "path": "root.zig",
+        "line": 31,
+        "column": 12
+      },
       "symbol": "zg_context_crash_infallible"
     },
     {
@@ -92,6 +116,11 @@
       "return": {
         "kind": "void"
       },
+      "source": {
+        "path": "root.zig",
+        "line": 36,
+        "column": 12
+      },
       "symbol": "zg_context_deinit"
     },
     {
@@ -101,6 +130,11 @@
       "params": [],
       "return": {
         "kind": "void"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 46,
+        "column": 8
       },
       "symbol": "zg_crash_fatal"
     },
@@ -113,6 +147,11 @@
         "is_usize": true,
         "kind": "int",
         "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 50,
+        "column": 8
       },
       "symbol": "zg_live_bytes"
     },
@@ -127,6 +166,10 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "semantic": "utf8_string",
+          "source": {
+            "line": 55,
+            "column": 13
+          },
           "type": {
             "const": true,
             "element": {
@@ -150,6 +193,11 @@
         "kind": "slice"
       },
       "return_semantic": "utf8_string",
+      "source": {
+        "path": "root.zig",
+        "line": 55,
+        "column": 8
+      },
       "symbol": "zg_echo"
     },
     {

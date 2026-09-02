@@ -10,6 +10,10 @@
           "name": "numerator",
           "name_source": "ast",
           "retention": "borrowed",
+          "source": {
+            "line": 5,
+            "column": 15
+          },
           "type": {
             "bits": 64,
             "kind": "float"
@@ -20,6 +24,10 @@
           "name": "denominator",
           "name_source": "ast",
           "retention": "borrowed",
+          "source": {
+            "line": 5,
+            "column": 31
+          },
           "type": {
             "bits": 64,
             "kind": "float"
@@ -36,6 +44,11 @@
           "kind": "float"
         }
       },
+      "source": {
+        "path": "root.zig",
+        "line": 5,
+        "column": 8
+      },
       "symbol": "zg_divide"
     },
     {
@@ -47,6 +60,10 @@
           "name": "values",
           "name_source": "ast",
           "retention": "borrowed",
+          "source": {
+            "line": 10,
+            "column": 12
+          },
           "type": {
             "const": true,
             "element": {
@@ -61,6 +78,11 @@
         "bits": 64,
         "kind": "float"
       },
+      "source": {
+        "path": "root.zig",
+        "line": 10,
+        "column": 8
+      },
       "symbol": "zg_sum"
     },
     {
@@ -72,6 +94,10 @@
           "name": "value",
           "name_source": "ast",
           "retention": "borrowed",
+          "source": {
+            "line": 16,
+            "column": 24
+          },
           "type": {
             "kind": "enum",
             "ref": "Format"
@@ -81,6 +107,11 @@
       "return": {
         "kind": "enum",
         "ref": "Format"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 16,
+        "column": 8
       },
       "symbol": "zg_normalize_format"
     },
@@ -94,6 +125,10 @@
           "name": "cp",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 24,
+            "column": 23
+          },
           "type": {
             "bits": 21,
             "is_usize": false,
@@ -113,6 +148,11 @@
           "kind": "int",
           "signed": false
         }
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 24,
+        "column": 8
       },
       "symbol": "zg_codepoint_width"
     }

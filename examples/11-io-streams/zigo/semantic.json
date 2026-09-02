@@ -36,7 +36,7 @@
         }
       },
       "source": {
-        "path": "./examples/11-io-streams/src/root.zig",
+        "path": "root.zig",
         "line": 14,
         "column": 12
       },
@@ -51,7 +51,7 @@
         "kind": "void"
       },
       "source": {
-        "path": "./examples/11-io-streams/src/root.zig",
+        "path": "root.zig",
         "line": 20,
         "column": 12
       },
@@ -93,7 +93,7 @@
         }
       },
       "source": {
-        "path": "./examples/11-io-streams/src/root.zig",
+        "path": "root.zig",
         "line": 26,
         "column": 12
       },
@@ -111,7 +111,7 @@
         "signed": false
       },
       "source": {
-        "path": "./examples/11-io-streams/src/root.zig",
+        "path": "root.zig",
         "line": 32,
         "column": 12
       },
@@ -147,7 +147,7 @@
         }
       },
       "source": {
-        "path": "./examples/11-io-streams/src/root.zig",
+        "path": "root.zig",
         "line": 40,
         "column": 12
       },
@@ -188,7 +188,7 @@
         }
       },
       "source": {
-        "path": "./examples/11-io-streams/src/root.zig",
+        "path": "root.zig",
         "line": 50,
         "column": 12
       },
@@ -239,7 +239,7 @@
         }
       },
       "source": {
-        "path": "./examples/11-io-streams/src/root.zig",
+        "path": "root.zig",
         "line": 122,
         "column": 8
       },
@@ -291,7 +291,7 @@
         }
       },
       "source": {
-        "path": "./examples/11-io-streams/src/root.zig",
+        "path": "root.zig",
         "line": 130,
         "column": 8
       },
@@ -315,7 +315,7 @@
         }
       },
       "source": {
-        "path": "./examples/11-io-streams/src/root.zig",
+        "path": "root.zig",
         "line": 75,
         "column": 12
       },
@@ -331,7 +331,7 @@
         "kind": "io_writer"
       },
       "source": {
-        "path": "./examples/11-io-streams/src/root.zig",
+        "path": "root.zig",
         "line": 87,
         "column": 12
       },
@@ -349,7 +349,7 @@
         "signed": false
       },
       "source": {
-        "path": "./examples/11-io-streams/src/root.zig",
+        "path": "root.zig",
         "line": 91,
         "column": 12
       },
@@ -364,7 +364,7 @@
         "kind": "void"
       },
       "source": {
-        "path": "./examples/11-io-streams/src/root.zig",
+        "path": "root.zig",
         "line": 81,
         "column": 12
       },
@@ -409,7 +409,7 @@
         }
       },
       "source": {
-        "path": "./examples/11-io-streams/src/root.zig",
+        "path": "root.zig",
         "line": 102,
         "column": 12
       },
@@ -424,7 +424,7 @@
         "kind": "io_reader"
       },
       "source": {
-        "path": "./examples/11-io-streams/src/root.zig",
+        "path": "root.zig",
         "line": 115,
         "column": 12
       },
@@ -439,7 +439,7 @@
         "kind": "void"
       },
       "source": {
-        "path": "./examples/11-io-streams/src/root.zig",
+        "path": "root.zig",
         "line": 110,
         "column": 12
       },
