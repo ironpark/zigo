@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T05:26:51Z"
 description: semantic.json symbol 네임스페이스 정정, Go doc comment 문법·그룹 공유, 패키지 doc 생성
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-02T04:35:12Z"
 ---
 > NEXT: 함수 심볼 규칙을 한 함수로 모으고 `semantic.json`의 `symbol`을 헤더 export 이름과 일치시킨다. ([Phase 0](phases/00-symbol-rule.md))
@@ -10,7 +11,7 @@ registered_at: "2026-09-02T04:35:12Z"
 - [x] [Phase 00: 함수 심볼 규칙 단일화와 semantic.json 정정](phases/00-symbol-rule.md)
 - [x] [Phase 01: doc 수집 규칙: 그룹 주석과 연속 선언 공유](phases/01-doc-collection.md)
 - [x] [Phase 02: Go doc 출력 형식과 필러 정리](phases/02-doc-rendering.md)
-- [ ] [Phase 03: 패키지 doc 생성](phases/03-package-doc.md)
+- [x] [Phase 03: 패키지 doc 생성](phases/03-package-doc.md)
 
 # Shared Verification
 

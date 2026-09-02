@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-02T05:26:51Z"
 depends_on:
 - "65-metadata-and-godoc-fidelity#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 모든 예제·골든의 공개·raw 패키지에 패키지 doc이 정확히 하나씩 있고 godoc_audit이 단정한다.
 > NEXT: none
