@@ -1,4 +1,5 @@
-//! Binding declarations are populated when the reflector DSL lands in Phase 2.
+//! Scalar arithmetic across the C ABI: the smallest binding zigo can generate.
+//! This sentence reaches the generated Go package doc through the `//!` block.
 const zigo = @import("zigo");
 const scalar = @import("scalar");
 

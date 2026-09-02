@@ -242,6 +242,7 @@ pub fn semanticDocumentForBackend(
         .backend = backend,
         .callback_convention = if (backend == .purego) .function_pointer_userdata_v2 else .fixed_go_export,
         .constructors = document.constructors,
+        .doc = document.doc,
         .enums = try lowerEnums(allocator, document, prefix),
         .error_codes = error_codes,
         .handles = try lowerHandles(allocator, document, prefix),

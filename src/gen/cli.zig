@@ -31,6 +31,7 @@ pub const Generate = struct {
     raw_package_name: []const u8 = "raw",
     raw_colocated: bool = false,
     go_package: []const u8 = "",
+    go_package_doc: []const u8 = "",
     errors_lock_path: ?[]const u8 = null,
     backend: Backend = .cgo,
     link_mode: LinkMode = .static,
@@ -184,6 +185,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
     var raw_package_path: ?[]const u8 = null;
     var raw_package_name: ?[]const u8 = null;
     var go_package: ?[]const u8 = null;
+    var go_package_doc: ?[]const u8 = null;
     var errors_lock_path: ?[]const u8 = null;
     var gofmt_executable: ?[]const u8 = null;
     var raw_colocated = false;
@@ -229,6 +231,8 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
             try set(&raw_package_path, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--go-package")) {
             try set(&go_package, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--go-package-doc")) {
+            try set(&go_package_doc, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--raw-package-name")) {
             try set(&raw_package_name, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--errors-lock")) {
@@ -269,6 +273,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .raw_package_path = raw_package_path orelse "internal/raw",
         .raw_package_name = raw_package_name orelse "raw",
         .go_package = go_package orelse "",
+        .go_package_doc = go_package_doc orelse "",
         .raw_colocated = raw_colocated,
         .errors_lock_path = errors_lock_path,
         .backend = backend orelse .cgo,

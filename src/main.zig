@@ -73,6 +73,7 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         .raw_package_name = options.raw_package_name,
         .raw_colocated = options.raw_colocated,
         .go_package = options.go_package,
+        .go_package_doc = options.go_package_doc,
         .errors_lock_bytes = errors_lock_bytes,
         .backend = switch (options.backend) {
             .cgo => .cgo,

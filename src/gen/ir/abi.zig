@@ -192,6 +192,7 @@ pub const Program = struct {
     backend: Backend = .cgo,
     callback_convention: CallbackConvention = .fixed_go_export,
     constructors: []const semantic.Constructor = &.{},
+    doc: ?[]const u8 = null,
     enums: []const AbiEnum = &.{},
     error_codes: []const ErrorCode = &.{},
     handles: []const AbiOpaque = &.{},

@@ -1,5 +1,6 @@
 {
   "constructors": [],
+  "doc": "Scalar arithmetic across the C ABI: the smallest binding zigo can generate.\nThis sentence reaches the generated Go package doc through the `//!` block.",
   "functions": [
     {
       "name": "add",

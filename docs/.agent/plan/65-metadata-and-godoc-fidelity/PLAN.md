@@ -9,7 +9,7 @@ registered_at: "2026-09-02T04:35:12Z"
 
 - [x] [Phase 00: 함수 심볼 규칙 단일화와 semantic.json 정정](phases/00-symbol-rule.md)
 - [x] [Phase 01: doc 수집 규칙: 그룹 주석과 연속 선언 공유](phases/01-doc-collection.md)
-- [ ] [Phase 02: Go doc 출력 형식과 필러 정리](phases/02-doc-rendering.md)
+- [x] [Phase 02: Go doc 출력 형식과 필러 정리](phases/02-doc-rendering.md)
 - [ ] [Phase 03: 패키지 doc 생성](phases/03-package-doc.md)
 
 # Shared Verification

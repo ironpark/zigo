@@ -305,6 +305,9 @@ pub const Constructor = struct {
 
 pub const Semantic = struct {
     constructors: []const Constructor = &.{},
+    /// The `//!` container doc of the bindings file, if it has one. It becomes
+    /// the generated Go package doc unless `go_package_doc` overrides it.
+    doc: ?[]const u8 = null,
     functions: []const SemanticFn = &.{},
     ir_version: u32 = 1,
     package: []const u8,

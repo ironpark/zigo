@@ -128,6 +128,13 @@ AST 보강에 사용하는 기본 `bindings.zig`를 읽지 못하면 reflection�
 같은 디렉터리의 `root.zig`가 없는 경우만 정상적으로 건너뛰며, 발견된 `.zig` import를
 읽지 못하거나 AST를 파싱하지 못하면 오류 경로와 원인을 출력하고 생성을 중단한다.
 
+`semantic.json`의 `symbol`은 함수가 export되는 C 심볼 이름이며 헤더·링커와 같은 규칙에서
+나온다. purego의 `_purego_v2` 접미처럼 백엔드가 덧붙이는 장식은 포함하지 않는다.
+
+Zig doc 주석은 형식만 조정되고 본문은 그대로 옮겨진다. Go doc 관례에 맞는 첫 문장을
+원하면 Zig 쪽 doc을 그렇게 쓴다. Go doc의 마크다운 확장(목록, 링크, 제목)은 해석하지
+않고 그대로 통과시킨다.
+
 문자열, 반환 포인터 소유권, retained 포인터와 콜백 수명은 타입만으로 결정할 수 없다.
 `semantic`, `returns`, `param_meta.retention`을 통해 계약을 명시해야 한다.
 

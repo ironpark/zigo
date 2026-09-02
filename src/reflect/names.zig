@@ -15,6 +15,7 @@ pub fn apply(
         try writeReadError(diagnostics, bindings_path, err);
         return err;
     };
+    if (document.doc == null) document.doc = try containerDocAlloc(allocator, bindings_source);
     const functions = try allocator.dupe(semantic.SemanticFn, document.functions);
     var has_errors = try scanSourceWithDiagnostics(allocator, bindings_source, functions, bindings_path, diagnostics);
 
@@ -61,6 +62,31 @@ pub fn writeWarnings(writer: *std.Io.Writer, document: semantic.Semantic) !void 
         };
         if (uses_fallback) try writer.print("warning: zigo has no parameter names for {s}; using p0-style names\n", .{function.name});
     }
+}
+
+/// The `//!` block at the top of the bindings file documents the container the
+/// bindings live in, which is exactly what the generated Go package doc says.
+fn containerDocAlloc(allocator: std.mem.Allocator, source: []const u8) !?[]const u8 {
+    var result: std.Io.Writer.Allocating = .init(allocator);
+    errdefer result.deinit();
+    var wrote = false;
+    var lines = std.mem.splitScalar(u8, source, '\n');
+    while (lines.next()) |raw| {
+        const line = std.mem.trim(u8, raw, " \t\r");
+        if (line.len == 0) {
+            if (wrote) break;
+            continue;
+        }
+        if (!std.mem.startsWith(u8, line, "//!")) break;
+        if (wrote) try result.writer.writeByte('\n');
+        try result.writer.writeAll(std.mem.trimStart(u8, line[3..], " "));
+        wrote = true;
+    }
+    if (!wrote) {
+        result.deinit();
+        return null;
+    }
+    return try result.toOwnedSlice();
 }
 
 fn scanSourceWithDiagnostics(

@@ -19,6 +19,9 @@ func main() {
 	fset := token.NewFileSet()
 	failed := false
 	for _, root := range os.Args[1:] {
+		// Go allows a package doc on exactly one file of a package, so the
+		// generated tree has to place it on exactly one file too.
+		packageDocs := map[string][]string{}
 		err := filepath.WalkDir(root, func(path string, entry fs.DirEntry, walkErr error) error {
 			if walkErr != nil {
 				return walkErr
@@ -29,6 +32,17 @@ func main() {
 			file, err := parser.ParseFile(fset, path, nil, parser.ParseComments)
 			if err != nil {
 				return err
+			}
+			directory := filepath.Dir(path)
+			if _, seen := packageDocs[directory]; !seen {
+				packageDocs[directory] = nil
+			}
+			if file.Doc != nil {
+				packageDocs[directory] = append(packageDocs[directory], path)
+				if want := "Package " + file.Name.Name; !strings.HasPrefix(strings.TrimSpace(file.Doc.Text()), want) {
+					fmt.Fprintf(os.Stderr, "%s: package doc does not open with %q\n", path, want)
+					failed = true
+				}
 			}
 			for _, declaration := range file.Decls {
 				switch value := declaration.(type) {
@@ -61,6 +75,12 @@ func main() {
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "godoc audit: %s: %v\n", root, err)
 			os.Exit(1)
+		}
+		for directory, files := range packageDocs {
+			if len(files) != 1 {
+				fmt.Fprintf(os.Stderr, "%s: expected exactly one file with a package doc, found %d\n", directory, len(files))
+				failed = true
+			}
 		}
 	}
 	if failed {

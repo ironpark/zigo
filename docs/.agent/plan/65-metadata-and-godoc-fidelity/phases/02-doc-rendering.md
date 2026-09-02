@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-02T05:14:50Z"
 depends_on:
 - "65-metadata-and-godoc-fidelity#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `SelectionSilent the …` 류 접합이 어떤 골든에도 없다(테스트로 단정).
 > NEXT: none

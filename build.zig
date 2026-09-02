@@ -56,6 +56,9 @@ pub const Options = struct {
     /// can contain underscores; set it to choose an idiomatic Go name. The C
     /// header and the native library keep the binding name either way.
     go_package: ?[]const u8 = null,
+    /// Body of the generated `// Package ...` doc. Null falls back to the `//!`
+    /// container doc of the bindings file, then to a default sentence.
+    go_package_doc: ?[]const u8 = null,
     /// purego-only run-time loading policy. The default requires an explicit
     /// `LoadLibrary` call and consults `ZIGO_LIBRARY_PATH`.
     library_loading: LibraryLoading = .{},
@@ -716,6 +719,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         "--library-stem",      library_stem,
         "--link-mode",         @tagName(link_mode),
         "--go-package",        go_package,
+        "--go-package-doc",    options.go_package_doc orelse "",
     });
     if (backend == .purego) addLibraryLoadingArgs(b, generate, options.library_loading);
     if (raw_package.colocated) generate.addArg("--raw-colocated");

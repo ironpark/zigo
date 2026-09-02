@@ -24,6 +24,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .abi_base = "HEAD",
         .raw_package = "bridge/cgo",
+        .go_package_doc = "Package event_queue queues events natively and hands the results to Go.\n\nThe doc body comes from the `go_package_doc` build option rather than from a\n`//!` block in the bindings file.",
+
     });
     _ = bindings.addStandardSteps(b, .{});
 
@@ -37,6 +39,8 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .abi_base = "HEAD",
         .raw_package = "internal/native",
+        .go_package_doc = "Package event_queue queues events natively and hands the results to Go.\n\nThe doc body comes from the `go_package_doc` build option rather than from a\n`//!` block in the bindings file.",
+
         .link = .purego,
     });
     _ = purego_bindings.addStandardSteps(b, .{ .name_prefix = "purego" });

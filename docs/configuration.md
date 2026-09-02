@@ -40,6 +40,7 @@ raw 패키지는 `internal/raw`에서 생성됩니다.
 | `prefix` | 아니요 | `"zg"` | 생성 C 심볼 접두사. 바인딩 함수뿐 아니라 zigo 런타임 심볼(`<prefix>_panic_bridge`, `<prefix>_last_error_message`)에도 붙으므로, 한 실행 파일에 링크되는 바인딩마다 다른 값을 준다 |
 | `link` | 아니요 | `.cgo_static` | `.cgo_static`, `.cgo_dynamic`, `.purego` 중 하나 |
 | `go_package` | 아니요 | `name`의 snake_case | 공개 Go 패키지 이름과 하위 디렉터리 |
+| `go_package_doc` | 아니요 | `bindings.zig`의 `//!` doc | 생성된 공개 패키지의 `// Package …` doc 본문 |
 | `raw_package` | 아니요 | `"internal/raw"` | `go_dir` 기준 raw Go 패키지 경로 |
 | `cgo_flags` | 아니요 | 모듈에서 계산 | 생성할 CFLAGS와 LDFLAGS 덮어쓰기 |
 | `gofmt` | 아니요 | `PATH`의 `gofmt` | 생성 코드 포맷에 사용할 실행 파일 |
