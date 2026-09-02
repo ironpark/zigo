@@ -62,7 +62,7 @@ CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
 Zig 프로젝트 루트에서 실행합니다.
 
 ```bash
-zig fetch --save git+https://github.com/ironpark/zigo#0.6.1
+zig fetch --save git+https://github.com/ironpark/zigo#0.6.2
 ```
 
 명령이 `build.zig.zon`에 `zigo` 의존성을 추가합니다. 재현 가능한 빌드를 위해 생성된
