@@ -763,10 +763,11 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         .optimize = .Debug,
     });
     // The reflected module is the caller's, retargeted to the host. Its
-    // static link inputs were built for `options.target`, and a host
-    // executable cannot link a foreign archive; reflection never calls into
-    // them, so the host copy leaves them out. See `hostReflectionModule`.
-    var reflection_clones: std.AutoHashMapUnmanaged(*std.Build.Module, *std.Build.Module) = .empty;
+    // Static link inputs were built for `options.target`, and a host executable
+    // cannot link a foreign archive. Rebuild library steps for the host so
+    // their headers and libc/libc++ settings remain available; prebuilt target
+    // archives are still left out. See `hostReflectionModule`.
+    var reflection_clones: HostReflectionClones = .{};
     const reflected_module = hostReflectionModule(b, options.module, options.optimize, &reflection_clones);
     const bindings_module = b.createModule(.{
         .root_source_file = options.bindings,
@@ -1291,18 +1292,24 @@ const StaticLinkInputs = struct {
     const empty: StaticLinkInputs = .{ .paths = &.{}, .names = &.{} };
 };
 
+const HostReflectionClones = struct {
+    modules: std.AutoHashMapUnmanaged(*std.Build.Module, *std.Build.Module) = .empty,
+    libraries: std.AutoHashMapUnmanaged(*std.Build.Step.Compile, *std.Build.Step.Compile) = .empty,
+};
+
 /// The caller's module rebuilt for the host so reflection can run it. Imports
 /// are cloned the same way; system libraries, C sources, include paths and
-/// macros carry over, while archives built for the target (`.other_step`,
-/// `.static_path`), assembly and resource files are left out: reflection only
-/// inspects types, so nothing in them is ever called.
+/// macros carry over. Static library steps are cloned for the host because
+/// their headers and libc/libc++ settings can be required while compiling the
+/// caller's C/C++ sources. Target archives (`.static_path`), dynamic libraries,
+/// assembly and resource files are left out: reflection never calls them.
 fn hostReflectionModule(
     b: *std.Build,
     module: *std.Build.Module,
     optimize: std.builtin.OptimizeMode,
-    clones: *std.AutoHashMapUnmanaged(*std.Build.Module, *std.Build.Module),
+    clones: *HostReflectionClones,
 ) *std.Build.Module {
-    if (clones.get(module)) |clone| return clone;
+    if (clones.modules.get(module)) |clone| return clone;
     const clone = b.createModule(.{
         .root_source_file = module.root_source_file,
         .target = b.graph.host,
@@ -1313,7 +1320,7 @@ fn hostReflectionModule(
         .sanitize_c = module.sanitize_c,
         .no_builtin = module.no_builtin,
     });
-    clones.put(b.allocator, module, clone) catch @panic("OOM");
+    clones.modules.put(b.allocator, module, clone) catch @panic("OOM");
     for (module.import_table.keys(), module.import_table.values()) |name, import| {
         clone.addImport(name, hostReflectionModule(b, import, optimize, clones));
     }
@@ -1327,7 +1334,34 @@ fn hostReflectionModule(
     }
     for (module.link_objects.items) |object| switch (object) {
         .system_lib, .c_source_file, .c_source_files => clone.link_objects.append(b.allocator, object) catch @panic("OOM"),
-        .other_step, .static_path, .assembly_file, .win32_resource_file => {},
+        .other_step => |library| if (library.isStaticLibrary()) {
+            clone.linkLibrary(hostReflectionLibrary(b, library, optimize, clones));
+        },
+        .static_path, .assembly_file, .win32_resource_file => {},
+    };
+    return clone;
+}
+
+fn hostReflectionLibrary(
+    b: *std.Build,
+    library: *std.Build.Step.Compile,
+    optimize: std.builtin.OptimizeMode,
+    clones: *HostReflectionClones,
+) *std.Build.Step.Compile {
+    if (clones.libraries.get(library)) |clone| return clone;
+    const clone = b.addLibrary(.{
+        .name = b.fmt("{s}_reflection_host", .{library.name}),
+        .linkage = .static,
+        .root_module = hostReflectionModule(b, library.root_module, optimize, clones),
+    });
+    clones.libraries.put(b.allocator, library, clone) catch @panic("OOM");
+    for (library.installed_headers.items) |installation| switch (installation) {
+        .file => |file| clone.installHeader(file.source, file.dest_rel_path),
+        .directory => |directory| clone.installHeadersDirectory(
+            directory.source,
+            directory.dest_rel_path,
+            directory.options,
+        ),
     };
     return clone;
 }

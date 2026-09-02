@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 예제가 네이티브·크로스에서 통과, 전 예제 녹색, 커밋.
 > NEXT: none

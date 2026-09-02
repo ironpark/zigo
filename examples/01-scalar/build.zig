@@ -16,13 +16,19 @@ pub fn build(b: *std.Build) void {
         .root_module = b.createModule(.{
             .target = target,
             .optimize = optimize,
+            .link_libcpp = true,
         }),
     });
     support.root_module.addCSourceFile(.{
-        .file = b.path("src/support.c"),
+        .file = b.path("src/support.cpp"),
         .flags = &.{"-fno-sanitize=undefined"},
     });
+    support.installHeader(b.path("src/support.hpp"), "support.hpp");
     scalar.linkLibrary(support);
+    scalar.addCSourceFile(.{
+        .file = b.path("src/bridge.cpp"),
+        .flags = &.{"-fno-sanitize=undefined"},
+    });
     const tests = b.addTest(.{ .root_module = scalar });
     b.step("test", "Run the Zig scalar tests").dependOn(&b.addRunArtifact(tests).step);
 

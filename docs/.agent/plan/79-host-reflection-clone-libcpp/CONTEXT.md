@@ -20,5 +20,11 @@
 ## Target structure and invariants
 
 - 복제본은 "호스트에서 컴파일·링크 가능한, 같은 타입 표면을 가진 module"이어야 한다. 심볼 존재는 reflection에 필요 없지만 헤더·언어 런타임 설정은 컴파일에 필요하다.
-- 접근 1을 택하면 `.other_step` 중 `isStaticLibrary()`인 것만 호스트 변형을 만들고, 동적 라이브러리는 버린다(호스트에서 로드하지 않음). Compile 옵션 중 복제할 것: name, root_module(복제), linkage static, `linkLibC`/`linkLibCpp`는 module 값으로 따라온다. `installed_headers`(installHeader로 붙은 것)는 `include_dirs.other_step`가 원본 Compile을 가리키므로 원본의 헤더 트리를 그대로 쓴다.
+- 접근 1을 택하면 `.other_step` 중 `isStaticLibrary()`인 것만 호스트 변형을 만들고, 동적 라이브러리는 버린다(호스트에서 로드하지 않음). Compile 옵션 중 복제할 것: name, root_module(복제), linkage static, `linkLibC`/`linkLibCpp`는 module 값으로 따라온다. `installed_headers`도 호스트 Compile에 복제해 라이브러리 자신과 소비자 모두 같은 헤더 트리를 쓴다.
 - 크로스 컴파일 시 호스트 변형이 target 변형과 별도로 빌드되며, 이는 허용되는 비용이다.
+
+## Implementation decision
+
+- 권장한 접근 1(호스트 변형 라이브러리)을 선택했다. 정적 `.other_step`의 `root_module`을 재귀적으로 호스트 복제하고 `installed_headers`를 옮긴 뒤 정적 `addLibrary`로 다시 연결한다.
+- module 복제 맵과 별도로 원본 `Compile` → 호스트 `Compile` 맵을 두어 여러 module이 공유하는 정적 라이브러리를 한 번만 만든다.
+- 동적 `.other_step`, `.static_path`, assembly, resource는 계속 제외한다. 예제 01은 기존 Windows CI 크로스 빌드 대상이므로 workflow 변경은 필요하지 않았다.
