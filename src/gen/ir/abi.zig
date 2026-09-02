@@ -101,6 +101,11 @@ pub const AbiParam = struct {
         return_slice_pointer,
         return_slice_length,
         struct_in,
+        /// The discriminant of a scalar-payload tagged union passed by value.
+        /// It is followed by one `union_payload` parameter for every non-void
+        /// variant, in declaration order.
+        union_tag,
+        union_payload,
         struct_out,
         /// A `?T` parameter: `T` lowered behind a nullable pointer, `NULL`
         /// standing for the Zig `null`. Scalar and `extern struct` children

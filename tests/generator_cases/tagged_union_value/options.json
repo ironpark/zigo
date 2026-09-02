@@ -1,0 +1,5 @@
+{
+  "package": "viewport",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/viewport"
+}

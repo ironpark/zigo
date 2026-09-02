@@ -119,13 +119,22 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
         };
         switch (classifyTypeChange(old, new)) {
             .equal => {},
-            .appended => try add(
-                allocator,
-                &report,
-                .compatible,
-                old.name,
-                if (old.kind == .tagged_union) "tagged-union variant appended" else "enum value appended",
-            ),
+            .appended => if (old.kind == .tagged_union and taggedUnionUsedByValue(base, old.name))
+                try add(
+                    allocator,
+                    &report,
+                    .breaking,
+                    old.name,
+                    "tagged-union variant appended; a value-parameter C signature grew",
+                )
+            else
+                try add(
+                    allocator,
+                    &report,
+                    .compatible,
+                    old.name,
+                    if (old.kind == .tagged_union) "tagged-union variant appended" else "enum value appended",
+                ),
             .snapshot_appended => try add(
                 allocator,
                 &report,
@@ -152,6 +161,15 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
         try add(allocator, &report, .added, new.type, "constructor mapping added");
 
     return report;
+}
+
+fn taggedUnionUsedByValue(document: semantic.Semantic, name: []const u8) bool {
+    for (document.functions) |function| {
+        for (function.params) |parameter| {
+            if (parameter.type == .value_struct and std.mem.eql(u8, parameter.type.value_struct.ref, name)) return true;
+        }
+    }
+    return false;
 }
 
 test "backend switching is an explicit breaking ABI change" {
@@ -614,6 +632,43 @@ test "appending tagged union variants and tag values is ABI compatible" {
     try std.testing.expectEqualStrings("tagged-union variant appended", report.changes.items[0].detail);
     try std.testing.expectEqual(ChangeKind.compatible, report.changes.items[1].kind);
     try std.testing.expectEqualStrings("enum value appended", report.changes.items[1].detail);
+}
+
+test "appending a value-parameter tagged union variant is breaking" {
+    const base: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "consume",
+            .params = &.{.{ .name = "value", .type = .{ .value_struct = .{ .ref = "Value" } } }},
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_consume",
+        }},
+        .package = "variant",
+        .prefix = "zg",
+        .types = &.{.{
+            .fields = &.{.{ .name = "none", .type = .{ .void = {} }, .value = 0 }},
+            .kind = .tagged_union,
+            .name = "Value",
+            .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+        }},
+        .zig_version = "0.16.0",
+    };
+    var current = base;
+    current.types = &.{.{
+        .fields = &.{
+            .{ .name = "none", .type = .{ .void = {} }, .value = 0 },
+            .{ .name = "number", .type = .{ .int = .{ .bits = 32, .signed = true } }, .value = 1 },
+        },
+        .kind = .tagged_union,
+        .name = "Value",
+        .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+    }};
+    var report = try diff(std.testing.allocator, base, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expect(report.hasBreaking());
+    try std.testing.expectEqualStrings(
+        "tagged-union variant appended; a value-parameter C signature grew",
+        report.changes.items[0].detail,
+    );
 }
 
 test "removing renaming or retagging an existing variant is breaking" {

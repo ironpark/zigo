@@ -194,7 +194,18 @@ pub fn semanticDocumentForBackend(
                 },
                 // Aggregates never cross the boundary by value: an input
                 // struct travels as `const T*` and Go takes the address.
-                .value_struct => {
+                .value_struct => |value| {
+                    if (typeDeclaration(document, value.ref).kind == .tagged_union) {
+                        try appendTaggedUnionValueParams(
+                            allocator,
+                            document,
+                            prefix,
+                            &params,
+                            parameter,
+                            parameter_index,
+                        );
+                        continue;
+                    }
                     const child = try allocator.create(abi.AbiScalar);
                     child.* = try lowerValue(allocator, document, prefix, parameter.type);
                     try params.append(allocator, .{
@@ -396,6 +407,33 @@ pub fn semanticDocumentForBackend(
     };
 }
 
+fn appendTaggedUnionValueParams(
+    allocator: std.mem.Allocator,
+    document: semantic.Semantic,
+    prefix: []const u8,
+    params: *std.ArrayList(abi.AbiParam),
+    parameter: semantic.Parameter,
+    parameter_index: usize,
+) !void {
+    const declaration = typeDeclaration(document, parameter.type.value_struct.ref);
+    try params.append(allocator, .{
+        .name = try std.fmt.allocPrint(allocator, "{s}_tag", .{parameter.name}),
+        .role = .union_tag,
+        .scalar = try lowerValue(allocator, document, prefix, declaration.tag_type.?),
+        .source_index = parameter_index,
+    });
+    for (declaration.fields) |field| {
+        const payload = field.type.?;
+        if (payload == .void) continue;
+        try params.append(allocator, .{
+            .name = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ parameter.name, field.name }),
+            .role = .union_payload,
+            .scalar = try lowerValue(allocator, document, prefix, payload),
+            .source_index = parameter_index,
+        });
+    }
+}
+
 /// A float never travels through the purego callback ABI as a float. Windows
 /// compiles a Go callback through `syscall.NewCallback`, whose `compileCallback`
 /// refuses a floating-point argument outright, so every float parameter crosses
@@ -475,6 +513,7 @@ fn lowerTaggedUnionProjections(allocator: std.mem.Allocator, document: semantic.
     var projections: std.ArrayList(abi.AbiProjection) = .empty;
     for (document.types) |*declaration| {
         if (declaration.kind != .tagged_union) continue;
+        if (taggedUnionUsedByValue(document, declaration.name) and !taggedUnionUsedAsHandle(document, declaration.name)) continue;
         const tag_params = try allocator.alloc(abi.AbiParam, 2);
         tag_params[0] = try projectionReceiver(allocator, prefix, declaration.name);
         const tag_output = try allocator.create(abi.AbiScalar);
@@ -533,6 +572,39 @@ fn lowerTaggedUnionProjections(allocator: std.mem.Allocator, document: semantic.
         }
     }
     return projections.toOwnedSlice(allocator);
+}
+
+fn taggedUnionUsedAsHandle(document: semantic.Semantic, name: []const u8) bool {
+    for (document.constructors) |constructor| if (std.mem.eql(u8, constructor.type, name)) return true;
+    for (document.functions) |function| {
+        if (function.receiver) |receiver| if (std.mem.eql(u8, receiver, name)) return true;
+        for (function.params) |parameter| if (containsHandleReference(parameter.type, name)) return true;
+        if (containsHandleReference(function.@"return", name)) return true;
+    }
+    return false;
+}
+
+fn taggedUnionUsedByValue(document: semantic.Semantic, name: []const u8) bool {
+    for (document.functions) |function| {
+        for (function.params) |parameter| {
+            if (parameter.type == .value_struct and std.mem.eql(u8, parameter.type.value_struct.ref, name)) return true;
+        }
+    }
+    return false;
+}
+
+fn containsHandleReference(node: semantic.TypeNode, name: []const u8) bool {
+    return switch (node) {
+        .opaque_ptr => |value| std.mem.eql(u8, value.ref, name),
+        .slice => |value| containsHandleReference(value.element.*, name),
+        .optional => |value| containsHandleReference(value.child.*, name),
+        .error_union => |value| containsHandleReference(value.payload.*, name),
+        .callback => |value| blk: {
+            for (value.params) |parameter| if (containsHandleReference(parameter, name)) break :blk true;
+            break :blk containsHandleReference(value.@"return".*, name);
+        },
+        else => false,
+    };
 }
 
 /// Value snapshot layout. zigo owns this struct outright: the tag comes first,
@@ -957,6 +1029,11 @@ fn enumDeclaration(document: semantic.Semantic, name: []const u8) semantic.TypeD
     unreachable;
 }
 
+fn typeDeclaration(document: semantic.Semantic, name: []const u8) semantic.TypeDecl {
+    for (document.types) |declaration| if (std.mem.eql(u8, declaration.name, name)) return declaration;
+    unreachable;
+}
+
 fn codesFor(allocator: std.mem.Allocator, names: []const []const u8, all_codes: []const abi.ErrorCode) ![]const abi.ErrorCode {
     const result = try allocator.alloc(abi.ErrorCode, names.len);
     for (names, 0..) |name, index| {
@@ -1055,6 +1132,48 @@ test "semantic lowering assigns receiver slice return error and scalar ABI roles
     try std.testing.expect(sizes.params[1].scalar == .isize);
     try std.testing.expect(sizes.ret == .unsigned_int);
     try std.testing.expectEqual(@as(u16, 16), sizes.ret.unsigned_int);
+}
+
+test "tagged union value parameters flatten tag and payloads in variant order" {
+    const document: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "consume",
+            .params = &.{.{ .name = "behavior", .type = .{ .value_struct = .{ .ref = "Behavior" } } }},
+            .@"return" = .{ .void = {} },
+            .symbol = "ignored",
+        }},
+        .package = "variant",
+        .prefix = "zg",
+        .types = &.{
+            .{
+                .fields = &.{
+                    .{ .name = "top", .type = .{ .void = {} }, .value = 0 },
+                    .{ .name = "delta", .type = .{ .int = .{ .bits = 64, .signed = true, .is_usize = true } }, .value = 1 },
+                    .{ .name = "ratio", .type = .{ .float = .{ .bits = 32 } }, .value = 2 },
+                },
+                .kind = .tagged_union,
+                .name = "Behavior",
+                .tag_type = .{ .@"enum" = .{ .ref = "BehaviorTag" } },
+            },
+            .{
+                .fields = &.{ .{ .name = "top", .value = 0 }, .{ .name = "delta", .value = 1 }, .{ .name = "ratio", .value = 2 } },
+                .kind = .@"enum",
+                .name = "BehaviorTag",
+                .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+            },
+        },
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const function = (try semanticDocument(arena.allocator(), document, "variant", "zg", &.{})).functions[0];
+    try std.testing.expectEqual(@as(usize, 3), function.params.len);
+    try std.testing.expectEqualStrings("behavior_tag", function.params[0].name);
+    try std.testing.expectEqual(abi.AbiParam.Role.union_tag, function.params[0].role);
+    try std.testing.expectEqualStrings("behavior_delta", function.params[1].name);
+    try std.testing.expectEqual(abi.AbiScalar.isize, function.params[1].scalar);
+    try std.testing.expectEqualStrings("behavior_ratio", function.params[2].name);
+    try std.testing.expectEqual(@as(u16, 32), function.params[2].scalar.float);
 }
 
 test "sentinel byte strings lower to one const C pointer" {

@@ -785,7 +785,10 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                 try writer.writeAll(parameter.name)
             else
                 try writer.print("if ({s}_len == 0) &.{{}} else {s}_ptr[0..{s}_len]", .{ parameter.name, parameter.name, parameter.name }),
-            .value_struct => try writer.print("{s}.*", .{parameter.name}),
+            .value_struct => |value| if (enumDecl(program, value.ref).kind == .tagged_union)
+                try writeTaggedUnionValueArgument(writer, program, function, index, parameter.name)
+            else
+                try writer.print("{s}.*", .{parameter.name}),
             .optional => |optional| if (optional.child.* == .slice) {
                 // The slice's own pointer carries absence, so the shim
                 // rebuilds `?[]T` from a NULL check rather than from a flag.
@@ -805,6 +808,54 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         try writer.writeAll(", self");
     try writer.writeByte(')');
     if (bool_return or enum_return) try writer.writeByte(')');
+}
+
+fn writeTaggedUnionValueArgument(
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    function: abi.AbiFn,
+    source_index: usize,
+    parameter_name: []const u8,
+) !void {
+    const declaration = enumDecl(program, function.origin.params[source_index].type.value_struct.ref);
+    const tag_name = taggedUnionAbiParam(function, source_index, .union_tag, null).name;
+    try writer.print("switch (@as(target.{s}, @enumFromInt({s}))) {{\n", .{ declaration.tag_type.?.@"enum".ref, tag_name });
+    for (declaration.fields) |field| {
+        try writer.print("        .{s} => ", .{field.name});
+        const payload = field.type.?;
+        if (payload == .void) {
+            try writer.print("target.{s}.{s},\n", .{ declaration.name, field.name });
+            continue;
+        }
+        const slot = taggedUnionAbiParam(function, source_index, .union_payload, field.name);
+        try writer.print("target.{s}{{ .{s} = ", .{ declaration.name, field.name });
+        switch (payload) {
+            .bool => try writer.print("{s} != 0", .{slot.name}),
+            .@"enum" => try writer.print("@enumFromInt({s})", .{slot.name}),
+            else => if (abi.narrowInt(payload) != null)
+                try writer.print("@intCast({s})", .{slot.name})
+            else
+                try writer.writeAll(slot.name),
+        }
+        try writer.writeAll(" },\n");
+    }
+    try writer.print("        else => @panic(\"zigo: invalid tag for argument `{s}`\"),\n    }}", .{parameter_name});
+}
+
+fn taggedUnionAbiParam(
+    function: abi.AbiFn,
+    source_index: usize,
+    role: abi.AbiParam.Role,
+    field_name: ?[]const u8,
+) abi.AbiParam {
+    for (function.params) |parameter| {
+        if (parameter.source_index != source_index or parameter.role != role) continue;
+        if (field_name) |field| {
+            if (!std.mem.endsWith(u8, parameter.name, field)) continue;
+        }
+        return parameter;
+    }
+    unreachable;
 }
 
 /// Floats cannot cross the purego callback ABI as floats: Windows compiles a Go
@@ -1448,6 +1499,17 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (callbackForUserdata(function.origin.params, parameter_index) != null) continue;
             if (parameter.injected != null) continue;
+            if (isTaggedUnionValue(program, parameter.type)) {
+                for (function.params) |abi_parameter| {
+                    if (abi_parameter.source_index != parameter_index or
+                        (abi_parameter.role != .union_tag and abi_parameter.role != .union_payload)) continue;
+                    if (raw_parameter_index != 0) try writer.writeAll(", ");
+                    try writer.print("{s} ", .{abi_parameter.name});
+                    try writeGoScalar(writer, abi_parameter.scalar);
+                    raw_parameter_index += 1;
+                }
+                continue;
+            }
             if (raw_parameter_index != 0) try writer.writeAll(", ");
             if (parameter.type == .cancel_flag) {
                 try writer.print("{s} *uint32", .{go_names[parameter_index]});
@@ -1498,7 +1560,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
             try writer.writeAll("\n\tvar outResultLen C.size_t\n");
         }
         for (function.origin.params, 0..) |parameter, parameter_index| {
-            if (parameter.type == .value_struct) {
+            if (parameter.type == .value_struct and !isTaggedUnionValue(program, parameter.type)) {
                 const record = structRecord(program, parameter.type.value_struct.ref);
                 const c_name = try std.fmt.allocPrint(allocator, "c{s}", .{go_names[parameter_index]});
                 defer allocator.free(c_name);
@@ -1678,6 +1740,11 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
             switch (parameter.role) {
                 .receiver => try writeCgoHandleArgument(writer, parameter.scalar, "self"),
                 .struct_in => try writer.print("&c{s}", .{go_names[parameter.source_index]}),
+                .union_tag, .union_payload => {
+                    try writer.writeAll("C.");
+                    try writeCgoType(writer, parameter.scalar);
+                    try writer.print("({s})", .{parameter.name});
+                },
                 .struct_out => try writer.writeAll("&outResult"),
                 .value => {
                     if (callbackForUserdataIndex(function.origin.params, parameter.source_index)) |callback_index| {
@@ -2685,6 +2752,17 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
     for (function.origin.params, 0..) |parameter, parameter_index| {
         if (callbackForUserdata(function.origin.params, parameter_index) != null) continue;
         if (parameter.injected != null) continue;
+        if (isTaggedUnionValue(program, parameter.type)) {
+            for (function.params) |abi_parameter| {
+                if (abi_parameter.source_index != parameter_index or
+                    (abi_parameter.role != .union_tag and abi_parameter.role != .union_payload)) continue;
+                if (parameter_count != 0) try writer.writeAll(", ");
+                try writer.print("{s} ", .{abi_parameter.name});
+                try writeGoScalar(writer, abi_parameter.scalar);
+                parameter_count += 1;
+            }
+            continue;
+        }
         if (parameter_count != 0) try writer.writeAll(", ");
         if (parameter.type == .cancel_flag) {
             try writer.print("{s} *uint32", .{go_names[parameter_index]});
@@ -2791,6 +2869,10 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         switch (parameter.role) {
             .receiver => try writer.writeAll("self"),
             .struct_in => try writer.print("unsafe.Pointer(&{s})", .{go_names[parameter.source_index]}),
+            .union_tag, .union_payload => if (parameter.scalar == .usize)
+                try writer.print("uintptr({s})", .{parameter.name})
+            else
+                try writer.writeAll(parameter.name),
             .struct_out => try writer.writeAll("unsafe.Pointer(&outResult)"),
             .value => {
                 const source_name = go_names[parameter.source_index];
@@ -6326,6 +6408,10 @@ fn isHandleType(declaration: semantic.TypeDecl) bool {
 fn enumDecl(program: abi.Program, name: []const u8) semantic.TypeDecl {
     for (program.types) |declaration| if (std.mem.eql(u8, declaration.name, name)) return declaration;
     unreachable;
+}
+
+fn isTaggedUnionValue(program: abi.Program, node: semantic.TypeNode) bool {
+    return node == .value_struct and enumDecl(program, node.value_struct.ref).kind == .tagged_union;
 }
 
 fn writeZigType(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
