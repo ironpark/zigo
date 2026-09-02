@@ -4,6 +4,15 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Fixed
+
+- `.cgo_static`의 정적 링크 입력(0.4.0)이 Windows와 크로스 컴파일에서 깨지던 문제를 고쳤습니다.
+  archive를 Zig cache의 절대 경로 대신 `zig-out/lib/lib<name>.a`로 설치해 `${SRCDIR}` 상대
+  경로로 적으므로 cgo가 Windows 경로와 `.lib`를 거부하지 않고, reflector는 module을 호스트용으로
+  복제해 실행하므로 대상 전용 archive를 링크하려다 실패하지 않습니다.
+
 ## [0.4.0] - 2026-09-03
 
 ### Added

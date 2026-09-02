@@ -762,13 +762,19 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         .target = b.graph.host,
         .optimize = .Debug,
     });
+    // The reflected module is the caller's, retargeted to the host. Its
+    // static link inputs were built for `options.target`, and a host
+    // executable cannot link a foreign archive; reflection never calls into
+    // them, so the host copy leaves them out. See `hostReflectionModule`.
+    var reflection_clones: std.AutoHashMapUnmanaged(*std.Build.Module, *std.Build.Module) = .empty;
+    const reflected_module = hostReflectionModule(b, options.module, options.optimize, &reflection_clones);
     const bindings_module = b.createModule(.{
         .root_source_file = options.bindings,
         .target = b.graph.host,
         .optimize = options.optimize,
         .imports = &.{
             .{ .name = "zigo", .module = zigo_dependency.module("zigo") },
-            .{ .name = options.name, .module = options.module },
+            .{ .name = options.name, .module = reflected_module },
         },
     });
     const reflector = b.addExecutable(.{
@@ -926,13 +932,27 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     else
         header_name;
     const install_header = b.addInstallHeaderFile(generated_dir.path(b, header_name), installed_header_name);
+    // Every static input is installed beside the binding archive under the
+    // same `lib<name>.a` spelling, so the cgo line names install-relative
+    // paths on every host: cgo rejects a bare `.lib`, and a Windows absolute
+    // path with backslashes never survives its flag check.
     const volatile_link_flags = if (static_link_inputs.paths.len != 0) flags: {
         const relative_path = b.pathJoin(&.{ raw_package.path, volatile_cgo_link_file });
+        var archives: std.ArrayList([]const u8) = .empty;
+        var installs: std.ArrayList(*std.Build.Step) = .empty;
+        for (static_link_inputs.paths, static_link_inputs.names) |path, name| {
+            if (std.mem.eql(u8, name, library_stem)) @panic(b.fmt("static link input '{s}' collides with the binding library name", .{name}));
+            const file_name = b.fmt("lib{s}.a", .{name});
+            const install = b.addInstallLibFile(path, file_name);
+            installs.append(b.allocator, &install.step) catch @panic("OOM");
+            archives.append(b.allocator, b.fmt("{s}/{s}", .{ library_dir, file_name })) catch @panic("OOM");
+        }
         const publish_flags = PublishCgoLinkFlags.create(b, .{
             .output_path = sourcePath(b, options.go_dir, relative_path),
             .package = raw_package.name,
             .binding_archive = b.fmt("{s}/lib{s}.a", .{ library_dir, library_stem }),
-            .static_archives = static_link_inputs.paths,
+            .static_archives = archives.items,
+            .archive_installs = installs.items,
             .extra_ldflags = extra_ldflags,
             .system_ldflags = system_ldflags,
         });
@@ -978,7 +998,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         update.step.dependOn(&flags.step);
         check.step.dependOn(&flags.step);
         install_lib.step.dependOn(&flags.step);
-        for (static_link_inputs.paths) |path| path.addStepDependencies(&install_lib.step);
+        for (flags.archive_installs) |install| install_lib.step.dependOn(install);
     }
     check.step.dependOn(&lib.step);
     if (abi_check) |run| run.step.dependOn(&lib.step);
@@ -1029,15 +1049,19 @@ fn installedLibraryPath(b: *std.Build, install: *std.Build.Step.InstallArtifact)
     return b.getInstallPath(install.dest_dir.?, install.dest_sub_path);
 }
 
-/// Publishes the machine-local cgo directive that names static archive inputs.
-/// It deliberately lives outside the checked generator tree: Zig cache paths
-/// are absolute and differ across hosts, while `go-check` must be byte-stable.
+/// Publishes the cgo directive that names static archive inputs. It lives
+/// outside the checked generator tree: the archives exist only after a build,
+/// and the directive is only present when a module has such inputs, so a
+/// checkout that has not built yet has nothing stale to compare against.
 const PublishCgoLinkFlags = struct {
     step: std.Build.Step,
     output_path: []const u8,
     package: []const u8,
     binding_archive: []const u8,
-    static_archives: []const std.Build.LazyPath,
+    /// Install-relative `lib<name>.a` paths, already spelled for the cgo line.
+    static_archives: []const []const u8,
+    /// The install steps that put those archives in place.
+    archive_installs: []const *std.Build.Step,
     extra_ldflags: []const u8,
     system_ldflags: []const u8,
 
@@ -1045,7 +1069,8 @@ const PublishCgoLinkFlags = struct {
         output_path: []const u8,
         package: []const u8,
         binding_archive: []const u8,
-        static_archives: []const std.Build.LazyPath,
+        static_archives: []const []const u8,
+        archive_installs: []const *std.Build.Step,
         extra_ldflags: []const u8,
         system_ldflags: []const u8,
     };
@@ -1063,10 +1088,11 @@ const PublishCgoLinkFlags = struct {
             .package = options.package,
             .binding_archive = options.binding_archive,
             .static_archives = options.static_archives,
+            .archive_installs = options.archive_installs,
             .extra_ldflags = options.extra_ldflags,
             .system_ldflags = options.system_ldflags,
         };
-        for (options.static_archives) |path| path.addStepDependencies(&self.step);
+        for (options.archive_installs) |install| self.step.dependOn(install);
         return self;
     }
 
@@ -1082,12 +1108,7 @@ const PublishCgoLinkFlags = struct {
                 "package {s}\n\n/*\n#cgo LDFLAGS: {s}",
             .{ self.package, self.binding_archive },
         );
-        for (self.static_archives) |path| {
-            const absolute = std.Io.Dir.cwd().realPathFileAlloc(io, path.getPath2(b, step), b.allocator) catch |err| {
-                return step.fail("unable to resolve static link input '{s}': {t}", .{ path.getPath2(b, step), err });
-            };
-            try output.writer.print(" {s}", .{absolute});
-        }
+        for (self.static_archives) |archive| try output.writer.print(" {s}", .{archive});
         if (self.extra_ldflags.len != 0) try output.writer.print(" {s}", .{self.extra_ldflags});
         if (self.system_ldflags.len != 0) try output.writer.print(" {s}", .{self.system_ldflags});
         try output.writer.writeAll("\n*/\nimport \"C\"\n");
@@ -1264,24 +1285,80 @@ fn joinFlags(b: *std.Build, flags: []const []const u8) []const u8 {
 
 const StaticLinkInputs = struct {
     paths: []const std.Build.LazyPath,
+    /// The `<name>` each archive installs as, `lib<name>.a`.
+    names: []const []const u8,
 
-    const empty: StaticLinkInputs = .{ .paths = &.{} };
+    const empty: StaticLinkInputs = .{ .paths = &.{}, .names = &.{} };
 };
+
+/// The caller's module rebuilt for the host so reflection can run it. Imports
+/// are cloned the same way; system libraries, C sources, include paths and
+/// macros carry over, while archives built for the target (`.other_step`,
+/// `.static_path`), assembly and resource files are left out: reflection only
+/// inspects types, so nothing in them is ever called.
+fn hostReflectionModule(
+    b: *std.Build,
+    module: *std.Build.Module,
+    optimize: std.builtin.OptimizeMode,
+    clones: *std.AutoHashMapUnmanaged(*std.Build.Module, *std.Build.Module),
+) *std.Build.Module {
+    if (clones.get(module)) |clone| return clone;
+    const clone = b.createModule(.{
+        .root_source_file = module.root_source_file,
+        .target = b.graph.host,
+        .optimize = module.optimize orelse optimize,
+        .link_libc = module.link_libc,
+        .link_libcpp = module.link_libcpp,
+        .single_threaded = module.single_threaded,
+        .sanitize_c = module.sanitize_c,
+        .no_builtin = module.no_builtin,
+    });
+    clones.put(b.allocator, module, clone) catch @panic("OOM");
+    for (module.import_table.keys(), module.import_table.values()) |name, import| {
+        clone.addImport(name, hostReflectionModule(b, import, optimize, clones));
+    }
+    clone.c_macros.appendSlice(b.allocator, module.c_macros.items) catch @panic("OOM");
+    clone.include_dirs.appendSlice(b.allocator, module.include_dirs.items) catch @panic("OOM");
+    clone.lib_paths.appendSlice(b.allocator, module.lib_paths.items) catch @panic("OOM");
+    if (b.graph.host.result.os.tag.isDarwin()) {
+        for (module.frameworks.keys(), module.frameworks.values()) |name, framework| {
+            clone.frameworks.put(b.allocator, name, framework) catch @panic("OOM");
+        }
+    }
+    for (module.link_objects.items) |object| switch (object) {
+        .system_lib, .c_source_file, .c_source_files => clone.link_objects.append(b.allocator, object) catch @panic("OOM"),
+        .other_step, .static_path, .assembly_file, .win32_resource_file => {},
+    };
+    return clone;
+}
 
 /// Static libraries that Zig records as inputs are not folded into another
 /// static archive. cgo must therefore name each input again when it links the
 /// final Go executable.
 fn staticLibraryInputs(b: *std.Build, module: *std.Build.Module) StaticLinkInputs {
     var paths: std.ArrayList(std.Build.LazyPath) = .empty;
+    var names: std.ArrayList([]const u8) = .empty;
     for (module.link_objects.items) |object| {
-        const path: std.Build.LazyPath = switch (object) {
-            .other_step => |compile| if (compile.isStaticLibrary()) compile.getEmittedBin() else continue,
-            .static_path => |candidate| candidate,
+        const path: std.Build.LazyPath, const name: []const u8 = switch (object) {
+            .other_step => |compile| if (compile.isStaticLibrary()) .{ compile.getEmittedBin(), compile.name } else continue,
+            .static_path => |candidate| .{ candidate, archiveStem(std.fs.path.basename(candidate.getDisplayName())) },
             else => continue,
         };
+        for (names.items) |existing| {
+            if (std.mem.eql(u8, existing, name)) @panic(b.fmt("two static link inputs would both install as lib{s}.a", .{name}));
+        }
         paths.append(b.allocator, path) catch @panic("OOM");
+        names.append(b.allocator, name) catch @panic("OOM");
     }
-    return .{ .paths = paths.items };
+    return .{ .paths = paths.items, .names = names.items };
+}
+
+/// `libfoo.a`, `foo.lib` and `foo.a` all install as `libfoo.a`.
+fn archiveStem(file_name: []const u8) []const u8 {
+    var stem = file_name;
+    if (std.mem.lastIndexOfScalar(u8, stem, '.')) |dot| stem = stem[0..dot];
+    if (std.mem.startsWith(u8, stem, "lib") and stem.len > 3) stem = stem[3..];
+    return stem;
 }
 
 /// `-l` flags for the system libraries cgo has to name directly, plus a `-L`

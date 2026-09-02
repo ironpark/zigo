@@ -194,10 +194,14 @@ cgo가 pkg-config에게 컴파일·링크 플래그를 직접 묻게 하기 위�
 라이브러리와 `.static_path` 입력을 선언 순서대로 다시 적고, binding install이 그 artifact에
 의존하게 합니다. fat archive를 만들지는 않습니다.
 
-Zig cache의 archive 경로는 machine-local이므로 그 줄만 raw package의
-`zigo_link_inputs_gen.go`에 build-time으로 기록됩니다. 파일은 `.gitignore`와 `go-check` 대상이
-아니며 `zig build`, `go-lib`, `go-check`, `go`가 필요한 artifact와 함께 갱신합니다. 나머지
-생성 파일에는 절대 cache 경로가 없어 다른 OS에서 byte-for-byte 비교할 수 있습니다.
+각 정적 입력은 binding archive와 같은 `zig-out/lib`에 `lib<name>.a`로 설치되고(`.other_step`은
+라이브러리 이름, `.static_path`는 파일 이름에서 `lib` 접두사와 확장자를 뺀 것), cgo 줄에는
+`${SRCDIR}` 기준 상대 경로로 적힙니다. Windows에서도 `.lib` 대신 `.a`로 설치하므로 cgo의
+플래그 검사를 통과합니다. 이 줄은 raw package의 `zigo_link_inputs_gen.go`에 build-time으로
+기록되며, 파일은 `.gitignore`와 `go-check` 대상이 아니고 `zig build`, `go-lib`, `go-check`,
+`go`가 artifact와 함께 갱신합니다. 나머지 생성 파일은 다른 OS에서 byte-for-byte 비교할 수
+있습니다. reflector는 호스트용으로 module을 복제해 실행하므로, 대상 전용 정적 입력이 있어도
+`-Dtarget`으로 크로스 컴파일할 수 있습니다.
 
 ## `gofmt` 선택
 
