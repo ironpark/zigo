@@ -1,9 +1,10 @@
 ---
+completed_at: "2026-09-02T06:50:24Z"
 depends_on:
 - "68-ultrasync-followups#3"
 entry_condition: phase 3 벤치마크에서 LockOSThread 쌍이 가벼운 error union 호출 총비용의 10% 이상
 perf_phase: true
-status: conditional
+status: done
 ---
 > DONE-WHEN: 진입 조건이 성립하지 않아 진행하지 않는다. 그 판단이 `docs/limitations.md`에 수치와 함께 남아 있다.
 > NEXT: none

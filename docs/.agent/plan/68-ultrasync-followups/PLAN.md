@@ -1,9 +1,10 @@
 ---
+completed_at: "2026-09-02T06:50:24Z"
 depends_on:
 - out-slice-written
 - metadata-and-godoc-fidelity
 description: 패키지 doc 소스, 잉여 KeepAlive 제거, .return의 _written 제거(ABI), LockOSThread 비용 측정과 조건부 대체
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-02T06:10:00Z"
 ---
 > NEXT: 패키지 doc fallback을 `bindings.zig`에서 루트 모듈 `//!`로 옮긴다. ([Phase 0](phases/00-package-doc-source.md))
@@ -14,7 +15,7 @@ registered_at: "2026-09-02T06:10:00Z"
 - [x] [Phase 01: handle 획득 경로의 `KeepAlive` 제거](phases/01-drop-keepalive.md)
 - [x] [Phase 02: `.return` out 슬라이스에서 `_written` 제거](phases/02-return-drops-written.md)
 - [x] [Phase 03: `LockOSThread` 비용 측정](phases/03-lock-os-thread-benchmark.md)
-- [ ] [Phase 04: 패닉 메시지 전달을 스레드 고정 없는 ABI로](phases/04-panic-message-abi.md)
+- [x] [Phase 04: 패닉 메시지 전달을 스레드 고정 없는 ABI로](phases/04-panic-message-abi.md)
 
 # Shared Verification
 
