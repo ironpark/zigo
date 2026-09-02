@@ -8,7 +8,6 @@
 const std = @import("std");
 
 // zigo:adapters-begin
-
 /// Bridges a Zig `*std.Io.Writer` onto the Go `io.Writer` behind `userdata`.
 /// `buffer` is what makes the crossing rare: bytes accumulate there and only
 /// reach Go when it fills, when the data is too big to be worth buffering, or

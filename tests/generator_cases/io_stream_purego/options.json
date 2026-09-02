@@ -1,0 +1,6 @@
+{
+  "backend": "purego",
+  "package": "stream",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/stream"
+}

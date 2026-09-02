@@ -3,6 +3,10 @@ const generator = @import("generator");
 const snapshot = @import("snapshot.zig");
 
 const CaseOptions = struct {
+    /// Which backend the case generates. Most cases are cgo; a case that
+    /// exists to pin the purego surface says so here rather than being a
+    /// second runner.
+    backend: enum { cgo, purego } = .cgo,
     package: []const u8,
     prefix: []const u8,
     go_module: []const u8,
@@ -41,6 +45,10 @@ pub fn main(init: std.process.Init) !void {
         null;
 
     try generator.generate(allocator, init.io, semantic_bytes, output_dir, .{
+        .backend = switch (options.backend) {
+            .cgo => .cgo,
+            .purego => .purego,
+        },
         .package = options.package,
         .prefix = options.prefix,
         .go_module = options.go_module,
