@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T21:05:47Z"
 description: 빌린 handle의 자식 카운트 불일치, C 심볼 공간 충돌 미검사, optional slice의 .returns = .caller 거부 수정
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-02T20:35:34Z"
 ---
 > NEXT: 빌린 뷰에서 만든 자식의 예약·해제가 같은 소유 handle에 가도록 고친다. ([Phase 0](phases/00-borrowed-children.md))
@@ -10,7 +11,7 @@ registered_at: "2026-09-02T20:35:34Z"
 - [x] [Phase 00: 빌린 뷰의 자식 카운트](phases/00-borrowed-children.md)
 - [x] [Phase 01: C 심볼 공간 진단](phases/01-c-symbol-space.md)
 - [x] [Phase 02: optional slice의 caller 소유권](phases/02-optional-slice-caller.md)
-- [ ] [Phase 03: 문서와 CHANGELOG](phases/03-docs.md)
+- [x] [Phase 03: 문서와 CHANGELOG](phases/03-docs.md)
 
 # Shared Verification
 
