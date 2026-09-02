@@ -7,6 +7,9 @@ pub const bindings = zigo.define(.{
         .{ .type = library.CallbackContext, .repr = .@"opaque" },
         .{ .name = "FloatBuffer", .type = library.FloatBuffer, .repr = .@"opaque" },
         .{ .name = "IntBuffer", .type = library.IntBuffer, .repr = .@"opaque" },
+        // One Go type for every parameter of this signature, named after the
+        // Zig alias: the alias itself has no reflectable name.
+        .{ .name = "Observer", .type = library.Observer, .repr = .callback },
     },
     .functions = .{
         .{ .path = "FloatBuffer.create" },

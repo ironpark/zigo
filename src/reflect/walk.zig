@@ -44,7 +44,20 @@ pub fn reflect(
                     },
                     else => @compileError("zigo tagged_union type entries must name a tagged union"),
                 },
-                else => @compileError("zigo type repr must be .opaque, .value, or .tagged_union"),
+                // A function pointer alias is not a distinct type, so its
+                // name cannot be reflected: the entry supplies it, and every
+                // parameter of the same signature is matched to it by the
+                // structural type name.
+                .callback => {
+                    if (!@hasField(@TypeOf(entry), "name")) @compileError("zigo callback type entries need an explicit `.name`: a `pub const` alias of a function pointer type carries no name of its own");
+                    if (info != .pointer or @typeInfo(info.pointer.child) != .@"fn") @compileError("zigo callback type entries must name a `*const fn` type");
+                    try types.append(allocator, .{
+                        .kind = .callback,
+                        .name = entry.name,
+                        .zig_path = @typeName(T),
+                    });
+                },
+                else => @compileError("zigo type repr must be .opaque, .value, .tagged_union, or .callback"),
             }
         }
     }
@@ -53,7 +66,9 @@ pub fn reflect(
         // `functions` attach metadata to what it finds.
         if (@hasField(@TypeOf(declaration), "types")) {
             inline for (declaration.types) |entry| {
-                try discoverContainer(allocator, &functions, &types, declaration, prefix, entry.type, comptime typeEntryName(entry));
+                // A callback type is a signature, not a container to walk.
+                if (comptime entry.repr != .callback)
+                    try discoverContainer(allocator, &functions, &types, declaration, prefix, entry.type, comptime typeEntryName(entry));
             }
         }
         try discoverContainer(allocator, &functions, &types, declaration, prefix, declaration.root, null);
@@ -290,7 +305,7 @@ fn pathContainer(comptime declaration: anytype, comptime owner: ?[]const u8) typ
     const name = owner orelse return declaration.root;
     if (@hasField(@TypeOf(declaration), "types")) {
         inline for (declaration.types) |entry| {
-            if (comptime std.mem.eql(u8, typeEntryName(entry), name)) return entry.type;
+            if (comptime entry.repr != .callback and std.mem.eql(u8, typeEntryName(entry), name)) return entry.type;
         }
     }
     @compileError("zigo path names a type that is not registered in `.types`: " ++ name);
@@ -299,6 +314,7 @@ fn pathContainer(comptime declaration: anytype, comptime owner: ?[]const u8) typ
 fn declarationPathExists(comptime declaration: anytype, comptime wanted: []const u8) bool {
     if (@hasField(@TypeOf(declaration), "types")) {
         inline for (declaration.types) |entry| {
+            if (comptime entry.repr == .callback) continue;
             if (containerHasPath(entry.type, comptime typeEntryName(entry), wanted)) return true;
         }
     }
@@ -360,6 +376,7 @@ fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayLis
                         .has_userdata = function_info.params.len != 0 and
                             function_info.params[function_info.params.len - 1].type == usize,
                         .params = callback_params,
+                        .ref = callbackNameForPath(types.items, @typeName(T)),
                         .@"return" = callback_return,
                     } };
                 }
@@ -499,6 +516,16 @@ fn receiverName(comptime info: std.builtin.Type.Fn, comptime declaration: anytyp
         inline for (declaration.types) |entry| {
             if (isHandleRepr(entry.repr) and entry.type == pointer.child) return typeEntryName(entry);
         }
+    }
+    return null;
+}
+
+/// The declared callback type whose structural name matches `path`. Two
+/// aliases of one signature are the same type to Zig, so the first declared
+/// one wins for both.
+fn callbackNameForPath(types: []const semantic.TypeDecl, path: []const u8) ?[]const u8 {
+    for (types) |declaration| {
+        if (declaration.kind == .callback and std.mem.eql(u8, declaration.zig_path orelse "", path)) return declaration.name;
     }
     return null;
 }

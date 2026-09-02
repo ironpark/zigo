@@ -16,6 +16,55 @@ import "unsafe"
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// zigoCString copies value into a NUL-terminated Go buffer the native call
+// may read for its duration.
+func zigoCString(value string) *C.char {
+	buffer := make([]byte, len(value)+1)
+	copy(buffer, value)
+	return (*C.char)(unsafe.Pointer(&buffer[0]))
+}
+
+// zigoStringSliceArgs flattens values into one NUL-separated byte buffer and
+// a length per element, both in Go memory and free of Go pointers, so the
+// native call borrows them without a C allocation per element.
+func zigoStringSliceArgs(values []string) (data []byte, lens []C.size_t) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	lens = make([]C.size_t, len(values))
+	total := 0
+	for _, value := range values {
+		total += len(value) + 1
+	}
+	data = make([]byte, total)
+	offset := 0
+	for i, value := range values {
+		lens[i] = C.size_t(len(value))
+		copy(data[offset:], value)
+		offset += len(value) + 1
+	}
+	return data, lens
+}
+
+// The pointers an empty slice passes instead of NULL, so the native side
+// always receives a valid address with a zero length.
+var zigoZeroByte C.uint8_t
+var zigoZeroSize C.size_t
+
+func zigoBytesPtr(data []byte) *C.uint8_t {
+	if len(data) == 0 {
+		return &zigoZeroByte
+	}
+	return (*C.uint8_t)(unsafe.Pointer(&data[0]))
+}
+
+func zigoSizePtr(lens []C.size_t) *C.size_t {
+	if len(lens) == 0 {
+		return &zigoZeroSize
+	}
+	return (*C.size_t)(unsafe.Pointer(&lens[0]))
+}
+
 // CallbackState carries one Go callback across the native boundary, and
 // the panic it raises there until the generated caller rethrows it. The
 // trampoline has to recover: a panic cannot unwind native frames.
@@ -155,8 +204,7 @@ func EventQueueSampleValuesChecked(self unsafe.Pointer) ([]float32, int32) {
 
 // EventQueueEchoCString calls the generated C ABI wrapper for zg_event_queue_echo_c_string.
 func EventQueueEchoCString(text string) string {
-	textCString := C.CString(text)
-	defer C.free(unsafe.Pointer(textCString))
+	textCString := zigoCString(text)
 	return C.GoString(C.zg_event_queue_echo_c_string(textCString))
 }
 
@@ -167,94 +215,25 @@ func EventQueueSampleCString() string {
 
 // EventQueueExtractPaths calls the generated C ABI wrapper for zg_event_queue_extract_paths.
 func EventQueueExtractPaths(paths []string) uint {
-	var pathsData []byte
-	var pathsLens []C.size_t
-	if len(paths) != 0 {
-		pathsLens = make([]C.size_t, len(paths))
-		pathsDataLen := 0
-		for _, value := range paths {
-			pathsDataLen += len(value) + 1
-		}
-		pathsData = make([]byte, pathsDataLen)
-		pathsOffset := 0
-		for i, value := range paths {
-			pathsLens[i] = C.size_t(len(value))
-			copy(pathsData[pathsOffset:], value)
-			pathsOffset += len(value) + 1
-		}
-	}
-	var pathsDataZero C.uint8_t
-	pathsDataPtr := &pathsDataZero
-	if len(pathsData) != 0 {
-		pathsDataPtr = (*C.uint8_t)(unsafe.Pointer(&pathsData[0]))
-	}
-	var pathsLensZero C.size_t
-	pathsLensPtr := &pathsLensZero
-	if len(pathsLens) != 0 {
-		pathsLensPtr = (*C.size_t)(unsafe.Pointer(&pathsLens[0]))
-	}
+	pathsData, pathsLens := zigoStringSliceArgs(paths)
+	pathsDataPtr := zigoBytesPtr(pathsData)
+	pathsLensPtr := zigoSizePtr(pathsLens)
 	return uint(C.zg_event_queue_extract_paths(pathsDataPtr, C.size_t(len(pathsData)), pathsLensPtr, C.size_t(len(paths))))
 }
 
 // EventQueueExtractSentinelSlices calls the generated C ABI wrapper for zg_event_queue_extract_sentinel_slices.
 func EventQueueExtractSentinelSlices(paths []string) uint {
-	var pathsData []byte
-	var pathsLens []C.size_t
-	if len(paths) != 0 {
-		pathsLens = make([]C.size_t, len(paths))
-		pathsDataLen := 0
-		for _, value := range paths {
-			pathsDataLen += len(value) + 1
-		}
-		pathsData = make([]byte, pathsDataLen)
-		pathsOffset := 0
-		for i, value := range paths {
-			pathsLens[i] = C.size_t(len(value))
-			copy(pathsData[pathsOffset:], value)
-			pathsOffset += len(value) + 1
-		}
-	}
-	var pathsDataZero C.uint8_t
-	pathsDataPtr := &pathsDataZero
-	if len(pathsData) != 0 {
-		pathsDataPtr = (*C.uint8_t)(unsafe.Pointer(&pathsData[0]))
-	}
-	var pathsLensZero C.size_t
-	pathsLensPtr := &pathsLensZero
-	if len(pathsLens) != 0 {
-		pathsLensPtr = (*C.size_t)(unsafe.Pointer(&pathsLens[0]))
-	}
+	pathsData, pathsLens := zigoStringSliceArgs(paths)
+	pathsDataPtr := zigoBytesPtr(pathsData)
+	pathsLensPtr := zigoSizePtr(pathsLens)
 	return uint(C.zg_event_queue_extract_sentinel_slices(pathsDataPtr, C.size_t(len(pathsData)), pathsLensPtr, C.size_t(len(paths))))
 }
 
 // EventQueueExtractSentinelPointers calls the generated C ABI wrapper for zg_event_queue_extract_sentinel_pointers.
 func EventQueueExtractSentinelPointers(paths []string) uint {
-	var pathsData []byte
-	var pathsLens []C.size_t
-	if len(paths) != 0 {
-		pathsLens = make([]C.size_t, len(paths))
-		pathsDataLen := 0
-		for _, value := range paths {
-			pathsDataLen += len(value) + 1
-		}
-		pathsData = make([]byte, pathsDataLen)
-		pathsOffset := 0
-		for i, value := range paths {
-			pathsLens[i] = C.size_t(len(value))
-			copy(pathsData[pathsOffset:], value)
-			pathsOffset += len(value) + 1
-		}
-	}
-	var pathsDataZero C.uint8_t
-	pathsDataPtr := &pathsDataZero
-	if len(pathsData) != 0 {
-		pathsDataPtr = (*C.uint8_t)(unsafe.Pointer(&pathsData[0]))
-	}
-	var pathsLensZero C.size_t
-	pathsLensPtr := &pathsLensZero
-	if len(pathsLens) != 0 {
-		pathsLensPtr = (*C.size_t)(unsafe.Pointer(&pathsLens[0]))
-	}
+	pathsData, pathsLens := zigoStringSliceArgs(paths)
+	pathsDataPtr := zigoBytesPtr(pathsData)
+	pathsLensPtr := zigoSizePtr(pathsLens)
 	return uint(C.zg_event_queue_extract_sentinel_pointers(pathsDataPtr, C.size_t(len(pathsData)), pathsLensPtr, C.size_t(len(paths))))
 }
 

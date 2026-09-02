@@ -517,6 +517,50 @@ type LimitsData struct {
 	Policy   uint32
 }
 
+// zigoCStringBytes copies value into a NUL-terminated Go buffer the native
+// call may read for its duration.
+func zigoCStringBytes(value string) []byte {
+	buffer := make([]byte, len(value)+1)
+	copy(buffer, value)
+	return buffer
+}
+
+// zigoStringSliceArgs flattens values into one NUL-separated byte buffer and
+// a length per element, both in Go memory and free of Go pointers, so the
+// native call borrows them without an allocation per element.
+func zigoStringSliceArgs(values []string) (data []byte, lens []uintptr) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	lens = make([]uintptr, len(values))
+	total := 0
+	for _, value := range values {
+		total += len(value) + 1
+	}
+	data = make([]byte, total)
+	offset := 0
+	for i, value := range values {
+		lens[i] = uintptr(len(value))
+		copy(data[offset:], value)
+		offset += len(value) + 1
+	}
+	return data, lens
+}
+
+func zigoBytesPtr(data []byte) unsafe.Pointer {
+	if len(data) == 0 {
+		return nil
+	}
+	return unsafe.Pointer(&data[0])
+}
+
+func zigoUintptrsPtr(lens []uintptr) unsafe.Pointer {
+	if len(lens) == 0 {
+		return nil
+	}
+	return unsafe.Pointer(&lens[0])
+}
+
 // EventQueueCreate calls the generated purego ABI wrapper for zg_event_queue_create_purego_v2.
 func EventQueueCreate(name []uint8, capacity uint, policy uint32, observerCallback, observerToken uintptr) (unsafe.Pointer, int32) {
 	var namePtr unsafe.Pointer
@@ -599,8 +643,7 @@ func EventQueueSampleValuesChecked(self unsafe.Pointer) ([]float32, int32) {
 
 // EventQueueEchoCString calls the generated purego ABI wrapper for zg_event_queue_echo_c_string.
 func EventQueueEchoCString(text string) string {
-	textBytes := make([]byte, len(text)+1)
-	copy(textBytes, text)
+	textBytes := zigoCStringBytes(text)
 	textPtr := unsafe.Pointer(&textBytes[0])
 	result := bindings().fnEventQueueEchoCString(textPtr)
 	runtime.KeepAlive(textBytes)
@@ -615,30 +658,9 @@ func EventQueueSampleCString() string {
 
 // EventQueueExtractPaths calls the generated purego ABI wrapper for zg_event_queue_extract_paths.
 func EventQueueExtractPaths(paths []string) uint {
-	var pathsData []byte
-	var pathsLens []uintptr
-	if len(paths) != 0 {
-		pathsLens = make([]uintptr, len(paths))
-		pathsDataLen := 0
-		for _, value := range paths {
-			pathsDataLen += len(value) + 1
-		}
-		pathsData = make([]byte, pathsDataLen)
-		pathsOffset := 0
-		for i, value := range paths {
-			pathsLens[i] = uintptr(len(value))
-			copy(pathsData[pathsOffset:], value)
-			pathsOffset += len(value) + 1
-		}
-	}
-	var pathsDataPtr unsafe.Pointer
-	if len(pathsData) != 0 {
-		pathsDataPtr = unsafe.Pointer(&pathsData[0])
-	}
-	var pathsLensPtr unsafe.Pointer
-	if len(pathsLens) != 0 {
-		pathsLensPtr = unsafe.Pointer(&pathsLens[0])
-	}
+	pathsData, pathsLens := zigoStringSliceArgs(paths)
+	pathsDataPtr := zigoBytesPtr(pathsData)
+	pathsLensPtr := zigoUintptrsPtr(pathsLens)
 	result := bindings().fnEventQueueExtractPaths(pathsDataPtr, uintptr(len(pathsData)), pathsLensPtr, uintptr(len(paths)))
 	runtime.KeepAlive(pathsData)
 	runtime.KeepAlive(pathsLens)
@@ -647,30 +669,9 @@ func EventQueueExtractPaths(paths []string) uint {
 
 // EventQueueExtractSentinelSlices calls the generated purego ABI wrapper for zg_event_queue_extract_sentinel_slices.
 func EventQueueExtractSentinelSlices(paths []string) uint {
-	var pathsData []byte
-	var pathsLens []uintptr
-	if len(paths) != 0 {
-		pathsLens = make([]uintptr, len(paths))
-		pathsDataLen := 0
-		for _, value := range paths {
-			pathsDataLen += len(value) + 1
-		}
-		pathsData = make([]byte, pathsDataLen)
-		pathsOffset := 0
-		for i, value := range paths {
-			pathsLens[i] = uintptr(len(value))
-			copy(pathsData[pathsOffset:], value)
-			pathsOffset += len(value) + 1
-		}
-	}
-	var pathsDataPtr unsafe.Pointer
-	if len(pathsData) != 0 {
-		pathsDataPtr = unsafe.Pointer(&pathsData[0])
-	}
-	var pathsLensPtr unsafe.Pointer
-	if len(pathsLens) != 0 {
-		pathsLensPtr = unsafe.Pointer(&pathsLens[0])
-	}
+	pathsData, pathsLens := zigoStringSliceArgs(paths)
+	pathsDataPtr := zigoBytesPtr(pathsData)
+	pathsLensPtr := zigoUintptrsPtr(pathsLens)
 	result := bindings().fnEventQueueExtractSentinelSlices(pathsDataPtr, uintptr(len(pathsData)), pathsLensPtr, uintptr(len(paths)))
 	runtime.KeepAlive(pathsData)
 	runtime.KeepAlive(pathsLens)
@@ -679,30 +680,9 @@ func EventQueueExtractSentinelSlices(paths []string) uint {
 
 // EventQueueExtractSentinelPointers calls the generated purego ABI wrapper for zg_event_queue_extract_sentinel_pointers.
 func EventQueueExtractSentinelPointers(paths []string) uint {
-	var pathsData []byte
-	var pathsLens []uintptr
-	if len(paths) != 0 {
-		pathsLens = make([]uintptr, len(paths))
-		pathsDataLen := 0
-		for _, value := range paths {
-			pathsDataLen += len(value) + 1
-		}
-		pathsData = make([]byte, pathsDataLen)
-		pathsOffset := 0
-		for i, value := range paths {
-			pathsLens[i] = uintptr(len(value))
-			copy(pathsData[pathsOffset:], value)
-			pathsOffset += len(value) + 1
-		}
-	}
-	var pathsDataPtr unsafe.Pointer
-	if len(pathsData) != 0 {
-		pathsDataPtr = unsafe.Pointer(&pathsData[0])
-	}
-	var pathsLensPtr unsafe.Pointer
-	if len(pathsLens) != 0 {
-		pathsLensPtr = unsafe.Pointer(&pathsLens[0])
-	}
+	pathsData, pathsLens := zigoStringSliceArgs(paths)
+	pathsDataPtr := zigoBytesPtr(pathsData)
+	pathsLensPtr := zigoUintptrsPtr(pathsLens)
 	result := bindings().fnEventQueueExtractSentinelPointers(pathsDataPtr, uintptr(len(pathsData)), pathsLensPtr, uintptr(len(paths)))
 	runtime.KeepAlive(pathsData)
 	runtime.KeepAlive(pathsLens)

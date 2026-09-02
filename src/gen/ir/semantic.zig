@@ -34,6 +34,10 @@ pub const Callback = struct {
     c_callconv: bool = true,
     has_userdata: bool,
     params: []const TypeNode,
+    /// The declared callback type this signature was registered under, when
+    /// the binding registered one (`.repr = .callback`). It names the Go
+    /// type; the signature alone still decides the ABI.
+    ref: ?[]const u8 = null,
     @"return": *TypeNode,
 };
 
@@ -62,6 +66,10 @@ pub const TypeNode = union(enum) {
                 try writeKind(jw, "callback");
                 try jw.objectField("params");
                 try jw.write(value.params);
+                if (value.ref) |ref| {
+                    try jw.objectField("ref");
+                    try jw.write(ref);
+                }
                 try jw.objectField("return");
                 try jw.write(value.@"return".*);
             },
@@ -186,6 +194,7 @@ pub const TypeNode = union(enum) {
             .c_callconv = try parseOptionalField(bool, allocator, object, "c_callconv", true, options),
             .has_userdata = try parseField(bool, allocator, object, "has_userdata", options),
             .params = try parseField([]const TypeNode, allocator, object, "params", options),
+            .ref = try parseOptionalField(?[]const u8, allocator, object, "ref", null, options),
             .@"return" = try parseTypePointer(allocator, object, "return", options),
         } };
         return error.InvalidEnumTag;
@@ -245,7 +254,7 @@ pub const SemanticFn = struct {
     symbol: []const u8,
 };
 
-pub const TypeKind = enum { @"enum", error_set, @"opaque", tagged_union, value_struct };
+pub const TypeKind = enum { callback, @"enum", error_set, @"opaque", tagged_union, value_struct };
 pub const Layout = enum { @"extern", @"packed" };
 /// How Go reaches a type's contents. This is a separate axis from the type's
 /// kind: a tagged union is a tagged union either way, and adding a strategy

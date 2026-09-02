@@ -276,6 +276,7 @@ fn referencesValid(document: semantic.Semantic, node: semantic.TypeNode) bool {
         .optional => |value| referencesValid(document, value.child.*),
         .error_union => |value| referencesValid(document, value.payload.*),
         .callback => |value| blk: {
+            if (value.ref) |ref| if (!hasTypeKind(document, ref, .callback)) break :blk false;
             for (value.params) |parameter| if (!referencesValid(document, parameter)) break :blk false;
             break :blk referencesValid(document, value.@"return".*);
         },

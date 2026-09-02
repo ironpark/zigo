@@ -67,15 +67,25 @@ func (err *StatusError) Error() string {
 func (err *StatusError) Unwrap() error { return ErrNativeStatus }
 
 // Error is a stable Zig error-set value returned by the generated binding.
+// Classify it with errors.Is against the Err* sentinels; a returned value
+// also names the operation it came from.
 type Error struct {
 	// Code is the stable integer stored in errors.lock.json.
 	Code int32
-	// Name is the Zig error name, optionally followed by native panic context.
+	// Name is the Zig error name.
 	Name string
+	// Operation names the generated call that returned the error. It is
+	// empty on the package-level sentinels.
+	Operation string
 }
 
 // Error implements error.
-func (err *Error) Error() string { return err.Name }
+func (err *Error) Error() string {
+	if err.Operation == "" {
+		return err.Name
+	}
+	return "zigo: " + err.Operation + ": " + err.Name
+}
 
 // Is compares generated errors by stable code.
 func (err *Error) Is(target error) bool {
@@ -97,12 +107,12 @@ func errorForCode(operation string, code int32) error {
 	case -2:
 		return &NativePanicError{Operation: operation, Message: raw.LastErrorMessage()}
 	case 1:
-		return ErrOutOfMemory
+		return &Error{Code: 1, Name: "OutOfMemory", Operation: operation}
 	case 2:
-		return ErrDivideByZero
+		return &Error{Code: 2, Name: "DivideByZero", Operation: operation}
 	case 3:
-		return ErrNever
+		return &Error{Code: 3, Name: "Never", Operation: operation}
 	default:
-		return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")"}
+		return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
 	}
 }

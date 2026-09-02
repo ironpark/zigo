@@ -83,15 +83,25 @@ func (err *CallbackPanicError) Unwrap() error {
 }
 
 // Error is a stable Zig error-set value returned by the generated binding.
+// Classify it with errors.Is against the Err* sentinels; a returned value
+// also names the operation it came from.
 type Error struct {
 	// Code is the stable integer stored in errors.lock.json.
 	Code int32
-	// Name is the Zig error name, optionally followed by native panic context.
+	// Name is the Zig error name.
 	Name string
+	// Operation names the generated call that returned the error. It is
+	// empty on the package-level sentinels.
+	Operation string
 }
 
 // Error implements error.
-func (err *Error) Error() string { return err.Name }
+func (err *Error) Error() string {
+	if err.Operation == "" {
+		return err.Name
+	}
+	return "zigo: " + err.Operation + ": " + err.Name
+}
 
 // Is compares generated errors by stable code.
 func (err *Error) Is(target error) bool {
@@ -134,26 +144,26 @@ func errorForCode(operation string, code int32) error {
 	case -2:
 		return &NativePanicError{Operation: operation, Message: raw.LastErrorMessage()}
 	case 1:
-		return ErrOutOfMemory
+		return &Error{Code: 1, Name: "OutOfMemory", Operation: operation}
 	case 2:
-		return ErrInvalidName
+		return &Error{Code: 2, Name: "InvalidName", Operation: operation}
 	case 3:
-		return ErrInvalidCapacity
+		return &Error{Code: 3, Name: "InvalidCapacity", Operation: operation}
 	case 4:
-		return ErrNonFinite
+		return &Error{Code: 4, Name: "NonFinite", Operation: operation}
 	case 5:
-		return ErrInvalidRange
+		return &Error{Code: 5, Name: "InvalidRange", Operation: operation}
 	case 6:
-		return ErrDisabled
+		return &Error{Code: 6, Name: "Disabled", Operation: operation}
 	case 7:
-		return ErrFull
+		return &Error{Code: 7, Name: "Full", Operation: operation}
 	case 8:
-		return ErrEmpty
+		return &Error{Code: 8, Name: "Empty", Operation: operation}
 	case 9:
-		return ErrInvalidLimit
+		return &Error{Code: 9, Name: "InvalidLimit", Operation: operation}
 	case 10:
-		return ErrObserverPanicked
+		return &Error{Code: 10, Name: "ObserverPanicked", Operation: operation}
 	default:
-		return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")"}
+		return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
 	}
 }

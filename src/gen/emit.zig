@@ -1012,6 +1012,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
     try writer.writeByte('\n');
     const last_error_name = if (options.raw_colocated) "zigoRawLastErrorMessage" else "LastErrorMessage";
     try writer.print("// {0s} returns the most recent native panic message for this binding.\nfunc {0s}() string {{ return C.GoString(C.{1s}_last_error_message()) }}\n\n", .{ last_error_name, program.prefix });
+    try renderCgoStringHelpers(writer, program);
     try renderRawCallbacks(allocator, writer, program, options);
 
     for (program.functions) |function| {
@@ -1043,11 +1044,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         try writer.writeAll(" {\n");
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (!isCStringParameter(parameter)) continue;
-            try writer.print("\t{s}CString := C.CString({s})\n\tdefer C.free(unsafe.Pointer({s}CString))\n", .{
-                go_names[parameter_index],
-                go_names[parameter_index],
-                go_names[parameter_index],
-            });
+            try writer.print("\t{s}CString := zigoCString({s})\n", .{ go_names[parameter_index], go_names[parameter_index] });
         }
         if (sliceReturnElement(function.origin.*)) |element| {
             try writer.writeAll("\tvar outResultPtr *C.");
@@ -1236,27 +1233,73 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
 /// C string for every element.
 fn writeCgoStringSliceSetup(writer: *std.Io.Writer, name: []const u8) !void {
     try writer.print(
-        "\tvar {0s}Data []byte\n" ++
-            "\tvar {0s}Lens []C.size_t\n" ++
-            "\tif len({0s}) != 0 {{\n" ++
-            "\t\t{0s}Lens = make([]C.size_t, len({0s}))\n" ++
-            "\t\t{0s}DataLen := 0\n" ++
-            "\t\tfor _, value := range {0s} {{ {0s}DataLen += len(value) + 1 }}\n" ++
-            "\t\t{0s}Data = make([]byte, {0s}DataLen)\n" ++
-            "\t\t{0s}Offset := 0\n" ++
-            "\t\tfor i, value := range {0s} {{\n" ++
-            "\t\t\t{0s}Lens[i] = C.size_t(len(value))\n" ++
-            "\t\t\tcopy({0s}Data[{0s}Offset:], value)\n" ++
-            "\t\t\t{0s}Offset += len(value) + 1\n" ++
-            "\t\t}}\n" ++
-            "\t}}\n" ++
-            "\tvar {0s}DataZero C.uint8_t\n" ++
-            "\t{0s}DataPtr := &{0s}DataZero\n" ++
-            "\tif len({0s}Data) != 0 {{ {0s}DataPtr = (*C.uint8_t)(unsafe.Pointer(&{0s}Data[0])) }}\n" ++
-            "\tvar {0s}LensZero C.size_t\n" ++
-            "\t{0s}LensPtr := &{0s}LensZero\n" ++
-            "\tif len({0s}Lens) != 0 {{ {0s}LensPtr = (*C.size_t)(unsafe.Pointer(&{0s}Lens[0])) }}\n",
+        "\t{0s}Data, {0s}Lens := zigoStringSliceArgs({0s})\n" ++
+            "\t{0s}DataPtr := zigoBytesPtr({0s}Data)\n" ++
+            "\t{0s}LensPtr := zigoSizePtr({0s}Lens)\n",
         .{name},
+    );
+}
+
+fn programHasStringSliceParam(program: abi.Program) bool {
+    for (program.functions) |function| {
+        for (function.origin.params) |parameter| if (isStringSliceParameter(parameter)) return true;
+    }
+    return false;
+}
+
+/// The string marshalling every cgo call shares. Strings and string slices
+/// travel in Go memory: a NUL-terminated copy for a C string, one flattened
+/// NUL-separated buffer plus a length per element for a slice. None of it
+/// holds a Go pointer, so the native call may borrow it for its duration
+/// and nothing is allocated on the C heap or freed afterwards.
+fn renderCgoStringHelpers(writer: *std.Io.Writer, program: abi.Program) !void {
+    if (programHasCString(program)) try writer.writeAll(
+        "// zigoCString copies value into a NUL-terminated Go buffer the native call\n" ++
+            "// may read for its duration.\n" ++
+            "func zigoCString(value string) *C.char {\n" ++
+            "\tbuffer := make([]byte, len(value)+1)\n" ++
+            "\tcopy(buffer, value)\n" ++
+            "\treturn (*C.char)(unsafe.Pointer(&buffer[0]))\n" ++
+            "}\n\n",
+    );
+    if (programHasStringSliceParam(program)) try writer.writeAll(
+        "// zigoStringSliceArgs flattens values into one NUL-separated byte buffer and\n" ++
+            "// a length per element, both in Go memory and free of Go pointers, so the\n" ++
+            "// native call borrows them without a C allocation per element.\n" ++
+            "func zigoStringSliceArgs(values []string) (data []byte, lens []C.size_t) {\n" ++
+            "\tif len(values) == 0 {\n" ++
+            "\t\treturn nil, nil\n" ++
+            "\t}\n" ++
+            "\tlens = make([]C.size_t, len(values))\n" ++
+            "\ttotal := 0\n" ++
+            "\tfor _, value := range values {\n" ++
+            "\t\ttotal += len(value) + 1\n" ++
+            "\t}\n" ++
+            "\tdata = make([]byte, total)\n" ++
+            "\toffset := 0\n" ++
+            "\tfor i, value := range values {\n" ++
+            "\t\tlens[i] = C.size_t(len(value))\n" ++
+            "\t\tcopy(data[offset:], value)\n" ++
+            "\t\toffset += len(value) + 1\n" ++
+            "\t}\n" ++
+            "\treturn data, lens\n" ++
+            "}\n\n" ++
+            "// The pointers an empty slice passes instead of NULL, so the native side\n" ++
+            "// always receives a valid address with a zero length.\n" ++
+            "var zigoZeroByte C.uint8_t\n" ++
+            "var zigoZeroSize C.size_t\n\n" ++
+            "func zigoBytesPtr(data []byte) *C.uint8_t {\n" ++
+            "\tif len(data) == 0 {\n" ++
+            "\t\treturn &zigoZeroByte\n" ++
+            "\t}\n" ++
+            "\treturn (*C.uint8_t)(unsafe.Pointer(&data[0]))\n" ++
+            "}\n\n" ++
+            "func zigoSizePtr(lens []C.size_t) *C.size_t {\n" ++
+            "\tif len(lens) == 0 {\n" ++
+            "\t\treturn &zigoZeroSize\n" ++
+            "\t}\n" ++
+            "\treturn (*C.size_t)(unsafe.Pointer(&lens[0]))\n" ++
+            "}\n\n",
     );
 }
 
@@ -1634,6 +1677,7 @@ fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     );
     try renderRawStructTypes(allocator, writer, program);
     try renderRawSnapshotTypes(allocator, writer, program);
+    try renderPuregoStringHelpers(writer, program);
     for (program.functions) |function| {
         try renderPuregoFunction(allocator, writer, program, function, options);
     }
@@ -1827,25 +1871,60 @@ fn semanticTypeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
 /// registration accepts uintptr-sized length arrays and unsafe.Pointer values.
 fn writePuregoStringSliceSetup(writer: *std.Io.Writer, name: []const u8) !void {
     try writer.print(
-        "\tvar {0s}Data []byte\n" ++
-            "\tvar {0s}Lens []uintptr\n" ++
-            "\tif len({0s}) != 0 {{\n" ++
-            "\t\t{0s}Lens = make([]uintptr, len({0s}))\n" ++
-            "\t\t{0s}DataLen := 0\n" ++
-            "\t\tfor _, value := range {0s} {{ {0s}DataLen += len(value) + 1 }}\n" ++
-            "\t\t{0s}Data = make([]byte, {0s}DataLen)\n" ++
-            "\t\t{0s}Offset := 0\n" ++
-            "\t\tfor i, value := range {0s} {{\n" ++
-            "\t\t\t{0s}Lens[i] = uintptr(len(value))\n" ++
-            "\t\t\tcopy({0s}Data[{0s}Offset:], value)\n" ++
-            "\t\t\t{0s}Offset += len(value) + 1\n" ++
-            "\t\t}}\n" ++
-            "\t}}\n" ++
-            "\tvar {0s}DataPtr unsafe.Pointer\n" ++
-            "\tif len({0s}Data) != 0 {{ {0s}DataPtr = unsafe.Pointer(&{0s}Data[0]) }}\n" ++
-            "\tvar {0s}LensPtr unsafe.Pointer\n" ++
-            "\tif len({0s}Lens) != 0 {{ {0s}LensPtr = unsafe.Pointer(&{0s}Lens[0]) }}\n",
+        "\t{0s}Data, {0s}Lens := zigoStringSliceArgs({0s})\n" ++
+            "\t{0s}DataPtr := zigoBytesPtr({0s}Data)\n" ++
+            "\t{0s}LensPtr := zigoUintptrsPtr({0s}Lens)\n",
         .{name},
+    );
+}
+
+/// The purego counterpart of the cgo string helpers: the same Go-memory
+/// representation, with the length array sized for the uintptr ABI and an
+/// empty slice passing nil.
+fn renderPuregoStringHelpers(writer: *std.Io.Writer, program: abi.Program) !void {
+    if (programHasCString(program)) try writer.writeAll(
+        "// zigoCStringBytes copies value into a NUL-terminated Go buffer the native\n" ++
+            "// call may read for its duration.\n" ++
+            "func zigoCStringBytes(value string) []byte {\n" ++
+            "\tbuffer := make([]byte, len(value)+1)\n" ++
+            "\tcopy(buffer, value)\n" ++
+            "\treturn buffer\n" ++
+            "}\n\n",
+    );
+    if (programHasStringSliceParam(program)) try writer.writeAll(
+        "// zigoStringSliceArgs flattens values into one NUL-separated byte buffer and\n" ++
+            "// a length per element, both in Go memory and free of Go pointers, so the\n" ++
+            "// native call borrows them without an allocation per element.\n" ++
+            "func zigoStringSliceArgs(values []string) (data []byte, lens []uintptr) {\n" ++
+            "\tif len(values) == 0 {\n" ++
+            "\t\treturn nil, nil\n" ++
+            "\t}\n" ++
+            "\tlens = make([]uintptr, len(values))\n" ++
+            "\ttotal := 0\n" ++
+            "\tfor _, value := range values {\n" ++
+            "\t\ttotal += len(value) + 1\n" ++
+            "\t}\n" ++
+            "\tdata = make([]byte, total)\n" ++
+            "\toffset := 0\n" ++
+            "\tfor i, value := range values {\n" ++
+            "\t\tlens[i] = uintptr(len(value))\n" ++
+            "\t\tcopy(data[offset:], value)\n" ++
+            "\t\toffset += len(value) + 1\n" ++
+            "\t}\n" ++
+            "\treturn data, lens\n" ++
+            "}\n\n" ++
+            "func zigoBytesPtr(data []byte) unsafe.Pointer {\n" ++
+            "\tif len(data) == 0 {\n" ++
+            "\t\treturn nil\n" ++
+            "\t}\n" ++
+            "\treturn unsafe.Pointer(&data[0])\n" ++
+            "}\n\n" ++
+            "func zigoUintptrsPtr(lens []uintptr) unsafe.Pointer {\n" ++
+            "\tif len(lens) == 0 {\n" ++
+            "\t\treturn nil\n" ++
+            "\t}\n" ++
+            "\treturn unsafe.Pointer(&lens[0])\n" ++
+            "}\n\n",
     );
 }
 
@@ -1883,14 +1962,7 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
     for (function.origin.params, 0..) |parameter, parameter_index| {
         if (!isCStringParameter(parameter)) continue;
         const name = go_names[parameter_index];
-        try writer.print("\t{s}Bytes := make([]byte, len({s})+1)\n\tcopy({s}Bytes, {s})\n\t{s}Ptr := unsafe.Pointer(&{s}Bytes[0])\n", .{
-            name,
-            name,
-            name,
-            name,
-            name,
-            name,
-        });
+        try writer.print("\t{s}Bytes := zigoCStringBytes({s})\n\t{s}Ptr := unsafe.Pointer(&{s}Bytes[0])\n", .{ name, name, name, name });
     }
     for (function.origin.params, 0..) |parameter, parameter_index| if (parameter.type == .slice) {
         if (isStringSliceParameter(parameter) or isCStringParameter(parameter)) continue;
@@ -3312,6 +3384,7 @@ fn renderPublicHelpers(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
             for (program.functions) |function| {
                 for (function.origin.params, 0..) |parameter, parameter_index| {
                     if (parameter.type != .callback) continue;
+                    if (try callbackTypeAlreadyEmitted(allocator, program, function, parameter_index)) continue;
                     const callback_name = try callbackTypeNameAlloc(allocator, program, function, parameter_index);
                     defer allocator.free(callback_name);
                     try writer.print("func new{s}Handle(value {s}) zigoCallbackHandle {{\n\treturn ", .{ callback_name, callback_name });
@@ -3337,6 +3410,7 @@ fn renderPublicHelpers(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
         for (program.functions) |function| {
             for (function.origin.params, 0..) |parameter, parameter_index| {
                 if (parameter.type != .callback) continue;
+                if (try callbackTypeAlreadyEmitted(allocator, program, function, parameter_index)) continue;
                 const callback_name = try callbackTypeNameAlloc(allocator, program, function, parameter_index);
                 defer allocator.free(callback_name);
                 try writer.print("func new{s}Handle(value {s}) zigoCallbackHandle {{\n\tstored := (", .{ callback_name, callback_name });
@@ -3798,6 +3872,7 @@ fn renderGoCallbackTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, p
     for (program.functions) |function| {
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (parameter.type != .callback) continue;
+            if (try callbackTypeAlreadyEmitted(allocator, program, function, parameter_index)) continue;
             const callback_name = try callbackTypeNameAlloc(allocator, program, function, parameter_index);
             defer allocator.free(callback_name);
             try writer.print("// {s} is the Go callback signature accepted by the generated binding.\ntype {s} ", .{ callback_name, callback_name });
@@ -3811,11 +3886,20 @@ fn renderGoErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, program:
     if (program.error_codes.len == 0) return;
     try writer.writeAll(
         "// Error is a stable Zig error-set value returned by the generated binding.\n" ++
+            "// Classify it with errors.Is against the Err* sentinels; a returned value\n" ++
+            "// also names the operation it came from.\n" ++
             "type Error struct {\n" ++
             "\t// Code is the stable integer stored in errors.lock.json.\n\tCode int32\n" ++
-            "\t// Name is the Zig error name, optionally followed by native panic context.\n\tName string\n" ++
+            "\t// Name is the Zig error name.\n\tName string\n" ++
+            "\t// Operation names the generated call that returned the error. It is\n" ++
+            "\t// empty on the package-level sentinels.\n\tOperation string\n" ++
             "}\n\n" ++
-            "// Error implements error.\nfunc (err *Error) Error() string { return err.Name }\n" ++
+            "// Error implements error.\nfunc (err *Error) Error() string {\n" ++
+            "\tif err.Operation == \"\" {\n" ++
+            "\t\treturn err.Name\n" ++
+            "\t}\n" ++
+            "\treturn \"zigo: \" + err.Operation + \": \" + err.Name\n" ++
+            "}\n" ++
             "// Is compares generated errors by stable code.\nfunc (err *Error) Is(target error) bool {\n\tother, ok := target.(*Error)\n\treturn ok && err.Code == other.Code\n}\n\n",
     );
     for (program.error_codes) |entry| {
@@ -3829,9 +3913,9 @@ fn renderGoErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, program:
     for (program.error_codes) |entry| {
         const name = try naming.pascalAlloc(allocator, entry.name);
         defer allocator.free(name);
-        try writer.print("\tcase {d}:\n\t\treturn Err{s}\n", .{ entry.code, name });
+        try writer.print("\tcase {d}:\n\t\treturn &Error{{Code: {d}, Name: \"{s}\", Operation: operation}}\n", .{ entry.code, entry.code, entry.name });
     }
-    try writer.writeAll("\tdefault:\n\t\treturn &Error{Code: code, Name: \"Unknown(\" + strconv.Itoa(int(code)) + \")\"}\n\t}\n}\n");
+    try writer.writeAll("\tdefault:\n\t\treturn &Error{Code: code, Name: \"Unknown(\" + strconv.Itoa(int(code)) + \")\", Operation: operation}\n\t}\n}\n");
 }
 
 fn writeRawImport(writer: *std.Io.Writer, options: Options, indent: []const u8) !void {
@@ -4615,6 +4699,9 @@ fn needsCallbackBitThunk(program: abi.Program, function: abi.AbiFn, parameter_in
 }
 
 fn callbackTypeNameAlloc(allocator: std.mem.Allocator, program: abi.Program, function: abi.AbiFn, parameter_index: usize) ![]u8 {
+    // A declared callback type names itself; the derived name is for the
+    // signatures the binding left anonymous.
+    if (function.origin.params[parameter_index].type.callback.ref) |ref| return allocator.dupe(u8, ref);
     const base = try callbackTypeBaseNameAlloc(allocator, function, parameter_index);
     defer allocator.free(base);
     var duplicate_base = false;
@@ -4640,6 +4727,24 @@ fn callbackTypeNameAlloc(allocator: std.mem.Allocator, program: abi.Program, fun
 
     if (publicTypeNameExists(program, qualified)) return std.fmt.allocPrint(allocator, "{s}Callback", .{qualified});
     return allocator.dupe(u8, qualified);
+}
+
+/// True when an earlier parameter in program order already produced this
+/// callback's Go type name -- a declared type shared by several functions --
+/// so the per-type declarations are emitted once, at the first use.
+fn callbackTypeAlreadyEmitted(allocator: std.mem.Allocator, program: abi.Program, function: abi.AbiFn, parameter_index: usize) !bool {
+    const name = try callbackTypeNameAlloc(allocator, program, function, parameter_index);
+    defer allocator.free(name);
+    for (program.functions) |candidate| {
+        for (candidate.origin.params, 0..) |parameter, candidate_index| {
+            if (candidate.origin == function.origin and candidate_index == parameter_index) return false;
+            if (parameter.type != .callback) continue;
+            const candidate_name = try callbackTypeNameAlloc(allocator, program, candidate, candidate_index);
+            defer allocator.free(candidate_name);
+            if (std.mem.eql(u8, name, candidate_name)) return true;
+        }
+    }
+    return false;
 }
 
 fn callbackTypeBaseNameAlloc(allocator: std.mem.Allocator, function: abi.AbiFn, parameter_index: usize) ![]u8 {

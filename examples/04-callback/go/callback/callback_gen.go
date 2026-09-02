@@ -99,10 +99,10 @@ func (i *IntBuffer) Len() (uint, error) {
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
-func NewCallbackContext(callback CallbackContextCallback) (*CallbackContext, error) {
+func NewCallbackContext(callback Observer) (*CallbackContext, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	callbackHandle := newCallbackContextCallbackHandle(callback)
+	callbackHandle := newObserverHandle(callback)
 	result, code := raw.CallbackContextCreate(uintptr(callbackHandle))
 	zigoRethrowCallbackPanic("NewCallbackContext", callbackHandle)
 	if code != 0 {
@@ -151,8 +151,8 @@ func CompressionBound(sourceLen uint) uint {
 
 // Apply invokes the bound Zig apply operation.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
-func Apply(value int32, callback ApplyCallback) int32 {
-	callbackHandle := newApplyCallbackHandle(callback)
+func Apply(value int32, callback Observer) int32 {
+	callbackHandle := newObserverHandle(callback)
 	defer deleteCallbackHandle(callbackHandle)
 	result := raw.Apply(value, uintptr(callbackHandle))
 	zigoRethrowCallbackPanic("Apply", callbackHandle)

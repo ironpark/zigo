@@ -16,6 +16,55 @@ import "unsafe"
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// zigoCString copies value into a NUL-terminated Go buffer the native call
+// may read for its duration.
+func zigoCString(value string) *C.char {
+	buffer := make([]byte, len(value)+1)
+	copy(buffer, value)
+	return (*C.char)(unsafe.Pointer(&buffer[0]))
+}
+
+// zigoStringSliceArgs flattens values into one NUL-separated byte buffer and
+// a length per element, both in Go memory and free of Go pointers, so the
+// native call borrows them without a C allocation per element.
+func zigoStringSliceArgs(values []string) (data []byte, lens []C.size_t) {
+	if len(values) == 0 {
+		return nil, nil
+	}
+	lens = make([]C.size_t, len(values))
+	total := 0
+	for _, value := range values {
+		total += len(value) + 1
+	}
+	data = make([]byte, total)
+	offset := 0
+	for i, value := range values {
+		lens[i] = C.size_t(len(value))
+		copy(data[offset:], value)
+		offset += len(value) + 1
+	}
+	return data, lens
+}
+
+// The pointers an empty slice passes instead of NULL, so the native side
+// always receives a valid address with a zero length.
+var zigoZeroByte C.uint8_t
+var zigoZeroSize C.size_t
+
+func zigoBytesPtr(data []byte) *C.uint8_t {
+	if len(data) == 0 {
+		return &zigoZeroByte
+	}
+	return (*C.uint8_t)(unsafe.Pointer(&data[0]))
+}
+
+func zigoSizePtr(lens []C.size_t) *C.size_t {
+	if len(lens) == 0 {
+		return &zigoZeroSize
+	}
+	return (*C.size_t)(unsafe.Pointer(&lens[0]))
+}
+
 // CallbackState carries one Go callback across the native boundary, and
 // the panic it raises there until the generated caller rethrows it. The
 // trampoline has to recover: a panic cannot unwind native frames.
@@ -222,71 +271,19 @@ func CompressionBound(sourceLen uint) uint {
 }
 // EchoCString calls the generated C ABI wrapper for zg_echo_c_string.
 func EchoCString(text string) string {
-	textCString := C.CString(text)
-	defer C.free(unsafe.Pointer(textCString))
+	textCString := zigoCString(text)
 	return C.GoString(C.zg_echo_c_string(textCString))
 }
 // ExtractPaths calls the generated C ABI wrapper for zg_extract_paths.
 func ExtractPaths(paths []string, sentinelSlices []string, sentinelPointers []string) uint {
-	var pathsData []byte
-	var pathsLens []C.size_t
-	if len(paths) != 0 {
-		pathsLens = make([]C.size_t, len(paths))
-		pathsDataLen := 0
-		for _, value := range paths { pathsDataLen += len(value) + 1 }
-		pathsData = make([]byte, pathsDataLen)
-		pathsOffset := 0
-		for i, value := range paths {
-			pathsLens[i] = C.size_t(len(value))
-			copy(pathsData[pathsOffset:], value)
-			pathsOffset += len(value) + 1
-		}
-	}
-	var pathsDataZero C.uint8_t
-	pathsDataPtr := &pathsDataZero
-	if len(pathsData) != 0 { pathsDataPtr = (*C.uint8_t)(unsafe.Pointer(&pathsData[0])) }
-	var pathsLensZero C.size_t
-	pathsLensPtr := &pathsLensZero
-	if len(pathsLens) != 0 { pathsLensPtr = (*C.size_t)(unsafe.Pointer(&pathsLens[0])) }
-	var sentinelSlicesData []byte
-	var sentinelSlicesLens []C.size_t
-	if len(sentinelSlices) != 0 {
-		sentinelSlicesLens = make([]C.size_t, len(sentinelSlices))
-		sentinelSlicesDataLen := 0
-		for _, value := range sentinelSlices { sentinelSlicesDataLen += len(value) + 1 }
-		sentinelSlicesData = make([]byte, sentinelSlicesDataLen)
-		sentinelSlicesOffset := 0
-		for i, value := range sentinelSlices {
-			sentinelSlicesLens[i] = C.size_t(len(value))
-			copy(sentinelSlicesData[sentinelSlicesOffset:], value)
-			sentinelSlicesOffset += len(value) + 1
-		}
-	}
-	var sentinelSlicesDataZero C.uint8_t
-	sentinelSlicesDataPtr := &sentinelSlicesDataZero
-	if len(sentinelSlicesData) != 0 { sentinelSlicesDataPtr = (*C.uint8_t)(unsafe.Pointer(&sentinelSlicesData[0])) }
-	var sentinelSlicesLensZero C.size_t
-	sentinelSlicesLensPtr := &sentinelSlicesLensZero
-	if len(sentinelSlicesLens) != 0 { sentinelSlicesLensPtr = (*C.size_t)(unsafe.Pointer(&sentinelSlicesLens[0])) }
-	var sentinelPointersData []byte
-	var sentinelPointersLens []C.size_t
-	if len(sentinelPointers) != 0 {
-		sentinelPointersLens = make([]C.size_t, len(sentinelPointers))
-		sentinelPointersDataLen := 0
-		for _, value := range sentinelPointers { sentinelPointersDataLen += len(value) + 1 }
-		sentinelPointersData = make([]byte, sentinelPointersDataLen)
-		sentinelPointersOffset := 0
-		for i, value := range sentinelPointers {
-			sentinelPointersLens[i] = C.size_t(len(value))
-			copy(sentinelPointersData[sentinelPointersOffset:], value)
-			sentinelPointersOffset += len(value) + 1
-		}
-	}
-	var sentinelPointersDataZero C.uint8_t
-	sentinelPointersDataPtr := &sentinelPointersDataZero
-	if len(sentinelPointersData) != 0 { sentinelPointersDataPtr = (*C.uint8_t)(unsafe.Pointer(&sentinelPointersData[0])) }
-	var sentinelPointersLensZero C.size_t
-	sentinelPointersLensPtr := &sentinelPointersLensZero
-	if len(sentinelPointersLens) != 0 { sentinelPointersLensPtr = (*C.size_t)(unsafe.Pointer(&sentinelPointersLens[0])) }
+	pathsData, pathsLens := zigoStringSliceArgs(paths)
+	pathsDataPtr := zigoBytesPtr(pathsData)
+	pathsLensPtr := zigoSizePtr(pathsLens)
+	sentinelSlicesData, sentinelSlicesLens := zigoStringSliceArgs(sentinelSlices)
+	sentinelSlicesDataPtr := zigoBytesPtr(sentinelSlicesData)
+	sentinelSlicesLensPtr := zigoSizePtr(sentinelSlicesLens)
+	sentinelPointersData, sentinelPointersLens := zigoStringSliceArgs(sentinelPointers)
+	sentinelPointersDataPtr := zigoBytesPtr(sentinelPointersData)
+	sentinelPointersLensPtr := zigoSizePtr(sentinelPointersLens)
 	return uint(C.zg_extract_paths(pathsDataPtr, C.size_t(len(pathsData)), pathsLensPtr, C.size_t(len(paths)), sentinelSlicesDataPtr, C.size_t(len(sentinelSlicesData)), sentinelSlicesLensPtr, C.size_t(len(sentinelSlices)), sentinelPointersDataPtr, C.size_t(len(sentinelPointersData)), sentinelPointersLensPtr, C.size_t(len(sentinelPointers))))
 }

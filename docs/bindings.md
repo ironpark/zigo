@@ -92,6 +92,22 @@ error입니다.
 확실히 식별하려면 같은 항목에 `params`도 적으세요. 이름은 명시적 `params`, 대상 source AST,
 `p0` fallback 순으로 결정됩니다.
 
+### 콜백 타입 이름
+
+콜백 파라미터마다 Go 함수 타입이 하나씩 생깁니다. 이름은 기본적으로 소유 타입이나 함수와
+파라미터 이름에서 파생되므로(`ContextCallback`, `ApplyCallback`), 같은 Zig 시그니처를 여러
+함수가 받으면 Go 타입도 여러 개가 됩니다. Zig의 `pub const Observer = *const fn (...)`은
+alias라 reflection이 이름을 알 수 없으니, 하나의 이름을 원하면 `types`에 등록합니다.
+
+```zig
+.types = .{
+    .{ .name = "Observer", .type = mylib.Observer, .repr = .callback },
+},
+```
+
+같은 시그니처의 모든 콜백 파라미터가 `Observer` 하나로 생성됩니다. 시그니처가 같은 alias
+둘을 등록하면 먼저 등록한 이름이 둘 다에 쓰입니다 — Zig에게는 같은 타입입니다.
+
 ## 슬라이스 반환 소유권
 
 슬라이스를 반환하는 함수는 호출 시점에 native 메모리에서 Go가 소유한 새 사본을 만듭니다.
@@ -153,6 +169,7 @@ native ABI는 `paths_data`, `paths_data_len`, `paths_lens`, `paths_count` 네 sc
 | `.@"opaque"` | pointer handle과 수명주기 |
 | `.value` | 적격한 `extern struct`의 Go 값 mirror |
 | `.tagged_union` | pointer handle을 통한 tagged union 접근 |
+| `.callback` | `*const fn` alias에 Go 타입 이름을 부여. `.name` 필수 |
 
 | `access` | 용도 |
 |---|---|
@@ -421,7 +438,7 @@ snapshot을 선택하세요.
 | `ErrNativeStatus` | 알려지지 않은 native status | `*StatusError` |
 | `ErrLibraryLoad` | purego library·symbol load 실패 | `*LibraryError` |
 | `ErrCallbackPanic` | Go 콜백 안에서 발생한 panic (반환이 아니라 **rethrow**) | `*CallbackPanicError` |
-| `Err<ZigError>` | Zig error set 값 | `*Error` |
+| `Err<ZigError>` | Zig error set 값. 반환된 값의 `Operation`이 어느 호출에서 났는지 말한다 | `*Error` |
 
 ```go
 switch {
@@ -434,7 +451,15 @@ var panicErr *NativePanicError
 if errors.As(err, &panicErr) {
     log.Print(panicErr.Operation, panicErr.Message)
 }
+
+var zigErr *Error
+if errors.As(err, &zigErr) {
+    log.Print(zigErr.Operation, zigErr.Name) // 예: "Pipeline.Process", "Disabled"
+}
 ```
+
+`Err*` sentinel은 `==`가 아니라 `errors.Is`로 비교합니다. 반환되는 값은 호출 이름을 담은
+새 `*Error`이고, `Is`는 stable code로 판별합니다.
 
 panic하는 `Must*` method에서 복구한 값도 `error`이면 같은 규칙으로 판별할 수 있습니다.
 

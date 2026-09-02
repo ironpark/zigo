@@ -173,6 +173,7 @@
                 "signed": false
               }
             ],
+            "ref": "Observer",
             "return": {
               "bits": 32,
               "is_usize": false,
@@ -323,6 +324,7 @@
                 "signed": false
               }
             ],
+            "ref": "Observer",
             "return": {
               "bits": 32,
               "is_usize": false,
@@ -377,6 +379,13 @@
       "kind": "opaque",
       "name": "IntBuffer",
       "zig_path": "root.Buffer(i32)"
+    },
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "callback",
+      "name": "Observer",
+      "zig_path": "*const fn (i32, usize) callconv(.c) i32"
     }
   ],
   "zig_version": "0.16.0"

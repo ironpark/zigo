@@ -7,7 +7,8 @@ import (
 	"testing"
 )
 
-var _ CallbackContextCallback = func(int32) int32 { return 0 }
+// Both callback parameters share the declared Observer type.
+var _ Observer = func(int32) int32 { return 0 }
 
 // Generated handles close like any other Go resource.
 var (

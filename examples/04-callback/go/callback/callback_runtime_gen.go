@@ -30,24 +30,14 @@ func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsaf
 	return zigoCheckedPointer(operation, value)
 }
 
-// CallbackContextCallback is the Go callback signature accepted by the generated binding.
-type CallbackContextCallback func(int32) int32
-
-// ApplyCallback is the Go callback signature accepted by the generated binding.
-type ApplyCallback func(int32) int32
+// Observer is the Go callback signature accepted by the generated binding.
+type Observer func(int32) int32
 
 var activeCallbackHandles atomic.Int64
 
 type zigoCallbackHandle = cgo.Handle
 
-func newCallbackContextCallbackHandle(value CallbackContextCallback) zigoCallbackHandle {
-	stored := (func(int32) int32)(value)
-	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
-	activeCallbackHandles.Add(1)
-	return handle
-}
-
-func newApplyCallbackHandle(value ApplyCallback) zigoCallbackHandle {
+func newObserverHandle(value Observer) zigoCallbackHandle {
 	stored := (func(int32) int32)(value)
 	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
 	activeCallbackHandles.Add(1)

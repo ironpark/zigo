@@ -440,6 +440,39 @@ test "errors enums and slices share one lowered ABI" {
     try std.testing.expect(std.mem.containsAtLeast(u8, shim, 1, "p0_written.* = p0_len"));
 }
 
+test "a declared callback type names every parameter of its signature once" {
+    const fixture =
+        \\{
+        \\  "functions":[
+        \\    {"name":"apply","params":[{"name":"callback","type":{"c_callconv":true,"has_userdata":true,"kind":"callback","params":[{"bits":32,"kind":"int","signed":true},{"bits":64,"is_usize":true,"kind":"int","signed":false}],"ref":"Observer","return":{"bits":32,"kind":"int","signed":true}}},{"name":"userdata","type":{"bits":64,"is_usize":true,"kind":"int","signed":false}}],"return":{"bits":32,"kind":"int","signed":true},"symbol":"zg_apply"},
+        \\    {"name":"watch","params":[{"name":"observer","type":{"c_callconv":true,"has_userdata":true,"kind":"callback","params":[{"bits":32,"kind":"int","signed":true},{"bits":64,"is_usize":true,"kind":"int","signed":false}],"ref":"Observer","return":{"bits":32,"kind":"int","signed":true}}},{"name":"userdata","type":{"bits":64,"is_usize":true,"kind":"int","signed":false}}],"return":{"kind":"void"},"symbol":"zg_watch"}
+        \\  ],
+        \\  "package":"observers","prefix":"zg","types":[{"kind":"callback","name":"Observer","zig_path":"*const fn (i32, usize) callconv(.c) i32"}],"zig_version":"0.16.0"
+        \\}
+    ;
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try generate(arena.allocator(), std.testing.io, fixture, temporary.dir, .{
+        .package = "observers",
+        .prefix = "zg",
+        .go_module = "example.com/observers",
+    });
+    const public = try temporary.dir.readFileAlloc(std.testing.io, "observers/observers_gen.go", std.testing.allocator, .limited(64 * 1024));
+    defer std.testing.allocator.free(public);
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func Apply(callback Observer) int32"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func Watch(observer Observer)"));
+    try std.testing.expect(std.mem.indexOf(u8, public, "ApplyCallback") == null);
+    const public_types = try temporary.dir.readFileAlloc(std.testing.io, "observers/observers_runtime_gen.go", std.testing.allocator, .limited(64 * 1024));
+    defer std.testing.allocator.free(public_types);
+    // One type and one handle helper, at the first use; the second parameter
+    // reuses them.
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, public_types, "type Observer func(int32) int32"));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, public_types, "func newObserverHandle(value Observer) zigoCallbackHandle"));
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "WatchObserver") == null);
+}
+
 test "callbacks use role-specific public types and typed handle helpers" {
     const fixture =
         \\{
