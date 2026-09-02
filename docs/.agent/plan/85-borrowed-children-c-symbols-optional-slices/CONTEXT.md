@@ -26,8 +26,9 @@
   감소시키는 비대칭도 확인했다. 계획의 허용안 중 최종 owning handle을 reservation owner로
   반환·저장하는 방식을 택했고, cleanup 경로가 parent 예약을 보존하지 않던 누락도 함께 고쳤다.
 - Phase 1은 별도 ABI IR을 만드는 대신 lower와 같은 naming 함수와 emission 조건을 validator에서
-  사용해 cgo/purego의 실제 header 식별자 집합을 각각 계산했다. 기존의 더 구체적인 semantic·Go
-  진단이 우선하도록 C 식별자 검사는 validator 후반에 둔다.
+  사용해 cgo/purego의 실제 header 식별자 집합을 각각 계산했다. ownership·type-shape 같은 더
+  구체적인 semantic 진단 뒤, generated accessor·Go 이름 충돌 검사 앞에서 C 식별자를 검사해
+  실제 C 충돌은 일관되게 `ZIGO036`으로 보고한다.
 - Phase 2는 validation unwrap만으로 충분하지 않았다. caller-owned optional c_string도
   pointer+length 반환을 사용하도록 lower를 조정하고, 공개 error+optional tuple이 presence를
   보존하도록 emit 분기 순서를 함께 수정했다.
