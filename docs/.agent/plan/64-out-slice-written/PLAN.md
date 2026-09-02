@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T04:54:42Z"
 description: out 슬라이스 왕복 복사 제거, .written 힌트, 스칼라 extern struct 슬라이스 캐스트 경로
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-02T04:29:27Z"
 ---
 > NEXT: `.written` 메타데이터를 semantic/reflect/validate/abi_diff에 관통시키고 ZIGO017과 compatible 분류 테스트를 만든다. ([Phase 0](phases/00-written-metadata.md))
@@ -11,7 +12,7 @@ registered_at: "2026-09-02T04:29:27Z"
 - [x] [Phase 01: shim의 `written` 기록과 공개 계층의 되돌리기 규칙](phases/01-shim-written.md)
 - [x] [Phase 02: Go 쪽 레이아웃 가드와 캐스트 적격 predicate](phases/02-go-layout-guard.md)
 - [x] [Phase 03: 캐스트 경로와 out 무복사 진입](phases/03-cast-path.md)
-- [ ] [Phase 04: 예제 `…Into(dst)` 패턴과 문서](phases/04-example-and-docs.md)
+- [x] [Phase 04: 예제 `…Into(dst)` 패턴과 문서](phases/04-example-and-docs.md)
 
 # Shared Verification
 

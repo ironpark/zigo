@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-02T04:54:42Z"
 depends_on:
 - "64-out-slice-written#3"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 07-event-queue cgo·purego 테스트가 `written` 계약을 검증하며 통과한다.
 > NEXT: none
