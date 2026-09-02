@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-02T10:31:39Z"
 depends_on:
 - "71-diagnostics-and-optionals#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: fixture 통과, 부재와 빈 슬라이스가 구별되는 Go 테스트.
 > NEXT: none
