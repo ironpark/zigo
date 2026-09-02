@@ -89,6 +89,9 @@ func TestRegisteredEnum(t *testing.T) {
 	if !CursorStyleBlinks(CursorStyleUnderline) || CursorStyleBlinks(CursorStyleBlock) {
 		t.Fatal("CursorStyleBlinks disagrees with the Zig function")
 	}
+	if !ConfigureStyles(CharsetSlotBlock, CursorStyleBar) {
+		t.Fatal("ConfigureStyles did not preserve the two distinct generated enum types")
+	}
 }
 
 func TestOpenEnumRoundTrip(t *testing.T) {

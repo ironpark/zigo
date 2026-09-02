@@ -226,7 +226,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 92,
+        "line": 96,
         "column": 8
       },
       "symbol": "zg_live_objects"
@@ -241,7 +241,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 79,
+        "line": 83,
         "column": 8
       },
       "symbol": "zg_default_cursor_style"
@@ -257,7 +257,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 84,
+            "line": 88,
             "column": 26
           },
           "type": {
@@ -271,10 +271,53 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 84,
+        "line": 88,
         "column": 8
       },
       "symbol": "zg_cursor_style_blinks"
+    },
+    {
+      "name": "configureStyles",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "slot",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 71,
+            "column": 24
+          },
+          "type": {
+            "kind": "enum",
+            "ref": "CharsetSlot"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "style",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 71,
+            "column": 43
+          },
+          "type": {
+            "kind": "enum",
+            "ref": "CursorStyle"
+          }
+        }
+      ],
+      "return": {
+        "kind": "bool"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 71,
+        "column": 8
+      },
+      "symbol": "zg_configure_styles"
     },
     {
       "name": "echoEraseDisplay",
@@ -286,7 +329,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 88,
+            "line": 92,
             "column": 25
           },
           "type": {
@@ -301,7 +344,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 88,
+        "line": 92,
         "column": 8
       },
       "symbol": "zg_echo_erase_display"
@@ -318,7 +361,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 108,
+            "line": 112,
             "column": 21
           },
           "type": {
@@ -334,7 +377,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 108,
+            "line": 112,
             "column": 33
           },
           "type": {
@@ -353,7 +396,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 108,
+        "line": 112,
         "column": 12
       },
       "symbol": "zg_text_run_width"
@@ -370,7 +413,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 102,
+            "line": 106,
             "column": 31
           },
           "type": {
@@ -389,7 +432,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 102,
+        "line": 106,
         "column": 16
       },
       "symbol": "zg_text_unicode_codepoint_width"
@@ -405,7 +448,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 123,
+            "line": 127,
             "column": 20
           },
           "type": {
@@ -430,7 +473,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 123,
+        "line": 127,
         "column": 8
       },
       "symbol": "zg_double_width"
@@ -446,7 +489,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 128,
+            "line": 132,
             "column": 15
           },
           "type": {
@@ -465,7 +508,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 128,
+        "line": 132,
         "column": 8
       },
       "symbol": "zg_invert"
@@ -481,7 +524,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 133,
+            "line": 137,
             "column": 23
           },
           "type": {
@@ -499,7 +542,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 133,
+        "line": 137,
         "column": 8
       },
       "symbol": "zg_style_or_default"
@@ -515,7 +558,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 138,
+            "line": 142,
             "column": 22
           },
           "type": {
@@ -536,7 +579,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 138,
+        "line": 142,
         "column": 8
       },
       "symbol": "zg_blinking_style"
@@ -552,7 +595,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 144,
+            "line": 148,
             "column": 19
           },
           "type": {
@@ -569,7 +612,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 144,
+            "line": 148,
             "column": 35
           },
           "type": {
@@ -589,7 +632,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 144,
+        "line": 148,
         "column": 8
       },
       "symbol": "zg_shift_point"
@@ -605,7 +648,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 152,
+            "line": 156,
             "column": 21
           },
           "type": {
@@ -622,7 +665,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 152,
+            "line": 156,
             "column": 37
           },
           "type": {
@@ -648,7 +691,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 152,
+        "line": 156,
         "column": 8
       },
       "symbol": "zg_checked_shift"
@@ -665,7 +708,7 @@
           "retention": "borrowed",
           "semantic": "utf8_string",
           "source": {
-            "line": 160,
+            "line": 164,
             "column": 21
           },
           "type": {
@@ -691,7 +734,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 160,
+        "line": 164,
         "column": 8
       },
       "symbol": "zg_describe_text"
@@ -707,7 +750,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 166,
+            "line": 170,
             "column": 18
           },
           "type": {
@@ -733,7 +776,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 166,
+        "line": 170,
         "column": 8
       },
       "symbol": "zg_sum_or_zero"
@@ -749,7 +792,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 177,
+            "line": 181,
             "column": 22
           },
           "type": {
@@ -775,7 +818,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 177,
+        "line": 181,
         "column": 8
       },
       "symbol": "zg_leading_digits"
@@ -791,7 +834,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 183,
+            "line": 187,
             "column": 18
           },
           "type": {
@@ -819,7 +862,7 @@
       "return_semantic": "utf8_string",
       "source": {
         "path": "root.zig",
-        "line": 183,
+        "line": 187,
         "column": 8
       },
       "symbol": "zg_style_name"
@@ -867,7 +910,33 @@
         "kind": "int",
         "signed": false
       },
-      "zig_path": "root.Enum(@as([*]const []const u8, @ptrCast(&root.style_names))[0..3])"
+      "zig_path": "root.Enum(&.{ &.{ ... }[0..(...)], &.{ ... }[0..(...)], &.{ ... }[0..(...)] }[0..3])#CursorStyle"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "block",
+          "value": 0
+        },
+        {
+          "name": "bar",
+          "value": 1
+        },
+        {
+          "name": "g2",
+          "value": 2
+        }
+      ],
+      "kind": "enum",
+      "name": "CharsetSlot",
+      "tag_type": {
+        "bits": 8,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "zig_path": "root.Enum(&.{ &.{ ... }[0..(...)], &.{ ... }[0..(...)], &.{ ... }[0..(...)] }[0..3])#CharsetSlot"
     },
     {
       "exhaustive": false,

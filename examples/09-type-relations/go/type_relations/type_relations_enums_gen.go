@@ -30,6 +30,32 @@ func (value CursorStyle) String() string {
 	}
 }
 
+// CharsetSlot represents the corresponding Zig enum.
+type CharsetSlot uint8
+
+const (
+	// CharsetSlotBlock corresponds to the Zig tag block.
+	CharsetSlotBlock CharsetSlot = 0
+	// CharsetSlotBar corresponds to the Zig tag bar.
+	CharsetSlotBar CharsetSlot = 1
+	// CharsetSlotG2 corresponds to the Zig tag g2.
+	CharsetSlotG2 CharsetSlot = 2
+)
+
+// String returns the Zig tag name.
+func (value CharsetSlot) String() string {
+	switch value {
+	case CharsetSlotBlock:
+		return "block"
+	case CharsetSlotBar:
+		return "bar"
+	case CharsetSlotG2:
+		return "g2"
+	default:
+		return "CharsetSlot(" + strconv.Itoa(int(value)) + ")"
+	}
+}
+
 // EraseDisplay represents the corresponding Zig open enum; values outside the named constants are valid.
 type EraseDisplay uint8
 

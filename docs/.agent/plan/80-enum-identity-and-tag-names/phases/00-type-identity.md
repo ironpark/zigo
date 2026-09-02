@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T17:52:36Z"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: 테스트·골든 통과, 전 예제 녹색, 커밋.
 > NEXT: none

@@ -35,10 +35,10 @@ pub fn reflect(
                 .@"opaque" => try types.append(allocator, .{
                     .kind = .@"opaque",
                     .name = type_name,
-                    .zig_path = @typeName(T),
+                    .zig_path = try registeredZigPath(allocator, declaration, T, type_name),
                 }),
                 .value => switch (info) {
-                    .@"struct" => try appendValueStruct(allocator, &types, T, type_name),
+                    .@"struct" => try appendValueStruct(allocator, &types, declaration, T, type_name, try registeredZigPath(allocator, declaration, T, type_name)),
                     else => @compileError("zigo value type entries must name a struct"),
                 },
                 // An enum registered here is not walked for declarations --
@@ -47,13 +47,13 @@ pub fn reflect(
                 // built by a comptime function has a `@typeName` that ends in
                 // the expression that built it, and no name of its own.
                 .enumeration => switch (info) {
-                    .@"enum" => try appendEnum(allocator, &types, T, type_name, comptime enumOpenOptIn(entry)),
+                    .@"enum" => try appendEnum(allocator, &types, declaration, T, type_name, comptime enumOpenOptIn(entry), try registeredZigPath(allocator, declaration, T, type_name)),
                     else => @compileError("zigo enumeration type entries must name an enum"),
                 },
                 .tagged_union => switch (info) {
                     .@"union" => |union_info| {
                         if (union_info.tag_type == null) @compileError("zigo tagged_union type entries must name a tagged union");
-                        try appendTaggedUnion(allocator, &types, T, type_name, comptime accessStrategy(entry));
+                        try appendTaggedUnion(allocator, &types, declaration, T, type_name, comptime accessStrategy(entry), try registeredZigPath(allocator, declaration, T, type_name));
                     },
                     else => @compileError("zigo tagged_union type entries must name a tagged union"),
                 },
@@ -67,7 +67,7 @@ pub fn reflect(
                     try types.append(allocator, .{
                         .kind = .callback,
                         .name = entry.name,
-                        .zig_path = @typeName(T),
+                        .zig_path = try registeredZigPath(allocator, declaration, T, type_name),
                     });
                 },
                 else => @compileError("zigo type repr must be .opaque, .value, .enumeration, .tagged_union, or .callback"),
@@ -298,7 +298,7 @@ fn appendFunction(
         // reflecting it would fail long before validation could explain why.
         const parameter_type = if (injection != null or names_cancel) semantic.TypeNode{
             .void = {},
-        } else try typeNode(allocator, param.type.?, types, comptime std.fmt.comptimePrint(
+        } else try typeNode(allocator, declaration, param.type.?, types, comptime std.fmt.comptimePrint(
             "`{s}{s}` parameter `{s}`",
             .{ owner_label, function_label, parameter_label },
         ));
@@ -352,7 +352,7 @@ fn appendFunction(
             .payload = payload,
         } };
     } else if (info.return_type) |return_type|
-        try typeNode(allocator, return_type, types, comptime std.fmt.comptimePrint("`{s}{s}` return value", .{ owner_label, function_label }))
+        try typeNode(allocator, declaration, return_type, types, comptime std.fmt.comptimePrint("`{s}{s}` return value", .{ owner_label, function_label }))
     else
         semantic.TypeNode{ .void = {} };
     var reflected_function: semantic.SemanticFn = .{
@@ -739,6 +739,7 @@ fn selectorContains(comptime declaration: anytype, comptime field_name: []const 
 /// build, and without it they only name the constraint, never where it broke.
 fn typeNode(
     allocator: std.mem.Allocator,
+    comptime declaration: anytype,
     comptime T: type,
     types: *std.ArrayList(semantic.TypeDecl),
     comptime context: []const u8,
@@ -755,7 +756,7 @@ fn typeNode(
         .pointer => |info| switch (info.size) {
             .slice => blk: {
                 const element = try allocator.create(semantic.TypeNode);
-                element.* = try typeNode(allocator, info.child, types, context ++ " (slice element)");
+                element.* = try typeNode(allocator, declaration, info.child, types, context ++ " (slice element)");
                 break :blk .{ .slice = .{
                     .@"const" = info.is_const,
                     .element = element,
@@ -778,6 +779,7 @@ fn typeNode(
                             @compileError("zigo cannot reflect a generic callback parameter, at " ++ context);
                         callback_params[index] = try typeNode(
                             allocator,
+                            declaration,
                             parameter_type,
                             types,
                             context ++ std.fmt.comptimePrint(" (callback parameter {d})", .{index}),
@@ -786,17 +788,17 @@ fn typeNode(
                     const callback_return = try allocator.create(semantic.TypeNode);
                     const callback_return_type = function_info.return_type orelse
                         @compileError("zigo cannot reflect a generic callback return type, at " ++ context);
-                    callback_return.* = try typeNode(allocator, callback_return_type, types, context ++ " (callback return value)");
+                    callback_return.* = try typeNode(allocator, declaration, callback_return_type, types, context ++ " (callback return value)");
                     break :blk .{ .callback = .{
                         .c_callconv = std.meta.eql(function_info.calling_convention, std.builtin.CallingConvention.c),
                         .has_userdata = function_info.params.len != 0 and
                             function_info.params[function_info.params.len - 1].type == usize,
                         .params = callback_params,
-                        .ref = callbackNameForPath(types.items, @typeName(T)),
+                        .ref = registeredTypeName(declaration, T, .callback) orelse callbackNameForPath(types.items, @typeName(T)),
                         .@"return" = callback_return,
                     } };
                 }
-                const name = opaqueNameForPath(types.items, @typeName(info.child)) orelse
+                const name = registeredTypeName(declaration, info.child, .handle) orelse opaqueNameForPath(types.items, @typeName(info.child)) orelse
                     return missingOpaqueType(@typeName(info.child), context);
                 break :blk .{ .opaque_ptr = .{
                     .@"const" = info.is_const,
@@ -812,7 +814,7 @@ fn typeNode(
                     "zigo supports slices, pointers to declared opaque types, and `[*:0]const u8` sentinel strings; mutable or non-zero-sentinel many pointers are unsupported, at " ++ context,
                 );
                 const element = try allocator.create(semantic.TypeNode);
-                element.* = try typeNode(allocator, info.child, types, context ++ " (slice element)");
+                element.* = try typeNode(allocator, declaration, info.child, types, context ++ " (slice element)");
                 break :blk .{ .slice = .{
                     .@"const" = true,
                     .element = element,
@@ -840,7 +842,7 @@ fn typeNode(
         .optional => |info| blk: {
             const child = @typeInfo(info.child);
             if (child == .pointer and child.pointer.size == .one and @typeInfo(child.pointer.child) != .@"fn") {
-                const name = opaqueNameForPath(types.items, @typeName(child.pointer.child)) orelse
+                const name = registeredTypeName(declaration, child.pointer.child, .handle) orelse opaqueNameForPath(types.items, @typeName(child.pointer.child)) orelse
                     return missingOpaqueType(@typeName(child.pointer.child), context);
                 break :blk .{ .opaque_ptr = .{
                     .@"const" = child.pointer.is_const,
@@ -863,12 +865,12 @@ fn typeNode(
                 "zigo supports optionals on pointers to declared opaque types, bool, integers, floats, enums, extern structs, and slices, at " ++ context,
             );
             const child_node = try allocator.create(semantic.TypeNode);
-            child_node.* = try typeNode(allocator, info.child, types, context ++ " (optional child)");
+            child_node.* = try typeNode(allocator, declaration, info.child, types, context ++ " (optional child)");
             break :blk .{ .optional = .{ .child = child_node } };
         },
         .error_union => |info| blk: {
             const payload = try allocator.create(semantic.TypeNode);
-            payload.* = try typeNode(allocator, info.payload, types, context ++ " (error payload)");
+            payload.* = try typeNode(allocator, declaration, info.payload, types, context ++ " (error payload)");
             const reflected_errors = @typeInfo(info.error_set).error_set;
             const names = if (reflected_errors) |errors| names: {
                 const result = try allocator.alloc([]const u8, errors.len);
@@ -882,43 +884,43 @@ fn typeNode(
             } };
         },
         .@"enum" => blk: {
-            // A registered entry is found by Zig path, so an enum the binding
-            // named keeps that name wherever a signature reaches it. Only a
-            // type nobody registered is named from `@typeName`.
-            for (types.items) |declaration| {
-                if (declaration.kind == .@"enum" and std.mem.eql(u8, declaration.zig_path orelse "", @typeName(T))) {
-                    break :blk .{ .@"enum" = .{ .ref = declaration.name } };
-                }
-            }
+            // Registered identity is the comptime type, not `@typeName`: Zig
+            // may truncate generated type names so distinct enums share one.
+            if (comptime registeredTypeName(declaration, T, .enumeration)) |name|
+                break :blk .{ .@"enum" = .{ .ref = name } };
             const name = shortTypeName(@typeName(T));
             var exists = false;
-            for (types.items) |declaration| {
-                if (std.mem.eql(u8, declaration.name, name)) exists = true;
+            for (types.items) |type_declaration| {
+                if (std.mem.eql(u8, type_declaration.name, name)) exists = true;
             }
-            if (!exists) try appendEnum(allocator, types, T, name, false);
+            if (!exists) try appendEnum(allocator, types, declaration, T, name, false, @typeName(T));
             break :blk .{ .@"enum" = .{ .ref = name } };
         },
         .@"struct" => blk: {
+            if (comptime registeredTypeName(declaration, T, .value)) |registered_name|
+                break :blk .{ .value_struct = .{ .ref = registered_name } };
             const name = shortTypeName(@typeName(T));
             var exists = false;
-            for (types.items) |declaration| {
-                if (std.mem.eql(u8, declaration.zig_path orelse "", @typeName(T))) {
+            for (types.items) |type_declaration| {
+                if (std.mem.eql(u8, type_declaration.zig_path orelse "", @typeName(T))) {
                     exists = true;
                     break;
                 }
             }
-            if (!exists) try appendValueStruct(allocator, types, T, name);
+            if (!exists) try appendValueStruct(allocator, types, declaration, T, name, @typeName(T));
             break :blk .{ .value_struct = .{ .ref = name } };
         },
         .@"union" => blk: {
+            if (comptime registeredTypeName(declaration, T, .tagged_union)) |registered_name|
+                break :blk .{ .value_struct = .{ .ref = registered_name } };
             const name = shortTypeName(@typeName(T));
-            for (types.items) |declaration| {
-                if (declaration.kind == .tagged_union and std.mem.eql(u8, declaration.zig_path orelse "", @typeName(T))) {
-                    break :blk .{ .value_struct = .{ .ref = declaration.name } };
+            for (types.items) |type_declaration| {
+                if (type_declaration.kind == .tagged_union and std.mem.eql(u8, type_declaration.zig_path orelse "", @typeName(T))) {
+                    break :blk .{ .value_struct = .{ .ref = type_declaration.name } };
                 }
             }
             if (@typeInfo(T).@"union".tag_type == null) @compileError("zigo cannot reflect an untagged union, at " ++ context);
-            try appendTaggedUnion(allocator, types, T, name, .projection);
+            try appendTaggedUnion(allocator, types, declaration, T, name, .projection, @typeName(T));
             break :blk .{ .value_struct = .{ .ref = name } };
         },
         else => @compileError("zigo supports scalars, enums, slices, opaque pointers, structs, and error unions, at " ++ context),
@@ -1035,6 +1037,46 @@ fn receiverNameAt(comptime info: std.builtin.Type.Fn, comptime declaration: anyt
     return null;
 }
 
+/// The public name attached to an exact registered type. Type equality is the
+/// identity source; `@typeName` is only a display path and can be truncated for
+/// comptime-generated types.
+const RegisteredUse = enum { callback, enumeration, handle, tagged_union, value };
+
+fn registeredTypeName(comptime declaration: anytype, comptime T: type, comptime use: RegisteredUse) ?[]const u8 {
+    if (@hasField(@TypeOf(declaration), "types")) {
+        inline for (declaration.types) |entry| {
+            const matches_repr = switch (use) {
+                .callback => entry.repr == .callback,
+                .enumeration => entry.repr == .enumeration,
+                .handle => isHandleRepr(entry.repr),
+                .tagged_union => entry.repr == .tagged_union,
+                .value => entry.repr == .value,
+            };
+            if (matches_repr and entry.type == T) return typeEntryName(entry);
+        }
+    }
+    return null;
+}
+
+/// Preserve the ordinary Zig path until two distinct registered types share
+/// it. At that point the registered name makes semantic.json paths unique and
+/// keeps reports and ABI comparisons deterministic without making paths the
+/// source of type identity again.
+fn registeredZigPath(
+    allocator: std.mem.Allocator,
+    comptime declaration: anytype,
+    comptime T: type,
+    name: []const u8,
+) ![]const u8 {
+    if (@hasField(@TypeOf(declaration), "types")) {
+        inline for (declaration.types) |entry| {
+            if (entry.type != T and std.mem.eql(u8, @typeName(entry.type), @typeName(T)))
+                return std.fmt.allocPrint(allocator, "{s}#{s}", .{ @typeName(T), name });
+        }
+    }
+    return @typeName(T);
+}
+
 /// The declared callback type whose structural name matches `path`. Two
 /// aliases of one signature are the same type to Zig, so the first declared
 /// one wins for both.
@@ -1075,14 +1117,16 @@ fn enumOpenOptIn(comptime entry: anytype) bool {
 fn appendEnum(
     allocator: std.mem.Allocator,
     types: *std.ArrayList(semantic.TypeDecl),
+    comptime declaration: anytype,
     comptime T: type,
     name: []const u8,
     open: bool,
+    zig_path: []const u8,
 ) !void {
     const info = @typeInfo(T).@"enum";
     const fields = try allocator.alloc(semantic.TypeField, info.fields.len);
     inline for (info.fields, 0..) |field, index| fields[index] = .{ .name = field.name, .value = @intCast(field.value) };
-    const tag_type = try typeNode(allocator, info.tag_type, types, "the tag type of enum `" ++ @typeName(T) ++ "`");
+    const tag_type = try typeNode(allocator, declaration, info.tag_type, types, "the tag type of enum `" ++ @typeName(T) ++ "`");
     try types.append(allocator, .{
         .exhaustive = info.is_exhaustive,
         .fields = fields,
@@ -1090,15 +1134,17 @@ fn appendEnum(
         .name = name,
         .open = if (open) true else null,
         .tag_type = tag_type,
-        .zig_path = @typeName(T),
+        .zig_path = zig_path,
     });
 }
 
 fn appendValueStruct(
     allocator: std.mem.Allocator,
     types: *std.ArrayList(semantic.TypeDecl),
+    comptime declaration: anytype,
     comptime T: type,
     name: []const u8,
+    zig_path: []const u8,
 ) !void {
     const info = @typeInfo(T).@"struct";
     const index = types.items.len;
@@ -1110,7 +1156,7 @@ fn appendValueStruct(
             .auto => null,
         },
         .name = name,
-        .zig_path = @typeName(T),
+        .zig_path = zig_path,
     });
     // Reflecting a field can append further types, so the declaration is
     // updated by index rather than through a held pointer.
@@ -1120,6 +1166,7 @@ fn appendValueStruct(
             .name = field.name,
             .type = try typeNode(
                 allocator,
+                declaration,
                 field.type,
                 types,
                 "`" ++ comptime shortTypeName(@typeName(T)) ++ "` field `" ++ field.name ++ "`",
@@ -1132,9 +1179,11 @@ fn appendValueStruct(
 fn appendTaggedUnion(
     allocator: std.mem.Allocator,
     types: *std.ArrayList(semantic.TypeDecl),
+    comptime declaration: anytype,
     comptime T: type,
     name: []const u8,
     access: semantic.Access,
+    zig_path: []const u8,
 ) !void {
     const info = @typeInfo(T).@"union";
     const Tag = info.tag_type orelse @compileError("zigo cannot reflect an untagged union");
@@ -1148,7 +1197,7 @@ fn appendTaggedUnion(
         // The default strategy stays absent from semantic.json, so a type that
         // does not choose one leaves its document unchanged.
         .access = if (access == .projection) null else access,
-        .zig_path = @typeName(T),
+        .zig_path = zig_path,
     });
 
     const fields = try allocator.alloc(semantic.TypeField, info.fields.len);
@@ -1157,6 +1206,7 @@ fn appendTaggedUnion(
             .name = field.name,
             .type = try typeNode(
                 allocator,
+                declaration,
                 field.type,
                 types,
                 "`" ++ comptime shortTypeName(@typeName(T)) ++ "` variant `" ++ field.name ++ "`",
@@ -1171,7 +1221,7 @@ fn appendTaggedUnion(
     inline for (tag_info.fields, 0..) |field, index| {
         tag_fields[index] = .{ .name = field.name, .value = @intCast(field.value) };
     }
-    const integer_tag = try typeNode(allocator, tag_info.tag_type, types, "`" ++ comptime shortTypeName(@typeName(Tag)) ++ "` tag type");
+    const integer_tag = try typeNode(allocator, declaration, tag_info.tag_type, types, "`" ++ comptime shortTypeName(@typeName(Tag)) ++ "` tag type");
     try types.append(allocator, .{
         .exhaustive = tag_info.is_exhaustive,
         .fields = tag_fields,
@@ -1739,8 +1789,9 @@ test "an optional opaque pointer parameter reflects as a nullable handle" {
 /// produced it, so its last dotted segment is not a name at all. This is the
 /// shape `lib.Enum(...)` has in real third-party Zig libraries.
 fn GeneratedEnum(comptime names: []const []const u8) type {
-    _ = names;
-    return enum(u8) { block, bar };
+    comptime var values: [names.len]u8 = undefined;
+    inline for (&values, 0..) |*value, index| value.* = index;
+    return @Enum(u8, .exhaustive, names, &values);
 }
 
 const generated_enum_names = [_][]const u8{ "block", "bar", "underline", "hollow" };
@@ -1767,6 +1818,37 @@ test "a registered enum keeps its name wherever a signature reaches it" {
     // The signature must reach the registered declaration by Zig path rather
     // than appending a second one named from `@typeName`.
     try std.testing.expectEqualStrings("CursorStyle", document.functions[0].@"return".@"enum".ref);
+}
+
+test "registered generated enums with the same @typeName keep distinct identity" {
+    const first_names = [_][]const u8{ "block", "bar", "underline", "hollow" };
+    const second_names = [_][]const u8{ "g0", "g1", "g2", "g3" };
+    const CursorStyle = GeneratedEnum(first_names[0..4]);
+    const CharsetSlot = GeneratedEnum(second_names[0..4]);
+    comptime std.debug.assert(std.mem.eql(u8, @typeName(CursorStyle), @typeName(CharsetSlot)));
+
+    const Fixture = struct {
+        pub fn configure(slot: CharsetSlot, style: CursorStyle) void {
+            _ = slot;
+            _ = style;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{
+            .{ .name = "CursorStyle", .type = CursorStyle, .repr = .enumeration },
+            .{ .name = "CharsetSlot", .type = CharsetSlot, .repr = .enumeration },
+        },
+        .functions = .{.{ .path = "root.configure", .params = .{ "slot", "style" } }},
+    }, "terminal", "zg");
+
+    try std.testing.expectEqualStrings("CharsetSlot", document.functions[0].params[0].type.@"enum".ref);
+    try std.testing.expectEqualStrings("CursorStyle", document.functions[0].params[1].type.@"enum".ref);
+    try std.testing.expect(!std.mem.eql(u8, document.types[0].zig_path.?, document.types[1].zig_path.?));
+    try std.testing.expect(std.mem.endsWith(u8, document.types[0].zig_path.?, "#CursorStyle"));
+    try std.testing.expect(std.mem.endsWith(u8, document.types[1].zig_path.?, "#CharsetSlot"));
 }
 
 test "a registered non-exhaustive enum records an explicit open opt-in" {

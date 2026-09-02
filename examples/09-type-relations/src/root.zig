@@ -60,13 +60,17 @@ pub const Accumulator = struct {
 /// is the shape ghostty's `lib.Enum(...)` has. Nothing here is a Go identifier,
 /// so the binding registers the type and supplies the name.
 pub fn Enum(comptime names: []const []const u8) type {
-    _ = names;
-    return enum(u8) { block, bar, underline };
+    comptime var values: [names.len]u8 = undefined;
+    inline for (&values, 0..) |*value, index| value.* = index;
+    return @Enum(u8, .exhaustive, names, &values);
 }
 
-const style_names = [_][]const u8{ "block", "bar", "underline", "hollow" };
+pub const CursorStyle = Enum(([_][]const u8{ "block", "bar", "underline" })[0..3]);
+pub const CharsetSlot = Enum(([_][]const u8{ "block", "bar", "g2" })[0..3]);
 
-pub const CursorStyle = Enum(style_names[0..3]);
+pub fn configureStyles(slot: CharsetSlot, style: CursorStyle) bool {
+    return slot == .block and style != .block;
+}
 
 /// Terminal input can carry erase modes newer than this library knows. The
 /// catch-all keeps converting those bytes with `@enumFromInt` well-defined.
@@ -239,6 +243,7 @@ test "a generated enum still behaves like an ordinary Zig enum" {
     try std.testing.expectEqual(CursorStyle.block, defaultCursorStyle());
     try std.testing.expect(cursorStyleBlinks(.bar));
     try std.testing.expect(!cursorStyleBlinks(.block));
+    try std.testing.expect(configureStyles(.block, .bar));
 }
 
 test "a non-exhaustive enum accepts unnamed values" {

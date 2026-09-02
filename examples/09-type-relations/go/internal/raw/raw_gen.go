@@ -84,6 +84,11 @@ func CursorStyleBlinks(style uint8) uint8 {
 	return uint8(C.zg_cursor_style_blinks(C.uint8_t(style)))
 }
 
+// ConfigureStyles calls the generated C ABI wrapper for zg_configure_styles.
+func ConfigureStyles(slot uint8, style uint8) uint8 {
+	return uint8(C.zg_configure_styles(C.uint8_t(slot), C.uint8_t(style)))
+}
+
 // EchoEraseDisplay calls the generated C ABI wrapper for zg_echo_erase_display.
 func EchoEraseDisplay(value uint8) uint8 {
 	return uint8(C.zg_echo_erase_display(C.uint8_t(value)))
