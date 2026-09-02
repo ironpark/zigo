@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T14:10:41Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `func (t *Terminal) NewStream() (*Stream, error)`가 생성되어 cgo·purego 통과, 커밋.
 > NEXT: none

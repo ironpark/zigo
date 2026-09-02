@@ -4,7 +4,7 @@ depends_on:
 - "75-method-constructors-and-static-link-inputs#1"
 - "75-method-constructors-and-static-link-inputs#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 문서에 남은 옛 안내 없음, `zig build test` 녹색, 커밋.
 > NEXT: none
