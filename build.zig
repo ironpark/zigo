@@ -313,6 +313,8 @@ pub fn build(b: *std.Build) void {
         "tests/generator_cases/optional_slice_purego/expected",
         "tests/generator_cases/optional_return_checks/expected",
         "tests/generator_cases/optional_return_checks_purego/expected",
+        "tests/generator_cases/open_enum/expected",
+        "tests/generator_cases/open_enum_purego/expected",
         "tests/generator_cases/receiver_name_clash/expected",
         "tests/generator_cases/receiver_name_clash_purego/expected",
         "tests/generator_cases/root_constructor/expected",

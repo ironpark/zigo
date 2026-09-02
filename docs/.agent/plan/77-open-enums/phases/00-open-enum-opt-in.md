@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 골든·단위 테스트 통과, 기존 예제 `go-check` 변화 없음, 커밋.
 > NEXT: none

@@ -1,0 +1,41 @@
+{
+  "functions": [
+    {
+      "name": "echo",
+      "params": [{"name": "value", "type": {"kind": "enum", "ref": "EraseDisplay"}}],
+      "return": {"kind": "enum", "ref": "EraseDisplay"},
+      "symbol": "zg_echo"
+    },
+    {
+      "name": "configure",
+      "params": [{"name": "config", "type": {"kind": "value_struct", "ref": "Config"}}],
+      "return": {"kind": "void"},
+      "symbol": "zg_configure"
+    },
+    {
+      "name": "acceptValues",
+      "params": [{"name": "values", "type": {"const": true, "element": {"kind": "enum", "ref": "EraseDisplay"}, "kind": "slice"}}],
+      "return": {"kind": "void"},
+      "symbol": "zg_accept_values"
+    }
+  ],
+  "package": "openenum",
+  "prefix": "zg",
+  "types": [
+    {
+      "exhaustive": false,
+      "fields": [{"name": "below", "value": 0}, {"name": "above", "value": 1}],
+      "kind": "enum",
+      "name": "EraseDisplay",
+      "open": true,
+      "tag_type": {"bits": 8, "kind": "int", "signed": false}
+    },
+    {
+      "fields": [{"name": "erase", "type": {"kind": "enum", "ref": "EraseDisplay"}}],
+      "kind": "value_struct",
+      "layout": "extern",
+      "name": "Config"
+    }
+  ],
+  "zig_version": "0.16.0"
+}

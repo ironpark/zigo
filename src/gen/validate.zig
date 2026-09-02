@@ -265,12 +265,19 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .hint = "the shim adapter lives on the call stack, so a stream cannot be stored; take the stream as a parameter of the function that uses it",
             };
         }
-        if (declaration.kind == .@"enum" and !declaration.exhaustive) return .{
+        if (declaration.kind == .@"enum" and declaration.open == true and declaration.exhaustive) return .{
+            .severity = .@"error",
+            .code = "ZIGO029",
+            .message = "open-enum opt-in applied to an exhaustive enum",
+            .site = .{ .path = "semantic.json", .declaration = declaration.name },
+            .hint = "remove `.exhaustive = false`, or make the Zig enum non-exhaustive",
+        };
+        if (declaration.kind == .@"enum" and !declaration.exhaustive and declaration.open != true) return .{
             .severity = .@"error",
             .code = "ZIGO002",
             .message = "cannot expose a non-exhaustive enum",
             .site = .{ .path = "semantic.json", .declaration = declaration.name },
-            .hint = "make the enum exhaustive before exposing it",
+            .hint = "make the enum exhaustive, or register it with `.exhaustive = false`",
         };
         if (declaration.kind == .tagged_union and !taggedUnionAccessorsSupported(document, declaration)) return .{
             .severity = .@"error",
@@ -1461,7 +1468,13 @@ test "implemented diagnostic snapshots are stable" {
             .prefix = "zg",
             .types = &.{.{ .exhaustive = false, .kind = .@"enum", .name = "Open" }},
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO002]: cannot expose a non-exhaustive enum\n  --> semantic.json (Open)\n  hint: make the enum exhaustive before exposing it\n" },
+        }, .snapshot = "error[ZIGO002]: cannot expose a non-exhaustive enum\n  --> semantic.json (Open)\n  hint: make the enum exhaustive, or register it with `.exhaustive = false`\n" },
+        .{ .document = .{
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{.{ .kind = .@"enum", .name = "Closed", .open = true }},
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO029]: open-enum opt-in applied to an exhaustive enum\n  --> semantic.json (Closed)\n  hint: remove `.exhaustive = false`, or make the Zig enum non-exhaustive\n" },
         .{ .document = .{
             .functions = &.{.{
                 .name = "configure",

@@ -1,0 +1,5 @@
+{
+  "package": "openenum",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/openenum"
+}

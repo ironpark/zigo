@@ -439,6 +439,9 @@ pub const TypeDecl = struct {
     kind: TypeKind,
     layout: ?Layout = null,
     name: []const u8,
+    /// Present only when the binding explicitly opts a non-exhaustive Zig
+    /// enum into the public surface with `.exhaustive = false`.
+    open: ?bool = null,
     tag_type: ?TypeNode = null,
     zig_path: ?[]const u8 = null,
 

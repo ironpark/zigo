@@ -47,7 +47,7 @@ pub fn reflect(
                 // built by a comptime function has a `@typeName` that ends in
                 // the expression that built it, and no name of its own.
                 .enumeration => switch (info) {
-                    .@"enum" => try appendEnum(allocator, &types, T, type_name),
+                    .@"enum" => try appendEnum(allocator, &types, T, type_name, comptime enumOpenOptIn(entry)),
                     else => @compileError("zigo enumeration type entries must name an enum"),
                 },
                 .tagged_union => switch (info) {
@@ -895,7 +895,7 @@ fn typeNode(
             for (types.items) |declaration| {
                 if (std.mem.eql(u8, declaration.name, name)) exists = true;
             }
-            if (!exists) try appendEnum(allocator, types, T, name);
+            if (!exists) try appendEnum(allocator, types, T, name, false);
             break :blk .{ .@"enum" = .{ .ref = name } };
         },
         .@"struct" => blk: {
@@ -1058,6 +1058,15 @@ fn isHandleRepr(comptime repr: anytype) bool {
     return repr == .@"opaque" or repr == .tagged_union;
 }
 
+/// `.exhaustive = false` on an enum registration is an assertion that the
+/// binding deliberately accepts values outside the named tags. The reflected
+/// type still records whether Zig itself is exhaustive; validation compares
+/// the assertion with that fact.
+fn enumOpenOptIn(comptime entry: anytype) bool {
+    if (!@hasField(@TypeOf(entry), "exhaustive")) return false;
+    return !entry.exhaustive;
+}
+
 /// A value struct carries its field types into the IR. Validation needs them
 /// to decide whether the struct can cross the C ABI, and lowering needs them
 /// to mirror the struct in the C header.
@@ -1068,6 +1077,7 @@ fn appendEnum(
     types: *std.ArrayList(semantic.TypeDecl),
     comptime T: type,
     name: []const u8,
+    open: bool,
 ) !void {
     const info = @typeInfo(T).@"enum";
     const fields = try allocator.alloc(semantic.TypeField, info.fields.len);
@@ -1078,6 +1088,7 @@ fn appendEnum(
         .fields = fields,
         .kind = .@"enum",
         .name = name,
+        .open = if (open) true else null,
         .tag_type = tag_type,
         .zig_path = @typeName(T),
     });
@@ -1756,6 +1767,28 @@ test "a registered enum keeps its name wherever a signature reaches it" {
     // The signature must reach the registered declaration by Zig path rather
     // than appending a second one named from `@typeName`.
     try std.testing.expectEqualStrings("CursorStyle", document.functions[0].@"return".@"enum".ref);
+}
+
+test "a registered non-exhaustive enum records an explicit open opt-in" {
+    const EraseDisplay = enum(u8) { below, above, _ };
+    const Fixture = struct {
+        pub fn echo(value: EraseDisplay) EraseDisplay {
+            return value;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{.{ .name = "EraseDisplay", .type = EraseDisplay, .repr = .enumeration, .exhaustive = false }},
+        .functions = .{.{ .path = "root.echo", .params = .{"value"} }},
+    }, "terminal", "zg");
+
+    try std.testing.expect(!document.types[0].exhaustive);
+    try std.testing.expectEqual(@as(?bool, true), document.types[0].open);
+    const bytes = try document.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"open\": true") != null);
 }
 
 test "an unregistered generated enum is named from @typeName and rejected downstream" {

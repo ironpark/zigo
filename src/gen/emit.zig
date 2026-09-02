@@ -5401,7 +5401,11 @@ fn writeBorrowedResult(
 fn renderGoEnums(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
     for (program.types) |declaration| {
         if (declaration.kind != .@"enum") continue;
-        try writer.print("// {s} represents the corresponding Zig enum.\ntype {s} ", .{ declaration.name, declaration.name });
+        if (declaration.open == true) {
+            try writer.print("// {s} represents the corresponding Zig open enum; values outside the named constants are valid.\ntype {s} ", .{ declaration.name, declaration.name });
+        } else {
+            try writer.print("// {s} represents the corresponding Zig enum.\ntype {s} ", .{ declaration.name, declaration.name });
+        }
         try writePublicGoType(writer, declaration.tag_type.?);
         try writer.writeAll("\n\n");
         // One const block per enum. Every constant keeps its own leading
@@ -6469,6 +6473,29 @@ fn programHasStreams(program: abi.Program) bool {
         for (function.origin.params) |parameter| if (parameter.type == .io_stream) return true;
     }
     return false;
+}
+
+test "open enum docs permit values outside named constants" {
+    const document: semantic.Semantic = .{
+        .package = "terminal",
+        .prefix = "zg",
+        .types = &.{.{
+            .exhaustive = false,
+            .fields = &.{.{ .name = "below", .value = 0 }},
+            .kind = .@"enum",
+            .name = "EraseDisplay",
+            .open = true,
+            .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+        }},
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try @import("lower.zig").semanticDocument(arena.allocator(), document, "terminal", "zg", &.{});
+    const enums = try renderForTest(renderPublicEnumsFile, program);
+    defer std.testing.allocator.free(enums);
+    try std.testing.expect(std.mem.indexOf(u8, enums, "// EraseDisplay represents the corresponding Zig open enum; values outside the named constants are valid.") != null);
+    try std.testing.expect(std.mem.indexOf(u8, enums, "return \"EraseDisplay(\" + strconv.Itoa(int(value)) + \")\"") != null);
 }
 
 fn programHasStreamDirection(program: abi.Program, direction: semantic.StreamDirection) bool {

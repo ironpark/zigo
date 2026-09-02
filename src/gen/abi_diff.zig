@@ -373,7 +373,7 @@ const TypeChange = enum { equal, appended, snapshot_appended, access_changed, br
 /// symbols are per variant. A value snapshot union carries its variants in one
 /// struct, so the same append changes that struct's size and layout.
 fn classifyTypeChange(lhs: semantic.TypeDecl, rhs: semantic.TypeDecl) TypeChange {
-    if (lhs.kind != rhs.kind or lhs.layout != rhs.layout or lhs.exhaustive != rhs.exhaustive) return .breaking;
+    if (lhs.kind != rhs.kind or lhs.layout != rhs.layout or lhs.exhaustive != rhs.exhaustive or lhs.open != rhs.open) return .breaking;
     if (lhs.accessStrategy() != rhs.accessStrategy()) return .access_changed;
     if ((lhs.tag_type == null) != (rhs.tag_type == null)) return .breaking;
     if (lhs.tag_type) |tag| if (!typeEqual(tag, rhs.tag_type.?)) return .breaking;
@@ -530,6 +530,37 @@ test "tagged union variant payload changes are breaking" {
     defer report.deinit(std.testing.allocator);
     try std.testing.expect(report.hasBreaking());
     try std.testing.expectEqualStrings("Value", report.changes.items[0].subject);
+    try std.testing.expectEqualStrings("type definition changed", report.changes.items[0].detail);
+}
+
+test "changing an enum between exhaustive and open is breaking" {
+    const closed: semantic.Semantic = .{
+        .package = "terminal",
+        .prefix = "zg",
+        .types = &.{.{
+            .fields = &.{.{ .name = "below", .value = 0 }},
+            .kind = .@"enum",
+            .name = "EraseDisplay",
+            .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+        }},
+        .zig_version = "0.16.0",
+    };
+    const open: semantic.Semantic = .{
+        .package = "terminal",
+        .prefix = "zg",
+        .types = &.{.{
+            .exhaustive = false,
+            .fields = &.{.{ .name = "below", .value = 0 }},
+            .kind = .@"enum",
+            .name = "EraseDisplay",
+            .open = true,
+            .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+        }},
+        .zig_version = "0.16.0",
+    };
+    var report = try diff(std.testing.allocator, closed, open);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expect(report.hasBreaking());
     try std.testing.expectEqualStrings("type definition changed", report.changes.items[0].detail);
 }
 
