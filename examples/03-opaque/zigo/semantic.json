@@ -53,6 +53,23 @@
       "symbol": "zg_add"
     },
     {
+      "doc": "crash panics inside a method: what leaves a handle poisoned.",
+      "name": "crash",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Context",
+      "return": {
+        "error_set": [
+          "OutOfMemory"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "void"
+        }
+      },
+      "symbol": "zg_crash"
+    },
+    {
       "name": "deinit",
       "ownership": "borrowed",
       "params": [],

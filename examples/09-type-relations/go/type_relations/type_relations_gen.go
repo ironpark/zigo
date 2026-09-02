@@ -23,30 +23,24 @@ func NewCounter(initial int64) (*Counter, error) {
 // Get invokes the bound Zig Counter.get operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (c *Counter) Get() (int64, error) {
-	if c != nil {
-		c.mu.RLock()
-		defer c.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(c)
 	ptr, err := zigoCheckedPointer("Counter.Get receiver", c)
 	if err != nil {
 		return 0, err
 	}
+	defer c.zigoRelease()
 	return raw.CounterGet(ptr), nil
 }
 
 // Add invokes the bound Zig Counter.add operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (c *Counter) Add(delta int64) (int64, error) {
-	if c != nil {
-		c.mu.RLock()
-		defer c.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(c)
 	ptr, err := zigoCheckedPointer("Counter.Add receiver", c)
 	if err != nil {
 		return 0, err
 	}
+	defer c.zigoRelease()
 	return raw.CounterAdd(ptr, delta), nil
 }
 
@@ -66,39 +60,30 @@ func NewAccumulator() (*Accumulator, error) {
 // Absorb adds the current value of another exposed opaque type.
 // It returns *HandleError if a required handle is nil or closed.
 func (a *Accumulator) Absorb(counter *Counter) (int64, error) {
-	if a != nil {
-		a.mu.RLock()
-		defer a.mu.RUnlock()
-	}
-	if counter != nil {
-		counter.mu.RLock()
-		defer counter.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(a)
 	defer runtime.KeepAlive(counter)
 	ptr, err := zigoCheckedPointer("Accumulator.Absorb receiver", a)
 	if err != nil {
 		return 0, err
 	}
+	defer a.zigoRelease()
 	counterPtr, err := zigoCheckedPointer("Accumulator.Absorb parameter counter", counter)
 	if err != nil {
 		return 0, err
 	}
+	defer counter.zigoRelease()
 	return raw.AccumulatorAbsorb(ptr, counterPtr), nil
 }
 
 // Total invokes the bound Zig Accumulator.total operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (a *Accumulator) Total() (int64, error) {
-	if a != nil {
-		a.mu.RLock()
-		defer a.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(a)
 	ptr, err := zigoCheckedPointer("Accumulator.Total receiver", a)
 	if err != nil {
 		return 0, err
 	}
+	defer a.zigoRelease()
 	return raw.AccumulatorTotal(ptr), nil
 }
 

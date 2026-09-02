@@ -36,15 +36,12 @@ func NewChild(value int32) (*Child, error) {
 // Get invokes the bound Zig Child.get operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (c *Child) Get() (int32, error) {
-	if c != nil {
-		c.mu.RLock()
-		defer c.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(c)
 	ptr, err := zigoCheckedPointer("Child.Get receiver", c)
 	if err != nil {
 		return 0, err
 	}
+	defer c.zigoRelease()
 	return raw.ChildGet(ptr), nil
 }
 
@@ -64,15 +61,12 @@ func NewValue(initial int64) (*Value, error) {
 // SetNone invokes the bound Zig Value.setNone operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (v *Value) SetNone() error {
-	if v != nil {
-		v.mu.RLock()
-		defer v.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(v)
 	ptr, err := zigoCheckedPointer("Value.SetNone receiver", v)
 	if err != nil {
 		return err
 	}
+	defer v.zigoRelease()
 	raw.ValueSetNone(ptr)
 	return nil
 }
@@ -80,15 +74,12 @@ func (v *Value) SetNone() error {
 // SetFlag invokes the bound Zig Value.setFlag operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (v *Value) SetFlag(flag bool) error {
-	if v != nil {
-		v.mu.RLock()
-		defer v.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(v)
 	ptr, err := zigoCheckedPointer("Value.SetFlag receiver", v)
 	if err != nil {
 		return err
 	}
+	defer v.zigoRelease()
 	raw.ValueSetFlag(ptr, boolToUint8(flag))
 	return nil
 }
@@ -96,15 +87,12 @@ func (v *Value) SetFlag(flag bool) error {
 // SetMode invokes the bound Zig Value.setMode operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (v *Value) SetMode(mode Mode) error {
-	if v != nil {
-		v.mu.RLock()
-		defer v.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(v)
 	ptr, err := zigoCheckedPointer("Value.SetMode receiver", v)
 	if err != nil {
 		return err
 	}
+	defer v.zigoRelease()
 	raw.ValueSetMode(ptr, uint8(mode))
 	return nil
 }
@@ -112,15 +100,12 @@ func (v *Value) SetMode(mode Mode) error {
 // UsePresetSamples invokes the bound Zig Value.usePresetSamples operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (v *Value) UsePresetSamples() error {
-	if v != nil {
-		v.mu.RLock()
-		defer v.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(v)
 	ptr, err := zigoCheckedPointer("Value.UsePresetSamples receiver", v)
 	if err != nil {
 		return err
 	}
+	defer v.zigoRelease()
 	raw.ValueUsePresetSamples(ptr)
 	return nil
 }
@@ -128,15 +113,12 @@ func (v *Value) UsePresetSamples() error {
 // UseEmptySamples invokes the bound Zig Value.useEmptySamples operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (v *Value) UseEmptySamples() error {
-	if v != nil {
-		v.mu.RLock()
-		defer v.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(v)
 	ptr, err := zigoCheckedPointer("Value.UseEmptySamples receiver", v)
 	if err != nil {
 		return err
 	}
+	defer v.zigoRelease()
 	raw.ValueUseEmptySamples(ptr)
 	return nil
 }
@@ -144,15 +126,12 @@ func (v *Value) UseEmptySamples() error {
 // UseMutableSamples invokes the bound Zig Value.useMutableSamples operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (v *Value) UseMutableSamples() error {
-	if v != nil {
-		v.mu.RLock()
-		defer v.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(v)
 	ptr, err := zigoCheckedPointer("Value.UseMutableSamples receiver", v)
 	if err != nil {
 		return err
 	}
+	defer v.zigoRelease()
 	raw.ValueUseMutableSamples(ptr)
 	return nil
 }
@@ -160,24 +139,18 @@ func (v *Value) UseMutableSamples() error {
 // SetChild invokes the bound Zig Value.setChild operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (v *Value) SetChild(child *Child) error {
-	if v != nil {
-		v.mu.RLock()
-		defer v.mu.RUnlock()
-	}
-	if child != nil {
-		child.mu.RLock()
-		defer child.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(v)
 	defer runtime.KeepAlive(child)
 	ptr, err := zigoCheckedPointer("Value.SetChild receiver", v)
 	if err != nil {
 		return err
 	}
+	defer v.zigoRelease()
 	childPtr, err := zigoCheckedPointer("Value.SetChild parameter child", child)
 	if err != nil {
 		return err
 	}
+	defer child.zigoRelease()
 	raw.ValueSetChild(ptr, childPtr)
 	return nil
 }
@@ -186,15 +159,12 @@ func (v *Value) SetChild(child *Child) error {
 // The returned reference remains valid only while its parent handle remains open.
 // It returns *HandleError if a required handle is nil or closed.
 func (v *Value) Borrow() (*ValueRef, error) {
-	if v != nil {
-		v.mu.RLock()
-		defer v.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(v)
 	ptr, err := zigoCheckedPointer("Value.Borrow receiver", v)
 	if err != nil {
 		return nil, err
 	}
+	defer v.zigoRelease()
 	result := raw.ValueBorrow(ptr)
 	return &ValueRef{ptr: result, parent: v}, nil
 }
@@ -215,15 +185,12 @@ func NewSignal(initial uint32) (*Signal, error) {
 // SetIdle invokes the bound Zig Signal.setIdle operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (s *Signal) SetIdle() error {
-	if s != nil {
-		s.mu.RLock()
-		defer s.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.SetIdle receiver", s)
 	if err != nil {
 		return err
 	}
+	defer s.zigoRelease()
 	raw.SignalSetIdle(ptr)
 	return nil
 }
@@ -231,15 +198,12 @@ func (s *Signal) SetIdle() error {
 // SetTicks invokes the bound Zig Signal.setTicks operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (s *Signal) SetTicks(ticks uint32) error {
-	if s != nil {
-		s.mu.RLock()
-		defer s.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.SetTicks receiver", s)
 	if err != nil {
 		return err
 	}
+	defer s.zigoRelease()
 	raw.SignalSetTicks(ptr, ticks)
 	return nil
 }
@@ -247,15 +211,12 @@ func (s *Signal) SetTicks(ticks uint32) error {
 // SetLevel invokes the bound Zig Signal.setLevel operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (s *Signal) SetLevel(level float64) error {
-	if s != nil {
-		s.mu.RLock()
-		defer s.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.SetLevel receiver", s)
 	if err != nil {
 		return err
 	}
+	defer s.zigoRelease()
 	raw.SignalSetLevel(ptr, level)
 	return nil
 }
@@ -263,15 +224,12 @@ func (s *Signal) SetLevel(level float64) error {
 // SetOffset invokes the bound Zig Signal.setOffset operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (s *Signal) SetOffset(offset int16) error {
-	if s != nil {
-		s.mu.RLock()
-		defer s.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.SetOffset receiver", s)
 	if err != nil {
 		return err
 	}
+	defer s.zigoRelease()
 	raw.SignalSetOffset(ptr, offset)
 	return nil
 }
@@ -279,15 +237,12 @@ func (s *Signal) SetOffset(offset int16) error {
 // SetMode invokes the bound Zig Signal.setMode operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (s *Signal) SetMode(mode Mode) error {
-	if s != nil {
-		s.mu.RLock()
-		defer s.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.SetMode receiver", s)
 	if err != nil {
 		return err
 	}
+	defer s.zigoRelease()
 	raw.SignalSetMode(ptr, uint8(mode))
 	return nil
 }
@@ -295,15 +250,12 @@ func (s *Signal) SetMode(mode Mode) error {
 // SetActive invokes the bound Zig Signal.setActive operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (s *Signal) SetActive(active bool) error {
-	if s != nil {
-		s.mu.RLock()
-		defer s.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.SetActive receiver", s)
 	if err != nil {
 		return err
 	}
+	defer s.zigoRelease()
 	raw.SignalSetActive(ptr, boolToUint8(active))
 	return nil
 }

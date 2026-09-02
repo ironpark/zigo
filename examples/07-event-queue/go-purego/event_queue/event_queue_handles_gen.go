@@ -12,23 +12,57 @@ import (
 // EventQueue is a caller-owned native handle. Call Close when it is no longer needed.
 type EventQueue struct {
 	ptr             unsafe.Pointer
-	mu              sync.RWMutex
+	mu              sync.Mutex
+	active          int
+	closed          bool
+	poison          *NativePanicError
 	callbackHandles []zigoCallbackHandle
 	cleanup         runtime.Cleanup
 }
 
-func (e *EventQueue) zigoPointer() unsafe.Pointer {
+// zigoAcquire pins e open for one native call and hands back its pointer;
+// the call ends with zigoRelease. A nil, closed, or poisoned handle is the error.
+func (e *EventQueue) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	if e == nil {
-		return nil
+		return nil, &HandleError{Operation: operation}
 	}
-	return e.ptr
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.closed || e.ptr == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	if e.poison != nil {
+		return nil, e.poison.poisoned(operation)
+	}
+	e.active++
+	return e.ptr, nil
 }
 
-func (e *EventQueue) zigoLocker() *sync.RWMutex {
+func (e *EventQueue) zigoRelease() {
 	if e == nil {
-		return nil
+		return
 	}
-	return &e.mu
+	e.mu.Lock()
+	e.active--
+	state, release := e.zigoTakeLocked()
+	e.mu.Unlock()
+	if release {
+		cleanupEventQueue(state)
+	}
+}
+
+// zigoPoison marks e unusable: a Zig panic unwound through native frames
+// without running their defers, so the state behind it is unknown.
+func (e *EventQueue) zigoPoison(cause *NativePanicError) {
+	if e == nil {
+		return
+	}
+	e.mu.Lock()
+	defer e.mu.Unlock()
+	if e.poison == nil {
+		e.poison = cause
+		e.cleanup.Stop()
+	}
 }
 
 type eventQueueCleanupState struct {
@@ -54,19 +88,40 @@ func cleanupEventQueue(state eventQueueCleanupState) {
 
 // Close releases the native EventQueue resources. It is safe to call more than once.
 // The error result is always nil; it exists so EventQueue satisfies io.Closer.
+// Close does not wait: a call still inside native keeps the resources until it
+// returns, and every call made after Close fails with *HandleError.
 func (e *EventQueue) Close() error {
 	if e == nil {
 		return nil
 	}
 	e.mu.Lock()
-	defer e.mu.Unlock()
-	if e.ptr == nil {
+	if e.closed {
+		e.mu.Unlock()
 		return nil
 	}
+	e.closed = true
 	e.cleanup.Stop()
-	cleanupEventQueue(eventQueueCleanupState{ptr: e.ptr, callbackHandles: e.callbackHandles})
-	e.ptr = nil
-	e.callbackHandles = nil
+	state, release := e.zigoTakeLocked()
+	e.mu.Unlock()
+	if release {
+		cleanupEventQueue(state)
+	}
 	runtime.KeepAlive(e)
 	return nil
+}
+
+// zigoTakeLocked hands out what is left to release once e is closed and no
+// call is inside native; mu must be held. A poisoned handle keeps its native
+// object: releasing state a panic left half-changed could fault, so it leaks.
+func (e *EventQueue) zigoTakeLocked() (eventQueueCleanupState, bool) {
+	if !e.closed || e.active != 0 || e.ptr == nil {
+		return eventQueueCleanupState{}, false
+	}
+	state := eventQueueCleanupState{ptr: e.ptr, callbackHandles: e.callbackHandles}
+	e.ptr = nil
+	e.callbackHandles = nil
+	if e.poison != nil {
+		state.ptr = nil
+	}
+	return state, true
 }

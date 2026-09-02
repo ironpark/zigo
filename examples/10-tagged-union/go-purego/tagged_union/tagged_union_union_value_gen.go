@@ -8,7 +8,6 @@ import (
 )
 
 func zigoValueTag(receiver zigoHandle) (ValueTag, error) {
-	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -16,9 +15,10 @@ func zigoValueTag(receiver zigoHandle) (ValueTag, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer receiver.zigoRelease()
 	result, status := raw.ValueProjectTag(ptr)
 	if status != zigoProjectionSuccess {
-		return 0, zigoProjectionError("Value.Tag", status)
+		return 0, zigoPoisonAfterPanic(zigoProjectionError("Value.Tag", status), receiver)
 	}
 	return ValueTag(result), nil
 }
@@ -36,7 +36,6 @@ func (v *ValueRef) Tag() (ValueTag, error) { return zigoValueTag(v) }
 func (v *ValueRef) MustTag() ValueTag { return zigoMust(zigoValueTag(v)) }
 
 func zigoValueAsInteger(receiver zigoHandle) (int64, bool, error) {
-	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -44,12 +43,13 @@ func zigoValueAsInteger(receiver zigoHandle) (int64, bool, error) {
 	if err != nil {
 		return 0, false, err
 	}
+	defer receiver.zigoRelease()
 	result, status := raw.ValueProjectInteger(ptr)
 	if status == zigoProjectionMismatch {
 		return 0, false, nil
 	}
 	if status != zigoProjectionSuccess {
-		return 0, false, zigoProjectionError("Value.AsInteger", status)
+		return 0, false, zigoPoisonAfterPanic(zigoProjectionError("Value.AsInteger", status), receiver)
 	}
 	return result, true, nil
 }
@@ -67,7 +67,6 @@ func (v *ValueRef) AsInteger() (int64, bool, error) { return zigoValueAsInteger(
 func (v *ValueRef) MustAsInteger() (int64, bool) { return zigoMustMatch(zigoValueAsInteger(v)) }
 
 func zigoValueAsFlag(receiver zigoHandle) (bool, bool, error) {
-	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -75,12 +74,13 @@ func zigoValueAsFlag(receiver zigoHandle) (bool, bool, error) {
 	if err != nil {
 		return false, false, err
 	}
+	defer receiver.zigoRelease()
 	result, status := raw.ValueProjectFlag(ptr)
 	if status == zigoProjectionMismatch {
 		return false, false, nil
 	}
 	if status != zigoProjectionSuccess {
-		return false, false, zigoProjectionError("Value.AsFlag", status)
+		return false, false, zigoPoisonAfterPanic(zigoProjectionError("Value.AsFlag", status), receiver)
 	}
 	return result != 0, true, nil
 }
@@ -98,7 +98,6 @@ func (v *ValueRef) AsFlag() (bool, bool, error) { return zigoValueAsFlag(v) }
 func (v *ValueRef) MustAsFlag() (bool, bool) { return zigoMustMatch(zigoValueAsFlag(v)) }
 
 func zigoValueAsMode(receiver zigoHandle) (Mode, bool, error) {
-	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -106,12 +105,13 @@ func zigoValueAsMode(receiver zigoHandle) (Mode, bool, error) {
 	if err != nil {
 		return 0, false, err
 	}
+	defer receiver.zigoRelease()
 	result, status := raw.ValueProjectMode(ptr)
 	if status == zigoProjectionMismatch {
 		return 0, false, nil
 	}
 	if status != zigoProjectionSuccess {
-		return 0, false, zigoProjectionError("Value.AsMode", status)
+		return 0, false, zigoPoisonAfterPanic(zigoProjectionError("Value.AsMode", status), receiver)
 	}
 	return Mode(result), true, nil
 }
@@ -129,7 +129,6 @@ func (v *ValueRef) AsMode() (Mode, bool, error) { return zigoValueAsMode(v) }
 func (v *ValueRef) MustAsMode() (Mode, bool) { return zigoMustMatch(zigoValueAsMode(v)) }
 
 func zigoValueAsSamples(receiver zigoHandle) ([]int16, bool, error) {
-	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -137,12 +136,13 @@ func zigoValueAsSamples(receiver zigoHandle) ([]int16, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
+	defer receiver.zigoRelease()
 	result, status := raw.ValueProjectSamples(ptr)
 	if status == zigoProjectionMismatch {
 		return nil, false, nil
 	}
 	if status != zigoProjectionSuccess {
-		return nil, false, zigoProjectionError("Value.AsSamples", status)
+		return nil, false, zigoPoisonAfterPanic(zigoProjectionError("Value.AsSamples", status), receiver)
 	}
 	return append([]int16(nil), result...), true, nil
 }
@@ -160,7 +160,6 @@ func (v *ValueRef) AsSamples() ([]int16, bool, error) { return zigoValueAsSample
 func (v *ValueRef) MustAsSamples() ([]int16, bool) { return zigoMustMatch(zigoValueAsSamples(v)) }
 
 func zigoValueAsChild(receiver zigoHandle) (*ChildRef, bool, error) {
-	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -168,12 +167,13 @@ func zigoValueAsChild(receiver zigoHandle) (*ChildRef, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
+	defer receiver.zigoRelease()
 	result, status := raw.ValueProjectChild(ptr)
 	if status == zigoProjectionMismatch {
 		return nil, false, nil
 	}
 	if status != zigoProjectionSuccess {
-		return nil, false, zigoProjectionError("Value.AsChild", status)
+		return nil, false, zigoPoisonAfterPanic(zigoProjectionError("Value.AsChild", status), receiver)
 	}
 	return &ChildRef{ptr: result, parent: receiver}, true, nil
 }
@@ -191,7 +191,6 @@ func (v *ValueRef) AsChild() (*ChildRef, bool, error) { return zigoValueAsChild(
 func (v *ValueRef) MustAsChild() (*ChildRef, bool) { return zigoMustMatch(zigoValueAsChild(v)) }
 
 func zigoValueAsMutableSamples(receiver zigoHandle) ([]int16, bool, error) {
-	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -199,12 +198,13 @@ func zigoValueAsMutableSamples(receiver zigoHandle) ([]int16, bool, error) {
 	if err != nil {
 		return nil, false, err
 	}
+	defer receiver.zigoRelease()
 	result, status := raw.ValueProjectMutableSamples(ptr)
 	if status == zigoProjectionMismatch {
 		return nil, false, nil
 	}
 	if status != zigoProjectionSuccess {
-		return nil, false, zigoProjectionError("Value.AsMutableSamples", status)
+		return nil, false, zigoPoisonAfterPanic(zigoProjectionError("Value.AsMutableSamples", status), receiver)
 	}
 	return append([]int16(nil), result...), true, nil
 }

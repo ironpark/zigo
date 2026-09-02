@@ -24,12 +24,12 @@ func NewSignal() (*Signal, error) {
 // SetTicks invokes the bound Zig Signal.setTicks operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (s *Signal) SetTicks(ticks uint32) error {
-	if s != nil { s.mu.RLock(); defer s.mu.RUnlock() }
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.SetTicks receiver", s)
 	if err != nil {
 		return err
 	}
+	defer s.zigoRelease()
 	raw.SignalSetTicks(ptr, ticks)
 	return nil
 }
@@ -37,12 +37,12 @@ func (s *Signal) SetTicks(ticks uint32) error {
 // SetMode invokes the bound Zig Signal.setMode operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (s *Signal) SetMode(mode Mode) error {
-	if s != nil { s.mu.RLock(); defer s.mu.RUnlock() }
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.SetMode receiver", s)
 	if err != nil {
 		return err
 	}
+	defer s.zigoRelease()
 	raw.SignalSetMode(ptr, uint8(mode))
 	return nil
 }
@@ -50,12 +50,12 @@ func (s *Signal) SetMode(mode Mode) error {
 // SetActive invokes the bound Zig Signal.setActive operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (s *Signal) SetActive(active bool) error {
-	if s != nil { s.mu.RLock(); defer s.mu.RUnlock() }
 	defer runtime.KeepAlive(s)
 	ptr, err := zigoCheckedPointer("Signal.SetActive receiver", s)
 	if err != nil {
 		return err
 	}
+	defer s.zigoRelease()
 	raw.SignalSetActive(ptr, boolToUint8(active))
 	return nil
 }

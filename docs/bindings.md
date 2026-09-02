@@ -278,23 +278,34 @@ retained callback이나 pointer는 소유 객체의 `Close`까지 유효해야 �
 생성된 handle은 모두 같은 수명주기를 씁니다. 종류에 따라 달라지지 않습니다.
 
 - 모든 메서드와 tagged-union projection(`Tag`/`As*`/`Snapshot`/`Variant`), borrowed
-  `Ref`의 모든 호출은 native 호출 동안 소유 handle의 `sync.RWMutex` 읽기 잠금을 잡습니다.
-  projection과 `Ref`는 `zigoHandle` 인터페이스의 `zigoLocker()`로 소유자의 잠금에
-  닿고, `Ref`는 부모 사슬을 따라 위임합니다. `Close`는
-  쓰기 잠금을 잡으므로, 다른 goroutine의 호출이 native 안에 있는 동안에는 해제가
-  진행되지 않습니다. 이미 닫힌 handle을 쓰는 호출은 use-after-free 대신 `*HandleError`를
-  돌려받습니다.
-- `Close`는 쓰기 잠금을 잡고 `ptr`이 이미 비어 있으면 그대로 돌아오므로, 동시에
-  여러 번 불러도 해제는 한 번만 일어납니다. 해제 후에는 `ptr`을 비웁니다.
+  `Ref`의 모든 호출은 native 호출 전에 handle을 **획득**하고(`zigoAcquire`) 돌아온 뒤
+  놓습니다(`zigoRelease`). 획득은 handle의 `sync.Mutex` 아래에서 진행 중 호출 수를
+  하나 늘리는 것뿐이고, 그 잠금은 native 호출 동안 잡혀 있지 않습니다. `Ref`는 부모
+  사슬을 따라 부모를 획득합니다. 이미 닫힌 handle을 쓰는 호출은 use-after-free 대신
+  `*HandleError`를 돌려받습니다.
+- `Close`는 기다리지 않습니다. handle을 닫힘으로 표시하고, 그 순간 native 안에 있는
+  호출이 없으면 바로 해제하며, 있으면 그 호출들 중 마지막으로 돌아오는 것이 해제합니다.
+  `Close` 이후의 호출은 진행 중인 호출 뒤에서 기다리지 않고 즉시 `*HandleError`를
+  받습니다. 그래서 어느 goroutine의 `Close`도 다른 goroutine의 호출을 막지 못합니다.
+  긴 native 호출이 handle을 쓰는 동안 다른 스레드가 `cancel` 같은 메서드를 부르는 타입에
+  특히 중요합니다. 동시에 여러 번 불러도 해제는 한 번만 일어납니다.
+- native 호출이 Zig panic으로 끝나면(`*NativePanicError`) 그 호출이 닿은 모든 handle,
+  즉 receiver와 handle 인자, projection의 소유자가 **poison** 됩니다. panic은 `longjmp`로
+  native 프레임을 건너뛰어 그 안의 `defer`/`errdefer`가 실행되지 않았으므로 handle 뒤의
+  상태는 알 수 없습니다. 이후 그 handle의 모든 호출은 처음 panic한 작업과 메시지를 담은
+  `*NativePanicError`를 돌려주고(`errors.Is(err, ErrNativePanic)`), `Close`와 cleanup
+  안전망은 native deinit을 부르지 않고 객체를 **누수**시킵니다. 반쯤 바뀐 상태를
+  해제하다 fault를 내는 것보다 누수가 낫기 때문입니다. retained callback 등록은 그래도
+  해제됩니다.
 - 생성자가 만든 handle은 만들어질 때 `runtime.AddCleanup`을 등록합니다. `Close`를 잊고
   handle을 버려도 GC가 회수하는 시점에 native 메모리와 retained callback 등록이 함께
   풀립니다. `Close`가 먼저 실행되면 `cleanup.Stop()`으로 이 안전망을 떼어냅니다.
 - 콜백을 받는 생성자를 가진 타입만 `callbackHandles`를 들고 다닙니다.
 
-안전망은 실행 시점을 보장하지 않으므로 명시적 `Close`를 대체하지 않습니다. 잠금은
-receiver와 그 부모 사슬에만 걸립니다. handle을 인자로 받는 호출은 여러 잠금을 잡는 순서
-문제를 피하려고 인자를 잠그지 않으므로, 인자로 넘긴 handle을 같은 시점에 닫지 않는 책임은
-호출자에게 있습니다.
+안전망은 실행 시점을 보장하지 않으므로 명시적 `Close`를 대체하지 않습니다. 획득은
+receiver뿐 아니라 handle **인자**에도 걸리므로, 인자로 넘긴 handle을 다른 goroutine이
+그 사이에 닫아도 native 메모리는 호출이 돌아온 뒤에 해제됩니다. 다만 그 `Close`는 호출자
+관점에서 여전히 계약 위반이고, 이후의 호출이 `*HandleError`를 받는 것으로 드러납니다.
 
 ## Extern struct 값
 

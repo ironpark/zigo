@@ -8,7 +8,6 @@ import (
 )
 
 func zigoSignalTag(receiver zigoHandle) (SignalTag, error) {
-	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -16,9 +15,10 @@ func zigoSignalTag(receiver zigoHandle) (SignalTag, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer receiver.zigoRelease()
 	result, status := raw.SignalProjectTag(ptr)
 	if status != zigoProjectionSuccess {
-		return 0, zigoProjectionError("Signal.Tag", status)
+		return 0, zigoPoisonAfterPanic(zigoProjectionError("Signal.Tag", status), receiver)
 	}
 	return SignalTag(result), nil
 }
@@ -30,7 +30,6 @@ func (s *Signal) Tag() (SignalTag, error) { return zigoSignalTag(s) }
 func (s *Signal) MustTag() SignalTag { return zigoMust(zigoSignalTag(s)) }
 
 func zigoSignalAsTicks(receiver zigoHandle) (uint32, bool, error) {
-	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -38,12 +37,13 @@ func zigoSignalAsTicks(receiver zigoHandle) (uint32, bool, error) {
 	if err != nil {
 		return 0, false, err
 	}
+	defer receiver.zigoRelease()
 	result, status := raw.SignalProjectTicks(ptr)
 	if status == zigoProjectionMismatch {
 		return 0, false, nil
 	}
 	if status != zigoProjectionSuccess {
-		return 0, false, zigoProjectionError("Signal.AsTicks", status)
+		return 0, false, zigoPoisonAfterPanic(zigoProjectionError("Signal.AsTicks", status), receiver)
 	}
 	return result, true, nil
 }
@@ -55,7 +55,6 @@ func (s *Signal) AsTicks() (uint32, bool, error) { return zigoSignalAsTicks(s) }
 func (s *Signal) MustAsTicks() (uint32, bool) { return zigoMustMatch(zigoSignalAsTicks(s)) }
 
 func zigoSignalAsLevel(receiver zigoHandle) (float64, bool, error) {
-	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -63,12 +62,13 @@ func zigoSignalAsLevel(receiver zigoHandle) (float64, bool, error) {
 	if err != nil {
 		return 0, false, err
 	}
+	defer receiver.zigoRelease()
 	result, status := raw.SignalProjectLevel(ptr)
 	if status == zigoProjectionMismatch {
 		return 0, false, nil
 	}
 	if status != zigoProjectionSuccess {
-		return 0, false, zigoProjectionError("Signal.AsLevel", status)
+		return 0, false, zigoPoisonAfterPanic(zigoProjectionError("Signal.AsLevel", status), receiver)
 	}
 	return result, true, nil
 }
@@ -80,7 +80,6 @@ func (s *Signal) AsLevel() (float64, bool, error) { return zigoSignalAsLevel(s) 
 func (s *Signal) MustAsLevel() (float64, bool) { return zigoMustMatch(zigoSignalAsLevel(s)) }
 
 func zigoSignalAsOffset(receiver zigoHandle) (int16, bool, error) {
-	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -88,12 +87,13 @@ func zigoSignalAsOffset(receiver zigoHandle) (int16, bool, error) {
 	if err != nil {
 		return 0, false, err
 	}
+	defer receiver.zigoRelease()
 	result, status := raw.SignalProjectOffset(ptr)
 	if status == zigoProjectionMismatch {
 		return 0, false, nil
 	}
 	if status != zigoProjectionSuccess {
-		return 0, false, zigoProjectionError("Signal.AsOffset", status)
+		return 0, false, zigoPoisonAfterPanic(zigoProjectionError("Signal.AsOffset", status), receiver)
 	}
 	return result, true, nil
 }
@@ -105,7 +105,6 @@ func (s *Signal) AsOffset() (int16, bool, error) { return zigoSignalAsOffset(s) 
 func (s *Signal) MustAsOffset() (int16, bool) { return zigoMustMatch(zigoSignalAsOffset(s)) }
 
 func zigoSignalAsMode(receiver zigoHandle) (Mode, bool, error) {
-	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -113,12 +112,13 @@ func zigoSignalAsMode(receiver zigoHandle) (Mode, bool, error) {
 	if err != nil {
 		return 0, false, err
 	}
+	defer receiver.zigoRelease()
 	result, status := raw.SignalProjectMode(ptr)
 	if status == zigoProjectionMismatch {
 		return 0, false, nil
 	}
 	if status != zigoProjectionSuccess {
-		return 0, false, zigoProjectionError("Signal.AsMode", status)
+		return 0, false, zigoPoisonAfterPanic(zigoProjectionError("Signal.AsMode", status), receiver)
 	}
 	return Mode(result), true, nil
 }
@@ -130,7 +130,6 @@ func (s *Signal) AsMode() (Mode, bool, error) { return zigoSignalAsMode(s) }
 func (s *Signal) MustAsMode() (Mode, bool) { return zigoMustMatch(zigoSignalAsMode(s)) }
 
 func zigoSignalAsActive(receiver zigoHandle) (bool, bool, error) {
-	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -138,12 +137,13 @@ func zigoSignalAsActive(receiver zigoHandle) (bool, bool, error) {
 	if err != nil {
 		return false, false, err
 	}
+	defer receiver.zigoRelease()
 	result, status := raw.SignalProjectActive(ptr)
 	if status == zigoProjectionMismatch {
 		return false, false, nil
 	}
 	if status != zigoProjectionSuccess {
-		return false, false, zigoProjectionError("Signal.AsActive", status)
+		return false, false, zigoPoisonAfterPanic(zigoProjectionError("Signal.AsActive", status), receiver)
 	}
 	return result != 0, true, nil
 }
@@ -196,7 +196,6 @@ func (snapshot SignalSnapshot) Active() (bool, bool) {
 }
 
 func zigoSignalSnapshot(receiver zigoHandle) (SignalSnapshot, error) {
-	defer zigoReadLock(receiver)()
 	defer runtime.KeepAlive(receiver)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -204,9 +203,10 @@ func zigoSignalSnapshot(receiver zigoHandle) (SignalSnapshot, error) {
 	if err != nil {
 		return SignalSnapshot{}, err
 	}
+	defer receiver.zigoRelease()
 	data, status := raw.SignalReadSnapshot(ptr)
 	if status != zigoProjectionSuccess {
-		return SignalSnapshot{}, zigoProjectionError("Signal.Snapshot", status)
+		return SignalSnapshot{}, zigoPoisonAfterPanic(zigoProjectionError("Signal.Snapshot", status), receiver)
 	}
 	return SignalSnapshot{
 		tag: SignalTag(data.Tag),

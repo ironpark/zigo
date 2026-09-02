@@ -23,16 +23,32 @@ func NewContext() (*Context, error) {
 // Add invokes the bound Zig Context.add operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (c *Context) Add(value int64) (int64, error) {
-	if c != nil {
-		c.mu.RLock()
-		defer c.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(c)
 	ptr, err := zigoCheckedPointer("Context.Add receiver", c)
 	if err != nil {
 		return 0, err
 	}
+	defer c.zigoRelease()
 	return raw.ContextAdd(ptr, value), nil
+}
+
+// Crash panics inside a method: what leaves a handle poisoned.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+func (c *Context) Crash() error {
+	defer runtime.KeepAlive(c)
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Context.Crash receiver", c)
+	if err != nil {
+		return err
+	}
+	defer c.zigoRelease()
+	code := raw.ContextCrash(ptr)
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Context.Crash", code), c)
+	}
+	return nil
 }
 
 // LiveBytes invokes the bound Zig liveBytes operation.

@@ -92,9 +92,10 @@ func assertValueVariants(t *testing.T) {
 	if !ok || handle.Value == nil {
 		t.Fatalf("borrowed Variant() = %#v, want ValueChild", handle)
 	}
-	if handle.Value.zigoPointer() == nil {
-		t.Fatal("ValueChild.Value is already dead while its parent is open")
+	if _, err := handle.Value.zigoAcquire("test"); err != nil {
+		t.Fatalf("ValueChild.Value is already dead while its parent is open: %v", err)
 	}
+	handle.Value.zigoRelease()
 	if borrowed.MustVariant().(ValueChild).Value == nil {
 		t.Fatal("MustVariant() lost the child payload")
 	}
@@ -102,8 +103,8 @@ func assertValueVariants(t *testing.T) {
 	// The child reference the variant carries is parented to the receiver, so
 	// closing the union kills it rather than leaving a dangling pointer.
 	value.Close()
-	if handle.Value.zigoPointer() != nil {
-		t.Fatal("ValueChild.Value outlived its parent Value")
+	if _, err := handle.Value.zigoAcquire("test"); !errors.Is(err, ErrInvalidHandle) {
+		t.Fatalf("ValueChild.Value outlived its parent Value: %v", err)
 	}
 
 	// Lifecycle failures stay in Go, and only MustVariant panics.

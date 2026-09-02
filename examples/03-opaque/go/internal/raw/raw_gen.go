@@ -24,6 +24,12 @@ func ContextAdd(self unsafe.Pointer, value int64) int64 {
 	return int64(C.zg_context_add((*C.zg_context)(self), C.int64_t(value)))
 }
 
+// ContextCrash calls the generated C ABI wrapper for zg_context_crash.
+func ContextCrash(self unsafe.Pointer) int32 {
+	code := int32(C.zg_context_crash((*C.zg_context)(self)))
+	return code
+}
+
 // ContextDeinit calls the generated C ABI wrapper for zg_context_deinit.
 func ContextDeinit(self unsafe.Pointer) {
 	C.zg_context_deinit((*C.zg_context)(self))

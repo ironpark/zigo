@@ -29,10 +29,6 @@ func NewTelemetryHub(inputName string, maxSamples uint, initialMode Mode, overfl
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Rename(newName string) error {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -40,12 +36,13 @@ func (t *TelemetryHub) Rename(newName string) error {
 	if err != nil {
 		return err
 	}
+	defer t.zigoRelease()
 	code := raw.TelemetryHubRename(ptr, []byte(newName))
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.Rename", handle)
 	}
 	if code != 0 {
-		return errorForCode("TelemetryHub.Rename", code)
+		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.Rename", code), t)
 	}
 	return nil
 }
@@ -54,15 +51,12 @@ func (t *TelemetryHub) Rename(newName string) error {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Name() (string, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.Name receiver", t)
 	if err != nil {
 		return "", err
 	}
+	defer t.zigoRelease()
 	result := raw.TelemetryHubName(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.Name", handle)
@@ -74,15 +68,12 @@ func (t *TelemetryHub) Name() (string, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Capacity() (uint, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.Capacity receiver", t)
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result := raw.TelemetryHubCapacity(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.Capacity", handle)
@@ -94,15 +85,12 @@ func (t *TelemetryHub) Capacity() (uint, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Len() (uint, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.Len receiver", t)
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result := raw.TelemetryHubLen(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.Len", handle)
@@ -114,15 +102,12 @@ func (t *TelemetryHub) Len() (uint, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) IsEmpty() (bool, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.IsEmpty receiver", t)
 	if err != nil {
 		return false, err
 	}
+	defer t.zigoRelease()
 	result := raw.TelemetryHubIsEmpty(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.IsEmpty", handle)
@@ -134,15 +119,12 @@ func (t *TelemetryHub) IsEmpty() (bool, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) IsFull() (bool, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.IsFull receiver", t)
 	if err != nil {
 		return false, err
 	}
+	defer t.zigoRelease()
 	result := raw.TelemetryHubIsFull(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.IsFull", handle)
@@ -154,15 +136,12 @@ func (t *TelemetryHub) IsFull() (bool, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Mode() (Mode, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.Mode receiver", t)
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result := raw.TelemetryHubMode(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.Mode", handle)
@@ -174,15 +153,12 @@ func (t *TelemetryHub) Mode() (Mode, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) SetMode(newMode Mode) (Mode, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.SetMode receiver", t)
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result := raw.TelemetryHubSetMode(ptr, uint32(newMode))
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.SetMode", handle)
@@ -194,15 +170,12 @@ func (t *TelemetryHub) SetMode(newMode Mode) (Mode, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) OverflowPolicy() (OverflowPolicy, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.OverflowPolicy receiver", t)
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result := raw.TelemetryHubOverflowPolicy(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.OverflowPolicy", handle)
@@ -214,15 +187,12 @@ func (t *TelemetryHub) OverflowPolicy() (OverflowPolicy, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) SetOverflowPolicy(newPolicy OverflowPolicy) (OverflowPolicy, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.SetOverflowPolicy receiver", t)
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result := raw.TelemetryHubSetOverflowPolicy(ptr, uint32(newPolicy))
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.SetOverflowPolicy", handle)
@@ -234,15 +204,12 @@ func (t *TelemetryHub) SetOverflowPolicy(newPolicy OverflowPolicy) (OverflowPoli
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Enabled() (bool, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.Enabled receiver", t)
 	if err != nil {
 		return false, err
 	}
+	defer t.zigoRelease()
 	result := raw.TelemetryHubEnabled(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.Enabled", handle)
@@ -254,15 +221,12 @@ func (t *TelemetryHub) Enabled() (bool, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) SetEnabled(newEnabled bool) (bool, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.SetEnabled receiver", t)
 	if err != nil {
 		return false, err
 	}
+	defer t.zigoRelease()
 	result := raw.TelemetryHubSetEnabled(ptr, boolToUint8(newEnabled))
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.SetEnabled", handle)
@@ -274,15 +238,12 @@ func (t *TelemetryHub) SetEnabled(newEnabled bool) (bool, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Threshold() (float64, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.Threshold receiver", t)
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result := raw.TelemetryHubThreshold(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.Threshold", handle)
@@ -295,10 +256,6 @@ func (t *TelemetryHub) Threshold() (float64, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) SetThreshold(newThreshold float64) error {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -306,12 +263,13 @@ func (t *TelemetryHub) SetThreshold(newThreshold float64) error {
 	if err != nil {
 		return err
 	}
+	defer t.zigoRelease()
 	code := raw.TelemetryHubSetThreshold(ptr, newThreshold)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.SetThreshold", handle)
 	}
 	if code != 0 {
-		return errorForCode("TelemetryHub.SetThreshold", code)
+		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.SetThreshold", code), t)
 	}
 	return nil
 }
@@ -320,15 +278,12 @@ func (t *TelemetryHub) SetThreshold(newThreshold float64) error {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) ScaleFactor() (float64, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.ScaleFactor receiver", t)
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result := raw.TelemetryHubScaleFactor(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.ScaleFactor", handle)
@@ -341,10 +296,6 @@ func (t *TelemetryHub) ScaleFactor() (float64, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) SetScaleFactor(newFactor float64) error {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -352,12 +303,13 @@ func (t *TelemetryHub) SetScaleFactor(newFactor float64) error {
 	if err != nil {
 		return err
 	}
+	defer t.zigoRelease()
 	code := raw.TelemetryHubSetScaleFactor(ptr, newFactor)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.SetScaleFactor", handle)
 	}
 	if code != 0 {
-		return errorForCode("TelemetryHub.SetScaleFactor", code)
+		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.SetScaleFactor", code), t)
 	}
 	return nil
 }
@@ -366,15 +318,12 @@ func (t *TelemetryHub) SetScaleFactor(newFactor float64) error {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Offset() (float64, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.Offset receiver", t)
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result := raw.TelemetryHubOffset(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.Offset", handle)
@@ -387,10 +336,6 @@ func (t *TelemetryHub) Offset() (float64, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) SetOffset(newOffset float64) error {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -398,12 +343,13 @@ func (t *TelemetryHub) SetOffset(newOffset float64) error {
 	if err != nil {
 		return err
 	}
+	defer t.zigoRelease()
 	code := raw.TelemetryHubSetOffset(ptr, newOffset)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.SetOffset", handle)
 	}
 	if code != 0 {
-		return errorForCode("TelemetryHub.SetOffset", code)
+		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.SetOffset", code), t)
 	}
 	return nil
 }
@@ -413,10 +359,6 @@ func (t *TelemetryHub) SetOffset(newOffset float64) error {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Push(id uint64, value float64) error {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -424,12 +366,13 @@ func (t *TelemetryHub) Push(id uint64, value float64) error {
 	if err != nil {
 		return err
 	}
+	defer t.zigoRelease()
 	code := raw.TelemetryHubPush(ptr, id, value)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.Push", handle)
 	}
 	if code != 0 {
-		return errorForCode("TelemetryHub.Push", code)
+		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.Push", code), t)
 	}
 	return nil
 }
@@ -439,10 +382,6 @@ func (t *TelemetryHub) Push(id uint64, value float64) error {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) PushWithSeverity(id uint64, value float64, severity Severity) error {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -450,12 +389,13 @@ func (t *TelemetryHub) PushWithSeverity(id uint64, value float64, severity Sever
 	if err != nil {
 		return err
 	}
+	defer t.zigoRelease()
 	code := raw.TelemetryHubPushWithSeverity(ptr, id, value, uint32(severity))
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.PushWithSeverity", handle)
 	}
 	if code != 0 {
-		return errorForCode("TelemetryHub.PushWithSeverity", code)
+		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.PushWithSeverity", code), t)
 	}
 	return nil
 }
@@ -465,10 +405,6 @@ func (t *TelemetryHub) PushWithSeverity(id uint64, value float64, severity Sever
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) PushBatch(values []float64) error {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -476,12 +412,13 @@ func (t *TelemetryHub) PushBatch(values []float64) error {
 	if err != nil {
 		return err
 	}
+	defer t.zigoRelease()
 	code := raw.TelemetryHubPushBatch(ptr, values)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.PushBatch", handle)
 	}
 	if code != 0 {
-		return errorForCode("TelemetryHub.PushBatch", code)
+		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.PushBatch", code), t)
 	}
 	return nil
 }
@@ -491,10 +428,6 @@ func (t *TelemetryHub) PushBatch(values []float64) error {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Process(limit uint) (uint, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -502,12 +435,13 @@ func (t *TelemetryHub) Process(limit uint) (uint, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result, code := raw.TelemetryHubProcess(ptr, limit)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.Process", handle)
 	}
 	if code != 0 {
-		return 0, errorForCode("TelemetryHub.Process", code)
+		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Process", code), t)
 	}
 	return result, nil
 }
@@ -517,10 +451,6 @@ func (t *TelemetryHub) Process(limit uint) (uint, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) ProcessAll() (uint, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -528,12 +458,13 @@ func (t *TelemetryHub) ProcessAll() (uint, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result, code := raw.TelemetryHubProcessAll(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.ProcessAll", handle)
 	}
 	if code != 0 {
-		return 0, errorForCode("TelemetryHub.ProcessAll", code)
+		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.ProcessAll", code), t)
 	}
 	return result, nil
 }
@@ -542,15 +473,12 @@ func (t *TelemetryHub) ProcessAll() (uint, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Clear() (uint, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.Clear receiver", t)
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result := raw.TelemetryHubClear(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.Clear", handle)
@@ -562,15 +490,12 @@ func (t *TelemetryHub) Clear() (uint, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) ResetStatistics() error {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.ResetStatistics receiver", t)
 	if err != nil {
 		return err
 	}
+	defer t.zigoRelease()
 	raw.TelemetryHubResetStatistics(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.ResetStatistics", handle)
@@ -582,15 +507,12 @@ func (t *TelemetryHub) ResetStatistics() error {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Accepted() (uint, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.Accepted receiver", t)
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result := raw.TelemetryHubAccepted(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.Accepted", handle)
@@ -602,15 +524,12 @@ func (t *TelemetryHub) Accepted() (uint, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Rejected() (uint, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.Rejected receiver", t)
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result := raw.TelemetryHubRejected(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.Rejected", handle)
@@ -622,15 +541,12 @@ func (t *TelemetryHub) Rejected() (uint, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Dropped() (uint, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.Dropped receiver", t)
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result := raw.TelemetryHubDropped(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.Dropped", handle)
@@ -642,15 +558,12 @@ func (t *TelemetryHub) Dropped() (uint, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Processed() (uint, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.Processed receiver", t)
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result := raw.TelemetryHubProcessed(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.Processed", handle)
@@ -662,15 +575,12 @@ func (t *TelemetryHub) Processed() (uint, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Filtered() (uint, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.Filtered receiver", t)
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result := raw.TelemetryHubFiltered(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.Filtered", handle)
@@ -682,15 +592,12 @@ func (t *TelemetryHub) Filtered() (uint, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Sum() (float64, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.Sum receiver", t)
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result := raw.TelemetryHubSum(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.Sum", handle)
@@ -703,10 +610,6 @@ func (t *TelemetryHub) Sum() (float64, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Minimum() (float64, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -714,12 +617,13 @@ func (t *TelemetryHub) Minimum() (float64, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result, code := raw.TelemetryHubMinimum(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.Minimum", handle)
 	}
 	if code != 0 {
-		return 0, errorForCode("TelemetryHub.Minimum", code)
+		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Minimum", code), t)
 	}
 	return result, nil
 }
@@ -729,10 +633,6 @@ func (t *TelemetryHub) Minimum() (float64, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Maximum() (float64, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -740,12 +640,13 @@ func (t *TelemetryHub) Maximum() (float64, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result, code := raw.TelemetryHubMaximum(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.Maximum", handle)
 	}
 	if code != 0 {
-		return 0, errorForCode("TelemetryHub.Maximum", code)
+		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Maximum", code), t)
 	}
 	return result, nil
 }
@@ -755,10 +656,6 @@ func (t *TelemetryHub) Maximum() (float64, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) Average() (float64, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -766,12 +663,13 @@ func (t *TelemetryHub) Average() (float64, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result, code := raw.TelemetryHubAverage(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.Average", handle)
 	}
 	if code != 0 {
-		return 0, errorForCode("TelemetryHub.Average", code)
+		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Average", code), t)
 	}
 	return result, nil
 }
@@ -781,10 +679,6 @@ func (t *TelemetryHub) Average() (float64, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) FirstID() (uint64, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -792,12 +686,13 @@ func (t *TelemetryHub) FirstID() (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result, code := raw.TelemetryHubFirstID(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.FirstID", handle)
 	}
 	if code != 0 {
-		return 0, errorForCode("TelemetryHub.FirstID", code)
+		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.FirstID", code), t)
 	}
 	return result, nil
 }
@@ -807,10 +702,6 @@ func (t *TelemetryHub) FirstID() (uint64, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) FirstValue() (float64, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -818,12 +709,13 @@ func (t *TelemetryHub) FirstValue() (float64, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result, code := raw.TelemetryHubFirstValue(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.FirstValue", handle)
 	}
 	if code != 0 {
-		return 0, errorForCode("TelemetryHub.FirstValue", code)
+		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.FirstValue", code), t)
 	}
 	return result, nil
 }
@@ -833,10 +725,6 @@ func (t *TelemetryHub) FirstValue() (float64, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) LastID() (uint64, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -844,12 +732,13 @@ func (t *TelemetryHub) LastID() (uint64, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result, code := raw.TelemetryHubLastID(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.LastID", handle)
 	}
 	if code != 0 {
-		return 0, errorForCode("TelemetryHub.LastID", code)
+		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.LastID", code), t)
 	}
 	return result, nil
 }
@@ -859,10 +748,6 @@ func (t *TelemetryHub) LastID() (uint64, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) LastValue() (float64, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -870,12 +755,13 @@ func (t *TelemetryHub) LastValue() (float64, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result, code := raw.TelemetryHubLastValue(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.LastValue", handle)
 	}
 	if code != 0 {
-		return 0, errorForCode("TelemetryHub.LastValue", code)
+		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.LastValue", code), t)
 	}
 	return result, nil
 }
@@ -885,10 +771,6 @@ func (t *TelemetryHub) LastValue() (float64, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) LastSeverity() (Severity, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -896,12 +778,13 @@ func (t *TelemetryHub) LastSeverity() (Severity, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result, code := raw.TelemetryHubLastSeverity(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.LastSeverity", handle)
 	}
 	if code != 0 {
-		return 0, errorForCode("TelemetryHub.LastSeverity", code)
+		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.LastSeverity", code), t)
 	}
 	return Severity(result), nil
 }
@@ -911,10 +794,6 @@ func (t *TelemetryHub) LastSeverity() (Severity, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) CountAbove(boundary float64) (uint, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -922,12 +801,13 @@ func (t *TelemetryHub) CountAbove(boundary float64) (uint, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result, code := raw.TelemetryHubCountAbove(ptr, boundary)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.CountAbove", handle)
 	}
 	if code != 0 {
-		return 0, errorForCode("TelemetryHub.CountAbove", code)
+		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.CountAbove", code), t)
 	}
 	return result, nil
 }
@@ -937,10 +817,6 @@ func (t *TelemetryHub) CountAbove(boundary float64) (uint, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) CountBelow(boundary float64) (uint, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -948,12 +824,13 @@ func (t *TelemetryHub) CountBelow(boundary float64) (uint, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer t.zigoRelease()
 	result, code := raw.TelemetryHubCountBelow(ptr, boundary)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.CountBelow", handle)
 	}
 	if code != 0 {
-		return 0, errorForCode("TelemetryHub.CountBelow", code)
+		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.CountBelow", code), t)
 	}
 	return result, nil
 }
@@ -963,10 +840,6 @@ func (t *TelemetryHub) CountBelow(boundary float64) (uint, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) ContainsAbove(boundary float64) (bool, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -974,12 +847,13 @@ func (t *TelemetryHub) ContainsAbove(boundary float64) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	defer t.zigoRelease()
 	result, code := raw.TelemetryHubContainsAbove(ptr, boundary)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.ContainsAbove", handle)
 	}
 	if code != 0 {
-		return false, errorForCode("TelemetryHub.ContainsAbove", code)
+		return false, zigoPoisonAfterPanic(errorForCode("TelemetryHub.ContainsAbove", code), t)
 	}
 	return result != 0, nil
 }
@@ -989,10 +863,6 @@ func (t *TelemetryHub) ContainsAbove(boundary float64) (bool, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) ContainsBelow(boundary float64) (bool, error) {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -1000,12 +870,13 @@ func (t *TelemetryHub) ContainsBelow(boundary float64) (bool, error) {
 	if err != nil {
 		return false, err
 	}
+	defer t.zigoRelease()
 	result, code := raw.TelemetryHubContainsBelow(ptr, boundary)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.ContainsBelow", handle)
 	}
 	if code != 0 {
-		return false, errorForCode("TelemetryHub.ContainsBelow", code)
+		return false, zigoPoisonAfterPanic(errorForCode("TelemetryHub.ContainsBelow", code), t)
 	}
 	return result != 0, nil
 }
@@ -1015,10 +886,6 @@ func (t *TelemetryHub) ContainsBelow(boundary float64) (bool, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) ScaleValues(factor float64) error {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -1026,12 +893,13 @@ func (t *TelemetryHub) ScaleValues(factor float64) error {
 	if err != nil {
 		return err
 	}
+	defer t.zigoRelease()
 	code := raw.TelemetryHubScaleValues(ptr, factor)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.ScaleValues", handle)
 	}
 	if code != 0 {
-		return errorForCode("TelemetryHub.ScaleValues", code)
+		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.ScaleValues", code), t)
 	}
 	return nil
 }
@@ -1041,10 +909,6 @@ func (t *TelemetryHub) ScaleValues(factor float64) error {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) OffsetValues(delta float64) error {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -1052,12 +916,13 @@ func (t *TelemetryHub) OffsetValues(delta float64) error {
 	if err != nil {
 		return err
 	}
+	defer t.zigoRelease()
 	code := raw.TelemetryHubOffsetValues(ptr, delta)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.OffsetValues", handle)
 	}
 	if code != 0 {
-		return errorForCode("TelemetryHub.OffsetValues", code)
+		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.OffsetValues", code), t)
 	}
 	return nil
 }
@@ -1067,10 +932,6 @@ func (t *TelemetryHub) OffsetValues(delta float64) error {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) ClampValues(lower float64, upper float64) error {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -1078,12 +939,13 @@ func (t *TelemetryHub) ClampValues(lower float64, upper float64) error {
 	if err != nil {
 		return err
 	}
+	defer t.zigoRelease()
 	code := raw.TelemetryHubClampValues(ptr, lower, upper)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.ClampValues", handle)
 	}
 	if code != 0 {
-		return errorForCode("TelemetryHub.ClampValues", code)
+		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.ClampValues", code), t)
 	}
 	return nil
 }
@@ -1092,15 +954,12 @@ func (t *TelemetryHub) ClampValues(lower float64, upper float64) error {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) AbsoluteValues() error {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.AbsoluteValues receiver", t)
 	if err != nil {
 		return err
 	}
+	defer t.zigoRelease()
 	raw.TelemetryHubAbsoluteValues(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.AbsoluteValues", handle)
@@ -1112,15 +971,12 @@ func (t *TelemetryHub) AbsoluteValues() error {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (t *TelemetryHub) NegateValues() error {
-	if t != nil {
-		t.mu.RLock()
-		defer t.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(t)
 	ptr, err := zigoCheckedPointer("TelemetryHub.NegateValues receiver", t)
 	if err != nil {
 		return err
 	}
+	defer t.zigoRelease()
 	raw.TelemetryHubNegateValues(ptr)
 	for _, handle := range t.callbackHandles {
 		zigoRethrowCallbackPanic("TelemetryHub.NegateValues", handle)

@@ -2637,7 +2637,8 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                 try writePublicZeroValue(writer, function.origin.*, error_payload);
                 try writer.writeAll(", ");
             }
-            try writer.print("errorForCode(\"{s}\", code)\n\t}}\n", .{operation});
+            try writeErrorForCode(allocator, writer, function.origin.*, go_names, operation);
+            try writer.writeAll("\t}\n");
             if (hasOutValueStructSlice(function.origin.*)) {
                 try writePublicValueStructSliceCopyBacks(writer, function.origin.*, go_names);
             }
@@ -2980,13 +2981,13 @@ fn renderPublicSnapshots(
 
         // One reader per union, shared by the owned and borrowed handles.
         try writer.print(
-            "func zigo{0s}Snapshot(receiver zigoHandle) ({1s}, error) {{\n\tdefer zigoReadLock(receiver)()\n\tdefer runtime.KeepAlive(receiver)\n\truntime.LockOSThread()\n\tdefer runtime.UnlockOSThread()\n" ++
-                "\tptr, err := zigoCheckedPointer(\"{0s}.Snapshot receiver\", receiver)\n\tif err != nil {{\n\t\treturn {1s}{{}}, err\n\t}}\n\tdata, status := ",
+            "func zigo{0s}Snapshot(receiver zigoHandle) ({1s}, error) {{\n\tdefer runtime.KeepAlive(receiver)\n\truntime.LockOSThread()\n\tdefer runtime.UnlockOSThread()\n" ++
+                "\tptr, err := zigoCheckedPointer(\"{0s}.Snapshot receiver\", receiver)\n\tif err != nil {{\n\t\treturn {1s}{{}}, err\n\t}}\n\tdefer receiver.zigoRelease()\n\tdata, status := ",
             .{ declaration.name, type_name },
         );
         try writeRawReferencePrefix(writer, options);
         try writer.print(
-            "{0s}(ptr)\n\tif status != zigoProjectionSuccess {{\n\t\treturn {1s}{{}}, zigoProjectionError(\"{2s}.Snapshot\", status)\n\t}}\n\treturn {1s}{{\n\t\ttag: {3s}(data.Tag),\n",
+            "{0s}(ptr)\n\tif status != zigoProjectionSuccess {{\n\t\treturn {1s}{{}}, zigoPoisonAfterPanic(zigoProjectionError(\"{2s}.Snapshot\", status), receiver)\n\t}}\n\treturn {1s}{{\n\t\ttag: {3s}(data.Tag),\n",
             .{ raw_function, type_name, declaration.name, tag_type },
         );
         for (snapshot.fields) |field| {
@@ -3328,6 +3329,17 @@ fn renderGoSentinels(writer: *std.Io.Writer, set: SentinelSet, options: Options)
             "}\n\n" ++
             "// Unwrap returns ErrNativePanic for errors.Is classification.\nfunc (err *NativePanicError) Unwrap() error { return ErrNativePanic }\n\n",
     );
+    if (set.panics and set.handles) try writer.writeAll(
+        "// poisoned is what a handle answers once err has left the native state behind\n" ++
+            "// it unknown: the same kind of error, naming the call that was refused.\n" ++
+            "func (err *NativePanicError) poisoned(operation string) error {\n" ++
+            "\tmessage := \"handle unusable after a native panic in \" + err.Operation\n" ++
+            "\tif err.Message != \"\" {\n" ++
+            "\t\tmessage += \": \" + err.Message\n" ++
+            "\t}\n" ++
+            "\treturn &NativePanicError{Operation: operation, Message: message}\n" ++
+            "}\n\n",
+    );
     if (set.status) try writer.writeAll(
         "// StatusError reports a native status code this binding does not recognize.\n" ++
             "type StatusError struct {\n" ++
@@ -3451,11 +3463,12 @@ fn writeRethrowHelper(writer: *std.Io.Writer, options: Options) !void {
     );
 }
 
-/// One lifecycle for every handle. Fields are `ptr` and `mu` on any
-/// handle, `cleanup` on the ones this binding constructs, and
-/// `callbackHandles` only on the ones that retain callbacks. `mu` serializes
-/// Close against in-flight calls; `cleanup` is the safety net for a handle
-/// the caller drops without closing.
+/// One lifecycle for every handle. Fields are `ptr`, `mu`, `active`,
+/// `closed`, and `poison` on any handle, `cleanup` on the ones this binding
+/// constructs, and `callbackHandles` only on the ones that retain callbacks.
+/// Calls count themselves in and out under `mu`; Close marks the handle and
+/// the last one out releases it, so no caller ever waits on another.
+/// `cleanup` is the safety net for a handle the caller drops without closing.
 fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     for (program.types) |declaration| {
         if (!isHandleType(declaration)) continue;
@@ -3470,9 +3483,15 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         // gofmt aligns a struct's field types on the longest field name, and
         // the goldens are compared unformatted, so the padding is computed
         // from the field set rather than hard-coded per shape.
-        const width = fieldNameWidth(&.{ "ptr", "mu", if (auto_cleanup) "cleanup" else "", if (owns_callbacks) "callbackHandles" else "" });
+        const width = fieldNameWidth(&.{ "ptr", "mu", "active", "closed", "poison", if (auto_cleanup) "cleanup" else "", if (owns_callbacks) "callbackHandles" else "" });
         try writeStructField(writer, "ptr", width, "unsafe.Pointer");
-        try writeStructField(writer, "mu", width, "sync.RWMutex");
+        // `mu` guards the fields below and is never held across a native
+        // call: `active` counts the calls inside native, `closed` is what Close
+        // sets, and `poison` is the panic that made the handle unusable.
+        try writeStructField(writer, "mu", width, "sync.Mutex");
+        try writeStructField(writer, "active", width, "int");
+        try writeStructField(writer, "closed", width, "bool");
+        try writeStructField(writer, "poison", width, "*NativePanicError");
         if (owns_callbacks) try writeStructField(writer, "callbackHandles", width, "[]zigoCallbackHandle");
         if (auto_cleanup) try writeStructField(writer, "cleanup", width, "runtime.Cleanup");
         try writer.writeAll("}\n\n");
@@ -3486,20 +3505,49 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         // One receiver name per type, matching the methods emitted elsewhere.
         const recv = try receiverVariableAlloc(allocator, declaration.name);
         defer allocator.free(recv);
+        const has_close = constructorForType(program, declaration.name) != null;
+        // A call pins the handle open with zigoAcquire and lets go with
+        // zigoRelease; `mu` is dropped in between, so nothing that happens
+        // inside native can make another goroutine wait on this handle.
         try writer.print(
-            "func ({0s} *{1s}) zigoPointer() unsafe.Pointer {{\n\tif {0s} == nil {{\n\t\treturn nil\n\t}}\n\treturn {0s}.ptr\n}}\n\n",
+            "// zigoAcquire pins {0s} open for one native call and hands back its pointer;\n" ++
+                "// the call ends with zigoRelease. A nil, closed, or poisoned handle is the error.\n" ++
+                "func ({0s} *{1s}) zigoAcquire(operation string) (unsafe.Pointer, error) {{\n" ++
+                "\tif {0s} == nil {{\n\t\treturn nil, &HandleError{{Operation: operation}}\n\t}}\n" ++
+                "\t{0s}.mu.Lock()\n\tdefer {0s}.mu.Unlock()\n" ++
+                "\tif {0s}.closed || {0s}.ptr == nil {{\n\t\treturn nil, &HandleError{{Operation: operation}}\n\t}}\n" ++
+                "\tif {0s}.poison != nil {{\n\t\treturn nil, {0s}.poison.poisoned(operation)\n\t}}\n" ++
+                "\t{0s}.active++\n\treturn {0s}.ptr, nil\n}}\n\n",
             .{ recv, declaration.name },
         );
-        if (has_refs) try writer.print(
-            "func ({0s} *{1s}Ref) zigoPointer() unsafe.Pointer {{\n\tif {0s} == nil || {0s}.ptr == nil {{\n\t\treturn nil\n\t}}\n\tif parent := {0s}.parent; parent != nil && parent.zigoPointer() == nil {{\n\t\treturn nil\n\t}}\n\treturn {0s}.ptr\n}}\n\n",
-            .{ recv, declaration.name },
-        );
+        if (has_close) {
+            try writer.print(
+                "func ({0s} *{1s}) zigoRelease() {{\n\tif {0s} == nil {{\n\t\treturn\n\t}}\n\t{0s}.mu.Lock()\n\t{0s}.active--\n\tstate, release := {0s}.zigoTakeLocked()\n\t{0s}.mu.Unlock()\n\tif release {{\n\t\tcleanup{1s}(state)\n\t}}\n}}\n\n",
+                .{ recv, declaration.name },
+            );
+        } else {
+            try writer.print(
+                "func ({0s} *{1s}) zigoRelease() {{\n\tif {0s} == nil {{\n\t\treturn\n\t}}\n\t{0s}.mu.Lock()\n\t{0s}.active--\n\t{0s}.mu.Unlock()\n}}\n\n",
+                .{ recv, declaration.name },
+            );
+        }
         try writer.print(
-            "func ({0s} *{1s}) zigoLocker() *sync.RWMutex {{\n\tif {0s} == nil {{\n\t\treturn nil\n\t}}\n\treturn &{0s}.mu\n}}\n\n",
+            "// zigoPoison marks {0s} unusable: a Zig panic unwound through native frames\n" ++
+                "// without running their defers, so the state behind it is unknown.\n" ++
+                "func ({0s} *{1s}) zigoPoison(cause *NativePanicError) {{\n\tif {0s} == nil {{\n\t\treturn\n\t}}\n\t{0s}.mu.Lock()\n\tdefer {0s}.mu.Unlock()\n\tif {0s}.poison == nil {{\n\t\t{0s}.poison = cause\n",
             .{ recv, declaration.name },
         );
+        if (auto_cleanup) try writer.print("\t\t{0s}.cleanup.Stop()\n", .{recv});
+        try writer.writeAll("\t}\n}\n\n");
+        // A borrowed reference is only as open as its parent: it pins the
+        // parent for the call, and a panic through it poisons the parent.
         if (has_refs) try writer.print(
-            "func ({0s} *{1s}Ref) zigoLocker() *sync.RWMutex {{\n\tif {0s} == nil || {0s}.parent == nil {{\n\t\treturn nil\n\t}}\n\treturn {0s}.parent.zigoLocker()\n}}\n\n",
+            "func ({0s} *{1s}Ref) zigoAcquire(operation string) (unsafe.Pointer, error) {{\n" ++
+                "\tif {0s} == nil || {0s}.ptr == nil {{\n\t\treturn nil, &HandleError{{Operation: operation}}\n\t}}\n" ++
+                "\tif {0s}.parent != nil {{\n\t\tif _, err := {0s}.parent.zigoAcquire(operation); err != nil {{\n\t\t\treturn nil, err\n\t\t}}\n\t}}\n" ++
+                "\treturn {0s}.ptr, nil\n}}\n\n" ++
+                "func ({0s} *{1s}Ref) zigoRelease() {{\n\tif {0s} != nil && {0s}.parent != nil {{\n\t\t{0s}.parent.zigoRelease()\n\t}}\n}}\n\n" ++
+                "func ({0s} *{1s}Ref) zigoPoison(cause *NativePanicError) {{\n\tif {0s} != nil && {0s}.parent != nil {{\n\t\t{0s}.parent.zigoPoison(cause)\n\t}}\n}}\n\n",
             .{ recv, declaration.name },
         );
         if (constructorForType(program, declaration.name)) |constructor| {
@@ -3527,15 +3575,35 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             try writer.print("{s}(state.ptr)\n\t}}\n", .{raw_deinit});
             if (owns_callbacks) try writer.writeAll("\tfor _, handle := range state.callbackHandles {\n\t\tdeleteCallbackHandle(handle)\n\t}\n");
             try writer.writeAll("}\n\n");
-            // The write lock plus the nil-pointer check carry idempotency:
-            // a second Close waits for the first, then finds ptr already nil.
-            try writer.print("// Close releases the native {1s} resources. It is safe to call more than once.\n// The error result is always nil; it exists so {1s} satisfies io.Closer.\nfunc ({0s} *{1s}) Close() error {{\n\tif {0s} == nil {{\n\t\treturn nil\n\t}}\n", .{ recv, declaration.name });
-            try writer.print("\t{0s}.mu.Lock()\n\tdefer {0s}.mu.Unlock()\n\tif {0s}.ptr == nil {{\n\t\treturn nil\n\t}}\n", .{recv});
-            try writer.print("\t{0s}.cleanup.Stop()\n\tcleanup{1s}({2s}CleanupState{{ptr: {0s}.ptr", .{ recv, declaration.name, private_name });
+            // Close only marks the handle. Whoever then finds it closed with
+            // no call inside native -- Close itself, or the last zigoRelease --
+            // runs the cleanup, so Close never waits and never makes another
+            // caller wait. `closed` carries idempotency: a second Close finds
+            // it set and returns.
+            try writer.print(
+                "// Close releases the native {1s} resources. It is safe to call more than once.\n" ++
+                    "// The error result is always nil; it exists so {1s} satisfies io.Closer.\n" ++
+                    "// Close does not wait: a call still inside native keeps the resources until it\n" ++
+                    "// returns, and every call made after Close fails with *HandleError.\n" ++
+                    "func ({0s} *{1s}) Close() error {{\n\tif {0s} == nil {{\n\t\treturn nil\n\t}}\n" ++
+                    "\t{0s}.mu.Lock()\n\tif {0s}.closed {{\n\t\t{0s}.mu.Unlock()\n\t\treturn nil\n\t}}\n\t{0s}.closed = true\n\t{0s}.cleanup.Stop()\n" ++
+                    "\tstate, release := {0s}.zigoTakeLocked()\n\t{0s}.mu.Unlock()\n\tif release {{\n\t\tcleanup{1s}(state)\n\t}}\n" ++
+                    "\truntime.KeepAlive({0s})\n\treturn nil\n}}\n\n",
+                .{ recv, declaration.name },
+            );
+            try writer.print(
+                "// zigoTakeLocked hands out what is left to release once {0s} is closed and no\n" ++
+                    "// call is inside native; mu must be held. A poisoned handle keeps its native\n" ++
+                    "// object: releasing state a panic left half-changed could fault, so it leaks.\n" ++
+                    "func ({0s} *{1s}) zigoTakeLocked() ({2s}CleanupState, bool) {{\n" ++
+                    "\tif !{0s}.closed || {0s}.active != 0 || {0s}.ptr == nil {{\n\t\treturn {2s}CleanupState{{}}, false\n\t}}\n" ++
+                    "\tstate := {2s}CleanupState{{ptr: {0s}.ptr",
+                .{ recv, declaration.name, private_name },
+            );
             if (owns_callbacks) try writer.print(", callbackHandles: {0s}.callbackHandles", .{recv});
-            try writer.print("}})\n\t{0s}.ptr = nil\n", .{recv});
+            try writer.print("}}\n\t{0s}.ptr = nil\n", .{recv});
             if (owns_callbacks) try writer.print("\t{0s}.callbackHandles = nil\n", .{recv});
-            try writer.print("\truntime.KeepAlive({0s})\n\treturn nil\n}}\n\n", .{recv});
+            try writer.print("\tif {0s}.poison != nil {{\n\t\tstate.ptr = nil\n\t}}\n\treturn state, true\n}}\n\n", .{recv});
         }
     }
 }
@@ -3559,39 +3627,37 @@ fn writeStructField(writer: *std.Io.Writer, name: []const u8, width: usize, type
 /// rather than with the handle types themselves.
 fn renderGoHandleRuntime(writer: *std.Io.Writer, program: abi.Program) !void {
     if (programHasOpaqueTypes(program)) try writer.writeAll(
-        "type zigoHandle interface {\n" ++
-            "\tzigoPointer() unsafe.Pointer\n" ++
-            "\tzigoLocker() *sync.RWMutex\n" ++
+        "// zigoHandle is what every handle and borrowed reference offers a generated\n" ++
+            "// call: pin it open for the native call, let it go afterwards, and mark it\n" ++
+            "// unusable when the call ended in a Zig panic.\n" ++
+            "type zigoHandle interface {\n" ++
+            "\tzigoAcquire(operation string) (unsafe.Pointer, error)\n" ++
+            "\tzigoRelease()\n" ++
+            "\tzigoPoison(cause *NativePanicError)\n" ++
             "}\n\n" ++
+            "// zigoCheckedPointer pins value open for the rest of the call and hands back\n" ++
+            "// its native pointer; the caller defers zigoRelease. A nil, closed, or\n" ++
+            "// poisoned handle is the error instead, and nothing is pinned.\n" ++
             "func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, error) {\n" ++
-            "\tptr := value.zigoPointer()\n" ++
-            "\tif ptr == nil {\n" ++
-            "\t\treturn nil, &HandleError{Operation: operation}\n" ++
-            "\t}\n" ++
-            "\treturn ptr, nil\n" ++
+            "\treturn value.zigoAcquire(operation)\n" ++
             "}\n\n" ++
             "func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsafe.Pointer, error) {\n" ++
             "\tif absent {\n" ++
             "\t\treturn nil, nil\n" ++
             "\t}\n" ++
-            "\treturn zigoCheckedPointer(operation, value)\n" ++
-            "}\n\n",
-    );
-    // Only the union accessors reach a handle through the interface; the
-    // generated methods lock their receiver by name.
-    if (program.projections.len != 0 or program.snapshots.len != 0) try writer.writeAll(
-        "// zigoReadLock holds the owner's read lock for the rest of the call, so a\n" ++
-            "// concurrent Close cannot release the handle between the pointer check and\n" ++
-            "// the native call. Use it as `defer zigoReadLock(receiver)()`. A borrowed\n" ++
-            "// ref delegates to its parent's lock; a nil receiver or a ref without a\n" ++
-            "// parent locks nothing.\n" ++
-            "func zigoReadLock(value zigoHandle) func() {\n" ++
-            "\tmu := value.zigoLocker()\n" ++
-            "\tif mu == nil {\n" ++
-            "\t\treturn func() {}\n" ++
+            "\treturn value.zigoAcquire(operation)\n" ++
+            "}\n\n" ++
+            "// zigoPoisonAfterPanic marks every handle a call reached unusable when that\n" ++
+            "// call ended in a Zig panic: the panic unwound the native frames without\n" ++
+            "// running their defers, so what is behind those handles is unknown. Any\n" ++
+            "// other error passes through untouched.\n" ++
+            "func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error {\n" ++
+            "\tif cause, ok := err.(*NativePanicError); ok {\n" ++
+            "\t\tfor _, handle := range handles {\n" ++
+            "\t\t\thandle.zigoPoison(cause)\n" ++
+            "\t\t}\n" ++
             "\t}\n" ++
-            "\tmu.RLock()\n" ++
-            "\treturn mu.RUnlock\n" ++
+            "\treturn err\n" ++
             "}\n\n",
     );
 }
@@ -3656,13 +3722,13 @@ fn renderPublicTaggedUnionAccessors(
         // One implementation per projection, reached through the handle
         // interface so the owned and borrowed methods can both delegate to it.
         try writer.print(
-            "func zigo{0s}Tag(receiver zigoHandle) ({1s}, error) {{\n\tdefer zigoReadLock(receiver)()\n\tdefer runtime.KeepAlive(receiver)\n\truntime.LockOSThread()\n\tdefer runtime.UnlockOSThread()\n" ++
-                "\tptr, err := zigoCheckedPointer(\"{0s}.Tag receiver\", receiver)\n\tif err != nil {{\n\t\treturn 0, err\n\t}}\n\tresult, status := ",
+            "func zigo{0s}Tag(receiver zigoHandle) ({1s}, error) {{\n\tdefer runtime.KeepAlive(receiver)\n\truntime.LockOSThread()\n\tdefer runtime.UnlockOSThread()\n" ++
+                "\tptr, err := zigoCheckedPointer(\"{0s}.Tag receiver\", receiver)\n\tif err != nil {{\n\t\treturn 0, err\n\t}}\n\tdefer receiver.zigoRelease()\n\tresult, status := ",
             .{ declaration.name, tag_type },
         );
         try writeRawReferencePrefix(writer, options);
         try writer.print(
-            "{0s}ProjectTag(ptr)\n\tif status != zigoProjectionSuccess {{\n\t\treturn 0, zigoProjectionError(\"{0s}.Tag\", status)\n\t}}\n\treturn {1s}(result), nil\n}}\n\n",
+            "{0s}ProjectTag(ptr)\n\tif status != zigoProjectionSuccess {{\n\t\treturn 0, zigoPoisonAfterPanic(zigoProjectionError(\"{0s}.Tag\", status), receiver)\n\t}}\n\treturn {1s}(result), nil\n}}\n\n",
             .{ declaration.name, tag_type },
         );
         inline for (.{ false, true }) |borrowed| {
@@ -3689,15 +3755,15 @@ fn renderPublicTaggedUnionAccessors(
 
             try writer.print("func zigo{s}As{s}(receiver zigoHandle) (", .{ declaration.name, field_name });
             try writePayloadType(writer, payload);
-            try writer.print(", bool, error) {{\n\tdefer zigoReadLock(receiver)()\n\tdefer runtime.KeepAlive(receiver)\n\truntime.LockOSThread()\n\tdefer runtime.UnlockOSThread()\n\tptr, err := zigoCheckedPointer(\"{s}.As{s} receiver\", receiver)\n\tif err != nil {{\n\t\treturn ", .{ declaration.name, field_name });
+            try writer.print(", bool, error) {{\n\tdefer runtime.KeepAlive(receiver)\n\truntime.LockOSThread()\n\tdefer runtime.UnlockOSThread()\n\tptr, err := zigoCheckedPointer(\"{s}.As{s} receiver\", receiver)\n\tif err != nil {{\n\t\treturn ", .{ declaration.name, field_name });
             try writer.writeAll(goZero(payload));
-            try writer.writeAll(", false, err\n\t}\n\tresult, status := ");
+            try writer.writeAll(", false, err\n\t}\n\tdefer receiver.zigoRelease()\n\tresult, status := ");
             try writeRawReferencePrefix(writer, options);
             try writer.print("{s}Project{s}(ptr)\n\tif status == zigoProjectionMismatch {{\n\t\treturn ", .{ declaration.name, field_name });
             try writer.writeAll(goZero(payload));
             try writer.writeAll(", false, nil\n\t}\n\tif status != zigoProjectionSuccess {\n\t\treturn ");
             try writer.writeAll(goZero(payload));
-            try writer.print(", false, zigoProjectionError(\"{s}.As{s}\", status)\n\t}}\n\treturn ", .{ declaration.name, field_name });
+            try writer.print(", false, zigoPoisonAfterPanic(zigoProjectionError(\"{s}.As{s}\", status), receiver)\n\t}}\n\treturn ", .{ declaration.name, field_name });
             if (payload == .opaque_ptr) {
                 try writer.print("&{s}Ref{{ptr: result, parent: receiver}}", .{payload.opaque_ptr.ref});
             } else if (payload == .slice and payload.slice.element.* == .@"enum") {
@@ -3740,7 +3806,9 @@ fn writePayloadType(writer: *std.Io.Writer, payload: semantic.TypeNode) !void {
 }
 
 /// Resolves every handle a call needs into a local pointer, returning the
-/// caller's error on the first nil or closed one.
+/// caller's error on the first nil, closed, or poisoned one. Each handle
+/// stays pinned open until the function returns; a nil optional handle was
+/// never pinned, and releasing it is a no-op.
 fn renderHandleChecks(
     allocator: std.mem.Allocator,
     writer: *std.Io.Writer,
@@ -3755,7 +3823,7 @@ fn renderHandleChecks(
         try writer.print("\tptr, err := zigoCheckedPointer(\"{s} receiver\", {s})\n", .{ operation, receiver_name });
         try writer.writeAll("\tif err != nil {\n\t\t");
         try writeHandleErrorReturn(writer, function, constructor);
-        try writer.writeAll("\t}\n");
+        try writer.print("\t}}\n\tdefer {s}.zigoRelease()\n", .{receiver_name});
     }
     for (function.params, 0..) |parameter, parameter_index| {
         if (parameter.type != .opaque_ptr) continue;
@@ -3770,8 +3838,33 @@ fn renderHandleChecks(
         }
         try writer.writeAll("\tif err != nil {\n\t\t");
         try writeHandleErrorReturn(writer, function, constructor);
-        try writer.writeAll("\t}\n");
+        try writer.print("\t}}\n\tdefer {s}.zigoRelease()\n", .{name});
     }
+}
+
+/// The `errorForCode` call a failed native call returns. When the call reached
+/// handles it goes through zigoPoisonAfterPanic, so a `-2` leaves them all
+/// unusable; a call with no handles has nothing to poison.
+fn writeErrorForCode(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    function: semantic.SemanticFn,
+    go_names: []const []const u8,
+    operation: []const u8,
+) !void {
+    var handle_count: usize = @intFromBool(function.receiver != null);
+    for (function.params) |parameter| handle_count += @intFromBool(parameter.type == .opaque_ptr);
+    if (handle_count == 0) return writer.print("errorForCode(\"{s}\", code)\n", .{operation});
+    try writer.print("zigoPoisonAfterPanic(errorForCode(\"{s}\", code)", .{operation});
+    if (function.receiver) |receiver| {
+        const receiver_name = try receiverVariableAlloc(allocator, receiver);
+        defer allocator.free(receiver_name);
+        try writer.print(", {s}", .{receiver_name});
+    }
+    for (function.params, 0..) |parameter, parameter_index| {
+        if (parameter.type == .opaque_ptr) try writer.print(", {s}", .{go_names[parameter_index]});
+    }
+    try writer.writeAll(")\n");
 }
 
 /// The `return` statement a failed handle check uses. It mirrors whatever the
@@ -4116,18 +4209,6 @@ fn renderCallbackHandleSetup(allocator: std.mem.Allocator, writer: *std.Io.Write
 fn renderKeepAliveDefers(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, function: abi.AbiFn) !void {
     const go_names = try goParamNamesForAlloc(allocator, function.origin.params);
     defer naming.freeParamNames(allocator, go_names);
-    // Every handle carries `mu`, so the read lock is unconditional: it holds
-    // Close off for the length of the native call, whether or not the program
-    // uses callbacks anywhere.
-    if (function.origin.receiver) |receiver| {
-        const receiver_name = try receiverVariableAlloc(allocator, receiver);
-        defer allocator.free(receiver_name);
-        try writer.print("\tif {s} != nil {{ {s}.mu.RLock(); defer {s}.mu.RUnlock() }}\n", .{ receiver_name, receiver_name, receiver_name });
-    }
-    for (function.origin.params, 0..) |parameter, parameter_index| switch (parameter.type) {
-        .opaque_ptr => try writer.print("\tif {s} != nil {{ {s}.mu.RLock(); defer {s}.mu.RUnlock() }}\n", .{ go_names[parameter_index], go_names[parameter_index], go_names[parameter_index] }),
-        else => {},
-    };
     if (function.origin.receiver) |receiver| {
         if (isAutoCleanupType(program, receiver)) {
             const receiver_name = try receiverVariableAlloc(allocator, receiver);

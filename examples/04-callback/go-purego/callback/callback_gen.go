@@ -36,15 +36,12 @@ func NewFloatBuffer() (*FloatBuffer, error) {
 // Push invokes the bound Zig FloatBuffer.push operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (f *FloatBuffer) Push(value float32) error {
-	if f != nil {
-		f.mu.RLock()
-		defer f.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(f)
 	ptr, err := zigoCheckedPointer("FloatBuffer.Push receiver", f)
 	if err != nil {
 		return err
 	}
+	defer f.zigoRelease()
 	raw.FloatBufferPush(ptr, value)
 	return nil
 }
@@ -52,15 +49,12 @@ func (f *FloatBuffer) Push(value float32) error {
 // Len invokes the bound Zig FloatBuffer.len operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (f *FloatBuffer) Len() (uint, error) {
-	if f != nil {
-		f.mu.RLock()
-		defer f.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(f)
 	ptr, err := zigoCheckedPointer("FloatBuffer.Len receiver", f)
 	if err != nil {
 		return 0, err
 	}
+	defer f.zigoRelease()
 	return raw.FloatBufferLen(ptr), nil
 }
 
@@ -80,15 +74,12 @@ func NewIntBuffer() (*IntBuffer, error) {
 // Push invokes the bound Zig IntBuffer.push operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (i *IntBuffer) Push(value int32) error {
-	if i != nil {
-		i.mu.RLock()
-		defer i.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(i)
 	ptr, err := zigoCheckedPointer("IntBuffer.Push receiver", i)
 	if err != nil {
 		return err
 	}
+	defer i.zigoRelease()
 	raw.IntBufferPush(ptr, value)
 	return nil
 }
@@ -96,15 +87,12 @@ func (i *IntBuffer) Push(value int32) error {
 // Len invokes the bound Zig IntBuffer.len operation.
 // It returns *HandleError if a required handle is nil or closed.
 func (i *IntBuffer) Len() (uint, error) {
-	if i != nil {
-		i.mu.RLock()
-		defer i.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(i)
 	ptr, err := zigoCheckedPointer("IntBuffer.Len receiver", i)
 	if err != nil {
 		return 0, err
 	}
+	defer i.zigoRelease()
 	return raw.IntBufferLen(ptr), nil
 }
 
@@ -129,15 +117,12 @@ func NewCallbackContext(callback Observer) (*CallbackContext, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (c *CallbackContext) Run(value int32) (int32, error) {
-	if c != nil {
-		c.mu.RLock()
-		defer c.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(c)
 	ptr, err := zigoCheckedPointer("CallbackContext.Run receiver", c)
 	if err != nil {
 		return 0, err
 	}
+	defer c.zigoRelease()
 	result := raw.CallbackContextRun(ptr, value)
 	for _, handle := range c.callbackHandles {
 		zigoRethrowCallbackPanic("CallbackContext.Run", handle)

@@ -3,31 +3,46 @@ package event_queue
 
 import (
 	"runtime/cgo"
-	"sync"
 	"sync/atomic"
 	"unsafe"
 
 	raw "example.com/zigo/event-queue/bridge/cgo"
 )
 
+// zigoHandle is what every handle and borrowed reference offers a generated
+// call: pin it open for the native call, let it go afterwards, and mark it
+// unusable when the call ended in a Zig panic.
 type zigoHandle interface {
-	zigoPointer() unsafe.Pointer
-	zigoLocker() *sync.RWMutex
+	zigoAcquire(operation string) (unsafe.Pointer, error)
+	zigoRelease()
+	zigoPoison(cause *NativePanicError)
 }
 
+// zigoCheckedPointer pins value open for the rest of the call and hands back
+// its native pointer; the caller defers zigoRelease. A nil, closed, or
+// poisoned handle is the error instead, and nothing is pinned.
 func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, error) {
-	ptr := value.zigoPointer()
-	if ptr == nil {
-		return nil, &HandleError{Operation: operation}
-	}
-	return ptr, nil
+	return value.zigoAcquire(operation)
 }
 
 func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsafe.Pointer, error) {
 	if absent {
 		return nil, nil
 	}
-	return zigoCheckedPointer(operation, value)
+	return value.zigoAcquire(operation)
+}
+
+// zigoPoisonAfterPanic marks every handle a call reached unusable when that
+// call ended in a Zig panic: the panic unwound the native frames without
+// running their defers, so what is behind those handles is unknown. Any
+// other error passes through untouched.
+func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error {
+	if cause, ok := err.(*NativePanicError); ok {
+		for _, handle := range handles {
+			handle.zigoPoison(cause)
+		}
+	}
+	return err
 }
 
 // EventQueueCreateObserver is the Go callback signature accepted by the generated binding.

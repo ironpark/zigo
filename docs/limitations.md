@@ -76,7 +76,7 @@
   0이 아닌 sentinel pointer와 그 밖의 many-pointer는 reflection 단계에서 거부된다.
 - 포인터를 품은 결과 트리(문자열 필드, 배열 필드, 중첩 struct 포인터를 가진 struct)는
   값으로 노출하지 않는다. 필드가 재귀적으로 ABI 안전해야 하므로(`ZIGO012`) 이런 결과는
-  opaque handle로 다시 설계해야 하고, 각 필드 접근이 handle의 `sync.RWMutex` 아래에서
+  opaque handle로 다시 설계해야 하고, 각 필드 접근이 handle을 획득한 채
   native 호출 한 번씩이 된다. 필드가 많은 트리라면 호출 수가 필드 수에 비례하므로, 필요한
   값만 스칼라로 평탄화해 한 번에 돌려주는 함수를 따로 두는 편이 대개 낫다.
 - `extern struct`에 필드를 추가하는 것은 `abi-check`에서 항상 breaking이다. aggregate는
@@ -133,6 +133,12 @@ AST 보강에 사용하는 기본 `bindings.zig`를 읽지 못하면 reflection�
   현재 작업을 중단한다. 메시지는 native 쪽 thread-local에 남으므로, error를 반환하는 생성
   함수와 union accessor는 호출 동안 `runtime.LockOSThread`로 goroutine을 그 thread에
   고정한다. 호출당 비용은 작지만 0은 아니다.
+- panic은 `longjmp`로 native 프레임을 빠져나오므로 그 프레임들의 `defer`/`errdefer`는
+  실행되지 않는다. 잠금·할당·파일 핸들이 새고 객체는 반쯤 바뀐 채 남을 수 있다. 그래서
+  `-2`로 끝난 호출이 닿은 모든 handle(receiver, handle 인자, projection의 소유자)은
+  **poison** 되어, 이후 호출은 처음 panic을 가리키는 `*NativePanicError`를 돌려주고
+  `Close`는 native deinit 없이 객체를 누수시킨다. handle이 없는 호출(자유 함수)은 poison할
+  것이 없으므로, 그런 함수가 건드린 전역 상태는 호출자가 판단한다.
 - Go 콜백의 panic은 trampoline이 복구해 native에는 `-3`(부호 있는 32비트 결과)으로 전달하고,
   native 호출이 돌아온 뒤 `*CallbackPanicError`로 **다시 일으킨다**. native가 `-3`을 자기
   error로 바꿔도 Go 호출자는 error가 아니라 panic을 본다. 다시 일어나는 시점은 그 호출이
@@ -150,10 +156,13 @@ AST 보강에 사용하는 기본 `bindings.zig`를 읽지 못하면 reflection�
   지향 함수를 제공하는 편이 낫다.
 - retained Go 콜백과 포인터는 생성된 `Close` 경로에서 해제될 때까지 유효해야 한다.
   소유 객체는 사용 후 반드시 닫고, 콜백에서 발생한 panic의 전달 규칙도 테스트한다.
-- 생성된 메서드, tagged-union projection(`Tag`/`As*`/`Snapshot`/`Variant`), borrowed
-  `Ref`, 그리고 `Close`는 모두 소유 handle의 `sync.RWMutex`로 직렬화된다. 다만 잠기는
-  것은 receiver(와 `Ref`의 부모 사슬)뿐이다. handle을 **인자**로 받는 호출은 그 인자를
-  잠그지 않으므로, 인자로 넘긴 handle을 다른 goroutine에서 동시에 닫지 않는다.
+- handle은 잠금이 아니라 진행 중 호출 수로 지켜진다. 생성된 메서드, tagged-union
+  projection(`Tag`/`As*`/`Snapshot`/`Variant`), borrowed `Ref`는 호출 전에 receiver와
+  handle 인자를 획득하고 돌아온 뒤 놓으며, `Close`는 표시만 하고 마지막 호출이 돌아올 때
+  해제된다. 어떤 호출도 다른 goroutine의 native 호출 뒤에서 기다리지 않는다. 특히
+  `Close`가 대기 중이라고 해서 이후의 호출(예: 다른 스레드의 `cancel`)이 막히지 않고,
+  즉시 `*HandleError`를 받는다. `Close`가 돌아왔다고 native 메모리가 이미 해제된 것은
+  아니다. 진행 중이던 호출이 돌아오는 시점에 해제된다.
 - `runtime.AddCleanup` 안전망은 실행 시점과 프로그램 종료 전 실행을 보장하지 않는다.
   callback이 소유 객체를 캡처하는 강한 참조 순환과 특정 thread에서만 가능한 해제를
   해결하지 않으므로 명시적 `Close`의 대체로 사용하지 않는다.

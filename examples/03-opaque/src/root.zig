@@ -19,6 +19,12 @@ pub const Context = struct {
         return self.total;
     }
 
+    /// crash panics inside a method: what leaves a handle poisoned.
+    pub fn crash(self: *Context) CreateError!void {
+        _ = self;
+        @panic("deliberate handle panic");
+    }
+
     pub fn deinit(self: *Context) void {
         std.heap.page_allocator.destroy(self);
         _ = live_bytes.fetchSub(@sizeOf(Context), .monotonic);

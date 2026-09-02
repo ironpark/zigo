@@ -12,22 +12,56 @@ import (
 // Signal is a caller-owned native handle. Call Close when it is no longer needed.
 type Signal struct {
 	ptr     unsafe.Pointer
-	mu      sync.RWMutex
+	mu      sync.Mutex
+	active  int
+	closed  bool
+	poison  *NativePanicError
 	cleanup runtime.Cleanup
 }
 
-func (s *Signal) zigoPointer() unsafe.Pointer {
+// zigoAcquire pins s open for one native call and hands back its pointer;
+// the call ends with zigoRelease. A nil, closed, or poisoned handle is the error.
+func (s *Signal) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	if s == nil {
-		return nil
+		return nil, &HandleError{Operation: operation}
 	}
-	return s.ptr
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.closed || s.ptr == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	if s.poison != nil {
+		return nil, s.poison.poisoned(operation)
+	}
+	s.active++
+	return s.ptr, nil
 }
 
-func (s *Signal) zigoLocker() *sync.RWMutex {
+func (s *Signal) zigoRelease() {
 	if s == nil {
-		return nil
+		return
 	}
-	return &s.mu
+	s.mu.Lock()
+	s.active--
+	state, release := s.zigoTakeLocked()
+	s.mu.Unlock()
+	if release {
+		cleanupSignal(state)
+	}
+}
+
+// zigoPoison marks s unusable: a Zig panic unwound through native frames
+// without running their defers, so the state behind it is unknown.
+func (s *Signal) zigoPoison(cause *NativePanicError) {
+	if s == nil {
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.poison == nil {
+		s.poison = cause
+		s.cleanup.Stop()
+	}
 }
 
 type signalCleanupState struct {
@@ -49,18 +83,39 @@ func cleanupSignal(state signalCleanupState) {
 
 // Close releases the native Signal resources. It is safe to call more than once.
 // The error result is always nil; it exists so Signal satisfies io.Closer.
+// Close does not wait: a call still inside native keeps the resources until it
+// returns, and every call made after Close fails with *HandleError.
 func (s *Signal) Close() error {
 	if s == nil {
 		return nil
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.ptr == nil {
+	if s.closed {
+		s.mu.Unlock()
 		return nil
 	}
+	s.closed = true
 	s.cleanup.Stop()
-	cleanupSignal(signalCleanupState{ptr: s.ptr})
-	s.ptr = nil
+	state, release := s.zigoTakeLocked()
+	s.mu.Unlock()
+	if release {
+		cleanupSignal(state)
+	}
 	runtime.KeepAlive(s)
 	return nil
+}
+
+// zigoTakeLocked hands out what is left to release once s is closed and no
+// call is inside native; mu must be held. A poisoned handle keeps its native
+// object: releasing state a panic left half-changed could fault, so it leaks.
+func (s *Signal) zigoTakeLocked() (signalCleanupState, bool) {
+	if !s.closed || s.active != 0 || s.ptr == nil {
+		return signalCleanupState{}, false
+	}
+	state := signalCleanupState{ptr: s.ptr}
+	s.ptr = nil
+	if s.poison != nil {
+		state.ptr = nil
+	}
+	return state, true
 }

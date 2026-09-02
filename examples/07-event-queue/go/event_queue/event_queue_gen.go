@@ -33,10 +33,6 @@ func NewEventQueue(name string, capacity uint, policy Policy, observer EventQueu
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) Clone(observer EventQueueCloneObserver) (*EventQueue, error) {
-	if e != nil {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(e)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -44,6 +40,7 @@ func (e *EventQueue) Clone(observer EventQueueCloneObserver) (*EventQueue, error
 	if err != nil {
 		return nil, err
 	}
+	defer e.zigoRelease()
 	observerHandle := newEventQueueCloneObserverHandle(observer)
 	result, code := raw.EventQueueClone(ptr, uintptr(observerHandle))
 	zigoRethrowCallbackPanic("EventQueue.Clone", observerHandle)
@@ -52,7 +49,7 @@ func (e *EventQueue) Clone(observer EventQueueCloneObserver) (*EventQueue, error
 	}
 	if code != 0 {
 		deleteCallbackHandle(observerHandle)
-		return nil, errorForCode("EventQueue.Clone", code)
+		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.Clone", code), e)
 	}
 	return newEventQueue(result, []zigoCallbackHandle{observerHandle}), nil
 }
@@ -62,10 +59,6 @@ func (e *EventQueue) Clone(observer EventQueueCloneObserver) (*EventQueue, error
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) Enqueue(id uint64, value int32) error {
-	if e != nil {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(e)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -73,12 +66,13 @@ func (e *EventQueue) Enqueue(id uint64, value int32) error {
 	if err != nil {
 		return err
 	}
+	defer e.zigoRelease()
 	code := raw.EventQueueEnqueue(ptr, id, value)
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.Enqueue", handle)
 	}
 	if code != 0 {
-		return errorForCode("EventQueue.Enqueue", code)
+		return zigoPoisonAfterPanic(errorForCode("EventQueue.Enqueue", code), e)
 	}
 	return nil
 }
@@ -90,14 +84,6 @@ func (e *EventQueue) Enqueue(id uint64, value int32) error {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) MergeFrom(source *EventQueue) (uint, error) {
-	if e != nil {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-	}
-	if source != nil {
-		source.mu.RLock()
-		defer source.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(e)
 	defer runtime.KeepAlive(source)
 	runtime.LockOSThread()
@@ -106,10 +92,12 @@ func (e *EventQueue) MergeFrom(source *EventQueue) (uint, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer e.zigoRelease()
 	sourcePtr, err := zigoOptionalPointer("EventQueue.MergeFrom parameter source", source == nil, source)
 	if err != nil {
 		return 0, err
 	}
+	defer source.zigoRelease()
 	result, code := raw.EventQueueMergeFrom(ptr, sourcePtr)
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.MergeFrom", handle)
@@ -120,7 +108,7 @@ func (e *EventQueue) MergeFrom(source *EventQueue) (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, errorForCode("EventQueue.MergeFrom", code)
+		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.MergeFrom", code), e, source)
 	}
 	return result, nil
 }
@@ -130,10 +118,6 @@ func (e *EventQueue) MergeFrom(source *EventQueue) (uint, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) Process(limit uint) (uint, error) {
-	if e != nil {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(e)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -141,12 +125,13 @@ func (e *EventQueue) Process(limit uint) (uint, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer e.zigoRelease()
 	result, code := raw.EventQueueProcess(ptr, limit)
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.Process", handle)
 	}
 	if code != 0 {
-		return 0, errorForCode("EventQueue.Process", code)
+		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.Process", code), e)
 	}
 	return result, nil
 }
@@ -155,15 +140,12 @@ func (e *EventQueue) Process(limit uint) (uint, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) Name() (string, error) {
-	if e != nil {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(e)
 	ptr, err := zigoCheckedPointer("EventQueue.Name receiver", e)
 	if err != nil {
 		return "", err
 	}
+	defer e.zigoRelease()
 	result := raw.EventQueueName(ptr)
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.Name", handle)
@@ -176,15 +158,12 @@ func (e *EventQueue) Name() (string, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) SampleValues() ([]float32, error) {
-	if e != nil {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(e)
 	ptr, err := zigoCheckedPointer("EventQueue.SampleValues receiver", e)
 	if err != nil {
 		return nil, err
 	}
+	defer e.zigoRelease()
 	result := raw.EventQueueSampleValues(ptr)
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.SampleValues", handle)
@@ -200,10 +179,6 @@ func (e *EventQueue) SampleValues() ([]float32, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) SampleValuesChecked() ([]float32, error) {
-	if e != nil {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(e)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -211,12 +186,13 @@ func (e *EventQueue) SampleValuesChecked() ([]float32, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer e.zigoRelease()
 	result, code := raw.EventQueueSampleValuesChecked(ptr)
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.SampleValuesChecked", handle)
 	}
 	if code != 0 {
-		return nil, errorForCode("EventQueue.SampleValuesChecked", code)
+		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.SampleValuesChecked", code), e)
 	}
 	return result, nil
 }
@@ -253,15 +229,12 @@ func ExtractSentinelPointers(paths []string) uint {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) ExtractSamples() ([]float32, error) {
-	if e != nil {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(e)
 	ptr, err := zigoCheckedPointer("EventQueue.ExtractSamples receiver", e)
 	if err != nil {
 		return nil, err
 	}
+	defer e.zigoRelease()
 	result := raw.EventQueueExtractSamples(ptr)
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.ExtractSamples", handle)
@@ -276,10 +249,6 @@ func (e *EventQueue) ExtractSamples() ([]float32, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) ExtractSamplesChecked() ([]float32, error) {
-	if e != nil {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(e)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -287,12 +256,13 @@ func (e *EventQueue) ExtractSamplesChecked() ([]float32, error) {
 	if err != nil {
 		return nil, err
 	}
+	defer e.zigoRelease()
 	result, code := raw.EventQueueExtractSamplesChecked(ptr)
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.ExtractSamplesChecked", handle)
 	}
 	if code != 0 {
-		return nil, errorForCode("EventQueue.ExtractSamplesChecked", code)
+		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.ExtractSamplesChecked", code), e)
 	}
 	return result, nil
 }
@@ -302,15 +272,12 @@ func (e *EventQueue) ExtractSamplesChecked() ([]float32, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) AcceptStats(values []Stats) (uint, error) {
-	if e != nil {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(e)
 	ptr, err := zigoCheckedPointer("EventQueue.AcceptStats receiver", e)
 	if err != nil {
 		return 0, err
 	}
+	defer e.zigoRelease()
 	valuesRaw := zigoStatsSliceToRaw(values)
 	result := raw.EventQueueAcceptStats(ptr, valuesRaw)
 	for _, handle := range e.callbackHandles {
@@ -326,10 +293,6 @@ func (e *EventQueue) AcceptStats(values []Stats) (uint, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) Estimate(output []Stats) (uint, error) {
-	if e != nil {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(e)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -337,13 +300,14 @@ func (e *EventQueue) Estimate(output []Stats) (uint, error) {
 	if err != nil {
 		return 0, err
 	}
+	defer e.zigoRelease()
 	outputRaw := zigoStatsSliceToRaw(output)
 	result, code := raw.EventQueueEstimate(ptr, outputRaw)
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.Estimate", handle)
 	}
 	if code != 0 {
-		return 0, errorForCode("EventQueue.Estimate", code)
+		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.Estimate", code), e)
 	}
 	zigoStatsSliceCopyFromRaw(output, outputRaw, int(result))
 	return result, nil
@@ -354,15 +318,12 @@ func (e *EventQueue) Estimate(output []Stats) (uint, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) SampleStats() ([]Stats, error) {
-	if e != nil {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(e)
 	ptr, err := zigoCheckedPointer("EventQueue.SampleStats receiver", e)
 	if err != nil {
 		return nil, err
 	}
+	defer e.zigoRelease()
 	result := raw.EventQueueSampleStats(ptr)
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.SampleStats", handle)
@@ -374,15 +335,12 @@ func (e *EventQueue) SampleStats() ([]Stats, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) Len() (uint, error) {
-	if e != nil {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(e)
 	ptr, err := zigoCheckedPointer("EventQueue.Len receiver", e)
 	if err != nil {
 		return 0, err
 	}
+	defer e.zigoRelease()
 	result := raw.EventQueueLen(ptr)
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.Len", handle)
@@ -394,15 +352,12 @@ func (e *EventQueue) Len() (uint, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) Capacity() (uint, error) {
-	if e != nil {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(e)
 	ptr, err := zigoCheckedPointer("EventQueue.Capacity receiver", e)
 	if err != nil {
 		return 0, err
 	}
+	defer e.zigoRelease()
 	result := raw.EventQueueCapacity(ptr)
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.Capacity", handle)
@@ -414,15 +369,12 @@ func (e *EventQueue) Capacity() (uint, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) Policy() (Policy, error) {
-	if e != nil {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(e)
 	ptr, err := zigoCheckedPointer("EventQueue.Policy receiver", e)
 	if err != nil {
 		return 0, err
 	}
+	defer e.zigoRelease()
 	result := raw.EventQueuePolicy(ptr)
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.Policy", handle)
@@ -434,15 +386,12 @@ func (e *EventQueue) Policy() (Policy, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) Dropped() (uint, error) {
-	if e != nil {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(e)
 	ptr, err := zigoCheckedPointer("EventQueue.Dropped receiver", e)
 	if err != nil {
 		return 0, err
 	}
+	defer e.zigoRelease()
 	result := raw.EventQueueDropped(ptr)
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.Dropped", handle)
@@ -454,15 +403,12 @@ func (e *EventQueue) Dropped() (uint, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) Processed() (uint, error) {
-	if e != nil {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(e)
 	ptr, err := zigoCheckedPointer("EventQueue.Processed receiver", e)
 	if err != nil {
 		return 0, err
 	}
+	defer e.zigoRelease()
 	result := raw.EventQueueProcessed(ptr)
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.Processed", handle)
@@ -474,15 +420,12 @@ func (e *EventQueue) Processed() (uint, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) Stats() (Stats, error) {
-	if e != nil {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(e)
 	ptr, err := zigoCheckedPointer("EventQueue.Stats receiver", e)
 	if err != nil {
 		return Stats{}, err
 	}
+	defer e.zigoRelease()
 	result := raw.EventQueueStats(ptr)
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.Stats", handle)
@@ -494,15 +437,12 @@ func (e *EventQueue) Stats() (Stats, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) Limits() (Limits, error) {
-	if e != nil {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(e)
 	ptr, err := zigoCheckedPointer("EventQueue.Limits receiver", e)
 	if err != nil {
 		return Limits{}, err
 	}
+	defer e.zigoRelease()
 	result := raw.EventQueueLimits(ptr)
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.Limits", handle)
@@ -515,10 +455,6 @@ func (e *EventQueue) Limits() (Limits, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) ApplyLimits(updated Limits) error {
-	if e != nil {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(e)
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -526,12 +462,13 @@ func (e *EventQueue) ApplyLimits(updated Limits) error {
 	if err != nil {
 		return err
 	}
+	defer e.zigoRelease()
 	code := raw.EventQueueApplyLimits(ptr, zigoLimitsToRaw(updated))
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.ApplyLimits", handle)
 	}
 	if code != 0 {
-		return errorForCode("EventQueue.ApplyLimits", code)
+		return zigoPoisonAfterPanic(errorForCode("EventQueue.ApplyLimits", code), e)
 	}
 	return nil
 }
@@ -540,15 +477,12 @@ func (e *EventQueue) ApplyLimits(updated Limits) error {
 // It returns *HandleError if a required handle is nil or closed.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func (e *EventQueue) Clear() (uint, error) {
-	if e != nil {
-		e.mu.RLock()
-		defer e.mu.RUnlock()
-	}
 	defer runtime.KeepAlive(e)
 	ptr, err := zigoCheckedPointer("EventQueue.Clear receiver", e)
 	if err != nil {
 		return 0, err
 	}
+	defer e.zigoRelease()
 	result := raw.EventQueueClear(ptr)
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.Clear", handle)

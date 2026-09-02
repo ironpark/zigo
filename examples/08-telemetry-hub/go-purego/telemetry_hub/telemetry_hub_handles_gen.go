@@ -12,23 +12,57 @@ import (
 // TelemetryHub is a caller-owned native handle. Call Close when it is no longer needed.
 type TelemetryHub struct {
 	ptr             unsafe.Pointer
-	mu              sync.RWMutex
+	mu              sync.Mutex
+	active          int
+	closed          bool
+	poison          *NativePanicError
 	callbackHandles []zigoCallbackHandle
 	cleanup         runtime.Cleanup
 }
 
-func (t *TelemetryHub) zigoPointer() unsafe.Pointer {
+// zigoAcquire pins t open for one native call and hands back its pointer;
+// the call ends with zigoRelease. A nil, closed, or poisoned handle is the error.
+func (t *TelemetryHub) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	if t == nil {
-		return nil
+		return nil, &HandleError{Operation: operation}
 	}
-	return t.ptr
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.closed || t.ptr == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	if t.poison != nil {
+		return nil, t.poison.poisoned(operation)
+	}
+	t.active++
+	return t.ptr, nil
 }
 
-func (t *TelemetryHub) zigoLocker() *sync.RWMutex {
+func (t *TelemetryHub) zigoRelease() {
 	if t == nil {
-		return nil
+		return
 	}
-	return &t.mu
+	t.mu.Lock()
+	t.active--
+	state, release := t.zigoTakeLocked()
+	t.mu.Unlock()
+	if release {
+		cleanupTelemetryHub(state)
+	}
+}
+
+// zigoPoison marks t unusable: a Zig panic unwound through native frames
+// without running their defers, so the state behind it is unknown.
+func (t *TelemetryHub) zigoPoison(cause *NativePanicError) {
+	if t == nil {
+		return
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if t.poison == nil {
+		t.poison = cause
+		t.cleanup.Stop()
+	}
 }
 
 type telemetryHubCleanupState struct {
@@ -54,19 +88,40 @@ func cleanupTelemetryHub(state telemetryHubCleanupState) {
 
 // Close releases the native TelemetryHub resources. It is safe to call more than once.
 // The error result is always nil; it exists so TelemetryHub satisfies io.Closer.
+// Close does not wait: a call still inside native keeps the resources until it
+// returns, and every call made after Close fails with *HandleError.
 func (t *TelemetryHub) Close() error {
 	if t == nil {
 		return nil
 	}
 	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.ptr == nil {
+	if t.closed {
+		t.mu.Unlock()
 		return nil
 	}
+	t.closed = true
 	t.cleanup.Stop()
-	cleanupTelemetryHub(telemetryHubCleanupState{ptr: t.ptr, callbackHandles: t.callbackHandles})
-	t.ptr = nil
-	t.callbackHandles = nil
+	state, release := t.zigoTakeLocked()
+	t.mu.Unlock()
+	if release {
+		cleanupTelemetryHub(state)
+	}
 	runtime.KeepAlive(t)
 	return nil
+}
+
+// zigoTakeLocked hands out what is left to release once t is closed and no
+// call is inside native; mu must be held. A poisoned handle keeps its native
+// object: releasing state a panic left half-changed could fault, so it leaks.
+func (t *TelemetryHub) zigoTakeLocked() (telemetryHubCleanupState, bool) {
+	if !t.closed || t.active != 0 || t.ptr == nil {
+		return telemetryHubCleanupState{}, false
+	}
+	state := telemetryHubCleanupState{ptr: t.ptr, callbackHandles: t.callbackHandles}
+	t.ptr = nil
+	t.callbackHandles = nil
+	if t.poison != nil {
+		state.ptr = nil
+	}
+	return state, true
 }

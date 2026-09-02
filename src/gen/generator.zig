@@ -582,7 +582,7 @@ test "opt-in cleanup isolates state stops explicitly and keeps owners alive" {
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "func cleanupContext(state contextCleanupState)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "zigoRawContextDeinit(state.ptr)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "deleteCallbackHandle(handle)"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "c.mu.Lock()\n\tdefer c.mu.Unlock()\n\tif c.ptr == nil {\n\t\treturn nil\n\t}\n"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "c.mu.Lock()\n\tif c.closed {\n\t\tc.mu.Unlock()\n\t\treturn nil\n\t}\n\tc.closed = true\n\tc.cleanup.Stop()\n"));
     try std.testing.expect(std.mem.indexOf(u8, public_types, "sync.Once") == null);
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "c.cleanup.Stop()"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "runtime.KeepAlive(c)"));

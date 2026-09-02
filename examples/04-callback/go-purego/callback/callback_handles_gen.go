@@ -12,23 +12,57 @@ import (
 // CallbackContext is a caller-owned native handle. Call Close when it is no longer needed.
 type CallbackContext struct {
 	ptr             unsafe.Pointer
-	mu              sync.RWMutex
+	mu              sync.Mutex
+	active          int
+	closed          bool
+	poison          *NativePanicError
 	callbackHandles []zigoCallbackHandle
 	cleanup         runtime.Cleanup
 }
 
-func (c *CallbackContext) zigoPointer() unsafe.Pointer {
+// zigoAcquire pins c open for one native call and hands back its pointer;
+// the call ends with zigoRelease. A nil, closed, or poisoned handle is the error.
+func (c *CallbackContext) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	if c == nil {
-		return nil
+		return nil, &HandleError{Operation: operation}
 	}
-	return c.ptr
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.closed || c.ptr == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	if c.poison != nil {
+		return nil, c.poison.poisoned(operation)
+	}
+	c.active++
+	return c.ptr, nil
 }
 
-func (c *CallbackContext) zigoLocker() *sync.RWMutex {
+func (c *CallbackContext) zigoRelease() {
 	if c == nil {
-		return nil
+		return
 	}
-	return &c.mu
+	c.mu.Lock()
+	c.active--
+	state, release := c.zigoTakeLocked()
+	c.mu.Unlock()
+	if release {
+		cleanupCallbackContext(state)
+	}
+}
+
+// zigoPoison marks c unusable: a Zig panic unwound through native frames
+// without running their defers, so the state behind it is unknown.
+func (c *CallbackContext) zigoPoison(cause *NativePanicError) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	if c.poison == nil {
+		c.poison = cause
+		c.cleanup.Stop()
+	}
 }
 
 type callbackContextCleanupState struct {
@@ -54,42 +88,97 @@ func cleanupCallbackContext(state callbackContextCleanupState) {
 
 // Close releases the native CallbackContext resources. It is safe to call more than once.
 // The error result is always nil; it exists so CallbackContext satisfies io.Closer.
+// Close does not wait: a call still inside native keeps the resources until it
+// returns, and every call made after Close fails with *HandleError.
 func (c *CallbackContext) Close() error {
 	if c == nil {
 		return nil
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.ptr == nil {
+	if c.closed {
+		c.mu.Unlock()
 		return nil
 	}
+	c.closed = true
 	c.cleanup.Stop()
-	cleanupCallbackContext(callbackContextCleanupState{ptr: c.ptr, callbackHandles: c.callbackHandles})
-	c.ptr = nil
-	c.callbackHandles = nil
+	state, release := c.zigoTakeLocked()
+	c.mu.Unlock()
+	if release {
+		cleanupCallbackContext(state)
+	}
 	runtime.KeepAlive(c)
 	return nil
+}
+
+// zigoTakeLocked hands out what is left to release once c is closed and no
+// call is inside native; mu must be held. A poisoned handle keeps its native
+// object: releasing state a panic left half-changed could fault, so it leaks.
+func (c *CallbackContext) zigoTakeLocked() (callbackContextCleanupState, bool) {
+	if !c.closed || c.active != 0 || c.ptr == nil {
+		return callbackContextCleanupState{}, false
+	}
+	state := callbackContextCleanupState{ptr: c.ptr, callbackHandles: c.callbackHandles}
+	c.ptr = nil
+	c.callbackHandles = nil
+	if c.poison != nil {
+		state.ptr = nil
+	}
+	return state, true
 }
 
 // FloatBuffer is a caller-owned native handle. Call Close when it is no longer needed.
 type FloatBuffer struct {
 	ptr     unsafe.Pointer
-	mu      sync.RWMutex
+	mu      sync.Mutex
+	active  int
+	closed  bool
+	poison  *NativePanicError
 	cleanup runtime.Cleanup
 }
 
-func (f *FloatBuffer) zigoPointer() unsafe.Pointer {
+// zigoAcquire pins f open for one native call and hands back its pointer;
+// the call ends with zigoRelease. A nil, closed, or poisoned handle is the error.
+func (f *FloatBuffer) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	if f == nil {
-		return nil
+		return nil, &HandleError{Operation: operation}
 	}
-	return f.ptr
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.closed || f.ptr == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	if f.poison != nil {
+		return nil, f.poison.poisoned(operation)
+	}
+	f.active++
+	return f.ptr, nil
 }
 
-func (f *FloatBuffer) zigoLocker() *sync.RWMutex {
+func (f *FloatBuffer) zigoRelease() {
 	if f == nil {
-		return nil
+		return
 	}
-	return &f.mu
+	f.mu.Lock()
+	f.active--
+	state, release := f.zigoTakeLocked()
+	f.mu.Unlock()
+	if release {
+		cleanupFloatBuffer(state)
+	}
+}
+
+// zigoPoison marks f unusable: a Zig panic unwound through native frames
+// without running their defers, so the state behind it is unknown.
+func (f *FloatBuffer) zigoPoison(cause *NativePanicError) {
+	if f == nil {
+		return
+	}
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	if f.poison == nil {
+		f.poison = cause
+		f.cleanup.Stop()
+	}
 }
 
 type floatBufferCleanupState struct {
@@ -111,41 +200,96 @@ func cleanupFloatBuffer(state floatBufferCleanupState) {
 
 // Close releases the native FloatBuffer resources. It is safe to call more than once.
 // The error result is always nil; it exists so FloatBuffer satisfies io.Closer.
+// Close does not wait: a call still inside native keeps the resources until it
+// returns, and every call made after Close fails with *HandleError.
 func (f *FloatBuffer) Close() error {
 	if f == nil {
 		return nil
 	}
 	f.mu.Lock()
-	defer f.mu.Unlock()
-	if f.ptr == nil {
+	if f.closed {
+		f.mu.Unlock()
 		return nil
 	}
+	f.closed = true
 	f.cleanup.Stop()
-	cleanupFloatBuffer(floatBufferCleanupState{ptr: f.ptr})
-	f.ptr = nil
+	state, release := f.zigoTakeLocked()
+	f.mu.Unlock()
+	if release {
+		cleanupFloatBuffer(state)
+	}
 	runtime.KeepAlive(f)
 	return nil
+}
+
+// zigoTakeLocked hands out what is left to release once f is closed and no
+// call is inside native; mu must be held. A poisoned handle keeps its native
+// object: releasing state a panic left half-changed could fault, so it leaks.
+func (f *FloatBuffer) zigoTakeLocked() (floatBufferCleanupState, bool) {
+	if !f.closed || f.active != 0 || f.ptr == nil {
+		return floatBufferCleanupState{}, false
+	}
+	state := floatBufferCleanupState{ptr: f.ptr}
+	f.ptr = nil
+	if f.poison != nil {
+		state.ptr = nil
+	}
+	return state, true
 }
 
 // IntBuffer is a caller-owned native handle. Call Close when it is no longer needed.
 type IntBuffer struct {
 	ptr     unsafe.Pointer
-	mu      sync.RWMutex
+	mu      sync.Mutex
+	active  int
+	closed  bool
+	poison  *NativePanicError
 	cleanup runtime.Cleanup
 }
 
-func (i *IntBuffer) zigoPointer() unsafe.Pointer {
+// zigoAcquire pins i open for one native call and hands back its pointer;
+// the call ends with zigoRelease. A nil, closed, or poisoned handle is the error.
+func (i *IntBuffer) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	if i == nil {
-		return nil
+		return nil, &HandleError{Operation: operation}
 	}
-	return i.ptr
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if i.closed || i.ptr == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	if i.poison != nil {
+		return nil, i.poison.poisoned(operation)
+	}
+	i.active++
+	return i.ptr, nil
 }
 
-func (i *IntBuffer) zigoLocker() *sync.RWMutex {
+func (i *IntBuffer) zigoRelease() {
 	if i == nil {
-		return nil
+		return
 	}
-	return &i.mu
+	i.mu.Lock()
+	i.active--
+	state, release := i.zigoTakeLocked()
+	i.mu.Unlock()
+	if release {
+		cleanupIntBuffer(state)
+	}
+}
+
+// zigoPoison marks i unusable: a Zig panic unwound through native frames
+// without running their defers, so the state behind it is unknown.
+func (i *IntBuffer) zigoPoison(cause *NativePanicError) {
+	if i == nil {
+		return
+	}
+	i.mu.Lock()
+	defer i.mu.Unlock()
+	if i.poison == nil {
+		i.poison = cause
+		i.cleanup.Stop()
+	}
 }
 
 type intBufferCleanupState struct {
@@ -167,18 +311,39 @@ func cleanupIntBuffer(state intBufferCleanupState) {
 
 // Close releases the native IntBuffer resources. It is safe to call more than once.
 // The error result is always nil; it exists so IntBuffer satisfies io.Closer.
+// Close does not wait: a call still inside native keeps the resources until it
+// returns, and every call made after Close fails with *HandleError.
 func (i *IntBuffer) Close() error {
 	if i == nil {
 		return nil
 	}
 	i.mu.Lock()
-	defer i.mu.Unlock()
-	if i.ptr == nil {
+	if i.closed {
+		i.mu.Unlock()
 		return nil
 	}
+	i.closed = true
 	i.cleanup.Stop()
-	cleanupIntBuffer(intBufferCleanupState{ptr: i.ptr})
-	i.ptr = nil
+	state, release := i.zigoTakeLocked()
+	i.mu.Unlock()
+	if release {
+		cleanupIntBuffer(state)
+	}
 	runtime.KeepAlive(i)
 	return nil
+}
+
+// zigoTakeLocked hands out what is left to release once i is closed and no
+// call is inside native; mu must be held. A poisoned handle keeps its native
+// object: releasing state a panic left half-changed could fault, so it leaks.
+func (i *IntBuffer) zigoTakeLocked() (intBufferCleanupState, bool) {
+	if !i.closed || i.active != 0 || i.ptr == nil {
+		return intBufferCleanupState{}, false
+	}
+	state := intBufferCleanupState{ptr: i.ptr}
+	i.ptr = nil
+	if i.poison != nil {
+		state.ptr = nil
+	}
+	return state, true
 }

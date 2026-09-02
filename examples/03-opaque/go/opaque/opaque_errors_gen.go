@@ -47,6 +47,16 @@ func (err *NativePanicError) Error() string {
 // Unwrap returns ErrNativePanic for errors.Is classification.
 func (err *NativePanicError) Unwrap() error { return ErrNativePanic }
 
+// poisoned is what a handle answers once err has left the native state behind
+// it unknown: the same kind of error, naming the call that was refused.
+func (err *NativePanicError) poisoned(operation string) error {
+	message := "handle unusable after a native panic in " + err.Operation
+	if err.Message != "" {
+		message += ": " + err.Message
+	}
+	return &NativePanicError{Operation: operation, Message: message}
+}
+
 // Error is a stable Zig error-set value returned by the generated binding.
 // Classify it with errors.Is against the Err* sentinels; a returned value
 // also names the operation it came from.

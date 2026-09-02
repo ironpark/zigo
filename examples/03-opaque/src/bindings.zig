@@ -9,6 +9,7 @@ pub const bindings = zigo.define(.{
     .functions = .{
         .{ .path = "Context.create" },
         .{ .path = "Context.add", .params = .{"value"} },
+        .{ .path = "Context.crash" },
         .{ .path = "Context.deinit" },
         .{ .path = "root.liveBytes" },
         .{
