@@ -328,6 +328,86 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
         .site = .{ .path = "semantic.json", .declaration = declaration },
         .hint = "rename the conflicting function, type, or union variant",
     };
+    // The C symbol check above catches collisions that would fail the linker.
+    // It cannot catch this class: generation drops the owning namespace from
+    // a receiverless function's public name (only a method's receiver scopes
+    // it), so two functions in different namespaces -- or a namespace
+    // function and a registered type -- can still resolve to the same public
+    // Go identifier and fail `go build` with a duplicate declaration instead
+    // of a zigo diagnostic.
+    for (document.types) |declaration| {
+        for (document.functions) |function| {
+            if (function.receiver != null) continue;
+            const function_name = try effectivePublicFunctionNameAlloc(allocator, document, function);
+            defer allocator.free(function_name);
+            if (!std.mem.eql(u8, function_name, declaration.name)) continue;
+            // Kept alive: `site.declaration` below points directly at it.
+            const function_path = try functionDeclarationAlloc(allocator, function);
+            return .{
+                .severity = .@"error",
+                .code = "ZIGO024",
+                .message = try std.fmt.allocPrint(
+                    allocator,
+                    "public Go name `{s}` collides between type `{s}` and function `{s}`",
+                    .{ function_name, declaration.zig_path orelse declaration.name, function_path },
+                ),
+                .site = .{ .path = "semantic.json", .declaration = function_path },
+                .hint = "rename the function, or register the type with a `.name` that resolves to a different Go identifier",
+            };
+        }
+    }
+    for (document.functions, 0..) |function, index| {
+        if (constructorDeinitFor(document, function) != null) continue;
+        const bucket = function.receiver orelse "";
+        const name = try effectivePublicFunctionNameAlloc(allocator, document, function);
+        defer allocator.free(name);
+        for (document.functions[0..index]) |previous| {
+            if (constructorDeinitFor(document, previous) != null) continue;
+            const previous_bucket = previous.receiver orelse "";
+            if (!std.mem.eql(u8, bucket, previous_bucket)) continue;
+            const previous_name = try effectivePublicFunctionNameAlloc(allocator, document, previous);
+            defer allocator.free(previous_name);
+            if (!std.mem.eql(u8, name, previous_name)) continue;
+            // Kept alive: `site.declaration` below points directly at it.
+            const function_path = try functionDeclarationAlloc(allocator, function);
+            const previous_path = try functionDeclarationAlloc(allocator, previous);
+            defer allocator.free(previous_path);
+            return .{
+                .severity = .@"error",
+                .code = "ZIGO024",
+                .message = try std.fmt.allocPrint(
+                    allocator,
+                    "public Go name `{s}` collides between `{s}` and `{s}`",
+                    .{ name, previous_path, function_path },
+                ),
+                .site = .{ .path = "semantic.json", .declaration = function_path },
+                .hint = "rename one declaration, or give it a `.name` that resolves to a different Go identifier",
+            };
+        }
+    }
+    for (document.types) |declaration| {
+        if (declaration.kind != .@"enum") continue;
+        for (declaration.fields, 0..) |field, index| {
+            const field_name = try naming.pascalAlloc(allocator, field.name);
+            defer allocator.free(field_name);
+            for (declaration.fields[0..index]) |previous| {
+                const previous_name = try naming.pascalAlloc(allocator, previous.name);
+                defer allocator.free(previous_name);
+                if (!std.mem.eql(u8, field_name, previous_name)) continue;
+                return .{
+                    .severity = .@"error",
+                    .code = "ZIGO024",
+                    .message = try std.fmt.allocPrint(
+                        allocator,
+                        "public Go name `{s}{s}` collides between enum tags `{s}` and `{s}`",
+                        .{ declaration.name, field_name, previous.name, field.name },
+                    ),
+                    .site = .{ .path = "semantic.json", .declaration = declaration.name },
+                    .hint = "rename one of the enum tags so they no longer share a Go identifier",
+                };
+            }
+        }
+    }
     if (findIntegrityProblem(document)) |declaration| return .{
         .severity = .@"error",
         .code = "ZIGO010",
@@ -932,6 +1012,45 @@ fn hasConstructorDeinit(document: semantic.Semantic, constructor: semantic.Const
     return false;
 }
 
+/// The constructor pairing a receiverless function serves as `.init` for, if
+/// any. A boxed `create` reaches the public API as `New<Type>` rather than the
+/// pascal-cased Zig name, so the collision check must resolve it the same way
+/// or it would flag two unrelated constructors (`Counter.create`,
+/// `Context.create`) as though they shared a Go identifier.
+fn constructorInitFor(document: semantic.Semantic, function: semantic.SemanticFn) ?semantic.Constructor {
+    if (function.receiver != null) return null;
+    for (document.constructors) |constructor| {
+        if (std.mem.eql(u8, constructor.init, function.name) and
+            std.mem.eql(u8, constructor.type, function.namespace orelse "")) return constructor;
+    }
+    return null;
+}
+
+/// The constructor pairing a method serves as `.deinit` for, if any. That
+/// method never reaches the public API on its own -- generation emits a
+/// shared `zigoRelease` instead -- so it takes no public Go name and drops
+/// out of the collision check entirely.
+fn constructorDeinitFor(document: semantic.Semantic, function: semantic.SemanticFn) ?semantic.Constructor {
+    const receiver = function.receiver orelse return null;
+    for (document.constructors) |constructor| {
+        if (std.mem.eql(u8, constructor.type, receiver) and
+            std.mem.eql(u8, constructor.deinit, function.name)) return constructor;
+    }
+    return null;
+}
+
+/// The public Go name a function reaches generated code under, ignoring the
+/// receiver: a method's name is scoped by its receiver type, so two methods
+/// on different receivers never collide even when this returns the same
+/// spelling for both. Constructors are the one function shape whose public
+/// name is not simply the pascal-cased Zig name (see `constructorInitFor`).
+fn effectivePublicFunctionNameAlloc(allocator: std.mem.Allocator, document: semantic.Semantic, function: semantic.SemanticFn) ![]u8 {
+    if (constructorInitFor(document, function)) |constructor| {
+        return std.fmt.allocPrint(allocator, "New{s}", .{constructor.type});
+    }
+    return naming.pascalAlloc(allocator, function.name);
+}
+
 fn containsNonCFunctionPointer(node: semantic.TypeNode) bool {
     return switch (node) {
         .callback => |callback| !callback.c_callconv,
@@ -1485,6 +1604,19 @@ test "implemented diagnostic snapshots are stable" {
             .types = &.{.{ .kind = .@"opaque", .name = "range" }},
             .zig_version = "0.16.0",
         }, .snapshot = "error[ZIGO021]: registered type name `range` is not a valid Go identifier\n  --> semantic.json (range)\n  hint: register the type in `.types` with an explicit `.name` that is a Go identifier\n" },
+        // `open` in namespace `File` and `open` in namespace `Socket` have no
+        // receiver, so `ZIGO007`'s symbol check tells them apart (their C
+        // symbols carry the namespace) but the public Go layer drops it: both
+        // resolve to the top-level function `Open`.
+        .{ .document = .{
+            .functions = &.{
+                .{ .name = "open", .namespace = "File", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_file_open" },
+                .{ .name = "open", .namespace = "Socket", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_socket_open" },
+            },
+            .package = "bad",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO024]: public Go name `Open` collides between `File.open` and `Socket.open`\n  --> semantic.json (Socket.open)\n  hint: rename one declaration, or give it a `.name` that resolves to a different Go identifier\n" },
     };
     // A located diagnostic names the declaration and the parameter it found,
     // so its strings come from the arena the caller is expected to pass.
@@ -1949,6 +2081,99 @@ test "well-formed constructor references pass integrity validation" {
         .package = "good",
         .prefix = "zg",
         .types = &.{.{ .kind = .@"opaque", .name = "Context" }},
+        .zig_version = "0.16.0",
+    };
+    try std.testing.expect((try findIssue(std.testing.allocator, document)) == null);
+    try semanticDocument(std.testing.allocator, document);
+}
+
+test "a public name hint resolves a collision between two namespaced functions" {
+    // Same shape that ZIGO024's fixture rejects (`File.open`, `Socket.open`
+    // both resolving to `Open`), except `Socket`'s function carries a `.name`
+    // hint. A binding's `.name` override lands directly in `function.name` by
+    // the time semantic.json exists, so `openSocket` here stands in for what
+    // `.name = "openSocket"` on the Zig declaration would produce.
+    const document: semantic.Semantic = .{
+        .functions = &.{
+            .{ .name = "open", .namespace = "File", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_file_open" },
+            .{ .name = "openSocket", .namespace = "Socket", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_socket_open_socket" },
+        },
+        .package = "good",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    try std.testing.expect((try findIssue(std.testing.allocator, document)) == null);
+    try semanticDocument(std.testing.allocator, document);
+}
+
+test "a registered type name collides with a namespaced function's public name" {
+    const document: semantic.Semantic = .{
+        .functions = &.{.{ .name = "open", .namespace = "socket", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_socket_open" }},
+        .package = "bad",
+        .prefix = "zg",
+        .types = &.{.{ .kind = .@"opaque", .name = "Open" }},
+        .zig_version = "0.16.0",
+    };
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
+    const issue = (try findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
+    try std.testing.expectEqualStrings("ZIGO024", issue.code);
+}
+
+test "two enum tags that pascal-case to the same identifier collide" {
+    const document: semantic.Semantic = .{
+        .package = "bad",
+        .prefix = "zg",
+        .types = &.{.{
+            .fields = &.{ .{ .name = "foo_bar", .value = 0 }, .{ .name = "fooBar", .value = 1 } },
+            .kind = .@"enum",
+            .name = "Kind",
+            .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+        }},
+        .zig_version = "0.16.0",
+    };
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
+    const issue = (try findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
+    try std.testing.expectEqualStrings("ZIGO024", issue.code);
+}
+
+test "a constructor pair does not collide with itself across two different types" {
+    // Both `Counter` and `Timer` register `create`/`deinit` as their
+    // constructor pair. Without constructor-aware name resolution the
+    // collision check would see two receiverless `create` functions in the
+    // global bucket and reject a document generation already accepts, since
+    // each actually reaches Go as a distinct `New<Type>`.
+    var counter_payload: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Counter" } };
+    var timer_payload: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Timer" } };
+    const document: semantic.Semantic = .{
+        .constructors = &.{
+            .{ .type = "Counter", .init = "create", .deinit = "deinit" },
+            .{ .type = "Timer", .init = "create", .deinit = "deinit" },
+        },
+        .functions = &.{
+            .{
+                .name = "create",
+                .namespace = "Counter",
+                .ownership = .caller,
+                .params = &.{},
+                .@"return" = .{ .error_union = .{ .error_set = &.{"OutOfMemory"}, .payload = &counter_payload } },
+                .symbol = "zg_counter_create",
+            },
+            .{ .name = "deinit", .params = &.{}, .receiver = "Counter", .@"return" = .{ .void = {} }, .symbol = "zg_counter_deinit" },
+            .{
+                .name = "create",
+                .namespace = "Timer",
+                .ownership = .caller,
+                .params = &.{},
+                .@"return" = .{ .error_union = .{ .error_set = &.{"OutOfMemory"}, .payload = &timer_payload } },
+                .symbol = "zg_timer_create",
+            },
+            .{ .name = "deinit", .params = &.{}, .receiver = "Timer", .@"return" = .{ .void = {} }, .symbol = "zg_timer_deinit" },
+        },
+        .package = "good",
+        .prefix = "zg",
+        .types = &.{ .{ .kind = .@"opaque", .name = "Counter" }, .{ .kind = .@"opaque", .name = "Timer" } },
         .zig_version = "0.16.0",
     };
     try std.testing.expect((try findIssue(std.testing.allocator, document)) == null);

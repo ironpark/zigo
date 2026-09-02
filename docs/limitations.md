@@ -159,6 +159,12 @@ error[ZIGO018]: unsupported integer width `u21` in parameter `cp`
   zigo가 PascalCase로 바꾼 뒤의 철자로 판단한다(Zig의 `type` 필드는 Go `Type`이라 통과한다).
   `@typeName`이 식별자가 아닌 comptime 생성 타입(`lib.Enum(...)[0..4])`)은 `.types`에
   `.name`과 함께 등록해 이름을 준다. 메시지는 Zig 타입 경로를 함께 적는다.
+- `ZIGO024` — 공개 Go 이름이 충돌한다. receiver가 없는 함수는 namespace가 아니라 마지막
+  세그먼트(또는 `.name`)만으로 이름이 정해지므로, 서로 다른 namespace의 같은 이름 함수나
+  namespace 함수와 등록된 타입이 이름을 나눠 가질 수 있다. 메서드는 receiver별로 이름
+  공간이 나뉘므로 다른 receiver의 같은 메서드 이름은 충돌이 아니다. 같은 enum 안에서
+  두 tag가 PascalCase로 같은 이름이 되는 경우도 여기서 잡는다. 메시지는 충돌하는 두 Zig
+  경로를 모두 적으며, `.name`으로 한쪽 이름을 바꾸면 통과한다.
 
 리플렉션 단계의 거부는 `bindings.zig`를 빌드할 때의 `@compileError`로 나오며, 제약과 함께
 그것이 걸린 선언·파라미터를 적는다(`... , at \`Terminal.write\` parameter \`bytes\``).
@@ -187,6 +193,7 @@ Zig doc 주석은 형식만 조정되고 본문은 그대로 옮겨진다. Go do
 바인딩 경로는 임의 깊이의 namespace struct를 따라간다. `semantic.json`의 `namespace`는 점으로
 이은 경로를 담고 심볼·raw Go 이름·ABI identity가 모두 거기서 파생된다. 공개 Go 함수 이름에는
 namespace가 들어가지 않으므로, 서로 다른 namespace의 같은 함수 이름은 `.name`으로 구분한다.
+구분하지 않으면 생성 시점에 `ZIGO024`로 거부된다.
 
 `.discover = .public`은 공개 Zig API와 바인딩 API가 같은 프로젝트를 위한 opt-in 정책이다.
 공개 helper나 지원하지 않는 generic 함수까지 발견될 수 있으므로 `exclude`로 의도를

@@ -1,0 +1,21 @@
+{
+  "functions": [
+    {
+      "name": "open",
+      "namespace": "File",
+      "params": [],
+      "return": { "kind": "void" },
+      "symbol": "zg_file_open"
+    },
+    {
+      "name": "open",
+      "namespace": "Socket",
+      "params": [],
+      "return": { "kind": "void" },
+      "symbol": "zg_socket_open"
+    }
+  ],
+  "package": "bad",
+  "prefix": "zg",
+  "zig_version": "0.16.0"
+}

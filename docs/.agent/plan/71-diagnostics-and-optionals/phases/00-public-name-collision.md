@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: fixture가 거부되고 `.name` 부여 fixture는 통과한다.
 > NEXT: none

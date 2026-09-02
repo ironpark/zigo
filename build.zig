@@ -469,6 +469,20 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     invalid_identifier.expectStdErrMatch("hint: register the type in `.types` with an explicit `.name`");
     test_step.dependOn(&invalid_identifier.step);
 
+    // Public Go names drop the owning namespace, so two namespace functions
+    // with the same last segment collide in Go even though their C symbols
+    // (which do carry the namespace) do not, and ZIGO007 lets them through.
+    const public_name_collision = b.addRunArtifact(generator);
+    public_name_collision.setName("CLI contract (public name collision)");
+    public_name_collision.addArgs(&.{ "generate", "--semantic" });
+    public_name_collision.addFileArg(b.path("tests/fixtures/zigo024.json"));
+    public_name_collision.addArg("--output");
+    _ = public_name_collision.addOutputDirectoryArg("public-name-collision-output");
+    public_name_collision.addArgs(&.{ "--package", "bad" });
+    public_name_collision.expectExitCode(1);
+    public_name_collision.expectStdErrMatch("error[ZIGO024]: public Go name `Open` collides between `File.open` and `Socket.open`");
+    test_step.dependOn(&public_name_collision.step);
+
     const stale = b.addRunArtifact(generator);
     stale.setName("CLI contract (stale generated files)");
     stale.addArgs(&.{ "check", "--generated" });
