@@ -3,15 +3,14 @@ const diagnostic = @import("diagnostic");
 const semantic = @import("semantic");
 const naming = @import("naming");
 
+/// Every rejection reaches the user as a rendered diagnostic, so this only
+/// reports whether the document had one. Callers that want the text call
+/// `findIssue` themselves; the scratch arena here owns the strings that
+/// diagnostic built.
 pub fn semanticDocument(allocator: std.mem.Allocator, document: semantic.Semantic) !void {
-    if (document.ir_version != 1) return error.UnsupportedIrVersion;
-    if (document.package.len == 0 or document.prefix.len == 0) return error.InvalidName;
-    if (try findIssue(allocator, document) != null) return error.InvalidSemantic;
-    for (document.functions) |function| {
-        if (function.name.len == 0) return error.InvalidName;
-        for (function.params) |parameter| try supported(parameter.type);
-        try supported(function.@"return");
-    }
+    var scratch = std.heap.ArenaAllocator.init(allocator);
+    defer scratch.deinit();
+    if (try findIssue(scratch.allocator(), document) != null) return error.InvalidSemantic;
 }
 
 /// Every purego callback dispatcher returns one pointer-sized integer, which is
@@ -48,8 +47,40 @@ pub fn puregoCallbacks(document: semantic.Semantic) !void {
     if (puregoCallbackIssue(document) != null) return error.InvalidSemantic;
 }
 
+/// The single place a semantic document is judged. A returned diagnostic may
+/// point at strings allocated from `allocator` -- the declaration and location
+/// text is built from the document -- so pass a scratch arena and drop it once
+/// the diagnostic is rendered.
 pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+    if (document.ir_version != 1) return .{
+        .severity = .@"error",
+        .code = "ZIGO020",
+        .message = "semantic document uses an unsupported IR version",
+        .site = .{ .path = "semantic.json", .declaration = "ir_version" },
+        .hint = "regenerate semantic.json with a matching zigo version",
+    };
+    if (document.package.len == 0) return .{
+        .severity = .@"error",
+        .code = "ZIGO021",
+        .message = "semantic document has an empty package name",
+        .site = .{ .path = "semantic.json", .declaration = "package" },
+        .hint = "give the binding a package name",
+    };
+    if (document.prefix.len == 0) return .{
+        .severity = .@"error",
+        .code = "ZIGO021",
+        .message = "semantic document has an empty symbol prefix",
+        .site = .{ .path = "semantic.json", .declaration = "prefix" },
+        .hint = "give the binding a symbol prefix",
+    };
     for (document.functions) |function| {
+        if (function.name.len == 0) return .{
+            .severity = .@"error",
+            .code = "ZIGO021",
+            .message = "exposed function has an empty name",
+            .site = .{ .path = "semantic.json", .declaration = "functions" },
+            .hint = "expose a named declaration",
+        };
         if (function.@"return" == .error_union and function.@"return".error_union.anyerror) return .{
             .severity = .@"error",
             .code = "ZIGO001",
@@ -248,7 +279,118 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
         .site = .{ .path = "semantic.json", .declaration = declaration },
         .hint = "regenerate semantic.json from matching bindings and source declarations",
     };
+    // Types the C ABI cannot name are reported last so that the sharper
+    // diagnostics above keep naming the declarations they always did.
+    for (document.functions) |function| {
+        for (function.params) |parameter| {
+            if (try typeOffense(allocator, parameter.type)) |offense| {
+                const root = try std.fmt.allocPrint(allocator, "parameter `{s}`", .{parameter.name});
+                const location = try locationAlloc(allocator, offense.context, root);
+                return try offenseDiagnostic(allocator, function, offense.node, location);
+            }
+        }
+        if (try typeOffense(allocator, function.@"return")) |offense| {
+            const location = try locationAlloc(allocator, offense.context, "the return value");
+            return try offenseDiagnostic(allocator, function, offense.node, location);
+        }
+    }
     return null;
+}
+
+/// The type the C ABI cannot name, plus how it was reached from the parameter
+/// or return value that carries it. `context` is built on the way back out, so
+/// a document that validates never allocates.
+const Offense = struct {
+    node: semantic.TypeNode,
+    context: ?[]const u8 = null,
+};
+
+fn typeOffense(allocator: std.mem.Allocator, node: semantic.TypeNode) error{OutOfMemory}!?Offense {
+    switch (node) {
+        .void, .bool, .@"enum", .opaque_ptr, .value_struct => return null,
+        .int => |value| return if (integerSupported(value)) null else Offense{ .node = node },
+        .float => |value| return if (floatSupported(value)) null else Offense{ .node = node },
+        .slice => |value| return wrapOffense(allocator, try typeOffense(allocator, value.element.*), "the slice element"),
+        .error_union => |value| return wrapOffense(allocator, try typeOffense(allocator, value.payload.*), "the error payload"),
+        .callback => |value| {
+            for (value.params, 0..) |parameter, index| {
+                if (try typeOffense(allocator, parameter)) |found| {
+                    const label = try std.fmt.allocPrint(allocator, "callback parameter {d}", .{index});
+                    return wrapOffense(allocator, found, label);
+                }
+            }
+            return wrapOffense(allocator, try typeOffense(allocator, value.@"return".*), "the callback return value");
+        },
+        else => return Offense{ .node = node },
+    }
+}
+
+fn wrapOffense(allocator: std.mem.Allocator, found: ?Offense, label: []const u8) error{OutOfMemory}!?Offense {
+    const offense = found orelse return null;
+    const context = offense.context orelse return Offense{ .node = offense.node, .context = label };
+    return Offense{
+        .node = offense.node,
+        .context = try std.fmt.allocPrint(allocator, "{s} of {s}", .{ context, label }),
+    };
+}
+
+fn locationAlloc(allocator: std.mem.Allocator, context: ?[]const u8, root: []const u8) ![]const u8 {
+    const inner = context orelse return root;
+    return std.fmt.allocPrint(allocator, "{s} of {s}", .{ inner, root });
+}
+
+fn offenseDiagnostic(
+    allocator: std.mem.Allocator,
+    function: semantic.SemanticFn,
+    node: semantic.TypeNode,
+    location: []const u8,
+) !diagnostic.Diagnostic {
+    const spelling = try zigSpellingAlloc(allocator, node);
+    const declaration = try functionDeclarationAlloc(allocator, function);
+    return switch (node) {
+        .int => .{
+            .severity = .@"error",
+            .code = "ZIGO018",
+            .message = try std.fmt.allocPrint(allocator, "unsupported integer width `{s}` in {s}", .{ spelling, location }),
+            .site = .{ .path = "semantic.json", .declaration = declaration },
+            .hint = "use an 8, 16, 32, or 64-bit integer, or `usize`",
+        },
+        .float => .{
+            .severity = .@"error",
+            .code = "ZIGO018",
+            .message = try std.fmt.allocPrint(allocator, "unsupported float width `{s}` in {s}", .{ spelling, location }),
+            .site = .{ .path = "semantic.json", .declaration = declaration },
+            .hint = "use `f32` or `f64`",
+        },
+        else => .{
+            .severity = .@"error",
+            .code = "ZIGO019",
+            .message = try std.fmt.allocPrint(allocator, "unsupported type `{s}` in {s}", .{ spelling, location }),
+            .site = .{ .path = "semantic.json", .declaration = declaration },
+            .hint = "use a bool, integer, float, enum, opaque pointer, extern struct, slice, or callback type",
+        },
+    };
+}
+
+/// How a Zig author spells the offending type, so the message names what they
+/// wrote rather than the IR tag that stands in for it.
+fn zigSpellingAlloc(allocator: std.mem.Allocator, node: semantic.TypeNode) ![]const u8 {
+    return switch (node) {
+        .int => |value| if (value.is_usize)
+            try allocator.dupe(u8, if (value.signed) "isize" else "usize")
+        else
+            try std.fmt.allocPrint(allocator, "{s}{d}", .{ if (value.signed) "i" else "u", value.bits }),
+        .float => |value| try std.fmt.allocPrint(allocator, "f{d}", .{value.bits}),
+        else => try allocator.dupe(u8, @tagName(node)),
+    };
+}
+
+fn functionDeclarationAlloc(allocator: std.mem.Allocator, function: semantic.SemanticFn) ![]const u8 {
+    const owner = function.receiver orelse function.namespace;
+    return if (owner) |value|
+        std.fmt.allocPrint(allocator, "{s}.{s}", .{ value, function.name })
+    else
+        allocator.dupe(u8, function.name);
 }
 
 fn findIntegrityProblem(document: semantic.Semantic) ?[]const u8 {
@@ -635,21 +777,6 @@ fn findGeneratedAccessorCollision(allocator: std.mem.Allocator, document: semant
     return null;
 }
 
-fn supported(node: semantic.TypeNode) !void {
-    switch (node) {
-        .void, .bool, .@"enum", .opaque_ptr, .value_struct => {},
-        .int => |value| if (!integerSupported(value)) return error.UnsupportedIntegerWidth,
-        .float => |value| if (!floatSupported(value)) return error.UnsupportedFloatWidth,
-        .slice => |value| try supported(value.element.*),
-        .error_union => |value| try supported(value.payload.*),
-        .callback => |value| {
-            for (value.params) |parameter| try supported(parameter);
-            try supported(value.@"return".*);
-        },
-        else => return error.UnsupportedType,
-    }
-}
-
 fn unsupportedValueStruct(document: semantic.Semantic, node: semantic.TypeNode) ?[]const u8 {
     return switch (node) {
         .value_struct => |value| blk: {
@@ -706,6 +833,8 @@ test "implemented diagnostic snapshots are stable" {
     var word_element: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
     const word_slice_node: semantic.TypeNode = .{ .slice = .{ .@"const" = false, .element = &word_element } };
     const count_node: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
+    var wide_element: semantic.TypeNode = .{ .int = .{ .bits = 21, .signed = false } };
+    const wide_slice_node: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &wide_element } };
     const cases = [_]struct { document: semantic.Semantic, snapshot: []const u8 }{
         .{ .document = .{
             .functions = &.{.{
@@ -980,9 +1109,82 @@ test "implemented diagnostic snapshots are stable" {
             .prefix = "zg",
             .zig_version = "0.16.0",
         }, .snapshot = "error[ZIGO017]: `.written = .return` needs a `usize` result to report the count\n  --> semantic.json (fillInto)\n  hint: return `usize` or `!usize` from the function, or use the default `.written = .all`\n" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "codepointWidth",
+                .namespace = "unicode",
+                .params = &.{.{ .name = "cp", .type = .{ .int = .{ .bits = 21, .signed = false } } }},
+                .@"return" = .{ .int = .{ .bits = 8, .signed = true } },
+                .symbol = "zg_unicode_codepoint_width",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO018]: unsupported integer width `u21` in parameter `cp`\n  --> semantic.json (unicode.codepointWidth)\n  hint: use an 8, 16, 32, or 64-bit integer, or `usize`\n" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "widths",
+                .params = &.{.{ .name = "cps", .type = wide_slice_node }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_widths",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO018]: unsupported integer width `u21` in the slice element of parameter `cps`\n  --> semantic.json (widths)\n  hint: use an 8, 16, 32, or 64-bit integer, or `usize`\n" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "extended",
+                .params = &.{},
+                .@"return" = .{ .float = .{ .bits = 80 } },
+                .symbol = "zg_extended",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO018]: unsupported float width `f80` in the return value\n  --> semantic.json (extended)\n  hint: use `f32` or `f64`\n" },
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "maybe",
+                .params = &.{.{ .name = "value", .type = .{ .optional = .{ .child = &word_element } } }},
+                .@"return" = .{ .void = {} },
+                .receiver = "Thing",
+                .symbol = "zg_thing_maybe",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{.{ .kind = .@"opaque", .name = "Thing" }},
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO019]: unsupported type `optional` in parameter `value`\n  --> semantic.json (Thing.maybe)\n  hint: use a bool, integer, float, enum, opaque pointer, extern struct, slice, or callback type\n" },
+        .{ .document = .{
+            .ir_version = 2,
+            .package = "bad",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO020]: semantic document uses an unsupported IR version\n  --> semantic.json (ir_version)\n  hint: regenerate semantic.json with a matching zigo version\n" },
+        .{ .document = .{
+            .package = "",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO021]: semantic document has an empty package name\n  --> semantic.json (package)\n  hint: give the binding a package name\n" },
+        .{ .document = .{
+            .package = "bad",
+            .prefix = "",
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO021]: semantic document has an empty symbol prefix\n  --> semantic.json (prefix)\n  hint: give the binding a symbol prefix\n" },
+        .{ .document = .{
+            .functions = &.{.{ .name = "", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_" }},
+            .package = "bad",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        }, .snapshot = "error[ZIGO021]: exposed function has an empty name\n  --> semantic.json (functions)\n  hint: expose a named declaration\n" },
     };
+    // A located diagnostic names the declaration and the parameter it found,
+    // so its strings come from the arena the caller is expected to pass.
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
     for (cases) |case| {
-        const issue = (try findIssue(std.testing.allocator, case.document)) orelse return error.MissingDiagnostic;
+        const issue = (try findIssue(scratch.allocator(), case.document)) orelse return error.MissingDiagnostic;
         const rendered = try issue.renderAlloc(std.testing.allocator);
         defer std.testing.allocator.free(rendered);
         try std.testing.expectEqualStrings(case.snapshot, rendered);

@@ -138,6 +138,12 @@ fn appendFunction(
     // side, so there is still exactly one way to say which function is meant.
     const function_name = if (@hasField(@TypeOf(metadata), "name")) metadata.name else source_name;
     const receiver = comptime receiverName(info, declaration);
+    // What the message calls the declaration: the owner it was reached through
+    // plus the source name, which is the spelling the binding's `.path` uses.
+    const owner_label = comptime if (receiver) |value|
+        value ++ "."
+    else if (discovered_owner) |value| value ++ "." else "";
+    const function_label = source_name;
     const first_param: usize = if (receiver != null) 1 else 0;
     const params = try allocator.alloc(semantic.Parameter, comptime concreteParamCount(info, first_param));
     inline for (info.params, 0..) |param, param_index| {
@@ -150,7 +156,10 @@ fn appendFunction(
             metadata.params[output_index]
         else
             try std.fmt.allocPrint(allocator, "p{d}", .{output_index});
-        const parameter_type = try typeNode(allocator, param.type.?, types);
+        const parameter_type = try typeNode(allocator, param.type.?, types, comptime std.fmt.comptimePrint(
+            "`{s}{s}` parameter `{s}`",
+            .{ owner_label, function_label, if (has_sidecar) metadata.params[output_index] else std.fmt.comptimePrint("p{d}", .{output_index}) },
+        ));
         var reflected: semantic.Parameter = .{
             .name = parameter_name,
             .name_source = if (has_sidecar) .sidecar else .fallback,
@@ -176,7 +185,7 @@ fn appendFunction(
         params[output_index] = reflected;
     }
     const reflected_return = if (info.return_type) |return_type|
-        try typeNode(allocator, return_type, types)
+        try typeNode(allocator, return_type, types, comptime std.fmt.comptimePrint("`{s}{s}` return value", .{ owner_label, function_label }))
     else
         semantic.TypeNode{ .void = {} };
     var reflected_function: semantic.SemanticFn = .{
@@ -343,7 +352,15 @@ fn declarationPath(comptime owner: ?[]const u8, comptime name: []const u8) []con
     return if (owner) |value| value ++ "." ++ name else "root." ++ name;
 }
 
-fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayList(semantic.TypeDecl)) !semantic.TypeNode {
+/// `context` names the parameter, return value, or field the type was reached
+/// through. Reflection rejections are compile errors in the binding author's
+/// build, and without it they only name the constraint, never where it broke.
+fn typeNode(
+    allocator: std.mem.Allocator,
+    comptime T: type,
+    types: *std.ArrayList(semantic.TypeDecl),
+    comptime context: []const u8,
+) !semantic.TypeNode {
     return switch (@typeInfo(T)) {
         .void => .{ .void = {} },
         .bool => .{ .bool = {} },
@@ -356,7 +373,7 @@ fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayLis
         .pointer => |info| switch (info.size) {
             .slice => blk: {
                 const element = try allocator.create(semantic.TypeNode);
-                element.* = try typeNode(allocator, info.child, types);
+                element.* = try typeNode(allocator, info.child, types, context ++ " (slice element)");
                 break :blk .{ .slice = .{
                     .@"const" = info.is_const,
                     .element = element,
@@ -368,11 +385,19 @@ fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayLis
                     const function_info = @typeInfo(info.child).@"fn";
                     const callback_params = try allocator.alloc(semantic.TypeNode, function_info.params.len);
                     inline for (function_info.params, 0..) |parameter, index| {
-                        const parameter_type = parameter.type orelse return error.GenericCallback;
-                        callback_params[index] = try typeNode(allocator, parameter_type, types);
+                        const parameter_type = parameter.type orelse
+                            @compileError("zigo cannot reflect a generic callback parameter, at " ++ context);
+                        callback_params[index] = try typeNode(
+                            allocator,
+                            parameter_type,
+                            types,
+                            context ++ std.fmt.comptimePrint(" (callback parameter {d})", .{index}),
+                        );
                     }
                     const callback_return = try allocator.create(semantic.TypeNode);
-                    callback_return.* = try typeNode(allocator, function_info.return_type orelse return error.GenericCallback, types);
+                    const callback_return_type = function_info.return_type orelse
+                        @compileError("zigo cannot reflect a generic callback return type, at " ++ context);
+                    callback_return.* = try typeNode(allocator, callback_return_type, types, context ++ " (callback return value)");
                     break :blk .{ .callback = .{
                         .c_callconv = std.meta.eql(function_info.calling_convention, std.builtin.CallingConvention.c),
                         .has_userdata = function_info.params.len != 0 and
@@ -382,7 +407,8 @@ fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayLis
                         .@"return" = callback_return,
                     } };
                 }
-                const name = opaqueNameForPath(types.items, @typeName(info.child)) orelse return error.MissingOpaqueType;
+                const name = opaqueNameForPath(types.items, @typeName(info.child)) orelse
+                    return missingOpaqueType(@typeName(info.child), context);
                 break :blk .{ .opaque_ptr = .{
                     .@"const" = info.is_const,
                     .nullable = false,
@@ -391,13 +417,13 @@ fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayLis
             },
             .many => blk: {
                 const sentinel = info.sentinel() orelse @compileError(
-                    "zigo supports slices, pointers to declared opaque types, and `[*:0]const u8` sentinel strings; mutable or non-zero-sentinel many pointers are unsupported",
+                    "zigo supports slices, pointers to declared opaque types, and `[*:0]const u8` sentinel strings; mutable or non-zero-sentinel many pointers are unsupported, at " ++ context,
                 );
                 if (info.child != u8 or !info.is_const or sentinel != 0) @compileError(
-                    "zigo supports slices, pointers to declared opaque types, and `[*:0]const u8` sentinel strings; mutable or non-zero-sentinel many pointers are unsupported",
+                    "zigo supports slices, pointers to declared opaque types, and `[*:0]const u8` sentinel strings; mutable or non-zero-sentinel many pointers are unsupported, at " ++ context,
                 );
                 const element = try allocator.create(semantic.TypeNode);
-                element.* = try typeNode(allocator, info.child, types);
+                element.* = try typeNode(allocator, info.child, types, context ++ " (slice element)");
                 break :blk .{ .slice = .{
                     .@"const" = true,
                     .element = element,
@@ -406,7 +432,7 @@ fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayLis
                 } };
             },
             else => @compileError(
-                "zigo supports slices, pointers to declared opaque types, and `[*:0]const u8` sentinel strings; mutable or non-zero-sentinel many pointers are unsupported",
+                "zigo supports slices, pointers to declared opaque types, and `[*:0]const u8` sentinel strings; mutable or non-zero-sentinel many pointers are unsupported, at " ++ context,
             ),
         },
         // Only a pointer to a declared opaque type has a null representation Go
@@ -416,8 +442,9 @@ fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayLis
         .optional => |info| blk: {
             const child = @typeInfo(info.child);
             if (child != .pointer or child.pointer.size != .one or @typeInfo(child.pointer.child) == .@"fn")
-                @compileError("zigo supports optionals only on pointers to declared opaque types");
-            const name = opaqueNameForPath(types.items, @typeName(child.pointer.child)) orelse return error.MissingOpaqueType;
+                @compileError("zigo supports optionals only on pointers to declared opaque types, at " ++ context);
+            const name = opaqueNameForPath(types.items, @typeName(child.pointer.child)) orelse
+                return missingOpaqueType(@typeName(child.pointer.child), context);
             break :blk .{ .opaque_ptr = .{
                 .@"const" = child.pointer.is_const,
                 .nullable = true,
@@ -426,7 +453,7 @@ fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayLis
         },
         .error_union => |info| blk: {
             const payload = try allocator.create(semantic.TypeNode);
-            payload.* = try typeNode(allocator, info.payload, types);
+            payload.* = try typeNode(allocator, info.payload, types, context ++ " (error payload)");
             const reflected_errors = @typeInfo(info.error_set).error_set;
             const names = if (reflected_errors) |errors| names: {
                 const result = try allocator.alloc([]const u8, errors.len);
@@ -449,7 +476,7 @@ fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayLis
                 const fields = try allocator.alloc(semantic.TypeField, info.fields.len);
                 inline for (info.fields, 0..) |field, index| fields[index] = .{ .name = field.name, .value = @intCast(field.value) };
                 const tag_type = try allocator.create(semantic.TypeNode);
-                tag_type.* = try typeNode(allocator, info.tag_type, types);
+                tag_type.* = try typeNode(allocator, info.tag_type, types, context ++ " (enum tag type)");
                 try types.append(allocator, .{
                     .exhaustive = info.is_exhaustive,
                     .fields = fields,
@@ -480,12 +507,25 @@ fn typeNode(allocator: std.mem.Allocator, comptime T: type, types: *std.ArrayLis
                     break :blk .{ .value_struct = .{ .ref = declaration.name } };
                 }
             }
-            if (@typeInfo(T).@"union".tag_type == null) @compileError("zigo cannot reflect an untagged union");
+            if (@typeInfo(T).@"union".tag_type == null) @compileError("zigo cannot reflect an untagged union, at " ++ context);
             try appendTaggedUnion(allocator, types, T, name, .projection);
             break :blk .{ .value_struct = .{ .ref = name } };
         },
-        else => @compileError("zigo supports scalars, enums, slices, opaque pointers, structs, and error unions"),
+        else => @compileError("zigo supports scalars, enums, slices, opaque pointers, structs, and error unions, at " ++ context),
     };
+}
+
+/// The opaque registry is filled while walking, so a pointer to an
+/// unregistered type is only discovered at run time. Naming the type and the
+/// site it was reached through is the whole difference between a usable
+/// message and a bare error name.
+fn missingOpaqueType(comptime type_name: []const u8, comptime context: []const u8) error{MissingOpaqueType} {
+    std.debug.print(
+        "zigo: `{s}` is not a registered opaque type, at {s}\n" ++
+            "  hint: add it to `.types` with `.repr = .opaque`\n",
+        .{ type_name, context },
+    );
+    return error.MissingOpaqueType;
 }
 
 fn concreteParamCount(comptime info: std.builtin.Type.Fn, comptime first_param: usize) usize {
@@ -572,7 +612,12 @@ fn appendValueStruct(
     inline for (info.fields, 0..) |field, field_index| {
         fields[field_index] = .{
             .name = field.name,
-            .type = try typeNode(allocator, field.type, types),
+            .type = try typeNode(
+                allocator,
+                field.type,
+                types,
+                "`" ++ comptime shortTypeName(@typeName(T)) ++ "` field `" ++ field.name ++ "`",
+            ),
         };
     }
     types.items[index].fields = fields;
@@ -604,7 +649,12 @@ fn appendTaggedUnion(
     inline for (info.fields, 0..) |field, index| {
         fields[index] = .{
             .name = field.name,
-            .type = try typeNode(allocator, field.type, types),
+            .type = try typeNode(
+                allocator,
+                field.type,
+                types,
+                "`" ++ comptime shortTypeName(@typeName(T)) ++ "` variant `" ++ field.name ++ "`",
+            ),
             .value = @intCast(@intFromEnum(@field(Tag, field.name))),
         };
     }
@@ -615,7 +665,7 @@ fn appendTaggedUnion(
     inline for (tag_info.fields, 0..) |field, index| {
         tag_fields[index] = .{ .name = field.name, .value = @intCast(field.value) };
     }
-    const integer_tag = try typeNode(allocator, tag_info.tag_type, types);
+    const integer_tag = try typeNode(allocator, tag_info.tag_type, types, "`" ++ comptime shortTypeName(@typeName(Tag)) ++ "` tag type");
     try types.append(allocator, .{
         .exhaustive = tag_info.is_exhaustive,
         .fields = tag_fields,

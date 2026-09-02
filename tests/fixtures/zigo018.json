@@ -1,0 +1,16 @@
+{
+  "functions": [
+    {
+      "name": "codepointWidth",
+      "namespace": "unicode",
+      "params": [
+        { "name": "cp", "type": { "bits": 21, "is_usize": false, "kind": "int", "signed": false } }
+      ],
+      "return": { "bits": 8, "is_usize": false, "kind": "int", "signed": true },
+      "symbol": "zg_unicode_codepoint_width"
+    }
+  ],
+  "package": "bad",
+  "prefix": "zg",
+  "zig_version": "0.16.0"
+}

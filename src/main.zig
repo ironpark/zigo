@@ -39,7 +39,11 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
     const semantic_bytes = try std.Io.Dir.cwd().readFileAlloc(io, options.semantic_path, allocator, .limited(64 * 1024 * 1024));
     var parsed = try semantic.Semantic.parse(allocator, semantic_bytes);
     defer parsed.deinit();
-    const issue = try validate.findIssue(allocator, parsed.value) orelse
+    // The diagnostic can name allocated text, so it lives on a scratch arena
+    // that outlives the render and nothing else.
+    var scratch = std.heap.ArenaAllocator.init(allocator);
+    defer scratch.deinit();
+    const issue = try validate.findIssue(scratch.allocator(), parsed.value) orelse
         if (options.backend == .purego)
             validate.puregoCallbackIssue(parsed.value)
         else

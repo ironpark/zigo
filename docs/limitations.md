@@ -117,6 +117,27 @@
   안전한 계약을 만들 수 없는 선언은 생성 단계에서 거부한다.
 - 지원 타입과 정확한 하강 규칙은 [ABI 하강 규칙](.agent/design/03-lowering-rules.md)을 참고한다.
 
+## 생성기 진단
+
+생성 단계의 모든 거부는 `error[ZIGOnnn]` 진단 한 줄로 나온다. 스택 트레이스나 bare error는
+남아 있지 않으며, 진단은 문제가 된 선언(`Owner.fn`이나 `namespace.fn`)과 파라미터 이름,
+그리고 Zig 쪽 철자를 함께 알려준다.
+
+```
+error[ZIGO018]: unsupported integer width `u21` in parameter `cp`
+  --> semantic.json (unicode.codepointWidth)
+  hint: use an 8, 16, 32, or 64-bit integer, or `usize`
+```
+
+- `ZIGO018` — C ABI가 이름 붙일 수 없는 정수·실수 폭이다. 중첩된 위치는 `the slice element
+  of parameter \`cps\``처럼 도달 경로까지 적는다.
+- `ZIGO019` — 지원하지 않는 타입이다. optional은 opaque pointer 위에서만 표현할 수 있다.
+- `ZIGO020` — `semantic.json`의 IR 버전이 이 zigo와 맞지 않는다. 다시 생성한다.
+- `ZIGO021` — package, prefix, 함수 이름 중 하나가 비어 있다.
+
+리플렉션 단계의 거부는 `bindings.zig`를 빌드할 때의 `@compileError`로 나오며, 제약과 함께
+그것이 걸린 선언·파라미터를 적는다(`... , at \`Terminal.write\` parameter \`bytes\``).
+
 ## 이름과 메타데이터
 
 Zig reflection에는 함수 파라미터 이름이 없다. zigo는 `bindings.zig`의 `params`, Zig AST

@@ -434,6 +434,20 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     invalid_semantic.expectStdErrMatch("error[ZIGO007]: generated C symbol collides with another declaration");
     test_step.dependOn(&invalid_semantic.step);
 
+    // An unsupported type used to leave validation as a bare error, which the
+    // CLI reported as a stack trace. It reaches the user as a diagnostic now.
+    const unsupported_width = b.addRunArtifact(generator);
+    unsupported_width.setName("CLI contract (unsupported integer width)");
+    unsupported_width.addArgs(&.{ "generate", "--semantic" });
+    unsupported_width.addFileArg(b.path("tests/fixtures/zigo018.json"));
+    unsupported_width.addArg("--output");
+    _ = unsupported_width.addOutputDirectoryArg("unsupported-width-output");
+    unsupported_width.addArgs(&.{ "--package", "bad" });
+    unsupported_width.expectExitCode(1);
+    unsupported_width.expectStdErrMatch("error[ZIGO018]: unsupported integer width `u21` in parameter `cp`");
+    unsupported_width.expectStdErrMatch("--> semantic.json (unicode.codepointWidth)");
+    test_step.dependOn(&unsupported_width.step);
+
     const stale = b.addRunArtifact(generator);
     stale.setName("CLI contract (stale generated files)");
     stale.addArgs(&.{ "check", "--generated" });
