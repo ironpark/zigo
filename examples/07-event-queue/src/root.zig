@@ -44,6 +44,8 @@ var live_samples: std.atomic.Value(usize) = .init(0);
 /// rather than copying a second time.
 var live_limits: std.atomic.Value(usize) = .init(0);
 
+var live_tickers: std.atomic.Value(usize) = .init(0);
+
 pub const EventQueue = struct {
     name_bytes: []u8,
     items: std.ArrayList(Event) = .empty,
@@ -355,6 +357,52 @@ pub fn liveLimits() usize {
 
 pub fn liveQueues() usize {
     return live_queues.load(.monotonic);
+}
+
+/// A vendor-shaped type: the constructor and destructor are free functions
+/// beside it rather than methods on it, which is how a library zigo cannot add
+/// declarations to writes them. `.constructs`/`.destroys` in the binding is
+/// what pairs them.
+pub const Ticker = struct {
+    interval: u32,
+    elapsed: u32 = 0,
+};
+
+pub const TickerError = error{ InvalidInterval, OutOfMemory };
+
+/// Opens a ticker the caller owns.
+pub fn newTicker(interval: u32) TickerError!*Ticker {
+    if (interval == 0) return error.InvalidInterval;
+    const ticker = std.heap.page_allocator.create(Ticker) catch return error.OutOfMemory;
+    ticker.* = .{ .interval = interval };
+    _ = live_tickers.fetchAdd(1, .monotonic);
+    return ticker;
+}
+
+/// Releases a ticker `newTicker` returned.
+pub fn freeTicker(ticker: *Ticker) void {
+    std.heap.page_allocator.destroy(ticker);
+    _ = live_tickers.fetchSub(1, .monotonic);
+}
+
+/// Advances a ticker and reports how many whole intervals have elapsed.
+pub fn tickerAdvance(ticker: *Ticker, steps: u32) u32 {
+    ticker.elapsed += steps;
+    return ticker.elapsed / ticker.interval;
+}
+
+/// Tickers still owned by the library.
+pub fn liveTickers() usize {
+    return live_tickers.load(.monotonic);
+}
+
+test "a ticker counts whole intervals and is freed by its own destructor" {
+    const ticker = try newTicker(4);
+    defer freeTicker(ticker);
+    try std.testing.expectEqual(@as(u32, 0), tickerAdvance(ticker, 3));
+    try std.testing.expectEqual(@as(u32, 1), tickerAdvance(ticker, 1));
+    try std.testing.expectEqual(@as(u32, 2), tickerAdvance(ticker, 4));
+    try std.testing.expectError(error.InvalidInterval, newTicker(0));
 }
 
 test "merging from a null source is a no-op" {

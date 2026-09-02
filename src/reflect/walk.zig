@@ -22,6 +22,9 @@ pub fn reflect(
 
     var functions: std.ArrayList(semantic.SemanticFn) = .empty;
     var types: std.ArrayList(semantic.TypeDecl) = .empty;
+    // What `.constructs` and `.destroys` claimed, in the order the walk saw
+    // it. The pair itself can only be formed once every function is known.
+    var pairings: std.ArrayList(Pairing) = .empty;
 
     if (@hasField(@TypeOf(declaration), "types")) {
         inline for (declaration.types) |entry| {
@@ -79,10 +82,10 @@ pub fn reflect(
                 // A callback type is a signature and an enum is a name, not
                 // containers to walk.
                 if (comptime entry.repr != .callback and entry.repr != .enumeration)
-                    try discoverContainer(allocator, &functions, &types, declaration, prefix, entry.type, comptime typeEntryName(entry), comptime typeEntryName(entry));
+                    try discoverContainer(allocator, &functions, &types, &pairings, declaration, prefix, entry.type, comptime typeEntryName(entry), comptime typeEntryName(entry));
             }
         }
-        try discoverContainer(allocator, &functions, &types, declaration, prefix, declaration.root, null, "root");
+        try discoverContainer(allocator, &functions, &types, &pairings, declaration, prefix, declaration.root, null, "root");
     } else {
         inline for (declaration.functions) |entry| {
             const owner = comptime pathOwner(entry.path);
@@ -91,6 +94,7 @@ pub fn reflect(
                 allocator,
                 &functions,
                 &types,
+                &pairings,
                 declaration,
                 prefix,
                 member,
@@ -102,30 +106,34 @@ pub fn reflect(
     }
 
     var constructors: std.ArrayList(semantic.Constructor) = .empty;
-    for (functions.items) |*function| {
+    // A binding that said which type a function makes and which unmakes it is
+    // paired on that, wherever the two are declared and whatever they are
+    // called. The name rule below is what a binding that said nothing gets.
+    for (pairings.items) |claim| {
+        if (claim.kind != .constructs) continue;
+        if (findPairing(pairings.items, .constructs, claim.type).? != claim.index)
+            return pairingIssue(allocator, "two functions declare `.constructs = \"{s}\"`", .{claim.type});
+        const destructor_index = findPairing(pairings.items, .destroys, claim.type) orelse
+            return pairingIssue(allocator, "`.constructs = \"{s}\"` has no function declaring `.destroys = \"{s}\"`", .{ claim.type, claim.type });
+        try pair(allocator, &constructors, functions.items, claim.index, destructor_index, claim.type);
+    }
+    for (pairings.items) |claim| {
+        if (claim.kind != .destroys) continue;
+        if (findPairing(pairings.items, .destroys, claim.type).? != claim.index)
+            return pairingIssue(allocator, "two functions declare `.destroys = \"{s}\"`", .{claim.type});
+        if (findPairing(pairings.items, .constructs, claim.type) == null)
+            return pairingIssue(allocator, "`.destroys = \"{s}\"` has no function declaring `.constructs = \"{s}\"`", .{ claim.type, claim.type });
+    }
+    for (functions.items, 0..) |*function, index| {
         if (!isConstructorName(function.name)) continue;
         const type_name = returnedOpaqueName(function.@"return") orelse continue;
-        for (functions.items) |destructor| {
+        // An explicit claim already settled this type, and settled it against
+        // the declarations rather than against their spelling.
+        if (findPairing(pairings.items, .constructs, type_name) != null) continue;
+        for (functions.items, 0..) |destructor, destructor_index| {
             if (destructor.receiver == null or !std.mem.eql(u8, destructor.receiver.?, type_name)) continue;
             if (!isDestructorName(destructor.name)) continue;
-            try constructors.append(allocator, .{
-                .deinit = destructor.name,
-                .init = function.name,
-                .type = type_name,
-            });
-            // Go groups the constructor under the type it makes; the Zig
-            // call path stays where the function is actually declared, so a
-            // root-level `newTerminal` is still called as `target.newTerminal`.
-            if (!std.mem.eql(u8, function.namespace orelse "", type_name)) function.go_owner = type_name;
-            function.ownership = .caller;
-            // The storage the shim allocated is the shim's to free, so the
-            // paired destructor runs the Zig `deinit` and then destroys it.
-            if (function.boxed == .create) {
-                for (functions.items) |*candidate| {
-                    if (candidate.receiver != null and std.mem.eql(u8, candidate.receiver.?, type_name) and
-                        std.mem.eql(u8, candidate.name, destructor.name)) candidate.boxed = .destroy;
-                }
-            }
+            try pair(allocator, &constructors, functions.items, index, destructor_index, type_name);
             break;
         }
     }
@@ -140,6 +148,41 @@ pub fn reflect(
         .types = try types.toOwnedSlice(allocator),
         .zig_version = @import("builtin").zig_version_string,
     };
+}
+
+/// Records one constructor pair: the document gains the pairing, Go groups the
+/// constructor under the type it makes, and the storage a boxed constructor
+/// allocated becomes the destructor's to free.
+fn pair(
+    allocator: std.mem.Allocator,
+    constructors: *std.ArrayList(semantic.Constructor),
+    functions: []semantic.SemanticFn,
+    init_index: usize,
+    deinit_index: usize,
+    type_name: []const u8,
+) !void {
+    const constructor = &functions[init_index];
+    try constructors.append(allocator, .{
+        .deinit = functions[deinit_index].name,
+        .init = constructor.name,
+        .type = type_name,
+    });
+    // Go groups the constructor under the type it makes; the Zig call path
+    // stays where the function is actually declared, so a root-level
+    // `newTerminal` is still called as `target.newTerminal`.
+    if (!std.mem.eql(u8, constructor.namespace orelse "", type_name)) constructor.go_owner = type_name;
+    constructor.ownership = .caller;
+    // The storage the shim allocated is the shim's to free, so the paired
+    // destructor runs the Zig `deinit` and then destroys it.
+    if (constructor.boxed == .create) functions[deinit_index].boxed = .destroy;
+}
+
+/// The index of the function that claimed this half of a type's pairing.
+fn findPairing(pairings: []const Pairing, kind: @FieldType(Pairing, "kind"), type_name: []const u8) ?usize {
+    for (pairings) |claim| {
+        if (claim.kind == kind and std.mem.eql(u8, claim.type, type_name)) return claim.index;
+    }
+    return null;
 }
 
 /// The Zig expression the shim writes for an injected argument. `.allocator`
@@ -178,6 +221,7 @@ fn appendFunction(
     allocator: std.mem.Allocator,
     functions: *std.ArrayList(semantic.SemanticFn),
     types: *std.ArrayList(semantic.TypeDecl),
+    pairings: *std.ArrayList(Pairing),
     comptime declaration: anytype,
     prefix: []const u8,
     comptime source_name: []const u8,
@@ -291,7 +335,12 @@ fn appendFunction(
     // binding hands Go a handle. The decision is made before the return type
     // is walked, because walking it would register a value struct C cannot
     // carry and reject the whole binding instead.
-    const boxed_type = comptime boxedConstructorName(declaration, info, function_name);
+    const boxed_type = comptime boxedConstructorName(
+        declaration,
+        info,
+        function_name,
+        if (@hasField(@TypeOf(metadata), "constructs")) metadata.constructs else null,
+    );
     const reflected_return = if (boxed_type) |type_name| blk: {
         const payload = try allocator.create(semantic.TypeNode);
         payload.* = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = type_name } };
@@ -324,7 +373,66 @@ fn appendFunction(
     if (info.return_type) |return_type| {
         if (isSentinelBytePointer(return_type)) reflected_function.return_semantic = .c_string;
     }
+    // A binding pairs a constructor with a destructor by naming the type they
+    // make and unmake. The claim is checked against the signature here, where
+    // the declaration is still in hand; the pair is formed once the walk ends.
+    if (@hasField(@TypeOf(metadata), "constructs")) {
+        const type_name = metadata.constructs;
+        if (!comptime isRegisteredHandle(declaration, type_name))
+            return pairingIssue(allocator, "`{s}{s}` declares `.constructs = \"{s}\"`, which is not a registered opaque type", .{ owner_label, function_label, type_name });
+        const returned = returnedOpaqueName(reflected_function.@"return") orelse "";
+        if (!std.mem.eql(u8, returned, type_name))
+            return pairingIssue(allocator, "`{s}{s}` declares `.constructs = \"{s}\"` but does not return `*{s}`", .{ owner_label, function_label, type_name, type_name });
+        try pairings.append(allocator, .{ .index = functions.items.len, .kind = .constructs, .type = type_name });
+    }
+    if (@hasField(@TypeOf(metadata), "destroys")) {
+        const type_name = metadata.destroys;
+        if (!comptime isRegisteredHandle(declaration, type_name))
+            return pairingIssue(allocator, "`{s}{s}` declares `.destroys = \"{s}\"`, which is not a registered opaque type", .{ owner_label, function_label, type_name });
+        if (!std.mem.eql(u8, reflected_function.receiver orelse "", type_name))
+            return pairingIssue(allocator, "`{s}{s}` declares `.destroys = \"{s}\"` but does not take `*{s}` as its first parameter", .{ owner_label, function_label, type_name, type_name });
+        if (reflected_function.@"return" != .void)
+            return pairingIssue(allocator, "`{s}{s}` declares `.destroys = \"{s}\"` but does not return void", .{ owner_label, function_label, type_name });
+        try pairings.append(allocator, .{ .index = functions.items.len, .kind = .destroys, .type = type_name });
+    }
     try functions.append(allocator, reflected_function);
+}
+
+/// One half of a `.constructs`/`.destroys` claim, and the function that made
+/// it.
+const Pairing = struct {
+    index: usize,
+    kind: enum { constructs, destroys },
+    type: []const u8,
+};
+
+/// Whether a `.types` entry registers this name as a handle, which is the only
+/// thing a constructor pair can be about.
+fn isRegisteredHandle(comptime declaration: anytype, comptime type_name: []const u8) bool {
+    if (!@hasField(@TypeOf(declaration), "types")) return false;
+    inline for (declaration.types) |entry| {
+        if (isHandleRepr(entry.repr) and std.mem.eql(u8, typeEntryName(entry), type_name)) return true;
+    }
+    return false;
+}
+
+/// What a `.constructs`/`.destroys` claim the signatures do not support is
+/// told. Like `ZIGO027`, this is raised while reflecting, before there is a
+/// `semantic.json` for the generator's own diagnostics to point at.
+fn pairingIssue(allocator: std.mem.Allocator, comptime detail: []const u8, args: anytype) error{ ConstructorPairing, OutOfMemory } {
+    const message = try pairingMessageAlloc(allocator, detail, args);
+    defer allocator.free(message);
+    if (!@import("builtin").is_test) std.debug.print("{s}", .{message});
+    return error.ConstructorPairing;
+}
+
+fn pairingMessageAlloc(allocator: std.mem.Allocator, comptime detail: []const u8, args: anytype) ![]u8 {
+    return std.fmt.allocPrint(
+        allocator,
+        "error[ZIGO028]: " ++ detail ++ "\n" ++
+            "  hint: `.constructs` and `.destroys` name one registered opaque type each, on the function that returns `*T` and the function that takes it\n",
+        args,
+    );
 }
 
 /// Where the shim has to reach to call this declaration, when the owner and
@@ -349,9 +457,16 @@ fn zigCallPath(
 /// allocator the binding chose to own the storage. Without the allocator the
 /// function is left alone, so the rejection the author sees still names the
 /// struct rather than a decision zigo made for them.
-fn boxedConstructorName(comptime declaration: anytype, comptime info: std.builtin.Type.Fn, comptime function_name: []const u8) ?[]const u8 {
+fn boxedConstructorName(
+    comptime declaration: anytype,
+    comptime info: std.builtin.Type.Fn,
+    comptime function_name: []const u8,
+    /// The type `.constructs` named, which says this is a constructor whatever
+    /// it is called.
+    comptime constructs: ?[]const u8,
+) ?[]const u8 {
     if (injectionExpression(declaration, "allocator") == null) return null;
-    if (!isConstructorName(function_name)) return null;
+    if (constructs == null and !isConstructorName(function_name)) return null;
     const return_type = info.return_type orelse return null;
     const value_type = switch (@typeInfo(return_type)) {
         .error_union => |error_union| error_union.payload,
@@ -360,7 +475,13 @@ fn boxedConstructorName(comptime declaration: anytype, comptime info: std.builti
     if (@typeInfo(value_type) != .@"struct") return null;
     if (!@hasField(@TypeOf(declaration), "types")) return null;
     inline for (declaration.types) |entry| {
-        if (entry.repr == .@"opaque" and entry.type == value_type) return typeEntryName(entry);
+        if (entry.repr == .@"opaque" and entry.type == value_type) {
+            // A `.constructs` claim about a different type is left alone here
+            // so the mismatch is reported against the declaration rather than
+            // silently boxed into the wrong handle.
+            if (constructs) |claimed| if (!std.mem.eql(u8, claimed, typeEntryName(entry))) return null;
+            return typeEntryName(entry);
+        }
     }
     return null;
 }
@@ -386,6 +507,7 @@ fn discoverContainer(
     allocator: std.mem.Allocator,
     functions: *std.ArrayList(semantic.SemanticFn),
     types: *std.ArrayList(semantic.TypeDecl),
+    pairings: *std.ArrayList(Pairing),
     comptime declaration: anytype,
     prefix: []const u8,
     comptime Container: type,
@@ -405,11 +527,11 @@ fn discoverContainer(
             inline for (declaration.functions) |entry| {
                 if (comptime std.mem.eql(u8, entry.path, path)) {
                     adjusted = true;
-                    try appendFunction(allocator, functions, types, declaration, prefix, candidate.name, value, entry, owner);
+                    try appendFunction(allocator, functions, types, pairings, declaration, prefix, candidate.name, value, entry, owner);
                 }
             }
         }
-        if (!adjusted) try appendFunction(allocator, functions, types, declaration, prefix, candidate.name, value, .{}, owner);
+        if (!adjusted) try appendFunction(allocator, functions, types, pairings, declaration, prefix, candidate.name, value, .{}, owner);
     }
     if (comptime !discoveryRecursive(declaration)) return;
     inline for (comptime std.meta.declarations(Container)) |candidate| {
@@ -419,6 +541,7 @@ fn discoverContainer(
             allocator,
             functions,
             types,
+            pairings,
             declaration,
             prefix,
             value,
@@ -1751,6 +1874,120 @@ test "a root-level constructor keeps its Zig call path while Go groups it" {
     try std.testing.expectEqualStrings("Terminal", constructor.goOwner().?);
     try std.testing.expectEqual(@as(?[]const u8, null), constructor.namespace);
     try std.testing.expectEqualStrings("zg_new", constructor.symbol);
+}
+
+test "`.constructs` and `.destroys` pair functions the name rule never would" {
+    const Fixture = struct {
+        const Terminal = opaque {};
+
+        pub fn makeTerminal(columns: u32) error{Invalid}!*Terminal {
+            _ = columns;
+            unreachable;
+        }
+
+        pub fn releaseTerminal(self: *Terminal) void {
+            _ = self;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{.{ .name = "Terminal", .type = Fixture.Terminal, .repr = .@"opaque" }},
+        .functions = .{
+            .{ .path = "root.makeTerminal", .params = .{"columns"}, .constructs = "Terminal" },
+            .{ .path = "root.releaseTerminal", .destroys = "Terminal" },
+        },
+    }, "terminal", "zg");
+
+    try std.testing.expectEqual(@as(usize, 1), document.constructors.len);
+    try std.testing.expectEqualStrings("makeTerminal", document.constructors[0].init);
+    try std.testing.expectEqualStrings("releaseTerminal", document.constructors[0].deinit);
+    try std.testing.expectEqualStrings("Terminal", document.constructors[0].type);
+    try std.testing.expectEqualStrings("Terminal", document.functions[0].goOwner().?);
+    try std.testing.expectEqual(semantic.Ownership.caller, document.functions[0].ownership);
+    // The shim still reaches the declaration where it lives: no owner, so
+    // the name alone spells the call and no override is recorded.
+    try std.testing.expectEqual(@as(?[]const u8, null), document.functions[0].namespace);
+    try std.testing.expectEqual(@as(?[]const u8, null), document.functions[0].zig_path);
+    // The destructor is a method in Go, so its path is the one that moved.
+    try std.testing.expectEqualStrings("Terminal", document.functions[1].receiver.?);
+    try std.testing.expectEqualStrings("releaseTerminal", document.functions[1].zig_path.?);
+}
+
+test "a `.constructs` claim the signatures do not support is refused" {
+    const Fixture = struct {
+        const Terminal = opaque {};
+        const Cursor = opaque {};
+
+        pub fn makeTerminal(columns: u32) error{Invalid}!*Terminal {
+            _ = columns;
+            unreachable;
+        }
+
+        pub fn releaseTerminal(self: *Terminal) void {
+            _ = self;
+        }
+    };
+    const types = .{
+        .{ .name = "Terminal", .type = Fixture.Terminal, .repr = .@"opaque" },
+        .{ .name = "Cursor", .type = Fixture.Cursor, .repr = .@"opaque" },
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    // A constructor of a type it does not return.
+    try std.testing.expectError(error.ConstructorPairing, reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = types,
+        .functions = .{
+            .{ .path = "root.makeTerminal", .params = .{"columns"}, .constructs = "Cursor" },
+            .{ .path = "root.releaseTerminal", .destroys = "Cursor" },
+        },
+    }, "terminal", "zg"));
+
+    // A destructor of a type it does not take.
+    try std.testing.expectError(error.ConstructorPairing, reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = types,
+        .functions = .{
+            .{ .path = "root.makeTerminal", .params = .{"columns"}, .constructs = "Terminal" },
+            .{ .path = "root.releaseTerminal", .destroys = "Cursor" },
+        },
+    }, "terminal", "zg"));
+
+    // A type nothing else was registered under.
+    try std.testing.expectError(error.ConstructorPairing, reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = types,
+        .functions = .{.{ .path = "root.makeTerminal", .params = .{"columns"}, .constructs = "Screen" }},
+    }, "terminal", "zg"));
+
+    // One half on its own.
+    try std.testing.expectError(error.ConstructorPairing, reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = types,
+        .functions = .{.{ .path = "root.makeTerminal", .params = .{"columns"}, .constructs = "Terminal" }},
+    }, "terminal", "zg"));
+    try std.testing.expectError(error.ConstructorPairing, reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = types,
+        .functions = .{.{ .path = "root.releaseTerminal", .destroys = "Terminal" }},
+    }, "terminal", "zg"));
+}
+
+test "the pairing message names the declaration and the code" {
+    const message = try pairingMessageAlloc(
+        std.testing.allocator,
+        "`{s}` declares `.constructs = \"{s}\"` but does not return `*{s}`",
+        .{ "makeTerminal", "Cursor", "Cursor" },
+    );
+    defer std.testing.allocator.free(message);
+    try std.testing.expectEqualStrings(
+        \\error[ZIGO028]: `makeTerminal` declares `.constructs = "Cursor"` but does not return `*Cursor`
+        \\  hint: `.constructs` and `.destroys` name one registered opaque type each, on the function that returns `*T` and the function that takes it
+        \\
+    , message);
 }
 
 test "a value-returning init is boxed into a caller-owned handle" {

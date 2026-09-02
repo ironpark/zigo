@@ -3,13 +3,14 @@
     "Empty": 5,
     "Full": 4,
     "InvalidCapacity": 3,
+    "InvalidInterval": 8,
     "InvalidLimit": 6,
     "InvalidName": 2,
     "ObserverPanicked": 7,
     "OutOfMemory": 1
   },
   "ir_version": 1,
-  "next_code": 8,
+  "next_code": 9,
   "reserved": {
     "-1": "Unknown",
     "-2": "PanicCaught",

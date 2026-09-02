@@ -17,6 +17,11 @@ This application-shaped example exposes a bounded Zig event queue as a Go packag
   `ExtractSentinelPointers`, including empty entries.
 - a caller-owned slice return via `ExtractSamples`, whose declared `freeSamples` release
   function the binding calls after copying; `LiveSamples` proves nothing leaks.
+- an allocator the binding names once: `freeLimits` takes a `std.mem.Allocator` parameter
+  that the shim fills in and Go never sees.
+- a `Ticker` whose constructor and destructor are free functions beside the type, paired
+  by `.constructs = "Ticker"` / `.destroys = "Ticker"` and reaching Go as `NewTicker` and
+  `(*Ticker).Close`.
 
 Run the complete example from this directory:
 

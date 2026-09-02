@@ -2,7 +2,7 @@
 depends_on:
 - "73-explicit-ctor-pairing-and-injection-arity#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 메타로 짝지은 예제가 cgo·purego 통과, 진단 스냅샷 테스트 추가, 커밋.
 > NEXT: none

@@ -10,6 +10,7 @@ pub const bindings = zigo.define(.{
         .{ .type = library.EventQueue, .repr = .@"opaque" },
         .{ .type = library.Stats, .repr = .value },
         .{ .type = library.Limits, .repr = .value },
+        .{ .type = library.Ticker, .repr = .@"opaque" },
     },
     .functions = .{
         .{
@@ -88,6 +89,12 @@ pub const bindings = zigo.define(.{
         .{ .path = "EventQueue.applyLimits", .params = .{"updated"} },
         .{ .path = "EventQueue.clear" },
         .{ .path = "EventQueue.deinit" },
+        // A constructor and destructor declared beside their type rather than
+        // inside it, paired by naming the type instead of by their spelling.
+        .{ .path = "root.newTicker", .params = .{"interval"}, .constructs = "Ticker" },
+        .{ .path = "root.freeTicker", .destroys = "Ticker" },
+        .{ .path = "root.tickerAdvance", .name = "advance", .params = .{"steps"} },
+        .{ .path = "root.liveTickers" },
         .{ .path = "root.liveQueues" },
         .{ .path = "root.liveSamples" },
         .{ .path = "root.liveLimits" },

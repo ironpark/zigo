@@ -675,6 +675,44 @@ func (e *EventQueue) Clear() (uint, error) {
 	return result, nil
 }
 
+// NewTicker
+// Opens a ticker the caller owns.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
+func NewTicker(interval uint32) (*Ticker, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	result, code := raw.NewTicker(interval)
+	if code != 0 {
+		return nil, errorForCode("NewTicker", code)
+	}
+	return newTicker(result), nil
+}
+
+// Advance calls the Zig function Ticker.advance.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (t *Ticker) Advance(steps uint32) (uint32, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Ticker.Advance receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	defer t.zigoRelease()
+	result, code := raw.TickerAdvance(ptr, steps)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("Ticker.Advance", code), t)
+	}
+	return result, nil
+}
+
+// LiveTickers
+// Tickers still owned by the library.
+func LiveTickers() uint {
+	return raw.LiveTickers()
+}
+
 // LiveQueues calls the Zig function liveQueues.
 func LiveQueues() uint {
 	return raw.LiveQueues()

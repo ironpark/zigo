@@ -518,6 +518,31 @@ func EventQueueDeinit(self unsafe.Pointer) int32 {
 	return code
 }
 
+// NewTicker calls the generated C ABI wrapper for zg_new_ticker.
+func NewTicker(interval uint32) (unsafe.Pointer, int32) {
+	var outResult *C.zg_ticker
+	code := int32(C.zg_new_ticker(C.uint32_t(interval), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+
+// TickerFreeTicker calls the generated C ABI wrapper for zg_ticker_free_ticker.
+func TickerFreeTicker(self unsafe.Pointer) int32 {
+	code := int32(C.zg_ticker_free_ticker((*C.zg_ticker)(self)))
+	return code
+}
+
+// TickerAdvance calls the generated C ABI wrapper for zg_ticker_advance.
+func TickerAdvance(self unsafe.Pointer, steps uint32) (uint32, int32) {
+	var outResult C.uint32_t
+	code := int32(C.zg_ticker_advance((*C.zg_ticker)(self), C.uint32_t(steps), &outResult))
+	return uint32(outResult), code
+}
+
+// LiveTickers calls the generated C ABI wrapper for zg_live_tickers.
+func LiveTickers() uint {
+	return uint(C.zg_live_tickers())
+}
+
 // LiveQueues calls the generated C ABI wrapper for zg_live_queues.
 func LiveQueues() uint {
 	return uint(C.zg_live_queues())
