@@ -577,9 +577,6 @@ fn lowerTaggedUnionProjections(allocator: std.mem.Allocator, document: semantic.
     return projections.toOwnedSlice(allocator);
 }
 
-
-
-
 /// Value snapshot layout. zigo owns this struct outright: the tag comes first,
 /// payloads follow in descending width, and every gap is an explicit
 /// `reserved_<n>` member. Ordering by width means no member ever needs implicit
@@ -721,8 +718,6 @@ fn appendStructInDependencyOrder(
     try ordered.append(allocator, declaration);
 }
 
-
-
 /// A nested struct is lowered before the struct that embeds it, so its final
 /// size and alignment are already recorded and never recomputed here.
 fn memberLayout(lowered: []const abi.AbiStruct, node: semantic.TypeNode, scalar: abi.AbiScalar) struct { bytes: usize, alignment: usize } {
@@ -781,7 +776,6 @@ fn lowerEnums(allocator: std.mem.Allocator, document: semantic.Semantic, prefix:
     }
     return enums.toOwnedSlice(allocator);
 }
-
 
 const SnapshotLayout = struct { fields: []const abi.AbiSnapshot.Field, size: usize, alignment: usize };
 

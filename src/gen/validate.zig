@@ -559,8 +559,6 @@ fn unknownPackage(name: []const u8) diagnostic.Diagnostic {
     };
 }
 
-
-
 fn packageCycleIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
     const packages = document.packages orelse return null;
     const count = packages.len + 1;
@@ -898,7 +896,6 @@ fn identifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?
     return null;
 }
 
-
 /// The C header has one ordinary identifier namespace shared by typedefs,
 /// exported functions, and macros. Check the exact names lowering will emit
 /// for both backends before generation writes an uncompilable header.
@@ -993,15 +990,12 @@ fn addCIdentifier(
     return null;
 }
 
-
 fn functionHasCallback(function: semantic.SemanticFn) bool {
     for (function.params) |parameter| {
         if (parameter.type == .callback or parameter.type == .io_stream) return true;
     }
     return false;
 }
-
-
 
 const NameCheck = struct {
     label: []const u8,
@@ -1323,9 +1317,6 @@ fn taggedUnionValuePayloadSupported(document: semantic.Semantic, node: semantic.
         else => false,
     };
 }
-
-
-
 
 fn taggedUnionAccessorsSupported(document: semantic.Semantic, declaration: semantic.TypeDecl) bool {
     const tag = declaration.tag_type orelse return false;

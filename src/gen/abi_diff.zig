@@ -172,7 +172,6 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
     return report;
 }
 
-
 test "backend switching is an explicit breaking ABI change" {
     const document: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0" };
     var report = try diffWithBackends(std.testing.allocator, document, .cgo, document, .purego);
@@ -435,8 +434,6 @@ fn typeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
         },
     };
 }
-
-
 
 fn optionalHintEqual(lhs: ?semantic.SemanticHint, rhs: ?semantic.SemanticHint) bool {
     return lhs == rhs;

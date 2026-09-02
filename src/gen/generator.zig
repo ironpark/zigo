@@ -119,7 +119,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
     var prepared: std.ArrayList(PreparedFile) = .empty;
     defer prepared.deinit(scratch_allocator);
     emitter_options.default_package_path = if (options.go_package_path.len != 0) options.go_package_path else if (options.go_package.len != 0) options.go_package else try naming.snakeAlloc(scratch_allocator, document.package);
-    try appendEmitters(scratch_allocator, &prepared, program, emitter_options, &emit.core_emitters, false);
+    try appendEmitters(scratch_allocator, &prepared, program, emitter_options, &emit.core_emitters);
     if (document.packages) |packages| {
         emitter_options.active_package = "";
         try appendPublicPackage(scratch_allocator, &prepared, program, emitter_options);
@@ -161,17 +161,13 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
     }
 }
 
-fn appendEmitters(allocator: std.mem.Allocator, prepared: *std.ArrayList(PreparedFile), program: abi.Program, options: emit.Options, emitters: []const emit.Emitter, qualify_public: bool) !void {
+fn appendEmitters(allocator: std.mem.Allocator, prepared: *std.ArrayList(PreparedFile), program: abi.Program, options: emit.Options, emitters: []const emit.Emitter) !void {
     for (emitters) |emitter| {
         const relative_path = try emitter.pathAlloc(allocator, program, options);
         var rendered: std.Io.Writer.Allocating = .init(allocator);
         defer rendered.deinit();
         try emitter.render(allocator, &rendered.writer, program, options);
-        const rendered_contents = try rendered.toOwnedSlice();
-        const contents = if (qualify_public and !emitter.qualifies_internally)
-            try emit.qualifyPublicTypesAlloc(allocator, rendered_contents, program, options)
-        else
-            rendered_contents;
+        const contents = try rendered.toOwnedSlice();
         try prepared.append(allocator, .{
             .path = relative_path,
             .contents = if (std.mem.endsWith(u8, relative_path, ".go")) blk: {
@@ -187,19 +183,17 @@ fn appendPublicPackage(allocator: std.mem.Allocator, prepared: *std.ArrayList(Pr
     for (full_program.functions) |function| if (emit.packageMatches(function.origin.package, options.active_package)) try functions.append(allocator, function);
     var program = full_program;
     program.functions = try functions.toOwnedSlice(allocator);
-    try appendEmitters(allocator, prepared, program, options, &emit.public_emitters, true);
+    try appendEmitters(allocator, prepared, program, options, &emit.public_emitters);
     // The tagged-union files are not in the emitter table: how many there are
     // depends on the bindings, so they are rendered per union.
     for (try emit.unionFilesAlloc(allocator, program, options)) |file| {
-        const qualified = try emit.qualifyPublicTypesAlloc(allocator, file.contents, program, options);
-        const body = std.mem.trimEnd(u8, qualified, "\n");
+        const body = std.mem.trimEnd(u8, file.contents, "\n");
         try prepared.append(allocator, .{
             .path = file.path,
             .contents = try std.fmt.allocPrint(allocator, "{s}\n", .{body}),
         });
     }
 }
-
 
 test "split documents emit package directories shared lifecycle and cross imports" {
     const fixture =

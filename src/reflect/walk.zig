@@ -286,7 +286,6 @@ fn reflectPackages(
     return packages.toOwnedSlice(allocator);
 }
 
-
 fn packageIssue(comptime detail: []const u8, args: anytype) error{PackageDeclaration} {
     if (!@import("builtin").is_test) std.debug.print("error[ZIGO031]: " ++ detail ++ "\n  hint: each `.packages` entry must uniquely select existing declarations and keep owned functions with their type\n", args);
     return error.PackageDeclaration;

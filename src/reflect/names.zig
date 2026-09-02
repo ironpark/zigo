@@ -287,7 +287,6 @@ fn functionOwner(function: semantic.SemanticFn) ?[]const u8 {
     return function.receiver orelse function.namespace;
 }
 
-
 /// The doc a declaration carries in its own right: the `///` block Zig
 /// attaches to it, or failing that the ordinary `//` lines written directly
 /// above it with no blank line in between. Plain comments are not tokens, so

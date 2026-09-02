@@ -1,0 +1,38 @@
+{
+  "functions": [
+    {
+      "name": "useMode",
+      "params": [{"name": "mode", "type": {"kind": "enum", "ref": "Mode"}}],
+      "return": {"kind": "void"},
+      "symbol": "zg_use_mode"
+    },
+    {
+      "name": "inspectConfig",
+      "params": [{"name": "config", "type": {"kind": "value_struct", "ref": "Config"}}],
+      "return": {"kind": "value_struct", "ref": "Config"},
+      "symbol": "zg_inspect_config"
+    }
+  ],
+  "package": "packages",
+  "packages": [{"doc": "Package model contains shared values.", "name": "model", "path": "model"}],
+  "prefix": "zg",
+  "types": [
+    {
+      "fields": [{"name": "idle", "value": 0}, {"name": "active", "value": 1}],
+      "kind": "enum",
+      "name": "Mode",
+      "package": "model",
+      "tag_type": {"bits": 8, "kind": "int", "signed": false}
+    },
+    {
+      "fields": [
+        {"name": "mode", "type": {"bits": 32, "kind": "int", "signed": true}},
+        {"name": "y", "type": {"bits": 32, "kind": "int", "signed": true}}
+      ],
+      "kind": "value_struct",
+      "layout": "extern",
+      "name": "Config"
+    }
+  ],
+  "zig_version": "0.16.0"
+}
