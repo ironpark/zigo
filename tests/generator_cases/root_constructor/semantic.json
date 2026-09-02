@@ -1,0 +1,134 @@
+{
+  "allocator": "std.heap.smp_allocator",
+  "constructors": [
+    {
+      "deinit": "freeTerminal",
+      "init": "newTerminal",
+      "type": "Terminal"
+    }
+  ],
+  "functions": [
+    {
+      "doc": "Opens a terminal the caller owns.",
+      "go_owner": "Terminal",
+      "name": "newTerminal",
+      "ownership": "caller",
+      "params": [
+        {
+          "name": "columns",
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "Invalid"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "Terminal"
+        }
+      },
+      "symbol": "ignored"
+    },
+    {
+      "doc": "Releases a terminal newTerminal returned.",
+      "name": "freeTerminal",
+      "params": [],
+      "receiver": "Terminal",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "ignored",
+      "zig_path": "freeTerminal"
+    },
+    {
+      "doc": "Resizes the terminal.",
+      "name": "resize",
+      "params": [
+        {
+          "name": "columns",
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "receiver": "Terminal",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "ignored",
+      "zig_path": "Terminal.setSize"
+    },
+    {
+      "doc": "Renders the screen into memory the caller owns.",
+      "name": "render",
+      "ownership": "caller",
+      "params": [],
+      "receiver": "Terminal",
+      "release": "freeString",
+      "return": {
+        "const": true,
+        "element": {
+          "bits": 8,
+          "is_usize": false,
+          "kind": "int",
+          "signed": false
+        },
+        "kind": "slice"
+      },
+      "return_semantic": "utf8_string",
+      "symbol": "ignored"
+    },
+    {
+      "doc": "Releases a string render returned.",
+      "name": "freeString",
+      "params": [
+        {
+          "injected": "allocator",
+          "name": "allocator",
+          "type": {
+            "kind": "void"
+          }
+        },
+        {
+          "name": "str",
+          "semantic": "utf8_string",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "ignored"
+    }
+  ],
+  "package": "terminal",
+  "prefix": "zg",
+  "types": [
+    {
+      "kind": "opaque",
+      "name": "Terminal"
+    }
+  ],
+  "zig_version": "0.16.0"
+}

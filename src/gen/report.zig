@@ -139,7 +139,7 @@ fn semanticIdentityAlloc(allocator: std.mem.Allocator, function: semantic.Semant
 fn constructorForInit(document: semantic.Semantic, function: semantic.SemanticFn) ?semantic.Constructor {
     if (function.receiver != null) return null;
     for (document.constructors) |constructor| {
-        if (std.mem.eql(u8, constructor.init, function.name) and std.mem.eql(u8, constructor.type, function.namespace orelse ""))
+        if (std.mem.eql(u8, constructor.init, function.name) and std.mem.eql(u8, constructor.type, function.goOwner() orelse ""))
             return constructor;
     }
     return null;

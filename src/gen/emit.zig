@@ -681,6 +681,16 @@ fn writeCFunctionDeclaration(writer: *std.Io.Writer, function: abi.AbiFn, implem
     try writer.writeByte(')');
 }
 
+/// The Zig declaration a shim calls, relative to the bound module. A document
+/// spells it out only when the owner and the name do not: the shim's call has
+/// to reach where the function is declared, not where Go presents it.
+fn zigCallPathAlloc(allocator: std.mem.Allocator, function: semantic.SemanticFn) ![]u8 {
+    if (function.zig_path) |path| return allocator.dupe(u8, path);
+    if (function.receiver orelse function.namespace) |owner|
+        return std.fmt.allocPrint(allocator, "{s}.{s}", .{ owner, function.name });
+    return allocator.dupe(u8, function.name);
+}
+
 fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, function: abi.AbiFn) !void {
     const bool_return = function.origin.@"return" == .bool;
     const enum_return = function.origin.@"return" == .@"enum";
@@ -691,14 +701,17 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         defer allocator.free(helper);
         try writer.print("{s}(self", .{helper});
         if (function.origin.params.len != 0) try writer.writeAll(", ");
-    } else if (function.origin.receiver orelse function.origin.namespace) |receiver| {
-        try writer.print("target.{s}.{s}(", .{ receiver, function.origin.name });
+    } else {
+        // The declaration the shim calls is not the Go surface: a handle
+        // parameter makes a function a method in Go without moving it inside
+        // the type in Zig, and `.name` renames it for Go only.
+        const path = try zigCallPathAlloc(allocator, function.origin.*);
+        defer allocator.free(path);
+        try writer.print("target.{s}(", .{path});
         if (function.origin.receiver != null) {
             try writer.writeAll("self");
             if (function.origin.params.len != 0) try writer.writeAll(", ");
         }
-    } else {
-        try writer.print("target.{s}(", .{function.origin.name});
     }
     for (function.origin.params, 0..) |parameter, index| {
         if (index != 0) try writer.writeAll(", ");
@@ -6897,7 +6910,7 @@ fn constructorForInit(program: abi.Program, function: semantic.SemanticFn) ?sema
     if (function.receiver != null) return null;
     for (program.constructors) |constructor| {
         if (std.mem.eql(u8, constructor.init, function.name) and
-            std.mem.eql(u8, constructor.type, function.namespace orelse "")) return constructor;
+            std.mem.eql(u8, constructor.type, function.goOwner() orelse "")) return constructor;
     }
     return null;
 }

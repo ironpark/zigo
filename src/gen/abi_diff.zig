@@ -82,6 +82,11 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
         if (!signatureEqual(old, new)) try add(allocator, &report, .breaking, identity, "signature changed");
         if (!optionalNameEqual(old.release, new.release))
             try add(allocator, &report, .breaking, identity, "release function changed");
+        // The C symbol does not move, but the Go surface does: the function
+        // becomes (or stops being) a type's constructor, so every call site
+        // that named it changes.
+        if (!optionalNameEqual(old.goOwner(), new.goOwner()))
+            try add(allocator, &report, .breaking, identity, "Go owner changed");
         if (old.ownership != new.ownership or !optionalHintEqual(old.return_semantic, new.return_semantic))
             try add(allocator, &report, .breaking, identity, "return ownership or semantics changed");
         if (!retentionEqual(old.params, new.params))
@@ -679,6 +684,37 @@ test "changing the release function of a fallible slice return is breaking" {
     try std.testing.expectEqual(@as(usize, 1), report.changes.items.len);
     try std.testing.expectEqual(ChangeKind.breaking, report.changes.items[0].kind);
     try std.testing.expectEqualStrings("release function changed", report.changes.items[0].detail);
+}
+
+test "an injected argument moves nothing while the Go owner moves the surface" {
+    var byte_element: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    const free: semantic.SemanticFn = .{
+        .name = "freeString",
+        .params = &.{.{ .name = "str", .type = .{ .slice = .{ .@"const" = true, .element = &byte_element } } }},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_free_string",
+    };
+    var injected = free;
+    injected.params = &.{
+        .{ .injected = .allocator, .name = "allocator", .type = .{ .void = {} } },
+        free.params[0],
+    };
+    const base: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{free} };
+    const current: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{injected} };
+    // The allocator has no C parameter and no Go argument, so taking it as a
+    // parameter changes neither signature.
+    var report = try diff(std.testing.allocator, base, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 0), report.changes.items.len);
+
+    var owned = free;
+    owned.go_owner = "Terminal";
+    const grouped: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{owned} };
+    var owner_report = try diff(std.testing.allocator, base, grouped);
+    defer owner_report.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 1), owner_report.changes.items.len);
+    try std.testing.expectEqual(ChangeKind.breaking, owner_report.changes.items[0].kind);
+    try std.testing.expectEqualStrings("Go owner changed", owner_report.changes.items[0].detail);
 }
 
 test "document identity and exported symbol changes are breaking" {

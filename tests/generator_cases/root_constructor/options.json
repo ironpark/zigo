@@ -1,0 +1,5 @@
+{
+  "package": "terminal",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/terminal"
+}

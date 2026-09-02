@@ -373,7 +373,14 @@ pub const SemanticFn = struct {
     stream_accessor: ?StreamAccessor = null,
     doc: ?[]const u8 = null,
     has_comptime_params: ?bool = null,
+    /// The type a paired constructor is grouped under in Go, when that is not
+    /// where the function is declared. `namespace` stays the Zig container the
+    /// shim calls through, so a root-level `newTerminal` can be `Terminal`'s
+    /// constructor in Go and still be called as `target.newTerminal(...)`.
+    go_owner: ?[]const u8 = null,
     name: []const u8,
+    /// The Zig container the function is declared in, and the owner its C
+    /// symbol is built from. Go grouping goes through `goOwner`.
     namespace: ?[]const u8 = null,
     ownership: Ownership = .borrowed,
     params: []const Parameter,
@@ -388,7 +395,18 @@ pub const SemanticFn = struct {
     /// diagnostic: it has no bearing on the generated ABI, so `abi_diff`
     /// ignores it.
     source: ?SourceLocation = null,
+    /// The Zig declaration the shim calls, relative to the bound module, when
+    /// it is not `<receiver or namespace>.<name>`: a function declared beside
+    /// a type rather than inside it, or one `.name` renamed for Go. Absent
+    /// whenever the owner and the name already spell the declaration.
+    zig_path: ?[]const u8 = null,
     symbol: []const u8,
+
+    /// The type Go groups this function under: the one a binding paired it
+    /// with, or the container it was declared in.
+    pub fn goOwner(self: SemanticFn) ?[]const u8 {
+        return self.go_owner orelse self.namespace;
+    }
 };
 
 pub const TypeKind = enum { callback, @"enum", error_set, @"opaque", tagged_union, value_struct };

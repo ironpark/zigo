@@ -113,7 +113,10 @@ pub fn reflect(
                 .init = function.name,
                 .type = type_name,
             });
-            function.namespace = type_name;
+            // Go groups the constructor under the type it makes; the Zig
+            // call path stays where the function is actually declared, so a
+            // root-level `newTerminal` is still called as `target.newTerminal`.
+            if (!std.mem.eql(u8, function.namespace orelse "", type_name)) function.go_owner = type_name;
             function.ownership = .caller;
             // The storage the shim allocated is the shim's to free, so the
             // paired destructor runs the Zig `deinit` and then destroys it.
@@ -309,6 +312,7 @@ fn appendFunction(
         .receiver = receiver,
         .@"return" = reflected_return,
         .symbol = try naming.functionSymbolAlloc(allocator, prefix, receiver orelse discovered_owner, function_name),
+        .zig_path = comptime zigCallPath(receiver, discovered_owner, source_name, function_name),
     };
     if (boxed_type != null) reflected_function.ownership = .caller;
     if (@hasField(@TypeOf(metadata), "semantic")) reflected_function.return_semantic = metadata.semantic;
@@ -321,6 +325,22 @@ fn appendFunction(
         if (isSentinelBytePointer(return_type)) reflected_function.return_semantic = .c_string;
     }
     try functions.append(allocator, reflected_function);
+}
+
+/// Where the shim has to reach to call this declaration, when the owner and
+/// the Go name do not already spell it. A handle first parameter makes a
+/// function a method in Go wherever it is declared, and `.name` renames it for
+/// Go only, so neither says where the Zig declaration lives.
+fn zigCallPath(
+    comptime receiver: ?[]const u8,
+    comptime discovered_owner: ?[]const u8,
+    comptime source_name: []const u8,
+    comptime function_name: []const u8,
+) ?[]const u8 {
+    const declared = if (discovered_owner) |owner| owner ++ "." ++ source_name else source_name;
+    const owner: ?[]const u8 = if (receiver) |value| value else discovered_owner;
+    const derived = if (owner) |value| value ++ "." ++ function_name else function_name;
+    return if (std.mem.eql(u8, declared, derived)) null else declared;
 }
 
 /// The registered handle name a value-returning constructor is boxed into,
@@ -1698,6 +1718,39 @@ test "a declaration path becomes an expression against the bound module" {
     }, "store", "zg");
 
     try std.testing.expectEqualStrings("target.gpa", document.allocator.?);
+}
+
+test "a root-level constructor keeps its Zig call path while Go groups it" {
+    const Fixture = struct {
+        const Terminal = opaque {};
+
+        pub fn new(columns: u32) error{Invalid}!*Terminal {
+            _ = columns;
+            unreachable;
+        }
+
+        pub fn destroy(self: *Terminal) void {
+            _ = self;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{.{ .name = "Terminal", .type = Fixture.Terminal, .repr = .@"opaque" }},
+        .functions = .{
+            .{ .path = "root.new", .params = .{"columns"} },
+            .{ .path = "root.destroy" },
+        },
+    }, "terminal", "zg");
+
+    try std.testing.expectEqualStrings("Terminal", document.constructors[0].type);
+    const constructor = document.functions[0];
+    try std.testing.expectEqual(semantic.Ownership.caller, constructor.ownership);
+    // Go sees `Terminal`'s constructor; the shim still calls `target.new`.
+    try std.testing.expectEqualStrings("Terminal", constructor.goOwner().?);
+    try std.testing.expectEqual(@as(?[]const u8, null), constructor.namespace);
+    try std.testing.expectEqualStrings("zg_new", constructor.symbol);
 }
 
 test "a value-returning init is boxed into a caller-owned handle" {

@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: root 함수 생성자 케이스의 shim이 컴파일되고 Go 테스트가 통과, 골든 갱신, 커밋.
 > NEXT: none

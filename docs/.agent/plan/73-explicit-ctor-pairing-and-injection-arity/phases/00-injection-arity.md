@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T12:45:51Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `fn freeString(gpa: Allocator, str: []const u8) void`에 `.params = .{"str"}`·`.release` 지정이 cgo·purego 예제에서 통과.
 > NEXT: none

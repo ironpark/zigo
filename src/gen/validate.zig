@@ -1239,7 +1239,7 @@ fn typeNodeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
 fn hasConstructorInit(document: semantic.Semantic, constructor: semantic.Constructor) bool {
     for (document.functions) |function| {
         if (!std.mem.eql(u8, function.name, constructor.init) or function.receiver != null or
-            !std.mem.eql(u8, function.namespace orelse "", constructor.type)) continue;
+            !std.mem.eql(u8, function.goOwner() orelse "", constructor.type)) continue;
         if (function.ownership != .caller or function.@"return" != .error_union) return false;
         const payload = function.@"return".error_union.payload.*;
         if (payload != .opaque_ptr) return false;
@@ -1269,7 +1269,7 @@ fn constructorInitFor(document: semantic.Semantic, function: semantic.SemanticFn
     if (function.receiver != null) return null;
     for (document.constructors) |constructor| {
         if (std.mem.eql(u8, constructor.init, function.name) and
-            std.mem.eql(u8, constructor.type, function.namespace orelse "")) return constructor;
+            std.mem.eql(u8, constructor.type, function.goOwner() orelse "")) return constructor;
     }
     return null;
 }
