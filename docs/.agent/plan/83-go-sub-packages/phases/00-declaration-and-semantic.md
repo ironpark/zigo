@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 단위 테스트 통과, 기존 예제 semantic.json 바이트 동일, 커밋.
 > NEXT: none

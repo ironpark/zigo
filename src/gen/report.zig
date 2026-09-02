@@ -55,6 +55,11 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
         });
     }
     if (options.go_module.len != 0) try writer.print("go module: {s}\n", .{options.go_module});
+    if (document.packages) |packages| for (packages) |package| {
+        try writer.print("Go sub-package: {s} ({s})", .{ package.name, package.path });
+        if (package.doc) |doc| try writer.print(" - {s}", .{doc});
+        try writer.writeByte('\n');
+    };
     try writer.print("C prefix: {s}\n", .{document.prefix});
     try writer.print("Zig version: {s}\n", .{document.zig_version});
     try writer.print("raw package: {s}\n", .{if (options.raw_colocated) "colocated" else options.raw_package_path});
@@ -80,6 +85,7 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
     try writer.print("\ntypes ({d})\n", .{document.types.len});
     for (document.types) |declaration| {
         try writer.print("- {s}: {s}", .{ declaration.name, @tagName(declaration.kind) });
+        if (declaration.package) |package| try writer.print(" | package {s}", .{package});
         if (isHandleType(declaration)) {
             try writer.print(" | Go {s}, {s}Ref", .{ declaration.name, declaration.name });
             if (findConstructorForType(document, declaration.name)) |constructor|
@@ -101,6 +107,7 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
         const public_name = try publicFunctionNameAlloc(scratch_allocator, document, origin);
         defer scratch_allocator.free(public_name);
         try writer.print("- {s} -> {s} | C {s} | return ownership {s}", .{ identity, public_name, function.symbol, @tagName(origin.ownership) });
+        if (origin.package) |package| try writer.print(" | package {s}", .{package});
         if (origin.return_semantic) |hint| try writer.print("/{s}", .{@tagName(hint)});
         for (origin.params) |parameter| {
             try writer.print(" | {s}:{s}/{s}/{s}", .{ parameter.name, typeName(parameter.type), @tagName(parameter.retention), @tagName(parameter.name_source) });

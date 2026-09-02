@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T19:09:47Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 전 예제 Go 테스트·`go vet` 통과(공개 API 불변 확인), 커밋.
 > NEXT: none

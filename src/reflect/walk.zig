@@ -138,16 +138,186 @@ pub fn reflect(
         }
     }
 
+    const packages = try reflectPackages(allocator, declaration, types.items, functions.items);
+
     return .{
         .allocator = comptime injectionExpression(declaration, "allocator"),
         .constructors = try constructors.toOwnedSlice(allocator),
         .functions = try functions.toOwnedSlice(allocator),
         .io = comptime injectionExpression(declaration, "io"),
         .package = package_name,
+        .packages = if (packages.len == 0) null else packages,
         .prefix = prefix,
         .types = try types.toOwnedSlice(allocator),
         .zig_version = @import("builtin").zig_version_string,
     };
+}
+
+test "packages assign explicit functions owning types and longest namespaces" {
+    const Api = struct {
+        pub const Handle = struct {
+            pub fn touch(self: *Handle) void {
+                _ = self;
+            }
+        };
+        pub const text = struct {
+            pub fn simple() void {}
+            pub const unicode = struct {
+                pub fn width() void {}
+            };
+        };
+        pub fn rootFn() void {}
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Api,
+        .discover = .recursive,
+        .types = .{.{ .type = Api.Handle, .repr = .@"opaque" }},
+        .packages = .{
+            .{ .path = "objects", .types = .{"Handle"} },
+            .{ .path = "text", .name = "textual", .namespaces = .{"text"} },
+            .{ .path = "unicode", .namespaces = .{"text.unicode"}, .functions = .{"root.rootFn"} },
+        },
+    }, "sample", "zg");
+    try std.testing.expectEqual(@as(usize, 3), document.packages.?.len);
+    try std.testing.expectEqualStrings("objects", document.types[0].package.?);
+    for (document.functions) |function| {
+        if (std.mem.eql(u8, function.name, "touch")) try std.testing.expectEqualStrings("objects", function.package.?);
+        if (std.mem.eql(u8, function.name, "simple")) try std.testing.expectEqualStrings("textual", function.package.?);
+        if (std.mem.eql(u8, function.name, "width")) try std.testing.expectEqualStrings("unicode", function.package.?);
+        if (std.mem.eql(u8, function.name, "rootFn")) try std.testing.expectEqualStrings("unicode", function.package.?);
+    }
+}
+
+test "packages reject invalid paths and missing selectors" {
+    const Api = struct {
+        pub fn ping() void {}
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectError(error.PackageDeclaration, reflect(arena.allocator(), .{
+        .root = Api,
+        .functions = .{.{ .path = "root.ping" }},
+        .packages = .{.{ .path = "../bad" }},
+    }, "sample", "zg"));
+    try std.testing.expectError(error.PackageDeclaration, reflect(arena.allocator(), .{
+        .root = Api,
+        .functions = .{.{ .path = "root.ping" }},
+        .packages = .{.{ .path = "tools", .types = .{"Missing"} }},
+    }, "sample", "zg"));
+}
+
+fn reflectPackages(
+    allocator: std.mem.Allocator,
+    comptime declaration: anytype,
+    types: []semantic.TypeDecl,
+    functions: []semantic.SemanticFn,
+) ![]const semantic.Package {
+    if (!@hasField(@TypeOf(declaration), "packages")) return &.{};
+    var packages: std.ArrayList(semantic.Package) = .empty;
+    inline for (declaration.packages) |entry| {
+        const name = if (@hasField(@TypeOf(entry), "name")) entry.name else blk: {
+            const base = std.fs.path.basename(entry.path);
+            break :blk try naming.snakeAlloc(allocator, base);
+        };
+        if (!validPackagePath(entry.path)) return packageIssue("invalid package path `{s}`", .{entry.path});
+        if (!naming.isGoIdentifier(name)) return packageIssue("package name `{s}` is not a valid Go identifier", .{name});
+        for (packages.items) |previous| {
+            if (std.mem.eql(u8, previous.path, entry.path)) return packageIssue("duplicate package path `{s}`", .{entry.path});
+            if (std.mem.eql(u8, previous.name, name)) return packageIssue("duplicate package name `{s}`", .{name});
+        }
+        try packages.append(allocator, .{
+            .doc = if (@hasField(@TypeOf(entry), "doc")) entry.doc else null,
+            .name = name,
+            .path = entry.path,
+        });
+    }
+
+    inline for (declaration.packages, 0..) |entry, package_index| {
+        if (@hasField(@TypeOf(entry), "types")) inline for (entry.types) |selector| {
+            var found = false;
+            for (types) |*type_decl| if (std.mem.eql(u8, type_decl.name, selector)) {
+                if (type_decl.package != null) return packageIssue("type `{s}` is assigned to more than one package", .{selector});
+                type_decl.package = packages.items[package_index].name;
+                found = true;
+            };
+            if (!found) return packageIssue("package type selector `{s}` names no declaration", .{selector});
+        };
+    }
+
+    inline for (declaration.packages, 0..) |entry, package_index| {
+        if (@hasField(@TypeOf(entry), "functions")) inline for (entry.functions) |selector| {
+            var found = false;
+            for (functions) |*function| if (functionMatchesSelector(function.*, selector)) {
+                const owned = function.receiver orelse function.goOwner();
+                if (owned) |owner| if (typePackage(types, owner)) |owner_package| {
+                    if (!std.mem.eql(u8, owner_package, packages.items[package_index].name))
+                        return packageIssue("function `{s}` cannot be split from owning type `{s}`", .{ selector, owner });
+                };
+                if (function.package != null) return packageIssue("function `{s}` is assigned to more than one package", .{selector});
+                function.package = packages.items[package_index].name;
+                found = true;
+            };
+            if (!found) return packageIssue("package function selector `{s}` names no declaration", .{selector});
+        };
+    }
+
+    for (functions) |*function| {
+        if (function.receiver orelse function.goOwner()) |owner| if (typePackage(types, owner)) |owner_package| {
+            if (function.package) |explicit| if (!std.mem.eql(u8, explicit, owner_package))
+                return packageIssue("function `{s}` cannot be split from owning type `{s}`", .{ function.name, owner });
+            function.package = owner_package;
+            continue;
+        };
+        if (function.package != null) continue;
+        var best_name: ?[]const u8 = null;
+        var best_length: usize = 0;
+        inline for (declaration.packages, 0..) |entry, package_index| {
+            if (@hasField(@TypeOf(entry), "namespaces")) inline for (entry.namespaces) |prefix| {
+                if (function.namespace) |namespace| if (namespaceMatches(namespace, prefix) and prefix.len > best_length) {
+                    best_length = prefix.len;
+                    best_name = packages.items[package_index].name;
+                };
+            };
+        }
+        function.package = best_name;
+    }
+    return packages.toOwnedSlice(allocator);
+}
+
+fn validPackagePath(path: []const u8) bool {
+    if (path.len == 0 or std.fs.path.isAbsolute(path) or std.mem.indexOfScalar(u8, path, '\\') != null) return false;
+    var components = std.mem.splitScalar(u8, path, '/');
+    while (components.next()) |component| {
+        if (component.len == 0 or std.mem.eql(u8, component, ".") or std.mem.eql(u8, component, "..")) return false;
+        for (component) |character| if (!(std.ascii.isAlphanumeric(character) or character == '_' or character == '-' or character == '.')) return false;
+    }
+    return true;
+}
+
+fn packageIssue(comptime detail: []const u8, args: anytype) error{PackageDeclaration} {
+    if (!@import("builtin").is_test) std.debug.print("error[ZIGO031]: " ++ detail ++ "\n  hint: each `.packages` entry must uniquely select existing declarations and keep owned functions with their type\n", args);
+    return error.PackageDeclaration;
+}
+
+fn typePackage(types: []const semantic.TypeDecl, name: []const u8) ?[]const u8 {
+    for (types) |type_decl| if (std.mem.eql(u8, type_decl.name, name)) return type_decl.package;
+    return null;
+}
+
+fn namespaceMatches(namespace: []const u8, prefix: []const u8) bool {
+    return std.mem.eql(u8, namespace, prefix) or (std.mem.startsWith(u8, namespace, prefix) and namespace.len > prefix.len and namespace[prefix.len] == '.');
+}
+
+fn functionMatchesSelector(function: semantic.SemanticFn, selector: []const u8) bool {
+    if (function.zig_path) |path| if (std.mem.eql(u8, path, selector)) return true;
+    if (function.receiver orelse function.namespace) |owner| {
+        if (selector.len == owner.len + function.name.len + 1 and std.mem.startsWith(u8, selector, owner) and selector[owner.len] == '.' and std.mem.endsWith(u8, selector, function.name)) return true;
+        if (selector.len == owner.len + function.name.len + 6 and std.mem.startsWith(u8, selector, "root.") and std.mem.endsWith(u8, selector, function.name)) return true;
+        return false;
+    }
+    return (std.mem.eql(u8, selector, function.name) or (std.mem.startsWith(u8, selector, "root.") and std.mem.eql(u8, selector[5..], function.name)));
 }
 
 /// Records one constructor pair: the document gains the pairing, Go groups the

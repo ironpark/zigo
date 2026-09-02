@@ -73,6 +73,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
         .site = .{ .path = "semantic.json", .declaration = "prefix" },
         .hint = "give the binding a symbol prefix",
     };
+    if (packageMetadataIssue(document)) |issue| return issue;
     if (try identifierIssue(allocator, document)) |issue| return issue;
     for (document.functions) |function| {
         if (function.name.len == 0) return .{
@@ -495,6 +496,71 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
         }
     }
     return null;
+}
+
+fn packageMetadataIssue(document: semantic.Semantic) ?diagnostic.Diagnostic {
+    const packages = document.packages orelse return null;
+    for (packages, 0..) |package, index| {
+        if (!naming.isGoIdentifier(package.name) or !validPackagePath(package.path)) return .{
+            .severity = .@"error",
+            .code = "ZIGO031",
+            .message = "semantic document contains an invalid public package declaration",
+            .site = .{ .path = "semantic.json", .declaration = package.name },
+            .hint = "use a unique Go identifier and a portable relative package path",
+        };
+        for (packages[0..index]) |previous| if (std.mem.eql(u8, previous.name, package.name) or std.mem.eql(u8, previous.path, package.path)) return .{
+            .severity = .@"error",
+            .code = "ZIGO031",
+            .message = "semantic document contains duplicate public packages",
+            .site = .{ .path = "semantic.json", .declaration = package.name },
+            .hint = "give every public package a unique name and path",
+        };
+    }
+    for (document.types) |declaration| if (declaration.package) |name| if (!hasPackage(packages, name)) return unknownPackage(name);
+    for (document.functions) |function| if (function.package) |name| {
+        if (!hasPackage(packages, name)) return unknownPackage(name);
+        const owner = function.receiver orelse function.goOwner() orelse continue;
+        for (document.types) |declaration| if (std.mem.eql(u8, declaration.name, owner)) {
+            if (!optionalStringEqual(declaration.package, function.package)) return .{
+                .severity = .@"error",
+                .code = "ZIGO031",
+                .message = "a function is split from its owning type",
+                .site = functionSite(function),
+                .hint = "assign a type and all of its methods, constructors, destructor, and projections to the same package",
+            };
+        };
+    };
+    return null;
+}
+
+fn hasPackage(packages: []const semantic.Package, name: []const u8) bool {
+    for (packages) |package| if (std.mem.eql(u8, package.name, name)) return true;
+    return false;
+}
+
+fn unknownPackage(name: []const u8) diagnostic.Diagnostic {
+    return .{
+        .severity = .@"error",
+        .code = "ZIGO031",
+        .message = "declaration references an unknown public package",
+        .site = .{ .path = "semantic.json", .declaration = name },
+        .hint = "add the package to `packages`, or omit the declaration's `package` field",
+    };
+}
+
+fn optionalStringEqual(lhs: ?[]const u8, rhs: ?[]const u8) bool {
+    if (lhs == null or rhs == null) return lhs == null and rhs == null;
+    return std.mem.eql(u8, lhs.?, rhs.?);
+}
+
+fn validPackagePath(path: []const u8) bool {
+    if (path.len == 0 or std.fs.path.isAbsolute(path) or std.mem.indexOfScalar(u8, path, '\\') != null) return false;
+    var components = std.mem.splitScalar(u8, path, '/');
+    while (components.next()) |component| {
+        if (component.len == 0 or std.mem.eql(u8, component, ".") or std.mem.eql(u8, component, "..")) return false;
+        for (component) |character| if (!(std.ascii.isAlphanumeric(character) or character == '_' or character == '-' or character == '.')) return false;
+    }
+    return true;
 }
 
 /// Every rejection a stream parameter can earn, in the order the author is

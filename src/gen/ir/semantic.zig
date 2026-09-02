@@ -383,6 +383,8 @@ pub const SemanticFn = struct {
     /// constructor in Go and still be called as `target.newTerminal(...)`.
     go_owner: ?[]const u8 = null,
     name: []const u8,
+    /// Public sub-package name. Absent means the binding's default package.
+    package: ?[]const u8 = null,
     /// The Zig container the function is declared in, and the owner its C
     /// symbol is built from. Go grouping goes through `goOwner`.
     namespace: ?[]const u8 = null,
@@ -447,6 +449,8 @@ pub const TypeDecl = struct {
     kind: TypeKind,
     layout: ?Layout = null,
     name: []const u8,
+    /// Public sub-package name. Absent means the binding's default package.
+    package: ?[]const u8 = null,
     /// Present only when the binding explicitly opts a non-exhaustive Zig
     /// enum into the public surface with `.exhaustive = false`.
     open: ?bool = null,
@@ -465,6 +469,12 @@ pub const Constructor = struct {
     type: []const u8,
 };
 
+pub const Package = struct {
+    doc: ?[]const u8 = null,
+    name: []const u8,
+    path: []const u8,
+};
+
 pub const Semantic = struct {
     /// The Zig expression the shim passes for `std.mem.Allocator` parameters.
     /// Set by the binding's `.allocator`; without it, a function that takes an
@@ -480,6 +490,8 @@ pub const Semantic = struct {
     io: ?[]const u8 = null,
     ir_version: u32 = 1,
     package: []const u8,
+    /// Declared public sub-packages. Empty is omitted so legacy documents are unchanged.
+    packages: ?[]const Package = null,
     prefix: []const u8,
     types: []const TypeDecl = &.{},
     zig_version: []const u8,
@@ -549,4 +561,27 @@ test "child-of-receiver metadata is emitted only when enabled" {
     const bytes = try document.serialize(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, bytes, "\"child_of_receiver\": true"));
+}
+
+test "package metadata is omitted by default and round trips when present" {
+    const legacy: Semantic = .{ .package = "sample", .prefix = "zg", .zig_version = "0.16.0" };
+    const legacy_bytes = try legacy.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(legacy_bytes);
+    try std.testing.expect(std.mem.indexOf(u8, legacy_bytes, "\"packages\"") == null);
+
+    const split: Semantic = .{
+        .functions = &.{.{ .name = "width", .package = "text", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_width" }},
+        .package = "sample",
+        .packages = &.{.{ .doc = "Package text handles Unicode.", .name = "text", .path = "text" }},
+        .prefix = "zg",
+        .types = &.{.{ .kind = .@"enum", .name = "Mode", .package = "text" }},
+        .zig_version = "0.16.0",
+    };
+    const bytes = try split.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    var parsed = try Semantic.parse(std.testing.allocator, bytes);
+    defer parsed.deinit();
+    try std.testing.expectEqualStrings("text", parsed.value.packages.?[0].name);
+    try std.testing.expectEqualStrings("text", parsed.value.types[0].package.?);
+    try std.testing.expectEqualStrings("text", parsed.value.functions[0].package.?);
 }
