@@ -54,6 +54,12 @@
 - 한 Go 실행 파일에 zigo 바인딩을 둘 이상 링크하려면 `prefix`가 서로 달라야 한다.
   생성되는 C 심볼은 런타임 것(`<prefix>_panic_bridge`, `<prefix>_last_error_message`)
   까지 전부 접두사를 쓰므로, 기본값 `zg`를 둘 다 쓰면 정적 링크에서 중복 심볼로 실패한다.
+- `.cgo_static`은 module에 붙은 별도 정적 archive를 최종 cgo LDFLAGS에 나열하지만 fat
+  archive로 병합하지 않는다. 따라서 바인딩 archive 하나만 복사해 다른 링커에서 독립적으로
+  쓰는 배포물은 만들지 않는다. `compiler_rt`나 `ubsan_rt`가 module의 `.other_step` 또는
+  `.static_path`로 드러나면 자동 전달되며, Zig 내부에서만 생성되어 link object로 관찰할 수
+  없는 runtime은 `.cgo_flags.extra_ldflags`에 archive 경로를 명시한다. `undefined symbol:
+  __ubsan_*` 같은 오류는 그 runtime이 빠졌다는 신호다.
 
 ## Zig 타입과 ABI
 

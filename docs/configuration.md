@@ -44,7 +44,7 @@ raw 패키지는 `internal/raw`에서 생성됩니다. `addStandardSteps`는 기
 | `go_package` | 아니요 | `name`의 snake_case | 공개 Go 패키지 이름과 하위 디렉터리 |
 | `go_package_doc` | 아니요 | `bindings.zig`의 `//!`, 없으면 루트 모듈(`source_root`)의 `//!` | 생성된 공개 패키지의 `// Package …` doc 본문 |
 | `raw_package` | 아니요 | `"internal/raw"` | `go_dir` 기준 raw Go 패키지 경로 |
-| `cgo_flags` | 아니요 | 모듈에서 계산 | 생성할 CFLAGS와 LDFLAGS 덮어쓰기 |
+| `cgo_flags` | 아니요 | 모듈에서 계산 | 생성할 CFLAGS/LDFLAGS 덮어쓰기와 추가 LDFLAGS |
 | `gofmt` | 아니요 | `PATH`의 `gofmt` | 생성 코드 포맷에 사용할 실행 파일 |
 | `abi_base` | 아니요 | `null` | ABI 비교 기준 Git ref. 없으면 검사 비활성화 |
 | `library_loading` | 아니요 | 명시적 로드 | purego 전용 런타임 로딩 정책 |
@@ -129,12 +129,16 @@ Zig reflection에는 함수 파라미터 이름이 없습니다. zigo는 다음 
 .cgo_flags = .{
     .cflags = &.{"-I/opt/mylib/include"},
     .ldflags = &.{ "-L/opt/mylib/lib", "-lmylib" },
+    .extra_ldflags = &.{"-Wl,--as-needed"},
 },
 ```
 
-`cgo_flags`는 zigo가 계산한 include 경로와 라이브러리 경로만 대체합니다. module에 붙은
-system library, framework, pkg-config 정보는 그대로 함께 나갑니다. 그것까지 빼려면
-module에서 해당 링크를 하지 마세요.
+`cflags`와 `ldflags`는 zigo가 계산한 include 경로와 라이브러리 경로를 대체합니다.
+`extra_ldflags`는 대체하지 않고 기본값 또는 `ldflags` 뒤에 덧붙습니다. module에 붙은
+system library, framework, pkg-config 정보도 그대로 함께 나갑니다. 그것까지 빼려면
+module에서 해당 링크를 하지 마세요. 정적 backend의 순서는 바인딩 archive, module의 정적
+입력, `extra_ldflags`, system library입니다. `ldflags`를 지정하면 앞의 두 항목을 함께
+대체하고 뒤의 두 항목은 유지합니다.
 
 ## 링크 정보가 전달되는 방식
 
@@ -143,6 +147,7 @@ cgo 블록으로 옮겨집니다.
 
 | module에 한 일 | 생성된 줄 |
 |---|---|
+| `linkLibrary(static_lib)` / `addObjectFile(static_archive)` | `#cgo LDFLAGS: ... /absolute/path/libname.a` (`.cgo_static`만) |
 | `linkSystemLibrary("z", .{})` | `#cgo LDFLAGS: ... -lz` |
 | `linkSystemLibrary("libcurl", .{ .use_pkg_config = .force })` | `#cgo pkg-config: libcurl` |
 | `addLibraryPath(...)` | `#cgo LDFLAGS: ... -L<경로>` |
@@ -157,7 +162,15 @@ cgo가 pkg-config에게 컴파일·링크 플래그를 직접 묻게 하기 위�
 
 `.purego`는 링크 지시자를 전혀 생성하지 않습니다. 시스템 라이브러리는 native 공유
 라이브러리가 이미 링크하고 있어야 합니다. 반대로 `.cgo_static`은 archive를 Go 링크 시점에
-푸는 방식이라, native가 쓰는 시스템 라이브러리가 이 블록에 빠짐없이 있어야 합니다.
+푸는 방식이라, native가 쓰는 시스템 라이브러리가 이 블록에 빠짐없이 있어야 합니다. Zig는
+정적 archive 안에 다른 archive를 합치지 않으므로 zigo는 module의 `.other_step` 정적
+라이브러리와 `.static_path` 입력을 선언 순서대로 다시 적고, binding install이 그 artifact에
+의존하게 합니다. fat archive를 만들지는 않습니다.
+
+Zig cache의 archive 경로는 machine-local이므로 그 줄만 raw package의
+`zigo_link_inputs_gen.go`에 build-time으로 기록됩니다. 파일은 `.gitignore`와 `go-check` 대상이
+아니며 `zig build`, `go-lib`, `go-check`, `go`가 필요한 artifact와 함께 갱신합니다. 나머지
+생성 파일에는 절대 cache 경로가 없어 다른 OS에서 byte-for-byte 비교할 수 있습니다.
 
 ## `gofmt` 선택
 

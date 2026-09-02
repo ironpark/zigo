@@ -6,6 +6,18 @@
 
 ## [Unreleased]
 
+### Added
+
+- 다른 handle의 메서드인 생성자를 지원합니다. 예를 들어 allocator가 주입되는
+  `fn newStream(gpa, terminal: *Terminal) !*Stream`은
+  `func (t *Terminal) NewStream() (*Stream, error)`가 되고, 반환된 `Stream`은 자신의
+  destructor와 짝지어진 caller-owned handle입니다.
+- `cgo_flags.extra_ldflags`를 추가했습니다. 기본 또는 override LDFLAGS 뒤, module의 system
+  library 앞에 추가됩니다.
+- `.cgo_static`이 module의 `.other_step` 정적 라이브러리와 `.static_path` archive를 절대
+  경로로 최종 cgo 링크에 전달하고, install step도 그 artifact에 의존합니다. cache 경로는
+  commit하지 않는 별도 Go 파일에만 기록되어 `go-check`는 플랫폼 간 결정성을 유지합니다.
+
 ### Fixed
 
 - `addStandardSteps`가 네이티브 바인딩 라이브러리를 기본 `install` 스텝에도 연결합니다.

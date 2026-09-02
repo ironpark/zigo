@@ -51,6 +51,7 @@ zig build go-report
 ```text
 go/go.mod
 go/internal/raw/raw_gen.go
+go/internal/raw/zigo_link_inputs_gen.go  # 정적 입력이 있을 때만, machine-local
 go/<package>/<package>_gen.go
 go/<package>/<package>_enums_gen.go
 go/<package>/<package>_structs_gen.go
@@ -63,6 +64,10 @@ zigo/errors.lock.json
 zig-out/include/zigo_<name>.h
 zig-out/lib/lib<name>_zigo.a
 ```
+
+`zigo_link_inputs_gen.go`는 다른 생성 파일과 달리 commit하지 않습니다. module이 별도 정적
+archive를 링크할 때만 build step이 실제 절대 경로로 다시 쓰며, `go-check`는 이 파일을
+비교하거나 obsolete로 판정하지 않습니다.
 
 정적 아카이브 이름은 Windows 타깃에서도 `lib<name>_zigo.a`입니다. Zig 관례라면
 `<name>_zigo.lib`가 되겠지만, 생성된 `#cgo LDFLAGS` 줄이 모든 호스트에서 같은 경로를
@@ -338,7 +343,9 @@ handle은 호출 후 즉시 해제하고, retained callback handle은 소유 객
 
 함수의 소속은 두 축입니다. `namespace`는 함수가 **선언된** Zig 컨테이너이고, 심볼과 raw Go
 이름이 여기서 나옵니다. Go의 소속은 `go_owner`이며, 타입 밖에 선언된 생성자를
-`.constructs`로 짝지었을 때처럼 둘이 다를 때만 문서에 나타납니다. shim이 부를 Zig 선언이
+`.constructs`로 짝지었거나 한 handle의 메서드가 다른 handle을 생성할 때처럼 둘이 다를 때만
+문서에 나타납니다. 후자의 `receiver`는 호출 대상을, `go_owner`는 반환 handle을 가리킵니다.
+shim이 부를 Zig 선언이
 `<소유자>.<이름>`으로 적히지 않는 경우(타입 밖에 선언된 소멸자, `.name`으로 이름을 바꾼
 함수)에는 `zig_path`가 그 경로를 그대로 적습니다. 둘 다 기본값과 같으면 생략됩니다.
 receiver 앞에 주입 파라미터가 선언된 함수(`fn free(gpa: Allocator, self: *T) void`)는
@@ -379,6 +386,10 @@ lock 변경을 같은 커밋에 포함하세요.
 transaction으로 복구하지는 않습니다.
 
 ## 일상 개발 순서
+
+`addStandardSteps`를 등록한 프로젝트는 plain `zig build`도 native binding library를
+설치합니다. 상위 빌드가 설치를 따로 관리하면
+`.install_library_by_default = false`를 지정합니다.
 
 ```bash
 # 1. 현재 커밋 상태가 최신인지 확인

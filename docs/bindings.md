@@ -583,6 +583,24 @@ nil·closed 상태를 검사합니다. 검사 결과는 항상 반환값으로 �
 },
 ```
 
+### 다른 handle의 메서드인 생성자
+
+생성 함수가 새 타입 안에 있을 필요는 없습니다. 주입 파라미터를 건너뛴 첫 handle 파라미터는
+평소처럼 receiver가 되고, `.constructs`는 반환값을 어느 타입의 생성자로 소유할지 정합니다.
+
+```zig
+pub fn newStream(gpa: std.mem.Allocator, terminal: *Terminal) !*Stream { ... }
+
+.{ .path = "Terminal.newStream", .constructs = "Stream" },
+.{ .path = "root.freeStream", .destroys = "Stream" },
+```
+
+Go에는 `func (t *Terminal) NewStream() (*Stream, error)`가 생깁니다. 호출 중에는 `Terminal`을
+다른 메서드와 똑같이 acquire/release하고 native panic이면 그 receiver를 poison합니다. 반환된
+`Stream`은 별개의 caller-owned handle이며 cleanup과 멱등 `Close()`를 등록하고 `freeStream`으로
+해제됩니다. `semantic.json`은 두 관계를 섞지 않고 `receiver: "Terminal"`,
+`go_owner: "Stream"`으로 기록합니다.
+
 ### 타입 밖에 선언된 생성자와 소멸자
 
 이름 규칙과 `.returns = .caller`는 모두 **타입 안에 선언된** 짝을 전제합니다. 남의
