@@ -119,6 +119,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 };
             }
             if (try streamParameterIssue(allocator, function, parameter)) |issue| return issue;
+            if (try callbackGoErrorIssue(allocator, function, parameter)) |issue| return issue;
             if (containsTaggedUnionValue(document, parameter.type)) return .{
                 .severity = .@"error",
                 .code = "ZIGO006",
@@ -457,6 +458,49 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
 /// most likely to have caused them. A stream is a call-scoped adapter the shim
 /// builds on its own stack around a Go callback, which is what every one of
 /// these limits comes back to: nothing may outlive the call, and nothing may
+/// `go_error` widens the Go callback type to `(i32, error)` and spends the
+/// native result to say so: the trampoline returns `-5` instead of whatever
+/// the callback computed. That only works when the native result is an `i32`
+/// the target function reads as a status, so the two other callback shapes --
+/// `void`, which has no result at all, and anything else, which `ZIGO014`
+/// already refuses on purego -- are rejected here rather than silently
+/// dropping the error.
+fn callbackGoErrorIssue(
+    allocator: std.mem.Allocator,
+    function: semantic.SemanticFn,
+    parameter: semantic.Parameter,
+) !?diagnostic.Diagnostic {
+    if (!parameter.goError()) return null;
+    if (parameter.type != .callback) {
+        const declaration = try functionDeclarationAlloc(allocator, function);
+        return .{
+            .severity = .@"error",
+            .code = "ZIGO025",
+            .message = try std.fmt.allocPrint(
+                allocator,
+                "`go_error` declared on parameter `{s}`, which is not a callback",
+                .{parameter.name},
+            ),
+            .site = functionSiteFor(function, declaration),
+            .hint = "use `.go_error = true` only on a function-pointer parameter",
+        };
+    }
+    const result = parameter.type.callback.@"return".*;
+    if (result == .int and result.int.signed and result.int.bits == 32) return null;
+    const declaration = try functionDeclarationAlloc(allocator, function);
+    return .{
+        .severity = .@"error",
+        .code = "ZIGO025",
+        .message = try std.fmt.allocPrint(
+            allocator,
+            "callback `{s}` cannot return a Go error: its Zig result is not `i32`",
+            .{parameter.name},
+        ),
+        .site = functionSiteFor(function, declaration),
+        .hint = "declare the Zig callback as `*const fn (...) callconv(.c) i32`; the trampoline reports a Go error as the result `-5`",
+    };
+}
+
 /// carry the adapter anywhere the shim cannot see.
 fn streamParameterIssue(
     allocator: std.mem.Allocator,
@@ -2836,4 +2880,81 @@ test "an optional slice is accepted while its unsupported combinations are not" 
         };
         try std.testing.expect((try findIssue(scratch.allocator(), rejected)) != null);
     }
+}
+
+test "a Go error on a callback is refused unless the Zig result is i32" {
+    var i32_node: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+    const usize_node: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
+    var void_node: semantic.TypeNode = .{ .void = {} };
+    var i64_node: semantic.TypeNode = .{ .int = .{ .bits = 64, .signed = true } };
+    const params = [_]semantic.TypeNode{ i32_node, usize_node };
+
+    const accepted: semantic.TypeNode = .{ .callback = .{
+        .c_callconv = true,
+        .has_userdata = true,
+        .params = &params,
+        .@"return" = &i32_node,
+    } };
+    const returns_void: semantic.TypeNode = .{ .callback = .{
+        .c_callconv = true,
+        .has_userdata = true,
+        .params = &params,
+        .@"return" = &void_node,
+    } };
+    const returns_wide: semantic.TypeNode = .{ .callback = .{
+        .c_callconv = true,
+        .has_userdata = true,
+        .params = &params,
+        .@"return" = &i64_node,
+    } };
+
+    const Case = struct { type: semantic.TypeNode, message: []const u8 };
+    const rejected = [_]Case{
+        .{ .type = returns_void, .message = "callback `observer` cannot return a Go error: its Zig result is not `i32`" },
+        .{ .type = returns_wide, .message = "callback `observer` cannot return a Go error: its Zig result is not `i32`" },
+        // The flag only means anything on a callback: on anything else it is
+        // a typo that would otherwise generate nothing at all.
+        .{ .type = usize_node, .message = "`go_error` declared on parameter `observer`, which is not a callback" },
+    };
+    for (rejected) |case| {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const document: semantic.Semantic = .{
+            .functions = &.{.{
+                .name = "watch",
+                .params = &.{
+                    .{ .go_error = true, .name = "observer", .type = case.type },
+                    .{ .name = "userdata", .type = usize_node },
+                },
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_watch",
+            }},
+            .package = "cb",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        };
+        const issue = (try findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
+        try std.testing.expectEqualStrings("ZIGO025", issue.code);
+        try std.testing.expectEqualStrings(case.message, issue.message);
+    }
+
+    // The accepted shape is what every generated callback already is, so the
+    // opt-in must not reject the case it exists for.
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
+    const document: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "watch",
+            .params = &.{
+                .{ .go_error = true, .name = "observer", .type = accepted },
+                .{ .name = "userdata", .type = usize_node },
+            },
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_watch",
+        }},
+        .package = "cb",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(scratch.allocator(), document));
 }

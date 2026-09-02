@@ -23,6 +23,14 @@
 
 ### Added
 
+- Go 콜백이 `error`를 돌려줄 수 있습니다. `param_meta.<이름>.go_error = true`를 켜면 Go 콜백
+  타입이 `func(...) (i32, error)`가 되고, 콜백이 돌려준 error는 native 호출이 끝난 뒤 공개
+  함수에서 `*CallbackError`(`errors.Is(err, ErrCallbackFailed)`, `Unwrap`으로 원래 error)로
+  돌아옵니다. trampoline은 error를 저장하고 native 쪽에 `-5`를 돌려줍니다 — `-3`(panic),
+  `-4`(삭제된 토큰)와 구별됩니다. retained 콜백의 error는 그 handle을 건드리는 다음 호출에서
+  나옵니다. Zig 콜백 반환은 `i32`여야 하며 아니면 `ZIGO025`입니다. 기본값은 꺼짐이라 기존
+  바인딩의 생성물은 바뀌지 않고, C ABI도 바뀌지 않습니다. (계획 72)
+
 - `*std.Io.Reader` 파라미터에 무콜백 경로가 생겼습니다. Go `io.Reader`가 `Bytes() []byte`
   (`*bytes.Buffer`)나 `zigoBytes() []byte`(직접 정의한 타입을 위한 훅)를 가지면 남은 바이트가
   슬라이스 하나로 넘어가고, shim이 `std.Io.Reader.fixed`로 감싸므로 경계를 넘는 콜백이

@@ -71,7 +71,7 @@ type callbackEntry struct {
 	panicked   bool
 	panicValue any
 	panicStack []byte
-	streamErr  error
+	goErr      error
 }
 
 // callbackRegistry maps a userdata token to its entry without a global lock,
@@ -132,14 +132,15 @@ func (entry *callbackEntry) record(value any) {
 	entry.panicStack = debug.Stack()
 }
 
-// recordErr keeps the first error a Go stream reported, until the generated
+// recordErr keeps the first error the Go side reported -- a stream that failed
+// to write or read, or a callback that returned one -- until the generated
 // caller takes it. Later crossings are not asked: once a stream has failed the
 // adapter stops using it.
 func (entry *callbackEntry) recordErr(err error) {
 	entry.mu.Lock()
 	defer entry.mu.Unlock()
-	if entry.streamErr == nil {
-		entry.streamErr = err
+	if entry.goErr == nil {
+		entry.goErr = err
 	}
 }
 
@@ -152,11 +153,11 @@ func TakeStreamError(token uintptr) (error, bool) {
 	entry := stored.(*callbackEntry)
 	entry.mu.Lock()
 	defer entry.mu.Unlock()
-	if entry.streamErr == nil {
+	if entry.goErr == nil {
 		return nil, false
 	}
-	err := entry.streamErr
-	entry.streamErr = nil
+	err := entry.goErr
+	entry.goErr = nil
 	return err, true
 }
 

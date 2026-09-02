@@ -12,7 +12,7 @@ import (
 // so a racing caller either completes or is told the handle is closed. Run
 // this with -race: an unserialized Close would be a use-after-free.
 func TestConcurrentCallsRacingClose(t *testing.T) {
-	context, err := NewCallbackContext(func(value int32) int32 { return value + 1 })
+	context, err := NewCallbackContext(func(value int32) (int32, error) { return value + 1, nil })
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -65,7 +65,7 @@ func TestAbandonedHandleIsReclaimed(t *testing.T) {
 	baseline := activeCallbackHandleCount()
 
 	func() {
-		context, err := NewCallbackContext(func(value int32) int32 { return value + 1 })
+		context, err := NewCallbackContext(func(value int32) (int32, error) { return value + 1, nil })
 		if err != nil {
 			t.Fatal(err)
 		}

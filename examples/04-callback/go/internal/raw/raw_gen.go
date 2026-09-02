@@ -27,6 +27,7 @@ type CallbackState struct {
 	value    any
 	stack    []byte
 	panicked bool
+	err      error
 }
 
 func (state *CallbackState) record(value any) {
@@ -53,6 +54,31 @@ func TakeCallbackPanic(handle cgo.Handle) (any, []byte, bool) {
 	return value, stack, true
 }
 
+// recordErr keeps the first error the Go side reported -- a stream that
+// failed to write or read, or a callback that returned one -- until the
+// generated caller takes it. Later crossings are not asked: once a stream
+// has failed the adapter stops using it.
+func (state *CallbackState) recordErr(err error) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if state.err == nil {
+		state.err = err
+	}
+}
+
+// TakeCallbackError returns and clears the error the Go callback behind handle returned.
+func TakeCallbackError(handle cgo.Handle) (error, bool) {
+	state := handle.Value().(*CallbackState)
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if state.err == nil {
+		return nil, false
+	}
+	err := state.err
+	state.err = nil
+	return err, true
+}
+
 //export zg_callback_context_create_go_callback_callback
 func zg_callback_context_create_go_callback_callback(p0 C.int32_t, p1 C.size_t) (result C.int32_t) {
 	state := cgo.Handle(p1).Value().(*CallbackState)
@@ -62,8 +88,13 @@ func zg_callback_context_create_go_callback_callback(p0 C.int32_t, p1 C.size_t) 
 			result = C.int32_t(-3)
 		}
 	}()
-	callback := state.Fn.(func(int32) int32)
-	return C.int32_t(callback(int32(p0)))
+	callback := state.Fn.(func(int32) (int32, error))
+	value, err := callback(int32(p0))
+	if err != nil {
+		state.recordErr(err)
+		return C.int32_t(-5)
+	}
+	return C.int32_t(value)
 }
 
 //export zg_apply_go_callback_callback
@@ -75,8 +106,13 @@ func zg_apply_go_callback_callback(p0 C.int32_t, p1 C.size_t) (result C.int32_t)
 			result = C.int32_t(-3)
 		}
 	}()
-	callback := state.Fn.(func(int32) int32)
-	return C.int32_t(callback(int32(p0)))
+	callback := state.Fn.(func(int32) (int32, error))
+	value, err := callback(int32(p0))
+	if err != nil {
+		state.recordErr(err)
+		return C.int32_t(-5)
+	}
+	return C.int32_t(value)
 }
 
 // FloatBufferCreate calls the generated C ABI wrapper for zg_float_buffer_create.

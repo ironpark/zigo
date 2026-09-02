@@ -124,12 +124,17 @@ func (i *IntBuffer) Len() (uint, error) {
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+// An error a Go callback returned is returned as *CallbackError once the native call returns.
 func NewCallbackContext(callback Observer) (*CallbackContext, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	callbackHandle := newObserverHandle(callback)
 	result, code := raw.CallbackContextCreate(raw.CallbackPointer0(), uintptr(callbackHandle))
 	zigoRethrowCallbackPanic("NewCallbackContext", callbackHandle)
+	if err := zigoCallbackError("NewCallbackContext", "callback", callbackHandle); err != nil {
+		deleteCallbackHandle(callbackHandle)
+		return nil, err
+	}
 	if code != 0 {
 		deleteCallbackHandle(callbackHandle)
 		return nil, errorForCode("NewCallbackContext", code)
@@ -141,6 +146,7 @@ func NewCallbackContext(callback Observer) (*CallbackContext, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+// An error a Go callback returned is returned as *CallbackError once the native call returns.
 func (c *CallbackContext) Run(value int32) (int32, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
@@ -152,6 +158,11 @@ func (c *CallbackContext) Run(value int32) (int32, error) {
 	result, code := raw.CallbackContextRun(ptr, value)
 	for _, handle := range c.callbackHandles {
 		zigoRethrowCallbackPanic("CallbackContext.Run", handle)
+	}
+	for _, handle := range c.callbackHandles {
+		if err := zigoCallbackError("CallbackContext.Run", "callback", handle); err != nil {
+			return 0, err
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("CallbackContext.Run", code), c)
@@ -178,10 +189,14 @@ func CompressionBound(sourceLen uint) uint {
 
 // Apply calls the Zig function apply.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
-func Apply(value int32, callback Observer) int32 {
+// An error a Go callback returned is returned as *CallbackError once the native call returns.
+func Apply(value int32, callback Observer) (int32, error) {
 	callbackHandle := newObserverHandle(callback)
 	defer deleteCallbackHandle(callbackHandle)
 	result := raw.Apply(value, raw.CallbackPointer0(), uintptr(callbackHandle))
 	zigoRethrowCallbackPanic("Apply", callbackHandle)
-	return result
+	if err := zigoCallbackError("Apply", "callback", callbackHandle); err != nil {
+		return 0, err
+	}
+	return result, nil
 }

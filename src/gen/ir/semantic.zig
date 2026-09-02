@@ -262,6 +262,12 @@ pub const Parameter = struct {
     /// compatible knob rather than part of the shape.
     buffer: ?u32 = null,
     direction: Direction = .in,
+    /// Opt-in from `param_meta.<name>.go_error`: the Go callback type behind
+    /// this parameter returns `(i32, error)` rather than `i32`, and an error
+    /// it returns is stored and handed back by the public wrapper. Optional
+    /// rather than a plain `bool` so a binding that never asks for it keeps
+    /// the field out of `semantic.json` entirely.
+    go_error: ?bool = null,
     /// Set when the shim supplies this argument. An injected parameter is
     /// absent from the C and Go signatures, so adding or removing one is a
     /// breaking change even though nothing about the Zig type moved.
@@ -282,6 +288,12 @@ pub const Parameter = struct {
     /// default when it kept it.
     pub fn bufferSize(self: Parameter) u32 {
         return self.buffer orelse default_stream_buffer;
+    }
+
+    /// Whether the Go callback behind this parameter may return an `error`.
+    /// Parameters that never asked never carry the field.
+    pub fn goError(self: Parameter) bool {
+        return self.go_error orelse false;
     }
 
     /// The written hint a parameter was declared with. Parameters that keep

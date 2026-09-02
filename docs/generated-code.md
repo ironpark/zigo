@@ -156,6 +156,23 @@ purego도 같은 시그니처를 씁니다. scalar child는 `*T`로, `extern str
 `semantic.json`은 기존 `optional` 노드를 그대로 씁니다. `abi-check`는 `T`와 `?T`의
 교체를 breaking으로 봅니다.
 
+## 콜백이 돌려주는 Go error
+
+`param_meta.<이름>.go_error`가 켜진 콜백은 Go 타입이 `func(...) (i32, error)`가 되고, C
+시그니처는 그대로입니다. trampoline(cgo)과 dispatcher(purego)는 `err != nil`이면 그 error를
+`CallbackState`/registry entry의 error 자리에 저장하고 결과로 **`-5`**를 돌려줍니다 —
+`-3`(Go panic), `-4`(삭제된 토큰), `-1`(스트림 실패)과 구별되는 값입니다. 저장 자리는 스트림
+error와 같은 필드입니다: 저장 규칙이 같고(먼저 온 것이 이긴다, 가져가면 지워진다) 이름만
+`TakeStreamError`/`TakeCallbackError`로 갈립니다.
+
+공개 래퍼는 native 상태 코드를 보기 전에 `zigoCallbackError`로 그것을 가져와 `*CallbackError`
+로 반환합니다. retained 콜백은 handle의 `callbackHandles`를 순회하므로, error가 일어난 호출이
+아니라 그다음 호출에서 나옵니다. 생성자 경로에서 반환할 때는 이미 등록한 retained handle을
+먼저 해제합니다.
+
+`go_error`는 파라미터가 아니라 ABI 시그니처의 성질입니다: Go 타입 하나와 purego dispatcher
+하나를 시그니처마다 공유하기 때문에, 같은 시그니처를 쓰는 파라미터는 모두 같은 답을 씁니다.
+
 ## `std.Io` 스트림 어댑터
 
 `*std.Io.Writer`/`*std.Io.Reader` 파라미터는 고정 시그니처 콜백 하나로 내려갑니다.

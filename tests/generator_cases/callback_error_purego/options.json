@@ -1,0 +1,6 @@
+{
+  "backend": "purego",
+  "package": "cb",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/cb"
+}

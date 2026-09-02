@@ -76,6 +76,7 @@ type callbackEntry struct {
 	panicked   bool
 	panicValue any
 	panicStack []byte
+	goErr      error
 }
 
 // callbackRegistry maps a userdata token to its entry without a global lock,
@@ -134,6 +135,35 @@ func (entry *callbackEntry) record(value any) {
 	entry.panicked = true
 	entry.panicValue = value
 	entry.panicStack = debug.Stack()
+}
+
+// recordErr keeps the first error the Go side reported -- a stream that failed
+// to write or read, or a callback that returned one -- until the generated
+// caller takes it. Later crossings are not asked: once a stream has failed the
+// adapter stops using it.
+func (entry *callbackEntry) recordErr(err error) {
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	if entry.goErr == nil {
+		entry.goErr = err
+	}
+}
+
+// TakeCallbackError returns and clears the error the Go callback behind token returned.
+func TakeCallbackError(token uintptr) (error, bool) {
+	stored, loaded := callbackRegistry.Load(token)
+	if !loaded {
+		return nil, false
+	}
+	entry := stored.(*callbackEntry)
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	if entry.goErr == nil {
+		return nil, false
+	}
+	err := entry.goErr
+	entry.goErr = nil
+	return err, true
 }
 
 // TakeCallbackPanic returns and clears the panic the callback behind token recorded.
@@ -201,8 +231,13 @@ func ensureCallbackDispatchers() {
 					result = callbackResult(-3)
 				}
 			}()
-			callback := stored.(func(int32) int32)
-			return callbackResult(callback(p0))
+			callback := stored.(func(int32) (int32, error))
+			value, err := callback(p0)
+			if err != nil {
+				entry.recordErr(err)
+				return callbackResult(-5)
+			}
+			return callbackResult(value)
 		})
 	})
 }

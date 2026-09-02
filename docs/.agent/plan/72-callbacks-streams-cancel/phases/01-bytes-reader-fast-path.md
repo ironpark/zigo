@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T10:45:15Z"
 perf_phase: true
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `bytes.Buffer` 입력에서 콜백 0회 테스트 통과.
 > NEXT: none

@@ -23,12 +23,19 @@ pub const bindings = zigo.define(.{
         .{
             .path = "CallbackContext.create",
             .params = .{ "callback", "userdata" },
-            .param_meta = .{ .callback = .{ .retention = .retained } },
+            // The Go callback may return an `error`. `go_error` belongs to the
+            // signature rather than to one parameter, so `apply` below spells
+            // it too: one Go `Observer` type is shared by both.
+            .param_meta = .{ .callback = .{ .retention = .retained, .go_error = true } },
         },
         .{ .path = "CallbackContext.run" },
         .{ .path = "CallbackContext.deinit" },
         .{ .path = "root.panicNow" },
         .{ .path = "root.compressionBound" },
-        .{ .path = "root.apply", .params = .{ "value", "callback", "userdata" } },
+        .{
+            .path = "root.apply",
+            .params = .{ "value", "callback", "userdata" },
+            .param_meta = .{ .callback = .{ .go_error = true } },
+        },
     },
 });

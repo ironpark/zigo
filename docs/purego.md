@@ -318,6 +318,14 @@ purego 백엔드는 콜백 파라미터를 C 함수 포인터와 `uintptr_t` use
   하는 값일 뿐이고, 호출이 돌아오면 생성된 함수가 그 panic을 `*CallbackPanicError`로 다시
   일으킨다 — cgo 백엔드와 같은 규칙이다.
 
+### 콜백이 돌려주는 Go error
+
+`.go_error` 콜백도 dispatcher 하나를 시그니처 단위로 공유한다. dispatcher는 저장된 값을
+`func(...) (int32, error)`로 단정하고, error가 있으면 registry entry에 저장한 뒤
+`callbackResult(-5)`를 돌려준다. 결과가 여전히 `i32`이므로 `ZIGO014` 제약을 그대로 만족한다.
+`go_error`가 시그니처의 성질인 이유가 여기 있다: dispatcher 하나가 두 가지 Go 타입을 동시에
+단정할 수는 없다.
+
 ### `std.Io` 스트림
 
 `*std.Io.Writer`/`*std.Io.Reader` 파라미터도 같은 메커니즘을 쓴다. 방향마다 영구

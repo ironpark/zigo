@@ -1,0 +1,186 @@
+{
+  "constructors": [
+    {
+      "deinit": "deinit",
+      "init": "create",
+      "type": "Hub"
+    }
+  ],
+  "functions": [
+    {
+      "name": "create",
+      "namespace": "Hub",
+      "ownership": "caller",
+      "params": [
+        {
+          "direction": "in",
+          "go_error": true,
+          "name": "observer",
+          "name_source": "sidecar",
+          "retention": "retained",
+          "type": {
+            "c_callconv": true,
+            "has_userdata": true,
+            "kind": "callback",
+            "params": [
+              {
+                "bits": 32,
+                "is_usize": false,
+                "kind": "int",
+                "signed": true
+              },
+              {
+                "bits": 64,
+                "is_usize": true,
+                "kind": "int",
+                "signed": false
+              }
+            ],
+            "return": {
+              "bits": 32,
+              "is_usize": false,
+              "kind": "int",
+              "signed": true
+            }
+          }
+        },
+        {
+          "direction": "in",
+          "name": "userdata",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "OutOfMemory"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "Hub"
+        }
+      },
+      "symbol": "zg_hub_create"
+    },
+    {
+      "name": "run",
+      "params": [
+        {
+          "direction": "in",
+          "name": "value",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          }
+        }
+      ],
+      "receiver": "Hub",
+      "return": {
+        "bits": 32,
+        "is_usize": false,
+        "kind": "int",
+        "signed": true
+      },
+      "symbol": "zg_hub_run"
+    },
+    {
+      "name": "deinit",
+      "params": [],
+      "receiver": "Hub",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_hub_deinit"
+    },
+    {
+      "name": "apply",
+      "params": [
+        {
+          "direction": "in",
+          "name": "value",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          }
+        },
+        {
+          "direction": "in",
+          "go_error": true,
+          "name": "observer",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "c_callconv": true,
+            "has_userdata": true,
+            "kind": "callback",
+            "params": [
+              {
+                "bits": 32,
+                "is_usize": false,
+                "kind": "int",
+                "signed": true
+              },
+              {
+                "bits": 64,
+                "is_usize": true,
+                "kind": "int",
+                "signed": false
+              }
+            ],
+            "return": {
+              "bits": 32,
+              "is_usize": false,
+              "kind": "int",
+              "signed": true
+            }
+          }
+        },
+        {
+          "direction": "in",
+          "name": "userdata",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "bits": 32,
+        "is_usize": false,
+        "kind": "int",
+        "signed": true
+      },
+      "symbol": "zg_apply"
+    }
+  ],
+  "package": "cb",
+  "prefix": "zg",
+  "types": [
+    {
+      "kind": "opaque",
+      "name": "Hub"
+    }
+  ],
+  "zig_version": "0.16.0"
+}

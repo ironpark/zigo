@@ -150,6 +150,53 @@ alias라 reflection이 이름을 알 수 없으니, 하나의 이름을 원하�
 같은 시그니처의 모든 콜백 파라미터가 `Observer` 하나로 생성됩니다. 시그니처가 같은 alias
 둘을 등록하면 먼저 등록한 이름이 둘 다에 쓰입니다 — Zig에게는 같은 타입입니다.
 
+### 콜백이 돌려주는 Go error
+
+기본적으로 Go 콜백은 Zig 시그니처가 말하는 값만 돌려줍니다. `param_meta.<이름>.go_error`를
+켜면 Go 타입이 `error`를 하나 더 돌려주고, 그 error가 공개 함수의 반환값으로 나옵니다.
+
+```zig
+.{
+    .path = "CallbackContext.create",
+    .params = .{ "callback", "userdata" },
+    .param_meta = .{ .callback = .{ .retention = .retained, .go_error = true } },
+}
+```
+
+```go
+type Observer func(int32) (int32, error)   // .go_error = false 였다면 func(int32) int32
+
+func Apply(value int32, callback Observer) (int32, error)
+```
+
+Zig 콜백의 반환 타입은 `i32`여야 합니다(`ZIGO025`). error를 알리는 데 결과 자리를 쓰기
+때문입니다: 콜백이 `err != nil`을 돌려주면 trampoline은 그 error를 저장하고 native 쪽에
+**`-5`**를 돌려줍니다. `-3`(panic), `-4`(삭제된 토큰)와 구별되는 값이므로 Zig 함수는 셋을
+가려낼 수 있습니다. Zig 쪽은 `-5`를 자기 규약대로 처리하면 되고(대개 error 반환), 그것이
+무엇이었든 공개 Go 함수는 저장된 error를 우선해 `*CallbackError`로 돌려줍니다.
+
+```go
+var errRefused = errors.New("refused")
+_, err := Apply(7, func(int32) (int32, error) { return 0, errRefused })
+errors.Is(err, errRefused)       // true — Unwrap이 원래 error를 내준다
+errors.Is(err, ErrCallbackFailed) // true — 분류용 sentinel
+
+var callbackErr *CallbackError
+errors.As(err, &callbackErr)     // Operation, Callback, Err
+```
+
+retained 콜백의 error는 그것이 일어난 호출이 이미 끝났으므로 **그 handle을 건드리는 다음
+호출**에서 나옵니다. panic 규칙과 같습니다. 한 번 반환되면 지워지므로 그다음 호출은 다시
+깨끗합니다.
+
+C ABI는 바뀌지 않습니다 — `go_error`는 Go 표면만 넓힙니다. 다만 Go 콜백 타입이 바뀌므로
+`abi-diff`는 이것을 breaking으로 봅니다.
+
+> **`go_error`는 파라미터가 아니라 시그니처의 성질입니다.** 한 바인딩 안에서 같은 ABI
+> 시그니처는 Go 타입 하나(그리고 purego에서는 dispatcher 하나)를 공유하므로, 한 곳에
+> `.go_error = true`를 켜면 그 시그니처를 쓰는 모든 콜백 파라미터가 `error`를 돌려주는
+> 타입이 됩니다.
+
 ## 정수 폭
 
 C는 8, 16, 32, 64비트 정수만 이름 붙일 수 있습니다. `u21`이나 `i24`처럼 그 밖의 폭은
@@ -743,6 +790,7 @@ snapshot을 선택하세요.
 | `ErrNativeStatus` | 알려지지 않은 native status | `*StatusError` |
 | `ErrLibraryLoad` | purego library·symbol load 실패 | `*LibraryError` |
 | `ErrCallbackPanic` | Go 콜백 안에서 발생한 panic (반환이 아니라 **rethrow**) | `*CallbackPanicError` |
+| `ErrCallbackFailed` | `.go_error` 콜백이 돌려준 error | `*CallbackError` |
 | `Err<ZigError>` | Zig error set 값. 반환된 값의 `Operation`이 어느 호출에서 났는지 말한다 | `*Error` |
 
 ```go

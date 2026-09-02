@@ -280,6 +280,8 @@ pub fn build(b: *std.Build) void {
     const test_step = b.step("test", "Run unit and snapshot harness tests");
     const godoc_audit = b.addSystemCommand(&.{ "go", "run", "./tests/godoc_audit/main.go" });
     godoc_audit.addArgs(&.{
+        "tests/generator_cases/callback_error/expected",
+        "tests/generator_cases/callback_error_purego/expected",
         "tests/generator_cases/complex/expected",
         "tests/generator_cases/injection/expected",
         "tests/generator_cases/narrow_int/expected",

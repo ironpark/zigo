@@ -200,6 +200,7 @@
       "params": [
         {
           "direction": "in",
+          "go_error": true,
           "name": "callback",
           "name_source": "sidecar",
           "retention": "retained",
@@ -396,6 +397,7 @@
         },
         {
           "direction": "in",
+          "go_error": true,
           "name": "callback",
           "name_source": "sidecar",
           "retention": "borrowed",

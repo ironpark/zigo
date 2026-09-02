@@ -80,6 +80,11 @@
   슬라이스 원소, optional, `.retention = .retained`는 `ZIGO023`으로 거부된다. Zig가 스트림을
   돌려주는 API, handle에 보관되는 스트림, `std.Io.File`/fd 전달, `sendFile` 최적화,
   Go `io.ReaderAt`/`io.Seeker`는 지원하지 않는다.
+- `.go_error` 콜백이 error를 돌려주면 native 쪽은 결과로 `-5`를 받는다. 대상 Zig 함수가
+  그것을 어떻게 다루는지는 zigo가 강제하지 않는다 — 계속 콜백을 부르는 함수는 계속 불린다.
+  Go error가 나면 멈춰야 하는 API라면 Zig 쪽이 `-5`를 검사해야 한다. `go_error`는 하나의
+  ABI 시그니처 전체의 성질이라, 한 파라미터에 켜면 그 시그니처를 쓰는 모든 콜백 파라미터의
+  Go 타입이 함께 넓어진다.
 - 스트림 콜백은 native 호출 안에서 같은 스레드로 동기 호출된다. 대상 Zig 함수가 어댑터를
   다른 스레드로 넘기거나 호출이 끝난 뒤까지 들고 있으면 동작은 정의되지 않는다.
 - `io.Reader` 인자가 `Bytes() []byte`나 `zigoBytes() []byte`를 가지면 남은 바이트가
@@ -179,6 +184,9 @@ error[ZIGO018]: unsupported integer width `u21` in parameter `cp`
   공간이 나뉘므로 다른 receiver의 같은 메서드 이름은 충돌이 아니다. 같은 enum 안에서
   두 tag가 PascalCase로 같은 이름이 되는 경우도 여기서 잡는다. 메시지는 충돌하는 두 Zig
   경로를 모두 적으며, `.name`으로 한쪽 이름을 바꾸면 통과한다.
+- `ZIGO025` — `param_meta.<이름>.go_error`를 콜백이 아닌 파라미터에 달았거나, 콜백의 Zig
+  반환 타입이 `i32`가 아니다. Go error는 결과 자리에 `-5`로 실려 건너가므로 `i32` 결과가
+  없는 콜백은 그것을 알릴 방법이 없다.
 
 리플렉션 단계의 거부는 `bindings.zig`를 빌드할 때의 `@compileError`로 나오며, 제약과 함께
 그것이 걸린 선언·파라미터를 적는다(`... , at \`Terminal.write\` parameter \`bytes\``).

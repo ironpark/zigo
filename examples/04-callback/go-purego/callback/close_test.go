@@ -13,10 +13,10 @@ import (
 func TestCloseDoesNotBlockOtherCalls(t *testing.T) {
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	context, err := NewCallbackContext(func(value int32) int32 {
+	context, err := NewCallbackContext(func(value int32) (int32, error) {
 		close(entered)
 		<-release
-		return value + 1
+		return value + 1, nil
 	})
 	if err != nil {
 		t.Fatal(err)

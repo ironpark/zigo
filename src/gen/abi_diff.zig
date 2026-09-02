@@ -86,6 +86,11 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
             try add(allocator, &report, .breaking, identity, "return ownership or semantics changed");
         if (!retentionEqual(old.params, new.params))
             try add(allocator, &report, .breaking, identity, "parameter retention changed");
+        // The C signature does not move, but the Go callback type does: it
+        // gains or loses a second result, and every caller's function literal
+        // stops compiling. Breaking on the surface consumers actually write.
+        if (!goErrorEqual(old.params, new.params))
+            try add(allocator, &report, .breaking, identity, "callback Go error surface changed");
         if (!writtenEqual(old.params, new.params))
             try add(allocator, &report, .breaking, identity, "parameter written hint changed (C signature)");
         if (!streamBufferEqual(old.params, new.params))
@@ -252,6 +257,12 @@ fn signatureEqual(lhs: semantic.SemanticFn, rhs: semantic.SemanticFn) bool {
         if (a.injected != b.injected) return false;
         if (a.direction != b.direction or a.semantic != b.semantic or !typeEqual(a.type, b.type)) return false;
     }
+    return true;
+}
+
+fn goErrorEqual(lhs: []const semantic.Parameter, rhs: []const semantic.Parameter) bool {
+    if (lhs.len != rhs.len) return false;
+    for (lhs, rhs) |a, b| if (a.goError() != b.goError()) return false;
     return true;
 }
 

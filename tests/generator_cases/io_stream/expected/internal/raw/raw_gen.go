@@ -62,9 +62,10 @@ func TakeCallbackPanic(handle cgo.Handle) (any, []byte, bool) {
 	return value, stack, true
 }
 
-// recordErr keeps the first error a Go stream reported, until the generated
-// caller takes it. Later crossings are not asked: once a stream has failed
-// the adapter stops using it.
+// recordErr keeps the first error the Go side reported -- a stream that
+// failed to write or read, or a callback that returned one -- until the
+// generated caller takes it. Later crossings are not asked: once a stream
+// has failed the adapter stops using it.
 func (state *CallbackState) recordErr(err error) {
 	state.mu.Lock()
 	defer state.mu.Unlock()
