@@ -2032,7 +2032,13 @@ fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.Io.Wr
     const prefix = if (options.raw_colocated) "zigoRaw" else "";
     const has_streams = programHasStreams(program);
     try writer.writeAll(
-        "type callbackEntry struct {\n\tmu sync.Mutex\n\tcond *sync.Cond\n\tvalue any\n\tclosing bool\n\tactive int\n\tpanicked bool\n\tpanicValue any\n\tpanicStack []byte\n\tstreamErr error\n}\n\n" ++
+        "type callbackEntry struct {\n\tmu sync.Mutex\n\tcond *sync.Cond\n\tvalue any\n\tclosing bool\n\tactive int\n\tpanicked bool\n\tpanicValue any\n\tpanicStack []byte\n",
+    );
+    // Only a binding with streams carries the stored stream error, so a
+    // callback-only binding's registry is byte for byte what it always was.
+    if (has_streams) try writer.writeAll("\tstreamErr error\n");
+    try writer.writeAll(
+        "}\n\n" ++
             "// callbackRegistry maps a userdata token to its entry without a global lock,\n// mirroring the sync.Map behind runtime/cgo.Handle on the cgo backend.\n// Delete races an in-flight acquire safely through the entry's closing flag:\n// an acquire either takes active++ before closing is set, in which case\n// DeleteCallbackHandle waits for it to drain, or it observes closing and\n// reports the token as gone.\nvar callbackRegistry sync.Map // uintptr -> *callbackEntry\nvar nextCallbackToken atomic.Uint64\nvar activeCallbackHandles atomic.Int64\n\n",
     );
     try writer.print("// {s}NewCallbackHandle stores a callback value and returns its native userdata token.\nfunc {s}NewCallbackHandle(value any) uintptr {{\n", .{ prefix, prefix });
