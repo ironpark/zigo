@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-02T15:17:50Z"
 depends_on:
 - "76-public-package-at-go-dir-root#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 문서에 "하위 디렉터리 고정" 안내가 남아 있지 않음, `zig build test` 녹색, 커밋.
 > NEXT: none

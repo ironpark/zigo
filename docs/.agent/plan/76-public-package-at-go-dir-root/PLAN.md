@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T15:17:50Z"
 description: 공개 Go 패키지를 go_dir 루트(모듈 루트)에 발행할 수 있도록 패키지 경로와 이름을 분리
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-02T13:52:31Z"
 ---
 > NEXT: `go_package_path` 옵션을 추가하고 공개 패키지 출력 경로와 import path를 이름이 아닌 경로에서 계산한다. ([Phase 0](phases/00-package-path-option.md))
@@ -9,7 +10,7 @@ registered_at: "2026-09-02T13:52:31Z"
 
 - [x] [Phase 00: 패키지 경로 옵션과 생성 경로](phases/00-package-path-option.md)
 - [x] [Phase 01: 루트 발행 예제](phases/01-root-package-example.md)
-- [ ] [Phase 02: 문서와 CHANGELOG](phases/02-docs.md)
+- [x] [Phase 02: 문서와 CHANGELOG](phases/02-docs.md)
 
 # Shared Verification
 
