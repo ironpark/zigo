@@ -87,7 +87,8 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
         // that named it changes.
         if (!optionalNameEqual(old.goOwner(), new.goOwner()))
             try add(allocator, &report, .breaking, identity, "Go owner changed");
-        if (old.ownership != new.ownership or !optionalHintEqual(old.return_semantic, new.return_semantic))
+        if (old.ownership != new.ownership or old.returnsBorrowedHandle() != new.returnsBorrowedHandle() or
+            !optionalHintEqual(old.return_semantic, new.return_semantic))
             try add(allocator, &report, .breaking, identity, "return ownership or semantics changed");
         if (!retentionEqual(old.params, new.params))
             try add(allocator, &report, .breaking, identity, "parameter retention changed");
@@ -778,6 +779,26 @@ test "changing the release function of a fallible slice return is breaking" {
     try std.testing.expectEqual(@as(usize, 1), report.changes.items.len);
     try std.testing.expectEqual(ChangeKind.breaking, report.changes.items[0].kind);
     try std.testing.expectEqualStrings("release function changed", report.changes.items[0].detail);
+}
+
+test "borrowed and caller-owned handle returns are ABI breaking" {
+    const borrowed: semantic.SemanticFn = .{
+        .borrowed_return = true,
+        .name = "view",
+        .params = &.{},
+        .receiver = "Parent",
+        .@"return" = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "View" } },
+        .symbol = "zg_parent_view",
+    };
+    var caller = borrowed;
+    caller.borrowed_return = null;
+    caller.ownership = .caller;
+    const base: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{borrowed} };
+    const current: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{caller} };
+    var report = try diff(std.testing.allocator, base, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expect(report.hasBreaking());
+    try std.testing.expectEqualStrings("return ownership or semantics changed", report.changes.items[0].detail);
 }
 
 test "an injected argument moves nothing while the Go owner moves the surface" {

@@ -1,0 +1,53 @@
+{
+  "constructors": [
+    { "deinit": "freeParent", "init": "newParent", "type": "Parent" }
+  ],
+  "functions": [
+    {
+      "go_owner": "Parent",
+      "name": "newParent",
+      "ownership": "caller",
+      "package": "views",
+      "params": [],
+      "return": { "error_set": [], "kind": "error_union", "payload": { "const": false, "kind": "opaque_ptr", "nullable": false, "ref": "Parent" } },
+      "symbol": "ignored"
+    },
+    { "name": "freeParent", "package": "views", "params": [], "receiver": "Parent", "return": { "kind": "void" }, "symbol": "ignored" },
+    {
+      "borrowed_return": true,
+      "name": "view",
+      "package": "views",
+      "params": [],
+      "receiver": "Parent",
+      "return": { "const": false, "kind": "opaque_ptr", "nullable": false, "ref": "View" },
+      "symbol": "ignored"
+    },
+    {
+      "borrowed_return": true,
+      "name": "maybeView",
+      "package": "views",
+      "params": [],
+      "receiver": "Parent",
+      "return": { "const": false, "kind": "opaque_ptr", "nullable": true, "ref": "View" },
+      "symbol": "ignored"
+    },
+    {
+      "borrowed_return": true,
+      "name": "checkedView",
+      "package": "views",
+      "params": [],
+      "receiver": "Parent",
+      "return": { "error_set": ["Missing"], "kind": "error_union", "payload": { "const": false, "kind": "opaque_ptr", "nullable": true, "ref": "View" } },
+      "symbol": "ignored"
+    },
+    { "name": "touch", "package": "views", "params": [], "receiver": "View", "return": { "bits": 32, "is_usize": false, "kind": "int", "signed": true }, "symbol": "ignored" }
+  ],
+  "package": "borrowed_return",
+  "packages": [{ "name": "views", "path": "views" }],
+  "prefix": "zg",
+  "types": [
+    { "kind": "opaque", "name": "Parent", "package": "views" },
+    { "kind": "opaque", "name": "View", "package": "views" }
+  ],
+  "zig_version": "0.16.0"
+}

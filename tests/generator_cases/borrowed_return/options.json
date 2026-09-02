@@ -1,0 +1,5 @@
+{
+  "package": "borrowed_return",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/borrowed-return"
+}

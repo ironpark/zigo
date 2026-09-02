@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T19:54:46Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 테스트 통과, 기존 semantic.json 바이트 동일, 커밋.
 > NEXT: none

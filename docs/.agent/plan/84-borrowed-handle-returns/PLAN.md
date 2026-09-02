@@ -7,7 +7,7 @@ registered_at: "2026-09-02T19:20:25Z"
 
 # Phases
 
-- [ ] [Phase 00: 수명 정책 결정과 reflection/validate](phases/00-policy-and-semantic.md)
+- [x] [Phase 00: 수명 정책 결정과 reflection/validate](phases/00-policy-and-semantic.md)
 - [ ] [Phase 01: cgo·purego emit](phases/01-emit.md)
 - [ ] [Phase 02: 예제, 문서, CHANGELOG](phases/02-example-and-docs.md)
 

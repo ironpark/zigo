@@ -3827,7 +3827,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         try writer.writeByte('\t');
         const returns_error = function.origin.@"return" == .error_union;
         const error_payload = if (returns_error) function.origin.@"return".error_union.payload.* else semantic.TypeNode{ .void = {} };
-        const borrowed_direct = function.origin.@"return" == .opaque_ptr and function.origin.ownership == .borrowed;
+        const borrowed_direct = !returns_error and returnsBorrowedHandle(function.origin.*);
         // A caller-owned handle returned without an error union still has to be
         // wrapped, so it is captured into `result` exactly like a borrowed one.
         const owned_direct = !returns_error and owned_type != null;
@@ -3976,11 +3976,14 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         if (captures_return) try writePublicCapturedReturn(writer, program, function.origin.*, needs_check);
         if (borrowed_direct or owned_direct) {
             if (function.origin.childOfReceiver()) try writer.writeAll("\tzigoChildCreated = true\n");
+            if (borrowed_direct and function.origin.@"return".opaque_ptr.nullable)
+                try writer.writeAll("\tif result == nil {\n\t\treturn nil, false, nil\n\t}\n");
             try writer.writeAll("\treturn ");
             if (owned_type) |type_name|
                 try writeOwnedHandleResult(allocator, writer, program, function.origin.*, go_names, type_name, "result")
             else
                 try writeBorrowedResult(allocator, writer, function.origin.*, go_names, "result");
+            if (borrowed_direct and function.origin.@"return".opaque_ptr.nullable) try writer.writeAll(", true");
             if (needs_check) try writer.writeAll(", nil");
             try writer.writeByte('\n');
         }
@@ -4028,23 +4031,29 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                 if (streamAccessorOp(function.origin.*) == .read)
                     try writer.writeAll("\tif result == 0 {\n\t\treturn 0, io.EOF\n\t}\n");
                 if (function.origin.childOfReceiver()) try writer.writeAll("\tzigoChildCreated = true\n");
-                try writer.writeAll("\treturn ");
-                if (owned_type) |type_name| {
-                    try writeOwnedHandleResult(allocator, writer, program, function.origin.*, go_names, type_name, "result");
-                } else if (error_payload == .opaque_ptr and function.origin.ownership == .borrowed) {
+                if (error_payload == .opaque_ptr and error_payload.opaque_ptr.nullable and returnsBorrowedHandle(function.origin.*)) {
+                    try writer.writeAll("\tif result == nil {\n\t\treturn nil, false, nil\n\t}\n\treturn ");
                     try writeBorrowedResult(allocator, writer, function.origin.*, go_names, "result");
-                } else if (isStringSlice(error_payload, function.origin.return_semantic)) {
-                    try writer.writeAll("string(result)");
-                } else if (error_payload == .optional) {
-                    if (isStringSlice(error_payload.optional.child.*, function.origin.return_semantic))
-                        try writer.writeAll("string(result)")
-                    else
-                        try writePublicResultConversion(writer, program, error_payload.optional.child.*, "result");
-                    try writer.writeAll(", zigoHas");
+                    try writer.writeAll(", true, nil\n");
                 } else {
-                    try writePublicResultConversion(writer, program, error_payload, "result");
+                    try writer.writeAll("\treturn ");
+                    if (owned_type) |type_name| {
+                        try writeOwnedHandleResult(allocator, writer, program, function.origin.*, go_names, type_name, "result");
+                    } else if (error_payload == .opaque_ptr and returnsBorrowedHandle(function.origin.*)) {
+                        try writeBorrowedResult(allocator, writer, function.origin.*, go_names, "result");
+                    } else if (isStringSlice(error_payload, function.origin.return_semantic)) {
+                        try writer.writeAll("string(result)");
+                    } else if (error_payload == .optional) {
+                        if (isStringSlice(error_payload.optional.child.*, function.origin.return_semantic))
+                            try writer.writeAll("string(result)")
+                        else
+                            try writePublicResultConversion(writer, program, error_payload.optional.child.*, "result");
+                        try writer.writeAll(", zigoHas");
+                    } else {
+                        try writePublicResultConversion(writer, program, error_payload, "result");
+                    }
+                    try writer.writeAll(", nil\n");
                 }
-                try writer.writeAll(", nil\n");
             }
         }
         try writer.writeAll("}\n");
@@ -4590,7 +4599,6 @@ fn renderPublicSnapshots(
         defer allocator.free(raw_function);
         const recv = try receiverVariableAlloc(allocator, declaration.name, &.{});
         defer allocator.free(recv);
-
         try writer.print(
             "// {s} is a value copy of a {s}: one native call carries the active tag\n" ++
                 "// and every scalar payload back together.\ntype {s} struct {{\n\ttag {s}\n",
@@ -4756,7 +4764,6 @@ fn renderPublicUnionVariants(
         const tag_type = declaration.tag_type.?.@"enum".ref;
         const recv = try receiverVariableAlloc(allocator, declaration.name, &.{});
         defer allocator.free(recv);
-
         try writer.print(
             "// {0s}Variant is the sealed interface every {0s} variant implements. A type\n" ++
                 "// switch over the concrete variant types reads the active payload without\n" ++
@@ -5355,10 +5362,15 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         const owns_callbacks = typeOwnsCallbacks(program, declaration.name);
         const dependent_parent = dependentParentType(program, declaration.name);
         const has_dependent_children = typeHasDependentChildren(program, declaration.name);
+        const can_be_borrowed = typeCanBeBorrowed(program, declaration.name);
+        const returns_borrowed_views = typeReturnsBorrowedViews(program, declaration.name);
         // Owning a constructor is what gives a handle Close and the cleanup net.
         const constructor = constructorForType(program, declaration.name);
         const auto_cleanup = constructor != null;
         const poison_method = if (options.shared_lifecycle) "Poisoned" else "poisoned";
+        const parent_acquire_method = if (options.shared_lifecycle) "ZigoAcquire" else "zigoAcquire";
+        const parent_release_method = if (options.shared_lifecycle) "ZigoRelease" else "zigoRelease";
+        const parent_poison_method = if (options.shared_lifecycle) "ZigoPoison" else "zigoPoison";
         if (auto_cleanup) {
             try writer.print("// {s} is a caller-owned native handle. Call Close when it is no longer needed.\n", .{declaration.name});
         } else {
@@ -5368,7 +5380,7 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         // gofmt aligns a struct's field types on the longest field name, and
         // the goldens are compared unformatted, so the padding is computed
         // from the field set rather than hard-coded per shape.
-        const width = fieldNameWidth(&.{ "ptr", "mu", "active", if (has_dependent_children) "children" else "", "closed", "poison", if (dependent_parent != null) "parent" else "", if (auto_cleanup) "cleanup" else "", if (owns_callbacks) "callbackHandles" else "" });
+        const width = fieldNameWidth(&.{ "ptr", "mu", "active", if (has_dependent_children) "children" else "", "closed", "poison", if (dependent_parent != null) "parent" else "", if (can_be_borrowed) "owner" else "", if (auto_cleanup) "cleanup" else "", if (owns_callbacks) "callbackHandles" else "" });
         try writeStructField(writer, "ptr", width, "unsafe.Pointer");
         // `mu` guards the fields below and is never held across a native
         // call: `active` counts the calls inside native, `closed` is what Close
@@ -5383,6 +5395,7 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             defer allocator.free(parent_pointer);
             try writeStructField(writer, "parent", width, parent_pointer);
         }
+        if (can_be_borrowed) try writeStructField(writer, "owner", width, "zigoHandle");
         if (owns_callbacks) try writeStructField(writer, "callbackHandles", width, "[]zigoCallbackHandle");
         if (auto_cleanup) try writeStructField(writer, "cleanup", width, "runtime.Cleanup");
         try writer.writeAll("}\n\n");
@@ -5396,10 +5409,34 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         // One receiver name per type, matching the methods emitted elsewhere.
         const recv = try receiverVariableAlloc(allocator, declaration.name, &.{});
         defer allocator.free(recv);
+        if (can_be_borrowed) try writer.print(
+            "func newBorrowed{0s}(ptr unsafe.Pointer, owner zigoHandle) *{0s} {{\n" ++
+                "\treturn &{0s}{{ptr: ptr, owner: owner}}\n}}\n\n",
+            .{declaration.name},
+        );
         // A call pins the handle open with zigoAcquire and lets go with
         // zigoRelease; `mu` is dropped in between, so nothing that happens
         // inside native can make another goroutine wait on this handle.
-        if (dependent_parent != null) {
+        if (can_be_borrowed) {
+            try writer.print(
+                "// zigoAcquire pins {0s} and its parent open for one native call.\n" ++
+                    "func ({0s} *{1s}) zigoAcquire(operation string) (unsafe.Pointer, error) {{\n" ++
+                    "\tif {0s} == nil {{\n\t\treturn nil, &HandleError{{Operation: operation}}\n\t}}\n" ++
+                    "\t{0s}.mu.Lock()\n\tvar parent zigoHandle\n",
+                .{ recv, declaration.name },
+            );
+            if (can_be_borrowed) try writer.print("\tparent = {0s}.owner\n", .{recv});
+            if (dependent_parent != null) try writer.print("\tif parent == nil {{\n\t\tparent = {0s}.parent\n\t}}\n", .{recv});
+            try writer.print(
+                "\t{0s}.mu.Unlock()\n" ++
+                    "\tif parent != nil {{\n\t\tif _, err := parent.{2s}(operation); err != nil {{\n\t\t\treturn nil, err\n\t\t}}\n\t}}\n" ++
+                    "\t{0s}.mu.Lock()\n" ++
+                    "\tif {0s}.closed || {0s}.ptr == nil {{\n\t\t{0s}.mu.Unlock()\n\t\tif parent != nil {{\n\t\t\tparent.{3s}()\n\t\t}}\n\t\treturn nil, &HandleError{{Operation: operation}}\n\t}}\n" ++
+                    "\tif {0s}.poison != nil {{\n\t\terr := {0s}.poison.{1s}(operation)\n\t\t{0s}.mu.Unlock()\n\t\tif parent != nil {{\n\t\t\tparent.{3s}()\n\t\t}}\n\t\treturn nil, err\n\t}}\n" ++
+                    "\t{0s}.active++\n\tptr := {0s}.ptr\n\t{0s}.mu.Unlock()\n\treturn ptr, nil\n}}\n\n",
+                .{ recv, poison_method, parent_acquire_method, parent_release_method },
+            );
+        } else if (dependent_parent != null) {
             try writer.print(
                 "// zigoAcquire pins {0s} and its parent open for one native call.\n" ++
                     "func ({0s} *{1s}) zigoAcquire(operation string) (unsafe.Pointer, error) {{\n" ++
@@ -5429,12 +5466,26 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         // only a handle with Close has anything to do after the decrement.
         try writer.print("func ({0s} *{1s}) zigoRelease() {{\n\tif {0s} == nil {{\n\t\treturn\n\t}}\n\t{0s}.mu.Lock()\n\t{0s}.active--\n", .{ recv, declaration.name });
         if (auto_cleanup) {
-            if (dependent_parent != null) try writer.print("\tparent := {0s}.parent\n", .{recv});
+            if (can_be_borrowed) {
+                try writer.writeAll("\tvar parent zigoHandle\n");
+                if (can_be_borrowed) try writer.print("\tparent = {0s}.owner\n", .{recv});
+                if (dependent_parent != null) try writer.print("\tif parent == nil {{ parent = {0s}.parent }}\n", .{recv});
+            } else if (dependent_parent != null) try writer.print("\tparent := {0s}.parent\n", .{recv});
             try writer.print("\tstate, release := {0s}.zigoTakeLocked()\n\t{0s}.mu.Unlock()\n\tif release {{\n\t\tcleanup{1s}(state)\n\t}}\n", .{ recv, declaration.name });
-            if (dependent_parent != null) try writer.writeAll("\tif parent != nil {\n\t\tparent.zigoRelease()\n\t}\n");
+            if (can_be_borrowed)
+                try writer.print("\tif parent != nil {{\n\t\tparent.{s}()\n\t}}\n", .{parent_release_method})
+            else if (dependent_parent != null)
+                try writer.writeAll("\tif parent != nil {\n\t\tparent.zigoRelease()\n\t}\n");
             try writer.writeAll("}\n\n");
         } else {
-            try writer.print("\t{0s}.mu.Unlock()\n}}\n\n", .{recv});
+            if (can_be_borrowed) {
+                try writer.writeAll("\tvar parent zigoHandle\n");
+                try writer.print("\tparent = {0s}.owner\n", .{recv});
+                if (dependent_parent != null) try writer.print("\tif parent == nil {{ parent = {0s}.parent }}\n", .{recv});
+            }
+            try writer.print("\t{0s}.mu.Unlock()\n", .{recv});
+            if (can_be_borrowed) try writer.print("\tif parent != nil {{ parent.{s}() }}\n", .{parent_release_method});
+            try writer.writeAll("}\n\n");
         }
         try writer.print(
             "// zigoPoison marks {0s} unusable: a Zig panic unwound through native frames\n" ++
@@ -5442,12 +5493,24 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                 "func ({0s} *{1s}) zigoPoison(cause *NativePanicError) {{\n\tif {0s} == nil {{\n\t\treturn\n\t}}\n\t{0s}.mu.Lock()\n",
             .{ recv, declaration.name },
         );
-        if (dependent_parent != null) try writer.print("\tparent := {0s}.parent\n", .{recv});
-        if (dependent_parent == null) try writer.print("\tdefer {0s}.mu.Unlock()\n", .{recv});
+        if (can_be_borrowed) {
+            try writer.writeAll("\tvar parent zigoHandle\n");
+            try writer.print("\tparent = {0s}.owner\n", .{recv});
+            if (dependent_parent != null) try writer.print("\tif parent == nil {{ parent = {0s}.parent }}\n", .{recv});
+        } else if (dependent_parent != null) try writer.print("\tparent := {0s}.parent\n", .{recv});
+        if (dependent_parent == null and !can_be_borrowed) try writer.print("\tdefer {0s}.mu.Unlock()\n", .{recv});
         try writer.print("\tif {0s}.poison == nil {{\n\t\t{0s}.poison = cause\n", .{recv});
-        if (auto_cleanup) try writer.print("\t\t{0s}.cleanup.Stop()\n", .{recv});
+        if (auto_cleanup) {
+            if (can_be_borrowed)
+                try writer.print("\t\tif {0s}.owner == nil {{ {0s}.cleanup.Stop() }}\n", .{recv})
+            else
+                try writer.print("\t\t{0s}.cleanup.Stop()\n", .{recv});
+        }
         try writer.writeAll("\t}\n");
-        if (dependent_parent != null) try writer.print("\t{0s}.mu.Unlock()\n\tif parent != nil {{\n\t\tparent.zigoPoison(cause)\n\t}}\n", .{recv});
+        if (can_be_borrowed)
+            try writer.print("\t{0s}.mu.Unlock()\n\tif parent != nil {{\n\t\tparent.{1s}(cause)\n\t}}\n", .{ recv, parent_poison_method })
+        else if (dependent_parent != null)
+            try writer.print("\t{0s}.mu.Unlock()\n\tif parent != nil {{\n\t\tparent.zigoPoison(cause)\n\t}}\n", .{recv});
         try writer.writeAll("}\n\n");
         if (options.shared_lifecycle) try writer.print(
             "// ZigoAcquire implements the shared lifecycle handle contract.\n" ++
@@ -5475,11 +5538,11 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         if (has_refs) try writer.print(
             "func ({0s} *{1s}Ref) zigoAcquire(operation string) (unsafe.Pointer, error) {{\n" ++
                 "\tif {0s} == nil || {0s}.ptr == nil {{\n\t\treturn nil, &HandleError{{Operation: operation}}\n\t}}\n" ++
-                "\tif {0s}.parent != nil {{\n\t\tif _, err := {0s}.parent.zigoAcquire(operation); err != nil {{\n\t\t\treturn nil, err\n\t\t}}\n\t}}\n" ++
+                "\tif {0s}.parent != nil {{\n\t\tif _, err := {0s}.parent.{2s}(operation); err != nil {{\n\t\t\treturn nil, err\n\t\t}}\n\t}}\n" ++
                 "\treturn {0s}.ptr, nil\n}}\n\n" ++
-                "func ({0s} *{1s}Ref) zigoRelease() {{\n\tif {0s} != nil && {0s}.parent != nil {{\n\t\t{0s}.parent.zigoRelease()\n\t}}\n}}\n\n" ++
-                "func ({0s} *{1s}Ref) zigoPoison(cause *NativePanicError) {{\n\tif {0s} != nil && {0s}.parent != nil {{\n\t\t{0s}.parent.zigoPoison(cause)\n\t}}\n}}\n\n",
-            .{ recv, declaration.name },
+                "func ({0s} *{1s}Ref) zigoRelease() {{\n\tif {0s} != nil && {0s}.parent != nil {{\n\t\t{0s}.parent.{3s}()\n\t}}\n}}\n\n" ++
+                "func ({0s} *{1s}Ref) zigoPoison(cause *NativePanicError) {{\n\tif {0s} != nil && {0s}.parent != nil {{\n\t\t{0s}.parent.{4s}(cause)\n\t}}\n}}\n\n",
+            .{ recv, declaration.name, parent_acquire_method, parent_release_method, parent_poison_method },
         );
         if (has_refs and options.shared_lifecycle) try writer.print(
             "// ZigoAcquire implements the shared lifecycle handle contract.\n" ++
@@ -5540,7 +5603,15 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                     "\t{0s}.mu.Lock()\n\tif {0s}.closed {{\n\t\t{0s}.mu.Unlock()\n\t\treturn nil\n\t}}\n",
                 .{ recv, declaration.name },
             );
+            if (can_be_borrowed) try writer.print(
+                "\tif {0s}.owner != nil {{\n" ++
+                    "\t\tif {0s}.active != 0 {{\n\t\t\tactive := {0s}.active\n\t\t\t{0s}.mu.Unlock()\n" ++
+                    "\t\t\treturn &HandleInUseError{{Operation: \"{1s}.Close\", Children: active}}\n\t\t}}\n" ++
+                    "\t\t{0s}.closed = true\n\t\t{0s}.ptr = nil\n\t\t{0s}.owner = nil\n\t\t{0s}.mu.Unlock()\n\t\treturn nil\n\t}}\n",
+                .{ recv, declaration.name },
+            );
             if (has_dependent_children) try writer.print("\tif {0s}.children != 0 {{\n\t\tchildren := {0s}.children\n\t\t{0s}.mu.Unlock()\n\t\treturn &HandleInUseError{{Operation: \"{1s}.Close\", Children: children}}\n\t}}\n", .{ recv, declaration.name });
+            if (returns_borrowed_views) try writer.print("\tif {0s}.active != 0 {{\n\t\tactive := {0s}.active\n\t\t{0s}.mu.Unlock()\n\t\treturn &HandleInUseError{{Operation: \"{1s}.Close\", Children: active}}\n\t}}\n", .{ recv, declaration.name });
             try writer.print(
                 "\t{0s}.closed = true\n\t{0s}.cleanup.Stop()\n" ++
                     "\tstate, release := {0s}.zigoTakeLocked()\n\t{0s}.mu.Unlock()\n\tif release {{\n\t\tcleanup{1s}(state)\n\t}}\n" ++
@@ -5562,6 +5633,16 @@ fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             if (owns_callbacks) try writer.print("\t{0s}.callbackHandles = nil\n", .{recv});
             if (dependent_parent != null) try writer.print("\t{0s}.parent = nil\n", .{recv});
             try writer.print("\tif {0s}.poison != nil {{\n\t\tstate.ptr = nil\n\t}}\n\treturn state, true\n}}\n\n", .{recv});
+        } else if (can_be_borrowed) {
+            try writer.print(
+                "// Close detaches this borrowed {1s} view without releasing native resources.\n" ++
+                    "func ({0s} *{1s}) Close() error {{\n\tif {0s} == nil {{ return nil }}\n\t{0s}.mu.Lock()\n" ++
+                    "\tif {0s}.closed {{ {0s}.mu.Unlock(); return nil }}\n" ++
+                    "\tif {0s}.active != 0 {{\n\t\tactive := {0s}.active\n\t\t{0s}.mu.Unlock()\n" ++
+                    "\t\treturn &HandleInUseError{{Operation: \"{1s}.Close\", Children: active}}\n\t}}\n" ++
+                    "\t{0s}.closed = true\n\t{0s}.ptr = nil\n\t{0s}.owner = nil\n\t{0s}.mu.Unlock()\n\treturn nil\n}}\n\n",
+                .{ recv, declaration.name },
+            );
         }
     }
 }
@@ -5929,7 +6010,9 @@ fn writePublicZeroValue(writer: *std.Io.Writer, function: semantic.SemanticFn, p
 fn writePublicFailureValues(writer: *std.Io.Writer, function: semantic.SemanticFn, payload: semantic.TypeNode) !void {
     try writePublicZeroValue(writer, function, payload);
     try writer.writeAll(", ");
-    if (payload == .optional) try writer.writeAll("false, ");
+    if (payload == .optional or
+        (payload == .opaque_ptr and payload.opaque_ptr.nullable and returnsBorrowedHandle(function)))
+        try writer.writeAll("false, ");
 }
 
 /// The public return type when a nil or closed handle reaches the caller as an
@@ -5943,10 +6026,13 @@ fn writeCheckedFunctionReturnType(writer: *std.Io.Writer, function: semantic.Sem
         return;
     }
     try writer.writeAll(" (");
-    if (isStringSlice(function.@"return", function.return_semantic)) {
+    if (returnsBorrowedHandle(function) and function.@"return".opaque_ptr.nullable) {
+        try writer.print("*{s}, bool, error)", .{function.@"return".opaque_ptr.ref});
+        return;
+    } else if (isStringSlice(function.@"return", function.return_semantic)) {
         try writer.writeAll("string");
-    } else if (function.@"return" == .opaque_ptr and function.ownership == .borrowed) {
-        try writer.print("*{s}Ref", .{function.@"return".opaque_ptr.ref});
+    } else if (returnsBorrowedHandle(function)) {
+        try writer.print("*{s}", .{function.@"return".opaque_ptr.ref});
     } else {
         try writePublicGoType(writer, function.@"return");
     }
@@ -5960,12 +6046,19 @@ fn writePublicFunctionReturnType(writer: *std.Io.Writer, function: semantic.Sema
         try writer.writeAll(" string");
         return;
     }
-    if (function.@"return" == .opaque_ptr and function.ownership == .borrowed) {
-        try writer.print(" *{s}Ref", .{function.@"return".opaque_ptr.ref});
+    if (function.@"return" == .opaque_ptr and returnsBorrowedHandle(function)) {
+        if (function.@"return".opaque_ptr.nullable)
+            try writer.print(" (*{s}, bool)", .{function.@"return".opaque_ptr.ref})
+        else
+            try writer.print(" *{s}", .{function.@"return".opaque_ptr.ref});
         return;
     }
-    if (function.@"return" == .error_union and function.@"return".error_union.payload.* == .opaque_ptr and function.ownership == .borrowed) {
-        try writer.print(" (*{s}Ref, error)", .{function.@"return".error_union.payload.opaque_ptr.ref});
+    if (function.@"return" == .error_union and function.@"return".error_union.payload.* == .opaque_ptr and returnsBorrowedHandle(function)) {
+        const pointer = function.@"return".error_union.payload.opaque_ptr;
+        if (pointer.nullable)
+            try writer.print(" (*{s}, bool, error)", .{pointer.ref})
+        else
+            try writer.print(" (*{s}, error)", .{pointer.ref});
         return;
     }
     try writePublicReturnType(writer, function.@"return", function.return_semantic);
@@ -5981,7 +6074,7 @@ fn writeBorrowedResult(
     const node = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
     const parent = if (function.receiver) |receiver| try receiverVariableAlloc(allocator, receiver, go_names) else null;
     defer if (parent) |value| allocator.free(value);
-    try writer.print("&{s}Ref{{ptr: {s}, parent: {s}}}", .{ node.opaque_ptr.ref, expression, parent orelse "nil" });
+    try writer.print("newBorrowed{s}({s}, {s})", .{ node.opaque_ptr.ref, expression, parent orelse "nil" });
 }
 
 fn renderGoEnums(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
@@ -6800,7 +6893,7 @@ fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.SemanticFn,
 
 fn returnsBorrowedHandle(function: semantic.SemanticFn) bool {
     const node = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
-    return node == .opaque_ptr and function.ownership == .borrowed;
+    return node == .opaque_ptr and function.returnsBorrowedHandle();
 }
 
 fn hasOpaqueParameter(function: semantic.SemanticFn) bool {
@@ -7689,7 +7782,9 @@ fn typeHasDependentChildren(program: abi.Program, type_name: []const u8) bool {
 }
 
 fn programHasDependentHandles(program: abi.Program) bool {
-    for (program.functions) |function| if (function.origin.childOfReceiver()) return true;
+    for (program.functions) |function| {
+        if (function.origin.childOfReceiver() or returnsBorrowedHandle(function.origin.*)) return true;
+    }
     return false;
 }
 
@@ -7706,17 +7801,29 @@ fn programHasDependentHandles(program: abi.Program) bool {
 /// whose payload is that handle. Nothing else can construct one, so a type
 /// without either gets no Ref type at all.
 fn typeHasBorrowedRefs(program: abi.Program, type_name: []const u8) bool {
+    for (program.projections) |projection| {
+        if (projection.kind != .payload) continue;
+        const field = projection.field orelse continue;
+        const payload = field.type orelse continue;
+        if (payload == .opaque_ptr and std.mem.eql(u8, payload.opaque_ptr.ref, type_name)) return true;
+    }
+    return false;
+}
+
+fn typeCanBeBorrowed(program: abi.Program, type_name: []const u8) bool {
     for (program.functions) |function| {
         const origin = function.origin.*;
         if (!returnsBorrowedHandle(origin)) continue;
         const node = if (origin.@"return" == .error_union) origin.@"return".error_union.payload.* else origin.@"return";
         if (std.mem.eql(u8, node.opaque_ptr.ref, type_name)) return true;
     }
-    for (program.projections) |projection| {
-        if (projection.kind != .payload) continue;
-        const field = projection.field orelse continue;
-        const payload = field.type orelse continue;
-        if (payload == .opaque_ptr and std.mem.eql(u8, payload.opaque_ptr.ref, type_name)) return true;
+    return false;
+}
+
+fn typeReturnsBorrowedViews(program: abi.Program, type_name: []const u8) bool {
+    for (program.functions) |function| {
+        if (returnsBorrowedHandle(function.origin.*) and
+            std.mem.eql(u8, function.origin.receiver orelse "", type_name)) return true;
     }
     return false;
 }
