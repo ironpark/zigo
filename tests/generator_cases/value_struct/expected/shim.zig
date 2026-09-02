@@ -42,6 +42,14 @@ export fn zg_fill_all_points_impl(output_ptr: [*c]target.Point, output_len: usiz
     target.fillAllPoints(if (output_len == 0) &.{} else output_ptr[0..output_len]);
     output_written.* = output_len;
 }
+export fn zg_accept_configs_impl(values_ptr: [*c]const target.Config, values_len: usize) void {
+    target.acceptConfigs(if (values_len == 0) &.{} else values_ptr[0..values_len]);
+}
+export fn zg_fill_configs_impl(output_ptr: [*c]target.Config, output_len: usize, output_written: *usize) usize {
+    const result = target.fillConfigs(if (output_len == 0) &.{} else output_ptr[0..output_len]);
+    output_written.* = result;
+    return result;
+}
 export fn zg_points_impl(out_result_ptr: *[*c]const target.Point, out_result_len: *usize) void {
     const result = target.points();
     out_result_ptr.* = result.ptr;

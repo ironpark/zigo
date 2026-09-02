@@ -69,76 +69,86 @@ func Load() (ConfigData, int32) {
 }
 // AcceptPoints calls the generated C ABI wrapper for zg_accept_points.
 func AcceptPoints(values []PointData) {
-	var valuesValues []C.zg_point
-	if len(values) != 0 {
-		valuesValues = make([]C.zg_point, len(values))
-		for i := range values {
-			var cvalues C.zg_point
-			cvalues.x = C.int16_t(values[i].X)
-			cvalues.y = C.int16_t(values[i].Y)
-			valuesValues[i] = cvalues
-		}
-	}
 	var valuesZero C.zg_point
 	valuesPtr := &valuesZero
 	if len(values) != 0 {
-		valuesPtr = (*C.zg_point)(unsafe.Pointer(&valuesValues[0]))
+		valuesPtr = (*C.zg_point)(unsafe.Pointer(&values[0]))
 	}
 	C.zg_accept_points(valuesPtr, C.size_t(len(values)))
 }
 // FillPoints calls the generated C ABI wrapper for zg_fill_points.
 func FillPoints(output []PointData) (uint, int32) {
-	var outputValues []C.zg_point
-	if len(output) != 0 {
-		outputValues = make([]C.zg_point, len(output))
-		for i := range output {
-			var coutput C.zg_point
-			coutput.x = C.int16_t(output[i].X)
-			coutput.y = C.int16_t(output[i].Y)
-			outputValues[i] = coutput
-		}
-	}
 	var outputZero C.zg_point
 	outputPtr := &outputZero
 	if len(output) != 0 {
-		outputPtr = (*C.zg_point)(unsafe.Pointer(&outputValues[0]))
+		outputPtr = (*C.zg_point)(unsafe.Pointer(&output[0]))
 	}
 	var outputWritten C.size_t
 	var outResult C.size_t
 	code := int32(C.zg_fill_points(outputPtr, C.size_t(len(output)), &outputWritten, &outResult))
-	for i := 0; i < int(outputWritten) && i < len(output); i++ {
-		output[i] = PointData{
-			X: int16(outputValues[i].x),
-			Y: int16(outputValues[i].y),
-		}
-	}
 	return uint(outResult), code
 }
 // FillAllPoints calls the generated C ABI wrapper for zg_fill_all_points.
 func FillAllPoints(output []PointData) {
-	var outputValues []C.zg_point
-	if len(output) != 0 {
-		outputValues = make([]C.zg_point, len(output))
-		for i := range output {
-			var coutput C.zg_point
-			coutput.x = C.int16_t(output[i].X)
-			coutput.y = C.int16_t(output[i].Y)
-			outputValues[i] = coutput
-		}
-	}
 	var outputZero C.zg_point
 	outputPtr := &outputZero
 	if len(output) != 0 {
-		outputPtr = (*C.zg_point)(unsafe.Pointer(&outputValues[0]))
+		outputPtr = (*C.zg_point)(unsafe.Pointer(&output[0]))
 	}
 	var outputWritten C.size_t
 	C.zg_fill_all_points(outputPtr, C.size_t(len(output)), &outputWritten)
-	for i := 0; i < int(outputWritten) && i < len(output); i++ {
-		output[i] = PointData{
-			X: int16(outputValues[i].x),
-			Y: int16(outputValues[i].y),
+}
+// AcceptConfigs calls the generated C ABI wrapper for zg_accept_configs.
+func AcceptConfigs(values []ConfigData) {
+	var valuesValues []C.zg_config
+	if len(values) != 0 {
+		valuesValues = make([]C.zg_config, len(values))
+		for i := range values {
+			var cvalues C.zg_config
+			cvalues.enabled = C.uint8_t(values[i].Enabled)
+			cvalues.width = C.int32_t(values[i].Width)
+			cvalues.mode = C.uint8_t(values[i].Mode)
+			cvalues.ratio = C.double(values[i].Ratio)
+			var cvaluesOrigin C.zg_point
+			cvaluesOrigin.x = C.int16_t(values[i].Origin.X)
+			cvaluesOrigin.y = C.int16_t(values[i].Origin.Y)
+			cvalues.origin = cvaluesOrigin
+			valuesValues[i] = cvalues
 		}
 	}
+	var valuesZero C.zg_config
+	valuesPtr := &valuesZero
+	if len(values) != 0 {
+		valuesPtr = (*C.zg_config)(unsafe.Pointer(&valuesValues[0]))
+	}
+	C.zg_accept_configs(valuesPtr, C.size_t(len(values)))
+}
+// FillConfigs calls the generated C ABI wrapper for zg_fill_configs.
+func FillConfigs(output []ConfigData) uint {
+	var outputValues []C.zg_config
+	if len(output) != 0 {
+		outputValues = make([]C.zg_config, len(output))
+	}
+	var outputZero C.zg_config
+	outputPtr := &outputZero
+	if len(output) != 0 {
+		outputPtr = (*C.zg_config)(unsafe.Pointer(&outputValues[0]))
+	}
+	var outputWritten C.size_t
+	result := uint(C.zg_fill_configs(outputPtr, C.size_t(len(output)), &outputWritten))
+	for i := 0; i < int(outputWritten) && i < len(output); i++ {
+		output[i] = ConfigData{
+			Enabled: uint8(outputValues[i].enabled),
+			Width: int32(outputValues[i].width),
+			Mode: uint8(outputValues[i].mode),
+			Ratio: float64(outputValues[i].ratio),
+			Origin: PointData{
+				X: int16(outputValues[i].origin.x),
+				Y: int16(outputValues[i].origin.y),
+			},
+		}
+	}
+	return result
 }
 // Points calls the generated C ABI wrapper for zg_points.
 func Points() []PointData {
@@ -146,14 +156,8 @@ func Points() []PointData {
 	var outResultLen C.size_t
 	C.zg_points(&outResultPtr, &outResultLen)
 	if outResultLen == 0 { return nil }
-	cResult := unsafe.Slice((*C.zg_point)(unsafe.Pointer(outResultPtr)), int(outResultLen))
 	result := make([]PointData, int(outResultLen))
-	for i := range result {
-		result[i] = PointData{
-			X: int16(cResult[i].x),
-			Y: int16(cResult[i].y),
-		}
-	}
+	copy(result, unsafe.Slice((*PointData)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
 	return result
 }
 // PointsChecked calls the generated C ABI wrapper for zg_points_checked.
@@ -165,14 +169,8 @@ func PointsChecked() ([]PointData, int32) {
 		return nil, code
 	}
 	if outResultLen == 0 { return nil, code }
-	cResult := unsafe.Slice((*C.zg_point)(unsafe.Pointer(outResultPtr)), int(outResultLen))
 	result := make([]PointData, int(outResultLen))
-	for i := range result {
-		result[i] = PointData{
-			X: int16(cResult[i].x),
-			Y: int16(cResult[i].y),
-		}
-	}
+	copy(result, unsafe.Slice((*PointData)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
 	return result, code
 }
 

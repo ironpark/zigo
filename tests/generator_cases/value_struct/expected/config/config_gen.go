@@ -37,7 +37,10 @@ func Load() (Config, error) {
 
 // AcceptPoints invokes the bound Zig acceptPoints operation.
 func AcceptPoints(values []Point) {
-	valuesRaw := zigoPointSliceToRaw(values)
+	var valuesRaw []raw.PointData
+	if len(values) != 0 {
+		valuesRaw = unsafe.Slice((*raw.PointData)(unsafe.Pointer(&values[0])), len(values))
+	}
 	raw.AcceptPoints(valuesRaw)
 }
 
@@ -46,20 +49,38 @@ func AcceptPoints(values []Point) {
 func FillPoints(output []Point) (uint, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	outputRaw := zigoPointSliceToRaw(output)
+	var outputRaw []raw.PointData
+	if len(output) != 0 {
+		outputRaw = unsafe.Slice((*raw.PointData)(unsafe.Pointer(&output[0])), len(output))
+	}
 	result, code := raw.FillPoints(outputRaw)
 	if code != 0 {
 		return 0, errorForCode("FillPoints", code)
 	}
-	zigoPointSliceCopyFromRaw(output, outputRaw, int(result))
 	return result, nil
 }
 
 // FillAllPoints invokes the bound Zig fillAllPoints operation.
 func FillAllPoints(output []Point) {
-	outputRaw := zigoPointSliceToRaw(output)
+	var outputRaw []raw.PointData
+	if len(output) != 0 {
+		outputRaw = unsafe.Slice((*raw.PointData)(unsafe.Pointer(&output[0])), len(output))
+	}
 	raw.FillAllPoints(outputRaw)
-	zigoPointSliceCopyFromRaw(output, outputRaw, len(output))
+}
+
+// AcceptConfigs invokes the bound Zig acceptConfigs operation.
+func AcceptConfigs(values []Config) {
+	valuesRaw := zigoConfigSliceToRaw(values)
+	raw.AcceptConfigs(valuesRaw)
+}
+
+// FillConfigs invokes the bound Zig fillConfigs operation.
+func FillConfigs(output []Config) uint {
+	outputRaw := make([]raw.ConfigData, len(output))
+	result := raw.FillConfigs(outputRaw)
+	zigoConfigSliceCopyFromRaw(output, outputRaw, int(result))
+	return result
 }
 
 // Points invokes the bound Zig points operation.

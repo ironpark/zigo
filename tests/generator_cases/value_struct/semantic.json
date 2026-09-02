@@ -46,6 +46,18 @@
       "symbol": "zg_fill_all_points"
     },
     {
+      "name": "acceptConfigs",
+      "params": [{"name": "values", "type": {"const": true, "element": {"kind": "value_struct", "ref": "Config"}, "kind": "slice"}}],
+      "return": {"kind": "void"},
+      "symbol": "zg_accept_configs"
+    },
+    {
+      "name": "fillConfigs",
+      "params": [{"direction": "out", "name": "output", "type": {"const": false, "element": {"kind": "value_struct", "ref": "Config"}, "kind": "slice"}, "written": "return"}],
+      "return": {"bits": 64, "is_usize": true, "kind": "int", "signed": false},
+      "symbol": "zg_fill_configs"
+    },
+    {
       "name": "points",
       "params": [],
       "return": {"const": true, "element": {"kind": "value_struct", "ref": "Point"}, "kind": "slice"},

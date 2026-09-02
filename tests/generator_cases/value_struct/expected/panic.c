@@ -110,6 +110,29 @@ zg_fill_all_points_impl(output_ptr, output_len, output_written);
     zg_panic_active = 0;
 }
 
+void zg_accept_configs_impl(const zg_config * values_ptr, size_t values_len);
+ZIGO_EXPORT void zg_accept_configs(const zg_config * values_ptr, size_t values_len) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return;
+    }
+zg_accept_configs_impl(values_ptr, values_len);
+    zg_panic_active = 0;
+}
+
+size_t zg_fill_configs_impl(zg_config * output_ptr, size_t output_len, size_t * output_written);
+ZIGO_EXPORT size_t zg_fill_configs(zg_config * output_ptr, size_t output_len, size_t * output_written) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return 0;
+    }
+    size_t result = zg_fill_configs_impl(output_ptr, output_len, output_written);
+    zg_panic_active = 0;
+    return result;
+}
+
 void zg_points_impl(const zg_point * * out_result_ptr, size_t * out_result_len);
 ZIGO_EXPORT void zg_points(const zg_point * * out_result_ptr, size_t * out_result_len) {
     zg_panic_active = 1;

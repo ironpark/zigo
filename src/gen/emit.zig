@@ -1133,30 +1133,49 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 defer allocator.free(c_value_name);
                 const c_values_name = try std.fmt.allocPrint(allocator, "{s}Values", .{slice_name});
                 defer allocator.free(c_values_name);
-                try writer.print("\tvar {s} []C.{s}\n\tif len({s}) != 0 {{\n\t\t{s} = make([]C.{s}, len({s}))\n\t\tfor i := range {s} {{\n", .{
-                    c_values_name,
-                    record.c_name,
-                    slice_name,
-                    c_values_name,
-                    record.c_name,
-                    slice_name,
-                    slice_name,
-                });
-                const go_value_name = try std.fmt.allocPrint(allocator, "{s}[i]", .{slice_name});
-                defer allocator.free(go_value_name);
-                try writeCgoStructConversionIndented(allocator, writer, program, record, c_value_name, go_value_name, "\t\t\t");
-                try writer.print("\t\t\t{s}[i] = {s}\n\t\t}}\n\t}}\n\tvar {s}Zero C.{s}\n\t{s}Ptr := &{s}Zero\n\tif len({s}) != 0 {{\n\t\t{s}Ptr = (*C.{s})(unsafe.Pointer(&{s}[0]))\n\t}}\n", .{
-                    c_values_name,
-                    c_value_name,
-                    slice_name,
-                    record.c_name,
-                    slice_name,
-                    slice_name,
-                    slice_name,
-                    slice_name,
-                    record.c_name,
-                    c_values_name,
-                });
+                // The layout guards make the Go mirror a bit-for-bit copy of
+                // the C struct, so a castable element goes over as the address
+                // of the caller's own slice, exactly as purego passes it.
+                if (isCastableStruct(program, record)) {
+                    try writer.print("\tvar {s}Zero C.{s}\n\t{s}Ptr := &{s}Zero\n\tif len({s}) != 0 {{\n\t\t{s}Ptr = (*C.{s})(unsafe.Pointer(&{s}[0]))\n\t}}\n", .{
+                        slice_name,
+                        record.c_name,
+                        slice_name,
+                        slice_name,
+                        slice_name,
+                        slice_name,
+                        record.c_name,
+                        slice_name,
+                    });
+                } else {
+                    try writer.print("\tvar {s} []C.{s}\n\tif len({s}) != 0 {{\n\t\t{s} = make([]C.{s}, len({s}))\n", .{
+                        c_values_name,
+                        record.c_name,
+                        slice_name,
+                        c_values_name,
+                        record.c_name,
+                        slice_name,
+                    });
+                    // An output buffer is written, never read, so converting
+                    // what the caller happened to leave in it is wasted work.
+                    if (parameter.direction != .out) {
+                        try writer.print("\t\tfor i := range {s} {{\n", .{slice_name});
+                        const go_value_name = try std.fmt.allocPrint(allocator, "{s}[i]", .{slice_name});
+                        defer allocator.free(go_value_name);
+                        try writeCgoStructConversionIndented(allocator, writer, program, record, c_value_name, go_value_name, "\t\t\t");
+                        try writer.print("\t\t\t{s}[i] = {s}\n\t\t}}\n", .{ c_values_name, c_value_name });
+                    }
+                    try writer.print("\t}}\n\tvar {s}Zero C.{s}\n\t{s}Ptr := &{s}Zero\n\tif len({s}) != 0 {{\n\t\t{s}Ptr = (*C.{s})(unsafe.Pointer(&{s}[0]))\n\t}}\n", .{
+                        slice_name,
+                        record.c_name,
+                        slice_name,
+                        slice_name,
+                        slice_name,
+                        slice_name,
+                        record.c_name,
+                        c_values_name,
+                    });
+                }
                 if (parameter.direction == .out) try writer.print("\tvar {s}Written C.size_t\n", .{slice_name});
             } else if (parameter.type == .slice) {
                 const slice_name = go_names[parameter_index];
@@ -1184,15 +1203,23 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 try writer.writeByte('\n');
             }
         }
+        // A copied output slice is read back after the call, so a plain result
+        // has to be named rather than returned straight out of the call
+        // expression -- otherwise the copy would sit after the `return`.
+        const binds_raw_result = !returns_error and
+            sliceReturnElement(function.origin.*) == null and
+            function.ret_struct == null and
+            function.origin.@"return" != .void and
+            hasCopiedOutValueStructSlice(program, function.origin.*);
         try writer.writeByte('\t');
         if (returns_error) {
             try writer.writeAll("code := int32(");
         } else if (sliceReturnElement(function.origin.*) != null or function.ret_struct != null) {
             // The out parameters are converted after the C call.
         } else if (isCStringReturn(function.origin.*)) {
-            try writer.writeAll("return C.GoString(");
+            try writer.writeAll(if (binds_raw_result) "result := C.GoString(" else "return C.GoString(");
         } else if (function.origin.@"return" != .void) {
-            try writer.writeAll("return ");
+            try writer.writeAll(if (binds_raw_result) "result := " else "return ");
             try writeRawConversionPrefix(writer, program, function.origin.@"return");
         }
         try writer.print("C.{s}(", .{function.symbol});
@@ -1242,6 +1269,8 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         }
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (parameter.type != .slice or parameter.direction != .out or parameter.type.slice.element.* != .value_struct) continue;
+            // A castable element was written straight into the caller's slice.
+            if (isCastableStruct(program, structRecord(program, parameter.type.slice.element.*.value_struct.ref))) continue;
             const slice_name = go_names[parameter_index];
             const c_values_name = try std.fmt.allocPrint(allocator, "{s}Values", .{slice_name});
             defer allocator.free(c_values_name);
@@ -1254,6 +1283,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
             try writeCgoStructRead(allocator, writer, program, record, "\t\t", c_value_name);
             try writer.writeAll("\n\t}\n");
         }
+        if (binds_raw_result) try writer.writeAll("\treturn result\n");
         if (function.ret_struct) |record| {
             try writer.writeAll("\treturn ");
             try writeCgoStructRead(allocator, writer, program, record.*, "\t", "outResult");
@@ -1416,7 +1446,10 @@ fn writeCgoSliceReturn(
         try writer.print("{s}, {s})\n\treturn result{s}\n", .{ pointer_name, length_name, suffix });
         return;
     }
-    if (element == .value_struct) {
+    // A castable element shares the C layout, so the copy below is one `copy`
+    // of the whole run rather than a per-field read. The contract is unchanged:
+    // the result is still a fresh Go allocation, never a view of native memory.
+    if (element == .value_struct and !isCastableStruct(program, structRecord(program, element.value_struct.ref))) {
         const record = structRecord(program, element.value_struct.ref);
         try writer.print("\tif {s} == 0 {{ return nil{s} }}\n\tcResult := unsafe.Slice((*C.{s})(unsafe.Pointer({s})), int({s}))\n\tresult := make([]", .{ length_name, suffix, record.c_name, pointer_name, length_name });
         try writeRawGoType(writer, program, element);
@@ -1468,7 +1501,10 @@ fn writeCgoSliceCopyInto(
     length_name: []const u8,
     indent: []const u8,
 ) !void {
-    if (element == .value_struct) {
+    // A castable element shares the C layout, so the copy below is one `copy`
+    // of the whole run rather than a per-field read. The contract is unchanged:
+    // the result is still a fresh Go allocation, never a view of native memory.
+    if (element == .value_struct and !isCastableStruct(program, structRecord(program, element.value_struct.ref))) {
         const record = structRecord(program, element.value_struct.ref);
         try writer.print("{s}cResult := unsafe.Slice((*C.{s})(unsafe.Pointer({s})), int({s}))\n{s}result = make([]", .{ indent, record.c_name, pointer_name, length_name, indent });
         try writeRawGoType(writer, program, element);
@@ -2454,6 +2490,17 @@ fn isValueStructSlice(node: semantic.TypeNode) bool {
     return node == .slice and node.slice.element.* == .value_struct;
 }
 
+/// An `.out` value-struct slice the raw layer still reads back element by
+/// element. A castable element is written into the caller's slice directly, so
+/// it needs no read-back and no named result to sequence one after.
+fn hasCopiedOutValueStructSlice(program: abi.Program, function: semantic.SemanticFn) bool {
+    for (function.params) |parameter| {
+        if (parameter.direction != .out or !isValueStructSlice(parameter.type)) continue;
+        if (!isCastableStruct(program, structRecord(program, parameter.type.slice.element.*.value_struct.ref))) return true;
+    }
+    return false;
+}
+
 fn hasOutValueStructSlice(function: semantic.SemanticFn) bool {
     for (function.params) |parameter| {
         if (parameter.direction == .out and isValueStructSlice(parameter.type)) return true;
@@ -2461,16 +2508,52 @@ fn hasOutValueStructSlice(function: semantic.SemanticFn) bool {
     return false;
 }
 
+/// Hands the raw layer the `[]TData` it expects. A castable element makes that
+/// a reinterpretation of the caller's own slice, so the call reads and writes
+/// the caller's memory directly and neither direction copies. An `.out`
+/// parameter of a copied element still allocates, but skips the entry
+/// conversion: nothing in the buffer is read.
+fn writePublicSliceRawSetup(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    options: Options,
+    parameter: semantic.Parameter,
+    name: []const u8,
+) !void {
+    const element = parameter.type.slice.element.*.value_struct.ref;
+    const record = structRecord(program, element);
+    const raw_type = try structRawTypeNameAlloc(allocator, record.name);
+    defer allocator.free(raw_type);
+    if (isCastableStruct(program, record)) {
+        try writer.print("\tvar {s}Raw []", .{name});
+        try writeRawTypeReferencePrefix(writer, options);
+        try writer.print("{s}\n\tif len({s}) != 0 {{\n\t\t{s}Raw = unsafe.Slice((*", .{ raw_type, name, name });
+        try writeRawTypeReferencePrefix(writer, options);
+        try writer.print("{s})(unsafe.Pointer(&{s}[0])), len({s}))\n\t}}\n", .{ raw_type, name, name });
+        return;
+    }
+    if (parameter.direction == .out) {
+        try writer.print("\t{s}Raw := make([]", .{name});
+        try writeRawTypeReferencePrefix(writer, options);
+        try writer.print("{s}, len({s}))\n", .{ raw_type, name });
+        return;
+    }
+    try writer.print("\t{s}Raw := zigo{s}SliceToRaw({s})\n", .{ name, element, name });
+}
+
 /// The public layer copies back exactly as many elements as the shim reported
 /// written, which is why both read the same `.written` hint rather than each
 /// guessing from the return type.
 fn writePublicValueStructSliceCopyBacks(
     writer: *std.Io.Writer,
+    program: abi.Program,
     function: semantic.SemanticFn,
     go_names: [][]u8,
 ) !void {
     for (function.params, 0..) |parameter, parameter_index| {
         if (parameter.direction != .out or !isValueStructSlice(parameter.type)) continue;
+        if (isCastableStruct(program, structRecord(program, parameter.type.slice.element.*.value_struct.ref))) continue;
         const name = go_names[parameter_index];
         try writer.print("\tzigo{s}SliceCopyFromRaw({s}, {s}Raw, ", .{ parameter.type.slice.element.*.value_struct.ref, name, name });
         switch (parameter.writtenHint()) {
@@ -2600,7 +2683,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         try renderCallbackHandleSetup(allocator, writer, program, function);
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (!isValueStructSlice(parameter.type)) continue;
-            try writer.print("\t{s}Raw := zigo{s}SliceToRaw({s})\n", .{ go_names[parameter_index], parameter.type.slice.element.*.value_struct.ref, go_names[parameter_index] });
+            try writePublicSliceRawSetup(allocator, writer, program, options, parameter, go_names[parameter_index]);
         }
         try writer.writeByte('\t');
         const returns_error = function.origin.@"return" == .error_union;
@@ -2699,7 +2782,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         try writer.writeByte('\n');
         if (needs_rethrow) try renderCallbackRethrows(allocator, writer, program, function.origin.*, operation);
         if (!returns_error and hasOutValueStructSlice(function.origin.*)) {
-            try writePublicValueStructSliceCopyBacks(writer, function.origin.*, go_names);
+            try writePublicValueStructSliceCopyBacks(writer, program, function.origin.*, go_names);
         }
         if (captures_return) try writePublicCapturedReturn(writer, function.origin.*, needs_handle_check);
         if (borrowed_direct or owned_direct) {
@@ -2725,7 +2808,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             try writeErrorForCode(allocator, writer, function.origin.*, go_names, operation);
             try writer.writeAll("\t}\n");
             if (hasOutValueStructSlice(function.origin.*)) {
-                try writePublicValueStructSliceCopyBacks(writer, function.origin.*, go_names);
+                try writePublicValueStructSliceCopyBacks(writer, program, function.origin.*, go_names);
             }
             if (error_payload == .void) {
                 try writer.writeAll("\treturn nil\n");
@@ -5511,4 +5594,84 @@ test "a doc that opens with the declaration's own name is not repeated" {
         try writeGoDoc(&rendered.writer, case.go_name, case.zig_name, case.doc);
         try std.testing.expectEqualStrings(case.expected, rendered.written());
     }
+}
+
+test "a scalar-only struct slice crosses as a cast while a bool-bearing one is copied" {
+    var point: semantic.TypeNode = .{ .value_struct = .{ .ref = "Point" } };
+    var flagged: semantic.TypeNode = .{ .value_struct = .{ .ref = "Flagged" } };
+    const count: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
+    const document: semantic.Semantic = .{
+        .package = "shapes",
+        .prefix = "zg",
+        .functions = &.{
+            .{
+                .name = "fillPoints",
+                .params = &.{.{
+                    .direction = .out,
+                    .name = "output",
+                    .type = .{ .slice = .{ .@"const" = false, .element = &point } },
+                    .written = .@"return",
+                }},
+                .@"return" = count,
+                .symbol = "zg_fill_points",
+            },
+            .{
+                .name = "fillFlagged",
+                .params = &.{.{
+                    .direction = .out,
+                    .name = "output",
+                    .type = .{ .slice = .{ .@"const" = false, .element = &flagged } },
+                    .written = .@"return",
+                }},
+                .@"return" = count,
+                .symbol = "zg_fill_flagged",
+            },
+        },
+        .types = &.{
+            .{
+                .fields = &.{
+                    .{ .name = "x", .type = .{ .int = .{ .bits = 16, .signed = true } } },
+                    .{ .name = "y", .type = .{ .int = .{ .bits = 16, .signed = true } } },
+                },
+                .kind = .value_struct,
+                .layout = .@"extern",
+                .name = "Point",
+            },
+            .{
+                .fields = &.{
+                    .{ .name = "ready", .type = .{ .bool = {} } },
+                    .{ .name = "count", .type = .{ .int = .{ .bits = 32, .signed = true } } },
+                },
+                .kind = .value_struct,
+                .layout = .@"extern",
+                .name = "Flagged",
+            },
+        },
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try @import("lower.zig").semanticDocument(arena.allocator(), document, "shapes", "zg", &.{});
+
+    const raw = try renderForTest(renderRaw, program);
+    defer std.testing.allocator.free(raw);
+    // The scalar-only element points the C call at the caller's own slice and
+    // has nothing to read back afterwards.
+    try std.testing.expect(std.mem.indexOf(u8, raw, "outputPtr = (*C.zg_point)(unsafe.Pointer(&output[0]))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "outputValues[i].x") == null);
+    // The bool-bearing element keeps its buffer, but an output parameter is
+    // never converted on the way in.
+    try std.testing.expect(std.mem.indexOf(u8, raw, "outputValues = make([]C.zg_flagged, len(output))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "coutput.ready = ") == null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "for i := 0; i < int(outputWritten) && i < len(output); i++ {") != null);
+
+    const public = try renderForTest(renderPublic, program);
+    defer std.testing.allocator.free(public);
+    // Neither direction copies for the castable element; the copied one only
+    // takes back as many elements as the shim reported written.
+    try std.testing.expect(std.mem.indexOf(u8, public, "outputRaw = unsafe.Slice((*raw.PointData)(unsafe.Pointer(&output[0])), len(output))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public, "zigoPointSliceToRaw(output)") == null);
+    try std.testing.expect(std.mem.indexOf(u8, public, "zigoPointSliceCopyFromRaw(") == null);
+    try std.testing.expect(std.mem.indexOf(u8, public, "outputRaw := make([]raw.FlaggedData, len(output))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public, "zigoFlaggedSliceCopyFromRaw(output, outputRaw, int(result))") != null);
 }

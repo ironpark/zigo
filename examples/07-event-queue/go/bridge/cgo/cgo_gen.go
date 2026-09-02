@@ -307,16 +307,6 @@ func EventQueueEstimate(self unsafe.Pointer, output []StatsData) (uint, int32) {
 	var outputValues []C.zg_stats
 	if len(output) != 0 {
 		outputValues = make([]C.zg_stats, len(output))
-		for i := range output {
-			var coutput C.zg_stats
-			coutput.len = C.uint32_t(output[i].Len)
-			coutput.capacity = C.uint32_t(output[i].Capacity)
-			coutput.dropped = C.uint32_t(output[i].Dropped)
-			coutput.processed = C.uint32_t(output[i].Processed)
-			coutput.policy = C.uint32_t(output[i].Policy)
-			coutput.saturated = C.uint8_t(output[i].Saturated)
-			outputValues[i] = coutput
-		}
 	}
 	var outputZero C.zg_stats
 	outputPtr := &outputZero

@@ -301,7 +301,7 @@ func (e *EventQueue) Estimate(output []Stats) (uint, error) {
 		return 0, err
 	}
 	defer e.zigoRelease()
-	outputRaw := zigoStatsSliceToRaw(output)
+	outputRaw := make([]raw.StatsData, len(output))
 	result, code := raw.EventQueueEstimate(ptr, outputRaw)
 	for _, handle := range e.callbackHandles {
 		zigoRethrowCallbackPanic("EventQueue.Estimate", handle)
