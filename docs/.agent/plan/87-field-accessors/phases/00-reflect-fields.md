@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-02T22:37:49Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: A registration with `.fields` produces semantic.json entries for each accessor; bad paths and types produce the diagnostic; `zig build test` green.
 > NEXT: none

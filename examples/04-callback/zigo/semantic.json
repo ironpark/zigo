@@ -18,6 +18,52 @@
   ],
   "functions": [
     {
+      "field_access": {
+        "path": "stats.runs",
+        "setter": false
+      },
+      "doc": "RunCount reports how many callbacks have run.",
+      "name": "runCount",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "CallbackContext",
+      "return": {
+        "bits": 32,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "symbol": "zg_callback_context_run_count"
+    },
+    {
+      "field_access": {
+        "path": "stats.runs",
+        "setter": true
+      },
+      "doc": "RunCount reports how many callbacks have run.",
+      "name": "setRunCount",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "v",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "receiver": "CallbackContext",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_callback_context_set_run_count"
+    },
+    {
       "name": "create",
       "namespace": "FloatBuffer",
       "ownership": "caller",
@@ -205,7 +251,7 @@
           "name_source": "sidecar",
           "retention": "retained",
           "source": {
-            "line": 49,
+            "line": 52,
             "column": 19
           },
           "type": {
@@ -241,7 +287,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 49,
+            "line": 52,
             "column": 39
           },
           "type": {
@@ -266,7 +312,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 49,
+        "line": 52,
         "column": 12
       },
       "symbol": "zg_callback_context_create"
@@ -281,7 +327,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 55,
+            "line": 58,
             "column": 40
           },
           "type": {
@@ -301,7 +347,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 55,
+        "line": 58,
         "column": 12
       },
       "symbol": "zg_callback_context_run"
@@ -316,7 +362,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 59,
+        "line": 63,
         "column": 12
       },
       "symbol": "zg_callback_context_deinit"
@@ -336,7 +382,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 64,
+        "line": 68,
         "column": 8
       },
       "symbol": "zg_panic_now"
@@ -351,7 +397,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 70,
+            "line": 74,
             "column": 25
           },
           "type": {
@@ -370,7 +416,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 70,
+        "line": 74,
         "column": 8
       },
       "symbol": "zg_compression_bound"

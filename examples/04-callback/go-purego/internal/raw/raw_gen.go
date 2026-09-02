@@ -50,22 +50,24 @@ func (err *LibraryError) Is(target error) bool { return target == ErrLibraryLoad
 func (err *LibraryError) Unwrap() error { return err.Cause }
 
 type nativeBindings struct {
-	lastError               func() unsafe.Pointer
-	fnFloatBufferCreate     func(*unsafe.Pointer) int32
-	fnFloatBufferPush       func(unsafe.Pointer, float32) int32
-	fnFloatBufferLen        func(unsafe.Pointer, *uintptr) int32
-	fnFloatBufferDeinit     func(unsafe.Pointer) int32
-	fnIntBufferCreate       func(*unsafe.Pointer) int32
-	fnIntBufferPush         func(unsafe.Pointer, int32) int32
-	fnIntBufferLen          func(unsafe.Pointer, *uintptr) int32
-	fnIntBufferDeinit       func(unsafe.Pointer) int32
-	fnCallbackContextCreate func(uintptr, uintptr, *unsafe.Pointer) int32
-	fnCallbackContextRun    func(unsafe.Pointer, int32, *int32) int32
-	fnCallbackContextDeinit func(unsafe.Pointer) int32
-	fnPanicNow              func() int32
-	fnCompressionBound      func(uintptr) uintptr
-	fnApply                 func(int32, uintptr, uintptr) int32
-	fnNotify                func(int32, uintptr, uintptr)
+	lastError                    func() unsafe.Pointer
+	fnCallbackContextRunCount    func(unsafe.Pointer, *uint32) int32
+	fnCallbackContextSetRunCount func(unsafe.Pointer, uint32) int32
+	fnFloatBufferCreate          func(*unsafe.Pointer) int32
+	fnFloatBufferPush            func(unsafe.Pointer, float32) int32
+	fnFloatBufferLen             func(unsafe.Pointer, *uintptr) int32
+	fnFloatBufferDeinit          func(unsafe.Pointer) int32
+	fnIntBufferCreate            func(*unsafe.Pointer) int32
+	fnIntBufferPush              func(unsafe.Pointer, int32) int32
+	fnIntBufferLen               func(unsafe.Pointer, *uintptr) int32
+	fnIntBufferDeinit            func(unsafe.Pointer) int32
+	fnCallbackContextCreate      func(uintptr, uintptr, *unsafe.Pointer) int32
+	fnCallbackContextRun         func(unsafe.Pointer, int32, *int32) int32
+	fnCallbackContextDeinit      func(unsafe.Pointer) int32
+	fnPanicNow                   func() int32
+	fnCompressionBound           func(uintptr) uintptr
+	fnApply                      func(int32, uintptr, uintptr) int32
+	fnNotify                     func(int32, uintptr, uintptr)
 }
 
 type callbackEntry struct {
@@ -348,6 +350,14 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_last_error_message", err)
 	}
+	addrCallbackContextRunCount, err := resolveSymbol(handle, "zg_callback_context_run_count")
+	if err != nil {
+		return fail("zg_callback_context_run_count", err)
+	}
+	addrCallbackContextSetRunCount, err := resolveSymbol(handle, "zg_callback_context_set_run_count")
+	if err != nil {
+		return fail("zg_callback_context_set_run_count", err)
+	}
 	addrFloatBufferCreate, err := resolveSymbol(handle, "zg_float_buffer_create")
 	if err != nil {
 		return fail("zg_float_buffer_create", err)
@@ -410,6 +420,8 @@ func loadCandidate(path string) error {
 	}
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
+	purego.RegisterFunc(&next.fnCallbackContextRunCount, addrCallbackContextRunCount)
+	purego.RegisterFunc(&next.fnCallbackContextSetRunCount, addrCallbackContextSetRunCount)
 	purego.RegisterFunc(&next.fnFloatBufferCreate, addrFloatBufferCreate)
 	purego.RegisterFunc(&next.fnFloatBufferPush, addrFloatBufferPush)
 	purego.RegisterFunc(&next.fnFloatBufferLen, addrFloatBufferLen)
@@ -448,6 +460,19 @@ func LastErrorMessage() string {
 		length++
 	}
 	return string(unsafe.Slice((*byte)(p), length))
+}
+
+// CallbackContextRunCount calls the generated purego ABI wrapper for zg_callback_context_run_count.
+func CallbackContextRunCount(self unsafe.Pointer) (uint32, int32) {
+	var outResult uint32
+	code := bindings().fnCallbackContextRunCount(self, &outResult)
+	return outResult, code
+}
+
+// CallbackContextSetRunCount calls the generated purego ABI wrapper for zg_callback_context_set_run_count.
+func CallbackContextSetRunCount(self unsafe.Pointer, v uint32) int32 {
+	code := bindings().fnCallbackContextSetRunCount(self, v)
+	return code
 }
 
 // FloatBufferCreate calls the generated purego ABI wrapper for zg_float_buffer_create.

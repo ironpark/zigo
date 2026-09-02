@@ -43,8 +43,11 @@ pub fn notify(value: i32, callback: VoidObserver, userdata: usize) void {
 }
 
 pub const CallbackContext = struct {
+    const Stats = struct { runs: u32 = 0 };
+
     callback: Observer,
     userdata: usize,
+    stats: Stats = .{},
 
     pub fn create(callback: Observer, userdata: usize) CreateError!*CallbackContext {
         const value = std.heap.page_allocator.create(CallbackContext) catch return error.OutOfMemory;
@@ -53,6 +56,7 @@ pub const CallbackContext = struct {
     }
 
     pub fn run(self: *CallbackContext, value: i32) i32 {
+        self.stats.runs += 1;
         return self.callback(value, self.userdata);
     }
 

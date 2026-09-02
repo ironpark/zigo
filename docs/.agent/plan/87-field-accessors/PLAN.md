@@ -7,7 +7,7 @@ registered_at: "2026-09-02T22:15:54Z"
 
 # Phases
 
-- [ ] [Phase 00: Reflect and validate fields](phases/00-reflect-fields.md)
+- [x] [Phase 00: Reflect and validate fields](phases/00-reflect-fields.md)
 - [ ] [Phase 01: Emit accessors on both backends](phases/01-emit-accessors.md)
 
 # Shared Verification

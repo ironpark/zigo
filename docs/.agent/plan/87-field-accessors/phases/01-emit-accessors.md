@@ -2,7 +2,7 @@
 depends_on:
 - "87-field-accessors#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Example Go tests pass on cgo and purego; full verification loop green.
 > NEXT: none

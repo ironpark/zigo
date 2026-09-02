@@ -32,10 +32,11 @@ pub fn semanticDocumentForBackend(
         if (function.receiver) |receiver| {
             const child = try allocator.create(abi.AbiScalar);
             child.* = .{ .@"opaque" = try lowerOpaque(allocator, prefix, receiver) };
+            const receiver_const = if (function.field_access) |access| !access.setter else false;
             try params.append(allocator, .{
                 .name = "self",
                 .role = .receiver,
-                .scalar = .{ .pointer = .{ .child = child, .is_const = false } },
+                .scalar = .{ .pointer = .{ .child = child, .is_const = receiver_const } },
             });
         }
         for (function.params, 0..) |parameter, parameter_index| {

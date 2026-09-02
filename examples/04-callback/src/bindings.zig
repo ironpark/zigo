@@ -4,7 +4,9 @@ const library = @import("callback");
 pub const bindings = zigo.define(.{
     .root = library,
     .types = .{
-        .{ .type = library.CallbackContext, .repr = .@"opaque" },
+        .{ .type = library.CallbackContext, .repr = .@"opaque", .fields = .{
+            .{ .path = "stats.runs", .name = "runCount", .set = true, .doc = "RunCount reports how many callbacks have run." },
+        } },
         .{ .name = "FloatBuffer", .type = library.FloatBuffer, .repr = .@"opaque" },
         .{ .name = "IntBuffer", .type = library.IntBuffer, .repr = .@"opaque" },
         // One Go type for every parameter of this signature, named after the

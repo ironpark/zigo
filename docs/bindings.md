@@ -352,6 +352,35 @@ generic 타입은 구체화한 타입에 고유 이름을 붙여 등록합니다
 
 generic 함수는 구체화 전에는 signature가 없으므로 직접 노출할 수 없습니다.
 
+### 필드 접근자
+
+`.repr = .@"opaque"`로 등록한 struct에는 `.fields`를 붙여 Zig 함수를 따로 작성하지 않고
+Go 메서드를 만들 수 있습니다.
+
+```zig
+.types = .{
+    .{ .type = mylib.Terminal, .repr = .@"opaque", .fields = .{
+        .{ .path = "cols" },
+        .{ .path = "screen.cursor.x", .name = "cursorX" },
+        .{ .path = "screen.cursor.style", .name = "cursorStyle", .set = true,
+           .doc = "CursorStyle reports the current cursor style." },
+    } },
+    .{ .type = mylib.CursorStyle, .repr = .enumeration },
+},
+```
+
+각 항목은 getter를 만들고, `.set = true`이면 같은 타입을 받는 setter도 만듭니다. 마지막
+segment가 기본 이름이므로 위 선언은 `Cols()`, `CursorX()`, `CursorStyle()`,
+`SetCursorStyle(v)`가 됩니다. `.name`은 getter stem을 바꾸며 setter에는 `Set`이 붙습니다.
+생성된 Go 문서에는 원래 Zig 필드 경로가 항상 남고, `.doc`이 있으면 그 설명도 함께 씁니다.
+
+경로의 각 중간 segment는 struct 값이거나 non-optional single pointer가 가리키는 struct여야
+합니다. 마지막 필드는 bool, 정수, 실수 또는 `.enumeration`으로 등록한 enum만 지원합니다.
+알 수 없는 경로, optional·slice·union 같은 중간 값, 지원하지 않는 leaf 타입은 `ZIGO037`로
+거부합니다. getter/setter는 reflection에서 일반 메서드로 합성되므로 cgo와 purego에 같은 Go
+API를 만들고 `abi-check` 및 `abi-diff`에도 일반 함수처럼 나타납니다. 접근자를 추가하는 것은
+compatible append이며, 함수와 이름이 겹치면 기존 `ZIGO024`/`ZIGO036` 진단을 사용합니다.
+
 ### Allocator와 Io 주입
 
 `std.mem.Allocator`와 `std.Io`는 C로 표현할 수 없습니다. 바인딩이 값을 한 번 정하면

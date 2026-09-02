@@ -1,0 +1,5 @@
+{
+  "package": "fieldaccess",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/fieldaccess"
+}

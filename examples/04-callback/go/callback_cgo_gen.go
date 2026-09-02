@@ -125,6 +125,19 @@ func zg_notify_go_callback_callback(p0 C.int32_t, p1 C.size_t) {
 	callback(int32(p0))
 }
 
+// zigoRawCallbackContextRunCount calls the generated C ABI wrapper for zg_callback_context_run_count.
+func zigoRawCallbackContextRunCount(self unsafe.Pointer) (uint32, int32) {
+	var outResult C.uint32_t
+	code := int32(C.zg_callback_context_run_count((*C.zg_callback_context)(self), &outResult))
+	return uint32(outResult), code
+}
+
+// zigoRawCallbackContextSetRunCount calls the generated C ABI wrapper for zg_callback_context_set_run_count.
+func zigoRawCallbackContextSetRunCount(self unsafe.Pointer, v uint32) int32 {
+	code := int32(C.zg_callback_context_set_run_count((*C.zg_callback_context)(self), C.uint32_t(v)))
+	return code
+}
+
 // zigoRawFloatBufferCreate calls the generated C ABI wrapper for zg_float_buffer_create.
 func zigoRawFloatBufferCreate() (unsafe.Pointer, int32) {
 	var outResult *C.zg_float_buffer

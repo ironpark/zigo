@@ -333,6 +333,11 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         try writeNarrowIntegerGuards(writer, function);
         try writer.writeAll("    ");
 
+        if (function.origin.field_access) |field_access| {
+            try writeFieldAccess(writer, function, field_access);
+            continue;
+        }
+
         if (function.origin.boxed == .create) {
             try writeBoxedConstructor(allocator, writer, program, function);
             continue;
@@ -444,6 +449,46 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
     try renderTaggedUnionShim(writer, program);
     try renderTaggedUnionSnapshotShim(writer, program);
     try renderValueStructShim(writer, program);
+}
+
+fn writeFieldAccess(writer: *std.Io.Writer, function: abi.AbiFn, access: semantic.FieldAccess) !void {
+    const checked = function.origin.@"return" == .error_union;
+    if (access.setter) {
+        const field_type = function.origin.params[0].type;
+        try writer.print("self.{s} = ", .{access.path});
+        switch (field_type) {
+            .bool => try writer.writeAll("v != 0"),
+            .@"enum" => try writer.writeAll("@enumFromInt(v)"),
+            else => try writer.writeAll("v"),
+        }
+        if (checked)
+            try writer.writeAll(";\n    return 0;\n}\n")
+        else
+            try writer.writeAll(";\n}\n");
+        return;
+    }
+
+    const field_type = if (checked)
+        function.origin.@"return".error_union.payload.*
+    else
+        function.origin.@"return";
+    if (checked)
+        try writer.writeAll("out_result.* = ")
+    else
+        try writer.writeAll("return ");
+    switch (field_type) {
+        .bool => try writer.print("@intFromBool(self.{s})", .{access.path}),
+        .@"enum" => try writer.print("@intFromEnum(self.{s})", .{access.path}),
+        .int => if (abi.narrowInt(field_type) != null)
+            try writer.print("@intCast(self.{s})", .{access.path})
+        else
+            try writer.print("self.{s}", .{access.path}),
+        else => try writer.print("self.{s}", .{access.path}),
+    }
+    if (checked)
+        try writer.writeAll(";\n    return 0;\n}\n")
+    else
+        try writer.writeAll(";\n}\n");
 }
 
 /// `extern` already fixes the layout on both sides, so the shim asserts rather
@@ -6927,7 +6972,25 @@ fn withoutLeadingName(line: []const u8, go_name: []const u8, zig_name: []const u
 }
 
 fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.SemanticFn, go_name: []const u8, owned_type: ?[]const u8, reaches_callbacks: bool, reaches_callback_errors: bool) !void {
-    if (function.stream_accessor) |accessor| {
+    if (function.field_access) |field_access| {
+        if (function.doc) |doc| {
+            if (field_access.setter) {
+                try writer.print("\n// {s} sets the Zig field {s}.{s}.\n", .{ go_name, function.receiver.?, field_access.path });
+                var lines = std.mem.splitScalar(u8, doc, '\n');
+                while (lines.next()) |line| try writeCommentLine(writer, line);
+            } else {
+                try writeGoDoc(writer, go_name, function.name, doc);
+                try writer.print("// Zig field: {s}.{s}.\n", .{ function.receiver.?, field_access.path });
+            }
+        } else {
+            try writer.print("\n// {s} {s} the Zig field {s}.{s}.\n", .{
+                go_name,
+                if (field_access.setter) "sets" else "returns",
+                function.receiver.?,
+                field_access.path,
+            });
+        }
+    } else if (function.stream_accessor) |accessor| {
         // "calls the Zig function Sink.write" would name something that does
         // not exist: the Zig side has a `writer()`, and this is one of the
         // operations the binding built on top of it.

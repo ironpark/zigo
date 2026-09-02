@@ -488,6 +488,30 @@ test "parameter type changes are breaking and functions are added" {
     try std.testing.expectEqual(ChangeKind.added, report.changes.items[1].kind);
 }
 
+test "adding a field accessor is a compatible function append" {
+    const accessor: semantic.SemanticFn = .{
+        .field_access = .{ .path = "screen.cursor.x" },
+        .name = "cursorX",
+        .params = &.{},
+        .receiver = "Terminal",
+        .@"return" = .{ .int = .{ .bits = 16, .signed = false } },
+        .symbol = "zg_terminal_cursor_x",
+    };
+    const base: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0" };
+    const current: semantic.Semantic = .{
+        .functions = &.{accessor},
+        .package = "demo",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    var report = try diff(std.testing.allocator, base, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expect(!report.hasBreaking());
+    try std.testing.expectEqual(@as(usize, 1), report.changes.items.len);
+    try std.testing.expectEqual(ChangeKind.added, report.changes.items[0].kind);
+    try std.testing.expectEqualStrings("function added", report.changes.items[0].detail);
+}
+
 test "a nested namespace reports its dotted identity and keeps a narrow width breaking" {
     const old: semantic.Semantic = .{ .package = "text", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{.{
         .name = "breaks",

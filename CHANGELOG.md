@@ -4,6 +4,15 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Added
+
+- opaque 타입 등록의 `.fields` 메타데이터로 bool·정수·실수·등록 enum 필드의 getter와 선택적
+  setter를 생성합니다. dotted path는 struct 값과 non-optional single pointer를 통과할 수
+  있으며 cgo와 purego, ABI 검사에 동일하게 반영됩니다. 잘못된 경로와 지원하지 않는 타입은
+  `ZIGO037`로 진단합니다.
+
 ## [0.6.3] - 2026-09-03
 
 ### Added

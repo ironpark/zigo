@@ -22,6 +22,64 @@ func LibraryLoaded() bool { return raw.LibraryLoaded() }
 // LoadLibrary falls back to it when no explicit path and no ZIGO_LIBRARY_PATH are set.
 var DefaultLibraryName = raw.DefaultLibraryName
 
+// RunCount reports how many callbacks have run.
+// Zig field: CallbackContext.stats.runs.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+// An error a Go callback returned is returned as *CallbackError once the native call returns.
+func (c *CallbackContext) RunCount() (uint32, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("CallbackContext.RunCount receiver", c)
+	if err != nil {
+		return 0, err
+	}
+	defer c.zigoRelease()
+	result, code := raw.CallbackContextRunCount(ptr)
+	for slot := range 1 {
+		zigoRethrowCallbackPanic("CallbackContext.RunCount", c.zigoCallbackHandle(slot))
+	}
+	for slot := range 1 {
+		if err := zigoCallbackError("CallbackContext.RunCount", "callback", c.zigoCallbackHandle(slot)); err != nil {
+			return 0, err
+		}
+	}
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(errorForCode("CallbackContext.RunCount", code), c)
+	}
+	return result, nil
+}
+
+// SetRunCount sets the Zig field CallbackContext.stats.runs.
+// RunCount reports how many callbacks have run.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+// An error a Go callback returned is returned as *CallbackError once the native call returns.
+func (c *CallbackContext) SetRunCount(v uint32) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("CallbackContext.SetRunCount receiver", c)
+	if err != nil {
+		return err
+	}
+	defer c.zigoRelease()
+	code := raw.CallbackContextSetRunCount(ptr, v)
+	for slot := range 1 {
+		zigoRethrowCallbackPanic("CallbackContext.SetRunCount", c.zigoCallbackHandle(slot))
+	}
+	for slot := range 1 {
+		if err := zigoCallbackError("CallbackContext.SetRunCount", "callback", c.zigoCallbackHandle(slot)); err != nil {
+			return err
+		}
+	}
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("CallbackContext.SetRunCount", code), c)
+	}
+	return nil
+}
+
 // NewFloatBuffer creates a caller-owned FloatBuffer.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.

@@ -138,6 +138,7 @@ pub fn reflect(
         // the declarations rather than against their spelling.
         if (findPairing(pairings.items, .constructs, type_name) != null) continue;
         for (functions.items, 0..) |destructor, destructor_index| {
+            if (destructor.field_access != null) continue;
             if (destructor.receiver == null or !std.mem.eql(u8, destructor.receiver.?, type_name)) continue;
             if (!isDestructorName(destructor.name)) continue;
             try pair(allocator, &constructors, functions.items, index, destructor_index, type_name);
@@ -174,12 +175,12 @@ fn appendFieldAccessors(
         @compileError("zigo field entries require `.path`");
     const path = metadata.path;
     const resolved = comptime fieldPathType(Owner, path);
-    if (resolved == null) return fieldAccessIssue(allocator, path, null);
+    if (resolved == null) return fieldAccessIssue(allocator, path, comptime fieldPathOffendingType(Owner, path));
     const Leaf = resolved.?;
     if (!comptime supportedFieldLeaf(declaration, Leaf))
         return fieldAccessIssue(allocator, path, Leaf);
     if (@hasField(@TypeOf(metadata), "set") and metadata.set and !comptime fieldPathWritable(Owner, path))
-        return fieldAccessIssue(allocator, path, null);
+        return fieldAccessIssue(allocator, path, comptime fieldPathConstPointerType(Owner, path));
 
     const name = if (@hasField(@TypeOf(metadata), "name")) metadata.name else fieldPathMember(path);
     const field_type = try typeNode(
@@ -245,6 +246,35 @@ fn fieldPathType(comptime Current: type, comptime path: []const u8) ?type {
     return Field;
 }
 
+fn fieldPathOffendingType(comptime Current: type, comptime path: []const u8) ?type {
+    const Container = switch (@typeInfo(Current)) {
+        .pointer => |pointer| if (pointer.size == .one and @typeInfo(pointer.child) == .@"struct") pointer.child else return Current,
+        .@"struct" => Current,
+        else => return Current,
+    };
+    const dot = std.mem.indexOfScalar(u8, path, '.');
+    const segment = if (dot) |index| path[0..index] else path;
+    if (segment.len == 0 or !@hasField(Container, segment)) return null;
+    if (dot) |index| return fieldPathOffendingType(@FieldType(Container, segment), path[index + 1 ..]);
+    return null;
+}
+
+fn fieldPathConstPointerType(comptime Current: type, comptime path: []const u8) ?type {
+    const Container = switch (@typeInfo(Current)) {
+        .pointer => |pointer| if (pointer.size == .one and @typeInfo(pointer.child) == .@"struct") blk: {
+            if (pointer.is_const) return Current;
+            break :blk pointer.child;
+        } else return Current,
+        .@"struct" => Current,
+        else => return Current,
+    };
+    const dot = std.mem.indexOfScalar(u8, path, '.');
+    const segment = if (dot) |index| path[0..index] else path;
+    if (segment.len == 0 or !@hasField(Container, segment)) return null;
+    if (dot) |index| return fieldPathConstPointerType(@FieldType(Container, segment), path[index + 1 ..]);
+    return null;
+}
+
 fn fieldPathWritable(comptime Current: type, comptime path: []const u8) bool {
     const Container = switch (@typeInfo(Current)) {
         .pointer => |pointer| if (pointer.size == .one and !pointer.is_const and @typeInfo(pointer.child) == .@"struct") pointer.child else return false,
@@ -275,7 +305,7 @@ fn fieldAccessIssue(allocator: std.mem.Allocator, comptime path: []const u8, com
 
 fn fieldAccessMessageAlloc(allocator: std.mem.Allocator, comptime path: []const u8, comptime T: ?type) ![]u8 {
     const detail = if (T) |Field|
-        comptime " resolves to unsupported type `" ++ @typeName(Field) ++ "`"
+        comptime " encounters unsupported type `" ++ @typeName(Field) ++ "`"
     else
         " is unknown or crosses something other than a plain struct or non-optional single pointer";
     return std.fmt.allocPrint(
@@ -2693,7 +2723,7 @@ test "invalid opaque field paths and leaf types use ZIGO037" {
     const unsupported = try fieldAccessMessageAlloc(std.testing.allocator, "label", []const u8);
     defer std.testing.allocator.free(unsupported);
     try std.testing.expectEqualStrings(
-        "error[ZIGO037]: field path `label` resolves to unsupported type `[]const u8`\n" ++
+        "error[ZIGO037]: field path `label` encounters unsupported type `[]const u8`\n" ++
             "  hint: paths may cross struct values or non-optional single pointers and must end at a bool, integer, float, or registered enum\n",
         unsupported,
     );

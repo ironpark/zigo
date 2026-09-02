@@ -1,0 +1,47 @@
+{
+  "functions": [
+    {
+      "field_access": {"path": "screen.cursor.x"},
+      "name": "cursorX",
+      "params": [],
+      "receiver": "Terminal",
+      "return": {"bits": 16, "kind": "int", "signed": false},
+      "symbol": "ignored"
+    },
+    {
+      "doc": "Reports whether the cursor is visible.",
+      "field_access": {"path": "screen.cursor.visible"},
+      "name": "cursorVisible",
+      "params": [],
+      "receiver": "Terminal",
+      "return": {"kind": "bool"},
+      "symbol": "ignored"
+    },
+    {
+      "field_access": {"path": "screen.cursor.style", "setter": true},
+      "name": "setCursorStyle",
+      "params": [
+        {"name": "v", "name_source": "sidecar", "type": {"kind": "enum", "ref": "CursorStyle"}}
+      ],
+      "receiver": "Terminal",
+      "return": {"kind": "void"},
+      "symbol": "ignored"
+    }
+  ],
+  "package": "fieldaccess",
+  "prefix": "zg",
+  "types": [
+    {"kind": "opaque", "name": "Terminal"},
+    {
+      "exhaustive": true,
+      "fields": [
+        {"name": "block", "value": 0},
+        {"name": "bar", "value": 1}
+      ],
+      "kind": "enum",
+      "name": "CursorStyle",
+      "tag_type": {"bits": 8, "kind": "int", "signed": false}
+    }
+  ],
+  "zig_version": "0.16.0"
+}
