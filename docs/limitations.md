@@ -198,6 +198,17 @@ error[ZIGO018]: unsupported integer width `u21` in parameter `cp`
   `*const std.atomic.Value(u32)`가 아니거나, 함수의 error set에 `Canceled`가 없거나,
   취소 플래그 파라미터가 있는데 `.cancel`이 그것을 가리키지 않는다.
 
+- `ZIGO027` — `.params`가 적은 이름 개수가 Go에 보이는 파라미터 개수와 다르다. receiver와
+  주입 파라미터(`std.mem.Allocator`, `std.Io`)는 C에도 Go에도 나타나지 않으므로 `.params`에
+  적지 않는다. 메시지는 적은 개수와 기대 개수, 그리고 선언 경로를 적는다.
+- `ZIGO028` — `.constructs`/`.destroys`가 등록되지 않은 타입을 가리키거나, `.constructs`를
+  단 함수가 그 타입의 pointer를 반환하지 않거나, `.destroys`를 단 함수가 그 타입의
+  pointer를 첫 파라미터로 받지 않거나 void를 반환하지 않거나, 한 타입에 대해 한쪽만
+  선언했거나, 같은 타입을 둘이 겹쳐 선언했다. 메시지가 이들을 구분한다.
+
+`ZIGO027`과 `ZIGO028`은 reflection이 문서를 만들기 전에 걸리므로 `semantic.json` 자리가
+아니라 선언 경로를 가리키며, 생성기는 이 진단을 출력하고 종료한다.
+
 리플렉션 단계의 거부는 `bindings.zig`를 빌드할 때의 `@compileError`로 나오며, 제약과 함께
 그것이 걸린 선언·파라미터를 적는다(`... , at \`Terminal.write\` parameter \`bytes\``).
 

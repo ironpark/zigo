@@ -111,7 +111,9 @@ error입니다.
 |---|---|
 | `path` | `root.<name>` 또는 `<Type>.<name>` 선언 경로 |
 | `name` | 공개 Go 함수 이름 override |
-| `params` | 함수 파라미터 이름 목록 |
+| `params` | Go가 넘기는 파라미터의 이름 목록 |
+| `constructs` | 이 함수가 만드는 opaque 타입 이름 |
+| `destroys` | 이 함수가 없애는 opaque 타입 이름 |
 | `param_meta` | 파라미터별 `semantic`, `retention`, `direction`, `written`, `buffer` |
 | `semantic` | 반환값 의미. 예: `.utf8_string` |
 | `returns` | 반환 pointer의 ownership |
@@ -129,6 +131,11 @@ error입니다.
     },
 }
 ```
+
+`params`에는 **Go가 넘기는 파라미터만** 적습니다. receiver(`self`)와 주입 파라미터
+(`std.mem.Allocator`, `std.Io`)는 C에도 Go에도 나타나지 않으므로 이름을 붙일 자리가
+없습니다. `fn freeString(gpa: Allocator, str: []const u8) void`의 `params`는
+`.{"str"}` 하나입니다. 개수가 맞지 않으면 reflection 단계에서 `ZIGO027`로 거부됩니다.
 
 `param_meta`의 field는 파라미터 이름과 일치해야 합니다. 해당 이름을 reflection 단계에서
 확실히 식별하려면 같은 항목에 `params`도 적으세요. 이름은 명시적 `params`, 대상 source AST,
@@ -321,6 +328,10 @@ pub const bindings = zigo.define(.{
 `int32_t zg_store_open(const uint8_t *name_ptr, size_t name_len, zg_store **out_result)`,
 Go에서 `NewStore(name string) (*Store, error)`가 됩니다. 문자열 값(`"gpa"`)은 바인딩된
 루트 모듈 기준으로 해석되며, `.functions`의 경로와 같은 기준입니다.
+
+주입 파라미터는 `.params`에도, `param_meta`에도 나오지 않습니다. release 함수도
+마찬가지입니다: `fn freeString(gpa: Allocator, str: []const u8) void`는 slice 하나만 받는
+release 함수로 취급되고, shim이 호출할 때 allocator를 채웁니다.
 
 기본값은 없습니다. 설정 없이 그런 파라미터를 만나면 `ZIGO022`로 거부합니다 — 어떤 메모리를
 쓸지는 zigo가 대신 정할 문제가 아닙니다. 주입 파라미터는 `semantic.json`에
@@ -560,7 +571,8 @@ nil·closed 상태를 검사합니다. 검사 결과는 항상 반환값으로 �
 `init`/`create`/`new`/`open` 이름을 쓰지 않는 factory도 `.returns = .caller`를 붙이면
 같은 owned handle을 돌려줍니다. 이름이 아니라 ownership metadata가 기준이므로,
 `clone`이나 `openChild` 같은 메서드도 `newX` helper를 거쳐 cleanup과 retained callback
-등록을 그대로 받습니다.
+등록을 그대로 받습니다. 다만 이것은 **그 타입에 이미 짝지어진 생성자와 소멸자가 있을 때**의
+이야기입니다(없으면 `ZIGO015`). 짝 자체를 만드는 것은 아래의 `.constructs`/`.destroys`입니다.
 
 ```zig
 .{
@@ -570,6 +582,40 @@ nil·closed 상태를 검사합니다. 검사 결과는 항상 반환값으로 �
     .returns = .caller,
 },
 ```
+
+### 타입 밖에 선언된 생성자와 소멸자
+
+이름 규칙과 `.returns = .caller`는 모두 **타입 안에 선언된** 짝을 전제합니다. 남의
+라이브러리처럼 선언을 더할 수 없는 코드에서는 생성자와 소멸자가 타입 옆의 자유 함수로
+있기 마련이고, 그때는 어느 타입의 짝인지를 직접 적습니다.
+
+```zig
+// mylib: 타입 안에는 아무것도 없고, 옆에 free 함수만 있는 형태
+pub const Ticker = struct { interval: u32 };
+pub fn newTicker(interval: u32) !*Ticker { ... }
+pub fn freeTicker(ticker: *Ticker) void { ... }
+
+// bindings.zig
+.{ .path = "root.newTicker", .params = .{"interval"}, .constructs = "Ticker" },
+.{ .path = "root.freeTicker", .destroys = "Ticker" },
+```
+
+Go에는 `NewTicker(interval uint32) (*Ticker, error)`와 `(*Ticker).Close()`가 생기고,
+shim은 선언이 있는 자리 그대로 `target.newTicker(...)`를 부릅니다. 즉 Go에서의 소속과
+Zig에서의 호출 경로는 서로 다른 축이며, `semantic.json`은 전자를 `go_owner`, 후자를
+`zig_path`로 적습니다(둘 다 기본값과 다를 때만 나타납니다).
+
+- `.constructs`와 `.destroys`는 `.types`에 등록된 opaque 타입 이름을 받습니다.
+- `.constructs`를 붙인 함수는 그 타입의 pointer(또는 `!*T`)를 반환해야 하고,
+  `.destroys`를 붙인 함수는 그 타입의 pointer를 첫 파라미터로 받고 아무것도 반환하지
+  않아야 합니다.
+- 한 타입에 대해 둘 다 있어야 짝이 됩니다. 한쪽만 있거나, 같은 타입에 둘이 겹치거나,
+  시그니처가 위 조건에 맞지 않으면 `ZIGO028`입니다.
+- 메타를 적지 않은 함수에는 `init`/`create`/`new`/`open` + `deinit`/`destroy`/`close`
+  이름 규칙이 그대로 fallback으로 남습니다. 메타가 있으면 이름은 보지 않습니다.
+
+`.allocator`가 설정되어 있으면 값으로 반환하는 생성자를 상자에 담는 규칙도 `.constructs`를
+따릅니다 — 이름이 `init`이 아니어도 됩니다.
 
 감쌀 handle이 없는 `.returns = .caller`는 `ZIGO015`로 거부됩니다(slice 반환은 아래의
 `ZIGO016` 규칙을 따릅니다). 반환 타입이 opaque
@@ -615,6 +661,10 @@ pub fn extractSamplesChecked(self: *EventQueue) ProcessError![]f32 { /* 실패 �
     .release = "EventQueue.freeSamples",
 },
 ```
+
+release 함수가 allocator를 받아도 됩니다. `fn freeSamples(gpa: Allocator, samples: []f32) void`는
+주입 파라미터를 빼고 slice 하나만 받는 함수로 판정되며, shim이 호출할 때 바인딩이 정한
+allocator를 채웁니다.
 
 `.release`가 없거나, 이름이 가리키는 함수가 없거나, 그 함수의 매개변수가 반환 slice와
 맞지 않으면 `ZIGO016`으로 거부됩니다. `![]T`는 payload slice의 원소 타입으로 비교합니다.

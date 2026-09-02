@@ -4,6 +4,29 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Added
+
+- 함수 메타 `.constructs = "<Type>"` / `.destroys = "<Type>"`. 타입 밖에 자유 함수로
+  선언된 생성자와 소멸자를 이름 규칙과 무관하게 짝지어 Go의 생성자와 `Close()`로
+  내보냅니다. 메타가 없으면 기존 이름 규칙이 그대로 fallback으로 남습니다.
+
+### Fixed
+
+- 타입 밖에 선언된 함수가 생성자·소멸자로 짝지어지거나 handle 파라미터로 메서드가 될 때,
+  shim이 선언되지도 않은 `target.<Type>.<name>` 경로를 부르던 문제를 고쳤습니다. Go의
+  소속(`go_owner`)과 Zig 호출 경로(`zig_path`)가 `semantic.json`에서 분리되었고, `.name`으로
+  이름을 바꾼 함수도 원래 선언을 부릅니다.
+- `.params`가 주입 파라미터(`std.mem.Allocator`, `std.Io`)를 세지 않습니다. 이름을 Go에
+  보이는 파라미터만 적으면 되고, 개수가 맞지 않으면 zigo 내부의 comptime 인덱스 오류가
+  아니라 `ZIGO027` 진단이 나옵니다.
+- `.release`가 가리키는 함수가 allocator를 받아도 됩니다. 주입 파라미터를 뺀 시그니처로
+  판정하고 shim이 호출할 때 채우므로, 더 이상 `ZIGO016`으로 거부되지 않습니다.
+- `abi-diff`가 주입 파라미터를 시그니처 비교에서 제외합니다. allocator를 파라미터로
+  받도록 바꾸는 것은 C 시그니처를 움직이지 않으므로 breaking이 아니며, 대신 `go_owner`가
+  바뀌면 breaking으로 보고합니다.
+
 ## [0.3.1] - 2026-09-02
 
 ### Fixed

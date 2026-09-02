@@ -13,6 +13,7 @@
 | Go 콜백 또는 generic 구체화 | [04-callback](../examples/04-callback) |
 | 여러 기능을 조합한 라이브러리 | [05-pipeline](../examples/05-pipeline) |
 | 실제 애플리케이션 형태의 수명 관리 | [07-event-queue](../examples/07-event-queue) |
+| 타입 밖에 선언된 생성자·소멸자 짝짓기 | [07-event-queue](../examples/07-event-queue) |
 | 큰 공개 API 자동 발견 | [08-telemetry-hub](../examples/08-telemetry-hub) |
 | 여러 opaque 타입 사이의 참조 | [09-type-relations](../examples/09-type-relations) |
 | tagged union | [10-tagged-union](../examples/10-tagged-union) |

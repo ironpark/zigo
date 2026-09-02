@@ -336,6 +336,15 @@ handle은 호출 후 즉시 해제하고, retained callback handle은 소유 객
 `go-check`는 `go_dir`의 Go 생성 파일만 비교하므로 metadata도 `go` 실행 후 같은 commit에
 포함되었는지 리뷰에서 확인해야 합니다.
 
+함수의 소속은 두 축입니다. `namespace`는 함수가 **선언된** Zig 컨테이너이고, 심볼과 raw Go
+이름이 여기서 나옵니다. Go의 소속은 `go_owner`이며, 타입 밖에 선언된 생성자를
+`.constructs`로 짝지었을 때처럼 둘이 다를 때만 문서에 나타납니다. shim이 부를 Zig 선언이
+`<소유자>.<이름>`으로 적히지 않는 경우(타입 밖에 선언된 소멸자, `.name`으로 이름을 바꾼
+함수)에는 `zig_path`가 그 경로를 그대로 적습니다. 둘 다 기본값과 같으면 생략됩니다.
+
+주입 파라미터는 C 시그니처에도 Go 시그니처에도 없으므로 `abi-diff`는 그것을 빼고 비교하고,
+`go_owner`가 바뀌면 Go 표면이 움직이므로 breaking으로 봅니다.
+
 함수의 `symbol` 필드는 그 함수가 export되는 C 심볼 이름입니다. 규칙은 하나뿐이고
 (`{prefix}_{owner}_{name}`, owner는 `receiver` 또는 `namespace`, 모두 snake_case로
 정규화), 소유 타입이 없으면 `{prefix}_{name}`입니다. `namespace`가 중첩 경로를 담고 있으면

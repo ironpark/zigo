@@ -24,3 +24,24 @@
 - `SemanticFn`에 Zig 호출 경로(예: `zig_path` 또는 `owner_is_receiver` 구분)를 두고 `namespace`는 Go 쪽 그룹화 전용으로 한다. semantic.json 스키마 변경은 abi_diff·골든에 반영.
 - `.params`는 receiver와 주입 파라미터를 뺀 개수와 정확히 같아야 하며, 불일치는 `ZIGO027`(기대 개수·실제 개수·함수 위치 표시). comptime에서 검출하되 `@compileError`가 아니라 기존 진단 채널로 내보낸다. comptime 채널이 불가능하면 `@compileError`에 ZIGO027 접두 메시지로 대체하고 CONTEXT에 기록.
 - `.release` 매칭: `injected == null`인 파라미터만 세어 정확히 하나의 slice여야 한다. shim은 release 호출 시 바인딩의 allocator를 주입한다. `src/root.zig`의 중복 allocator 상수를 제거한다.
+
+## Deviations recorded during implementation
+
+- `src/root.zig`은 16줄짜리 `define` DSL뿐이고 allocator 상수를 중복해 두지 않았다. 제거할
+  중복이 없어 그 항목은 수행하지 않았다.
+- `ZIGO027`/`ZIGO028`은 reflection 단계에서 나므로 `validate.zig`의 진단 목록이 아니라
+  `walk.zig`가 같은 `error[ZIGOxxx]: ... / hint:` 형식으로 출력하고 각각
+  `error.ParamNameCount`, `error.ConstructorPairing`을 반환한다(`@compileError` 아님).
+  스냅샷은 메시지 생성 함수(`paramNameCountMessage`, `pairingMessageAlloc`)를 문자열로
+  검증하는 테스트다. `zig build test`가 stderr 출력을 실패로 보므로 테스트 빌드에서는
+  출력만 생략한다.
+- Zig 호출 경로는 `namespace`가 아니라 `SemanticFn.zig_path`(선언 경로 전체)로 분리했고,
+  Go 소속은 `go_owner`로 새로 두었다. 기본값과 같으면 문서에 나타나지 않으므로 기존 예제의
+  `semantic.json`은 그대로다. receiver를 가진 root 함수(`freeTicker`)와 `.name`으로 이름을
+  바꾼 함수의 잘못된 호출 경로도 같이 고쳐진다.
+- 주입 파라미터가 시그니처 비교에 들어가 있어 `abi-diff`가 allocator 추가를 breaking으로
+  보고했다. `abi_diff.zig`의 파라미터 비교를 노출 파라미터만 훑도록 바꾸고, 대신 `go_owner`
+  변경을 breaking으로 추가했다(계획에 없던 범위).
+- 새 예제 대신 purego까지 도는 `07-event-queue`에 `Ticker`(root 레벨 `newTicker`/`freeTicker`,
+  `.constructs`/`.destroys`)와 allocator를 받는 `freeLimits`를 넣었고, 골든은
+  `tests/generator_cases/root_constructor`로 추가했다.

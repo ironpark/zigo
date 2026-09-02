@@ -9,7 +9,7 @@ registered_at: "2026-09-02T12:34:21Z"
 
 - [x] [Phase 00: 주입 파라미터 arity와 release 매칭](phases/00-injection-arity.md)
 - [x] [Phase 01: 생성자 Zig 호출 경로 분리](phases/01-constructor-call-path.md)
-- [ ] [Phase 02: .constructs / .destroys 메타](phases/02-explicit-pairing-meta.md)
+- [x] [Phase 02: .constructs / .destroys 메타](phases/02-explicit-pairing-meta.md)
 - [ ] [Phase 03: 문서와 CHANGELOG](phases/03-docs.md)
 
 # Shared Verification
