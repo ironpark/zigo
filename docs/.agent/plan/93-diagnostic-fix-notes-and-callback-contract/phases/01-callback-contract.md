@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T00:27:39Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Generated Go docs show the contract lines for a callback that sets them; snapshots and verification loop green.
 > NEXT: none

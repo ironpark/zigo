@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T00:27:39Z"
 description: append concrete fix suggestions to naming diagnostics and record callback reentrancy and thread contracts in Go docs
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-02T22:15:54Z"
 ---
 > NEXT: Add `note` lines to naming diagnostics. ([Phase 0](phases/00-diagnostic-notes.md))
@@ -8,7 +9,7 @@ registered_at: "2026-09-02T22:15:54Z"
 # Phases
 
 - [x] [Phase 00: Diagnostic notes](phases/00-diagnostic-notes.md)
-- [ ] [Phase 01: Callback contract metadata](phases/01-callback-contract.md)
+- [x] [Phase 01: Callback contract metadata](phases/01-callback-contract.md)
 
 # Shared Verification
 
