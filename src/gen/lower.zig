@@ -401,9 +401,6 @@ pub fn semanticDocumentForBackend(
                 structRecord(structs, function.@"return".error_union.payload.optional.child.value_struct.ref)
             else
                 null,
-            .payload_optional = function.@"return" == .error_union and
-                function.@"return".error_union.payload.* == .optional and
-                function.@"return".error_union.payload.optional.child.* != .slice,
             .value_union_return = taggedUnionValueDeclaration(source_document, source_document.functions[function_index].@"return") != null,
         };
     }
@@ -930,10 +927,12 @@ fn numberRetainedCallbackSlots(
         tables[index] = try allocator.alloc(?usize, lowered.origin.params.len);
         @memset(tables[index], null);
     }
+    const owners = try allocator.alloc(?[]const u8, functions.len);
+    for (functions, 0..) |lowered, index| owners[index] = retainedCallbackOwner(document, lowered.origin.*);
     for (handles) |*handle| {
         var slot: usize = 0;
         for (functions, 0..) |lowered, index| {
-            const owner = retainedCallbackOwner(document, lowered.origin.*) orelse continue;
+            const owner = owners[index] orelse continue;
             if (!std.mem.eql(u8, owner, handle.name)) continue;
             for (lowered.origin.params, 0..) |parameter, parameter_index| {
                 if (parameter.type != .callback or parameter.retention != .retained) continue;
@@ -1204,7 +1203,7 @@ fn lowerValue(allocator: std.mem.Allocator, document: semantic.Semantic, prefix:
         else
             .{ .unsigned_int = abi.promotedIntBits(value.bits) },
         .float => |value| .{ .float = value.bits },
-        .@"enum" => |value| lowerValue(allocator, document, prefix, enumDeclaration(document, value.ref).tag_type.?),
+        .@"enum" => |value| lowerValue(allocator, document, prefix, typeDeclaration(document, value.ref).tag_type.?),
         .opaque_ptr => |value| blk: {
             const child = try allocator.create(abi.AbiScalar);
             child.* = .{ .@"opaque" = try lowerOpaque(allocator, prefix, value.ref) };
@@ -1238,11 +1237,6 @@ fn isStringSliceParameter(parameter: semantic.Parameter) bool {
         element.slice.element.* != .int or element.slice.element.int.signed or element.slice.element.int.bits != 8) return false;
     if (element.slice.sentinel) |sentinel| return sentinel == 0;
     return parameter.semantic == .utf8_string;
-}
-
-fn enumDeclaration(document: semantic.Semantic, name: []const u8) semantic.TypeDecl {
-    for (document.types) |declaration| if (std.mem.eql(u8, declaration.name, name)) return declaration;
-    unreachable;
 }
 
 fn typeDeclaration(document: semantic.Semantic, name: []const u8) semantic.TypeDecl {

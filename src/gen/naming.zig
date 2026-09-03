@@ -284,7 +284,7 @@ fn isReservedLocal(value: []const u8) bool {
     return false;
 }
 
-fn containsName(names: []const []u8, value: []const u8) bool {
+fn containsName(names: []const []const u8, value: []const u8) bool {
     for (names) |name| if (std.mem.eql(u8, name, value)) return true;
     return false;
 }
@@ -326,14 +326,14 @@ pub fn variantTypeNameAlloc(
     if (variant.len == 0) return error.InvalidName;
     var candidate = try std.fmt.allocPrint(allocator, "{s}{s}", .{ union_name, variant });
     errdefer allocator.free(candidate);
-    if (!containsConstName(taken, candidate)) return candidate;
+    if (!containsName(taken, candidate)) return candidate;
     {
         const previous = candidate;
         defer allocator.free(previous);
         candidate = try std.fmt.allocPrint(allocator, "{s}Variant", .{previous});
     }
     var suffix: usize = 2;
-    while (containsConstName(taken, candidate)) : (suffix += 1) {
+    while (containsName(taken, candidate)) : (suffix += 1) {
         const previous = candidate;
         defer allocator.free(previous);
         candidate = try std.fmt.allocPrint(allocator, "{s}Variant{d}", .{ union_name, suffix });
@@ -354,19 +354,14 @@ pub fn unionFileStemAlloc(
     const base = try snakeAlloc(allocator, union_name);
     errdefer allocator.free(base);
     if (base.len == 0) return error.InvalidName;
-    if (!containsConstName(taken, base)) return base;
+    if (!containsName(taken, base)) return base;
     defer allocator.free(base);
     var suffix: usize = 2;
     while (true) : (suffix += 1) {
         const candidate = try std.fmt.allocPrint(allocator, "{s}_{d}", .{ base, suffix });
-        if (!containsConstName(taken, candidate)) return candidate;
+        if (!containsName(taken, candidate)) return candidate;
         allocator.free(candidate);
     }
-}
-
-fn containsConstName(names: []const []const u8, value: []const u8) bool {
-    for (names) |name| if (std.mem.eql(u8, name, value)) return true;
-    return false;
 }
 
 test "variant type names derive from the union and resolve clashes deterministically" {

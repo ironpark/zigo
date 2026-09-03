@@ -87,7 +87,7 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
     for (document.types) |declaration| {
         try writer.print("- {s}: {s}", .{ declaration.name, @tagName(declaration.kind) });
         if (declaration.package) |package| try writer.print(" | package {s}", .{package});
-        if (isHandleType(declaration)) {
+        if (declaration.isHandle()) {
             try writer.print(" | Go {s}, {s}Ref", .{ declaration.name, declaration.name });
             if (findConstructorForType(document, declaration.name)) |constructor|
                 try writer.print(" | caller-owned via {s}, released by {s}/Close", .{ constructor.init, constructor.deinit })
@@ -173,10 +173,6 @@ fn constructorForDeinit(document: semantic.Semantic, function: semantic.Semantic
 fn findConstructorForType(document: semantic.Semantic, name: []const u8) ?semantic.Constructor {
     for (document.constructors) |constructor| if (std.mem.eql(u8, constructor.type, name)) return constructor;
     return null;
-}
-
-fn isHandleType(declaration: semantic.TypeDecl) bool {
-    return declaration.kind == .@"opaque" or declaration.kind == .tagged_union;
 }
 
 fn typeName(node: semantic.TypeNode) []const u8 {

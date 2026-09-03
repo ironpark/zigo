@@ -244,11 +244,7 @@ fn publicConcernPathAlloc(allocator: std.mem.Allocator, program: abi.Program, op
 }
 
 fn publicErrorsPath(allocator: std.mem.Allocator, program: abi.Program, options: Options) ![]u8 {
-    const package = try publicPackageAlloc(allocator, program, options);
-    defer allocator.free(package);
-    const filename = try std.fmt.allocPrint(allocator, "{s}_errors_gen.go", .{package});
-    defer allocator.free(filename);
-    return publicFilePathAlloc(allocator, program, options, filename);
+    return publicConcernPathAlloc(allocator, program, options, "errors");
 }
 
 fn publicFilePathAlloc(allocator: std.mem.Allocator, program: abi.Program, options: Options, filename: []const u8) ![]u8 {
@@ -1362,7 +1358,7 @@ fn renderHeader(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
     // Declaration order, so handle and enum typedefs interleave the way the
     // user wrote them; the names themselves come from lowering.
     for (program.types) |declaration| {
-        if (isHandleType(declaration) and !isValueOnlyTaggedUnion(program, declaration.name)) {
+        if (declaration.isHandle() and !isValueOnlyTaggedUnion(program, declaration.name)) {
             const handle = handleRecord(program, declaration.name);
             try writer.print("typedef struct {s} {s};\n", .{ handle.c_name, handle.c_name });
             continue;
@@ -2905,8 +2901,6 @@ fn writeCallbackFailureValue(writer: *std.Io.Writer, node: semantic.TypeNode, pa
         try writer.writeAll("0");
 }
 
-/// True when any callback signature returns the signed 32-bit ABI, which is
-/// the only one whose dispatcher needs the widening helper.
 /// True when any callback carries a float parameter, and so any dispatcher has
 /// to rebuild one from its bits.
 fn programHasFloatCallbackParam(program: abi.Program) bool {
@@ -2919,6 +2913,8 @@ fn programHasFloatCallbackParam(program: abi.Program) bool {
     return false;
 }
 
+/// True when any callback signature returns the signed 32-bit ABI, which is
+/// the only one whose dispatcher needs the widening helper.
 fn programHasWideningCallbackResult(program: abi.Program) bool {
     for (program.functions) |function| {
         for (function.origin.params) |parameter| {
@@ -4268,7 +4264,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         if (needs_rethrow) try renderCallbackRethrows(allocator, writer, program, function.origin.*, operation);
         // Before the status check: a stream that failed is the caller's own
         // error, and it is what they want back whatever the library returned.
-        if (has_stream) try renderStreamErrorChecks(scope, allocator, writer, function.origin.*, go_names, operation, constructor);
+        if (has_stream) try renderStreamErrorChecks(scope, writer, function.origin.*, go_names, operation, constructor);
         if (has_callback_error) try renderCallbackErrorChecks(scope, allocator, writer, program, function.origin.*, go_names, operation, constructor);
         if (!returns_error and hasOutValueStructSlice(function.origin.*)) {
             try writePublicValueStructSliceCopyBacks(writer, program, function.origin.*, go_names);
@@ -5727,7 +5723,7 @@ fn writeRethrowHelper(writer: *std.Io.Writer, options: Options) !void {
 fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     for (program.types) |declaration| {
         if (!packageMatches(declaration.package, options.active_package)) continue;
-        if (!isHandleType(declaration)) continue;
+        if (!declaration.isHandle()) continue;
         if (isValueOnlyTaggedUnion(program, declaration.name)) continue;
         const owns_callbacks = typeOwnsCallbacks(program, declaration.name);
         const dependent_parent = dependentParentType(program, declaration.name);
@@ -6960,7 +6956,6 @@ fn renderStreamNilChecks(
 /// running, if it reported one.
 fn renderStreamErrorChecks(
     scope: PublicScope,
-    allocator: std.mem.Allocator,
     writer: *std.Io.Writer,
     function: semantic.SemanticFn,
     go_names: []const []const u8,
@@ -6977,7 +6972,6 @@ fn renderStreamErrorChecks(
         try writeCheckedErrorReturn(scope, writer, function, constructor, "err");
         try writer.writeAll("\t}\n");
     }
-    _ = allocator;
 }
 
 /// The cancellation flag and the goroutine that raises it. The word is Go's,
@@ -7560,10 +7554,6 @@ fn enumRecord(program: abi.Program, name: []const u8) abi.AbiEnum {
     unreachable;
 }
 
-fn isHandleType(declaration: semantic.TypeDecl) bool {
-    return declaration.kind == .@"opaque" or declaration.kind == .tagged_union;
-}
-
 fn enumDecl(program: abi.Program, name: []const u8) semantic.TypeDecl {
     for (program.types) |declaration| if (std.mem.eql(u8, declaration.name, name)) return declaration;
     unreachable;
@@ -7794,14 +7784,9 @@ fn programHasCString(program: abi.Program) bool {
     return false;
 }
 
-fn programHasEnums(program: abi.Program) bool {
-    for (program.types) |declaration| if (declaration.kind == .@"enum") return true;
-    return false;
-}
-
 fn programHasOpaqueTypes(program: abi.Program) bool {
     for (program.types) |declaration| {
-        if (isHandleType(declaration) and !isValueOnlyTaggedUnion(program, declaration.name)) return true;
+        if (declaration.isHandle() and !isValueOnlyTaggedUnion(program, declaration.name)) return true;
     }
     return false;
 }
@@ -8108,15 +8093,6 @@ fn publicNeedsRuntime(program: abi.Program) bool {
             .opaque_ptr => |pointer| if (isAutoCleanupType(program, pointer.ref)) return true,
             else => {},
         };
-    }
-    return false;
-}
-
-fn publicNeedsCgo(program: abi.Program) bool {
-    for (program.functions) |function| {
-        const produces_handle = constructorForInit(program, function.origin.*) != null or
-            ownedOpaqueReturn(program, function.origin.*) != null;
-        if (produces_handle and hasRetainedCallback(function.origin.*)) return true;
     }
     return false;
 }

@@ -265,8 +265,6 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
             link_mode = parseLinkMode(try takeValue(args, &index)) orelse return error.InvalidValue;
         } else if (try loading.parseFlag(flag, args, &index)) {
             // handled by the shared loading-policy parser
-        } else if (std.mem.eql(u8, flag, "--go-package")) {
-            try set(&go_package, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--library-stem")) {
             try set(&library_stem, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--gofmt")) {

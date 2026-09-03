@@ -504,6 +504,11 @@ pub const TypeDecl = struct {
         return self.access orelse .projection;
     }
 
+    /// C only ever holds a pointer to these, so a tagged union is a handle too.
+    pub fn isHandle(self: TypeDecl) bool {
+        return self.kind == .@"opaque" or self.kind == .tagged_union;
+    }
+
     pub fn variantOmitted(self: TypeDecl, name: []const u8) bool {
         for (self.omitted_variants orelse &.{}) |candidate| {
             if (std.mem.eql(u8, candidate, name)) return true;

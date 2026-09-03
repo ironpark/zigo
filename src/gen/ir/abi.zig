@@ -188,10 +188,6 @@ pub const AbiFn = struct {
     /// return becomes `bool` (presence) instead of `void`, with the value
     /// written through `out_result` (or `ret_struct`'s pointer) only when true.
     ret_optional: bool = false,
-    /// True when an error-union return's payload is `?T`: an extra
-    /// `payload_has_out` parameter carries presence alongside the existing
-    /// `payload_out`/`struct_out` value pointer.
-    payload_optional: bool = false,
     /// This synthetic error-union payload is a tagged-union return snapshot.
     value_union_return: bool = false,
     /// Symbol of the function that frees a caller-owned slice result. Generated
