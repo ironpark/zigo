@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-09-03T00:42:53Z"
 description: let the binding set choose where the native library, static link inputs, and C header are installed and keep cgo, purego, and coverage paths in sync
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-03T00:21:00Z"
 ---
 > NEXT: Add the `install` option and route every artifact path through it. ([Phase 0](phases/00-install-locations.md))
 
 # Phases
 
-- [ ] [Phase 00: Configurable install locations](phases/00-install-locations.md)
+- [x] [Phase 00: Configurable install locations](phases/00-install-locations.md)
 
 # Shared Verification
 

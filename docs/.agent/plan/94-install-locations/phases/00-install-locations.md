@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T00:42:53Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Examples with custom layouts build, link, and pass Go tests on cgo and purego from the configured directories; all other examples' generated files are unchanged; verification loop green.
 > NEXT: none
