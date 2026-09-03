@@ -71,6 +71,30 @@ pub fn compare(allocator: std.mem.Allocator, io: std.Io, generated: std.Io.Dir, 
     return result;
 }
 
+/// Compare one generated file that lives outside the Go directory (the
+/// `semantic.json` and `errors.lock.json` the update step copies next to the
+/// bindings) with its committed copy. The difference is reported under
+/// `label`, the path the consumer would commit.
+pub fn compareFile(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    result: *Result,
+    generated: std.Io.Dir,
+    generated_path: []const u8,
+    source: std.Io.Dir,
+    source_path: []const u8,
+    label: []const u8,
+) !void {
+    const expected = try generated.readFileAlloc(io, generated_path, allocator, .limited(64 * 1024 * 1024));
+    defer allocator.free(expected);
+    const actual = source.readFileAlloc(io, source_path, allocator, .limited(64 * 1024 * 1024)) catch |err| switch (err) {
+        error.FileNotFound => return append(allocator, result, .missing, label),
+        else => return err,
+    };
+    defer allocator.free(actual);
+    if (!std.mem.eql(u8, expected, actual)) try append(allocator, result, .content, label);
+}
+
 fn append(allocator: std.mem.Allocator, result: *Result, kind: DifferenceKind, path: []const u8) !void {
     const owned_path = try allocator.dupe(u8, path);
     errdefer allocator.free(owned_path);
@@ -158,4 +182,27 @@ test "source check ignores generated files inside build caches" {
     var result = try compare(std.testing.allocator, std.testing.io, generated.dir, source.dir);
     defer result.deinit(std.testing.allocator);
     try std.testing.expect(result.matches());
+}
+
+test "sidecar file check reports a stale or missing semantic.json" {
+    var generated = std.testing.tmpDir(.{});
+    defer generated.cleanup();
+    var source = std.testing.tmpDir(.{});
+    defer source.cleanup();
+    try generated.dir.writeFile(std.testing.io, .{ .sub_path = "semantic.json", .data = "{\"covers\":1}\n" });
+    try source.dir.writeFile(std.testing.io, .{ .sub_path = "semantic.json", .data = "{}\n" });
+    var result: Result = .{};
+    defer result.deinit(std.testing.allocator);
+    try compareFile(std.testing.allocator, std.testing.io, &result, generated.dir, "semantic.json", source.dir, "semantic.json", "zigo/semantic.json");
+    try compareFile(std.testing.allocator, std.testing.io, &result, generated.dir, "semantic.json", source.dir, "absent.json", "zigo/errors.lock.json");
+    try std.testing.expectEqual(@as(usize, 2), result.differences.items.len);
+    try std.testing.expectEqual(DifferenceKind.content, result.differences.items[0].kind);
+    try std.testing.expectEqualStrings("zigo/semantic.json", result.differences.items[0].path);
+    try std.testing.expectEqual(DifferenceKind.missing, result.differences.items[1].kind);
+
+    try source.dir.writeFile(std.testing.io, .{ .sub_path = "semantic.json", .data = "{\"covers\":1}\n" });
+    var fresh: Result = .{};
+    defer fresh.deinit(std.testing.allocator);
+    try compareFile(std.testing.allocator, std.testing.io, &fresh, generated.dir, "semantic.json", source.dir, "semantic.json", "zigo/semantic.json");
+    try std.testing.expect(fresh.matches());
 }

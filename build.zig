@@ -1054,6 +1054,15 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     check.addDirectoryArg(generated_dir);
     check.addArg("--source");
     check.addDirectoryArg(options.go_dir);
+    // The sidecar files the update step copies outside the Go directory are
+    // part of the committed output too, so a stale one fails the check here
+    // rather than in CI's post-generation diff.
+    check.addArg("--file");
+    check.addFileArg(semantic_json);
+    check.addArg(b.pathFromRoot("zigo/semantic.json"));
+    check.addArg("--file");
+    check.addFileArg(generated_dir.path(b, "errors.lock.json"));
+    check.addArg(b.pathFromRoot(errors_lock_path));
     const report = b.addRunArtifact(generator);
     report.addArgs(&.{ "report", "--semantic" });
     report.addFileArg(semantic_json);

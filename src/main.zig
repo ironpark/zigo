@@ -146,6 +146,7 @@ fn runCheck(allocator: std.mem.Allocator, io: std.Io, options: cli.Check) !void 
     defer source.close(io);
     var result = try sync_check.compare(allocator, io, generated, source);
     defer result.deinit(allocator);
+    for (options.files) |pair| try sync_check.compareFile(allocator, io, &result, cwd, pair.generated_path, cwd, pair.source_path, pair.source_path);
     if (result.matches()) return;
     var buffer: [1024]u8 = undefined;
     var stderr = std.Io.File.Writer.init(.stderr(), io, &buffer);

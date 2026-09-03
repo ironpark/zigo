@@ -37,6 +37,8 @@
 
 ### Fixed
 
+- `go-check`가 `zigo/semantic.json`과 `zigo/errors.lock.json`도 비교합니다. 이전에는 생성된 Go 파일만
+  확인해서 stale한 sidecar 파일이 로컬에서는 통과하고 CI의 재생성 diff에서만 잡혔습니다.
 - `go-coverage`의 미등록 타입 목록이 generic instantiation 이름을 괄호 안에서 잘라 표시하고,
   translate-c 익명 struct나 flatten으로 문서에 등록된 value struct를 미등록으로 보고하던 문제를
   고쳤습니다.

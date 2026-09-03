@@ -54,6 +54,14 @@ pub const Generate = struct {
 pub const Check = struct {
     generated_path: []const u8,
     source_path: []const u8,
+    /// Single generated files that live outside the Go directory, such as
+    /// `zigo/semantic.json`, paired with the committed copy they must match.
+    files: []const FilePair = &.{},
+};
+
+pub const FilePair = struct {
+    generated_path: []const u8,
+    source_path: []const u8,
 };
 
 pub const AbiDiff = struct {
@@ -108,7 +116,7 @@ pub fn writeUsage(writer: *std.Io.Writer) std.Io.Writer.Error!void {
         \\commands:
         \\  generate  --semantic <file> --output <dir> --package <name> [--gofmt <path>] [options]
         \\            [--go-package <name>] [--go-package-path <path>]
-        \\  check     --generated <dir> --source <dir>
+        \\  check     --generated <dir> --source <dir> [--file <generated> <source>]...
         \\  abi-diff  --base <file> --current <file> [--base-backend cgo|purego] [--current-backend cgo|purego] [--json] [--fail-on breaking]
         \\  report    --semantic <file> [--go-module <path>] [options]
         \\            [--go-package <name>] [--go-package-path <path>]
@@ -312,6 +320,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
 fn parseCheck(args: []const []const u8) ParseError!Check {
     var generated_path: ?[]const u8 = null;
     var source_path: ?[]const u8 = null;
+    var files: std.ArrayList(FilePair) = .empty;
     var index: usize = 0;
     while (index < args.len) {
         const flag = args[index];
@@ -320,6 +329,10 @@ fn parseCheck(args: []const []const u8) ParseError!Check {
             try set(&generated_path, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--source")) {
             try set(&source_path, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--file")) {
+            const generated = try takeValue(args, &index);
+            const source = try takeValue(args, &index);
+            files.append(std.heap.page_allocator, .{ .generated_path = generated, .source_path = source }) catch @panic("OOM");
         } else {
             return error.UnknownArgument;
         }
@@ -327,6 +340,7 @@ fn parseCheck(args: []const []const u8) ParseError!Check {
     return .{
         .generated_path = generated_path orelse return error.MissingRequiredArgument,
         .source_path = source_path orelse return error.MissingRequiredArgument,
+        .files = files.items,
     };
 }
 
@@ -587,9 +601,12 @@ test "generate command retains defaults" {
 }
 
 test "check and abi-diff commands parse named arguments" {
-    const check = (try parse(&.{ "check", "--generated", "expected", "--source", "go" })).check;
+    const check = (try parse(&.{ "check", "--generated", "expected", "--source", "go", "--file", "out/semantic.json", "zigo/semantic.json" })).check;
     try std.testing.expectEqualStrings("expected", check.generated_path);
     try std.testing.expectEqualStrings("go", check.source_path);
+    try std.testing.expectEqual(@as(usize, 1), check.files.len);
+    try std.testing.expectEqualStrings("out/semantic.json", check.files[0].generated_path);
+    try std.testing.expectEqualStrings("zigo/semantic.json", check.files[0].source_path);
 
     const diff = (try parse(&.{ "abi-diff", "--base", "old.json", "--current", "new.json", "--base-backend", "cgo", "--current-backend", "purego", "--json", "--fail-on", "breaking" })).abi_diff;
     try std.testing.expect(diff.json);
@@ -621,6 +638,7 @@ test "parser rejects incomplete unknown and duplicate arguments" {
     try std.testing.expectError(error.UnknownCommand, parse(&.{"--check"}));
     try std.testing.expectError(error.MissingRequiredArgument, parse(&.{ "generate", "--semantic", "semantic.json" }));
     try std.testing.expectError(error.MissingValue, parse(&.{ "check", "--generated" }));
+    try std.testing.expectError(error.MissingValue, parse(&.{ "check", "--generated", "a", "--source", "b", "--file", "only" }));
     try std.testing.expectError(error.UnknownArgument, parse(&.{ "check", "--wat", "value" }));
     try std.testing.expectError(error.UnknownArgument, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--auto-cleanup" }));
     try std.testing.expectError(error.DuplicateArgument, parse(&.{ "check", "--generated", "one", "--generated", "two", "--source", "go" }));
