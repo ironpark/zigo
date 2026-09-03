@@ -19,6 +19,12 @@
   `*atomic.Uint32|Int32|Uint64|Int64`로 노출합니다. purego는 주소를 명시적으로 pin하며,
   retained 주소와 지원하지 않는 atomic 폭은 `ZIGO043`으로 거부합니다.
 
+### Fixed
+
+- `go-coverage`의 미등록 타입 목록이 generic instantiation 이름을 괄호 안에서 잘라 표시하고,
+  translate-c 익명 struct나 flatten으로 문서에 등록된 value struct를 미등록으로 보고하던 문제를
+  고쳤습니다.
+
 ## [0.7.4] - 2026-09-03
 
 ### Fixed

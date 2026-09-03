@@ -66,13 +66,14 @@ pub fn classify(allocator: std.mem.Allocator, comptime binding: anytype, package
             &public_types,
             &referenced_types,
             binding,
+            document,
             entry.type,
             comptime walk.typeEntryName(entry),
             comptime walk.typeEntryName(entry),
             comptime walk.discoveryEnabled(binding) and entry.repr != .enumeration,
         );
     };
-    try collectContainer(allocator, &declarations, &seen_functions, &public_types, &referenced_types, binding, binding.root, null, "root", comptime walk.discoveryEnabled(binding));
+    try collectContainer(allocator, &declarations, &seen_functions, &public_types, &referenced_types, binding, document, binding.root, null, "root", comptime walk.discoveryEnabled(binding));
 
     // Field accessors are generated functions even though there is no Zig
     // declaration to enumerate. Count each getter and setter exactly once.
@@ -99,8 +100,8 @@ pub fn classify(allocator: std.mem.Allocator, comptime binding: anytype, package
 
     var unregistered: std.ArrayList([]const u8) = .empty;
     for (referenced_types.items) |full_name| {
-        if (!contains(public_types.items, full_name) or registeredTypeName(binding, full_name)) continue;
-        const name = walk.shortTypeName(full_name);
+        if (!contains(public_types.items, full_name) or typeKnownToDocument(document, full_name) or isTranslateCTypeName(full_name)) continue;
+        const name = coverageTypeName(binding, full_name);
         if (!contains(unregistered.items, name)) try unregistered.append(allocator, name);
     }
     std.mem.sort([]const u8, unregistered.items, {}, lessThan);
@@ -142,6 +143,7 @@ fn collectContainer(
     public_types: *std.ArrayList([]const u8),
     referenced_types: *std.ArrayList([]const u8),
     comptime binding: anytype,
+    document: semantic.Semantic,
     comptime Container: type,
     comptime owner: ?[]const u8,
     comptime path_prefix: []const u8,
@@ -167,7 +169,7 @@ fn collectContainer(
             try declarations.append(allocator, .{
                 .path = displayPath(owner, candidate.name),
                 .status = status,
-                .reason = if (status == .unbound) comptime signatureReason(binding, @TypeOf(value)) else null,
+                .reason = if (status == .unbound) signatureReason(binding, document, @TypeOf(value)) else null,
             });
         }
     }
@@ -181,6 +183,7 @@ fn collectContainer(
             public_types,
             referenced_types,
             binding,
+            document,
             value,
             comptime if (owner) |parent| parent ++ "." ++ candidate.name else candidate.name,
             path_prefix ++ "." ++ candidate.name,
@@ -213,7 +216,7 @@ fn collectType(allocator: std.mem.Allocator, types: *std.ArrayList([]const u8), 
 /// Best-effort coverage reason. It mirrors the broad rejection classes in
 /// validate.typeOffense and the sharper ZIGO signature diagnostics; anything
 /// it cannot prove falls back to "unsupported signature" at render time.
-fn signatureReason(comptime binding: anytype, comptime F: type) ?[]const u8 {
+fn signatureReason(comptime binding: anytype, document: semantic.Semantic, comptime F: type) ?[]const u8 {
     const info = @typeInfo(F).@"fn";
     if (info.is_generic) return "comptime parameters";
     inline for (info.params) |parameter| {
@@ -223,16 +226,16 @@ fn signatureReason(comptime binding: anytype, comptime F: type) ?[]const u8 {
         if (T == std.Io and !@hasField(@TypeOf(binding), "io")) return "io param, no metadata";
         if (T == *std.Io.Writer) return "writer param, no metadata";
         if (T == *std.Io.Reader) return "reader param, no metadata";
-        if (comptime typeReason(binding, T, true)) |reason| return reason;
+        if (typeReason(binding, document, T, true)) |reason| return reason;
     }
     if (info.return_type) |T| {
         if (@typeInfo(T) == .error_union and @typeInfo(T).error_union.error_set == anyerror) return "anyerror return";
-        if (comptime typeReason(binding, T, true)) |reason| return reason;
+        if (typeReason(binding, document, T, true)) |reason| return reason;
     }
     return "not listed";
 }
 
-fn typeReason(comptime binding: anytype, comptime T: type, comptime whole: bool) ?[]const u8 {
+fn typeReason(comptime binding: anytype, document: semantic.Semantic, comptime T: type, comptime whole: bool) ?[]const u8 {
     return switch (@typeInfo(T)) {
         .void, .bool => null,
         .int => |info| if (whole or info.bits == 8 or info.bits == 16 or info.bits == 32 or info.bits == 64) null else "no C representation",
@@ -241,26 +244,26 @@ fn typeReason(comptime binding: anytype, comptime T: type, comptime whole: bool)
         .@"struct" => |info| if (info.layout == .@"extern" or info.layout == .@"packed") null else "no C representation",
         .@"union" => |info| if (info.tag_type == null) "no C representation" else null,
         .pointer => |info| switch (info.size) {
-            .slice => typeReason(binding, info.child, false),
-            .one => if (@typeInfo(info.child) == .@"fn") callbackReason(binding, info.child) else if (isBuiltinSpecial(info.child) or registeredType(binding, info.child)) null else "unregistered type",
+            .slice => typeReason(binding, document, info.child, false),
+            .one => if (@typeInfo(info.child) == .@"fn") callbackReason(binding, document, info.child) else if (isBuiltinSpecial(info.child) or typeKnownToDocument(document, @typeName(info.child))) null else "unregistered type",
             .many => if (info.child == u8 and info.is_const and info.sentinel() != null) null else "no C representation",
             else => "no C representation",
         },
-        .optional => |info| typeReason(binding, info.child, whole),
-        .error_union => |info| typeReason(binding, info.payload, whole),
-        .@"fn" => callbackReason(binding, T),
+        .optional => |info| typeReason(binding, document, info.child, whole),
+        .error_union => |info| typeReason(binding, document, info.payload, whole),
+        .@"fn" => callbackReason(binding, document, T),
         else => "unsupported signature",
     };
 }
 
-fn callbackReason(comptime binding: anytype, comptime F: type) ?[]const u8 {
+fn callbackReason(comptime binding: anytype, document: semantic.Semantic, comptime F: type) ?[]const u8 {
     const info = @typeInfo(F).@"fn";
     if (!std.meta.eql(info.calling_convention, std.builtin.CallingConvention.c)) return "non-C callback";
     inline for (info.params) |parameter| {
         const T = parameter.type orelse return "comptime parameters";
-        if (comptime typeReason(binding, T, false)) |reason| return reason;
+        if (typeReason(binding, document, T, false)) |reason| return reason;
     }
-    if (info.return_type) |T| return typeReason(binding, T, false);
+    if (info.return_type) |T| return typeReason(binding, document, T, false);
     return null;
 }
 
@@ -270,16 +273,26 @@ fn functionListed(comptime binding: anytype, comptime path: []const u8) bool {
     return false;
 }
 
-fn registeredType(comptime binding: anytype, comptime T: type) bool {
-    if (!@hasField(@TypeOf(binding), "types")) return false;
-    inline for (binding.types) |entry| if (entry.type == T) return true;
+fn typeKnownToDocument(document: semantic.Semantic, full_name: []const u8) bool {
+    for (document.types) |declaration| {
+        const path = declaration.zig_path orelse continue;
+        if (std.mem.eql(u8, path, full_name)) return true;
+        if (path.len > full_name.len and path[full_name.len] == '#' and std.mem.startsWith(u8, path, full_name)) return true;
+    }
     return false;
 }
 
-fn registeredTypeName(comptime binding: anytype, full_name: []const u8) bool {
-    if (!@hasField(@TypeOf(binding), "types")) return false;
-    inline for (binding.types) |entry| if (std.mem.eql(u8, @typeName(entry.type), full_name)) return true;
-    return false;
+fn coverageTypeName(comptime binding: anytype, full_name: []const u8) []const u8 {
+    if (std.mem.indexOfScalar(u8, full_name, '(') == null) return walk.shortTypeName(full_name);
+    const root_name = @typeName(binding.root);
+    if (full_name.len > root_name.len and full_name[root_name.len] == '.' and std.mem.startsWith(u8, full_name, root_name))
+        return full_name[root_name.len + 1 ..];
+    return full_name;
+}
+
+fn isTranslateCTypeName(full_name: []const u8) bool {
+    return std.mem.indexOf(u8, full_name, "C__struct_") != null or
+        std.mem.indexOf(u8, full_name, "cimport.") != null;
 }
 
 fn isBuiltinSpecial(comptime T: type) bool {
@@ -369,4 +382,77 @@ test "covers classifies wrapped declarations in text and JSON" {
     const json = try report.json(allocator);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"status\": \"wrapped\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, json, "\"via\": \"wrapper\"") != null);
+}
+
+test "unregistered type names are readable and document aware" {
+    const Api = struct {
+        fn Batch(comptime T: type, comptime enabled: bool) type {
+            return struct {
+                value: T,
+                pub const is_enabled = enabled;
+            };
+        }
+
+        pub const Coordinate = struct { x: i32 };
+        pub const Generic = Batch(Coordinate, true);
+        pub const C__struct_117396 = struct { value: u32 };
+        pub const Options = struct { enabled: bool = false };
+
+        pub fn generic(value: *Generic) void {
+            _ = value;
+        }
+        pub fn translated(value: *C__struct_117396) void {
+            _ = value;
+        }
+        pub fn optionsPtr(value: *Options) void {
+            _ = value;
+        }
+        pub fn configure(options: Options) void {
+            _ = options;
+        }
+    };
+    const binding = .{
+        .root = Api,
+        .functions = .{.{
+            .path = "root.configure",
+            .params = .{"options"},
+            .param_meta = .{ .options = .{ .flatten = .{"enabled"} } },
+        }},
+    };
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const document = try walk.reflect(allocator, binding, "sample", "zg");
+    const report = try classify(allocator, binding, "sample", document);
+
+    try std.testing.expect(typeKnownToDocument(document, @typeName(Api.Options)));
+    try std.testing.expectEqual(@as(usize, 1), report.unregistered_types.len);
+    try std.testing.expect(std.mem.indexOfScalar(u8, report.unregistered_types[0], '(') != null);
+    try std.testing.expect(!std.mem.eql(u8, report.unregistered_types[0], "Coordinate),true)"));
+    for (report.unregistered_types) |name| {
+        try std.testing.expect(std.mem.indexOf(u8, name, "C__struct_") == null);
+        try std.testing.expect(!std.mem.eql(u8, name, "Options"));
+    }
+
+    for (report.declarations) |declaration| {
+        if (std.mem.eql(u8, declaration.path, "optionsPtr"))
+            try std.testing.expectEqualStrings("not listed", declaration.reason.?);
+    }
+}
+
+test "document type resolver accepts disambiguated zig paths" {
+    const Api = struct {
+        pub const Coordinate = struct { x: i32 };
+    };
+    const binding = .{ .root = Api, .functions = .{} };
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var document = try walk.reflect(allocator, binding, "sample", "zg");
+    document.types = &.{.{
+        .kind = .value_struct,
+        .name = "Coordinate",
+        .zig_path = @typeName(Api.Coordinate) ++ "#RegisteredCoordinate",
+    }};
+    try std.testing.expect(typeKnownToDocument(document, @typeName(Api.Coordinate)));
 }

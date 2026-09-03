@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T03:58:26Z"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: The three reported names no longer appear as shown; tests pin each rule; verification loop green.
 > NEXT: none
