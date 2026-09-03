@@ -48,6 +48,16 @@ pub fn semanticDocumentForBackend(
             // The shim writes the value itself, so the parameter is absent
             // from the C signature and from everything derived from it.
             if (parameter.injected != null) continue;
+            if (materializedOutParameter(parameter)) |root| {
+                _ = root;
+                try params.append(allocator, .{
+                    .name = try std.fmt.allocPrint(allocator, "{s}_len", .{parameter.name}),
+                    .role = .slice_length,
+                    .scalar = .usize,
+                    .source_index = parameter_index,
+                });
+                continue;
+            }
             if (parameter.flatten) |fields| {
                 flatten_start[parameter_index] = params.items.len;
                 for (fields, 0..) |field, field_index| {
@@ -287,6 +297,7 @@ pub fn semanticDocumentForBackend(
 
         var function_errors: []const abi.ErrorCode = &.{};
         const materialized_return = materializedReturn(function.@"return");
+        const materialized_out = materializedOut(function.*);
         const caller_owned_c_string = function.ownership == .caller and function.release != null and
             returnContainsCStringSlice(function.@"return", function.return_semantic);
         const return_scalar = if (materialized_return) |materialized| result: {
@@ -296,6 +307,22 @@ pub fn semanticDocumentForBackend(
                 break :result abi.AbiScalar{ .signed_int = 32 };
             }
             break :result abi.AbiScalar.void;
+        } else if (materialized_out) |output| result: {
+            if (output.fallible) {
+                const count = try allocator.create(abi.AbiScalar);
+                count.* = .usize;
+                try params.append(allocator, .{
+                    .name = "out_written",
+                    .role = .payload_out,
+                    .scalar = .{ .pointer = .{ .child = count, .is_const = false } },
+                });
+            }
+            try appendMaterializedReturnOuts(allocator, &params);
+            if (output.fallible) {
+                function_errors = try codesFor(allocator, function.@"return".error_union.error_set, error_codes);
+                break :result abi.AbiScalar{ .signed_int = 32 };
+            }
+            break :result abi.AbiScalar.usize;
         } else if (semantic.isCStringSlice(function.@"return", function.return_semantic) and !caller_owned_c_string) blk: {
             const child = try allocator.create(abi.AbiScalar);
             child.* = try lowerValue(allocator, document, prefix, function.@"return".slice.element.*);
@@ -416,6 +443,7 @@ pub fn semanticDocumentForBackend(
             .errors = function_errors,
             .origin = function,
             .materialized_return = materialized_return,
+            .materialized_out = materialized_out,
             .ret_struct = if (function.@"return" == .value_struct and !isPackedValue(document, function.@"return"))
                 structRecord(structs, function.@"return".value_struct.ref)
             else if (function.@"return" == .optional and function.@"return".optional.child.* == .value_struct and
@@ -1287,6 +1315,21 @@ fn materializedReturn(node: semantic.TypeNode) ?abi.AbiFn.MaterializedReturn {
             .fallible = true,
         };
     }
+    return null;
+}
+
+fn materializedOutParameter(parameter: semantic.Parameter) ?[]const u8 {
+    if (parameter.direction != .out or parameter.writtenHint() != .@"return" or parameter.type != .slice) return null;
+    const element = parameter.type.slice.element.*;
+    return if (element == .materialized and !element.materialized.pointer) element.materialized.ref else null;
+}
+
+fn materializedOut(function: semantic.SemanticFn) ?abi.AbiFn.MaterializedOut {
+    for (function.params, 0..) |parameter, index| if (materializedOutParameter(parameter)) |root| return .{
+        .source_index = index,
+        .root = root,
+        .fallible = function.@"return" == .error_union,
+    };
     return null;
 }
 

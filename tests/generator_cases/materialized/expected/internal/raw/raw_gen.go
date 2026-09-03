@@ -51,3 +51,31 @@ func Release(buffer []uint8) {
 	}
 	C.zg_release(bufferPtr, C.size_t(len(buffer)))
 }
+// Fill calls the generated C ABI wrapper for zg_fill.
+func Fill(output int) ([]byte, uint) {
+	var outResultPtr *C.uint8_t
+	var outResultLen C.size_t
+	written := uint(C.zg_fill(C.size_t(output), &outResultPtr, &outResultLen))
+	var result []uint8
+	if outResultLen != 0 {
+		result = C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))
+	}
+	C.zg_release(outResultPtr, outResultLen)
+	return result, written
+}
+// FillChecked calls the generated C ABI wrapper for zg_fill_checked.
+func FillChecked(output int) ([]byte, uint, int32) {
+	var outResultPtr *C.uint8_t
+	var outResultLen C.size_t
+	var outResult C.size_t
+	code := int32(C.zg_fill_checked(C.size_t(output), &outResult, &outResultPtr, &outResultLen))
+	if code != 0 {
+		return nil, 0, code
+	}
+	var result []uint8
+	if outResultLen != 0 {
+		result = C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))
+	}
+	C.zg_release(outResultPtr, outResultLen)
+	return result, uint(outResult), code
+}

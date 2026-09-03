@@ -254,8 +254,12 @@ pub const AbiFn = struct {
     /// A materialized result is always one owned byte buffer. `is_slice`
     /// means the header root table contains multiple values of `root`.
     materialized_return: ?MaterializedReturn = null,
+    /// An output slice of materialized structs is staged in Zig and returned
+    /// as one serialized buffer. Go decodes it back into the caller's slice.
+    materialized_out: ?MaterializedOut = null,
 
     pub const MaterializedReturn = struct { root: []const u8, is_slice: bool, fallible: bool = false };
+    pub const MaterializedOut = struct { source_index: usize, root: []const u8, fallible: bool = false };
 
     /// How a parameter or return carries text.
     pub const StringRole = enum {

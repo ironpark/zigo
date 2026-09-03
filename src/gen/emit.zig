@@ -359,6 +359,12 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         try writeShimStringSliceSetups(allocator, writer, function);
         try writeNarrowIntegerGuards(writer, program, function);
         try writeNarrowSliceSetups(writer, program, function);
+        if (function.materialized_out) |output| {
+            const parameter = function.origin.params[output.source_index];
+            try writer.print("    const zigo_{0s}_slice = {1s}.alloc(", .{ parameter.name, program.allocator orelse "std.heap.c_allocator" });
+            try writeTargetType(writer, program, output.root);
+            try writer.print(", {0s}_len) catch @panic(\"zigo: materialization allocation failed\");\n    defer {1s}.free(zigo_{0s}_slice);\n", .{ parameter.name, program.allocator orelse "std.heap.c_allocator" });
+        }
         try writer.writeAll("    ");
 
         if (function.origin.field_access) |field_access| {
@@ -373,6 +379,10 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
 
         if (function.materialized_return) |materialized| {
             try writeMaterializedReturn(allocator, writer, program, function, materialized);
+            continue;
+        }
+        if (function.materialized_out) |output| {
+            try writeMaterializedOutput(allocator, writer, program, function, output);
             continue;
         }
 
@@ -703,6 +713,35 @@ fn writeMaterializedReturn(
     }
     try writer.writeAll("    out_result_ptr.* = buffer.ptr;\n    out_result_len.* = buffer.len;\n");
     if (materialized.fallible) try writer.writeAll("    return 0;\n");
+    try writer.writeAll("}\n");
+}
+
+fn writeMaterializedOutput(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    function: abi.AbiFn,
+    output: abi.AbiFn.MaterializedOut,
+) !void {
+    const parameter = function.origin.params[output.source_index];
+    try writer.writeAll("const result = ");
+    try writeTargetCall(allocator, writer, program, function);
+    if (output.fallible) try writeShimErrorCatch(writer, function) else try writer.writeAll(";\n");
+    try writer.print("    const written = @min(result, {s}_len);\n", .{parameter.name});
+    try writer.print("    var builder = ZigoMaterializedBuilder.init({s}) catch @panic(\"zigo: materialization allocation failed\");\n", .{program.allocator orelse "std.heap.c_allocator"});
+    const encoder = try materializedEncoderNameAlloc(allocator, output.root);
+    defer allocator.free(encoder);
+    const layout = materializedLayout(program, output.root);
+    try writer.writeAll("    const roots = builder.reserve(written * 8) catch @panic(\"zigo: materialization allocation failed\");\n");
+    try writer.print("    for (zigo_{s}_slice[0..written], 0..) |item, index| builder.writeU64(roots + index * 8, ", .{parameter.name});
+    try writer.print("{s}(&builder, item) catch @panic(\"zigo: materialization allocation failed\"));\n", .{encoder});
+    try writer.print("    const buffer = builder.finish({d}, written, roots) catch @panic(\"zigo: materialization allocation failed\");\n", .{layout.id});
+    try writer.writeAll("    out_result_ptr.* = buffer.ptr;\n    out_result_len.* = buffer.len;\n");
+    if (output.fallible) {
+        try writer.writeAll("    out_written.* = result;\n    return 0;\n");
+    } else {
+        try writer.writeAll("    return result;\n");
+    }
     try writer.writeAll("}\n");
 }
 
@@ -1206,7 +1245,9 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             .bool => try writer.print("{s} != 0", .{parameter.name}),
             .@"enum" => try writer.print("@enumFromInt({s})", .{parameter.name}),
             .opaque_ptr => |pointer| try writer.print("{s}{s}", .{ parameter.name, if (pointer.by_value) ".*" else "" }),
-            .slice => if (function.paramString(index).role == .string_slice)
+            .slice => if (function.materialized_out != null and function.materialized_out.?.source_index == index)
+                try writer.print("zigo_{s}_slice", .{parameter.name})
+            else if (function.paramString(index).role == .string_slice)
                 try writer.print("zigoString{d}Strings", .{index})
             else if (function.paramString(index).role == .c_string)
                 try writer.writeAll(parameter.name)
@@ -2236,7 +2277,10 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 if (isReaderStream(parameter)) try writer.print(", {s}Data []byte", .{go_names[parameter_index]});
             } else {
                 try writer.print("{s} ", .{go_names[parameter_index]});
-                try writeRawParameterType(writer, program, parameter);
+                if (function.materialized_out != null and function.materialized_out.?.source_index == parameter_index)
+                    try writer.writeAll("int")
+                else
+                    try writeRawParameterType(writer, program, parameter);
             }
             raw_parameter_index += 1;
         }
@@ -2273,6 +2317,8 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 try writeCgoType(writer, semanticScalar(program, element));
             }
             try writer.writeAll("\n\tvar outResultLen C.size_t\n");
+        } else if (function.materialized_out != null) {
+            try writer.writeAll("\tvar outResultPtr *C.uint8_t\n\tvar outResultLen C.size_t\n");
         }
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (parameter.flatten == null and parameter.type == .value_struct and
@@ -2393,7 +2439,9 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 try writer.print("\n\tif {0s} != nil {{\n\t\t{0s}Ptr = &{0s}Zero\n\t\t{0s}Len = C.size_t(len(*{0s}))\n\t\tif {0s}Len != 0 {{\n\t\t\t{0s}Ptr = (*C.", .{slice_name});
                 try writeCgoType(writer, semanticScalar(program, element));
                 try writer.print(")(unsafe.Pointer(&(*{s})[0]))\n\t\t}}\n\t}}\n", .{slice_name});
-            } else if (parameter.type == .slice) {
+            } else if (parameter.type == .slice and
+                !(function.materialized_out != null and function.materialized_out.?.source_index == parameter_index))
+            {
                 const slice_name = go_names[parameter_index];
                 try writer.print("\tvar {s}Zero C.", .{slice_name});
                 try writeCgoType(writer, semanticScalar(program, parameter.type.slice.element.*));
@@ -2448,7 +2496,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
             function.slice_return_element == null and
             function.ret_struct == null and
             function.origin.@"return" != .void and
-            hasCopiedOutValueStructSlice(program, function.origin.*);
+            (hasCopiedOutValueStructSlice(program, function.origin.*) or function.materialized_out != null);
         try writer.writeByte('\t');
         if (returns_error) {
             try writer.writeAll("code := int32(");
@@ -2461,7 +2509,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         } else if ((function.ret_string == .c_string)) {
             try writer.writeAll(if (binds_raw_result) "result := C.GoString(" else "return C.GoString(");
         } else if (function.origin.@"return" != .void) {
-            try writer.writeAll(if (binds_raw_result) "result := " else "return ");
+            try writer.writeAll(if (function.materialized_out != null) "written := " else if (binds_raw_result) "result := " else "return ");
             try writeRawConversionPrefix(writer, program, function.origin.@"return");
         }
         try writer.print("C.{s}(", .{function.symbol});
@@ -2504,7 +2552,9 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                     }
                 },
                 .slice_pointer => try writer.print("{s}Ptr", .{go_names[parameter.source_index]}),
-                .slice_length => if (semantic.isOptionalSlice(function.origin.params[parameter.source_index].type))
+                .slice_length => if (function.materialized_out != null and function.materialized_out.?.source_index == parameter.source_index)
+                    try writer.print("C.size_t({s})", .{go_names[parameter.source_index]})
+                else if (semantic.isOptionalSlice(function.origin.params[parameter.source_index].type))
                     try writer.print("{s}Len", .{go_names[parameter.source_index]})
                 else
                     try writer.print("C.size_t(len({s}))", .{go_names[parameter.source_index]}),
@@ -2551,6 +2601,9 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 const optional = returnsOptionalSlice(function);
                 if (optional) try writeSliceAbsentReturn(writer, "outResultPtr", "");
                 try writeCgoSliceReturn(allocator, writer, program, element, "outResultPtr", "outResultLen", function.release_symbol, releaseReceiverCName(program, function), if (optional) ", true" else "");
+            } else if (function.materialized_out != null) {
+                const byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+                try writeCgoSliceReturn(allocator, writer, program, byte, "outResultPtr", "outResultLen", function.release_symbol, releaseReceiverCName(program, function), ", written");
             } else if (function.ret_optional) {
                 try writer.writeAll("\treturn ");
                 if (function.ret_struct) |record| {
@@ -2585,14 +2638,18 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
             try writeCgoStructRead(allocator, writer, program, record, "\t\t", c_value_name);
             try writer.writeAll("\n\t}\n");
         }
-        if (binds_raw_result) try writer.writeAll("\treturn result\n");
+        if (binds_raw_result and function.materialized_out == null) try writer.writeAll("\treturn result\n");
         if (function.ret_struct != null and !function.ret_optional) {
             try writer.writeAll("\treturn ");
             try writeCgoStructRead(allocator, writer, program, function.ret_struct.?.*, "\t", "outResult");
             try writer.writeByte('\n');
         }
         if (returns_error) {
-            if (error_payload == .void) {
+            if (function.materialized_out != null) {
+                try writer.writeAll("\tif code != 0 {\n\t\treturn nil, 0, code\n\t}\n");
+                const byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+                try writeCgoSliceReturn(allocator, writer, program, byte, "outResultPtr", "outResultLen", function.release_symbol, releaseReceiverCName(program, function), ", uint(outResult), code");
+            } else if (error_payload == .void) {
                 try writer.writeAll("\treturn code\n");
             } else if (function.slice_return_element) |element| {
                 // The failure path returns before the copy, so the out
@@ -3576,7 +3633,10 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
             if (isReaderStream(parameter)) try writer.print(", {s}Data []byte", .{go_names[parameter_index]});
         } else {
             try writer.print("{s} ", .{go_names[parameter_index]});
-            try writeRawParameterType(writer, program, parameter);
+            if (function.materialized_out != null and function.materialized_out.?.source_index == parameter_index)
+                try writer.writeAll("int")
+            else
+                try writeRawParameterType(writer, program, parameter);
         }
         parameter_count += 1;
     }
@@ -3624,11 +3684,13 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         );
     } else if (parameter.type == .slice) {
         if (function.paramString(parameter_index).role == .string_slice or function.paramString(parameter_index).role == .c_string) continue;
+        if (function.materialized_out != null and function.materialized_out.?.source_index == parameter_index) continue;
         const slice_name = go_names[parameter_index];
         try writer.print("\tvar {s}Ptr unsafe.Pointer\n\tif len({s}) != 0 {{ {s}Ptr = unsafe.Pointer(&{s}[0]) }}\n", .{ slice_name, slice_name, slice_name, slice_name });
         if (hasWrittenOutParam(parameter)) try writer.print("\tvar {s}Written uintptr\n", .{slice_name});
     };
-    if (function.slice_return_element != null) try writer.writeAll("\tvar outResultPtr unsafe.Pointer\n\tvar outResultLen uintptr\n");
+    if (function.slice_return_element != null or function.materialized_out != null)
+        try writer.writeAll("\tvar outResultPtr unsafe.Pointer\n\tvar outResultLen uintptr\n");
     // A `?T` return carries its value in an out parameter whatever `T` is, so
     // the declaration reads through the optional rather than spelling the
     // pointer the public layer sees.
@@ -3665,7 +3727,7 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         // The call's own result is the presence flag.
         try writer.writeAll("result := ")
     else if ((function.origin.@"return" != .void and function.slice_return_element == null and function.ret_struct == null) or (function.ret_string == .c_string))
-        try writer.writeAll("result := ");
+        try writer.writeAll(if (function.materialized_out != null) "written := " else "result := ");
     try writer.print("bindings().fn{s}(", .{go_name});
     for (function.params, 0..) |parameter, index| {
         if (index != 0) try writer.writeAll(", ");
@@ -3704,7 +3766,9 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
                     try writer.writeAll(source_name);
             },
             .slice_pointer => try writer.print("{s}Ptr", .{go_names[parameter.source_index]}),
-            .slice_length => if (semantic.isOptionalSlice(function.origin.params[parameter.source_index].type))
+            .slice_length => if (function.materialized_out != null and function.materialized_out.?.source_index == parameter.source_index)
+                try writer.print("uintptr({s})", .{go_names[parameter.source_index]})
+            else if (semantic.isOptionalSlice(function.origin.params[parameter.source_index].type))
                 try writer.print("{s}Len", .{go_names[parameter.source_index]})
             else
                 try writer.print("uintptr(len({s}))", .{go_names[parameter.source_index]}),
@@ -3762,8 +3826,15 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         const optional = returnsOptionalSlice(function);
         if (optional) try writeSliceAbsentReturn(writer, "outResultPtr", "");
         try writePuregoSliceReturn(allocator, writer, program, function, function.slice_return_element.?, if (optional) ", true" else "");
+    } else if (!returns_error and function.materialized_out != null) {
+        const byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+        try writePuregoSliceReturn(allocator, writer, program, function, byte, ", uint(written)");
     } else if (returns_error) {
-        if (error_payload == .void) {
+        if (function.materialized_out != null) {
+            try writer.writeAll("\tif code != 0 {\n\t\treturn nil, 0, code\n\t}\n");
+            const byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+            try writePuregoSliceReturn(allocator, writer, program, function, byte, ", uint(outResult), code");
+        } else if (error_payload == .void) {
             try writer.writeAll("\treturn code\n");
         } else if (function.slice_return_element) |element| {
             // The failure path returns before the copy, so the out parameters
@@ -4473,6 +4544,12 @@ fn writePublicValueStructSliceCopyBacks(
     }
 }
 
+fn writePublicMaterializedOutCopy(writer: *std.Io.Writer, function: abi.AbiFn, go_names: [][]u8) !void {
+    const output = function.materialized_out orelse return;
+    const name = go_names[output.source_index];
+    try writer.print("\tzigoDecoded := zigoDecode{s}SliceBuffer(zigoBuffer)\n\tcopy({s}, zigoDecoded)\n", .{ output.root, name });
+}
+
 fn writePublicCapturedReturn(writer: *std.Io.Writer, program: abi.Program, function: semantic.SemanticFn, needs_handle_check: bool) !void {
     try writer.writeAll("\treturn ");
     switch (function.@"return") {
@@ -4929,9 +5006,11 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         // one cannot be the return expression itself.
         const needs_rethrow = functionReachesCallbacks(program, function.origin.*);
         const captures_return = !returns_error and !borrowed_direct and !owned_direct and
-            (hasOutValueStructSlice(function.origin.*) or needs_rethrow) and function.origin.@"return" != .void;
+            (hasOutValueStructSlice(function.origin.*) or function.materialized_out != null or needs_rethrow) and function.origin.@"return" != .void;
         if (returns_error) {
-            if (error_payload == .void)
+            if (function.materialized_out != null)
+                try writer.writeAll("zigoBuffer, result, code := ")
+            else if (error_payload == .void)
                 try writer.writeAll("code := ")
             else if (error_payload == .optional)
                 try writer.writeAll("result, zigoHas, code := ")
@@ -4942,7 +5021,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             try writer.writeAll("result := ");
             try writeRawReferencePrefix(writer, options);
         } else if (captures_return) {
-            try writer.writeAll("result := ");
+            try writer.writeAll(if (function.materialized_out != null) "zigoBuffer, result := " else "result := ");
             try writeRawReferencePrefix(writer, options);
         } else if (function.origin.@"return" == .optional) {
             // Presence comes back beside the value, so both are named and the
@@ -4969,6 +5048,12 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                 try writeRawReferencePrefix(writer, options);
             } else if (isValueStructSlice(function.origin.@"return")) {
                 try writer.print("return zigo{s}{s}(", .{ function.origin.@"return".slice.element.*.value_struct.ref, publicSliceFromRawSuffix(program, function.origin.@"return".slice.element.*.value_struct.ref) });
+                try writeRawReferencePrefix(writer, options);
+            } else if (function.origin.@"return" == .materialized) {
+                try writer.print("return zigoDecode{s}Buffer(", .{function.origin.@"return".materialized.ref});
+                try writeRawReferencePrefix(writer, options);
+            } else if (function.origin.@"return" == .slice and function.origin.@"return".slice.element.* == .materialized) {
+                try writer.print("return zigoDecode{s}SliceBuffer(", .{function.origin.@"return".slice.element.materialized.ref});
                 try writeRawReferencePrefix(writer, options);
             } else {
                 try writer.writeAll("return ");
@@ -5057,7 +5142,9 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                     try writer.print("{s}Raw", .{go_names[parameter_index]})
                 else
                     try writer.writeAll(go_names[parameter_index]),
-                .slice => if (isValueStructSlice(parameter.type))
+                .slice => if (function.materialized_out != null and function.materialized_out.?.source_index == parameter_index)
+                    try writer.print("len({s})", .{go_names[parameter_index]})
+                else if (isValueStructSlice(parameter.type))
                     try writer.print("{s}Raw", .{go_names[parameter_index]})
                 else if (function.paramString(parameter_index).role == .string_slice)
                     try writer.writeAll(go_names[parameter_index])
@@ -5075,6 +5162,8 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         if (!returns_error and !captures_return and function.origin.@"return" == .@"enum") try writer.writeByte(')');
         if (!returns_error and !captures_return and function.origin.@"return" == .value_struct) try writer.writeByte(')');
         if (!returns_error and !captures_return and isValueStructSlice(function.origin.@"return")) try writer.writeByte(')');
+        if (!returns_error and !captures_return and function.origin.@"return" == .materialized) try writer.writeByte(')');
+        if (!returns_error and !captures_return and function.origin.@"return" == .slice and function.origin.@"return".slice.element.* == .materialized) try writer.writeByte(')');
         if (!returns_error and !captures_return and function.origin.@"return" == .bool) try writer.writeAll(" != 0");
         if (!returns_error and !captures_return and function.origin.@"return" != .optional and
             semantic.isUtf8Slice(function.origin.@"return", function.origin.return_semantic)) try writer.writeByte(')');
@@ -5089,6 +5178,8 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         if (!returns_error and hasOutValueStructSlice(function.origin.*)) {
             try writePublicValueStructSliceCopyBacks(writer, program, function.origin.*, go_names);
         }
+        if (!returns_error and function.materialized_out != null)
+            try writePublicMaterializedOutCopy(writer, function, go_names);
         if (!returns_error and function.origin.@"return" == .optional) {
             const child = function.origin.@"return".optional.child.*;
             try writer.writeAll("\treturn ");
@@ -5151,6 +5242,8 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             if (hasOutValueStructSlice(function.origin.*)) {
                 try writePublicValueStructSliceCopyBacks(writer, program, function.origin.*, go_names);
             }
+            if (function.materialized_out != null)
+                try writePublicMaterializedOutCopy(writer, function, go_names);
             if (error_payload == .void) {
                 try writer.writeAll("\treturn nil\n");
             } else {
@@ -5225,7 +5318,9 @@ fn renderPublicFile(
 /// import block is derived from the body instead of from a second, parallel
 /// set of predicates that could disagree with it.
 const public_std_imports = [_]struct { qualifier: []const u8, path: []const u8 }{
+    .{ .qualifier = "binary", .path = "encoding/binary" },
     .{ .qualifier = "io", .path = "io" },
+    .{ .qualifier = "math", .path = "math" },
     .{ .qualifier = "runtime", .path = "runtime" },
     .{ .qualifier = "cgo", .path = "runtime/cgo" },
     .{ .qualifier = "strconv", .path = "strconv" },
@@ -5526,6 +5621,7 @@ fn renderPublicStructLayoutGuards(
 
 fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     const scope: PublicScope = .{ .program = program, .options = options };
+    try renderPublicMaterializedStructs(allocator, writer, program, options);
     for (program.types) |declaration| {
         if (declaration.kind != .value_struct or declaration.layout != .@"packed") continue;
         if (!typeBelongsToPackage(program, declaration.name, options.active_package)) continue;
@@ -5702,6 +5798,163 @@ fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer
         }
     }
     try renderPublicTaggedUnionValues(allocator, writer, program, options);
+}
+
+fn programUsesMaterializedType(program: abi.Program, name: []const u8) bool {
+    for (program.functions) |function| if (function.materialized_return) |result| {
+        if (materializedTreeContains(program, result.root, name)) return true;
+    };
+    for (program.functions) |function| if (function.materialized_out) |result| {
+        if (materializedTreeContains(program, result.root, name)) return true;
+    };
+    return false;
+}
+
+fn materializedTreeContains(program: abi.Program, root: []const u8, name: []const u8) bool {
+    if (std.mem.eql(u8, root, name)) return true;
+    const layout = materializedLayout(program, root);
+    for (layout.fields) |field| switch (field.kind) {
+        .node, .node_pointer => if (materializedTreeContains(program, field.node.materialized.ref, name)) return true,
+        .node_slice => if (materializedTreeContains(program, field.node.slice.element.materialized.ref, name)) return true,
+        else => {},
+    };
+    return false;
+}
+
+fn materializedRootUse(program: abi.Program, name: []const u8, is_slice: bool) bool {
+    for (program.functions) |function| if (function.materialized_return) |result| {
+        if (result.is_slice == is_slice and std.mem.eql(u8, result.root, name)) return true;
+    };
+    if (is_slice) for (program.functions) |function| if (function.materialized_out) |result| {
+        if (std.mem.eql(u8, result.root, name)) return true;
+    };
+    return false;
+}
+
+fn writeMaterializedPublicType(scope: PublicScope, writer: *std.Io.Writer, node: semantic.TypeNode) !void {
+    if (node == .slice) {
+        const element = node.slice.element.*;
+        if (semantic.isByte(element)) return writer.writeAll("string");
+        if (element == .slice and semantic.isByte(element.slice.element.*)) return writer.writeAll("[]string");
+        try writer.writeAll("[]");
+        return writeMaterializedPublicType(scope, writer, element);
+    }
+    try writePublicGoType(scope, writer, node);
+}
+
+fn renderPublicMaterializedStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
+    const scope: PublicScope = .{ .program = program, .options = options };
+    var any = false;
+    for (program.materialized_layouts) |layout| {
+        if (!programUsesMaterializedType(program, layout.owner.name)) continue;
+        if (!typeBelongsToPackage(program, layout.owner.name, options.active_package)) continue;
+        any = true;
+        try writer.print("// {s} is an owned Go snapshot of the Zig struct of the same name.\ntype {s} struct {{\n", .{ layout.owner.name, layout.owner.name });
+        for (layout.fields) |field| {
+            const member = try naming.pascalAlloc(allocator, field.name);
+            defer allocator.free(member);
+            try writer.print("\t{s} ", .{member});
+            try writeMaterializedPublicType(scope, writer, field.node);
+            try writer.writeByte('\n');
+        }
+        try writer.writeAll("}\n\n");
+    }
+    if (!any) return;
+    try writer.writeAll(
+        "const zigoMaterializedMagicVersion = uint64(0x00014f47495a)\n\n" ++
+            "func zigoMaterializedU64(buffer []byte, offset uint64) uint64 {\n" ++
+            "\tif offset > uint64(len(buffer)) || uint64(len(buffer))-offset < 8 {\n" ++
+            "\t\tpanic(\"zigo: invalid materialized result buffer\")\n" ++
+            "\t}\n" ++
+            "\treturn binary.LittleEndian.Uint64(buffer[int(offset):int(offset)+8])\n" ++
+            "}\n\n" ++
+            "func zigoMaterializedBytes(buffer []byte, offset, length uint64) []byte {\n" ++
+            "\tif offset > uint64(len(buffer)) || length > uint64(len(buffer))-offset {\n" ++
+            "\t\tpanic(\"zigo: invalid materialized result buffer\")\n" ++
+            "\t}\n" ++
+            "\treturn buffer[int(offset):int(offset+length)]\n" ++
+            "}\n\n" ++
+            "func zigoMaterializedHeader(buffer []byte, layout uint64) (uint64, uint64) {\n" ++
+            "\tif len(buffer) < 40 || zigoMaterializedU64(buffer, 0) != zigoMaterializedMagicVersion ||\n" ++
+            "\tzigoMaterializedU64(buffer, 8) != layout || zigoMaterializedU64(buffer, 32) != uint64(len(buffer)) {\n" ++
+            "\t\tpanic(\"zigo: invalid materialized result buffer\")\n" ++
+            "\t}\n" ++
+            "\treturn zigoMaterializedU64(buffer, 24), zigoMaterializedU64(buffer, 16)\n" ++
+            "}\n\n",
+    );
+    for (program.materialized_layouts) |layout| {
+        if (!programUsesMaterializedType(program, layout.owner.name)) continue;
+        try renderMaterializedDecoder(allocator, writer, program, options, layout);
+    }
+}
+
+fn renderMaterializedDecoder(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options, layout: abi.MaterializedLayout) !void {
+    const scope: PublicScope = .{ .program = program, .options = options };
+    const public_name = try scope.typeNameAlloc(allocator, layout.owner.name);
+    defer allocator.free(public_name);
+    if (materializedRootUse(program, layout.owner.name, false)) try writer.print(
+        "func zigoDecode{s}Buffer(buffer []byte) {s} {{\n\toffset, count := zigoMaterializedHeader(buffer, {d})\n\tif count != 1 {{ panic(\"zigo: invalid materialized result buffer\") }}\n\treturn zigoDecode{s}At(buffer, offset)\n}}\n\n",
+        .{ layout.owner.name, public_name, layout.id, layout.owner.name },
+    );
+    if (materializedRootUse(program, layout.owner.name, true)) try writer.print(
+        "func zigoDecode{s}SliceBuffer(buffer []byte) []{s} {{\n\toffset, count := zigoMaterializedHeader(buffer, {d})\n\tresult := make([]{s}, int(count))\n\tfor i := range result {{ result[i] = zigoDecode{s}At(buffer, zigoMaterializedU64(buffer, offset+uint64(i)*8)) }}\n\treturn result\n}}\n\n",
+        .{ layout.owner.name, public_name, layout.id, public_name, layout.owner.name },
+    );
+    try writer.print("func zigoDecode{s}At(buffer []byte, offset uint64) {s} {{\n\t_ = zigoMaterializedBytes(buffer, offset, {d})\n\tvar result {s}\n", .{ layout.owner.name, public_name, layout.record_size, public_name });
+    for (layout.fields) |field| try writeMaterializedDecodeField(allocator, writer, program, options, field);
+    try writer.writeAll("\treturn result\n}\n\n");
+}
+
+fn writeMaterializedDecodeField(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options, field: abi.MaterializedLayout.Field) !void {
+    const scope: PublicScope = .{ .program = program, .options = options };
+    const member = try naming.pascalAlloc(allocator, field.name);
+    defer allocator.free(member);
+    try writer.print("\tzigo{s}Offset := zigoMaterializedU64(buffer, offset+{d})\n", .{ member, field.offset });
+    switch (field.kind) {
+        .scalar => {
+            try writer.print("\tresult.{s} = ", .{member});
+            switch (field.node) {
+                .bool => try writer.print("zigo{s}Offset != 0", .{member}),
+                .int => try writePublicGoType(scope, writer, field.node),
+                .float => |value| try writer.print("math.Float{d}frombits(uint{d}(zigo{s}Offset))", .{ value.bits, value.bits, member }),
+                .@"enum" => |value| {
+                    try scope.writeTypeName(writer, value.ref);
+                    try writer.print("(zigo{s}Offset)", .{member});
+                },
+                else => unreachable,
+            }
+            if (field.node == .int) try writer.print("(zigo{s}Offset)", .{member});
+            try writer.writeByte('\n');
+        },
+        .string => try writer.print("\tzigo{s}Count := zigoMaterializedU64(buffer, offset+{d})\n\tresult.{s} = string(zigoMaterializedBytes(buffer, zigo{s}Offset, zigo{s}Count))\n", .{ member, field.offset + 8, member, member, member }),
+        .scalar_slice => {
+            try writer.print("\tzigo{s}Count := zigoMaterializedU64(buffer, offset+{d})\n\tresult.{s} = make(", .{ member, field.offset + 8, member });
+            try writeMaterializedPublicType(scope, writer, field.node);
+            try writer.print(", int(zigo{s}Count))\n\tfor i := range result.{s} {{\n\t\tzigoValue := zigoMaterializedU64(buffer, zigo{s}Offset+uint64(i)*8)\n\t\tresult.{s}[i] = ", .{ member, member, member, member });
+            const element = field.node.slice.element.*;
+            switch (element) {
+                .bool => try writer.writeAll("zigoValue != 0"),
+                .float => |value| try writer.print("math.Float{d}frombits(uint{d}(zigoValue))", .{ value.bits, value.bits }),
+                .@"enum" => |value| {
+                    try scope.writeTypeName(writer, value.ref);
+                    try writer.writeAll("(zigoValue)");
+                },
+                else => {
+                    try writePublicGoType(scope, writer, element);
+                    try writer.writeAll("(zigoValue)");
+                },
+            }
+            try writer.writeAll("\n\t}\n");
+        },
+        .string_slice => try writer.print("\tzigo{s}Count := zigoMaterializedU64(buffer, offset+{d})\n\tresult.{s} = make([]string, int(zigo{s}Count))\n\tfor i := range result.{s} {{\n\t\tzigoItem := zigo{s}Offset + uint64(i)*16\n\t\tresult.{s}[i] = string(zigoMaterializedBytes(buffer, zigoMaterializedU64(buffer, zigoItem), zigoMaterializedU64(buffer, zigoItem+8)))\n\t}}\n", .{ member, field.offset + 8, member, member, member, member, member }),
+        .node => try writer.print("\tresult.{s} = zigoDecode{s}At(buffer, zigo{s}Offset)\n", .{ member, field.node.materialized.ref, member }),
+        .node_pointer => {
+            if (field.node.materialized.nullable) try writer.print("\tif zigo{s}Offset != 0 {{\n", .{member});
+            try writer.print("\tzigo{s}Value := zigoDecode{s}At(buffer, zigo{s}Offset)\n\tresult.{s} = &zigo{s}Value\n", .{ member, field.node.materialized.ref, member, member, member });
+            if (field.node.materialized.nullable) try writer.writeAll("\t}\n");
+        },
+        .node_slice => try writer.print("\tzigo{s}Count := zigoMaterializedU64(buffer, offset+{d})\n\tresult.{s} = make([]{s}, int(zigo{s}Count))\n\tfor i := range result.{s} {{ result.{s}[i] = zigoDecode{s}At(buffer, zigoMaterializedU64(buffer, zigo{s}Offset+uint64(i)*8)) }}\n", .{ member, field.offset + 8, member, field.node.slice.element.materialized.ref, member, member, member, field.node.slice.element.materialized.ref, member }),
+    }
 }
 
 fn renderValueUnionFromRaw(
@@ -7594,6 +7847,12 @@ fn writeRawReturnType(writer: *std.Io.Writer, program: abi.Program, function: ab
     if ((function.ret_string == .c_string)) return writer.writeAll(" string");
     if (function.materialized_return) |materialized|
         return writer.writeAll(if (materialized.fallible) " ([]byte, int32)" else " []byte");
+    if (function.materialized_out) |output| {
+        try writer.writeAll(" ([]byte, ");
+        const count = if (output.fallible) function.origin.@"return".error_union.payload.* else function.origin.@"return";
+        try writeRawGoType(writer, program, count);
+        return writer.writeAll(if (output.fallible) ", int32)" else ")");
+    }
     switch (function.origin.@"return") {
         .void => {},
         .error_union => |value| {
@@ -7701,8 +7960,11 @@ fn writePublicResultConversion(scope: PublicScope, writer: *std.Io.Writer, progr
             try writer.print("zigo{s}FromRaw({s})", .{ value.ref, expression }),
         .slice => |value| if (value.element.* == .value_struct)
             try writer.print("zigo{s}{s}({s})", .{ value.element.*.value_struct.ref, publicSliceFromRawSuffix(program, value.element.*.value_struct.ref), expression })
+        else if (value.element.* == .materialized)
+            try writer.print("zigoDecode{s}SliceBuffer({s})", .{ value.element.materialized.ref, expression })
         else
             try writer.writeAll(expression),
+        .materialized => |value| try writer.print("zigoDecode{s}Buffer({s})", .{ value.ref, expression }),
         .@"enum" => |value| {
             try scope.writeTypeName(writer, value.ref);
             try writer.print("({s})", .{expression});
@@ -10291,6 +10553,52 @@ test "a stream parameter becomes a shim adapter and a fixed callback ABI" {
     const stream_error = std.mem.indexOf(u8, public, "zigoStreamError(\"Document.Dump\", \"w\", wHandle)").?;
     const status = std.mem.indexOf(u8, public, "errorForCode(\"Document.Dump\"").?;
     try std.testing.expect(rethrow < stream_error and stream_error < status);
+}
+
+test "materialized decoders and output reuse are emitted for both raw backends" {
+    var node: semantic.TypeNode = .{ .materialized = .{ .ref = "Node" } };
+    const node_slice: semantic.TypeNode = .{ .slice = .{ .@"const" = false, .element = &node } };
+    const count: semantic.TypeNode = .{ .int = .{ .bits = 64, .signed = false, .is_usize = true } };
+    const fill_params = [_]semantic.Parameter{.{ .direction = .out, .name = "output", .type = node_slice, .written = .@"return" }};
+    var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    const bytes: semantic.TypeNode = .{ .slice = .{ .@"const" = false, .element = &byte } };
+    const release_params = [_]semantic.Parameter{.{ .name = "buffer", .type = bytes }};
+    const functions = [_]semantic.SemanticFn{
+        .{ .name = "snapshot", .ownership = .caller, .params = &.{}, .release = "release", .@"return" = node, .symbol = "zg_snapshot" },
+        .{ .name = "fill", .ownership = .caller, .params = &fill_params, .release = "release", .@"return" = count, .symbol = "zg_fill" },
+        .{ .name = "release", .params = &release_params, .@"return" = .{ .void = {} }, .symbol = "zg_release" },
+    };
+    const fields = [_]semantic.TypeField{.{ .name = "value", .type = .{ .int = .{ .bits = 32, .signed = true } } }};
+    const types = [_]semantic.TypeDecl{
+        .{ .fields = &fields, .kind = .materialized, .materialized_version = 1, .name = "Node", .zig_path = "Node" },
+        .{ .fields = &fields, .kind = .materialized, .materialized_version = 1, .name = "Unused", .zig_path = "Unused" },
+    };
+    const document: semantic.Semantic = .{
+        .allocator = "std.heap.c_allocator",
+        .functions = &functions,
+        .package = "tree",
+        .prefix = "zg",
+        .types = &types,
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    inline for (.{ abi.Program.Backend.cgo, abi.Program.Backend.purego }) |backend| {
+        const program = try @import("lower").semanticDocumentForBackend(arena.allocator(), document, "tree", "zg", &.{}, backend);
+        const public = try renderForTest(renderPublic, program);
+        defer std.testing.allocator.free(public);
+        try std.testing.expect(std.mem.indexOf(u8, public, "return zigoDecodeNodeBuffer(") != null);
+        try std.testing.expect(std.mem.indexOf(u8, public, "zigoBuffer, result := ") != null);
+        try std.testing.expect(std.mem.indexOf(u8, public, "copy(output, zigoDecoded)") != null);
+        const structs = try renderForTest(renderPublicStructsFile, program);
+        defer std.testing.allocator.free(structs);
+        try std.testing.expect(std.mem.indexOf(u8, structs, "type Node struct") != null);
+        try std.testing.expect(std.mem.indexOf(u8, structs, "type Unused struct") == null);
+        try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoDecodeNodeSliceBuffer") != null);
+        const raw = try renderForTest(renderRaw, program);
+        defer std.testing.allocator.free(raw);
+        try std.testing.expect(std.mem.indexOf(u8, raw, "func Fill(output int) ([]byte, uint)") != null);
+    }
 }
 
 test "narrow integer slices use promoted ABI elements and shim buffers" {

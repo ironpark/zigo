@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-03T07:15:17Z"
 depends_on:
 - "108-materialized-result-trees#1"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: Both backends decode the case's tree into identical Go values with one native call plus one release.
 > NEXT: none

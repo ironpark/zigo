@@ -149,6 +149,13 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
     if (try packageCycleIssue(allocator, document)) |issue| return issue;
     if (try identifierIssue(allocator, document)) |issue| return issue;
     for (document.functions) |function| {
+        if (materializedOutCount(function) > 1) return .{
+            .severity = .@"error",
+            .code = "ZIGO048",
+            .message = "function has more than one materialized output buffer",
+            .site = functionSite(function),
+            .hint = "use one materialized output slice per function",
+        };
         if (function.name.len == 0) return .{
             .severity = .@"error",
             .code = "ZIGO021",
@@ -238,7 +245,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             if (try callbackGoErrorIssue(allocator, function, parameter)) |issue| return issue;
             if (try callbackFailureResultIssue(allocator, document, function, parameter)) |issue| return issue;
             if (try callbackContractIssue(allocator, function, parameter)) |issue| return issue;
-            if (containsMaterialized(parameter.type) and !isMaterializedReleaseTarget(document, function)) return .{
+            if (containsMaterialized(parameter.type) and !isMaterializedReleaseTarget(document, function) and !isMaterializedOutParameter(parameter)) return .{
                 .severity = .@"error",
                 .code = "ZIGO048",
                 .message = "materialized structs are result-only",
@@ -400,7 +407,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
         }
         // A caller-owned slice is handed over through `release` instead of a
         // handle destructor, so it answers to ZIGO016 rather than ZIGO015.
-        if (function.ownership == .caller and isMaterializedReturn(function.@"return")) {
+        if (function.ownership == .caller and (isMaterializedReturn(function.@"return") or hasMaterializedOut(function))) {
             if (materializedReleaseTargetIssue(document, function)) |issue| return issue;
         } else if (function.ownership == .caller and isReleasableSliceReturn(function)) {
             if (releaseTargetIssue(document, function)) |issue| return issue;
@@ -428,7 +435,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .hint = "return `usize` or `!usize` from the function, or use the default `.written = .all`",
             };
         }
-        if (function.release != null and !isReleasableSliceReturn(function) and !isMaterializedReturn(function.@"return")) return .{
+        if (function.release != null and !isReleasableSliceReturn(function) and !isMaterializedReturn(function.@"return") and !hasMaterializedOut(function)) return .{
             .severity = .@"error",
             .code = "ZIGO016",
             .message = "release function declared on a return that zigo does not free",
@@ -436,7 +443,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .hint = "use `.release` only together with `.returns = .caller` on a slice return",
         };
     }
-    for (document.functions) |function| if (isMaterializedReturn(function.@"return") and
+    for (document.functions) |function| if ((isMaterializedReturn(function.@"return") or hasMaterializedOut(function)) and
         (function.ownership != .caller or function.release == null)) return .{
         .severity = .@"error",
         .code = "ZIGO048",
@@ -2147,6 +2154,23 @@ fn isMaterializedReturn(node: semantic.TypeNode) bool {
     return payload == .materialized or (payload == .slice and payload.slice.element.* == .materialized);
 }
 
+fn isMaterializedOutParameter(parameter: semantic.Parameter) bool {
+    return parameter.direction == .out and parameter.writtenHint() == .@"return" and
+        parameter.type == .slice and parameter.type.slice.element.* == .materialized and
+        !parameter.type.slice.element.materialized.pointer;
+}
+
+fn hasMaterializedOut(function: semantic.SemanticFn) bool {
+    for (function.params) |parameter| if (isMaterializedOutParameter(parameter)) return true;
+    return false;
+}
+
+fn materializedOutCount(function: semantic.SemanticFn) usize {
+    var count: usize = 0;
+    for (function.params) |parameter| count += @intFromBool(isMaterializedOutParameter(parameter));
+    return count;
+}
+
 fn materializedReleaseTargetIssue(document: semantic.Semantic, function: semantic.SemanticFn) ?diagnostic.Diagnostic {
     const missing: diagnostic.Diagnostic = .{
         .severity = .@"error",
@@ -2168,7 +2192,7 @@ fn materializedReleaseTargetIssue(document: semantic.Semantic, function: semanti
 
 fn isMaterializedReleaseTarget(document: semantic.Semantic, candidate: semantic.SemanticFn) bool {
     for (document.functions) |function| {
-        if (isMaterializedReturn(function.@"return") and function.release != null and
+        if ((isMaterializedReturn(function.@"return") or hasMaterializedOut(function)) and function.release != null and
             std.mem.eql(u8, function.release.?, candidate.name)) return true;
     }
     return false;
