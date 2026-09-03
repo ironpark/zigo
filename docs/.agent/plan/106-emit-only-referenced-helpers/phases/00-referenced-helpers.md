@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T06:27:03Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `staticcheck -checks U1000 ./...` is clean in every example module and the verification loop passes.
 > NEXT: none

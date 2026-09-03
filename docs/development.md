@@ -39,6 +39,16 @@ done
 JSON renderer까지 확인할 때는 예제가 `coverage_json`에 연결한
 `-Dcoverage-json=zigo/coverage.json`을 함께 넘깁니다.
 
+생성된 Go package에 참조되지 않는 내부 helper가 남지 않았는지는 CI와 같은 `U1000`
+검사로 확인합니다. 현재 CI 버전은 `staticcheck` v0.8.1입니다.
+
+```bash
+go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
+for module in $(find examples -maxdepth 4 -name go.mod -print | sort); do
+  (cd "${module%/go.mod}" && staticcheck -checks U1000 ./...)
+done
+```
+
 각 예제의 역할은 [예제 선택 가이드](examples.md)에 정리되어 있습니다. 특히 다음 예제는
 변경 범위를 넓게 검증합니다.
 

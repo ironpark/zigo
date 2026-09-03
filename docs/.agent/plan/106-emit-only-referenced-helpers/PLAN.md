@@ -1,14 +1,15 @@
 ---
+completed_at: "2026-09-03T06:29:07Z"
 description: emit generated Go helpers only when the public layer references them, and gate the examples with staticcheck U1000
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-03T03:53:27Z"
 ---
 > NEXT: Gate every helper on an actual reference. ([Phase 0](phases/00-referenced-helpers.md))
 
 # Phases
 
-- [ ] [Phase 00: Reference-driven helper emission](phases/00-referenced-helpers.md)
-- [ ] [Phase 01: staticcheck in CI](phases/01-staticcheck-ci.md)
+- [x] [Phase 00: Reference-driven helper emission](phases/00-referenced-helpers.md)
+- [x] [Phase 01: staticcheck in CI](phases/01-staticcheck-ci.md)
 
 # Shared Verification
 
