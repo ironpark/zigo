@@ -9,12 +9,9 @@ import (
 
 // installDir is the directory `zig build go-lib` installs the shared library
 // into. Zig puts a DLL next to the executables and everything else in lib.
-func installDir() string {
-	if runtime.GOOS == "windows" {
-		return "bin"
-	}
-	return "lib"
-}
+// installDir is where `install.library_dir` (default `lib`) places the shared
+// library on every platform, including the Windows DLL.
+func installDir() string { return "lib" }
 
 func init() {
 	// An explicit path keeps the test independent of the loader search path;
