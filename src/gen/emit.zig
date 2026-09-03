@@ -336,7 +336,7 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         try writer.writeAll("    ");
 
         if (function.origin.field_access) |field_access| {
-            try writeFieldAccess(writer, function, field_access);
+            try writeFieldAccess(allocator, writer, function, field_access);
             continue;
         }
 
@@ -505,19 +505,18 @@ fn writeValueUnionReturnAssignments(
         return;
     }
     try writer.print("\n            out_result.{s} = ", .{field_name});
-    switch (node) {
-        .bool => try writer.print("@intFromBool({s})", .{expression}),
-        .@"enum" => try writer.print("@intFromEnum({s})", .{expression}),
-        else => if (abi.narrowInt(node) != null)
-            try writer.print("@intCast({s})", .{expression})
-        else
-            try writer.writeAll(expression),
-    }
+    try writeZigReturnConversion(writer, node, expression);
     try writer.writeByte(';');
 }
 
-fn writeFieldAccess(writer: *std.Io.Writer, function: abi.AbiFn, access: semantic.FieldAccess) !void {
+fn writeFieldAccess(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    function: abi.AbiFn,
+    access: semantic.FieldAccess,
+) !void {
     const checked = function.origin.@"return" == .error_union;
+    const trailer = if (checked) ";\n    return 0;\n}\n" else ";\n}\n";
     if (access.setter) {
         const field_type = function.origin.params[0].type;
         try writer.print("self.{s} = ", .{access.path});
@@ -526,10 +525,7 @@ fn writeFieldAccess(writer: *std.Io.Writer, function: abi.AbiFn, access: semanti
             .@"enum" => try writer.writeAll("@enumFromInt(v)"),
             else => try writer.writeAll("v"),
         }
-        if (checked)
-            try writer.writeAll(";\n    return 0;\n}\n")
-        else
-            try writer.writeAll(";\n}\n");
+        try writer.writeAll(trailer);
         return;
     }
 
@@ -541,19 +537,10 @@ fn writeFieldAccess(writer: *std.Io.Writer, function: abi.AbiFn, access: semanti
         try writer.writeAll("out_result.* = ")
     else
         try writer.writeAll("return ");
-    switch (field_type) {
-        .bool => try writer.print("@intFromBool(self.{s})", .{access.path}),
-        .@"enum" => try writer.print("@intFromEnum(self.{s})", .{access.path}),
-        .int => if (abi.narrowInt(field_type) != null)
-            try writer.print("@intCast(self.{s})", .{access.path})
-        else
-            try writer.print("self.{s}", .{access.path}),
-        else => try writer.print("self.{s}", .{access.path}),
-    }
-    if (checked)
-        try writer.writeAll(";\n    return 0;\n}\n")
-    else
-        try writer.writeAll(";\n}\n");
+    const expression = try std.fmt.allocPrint(allocator, "self.{s}", .{access.path});
+    defer allocator.free(expression);
+    try writeZigReturnConversion(writer, field_type, expression);
+    try writer.writeAll(trailer);
 }
 
 /// `extern` already fixes the layout on both sides, so the shim asserts rather
@@ -1037,8 +1024,9 @@ fn flattenedAbiParam(function: abi.AbiFn, source_index: usize, field_index: usiz
     unreachable;
 }
 
-fn writeFlattenedShimValue(writer: *std.Io.Writer, name: []const u8, node: semantic.TypeNode) !void {
-    if (node == .optional) return writeShimOptionalArgument(writer, name, node.optional.child.*);
+/// Converts one C-side scalar back to its Zig form on the way in; the mirror
+/// image of `writeZigReturnConversion`.
+fn writeShimInboundValue(writer: *std.Io.Writer, name: []const u8, node: semantic.TypeNode) !void {
     switch (node) {
         .bool => try writer.print("{s} != 0", .{name}),
         .@"enum" => try writer.print("@enumFromInt({s})", .{name}),
@@ -1047,6 +1035,11 @@ fn writeFlattenedShimValue(writer: *std.Io.Writer, name: []const u8, node: seman
         else
             try writer.writeAll(name),
     }
+}
+
+fn writeFlattenedShimValue(writer: *std.Io.Writer, name: []const u8, node: semantic.TypeNode) !void {
+    if (node == .optional) return writeShimOptionalArgument(writer, name, node.optional.child.*);
+    try writeShimInboundValue(writer, name, node);
 }
 
 fn writeTaggedUnionValueArgument(
@@ -1110,14 +1103,7 @@ fn writeTaggedUnionPayloadArgument(
         return;
     }
     const slot = taggedUnionAbiParam(function, source_index, .union_payload, slot_name);
-    switch (node) {
-        .bool => try writer.print("{s} != 0", .{slot.name}),
-        .@"enum" => try writer.print("@enumFromInt({s})", .{slot.name}),
-        else => if (abi.narrowInt(node) != null)
-            try writer.print("@intCast({s})", .{slot.name})
-        else
-            try writer.writeAll(slot.name),
-    }
+    try writeShimInboundValue(writer, slot.name, node);
 }
 
 fn taggedUnionAbiParam(
@@ -1243,62 +1229,52 @@ fn writeShimOptionalArgument(writer: *std.Io.Writer, name: []const u8, child: se
 /// spend on it -- a function without an error union has nowhere to put one --
 /// so the shim panics, and the existing panic bridge turns that into a Go
 /// `NativePanicError` at the call site that caused it.
+/// A `?T` argument carries the same narrow integer one pointer deeper, and an
+/// absent one has no value to check at all, so the guard reads through the
+/// pointer and runs only when it is non-NULL.
+fn writeNarrowGuard(writer: *std.Io.Writer, name: []const u8, type_node: semantic.TypeNode) !void {
+    const optional = type_node == .optional;
+    const node = if (optional) type_node.optional.child.* else type_node;
+    const narrow = abi.narrowInt(node) orelse return;
+    const spelling: u8 = if (narrow.signed) 'i' else 'u';
+    if (optional) {
+        try writer.print("    if ({s}) |zigo_narrow| ", .{name});
+        if (narrow.signed) {
+            try writer.print(
+                "if (zigo_narrow.* < std.math.minInt({0c}{1d}) or zigo_narrow.* > std.math.maxInt({0c}{1d})) @panic(\"zigo: argument `{2s}` is out of range for {0c}{1d}\");\n",
+                .{ spelling, narrow.bits, name },
+            );
+        } else {
+            try writer.print(
+                "if (zigo_narrow.* > std.math.maxInt({0c}{1d})) @panic(\"zigo: argument `{2s}` is out of range for {0c}{1d}\");\n",
+                .{ spelling, narrow.bits, name },
+            );
+        }
+        return;
+    }
+    if (narrow.signed) {
+        try writer.print(
+            "    if ({0s} < std.math.minInt({1c}{2d}) or {0s} > std.math.maxInt({1c}{2d})) @panic(\"zigo: argument `{0s}` is out of range for {1c}{2d}\");\n",
+            .{ name, spelling, narrow.bits },
+        );
+    } else {
+        try writer.print(
+            "    if ({0s} > std.math.maxInt({1c}{2d})) @panic(\"zigo: argument `{0s}` is out of range for {1c}{2d}\");\n",
+            .{ name, spelling, narrow.bits },
+        );
+    }
+}
+
 fn writeNarrowIntegerGuards(writer: *std.Io.Writer, function: abi.AbiFn) !void {
     for (function.origin.params, 0..) |parameter, parameter_index| {
         if (parameter.flatten) |fields| {
             for (fields, 0..) |field, field_index| {
-                const optional_field = field.type == .optional;
-                const field_node = if (optional_field) field.type.optional.child.* else field.type;
-                const narrow_field = abi.narrowInt(field_node) orelse continue;
                 const abi_parameter = flattenedAbiParam(function, parameter_index, field_index);
-                const spelling: u8 = if (narrow_field.signed) 'i' else 'u';
-                if (optional_field) {
-                    try writer.print("    if ({s}) |zigo_narrow| ", .{abi_parameter.name});
-                    if (narrow_field.signed)
-                        try writer.print("if (zigo_narrow.* < std.math.minInt({0c}{1d}) or zigo_narrow.* > std.math.maxInt({0c}{1d})) @panic(\"zigo: argument `{2s}` is out of range for {0c}{1d}\");\n", .{ spelling, narrow_field.bits, abi_parameter.name })
-                    else
-                        try writer.print("if (zigo_narrow.* > std.math.maxInt({0c}{1d})) @panic(\"zigo: argument `{2s}` is out of range for {0c}{1d}\");\n", .{ spelling, narrow_field.bits, abi_parameter.name });
-                } else if (narrow_field.signed) {
-                    try writer.print("    if ({0s} < std.math.minInt({1c}{2d}) or {0s} > std.math.maxInt({1c}{2d})) @panic(\"zigo: argument `{0s}` is out of range for {1c}{2d}\");\n", .{ abi_parameter.name, spelling, narrow_field.bits });
-                } else {
-                    try writer.print("    if ({0s} > std.math.maxInt({1c}{2d})) @panic(\"zigo: argument `{0s}` is out of range for {1c}{2d}\");\n", .{ abi_parameter.name, spelling, narrow_field.bits });
-                }
+                try writeNarrowGuard(writer, abi_parameter.name, field.type);
             }
             continue;
         }
-        // A `?T` argument carries the same narrow integer one pointer deeper,
-        // and an absent one has no value to check at all, so the guard reads
-        // through the pointer and runs only when it is non-NULL.
-        const optional = parameter.type == .optional;
-        const node = if (optional) parameter.type.optional.child.* else parameter.type;
-        const narrow = abi.narrowInt(node) orelse continue;
-        const spelling: u8 = if (narrow.signed) 'i' else 'u';
-        if (optional) {
-            try writer.print("    if ({s}) |zigo_narrow| ", .{parameter.name});
-            if (narrow.signed) {
-                try writer.print(
-                    "if (zigo_narrow.* < std.math.minInt({0c}{1d}) or zigo_narrow.* > std.math.maxInt({0c}{1d})) @panic(\"zigo: argument `{2s}` is out of range for {0c}{1d}\");\n",
-                    .{ spelling, narrow.bits, parameter.name },
-                );
-            } else {
-                try writer.print(
-                    "if (zigo_narrow.* > std.math.maxInt({0c}{1d})) @panic(\"zigo: argument `{2s}` is out of range for {0c}{1d}\");\n",
-                    .{ spelling, narrow.bits, parameter.name },
-                );
-            }
-            continue;
-        }
-        if (narrow.signed) {
-            try writer.print(
-                "    if ({0s} < std.math.minInt({1c}{2d}) or {0s} > std.math.maxInt({1c}{2d})) @panic(\"zigo: argument `{0s}` is out of range for {1c}{2d}\");\n",
-                .{ parameter.name, spelling, narrow.bits },
-            );
-        } else {
-            try writer.print(
-                "    if ({0s} > std.math.maxInt({1c}{2d})) @panic(\"zigo: argument `{0s}` is out of range for {1c}{2d}\");\n",
-                .{ parameter.name, spelling, narrow.bits },
-            );
-        }
+        try writeNarrowGuard(writer, parameter.name, parameter.type);
     }
 }
 
@@ -6417,6 +6393,40 @@ fn programHasNarrowIntParameter(program: abi.Program) bool {
 /// reached through the raw package -- but the public API never spends a cgo
 /// call on an argument it can already see is wrong, and never leaves the
 /// caller reading `LastErrorMessage` to find out why.
+fn writeRangeCheck(
+    scope: PublicScope,
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    function: abi.AbiFn,
+    name: []const u8,
+    type_node: semantic.TypeNode,
+    operation: []const u8,
+    constructor: ?semantic.Constructor,
+) !void {
+    const optional = type_node == .optional;
+    const node = if (optional) type_node.optional.child.* else type_node;
+    const narrow = abi.narrowInt(node) orelse return;
+    const spelling: u8 = if (narrow.signed) 'i' else 'u';
+    const deref: []const u8 = if (optional) "*" else "";
+    if (optional) try writer.print("\tif {s} != nil {{\n\t", .{name});
+    if (narrow.signed) {
+        const limit = @as(i128, 1) << @intCast(narrow.bits - 1);
+        try writer.print("\tif {3s}{0s} < {1d} || {3s}{0s} > {2d} {{\n\t\t", .{ name, -limit, limit - 1, deref });
+    } else {
+        const limit = (@as(u128, 1) << @intCast(narrow.bits)) - 1;
+        try writer.print("\tif {2s}{0s} > {1d} {{\n\t\t", .{ name, limit, deref });
+    }
+    var expression: std.Io.Writer.Allocating = .init(allocator);
+    defer expression.deinit();
+    try expression.writer.print(
+        "&RangeError{{Operation: \"{s}\", Parameter: \"{s}\", Type: \"{c}{d}\"}}",
+        .{ operation, name, spelling, narrow.bits },
+    );
+    try writeCheckedErrorReturn(scope, writer, function.origin.*, constructor, expression.written());
+    try writer.writeAll("\t}\n");
+    if (optional) try writer.writeAll("\t}\n");
+}
+
 fn renderRangeChecks(
     scope: PublicScope,
     allocator: std.mem.Allocator,
@@ -6429,47 +6439,14 @@ fn renderRangeChecks(
     for (function.origin.params, 0..) |parameter, parameter_index| {
         if (parameter.flatten) |fields| {
             for (fields, 0..) |field, field_index| {
-                const node = if (field.type == .optional) field.type.optional.child.* else field.type;
-                const narrow_field = abi.narrowInt(node) orelse continue;
                 const abi_parameter = flattenedAbiParam(function, parameter_index, field_index);
                 const name = try flattenedGoNameAlloc(allocator, abi_parameter.name);
                 defer allocator.free(name);
-                const spelling: u8 = if (narrow_field.signed) 'i' else 'u';
-                if (field.type == .optional) try writer.print("\tif {s} != nil {{\n\t", .{name});
-                if (narrow_field.signed) {
-                    const limit = @as(i128, 1) << @intCast(narrow_field.bits - 1);
-                    try writer.print("\tif {3s}{0s} < {1d} || {3s}{0s} > {2d} {{\n\t\t", .{ name, -limit, limit - 1, if (field.type == .optional) "*" else "" });
-                } else {
-                    const limit = (@as(u128, 1) << @intCast(narrow_field.bits)) - 1;
-                    try writer.print("\tif {2s}{0s} > {1d} {{\n\t\t", .{ name, limit, if (field.type == .optional) "*" else "" });
-                }
-                var expression: std.Io.Writer.Allocating = .init(allocator);
-                defer expression.deinit();
-                try expression.writer.print("&RangeError{{Operation: \"{s}\", Parameter: \"{s}\", Type: \"{c}{d}\"}}", .{ operation, name, spelling, narrow_field.bits });
-                try writeCheckedErrorReturn(scope, writer, function.origin.*, constructor, expression.written());
-                try writer.writeAll("\t}\n");
-                if (field.type == .optional) try writer.writeAll("\t}\n");
+                try writeRangeCheck(scope, allocator, writer, function, name, field.type, operation, constructor);
             }
             continue;
         }
-        const narrow = abi.narrowInt(parameter.type) orelse continue;
-        const name = go_names[parameter_index];
-        const spelling: u8 = if (narrow.signed) 'i' else 'u';
-        if (narrow.signed) {
-            const limit = @as(i128, 1) << @intCast(narrow.bits - 1);
-            try writer.print("\tif {0s} < {1d} || {0s} > {2d} {{\n\t\t", .{ name, -limit, limit - 1 });
-        } else {
-            const limit = (@as(u128, 1) << @intCast(narrow.bits)) - 1;
-            try writer.print("\tif {0s} > {1d} {{\n\t\t", .{ name, limit });
-        }
-        var expression: std.Io.Writer.Allocating = .init(allocator);
-        defer expression.deinit();
-        try expression.writer.print(
-            "&RangeError{{Operation: \"{s}\", Parameter: \"{s}\", Type: \"{c}{d}\"}}",
-            .{ operation, name, spelling, narrow.bits },
-        );
-        try writeCheckedErrorReturn(scope, writer, function.origin.*, constructor, expression.written());
-        try writer.writeAll("\t}\n");
+        try writeRangeCheck(scope, allocator, writer, function, go_names[parameter_index], parameter.type, operation, constructor);
     }
 }
 

@@ -1043,11 +1043,12 @@ fn cIdentifierBackendIssue(allocator: std.mem.Allocator, document: semantic.Sema
         else
             base;
         const label = try std.fmt.allocPrint(scratch, "function `{s}`", .{try functionDeclarationAlloc(scratch, function)});
-        const note = if (constructorInitFor(document, function)) |constructor|
+        const constructor_init = constructorInitFor(document, function);
+        const note = if (constructor_init) |constructor|
             try typeNameRenameNoteAlloc(scratch, constructor.type, .@"opaque")
         else
             try functionRenameNoteAlloc(scratch, function);
-        if (try addCIdentifier(allocator, scratch, &identifiers, name, .{ .label = label, .note = note, .type_note = constructorInitFor(document, function) != null })) |issue| return issue;
+        if (try addCIdentifier(allocator, scratch, &identifiers, name, .{ .label = label, .note = note, .type_note = constructor_init != null })) |issue| return issue;
     }
     for (document.types) |declaration| {
         if (declaration.kind != .tagged_union) continue;

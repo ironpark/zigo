@@ -291,7 +291,12 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.path("src/reflect/coverage.zig"),
         .target = target,
         .optimize = optimize,
-        .imports = &.{.{ .name = "semantic", .module = generator_modules.semantic }},
+        // coverage.zig shares walk.zig's binding-declaration helpers, so it
+        // inherits walk.zig's own imports too.
+        .imports = &.{
+            .{ .name = "naming", .module = generator_modules.naming },
+            .{ .name = "semantic", .module = generator_modules.semantic },
+        },
     });
     const build_options_module = b.createModule(.{
         .root_source_file = b.path("src/build_options.zig"),

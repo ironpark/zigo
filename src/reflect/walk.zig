@@ -698,13 +698,7 @@ fn reflectPackages(
 
     // Methods and generated accessors follow an already assigned owner before
     // closure roots are collected.
-    for (functions) |*function| {
-        if (function.receiver orelse function.goOwner()) |owner| if (typePackage(types, owner)) |owner_package| {
-            if (function.package) |explicit| if (!std.mem.eql(u8, explicit, owner_package))
-                return packageIssue("function `{s}` cannot be split from owning type `{s}`", .{ function.name, owner });
-            function.package = owner_package;
-        };
-    }
+    try assignOwnerPackages(types, functions);
 
     // Compute every closure against the same explicit/pattern assignment
     // snapshot. Only after all candidates are known do we mutate the types.
@@ -732,6 +726,13 @@ fn reflectPackages(
 
     // Types added by closure bring their methods with them just like an exact
     // or pattern assignment.
+    try assignOwnerPackages(types, functions);
+    return packages.toOwnedSlice(allocator);
+}
+
+/// A method belongs wherever its owning type ended up; an explicit `package`
+/// that disagrees is a declaration error rather than a split.
+fn assignOwnerPackages(types: []semantic.TypeDecl, functions: []semantic.SemanticFn) !void {
     for (functions) |*function| {
         if (function.receiver orelse function.goOwner()) |owner| if (typePackage(types, owner)) |owner_package| {
             if (function.package) |explicit| if (!std.mem.eql(u8, explicit, owner_package))
@@ -739,7 +740,6 @@ fn reflectPackages(
             function.package = owner_package;
         };
     }
-    return packages.toOwnedSlice(allocator);
 }
 
 fn isPrefixPattern(selector: []const u8) bool {
@@ -1382,7 +1382,7 @@ fn discoverContainer(
     }
 }
 
-fn functionEntryContainsPath(comptime entry: anytype, comptime path: []const u8) bool {
+pub fn functionEntryContainsPath(comptime entry: anytype, comptime path: []const u8) bool {
     if (comptime isStringEntry(@TypeOf(entry))) return std.mem.eql(u8, entry, path);
     if (@hasField(@TypeOf(entry), "functions")) {
         inline for (entry.functions) |nested| if (functionEntryContainsPath(nested, path)) return true;
@@ -1427,7 +1427,7 @@ fn appendDiscoveredEntry(
 /// inside it. Comparing the mangled type names is what tells that apart from
 /// an `@This()` alias, a re-export, or an imported module -- all of which
 /// would otherwise make discovery walk in circles or leave the binding.
-fn isNestedContainer(comptime Container: type, comptime Child: type) bool {
+pub fn isNestedContainer(comptime Container: type, comptime Child: type) bool {
     if (!isContainer(Child)) return false;
     const parent = @typeName(Container);
     const child = @typeName(Child);
@@ -1436,7 +1436,7 @@ fn isNestedContainer(comptime Container: type, comptime Child: type) bool {
         std.mem.indexOfScalar(u8, child[parent.len + 1 ..], '.') == null;
 }
 
-fn discoveryEnabled(comptime declaration: anytype) bool {
+pub fn discoveryEnabled(comptime declaration: anytype) bool {
     if (!@hasField(@TypeOf(declaration), "discover")) return false;
     if (declaration.discover != .public and declaration.discover != .recursive)
         @compileError("zigo `.discover` must be `.public` or `.recursive`");
@@ -1448,7 +1448,7 @@ fn discoveryEnabled(comptime declaration: anytype) bool {
 /// registered type. `.recursive` also descends into the namespace structs
 /// those containers declare. It stays opt-in because turning it on would
 /// otherwise silently widen an existing binding's exported surface.
-fn discoveryRecursive(comptime declaration: anytype) bool {
+pub fn discoveryRecursive(comptime declaration: anytype) bool {
     if (!@hasField(@TypeOf(declaration), "discover")) return false;
     return declaration.discover == .recursive;
 }
@@ -1468,7 +1468,7 @@ fn accessStrategy(comptime entry: anytype) semantic.Access {
 /// The display name of a `types` entry: the explicit `.name` when given, and
 /// otherwise the short Zig type name. Generic instantiations need the explicit
 /// form, which is why registering one is an ordinary `types` entry.
-fn typeEntryName(comptime entry: anytype) []const u8 {
+pub fn typeEntryName(comptime entry: anytype) []const u8 {
     return if (@hasField(@TypeOf(entry), "name")) entry.name else shortTypeName(@typeName(entry.type));
 }
 
@@ -1537,7 +1537,7 @@ fn countFunctionPath(comptime entries: anytype, comptime path: []const u8) usize
     return count;
 }
 
-fn isStringEntry(comptime T: type) bool {
+pub fn isStringEntry(comptime T: type) bool {
     return switch (@typeInfo(T)) {
         .pointer => |pointer| switch (@typeInfo(pointer.child)) {
             .array => |array| array.child == u8,
@@ -1599,7 +1599,7 @@ fn rootContainerChild(comptime Container: type, comptime name: []const u8, compt
     return @field(Container, name);
 }
 
-fn isContainer(comptime T: type) bool {
+pub fn isContainer(comptime T: type) bool {
     return switch (@typeInfo(T)) {
         .@"struct", .@"union", .@"enum", .@"opaque" => true,
         else => false,
@@ -1632,7 +1632,7 @@ fn containerHasPath(comptime Container: type, comptime rest: []const u8) bool {
     }
 }
 
-fn selectorContains(comptime declaration: anytype, comptime field_name: []const u8, comptime path: []const u8) bool {
+pub fn selectorContains(comptime declaration: anytype, comptime field_name: []const u8, comptime path: []const u8) bool {
     if (!@hasField(@TypeOf(declaration), field_name)) return false;
     inline for (@field(declaration, field_name)) |candidate| {
         if (std.mem.eql(u8, candidate, path)) return true;
@@ -2169,7 +2169,7 @@ fn isDestructorName(name: []const u8) bool {
         std.mem.eql(u8, name, "close");
 }
 
-fn shortTypeName(full_name: []const u8) []const u8 {
+pub fn shortTypeName(full_name: []const u8) []const u8 {
     return if (std.mem.lastIndexOfScalar(u8, full_name, '.')) |index| full_name[index + 1 ..] else full_name;
 }
 

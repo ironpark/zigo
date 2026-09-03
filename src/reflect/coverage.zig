@@ -1,5 +1,6 @@
 const std = @import("std");
 const semantic = @import("semantic");
+const walk = @import("walk.zig");
 
 pub const Status = enum { bound, excluded, unbound };
 
@@ -56,12 +57,12 @@ pub fn classify(allocator: std.mem.Allocator, comptime binding: anytype, package
             &referenced_types,
             binding,
             entry.type,
-            comptime typeEntryName(entry),
-            comptime typeEntryName(entry),
-            comptime discoveryEnabled(binding) and entry.repr != .enumeration,
+            comptime walk.typeEntryName(entry),
+            comptime walk.typeEntryName(entry),
+            comptime walk.discoveryEnabled(binding) and entry.repr != .enumeration,
         );
     };
-    try collectContainer(allocator, &declarations, &seen_functions, &public_types, &referenced_types, binding, binding.root, null, "root", comptime discoveryEnabled(binding));
+    try collectContainer(allocator, &declarations, &seen_functions, &public_types, &referenced_types, binding, binding.root, null, "root", comptime walk.discoveryEnabled(binding));
 
     // Field accessors are generated functions even though there is no Zig
     // declaration to enumerate. Count each getter and setter exactly once.
@@ -73,7 +74,7 @@ pub fn classify(allocator: std.mem.Allocator, comptime binding: anytype, package
     var unregistered: std.ArrayList([]const u8) = .empty;
     for (referenced_types.items) |full_name| {
         if (!contains(public_types.items, full_name) or registeredTypeName(binding, full_name)) continue;
-        const name = shortTypeName(full_name);
+        const name = walk.shortTypeName(full_name);
         if (!contains(unregistered.items, name)) try unregistered.append(allocator, name);
     }
     std.mem.sort([]const u8, unregistered.items, {}, lessThan);
@@ -111,7 +112,7 @@ fn collectContainer(
 ) !void {
     inline for (comptime std.meta.declarations(Container)) |candidate| {
         const value = @field(Container, candidate.name);
-        if (@TypeOf(value) == type and comptime isContainer(value)) {
+        if (@TypeOf(value) == type and comptime walk.isContainer(value)) {
             if (!contains(public_types.items, @typeName(value))) try public_types.append(allocator, @typeName(value));
         }
         if (@typeInfo(@TypeOf(value)) != .@"fn") continue;
@@ -119,7 +120,7 @@ fn collectContainer(
         if (!contains(seen_functions.items, identity)) {
             try seen_functions.append(allocator, identity);
             const path = path_prefix ++ "." ++ candidate.name;
-            const status: Status = if (comptime selectorContains(binding, "exclude", path))
+            const status: Status = if (comptime walk.selectorContains(binding, "exclude", path))
                 .excluded
             else if (discovered or comptime functionListed(binding, path))
                 .bound
@@ -135,7 +136,7 @@ fn collectContainer(
     }
     inline for (comptime std.meta.declarations(Container)) |candidate| {
         const value = @field(Container, candidate.name);
-        if (@TypeOf(value) != type or comptime !isNestedContainer(Container, value)) continue;
+        if (@TypeOf(value) != type or comptime !walk.isNestedContainer(Container, value)) continue;
         try collectContainer(
             allocator,
             declarations,
@@ -146,7 +147,7 @@ fn collectContainer(
             value,
             comptime if (owner) |parent| parent ++ "." ++ candidate.name else candidate.name,
             path_prefix ++ "." ++ candidate.name,
-            comptime discovered and discoveryRecursive(binding),
+            comptime discovered and walk.discoveryRecursive(binding),
         );
     }
 }
@@ -228,22 +229,7 @@ fn callbackReason(comptime binding: anytype, comptime F: type) ?[]const u8 {
 
 fn functionListed(comptime binding: anytype, comptime path: []const u8) bool {
     if (!@hasField(@TypeOf(binding), "functions")) return false;
-    inline for (binding.functions) |entry| if (entryContains(entry, path)) return true;
-    return false;
-}
-
-fn entryContains(comptime entry: anytype, comptime path: []const u8) bool {
-    if (comptime isString(@TypeOf(entry))) return std.mem.eql(u8, entry, path);
-    if (@hasField(@TypeOf(entry), "functions")) {
-        inline for (entry.functions) |child| if (entryContains(child, path)) return true;
-        return false;
-    }
-    return std.mem.eql(u8, entry.path, path);
-}
-
-fn selectorContains(comptime binding: anytype, comptime field: []const u8, comptime path: []const u8) bool {
-    if (!@hasField(@TypeOf(binding), field)) return false;
-    inline for (@field(binding, field)) |candidate| if (std.mem.eql(u8, candidate, path)) return true;
+    inline for (binding.functions) |entry| if (walk.functionEntryContainsPath(entry, path)) return true;
     return false;
 }
 
@@ -259,46 +245,8 @@ fn registeredTypeName(comptime binding: anytype, full_name: []const u8) bool {
     return false;
 }
 
-fn typeEntryName(comptime entry: anytype) []const u8 {
-    return if (@hasField(@TypeOf(entry), "name")) entry.name else shortTypeName(@typeName(entry.type));
-}
-
-fn discoveryEnabled(comptime binding: anytype) bool {
-    if (!@hasField(@TypeOf(binding), "discover")) return false;
-    return binding.discover == .public or binding.discover == .recursive;
-}
-
-fn discoveryRecursive(comptime binding: anytype) bool {
-    return @hasField(@TypeOf(binding), "discover") and binding.discover == .recursive;
-}
-
-fn isContainer(comptime T: type) bool {
-    return switch (@typeInfo(T)) {
-        .@"struct", .@"union", .@"enum", .@"opaque" => true,
-        else => false,
-    };
-}
-
-fn isNestedContainer(comptime Parent: type, comptime Child: type) bool {
-    return std.mem.startsWith(u8, @typeName(Child), @typeName(Parent) ++ ".");
-}
-
 fn isBuiltinSpecial(comptime T: type) bool {
     return T == std.Io.Writer or T == std.Io.Reader or T == std.mem.Allocator or T == std.Io or T == std.atomic.Value(u32);
-}
-
-fn isString(comptime T: type) bool {
-    return switch (@typeInfo(T)) {
-        .pointer => |pointer| switch (@typeInfo(pointer.child)) {
-            .array => |array| array.child == u8,
-            else => pointer.size == .slice and pointer.child == u8,
-        },
-        else => false,
-    };
-}
-
-fn shortTypeName(full_name: []const u8) []const u8 {
-    return if (std.mem.lastIndexOfScalar(u8, full_name, '.')) |index| full_name[index + 1 ..] else full_name;
 }
 
 fn contains(values: []const []const u8, wanted: []const u8) bool {
