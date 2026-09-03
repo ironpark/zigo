@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T05:56:57Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: With the option on, every eligible function has a `Must*` twin proven by a Go test on both backends; with it off, no output changes.
 > NEXT: none
