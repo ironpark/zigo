@@ -7,7 +7,7 @@ registered_at: "2026-09-03T03:09:56Z"
 
 # Phases
 
-- [ ] [Phase 00: Atomic values as scalars](phases/00-atomic-values.md)
+- [x] [Phase 00: Atomic values as scalars](phases/00-atomic-values.md)
 - [ ] [Phase 01: Pointer atomics as call-scoped Go sync/atomic parameters](phases/01-atomic-pointers.md)
 
 # Shared Verification

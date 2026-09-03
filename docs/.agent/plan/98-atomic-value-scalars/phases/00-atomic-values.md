@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T03:32:49Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: The listed positions accept `std.atomic.Value(T)` and round-trip in Go tests on both backends; goldens unchanged elsewhere.
 > NEXT: none
