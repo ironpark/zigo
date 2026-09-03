@@ -1519,20 +1519,48 @@ fn goParamNamesForAlloc(allocator: std.mem.Allocator, params: []const semantic.P
 }
 
 /// The Zig spelling of a registered type inside the shim, which imports the
-/// user's root module as `target`. A type declared inside a container
-/// (`root.Terminal.Options`) is only reachable through that container, so the
-/// reflected `zig_path` decides the spelling; a path the reflector did not
-/// record under `root.`, or one carrying a generic instantiation, keeps the
-/// bare registered name as before.
+/// user's root module as `target`. A type declared inside a container is only
+/// reachable through that container, so the reflected `zig_path` decides the
+/// spelling. A path under `root.` maps straight onto `target.`; a path from a
+/// dependency module (`terminal.Terminal.Options`) is reached through the
+/// nearest registered ancestor whose path is a prefix of it (`Terminal`, so
+/// `target.Terminal.Options`), which holds whatever the module is called. A
+/// path with a generic instantiation, or one with no registered ancestor,
+/// keeps the bare registered name as before: that name is what the root
+/// module is expected to export.
 fn targetTypeSpellingAlloc(allocator: std.mem.Allocator, program: abi.Program, name: []const u8) ![]u8 {
+    const path = registeredZigPath(program, name) orelse
+        return std.fmt.allocPrint(allocator, "target.{s}", .{name});
+    if (std.mem.startsWith(u8, path, "root."))
+        return std.fmt.allocPrint(allocator, "target.{s}", .{path["root.".len..]});
+    var ancestor: ?[]const u8 = null;
+    var ancestor_path_len: usize = 0;
     for (program.types) |declaration| {
-        if (!std.mem.eql(u8, declaration.name, name)) continue;
-        const path = declaration.zig_path orelse break;
-        if (std.mem.startsWith(u8, path, "root.") and std.mem.indexOfAny(u8, path, "(#") == null)
-            return std.fmt.allocPrint(allocator, "target.{s}", .{path["root.".len..]});
-        break;
+        if (std.mem.eql(u8, declaration.name, name)) continue;
+        const other = registeredZigPath(program, declaration.name) orelse continue;
+        if (other.len >= path.len or !std.mem.startsWith(u8, path, other) or path[other.len] != '.') continue;
+        if (other.len > ancestor_path_len) {
+            ancestor = declaration.name;
+            ancestor_path_len = other.len;
+        }
+    }
+    if (ancestor) |parent| {
+        const parent_spelling = try targetTypeSpellingAlloc(allocator, program, parent);
+        defer allocator.free(parent_spelling);
+        return std.fmt.allocPrint(allocator, "{s}{s}", .{ parent_spelling, path[ancestor_path_len..] });
     }
     return std.fmt.allocPrint(allocator, "target.{s}", .{name});
+}
+
+/// The reflected Zig path of a registered type when it can be spelled as a
+/// path: a generic instantiation or a disambiguated registration (`#`) cannot.
+fn registeredZigPath(program: abi.Program, name: []const u8) ?[]const u8 {
+    for (program.types) |declaration| {
+        if (!std.mem.eql(u8, declaration.name, name)) continue;
+        const path = declaration.zig_path orelse return null;
+        return if (std.mem.indexOfAny(u8, path, "(#") == null) path else null;
+    }
+    return null;
 }
 
 fn writeTargetType(writer: *std.Io.Writer, program: abi.Program, name: []const u8) !void {
@@ -9089,4 +9117,29 @@ test "shared lifecycle is opt-in and contains cross-package identities" {
     try std.testing.expect(std.mem.indexOf(u8, source, "type Handle interface") != null);
     try std.testing.expect(std.mem.indexOf(u8, source, "func PoisonAfterPanic") != null);
     try std.testing.expect(std.mem.indexOf(u8, source, "type CallbackError struct") != null);
+}
+
+test "target type spelling follows registered ancestors across modules" {
+    const types = [_]semantic.TypeDecl{
+        .{ .kind = .@"opaque", .name = "Terminal", .zig_path = "terminal.Terminal" },
+        .{ .kind = .value_struct, .name = "Options", .zig_path = "terminal.Terminal.Options" },
+        .{ .kind = .@"opaque", .name = "Cursor", .zig_path = "terminal.Terminal.Screen.Cursor" },
+        .{ .kind = .value_struct, .name = "Point", .zig_path = "root.geometry.Point" },
+        .{ .kind = .@"opaque", .name = "Orphan", .zig_path = "other.Deep.Orphan" },
+        .{ .kind = .@"opaque", .name = "FloatBuffer", .zig_path = "root.Buffer(f32)" },
+    };
+    const program: abi.Program = .{ .functions = &.{}, .package = "unit", .prefix = "zg", .types = &types };
+    const expectations = [_][2][]const u8{
+        .{ "Terminal", "target.Terminal" },
+        .{ "Options", "target.Terminal.Options" },
+        .{ "Cursor", "target.Terminal.Screen.Cursor" },
+        .{ "Point", "target.geometry.Point" },
+        .{ "Orphan", "target.Orphan" },
+        .{ "FloatBuffer", "target.FloatBuffer" },
+    };
+    for (expectations) |pair| {
+        const spelling = try targetTypeSpellingAlloc(std.testing.allocator, program, pair[0]);
+        defer std.testing.allocator.free(spelling);
+        try std.testing.expectEqualStrings(pair[1], spelling);
+    }
 }

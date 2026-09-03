@@ -4,6 +4,15 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Fixed
+
+- shim의 등록 타입 spelling이 `root.` 경로에만 적용되던 문제를 고쳤습니다. dependency module의
+  타입(`terminal.Terminal.Options`)은 경로가 접두사로 겹치는 가장 가까운 등록 조상
+  (`Terminal`)을 거쳐 `target.Terminal.Options`로 적으므로, 상류 타입을 root에 다시 내보내지
+  않아도 컴파일됩니다. 등록 조상이 없는 타입은 이전처럼 root가 내보내는 이름을 씁니다.
+
 ## [0.7.3] - 2026-09-03
 
 ### Fixed
