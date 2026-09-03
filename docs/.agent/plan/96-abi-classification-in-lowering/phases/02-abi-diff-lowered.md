@@ -2,7 +2,7 @@
 depends_on:
 - "96-abi-classification-in-lowering#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `abi_diff.zig` no longer re-models lowering; all abi-diff tests unchanged and green.
 > NEXT: none

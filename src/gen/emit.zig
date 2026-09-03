@@ -7726,7 +7726,7 @@ test "open enum docs permit values outside named constants" {
     };
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    const program = try @import("lower.zig").semanticDocument(arena.allocator(), document, "terminal", "zg", &.{});
+    const program = try @import("lower").semanticDocument(arena.allocator(), document, "terminal", "zg", &.{});
     const enums = try renderForTest(renderPublicEnumsFile, program);
     defer std.testing.allocator.free(enums);
     try std.testing.expect(std.mem.indexOf(u8, enums, "// EraseDisplay represents the corresponding Zig open enum; values outside the named constants are valid.") != null);
@@ -8353,7 +8353,7 @@ test "tagged union emitters generate checked pointer-only projections" {
     };
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    const program = try @import("lower.zig").semanticDocument(arena.allocator(), document, "variant", "zg", &.{});
+    const program = try @import("lower").semanticDocument(arena.allocator(), document, "variant", "zg", &.{});
 
     const shim = try renderForTest(renderShim, program);
     defer std.testing.allocator.free(shim);
@@ -8503,7 +8503,7 @@ test "snapshot-backed unions build their variants from one native call" {
     };
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    const program = try @import("lower.zig").semanticDocument(arena.allocator(), document, "signal", "zg", &.{});
+    const program = try @import("lower").semanticDocument(arena.allocator(), document, "signal", "zg", &.{});
 
     const public_types = try renderUnionFilesForTest(program);
     defer std.testing.allocator.free(public_types);
@@ -8801,7 +8801,7 @@ test "a scalar-only struct slice crosses as a cast while a bool-bearing one is c
     };
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    const program = try @import("lower.zig").semanticDocument(arena.allocator(), document, "shapes", "zg", &.{});
+    const program = try @import("lower").semanticDocument(arena.allocator(), document, "shapes", "zg", &.{});
 
     // A `.return` slice reports its count through the return value, so no
     // `_written` parameter reaches the header or the shim.
@@ -8903,7 +8903,7 @@ test "a returned struct slice is reinterpreted for a castable element and copied
     };
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    const program = try @import("lower.zig").semanticDocument(arena.allocator(), document, "shapes", "zg", &.{.{ .code = 1, .name = "Invalid" }});
+    const program = try @import("lower").semanticDocument(arena.allocator(), document, "shapes", "zg", &.{.{ .code = 1, .name = "Invalid" }});
 
     const public = try renderForTest(renderPublic, program);
     defer std.testing.allocator.free(public);
@@ -8962,7 +8962,7 @@ test "a stream parameter becomes a shim adapter and a fixed callback ABI" {
     };
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    const program = try @import("lower.zig").semanticDocument(arena.allocator(), document, "stream", "zg", &.{
+    const program = try @import("lower").semanticDocument(arena.allocator(), document, "stream", "zg", &.{
         .{ .code = 1, .name = "WriteFailed" },
         .{ .code = 2, .name = "ReadFailed" },
     });

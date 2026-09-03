@@ -311,6 +311,7 @@ pub fn build(b: *std.Build) void {
             .{ .name = "naming", .module = generator_modules.naming },
             .{ .name = "semantic", .module = generator_modules.semantic },
             .{ .name = "abi", .module = generator_modules.abi },
+            .{ .name = "lower", .module = generator_modules.lower },
         },
     });
     const validate_module = b.createModule(.{
@@ -323,22 +324,8 @@ pub fn build(b: *std.Build) void {
             .{ .name = "semantic", .module = generator_modules.semantic },
         },
     });
-    const stream_return_module = b.createModule(.{
-        .root_source_file = b.path("src/gen/stream_return.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{.{ .name = "semantic", .module = generator_modules.semantic }},
-    });
-    const lower_module = b.createModule(.{
-        .root_source_file = b.path("src/gen/lower.zig"),
-        .target = target,
-        .optimize = optimize,
-        .imports = &.{
-            .{ .name = "naming", .module = generator_modules.naming },
-            .{ .name = "abi", .module = generator_modules.abi },
-            .{ .name = "semantic", .module = generator_modules.semantic },
-        },
-    });
+    const stream_return_module = generator_modules.stream_return;
+    const lower_module = generator_modules.lower;
     const report_module = b.createModule(.{
         .root_source_file = b.path("src/gen/report.zig"),
         .target = target,
@@ -346,6 +333,7 @@ pub fn build(b: *std.Build) void {
         .imports = &.{
             .{ .name = "naming", .module = generator_modules.naming },
             .{ .name = "abi", .module = generator_modules.abi },
+            .{ .name = "lower", .module = generator_modules.lower },
             .{ .name = "semantic", .module = generator_modules.semantic },
         },
     });
@@ -1615,6 +1603,8 @@ const GeneratorModules = struct {
     diagnostic: *std.Build.Module,
     errors_lock: *std.Build.Module,
     abi_diff: *std.Build.Module,
+    lower: *std.Build.Module,
+    stream_return: *std.Build.Module,
     sync_check: *std.Build.Module,
     generator: *std.Build.Module,
 };
@@ -1661,12 +1651,31 @@ fn createGeneratorModules(
         .target = target,
         .optimize = optimize,
     });
+    const gen_stream_return_module = b.createModule(.{
+        .root_source_file = source_root.path(b, "gen/stream_return.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "semantic", .module = semantic_module }},
+    });
+    const gen_lower_module = b.createModule(.{
+        .root_source_file = source_root.path(b, "gen/lower.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "naming", .module = naming_module },
+            .{ .name = "abi", .module = abi_module },
+            .{ .name = "semantic", .module = semantic_module },
+        },
+    });
     const abi_diff_module = b.createModule(.{
         .root_source_file = source_root.path(b, "gen/abi_diff.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
             .{ .name = "naming", .module = naming_module },
+            .{ .name = "abi", .module = abi_module },
+            .{ .name = "lower", .module = gen_lower_module },
+            .{ .name = "stream_return", .module = gen_stream_return_module },
             .{ .name = "semantic", .module = semantic_module },
         },
     });
@@ -1685,6 +1694,8 @@ fn createGeneratorModules(
             .{ .name = "abi", .module = abi_module },
             .{ .name = "diagnostic", .module = diagnostic_module },
             .{ .name = "errors_lock", .module = errors_lock_module },
+            .{ .name = "lower", .module = gen_lower_module },
+            .{ .name = "stream_return", .module = gen_stream_return_module },
         },
     });
     return .{
@@ -1696,6 +1707,8 @@ fn createGeneratorModules(
         .diagnostic = diagnostic_module,
         .errors_lock = errors_lock_module,
         .abi_diff = abi_diff_module,
+        .lower = gen_lower_module,
+        .stream_return = gen_stream_return_module,
         .sync_check = sync_check_module,
         .generator = generator_module,
     };
@@ -1723,6 +1736,8 @@ fn addGeneratorWithModules(
                 .{ .name = "diagnostic", .module = modules.diagnostic },
                 .{ .name = "errors_lock", .module = modules.errors_lock },
                 .{ .name = "abi_diff", .module = modules.abi_diff },
+                .{ .name = "lower", .module = modules.lower },
+                .{ .name = "stream_return", .module = modules.stream_return },
                 .{ .name = "sync_check", .module = modules.sync_check },
             },
         }),

@@ -1,6 +1,9 @@
 const std = @import("std");
 const naming = @import("naming");
+const abi = @import("abi");
 const semantic = @import("semantic");
+const lower = @import("lower");
+const stream_return = @import("stream_return");
 
 pub const Backend = enum { cgo, purego };
 
@@ -54,6 +57,16 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
     var report: Report = .{};
     errdefer report.deinit(allocator);
 
+    // The C shape of a function is whatever lowering makes of it, so both
+    // documents are lowered and their lowered forms compared. Nothing here
+    // restates which parts of a Zig type reach C.
+    var scratch = std.heap.ArenaAllocator.init(allocator);
+    defer scratch.deinit();
+    const base_program = try lowerFor(scratch.allocator(), base, base_backend);
+    const current_program = try lowerFor(scratch.allocator(), current, current_backend);
+    const base_spans = try loweredSpans(scratch.allocator(), base);
+    const current_spans = try loweredSpans(scratch.allocator(), current);
+
     if (base_backend != current_backend)
         try add(allocator, &report, .breaking, "document.backend", "binding backend and callback ABI convention changed");
 
@@ -64,13 +77,14 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
     if (!std.mem.eql(u8, base.prefix, current.prefix))
         try add(allocator, &report, .breaking, "document.prefix", "generated C symbol prefix changed");
 
-    for (base.functions) |old| {
-        const new = findFunction(current.functions, old) orelse {
+    for (base.functions, 0..) |old, old_index| {
+        const new_index = findFunctionIndex(current.functions, old) orelse {
             const identity = try functionIdentity(allocator, old);
             defer allocator.free(identity);
             try add(allocator, &report, .breaking, identity, "function removed");
             continue;
         };
+        const new = current.functions[new_index];
         const identity = try functionIdentity(allocator, old);
         defer allocator.free(identity);
         if (!std.mem.eql(u8, old.symbol, new.symbol)) {
@@ -79,7 +93,18 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
             else
                 try add(allocator, &report, .breaking, identity, "exported C symbol changed");
         }
-        if (!signatureEqual(old, new)) try add(allocator, &report, .breaking, identity, "signature changed");
+        // The written hint decides whether the C signature carries a
+        // `{name}_written` out parameter, so it explains a lowered difference
+        // rather than adding one; naming it is more use than the generic
+        // message, and reporting both would say the same thing twice.
+        const written_hint_kept = writtenEqual(old.params, new.params);
+        if (!written_hint_kept)
+            try add(allocator, &report, .breaking, identity, "parameter written hint changed (C signature)")
+        else if (!signaturesEqual(
+            base_program.functions[base_spans[old_index]..base_spans[old_index + 1]],
+            current_program.functions[current_spans[new_index]..current_spans[new_index + 1]],
+        ))
+            try add(allocator, &report, .breaking, identity, "signature changed");
         if (!semantic.optionalStringEqual(old.release, new.release))
             try add(allocator, &report, .breaking, identity, "release function changed");
         // The C symbol does not move, but the Go surface does: the function
@@ -107,13 +132,11 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
         // the parent/child Close ordering contract.
         if (old.childOfReceiver() != new.childOfReceiver())
             try add(allocator, &report, .compatible, identity, "dependent handle lifetime Go surface changed");
-        if (!writtenEqual(old.params, new.params))
-            try add(allocator, &report, .breaking, identity, "parameter written hint changed (C signature)");
         if (!streamBufferEqual(old.params, new.params))
             try add(allocator, &report, .compatible, identity, "stream staging buffer resized");
         try compareErrors(allocator, &report, identity, old.@"return", new.@"return");
     }
-    for (current.functions) |new| if (findFunction(base.functions, new) == null) {
+    for (current.functions) |new| if (findFunctionIndex(base.functions, new) == null) {
         const identity = try functionIdentity(allocator, new);
         defer allocator.free(identity);
         try add(allocator, &report, .added, identity, "function added");
@@ -258,13 +281,59 @@ fn isSymbolMetadataCorrection(
     return std.mem.eql(u8, new.symbol, corrected);
 }
 
-fn findFunction(functions: []const semantic.SemanticFn, wanted: semantic.SemanticFn) ?semantic.SemanticFn {
-    for (functions) |function| {
+fn findFunctionIndex(functions: []const semantic.SemanticFn, wanted: semantic.SemanticFn) ?usize {
+    for (functions, 0..) |function, index| {
         if (std.mem.eql(u8, function.name, wanted.name) and
             semantic.optionalStringEqual(function.receiver, wanted.receiver) and
-            semantic.optionalStringEqual(function.namespace, wanted.namespace)) return function;
+            semantic.optionalStringEqual(function.namespace, wanted.namespace)) return index;
     }
     return null;
+}
+
+/// The lowered form of a document, in the arena the comparison lives in.
+/// Both sides are documents the generator wrote and validation accepted, so
+/// lowering can assume the same well-formedness it assumes during generation.
+fn lowerFor(allocator: std.mem.Allocator, document: semantic.Semantic, backend: Backend) !abi.Program {
+    // `semantic.json` keeps the stream-returning Zig method; lowering only
+    // ever sees the operations it expands into, so the comparison does too.
+    const expanded = try stream_return.expand(allocator, document);
+    return lower.semanticDocumentForBackend(allocator, expanded, document.package, document.prefix, try errorCodesFor(allocator, expanded), switch (backend) {
+        .cgo => .cgo,
+        .purego => .purego,
+    });
+}
+
+/// Where each semantic function's lowered operations start, plus the total,
+/// so function `n` owns `starts[n]..starts[n + 1]`.
+fn loweredSpans(allocator: std.mem.Allocator, document: semantic.Semantic) ![]const usize {
+    const starts = try allocator.alloc(usize, document.functions.len + 1);
+    var total: usize = 0;
+    for (document.functions, 0..) |function, index| {
+        starts[index] = total;
+        total += stream_return.operationCount(function);
+    }
+    starts[document.functions.len] = total;
+    return starts;
+}
+
+/// The error codes lowering numbers a document with. The identity of an error
+/// is compared on the semantic error sets; these only have to exist, and to
+/// be numbered by the same rule generation uses, so the lowered shapes of two
+/// documents stay comparable.
+fn errorCodesFor(allocator: std.mem.Allocator, document: semantic.Semantic) ![]const abi.ErrorCode {
+    var codes: std.ArrayList(abi.ErrorCode) = .empty;
+    for (document.functions) |function| {
+        if (function.@"return" != .error_union) continue;
+        for (function.@"return".error_union.error_set) |name| {
+            var exists = false;
+            for (codes.items) |entry| if (std.mem.eql(u8, entry.name, name)) {
+                exists = true;
+                break;
+            };
+            if (!exists) try codes.append(allocator, .{ .code = @intCast(codes.items.len + 1), .name = name });
+        }
+    }
+    return codes.toOwnedSlice(allocator);
 }
 
 fn functionIdentity(allocator: std.mem.Allocator, function: semantic.SemanticFn) ![]u8 {
@@ -315,22 +384,90 @@ fn exposedParamsMatch(
     }
 }
 
-fn signatureEqual(lhs: semantic.SemanticFn, rhs: semantic.SemanticFn) bool {
-    if (!typeEqual(lhs.@"return", rhs.@"return")) return false;
+/// Two functions have the same signature when their lowered C shapes match
+/// and the Go surface lowering does not carry matches too. The lowered
+/// comparison answers everything about the C ABI -- parameter roles, pointer
+/// constness and nullability, promoted integer widths, callback wire shapes,
+/// struct mirrors -- so nothing about which annotations reach C is restated
+/// here.
+fn signaturesEqual(lhs: []const abi.AbiFn, rhs: []const abi.AbiFn) bool {
+    if (lhs.len != rhs.len) return false;
+    for (lhs, rhs) |a, b| if (!signatureEqual(a, b)) return false;
+    return true;
+}
+
+fn signatureEqual(lhs: abi.AbiFn, rhs: abi.AbiFn) bool {
+    if (lhs.params.len != rhs.params.len) return false;
+    for (lhs.params, rhs.params) |a, b| {
+        if (a.role != b.role or a.field_index != b.field_index or !scalarEqual(a.scalar, b.scalar)) return false;
+    }
+    if (!scalarEqual(lhs.ret, rhs.ret) or lhs.ret_optional != rhs.ret_optional or
+        lhs.value_union_return != rhs.value_union_return) return false;
+    if (!structMirrorEqual(lhs.ret_struct, rhs.ret_struct) or
+        !structMirrorEqual(lhs.payload_struct, rhs.payload_struct)) return false;
+    return goSurfaceEqual(lhs.origin.*, rhs.origin.*);
+}
+
+fn scalarEqual(lhs: abi.AbiScalar, rhs: abi.AbiScalar) bool {
+    if (std.meta.activeTag(lhs) != std.meta.activeTag(rhs)) return false;
+    return switch (lhs) {
+        .void, .bool_u8, .isize, .usize => true,
+        .signed_int => |a| a == rhs.signed_int,
+        .unsigned_int => |a| a == rhs.unsigned_int,
+        .float => |a| a == rhs.float,
+        .@"opaque" => |a| std.mem.eql(u8, a.c_name, rhs.@"opaque".c_name),
+        .snapshot => |a| std.mem.eql(u8, a, rhs.snapshot),
+        .value_struct => |a| std.mem.eql(u8, a.c_name, rhs.value_struct.c_name),
+        .pointer => |a| a.is_const == rhs.pointer.is_const and a.is_many == rhs.pointer.is_many and
+            a.is_c_string == rhs.pointer.is_c_string and a.is_optional == rhs.pointer.is_optional and
+            scalarEqual(a.child.*, rhs.pointer.child.*),
+        .callback => |a| blk: {
+            const b = rhs.callback;
+            if (a.params.len != b.params.len or !scalarEqual(a.ret.*, b.ret.*)) break :blk false;
+            for (a.params, b.params) |x, y| if (!scalarEqual(x, y)) break :blk false;
+            break :blk true;
+        },
+    };
+}
+
+fn structMirrorEqual(lhs: ?*const abi.AbiStruct, rhs: ?*const abi.AbiStruct) bool {
+    if (lhs == null or rhs == null) return lhs == null and rhs == null;
+    return std.mem.eql(u8, lhs.?.c_name, rhs.?.c_name);
+}
+
+/// What the Go surface shows that the lowered C shape does not. Two facts
+/// survive lowering only as promotions: the declared integer width, which the
+/// shim range-checks and Go spells as the declared type, and the shape of the
+/// Zig type itself -- `[]T` and `?[]T` share one C signature but not one Go
+/// return arity. The binding's own semantic hint is the third: it decides
+/// whether Go sees `string` or `[]byte`.
+fn goSurfaceEqual(lhs: semantic.SemanticFn, rhs: semantic.SemanticFn) bool {
+    if (!optionalHintEqual(lhs.return_semantic, rhs.return_semantic)) return false;
+    if (!goTypeEqual(lhs.@"return", rhs.@"return")) return false;
     return exposedParamsMatch(lhs.params, rhs.params, struct {
         fn matches(a: semantic.Parameter, b: semantic.Parameter) bool {
-            return a.direction == b.direction and a.semantic == b.semantic and typeEqual(a.type, b.type) and flattenEqual(a.flatten, b.flatten);
+            return a.direction == b.direction and a.semantic == b.semantic and goTypeEqual(a.type, b.type);
         }
     }.matches);
 }
 
-fn flattenEqual(lhs: ?[]const semantic.FlattenedField, rhs: ?[]const semantic.FlattenedField) bool {
-    if (lhs == null or rhs == null) return lhs == null and rhs == null;
-    if (lhs.?.len != rhs.?.len) return false;
-    for (lhs.?, rhs.?) |a, b| {
-        if (!std.mem.eql(u8, a.name, b.name) or !typeEqual(a.type, b.type)) return false;
-    }
-    return true;
+fn goTypeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
+    if (std.meta.activeTag(lhs) != std.meta.activeTag(rhs)) return false;
+    return switch (lhs) {
+        // `u21` and `u32` both travel as `uint32_t`, so only the declared
+        // width tells them apart, and it is the width Go spells.
+        .int => |a| a.bits == rhs.int.bits and a.signed == rhs.int.signed and a.is_usize == rhs.int.is_usize,
+        .slice => |a| goTypeEqual(a.element.*, rhs.slice.element.*),
+        .optional => |a| goTypeEqual(a.child.*, rhs.optional.child.*),
+        .error_union => |a| goTypeEqual(a.payload.*, rhs.error_union.payload.*),
+        .callback => |a| blk: {
+            const b = rhs.callback;
+            if (a.params.len != b.params.len or !goTypeEqual(a.@"return".*, b.@"return".*)) break :blk false;
+            for (a.params, b.params) |x, y| if (!goTypeEqual(x, y)) break :blk false;
+            break :blk true;
+        },
+        else => true,
+    };
 }
 
 fn goErrorEqual(lhs: []const semantic.Parameter, rhs: []const semantic.Parameter) bool {
@@ -405,7 +542,7 @@ fn classifyTypeChange(lhs: semantic.TypeDecl, rhs: semantic.TypeDecl) TypeChange
     if (!optionalStringsEqual(lhs.omitted_variants, rhs.omitted_variants)) return .breaking;
     if (lhs.accessStrategy() != rhs.accessStrategy()) return .access_changed;
     if ((lhs.tag_type == null) != (rhs.tag_type == null)) return .breaking;
-    if (lhs.tag_type) |tag| if (!typeEqual(tag, rhs.tag_type.?)) return .breaking;
+    if (lhs.tag_type) |tag| if (!declaredTypeEqual(tag, rhs.tag_type.?)) return .breaking;
     if (rhs.fields.len < lhs.fields.len) return .breaking;
     for (lhs.fields, rhs.fields[0..lhs.fields.len]) |a, b| if (!typeFieldEqual(a, b)) return .breaking;
     if (rhs.fields.len == lhs.fields.len) return .equal;
@@ -416,7 +553,7 @@ fn classifyTypeChange(lhs: semantic.TypeDecl, rhs: semantic.TypeDecl) TypeChange
 
 fn optionalTypeEqual(lhs: ?semantic.TypeNode, rhs: ?semantic.TypeNode) bool {
     if (lhs == null or rhs == null) return lhs == null and rhs == null;
-    return typeEqual(lhs.?, rhs.?);
+    return declaredTypeEqual(lhs.?, rhs.?);
 }
 
 fn optionalStringsEqual(lhs: ?[]const []const u8, rhs: ?[]const []const u8) bool {
@@ -428,31 +565,31 @@ fn optionalStringsEqual(lhs: ?[]const []const u8, rhs: ?[]const []const u8) bool
 
 fn typeFieldEqual(lhs: semantic.TypeField, rhs: semantic.TypeField) bool {
     if (!std.mem.eql(u8, lhs.name, rhs.name) or lhs.value != rhs.value or (lhs.type == null) != (rhs.type == null)) return false;
-    return lhs.type == null or typeEqual(lhs.type.?, rhs.type.?);
+    return lhs.type == null or declaredTypeEqual(lhs.type.?, rhs.type.?);
 }
 
-fn typeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
+/// Structural equality of two declared types, for comparing the members of a
+/// type declaration. A declaration is its own contract -- the header, the Go
+/// mirror and the shim all spell its members from the declared types -- so
+/// this compares them as written. Function signatures are not compared here;
+/// they are compared on the lowered program.
+fn declaredTypeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
     if (std.meta.activeTag(lhs) != std.meta.activeTag(rhs)) return false;
     return switch (lhs) {
         .void, .bool, .cancel_flag => true,
         .int => |a| a.bits == rhs.int.bits and a.signed == rhs.int.signed and a.is_usize == rhs.int.is_usize,
         .float => |a| a.bits == rhs.float.bits,
         .@"enum" => |a| std.mem.eql(u8, a.ref, rhs.@"enum".ref),
-        // The staging buffer rides on the parameter, not here: the direction
-        // is the whole of the lowered C shape, so a resized buffer leaves the
-        // signature alone and is reported as compatible instead.
         .io_stream => |a| a.direction == rhs.io_stream.direction,
         .value_struct => |a| std.mem.eql(u8, a.ref, rhs.value_struct.ref),
         .opaque_ptr => |a| a.@"const" == rhs.opaque_ptr.@"const" and a.nullable == rhs.opaque_ptr.nullable and std.mem.eql(u8, a.ref, rhs.opaque_ptr.ref),
-        // sentinel/sentinel_many는 shim이 Zig element 타입을 되살릴 때만 쓰는 주석이고
-        // 하강된 C ABI 모양을 바꾸지 않으므로 시그니처 비교에서 제외한다.
-        .slice => |a| a.@"const" == rhs.slice.@"const" and typeEqual(a.element.*, rhs.slice.element.*),
-        .optional => |a| typeEqual(a.child.*, rhs.optional.child.*),
-        .error_union => |a| a.anyerror == rhs.error_union.anyerror and typeEqual(a.payload.*, rhs.error_union.payload.*),
+        .slice => |a| a.@"const" == rhs.slice.@"const" and declaredTypeEqual(a.element.*, rhs.slice.element.*),
+        .optional => |a| declaredTypeEqual(a.child.*, rhs.optional.child.*),
+        .error_union => |a| a.anyerror == rhs.error_union.anyerror and declaredTypeEqual(a.payload.*, rhs.error_union.payload.*),
         .callback => |a| blk: {
             const b = rhs.callback;
-            if (a.c_callconv != b.c_callconv or a.has_userdata != b.has_userdata or a.params.len != b.params.len or !typeEqual(a.@"return".*, b.@"return".*)) break :blk false;
-            for (a.params, b.params) |x, y| if (!typeEqual(x, y)) break :blk false;
+            if (a.c_callconv != b.c_callconv or a.has_userdata != b.has_userdata or a.params.len != b.params.len or !declaredTypeEqual(a.@"return".*, b.@"return".*)) break :blk false;
+            for (a.params, b.params) |x, y| if (!declaredTypeEqual(x, y)) break :blk false;
             break :blk true;
         },
     };
@@ -586,23 +723,39 @@ test "tagged union variant payload changes are breaking" {
     const old: semantic.Semantic = .{
         .package = "variant",
         .prefix = "zg",
-        .types = &.{.{
-            .fields = &.{.{ .name = "number", .type = .{ .int = .{ .bits = 32, .signed = true } }, .value = 0 }},
-            .kind = .tagged_union,
-            .name = "Value",
-            .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } },
-        }},
+        .types = &.{
+            .{
+                .fields = &.{.{ .name = "number", .type = .{ .int = .{ .bits = 32, .signed = true } }, .value = 0 }},
+                .kind = .tagged_union,
+                .name = "Value",
+                .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } },
+            },
+            .{
+                .fields = &.{.{ .name = "number", .value = 0 }},
+                .kind = .@"enum",
+                .name = "ValueTag",
+                .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+            },
+        },
         .zig_version = "0.16.0",
     };
     const current: semantic.Semantic = .{
         .package = "variant",
         .prefix = "zg",
-        .types = &.{.{
-            .fields = &.{.{ .name = "number", .type = .{ .int = .{ .bits = 64, .signed = true } }, .value = 0 }},
-            .kind = .tagged_union,
-            .name = "Value",
-            .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } },
-        }},
+        .types = &.{
+            .{
+                .fields = &.{.{ .name = "number", .type = .{ .int = .{ .bits = 64, .signed = true } }, .value = 0 }},
+                .kind = .tagged_union,
+                .name = "Value",
+                .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } },
+            },
+            .{
+                .fields = &.{.{ .name = "number", .value = 0 }},
+                .kind = .@"enum",
+                .name = "ValueTag",
+                .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+            },
+        },
         .zig_version = "0.16.0",
     };
     var report = try diff(std.testing.allocator, old, current);
@@ -726,25 +879,40 @@ test "appending a value-parameter tagged union variant is breaking" {
     var report = try diff(std.testing.allocator, base, current);
     defer report.deinit(std.testing.allocator);
     try std.testing.expect(report.hasBreaking());
-    try std.testing.expectEqualStrings(
-        "tagged-union variant appended; a value-parameter C signature grew",
-        report.changes.items[0].detail,
-    );
+    // Two entries name the same growth from both ends: the function whose
+    // lowered C signature gained the new variant's payload parameter, and the
+    // type declaration the variant was appended to.
+    var named_the_type = false;
+    for (report.changes.items) |change| {
+        if (std.mem.eql(u8, change.detail, "tagged-union variant appended; a value-parameter C signature grew"))
+            named_the_type = true;
+    }
+    try std.testing.expect(named_the_type);
+    try std.testing.expectEqualStrings("signature changed", report.changes.items[0].detail);
+    try std.testing.expectEqualStrings("consume", report.changes.items[0].subject);
 }
 
 test "removing renaming or retagging an existing variant is breaking" {
     const base: semantic.Semantic = .{
         .package = "variant",
         .prefix = "zg",
-        .types = &.{.{
-            .fields = &.{
-                .{ .name = "none", .type = .{ .void = {} }, .value = 0 },
-                .{ .name = "number", .type = .{ .int = .{ .bits = 32, .signed = true } }, .value = 1 },
+        .types = &.{
+            .{
+                .fields = &.{
+                    .{ .name = "none", .type = .{ .void = {} }, .value = 0 },
+                    .{ .name = "number", .type = .{ .int = .{ .bits = 32, .signed = true } }, .value = 1 },
+                },
+                .kind = .tagged_union,
+                .name = "Value",
+                .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } },
             },
-            .kind = .tagged_union,
-            .name = "Value",
-            .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } },
-        }},
+            .{
+                .fields = &.{ .{ .name = "none", .value = 0 }, .{ .name = "number", .value = 1 }, .{ .name = "integer", .value = 1 } },
+                .kind = .@"enum",
+                .name = "ValueTag",
+                .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+            },
+        },
         .zig_version = "0.16.0",
     };
     const changed_fields = [_][]const semantic.TypeField{
@@ -762,12 +930,20 @@ test "removing renaming or retagging an existing variant is breaking" {
         const current: semantic.Semantic = .{
             .package = "variant",
             .prefix = "zg",
-            .types = &.{.{
-                .fields = fields,
-                .kind = .tagged_union,
-                .name = "Value",
-                .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } },
-            }},
+            .types = &.{
+                .{
+                    .fields = fields,
+                    .kind = .tagged_union,
+                    .name = "Value",
+                    .tag_type = .{ .@"enum" = .{ .ref = "ValueTag" } },
+                },
+                .{
+                    .fields = &.{ .{ .name = "none", .value = 0 }, .{ .name = "number", .value = 1 }, .{ .name = "integer", .value = 1 } },
+                    .kind = .@"enum",
+                    .name = "ValueTag",
+                    .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+                },
+            },
             .zig_version = "0.16.0",
         };
         var report = try diff(std.testing.allocator, base, current);
@@ -1331,4 +1507,31 @@ test "adding or removing cancellation is a Go signature break" {
     defer report.deinit(std.testing.allocator);
     try std.testing.expect(report.hasBreaking());
     try std.testing.expectEqualStrings("cancellation surface changed", report.changes.items[0].detail);
+}
+
+test "a sentinel the lowered program never sees is not a change" {
+    var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    const plain: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte } };
+    const sentinel: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte, .sentinel = 0 } };
+    const Docs = struct {
+        fn document(node: semantic.TypeNode) semantic.Semantic {
+            return .{
+                .functions = &.{.{
+                    .name = "greet",
+                    .params = &.{.{ .name = "text", .semantic = .utf8_string, .type = node }},
+                    .@"return" = .{ .void = {} },
+                    .symbol = "zg_greet",
+                }},
+                .package = "demo",
+                .prefix = "zg",
+                .zig_version = "0.16.0",
+            };
+        }
+    };
+    // The sentinel is an annotation the shim uses to rebuild the Zig type; it
+    // does not reach C, and the comparison now sees only what lowering
+    // produced, so there is nothing to report.
+    var report = try diff(std.testing.allocator, Docs.document(plain), Docs.document(sentinel));
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 0), report.changes.items.len);
 }

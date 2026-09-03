@@ -2,10 +2,10 @@ const std = @import("std");
 const emit = @import("emit.zig");
 const abi = @import("abi");
 const errors_lock = @import("errors_lock");
-const lower = @import("lower.zig");
+const lower = @import("lower");
 const naming = @import("naming");
 const semantic = @import("semantic");
-const stream_return = @import("stream_return.zig");
+const stream_return = @import("stream_return");
 const validate = @import("validate.zig");
 
 pub const Options = struct {

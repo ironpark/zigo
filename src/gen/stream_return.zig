@@ -47,7 +47,10 @@ pub fn expand(allocator: std.mem.Allocator, document: semantic.Semantic) !semant
     return expanded;
 }
 
-fn operationCount(function: semantic.SemanticFn) usize {
+/// How many lowered functions `function` expands into. Callers that lower a
+/// document themselves use it to map a semantic function back onto the
+/// operations it became.
+pub fn operationCount(function: semantic.SemanticFn) usize {
     if (function.@"return" != .io_stream) return 1;
     return switch (function.@"return".io_stream.direction) {
         .writer => 2,

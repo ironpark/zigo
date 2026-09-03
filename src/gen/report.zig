@@ -1,7 +1,7 @@
 const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
-const lower = @import("lower.zig");
+const lower = @import("lower");
 const naming = @import("naming");
 
 pub const Options = struct {

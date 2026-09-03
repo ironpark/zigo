@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-03T01:48:11Z"
 depends_on:
 - "96-abi-classification-in-lowering#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Emitter has no string/callback/struct classification predicates left; goldens and examples unchanged; tests green.
 > NEXT: none

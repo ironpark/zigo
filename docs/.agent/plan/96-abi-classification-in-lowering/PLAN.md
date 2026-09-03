@@ -8,7 +8,7 @@ registered_at: "2026-09-03T01:32:00Z"
 # Phases
 
 - [x] [Phase 00: Merge identical predicates and split same-name concepts](phases/00-merge-and-split.md)
-- [ ] [Phase 01: Record classification on the lowered IR](phases/01-classification-on-ir.md)
+- [x] [Phase 01: Record classification on the lowered IR](phases/01-classification-on-ir.md)
 - [ ] [Phase 02: abi-diff over lowered programs](phases/02-abi-diff-lowered.md)
 
 # Shared Verification
