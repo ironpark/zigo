@@ -204,6 +204,22 @@ test "backend switching is an explicit breaking ABI change" {
     try std.testing.expectEqualStrings("binding backend and callback ABI convention changed", report.changes.items[0].detail);
 }
 
+test "wrapper coverage metadata is ignored" {
+    const plain: semantic.SemanticFn = .{
+        .name = "wrapper",
+        .params = &.{},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_wrapper",
+    };
+    var covered = plain;
+    covered.covers = &.{"Service.upstream"};
+    const base: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{plain} };
+    const current: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{covered} };
+    var report = try diff(std.testing.allocator, base, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 0), report.changes.items.len);
+}
+
 test "the one-time symbol metadata correction is compatible, a rename is not" {
     const params: []const semantic.Parameter = &.{};
     const base_fn: semantic.SemanticFn = .{

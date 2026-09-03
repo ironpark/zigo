@@ -161,6 +161,7 @@ error입니다.
 | 필드 | 역할 |
 |---|---|
 | `path` | `root.<name>` 또는 `<Type>.<name>` 선언 경로 |
+| `covers` | 이 함수가 대신 노출하는 상류 선언 경로 하나 또는 목록 (`go-coverage` 전용) |
 | `name` | 공개 Go 함수 이름 override |
 | `receiver` | 자유 함수를 method로 붙일 등록 opaque 타입 이름 |
 | `strip_prefix` | 함수 group에서 기본 Go 이름을 만들 때 제거할 공통 접두사 |

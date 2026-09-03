@@ -1134,6 +1134,8 @@ fn appendFunction(
         .symbol = try naming.functionSymbolAlloc(allocator, prefix, receiver orelse discovered_owner, function_name),
         .zig_path = comptime zigCallPath(receiver, discovered_owner, source_name, function_name),
     };
+    if (@hasField(@TypeOf(metadata), "covers"))
+        reflected_function.covers = comptime coveragePaths(metadata.covers);
     if (@hasField(@TypeOf(metadata), "child_of_receiver") and metadata.child_of_receiver)
         reflected_function.child_of_receiver = true;
     if (boxed_type != null) reflected_function.ownership = .caller;
@@ -1568,6 +1570,33 @@ fn validateFunctionEntry(comptime declaration: anytype, comptime entry: anytype,
     }
     if (!@hasField(@TypeOf(entry), "path")) @compileError("zigo function entries require `.path`");
     validateFunctionPath(declaration, entry.path);
+    if (@hasField(@TypeOf(entry), "covers")) validateCoveragePaths(declaration, entry.covers);
+}
+
+fn validateCoveragePaths(comptime declaration: anytype, comptime covers: anytype) void {
+    if (comptime isStringEntry(@TypeOf(covers))) {
+        validateCoveragePath(declaration, covers);
+        return;
+    }
+    inline for (covers) |path| validateCoveragePath(declaration, path);
+}
+
+fn validateCoveragePath(comptime declaration: anytype, comptime path: []const u8) void {
+    if (!declarationPathExists(declaration, path)) {
+        @compileError("zigo `.covers` path does not name a public function: " ++ path ++
+            " (use `root.<name>` for a function in `.root`, or `<Type>.<name>` for one in a registered type)");
+    }
+}
+
+fn coveragePaths(comptime covers: anytype) []const []const u8 {
+    if (comptime isStringEntry(@TypeOf(covers))) {
+        const paths = [_][]const u8{covers};
+        return &paths;
+    }
+    comptime var paths: [covers.len][]const u8 = undefined;
+    inline for (covers, 0..) |path, index| paths[index] = path;
+    const frozen = paths;
+    return &frozen;
 }
 
 fn validateFunctionPath(comptime declaration: anytype, comptime path: []const u8) void {

@@ -295,7 +295,9 @@ binding install이 그 artifact에 의존하게 합니다. 같은 라이브러�
 
 `addStandardSteps`가 등록하는 `go-coverage`는 root 모듈과 등록 타입에서 도달할 수 있는 모든
 `pub fn`을 재귀적으로 훑습니다. 바인딩에 들어간 함수는 `bound`, `.exclude`에 든 함수는
-`excluded`, 나머지는 `unbound`로 분류합니다. `.fields`가 만든 getter와 setter도 bound 함수로
+`excluded`, 나머지는 `unbound`로 분류합니다. 함수 메타데이터의 `.covers`가 가리키는 unbound
+선언은 `wrapped`로 따로 표시하고 bound 비율에 포함합니다. `.covers`는 경로 하나 또는 목록을
+받으며 생성 결과나 ABI 비교에는 영향을 주지 않습니다. `.fields`가 만든 getter와 setter도 bound 함수로
 셉니다. 비율은 `bound / (bound + unbound)`이며 excluded 함수는 목록에는 나오지만 분모에는
 들어가지 않습니다. 함수 signature에서 참조하지만 `.types`에 등록하지 않은 공개 struct, enum,
 union도 `unregistered types`에 따로 표시합니다.

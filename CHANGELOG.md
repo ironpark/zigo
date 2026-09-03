@@ -8,6 +8,9 @@
 
 ### Added
 
+- 함수 메타데이터에 `.covers = "Type.name"` 또는 경로 목록을 추가했습니다. `go-coverage`는
+  해당 상류 선언을 wrapper를 통한 bound로 세고 `wrapped` 항목과 wrapper 경로를 보고하며,
+  `semantic.json`에도 문서 전용 `covers` 목록을 기록합니다.
 - `std.atomic.Value(T)`를 bool, 정수, 부동소수, 등록 enum의 값 자리에서 평범한 `T`로
   노출합니다. field accessor는 순차 일관 load/store를 사용하고, flatten·값 struct·값 union·
   값 파라미터와 반환은 원시 값을 복사합니다. atomic field가 있는 struct slice는 항상

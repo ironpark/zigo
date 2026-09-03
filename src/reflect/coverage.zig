@@ -2,12 +2,13 @@ const std = @import("std");
 const semantic = @import("semantic");
 const walk = @import("walk.zig");
 
-pub const Status = enum { bound, excluded, unbound };
+pub const Status = enum { bound, wrapped, excluded, unbound };
 
 pub const Declaration = struct {
     path: []const u8,
     status: Status,
     reason: ?[]const u8 = null,
+    via: ?[]const u8 = null,
 };
 
 pub const Report = struct {
@@ -23,10 +24,19 @@ pub const Report = struct {
         const percent = if (total == 0) 0 else self.bound * 100 / total;
         try writer.print("{s}: {d}/{d} public declarations bound ({d}%)\n", .{ self.package, self.bound, total, percent });
         for (self.declarations) |declaration| switch (declaration.status) {
-            .bound => {},
+            .bound, .wrapped => {},
             .excluded => try writer.print("  excluded: {s}\n", .{declaration.path}),
             .unbound => try writer.print("  unbound: {s}  (reason: {s})\n", .{ declaration.path, declaration.reason orelse "unsupported signature" }),
         };
+        var wrote_wrapped = false;
+        for (self.declarations) |declaration| {
+            if (declaration.status != .wrapped) continue;
+            if (!wrote_wrapped) {
+                try writer.writeAll("  wrapped:\n");
+                wrote_wrapped = true;
+            }
+            try writer.print("    {s} <- {s}\n", .{ declaration.path, declaration.via.? });
+        }
         if (self.unregistered_types.len != 0) {
             try writer.writeAll("  unregistered types:\n");
             for (self.unregistered_types) |name| try writer.print("    {s}\n", .{name});
@@ -71,6 +81,22 @@ pub fn classify(allocator: std.mem.Allocator, comptime binding: anytype, package
         .status = .bound,
     });
 
+    // A wrapper supplements the upstream declaration; it does not replace a
+    // direct binding or an explicit exclusion, and therefore only changes an
+    // otherwise-unbound declaration's classification.
+    for (document.functions) |function| {
+        for (function.covers orelse &.{}) |covered_path| {
+            const wanted = coverageDisplayPath(covered_path);
+            for (declarations.items) |*declaration| {
+                if (declaration.status != .unbound or !std.mem.eql(u8, declaration.path, wanted)) continue;
+                declaration.status = .wrapped;
+                declaration.reason = null;
+                declaration.via = try functionDisplayPath(allocator, function);
+                break;
+            }
+        }
+    }
+
     var unregistered: std.ArrayList([]const u8) = .empty;
     for (referenced_types.items) |full_name| {
         if (!contains(public_types.items, full_name) or registeredTypeName(binding, full_name)) continue;
@@ -84,7 +110,7 @@ pub fn classify(allocator: std.mem.Allocator, comptime binding: anytype, package
     var unbound: usize = 0;
     var excluded: usize = 0;
     for (declarations.items) |item| switch (item.status) {
-        .bound => bound += 1,
+        .bound, .wrapped => bound += 1,
         .unbound => unbound += 1,
         .excluded => excluded += 1,
     };
@@ -96,6 +122,17 @@ pub fn classify(allocator: std.mem.Allocator, comptime binding: anytype, package
         .declarations = try declarations.toOwnedSlice(allocator),
         .unregistered_types = try unregistered.toOwnedSlice(allocator),
     };
+}
+
+fn coverageDisplayPath(path: []const u8) []const u8 {
+    return if (std.mem.startsWith(u8, path, "root.")) path["root.".len..] else path;
+}
+
+fn functionDisplayPath(allocator: std.mem.Allocator, function: semantic.SemanticFn) ![]const u8 {
+    if (function.zig_path) |path| return path;
+    if (function.receiver orelse function.namespace) |owner|
+        return std.fmt.allocPrint(allocator, "{s}.{s}", .{ owner, function.name });
+    return function.name;
 }
 
 fn collectContainer(
@@ -262,7 +299,7 @@ fn declarationLessThan(_: void, a: Declaration, b: Declaration) bool {
     return std.mem.lessThan(u8, a.path, b.path);
 }
 
-test "classifier distinguishes selected excluded and unsupported functions" {
+test "classifier distinguishes selected and unsupported functions" {
     const Api = struct {
         pub const Nested = struct {
             pub const Hidden = struct { value: u32 };
@@ -276,22 +313,60 @@ test "classifier distinguishes selected excluded and unsupported functions" {
         pub fn selected(value: i32) i32 {
             return value;
         }
-        pub fn ignored() void {}
     };
-    const binding = .{ .root = Api, .discover = .public, .exclude = .{"root.ignored"} };
-    const report = try classify(std.testing.allocator, binding, "sample", .{
-        .package = "sample",
-        .prefix = "zg",
-        .zig_version = "0.16.0",
-        .functions = &.{},
-        .types = &.{},
-    });
-    defer std.testing.allocator.free(report.declarations);
-    defer std.testing.allocator.free(report.unregistered_types);
+    const binding = .{ .root = Api, .functions = .{.{ .path = "root.selected" }} };
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const document = try walk.reflect(allocator, binding, "sample", "zg");
+    const report = try classify(allocator, binding, "sample", document);
     try std.testing.expectEqual(@as(usize, 1), report.bound);
     try std.testing.expectEqual(@as(usize, 2), report.unbound);
-    try std.testing.expectEqual(@as(usize, 1), report.excluded);
+    try std.testing.expectEqual(@as(usize, 0), report.excluded);
     try std.testing.expectEqualStrings("not listed", report.declarations[0].reason.?);
     try std.testing.expectEqualStrings("unregistered type", report.declarations[1].reason.?);
     try std.testing.expectEqualStrings("Hidden", report.unregistered_types[0]);
+}
+
+test "covers classifies wrapped declarations in text and JSON" {
+    const Api = struct {
+        pub const Service = struct {
+            pub fn upstream() void {}
+        };
+        pub fn other() void {}
+        pub fn wrapper() void {}
+    };
+    const binding = .{
+        .root = Api,
+        .types = .{.{ .type = Api.Service, .repr = .@"opaque" }},
+        .functions = .{.{
+            .path = "root.wrapper",
+            .covers = .{ "Service.upstream", "root.other" },
+        }},
+    };
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const document = try walk.reflect(allocator, binding, "sample", "zg");
+    const report = try classify(allocator, binding, "sample", document);
+
+    try std.testing.expectEqual(@as(usize, 3), report.bound);
+    try std.testing.expectEqual(@as(usize, 0), report.unbound);
+    try std.testing.expectEqualStrings("Service.upstream", document.functions[0].covers.?[0]);
+    try std.testing.expectEqual(.wrapped, report.declarations[0].status);
+    try std.testing.expectEqualStrings("wrapper", report.declarations[0].via.?);
+    try std.testing.expectEqual(.wrapped, report.declarations[1].status);
+
+    var rendered: std.Io.Writer.Allocating = .init(allocator);
+    try report.render(&rendered.writer);
+    try std.testing.expectEqualStrings(
+        "sample: 3/3 public declarations bound (100%)\n" ++
+            "  wrapped:\n" ++
+            "    Service.upstream <- wrapper\n" ++
+            "    other <- wrapper\n",
+        rendered.written(),
+    );
+    const json = try report.json(allocator);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"status\": \"wrapped\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"via\": \"wrapper\"") != null);
 }

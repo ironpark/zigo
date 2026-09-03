@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T03:55:26Z"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: A wrapper with `.covers` moves its target from `unbound` to `wrapped` and the percentage counts it; verification loop green.
 > NEXT: none

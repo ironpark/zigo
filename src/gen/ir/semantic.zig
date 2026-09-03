@@ -428,6 +428,9 @@ pub const SemanticFn = struct {
     /// the function so a name that matches nothing can still be reported, and
     /// so `abi-diff` sees the Go signature gain or lose its `ctx`.
     cancel: ?[]const u8 = null,
+    /// Public Zig declarations this function deliberately wraps. Coverage
+    /// metadata only: generation and ABI comparison do not consume it.
+    covers: ?[]const []const u8 = null,
     field_access: ?FieldAccess = null,
     /// Set on a function synthesized from a stream-returning method. Never
     /// present in a `semantic.json` on disk: the document records the Zig

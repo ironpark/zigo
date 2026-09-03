@@ -7,7 +7,7 @@ registered_at: "2026-09-03T03:14:22Z"
 
 # Phases
 
-- [ ] [Phase 00: Wrapper coverage via `.covers`](phases/00-covers.md)
+- [x] [Phase 00: Wrapper coverage via `.covers`](phases/00-covers.md)
 - [ ] [Phase 01: Unregistered type names and false positives](phases/01-type-names.md)
 - [ ] [Phase 02: Accurate signature reasons](phases/02-accurate-signature-reasons.md)
 
