@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Examples with custom layouts build, link, and pass Go tests on cgo and purego from the configured directories; all other examples' generated files are unchanged; verification loop green.
 > NEXT: none

@@ -75,6 +75,7 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         .framework_ldflags = options.framework_ldflags,
         .include_dir = options.include_dir,
         .library_dir = options.library_dir,
+        .header_name = options.header_name,
         .raw_package_path = options.raw_package_path,
         .raw_package_name = options.raw_package_name,
         .raw_colocated = options.raw_colocated,

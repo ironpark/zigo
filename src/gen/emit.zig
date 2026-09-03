@@ -21,6 +21,8 @@ pub const Options = struct {
     pkg_config_libs: []const u8 = "",
     include_dir: []const u8 = "${SRCDIR}/../../../zig-out/include",
     library_dir: []const u8 = "${SRCDIR}/../../../zig-out/lib",
+    /// Installed header filename. Empty derives `zigo_<package>.h`.
+    header_name: []const u8 = "",
     raw_package_path: []const u8 = "internal/raw",
     raw_package_name: []const u8 = "raw",
     raw_colocated: bool = false,
@@ -1780,7 +1782,10 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
     }
     if (options.framework_ldflags.len != 0) try writer.print("\n#cgo darwin LDFLAGS: {s}", .{options.framework_ldflags});
     if (programHasCString(program)) try writer.writeAll("\n#include <stdlib.h>");
-    try writer.print("\n#include \"zigo_{s}.h\"\n*/\nimport \"C\"\n", .{package});
+    if (options.header_name.len != 0)
+        try writer.print("\n#include \"{s}\"\n*/\nimport \"C\"\n", .{options.header_name})
+    else
+        try writer.print("\n#include \"zigo_{s}.h\"\n*/\nimport \"C\"\n", .{package});
     if (programHasStreams(program)) try writer.writeAll("import \"io\"\n");
     if (programHasCallbacks(program)) try writer.writeAll("import \"runtime/cgo\"\nimport \"runtime/debug\"\nimport \"sync\"\n");
     if (programNeedsUnsafe(program)) try writer.writeAll("import \"unsafe\"\n");

@@ -39,6 +39,17 @@ pub const Link = enum {
 /// How a generated purego package finds its shared library at run time.
 pub const LibraryLoading = build_options.LibraryLoading;
 
+/// Where the generated native artifacts are installed under Zig's prefix.
+pub const Install = struct {
+    library_dir: std.Build.InstallDir = .lib,
+    header_dir: std.Build.InstallDir = .header,
+    /// Native library stem, without a leading `lib` or platform extension.
+    library_name: ?[]const u8 = null,
+    /// Installed C header filename. The generated source header keeps its
+    /// canonical `zigo_<name>.h` name.
+    header_name: ?[]const u8 = null,
+};
+
 pub const Options = struct {
     name: []const u8,
     module: *std.Build.Module,
@@ -72,6 +83,8 @@ pub const Options = struct {
     /// purego-only run-time loading policy. The default requires an explicit
     /// `LoadLibrary` call and consults `ZIGO_LIBRARY_PATH`.
     library_loading: LibraryLoading = .{},
+    /// Native library and C header install directories and filenames.
+    install: Install = .{},
 };
 
 const ResolvedRawPackage = struct {
@@ -88,14 +101,12 @@ pub const GoBindings = struct {
     doctor: *std.Build.Step.Run,
     coverage: *std.Build.Step.Run,
     lib: *std.Build.Step.Compile,
-    /// Installs the native binding library into `zig-out/lib`.
+    /// Installs the native binding library into the configured directory.
     install_library: *std.Build.Step.InstallArtifact,
     /// Target-specific basename of the native binding library.
     library_filename: []const u8,
     /// Full path `install_library` writes the native binding library to.
-    /// Zig installs a shared library to `bin` on Windows and `lib` everywhere
-    /// else, so this is what a consumer should use rather than joining a
-    /// directory of its own choosing with `library_filename`.
+    /// Use this rather than joining a directory with `library_filename`.
     library_path: []const u8,
     semantic_json: std.Build.LazyPath,
 
@@ -158,6 +169,94 @@ pub const GoBindings = struct {
 
 fn standardStepName(b: *std.Build, prefix: ?[]const u8, suffix: []const u8) []const u8 {
     return if (prefix) |value| b.fmt("{s}-{s}", .{ value, suffix }) else suffix;
+}
+
+const ResolvedInstall = struct {
+    library_dir: std.Build.InstallDir,
+    header_dir: std.Build.InstallDir,
+    library_stem: []const u8,
+    generated_header_name: []const u8,
+    header_name: []const u8,
+    cgo_library_dir: []const u8,
+    cgo_header_dir: []const u8,
+    purego_default_search_paths: []const []const u8,
+};
+
+const ExplicitHeaderInstall = struct {
+    path: []const u8,
+    backend: Backend,
+};
+
+var explicit_header_installs: std.ArrayList(ExplicitHeaderInstall) = .empty;
+
+fn resolveInstall(
+    b: *std.Build,
+    options: Install,
+    artifact_package: []const u8,
+    backend: Backend,
+    raw_source_dir: []const u8,
+    public_source_dir: []const u8,
+) ResolvedInstall {
+    const default_library_stem = b.fmt("{s}_zigo", .{artifact_package});
+    const library_stem = options.library_name orelse default_library_stem;
+    validateInstallFilename("install.library_name", library_stem);
+
+    const generated_header_name = b.fmt("zigo_{s}.h", .{artifact_package});
+    // A purego binding set declares decorated entry points, so its default
+    // header must not overwrite the cgo header in a shared prefix.
+    const default_header_name = if (backend == .purego)
+        b.fmt("zigo_{s}_purego.h", .{artifact_package})
+    else
+        generated_header_name;
+    const header_name = options.header_name orelse default_header_name;
+    validateInstallFilename("install.header_name", header_name);
+    if (options.header_name != null)
+        registerExplicitHeader(b, options.header_dir, header_name, backend);
+
+    const library_path = b.getInstallPath(options.library_dir, "");
+    const header_path = b.getInstallPath(options.header_dir, "");
+    const default_search_paths: []const []const u8 = if (backend == .purego and options.library_dir != .lib)
+        b.allocator.dupe([]const u8, &.{relativeInstallPath(b, public_source_dir, library_path)}) catch @panic("OOM")
+    else
+        &.{};
+    return .{
+        .library_dir = options.library_dir,
+        .header_dir = options.header_dir,
+        .library_stem = library_stem,
+        .generated_header_name = generated_header_name,
+        .header_name = header_name,
+        .cgo_library_dir = cgoRelativePath(b, raw_source_dir, library_path),
+        .cgo_header_dir = cgoRelativePath(b, raw_source_dir, header_path),
+        .purego_default_search_paths = default_search_paths,
+    };
+}
+
+fn validateInstallFilename(option: []const u8, value: []const u8) void {
+    if (value.len == 0 or !std.mem.eql(u8, std.fs.path.basename(value), value) or
+        std.mem.eql(u8, value, ".") or std.mem.eql(u8, value, ".."))
+    {
+        std.debug.panic("{s} must be a non-empty filename without directory components", .{option});
+    }
+}
+
+fn registerExplicitHeader(b: *std.Build, dir: std.Build.InstallDir, name: []const u8, backend: Backend) void {
+    const path = b.getInstallPath(dir, name);
+    for (explicit_header_installs.items) |installed| {
+        if (installed.backend != backend and std.mem.eql(u8, installed.path, path)) {
+            std.debug.panic("cgo and purego install.header_name both resolve to '{s}'; choose distinct header names", .{path});
+        }
+    }
+    explicit_header_installs.append(std.heap.page_allocator, .{
+        .path = std.heap.page_allocator.dupe(u8, path) catch @panic("OOM"),
+        .backend = backend,
+    }) catch @panic("OOM");
+}
+
+fn resolvedLibraryLoading(loading: LibraryLoading, install: ResolvedInstall) LibraryLoading {
+    if (loading.search_paths.len != 0 or install.purego_default_search_paths.len == 0) return loading;
+    var resolved = loading;
+    resolved.search_paths = install.purego_default_search_paths;
+    return resolved;
 }
 
 pub fn build(b: *std.Build) void {
@@ -744,20 +843,11 @@ fn matchesAnyFilter(name: []const u8, filters: []const []const u8) bool {
 pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     const backend = options.link.backend();
     const link_mode = options.link.linkMode();
-    build_options.validateLibraryLoading(options.library_loading, backend == .purego) catch |err| switch (err) {
-        error.UnsupportedBackend => @panic("library_loading is only supported by .link = .purego"),
-        error.EmptySearchPath => @panic("library_loading.search_paths entries must not be empty"),
-        error.InvalidSearchPath => @panic("library_loading.search_paths entries must not contain quotes, backslashes or control characters"),
-        error.InvalidEnvironmentName => @panic("library_loading.env_vars entries must be ASCII letters, digits and underscores, and must not start with a digit"),
-    };
     if (backend == .purego) {
         if (!build_options.puregoTargetSupported(options.target.result))
             @panic("`.link = .purego` supports macOS, Linux and Windows on amd64/arm64 only");
     }
     const artifact_package = naming.snakeAlloc(b.allocator, options.name) catch @panic("OOM");
-    // Names the native artifact; the generator spells the same stem into the
-    // `#cgo LDFLAGS` line, so both must come from this one string.
-    const library_stem = b.fmt("{s}_zigo", .{artifact_package});
     const go_package = if (options.go_package) |value| blk: {
         naming.validateGoPackageName(value) catch
             @panic("go_package must be a valid Go package identifier");
@@ -765,6 +855,16 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     } else artifact_package;
     const go_package_path = resolveGoPackagePath(options.go_package_path orelse go_package);
     const raw_package = resolveRawPackage(b, options.raw_package, go_package_path, go_package);
+    const raw_source_dir = options.go_dir.path(b, raw_package.path).getPath(b);
+    const public_source_dir = options.go_dir.path(b, go_package_path).getPath(b);
+    const install = resolveInstall(b, options.install, artifact_package, backend, raw_source_dir, public_source_dir);
+    const library_loading = resolvedLibraryLoading(options.library_loading, install);
+    build_options.validateLibraryLoading(library_loading, backend == .purego) catch |err| switch (err) {
+        error.UnsupportedBackend => @panic("library_loading is only supported by .link = .purego"),
+        error.EmptySearchPath => @panic("library_loading.search_paths entries must not be empty"),
+        error.InvalidSearchPath => @panic("library_loading.search_paths entries must not contain quotes, backslashes or control characters"),
+        error.InvalidEnvironmentName => @panic("library_loading.env_vars entries must be ASCII letters, digits and underscores, and must not start with a digit"),
+    };
     const zigo_dependency = b.dependencyFromBuildZig(@This(), .{});
     const generator = addGenerator(b, zigo_dependency.path("src/main.zig"), b.graph.host, .Debug);
     // Reflection runs the bindings module as an executable on the host, so the
@@ -836,9 +936,6 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         coverage.step.dependOn(&publish_coverage.step);
     }
 
-    const raw_source_dir = options.go_dir.path(b, raw_package.path).getPath(b);
-    const include_dir = cgoRelativePath(b, raw_source_dir, b.pathJoin(&.{ b.install_path, "include" }));
-    const library_dir = cgoRelativePath(b, raw_source_dir, b.pathJoin(&.{ b.install_path, "lib" }));
     const generate = b.addRunArtifact(generator);
     generate.addArgs(&.{ "generate", "--semantic" });
     generate.addFileArg(semantic_json);
@@ -861,8 +958,9 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         "--package",           options.name,
         "--prefix",            options.prefix,
         "--go-module",         options.go_module,
-        "--include-dir",       include_dir,
-        "--library-dir",       library_dir,
+        "--include-dir",       install.cgo_header_dir,
+        "--library-dir",       install.cgo_library_dir,
+        "--header-name",       install.header_name,
         "--cflags",            cflags_override,
         "--ldflags",           ldflags_override,
         "--extra-ldflags",     extra_ldflags,
@@ -872,14 +970,14 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         "--raw-package-path",  raw_package.path,
         "--raw-package-name",  raw_package.name,
         "--backend",           @tagName(backend),
-        "--library-stem",      library_stem,
+        "--library-stem",      install.library_stem,
         "--link-mode",         @tagName(link_mode),
         "--go-package",        go_package,
         "--go-package-path",   go_package_path,
         "--go-package-doc",    options.go_package_doc orelse "",
     });
     if (static_link_inputs.paths.len != 0) generate.addArg("--ldflags-external");
-    if (backend == .purego) addLibraryLoadingArgs(b, generate, options.library_loading);
+    if (backend == .purego) addLibraryLoadingArgs(b, generate, library_loading);
     if (raw_package.colocated) generate.addArg("--raw-colocated");
     const errors_lock_path = "zigo/errors.lock.json";
     const has_errors_lock = blk: {
@@ -904,7 +1002,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     report.addFileArg(semantic_json);
     report.addArgs(&.{ "--go-module", options.go_module, "--raw-package-path", raw_package.path, "--go-package", go_package, "--go-package-path", go_package_path });
     report.addArgs(&.{ "--backend", @tagName(backend) });
-    if (backend == .purego) addLibraryLoadingArgs(b, report, options.library_loading);
+    if (backend == .purego) addLibraryLoadingArgs(b, report, library_loading);
     if (raw_package.colocated) report.addArg("--raw-colocated");
     const doctor = b.addRunArtifact(generator);
     doctor.has_side_effects = true;
@@ -937,7 +1035,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         .imports = &.{.{ .name = "zigo_target", .module = options.module }},
     });
     const lib = b.addLibrary(.{
-        .name = library_stem,
+        .name = install.library_stem,
         .linkage = switch (link_mode) {
             .static => .static,
             .dynamic => .dynamic,
@@ -954,19 +1052,23 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     const static_windows_archive = link_mode == .static and
         options.target.result.os.tag == .windows;
     const install_lib = b.addInstallArtifact(lib, .{
+        .dest_dir = .{ .override = install.library_dir },
+        // A Windows cgo dynamic link consumes the import library, so it must
+        // follow the DLL into the configured search directory as well.
+        .implib_dir = if (link_mode == .dynamic and options.target.result.os.tag == .windows)
+            .{ .override = install.library_dir }
+        else
+            .disabled,
         .dest_sub_path = if (static_windows_archive)
-            b.fmt("lib{s}.a", .{library_stem})
+            b.fmt("lib{s}.a", .{install.library_stem})
         else
             null,
     });
-    const header_name = b.fmt("zigo_{s}.h", .{artifact_package});
-    // A purego binding set declares the `_purego_v1` entry points, so it must not
-    // overwrite the cgo header when both backends install into one prefix.
-    const installed_header_name = if (backend == .purego)
-        b.fmt("zigo_{s}_purego.h", .{artifact_package})
-    else
-        header_name;
-    const install_header = b.addInstallHeaderFile(generated_dir.path(b, header_name), installed_header_name);
+    const install_header = b.addInstallFileWithDir(
+        generated_dir.path(b, install.generated_header_name),
+        install.header_dir,
+        install.header_name,
+    );
     // Every static input is installed beside the binding archive under the
     // same `lib<name>.a` spelling, so the cgo line names install-relative
     // paths on every host: cgo rejects a bare `.lib`, and a Windows absolute
@@ -976,16 +1078,16 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         var archives: std.ArrayList([]const u8) = .empty;
         var installs: std.ArrayList(*std.Build.Step) = .empty;
         for (static_link_inputs.paths, static_link_inputs.names) |path, name| {
-            if (std.mem.eql(u8, name, library_stem)) @panic(b.fmt("static link input '{s}' collides with the binding library name", .{name}));
+            if (std.mem.eql(u8, name, install.library_stem)) @panic(b.fmt("static link input '{s}' collides with the binding library name", .{name}));
             const file_name = b.fmt("lib{s}.a", .{name});
-            const install = b.addInstallLibFile(path, file_name);
-            installs.append(b.allocator, &install.step) catch @panic("OOM");
-            archives.append(b.allocator, b.fmt("{s}/{s}", .{ library_dir, file_name })) catch @panic("OOM");
+            const install_archive = b.addInstallFileWithDir(path, install.library_dir, file_name);
+            installs.append(b.allocator, &install_archive.step) catch @panic("OOM");
+            archives.append(b.allocator, b.fmt("{s}/{s}", .{ install.cgo_library_dir, file_name })) catch @panic("OOM");
         }
         const publish_flags = PublishCgoLinkFlags.create(b, .{
             .output_path = sourcePath(b, options.go_dir, relative_path),
             .package = raw_package.name,
-            .binding_archive = b.fmt("{s}/lib{s}.a", .{ library_dir, library_stem }),
+            .binding_archive = b.fmt("{s}/lib{s}.a", .{ install.cgo_library_dir, install.library_stem }),
             .static_archives = archives.items,
             .archive_installs = installs.items,
             .extra_ldflags = extra_ldflags,
@@ -1037,7 +1139,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         update.step.dependOn(&flags.step);
         check.step.dependOn(&flags.step);
         install_lib.step.dependOn(&flags.step);
-        for (flags.config.archive_installs) |install| install_lib.step.dependOn(install);
+        for (flags.config.archive_installs) |archive_install| install_lib.step.dependOn(archive_install);
     }
     check.step.dependOn(&lib.step);
     if (abi_check) |run| run.step.dependOn(&lib.step);
@@ -1077,15 +1179,10 @@ fn joinWith(b: *std.Build, values: []const []const u8, separator: []const u8) []
 
 /// Where the install step actually puts the native library.
 ///
-/// The directory is not always `lib`: `std.Build.Step.InstallArtifact` resolves
-/// a library artifact's destination as `if (artifact.isDll()) .bin else .lib`,
-/// so a Windows DLL installs next to the executables while its import library
-/// stays in `lib`. Reading the decision back off the step keeps zigo's idea of
-/// the path from drifting from Zig's, which is what made `go-doctor` report a
-/// freshly installed DLL as missing.
+/// Read both the configured directory and target-specific filename back from
+/// the install step so `GoBindings` and `go-doctor` cannot drift from it.
 fn installedLibraryPath(b: *std.Build, install: *std.Build.Step.InstallArtifact) []const u8 {
-    // `dest_dir` is only null when installation was disabled, which zigo never
-    // does: `addInstallArtifact` is called with the default options.
+    // `dest_dir` is only null when installation was disabled, which zigo never does.
     return b.getInstallPath(install.dest_dir.?, install.dest_sub_path);
 }
 
@@ -1297,14 +1394,17 @@ fn sourcePath(b: *std.Build, directory: std.Build.LazyPath, child: []const u8) [
 }
 
 fn cgoRelativePath(b: *std.Build, from: []const u8, to: []const u8) []const u8 {
+    const relative = relativeInstallPath(b, from, to);
+    return b.fmt("${{SRCDIR}}/{s}", .{relative});
+}
+
+fn relativeInstallPath(b: *std.Build, from: []const u8, to: []const u8) []const u8 {
     const relative = std.fs.path.relative(b.allocator, "", null, from, to) catch @panic("OOM");
     // `std.fs.path.relative` answers in the host separator, but this string is
-    // baked into a generated `#cgo` flag. cgo expects forward slashes on every
-    // host, and the committed bytes must not depend on where generation ran --
-    // a Windows-generated `-I${SRCDIR}\..\..\zig-out\include` both differs
-    // from the committed file and fails to resolve the header.
+    // baked into generated Go. Go tooling expects forward slashes on every
+    // host, and the committed bytes must not depend on where generation ran.
     std.mem.replaceScalar(u8, relative, std.fs.path.sep_windows, std.fs.path.sep_posix);
-    return b.fmt("${{SRCDIR}}/{s}", .{relative});
+    return relative;
 }
 
 fn joinFlags(b: *std.Build, flags: []const []const u8) []const u8 {

@@ -5,9 +5,9 @@
 package raw
 
 /*
-#cgo CFLAGS: -I${SRCDIR}/../../../zig-out/include
-#cgo LDFLAGS: ${SRCDIR}/../../../zig-out/lib/libpipeline_zigo.a -lz
-#include "zigo_pipeline.h"
+#cgo CFLAGS: -I${SRCDIR}/../../../zig-out/go-layout/include
+#cgo LDFLAGS: ${SRCDIR}/../../../zig-out/go-layout/lib/libpipeline_native.a -lz
+#include "pipeline_native.h"
 */
 import "C"
 import "runtime/cgo"

@@ -22,6 +22,7 @@ pub const Generate = struct {
     go_module: []const u8,
     include_dir: []const u8 = "${SRCDIR}/../../../zig-out/include",
     library_dir: []const u8 = "${SRCDIR}/../../../zig-out/lib",
+    header_name: []const u8 = "",
     cflags: []const u8 = "",
     ldflags: []const u8 = "",
     extra_ldflags: []const u8 = "",
@@ -183,6 +184,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
     var go_module: ?[]const u8 = null;
     var include_dir: ?[]const u8 = null;
     var library_dir: ?[]const u8 = null;
+    var header_name: ?[]const u8 = null;
     var cflags: ?[]const u8 = null;
     var ldflags: ?[]const u8 = null;
     var extra_ldflags: ?[]const u8 = null;
@@ -226,6 +228,8 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
             try set(&include_dir, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--library-dir")) {
             try set(&library_dir, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--header-name")) {
+            try set(&header_name, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--cflags")) {
             try set(&cflags, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--ldflags")) {
@@ -281,6 +285,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .go_module = go_module orelse resolved_package,
         .include_dir = include_dir orelse "${SRCDIR}/../../../zig-out/include",
         .library_dir = library_dir orelse "${SRCDIR}/../../../zig-out/lib",
+        .header_name = header_name orelse "",
         .cflags = cflags orelse "",
         .ldflags = ldflags orelse "",
         .extra_ldflags = extra_ldflags orelse "",
@@ -518,6 +523,8 @@ test "generate command parses named arguments" {
         "include",
         "--library-dir",
         "lib",
+        "--header-name",
+        "flags_native.h",
         "--cflags",
         "-Icustom",
         "--ldflags",
@@ -543,6 +550,7 @@ test "generate command parses named arguments" {
     try std.testing.expectEqualStrings("scalarapi", options.go_package);
     try std.testing.expectEqualStrings(".", options.go_package_path);
     try std.testing.expectEqualStrings("-Icustom", options.cflags);
+    try std.testing.expectEqualStrings("flags_native.h", options.header_name);
     try std.testing.expectEqualStrings("-Wl,--as-needed", options.extra_ldflags);
     try std.testing.expectEqualStrings("scalar", options.raw_package_path);
     try std.testing.expect(options.raw_colocated);

@@ -41,16 +41,16 @@ pub fn build(b: *std.Build) void {
         .abi_base = "HEAD",
         .raw_package = "internal/native",
         .link = .purego,
-        // The library is found next to the executable when deployed, and in the
-        // installed prefix when the tests run from the package directory. The
-        // public package therefore exposes no loader at all.
-        //
-        // Both installed prefixes are listed because Zig installs a DLL into
-        // `bin` and everything else into `lib`. Candidates are tried in order
-        // and a miss costs nothing, so one policy covers every platform and the
-        // generated package stays identical on all of them.
+        .install = .{
+            .library_dir = .{ .custom = "purego-layout/lib" },
+            .header_dir = .{ .custom = "purego-layout/include" },
+            .library_name = "telemetry_native",
+            .header_name = "telemetry_native.h",
+        },
+        // The configured install directory is used automatically when no
+        // explicit search_paths are supplied. The public package exposes no
+        // loader; deployment may select another copy through the environment.
         .library_loading = .{
-            .search_paths = &.{ "${EXECUTABLE_DIR}", "${EXECUTABLE_DIR}/../lib", "../../zig-out/lib", "../../zig-out/bin" },
             .loader = .automatic_internal,
         },
     });

@@ -13,6 +13,9 @@
 
 ### Added
 
+- `addGoBindings`에 라이브러리·헤더의 설치 디렉터리와 파일명을 정하는 `install` 옵션을
+  추가했습니다. cgo 플래그와 정적 링크 입력, purego 기본 로딩 경로,
+  `GoBindings.library_path` 및 표준 빌드 스텝이 같은 배치를 사용합니다.
 - callback `param_meta`에 문서 전용 `.reentrancy = .allowed | .forbidden`과
   `.thread = .caller | .any` 계약을 추가했습니다. 선택한 계약은 `semantic.json`과 cgo·purego
   양쪽의 callback type 및 함수 Go doc에 기록되며 runtime thread pinning은 바꾸지 않습니다.

@@ -22,7 +22,7 @@ import (
 
 // DefaultLibraryName is the installed shared-library basename for the running platform.
 // It is empty on platforms this backend does not support.
-var DefaultLibraryName = map[string]string{"darwin": "libtelemetry_hub_zigo.dylib", "linux": "libtelemetry_hub_zigo.so", "windows": "telemetry_hub_zigo.dll"}[runtime.GOOS]
+var DefaultLibraryName = map[string]string{"darwin": "libtelemetry_native.dylib", "linux": "libtelemetry_native.so", "windows": "telemetry_native.dll"}[runtime.GOOS]
 
 // ErrLibraryLoad identifies a shared-library load or symbol resolution failure.
 var ErrLibraryLoad = errors.New("zigo: shared library unavailable")
@@ -268,18 +268,11 @@ var automaticLoadError error
 var libraryEnvVars = []string{"ZIGO_TELEMETRY_HUB_LIBRARY_PATH", "ZIGO_LIBRARY_PATH"}
 
 // librarySearchPaths are tried after the environment, in order.
-var librarySearchPaths = []string{"${EXECUTABLE_DIR}", "${EXECUTABLE_DIR}/../lib", "../../zig-out/lib", "../../zig-out/bin"}
+var librarySearchPaths = []string{"../../zig-out/purego-layout/lib"}
 
 // resolveSearchPath joins a directory entry with the platform library
 // name. It returns "" when the entry cannot be formed.
 func resolveSearchPath(entry string) string {
-	if strings.Contains(entry, "${EXECUTABLE_DIR}") {
-		executable, err := os.Executable()
-		if err != nil {
-			return ""
-		}
-		entry = strings.ReplaceAll(entry, "${EXECUTABLE_DIR}", filepath.Dir(executable))
-	}
 	if DefaultLibraryName == "" {
 		return ""
 	}

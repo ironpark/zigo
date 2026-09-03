@@ -27,6 +27,12 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .abi_base = "HEAD",
         .coverage_json = coverage_json,
+        .install = .{
+            .library_dir = .{ .custom = "go-layout/lib" },
+            .header_dir = .{ .custom = "go-layout/include" },
+            .library_name = "pipeline_native",
+            .header_name = "pipeline_native.h",
+        },
     });
     _ = bindings.addStandardSteps(b, .{});
 }

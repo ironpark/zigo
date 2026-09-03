@@ -158,7 +158,7 @@ Tier 1으로 지원하므로 콜백 경로는 공용 파일에 그대로 남는�
 
 | 필드 | 기본값 | 설명 |
 |---|---|---|
-| `search_paths` | 없음 | 환경 변수 다음에 순서대로 시도할 위치 |
+| `search_paths` | 없음 (`install.library_dir`이 `.lib`가 아니면 그 위치) | 환경 변수 다음에 순서대로 시도할 위치 |
 | `env_vars` | `null` | `null`은 `ZIGO_<PACKAGE>_LIBRARY_PATH`와 `ZIGO_LIBRARY_PATH`. 빈 목록은 환경 변수를 보지 않음 |
 | `loader` | `.explicit` | 누가 로드를 시작하는지, 로더가 공개 API인지 |
 
@@ -176,6 +176,12 @@ Tier 1으로 지원하므로 콜백 경로는 공용 파일에 그대로 남는�
 
 `library_loading`은 `.link = .purego`에서만 쓸 수 있다. 잘못된 조합은 빌드
 그래프를 만드는 시점에 실패한다.
+
+`install.library_dir`을 `.custom` 등 `.lib`가 아닌 위치로 바꾸고 `search_paths`를
+생략하면 zigo가 공개 Go 패키지에서 설치 디렉터리까지의 상대 경로를 기본 후보로 넣습니다.
+따라서 checkout 안에서 `go test`할 때 설치 위치를 별도로 반복해 적을 필요가 없습니다.
+`install.library_name`을 지정하면 `DefaultLibraryName`도 같은 stem의 플랫폼 파일명으로
+바뀝니다. 명시적인 `search_paths`는 자동 후보 대신 그대로 사용합니다.
 
 ### 후보 순서
 
@@ -220,19 +226,19 @@ library search paths: ${EXECUTABLE_DIR}:${EXECUTABLE_DIR}/../lib:../../zig-out/l
 
 ## 패키징과 배포
 
-- 공유 라이브러리는 타깃별 아티팩트다. 파일명은 macOS `lib<name>_zigo.dylib`,
-  Linux `lib<name>_zigo.so`, Windows `<name>_zigo.dll`이다. 설치 위치는 Zig의
-  관례를 따른다. `zig build go-lib`은 DLL을 `zig-out/bin`에, 나머지는
-  `zig-out/lib`에 설치한다. 경로를 직접 조립하지 말고 `GoBindings.library_path`를
-  읽으면 플랫폼과 무관하게 실제 설치 경로를 얻는다.
+- 공유 라이브러리는 타깃별 아티팩트다. 기본 파일명은 macOS
+  `lib<name>_zigo.dylib`, Linux `lib<name>_zigo.so`, Windows `<name>_zigo.dll`이며
+  `install.library_name`으로 stem을 바꿀 수 있다. 기본 설치 위치는 `zig-out/lib`이고
+  `install.library_dir`로 바꿀 수 있다. 경로를 직접 조립하지 말고
+  `GoBindings.library_path`를 읽으면 플랫폼과 무관하게 실제 설치 경로를 얻는다.
 - 배포 대상 OS·아키텍처 조합마다 아티팩트를 하나씩 만들지만, 호스트는 하나면 된다.
   `-Dtarget`을 넘기면 그 타깃으로 라이브러리를 빌드한다. 리플렉션 파이프라인은 항상
   호스트로 빌드해 실행하고, `-Dtarget`은 라이브러리·shim·헤더에만 적용된다.
 
   ```bash
   # 한 macOS/Linux 호스트에서 세 플랫폼 아티팩트를 모두 만든다.
-  zig build purego-go-lib -Dtarget=x86_64-windows   # -> zig-out/bin/<name>_zigo.dll
-  zig build purego-go-lib -Dtarget=aarch64-windows  # -> zig-out/bin/<name>_zigo.dll
+  zig build purego-go-lib -Dtarget=x86_64-windows   # -> zig-out/lib/<name>_zigo.dll
+  zig build purego-go-lib -Dtarget=aarch64-windows  # -> zig-out/lib/<name>_zigo.dll
   zig build purego-go-lib -Dtarget=x86_64-linux-gnu # -> zig-out/lib/lib<name>_zigo.so
   zig build purego-go-lib                           # 호스트 네이티브
   ```

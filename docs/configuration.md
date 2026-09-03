@@ -50,6 +50,44 @@ raw 패키지는 `internal/raw`에서 생성됩니다. `addStandardSteps`는 기
 | `gofmt` | 아니요 | `PATH`의 `gofmt` | 생성 코드 포맷에 사용할 실행 파일 |
 | `abi_base` | 아니요 | `null` | ABI 비교 기준 Git ref. 없으면 검사 비활성화 |
 | `library_loading` | 아니요 | 명시적 로드 | purego 전용 런타임 로딩 정책 |
+| `install` | 아니요 | `.lib` / `.header`, 기본 파일명 | 네이티브 라이브러리와 C 헤더의 설치 위치·이름 |
+
+## 설치 위치
+
+`install`은 Zig 설치 prefix 아래에서 라이브러리와 헤더가 놓일 디렉터리와 파일명을
+한곳에서 정합니다. 디렉터리는 `std.Build.InstallDir`이므로 `.lib`, `.bin`, `.header`,
+`.prefix`, `.{ .custom = "..." }`을 쓸 수 있고, `zig build -p <prefix>`로 전체 배치를
+그대로 옮길 수 있습니다.
+
+```zig
+.install = .{
+    .library_dir = .{ .custom = "dist/native/lib" },
+    .header_dir = .{ .custom = "dist/native/include" },
+    .library_name = "mylib_native", // lib 접두사와 확장자를 제외한 stem
+    .header_name = "mylib_native.h",
+},
+```
+
+| 필드 | 기본값 | 설명 |
+|---|---|---|
+| `library_dir` | `.lib` | 바인딩 라이브러리와 cgo 정적 링크 입력 archive의 설치 디렉터리 |
+| `header_dir` | `.header` | 생성 C 헤더의 설치 디렉터리 |
+| `library_name` | `<name>_zigo` | `lib` 접두사와 플랫폼 확장자를 제외한 라이브러리 stem |
+| `header_name` | `zigo_<name>.h` | 설치되는 헤더 파일명 |
+
+cgo의 `#cgo CFLAGS -I`와 `LDFLAGS -L`, 정적 archive 경로는 이 설정에서 함께
+계산되며 계속 `${SRCDIR}` 기준 forward-slash 경로입니다. 모듈에 연결된 정적 라이브러리도
+바인딩 archive와 같은 `library_dir`에 설치됩니다. `GoBindings.library_filename`과
+`GoBindings.library_path`는 이름 변경과 디렉터리 변경이 반영된 실제 결과를 제공합니다.
+`go-lib`, `go-check`, `go-coverage`, `abi-check`, 기본 `install` 스텝도 같은 배치를
+사용합니다.
+
+purego는 `header_name`을 생략하면 같은 prefix의 cgo 헤더를 덮지 않도록
+`zigo_<name>_purego.h`를 사용합니다. 두 백엔드에 같은 명시적 `header_name`과
+`header_dir`을 주면 빌드 그래프 생성 중 충돌을 명확히 진단합니다. custom
+`library_dir`을 선택하고 `library_loading.search_paths`를 비워 두면 설치 디렉터리의
+Go 패키지 기준 상대 경로가 기본 검색 경로가 됩니다. 명시적 `search_paths`가 있으면
+그 목록을 그대로 사용합니다.
 
 ## 링크 방식 선택
 

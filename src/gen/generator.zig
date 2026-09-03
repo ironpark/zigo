@@ -21,6 +21,7 @@ pub const Options = struct {
     framework_ldflags: []const u8 = "",
     include_dir: []const u8 = "${SRCDIR}/../../../zig-out/include",
     library_dir: []const u8 = "${SRCDIR}/../../../zig-out/lib",
+    header_name: []const u8 = "",
     raw_package_path: []const u8 = "internal/raw",
     raw_package_name: []const u8 = "raw",
     raw_colocated: bool = false,
@@ -100,6 +101,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .framework_ldflags = options.framework_ldflags,
         .include_dir = options.include_dir,
         .library_dir = options.library_dir,
+        .header_name = options.header_name,
         .raw_package_path = options.raw_package_path,
         .raw_package_name = options.raw_package_name,
         .raw_colocated = options.raw_colocated,
@@ -409,12 +411,14 @@ test "cgo flag overrides and observed link flags are emitted" {
         .extra_ldflags = "-Wl,--as-needed",
         .system_ldflags = "-lz",
         .framework_ldflags = "-framework CoreFoundation",
+        .header_name = "flags_native.h",
     });
     const raw = try temporary.dir.readFileAlloc(std.testing.io, "internal/raw/raw_gen.go", std.testing.allocator, .limited(16 * 1024));
     defer std.testing.allocator.free(raw);
     try std.testing.expect(std.mem.indexOf(u8, raw, "#cgo CFLAGS: -I/opt/flags/include") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "#cgo LDFLAGS: -L/opt/flags/lib -lflags_zigo -Wl,--as-needed -lz") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw, "#cgo darwin LDFLAGS: -framework CoreFoundation") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw, "#include \"flags_native.h\"") != null);
 }
 
 test "pkg-config libraries, search paths, and weak frameworks reach the cgo block" {
