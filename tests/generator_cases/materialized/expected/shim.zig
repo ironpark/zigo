@@ -84,9 +84,9 @@ pub fn zigoMaterialize_leaf(builder: *ZigoMaterializedBuilder, value: target.Lea
 
 export fn zg_snapshot_impl(out_result_ptr: *[*c]u8, out_result_len: *usize) void {
     const result = target.snapshot();
-    var builder = ZigoMaterializedBuilder.init(std.heap.c_allocator) catch @panic("zigo materialization allocation failed");
-    const root = zigoMaterialize_root(&builder, result) catch @panic("zigo materialization allocation failed");
-    const buffer = builder.finish(0, 1, @intCast(root)) catch @panic("zigo materialization allocation failed");
+    var builder = ZigoMaterializedBuilder.init(std.heap.c_allocator) catch @panic("zigo: materialization allocation failed");
+    const root = zigoMaterialize_root(&builder, result) catch @panic("zigo: materialization allocation failed");
+    const buffer = builder.finish(0, 1, @intCast(root)) catch @panic("zigo: materialization allocation failed");
     out_result_ptr.* = buffer.ptr;
     out_result_len.* = buffer.len;
 }
@@ -94,10 +94,10 @@ export fn zg_many_impl(out_result_ptr: *[*c]u8, out_result_len: *usize) i32 {
     const result = target.many() catch |err| return switch (err) {
         error.Invalid => 1,
     };
-    var builder = ZigoMaterializedBuilder.init(std.heap.c_allocator) catch @panic("zigo materialization allocation failed");
-    const roots = builder.reserve(result.len * 8) catch @panic("zigo materialization allocation failed");
-    for (result, 0..) |item, index| builder.writeU64(roots + index * 8, zigoMaterialize_root(&builder, item) catch @panic("zigo materialization allocation failed"));
-    const buffer = builder.finish(0, result.len, roots) catch @panic("zigo materialization allocation failed");
+    var builder = ZigoMaterializedBuilder.init(std.heap.c_allocator) catch @panic("zigo: materialization allocation failed");
+    const roots = builder.reserve(result.len * 8) catch @panic("zigo: materialization allocation failed");
+    for (result, 0..) |item, index| builder.writeU64(roots + index * 8, zigoMaterialize_root(&builder, item) catch @panic("zigo: materialization allocation failed"));
+    const buffer = builder.finish(0, result.len, roots) catch @panic("zigo: materialization allocation failed");
     out_result_ptr.* = buffer.ptr;
     out_result_len.* = buffer.len;
     return 0;

@@ -1,4 +1,5 @@
 const std = @import("std");
+const naming = @import("naming");
 
 pub const Int = struct {
     bits: u16,
@@ -621,6 +622,52 @@ pub const Constructor = struct {
     name: ?[]const u8 = null,
     type: []const u8,
 };
+
+/// A `packed struct` value type, which crosses the boundary as its backing
+/// integer rather than as an aggregate. Lowering and validation both gate the
+/// whole packed-value feature on this, so they read one rule.
+pub fn isPackedValue(document: Semantic, node: TypeNode) bool {
+    if (node != .value_struct) return false;
+    for (document.types) |declaration| {
+        if (std.mem.eql(u8, declaration.name, node.value_struct.ref))
+            return declaration.kind == .value_struct and declaration.layout == .@"packed";
+    }
+    return false;
+}
+
+/// The constructor whose `init` this function is, if any. Matched on the Zig
+/// function name plus the owning type, which is how every consumer -- emit,
+/// validate, the report and `abi-diff` -- has to match it: a method
+/// constructor carries a receiver, so screening receivers out here reports
+/// `(*T).Init` for a function the generator publishes as `NewT`.
+pub fn constructorForInit(document: Semantic, function: SemanticFn) ?Constructor {
+    for (document.constructors) |constructor| {
+        if (std.mem.eql(u8, constructor.init, function.name) and
+            std.mem.eql(u8, constructor.type, function.goOwner() orelse "")) return constructor;
+    }
+    return null;
+}
+
+/// The public Go name a function reaches generated code under, ignoring the
+/// receiver: a method's name is scoped by its receiver type, so two methods on
+/// different receivers never collide even when this returns the same spelling
+/// for both. Constructors are the one function shape whose public name is not
+/// simply the pascal-cased Zig name.
+///
+/// This is the single rule. The collision check, the `abi-diff` contract guard
+/// and the report all read it from here -- three copies would let a rename
+/// rule silently make them disagree about the same function.
+pub fn publicFunctionNameAlloc(
+    allocator: std.mem.Allocator,
+    document: Semantic,
+    function: SemanticFn,
+) ![]u8 {
+    if (constructorForInit(document, function)) |constructor| {
+        if (constructor.name) |name| return naming.pascalAlloc(allocator, name);
+        return std.fmt.allocPrint(allocator, "New{s}", .{constructor.type});
+    }
+    return naming.pascalAlloc(allocator, function.name);
+}
 
 pub const Package = struct {
     doc: ?[]const u8 = null,

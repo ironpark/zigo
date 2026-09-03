@@ -112,9 +112,9 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
         // that named it changes.
         if (!semantic.optionalStringEqual(old.goOwner(), new.goOwner()))
             try add(allocator, &report, .breaking, identity, "Go owner changed");
-        const old_go_name = try effectivePublicFunctionNameAlloc(allocator, base, old);
+        const old_go_name = try semantic.publicFunctionNameAlloc(allocator, base, old);
         defer allocator.free(old_go_name);
-        const new_go_name = try effectivePublicFunctionNameAlloc(allocator, current, new);
+        const new_go_name = try semantic.publicFunctionNameAlloc(allocator, current, new);
         defer allocator.free(new_go_name);
         if (!std.mem.eql(u8, old_go_name, new_go_name))
             try add(allocator, &report, .breaking, identity, "Go signature changed");
@@ -336,16 +336,6 @@ fn pathNamesFunction(path: []const u8, function: semantic.SemanticFn) bool {
     return path.len == owner.len + function.name.len + 1 and
         std.mem.startsWith(u8, path, owner) and path[owner.len] == '.' and
         std.mem.endsWith(u8, path, function.name);
-}
-
-fn effectivePublicFunctionNameAlloc(allocator: std.mem.Allocator, document: semantic.Semantic, function: semantic.SemanticFn) ![]u8 {
-    for (document.constructors) |constructor| {
-        if (!std.mem.eql(u8, constructor.init, function.name) or
-            !std.mem.eql(u8, constructor.type, function.goOwner() orelse "")) continue;
-        if (constructor.name) |name| return naming.pascalAlloc(allocator, name);
-        return std.fmt.allocPrint(allocator, "New{s}", .{constructor.type});
-    }
-    return naming.pascalAlloc(allocator, function.name);
 }
 
 /// The lowered form of a document, in the arena the comparison lives in.

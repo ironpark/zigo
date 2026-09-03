@@ -1,6 +1,30 @@
 const std = @import("std");
 const semantic = @import("semantic");
 
+/// Walks the `@import("....zig")` references in one source file. Both the
+/// enrichment scan and the coverage traversal need the same reference list;
+/// they differ only in what they do with it, so the parsing lives here once.
+const source_limit: std.Io.Limit = .limited(8 * 1024 * 1024);
+
+const ImportIterator = struct {
+    source: []const u8,
+    cursor: usize = 0,
+
+    const marker = "@import(\"";
+
+    fn next(self: *ImportIterator) ?[]const u8 {
+        while (std.mem.indexOfPos(u8, self.source, self.cursor, marker)) |start| {
+            const value_start = start + marker.len;
+            const end = std.mem.indexOfScalarPos(u8, self.source, value_start, '"') orelse return null;
+            self.cursor = end + 1;
+            const referenced = self.source[value_start..end];
+            if (std.mem.endsWith(u8, referenced, ".zig")) return referenced;
+        }
+        return null;
+    }
+};
+
+
 /// Enriches reflection-only IR with syntax-only names and doc comments.
 /// This pass deliberately does not inspect or alter any type node.
 pub fn apply(
@@ -11,7 +35,7 @@ pub fn apply(
     source_root_path: ?[]const u8,
     diagnostics: *std.Io.Writer,
 ) !void {
-    const bindings_source = std.Io.Dir.cwd().readFileAlloc(io, bindings_path, allocator, .limited(8 * 1024 * 1024)) catch |err| {
+    const bindings_source = std.Io.Dir.cwd().readFileAlloc(io, bindings_path, allocator, source_limit) catch |err| {
         try writeReadError(diagnostics, bindings_path, err);
         return err;
     };
@@ -28,7 +52,7 @@ pub fn apply(
 
     const root_path = source_root_path orelse try std.fs.path.join(allocator, &.{ directory, "root.zig" });
     if (!std.mem.eql(u8, root_path, bindings_path)) {
-        if (std.Io.Dir.cwd().readFileAlloc(io, root_path, allocator, .limited(8 * 1024 * 1024))) |root_source| {
+        if (std.Io.Dir.cwd().readFileAlloc(io, root_path, allocator, source_limit)) |root_source| {
             if (document.doc == null) document.doc = try containerDocAlloc(allocator, root_source);
             has_errors = try scanSourceWithDiagnostics(allocator, root_source, functions, try recordedPathAlloc(allocator, directory, root_path), diagnostics) or has_errors;
         } else |err| switch (err) {
@@ -40,16 +64,12 @@ pub fn apply(
         }
     }
 
-    var cursor: usize = 0;
-    const marker = "@import(\"";
-    while (std.mem.indexOfPos(u8, bindings_source, cursor, marker)) |start| {
-        const value_start = start + marker.len;
-        const end = std.mem.indexOfScalarPos(u8, bindings_source, value_start, '"') orelse break;
-        cursor = end + 1;
-        const referenced = bindings_source[value_start..end];
-        if (!std.mem.endsWith(u8, referenced, ".zig")) continue;
+    // Enrichment deliberately scans only the bindings file's direct imports,
+    // and records them under their bindings-relative path.
+    var imports: ImportIterator = .{ .source = bindings_source };
+    while (imports.next()) |referenced| {
         const path = try std.fs.path.join(allocator, &.{ directory, referenced });
-        if (std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(8 * 1024 * 1024))) |source| {
+        if (std.Io.Dir.cwd().readFileAlloc(io, path, allocator, source_limit)) |source| {
             has_errors = try scanSourceWithDiagnostics(allocator, source, functions, try recordedPathAlloc(allocator, directory, path), diagnostics) or has_errors;
         } else |err| {
             try writeReadError(diagnostics, path, err);
@@ -72,7 +92,7 @@ pub fn applyCoverageImports(
     diagnostics: *std.Io.Writer,
 ) !void {
     const root_path = source_root_path orelse return;
-    const root_source = std.Io.Dir.cwd().readFileAlloc(io, root_path, allocator, .limited(8 * 1024 * 1024)) catch |err| {
+    const root_source = std.Io.Dir.cwd().readFileAlloc(io, root_path, allocator, source_limit) catch |err| {
         try writeReadError(diagnostics, root_path, err);
         return err;
     };
@@ -103,14 +123,8 @@ fn scanImportedSources(
     diagnostics: *std.Io.Writer,
 ) !bool {
     var has_errors = false;
-    var cursor: usize = 0;
-    const marker = "@import(\"";
-    while (std.mem.indexOfPos(u8, source, cursor, marker)) |start| {
-        const value_start = start + marker.len;
-        const end = std.mem.indexOfScalarPos(u8, source, value_start, '"') orelse break;
-        cursor = end + 1;
-        const referenced = source[value_start..end];
-        if (!std.mem.endsWith(u8, referenced, ".zig")) continue;
+    var imports: ImportIterator = .{ .source = source };
+    while (imports.next()) |referenced| {
         const path = try std.fs.path.join(allocator, &.{ directory, referenced });
         var already_seen = false;
         for (visited.items) |candidate| if (std.mem.eql(u8, candidate, path)) {
@@ -119,7 +133,7 @@ fn scanImportedSources(
         };
         if (already_seen) continue;
         try visited.append(allocator, path);
-        if (std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(8 * 1024 * 1024))) |imported| {
+        if (std.Io.Dir.cwd().readFileAlloc(io, path, allocator, source_limit)) |imported| {
             has_errors = try scanSourceWithDiagnostics(allocator, imported, functions, path, diagnostics) or has_errors;
             has_errors = try scanImportedSources(
                 allocator,

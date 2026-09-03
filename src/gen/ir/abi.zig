@@ -285,6 +285,14 @@ pub const AbiFn = struct {
         first_use: bool,
     };
 
+    /// Whether semantic parameter `source_index` is the slice a materialized
+    /// result is staged out of, so its ABI form is the owned buffer pair
+    /// rather than an ordinary pointer and length.
+    pub fn materializesParam(self: AbiFn, source_index: usize) bool {
+        const out = self.materialized_out orelse return false;
+        return out.source_index == source_index;
+    }
+
     /// How semantic parameter `source_index` carries text.
     pub fn paramString(self: AbiFn, source_index: usize) ParamString {
         if (source_index >= self.param_strings.len) return .{};

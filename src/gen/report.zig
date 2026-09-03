@@ -134,21 +134,13 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
     };
 }
 
+/// The report spells the same public name the collision check and `abi-diff`
+/// do, plus the receiver qualification a reader needs to find the method.
 fn publicFunctionNameAlloc(allocator: std.mem.Allocator, document: semantic.Semantic, function: semantic.SemanticFn) ![]u8 {
-    // A constructor uses its explicit name when present and otherwise stays
-    // `New<Type>`, as a method on its receiver when it has one.
-    if (constructorForInit(document, function)) |constructor| {
-        const name = if (constructor.name) |explicit|
-            try naming.pascalAlloc(allocator, explicit)
-        else
-            try std.fmt.allocPrint(allocator, "New{s}", .{constructor.type});
-        defer allocator.free(name);
-        if (function.receiver) |receiver| return std.fmt.allocPrint(allocator, "(*{s}).{s}", .{ receiver, name });
-        return allocator.dupe(u8, name);
-    }
-    const name = try naming.pascalAlloc(allocator, function.name);
+    const name = try semantic.publicFunctionNameAlloc(allocator, document, function);
     defer allocator.free(name);
-    if (constructorForDeinit(document, function) != null)
+    if (semantic.constructorForInit(document, function) == null and
+        constructorForDeinit(document, function) != null)
         return std.fmt.allocPrint(allocator, "(*{s}).Close [lifecycle mapping]", .{function.receiver.?});
     if (function.receiver) |receiver|
         return std.fmt.allocPrint(allocator, "(*{s}).{s}", .{ receiver, name });
@@ -159,18 +151,6 @@ fn semanticIdentityAlloc(allocator: std.mem.Allocator, function: semantic.Semant
     if (function.receiver orelse function.namespace) |owner|
         return std.fmt.allocPrint(allocator, "{s}.{s}", .{ owner, function.name });
     return allocator.dupe(u8, function.name);
-}
-
-/// The constructor whose `init` this function is, matched exactly the way
-/// `emit.constructorForInit` matches it. A method constructor has a receiver,
-/// so the report must not screen receivers out here: doing so reported
-/// `(*T).Init` for a function the generator publishes as `NewT`.
-fn constructorForInit(document: semantic.Semantic, function: semantic.SemanticFn) ?semantic.Constructor {
-    for (document.constructors) |constructor| {
-        if (std.mem.eql(u8, constructor.init, function.name) and std.mem.eql(u8, constructor.type, function.goOwner() orelse ""))
-            return constructor;
-    }
-    return null;
 }
 
 fn constructorForDeinit(document: semantic.Semantic, function: semantic.SemanticFn) ?semantic.Constructor {

@@ -1008,15 +1008,16 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     // targets another platform. The generated Go tree is platform-independent;
     // reflected layouts are pinned by the shim's comptime ABI guards, which fail
     // the target compile if a C-variable type diverges.
-    const semantic_module = b.createModule(.{
-        .root_source_file = zigo_dependency.path("src/gen/ir/semantic.zig"),
-        .target = b.graph.host,
-        .optimize = .Debug,
-    });
     const naming_module = b.createModule(.{
         .root_source_file = zigo_dependency.path("src/gen/naming.zig"),
         .target = b.graph.host,
         .optimize = .Debug,
+    });
+    const semantic_module = b.createModule(.{
+        .root_source_file = zigo_dependency.path("src/gen/ir/semantic.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+        .imports = &.{.{ .name = "naming", .module = naming_module }},
     });
     // The reflected module is the caller's, retargeted to the host. Its
     // Static link inputs were built for `options.target`, and a host executable
@@ -1940,21 +1941,22 @@ fn createGeneratorModules(
         .target = target,
         .optimize = optimize,
     });
+    const naming_module = b.createModule(.{
+        .root_source_file = source_root.path(b, "gen/naming.zig"),
+        .target = target,
+        .optimize = optimize,
+    });
     const semantic_module = b.createModule(.{
         .root_source_file = source_root.path(b, "gen/ir/semantic.zig"),
         .target = target,
         .optimize = optimize,
+        .imports = &.{.{ .name = "naming", .module = naming_module }},
     });
     const abi_module = b.createModule(.{
         .root_source_file = source_root.path(b, "gen/ir/abi.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{.{ .name = "semantic", .module = semantic_module }},
-    });
-    const naming_module = b.createModule(.{
-        .root_source_file = source_root.path(b, "gen/naming.zig"),
-        .target = target,
-        .optimize = optimize,
     });
     const diagnostic_module = b.createModule(.{
         .root_source_file = source_root.path(b, "gen/diagnostic.zig"),

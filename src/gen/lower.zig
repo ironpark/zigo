@@ -48,8 +48,7 @@ pub fn semanticDocumentForBackend(
             // The shim writes the value itself, so the parameter is absent
             // from the C signature and from everything derived from it.
             if (parameter.injected != null) continue;
-            if (materializedOutParameter(parameter)) |root| {
-                _ = root;
+            if (materializedOutParameter(parameter) != null) {
                 try params.append(allocator, .{
                     .name = try std.fmt.allocPrint(allocator, "{s}_len", .{parameter.name}),
                     .role = .slice_length,
@@ -370,7 +369,7 @@ pub fn semanticDocumentForBackend(
                     payload.* = try lowerValue(allocator, document, prefix, optional.child.*);
                     try params.append(allocator, .{
                         .name = "out_result",
-                        .role = if (optional.child.* == .value_struct and !isPackedValue(document, optional.child.*)) .struct_out else .payload_out,
+                        .role = if (optional.child.* == .value_struct and !semantic.isPackedValue(document, optional.child.*)) .struct_out else .payload_out,
                         .scalar = .{ .pointer = .{ .child = payload, .is_const = false } },
                         .source_index = function.params.len,
                     });
@@ -392,7 +391,7 @@ pub fn semanticDocumentForBackend(
                 break :result abi.AbiScalar{ .signed_int = 32 };
             },
             .value_struct => result: {
-                if (isPackedValue(document, function.@"return"))
+                if (semantic.isPackedValue(document, function.@"return"))
                     break :result try lowerValue(allocator, document, prefix, function.@"return");
                 const child = try allocator.create(abi.AbiScalar);
                 child.* = try lowerValue(allocator, document, prefix, function.@"return");
@@ -416,7 +415,7 @@ pub fn semanticDocumentForBackend(
                 child.* = try lowerValue(allocator, document, prefix, optional.child.*);
                 try params.append(allocator, .{
                     .name = "out_result",
-                    .role = if (optional.child.* == .value_struct and !isPackedValue(document, optional.child.*)) .struct_out else .payload_out,
+                    .role = if (optional.child.* == .value_struct and !semantic.isPackedValue(document, optional.child.*)) .struct_out else .payload_out,
                     .scalar = .{ .pointer = .{ .child = child, .is_const = false } },
                 });
                 break :result abi.AbiScalar.bool_u8;
@@ -444,10 +443,10 @@ pub fn semanticDocumentForBackend(
             .origin = function,
             .materialized_return = materialized_return,
             .materialized_out = materialized_out,
-            .ret_struct = if (function.@"return" == .value_struct and !isPackedValue(document, function.@"return"))
+            .ret_struct = if (function.@"return" == .value_struct and !semantic.isPackedValue(document, function.@"return"))
                 structRecord(structs, function.@"return".value_struct.ref)
             else if (function.@"return" == .optional and function.@"return".optional.child.* == .value_struct and
-                !isPackedValue(document, function.@"return".optional.child.*))
+                !semantic.isPackedValue(document, function.@"return".optional.child.*))
                 structRecord(structs, function.@"return".optional.child.value_struct.ref)
             else
                 null,
@@ -456,12 +455,12 @@ pub fn semanticDocumentForBackend(
             .ret_optional = function.@"return" == .optional and function.@"return".optional.child.* != .slice,
             .payload_struct = if (function.@"return" == .error_union and
                 function.@"return".error_union.payload.* == .value_struct and
-                !isPackedValue(document, function.@"return".error_union.payload.*))
+                !semantic.isPackedValue(document, function.@"return".error_union.payload.*))
                 structRecord(structs, function.@"return".error_union.payload.value_struct.ref)
             else if (function.@"return" == .error_union and
                 function.@"return".error_union.payload.* == .optional and
                 function.@"return".error_union.payload.optional.child.* == .value_struct and
-                !isPackedValue(document, function.@"return".error_union.payload.optional.child.*))
+                !semantic.isPackedValue(document, function.@"return".error_union.payload.optional.child.*))
                 structRecord(structs, function.@"return".error_union.payload.optional.child.value_struct.ref)
             else
                 null,
@@ -1401,12 +1400,6 @@ fn lowerValue(allocator: std.mem.Allocator, document: semantic.Semantic, prefix:
         // backstop against a malformed document rather than a reachable path.
         else => error.UnsupportedType,
     };
-}
-
-fn isPackedValue(document: semantic.Semantic, node: semantic.TypeNode) bool {
-    if (node != .value_struct) return false;
-    const declaration = typeDeclaration(document, node.value_struct.ref);
-    return declaration.kind == .value_struct and declaration.layout == .@"packed";
 }
 
 /// How each semantic parameter carries text, indexed by parameter index. The

@@ -23,7 +23,7 @@ pub fn mustVariantNames(allocator: std.mem.Allocator, document: semantic.Semanti
 pub fn findMustVariantIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
     for (document.functions) |function| {
         if (!mustVariantEligible(document, function)) continue;
-        const public_name = try effectivePublicFunctionNameAlloc(allocator, document, function);
+        const public_name = try semantic.publicFunctionNameAlloc(allocator, document, function);
         defer allocator.free(public_name);
         if (std.mem.eql(u8, public_name, "Close")) continue;
         const must_name = try std.fmt.allocPrint(allocator, "Must{s}", .{public_name});
@@ -48,7 +48,7 @@ pub fn findMustVariantIssue(allocator: std.mem.Allocator, document: semantic.Sem
             if (constructorDeinitFor(document, other) != null) continue;
             if (!std.mem.eql(u8, function.receiver orelse "", other.receiver orelse "")) continue;
             if (!semantic.optionalStringEqual(function.package, other.package)) continue;
-            const other_name = try effectivePublicFunctionNameAlloc(allocator, document, other);
+            const other_name = try semantic.publicFunctionNameAlloc(allocator, document, other);
             defer allocator.free(other_name);
             if (!std.mem.eql(u8, must_name, other_name)) continue;
             const function_path = try functionDeclarationAlloc(allocator, function);
@@ -72,7 +72,7 @@ pub fn findMustVariantIssue(allocator: std.mem.Allocator, document: semantic.Sem
 
 fn mustVariantEligible(document: semantic.Semantic, function: semantic.SemanticFn) bool {
     if (constructorDeinitFor(document, function) != null) return false;
-    if (constructorInitFor(document, function) != null or function.@"return" == .error_union or function.receiver != null) return true;
+    if (semantic.constructorForInit(document, function) != null or function.@"return" == .error_union or function.receiver != null) return true;
     for (function.params) |parameter| {
         if (parameter.type == .opaque_ptr or parameter.type == .io_stream or parameter.goError()) return true;
         if (abi.narrowInt(parameter.type) != null) return true;
@@ -189,7 +189,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             ),
         };
         if (function.childOfReceiver() and
-            (function.receiver == null or constructorInitFor(document, function) == null)) return .{
+            (function.receiver == null or semantic.constructorForInit(document, function) == null)) return .{
             .severity = .@"error",
             .code = "ZIGO030",
             .message = "child-of-receiver metadata requires a receiver constructor",
@@ -577,7 +577,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
         for (document.functions) |function| {
             if (function.receiver != null) continue;
             if (!semantic.optionalStringEqual(declaration.package, function.package)) continue;
-            const function_name = try effectivePublicFunctionNameAlloc(allocator, document, function);
+            const function_name = try semantic.publicFunctionNameAlloc(allocator, document, function);
             defer allocator.free(function_name);
             if (!std.mem.eql(u8, function_name, declaration.name)) continue;
             // Kept alive: `site.declaration` below points directly at it.
@@ -599,14 +599,14 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
     for (document.functions, 0..) |function, index| {
         if (constructorDeinitFor(document, function) != null) continue;
         const bucket = function.receiver orelse "";
-        const name = try effectivePublicFunctionNameAlloc(allocator, document, function);
+        const name = try semantic.publicFunctionNameAlloc(allocator, document, function);
         defer allocator.free(name);
         for (document.functions[0..index]) |previous| {
             if (constructorDeinitFor(document, previous) != null) continue;
             const previous_bucket = previous.receiver orelse "";
             if (!std.mem.eql(u8, bucket, previous_bucket)) continue;
             if (!semantic.optionalStringEqual(function.package, previous.package)) continue;
-            const previous_name = try effectivePublicFunctionNameAlloc(allocator, document, previous);
+            const previous_name = try semantic.publicFunctionNameAlloc(allocator, document, previous);
             defer allocator.free(previous_name);
             if (!std.mem.eql(u8, name, previous_name)) continue;
             // Kept alive: `site.declaration` below points directly at it.
@@ -623,9 +623,9 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 ),
                 .site = functionSiteFor(function, function_path),
                 .hint = "rename one declaration, or give it a `.name` that resolves to a different Go identifier",
-                .note = if (constructorInitFor(document, function) != null)
+                .note = if (semantic.constructorForInit(document, function) != null)
                     try functionOrConstructorRenameNoteAlloc(allocator, document, function)
-                else if (constructorInitFor(document, previous) != null)
+                else if (semantic.constructorForInit(document, previous) != null)
                     try functionOrConstructorRenameNoteAlloc(allocator, document, previous)
                 else
                     try functionRenameNoteAlloc(allocator, function),
@@ -1290,7 +1290,7 @@ fn cIdentifierBackendIssue(allocator: std.mem.Allocator, document: semantic.Sema
         const label = try std.fmt.allocPrint(scratch, "function `{s}`", .{try functionDeclarationAlloc(scratch, function)});
         // A constructor's symbol is named after the type it builds, so a
         // collision on it is answered by renaming that type.
-        const note: CIdentifierOrigin.Note = if (constructorInitFor(document, function)) |constructor|
+        const note: CIdentifierOrigin.Note = if (semantic.constructorForInit(document, function)) |constructor|
             .{ .type = try typeNameRenameNoteAlloc(scratch, constructor.type, .@"opaque") }
         else
             .{ .function = try functionRenameNoteAlloc(scratch, function) };
@@ -1461,7 +1461,7 @@ fn functionRenameNoteAlloc(allocator: std.mem.Allocator, function: semantic.Sema
 }
 
 fn functionOrConstructorRenameNoteAlloc(allocator: std.mem.Allocator, document: semantic.Semantic, function: semantic.SemanticFn) ![]u8 {
-    if (constructorInitFor(document, function)) |constructor| {
+    if (semantic.constructorForInit(document, function)) |constructor| {
         for (document.types) |declaration| {
             if (std.mem.eql(u8, declaration.name, constructor.type)) return typeRenameNoteAlloc(allocator, declaration);
         }
@@ -1833,18 +1833,9 @@ fn scalarPayloadSupported(document: semantic.Semantic, node: semantic.TypeNode) 
         .int => |value| integerSupported(value),
         .float => |value| floatSupported(value),
         .@"enum" => |value| hasTypeKind(document, value.ref, .@"enum"),
-        .value_struct => isPackedValue(document, node),
+        .value_struct => semantic.isPackedValue(document, node),
         else => false,
     };
-}
-
-fn isPackedValue(document: semantic.Semantic, node: semantic.TypeNode) bool {
-    if (node != .value_struct) return false;
-    for (document.types) |declaration| {
-        if (std.mem.eql(u8, declaration.name, node.value_struct.ref))
-            return declaration.kind == .value_struct and declaration.layout == .@"packed";
-    }
-    return false;
 }
 
 fn packedStructProblem(document: semantic.Semantic, declaration: semantic.TypeDecl, depth: usize) ?[]const u8 {
@@ -1968,7 +1959,7 @@ fn nestedValueStruct(document: semantic.Semantic, node: semantic.TypeNode) bool 
 }
 
 fn containsUnsupportedNestedValueStruct(document: semantic.Semantic, node: semantic.TypeNode) bool {
-    if (node == .value_struct) return !isPackedValue(document, node);
+    if (node == .value_struct) return !semantic.isPackedValue(document, node);
     return switch (node) {
         .slice => |value| containsUnsupportedNestedValueStruct(document, value.element.*),
         .optional => |value| containsUnsupportedNestedValueStruct(document, value.child.*),
@@ -2227,14 +2218,6 @@ fn hasConstructorDeinit(document: semantic.Semantic, constructor: semantic.Const
 /// pascal-cased Zig name, so the collision check must resolve it the same way
 /// or it would flag two unrelated constructors (`Counter.create`,
 /// `Context.create`) as though they shared a Go identifier.
-fn constructorInitFor(document: semantic.Semantic, function: semantic.SemanticFn) ?semantic.Constructor {
-    for (document.constructors) |constructor| {
-        if (std.mem.eql(u8, constructor.init, function.name) and
-            std.mem.eql(u8, constructor.type, function.goOwner() orelse "")) return constructor;
-    }
-    return null;
-}
-
 /// The constructor pairing a method serves as `.deinit` for, if any. That
 /// method never reaches the public API on its own -- generation emits a
 /// shared `zigoRelease` instead -- so it takes no public Go name and drops
@@ -2246,19 +2229,6 @@ fn constructorDeinitFor(document: semantic.Semantic, function: semantic.Semantic
             std.mem.eql(u8, constructor.deinit, function.name)) return constructor;
     }
     return null;
-}
-
-/// The public Go name a function reaches generated code under, ignoring the
-/// receiver: a method's name is scoped by its receiver type, so two methods
-/// on different receivers never collide even when this returns the same
-/// spelling for both. Constructors are the one function shape whose public
-/// name is not simply the pascal-cased Zig name (see `constructorInitFor`).
-fn effectivePublicFunctionNameAlloc(allocator: std.mem.Allocator, document: semantic.Semantic, function: semantic.SemanticFn) ![]u8 {
-    if (constructorInitFor(document, function)) |constructor| {
-        if (constructor.name) |name| return naming.pascalAlloc(allocator, name);
-        return std.fmt.allocPrint(allocator, "New{s}", .{constructor.type});
-    }
-    return naming.pascalAlloc(allocator, function.name);
 }
 
 fn containsNonCFunctionPointer(node: semantic.TypeNode) bool {
@@ -2403,7 +2373,7 @@ fn byValueOpaqueReturn(node: semantic.TypeNode) ?semantic.OpaquePtr {
 
 fn isFlattenLeaf(document: semantic.Semantic, node: semantic.TypeNode) bool {
     const leaf = if (node == .optional) node.optional.child.* else node;
-    return leaf == .bool or leaf == .int or leaf == .float or leaf == .@"enum" or isPackedValue(document, leaf);
+    return leaf == .bool or leaf == .int or leaf == .float or leaf == .@"enum" or semantic.isPackedValue(document, leaf);
 }
 
 fn containsPointer(node: semantic.TypeNode) bool {
