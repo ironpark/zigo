@@ -658,6 +658,7 @@ fn declaredTypeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
         .float => |a| a.bits == rhs.float.bits,
         .@"enum" => |a| std.mem.eql(u8, a.ref, rhs.@"enum".ref),
         .io_stream => |a| a.direction == rhs.io_stream.direction,
+        .materialized => |a| a.pointer == rhs.materialized.pointer and a.nullable == rhs.materialized.nullable and std.mem.eql(u8, a.ref, rhs.materialized.ref),
         .value_struct => |a| std.mem.eql(u8, a.ref, rhs.value_struct.ref),
         .opaque_ptr => |a| a.by_value == rhs.opaque_ptr.by_value and a.@"const" == rhs.opaque_ptr.@"const" and a.nullable == rhs.opaque_ptr.nullable and std.mem.eql(u8, a.ref, rhs.opaque_ptr.ref),
         .slice => |a| a.@"const" == rhs.slice.@"const" and declaredTypeEqual(a.element.*, rhs.slice.element.*),
@@ -1368,6 +1369,27 @@ test "every extern struct field change is breaking" {
         defer report.deinit(std.testing.allocator);
         try std.testing.expect(report.hasBreaking());
         try std.testing.expectEqualStrings("Config", report.changes.items[0].subject);
+        try std.testing.expectEqualStrings("type definition changed", report.changes.items[0].detail);
+    }
+}
+
+test "materialized tree field and pointer-shape changes are breaking" {
+    const child_value: semantic.TypeField = .{ .name = "child", .type = .{ .materialized = .{ .ref = "Leaf" } } };
+    const child_pointer: semantic.TypeField = .{ .name = "child", .type = .{ .materialized = .{ .ref = "Leaf", .pointer = true } } };
+    const extra: semantic.TypeField = .{ .name = "count", .type = .{ .int = .{ .bits = 32, .signed = false } } };
+    const base_fields = [_]semantic.TypeField{child_value};
+    const pointer_fields = [_]semantic.TypeField{child_pointer};
+    const appended_fields = [_]semantic.TypeField{ child_value, extra };
+    const base_types = [_]semantic.TypeDecl{.{ .fields = &base_fields, .kind = .materialized, .name = "Root" }};
+    const base: semantic.Semantic = .{ .package = "contract", .prefix = "zg", .types = &base_types, .zig_version = "0.16.0" };
+    const changed_fields = [_][]const semantic.TypeField{ &pointer_fields, &appended_fields };
+    for (changed_fields) |fields| {
+        const current_types = [_]semantic.TypeDecl{.{ .fields = fields, .kind = .materialized, .name = "Root" }};
+        var current = base;
+        current.types = &current_types;
+        var report = try diff(std.testing.allocator, base, current);
+        defer report.deinit(std.testing.allocator);
+        try std.testing.expect(report.hasBreaking());
         try std.testing.expectEqualStrings("type definition changed", report.changes.items[0].detail);
     }
 }

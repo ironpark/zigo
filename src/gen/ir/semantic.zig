@@ -8,6 +8,14 @@ pub const Int = struct {
 
 pub const Float = struct { bits: u16 };
 pub const Ref = struct { ref: []const u8 };
+/// A struct whose complete pointer-bearing result tree is serialized by the
+/// shim. `pointer` distinguishes an embedded value from a referenced node;
+/// `nullable` is meaningful only for referenced nodes.
+pub const Materialized = struct {
+    ref: []const u8,
+    pointer: bool = false,
+    nullable: bool = false,
+};
 pub const OpaquePtr = struct {
     /// The Zig declaration takes the registered opaque type by value. C and
     /// Go still pass its handle pointer; only the shim dereferences it to make
@@ -76,6 +84,7 @@ pub const TypeNode = union(enum) {
     float: Float,
     int: Int,
     io_stream: IoStream,
+    materialized: Materialized,
     opaque_ptr: OpaquePtr,
     optional: Optional,
     slice: Slice,
@@ -143,6 +152,19 @@ pub const TypeNode = union(enum) {
                 .writer => "io_writer",
                 .reader => "io_reader",
             }),
+            .materialized => |value| {
+                try writeKind(jw, "materialized");
+                if (value.pointer) {
+                    try jw.objectField("pointer");
+                    try jw.write(true);
+                }
+                if (value.nullable) {
+                    try jw.objectField("nullable");
+                    try jw.write(true);
+                }
+                try jw.objectField("ref");
+                try jw.write(value.ref);
+            },
             .opaque_ptr => |value| {
                 if (value.by_value) {
                     try jw.objectField("by_value");
@@ -216,6 +238,11 @@ pub const TypeNode = union(enum) {
         } };
         if (std.mem.eql(u8, kind, "value_struct")) return .{ .value_struct = .{
             .ref = try parseField([]const u8, allocator, object, "ref", options),
+        } };
+        if (std.mem.eql(u8, kind, "materialized")) return .{ .materialized = .{
+            .ref = try parseField([]const u8, allocator, object, "ref", options),
+            .pointer = try parseOptionalField(bool, allocator, object, "pointer", false, options),
+            .nullable = try parseOptionalField(bool, allocator, object, "nullable", false, options),
         } };
         if (std.mem.eql(u8, kind, "io_writer")) return .{ .io_stream = .{ .direction = .writer } };
         if (std.mem.eql(u8, kind, "io_reader")) return .{ .io_stream = .{ .direction = .reader } };
@@ -523,7 +550,7 @@ pub const SemanticFn = struct {
     }
 };
 
-pub const TypeKind = enum { callback, @"enum", error_set, @"opaque", tagged_union, value_struct };
+pub const TypeKind = enum { callback, @"enum", error_set, materialized, @"opaque", tagged_union, value_struct };
 pub const Layout = enum { @"extern", @"packed" };
 /// How Go reaches a type's contents. This is a separate axis from the type's
 /// kind: a tagged union is a tagged union either way, and adding a strategy

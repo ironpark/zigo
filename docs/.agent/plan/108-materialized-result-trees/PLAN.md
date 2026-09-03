@@ -7,7 +7,7 @@ registered_at: "2026-09-03T03:53:27Z"
 
 # Phases
 
-- [ ] [Phase 00: Reflection, semantic model and validation](phases/00-reflect-and-validate.md)
+- [x] [Phase 00: Reflection, semantic model and validation](phases/00-reflect-and-validate.md)
 - [ ] [Phase 01: Lowering and the Zig walker](phases/01-lowering-and-walker.md)
 - [ ] [Phase 02: Go decoders on cgo and purego](phases/02-go-decoders.md)
 - [ ] [Phase 03: Example, benchmark and docs](phases/03-example-and-docs.md)

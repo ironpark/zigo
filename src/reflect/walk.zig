@@ -46,6 +46,10 @@ pub fn reflect(
                     .@"struct" => try appendValueStruct(allocator, &types, declaration, T, type_name, try registeredZigPath(allocator, declaration, T, type_name), true),
                     else => @compileError("zigo value type entries must name a struct"),
                 },
+                .materialized => switch (info) {
+                    .@"struct" => try appendMaterializedStruct(allocator, &types, declaration, T, type_name, try registeredZigPath(allocator, declaration, T, type_name)),
+                    else => @compileError("zigo materialized type entries must name a struct"),
+                },
                 // An enum registered here is not walked for declarations --
                 // like a callback entry, it exists to name a type, not to
                 // contribute functions. What it buys is the `.name`: an enum
@@ -79,7 +83,7 @@ pub fn reflect(
                         .zig_path = try registeredZigPath(allocator, declaration, T, type_name),
                     });
                 },
-                else => @compileError("zigo type repr must be .opaque, .value, .enumeration, .tagged_union, or .callback"),
+                else => @compileError("zigo type repr must be .opaque, .value, .materialized, .enumeration, .tagged_union, or .callback"),
             }
             if (entry.repr != .@"opaque" and @hasField(@TypeOf(entry), "fields"))
                 @compileError("zigo `.fields` metadata is supported only on `.repr = .opaque` type entries");
@@ -838,6 +842,7 @@ fn markClosureNode(types: []const semantic.TypeDecl, reachable: []bool, package_
     return switch (node) {
         .@"enum" => |value| markClosureType(types, reachable, package_name, value.ref),
         .opaque_ptr => |value| markClosureType(types, reachable, package_name, value.ref),
+        .materialized => |value| markClosureType(types, reachable, package_name, value.ref),
         .value_struct => |value| markClosureType(types, reachable, package_name, value.ref),
         .slice => |value| markClosureNode(types, reachable, package_name, value.element.*),
         .optional => |value| markClosureNode(types, reachable, package_name, value.child.*),
@@ -1825,6 +1830,8 @@ fn typeNode(
                         .@"return" = callback_return,
                     } };
                 }
+                if (comptime registeredTypeName(declaration, info.child, .materialized)) |name|
+                    break :blk .{ .materialized = .{ .ref = name, .pointer = true } };
                 const name = registeredTypeName(declaration, info.child, .handle) orelse opaqueNameForPath(types.items, @typeName(info.child)) orelse
                     return missingOpaqueType(@typeName(info.child), context);
                 break :blk .{ .opaque_ptr = .{
@@ -1869,6 +1876,8 @@ fn typeNode(
         .optional => |info| blk: {
             const child = @typeInfo(info.child);
             if (child == .pointer and child.pointer.size == .one and @typeInfo(child.pointer.child) != .@"fn") {
+                if (comptime registeredTypeName(declaration, child.pointer.child, .materialized)) |name|
+                    break :blk .{ .materialized = .{ .ref = name, .pointer = true, .nullable = true } };
                 const name = registeredTypeName(declaration, child.pointer.child, .handle) orelse opaqueNameForPath(types.items, @typeName(child.pointer.child)) orelse
                     return missingOpaqueType(@typeName(child.pointer.child), context);
                 break :blk .{ .opaque_ptr = .{
@@ -1926,6 +1935,8 @@ fn typeNode(
             break :blk .{ .@"enum" = .{ .ref = name } };
         },
         .@"struct" => blk: {
+            if (comptime registeredTypeName(declaration, T, .materialized)) |registered_name|
+                break :blk .{ .materialized = .{ .ref = registered_name } };
             if (comptime registeredTypeName(declaration, T, .value)) |registered_name|
                 break :blk .{ .value_struct = .{ .ref = registered_name } };
             const name = shortTypeName(@typeName(T));
@@ -2117,7 +2128,7 @@ fn receiverNameAt(comptime info: std.builtin.Type.Fn, comptime declaration: anyt
 /// The public name attached to an exact registered type. Type equality is the
 /// identity source; `@typeName` is only a display path and can be truncated for
 /// comptime-generated types.
-const RegisteredUse = enum { callback, enumeration, handle, tagged_union, value };
+const RegisteredUse = enum { callback, enumeration, handle, materialized, tagged_union, value };
 
 fn registeredTypeName(comptime declaration: anytype, comptime T: type, comptime use: RegisteredUse) ?[]const u8 {
     if (@hasField(@TypeOf(declaration), "types")) {
@@ -2126,6 +2137,7 @@ fn registeredTypeName(comptime declaration: anytype, comptime T: type, comptime 
                 .callback => entry.repr == .callback,
                 .enumeration => entry.repr == .enumeration,
                 .handle => isHandleRepr(entry.repr),
+                .materialized => entry.repr == .materialized,
                 .tagged_union => entry.repr == .tagged_union,
                 .value => entry.repr == .value,
             };
@@ -2184,6 +2196,71 @@ fn opaqueNameForPath(types: []const semantic.TypeDecl, path: []const u8) ?[]cons
 
 fn isHandleRepr(comptime repr: anytype) bool {
     return repr == .@"opaque" or repr == .tagged_union;
+}
+
+fn appendMaterializedStruct(
+    allocator: std.mem.Allocator,
+    types: *std.ArrayList(semantic.TypeDecl),
+    comptime declaration: anytype,
+    comptime T: type,
+    name: []const u8,
+    zig_path: []const u8,
+) !void {
+    const info = @typeInfo(T).@"struct";
+    const index = types.items.len;
+    try types.append(allocator, .{ .kind = .materialized, .name = name, .zig_path = zig_path });
+    const fields = try allocator.alloc(semantic.TypeField, info.fields.len);
+    inline for (info.fields, 0..) |field, field_index| {
+        fields[field_index] = .{
+            .name = field.name,
+            .type = try typeNode(allocator, declaration, field.type, types, "`" ++ comptime shortTypeName(@typeName(T)) ++ "` field `" ++ field.name ++ "`"),
+        };
+    }
+    types.items[index].fields = fields;
+}
+
+test "materialized result trees preserve nested field shapes in semantic json" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const Kind = enum(u8) { file, directory };
+    const Leaf = struct {
+        name: []const u8,
+        sizes: []const u32,
+        labels: []const []const u8,
+        kind: Kind,
+    };
+    const Root = struct {
+        count: usize,
+        ok: bool,
+        embedded: Leaf,
+        child: *const Leaf,
+        maybe: ?*const Leaf,
+        children: []const Leaf,
+    };
+    const Api = struct {
+        pub fn inspect() Root {
+            unreachable;
+        }
+    };
+    const document = try reflect(allocator, .{
+        .root = Api,
+        .functions = .{.{ .path = "root.inspect" }},
+        .types = .{
+            .{ .type = Kind, .repr = .enumeration },
+            .{ .type = Leaf, .repr = .materialized },
+            .{ .type = Root, .repr = .materialized },
+        },
+    }, "tree", "zg");
+    const json = try document.serialize(allocator);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"kind\": \"materialized\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"pointer\": true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"nullable\": true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"labels\"") != null);
+
+    var parsed = try semantic.Semantic.parse(allocator, json);
+    defer parsed.deinit();
+    try std.testing.expectEqual(semantic.TypeKind.materialized, parsed.value.types[1].kind);
 }
 
 /// `.exhaustive = false` on an enum registration is an assertion that the

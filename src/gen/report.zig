@@ -200,6 +200,7 @@ fn typeName(node: semantic.TypeNode) []const u8 {
             .writer => "io_writer",
             .reader => "io_reader",
         },
+        .materialized => "materialized",
         .slice => "slice",
         .int => "int",
         .float => "float",

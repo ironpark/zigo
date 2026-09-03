@@ -238,6 +238,13 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             if (try callbackGoErrorIssue(allocator, function, parameter)) |issue| return issue;
             if (try callbackFailureResultIssue(allocator, document, function, parameter)) |issue| return issue;
             if (try callbackContractIssue(allocator, function, parameter)) |issue| return issue;
+            if (containsMaterialized(parameter.type)) return .{
+                .severity = .@"error",
+                .code = "ZIGO048",
+                .message = "materialized structs are result-only",
+                .site = functionSite(function),
+                .hint = "return the materialized struct, error-union payload, or slice from Zig; inbound materialized parameters are not supported",
+            };
             if (parameter.type == .cancel_flag and !(parameter.cancel orelse false)) return .{
                 .severity = .@"error",
                 .code = "ZIGO026",
@@ -428,6 +435,15 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
         };
     }
     for (document.types) |declaration| {
+        if (declaration.kind == .materialized) {
+            if (try materializedProblemAlloc(allocator, document, declaration)) |problem| return .{
+                .severity = .@"error",
+                .code = "ZIGO048",
+                .message = try std.fmt.allocPrint(allocator, "materialized field `{s}` is unsupported", .{problem.path}),
+                .site = .{ .path = "semantic.json", .declaration = declaration.name },
+                .hint = problem.reason,
+            };
+        }
         if (declaration.omitted_variants) |omitted| {
             for (omitted, 0..) |name, index| {
                 var found = false;
@@ -808,6 +824,7 @@ fn addTypeEdges(document: semantic.Semantic, packages: []const semantic.Package,
     switch (node) {
         .@"enum" => |value| addNamedEdge(document, packages, edges, count, from, value.ref, declaration),
         .opaque_ptr => |value| addNamedEdge(document, packages, edges, count, from, value.ref, declaration),
+        .materialized => |value| addNamedEdge(document, packages, edges, count, from, value.ref, declaration),
         .value_struct => |value| addNamedEdge(document, packages, edges, count, from, value.ref, declaration),
         .slice => |value| addTypeEdges(document, packages, edges, count, from, value.element.*, declaration),
         .optional => |value| addTypeEdges(document, packages, edges, count, from, value.child.*, declaration),
@@ -1230,7 +1247,7 @@ fn cIdentifierBackendIssue(allocator: std.mem.Allocator, document: semantic.Sema
     for (document.types) |declaration| {
         const emits_handle = declaration.kind == .@"opaque" or (declaration.kind == .tagged_union and
             !document.isValueOnlyTaggedUnion(declaration.name));
-        const emits_struct = declaration.kind == .value_struct and document.valueStructUsed(declaration.name);
+        const emits_struct = (declaration.kind == .value_struct and document.valueStructUsed(declaration.name)) or declaration.kind == .materialized;
         if (emits_handle or declaration.kind == .@"enum" or emits_struct) {
             const name = try naming.cTypeNameAlloc(scratch, document.prefix, declaration.name);
             const label = try std.fmt.allocPrint(scratch, "type `{s}`", .{declaration.name});
@@ -1501,7 +1518,7 @@ const Offense = struct {
 /// width C cannot name is still a rejection there.
 fn typeOffense(allocator: std.mem.Allocator, node: semantic.TypeNode, promotable: bool) error{OutOfMemory}!?Offense {
     switch (node) {
-        .void, .bool, .@"enum", .opaque_ptr, .value_struct, .io_stream, .cancel_flag => return null,
+        .void, .bool, .@"enum", .materialized, .opaque_ptr, .value_struct, .io_stream, .cancel_flag => return null,
         .atomic_ptr => return Offense{ .node = node },
         .int => |value| {
             if (integerSupported(value)) return null;
@@ -2324,9 +2341,145 @@ fn isFlattenLeaf(document: semantic.Semantic, node: semantic.TypeNode) bool {
 fn containsPointer(node: semantic.TypeNode) bool {
     return switch (node) {
         .opaque_ptr, .slice, .callback => true,
+        .materialized => |value| value.pointer,
         .optional => |value| containsPointer(value.child.*),
         else => false,
     };
+}
+
+fn containsMaterialized(node: semantic.TypeNode) bool {
+    return switch (node) {
+        .materialized => true,
+        .slice => |value| containsMaterialized(value.element.*),
+        .optional => |value| containsMaterialized(value.child.*),
+        .error_union => |value| containsMaterialized(value.payload.*),
+        .callback => |value| blk: {
+            for (value.params) |parameter| if (containsMaterialized(parameter)) break :blk true;
+            break :blk containsMaterialized(value.@"return".*);
+        },
+        else => false,
+    };
+}
+
+const MaterializedProblem = struct { path: []const u8, reason: []const u8 };
+
+fn materializedProblemAlloc(
+    allocator: std.mem.Allocator,
+    document: semantic.Semantic,
+    root: semantic.TypeDecl,
+) !?MaterializedProblem {
+    var ancestors: [128][]const u8 = undefined;
+    ancestors[0] = root.name;
+    for (root.fields) |field| {
+        const node = field.type orelse return .{
+            .path = try allocator.dupe(u8, field.name),
+            .reason = "give every materialized field a reflected type",
+        };
+        if (try materializedNodeProblemAlloc(allocator, document, node, field.name, &ancestors, 1, false)) |problem| return problem;
+    }
+    return null;
+}
+
+fn materializedNodeProblemAlloc(
+    allocator: std.mem.Allocator,
+    document: semantic.Semantic,
+    node: semantic.TypeNode,
+    path: []const u8,
+    ancestors: *[128][]const u8,
+    depth: usize,
+    in_slice: bool,
+) !?MaterializedProblem {
+    switch (node) {
+        .bool => return null,
+        .int => |value| if (integerSupported(value)) return null,
+        .float => |value| if (floatSupported(value)) return null,
+        .@"enum" => return null,
+        .slice => |value| {
+            const element = value.element.*;
+            if (element == .slice) {
+                const inner = element.slice.element.*;
+                if (inner == .int and inner.int.bits == 8 and !inner.int.signed) return null;
+                return .{ .path = try allocator.dupe(u8, path), .reason = "slices may contain scalars, strings, or materialized structs" };
+            }
+            return materializedNodeProblemAlloc(allocator, document, element, path, ancestors, depth, true);
+        },
+        .materialized => |value| {
+            if (in_slice and value.pointer) return .{ .path = try allocator.dupe(u8, path), .reason = "slices may contain materialized struct values, not pointers" };
+            for (ancestors[0..depth]) |ancestor| if (std.mem.eql(u8, ancestor, value.ref)) return .{
+                .path = try allocator.dupe(u8, path),
+                .reason = "materialized trees cannot contain cycles",
+            };
+            const declaration = findTypeDecl(document, value.ref) orelse return .{
+                .path = try allocator.dupe(u8, path),
+                .reason = "register the referenced struct with `.repr = .materialized`",
+            };
+            if (declaration.kind != .materialized or depth == ancestors.len) return .{
+                .path = try allocator.dupe(u8, path),
+                .reason = "register the referenced struct with `.repr = .materialized`",
+            };
+            ancestors[depth] = value.ref;
+            for (declaration.fields) |field| {
+                const child_path = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ path, field.name });
+                const child = field.type orelse return .{ .path = child_path, .reason = "give every materialized field a reflected type" };
+                if (try materializedNodeProblemAlloc(allocator, document, child, child_path, ancestors, depth + 1, false)) |problem| return problem;
+            }
+            return null;
+        },
+        else => {},
+    }
+    return .{
+        .path = try allocator.dupe(u8, path),
+        .reason = "use scalars, bool, registered enums, strings, supported slices, or materialized structs and pointers",
+    };
+}
+
+fn findTypeDecl(document: semantic.Semantic, name: []const u8) ?semantic.TypeDecl {
+    for (document.types) |declaration| if (std.mem.eql(u8, declaration.name, name)) return declaration;
+    return null;
+}
+
+test "materialized validation reports nested unsupported field paths and cycles" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var callback_return: semantic.TypeNode = .{ .void = {} };
+    const callback: semantic.TypeNode = .{ .callback = .{ .has_userdata = false, .params = &.{}, .@"return" = &callback_return } };
+    const bad_leaf = semantic.TypeDecl{
+        .fields = &.{.{ .name = "visit", .type = callback }},
+        .kind = .materialized,
+        .name = "Leaf",
+    };
+    const leaf_node: semantic.TypeNode = .{ .materialized = .{ .ref = "Leaf", .pointer = true } };
+    const root = semantic.TypeDecl{
+        .fields = &.{.{ .name = "child", .type = leaf_node }},
+        .kind = .materialized,
+        .name = "Root",
+    };
+    const bad_document: semantic.Semantic = .{
+        .package = "tree",
+        .prefix = "zg",
+        .types = &.{ root, bad_leaf },
+        .zig_version = "0.16.0",
+    };
+    const unsupported = (try findIssue(allocator, bad_document)).?;
+    try std.testing.expectEqualStrings("ZIGO048", unsupported.code);
+    try std.testing.expect(std.mem.indexOf(u8, unsupported.message, "child.visit") != null);
+
+    const root_node: semantic.TypeNode = .{ .materialized = .{ .ref = "Root", .pointer = true, .nullable = true } };
+    const cyclic_leaf = semantic.TypeDecl{
+        .fields = &.{.{ .name = "parent", .type = root_node }},
+        .kind = .materialized,
+        .name = "Leaf",
+    };
+    const cyclic_document: semantic.Semantic = .{
+        .package = "tree",
+        .prefix = "zg",
+        .types = &.{ root, cyclic_leaf },
+        .zig_version = "0.16.0",
+    };
+    const cycle = (try findIssue(allocator, cyclic_document)).?;
+    try std.testing.expectEqualStrings("ZIGO048", cycle.code);
+    try std.testing.expect(std.mem.indexOf(u8, cycle.message, "child.parent") != null);
 }
 
 test "implemented diagnostic snapshots are stable" {
