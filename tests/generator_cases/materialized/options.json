@@ -1,0 +1,5 @@
+{
+  "package": "tree",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/tree"
+}

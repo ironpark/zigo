@@ -2208,7 +2208,12 @@ fn appendMaterializedStruct(
 ) !void {
     const info = @typeInfo(T).@"struct";
     const index = types.items.len;
-    try types.append(allocator, .{ .kind = .materialized, .name = name, .zig_path = zig_path });
+    try types.append(allocator, .{
+        .kind = .materialized,
+        .materialized_version = 1,
+        .name = name,
+        .zig_path = zig_path,
+    });
     const fields = try allocator.alloc(semantic.TypeField, info.fields.len);
     inline for (info.fields, 0..) |field, field_index| {
         fields[field_index] = .{

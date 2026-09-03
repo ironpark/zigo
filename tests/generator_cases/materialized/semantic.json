@@ -1,0 +1,56 @@
+{
+  "allocator": "std.heap.c_allocator",
+  "functions": [
+    {
+      "name": "snapshot",
+      "ownership": "caller",
+      "params": [],
+      "release": "release",
+      "return": {"kind": "materialized", "ref": "Root"},
+      "symbol": "ignored"
+    },
+    {
+      "name": "many",
+      "ownership": "caller",
+      "params": [],
+      "release": "release",
+      "return": {"error_set": ["Invalid"], "kind": "error_union", "payload": {"const": true, "element": {"kind": "materialized", "ref": "Root"}, "kind": "slice"}},
+      "symbol": "ignored"
+    },
+    {
+      "name": "release",
+      "params": [{"name": "buffer", "type": {"const": false, "element": {"bits": 8, "kind": "int", "signed": false}, "kind": "slice"}}],
+      "return": {"kind": "void"},
+      "symbol": "ignored"
+    }
+  ],
+  "package": "tree",
+  "prefix": "zg",
+  "types": [
+    {
+      "fields": [
+        {"name": "count", "type": {"bits": 64, "is_usize": true, "kind": "int", "signed": false}},
+        {"name": "name", "type": {"const": true, "element": {"bits": 8, "kind": "int", "signed": false}, "kind": "slice"}},
+        {"name": "child", "type": {"kind": "materialized", "pointer": true, "ref": "Leaf"}},
+        {"name": "maybe", "type": {"kind": "materialized", "nullable": true, "pointer": true, "ref": "Leaf"}},
+        {"name": "children", "type": {"const": true, "element": {"kind": "materialized", "ref": "Leaf"}, "kind": "slice"}}
+      ],
+      "kind": "materialized",
+      "materialized_version": 1,
+      "name": "Root",
+      "zig_path": "Root"
+    },
+    {
+      "fields": [
+        {"name": "ok", "type": {"kind": "bool"}},
+        {"name": "values", "type": {"const": true, "element": {"bits": 32, "kind": "int", "signed": true}, "kind": "slice"}},
+        {"name": "labels", "type": {"const": true, "element": {"const": true, "element": {"bits": 8, "kind": "int", "signed": false}, "kind": "slice"}, "kind": "slice"}}
+      ],
+      "kind": "materialized",
+      "materialized_version": 1,
+      "name": "Leaf",
+      "zig_path": "Leaf"
+    }
+  ],
+  "zig_version": "0.16.0"
+}

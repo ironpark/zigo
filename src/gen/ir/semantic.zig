@@ -577,6 +577,8 @@ pub const TypeDecl = struct {
     fields: []const TypeField = &.{},
     kind: TypeKind,
     layout: ?Layout = null,
+    /// Serialized tree layout version. Present only for materialized structs.
+    materialized_version: ?u16 = null,
     name: []const u8,
     /// Default failure result for callbacks registered under this type name.
     on_callback_failure: ?CallbackFailure = null,

@@ -955,6 +955,16 @@ fn addGoldenArtifactChecks(
     parse_shim.addFileArg(expected.path(b, "shim.zig"));
     parse_shim.expectExitCode(0);
     test_step.dependOn(&parse_shim.step);
+
+    if (std.mem.eql(u8, name, "materialized")) {
+        const roundtrip = b.addSystemCommand(&.{ b.graph.zig_exe, "test", "--dep", "zigo_target" });
+        roundtrip.setName("materialized walker round trip");
+        roundtrip.addPrefixedFileArg("-Mroot=", case.path(b, "roundtrip.zig"));
+        roundtrip.addPrefixedFileArg("-Mzigo_target=", case.path(b, "target.zig"));
+        roundtrip.addFileInput(expected.path(b, "shim.zig"));
+        roundtrip.expectExitCode(0);
+        test_step.dependOn(&roundtrip.step);
+    }
 }
 
 fn matchesAnyFilter(name: []const u8, filters: []const []const u8) bool {

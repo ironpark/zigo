@@ -342,6 +342,7 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
     }
     if (wrote_prelude) try writer.writeByte('\n');
     if (programHasStreams(program)) try writer.writeAll(stream_adapters);
+    try renderMaterializedWalker(allocator, writer, program);
     try renderStreamAccessorHelpers(allocator, writer, program);
     for (program.functions) |function| {
         try writer.print("export fn {s}_impl(", .{function.symbol});
@@ -367,6 +368,11 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
 
         if (function.origin.boxed == .create) {
             try writeBoxedConstructor(allocator, writer, program, function);
+            continue;
+        }
+
+        if (function.materialized_return) |materialized| {
+            try writeMaterializedReturn(allocator, writer, program, function, materialized);
             continue;
         }
 
@@ -567,6 +573,142 @@ fn writeValueUnionReturnAssignments(
     try writer.print("\n            out_result.{s} = ", .{field_name});
     try writeZigReturnConversion(writer, program, node, expression, atomic);
     try writer.writeByte(';');
+}
+
+fn renderMaterializedWalker(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
+    if (program.materialized_layouts.len == 0) return;
+    try writer.print(
+        "pub const ZigoMaterializedBuilder = struct {{\n" ++
+            "    allocator: std.mem.Allocator,\n" ++
+            "    bytes: std.ArrayList(u8) = .empty,\n\n" ++
+            "    pub fn init(allocator: std.mem.Allocator) !ZigoMaterializedBuilder {{\n" ++
+            "        var self: ZigoMaterializedBuilder = .{{ .allocator = allocator }};\n" ++
+            "        try self.bytes.appendNTimes(allocator, 0, {d});\n" ++
+            "        self.writeU64(0, 0x0001_4f47495a);\n" ++
+            "        return self;\n" ++
+            "    }}\n" ++
+            "    fn reserve(self: *ZigoMaterializedBuilder, count: usize) !usize {{\n" ++
+            "        const offset = self.bytes.items.len;\n" ++
+            "        try self.bytes.appendNTimes(self.allocator, 0, count);\n" ++
+            "        return offset;\n" ++
+            "    }}\n" ++
+            "    fn writeU64(self: *ZigoMaterializedBuilder, offset: usize, value: u64) void {{\n" ++
+            "        std.mem.writeInt(u64, self.bytes.items[offset..][0..8], value, .little);\n" ++
+            "    }}\n" ++
+            "    fn appendBytes(self: *ZigoMaterializedBuilder, value: []const u8) !u64 {{\n" ++
+            "        const offset = self.bytes.items.len;\n" ++
+            "        try self.bytes.appendSlice(self.allocator, value);\n" ++
+            "        return @intCast(offset);\n" ++
+            "    }}\n" ++
+            "    pub fn finish(self: *ZigoMaterializedBuilder, layout: u32, count: usize, root: usize) ![]u8 {{\n" ++
+            "        self.writeU64(8, layout);\n" ++
+            "        self.writeU64(16, count);\n" ++
+            "        self.writeU64(24, root);\n" ++
+            "        self.writeU64(32, self.bytes.items.len);\n" ++
+            "        return self.bytes.toOwnedSlice(self.allocator);\n" ++
+            "    }}\n" ++
+            "}};\n\n" ++
+            "fn zigoMaterializedScalar(value: anytype) u64 {{\n" ++
+            "    const T = @TypeOf(value);\n" ++
+            "    return switch (@typeInfo(T)) {{\n" ++
+            "        .bool => @intFromBool(value),\n" ++
+            "        .int => @intCast(@as(std.meta.Int(.unsigned, @bitSizeOf(T)), @bitCast(value))),\n" ++
+            "        .float => @intCast(@as(std.meta.Int(.unsigned, @bitSizeOf(T)), @bitCast(value))),\n" ++
+            "        .@\"enum\" => zigoMaterializedScalar(@intFromEnum(value)),\n" ++
+            "        else => unreachable,\n" ++
+            "    }};\n" ++
+            "}}\n\n",
+        .{abi.MaterializedLayout.header_size},
+    );
+    for (program.materialized_layouts) |layout| {
+        const function_name = try materializedEncoderNameAlloc(allocator, layout.owner.name);
+        defer allocator.free(function_name);
+        try writer.print("pub fn {s}(builder: *ZigoMaterializedBuilder, value: ", .{function_name});
+        try writeTargetType(writer, program, layout.owner.name);
+        try writer.print(") !u64 {{\n    const record = try builder.reserve({d});\n", .{layout.record_size});
+        for (layout.fields) |field| try writeMaterializedField(allocator, writer, field, "value", "record");
+        try writer.writeAll("    return @intCast(record);\n}\n\n");
+    }
+}
+
+fn writeMaterializedField(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    field: abi.MaterializedLayout.Field,
+    value: []const u8,
+    record: []const u8,
+) !void {
+    const expression = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ value, field.name });
+    defer allocator.free(expression);
+    const slot = try std.fmt.allocPrint(allocator, "{s} + {d}", .{ record, field.offset });
+    defer allocator.free(slot);
+    switch (field.kind) {
+        .scalar => try writer.print("    builder.writeU64({s}, zigoMaterializedScalar({s}));\n", .{ slot, expression }),
+        .string => try writer.print("    builder.writeU64({0s}, try builder.appendBytes({1s}));\n    builder.writeU64({0s} + 8, {1s}.len);\n", .{ slot, expression }),
+        .scalar_slice => {
+            try writer.print("    const {0s}_data = try builder.reserve({1s}.len * 8);\n    for ({1s}, 0..) |item, index| builder.writeU64({0s}_data + index * 8, zigoMaterializedScalar(item));\n    builder.writeU64({2s}, {0s}_data);\n    builder.writeU64({2s} + 8, {1s}.len);\n", .{ field.name, expression, slot });
+        },
+        .string_slice => {
+            try writer.print("    const {0s}_data = try builder.reserve({1s}.len * 16);\n    for ({1s}, 0..) |item, index| {{\n        builder.writeU64({0s}_data + index * 16, try builder.appendBytes(item));\n        builder.writeU64({0s}_data + index * 16 + 8, item.len);\n    }}\n    builder.writeU64({2s}, {0s}_data);\n    builder.writeU64({2s} + 8, {1s}.len);\n", .{ field.name, expression, slot });
+        },
+        .node => {
+            const name = try materializedEncoderNameAlloc(allocator, field.node.materialized.ref);
+            defer allocator.free(name);
+            try writer.print("    builder.writeU64({s}, try {s}(builder, {s}));\n", .{ slot, name, expression });
+        },
+        .node_pointer => {
+            const node = field.node.materialized;
+            const name = try materializedEncoderNameAlloc(allocator, node.ref);
+            defer allocator.free(name);
+            if (node.nullable)
+                try writer.print("    builder.writeU64({s}, if ({s}) |item| try {s}(builder, item.*) else 0);\n", .{ slot, expression, name })
+            else
+                try writer.print("    builder.writeU64({s}, try {s}(builder, {s}.*));\n", .{ slot, name, expression });
+        },
+        .node_slice => {
+            const name = try materializedEncoderNameAlloc(allocator, field.node.slice.element.materialized.ref);
+            defer allocator.free(name);
+            try writer.print("    const {0s}_nodes = try builder.reserve({1s}.len * 8);\n    for ({1s}, 0..) |item, index| builder.writeU64({0s}_nodes + index * 8, try {2s}(builder, item));\n    builder.writeU64({3s}, {0s}_nodes);\n    builder.writeU64({3s} + 8, {1s}.len);\n", .{ field.name, expression, name, slot });
+        },
+    }
+}
+
+fn materializedEncoderNameAlloc(allocator: std.mem.Allocator, type_name: []const u8) ![]u8 {
+    const snake = try naming.snakeAlloc(allocator, type_name);
+    defer allocator.free(snake);
+    return std.fmt.allocPrint(allocator, "zigoMaterialize_{s}", .{snake});
+}
+
+fn writeMaterializedReturn(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    function: abi.AbiFn,
+    materialized: abi.AbiFn.MaterializedReturn,
+) !void {
+    try writer.writeAll("const result = ");
+    try writeTargetCall(allocator, writer, program, function);
+    if (materialized.fallible) try writeShimErrorCatch(writer, function) else try writer.writeAll(";\n");
+    try writer.print("    var builder = ZigoMaterializedBuilder.init({s}) catch @panic(\"zigo materialization allocation failed\");\n", .{program.allocator orelse "std.heap.c_allocator"});
+    const encoder = try materializedEncoderNameAlloc(allocator, materialized.root);
+    defer allocator.free(encoder);
+    const layout = materializedLayout(program, materialized.root);
+    if (materialized.is_slice) {
+        try writer.writeAll("    const roots = builder.reserve(result.len * 8) catch @panic(\"zigo materialization allocation failed\");\n    for (result, 0..) |item, index| builder.writeU64(roots + index * 8, ");
+        try writer.print("{s}(&builder, item) catch @panic(\"zigo materialization allocation failed\"));\n", .{encoder});
+        try writer.print("    const buffer = builder.finish({d}, result.len, roots) catch @panic(\"zigo materialization allocation failed\");\n", .{layout.id});
+    } else {
+        try writer.print("    const root = {s}(&builder, result) catch @panic(\"zigo materialization allocation failed\");\n", .{encoder});
+        try writer.print("    const buffer = builder.finish({d}, 1, @intCast(root)) catch @panic(\"zigo materialization allocation failed\");\n", .{layout.id});
+    }
+    try writer.writeAll("    out_result_ptr.* = buffer.ptr;\n    out_result_len.* = buffer.len;\n");
+    if (materialized.fallible) try writer.writeAll("    return 0;\n");
+    try writer.writeAll("}\n");
+}
+
+fn materializedLayout(program: abi.Program, name: []const u8) abi.MaterializedLayout {
+    for (program.materialized_layouts) |layout| if (std.mem.eql(u8, layout.owner.name, name)) return layout;
+    unreachable;
 }
 
 fn writeFieldAccess(
@@ -7450,6 +7592,8 @@ fn writeRawTypeReferencePrefix(writer: *std.Io.Writer, options: Options) !void {
 
 fn writeRawReturnType(writer: *std.Io.Writer, program: abi.Program, function: abi.AbiFn) !void {
     if ((function.ret_string == .c_string)) return writer.writeAll(" string");
+    if (function.materialized_return) |materialized|
+        return writer.writeAll(if (materialized.fallible) " ([]byte, int32)" else " []byte");
     switch (function.origin.@"return") {
         .void => {},
         .error_union => |value| {
@@ -7576,6 +7720,7 @@ fn writeRawGoType(writer: *std.Io.Writer, program: abi.Program, node: semantic.T
         },
         .@"enum" => try writer.writeAll(rawGoTypeName(program, node)),
         .opaque_ptr => try writer.writeAll("unsafe.Pointer"),
+        .materialized => try writer.writeAll("[]byte"),
         .value_struct => |value| if (isPackedValue(program, node))
             try writeRawGoType(writer, program, enumDecl(program, value.ref).backing_type.?)
         else
@@ -7651,6 +7796,10 @@ fn writePublicGoType(scope: PublicScope, writer: *std.Io.Writer, node: semantic.
         .float => |value| try writer.print("float{d}", .{value.bits}),
         .opaque_ptr => |value| {
             try writer.writeByte('*');
+            try scope.writeTypeName(writer, value.ref);
+        },
+        .materialized => |value| {
+            if (value.pointer) try writer.writeByte('*');
             try scope.writeTypeName(writer, value.ref);
         },
         .value_struct => |value| try scope.writeTypeName(writer, value.ref),
@@ -8298,6 +8447,7 @@ fn goZero(node: semantic.TypeNode) []const u8 {
     return switch (node) {
         .bool => "false",
         .slice, .opaque_ptr => "nil",
+        .materialized => |value| if (value.pointer) "nil" else "0",
         else => "0",
     };
 }
@@ -8305,8 +8455,8 @@ fn goZero(node: semantic.TypeNode) []const u8 {
 /// The zero value an error path returns. A struct needs its own composite
 /// literal, so callers that can see one use this instead of `goZero`.
 fn writeGoZeroValue(scope: PublicScope, writer: *std.Io.Writer, node: semantic.TypeNode) !void {
-    if (node == .value_struct) {
-        try scope.writeTypeName(writer, node.value_struct.ref);
+    if (node == .value_struct or (node == .materialized and !node.materialized.pointer)) {
+        try scope.writeTypeName(writer, if (node == .value_struct) node.value_struct.ref else node.materialized.ref);
         return writer.writeAll("{}");
     }
     try writer.writeAll(goZero(node));

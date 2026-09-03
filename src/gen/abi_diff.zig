@@ -607,7 +607,7 @@ const TypeChange = enum { equal, appended, snapshot_appended, access_changed, br
 /// symbols are per variant. A value snapshot union carries its variants in one
 /// struct, so the same append changes that struct's size and layout.
 fn classifyTypeChange(lhs: semantic.TypeDecl, rhs: semantic.TypeDecl) TypeChange {
-    if (lhs.kind != rhs.kind or lhs.layout != rhs.layout or lhs.exhaustive != rhs.exhaustive or lhs.open != rhs.open) return .breaking;
+    if (lhs.kind != rhs.kind or lhs.layout != rhs.layout or lhs.materialized_version != rhs.materialized_version or lhs.exhaustive != rhs.exhaustive or lhs.open != rhs.open) return .breaking;
     // A plain (auto-layout) struct never crosses C as a whole: it is either
     // flattened, where the selected fields ride on the function signature and
     // are compared there, or rejected. Its recorded field list is only the

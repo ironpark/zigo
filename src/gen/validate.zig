@@ -238,7 +238,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             if (try callbackGoErrorIssue(allocator, function, parameter)) |issue| return issue;
             if (try callbackFailureResultIssue(allocator, document, function, parameter)) |issue| return issue;
             if (try callbackContractIssue(allocator, function, parameter)) |issue| return issue;
-            if (containsMaterialized(parameter.type)) return .{
+            if (containsMaterialized(parameter.type) and !isMaterializedReleaseTarget(document, function)) return .{
                 .severity = .@"error",
                 .code = "ZIGO048",
                 .message = "materialized structs are result-only",
@@ -400,7 +400,9 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
         }
         // A caller-owned slice is handed over through `release` instead of a
         // handle destructor, so it answers to ZIGO016 rather than ZIGO015.
-        if (function.ownership == .caller and isReleasableSliceReturn(function)) {
+        if (function.ownership == .caller and isMaterializedReturn(function.@"return")) {
+            if (materializedReleaseTargetIssue(document, function)) |issue| return issue;
+        } else if (function.ownership == .caller and isReleasableSliceReturn(function)) {
             if (releaseTargetIssue(document, function)) |issue| return issue;
         } else if (function.ownership == .caller and !ownedReturnIsWrappable(document, function)) return .{
             .severity = .@"error",
@@ -426,7 +428,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .hint = "return `usize` or `!usize` from the function, or use the default `.written = .all`",
             };
         }
-        if (function.release != null and !isReleasableSliceReturn(function)) return .{
+        if (function.release != null and !isReleasableSliceReturn(function) and !isMaterializedReturn(function.@"return")) return .{
             .severity = .@"error",
             .code = "ZIGO016",
             .message = "release function declared on a return that zigo does not free",
@@ -434,6 +436,14 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .hint = "use `.release` only together with `.returns = .caller` on a slice return",
         };
     }
+    for (document.functions) |function| if (isMaterializedReturn(function.@"return") and
+        (function.ownership != .caller or function.release == null)) return .{
+        .severity = .@"error",
+        .code = "ZIGO048",
+        .message = "materialized result has no caller-owned buffer release",
+        .site = functionSite(function),
+        .hint = "set `.returns = .caller` and `.release` to an exposed function that frees `[]u8` with the registered allocator",
+    };
     for (document.types) |declaration| {
         if (declaration.kind == .materialized) {
             if (try materializedProblemAlloc(allocator, document, declaration)) |problem| return .{
@@ -2125,9 +2135,43 @@ fn typeNodeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
         .int => |value| value.bits == rhs.int.bits and value.signed == rhs.int.signed and value.is_usize == rhs.int.is_usize,
         .float => |value| value.bits == rhs.float.bits,
         .@"enum" => |value| std.mem.eql(u8, value.ref, rhs.@"enum".ref),
+        .materialized => |value| value.pointer == rhs.materialized.pointer and value.nullable == rhs.materialized.nullable and std.mem.eql(u8, value.ref, rhs.materialized.ref),
         .value_struct => |value| std.mem.eql(u8, value.ref, rhs.value_struct.ref),
+        .slice => |value| value.@"const" == rhs.slice.@"const" and typeNodeEqual(value.element.*, rhs.slice.element.*),
         else => false,
     };
+}
+
+fn isMaterializedReturn(node: semantic.TypeNode) bool {
+    const payload = if (node == .error_union) node.error_union.payload.* else node;
+    return payload == .materialized or (payload == .slice and payload.slice.element.* == .materialized);
+}
+
+fn materializedReleaseTargetIssue(document: semantic.Semantic, function: semantic.SemanticFn) ?diagnostic.Diagnostic {
+    const missing: diagnostic.Diagnostic = .{
+        .severity = .@"error",
+        .code = "ZIGO048",
+        .message = "materialized result has no matching buffer release function",
+        .site = functionSite(function),
+        .hint = "name an exposed `fn([]u8) void` release function that frees the serialized buffer with the registered allocator",
+    };
+    const name = function.release orelse return missing;
+    for (document.functions) |candidate| {
+        if (!std.mem.eql(u8, candidate.name, name) or candidate.@"return" != .void) continue;
+        const parameter = onlyExposedParameter(candidate.params) orelse return missing;
+        if (parameter.type != .slice or parameter.type.slice.element.* != .int or
+            parameter.type.slice.element.int.bits != 8 or parameter.type.slice.element.int.signed) return missing;
+        return null;
+    }
+    return missing;
+}
+
+fn isMaterializedReleaseTarget(document: semantic.Semantic, candidate: semantic.SemanticFn) bool {
+    for (document.functions) |function| {
+        if (isMaterializedReturn(function.@"return") and function.release != null and
+            std.mem.eql(u8, function.release.?, candidate.name)) return true;
+    }
+    return false;
 }
 
 fn hasConstructorInit(document: semantic.Semantic, constructor: semantic.Constructor) bool {

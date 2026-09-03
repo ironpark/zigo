@@ -170,6 +170,29 @@ pub const AbiLiveFields = struct {
     fields: []const semantic.TypeField,
 };
 
+/// Versioned, lowering-owned description of one fixed-size materialized node
+/// record. Every field occupies a 16-byte slot; offsets and lengths stored in
+/// slots are relative to the beginning of the serialized buffer.
+pub const MaterializedLayout = struct {
+    pub const version: u16 = 1;
+    pub const header_size: usize = 40;
+    pub const slot_size: usize = 16;
+
+    owner: *const semantic.TypeDecl,
+    id: u32,
+    record_size: usize,
+    fields: []const Field,
+
+    pub const Field = struct {
+        name: []const u8,
+        offset: usize,
+        node: semantic.TypeNode,
+        kind: Kind,
+
+        pub const Kind = enum { scalar, string, scalar_slice, string_slice, node, node_pointer, node_slice };
+    };
+};
+
 pub const ErrorCode = struct { code: i32, name: []const u8 };
 
 pub const AbiFn = struct {
@@ -228,6 +251,11 @@ pub const AbiFn = struct {
     /// program order to use that name -- the declarations are emitted once,
     /// at that first use.
     callback_types: []const ?CallbackType = &.{},
+    /// A materialized result is always one owned byte buffer. `is_slice`
+    /// means the header root table contains multiple values of `root`.
+    materialized_return: ?MaterializedReturn = null,
+
+    pub const MaterializedReturn = struct { root: []const u8, is_slice: bool, fallible: bool = false };
 
     /// How a parameter or return carries text.
     pub const StringRole = enum {
@@ -386,6 +414,7 @@ pub const Program = struct {
     functions: []const AbiFn,
     io: ?[]const u8 = null,
     live_fields: []const AbiLiveFields = &.{},
+    materialized_layouts: []const MaterializedLayout = &.{},
     packed_structs: []const AbiPacked = &.{},
     package: []const u8,
     packages: ?[]const semantic.Package = null,

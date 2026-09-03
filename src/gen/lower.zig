@@ -26,6 +26,7 @@ pub fn semanticDocumentForBackend(
     // Lowered ahead of the functions, so a function can point at the mirror it
     // fills rather than making a backend find it again by name.
     const structs = try lowerValueStructs(allocator, document, prefix);
+    const materialized_layouts = try lowerMaterializedLayouts(allocator, document);
     const functions = try allocator.alloc(abi.AbiFn, document.functions.len);
     for (document.functions, 0..) |*function, function_index| {
         var params: std.ArrayList(abi.AbiParam) = .empty;
@@ -285,9 +286,17 @@ pub fn semanticDocumentForBackend(
         }
 
         var function_errors: []const abi.ErrorCode = &.{};
+        const materialized_return = materializedReturn(function.@"return");
         const caller_owned_c_string = function.ownership == .caller and function.release != null and
             returnContainsCStringSlice(function.@"return", function.return_semantic);
-        const return_scalar = if (semantic.isCStringSlice(function.@"return", function.return_semantic) and !caller_owned_c_string) blk: {
+        const return_scalar = if (materialized_return) |materialized| result: {
+            try appendMaterializedReturnOuts(allocator, &params);
+            if (materialized.fallible) {
+                function_errors = try codesFor(allocator, function.@"return".error_union.error_set, error_codes);
+                break :result abi.AbiScalar{ .signed_int = 32 };
+            }
+            break :result abi.AbiScalar.void;
+        } else if (semantic.isCStringSlice(function.@"return", function.return_semantic) and !caller_owned_c_string) blk: {
             const child = try allocator.create(abi.AbiScalar);
             child.* = try lowerValue(allocator, document, prefix, function.@"return".slice.element.*);
             break :blk abi.AbiScalar{ .pointer = .{
@@ -406,6 +415,7 @@ pub fn semanticDocumentForBackend(
             .ret = return_scalar,
             .errors = function_errors,
             .origin = function,
+            .materialized_return = materialized_return,
             .ret_struct = if (function.@"return" == .value_struct and !isPackedValue(document, function.@"return"))
                 structRecord(structs, function.@"return".value_struct.ref)
             else if (function.@"return" == .optional and function.@"return".optional.child.* == .value_struct and
@@ -430,7 +440,10 @@ pub fn semanticDocumentForBackend(
             .value_union_return = taggedUnionValueDeclaration(source_document, source_document.functions[function_index].@"return") != null,
             .param_strings = try classifyParamStrings(allocator, function.*),
             .ret_string = returnStringRole(function.*),
-            .slice_return_element = sliceReturnElement(function.*),
+            .slice_return_element = if (materialized_return != null)
+                semantic.TypeNode{ .int = .{ .bits = 8, .signed = false } }
+            else
+                sliceReturnElement(function.*),
             .userdata_for = try pairUserdataParams(allocator, function.*),
         };
     }
@@ -464,6 +477,7 @@ pub fn semanticDocumentForBackend(
         .handles = handles,
         .functions = functions,
         .live_fields = try lowerLiveFields(allocator, document),
+        .materialized_layouts = materialized_layouts,
         .packed_structs = try lowerPackedStructs(allocator, document),
         .package = package,
         .packages = document.packages,
@@ -1241,6 +1255,77 @@ fn appendSliceReturnOuts(
         .role = .return_slice_length,
         .scalar = .{ .pointer = .{ .child = usize_child, .is_const = false } },
     });
+}
+
+fn appendMaterializedReturnOuts(allocator: std.mem.Allocator, params: *std.ArrayList(abi.AbiParam)) !void {
+    const byte = try allocator.create(abi.AbiScalar);
+    byte.* = .{ .unsigned_int = 8 };
+    const many = try allocator.create(abi.AbiScalar);
+    many.* = .{ .pointer = .{ .child = byte, .is_const = false, .is_many = true } };
+    try params.append(allocator, .{
+        .name = "out_result_ptr",
+        .role = .return_slice_pointer,
+        .scalar = .{ .pointer = .{ .child = many, .is_const = false } },
+    });
+    const length = try allocator.create(abi.AbiScalar);
+    length.* = .usize;
+    try params.append(allocator, .{
+        .name = "out_result_len",
+        .role = .return_slice_length,
+        .scalar = .{ .pointer = .{ .child = length, .is_const = false } },
+    });
+}
+
+fn materializedReturn(node: semantic.TypeNode) ?abi.AbiFn.MaterializedReturn {
+    if (node == .materialized) return .{ .root = node.materialized.ref, .is_slice = false };
+    if (node == .slice and node.slice.element.* == .materialized)
+        return .{ .root = node.slice.element.materialized.ref, .is_slice = true };
+    if (node == .error_union) {
+        if (materializedReturn(node.error_union.payload.*)) |result| return .{
+            .root = result.root,
+            .is_slice = result.is_slice,
+            .fallible = true,
+        };
+    }
+    return null;
+}
+
+fn lowerMaterializedLayouts(allocator: std.mem.Allocator, document: semantic.Semantic) ![]const abi.MaterializedLayout {
+    var layouts: std.ArrayList(abi.MaterializedLayout) = .empty;
+    for (document.types) |*declaration| {
+        if (declaration.kind != .materialized) continue;
+        const fields = try allocator.alloc(abi.MaterializedLayout.Field, declaration.fields.len);
+        for (declaration.fields, 0..) |field, index| {
+            const node = field.type.?;
+            fields[index] = .{
+                .name = field.name,
+                .offset = index * abi.MaterializedLayout.slot_size,
+                .node = node,
+                .kind = materializedFieldKind(node),
+            };
+        }
+        try layouts.append(allocator, .{
+            .owner = declaration,
+            .id = @intCast(layouts.items.len),
+            .record_size = fields.len * abi.MaterializedLayout.slot_size,
+            .fields = fields,
+        });
+    }
+    return layouts.toOwnedSlice(allocator);
+}
+
+fn materializedFieldKind(node: semantic.TypeNode) abi.MaterializedLayout.Field.Kind {
+    return switch (node) {
+        .bool, .int, .float, .@"enum" => .scalar,
+        .materialized => |value| if (value.pointer) .node_pointer else .node,
+        .slice => |value| switch (value.element.*) {
+            .materialized => .node_slice,
+            .slice => .string_slice,
+            .int => |integer| if (integer.bits == 8 and !integer.signed) .string else .scalar_slice,
+            else => .scalar_slice,
+        },
+        else => unreachable,
+    };
 }
 
 fn lowerValue(allocator: std.mem.Allocator, document: semantic.Semantic, prefix: []const u8, node: semantic.TypeNode) !abi.AbiScalar {

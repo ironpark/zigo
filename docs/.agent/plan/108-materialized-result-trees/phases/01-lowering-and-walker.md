@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-03T06:59:42Z"
 depends_on:
 - "108-materialized-result-trees#0"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: The generator case compiles the shim and header, and a Zig test round-trips a tree through the walker.
 > NEXT: none
