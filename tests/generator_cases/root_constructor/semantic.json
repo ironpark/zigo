@@ -4,6 +4,7 @@
     {
       "deinit": "freeTerminal",
       "init": "newTerminal",
+      "name": "extractAudio",
       "type": "Terminal"
     }
   ],

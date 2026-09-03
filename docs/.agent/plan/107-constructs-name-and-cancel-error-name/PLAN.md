@@ -7,7 +7,7 @@ registered_at: "2026-09-03T03:53:27Z"
 
 # Phases
 
-- [ ] [Phase 00: Honor .name on constructors](phases/00-constructor-name.md)
+- [x] [Phase 00: Honor .name on constructors](phases/00-constructor-name.md)
 - [ ] [Phase 01: Configurable cancel error name](phases/01-cancel-error-name.md)
 
 # Shared Verification

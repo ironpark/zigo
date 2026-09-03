@@ -135,12 +135,16 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
 }
 
 fn publicFunctionNameAlloc(allocator: std.mem.Allocator, document: semantic.Semantic, function: semantic.SemanticFn) ![]u8 {
-    // A constructor is published as `New<Type>`, and as a method on its
-    // receiver when it has one -- exactly the two-step emit does.
+    // A constructor uses its explicit name when present and otherwise stays
+    // `New<Type>`, as a method on its receiver when it has one.
     if (constructorForInit(document, function)) |constructor| {
-        if (function.receiver) |receiver|
-            return std.fmt.allocPrint(allocator, "(*{s}).New{s}", .{ receiver, constructor.type });
-        return std.fmt.allocPrint(allocator, "New{s}", .{constructor.type});
+        const name = if (constructor.name) |explicit|
+            try naming.pascalAlloc(allocator, explicit)
+        else
+            try std.fmt.allocPrint(allocator, "New{s}", .{constructor.type});
+        defer allocator.free(name);
+        if (function.receiver) |receiver| return std.fmt.allocPrint(allocator, "(*{s}).{s}", .{ receiver, name });
+        return allocator.dupe(u8, name);
     }
     const name = try naming.pascalAlloc(allocator, function.name);
     defer allocator.free(name);

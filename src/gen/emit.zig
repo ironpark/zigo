@@ -4431,7 +4431,10 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             null;
         defer if (receiver_name) |name| allocator.free(name);
         const go_name = if (constructor) |value|
-            try std.fmt.allocPrint(allocator, "New{s}", .{value.type})
+            if (value.name) |name|
+                try naming.pascalAlloc(allocator, name)
+            else
+                try std.fmt.allocPrint(allocator, "New{s}", .{value.type})
         else
             try naming.pascalAlloc(allocator, function.origin.name);
         defer allocator.free(go_name);

@@ -572,6 +572,9 @@ pub const TypeDecl = struct {
 pub const Constructor = struct {
     deinit: []const u8,
     init: []const u8,
+    /// Explicit public wrapper name from function metadata. Absent keeps the
+    /// historical `New<Type>` constructor spelling.
+    name: ?[]const u8 = null,
     type: []const u8,
 };
 

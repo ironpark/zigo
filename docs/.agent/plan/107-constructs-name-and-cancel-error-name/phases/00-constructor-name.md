@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T06:12:07Z"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: `.constructs = "AudioBuffer", .name = "extractAudio"` yields `ExtractAudio` in Go with working lifecycle, and the loop passes.
 > NEXT: none

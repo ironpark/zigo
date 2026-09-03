@@ -10,22 +10,22 @@ import (
 )
 
 
-// NewTerminal
+// ExtractAudio
 // Opens a terminal the caller owns.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
-func NewTerminal(columns uint32) (*Terminal, error) {
+func ExtractAudio(columns uint32) (*Terminal, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	result, code := raw.NewTerminal(columns)
 	if code != 0 {
-		return nil, errorForCode("NewTerminal", code)
+		return nil, errorForCode("ExtractAudio", code)
 	}
 	return newTerminal(result), nil
 }
 
-// MustNewTerminal calls NewTerminal and panics with its typed error on failure.
-func MustNewTerminal(columns uint32) *Terminal { return zigoMust(NewTerminal(columns)) }
+// MustExtractAudio calls ExtractAudio and panics with its typed error on failure.
+func MustExtractAudio(columns uint32) *Terminal { return zigoMust(ExtractAudio(columns)) }
 
 // Resize
 // Resizes the terminal.

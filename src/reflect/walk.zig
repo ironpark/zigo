@@ -109,7 +109,7 @@ pub fn reflect(
             return pairingIssue(allocator, "two functions declare `.constructs = \"{s}\"`", .{claim.type});
         const destructor_index = findPairing(pairings.items, .destroys, claim.type) orelse
             return pairingIssue(allocator, "`.constructs = \"{s}\"` has no function declaring `.destroys = \"{s}\"`", .{ claim.type, claim.type });
-        try pair(allocator, &constructors, functions.items, claim.index, destructor_index, claim.type);
+        try pair(allocator, &constructors, functions.items, claim.index, destructor_index, claim.type, claim.name);
     }
     for (pairings.items) |claim| {
         if (claim.kind != .destroys) continue;
@@ -128,7 +128,7 @@ pub fn reflect(
             if (destructor.field_access != null) continue;
             if (destructor.receiver == null or !std.mem.eql(u8, destructor.receiver.?, type_name)) continue;
             if (!isDestructorName(destructor.name)) continue;
-            try pair(allocator, &constructors, functions.items, index, destructor_index, type_name);
+            try pair(allocator, &constructors, functions.items, index, destructor_index, type_name, null);
             break;
         }
     }
@@ -882,11 +882,13 @@ fn pair(
     init_index: usize,
     deinit_index: usize,
     type_name: []const u8,
+    explicit_name: ?[]const u8,
 ) !void {
     const constructor = &functions[init_index];
     try constructors.append(allocator, .{
         .deinit = functions[deinit_index].name,
         .init = constructor.name,
+        .name = explicit_name,
         .type = type_name,
     });
     // Go groups the constructor under the type it makes; the Zig call path
@@ -1174,7 +1176,12 @@ fn appendFunction(
         const returned = returnedOpaqueName(reflected_function.@"return") orelse "";
         if (!std.mem.eql(u8, returned, type_name))
             return pairingIssue(allocator, "`{s}{s}` declares `.constructs = \"{s}\"` but does not return `*{s}`", .{ owner_label, function_label, type_name, type_name });
-        try pairings.append(allocator, .{ .index = functions.items.len, .kind = .constructs, .type = type_name });
+        try pairings.append(allocator, .{
+            .index = functions.items.len,
+            .kind = .constructs,
+            .name = if (@hasField(@TypeOf(metadata), "name")) metadata.name else null,
+            .type = type_name,
+        });
     }
     if (@hasField(@TypeOf(metadata), "destroys")) {
         const type_name = metadata.destroys;
@@ -1283,6 +1290,7 @@ fn flattenMessageAlloc(allocator: std.mem.Allocator, comptime detail: []const u8
 const Pairing = struct {
     index: usize,
     kind: enum { constructs, destroys },
+    name: ?[]const u8 = null,
     type: []const u8,
 };
 
@@ -3238,6 +3246,36 @@ test "`.constructs` and `.destroys` pair functions the name rule never would" {
     // The destructor is a method in Go, so its path is the one that moved.
     try std.testing.expectEqualStrings("Terminal", document.functions[1].receiver.?);
     try std.testing.expectEqualStrings("releaseTerminal", document.functions[1].zig_path.?);
+}
+
+test "an explicit constructor name is recorded for the public Go wrapper" {
+    const Fixture = struct {
+        const AudioBuffer = opaque {};
+
+        pub fn makeBuffer() *AudioBuffer {
+            unreachable;
+        }
+
+        pub fn freeBuffer(self: *AudioBuffer) void {
+            _ = self;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{.{ .name = "AudioBuffer", .type = Fixture.AudioBuffer, .repr = .@"opaque" }},
+        .functions = .{
+            .{ .path = "root.makeBuffer", .name = "extractAudio", .constructs = "AudioBuffer" },
+            .{ .path = "root.freeBuffer", .destroys = "AudioBuffer" },
+        },
+    }, "audio", "zg");
+
+    try std.testing.expectEqualStrings("extractAudio", document.constructors[0].init);
+    try std.testing.expectEqualStrings("extractAudio", document.constructors[0].name.?);
+    try std.testing.expectEqualStrings("makeBuffer", document.functions[0].zig_path.?);
+    const json = try document.serialize(arena.allocator());
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"name\": \"extractAudio\"") != null);
 }
 
 test "explicit borrowed return is recorded without changing ownership defaults" {

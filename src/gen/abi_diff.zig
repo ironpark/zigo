@@ -112,6 +112,12 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
         // that named it changes.
         if (!semantic.optionalStringEqual(old.goOwner(), new.goOwner()))
             try add(allocator, &report, .breaking, identity, "Go owner changed");
+        const old_go_name = try effectivePublicFunctionNameAlloc(allocator, base, old);
+        defer allocator.free(old_go_name);
+        const new_go_name = try effectivePublicFunctionNameAlloc(allocator, current, new);
+        defer allocator.free(new_go_name);
+        if (!std.mem.eql(u8, old_go_name, new_go_name))
+            try add(allocator, &report, .breaking, identity, "Go signature changed");
         if (old.ownership != new.ownership or old.returnsBorrowedHandle() != new.returnsBorrowedHandle() or
             !optionalHintEqual(old.return_semantic, new.return_semantic))
             try add(allocator, &report, .breaking, identity, "return ownership or semantics changed");
@@ -304,11 +310,36 @@ fn isSymbolMetadataCorrection(
 
 fn findFunctionIndex(functions: []const semantic.SemanticFn, wanted: semantic.SemanticFn) ?usize {
     for (functions, 0..) |function, index| {
-        if (std.mem.eql(u8, function.name, wanted.name) and
-            semantic.optionalStringEqual(function.receiver, wanted.receiver) and
-            semantic.optionalStringEqual(function.namespace, wanted.namespace)) return index;
+        if (semantic.optionalStringEqual(function.receiver, wanted.receiver) and
+            semantic.optionalStringEqual(function.namespace, wanted.namespace) and
+            declarationIdentityEqual(function, wanted)) return index;
     }
     return null;
+}
+
+fn declarationIdentityEqual(lhs: semantic.SemanticFn, rhs: semantic.SemanticFn) bool {
+    if (lhs.zig_path) |path| return pathNamesFunction(path, rhs);
+    if (rhs.zig_path) |path| return pathNamesFunction(path, lhs);
+    return std.mem.eql(u8, lhs.name, rhs.name);
+}
+
+fn pathNamesFunction(path: []const u8, function: semantic.SemanticFn) bool {
+    if (function.zig_path) |other| return std.mem.eql(u8, path, other);
+    if (std.mem.eql(u8, path, function.name)) return true;
+    const owner = function.receiver orelse function.namespace orelse return false;
+    return path.len == owner.len + function.name.len + 1 and
+        std.mem.startsWith(u8, path, owner) and path[owner.len] == '.' and
+        std.mem.endsWith(u8, path, function.name);
+}
+
+fn effectivePublicFunctionNameAlloc(allocator: std.mem.Allocator, document: semantic.Semantic, function: semantic.SemanticFn) ![]u8 {
+    for (document.constructors) |constructor| {
+        if (!std.mem.eql(u8, constructor.init, function.name) or
+            !std.mem.eql(u8, constructor.type, function.goOwner() orelse "")) continue;
+        if (constructor.name) |name| return naming.pascalAlloc(allocator, name);
+        return std.fmt.allocPrint(allocator, "New{s}", .{constructor.type});
+    }
+    return naming.pascalAlloc(allocator, function.name);
 }
 
 /// The lowered form of a document, in the arena the comparison lives in.
@@ -1589,6 +1620,40 @@ test "adding or removing cancellation is a Go signature break" {
     defer report.deinit(std.testing.allocator);
     try std.testing.expect(report.hasBreaking());
     try std.testing.expectEqualStrings("cancellation surface changed", report.changes.items[0].detail);
+}
+
+test "changing an explicit constructor name is a Go signature break" {
+    const result: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "AudioBuffer" } };
+    const base_functions = [_]semantic.SemanticFn{.{
+        .go_owner = "AudioBuffer",
+        .name = "makeBuffer",
+        .ownership = .caller,
+        .params = &.{},
+        .@"return" = result,
+        .symbol = "zg_make_buffer",
+    }};
+    const current_functions = [_]semantic.SemanticFn{.{
+        .go_owner = "AudioBuffer",
+        .name = "extractAudio",
+        .ownership = .caller,
+        .params = &.{},
+        .@"return" = result,
+        .symbol = "zg_make_buffer",
+        .zig_path = "makeBuffer",
+    }};
+    const base_constructors = [_]semantic.Constructor{.{ .deinit = "freeBuffer", .init = "makeBuffer", .type = "AudioBuffer" }};
+    const current_constructors = [_]semantic.Constructor{.{ .deinit = "freeBuffer", .init = "extractAudio", .name = "extractAudio", .type = "AudioBuffer" }};
+    const base: semantic.Semantic = .{ .constructors = &base_constructors, .functions = &base_functions, .package = "audio", .prefix = "zg", .zig_version = "0.16.0" };
+    const current: semantic.Semantic = .{ .constructors = &current_constructors, .functions = &current_functions, .package = "audio", .prefix = "zg", .zig_version = "0.16.0" };
+
+    var report = try diff(std.testing.allocator, base, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expect(report.hasBreaking());
+    var found = false;
+    for (report.changes.items) |change| {
+        if (std.mem.eql(u8, change.detail, "Go signature changed")) found = true;
+    }
+    try std.testing.expect(found);
 }
 
 test "a sentinel the lowered program never sees is not a change" {

@@ -2100,6 +2100,7 @@ fn constructorDeinitFor(document: semantic.Semantic, function: semantic.Semantic
 /// name is not simply the pascal-cased Zig name (see `constructorInitFor`).
 fn effectivePublicFunctionNameAlloc(allocator: std.mem.Allocator, document: semantic.Semantic, function: semantic.SemanticFn) ![]u8 {
     if (constructorInitFor(document, function)) |constructor| {
+        if (constructor.name) |name| return naming.pascalAlloc(allocator, name);
         return std.fmt.allocPrint(allocator, "New{s}", .{constructor.type});
     }
     return naming.pascalAlloc(allocator, function.name);

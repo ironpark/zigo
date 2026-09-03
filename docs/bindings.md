@@ -936,6 +936,11 @@ shim은 선언이 있는 자리 그대로 `target.newTicker(...)`를 부릅니�
 Zig에서의 호출 경로는 서로 다른 축이며, `semantic.json`은 전자를 `go_owner`, 후자를
 `zig_path`로 적습니다(둘 다 기본값과 다를 때만 나타납니다).
 
+생성자 함수에도 `.name`을 지정할 수 있습니다. 예를 들어
+`.constructs = "AudioBuffer", .name = "extractAudio"`는 기본 이름
+`NewAudioBuffer` 대신 `ExtractAudio`(그리고 opt-in 시 `MustExtractAudio`)를 생성합니다.
+`.name`을 생략한 생성자는 이전과 같이 항상 `New<Type>`을 사용합니다.
+
 - `.constructs`와 `.destroys`는 `.types`에 등록된 opaque 타입 이름을 받습니다.
 - `.constructs`를 붙인 함수는 그 타입의 pointer(또는 `!*T`)를 반환해야 하고,
   `.destroys`를 붙인 함수는 그 타입의 pointer를 첫 파라미터로 받고 아무것도 반환하지

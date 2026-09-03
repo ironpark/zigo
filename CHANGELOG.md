@@ -42,6 +42,8 @@
 
 ### Fixed
 
+- `.constructs` 함수의 명시적 `.name`을 무시하고 항상 `New<Type>` Go wrapper를 생성하던
+  문제를 고쳤습니다. 이름을 지정하지 않은 생성자의 기존 이름은 그대로 유지됩니다.
 - 대상 module이 import하는 module의 system library, library path, framework, pkg-config 정보가
   생성된 cgo 지시자에서 빠지던 문제를 고쳤습니다. 전체 import 그래프를 의존 먼저 순서로
   수집하고 중복 항목은 한 번만 내보냅니다.
