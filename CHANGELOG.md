@@ -10,6 +10,10 @@
 
 - `ZIGO009`, `ZIGO021`, `ZIGO024`, `ZIGO036` 진단에 충돌하거나 수명 계약이 빠진 선언에서
   바로 적용할 수 있는 이름 또는 release 함수 제안을 `note:`로 추가했습니다.
+- Windows 공유 라이브러리(DLL)와 import library가 Zig 기본값인 `bin` 대신 `install.library_dir`
+  (기본 `lib`)에 설치됩니다. 다른 플랫폼과 같은 디렉터리에서 로더 기본 경로와 `#cgo` 플래그를
+  계산하기 위한 변경이며, `zig-out/bin/<name>_zigo.dll`을 직접 참조하던 스크립트는
+  `zig-out/lib/`로 옮겨야 합니다.
 
 ### Added
 
