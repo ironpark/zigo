@@ -15,9 +15,6 @@ func newObserverHandle(value Observer) zigoCallbackHandle {
 
 func deleteCallbackHandle(handle zigoCallbackHandle) { raw.DeleteCallbackHandle(handle) }
 
-func activeCallbackHandleCount() int64 { return raw.ActiveCallbackHandleCount() }
-func callbackDispatcherCount() int { return raw.CallbackDispatcherCount() }
-
 // zigoRethrowCallbackPanic resumes a panic that a Go callback raised inside
 // the native call that has just returned. The trampoline recovered it so the
 // native frames could unwind; the caller sees it as a *CallbackPanicError.

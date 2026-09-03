@@ -29,8 +29,6 @@ func deleteCallbackHandle(handle zigoCallbackHandle) {
 	activeCallbackHandles.Add(-1)
 }
 
-func activeCallbackHandleCount() int64 { return activeCallbackHandles.Load() }
-
 // zigoRethrowCallbackPanic resumes a panic that a Go callback raised inside
 // the native call that has just returned. The trampoline recovered it so the
 // native frames could unwind; the caller sees it as a *CallbackPanicError.
