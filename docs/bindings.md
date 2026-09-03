@@ -335,7 +335,8 @@ C ABI는 바뀌지 않습니다 — `go_error`는 Go 표면만 넓힙니다. 다
 ## 정수 폭
 
 C는 8, 16, 32, 64비트 정수만 이름 붙일 수 있습니다. `u21`이나 `i24`처럼 그 밖의 폭은
-파라미터·반환값·error union payload 자리에 한해 다음 폭으로 승격되어 건너갑니다.
+파라미터·반환값·error union payload와 직접 slice 원소 자리에서 다음 폭으로 승격되어
+건너갑니다.
 
 | Zig | C | Go |
 | --- | --- | --- |
@@ -354,8 +355,21 @@ C는 8, 16, 32, 64비트 정수만 이름 붙일 수 있습니다. `u21`이나 `
 `LastErrorMessage()`도 그대로입니다. shim도 같은 검사를 유지하지만, 그것은 raw 패키지를
 직접 부르는 코드를 위한 두 번째 방어선입니다.
 
-승격은 값 하나가 shim을 지나갈 때만 가능합니다. `extern struct` 필드, slice 원소(`[]u21`),
-콜백 시그니처는 C로 바이트 그대로 비추므로 그 자리의 비정규 폭은 `ZIGO018`로 거부됩니다.
+`[]const u21` 입력은 Go의 `[]uint32`가 되고 shim이 바인딩의 `.allocator`로 `[]u21` 임시
+버퍼를 만들어 범위를 검사하며 원소별로 좁힙니다. `.direction = .out`인 `[]u21`도 같은 임시
+버퍼를 사용하고, 성공한 호출 뒤 caller-owned Go slice로 원소별 승격 복사합니다. 따라서 이런
+slice가 하나라도 있으면 바인딩에 `.allocator`가 필요하며, 없으면 설정 방법을 적은
+`ZIGO045`가 발생합니다. 입력 slice의 범위 밖 원소는 scalar 파라미터와 같은
+`*RangeError`(`ErrOutOfRange`)이고 raw 호출에서는 같은 native range panic입니다.
+
+반환 `[]u21`은 `.returns = .caller`와 `.release`가 있는 경우에만 지원합니다. shim이 각 원소를
+승격한 뒤 Go가 새 `[]uint32`로 복사하고 즉시 원래 release를 호출합니다. 안정적으로 승격해 둘
+메모리가 없는 borrowed narrow slice 반환은 `ZIGO018`로 거부됩니다. sentinel/optional narrow
+slice도 아직 지원하지 않습니다.
+
+승격 가능한 slice는 정수 자체가 직접 원소인 경우뿐입니다. `extern struct` field와 value struct
+안의 field, tagged union payload, callback 시그니처, 중첩 slice는 C로 정해진 배치를 그대로
+비추므로 그 자리의 비정규 폭은 기존처럼 `ZIGO018`로 거부됩니다.
 
 ## 슬라이스 반환 소유권
 

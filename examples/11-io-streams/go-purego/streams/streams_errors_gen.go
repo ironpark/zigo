@@ -19,6 +19,9 @@ var ErrNativePanic = errors.New("zigo: native panic")
 // ErrCallbackPanic identifies a panic raised by a Go callback inside a native call.
 var ErrCallbackPanic = errors.New("zigo: callback panic")
 
+// ErrOutOfRange identifies an argument outside the range of the Zig integer that carries it.
+var ErrOutOfRange = errors.New("zigo: argument out of range")
+
 // ErrNilStream identifies a nil io.Writer or io.Reader argument.
 var ErrNilStream = errors.New("zigo: nil stream argument")
 
@@ -67,6 +70,26 @@ func (err *NativePanicError) poisoned(operation string) error {
 	}
 	return &NativePanicError{Operation: operation, Message: message}
 }
+
+// RangeError reports an argument the narrower Zig integer behind a parameter
+// cannot represent. The check runs in Go, so the native library is never
+// called with the value.
+type RangeError struct {
+	// Operation names the generated call.
+	Operation string
+	// Parameter names the offending Go parameter.
+	Parameter string
+	// Type is how Zig spells the integer the value has to fit, such as "u21".
+	Type string
+}
+
+// Error implements error.
+func (err *RangeError) Error() string {
+	return "zigo: " + err.Operation + ": argument " + err.Parameter + " is out of range for " + err.Type
+}
+
+// Unwrap returns ErrOutOfRange for errors.Is classification.
+func (err *RangeError) Unwrap() error { return ErrOutOfRange }
 
 // StreamError reports a failure from the Go io.Writer or io.Reader a native
 // call streamed through. It outranks the native result: the library may have

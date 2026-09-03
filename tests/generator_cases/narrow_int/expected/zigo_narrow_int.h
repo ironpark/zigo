@@ -19,6 +19,10 @@
 ZIGO_EXPORT int32_t zg_codepoint_width(uint32_t cp, int8_t * out_result);
 ZIGO_EXPORT int32_t zg_clamp_offset(int32_t offset, int32_t * out_result);
 ZIGO_EXPORT int32_t zg_decode(uint8_t byte, uint32_t * out_result);
+ZIGO_EXPORT uint32_t zg_sum_codepoints(const uint32_t * values_ptr, size_t values_len);
+ZIGO_EXPORT void zg_fill_codepoints(uint32_t * values_ptr, size_t values_len, size_t * values_written);
+ZIGO_EXPORT void zg_take_codepoints(const uint32_t * * out_result_ptr, size_t * out_result_len);
+ZIGO_EXPORT void zg_free_codepoints(const uint32_t * values_ptr, size_t values_len);
 ZIGO_EXPORT const char *zg_last_error_message(void);
 
 #endif // ZIGO_narrow_int_H

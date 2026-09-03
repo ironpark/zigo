@@ -27,3 +27,29 @@ export fn zg_decode_impl(byte: u8, out_result: *u32) i32 {
     out_result.* = @intCast(result);
     return 0;
 }
+export fn zg_sum_codepoints_impl(values_ptr: [*c]const u32, values_len: usize) u32 {
+    for (0..values_len) |zigo_i| {
+        if (values_ptr[zigo_i] > std.math.maxInt(u21)) @panic("zigo: argument `values` is out of range for u21");
+    }
+    const zigo_values_slice = std.heap.c_allocator.alloc(u21, values_len) catch @panic("zigo: out of memory converting argument `values`");
+    defer std.heap.c_allocator.free(zigo_values_slice);
+    for (zigo_values_slice, 0..) |*zigo_value, zigo_i| zigo_value.* = @intCast(values_ptr[zigo_i]);
+    return target.sumCodepoints(zigo_values_slice);
+}
+export fn zg_fill_codepoints_impl(values_ptr: [*c]u32, values_len: usize, values_written: *usize) void {
+    const zigo_values_slice = std.heap.c_allocator.alloc(u21, values_len) catch @panic("zigo: out of memory converting argument `values`");
+    defer std.heap.c_allocator.free(zigo_values_slice);
+    target.fillCodepoints(zigo_values_slice);
+    for (zigo_values_slice, 0..) |zigo_value, zigo_i| values_ptr[zigo_i] = @intCast(zigo_value);
+    values_written.* = values_len;
+}
+export fn zg_take_codepoints_impl(out_result_ptr: *[*c]const u32, out_result_len: *usize) void {
+    const result = target.takeCodepoints();
+    const zigo_result_ptr: [*]u32 = @ptrCast(@constCast(result.ptr));
+    for (result, 0..) |zigo_value, zigo_i| zigo_result_ptr[zigo_i] = @intCast(zigo_value);
+    out_result_ptr.* = zigo_result_ptr;
+    out_result_len.* = result.len;
+}
+export fn zg_free_codepoints_impl(values_ptr: [*c]const u32, values_len: usize) void {
+    target.freeCodepoints(if (values_len == 0) &.{} else @as([*]const u21, @ptrCast(values_ptr))[0..values_len]);
+}

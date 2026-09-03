@@ -8,6 +8,10 @@
 
 ### Added
 
+- `[]const u21` 같은 비정규 폭 정수 slice를 승격된 Go 원소 타입(`[]uint32`)으로 노출합니다.
+  입력과 out buffer는 바인딩 allocator로 만든 임시 slice에서 원소별 변환하고, caller-owned
+  반환은 Go 복사 전에 승격합니다. 범위 검사는 scalar 승격과 같은 `RangeError`를 사용하며,
+  allocator가 없으면 설정 힌트가 있는 `ZIGO045`를 보고합니다.
 - `.repr = .opaque`로 등록한 struct의 by-value receiver와 파라미터를 지원합니다. Go와 C는
   기존 handle pointer를 전달하고 shim이 Zig 호출 시 값을 복사하므로, receiver lifecycle
   검사와 일반 `*T` 파라미터 API를 유지하면서 wrapper 없이 값 시그니처를 바인딩할 수 있습니다.

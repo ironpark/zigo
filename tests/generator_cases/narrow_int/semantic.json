@@ -1,4 +1,5 @@
 {
+  "allocator": "std.heap.c_allocator",
   "functions": [
     {
       "doc": "Reports the display width of a codepoint.",
@@ -29,6 +30,41 @@
         "kind": "error_union",
         "payload": {"bits": 21, "is_usize": false, "kind": "int", "signed": false}
       },
+      "symbol": "ignored"
+    },
+    {
+      "doc": "Sums promoted codepoints after narrowing them in the shim.",
+      "name": "sumCodepoints",
+      "params": [
+        {"name": "values", "type": {"const": true, "element": {"bits": 21, "is_usize": false, "kind": "int", "signed": false}, "kind": "slice"}}
+      ],
+      "return": {"bits": 32, "is_usize": false, "kind": "int", "signed": false},
+      "symbol": "ignored"
+    },
+    {
+      "doc": "Fills promoted output elements through a narrow temporary.",
+      "name": "fillCodepoints",
+      "params": [
+        {"direction": "out", "name": "values", "type": {"const": false, "element": {"bits": 21, "is_usize": false, "kind": "int", "signed": false}, "kind": "slice"}, "written": "all"}
+      ],
+      "return": {"kind": "void"},
+      "symbol": "ignored"
+    },
+    {
+      "doc": "Returns caller-owned narrow codepoints.",
+      "name": "takeCodepoints",
+      "ownership": "caller",
+      "params": [],
+      "release": "freeCodepoints",
+      "return": {"const": true, "element": {"bits": 21, "is_usize": false, "kind": "int", "signed": false}, "kind": "slice"},
+      "symbol": "ignored"
+    },
+    {
+      "name": "freeCodepoints",
+      "params": [
+        {"name": "values", "type": {"const": true, "element": {"bits": 21, "is_usize": false, "kind": "int", "signed": false}, "kind": "slice"}}
+      ],
+      "return": {"kind": "void"},
       "symbol": "ignored"
     }
   ],

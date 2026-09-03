@@ -198,13 +198,16 @@
   `types`에 구체화된 타입을 이름과 함께 등록한다.
 - `anyerror`, C 호출 규약이 아닌 함수 포인터, Go 포인터를 포함할 수 있는 슬라이스처럼
   안전한 계약을 만들 수 없는 선언은 생성 단계에서 거부한다.
-- C가 이름 붙일 수 없는 정수 폭(`u21`, `i24`)은 파라미터·반환값·error union payload에서만
-  다음 2의 거듭제곱 폭으로 승격된다. 승격된 파라미터가 있는 함수는 공개 Go 시그니처가
+- C가 이름 붙일 수 없는 정수 폭(`u21`, `i24`)은 파라미터·반환값·error union payload와
+  직접 non-sentinel slice 원소에서 다음 2의 거듭제곱 폭으로 승격된다. 승격된 파라미터가 있는 함수는 공개 Go 시그니처가
   `error`를 하나 더 반환하고, 범위 검사는 cgo 호출 전에 Go에서 이뤄져 `*RangeError`
   (`errors.Is(err, ErrOutOfRange)`)로 돌아온다. shim의 범위 검사는 raw 패키지를 직접 부르는
   코드를 위한 두 번째 방어선으로 남는다.
-  `extern struct` 필드, slice 원소, 콜백 시그니처는 C로 바이트 그대로 비추므로 그 자리에서는
-  `ZIGO018`로 거부된다. 65비트 이상의 정수와 `f80`은 어디서도 지원하지 않는다.
+  narrow integer 입력·out slice는 `.allocator`로 원소 타입의 임시 버퍼를 만들며, 설정이 없으면
+  `ZIGO045`다. caller-owned 반환 slice는 `.release`가 있을 때 원소별 승격 복사하고, borrowed
+  반환과 optional/sentinel narrow slice는 `ZIGO018`로 거부한다. `extern struct`/value struct
+  field, union payload, callback 시그니처, 중첩 slice의 규칙은 바뀌지 않았다. 65비트 이상의
+  정수와 `f80`은 어디서도 지원하지 않는다.
 - 지원 타입과 정확한 하강 규칙은 [ABI 하강 규칙](.agent/design/03-lowering-rules.md)을 참고한다.
 
 ## 생성기 진단
@@ -293,6 +296,9 @@ error[ZIGO018]: unsupported integer width `u21` in parameter `cp`
   호출 범위에서만 빌린다.
 - `ZIGO044` — `.repr = .value`인 packed struct에 bool, 정수, 등록 enum, 등록 integer-backed
   packed struct 이외의 필드가 있다. 진단에 표시된 필드를 지원하는 값 타입으로 바꾼다.
+- `ZIGO045` — narrow integer를 직접 원소로 둔 입력·out slice의 임시 변환 버퍼에 쓸 allocator가
+  없다. 바인딩에 `.allocator = .c_allocator`, `.page_allocator`, `.smp_allocator` 또는 선언 경로를
+  지정한다.
 
 `ZIGO027`, `ZIGO028`, `ZIGO037`, `ZIGO038`은 reflection이 문서를 만들기 전에 걸리므로 `semantic.json` 자리가
 아니라 선언 경로를 가리키며, 생성기는 이 진단을 출력하고 종료한다.

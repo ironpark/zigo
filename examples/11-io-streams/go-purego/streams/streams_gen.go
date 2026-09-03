@@ -198,6 +198,31 @@ func Tee(r io.Reader, w io.Writer) (uint, error) {
 	return result, nil
 }
 
+// SumCodepoints
+// Sums Unicode scalar storage after the binding narrows each promoted Go
+// element into the `u21` representation used by Zig text code.
+func SumCodepoints(values []uint32) (uint32, error) {
+	for _, zigoValue := range values {
+		if zigoValue > 2097151 {
+			return 0, &RangeError{Operation: "SumCodepoints", Parameter: "values", Type: "u21"}
+		}
+	}
+	return raw.SumCodepoints(values), nil
+}
+
+// FillCodepoints
+// Writes narrow elements through a caller-owned output slice.
+func FillCodepoints(output []uint32) {
+	raw.FillCodepoints(output)
+}
+
+// TakeCodepoints
+// Returns caller-owned narrow storage; generated Go widens it before calling
+// `freeCodepoints` with the original allocation.
+func TakeCodepoints() []uint32 {
+	return raw.TakeCodepoints()
+}
+
 // NewSink creates a caller-owned Sink.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.

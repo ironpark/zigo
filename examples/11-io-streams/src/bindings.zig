@@ -2,6 +2,7 @@ const zigo = @import("zigo");
 const library = @import("streams");
 
 pub const bindings = zigo.define(.{
+    .allocator = .c_allocator,
     .root = library,
     .types = .{
         .{ .type = library.Document, .repr = .@"opaque" },
@@ -21,6 +22,14 @@ pub const bindings = zigo.define(.{
         .{ .path = "Document.load", .params = .{"r"}, .param_meta = .{ .r = .{ .buffer = 4096 } } },
         .{ .path = "root.banner", .params = .{ "w", "width" } },
         .{ .path = "root.tee", .params = .{ "r", "w" } },
+        .{ .path = "root.sumCodepoints", .params = .{"values"} },
+        .{
+            .path = "root.fillCodepoints",
+            .params = .{"output"},
+            .param_meta = .{ .output = .{ .direction = .out } },
+        },
+        .{ .path = "root.takeCodepoints", .returns = .caller, .release = "root.freeCodepoints" },
+        .{ .path = "root.freeCodepoints", .params = .{"values"} },
         // A method that hands a stream out. It generates `Write` and `Flush`
         // on the handle rather than a Go value standing for the pointer, so
         // `io.Copy(sink, src)` works and nothing outlives the call.

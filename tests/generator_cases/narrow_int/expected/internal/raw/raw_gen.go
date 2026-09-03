@@ -10,6 +10,7 @@ package raw
 #include "zigo_narrow_int.h"
 */
 import "C"
+import "unsafe"
 
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
@@ -31,4 +32,45 @@ func Decode(byte uint8) (uint32, int32) {
 	var outResult C.uint32_t
 	code := int32(C.zg_decode(C.uint8_t(byte), &outResult))
 	return uint32(outResult), code
+}
+// SumCodepoints calls the generated C ABI wrapper for zg_sum_codepoints.
+func SumCodepoints(values []uint32) uint32 {
+	var valuesZero C.uint32_t
+	valuesPtr := &valuesZero
+	if len(values) != 0 {
+		valuesPtr = (*C.uint32_t)(unsafe.Pointer(&values[0]))
+	}
+	return uint32(C.zg_sum_codepoints(valuesPtr, C.size_t(len(values))))
+}
+// FillCodepoints calls the generated C ABI wrapper for zg_fill_codepoints.
+func FillCodepoints(values []uint32) {
+	var valuesZero C.uint32_t
+	valuesPtr := &valuesZero
+	if len(values) != 0 {
+		valuesPtr = (*C.uint32_t)(unsafe.Pointer(&values[0]))
+	}
+	var valuesWritten C.size_t
+	C.zg_fill_codepoints(valuesPtr, C.size_t(len(values)), &valuesWritten)
+}
+// TakeCodepoints calls the generated C ABI wrapper for zg_take_codepoints.
+func TakeCodepoints() []uint32 {
+	var outResultPtr *C.uint32_t
+	var outResultLen C.size_t
+	C.zg_take_codepoints(&outResultPtr, &outResultLen)
+	var result []uint32
+	if outResultLen != 0 {
+		result = make([]uint32, int(outResultLen))
+		copy(result, unsafe.Slice((*uint32)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
+	}
+	C.zg_free_codepoints(outResultPtr, outResultLen)
+	return result
+}
+// FreeCodepoints calls the generated C ABI wrapper for zg_free_codepoints.
+func FreeCodepoints(values []uint32) {
+	var valuesZero C.uint32_t
+	valuesPtr := &valuesZero
+	if len(values) != 0 {
+		valuesPtr = (*C.uint32_t)(unsafe.Pointer(&values[0]))
+	}
+	C.zg_free_codepoints(valuesPtr, C.size_t(len(values)))
 }

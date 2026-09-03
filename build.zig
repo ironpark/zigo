@@ -608,7 +608,7 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     _ = unsupported_width.addOutputDirectoryArg("unsupported-width-output");
     unsupported_width.addArgs(&.{ "--package", "bad" });
     unsupported_width.expectExitCode(1);
-    unsupported_width.expectStdErrMatch("error[ZIGO018]: cannot promote integer width `u21` in the slice element of parameter `cps`");
+    unsupported_width.expectStdErrMatch("error[ZIGO045]: narrow integer slice parameter `cps` needs temporary storage");
     unsupported_width.expectStdErrMatch("--> semantic.json (unicode.codepointWidths)");
     test_step.dependOn(&unsupported_width.step);
 
@@ -623,7 +623,7 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     _ = located_diagnostic.addOutputDirectoryArg("located-diagnostic-output");
     located_diagnostic.addArgs(&.{ "--package", "bad" });
     located_diagnostic.expectExitCode(1);
-    located_diagnostic.expectStdErrMatch("error[ZIGO018]: cannot promote integer width `u21` in the slice element of parameter `cps`");
+    located_diagnostic.expectStdErrMatch("error[ZIGO045]: narrow integer slice parameter `cps` needs temporary storage");
     located_diagnostic.expectStdErrMatch("--> src/bindings.zig:12:5 (unicode.codepointWidths)");
     test_step.dependOn(&located_diagnostic.step);
 

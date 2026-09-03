@@ -1331,6 +1331,27 @@ fn sliceReturnElement(function: semantic.SemanticFn) ?semantic.TypeNode {
     };
 }
 
+test "narrow integer slice elements cross at their promoted width" {
+    var narrow: semantic.TypeNode = .{ .int = .{ .bits = 21, .signed = false } };
+    const slice: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &narrow } };
+    const params = [_]semantic.Parameter{.{ .name = "values", .type = slice }};
+    const functions = [_]semantic.SemanticFn{
+        .{ .name = "consume", .params = &params, .@"return" = .{ .void = {} }, .symbol = "zg_consume" },
+        .{ .name = "view", .params = &.{}, .@"return" = slice, .symbol = "zg_view" },
+    };
+    const document: semantic.Semantic = .{
+        .functions = &functions,
+        .package = "narrow",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try semanticDocument(arena.allocator(), document, "narrow", "zg", &.{});
+    try std.testing.expectEqual(@as(u16, 32), program.functions[0].params[0].scalar.pointer.child.unsigned_int);
+    try std.testing.expectEqual(@as(u16, 32), program.functions[1].params[0].scalar.pointer.child.pointer.child.unsigned_int);
+}
+
 /// The callback each userdata parameter belongs to. A callback that carries
 /// userdata is always followed immediately by its token, so the pairing is
 /// fixed by position rather than by name.

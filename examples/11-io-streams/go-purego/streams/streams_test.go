@@ -224,6 +224,35 @@ func TestBannerWritesThroughAFreeFunction(t *testing.T) {
 	}
 }
 
+func TestNarrowIntegerSlices(t *testing.T) {
+	values := []uint32{'A', 0x1f642, 0x10ffff}
+	got, err := SumCodepoints(values)
+	if err != nil {
+		t.Fatalf("SumCodepoints: %v", err)
+	}
+	if got != 'A'+0x1f642+0x10ffff {
+		t.Fatalf("SumCodepoints = %d", got)
+	}
+
+	output := make([]uint32, 5)
+	FillCodepoints(output)
+	want := []uint32{'A', 0x1f642, 0x10ffff, 'A', 0x1f642}
+	for i := range want {
+		if output[i] != want[i] {
+			t.Fatalf("FillCodepoints[%d] = %#x, want %#x", i, output[i], want[i])
+		}
+	}
+
+	owned := TakeCodepoints()
+	if len(owned) != 3 || owned[0] != 'Z' || owned[1] != 0x1f642 || owned[2] != 0x10ffff {
+		t.Fatalf("TakeCodepoints = %#v", owned)
+	}
+
+	if _, err := SumCodepoints([]uint32{0x200000}); !errors.Is(err, ErrOutOfRange) {
+		t.Fatalf("out-of-range SumCodepoints returned %v", err)
+	}
+}
+
 // Every call is call-scoped, so no handle may outlive it.
 func TestStreamHandlesAreReleased(t *testing.T) {
 	document := newDocumentWithLines(t, []string{"alpha"})

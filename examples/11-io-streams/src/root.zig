@@ -134,6 +134,34 @@ pub fn tee(r: *std.Io.Reader, w: *std.Io.Writer) LoadError!usize {
     };
 }
 
+/// Sums Unicode scalar storage after the binding narrows each promoted Go
+/// element into the `u21` representation used by Zig text code.
+pub fn sumCodepoints(values: []const u21) u32 {
+    var total: u32 = 0;
+    for (values) |value| total += value;
+    return total;
+}
+
+/// Writes narrow elements through a caller-owned output slice.
+pub fn fillCodepoints(output: []u21) void {
+    const sample = [_]u21{ 'A', 0x1f642, 0x10ffff };
+    for (output, 0..) |*value, index| value.* = sample[index % sample.len];
+}
+
+/// Returns caller-owned narrow storage; generated Go widens it before calling
+/// `freeCodepoints` with the original allocation.
+pub fn takeCodepoints() []const u21 {
+    const result = std.heap.c_allocator.alloc(u21, 3) catch @panic("out of memory");
+    result[0] = 'Z';
+    result[1] = 0x1f642;
+    result[2] = 0x10ffff;
+    return result;
+}
+
+pub fn freeCodepoints(values: []const u21) void {
+    std.heap.c_allocator.free(values);
+}
+
 test "a document round-trips through a fixed buffer" {
     const document = try Document.create();
     defer document.deinit();
@@ -164,4 +192,14 @@ test "a sink and a source hand their streams out" {
     var buffer: [8]u8 = undefined;
     try std.testing.expectEqual(@as(usize, 5), try source.reader().readSliceShort(&buffer));
     try std.testing.expectEqualStrings("hello", buffer[0..5]);
+}
+
+test "narrow codepoint slices round-trip" {
+    try std.testing.expectEqual(@as(u32, 'A' + 0x1f642), sumCodepoints(&.{ 'A', 0x1f642 }));
+    var output: [3]u21 = undefined;
+    fillCodepoints(&output);
+    try std.testing.expectEqualSlices(u21, &.{ 'A', 0x1f642, 0x10ffff }, &output);
+    const owned = takeCodepoints();
+    defer freeCodepoints(owned);
+    try std.testing.expectEqualSlices(u21, &.{ 'Z', 0x1f642, 0x10ffff }, owned);
 }

@@ -54,3 +54,26 @@ func Decode(byte uint8) (uint32, error) {
 	}
 	return result, nil
 }
+
+// SumCodepoints
+// Sums promoted codepoints after narrowing them in the shim.
+func SumCodepoints(values []uint32) (uint32, error) {
+	for _, zigoValue := range values {
+		if zigoValue > 2097151 {
+			return 0, &RangeError{Operation: "SumCodepoints", Parameter: "values", Type: "u21"}
+		}
+	}
+	return raw.SumCodepoints(values), nil
+}
+
+// FillCodepoints
+// Fills promoted output elements through a narrow temporary.
+func FillCodepoints(values []uint32) {
+	raw.FillCodepoints(values)
+}
+
+// TakeCodepoints
+// Returns caller-owned narrow codepoints.
+func TakeCodepoints() []uint32 {
+	return raw.TakeCodepoints()
+}

@@ -60,6 +60,10 @@ type nativeBindings struct {
 	fnDocumentLoad   func(unsafe.Pointer, uintptr, unsafe.Pointer, uintptr, uintptr, *uintptr) int32
 	fnBanner         func(uintptr, uintptr, uint32) int32
 	fnTee            func(uintptr, unsafe.Pointer, uintptr, uintptr, uintptr, uintptr, *uintptr) int32
+	fnSumCodepoints  func(unsafe.Pointer, uintptr) uint32
+	fnFillCodepoints func(unsafe.Pointer, uintptr, *uintptr)
+	fnTakeCodepoints func(*unsafe.Pointer, *uintptr)
+	fnFreeCodepoints func(unsafe.Pointer, uintptr)
 	fnSinkCreate     func(*unsafe.Pointer) int32
 	fnSinkWrite      func(unsafe.Pointer, unsafe.Pointer, uintptr, *int) int32
 	fnSinkFlush      func(unsafe.Pointer) int32
@@ -392,6 +396,22 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_tee_purego_v2", err)
 	}
+	addrSumCodepoints, err := resolveSymbol(handle, "zg_sum_codepoints")
+	if err != nil {
+		return fail("zg_sum_codepoints", err)
+	}
+	addrFillCodepoints, err := resolveSymbol(handle, "zg_fill_codepoints")
+	if err != nil {
+		return fail("zg_fill_codepoints", err)
+	}
+	addrTakeCodepoints, err := resolveSymbol(handle, "zg_take_codepoints")
+	if err != nil {
+		return fail("zg_take_codepoints", err)
+	}
+	addrFreeCodepoints, err := resolveSymbol(handle, "zg_free_codepoints")
+	if err != nil {
+		return fail("zg_free_codepoints", err)
+	}
 	addrSinkCreate, err := resolveSymbol(handle, "zg_sink_create")
 	if err != nil {
 		return fail("zg_sink_create", err)
@@ -434,6 +454,10 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnDocumentLoad, addrDocumentLoad)
 	purego.RegisterFunc(&next.fnBanner, addrBanner)
 	purego.RegisterFunc(&next.fnTee, addrTee)
+	purego.RegisterFunc(&next.fnSumCodepoints, addrSumCodepoints)
+	purego.RegisterFunc(&next.fnFillCodepoints, addrFillCodepoints)
+	purego.RegisterFunc(&next.fnTakeCodepoints, addrTakeCodepoints)
+	purego.RegisterFunc(&next.fnFreeCodepoints, addrFreeCodepoints)
 	purego.RegisterFunc(&next.fnSinkCreate, addrSinkCreate)
 	purego.RegisterFunc(&next.fnSinkWrite, addrSinkWrite)
 	purego.RegisterFunc(&next.fnSinkFlush, addrSinkFlush)
@@ -544,6 +568,49 @@ func Tee(rCallback, rHandle uintptr, rData []byte, wCallback, wHandle uintptr) (
 	code := bindings().fnTee(rCallback, rDataPtr, uintptr(len(rData)), rHandle, wCallback, wHandle, &outResult)
 	runtime.KeepAlive(rData)
 	return uint(outResult), code
+}
+
+// SumCodepoints calls the generated purego ABI wrapper for zg_sum_codepoints.
+func SumCodepoints(values []uint32) uint32 {
+	var valuesPtr unsafe.Pointer
+	if len(values) != 0 {
+		valuesPtr = unsafe.Pointer(&values[0])
+	}
+	result := bindings().fnSumCodepoints(valuesPtr, uintptr(len(values)))
+	return uint32(result)
+}
+
+// FillCodepoints calls the generated purego ABI wrapper for zg_fill_codepoints.
+func FillCodepoints(output []uint32) {
+	var outputPtr unsafe.Pointer
+	if len(output) != 0 {
+		outputPtr = unsafe.Pointer(&output[0])
+	}
+	var outputWritten uintptr
+	bindings().fnFillCodepoints(outputPtr, uintptr(len(output)), &outputWritten)
+}
+
+// TakeCodepoints calls the generated purego ABI wrapper for zg_take_codepoints.
+func TakeCodepoints() []uint32 {
+	var outResultPtr unsafe.Pointer
+	var outResultLen uintptr
+	bindings().fnTakeCodepoints(&outResultPtr, &outResultLen)
+	var result []uint32
+	if outResultLen != 0 {
+		result = make([]uint32, int(outResultLen))
+		copy(result, unsafe.Slice((*uint32)(outResultPtr), int(outResultLen)))
+	}
+	bindings().fnFreeCodepoints(outResultPtr, outResultLen)
+	return result
+}
+
+// FreeCodepoints calls the generated purego ABI wrapper for zg_free_codepoints.
+func FreeCodepoints(values []uint32) {
+	var valuesPtr unsafe.Pointer
+	if len(values) != 0 {
+		valuesPtr = unsafe.Pointer(&values[0])
+	}
+	bindings().fnFreeCodepoints(valuesPtr, uintptr(len(values)))
 }
 
 // SinkCreate calls the generated purego ABI wrapper for zg_sink_create.

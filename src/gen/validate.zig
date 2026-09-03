@@ -582,10 +582,35 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
     for (document.functions) |function| {
         for (function.params) |parameter| {
             if (parameter.type == .atomic_ptr) continue;
+            if (narrowSliceElement(parameter.type)) |_| {
+                if (document.allocator == null) return .{
+                    .severity = .@"error",
+                    .code = "ZIGO045",
+                    .message = try std.fmt.allocPrint(
+                        allocator,
+                        "narrow integer slice parameter `{s}` needs temporary storage",
+                        .{parameter.name},
+                    ),
+                    .site = functionSiteFor(function, try functionDeclarationAlloc(allocator, function)),
+                    .hint = "set `.allocator = .c_allocator`, `.page_allocator`, `.smp_allocator`, or a declaration path in the binding",
+                };
+            }
             if (try typeOffense(allocator, parameter.type, true)) |offense| {
                 const root = try std.fmt.allocPrint(allocator, "parameter `{s}`", .{parameter.name});
                 const location = try locationAlloc(allocator, offense.context, root);
                 return try offenseDiagnostic(allocator, function, offense, location);
+            }
+        }
+        if (narrowSliceElement(function.@"return")) |element| {
+            if (function.ownership != .caller or function.release == null) {
+                const spelling = try zigSpellingAlloc(allocator, element);
+                return .{
+                    .severity = .@"error",
+                    .code = "ZIGO018",
+                    .message = try std.fmt.allocPrint(allocator, "cannot promote integer width `{s}` in a borrowed slice return", .{spelling}),
+                    .site = functionSiteFor(function, try functionDeclarationAlloc(allocator, function)),
+                    .hint = "mark the slice return `.returns = .caller` and name its `.release`; borrowed narrow slices have no stable widened storage",
+                };
             }
         }
         if (try typeOffense(allocator, function.@"return", true)) |offense| {
@@ -1370,7 +1395,14 @@ fn typeOffense(allocator: std.mem.Allocator, node: semantic.TypeNode, promotable
                 else => Offense{ .node = node },
             };
         },
-        .slice => |value| return wrapOffense(allocator, try typeOffense(allocator, value.element.*, false), "the slice element"),
+        // A direct slice of narrow integers has a promoted C element type and
+        // is converted element by element by the shim. Sentinel slices retain
+        // their existing rule.
+        .slice => |value| return wrapOffense(
+            allocator,
+            try typeOffense(allocator, value.element.*, value.sentinel == null and value.element.* == .int),
+            "the slice element",
+        ),
         .error_union => |value| return wrapOffense(allocator, try typeOffense(allocator, value.payload.*, promotable), "the error payload"),
         .callback => |value| {
             for (value.params, 0..) |parameter, index| {
@@ -1414,7 +1446,7 @@ fn offenseDiagnostic(
             .code = "ZIGO018",
             .message = try std.fmt.allocPrint(allocator, "cannot promote integer width `{s}` in {s}", .{ spelling, location }),
             .site = functionSiteFor(function, declaration),
-            .hint = "zigo widens a narrow integer only as a whole parameter, return value, or error payload; use an 8, 16, 32, or 64-bit integer here",
+            .hint = "zigo widens narrow integers only as whole values or direct non-sentinel slice elements; value-struct fields, union payloads, callbacks, and nested slices must use 8, 16, 32, or 64 bits",
         } else .{
             .severity = .@"error",
             .code = "ZIGO018",
@@ -1800,6 +1832,21 @@ fn integerSupported(value: semantic.Int) bool {
 /// 64 bits crosses in the next C integer that exists.
 fn promotableInteger(value: semantic.Int) bool {
     return !value.is_usize and value.bits >= 1 and value.bits <= 64;
+}
+
+/// The narrow integer directly carried by a plain slice parameter or return.
+/// Optional and sentinel forms deliberately do not qualify: their ABI shapes
+/// are separate features and remain rejected by the ordinary type walk.
+fn narrowSliceElement(node: semantic.TypeNode) ?semantic.TypeNode {
+    const payload = if (node == .error_union) node.error_union.payload.* else node;
+    if (payload != .slice or payload.slice.sentinel != null) return null;
+    return if (abiNarrowInt(payload.slice.element.*)) payload.slice.element.* else null;
+}
+
+fn abiNarrowInt(node: semantic.TypeNode) bool {
+    if (node != .int) return false;
+    const value = node.int;
+    return promotableInteger(value) and !integerSupported(value);
 }
 
 fn floatSupported(value: semantic.Float) bool {
@@ -2447,7 +2494,7 @@ test "implemented diagnostic snapshots are stable" {
             .package = "bad",
             .prefix = "zg",
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO018]: cannot promote integer width `u21` in the slice element of parameter `cps`\n  --> semantic.json (widths)\n  hint: zigo widens a narrow integer only as a whole parameter, return value, or error payload; use an 8, 16, 32, or 64-bit integer here\n" },
+        }, .snapshot = "error[ZIGO045]: narrow integer slice parameter `cps` needs temporary storage\n  --> semantic.json (widths)\n  hint: set `.allocator = .c_allocator`, `.page_allocator`, `.smp_allocator`, or a declaration path in the binding\n" },
         .{ .document = .{
             .functions = &.{.{
                 .name = "onCodepoint",
@@ -2458,7 +2505,7 @@ test "implemented diagnostic snapshots are stable" {
             .package = "bad",
             .prefix = "zg",
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO018]: cannot promote integer width `u21` in callback parameter 0 of parameter `callback`\n  --> semantic.json (onCodepoint)\n  hint: zigo widens a narrow integer only as a whole parameter, return value, or error payload; use an 8, 16, 32, or 64-bit integer here\n" },
+        }, .snapshot = "error[ZIGO018]: cannot promote integer width `u21` in callback parameter 0 of parameter `callback`\n  --> semantic.json (onCodepoint)\n  hint: zigo widens narrow integers only as whole values or direct non-sentinel slice elements; value-struct fields, union payloads, callbacks, and nested slices must use 8, 16, 32, or 64 bits\n" },
         .{ .document = .{
             .package = "bad",
             .prefix = "zg",
@@ -2723,6 +2770,46 @@ test "a narrow integer is accepted where the shim can promote it" {
     var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer scratch.deinit();
     try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(scratch.allocator(), document));
+}
+
+test "narrow integer slices require an allocator and borrowed returns stay rejected" {
+    var narrow: semantic.TypeNode = .{ .int = .{ .bits = 21, .signed = false } };
+    const narrow_slice: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &narrow } };
+    const input_params = [_]semantic.Parameter{.{ .name = "text", .type = narrow_slice }};
+    const release_params = [_]semantic.Parameter{.{ .name = "value", .type = narrow_slice }};
+    const accepted_functions = [_]semantic.SemanticFn{
+        .{ .name = "width", .params = &input_params, .@"return" = .{ .void = {} }, .symbol = "zg_width" },
+        .{ .name = "take", .ownership = .caller, .params = &.{}, .release = "free", .@"return" = narrow_slice, .symbol = "zg_take" },
+        .{ .name = "free", .params = &release_params, .@"return" = .{ .void = {} }, .symbol = "zg_free" },
+    };
+    const accepted: semantic.Semantic = .{
+        .allocator = "std.heap.c_allocator",
+        .functions = &accepted_functions,
+        .package = "narrow",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(std.testing.allocator, accepted));
+
+    var missing_allocator = accepted;
+    missing_allocator.allocator = null;
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
+    const allocator_issue = (try findIssue(scratch.allocator(), missing_allocator)).?;
+    try std.testing.expectEqualStrings("ZIGO045", allocator_issue.code);
+    try std.testing.expect(std.mem.indexOf(u8, allocator_issue.hint, ".allocator") != null);
+
+    const borrowed_functions = [_]semantic.SemanticFn{.{
+        .name = "view",
+        .params = &.{},
+        .@"return" = narrow_slice,
+        .symbol = "zg_view",
+    }};
+    var borrowed = accepted;
+    borrowed.functions = &borrowed_functions;
+    const borrowed_issue = (try findIssue(scratch.allocator(), borrowed)).?;
+    try std.testing.expectEqualStrings("ZIGO018", borrowed_issue.code);
+    try std.testing.expect(std.mem.indexOf(u8, borrowed_issue.hint, "borrowed narrow slices") != null);
 }
 
 test "a release target may take the allocator zigo injects" {

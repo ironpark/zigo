@@ -200,6 +200,51 @@ func Tee(rHandle uintptr, rData []byte, wHandle uintptr) (uint, int32) {
 	return uint(outResult), code
 }
 
+// SumCodepoints calls the generated C ABI wrapper for zg_sum_codepoints.
+func SumCodepoints(values []uint32) uint32 {
+	var valuesZero C.uint32_t
+	valuesPtr := &valuesZero
+	if len(values) != 0 {
+		valuesPtr = (*C.uint32_t)(unsafe.Pointer(&values[0]))
+	}
+	return uint32(C.zg_sum_codepoints(valuesPtr, C.size_t(len(values))))
+}
+
+// FillCodepoints calls the generated C ABI wrapper for zg_fill_codepoints.
+func FillCodepoints(output []uint32) {
+	var outputZero C.uint32_t
+	outputPtr := &outputZero
+	if len(output) != 0 {
+		outputPtr = (*C.uint32_t)(unsafe.Pointer(&output[0]))
+	}
+	var outputWritten C.size_t
+	C.zg_fill_codepoints(outputPtr, C.size_t(len(output)), &outputWritten)
+}
+
+// TakeCodepoints calls the generated C ABI wrapper for zg_take_codepoints.
+func TakeCodepoints() []uint32 {
+	var outResultPtr *C.uint32_t
+	var outResultLen C.size_t
+	C.zg_take_codepoints(&outResultPtr, &outResultLen)
+	var result []uint32
+	if outResultLen != 0 {
+		result = make([]uint32, int(outResultLen))
+		copy(result, unsafe.Slice((*uint32)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
+	}
+	C.zg_free_codepoints(outResultPtr, outResultLen)
+	return result
+}
+
+// FreeCodepoints calls the generated C ABI wrapper for zg_free_codepoints.
+func FreeCodepoints(values []uint32) {
+	var valuesZero C.uint32_t
+	valuesPtr := &valuesZero
+	if len(values) != 0 {
+		valuesPtr = (*C.uint32_t)(unsafe.Pointer(&values[0]))
+	}
+	C.zg_free_codepoints(valuesPtr, C.size_t(len(values)))
+}
+
 // SinkCreate calls the generated C ABI wrapper for zg_sink_create.
 func SinkCreate() (unsafe.Pointer, int32) {
 	var outResult *C.zg_sink

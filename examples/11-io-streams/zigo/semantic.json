@@ -1,4 +1,5 @@
 {
+  "allocator": "std.heap.c_allocator",
   "constructors": [
     {
       "deinit": "deinit",
@@ -296,6 +297,139 @@
         "column": 8
       },
       "symbol": "zg_tee"
+    },
+    {
+      "doc": "Sums Unicode scalar storage after the binding narrows each promoted Go\nelement into the `u21` representation used by Zig text code.",
+      "name": "sumCodepoints",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "values",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 139,
+            "column": 22
+          },
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 21,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": {
+        "bits": 32,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 139,
+        "column": 8
+      },
+      "symbol": "zg_sum_codepoints"
+    },
+    {
+      "doc": "Writes narrow elements through a caller-owned output slice.",
+      "name": "fillCodepoints",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "out",
+          "name": "output",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 146,
+            "column": 23
+          },
+          "type": {
+            "const": false,
+            "element": {
+              "bits": 21,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": {
+        "kind": "void"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 146,
+        "column": 8
+      },
+      "symbol": "zg_fill_codepoints"
+    },
+    {
+      "doc": "Returns caller-owned narrow storage; generated Go widens it before calling\n`freeCodepoints` with the original allocation.",
+      "name": "takeCodepoints",
+      "ownership": "caller",
+      "params": [],
+      "release": "freeCodepoints",
+      "return": {
+        "const": true,
+        "element": {
+          "bits": 21,
+          "is_usize": false,
+          "kind": "int",
+          "signed": false
+        },
+        "kind": "slice"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 153,
+        "column": 8
+      },
+      "symbol": "zg_take_codepoints"
+    },
+    {
+      "name": "freeCodepoints",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "values",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 161,
+            "column": 23
+          },
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 21,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": {
+        "kind": "void"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 161,
+        "column": 8
+      },
+      "symbol": "zg_free_codepoints"
     },
     {
       "name": "create",

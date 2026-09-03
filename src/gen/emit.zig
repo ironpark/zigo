@@ -354,7 +354,8 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         try writeCallbackBitBindings(allocator, writer, program, function);
         try writeShimStreamSetups(allocator, writer, program, function);
         try writeShimStringSliceSetups(allocator, writer, function);
-        try writeNarrowIntegerGuards(writer, function);
+        try writeNarrowIntegerGuards(writer, program, function);
+        try writeNarrowSliceSetups(writer, program, function);
         try writer.writeAll("    ");
 
         if (function.origin.field_access) |field_access| {
@@ -370,7 +371,10 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         if (function.origin.@"return" == .slice and !(function.ret_string == .c_string)) {
             try writer.writeAll("const result = ");
             try writeTargetCall(allocator, writer, program, function);
-            try writer.writeAll(";\n    out_result_ptr.* = result.ptr;\n    out_result_len.* = result.len;\n}\n");
+            try writer.writeAll(";\n");
+            try writeShimSliceReturn(writer, program, function, "result");
+            try writeSliceWrittenAssignments(writer, function);
+            try writer.writeAll("}\n");
             continue;
         }
 
@@ -443,7 +447,7 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
                 // early `return` above leaves before either assignment, so a
                 // caller that checks the code first never reads them.
                 if (error_union.payload.* == .slice) {
-                    try writer.writeAll("    out_result_ptr.* = result.ptr;\n    out_result_len.* = result.len;\n");
+                    try writeShimSliceReturn(writer, program, function, "result");
                 } else if (semantic.isOptionalSlice(error_union.payload.*) and
                     !(function.ret_string == .c_string))
                 {
@@ -1062,8 +1066,14 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                 try writer.print("zigoString{d}Strings", .{index})
             else if (function.paramString(index).role == .c_string)
                 try writer.writeAll(parameter.name)
-            else
-                try writer.print("if ({s}_len == 0) &.{{}} else {s}_ptr[0..{s}_len]", .{ parameter.name, parameter.name, parameter.name }),
+            else if (narrowSliceElement(parameter.type) != null and !isNarrowSliceReleaseTarget(program, function))
+                try writer.print("zigo_{s}_slice", .{parameter.name})
+            else if (narrowSliceElement(parameter.type)) |element| {
+                try writer.writeAll("if (");
+                try writer.print("{0s}_len == 0) &.{{}} else @as([*]{1s}", .{ parameter.name, if (parameter.type.slice.@"const") "const " else "" });
+                try writeNarrowZigType(writer, element);
+                try writer.print(", @ptrCast({0s}_ptr))[0..{0s}_len]", .{parameter.name});
+            } else try writer.print("if ({s}_len == 0) &.{{}} else {s}_ptr[0..{s}_len]", .{ parameter.name, parameter.name, parameter.name }),
             .value_struct => |value| if (enumDecl(program, value.ref).kind == .tagged_union)
                 try writeTaggedUnionValueArgument(allocator, writer, program, function, index, parameter.name)
             else if (isPackedValue(program, parameter.type))
@@ -1370,7 +1380,7 @@ fn writeNarrowGuard(writer: *std.Io.Writer, name: []const u8, type_node: semanti
     }
 }
 
-fn writeNarrowIntegerGuards(writer: *std.Io.Writer, function: abi.AbiFn) !void {
+fn writeNarrowIntegerGuards(writer: *std.Io.Writer, program: abi.Program, function: abi.AbiFn) !void {
     for (function.origin.params, 0..) |parameter, parameter_index| {
         if (parameter.flatten) |fields| {
             for (fields, 0..) |field, field_index| {
@@ -1379,8 +1389,69 @@ fn writeNarrowIntegerGuards(writer: *std.Io.Writer, function: abi.AbiFn) !void {
             }
             continue;
         }
+        if (narrowSliceElement(parameter.type)) |element| {
+            if (parameter.direction == .out or isNarrowSliceReleaseTarget(program, function)) continue;
+            const narrow = element.int;
+            const spelling: u8 = if (narrow.signed) 'i' else 'u';
+            try writer.print("    for (0..{0s}_len) |zigo_i| {{\n", .{parameter.name});
+            if (narrow.signed) {
+                try writer.print(
+                    "        if ({0s}_ptr[zigo_i] < std.math.minInt({1c}{2d}) or {0s}_ptr[zigo_i] > std.math.maxInt({1c}{2d})) @panic(\"zigo: argument `{0s}` is out of range for {1c}{2d}\");\n",
+                    .{ parameter.name, spelling, narrow.bits },
+                );
+            } else {
+                try writer.print(
+                    "        if ({0s}_ptr[zigo_i] > std.math.maxInt({1c}{2d})) @panic(\"zigo: argument `{0s}` is out of range for {1c}{2d}\");\n",
+                    .{ parameter.name, spelling, narrow.bits },
+                );
+            }
+            try writer.writeAll("    }\n");
+            continue;
+        }
         try writeNarrowGuard(writer, parameter.name, parameter.type);
     }
+}
+
+fn writeNarrowSliceSetups(writer: *std.Io.Writer, program: abi.Program, function: abi.AbiFn) !void {
+    const allocator = program.allocator orelse return;
+    for (function.origin.params) |parameter| {
+        const element = narrowSliceElement(parameter.type) orelse continue;
+        if (isNarrowSliceReleaseTarget(program, function)) continue;
+        try writer.print("    const zigo_{0s}_slice = {1s}.alloc(", .{ parameter.name, allocator });
+        try writeNarrowZigType(writer, element);
+        try writer.print(", {0s}_len) catch @panic(\"zigo: out of memory converting argument `{0s}`\");\n", .{parameter.name});
+        try writer.print("    defer {s}.free(zigo_{s}_slice);\n", .{ allocator, parameter.name });
+        if (parameter.direction == .out) continue;
+        try writer.print("    for (zigo_{0s}_slice, 0..) |*zigo_value, zigo_i| zigo_value.* = @intCast({0s}_ptr[zigo_i]);\n", .{parameter.name});
+    }
+}
+
+fn narrowSliceElement(node: semantic.TypeNode) ?semantic.TypeNode {
+    if (node != .slice or node.slice.sentinel != null) return null;
+    return if (abi.narrowInt(node.slice.element.*) != null) node.slice.element.* else null;
+}
+
+fn writeNarrowZigType(writer: *std.Io.Writer, node: semantic.TypeNode) !void {
+    const integer = node.int;
+    try writer.print("{c}{d}", .{ if (integer.signed) @as(u8, 'i') else @as(u8, 'u'), integer.bits });
+}
+
+fn isNarrowSliceReleaseTarget(program: abi.Program, function: abi.AbiFn) bool {
+    if (!isReleaseTarget(program, function.origin.*)) return false;
+    for (function.origin.params) |parameter| if (narrowSliceElement(parameter.type) != null) return true;
+    return false;
+}
+
+fn writeShimSliceReturn(writer: *std.Io.Writer, program: abi.Program, function: abi.AbiFn, expression: []const u8) !void {
+    if (function.slice_return_element) |element| if (abi.narrowInt(element) != null) {
+        try writer.writeAll("    const zigo_result_ptr: [*]");
+        try writeZigType(writer, program, semanticScalar(program, element));
+        try writer.print(" = @ptrCast(@constCast({s}.ptr));\n", .{expression});
+        try writer.print("    for ({0s}, 0..) |zigo_value, zigo_i| zigo_result_ptr[zigo_i] = @intCast(zigo_value);\n", .{expression});
+        try writer.print("    out_result_ptr.* = zigo_result_ptr;\n    out_result_len.* = {s}.len;\n", .{expression});
+        return;
+    };
+    try writer.print("    out_result_ptr.* = {0s}.ptr;\n    out_result_len.* = {0s}.len;\n", .{expression});
 }
 
 /// Reports how much of each `.all` slice the caller may read back: the whole
@@ -1391,6 +1462,14 @@ fn writeNarrowIntegerGuards(writer: *std.Io.Writer, function: abi.AbiFn) !void {
 /// afterwards.
 fn writeSliceWrittenAssignments(writer: *std.Io.Writer, function: abi.AbiFn) !void {
     for (function.origin.params) |parameter| {
+        if (parameter.direction == .out and narrowSliceElement(parameter.type) != null) {
+            const count = if (parameter.writtenHint() == .@"return") "@min(result, " else null;
+            if (count) |prefix| {
+                try writer.print("    for (zigo_{0s}_slice[0..{1s}{0s}_len)], 0..) |zigo_value, zigo_i| {0s}_ptr[zigo_i] = @intCast(zigo_value);\n", .{ parameter.name, prefix });
+            } else {
+                try writer.print("    for (zigo_{0s}_slice, 0..) |zigo_value, zigo_i| {0s}_ptr[zigo_i] = @intCast(zigo_value);\n", .{parameter.name});
+            }
+        }
         if (!hasWrittenOutParam(parameter)) continue;
         try writer.print("    {0s}_written.* = {0s}_len;\n", .{parameter.name});
     }
@@ -6654,6 +6733,7 @@ fn writeCheckedErrorReturn(
 fn hasNarrowIntParameter(function: semantic.SemanticFn) bool {
     for (function.params) |parameter| {
         if (abi.narrowInt(parameter.type) != null) return true;
+        if (parameter.direction == .in and narrowSliceElement(parameter.type) != null) return true;
         if (parameter.flatten) |fields| for (fields) |field| {
             const node = if (field.type == .optional) field.type.optional.child.* else field.type;
             if (abi.narrowInt(node) != null) return true;
@@ -6725,6 +6805,28 @@ fn renderRangeChecks(
             }
             continue;
         }
+        if (parameter.direction == .in) if (narrowSliceElement(parameter.type)) |element| {
+            const narrow = element.int;
+            const name = go_names[parameter_index];
+            const spelling: u8 = if (narrow.signed) 'i' else 'u';
+            try writer.print("\tfor _, zigoValue := range {s} {{\n", .{name});
+            if (narrow.signed) {
+                const limit = @as(i128, 1) << @intCast(narrow.bits - 1);
+                try writer.print("\t\tif zigoValue < {d} || zigoValue > {d} {{\n\t\t\t", .{ -limit, limit - 1 });
+            } else {
+                const limit = (@as(u128, 1) << @intCast(narrow.bits)) - 1;
+                try writer.print("\t\tif zigoValue > {d} {{\n\t\t\t", .{limit});
+            }
+            var expression: std.Io.Writer.Allocating = .init(allocator);
+            defer expression.deinit();
+            try expression.writer.print(
+                "&RangeError{{Operation: \"{s}\", Parameter: \"{s}\", Type: \"{c}{d}\"}}",
+                .{ operation, name, spelling, narrow.bits },
+            );
+            try writeCheckedErrorReturn(scope, writer, function.origin.*, constructor, expression.written());
+            try writer.writeAll("\t\t}\n\t}\n");
+            continue;
+        };
         try writeRangeCheck(scope, allocator, writer, function, go_names[parameter_index], parameter.type, operation, constructor);
     }
 }
@@ -9496,6 +9598,48 @@ test "a stream parameter becomes a shim adapter and a fixed callback ABI" {
     const stream_error = std.mem.indexOf(u8, public, "zigoStreamError(\"Document.Dump\", \"w\", wHandle)").?;
     const status = std.mem.indexOf(u8, public, "errorForCode(\"Document.Dump\"").?;
     try std.testing.expect(rethrow < stream_error and stream_error < status);
+}
+
+test "narrow integer slices use promoted ABI elements and shim buffers" {
+    var narrow: semantic.TypeNode = .{ .int = .{ .bits = 21, .signed = false } };
+    const input_slice: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &narrow } };
+    const output_slice: semantic.TypeNode = .{ .slice = .{ .@"const" = false, .element = &narrow } };
+    const input_params = [_]semantic.Parameter{.{ .name = "values", .type = input_slice }};
+    const output_params = [_]semantic.Parameter{.{ .direction = .out, .name = "output", .type = output_slice }};
+    const release_params = [_]semantic.Parameter{.{ .name = "values", .type = input_slice }};
+    const functions = [_]semantic.SemanticFn{
+        .{ .name = "sum", .params = &input_params, .@"return" = .{ .int = .{ .bits = 32, .signed = false } }, .symbol = "zg_sum" },
+        .{ .name = "fill", .params = &output_params, .@"return" = .{ .void = {} }, .symbol = "zg_fill" },
+        .{ .name = "take", .ownership = .caller, .params = &.{}, .release = "free", .@"return" = input_slice, .symbol = "zg_take" },
+        .{ .name = "free", .params = &release_params, .@"return" = .{ .void = {} }, .symbol = "zg_free" },
+    };
+    const document: semantic.Semantic = .{
+        .allocator = "std.heap.c_allocator",
+        .functions = &functions,
+        .package = "narrow_slice",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try @import("lower").semanticDocument(arena.allocator(), document, "narrow_slice", "zg", &.{});
+
+    const shim = try renderForTest(renderShim, program);
+    defer std.testing.allocator.free(shim);
+    try std.testing.expect(std.mem.indexOf(u8, shim, "export fn zg_sum_impl(values_ptr: [*c]const u32, values_len: usize) u32") != null);
+    try std.testing.expect(std.mem.indexOf(u8, shim, "const zigo_values_slice = std.heap.c_allocator.alloc(u21, values_len)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, shim, "target.sum(zigo_values_slice)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, shim, "const zigo_output_slice = std.heap.c_allocator.alloc(u21, output_len)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, shim, "output_ptr[zigo_i] = @intCast(zigo_value)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, shim, "const zigo_result_ptr: [*]u32 = @ptrCast(@constCast(result.ptr));") != null);
+    try std.testing.expect(std.mem.indexOf(u8, shim, "target.free(if (values_len == 0) &.{} else @as([*]const u21, @ptrCast(values_ptr))[0..values_len])") != null);
+
+    const public = try renderForTest(renderPublic, program);
+    defer std.testing.allocator.free(public);
+    try std.testing.expect(std.mem.indexOf(u8, public, "func Sum(values []uint32) (uint32, error)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public, "for _, zigoValue := range values") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public, "func Fill(output []uint32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public, "func Take() []uint32") != null);
 }
 
 test "shared lifecycle is opt-in and contains cross-package identities" {

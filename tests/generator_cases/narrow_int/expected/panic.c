@@ -77,3 +77,48 @@ ZIGO_EXPORT int32_t zg_decode(uint8_t byte, uint32_t * out_result) {
     zg_panic_active = 0;
     return result;
 }
+
+uint32_t zg_sum_codepoints_impl(const uint32_t * values_ptr, size_t values_len);
+ZIGO_EXPORT uint32_t zg_sum_codepoints(const uint32_t * values_ptr, size_t values_len) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        zg_panic_fatal();
+    }
+    uint32_t result = zg_sum_codepoints_impl(values_ptr, values_len);
+    zg_panic_active = 0;
+    return result;
+}
+
+void zg_fill_codepoints_impl(uint32_t * values_ptr, size_t values_len, size_t * values_written);
+ZIGO_EXPORT void zg_fill_codepoints(uint32_t * values_ptr, size_t values_len, size_t * values_written) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        zg_panic_fatal();
+    }
+zg_fill_codepoints_impl(values_ptr, values_len, values_written);
+    zg_panic_active = 0;
+}
+
+void zg_take_codepoints_impl(const uint32_t * * out_result_ptr, size_t * out_result_len);
+ZIGO_EXPORT void zg_take_codepoints(const uint32_t * * out_result_ptr, size_t * out_result_len) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        zg_panic_fatal();
+    }
+zg_take_codepoints_impl(out_result_ptr, out_result_len);
+    zg_panic_active = 0;
+}
+
+void zg_free_codepoints_impl(const uint32_t * values_ptr, size_t values_len);
+ZIGO_EXPORT void zg_free_codepoints(const uint32_t * values_ptr, size_t values_len) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        zg_panic_fatal();
+    }
+zg_free_codepoints_impl(values_ptr, values_len);
+    zg_panic_active = 0;
+}
