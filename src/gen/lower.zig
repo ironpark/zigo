@@ -29,6 +29,10 @@ pub fn semanticDocumentForBackend(
     const functions = try allocator.alloc(abi.AbiFn, document.functions.len);
     for (document.functions, 0..) |*function, function_index| {
         var params: std.ArrayList(abi.AbiParam) = .empty;
+        // Where each flattened parameter's fields begin, so no emitter has to
+        // search `params` for the field it is rendering.
+        const flatten_start = try allocator.alloc(?usize, function.params.len);
+        @memset(flatten_start, null);
         if (function.receiver) |receiver| {
             const child = try allocator.create(abi.AbiScalar);
             child.* = .{ .@"opaque" = try lowerOpaque(allocator, prefix, receiver) };
@@ -44,6 +48,7 @@ pub fn semanticDocumentForBackend(
             // from the C signature and from everything derived from it.
             if (parameter.injected != null) continue;
             if (parameter.flatten) |fields| {
+                flatten_start[parameter_index] = params.items.len;
                 for (fields, 0..) |field, field_index| {
                     const name = try flattenedFieldNameAlloc(allocator, function.*, parameter_index, field.name);
                     const scalar = if (field.type == .optional) blk: {
@@ -372,6 +377,7 @@ pub fn semanticDocumentForBackend(
         else
             base_symbol;
         functions[function_index] = .{
+            .flatten_start = flatten_start,
             .symbol = symbol,
             .params = try params.toOwnedSlice(allocator),
             .ret = return_scalar,
@@ -412,6 +418,8 @@ pub fn semanticDocumentForBackend(
             }
         }
     }
+    const handles = try lowerHandles(allocator, document, prefix);
+    try numberRetainedCallbackSlots(allocator, document, functions, handles);
     const projections = try lowerTaggedUnionProjections(allocator, document, prefix);
     const snapshots = try lowerTaggedUnionSnapshots(allocator, document, prefix);
     return .{
@@ -423,8 +431,10 @@ pub fn semanticDocumentForBackend(
         .io = document.io,
         .enums = try lowerEnums(allocator, document, prefix),
         .error_codes = error_codes,
-        .handles = try lowerHandles(allocator, document, prefix),
+        .handles = handles,
         .functions = functions,
+        .live_fields = try lowerLiveFields(allocator, document),
+        .packed_structs = try lowerPackedStructs(allocator, document),
         .package = package,
         .packages = document.packages,
         .prefix = prefix,
@@ -894,13 +904,120 @@ fn lowerOpaque(allocator: std.mem.Allocator, prefix: []const u8, name: []const u
 
 /// The handle typedefs the header declares, in declaration order. A tagged
 /// union is a handle too: C only ever holds a pointer to it.
-fn lowerHandles(allocator: std.mem.Allocator, document: semantic.Semantic, prefix: []const u8) ![]const abi.AbiOpaque {
+fn lowerHandles(allocator: std.mem.Allocator, document: semantic.Semantic, prefix: []const u8) ![]abi.AbiOpaque {
     var handles: std.ArrayList(abi.AbiOpaque) = .empty;
     for (document.types) |declaration| {
         if (declaration.kind != .@"opaque" and declaration.kind != .tagged_union) continue;
         try handles.append(allocator, try lowerOpaque(allocator, prefix, declaration.name));
     }
     return handles.toOwnedSlice(allocator);
+}
+
+/// Numbers every retained callback slot once. A slot belongs to the handle the
+/// call transfers the callback to: the constructed type for an initialiser or
+/// a caller-owned handle return, the receiver otherwise. Within one owner the
+/// numbering walks the functions in program order and, inside a function, the
+/// retained callback parameters in parameter order -- the order generated Go
+/// reads its handle array in.
+fn numberRetainedCallbackSlots(
+    allocator: std.mem.Allocator,
+    document: semantic.Semantic,
+    functions: []abi.AbiFn,
+    handles: []abi.AbiOpaque,
+) !void {
+    const tables = try allocator.alloc([]?usize, functions.len);
+    for (functions, 0..) |lowered, index| {
+        tables[index] = try allocator.alloc(?usize, lowered.origin.params.len);
+        @memset(tables[index], null);
+    }
+    for (handles) |*handle| {
+        var slot: usize = 0;
+        for (functions, 0..) |lowered, index| {
+            const owner = retainedCallbackOwner(document, lowered.origin.*) orelse continue;
+            if (!std.mem.eql(u8, owner, handle.name)) continue;
+            for (lowered.origin.params, 0..) |parameter, parameter_index| {
+                if (parameter.type != .callback or parameter.retention != .retained) continue;
+                tables[index][parameter_index] = slot;
+                slot += 1;
+            }
+        }
+        handle.retained_callback_slots = slot;
+    }
+    for (functions, 0..) |*lowered, index| lowered.callback_slots = tables[index];
+}
+
+fn retainedCallbackOwner(document: semantic.Semantic, function: semantic.SemanticFn) ?[]const u8 {
+    var retains = false;
+    for (function.params) |parameter| {
+        if (parameter.type == .callback and parameter.retention == .retained) retains = true;
+    }
+    if (!retains) return null;
+    for (document.constructors) |constructor| {
+        if (std.mem.eql(u8, constructor.init, function.name) and
+            std.mem.eql(u8, constructor.type, function.goOwner() orelse "")) return constructor.type;
+    }
+    if (ownedOpaqueReturn(document, function)) |owned| return owned;
+    return function.receiver;
+}
+
+/// The handle type a caller-owned return hands over, when that type is one the
+/// document constructs.
+fn ownedOpaqueReturn(document: semantic.Semantic, function: semantic.SemanticFn) ?[]const u8 {
+    if (function.ownership != .caller) return null;
+    const node = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
+    if (node != .opaque_ptr) return null;
+    for (document.constructors) |constructor| {
+        if (std.mem.eql(u8, constructor.type, node.opaque_ptr.ref)) return node.opaque_ptr.ref;
+    }
+    return null;
+}
+
+/// The members `omit` left standing, per declaration. Applying the rule here
+/// keeps every emitter loop a plain walk over what the binding exposes.
+fn lowerLiveFields(allocator: std.mem.Allocator, document: semantic.Semantic) ![]const abi.AbiLiveFields {
+    const entries = try allocator.alloc(abi.AbiLiveFields, document.types.len);
+    for (document.types, 0..) |declaration, index| {
+        var fields: std.ArrayList(semantic.TypeField) = .empty;
+        for (declaration.fields) |field| {
+            if (declaration.variantOmitted(field.name)) continue;
+            try fields.append(allocator, field);
+        }
+        entries[index] = .{ .type_name = declaration.name, .fields = try fields.toOwnedSlice(allocator) };
+    }
+    return entries;
+}
+
+/// The bit layout of every `packed struct`: fields pack from the least
+/// significant bit upwards, in declaration order, each taking its declared
+/// width.
+fn lowerPackedStructs(allocator: std.mem.Allocator, document: semantic.Semantic) ![]const abi.AbiPacked {
+    var packed_structs: std.ArrayList(abi.AbiPacked) = .empty;
+    for (document.types) |declaration| {
+        if (declaration.kind != .value_struct or declaration.layout != .@"packed") continue;
+        const fields = try allocator.alloc(abi.AbiPacked.Field, declaration.fields.len);
+        var bit_offset: u16 = 0;
+        for (declaration.fields, 0..) |field, index| {
+            const bits = packedBitWidth(document, field.type.?);
+            fields[index] = .{
+                .name = field.name,
+                .bit_offset = bit_offset,
+                .bits = bits,
+                .mask = if (bits == 64) std.math.maxInt(u64) else (@as(u64, 1) << @intCast(bits)) - 1,
+            };
+            bit_offset += bits;
+        }
+        try packed_structs.append(allocator, .{ .name = declaration.name, .fields = fields });
+    }
+    return packed_structs.toOwnedSlice(allocator);
+}
+
+fn packedBitWidth(document: semantic.Semantic, node: semantic.TypeNode) u16 {
+    return switch (node) {
+        .bool => 1,
+        .int => |value| value.bits,
+        .@"enum" => |value| packedBitWidth(document, typeDeclaration(document, value.ref).tag_type.?),
+        else => unreachable,
+    };
 }
 
 /// The enum typedefs and their member constants. The constant name is already
@@ -1789,4 +1906,152 @@ test "an error-union slice payload lowers to the plain slice return out paramete
     try std.testing.expectEqual(abi.AbiParam.Role.return_slice_length, checked.params[1].role);
     try std.testing.expect(checked.params[1].scalar.pointer.child.* == .usize);
     try std.testing.expectEqual(@as(i32, 7), checked.errors[0].code);
+}
+
+test "retained callback slots are numbered per owning handle in declaration order" {
+    var callback_result: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+    const callback: semantic.TypeNode = .{ .callback = .{
+        .has_userdata = false,
+        .params = &.{},
+        .@"return" = &callback_result,
+    } };
+    const handle: semantic.TypeNode = .{ .opaque_ptr = .{ .ref = "Watcher", .nullable = false, .@"const" = false } };
+    const document: semantic.Semantic = .{
+        .constructors = &.{.{ .deinit = "deinit", .init = "init", .type = "Watcher" }},
+        .functions = &.{
+            .{
+                .name = "init",
+                .namespace = "Watcher",
+                .ownership = .caller,
+                .params = &.{
+                    .{ .name = "onStart", .retention = .retained, .type = callback },
+                    .{ .name = "onStop", .retention = .retained, .type = callback },
+                },
+                .@"return" = handle,
+                .symbol = "ignored",
+            },
+            .{
+                .name = "onTick",
+                .params = &.{.{ .name = "handler", .retention = .retained, .type = callback }},
+                .receiver = "Watcher",
+                .@"return" = .{ .void = {} },
+                .symbol = "ignored",
+            },
+            // Borrowed callbacks take no slot, so they do not shift the
+            // numbering of the retained ones that follow.
+            .{
+                .name = "each",
+                .params = &.{.{ .name = "visit", .type = callback }},
+                .receiver = "Watcher",
+                .@"return" = .{ .void = {} },
+                .symbol = "ignored",
+            },
+        },
+        .package = "watch",
+        .prefix = "zg",
+        .types = &.{.{ .kind = .@"opaque", .name = "Watcher" }},
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try semanticDocument(arena.allocator(), document, "watch", "zg", &.{});
+
+    try std.testing.expectEqual(@as(usize, 3), program.retainedCallbackSlotCount("Watcher"));
+    try std.testing.expectEqual(@as(?usize, 0), program.functions[0].callbackSlot(0));
+    try std.testing.expectEqual(@as(?usize, 1), program.functions[0].callbackSlot(1));
+    try std.testing.expectEqual(@as(?usize, 2), program.functions[1].callbackSlot(0));
+    try std.testing.expectEqual(@as(?usize, null), program.functions[2].callbackSlot(0));
+    try std.testing.expectEqual(@as(usize, 0), program.retainedCallbackSlotCount("Missing"));
+}
+
+test "flattened fields are reachable by parameter and field index" {
+    const document: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "resize",
+            .params = &.{
+                .{ .name = "scale", .type = .{ .float = .{ .bits = 32 } } },
+                .{
+                    .flatten = &.{
+                        .{ .name = "width", .type = .{ .int = .{ .bits = 32, .signed = true } } },
+                        .{ .name = "height", .type = .{ .int = .{ .bits = 32, .signed = true } } },
+                    },
+                    .name = "size",
+                    .type = .{ .value_struct = .{ .ref = "Size" } },
+                },
+            },
+            .@"return" = .{ .void = {} },
+            .symbol = "ignored",
+        }},
+        .package = "layout",
+        .prefix = "zg",
+        .types = &.{.{
+            .fields = &.{
+                .{ .name = "width", .type = .{ .int = .{ .bits = 32, .signed = true } } },
+                .{ .name = "height", .type = .{ .int = .{ .bits = 32, .signed = true } } },
+            },
+            .kind = .value_struct,
+            .layout = .@"extern",
+            .name = "Size",
+        }},
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try semanticDocument(arena.allocator(), document, "layout", "zg", &.{});
+
+    const resize = program.functions[0];
+    try std.testing.expectEqual(@as(?usize, null), resize.flatten_start[0]);
+    try std.testing.expectEqualStrings("width", resize.flattenedParam(1, 0).name);
+    try std.testing.expectEqualStrings("height", resize.flattenedParam(1, 1).name);
+    try std.testing.expectEqual(abi.AbiParam.Role.flattened_field, resize.flattenedParam(1, 1).role);
+}
+
+test "lowering drops omitted members and lays packed fields out from the low bit" {
+    const document: semantic.Semantic = .{
+        .package = "flags",
+        .prefix = "zg",
+        .types = &.{
+            .{
+                .fields = &.{
+                    .{ .name = "idle", .value = 0 },
+                    .{ .name = "draining", .value = 1 },
+                    .{ .name = "closed", .value = 2 },
+                },
+                .kind = .@"enum",
+                .name = "State",
+                .omitted_variants = &.{"draining"},
+                .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+            },
+            .{
+                .backing_type = .{ .int = .{ .bits = 16, .signed = false } },
+                .fields = &.{
+                    .{ .name = "enabled", .type = .{ .bool = {} } },
+                    .{ .name = "level", .type = .{ .int = .{ .bits = 4, .signed = false } } },
+                    .{ .name = "state", .type = .{ .@"enum" = .{ .ref = "State" } } },
+                },
+                .kind = .value_struct,
+                .layout = .@"packed",
+                .name = "Flags",
+            },
+        },
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try semanticDocument(arena.allocator(), document, "flags", "zg", &.{});
+
+    const live = program.liveFields("State");
+    try std.testing.expectEqual(@as(usize, 2), live.len);
+    try std.testing.expectEqualStrings("idle", live[0].name);
+    try std.testing.expectEqualStrings("closed", live[1].name);
+
+    const layout = program.packedLayout("Flags");
+    try std.testing.expectEqual(@as(usize, 3), layout.len);
+    try std.testing.expectEqual(@as(u16, 0), layout[0].bit_offset);
+    try std.testing.expectEqual(@as(u64, 0x1), layout[0].mask);
+    try std.testing.expectEqual(@as(u16, 1), layout[1].bit_offset);
+    try std.testing.expectEqual(@as(u64, 0xf), layout[1].mask);
+    // An enum member takes its tag type's width, not the width of its values.
+    try std.testing.expectEqual(@as(u16, 5), layout[2].bit_offset);
+    try std.testing.expectEqual(@as(u16, 8), layout[2].bits);
 }

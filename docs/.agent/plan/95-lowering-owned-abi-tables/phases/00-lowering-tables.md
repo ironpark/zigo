@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Emitter no longer scans for slots/flatten indexes/omitted variants/packed layout; goldens and examples unchanged; tests green.
 > NEXT: none

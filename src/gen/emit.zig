@@ -947,7 +947,7 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         if (parameter.flatten) |fields| {
             try writer.print("target.{s}{{", .{parameter.type.value_struct.ref});
             for (fields, 0..) |field, field_index| {
-                const abi_parameter = flattenedAbiParam(function, index, field_index);
+                const abi_parameter = function.flattenedParam(index, field_index);
                 if (field_index != 0) try writer.writeByte(',');
                 try writer.print(" .{s} = ", .{field.name});
                 try writeFlattenedShimValue(writer, abi_parameter.name, field.type);
@@ -1013,12 +1013,6 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     if (bool_return or enum_return) try writer.writeByte(')');
 }
 
-fn flattenedAbiParam(function: abi.AbiFn, source_index: usize, field_index: usize) abi.AbiParam {
-    for (function.params) |parameter| if (parameter.role == .flattened_field and
-        parameter.source_index == source_index and parameter.field_index.? == field_index) return parameter;
-    unreachable;
-}
-
 /// Converts one C-side scalar back to its Zig form on the way in; the mirror
 /// image of `writeZigReturnConversion`.
 fn writeShimInboundValue(writer: *std.Io.Writer, name: []const u8, node: semantic.TypeNode) !void {
@@ -1048,8 +1042,7 @@ fn writeTaggedUnionValueArgument(
     const declaration = enumDecl(program, function.origin.params[source_index].type.value_struct.ref);
     const tag_name = taggedUnionAbiParam(function, source_index, .union_tag, null).name;
     try writer.print("switch ({s}) {{\n", .{tag_name});
-    for (declaration.fields) |field| {
-        if (declaration.variantOmitted(field.name)) continue;
+    for (program.liveFields(declaration.name)) |field| {
         try writer.print("        {d} => ", .{field.value.?});
         const payload = field.type.?;
         if (payload == .void) {
@@ -1264,7 +1257,7 @@ fn writeNarrowIntegerGuards(writer: *std.Io.Writer, function: abi.AbiFn) !void {
     for (function.origin.params, 0..) |parameter, parameter_index| {
         if (parameter.flatten) |fields| {
             for (fields, 0..) |field, field_index| {
-                const abi_parameter = flattenedAbiParam(function, parameter_index, field_index);
+                const abi_parameter = function.flattenedParam(parameter_index, field_index);
                 try writeNarrowGuard(writer, abi_parameter.name, field.type);
             }
             continue;
@@ -1784,7 +1777,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
             if (parameter.injected != null) continue;
             if (parameter.flatten) |fields| {
                 for (fields, 0..) |field, field_index| {
-                    const abi_parameter = flattenedAbiParam(function, parameter_index, field_index);
+                    const abi_parameter = function.flattenedParam(parameter_index, field_index);
                     const name = try flattenedGoNameAlloc(allocator, abi_parameter.name);
                     defer allocator.free(name);
                     if (raw_parameter_index != 0) try writer.writeAll(", ");
@@ -1863,7 +1856,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
             }
             if (parameter.flatten) |fields| for (fields, 0..) |field, field_index| {
                 if (field.type != .optional) continue;
-                const abi_parameter = flattenedAbiParam(function, parameter_index, field_index);
+                const abi_parameter = function.flattenedParam(parameter_index, field_index);
                 const name = try flattenedGoNameAlloc(allocator, abi_parameter.name);
                 defer allocator.free(name);
                 try writer.print("\tvar {0s}Value C.", .{name});
@@ -3074,7 +3067,7 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         if (parameter.injected != null) continue;
         if (parameter.flatten) |fields| {
             for (fields, 0..) |field, field_index| {
-                const abi_parameter = flattenedAbiParam(function, parameter_index, field_index);
+                const abi_parameter = function.flattenedParam(parameter_index, field_index);
                 const name = try flattenedGoNameAlloc(allocator, abi_parameter.name);
                 defer allocator.free(name);
                 if (parameter_count != 0) try writer.writeAll(", ");
@@ -4044,7 +4037,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             if (parameter.type == .cancel_flag) continue;
             if (parameter.flatten) |fields| {
                 for (fields, 0..) |field, field_index| {
-                    const abi_parameter = flattenedAbiParam(function, parameter_index, field_index);
+                    const abi_parameter = function.flattenedParam(parameter_index, field_index);
                     const name = try flattenedGoNameAlloc(allocator, abi_parameter.name);
                     defer allocator.free(name);
                     if (public_parameter_index != 0) try writer.writeAll(", ");
@@ -4104,7 +4097,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (parameter.flatten) |fields| for (fields, 0..) |field, field_index| {
                 if (field.type != .optional) continue;
-                const abi_parameter = flattenedAbiParam(function, parameter_index, field_index);
+                const abi_parameter = function.flattenedParam(parameter_index, field_index);
                 const name = try flattenedGoNameAlloc(allocator, abi_parameter.name);
                 defer allocator.free(name);
                 try writePublicOptionalRawSetup(allocator, writer, program, options, field.type.optional.child.*, name);
@@ -4188,7 +4181,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             if (parameter.injected != null) continue;
             if (parameter.flatten) |fields| {
                 for (fields, 0..) |field, field_index| {
-                    const abi_parameter = flattenedAbiParam(function, parameter_index, field_index);
+                    const abi_parameter = function.flattenedParam(parameter_index, field_index);
                     const name = try flattenedGoNameAlloc(allocator, abi_parameter.name);
                     defer allocator.free(name);
                     if (call_index != 0) try writer.writeAll(", ");
@@ -4726,13 +4719,10 @@ fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer
         try writer.print("func zigo{s}ToBacking(value {s}) ", .{ declaration.name, declaration.name });
         try writeRawGoType(writer, program, declaration.backing_type.?);
         try writer.writeAll(" {\n\tvar result uint64\n");
-        var bit_offset: u16 = 0;
-        for (declaration.fields) |field| {
+        for (program.packedLayout(declaration.name)) |field| {
             const member = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(member);
-            const bits = semanticBitWidth(program, field.type.?);
-            try writer.print("\tresult |= (uint64(value.{s}) & 0x{x}) << {d}\n", .{ member, bitMask(bits), bit_offset });
-            bit_offset += bits;
+            try writer.print("\tresult |= (uint64(value.{s}) & 0x{x}) << {d}\n", .{ member, field.mask, field.bit_offset });
         }
         try writer.writeAll("\treturn ");
         try writeRawGoType(writer, program, declaration.backing_type.?);
@@ -4852,8 +4842,7 @@ fn renderValueUnionFromRaw(
         declaration.name,
         declaration.tag_type.?.@"enum".ref,
     });
-    for (declaration.fields) |field| {
-        if (declaration.variantOmitted(field.name)) continue;
+    for (program.liveFields(declaration.name)) |field| {
         const constructor = try naming.pascalAlloc(allocator, field.name);
         defer allocator.free(constructor);
         try writer.print("\tcase {s}{s}:\n\t\treturn {s}{s}(", .{
@@ -4881,7 +4870,7 @@ fn writeValueUnionPayloadFromRaw(
     if (node == .value_struct) {
         const declaration = enumDecl(program, node.value_struct.ref);
         try writer.print("{s}{{", .{declaration.name});
-        var bit_offset: u16 = 0;
+        const layout = program.packedLayout(declaration.name);
         for (declaration.fields, 0..) |field, index| {
             if (index != 0) try writer.writeAll(", ");
             const member = try naming.pascalAlloc(allocator, field.name);
@@ -4890,10 +4879,8 @@ fn writeValueUnionPayloadFromRaw(
             if (declaration.layout == .@"packed") {
                 const raw_member = try naming.pascalAlloc(allocator, field_name);
                 defer allocator.free(raw_member);
-                const bits = semanticBitWidth(program, field.type.?);
                 try writePublicGoType(.{ .program = program, .options = options }, writer, field.type.?);
-                try writer.print("((uint64({s}.{s}) >> {d}) & 0x{x})", .{ raw_value, raw_member, bit_offset, bitMask(bits) });
-                bit_offset += bits;
+                try writer.print("((uint64({s}.{s}) >> {d}) & 0x{x})", .{ raw_value, raw_member, layout[index].bit_offset, layout[index].mask });
             } else {
                 const child_name = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ field_name, field.name });
                 defer allocator.free(child_name);
@@ -4925,8 +4912,7 @@ fn renderPublicTaggedUnionValues(allocator: std.mem.Allocator, writer: *std.Io.W
         if (!isValueOnlyTaggedUnion(program, declaration.name)) continue;
         const tag_type = declaration.tag_type.?.@"enum".ref;
         try writer.print("// {0s} is a tagged-union value passed to native code by copy.\ntype {0s} struct {{\n\ttag {1s}\n", .{ declaration.name, tag_type });
-        for (declaration.fields) |field| {
-            if (declaration.variantOmitted(field.name)) continue;
+        for (program.liveFields(declaration.name)) |field| {
             const payload = field.type.?;
             if (payload == .void) continue;
             const member = try naming.camelAlloc(allocator, field.name);
@@ -4936,8 +4922,7 @@ fn renderPublicTaggedUnionValues(allocator: std.mem.Allocator, writer: *std.Io.W
             try writer.writeByte('\n');
         }
         try writer.print("}}\n\n// Tag returns the active {s} variant.\nfunc (value {s}) Tag() {s} {{ return value.tag }}\n\n", .{ declaration.name, declaration.name, tag_type });
-        for (declaration.fields) |field| {
-            if (declaration.variantOmitted(field.name)) continue;
+        for (program.liveFields(declaration.name)) |field| {
             const constructor = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(constructor);
             const payload = field.type.?;
@@ -6434,7 +6419,7 @@ fn renderRangeChecks(
     for (function.origin.params, 0..) |parameter, parameter_index| {
         if (parameter.flatten) |fields| {
             for (fields, 0..) |field, field_index| {
-                const abi_parameter = flattenedAbiParam(function, parameter_index, field_index);
+                const abi_parameter = function.flattenedParam(parameter_index, field_index);
                 const name = try flattenedGoNameAlloc(allocator, abi_parameter.name);
                 defer allocator.free(name);
                 try writeRangeCheck(scope, allocator, writer, function, name, field.type, operation, constructor);
@@ -6555,15 +6540,13 @@ fn renderGoEnums(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
         // One const block per enum. Every constant keeps its own leading
         // comment so godoc still names it.
         try writer.writeAll("const (\n");
-        for (declaration.fields) |field| {
-            if (declaration.variantOmitted(field.name)) continue;
+        for (program.liveFields(declaration.name)) |field| {
             const field_name = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(field_name);
             try writer.print("\t// {s}{s} corresponds to the Zig tag {s}.\n\t{s}{s} {s} = {d}\n", .{ declaration.name, field_name, field.name, declaration.name, field_name, declaration.name, field.value.? });
         }
         try writer.print(")\n\n// String returns the Zig tag name.\nfunc (value {s}) String() string {{\n\tswitch value {{\n", .{declaration.name});
-        for (declaration.fields) |field| {
-            if (declaration.variantOmitted(field.name)) continue;
+        for (program.liveFields(declaration.name)) |field| {
             const field_name = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(field_name);
             try writer.print("\tcase {s}{s}:\n\t\treturn \"{s}\"\n", .{ declaration.name, field_name, field.name });
@@ -6936,12 +6919,12 @@ fn renderCallbackRethrows(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
         if (typeOwnsCallbacks(program, receiver)) {
             const receiver_name = try receiverVariableAlloc(allocator, receiver, go_names);
             defer allocator.free(receiver_name);
-            try writer.print("\tfor slot := range {d} {{\n\t\tzigoRethrowCallbackPanic(\"{s}\", {s}.zigoCallbackHandle(slot))\n\t}}\n", .{ retainedCallbackSlotCount(program, receiver), operation, receiver_name });
+            try writer.print("\tfor slot := range {d} {{\n\t\tzigoRethrowCallbackPanic(\"{s}\", {s}.zigoCallbackHandle(slot))\n\t}}\n", .{ program.retainedCallbackSlotCount(receiver), operation, receiver_name });
         }
     }
     for (function.params, 0..) |parameter, parameter_index| switch (parameter.type) {
         .opaque_ptr => |pointer| if (typeOwnsCallbacks(program, pointer.ref))
-            try writer.print("\tif {0s} != nil {{\n\t\tfor slot := range {2d} {{\n\t\t\tzigoRethrowCallbackPanic(\"{1s}\", {0s}.zigoCallbackHandle(slot))\n\t\t}}\n\t}}\n", .{ go_names[parameter_index], operation, retainedCallbackSlotCount(program, pointer.ref) }),
+            try writer.print("\tif {0s} != nil {{\n\t\tfor slot := range {2d} {{\n\t\t\tzigoRethrowCallbackPanic(\"{1s}\", {0s}.zigoCallbackHandle(slot))\n\t\t}}\n\t}}\n", .{ go_names[parameter_index], operation, program.retainedCallbackSlotCount(pointer.ref) }),
         else => {},
     };
 }
@@ -7061,7 +7044,7 @@ fn renderCallbackErrorChecks(
         if (typeOwnsErrorCallbacks(program, receiver)) {
             const receiver_name = try receiverVariableAlloc(allocator, receiver, go_names);
             defer allocator.free(receiver_name);
-            try writer.print("\tfor slot := range {d} {{\n\t\tif err := zigoCallbackError(\"{s}\", \"callback\", {s}.zigoCallbackHandle(slot)); err != nil {{\n\t\t\t", .{ retainedCallbackSlotCount(program, receiver), operation, receiver_name });
+            try writer.print("\tfor slot := range {d} {{\n\t\tif err := zigoCallbackError(\"{s}\", \"callback\", {s}.zigoCallbackHandle(slot)); err != nil {{\n\t\t\t", .{ program.retainedCallbackSlotCount(receiver), operation, receiver_name });
             try writeCheckedErrorReturn(scope, writer, function, constructor, "err");
             try writer.writeAll("\t\t}\n\t}\n");
         }
@@ -7070,7 +7053,7 @@ fn renderCallbackErrorChecks(
         if (parameter.type != .opaque_ptr) continue;
         if (!typeOwnsErrorCallbacks(program, parameter.type.opaque_ptr.ref)) continue;
         const name = go_names[parameter_index];
-        try writer.print("\tif {0s} != nil {{\n\t\tfor slot := range {2d} {{\n\t\t\tif err := zigoCallbackError(\"{1s}\", \"callback\", {0s}.zigoCallbackHandle(slot)); err != nil {{\n\t\t\t\t", .{ name, operation, retainedCallbackSlotCount(program, parameter.type.opaque_ptr.ref) });
+        try writer.print("\tif {0s} != nil {{\n\t\tfor slot := range {2d} {{\n\t\t\tif err := zigoCallbackError(\"{1s}\", \"callback\", {0s}.zigoCallbackHandle(slot)); err != nil {{\n\t\t\t\t", .{ name, operation, program.retainedCallbackSlotCount(parameter.type.opaque_ptr.ref) });
         try writeCheckedErrorReturn(scope, writer, function, constructor, "err");
         try writer.writeAll("\t\t\t}\n\t\t}\n\t}\n");
     }
@@ -7137,7 +7120,7 @@ fn writeAdoptRetainedMethodCallbacks(
     defer allocator.free(receiver_name);
     for (function.origin.params, 0..) |parameter, parameter_index| {
         if (parameter.type != .callback or parameter.retention != .retained) continue;
-        const slot = retainedCallbackSlot(program, function, parameter_index) orelse unreachable;
+        const slot = function.callbackSlot(parameter_index) orelse unreachable;
         try writer.print(
             "\t{0s}PreviousHandle := {1s}.zigoReplaceCallbackHandle({2d}, {0s}Handle)\n" ++
                 "\t{0s}HandleAdopted = true\n" ++
@@ -7599,8 +7582,7 @@ fn writePublicTaggedUnionRawArguments(
 ) !void {
     try writer.writeAll(rawGoTypeName(program, declaration.tag_type.?));
     try writer.print("({s}.tag)", .{value_name});
-    for (declaration.fields) |field| {
-        if (declaration.variantOmitted(field.name)) continue;
+    for (program.liveFields(declaration.name)) |field| {
         const payload = field.type.?;
         if (payload == .void) continue;
         const member = try naming.camelAlloc(allocator, field.name);
@@ -7642,19 +7624,6 @@ fn writePublicTaggedUnionPayloadRawArguments(
         },
         else => try writer.writeAll(expression),
     }
-}
-
-fn semanticBitWidth(program: abi.Program, node: semantic.TypeNode) u16 {
-    return switch (node) {
-        .bool => 1,
-        .int => |value| value.bits,
-        .@"enum" => |value| semanticBitWidth(program, enumDecl(program, value.ref).tag_type.?),
-        else => unreachable,
-    };
-}
-
-fn bitMask(bits: u16) u64 {
-    return if (bits == 64) std.math.maxInt(u64) else (@as(u64, 1) << @intCast(bits)) - 1;
 }
 
 /// The `semantic.Semantic` rule applied to lowered functions: a tagged union
@@ -8127,33 +8096,6 @@ fn retainedCallbacksBelongToReceiver(program: abi.Program, function: semantic.Se
     return constructorForInit(program, function) == null and ownedOpaqueReturn(program, function) == null;
 }
 
-fn retainedCallbackSlotCount(program: abi.Program, type_name: []const u8) usize {
-    var count: usize = 0;
-    for (program.functions) |function| {
-        const owner = retainedCallbackOwner(program, function) orelse continue;
-        if (!std.mem.eql(u8, owner, type_name)) continue;
-        for (function.origin.params) |parameter| {
-            if (parameter.type == .callback and parameter.retention == .retained) count += 1;
-        }
-    }
-    return count;
-}
-
-fn retainedCallbackSlot(program: abi.Program, wanted: abi.AbiFn, wanted_parameter: usize) ?usize {
-    const wanted_owner = retainedCallbackOwner(program, wanted) orelse return null;
-    var slot: usize = 0;
-    for (program.functions) |function| {
-        const owner = retainedCallbackOwner(program, function) orelse continue;
-        if (!std.mem.eql(u8, owner, wanted_owner)) continue;
-        for (function.origin.params, 0..) |parameter, parameter_index| {
-            if (parameter.type != .callback or parameter.retention != .retained) continue;
-            if (function.origin == wanted.origin and parameter_index == wanted_parameter) return slot;
-            slot += 1;
-        }
-    }
-    return null;
-}
-
 fn publicNeedsRuntime(program: abi.Program) bool {
     for (program.functions) |function| {
         if (constructorForInit(program, function.origin.*) == null and constructorForDeinit(program, function.origin.*) != null) continue;
@@ -8522,13 +8464,13 @@ fn writeOwnedHandleResult(
         const go_names = try goParamNamesForAlloc(allocator, function.origin.params);
         defer naming.freeParamNames(allocator, go_names);
         try writer.writeAll(", []zigoCallbackHandle{");
-        const slot_count = retainedCallbackSlotCount(program, type_name);
+        const slot_count = program.retainedCallbackSlotCount(type_name);
         for (0..slot_count) |slot| {
             if (slot != 0) try writer.writeAll(", ");
             var wrote = false;
             for (function.origin.params, 0..) |parameter, parameter_index| {
                 if (parameter.type != .callback or parameter.retention != .retained) continue;
-                if (retainedCallbackSlot(program, function, parameter_index).? != slot) continue;
+                if (function.callbackSlot(parameter_index).? != slot) continue;
                 try writer.print("{s}Handle", .{go_names[parameter_index]});
                 wrote = true;
                 break;

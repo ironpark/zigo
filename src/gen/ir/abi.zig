@@ -62,6 +62,11 @@ pub const AbiOpaque = struct {
     name: []const u8,
     /// C typedef, `<prefix>_<type>`.
     c_name: []const u8,
+    /// How many retained callbacks a handle of this type owns. Lowering counts
+    /// them once, in the same order it numbers the slots, so generated Go can
+    /// size its handle array without rescanning the program. Only the entries
+    /// in `Program.handles` carry it; a pointed-to copy inside a scalar keeps 0.
+    retained_callback_slots: usize = 0,
 };
 
 /// A user enum mirrored into C as its tag type plus one constant per member.
@@ -136,6 +141,33 @@ pub const AbiParam = struct {
     };
 };
 
+/// The bit layout of one `packed struct` field, decided in lowering so the
+/// header, the shim and both Go backends shift and mask identically.
+pub const AbiPacked = struct {
+    /// Semantic type name of the packed struct.
+    name: []const u8,
+    fields: []const Field,
+
+    pub const Field = struct {
+        /// Semantic field name, in declaration order.
+        name: []const u8,
+        /// Offset from the least significant bit of the backing integer.
+        bit_offset: u16,
+        bits: u16,
+        /// `bits` ones, ready to mask the shifted value.
+        mask: u64,
+    };
+};
+
+/// A declaration's members minus the ones `omit` dropped, in declaration
+/// order. Lowering applies the rule once; every emitter loop that renders
+/// members walks this instead of re-testing `variantOmitted`.
+pub const AbiLiveFields = struct {
+    /// Semantic type name of the enum or tagged union.
+    type_name: []const u8,
+    fields: []const semantic.TypeField,
+};
+
 pub const ErrorCode = struct { code: i32, name: []const u8 };
 
 pub const AbiFn = struct {
@@ -165,6 +197,29 @@ pub const AbiFn = struct {
     /// Symbol of the function that frees a caller-owned slice result. Generated
     /// Go copies the payload out and then calls this with the same `ptr, len`.
     release_symbol: ?[]const u8 = null,
+    /// Indexed by semantic parameter index: where this parameter's flattened
+    /// fields start in `params`. Lowering appends one `flattened_field` per
+    /// declared field, contiguously and in order, so field `n` sits at
+    /// `start + n`.
+    flatten_start: []const ?usize = &.{},
+    /// Indexed by semantic parameter index: the slot a retained callback
+    /// parameter takes in the handle that owns it, or null for every other
+    /// parameter. Slots are numbered once in lowering, by owner type, over the
+    /// functions in program order and then the retained callback parameters in
+    /// parameter order.
+    callback_slots: []const ?usize = &.{},
+
+    /// The ABI parameter carrying field `field_index` of the flattened
+    /// parameter `source_index`.
+    pub fn flattenedParam(self: AbiFn, source_index: usize, field_index: usize) AbiParam {
+        return self.params[self.flatten_start[source_index].? + field_index];
+    }
+
+    /// The retained callback slot of semantic parameter `source_index`.
+    pub fn callbackSlot(self: AbiFn, source_index: usize) ?usize {
+        if (source_index >= self.callback_slots.len) return null;
+        return self.callback_slots[source_index];
+    }
 };
 
 pub const AbiProjection = struct {
@@ -260,6 +315,8 @@ pub const Program = struct {
     handles: []const AbiOpaque = &.{},
     functions: []const AbiFn,
     io: ?[]const u8 = null,
+    live_fields: []const AbiLiveFields = &.{},
+    packed_structs: []const AbiPacked = &.{},
     package: []const u8,
     packages: ?[]const semantic.Package = null,
     prefix: []const u8,
@@ -267,6 +324,30 @@ pub const Program = struct {
     snapshots: []const AbiSnapshot = &.{},
     structs: []const AbiStruct = &.{},
     types: []const semantic.TypeDecl = &.{},
+
+    /// The members of `type_name` that survived `omit`.
+    pub fn liveFields(self: Program, type_name: []const u8) []const semantic.TypeField {
+        for (self.live_fields) |entry| {
+            if (@import("std").mem.eql(u8, entry.type_name, type_name)) return entry.fields;
+        }
+        return &.{};
+    }
+
+    /// The bit layout of the `packed struct` named `type_name`.
+    pub fn packedLayout(self: Program, type_name: []const u8) []const AbiPacked.Field {
+        for (self.packed_structs) |entry| {
+            if (@import("std").mem.eql(u8, entry.name, type_name)) return entry.fields;
+        }
+        return &.{};
+    }
+
+    /// How many retained callback slots a handle of this type owns.
+    pub fn retainedCallbackSlotCount(self: Program, type_name: []const u8) usize {
+        for (self.handles) |handle| {
+            if (@import("std").mem.eql(u8, handle.name, type_name)) return handle.retained_callback_slots;
+        }
+        return 0;
+    }
 };
 
 test "ABI functions retain their semantic origin" {
