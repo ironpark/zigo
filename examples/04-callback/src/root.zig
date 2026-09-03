@@ -75,6 +75,14 @@ pub fn compressionBound(source_len: usize) usize {
     return compressBound(source_len);
 }
 
+pub fn incrementShared(counter: *std.atomic.Value(u64), delta: u64) u64 {
+    return counter.fetchAdd(delta, .seq_cst) + delta;
+}
+
+pub fn readShared(value: *const std.atomic.Value(i32)) i32 {
+    return value.load(.seq_cst);
+}
+
 test "generic specializations and callback context" {
     const float_buffer = try FloatBuffer.create();
     defer float_buffer.deinit();

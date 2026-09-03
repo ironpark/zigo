@@ -185,6 +185,7 @@ fn findConstructorForType(document: semantic.Semantic, name: []const u8) ?semant
 
 fn typeName(node: semantic.TypeNode) []const u8 {
     return switch (node) {
+        .atomic_ptr => "atomic_ptr",
         .@"enum" => "enum",
         .opaque_ptr => "opaque_ptr",
         .value_struct => "value_struct",

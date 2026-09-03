@@ -1738,6 +1738,11 @@ fn typeNode(
                 // rather than that the position is the problem.
                 if (info.child == std.Io.Writer) break :blk .{ .io_stream = .{ .direction = .writer } };
                 if (info.child == std.Io.Reader) break :blk .{ .io_stream = .{ .direction = .reader } };
+                if (comptime atomicScalar(info.child)) |Scalar| {
+                    const child = try allocator.create(semantic.TypeNode);
+                    child.* = try typeNode(allocator, declaration, Scalar, types, context ++ " (atomic scalar)");
+                    break :blk .{ .atomic_ptr = .{ .child = child, .@"const" = info.is_const } };
+                }
                 if (@typeInfo(info.child) == .@"fn") {
                     const function_info = @typeInfo(info.child).@"fn";
                     const callback_params = try allocator.alloc(semantic.TypeNode, function_info.params.len);
@@ -3570,6 +3575,34 @@ test "atomic values reflect as marked scalar leaves in every value position" {
         }
     }
     try std.testing.expect(saw_record and saw_event);
+}
+
+test "atomic pointers reflect their scalar and call-scoped contract" {
+    const Fixture = struct {
+        pub fn share(counter: *std.atomic.Value(u64), delta: *const std.atomic.Value(i32), unsupported: *std.atomic.Value(bool)) void {
+            _ = counter;
+            _ = delta;
+            _ = unsupported;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .functions = .{.{
+            .path = "root.share",
+            .params = .{ "counter", "delta", "unsupported" },
+            .param_meta = .{ .delta = .{ .retention = .retained } },
+        }},
+    }, "atomic_pointers", "zg");
+
+    const share = document.functions[0];
+    try std.testing.expect(share.params[0].type == .atomic_ptr);
+    try std.testing.expect(share.params[0].type.atomic_ptr.child.* == .int);
+    try std.testing.expect(!share.params[0].type.atomic_ptr.@"const");
+    try std.testing.expect(share.params[1].type.atomic_ptr.@"const");
+    try std.testing.expectEqual(semantic.Retention.retained, share.params[1].retention);
+    try std.testing.expect(share.params[2].type.atomic_ptr.child.* == .bool);
 }
 
 test "flattened struct parameters reject unlisted required fields" {

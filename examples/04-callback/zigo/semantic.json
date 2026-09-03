@@ -424,6 +424,98 @@
       "symbol": "zg_compression_bound"
     },
     {
+      "name": "incrementShared",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "counter",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 78,
+            "column": 24
+          },
+          "type": {
+            "child": {
+              "bits": 64,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "const": false,
+            "kind": "atomic_ptr"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "delta",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 78,
+            "column": 57
+          },
+          "type": {
+            "bits": 64,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "bits": 64,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 78,
+        "column": 8
+      },
+      "symbol": "zg_increment_shared"
+    },
+    {
+      "name": "readShared",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "value",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 82,
+            "column": 19
+          },
+          "type": {
+            "child": {
+              "bits": 32,
+              "is_usize": false,
+              "kind": "int",
+              "signed": true
+            },
+            "const": true,
+            "kind": "atomic_ptr"
+          }
+        }
+      ],
+      "return": {
+        "bits": 32,
+        "is_usize": false,
+        "kind": "int",
+        "signed": true
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 82,
+        "column": 8
+      },
+      "symbol": "zg_read_shared"
+    },
+    {
       "name": "apply",
       "ownership": "borrowed",
       "params": [

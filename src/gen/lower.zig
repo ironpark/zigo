@@ -169,6 +169,18 @@ pub fn semanticDocumentForBackend(
                 });
                 continue;
             }
+            if (parameter.type == .atomic_ptr) {
+                const atomic = parameter.type.atomic_ptr;
+                const child = try allocator.create(abi.AbiScalar);
+                child.* = try lowerValue(allocator, document, prefix, atomic.child.*);
+                try params.append(allocator, .{
+                    .name = parameter.name,
+                    .role = .atomic_ptr,
+                    .scalar = .{ .pointer = .{ .child = child, .is_const = atomic.@"const" } },
+                    .source_index = parameter_index,
+                });
+                continue;
+            }
             if (parameter.type == .io_stream) {
                 try appendStreamParams(allocator, &params, backend, parameter, parameter_index);
                 continue;

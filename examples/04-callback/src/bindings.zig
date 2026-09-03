@@ -35,6 +35,8 @@ pub const bindings = zigo.define(.{
         .{ .path = "CallbackContext.deinit" },
         .{ .path = "root.panicNow" },
         .{ .path = "root.compressionBound" },
+        .{ .path = "root.incrementShared", .params = .{ "counter", "delta" } },
+        .{ .path = "root.readShared", .params = .{"value"} },
         .{
             .path = "root.apply",
             .params = .{ "value", "callback", "userdata" },

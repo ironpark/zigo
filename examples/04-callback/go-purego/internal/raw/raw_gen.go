@@ -66,6 +66,8 @@ type nativeBindings struct {
 	fnCallbackContextDeinit      func(unsafe.Pointer) int32
 	fnPanicNow                   func() int32
 	fnCompressionBound           func(uintptr) uintptr
+	fnIncrementShared            func(*uint64, uint64) uint64
+	fnReadShared                 func(*int32) int32
 	fnApply                      func(int32, uintptr, uintptr) int32
 	fnNotify                     func(int32, uintptr, uintptr)
 }
@@ -410,6 +412,14 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_compression_bound", err)
 	}
+	addrIncrementShared, err := resolveSymbol(handle, "zg_increment_shared")
+	if err != nil {
+		return fail("zg_increment_shared", err)
+	}
+	addrReadShared, err := resolveSymbol(handle, "zg_read_shared")
+	if err != nil {
+		return fail("zg_read_shared", err)
+	}
 	addrApply, err := resolveSymbol(handle, "zg_apply_purego_v2")
 	if err != nil {
 		return fail("zg_apply_purego_v2", err)
@@ -435,6 +445,8 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnCallbackContextDeinit, addrCallbackContextDeinit)
 	purego.RegisterFunc(&next.fnPanicNow, addrPanicNow)
 	purego.RegisterFunc(&next.fnCompressionBound, addrCompressionBound)
+	purego.RegisterFunc(&next.fnIncrementShared, addrIncrementShared)
+	purego.RegisterFunc(&next.fnReadShared, addrReadShared)
 	purego.RegisterFunc(&next.fnApply, addrApply)
 	purego.RegisterFunc(&next.fnNotify, addrNotify)
 	loadedBindings.Store(&next)
@@ -557,6 +569,20 @@ func PanicNow() int32 {
 func CompressionBound(sourceLen uint) uint {
 	result := bindings().fnCompressionBound(uintptr(sourceLen))
 	return uint(result)
+}
+
+// IncrementShared calls the generated purego ABI wrapper for zg_increment_shared.
+func IncrementShared(counter unsafe.Pointer, delta uint64) uint64 {
+	result := bindings().fnIncrementShared((*uint64)(counter), delta)
+	runtime.KeepAlive(counter)
+	return uint64(result)
+}
+
+// ReadShared calls the generated purego ABI wrapper for zg_read_shared.
+func ReadShared(value unsafe.Pointer) int32 {
+	result := bindings().fnReadShared((*int32)(value))
+	runtime.KeepAlive(value)
+	return int32(result)
 }
 
 // Apply calls the generated purego ABI wrapper for zg_apply_purego_v2.

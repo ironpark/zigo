@@ -151,6 +151,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 };
             }
             if (try streamParameterIssue(allocator, function, parameter)) |issue| return issue;
+            if (try atomicPointerIssue(allocator, function, parameter)) |issue| return issue;
             if (try callbackGoErrorIssue(allocator, function, parameter)) |issue| return issue;
             if (try callbackContractIssue(allocator, function, parameter)) |issue| return issue;
             if (parameter.type == .cancel_flag and !(parameter.cancel orelse false)) return .{
@@ -560,6 +561,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
     // diagnostics above keep naming the declarations they always did.
     for (document.functions) |function| {
         for (function.params) |parameter| {
+            if (parameter.type == .atomic_ptr) continue;
             if (try typeOffense(allocator, parameter.type, true)) |offense| {
                 const root = try std.fmt.allocPrint(allocator, "parameter `{s}`", .{parameter.name});
                 const location = try locationAlloc(allocator, offense.context, root);
@@ -749,6 +751,28 @@ fn cancelIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !?di
         .message = "a cancellable function must be able to report `error.Canceled`",
         .site = functionSiteFor(function, declaration),
         .hint = "return an error union whose set contains `Canceled`; generated Go maps it back to `ctx.Err()`",
+    };
+    return null;
+}
+
+fn atomicPointerIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn, parameter: semantic.Parameter) !?diagnostic.Diagnostic {
+    if (parameter.type != .atomic_ptr) return null;
+    const child = parameter.type.atomic_ptr.child.*;
+    const supported = child == .int and !child.int.is_usize and
+        (child.int.bits == 32 or child.int.bits == 64);
+    if (!supported) return .{
+        .severity = .@"error",
+        .code = "ZIGO043",
+        .message = try std.fmt.allocPrint(allocator, "parameter `{s}` points to an unsupported atomic scalar", .{parameter.name}),
+        .site = functionSite(function),
+        .hint = "use *std.atomic.Value(u32), i32, u64, or i64 for a shared atomic parameter",
+    };
+    if (parameter.retention == .retained) return .{
+        .severity = .@"error",
+        .code = "ZIGO043",
+        .message = try std.fmt.allocPrint(allocator, "atomic parameter `{s}` cannot be retained", .{parameter.name}),
+        .site = functionSite(function),
+        .hint = "keep the default call-scoped borrowed retention; native code cannot keep a Go address after the call",
     };
     return null;
 }
@@ -1291,6 +1315,7 @@ const Offense = struct {
 fn typeOffense(allocator: std.mem.Allocator, node: semantic.TypeNode, promotable: bool) error{OutOfMemory}!?Offense {
     switch (node) {
         .void, .bool, .@"enum", .opaque_ptr, .value_struct, .io_stream, .cancel_flag => return null,
+        .atomic_ptr => return Offense{ .node = node },
         .int => |value| {
             if (integerSupported(value)) return null;
             if (promotable and promotableInteger(value)) return null;
@@ -4132,6 +4157,39 @@ test "a cancellable function has to name a flag its shim can pass and an error i
         .zig_version = "0.16.0",
     };
     try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(scratch.allocator(), accepted));
+}
+
+test "atomic pointer parameters reject unsupported scalars and retained addresses" {
+    var bool_child: semantic.TypeNode = .{ .bool = {} };
+    var word_child: semantic.TypeNode = .{ .int = .{ .bits = 64, .signed = false } };
+    const cases = [_]struct { parameter: semantic.Parameter, message: []const u8 }{
+        .{
+            .parameter = .{ .name = "flag", .type = .{ .atomic_ptr = .{ .child = &bool_child, .@"const" = false } } },
+            .message = "parameter `flag` points to an unsupported atomic scalar",
+        },
+        .{
+            .parameter = .{ .name = "counter", .retention = .retained, .type = .{ .atomic_ptr = .{ .child = &word_child, .@"const" = false } } },
+            .message = "atomic parameter `counter` cannot be retained",
+        },
+    };
+    for (cases) |case| {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const document: semantic.Semantic = .{
+            .functions = &.{.{
+                .name = "share",
+                .params = &.{case.parameter},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_share",
+            }},
+            .package = "atomic",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        };
+        const issue = (try findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
+        try std.testing.expectEqualStrings("ZIGO043", issue.code);
+        try std.testing.expectEqualStrings(case.message, issue.message);
+    }
 }
 
 test "cross-package type cycles are diagnosed with the package path" {

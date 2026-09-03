@@ -493,6 +493,31 @@ union payload, 함수의 값 파라미터와 반환에도 적용됩니다. shim�
 여러 field를 담은 struct나 union의 snapshot 전체가 한 번에 원자적인 것은 아닙니다. 원자성은
 각 atomic field를 읽거나 쓰는 한 번의 접근에만 적용됩니다.
 
+#### 호출 범위 atomic 포인터
+
+함수 파라미터의 `*std.atomic.Value(T)` 또는 `*const std.atomic.Value(T)`는 T가 `u32`, `i32`,
+`u64`, `i64`일 때 각각 Go의 `*atomic.Uint32`, `*atomic.Int32`, `*atomic.Uint64`,
+`*atomic.Int64`가 됩니다. 별도 메타데이터는 필요 없습니다.
+
+```zig
+pub fn increment(counter: *std.atomic.Value(u64)) void {
+    _ = counter.fetchAdd(1, .seq_cst);
+}
+```
+
+```go
+var counter atomic.Uint64
+Increment(&counter)
+fmt.Println(counter.Load())
+```
+
+주소는 호출 동안만 native에 빌려줍니다. cgo는 호출 인자를 그동안 pin하고 purego 생성물은
+`runtime.Pinner`로 같은 보장을 만들며, 둘 다 호출 뒤 `runtime.KeepAlive`까지 유지합니다.
+native 함수는 주소를 저장하거나 호출이 끝난 뒤 다른 스레드에서 사용하면 안 됩니다.
+`.retention = .retained`와 bool·8/16비트 정수·부동소수 같은 다른 atomic scalar는
+`ZIGO043`입니다. `.cancel`의 `ctx` 변환과 전용 `*const std.atomic.Value(u32)` 계약은 이 기능과
+별개이며 기존 동작을 그대로 유지합니다.
+
 ### Allocator와 Io 주입
 
 `std.mem.Allocator`와 `std.Io`는 C로 표현할 수 없습니다. 바인딩이 값을 한 번 정하면

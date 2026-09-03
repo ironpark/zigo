@@ -221,6 +221,16 @@ func zigoRawCompressionBound(sourceLen uint) uint {
 	return uint(C.zg_compression_bound(C.size_t(sourceLen)))
 }
 
+// zigoRawIncrementShared calls the generated C ABI wrapper for zg_increment_shared.
+func zigoRawIncrementShared(counter unsafe.Pointer, delta uint64) uint64 {
+	return uint64(C.zg_increment_shared((*C.uint64_t)(counter), C.uint64_t(delta)))
+}
+
+// zigoRawReadShared calls the generated C ABI wrapper for zg_read_shared.
+func zigoRawReadShared(value unsafe.Pointer) int32 {
+	return int32(C.zg_read_shared((*C.int32_t)(value)))
+}
+
 // zigoRawApply calls the generated C ABI wrapper for zg_apply.
 func zigoRawApply(value int32, callbackHandle uintptr) int32 {
 	return int32(C.zg_apply(C.int32_t(value), C.size_t(callbackHandle)))

@@ -12,6 +12,9 @@
   노출합니다. field accessor는 순차 일관 load/store를 사용하고, flatten·값 struct·값 union·
   값 파라미터와 반환은 원시 값을 복사합니다. atomic field가 있는 struct slice는 항상
   원소별 복사 경로를 사용합니다.
+- `*std.atomic.Value(u32|i32|u64|i64)` 파라미터를 호출 동안 공유하는 Go
+  `*atomic.Uint32|Int32|Uint64|Int64`로 노출합니다. purego는 주소를 명시적으로 pin하며,
+  retained 주소와 지원하지 않는 atomic 폭은 `ZIGO043`으로 거부합니다.
 
 ## [0.7.4] - 2026-09-03
 

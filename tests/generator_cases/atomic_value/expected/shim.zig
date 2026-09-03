@@ -23,7 +23,8 @@ export fn zg_configure_impl(limit: i32) void {
     target.configure(target.Options{ .limit = .init(limit) });
 }
 export fn zg_echo_record_impl(value: *const target.Record, out_result: *target.Record) void {
-    out_result.* = target.echoRecord(value.*);
+    const result = target.echoRecord(target.Record{ .count = .init((value.*).count.raw) });
+    out_result.* = target.Record{ .count = .init((result).count.raw) };
 }
 export fn zg_echo_event_impl(value_tag: u8, value_count: u64, out_result: *zg_event_snapshot_t) i32 {
     const result = target.echoEvent(switch (value_tag) {

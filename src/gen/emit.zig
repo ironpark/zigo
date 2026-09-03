@@ -371,7 +371,10 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
             try writer.writeAll(" orelse {\n");
             try writeSliceWrittenZeros(writer, function);
             try writer.writeAll("        return 0;\n    };\n    out_result.* = ");
-            try writeZigReturnConversion(writer, child, "result", false);
+            if (child == .value_struct and recordHasAtomicFields(program, structRecord(program, child.value_struct.ref)))
+                try writeZigAtomicStructCopy(allocator, writer, program, structRecord(program, child.value_struct.ref), "result")
+            else
+                try writeZigReturnConversion(writer, child, "result", false);
             try writer.writeAll(";\n");
             try writeSliceWrittenAssignments(writer, function);
             try writer.writeAll("    return 1;\n}\n");
@@ -425,11 +428,18 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
                     // its own out parameter; the value one stays untouched
                     // when the payload is absent.
                     try writer.writeAll("    if (result) |zigo_value| {\n        out_result_has.* = 1;\n        out_result.* = ");
-                    try writeZigReturnConversion(writer, error_union.payload.optional.child.*, "zigo_value", false);
+                    const child = error_union.payload.optional.child.*;
+                    if (child == .value_struct and recordHasAtomicFields(program, structRecord(program, child.value_struct.ref)))
+                        try writeZigAtomicStructCopy(allocator, writer, program, structRecord(program, child.value_struct.ref), "zigo_value")
+                    else
+                        try writeZigReturnConversion(writer, child, "zigo_value", false);
                     try writer.writeAll(";\n    } else {\n        out_result_has.* = 0;\n    }\n");
                 } else {
                     try writer.writeAll("    out_result.* = ");
-                    try writeZigReturnConversion(writer, error_union.payload.*, "result", function.origin.return_atomic orelse false);
+                    if (error_union.payload.* == .value_struct and recordHasAtomicFields(program, structRecord(program, error_union.payload.value_struct.ref)))
+                        try writeZigAtomicStructCopy(allocator, writer, program, structRecord(program, error_union.payload.value_struct.ref), "result")
+                    else
+                        try writeZigReturnConversion(writer, error_union.payload.*, "result", function.origin.return_atomic orelse false);
                     try writer.writeAll(";\n");
                 }
             }
@@ -448,7 +458,11 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         const binds_result = function.origin.@"return" != .void and
             function.origin.@"return" != .value_struct and
             hasOutSliceParam(function);
-        if (function.origin.@"return" == .value_struct) {
+        const atomic_struct_return = function.origin.@"return" == .value_struct and
+            recordHasAtomicFields(program, structRecord(program, function.origin.@"return".value_struct.ref));
+        if (atomic_struct_return) {
+            try writer.writeAll("const result = ");
+        } else if (function.origin.@"return" == .value_struct) {
             try writer.writeAll("out_result.* = ");
         } else if (binds_result) {
             try writer.writeAll("const result = ");
@@ -462,6 +476,17 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         try writeTargetCall(allocator, writer, program, function);
         if (narrow_return) try writer.writeByte(')');
         try writer.writeAll(";\n");
+        if (atomic_struct_return) {
+            try writer.writeAll("    out_result.* = ");
+            try writeZigAtomicStructCopy(
+                allocator,
+                writer,
+                program,
+                structRecord(program, function.origin.@"return".value_struct.ref),
+                "result",
+            );
+            try writer.writeAll(";\n");
+        }
         try writeSliceWrittenAssignments(writer, function);
         if (binds_result) try writer.writeAll("    return result;\n");
         try writer.writeAll("}\n");
@@ -990,6 +1015,7 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             // The shim's parameter is a `[*c]const u32`; the target function
             // wants the atomic wrapper over the same four bytes.
             .cancel_flag => try writer.print("@ptrCast({s})", .{parameter.name}),
+            .atomic_ptr => try writer.print("@ptrCast({s})", .{parameter.name}),
             .bool => try writer.print("{s} != 0", .{parameter.name}),
             .@"enum" => try writer.print("@enumFromInt({s})", .{parameter.name}),
             .slice => if (function.paramString(index).role == .string_slice)
@@ -1000,8 +1026,11 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                 try writer.print("if ({s}_len == 0) &.{{}} else {s}_ptr[0..{s}_len]", .{ parameter.name, parameter.name, parameter.name }),
             .value_struct => |value| if (enumDecl(program, value.ref).kind == .tagged_union)
                 try writeTaggedUnionValueArgument(allocator, writer, program, function, index, parameter.name)
-            else
-                try writer.print("{s}.*", .{parameter.name}),
+            else if (recordHasAtomicFields(program, structRecord(program, value.ref))) {
+                const expression = try std.fmt.allocPrint(allocator, "{s}.*", .{parameter.name});
+                defer allocator.free(expression);
+                try writeZigAtomicStructCopy(allocator, writer, program, structRecord(program, value.ref), expression);
+            } else try writer.print("{s}.*", .{parameter.name}),
             .optional => |optional| if (optional.child.* == .slice) {
                 // The slice's own pointer carries absence, so the shim
                 // rebuilds `?[]T` from a NULL check rather than from a flag.
@@ -1664,6 +1693,42 @@ fn structRecord(program: abi.Program, name: []const u8) abi.AbiStruct {
     unreachable;
 }
 
+fn recordHasAtomicFields(program: abi.Program, record: abi.AbiStruct) bool {
+    for (record.fields) |field| {
+        if (field.atomic) return true;
+        if (field.node == .value_struct and recordHasAtomicFields(program, structRecord(program, field.node.value_struct.ref))) return true;
+    }
+    return false;
+}
+
+/// Copies an extern value struct member by member at the Zig boundary. Atomic
+/// members are deliberately loaded into a fresh wrapper instead of treating
+/// the wrapper object as an ordinary scalar value.
+fn writeZigAtomicStructCopy(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    record: abi.AbiStruct,
+    expression: []const u8,
+) !void {
+    try writeTargetType(writer, program, record.name);
+    try writer.writeByte('{');
+    for (record.fields, 0..) |field, index| {
+        if (index != 0) try writer.writeByte(',');
+        try writer.print(" .{s} = ", .{field.name});
+        const child_expression = try std.fmt.allocPrint(allocator, "({s}).{s}", .{ expression, field.name });
+        defer allocator.free(child_expression);
+        if (field.node == .value_struct) {
+            try writeZigAtomicStructCopy(allocator, writer, program, structRecord(program, field.node.value_struct.ref), child_expression);
+        } else if (field.atomic) {
+            try writer.print(".init({s}.raw)", .{child_expression});
+        } else {
+            try writer.writeAll(child_expression);
+        }
+    }
+    try writer.writeAll(" }");
+}
+
 /// Builds the C value a cgo call passes by address. Converting member by
 /// member keeps the generated cgo code independent of the Go mirror's layout.
 fn writeCgoStructConversion(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, record: abi.AbiStruct, c_name: []const u8, go_name: []const u8) !void {
@@ -1869,6 +1934,8 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
             if (raw_parameter_index != 0) try writer.writeAll(", ");
             if (parameter.type == .cancel_flag) {
                 try writer.print("{s} *uint32", .{go_names[parameter_index]});
+            } else if (parameter.type == .atomic_ptr) {
+                try writer.print("{s} unsafe.Pointer", .{go_names[parameter_index]});
             } else if (parameter.type == .callback or parameter.type == .io_stream) {
                 try writer.print("{s}Handle uintptr", .{go_names[parameter_index]});
                 // A reader also carries the byte-slice fast path: a non-nil
@@ -2167,6 +2234,11 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 // because the memory holds no Go pointers, and the call is the
                 // whole of the time it has to stay valid.
                 .cancel_flag => try writer.print("(*C.uint32_t)(unsafe.Pointer({s}))", .{go_names[parameter.source_index]}),
+                .atomic_ptr => {
+                    try writer.writeAll("(*C.");
+                    try writeCgoType(writer, parameter.scalar.pointer.child.*);
+                    try writer.print(")({s})", .{go_names[parameter.source_index]});
+                },
                 .stream_data => try writer.print("{s}DataPtr", .{go_names[parameter.source_index]}),
                 .stream_data_length => try writer.print("C.size_t(len({s}Data))", .{go_names[parameter.source_index]}),
                 .stream_userdata => try writer.print("C.size_t({s}Handle)", .{go_names[parameter.source_index]}),
@@ -3159,6 +3231,8 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         if (parameter_count != 0) try writer.writeAll(", ");
         if (parameter.type == .cancel_flag) {
             try writer.print("{s} *uint32", .{go_names[parameter_index]});
+        } else if (parameter.type == .atomic_ptr) {
+            try writer.print("{s} unsafe.Pointer", .{go_names[parameter_index]});
         } else if (parameter.type == .callback) {
             try writer.print("{s}Callback, {s}Token uintptr", .{ go_names[parameter_index], go_names[parameter_index] });
         } else if (parameter.type == .io_stream) {
@@ -3327,6 +3401,11 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
             // its remaining bytes over whole, and then the shim wraps them
             // with `Reader.fixed` instead of calling the dispatcher.
             .cancel_flag => try writer.writeAll(go_names[parameter.source_index]),
+            .atomic_ptr => {
+                try writer.writeByte('(');
+                try writePuregoAbiType(writer, parameter.scalar);
+                try writer.print(")({s})", .{go_names[parameter.source_index]});
+            },
             .stream_data => try writer.print("{s}DataPtr", .{go_names[parameter.source_index]}),
             .stream_data_length => try writer.print("uintptr(len({s}Data))", .{go_names[parameter.source_index]}),
             .stream_userdata => try writer.print("{s}Handle", .{go_names[parameter.source_index]}),
@@ -3339,7 +3418,7 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         }
         if (function.paramString(parameter_index).role == .c_string) try writer.print("\truntime.KeepAlive({s}Bytes)\n", .{go_names[parameter_index]});
         if (isReaderStream(parameter)) try writer.print("\truntime.KeepAlive({s}Data)\n", .{go_names[parameter_index]});
-        if (parameter.type == .cancel_flag) try writer.print("\truntime.KeepAlive({s})\n", .{go_names[parameter_index]});
+        if (parameter.type == .cancel_flag or parameter.type == .atomic_ptr) try writer.print("\truntime.KeepAlive({s})\n", .{go_names[parameter_index]});
     }
     if ((function.ret_string == .c_string)) {
         try writer.writeAll("\treturn zigoCStringString(result)\n");
@@ -3956,6 +4035,7 @@ fn writePublicOptionalRawSetup(
 fn publicNeedsUnsafe(program: abi.Program) bool {
     for (program.functions) |function| {
         for (function.origin.params) |parameter| {
+            if (parameter.type == .atomic_ptr) return true;
             if (!isValueStructSlice(parameter.type)) continue;
             if (program.structCastable(parameter.type.slice.element.*.value_struct.ref)) return true;
         }
@@ -3980,6 +4060,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
     // A cancellable call takes a `context.Context`, matches the native error
     // against a sentinel, and raises its flag with an atomic store.
     const needs_cancel = programHasCancellation(program);
+    const needs_atomic_pointer = programHasAtomicPointers(program);
     var needs_lifecycle = false;
     if (options.shared_lifecycle) for (program.functions) |function| {
         if (hasOpaqueParameter(function.origin.*)) {
@@ -3996,17 +4077,17 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
     };
     const import_count = @as(usize, @intFromBool(needs_io)) + @as(usize, @intFromBool(needs_runtime)) +
         @as(usize, @intFromBool(needs_unsafe)) + @as(usize, @intFromBool(needs_raw)) +
-        @as(usize, @intFromBool(needs_cancel)) * 3 + @as(usize, @intFromBool(needs_lifecycle)) +
+        @as(usize, @intFromBool(needs_cancel)) * 3 + @as(usize, @intFromBool(needs_atomic_pointer)) + @as(usize, @intFromBool(needs_lifecycle)) +
         @as(usize, @intFromBool(default_foreign)) + foreign.items.len;
     if (import_count > 1) {
         try writer.writeAll("import (\n");
         if (needs_cancel) try writer.writeAll("\t\"context\"\n\t\"errors\"\n");
         if (needs_io) try writer.writeAll("\t\"io\"\n");
         if (needs_runtime) try writer.writeAll("\t\"runtime\"\n");
-        if (needs_cancel) try writer.writeAll("\t\"sync/atomic\"\n");
+        if (needs_cancel or needs_atomic_pointer) try writer.writeAll("\t\"sync/atomic\"\n");
         if (needs_unsafe) try writer.writeAll("\t\"unsafe\"\n");
         if (needs_raw) {
-            if (needs_io or needs_runtime or needs_unsafe or needs_cancel) try writer.writeByte('\n');
+            if (needs_io or needs_runtime or needs_unsafe or needs_cancel or needs_atomic_pointer) try writer.writeByte('\n');
             try writeRawImport(writer, options, "\t");
         }
         if (needs_lifecycle) try writer.print("\tlifecycle \"{s}/{s}\"\n", .{ options.go_module, options.lifecycle_package_path });
@@ -4149,6 +4230,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
         // at all: nothing native has run, so there is no panic message to read
         // back off this thread.
         if (function.origin.cancel != null) try renderCancelSetup(writer, options);
+        try renderAtomicPointerPins(writer, function, go_names, options);
         if (needs_range_check)
             try renderRangeChecks(scope, allocator, writer, function, go_names, operation, constructor);
         if (has_stream)
@@ -4296,6 +4378,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                     if (stream.direction == .reader) try writer.print(", {s}Data", .{go_names[parameter_index]});
                 },
                 .cancel_flag => try writer.writeAll("&zigoCancel"),
+                .atomic_ptr => try writer.print("unsafe.Pointer({s})", .{go_names[parameter_index]}),
                 .bool => try writer.print("boolToUint8({s})", .{go_names[parameter_index]}),
                 .value_struct => |value| if (isTaggedUnionValue(program, parameter.type))
                     try writePublicTaggedUnionRawArguments(allocator, writer, program, enumDecl(program, value.ref), go_names[parameter_index])
@@ -6836,6 +6919,7 @@ fn writePublicResultConversion(scope: PublicScope, writer: *std.Io.Writer, progr
 
 fn writeRawGoType(writer: *std.Io.Writer, program: abi.Program, node: semantic.TypeNode) !void {
     switch (node) {
+        .atomic_ptr => try writer.writeAll("unsafe.Pointer"),
         .slice => |value| {
             try writer.writeAll("[]");
             try writeRawGoType(writer, program, value.element.*);
@@ -6891,6 +6975,10 @@ fn writePublicGoType(scope: PublicScope, writer: *std.Io.Writer, node: semantic.
         .reader => "io.Reader",
     });
     switch (node) {
+        .atomic_ptr => |value| {
+            try writer.writeAll("*atomic.");
+            try writeAtomicGoName(writer, value.child.*);
+        },
         .slice => |value| {
             if (semantic.isByte(value.element.*)) {
                 try writer.writeAll("[]byte");
@@ -7078,6 +7166,21 @@ fn renderCancelSetup(writer: *std.Io.Writer, options: Options) !void {
             "\t\t}()\n" ++
             "\t}\n",
     );
+}
+
+/// Keeps a caller-owned typed atomic at a stable address for exactly one
+/// native call. cgo pins pointer arguments itself; purego needs Pinner because
+/// its dynamic call bypasses cgo's pointer rules.
+fn renderAtomicPointerPins(writer: *std.Io.Writer, function: abi.AbiFn, go_names: []const []const u8, options: Options) !void {
+    for (function.origin.params, 0..) |parameter, index| {
+        if (parameter.type != .atomic_ptr) continue;
+        const name = go_names[index];
+        try writer.print("\tdefer runtime.KeepAlive({s})\n", .{name});
+        if (options.backend == .purego) try writer.print(
+            "\tvar {0s}Pinner runtime.Pinner\n\t{0s}Pinner.Pin({0s})\n\tdefer {0s}Pinner.Unpin()\n",
+            .{name},
+        );
+    }
 }
 
 /// After the native call: the error a reachable Go callback returned, if one
@@ -7761,6 +7864,11 @@ fn writeIntegerName(writer: *std.Io.Writer, signed: bool, bits: u16, c_name: boo
     try writer.print("{s}{d}", .{ if (signed) "int" else "uint", bits });
 }
 
+fn writeAtomicGoName(writer: *std.Io.Writer, node: semantic.TypeNode) !void {
+    const integer = node.int;
+    try writer.print("{s}{d}", .{ if (integer.signed) "Int" else "Uint", integer.bits });
+}
+
 fn programHasSlices(program: abi.Program) bool {
     for (program.functions) |function| {
         for (function.origin.params) |parameter| if (semantic.sliceThroughOptional(parameter.type) == .slice) return true;
@@ -7940,6 +8048,13 @@ fn programHasCancellation(program: abi.Program) bool {
     return false;
 }
 
+fn programHasAtomicPointers(program: abi.Program) bool {
+    for (program.functions) |function| {
+        for (function.origin.params) |parameter| if (parameter.type == .atomic_ptr) return true;
+    }
+    return false;
+}
+
 /// The stream operation a function was synthesized for, if it was.
 fn streamAccessorOp(function: semantic.SemanticFn) ?semantic.StreamAccessor.Op {
     const accessor = function.stream_accessor orelse return null;
@@ -8083,6 +8198,7 @@ fn publicNeedsRuntime(program: abi.Program) bool {
             if (isAutoCleanupType(program, receiver)) return true;
         }
         for (function.origin.params) |parameter| switch (parameter.type) {
+            .atomic_ptr => return true,
             .opaque_ptr => |pointer| if (isAutoCleanupType(program, pointer.ref)) return true,
             else => {},
         };

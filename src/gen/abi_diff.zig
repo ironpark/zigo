@@ -457,6 +457,7 @@ fn goSurfaceEqual(lhs: semantic.SemanticFn, rhs: semantic.SemanticFn) bool {
 fn goTypeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
     if (std.meta.activeTag(lhs) != std.meta.activeTag(rhs)) return false;
     return switch (lhs) {
+        .atomic_ptr => |a| a.@"const" == rhs.atomic_ptr.@"const" and goTypeEqual(a.child.*, rhs.atomic_ptr.child.*),
         // `u21` and `u32` both travel as `uint32_t`, so only the declared
         // width tells them apart, and it is the width Go spells.
         .int => |a| a.bits == rhs.int.bits and a.signed == rhs.int.signed and a.is_usize == rhs.int.is_usize,
@@ -585,6 +586,7 @@ fn declaredTypeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
     if (std.meta.activeTag(lhs) != std.meta.activeTag(rhs)) return false;
     return switch (lhs) {
         .void, .bool, .cancel_flag => true,
+        .atomic_ptr => |a| a.@"const" == rhs.atomic_ptr.@"const" and declaredTypeEqual(a.child.*, rhs.atomic_ptr.child.*),
         .int => |a| a.bits == rhs.int.bits and a.signed == rhs.int.signed and a.is_usize == rhs.int.is_usize,
         .float => |a| a.bits == rhs.float.bits,
         .@"enum" => |a| std.mem.eql(u8, a.ref, rhs.@"enum".ref),

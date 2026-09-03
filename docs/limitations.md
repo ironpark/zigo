@@ -97,6 +97,10 @@
   노출된다. field accessor 한 번은 `seq_cst` load/store지만, 여러 atomic field를 담은 struct나
   union snapshot 전체는 원자적이지 않다. atomic field가 있는 `extern struct` slice는 항상
   원소별 복사 경로를 사용한다.
+- atomic 포인터 파라미터는 `*std.atomic.Value(u32|i32|u64|i64)`와 const 변형만 지원하며
+  Go에서는 대응하는 `*sync/atomic` 타입이다. 주소는 호출 범위에서만 빌리므로 retained는
+  `ZIGO043`이고, native가 주소를 저장하거나 호출 뒤 사용하는 것은 정의되지 않는다. `.cancel`
+  플래그는 계속 별도 `context.Context` 계약을 따른다.
 - `.direction = .out` slice에 `.written = .@"return"`을 쓰려면 반환 payload가
   `usize`(또는 `!usize`)여야 하고, `.out`이 아닌 파라미터에는 붙일 수 없다. 둘 다
   `ZIGO017`로 거부된다.
@@ -281,6 +285,9 @@ error[ZIGO018]: unsupported integer width `u21` in parameter `cp`
   메시지는 경로와, 경로가 해석된 경우 지원하지 않는 필드 타입을 함께 적는다.
 - `ZIGO038` — 명시한 함수 receiver가 등록 opaque 타입의 첫 비주입 pointer 파라미터와
   일치하지 않거나, receiver group의 함수 이름이 `strip_prefix`로 시작하지 않는다.
+- `ZIGO043` — atomic 포인터 파라미터의 scalar가 `u32`, `i32`, `u64`, `i64` 중 하나가
+  아니거나 `.retention = .retained`를 지정했다. 지원하는 `sync/atomic` 폭을 사용하고 주소는
+  호출 범위에서만 빌린다.
 
 `ZIGO027`, `ZIGO028`, `ZIGO037`, `ZIGO038`은 reflection이 문서를 만들기 전에 걸리므로 `semantic.json` 자리가
 아니라 선언 경로를 가리키며, 생성기는 이 진단을 출력하고 종료한다.

@@ -134,6 +134,8 @@ pub const AbiParam = struct {
         /// and raises it from a goroutine watching `ctx.Done()`; the address
         /// is valid only for the call, which is all the contract asks for.
         cancel_flag,
+        /// A borrowed Go `sync/atomic` value shared with Zig for this call.
+        atomic_ptr,
         stream_callback,
         stream_data,
         stream_data_length,

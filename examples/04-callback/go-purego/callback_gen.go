@@ -5,6 +5,8 @@ package callback
 
 import (
 	"runtime"
+	"sync/atomic"
+	"unsafe"
 
 	"example.com/zigo/callback-purego/internal/raw"
 )
@@ -243,6 +245,24 @@ func PanicNow() error {
 // CompressionBound calls the Zig function compressionBound.
 func CompressionBound(sourceLen uint) uint {
 	return raw.CompressionBound(sourceLen)
+}
+
+// IncrementShared calls the Zig function incrementShared.
+func IncrementShared(counter *atomic.Uint64, delta uint64) uint64 {
+	defer runtime.KeepAlive(counter)
+	var counterPinner runtime.Pinner
+	counterPinner.Pin(counter)
+	defer counterPinner.Unpin()
+	return raw.IncrementShared(unsafe.Pointer(counter), delta)
+}
+
+// ReadShared calls the Zig function readShared.
+func ReadShared(value *atomic.Int32) int32 {
+	defer runtime.KeepAlive(value)
+	var valuePinner runtime.Pinner
+	valuePinner.Pin(value)
+	defer valuePinner.Unpin()
+	return raw.ReadShared(unsafe.Pointer(value))
 }
 
 // Apply calls the Zig function apply.

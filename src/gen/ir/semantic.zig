@@ -30,6 +30,13 @@ pub const Optional = struct { child: *TypeNode };
 /// the whole of the type: neither side carries a payload type.
 pub const StreamDirection = enum { writer, reader };
 pub const IoStream = struct { direction: StreamDirection };
+/// A call-scoped pointer to `std.atomic.Value(T)`. The wrapper is erased from
+/// the C shape, while this node keeps enough information to spell Go's typed
+/// `sync/atomic` pointer and rebuild the Zig pointer in the shim.
+pub const AtomicPtr = struct {
+    child: *TypeNode,
+    @"const": bool,
+};
 pub const ErrorUnion = struct {
     anyerror: bool = false,
     error_set: []const []const u8,
@@ -47,6 +54,7 @@ pub const Callback = struct {
 };
 
 pub const TypeNode = union(enum) {
+    atomic_ptr: AtomicPtr,
     bool: void,
     callback: Callback,
     /// The cancellation flag a `.cancel` function polls. Its Zig spelling is
@@ -69,6 +77,13 @@ pub const TypeNode = union(enum) {
     pub fn jsonStringify(self: TypeNode, jw: anytype) !void {
         try jw.beginObject();
         switch (self) {
+            .atomic_ptr => |value| {
+                try jw.objectField("child");
+                try jw.write(value.child.*);
+                try jw.objectField("const");
+                try jw.write(value.@"const");
+                try writeKind(jw, "atomic_ptr");
+            },
             .bool => try writeKind(jw, "bool"),
             .cancel_flag => try writeKind(jw, "cancel_flag"),
             .callback => |value| {
@@ -170,6 +185,10 @@ pub const TypeNode = union(enum) {
             else => return error.UnexpectedToken,
         };
         if (std.mem.eql(u8, kind, "void")) return .{ .void = {} };
+        if (std.mem.eql(u8, kind, "atomic_ptr")) return .{ .atomic_ptr = .{
+            .child = try parseTypePointer(allocator, object, "child", options),
+            .@"const" = try parseField(bool, allocator, object, "const", options),
+        } };
         if (std.mem.eql(u8, kind, "bool")) return .{ .bool = {} };
         if (std.mem.eql(u8, kind, "cancel_flag")) return .{ .cancel_flag = {} };
         if (std.mem.eql(u8, kind, "int")) return .{ .int = .{
