@@ -6,6 +6,11 @@
 
 ## [Unreleased]
 
+### Changed
+
+- `ZIGO009`, `ZIGO021`, `ZIGO024`, `ZIGO036` 진단에 충돌하거나 수명 계약이 빠진 선언에서
+  바로 적용할 수 있는 이름 또는 release 함수 제안을 `note:`로 추가했습니다.
+
 ### Added
 
 - root와 등록 타입의 공개 함수를 bound, excluded, unbound로 분류하는 `go-coverage` build

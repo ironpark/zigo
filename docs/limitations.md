@@ -201,6 +201,9 @@
 생성 단계의 모든 거부는 `error[ZIGOnnn]` 진단 한 줄로 나온다. 스택 트레이스나 bare error는
 남아 있지 않으며, 진단은 문제가 된 선언(`Owner.fn`이나 `namespace.fn`)과 파라미터 이름,
 그리고 Zig 쪽 철자를 함께 알려준다.
+이름이나 수명 계약을 고칠 수 있는 구체적인 대안이 있으면 `hint:` 다음의 `note:`가
+그 선언에 적용할 수 있는 `.name`이나 release 함수 철자를 제안한다. `note:`는 해결 방법만
+설명하며 진단 결과 자체에는 영향을 주지 않는다.
 
 ```
 error[ZIGO018]: unsupported integer width `u21` in parameter `cp`
@@ -267,7 +270,8 @@ error[ZIGO018]: unsupported integer width `u21` in parameter `cp`
   `.caller`를 명시한다.
 - `ZIGO036` — lowering 뒤 C 식별자가 충돌한다. 함수 심볼, handle·enum·struct·snapshot
   typedef, enum 상수, projection, runtime helper를 함께 검사하며 진단이 두 선언을 지목한다.
-  `.name`이나 바인딩 `.prefix`를 바꿔 구분한다.
+  `.name`이나 바인딩 `.prefix`를 바꿔 구분한다. `note:`는 constructor 이름 변경을 제안하지
+  않고, 타입과 함수가 충돌하면 타입 쪽의 구체적인 `.name`을 우선 제안한다.
 - `ZIGO037` — opaque 타입의 `.fields` 경로가 없거나, struct 값 또는 non-optional single
   pointer 이외의 값을 가로지르거나, bool·정수·실수·등록 enum 이외의 타입에서 끝난다.
   메시지는 경로와, 경로가 해석된 경우 지원하지 않는 필드 타입을 함께 적는다.

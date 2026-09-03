@@ -240,6 +240,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .message = "retained pointer has no matching release function",
                 .site = functionSite(function),
                 .hint = "expose a release, clear, close, destroy, or deinit function for the retained value",
+                .note = try retentionNoteAlloc(allocator, function),
             };
         }
         if (try streamReturnIssue(allocator, function)) |issue| return issue;
@@ -463,6 +464,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 ),
                 .site = functionSiteFor(function, function_path),
                 .hint = "rename the function, or register the type with a `.name` that resolves to a different Go identifier",
+                .note = try typeRenameNoteAlloc(allocator, declaration),
             };
         }
     }
@@ -493,6 +495,12 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 ),
                 .site = functionSiteFor(function, function_path),
                 .hint = "rename one declaration, or give it a `.name` that resolves to a different Go identifier",
+                .note = if (constructorInitFor(document, function) != null)
+                    try functionOrConstructorRenameNoteAlloc(allocator, document, function)
+                else if (constructorInitFor(document, previous) != null)
+                    try functionOrConstructorRenameNoteAlloc(allocator, document, previous)
+                else
+                    try functionRenameNoteAlloc(allocator, function),
             };
         }
     }
@@ -515,6 +523,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                     ),
                     .site = .{ .path = "semantic.json", .declaration = declaration.name },
                     .hint = "rename one of the enum tags so they no longer share a Go identifier",
+                    .note = try memberCollisionNoteAlloc(allocator, field.name),
                 };
             }
         }
@@ -912,7 +921,11 @@ fn identifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?
             .declaration = if (declaration.name.len == 0) "types" else declaration.name,
             .zig_path = declaration.zig_path,
             .hint = "register the type in `.types` with an explicit `.name` that is a Go identifier",
-        })) |issue| return issue;
+        })) |issue| {
+            var result = issue;
+            result.note = try invalidTypeNameNoteAlloc(allocator, declaration);
+            return result;
+        }
         const member_label = switch (declaration.kind) {
             .@"enum" => "enum tag",
             .tagged_union => "union variant",
@@ -932,7 +945,11 @@ fn identifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?
                 .declaration = declaration.name,
                 .zig_path = declaration.zig_path,
                 .hint = "rename the declaration in Zig so its name converts to a Go identifier",
-            })) |issue| return issue;
+            })) |issue| {
+                var result = issue;
+                result.note = try invalidMemberNameNoteAlloc(allocator, member_label, field.name);
+                return result;
+            }
         }
     }
     for (document.functions) |function| {
@@ -946,7 +963,11 @@ fn identifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?
             .declaration = function.name,
             .source = function.source,
             .hint = "give the entry a `.name` that converts to a Go identifier",
-        })) |issue| return issue;
+        })) |issue| {
+            var result = issue;
+            result.note = try functionOrConstructorRenameNoteAlloc(allocator, document, function);
+            return result;
+        }
     }
     return null;
 }
@@ -966,7 +987,7 @@ fn cIdentifierBackendIssue(allocator: std.mem.Allocator, document: semantic.Sema
 
     // Keyed by the emitted C name so a collision costs one lookup rather than a
     // scan of every identifier collected so far.
-    var identifiers: std.StringHashMapUnmanaged([]const u8) = .empty;
+    var identifiers: std.StringHashMapUnmanaged(CIdentifierOrigin) = .empty;
 
     for (document.types) |declaration| {
         const emits_handle = declaration.kind == .@"opaque" or (declaration.kind == .tagged_union and
@@ -975,7 +996,8 @@ fn cIdentifierBackendIssue(allocator: std.mem.Allocator, document: semantic.Sema
         if (emits_handle or declaration.kind == .@"enum" or emits_struct) {
             const name = try naming.cTypeNameAlloc(scratch, document.prefix, declaration.name);
             const label = try std.fmt.allocPrint(scratch, "type `{s}`", .{declaration.name});
-            if (try addCIdentifier(allocator, scratch, &identifiers, name, label)) |issue| return issue;
+            const note = try typeRenameNoteAlloc(scratch, declaration);
+            if (try addCIdentifier(allocator, scratch, &identifiers, name, .{ .label = label, .note = note, .type_note = true })) |issue| return issue;
         }
         if (declaration.kind == .@"enum") for (declaration.fields) |field| {
             const type_name = try naming.cTypeNameAlloc(scratch, document.prefix, declaration.name);
@@ -983,7 +1005,8 @@ fn cIdentifierBackendIssue(allocator: std.mem.Allocator, document: semantic.Sema
             const combined = try std.fmt.allocPrint(scratch, "{s}_{s}", .{ type_name, member });
             const name = try std.ascii.allocUpperString(scratch, combined);
             const label = try std.fmt.allocPrint(scratch, "enum constant `{s}.{s}`", .{ declaration.name, field.name });
-            if (try addCIdentifier(allocator, scratch, &identifiers, name, label)) |issue| return issue;
+            const note = try typeRenameNoteAlloc(scratch, declaration);
+            if (try addCIdentifier(allocator, scratch, &identifiers, name, .{ .label = label, .note = note, .type_note = true })) |issue| return issue;
         };
     }
     for (document.functions) |function| {
@@ -993,54 +1016,71 @@ fn cIdentifierBackendIssue(allocator: std.mem.Allocator, document: semantic.Sema
         else
             base;
         const label = try std.fmt.allocPrint(scratch, "function `{s}`", .{try functionDeclarationAlloc(scratch, function)});
-        if (try addCIdentifier(allocator, scratch, &identifiers, name, label)) |issue| return issue;
+        const note = if (constructorInitFor(document, function)) |constructor|
+            try typeNameRenameNoteAlloc(scratch, constructor.type, .@"opaque")
+        else
+            try functionRenameNoteAlloc(scratch, function);
+        if (try addCIdentifier(allocator, scratch, &identifiers, name, .{ .label = label, .note = note, .type_note = constructorInitFor(document, function) != null })) |issue| return issue;
     }
     for (document.types) |declaration| {
         if (declaration.kind != .tagged_union) continue;
         if (!document.isValueOnlyTaggedUnion(declaration.name)) {
             const tag = try naming.projectionSymbolAlloc(scratch, document.prefix, declaration.name, "tag");
             const tag_label = try std.fmt.allocPrint(scratch, "tag projection `{s}`", .{declaration.name});
-            if (try addCIdentifier(allocator, scratch, &identifiers, tag, tag_label)) |issue| return issue;
+            const type_note = try typeRenameNoteAlloc(scratch, declaration);
+            if (try addCIdentifier(allocator, scratch, &identifiers, tag, .{ .label = tag_label, .note = type_note, .type_note = true })) |issue| return issue;
             for (declaration.fields) |field| {
                 if (field.type.? == .void) continue;
                 const name = try naming.projectionSymbolAlloc(scratch, document.prefix, declaration.name, field.name);
                 const label = try std.fmt.allocPrint(scratch, "payload projection `{s}.{s}`", .{ declaration.name, field.name });
-                if (try addCIdentifier(allocator, scratch, &identifiers, name, label)) |issue| return issue;
+                if (try addCIdentifier(allocator, scratch, &identifiers, name, .{ .label = label, .note = type_note, .type_note = true })) |issue| return issue;
             }
         }
         if (declaration.accessStrategy() == .snapshot) {
             const owner = try naming.snakeAlloc(scratch, declaration.name);
             const symbol = try std.fmt.allocPrint(scratch, "{s}_{s}_snapshot", .{ document.prefix, owner });
             const symbol_label = try std.fmt.allocPrint(scratch, "snapshot function `{s}`", .{declaration.name});
-            if (try addCIdentifier(allocator, scratch, &identifiers, symbol, symbol_label)) |issue| return issue;
+            const type_note = try typeRenameNoteAlloc(scratch, declaration);
+            if (try addCIdentifier(allocator, scratch, &identifiers, symbol, .{ .label = symbol_label, .note = type_note, .type_note = true })) |issue| return issue;
             const type_name = try std.fmt.allocPrint(scratch, "{s}_t", .{symbol});
             const type_label = try std.fmt.allocPrint(scratch, "snapshot type `{s}`", .{declaration.name});
-            if (try addCIdentifier(allocator, scratch, &identifiers, type_name, type_label)) |issue| return issue;
+            if (try addCIdentifier(allocator, scratch, &identifiers, type_name, .{ .label = type_label, .note = type_note, .type_note = true })) |issue| return issue;
         }
     }
     const last_error = try std.fmt.allocPrint(scratch, "{s}_last_error_message", .{document.prefix});
-    return addCIdentifier(allocator, scratch, &identifiers, last_error, "generated last-error function");
+    return addCIdentifier(allocator, scratch, &identifiers, last_error, .{ .label = "generated last-error function" });
 }
+
+const CIdentifierOrigin = struct {
+    label: []const u8,
+    note: ?[]const u8 = null,
+    type_note: bool = false,
+};
 
 fn addCIdentifier(
     allocator: std.mem.Allocator,
     scratch: std.mem.Allocator,
-    identifiers: *std.StringHashMapUnmanaged([]const u8),
+    identifiers: *std.StringHashMapUnmanaged(CIdentifierOrigin),
     name: []const u8,
-    declaration: []const u8,
+    declaration: CIdentifierOrigin,
 ) !?diagnostic.Diagnostic {
     const entry = try identifiers.getOrPut(scratch, name);
-    if (entry.found_existing) return .{
-        .severity = .@"error",
-        .code = "ZIGO036",
-        .message = try std.fmt.allocPrint(
-            allocator,
-            "C identifier `{s}` collides between {s} and {s}",
-            .{ name, entry.value_ptr.*, declaration },
-        ),
-        .site = .{ .path = "semantic.json", .declaration = try allocator.dupe(u8, declaration) },
-        .hint = "give one declaration a distinct `.name`, or choose a different binding `.prefix`",
-    };
+    if (entry.found_existing) {
+        const previous = entry.value_ptr.*;
+        const selected_note = if (previous.type_note) previous.note else declaration.note orelse previous.note;
+        return .{
+            .severity = .@"error",
+            .code = "ZIGO036",
+            .message = try std.fmt.allocPrint(
+                allocator,
+                "C identifier `{s}` collides between {s} and {s}",
+                .{ name, previous.label, declaration.label },
+            ),
+            .site = .{ .path = "semantic.json", .declaration = try allocator.dupe(u8, declaration.label) },
+            .hint = "give one declaration a distinct `.name`, or choose a different binding `.prefix`",
+            .note = if (selected_note) |note| try allocator.dupe(u8, note) else null,
+        };
+    }
     entry.value_ptr.* = declaration;
     return null;
 }
@@ -1103,6 +1143,91 @@ fn nameIssue(allocator: std.mem.Allocator, check: NameCheck) !?diagnostic.Diagno
         .site = site,
         .hint = check.hint,
     };
+}
+
+fn typeRenameNoteAlloc(allocator: std.mem.Allocator, declaration: semantic.TypeDecl) ![]u8 {
+    return typeNameRenameNoteAlloc(allocator, declaration.name, declaration.kind);
+}
+
+fn retentionNoteAlloc(allocator: std.mem.Allocator, function: semantic.SemanticFn) ![]u8 {
+    const path = try functionDeclarationAlloc(allocator, function);
+    defer allocator.free(path);
+    return std.fmt.allocPrint(allocator, "consider exposing `pub fn release() void` alongside `{s}`", .{path});
+}
+
+fn typeNameRenameNoteAlloc(allocator: std.mem.Allocator, name: []const u8, kind: semantic.TypeKind) ![]u8 {
+    return std.fmt.allocPrint(
+        allocator,
+        "consider .name = \"{s}{s}\" on type {s}",
+        .{ name, if (kind == .@"enum") "Kind" else "Type", name },
+    );
+}
+
+fn functionRenameNoteAlloc(allocator: std.mem.Allocator, function: semantic.SemanticFn) ![]u8 {
+    const converted = try naming.pascalAlloc(allocator, function.name);
+    defer allocator.free(converted);
+    const public_name = try validGoNameAlloc(allocator, converted, "Function");
+    defer allocator.free(public_name);
+    const path = try functionDeclarationAlloc(allocator, function);
+    defer allocator.free(path);
+    return std.fmt.allocPrint(allocator, "consider .name = \"{s}Binding\" on function {s}", .{ public_name, path });
+}
+
+fn functionOrConstructorRenameNoteAlloc(allocator: std.mem.Allocator, document: semantic.Semantic, function: semantic.SemanticFn) ![]u8 {
+    if (constructorInitFor(document, function)) |constructor| {
+        for (document.types) |declaration| {
+            if (std.mem.eql(u8, declaration.name, constructor.type)) return typeRenameNoteAlloc(allocator, declaration);
+        }
+        return typeNameRenameNoteAlloc(allocator, constructor.type, .@"opaque");
+    }
+    return functionRenameNoteAlloc(allocator, function);
+}
+
+fn invalidTypeNameNoteAlloc(allocator: std.mem.Allocator, declaration: semantic.TypeDecl) ![]u8 {
+    const converted = try naming.pascalAlloc(allocator, declaration.name);
+    defer allocator.free(converted);
+    const suggestion = try validGoNameAlloc(allocator, converted, if (declaration.kind == .@"enum") "Enum" else "Type");
+    defer allocator.free(suggestion);
+    return std.fmt.allocPrint(
+        allocator,
+        "consider .name = \"{s}\" on type {s}",
+        .{ suggestion, declaration.zig_path orelse declaration.name },
+    );
+}
+
+fn invalidMemberNameNoteAlloc(allocator: std.mem.Allocator, label: []const u8, name: []const u8) ![]u8 {
+    const converted = try naming.camelAlloc(allocator, name);
+    defer allocator.free(converted);
+    const suggestion = try validGoNameAlloc(allocator, converted, "value");
+    defer allocator.free(suggestion);
+    return std.fmt.allocPrint(allocator, "consider renaming {s} `{s}` to `{s}`", .{ label, name, suggestion });
+}
+
+fn memberCollisionNoteAlloc(allocator: std.mem.Allocator, name: []const u8) ![]u8 {
+    const converted = try naming.camelAlloc(allocator, name);
+    defer allocator.free(converted);
+    const base = try validGoNameAlloc(allocator, converted, "value");
+    defer allocator.free(base);
+    return std.fmt.allocPrint(allocator, "consider renaming enum tag `{s}` to `{s}Value`", .{ name, base });
+}
+
+fn validGoNameAlloc(allocator: std.mem.Allocator, candidate: []const u8, fallback: []const u8) ![]u8 {
+    var first: ?u8 = null;
+    for (candidate) |character| {
+        if (std.ascii.isAlphanumeric(character) or character == '_') {
+            first = character;
+            break;
+        }
+    }
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(allocator);
+    if (first == null or std.ascii.isDigit(first.?)) try result.appendSlice(allocator, fallback);
+    for (candidate) |character| {
+        if (std.ascii.isAlphanumeric(character) or character == '_') try result.append(allocator, character);
+    }
+    if (result.items.len == 0) try result.appendSlice(allocator, fallback);
+    if (!naming.isGoIdentifier(result.items)) try result.appendSlice(allocator, "Value");
+    return result.toOwnedSlice(allocator);
 }
 
 /// The type the C ABI cannot name, plus how it was reached from the parameter
@@ -1979,7 +2104,7 @@ test "implemented diagnostic snapshots are stable" {
             .package = "bad",
             .prefix = "zg",
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO036]: C identifier `zg_lookup_id` collides between function `lookupID` and function `lookup_id`\n  --> semantic.json (function `lookup_id`)\n  hint: give one declaration a distinct `.name`, or choose a different binding `.prefix`\n" },
+        }, .snapshot = "error[ZIGO036]: C identifier `zg_lookup_id` collides between function `lookupID` and function `lookup_id`\n  --> semantic.json (function `lookup_id`)\n  hint: give one declaration a distinct `.name`, or choose a different binding `.prefix`\n  note: consider .name = \"LookupIDBinding\" on function lookup_id\n" },
         .{ .document = .{
             .functions = &.{.{
                 .has_comptime_params = true,
@@ -2003,7 +2128,7 @@ test "implemented diagnostic snapshots are stable" {
             .prefix = "zg",
             .types = &.{.{ .kind = .@"opaque", .name = "Thing" }},
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO009]: retained pointer has no matching release function\n  --> semantic.json (remember)\n  hint: expose a release, clear, close, destroy, or deinit function for the retained value\n" },
+        }, .snapshot = "error[ZIGO009]: retained pointer has no matching release function\n  --> semantic.json (remember)\n  hint: expose a release, clear, close, destroy, or deinit function for the retained value\n  note: consider exposing `pub fn release() void` alongside `remember`\n" },
         .{ .document = .{
             .package = "bad",
             .prefix = "zg",
@@ -2264,7 +2389,7 @@ test "implemented diagnostic snapshots are stable" {
                 .zig_path = "vt.lib.Enum([_][]const u8{ \"block\", \"bar\" }[0..4])",
             }},
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO021]: registered type name `4])` from Zig type `vt.lib.Enum([_][]const u8{ \"block\", \"bar\" }[0..4])` is not a valid Go identifier\n  --> semantic.json (4]))\n  hint: register the type in `.types` with an explicit `.name` that is a Go identifier\n" },
+        }, .snapshot = "error[ZIGO021]: registered type name `4])` from Zig type `vt.lib.Enum([_][]const u8{ \"block\", \"bar\" }[0..4])` is not a valid Go identifier\n  --> semantic.json (4]))\n  hint: register the type in `.types` with an explicit `.name` that is a Go identifier\n  note: consider .name = \"Enum4\" on type vt.lib.Enum([_][]const u8{ \"block\", \"bar\" }[0..4])\n" },
         .{ .document = .{
             .package = "bad",
             .prefix = "zg",
@@ -2275,7 +2400,7 @@ test "implemented diagnostic snapshots are stable" {
                 .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
             }},
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO021]: enum tag `_` is not a valid Go identifier\n  --> semantic.json (Mode)\n  hint: rename the declaration in Zig so its name converts to a Go identifier\n" },
+        }, .snapshot = "error[ZIGO021]: enum tag `_` is not a valid Go identifier\n  --> semantic.json (Mode)\n  hint: rename the declaration in Zig so its name converts to a Go identifier\n  note: consider renaming enum tag `_` to `value`\n" },
         .{ .document = .{
             .functions = &.{.{
                 .name = "open",
@@ -2303,7 +2428,7 @@ test "implemented diagnostic snapshots are stable" {
             .prefix = "zg",
             .types = &.{.{ .kind = .@"opaque", .name = "range" }},
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO021]: registered type name `range` is not a valid Go identifier\n  --> semantic.json (range)\n  hint: register the type in `.types` with an explicit `.name` that is a Go identifier\n" },
+        }, .snapshot = "error[ZIGO021]: registered type name `range` is not a valid Go identifier\n  --> semantic.json (range)\n  hint: register the type in `.types` with an explicit `.name` that is a Go identifier\n  note: consider .name = \"Range\" on type range\n" },
         // `open` in namespace `File` and `open` in namespace `Socket` have no
         // receiver, so `ZIGO007`'s symbol check tells them apart (their C
         // symbols carry the namespace) but the public Go layer drops it: both
@@ -2316,7 +2441,7 @@ test "implemented diagnostic snapshots are stable" {
             .package = "bad",
             .prefix = "zg",
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO024]: public Go name `Open` collides between `File.open` and `Socket.open`\n  --> semantic.json (Socket.open)\n  hint: rename one declaration, or give it a `.name` that resolves to a different Go identifier\n" },
+        }, .snapshot = "error[ZIGO024]: public Go name `Open` collides between `File.open` and `Socket.open`\n  --> semantic.json (Socket.open)\n  hint: rename one declaration, or give it a `.name` that resolves to a different Go identifier\n  note: consider .name = \"OpenBinding\" on function Socket.open\n" },
     };
     // A located diagnostic names the declaration and the parameter it found,
     // so its strings come from the arena the caller is expected to pass.
@@ -2937,7 +3062,8 @@ test "C typedef and function symbol collisions have a stable diagnostic" {
     try std.testing.expectEqualStrings(
         "error[ZIGO036]: C identifier `zg_search_select` collides between type `SearchSelect` and function `Search.select`\n" ++
             "  --> semantic.json (function `Search.select`)\n" ++
-            "  hint: give one declaration a distinct `.name`, or choose a different binding `.prefix`\n",
+            "  hint: give one declaration a distinct `.name`, or choose a different binding `.prefix`\n" ++
+            "  note: consider .name = \"SearchSelectKind\" on type SearchSelect\n",
         rendered,
     );
 }

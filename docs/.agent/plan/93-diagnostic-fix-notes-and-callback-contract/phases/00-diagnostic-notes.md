@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: The ZIGO036 snapshot shows a `note:` proposing a `.name`; tests green.
 > NEXT: none

@@ -19,6 +19,7 @@ pub const Diagnostic = struct {
     message: []const u8,
     site: Site,
     hint: []const u8,
+    note: ?[]const u8 = null,
 
     pub fn render(self: Diagnostic, writer: *std.Io.Writer) std.Io.Writer.Error!void {
         if (self.site.line) |line| {
@@ -30,6 +31,7 @@ pub const Diagnostic = struct {
                 @tagName(self.severity), self.code, self.message, self.site.path, self.site.declaration, self.hint,
             });
         }
+        if (self.note) |note| try writer.print("  note: {s}\n", .{note});
     }
 
     pub fn renderAlloc(self: Diagnostic, allocator: std.mem.Allocator) ![]u8 {
@@ -47,12 +49,14 @@ test "diagnostic rendering includes actionable context" {
         .message = "cannot pass `mylib.Config` by value",
         .site = .{ .path = "src/bindings.zig:3", .declaration = "mylib.configure" },
         .hint = "declare it as `extern struct`, or expose it as opaque",
+        .note = "consider registering `Config` with `.name = \"ConfigValue\"`",
     };
     const rendered = try diagnostic.renderAlloc(std.testing.allocator);
     defer std.testing.allocator.free(rendered);
     try std.testing.expect(std.mem.indexOf(u8, rendered, "error[ZIGO003]") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered, "src/bindings.zig:3") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered, "hint:") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "  note: consider registering") != null);
 }
 
 test "a site with a source location renders path:line:col" {
