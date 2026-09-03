@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: The listed positions accept `std.atomic.Value(T)` and round-trip in Go tests on both backends; goldens unchanged elsewhere.
 > NEXT: none
