@@ -24,7 +24,6 @@ const ImportIterator = struct {
     }
 };
 
-
 /// Enriches reflection-only IR with syntax-only names and doc comments.
 /// This pass deliberately does not inspect or alter any type node.
 pub fn apply(
