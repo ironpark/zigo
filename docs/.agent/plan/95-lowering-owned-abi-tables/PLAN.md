@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T01:16:00Z"
 description: move retained callback slots, flattened field indexes, packed bit layout, omitted variants, and C identifier note origin out of the emitter into lowering and validation data
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-03T01:06:08Z"
 ---
 > NEXT: Move slot, flatten, omitted-variant, and packed-layout facts into lowering. ([Phase 0](phases/00-lowering-tables.md))
@@ -8,7 +9,7 @@ registered_at: "2026-09-03T01:06:08Z"
 # Phases
 
 - [x] [Phase 00: Slots, flatten indexes, omitted variants, packed layout](phases/00-lowering-tables.md)
-- [ ] [Phase 01: Identifier note origin](phases/01-note-origin.md)
+- [x] [Phase 01: Identifier note origin](phases/01-note-origin.md)
 
 # Shared Verification
 

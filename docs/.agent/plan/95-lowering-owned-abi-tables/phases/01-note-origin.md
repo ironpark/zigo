@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T01:16:00Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `validate.zig` snapshot tests unchanged and green.
 > NEXT: none
