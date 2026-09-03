@@ -198,8 +198,9 @@ Zig reflection에는 함수 파라미터 이름이 없습니다. zigo는 다음 
 
 ## cgo 플래그 덮어쓰기
 
-기본적으로 대상 module의 system library와 framework 링크 정보를 생성된 `#cgo LDFLAGS`로
-전달합니다. 배포 환경에서 별도 경로가 필요할 때만 전체 값을 덮어씁니다.
+기본적으로 대상 module과 그 module이 import하는 전체 module 그래프의 system library,
+library path, framework 링크 정보를 생성된 `#cgo LDFLAGS`로 전달합니다. 배포 환경에서
+별도 경로가 필요할 때만 전체 값을 덮어씁니다.
 
 ```zig
 .cgo_flags = .{
@@ -212,14 +213,15 @@ Zig reflection에는 함수 파라미터 이름이 없습니다. zigo는 다음 
 `cflags`와 `ldflags`는 zigo가 계산한 include 경로와 라이브러리 경로를 대체합니다.
 `extra_ldflags`는 대체하지 않고 기본값 또는 `ldflags` 뒤에 덧붙습니다. module에 붙은
 system library, framework, pkg-config 정보도 그대로 함께 나갑니다. 그것까지 빼려면
-module에서 해당 링크를 하지 마세요. 정적 backend의 순서는 바인딩 archive, module의 정적
+module에서 해당 링크를 하지 마세요. 정적 backend의 순서는 바인딩 archive, module 그래프의 정적
 입력, `extra_ldflags`, system library입니다. `ldflags`를 지정하면 앞의 두 항목을 함께
 대체하고 뒤의 두 항목은 유지합니다.
 
 ## 링크 정보가 전달되는 방식
 
-`.cgo_static`과 `.cgo_dynamic`에서 module의 링크 정보는 다음과 같이 생성된 raw 파일의
-cgo 블록으로 옮겨집니다.
+`.cgo_static`과 `.cgo_dynamic`에서 대상 module과 모든 imported module의 링크 정보는
+다음과 같이 생성된 raw 파일의 cgo 블록으로 옮겨집니다. 의존 module부터 안정적인 순서로
+수집하고, 같은 library path, system library, pkg-config package, framework는 한 번만 적습니다.
 
 | module에 한 일 | 생성된 줄 |
 |---|---|

@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: An import-declared `linkSystemLibrary`/`linkFramework`/`addLibraryPath` appears in the generated cgo block exactly once and the full verification loop passes.
 > NEXT: none

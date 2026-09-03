@@ -412,6 +412,7 @@ pub fn build(b: *std.Build) void {
     const dynamic_library_tests = b.addTest(.{ .root_module = generator_modules.dynamic_library, .filters = test_filters });
     const run_dynamic_library_tests = b.addRunArtifact(dynamic_library_tests);
     const test_step = b.step("test", "Run unit and snapshot harness tests");
+    testTransitiveLinkInputCollection(b, target, optimize);
     const godoc_audit = b.addSystemCommand(&.{ "go", "run", "./tests/godoc_audit/main.go" });
     godoc_audit.addArgs(&.{
         "tests/generator_cases/atomic_value/expected",
@@ -780,6 +781,35 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     }
 }
 
+/// Build-graph regression test: a dependency reached through both sides of a
+/// diamond contributes each cgo flag once.
+fn testTransitiveLinkInputCollection(
+    b: *std.Build,
+    target: std.Build.ResolvedTarget,
+    optimize: std.builtin.OptimizeMode,
+) void {
+    const dependency = b.createModule(.{ .target = target, .optimize = optimize });
+    dependency.addLibraryPath(b.path("tests/fixtures/transitive-link-inputs/lib"));
+    dependency.linkSystemLibrary("zigo_transitive_test", .{});
+    dependency.linkFramework("ZigoTransitiveTest", .{});
+
+    const left = b.createModule(.{ .target = target, .optimize = optimize });
+    left.addImport("dependency", dependency);
+    const right = b.createModule(.{ .target = target, .optimize = optimize });
+    right.addImport("dependency", dependency);
+    const root = b.createModule(.{ .target = target, .optimize = optimize });
+    root.addImport("left", left);
+    root.addImport("right", right);
+
+    var inputs: LinkInputCollector = .{};
+    inputs.collect(b, root);
+    const system_flags = systemLibraryFlags(b, &inputs);
+    const framework_flags = frameworkFlags(b, &inputs);
+    std.debug.assert(std.mem.count(u8, system_flags, "-L") == 1);
+    std.debug.assert(std.mem.count(u8, system_flags, "-lzigo_transitive_test") == 1);
+    std.debug.assert(std.mem.count(u8, framework_flags, "-framework ZigoTransitiveTest") == 1);
+}
+
 fn addGeneratorCases(
     b: *std.Build,
     test_step: *std.Build.Step,
@@ -1008,13 +1038,15 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     const cflags_override = if (options.cgo_flags) |flags| joinFlags(b, flags.cflags) else "";
     const ldflags_override = if (options.cgo_flags) |flags| joinFlags(b, flags.ldflags) else "";
     const extra_ldflags = if (options.cgo_flags) |flags| joinFlags(b, flags.extra_ldflags) else "";
-    const system_ldflags = systemLibraryFlags(b, options.module);
+    var link_inputs: LinkInputCollector = .{};
+    link_inputs.collect(b, options.module);
+    const system_ldflags = systemLibraryFlags(b, &link_inputs);
     const static_link_inputs = if (backend == .cgo and link_mode == .static and ldflags_override.len == 0)
-        staticLibraryInputs(b, options.module)
+        link_inputs.staticLibraryInputs()
     else
         StaticLinkInputs.empty;
-    const framework_ldflags = frameworkFlags(b, options.module);
-    const pkg_config_libs = pkgConfigLibraries(b, options.module);
+    const framework_ldflags = frameworkFlags(b, &link_inputs);
+    const pkg_config_libs = pkgConfigLibraries(b, &link_inputs);
     generate.addArgs(&.{
         "--package",           options.name,
         "--prefix",            options.prefix,
@@ -1572,40 +1604,89 @@ fn hostReflectionLibrary(
 /// dependency-first order: a library attached to an imported module (ghostty
 /// hangs simdutf and highway on `ghostty-vt`, and the binding imports that)
 /// is just as much a link input as one attached to the module itself.
-fn staticLibraryInputs(b: *std.Build, module: *std.Build.Module) StaticLinkInputs {
-    var inputs: StaticInputCollector = .{};
-    var seen: std.AutoHashMapUnmanaged(*std.Build.Module, void) = .empty;
-    inputs.collect(b, module, &seen);
-    return .{ .paths = inputs.paths.items, .names = inputs.names.items };
-}
+const SystemLibraryInput = struct {
+    library: std.Build.Module.SystemLib,
+    module: *std.Build.Module,
+};
 
-const StaticInputCollector = struct {
-    paths: std.ArrayList(std.Build.LazyPath) = .empty,
-    names: std.ArrayList([]const u8) = .empty,
-    compiles: std.ArrayList(*std.Build.Step.Compile) = .empty,
+const FrameworkInput = struct {
+    name: []const u8,
+    options: std.Build.Module.LinkFrameworkOptions,
+};
 
-    fn collect(self: *StaticInputCollector, b: *std.Build, module: *std.Build.Module, seen: *std.AutoHashMapUnmanaged(*std.Build.Module, void)) void {
-        if (seen.contains(module)) return;
-        seen.put(b.allocator, module, {}) catch @panic("OOM");
-        for (module.import_table.values()) |import| self.collect(b, import, seen);
+/// All native inputs carried by a module graph, in dependency-first order.
+/// Each emitted spelling is retained only at its first occurrence so diamond
+/// imports and repeated declarations cannot duplicate a cgo directive.
+const LinkInputCollector = struct {
+    seen_modules: std.AutoHashMapUnmanaged(*std.Build.Module, void) = .empty,
+    static_paths: std.ArrayList(std.Build.LazyPath) = .empty,
+    static_names: std.ArrayList([]const u8) = .empty,
+    static_displays: std.ArrayList([]const u8) = .empty,
+    static_compiles: std.ArrayList(*std.Build.Step.Compile) = .empty,
+    library_paths: std.ArrayList(std.Build.LazyPath) = .empty,
+    system_libraries: std.ArrayList(SystemLibraryInput) = .empty,
+    frameworks: std.ArrayList(FrameworkInput) = .empty,
+
+    fn collect(self: *LinkInputCollector, b: *std.Build, module: *std.Build.Module) void {
+        if (self.seen_modules.contains(module)) return;
+        self.seen_modules.put(b.allocator, module, {}) catch @panic("OOM");
+        for (module.import_table.values()) |import| self.collect(b, import);
+
+        for (module.lib_paths.items) |path| {
+            const candidate = path.getPath(b);
+            for (self.library_paths.items) |existing| {
+                if (std.mem.eql(u8, existing.getPath(b), candidate)) break;
+            } else {
+                self.library_paths.append(b.allocator, path) catch @panic("OOM");
+            }
+        }
+
+        for (module.frameworks.keys(), module.frameworks.values()) |name, options| {
+            for (self.frameworks.items) |existing| {
+                if (std.mem.eql(u8, existing.name, name)) break;
+            } else {
+                self.frameworks.append(b.allocator, .{ .name = name, .options = options }) catch @panic("OOM");
+            }
+        }
+
         for (module.link_objects.items) |object| {
+            switch (object) {
+                .system_lib => |library| {
+                    for (self.system_libraries.items) |existing| {
+                        if (std.mem.eql(u8, existing.library.name, library.name)) break;
+                    } else {
+                        self.system_libraries.append(b.allocator, .{ .library = library, .module = module }) catch @panic("OOM");
+                    }
+                    continue;
+                },
+                else => {},
+            }
             const path: std.Build.LazyPath, const name: []const u8 = switch (object) {
                 .other_step => |compile| blk: {
                     if (!compile.isStaticLibrary()) continue;
                     // One library reached through two imports is one input.
-                    if (std.mem.indexOfScalar(*std.Build.Step.Compile, self.compiles.items, compile) != null) continue;
-                    self.compiles.append(b.allocator, compile) catch @panic("OOM");
+                    if (std.mem.indexOfScalar(*std.Build.Step.Compile, self.static_compiles.items, compile) != null) continue;
+                    self.static_compiles.append(b.allocator, compile) catch @panic("OOM");
                     break :blk .{ compile.getEmittedBin(), compile.name };
                 },
                 .static_path => |candidate| .{ candidate, archiveStem(std.fs.path.basename(candidate.getDisplayName())) },
                 else => continue,
             };
-            for (self.names.items) |existing| {
-                if (std.mem.eql(u8, existing, name)) @panic(b.fmt("two static link inputs would both install as lib{s}.a", .{name}));
+            const display = path.getDisplayName();
+            for (self.static_names.items, self.static_displays.items) |existing_name, existing_display| {
+                if (!std.mem.eql(u8, existing_name, name)) continue;
+                if (std.mem.eql(u8, existing_display, display)) break;
+                @panic(b.fmt("two static link inputs would both install as lib{s}.a", .{name}));
+            } else {
+                self.static_paths.append(b.allocator, path) catch @panic("OOM");
+                self.static_names.append(b.allocator, name) catch @panic("OOM");
+                self.static_displays.append(b.allocator, display) catch @panic("OOM");
             }
-            self.paths.append(b.allocator, path) catch @panic("OOM");
-            self.names.append(b.allocator, name) catch @panic("OOM");
         }
+    }
+
+    fn staticLibraryInputs(self: *const LinkInputCollector) StaticLinkInputs {
+        return .{ .paths = self.static_paths.items, .names = self.static_names.items };
     }
 };
 
@@ -1620,40 +1701,34 @@ fn archiveStem(file_name: []const u8) []const u8 {
 /// for every search path on the module. Only `.force` libraries move to the
 /// pkg-config line: `.yes` means "try pkg-config, otherwise `-lfoo`", and a
 /// `#cgo pkg-config:` entry has no such fallback.
-fn systemLibraryFlags(b: *std.Build, module: *std.Build.Module) []const u8 {
+fn systemLibraryFlags(b: *std.Build, inputs: *const LinkInputCollector) []const u8 {
     var flags: std.ArrayList([]const u8) = .empty;
-    for (module.lib_paths.items) |path| {
+    for (inputs.library_paths.items) |path| {
         flags.append(b.allocator, b.fmt("-L{s}", .{path.getPath(b)})) catch @panic("OOM");
     }
-    for (module.link_objects.items) |object| switch (object) {
-        .system_lib => |library| {
-            if (library.use_pkg_config == .force) continue;
-            flags.append(b.allocator, b.fmt("-l{s}", .{library.name})) catch @panic("OOM");
-        },
-        else => {},
-    };
+    for (inputs.system_libraries.items) |input| {
+        if (input.library.use_pkg_config == .force) continue;
+        flags.append(b.allocator, b.fmt("-l{s}", .{input.library.name})) catch @panic("OOM");
+    }
     return joinFlags(b, flags.items);
 }
 
 /// pkg-config package names, space separated, for a `#cgo pkg-config:` line.
 /// Only `.force` qualifies; see `systemLibraryFlags` for why.
-fn pkgConfigLibraries(b: *std.Build, module: *std.Build.Module) []const u8 {
+fn pkgConfigLibraries(b: *std.Build, inputs: *const LinkInputCollector) []const u8 {
     var names: std.ArrayList([]const u8) = .empty;
-    for (module.link_objects.items) |object| switch (object) {
-        .system_lib => |library| {
-            if (library.use_pkg_config != .force) continue;
-            names.append(b.allocator, library.name) catch @panic("OOM");
-        },
-        else => {},
-    };
+    for (inputs.system_libraries.items) |input| {
+        if (input.library.use_pkg_config != .force) continue;
+        names.append(b.allocator, input.library.name) catch @panic("OOM");
+    }
     return joinFlags(b, names.items);
 }
 
-fn frameworkFlags(b: *std.Build, module: *std.Build.Module) []const u8 {
+fn frameworkFlags(b: *std.Build, inputs: *const LinkInputCollector) []const u8 {
     var flags: std.ArrayList([]const u8) = .empty;
-    for (module.frameworks.keys(), module.frameworks.values()) |framework, framework_options| {
-        flags.append(b.allocator, if (framework_options.weak) "-weak_framework" else "-framework") catch @panic("OOM");
-        flags.append(b.allocator, framework) catch @panic("OOM");
+    for (inputs.frameworks.items) |framework| {
+        flags.append(b.allocator, if (framework.options.weak) "-weak_framework" else "-framework") catch @panic("OOM");
+        flags.append(b.allocator, framework.name) catch @panic("OOM");
     }
     return joinFlags(b, flags.items);
 }
