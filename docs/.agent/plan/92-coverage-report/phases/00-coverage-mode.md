@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T00:12:11Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build --build-file examples/NN/build.zig go-coverage` prints the report for an example with a deliberately unbound function; verification loop green.
 > NEXT: none
