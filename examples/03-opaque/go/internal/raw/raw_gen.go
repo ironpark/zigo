@@ -43,6 +43,13 @@ func ContextSetTotal(self unsafe.Pointer, c int64) int32 {
 	return code
 }
 
+// ContextAddCopy calls the generated C ABI wrapper for zg_context_add_copy.
+func ContextAddCopy(self unsafe.Pointer, value int64) (int64, int32) {
+	var outResult C.int64_t
+	code := int32(C.zg_context_add_copy((*C.zg_context)(self), C.int64_t(value), &outResult))
+	return int64(outResult), code
+}
+
 // ContextBorrowView calls the generated C ABI wrapper for zg_context_borrow_view.
 func ContextBorrowView(self unsafe.Pointer) (unsafe.Pointer, int32) {
 	var outResult *C.zg_context_view
@@ -84,6 +91,13 @@ func CrashFatal() {
 // LiveBytes calls the generated C ABI wrapper for zg_live_bytes.
 func LiveBytes() uint {
 	return uint(C.zg_live_bytes())
+}
+
+// SumCopies calls the generated C ABI wrapper for zg_sum_copies.
+func SumCopies(bias int64, left unsafe.Pointer, right unsafe.Pointer) (int64, int32) {
+	var outResult C.int64_t
+	code := int32(C.zg_sum_copies(C.int64_t(bias), (*C.zg_context)(left), (*C.zg_context)(right), &outResult))
+	return int64(outResult), code
 }
 
 // Echo calls the generated C ABI wrapper for zg_echo.

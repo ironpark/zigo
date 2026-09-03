@@ -971,7 +971,7 @@ fn appendFunction(
     if (explicit_receiver) |expected| {
         const actual = comptime if (receiver_index) |index| receiverNameAt(info, declaration, index) else null;
         if (actual == null or !std.mem.eql(u8, actual.?, expected))
-            return receiverIssue(allocator, "function `{s}` declares `.receiver = \"{s}\"` but its first non-injected parameter is not `*{s}` or `*const {s}`", .{ source_name, expected, expected, expected });
+            return receiverIssue(allocator, "function `{s}` declares `.receiver = \"{s}\"` but its first non-injected parameter is not `{s}`, `*{s}`, or `*const {s}`", .{ source_name, expected, expected, expected, expected });
     }
     const receiver: ?[]const u8 = comptime explicit_receiver orelse if (receiver_index) |index| receiverNameAt(info, declaration, index) else null;
     // What the message calls the declaration: the owner it was reached through
@@ -1059,6 +1059,13 @@ fn appendFunction(
             // Decided at comptime: the plain walk below must not even be
             // analysed for a flattened struct, or its `@compileError` fires.
             try flattenedStructNode(allocator, param.type.?, types, flattened_fields.?)
+        else if (comptime registeredOpaqueName(declaration, param.type.?)) |name|
+            semantic.TypeNode{ .opaque_ptr = .{
+                .by_value = true,
+                .@"const" = true,
+                .nullable = false,
+                .ref = name,
+            } }
         else
             try typeNode(allocator, declaration, param.type.?, types, comptime std.fmt.comptimePrint(
                 "`{s}{s}` parameter `{s}`",
@@ -1118,7 +1125,7 @@ fn appendFunction(
             .payload = payload,
         } };
     } else if (info.return_type) |return_type|
-        try typeNode(allocator, declaration, return_type, types, comptime std.fmt.comptimePrint("`{s}{s}` return value", .{ owner_label, function_label }))
+        try returnTypeNode(allocator, declaration, return_type, types, comptime std.fmt.comptimePrint("`{s}{s}` return value", .{ owner_label, function_label }))
     else
         semantic.TypeNode{ .void = {} };
     var reflected_function: semantic.SemanticFn = .{
@@ -1128,6 +1135,10 @@ fn appendFunction(
         .namespace = if (receiver == null) discovered_owner else null,
         .params = params,
         .receiver = receiver,
+        .receiver_by_value = comptime if (receiver_index) |index|
+            if (@typeInfo(info.params[index].type.?) == .pointer) null else true
+        else
+            null,
         // The shim passes `self` where Zig declared it; only injected
         // arguments can sit ahead of it, and they are counted here.
         .receiver_at = comptime if (receiver_index != null and receiver_index.? != 0) receiver_index.? else null,
@@ -1317,7 +1328,7 @@ fn receiverMessageAlloc(allocator: std.mem.Allocator, comptime detail: []const u
     return std.fmt.allocPrint(
         allocator,
         "error[ZIGO038]: " ++ detail ++ "\n" ++
-            "  hint: name a registered opaque type whose pointer is the function's first parameter after any injected `std.mem.Allocator` or `std.Io`\n",
+            "  hint: name a registered opaque type whose value or pointer is the function's first parameter after any injected `std.mem.Allocator` or `std.Io`\n",
         args,
     );
 }
@@ -1928,6 +1939,48 @@ fn typeNode(
     };
 }
 
+/// Reflects a direct registered opaque value return as the handle it would
+/// need to cross through, while retaining the marker validation uses to reject
+/// that unsupported ownership transfer with an actionable boxing hint.
+fn returnTypeNode(
+    allocator: std.mem.Allocator,
+    comptime declaration: anytype,
+    comptime T: type,
+    types: *std.ArrayList(semantic.TypeDecl),
+    comptime context: []const u8,
+) !semantic.TypeNode {
+    if (comptime registeredOpaqueName(declaration, T)) |name| return .{ .opaque_ptr = .{
+        .by_value = true,
+        .@"const" = true,
+        .nullable = false,
+        .ref = name,
+    } };
+    if (@typeInfo(T) == .error_union) {
+        const info = @typeInfo(T).error_union;
+        if (comptime registeredOpaqueName(declaration, info.payload)) |name| {
+            const payload = try allocator.create(semantic.TypeNode);
+            payload.* = .{ .opaque_ptr = .{
+                .by_value = true,
+                .@"const" = true,
+                .nullable = false,
+                .ref = name,
+            } };
+            const reflected_errors = @typeInfo(info.error_set).error_set;
+            const names = if (reflected_errors) |errors| names: {
+                const result = try allocator.alloc([]const u8, errors.len);
+                inline for (errors, 0..) |entry, index| result[index] = entry.name;
+                break :names result;
+            } else &.{};
+            return .{ .error_union = .{
+                .anyerror = reflected_errors == null,
+                .error_set = names,
+                .payload = payload,
+            } };
+        }
+    }
+    return typeNode(allocator, declaration, T, types, context);
+}
+
 /// The opaque registry is filled while walking, so a pointer to an
 /// unregistered type is only discovered at run time. Naming the type and the
 /// site it was reached through is the whole difference between a usable
@@ -2006,7 +2059,8 @@ fn paramNameCountMismatch(comptime message: []const u8) error{ParamNameCount} {
 }
 
 /// The index of the receiver parameter: the first parameter that is not an
-/// injected argument, when it is a pointer to a registered handle.
+/// injected argument, when it is a pointer to a registered handle or a
+/// registered opaque type by value.
 fn receiverIndex(comptime info: std.builtin.Type.Fn, comptime declaration: anytype) ?usize {
     inline for (info.params, 0..) |parameter, index| {
         const T = parameter.type orelse return null;
@@ -2026,14 +2080,18 @@ fn firstNonInjectedIndex(comptime info: std.builtin.Type.Fn) ?usize {
 
 fn receiverNameAt(comptime info: std.builtin.Type.Fn, comptime declaration: anytype, comptime index: usize) ?[]const u8 {
     const T = info.params[index].type orelse return null;
-    const pointer = switch (@typeInfo(T)) {
-        .pointer => |pointer| pointer,
-        else => return null,
-    };
-    if (pointer.size != .one) return null;
     if (@hasField(@TypeOf(declaration), "types")) {
-        inline for (declaration.types) |entry| {
-            if (isHandleRepr(entry.repr) and entry.type == pointer.child) return typeEntryName(entry);
+        switch (@typeInfo(T)) {
+            .pointer => |pointer| {
+                if (pointer.size != .one) return null;
+                inline for (declaration.types) |entry| {
+                    if (isHandleRepr(entry.repr) and entry.type == pointer.child) return typeEntryName(entry);
+                }
+            },
+            .@"struct" => inline for (declaration.types) |entry| {
+                if (entry.repr == .@"opaque" and entry.type == T) return typeEntryName(entry);
+            },
+            else => {},
         }
     }
     return null;
@@ -2055,6 +2113,15 @@ fn registeredTypeName(comptime declaration: anytype, comptime T: type, comptime 
                 .value => entry.repr == .value,
             };
             if (matches_repr and entry.type == T) return typeEntryName(entry);
+        }
+    }
+    return null;
+}
+
+fn registeredOpaqueName(comptime declaration: anytype, comptime T: type) ?[]const u8 {
+    if (@hasField(@TypeOf(declaration), "types")) {
+        inline for (declaration.types) |entry| {
+            if (entry.repr == .@"opaque" and entry.type == T) return typeEntryName(entry);
         }
     }
     return null;
@@ -3293,15 +3360,59 @@ test "per-function explicit receivers validate the first non-injected parameter"
 test "receiver metadata diagnostics use ZIGO038" {
     const mismatch = try receiverMessageAlloc(
         std.testing.allocator,
-        "function `{s}` declares `.receiver = \"{s}\"` but its first non-injected parameter is not `*{s}` or `*const {s}`",
-        .{ "screenSelectAll", "Screen", "Screen", "Screen" },
+        "function `{s}` declares `.receiver = \"{s}\"` but its first non-injected parameter is not `{s}`, `*{s}`, or `*const {s}`",
+        .{ "screenSelectAll", "Screen", "Screen", "Screen", "Screen" },
     );
     defer std.testing.allocator.free(mismatch);
     try std.testing.expectEqualStrings(
-        "error[ZIGO038]: function `screenSelectAll` declares `.receiver = \"Screen\"` but its first non-injected parameter is not `*Screen` or `*const Screen`\n" ++
-            "  hint: name a registered opaque type whose pointer is the function's first parameter after any injected `std.mem.Allocator` or `std.Io`\n",
+        "error[ZIGO038]: function `screenSelectAll` declares `.receiver = \"Screen\"` but its first non-injected parameter is not `Screen`, `*Screen`, or `*const Screen`\n" ++
+            "  hint: name a registered opaque type whose value or pointer is the function's first parameter after any injected `std.mem.Allocator` or `std.Io`\n",
         mismatch,
     );
+}
+
+test "registered opaque values become receiver and parameter handles" {
+    const Fixture = struct {
+        const Screen = struct {
+            bottom: bool,
+
+            pub fn isBottom(self: @This()) bool {
+                return self.bottom;
+            }
+        };
+
+        pub fn same(bias: bool, left: *const Screen, right: Screen) bool {
+            return bias or left.bottom == right.bottom;
+        }
+
+        pub fn snapshot() Screen {
+            return .{ .bottom = false };
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{.{ .type = Fixture.Screen, .repr = .@"opaque" }},
+        .functions = .{
+            .{ .path = "Screen.isBottom" },
+            .{ .path = "root.same", .params = .{ "bias", "left", "right" } },
+            .{ .path = "root.snapshot" },
+        },
+    }, "screen", "zg");
+
+    const method = document.functions[0];
+    try std.testing.expectEqualStrings("Screen", method.receiver.?);
+    try std.testing.expect(method.receiverByValue());
+    const parameter = document.functions[1].params[2].type.opaque_ptr;
+    try std.testing.expect(parameter.by_value);
+    try std.testing.expect(parameter.@"const");
+    try std.testing.expect(!parameter.nullable);
+    try std.testing.expectEqualStrings("Screen", parameter.ref);
+    try std.testing.expect(document.functions[2].@"return".opaque_ptr.by_value);
+    const json = try document.serialize(arena.allocator());
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"receiver_by_value\": true") != null);
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"by_value\": true") != null);
 }
 
 test "function groups reject paths without their prefix" {
@@ -3688,7 +3799,7 @@ test "flattened struct parameters reject unlisted required fields" {
     try std.testing.expect(std.mem.indexOf(u8, message, "required field `rows`") != null);
 }
 
-test "without an allocator a value-returning init is left alone" {
+test "without an allocator a value-returning opaque init stays unboxed" {
     const Fixture = struct {
         const Terminal = struct {
             columns: u32,
@@ -3706,10 +3817,11 @@ test "without an allocator a value-returning init is left alone" {
         .functions = .{.{ .path = "Terminal.init", .params = .{"columns"} }},
     }, "terminal", "zg");
 
-    // Left as the value struct it is, so the diagnostic the author sees names
-    // the struct rather than a lifetime decision zigo made for them.
+    // It is not silently boxed, but retains the registered handle identity so
+    // validation can point the author at `.constructs` and allocator boxing.
     try std.testing.expectEqual(@as(?semantic.Boxed, null), document.functions[0].boxed);
-    try std.testing.expectEqualStrings("Terminal", document.functions[0].@"return".value_struct.ref);
+    try std.testing.expect(document.functions[0].@"return".opaque_ptr.by_value);
+    try std.testing.expectEqualStrings("Terminal", document.functions[0].@"return".opaque_ptr.ref);
 }
 
 test "std.Io.Writer and std.Io.Reader parameters reflect as stream nodes" {

@@ -135,6 +135,43 @@
       "symbol": "zg_context_set_total"
     },
     {
+      "doc": "addCopy receives a copy of the handle's value. Its mutation is visible\nto this call but cannot change the storage owned by the Go handle.",
+      "name": "addCopy",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "value",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 42,
+            "column": 35
+          },
+          "type": {
+            "bits": 64,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          }
+        }
+      ],
+      "receiver": "Context",
+      "receiver_by_value": true,
+      "return": {
+        "bits": 64,
+        "is_usize": false,
+        "kind": "int",
+        "signed": true
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 42,
+        "column": 12
+      },
+      "symbol": "zg_context_add_copy"
+    },
+    {
       "borrowed_return": true,
       "name": "borrowView",
       "ownership": "borrowed",
@@ -148,7 +185,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 40,
+        "line": 48,
         "column": 12
       },
       "symbol": "zg_context_borrow_view"
@@ -188,7 +225,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 45,
+        "line": 53,
         "column": 12
       },
       "symbol": "zg_context_crash"
@@ -207,7 +244,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 53,
+        "line": 61,
         "column": 12
       },
       "symbol": "zg_context_crash_infallible"
@@ -222,7 +259,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 58,
+        "line": 66,
         "column": 12
       },
       "symbol": "zg_context_deinit"
@@ -237,7 +274,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 68,
+        "line": 80,
         "column": 8
       },
       "symbol": "zg_crash_fatal"
@@ -254,10 +291,78 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 72,
+        "line": 84,
         "column": 8
       },
       "symbol": "zg_live_bytes"
+    },
+    {
+      "name": "sumCopies",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "bias",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 72,
+            "column": 18
+          },
+          "type": {
+            "bits": 64,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          }
+        },
+        {
+          "direction": "in",
+          "name": "left",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 72,
+            "column": 29
+          },
+          "type": {
+            "by_value": true,
+            "const": true,
+            "kind": "opaque_ptr",
+            "nullable": false,
+            "ref": "Context"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "right",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 72,
+            "column": 44
+          },
+          "type": {
+            "by_value": true,
+            "const": true,
+            "kind": "opaque_ptr",
+            "nullable": false,
+            "ref": "Context"
+          }
+        }
+      ],
+      "return": {
+        "bits": 64,
+        "is_usize": false,
+        "kind": "int",
+        "signed": true
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 72,
+        "column": 8
+      },
+      "symbol": "zg_sum_copies"
     },
     {
       "doc": "Echoes UTF-8 text without changing its bytes.",
@@ -271,7 +376,7 @@
           "retention": "borrowed",
           "semantic": "utf8_string",
           "source": {
-            "line": 77,
+            "line": 89,
             "column": 13
           },
           "type": {
@@ -299,7 +404,7 @@
       "return_semantic": "utf8_string",
       "source": {
         "path": "root.zig",
-        "line": 77,
+        "line": 89,
         "column": 8
       },
       "symbol": "zg_echo"

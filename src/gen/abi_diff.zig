@@ -614,7 +614,7 @@ fn declaredTypeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
         .@"enum" => |a| std.mem.eql(u8, a.ref, rhs.@"enum".ref),
         .io_stream => |a| a.direction == rhs.io_stream.direction,
         .value_struct => |a| std.mem.eql(u8, a.ref, rhs.value_struct.ref),
-        .opaque_ptr => |a| a.@"const" == rhs.opaque_ptr.@"const" and a.nullable == rhs.opaque_ptr.nullable and std.mem.eql(u8, a.ref, rhs.opaque_ptr.ref),
+        .opaque_ptr => |a| a.by_value == rhs.opaque_ptr.by_value and a.@"const" == rhs.opaque_ptr.@"const" and a.nullable == rhs.opaque_ptr.nullable and std.mem.eql(u8, a.ref, rhs.opaque_ptr.ref),
         .slice => |a| a.@"const" == rhs.slice.@"const" and declaredTypeEqual(a.element.*, rhs.slice.element.*),
         .optional => |a| declaredTypeEqual(a.child.*, rhs.optional.child.*),
         .error_union => |a| a.anyerror == rhs.error_union.anyerror and declaredTypeEqual(a.payload.*, rhs.error_union.payload.*),

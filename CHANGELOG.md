@@ -8,6 +8,9 @@
 
 ### Added
 
+- `.repr = .opaque`로 등록한 struct의 by-value receiver와 파라미터를 지원합니다. Go와 C는
+  기존 handle pointer를 전달하고 shim이 Zig 호출 시 값을 복사하므로, receiver lifecycle
+  검사와 일반 `*T` 파라미터 API를 유지하면서 wrapper 없이 값 시그니처를 바인딩할 수 있습니다.
 - 정수 backing의 `packed struct`를 `.repr = .value`로 등록할 수 있습니다. bool, 정수,
   등록 enum, 중첩 packed value 필드를 Go mirror와 `Backing`/`FromBacking`으로 노출하고,
   scalar가 가능한 함수·optional·error payload·extern struct·flatten·field accessor·callback

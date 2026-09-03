@@ -98,6 +98,17 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .site = functionSite(function),
             .hint = "bind a concrete specialization instead of the generic function",
         };
+        if (byValueOpaqueReturn(function.@"return")) |pointer| return .{
+            .severity = .@"error",
+            .code = "ZIGO003",
+            .message = "cannot return a registered opaque type by value",
+            .site = functionSite(function),
+            .hint = try std.fmt.allocPrint(
+                allocator,
+                "return `*{s}` and use `.constructs`, or configure `.allocator` so zigo can box the value",
+                .{pointer.ref},
+            ),
+        };
         if (function.childOfReceiver() and
             (function.receiver == null or constructorInitFor(document, function) == null)) return .{
             .severity = .@"error",
@@ -2076,6 +2087,12 @@ fn unsupportedValueStruct(document: semantic.Semantic, node: semantic.TypeNode) 
         .error_union => |value| unsupportedValueStruct(document, value.payload.*),
         else => null,
     };
+}
+
+fn byValueOpaqueReturn(node: semantic.TypeNode) ?semantic.OpaquePtr {
+    const payload = if (node == .error_union) node.error_union.payload.* else node;
+    if (payload != .opaque_ptr or !payload.opaque_ptr.by_value) return null;
+    return payload.opaque_ptr;
 }
 
 fn isFlattenLeaf(document: semantic.Semantic, node: semantic.TypeNode) bool {
@@ -4287,6 +4304,47 @@ test "atomic pointer parameters reject unsupported scalars and retained addresse
         try std.testing.expectEqualStrings("ZIGO043", issue.code);
         try std.testing.expectEqualStrings(case.message, issue.message);
     }
+}
+
+test "registered opaque values are accepted as parameters but rejected as returns" {
+    const handle = semantic.TypeNode{ .opaque_ptr = .{
+        .by_value = true,
+        .@"const" = true,
+        .nullable = false,
+        .ref = "Screen",
+    } };
+    const declarations = [_]semantic.TypeDecl{.{ .kind = .@"opaque", .name = "Screen" }};
+    const parameters = [_]semantic.Parameter{.{ .name = "screen", .type = handle }};
+    const accepted_functions = [_]semantic.SemanticFn{.{
+        .name = "inspect",
+        .params = &parameters,
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_inspect",
+    }};
+    const accepted: semantic.Semantic = .{
+        .functions = &accepted_functions,
+        .package = "screen",
+        .prefix = "zg",
+        .types = &declarations,
+        .zig_version = "0.16.0",
+    };
+    try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(std.testing.allocator, accepted));
+
+    const rejected_functions = [_]semantic.SemanticFn{.{
+        .name = "snapshot",
+        .params = &.{},
+        .@"return" = handle,
+        .symbol = "zg_snapshot",
+    }};
+    var rejected = accepted;
+    rejected.functions = &rejected_functions;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const issue = (try findIssue(arena.allocator(), rejected)) orelse return error.MissingDiagnostic;
+    try std.testing.expectEqualStrings("ZIGO003", issue.code);
+    try std.testing.expectEqualStrings("cannot return a registered opaque type by value", issue.message);
+    try std.testing.expect(std.mem.indexOf(u8, issue.hint, ".constructs") != null);
+    try std.testing.expect(std.mem.indexOf(u8, issue.hint, "box") != null);
 }
 
 test "cross-package type cycles are diagnosed with the package path" {

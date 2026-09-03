@@ -25,4 +25,16 @@ pub fn build(b: *std.Build) void {
         .coverage_json = coverage_json,
     });
     _ = bindings.addStandardSteps(b, .{});
+
+    const purego_bindings = zigo.addGoBindings(b, .{
+        .name = "opaque",
+        .module = opaque_module,
+        .bindings = b.path("src/bindings.zig"),
+        .go_dir = b.path("go-purego"),
+        .go_module = "example.com/zigo/opaque-purego",
+        .target = target,
+        .optimize = optimize,
+        .link = .purego,
+    });
+    _ = purego_bindings.addStandardSteps(b, .{ .name_prefix = "purego" });
 }

@@ -36,7 +36,7 @@ pub fn semanticDocumentForBackend(
         if (function.receiver) |receiver| {
             const child = try allocator.create(abi.AbiScalar);
             child.* = .{ .@"opaque" = try lowerOpaque(allocator, prefix, receiver) };
-            const receiver_const = if (function.field_access) |access| !access.setter else false;
+            const receiver_const = function.receiverByValue() or if (function.field_access) |access| !access.setter else false;
             try params.append(allocator, .{
                 .name = "self",
                 .role = .receiver,

@@ -1,0 +1,5 @@
+{
+  "package": "opaque_value",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/opaque-value"
+}

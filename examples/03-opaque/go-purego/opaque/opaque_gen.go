@@ -10,8 +10,21 @@ package opaque
 import (
 	"runtime"
 
-	"example.com/zigo/opaque/internal/raw"
+	"example.com/zigo/opaque-purego/internal/raw"
 )
+
+// LibraryError reports a native shared-library loading failure.
+type LibraryError = raw.LibraryError
+
+// LoadLibrary atomically loads all generated native entry points.
+func LoadLibrary(path string) error { return raw.LoadLibrary(path) }
+
+// LibraryLoaded reports whether the native call surface is ready.
+func LibraryLoaded() bool { return raw.LibraryLoaded() }
+
+// DefaultLibraryName is the installed shared-library basename for the running platform.
+// LoadLibrary falls back to it when no explicit path and no ZIGO_LIBRARY_PATH are set.
+var DefaultLibraryName = raw.DefaultLibraryName
 
 // NewContext creates a caller-owned Context.
 // The caller must call Close on the returned handle.

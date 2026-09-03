@@ -992,7 +992,7 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         defer allocator.free(path);
         try writer.print("target.{s}(", .{path});
         if (function.origin.receiver != null and function.origin.receiver_at == null) {
-            try writer.writeAll("self");
+            try writeShimReceiverArgument(writer, function.origin.*);
             if (function.origin.params.len != 0) try writer.writeAll(", ");
         }
     }
@@ -1000,8 +1000,10 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         if (index != 0) try writer.writeAll(", ");
         // `self` goes where Zig declared it: after the injected arguments
         // that came first in the signature, if any did.
-        if (function.origin.receiver != null and function.origin.receiver_at == index and index != 0)
-            try writer.writeAll("self, ");
+        if (function.origin.receiver != null and function.origin.receiver_at == index and index != 0) {
+            try writeShimReceiverArgument(writer, function.origin.*);
+            try writer.writeAll(", ");
+        }
         // An injected argument has no C parameter behind it; the shim is the
         // one place the binding's chosen expression is written out.
         if (parameter.injected) |injection| {
@@ -1055,6 +1057,7 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             .atomic_ptr => try writer.print("@ptrCast({s})", .{parameter.name}),
             .bool => try writer.print("{s} != 0", .{parameter.name}),
             .@"enum" => try writer.print("@enumFromInt({s})", .{parameter.name}),
+            .opaque_ptr => |pointer| try writer.print("{s}{s}", .{ parameter.name, if (pointer.by_value) ".*" else "" }),
             .slice => if (function.paramString(index).role == .string_slice)
                 try writer.print("zigoString{d}Strings", .{index})
             else if (function.paramString(index).role == .c_string)
@@ -1089,11 +1092,17 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         }
     }
     // A receiver declared last, behind nothing but injected arguments.
-    if (function.origin.receiver != null and function.origin.receiver_at == function.origin.params.len and function.origin.params.len != 0)
-        try writer.writeAll(", self");
+    if (function.origin.receiver != null and function.origin.receiver_at == function.origin.params.len and function.origin.params.len != 0) {
+        try writer.writeAll(", ");
+        try writeShimReceiverArgument(writer, function.origin.*);
+    }
     try writer.writeByte(')');
     if (function.origin.return_atomic orelse false) try writer.writeAll(").raw");
     if (bool_return or enum_return) try writer.writeByte(')');
+}
+
+fn writeShimReceiverArgument(writer: *std.Io.Writer, function: semantic.SemanticFn) !void {
+    try writer.writeAll(if (function.receiverByValue()) "self.*" else "self");
 }
 
 /// Converts one C-side scalar back to its Zig form on the way in; the mirror
@@ -3177,7 +3186,7 @@ fn semanticTypeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
         .float => |value| value.bits == rhs.float.bits,
         .@"enum" => |value| std.mem.eql(u8, value.ref, rhs.@"enum".ref),
         .value_struct => |value| std.mem.eql(u8, value.ref, rhs.value_struct.ref),
-        .opaque_ptr => |value| value.@"const" == rhs.opaque_ptr.@"const" and value.nullable == rhs.opaque_ptr.nullable and std.mem.eql(u8, value.ref, rhs.opaque_ptr.ref),
+        .opaque_ptr => |value| value.by_value == rhs.opaque_ptr.by_value and value.@"const" == rhs.opaque_ptr.@"const" and value.nullable == rhs.opaque_ptr.nullable and std.mem.eql(u8, value.ref, rhs.opaque_ptr.ref),
         .slice => |value| value.@"const" == rhs.slice.@"const" and value.sentinel == rhs.slice.sentinel and
             value.sentinel_many == rhs.slice.sentinel_many and semanticTypeEqual(value.element.*, rhs.slice.element.*),
         else => false,

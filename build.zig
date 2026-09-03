@@ -411,6 +411,7 @@ pub fn build(b: *std.Build) void {
     const godoc_audit = b.addSystemCommand(&.{ "go", "run", "./tests/godoc_audit/main.go" });
     godoc_audit.addArgs(&.{
         "tests/generator_cases/atomic_value/expected",
+        "tests/generator_cases/by_value_opaque/expected",
         "tests/generator_cases/callback_error/expected",
         "tests/generator_cases/callback_error_purego/expected",
         "tests/generator_cases/cancel/expected",
@@ -441,6 +442,7 @@ pub fn build(b: *std.Build) void {
         "examples/01-scalar/go",
         "examples/02-errors/go",
         "examples/03-opaque/go",
+        "examples/03-opaque/go-purego",
         "examples/04-callback/go",
         "examples/05-pipeline/go",
         "examples/06-camel-case/go",

@@ -809,6 +809,18 @@ constructor와 멱등 `Close() error`가 생성됩니다. 보통 반환 error는
 nil·closed 상태를 검사합니다. 검사 결과는 항상 반환값으로 전달되며, 오류 반환 자리가
 없던 메서드에는 `error` 결과가 추가됩니다.
 
+등록한 opaque struct는 파라미터에서 값으로 받을 수도 있습니다. `fn isBottom(self: Screen)`은
+Go에서 pointer receiver와 같은 `func (s *Screen) IsBottom() (..., error)` 메서드가 되고,
+`fn compare(expected: bool, other: Screen)`의 `other`는 Go에서 `*Screen`입니다. 두 경우 모두
+C 시그니처는 `const Screen *` handle을 받고, shim이 Zig 호출 직전에 `self.*` 또는
+`other.*`로 역참조합니다. 따라서 nil·closed·poison 검사와 호출 중 lifecycle guard는 pointer
+handle과 같습니다.
+
+역참조는 Zig의 값 전달 규칙에 따라 **복사본**을 만듭니다. callee가 값 파라미터 안의 필드를
+바꿔도 Go handle이 가리키는 원본에는 반영되지 않습니다. 반대로 opaque 타입을 값으로 반환하는
+것은 `ZIGO003`으로 계속 거부됩니다. 소유할 값을 반환하려면 pointer를 반환하고
+`.constructs`를 지정하거나, `.allocator`를 설정해 값 생성자를 boxing하는 경로를 사용하십시오.
+
 `init`/`create`/`new`/`open` 이름을 쓰지 않는 factory도 `.returns = .caller`를 붙이면
 같은 owned handle을 돌려줍니다. 이름이 아니라 ownership metadata가 기준이므로,
 `clone`이나 `openChild` 같은 메서드도 `newX` helper를 거쳐 cleanup과 retained callback

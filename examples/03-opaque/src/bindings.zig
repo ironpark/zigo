@@ -15,6 +15,7 @@ pub const bindings = zigo.define(.{
         .{ .path = "Context.add", .params = .{"value"} },
         .{ .path = "Context.maybeTotal", .params = .{"present"} },
         .{ .path = "Context.setTotal", .params = .{"c"} },
+        .{ .path = "Context.addCopy", .params = .{"value"} },
         .{ .path = "Context.borrowView", .returns = .borrowed },
         .{ .path = "ContextView.total" },
         .{ .path = "Context.crash" },
@@ -22,6 +23,7 @@ pub const bindings = zigo.define(.{
         .{ .path = "Context.deinit" },
         .{ .path = "root.crashFatal" },
         .{ .path = "root.liveBytes" },
+        .{ .path = "root.sumCopies", .params = .{ "bias", "left", "right" } },
         .{
             .path = "root.echo",
             .params = .{"text"},

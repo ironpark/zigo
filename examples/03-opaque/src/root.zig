@@ -37,6 +37,14 @@ pub const Context = struct {
         self.total = c;
     }
 
+    /// addCopy receives a copy of the handle's value. Its mutation is visible
+    /// to this call but cannot change the storage owned by the Go handle.
+    pub fn addCopy(self: Context, value: i64) i64 {
+        var copy = self;
+        copy.total += value;
+        return copy.total;
+    }
+
     pub fn borrowView(self: *Context) *ContextView {
         return &self.view_value;
     }
@@ -60,6 +68,10 @@ pub const Context = struct {
         _ = live_bytes.fetchSub(@sizeOf(Context), .monotonic);
     }
 };
+
+pub fn sumCopies(bias: i64, left: Context, right: Context) i64 {
+    return bias + left.total + right.total;
+}
 
 /// A free function with no handle and no promoted integer has no `error` in
 /// its Go signature, so a panic here has nowhere to be reported. Zig calls

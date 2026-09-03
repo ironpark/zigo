@@ -1,0 +1,25 @@
+{
+  "functions": [
+    {
+      "name": "isBottom",
+      "params": [],
+      "receiver": "Screen",
+      "receiver_by_value": true,
+      "return": {"kind": "bool"},
+      "symbol": "zg_screen_is_bottom"
+    },
+    {
+      "name": "same",
+      "params": [
+        {"name": "expected", "type": {"kind": "bool"}},
+        {"name": "other", "type": {"by_value": true, "const": true, "kind": "opaque_ptr", "nullable": false, "ref": "Screen"}}
+      ],
+      "return": {"kind": "bool"},
+      "symbol": "zg_same"
+    }
+  ],
+  "package": "opaque_value",
+  "prefix": "zg",
+  "types": [{"kind": "opaque", "name": "Screen"}],
+  "zig_version": "0.16.0-dev"
+}

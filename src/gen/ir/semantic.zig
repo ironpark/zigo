@@ -9,6 +9,11 @@ pub const Int = struct {
 pub const Float = struct { bits: u16 };
 pub const Ref = struct { ref: []const u8 };
 pub const OpaquePtr = struct {
+    /// The Zig declaration takes the registered opaque type by value. C and
+    /// Go still pass its handle pointer; only the shim dereferences it to make
+    /// the copy the Zig call expects. Omitted for ordinary pointer handles so
+    /// existing semantic documents stay byte-identical.
+    by_value: bool = false,
     @"const": bool,
     nullable: bool,
     ref: []const u8,
@@ -136,6 +141,10 @@ pub const TypeNode = union(enum) {
                 .reader => "io_reader",
             }),
             .opaque_ptr => |value| {
+                if (value.by_value) {
+                    try jw.objectField("by_value");
+                    try jw.write(true);
+                }
                 try jw.objectField("const");
                 try jw.write(value.@"const");
                 try writeKind(jw, "opaque_ptr");
@@ -208,6 +217,7 @@ pub const TypeNode = union(enum) {
         if (std.mem.eql(u8, kind, "io_writer")) return .{ .io_stream = .{ .direction = .writer } };
         if (std.mem.eql(u8, kind, "io_reader")) return .{ .io_stream = .{ .direction = .reader } };
         if (std.mem.eql(u8, kind, "opaque_ptr")) return .{ .opaque_ptr = .{
+            .by_value = try parseOptionalField(bool, allocator, object, "by_value", false, options),
             .@"const" = try parseField(bool, allocator, object, "const", options),
             .nullable = try parseField(bool, allocator, object, "nullable", options),
             .ref = try parseField([]const u8, allocator, object, "ref", options),
@@ -452,6 +462,10 @@ pub const SemanticFn = struct {
     ownership: Ownership = .borrowed,
     params: []const Parameter,
     receiver: ?[]const u8 = null,
+    /// The Zig receiver is a registered opaque type by value. Go still sees
+    /// an ordinary handle method and the C ABI still receives a const handle
+    /// pointer; the shim alone dereferences it before calling Zig.
+    receiver_by_value: ?bool = null,
     /// How many entries of `params` Zig declared ahead of the receiver. Only
     /// injected arguments can precede it, so this is absent (zero) unless an
     /// allocator or io comes before the handle, as in
@@ -489,6 +503,10 @@ pub const SemanticFn = struct {
 
     pub fn returnsBorrowedHandle(self: SemanticFn) bool {
         return self.borrowed_return orelse false;
+    }
+
+    pub fn receiverByValue(self: SemanticFn) bool {
+        return self.receiver_by_value orelse false;
     }
 };
 

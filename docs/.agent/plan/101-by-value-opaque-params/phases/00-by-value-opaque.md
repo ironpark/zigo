@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `fn f(self: Screen)` and `fn g(screen: Screen)` bind without wrappers and pass Go tests on both backends.
 > NEXT: none
