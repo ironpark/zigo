@@ -1024,7 +1024,7 @@ fn cIdentifierBackendIssue(allocator: std.mem.Allocator, document: semantic.Sema
             const name = try naming.cTypeNameAlloc(scratch, document.prefix, declaration.name);
             const label = try std.fmt.allocPrint(scratch, "type `{s}`", .{declaration.name});
             const note = try typeRenameNoteAlloc(scratch, declaration);
-            if (try addCIdentifier(allocator, scratch, &identifiers, name, .{ .label = label, .note = note, .type_note = true })) |issue| return issue;
+            if (try addCIdentifier(allocator, scratch, &identifiers, name, .{ .label = label, .note = .{ .type = note } })) |issue| return issue;
         }
         if (declaration.kind == .@"enum") for (declaration.fields) |field| {
             const type_name = try naming.cTypeNameAlloc(scratch, document.prefix, declaration.name);
@@ -1033,7 +1033,7 @@ fn cIdentifierBackendIssue(allocator: std.mem.Allocator, document: semantic.Sema
             const name = try std.ascii.allocUpperString(scratch, combined);
             const label = try std.fmt.allocPrint(scratch, "enum constant `{s}.{s}`", .{ declaration.name, field.name });
             const note = try typeRenameNoteAlloc(scratch, declaration);
-            if (try addCIdentifier(allocator, scratch, &identifiers, name, .{ .label = label, .note = note, .type_note = true })) |issue| return issue;
+            if (try addCIdentifier(allocator, scratch, &identifiers, name, .{ .label = label, .note = .{ .type = note } })) |issue| return issue;
         };
     }
     for (document.functions) |function| {
@@ -1043,12 +1043,13 @@ fn cIdentifierBackendIssue(allocator: std.mem.Allocator, document: semantic.Sema
         else
             base;
         const label = try std.fmt.allocPrint(scratch, "function `{s}`", .{try functionDeclarationAlloc(scratch, function)});
-        const constructor_init = constructorInitFor(document, function);
-        const note = if (constructor_init) |constructor|
-            try typeNameRenameNoteAlloc(scratch, constructor.type, .@"opaque")
+        // A constructor's symbol is named after the type it builds, so a
+        // collision on it is answered by renaming that type.
+        const note: CIdentifierOrigin.Note = if (constructorInitFor(document, function)) |constructor|
+            .{ .type = try typeNameRenameNoteAlloc(scratch, constructor.type, .@"opaque") }
         else
-            try functionRenameNoteAlloc(scratch, function);
-        if (try addCIdentifier(allocator, scratch, &identifiers, name, .{ .label = label, .note = note, .type_note = constructor_init != null })) |issue| return issue;
+            .{ .function = try functionRenameNoteAlloc(scratch, function) };
+        if (try addCIdentifier(allocator, scratch, &identifiers, name, .{ .label = label, .note = note })) |issue| return issue;
     }
     for (document.types) |declaration| {
         if (declaration.kind != .tagged_union) continue;
@@ -1056,12 +1057,12 @@ fn cIdentifierBackendIssue(allocator: std.mem.Allocator, document: semantic.Sema
             const tag = try naming.projectionSymbolAlloc(scratch, document.prefix, declaration.name, "tag");
             const tag_label = try std.fmt.allocPrint(scratch, "tag projection `{s}`", .{declaration.name});
             const type_note = try typeRenameNoteAlloc(scratch, declaration);
-            if (try addCIdentifier(allocator, scratch, &identifiers, tag, .{ .label = tag_label, .note = type_note, .type_note = true })) |issue| return issue;
+            if (try addCIdentifier(allocator, scratch, &identifiers, tag, .{ .label = tag_label, .note = .{ .type = type_note } })) |issue| return issue;
             for (declaration.fields) |field| {
                 if (field.type.? == .void) continue;
                 const name = try naming.projectionSymbolAlloc(scratch, document.prefix, declaration.name, field.name);
                 const label = try std.fmt.allocPrint(scratch, "payload projection `{s}.{s}`", .{ declaration.name, field.name });
-                if (try addCIdentifier(allocator, scratch, &identifiers, name, .{ .label = label, .note = type_note, .type_note = true })) |issue| return issue;
+                if (try addCIdentifier(allocator, scratch, &identifiers, name, .{ .label = label, .note = .{ .type = type_note } })) |issue| return issue;
             }
         }
         if (declaration.accessStrategy() == .snapshot) {
@@ -1069,10 +1070,10 @@ fn cIdentifierBackendIssue(allocator: std.mem.Allocator, document: semantic.Sema
             const symbol = try std.fmt.allocPrint(scratch, "{s}_{s}_snapshot", .{ document.prefix, owner });
             const symbol_label = try std.fmt.allocPrint(scratch, "snapshot function `{s}`", .{declaration.name});
             const type_note = try typeRenameNoteAlloc(scratch, declaration);
-            if (try addCIdentifier(allocator, scratch, &identifiers, symbol, .{ .label = symbol_label, .note = type_note, .type_note = true })) |issue| return issue;
+            if (try addCIdentifier(allocator, scratch, &identifiers, symbol, .{ .label = symbol_label, .note = .{ .type = type_note } })) |issue| return issue;
             const type_name = try std.fmt.allocPrint(scratch, "{s}_t", .{symbol});
             const type_label = try std.fmt.allocPrint(scratch, "snapshot type `{s}`", .{declaration.name});
-            if (try addCIdentifier(allocator, scratch, &identifiers, type_name, .{ .label = type_label, .note = type_note, .type_note = true })) |issue| return issue;
+            if (try addCIdentifier(allocator, scratch, &identifiers, type_name, .{ .label = type_label, .note = .{ .type = type_note } })) |issue| return issue;
         }
     }
     const last_error = try std.fmt.allocPrint(scratch, "{s}_last_error_message", .{document.prefix});
@@ -1081,8 +1082,25 @@ fn cIdentifierBackendIssue(allocator: std.mem.Allocator, document: semantic.Sema
 
 const CIdentifierOrigin = struct {
     label: []const u8,
-    note: ?[]const u8 = null,
-    type_note: bool = false,
+    note: Note = .none,
+
+    /// Where the rename hint attached to an identifier comes from. The
+    /// declaration that owns the name decides it once; a type note outranks a
+    /// function one, because renaming the type is what moves the identifier.
+    /// Either payload may still be absent: a declaration that was never
+    /// renamed has nothing to point at.
+    const Note = union(enum) {
+        none,
+        function: ?[]const u8,
+        type: ?[]const u8,
+
+        fn text(self: Note) ?[]const u8 {
+            return switch (self) {
+                .none => null,
+                .function, .type => |value| value,
+            };
+        }
+    };
 };
 
 fn addCIdentifier(
@@ -1095,7 +1113,10 @@ fn addCIdentifier(
     const entry = try identifiers.getOrPut(scratch, name);
     if (entry.found_existing) {
         const previous = entry.value_ptr.*;
-        const selected_note = if (previous.type_note) previous.note else declaration.note orelse previous.note;
+        const selected_note = if (previous.note == .type)
+            previous.note.text()
+        else
+            declaration.note.text() orelse previous.note.text();
         return .{
             .severity = .@"error",
             .code = "ZIGO036",

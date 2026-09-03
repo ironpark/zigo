@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T01:13:42Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Emitter no longer scans for slots/flatten indexes/omitted variants/packed layout; goldens and examples unchanged; tests green.
 > NEXT: none

@@ -7,7 +7,7 @@ registered_at: "2026-09-03T01:06:08Z"
 
 # Phases
 
-- [ ] [Phase 00: Slots, flatten indexes, omitted variants, packed layout](phases/00-lowering-tables.md)
+- [x] [Phase 00: Slots, flatten indexes, omitted variants, packed layout](phases/00-lowering-tables.md)
 - [ ] [Phase 01: Identifier note origin](phases/01-note-origin.md)
 
 # Shared Verification

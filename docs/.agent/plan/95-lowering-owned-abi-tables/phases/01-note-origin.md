@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `validate.zig` snapshot tests unchanged and green.
 > NEXT: none
