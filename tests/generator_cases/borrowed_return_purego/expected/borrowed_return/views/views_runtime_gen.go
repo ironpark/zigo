@@ -10,5 +10,4 @@ import (
 type zigoHandle = lifecycle.Handle
 
 func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, error) { return lifecycle.CheckedPointer(operation, value) }
-func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsafe.Pointer, error) { return lifecycle.OptionalPointer(operation, absent, value) }
 func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error { return lifecycle.PoisonAfterPanic(err, handles...) }

@@ -21,26 +21,3 @@ type Point struct {
 var _ = [1]struct{}{}[unsafe.Sizeof(Point{})-unsafe.Sizeof(raw.PointData{})]
 var _ = [1]struct{}{}[unsafe.Offsetof(Point{}.X)-unsafe.Offsetof(raw.PointData{}.X)]
 var _ = [1]struct{}{}[unsafe.Offsetof(Point{}.Y)-unsafe.Offsetof(raw.PointData{}.Y)]
-
-func zigoPointToRaw(value Point) raw.PointData {
-	return raw.PointData{
-		X: value.X,
-		Y: value.Y,
-	}
-}
-
-func zigoPointFromRaw(value raw.PointData) Point {
-	return Point{
-		X: value.X,
-		Y: value.Y,
-	}
-}
-
-// zigoPointSliceView reinterprets a slice the raw layer already owns as
-// []Point without copying it again.
-func zigoPointSliceView(values []raw.PointData) []Point {
-	if len(values) == 0 {
-		return nil
-	}
-	return unsafe.Slice((*Point)(unsafe.Pointer(&values[0])), len(values))
-}

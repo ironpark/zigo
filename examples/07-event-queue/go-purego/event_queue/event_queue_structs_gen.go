@@ -126,12 +126,3 @@ func zigoTickerInfoFromRaw(value raw.TickerInfoData) zigo_pkg_types.TickerInfo {
 		Ticks:    value.Ticks,
 	}
 }
-
-// zigoTickerInfoSliceView reinterprets a slice the raw layer already owns as
-// []TickerInfo without copying it again.
-func zigoTickerInfoSliceView(values []raw.TickerInfoData) []zigo_pkg_types.TickerInfo {
-	if len(values) == 0 {
-		return nil
-	}
-	return unsafe.Slice((*zigo_pkg_types.TickerInfo)(unsafe.Pointer(&values[0])), len(values))
-}

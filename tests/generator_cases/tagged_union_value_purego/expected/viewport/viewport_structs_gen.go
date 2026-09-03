@@ -27,44 +27,6 @@ type Region struct {
 	Enabled bool
 }
 
-func zigoRegionToRaw(value Region) raw.RegionData {
-	return raw.RegionData{
-		X: value.X,
-		Enabled: boolToUint8(value.Enabled),
-	}
-}
-
-func zigoRegionFromRaw(value raw.RegionData) Region {
-	return Region{
-		X: value.X,
-		Enabled: value.Enabled != 0,
-	}
-}
-
-func zigoRegionSliceToRaw(values []Region) []raw.RegionData {
-	result := make([]raw.RegionData, len(values))
-	for i := range values {
-		result[i] = zigoRegionToRaw(values[i])
-	}
-	return result
-}
-
-func zigoRegionSliceFromRaw(values []raw.RegionData) []Region {
-	result := make([]Region, len(values))
-	for i := range values {
-		result[i] = zigoRegionFromRaw(values[i])
-	}
-	return result
-}
-
-func zigoRegionSliceCopyFromRaw(dst []Region, values []raw.RegionData, count int) {
-	if count > len(dst) { count = len(dst) }
-	if count > len(values) { count = len(values) }
-	for i := 0; i < count; i++ {
-		dst[i] = zigoRegionFromRaw(values[i])
-	}
-}
-
 func zigoScrollViewportFromRaw(value raw.ScrollViewportData) ScrollViewport {
 	switch ScrollViewportTag(value.Tag) {
 	case ScrollViewportTagTop:

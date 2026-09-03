@@ -25,13 +25,6 @@ func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, err
 	return value.zigoAcquire(operation)
 }
 
-func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsafe.Pointer, error) {
-	if absent {
-		return nil, nil
-	}
-	return zigoCheckedPointer(operation, value)
-}
-
 // zigoPoisonAfterPanic marks every handle a call reached unusable when that
 // call ended in a Zig panic: the panic unwound the native frames without
 // running their defers, so what is behind those handles is unknown. Any

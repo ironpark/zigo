@@ -3,8 +3,6 @@
 package packages
 
 import (
-	"unsafe"
-
 	"example.com/zigo/packages/internal/raw"
 
 	zigo_pkg_model "example.com/zigo/packages/packages/model"
@@ -22,13 +20,4 @@ func zigoPointFromRaw(value raw.PointData) zigo_pkg_model.Point {
 		X: value.X,
 		Y: value.Y,
 	}
-}
-
-// zigoPointSliceView reinterprets a slice the raw layer already owns as
-// []Point without copying it again.
-func zigoPointSliceView(values []raw.PointData) []zigo_pkg_model.Point {
-	if len(values) == 0 {
-		return nil
-	}
-	return unsafe.Slice((*zigo_pkg_model.Point)(unsafe.Pointer(&values[0])), len(values))
 }

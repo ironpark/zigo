@@ -26,13 +26,6 @@ func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, err
 	return value.zigoAcquire(operation)
 }
 
-func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsafe.Pointer, error) {
-	if absent {
-		return nil, nil
-	}
-	return zigoCheckedPointer(operation, value)
-}
-
 // zigoPoisonAfterPanic marks every handle a call reached unusable when that
 // call ended in a Zig panic: the panic unwound the native frames without
 // running their defers, so what is behind those handles is unknown. Any
@@ -108,8 +101,6 @@ func deleteCallbackHandle(handle zigoCallbackHandle) {
 	handle.Delete()
 	activeCallbackHandles.Add(-1)
 }
-
-func activeCallbackHandleCount() int64 { return activeCallbackHandles.Load() }
 
 // zigoRethrowCallbackPanic resumes a panic that a Go callback raised inside
 // the native call that has just returned. The trampoline recovered it so the

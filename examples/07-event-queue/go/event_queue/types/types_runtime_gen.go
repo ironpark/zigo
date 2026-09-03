@@ -12,9 +12,6 @@ type zigoHandle = lifecycle.Handle
 func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, error) {
 	return lifecycle.CheckedPointer(operation, value)
 }
-func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsafe.Pointer, error) {
-	return lifecycle.OptionalPointer(operation, absent, value)
-}
 func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error {
 	return lifecycle.PoisonAfterPanic(err, handles...)
 }
@@ -31,11 +28,4 @@ func zigoMustMatch[T any](value T, matched bool, err error) (T, bool) {
 		panic(err)
 	}
 	return value, matched
-}
-
-func boolToUint8(value bool) uint8 {
-	if value {
-		return 1
-	}
-	return 0
 }

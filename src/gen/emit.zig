@@ -4055,6 +4055,134 @@ fn hasOutValueStructSlice(function: semantic.SemanticFn) bool {
     return false;
 }
 
+/// Whether the public function emitter writes this function at all. Helper
+/// use predicates deliberately share this filter with the emitter so a
+/// hidden deinitializer cannot keep one alive by accident.
+fn emitsPublicFunction(program: abi.Program, function: abi.AbiFn) bool {
+    const constructor = constructorForInit(program, function.origin.*);
+    if (constructor == null and constructorForDeinit(program, function.origin.*) != null) return false;
+    return !isReleaseTarget(program, function.origin.*);
+}
+
+fn returnPayload(node: semantic.TypeNode) semantic.TypeNode {
+    return if (node == .error_union) node.error_union.payload.* else node;
+}
+
+fn optionalPayload(node: semantic.TypeNode) semantic.TypeNode {
+    return if (node == .optional) node.optional.child.* else node;
+}
+
+fn programUsesStructSliceView(program: abi.Program, name: []const u8) bool {
+    for (program.functions) |function| {
+        if (!emitsPublicFunction(program, function)) continue;
+        const node = optionalPayload(returnPayload(function.origin.@"return"));
+        if (node == .slice and node.slice.element.* == .value_struct and
+            std.mem.eql(u8, node.slice.element.*.value_struct.ref, name)) return true;
+    }
+    return false;
+}
+
+fn programUsesStructSliceToRaw(program: abi.Program, name: []const u8) bool {
+    for (program.functions) |function| {
+        if (!emitsPublicFunction(program, function)) continue;
+        for (function.origin.params) |parameter| {
+            if (parameter.direction == .out or !isValueStructSlice(parameter.type)) continue;
+            if (std.mem.eql(u8, parameter.type.slice.element.*.value_struct.ref, name)) return true;
+        }
+    }
+    return false;
+}
+
+fn programUsesStructSliceFromRaw(program: abi.Program, name: []const u8) bool {
+    for (program.functions) |function| {
+        if (!emitsPublicFunction(program, function)) continue;
+        const node = optionalPayload(returnPayload(function.origin.@"return"));
+        if (node == .slice and node.slice.element.* == .value_struct and
+            std.mem.eql(u8, node.slice.element.*.value_struct.ref, name)) return true;
+    }
+    return false;
+}
+
+fn programUsesStructSliceCopyFromRaw(program: abi.Program, name: []const u8) bool {
+    for (program.functions) |function| {
+        if (!emitsPublicFunction(program, function)) continue;
+        for (function.origin.params) |parameter| {
+            if (parameter.direction != .out or !isValueStructSlice(parameter.type)) continue;
+            if (std.mem.eql(u8, parameter.type.slice.element.*.value_struct.ref, name)) return true;
+        }
+    }
+    return false;
+}
+
+/// A generated conversion for `root` calls the conversion for every nested
+/// extern value struct. This is the same recursive walk used by the converter
+/// body below, expressed as a reference question for one target helper.
+fn structConversionReaches(program: abi.Program, root: []const u8, target: []const u8, depth: usize) bool {
+    if (std.mem.eql(u8, root, target)) return true;
+    if (depth >= 16) return false;
+    const record = for (program.structs) |candidate| {
+        if (std.mem.eql(u8, candidate.name, root)) break candidate;
+    } else return false;
+    for (record.fields) |field| {
+        if (field.node != .value_struct or isPackedValue(program, field.node)) continue;
+        if (structConversionReaches(program, field.node.value_struct.ref, target, depth + 1)) return true;
+    }
+    return false;
+}
+
+fn parameterStartsStructToRaw(program: abi.Program, parameter: semantic.Parameter) ?[]const u8 {
+    var node = parameter.type;
+    if (node == .optional) node = node.optional.child.*;
+    if (node == .value_struct) {
+        if (isPackedValue(program, node) or isTaggedUnionValue(program, node)) return null;
+        return node.value_struct.ref;
+    }
+    if (parameter.direction != .out and isValueStructSlice(node)) {
+        const name = node.slice.element.*.value_struct.ref;
+        if (!program.structCastable(name)) return name;
+    }
+    return null;
+}
+
+fn programUsesStructToRaw(program: abi.Program, name: []const u8) bool {
+    for (program.functions) |function| {
+        if (!emitsPublicFunction(program, function)) continue;
+        for (function.origin.params) |parameter| {
+            if (parameterStartsStructToRaw(program, parameter)) |root| {
+                if (structConversionReaches(program, root, name, 0)) return true;
+            }
+            if (parameter.flatten) |fields| for (fields) |field| {
+                if (field.type != .optional) continue;
+                var flattened = parameter;
+                flattened.type = field.type;
+                if (parameterStartsStructToRaw(program, flattened)) |root| {
+                    if (structConversionReaches(program, root, name, 0)) return true;
+                }
+            };
+        }
+    }
+    return false;
+}
+
+fn programUsesStructFromRaw(program: abi.Program, name: []const u8) bool {
+    for (program.functions) |function| {
+        if (!emitsPublicFunction(program, function)) continue;
+        const returned = optionalPayload(returnPayload(function.origin.@"return"));
+        if (returned == .value_struct and !isPackedValue(program, returned) and
+            structConversionReaches(program, returned.value_struct.ref, name, 0)) return true;
+        if (returned == .slice and returned.slice.element.* == .value_struct) {
+            const root = returned.slice.element.*.value_struct.ref;
+            if (!program.structCastable(root) and structConversionReaches(program, root, name, 0)) return true;
+        }
+        for (function.origin.params) |parameter| {
+            if (parameter.direction != .out or !isValueStructSlice(parameter.type)) continue;
+            const root = parameter.type.slice.element.*.value_struct.ref;
+            if (!program.structCastable(root) and structConversionReaches(program, root, name, 0)) return true;
+        }
+    }
+    return false;
+}
+
 /// Hands the raw layer the `[]TData` it expects. A castable element makes that
 /// a reinterpretation of the caller's own slice, so the call reads and writes
 /// the caller's memory directly and neither direction copies. An `.out`
@@ -5255,77 +5383,89 @@ fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer
         // comments; only the type references take the qualified form.
         const public_name = try scope.typeNameAlloc(allocator, record.name);
         defer allocator.free(public_name);
-        try writer.print("func zigo{s}ToRaw(value {s}) ", .{ record.name, public_name });
-        try writeRawTypeReferencePrefix(writer, options);
-        try writer.print("{s} {{\n\treturn ", .{raw_type});
-        try writeRawTypeReferencePrefix(writer, options);
-        try writer.print("{s}{{\n", .{raw_type});
-        for (record.fields) |field| {
-            const member = try naming.pascalAlloc(allocator, field.name);
-            defer allocator.free(member);
-            try writer.print("\t\t{s}: ", .{member});
-            switch (field.node) {
-                .value_struct => |nested| if (isPackedValue(program, field.node))
-                    try writer.print("value.{s}.Backing()", .{member})
-                else
-                    try writer.print("zigo{s}ToRaw(value.{s})", .{ nested.ref, member }),
-                .bool => try writer.print("boolToUint8(value.{s})", .{member}),
-                .@"enum" => {
-                    try writer.writeAll(rawGoTypeName(program, field.node));
-                    try writer.print("(value.{s})", .{member});
-                },
-                else => try writer.print("value.{s}", .{member}),
+        if (programUsesStructToRaw(program, record.name)) {
+            try writer.print("func zigo{s}ToRaw(value {s}) ", .{ record.name, public_name });
+            try writeRawTypeReferencePrefix(writer, options);
+            try writer.print("{s} {{\n\treturn ", .{raw_type});
+            try writeRawTypeReferencePrefix(writer, options);
+            try writer.print("{s}{{\n", .{raw_type});
+            for (record.fields) |field| {
+                const member = try naming.pascalAlloc(allocator, field.name);
+                defer allocator.free(member);
+                try writer.print("\t\t{s}: ", .{member});
+                switch (field.node) {
+                    .value_struct => |nested| if (isPackedValue(program, field.node))
+                        try writer.print("value.{s}.Backing()", .{member})
+                    else
+                        try writer.print("zigo{s}ToRaw(value.{s})", .{ nested.ref, member }),
+                    .bool => try writer.print("boolToUint8(value.{s})", .{member}),
+                    .@"enum" => {
+                        try writer.writeAll(rawGoTypeName(program, field.node));
+                        try writer.print("(value.{s})", .{member});
+                    },
+                    else => try writer.print("value.{s}", .{member}),
+                }
+                try writer.writeAll(",\n");
             }
-            try writer.writeAll(",\n");
+            try writer.writeAll("\t}\n}\n\n");
         }
-        try writer.writeAll("\t}\n}\n\n");
 
-        try writer.print("func zigo{s}FromRaw(value ", .{record.name});
-        try writeRawTypeReferencePrefix(writer, options);
-        try writer.print("{s}) {s} {{\n\treturn {s}{{\n", .{ raw_type, public_name, public_name });
-        for (record.fields) |field| {
-            const member = try naming.pascalAlloc(allocator, field.name);
-            defer allocator.free(member);
-            try writer.print("\t\t{s}: ", .{member});
-            switch (field.node) {
-                .value_struct => |nested| if (isPackedValue(program, field.node))
-                    try writer.print("{s}FromBacking(value.{s})", .{ nested.ref, member })
-                else
-                    try writer.print("zigo{s}FromRaw(value.{s})", .{ nested.ref, member }),
-                else => {
-                    const expression = try std.fmt.allocPrint(allocator, "value.{s}", .{member});
-                    defer allocator.free(expression);
-                    try writePublicResultConversion(scope, writer, program, field.node, expression);
-                },
+        if (programUsesStructFromRaw(program, record.name)) {
+            try writer.print("func zigo{s}FromRaw(value ", .{record.name});
+            try writeRawTypeReferencePrefix(writer, options);
+            try writer.print("{s}) {s} {{\n\treturn {s}{{\n", .{ raw_type, public_name, public_name });
+            for (record.fields) |field| {
+                const member = try naming.pascalAlloc(allocator, field.name);
+                defer allocator.free(member);
+                try writer.print("\t\t{s}: ", .{member});
+                switch (field.node) {
+                    .value_struct => |nested| if (isPackedValue(program, field.node))
+                        try writer.print("{s}FromBacking(value.{s})", .{ nested.ref, member })
+                    else
+                        try writer.print("zigo{s}FromRaw(value.{s})", .{ nested.ref, member }),
+                    else => {
+                        const expression = try std.fmt.allocPrint(allocator, "value.{s}", .{member});
+                        defer allocator.free(expression);
+                        try writePublicResultConversion(scope, writer, program, field.node, expression);
+                    },
+                }
+                try writer.writeAll(",\n");
             }
-            try writer.writeAll(",\n");
+            try writer.writeAll("\t}\n}\n\n");
         }
-        try writer.writeAll("\t}\n}\n\n");
 
         // A castable element crosses in both directions as a reinterpretation:
         // parameters are passed as the caller's memory, and returns are the
         // allocation the raw layer already copied into. The copying helpers
         // would be dead code for such a type and are not emitted at all.
         if (record.castable) {
-            try writer.print("// zigo{s}SliceView reinterprets a slice the raw layer already owns as\n// []{s} without copying it again.\nfunc zigo{s}SliceView(values []", .{ record.name, record.name, record.name });
-            try writeRawTypeReferencePrefix(writer, options);
-            try writer.print("{s}) []{s} {{\n\tif len(values) == 0 {{\n\t\treturn nil\n\t}}\n\treturn unsafe.Slice((*{s})(unsafe.Pointer(&values[0])), len(values))\n}}\n\n", .{ raw_type, public_name, public_name });
+            if (programUsesStructSliceView(program, record.name)) {
+                try writer.print("// zigo{s}SliceView reinterprets a slice the raw layer already owns as\n// []{s} without copying it again.\nfunc zigo{s}SliceView(values []", .{ record.name, record.name, record.name });
+                try writeRawTypeReferencePrefix(writer, options);
+                try writer.print("{s}) []{s} {{\n\tif len(values) == 0 {{\n\t\treturn nil\n\t}}\n\treturn unsafe.Slice((*{s})(unsafe.Pointer(&values[0])), len(values))\n}}\n\n", .{ raw_type, public_name, public_name });
+            }
             continue;
         }
 
-        try writer.print("func zigo{s}SliceToRaw(values []{s}) []", .{ record.name, public_name });
-        try writeRawTypeReferencePrefix(writer, options);
-        try writer.print("{s} {{\n\tresult := make([]", .{raw_type});
-        try writeRawTypeReferencePrefix(writer, options);
-        try writer.print("{s}, len(values))\n\tfor i := range values {{\n\t\tresult[i] = zigo{s}ToRaw(values[i])\n\t}}\n\treturn result\n}}\n\n", .{ raw_type, record.name });
+        if (programUsesStructSliceToRaw(program, record.name)) {
+            try writer.print("func zigo{s}SliceToRaw(values []{s}) []", .{ record.name, public_name });
+            try writeRawTypeReferencePrefix(writer, options);
+            try writer.print("{s} {{\n\tresult := make([]", .{raw_type});
+            try writeRawTypeReferencePrefix(writer, options);
+            try writer.print("{s}, len(values))\n\tfor i := range values {{\n\t\tresult[i] = zigo{s}ToRaw(values[i])\n\t}}\n\treturn result\n}}\n\n", .{ raw_type, record.name });
+        }
 
-        try writer.print("func zigo{s}SliceFromRaw(values []", .{record.name});
-        try writeRawTypeReferencePrefix(writer, options);
-        try writer.print("{s}) []{s} {{\n\tresult := make([]{s}, len(values))\n\tfor i := range values {{\n\t\tresult[i] = zigo{s}FromRaw(values[i])\n\t}}\n\treturn result\n}}\n\n", .{ raw_type, public_name, public_name, record.name });
+        if (programUsesStructSliceFromRaw(program, record.name)) {
+            try writer.print("func zigo{s}SliceFromRaw(values []", .{record.name});
+            try writeRawTypeReferencePrefix(writer, options);
+            try writer.print("{s}) []{s} {{\n\tresult := make([]{s}, len(values))\n\tfor i := range values {{\n\t\tresult[i] = zigo{s}FromRaw(values[i])\n\t}}\n\treturn result\n}}\n\n", .{ raw_type, public_name, public_name, record.name });
+        }
 
-        try writer.print("func zigo{s}SliceCopyFromRaw(dst []{s}, values []", .{ record.name, public_name });
-        try writeRawTypeReferencePrefix(writer, options);
-        try writer.print("{s}, count int) {{\n\tif count > len(dst) {{ count = len(dst) }}\n\tif count > len(values) {{ count = len(values) }}\n\tfor i := 0; i < count; i++ {{\n\t\tdst[i] = zigo{s}FromRaw(values[i])\n\t}}\n}}\n\n", .{ raw_type, record.name });
+        if (programUsesStructSliceCopyFromRaw(program, record.name)) {
+            try writer.print("func zigo{s}SliceCopyFromRaw(dst []{s}, values []", .{ record.name, public_name });
+            try writeRawTypeReferencePrefix(writer, options);
+            try writer.print("{s}, count int) {{\n\tif count > len(dst) {{ count = len(dst) }}\n\tif count > len(values) {{ count = len(values) }}\n\tfor i := 0; i < count; i++ {{\n\t\tdst[i] = zigo{s}FromRaw(values[i])\n\t}}\n}}\n\n", .{ raw_type, record.name });
+        }
     }
     try renderPublicTaggedUnionValues(allocator, writer, program, options);
 }
@@ -6062,12 +6202,15 @@ fn renderPublicHelpers(writer: *std.Io.Writer, program: abi.Program, options: Op
             try writeStreamHandleConstructors(writer, program, options);
             try writer.writeAll("func deleteCallbackHandle(handle zigoCallbackHandle) { ");
             try writeRawReferencePrefix(writer, options);
-            try writer.writeAll("DeleteCallbackHandle(handle) }\n\nfunc activeCallbackHandleCount() int64 { return ");
-            try writeRawReferencePrefix(writer, options);
-            try writer.writeAll("ActiveCallbackHandleCount() }\n");
-            try writer.writeAll("func callbackDispatcherCount() int { return ");
-            try writeRawReferencePrefix(writer, options);
-            try writer.writeAll("CallbackDispatcherCount() }\n\n");
+            try writer.writeAll("DeleteCallbackHandle(handle) }\n\n");
+            if (programUsesCallbackDiagnostics(program)) {
+                try writer.writeAll("func activeCallbackHandleCount() int64 { return ");
+                try writeRawReferencePrefix(writer, options);
+                try writer.writeAll("ActiveCallbackHandleCount() }\n");
+                try writer.writeAll("func callbackDispatcherCount() int { return ");
+                try writeRawReferencePrefix(writer, options);
+                try writer.writeAll("CallbackDispatcherCount() }\n\n");
+            }
             try writeRethrowHelper(writer, options);
             try writeStreamErrorHelper(writer, program, options);
             try writeCallbackErrorHelper(writer, program, options);
@@ -6100,9 +6243,10 @@ fn renderPublicHelpers(writer: *std.Io.Writer, program: abi.Program, options: Op
                 "\tif handle == 0 { return }\n" ++
                 "\thandle.Delete()\n" ++
                 "\tactiveCallbackHandles.Add(-1)\n" ++
-                "}\n\n" ++
-                "func activeCallbackHandleCount() int64 { return activeCallbackHandles.Load() }\n\n",
+                "}\n\n",
         );
+        if (programUsesCallbackDiagnostics(program))
+            try writer.writeAll("func activeCallbackHandleCount() int64 { return activeCallbackHandles.Load() }\n\n");
         try writeRethrowHelper(writer, options);
         try writeStreamErrorHelper(writer, program, options);
         try writeCallbackErrorHelper(writer, program, options);
@@ -6571,11 +6715,10 @@ fn renderGoHandleRuntime(writer: *std.Io.Writer, program: abi.Program, options: 
     if (options.shared_lifecycle) {
         try writer.writeAll("type zigoHandle = lifecycle.Handle\n\n");
         if (programHasChildConstructors(program)) try writer.writeAll("type zigoChildHandle = lifecycle.ChildHandle\n\n");
-        return writer.writeAll(
-            "func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, error) { return lifecycle.CheckedPointer(operation, value) }\n" ++
-                "func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsafe.Pointer, error) { return lifecycle.OptionalPointer(operation, absent, value) }\n" ++
-                "func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error { return lifecycle.PoisonAfterPanic(err, handles...) }\n\n",
-        );
+        try writer.writeAll("func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, error) { return lifecycle.CheckedPointer(operation, value) }\n");
+        if (programUsesOptionalPointer(program))
+            try writer.writeAll("func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsafe.Pointer, error) { return lifecycle.OptionalPointer(operation, absent, value) }\n");
+        return writer.writeAll("func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error { return lifecycle.PoisonAfterPanic(err, handles...) }\n\n");
     }
     try writer.writeAll(
         "// zigoHandle is what every handle and borrowed reference offers a generated\n" ++
@@ -6600,14 +6743,18 @@ fn renderGoHandleRuntime(writer: *std.Io.Writer, program: abi.Program, options: 
             "// poisoned handle is the error instead, and nothing is pinned.\n" ++
             "func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, error) {\n" ++
             "\treturn value.zigoAcquire(operation)\n" ++
-            "}\n\n" ++
-            "func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsafe.Pointer, error) {\n" ++
+            "}\n\n",
+    );
+    if (programUsesOptionalPointer(program)) try writer.writeAll(
+        "func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsafe.Pointer, error) {\n" ++
             "\tif absent {\n" ++
             "\t\treturn nil, nil\n" ++
             "\t}\n" ++
             "\treturn zigoCheckedPointer(operation, value)\n" ++
-            "}\n\n" ++
-            "// zigoPoisonAfterPanic marks every handle a call reached unusable when that\n" ++
+            "}\n\n",
+    );
+    try writer.writeAll(
+        "// zigoPoisonAfterPanic marks every handle a call reached unusable when that\n" ++
             "// call ended in a Zig panic: the panic unwound the native frames without\n" ++
             "// running their defers, so what is behind those handles is unknown. Any\n" ++
             "// other error passes through untouched.\n" ++
@@ -8002,6 +8149,16 @@ fn hasOpaqueParameter(function: semantic.SemanticFn) bool {
     return false;
 }
 
+fn programUsesOptionalPointer(program: abi.Program) bool {
+    for (program.functions) |function| {
+        if (!emitsPublicFunction(program, function)) continue;
+        for (function.origin.params) |parameter| {
+            if (parameter.type == .opaque_ptr and parameter.type.opaque_ptr.nullable) return true;
+        }
+    }
+    return false;
+}
+
 fn rawGoTypeName(program: abi.Program, node: semantic.TypeNode) []const u8 {
     const scalar = semanticScalar(program, node);
     return switch (scalar) {
@@ -8712,6 +8869,15 @@ fn hasRetainedCallback(function: semantic.SemanticFn) bool {
     return false;
 }
 
+/// The package-level callback counters diagnose ownership that can outlive a
+/// call: retained callbacks and stream adapters. A transient callback cannot
+/// leak beyond its wrapper, so emitting the accessors for it is dead code.
+fn programUsesCallbackDiagnostics(program: abi.Program) bool {
+    if (programHasStreams(program)) return true;
+    for (program.functions) |function| if (hasRetainedCallback(function.origin.*)) return true;
+    return false;
+}
+
 /// Index of the callback parameter whose userdata this parameter carries.
 fn callbackTrampolineNameAlloc(allocator: std.mem.Allocator, function: abi.AbiFn, parameter_index: usize) ![]u8 {
     const parameter_name = try naming.snakeAlloc(allocator, function.origin.params[parameter_index].name);
@@ -9000,14 +9166,46 @@ fn rawNameForSemanticAlloc(allocator: std.mem.Allocator, program: abi.Program, n
 }
 
 fn programNeedsBoolHelper(program: abi.Program) bool {
-    for (program.structs) |record| {
-        for (record.fields) |field| if (field.node == .bool) return true;
+    for (program.functions) |function| {
+        if (!emitsPublicFunction(program, function)) continue;
+        for (function.origin.params) |parameter| {
+            if (nodeUsesBoolHelper(program, parameter.type)) return true;
+            if (parameter.flatten) |fields| for (fields) |field| {
+                if (nodeUsesBoolHelper(program, field.type)) return true;
+            };
+        }
     }
-    // A `?bool` parameter converts the same way, one pointer deeper.
-    for (program.functions) |function| for (function.origin.params) |parameter| {
-        if (parameter.type == .bool) return true;
-        if (parameter.type == .optional and parameter.type.optional.child.* == .bool) return true;
+    for (program.structs) |record| {
+        if (!programUsesStructToRaw(program, record.name)) continue;
+        if (structConversionUsesBool(program, record.name, 0)) return true;
+    }
+    return false;
+}
+
+fn nodeUsesBoolHelper(program: abi.Program, node: semantic.TypeNode) bool {
+    return switch (node) {
+        .bool => true,
+        .optional => |value| nodeUsesBoolHelper(program, value.child.*),
+        .value_struct => |value| blk: {
+            const declaration = enumDecl(program, value.ref);
+            if (declaration.kind == .tagged_union or declaration.layout == .@"packed") {
+                for (declaration.fields) |field| if (field.type) |child| {
+                    if (nodeUsesBoolHelper(program, child)) break :blk true;
+                };
+            }
+            break :blk false;
+        },
+        else => false,
     };
+}
+
+fn structConversionUsesBool(program: abi.Program, name: []const u8, depth: usize) bool {
+    if (depth >= 16) return false;
+    for (structRecord(program, name).fields) |field| {
+        if (field.node == .bool) return true;
+        if (field.node == .value_struct and !isPackedValue(program, field.node) and
+            structConversionUsesBool(program, field.node.value_struct.ref, depth + 1)) return true;
+    }
     return false;
 }
 
@@ -9636,6 +9834,74 @@ test "a returned struct slice is reinterpreted for a castable element and copied
     try std.testing.expect(std.mem.indexOf(u8, structs, "return unsafe.Slice((*Point)(unsafe.Pointer(&values[0])), len(values))") != null);
     try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoFlaggedSliceFromRaw(values []raw.FlaggedData) []Flagged {") != null);
     try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoFlaggedSliceView(") == null);
+    try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoPointToRaw(") == null);
+    try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoFlaggedToRaw(") == null);
+
+    const runtime = try renderForTest(renderPublicRuntimeFile, program);
+    defer std.testing.allocator.free(runtime);
+    // Merely reading back a bool-bearing struct does not reference the
+    // bool-to-ABI conversion helper.
+    try std.testing.expect(std.mem.indexOf(u8, runtime, "func boolToUint8(") == null);
+}
+
+test "public helpers are emitted only for matching parameter references" {
+    var flagged: semantic.TypeNode = .{ .value_struct = .{ .ref = "Flagged" } };
+    const document: semantic.Semantic = .{
+        .package = "helpers",
+        .prefix = "zg",
+        .functions = &.{
+            .{
+                .name = "accept",
+                .params = &.{.{ .name = "value", .type = .{ .value_struct = .{ .ref = "Flagged" } } }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_accept",
+            },
+            .{
+                .name = "acceptMany",
+                .params = &.{.{ .name = "values", .type = .{ .slice = .{ .@"const" = true, .element = &flagged } } }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_accept_many",
+            },
+            .{
+                .name = "merge",
+                .params = &.{.{ .name = "other", .type = .{ .opaque_ptr = .{ .@"const" = true, .nullable = true, .ref = "Handle" } } }},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_merge",
+            },
+        },
+        .types = &.{
+            .{
+                .fields = &.{.{ .name = "ready", .type = .{ .bool = {} } }},
+                .kind = .value_struct,
+                .layout = .@"extern",
+                .name = "Flagged",
+            },
+            .{
+                .fields = &.{.{ .name = "value", .type = .{ .int = .{ .bits = 32, .signed = true } } }},
+                .kind = .value_struct,
+                .layout = .@"extern",
+                .name = "Unused",
+            },
+            .{ .kind = .@"opaque", .name = "Handle" },
+        },
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try @import("lower").semanticDocument(arena.allocator(), document, "helpers", "zg", &.{});
+
+    const structs = try renderForTest(renderPublicStructsFile, program);
+    defer std.testing.allocator.free(structs);
+    try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoFlaggedToRaw(") != null);
+    try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoFlaggedSliceToRaw(") != null);
+    try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoUnusedToRaw(") == null);
+    try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoUnusedSliceView(") == null);
+
+    const runtime = try renderForTest(renderPublicRuntimeFile, program);
+    defer std.testing.allocator.free(runtime);
+    try std.testing.expect(std.mem.indexOf(u8, runtime, "func boolToUint8(") != null);
+    try std.testing.expect(std.mem.indexOf(u8, runtime, "func zigoOptionalPointer(") != null);
+    try std.testing.expect(std.mem.indexOf(u8, runtime, "func activeCallbackHandleCount(") == null);
 }
 
 test "a stream parameter becomes a shim adapter and a fixed callback ABI" {
@@ -9675,6 +9941,8 @@ test "a stream parameter becomes a shim adapter and a fixed callback ABI" {
         .{ .code = 1, .name = "WriteFailed" },
         .{ .code = 2, .name = "ReadFailed" },
     });
+    try std.testing.expect(programUsesCallbackDiagnostics(program));
+    try std.testing.expect(!programUsesOptionalPointer(program));
 
     const shim = try renderForTest(renderShim, program);
     defer std.testing.allocator.free(shim);

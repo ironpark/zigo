@@ -21,26 +21,3 @@ type TickerInfo struct {
 var _ = [1]struct{}{}[unsafe.Sizeof(TickerInfo{})-unsafe.Sizeof(raw.TickerInfoData{})]
 var _ = [1]struct{}{}[unsafe.Offsetof(TickerInfo{}.Interval)-unsafe.Offsetof(raw.TickerInfoData{}.Interval)]
 var _ = [1]struct{}{}[unsafe.Offsetof(TickerInfo{}.Ticks)-unsafe.Offsetof(raw.TickerInfoData{}.Ticks)]
-
-func zigoTickerInfoToRaw(value TickerInfo) raw.TickerInfoData {
-	return raw.TickerInfoData{
-		Interval: value.Interval,
-		Ticks:    value.Ticks,
-	}
-}
-
-func zigoTickerInfoFromRaw(value raw.TickerInfoData) TickerInfo {
-	return TickerInfo{
-		Interval: value.Interval,
-		Ticks:    value.Ticks,
-	}
-}
-
-// zigoTickerInfoSliceView reinterprets a slice the raw layer already owns as
-// []TickerInfo without copying it again.
-func zigoTickerInfoSliceView(values []raw.TickerInfoData) []TickerInfo {
-	if len(values) == 0 {
-		return nil
-	}
-	return unsafe.Slice((*TickerInfo)(unsafe.Pointer(&values[0])), len(values))
-}

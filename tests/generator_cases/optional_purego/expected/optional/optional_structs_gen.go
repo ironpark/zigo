@@ -35,12 +35,3 @@ func zigoPointFromRaw(value raw.PointData) Point {
 		Y: value.Y,
 	}
 }
-
-// zigoPointSliceView reinterprets a slice the raw layer already owns as
-// []Point without copying it again.
-func zigoPointSliceView(values []raw.PointData) []Point {
-	if len(values) == 0 {
-		return nil
-	}
-	return unsafe.Slice((*Point)(unsafe.Pointer(&values[0])), len(values))
-}

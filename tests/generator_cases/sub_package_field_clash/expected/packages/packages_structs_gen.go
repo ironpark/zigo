@@ -35,12 +35,3 @@ func zigoConfigFromRaw(value raw.ConfigData) Config {
 		Y: value.Y,
 	}
 }
-
-// zigoConfigSliceView reinterprets a slice the raw layer already owns as
-// []Config without copying it again.
-func zigoConfigSliceView(values []raw.ConfigData) []Config {
-	if len(values) == 0 {
-		return nil
-	}
-	return unsafe.Slice((*Config)(unsafe.Pointer(&values[0])), len(values))
-}

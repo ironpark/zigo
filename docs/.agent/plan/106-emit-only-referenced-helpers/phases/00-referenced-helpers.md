@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `staticcheck -checks U1000 ./...` is clean in every example module and the verification loop passes.
 > NEXT: none

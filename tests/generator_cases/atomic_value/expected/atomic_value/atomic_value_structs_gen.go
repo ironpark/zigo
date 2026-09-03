@@ -22,30 +22,6 @@ func zigoRecordFromRaw(value raw.RecordData) Record {
 	}
 }
 
-func zigoRecordSliceToRaw(values []Record) []raw.RecordData {
-	result := make([]raw.RecordData, len(values))
-	for i := range values {
-		result[i] = zigoRecordToRaw(values[i])
-	}
-	return result
-}
-
-func zigoRecordSliceFromRaw(values []raw.RecordData) []Record {
-	result := make([]Record, len(values))
-	for i := range values {
-		result[i] = zigoRecordFromRaw(values[i])
-	}
-	return result
-}
-
-func zigoRecordSliceCopyFromRaw(dst []Record, values []raw.RecordData, count int) {
-	if count > len(dst) { count = len(dst) }
-	if count > len(values) { count = len(values) }
-	for i := 0; i < count; i++ {
-		dst[i] = zigoRecordFromRaw(values[i])
-	}
-}
-
 func zigoEventFromRaw(value raw.EventData) Event {
 	switch EventTag(value.Tag) {
 	case EventTagCount:
