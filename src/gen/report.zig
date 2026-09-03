@@ -135,8 +135,13 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
 }
 
 fn publicFunctionNameAlloc(allocator: std.mem.Allocator, document: semantic.Semantic, function: semantic.SemanticFn) ![]u8 {
-    if (constructorForInit(document, function)) |constructor|
+    // A constructor is published as `New<Type>`, and as a method on its
+    // receiver when it has one -- exactly the two-step emit does.
+    if (constructorForInit(document, function)) |constructor| {
+        if (function.receiver) |receiver|
+            return std.fmt.allocPrint(allocator, "(*{s}).New{s}", .{ receiver, constructor.type });
         return std.fmt.allocPrint(allocator, "New{s}", .{constructor.type});
+    }
     const name = try naming.pascalAlloc(allocator, function.name);
     defer allocator.free(name);
     if (constructorForDeinit(document, function) != null)
@@ -152,8 +157,11 @@ fn semanticIdentityAlloc(allocator: std.mem.Allocator, function: semantic.Semant
     return allocator.dupe(u8, function.name);
 }
 
+/// The constructor whose `init` this function is, matched exactly the way
+/// `emit.constructorForInit` matches it. A method constructor has a receiver,
+/// so the report must not screen receivers out here: doing so reported
+/// `(*T).Init` for a function the generator publishes as `NewT`.
 fn constructorForInit(document: semantic.Semantic, function: semantic.SemanticFn) ?semantic.Constructor {
-    if (function.receiver != null) return null;
     for (document.constructors) |constructor| {
         if (std.mem.eql(u8, constructor.init, function.name) and std.mem.eql(u8, constructor.type, function.goOwner() orelse ""))
             return constructor;
@@ -263,4 +271,29 @@ test "purego report states the effective loading policy" {
     defer cgo.deinit();
     try render(std.testing.allocator, &cgo.writer, document, .{});
     try std.testing.expect(std.mem.indexOf(u8, cgo.written(), "library loading:") == null);
+}
+
+test "report names a method constructor the way the generator publishes it" {
+    var child: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Child" } };
+    const document: semantic.Semantic = .{
+        .constructors = &.{.{ .type = "Child", .init = "newChild", .deinit = "freeChild" }},
+        .functions = &.{
+            .{ .name = "newChild", .receiver = "View", .go_owner = "Child", .ownership = .caller, .params = &.{}, .@"return" = .{ .error_union = .{ .payload = &child, .error_set = &.{} } }, .symbol = "ignored" },
+            .{ .name = "freeChild", .receiver = "Child", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "ignored" },
+        },
+        .package = "sample",
+        .prefix = "zg",
+        .types = &.{
+            .{ .kind = .@"opaque", .name = "View" },
+            .{ .kind = .@"opaque", .name = "Child" },
+        },
+        .zig_version = "0.16.0",
+    };
+    var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer output.deinit();
+    try render(std.testing.allocator, &output.writer, document, .{});
+    // Before this, the receiver guard reported the raw `(*View).NewChild`
+    // pascal name instead of the constructor name the generator emits.
+    try std.testing.expect(std.mem.indexOf(u8, output.written(), "View.newChild -> (*View).NewChild") != null);
+    try std.testing.expect(std.mem.indexOf(u8, output.written(), "Child.freeChild -> (*Child).Close [lifecycle mapping]") != null);
 }

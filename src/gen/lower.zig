@@ -107,7 +107,7 @@ pub fn semanticDocumentForBackend(
                 });
                 continue;
             }
-            if (isStringSliceParameter(parameter)) {
+            if (semantic.isStringSliceParameter(parameter)) {
                 const data_child = try allocator.create(abi.AbiScalar);
                 data_child.* = try lowerValue(allocator, document, prefix, parameter.type.slice.element.*.slice.element.*);
                 const lengths_child = try allocator.create(abi.AbiScalar);
@@ -372,7 +372,7 @@ pub fn semanticDocumentForBackend(
             function.receiver orelse function.namespace,
             function.name,
         );
-        const symbol = if (backend == .purego and functionHasCallback(function.*))
+        const symbol = if (backend == .purego and semantic.functionHasCallback(function.*))
             try std.fmt.allocPrint(allocator, "{s}_purego_v2", .{base_symbol})
         else
             base_symbol;
@@ -528,15 +528,6 @@ fn callbackWireScalar(scalar: abi.AbiScalar) abi.AbiScalar {
         .float => |bits| .{ .unsigned_int = bits },
         else => scalar,
     };
-}
-
-fn functionHasCallback(function: semantic.SemanticFn) bool {
-    // A stream parameter counts: under purego it too carries a Go dispatcher
-    // pointer, so it answers to the same versioned symbol as a user callback.
-    for (function.params) |parameter| {
-        if (parameter.type == .callback or parameter.type == .io_stream) return true;
-    }
-    return false;
 }
 
 /// The C parameters one stream parameter lowers to. A writer needs only the
@@ -1228,15 +1219,6 @@ fn returnContainsCStringSlice(node: semantic.TypeNode, hint: ?semantic.SemanticH
     const payload = if (node == .error_union) node.error_union.payload.* else node;
     const child = if (payload == .optional) payload.optional.child.* else payload;
     return isCStringSlice(child, hint);
-}
-
-fn isStringSliceParameter(parameter: semantic.Parameter) bool {
-    if (parameter.direction != .in or parameter.type != .slice or !parameter.type.slice.@"const") return false;
-    const element = parameter.type.slice.element.*;
-    if (element != .slice or !element.slice.@"const" or
-        element.slice.element.* != .int or element.slice.element.int.signed or element.slice.element.int.bits != 8) return false;
-    if (element.slice.sentinel) |sentinel| return sentinel == 0;
-    return parameter.semantic == .utf8_string;
 }
 
 fn typeDeclaration(document: semantic.Semantic, name: []const u8) semantic.TypeDecl {

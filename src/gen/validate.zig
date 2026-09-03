@@ -228,7 +228,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .hint = "declare the callback with `callconv(.c)`",
             };
             if (parameter.type == .slice and containsPointer(parameter.type.slice.element.*) and
-                !isStringSliceParameter(parameter)) return .{
+                !semantic.isStringSliceParameter(parameter)) return .{
                 .severity = .@"error",
                 .code = "ZIGO005",
                 .message = "slice element type contains a pointer",
@@ -297,7 +297,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
         // A returned slice crosses as `T*` plus a length, so its element has to
         // be a value the C ABI can name. The error-union payload uses the same
         // out parameters and answers to the same rule.
-        if (sliceReturnElement(function)) |element| {
+        if (releasableSliceReturnElement(function)) |element| {
             if (containsPointer(element)) return .{
                 .severity = .@"error",
                 .code = "ZIGO005",
@@ -1038,7 +1038,7 @@ fn cIdentifierBackendIssue(allocator: std.mem.Allocator, document: semantic.Sema
     }
     for (document.functions) |function| {
         const base = try functionSymbolAlloc(scratch, document.prefix, function);
-        const name = if (purego and functionHasCallback(function))
+        const name = if (purego and semantic.functionHasCallback(function))
             try std.fmt.allocPrint(scratch, "{s}_purego_v2", .{base})
         else
             base;
@@ -1132,13 +1132,6 @@ fn addCIdentifier(
     }
     entry.value_ptr.* = declaration;
     return null;
-}
-
-fn functionHasCallback(function: semantic.SemanticFn) bool {
-    for (function.params) |parameter| {
-        if (parameter.type == .callback or parameter.type == .io_stream) return true;
-    }
-    return false;
 }
 
 const NameCheck = struct {
@@ -1750,7 +1743,7 @@ fn returnsCount(node: semantic.TypeNode) bool {
 }
 
 fn isReleasableSliceReturn(function: semantic.SemanticFn) bool {
-    return sliceReturnElement(function) != null;
+    return releasableSliceReturnElement(function) != null;
 }
 
 /// The release target must exist and take exactly the returned slice, otherwise
@@ -1772,7 +1765,7 @@ fn releaseTargetIssue(document: semantic.Semantic, function: semantic.SemanticFn
         // exactly the same slice a `fn(slice) void` does.
         const parameter = onlyExposedParameter(candidate.params) orelse return missing;
         if (parameter.direction != .in or parameter.type != .slice) return missing;
-        if (!typeNodeEqual(parameter.type.slice.element.*, sliceReturnElement(function).?)) return missing;
+        if (!typeNodeEqual(parameter.type.slice.element.*, releasableSliceReturnElement(function).?)) return missing;
         return null;
     }
     return missing;
@@ -1791,10 +1784,14 @@ fn onlyExposedParameter(params: []const semantic.Parameter) ?semantic.Parameter 
     return found;
 }
 
-/// The element of a slice a function returns through `out_result_ptr` and
-/// `out_result_len`, or null when it returns something else. Optional and
-/// error-union wrappers do not change the ownership of the underlying slice.
-fn sliceReturnElement(function: semantic.SemanticFn) ?semantic.TypeNode {
+/// The element of a slice return that needs a release target, or null when
+/// the function returns something else. This is the ownership question, not
+/// the calling-convention one: a caller-owned C-string return counts here
+/// because it still has to be freed, even though `emit.sliceReturnElement`
+/// excludes it -- that one asks which returns cross as an out-pointer plus
+/// length. Optional and error-union wrappers do not change the ownership of
+/// the underlying slice.
+fn releasableSliceReturnElement(function: semantic.SemanticFn) ?semantic.TypeNode {
     const payload = switch (function.@"return") {
         .error_union => |value| value.payload.*,
         else => function.@"return",
@@ -1999,21 +1996,6 @@ fn containsPointer(node: semantic.TypeNode) bool {
         .optional => |value| containsPointer(value.child.*),
         else => false,
     };
-}
-
-/// A string slice is the only pointer-bearing slice that may cross the Go
-/// boundary. It is flattened into bytes plus lengths before the native call;
-/// every other pointer-bearing element keeps the ZIGO005 rejection.
-fn isStringSliceParameter(parameter: semantic.Parameter) bool {
-    if (parameter.direction != .in or parameter.type != .slice or !parameter.type.slice.@"const") return false;
-    const element = parameter.type.slice.element.*;
-    if (element != .slice or !element.slice.@"const" or !isByte(element.slice.element.*)) return false;
-    if (element.slice.sentinel) |sentinel| return sentinel == 0;
-    return parameter.semantic == .utf8_string;
-}
-
-fn isByte(node: semantic.TypeNode) bool {
-    return node == .int and !node.int.signed and node.int.bits == 8;
 }
 
 test "implemented diagnostic snapshots are stable" {

@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: No same-name different-body predicates remain; goldens unchanged; report test added; tests green.
 > NEXT: none

@@ -634,6 +634,52 @@ pub fn validPackagePath(path: []const u8) bool {
     return true;
 }
 
+/// True when the function carries a Go-side dispatcher pointer: a user
+/// callback, or a stream parameter, which under purego answers to the same
+/// versioned symbol a callback does. Lowering picks the symbol from this and
+/// validation names the symbol it checks from the same rule, so the two must
+/// never drift apart.
+pub fn functionHasCallback(function: SemanticFn) bool {
+    for (function.params) |parameter| {
+        if (parameter.type == .callback or parameter.type == .io_stream) return true;
+    }
+    return false;
+}
+
+/// How the elements of a string slice are spelled in Zig. The three forms
+/// cross the boundary identically -- flattened bytes plus lengths -- and
+/// differ only in the element type the shim rebuilds.
+pub const StringSliceForm = enum { unsentinel, sentinel_slice, sentinel_many };
+
+/// The string-slice form of `node`, or null when it is not one. A sentinel
+/// element (`[:0]const u8` or `[*:0]const u8`) is a string slice on its
+/// spelling alone; an unsentinelled `[]const u8` element needs the
+/// `utf8_string` hint to say the bytes are text. `[]const [*:0]const u8` is
+/// accepted on the same terms as `[]const [:0]const u8`: reflection records a
+/// many pointer as a slice with `sentinel_many`, and only the rebuilt element
+/// type differs.
+pub fn stringSliceForm(node: TypeNode, hint: ?SemanticHint) ?StringSliceForm {
+    if (node != .slice or !node.slice.@"const") return null;
+    const element = node.slice.element.*;
+    if (element != .slice or !element.slice.@"const" or !isByte(element.slice.element.*)) return null;
+    if (element.slice.sentinel) |sentinel| {
+        if (sentinel != 0) return null;
+        return if (element.slice.sentinel_many) .sentinel_many else .sentinel_slice;
+    }
+    return if (hint == .utf8_string) .unsentinel else null;
+}
+
+/// A string slice is the only pointer-bearing slice that may cross the Go
+/// boundary. It is flattened into bytes plus lengths before the native call;
+/// every other pointer-bearing element keeps the ZIGO005 rejection.
+pub fn isStringSliceParameter(parameter: Parameter) bool {
+    return parameter.direction == .in and stringSliceForm(parameter.type, parameter.semantic) != null;
+}
+
+pub fn isByte(node: TypeNode) bool {
+    return node == .int and !node.int.signed and node.int.bits == 8;
+}
+
 /// The by-value and as-handle rules, per function, so callers holding lowered
 /// functions can apply the same rule to their `origin` without a `Semantic`.
 pub fn functionPassesByValue(function: SemanticFn, name: []const u8) bool {
@@ -777,4 +823,48 @@ test "package metadata is omitted by default and round trips when present" {
     try std.testing.expectEqualStrings("text", parsed.value.packages.?[0].name);
     try std.testing.expectEqualStrings("text", parsed.value.types[0].package.?);
     try std.testing.expectEqualStrings("text", parsed.value.functions[0].package.?);
+}
+
+test "string slice forms agree on every accepted element spelling" {
+    var byte: TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    var plain: TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte } };
+    var sentinel: TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte, .sentinel = 0 } };
+    var many: TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte, .sentinel = 0, .sentinel_many = true } };
+    var other: TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+
+    const plain_slice: TypeNode = .{ .slice = .{ .@"const" = true, .element = &plain } };
+    // `[]const []const u8` is text only when the hint says so.
+    try std.testing.expectEqual(@as(?StringSliceForm, .unsentinel), stringSliceForm(plain_slice, .utf8_string));
+    try std.testing.expectEqual(@as(?StringSliceForm, null), stringSliceForm(plain_slice, null));
+    // Both sentinel spellings are accepted on the spelling alone, and
+    // `[*:0]const u8` is accepted exactly like `[:0]const u8`: reflection
+    // records a many pointer as a slice carrying `sentinel_many`.
+    try std.testing.expectEqual(@as(?StringSliceForm, .sentinel_slice), stringSliceForm(.{ .slice = .{ .@"const" = true, .element = &sentinel } }, null));
+    try std.testing.expectEqual(@as(?StringSliceForm, .sentinel_many), stringSliceForm(.{ .slice = .{ .@"const" = true, .element = &many } }, null));
+    // A non-byte element is not a string slice whatever the hint says.
+    try std.testing.expectEqual(@as(?StringSliceForm, null), stringSliceForm(.{ .slice = .{ .@"const" = true, .element = &other } }, .utf8_string));
+
+    try std.testing.expect(isStringSliceParameter(.{ .name = "names", .type = .{ .slice = .{ .@"const" = true, .element = &many } } }));
+    // Only an `in` parameter is flattened; an out slice keeps its own lowering.
+    try std.testing.expect(!isStringSliceParameter(.{ .name = "names", .direction = .out, .type = .{ .slice = .{ .@"const" = true, .element = &many } } }));
+}
+
+test "a callback or a stream parameter both make a function callback-bearing" {
+    var ret: TypeNode = .{ .void = {} };
+    const callback: SemanticFn = .{
+        .name = "on",
+        .params = &.{.{ .name = "cb", .type = .{ .callback = .{ .params = &.{}, .@"return" = &ret, .has_userdata = true } } }},
+        .@"return" = .{ .void = {} },
+        .symbol = "s",
+    };
+    const stream: SemanticFn = .{
+        .name = "dump",
+        .params = &.{.{ .name = "w", .type = .{ .io_stream = .{ .direction = .writer } } }},
+        .@"return" = .{ .void = {} },
+        .symbol = "s",
+    };
+    const plain: SemanticFn = .{ .name = "x", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "s" };
+    try std.testing.expect(functionHasCallback(callback));
+    try std.testing.expect(functionHasCallback(stream));
+    try std.testing.expect(!functionHasCallback(plain));
 }
