@@ -152,6 +152,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             }
             if (try streamParameterIssue(allocator, function, parameter)) |issue| return issue;
             if (try callbackGoErrorIssue(allocator, function, parameter)) |issue| return issue;
+            if (try callbackContractIssue(allocator, function, parameter)) |issue| return issue;
             if (parameter.type == .cancel_flag and !(parameter.cancel orelse false)) return .{
                 .severity = .@"error",
                 .code = "ZIGO026",
@@ -833,6 +834,32 @@ fn callbackGoErrorIssue(
         ),
         .site = functionSiteFor(function, declaration),
         .hint = "declare the Zig callback as `*const fn (...) callconv(.c) i32`; the trampoline reports a Go error as the result `-5`",
+    };
+}
+
+fn callbackContractIssue(
+    allocator: std.mem.Allocator,
+    function: semantic.SemanticFn,
+    parameter: semantic.Parameter,
+) !?diagnostic.Diagnostic {
+    const field = if (parameter.reentrancy != null)
+        "reentrancy"
+    else if (parameter.thread != null)
+        "thread"
+    else
+        return null;
+    if (parameter.type == .callback) return null;
+    const declaration = try functionDeclarationAlloc(allocator, function);
+    return .{
+        .severity = .@"error",
+        .code = "ZIGO025",
+        .message = try std.fmt.allocPrint(
+            allocator,
+            "`{s}` declared on parameter `{s}`, which is not a callback",
+            .{ field, parameter.name },
+        ),
+        .site = functionSiteFor(function, declaration),
+        .hint = try std.fmt.allocPrint(allocator, "use `.{s}` only on a function-pointer parameter", .{field}),
     };
 }
 
@@ -3942,6 +3969,32 @@ test "a Go error on a callback is refused unless the Zig result is i32" {
         .zig_version = "0.16.0",
     };
     try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(scratch.allocator(), document));
+}
+
+test "callback contracts are refused on non-callback parameters" {
+    const scalar: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+    const cases = [_]semantic.Parameter{
+        .{ .name = "value", .reentrancy = .allowed, .type = scalar },
+        .{ .name = "value", .thread = .caller, .type = scalar },
+    };
+    for (cases) |parameter| {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const document: semantic.Semantic = .{
+            .functions = &.{.{
+                .name = "watch",
+                .params = &.{parameter},
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_watch",
+            }},
+            .package = "callbacks",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        };
+        const issue = (try findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
+        try std.testing.expectEqualStrings("ZIGO025", issue.code);
+        try std.testing.expect(std.mem.indexOf(u8, issue.message, "which is not a callback") != null);
+    }
 }
 
 test "a cancellable function has to name a flag its shim can pass and an error it can report" {

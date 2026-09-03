@@ -249,6 +249,8 @@ pub const NameSource = enum { ast, fallback, sidecar };
 pub const Injection = enum { allocator, io };
 pub const Direction = enum { in, inout, out };
 pub const Retention = enum { borrowed, retained };
+pub const CallbackReentrancy = enum { allowed, forbidden };
+pub const CallbackThread = enum { caller, any };
 pub const SemanticHint = enum { c_string, opaque_bytes, utf8_string };
 pub const Ownership = enum { borrowed, caller, library };
 /// How much of an `.out` slice the shim reports back as written. `.all` keeps
@@ -292,6 +294,12 @@ pub const Parameter = struct {
     /// rather than a plain `bool` so a binding that never asks for it keeps
     /// the field out of `semantic.json` entirely.
     go_error: ?bool = null,
+    /// Whether the native side may invoke this callback while a call into the
+    /// binding is still active. Documentation only; zigo does not enforce it.
+    reentrancy: ?CallbackReentrancy = null,
+    /// Which native thread may invoke this callback. Documentation only;
+    /// zigo deliberately does not add thread pinning for this contract.
+    thread: ?CallbackThread = null,
     /// Set when the shim supplies this argument. An injected parameter is
     /// absent from the C and Go signatures, so adding or removing one is a
     /// breaking change even though nothing about the Zig type moved.
@@ -687,6 +695,39 @@ test "stream parameters round-trip through the semantic document" {
     try std.testing.expectEqual(@as(?u32, null), params[0].buffer);
     try std.testing.expectEqual(StreamDirection.reader, params[1].type.io_stream.direction);
     try std.testing.expectEqual(@as(u32, 8192), params[1].buffer.?);
+}
+
+test "callback contracts are optional and round-trip when present" {
+    var result: TypeNode = .{ .void = {} };
+    const callback: TypeNode = .{ .callback = .{
+        .has_userdata = false,
+        .params = &.{},
+        .@"return" = &result,
+    } };
+    const document: Semantic = .{
+        .functions = &.{.{
+            .name = "watch",
+            .params = &.{
+                .{ .name = "plain", .type = callback },
+                .{ .name = "contracted", .reentrancy = .forbidden, .thread = .any, .type = callback },
+            },
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_watch",
+        }},
+        .package = "callbacks",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    const bytes = try document.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, bytes, "\"reentrancy\": \"forbidden\""));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, bytes, "\"thread\": \"any\""));
+
+    var parsed = try Semantic.parse(std.testing.allocator, bytes);
+    defer parsed.deinit();
+    try std.testing.expectEqual(@as(?CallbackReentrancy, null), parsed.value.functions[0].params[0].reentrancy);
+    try std.testing.expectEqual(CallbackReentrancy.forbidden, parsed.value.functions[0].params[1].reentrancy.?);
+    try std.testing.expectEqual(CallbackThread.any, parsed.value.functions[0].params[1].thread.?);
 }
 
 test "child-of-receiver metadata is emitted only when enabled" {

@@ -13,6 +13,9 @@
 
 ### Added
 
+- callback `param_meta`에 문서 전용 `.reentrancy = .allowed | .forbidden`과
+  `.thread = .caller | .any` 계약을 추가했습니다. 선택한 계약은 `semantic.json`과 cgo·purego
+  양쪽의 callback type 및 함수 Go doc에 기록되며 runtime thread pinning은 바꾸지 않습니다.
 - root와 등록 타입의 공개 함수를 bound, excluded, unbound로 분류하는 `go-coverage` build
   step을 추가했습니다. 기존 signature 제약에 따른 unbound 이유, 함수가 참조하는 미등록 공개
   타입, `.fields` accessor를 포함한 비율을 text로 출력하고 `coverage_json` 옵션으로 JSON

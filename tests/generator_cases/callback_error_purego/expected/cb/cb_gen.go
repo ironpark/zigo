@@ -24,6 +24,8 @@ var DefaultLibraryName = raw.DefaultLibraryName
 
 
 // NewHub creates a caller-owned Hub.
+// Callback observer reentrancy: forbidden; it must not re-enter the binding while it is running.
+// Callback observer thread: any; it may run on any native thread.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.

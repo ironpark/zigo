@@ -17,7 +17,9 @@
           "go_error": true,
           "name": "observer",
           "name_source": "sidecar",
+          "reentrancy": "forbidden",
           "retention": "retained",
+          "thread": "any",
           "type": {
             "c_callconv": true,
             "has_userdata": true,

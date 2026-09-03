@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Generated Go docs show the contract lines for a callback that sets them; snapshots and verification loop green.
 > NEXT: none

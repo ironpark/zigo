@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T00:20:54Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: The ZIGO036 snapshot shows a `note:` proposing a `.name`; tests green.
 > NEXT: none

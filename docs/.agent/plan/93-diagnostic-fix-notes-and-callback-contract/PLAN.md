@@ -7,7 +7,7 @@ registered_at: "2026-09-02T22:15:54Z"
 
 # Phases
 
-- [ ] [Phase 00: Diagnostic notes](phases/00-diagnostic-notes.md)
+- [x] [Phase 00: Diagnostic notes](phases/00-diagnostic-notes.md)
 - [ ] [Phase 01: Callback contract metadata](phases/01-callback-contract.md)
 
 # Shared Verification

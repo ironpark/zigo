@@ -6616,7 +6616,9 @@ fn renderGoCallbackTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, p
             if (try callbackTypeAlreadyEmitted(allocator, program, function, parameter_index)) continue;
             const callback_name = try callbackTypeNameAlloc(allocator, program, function, parameter_index);
             defer allocator.free(callback_name);
-            try writer.print("// {s} is the Go callback signature accepted by the generated binding.\ntype {s} ", .{ callback_name, callback_name });
+            try writer.print("// {s} is the Go callback signature accepted by the generated binding.\n", .{callback_name});
+            try writeCallbackContractDoc(writer, parameter, null);
+            try writer.print("type {s} ", .{callback_name});
             try writePublicCallbackType(scope, writer, program, parameter.type.callback);
             try writer.writeAll("\n\n");
         }
@@ -7448,6 +7450,9 @@ fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.SemanticFn,
     } else {
         try writer.print("\n// {s} calls the Zig function {s}.\n", .{ go_name, function.name });
     }
+    for (function.params) |parameter| {
+        if (parameter.type == .callback) try writeCallbackContractDoc(writer, parameter, parameter.name);
+    }
     if (owned_type != null)
         try writer.writeAll("// The caller must call Close on the returned handle.\n");
     if (returnsBorrowedHandle(function))
@@ -7471,6 +7476,27 @@ fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.SemanticFn,
             "// Cancelling ctx stops the native call at its next polling point; the call\n" ++
                 "// then returns ctx.Err() rather than the library's own Canceled error.\n",
         );
+}
+
+fn writeCallbackContractDoc(writer: *std.Io.Writer, parameter: semantic.Parameter, name: ?[]const u8) !void {
+    if (parameter.reentrancy) |reentrancy| {
+        if (name) |value| switch (reentrancy) {
+            .allowed => try writer.print("// Callback {s} reentrancy: allowed; it may re-enter the binding while it is running.\n", .{value}),
+            .forbidden => try writer.print("// Callback {s} reentrancy: forbidden; it must not re-enter the binding while it is running.\n", .{value}),
+        } else switch (reentrancy) {
+            .allowed => try writer.writeAll("// Reentrancy: allowed; the callback may re-enter the binding while it is running.\n"),
+            .forbidden => try writer.writeAll("// Reentrancy: forbidden; the callback must not re-enter the binding while it is running.\n"),
+        }
+    }
+    if (parameter.thread) |thread| {
+        if (name) |value| switch (thread) {
+            .caller => try writer.print("// Callback {s} thread: caller; it runs on the thread that initiated the native call.\n", .{value}),
+            .any => try writer.print("// Callback {s} thread: any; it may run on any native thread.\n", .{value}),
+        } else switch (thread) {
+            .caller => try writer.writeAll("// Thread: caller; the callback runs on the thread that initiated the native call.\n"),
+            .any => try writer.writeAll("// Thread: any; the callback may run on any native thread.\n"),
+        }
+    }
 }
 
 fn returnsBorrowedHandle(function: semantic.SemanticFn) bool {

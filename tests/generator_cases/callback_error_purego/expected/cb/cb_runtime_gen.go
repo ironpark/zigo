@@ -45,6 +45,8 @@ func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error {
 }
 
 // HubCreateObserver is the Go callback signature accepted by the generated binding.
+// Reentrancy: forbidden; the callback must not re-enter the binding while it is running.
+// Thread: any; the callback may run on any native thread.
 type HubCreateObserver func(int32) (int32, error)
 
 // HubSetObserverObserver is the Go callback signature accepted by the generated binding.

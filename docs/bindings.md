@@ -169,7 +169,7 @@ error입니다.
 | `constructs` | 이 함수가 만드는 opaque 타입 이름 |
 | `destroys` | 이 함수가 없애는 opaque 타입 이름 |
 | `child_of_receiver` | 생성된 handle이 receiver보다 먼저 닫혀야 하는지 여부 |
-| `param_meta` | 파라미터별 `semantic`, `retention`, `direction`, `written`, `buffer`, `flatten` |
+| `param_meta` | 파라미터별 `semantic`, `retention`, `reentrancy`, `thread`, `direction`, `written`, `buffer`, `flatten` |
 | `semantic` | 반환값 의미. 예: `.utf8_string` |
 | `returns` | 반환 pointer의 ownership |
 
@@ -261,6 +261,26 @@ alias라 reflection이 이름을 알 수 없으니, 하나의 이름을 원하�
 콜백 반환은 scalar뿐 아니라 `void`도 지원합니다. `*const fn (..., userdata: usize)
 callconv(.c) void`는 Go에서 반환값 없는 `func(...)`가 되고, cgo와 purego 모두 native 호출이
 돌아온 뒤 같은 panic 전달과 수명 규칙을 적용합니다.
+
+콜백이 호출 중 바인딩을 다시 부를 수 있는지와 어떤 thread에서 불리는지는 파라미터별
+계약으로 기록할 수 있습니다. 둘 다 생략이 기본이며, 생성기의 동작은 바뀌지 않고 생성된
+콜백 타입과 그 콜백을 받는 함수의 Go doc에만 나타납니다.
+
+```zig
+.param_meta = .{
+    .observer = .{
+        .retention = .retained,
+        .reentrancy = .forbidden,
+        .thread = .any,
+    },
+},
+```
+
+`reentrancy`는 `.allowed` 또는 `.forbidden`, `thread`는 호출을 시작한 thread만 허용하는
+`.caller` 또는 임의의 native thread를 허용하는 `.any`입니다. 이 값은 native 라이브러리가
+지켜야 할 문서 계약입니다. zigo는 `runtime.LockOSThread`를 추가하거나 thread를 고정하지
+않으며, 콜백이 아닌 파라미터에 두 값을 쓰면 기존 callback metadata 오용 진단인
+`ZIGO025`로 거부합니다.
 
 ### 콜백이 돌려주는 Go error
 

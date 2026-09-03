@@ -1049,6 +1049,8 @@ fn appendFunction(
                 if (@hasField(@TypeOf(value), "written")) reflected.written = value.written;
                 if (@hasField(@TypeOf(value), "buffer")) reflected.buffer = value.buffer;
                 if (@hasField(@TypeOf(value), "go_error")) reflected.go_error = value.go_error;
+                if (@hasField(@TypeOf(value), "reentrancy")) reflected.reentrancy = value.reentrancy;
+                if (@hasField(@TypeOf(value), "thread")) reflected.thread = value.thread;
                 if (@hasField(@TypeOf(value), "flatten")) reflected.flatten = try reflectFlattenedFields(
                     allocator,
                     declaration,
@@ -2306,6 +2308,31 @@ test "reflection preserves invalid declarations for generator diagnostics" {
     try std.testing.expectEqual(true, document.functions[0].has_comptime_params.?);
     try std.testing.expect(!document.functions[1].params[0].type.callback.c_callconv);
     try std.testing.expectEqual(semantic.TypeKind.tagged_union, document.types[0].kind);
+}
+
+test "callback parameter contracts reflect into semantic metadata" {
+    const Fixture = struct {
+        pub fn watch(callback: *const fn (i32) callconv(.c) void) void {
+            _ = callback;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .functions = .{.{
+            .path = "root.watch",
+            .params = .{"callback"},
+            .param_meta = .{ .callback = .{ .reentrancy = .forbidden, .thread = .any } },
+        }},
+    }, "callbacks", "zg");
+    const callback = document.functions[0].params[0];
+    try std.testing.expectEqual(semantic.CallbackReentrancy.forbidden, callback.reentrancy.?);
+    try std.testing.expectEqual(semantic.CallbackThread.any, callback.thread.?);
+    const bytes = try document.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"reentrancy\": \"forbidden\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"thread\": \"any\"") != null);
 }
 
 test "sentinel byte pointers reflect as c strings" {
