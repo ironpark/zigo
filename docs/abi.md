@@ -1,6 +1,6 @@
 # Materialized result buffer ABI
 
-`repr = .materialized` results cross the native boundary as one caller-owned
+`.repr = .materialized` results cross the native boundary as one caller-owned
 byte buffer. The format is little-endian and all offsets are unsigned 64-bit
 offsets relative to the beginning of that buffer. Pointer values are never
 copied into the wire representation.
@@ -29,3 +29,16 @@ pointer shape, or nullability is breaking. The generated Zig walker allocates
 the buffer with the binding's registered allocator. A result must use
 `.returns = .caller` and name a `.release` function accepting `[]u8`; generated
 Go copies/decodes the buffer and invokes that release exactly once.
+
+Materialized values are supported as direct results, error-union payloads, and
+`[]T` results. A result slice uses one header and one buffer for the entire
+batch. An output `[]T` parameter is supported with `.direction = .out` and
+`.written = .@"return"`: only its capacity crosses into the shim, which stages
+native values and serializes the written prefix into the same result-buffer
+ABI.
+
+Supported fields are scalars, bools, registered enums, strings, embedded
+materialized structs, optional or required pointers to materialized structs,
+and slices of scalars, strings, or materialized structs. Cycles, opaque
+pointers, callbacks, and unions are rejected before lowering with `ZIGO048`
+and the complete field path.

@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-03T07:23:30Z"
 depends_on:
 - "108-materialized-result-trees#2"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: The example passes on both backends in CI and the docs describe registration, positions, ownership and limits.
 > NEXT: none

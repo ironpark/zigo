@@ -18,6 +18,7 @@
 | 여러 opaque 타입 사이의 참조 | [09-type-relations](../examples/09-type-relations) |
 | tagged union | [10-tagged-union](../examples/10-tagged-union) |
 | Go `io.Writer`/`io.Reader`로 스트리밍 | [11-io-streams](../examples/11-io-streams) |
+| 중첩 결과 트리를 한 버퍼로 반환 | [12-materialized](../examples/12-materialized) |
 
 ## 실행 방법
 
@@ -34,7 +35,8 @@ zig build go
 `go-check`는 커밋된 생성물이 최신인지 확인하고, `go`는 생성물을 실제로 갱신합니다. 예제가
 `abi_base`를 설정하므로 저장소 체크아웃 안에서는 `zig build abi-check`도 실행할 수 있습니다.
 
-purego를 포함한 `04-callback`, `07-event-queue`, `08-telemetry-hub`, `11-io-streams`는 별도 Go
+purego를 포함한 `04-callback`, `07-event-queue`, `08-telemetry-hub`, `11-io-streams`,
+`12-materialized`는 별도 Go
 모듈을 만듭니다.
 
 ```bash
@@ -60,6 +62,7 @@ zig build purego-go purego-go-verify
 | [09-type-relations](../examples/09-type-relations) | 한 바인딩 문서의 opaque 타입 2종과 borrowed 타입 간 참조 |
 | [10-tagged-union](../examples/10-tagged-union) | projection 방식의 `Tag`/`As*`, 값 snapshot 방식의 `Snapshot()`, sealed variant 방식의 `Variant()` |
 | [11-io-streams](../examples/11-io-streams) | `*std.Io.Writer`/`*std.Io.Reader` 파라미터가 `io.Writer`/`io.Reader`로, 버퍼 크기와 경계 횡단 횟수, writer error·panic·reader EOF 경로, cgo·purego 병행 |
+| [12-materialized](../examples/12-materialized) | 중첩 pointer·slice·string 결과 트리, batch와 out buffer, accessor handle 대비 materialized decode benchmark, cgo·purego 병행 |
 
 예제를 복사해 시작하기보다, 각 예제의 `build.zig`와 `src/bindings.zig`에서 필요한 부분만
 현재 프로젝트로 옮기는 편이 package path와 ABI 정책을 명확하게 유지하기 쉽습니다.

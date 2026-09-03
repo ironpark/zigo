@@ -8,6 +8,9 @@
 
 ### Added
 
+- `.repr = .materialized` struct 결과를 versioned caller-owned buffer 하나로 직렬화합니다.
+  반환값, error union, batch slice, written out buffer를 cgo와 purego에서 idiomatic Go
+  struct와 `string`, slice, pointer 트리로 해독하며 release 호출 한 번으로 수명을 끝냅니다.
 - `.cancel.canceled`로 취소를 뜻하는 Zig error 이름을 지정할 수 있습니다. 생략하면 기존
   `Canceled`를 사용하며, 예를 들어 `Cancelled`를 지정하면 Go가 `ErrCancelled`를
   `ctx.Err()`로 변환합니다.

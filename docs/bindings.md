@@ -469,6 +469,7 @@ enum 항목의 `exhaustive = false`는 Zig의 non-exhaustive enum을 그대로 �
 | `.@"opaque"` | pointer handle과 수명주기 |
 | `.value` | 적격한 `extern struct` 또는 정수-backed `packed struct`의 Go 값 mirror |
 | `.tagged_union` | pointer handle을 통한 tagged union 접근 |
+| `.materialized` | 포인터를 포함한 결과 트리를 한 번의 caller-owned buffer로 복사 |
 | `.enumeration` | enum에 Go 타입 이름을 부여. `.name` 선택 |
 | `.callback` | `*const fn` alias에 Go 타입 이름을 부여. `.name` 필수 |
 
@@ -478,6 +479,32 @@ enum 항목의 `exhaustive = false`는 Zig의 non-exhaustive enum을 그대로 �
 | `.snapshot` | tag와 scalar payload를 한 native 호출로 복사. projection도 유지 |
 
 generic 타입은 구체화한 타입에 고유 이름을 붙여 등록합니다.
+
+### Materialized 결과 트리
+
+`.repr = .materialized`로 등록한 struct는 native handle이나 field accessor 대신 공개 Go
+struct로 생성됩니다. 반환값, error-union payload, `[]T` 반환은 트리 전체를 하나의 버퍼로
+직렬화하고 Go에서 `string`, `[]T`, `*T` 필드로 해독합니다. 배치 `[]T`도 항목마다 호출하지
+않고 전체 slice에 버퍼 하나만 사용합니다.
+
+```zig
+.types = .{
+    .{ .type = library.Result, .repr = .materialized },
+    .{ .type = library.Child, .repr = .materialized },
+};
+.functions = .{
+    .{ .func = library.probeMany, .returns = .caller, .release = library.release },
+};
+```
+
+함수는 등록 allocator와 `.returns = .caller`, `[]u8`을 받는 `.release`를 사용해야 합니다.
+scalar, bool, 등록 enum, string, 중첩 materialized struct, materialized struct pointer와 optional
+pointer, 그리고 scalar/string/materialized struct slice를 지원합니다. 순환, opaque pointer,
+callback, union은 `ZIGO048`과 해당 field path로 거부됩니다.
+
+`.direction = .out`인 `[]T` 파라미터는 `.written = .@"return"`과 함께 사용할 수 있습니다.
+Go slice의 capacity만 native에 전달하고 Zig 임시 slice에 결과를 만든 뒤 작성된 prefix 전체를
+한 버퍼로 직렬화하므로 Go pointer가 materialized tree 안으로 넘어가지 않습니다.
 
 ```zig
 .types = .{

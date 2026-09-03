@@ -462,6 +462,8 @@ pub fn build(b: *std.Build) void {
         "examples/10-tagged-union/go-purego",
         "examples/11-io-streams/go",
         "examples/11-io-streams/go-purego",
+        "examples/12-materialized/go",
+        "examples/12-materialized/go-purego",
         "examples/04-callback/go-purego",
         "examples/07-event-queue/go-purego",
         "examples/08-telemetry-hub/go-purego",

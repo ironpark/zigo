@@ -1,0 +1,452 @@
+{
+  "allocator": "std.heap.c_allocator",
+  "constructors": [
+    {
+      "deinit": "deinit",
+      "init": "create",
+      "type": "LegacyProbe"
+    }
+  ],
+  "functions": [
+    {
+      "name": "snapshot",
+      "ownership": "caller",
+      "params": [],
+      "release": "release",
+      "return": {
+        "kind": "materialized",
+        "ref": "Probe"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 47,
+        "column": 8
+      },
+      "symbol": "zg_snapshot"
+    },
+    {
+      "name": "probeMany",
+      "ownership": "caller",
+      "params": [],
+      "release": "release",
+      "return": {
+        "error_set": [
+          "Invalid"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": true,
+          "element": {
+            "kind": "materialized",
+            "ref": "Probe"
+          },
+          "kind": "slice"
+        }
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 51,
+        "column": 8
+      },
+      "symbol": "zg_probe_many"
+    },
+    {
+      "name": "fill",
+      "ownership": "caller",
+      "params": [
+        {
+          "direction": "out",
+          "name": "output",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 55,
+            "column": 13
+          },
+          "type": {
+            "const": false,
+            "element": {
+              "kind": "materialized",
+              "ref": "Probe"
+            },
+            "kind": "slice"
+          },
+          "written": "return"
+        }
+      ],
+      "release": "release",
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 55,
+        "column": 8
+      },
+      "symbol": "zg_fill"
+    },
+    {
+      "name": "release",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "buffer",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 61,
+            "column": 16
+          },
+          "type": {
+            "const": false,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": {
+        "kind": "void"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 61,
+        "column": 8
+      },
+      "symbol": "zg_release"
+    },
+    {
+      "name": "create",
+      "namespace": "LegacyProbe",
+      "ownership": "caller",
+      "params": [
+        {
+          "direction": "in",
+          "name": "index",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 77,
+            "column": 19
+          },
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "Invalid"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "LegacyProbe"
+        }
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 77,
+        "column": 12
+      },
+      "symbol": "zg_legacy_probe_create"
+    },
+    {
+      "name": "id",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "LegacyProbe",
+      "return": {
+        "bits": 64,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 84,
+        "column": 12
+      },
+      "symbol": "zg_legacy_probe_id"
+    },
+    {
+      "name": "active",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "LegacyProbe",
+      "return": {
+        "kind": "bool"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 88,
+        "column": 12
+      },
+      "symbol": "zg_legacy_probe_active"
+    },
+    {
+      "borrowed_return": true,
+      "name": "child",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "LegacyProbe",
+      "return": {
+        "const": true,
+        "kind": "opaque_ptr",
+        "nullable": false,
+        "ref": "LegacyLeaf"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 92,
+        "column": 12
+      },
+      "symbol": "zg_legacy_probe_child"
+    },
+    {
+      "name": "deinit",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "LegacyProbe",
+      "return": {
+        "kind": "void"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 96,
+        "column": 12
+      },
+      "symbol": "zg_legacy_probe_deinit"
+    },
+    {
+      "name": "value",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "LegacyLeaf",
+      "return": {
+        "bits": 32,
+        "is_usize": false,
+        "kind": "int",
+        "signed": true
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 68,
+        "column": 12
+      },
+      "symbol": "zg_legacy_leaf_value"
+    }
+  ],
+  "ir_version": 1,
+  "package": "materialized",
+  "prefix": "zg",
+  "types": [
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "ready",
+          "value": 0
+        },
+        {
+          "name": "busy",
+          "value": 1
+        }
+      ],
+      "kind": "enum",
+      "name": "Status",
+      "tag_type": {
+        "bits": 8,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "zig_path": "root.Status"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "value",
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          }
+        },
+        {
+          "name": "enabled",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "label",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        },
+        {
+          "name": "samples",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 64,
+              "kind": "float"
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "kind": "materialized",
+      "materialized_version": 1,
+      "name": "Leaf",
+      "zig_path": "root.Leaf"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "id",
+          "type": {
+            "bits": 64,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "active",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "status",
+          "type": {
+            "kind": "enum",
+            "ref": "Status"
+          }
+        },
+        {
+          "name": "name",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        },
+        {
+          "name": "codes",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 16,
+              "is_usize": false,
+              "kind": "int",
+              "signed": true
+            },
+            "kind": "slice"
+          }
+        },
+        {
+          "name": "tags",
+          "type": {
+            "const": true,
+            "element": {
+              "const": true,
+              "element": {
+                "bits": 8,
+                "is_usize": false,
+                "kind": "int",
+                "signed": false
+              },
+              "kind": "slice"
+            },
+            "kind": "slice"
+          }
+        },
+        {
+          "name": "embedded",
+          "type": {
+            "kind": "materialized",
+            "ref": "Leaf"
+          }
+        },
+        {
+          "name": "child",
+          "type": {
+            "kind": "materialized",
+            "pointer": true,
+            "ref": "Leaf"
+          }
+        },
+        {
+          "name": "maybe",
+          "type": {
+            "kind": "materialized",
+            "pointer": true,
+            "nullable": true,
+            "ref": "Leaf"
+          }
+        },
+        {
+          "name": "children",
+          "type": {
+            "const": true,
+            "element": {
+              "kind": "materialized",
+              "ref": "Leaf"
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "kind": "materialized",
+      "materialized_version": 1,
+      "name": "Probe",
+      "zig_path": "root.Probe"
+    },
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "opaque",
+      "name": "LegacyLeaf",
+      "zig_path": "root.LegacyLeaf"
+    },
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "opaque",
+      "name": "LegacyProbe",
+      "zig_path": "root.LegacyProbe"
+    }
+  ],
+  "zig_version": "0.16.0"
+}

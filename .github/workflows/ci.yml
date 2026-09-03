@@ -50,6 +50,7 @@ jobs:
             examples/09-type-relations
             examples/10-tagged-union
             examples/11-io-streams
+            examples/12-materialized
           )
 
           for example in "${examples[@]}"; do
@@ -99,7 +100,7 @@ jobs:
           CC: zig cc -target x86_64-windows-gnu
         run: |
           set -euo pipefail
-          for example in 01-scalar 07-event-queue; do
+          for example in 01-scalar 07-event-queue 12-materialized; do
             mkdir -p "cross-cgo/$example"
             (cd "examples/$example" && zig build go-lib -Dtarget=x86_64-windows-gnu)
             (cd "examples/$example/go" && go test -c -o "$GITHUB_WORKSPACE/cross-cgo/$example" ./...)
@@ -110,6 +111,7 @@ jobs:
           test -f cross-cgo/01-scalar/scalar.test.exe
           test -f cross-cgo/07-event-queue/event_queue.test.exe
           test -f cross-cgo/07-event-queue/cgo.test.exe
+          test -f cross-cgo/12-materialized/materialized.test.exe
       - uses: actions/upload-artifact@v4
         with:
           name: cgo-windows-tests
@@ -135,7 +137,7 @@ jobs:
         # keep the default explicit loader, so both policies are exercised.
         run: |
           set -euo pipefail
-          for example in 04-callback 08-telemetry-hub 11-io-streams; do
+          for example in 04-callback 08-telemetry-hub 11-io-streams 12-materialized; do
             (cd "examples/$example" && zig build purego-go purego-go-verify --summary all)
           done
           (cd examples/10-tagged-union && zig build go go-verify -Dpurego --summary all)
@@ -180,6 +182,7 @@ jobs:
             "08-telemetry-hub/purego-layout:libtelemetry_native:zg_last_error_message"
             "10-tagged-union:libtagged_union_zigo:zg_last_error_message"
             "11-io-streams:libstreams_zigo:zg_last_error_message zg_document_dump_purego_v2"
+            "12-materialized:libmaterialized_zigo:zg_last_error_message zg_probe_many"
           )
           # 08-telemetry-hub opts into a custom install layout, so its entry
           # carries the install prefix under zig-out.
@@ -212,7 +215,7 @@ jobs:
           CGO_ENABLED: "0"
         run: |
           set -euo pipefail
-          for example in 04-callback 08-telemetry-hub 11-io-streams; do
+          for example in 04-callback 08-telemetry-hub 11-io-streams 12-materialized; do
             # vet must stay clean: generated code should not need suppressions.
             (cd "examples/$example/go-purego" && go vet ./... && go test ./...)
           done
@@ -265,7 +268,7 @@ jobs:
         # library, so this also asserts that the doctor passes on Windows.
         run: |
           set -euo pipefail
-          for example in 07-event-queue 08-telemetry-hub; do
+          for example in 07-event-queue 08-telemetry-hub 12-materialized; do
             (cd "examples/$example" && zig build purego-go purego-go-verify --summary all)
           done
           (cd examples/10-tagged-union && zig build go go-verify -Dpurego --summary all)
@@ -276,6 +279,7 @@ jobs:
           test -f examples/07-event-queue/zig-out/lib/event_queue_zigo.dll
           test -f examples/08-telemetry-hub/zig-out/purego-layout/lib/telemetry_native.dll
           test -f examples/10-tagged-union/zig-out/lib/tagged_union_zigo.dll
+          test -f examples/12-materialized/zig-out/lib/materialized_zigo.dll
       - name: Run the purego examples without cgo
         shell: bash
         # The race detector needs cgo, exactly as on the POSIX purego job.
@@ -285,7 +289,7 @@ jobs:
           set -euo pipefail
           # 08-telemetry-hub is what proves floats survive a Windows callback
           # and a Windows purego call; 07 covers the explicit loader policy.
-          for example in 07-event-queue 08-telemetry-hub; do
+          for example in 07-event-queue 08-telemetry-hub 12-materialized; do
             (cd "examples/$example/go-purego" && go vet ./... && go test ./...)
           done
 
@@ -361,7 +365,7 @@ jobs:
         # `zig cc` as CC.
         run: |
           set -euo pipefail
-          for example in 01-scalar 07-event-queue; do
+          for example in 01-scalar 07-event-queue 12-materialized; do
             (cd "examples/$example" && zig build go go-verify --summary all)
           done
 
@@ -369,6 +373,7 @@ jobs:
           # a regression fails here rather than in an opaque link error.
           test -f examples/01-scalar/zig-out/lib/libscalar_zigo.a
           test -f examples/07-event-queue/zig-out/lib/libevent_queue_zigo.a
+          test -f examples/12-materialized/zig-out/lib/libmaterialized_zigo.a
 
           # go-check above compares the regeneration against whatever `zig
           # build go` just wrote, so it cannot see a host-dependent generator.
@@ -388,7 +393,7 @@ jobs:
         # that the Go external linker appends.
         run: |
           set -euo pipefail
-          for example in 01-scalar 07-event-queue; do
+          for example in 01-scalar 07-event-queue 12-materialized; do
             (cd "examples/$example/go" && go vet ./... && go test ./...)
           done
 
@@ -412,3 +417,4 @@ jobs:
           ./cross-cgo/01-scalar/scalar.test.exe -test.v
           ./cross-cgo/07-event-queue/event_queue.test.exe -test.v
           ./cross-cgo/07-event-queue/cgo.test.exe -test.v
+          ./cross-cgo/12-materialized/materialized.test.exe -test.v

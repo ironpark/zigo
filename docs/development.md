@@ -58,6 +58,7 @@ done
 - `09-type-relations`: 타입 간 참조
 - `10-tagged-union`: projection과 snapshot 표현
 - `11-io-streams`: `std.Io` 스트림 파라미터와 Go `io.Writer`/`io.Reader`
+- `12-materialized`: 중첩 결과 트리의 단일 버퍼 직렬화와 accessor 대비 benchmark
 
 ## purego 검증
 

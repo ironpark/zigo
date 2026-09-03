@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T07:23:30Z"
 description: add .repr = .materialized so pointer-bearing result trees cross the boundary as one serialized buffer decoded into idiomatic Go structs
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-03T03:53:27Z"
 ---
 > NEXT: Reflect .repr = .materialized trees and validate their shape. ([Phase 0](phases/00-reflect-and-validate.md))
@@ -9,8 +10,8 @@ registered_at: "2026-09-03T03:53:27Z"
 
 - [x] [Phase 00: Reflection, semantic model and validation](phases/00-reflect-and-validate.md)
 - [x] [Phase 01: Lowering and the Zig walker](phases/01-lowering-and-walker.md)
-- [ ] [Phase 02: Go decoders on cgo and purego](phases/02-go-decoders.md)
-- [ ] [Phase 03: Example, benchmark and docs](phases/03-example-and-docs.md)
+- [x] [Phase 02: Go decoders on cgo and purego](phases/02-go-decoders.md)
+- [x] [Phase 03: Example, benchmark and docs](phases/03-example-and-docs.md)
 
 # Shared Verification
 
