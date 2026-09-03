@@ -812,9 +812,40 @@ fn addGeneratorCases(
         run.setName(b.fmt("generator case ({s})", .{name}));
         run.addDirectoryArg(cases.path(b, name));
         _ = run.addOutputDirectoryArg(b.fmt("{s}-actual", .{name}));
+        // A directory argument only puts its resolved path in the manifest,
+        // so editing a case's `semantic.json`, `options.json` or an expected
+        // file left the step cached while the runner would have produced a
+        // different tree. Every file the runner reads is declared by name.
+        const files = caseFiles(b, directory, name);
+        for (files) |file| run.addFileInput(cases.path(b, file));
         test_step.dependOn(&run.step);
-        addGoldenArtifactChecks(b, test_step, cases.path(b, name), name);
+        addGoldenArtifactChecks(b, test_step, cases.path(b, name), name, files);
     }
+}
+
+/// Every file under one case directory, as paths relative to
+/// `tests/generator_cases`, sorted so the manifest does not depend on the
+/// order the file system happens to hand them back in.
+fn caseFiles(b: *std.Build, cases: std.Io.Dir, name: []const u8) []const []const u8 {
+    var case = cases.openDir(b.graph.io, name, .{ .iterate = true }) catch |err|
+        std.debug.panic("unable to open generator case '{s}': {}", .{ name, err });
+    defer case.close(b.graph.io);
+
+    var files: std.ArrayList([]const u8) = .empty;
+    var walker = case.walk(b.allocator) catch @panic("OOM");
+    defer walker.deinit();
+    while (walker.next(b.graph.io) catch |err|
+        std.debug.panic("unable to enumerate generator case '{s}': {}", .{ name, err })) |entry|
+    {
+        if (entry.kind != .file) continue;
+        files.append(b.allocator, b.pathJoin(&.{ name, entry.path })) catch @panic("OOM");
+    }
+    std.mem.sort([]const u8, files.items, {}, struct {
+        fn lessThan(_: void, lhs: []const u8, rhs: []const u8) bool {
+            return std.mem.lessThan(u8, lhs, rhs);
+        }
+    }.lessThan);
+    return files.toOwnedSlice(b.allocator) catch @panic("OOM");
 }
 
 /// Compiles the committed golden native artifacts. The tree comparison alone
@@ -825,11 +856,21 @@ fn addGoldenArtifactChecks(
     test_step: *std.Build.Step,
     case: std.Build.LazyPath,
     name: []const u8,
+    files: []const []const u8,
 ) void {
+    const cases = b.path("tests/generator_cases");
     const expected = case.path(b, "expected");
     const compile_panic = b.addSystemCommand(&.{ b.graph.zig_exe, "cc", "-c" });
     compile_panic.setName(b.fmt("golden panic.c compiles ({s})", .{name}));
+    // The include directory is a bare path argument in the manifest, so the
+    // headers `panic.c` includes are declared as inputs on their own.
     compile_panic.addPrefixedDirectoryArg("-I", expected);
+    const header_prefix = b.pathJoin(&.{ name, "expected" });
+    for (files) |file| {
+        if (!std.mem.startsWith(u8, file, header_prefix)) continue;
+        if (!std.mem.endsWith(u8, file, ".h")) continue;
+        compile_panic.addFileInput(cases.path(b, file));
+    }
     compile_panic.addFileArg(expected.path(b, "panic.c"));
     _ = compile_panic.addPrefixedOutputFileArg("-o", b.fmt("{s}-panic.o", .{name}));
     compile_panic.expectExitCode(0);

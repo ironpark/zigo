@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Editing a case's `semantic.json` or expected file reruns its step on the next `zig build test`; full loop green.
 > NEXT: none
