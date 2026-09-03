@@ -1,0 +1,24 @@
+{
+  "functions": [
+    {
+      "name": "configure",
+      "params": [
+        {
+          "name": "mode",
+          "type": {
+            "kind": "enum",
+            "ref": "Mode"
+          }
+        }
+      ],
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_configure"
+    }
+  ],
+  "package": "contract",
+  "prefix": "zg",
+  "types": [],
+  "zig_version": "0.16.0"
+}

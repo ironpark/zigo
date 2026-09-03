@@ -293,6 +293,9 @@ fn findFunctionIndex(functions: []const semantic.SemanticFn, wanted: semantic.Se
 /// The lowered form of a document, in the arena the comparison lives in.
 /// Both sides are documents the generator wrote and validation accepted, so
 /// lowering can assume the same well-formedness it assumes during generation.
+/// Lowering assumes a validated document: an unresolved type reference is an
+/// `unreachable` inside `lower`, not an error. Every caller -- the `abi-diff`
+/// command included -- runs `validate.findIssue` over the document first.
 fn lowerFor(allocator: std.mem.Allocator, document: semantic.Semantic, backend: Backend) !abi.Program {
     // `semantic.json` keeps the stream-returning Zig method; lowering only
     // ever sees the operations it expands into, so the comparison does too.

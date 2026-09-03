@@ -162,6 +162,11 @@ fn runAbiDiff(allocator: std.mem.Allocator, io: std.Io, options: cli.AbiDiff) !v
     defer base.deinit();
     var current = try semantic.Semantic.parse(allocator, current_bytes);
     defer current.deinit();
+    // Lowering assumes a validated document, so a hand-edited or truncated
+    // input would panic inside `lower` instead of being reported. Both
+    // documents come from outside this run, so both are judged first.
+    try rejectInvalidAbiInput(allocator, io, base.value, options.base_path);
+    try rejectInvalidAbiInput(allocator, io, current.value, options.current_path);
     var report = try abi_diff.diffWithBackends(allocator, base.value, switch (options.base_backend) {
         .cgo => .cgo,
         .purego => .purego,
@@ -175,6 +180,22 @@ fn runAbiDiff(allocator: std.mem.Allocator, io: std.Io, options: cli.AbiDiff) !v
     if (options.json) try report.renderJson(allocator, &stdout.interface) else try report.renderText(&stdout.interface);
     try stdout.interface.flush();
     if (options.fail_on_breaking and report.hasBreaking()) std.process.exit(1);
+}
+
+/// The diagnostics validation builds name `semantic.json`, which says nothing
+/// about which of the two `abi-diff` inputs was rejected; the file the user
+/// passed takes its place unless the diagnostic already points at a Zig
+/// source location.
+fn rejectInvalidAbiInput(allocator: std.mem.Allocator, io: std.Io, document: semantic.Semantic, path: []const u8) !void {
+    var scratch = std.heap.ArenaAllocator.init(allocator);
+    defer scratch.deinit();
+    var issue = try validate.findIssue(scratch.allocator(), document) orelse return;
+    if (issue.site.line == null) issue.site.path = path;
+    var buffer: [1024]u8 = undefined;
+    var stderr = std.Io.File.Writer.init(.stderr(), io, &buffer);
+    try issue.render(&stderr.interface);
+    try stderr.interface.flush();
+    std.process.exit(1);
 }
 
 fn runReport(allocator: std.mem.Allocator, io: std.Io, options: cli.Report) !void {

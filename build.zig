@@ -697,6 +697,20 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     value_struct_abi.expectStdOutMatch("BREAKING: Config: type definition changed");
     test_step.dependOn(&value_struct_abi.step);
 
+    // `abi-diff` lowers both documents, and lowering assumes a validated one:
+    // an undeclared type reference used to reach `unreachable` inside `lower`
+    // and abort with a stack trace instead of naming the offending file.
+    const undeclared_abi = b.addRunArtifact(generator);
+    undeclared_abi.setName("CLI contract (abi-diff with an undeclared type)");
+    undeclared_abi.addArgs(&.{ "abi-diff", "--base" });
+    undeclared_abi.addFileArg(b.path("tests/fixtures/cli/abi/undeclared_base.json"));
+    undeclared_abi.addArg("--current");
+    undeclared_abi.addFileArg(b.path("tests/fixtures/cli/abi/value_struct_base.json"));
+    undeclared_abi.expectExitCode(1);
+    undeclared_abi.expectStdErrMatch("error[ZIGO010]: semantic document contains an unresolved or incompatible declaration reference");
+    undeclared_abi.expectStdErrMatch("undeclared_base.json (configure)");
+    test_step.dependOn(&undeclared_abi.step);
+
     const report = b.addRunArtifact(generator);
     report.setName("CLI contract (binding report)");
     report.addArgs(&.{ "report", "--semantic" });

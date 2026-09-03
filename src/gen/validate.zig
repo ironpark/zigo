@@ -1453,6 +1453,12 @@ fn findIntegrityProblem(document: semantic.Semantic) ?[]const u8 {
         if (declaration.kind == .@"enum") {
             const tag = declaration.tag_type orelse return declaration.name;
             if (tag != .int or tag.int.bits == 0 or tag.int.bits > 64) return declaration.name;
+        } else if (declaration.tag_type) |tag| {
+            // A tagged union names its tag enum through `tag_type`, and
+            // lowering resolves that reference the same way it resolves a
+            // field's: an unresolved one has to be reported here, not met as
+            // an `unreachable` inside `lower`.
+            if (!referencesValid(document, tag)) return declaration.name;
         }
         for (declaration.fields) |field| {
             if (field.type) |node| if (!referencesValid(document, node)) return declaration.name;
@@ -1464,6 +1470,11 @@ fn findIntegrityProblem(document: semantic.Semantic) ?[]const u8 {
         }
         for (function.params) |parameter| {
             if (!referencesValid(document, parameter.type)) return function.name;
+            // A flattened parameter's selected fields are lowered on their
+            // own, so their references have to resolve on their own too.
+            if (parameter.flatten) |fields| {
+                for (fields) |field| if (!referencesValid(document, field.type)) return function.name;
+            }
         }
         if (!referencesValid(document, function.@"return")) return function.name;
     }
@@ -3182,6 +3193,47 @@ test "referential integrity failures are reported before lowering" {
             .types = &.{.{ .kind = .@"enum", .name = "WrongKind", .tag_type = .{ .int = .{ .bits = 32, .signed = false } } }},
             .zig_version = "0.16.0",
         }, .declaration = "use" },
+        // A tagged union names its tag enum through `tag_type`; lowering
+        // resolves it, so an unresolved one is an integrity problem.
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "take",
+                .params = &.{.{ .name = "value", .type = .{ .value_struct = .{ .ref = "Value" } } }},
+                .@"return" = .{ .void = {} },
+                .symbol = "ignored",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{.{
+                .fields = &.{.{ .name = "none", .type = .{ .void = {} }, .value = 0 }},
+                .kind = .tagged_union,
+                .name = "Value",
+                .tag_type = .{ .@"enum" = .{ .ref = "MissingValueTag" } },
+            }},
+            .zig_version = "0.16.0",
+        }, .declaration = "Value" },
+        // A flattened parameter's selected fields are lowered on their own.
+        .{ .document = .{
+            .functions = &.{.{
+                .name = "configure",
+                .params = &.{.{
+                    .name = "options",
+                    .type = .{ .value_struct = .{ .ref = "Options" } },
+                    .flatten = &.{.{ .name = "mode", .type = .{ .@"enum" = .{ .ref = "MissingMode" } } }},
+                }},
+                .@"return" = .{ .void = {} },
+                .symbol = "ignored",
+            }},
+            .package = "bad",
+            .prefix = "zg",
+            .types = &.{.{
+                .fields = &.{.{ .name = "width", .type = .{ .int = .{ .bits = 32, .signed = true } } }},
+                .kind = .value_struct,
+                .name = "Options",
+                .layout = .@"extern",
+            }},
+            .zig_version = "0.16.0",
+        }, .declaration = "configure" },
         .{ .document = .{
             .constructors = &.{.{ .type = "Context", .init = "missing", .deinit = "deinit" }},
             .functions = &valid_constructor_functions,

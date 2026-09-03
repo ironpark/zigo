@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Malformed input yields a diagnostic and non-zero exit; existing abi-diff tests unchanged; tests green.
 > NEXT: none
