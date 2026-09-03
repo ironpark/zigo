@@ -862,12 +862,13 @@ fn cancelIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !?di
         .site = functionSiteFor(function, declaration),
         .hint = "declare it as `*const std.atomic.Value(u32)` and poll it; Go writes the same four bytes with sync/atomic",
     };
-    if (!functionErrorSetHas(function, "Canceled")) return .{
+    const canceled = function.cancelError();
+    if (!functionErrorSetHas(function, canceled)) return .{
         .severity = .@"error",
         .code = "ZIGO026",
-        .message = "a cancellable function must be able to report `error.Canceled`",
+        .message = try std.fmt.allocPrint(allocator, "a cancellable function must be able to report `error.{s}`", .{canceled}),
         .site = functionSiteFor(function, declaration),
-        .hint = "return an error union whose set contains `Canceled`; generated Go maps it back to `ctx.Err()`",
+        .hint = try std.fmt.allocPrint(allocator, "return an error union whose set contains `{s}`; generated Go maps it back to `ctx.Err()`", .{canceled}),
     };
     return null;
 }
@@ -4416,11 +4417,12 @@ test "a cancellable function has to name a flag its shim can pass and an error i
         // stopped rather than finished.
         .{ .function = .{
             .cancel = "cancel",
+            .cancel_error = "Cancelled",
             .name = "crunch",
             .params = &.{.{ .cancel = true, .name = "cancel", .type = flag }},
             .@"return" = .{ .error_union = .{ .error_set = &.{"Empty"}, .payload = &payload.node } },
             .symbol = "zg_crunch",
-        }, .message = "a cancellable function must be able to report `error.Canceled`" },
+        }, .message = "a cancellable function must be able to report `error.Cancelled`" },
         // The flag without the meta: the C parameter would be there with no
         // Go `ctx` to raise it.
         .{ .function = .{
@@ -4462,6 +4464,21 @@ test "a cancellable function has to name a flag its shim can pass and an error i
         .zig_version = "0.16.0",
     };
     try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(scratch.allocator(), accepted));
+
+    const configured: semantic.Semantic = .{
+        .functions = &.{.{
+            .cancel = "cancel",
+            .cancel_error = "Cancelled",
+            .name = "crunch",
+            .params = &.{.{ .cancel = true, .name = "cancel", .type = flag }},
+            .@"return" = .{ .error_union = .{ .error_set = &.{"Cancelled"}, .payload = &payload.node } },
+            .symbol = "zg_crunch",
+        }},
+        .package = "job",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(scratch.allocator(), configured));
 }
 
 test "atomic pointer parameters reject unsupported scalars and retained addresses" {

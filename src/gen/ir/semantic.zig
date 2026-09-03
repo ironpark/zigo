@@ -438,6 +438,9 @@ pub const SemanticFn = struct {
     /// the function so a name that matches nothing can still be reported, and
     /// so `abi-diff` sees the Go signature gain or lose its `ctx`.
     cancel: ?[]const u8 = null,
+    /// Zig error name that means cancellation. Omitted for the historical
+    /// `Canceled` default so existing semantic documents stay byte-identical.
+    cancel_error: ?[]const u8 = null,
     /// Public Zig declarations this function deliberately wraps. Coverage
     /// metadata only: generation and ABI comparison do not consume it.
     covers: ?[]const []const u8 = null,
@@ -499,6 +502,10 @@ pub const SemanticFn = struct {
 
     pub fn childOfReceiver(self: SemanticFn) bool {
         return self.child_of_receiver orelse false;
+    }
+
+    pub fn cancelError(self: SemanticFn) []const u8 {
+        return self.cancel_error orelse "Canceled";
     }
 
     pub fn returnsBorrowedHandle(self: SemanticFn) bool {
@@ -897,6 +904,29 @@ test "child-of-receiver metadata is emitted only when enabled" {
     const bytes = try document.serialize(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, bytes, "\"child_of_receiver\": true"));
+}
+
+test "cancel error defaults to Canceled and only an override is serialized" {
+    const base: SemanticFn = .{
+        .cancel = "cancel",
+        .name = "crunch",
+        .params = &.{},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_crunch",
+    };
+    var configured = base;
+    configured.cancel_error = "Cancelled";
+    const document: Semantic = .{
+        .functions = &.{ base, configured },
+        .package = "job",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    try std.testing.expectEqualStrings("Canceled", base.cancelError());
+    try std.testing.expectEqualStrings("Cancelled", configured.cancelError());
+    const bytes = try document.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, bytes, "\"cancel_error\": \"Cancelled\""));
 }
 
 test "package metadata is omitted by default and round trips when present" {

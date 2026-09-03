@@ -2,6 +2,7 @@
   "functions": [
     {
       "cancel": "cancel",
+      "cancel_error": "Cancelled",
       "name": "crunch",
       "params": [
         {
@@ -30,7 +31,7 @@
       "receiver": "Job",
       "return": {
         "error_set": [
-          "Canceled",
+          "Cancelled",
           "Empty"
         ],
         "kind": "error_union",

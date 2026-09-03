@@ -82,7 +82,7 @@ func (t *TelemetryHub) Name() (string, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 // Cancelling ctx stops the native call at its next polling point; the call
-// then returns ctx.Err() rather than the library's own Canceled error.
+// then returns ctx.Err() rather than the library's own Cancelled error.
 func (t *TelemetryHub) Reduce(ctx context.Context, rounds uint32) (float64, error) {
 	var zigoCancel uint32
 	if ctx.Err() != nil {
@@ -111,7 +111,7 @@ func (t *TelemetryHub) Reduce(ctx context.Context, rounds uint32) (float64, erro
 	}
 	if code != 0 {
 		zigoErr := zigoPoisonAfterPanic(errorForCode("TelemetryHub.Reduce", code), t)
-		if errors.Is(zigoErr, ErrCanceled) && ctx.Err() != nil {
+		if errors.Is(zigoErr, ErrCancelled) && ctx.Err() != nil {
 			return 0, ctx.Err()
 		}
 		return 0, zigoErr

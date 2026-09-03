@@ -83,8 +83,8 @@ func (err *Error) Is(target error) bool {
 	return ok && err.Code == other.Code
 }
 
-// ErrCanceled represents Zig error.Canceled.
-var ErrCanceled = &Error{Code: 1, Name: "Canceled"}
+// ErrCancelled represents Zig error.Cancelled.
+var ErrCancelled = &Error{Code: 1, Name: "Cancelled"}
 // ErrEmpty represents Zig error.Empty.
 var ErrEmpty = &Error{Code: 2, Name: "Empty"}
 
@@ -93,7 +93,7 @@ func errorForCode(operation string, code int32) error {
 	case -2:
 		return &NativePanicError{Operation: operation, Message: raw.LastErrorMessage()}
 	case 1:
-		return &Error{Code: 1, Name: "Canceled", Operation: operation}
+		return &Error{Code: 1, Name: "Cancelled", Operation: operation}
 	case 2:
 		return &Error{Code: 2, Name: "Empty", Operation: operation}
 	default:

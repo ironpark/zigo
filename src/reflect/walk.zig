@@ -1162,7 +1162,10 @@ fn appendFunction(
     // `.release` addresses the freeing function the same way `.path` does, so
     // the last segment names it inside the generated document.
     if (@hasField(@TypeOf(metadata), "release")) reflected_function.release = comptime pathMember(metadata.release);
-    if (@hasField(@TypeOf(metadata), "cancel")) reflected_function.cancel = metadata.cancel.param;
+    if (@hasField(@TypeOf(metadata), "cancel")) {
+        reflected_function.cancel = metadata.cancel.param;
+        if (@hasField(@TypeOf(metadata.cancel), "canceled")) reflected_function.cancel_error = metadata.cancel.canceled;
+    }
     if (info.return_type) |return_type| {
         if (isSentinelBytePointer(return_type)) reflected_function.return_semantic = .c_string;
     }
@@ -3080,6 +3083,29 @@ test "an allocator parameter is injected rather than exposed" {
     // the one node that means "no C representation needed".
     try std.testing.expectEqual(semantic.TypeNode.void, document.functions[0].params[0].type);
     try std.testing.expectEqual(@as(?semantic.Injection, null), document.functions[0].params[1].injected);
+}
+
+test "a cancellable function records its configured error name" {
+    const Fixture = struct {
+        pub fn crunch(cancel: *const std.atomic.Value(u32)) error{Cancelled}!void {
+            _ = cancel;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .functions = .{.{
+            .path = "root.crunch",
+            .params = .{"cancel"},
+            .cancel = .{ .param = "cancel", .canceled = "Cancelled" },
+        }},
+    }, "job", "zg");
+
+    try std.testing.expectEqualStrings("Cancelled", document.functions[0].cancel_error.?);
+    try std.testing.expectEqualStrings("Cancelled", document.functions[0].cancelError());
+    const json = try document.serialize(arena.allocator());
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"cancel_error\": \"Cancelled\"") != null);
 }
 
 test "`.params` names only what Go passes, and a wrong count is reported" {

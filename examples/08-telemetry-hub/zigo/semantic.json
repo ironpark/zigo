@@ -223,6 +223,7 @@
     },
     {
       "cancel": "cancel",
+      "cancel_error": "Cancelled",
       "doc": "A deliberately long fold, polling a cancellation flag between rounds.\nThe flag is Go's: a goroutine watching `ctx.Done()` raises it while\nthis is running, and the only thing that has to be true for that to be\nsafe is that this reads it atomically and never writes it.",
       "name": "reduce",
       "ownership": "borrowed",
@@ -261,7 +262,7 @@
       "receiver": "TelemetryHub",
       "return": {
         "error_set": [
-          "Canceled",
+          "Cancelled",
           "Empty"
         ],
         "kind": "error_union",

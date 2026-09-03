@@ -4766,9 +4766,11 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             // agrees that it was cancelled.
             const cancellable = function.origin.cancel != null;
             if (cancellable) {
+                const canceled_name = try naming.pascalAlloc(allocator, function.origin.cancelError());
+                defer allocator.free(canceled_name);
                 try writer.writeAll("\t\tzigoErr := ");
                 try writeErrorForCode(allocator, writer, function.origin.*, go_names, operation);
-                try writer.writeAll("\t\tif errors.Is(zigoErr, ErrCanceled) && ctx.Err() != nil {\n\t\t\treturn ");
+                try writer.print("\t\tif errors.Is(zigoErr, Err{s}) && ctx.Err() != nil {{\n\t\t\treturn ", .{canceled_name});
                 if (error_payload != .void) {
                     try writePublicFailureValues(scope, writer, function.origin.*, error_payload);
                 }
@@ -7958,9 +7960,10 @@ fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.SemanticFn,
     if (reaches_callback_errors)
         try writer.writeAll("// An error a Go callback returned is returned as *CallbackError once the native call returns.\n");
     if (function.cancel != null)
-        try writer.writeAll(
+        try writer.print(
             "// Cancelling ctx stops the native call at its next polling point; the call\n" ++
-                "// then returns ctx.Err() rather than the library's own Canceled error.\n",
+                "// then returns ctx.Err() rather than the library's own {s} error.\n",
+            .{function.cancelError()},
         );
 }
 

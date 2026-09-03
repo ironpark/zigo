@@ -17,7 +17,7 @@ import (
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 // Cancelling ctx stops the native call at its next polling point; the call
-// then returns ctx.Err() rather than the library's own Canceled error.
+// then returns ctx.Err() rather than the library's own Cancelled error.
 func (j *Job) Crunch(ctx context.Context, rounds uint32) (float64, error) {
 	var zigoCancel uint32
 	if ctx.Err() != nil {
@@ -43,7 +43,7 @@ func (j *Job) Crunch(ctx context.Context, rounds uint32) (float64, error) {
 	result, code := raw.JobCrunch(ptr, rounds, &zigoCancel)
 	if code != 0 {
 		zigoErr := zigoPoisonAfterPanic(errorForCode("Job.Crunch", code), j)
-		if errors.Is(zigoErr, ErrCanceled) && ctx.Err() != nil {
+		if errors.Is(zigoErr, ErrCancelled) && ctx.Err() != nil {
 			return 0, ctx.Err()
 		}
 		return 0, zigoErr

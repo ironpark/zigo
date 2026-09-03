@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T06:18:12Z"
 description: honor .name on .constructs functions and let .cancel name the Zig error that means cancellation
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-03T03:53:27Z"
 ---
 > NEXT: Use the explicit .name for constructor wrappers. ([Phase 0](phases/00-constructor-name.md))
@@ -8,7 +9,7 @@ registered_at: "2026-09-03T03:53:27Z"
 # Phases
 
 - [x] [Phase 00: Honor .name on constructors](phases/00-constructor-name.md)
-- [ ] [Phase 01: Configurable cancel error name](phases/01-cancel-error-name.md)
+- [x] [Phase 01: Configurable cancel error name](phases/01-cancel-error-name.md)
 
 # Shared Verification
 

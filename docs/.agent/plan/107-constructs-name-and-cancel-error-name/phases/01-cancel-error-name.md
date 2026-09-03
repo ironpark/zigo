@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T06:18:12Z"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: A library whose error set has `Cancelled` binds without a wrapper and cancellation maps to `ctx.Err()`.
 > NEXT: none

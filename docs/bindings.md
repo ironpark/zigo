@@ -726,15 +726,18 @@ ctx는 호출 전에 플래그를 세우므로 native가 첫 폴링 지점에서
 동안만 유효하며, cgo는 C에 넘긴 Go 포인터를 호출 동안 고정해 주고 purego 백엔드는
 `runtime.Pinner`로 직접 고정합니다.
 
-**error 매핑.** 대상 함수의 error set에 `Canceled`가 있어야 합니다(`ZIGO026`). native가
-`error.Canceled`를 돌려주고 `ctx.Err() != nil`이면 공개 함수는 `ctx.Err()`를 반환합니다 —
+**error 매핑.** `.cancel.canceled`는 취소를 뜻하는 Zig error 이름이며 생략하면
+`Canceled`입니다. 예를 들어 라이브러리가 영국식 이름을 쓰면
+`.cancel = .{ .param = "cancel", .canceled = "Cancelled" }`로 지정합니다. 대상 함수의
+error set에 이 이름이 있어야 합니다(`ZIGO026`). native가 해당 error를 돌려주고
+`ctx.Err() != nil`이면 공개 함수는 `ctx.Err()`를 반환합니다 —
 `context.Canceled` 또는 `context.DeadlineExceeded`, 호출자의 ctx가 말하는 것 그대로입니다.
-ctx가 멀쩡한데 native가 `Canceled`를 돌려줬다면 그것은 라이브러리의 error이므로 `ErrCanceled`가
-그대로 나옵니다.
+ctx가 멀쩡한데 native가 해당 error를 돌려줬다면 그것은 라이브러리의 error이므로 생성된
+`ErrCanceled` 또는 `ErrCancelled`가 그대로 나옵니다.
 
 **검증(`ZIGO026`).** `.cancel`이 없는 파라미터를 가리키거나, 그 파라미터 타입이
-`*const std.atomic.Value(u32)`가 아니거나, error set에 `Canceled`가 없거나, 반대로 플래그
-파라미터가 있는데 `.cancel`이 그것을 가리키지 않으면 거부합니다.
+`*const std.atomic.Value(u32)`가 아니거나, error set에 설정한 error 이름이 없거나, 반대로
+플래그 파라미터가 있는데 `.cancel`이 그것을 가리키지 않으면 거부합니다.
 
 C ABI는 `.cancel`이 붙은 함수에만 파라미터가 하나 늘어나므로, 붙지 않은 함수의 생성물은
 바이트 그대로입니다. `abi-diff`는 `.cancel`이 붙거나 떨어지는 것을 breaking으로 봅니다 —

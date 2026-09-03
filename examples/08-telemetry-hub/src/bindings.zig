@@ -28,7 +28,7 @@ pub const bindings = zigo.define(.{
         .{
             .path = "TelemetryHub.reduce",
             .params = .{ "rounds", "cancel" },
-            .cancel = .{ .param = "cancel" },
+            .cancel = .{ .param = "cancel", .canceled = "Cancelled" },
         },
     },
 });

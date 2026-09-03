@@ -8,6 +8,9 @@
 
 ### Added
 
+- `.cancel.canceled`로 취소를 뜻하는 Zig error 이름을 지정할 수 있습니다. 생략하면 기존
+  `Canceled`를 사용하며, 예를 들어 `Cancelled`를 지정하면 Go가 `ErrCancelled`를
+  `ctx.Err()`로 변환합니다.
 - `addGoBindings`의 `.go_must_variants = true` 옵션으로 오류를 반환하는 공개 함수와
   메서드에 `Must<Name>` 동반 API를 생성할 수 있습니다. 생성자는 `MustNew<Type>`을 쓰고
   `Close`는 제외하며, 실패 시 checked API의 typed error를 그대로 panic합니다.

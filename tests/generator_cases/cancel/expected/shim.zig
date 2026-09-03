@@ -10,7 +10,7 @@ pub const panic = std.debug.FullPanic(panicHandler);
 
 export fn zg_job_crunch_impl(self: *target.Job, rounds: u32, cancel: *const u32, out_result: *f64) i32 {
     const result = target.Job.crunch(self, rounds, @ptrCast(cancel)) catch |err| return switch (err) {
-        error.Canceled => 1,
+        error.Cancelled => 1,
         error.Empty => 2,
     };
     out_result.* = result;

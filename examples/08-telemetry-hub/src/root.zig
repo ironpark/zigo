@@ -6,7 +6,7 @@ pub const ConfigError = error{ NonFinite, InvalidRange };
 pub const PushError = error{ Disabled, Full, NonFinite };
 pub const ProcessError = error{ Empty, InvalidLimit, ObserverPanicked };
 pub const QueryError = error{ Empty, InvalidRange };
-pub const ReduceError = error{ Empty, Canceled };
+pub const ReduceError = error{ Empty, Cancelled };
 
 pub const Mode = enum(u32) {
     raw,
@@ -104,7 +104,7 @@ pub const TelemetryHub = struct {
         var total: f64 = 0;
         var round: u32 = 0;
         while (round < rounds) : (round += 1) {
-            if (cancel.load(.monotonic) != 0) return error.Canceled;
+            if (cancel.load(.monotonic) != 0) return error.Cancelled;
             for (self.samples.items) |sample| total += sample.value;
         }
         return total;

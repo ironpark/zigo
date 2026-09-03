@@ -1,6 +1,7 @@
 {
   "codes": {
     "Canceled": 11,
+    "Cancelled": 12,
     "Disabled": 6,
     "Empty": 8,
     "Full": 7,
@@ -13,7 +14,7 @@
     "OutOfMemory": 1
   },
   "ir_version": 1,
-  "next_code": 12,
+  "next_code": 13,
   "reserved": {
     "-1": "Unknown",
     "-2": "PanicCaught",

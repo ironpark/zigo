@@ -132,6 +132,8 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
         // gains or loses its leading `ctx`, so every call site moves.
         if (!semantic.optionalStringEqual(old.cancel, new.cancel))
             try add(allocator, &report, .breaking, identity, "cancellation surface changed");
+        if (!std.mem.eql(u8, old.cancelError(), new.cancelError()))
+            try add(allocator, &report, .breaking, identity, "cancellation error mapping changed");
         if (!semantic.optionalStringEqual(old.package, new.package))
             try add(allocator, &report, .breaking, identity, "Go package assignment changed");
         // The native signature is unchanged, but generated Go gains or loses
@@ -1620,6 +1622,23 @@ test "adding or removing cancellation is a Go signature break" {
     defer report.deinit(std.testing.allocator);
     try std.testing.expect(report.hasBreaking());
     try std.testing.expectEqualStrings("cancellation surface changed", report.changes.items[0].detail);
+
+    var explicit_default_functions = [_]semantic.SemanticFn{functions[0]};
+    explicit_default_functions[0].cancel_error = "Canceled";
+    var explicit_default = cancellable;
+    explicit_default.functions = &explicit_default_functions;
+    var unchanged = try diff(std.testing.allocator, cancellable, explicit_default);
+    defer unchanged.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 0), unchanged.changes.items.len);
+
+    var configured_functions = [_]semantic.SemanticFn{functions[0]};
+    configured_functions[0].cancel_error = "Cancelled";
+    var configured = cancellable;
+    configured.functions = &configured_functions;
+    var remapped = try diff(std.testing.allocator, cancellable, configured);
+    defer remapped.deinit(std.testing.allocator);
+    try std.testing.expect(remapped.hasBreaking());
+    try std.testing.expectEqualStrings("cancellation error mapping changed", remapped.changes.items[0].detail);
 }
 
 test "changing an explicit constructor name is a Go signature break" {
