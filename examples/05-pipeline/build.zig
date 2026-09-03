@@ -4,6 +4,7 @@ const zigo = @import("zigo");
 pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
+    const coverage_json = b.option([]const u8, "coverage-json", "Write the go-coverage report as JSON at this path");
     const pipeline = b.addModule("pipeline", .{
         .root_source_file = b.path("src/root.zig"),
         .target = target,
@@ -25,6 +26,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .abi_base = "HEAD",
+        .coverage_json = coverage_json,
     });
     _ = bindings.addStandardSteps(b, .{});
 }

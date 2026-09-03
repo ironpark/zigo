@@ -8,6 +8,10 @@
 
 ### Added
 
+- root와 등록 타입의 공개 함수를 bound, excluded, unbound로 분류하는 `go-coverage` build
+  step을 추가했습니다. 기존 signature 제약에 따른 unbound 이유, 함수가 참조하는 미등록 공개
+  타입, `.fields` accessor를 포함한 비율을 text로 출력하고 `coverage_json` 옵션으로 JSON
+  artifact도 기록할 수 있습니다.
 - `.packages`의 `types`와 `namespaces`에 trailing `*` prefix pattern을 추가하고, 선택된
   함수·타입에서 signature, union payload, callback, lifecycle target, field accessor를 따라
   등록 타입을 함께 배정하는 `.closure = true`를 추가했습니다. 빈 pattern은 `ZIGO041`, 두

@@ -67,6 +67,8 @@ pub const Options = struct {
     /// Body of the generated `// Package ...` doc. Null falls back to the `//!`
     /// container doc of the bindings file, then to a default sentence.
     go_package_doc: ?[]const u8 = null,
+    /// Optional source path for the JSON form of `go-coverage`.
+    coverage_json: ?[]const u8 = null,
     /// purego-only run-time loading policy. The default requires an explicit
     /// `LoadLibrary` call and consults `ZIGO_LIBRARY_PATH`.
     library_loading: LibraryLoading = .{},
@@ -84,6 +86,7 @@ pub const GoBindings = struct {
     abi_check: ?*std.Build.Step.Run,
     report: *std.Build.Step.Run,
     doctor: *std.Build.Step.Run,
+    coverage: *std.Build.Step.Run,
     lib: *std.Build.Step.Compile,
     /// Installs the native binding library into `zig-out/lib`.
     install_library: *std.Build.Step.InstallArtifact,
@@ -112,6 +115,7 @@ pub const GoBindings = struct {
         abi_check: ?*std.Build.Step,
         report: *std.Build.Step,
         doctor: *std.Build.Step,
+        coverage: *std.Build.Step,
         library: *std.Build.Step,
         /// Aggregate validation step: staleness, toolchain, native library and,
         /// when `abi_base` is set, the ABI comparison.
@@ -131,6 +135,8 @@ pub const GoBindings = struct {
         report.dependOn(&self.report.step);
         const doctor = b.step(standardStepName(b, options.name_prefix, "go-doctor"), "Check Go binding toolchain prerequisites");
         doctor.dependOn(&self.doctor.step);
+        const coverage = b.step(standardStepName(b, options.name_prefix, "go-coverage"), "Report public Zig API binding coverage");
+        coverage.dependOn(&self.coverage.step);
         const library = b.step(standardStepName(b, options.name_prefix, "go-lib"), "Build and install the native Go binding library");
         library.dependOn(&self.install_library.step);
         if (options.install_library_by_default) {
@@ -146,7 +152,7 @@ pub const GoBindings = struct {
         verify.dependOn(library);
         verify.dependOn(doctor);
         if (abi_check) |value| verify.dependOn(value);
-        return .{ .update = update, .check = check, .abi_check = abi_check, .report = report, .doctor = doctor, .library = library, .verify = verify };
+        return .{ .update = update, .check = check, .abi_check = abi_check, .report = report, .doctor = doctor, .coverage = coverage, .library = library, .verify = verify };
     }
 };
 
@@ -178,6 +184,12 @@ pub fn build(b: *std.Build) void {
     });
     const reflect_names_module = b.createModule(.{
         .root_source_file = b.path("src/reflect/names.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{.{ .name = "semantic", .module = generator_modules.semantic }},
+    });
+    const reflect_coverage_module = b.createModule(.{
+        .root_source_file = b.path("src/reflect/coverage.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{.{ .name = "semantic", .module = generator_modules.semantic }},
@@ -297,6 +309,8 @@ pub fn build(b: *std.Build) void {
     const run_report_tests = b.addRunArtifact(report_tests);
     const doctor_tests = b.addTest(.{ .root_module = doctor_module, .filters = test_filters });
     const run_doctor_tests = b.addRunArtifact(doctor_tests);
+    const coverage_tests = b.addTest(.{ .root_module = reflect_coverage_module, .filters = test_filters });
+    const run_coverage_tests = b.addRunArtifact(coverage_tests);
     const dynamic_library_tests = b.addTest(.{ .root_module = generator_modules.dynamic_library, .filters = test_filters });
     const run_dynamic_library_tests = b.addRunArtifact(dynamic_library_tests);
     const test_step = b.step("test", "Run unit and snapshot harness tests");
@@ -391,6 +405,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_stream_return_tests.step);
     test_step.dependOn(&run_report_tests.step);
     test_step.dependOn(&run_doctor_tests.step);
+    test_step.dependOn(&run_coverage_tests.step);
     test_step.dependOn(&run_dynamic_library_tests.step);
     addProcessContractTests(b, test_step, generator);
 
@@ -807,6 +822,20 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     // captured enrichment diagnostics with the actual failure.
     _ = semantic_run.captureStdErr(.{ .basename = "warnings.txt", .trim_whitespace = .none });
 
+    const coverage = b.addRunArtifact(reflector);
+    coverage.has_side_effects = true;
+    coverage.addArgs(&.{ "coverage", options.name, options.prefix });
+    coverage.addFileArg(options.bindings);
+    if (options.coverage_json) |destination| {
+        const coverage_json_run = b.addRunArtifact(reflector);
+        coverage_json_run.addArgs(&.{ "coverage-json", options.name, options.prefix });
+        coverage_json_run.addFileArg(options.bindings);
+        const coverage_json = coverage_json_run.captureStdOut(.{ .basename = "coverage.json", .trim_whitespace = .none });
+        const publish_coverage = b.addUpdateSourceFiles();
+        publish_coverage.addCopyFileToSource(coverage_json, destination);
+        coverage.step.dependOn(&publish_coverage.step);
+    }
+
     const raw_source_dir = options.go_dir.path(b, raw_package.path).getPath(b);
     const include_dir = cgoRelativePath(b, raw_source_dir, b.pathJoin(&.{ b.install_path, "include" }));
     const library_dir = cgoRelativePath(b, raw_source_dir, b.pathJoin(&.{ b.install_path, "lib" }));
@@ -1023,6 +1052,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         .abi_check = abi_check,
         .report = report,
         .doctor = doctor,
+        .coverage = coverage,
         .lib = lib,
         .install_library = install_lib,
         .library_filename = install_lib.dest_sub_path,

@@ -5,6 +5,7 @@ pub fn build(b: *std.Build) void {
     const target = b.standardTargetOptions(.{});
     const optimize = b.standardOptimizeOption(.{});
     const dynamic = b.option(bool, "dynamic", "Build a runtime-loadable shared binding library") orelse false;
+    const coverage_json = b.option([]const u8, "coverage-json", "Write the go-coverage report as JSON at this path");
     // The C++ pieces live on a module `scalar` imports, not on `scalar`
     // itself: the binding library's static link inputs are gathered through
     // imports, and this is the layout that exercises it.
@@ -52,6 +53,7 @@ pub fn build(b: *std.Build) void {
         .link = if (dynamic) .cgo_dynamic else .cgo_static,
         .abi_base = "HEAD",
         .raw_package = "scalar",
+        .coverage_json = coverage_json,
     });
     _ = bindings.addStandardSteps(b, .{});
 }

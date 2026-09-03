@@ -44,6 +44,7 @@ raw 패키지는 `internal/raw`에서 생성됩니다. `addStandardSteps`는 기
 | `go_package` | 아니요 | `name`의 snake_case | 공개 Go 패키지 이름 |
 | `go_package_path` | 아니요 | `go_package` | `go_dir` 기준 공개 Go 패키지 경로. `"."`은 모듈 루트 |
 | `go_package_doc` | 아니요 | `bindings.zig`의 `//!`, 없으면 루트 모듈(`source_root`)의 `//!` | 생성된 공개 패키지의 `// Package …` doc 본문 |
+| `coverage_json` | 아니요 | `null` | `go-coverage`의 JSON 보고서를 기록할 소스 경로 |
 | `raw_package` | 아니요 | `"internal/raw"` | `go_dir` 기준 raw Go 패키지 경로 |
 | `cgo_flags` | 아니요 | 모듈에서 계산 | 생성할 CFLAGS/LDFLAGS 덮어쓰기와 추가 LDFLAGS |
 | `gofmt` | 아니요 | `PATH`의 `gofmt` | 생성 코드 포맷에 사용할 실행 파일 |
@@ -252,6 +253,41 @@ binding install이 그 artifact에 의존하게 합니다. 같은 라이브러�
 생략하면 zigo는 Git을 호출하지 않고 `GoBindings.abi_check`도 `null`입니다. CI 구성은
 [생성물과 CI 관리](generated-code.md#ci-권장-구성)를 참고하세요.
 
+## 공개 API 커버리지
+
+`addStandardSteps`가 등록하는 `go-coverage`는 root 모듈과 등록 타입에서 도달할 수 있는 모든
+`pub fn`을 재귀적으로 훑습니다. 바인딩에 들어간 함수는 `bound`, `.exclude`에 든 함수는
+`excluded`, 나머지는 `unbound`로 분류합니다. `.fields`가 만든 getter와 setter도 bound 함수로
+셉니다. 비율은 `bound / (bound + unbound)`이며 excluded 함수는 목록에는 나오지만 분모에는
+들어가지 않습니다. 함수 signature에서 참조하지만 `.types`에 등록하지 않은 공개 struct, enum,
+union도 `unregistered types`에 따로 표시합니다.
+
+```bash
+zig build go-coverage
+```
+
+unbound 이유는 기존 ZIGO signature 제약을 기준으로 가능한 만큼 설명합니다. metadata를 붙이면
+바인딩할 수 있는 함수는 `not listed`, 판별할 수 없는 경우는 `unsupported signature`입니다.
+CI artifact처럼 기계가 읽을 보고서도 필요하면 build option을 한 번 선언해 `coverage_json`에
+전달합니다. 경로는 build root 기준입니다.
+
+```zig
+const coverage_json = b.option(
+    []const u8,
+    "coverage-json",
+    "Write the go-coverage report as JSON at this path",
+);
+
+const bindings = zigo.addGoBindings(b, .{
+    // ...
+    .coverage_json = coverage_json,
+});
+```
+
+```bash
+zig build go-coverage -Dcoverage-json=zigo/coverage.json
+```
+
 ## 여러 바인딩 세트
 
 한 빌드에 cgo와 purego 또는 서로 다른 라이브러리를 함께 등록한다면 `go_dir`, `go_module`을
@@ -259,7 +295,7 @@ binding install이 그 artifact에 의존하게 합니다. 같은 라이브러�
 
 ```zig
 _ = admin_bindings.addStandardSteps(b, .{ .name_prefix = "admin" });
-// admin-go, admin-go-check, admin-go-report, admin-go-doctor,
+// admin-go, admin-go-check, admin-go-report, admin-go-doctor, admin-go-coverage,
 // admin-go-lib, admin-go-verify, admin-abi-check
 ```
 

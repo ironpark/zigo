@@ -15,7 +15,7 @@ zig build test --summary all
 
 ```bash
 cd examples/05-pipeline
-zig build test go-check abi-check --summary all
+zig build test go-check abi-check go-coverage --summary all
 zig build go
 (cd go && go test -count=1 ./...)
 ```
@@ -29,10 +29,15 @@ zig build go
 
 ```bash
 for example in examples/*; do
-  (cd "$example" && zig build test go-check abi-check --summary all)
+  (cd "$example" && zig build test go-check abi-check go-coverage --summary all)
   (cd "$example/go" && go test ./...)
 done
 ```
+
+`go-coverage`는 생성물을 바꾸지 않고 공개 Zig 선언 중 bound, excluded, unbound 함수를
+출력합니다. 새 예제에는 의도적으로 빠뜨린 public 함수가 없다면 100%가 출력되어야 합니다.
+JSON renderer까지 확인할 때는 예제가 `coverage_json`에 연결한
+`-Dcoverage-json=zigo/coverage.json`을 함께 넘깁니다.
 
 각 예제의 역할은 [예제 선택 가이드](examples.md)에 정리되어 있습니다. 특히 다음 예제는
 변경 범위를 넓게 검증합니다.

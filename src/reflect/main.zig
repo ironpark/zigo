@@ -1,11 +1,25 @@
 const std = @import("std");
 const bindings = @import("bindings");
+const coverage = @import("coverage.zig");
 const names = @import("names.zig");
 const walk = @import("walk.zig");
 
 pub fn main(init: std.process.Init) !void {
     const allocator = init.arena.allocator();
     const args = try init.minimal.args.toSlice(allocator);
+    if (args.len == 5 and (std.mem.eql(u8, args[1], "coverage") or std.mem.eql(u8, args[1], "coverage-json"))) {
+        const document = try walk.reflect(allocator, bindings.bindings, args[2], args[3]);
+        const report = try coverage.classify(allocator, bindings.bindings, args[2], document);
+        var stdout_buffer: [4096]u8 = undefined;
+        var stdout = std.Io.File.Writer.init(.stdout(), init.io, &stdout_buffer);
+        if (std.mem.eql(u8, args[1], "coverage-json")) {
+            const json = try report.json(allocator);
+            try stdout.interface.writeAll(json);
+            try stdout.interface.writeByte('\n');
+        } else try report.render(&stdout.interface);
+        try stdout.interface.flush();
+        return;
+    }
     // <name> <prefix> <bindings.zig> [source_root]
     if (args.len != 4 and args.len != 5) return error.InvalidArguments;
 
