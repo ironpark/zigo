@@ -275,6 +275,10 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
     // line that separates it from the exports is written once and only when
     // there is something to separate.
     var wrote_prelude = false;
+    if (programNeedsTargetTypeResolver(program)) {
+        try writeTargetTypeResolver(writer);
+        wrote_prelude = true;
+    }
     if (program.backend == .cgo) {
         for (program.functions) |function| {
             for (function.origin.params, 0..) |parameter, parameter_index| {
@@ -1933,7 +1937,96 @@ fn targetTypeSpellingAlloc(allocator: std.mem.Allocator, program: abi.Program, n
         defer allocator.free(parent_spelling);
         return std.fmt.allocPrint(allocator, "{s}{s}", .{ parent_spelling, path[ancestor_path_len..] });
     }
+    // A dependency-module type with no registered ancestor is whatever the
+    // root module re-exports. When the registered name is the Zig name there
+    // is one spelling; otherwise the root may export either, so the shim
+    // resolves the first one it finds at comptime.
+    if (targetTypeCandidates(path, name)) |candidates| {
+        var spelling: std.ArrayList(u8) = .empty;
+        errdefer spelling.deinit(allocator);
+        try spelling.appendSlice(allocator, "zigoTargetType(&.{ ");
+        for (candidates.slice(), 0..) |candidate, index| {
+            if (index != 0) try spelling.appendSlice(allocator, ", ");
+            try spelling.print(allocator, "\"{s}\"", .{candidate});
+        }
+        try spelling.appendSlice(allocator, " })");
+        return spelling.toOwnedSlice(allocator);
+    }
     return std.fmt.allocPrint(allocator, "target.{s}", .{name});
+}
+
+const TargetTypeCandidates = struct {
+    items: [3][]const u8,
+    len: usize,
+
+    fn slice(self: *const TargetTypeCandidates) []const []const u8 {
+        return self.items[0..self.len];
+    }
+};
+
+/// The names a dependency-module type may be reached by from the root
+/// module, most specific first: the path below the module (`Nested.Impl`),
+/// the type's own name (`Impl`), and the registered name (`Probe`). Null when
+/// the registered name already is the Zig name, which the plain `target.`
+/// spelling covers.
+fn targetTypeCandidates(path: []const u8, name: []const u8) ?TargetTypeCandidates {
+    const module_end = std.mem.indexOfScalar(u8, path, '.') orelse return null;
+    const below_module = path[module_end + 1 ..];
+    const last = if (std.mem.lastIndexOfScalar(u8, path, '.')) |dot| path[dot + 1 ..] else path;
+    if (std.mem.eql(u8, last, name)) return null;
+    var result: TargetTypeCandidates = .{ .items = undefined, .len = 0 };
+    for ([_][]const u8{ below_module, last, name }) |candidate| {
+        var duplicate = false;
+        for (result.slice()) |existing| duplicate = duplicate or std.mem.eql(u8, existing, candidate);
+        if (duplicate) continue;
+        result.items[result.len] = candidate;
+        result.len += 1;
+    }
+    return result;
+}
+
+/// True when some registered type is spelled through `zigoTargetType`, so
+/// the shim has to define it.
+fn programNeedsTargetTypeResolver(program: abi.Program) bool {
+    for (program.types) |declaration| {
+        const path = registeredZigPath(program, declaration.name) orelse continue;
+        if (std.mem.startsWith(u8, path, "root.")) continue;
+        var buffer: [512]u8 = undefined;
+        var fba = std.heap.FixedBufferAllocator.init(&buffer);
+        const spelling = targetTypeSpellingAlloc(fba.allocator(), program, declaration.name) catch continue;
+        if (std.mem.startsWith(u8, spelling, "zigoTargetType(")) return true;
+    }
+    return false;
+}
+
+fn writeTargetTypeResolver(writer: *std.Io.Writer) !void {
+    try writer.writeAll(
+        "/// A registered type from a dependency module, reached through whichever\n" ++
+            "/// of its names the root module exports.\n" ++
+            "fn zigoTargetType(comptime candidates: []const []const u8) type {\n" ++
+            "    comptime {\n" ++
+            "        var message: []const u8 = \"zigo: the root module exports none of the names this type can be reached by:\";\n" ++
+            "        for (candidates) |candidate| {\n" ++
+            "            if (zigoResolveTargetDecl(candidate)) |T| return T;\n" ++
+            "            message = message ++ \" \" ++ candidate;\n" ++
+            "        }\n" ++
+            "        @compileError(message);\n" ++
+            "    }\n" ++
+            "}\n" ++
+            "fn zigoResolveTargetDecl(comptime path: []const u8) ?type {\n" ++
+            "    comptime {\n" ++
+            "        var current: type = target;\n" ++
+            "        var segments = std.mem.splitScalar(u8, path, '.');\n" ++
+            "        while (segments.next()) |segment| {\n" ++
+            "            if (!@hasDecl(current, segment)) return null;\n" ++
+            "            const next = @field(current, segment);\n" ++
+            "            if (@TypeOf(next) != type) return null;\n" ++
+            "            current = next;\n" ++
+            "        }\n" ++
+            "        return current;\n" ++
+            "    }\n" ++
+            "}\n\n",
+    );
 }
 
 /// The reflected Zig path of a registered type when it can be spelled as a
@@ -10655,6 +10748,44 @@ test "shared lifecycle is opt-in and contains cross-package identities" {
     try std.testing.expect(std.mem.indexOf(u8, source, "type Handle interface") != null);
     try std.testing.expect(std.mem.indexOf(u8, source, "func PoisonAfterPanic") != null);
     try std.testing.expect(std.mem.indexOf(u8, source, "type CallbackError struct") != null);
+}
+
+test "dependency-module types registered under another name resolve through the root at comptime" {
+    const fields = [_]semantic.TypeField{.{ .name = "value", .type = .{ .int = .{ .bits = 32, .signed = true } } }};
+    const types = [_]semantic.TypeDecl{
+        .{ .fields = &fields, .kind = .materialized, .materialized_version = 1, .name = "Probe", .zig_path = "probe.Nested.ProbeReader" },
+        .{ .fields = &fields, .kind = .materialized, .materialized_version = 1, .name = "Leaf", .zig_path = "probe.Leaf" },
+    };
+    const probe: semantic.TypeNode = .{ .materialized = .{ .ref = "Probe" } };
+    var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    const bytes: semantic.TypeNode = .{ .slice = .{ .@"const" = false, .element = &byte } };
+    const release_params = [_]semantic.Parameter{.{ .name = "buffer", .type = bytes }};
+    const functions = [_]semantic.SemanticFn{
+        .{ .name = "snapshot", .ownership = .caller, .params = &.{}, .release = "release", .@"return" = probe, .symbol = "zg_snapshot" },
+        .{ .name = "release", .params = &release_params, .@"return" = .{ .void = {} }, .symbol = "zg_release" },
+    };
+    const document: semantic.Semantic = .{
+        .allocator = "std.heap.c_allocator",
+        .functions = &functions,
+        .package = "probe",
+        .prefix = "zg",
+        .types = &types,
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try @import("lower").semanticDocumentForBackend(arena.allocator(), document, "probe", "zg", &.{}, .cgo);
+    const probe_spelling = try targetTypeSpellingAlloc(std.testing.allocator, program, "Probe");
+    defer std.testing.allocator.free(probe_spelling);
+    try std.testing.expectEqualStrings("zigoTargetType(&.{ \"Nested.ProbeReader\", \"ProbeReader\", \"Probe\" })", probe_spelling);
+    const leaf_spelling = try targetTypeSpellingAlloc(std.testing.allocator, program, "Leaf");
+    defer std.testing.allocator.free(leaf_spelling);
+    try std.testing.expectEqualStrings("target.Leaf", leaf_spelling);
+    const shim = try renderForTest(renderShim, program);
+    defer std.testing.allocator.free(shim);
+    try std.testing.expect(std.mem.indexOf(u8, shim, "fn zigoTargetType(comptime candidates") != null);
+    try std.testing.expect(std.mem.indexOf(u8, shim, "value: zigoTargetType(&.{ \"Nested.ProbeReader\", \"ProbeReader\", \"Probe\" })) !u64") != null);
+    try std.testing.expect(std.mem.indexOf(u8, shim, "target.Probe") == null);
 }
 
 test "target type spelling follows registered ancestors across modules" {

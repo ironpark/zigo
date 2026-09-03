@@ -306,7 +306,8 @@ binding install이 그 artifact에 의존하게 합니다. 같은 라이브러�
 받으며 생성 결과나 ABI 비교에는 영향을 주지 않습니다. `.fields`가 만든 getter와 setter도 bound 함수로
 셉니다. 비율은 `bound / (bound + unbound)`이며 excluded 함수는 목록에는 나오지만 분모에는
 들어가지 않습니다. 함수 signature에서 참조하지만 `.types`에 등록하지 않은 공개 struct, enum,
-union도 `unregistered types`에 따로 표시합니다.
+union도 `unregistered types`에 따로 표시합니다. 이 목록은 root가 선언한 경로(`Terminal.Options`)로 적으므로
+같은 이름의 타입을 구분할 수 있고, `.types` 항목에 그대로 쓸 수 있습니다.
 
 ```bash
 zig build go-coverage

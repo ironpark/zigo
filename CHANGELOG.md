@@ -4,6 +4,22 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Fixed
+
+- 등록 조상이 없는 dependency module 타입을 `.name`과 다른 Go 이름으로 등록하면 shim이
+  `target.<name>`만 적어 root가 그 이름을 내보내지 않으면 컴파일에 실패하던 문제를 고쳤습니다.
+  이제 shim이 module 아래 경로, Zig 타입 이름, 등록 이름 순으로 root가 내보내는 첫 선언을
+  comptime에 고르고, 어느 것도 없으면 후보를 나열한 컴파일 에러를 냅니다. `.materialized`,
+  `.opaque`, `.value` 모두 같은 규칙을 씁니다.
+- `go-coverage`가 pub 선언이 많은 root module에서 `evaluation exceeded 1000 backwards branches`로
+  실패하던 문제를 고쳤습니다. comptime 순회 함수마다 branch quota를 올립니다.
+- `go-coverage`의 미등록 타입 목록이 root 아래 선언 경로(`Terminal.Options`)를 씁니다. 이전에는
+  마지막 이름만 적어 같은 이름의 타입을 구분할 수 없었고, generic instantiation과 익명 컨테이너는
+  mangled `@typeName`(`Limits__union_39951`)으로 나왔습니다. 이제 root가 선언한 경로로 적고,
+  선언 경로가 없는 타입의 이유 문구는 `Limits.(anonymous union)`처럼 읽을 수 있게 풉니다.
+
 ## [0.8.0] - 2026-09-03
 
 ### Added

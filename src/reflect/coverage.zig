@@ -59,7 +59,7 @@ pub fn classify(
     var declarations: std.ArrayList(Declaration) = .empty;
     var seen_functions: std.ArrayList([]const u8) = .empty;
     defer seen_functions.deinit(allocator);
-    var public_types: std.ArrayList([]const u8) = .empty;
+    var public_types: std.ArrayList(PublicType) = .empty;
     defer public_types.deinit(allocator);
     var referenced_types: std.ArrayList([]const u8) = .empty;
     defer referenced_types.deinit(allocator);
@@ -107,8 +107,12 @@ pub fn classify(
 
     var unregistered: std.ArrayList([]const u8) = .empty;
     for (referenced_types.items) |full_name| {
-        if (!contains(public_types.items, full_name) or typeKnownToDocument(document, full_name) or isTranslateCTypeName(full_name)) continue;
-        const name = coverageTypeName(binding, full_name);
+        const public = publicTypeNamed(public_types.items, full_name) orelse continue;
+        if (typeKnownToDocument(document, full_name) or isTranslateCTypeName(full_name)) continue;
+        // The name the root module declares the type under is what the
+        // reader can register; `@typeName` may be a generic instantiation or
+        // an anonymous container's mangled name.
+        const name = if (public.path) |path| path else try coverageTypeName(allocator, binding, full_name);
         if (!contains(unregistered.items, name)) try unregistered.append(allocator, name);
     }
     std.mem.sort([]const u8, unregistered.items, {}, lessThan);
@@ -164,6 +168,7 @@ fn collectSourceFunctions(
     comptime Container: type,
     comptime owner: ?[]const u8,
 ) !void {
+    @setEvalBranchQuota(100_000);
     inline for (comptime std.meta.declarations(Container)) |candidate| {
         const value = @field(Container, candidate.name);
         if (@typeInfo(@TypeOf(value)) != .@"fn") continue;
@@ -214,7 +219,7 @@ fn collectContainer(
     allocator: std.mem.Allocator,
     declarations: *std.ArrayList(Declaration),
     seen_functions: *std.ArrayList([]const u8),
-    public_types: *std.ArrayList([]const u8),
+    public_types: *std.ArrayList(PublicType),
     referenced_types: *std.ArrayList([]const u8),
     comptime binding: anytype,
     document: semantic.Semantic,
@@ -224,10 +229,17 @@ fn collectContainer(
     comptime path_prefix: []const u8,
     comptime discovered: bool,
 ) !void {
+    @setEvalBranchQuota(100_000);
     inline for (comptime std.meta.declarations(Container)) |candidate| {
         const value = @field(Container, candidate.name);
         if (@TypeOf(value) == type and comptime walk.isContainer(value)) {
-            if (!contains(public_types.items, @typeName(value))) try public_types.append(allocator, @typeName(value));
+            if (publicTypeNamed(public_types.items, @typeName(value)) == null) try public_types.append(allocator, .{
+                .type_name = @typeName(value),
+                .path = if (owner == null and std.mem.eql(u8, path_prefix, "root") or std.mem.startsWith(u8, path_prefix, "root."))
+                    displayPath(owner, candidate.name)
+                else
+                    null,
+            });
         }
         if (@typeInfo(@TypeOf(value)) != .@"fn") continue;
         const identity = @typeName(Container) ++ "." ++ candidate.name;
@@ -268,17 +280,33 @@ fn collectContainer(
     }
 }
 
+/// A container the root module declares, with the declaration path it was
+/// first reached by. Registered type entries are walked with their entry
+/// name as the prefix rather than a root path, so a type reached only that
+/// way carries no path and falls back to its `@typeName`.
+const PublicType = struct {
+    type_name: []const u8,
+    path: ?[]const u8,
+};
+
+fn publicTypeNamed(types: []const PublicType, type_name: []const u8) ?PublicType {
+    for (types) |entry| if (std.mem.eql(u8, entry.type_name, type_name)) return entry;
+    return null;
+}
+
 fn displayPath(comptime owner: ?[]const u8, comptime name: []const u8) []const u8 {
     return if (owner) |value| value ++ "." ++ name else name;
 }
 
 fn collectFunctionTypes(allocator: std.mem.Allocator, types: *std.ArrayList([]const u8), comptime F: type) !void {
+    @setEvalBranchQuota(100_000);
     const info = @typeInfo(F).@"fn";
     inline for (info.params) |parameter| if (parameter.type) |T| try collectType(allocator, types, T);
     if (info.return_type) |T| try collectType(allocator, types, T);
 }
 
 fn collectType(allocator: std.mem.Allocator, types: *std.ArrayList([]const u8), comptime T: type) !void {
+    @setEvalBranchQuota(100_000);
     switch (@typeInfo(T)) {
         .@"struct", .@"enum", .@"union" => if (!isBuiltinSpecial(T) and !contains(types.items, @typeName(T))) try types.append(allocator, @typeName(T)),
         .pointer => |info| if (@typeInfo(info.child) == .@"fn") try collectFunctionTypes(allocator, types, info.child) else try collectType(allocator, types, info.child),
@@ -301,6 +329,7 @@ fn signatureReason(
     comptime function_name: []const u8,
     comptime F: type,
 ) ![]const u8 {
+    @setEvalBranchQuota(100_000);
     const info = @typeInfo(F).@"fn";
     var output: std.Io.Writer.Allocating = .init(allocator);
     var count: usize = 0;
@@ -376,12 +405,12 @@ fn typeReason(
         .void, .bool => null,
         .int => |info| if (whole or info.bits == 8 or info.bits == 16 or info.bits == 32 or info.bits == 64) null else "no C representation",
         .float => |info| if (info.bits == 32 or info.bits == 64) null else "no C representation",
-        .@"enum" => if (typeKnownToDocument(document, @typeName(T))) null else try unregisteredReason(allocator, T),
+        .@"enum" => if (typeKnownToDocument(document, @typeName(T))) null else try unregisteredReason(allocator, binding, T),
         .@"struct" => |info| if (info.layout == .@"extern" or info.layout == .@"packed" or typeKnownToDocument(document, @typeName(T))) null else try plainStructReason(allocator, binding, document, T),
-        .@"union" => |info| if (info.tag_type == null) "no C representation" else if (typeKnownToDocument(document, @typeName(T))) null else try unregisteredReason(allocator, T),
+        .@"union" => |info| if (info.tag_type == null) "no C representation" else if (typeKnownToDocument(document, @typeName(T))) null else try unregisteredReason(allocator, binding, T),
         .pointer => |info| switch (info.size) {
             .slice => try typeReason(allocator, binding, document, info.child, false),
-            .one => if (@typeInfo(info.child) == .@"fn") try callbackReason(allocator, binding, document, info.child) else if (isBuiltinSpecial(info.child) or typeKnownToDocument(document, @typeName(info.child))) null else try unregisteredReason(allocator, info.child),
+            .one => if (@typeInfo(info.child) == .@"fn") try callbackReason(allocator, binding, document, info.child) else if (isBuiltinSpecial(info.child) or typeKnownToDocument(document, @typeName(info.child))) null else try unregisteredReason(allocator, binding, info.child),
             .many => if (info.child == u8 and info.is_const and info.sentinel() != null) null else "no C representation",
             else => "no C representation",
         },
@@ -404,6 +433,7 @@ fn typeReason(
 }
 
 fn plainStructReason(allocator: std.mem.Allocator, comptime binding: anytype, document: semantic.Semantic, comptime T: type) ![]const u8 {
+    @setEvalBranchQuota(100_000);
     inline for (@typeInfo(T).@"struct".fields) |field| {
         if (try typeReason(allocator, binding, document, field.type, false)) |reason|
             return std.fmt.allocPrint(allocator, "plain struct (field {s}: {s})", .{ field.name, reason });
@@ -411,11 +441,12 @@ fn plainStructReason(allocator: std.mem.Allocator, comptime binding: anytype, do
     return "plain struct";
 }
 
-fn unregisteredReason(allocator: std.mem.Allocator, comptime T: type) ![]const u8 {
-    return std.fmt.allocPrint(allocator, "{s} unregistered", .{walk.shortTypeName(@typeName(T))});
+fn unregisteredReason(allocator: std.mem.Allocator, comptime binding: anytype, comptime T: type) ![]const u8 {
+    return std.fmt.allocPrint(allocator, "{s} unregistered", .{try coverageTypeName(allocator, binding, @typeName(T))});
 }
 
 fn callbackReason(allocator: std.mem.Allocator, comptime binding: anytype, document: semantic.Semantic, comptime F: type) !?[]const u8 {
+    @setEvalBranchQuota(100_000);
     const info = @typeInfo(F).@"fn";
     if (!std.meta.eql(info.calling_convention, std.builtin.CallingConvention.c)) return "non-C callback";
     inline for (info.params) |parameter| {
@@ -427,6 +458,7 @@ fn callbackReason(allocator: std.mem.Allocator, comptime binding: anytype, docum
 }
 
 fn functionListed(comptime binding: anytype, comptime path: []const u8) bool {
+    @setEvalBranchQuota(100_000);
     if (!@hasField(@TypeOf(binding), "functions")) return false;
     inline for (binding.functions) |entry| if (walk.functionEntryContainsPath(entry, path)) return true;
     return false;
@@ -441,12 +473,39 @@ fn typeKnownToDocument(document: semantic.Semantic, full_name: []const u8) bool 
     return false;
 }
 
-fn coverageTypeName(comptime binding: anytype, full_name: []const u8) []const u8 {
-    if (std.mem.indexOfScalar(u8, full_name, '(') == null) return walk.shortTypeName(full_name);
+/// How a type is named in the report: its full path below the root module
+/// (`Terminal.Options`, not `Options`, which three containers may declare),
+/// the whole `@typeName` for a dependency module's type, and anonymous
+/// containers (`Limits__union_39951`) as `Limits.(anonymous union)`.
+fn coverageTypeName(allocator: std.mem.Allocator, comptime binding: anytype, full_name: []const u8) ![]const u8 {
     const root_name = @typeName(binding.root);
-    if (full_name.len > root_name.len and full_name[root_name.len] == '.' and std.mem.startsWith(u8, full_name, root_name))
-        return full_name[root_name.len + 1 ..];
-    return full_name;
+    const below_root = if (full_name.len > root_name.len and full_name[root_name.len] == '.' and std.mem.startsWith(u8, full_name, root_name))
+        full_name[root_name.len + 1 ..]
+    else
+        full_name;
+    var result: std.ArrayList(u8) = .empty;
+    errdefer result.deinit(allocator);
+    var rest = below_root;
+    while (std.mem.indexOf(u8, rest, "__")) |start| {
+        const kind_start = start + 2;
+        const kind_end = std.mem.indexOfScalarPos(u8, rest, kind_start, '_') orelse break;
+        const kind = rest[kind_start..kind_end];
+        var digits_end = kind_end + 1;
+        while (digits_end < rest.len and std.ascii.isDigit(rest[digits_end])) digits_end += 1;
+        const is_anonymous = digits_end > kind_end + 1 and
+            (std.mem.eql(u8, kind, "struct") or std.mem.eql(u8, kind, "union") or std.mem.eql(u8, kind, "enum") or std.mem.eql(u8, kind, "opaque"));
+        if (!is_anonymous) {
+            try result.appendSlice(allocator, rest[0..kind_start]);
+            rest = rest[kind_start..];
+            continue;
+        }
+        try result.appendSlice(allocator, rest[0..start]);
+        try result.print(allocator, ".(anonymous {s})", .{kind});
+        rest = rest[digits_end..];
+    }
+    if (result.items.len == 0) return below_root;
+    try result.appendSlice(allocator, rest);
+    return result.toOwnedSlice(allocator);
 }
 
 fn isTranslateCTypeName(full_name: []const u8) bool {
@@ -496,8 +555,8 @@ test "classifier distinguishes selected and unsupported functions" {
     try std.testing.expectEqual(@as(usize, 2), report.unbound);
     try std.testing.expectEqual(@as(usize, 0), report.excluded);
     try std.testing.expectEqualStrings("not listed", report.declarations[0].reason.?);
-    try std.testing.expectEqualStrings("param p0: Hidden unregistered", report.declarations[1].reason.?);
-    try std.testing.expectEqualStrings("Hidden", report.unregistered_types[0]);
+    try std.testing.expectEqualStrings("param p0: Nested.Hidden unregistered", report.declarations[1].reason.?);
+    try std.testing.expectEqualStrings("Nested.Hidden", report.unregistered_types[0]);
 }
 
 test "covers classifies wrapped declarations in text and JSON" {
@@ -556,7 +615,20 @@ test "unregistered type names are readable and document aware" {
         pub const Generic = Batch(Coordinate, true);
         pub const C__struct_117396 = struct { value: u32 };
         pub const Options = struct { enabled: bool = false };
+        pub const Terminal = struct {
+            pub const Config = struct { rows: u16 = 24 };
+            pub fn resize(value: *Config) void {
+                _ = value;
+            }
+        };
+        pub const Limits = struct {
+            kind: union(enum) { rows: u32, columns: u32 },
+            pub const Kind = @FieldType(Limits, "kind");
+        };
 
+        pub fn setKind(value: *Limits.Kind) void {
+            _ = value;
+        }
         pub fn generic(value: *Generic) void {
             _ = value;
         }
@@ -585,12 +657,20 @@ test "unregistered type names are readable and document aware" {
     const report = try classify(allocator, binding, "sample", document, &.{});
 
     try std.testing.expect(typeKnownToDocument(document, @typeName(Api.Options)));
-    try std.testing.expectEqual(@as(usize, 1), report.unregistered_types.len);
-    try std.testing.expect(std.mem.indexOfScalar(u8, report.unregistered_types[0], '(') != null);
-    try std.testing.expect(!std.mem.eql(u8, report.unregistered_types[0], "Coordinate),true)"));
+    try std.testing.expectEqual(@as(usize, 3), report.unregistered_types.len);
+    try std.testing.expectEqualStrings("Generic", report.unregistered_types[0]);
+    try std.testing.expectEqualStrings("Limits.Kind", report.unregistered_types[1]);
+    try std.testing.expectEqualStrings("Terminal.Config", report.unregistered_types[2]);
     for (report.unregistered_types) |name| {
         try std.testing.expect(std.mem.indexOf(u8, name, "C__struct_") == null);
+        try std.testing.expect(std.mem.indexOf(u8, name, "__union_") == null);
         try std.testing.expect(!std.mem.eql(u8, name, "Options"));
+    }
+    for (report.declarations) |declaration| {
+        if (std.mem.eql(u8, declaration.path, "Terminal.resize"))
+            try std.testing.expectEqualStrings("param p0: Terminal.Config unregistered", declaration.reason.?);
+        if (std.mem.eql(u8, declaration.path, "setKind"))
+            try std.testing.expectEqualStrings("param p0: Limits.(anonymous union) unregistered", declaration.reason.?);
     }
 
     for (report.declarations) |declaration| {

@@ -480,6 +480,15 @@ enum 항목의 `exhaustive = false`는 Zig의 non-exhaustive enum을 그대로 �
 
 generic 타입은 구체화한 타입에 고유 이름을 붙여 등록합니다.
 
+**shim이 타입을 적는 방법.** shim은 root module을 `target`으로 import하고 등록 타입을
+반영된 Zig 경로로 적습니다. root 안의 타입(`root.Terminal.Options`)은 `target.Terminal.Options`,
+dependency module의 타입은 경로가 접두사로 겹치는 가장 가까운 등록 조상을 거쳐 적습니다.
+등록 조상이 없는 dependency module 타입은 root가 다시 내보낸 이름으로 닿습니다. 등록
+`.name`이 Zig 이름과 같으면 `target.<name>` 하나이고, 다르면(`.type = lib.ProbeReader,
+.name = "Probe"`) shim이 module 아래 경로 → Zig 타입 이름 → 등록 이름 순으로 root가 `pub`으로
+내보내는 첫 선언을 comptime에 고릅니다. 어느 것도 없으면 후보를 나열한 컴파일 에러가 납니다.
+`.opaque`, `.value`, `.materialized` 모두 같은 규칙입니다.
+
 ### Materialized 결과 트리
 
 `.repr = .materialized`로 등록한 struct는 native handle이나 field accessor 대신 공개 Go
