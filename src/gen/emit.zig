@@ -3129,12 +3129,12 @@ fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.Io.Wr
             try writer.print("\t\t\tentry, stored, ok := acquireCallback(uintptr(p{d}))\n\t\t\tif !ok {{ ", .{userdata_index});
             if (has_callback_cancellation) try writer.print("tripCallbackCancel(uintptr(p{d})); ", .{userdata_index});
             try writer.writeAll("return ");
-            try writeCallbackFailureValue(writer, callback.@"return".*, false);
+            try writeCallbackFailureValue(writer, callback.@"return".*, false, callbackFailureResult(program, parameter));
             try writer.writeAll(" }\n\t\t\tdefer releaseCallback(entry)\n");
             // Recovered after the entry is acquired so the panic has somewhere
             // to be recorded; nothing before this point can panic.
             try writer.writeAll("\t\t\tdefer func() { if value := recover(); value != nil { entry.record(value); result = ");
-            try writeCallbackFailureValue(writer, callback.@"return".*, true);
+            try writeCallbackFailureValue(writer, callback.@"return".*, true, callbackFailureResult(program, parameter));
             try writer.writeAll(" } }()\n");
             const widens = callbackResultWidens(callback.@"return".*);
             // A `go_error` signature stores a Go function with a wider result,
@@ -3170,9 +3170,14 @@ fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.Io.Wr
             }
             try writer.writeAll(")");
             if (go_error) {
-                // `-5` is the Go error, distinct from `-3` (panic) and `-4`
-                // (deleted token) so the target function can tell them apart.
-                try writer.writeAll("\n\t\t\tif err != nil { entry.recordErr(err); return callbackResult(-5) }\n\t\t\treturn callbackResult(value)");
+                // Without a declared domain fallback, `-5` is the Go error,
+                // distinct from `-3` (panic) and `-4` (deleted token).
+                try writer.writeAll("\n\t\t\tif err != nil { entry.recordErr(err); return ");
+                if (callbackFailureResult(program, parameter)) |fallback|
+                    try writer.print("callbackResult({d})", .{fallback})
+                else
+                    try writer.writeAll("callbackResult(-5)");
+                try writer.writeAll(" }\n\t\t\treturn callbackResult(value)");
             } else if (widens) {
                 try writer.writeAll(")");
             } else {
@@ -3200,17 +3205,35 @@ fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.Io.Wr
     _ = allocator;
 }
 
-/// The signed 32-bit result is the only callback ABI that carries failure
-/// codes; every other shape reports failure as a plain zero.
+/// The signed 32-bit result is the callback ABI that carries the historical
+/// sentinels. An explicit domain fallback may also name another scalar shape.
 fn callbackResultWidens(node: semantic.TypeNode) bool {
     return node == .int and node.int.signed and node.int.bits == 32;
 }
 
-fn writeCallbackFailureValue(writer: *std.Io.Writer, node: semantic.TypeNode, panic_value: bool) !void {
+fn writeCallbackFailureValue(writer: *std.Io.Writer, node: semantic.TypeNode, panic_value: bool, fallback: ?i128) !void {
+    if (fallback) |value| {
+        if (callbackResultWidens(node))
+            try writer.print("callbackResult({d})", .{value})
+        else
+            try writer.print("uintptr({d})", .{value});
+        return;
+    }
     if (callbackResultWidens(node))
         try writer.writeAll(if (panic_value) "callbackResult(-3)" else "callbackResult(-4)")
     else
         try writer.writeAll("0");
+}
+
+fn callbackFailureResult(program: abi.Program, parameter: semantic.Parameter) ?i128 {
+    if (parameter.on_callback_failure) |failure| return failure.result;
+    if (parameter.type != .callback) return null;
+    const ref = parameter.type.callback.ref orelse return null;
+    for (program.types) |declaration| {
+        if (declaration.kind == .callback and std.mem.eql(u8, declaration.name, ref))
+            return if (declaration.on_callback_failure) |failure| failure.result else null;
+    }
+    return null;
 }
 
 /// True when any callback carries a float parameter, and so any dispatcher has
@@ -3247,12 +3270,13 @@ fn uniqueCallbackSignatureCount(program: abi.Program) usize {
     return count;
 }
 
-fn callbackSignatureIndex(program: abi.Program, wanted: semantic.Callback) usize {
+fn callbackSignatureIndex(program: abi.Program, wanted: semantic.Parameter) usize {
     var index: usize = 0;
     for (program.functions) |function| {
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (parameter.type != .callback or !isFirstCallbackSignatureAt(program, function.origin, parameter_index)) continue;
-            if (callbackSignatureEqual(parameter.type.callback, wanted)) return index;
+            if (callbackSignatureEqual(parameter.type.callback, wanted.type.callback) and
+                callbackFailureResult(program, parameter) == callbackFailureResult(program, wanted)) return index;
             index += 1;
         }
     }
@@ -3260,11 +3284,12 @@ fn callbackSignatureIndex(program: abi.Program, wanted: semantic.Callback) usize
 }
 
 fn isFirstCallbackSignatureAt(program: abi.Program, origin: *const semantic.SemanticFn, parameter_index: usize) bool {
-    const wanted = origin.params[parameter_index].type.callback;
+    const wanted = origin.params[parameter_index];
     for (program.functions) |function| {
         for (function.origin.params, 0..) |parameter, candidate_index| {
             if (function.origin == origin and candidate_index == parameter_index) return true;
-            if (parameter.type == .callback and callbackSignatureEqual(parameter.type.callback, wanted)) return false;
+            if (parameter.type == .callback and callbackSignatureEqual(parameter.type.callback, wanted.type.callback) and
+                callbackFailureResult(program, parameter) == callbackFailureResult(program, wanted)) return false;
         }
     }
     unreachable;
@@ -3951,6 +3976,7 @@ fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
     const prefix = if (options.raw_colocated) "zigoRaw" else "";
     const has_streams = programHasStreams(program);
     const has_callback_cancellation = programHasCallbackCancellation(program);
+    const has_callback_failure_result = programHasCallbackFailureResult(program);
     try writer.print(
         "// {0s}CallbackState carries one Go callback across the native boundary, and\n" ++
             "// the panic it raises there until the generated caller rethrows it. The\n" ++
@@ -3964,12 +3990,15 @@ fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
         },
     );
     if (has_callback_cancellation) try writer.print(
-        "// {0s}SetCallbackCancel attaches a call-scoped cancellation flag to handle.\n" ++
-            "var callbackCancelFlags sync.Map // uintptr -> *uint32\n\n" ++
+        "var callbackCancelFlags sync.Map // uintptr -> *uint32\n\n" ++
+            "// {0s}SetCallbackCancel attaches a call-scoped cancellation flag to handle.\n" ++
             "func {0s}SetCallbackCancel(handle cgo.Handle, flag *uint32) {{\n\tif flag == nil {{ callbackCancelFlags.Delete(uintptr(handle)) }} else {{ callbackCancelFlags.Store(uintptr(handle), flag) }}\n\thandle.Value().(*{0s}CallbackState).cancel.Store(flag)\n}}\n\n" ++
             "func tripCallbackCancel(handle uintptr) {{\n\tif stored, loaded := callbackCancelFlags.Load(handle); loaded {{ atomic.StoreUint32(stored.(*uint32), 1) }}\n}}\n\n" ++
-            "func callbackState(handle cgo.Handle) (state *{0s}CallbackState, ok bool) {{\n\tdefer func() {{ if recover() != nil {{ state, ok = nil, false }} }}()\n\tstate, ok = handle.Value().(*{0s}CallbackState)\n\treturn state, ok\n}}\n\n" ++
             "func (state *{0s}CallbackState) tripCancel() {{\n\tif flag := state.cancel.Load(); flag != nil {{ atomic.StoreUint32(flag, 1) }}\n}}\n\n",
+        .{prefix},
+    );
+    if (has_callback_cancellation or has_callback_failure_result) try writer.print(
+        "func callbackState(handle cgo.Handle) (state *{0s}CallbackState, ok bool) {{\n\tdefer func() {{ if recover() != nil {{ state, ok = nil, false }} }}()\n\tstate, ok = handle.Value().(*{0s}CallbackState)\n\treturn state, ok\n}}\n\n",
         .{prefix},
     );
     try writer.print(
@@ -4004,13 +4033,16 @@ fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
                 try writer.writeByte(')');
             }
             try writer.writeAll(" {\n");
-            if (has_callback_cancellation) {
-                try writer.print("\tstate, ok := callbackState(cgo.Handle(p{d}))\n\tif !ok {{\n\t\ttripCallbackCancel(uintptr(p{d}))\n", .{ callback.params.len - 1, callback.params.len - 1 });
+            if (has_callback_cancellation or has_callback_failure_result) {
+                try writer.print("\tstate, ok := callbackState(cgo.Handle(p{d}))\n\tif !ok {{\n", .{callback.params.len - 1});
+                if (has_callback_cancellation) try writer.print("\t\ttripCallbackCancel(uintptr(p{d}))\n", .{callback.params.len - 1});
                 if (callback.@"return".* != .void) {
                     try writer.writeAll("\t\treturn C.");
                     try writeCgoType(writer, semanticScalar(program, callback.@"return".*));
                     try writer.writeByte('(');
-                    if (callbackResultWidens(callback.@"return".*))
+                    if (callbackFailureResult(program, parameter)) |fallback|
+                        try writer.print("{d}", .{fallback})
+                    else if (callbackResultWidens(callback.@"return".*))
                         try writer.writeAll("-4")
                     else
                         try writer.writeByte('0');
@@ -4024,7 +4056,11 @@ fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
             }
             try writer.writeAll("\tdefer func() {\n\t\tif value := recover(); value != nil {\n\t\t\tstate.record(value)\n");
             if (callback.@"return".* != .void) {
-                if (callback.@"return".* == .int and callback.@"return".int.signed and callback.@"return".int.bits == 32) {
+                if (callbackFailureResult(program, parameter)) |fallback| {
+                    try writer.writeAll("\t\t\tresult = C.");
+                    try writeCgoType(writer, semanticScalar(program, callback.@"return".*));
+                    try writer.print("({d})\n", .{fallback});
+                } else if (callback.@"return".* == .int and callback.@"return".int.signed and callback.@"return".int.bits == 32) {
                     try writer.writeAll("\t\t\tresult = C.int32_t(-3)\n");
                 } else {
                     try writer.writeAll("\t\t\tresult = 0\n");
@@ -4066,13 +4102,16 @@ fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
                 try writer.writeAll("\n}\n\n");
                 continue;
             }
-            // The error costs the result: `-5` says "the Go side failed" and
-            // the value the callback computed is not the one the native caller
-            // reads. It is distinct from `-3` (panic) and `-4` (deleted token)
-            // so the target function can tell the three apart.
+            // The error costs the result: the callback's declared fallback,
+            // or `-5` by default, says that the Go side failed. The value the
+            // callback computed is not the one the native caller reads.
             try writer.writeAll("\n\tif err != nil {\n\t\tstate.recordErr(err)\n\t\treturn C.");
             try writeCgoType(writer, semanticScalar(program, callback.@"return".*));
-            try writer.writeAll("(-5)\n\t}\n\treturn C.");
+            if (callbackFailureResult(program, parameter)) |fallback|
+                try writer.print("({d})\n", .{fallback})
+            else
+                try writer.writeAll("(-5)\n");
+            try writer.writeAll("\t}\n\treturn C.");
             try writeCgoType(writer, semanticScalar(program, callback.@"return".*));
             try writer.writeAll("(value)\n}\n\n");
         }
@@ -4836,7 +4875,7 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             switch (parameter.type) {
                 .callback => {
                     if (options.backend == .purego) {
-                        const signature_index = callbackSignatureIndex(program, parameter.type.callback);
+                        const signature_index = callbackSignatureIndex(program, parameter);
                         try writeRawReferencePrefix(writer, options);
                         try writer.print("CallbackPointer{d}(), uintptr({s}Handle)", .{ signature_index, go_names[parameter_index] });
                         call_index += 1;
@@ -8779,6 +8818,15 @@ fn programHasCallbackCancellation(program: abi.Program) bool {
     for (program.functions) |function| {
         if (function.origin.cancel == null) continue;
         for (function.origin.params) |parameter| if (parameter.type == .callback) return true;
+    }
+    return false;
+}
+
+fn programHasCallbackFailureResult(program: abi.Program) bool {
+    for (program.functions) |function| {
+        for (function.origin.params) |parameter| {
+            if (parameter.type == .callback and callbackFailureResult(program, parameter) != null) return true;
+        }
     }
     return false;
 }

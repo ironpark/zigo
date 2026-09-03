@@ -421,6 +421,8 @@ pub fn build(b: *std.Build) void {
         "tests/generator_cases/by_value_opaque/expected",
         "tests/generator_cases/callback_error/expected",
         "tests/generator_cases/callback_error_purego/expected",
+        "tests/generator_cases/callback_failure_result/expected",
+        "tests/generator_cases/callback_failure_result_purego/expected",
         "tests/generator_cases/cancel/expected",
         "tests/generator_cases/cancel_purego/expected",
         "tests/generator_cases/complex/expected",

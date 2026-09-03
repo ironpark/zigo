@@ -822,6 +822,9 @@
       "fields": [],
       "kind": "callback",
       "name": "Observer",
+      "on_callback_failure": {
+        "result": 0
+      },
       "zig_path": "*const fn (i32, usize) callconv(.c) i32"
     },
     {

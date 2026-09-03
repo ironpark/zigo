@@ -30,9 +30,9 @@ type zigoRawCallbackState struct {
 	cancel   atomic.Pointer[uint32]
 }
 
-// zigoRawSetCallbackCancel attaches a call-scoped cancellation flag to handle.
 var callbackCancelFlags sync.Map // uintptr -> *uint32
 
+// zigoRawSetCallbackCancel attaches a call-scoped cancellation flag to handle.
 func zigoRawSetCallbackCancel(handle cgo.Handle, flag *uint32) {
 	if flag == nil {
 		callbackCancelFlags.Delete(uintptr(handle))
@@ -48,6 +48,12 @@ func tripCallbackCancel(handle uintptr) {
 	}
 }
 
+func (state *zigoRawCallbackState) tripCancel() {
+	if flag := state.cancel.Load(); flag != nil {
+		atomic.StoreUint32(flag, 1)
+	}
+}
+
 func callbackState(handle cgo.Handle) (state *zigoRawCallbackState, ok bool) {
 	defer func() {
 		if recover() != nil {
@@ -56,12 +62,6 @@ func callbackState(handle cgo.Handle) (state *zigoRawCallbackState, ok bool) {
 	}()
 	state, ok = handle.Value().(*zigoRawCallbackState)
 	return state, ok
-}
-
-func (state *zigoRawCallbackState) tripCancel() {
-	if flag := state.cancel.Load(); flag != nil {
-		atomic.StoreUint32(flag, 1)
-	}
 }
 
 func (state *zigoRawCallbackState) record(value any) {
@@ -120,19 +120,19 @@ func zg_callback_context_create_go_callback_callback(p0 C.int32_t, p1 C.size_t) 
 	state, ok := callbackState(cgo.Handle(p1))
 	if !ok {
 		tripCallbackCancel(uintptr(p1))
-		return C.int32_t(-4)
+		return C.int32_t(0)
 	}
 	defer func() {
 		if value := recover(); value != nil {
 			state.record(value)
-			result = C.int32_t(-3)
+			result = C.int32_t(0)
 		}
 	}()
 	callback := state.Fn.(func(int32) (int32, error))
 	value, err := callback(int32(p0))
 	if err != nil {
 		state.recordErr(err)
-		return C.int32_t(-5)
+		return C.int32_t(0)
 	}
 	return C.int32_t(value)
 }
@@ -142,19 +142,19 @@ func zg_apply_go_callback_callback(p0 C.int32_t, p1 C.size_t) (result C.int32_t)
 	state, ok := callbackState(cgo.Handle(p1))
 	if !ok {
 		tripCallbackCancel(uintptr(p1))
-		return C.int32_t(-4)
+		return C.int32_t(0)
 	}
 	defer func() {
 		if value := recover(); value != nil {
 			state.record(value)
-			result = C.int32_t(-3)
+			result = C.int32_t(0)
 		}
 	}()
 	callback := state.Fn.(func(int32) (int32, error))
 	value, err := callback(int32(p0))
 	if err != nil {
 		state.recordErr(err)
-		return C.int32_t(-5)
+		return C.int32_t(0)
 	}
 	return C.int32_t(value)
 }
@@ -164,19 +164,19 @@ func zg_apply_until_cancelled_go_callback_callback(p0 C.int32_t, p1 C.size_t) (r
 	state, ok := callbackState(cgo.Handle(p1))
 	if !ok {
 		tripCallbackCancel(uintptr(p1))
-		return C.int32_t(-4)
+		return C.int32_t(0)
 	}
 	defer func() {
 		if value := recover(); value != nil {
 			state.record(value)
-			result = C.int32_t(-3)
+			result = C.int32_t(0)
 		}
 	}()
 	callback := state.Fn.(func(int32) (int32, error))
 	value, err := callback(int32(p0))
 	if err != nil {
 		state.recordErr(err)
-		return C.int32_t(-5)
+		return C.int32_t(0)
 	}
 	return C.int32_t(value)
 }

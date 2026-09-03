@@ -47,6 +47,9 @@ pub const ErrorUnion = struct {
     error_set: []const []const u8,
     payload: *TypeNode,
 };
+/// Domain value returned to native code when a Go callback cannot produce its
+/// ordinary result. The failure is still recorded for the public wrapper.
+pub const CallbackFailure = struct { result: i128 };
 pub const Callback = struct {
     c_callconv: bool = true,
     has_userdata: bool,
@@ -327,6 +330,9 @@ pub const Parameter = struct {
     /// rather than a plain `bool` so a binding that never asks for it keeps
     /// the field out of `semantic.json` entirely.
     go_error: ?bool = null,
+    /// Parameter-level override for the result a failed callback returns.
+    /// Absent preserves the historical in-band sentinel behavior.
+    on_callback_failure: ?CallbackFailure = null,
     /// Whether the native side may invoke this callback while a call into the
     /// binding is still active. Documentation only; zigo does not enforce it.
     reentrancy: ?CallbackReentrancy = null,
@@ -545,6 +551,8 @@ pub const TypeDecl = struct {
     kind: TypeKind,
     layout: ?Layout = null,
     name: []const u8,
+    /// Default failure result for callbacks registered under this type name.
+    on_callback_failure: ?CallbackFailure = null,
     /// The packed struct was explicitly registered with `.repr = .value`, not
     /// merely discovered as a tagged-union payload.
     registered_value: ?bool = null,
@@ -864,7 +872,7 @@ test "callback contracts are optional and round-trip when present" {
             .name = "watch",
             .params = &.{
                 .{ .name = "plain", .type = callback },
-                .{ .name = "contracted", .reentrancy = .forbidden, .thread = .any, .type = callback },
+                .{ .name = "contracted", .on_callback_failure = .{ .result = 7 }, .reentrancy = .forbidden, .thread = .any, .type = callback },
             },
             .@"return" = .{ .void = {} },
             .symbol = "zg_watch",
@@ -877,12 +885,14 @@ test "callback contracts are optional and round-trip when present" {
     defer std.testing.allocator.free(bytes);
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, bytes, "\"reentrancy\": \"forbidden\""));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, bytes, "\"thread\": \"any\""));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, bytes, "\"on_callback_failure\""));
 
     var parsed = try Semantic.parse(std.testing.allocator, bytes);
     defer parsed.deinit();
     try std.testing.expectEqual(@as(?CallbackReentrancy, null), parsed.value.functions[0].params[0].reentrancy);
     try std.testing.expectEqual(CallbackReentrancy.forbidden, parsed.value.functions[0].params[1].reentrancy.?);
     try std.testing.expectEqual(CallbackThread.any, parsed.value.functions[0].params[1].thread.?);
+    try std.testing.expectEqual(@as(i128, 7), parsed.value.functions[0].params[1].on_callback_failure.?.result);
 }
 
 test "child-of-receiver metadata is emitted only when enabled" {

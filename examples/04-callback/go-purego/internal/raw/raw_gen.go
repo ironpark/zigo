@@ -259,20 +259,20 @@ func ensureCallbackDispatchers() {
 			entry, stored, ok := acquireCallback(uintptr(p1))
 			if !ok {
 				tripCallbackCancel(uintptr(p1))
-				return callbackResult(-4)
+				return callbackResult(0)
 			}
 			defer releaseCallback(entry)
 			defer func() {
 				if value := recover(); value != nil {
 					entry.record(value)
-					result = callbackResult(-3)
+					result = callbackResult(0)
 				}
 			}()
 			callback := stored.(func(int32) (int32, error))
 			value, err := callback(p0)
 			if err != nil {
 				entry.recordErr(err)
-				return callbackResult(-5)
+				return callbackResult(0)
 			}
 			return callbackResult(value)
 		})

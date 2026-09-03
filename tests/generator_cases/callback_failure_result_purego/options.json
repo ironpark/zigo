@@ -1,0 +1,6 @@
+{
+  "backend": "purego",
+  "package": "fallback",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/fallback"
+}

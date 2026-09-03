@@ -128,6 +128,8 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
         // stops compiling. Breaking on the surface consumers actually write.
         if (!goErrorEqual(old.params, new.params))
             try add(allocator, &report, .breaking, identity, "callback Go error surface changed");
+        if (!callbackFailureEqual(old.params, new.params))
+            try add(allocator, &report, .compatible, identity, "callback failure result changed");
         // The C signature keeps its flag parameter either way, but the Go one
         // gains or loses its leading `ctx`, so every call site moves.
         if (!semantic.optionalStringEqual(old.cancel, new.cancel))
@@ -157,6 +159,8 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
         };
         if (!semantic.optionalStringEqual(old.package, new.package))
             try add(allocator, &report, .breaking, old.name, "Go package assignment changed");
+        if (!std.meta.eql(old.on_callback_failure, new.on_callback_failure))
+            try add(allocator, &report, .compatible, old.name, "callback failure result changed");
         switch (classifyTypeChange(old, new)) {
             .equal => {},
             .appended => if (old.kind == .tagged_union and base.taggedUnionUsedByValue(old.name))
@@ -532,6 +536,14 @@ fn goErrorEqual(lhs: []const semantic.Parameter, rhs: []const semantic.Parameter
     return exposedParamsMatch(lhs, rhs, struct {
         fn matches(a: semantic.Parameter, b: semantic.Parameter) bool {
             return a.goError() == b.goError();
+        }
+    }.matches);
+}
+
+fn callbackFailureEqual(lhs: []const semantic.Parameter, rhs: []const semantic.Parameter) bool {
+    return exposedParamsMatch(lhs, rhs, struct {
+        fn matches(a: semantic.Parameter, b: semantic.Parameter) bool {
+            return std.meta.eql(a.on_callback_failure, b.on_callback_failure);
         }
     }.matches);
 }
@@ -1253,6 +1265,23 @@ test "dependent lifetime changes are ABI compatible Go-surface changes" {
     defer lost.deinit(std.testing.allocator);
     try std.testing.expectEqual(ChangeKind.compatible, lost.changes.items[0].kind);
     try std.testing.expect(!lost.hasBreaking());
+}
+
+test "callback failure result changes are ABI compatible" {
+    var result: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+    const callback_params = [_]semantic.TypeNode{};
+    const callback: semantic.TypeNode = .{ .callback = .{ .has_userdata = false, .params = &callback_params, .@"return" = &result } };
+    const plain_params = [_]semantic.Parameter{.{ .name = "callback", .type = callback }};
+    const fallback_params = [_]semantic.Parameter{.{ .name = "callback", .on_callback_failure = .{ .result = 0 }, .type = callback }};
+    const plain_functions = [_]semantic.SemanticFn{.{ .name = "run", .params = &plain_params, .@"return" = .{ .void = {} }, .symbol = "zg_run" }};
+    const fallback_functions = [_]semantic.SemanticFn{.{ .name = "run", .params = &fallback_params, .@"return" = .{ .void = {} }, .symbol = "zg_run" }};
+    const plain: semantic.Semantic = .{ .functions = &plain_functions, .package = "cb", .prefix = "zg", .zig_version = "0.16.0" };
+    const fallback: semantic.Semantic = .{ .functions = &fallback_functions, .package = "cb", .prefix = "zg", .zig_version = "0.16.0" };
+    var report = try diff(std.testing.allocator, plain, fallback);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 1), report.changes.items.len);
+    try std.testing.expectEqual(ChangeKind.compatible, report.changes.items[0].kind);
+    try std.testing.expectEqualStrings("callback failure result changed", report.changes.items[0].detail);
 }
 
 test "diff cleans up every partial allocation failure" {

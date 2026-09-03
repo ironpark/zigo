@@ -170,7 +170,7 @@ error입니다.
 | `constructs` | 이 함수가 만드는 opaque 타입 이름 |
 | `destroys` | 이 함수가 없애는 opaque 타입 이름 |
 | `child_of_receiver` | 생성된 handle이 receiver보다 먼저 닫혀야 하는지 여부 |
-| `param_meta` | 파라미터별 `semantic`, `retention`, `reentrancy`, `thread`, `direction`, `written`, `buffer`, `flatten` |
+| `param_meta` | 파라미터별 `semantic`, `retention`, `reentrancy`, `thread`, `go_error`, `on_callback_failure`, `direction`, `written`, `buffer`, `flatten` |
 | `semantic` | 반환값 의미. 예: `.utf8_string` |
 | `returns` | 반환 pointer의 ownership |
 
@@ -331,6 +331,41 @@ C ABI는 바뀌지 않습니다 — `go_error`는 Go 표면만 넓힙니다. 다
 > 시그니처는 Go 타입 하나(그리고 purego에서는 dispatcher 하나)를 공유하므로, 한 곳에
 > `.go_error = true`를 켜면 그 시그니처를 쓰는 모든 콜백 파라미터가 `error`를 돌려주는
 > 타입이 됩니다.
+
+### 콜백 실패 반환값 (`on_callback_failure`)
+
+기본 dispatcher는 `i32` 콜백의 panic에 `-3`, 삭제된 userdata token에 `-4`, Go error에
+`-5`를 반환합니다. 이 값들이 native 도메인의 정상 값과 겹치거나, 도메인이 별도의 정지 값을
+요구하면 callback 타입 항목에 실패 반환값을 선언할 수 있습니다.
+
+```zig
+.types = .{
+    .{
+        .name = "Observer",
+        .type = mylib.Observer,
+        .repr = .callback,
+        .on_callback_failure = .{ .result = 0 },
+    },
+},
+```
+
+한 함수의 callback에만 적용하려면 파라미터 메타데이터에 같은 값을 둡니다.
+
+```zig
+.param_meta = .{
+    .callback = .{ .on_callback_failure = .{ .result = 0 } },
+},
+```
+
+이 설정은 **native에 돌려주는 값만** 바꿉니다. dispatcher는 panic이나 Go error를 여전히
+callback state에 기록하고, 생성된 공개 함수는 native 호출이 끝난 뒤 `*CallbackPanicError`로
+다시 panic하거나 `*CallbackError`를 반환합니다. `.cancel`도 함께 있으면 실패 반환 전에 취소
+플래그를 먼저 세웁니다. cgo와 purego가 같은 값을 사용합니다.
+
+`.result`는 callback 반환 타입에 들어가야 하고 void callback에는 쓸 수 없습니다
+(`ZIGO046`). 이 메타데이터는 callback ABI나 공개 Go 함수 타입을 바꾸지 않으므로 `abi-diff`는
+추가·변경·제거를 compatible로 분류합니다. 설정하지 않은 callback의 `-3`/`-4`/`-5`와 생성
+출력은 그대로입니다.
 
 ## 정수 폭
 
@@ -1407,8 +1442,8 @@ panic하는 `Must*` method에서 복구한 값도 `error`이면 같은 규칙으
 ### Go 콜백의 panic
 
 Go 콜백이 native 호출 안에서 panic하면 trampoline이 그것을 복구합니다 — panic은 native
-frame을 풀 수 없기 때문입니다. native 쪽은 부호 있는 32비트 결과에서 `-3`을 받아 스스로
-정리하고 반환할 수 있고, 그 호출이 돌아온 직후 생성된 함수가 **같은 goroutine에서 panic을
+frame을 풀 수 없기 때문입니다. native 쪽은 부호 있는 32비트 결과에서 기본값 `-3` 또는
+`on_callback_failure.result`를 받아 스스로 정리하고 반환할 수 있고, 그 호출이 돌아온 직후 생성된 함수가 **같은 goroutine에서 panic을
 다시 일으킵니다**. 다시 일어난 값은 `*CallbackPanicError`이며 원래 panic 값(`Value`)과 복구
 시점의 stack(`Stack`)을 담습니다. `Unwrap`은 `Value`가 `error`일 때 그것을 돌려주므로
 `errors.Is`·`errors.As`가 원인까지 닿습니다.
@@ -1427,7 +1462,7 @@ defer func() {
 ```
 
 이 규칙은 콜백을 인자로 받은 호출과, 콜백을 retained로 보유한 handle의 모든 method에
-적용됩니다. native 코드가 `-3`을 자기 error로 바꿔 반환하더라도 Go 호출자는 그 error가
+적용됩니다. native 코드가 실패 반환값을 자기 error로 바꿔 반환하더라도 Go 호출자는 그 error가
 아니라 panic을 봅니다 — 콜백의 panic은 호출자 자신의 Go 코드가 실패한 것이고, 생성된 호출은
 그것이 복구 가능한지 판단할 수 없기 때문입니다.
 

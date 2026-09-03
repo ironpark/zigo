@@ -72,6 +72,10 @@ pub fn reflect(
                     try types.append(allocator, .{
                         .kind = .callback,
                         .name = entry.name,
+                        .on_callback_failure = if (@hasField(@TypeOf(entry), "on_callback_failure"))
+                            .{ .result = entry.on_callback_failure.result }
+                        else
+                            null,
                         .zig_path = try registeredZigPath(allocator, declaration, T, type_name),
                     });
                 },
@@ -1091,6 +1095,8 @@ fn appendFunction(
                 if (@hasField(@TypeOf(value), "written")) reflected.written = value.written;
                 if (@hasField(@TypeOf(value), "buffer")) reflected.buffer = value.buffer;
                 if (@hasField(@TypeOf(value), "go_error")) reflected.go_error = value.go_error;
+                if (@hasField(@TypeOf(value), "on_callback_failure"))
+                    reflected.on_callback_failure = .{ .result = value.on_callback_failure.result };
                 if (@hasField(@TypeOf(value), "reentrancy")) reflected.reentrancy = value.reentrancy;
                 if (@hasField(@TypeOf(value), "thread")) reflected.thread = value.thread;
                 if (@hasField(@TypeOf(value), "flatten")) reflected.flatten = flattened_fields;
@@ -2555,6 +2561,31 @@ test "callback parameter contracts reflect into semantic metadata" {
     defer std.testing.allocator.free(bytes);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"reentrancy\": \"forbidden\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"thread\": \"any\"") != null);
+}
+
+test "callback failure results reflect from type and parameter metadata" {
+    const Fixture = struct {
+        const Observer = *const fn (i32, usize) callconv(.c) i32;
+        pub fn apply(callback: Observer, userdata: usize) i32 {
+            return callback(1, userdata);
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{.{ .name = "Observer", .type = Fixture.Observer, .repr = .callback, .on_callback_failure = .{ .result = 0 } }},
+        .functions = .{.{
+            .path = "root.apply",
+            .params = .{ "callback", "userdata" },
+            .param_meta = .{ .callback = .{ .on_callback_failure = .{ .result = 1 } } },
+        }},
+    }, "callbacks", "zg");
+    try std.testing.expectEqual(@as(i128, 0), document.types[0].on_callback_failure.?.result);
+    try std.testing.expectEqual(@as(i128, 1), document.functions[0].params[0].on_callback_failure.?.result);
+    const bytes = try document.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, bytes, "\"on_callback_failure\""));
 }
 
 test "sentinel byte pointers reflect as c strings" {

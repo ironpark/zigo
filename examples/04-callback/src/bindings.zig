@@ -11,7 +11,7 @@ pub const bindings = zigo.define(.{
         .{ .name = "IntBuffer", .type = library.IntBuffer, .repr = .@"opaque" },
         // One Go type for every parameter of this signature, named after the
         // Zig alias: the alias itself has no reflectable name.
-        .{ .name = "Observer", .type = library.Observer, .repr = .callback },
+        .{ .name = "Observer", .type = library.Observer, .repr = .callback, .on_callback_failure = .{ .result = 0 } },
         .{ .name = "VoidObserver", .type = library.VoidObserver, .repr = .callback },
     },
     .functions = .{

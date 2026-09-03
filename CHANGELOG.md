@@ -11,6 +11,10 @@
 - `.cancel.canceled`로 취소를 뜻하는 Zig error 이름을 지정할 수 있습니다. 생략하면 기존
   `Canceled`를 사용하며, 예를 들어 `Cancelled`를 지정하면 Go가 `ErrCancelled`를
   `ctx.Err()`로 변환합니다.
+- callback 타입이나 함수의 callback 파라미터에
+  `.on_callback_failure = .{ .result = N }`을 선언해 panic, 삭제된 token, Go error 때 native로
+  돌려줄 도메인 값을 고를 수 있습니다. 실패 기록과 rethrow는 유지되며 semantic JSON,
+  `ZIGO046` 범위 검증, ABI-compatible diff, cgo/purego dispatcher에 반영됩니다.
 - `.cancel` 함수가 Go callback도 받으면 callback panic, 삭제된 token, Go error가 callback
   state에 연결된 취소 플래그를 순차 일관 store로 올립니다. native loop가 callback의 in-band
   실패 반환값을 무시해도 다음 폴링 지점에서 멈추며 cgo와 purego가 같은 동작을 합니다.

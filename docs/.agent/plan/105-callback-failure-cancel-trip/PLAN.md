@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T06:34:33Z"
 description: make a failed Go callback trip the function's cancel flag and let bindings declare a domain fallback result instead of the in-band -3/-4 sentinels
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-03T03:53:27Z"
 ---
 > NEXT: Set the cancel flag from every callback failure path. ([Phase 0](phases/00-cancel-trip.md))
@@ -8,7 +9,7 @@ registered_at: "2026-09-03T03:53:27Z"
 # Phases
 
 - [x] [Phase 00: Trip the cancel flag on callback failure](phases/00-cancel-trip.md)
-- [ ] [Phase 01: Declared fallback result](phases/01-fallback-result.md)
+- [x] [Phase 01: Declared fallback result](phases/01-fallback-result.md)
 
 # Shared Verification
 

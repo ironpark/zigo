@@ -236,6 +236,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             if (try streamParameterIssue(allocator, function, parameter)) |issue| return issue;
             if (try atomicPointerIssue(allocator, function, parameter)) |issue| return issue;
             if (try callbackGoErrorIssue(allocator, function, parameter)) |issue| return issue;
+            if (try callbackFailureResultIssue(allocator, document, function, parameter)) |issue| return issue;
             if (try callbackContractIssue(allocator, function, parameter)) |issue| return issue;
             if (parameter.type == .cancel_flag and !(parameter.cancel orelse false)) return .{
                 .severity = .@"error",
@@ -976,6 +977,74 @@ fn callbackGoErrorIssue(
         ),
         .site = functionSiteFor(function, declaration),
         .hint = "declare the Zig callback as `*const fn (...) callconv(.c) i32`; the trampoline reports a Go error as the result `-5`",
+    };
+}
+
+fn callbackFailureResult(document: semantic.Semantic, parameter: semantic.Parameter) ?semantic.CallbackFailure {
+    if (parameter.on_callback_failure) |value| return value;
+    if (parameter.type != .callback) return null;
+    const ref = parameter.type.callback.ref orelse return null;
+    for (document.types) |declaration| {
+        if (declaration.kind == .callback and std.mem.eql(u8, declaration.name, ref))
+            return declaration.on_callback_failure;
+    }
+    return null;
+}
+
+fn callbackFailureResultIssue(
+    allocator: std.mem.Allocator,
+    document: semantic.Semantic,
+    function: semantic.SemanticFn,
+    parameter: semantic.Parameter,
+) !?diagnostic.Diagnostic {
+    const failure = callbackFailureResult(document, parameter) orelse return null;
+    const declaration = try functionDeclarationAlloc(allocator, function);
+    if (parameter.type != .callback) return .{
+        .severity = .@"error",
+        .code = "ZIGO046",
+        .message = try std.fmt.allocPrint(allocator, "callback failure result declared on parameter `{s}`, which is not a callback", .{parameter.name}),
+        .site = functionSiteFor(function, declaration),
+        .hint = "use `.on_callback_failure` only on a callback type entry or callback parameter",
+    };
+    const result = parameter.type.callback.@"return".*;
+    if (result == .void) return .{
+        .severity = .@"error",
+        .code = "ZIGO046",
+        .message = try std.fmt.allocPrint(allocator, "callback `{s}` cannot declare a failure result because it returns void", .{parameter.name}),
+        .site = functionSiteFor(function, declaration),
+        .hint = "remove `.on_callback_failure`, or give the callback a scalar return type",
+    };
+    if (callbackFailureValueFits(document, result, failure.result)) return null;
+    return .{
+        .severity = .@"error",
+        .code = "ZIGO046",
+        .message = try std.fmt.allocPrint(allocator, "callback failure result {d} does not fit callback `{s}`'s return type", .{ failure.result, parameter.name }),
+        .site = functionSiteFor(function, declaration),
+        .hint = "choose a `.result` value representable by the callback return type",
+    };
+}
+
+fn callbackFailureValueFits(document: semantic.Semantic, node: semantic.TypeNode, value: i128) bool {
+    return switch (node) {
+        .bool => value == 0 or value == 1,
+        .int => |integer| blk: {
+            if (integer.bits == 0 or integer.bits > 64) break :blk false;
+            if (integer.signed) {
+                const magnitude = @as(i128, 1) << @intCast(integer.bits - 1);
+                break :blk value >= -magnitude and value < magnitude;
+            }
+            break :blk value >= 0 and value < (@as(i128, 1) << @intCast(integer.bits));
+        },
+        .float => true,
+        .@"enum" => |enum_ref| blk: {
+            for (document.types) |declaration| {
+                if (declaration.kind != .@"enum" or !std.mem.eql(u8, declaration.name, enum_ref.ref)) continue;
+                const tag = declaration.tag_type orelse break :blk false;
+                break :blk callbackFailureValueFits(document, tag, value);
+            }
+            break :blk false;
+        },
+        else => false,
     };
 }
 
@@ -4356,6 +4425,41 @@ test "a Go error on a callback is refused unless the Zig result is i32" {
         .zig_version = "0.16.0",
     };
     try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(scratch.allocator(), document));
+}
+
+test "callback failure result must fit a non-void callback return" {
+    var i8_node: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = true } };
+    var void_node: semantic.TypeNode = .{ .void = {} };
+    const usize_node: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
+    const callback_params = [_]semantic.TypeNode{usize_node};
+    const narrow_callback: semantic.TypeNode = .{ .callback = .{
+        .has_userdata = true,
+        .params = &callback_params,
+        .@"return" = &i8_node,
+    } };
+    const void_callback: semantic.TypeNode = .{ .callback = .{
+        .has_userdata = true,
+        .params = &callback_params,
+        .@"return" = &void_node,
+    } };
+    const good_params = [_]semantic.Parameter{.{ .name = "callback", .on_callback_failure = .{ .result = -128 }, .type = narrow_callback }};
+    const wide_params = [_]semantic.Parameter{.{ .name = "callback", .on_callback_failure = .{ .result = -129 }, .type = narrow_callback }};
+    const void_params = [_]semantic.Parameter{.{ .name = "callback", .on_callback_failure = .{ .result = 0 }, .type = void_callback }};
+    const good_functions = [_]semantic.SemanticFn{.{ .name = "run", .params = &good_params, .@"return" = .{ .void = {} }, .symbol = "zg_run" }};
+    const wide_functions = [_]semantic.SemanticFn{.{ .name = "run", .params = &wide_params, .@"return" = .{ .void = {} }, .symbol = "zg_run" }};
+    const void_functions = [_]semantic.SemanticFn{.{ .name = "run", .params = &void_params, .@"return" = .{ .void = {} }, .symbol = "zg_run" }};
+    const good: semantic.Semantic = .{ .functions = &good_functions, .package = "cb", .prefix = "zg", .zig_version = "0.16.0" };
+    const wide: semantic.Semantic = .{ .functions = &wide_functions, .package = "cb", .prefix = "zg", .zig_version = "0.16.0" };
+    const no_result: semantic.Semantic = .{ .functions = &void_functions, .package = "cb", .prefix = "zg", .zig_version = "0.16.0" };
+    try semanticDocument(std.testing.allocator, good);
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const wide_issue = (try findIssue(arena.allocator(), wide)).?;
+    try std.testing.expectEqualStrings("ZIGO046", wide_issue.code);
+    try std.testing.expect(std.mem.containsAtLeast(u8, wide_issue.message, 1, "does not fit"));
+    const void_issue = (try findIssue(arena.allocator(), no_result)).?;
+    try std.testing.expectEqualStrings("ZIGO046", void_issue.code);
+    try std.testing.expect(std.mem.containsAtLeast(u8, void_issue.message, 1, "returns void"));
 }
 
 test "callback contracts are refused on non-callback parameters" {

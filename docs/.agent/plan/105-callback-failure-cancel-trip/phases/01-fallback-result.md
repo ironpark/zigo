@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-03T06:34:33Z"
 depends_on:
 - "105-callback-failure-cancel-trip#0"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: A callback with `.on_callback_failure = .{ .result = 0 }` returns 0 on panic and the panic is still rethrown after the call; validation rejects a value that does not fit.
 > NEXT: none
