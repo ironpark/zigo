@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-09-03T04:47:40Z"
 description: register integer-backed packed structs of bool, integer, and enum fields as Go value mirrors and let them cross as parameters, returns, extern struct fields, and field accessors
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-03T03:27:39Z"
 ---
 > NEXT: Accept integer-backed packed structs as registered value types. ([Phase 0](phases/00-packed-values.md))
 
 # Phases
 
-- [ ] [Phase 00: Packed struct values](phases/00-packed-values.md)
+- [x] [Phase 00: Packed struct values](phases/00-packed-values.md)
 
 # Shared Verification
 

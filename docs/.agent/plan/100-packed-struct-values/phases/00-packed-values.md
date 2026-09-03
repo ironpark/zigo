@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T04:47:40Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: A registered packed struct crosses in every listed position on both backends with Go tests; goldens unchanged elsewhere.
 > NEXT: none
