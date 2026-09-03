@@ -959,7 +959,10 @@ fn addGoldenArtifactChecks(
     test_step.dependOn(&parse_shim.step);
 
     if (std.mem.eql(u8, name, "materialized")) {
-        const roundtrip = b.addSystemCommand(&.{ b.graph.zig_exe, "test", "--dep", "zigo_target" });
+        // The target's release path frees through `std.heap.c_allocator`, as
+        // the generated shim does, so the test links libc explicitly: macOS
+        // links it implicitly and hides the omission, Linux does not.
+        const roundtrip = b.addSystemCommand(&.{ b.graph.zig_exe, "test", "-lc", "--dep", "zigo_target" });
         roundtrip.setName("materialized walker round trip");
         roundtrip.addPrefixedFileArg("-Mroot=", case.path(b, "roundtrip.zig"));
         roundtrip.addPrefixedFileArg("-Mzigo_target=", case.path(b, "target.zig"));
