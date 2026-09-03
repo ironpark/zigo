@@ -7,7 +7,7 @@ registered_at: "2026-09-03T02:46:06Z"
 
 # Phases
 
-- [ ] [Phase 00: abi-diff input validation](phases/00-abi-diff-inputs.md)
+- [x] [Phase 00: abi-diff input validation](phases/00-abi-diff-inputs.md)
 - [ ] [Phase 01: generator case cache correctness](phases/01-case-cache.md)
 
 # Shared Verification

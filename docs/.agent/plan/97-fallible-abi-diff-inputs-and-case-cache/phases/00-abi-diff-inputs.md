@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T02:57:45Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Malformed input yields a diagnostic and non-zero exit; existing abi-diff tests unchanged; tests green.
 > NEXT: none
