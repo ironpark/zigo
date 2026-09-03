@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T06:14:54Z"
 description: collect system libraries, frameworks and lib paths across imported modules and verify pkg-config names at build time
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-03T03:53:27Z"
 ---
 > NEXT: Walk the module graph for system libraries, frameworks and lib paths. ([Phase 0](phases/00-transitive-link-inputs.md))
@@ -8,7 +9,7 @@ registered_at: "2026-09-03T03:53:27Z"
 # Phases
 
 - [x] [Phase 00: Transitive link inputs](phases/00-transitive-link-inputs.md)
-- [ ] [Phase 01: Build-time pkg-config resolution](phases/01-pkg-config-resolution.md)
+- [x] [Phase 01: Build-time pkg-config resolution](phases/01-pkg-config-resolution.md)
 
 # Shared Verification
 
