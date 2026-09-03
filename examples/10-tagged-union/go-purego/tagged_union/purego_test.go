@@ -42,6 +42,7 @@ func TestPuregoTaggedUnion(t *testing.T) {
 	if !LibraryLoaded() {
 		t.Fatal("library not marked loaded")
 	}
+	assertPackedValueCalls(t)
 	if got := Sum(nil); got != 0 {
 		t.Fatalf("empty sum = %v", got)
 	}

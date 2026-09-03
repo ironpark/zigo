@@ -9,6 +9,42 @@ import (
 	"example.com/zigo/tagged-union/internal/raw"
 )
 
+// Flags returns the Zig field Palette.flags.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (p *Palette) Flags() (Flags, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Palette.Flags receiver", p)
+	if err != nil {
+		return Flags{}, err
+	}
+	defer p.zigoRelease()
+	result, code := raw.PaletteFlags(ptr)
+	if code != 0 {
+		return Flags{}, zigoPoisonAfterPanic(errorForCode("Palette.Flags", code), p)
+	}
+	return FlagsFromBacking(result), nil
+}
+
+// SetFlags sets the Zig field Palette.flags.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (p *Palette) SetFlags(v Flags) error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Palette.SetFlags receiver", p)
+	if err != nil {
+		return err
+	}
+	defer p.zigoRelease()
+	code := raw.PaletteSetFlags(ptr, v.Backing())
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Palette.SetFlags", code), p)
+	}
+	return nil
+}
+
 // NewChild creates a caller-owned Child.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
@@ -361,6 +397,61 @@ func CurrentViewport(kind uint8) (ScrollViewport, error) {
 		return ScrollViewport{}, errorForCode("CurrentViewport", code)
 	}
 	return zigoScrollViewportFromRaw(result), nil
+}
+
+// EchoRgb calls the Zig function echoRGB.
+func EchoRgb(value RGB) RGB {
+	return RGBFromBacking(raw.EchoRgb(value.Backing()))
+}
+
+// MaybeRgb calls the Zig function maybeRGB.
+func MaybeRgb(present bool) (RGB, bool) {
+	zigoResult, zigoHas := raw.MaybeRgb(boolToUint8(present))
+	return RGBFromBacking(zigoResult), zigoHas
+}
+
+// CheckedRgb calls the Zig function checkedRGB.
+// Native failures are returned as generated error values.
+func CheckedRgb(valid bool) (RGB, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	result, code := raw.CheckedRgb(boolToUint8(valid))
+	if code != 0 {
+		return RGB{}, errorForCode("CheckedRgb", code)
+	}
+	return RGBFromBacking(result), nil
+}
+
+// EchoColorRecord calls the Zig function echoColorRecord.
+func EchoColorRecord(value ColorRecord) ColorRecord {
+	return zigoColorRecordFromRaw(raw.EchoColorRecord(zigoColorRecordToRaw(value)))
+}
+
+// FlattenFlags calls the Zig function flattenFlags.
+func FlattenFlags(flags Flags) Flags {
+	return FlagsFromBacking(raw.FlattenFlags(flags.Backing()))
+}
+
+// NewPalette creates a caller-owned Palette.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
+func NewPalette(flags Flags) (*Palette, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	result, code := raw.PaletteCreate(flags.Backing())
+	if code != 0 {
+		return nil, errorForCode("NewPalette", code)
+	}
+	return newPalette(result), nil
+}
+
+// VisitFlags calls the Zig function visitFlags.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+func VisitFlags(callback FlagsObserver) {
+	callbackHandle := newFlagsObserverHandle(callback)
+	defer deleteCallbackHandle(callbackHandle)
+	raw.VisitFlags(uintptr(callbackHandle))
+	zigoRethrowCallbackPanic("VisitFlags", callbackHandle)
 }
 
 // PanicError calls the Zig function panicError.

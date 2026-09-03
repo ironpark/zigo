@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: A registered packed struct crosses in every listed position on both backends with Go tests; goldens unchanged elsewhere.
 > NEXT: none

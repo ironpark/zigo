@@ -4,6 +4,7 @@ package tagged_union
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 
 	"example.com/zigo/tagged-union/internal/raw"
@@ -17,6 +18,9 @@ var ErrNativePanic = errors.New("zigo: native panic")
 
 // ErrNativeStatus identifies a native status this binding does not recognize.
 var ErrNativeStatus = errors.New("zigo: unrecognized native status")
+
+// ErrCallbackPanic identifies a panic raised by a Go callback inside a native call.
+var ErrCallbackPanic = errors.New("zigo: callback panic")
 
 // HandleError reports which generated operation received an invalid handle.
 type HandleError struct {
@@ -77,6 +81,34 @@ func (err *StatusError) Error() string {
 // Unwrap returns ErrNativeStatus for errors.Is classification.
 func (err *StatusError) Unwrap() error { return ErrNativeStatus }
 
+// CallbackPanicError is what a generated call panics with after a Go callback
+// panicked inside it. The trampoline recovers the panic so the native frames
+// can unwind, and the call rethrows it once the native code has returned.
+type CallbackPanicError struct {
+	// Operation names the generated call the callback was running under.
+	Operation string
+	// Value is the original panic value.
+	Value any
+	// Stack is the callback goroutine's stack where the panic was recovered.
+	Stack []byte
+}
+
+// Error implements error.
+func (err *CallbackPanicError) Error() string {
+	return "zigo: " + err.Operation + ": callback panic: " + fmt.Sprint(err.Value)
+}
+
+// Is reports ErrCallbackPanic for errors.Is classification.
+func (err *CallbackPanicError) Is(target error) bool { return target == ErrCallbackPanic }
+
+// Unwrap returns the original panic value when it is an error, so errors.Is and errors.As reach it.
+func (err *CallbackPanicError) Unwrap() error {
+	if cause, ok := err.Value.(error); ok {
+		return cause
+	}
+	return nil
+}
+
 // Error is a stable Zig error-set value returned by the generated binding.
 // Classify it with errors.Is against the Err* sentinels; a returned value
 // also names the operation it came from.
@@ -113,6 +145,9 @@ var ErrDivideByZero = &Error{Code: 2, Name: "DivideByZero"}
 // ErrNever represents Zig error.Never.
 var ErrNever = &Error{Code: 3, Name: "Never"}
 
+// ErrInvalid represents Zig error.Invalid.
+var ErrInvalid = &Error{Code: 4, Name: "Invalid"}
+
 func errorForCode(operation string, code int32) error {
 	switch code {
 	case -2:
@@ -125,6 +160,8 @@ func errorForCode(operation string, code int32) error {
 		return &Error{Code: 2, Name: "DivideByZero", Operation: operation}
 	case 3:
 		return &Error{Code: 3, Name: "Never", Operation: operation}
+	case 4:
+		return &Error{Code: 4, Name: "Invalid", Operation: operation}
 	default:
 		return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
 	}

@@ -289,6 +289,32 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
                 try writer.writeAll(") callconv(.c) ");
                 try writeZigType(writer, program, semanticScalar(program, parameter.type.callback.@"return".*));
                 try writer.writeAll(";\n");
+                if (callbackHasPackedParam(program, parameter.type.callback)) {
+                    const thunk = try callbackPackedThunkNameAlloc(allocator, function, parameter_index);
+                    defer allocator.free(thunk);
+                    try writer.print("fn {s}(", .{thunk});
+                    for (parameter.type.callback.params, 0..) |callback_parameter, index| {
+                        if (index != 0) try writer.writeAll(", ");
+                        try writer.print("p{d}: ", .{index});
+                        if (isPackedValue(program, callback_parameter))
+                            try writeTargetType(writer, program, callback_parameter.value_struct.ref)
+                        else
+                            try writeZigType(writer, program, semanticScalar(program, callback_parameter));
+                    }
+                    try writer.writeAll(") callconv(.c) ");
+                    try writeZigType(writer, program, semanticScalar(program, parameter.type.callback.@"return".*));
+                    try writer.print(" {{\n    ", .{});
+                    if (parameter.type.callback.@"return".* != .void) try writer.writeAll("return ");
+                    try writer.print("{s}(", .{name});
+                    for (parameter.type.callback.params, 0..) |callback_parameter, index| {
+                        if (index != 0) try writer.writeAll(", ");
+                        if (isPackedValue(program, callback_parameter)) {
+                            try writePackedZigToBackingPrefix(writer, program, callback_parameter);
+                            try writer.print("p{d})))", .{index});
+                        } else try writer.print("p{d}", .{index});
+                    }
+                    try writer.writeAll(");\n}\n");
+                }
             }
         }
     }
@@ -332,7 +358,7 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         try writer.writeAll("    ");
 
         if (function.origin.field_access) |field_access| {
-            try writeFieldAccess(allocator, writer, function, field_access);
+            try writeFieldAccess(allocator, writer, program, function, field_access);
             continue;
         }
 
@@ -371,10 +397,11 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
             try writer.writeAll(" orelse {\n");
             try writeSliceWrittenZeros(writer, function);
             try writer.writeAll("        return 0;\n    };\n    out_result.* = ");
-            if (child == .value_struct and recordHasAtomicFields(program, structRecord(program, child.value_struct.ref)))
+            if (child == .value_struct and !isPackedValue(program, child) and
+                recordHasAtomicFields(program, structRecord(program, child.value_struct.ref)))
                 try writeZigAtomicStructCopy(allocator, writer, program, structRecord(program, child.value_struct.ref), "result")
             else
-                try writeZigReturnConversion(writer, child, "result", false);
+                try writeZigReturnConversion(writer, program, child, "result", false);
             try writer.writeAll(";\n");
             try writeSliceWrittenAssignments(writer, function);
             try writer.writeAll("    return 1;\n}\n");
@@ -429,17 +456,19 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
                     // when the payload is absent.
                     try writer.writeAll("    if (result) |zigo_value| {\n        out_result_has.* = 1;\n        out_result.* = ");
                     const child = error_union.payload.optional.child.*;
-                    if (child == .value_struct and recordHasAtomicFields(program, structRecord(program, child.value_struct.ref)))
+                    if (child == .value_struct and !isPackedValue(program, child) and
+                        recordHasAtomicFields(program, structRecord(program, child.value_struct.ref)))
                         try writeZigAtomicStructCopy(allocator, writer, program, structRecord(program, child.value_struct.ref), "zigo_value")
                     else
-                        try writeZigReturnConversion(writer, child, "zigo_value", false);
+                        try writeZigReturnConversion(writer, program, child, "zigo_value", false);
                     try writer.writeAll(";\n    } else {\n        out_result_has.* = 0;\n    }\n");
                 } else {
                     try writer.writeAll("    out_result.* = ");
-                    if (error_union.payload.* == .value_struct and recordHasAtomicFields(program, structRecord(program, error_union.payload.value_struct.ref)))
+                    if (error_union.payload.* == .value_struct and !isPackedValue(program, error_union.payload.*) and
+                        recordHasAtomicFields(program, structRecord(program, error_union.payload.value_struct.ref)))
                         try writeZigAtomicStructCopy(allocator, writer, program, structRecord(program, error_union.payload.value_struct.ref), "result")
                     else
-                        try writeZigReturnConversion(writer, error_union.payload.*, "result", function.origin.return_atomic orelse false);
+                        try writeZigReturnConversion(writer, program, error_union.payload.*, "result", function.origin.return_atomic orelse false);
                     try writer.writeAll(";\n");
                 }
             }
@@ -455,14 +484,15 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         // A plain result has to be named before the written counts can quote
         // it, so a function with output slices binds it and returns the binding
         // rather than returning the call directly.
+        const packed_return = isPackedValue(program, function.origin.@"return");
         const binds_result = function.origin.@"return" != .void and
-            function.origin.@"return" != .value_struct and
+            (function.origin.@"return" != .value_struct or packed_return) and
             hasOutSliceParam(function);
-        const atomic_struct_return = function.origin.@"return" == .value_struct and
+        const atomic_struct_return = function.origin.@"return" == .value_struct and !packed_return and
             recordHasAtomicFields(program, structRecord(program, function.origin.@"return".value_struct.ref));
         if (atomic_struct_return) {
             try writer.writeAll("const result = ");
-        } else if (function.origin.@"return" == .value_struct) {
+        } else if (function.origin.@"return" == .value_struct and !packed_return) {
             try writer.writeAll("out_result.* = ");
         } else if (binds_result) {
             try writer.writeAll("const result = ");
@@ -472,9 +502,11 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         // Narrowing never happens here: the result travels in a wider C
         // integer, so the cast is always in range.
         const narrow_return = abi.narrowInt(function.origin.@"return") != null;
+        if (packed_return) try writePackedZigToBackingPrefix(writer, program, function.origin.@"return");
         if (narrow_return) try writer.writeAll("@intCast(");
         try writeTargetCall(allocator, writer, program, function);
         if (narrow_return) try writer.writeByte(')');
+        if (packed_return) try writer.writeAll(")))");
         try writer.writeAll(";\n");
         if (atomic_struct_return) {
             try writer.writeAll("    out_result.* = ");
@@ -527,13 +559,14 @@ fn writeValueUnionReturnAssignments(
         return;
     }
     try writer.print("\n            out_result.{s} = ", .{field_name});
-    try writeZigReturnConversion(writer, node, expression, atomic);
+    try writeZigReturnConversion(writer, program, node, expression, atomic);
     try writer.writeByte(';');
 }
 
 fn writeFieldAccess(
     allocator: std.mem.Allocator,
     writer: *std.Io.Writer,
+    program: abi.Program,
     function: abi.AbiFn,
     access: semantic.FieldAccess,
 ) !void {
@@ -542,11 +575,11 @@ fn writeFieldAccess(
     if (access.setter) {
         if (access.atomic orelse false) {
             try writer.print("self.{s}.store(", .{access.path});
-            try writeShimInboundValue(writer, "v", function.origin.params[0].type, false);
+            try writeShimInboundValue(writer, program, "v", function.origin.params[0].type, false);
             try writer.writeAll(", .seq_cst)");
         } else {
             try writer.print("self.{s} = ", .{access.path});
-            try writeShimInboundValue(writer, "v", function.origin.params[0].type, false);
+            try writeShimInboundValue(writer, program, "v", function.origin.params[0].type, false);
         }
         try writer.writeAll(trailer);
         return;
@@ -565,7 +598,7 @@ fn writeFieldAccess(
     else
         try std.fmt.allocPrint(allocator, "self.{s}", .{access.path});
     defer allocator.free(expression);
-    try writeZigReturnConversion(writer, field_type, expression, false);
+    try writeZigReturnConversion(writer, program, field_type, expression, false);
     try writer.writeAll(trailer);
 }
 
@@ -985,14 +1018,18 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                 const abi_parameter = function.flattenedParam(index, field_index);
                 if (field_index != 0) try writer.writeByte(',');
                 try writer.print(" .{s} = ", .{field.name});
-                try writeFlattenedShimValue(writer, abi_parameter.name, field.type, field.atomic orelse false);
+                try writeFlattenedShimValue(writer, program, abi_parameter.name, field.type, field.atomic orelse false);
             }
             try writer.writeAll(" }");
             continue;
         }
         switch (parameter.type) {
             .callback => {
-                if (needsCallbackBitThunk(program, function, index)) {
+                if (program.backend == .cgo and callbackHasPackedParam(program, parameter.type.callback)) {
+                    const thunk = try callbackPackedThunkNameAlloc(allocator, function, index);
+                    defer allocator.free(thunk);
+                    try writer.print("&{s}", .{thunk});
+                } else if (needsCallbackBitThunk(program, function, index)) {
                     const thunk = try callbackThunkNameAlloc(allocator, function, index);
                     defer allocator.free(thunk);
                     try writer.print("&{s}", .{thunk});
@@ -1026,6 +1063,8 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                 try writer.print("if ({s}_len == 0) &.{{}} else {s}_ptr[0..{s}_len]", .{ parameter.name, parameter.name, parameter.name }),
             .value_struct => |value| if (enumDecl(program, value.ref).kind == .tagged_union)
                 try writeTaggedUnionValueArgument(allocator, writer, program, function, index, parameter.name)
+            else if (isPackedValue(program, parameter.type))
+                try writeShimInboundValue(writer, program, parameter.name, parameter.type, false)
             else if (recordHasAtomicFields(program, structRecord(program, value.ref))) {
                 const expression = try std.fmt.allocPrint(allocator, "{s}.*", .{parameter.name});
                 defer allocator.free(expression);
@@ -1038,10 +1077,10 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                     try writer.writeAll(parameter.name)
                 else
                     try writer.print("if ({0s}_ptr) |zigo_{0s}| zigo_{0s}[0..{0s}_len] else null", .{parameter.name});
-            } else try writeShimOptionalArgument(writer, parameter.name, optional.child.*),
+            } else try writeShimOptionalArgument(writer, program, parameter.name, optional.child.*),
             else => if (parameter.atomic orelse false) {
                 try writer.writeAll(".init(");
-                try writeShimInboundValue(writer, parameter.name, parameter.type, false);
+                try writeShimInboundValue(writer, program, parameter.name, parameter.type, false);
                 try writer.writeByte(')');
             } else if (abi.narrowInt(parameter.type) != null)
                 try writer.print("@intCast({s})", .{parameter.name})
@@ -1059,11 +1098,12 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
 
 /// Converts one C-side scalar back to its Zig form on the way in; the mirror
 /// image of `writeZigReturnConversion`.
-fn writeShimInboundValue(writer: *std.Io.Writer, name: []const u8, node: semantic.TypeNode, atomic: bool) !void {
+fn writeShimInboundValue(writer: *std.Io.Writer, program: abi.Program, name: []const u8, node: semantic.TypeNode, atomic: bool) !void {
     if (atomic) try writer.writeAll(".init(");
     switch (node) {
         .bool => try writer.print("{s} != 0", .{name}),
         .@"enum" => try writer.print("@enumFromInt({s})", .{name}),
+        .value_struct => if (isPackedValue(program, node)) try writePackedZigFromBacking(writer, program, node, name) else try writer.writeAll(name),
         else => if (abi.narrowInt(node) != null)
             try writer.print("@intCast({s})", .{name})
         else
@@ -1072,9 +1112,9 @@ fn writeShimInboundValue(writer: *std.Io.Writer, name: []const u8, node: semanti
     if (atomic) try writer.writeByte(')');
 }
 
-fn writeFlattenedShimValue(writer: *std.Io.Writer, name: []const u8, node: semantic.TypeNode, atomic: bool) !void {
-    if (node == .optional) return writeShimOptionalArgument(writer, name, node.optional.child.*);
-    try writeShimInboundValue(writer, name, node, atomic);
+fn writeFlattenedShimValue(writer: *std.Io.Writer, program: abi.Program, name: []const u8, node: semantic.TypeNode, atomic: bool) !void {
+    if (node == .optional) return writeShimOptionalArgument(writer, program, name, node.optional.child.*);
+    try writeShimInboundValue(writer, program, name, node, atomic);
 }
 
 fn writeTaggedUnionValueArgument(
@@ -1141,7 +1181,7 @@ fn writeTaggedUnionPayloadArgument(
         return;
     }
     const slot = taggedUnionAbiParam(function, source_index, .union_payload, slot_name);
-    try writeShimInboundValue(writer, slot.name, node, atomic);
+    try writeShimInboundValue(writer, program, slot.name, node, atomic);
 }
 
 fn taggedUnionAbiParam(
@@ -1194,7 +1234,10 @@ fn renderCallbackBitThunks(allocator: std.mem.Allocator, writer: *std.Io.Writer,
             for (callback.params, 0..) |callback_parameter, index| {
                 if (index != 0) try writer.writeAll(", ");
                 try writer.print("p{d}: ", .{index});
-                try writeZigType(writer, program, semanticScalar(program, callback_parameter));
+                if (isPackedValue(program, callback_parameter))
+                    try writeTargetType(writer, program, callback_parameter.value_struct.ref)
+                else
+                    try writeZigType(writer, program, semanticScalar(program, callback_parameter));
             }
             try writer.writeAll(") callconv(.c) ");
             try writeZigType(writer, program, semanticScalar(program, callback.@"return".*));
@@ -1205,8 +1248,10 @@ fn renderCallbackBitThunks(allocator: std.mem.Allocator, writer: *std.Io.Writer,
                 if (index != 0) try writer.writeAll(", ");
                 if (callback_parameter == .float)
                     try writer.print("@bitCast(p{d})", .{index})
-                else
-                    try writer.print("p{d}", .{index});
+                else if (isPackedValue(program, callback_parameter)) {
+                    try writePackedZigToBackingPrefix(writer, program, callback_parameter);
+                    try writer.print("p{d})))", .{index});
+                } else try writer.print("p{d}", .{index});
             }
             try writer.writeAll(");\n}\n");
         }
@@ -1235,11 +1280,15 @@ fn writeErrorSwitch(writer: *std.Io.Writer, function: abi.AbiFn) !void {
     for (function.errors) |entry| try writer.print("\n        error.{s} => {d},", .{ entry.name, entry.code });
 }
 
-fn writeZigReturnConversion(writer: *std.Io.Writer, node: semantic.TypeNode, expression: []const u8, atomic: bool) !void {
+fn writeZigReturnConversion(writer: *std.Io.Writer, program: abi.Program, node: semantic.TypeNode, expression: []const u8, atomic: bool) !void {
     const suffix = if (atomic) ".raw" else "";
     switch (node) {
         .bool => try writer.print("@intFromBool({s}{s})", .{ expression, suffix }),
         .@"enum" => try writer.print("@intFromEnum({s}{s})", .{ expression, suffix }),
+        .value_struct => if (isPackedValue(program, node)) {
+            try writePackedZigToBackingPrefix(writer, program, node);
+            try writer.print("{s}{s})))", .{ expression, suffix });
+        } else try writer.print("{s}{s}", .{ expression, suffix }),
         else => if (abi.narrowInt(node) != null)
             try writer.print("@intCast({s}{s})", .{ expression, suffix })
         else
@@ -1250,11 +1299,19 @@ fn writeZigReturnConversion(writer: *std.Io.Writer, node: semantic.TypeNode, exp
 /// Rebuilds a `?T` argument from the nullable pointer the C boundary carries
 /// it in: a NULL pointer is the Zig `null`, and a non-NULL one is dereferenced
 /// and converted exactly as the bare `T` parameter of the same type would be.
-fn writeShimOptionalArgument(writer: *std.Io.Writer, name: []const u8, child: semantic.TypeNode) !void {
+fn writeShimOptionalArgument(writer: *std.Io.Writer, program: abi.Program, name: []const u8, child: semantic.TypeNode) !void {
     try writer.print("if ({0s}) |zigo_{0s}| ", .{name});
     switch (child) {
         .bool => try writer.print("zigo_{s}.* != 0", .{name}),
         .@"enum" => try writer.print("@enumFromInt(zigo_{s}.*)", .{name}),
+        .value_struct => if (isPackedValue(program, child)) {
+            const backing = enumDecl(program, child.value_struct.ref).backing_type.?.int;
+            try writer.print("@bitCast(@as({c}{d}, @truncate(zigo_{s}.*)))", .{
+                if (backing.signed) @as(u8, 'i') else @as(u8, 'u'),
+                backing.bits,
+                name,
+            });
+        } else try writer.print("zigo_{s}.*", .{name}),
         else => if (abi.narrowInt(child) != null)
             try writer.print("@intCast(zigo_{s}.*)", .{name})
         else
@@ -1672,6 +1729,7 @@ fn renderRawStructTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
 
 fn writeRawStructFieldType(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, field: abi.AbiStruct.Field) !void {
     if (field.node == .value_struct) {
+        if (isPackedValue(program, field.node)) return writeGoScalar(writer, field.scalar);
         const nested = structRecord(program, field.node.value_struct.ref);
         const nested_name = try structRawTypeNameAlloc(allocator, nested.name);
         defer allocator.free(nested_name);
@@ -1696,7 +1754,8 @@ fn structRecord(program: abi.Program, name: []const u8) abi.AbiStruct {
 fn recordHasAtomicFields(program: abi.Program, record: abi.AbiStruct) bool {
     for (record.fields) |field| {
         if (field.atomic) return true;
-        if (field.node == .value_struct and recordHasAtomicFields(program, structRecord(program, field.node.value_struct.ref))) return true;
+        if (field.node == .value_struct and !isPackedValue(program, field.node) and
+            recordHasAtomicFields(program, structRecord(program, field.node.value_struct.ref))) return true;
     }
     return false;
 }
@@ -1718,7 +1777,7 @@ fn writeZigAtomicStructCopy(
         try writer.print(" .{s} = ", .{field.name});
         const child_expression = try std.fmt.allocPrint(allocator, "({s}).{s}", .{ expression, field.name });
         defer allocator.free(child_expression);
-        if (field.node == .value_struct) {
+        if (field.node == .value_struct and !isPackedValue(program, field.node)) {
             try writeZigAtomicStructCopy(allocator, writer, program, structRecord(program, field.node.value_struct.ref), child_expression);
         } else if (field.atomic) {
             try writer.print(".init({s}.raw)", .{child_expression});
@@ -1748,7 +1807,7 @@ fn writeCgoStructConversionIndented(
     for (record.fields) |field| {
         const member = try naming.pascalAlloc(allocator, field.name);
         defer allocator.free(member);
-        if (field.node == .value_struct) {
+        if (field.node == .value_struct and !isPackedValue(program, field.node)) {
             const nested = structRecord(program, field.node.value_struct.ref);
             const nested_c = try std.fmt.allocPrint(allocator, "{s}{s}", .{ c_name, member });
             defer allocator.free(nested_c);
@@ -1773,7 +1832,7 @@ fn writeCgoStructRead(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
         const member = try naming.pascalAlloc(allocator, field.name);
         defer allocator.free(member);
         try writer.print("{s}\t{s}: ", .{ indent, member });
-        if (field.node == .value_struct) {
+        if (field.node == .value_struct and !isPackedValue(program, field.node)) {
             const nested = structRecord(program, field.node.value_struct.ref);
             const nested_c = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ c_name, field.name });
             defer allocator.free(nested_c);
@@ -1983,7 +2042,9 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
             try writer.writeAll("\n\tvar outResultLen C.size_t\n");
         }
         for (function.origin.params, 0..) |parameter, parameter_index| {
-            if (parameter.flatten == null and parameter.type == .value_struct and !isTaggedUnionValue(program, parameter.type)) {
+            if (parameter.flatten == null and parameter.type == .value_struct and
+                !isTaggedUnionValue(program, parameter.type) and !isPackedValue(program, parameter.type))
+            {
                 const record = structRecord(program, parameter.type.value_struct.ref);
                 const c_name = try std.fmt.allocPrint(allocator, "c{s}", .{go_names[parameter_index]});
                 defer allocator.free(c_name);
@@ -2011,7 +2072,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
                 // even when they have the same width.
                 const name = go_names[parameter_index];
                 const child = parameter.type.optional.child.*;
-                if (child == .value_struct) {
+                if (child == .value_struct and !isPackedValue(program, child)) {
                     const record = structRecord(program, child.value_struct.ref);
                     try writer.print("\tvar {s}Ptr *C.{s}\n\tif {s} != nil {{\n", .{ name, record.c_name, name });
                     const c_name = try std.fmt.allocPrint(allocator, "c{s}", .{name});
@@ -3115,6 +3176,7 @@ fn semanticTypeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
         .int => |value| value.bits == rhs.int.bits and value.signed == rhs.int.signed and value.is_usize == rhs.int.is_usize,
         .float => |value| value.bits == rhs.float.bits,
         .@"enum" => |value| std.mem.eql(u8, value.ref, rhs.@"enum".ref),
+        .value_struct => |value| std.mem.eql(u8, value.ref, rhs.value_struct.ref),
         .opaque_ptr => |value| value.@"const" == rhs.opaque_ptr.@"const" and value.nullable == rhs.opaque_ptr.nullable and std.mem.eql(u8, value.ref, rhs.opaque_ptr.ref),
         .slice => |value| value.@"const" == rhs.slice.@"const" and value.sentinel == rhs.slice.sentinel and
             value.sentinel_many == rhs.slice.sentinel_many and semanticTypeEqual(value.element.*, rhs.slice.element.*),
@@ -3962,7 +4024,10 @@ fn writePublicValueStructSliceCopyBacks(
 fn writePublicCapturedReturn(writer: *std.Io.Writer, program: abi.Program, function: semantic.SemanticFn, needs_handle_check: bool) !void {
     try writer.writeAll("\treturn ");
     switch (function.@"return") {
-        .value_struct => |value| try writer.print("zigo{s}FromRaw(result)", .{value.ref}),
+        .value_struct => |value| if (isPackedValue(program, function.@"return"))
+            try writer.print("{s}FromBacking(result)", .{value.ref})
+        else
+            try writer.print("zigo{s}FromRaw(result)", .{value.ref}),
         .slice => |value| if (value.element.* == .value_struct)
             try writer.print("zigo{s}{s}(result)", .{ value.element.*.value_struct.ref, publicSliceFromRawSuffix(program, value.element.*.value_struct.ref) })
         else if (semantic.isUtf8Slice(function.@"return", function.return_semantic))
@@ -4011,11 +4076,15 @@ fn writePublicOptionalRawSetup(
     if (!publicOptionalNeedsConversion(child)) return;
     try writer.print("\tvar {s}Raw *", .{name});
     if (child == .value_struct) {
-        const record = structRecord(program, child.value_struct.ref);
-        const raw_type = try structRawTypeNameAlloc(allocator, record.name);
-        defer allocator.free(raw_type);
-        try writeRawTypeReferencePrefix(writer, options);
-        try writer.writeAll(raw_type);
+        if (isPackedValue(program, child)) {
+            try writeRawGoType(writer, program, child);
+        } else {
+            const record = structRecord(program, child.value_struct.ref);
+            const raw_type = try structRawTypeNameAlloc(allocator, record.name);
+            defer allocator.free(raw_type);
+            try writeRawTypeReferencePrefix(writer, options);
+            try writer.writeAll(raw_type);
+        }
     } else {
         try writeRawGoType(writer, program, child);
     }
@@ -4026,7 +4095,10 @@ fn writePublicOptionalRawSetup(
             try writer.writeAll(rawGoTypeName(program, child));
             try writer.print("(*{s})", .{name});
         },
-        .value_struct => |value| try writer.print("zigo{s}ToRaw(*{s})", .{ value.ref, name }),
+        .value_struct => |value| if (isPackedValue(program, child))
+            try writer.print("(*{s}).Backing()", .{name})
+        else
+            try writer.print("zigo{s}ToRaw(*{s})", .{ value.ref, name }),
         else => unreachable,
     }
     try writer.print("\n\t\t{0s}Raw = &{0s}RawValue\n\t}}\n", .{name});
@@ -4308,7 +4380,10 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                 try writer.writeByte('(');
                 try writeRawReferencePrefix(writer, options);
             } else if (function.origin.@"return" == .value_struct) {
-                try writer.print("return zigo{s}FromRaw(", .{function.origin.@"return".value_struct.ref});
+                if (isPackedValue(program, function.origin.@"return"))
+                    try writer.print("return {s}FromBacking(", .{function.origin.@"return".value_struct.ref})
+                else
+                    try writer.print("return zigo{s}FromRaw(", .{function.origin.@"return".value_struct.ref});
                 try writeRawReferencePrefix(writer, options);
             } else if (isValueStructSlice(function.origin.@"return")) {
                 try writer.print("return zigo{s}{s}(", .{ function.origin.@"return".slice.element.*.value_struct.ref, publicSliceFromRawSuffix(program, function.origin.@"return".slice.element.*.value_struct.ref) });
@@ -4346,6 +4421,10 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                             try writer.writeAll(rawGoTypeName(program, node));
                             try writer.print("({s})", .{name});
                         },
+                        .value_struct => if (isPackedValue(program, node))
+                            try writer.print("{s}.Backing()", .{name})
+                        else
+                            try writer.writeAll(name),
                         else => try writer.writeAll(name),
                     }
                     call_index += 1;
@@ -4382,6 +4461,8 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
                 .bool => try writer.print("boolToUint8({s})", .{go_names[parameter_index]}),
                 .value_struct => |value| if (isTaggedUnionValue(program, parameter.type))
                     try writePublicTaggedUnionRawArguments(allocator, writer, program, enumDecl(program, value.ref), go_names[parameter_index])
+                else if (isPackedValue(program, parameter.type))
+                    try writer.print("{s}.Backing()", .{go_names[parameter_index]})
                 else
                     try writer.print("zigo{s}ToRaw({s})", .{ value.ref, go_names[parameter_index] }),
                 .@"enum" => {
@@ -4873,14 +4954,53 @@ fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer
         try writer.print("func zigo{s}ToBacking(value {s}) ", .{ declaration.name, declaration.name });
         try writeRawGoType(writer, program, declaration.backing_type.?);
         try writer.writeAll(" {\n\tvar result uint64\n");
-        for (program.packedLayout(declaration.name)) |field| {
+        for (program.packedLayout(declaration.name), declaration.fields) |field, semantic_field| {
             const member = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(member);
-            try writer.print("\tresult |= (uint64(value.{s}) & 0x{x}) << {d}\n", .{ member, field.mask, field.bit_offset });
+            try writer.writeAll("\tresult |= (uint64(");
+            switch (semantic_field.type.?) {
+                .bool => try writer.print("boolToUint8(value.{s})", .{member}),
+                .value_struct => |nested| try writer.print("zigo{s}ToBacking(value.{s})", .{ nested.ref, member }),
+                else => try writer.print("value.{s}", .{member}),
+            }
+            try writer.print(") & 0x{x}) << {d}\n", .{ field.mask, field.bit_offset });
         }
         try writer.writeAll("\treturn ");
         try writeRawGoType(writer, program, declaration.backing_type.?);
         try writer.writeAll("(result)\n}\n\n");
+        if ((declaration.registered_value orelse false) or packedValuePubliclyUsed(program, declaration.name)) {
+            try writer.print("// Backing returns the integer representation used by Zig.\nfunc (value {s}) Backing() ", .{declaration.name});
+            try writeRawGoType(writer, program, declaration.backing_type.?);
+            try writer.print(" {{ return zigo{s}ToBacking(value) }}\n\n", .{declaration.name});
+            try writer.print("// {s}FromBacking reconstructs a {s} from its Zig integer representation.\nfunc {s}FromBacking(value ", .{ declaration.name, declaration.name, declaration.name });
+            try writeRawGoType(writer, program, declaration.backing_type.?);
+            try writer.print(") {s} {{\n\treturn {s}{{\n", .{ declaration.name, declaration.name });
+            for (program.packedLayout(declaration.name), declaration.fields) |field, semantic_field| {
+                const member = try naming.pascalAlloc(allocator, field.name);
+                defer allocator.free(member);
+                try writer.print("\t\t{s}: ", .{member});
+                const expression = try std.fmt.allocPrint(allocator, "((uint64(value) >> {d}) & 0x{x})", .{ field.bit_offset, field.mask });
+                defer allocator.free(expression);
+                switch (semantic_field.type.?) {
+                    .bool => try writer.print("{s} != 0", .{expression}),
+                    .value_struct => |nested| try writer.print("{s}FromBacking({s}({s}))", .{ nested.ref, rawGoTypeName(program, semantic_field.type.?), expression }),
+                    .int => |integer| if (integer.signed and integer.bits < abi.promotedIntBits(integer.bits)) {
+                        const promoted = abi.promotedIntBits(integer.bits);
+                        const shift = promoted - integer.bits;
+                        try writer.print("int{d}(uint{d}({s} << {d})) >> {d}", .{ promoted, promoted, expression, shift, shift });
+                    } else {
+                        try writePublicGoType(scope, writer, semantic_field.type.?);
+                        try writer.print("({s})", .{expression});
+                    },
+                    else => {
+                        try writePublicGoType(scope, writer, semantic_field.type.?);
+                        try writer.print("({s})", .{expression});
+                    },
+                }
+                try writer.writeAll(",\n");
+            }
+            try writer.writeAll("\t}\n}\n\n");
+        }
     }
     for (program.structs) |record| {
         if (record.owner.kind == .tagged_union) continue;
@@ -4920,7 +5040,10 @@ fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer
             defer allocator.free(member);
             try writer.print("\t\t{s}: ", .{member});
             switch (field.node) {
-                .value_struct => |nested| try writer.print("zigo{s}ToRaw(value.{s})", .{ nested.ref, member }),
+                .value_struct => |nested| if (isPackedValue(program, field.node))
+                    try writer.print("value.{s}.Backing()", .{member})
+                else
+                    try writer.print("zigo{s}ToRaw(value.{s})", .{ nested.ref, member }),
                 .bool => try writer.print("boolToUint8(value.{s})", .{member}),
                 .@"enum" => {
                     try writer.writeAll(rawGoTypeName(program, field.node));
@@ -4940,7 +5063,10 @@ fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer
             defer allocator.free(member);
             try writer.print("\t\t{s}: ", .{member});
             switch (field.node) {
-                .value_struct => |nested| try writer.print("zigo{s}FromRaw(value.{s})", .{ nested.ref, member }),
+                .value_struct => |nested| if (isPackedValue(program, field.node))
+                    try writer.print("{s}FromBacking(value.{s})", .{ nested.ref, member })
+                else
+                    try writer.print("zigo{s}FromRaw(value.{s})", .{ nested.ref, member }),
                 else => {
                     const expression = try std.fmt.allocPrint(allocator, "value.{s}", .{member});
                     defer allocator.free(expression);
@@ -5697,9 +5823,15 @@ fn renderPublicHelpers(writer: *std.Io.Writer, program: abi.Program, options: Op
                     const callback_name = function.callbackType(parameter_index).?.name;
                     try writer.print("func new{s}Handle(value {s}) zigoCallbackHandle {{\n\treturn ", .{ callback_name, callback_name });
                     try writeRawReferencePrefix(writer, options);
-                    try writer.writeAll("NewCallbackHandle((");
-                    try writePublicCallbackType(scope, writer, program, parameter.type.callback);
-                    try writer.writeAll(")(value))\n}\n\n");
+                    try writer.writeAll("NewCallbackHandle(");
+                    if (callbackNeedsPackedAdapter(program, parameter.type.callback))
+                        try writePackedCallbackAdapter(writer, program, parameter.type.callback, "value")
+                    else {
+                        try writer.writeByte('(');
+                        try writePublicCallbackType(scope, writer, program, parameter.type.callback);
+                        try writer.writeAll(")(value)");
+                    }
+                    try writer.writeAll(")\n}\n\n");
                 }
             }
             try writeStreamHandleConstructors(writer, program, options);
@@ -5724,9 +5856,15 @@ fn renderPublicHelpers(writer: *std.Io.Writer, program: abi.Program, options: Op
                 if (parameter.type != .callback) continue;
                 if (!function.callbackType(parameter_index).?.first_use) continue;
                 const callback_name = function.callbackType(parameter_index).?.name;
-                try writer.print("func new{s}Handle(value {s}) zigoCallbackHandle {{\n\tstored := (", .{ callback_name, callback_name });
-                try writePublicCallbackType(scope, writer, program, parameter.type.callback);
-                try writer.writeAll(")(value)\n\thandle := cgo.NewHandle(&");
+                try writer.print("func new{s}Handle(value {s}) zigoCallbackHandle {{\n\tstored := ", .{ callback_name, callback_name });
+                if (callbackNeedsPackedAdapter(program, parameter.type.callback))
+                    try writePackedCallbackAdapter(writer, program, parameter.type.callback, "value")
+                else {
+                    try writer.writeByte('(');
+                    try writePublicCallbackType(scope, writer, program, parameter.type.callback);
+                    try writer.writeAll(")(value)");
+                }
+                try writer.writeAll("\n\thandle := cgo.NewHandle(&");
                 try writeRawReferencePrefix(writer, options);
                 try writer.writeAll("CallbackState{Fn: stored})\n\tactiveCallbackHandles.Add(1)\n\treturn handle\n}\n\n");
             }
@@ -6904,7 +7042,10 @@ fn writeOptionalPublicPayloadType(scope: PublicScope, writer: *std.Io.Writer, ch
 fn writePublicResultConversion(scope: PublicScope, writer: *std.Io.Writer, program: abi.Program, node: semantic.TypeNode, expression: []const u8) !void {
     switch (node) {
         .bool => try writer.print("{s} != 0", .{expression}),
-        .value_struct => |value| try writer.print("zigo{s}FromRaw({s})", .{ value.ref, expression }),
+        .value_struct => |value| if (isPackedValue(program, node))
+            try writer.print("{s}FromBacking({s})", .{ value.ref, expression })
+        else
+            try writer.print("zigo{s}FromRaw({s})", .{ value.ref, expression }),
         .slice => |value| if (value.element.* == .value_struct)
             try writer.print("zigo{s}{s}({s})", .{ value.element.*.value_struct.ref, publicSliceFromRawSuffix(program, value.element.*.value_struct.ref), expression })
         else
@@ -6926,7 +7067,10 @@ fn writeRawGoType(writer: *std.Io.Writer, program: abi.Program, node: semantic.T
         },
         .@"enum" => try writer.writeAll(rawGoTypeName(program, node)),
         .opaque_ptr => try writer.writeAll("unsafe.Pointer"),
-        .value_struct => |value| try writer.print("{s}{s}", .{ value.ref, raw_struct_suffix }),
+        .value_struct => |value| if (isPackedValue(program, node))
+            try writeRawGoType(writer, program, enumDecl(program, value.ref).backing_type.?)
+        else
+            try writer.print("{s}{s}", .{ value.ref, raw_struct_suffix }),
         // `?T` crosses the C ABI as one nullable pointer, and the raw layer
         // spells it the same way: a nil Go pointer stands for `null`.
         .optional => |value| {
@@ -7045,6 +7189,40 @@ fn writePublicCallbackType(scope: PublicScope, writer: *std.Io.Writer, program: 
         try writer.writeByte(' ');
         try writePublicGoType(scope, writer, callback.@"return".*);
     }
+}
+
+fn callbackNeedsPackedAdapter(program: abi.Program, callback: semantic.Callback) bool {
+    const value_count = if (callback.has_userdata and callback.params.len != 0) callback.params.len - 1 else callback.params.len;
+    for (callback.params[0..value_count]) |parameter| if (isPackedValue(program, parameter)) return true;
+    return false;
+}
+
+fn writePackedCallbackAdapter(writer: *std.Io.Writer, program: abi.Program, callback: semantic.Callback, value_name: []const u8) !void {
+    const value_count = if (callback.has_userdata and callback.params.len != 0) callback.params.len - 1 else callback.params.len;
+    try writer.writeAll("func(");
+    for (callback.params[0..value_count], 0..) |parameter, index| {
+        if (index != 0) try writer.writeAll(", ");
+        try writer.print("p{d} ", .{index});
+        try writeRawGoType(writer, program, parameter);
+    }
+    try writer.writeByte(')');
+    if (callback.@"return".* != .void) {
+        try writer.writeByte(' ');
+        if (callbackSignatureHasGoError(program, callback)) try writer.writeByte('(');
+        try writeRawGoType(writer, program, callback.@"return".*);
+        if (callbackSignatureHasGoError(program, callback)) try writer.writeAll(", error)");
+    }
+    try writer.writeAll(" {\n\t\t");
+    if (callback.@"return".* != .void) try writer.writeAll("return ");
+    try writer.print("{s}(", .{value_name});
+    for (callback.params[0..value_count], 0..) |parameter, index| {
+        if (index != 0) try writer.writeAll(", ");
+        if (isPackedValue(program, parameter))
+            try writer.print("{s}FromBacking(p{d})", .{ parameter.value_struct.ref, index })
+        else
+            try writer.print("p{d}", .{index});
+    }
+    try writer.writeAll(")\n\t}");
 }
 
 /// True when native code running under this call can invoke a Go callback:
@@ -7631,6 +7809,10 @@ fn semanticScalar(program: abi.Program, node: semantic.TypeNode) abi.AbiScalar {
             .{ .unsigned_int = abi.promotedIntBits(value.bits) },
         .float => |value| .{ .float = value.bits },
         .@"enum" => |value| semanticScalar(program, enumDecl(program, value.ref).tag_type.?),
+        .value_struct => if (isPackedValue(program, node))
+            semanticScalar(program, enumDecl(program, node.value_struct.ref).backing_type.?)
+        else
+            unreachable,
         .opaque_ptr => |value| .{ .@"opaque" = handleRecord(program, value.ref) },
         else => unreachable,
     };
@@ -7653,6 +7835,64 @@ fn enumRecord(program: abi.Program, name: []const u8) abi.AbiEnum {
 fn enumDecl(program: abi.Program, name: []const u8) semantic.TypeDecl {
     for (program.types) |declaration| if (std.mem.eql(u8, declaration.name, name)) return declaration;
     unreachable;
+}
+
+fn isPackedValue(program: abi.Program, node: semantic.TypeNode) bool {
+    return node == .value_struct and enumDecl(program, node.value_struct.ref).kind == .value_struct and
+        enumDecl(program, node.value_struct.ref).layout == .@"packed";
+}
+
+fn packedValuePubliclyUsed(program: abi.Program, name: []const u8) bool {
+    for (program.functions) |function| {
+        for (function.origin.params) |parameter| {
+            if (packedValueReachable(program, parameter.type, name, 0)) return true;
+            if (parameter.flatten) |fields| for (fields) |field| {
+                if (packedValueReachable(program, field.type, name, 0)) return true;
+            };
+        }
+        if (packedValueReachable(program, function.origin.@"return", name, 0)) return true;
+    }
+    return false;
+}
+
+fn packedValueReachable(program: abi.Program, node: semantic.TypeNode, name: []const u8, depth: usize) bool {
+    if (depth >= 16) return false;
+    return switch (node) {
+        .value_struct => |value| blk: {
+            if (std.mem.eql(u8, value.ref, name)) break :blk true;
+            const declaration = enumDecl(program, value.ref);
+            if (declaration.kind == .tagged_union) break :blk false;
+            for (declaration.fields) |field| if (field.type) |child| {
+                if (packedValueReachable(program, child, name, depth + 1)) break :blk true;
+            };
+            break :blk false;
+        },
+        .slice => |value| packedValueReachable(program, value.element.*, name, depth + 1),
+        .optional => |value| packedValueReachable(program, value.child.*, name, depth + 1),
+        .error_union => |value| packedValueReachable(program, value.payload.*, name, depth + 1),
+        .callback => |value| blk: {
+            for (value.params) |parameter| if (packedValueReachable(program, parameter, name, depth + 1)) break :blk true;
+            break :blk packedValueReachable(program, value.@"return".*, name, depth + 1);
+        },
+        else => false,
+    };
+}
+
+fn writePackedZigToBackingPrefix(writer: *std.Io.Writer, program: abi.Program, node: semantic.TypeNode) !void {
+    const backing = enumDecl(program, node.value_struct.ref).backing_type.?.int;
+    try writer.print("@intCast(@as({c}{d}, @bitCast(", .{
+        if (backing.signed) @as(u8, 'i') else @as(u8, 'u'),
+        backing.bits,
+    });
+}
+
+fn writePackedZigFromBacking(writer: *std.Io.Writer, program: abi.Program, node: semantic.TypeNode, expression: []const u8) !void {
+    const backing = enumDecl(program, node.value_struct.ref).backing_type.?.int;
+    try writer.print("@bitCast(@as({c}{d}, @truncate({s})))", .{
+        if (backing.signed) @as(u8, 'i') else @as(u8, 'u'),
+        backing.bits,
+        expression,
+    });
 }
 
 fn isTaggedUnionValue(program: abi.Program, node: semantic.TypeNode) bool {
@@ -8232,6 +8472,17 @@ fn callbackBindingNameAlloc(allocator: std.mem.Allocator, function: abi.AbiFn, p
     return std.fmt.allocPrint(allocator, "{s}_bits_target_{s}", .{ function.symbol, parameter_name });
 }
 
+fn callbackPackedThunkNameAlloc(allocator: std.mem.Allocator, function: abi.AbiFn, parameter_index: usize) ![]u8 {
+    const parameter_name = try naming.snakeAlloc(allocator, function.origin.params[parameter_index].name);
+    defer allocator.free(parameter_name);
+    return std.fmt.allocPrint(allocator, "{s}_{s}_packed_thunk", .{ function.symbol, parameter_name });
+}
+
+fn callbackHasPackedParam(program: abi.Program, callback: semantic.Callback) bool {
+    for (callback.params) |parameter| if (isPackedValue(program, parameter)) return true;
+    return false;
+}
+
 /// True when the callback's own parameters include a float, which the purego
 /// callback ABI carries as an integer bit pattern instead.
 fn callbackHasFloatParam(callback: semantic.Callback) bool {
@@ -8256,7 +8507,7 @@ fn needsCallbackBitThunk(program: abi.Program, function: abi.AbiFn, parameter_in
     if (program.backend != .purego) return false;
     const parameter = function.origin.params[parameter_index];
     if (parameter.type != .callback) return false;
-    return callbackHasFloatParam(parameter.type.callback);
+    return callbackHasFloatParam(parameter.type.callback) or callbackHasPackedParam(program, parameter.type.callback);
 }
 
 fn publicTypeNameExists(program: abi.Program, name: []const u8) bool {

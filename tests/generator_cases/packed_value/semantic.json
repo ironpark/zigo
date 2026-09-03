@@ -1,0 +1,70 @@
+{
+  "functions": [
+    {
+      "name": "roundTrip",
+      "params": [{"name": "flags", "type": {"kind": "value_struct", "ref": "Flags"}}],
+      "return": {"kind": "value_struct", "ref": "Flags"},
+      "symbol": "ignored"
+    },
+    {
+      "name": "checked",
+      "params": [],
+      "return": {"error_set": ["Invalid"], "kind": "error_union", "payload": {"kind": "value_struct", "ref": "Flags"}},
+      "symbol": "ignored"
+    },
+    {
+      "name": "maybe",
+      "params": [{"name": "flags", "type": {"child": {"kind": "value_struct", "ref": "Flags"}, "kind": "optional"}}],
+      "return": {"child": {"kind": "value_struct", "ref": "Flags"}, "kind": "optional"},
+      "symbol": "ignored"
+    },
+    {
+      "name": "echoRecord",
+      "params": [{"name": "record", "type": {"kind": "value_struct", "ref": "Record"}}],
+      "return": {"kind": "value_struct", "ref": "Record"},
+      "symbol": "ignored"
+    },
+    {
+      "name": "configure",
+      "params": [{"name": "options", "flatten": [{"name": "flags", "type": {"kind": "value_struct", "ref": "Flags"}}], "type": {"kind": "value_struct", "ref": "Options"}}],
+      "return": {"kind": "void"},
+      "symbol": "ignored"
+    },
+    {
+      "name": "flags",
+      "params": [],
+      "receiver": "Owner",
+      "field_access": {"path": "flags"},
+      "return": {"kind": "value_struct", "ref": "Flags"},
+      "symbol": "ignored"
+    },
+    {
+      "name": "setFlags",
+      "params": [{"name": "v", "type": {"kind": "value_struct", "ref": "Flags"}}],
+      "receiver": "Owner",
+      "field_access": {"path": "flags", "setter": true},
+      "return": {"kind": "void"},
+      "symbol": "ignored"
+    },
+    {
+      "name": "visit",
+      "params": [
+        {"name": "callback", "type": {"c_callconv": true, "has_userdata": true, "kind": "callback", "params": [{"kind": "value_struct", "ref": "Flags"}, {"bits": 64, "is_usize": true, "kind": "int", "signed": false}], "return": {"kind": "void"}}},
+        {"name": "userdata", "type": {"bits": 64, "is_usize": true, "kind": "int", "signed": false}}
+      ],
+      "return": {"kind": "void"},
+      "symbol": "ignored"
+    }
+  ],
+  "package": "packedvalue",
+  "prefix": "zg",
+  "types": [
+    {"kind": "opaque", "name": "Owner"},
+    {"fields": [{"name": "off", "value": 0}, {"name": "on", "value": 1}, {"name": "auto", "value": 2}], "kind": "enum", "name": "Mode", "tag_type": {"bits": 2, "kind": "int", "signed": false}},
+    {"backing_type": {"bits": 4, "kind": "int", "signed": false}, "fields": [{"name": "low", "type": {"bits": 4, "kind": "int", "signed": false}}], "kind": "value_struct", "layout": "packed", "name": "Nibble", "registered_value": true},
+    {"backing_type": {"bits": 16, "kind": "int", "signed": false}, "fields": [{"name": "enabled", "type": {"kind": "bool"}}, {"name": "level", "type": {"bits": 3, "kind": "int", "signed": true}}, {"name": "mode", "type": {"kind": "enum", "ref": "Mode"}}, {"name": "nested", "type": {"kind": "value_struct", "ref": "Nibble"}}, {"name": "reserved", "type": {"bits": 6, "kind": "int", "signed": false}}], "kind": "value_struct", "layout": "packed", "name": "Flags", "registered_value": true},
+    {"fields": [{"name": "flags", "type": {"kind": "value_struct", "ref": "Flags"}}, {"name": "count", "type": {"bits": 32, "kind": "int", "signed": false}}], "kind": "value_struct", "layout": "extern", "name": "Record"},
+    {"fields": [{"name": "flags", "type": {"kind": "value_struct", "ref": "Flags"}}], "kind": "value_struct", "name": "Options"}
+  ],
+  "zig_version": "0.16.0"
+}

@@ -231,7 +231,8 @@ pub fn semanticDocumentForBackend(
                 // Aggregates never cross the boundary by value: an input
                 // struct travels as `const T*` and Go takes the address.
                 .value_struct => |value| {
-                    if (typeDeclaration(document, value.ref).kind == .tagged_union) {
+                    const declaration = typeDeclaration(document, value.ref);
+                    if (declaration.kind == .tagged_union) {
                         try appendTaggedUnionValueParams(
                             allocator,
                             document,
@@ -240,6 +241,14 @@ pub fn semanticDocumentForBackend(
                             parameter,
                             parameter_index,
                         );
+                        continue;
+                    }
+                    if (declaration.layout == .@"packed") {
+                        try params.append(allocator, .{
+                            .name = parameter.name,
+                            .scalar = try lowerValue(allocator, document, prefix, parameter.type),
+                            .source_index = parameter_index,
+                        });
                         continue;
                     }
                     const child = try allocator.create(abi.AbiScalar);
@@ -325,7 +334,7 @@ pub fn semanticDocumentForBackend(
                     payload.* = try lowerValue(allocator, document, prefix, optional.child.*);
                     try params.append(allocator, .{
                         .name = "out_result",
-                        .role = if (optional.child.* == .value_struct) .struct_out else .payload_out,
+                        .role = if (optional.child.* == .value_struct and !isPackedValue(document, optional.child.*)) .struct_out else .payload_out,
                         .scalar = .{ .pointer = .{ .child = payload, .is_const = false } },
                         .source_index = function.params.len,
                     });
@@ -347,6 +356,8 @@ pub fn semanticDocumentForBackend(
                 break :result abi.AbiScalar{ .signed_int = 32 };
             },
             .value_struct => result: {
+                if (isPackedValue(document, function.@"return"))
+                    break :result try lowerValue(allocator, document, prefix, function.@"return");
                 const child = try allocator.create(abi.AbiScalar);
                 child.* = try lowerValue(allocator, document, prefix, function.@"return");
                 try params.append(allocator, .{
@@ -369,7 +380,7 @@ pub fn semanticDocumentForBackend(
                 child.* = try lowerValue(allocator, document, prefix, optional.child.*);
                 try params.append(allocator, .{
                     .name = "out_result",
-                    .role = if (optional.child.* == .value_struct) .struct_out else .payload_out,
+                    .role = if (optional.child.* == .value_struct and !isPackedValue(document, optional.child.*)) .struct_out else .payload_out,
                     .scalar = .{ .pointer = .{ .child = child, .is_const = false } },
                 });
                 break :result abi.AbiScalar.bool_u8;
@@ -395,9 +406,10 @@ pub fn semanticDocumentForBackend(
             .ret = return_scalar,
             .errors = function_errors,
             .origin = function,
-            .ret_struct = if (function.@"return" == .value_struct)
+            .ret_struct = if (function.@"return" == .value_struct and !isPackedValue(document, function.@"return"))
                 structRecord(structs, function.@"return".value_struct.ref)
-            else if (function.@"return" == .optional and function.@"return".optional.child.* == .value_struct)
+            else if (function.@"return" == .optional and function.@"return".optional.child.* == .value_struct and
+                !isPackedValue(document, function.@"return".optional.child.*))
                 structRecord(structs, function.@"return".optional.child.value_struct.ref)
             else
                 null,
@@ -405,11 +417,13 @@ pub fn semanticDocumentForBackend(
             // takes none of the presence machinery a scalar one needs.
             .ret_optional = function.@"return" == .optional and function.@"return".optional.child.* != .slice,
             .payload_struct = if (function.@"return" == .error_union and
-                function.@"return".error_union.payload.* == .value_struct)
+                function.@"return".error_union.payload.* == .value_struct and
+                !isPackedValue(document, function.@"return".error_union.payload.*))
                 structRecord(structs, function.@"return".error_union.payload.value_struct.ref)
             else if (function.@"return" == .error_union and
                 function.@"return".error_union.payload.* == .optional and
-                function.@"return".error_union.payload.optional.child.* == .value_struct)
+                function.@"return".error_union.payload.optional.child.* == .value_struct and
+                !isPackedValue(document, function.@"return".error_union.payload.optional.child.*))
                 structRecord(structs, function.@"return".error_union.payload.optional.child.value_struct.ref)
             else
                 null,
@@ -839,11 +853,14 @@ fn structCastable(records: []const abi.AbiStruct, record: abi.AbiStruct) bool {
         if (field.atomic) return false;
         if (field.node == .bool) return false;
         if (field.node != .value_struct) continue;
+        var found = false;
         for (records) |candidate| {
             if (!std.mem.eql(u8, candidate.name, field.node.value_struct.ref)) continue;
+            found = true;
             if (!structCastable(records, candidate)) return false;
             break;
         }
+        if (!found) return false;
     }
     return true;
 }
@@ -905,6 +922,7 @@ fn appendStructInDependencyOrder(
         if (node != .value_struct) continue;
         for (document.types) |*nested| {
             if (nested.kind != .value_struct or !std.mem.eql(u8, nested.name, node.value_struct.ref)) continue;
+            if (nested.layout == .@"packed") continue;
             try appendStructInDependencyOrder(allocator, document, nested, ordered);
         }
     }
@@ -915,7 +933,7 @@ fn appendStructInDependencyOrder(
 /// A nested struct is lowered before the struct that embeds it, so its final
 /// size and alignment are already recorded and never recomputed here.
 fn memberLayout(lowered: []const abi.AbiStruct, node: semantic.TypeNode, scalar: abi.AbiScalar) struct { bytes: usize, alignment: usize } {
-    if (node != .value_struct) {
+    if (node != .value_struct or scalar != .value_struct) {
         const bytes = scalarBytes(scalar);
         return .{ .bytes = bytes, .alignment = bytes };
     }
@@ -1047,6 +1065,7 @@ fn packedBitWidth(document: semantic.Semantic, node: semantic.TypeNode) u16 {
         .bool => 1,
         .int => |value| value.bits,
         .@"enum" => |value| packedBitWidth(document, typeDeclaration(document, value.ref).tag_type.?),
+        .value_struct => |value| typeDeclaration(document, value.ref).backing_type.?.int.bits,
         else => unreachable,
     };
 }
@@ -1241,14 +1260,25 @@ fn lowerValue(allocator: std.mem.Allocator, document: semantic.Semantic, prefix:
             child.* = .{ .@"opaque" = try lowerOpaque(allocator, prefix, value.ref) };
             break :blk .{ .pointer = .{ .child = child, .is_const = value.@"const", .is_optional = value.nullable } };
         },
-        .value_struct => |value| .{ .value_struct = .{
-            .name = value.ref,
-            .c_name = try naming.cTypeNameAlloc(allocator, prefix, value.ref),
-        } },
+        .value_struct => |value| blk: {
+            const declaration = typeDeclaration(document, value.ref);
+            if (declaration.layout == .@"packed")
+                break :blk try lowerValue(allocator, document, prefix, declaration.backing_type.?);
+            break :blk .{ .value_struct = .{
+                .name = value.ref,
+                .c_name = try naming.cTypeNameAlloc(allocator, prefix, value.ref),
+            } };
+        },
         // Validation rejects every node that cannot be lowered, so this is a
         // backstop against a malformed document rather than a reachable path.
         else => error.UnsupportedType,
     };
+}
+
+fn isPackedValue(document: semantic.Semantic, node: semantic.TypeNode) bool {
+    if (node != .value_struct) return false;
+    const declaration = typeDeclaration(document, node.value_struct.ref);
+    return declaration.kind == .value_struct and declaration.layout == .@"packed";
 }
 
 /// How each semantic parameter carries text, indexed by parameter index. The

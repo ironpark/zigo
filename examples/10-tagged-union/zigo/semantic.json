@@ -14,9 +14,54 @@
       "deinit": "deinit",
       "init": "create",
       "type": "Signal"
+    },
+    {
+      "deinit": "deinit",
+      "init": "create",
+      "type": "Palette"
     }
   ],
   "functions": [
+    {
+      "field_access": {
+        "path": "flags",
+        "setter": false
+      },
+      "name": "flags",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Palette",
+      "return": {
+        "kind": "value_struct",
+        "ref": "Flags"
+      },
+      "symbol": "zg_palette_flags"
+    },
+    {
+      "field_access": {
+        "path": "flags",
+        "setter": true
+      },
+      "name": "setFlags",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "v",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "kind": "value_struct",
+            "ref": "Flags"
+          }
+        }
+      ],
+      "receiver": "Palette",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_palette_set_flags"
+    },
     {
       "name": "create",
       "namespace": "Child",
@@ -552,7 +597,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 180,
+        "line": 238,
         "column": 8
       },
       "symbol": "zg_live_values"
@@ -567,7 +612,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 184,
+            "line": 242,
             "column": 15
           },
           "type": {
@@ -581,7 +626,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 184,
+            "line": 242,
             "column": 31
           },
           "type": {
@@ -602,7 +647,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 184,
+        "line": 242,
         "column": 8
       },
       "symbol": "zg_divide"
@@ -617,7 +662,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 189,
+            "line": 247,
             "column": 12
           },
           "type": {
@@ -636,7 +681,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 189,
+        "line": 247,
         "column": 8
       },
       "symbol": "zg_sum"
@@ -706,6 +751,288 @@
       "symbol": "zg_current_viewport"
     },
     {
+      "name": "echoRGB",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "value",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 166,
+            "column": 16
+          },
+          "type": {
+            "kind": "value_struct",
+            "ref": "RGB"
+          }
+        }
+      ],
+      "return": {
+        "kind": "value_struct",
+        "ref": "RGB"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 166,
+        "column": 8
+      },
+      "symbol": "zg_echo_rgb"
+    },
+    {
+      "name": "maybeRGB",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "present",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 170,
+            "column": 17
+          },
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "return": {
+        "child": {
+          "kind": "value_struct",
+          "ref": "RGB"
+        },
+        "kind": "optional"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 170,
+        "column": 8
+      },
+      "symbol": "zg_maybe_rgb"
+    },
+    {
+      "name": "checkedRGB",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "valid",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 174,
+            "column": 19
+          },
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "Invalid"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "kind": "value_struct",
+          "ref": "RGB"
+        }
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 174,
+        "column": 8
+      },
+      "symbol": "zg_checked_rgb"
+    },
+    {
+      "name": "echoColorRecord",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "value",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 191,
+            "column": 24
+          },
+          "type": {
+            "kind": "value_struct",
+            "ref": "ColorRecord"
+          }
+        }
+      ],
+      "return": {
+        "kind": "value_struct",
+        "ref": "ColorRecord"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 191,
+        "column": 8
+      },
+      "symbol": "zg_echo_color_record"
+    },
+    {
+      "name": "flattenFlags",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "flatten": [
+            {
+              "name": "flags",
+              "type": {
+                "kind": "value_struct",
+                "ref": "Flags"
+              }
+            }
+          ],
+          "name": "options",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 200,
+            "column": 21
+          },
+          "type": {
+            "kind": "value_struct",
+            "ref": "PaintOptions"
+          }
+        }
+      ],
+      "return": {
+        "kind": "value_struct",
+        "ref": "Flags"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 200,
+        "column": 8
+      },
+      "symbol": "zg_flatten_flags"
+    },
+    {
+      "name": "create",
+      "namespace": "Palette",
+      "ownership": "caller",
+      "params": [
+        {
+          "direction": "in",
+          "name": "flags",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 207,
+            "column": 19
+          },
+          "type": {
+            "kind": "value_struct",
+            "ref": "Flags"
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "OutOfMemory"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "Palette"
+        }
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 207,
+        "column": 12
+      },
+      "symbol": "zg_palette_create"
+    },
+    {
+      "name": "deinit",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Palette",
+      "return": {
+        "kind": "void"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 213,
+        "column": 12
+      },
+      "symbol": "zg_palette_deinit"
+    },
+    {
+      "name": "visitFlags",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "callback",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 220,
+            "column": 19
+          },
+          "type": {
+            "c_callconv": true,
+            "has_userdata": true,
+            "kind": "callback",
+            "params": [
+              {
+                "kind": "value_struct",
+                "ref": "Flags"
+              },
+              {
+                "bits": 64,
+                "is_usize": true,
+                "kind": "int",
+                "signed": false
+              }
+            ],
+            "ref": "FlagsObserver",
+            "return": {
+              "kind": "void"
+            }
+          }
+        },
+        {
+          "direction": "in",
+          "name": "userdata",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 220,
+            "column": 44
+          },
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "kind": "void"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 220,
+        "column": 8
+      },
+      "symbol": "zg_visit_flags"
+    },
+    {
       "name": "panicError",
       "ownership": "borrowed",
       "params": [],
@@ -720,7 +1047,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 195,
+        "line": 253,
         "column": 8
       },
       "symbol": "zg_panic_error"
@@ -730,6 +1057,32 @@
   "package": "tagged_union",
   "prefix": "zg",
   "types": [
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "idle",
+          "value": 0
+        },
+        {
+          "name": "active",
+          "value": 1
+        },
+        {
+          "name": "paused",
+          "value": 2
+        }
+      ],
+      "kind": "enum",
+      "name": "Mode",
+      "tag_type": {
+        "bits": 8,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "zig_path": "root.Mode"
+    },
     {
       "exhaustive": true,
       "fields": [],
@@ -818,32 +1171,6 @@
         "ref": "ValueTag"
       },
       "zig_path": "root.Value"
-    },
-    {
-      "exhaustive": true,
-      "fields": [
-        {
-          "name": "idle",
-          "value": 0
-        },
-        {
-          "name": "active",
-          "value": 1
-        },
-        {
-          "name": "paused",
-          "value": 2
-        }
-      ],
-      "kind": "enum",
-      "name": "Mode",
-      "tag_type": {
-        "bits": 8,
-        "is_usize": false,
-        "kind": "int",
-        "signed": false
-      },
-      "zig_path": "root.Mode"
     },
     {
       "exhaustive": true,
@@ -989,6 +1316,135 @@
       "zig_path": "@typeInfo(root.Signal).@\"union\".tag_type.?"
     },
     {
+      "backing_type": {
+        "bits": 24,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "r",
+          "type": {
+            "bits": 8,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "g",
+          "type": {
+            "bits": 8,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "b",
+          "type": {
+            "bits": 8,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "kind": "value_struct",
+      "layout": "packed",
+      "name": "RGB",
+      "registered_value": true,
+      "zig_path": "root.RGB"
+    },
+    {
+      "backing_type": {
+        "bits": 16,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "enabled",
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "name": "level",
+          "type": {
+            "bits": 3,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "mode",
+          "type": {
+            "kind": "enum",
+            "ref": "Mode"
+          }
+        },
+        {
+          "name": "reserved",
+          "type": {
+            "bits": 4,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "kind": "value_struct",
+      "layout": "packed",
+      "name": "Flags",
+      "registered_value": true,
+      "zig_path": "root.Flags"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "flags",
+          "type": {
+            "kind": "value_struct",
+            "ref": "Flags"
+          }
+        },
+        {
+          "name": "code",
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "kind": "value_struct",
+      "layout": "extern",
+      "name": "ColorRecord",
+      "zig_path": "root.ColorRecord"
+    },
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "opaque",
+      "name": "Palette",
+      "zig_path": "root.Palette"
+    },
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "callback",
+      "name": "FlagsObserver",
+      "zig_path": "*const fn (root.Flags, usize) callconv(.c) void"
+    },
+    {
       "exhaustive": true,
       "fields": [
         {
@@ -1060,48 +1516,6 @@
         "ref": "ScrollViewportTag"
       },
       "zig_path": "root.ScrollViewport"
-    },
-    {
-      "backing_type": {
-        "bits": 24,
-        "is_usize": false,
-        "kind": "int",
-        "signed": false
-      },
-      "exhaustive": true,
-      "fields": [
-        {
-          "name": "r",
-          "type": {
-            "bits": 8,
-            "is_usize": false,
-            "kind": "int",
-            "signed": false
-          }
-        },
-        {
-          "name": "g",
-          "type": {
-            "bits": 8,
-            "is_usize": false,
-            "kind": "int",
-            "signed": false
-          }
-        },
-        {
-          "name": "b",
-          "type": {
-            "bits": 8,
-            "is_usize": false,
-            "kind": "int",
-            "signed": false
-          }
-        }
-      ],
-      "kind": "value_struct",
-      "layout": "packed",
-      "name": "RGB",
-      "zig_path": "root.RGB"
     },
     {
       "exhaustive": true,
@@ -1220,6 +1634,21 @@
         "signed": false
       },
       "zig_path": "@typeInfo(root.ScrollViewport).@\"union\".tag_type.?"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "flags",
+          "type": {
+            "kind": "value_struct",
+            "ref": "Flags"
+          }
+        }
+      ],
+      "kind": "value_struct",
+      "name": "PaintOptions",
+      "zig_path": "root.PaintOptions"
     }
   ],
   "zig_version": "0.16.0"

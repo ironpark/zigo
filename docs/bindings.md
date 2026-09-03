@@ -418,7 +418,7 @@ enum 항목의 `exhaustive = false`는 Zig의 non-exhaustive enum을 그대로 �
 | `repr` | 용도 |
 |---|---|
 | `.@"opaque"` | pointer handle과 수명주기 |
-| `.value` | 적격한 `extern struct`의 Go 값 mirror |
+| `.value` | 적격한 `extern struct` 또는 정수-backed `packed struct`의 Go 값 mirror |
 | `.tagged_union` | pointer handle을 통한 tagged union 접근 |
 | `.enumeration` | enum에 Go 타입 이름을 부여. `.name` 선택 |
 | `.callback` | `*const fn` alias에 Go 타입 이름을 부여. `.name` 필수 |
@@ -1127,6 +1127,34 @@ API는 `[]T`를 받습니다. bool field가 없는 struct는 Go mirror가 C layo
 어긋나면 Go build가 실패합니다. bool field가 있는 struct만 원소별 복사 경로를 씁니다.
 반환 slice는 어느 쪽이든 `[]T`의 새 사본이며 native 메모리를 alias하지 않습니다.
 out slice로 선언하려면 해당 파라미터에 `param_meta.direction = .out`을 명시해야 합니다.
+
+## Packed struct 값
+
+정수 backing을 명시한 packed struct도 같은 `.repr = .value`로 등록합니다.
+
+```zig
+const Flags = packed struct(u16) {
+    enabled: bool,
+    level: u3,
+    mode: Mode,
+    reserved: u10,
+};
+
+.types = .{
+    .{ .type = Mode, .repr = .enumeration },
+    .{ .type = Flags, .repr = .value },
+},
+```
+
+Go에는 필드가 있는 `Flags` mirror와 `func (Flags) Backing() uint16`,
+`func FlagsFromBacking(uint16) Flags`가 생깁니다. C 경계에서는 struct layout을 공유하지 않고
+항상 backing 정수 하나로 전달합니다. 따라서 scalar가 허용되는 직접 파라미터와 반환,
+error payload, optional, extern struct field, `.fields` accessor, `.flatten` field, callback
+파라미터에 같은 타입을 쓸 수 있습니다. bool, 정수, 등록 enum, 다시 등록한 정수-backed
+packed struct만 필드가 될 수 있으며 그 밖의 필드는 이름을 포함한 `ZIGO044`로 거부됩니다.
+
+`abi-diff`는 backing 폭을 유지한 채 끝에 필드를 추가하는 변경을 compatible로 봅니다.
+필드 삭제·재정렬·폭/타입 변경과 backing 폭 변경은 breaking입니다.
 
 ### 얼마나 채워졌는가: `written`
 

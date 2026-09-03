@@ -10,10 +10,73 @@ package raw
 #include "zigo_tagged_union.h"
 */
 import "C"
+import "runtime/cgo"
+import "runtime/debug"
+import "sync"
 import "unsafe"
 
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
+
+// CallbackState carries one Go callback across the native boundary, and
+// the panic it raises there until the generated caller rethrows it. The
+// trampoline has to recover: a panic cannot unwind native frames.
+type CallbackState struct {
+	Fn       any
+	mu       sync.Mutex
+	value    any
+	stack    []byte
+	panicked bool
+}
+
+func (state *CallbackState) record(value any) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if state.panicked {
+		return
+	}
+	state.panicked = true
+	state.value = value
+	state.stack = debug.Stack()
+}
+
+// TakeCallbackPanic returns and clears the panic the callback behind handle recorded.
+func TakeCallbackPanic(handle cgo.Handle) (any, []byte, bool) {
+	state := handle.Value().(*CallbackState)
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if !state.panicked {
+		return nil, nil, false
+	}
+	value, stack := state.value, state.stack
+	state.value, state.stack, state.panicked = nil, nil, false
+	return value, stack, true
+}
+
+//export zg_visit_flags_go_callback_callback
+func zg_visit_flags_go_callback_callback(p0 C.uint16_t, p1 C.size_t) {
+	state := cgo.Handle(p1).Value().(*CallbackState)
+	defer func() {
+		if value := recover(); value != nil {
+			state.record(value)
+		}
+	}()
+	callback := state.Fn.(func(uint16))
+	callback(uint16(p0))
+}
+
+// PaletteFlags calls the generated C ABI wrapper for zg_palette_flags.
+func PaletteFlags(self unsafe.Pointer) (uint16, int32) {
+	var outResult C.uint16_t
+	code := int32(C.zg_palette_flags((*C.zg_palette)(self), &outResult))
+	return uint16(outResult), code
+}
+
+// PaletteSetFlags calls the generated C ABI wrapper for zg_palette_set_flags.
+func PaletteSetFlags(self unsafe.Pointer, v uint16) int32 {
+	code := int32(C.zg_palette_set_flags((*C.zg_palette)(self), C.uint16_t(v)))
+	return code
+}
 
 // ChildCreate calls the generated C ABI wrapper for zg_child_create.
 func ChildCreate(value int32) (unsafe.Pointer, int32) {
@@ -188,10 +251,72 @@ func CurrentViewport(kind uint8) (ScrollViewportData, int32) {
 	}, code
 }
 
+// EchoRgb calls the generated C ABI wrapper for zg_echo_rgb.
+func EchoRgb(value uint32) uint32 {
+	return uint32(C.zg_echo_rgb(C.uint32_t(value)))
+}
+
+// MaybeRgb calls the generated C ABI wrapper for zg_maybe_rgb.
+func MaybeRgb(present uint8) (uint32, bool) {
+	var outResult C.uint32_t
+	outResultHas := C.zg_maybe_rgb(C.uint8_t(present), &outResult) != 0
+	return uint32(outResult), outResultHas
+}
+
+// CheckedRgb calls the generated C ABI wrapper for zg_checked_rgb.
+func CheckedRgb(valid uint8) (uint32, int32) {
+	var outResult C.uint32_t
+	code := int32(C.zg_checked_rgb(C.uint8_t(valid), &outResult))
+	return uint32(outResult), code
+}
+
+// EchoColorRecord calls the generated C ABI wrapper for zg_echo_color_record.
+func EchoColorRecord(value ColorRecordData) ColorRecordData {
+	var cvalue C.zg_color_record
+	cvalue.flags = C.uint16_t(value.Flags)
+	cvalue.code = C.uint32_t(value.Code)
+	var outResult C.zg_color_record
+	C.zg_echo_color_record(&cvalue, &outResult)
+	return ColorRecordData{
+		Flags: uint16(outResult.flags),
+		Code:  uint32(outResult.code),
+	}
+}
+
+// FlattenFlags calls the generated C ABI wrapper for zg_flatten_flags.
+func FlattenFlags(flags uint16) uint16 {
+	return uint16(C.zg_flatten_flags(C.uint16_t(flags)))
+}
+
+// PaletteCreate calls the generated C ABI wrapper for zg_palette_create.
+func PaletteCreate(flags uint16) (unsafe.Pointer, int32) {
+	var outResult *C.zg_palette
+	code := int32(C.zg_palette_create(C.uint16_t(flags), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+
+// PaletteDeinit calls the generated C ABI wrapper for zg_palette_deinit.
+func PaletteDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_palette_deinit((*C.zg_palette)(self)))
+	return code
+}
+
+// VisitFlags calls the generated C ABI wrapper for zg_visit_flags.
+func VisitFlags(callbackHandle uintptr) {
+	C.zg_visit_flags(C.size_t(callbackHandle))
+}
+
 // PanicError calls the generated C ABI wrapper for zg_panic_error.
 func PanicError() int32 {
 	code := int32(C.zg_panic_error())
 	return code
+}
+
+// ColorRecordData mirrors the zg_color_record layout, padding included.
+type ColorRecordData struct {
+	Flags uint16
+	_     [2]byte
+	Code  uint32
 }
 
 // PointData mirrors the zg_point layout, padding included.

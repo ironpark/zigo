@@ -43,7 +43,7 @@ pub fn reflect(
                     };
                 },
                 .value => switch (info) {
-                    .@"struct" => try appendValueStruct(allocator, &types, declaration, T, type_name, try registeredZigPath(allocator, declaration, T, type_name)),
+                    .@"struct" => try appendValueStruct(allocator, &types, declaration, T, type_name, try registeredZigPath(allocator, declaration, T, type_name), true),
                     else => @compileError("zigo value type entries must name a struct"),
                 },
                 // An enum registered here is not walked for declarations --
@@ -333,6 +333,8 @@ fn supportedFieldLeaf(comptime declaration: anytype, comptime T: type) bool {
     return switch (@typeInfo(Scalar)) {
         .bool, .int, .float => true,
         .@"enum" => registeredTypeName(declaration, Scalar, .enumeration) != null,
+        .@"struct" => |value| value.layout == .@"packed" and value.backing_integer != null and
+            @bitSizeOf(value.backing_integer.?) <= 64 and registeredTypeName(declaration, Scalar, .value) != null,
         else => false,
     };
 }
@@ -352,7 +354,7 @@ fn fieldAccessMessageAlloc(allocator: std.mem.Allocator, comptime path: []const 
     return std.fmt.allocPrint(
         allocator,
         "error[ZIGO037]: field path `{s}`{s}\n" ++
-            "  hint: paths may cross struct values or non-optional single pointers and must end at a bool, integer, float, or registered enum\n",
+            "  hint: paths may cross struct values or non-optional single pointers and must end at a bool, integer, float, registered enum, or registered packed value\n",
         .{ path, detail },
     );
 }
@@ -1200,12 +1202,8 @@ fn reflectFlattenedFields(
         const field = maybe_field orelse return flattenIssue(allocator, "`{s}` parameter `{s}` has no field `{s}`", .{ function_label, parameter_label, field_name });
         const leaf = comptime if (@typeInfo(field.type) == .optional) @typeInfo(field.type).optional.child else field.type;
         const scalar_leaf = comptime atomicScalar(leaf) orelse leaf;
-        const allowed = comptime switch (@typeInfo(scalar_leaf)) {
-            .bool, .int, .float => true,
-            .@"enum" => registeredTypeName(declaration, scalar_leaf, .enumeration) != null,
-            else => false,
-        };
-        if (!allowed) return flattenIssue(allocator, "`{s}` parameter `{s}` field `{s}` is not a supported scalar or registered enum", .{ function_label, parameter_label, field_name });
+        const allowed = comptime supportedFieldLeaf(declaration, scalar_leaf);
+        if (!allowed) return flattenIssue(allocator, "`{s}` parameter `{s}` field `{s}` is not a supported scalar, registered enum, or registered packed value", .{ function_label, parameter_label, field_name });
         result[selected_index] = .{
             .atomic = if (comptime atomicScalar(leaf) != null) true else null,
             .name = field_name,
@@ -1264,7 +1262,7 @@ fn flattenMessageAlloc(allocator: std.mem.Allocator, comptime detail: []const u8
     return std.fmt.allocPrint(
         allocator,
         "error[ZIGO040]: " ++ detail ++ "\n" ++
-            "  hint: flatten only bool, integer, float, registered enum, or optional scalar fields, and give every unlisted field a default\n",
+            "  hint: flatten only bool, integer, float, registered enum, registered packed value, or optional scalar fields, and give every unlisted field a default\n",
         args,
     );
 }
@@ -1853,7 +1851,9 @@ fn typeNode(
             }
             const allowed = switch (child) {
                 .bool, .int, .float, .@"enum" => true,
-                .@"struct" => |value| value.layout == .@"extern",
+                .@"struct" => |value| value.layout == .@"extern" or
+                    (value.layout == .@"packed" and value.backing_integer != null and
+                        @bitSizeOf(value.backing_integer.?) <= 64),
                 // A slice already carries a pointer, so absence rides on that
                 // pointer being NULL -- which is why an empty slice and an
                 // absent one stay different. A sentinel many pointer reflects
@@ -1908,7 +1908,7 @@ fn typeNode(
                     break;
                 }
             }
-            if (!exists) try appendValueStruct(allocator, types, declaration, T, name, @typeName(T));
+            if (!exists) try appendValueStruct(allocator, types, declaration, T, name, @typeName(T), false);
             break :blk .{ .value_struct = .{ .ref = name } };
         },
         .@"union" => blk: {
@@ -2147,6 +2147,7 @@ fn appendValueStruct(
     comptime T: type,
     name: []const u8,
     zig_path: []const u8,
+    explicitly_registered: bool,
 ) !void {
     const info = @typeInfo(T).@"struct";
     const index = types.items.len;
@@ -2162,6 +2163,7 @@ fn appendValueStruct(
             .auto => null,
         },
         .name = name,
+        .registered_value = if (info.layout == .@"packed" and explicitly_registered) true else null,
         .zig_path = zig_path,
     });
     // Reflecting a field can append further types, so the declaration is
@@ -2171,16 +2173,41 @@ fn appendValueStruct(
         fields[field_index] = .{
             .atomic = if (comptime atomicScalar(field.type) != null) true else null,
             .name = field.name,
-            .type = try typeNode(
-                allocator,
-                declaration,
-                field.type,
-                types,
-                "`" ++ comptime shortTypeName(@typeName(T)) ++ "` field `" ++ field.name ++ "`",
-            ),
+            .type = if (info.layout == .@"packed")
+                try packedFieldTypeNode(allocator, declaration, field.type, types, "`" ++ comptime shortTypeName(@typeName(T)) ++ "` field `" ++ field.name ++ "`")
+            else
+                try typeNode(
+                    allocator,
+                    declaration,
+                    field.type,
+                    types,
+                    "`" ++ comptime shortTypeName(@typeName(T)) ++ "` field `" ++ field.name ++ "`",
+                ),
         };
     }
     types.items[index].fields = fields;
+}
+
+/// Packed value declarations deliberately reach semantic validation even when
+/// a member is not representable. That gives users ZIGO044 with the member
+/// name instead of an earlier reflection error (or an implicitly registered
+/// enum/struct that was never part of the public contract).
+fn packedFieldTypeNode(
+    allocator: std.mem.Allocator,
+    comptime declaration: anytype,
+    comptime T: type,
+    types: *std.ArrayList(semantic.TypeDecl),
+    comptime context: []const u8,
+) !semantic.TypeNode {
+    const supported = switch (@typeInfo(T)) {
+        .bool, .int => true,
+        .@"enum" => registeredTypeName(declaration, T, .enumeration) != null,
+        .@"struct" => |value| value.layout == .@"packed" and value.backing_integer != null and
+            registeredTypeName(declaration, T, .value) != null,
+        else => false,
+    };
+    if (!supported) return .{ .void = {} };
+    return typeNode(allocator, declaration, T, types, context);
 }
 
 fn appendTaggedUnion(
@@ -3775,14 +3802,57 @@ test "invalid opaque field paths and leaf types use ZIGO037" {
     defer std.testing.allocator.free(unknown);
     try std.testing.expectEqualStrings(
         "error[ZIGO037]: field path `screen.cursor.x` is unknown or crosses something other than a plain struct or non-optional single pointer\n" ++
-            "  hint: paths may cross struct values or non-optional single pointers and must end at a bool, integer, float, or registered enum\n",
+            "  hint: paths may cross struct values or non-optional single pointers and must end at a bool, integer, float, registered enum, or registered packed value\n",
         unknown,
     );
     const unsupported = try fieldAccessMessageAlloc(std.testing.allocator, "label", []const u8);
     defer std.testing.allocator.free(unsupported);
     try std.testing.expectEqualStrings(
         "error[ZIGO037]: field path `label` encounters unsupported type `[]const u8`\n" ++
-            "  hint: paths may cross struct values or non-optional single pointers and must end at a bool, integer, float, or registered enum\n",
+            "  hint: paths may cross struct values or non-optional single pointers and must end at a bool, integer, float, registered enum, or registered packed value\n",
         unsupported,
     );
+}
+
+test "packed value fields require registered enum and packed struct identities" {
+    const Fixture = struct {
+        const Mode = enum(u2) { idle, busy, hidden, done };
+        const Nibble = packed struct(u4) { value: u4 };
+        const Flags = packed struct(u8) {
+            enabled: bool,
+            mode: Mode,
+            nested: Nibble,
+            spare: bool,
+        };
+        const Unregistered = enum(u2) { a, b, c, d };
+        const Invalid = packed struct(u8) { mode: Unregistered, rest: u6 };
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{
+            .{ .type = Fixture.Mode, .repr = .enumeration },
+            .{ .type = Fixture.Nibble, .repr = .value },
+            .{ .type = Fixture.Flags, .repr = .value },
+            .{ .type = Fixture.Invalid, .repr = .value },
+        },
+        .functions = .{},
+    }, "packed", "zg");
+
+    var saw_flags = false;
+    var saw_invalid = false;
+    for (document.types) |declaration| {
+        if (std.mem.eql(u8, declaration.name, "Flags")) {
+            saw_flags = true;
+            try std.testing.expect(declaration.layout == .@"packed");
+            try std.testing.expect(declaration.fields[1].type.? == .@"enum");
+            try std.testing.expect(declaration.fields[2].type.? == .value_struct);
+        } else if (std.mem.eql(u8, declaration.name, "Invalid")) {
+            saw_invalid = true;
+            try std.testing.expect(declaration.fields[0].type.? == .void);
+        }
+    }
+    try std.testing.expect(saw_flags and saw_invalid);
 }

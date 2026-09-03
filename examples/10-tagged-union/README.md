@@ -28,6 +28,12 @@ variant constructors and `Tag()`. The C ABI places the tag before one slot for e
 and returns use an out-parameter snapshot with that same order. This value has no handle lifecycle,
 and adding a variant is a breaking ABI change.
 
+The same `RGB` packed struct is also registered directly with `.repr = .value`. Its Go mirror exposes
+`Backing()` and `RGBFromBacking()`, while direct parameters, returns, optionals, and error payloads
+cross C as its backing integer. A second `packed struct(u16)`, `Flags`, exercises extern struct fields,
+flattened fields, opaque field accessors, and callbacks. The cgo and purego tests cover conversion-only
+use and native round trips.
+
 This example also enables Go 1.24 `runtime.AddCleanup` as a leak fallback. Explicit `Close` remains
 the deterministic lifecycle contract, including when projections are in use.
 

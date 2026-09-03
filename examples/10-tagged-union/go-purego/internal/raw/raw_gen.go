@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -50,6 +51,8 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 
 type nativeBindings struct {
 	lastError                func() unsafe.Pointer
+	fnPaletteFlags           func(unsafe.Pointer, *uint16) int32
+	fnPaletteSetFlags        func(unsafe.Pointer, uint16) int32
 	fnChildCreate            func(int32, *unsafe.Pointer) int32
 	fnChildGet               func(unsafe.Pointer, *int32) int32
 	fnChildDeinit            func(unsafe.Pointer) int32
@@ -76,6 +79,14 @@ type nativeBindings struct {
 	fnSum                    func(unsafe.Pointer, uintptr) float64
 	fnScrollAmount           func(uint8, int, uintptr, uint32, int16, int16, uint16) int
 	fnCurrentViewport        func(uint8, unsafe.Pointer) int32
+	fnEchoRgb                func(uint32) uint32
+	fnMaybeRgb               func(uint8, *uint32) uint8
+	fnCheckedRgb             func(uint8, *uint32) int32
+	fnEchoColorRecord        func(unsafe.Pointer, unsafe.Pointer)
+	fnFlattenFlags           func(uint16) uint16
+	fnPaletteCreate          func(uint16, *unsafe.Pointer) int32
+	fnPaletteDeinit          func(unsafe.Pointer) int32
+	fnVisitFlags             func(uintptr, uintptr)
 	fnPanicError             func() int32
 	fnProjection0            func(unsafe.Pointer, *uint8) uint8
 	fnProjection1            func(unsafe.Pointer, *int64) uint8
@@ -92,6 +103,148 @@ type nativeBindings struct {
 	fnProjection12           func(unsafe.Pointer, *uint8) uint8
 	fnSnapshot0              func(unsafe.Pointer, unsafe.Pointer) uint8
 }
+
+type callbackEntry struct {
+	mu         sync.Mutex
+	cond       *sync.Cond
+	value      any
+	closing    bool
+	active     int
+	panicked   bool
+	panicValue any
+	panicStack []byte
+}
+
+// callbackRegistry maps a userdata token to its entry without a global lock,
+// mirroring the sync.Map behind runtime/cgo.Handle on the cgo backend.
+// Delete races an in-flight acquire safely through the entry's closing flag:
+// an acquire either takes active++ before closing is set, in which case
+// DeleteCallbackHandle waits for it to drain, or it observes closing and
+// reports the token as gone.
+var callbackRegistry sync.Map // uintptr -> *callbackEntry
+var nextCallbackToken atomic.Uint64
+var activeCallbackHandles atomic.Int64
+
+// NewCallbackHandle stores a callback value and returns its native userdata token.
+func NewCallbackHandle(value any) uintptr {
+	entry := &callbackEntry{value: value}
+	entry.cond = sync.NewCond(&entry.mu)
+	token := uintptr(nextCallbackToken.Add(1))
+	if token == 0 {
+		token = uintptr(nextCallbackToken.Add(1))
+	}
+	callbackRegistry.Store(token, entry)
+	activeCallbackHandles.Add(1)
+	return token
+}
+
+// DeleteCallbackHandle releases a callback token after in-flight calls finish.
+func DeleteCallbackHandle(token uintptr) {
+	if token == 0 {
+		return
+	}
+	stored, loaded := callbackRegistry.LoadAndDelete(token)
+	if !loaded {
+		return
+	}
+	entry := stored.(*callbackEntry)
+	entry.mu.Lock()
+	entry.closing = true
+	for entry.active != 0 {
+		entry.cond.Wait()
+	}
+	entry.value = nil
+	entry.mu.Unlock()
+	activeCallbackHandles.Add(-1)
+}
+
+// ActiveCallbackHandleCount reports the number of live callback tokens.
+func ActiveCallbackHandleCount() int64 { return activeCallbackHandles.Load() }
+
+// record keeps the first panic a callback raised until the generated caller takes it.
+func (entry *callbackEntry) record(value any) {
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	if entry.panicked {
+		return
+	}
+	entry.panicked = true
+	entry.panicValue = value
+	entry.panicStack = debug.Stack()
+}
+
+// TakeCallbackPanic returns and clears the panic the callback behind token recorded.
+func TakeCallbackPanic(token uintptr) (any, []byte, bool) {
+	stored, loaded := callbackRegistry.Load(token)
+	if !loaded {
+		return nil, nil, false
+	}
+	entry := stored.(*callbackEntry)
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	if !entry.panicked {
+		return nil, nil, false
+	}
+	value, stack := entry.panicValue, entry.panicStack
+	entry.panicValue, entry.panicStack, entry.panicked = nil, nil, false
+	return value, stack, true
+}
+
+func acquireCallback(token uintptr) (*callbackEntry, any, bool) {
+	stored, loaded := callbackRegistry.Load(token)
+	if !loaded {
+		return nil, nil, false
+	}
+	entry := stored.(*callbackEntry)
+	entry.mu.Lock()
+	if entry.closing {
+		entry.mu.Unlock()
+		return nil, nil, false
+	}
+	entry.active++
+	value := entry.value
+	entry.mu.Unlock()
+	return entry, value, true
+}
+
+func releaseCallback(entry *callbackEntry) {
+	entry.mu.Lock()
+	entry.active--
+	if entry.closing && entry.active == 0 {
+		entry.cond.Broadcast()
+	}
+	entry.mu.Unlock()
+}
+
+var callbackPointers [1]uintptr
+var callbackDispatchersOnce sync.Once
+
+func ensureCallbackDispatchers() {
+	callbackDispatchersOnce.Do(func() {
+		callbackPointers[0] = purego.NewCallback(func(p0 uint16, p1 uint) (result uintptr) {
+			entry, stored, ok := acquireCallback(uintptr(p1))
+			if !ok {
+				return 0
+			}
+			defer releaseCallback(entry)
+			defer func() {
+				if value := recover(); value != nil {
+					entry.record(value)
+					result = 0
+				}
+			}()
+			callback := stored.(func(uint16))
+			callback(p0)
+			return 0
+		})
+	})
+}
+
+// CallbackPointer0 returns the permanent dispatcher for callback ABI signature 0.
+func CallbackPointer0() uintptr { ensureCallbackDispatchers(); return callbackPointers[0] }
+
+// CallbackDispatcherCount reports the number of unique callback ABI dispatchers.
+func CallbackDispatcherCount() int { ensureCallbackDispatchers(); return len(callbackPointers) }
 
 var loadedBindings atomic.Pointer[nativeBindings]
 var loadMu sync.Mutex
@@ -142,6 +295,7 @@ func loadLibraryLocked(explicit string) error {
 		}
 		return &LibraryError{Path: candidates[0], Operation: "load", Cause: errors.New("a different library is already loaded")}
 	}
+	ensureCallbackDispatchers()
 	attempts := make([]error, 0, len(candidates))
 	for _, candidate := range candidates {
 		if err := loadCandidate(candidate); err != nil {
@@ -171,6 +325,14 @@ func loadCandidate(path string) error {
 	addrLastError, err := resolveSymbol(handle, "zg_last_error_message")
 	if err != nil {
 		return fail("zg_last_error_message", err)
+	}
+	addrPaletteFlags, err := resolveSymbol(handle, "zg_palette_flags")
+	if err != nil {
+		return fail("zg_palette_flags", err)
+	}
+	addrPaletteSetFlags, err := resolveSymbol(handle, "zg_palette_set_flags")
+	if err != nil {
+		return fail("zg_palette_set_flags", err)
 	}
 	addrChildCreate, err := resolveSymbol(handle, "zg_child_create")
 	if err != nil {
@@ -276,6 +438,38 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_current_viewport", err)
 	}
+	addrEchoRgb, err := resolveSymbol(handle, "zg_echo_rgb")
+	if err != nil {
+		return fail("zg_echo_rgb", err)
+	}
+	addrMaybeRgb, err := resolveSymbol(handle, "zg_maybe_rgb")
+	if err != nil {
+		return fail("zg_maybe_rgb", err)
+	}
+	addrCheckedRgb, err := resolveSymbol(handle, "zg_checked_rgb")
+	if err != nil {
+		return fail("zg_checked_rgb", err)
+	}
+	addrEchoColorRecord, err := resolveSymbol(handle, "zg_echo_color_record")
+	if err != nil {
+		return fail("zg_echo_color_record", err)
+	}
+	addrFlattenFlags, err := resolveSymbol(handle, "zg_flatten_flags")
+	if err != nil {
+		return fail("zg_flatten_flags", err)
+	}
+	addrPaletteCreate, err := resolveSymbol(handle, "zg_palette_create")
+	if err != nil {
+		return fail("zg_palette_create", err)
+	}
+	addrPaletteDeinit, err := resolveSymbol(handle, "zg_palette_deinit")
+	if err != nil {
+		return fail("zg_palette_deinit", err)
+	}
+	addrVisitFlags, err := resolveSymbol(handle, "zg_visit_flags_purego_v2")
+	if err != nil {
+		return fail("zg_visit_flags_purego_v2", err)
+	}
 	addrPanicError, err := resolveSymbol(handle, "zg_panic_error")
 	if err != nil {
 		return fail("zg_panic_error", err)
@@ -338,6 +532,8 @@ func loadCandidate(path string) error {
 	}
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
+	purego.RegisterFunc(&next.fnPaletteFlags, addrPaletteFlags)
+	purego.RegisterFunc(&next.fnPaletteSetFlags, addrPaletteSetFlags)
 	purego.RegisterFunc(&next.fnChildCreate, addrChildCreate)
 	purego.RegisterFunc(&next.fnChildGet, addrChildGet)
 	purego.RegisterFunc(&next.fnChildDeinit, addrChildDeinit)
@@ -364,6 +560,14 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnSum, addrSum)
 	purego.RegisterFunc(&next.fnScrollAmount, addrScrollAmount)
 	purego.RegisterFunc(&next.fnCurrentViewport, addrCurrentViewport)
+	purego.RegisterFunc(&next.fnEchoRgb, addrEchoRgb)
+	purego.RegisterFunc(&next.fnMaybeRgb, addrMaybeRgb)
+	purego.RegisterFunc(&next.fnCheckedRgb, addrCheckedRgb)
+	purego.RegisterFunc(&next.fnEchoColorRecord, addrEchoColorRecord)
+	purego.RegisterFunc(&next.fnFlattenFlags, addrFlattenFlags)
+	purego.RegisterFunc(&next.fnPaletteCreate, addrPaletteCreate)
+	purego.RegisterFunc(&next.fnPaletteDeinit, addrPaletteDeinit)
+	purego.RegisterFunc(&next.fnVisitFlags, addrVisitFlags)
 	purego.RegisterFunc(&next.fnPanicError, addrPanicError)
 	purego.RegisterFunc(&next.fnProjection0, addrProjection0)
 	purego.RegisterFunc(&next.fnProjection1, addrProjection1)
@@ -404,6 +608,13 @@ func LastErrorMessage() string {
 	return string(unsafe.Slice((*byte)(p), length))
 }
 
+// ColorRecordData mirrors the zg_color_record layout, padding included.
+type ColorRecordData struct {
+	Flags uint16
+	_     [2]byte
+	Code  uint32
+}
+
 // PointData mirrors the zg_point layout, padding included.
 type PointData struct {
 	X int16
@@ -438,6 +649,19 @@ type SignalSnapshotData struct {
 	Offset int16
 	Mode   uint8
 	Active uint8
+}
+
+// PaletteFlags calls the generated purego ABI wrapper for zg_palette_flags.
+func PaletteFlags(self unsafe.Pointer) (uint16, int32) {
+	var outResult uint16
+	code := bindings().fnPaletteFlags(self, &outResult)
+	return outResult, code
+}
+
+// PaletteSetFlags calls the generated purego ABI wrapper for zg_palette_set_flags.
+func PaletteSetFlags(self unsafe.Pointer, v uint16) int32 {
+	code := bindings().fnPaletteSetFlags(self, v)
+	return code
 }
 
 // ChildCreate calls the generated purego ABI wrapper for zg_child_create.
@@ -605,6 +829,57 @@ func CurrentViewport(kind uint8) (ScrollViewportData, int32) {
 	var outResult ScrollViewportData
 	code := bindings().fnCurrentViewport(kind, unsafe.Pointer(&outResult))
 	return outResult, code
+}
+
+// EchoRgb calls the generated purego ABI wrapper for zg_echo_rgb.
+func EchoRgb(value uint32) uint32 {
+	result := bindings().fnEchoRgb(value)
+	return uint32(result)
+}
+
+// MaybeRgb calls the generated purego ABI wrapper for zg_maybe_rgb.
+func MaybeRgb(present uint8) (uint32, bool) {
+	var outResult uint32
+	result := bindings().fnMaybeRgb(present, &outResult)
+	return outResult, result != 0
+}
+
+// CheckedRgb calls the generated purego ABI wrapper for zg_checked_rgb.
+func CheckedRgb(valid uint8) (uint32, int32) {
+	var outResult uint32
+	code := bindings().fnCheckedRgb(valid, &outResult)
+	return outResult, code
+}
+
+// EchoColorRecord calls the generated purego ABI wrapper for zg_echo_color_record.
+func EchoColorRecord(value ColorRecordData) ColorRecordData {
+	var outResult ColorRecordData
+	bindings().fnEchoColorRecord(unsafe.Pointer(&value), unsafe.Pointer(&outResult))
+	return outResult
+}
+
+// FlattenFlags calls the generated purego ABI wrapper for zg_flatten_flags.
+func FlattenFlags(flags uint16) uint16 {
+	result := bindings().fnFlattenFlags(flags)
+	return uint16(result)
+}
+
+// PaletteCreate calls the generated purego ABI wrapper for zg_palette_create.
+func PaletteCreate(flags uint16) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := bindings().fnPaletteCreate(flags, &outResult)
+	return outResult, code
+}
+
+// PaletteDeinit calls the generated purego ABI wrapper for zg_palette_deinit.
+func PaletteDeinit(self unsafe.Pointer) int32 {
+	code := bindings().fnPaletteDeinit(self)
+	return code
+}
+
+// VisitFlags calls the generated purego ABI wrapper for zg_visit_flags_purego_v2.
+func VisitFlags(callbackCallback, callbackToken uintptr) {
+	bindings().fnVisitFlags(callbackCallback, callbackToken)
 }
 
 // PanicError calls the generated purego ABI wrapper for zg_panic_error.

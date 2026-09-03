@@ -131,9 +131,12 @@
   않는다 — zigo는 native 스레드를 강제로 중단하지 않고, 그럴 수 있는 안전한 방법도 없다.
   폴링 간격이 곧 취소 지연이다. 플래그의 주소는 호출 동안만 유효하므로 대상 함수가 그것을
   보관하거나 다른 스레드로 넘겨 호출 뒤에 읽으면 동작은 정의되지 않는다.
-- `packed struct`의 정수 백킹 노출은 지원하지 않는다. `ZIGO003`으로 거부된다.
+- 정수 backing의 `packed struct`는 `.repr = .value`로 등록할 수 있다. 필드는 bool, 정수,
+  등록 enum, 다시 등록한 정수-backed packed struct만 가능하며 다른 필드는 `ZIGO044`다.
+  C 경계에서는 backing 정수 하나로 전달된다. backing 폭을 유지한 끝 필드 추가만 ABI
+  compatible이고 삭제·재정렬·폭/타입 변경은 breaking이다.
 - optional은 매개변수, 반환값, error union payload 자리에서만 쓸 수 있고, child는 bool,
-  정수, 부동소수, 등록 enum, `extern struct`, 선언된 opaque type의 pointer만 지원한다.
+  정수, 부동소수, 등록 enum, 등록 packed value, `extern struct`, 선언된 opaque type의 pointer만 지원한다.
   매개변수는 nullable pointer 하나로(NULL = 부재), 반환은 presence `bool`과 out
   parameter로 내려간다. `extern struct`의 field, callback signature, slice
   원소(`[]?T`), optional의 optional(`??T`)은 presence를 실을 자리가 없어 `ZIGO019`로
@@ -288,6 +291,8 @@ error[ZIGO018]: unsupported integer width `u21` in parameter `cp`
 - `ZIGO043` — atomic 포인터 파라미터의 scalar가 `u32`, `i32`, `u64`, `i64` 중 하나가
   아니거나 `.retention = .retained`를 지정했다. 지원하는 `sync/atomic` 폭을 사용하고 주소는
   호출 범위에서만 빌린다.
+- `ZIGO044` — `.repr = .value`인 packed struct에 bool, 정수, 등록 enum, 등록 integer-backed
+  packed struct 이외의 필드가 있다. 진단에 표시된 필드를 지원하는 값 타입으로 바꾼다.
 
 `ZIGO027`, `ZIGO028`, `ZIGO037`, `ZIGO038`은 reflection이 문서를 만들기 전에 걸리므로 `semantic.json` 자리가
 아니라 선언 경로를 가리키며, 생성기는 이 진단을 출력하고 종료한다.

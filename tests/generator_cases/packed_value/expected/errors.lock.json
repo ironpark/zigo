@@ -1,12 +1,9 @@
 {
   "codes": {
-    "DivideByZero": 2,
-    "Invalid": 4,
-    "Never": 3,
-    "OutOfMemory": 1
+    "Invalid": 1
   },
   "ir_version": 1,
-  "next_code": 5,
+  "next_code": 2,
   "reserved": {
     "-1": "Unknown",
     "-2": "PanicCaught",

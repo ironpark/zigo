@@ -402,3 +402,114 @@ func (s *Signal) zigoTakeLocked() (signalCleanupState, bool) {
 	}
 	return state, true
 }
+
+// Palette is a caller-owned native handle. Call Close when it is no longer needed.
+type Palette struct {
+	ptr     unsafe.Pointer
+	mu      sync.Mutex
+	active  int
+	closed  bool
+	poison  *NativePanicError
+	cleanup runtime.Cleanup
+}
+
+// zigoAcquire pins p open for one native call and hands back its pointer;
+// the call ends with zigoRelease. A nil, closed, or poisoned handle is the error.
+func (p *Palette) zigoAcquire(operation string) (unsafe.Pointer, error) {
+	if p == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.closed || p.ptr == nil {
+		return nil, &HandleError{Operation: operation}
+	}
+	if p.poison != nil {
+		return nil, p.poison.poisoned(operation)
+	}
+	p.active++
+	return p.ptr, nil
+}
+
+func (p *Palette) zigoRelease() {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	p.active--
+	state, release := p.zigoTakeLocked()
+	p.mu.Unlock()
+	if release {
+		cleanupPalette(state)
+	}
+}
+
+// zigoPoison marks p unusable: a Zig panic unwound through native frames
+// without running their defers, so the state behind it is unknown.
+func (p *Palette) zigoPoison(cause *NativePanicError) {
+	if p == nil {
+		return
+	}
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.poison == nil {
+		p.poison = cause
+		p.cleanup.Stop()
+	}
+}
+
+type paletteCleanupState struct {
+	ptr unsafe.Pointer
+}
+
+func newPalette(ptr unsafe.Pointer) *Palette {
+	value := &Palette{ptr: ptr}
+	state := paletteCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, cleanupPalette, state)
+	return value
+}
+
+func cleanupPalette(state paletteCleanupState) {
+	if state.ptr != nil {
+		raw.PaletteDeinit(state.ptr)
+	}
+}
+
+// Close releases the native Palette resources. It is safe to call more than once.
+// The error result is always nil; it exists so Palette satisfies io.Closer.
+// Close does not wait: a call still inside native keeps the resources until it
+// returns, and every call made after Close fails with *HandleError.
+func (p *Palette) Close() error {
+	if p == nil {
+		return nil
+	}
+	p.mu.Lock()
+	if p.closed {
+		p.mu.Unlock()
+		return nil
+	}
+	p.closed = true
+	p.cleanup.Stop()
+	state, release := p.zigoTakeLocked()
+	p.mu.Unlock()
+	if release {
+		cleanupPalette(state)
+	}
+	runtime.KeepAlive(p)
+	return nil
+}
+
+// zigoTakeLocked hands out what is left to release once p is closed and no
+// call is inside native; mu must be held. A poisoned handle keeps its native
+// object: releasing state a panic left half-changed could fault, so it leaks.
+func (p *Palette) zigoTakeLocked() (paletteCleanupState, bool) {
+	if !p.closed || p.active != 0 || p.ptr == nil {
+		return paletteCleanupState{}, false
+	}
+	state := paletteCleanupState{ptr: p.ptr}
+	p.ptr = nil
+	if p.poison != nil {
+		state.ptr = nil
+	}
+	return state, true
+}

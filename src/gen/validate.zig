@@ -200,7 +200,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                     .site = functionSite(function),
                     .hint = "apply `.flatten` only to a plain struct parameter",
                 };
-                for (fields) |field| if (!isFlattenLeaf(field.type)) return .{
+                for (fields) |field| if (!isFlattenLeaf(document, field.type)) return .{
                     .severity = .@"error",
                     .code = "ZIGO040",
                     .message = try std.fmt.allocPrint(allocator, "flattened field `{s}` has an unsupported type", .{field.name}),
@@ -214,7 +214,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .site = functionSite(function),
                 .hint = "declare it as `extern struct`, or expose it as opaque",
             };
-            if (nestedValueStruct(parameter.type)) return .{
+            if (nestedValueStruct(document, parameter.type)) return .{
                 .severity = .@"error",
                 .code = "ZIGO013",
                 .message = "extern struct is only supported as a whole parameter or return value",
@@ -281,7 +281,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .site = functionSite(function),
             .hint = "declare it as `extern struct`, or expose it as opaque",
         };
-        if (nestedValueStruct(function.@"return")) return .{
+        if (nestedValueStruct(document, function.@"return")) return .{
             .severity = .@"error",
             .code = "ZIGO013",
             .message = "extern struct is only supported as a whole parameter or return value",
@@ -420,6 +420,15 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .message = "extern struct cannot cross the C ABI",
                 .site = .{ .path = "semantic.json", .declaration = site },
                 .hint = "give every field a bool, integer, float, registered enum, or nested `extern struct` type; an empty struct has no C representation",
+            };
+        }
+        if (declaration.kind == .value_struct and declaration.layout == .@"packed") {
+            if (packedStructProblem(document, declaration, 0)) |field| return .{
+                .severity = .@"error",
+                .code = "ZIGO044",
+                .message = try std.fmt.allocPrint(allocator, "packed struct field `{s}` cannot cross as a value", .{field}),
+                .site = .{ .path = "semantic.json", .declaration = declaration.name },
+                .hint = "use only bool, integer, registered enum, or registered integer-backed packed struct fields",
             };
         }
         if (declaration.kind == .tagged_union and declaration.accessStrategy() == .snapshot) {
@@ -1605,8 +1614,43 @@ fn scalarPayloadSupported(document: semantic.Semantic, node: semantic.TypeNode) 
         .int => |value| integerSupported(value),
         .float => |value| floatSupported(value),
         .@"enum" => |value| hasTypeKind(document, value.ref, .@"enum"),
+        .value_struct => isPackedValue(document, node),
         else => false,
     };
+}
+
+fn isPackedValue(document: semantic.Semantic, node: semantic.TypeNode) bool {
+    if (node != .value_struct) return false;
+    for (document.types) |declaration| {
+        if (std.mem.eql(u8, declaration.name, node.value_struct.ref))
+            return declaration.kind == .value_struct and declaration.layout == .@"packed";
+    }
+    return false;
+}
+
+fn packedStructProblem(document: semantic.Semantic, declaration: semantic.TypeDecl, depth: usize) ?[]const u8 {
+    if (depth >= 16 or declaration.backing_type == null or declaration.backing_type.? != .int or
+        !promotableInteger(declaration.backing_type.?.int)) return declaration.name;
+    for (declaration.fields) |field| {
+        const node = field.type orelse return field.name;
+        switch (node) {
+            .bool, .int => {},
+            .@"enum" => |value| if (!hasTypeKind(document, value.ref, .@"enum")) return field.name,
+            .value_struct => |value| {
+                var found = false;
+                for (document.types) |nested| {
+                    if (!std.mem.eql(u8, nested.name, value.ref)) continue;
+                    found = true;
+                    if (nested.kind != .value_struct or nested.layout != .@"packed" or
+                        packedStructProblem(document, nested, depth + 1) != null) return field.name;
+                    break;
+                }
+                if (!found) return field.name;
+            },
+            else => return field.name,
+        }
+    }
+    return null;
 }
 
 fn accessorPayloadSupported(document: semantic.Semantic, node: semantic.TypeNode) bool {
@@ -1664,8 +1708,9 @@ fn externStructFieldEligible(document: semantic.Semantic, node: semantic.TypeNod
     return switch (node) {
         .value_struct => |value| for (document.types) |nested| {
             if (!std.mem.eql(u8, nested.name, value.ref)) continue;
-            break nested.kind == .value_struct and nested.layout == .@"extern" and
-                externStructProblem(document, nested, depth + 1) == null;
+            break nested.kind == .value_struct and ((nested.layout == .@"extern" and
+                externStructProblem(document, nested, depth + 1) == null) or
+                (nested.layout == .@"packed" and packedStructProblem(document, nested, depth + 1) == null));
         } else false,
         else => scalarPayloadSupported(document, node),
     };
@@ -1675,7 +1720,7 @@ fn externStructFieldEligible(document: semantic.Semantic, node: semantic.TypeNod
 /// return value, error-union payload, or direct slice element. Those positions
 /// lower to a pointer to the struct (or a pointer-plus-length pair for slices);
 /// optional and callback signatures still do not have an aggregate ABI shape.
-fn nestedValueStruct(node: semantic.TypeNode) bool {
+fn nestedValueStruct(document: semantic.Semantic, node: semantic.TypeNode) bool {
     return switch (node) {
         // A direct value-struct node is a supported aggregate position.
         .value_struct => false,
@@ -1684,7 +1729,7 @@ fn nestedValueStruct(node: semantic.TypeNode) bool {
         // would still contain the struct in an unsupported nested position.
         .slice => |value| switch (value.element.*) {
             .value_struct => false,
-            else => containsValueStruct(value.element.*),
+            else => containsUnsupportedNestedValueStruct(document, value.element.*),
         },
         // `?ExternStruct` lowers to a single nullable pointer, the same
         // aggregate-friendly shape a bare value struct gets, so the whole
@@ -1696,10 +1741,24 @@ fn nestedValueStruct(node: semantic.TypeNode) bool {
         // conversion the bare slice one performs.
         .optional => |value| switch (value.child.*) {
             .value_struct => false,
-            else => containsValueStruct(value.child.*),
+            else => containsUnsupportedNestedValueStruct(document, value.child.*),
         },
-        .error_union => |value| nestedValueStruct(value.payload.*),
-        else => containsValueStruct(node),
+        .error_union => |value| nestedValueStruct(document, value.payload.*),
+        else => containsUnsupportedNestedValueStruct(document, node),
+    };
+}
+
+fn containsUnsupportedNestedValueStruct(document: semantic.Semantic, node: semantic.TypeNode) bool {
+    if (node == .value_struct) return !isPackedValue(document, node);
+    return switch (node) {
+        .slice => |value| containsUnsupportedNestedValueStruct(document, value.element.*),
+        .optional => |value| containsUnsupportedNestedValueStruct(document, value.child.*),
+        .error_union => |value| containsUnsupportedNestedValueStruct(document, value.payload.*),
+        .callback => |value| blk: {
+            for (value.params) |parameter| if (containsUnsupportedNestedValueStruct(document, parameter)) break :blk true;
+            break :blk containsUnsupportedNestedValueStruct(document, value.@"return".*);
+        },
+        else => false,
     };
 }
 
@@ -2007,9 +2066,7 @@ fn unsupportedValueStruct(document: semantic.Semantic, node: semantic.TypeNode) 
         .value_struct => |value| blk: {
             for (document.types) |declaration| {
                 if (declaration.kind == .value_struct and std.mem.eql(u8, declaration.name, value.ref)) {
-                    // Only `extern` has a C layout. `packed` backing is out of
-                    // scope and is rejected with the same diagnostic.
-                    break :blk if (declaration.layout != .@"extern") declaration.name else null;
+                    break :blk if (declaration.layout != .@"extern" and declaration.layout != .@"packed") declaration.name else null;
                 }
             }
             break :blk value.ref;
@@ -2021,9 +2078,9 @@ fn unsupportedValueStruct(document: semantic.Semantic, node: semantic.TypeNode) 
     };
 }
 
-fn isFlattenLeaf(node: semantic.TypeNode) bool {
+fn isFlattenLeaf(document: semantic.Semantic, node: semantic.TypeNode) bool {
     const leaf = if (node == .optional) node.optional.child.* else node;
-    return leaf == .bool or leaf == .int or leaf == .float or leaf == .@"enum";
+    return leaf == .bool or leaf == .int or leaf == .float or leaf == .@"enum" or isPackedValue(document, leaf);
 }
 
 fn containsPointer(node: semantic.TypeNode) bool {
@@ -3565,7 +3622,7 @@ test "an extern struct of scalars enums and nested structs passes validation" {
     try semanticDocument(std.testing.allocator, document);
 }
 
-test "a packed struct and an opaque-pointer field stay out of the extern struct path" {
+test "a supported packed struct passes and unsupported packed and extern fields are diagnosed" {
     const packed_document: semantic.Semantic = .{
         .functions = &.{.{
             .name = "configure",
@@ -3576,6 +3633,7 @@ test "a packed struct and an opaque-pointer field stay out of the extern struct 
         .package = "bad",
         .prefix = "zg",
         .types = &.{.{
+            .backing_type = .{ .int = .{ .bits = 8, .signed = false } },
             .fields = &.{.{ .name = "enabled", .type = .{ .bool = {} } }},
             .kind = .value_struct,
             .layout = .@"packed",
@@ -3583,8 +3641,47 @@ test "a packed struct and an opaque-pointer field stay out of the extern struct 
         }},
         .zig_version = "0.16.0",
     };
-    const packed_issue = (try findIssue(std.testing.allocator, packed_document)) orelse return error.MissingDiagnostic;
-    try std.testing.expectEqualStrings("ZIGO003", packed_issue.code);
+    try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try findIssue(std.testing.allocator, packed_document));
+
+    var unsupported_packed = packed_document;
+    const unsupported_fields = [_]semantic.TypeField{.{ .name = "ratio", .type = .{ .float = .{ .bits = 32 } } }};
+    const unsupported_types = [_]semantic.TypeDecl{.{
+        .backing_type = .{ .int = .{ .bits = 32, .signed = false } },
+        .fields = &unsupported_fields,
+        .kind = .value_struct,
+        .layout = .@"packed",
+        .name = "Flags",
+    }};
+    unsupported_packed.types = &unsupported_types;
+    const packed_issue = (try findIssue(std.testing.allocator, unsupported_packed)) orelse return error.MissingDiagnostic;
+    defer std.testing.allocator.free(packed_issue.message);
+    try std.testing.expectEqualStrings("ZIGO044", packed_issue.code);
+    try std.testing.expect(std.mem.indexOf(u8, packed_issue.message, "ratio") != null);
+
+    const unknown_enum_fields = [_]semantic.TypeField{.{ .name = "mode", .type = .{ .@"enum" = .{ .ref = "UnregisteredMode" } } }};
+    const plain_struct_fields = [_]semantic.TypeField{.{ .name = "child", .type = .{ .value_struct = .{ .ref = "Plain" } } }};
+    const pointer_fields = [_]semantic.TypeField{.{ .name = "owner", .type = .{ .opaque_ptr = .{ .@"const" = true, .nullable = false, .ref = "Thing" } } }};
+    const invalid_fields = [_][]const semantic.TypeField{ &unknown_enum_fields, &plain_struct_fields, &pointer_fields };
+    const invalid_names = [_][]const u8{ "mode", "child", "owner" };
+    for (invalid_fields, invalid_names) |fields, field_name| {
+        const declarations = [_]semantic.TypeDecl{
+            .{
+                .backing_type = .{ .int = .{ .bits = 64, .signed = false } },
+                .fields = fields,
+                .kind = .value_struct,
+                .layout = .@"packed",
+                .name = "Flags",
+            },
+            .{ .kind = .value_struct, .name = "Plain" },
+            .{ .kind = .@"opaque", .name = "Thing" },
+        };
+        var invalid = packed_document;
+        invalid.types = &declarations;
+        const issue = (try findIssue(std.testing.allocator, invalid)) orelse return error.MissingDiagnostic;
+        defer std.testing.allocator.free(issue.message);
+        try std.testing.expectEqualStrings("ZIGO044", issue.code);
+        try std.testing.expect(std.mem.indexOf(u8, issue.message, field_name) != null);
+    }
 
     const pointer_document: semantic.Semantic = .{
         .package = "bad",

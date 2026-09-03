@@ -3,6 +3,8 @@
 package tagged_union
 
 import (
+	"runtime/cgo"
+	"sync/atomic"
 	"unsafe"
 
 	"example.com/zigo/tagged-union/internal/raw"
@@ -76,9 +78,47 @@ func zigoMustMatch[T any](value T, matched bool, err error) (T, bool) {
 	return value, matched
 }
 
+// FlagsObserver is the Go callback signature accepted by the generated binding.
+type FlagsObserver func(Flags)
+
 func boolToUint8(value bool) uint8 {
 	if value {
 		return 1
 	}
 	return 0
+}
+
+var activeCallbackHandles atomic.Int64
+
+type zigoCallbackHandle = cgo.Handle
+
+func newFlagsObserverHandle(value FlagsObserver) zigoCallbackHandle {
+	stored := func(p0 uint16) {
+		value(FlagsFromBacking(p0))
+	}
+	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
+	activeCallbackHandles.Add(1)
+	return handle
+}
+
+func deleteCallbackHandle(handle zigoCallbackHandle) {
+	if handle == 0 {
+		return
+	}
+	handle.Delete()
+	activeCallbackHandles.Add(-1)
+}
+
+func activeCallbackHandleCount() int64 { return activeCallbackHandles.Load() }
+
+// zigoRethrowCallbackPanic resumes a panic that a Go callback raised inside
+// the native call that has just returned. The trampoline recovered it so the
+// native frames could unwind; the caller sees it as a *CallbackPanicError.
+func zigoRethrowCallbackPanic(operation string, handle zigoCallbackHandle) {
+	if handle == 0 {
+		return
+	}
+	if value, stack, ok := raw.TakeCallbackPanic(handle); ok {
+		panic(&CallbackPanicError{Operation: operation, Value: value, Stack: stack})
+	}
 }

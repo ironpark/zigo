@@ -23,6 +23,56 @@ func zigoRGBToBacking(value RGB) uint32 {
 	return uint32(result)
 }
 
+// Backing returns the integer representation used by Zig.
+func (value RGB) Backing() uint32 { return zigoRGBToBacking(value) }
+
+// RGBFromBacking reconstructs a RGB from its Zig integer representation.
+func RGBFromBacking(value uint32) RGB {
+	return RGB{
+		R: uint8(((uint64(value) >> 0) & 0xff)),
+		G: uint8(((uint64(value) >> 8) & 0xff)),
+		B: uint8(((uint64(value) >> 16) & 0xff)),
+	}
+}
+
+// Flags mirrors the Zig packed struct of the same name.
+type Flags struct {
+	Enabled  bool
+	Level    uint8
+	Mode     Mode
+	Reserved uint8
+}
+
+func zigoFlagsToBacking(value Flags) uint16 {
+	var result uint64
+	result |= (uint64(boolToUint8(value.Enabled)) & 0x1) << 0
+	result |= (uint64(value.Level) & 0x7) << 1
+	result |= (uint64(value.Mode) & 0xff) << 4
+	result |= (uint64(value.Reserved) & 0xf) << 12
+	return uint16(result)
+}
+
+// Backing returns the integer representation used by Zig.
+func (value Flags) Backing() uint16 { return zigoFlagsToBacking(value) }
+
+// FlagsFromBacking reconstructs a Flags from its Zig integer representation.
+func FlagsFromBacking(value uint16) Flags {
+	return Flags{
+		Enabled:  ((uint64(value) >> 0) & 0x1) != 0,
+		Level:    uint8(((uint64(value) >> 1) & 0x7)),
+		Mode:     Mode(((uint64(value) >> 4) & 0xff)),
+		Reserved: uint8(((uint64(value) >> 12) & 0xf)),
+	}
+}
+
+// ColorRecord mirrors the Zig `extern struct` of the same name.
+type ColorRecord struct {
+	// Flags corresponds to the Zig field flags.
+	Flags Flags
+	// Code corresponds to the Zig field code.
+	Code uint32
+}
+
 // Point mirrors the Zig `extern struct` of the same name.
 type Point struct {
 	// X corresponds to the Zig field x.
@@ -50,6 +100,48 @@ type Region struct {
 var _ = [1]struct{}{}[unsafe.Sizeof(Region{})-unsafe.Sizeof(raw.RegionData{})]
 var _ = [1]struct{}{}[unsafe.Offsetof(Region{}.Origin)-unsafe.Offsetof(raw.RegionData{}.Origin)]
 var _ = [1]struct{}{}[unsafe.Offsetof(Region{}.Width)-unsafe.Offsetof(raw.RegionData{}.Width)]
+
+func zigoColorRecordToRaw(value ColorRecord) raw.ColorRecordData {
+	return raw.ColorRecordData{
+		Flags: value.Flags.Backing(),
+		Code:  value.Code,
+	}
+}
+
+func zigoColorRecordFromRaw(value raw.ColorRecordData) ColorRecord {
+	return ColorRecord{
+		Flags: FlagsFromBacking(value.Flags),
+		Code:  value.Code,
+	}
+}
+
+func zigoColorRecordSliceToRaw(values []ColorRecord) []raw.ColorRecordData {
+	result := make([]raw.ColorRecordData, len(values))
+	for i := range values {
+		result[i] = zigoColorRecordToRaw(values[i])
+	}
+	return result
+}
+
+func zigoColorRecordSliceFromRaw(values []raw.ColorRecordData) []ColorRecord {
+	result := make([]ColorRecord, len(values))
+	for i := range values {
+		result[i] = zigoColorRecordFromRaw(values[i])
+	}
+	return result
+}
+
+func zigoColorRecordSliceCopyFromRaw(dst []ColorRecord, values []raw.ColorRecordData, count int) {
+	if count > len(dst) {
+		count = len(dst)
+	}
+	if count > len(values) {
+		count = len(values)
+	}
+	for i := 0; i < count; i++ {
+		dst[i] = zigoColorRecordFromRaw(values[i])
+	}
+}
 
 func zigoPointToRaw(value Point) raw.PointData {
 	return raw.PointData{

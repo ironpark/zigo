@@ -4,9 +4,15 @@ const library = @import("tagged_union");
 pub const bindings = zigo.define(.{
     .root = library,
     .types = .{
+        .{ .type = library.Mode, .repr = .enumeration },
         .{ .type = library.Child, .repr = .@"opaque" },
         .{ .type = library.Value, .repr = .tagged_union },
         .{ .type = library.Signal, .repr = .tagged_union, .access = .snapshot },
+        .{ .type = library.RGB, .repr = .value },
+        .{ .type = library.Flags, .repr = .value },
+        .{ .type = library.ColorRecord, .repr = .value },
+        .{ .type = library.Palette, .repr = .@"opaque", .fields = .{.{ .path = "flags", .set = true }} },
+        .{ .name = "FlagsObserver", .type = library.FlagsObserver, .repr = .callback },
         .{ .type = library.ScrollViewport, .repr = .tagged_union, .omit_variants = .{"unknown"} },
     },
     .functions = .{
@@ -36,6 +42,18 @@ pub const bindings = zigo.define(.{
         .{ .path = "root.sum", .params = .{"values"} },
         .{ .path = "root.scrollAmount", .params = .{"behavior"} },
         .{ .path = "root.currentViewport", .params = .{"kind"} },
+        .{ .path = "root.echoRGB", .params = .{"value"} },
+        .{ .path = "root.maybeRGB", .params = .{"present"} },
+        .{ .path = "root.checkedRGB", .params = .{"valid"} },
+        .{ .path = "root.echoColorRecord", .params = .{"value"} },
+        .{
+            .path = "root.flattenFlags",
+            .params = .{"options"},
+            .param_meta = .{ .options = .{ .flatten = .{"flags"} } },
+        },
+        .{ .path = "Palette.create", .params = .{"flags"} },
+        .{ .path = "Palette.deinit" },
+        .{ .path = "root.visitFlags", .params = .{ "callback", "userdata" } },
         .{ .path = "root.panicError" },
     },
 });

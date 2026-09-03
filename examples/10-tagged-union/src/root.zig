@@ -163,6 +163,64 @@ pub const RGB = packed struct(u24) {
     b: u8,
 };
 
+pub fn echoRGB(value: RGB) RGB {
+    return value;
+}
+
+pub fn maybeRGB(present: bool) ?RGB {
+    return if (present) .{ .r = 9, .g = 10, .b = 11 } else null;
+}
+
+pub fn checkedRGB(valid: bool) error{Invalid}!RGB {
+    if (!valid) return error.Invalid;
+    return .{ .r = 12, .g = 13, .b = 14 };
+}
+
+pub const Flags = packed struct(u16) {
+    enabled: bool,
+    level: u3,
+    mode: Mode,
+    reserved: u4 = 0,
+};
+
+pub const ColorRecord = extern struct {
+    flags: Flags,
+    code: u32,
+};
+
+pub fn echoColorRecord(value: ColorRecord) ColorRecord {
+    return value;
+}
+
+pub const PaintOptions = struct {
+    flags: Flags,
+    opacity: u8 = 255,
+};
+
+pub fn flattenFlags(options: PaintOptions) Flags {
+    return options.flags;
+}
+
+pub const Palette = struct {
+    flags: Flags,
+
+    pub fn create(flags: Flags) CreateError!*Palette {
+        const palette = std.heap.page_allocator.create(Palette) catch return error.OutOfMemory;
+        palette.* = .{ .flags = flags };
+        return palette;
+    }
+
+    pub fn deinit(self: *Palette) void {
+        std.heap.page_allocator.destroy(self);
+    }
+};
+
+pub const FlagsObserver = *const fn (value: Flags, userdata: usize) callconv(.c) void;
+
+pub fn visitFlags(callback: FlagsObserver, userdata: usize) void {
+    callback(.{ .enabled = true, .level = 5, .mode = .paused }, userdata);
+}
+
 pub const Point = extern struct {
     x: i16,
     y: i16,

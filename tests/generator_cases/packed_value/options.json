@@ -1,0 +1,5 @@
+{
+  "package": "packedvalue",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/packedvalue"
+}

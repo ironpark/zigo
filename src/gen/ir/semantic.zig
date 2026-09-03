@@ -520,6 +520,9 @@ pub const TypeDecl = struct {
     kind: TypeKind,
     layout: ?Layout = null,
     name: []const u8,
+    /// The packed struct was explicitly registered with `.repr = .value`, not
+    /// merely discovered as a tagged-union payload.
+    registered_value: ?bool = null,
     /// Union variants deliberately excluded from the generated boundary.
     omitted_variants: ?[]const []const u8 = null,
     /// Public sub-package name. Absent means the binding's default package.

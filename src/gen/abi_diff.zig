@@ -165,7 +165,12 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
                     &report,
                     .compatible,
                     old.name,
-                    if (old.kind == .tagged_union) "tagged-union variant appended" else "enum value appended",
+                    if (old.kind == .tagged_union)
+                        "tagged-union variant appended"
+                    else if (old.kind == .value_struct)
+                        "packed-struct field appended within backing width"
+                    else
+                        "enum value appended",
                 ),
             .snapshot_appended => try add(
                 allocator,
@@ -572,6 +577,7 @@ fn classifyTypeChange(lhs: semantic.TypeDecl, rhs: semantic.TypeDecl) TypeChange
     for (lhs.fields, rhs.fields[0..lhs.fields.len]) |a, b| if (!typeFieldEqual(a, b)) return .breaking;
     if (rhs.fields.len == lhs.fields.len) return .equal;
     if (lhs.kind == .@"enum") return .appended;
+    if (lhs.kind == .value_struct and lhs.layout == .@"packed") return .appended;
     if (lhs.kind != .tagged_union) return .breaking;
     return if (lhs.accessStrategy() == .snapshot) .snapshot_appended else .appended;
 }
@@ -1301,6 +1307,56 @@ test "every extern struct field change is breaking" {
         try std.testing.expect(report.hasBreaking());
         try std.testing.expectEqualStrings("Config", report.changes.items[0].subject);
         try std.testing.expectEqualStrings("type definition changed", report.changes.items[0].detail);
+    }
+}
+
+test "packed struct append within its backing width is compatible and other field changes break" {
+    const enabled: semantic.TypeField = .{ .name = "enabled", .type = .{ .bool = {} } };
+    const level: semantic.TypeField = .{ .name = "level", .type = .{ .int = .{ .bits = 3, .signed = false } } };
+    const renamed: semantic.TypeField = .{ .name = "active", .type = .{ .bool = {} } };
+    const wide: semantic.TypeField = .{ .name = "level", .type = .{ .int = .{ .bits = 4, .signed = false } } };
+    const base_fields = [_]semantic.TypeField{enabled};
+    const base_types = [_]semantic.TypeDecl{.{
+        .backing_type = .{ .int = .{ .bits = 16, .signed = false } },
+        .fields = &base_fields,
+        .kind = .value_struct,
+        .layout = .@"packed",
+        .name = "Flags",
+    }};
+    const base: semantic.Semantic = .{ .package = "contract", .prefix = "zg", .types = &base_types, .zig_version = "0.16.0" };
+
+    const appended_fields = [_]semantic.TypeField{ enabled, level };
+    const appended_types = [_]semantic.TypeDecl{.{
+        .backing_type = .{ .int = .{ .bits = 16, .signed = false } },
+        .fields = &appended_fields,
+        .kind = .value_struct,
+        .layout = .@"packed",
+        .name = "Flags",
+    }};
+    var appended = base;
+    appended.types = &appended_types;
+    var compatible = try diff(std.testing.allocator, base, appended);
+    defer compatible.deinit(std.testing.allocator);
+    try std.testing.expect(!compatible.hasBreaking());
+    try std.testing.expectEqualStrings("packed-struct field appended within backing width", compatible.changes.items[0].detail);
+
+    const removed_fields = [_]semantic.TypeField{};
+    const renamed_fields = [_]semantic.TypeField{renamed};
+    const widened_fields = [_]semantic.TypeField{wide};
+    const breaking_fields = [_][]const semantic.TypeField{ &removed_fields, &renamed_fields, &widened_fields };
+    for (breaking_fields) |fields| {
+        const current_types = [_]semantic.TypeDecl{.{
+            .backing_type = .{ .int = .{ .bits = 16, .signed = false } },
+            .fields = fields,
+            .kind = .value_struct,
+            .layout = .@"packed",
+            .name = "Flags",
+        }};
+        var current = base;
+        current.types = &current_types;
+        var report = try diff(std.testing.allocator, base, current);
+        defer report.deinit(std.testing.allocator);
+        try std.testing.expect(report.hasBreaking());
     }
 }
 

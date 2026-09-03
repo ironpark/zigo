@@ -8,6 +8,10 @@
 
 ### Added
 
+- 정수 backing의 `packed struct`를 `.repr = .value`로 등록할 수 있습니다. bool, 정수,
+  등록 enum, 중첩 packed value 필드를 Go mirror와 `Backing`/`FromBacking`으로 노출하고,
+  scalar가 가능한 함수·optional·error payload·extern struct·flatten·field accessor·callback
+  자리에서는 backing 정수 하나로 전달합니다. 지원하지 않는 필드는 `ZIGO044`입니다.
 - 함수 메타데이터에 `.covers = "Type.name"` 또는 경로 목록을 추가했습니다. `go-coverage`는
   해당 상류 선언을 wrapper를 통한 bound로 세고 `wrapped` 항목과 wrapper 경로를 보고하며,
   `semantic.json`에도 문서 전용 `covers` 목록을 기록합니다.
