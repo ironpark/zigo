@@ -167,13 +167,16 @@ jobs:
           libraries=(
             "04-callback:libcallback_zigo:zg_last_error_message zg_apply_purego_v2"
             "07-event-queue:libevent_queue_zigo:zg_last_error_message"
-            "08-telemetry-hub:libtelemetry_hub_zigo:zg_last_error_message"
+            "08-telemetry-hub/purego-layout:libtelemetry_native:zg_last_error_message"
             "10-tagged-union:libtagged_union_zigo:zg_last_error_message"
             "11-io-streams:libstreams_zigo:zg_last_error_message zg_document_dump_purego_v2"
           )
+          # 08-telemetry-hub opts into a custom install layout, so its entry
+          # carries the install prefix under zig-out.
           for entry in "${libraries[@]}"; do
             read -r example stem symbols <<<"${entry//:/ }"
-            library="examples/$example/zig-out/lib/$stem$LIB_SUFFIX"
+            library="examples/${example%%/*}/zig-out/${example#*/}/lib/$stem$LIB_SUFFIX"
+            [[ "$example" == */* ]] || library="examples/$example/zig-out/lib/$stem$LIB_SUFFIX"
             # The script checks the file and its dependencies; the smoke loader
             # resolves the symbols through the real platform loader.
             tests/inspect_shared_library.sh "$library"
@@ -189,7 +192,7 @@ jobs:
       - uses: actions/upload-artifact@v4
         with:
           name: event-queue-windows-dll
-          path: examples/07-event-queue/zig-out/bin/event_queue_zigo.dll
+          path: examples/07-event-queue/zig-out/lib/event_queue_zigo.dll
           if-no-files-found: error
       - name: Run the purego examples without cgo
         shell: bash
@@ -257,11 +260,12 @@ jobs:
           done
           (cd examples/10-tagged-union && zig build go go-verify -Dpurego --summary all)
 
-          # Zig installs a DLL into `bin`, not `lib`, and it carries no `lib`
-          # prefix -- which is what DefaultLibraryName expects on windows.
-          test -f examples/07-event-queue/zig-out/bin/event_queue_zigo.dll
-          test -f examples/08-telemetry-hub/zig-out/bin/telemetry_hub_zigo.dll
-          test -f examples/10-tagged-union/zig-out/bin/tagged_union_zigo.dll
+          # The DLL follows `install.library_dir` (default `lib`) and carries no
+          # `lib` prefix -- which is what DefaultLibraryName expects on windows.
+          # 08-telemetry-hub opts into a custom layout and library name.
+          test -f examples/07-event-queue/zig-out/lib/event_queue_zigo.dll
+          test -f examples/08-telemetry-hub/zig-out/purego-layout/lib/telemetry_native.dll
+          test -f examples/10-tagged-union/zig-out/lib/tagged_union_zigo.dll
       - name: Run the purego examples without cgo
         shell: bash
         # The race detector needs cgo, exactly as on the POSIX purego job.
@@ -277,8 +281,8 @@ jobs:
 
           cd examples/10-tagged-union/go-purego
           go vet ./...
-          ZIGO_TEST_LIBRARY="$PWD/../zig-out/bin/tagged_union_zigo.dll" \
-          ZIGO_TEST_WRONG_LIBRARY="$PWD/../../07-event-queue/zig-out/bin/event_queue_zigo.dll" \
+          ZIGO_TEST_LIBRARY="$PWD/../zig-out/lib/tagged_union_zigo.dll" \
+          ZIGO_TEST_WRONG_LIBRARY="$PWD/../../07-event-queue/zig-out/lib/event_queue_zigo.dll" \
             go test ./...
 
   # Proves the cross-compiled artifact at runtime, which is the half a POSIX
