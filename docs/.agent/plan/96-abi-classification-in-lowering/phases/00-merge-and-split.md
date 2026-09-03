@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T01:36:33Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: No same-name different-body predicates remain; goldens unchanged; report test added; tests green.
 > NEXT: none

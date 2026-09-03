@@ -398,3 +398,18 @@ test "union file stems normalize and resolve clashes deterministically" {
     defer std.testing.allocator.free(clash);
     try std.testing.expectEqualStrings("http_result_3", clash);
 }
+
+/// The Go spelling of an owner path: `foo.bar` becomes `FooBar`. A nested
+/// declaration reaches Go as one flat identifier, so every segment is
+/// pascal-cased and joined.
+pub fn ownerPascalAlloc(allocator: std.mem.Allocator, owner: []const u8) ![]u8 {
+    var name: std.ArrayList(u8) = .empty;
+    errdefer name.deinit(allocator);
+    var segments = std.mem.splitScalar(u8, owner, '.');
+    while (segments.next()) |segment| {
+        const word = try pascalAlloc(allocator, segment);
+        defer allocator.free(word);
+        try name.appendSlice(allocator, word);
+    }
+    return name.toOwnedSlice(allocator);
+}

@@ -680,6 +680,47 @@ pub fn isByte(node: TypeNode) bool {
     return node == .int and !node.int.signed and node.int.bits == 8;
 }
 
+/// The slice inside a `?[]T`, or the node itself. An optional slice reuses the
+/// whole slice lowering -- the same pointer and length cross -- and spends the
+/// pointer's NULL on absence, so every helper that describes a slice describes
+/// the optional one identically.
+pub fn sliceThroughOptional(node: TypeNode) TypeNode {
+    if (node == .optional and node.optional.child.* == .slice) return node.optional.child.*;
+    return node;
+}
+
+pub fn isOptionalSlice(node: TypeNode) bool {
+    return node == .optional and node.optional.child.* == .slice;
+}
+
+/// A byte slice the binding marked as text: it crosses as pointer plus length
+/// and Go sees a `string`.
+pub fn isUtf8Slice(node: TypeNode, hint: ?SemanticHint) bool {
+    const value = sliceThroughOptional(node);
+    return hint == .utf8_string and value == .slice and isByte(value.slice.element.*);
+}
+
+/// A byte slice the binding marked as NUL-terminated: it crosses as one
+/// `const char *` with no length beside it. This is the exact spelling, with
+/// no look-through: lowering answers the optional case in its own `?[]T`
+/// branch, which lowers the same pointer with `is_optional` set, so looking
+/// through here would classify that parameter twice.
+pub fn isCStringSlice(node: TypeNode, hint: ?SemanticHint) bool {
+    return hint == .c_string and node == .slice and node.slice.@"const" and isByte(node.slice.element.*);
+}
+
+/// The same question asked of a position that may still be wrapped in `?`,
+/// for callers that classify the parameter as a whole rather than branching
+/// on the optional first.
+pub fn isCStringSliceThroughOptional(node: TypeNode, hint: ?SemanticHint) bool {
+    return isCStringSlice(sliceThroughOptional(node), hint);
+}
+
+/// Either kind of string: both are rendered as a Go `string`.
+pub fn isStringSlice(node: TypeNode, hint: ?SemanticHint) bool {
+    return isUtf8Slice(node, hint) or isCStringSliceThroughOptional(node, hint);
+}
+
 /// The by-value and as-handle rules, per function, so callers holding lowered
 /// functions can apply the same rule to their `origin` without a `Semantic`.
 pub fn functionPassesByValue(function: SemanticFn, name: []const u8) bool {

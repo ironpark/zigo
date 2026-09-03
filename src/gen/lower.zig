@@ -73,7 +73,7 @@ pub fn semanticDocumentForBackend(
                 const slice_node = parameter.type.optional.child.*;
                 const element = try allocator.create(abi.AbiScalar);
                 element.* = try lowerValue(allocator, document, prefix, slice_node.slice.element.*);
-                if (isCStringSlice(slice_node, parameter.semantic)) {
+                if (semantic.isCStringSlice(slice_node, parameter.semantic)) {
                     try params.append(allocator, .{
                         .name = parameter.name,
                         .role = .value,
@@ -142,7 +142,7 @@ pub fn semanticDocumentForBackend(
                 });
                 continue;
             }
-            if (isCStringSlice(parameter.type, parameter.semantic)) {
+            if (semantic.isCStringSlice(parameter.type, parameter.semantic)) {
                 const child = try allocator.create(abi.AbiScalar);
                 child.* = try lowerValue(allocator, document, prefix, parameter.type.slice.element.*);
                 try params.append(allocator, .{
@@ -266,7 +266,7 @@ pub fn semanticDocumentForBackend(
         var function_errors: []const abi.ErrorCode = &.{};
         const caller_owned_c_string = function.ownership == .caller and function.release != null and
             returnContainsCStringSlice(function.@"return", function.return_semantic);
-        const return_scalar = if (isCStringSlice(function.@"return", function.return_semantic) and !caller_owned_c_string) blk: {
+        const return_scalar = if (semantic.isCStringSlice(function.@"return", function.return_semantic) and !caller_owned_c_string) blk: {
             const child = try allocator.create(abi.AbiScalar);
             child.* = try lowerValue(allocator, document, prefix, function.@"return".slice.element.*);
             break :blk abi.AbiScalar{ .pointer = .{
@@ -286,12 +286,12 @@ pub fn semanticDocumentForBackend(
                 // plain slice return, so every emitter downstream sees one
                 // slice-return shape whether or not the function can fail.
                 if (error_union.payload.* == .slice and
-                    (!isCStringSlice(error_union.payload.*, function.return_semantic) or caller_owned_c_string))
+                    (!semantic.isCStringSlice(error_union.payload.*, function.return_semantic) or caller_owned_c_string))
                 {
                     try appendSliceReturnOuts(allocator, document, prefix, &params, error_union.payload.slice, false);
                 } else if (error_union.payload.* == .optional and
                     error_union.payload.optional.child.* == .slice and
-                    (!isCStringSlice(error_union.payload.optional.child.*, function.return_semantic) or caller_owned_c_string))
+                    (!semantic.isCStringSlice(error_union.payload.optional.child.*, function.return_semantic) or caller_owned_c_string))
                 {
                     // `E!?[]T`: the returned pointer is already nullable, so
                     // absence needs no flag of its own.
@@ -348,7 +348,7 @@ pub fn semanticDocumentForBackend(
             // absent slice, which a length of zero cannot be confused with.
             .optional => |optional| result: {
                 if (optional.child.* == .slice and
-                    (!isCStringSlice(optional.child.*, function.return_semantic) or caller_owned_c_string))
+                    (!semantic.isCStringSlice(optional.child.*, function.return_semantic) or caller_owned_c_string))
                 {
                     try appendSliceReturnOuts(allocator, document, prefix, &params, optional.child.slice, true);
                     break :result abi.AbiScalar{ .void = {} };
@@ -402,6 +402,10 @@ pub fn semanticDocumentForBackend(
             else
                 null,
             .value_union_return = taggedUnionValueDeclaration(source_document, source_document.functions[function_index].@"return") != null,
+            .param_strings = try classifyParamStrings(allocator, function.*),
+            .ret_string = returnStringRole(function.*),
+            .slice_return_element = sliceReturnElement(function.*),
+            .userdata_for = try pairUserdataParams(allocator, function.*),
         };
     }
     // The release target is another exported function, so its symbol is only
@@ -415,6 +419,9 @@ pub fn semanticDocumentForBackend(
             }
         }
     }
+    // A callback's Go type name is chosen against every other callback in the
+    // program, so it can only be settled once every function is lowered.
+    try nameCallbackTypes(allocator, document, functions);
     const handles = try lowerHandles(allocator, document, prefix);
     try numberRetainedCallbackSlots(allocator, document, functions, handles);
     const projections = try lowerTaggedUnionProjections(allocator, document, prefix);
@@ -804,7 +811,27 @@ fn lowerValueStructs(allocator: std.mem.Allocator, document: semantic.Semantic, 
             .alignment = alignment,
         });
     }
-    return structs.toOwnedSlice(allocator);
+    const result = try structs.toOwnedSlice(allocator);
+    // Castability is a whole-record answer that depends on the members'
+    // records, so it is settled after every record exists.
+    for (result) |*record| record.castable = structCastable(result, record.*);
+    return result;
+}
+
+/// True when the Go mirror of `record` may be reinterpreted as the C one. A
+/// `bool` member rules it out -- Go does not promise C's representation for
+/// it -- and so does a member struct that is itself not castable.
+fn structCastable(records: []const abi.AbiStruct, record: abi.AbiStruct) bool {
+    for (record.fields) |field| {
+        if (field.node == .bool) return false;
+        if (field.node != .value_struct) continue;
+        for (records) |candidate| {
+            if (!std.mem.eql(u8, candidate.name, field.node.value_struct.ref)) continue;
+            if (!structCastable(records, candidate)) return false;
+            break;
+        }
+    }
+    return true;
 }
 
 fn appendValueUnionReturnField(
@@ -1210,15 +1237,162 @@ fn lowerValue(allocator: std.mem.Allocator, document: semantic.Semantic, prefix:
     };
 }
 
-fn isCStringSlice(node: semantic.TypeNode, hint: ?semantic.SemanticHint) bool {
-    return hint == .c_string and node == .slice and node.slice.@"const" and
-        node.slice.element.* == .int and !node.slice.element.int.signed and node.slice.element.int.bits == 8;
+/// How each semantic parameter carries text, indexed by parameter index. The
+/// three roles are mutually exclusive: a string slice's elements are slices,
+/// so it can never also be a bare byte slice.
+fn classifyParamStrings(allocator: std.mem.Allocator, function: semantic.SemanticFn) ![]const abi.AbiFn.ParamString {
+    const result = try allocator.alloc(abi.AbiFn.ParamString, function.params.len);
+    for (function.params, 0..) |parameter, index| {
+        result[index] = if (semantic.stringSliceForm(parameter.type, parameter.semantic)) |form|
+            .{ .role = if (parameter.direction == .in) .string_slice else .none, .form = if (parameter.direction == .in) form else null }
+        else if (semantic.isCStringSliceThroughOptional(parameter.type, parameter.semantic))
+            .{ .role = .c_string }
+        else if (semantic.isUtf8Slice(parameter.type, parameter.semantic))
+            .{ .role = .utf8_slice }
+        else
+            .{};
+    }
+    return result;
+}
+
+/// How the result carries text. A caller-owned slice return with a release
+/// target is deliberately not a C string here: it is handed over as the
+/// out-pointer-and-length pair `sliceReturnElement` describes, and generated
+/// Go copies it and calls the release function.
+fn returnStringRole(function: semantic.SemanticFn) abi.AbiFn.StringRole {
+    const payload = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
+    const caller_owned = function.ownership == .caller and function.release != null;
+    if (!caller_owned and semantic.isCStringSliceThroughOptional(payload, function.return_semantic)) return .c_string;
+    if (semantic.isUtf8Slice(payload, function.return_semantic)) return .utf8_slice;
+    return .none;
+}
+
+/// The element a slice return crosses with, or null when the result is not
+/// one. A C-string return is excluded: it travels as a plain pointer with no
+/// length beside it.
+fn sliceReturnElement(function: semantic.SemanticFn) ?semantic.TypeNode {
+    if (returnStringRole(function) == .c_string) return null;
+    return switch (function.@"return") {
+        .slice => |value| value.element.*,
+        // `?[]T` hands back the same pointer and length; absence is the NULL
+        // pointer, so nothing about the shape changes here.
+        .optional => |value| if (value.child.* == .slice) value.child.slice.element.* else null,
+        .error_union => |value| if (value.payload.* == .slice)
+            value.payload.slice.element.*
+        else if (semantic.isOptionalSlice(value.payload.*))
+            value.payload.optional.child.slice.element.*
+        else
+            null,
+        else => null,
+    };
+}
+
+/// The callback each userdata parameter belongs to. A callback that carries
+/// userdata is always followed immediately by its token, so the pairing is
+/// fixed by position rather than by name.
+fn pairUserdataParams(allocator: std.mem.Allocator, function: semantic.SemanticFn) ![]const ?usize {
+    const result = try allocator.alloc(?usize, function.params.len);
+    for (result, 0..) |*entry, index| {
+        entry.* = null;
+        if (index == 0) continue;
+        const callback = function.params[index - 1];
+        if (callback.type == .callback and callback.type.callback.has_userdata) entry.* = index - 1;
+    }
+    return result;
+}
+
+/// The public Go type name of every callback parameter, and whether this use
+/// is the first in program order to produce that name. A declared callback
+/// type names itself; an anonymous signature is named after its owner and
+/// parameter, qualified when two of them would otherwise collide, and
+/// suffixed with `Callback` when the name is already a public type.
+fn nameCallbackTypes(allocator: std.mem.Allocator, document: semantic.Semantic, functions: []abi.AbiFn) !void {
+    for (functions) |*lowered| {
+        const entries = try allocator.alloc(?abi.AbiFn.CallbackType, lowered.origin.params.len);
+        for (entries) |*entry| entry.* = null;
+        lowered.callback_types = entries;
+    }
+    var seen: std.ArrayList([]const u8) = .empty;
+    defer seen.deinit(allocator);
+    for (functions) |*lowered| {
+        const entries = @constCast(lowered.callback_types);
+        for (lowered.origin.params, 0..) |parameter, index| {
+            if (parameter.type != .callback) continue;
+            const name = try callbackTypeNameAlloc(allocator, document, functions, lowered.*, index);
+            var first_use = true;
+            for (seen.items) |taken| if (std.mem.eql(u8, taken, name)) {
+                first_use = false;
+                break;
+            };
+            if (first_use) try seen.append(allocator, name);
+            entries[index] = .{ .name = name, .first_use = first_use };
+        }
+    }
+}
+
+fn callbackTypeNameAlloc(
+    allocator: std.mem.Allocator,
+    document: semantic.Semantic,
+    functions: []const abi.AbiFn,
+    function: abi.AbiFn,
+    parameter_index: usize,
+) ![]u8 {
+    // A declared callback type names itself; the derived name is for the
+    // signatures the binding left anonymous.
+    if (function.origin.params[parameter_index].type.callback.ref) |ref| return allocator.dupe(u8, ref);
+    const base = try callbackTypeBaseNameAlloc(allocator, function.origin.*, parameter_index);
+    defer allocator.free(base);
+    var duplicate_base = false;
+    for (functions) |candidate| {
+        for (candidate.origin.params, 0..) |parameter, candidate_index| {
+            if (parameter.type != .callback) continue;
+            if (candidate.origin == function.origin and candidate_index == parameter_index) continue;
+            const candidate_base = try callbackTypeBaseNameAlloc(allocator, candidate.origin.*, candidate_index);
+            defer allocator.free(candidate_base);
+            if (std.mem.eql(u8, base, candidate_base)) duplicate_base = true;
+        }
+    }
+
+    const owner = function.origin.receiver orelse function.origin.namespace;
+    const qualified = if (duplicate_base and owner != null) blk: {
+        const owner_name = try naming.ownerPascalAlloc(allocator, owner.?);
+        defer allocator.free(owner_name);
+        const function_name = try naming.pascalAlloc(allocator, function.origin.name);
+        defer allocator.free(function_name);
+        const parameter_name = try naming.pascalAlloc(allocator, function.origin.params[parameter_index].name);
+        defer allocator.free(parameter_name);
+        break :blk try std.fmt.allocPrint(allocator, "{s}{s}{s}", .{ owner_name, function_name, parameter_name });
+    } else try allocator.dupe(u8, base);
+    defer allocator.free(qualified);
+
+    for (document.types) |declaration| {
+        if (std.mem.eql(u8, declaration.name, qualified))
+            return std.fmt.allocPrint(allocator, "{s}Callback", .{qualified});
+    }
+    return allocator.dupe(u8, qualified);
+}
+
+fn callbackTypeBaseNameAlloc(allocator: std.mem.Allocator, function: semantic.SemanticFn, parameter_index: usize) ![]u8 {
+    const parameter_name = try naming.pascalAlloc(allocator, function.params[parameter_index].name);
+    defer allocator.free(parameter_name);
+    if (function.receiver orelse function.namespace) |owner| {
+        const owner_name = try naming.ownerPascalAlloc(allocator, owner);
+        defer allocator.free(owner_name);
+        return std.fmt.allocPrint(allocator, "{s}{s}", .{ owner_name, parameter_name });
+    }
+    const function_name = try naming.pascalAlloc(allocator, function.name);
+    defer allocator.free(function_name);
+    // A parameter already called `callback` would otherwise stutter into
+    // `ApplyCallbackCallback`.
+    if (std.mem.eql(u8, parameter_name, "Callback"))
+        return std.fmt.allocPrint(allocator, "{s}Callback", .{function_name});
+    return std.fmt.allocPrint(allocator, "{s}{s}Callback", .{ function_name, parameter_name });
 }
 
 fn returnContainsCStringSlice(node: semantic.TypeNode, hint: ?semantic.SemanticHint) bool {
     const payload = if (node == .error_union) node.error_union.payload.* else node;
     const child = if (payload == .optional) payload.optional.child.* else payload;
-    return isCStringSlice(child, hint);
+    return semantic.isCStringSlice(child, hint);
 }
 
 fn typeDeclaration(document: semantic.Semantic, name: []const u8) semantic.TypeDecl {
@@ -2030,4 +2204,117 @@ test "lowering drops omitted members and lays packed fields out from the low bit
     // An enum member takes its tag type's width, not the width of its values.
     try std.testing.expectEqual(@as(u16, 5), layout[2].bit_offset);
     try std.testing.expectEqual(@as(u16, 8), layout[2].bits);
+}
+
+test "lowering records how every parameter and return carries text" {
+    var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    var sentinel_element: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte, .sentinel = 0, .sentinel_many = true } };
+    var payload: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte } };
+    const document: semantic.Semantic = .{
+        .functions = &.{
+            .{
+                .name = "apply",
+                .params = &.{
+                    .{ .name = "names", .type = .{ .slice = .{ .@"const" = true, .element = &sentinel_element } } },
+                    .{ .name = "path", .semantic = .c_string, .type = .{ .slice = .{ .@"const" = true, .element = &byte } } },
+                    .{ .name = "text", .semantic = .utf8_string, .type = .{ .slice = .{ .@"const" = true, .element = &byte } } },
+                    .{ .name = "raw", .type = .{ .slice = .{ .@"const" = true, .element = &byte } } },
+                },
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_apply",
+            },
+            // A caller-owned C string is handed over as a slice with a
+            // release target, not as a bare `const char *`.
+            .{ .name = "owned", .ownership = .caller, .release = "free", .return_semantic = .c_string, .params = &.{}, .@"return" = .{ .slice = .{ .@"const" = true, .element = &byte } }, .symbol = "zg_owned" },
+            .{ .name = "borrowed", .return_semantic = .c_string, .params = &.{}, .@"return" = .{ .slice = .{ .@"const" = true, .element = &byte } }, .symbol = "zg_borrowed" },
+            .{ .name = "free", .params = &.{.{ .name = "value", .type = .{ .slice = .{ .@"const" = true, .element = &byte } } }}, .@"return" = .{ .void = {} }, .symbol = "zg_free" },
+            .{ .name = "words", .ownership = .caller, .release = "free", .params = &.{}, .@"return" = .{ .error_union = .{ .payload = &payload, .error_set = &.{} } }, .symbol = "zg_words" },
+        },
+        .package = "text",
+        .prefix = "zg",
+        .types = &.{},
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try semanticDocument(arena.allocator(), document, "text", "zg", &.{});
+
+    const apply = program.functions[0];
+    try std.testing.expectEqual(abi.AbiFn.StringRole.string_slice, apply.paramString(0).role);
+    // `[*:0]const u8` elements are accepted like `[:0]const u8` ones; only the
+    // element spelling the shim rebuilds differs.
+    try std.testing.expectEqual(@as(?semantic.StringSliceForm, .sentinel_many), apply.paramString(0).form);
+    try std.testing.expectEqual(abi.AbiFn.StringRole.c_string, apply.paramString(1).role);
+    try std.testing.expectEqual(abi.AbiFn.StringRole.utf8_slice, apply.paramString(2).role);
+    try std.testing.expectEqual(abi.AbiFn.StringRole.none, apply.paramString(3).role);
+
+    try std.testing.expectEqual(abi.AbiFn.StringRole.none, program.functions[1].ret_string);
+    try std.testing.expect(program.functions[1].slice_return_element != null);
+    try std.testing.expectEqual(abi.AbiFn.StringRole.c_string, program.functions[2].ret_string);
+    // A C-string return crosses as a plain pointer, so it has no length to
+    // write into `out_result_len`.
+    try std.testing.expect(program.functions[2].slice_return_element == null);
+    try std.testing.expect(program.functions[4].slice_return_element != null);
+}
+
+test "lowering pairs userdata with its callback and names the callback type" {
+    var callback_return: semantic.TypeNode = .{ .void = {} };
+    var token: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = true, .ref = "Token" } };
+    const callback: semantic.TypeNode = .{ .callback = .{ .params = &.{}, .@"return" = &callback_return, .has_userdata = true } };
+    const document: semantic.Semantic = .{
+        .functions = &.{
+            .{
+                .name = "watch",
+                .namespace = "Queue",
+                .params = &.{
+                    .{ .name = "onEvent", .type = callback },
+                    .{ .name = "userdata", .type = .{ .optional = .{ .child = &token } } },
+                },
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_queue_watch",
+            },
+        },
+        .package = "queue",
+        .prefix = "zg",
+        .types = &.{.{ .kind = .@"opaque", .name = "Token" }},
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try semanticDocument(arena.allocator(), document, "queue", "zg", &.{});
+    const watch = program.functions[0];
+    // The token sits directly after the callback that owns it.
+    try std.testing.expectEqual(@as(?usize, null), watch.userdataFor(0));
+    try std.testing.expectEqual(@as(?usize, 0), watch.userdataFor(1));
+    try std.testing.expectEqualStrings("QueueOnEvent", watch.callbackType(0).?.name);
+    try std.testing.expect(watch.callbackType(0).?.first_use);
+    try std.testing.expect(watch.callbackType(1) == null);
+}
+
+test "struct castability follows the members, nested structs included" {
+    const document: semantic.Semantic = .{
+        .functions = &.{
+            .{ .name = "take", .params = &.{
+                .{ .name = "plain", .type = .{ .value_struct = .{ .ref = "Plain" } } },
+                .{ .name = "flagged", .type = .{ .value_struct = .{ .ref = "Flagged" } } },
+                .{ .name = "nested", .type = .{ .value_struct = .{ .ref = "Nested" } } },
+            }, .@"return" = .{ .void = {} }, .symbol = "zg_take" },
+        },
+        .package = "shapes",
+        .prefix = "zg",
+        .types = &.{
+            .{ .kind = .value_struct, .layout = .@"extern", .name = "Plain", .fields = &.{.{ .name = "count", .type = .{ .int = .{ .bits = 32, .signed = true } } }} },
+            .{ .kind = .value_struct, .layout = .@"extern", .name = "Flagged", .fields = &.{.{ .name = "on", .type = .{ .bool = {} } }} },
+            .{ .kind = .value_struct, .layout = .@"extern", .name = "Nested", .fields = &.{.{ .name = "inner", .type = .{ .value_struct = .{ .ref = "Flagged" } } }} },
+        },
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try semanticDocument(arena.allocator(), document, "shapes", "zg", &.{});
+    try std.testing.expect(program.structCastable("Plain"));
+    // Go does not promise C's `bool` representation, and a struct that
+    // embeds one inherits the answer.
+    try std.testing.expect(!program.structCastable("Flagged"));
+    try std.testing.expect(!program.structCastable("Nested"));
 }

@@ -204,6 +204,70 @@ pub const AbiFn = struct {
     /// functions in program order and then the retained callback parameters in
     /// parameter order.
     callback_slots: []const ?usize = &.{},
+    /// Indexed by semantic parameter index: how this parameter carries text,
+    /// decided once here so no backend re-reads the hint and the spelling.
+    param_strings: []const ParamString = &.{},
+    /// How the function's result carries text. `c_string` is the return that
+    /// crosses as a bare `const char *`; a caller-owned slice return with a
+    /// release target is not one of these, because it crosses as the
+    /// out-pointer-and-length pair `slice_return_element` describes.
+    ret_string: StringRole = .none,
+    /// The element a function hands back through `out_result_ptr` and
+    /// `out_result_len`, or null when it returns something else. This is the
+    /// calling-convention question; `validate.releasableSliceReturnElement`
+    /// asks the ownership one and answers differently for a C-string return.
+    slice_return_element: ?semantic.TypeNode = null,
+    /// Indexed by semantic parameter index: the callback parameter this
+    /// userdata token belongs to. A callback's userdata is always the
+    /// parameter directly after it, so the pair is fixed by position.
+    userdata_for: []const ?usize = &.{},
+    /// Indexed by semantic parameter index: the public Go type a callback
+    /// parameter is spelled with, and whether this is the first parameter in
+    /// program order to use that name -- the declarations are emitted once,
+    /// at that first use.
+    callback_types: []const ?CallbackType = &.{},
+
+    /// How a parameter or return carries text.
+    pub const StringRole = enum {
+        none,
+        /// `[]const u8` marked `utf8_string`: pointer plus length.
+        utf8_slice,
+        /// `[]const u8` marked `c_string`: one NUL-terminated pointer.
+        c_string,
+        /// `[]const []const u8` and its sentinel spellings: flattened data,
+        /// lengths and count.
+        string_slice,
+    };
+
+    pub const ParamString = struct {
+        role: StringRole = .none,
+        /// The element spelling the shim rebuilds, set only for
+        /// `string_slice`.
+        form: ?semantic.StringSliceForm = null,
+    };
+
+    pub const CallbackType = struct {
+        name: []const u8,
+        first_use: bool,
+    };
+
+    /// How semantic parameter `source_index` carries text.
+    pub fn paramString(self: AbiFn, source_index: usize) ParamString {
+        if (source_index >= self.param_strings.len) return .{};
+        return self.param_strings[source_index];
+    }
+
+    /// The callback semantic parameter `source_index` is the userdata of.
+    pub fn userdataFor(self: AbiFn, source_index: usize) ?usize {
+        if (source_index >= self.userdata_for.len) return null;
+        return self.userdata_for[source_index];
+    }
+
+    /// The Go callback type of semantic parameter `source_index`.
+    pub fn callbackType(self: AbiFn, source_index: usize) ?CallbackType {
+        if (source_index >= self.callback_types.len) return null;
+        return self.callback_types[source_index];
+    }
 
     /// The ABI parameter carrying field `field_index` of the flattened
     /// parameter `source_index`.
@@ -280,6 +344,12 @@ pub const AbiStruct = struct {
     fields: []const Field,
     size: usize,
     alignment: usize,
+    /// True when the Go mirror can be reinterpreted as the C one instead of
+    /// being converted member by member. A `bool` member rules it out -- Go
+    /// spells it one byte wide but does not promise C's representation -- and
+    /// so does a nested struct that is itself not castable. Lowering decides
+    /// this once, after every member's own record exists.
+    castable: bool = true,
 
     pub const Field = struct {
         name: []const u8,
@@ -335,6 +405,14 @@ pub const Program = struct {
             if (@import("std").mem.eql(u8, entry.name, type_name)) return entry.fields;
         }
         return &.{};
+    }
+
+    /// Whether the Go mirror of `type_name` can be cast to the C one.
+    pub fn structCastable(self: Program, type_name: []const u8) bool {
+        for (self.structs) |record| {
+            if (@import("std").mem.eql(u8, record.name, type_name)) return record.castable;
+        }
+        return true;
     }
 
     /// How many retained callback slots a handle of this type owns.
