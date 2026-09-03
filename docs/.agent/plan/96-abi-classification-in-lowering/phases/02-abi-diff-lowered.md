@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-03T02:03:35Z"
 depends_on:
 - "96-abi-classification-in-lowering#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `abi_diff.zig` no longer re-models lowering; all abi-diff tests unchanged and green.
 > NEXT: none

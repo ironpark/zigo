@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T02:03:35Z"
 description: merge identical predicates, record string and callback classification on the lowered IR, and diff lowered programs in abi-diff without changing output
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-03T01:32:00Z"
 ---
 > NEXT: Merge the identical predicates and split the same-name, different-concept ones. ([Phase 0](phases/00-merge-and-split.md))
@@ -9,7 +10,7 @@ registered_at: "2026-09-03T01:32:00Z"
 
 - [x] [Phase 00: Merge identical predicates and split same-name concepts](phases/00-merge-and-split.md)
 - [x] [Phase 01: Record classification on the lowered IR](phases/01-classification-on-ir.md)
-- [ ] [Phase 02: abi-diff over lowered programs](phases/02-abi-diff-lowered.md)
+- [x] [Phase 02: abi-diff over lowered programs](phases/02-abi-diff-lowered.md)
 
 # Shared Verification
 
