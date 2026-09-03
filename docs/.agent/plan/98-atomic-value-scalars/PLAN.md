@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T03:49:12Z"
 description: treat std.atomic.Value(T) as its scalar in value positions and accept pointer atomics as call-scoped Go sync/atomic parameters
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-03T03:09:56Z"
 ---
 > NEXT: Treat `std.atomic.Value(T)` as its scalar in value positions. ([Phase 0](phases/00-atomic-values.md))
@@ -8,7 +9,7 @@ registered_at: "2026-09-03T03:09:56Z"
 # Phases
 
 - [x] [Phase 00: Atomic values as scalars](phases/00-atomic-values.md)
-- [ ] [Phase 01: Pointer atomics as call-scoped Go sync/atomic parameters](phases/01-atomic-pointers.md)
+- [x] [Phase 01: Pointer atomics as call-scoped Go sync/atomic parameters](phases/01-atomic-pointers.md)
 
 # Shared Verification
 
