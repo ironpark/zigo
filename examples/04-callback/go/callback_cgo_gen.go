@@ -11,6 +11,7 @@ import "C"
 import "runtime/cgo"
 import "runtime/debug"
 import "sync"
+import "sync/atomic"
 import "unsafe"
 
 // zigoRawLastErrorMessage returns the most recent native panic message for this binding.
@@ -26,9 +27,45 @@ type zigoRawCallbackState struct {
 	stack    []byte
 	panicked bool
 	err      error
+	cancel   atomic.Pointer[uint32]
+}
+
+// zigoRawSetCallbackCancel attaches a call-scoped cancellation flag to handle.
+var callbackCancelFlags sync.Map // uintptr -> *uint32
+
+func zigoRawSetCallbackCancel(handle cgo.Handle, flag *uint32) {
+	if flag == nil {
+		callbackCancelFlags.Delete(uintptr(handle))
+	} else {
+		callbackCancelFlags.Store(uintptr(handle), flag)
+	}
+	handle.Value().(*zigoRawCallbackState).cancel.Store(flag)
+}
+
+func tripCallbackCancel(handle uintptr) {
+	if stored, loaded := callbackCancelFlags.Load(handle); loaded {
+		atomic.StoreUint32(stored.(*uint32), 1)
+	}
+}
+
+func callbackState(handle cgo.Handle) (state *zigoRawCallbackState, ok bool) {
+	defer func() {
+		if recover() != nil {
+			state, ok = nil, false
+		}
+	}()
+	state, ok = handle.Value().(*zigoRawCallbackState)
+	return state, ok
+}
+
+func (state *zigoRawCallbackState) tripCancel() {
+	if flag := state.cancel.Load(); flag != nil {
+		atomic.StoreUint32(flag, 1)
+	}
 }
 
 func (state *zigoRawCallbackState) record(value any) {
+	state.tripCancel()
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	if state.panicked {
@@ -57,6 +94,7 @@ func zigoRawTakeCallbackPanic(handle cgo.Handle) (any, []byte, bool) {
 // generated caller takes it. Later crossings are not asked: once a stream
 // has failed the adapter stops using it.
 func (state *zigoRawCallbackState) recordErr(err error) {
+	state.tripCancel()
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	if state.err == nil {
@@ -79,7 +117,11 @@ func zigoRawTakeCallbackError(handle cgo.Handle) (error, bool) {
 
 //export zg_callback_context_create_go_callback_callback
 func zg_callback_context_create_go_callback_callback(p0 C.int32_t, p1 C.size_t) (result C.int32_t) {
-	state := cgo.Handle(p1).Value().(*zigoRawCallbackState)
+	state, ok := callbackState(cgo.Handle(p1))
+	if !ok {
+		tripCallbackCancel(uintptr(p1))
+		return C.int32_t(-4)
+	}
 	defer func() {
 		if value := recover(); value != nil {
 			state.record(value)
@@ -97,7 +139,33 @@ func zg_callback_context_create_go_callback_callback(p0 C.int32_t, p1 C.size_t) 
 
 //export zg_apply_go_callback_callback
 func zg_apply_go_callback_callback(p0 C.int32_t, p1 C.size_t) (result C.int32_t) {
-	state := cgo.Handle(p1).Value().(*zigoRawCallbackState)
+	state, ok := callbackState(cgo.Handle(p1))
+	if !ok {
+		tripCallbackCancel(uintptr(p1))
+		return C.int32_t(-4)
+	}
+	defer func() {
+		if value := recover(); value != nil {
+			state.record(value)
+			result = C.int32_t(-3)
+		}
+	}()
+	callback := state.Fn.(func(int32) (int32, error))
+	value, err := callback(int32(p0))
+	if err != nil {
+		state.recordErr(err)
+		return C.int32_t(-5)
+	}
+	return C.int32_t(value)
+}
+
+//export zg_apply_until_cancelled_go_callback_callback
+func zg_apply_until_cancelled_go_callback_callback(p0 C.int32_t, p1 C.size_t) (result C.int32_t) {
+	state, ok := callbackState(cgo.Handle(p1))
+	if !ok {
+		tripCallbackCancel(uintptr(p1))
+		return C.int32_t(-4)
+	}
 	defer func() {
 		if value := recover(); value != nil {
 			state.record(value)
@@ -115,7 +183,11 @@ func zg_apply_go_callback_callback(p0 C.int32_t, p1 C.size_t) (result C.int32_t)
 
 //export zg_notify_go_callback_callback
 func zg_notify_go_callback_callback(p0 C.int32_t, p1 C.size_t) {
-	state := cgo.Handle(p1).Value().(*zigoRawCallbackState)
+	state, ok := callbackState(cgo.Handle(p1))
+	if !ok {
+		tripCallbackCancel(uintptr(p1))
+		return
+	}
 	defer func() {
 		if value := recover(); value != nil {
 			state.record(value)
@@ -234,6 +306,13 @@ func zigoRawReadShared(value unsafe.Pointer) int32 {
 // zigoRawApply calls the generated C ABI wrapper for zg_apply.
 func zigoRawApply(value int32, callbackHandle uintptr) int32 {
 	return int32(C.zg_apply(C.int32_t(value), C.size_t(callbackHandle)))
+}
+
+// zigoRawApplyUntilCancelled calls the generated C ABI wrapper for zg_apply_until_cancelled.
+func zigoRawApplyUntilCancelled(limit uint32, callbackHandle uintptr, cancel *uint32) (uint32, int32) {
+	var outResult C.uint32_t
+	code := int32(C.zg_apply_until_cancelled(C.uint32_t(limit), C.size_t(callbackHandle), (*C.uint32_t)(unsafe.Pointer(cancel)), &outResult))
+	return uint32(outResult), code
 }
 
 // zigoRawNotify calls the generated C ABI wrapper for zg_notify.

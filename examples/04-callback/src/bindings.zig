@@ -43,6 +43,12 @@ pub const bindings = zigo.define(.{
             .param_meta = .{ .callback = .{ .go_error = true } },
         },
         .{
+            .path = "root.applyUntilCancelled",
+            .params = .{ "limit", "callback", "userdata", "cancel" },
+            .param_meta = .{ .callback = .{ .go_error = true } },
+            .cancel = .{ .param = "cancel" },
+        },
+        .{
             .path = "root.notify",
             .params = .{ "value", "callback", "userdata" },
         },

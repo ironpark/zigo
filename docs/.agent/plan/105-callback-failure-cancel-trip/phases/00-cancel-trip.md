@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T06:16:09Z"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: The new example test passes on both backends and no golden changes for bindings without `.cancel`.
 > NEXT: none

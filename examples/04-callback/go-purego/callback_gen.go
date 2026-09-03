@@ -4,6 +4,8 @@
 package callback
 
 import (
+	"context"
+	"errors"
 	"runtime"
 	"sync/atomic"
 	"unsafe"
@@ -275,6 +277,54 @@ func Apply(value int32, callback Observer) (int32, error) {
 	zigoRethrowCallbackPanic("Apply", callbackHandle)
 	if err := zigoCallbackError("Apply", "callback", callbackHandle); err != nil {
 		return 0, err
+	}
+	return result, nil
+}
+
+// ApplyUntilCancelled
+// Calls callback until limit is reached or cancel is raised. The callback's
+// return value is deliberately ignored so the generated failure path must
+// trip cancel rather than relying on an in-band sentinel to stop this loop.
+// Native failures are returned as generated error values.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+// An error a Go callback returned is returned as *CallbackError once the native call returns.
+// Cancelling ctx stops the native call at its next polling point; the call
+// then returns ctx.Err() rather than the library's own Canceled error.
+func ApplyUntilCancelled(ctx context.Context, limit uint32, callback Observer) (uint32, error) {
+	var zigoCancel uint32
+	var zigoPinner runtime.Pinner
+	zigoPinner.Pin(&zigoCancel)
+	defer zigoPinner.Unpin()
+	if ctx.Err() != nil {
+		atomic.StoreUint32(&zigoCancel, 1)
+	} else if zigoDone := ctx.Done(); zigoDone != nil {
+		zigoStop := make(chan struct{})
+		defer close(zigoStop)
+		go func() {
+			select {
+			case <-zigoDone:
+				atomic.StoreUint32(&zigoCancel, 1)
+			case <-zigoStop:
+			}
+		}()
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	callbackHandle := newObserverHandle(callback)
+	defer deleteCallbackHandle(callbackHandle)
+	setCallbackCancel(callbackHandle, &zigoCancel)
+	defer setCallbackCancel(callbackHandle, nil)
+	result, code := raw.ApplyUntilCancelled(limit, raw.CallbackPointer0(), uintptr(callbackHandle), &zigoCancel)
+	zigoRethrowCallbackPanic("ApplyUntilCancelled", callbackHandle)
+	if err := zigoCallbackError("ApplyUntilCancelled", "callback", callbackHandle); err != nil {
+		return 0, err
+	}
+	if code != 0 {
+		zigoErr := errorForCode("ApplyUntilCancelled", code)
+		if errors.Is(zigoErr, ErrCanceled) && ctx.Err() != nil {
+			return 0, ctx.Err()
+		}
+		return 0, zigoErr
 	}
 	return result, nil
 }

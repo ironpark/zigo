@@ -2034,6 +2034,7 @@ fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.
         try writer.print("\n#include \"zigo_{s}.h\"\n*/\nimport \"C\"\n", .{package});
     if (programHasStreams(program)) try writer.writeAll("import \"io\"\n");
     if (programHasCallbacks(program)) try writer.writeAll("import \"runtime/cgo\"\nimport \"runtime/debug\"\nimport \"sync\"\n");
+    if (programHasCallbackCancellation(program)) try writer.writeAll("import \"sync/atomic\"\n");
     if (programNeedsUnsafe(program)) try writer.writeAll("import \"unsafe\"\n");
     try writer.writeByte('\n');
     const last_error_name = if (options.raw_colocated) "zigoRawLastErrorMessage" else "LastErrorMessage";
@@ -3041,6 +3042,7 @@ fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.Io.Wr
     const prefix = if (options.raw_colocated) "zigoRaw" else "";
     const has_streams = programHasStreams(program);
     const has_callback_errors = programHasCallbackErrors(program);
+    const has_callback_cancellation = programHasCallbackCancellation(program);
     try writer.writeAll(
         "type callbackEntry struct {\n\tmu sync.Mutex\n\tcond *sync.Cond\n\tvalue any\n\tclosing bool\n\tactive int\n\tpanicked bool\n\tpanicValue any\n\tpanicStack []byte\n",
     );
@@ -3048,18 +3050,31 @@ fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.Io.Wr
     // `go_error` callback -- carries the field, so a registry that cannot be
     // is byte for byte what it always was.
     if (has_streams or has_callback_errors) try writer.writeAll("\tgoErr error\n");
+    if (has_callback_cancellation) try writer.writeAll("\tcancel atomic.Pointer[uint32]\n");
     try writer.writeAll(
         "}\n\n" ++
             "// callbackRegistry maps a userdata token to its entry without a global lock,\n// mirroring the sync.Map behind runtime/cgo.Handle on the cgo backend.\n// Delete races an in-flight acquire safely through the entry's closing flag:\n// an acquire either takes active++ before closing is set, in which case\n// DeleteCallbackHandle waits for it to drain, or it observes closing and\n// reports the token as gone.\nvar callbackRegistry sync.Map // uintptr -> *callbackEntry\nvar nextCallbackToken atomic.Uint64\nvar activeCallbackHandles atomic.Int64\n\n",
     );
+    if (has_callback_cancellation) try writer.writeAll("var callbackCancelFlags sync.Map // uintptr -> *uint32\n\n");
     try writer.print("// {s}NewCallbackHandle stores a callback value and returns its native userdata token.\nfunc {s}NewCallbackHandle(value any) uintptr {{\n", .{ prefix, prefix });
     try writer.writeAll("\tentry := &callbackEntry{value: value}\n\tentry.cond = sync.NewCond(&entry.mu)\n\ttoken := uintptr(nextCallbackToken.Add(1))\n\tif token == 0 { token = uintptr(nextCallbackToken.Add(1)) }\n\tcallbackRegistry.Store(token, entry)\n\tactiveCallbackHandles.Add(1)\n\treturn token\n}\n\n");
     try writer.print("// {s}DeleteCallbackHandle releases a callback token after in-flight calls finish.\nfunc {s}DeleteCallbackHandle(token uintptr) {{\n", .{ prefix, prefix });
     try writer.writeAll("\tif token == 0 { return }\n\tstored, loaded := callbackRegistry.LoadAndDelete(token)\n\tif !loaded { return }\n\tentry := stored.(*callbackEntry)\n\tentry.mu.Lock()\n\tentry.closing = true\n\tfor entry.active != 0 { entry.cond.Wait() }\n\tentry.value = nil\n\tentry.mu.Unlock()\n\tactiveCallbackHandles.Add(-1)\n}\n\n");
     try writer.print("// {s}ActiveCallbackHandleCount reports the number of live callback tokens.\nfunc {s}ActiveCallbackHandleCount() int64 {{ return activeCallbackHandles.Load() }}\n\n", .{ prefix, prefix });
-    try writer.writeAll("// record keeps the first panic a callback raised until the generated caller takes it.\nfunc (entry *callbackEntry) record(value any) {\n\tentry.mu.Lock()\n\tdefer entry.mu.Unlock()\n\tif entry.panicked { return }\n\tentry.panicked = true\n\tentry.panicValue = value\n\tentry.panicStack = debug.Stack()\n}\n\n");
+    if (has_callback_cancellation) try writer.print(
+        "// {0s}SetCallbackCancel attaches a call-scoped cancellation flag to token.\n" ++
+            "func {0s}SetCallbackCancel(token uintptr, flag *uint32) {{\n\tif flag == nil {{ callbackCancelFlags.Delete(token) }} else {{ callbackCancelFlags.Store(token, flag) }}\n\tstored, loaded := callbackRegistry.Load(token)\n\tif loaded {{ stored.(*callbackEntry).cancel.Store(flag) }}\n}}\n\n" ++
+            "func tripCallbackCancel(token uintptr) {{\n\tif stored, loaded := callbackCancelFlags.Load(token); loaded {{ atomic.StoreUint32(stored.(*uint32), 1) }}\n}}\n\n" ++
+            "func (entry *callbackEntry) tripCancel() {{\n\tif flag := entry.cancel.Load(); flag != nil {{ atomic.StoreUint32(flag, 1) }}\n}}\n\n",
+        .{prefix},
+    );
+    try writer.writeAll("// record keeps the first panic a callback raised until the generated caller takes it.\nfunc (entry *callbackEntry) record(value any) {\n");
+    if (has_callback_cancellation) try writer.writeAll("\tentry.tripCancel()\n");
+    try writer.writeAll("\tentry.mu.Lock()\n\tdefer entry.mu.Unlock()\n\tif entry.panicked { return }\n\tentry.panicked = true\n\tentry.panicValue = value\n\tentry.panicStack = debug.Stack()\n}\n\n");
     if (has_streams or has_callback_errors) {
-        try writer.writeAll("// recordErr keeps the first error the Go side reported -- a stream that failed\n// to write or read, or a callback that returned one -- until the generated\n// caller takes it. Later crossings are not asked: once a stream has failed the\n// adapter stops using it.\nfunc (entry *callbackEntry) recordErr(err error) {\n\tentry.mu.Lock()\n\tdefer entry.mu.Unlock()\n\tif entry.goErr == nil { entry.goErr = err }\n}\n\n");
+        try writer.writeAll("// recordErr keeps the first error the Go side reported -- a stream that failed\n// to write or read, or a callback that returned one -- until the generated\n// caller takes it. Later crossings are not asked: once a stream has failed the\n// adapter stops using it.\nfunc (entry *callbackEntry) recordErr(err error) {\n");
+        if (has_callback_cancellation) try writer.writeAll("\tentry.tripCancel()\n");
+        try writer.writeAll("\tentry.mu.Lock()\n\tdefer entry.mu.Unlock()\n\tif entry.goErr == nil { entry.goErr = err }\n}\n\n");
     }
     if (has_streams) {
         try writer.print("// {0s}TakeStreamError returns and clears the error the Go stream behind token reported.\nfunc {0s}TakeStreamError(token uintptr) (error, bool) {{\n", .{prefix});
@@ -3111,7 +3126,9 @@ fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.Io.Wr
             // supported architectures, and a void callback's value is ignored.
             try writer.writeAll(") (result uintptr) {\n");
             const userdata_index = callback.params.len - 1;
-            try writer.print("\t\t\tentry, stored, ok := acquireCallback(uintptr(p{d}))\n\t\t\tif !ok {{ return ", .{userdata_index});
+            try writer.print("\t\t\tentry, stored, ok := acquireCallback(uintptr(p{d}))\n\t\t\tif !ok {{ ", .{userdata_index});
+            if (has_callback_cancellation) try writer.print("tripCallbackCancel(uintptr(p{d})); ", .{userdata_index});
+            try writer.writeAll("return ");
             try writeCallbackFailureValue(writer, callback.@"return".*, false);
             try writer.writeAll(" }\n\t\t\tdefer releaseCallback(entry)\n");
             // Recovered after the entry is acquired so the panic has somewhere
@@ -3865,8 +3882,8 @@ fn renderCgoCallbackErrorStorage(writer: *std.Io.Writer, program: abi.Program, p
             "// failed to write or read, or a callback that returned one -- until the\n" ++
             "// generated caller takes it. Later crossings are not asked: once a stream\n" ++
             "// has failed the adapter stops using it.\n" ++
-            "func (state *{0s}CallbackState) recordErr(err error) {{\n\tstate.mu.Lock()\n\tdefer state.mu.Unlock()\n\tif state.err == nil {{\n\t\tstate.err = err\n\t}}\n}}\n\n",
-        .{prefix},
+            "func (state *{0s}CallbackState) recordErr(err error) {{\n{1s}\tstate.mu.Lock()\n\tdefer state.mu.Unlock()\n\tif state.err == nil {{\n\t\tstate.err = err\n\t}}\n}}\n\n",
+        .{ prefix, if (programHasCallbackCancellation(program)) "\tstate.tripCancel()\n" else "" },
     );
     if (has_streams) try writer.print(
         "// {0s}TakeStreamError returns and clears the error the Go stream behind handle reported.\n" ++
@@ -3933,18 +3950,35 @@ fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
     if (!programHasCallbacks(program)) return;
     const prefix = if (options.raw_colocated) "zigoRaw" else "";
     const has_streams = programHasStreams(program);
+    const has_callback_cancellation = programHasCallbackCancellation(program);
     try writer.print(
         "// {0s}CallbackState carries one Go callback across the native boundary, and\n" ++
             "// the panic it raises there until the generated caller rethrows it. The\n" ++
             "// trampoline has to recover: a panic cannot unwind native frames.\n" ++
-            "type {0s}CallbackState struct {{\n\tFn       any\n{1s}\tmu       sync.Mutex\n\tvalue    any\n\tstack    []byte\n\tpanicked bool\n{2s}}}\n\n" ++
-            "func (state *{0s}CallbackState) record(value any) {{\n\tstate.mu.Lock()\n\tdefer state.mu.Unlock()\n\tif state.panicked {{\n\t\treturn\n\t}}\n\tstate.panicked = true\n\tstate.value = value\n\tstate.stack = debug.Stack()\n}}\n\n" ++
-            "// {0s}TakeCallbackPanic returns and clears the panic the callback behind handle recorded.\n" ++
-            "func {0s}TakeCallbackPanic(handle cgo.Handle) (any, []byte, bool) {{\n\tstate := handle.Value().(*{0s}CallbackState)\n\tstate.mu.Lock()\n\tdefer state.mu.Unlock()\n\tif !state.panicked {{\n\t\treturn nil, nil, false\n\t}}\n\tvalue, stack := state.value, state.stack\n\tstate.value, state.stack, state.panicked = nil, nil, false\n\treturn value, stack, true\n}}\n\n",
+            "type {0s}CallbackState struct {{\n\tFn       any\n{1s}\tmu       sync.Mutex\n\tvalue    any\n\tstack    []byte\n\tpanicked bool\n{2s}{3s}}}\n\n",
         .{
             prefix,
             if (has_streams) "\tWriter   io.Writer\n\tReader   io.Reader\n" else "",
             if (has_streams or programHasCallbackErrors(program)) "\terr      error\n" else "",
+            if (has_callback_cancellation) "\tcancel   atomic.Pointer[uint32]\n" else "",
+        },
+    );
+    if (has_callback_cancellation) try writer.print(
+        "// {0s}SetCallbackCancel attaches a call-scoped cancellation flag to handle.\n" ++
+            "var callbackCancelFlags sync.Map // uintptr -> *uint32\n\n" ++
+            "func {0s}SetCallbackCancel(handle cgo.Handle, flag *uint32) {{\n\tif flag == nil {{ callbackCancelFlags.Delete(uintptr(handle)) }} else {{ callbackCancelFlags.Store(uintptr(handle), flag) }}\n\thandle.Value().(*{0s}CallbackState).cancel.Store(flag)\n}}\n\n" ++
+            "func tripCallbackCancel(handle uintptr) {{\n\tif stored, loaded := callbackCancelFlags.Load(handle); loaded {{ atomic.StoreUint32(stored.(*uint32), 1) }}\n}}\n\n" ++
+            "func callbackState(handle cgo.Handle) (state *{0s}CallbackState, ok bool) {{\n\tdefer func() {{ if recover() != nil {{ state, ok = nil, false }} }}()\n\tstate, ok = handle.Value().(*{0s}CallbackState)\n\treturn state, ok\n}}\n\n" ++
+            "func (state *{0s}CallbackState) tripCancel() {{\n\tif flag := state.cancel.Load(); flag != nil {{ atomic.StoreUint32(flag, 1) }}\n}}\n\n",
+        .{prefix},
+    );
+    try writer.print(
+        "func (state *{0s}CallbackState) record(value any) {{\n{1s}\tstate.mu.Lock()\n\tdefer state.mu.Unlock()\n\tif state.panicked {{\n\t\treturn\n\t}}\n\tstate.panicked = true\n\tstate.value = value\n\tstate.stack = debug.Stack()\n}}\n\n" ++
+            "// {0s}TakeCallbackPanic returns and clears the panic the callback behind handle recorded.\n" ++
+            "func {0s}TakeCallbackPanic(handle cgo.Handle) (any, []byte, bool) {{\n\tstate := handle.Value().(*{0s}CallbackState)\n\tstate.mu.Lock()\n\tdefer state.mu.Unlock()\n\tif !state.panicked {{\n\t\treturn nil, nil, false\n\t}}\n\tvalue, stack := state.value, state.stack\n\tstate.value, state.stack, state.panicked = nil, nil, false\n\treturn value, stack, true\n}}\n\n",
+        .{
+            prefix,
+            if (has_callback_cancellation) "\tstate.tripCancel()\n" else "",
         },
     );
     try renderCgoCallbackErrorStorage(writer, program, prefix);
@@ -3969,7 +4003,26 @@ fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
                 try writeCgoType(writer, semanticScalar(program, callback.@"return".*));
                 try writer.writeByte(')');
             }
-            try writer.print(" {{\n\tstate := cgo.Handle(p{d}).Value().(*{s}CallbackState)\n\tdefer func() {{\n\t\tif value := recover(); value != nil {{\n\t\t\tstate.record(value)\n", .{ callback.params.len - 1, prefix });
+            try writer.writeAll(" {\n");
+            if (has_callback_cancellation) {
+                try writer.print("\tstate, ok := callbackState(cgo.Handle(p{d}))\n\tif !ok {{\n\t\ttripCallbackCancel(uintptr(p{d}))\n", .{ callback.params.len - 1, callback.params.len - 1 });
+                if (callback.@"return".* != .void) {
+                    try writer.writeAll("\t\treturn C.");
+                    try writeCgoType(writer, semanticScalar(program, callback.@"return".*));
+                    try writer.writeByte('(');
+                    if (callbackResultWidens(callback.@"return".*))
+                        try writer.writeAll("-4")
+                    else
+                        try writer.writeByte('0');
+                    try writer.writeAll(")\n");
+                } else {
+                    try writer.writeAll("\t\treturn\n");
+                }
+                try writer.writeAll("\t}\n");
+            } else {
+                try writer.print("\tstate := cgo.Handle(p{d}).Value().(*{s}CallbackState)\n", .{ callback.params.len - 1, prefix });
+            }
+            try writer.writeAll("\tdefer func() {\n\t\tif value := recover(); value != nil {\n\t\t\tstate.record(value)\n");
             if (callback.@"return".* != .void) {
                 if (callback.@"return".* == .int and callback.@"return".int.signed and callback.@"return".int.bits == 32) {
                     try writer.writeAll("\t\t\tresult = C.int32_t(-3)\n");
@@ -6211,6 +6264,11 @@ fn renderPublicHelpers(writer: *std.Io.Writer, program: abi.Program, options: Op
                 try writeRawReferencePrefix(writer, options);
                 try writer.writeAll("CallbackDispatcherCount() }\n\n");
             }
+            if (programHasCallbackCancellation(program)) {
+                try writer.writeAll("func setCallbackCancel(handle zigoCallbackHandle, flag *uint32) { ");
+                try writeRawReferencePrefix(writer, options);
+                try writer.writeAll("SetCallbackCancel(handle, flag) }\n\n");
+            }
             try writeRethrowHelper(writer, options);
             try writeStreamErrorHelper(writer, program, options);
             try writeCallbackErrorHelper(writer, program, options);
@@ -6247,6 +6305,11 @@ fn renderPublicHelpers(writer: *std.Io.Writer, program: abi.Program, options: Op
         );
         if (programUsesCallbackDiagnostics(program))
             try writer.writeAll("func activeCallbackHandleCount() int64 { return activeCallbackHandles.Load() }\n\n");
+        if (programHasCallbackCancellation(program)) {
+            try writer.writeAll("func setCallbackCancel(handle zigoCallbackHandle, flag *uint32) { ");
+            try writeRawReferencePrefix(writer, options);
+            try writer.writeAll("SetCallbackCancel(handle, flag) }\n\n");
+        }
         try writeRethrowHelper(writer, options);
         try writeStreamErrorHelper(writer, program, options);
         try writeCallbackErrorHelper(writer, program, options);
@@ -7840,6 +7903,10 @@ fn renderCallbackHandleSetup(allocator: std.mem.Allocator, writer: *std.Io.Write
                 .{go_names[parameter_index]},
             );
         }
+        if (function.origin.cancel != null) try writer.print(
+            "\tsetCallbackCancel({0s}Handle, &zigoCancel)\n\tdefer setCallbackCancel({0s}Handle, nil)\n",
+            .{go_names[parameter_index]},
+        );
     }
 }
 
@@ -8703,6 +8770,16 @@ fn functionHasStream(function: semantic.SemanticFn) bool {
 /// through.
 fn programHasCancellation(program: abi.Program) bool {
     for (program.functions) |function| if (function.origin.cancel != null) return true;
+    return false;
+}
+
+/// True when a cancellable native call directly owns a Go callback. Only such
+/// bindings need to carry the call-scoped cancel pointer on callback state.
+fn programHasCallbackCancellation(program: abi.Program) bool {
+    for (program.functions) |function| {
+        if (function.origin.cancel == null) continue;
+        for (function.origin.params) |parameter| if (parameter.type == .callback) return true;
+    }
     return false;
 }
 

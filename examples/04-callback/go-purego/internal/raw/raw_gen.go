@@ -69,6 +69,7 @@ type nativeBindings struct {
 	fnIncrementShared            func(*uint64, uint64) uint64
 	fnReadShared                 func(*int32) int32
 	fnApply                      func(int32, uintptr, uintptr) int32
+	fnApplyUntilCancelled        func(uint32, uintptr, uintptr, *uint32, *uint32) int32
 	fnNotify                     func(int32, uintptr, uintptr)
 }
 
@@ -82,6 +83,7 @@ type callbackEntry struct {
 	panicValue any
 	panicStack []byte
 	goErr      error
+	cancel     atomic.Pointer[uint32]
 }
 
 // callbackRegistry maps a userdata token to its entry without a global lock,
@@ -93,6 +95,8 @@ type callbackEntry struct {
 var callbackRegistry sync.Map // uintptr -> *callbackEntry
 var nextCallbackToken atomic.Uint64
 var activeCallbackHandles atomic.Int64
+
+var callbackCancelFlags sync.Map // uintptr -> *uint32
 
 // NewCallbackHandle stores a callback value and returns its native userdata token.
 func NewCallbackHandle(value any) uintptr {
@@ -130,8 +134,34 @@ func DeleteCallbackHandle(token uintptr) {
 // ActiveCallbackHandleCount reports the number of live callback tokens.
 func ActiveCallbackHandleCount() int64 { return activeCallbackHandles.Load() }
 
+// SetCallbackCancel attaches a call-scoped cancellation flag to token.
+func SetCallbackCancel(token uintptr, flag *uint32) {
+	if flag == nil {
+		callbackCancelFlags.Delete(token)
+	} else {
+		callbackCancelFlags.Store(token, flag)
+	}
+	stored, loaded := callbackRegistry.Load(token)
+	if loaded {
+		stored.(*callbackEntry).cancel.Store(flag)
+	}
+}
+
+func tripCallbackCancel(token uintptr) {
+	if stored, loaded := callbackCancelFlags.Load(token); loaded {
+		atomic.StoreUint32(stored.(*uint32), 1)
+	}
+}
+
+func (entry *callbackEntry) tripCancel() {
+	if flag := entry.cancel.Load(); flag != nil {
+		atomic.StoreUint32(flag, 1)
+	}
+}
+
 // record keeps the first panic a callback raised until the generated caller takes it.
 func (entry *callbackEntry) record(value any) {
+	entry.tripCancel()
 	entry.mu.Lock()
 	defer entry.mu.Unlock()
 	if entry.panicked {
@@ -147,6 +177,7 @@ func (entry *callbackEntry) record(value any) {
 // caller takes it. Later crossings are not asked: once a stream has failed the
 // adapter stops using it.
 func (entry *callbackEntry) recordErr(err error) {
+	entry.tripCancel()
 	entry.mu.Lock()
 	defer entry.mu.Unlock()
 	if entry.goErr == nil {
@@ -227,6 +258,7 @@ func ensureCallbackDispatchers() {
 		callbackPointers[0] = purego.NewCallback(func(p0 int32, p1 uint) (result uintptr) {
 			entry, stored, ok := acquireCallback(uintptr(p1))
 			if !ok {
+				tripCallbackCancel(uintptr(p1))
 				return callbackResult(-4)
 			}
 			defer releaseCallback(entry)
@@ -247,6 +279,7 @@ func ensureCallbackDispatchers() {
 		callbackPointers[1] = purego.NewCallback(func(p0 int32, p1 uint) (result uintptr) {
 			entry, stored, ok := acquireCallback(uintptr(p1))
 			if !ok {
+				tripCallbackCancel(uintptr(p1))
 				return 0
 			}
 			defer releaseCallback(entry)
@@ -424,6 +457,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_apply_purego_v2", err)
 	}
+	addrApplyUntilCancelled, err := resolveSymbol(handle, "zg_apply_until_cancelled_purego_v2")
+	if err != nil {
+		return fail("zg_apply_until_cancelled_purego_v2", err)
+	}
 	addrNotify, err := resolveSymbol(handle, "zg_notify_purego_v2")
 	if err != nil {
 		return fail("zg_notify_purego_v2", err)
@@ -448,6 +485,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnIncrementShared, addrIncrementShared)
 	purego.RegisterFunc(&next.fnReadShared, addrReadShared)
 	purego.RegisterFunc(&next.fnApply, addrApply)
+	purego.RegisterFunc(&next.fnApplyUntilCancelled, addrApplyUntilCancelled)
 	purego.RegisterFunc(&next.fnNotify, addrNotify)
 	loadedBindings.Store(&next)
 	return nil
@@ -589,6 +627,14 @@ func ReadShared(value unsafe.Pointer) int32 {
 func Apply(value int32, callbackCallback, callbackToken uintptr) int32 {
 	result := bindings().fnApply(value, callbackCallback, callbackToken)
 	return int32(result)
+}
+
+// ApplyUntilCancelled calls the generated purego ABI wrapper for zg_apply_until_cancelled_purego_v2.
+func ApplyUntilCancelled(limit uint32, callbackCallback, callbackToken uintptr, cancel *uint32) (uint32, int32) {
+	var outResult uint32
+	code := bindings().fnApplyUntilCancelled(limit, callbackCallback, callbackToken, cancel, &outResult)
+	runtime.KeepAlive(cancel)
+	return outResult, code
 }
 
 // Notify calls the generated purego ABI wrapper for zg_notify_purego_v2.

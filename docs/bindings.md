@@ -726,6 +726,13 @@ ctx는 호출 전에 플래그를 세우므로 native가 첫 폴링 지점에서
 동안만 유효하며, cgo는 C에 넘긴 Go 포인터를 호출 동안 고정해 주고 purego 백엔드는
 `runtime.Pinner`로 직접 고정합니다.
 
+함수가 Go callback도 직접 받으면 생성기는 같은 워드의 주소를 callback state에 호출 동안만
+연결합니다. callback이 panic하거나 Go `error`를 반환하거나 이미 삭제된 userdata token으로
+호출되면 dispatcher가 실패 값을 반환하기 전에 `atomic.StoreUint32(..., 1)`로 플래그를
+세웁니다. 따라서 native loop가 callback 반환값을 무시하더라도 다음 폴링 지점에서 멈추며,
+panic과 error는 호출이 돌아온 뒤 기존과 같이 Go 호출자에게 다시 전달됩니다. `.cancel`이 없는
+함수의 callback state와 dispatcher 출력은 바뀌지 않습니다.
+
 **error 매핑.** `.cancel.canceled`는 취소를 뜻하는 Zig error 이름이며 생략하면
 `Canceled`입니다. 예를 들어 라이브러리가 영국식 이름을 쓰면
 `.cancel = .{ .param = "cancel", .canceled = "Cancelled" }`로 지정합니다. 대상 함수의

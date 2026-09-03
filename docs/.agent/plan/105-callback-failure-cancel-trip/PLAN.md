@@ -7,7 +7,7 @@ registered_at: "2026-09-03T03:53:27Z"
 
 # Phases
 
-- [ ] [Phase 00: Trip the cancel flag on callback failure](phases/00-cancel-trip.md)
+- [x] [Phase 00: Trip the cancel flag on callback failure](phases/00-cancel-trip.md)
 - [ ] [Phase 01: Declared fallback result](phases/01-fallback-result.md)
 
 # Shared Verification

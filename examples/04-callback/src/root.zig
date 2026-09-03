@@ -38,6 +38,18 @@ pub fn apply(value: i32, callback: Observer, userdata: usize) i32 {
     return callback(value, userdata);
 }
 
+/// Calls callback until limit is reached or cancel is raised. The callback's
+/// return value is deliberately ignored so the generated failure path must
+/// trip cancel rather than relying on an in-band sentinel to stop this loop.
+pub fn applyUntilCancelled(limit: u32, callback: Observer, userdata: usize, cancel: *const std.atomic.Value(u32)) error{Canceled}!u32 {
+    var runs: u32 = 0;
+    while (runs < limit and cancel.load(.seq_cst) == 0) : (runs += 1) {
+        _ = callback(@intCast(runs), userdata);
+    }
+    if (cancel.load(.seq_cst) != 0) return error.Canceled;
+    return runs;
+}
+
 pub fn notify(value: i32, callback: VoidObserver, userdata: usize) void {
     callback(value, userdata);
 }
@@ -98,6 +110,9 @@ test "generic specializations and callback context" {
     defer context.deinit();
     try std.testing.expectEqual(@as(i32, 8), context.run(7));
     try std.testing.expectEqual(@as(i32, 9), apply(8, &callback, 0));
+
+    var cancel: std.atomic.Value(u32) = .init(0);
+    try std.testing.expectEqual(@as(u32, 3), applyUntilCancelled(3, &callback, 0, &cancel));
 
     var notified: i32 = 0;
     const void_callback = struct {

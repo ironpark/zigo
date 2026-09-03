@@ -253,7 +253,7 @@
           "name_source": "sidecar",
           "retention": "retained",
           "source": {
-            "line": 52,
+            "line": 64,
             "column": 19
           },
           "type": {
@@ -289,7 +289,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 52,
+            "line": 64,
             "column": 39
           },
           "type": {
@@ -314,7 +314,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 52,
+        "line": 64,
         "column": 12
       },
       "symbol": "zg_callback_context_create"
@@ -329,7 +329,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 58,
+            "line": 70,
             "column": 40
           },
           "type": {
@@ -349,7 +349,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 58,
+        "line": 70,
         "column": 12
       },
       "symbol": "zg_callback_context_run"
@@ -364,7 +364,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 63,
+        "line": 75,
         "column": 12
       },
       "symbol": "zg_callback_context_deinit"
@@ -384,7 +384,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 68,
+        "line": 80,
         "column": 8
       },
       "symbol": "zg_panic_now"
@@ -399,7 +399,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 74,
+            "line": 86,
             "column": 25
           },
           "type": {
@@ -418,7 +418,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 74,
+        "line": 86,
         "column": 8
       },
       "symbol": "zg_compression_bound"
@@ -433,7 +433,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 78,
+            "line": 90,
             "column": 24
           },
           "type": {
@@ -453,7 +453,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 78,
+            "line": 90,
             "column": 57
           },
           "type": {
@@ -472,7 +472,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 78,
+        "line": 90,
         "column": 8
       },
       "symbol": "zg_increment_shared"
@@ -487,7 +487,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 82,
+            "line": 94,
             "column": 19
           },
           "type": {
@@ -510,7 +510,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 82,
+        "line": 94,
         "column": 8
       },
       "symbol": "zg_read_shared"
@@ -603,6 +603,115 @@
       "symbol": "zg_apply"
     },
     {
+      "cancel": "cancel",
+      "doc": "Calls callback until limit is reached or cancel is raised. The callback's\nreturn value is deliberately ignored so the generated failure path must\ntrip cancel rather than relying on an in-band sentinel to stop this loop.",
+      "name": "applyUntilCancelled",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "limit",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 44,
+            "column": 28
+          },
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "direction": "in",
+          "go_error": true,
+          "name": "callback",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 44,
+            "column": 40
+          },
+          "type": {
+            "c_callconv": true,
+            "has_userdata": true,
+            "kind": "callback",
+            "params": [
+              {
+                "bits": 32,
+                "is_usize": false,
+                "kind": "int",
+                "signed": true
+              },
+              {
+                "bits": 64,
+                "is_usize": true,
+                "kind": "int",
+                "signed": false
+              }
+            ],
+            "ref": "Observer",
+            "return": {
+              "bits": 32,
+              "is_usize": false,
+              "kind": "int",
+              "signed": true
+            }
+          }
+        },
+        {
+          "direction": "in",
+          "name": "userdata",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 44,
+            "column": 60
+          },
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "direction": "in",
+          "cancel": true,
+          "name": "cancel",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 44,
+            "column": 77
+          },
+          "type": {
+            "kind": "cancel_flag"
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "Canceled"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 32,
+          "is_usize": false,
+          "kind": "int",
+          "signed": false
+        }
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 44,
+        "column": 8
+      },
+      "symbol": "zg_apply_until_cancelled"
+    },
+    {
       "name": "notify",
       "ownership": "borrowed",
       "params": [
@@ -612,7 +721,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 41,
+            "line": 53,
             "column": 15
           },
           "type": {
@@ -628,7 +737,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 41,
+            "line": 53,
             "column": 27
           },
           "type": {
@@ -661,7 +770,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 41,
+            "line": 53,
             "column": 51
           },
           "type": {
@@ -677,7 +786,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 41,
+        "line": 53,
         "column": 8
       },
       "symbol": "zg_notify"
