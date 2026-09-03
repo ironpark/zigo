@@ -1,5 +1,6 @@
 {
   "package": "optional",
   "prefix": "zg",
-  "go_module": "example.com/zigo/optional"
+  "go_module": "example.com/zigo/optional",
+  "go_must_variants": true
 }

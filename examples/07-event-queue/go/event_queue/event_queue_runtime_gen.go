@@ -25,6 +25,20 @@ func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error {
 	return lifecycle.PoisonAfterPanic(err, handles...)
 }
 
+func zigoMust[T any](value T, err error) T {
+	if err != nil {
+		panic(err)
+	}
+	return value
+}
+
+func zigoMustMatch[T any](value T, matched bool, err error) (T, bool) {
+	if err != nil {
+		panic(err)
+	}
+	return value, matched
+}
+
 // EventQueueCreateObserver is the Go callback signature accepted by the generated binding.
 type EventQueueCreateObserver func(uint64, int32) int32
 

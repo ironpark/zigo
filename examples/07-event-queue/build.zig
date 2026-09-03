@@ -26,6 +26,7 @@ pub fn build(b: *std.Build) void {
         .abi_base = "HEAD",
         .raw_package = "bridge/cgo",
         .go_package_doc = "Package event_queue queues events natively and hands the results to Go.\n\nThe doc body comes from the `go_package_doc` build option rather than from a\n`//!` block in the bindings file.",
+        .go_must_variants = true,
         .coverage_json = coverage_json,
     });
     _ = bindings.addStandardSteps(b, .{});
@@ -41,6 +42,7 @@ pub fn build(b: *std.Build) void {
         .abi_base = "HEAD",
         .raw_package = "internal/native",
         .go_package_doc = "Package event_queue queues events natively and hands the results to Go.\n\nThe doc body comes from the `go_package_doc` build option rather than from a\n`//!` block in the bindings file.",
+        .go_must_variants = true,
 
         .link = .purego,
     });

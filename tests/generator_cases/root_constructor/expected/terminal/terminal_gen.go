@@ -24,6 +24,9 @@ func NewTerminal(columns uint32) (*Terminal, error) {
 	return newTerminal(result), nil
 }
 
+// MustNewTerminal calls NewTerminal and panics with its typed error on failure.
+func MustNewTerminal(columns uint32) *Terminal { return zigoMust(NewTerminal(columns)) }
+
 // Resize
 // Resizes the terminal.
 // It returns *HandleError if a required handle is nil or closed.
@@ -43,6 +46,9 @@ func (t *Terminal) Resize(columns uint32) error {
 	return nil
 }
 
+// MustResize calls Resize and panics with its typed error on failure.
+func (t *Terminal) MustResize(columns uint32) { _ = zigoMust(struct{}{}, t.Resize(columns)) }
+
 // Render
 // Renders the screen into memory the caller owns.
 // It returns *HandleError if a required handle is nil or closed.
@@ -61,3 +67,6 @@ func (t *Terminal) Render() (string, error) {
 	}
 	return string(result), nil
 }
+
+// MustRender calls Render and panics with its typed error on failure.
+func (t *Terminal) MustRender() string { return zigoMust(t.Render()) }

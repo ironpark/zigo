@@ -44,6 +44,7 @@ raw 패키지는 `internal/raw`에서 생성됩니다. `addStandardSteps`는 기
 | `go_package` | 아니요 | `name`의 snake_case | 공개 Go 패키지 이름 |
 | `go_package_path` | 아니요 | `go_package` | `go_dir` 기준 공개 Go 패키지 경로. `"."`은 모듈 루트 |
 | `go_package_doc` | 아니요 | `bindings.zig`의 `//!`, 없으면 루트 모듈(`source_root`)의 `//!` | 생성된 공개 패키지의 `// Package …` doc 본문 |
+| `go_must_variants` | 아니요 | `false` | 오류를 반환하는 공개 함수·메서드에 panic 기반 `Must*` 동반 API 생성 |
 | `coverage_json` | 아니요 | `null` | `go-coverage`의 JSON 보고서를 기록할 소스 경로 |
 | `raw_package` | 아니요 | `"internal/raw"` | `go_dir` 기준 raw Go 패키지 경로 |
 | `cgo_flags` | 아니요 | 모듈에서 계산 | 생성할 CFLAGS/LDFLAGS 덮어쓰기와 추가 LDFLAGS |

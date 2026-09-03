@@ -8,6 +8,9 @@
 
 ### Added
 
+- `addGoBindings`의 `.go_must_variants = true` 옵션으로 오류를 반환하는 공개 함수와
+  메서드에 `Must<Name>` 동반 API를 생성할 수 있습니다. 생성자는 `MustNew<Type>`을 쓰고
+  `Close`는 제외하며, 실패 시 checked API의 typed error를 그대로 panic합니다.
 - `[]const u21` 같은 비정규 폭 정수 slice를 승격된 Go 원소 타입(`[]uint32`)으로 노출합니다.
   입력과 out buffer는 바인딩 allocator로 만든 임시 slice에서 원소별 변환하고, caller-owned
   반환은 Go 복사 전에 승격합니다. 범위 검사는 scalar 승격과 같은 `RangeError`를 사용하며,

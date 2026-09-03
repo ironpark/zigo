@@ -41,6 +41,8 @@ pub const Options = struct {
     /// Body of the generated `// Package ...` doc. Empty falls back to the
     /// `//!` container doc of the bindings file, then to a default sentence.
     go_package_doc: []const u8 = "",
+    /// Emit checked-call convenience wrappers that panic on error.
+    go_must_variants: bool = false,
     /// Null renders the legacy single package; empty selects the default package
     /// of a split document; a value selects that named sub-package.
     active_package: ?[]const u8 = null,
@@ -4203,6 +4205,133 @@ fn publicNeedsUnsafe(program: abi.Program) bool {
     return false;
 }
 
+fn writeMustParameters(
+    scope: PublicScope,
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    function: abi.AbiFn,
+    go_names: [][]u8,
+) !void {
+    var index: usize = 0;
+    if (function.origin.cancel != null) {
+        try writer.writeAll("ctx context.Context");
+        index = 1;
+    }
+    for (function.origin.params, 0..) |parameter, parameter_index| {
+        if (function.userdataFor(parameter_index) != null or parameter.injected != null or parameter.type == .cancel_flag) continue;
+        if (parameter.flatten) |fields| {
+            for (fields, 0..) |field, field_index| {
+                const abi_parameter = function.flattenedParam(parameter_index, field_index);
+                const name = try flattenedGoNameAlloc(allocator, abi_parameter.name);
+                defer allocator.free(name);
+                if (index != 0) try writer.writeAll(", ");
+                try writer.print("{s} ", .{name});
+                try writePublicGoType(scope, writer, field.type);
+                index += 1;
+            }
+            continue;
+        }
+        if (index != 0) try writer.writeAll(", ");
+        try writer.print("{s} ", .{go_names[parameter_index]});
+        if (parameter.type == .callback)
+            try writer.writeAll(function.callbackType(parameter_index).?.name)
+        else
+            try writePublicParameterType(scope, writer, parameter);
+        index += 1;
+    }
+}
+
+fn writeMustCallArguments(allocator: std.mem.Allocator, writer: *std.Io.Writer, function: abi.AbiFn, go_names: [][]u8) !void {
+    var index: usize = 0;
+    if (function.origin.cancel != null) {
+        try writer.writeAll("ctx");
+        index = 1;
+    }
+    for (function.origin.params, 0..) |parameter, parameter_index| {
+        if (function.userdataFor(parameter_index) != null or parameter.injected != null or parameter.type == .cancel_flag) continue;
+        if (parameter.flatten) |fields| {
+            for (fields, 0..) |_, field_index| {
+                const abi_parameter = function.flattenedParam(parameter_index, field_index);
+                const name = try flattenedGoNameAlloc(allocator, abi_parameter.name);
+                defer allocator.free(name);
+                if (index != 0) try writer.writeAll(", ");
+                try writer.writeAll(name);
+                index += 1;
+            }
+            continue;
+        }
+        if (index != 0) try writer.writeAll(", ");
+        try writer.writeAll(go_names[parameter_index]);
+        index += 1;
+    }
+}
+
+fn mustResultNode(function: semantic.SemanticFn) semantic.TypeNode {
+    return if (function.@"return" == .error_union)
+        function.@"return".error_union.payload.*
+    else
+        function.@"return";
+}
+
+fn mustHasSecondResult(function: semantic.SemanticFn) bool {
+    const result = mustResultNode(function);
+    return result == .optional or
+        (result == .opaque_ptr and result.opaque_ptr.nullable and returnsBorrowedView(function));
+}
+
+fn writeMustResultType(scope: PublicScope, writer: *std.Io.Writer, function: semantic.SemanticFn, owned_type: ?[]const u8) !void {
+    if (owned_type) |name| return writer.print("*{s}", .{name});
+    const result = mustResultNode(function);
+    const node = if (result == .optional) result.optional.child.* else result;
+    if (node == .opaque_ptr and returnsBorrowedView(function))
+        return writer.print("*{s}", .{node.opaque_ptr.ref});
+    if (node == .opaque_ptr and returnsBorrowedHandle(function))
+        return writer.print("*{s}Ref", .{node.opaque_ptr.ref});
+    if (semantic.isStringSlice(node, function.return_semantic)) return writer.writeAll("string");
+    try writePublicGoType(scope, writer, node);
+}
+
+fn renderMustVariant(
+    scope: PublicScope,
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    function: abi.AbiFn,
+    go_names: [][]u8,
+    receiver_name: ?[]const u8,
+    go_name: []const u8,
+    owned_type: ?[]const u8,
+) !void {
+    const must_name = try std.fmt.allocPrint(allocator, "Must{s}", .{go_name});
+    defer allocator.free(must_name);
+    try writer.print("\n// {s} calls {s} and panics with its typed error on failure.\n", .{ must_name, go_name });
+    if (function.origin.receiver) |receiver|
+        try writer.print("func ({s} *{s}) {s}(", .{ receiver_name.?, receiver, must_name })
+    else
+        try writer.print("func {s}(", .{must_name});
+    try writeMustParameters(scope, allocator, writer, function, go_names);
+    try writer.writeByte(')');
+    const result = mustResultNode(function.origin.*);
+    if (result != .void) {
+        try writer.writeByte(' ');
+        if (mustHasSecondResult(function.origin.*)) try writer.writeByte('(');
+        try writeMustResultType(scope, writer, function.origin.*, owned_type);
+        if (mustHasSecondResult(function.origin.*)) try writer.writeAll(", bool)");
+    }
+    try writer.writeAll(" { ");
+    if (result == .void)
+        try writer.writeAll("_ = zigoMust(struct{}{}, ")
+    else if (mustHasSecondResult(function.origin.*))
+        try writer.writeAll("return zigoMustMatch(")
+    else
+        try writer.writeAll("return zigoMust(");
+    if (function.origin.receiver != null)
+        try writer.print("{s}.{s}(", .{ receiver_name.?, go_name })
+    else
+        try writer.print("{s}(", .{go_name});
+    try writeMustCallArguments(allocator, writer, function, go_names);
+    try writer.writeAll(")) }\n");
+}
+
 fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     const scope: PublicScope = .{ .program = program, .options = options };
     const package = try publicPackageAlloc(allocator, program, options);
@@ -4692,6 +4821,9 @@ fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: a
             }
         }
         try writer.writeAll("}\n");
+        if (options.go_must_variants and !std.mem.eql(u8, go_name, "Close") and
+            (constructor != null or needs_check or function.origin.@"return" == .error_union))
+            try renderMustVariant(scope, allocator, writer, function, go_names, receiver_name, go_name, owned_type);
     }
 }
 
@@ -6488,7 +6620,19 @@ fn renderGoHandleRuntime(writer: *std.Io.Writer, program: abi.Program, options: 
 /// The projection status vocabulary shared by every tagged-union accessor and
 /// the two wrappers the `Must*` methods delegate to.
 fn renderGoProjectionRuntime(writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
-    if (program.projections.len == 0) return;
+    if (program.projections.len == 0) {
+        if (!options.go_must_variants) return;
+        return writer.writeAll(
+            "func zigoMust[T any](value T, err error) T {\n" ++
+                "\tif err != nil {\n\t\tpanic(err)\n\t}\n" ++
+                "\treturn value\n" ++
+                "}\n\n" ++
+                "func zigoMustMatch[T any](value T, matched bool, err error) (T, bool) {\n" ++
+                "\tif err != nil {\n\t\tpanic(err)\n\t}\n" ++
+                "\treturn value, matched\n" ++
+                "}\n\n",
+        );
+    }
     try writer.writeAll(
         "const (\n" ++
             "\tzigoProjectionMismatch uint8 = iota\n" ++

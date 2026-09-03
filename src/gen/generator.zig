@@ -30,6 +30,7 @@ pub const Options = struct {
     go_package: []const u8 = "",
     go_package_path: []const u8 = "",
     go_package_doc: []const u8 = "",
+    go_must_variants: bool = false,
     errors_lock_bytes: ?[]const u8 = null,
     backend: emit.Options.Backend = .cgo,
     link_mode: emit.Options.LinkMode = .static,
@@ -61,6 +62,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
     // `Write`/`Flush`/`Read` operations that carry it. The error-set collection
     // below has to see them: their `WriteFailed`/`ReadFailed` need codes too.
     const document = try stream_return.expand(scratch_allocator, parsed.value);
+    if (options.go_must_variants) try validate.mustVariantNames(scratch_allocator, document);
     var baseline: ?errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(scratch_allocator, bytes) else null;
     defer if (baseline) |*value| value.deinit(scratch_allocator);
     var lock: errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(scratch_allocator, bytes) else .{};
@@ -110,6 +112,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .go_package = options.go_package,
         .go_package_path = options.go_package_path,
         .go_package_doc = options.go_package_doc,
+        .go_must_variants = options.go_must_variants,
         .backend = options.backend,
         .link_mode = options.link_mode,
         .library_stem = options.library_stem,

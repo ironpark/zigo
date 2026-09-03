@@ -1,4 +1,5 @@
 const std = @import("std");
+const abi = @import("abi");
 const diagnostic = @import("diagnostic");
 const semantic = @import("semantic");
 const naming = @import("naming");
@@ -11,6 +12,77 @@ pub fn semanticDocument(allocator: std.mem.Allocator, document: semantic.Semanti
     var scratch = std.heap.ArenaAllocator.init(allocator);
     defer scratch.deinit();
     if (try findIssue(scratch.allocator(), document) != null) return error.InvalidSemantic;
+}
+
+pub fn mustVariantNames(allocator: std.mem.Allocator, document: semantic.Semantic) !void {
+    var scratch = std.heap.ArenaAllocator.init(allocator);
+    defer scratch.deinit();
+    if (try findMustVariantIssue(scratch.allocator(), document) != null) return error.InvalidSemantic;
+}
+
+pub fn findMustVariantIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+    for (document.functions) |function| {
+        if (!mustVariantEligible(document, function)) continue;
+        const public_name = try effectivePublicFunctionNameAlloc(allocator, document, function);
+        defer allocator.free(public_name);
+        if (std.mem.eql(u8, public_name, "Close")) continue;
+        const must_name = try std.fmt.allocPrint(allocator, "Must{s}", .{public_name});
+        defer allocator.free(must_name);
+        if (function.receiver == null) for (document.types) |declaration| {
+            if (!semantic.optionalStringEqual(declaration.package, function.package)) continue;
+            if (!std.mem.eql(u8, declaration.name, must_name)) continue;
+            const function_path = try functionDeclarationAlloc(allocator, function);
+            return .{
+                .severity = .@"error",
+                .code = "ZIGO024",
+                .message = try std.fmt.allocPrint(
+                    allocator,
+                    "public Go name `{s}` collides between type `{s}` and generated Must variant for `{s}`",
+                    .{ must_name, declaration.zig_path orelse declaration.name, function_path },
+                ),
+                .site = functionSiteFor(function, function_path),
+                .hint = "rename the function or conflicting type so the generated Must name is unique",
+            };
+        };
+        for (document.functions) |other| {
+            if (constructorDeinitFor(document, other) != null) continue;
+            if (!std.mem.eql(u8, function.receiver orelse "", other.receiver orelse "")) continue;
+            if (!semantic.optionalStringEqual(function.package, other.package)) continue;
+            const other_name = try effectivePublicFunctionNameAlloc(allocator, document, other);
+            defer allocator.free(other_name);
+            if (!std.mem.eql(u8, must_name, other_name)) continue;
+            const function_path = try functionDeclarationAlloc(allocator, function);
+            const other_path = try functionDeclarationAlloc(allocator, other);
+            defer allocator.free(other_path);
+            return .{
+                .severity = .@"error",
+                .code = "ZIGO024",
+                .message = try std.fmt.allocPrint(
+                    allocator,
+                    "public Go name `{s}` collides between `{s}` and generated Must variant for `{s}`",
+                    .{ must_name, other_path, function_path },
+                ),
+                .site = functionSiteFor(function, function_path),
+                .hint = "rename one declaration so the generated Must name is unique",
+            };
+        }
+    }
+    return null;
+}
+
+fn mustVariantEligible(document: semantic.Semantic, function: semantic.SemanticFn) bool {
+    if (constructorDeinitFor(document, function) != null) return false;
+    if (constructorInitFor(document, function) != null or function.@"return" == .error_union or function.receiver != null) return true;
+    for (function.params) |parameter| {
+        if (parameter.type == .opaque_ptr or parameter.type == .io_stream or parameter.goError()) return true;
+        if (abi.narrowInt(parameter.type) != null) return true;
+        if (parameter.type == .slice and abi.narrowInt(parameter.type.slice.element.*) != null) return true;
+        if (parameter.flatten) |fields| for (fields) |field| {
+            const node = if (field.type == .optional) field.type.optional.child.* else field.type;
+            if (abi.narrowInt(node) != null) return true;
+        };
+    }
+    return false;
 }
 
 /// Every purego callback dispatcher returns one pointer-sized integer, which is
@@ -2041,6 +2113,37 @@ fn containsNonCFunctionPointer(node: semantic.TypeNode) bool {
         .error_union => |value| containsNonCFunctionPointer(value.payload.*),
         else => false,
     };
+}
+
+test "generated Must names participate in ZIGO024 collision checks" {
+    const document: semantic.Semantic = .{
+        .functions = &.{
+            .{
+                .name = "ping",
+                .params = &.{},
+                .receiver = "Handle",
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_handle_ping",
+            },
+            .{
+                .name = "mustPing",
+                .params = &.{},
+                .receiver = "Handle",
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_handle_must_ping",
+            },
+        },
+        .package = "collision",
+        .prefix = "zg",
+        .types = &.{.{ .kind = .@"opaque", .name = "Handle" }},
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const issue = (try findMustVariantIssue(arena.allocator(), document)) orelse return error.MissingDiagnostic;
+    try std.testing.expectEqualStrings("ZIGO024", issue.code);
+    try std.testing.expect(std.mem.indexOf(u8, issue.message, "MustPing") != null);
+    try std.testing.expectError(error.InvalidSemantic, mustVariantNames(std.testing.allocator, document));
 }
 
 fn hasMatchingRelease(document: semantic.Semantic, retaining: semantic.SemanticFn) bool {

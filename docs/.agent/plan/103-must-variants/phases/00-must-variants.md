@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: With the option on, every eligible function has a `Must*` twin proven by a Go test on both backends; with it off, no output changes.
 > NEXT: none

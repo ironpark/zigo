@@ -49,6 +49,9 @@ func CheckedDouble(value *int32) (int32, bool, error) {
 	return result, zigoHas, nil
 }
 
+// MustCheckedDouble calls CheckedDouble and panics with its typed error on failure.
+func MustCheckedDouble(value *int32) (int32, bool) { return zigoMustMatch(CheckedDouble(value)) }
+
 // ShiftPoint calls the Zig function shiftPoint.
 func ShiftPoint(origin *Point) (Point, bool) {
 	var originRaw *raw.PointData
@@ -76,3 +79,6 @@ func CheckedPoint(origin *Point) (Point, bool, error) {
 	}
 	return zigoPointFromRaw(result), zigoHas, nil
 }
+
+// MustCheckedPoint calls CheckedPoint and panics with its typed error on failure.
+func MustCheckedPoint(origin *Point) (Point, bool) { return zigoMustMatch(CheckedPoint(origin)) }

@@ -78,6 +78,9 @@ pub const Options = struct {
     /// Body of the generated `// Package ...` doc. Null falls back to the `//!`
     /// container doc of the bindings file, then to a default sentence.
     go_package_doc: ?[]const u8 = null,
+    /// Emit `Must*` companions for public functions whose generated Go
+    /// signature returns an error. Disabled by default.
+    go_must_variants: bool = false,
     /// Optional source path for the JSON form of `go-coverage`.
     coverage_json: ?[]const u8 = null,
     /// purego-only run-time loading policy. The default requires an explicit
@@ -319,6 +322,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
         .imports = &.{
+            .{ .name = "abi", .module = generator_modules.abi },
             .{ .name = "naming", .module = generator_modules.naming },
             .{ .name = "diagnostic", .module = generator_modules.diagnostic },
             .{ .name = "semantic", .module = generator_modules.semantic },
@@ -1034,6 +1038,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         "--go-package-doc",    options.go_package_doc orelse "",
     });
     if (static_link_inputs.paths.len != 0) generate.addArg("--ldflags-external");
+    if (options.go_must_variants) generate.addArg("--go-must-variants");
     if (backend == .purego) addLibraryLoadingArgs(b, generate, library_loading);
     if (raw_package.colocated) generate.addArg("--raw-colocated");
     const errors_lock_path = "zigo/errors.lock.json";

@@ -37,6 +37,11 @@ func NewEventQueue(name string, capacity uint, policy Policy, observer EventQueu
 	return newEventQueue(result, []zigoCallbackHandle{observerHandle, 0, 0}), nil
 }
 
+// MustNewEventQueue calls NewEventQueue and panics with its typed error on failure.
+func MustNewEventQueue(name string, capacity uint, policy Policy, observer EventQueueCreateObserver) *EventQueue {
+	return zigoMust(NewEventQueue(name, capacity, policy, observer))
+}
+
 // Clone copies the queued events, name and limits into an independent
 // queue that the caller owns and must close. The copy takes its own
 // observer instead of sharing the original's, so closing either queue
@@ -64,6 +69,11 @@ func (e *EventQueue) Clone(observer EventQueueCloneObserver) (*EventQueue, error
 		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.Clone", code), e)
 	}
 	return newEventQueue(result, []zigoCallbackHandle{0, observerHandle, 0}), nil
+}
+
+// MustClone calls Clone and panics with its typed error on failure.
+func (e *EventQueue) MustClone(observer EventQueueCloneObserver) *EventQueue {
+	return zigoMust(e.Clone(observer))
 }
 
 // NewStream
@@ -98,6 +108,9 @@ func (e *EventQueue) NewStream() (*Stream, error) {
 	return newStream(result, zigoChildParent), nil
 }
 
+// MustNewStream calls NewStream and panics with its typed error on failure.
+func (e *EventQueue) MustNewStream() *Stream { return zigoMust(e.NewStream()) }
+
 // NewBorrowBox creates a caller-owned BorrowBox.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
@@ -110,6 +123,9 @@ func NewBorrowBox(value int32) (*BorrowBox, error) {
 	}
 	return newBorrowBox(result), nil
 }
+
+// MustNewBorrowBox calls NewBorrowBox and panics with its typed error on failure.
+func MustNewBorrowBox(value int32) *BorrowBox { return zigoMust(NewBorrowBox(value)) }
 
 // View calls the Zig function BorrowBox.view.
 // The returned reference remains valid only while its parent handle remains open.
@@ -130,6 +146,9 @@ func (b *BorrowBox) View() (*BorrowView, error) {
 	return newBorrowedBorrowView(result, b), nil
 }
 
+// MustView calls View and panics with its typed error on failure.
+func (b *BorrowBox) MustView() *BorrowView { return zigoMust(b.View()) }
+
 // View calls the Zig function BorrowView.view.
 // The returned reference remains valid only while its parent handle remains open.
 // It returns *HandleError if a required handle is nil or closed.
@@ -148,6 +167,9 @@ func (b *BorrowView) View() (*BorrowView, error) {
 	}
 	return newBorrowedBorrowView(result, b), nil
 }
+
+// MustView calls View and panics with its typed error on failure.
+func (b *BorrowView) MustView() *BorrowView { return zigoMust(b.View()) }
 
 // NewBorrowChild creates a caller-owned BorrowChild.
 // The caller must call Close on the returned handle.
@@ -175,6 +197,9 @@ func (b *BorrowView) NewBorrowChild() (*BorrowChild, error) {
 	return newBorrowChild(result, zigoChildParent), nil
 }
 
+// MustNewBorrowChild calls NewBorrowChild and panics with its typed error on failure.
+func (b *BorrowView) MustNewBorrowChild() *BorrowChild { return zigoMust(b.NewBorrowChild()) }
+
 // Get calls the Zig function BorrowView.get.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
@@ -192,6 +217,9 @@ func (b *BorrowView) Get() (int32, error) {
 	}
 	return result, nil
 }
+
+// MustGet calls Get and panics with its typed error on failure.
+func (b *BorrowView) MustGet() int32 { return zigoMust(b.Get()) }
 
 // Explode calls the Zig function BorrowView.explode.
 // It returns *HandleError if a required handle is nil or closed.
@@ -211,6 +239,9 @@ func (b *BorrowView) Explode() error {
 	return nil
 }
 
+// MustExplode calls Explode and panics with its typed error on failure.
+func (b *BorrowView) MustExplode() { _ = zigoMust(struct{}{}, b.Explode()) }
+
 // Get calls the Zig function BorrowChild.get.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
@@ -229,6 +260,9 @@ func (b *BorrowChild) Get() (int32, error) {
 	return result, nil
 }
 
+// MustGet calls Get and panics with its typed error on failure.
+func (b *BorrowChild) MustGet() int32 { return zigoMust(b.Get()) }
+
 // LiveBorrowChildren calls the Zig function liveBorrowChildren.
 func LiveBorrowChildren() uint {
 	return raw.LiveBorrowChildren()
@@ -245,6 +279,11 @@ func NewTerminal(cols uint16, rows uint16, maxScrollbackBytes uint) (*Terminal, 
 		return nil, errorForCode("NewTerminal", code)
 	}
 	return newTerminal(result), nil
+}
+
+// MustNewTerminal calls NewTerminal and panics with its typed error on failure.
+func MustNewTerminal(cols uint16, rows uint16, maxScrollbackBytes uint) *Terminal {
+	return zigoMust(NewTerminal(cols, rows, maxScrollbackBytes))
 }
 
 // Cols calls the Zig function Terminal.cols.
@@ -265,6 +304,9 @@ func (t *Terminal) Cols() (uint16, error) {
 	return result, nil
 }
 
+// MustCols calls Cols and panics with its typed error on failure.
+func (t *Terminal) MustCols() uint16 { return zigoMust(t.Cols()) }
+
 // Rows calls the Zig function Terminal.rows.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
@@ -282,6 +324,9 @@ func (t *Terminal) Rows() (uint16, error) {
 	}
 	return result, nil
 }
+
+// MustRows calls Rows and panics with its typed error on failure.
+func (t *Terminal) MustRows() uint16 { return zigoMust(t.Rows()) }
 
 // MaxScrollbackBytes calls the Zig function Terminal.maxScrollbackBytes.
 // It returns *HandleError if a required handle is nil or closed.
@@ -301,6 +346,9 @@ func (t *Terminal) MaxScrollbackBytes() (uint, error) {
 	return result, nil
 }
 
+// MustMaxScrollbackBytes calls MaxScrollbackBytes and panics with its typed error on failure.
+func (t *Terminal) MustMaxScrollbackBytes() uint { return zigoMust(t.MaxScrollbackBytes()) }
+
 // Capacity calls the Zig function Stream.capacity.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
@@ -318,6 +366,9 @@ func (s *Stream) Capacity() (uint32, error) {
 	}
 	return result, nil
 }
+
+// MustCapacity calls Capacity and panics with its typed error on failure.
+func (s *Stream) MustCapacity() uint32 { return zigoMust(s.Capacity()) }
 
 // Enqueue calls the Zig function EventQueue.enqueue.
 // It returns *HandleError if a required handle is nil or closed.
@@ -339,6 +390,11 @@ func (e *EventQueue) Enqueue(id uint64, value int32) error {
 		return zigoPoisonAfterPanic(errorForCode("EventQueue.Enqueue", code), e)
 	}
 	return nil
+}
+
+// MustEnqueue calls Enqueue and panics with its typed error on failure.
+func (e *EventQueue) MustEnqueue(id uint64, value int32) {
+	_ = zigoMust(struct{}{}, e.Enqueue(id, value))
 }
 
 // MergeFrom appends another queue's events to this one under the current
@@ -375,6 +431,9 @@ func (e *EventQueue) MergeFrom(source *EventQueue) (uint, error) {
 	return result, nil
 }
 
+// MustMergeFrom calls MergeFrom and panics with its typed error on failure.
+func (e *EventQueue) MustMergeFrom(source *EventQueue) uint { return zigoMust(e.MergeFrom(source)) }
+
 // Process calls the Zig function EventQueue.process.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
@@ -396,6 +455,9 @@ func (e *EventQueue) Process(limit uint) (uint, error) {
 	}
 	return result, nil
 }
+
+// MustProcess calls Process and panics with its typed error on failure.
+func (e *EventQueue) MustProcess(limit uint) uint { return zigoMust(e.Process(limit)) }
 
 // SetObserver calls the Zig function EventQueue.setObserver.
 // It returns *HandleError if a required handle is nil or closed.
@@ -430,6 +492,11 @@ func (e *EventQueue) SetObserver(observer EventQueueSetObserverObserver) error {
 	return nil
 }
 
+// MustSetObserver calls SetObserver and panics with its typed error on failure.
+func (e *EventQueue) MustSetObserver(observer EventQueueSetObserverObserver) {
+	_ = zigoMust(struct{}{}, e.SetObserver(observer))
+}
+
 // Name calls the Zig function EventQueue.name.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
@@ -451,6 +518,9 @@ func (e *EventQueue) Name() (string, error) {
 	}
 	return string(result), nil
 }
+
+// MustName calls Name and panics with its typed error on failure.
+func (e *EventQueue) MustName() string { return zigoMust(e.Name()) }
 
 // SampleValues
 // A numeric slice return intentionally points at native storage. The Go
@@ -475,6 +545,9 @@ func (e *EventQueue) SampleValues() ([]float32, error) {
 	}
 	return result, nil
 }
+
+// MustSampleValues calls SampleValues and panics with its typed error on failure.
+func (e *EventQueue) MustSampleValues() []float32 { return zigoMust(e.SampleValues()) }
 
 // SampleValuesChecked returns the same samples as `sampleValues`, but an
 // empty queue has nothing to sample and fails instead. The generated
@@ -501,6 +574,9 @@ func (e *EventQueue) SampleValuesChecked() ([]float32, error) {
 	return result, nil
 }
 
+// MustSampleValuesChecked calls SampleValuesChecked and panics with its typed error on failure.
+func (e *EventQueue) MustSampleValuesChecked() []float32 { return zigoMust(e.SampleValuesChecked()) }
+
 // SelectionString
 // A fallible optional slice with caller ownership. An empty queue has no
 // selection; otherwise Go copies and releases the allocated name.
@@ -524,6 +600,9 @@ func (e *EventQueue) SelectionString() ([]byte, bool, error) {
 	}
 	return result, zigoHas, nil
 }
+
+// MustSelectionString calls SelectionString and panics with its typed error on failure.
+func (e *EventQueue) MustSelectionString() ([]byte, bool) { return zigoMustMatch(e.SelectionString()) }
 
 // EchoCString
 // Sentinel byte pointers use the C string lowering and surface as Go
@@ -577,6 +656,9 @@ func (e *EventQueue) ExtractSamples() ([]float32, error) {
 	return result, nil
 }
 
+// MustExtractSamples calls ExtractSamples and panics with its typed error on failure.
+func (e *EventQueue) MustExtractSamples() []float32 { return zigoMust(e.ExtractSamples()) }
+
 // ExtractSamplesChecked hands over a buffer exactly like `extractSamples`,
 // but an empty queue fails before allocating anything. Nothing is handed
 // over on that path, so the generated binding must not call `freeSamples`.
@@ -599,6 +681,11 @@ func (e *EventQueue) ExtractSamplesChecked() ([]float32, error) {
 		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.ExtractSamplesChecked", code), e)
 	}
 	return result, nil
+}
+
+// MustExtractSamplesChecked calls ExtractSamplesChecked and panics with its typed error on failure.
+func (e *EventQueue) MustExtractSamplesChecked() []float32 {
+	return zigoMust(e.ExtractSamplesChecked())
 }
 
 // ExtractLimits
@@ -626,6 +713,9 @@ func (e *EventQueue) ExtractLimits() ([]Limits, error) {
 	return zigoLimitsSliceView(result), nil
 }
 
+// MustExtractLimits calls ExtractLimits and panics with its typed error on failure.
+func (e *EventQueue) MustExtractLimits() []Limits { return zigoMust(e.ExtractLimits()) }
+
 // AcceptStats
 // Accepts a batch of value snapshots so both backends exercise their
 // struct-slice input conversion path.
@@ -651,6 +741,9 @@ func (e *EventQueue) AcceptStats(values []Stats) (uint, error) {
 	return result, nil
 }
 
+// MustAcceptStats calls AcceptStats and panics with its typed error on failure.
+func (e *EventQueue) MustAcceptStats(values []Stats) uint { return zigoMust(e.AcceptStats(values)) }
+
 // ExtractSamplesInto
 // The same samples as `extractSamples`, written into a buffer the caller
 // already has. Nothing is allocated and nothing has to be released: the
@@ -675,6 +768,11 @@ func (e *EventQueue) ExtractSamplesInto(dst []float32) (uint, error) {
 		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.ExtractSamplesInto", code), e)
 	}
 	return result, nil
+}
+
+// MustExtractSamplesInto calls ExtractSamplesInto and panics with its typed error on failure.
+func (e *EventQueue) MustExtractSamplesInto(dst []float32) uint {
+	return zigoMust(e.ExtractSamplesInto(dst))
 }
 
 // LimitsInto
@@ -706,6 +804,9 @@ func (e *EventQueue) LimitsInto(dst []Limits) (uint, error) {
 	return result, nil
 }
 
+// MustLimitsInto calls LimitsInto and panics with its typed error on failure.
+func (e *EventQueue) MustLimitsInto(dst []Limits) uint { return zigoMust(e.LimitsInto(dst)) }
+
 // Estimate
 // Fills one value snapshot per queued event. The return value is the
 // number of output entries written, while the explicit out metadata keeps
@@ -733,6 +834,9 @@ func (e *EventQueue) Estimate(output []Stats) (uint, error) {
 	return result, nil
 }
 
+// MustEstimate calls Estimate and panics with its typed error on failure.
+func (e *EventQueue) MustEstimate(output []Stats) uint { return zigoMust(e.Estimate(output)) }
+
 // SampleStats
 // Returns value snapshots from native storage; the generated Go binding
 // must copy each struct before exposing the slice.
@@ -756,6 +860,9 @@ func (e *EventQueue) SampleStats() ([]Stats, error) {
 	}
 	return zigoStatsSliceFromRaw(result), nil
 }
+
+// MustSampleStats calls SampleStats and panics with its typed error on failure.
+func (e *EventQueue) MustSampleStats() []Stats { return zigoMust(e.SampleStats()) }
 
 // SampleLimits
 // Borrowed limit rows from native storage. The raw layer still copies
@@ -781,6 +888,9 @@ func (e *EventQueue) SampleLimits() ([]Limits, error) {
 	return zigoLimitsSliceView(result), nil
 }
 
+// MustSampleLimits calls SampleLimits and panics with its typed error on failure.
+func (e *EventQueue) MustSampleLimits() []Limits { return zigoMust(e.SampleLimits()) }
+
 // Len calls the Zig function EventQueue.len.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
@@ -802,6 +912,9 @@ func (e *EventQueue) Len() (uint, error) {
 	}
 	return result, nil
 }
+
+// MustLen calls Len and panics with its typed error on failure.
+func (e *EventQueue) MustLen() uint { return zigoMust(e.Len()) }
 
 // Capacity calls the Zig function EventQueue.capacity.
 // It returns *HandleError if a required handle is nil or closed.
@@ -825,6 +938,9 @@ func (e *EventQueue) Capacity() (uint, error) {
 	return result, nil
 }
 
+// MustCapacity calls Capacity and panics with its typed error on failure.
+func (e *EventQueue) MustCapacity() uint { return zigoMust(e.Capacity()) }
+
 // Policy calls the Zig function EventQueue.policy.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
@@ -846,6 +962,9 @@ func (e *EventQueue) Policy() (Policy, error) {
 	}
 	return Policy(result), nil
 }
+
+// MustPolicy calls Policy and panics with its typed error on failure.
+func (e *EventQueue) MustPolicy() Policy { return zigoMust(e.Policy()) }
 
 // Dropped calls the Zig function EventQueue.dropped.
 // It returns *HandleError if a required handle is nil or closed.
@@ -869,6 +988,9 @@ func (e *EventQueue) Dropped() (uint, error) {
 	return result, nil
 }
 
+// MustDropped calls Dropped and panics with its typed error on failure.
+func (e *EventQueue) MustDropped() uint { return zigoMust(e.Dropped()) }
+
 // Processed calls the Zig function EventQueue.processed.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
@@ -890,6 +1012,9 @@ func (e *EventQueue) Processed() (uint, error) {
 	}
 	return result, nil
 }
+
+// MustProcessed calls Processed and panics with its typed error on failure.
+func (e *EventQueue) MustProcessed() uint { return zigoMust(e.Processed()) }
 
 // Stats calls the Zig function EventQueue.stats.
 // It returns *HandleError if a required handle is nil or closed.
@@ -913,6 +1038,9 @@ func (e *EventQueue) Stats() (Stats, error) {
 	return zigoStatsFromRaw(result), nil
 }
 
+// MustStats calls Stats and panics with its typed error on failure.
+func (e *EventQueue) MustStats() Stats { return zigoMust(e.Stats()) }
+
 // Limits calls the Zig function EventQueue.limits.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
@@ -935,6 +1063,9 @@ func (e *EventQueue) Limits() (Limits, error) {
 	return zigoLimitsFromRaw(result), nil
 }
 
+// MustLimits calls Limits and panics with its typed error on failure.
+func (e *EventQueue) MustLimits() Limits { return zigoMust(e.Limits()) }
+
 // ApplyLimits calls the Zig function EventQueue.applyLimits.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
@@ -955,6 +1086,11 @@ func (e *EventQueue) ApplyLimits(updated Limits) error {
 		return zigoPoisonAfterPanic(errorForCode("EventQueue.ApplyLimits", code), e)
 	}
 	return nil
+}
+
+// MustApplyLimits calls ApplyLimits and panics with its typed error on failure.
+func (e *EventQueue) MustApplyLimits(updated Limits) {
+	_ = zigoMust(struct{}{}, e.ApplyLimits(updated))
 }
 
 // Clear calls the Zig function EventQueue.clear.
@@ -979,6 +1115,9 @@ func (e *EventQueue) Clear() (uint, error) {
 	return result, nil
 }
 
+// MustClear calls Clear and panics with its typed error on failure.
+func (e *EventQueue) MustClear() uint { return zigoMust(e.Clear()) }
+
 // InspectTicker
 // Exercises cross-package handle and value-struct parameters without making
 // this free function a Ticker method.
@@ -997,6 +1136,11 @@ func InspectTicker(info zigo_pkg_types.TickerInfo, ticker *zigo_pkg_types.Ticker
 		return zigo_pkg_types.TickerInfo{}, zigoPoisonAfterPanic(errorForCode("InspectTicker", code), ticker)
 	}
 	return zigoTickerInfoFromRaw(result), nil
+}
+
+// MustInspectTicker calls InspectTicker and panics with its typed error on failure.
+func MustInspectTicker(info zigo_pkg_types.TickerInfo, ticker *zigo_pkg_types.Ticker) zigo_pkg_types.TickerInfo {
+	return zigoMust(InspectTicker(info, ticker))
 }
 
 // LiveStreams calls the Zig function liveStreams.

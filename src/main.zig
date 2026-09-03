@@ -5,6 +5,7 @@ const doctor = @import("gen/doctor.zig");
 const generator = @import("gen/generator.zig");
 const binding_report = @import("gen/report.zig");
 const semantic = @import("semantic");
+const stream_return = @import("stream_return");
 const sync_check = @import("sync_check");
 const validate = @import("gen/validate.zig");
 
@@ -43,11 +44,13 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
     // that outlives the render and nothing else.
     var scratch = std.heap.ArenaAllocator.init(allocator);
     defer scratch.deinit();
-    const issue = try validate.findIssue(scratch.allocator(), parsed.value) orelse
-        if (options.backend == .purego)
-            validate.puregoCallbackIssue(parsed.value)
-        else
-            null;
+    var issue = try validate.findIssue(scratch.allocator(), parsed.value);
+    if (issue == null and options.go_must_variants) {
+        const expanded = try stream_return.expand(scratch.allocator(), parsed.value);
+        issue = try validate.findMustVariantIssue(scratch.allocator(), expanded);
+    }
+    if (issue == null and options.backend == .purego)
+        issue = validate.puregoCallbackIssue(parsed.value);
     if (issue) |found| {
         var buffer: [1024]u8 = undefined;
         var stderr = std.Io.File.Writer.init(.stderr(), io, &buffer);
@@ -82,6 +85,7 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         .go_package = options.go_package,
         .go_package_path = options.go_package_path,
         .go_package_doc = options.go_package_doc,
+        .go_must_variants = options.go_must_variants,
         .errors_lock_bytes = errors_lock_bytes,
         .backend = switch (options.backend) {
             .cgo => .cgo,

@@ -1,5 +1,6 @@
 {
   "package": "terminal",
   "prefix": "zg",
-  "go_module": "example.com/zigo/terminal"
+  "go_module": "example.com/zigo/terminal",
+  "go_must_variants": true
 }

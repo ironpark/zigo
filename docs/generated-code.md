@@ -85,6 +85,17 @@ purego의 로더·함수 테이블·callback token registry는 설정한 `intern
 archive를 링크할 때만 build step이 실제 절대 경로로 다시 쓰며, `go-check`는 이 파일을
 비교하거나 obsolete로 판정하지 않습니다.
 
+## `Must*` 동반 API
+
+`addGoBindings`에 `.go_must_variants = true`를 지정하면 생성된 Go 시그니처가 `error`를
+반환하는 모든 공개 함수와 메서드에 `Must<Name>`이 함께 생깁니다. 생성자는 최종 공개 이름
+`New<Type>`을 기준으로 `MustNew<Type>`이 되고, `Close`에는 동반 API를 만들지 않습니다.
+단일 값은 값만, optional 같은 다중 값은 오류를 뺀 값들을 반환하며, 오류 전용 함수는 반환값이
+없습니다. 실패 시 checked API가 만든 동일한 `*HandleError`, `*NativePanicError`, 생성
+오류 등을 panic 값으로 사용합니다. 생성 이름이 기존 공개 이름과 겹치면 `ZIGO024`입니다.
+
+옵션 기본값은 `false`이므로 켜지 않은 binding의 생성 파일은 바뀌지 않습니다.
+
 정적 아카이브 이름은 Windows 타깃에서도 `lib<name>_zigo.a`입니다. Zig 관례라면
 `<name>_zigo.lib`가 되겠지만, 생성된 `#cgo LDFLAGS` 줄이 모든 호스트에서 같은 경로를
 써야 하므로 설치 시점에 이름을 맞춥니다. `zig cc`는 Windows에서도 `.a` 확장자의 COFF

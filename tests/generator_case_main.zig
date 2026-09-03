@@ -20,6 +20,7 @@ const CaseOptions = struct {
     raw_package_path: []const u8 = "internal/raw",
     raw_package_name: []const u8 = "raw",
     raw_colocated: bool = false,
+    go_must_variants: bool = false,
     errors_lock_path: ?[]const u8 = null,
 };
 
@@ -63,6 +64,7 @@ pub fn main(init: std.process.Init) !void {
         .raw_package_path = options.raw_package_path,
         .raw_package_name = options.raw_package_name,
         .raw_colocated = options.raw_colocated,
+        .go_must_variants = options.go_must_variants,
         .errors_lock_bytes = errors_lock_bytes,
     });
 
