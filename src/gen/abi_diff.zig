@@ -572,7 +572,7 @@ fn optionalStringsEqual(lhs: ?[]const []const u8, rhs: ?[]const []const u8) bool
 }
 
 fn typeFieldEqual(lhs: semantic.TypeField, rhs: semantic.TypeField) bool {
-    if (!std.mem.eql(u8, lhs.name, rhs.name) or lhs.value != rhs.value or (lhs.type == null) != (rhs.type == null)) return false;
+    if (!std.mem.eql(u8, lhs.name, rhs.name) or lhs.atomic != rhs.atomic or lhs.value != rhs.value or (lhs.type == null) != (rhs.type == null)) return false;
     return lhs.type == null or declaredTypeEqual(lhs.type.?, rhs.type.?);
 }
 

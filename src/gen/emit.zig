@@ -371,7 +371,7 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
             try writer.writeAll(" orelse {\n");
             try writeSliceWrittenZeros(writer, function);
             try writer.writeAll("        return 0;\n    };\n    out_result.* = ");
-            try writeZigReturnConversion(writer, child, "result");
+            try writeZigReturnConversion(writer, child, "result", false);
             try writer.writeAll(";\n");
             try writeSliceWrittenAssignments(writer, function);
             try writer.writeAll("    return 1;\n}\n");
@@ -396,7 +396,7 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
                         continue;
                     }
                     try writer.print("|value| {{\n            out_result.tag = {d};", .{field.value.?});
-                    try writeValueUnionReturnAssignments(allocator, writer, program, field.type.?, field.name, "value");
+                    try writeValueUnionReturnAssignments(allocator, writer, program, field.type.?, field.atomic orelse false, field.name, "value");
                     try writer.writeAll("\n        },\n");
                 }
                 try writer.writeAll("    }\n    return 0;\n}\n");
@@ -425,11 +425,11 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
                     // its own out parameter; the value one stays untouched
                     // when the payload is absent.
                     try writer.writeAll("    if (result) |zigo_value| {\n        out_result_has.* = 1;\n        out_result.* = ");
-                    try writeZigReturnConversion(writer, error_union.payload.optional.child.*, "zigo_value");
+                    try writeZigReturnConversion(writer, error_union.payload.optional.child.*, "zigo_value", false);
                     try writer.writeAll(";\n    } else {\n        out_result_has.* = 0;\n    }\n");
                 } else {
                     try writer.writeAll("    out_result.* = ");
-                    try writeZigReturnConversion(writer, error_union.payload.*, "result");
+                    try writeZigReturnConversion(writer, error_union.payload.*, "result", function.origin.return_atomic orelse false);
                     try writer.writeAll(";\n");
                 }
             }
@@ -476,6 +476,7 @@ fn writeValueUnionReturnAssignments(
     writer: *std.Io.Writer,
     program: abi.Program,
     node: semantic.TypeNode,
+    atomic: bool,
     field_name: []const u8,
     expression: []const u8,
 ) !void {
@@ -496,12 +497,12 @@ fn writeValueUnionReturnAssignments(
             defer allocator.free(child_name);
             const child_expression = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ expression, field.name });
             defer allocator.free(child_expression);
-            try writeValueUnionReturnAssignments(allocator, writer, program, field.type.?, child_name, child_expression);
+            try writeValueUnionReturnAssignments(allocator, writer, program, field.type.?, field.atomic orelse false, child_name, child_expression);
         }
         return;
     }
     try writer.print("\n            out_result.{s} = ", .{field_name});
-    try writeZigReturnConversion(writer, node, expression);
+    try writeZigReturnConversion(writer, node, expression, atomic);
     try writer.writeByte(';');
 }
 
@@ -514,8 +515,14 @@ fn writeFieldAccess(
     const checked = function.origin.@"return" == .error_union;
     const trailer = if (checked) ";\n    return 0;\n}\n" else ";\n}\n";
     if (access.setter) {
-        try writer.print("self.{s} = ", .{access.path});
-        try writeShimInboundValue(writer, "v", function.origin.params[0].type);
+        if (access.atomic orelse false) {
+            try writer.print("self.{s}.store(", .{access.path});
+            try writeShimInboundValue(writer, "v", function.origin.params[0].type, false);
+            try writer.writeAll(", .seq_cst)");
+        } else {
+            try writer.print("self.{s} = ", .{access.path});
+            try writeShimInboundValue(writer, "v", function.origin.params[0].type, false);
+        }
         try writer.writeAll(trailer);
         return;
     }
@@ -528,9 +535,12 @@ fn writeFieldAccess(
         try writer.writeAll("out_result.* = ")
     else
         try writer.writeAll("return ");
-    const expression = try std.fmt.allocPrint(allocator, "self.{s}", .{access.path});
+    const expression = if (access.atomic orelse false)
+        try std.fmt.allocPrint(allocator, "self.{s}.load(.seq_cst)", .{access.path})
+    else
+        try std.fmt.allocPrint(allocator, "self.{s}", .{access.path});
     defer allocator.free(expression);
-    try writeZigReturnConversion(writer, field_type, expression);
+    try writeZigReturnConversion(writer, field_type, expression, false);
     try writer.writeAll(trailer);
 }
 
@@ -655,10 +665,11 @@ fn renderTaggedUnionSnapshotShim(writer: *std.Io.Writer, program: abi.Program) !
             }
             const member = snapshotMember(snapshot, field.name).?;
             try writer.print("        .{s} => |value| out_snapshot.{s} = ", .{ field.name, member.name });
+            const expression = if (field.atomic orelse false) "value.load(.seq_cst)" else "value";
             switch (payload) {
-                .@"enum" => try writer.writeAll("@intFromEnum(value)"),
-                .bool => try writer.writeAll("@intFromBool(value)"),
-                else => try writer.writeAll("value"),
+                .@"enum" => try writer.print("@intFromEnum({s})", .{expression}),
+                .bool => try writer.print("@intFromBool({s})", .{expression}),
+                else => try writer.writeAll(expression),
             }
             try writer.writeAll(",\n");
         }
@@ -694,10 +705,11 @@ fn renderTaggedUnionShim(writer: *std.Io.Writer, program: abi.Program) !void {
                     try writer.print("    out_value_ptr.* = self.{s}.ptr;\n    out_value_len.* = self.{s}.len;\n", .{ field.name, field.name });
                 } else {
                     try writer.writeAll("    out_value.* = ");
+                    const suffix = if (field.atomic orelse false) ".load(.seq_cst)" else "";
                     switch (payload) {
-                        .bool => try writer.print("@intFromBool(self.{s})", .{field.name}),
-                        .@"enum" => try writer.print("@intFromEnum(self.{s})", .{field.name}),
-                        else => try writer.print("self.{s}", .{field.name}),
+                        .bool => try writer.print("@intFromBool(self.{s}{s})", .{ field.name, suffix }),
+                        .@"enum" => try writer.print("@intFromEnum(self.{s}{s})", .{ field.name, suffix }),
+                        else => try writer.print("self.{s}{s}", .{ field.name, suffix }),
                     }
                     try writer.writeAll(";\n");
                 }
@@ -908,6 +920,7 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     const enum_return = function.origin.@"return" == .@"enum";
     if (bool_return) try writer.writeAll("@intFromBool(");
     if (enum_return) try writer.writeAll("@intFromEnum(");
+    if (function.origin.return_atomic orelse false) try writer.writeByte('(');
     if (function.origin.stream_accessor != null) {
         const helper = try streamAccessorHelperNameAlloc(allocator, function);
         defer allocator.free(helper);
@@ -947,7 +960,7 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                 const abi_parameter = function.flattenedParam(index, field_index);
                 if (field_index != 0) try writer.writeByte(',');
                 try writer.print(" .{s} = ", .{field.name});
-                try writeFlattenedShimValue(writer, abi_parameter.name, field.type);
+                try writeFlattenedShimValue(writer, abi_parameter.name, field.type, field.atomic orelse false);
             }
             try writer.writeAll(" }");
             continue;
@@ -997,7 +1010,11 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                 else
                     try writer.print("if ({0s}_ptr) |zigo_{0s}| zigo_{0s}[0..{0s}_len] else null", .{parameter.name});
             } else try writeShimOptionalArgument(writer, parameter.name, optional.child.*),
-            else => if (abi.narrowInt(parameter.type) != null)
+            else => if (parameter.atomic orelse false) {
+                try writer.writeAll(".init(");
+                try writeShimInboundValue(writer, parameter.name, parameter.type, false);
+                try writer.writeByte(')');
+            } else if (abi.narrowInt(parameter.type) != null)
                 try writer.print("@intCast({s})", .{parameter.name})
             else
                 try writer.writeAll(parameter.name),
@@ -1007,12 +1024,14 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     if (function.origin.receiver != null and function.origin.receiver_at == function.origin.params.len and function.origin.params.len != 0)
         try writer.writeAll(", self");
     try writer.writeByte(')');
+    if (function.origin.return_atomic orelse false) try writer.writeAll(").raw");
     if (bool_return or enum_return) try writer.writeByte(')');
 }
 
 /// Converts one C-side scalar back to its Zig form on the way in; the mirror
 /// image of `writeZigReturnConversion`.
-fn writeShimInboundValue(writer: *std.Io.Writer, name: []const u8, node: semantic.TypeNode) !void {
+fn writeShimInboundValue(writer: *std.Io.Writer, name: []const u8, node: semantic.TypeNode, atomic: bool) !void {
+    if (atomic) try writer.writeAll(".init(");
     switch (node) {
         .bool => try writer.print("{s} != 0", .{name}),
         .@"enum" => try writer.print("@enumFromInt({s})", .{name}),
@@ -1021,11 +1040,12 @@ fn writeShimInboundValue(writer: *std.Io.Writer, name: []const u8, node: semanti
         else
             try writer.writeAll(name),
     }
+    if (atomic) try writer.writeByte(')');
 }
 
-fn writeFlattenedShimValue(writer: *std.Io.Writer, name: []const u8, node: semantic.TypeNode) !void {
+fn writeFlattenedShimValue(writer: *std.Io.Writer, name: []const u8, node: semantic.TypeNode, atomic: bool) !void {
     if (node == .optional) return writeShimOptionalArgument(writer, name, node.optional.child.*);
-    try writeShimInboundValue(writer, name, node);
+    try writeShimInboundValue(writer, name, node, atomic);
 }
 
 fn writeTaggedUnionValueArgument(
@@ -1051,7 +1071,7 @@ fn writeTaggedUnionValueArgument(
         try writer.print("{{ .{s} = ", .{field.name});
         const slot_name = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ parameter_name, field.name });
         defer allocator.free(slot_name);
-        try writeTaggedUnionPayloadArgument(allocator, writer, program, function, source_index, payload, slot_name);
+        try writeTaggedUnionPayloadArgument(allocator, writer, program, function, source_index, payload, field.atomic orelse false, slot_name);
         try writer.writeAll(" },\n");
     }
     try writer.print("        else => @panic(\"zigo: invalid tag for argument `{s}`\"),\n    }}", .{parameter_name});
@@ -1064,6 +1084,7 @@ fn writeTaggedUnionPayloadArgument(
     function: abi.AbiFn,
     source_index: usize,
     node: semantic.TypeNode,
+    atomic: bool,
     slot_name: []const u8,
 ) !void {
     if (node == .value_struct) {
@@ -1085,13 +1106,13 @@ fn writeTaggedUnionPayloadArgument(
             const child_name = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ slot_name, field.name });
             defer allocator.free(child_name);
             try writer.print(" .{s} = ", .{field.name});
-            try writeTaggedUnionPayloadArgument(allocator, writer, program, function, source_index, field.type.?, child_name);
+            try writeTaggedUnionPayloadArgument(allocator, writer, program, function, source_index, field.type.?, field.atomic orelse false, child_name);
         }
         try writer.writeAll(" }");
         return;
     }
     const slot = taggedUnionAbiParam(function, source_index, .union_payload, slot_name);
-    try writeShimInboundValue(writer, slot.name, node);
+    try writeShimInboundValue(writer, slot.name, node, atomic);
 }
 
 fn taggedUnionAbiParam(
@@ -1185,14 +1206,15 @@ fn writeErrorSwitch(writer: *std.Io.Writer, function: abi.AbiFn) !void {
     for (function.errors) |entry| try writer.print("\n        error.{s} => {d},", .{ entry.name, entry.code });
 }
 
-fn writeZigReturnConversion(writer: *std.Io.Writer, node: semantic.TypeNode, expression: []const u8) !void {
+fn writeZigReturnConversion(writer: *std.Io.Writer, node: semantic.TypeNode, expression: []const u8, atomic: bool) !void {
+    const suffix = if (atomic) ".raw" else "";
     switch (node) {
-        .bool => try writer.print("@intFromBool({s})", .{expression}),
-        .@"enum" => try writer.print("@intFromEnum({s})", .{expression}),
+        .bool => try writer.print("@intFromBool({s}{s})", .{ expression, suffix }),
+        .@"enum" => try writer.print("@intFromEnum({s}{s})", .{ expression, suffix }),
         else => if (abi.narrowInt(node) != null)
-            try writer.print("@intCast({s})", .{expression})
+            try writer.print("@intCast({s}{s})", .{ expression, suffix })
         else
-            try writer.writeAll(expression),
+            try writer.print("{s}{s}", .{ expression, suffix }),
     }
 }
 

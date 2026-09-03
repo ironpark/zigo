@@ -1,0 +1,5 @@
+{
+  "package": "atomic_value",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/atomic-value"
+}

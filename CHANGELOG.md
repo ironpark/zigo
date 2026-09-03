@@ -4,6 +4,15 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Added
+
+- `std.atomic.Value(T)`를 bool, 정수, 부동소수, 등록 enum의 값 자리에서 평범한 `T`로
+  노출합니다. field accessor는 순차 일관 load/store를 사용하고, flatten·값 struct·값 union·
+  값 파라미터와 반환은 원시 값을 복사합니다. atomic field가 있는 struct slice는 항상
+  원소별 복사 경로를 사용합니다.
+
 ## [0.7.4] - 2026-09-03
 
 ### Fixed

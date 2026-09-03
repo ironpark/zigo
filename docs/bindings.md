@@ -467,6 +467,32 @@ segment가 기본 이름이므로 위 선언은 `Cols()`, `CursorX()`, `CursorSt
 API를 만들고 `abi-check` 및 `abi-diff`에도 일반 함수처럼 나타납니다. 접근자를 추가하는 것은
 compatible append이며, 함수와 이름이 겹치면 기존 `ZIGO024`/`ZIGO036` 진단을 사용합니다.
 
+### Atomic 값 scalar
+
+`std.atomic.Value(T)`의 `T`가 bool, 정수, 부동소수 또는 등록 enum이면, 값이 허용되는 자리에서
+Go에는 평범한 `T`로 보입니다. `.fields` getter와 setter는 각각
+`load(.seq_cst)`와 `store(value, .seq_cst)`를 호출하므로 각 접근은 원자적입니다.
+
+```zig
+const Stats = struct {
+    requests: std.atomic.Value(u64) = .init(0),
+};
+
+.types = .{
+    .{ .type = Stats, .repr = .@"opaque", .fields = .{
+        .{ .path = "requests", .set = true },
+    } },
+},
+```
+
+같은 규칙은 `param_meta.<name>.flatten`, `.repr = .value`인 `extern struct` field, 값 tagged
+union payload, 함수의 값 파라미터와 반환에도 적용됩니다. shim은 경계에서 `.raw`로 풀고
+`.init(value)`로 다시 감싸며 C와 Go 표면에는 scalar만 남깁니다. atomic field가 있는
+`extern struct` slice는 주소를 재해석하지 않고 원소별로 복사합니다.
+
+여러 field를 담은 struct나 union의 snapshot 전체가 한 번에 원자적인 것은 아닙니다. 원자성은
+각 atomic field를 읽거나 쓰는 한 번의 접근에만 적용됩니다.
+
 ### Allocator와 Io 주입
 
 `std.mem.Allocator`와 `std.Io`는 C로 표현할 수 없습니다. 바인딩이 값을 한 번 정하면

@@ -352,6 +352,8 @@ pub const AbiStruct = struct {
     castable: bool = true,
 
     pub const Field = struct {
+        /// The target member is an atomic wrapper over `node`.
+        atomic: bool = false,
         name: []const u8,
         scalar: AbiScalar,
         node: semantic.TypeNode,

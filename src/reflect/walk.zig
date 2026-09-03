@@ -232,7 +232,7 @@ fn appendFieldAccessors(
     );
     try functions.append(allocator, .{
         .doc = if (@hasField(@TypeOf(metadata), "doc")) metadata.doc else null,
-        .field_access = .{ .path = path },
+        .field_access = .{ .atomic = if (comptime atomicScalar(Leaf) != null) true else null, .path = path },
         .name = name,
         .params = &.{},
         .receiver = owner_name,
@@ -246,7 +246,7 @@ fn appendFieldAccessors(
         params[0] = .{ .name = "v", .name_source = .sidecar, .type = field_type };
         try functions.append(allocator, .{
             .doc = if (@hasField(@TypeOf(metadata), "doc")) metadata.doc else null,
-            .field_access = .{ .path = path, .setter = true },
+            .field_access = .{ .atomic = if (comptime atomicScalar(Leaf) != null) true else null, .path = path, .setter = true },
             .name = setter_name,
             .params = params,
             .receiver = owner_name,
@@ -329,9 +329,10 @@ fn fieldPathWritable(comptime Current: type, comptime path: []const u8) bool {
 }
 
 fn supportedFieldLeaf(comptime declaration: anytype, comptime T: type) bool {
-    return switch (@typeInfo(T)) {
+    const Scalar = atomicScalar(T) orelse T;
+    return switch (@typeInfo(Scalar)) {
         .bool, .int, .float => true,
-        .@"enum" => registeredTypeName(declaration, T, .enumeration) != null,
+        .@"enum" => registeredTypeName(declaration, Scalar, .enumeration) != null,
         else => false,
     };
 }
@@ -1062,6 +1063,7 @@ fn appendFunction(
                 .{ owner_label, function_label, parameter_label },
             ));
         var reflected: semantic.Parameter = .{
+            .atomic = if (comptime atomicScalar(param.type.?) != null) true else null,
             .cancel = if (names_cancel) true else null,
             .injected = injection,
             .name = parameter_name,
@@ -1128,6 +1130,7 @@ fn appendFunction(
         // arguments can sit ahead of it, and they are counted here.
         .receiver_at = comptime if (receiver_index != null and receiver_index.? != 0) receiver_index.? else null,
         .@"return" = reflected_return,
+        .return_atomic = if (comptime info.return_type != null and atomicScalar(info.return_type.?) != null) true else null,
         .symbol = try naming.functionSymbolAlloc(allocator, prefix, receiver orelse discovered_owner, function_name),
         .zig_path = comptime zigCallPath(receiver, discovered_owner, source_name, function_name),
     };
@@ -1194,13 +1197,15 @@ fn reflectFlattenedFields(
         };
         const field = maybe_field orelse return flattenIssue(allocator, "`{s}` parameter `{s}` has no field `{s}`", .{ function_label, parameter_label, field_name });
         const leaf = comptime if (@typeInfo(field.type) == .optional) @typeInfo(field.type).optional.child else field.type;
-        const allowed = comptime switch (@typeInfo(leaf)) {
+        const scalar_leaf = comptime atomicScalar(leaf) orelse leaf;
+        const allowed = comptime switch (@typeInfo(scalar_leaf)) {
             .bool, .int, .float => true,
-            .@"enum" => registeredTypeName(declaration, leaf, .enumeration) != null,
+            .@"enum" => registeredTypeName(declaration, scalar_leaf, .enumeration) != null,
             else => false,
         };
         if (!allowed) return flattenIssue(allocator, "`{s}` parameter `{s}` field `{s}` is not a supported scalar or registered enum", .{ function_label, parameter_label, field_name });
         result[selected_index] = .{
+            .atomic = if (comptime atomicScalar(leaf) != null) true else null,
             .name = field_name,
             .type = try typeNode(allocator, declaration, field.type, types, "flattened field `" ++ field_name ++ "`"),
         };
@@ -1701,6 +1706,11 @@ fn typeNode(
     types: *std.ArrayList(semantic.TypeDecl),
     comptime context: []const u8,
 ) !semantic.TypeNode {
+    if (comptime atomicScalar(T)) |Scalar| {
+        if (!comptime supportedAtomicScalar(declaration, Scalar))
+            @compileError("zigo supports std.atomic.Value only over bool, integer, float, or a registered enum, at " ++ context);
+        return typeNode(allocator, declaration, Scalar, types, context);
+    }
     return switch (@typeInfo(T)) {
         .void => .{ .void = {} },
         .bool => .{ .bool = {} },
@@ -2125,6 +2135,7 @@ fn appendValueStruct(
     const fields = try allocator.alloc(semantic.TypeField, info.fields.len);
     inline for (info.fields, 0..) |field, field_index| {
         fields[field_index] = .{
+            .atomic = if (comptime atomicScalar(field.type) != null) true else null,
             .name = field.name,
             .type = try typeNode(
                 allocator,
@@ -2167,6 +2178,7 @@ fn appendTaggedUnion(
     const fields = try allocator.alloc(semantic.TypeField, info.fields.len);
     inline for (info.fields, 0..) |field, index| {
         fields[index] = .{
+            .atomic = if (comptime atomicScalar(field.type) != null) true else null,
             .name = field.name,
             .type = try typeNode(
                 allocator,
@@ -2234,6 +2246,26 @@ fn isCancelFlag(comptime T: type) bool {
     const info = @typeInfo(T);
     if (info != .pointer or info.pointer.size != .one) return false;
     return info.pointer.child == std.atomic.Value(u32);
+}
+
+/// Returns the scalar wrapped by an exact `std.atomic.Value(T)` instantiation.
+/// Type identity avoids relying on std's generated `Value(u64)` spelling.
+fn atomicScalar(comptime T: type) ?type {
+    const info = switch (@typeInfo(T)) {
+        .@"struct" => |value| value,
+        else => return null,
+    };
+    if (info.fields.len != 1 or !std.mem.eql(u8, info.fields[0].name, "raw")) return null;
+    const Scalar = info.fields[0].type;
+    return if (T == std.atomic.Value(Scalar)) Scalar else null;
+}
+
+fn supportedAtomicScalar(comptime declaration: anytype, comptime T: type) bool {
+    return switch (@typeInfo(T)) {
+        .bool, .int, .float => true,
+        .@"enum" => registeredTypeName(declaration, T, .enumeration) != null,
+        else => false,
+    };
 }
 
 fn isSentinelBytePointer(comptime T: type) bool {
@@ -3464,6 +3496,80 @@ test "flattened struct parameters skip unselected fields that C cannot carry" {
         try std.testing.expectEqualStrings("Options", declaration.name);
         try std.testing.expectEqual(@as(usize, 2), declaration.fields.len);
     }
+}
+
+test "atomic values reflect as marked scalar leaves in every value position" {
+    const Fixture = struct {
+        const Mode = enum(u8) { idle, busy };
+        const Handle = struct {
+            counter: std.atomic.Value(u64) = .init(0),
+            enabled: std.atomic.Value(bool) = .init(false),
+        };
+        const Options = struct {
+            limit: std.atomic.Value(i32) = .init(0),
+        };
+        const Record = extern struct {
+            count: std.atomic.Value(u64),
+            mode: std.atomic.Value(Mode),
+        };
+        const Event = union(enum) {
+            count: std.atomic.Value(u64),
+            none,
+        };
+
+        pub fn take(value: std.atomic.Value(u64), options: Options, record: Record, event: Event) std.atomic.Value(u64) {
+            _ = options;
+            _ = record;
+            _ = event;
+            return value;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{
+            .{ .type = Fixture.Handle, .repr = .@"opaque", .fields = .{
+                .{ .path = "counter", .set = true },
+                .{ .path = "enabled", .set = true },
+            } },
+            .{ .type = Fixture.Mode, .repr = .enumeration },
+            .{ .type = Fixture.Record, .repr = .value },
+            .{ .type = Fixture.Event, .repr = .tagged_union },
+        },
+        .functions = .{.{
+            .path = "root.take",
+            .params = .{ "value", "options", "record", "event" },
+            .param_meta = .{ .options = .{ .flatten = .{"limit"} } },
+        }},
+    }, "atomic_values", "zg");
+
+    try std.testing.expect(document.functions[0].field_access.?.atomic.?);
+    try std.testing.expect(document.functions[1].field_access.?.atomic.?);
+    const take = document.functions[4];
+    try std.testing.expect(take.params[0].atomic.?);
+    try std.testing.expect(take.params[0].type == .int);
+    try std.testing.expect(take.params[1].flatten.?[0].atomic.?);
+    try std.testing.expect(take.params[1].flatten.?[0].type == .int);
+    try std.testing.expect(take.return_atomic.?);
+    try std.testing.expect(take.@"return" == .int);
+
+    var saw_record = false;
+    var saw_event = false;
+    for (document.types) |declaration| {
+        if (std.mem.eql(u8, declaration.name, "Record")) {
+            saw_record = true;
+            try std.testing.expect(declaration.fields[0].atomic.?);
+            try std.testing.expect(declaration.fields[0].type.? == .int);
+            try std.testing.expect(declaration.fields[1].atomic.?);
+            try std.testing.expect(declaration.fields[1].type.? == .@"enum");
+        } else if (std.mem.eql(u8, declaration.name, "Event")) {
+            saw_event = true;
+            try std.testing.expect(declaration.fields[0].atomic.?);
+            try std.testing.expect(declaration.fields[0].type.? == .int);
+        }
+    }
+    try std.testing.expect(saw_record and saw_event);
 }
 
 test "flattened struct parameters reject unlisted required fields" {

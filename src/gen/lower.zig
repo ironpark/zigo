@@ -756,6 +756,7 @@ fn lowerValueStructs(allocator: std.mem.Allocator, document: semantic.Semantic, 
             const bytes = member.bytes;
             offset += padding(offset, member.alignment);
             fields[index] = .{
+                .atomic = field.atomic orelse false,
                 .name = field.name,
                 .scalar = scalar,
                 .node = node,
@@ -823,6 +824,7 @@ fn lowerValueStructs(allocator: std.mem.Allocator, document: semantic.Semantic, 
 /// it -- and so does a member struct that is itself not castable.
 fn structCastable(records: []const abi.AbiStruct, record: abi.AbiStruct) bool {
     for (record.fields) |field| {
+        if (field.atomic) return false;
         if (field.node == .bool) return false;
         if (field.node != .value_struct) continue;
         for (records) |candidate| {

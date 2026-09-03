@@ -1,0 +1,81 @@
+{
+  "functions": [
+    {
+      "field_access": {"atomic": true, "path": "counter"},
+      "name": "counter",
+      "params": [],
+      "receiver": "Handle",
+      "return": {"bits": 64, "kind": "int", "signed": false},
+      "symbol": "zg_handle_counter"
+    },
+    {
+      "field_access": {"atomic": true, "path": "counter", "setter": true},
+      "name": "setCounter",
+      "params": [{"name": "v", "type": {"bits": 64, "kind": "int", "signed": false}}],
+      "receiver": "Handle",
+      "return": {"kind": "void"},
+      "symbol": "zg_handle_set_counter"
+    },
+    {
+      "name": "roundTrip",
+      "params": [{"atomic": true, "name": "value", "type": {"bits": 64, "kind": "int", "signed": false}}],
+      "return": {"bits": 64, "kind": "int", "signed": false},
+      "return_atomic": true,
+      "symbol": "zg_round_trip"
+    },
+    {
+      "name": "configure",
+      "params": [{
+        "flatten": [{"atomic": true, "name": "limit", "type": {"bits": 32, "kind": "int", "signed": true}}],
+        "name": "options",
+        "type": {"kind": "value_struct", "ref": "Options"}
+      }],
+      "return": {"kind": "void"},
+      "symbol": "zg_configure"
+    },
+    {
+      "name": "echoRecord",
+      "params": [{"name": "value", "type": {"kind": "value_struct", "ref": "Record"}}],
+      "return": {"kind": "value_struct", "ref": "Record"},
+      "symbol": "zg_echo_record"
+    },
+    {
+      "name": "echoEvent",
+      "params": [{"name": "value", "type": {"kind": "value_struct", "ref": "Event"}}],
+      "return": {"kind": "value_struct", "ref": "Event"},
+      "symbol": "zg_echo_event"
+    }
+  ],
+  "package": "atomic_value",
+  "prefix": "zg",
+  "types": [
+    {"kind": "opaque", "name": "Handle"},
+    {
+      "fields": [{"atomic": true, "name": "limit", "type": {"bits": 32, "kind": "int", "signed": true}}],
+      "kind": "value_struct",
+      "name": "Options"
+    },
+    {
+      "fields": [{"atomic": true, "name": "count", "type": {"bits": 64, "kind": "int", "signed": false}}],
+      "kind": "value_struct",
+      "layout": "extern",
+      "name": "Record"
+    },
+    {
+      "fields": [
+        {"atomic": true, "name": "count", "type": {"bits": 64, "kind": "int", "signed": false}, "value": 0},
+        {"name": "none", "type": {"kind": "void"}, "value": 1}
+      ],
+      "kind": "tagged_union",
+      "name": "Event",
+      "tag_type": {"kind": "enum", "ref": "EventTag"}
+    },
+    {
+      "fields": [{"name": "count", "value": 0}, {"name": "none", "value": 1}],
+      "kind": "enum",
+      "name": "EventTag",
+      "tag_type": {"bits": 8, "kind": "int", "signed": false}
+    }
+  ],
+  "zig_version": "0.16.0"
+}

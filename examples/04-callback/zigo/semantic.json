@@ -19,6 +19,7 @@
   "functions": [
     {
       "field_access": {
+        "atomic": true,
         "path": "stats.runs",
         "setter": false
       },
@@ -37,6 +38,7 @@
     },
     {
       "field_access": {
+        "atomic": true,
         "path": "stats.runs",
         "setter": true
       },

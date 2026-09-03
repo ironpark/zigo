@@ -269,11 +269,15 @@ pub const ParamSourceLocation = struct {
 /// `param_meta.<name>.flatten`. The original parameter type remains on
 /// `Parameter.type`; this list describes the Go/C arguments that replace it.
 pub const FlattenedField = struct {
+    /// The Zig field is `std.atomic.Value(T)` while the public/ABI type is T.
+    atomic: ?bool = null,
     name: []const u8,
     type: TypeNode,
 };
 
 pub const Parameter = struct {
+    /// The Zig parameter is `std.atomic.Value(T)` while Go and C pass T.
+    atomic: ?bool = null,
     /// Bytes of shim-side staging buffer behind an `*std.Io.Writer` or
     /// `*std.Io.Reader` parameter, from `param_meta.<name>.buffer`. Only the
     /// buffer size changes; the C signature does not, so this is an ABI
@@ -383,6 +387,8 @@ pub const StreamAccessor = struct {
 /// ordinary method everywhere except the Zig shim: there is no declaration to
 /// call, so the shim reads or writes this path on the receiver instead.
 pub const FieldAccess = struct {
+    /// Read/write through `load`/`store` instead of copying the wrapper.
+    atomic: ?bool = null,
     path: []const u8,
     setter: bool = false,
 };
@@ -435,6 +441,8 @@ pub const SemanticFn = struct {
     /// public API never hands native memory to the caller.
     release: ?[]const u8 = null,
     @"return": TypeNode,
+    /// The Zig result is `std.atomic.Value(T)` while Go and C receive T.
+    return_atomic: ?bool = null,
     return_semantic: ?SemanticHint = null,
     /// The function declaration's source location, from `names.zig`. Purely
     /// diagnostic: it has no bearing on the generated ABI, so `abi_diff`
@@ -475,6 +483,8 @@ pub const Access = enum {
     snapshot,
 };
 pub const TypeField = struct {
+    /// The Zig member is `std.atomic.Value(T)` while its mirror contains T.
+    atomic: ?bool = null,
     name: []const u8,
     type: ?TypeNode = null,
     value: ?i64 = null,

@@ -93,6 +93,10 @@
   쓴다. Go의 `bool`과 C의 `uint8_t`는 폭은 같아도 같은 타입이 아니므로, bool 필드가 하나라도
   있으면 원소별 복사 경로로 남는다. 캐스트 경로는 생성된 compile 시점 layout 단정이
   지키므로, Go와 C의 배치가 어긋나면 바인딩이 컴파일되지 않는다.
+- `std.atomic.Value(T)`는 T가 bool, 정수, 부동소수 또는 등록 enum일 때 값 자리에서 T로
+  노출된다. field accessor 한 번은 `seq_cst` load/store지만, 여러 atomic field를 담은 struct나
+  union snapshot 전체는 원자적이지 않다. atomic field가 있는 `extern struct` slice는 항상
+  원소별 복사 경로를 사용한다.
 - `.direction = .out` slice에 `.written = .@"return"`을 쓰려면 반환 payload가
   `usize`(또는 `!usize`)여야 하고, `.out`이 아닌 파라미터에는 붙일 수 없다. 둘 다
   `ZIGO017`로 거부된다.

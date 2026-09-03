@@ -43,7 +43,7 @@ pub fn notify(value: i32, callback: VoidObserver, userdata: usize) void {
 }
 
 pub const CallbackContext = struct {
-    const Stats = struct { runs: u32 = 0 };
+    const Stats = struct { runs: std.atomic.Value(u32) = .init(0) };
 
     callback: Observer,
     userdata: usize,
@@ -56,7 +56,7 @@ pub const CallbackContext = struct {
     }
 
     pub fn run(self: *CallbackContext, value: i32) i32 {
-        self.stats.runs += 1;
+        _ = self.stats.runs.fetchAdd(1, .seq_cst);
         return self.callback(value, self.userdata);
     }
 
