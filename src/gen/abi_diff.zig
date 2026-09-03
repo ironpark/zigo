@@ -1513,25 +1513,18 @@ test "a sentinel the lowered program never sees is not a change" {
     var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
     const plain: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte } };
     const sentinel: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte, .sentinel = 0 } };
-    const Docs = struct {
-        fn document(node: semantic.TypeNode) semantic.Semantic {
-            return .{
-                .functions = &.{.{
-                    .name = "greet",
-                    .params = &.{.{ .name = "text", .semantic = .utf8_string, .type = node }},
-                    .@"return" = .{ .void = {} },
-                    .symbol = "zg_greet",
-                }},
-                .package = "demo",
-                .prefix = "zg",
-                .zig_version = "0.16.0",
-            };
-        }
-    };
+    // Both documents live in this frame: a helper returning `&.{...}` built
+    // from a runtime parameter would hand back a pointer into its own stack.
+    const plain_params = [_]semantic.Parameter{.{ .name = "text", .semantic = .utf8_string, .type = plain }};
+    const sentinel_params = [_]semantic.Parameter{.{ .name = "text", .semantic = .utf8_string, .type = sentinel }};
+    const plain_functions = [_]semantic.SemanticFn{.{ .name = "greet", .params = &plain_params, .@"return" = .{ .void = {} }, .symbol = "zg_greet" }};
+    const sentinel_functions = [_]semantic.SemanticFn{.{ .name = "greet", .params = &sentinel_params, .@"return" = .{ .void = {} }, .symbol = "zg_greet" }};
+    const base: semantic.Semantic = .{ .functions = &plain_functions, .package = "demo", .prefix = "zg", .zig_version = "0.16.0" };
+    const current: semantic.Semantic = .{ .functions = &sentinel_functions, .package = "demo", .prefix = "zg", .zig_version = "0.16.0" };
     // The sentinel is an annotation the shim uses to rebuild the Zig type; it
     // does not reach C, and the comparison now sees only what lowering
     // produced, so there is nothing to report.
-    var report = try diff(std.testing.allocator, Docs.document(plain), Docs.document(sentinel));
+    var report = try diff(std.testing.allocator, base, current);
     defer report.deinit(std.testing.allocator);
     try std.testing.expectEqual(@as(usize, 0), report.changes.items.len);
 }
