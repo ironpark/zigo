@@ -35,6 +35,8 @@
 
 ### Changed
 
+- `.use_pkg_config = .force` system library는 cgo 지시자를 만들기 전에 `pkg-config --exists`로
+  원래 이름과 `lib` 접두사 이름을 차례로 확인하고, 실제로 해석되는 package 이름을 내보냅니다.
 - `abi-diff`가 packed value struct의 변경을 분류합니다. backing 폭 안에서 필드를 뒤에 덧붙이는 것은
   호환 변경이고, 필드 순서 변경·폭 변경·제거·이름 변경은 breaking입니다.
 

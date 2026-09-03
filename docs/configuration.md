@@ -235,7 +235,10 @@ module에서 해당 링크를 하지 마세요. 정적 backend의 순서는 바�
 `use_pkg_config = .force`인 system library만 `-l` 대신 `#cgo pkg-config:` 줄로 나갑니다.
 cgo가 pkg-config에게 컴파일·링크 플래그를 직접 묻게 하기 위해서입니다. 기본값 `.yes`는
 "pkg-config를 시도하고 안 되면 `-lname`"이라는 뜻인데 cgo에는 그 fallback이 없으므로
-`-lname`으로 내보냅니다. `.force` 대상이 하나도 없으면 그 줄은 생성되지 않습니다. `rpath`와 추가 include 경로는 전달하지 않으므로 필요하면
+`-lname`으로 내보냅니다. `.force`는 build 시 `pkg-config --exists <name>`과
+`pkg-config --exists lib<name>`을 차례로 실행하고 성공한 spelling을 내보냅니다. 둘 다 실패하면
+library와 선언 module을 적은 진단으로 `go` step이 실패합니다. `pkg-config` 실행 파일 자체가
+없으면 원래 이름을 유지하고 warning을 출력합니다. `.force` 대상이 하나도 없으면 그 줄은 생성되지 않습니다. `rpath`와 추가 include 경로는 전달하지 않으므로 필요하면
 `cgo_flags`로 직접 지정하세요.
 
 `.purego`는 링크 지시자를 전혀 생성하지 않습니다. 시스템 라이브러리는 native 공유

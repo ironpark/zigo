@@ -7,7 +7,7 @@ registered_at: "2026-09-03T03:53:27Z"
 
 # Phases
 
-- [ ] [Phase 00: Transitive link inputs](phases/00-transitive-link-inputs.md)
+- [x] [Phase 00: Transitive link inputs](phases/00-transitive-link-inputs.md)
 - [ ] [Phase 01: Build-time pkg-config resolution](phases/01-pkg-config-resolution.md)
 
 # Shared Verification

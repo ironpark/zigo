@@ -2,7 +2,7 @@
 depends_on:
 - "104-transitive-link-inputs-and-pkg-config#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `linkSystemLibrary("avformat", .{ .use_pkg_config = .force })` emits `#cgo pkg-config: libavformat` on a machine where only that spelling resolves, and an unresolvable name fails at `zig build go` with the diagnostic.
 > NEXT: none

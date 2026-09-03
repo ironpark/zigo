@@ -112,6 +112,8 @@ pub const GoBindings = struct {
     /// Use this rather than joining a directory with `library_filename`.
     library_path: []const u8,
     semantic_json: std.Build.LazyPath,
+    /// Build-time-resolved names used by the generated `#cgo pkg-config:` line.
+    resolved_pkg_config: ?std.Build.LazyPath,
 
     pub const StandardStepOptions = struct {
         /// Prefixes conventional step names for projects with multiple binding sets.
@@ -511,6 +513,7 @@ pub fn build(b: *std.Build) void {
     test_step.dependOn(&run_coverage_tests.step);
     test_step.dependOn(&run_dynamic_library_tests.step);
     addProcessContractTests(b, test_step, generator);
+    addPkgConfigContractTests(b, test_step);
 
     const generator_case_runner = b.addExecutable(.{
         .name = "zigo-generator-case",
@@ -781,6 +784,36 @@ fn addProcessContractTests(b: *std.Build, test_step: *std.Build.Step, generator:
     }
 }
 
+fn addPkgConfigContractTests(b: *std.Build, test_step: *std.Build.Step) void {
+    const fixture = "tests/fixtures/pkg-config/build.zig";
+    const resolves_fallback = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "--build-file", fixture, "resolve" });
+    resolves_fallback.setName("pkg-config resolves the lib-prefixed fallback");
+    prependTestPath(b, resolves_fallback, "tests/fixtures/pkg-config/bin");
+    resolves_fallback.expectExitCode(0);
+    resolves_fallback.expectStdOutEqual("libavformat");
+    test_step.dependOn(&resolves_fallback.step);
+
+    const rejects_missing = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "--build-file", fixture, "resolve" });
+    rejects_missing.setName("pkg-config rejects an unresolved forced library");
+    prependTestPath(b, rejects_missing, "tests/fixtures/pkg-config/bin-none");
+    rejects_missing.expectExitCode(1);
+    rejects_missing.expectStdErrMatch("pkg-config could not resolve library 'avformat' declared by module 'src/dependency.zig'");
+    test_step.dependOn(&rejects_missing.step);
+
+    const unavailable = b.addSystemCommand(&.{ b.graph.zig_exe, "build", "--build-file", fixture, "resolve" });
+    unavailable.setName("missing pkg-config keeps the original name");
+    unavailable.setEnvironmentVariable("PKG_CONFIG", b.pathFromRoot("tests/fixtures/pkg-config/does-not-exist"));
+    unavailable.expectExitCode(0);
+    unavailable.expectStdOutEqual("avformat");
+    unavailable.expectStdErrMatch("pkg-config is unavailable; keeping original package name 'avformat'");
+    test_step.dependOn(&unavailable.step);
+}
+
+fn prependTestPath(b: *std.Build, run: *std.Build.Step.Run, directory: []const u8) void {
+    const current = b.graph.environ_map.get("PATH") orelse "";
+    run.setEnvironmentVariable("PATH", b.fmt("{s}{c}{s}", .{ b.pathFromRoot(directory), std.fs.path.delimiter, current }));
+}
+
 /// Build-graph regression test: a dependency reached through both sides of a
 /// diamond contributes each cgo flag once.
 fn testTransitiveLinkInputCollection(
@@ -1046,7 +1079,10 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     else
         StaticLinkInputs.empty;
     const framework_ldflags = frameworkFlags(b, &link_inputs);
-    const pkg_config_libs = pkgConfigLibraries(b, &link_inputs);
+    const pkg_config_resolution = if (backend == .cgo)
+        ResolvePkgConfigLibraries.create(b, artifact_package, link_inputs.system_libraries.items)
+    else
+        null;
     generate.addArgs(&.{
         "--package",           options.name,
         "--prefix",            options.prefix,
@@ -1059,7 +1095,6 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         "--extra-ldflags",     extra_ldflags,
         "--system-ldflags",    system_ldflags,
         "--framework-ldflags", framework_ldflags,
-        "--pkg-config-libs",   pkg_config_libs,
         "--raw-package-path",  raw_package.path,
         "--raw-package-name",  raw_package.name,
         "--backend",           @tagName(backend),
@@ -1069,6 +1104,13 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         "--go-package-path",   go_package_path,
         "--go-package-doc",    options.go_package_doc orelse "",
     });
+    if (pkg_config_resolution) |resolution| {
+        generate.addArg("--pkg-config-libs-file");
+        generate.addFileArg(resolution.output());
+        // Report zigo's module-specific diagnostic before Zig independently
+        // attempts to resolve the same forced library for reflection.
+        semantic_run.step.dependOn(&resolution.step);
+    }
     if (static_link_inputs.paths.len != 0) generate.addArg("--ldflags-external");
     if (options.go_must_variants) generate.addArg("--go-must-variants");
     if (backend == .purego) addLibraryLoadingArgs(b, generate, library_loading);
@@ -1263,6 +1305,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         .library_filename = install_lib.dest_sub_path,
         .library_path = installedLibraryPath(b, install_lib),
         .semantic_json = semantic_json,
+        .resolved_pkg_config = if (pkg_config_resolution) |resolution| resolution.output() else null,
     };
 }
 
@@ -1713,17 +1756,6 @@ fn systemLibraryFlags(b: *std.Build, inputs: *const LinkInputCollector) []const 
     return joinFlags(b, flags.items);
 }
 
-/// pkg-config package names, space separated, for a `#cgo pkg-config:` line.
-/// Only `.force` qualifies; see `systemLibraryFlags` for why.
-fn pkgConfigLibraries(b: *std.Build, inputs: *const LinkInputCollector) []const u8 {
-    var names: std.ArrayList([]const u8) = .empty;
-    for (inputs.system_libraries.items) |input| {
-        if (input.library.use_pkg_config != .force) continue;
-        names.append(b.allocator, input.library.name) catch @panic("OOM");
-    }
-    return joinFlags(b, names.items);
-}
-
 fn frameworkFlags(b: *std.Build, inputs: *const LinkInputCollector) []const u8 {
     var flags: std.ArrayList([]const u8) = .empty;
     for (inputs.frameworks.items) |framework| {
@@ -1731,6 +1763,126 @@ fn frameworkFlags(b: *std.Build, inputs: *const LinkInputCollector) []const u8 {
         flags.append(b.allocator, framework.name) catch @panic("OOM");
     }
     return joinFlags(b, flags.items);
+}
+
+const ResolvePkgConfigLibraries = struct {
+    step: std.Build.Step,
+    inputs: []const Input,
+    executable: []const u8,
+    output_file: std.Build.GeneratedFile,
+    output_sub_path: []const u8,
+
+    const Input = struct {
+        name: []const u8,
+        module: []const u8,
+    };
+
+    const Probe = enum { found, not_found, missing_executable };
+
+    fn create(
+        b: *std.Build,
+        artifact_package: []const u8,
+        system_libraries: []const SystemLibraryInput,
+    ) ?*ResolvePkgConfigLibraries {
+        var inputs: std.ArrayList(Input) = .empty;
+        var hash = std.hash.Wyhash.init(0);
+        hash.update(artifact_package);
+        const configured_executable = b.graph.environ_map.get("PKG_CONFIG") orelse "pkg-config";
+        const executable = b.findProgram(&.{configured_executable}, &.{}) catch configured_executable;
+        hash.update(executable);
+        for (system_libraries) |input| {
+            if (input.library.use_pkg_config != .force) continue;
+            const module = moduleDisplayName(input.module);
+            inputs.append(b.allocator, .{ .name = input.library.name, .module = module }) catch @panic("OOM");
+            hash.update(input.library.name);
+            hash.update(module);
+        }
+        if (inputs.items.len == 0) return null;
+
+        const self = b.allocator.create(ResolvePkgConfigLibraries) catch @panic("OOM");
+        self.* = .{
+            .step = std.Build.Step.init(.{
+                .id = .custom,
+                .name = b.fmt("resolve pkg-config libraries for {s}", .{artifact_package}),
+                .owner = b,
+                .makeFn = make,
+            }),
+            .inputs = inputs.toOwnedSlice(b.allocator) catch @panic("OOM"),
+            .executable = executable,
+            .output_file = .{ .step = &self.step },
+            .output_sub_path = b.fmt("zigo/pkg-config/{x}.txt", .{hash.final()}),
+        };
+        return self;
+    }
+
+    fn output(self: *ResolvePkgConfigLibraries) std.Build.LazyPath {
+        return .{ .generated = .{ .file = &self.output_file } };
+    }
+
+    fn make(step: *std.Build.Step, options: std.Build.Step.MakeOptions) !void {
+        _ = options;
+        const self: *ResolvePkgConfigLibraries = @fieldParentPtr("step", step);
+        const b = step.owner;
+        const io = b.graph.io;
+        var names: std.ArrayList([]const u8) = .empty;
+
+        for (self.inputs) |input| {
+            switch (try probe(step, self.executable, input.name)) {
+                .found => {
+                    names.append(b.allocator, input.name) catch @panic("OOM");
+                    continue;
+                },
+                .missing_executable => {
+                    std.log.warn("pkg-config is unavailable; keeping original package name '{s}' declared by module '{s}'", .{ input.name, input.module });
+                    names.append(b.allocator, input.name) catch @panic("OOM");
+                    continue;
+                },
+                .not_found => {},
+            }
+
+            const prefixed = b.fmt("lib{s}", .{input.name});
+            switch (try probe(step, self.executable, prefixed)) {
+                .found => names.append(b.allocator, prefixed) catch @panic("OOM"),
+                .missing_executable => {
+                    std.log.warn("pkg-config became unavailable; keeping original package name '{s}' declared by module '{s}'", .{ input.name, input.module });
+                    names.append(b.allocator, input.name) catch @panic("OOM");
+                },
+                .not_found => return step.fail(
+                    "pkg-config could not resolve library '{s}' declared by module '{s}' (tried '{s}' and '{s}')",
+                    .{ input.name, input.module, input.name, prefixed },
+                ),
+            }
+        }
+
+        const contents = joinFlags(b, names.items);
+        if (std.fs.path.dirname(self.output_sub_path)) |dirname|
+            try b.cache_root.handle.createDirPath(io, dirname);
+        try b.cache_root.handle.writeFile(io, .{ .sub_path = self.output_sub_path, .data = contents });
+        self.output_file.path = try b.cache_root.join(b.allocator, &.{self.output_sub_path});
+        step.result_cached = false;
+    }
+
+    fn probe(step: *std.Build.Step, executable: []const u8, package: []const u8) !Probe {
+        const b = step.owner;
+        const result = std.process.run(b.allocator, b.graph.io, .{
+            .argv = &.{ executable, "--exists", package },
+            .stdout_limit = .limited(64 * 1024),
+            .stderr_limit = .limited(64 * 1024),
+        }) catch |err| switch (err) {
+            error.FileNotFound, error.InvalidName => return .missing_executable,
+            else => return step.fail("unable to run pkg-config for library '{s}': {t}", .{ package, err }),
+        };
+        defer b.allocator.free(result.stdout);
+        defer b.allocator.free(result.stderr);
+        return switch (result.term) {
+            .exited => |code| if (code == 0) .found else .not_found,
+            else => step.fail("pkg-config terminated unexpectedly while probing library '{s}'", .{package}),
+        };
+    }
+};
+
+fn moduleDisplayName(module: *std.Build.Module) []const u8 {
+    return if (module.root_source_file) |root| root.getDisplayName() else "<module without a source root>";
 }
 
 fn addGenerator(

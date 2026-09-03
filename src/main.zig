@@ -38,6 +38,10 @@ pub fn main(init: std.process.Init) !void {
 
 fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) !void {
     const semantic_bytes = try std.Io.Dir.cwd().readFileAlloc(io, options.semantic_path, allocator, .limited(64 * 1024 * 1024));
+    const pkg_config_libs = if (options.pkg_config_libs_path) |path|
+        std.mem.trim(u8, try std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(1024 * 1024)), " \r\n\t")
+    else
+        options.pkg_config_libs;
     var parsed = try semantic.Semantic.parse(allocator, semantic_bytes);
     defer parsed.deinit();
     // The diagnostic can name allocated text, so it lives on a scratch arena
@@ -74,7 +78,7 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         .extra_ldflags = options.extra_ldflags,
         .ldflags_external = options.ldflags_external,
         .system_ldflags = options.system_ldflags,
-        .pkg_config_libs = options.pkg_config_libs,
+        .pkg_config_libs = pkg_config_libs,
         .framework_ldflags = options.framework_ldflags,
         .include_dir = options.include_dir,
         .library_dir = options.library_dir,

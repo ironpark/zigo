@@ -29,6 +29,7 @@ pub const Generate = struct {
     ldflags_external: bool = false,
     system_ldflags: []const u8 = "",
     pkg_config_libs: []const u8 = "",
+    pkg_config_libs_path: ?[]const u8 = null,
     framework_ldflags: []const u8 = "",
     raw_package_path: []const u8 = "internal/raw",
     raw_package_name: []const u8 = "raw",
@@ -200,6 +201,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
     var ldflags_external = false;
     var system_ldflags: ?[]const u8 = null;
     var pkg_config_libs: ?[]const u8 = null;
+    var pkg_config_libs_path: ?[]const u8 = null;
     var framework_ldflags: ?[]const u8 = null;
     var raw_package_path: ?[]const u8 = null;
     var raw_package_name: ?[]const u8 = null;
@@ -256,6 +258,8 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
             try set(&system_ldflags, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--pkg-config-libs")) {
             try set(&pkg_config_libs, try takeValue(args, &index));
+        } else if (std.mem.eql(u8, flag, "--pkg-config-libs-file")) {
+            try set(&pkg_config_libs_path, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--framework-ldflags")) {
             try set(&framework_ldflags, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--raw-package-path")) {
@@ -287,6 +291,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         }
     }
 
+    if (pkg_config_libs != null and pkg_config_libs_path != null) return error.DuplicateArgument;
     const resolved_package = package orelse return error.MissingRequiredArgument;
     return .{
         .semantic_path = semantic_path orelse return error.MissingRequiredArgument,
@@ -303,6 +308,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .ldflags_external = ldflags_external,
         .system_ldflags = system_ldflags orelse "",
         .pkg_config_libs = pkg_config_libs orelse "",
+        .pkg_config_libs_path = pkg_config_libs_path,
         .framework_ldflags = framework_ldflags orelse "",
         .raw_package_path = raw_package_path orelse "internal/raw",
         .raw_package_name = raw_package_name orelse "raw",
@@ -551,6 +557,8 @@ test "generate command parses named arguments" {
         "-Wl,--as-needed",
         "--system-ldflags",
         "-lz",
+        "--pkg-config-libs-file",
+        "resolved-pkg-config.txt",
         "--framework-ldflags",
         "-framework CoreFoundation",
         "--raw-package-path",
@@ -571,6 +579,7 @@ test "generate command parses named arguments" {
     try std.testing.expectEqualStrings("-Icustom", options.cflags);
     try std.testing.expectEqualStrings("flags_native.h", options.header_name);
     try std.testing.expectEqualStrings("-Wl,--as-needed", options.extra_ldflags);
+    try std.testing.expectEqualStrings("resolved-pkg-config.txt", options.pkg_config_libs_path.?);
     try std.testing.expectEqualStrings("scalar", options.raw_package_path);
     try std.testing.expect(options.raw_colocated);
     try std.testing.expectEqualStrings("errors.lock.json", options.errors_lock_path.?);
@@ -653,6 +662,7 @@ test "parser rejects incomplete unknown and duplicate arguments" {
     try std.testing.expectError(error.DuplicateArgument, parse(&.{ "check", "--generated", "one", "--generated", "two", "--source", "go" }));
     try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar", "--raw-colocated", "--raw-colocated" }));
     try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar", "--go-must-variants", "--go-must-variants" }));
+    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "semantic.json", "--output", "out", "--package", "scalar", "--pkg-config-libs", "avformat", "--pkg-config-libs-file", "resolved.txt" }));
     try std.testing.expectError(error.InvalidValue, parse(&.{ "abi-diff", "--base", "old", "--current", "new", "--fail-on", "all" }));
 }
 
