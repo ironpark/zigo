@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T03:02:39Z"
 description: make abi-diff report malformed semantic.json instead of panicking and make generator case steps rerun when their inputs change
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-03T02:46:06Z"
 ---
 > NEXT: Make abi-diff reject malformed inputs with a diagnostic. ([Phase 0](phases/00-abi-diff-inputs.md))
@@ -8,7 +9,7 @@ registered_at: "2026-09-03T02:46:06Z"
 # Phases
 
 - [x] [Phase 00: abi-diff input validation](phases/00-abi-diff-inputs.md)
-- [ ] [Phase 01: generator case cache correctness](phases/01-case-cache.md)
+- [x] [Phase 01: generator case cache correctness](phases/01-case-cache.md)
 
 # Shared Verification
 
