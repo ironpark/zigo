@@ -4,6 +4,19 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [0.7.3] - 2026-09-03
+
+### Fixed
+
+- `zigo-gen abi-diff`가 잘못된 `semantic.json`(선언 없는 타입 참조 등)에 `unreachable` panic을
+  내던 문제를 고쳤습니다. 두 입력을 먼저 검증해 파일 이름을 적은 ZIGO 진단을 출력하고 종료
+  코드 1로 끝납니다.
+- 검증이 tagged union의 `tag_type` enum 참조와 flatten된 field 타입의 해석을 확인하지 않아
+  하류에서 panic할 수 있던 틈을 `ZIGO010`으로 막았습니다.
+- 골든 생성 케이스의 테스트 스텝이 `semantic.json`이나 `expected/` 파일을 바꿔도 캐시된 결과를
+  재사용하던 문제를 고쳤습니다. `addDirectoryArg`는 경로만 해시하므로 케이스의 파일을 모두
+  스텝 입력으로 등록합니다.
+
 ## [0.7.2] - 2026-09-03
 
 ### Fixed
@@ -420,6 +433,7 @@
 - 생성된 Go doc이 식별자로 시작하지 않는 문장을 두 줄 형식으로 내고, `//` 그룹 주석과
   빈 줄 없이 이어진 선언의 doc 공유를 지원합니다. 모든 생성 패키지에 패키지 doc이 있습니다.
 
+[0.7.3]: https://github.com/ironpark/zigo/compare/0.7.2...0.7.3
 [0.7.2]: https://github.com/ironpark/zigo/compare/0.7.1...0.7.2
 [0.7.1]: https://github.com/ironpark/zigo/compare/0.7.0...0.7.1
 [0.7.0]: https://github.com/ironpark/zigo/compare/0.6.3...0.7.0
