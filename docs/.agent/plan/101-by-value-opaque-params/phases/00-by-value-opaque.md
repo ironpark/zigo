@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T05:10:13Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `fn f(self: Screen)` and `fn g(screen: Screen)` bind without wrappers and pass Go tests on both backends.
 > NEXT: none
