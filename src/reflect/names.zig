@@ -60,6 +60,84 @@ pub fn apply(
     if (has_errors) return error.EnrichmentFailed;
 }
 
+/// Coverage catalogs declarations that semantic reflection deliberately
+/// omits, including methods declared in `.zig` files imported by the root.
+/// Keep this traversal coverage-only: ordinary semantic enrichment retains
+/// its established source set and byte-for-byte output.
+pub fn applyCoverageImports(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    document: *semantic.Semantic,
+    source_root_path: ?[]const u8,
+    diagnostics: *std.Io.Writer,
+) !void {
+    const root_path = source_root_path orelse return;
+    const root_source = std.Io.Dir.cwd().readFileAlloc(io, root_path, allocator, .limited(8 * 1024 * 1024)) catch |err| {
+        try writeReadError(diagnostics, root_path, err);
+        return err;
+    };
+    var visited: std.ArrayList([]const u8) = .empty;
+    defer visited.deinit(allocator);
+    try visited.append(allocator, root_path);
+    const functions = try allocator.dupe(semantic.SemanticFn, document.functions);
+    const has_errors = try scanImportedSources(
+        allocator,
+        io,
+        root_source,
+        std.fs.path.dirname(root_path) orelse ".",
+        functions,
+        &visited,
+        diagnostics,
+    );
+    document.functions = functions;
+    if (has_errors) return error.EnrichmentFailed;
+}
+
+fn scanImportedSources(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    source: []const u8,
+    directory: []const u8,
+    functions: []semantic.SemanticFn,
+    visited: *std.ArrayList([]const u8),
+    diagnostics: *std.Io.Writer,
+) !bool {
+    var has_errors = false;
+    var cursor: usize = 0;
+    const marker = "@import(\"";
+    while (std.mem.indexOfPos(u8, source, cursor, marker)) |start| {
+        const value_start = start + marker.len;
+        const end = std.mem.indexOfScalarPos(u8, source, value_start, '"') orelse break;
+        cursor = end + 1;
+        const referenced = source[value_start..end];
+        if (!std.mem.endsWith(u8, referenced, ".zig")) continue;
+        const path = try std.fs.path.join(allocator, &.{ directory, referenced });
+        var already_seen = false;
+        for (visited.items) |candidate| if (std.mem.eql(u8, candidate, path)) {
+            already_seen = true;
+            break;
+        };
+        if (already_seen) continue;
+        try visited.append(allocator, path);
+        if (std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(8 * 1024 * 1024))) |imported| {
+            has_errors = try scanSourceWithDiagnostics(allocator, imported, functions, path, diagnostics) or has_errors;
+            has_errors = try scanImportedSources(
+                allocator,
+                io,
+                imported,
+                std.fs.path.dirname(path) orelse ".",
+                functions,
+                visited,
+                diagnostics,
+            ) or has_errors;
+        } else |err| {
+            try writeReadError(diagnostics, path, err);
+            has_errors = true;
+        }
+    }
+    return has_errors;
+}
+
 pub fn writeWarnings(writer: *std.Io.Writer, document: semantic.Semantic) !void {
     for (document.functions) |function| {
         var uses_fallback = false;

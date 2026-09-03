@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T04:06:26Z"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: The two reported functions show their real blockers and every offending parameter; writer-only functions report "not listed"; tests green.
 > NEXT: none

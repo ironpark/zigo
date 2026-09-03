@@ -979,10 +979,12 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     coverage.has_side_effects = true;
     coverage.addArgs(&.{ "coverage", options.name, options.prefix });
     coverage.addFileArg(options.bindings);
+    if (options.source_root) |source_root| coverage.addFileArg(source_root);
     if (options.coverage_json) |destination| {
         const coverage_json_run = b.addRunArtifact(reflector);
         coverage_json_run.addArgs(&.{ "coverage-json", options.name, options.prefix });
         coverage_json_run.addFileArg(options.bindings);
+        if (options.source_root) |source_root| coverage_json_run.addFileArg(source_root);
         const coverage_json = coverage_json_run.captureStdOut(.{ .basename = "coverage.json", .trim_whitespace = .none });
         const publish_coverage = b.addUpdateSourceFiles();
         publish_coverage.addCopyFileToSource(coverage_json, destination);

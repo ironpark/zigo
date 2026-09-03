@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-03T04:06:26Z"
 description: let wrappers declare which upstream declaration they cover, classify them in go-coverage, and fix the unregistered type list's names and false positives
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-03T03:14:22Z"
 ---
 > NEXT: Add `.covers` and the `wrapped` classification to go-coverage. ([Phase 0](phases/00-covers.md))
@@ -9,7 +10,7 @@ registered_at: "2026-09-03T03:14:22Z"
 
 - [x] [Phase 00: Wrapper coverage via `.covers`](phases/00-covers.md)
 - [x] [Phase 01: Unregistered type names and false positives](phases/01-type-names.md)
-- [ ] [Phase 02: Accurate signature reasons](phases/02-accurate-signature-reasons.md)
+- [x] [Phase 02: Accurate signature reasons](phases/02-accurate-signature-reasons.md)
 
 # Shared Verification
 

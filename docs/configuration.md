@@ -306,8 +306,10 @@ union도 `unregistered types`에 따로 표시합니다.
 zig build go-coverage
 ```
 
-unbound 이유는 기존 ZIGO signature 제약을 기준으로 가능한 만큼 설명합니다. metadata를 붙이면
-바인딩할 수 있는 함수는 `not listed`, 판별할 수 없는 경우는 `unsupported signature`입니다.
+unbound 이유는 기존 ZIGO signature 제약을 기준으로 가능한 만큼 설명합니다. 문제가 여러 개면
+모든 parameter와 return을 소스 이름으로 나열하고, plain struct는 첫 번째 문제 field까지
+표시합니다. metadata를 붙이면 바인딩할 수 있는 함수는 `not listed`, 판별할 수 없는 경우는
+`unsupported signature`입니다.
 CI artifact처럼 기계가 읽을 보고서도 필요하면 build option을 한 번 선언해 `coverage_json`에
 전달합니다. 경로는 build root 기준입니다.
 

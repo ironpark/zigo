@@ -24,6 +24,9 @@
 - `go-coverage`의 미등록 타입 목록이 generic instantiation 이름을 괄호 안에서 잘라 표시하고,
   translate-c 익명 struct나 flatten으로 문서에 등록된 value struct를 미등록으로 보고하던 문제를
   고쳤습니다.
+- `go-coverage`의 unbound 이유가 첫 번째 문제만 보고하고 stream writer/reader를 metadata 누락으로
+  잘못 분류하던 문제를 고쳤습니다. 이제 모든 문제 parameter와 return을 이름으로 나열하고 plain
+  struct 안의 첫 번째 미등록 field도 함께 표시합니다.
 
 ## [0.7.4] - 2026-09-03
 
