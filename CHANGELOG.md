@@ -4,7 +4,7 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
-## [Unreleased]
+## [0.7.0] - 2026-09-03
 
 ### Changed
 
@@ -14,6 +14,11 @@
   (기본 `lib`)에 설치됩니다. 다른 플랫폼과 같은 디렉터리에서 로더 기본 경로와 `#cgo` 플래그를
   계산하기 위한 변경이며, `zig-out/bin/<name>_zigo.dll`을 직접 참조하던 스크립트는
   `zig-out/lib/`로 옮겨야 합니다.
+- `zigo-gen report`가 다른 handle의 메서드인 생성자를 `(*Parent).NewChild`로 표시합니다.
+  이전에는 receiver가 있으면 생성자로 인식하지 못했습니다.
+- `abi-diff`가 두 `semantic.json`을 실제로 lowering한 C 시그니처로 비교합니다. lowering이
+  버리는 정수 폭·의미 힌트 같은 Go 표면은 semantic 문서로 계속 비교하며, 값 유니온 variant
+  추가처럼 C 시그니처가 실제로 늘어나는 변경은 `signature changed` 항목을 함께 보고합니다.
 
 ### Added
 
@@ -394,6 +399,7 @@
 - 생성된 Go doc이 식별자로 시작하지 않는 문장을 두 줄 형식으로 내고, `//` 그룹 주석과
   빈 줄 없이 이어진 선언의 doc 공유를 지원합니다. 모든 생성 패키지에 패키지 doc이 있습니다.
 
+[0.7.0]: https://github.com/ironpark/zigo/compare/0.6.3...0.7.0
 [0.6.3]: https://github.com/ironpark/zigo/compare/0.6.2...0.6.3
 [0.6.2]: https://github.com/ironpark/zigo/compare/0.6.1...0.6.2
 [0.6.1]: https://github.com/ironpark/zigo/compare/0.6.0...0.6.1
