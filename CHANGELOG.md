@@ -23,6 +23,11 @@
   `*atomic.Uint32|Int32|Uint64|Int64`로 노출합니다. purego는 주소를 명시적으로 pin하며,
   retained 주소와 지원하지 않는 atomic 폭은 `ZIGO043`으로 거부합니다.
 
+### Changed
+
+- `abi-diff`가 packed value struct의 변경을 분류합니다. backing 폭 안에서 필드를 뒤에 덧붙이는 것은
+  호환 변경이고, 필드 순서 변경·폭 변경·제거·이름 변경은 breaking입니다.
+
 ### Fixed
 
 - `go-coverage`의 미등록 타입 목록이 generic instantiation 이름을 괄호 안에서 잘라 표시하고,
