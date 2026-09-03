@@ -65,3 +65,24 @@ func (t *Terminal) SetCursorStyle(v CursorStyle) error {
 	}
 	return nil
 }
+
+// SetCursorX sets the Zig field Terminal.screen.cursor.x.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (t *Terminal) SetCursorX(v uint16) error {
+	if v > 4095 {
+		return &RangeError{Operation: "Terminal.SetCursorX", Parameter: "v", Type: "u12"}
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Terminal.SetCursorX receiver", t)
+	if err != nil {
+		return err
+	}
+	defer t.zigoRelease()
+	code := raw.TerminalSetCursorX(ptr, v)
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Terminal.SetCursorX", code), t)
+	}
+	return nil
+}

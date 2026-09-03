@@ -77,3 +77,15 @@ ZIGO_EXPORT int32_t zg_terminal_set_cursor_style(zg_terminal * self, uint8_t v) 
     zg_panic_active = 0;
     return result;
 }
+
+int32_t zg_terminal_set_cursor_x_impl(zg_terminal * self, uint16_t v);
+ZIGO_EXPORT int32_t zg_terminal_set_cursor_x(zg_terminal * self, uint16_t v) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return -2;
+    }
+    int32_t result = zg_terminal_set_cursor_x_impl(self, v);
+    zg_panic_active = 0;
+    return result;
+}

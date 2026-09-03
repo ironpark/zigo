@@ -26,6 +26,16 @@
       "receiver": "Terminal",
       "return": {"kind": "void"},
       "symbol": "ignored"
+    },
+    {
+      "field_access": {"path": "screen.cursor.x", "setter": true},
+      "name": "setCursorX",
+      "params": [
+        {"name": "v", "name_source": "sidecar", "type": {"bits": 12, "kind": "int", "signed": false}}
+      ],
+      "receiver": "Terminal",
+      "return": {"kind": "void"},
+      "symbol": "ignored"
     }
   ],
   "package": "fieldaccess",

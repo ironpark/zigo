@@ -24,6 +24,7 @@ typedef uint8_t zg_cursor_style;
 ZIGO_EXPORT int32_t zg_terminal_cursor_x(const zg_terminal * self, uint16_t * out_result);
 ZIGO_EXPORT int32_t zg_terminal_cursor_visible(const zg_terminal * self, uint8_t * out_result);
 ZIGO_EXPORT int32_t zg_terminal_set_cursor_style(zg_terminal * self, uint8_t v);
+ZIGO_EXPORT int32_t zg_terminal_set_cursor_x(zg_terminal * self, uint16_t v);
 ZIGO_EXPORT const char *zg_last_error_message(void);
 
 #endif // ZIGO_fieldaccess_H

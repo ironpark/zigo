@@ -32,3 +32,8 @@ func TerminalSetCursorStyle(self unsafe.Pointer, v uint8) int32 {
 	code := int32(C.zg_terminal_set_cursor_style((*C.zg_terminal)(self), C.uint8_t(v)))
 	return code
 }
+// TerminalSetCursorX calls the generated C ABI wrapper for zg_terminal_set_cursor_x.
+func TerminalSetCursorX(self unsafe.Pointer, v uint16) int32 {
+	code := int32(C.zg_terminal_set_cursor_x((*C.zg_terminal)(self), C.uint16_t(v)))
+	return code
+}

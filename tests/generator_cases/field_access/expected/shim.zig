@@ -20,3 +20,8 @@ export fn zg_terminal_set_cursor_style_impl(self: *target.Terminal, v: u8) i32 {
     self.screen.cursor.style = @enumFromInt(v);
     return 0;
 }
+export fn zg_terminal_set_cursor_x_impl(self: *target.Terminal, v: u16) i32 {
+    if (v > std.math.maxInt(u12)) @panic("zigo: argument `v` is out of range for u12");
+    self.screen.cursor.x = @intCast(v);
+    return 0;
+}

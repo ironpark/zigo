@@ -518,13 +518,8 @@ fn writeFieldAccess(
     const checked = function.origin.@"return" == .error_union;
     const trailer = if (checked) ";\n    return 0;\n}\n" else ";\n}\n";
     if (access.setter) {
-        const field_type = function.origin.params[0].type;
         try writer.print("self.{s} = ", .{access.path});
-        switch (field_type) {
-            .bool => try writer.writeAll("v != 0"),
-            .@"enum" => try writer.writeAll("@enumFromInt(v)"),
-            else => try writer.writeAll("v"),
-        }
+        try writeShimInboundValue(writer, "v", function.origin.params[0].type);
         try writer.writeAll(trailer);
         return;
     }
