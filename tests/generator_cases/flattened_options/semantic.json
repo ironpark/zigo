@@ -43,7 +43,7 @@
       ],
       "kind": "value_struct",
       "name": "Options",
-      "zig_path": "root.Options"
+      "zig_path": "root.Terminal.Options"
     }
   ],
   "zig_version": "0.16.0"

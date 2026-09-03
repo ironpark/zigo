@@ -4,6 +4,16 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Fixed
+
+- shim이 등록 타입을 항상 root 기준 `target.<이름>`으로 적던 문제를 고쳤습니다. 이제 reflection이
+  기록한 `zig_path`를 따라 `target.Terminal.Options`처럼 선언한 container를 거쳐 적으므로,
+  `Terminal.init(options: Terminal.Options)`를 `.flatten`으로 바인딩할 때 root에 같은 이름을
+  다시 내보낼 필요가 없습니다. flatten literal, 값 유니온 재구성, boxed 생성자, 시그니처의
+  handle·value struct 타입에 같은 규칙이 적용됩니다.
+
 ## [0.7.1] - 2026-09-03
 
 ### Fixed

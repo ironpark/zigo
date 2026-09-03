@@ -9,5 +9,5 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
 pub const panic = std.debug.FullPanic(panicHandler);
 
 export fn zg_configure_impl(enabled: u8, options_rows: u16, scale: f32, mode: u8, limit: ?*const u32, rows: u32) void {
-    target.configure(target.Options{ .enabled = enabled != 0, .rows = options_rows, .scale = scale, .mode = @enumFromInt(mode), .limit = if (limit) |zigo_limit| zigo_limit.* else null }, rows);
+    target.configure(target.Terminal.Options{ .enabled = enabled != 0, .rows = options_rows, .scale = scale, .mode = @enumFromInt(mode), .limit = if (limit) |zigo_limit| zigo_limit.* else null }, rows);
 }

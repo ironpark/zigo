@@ -284,10 +284,10 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
                 for (parameter.type.callback.params, 0..) |callback_parameter, index| {
                     if (index != 0) try writer.writeAll(", ");
                     try writer.print("p{d}: ", .{index});
-                    try writeZigType(writer, semanticScalar(program, callback_parameter));
+                    try writeZigType(writer, program, semanticScalar(program, callback_parameter));
                 }
                 try writer.writeAll(") callconv(.c) ");
-                try writeZigType(writer, semanticScalar(program, parameter.type.callback.@"return".*));
+                try writeZigType(writer, program, semanticScalar(program, parameter.type.callback.@"return".*));
                 try writer.writeAll(";\n");
             }
         }
@@ -320,10 +320,10 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         for (function.params, 0..) |parameter, index| {
             if (index != 0) try writer.writeAll(", ");
             try writer.print("{s}: ", .{parameter.name});
-            try writeZigType(writer, parameter.scalar);
+            try writeZigType(writer, program, parameter.scalar);
         }
         try writer.writeAll(") ");
-        try writeZigType(writer, function.ret);
+        try writeZigType(writer, program, function.ret);
         try writer.writeAll(" {\n");
         try writeCallbackBitBindings(allocator, writer, program, function);
         try writeShimStreamSetups(allocator, writer, program, function);
@@ -549,7 +549,7 @@ fn renderValueStructShim(writer: *std.Io.Writer, program: abi.Program) !void {
         try writer.print("\nconst {s} = extern struct {{\n", .{record.c_name});
         for (record.fields) |field| {
             try writer.print("    {s}: ", .{field.name});
-            try writeZigType(writer, field.scalar);
+            try writeZigType(writer, program, field.scalar);
             try writer.writeAll(",\n");
         }
         try writer.writeAll("};\n");
@@ -626,7 +626,7 @@ fn renderTaggedUnionSnapshotShim(writer: *std.Io.Writer, program: abi.Program) !
             if (field.kind == .padding) {
                 try writer.print("[{d}]u8", .{field.bytes});
             } else {
-                try writeZigType(writer, field.scalar);
+                try writeZigType(writer, program, field.scalar);
             }
             try writer.writeAll(",\n");
         }
@@ -639,10 +639,10 @@ fn renderTaggedUnionSnapshotShim(writer: *std.Io.Writer, program: abi.Program) !
         for (snapshot.params, 0..) |parameter, index| {
             if (index != 0) try writer.writeAll(", ");
             try writer.print("{s}: ", .{parameter.name});
-            try writeZigType(writer, parameter.scalar);
+            try writeZigType(writer, program, parameter.scalar);
         }
         try writer.writeAll(") ");
-        try writeZigType(writer, snapshot.ret);
+        try writeZigType(writer, program, snapshot.ret);
         try writer.print(
             " {{\n    out_snapshot.* = std.mem.zeroes({s});\n    out_snapshot.tag = @intFromEnum(std.meta.activeTag(self.*));\n    switch (self.*) {{\n",
             .{snapshot.type_name},
@@ -680,10 +680,10 @@ fn renderTaggedUnionShim(writer: *std.Io.Writer, program: abi.Program) !void {
         for (projection.params, 0..) |parameter, index| {
             if (index != 0) try writer.writeAll(", ");
             try writer.print("{s}: ", .{parameter.name});
-            try writeZigType(writer, parameter.scalar);
+            try writeZigType(writer, program, parameter.scalar);
         }
         try writer.writeAll(") ");
-        try writeZigType(writer, projection.ret);
+        try writeZigType(writer, program, projection.ret);
         switch (projection.kind) {
             .tag => try writer.writeAll(" {\n    out_value.* = @intFromEnum(std.meta.activeTag(self.*));\n    return 1;\n}\n"),
             .payload => {
@@ -941,7 +941,8 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
             continue;
         }
         if (parameter.flatten) |fields| {
-            try writer.print("target.{s}{{", .{parameter.type.value_struct.ref});
+            try writeTargetType(writer, program, parameter.type.value_struct.ref);
+            try writer.writeByte('{');
             for (fields, 0..) |field, field_index| {
                 const abi_parameter = function.flattenedParam(index, field_index);
                 if (field_index != 0) try writer.writeByte(',');
@@ -1042,10 +1043,12 @@ fn writeTaggedUnionValueArgument(
         try writer.print("        {d} => ", .{field.value.?});
         const payload = field.type.?;
         if (payload == .void) {
-            try writer.print("target.{s}.{s},\n", .{ declaration.name, field.name });
+            try writeTargetType(writer, program, declaration.name);
+            try writer.print(".{s},\n", .{field.name});
             continue;
         }
-        try writer.print("target.{s}{{ .{s} = ", .{ declaration.name, field.name });
+        try writeTargetType(writer, program, declaration.name);
+        try writer.print("{{ .{s} = ", .{field.name});
         const slot_name = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ parameter_name, field.name });
         defer allocator.free(slot_name);
         try writeTaggedUnionPayloadArgument(allocator, writer, program, function, source_index, payload, slot_name);
@@ -1075,7 +1078,8 @@ fn writeTaggedUnionPayloadArgument(
             });
             return;
         }
-        try writer.print("target.{s}{{", .{declaration.name});
+        try writeTargetType(writer, program, declaration.name);
+        try writer.writeByte('{');
         for (declaration.fields, 0..) |field, index| {
             if (index != 0) try writer.writeAll(",");
             const child_name = try std.fmt.allocPrint(allocator, "{s}_{s}", .{ slot_name, field.name });
@@ -1134,16 +1138,16 @@ fn renderCallbackBitThunks(allocator: std.mem.Allocator, writer: *std.Io.Writer,
             defer allocator.free(thunk);
 
             try writer.print("var {s}: std.atomic.Value(?", .{binding});
-            try writeZigType(writer, wire);
+            try writeZigType(writer, program, wire);
             try writer.writeAll(") = .init(null);\n");
             try writer.print("fn {s}(", .{thunk});
             for (callback.params, 0..) |callback_parameter, index| {
                 if (index != 0) try writer.writeAll(", ");
                 try writer.print("p{d}: ", .{index});
-                try writeZigType(writer, semanticScalar(program, callback_parameter));
+                try writeZigType(writer, program, semanticScalar(program, callback_parameter));
             }
             try writer.writeAll(") callconv(.c) ");
-            try writeZigType(writer, semanticScalar(program, callback.@"return".*));
+            try writeZigType(writer, program, semanticScalar(program, callback.@"return".*));
             try writer.print(" {{\n    const dispatch = {s}.load(.acquire) orelse @panic(\"zigo: callback invoked before it was installed\");\n    ", .{binding});
             if (callback.@"return".* != .void) try writer.writeAll("return ");
             try writer.writeAll("dispatch(");
@@ -1316,7 +1320,7 @@ fn writeBoxedConstructor(
     const type_name = function.origin.@"return".error_union.payload.opaque_ptr.ref;
     // The same `target.<name>` spelling the generated signatures already use
     // for a registered handle.
-    const zig_type = try std.fmt.allocPrint(allocator, "target.{s}", .{type_name});
+    const zig_type = try targetTypeSpellingAlloc(allocator, program, type_name);
     defer allocator.free(zig_type);
     const source = program.allocator.?;
     try writer.print(
@@ -1512,6 +1516,33 @@ fn goParamNamesForAlloc(allocator: std.mem.Allocator, params: []const semantic.P
     defer allocator.free(zig_names);
     for (params, 0..) |parameter, index| zig_names[index] = parameter.name;
     return naming.goParamNamesAlloc(allocator, zig_names);
+}
+
+/// The Zig spelling of a registered type inside the shim, which imports the
+/// user's root module as `target`. A type declared inside a container
+/// (`root.Terminal.Options`) is only reachable through that container, so the
+/// reflected `zig_path` decides the spelling; a path the reflector did not
+/// record under `root.`, or one carrying a generic instantiation, keeps the
+/// bare registered name as before.
+fn targetTypeSpellingAlloc(allocator: std.mem.Allocator, program: abi.Program, name: []const u8) ![]u8 {
+    for (program.types) |declaration| {
+        if (!std.mem.eql(u8, declaration.name, name)) continue;
+        const path = declaration.zig_path orelse break;
+        if (std.mem.startsWith(u8, path, "root.") and std.mem.indexOfAny(u8, path, "(#") == null)
+            return std.fmt.allocPrint(allocator, "target.{s}", .{path["root.".len..]});
+        break;
+    }
+    return std.fmt.allocPrint(allocator, "target.{s}", .{name});
+}
+
+fn writeTargetType(writer: *std.Io.Writer, program: abi.Program, name: []const u8) !void {
+    var buffer: [512]u8 = undefined;
+    var fba = std.heap.FixedBufferAllocator.init(&buffer);
+    const spelling = targetTypeSpellingAlloc(fba.allocator(), program, name) catch {
+        try writer.print("target.{s}", .{name});
+        return;
+    };
+    try writer.writeAll(spelling);
 }
 
 fn flattenedGoNameAlloc(allocator: std.mem.Allocator, abi_name: []const u8) ![]u8 {
@@ -7541,7 +7572,7 @@ fn isValueOnlyTaggedUnion(program: abi.Program, name: []const u8) bool {
     return by_value;
 }
 
-fn writeZigType(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
+fn writeZigType(writer: *std.Io.Writer, program: abi.Program, value: abi.AbiScalar) !void {
     switch (value) {
         .void => try writer.writeAll("void"),
         .bool_u8 => try writer.writeAll("u8"),
@@ -7550,9 +7581,9 @@ fn writeZigType(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
         .signed_int => |bits| try writer.print("i{d}", .{bits}),
         .unsigned_int => |bits| try writer.print("u{d}", .{bits}),
         .float => |bits| try writer.print("f{d}", .{bits}),
-        .@"opaque" => |handle| try writer.print("target.{s}", .{handle.name}),
+        .@"opaque" => |handle| try writeTargetType(writer, program, handle.name),
         .snapshot => |name| try writer.writeAll(name),
-        .value_struct => |record| try writer.print("target.{s}", .{record.name}),
+        .value_struct => |record| try writeTargetType(writer, program, record.name),
         .pointer => |pointer| {
             // A `[*c]` pointer is already nullable and has no `?` spelling:
             // `?[*c]T` is rejected outright in a `callconv(.c)` signature.
@@ -7560,16 +7591,16 @@ fn writeZigType(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
             if (pointer.is_optional and (!pointer.is_many or pointer.is_c_string)) try writer.writeByte('?');
             try writer.writeAll(if (pointer.is_c_string) "[*:0]" else if (pointer.is_many) "[*c]" else "*");
             if (pointer.is_const) try writer.writeAll("const ");
-            try writeZigType(writer, pointer.child.*);
+            try writeZigType(writer, program, pointer.child.*);
         },
         .callback => |callback| {
             try writer.writeAll("*const fn (");
             for (callback.params, 0..) |parameter, index| {
                 if (index != 0) try writer.writeAll(", ");
-                try writeZigType(writer, parameter);
+                try writeZigType(writer, program, parameter);
             }
             try writer.writeAll(") callconv(.c) ");
-            try writeZigType(writer, callback.ret.*);
+            try writeZigType(writer, program, callback.ret.*);
         },
     }
 }
