@@ -239,8 +239,10 @@ plain struct 파라미터에서 일부 scalar field만 Go 인자로 받고 싶�
 허용되는 leaf는 bool, 정수, 실수, 등록 enum과 그 optional입니다. optional scalar는 일반
 optional 파라미터처럼 Go에서 `*T`이며 `nil`이 Zig의 `null`입니다. nested struct, slice,
 string은 flatten할 수 없습니다. 목록에 없는 field는 모두 Zig default를 가져야 하며, 그렇지
-않으면 reflection이 그 field 이름과 함께 `ZIGO040`을 냅니다. 이 기능은 생성자뿐 아니라 모든
-함수 파라미터에 적용됩니다.
+않으면 reflection이 그 field 이름과 함께 `ZIGO040`을 냅니다. 목록에 없는 field는 default만
+확인하고 타입은 걷지 않으므로, C로 표현할 수 없는 nested struct나 optional struct가 섞인
+options struct도 선택한 field만으로 바인딩됩니다. 이 기능은 생성자뿐 아니라 모든 함수
+파라미터에 적용됩니다.
 
 ### 콜백 타입 이름
 

@@ -538,6 +538,11 @@ const TypeChange = enum { equal, appended, snapshot_appended, access_changed, br
 /// struct, so the same append changes that struct's size and layout.
 fn classifyTypeChange(lhs: semantic.TypeDecl, rhs: semantic.TypeDecl) TypeChange {
     if (lhs.kind != rhs.kind or lhs.layout != rhs.layout or lhs.exhaustive != rhs.exhaustive or lhs.open != rhs.open) return .breaking;
+    // A plain (auto-layout) struct never crosses C as a whole: it is either
+    // flattened, where the selected fields ride on the function signature and
+    // are compared there, or rejected. Its recorded field list is only the
+    // selection reflection happened to walk, so it carries no ABI of its own.
+    if (lhs.kind == .value_struct and lhs.layout == null) return .equal;
     if (!optionalTypeEqual(lhs.backing_type, rhs.backing_type)) return .breaking;
     if (!optionalStringsEqual(lhs.omitted_variants, rhs.omitted_variants)) return .breaking;
     if (lhs.accessStrategy() != rhs.accessStrategy()) return .access_changed;

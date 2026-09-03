@@ -4,6 +4,17 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Fixed
+
+- `param_meta.<파라미터>.flatten`이 struct 전체를 reflection하던 문제를 고쳤습니다. 이제 선택한
+  field만 걷고 나머지는 Zig default 유무만 확인하므로, `?DynamicRGB`처럼 C로 표현할 수 없는
+  member가 섞인 options struct도 바인딩됩니다. flatten된 plain struct의 선언은 선택한 field만
+  담으며, `abi-diff`는 auto-layout struct 선언의 field 목록을 비교하지 않습니다.
+- 0.7.0 태그의 CI를 Linux에서 깨뜨린 abi-diff 단위 테스트 픽스처(스택을 벗어난 포인터)를
+  고쳤습니다. 0.7.0은 GitHub 릴리스가 만들어지지 않았으므로 이 버전을 사용하십시오.
+
 ## [0.7.0] - 2026-09-03
 
 ### Changed

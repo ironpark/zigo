@@ -2388,19 +2388,6 @@
             "kind": "int",
             "signed": false
           }
-        },
-        {
-          "name": "title",
-          "type": {
-            "const": true,
-            "element": {
-              "bits": 8,
-              "is_usize": false,
-              "kind": "int",
-              "signed": false
-            },
-            "kind": "slice"
-          }
         }
       ],
       "kind": "value_struct",

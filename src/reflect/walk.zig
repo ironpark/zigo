@@ -1026,12 +1026,41 @@ fn appendFunction(
         // An injected parameter never reaches C, so it is not walked as a
         // type: `std.mem.Allocator` is a struct with a vtable pointer, and
         // reflecting it would fail long before validation could explain why.
+        // A flattened struct is reflected through its selected fields only:
+        // the whole point of `.flatten` is an options struct with members C
+        // cannot carry, so walking every field would reject exactly the
+        // structs it exists for. Unlisted fields are still required to have
+        // a default, which `reflectFlattenedFields` checks.
+        const flatten_names: ?[]const []const u8 = comptime blk: {
+            if (!named_by_sidecar or !@hasField(@TypeOf(metadata), "param_meta")) break :blk null;
+            if (!@hasField(@TypeOf(metadata.param_meta), parameter_name)) break :blk null;
+            const value = @field(metadata.param_meta, parameter_name);
+            if (!@hasField(@TypeOf(value), "flatten")) break :blk null;
+            var names: [value.flatten.len][]const u8 = undefined;
+            for (value.flatten, 0..) |field_name, i| names[i] = field_name;
+            const frozen = names;
+            break :blk &frozen;
+        };
+        const flattened_fields: ?[]const semantic.FlattenedField = if (flatten_names) |names| try reflectFlattenedFields(
+            allocator,
+            declaration,
+            param.type.?,
+            types,
+            names,
+            owner_label ++ function_label,
+            parameter_label,
+        ) else null;
         const parameter_type = if (injection != null or names_cancel) semantic.TypeNode{
             .void = {},
-        } else try typeNode(allocator, declaration, param.type.?, types, comptime std.fmt.comptimePrint(
-            "`{s}{s}` parameter `{s}`",
-            .{ owner_label, function_label, parameter_label },
-        ));
+        } else if (comptime flatten_names != null)
+            // Decided at comptime: the plain walk below must not even be
+            // analysed for a flattened struct, or its `@compileError` fires.
+            try flattenedStructNode(allocator, param.type.?, types, flattened_fields.?)
+        else
+            try typeNode(allocator, declaration, param.type.?, types, comptime std.fmt.comptimePrint(
+                "`{s}{s}` parameter `{s}`",
+                .{ owner_label, function_label, parameter_label },
+            ));
         var reflected: semantic.Parameter = .{
             .cancel = if (names_cancel) true else null,
             .injected = injection,
@@ -1051,15 +1080,7 @@ fn appendFunction(
                 if (@hasField(@TypeOf(value), "go_error")) reflected.go_error = value.go_error;
                 if (@hasField(@TypeOf(value), "reentrancy")) reflected.reentrancy = value.reentrancy;
                 if (@hasField(@TypeOf(value), "thread")) reflected.thread = value.thread;
-                if (@hasField(@TypeOf(value), "flatten")) reflected.flatten = try reflectFlattenedFields(
-                    allocator,
-                    declaration,
-                    param.type.?,
-                    types,
-                    value.flatten,
-                    owner_label ++ function_label,
-                    parameter_label,
-                );
+                if (@hasField(@TypeOf(value), "flatten")) reflected.flatten = flattened_fields;
             }
         }
         // A cancel parameter whose spelling did not match keeps the `void`
@@ -1193,6 +1214,36 @@ fn reflectFlattenedFields(
             return flattenIssue(allocator, "`{s}` parameter `{s}` leaves required field `{s}` unlisted", .{ function_label, parameter_label, field.name });
     }
     return result;
+}
+
+/// The declaration a flattened struct parameter refers to. Only the selected
+/// fields are recorded, so a member C cannot represent never gets walked; the
+/// parameter keeps `.value_struct` so validation can tell a struct from a
+/// misapplied `.flatten`.
+fn flattenedStructNode(
+    allocator: std.mem.Allocator,
+    comptime T: type,
+    types: *std.ArrayList(semantic.TypeDecl),
+    fields: []const semantic.FlattenedField,
+) !semantic.TypeNode {
+    const name = shortTypeName(@typeName(T));
+    for (types.items) |type_declaration| {
+        if (std.mem.eql(u8, type_declaration.zig_path orelse "", @typeName(T))) return .{ .value_struct = .{ .ref = type_declaration.name } };
+    }
+    const declared = try allocator.alloc(semantic.TypeField, fields.len);
+    for (fields, 0..) |field, index| declared[index] = .{ .name = field.name, .type = field.type };
+    try types.append(allocator, .{
+        .fields = declared,
+        .kind = .value_struct,
+        .layout = switch (@typeInfo(T).@"struct".layout) {
+            .@"extern" => .@"extern",
+            .@"packed" => .@"packed",
+            .auto => null,
+        },
+        .name = name,
+        .zig_path = @typeName(T),
+    });
+    return .{ .value_struct = .{ .ref = name } };
 }
 
 fn flattenIssue(allocator: std.mem.Allocator, comptime detail: []const u8, args: anytype) error{ FlattenedParameter, OutOfMemory } {
@@ -3359,6 +3410,60 @@ test "a value-returning init is boxed into a caller-owned handle" {
     try std.testing.expect(init_fn.params[1].flatten.?[5].type == .optional);
     try std.testing.expectEqual(semantic.Boxed.destroy, document.functions[1].boxed.?);
     try std.testing.expectEqualStrings("Terminal", document.constructors[0].type);
+}
+
+test "flattened struct parameters skip unselected fields that C cannot carry" {
+    const Fixture = struct {
+        const RGB = struct { r: u8, g: u8, b: u8 };
+        const Colors = struct {
+            foreground: ?RGB = null,
+            palette: [4]RGB = undefined,
+        };
+        const Options = struct {
+            cols: u16,
+            rows: u16 = 24,
+            colors: Colors = .{},
+        };
+        const Terminal = struct {
+            cols: u16,
+
+            pub fn init(gpa: std.mem.Allocator, options: Options) error{Invalid}!Terminal {
+                _ = gpa;
+                return .{ .cols = options.cols };
+            }
+
+            pub fn deinit(self: *Terminal) void {
+                _ = self;
+            }
+        };
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .allocator = .smp_allocator,
+        .root = Fixture,
+        .types = .{
+            .{ .type = Fixture.Terminal, .repr = .@"opaque" },
+        },
+        .functions = .{
+            .{
+                .path = "Terminal.init",
+                .params = .{"options"},
+                .param_meta = .{ .options = .{ .flatten = .{ "cols", "rows" } } },
+            },
+            .{ .path = "Terminal.deinit" },
+        },
+    }, "demo", "zg");
+    const init_fn = document.functions[0];
+    try std.testing.expectEqualStrings("init", init_fn.name);
+    try std.testing.expectEqual(@as(usize, 2), init_fn.params[1].flatten.?.len);
+    try std.testing.expect(init_fn.params[1].type == .value_struct);
+    // The declaration carries only the selected fields; `colors` is never walked.
+    for (document.types) |declaration| {
+        if (declaration.kind != .value_struct) continue;
+        try std.testing.expectEqualStrings("Options", declaration.name);
+        try std.testing.expectEqual(@as(usize, 2), declaration.fields.len);
+    }
 }
 
 test "flattened struct parameters reject unlisted required fields" {
