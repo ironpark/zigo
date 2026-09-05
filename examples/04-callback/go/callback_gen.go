@@ -26,8 +26,10 @@ func (c *CallbackContext) RunCount() (uint32, error) {
 	}
 	defer c.zigoRelease()
 	result, code := zigoRawCallbackContextRunCount(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("CallbackContext.RunCount", c.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("CallbackContext.RunCount", c.zigoCallbackHandle(slot))
+		}
 	}
 	for slot := range 1 {
 		if err := zigoCallbackError("CallbackContext.RunCount", "callback", c.zigoCallbackHandle(slot)); err != nil {
@@ -55,8 +57,10 @@ func (c *CallbackContext) SetRunCount(v uint32) error {
 	}
 	defer c.zigoRelease()
 	code := zigoRawCallbackContextSetRunCount(ptr, v)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("CallbackContext.SetRunCount", c.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("CallbackContext.SetRunCount", c.zigoCallbackHandle(slot))
+		}
 	}
 	for slot := range 1 {
 		if err := zigoCallbackError("CallbackContext.SetRunCount", "callback", c.zigoCallbackHandle(slot)); err != nil {
@@ -177,7 +181,9 @@ func NewCallbackContext(callback Observer) (*CallbackContext, error) {
 	defer runtime.UnlockOSThread()
 	callbackHandle := newObserverHandle(callback)
 	result, code := zigoRawCallbackContextCreate(uintptr(callbackHandle))
-	zigoRethrowCallbackPanic("NewCallbackContext", callbackHandle)
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("NewCallbackContext", callbackHandle)
+	}
 	if err := zigoCallbackError("NewCallbackContext", "callback", callbackHandle); err != nil {
 		deleteCallbackHandle(callbackHandle)
 		return nil, err
@@ -203,8 +209,10 @@ func (c *CallbackContext) Run(value int32) (int32, error) {
 	}
 	defer c.zigoRelease()
 	result, code := zigoRawCallbackContextRun(ptr, value)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("CallbackContext.Run", c.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("CallbackContext.Run", c.zigoCallbackHandle(slot))
+		}
 	}
 	for slot := range 1 {
 		if err := zigoCallbackError("CallbackContext.Run", "callback", c.zigoCallbackHandle(slot)); err != nil {
@@ -253,7 +261,9 @@ func Apply(value int32, callback Observer) (int32, error) {
 	callbackHandle := newObserverHandle(callback)
 	defer deleteCallbackHandle(callbackHandle)
 	result := zigoRawApply(value, uintptr(callbackHandle))
-	zigoRethrowCallbackPanic("Apply", callbackHandle)
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("Apply", callbackHandle)
+	}
 	if err := zigoCallbackError("Apply", "callback", callbackHandle); err != nil {
 		return 0, err
 	}
@@ -291,7 +301,9 @@ func ApplyUntilCancelled(ctx context.Context, limit uint32, callback Observer) (
 	setCallbackCancel(callbackHandle, &zigoCancel)
 	defer setCallbackCancel(callbackHandle, nil)
 	result, code := zigoRawApplyUntilCancelled(limit, uintptr(callbackHandle), &zigoCancel)
-	zigoRethrowCallbackPanic("ApplyUntilCancelled", callbackHandle)
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("ApplyUntilCancelled", callbackHandle)
+	}
 	if err := zigoCallbackError("ApplyUntilCancelled", "callback", callbackHandle); err != nil {
 		return 0, err
 	}
@@ -311,5 +323,7 @@ func Notify(value int32, callback VoidObserver) {
 	callbackHandle := newVoidObserverHandle(callback)
 	defer deleteCallbackHandle(callbackHandle)
 	zigoRawNotify(value, uintptr(callbackHandle))
-	zigoRethrowCallbackPanic("Notify", callbackHandle)
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("Notify", callbackHandle)
+	}
 }

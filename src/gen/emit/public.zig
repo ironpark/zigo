@@ -1018,25 +1018,29 @@ pub fn renderPublicRuntimeBody(allocator: std.mem.Allocator, writer: *std.Io.Wri
 /// After the native call: rethrow any panic a reachable callback recorded.
 /// The receiver is pinned for the call, and each retained slot is read under
 /// its mutex so a concurrent re-registration cannot race the scan.
+/// The sweep runs only when some callback recorded a panic: one atomic load
+/// on the fast path instead of a lock and a handle lookup per slot.
 fn renderCallbackRethrows(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, function: semantic.SemanticFn, operation: []const u8) !void {
     const go_names = try common.goParamNamesForAlloc(allocator, function.params);
     defer naming.freeParamNames(allocator, go_names);
+    try writer.writeAll("\tif zigoCallbackPanicPending() {\n");
     for (function.params, 0..) |parameter, parameter_index| {
         if (parameter.type != .callback and parameter.type != .io_stream) continue;
-        try writer.print("\tzigoRethrowCallbackPanic(\"{s}\", {s}Handle)\n", .{ operation, go_names[parameter_index] });
+        try writer.print("\t\tzigoRethrowCallbackPanic(\"{s}\", {s}Handle)\n", .{ operation, go_names[parameter_index] });
     }
     if (function.receiver) |receiver| {
         if (common.typeOwnsCallbacks(program, receiver)) {
             const receiver_name = try common.receiverVariableAlloc(allocator, receiver, go_names);
             defer allocator.free(receiver_name);
-            try writer.print("\tfor slot := range {d} {{\n\t\tzigoRethrowCallbackPanic(\"{s}\", {s}.zigoCallbackHandle(slot))\n\t}}\n", .{ program.retainedCallbackSlotCount(receiver), operation, receiver_name });
+            try writer.print("\t\tfor slot := range {d} {{\n\t\t\tzigoRethrowCallbackPanic(\"{s}\", {s}.zigoCallbackHandle(slot))\n\t\t}}\n", .{ program.retainedCallbackSlotCount(receiver), operation, receiver_name });
         }
     }
     for (function.params, 0..) |parameter, parameter_index| switch (parameter.type) {
         .opaque_ptr => |pointer| if (common.typeOwnsCallbacks(program, pointer.ref))
-            try writer.print("\tif {0s} != nil {{\n\t\tfor slot := range {2d} {{\n\t\t\tzigoRethrowCallbackPanic(\"{1s}\", {0s}.zigoCallbackHandle(slot))\n\t\t}}\n\t}}\n", .{ go_names[parameter_index], operation, program.retainedCallbackSlotCount(pointer.ref) }),
+            try writer.print("\t\tif {0s} != nil {{\n\t\t\tfor slot := range {2d} {{\n\t\t\t\tzigoRethrowCallbackPanic(\"{1s}\", {0s}.zigoCallbackHandle(slot))\n\t\t\t}}\n\t\t}}\n", .{ go_names[parameter_index], operation, program.retainedCallbackSlotCount(pointer.ref) }),
         else => {},
     };
+    try writer.writeAll("\t}\n");
 }
 
 /// A nil `io.Writer` or `io.Reader` is refused before anything native runs,

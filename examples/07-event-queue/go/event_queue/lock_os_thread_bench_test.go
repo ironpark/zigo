@@ -18,8 +18,10 @@ func (e *EventQueue) enqueueUnlocked(id uint64, value int32) error {
 	}
 	defer e.zigoRelease()
 	code := raw.EventQueueEnqueue(ptr, id, value)
-	for _, handle := range e.callbackHandles {
-		zigoRethrowCallbackPanic("EventQueue.Enqueue", handle)
+	if zigoCallbackPanicPending() {
+		for _, handle := range e.callbackHandles {
+			zigoRethrowCallbackPanic("EventQueue.Enqueue", handle)
+		}
 	}
 	if code != 0 {
 		return zigoPoisonAfterPanic(errorForCode("EventQueue.Enqueue", code), e)

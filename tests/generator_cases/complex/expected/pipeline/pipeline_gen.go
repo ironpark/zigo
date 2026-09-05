@@ -117,7 +117,9 @@ func NewPipeline(name string, mode Mode, callback PipelineCallback) (*Pipeline, 
 	defer runtime.UnlockOSThread()
 	callbackHandle := newPipelineCallbackHandle(callback)
 	result, code := raw.PipelineCreate([]byte(name), uint32(mode), uintptr(callbackHandle))
-	zigoRethrowCallbackPanic("NewPipeline", callbackHandle)
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("NewPipeline", callbackHandle)
+	}
 	if code != 0 {
 		deleteCallbackHandle(callbackHandle)
 		return nil, errorForCode("NewPipeline", code)
@@ -138,8 +140,10 @@ func (p *Pipeline) Process(values []int32) (int64, error) {
 	}
 	defer p.zigoRelease()
 	result, code := raw.PipelineProcess(ptr, values)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("Pipeline.Process", p.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("Pipeline.Process", p.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("Pipeline.Process", code), p)
@@ -160,8 +164,10 @@ func (p *Pipeline) Name() (string, error) {
 	}
 	defer p.zigoRelease()
 	result, code := raw.PipelineName(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("Pipeline.Name", p.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("Pipeline.Name", p.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return "", zigoPoisonAfterPanic(errorForCode("Pipeline.Name", code), p)
@@ -216,8 +222,10 @@ func (p *Pipeline) Mode() (Mode, error) {
 	}
 	defer p.zigoRelease()
 	result, code := raw.PipelineMode(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("Pipeline.Mode", p.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("Pipeline.Mode", p.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("Pipeline.Mode", code), p)
@@ -238,8 +246,10 @@ func (p *Pipeline) SetEnabled(enabled bool) (bool, error) {
 	}
 	defer p.zigoRelease()
 	result, code := raw.PipelineSetEnabled(ptr, boolToUint8(enabled))
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("Pipeline.SetEnabled", p.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("Pipeline.SetEnabled", p.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return false, zigoPoisonAfterPanic(errorForCode("Pipeline.SetEnabled", code), p)
@@ -260,8 +270,10 @@ func (p *Pipeline) Processed() (uint, error) {
 	}
 	defer p.zigoRelease()
 	result, code := raw.PipelineProcessed(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("Pipeline.Processed", p.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("Pipeline.Processed", p.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("Pipeline.Processed", code), p)
@@ -282,8 +294,10 @@ func (p *Pipeline) Total() (int64, error) {
 	}
 	defer p.zigoRelease()
 	result, code := raw.PipelineTotal(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("Pipeline.Total", p.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("Pipeline.Total", p.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("Pipeline.Total", code), p)

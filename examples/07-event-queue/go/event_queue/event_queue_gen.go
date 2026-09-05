@@ -29,7 +29,9 @@ func NewEventQueue(name string, capacity uint, policy Policy, observer EventQueu
 	defer runtime.UnlockOSThread()
 	observerHandle := newEventQueueCreateObserverHandle(observer)
 	result, code := raw.EventQueueCreate([]byte(name), capacity, uint32(policy), uintptr(observerHandle))
-	zigoRethrowCallbackPanic("NewEventQueue", observerHandle)
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("NewEventQueue", observerHandle)
+	}
 	if code != 0 {
 		deleteCallbackHandle(observerHandle)
 		return nil, errorForCode("NewEventQueue", code)
@@ -60,9 +62,11 @@ func (e *EventQueue) Clone(observer EventQueueCloneObserver) (*EventQueue, error
 	defer e.zigoRelease()
 	observerHandle := newEventQueueCloneObserverHandle(observer)
 	result, code := raw.EventQueueClone(ptr, uintptr(observerHandle))
-	zigoRethrowCallbackPanic("EventQueue.Clone", observerHandle)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.Clone", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("EventQueue.Clone", observerHandle)
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.Clone", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		deleteCallbackHandle(observerHandle)
@@ -98,8 +102,10 @@ func (e *EventQueue) NewStream() (*Stream, error) {
 		}
 	}()
 	result, code := raw.EventQueueNewStream(ptr)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.NewStream", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.NewStream", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.NewStream", code), e)
@@ -383,8 +389,10 @@ func (e *EventQueue) Enqueue(id uint64, value int32) error {
 	}
 	defer e.zigoRelease()
 	code := raw.EventQueueEnqueue(ptr, id, value)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.Enqueue", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.Enqueue", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return zigoPoisonAfterPanic(errorForCode("EventQueue.Enqueue", code), e)
@@ -417,12 +425,14 @@ func (e *EventQueue) MergeFrom(source *EventQueue) (uint, error) {
 	}
 	defer lifecycle.Release(source)
 	result, code := raw.EventQueueMergeFrom(ptr, sourcePtr)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.MergeFrom", e.zigoCallbackHandle(slot))
-	}
-	if source != nil {
+	if zigoCallbackPanicPending() {
 		for slot := range 3 {
-			zigoRethrowCallbackPanic("EventQueue.MergeFrom", source.zigoCallbackHandle(slot))
+			zigoRethrowCallbackPanic("EventQueue.MergeFrom", e.zigoCallbackHandle(slot))
+		}
+		if source != nil {
+			for slot := range 3 {
+				zigoRethrowCallbackPanic("EventQueue.MergeFrom", source.zigoCallbackHandle(slot))
+			}
 		}
 	}
 	if code != 0 {
@@ -447,8 +457,10 @@ func (e *EventQueue) Process(limit uint) (uint, error) {
 	}
 	defer e.zigoRelease()
 	result, code := raw.EventQueueProcess(ptr, limit)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.Process", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.Process", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.Process", code), e)
@@ -479,9 +491,11 @@ func (e *EventQueue) SetObserver(observer EventQueueSetObserverObserver) error {
 		}
 	}()
 	code := raw.EventQueueSetObserver(ptr, uintptr(observerHandle))
-	zigoRethrowCallbackPanic("EventQueue.SetObserver", observerHandle)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.SetObserver", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("EventQueue.SetObserver", observerHandle)
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.SetObserver", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return zigoPoisonAfterPanic(errorForCode("EventQueue.SetObserver", code), e)
@@ -510,8 +524,10 @@ func (e *EventQueue) Name() (string, error) {
 	}
 	defer e.zigoRelease()
 	result, code := raw.EventQueueName(ptr)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.Name", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.Name", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return "", zigoPoisonAfterPanic(errorForCode("EventQueue.Name", code), e)
@@ -537,8 +553,10 @@ func (e *EventQueue) SampleValues() ([]float32, error) {
 	}
 	defer e.zigoRelease()
 	result, code := raw.EventQueueSampleValues(ptr)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.SampleValues", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.SampleValues", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.SampleValues", code), e)
@@ -565,8 +583,10 @@ func (e *EventQueue) SampleValuesChecked() ([]float32, error) {
 	}
 	defer e.zigoRelease()
 	result, code := raw.EventQueueSampleValuesChecked(ptr)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.SampleValuesChecked", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.SampleValuesChecked", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.SampleValuesChecked", code), e)
@@ -592,8 +612,10 @@ func (e *EventQueue) SelectionString() ([]byte, bool, error) {
 	}
 	defer e.zigoRelease()
 	result, zigoHas, code := raw.EventQueueSelectionString(ptr)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.SelectionString", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.SelectionString", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return nil, false, zigoPoisonAfterPanic(errorForCode("EventQueue.SelectionString", code), e)
@@ -647,8 +669,10 @@ func (e *EventQueue) ExtractSamples() ([]float32, error) {
 	}
 	defer e.zigoRelease()
 	result, code := raw.EventQueueExtractSamples(ptr)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.ExtractSamples", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.ExtractSamples", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.ExtractSamples", code), e)
@@ -674,8 +698,10 @@ func (e *EventQueue) ExtractSamplesChecked() ([]float32, error) {
 	}
 	defer e.zigoRelease()
 	result, code := raw.EventQueueExtractSamplesChecked(ptr)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.ExtractSamplesChecked", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.ExtractSamplesChecked", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.ExtractSamplesChecked", code), e)
@@ -704,8 +730,10 @@ func (e *EventQueue) ExtractLimits() ([]Limits, error) {
 	}
 	defer e.zigoRelease()
 	result, code := raw.EventQueueExtractLimits(ptr)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.ExtractLimits", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.ExtractLimits", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.ExtractLimits", code), e)
@@ -732,8 +760,10 @@ func (e *EventQueue) AcceptStats(values []Stats) (uint, error) {
 	defer e.zigoRelease()
 	valuesRaw := zigoStatsSliceToRaw(values)
 	result, code := raw.EventQueueAcceptStats(ptr, valuesRaw)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.AcceptStats", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.AcceptStats", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.AcceptStats", code), e)
@@ -761,8 +791,10 @@ func (e *EventQueue) ExtractSamplesInto(dst []float32) (uint, error) {
 	}
 	defer e.zigoRelease()
 	result, code := raw.EventQueueExtractSamplesInto(ptr, dst)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.ExtractSamplesInto", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.ExtractSamplesInto", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.ExtractSamplesInto", code), e)
@@ -795,8 +827,10 @@ func (e *EventQueue) LimitsInto(dst []Limits) (uint, error) {
 		dstRaw = unsafe.Slice((*raw.LimitsData)(unsafe.Pointer(&dst[0])), len(dst))
 	}
 	result, code := raw.EventQueueLimitsInto(ptr, dstRaw)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.LimitsInto", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.LimitsInto", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.LimitsInto", code), e)
@@ -824,8 +858,10 @@ func (e *EventQueue) Estimate(output []Stats) (uint, error) {
 	defer e.zigoRelease()
 	outputRaw := make([]raw.StatsData, len(output))
 	result, code := raw.EventQueueEstimate(ptr, outputRaw)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.Estimate", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.Estimate", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.Estimate", code), e)
@@ -852,8 +888,10 @@ func (e *EventQueue) SampleStats() ([]Stats, error) {
 	}
 	defer e.zigoRelease()
 	result, code := raw.EventQueueSampleStats(ptr)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.SampleStats", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.SampleStats", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.SampleStats", code), e)
@@ -879,8 +917,10 @@ func (e *EventQueue) SampleLimits() ([]Limits, error) {
 	}
 	defer e.zigoRelease()
 	result, code := raw.EventQueueSampleLimits(ptr)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.SampleLimits", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.SampleLimits", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.SampleLimits", code), e)
@@ -904,8 +944,10 @@ func (e *EventQueue) Len() (uint, error) {
 	}
 	defer e.zigoRelease()
 	result, code := raw.EventQueueLen(ptr)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.Len", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.Len", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.Len", code), e)
@@ -929,8 +971,10 @@ func (e *EventQueue) Capacity() (uint, error) {
 	}
 	defer e.zigoRelease()
 	result, code := raw.EventQueueCapacity(ptr)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.Capacity", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.Capacity", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.Capacity", code), e)
@@ -954,8 +998,10 @@ func (e *EventQueue) Policy() (Policy, error) {
 	}
 	defer e.zigoRelease()
 	result, code := raw.EventQueuePolicy(ptr)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.Policy", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.Policy", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.Policy", code), e)
@@ -979,8 +1025,10 @@ func (e *EventQueue) Dropped() (uint, error) {
 	}
 	defer e.zigoRelease()
 	result, code := raw.EventQueueDropped(ptr)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.Dropped", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.Dropped", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.Dropped", code), e)
@@ -1004,8 +1052,10 @@ func (e *EventQueue) Processed() (uint, error) {
 	}
 	defer e.zigoRelease()
 	result, code := raw.EventQueueProcessed(ptr)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.Processed", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.Processed", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.Processed", code), e)
@@ -1029,8 +1079,10 @@ func (e *EventQueue) Stats() (Stats, error) {
 	}
 	defer e.zigoRelease()
 	result, code := raw.EventQueueStats(ptr)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.Stats", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.Stats", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return Stats{}, zigoPoisonAfterPanic(errorForCode("EventQueue.Stats", code), e)
@@ -1054,8 +1106,10 @@ func (e *EventQueue) Limits() (Limits, error) {
 	}
 	defer e.zigoRelease()
 	result, code := raw.EventQueueLimits(ptr)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.Limits", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.Limits", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return Limits{}, zigoPoisonAfterPanic(errorForCode("EventQueue.Limits", code), e)
@@ -1079,8 +1133,10 @@ func (e *EventQueue) ApplyLimits(updated Limits) error {
 	}
 	defer e.zigoRelease()
 	code := raw.EventQueueApplyLimits(ptr, zigoLimitsToRaw(updated))
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.ApplyLimits", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.ApplyLimits", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return zigoPoisonAfterPanic(errorForCode("EventQueue.ApplyLimits", code), e)
@@ -1106,8 +1162,10 @@ func (e *EventQueue) Clear() (uint, error) {
 	}
 	defer e.zigoRelease()
 	result, code := raw.EventQueueClear(ptr)
-	for slot := range 3 {
-		zigoRethrowCallbackPanic("EventQueue.Clear", e.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 3 {
+			zigoRethrowCallbackPanic("EventQueue.Clear", e.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.Clear", code), e)

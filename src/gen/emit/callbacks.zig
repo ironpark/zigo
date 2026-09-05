@@ -26,7 +26,8 @@ pub fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.I
     if (has_callback_cancellation) try writer.writeAll("\tcancel atomic.Pointer[uint32]\n");
     try writer.writeAll(
         "}\n\n" ++
-            "// callbackRegistry maps a userdata token to its entry without a global lock,\n// mirroring the sync.Map behind runtime/cgo.Handle on the cgo backend.\n// Delete races an in-flight acquire safely through the entry's closing flag:\n// an acquire either takes active++ before closing is set, in which case\n// DeleteCallbackHandle waits for it to drain, or it observes closing and\n// reports the token as gone.\nvar callbackRegistry sync.Map // uintptr -> *callbackEntry\nvar nextCallbackToken atomic.Uint64\nvar activeCallbackHandles atomic.Int64\n\n",
+            "// callbackRegistry maps a userdata token to its entry without a global lock,\n// mirroring the sync.Map behind runtime/cgo.Handle on the cgo backend.\n// Delete races an in-flight acquire safely through the entry's closing flag:\n// an acquire either takes active++ before closing is set, in which case\n// DeleteCallbackHandle waits for it to drain, or it observes closing and\n// reports the token as gone.\nvar callbackRegistry sync.Map // uintptr -> *callbackEntry\nvar nextCallbackToken atomic.Uint64\nvar activeCallbackHandles atomic.Int64\n\n" ++
+            "// pendingCallbackPanics counts recorded panics no caller has taken yet, so the\n// generated caller can skip the per-slot sweep on the fast path.\nvar pendingCallbackPanics atomic.Int64\n\n",
     );
     if (has_callback_cancellation) try writer.writeAll("var callbackCancelFlags sync.Map // uintptr -> *uint32\n\n");
     try writer.print("// {s}NewCallbackHandle stores a callback value and returns its native userdata token.\nfunc {s}NewCallbackHandle(value any) uintptr {{\n", .{ prefix, prefix });
@@ -43,7 +44,7 @@ pub fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.I
     );
     try writer.writeAll("// record keeps the first panic a callback raised until the generated caller takes it.\nfunc (entry *callbackEntry) record(value any) {\n");
     if (has_callback_cancellation) try writer.writeAll("\tentry.tripCancel()\n");
-    try writer.writeAll("\tentry.mu.Lock()\n\tdefer entry.mu.Unlock()\n\tif entry.panicked { return }\n\tentry.panicked = true\n\tentry.panicValue = value\n\tentry.panicStack = debug.Stack()\n}\n\n");
+    try writer.writeAll("\tentry.mu.Lock()\n\tdefer entry.mu.Unlock()\n\tif entry.panicked { return }\n\tentry.panicked = true\n\tentry.panicValue = value\n\tentry.panicStack = debug.Stack()\n\tpendingCallbackPanics.Add(1)\n}\n\n");
     if (has_streams or has_callback_errors) {
         try writer.writeAll("// recordErr keeps the first error the Go side reported -- a stream that failed\n// to write or read, or a callback that returned one -- until the generated\n// caller takes it. Later crossings are not asked: once a stream has failed the\n// adapter stops using it.\nfunc (entry *callbackEntry) recordErr(err error) {\n");
         if (has_callback_cancellation) try writer.writeAll("\tentry.tripCancel()\n");
@@ -58,7 +59,8 @@ pub fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.I
         try writer.writeAll("\tstored, loaded := callbackRegistry.Load(token)\n\tif !loaded { return nil, false }\n\tentry := stored.(*callbackEntry)\n\tentry.mu.Lock()\n\tdefer entry.mu.Unlock()\n\tif entry.goErr == nil { return nil, false }\n\terr := entry.goErr\n\tentry.goErr = nil\n\treturn err, true\n}\n\n");
     }
     try writer.print("// {s}TakeCallbackPanic returns and clears the panic the callback behind token recorded.\nfunc {s}TakeCallbackPanic(token uintptr) (any, []byte, bool) {{\n", .{ prefix, prefix });
-    try writer.writeAll("\tstored, loaded := callbackRegistry.Load(token)\n\tif !loaded { return nil, nil, false }\n\tentry := stored.(*callbackEntry)\n\tentry.mu.Lock()\n\tdefer entry.mu.Unlock()\n\tif !entry.panicked { return nil, nil, false }\n\tvalue, stack := entry.panicValue, entry.panicStack\n\tentry.panicValue, entry.panicStack, entry.panicked = nil, nil, false\n\treturn value, stack, true\n}\n\n");
+    try writer.writeAll("\tstored, loaded := callbackRegistry.Load(token)\n\tif !loaded { return nil, nil, false }\n\tentry := stored.(*callbackEntry)\n\tentry.mu.Lock()\n\tdefer entry.mu.Unlock()\n\tif !entry.panicked { return nil, nil, false }\n\tvalue, stack := entry.panicValue, entry.panicStack\n\tentry.panicValue, entry.panicStack, entry.panicked = nil, nil, false\n\tpendingCallbackPanics.Add(-1)\n\treturn value, stack, true\n}\n\n");
+    try writer.print("// {0s}PendingCallbackPanics reports how many recorded callback panics no caller has taken yet.\nfunc {0s}PendingCallbackPanics() int64 {{ return pendingCallbackPanics.Load() }}\n\n", .{prefix});
     try writer.writeAll("func acquireCallback(token uintptr) (*callbackEntry, any, bool) {\n\tstored, loaded := callbackRegistry.Load(token)\n\tif !loaded { return nil, nil, false }\n\tentry := stored.(*callbackEntry)\n\tentry.mu.Lock()\n\tif entry.closing { entry.mu.Unlock(); return nil, nil, false }\n\tentry.active++\n\tvalue := entry.value\n\tentry.mu.Unlock()\n\treturn entry, value, true\n}\n\nfunc releaseCallback(entry *callbackEntry) {\n\tentry.mu.Lock()\n\tentry.active--\n\tif entry.closing && entry.active == 0 { entry.cond.Broadcast() }\n\tentry.mu.Unlock()\n}\n\n");
 
     if (programHasWideningCallbackResult(program) or has_streams or has_callback_errors) try writer.writeAll(
@@ -324,9 +326,12 @@ pub fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
         .{prefix},
     );
     try writer.print(
-        "func (state *{0s}CallbackState) record(value any) {{\n{1s}\tstate.mu.Lock()\n\tdefer state.mu.Unlock()\n\tif state.panicked {{\n\t\treturn\n\t}}\n\tstate.panicked = true\n\tstate.value = value\n\tstate.stack = debug.Stack()\n}}\n\n" ++
+        "// pendingCallbackPanics counts recorded panics no caller has taken yet, so the\n// generated caller can skip the per-slot sweep on the fast path.\nvar pendingCallbackPanics atomic.Int64\n\n" ++
+            "// {0s}PendingCallbackPanics reports how many recorded callback panics no caller has taken yet.\n" ++
+            "func {0s}PendingCallbackPanics() int64 {{ return pendingCallbackPanics.Load() }}\n\n" ++
+            "func (state *{0s}CallbackState) record(value any) {{\n{1s}\tstate.mu.Lock()\n\tdefer state.mu.Unlock()\n\tif state.panicked {{\n\t\treturn\n\t}}\n\tstate.panicked = true\n\tstate.value = value\n\tstate.stack = debug.Stack()\n\tpendingCallbackPanics.Add(1)\n}}\n\n" ++
             "// {0s}TakeCallbackPanic returns and clears the panic the callback behind handle recorded.\n" ++
-            "func {0s}TakeCallbackPanic(handle cgo.Handle) (any, []byte, bool) {{\n\tstate := handle.Value().(*{0s}CallbackState)\n\tstate.mu.Lock()\n\tdefer state.mu.Unlock()\n\tif !state.panicked {{\n\t\treturn nil, nil, false\n\t}}\n\tvalue, stack := state.value, state.stack\n\tstate.value, state.stack, state.panicked = nil, nil, false\n\treturn value, stack, true\n}}\n\n",
+            "func {0s}TakeCallbackPanic(handle cgo.Handle) (any, []byte, bool) {{\n\tstate := handle.Value().(*{0s}CallbackState)\n\tstate.mu.Lock()\n\tdefer state.mu.Unlock()\n\tif !state.panicked {{\n\t\treturn nil, nil, false\n\t}}\n\tvalue, stack := state.value, state.stack\n\tstate.value, state.stack, state.panicked = nil, nil, false\n\tpendingCallbackPanics.Add(-1)\n\treturn value, stack, true\n}}\n\n",
         .{
             prefix,
             if (has_callback_cancellation) "\tstate.tripCancel()\n" else "",

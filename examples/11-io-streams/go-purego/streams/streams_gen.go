@@ -98,7 +98,9 @@ func (d *Document) Dump(w io.Writer) error {
 	wHandle := newZigoWriterHandle(w)
 	defer deleteCallbackHandle(wHandle)
 	code := raw.DocumentDump(ptr, raw.StreamWriterCallbackPointer(), uintptr(wHandle))
-	zigoRethrowCallbackPanic("Document.Dump", wHandle)
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("Document.Dump", wHandle)
+	}
 	if err := zigoStreamError("Document.Dump", "w", wHandle); err != nil {
 		return err
 	}
@@ -130,7 +132,9 @@ func (d *Document) Load(r io.Reader) (uint, error) {
 	defer deleteCallbackHandle(rHandle)
 	rData := zigoReaderBytes(r)
 	result, code := raw.DocumentLoad(ptr, raw.StreamReaderCallbackPointer(), uintptr(rHandle), rData)
-	zigoRethrowCallbackPanic("Document.Load", rHandle)
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("Document.Load", rHandle)
+	}
 	if err := zigoStreamError("Document.Load", "r", rHandle); err != nil {
 		return 0, err
 	}
@@ -154,7 +158,9 @@ func Banner(w io.Writer, width uint32) error {
 	wHandle := newZigoWriterHandle(w)
 	defer deleteCallbackHandle(wHandle)
 	code := raw.Banner(raw.StreamWriterCallbackPointer(), uintptr(wHandle), width)
-	zigoRethrowCallbackPanic("Banner", wHandle)
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("Banner", wHandle)
+	}
 	if err := zigoStreamError("Banner", "w", wHandle); err != nil {
 		return err
 	}
@@ -184,8 +190,10 @@ func Tee(r io.Reader, w io.Writer) (uint, error) {
 	wHandle := newZigoWriterHandle(w)
 	defer deleteCallbackHandle(wHandle)
 	result, code := raw.Tee(raw.StreamReaderCallbackPointer(), uintptr(rHandle), rData, raw.StreamWriterCallbackPointer(), uintptr(wHandle))
-	zigoRethrowCallbackPanic("Tee", rHandle)
-	zigoRethrowCallbackPanic("Tee", wHandle)
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("Tee", rHandle)
+		zigoRethrowCallbackPanic("Tee", wHandle)
+	}
 	if err := zigoStreamError("Tee", "r", rHandle); err != nil {
 		return 0, err
 	}

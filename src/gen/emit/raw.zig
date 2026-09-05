@@ -235,8 +235,9 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
     else
         try writer.print("\n#include \"zigo_{s}.h\"\n*/\nimport \"C\"\n", .{package});
     if (common.programHasStreams(program)) try writer.writeAll("import \"io\"\n");
-    if (common.programHasCallbacks(program)) try writer.writeAll("import \"runtime/cgo\"\nimport \"runtime/debug\"\nimport \"sync\"\n");
-    if (common.programHasCallbackCancellation(program)) try writer.writeAll("import \"sync/atomic\"\n");
+    // The callback panic counter needs sync/atomic whenever callbacks exist,
+    // which covers the cancellation flag's use of it too.
+    if (common.programHasCallbacks(program)) try writer.writeAll("import \"runtime/cgo\"\nimport \"runtime/debug\"\nimport \"sync\"\nimport \"sync/atomic\"\n");
     if (common.programNeedsUnsafe(program)) try writer.writeAll("import \"unsafe\"\n");
     try writer.writeByte('\n');
     const last_error_name = if (options.raw_colocated) "zigoRawLastErrorMessage" else "LastErrorMessage";

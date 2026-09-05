@@ -60,6 +60,10 @@ func callbackDispatcherCount() int     { return raw.CallbackDispatcherCount() }
 
 func setCallbackCancel(handle zigoCallbackHandle, flag *uint32) { raw.SetCallbackCancel(handle, flag) }
 
+// zigoCallbackPanicPending is the fast-path check ahead of the per-slot sweep:
+// one atomic load says whether any callback recorded a panic nobody has taken.
+func zigoCallbackPanicPending() bool { return raw.PendingCallbackPanics() != 0 }
+
 // zigoRethrowCallbackPanic resumes a panic that a Go callback raised inside
 // the native call that has just returned. The trampoline recovered it so the
 // native frames could unwind; the caller sees it as a *CallbackPanicError.

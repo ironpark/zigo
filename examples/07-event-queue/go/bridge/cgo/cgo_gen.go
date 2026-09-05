@@ -14,6 +14,7 @@ import "C"
 import "runtime/cgo"
 import "runtime/debug"
 import "sync"
+import "sync/atomic"
 import "unsafe"
 
 // LastErrorMessage returns the most recent native panic message for this binding.
@@ -79,6 +80,13 @@ type CallbackState struct {
 	panicked bool
 }
 
+// pendingCallbackPanics counts recorded panics no caller has taken yet, so the
+// generated caller can skip the per-slot sweep on the fast path.
+var pendingCallbackPanics atomic.Int64
+
+// PendingCallbackPanics reports how many recorded callback panics no caller has taken yet.
+func PendingCallbackPanics() int64 { return pendingCallbackPanics.Load() }
+
 func (state *CallbackState) record(value any) {
 	state.mu.Lock()
 	defer state.mu.Unlock()
@@ -88,6 +96,7 @@ func (state *CallbackState) record(value any) {
 	state.panicked = true
 	state.value = value
 	state.stack = debug.Stack()
+	pendingCallbackPanics.Add(1)
 }
 
 // TakeCallbackPanic returns and clears the panic the callback behind handle recorded.
@@ -100,6 +109,7 @@ func TakeCallbackPanic(handle cgo.Handle) (any, []byte, bool) {
 	}
 	value, stack := state.value, state.stack
 	state.value, state.stack, state.panicked = nil, nil, false
+	pendingCallbackPanics.Add(-1)
 	return value, stack, true
 }
 

@@ -90,5 +90,7 @@ func Visit(callback VisitCallback) {
 	callbackHandle := newVisitCallbackHandle(callback)
 	defer deleteCallbackHandle(callbackHandle)
 	raw.Visit(uintptr(callbackHandle))
-	zigoRethrowCallbackPanic("Visit", callbackHandle)
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("Visit", callbackHandle)
+	}
 }

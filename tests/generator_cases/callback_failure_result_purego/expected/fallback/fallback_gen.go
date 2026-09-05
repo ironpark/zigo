@@ -25,6 +25,8 @@ func Apply(value int32, callback Observer) int32 {
 	callbackHandle := newObserverHandle(callback)
 	defer deleteCallbackHandle(callbackHandle)
 	result := raw.Apply(value, raw.CallbackPointer0(), uintptr(callbackHandle))
-	zigoRethrowCallbackPanic("Apply", callbackHandle)
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("Apply", callbackHandle)
+	}
 	return result
 }

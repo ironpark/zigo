@@ -11,6 +11,10 @@
 zig build test --summary all
 ```
 
+생성기를 바꿔 `tests/generator_cases/*/expected`가 의도대로 달라졌다면
+`scripts/update-generator-cases.sh [케이스 이름...]`으로 골든을 다시 만듭니다. 갱신된 diff는
+생성 코드의 변경이므로 커밋 전에 검토하세요.
+
 특정 예제를 변경했다면 해당 디렉터리에서 생성물과 Go 동작을 함께 확인합니다.
 
 ```bash

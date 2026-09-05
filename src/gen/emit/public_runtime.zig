@@ -487,6 +487,13 @@ fn writeStreamErrorHelper(writer: *std.Io.Writer, program: abi.Program, options:
 /// have reached: the ones passed to the call and the ones its handles retain.
 fn writeRethrowHelper(writer: *std.Io.Writer, options: emit.Options) !void {
     try writer.writeAll(
+        "// zigoCallbackPanicPending is the fast-path check ahead of the per-slot sweep:\n" ++
+            "// one atomic load says whether any callback recorded a panic nobody has taken.\n" ++
+            "func zigoCallbackPanicPending() bool { return ",
+    );
+    try public_writers.writeRawReferencePrefix(writer, options);
+    try writer.writeAll("PendingCallbackPanics() != 0 }\n\n");
+    try writer.writeAll(
         "// zigoRethrowCallbackPanic resumes a panic that a Go callback raised inside\n" ++
             "// the native call that has just returned. The trampoline recovered it so the\n" ++
             "// native frames could unwind; the caller sees it as a *CallbackPanicError.\n" ++

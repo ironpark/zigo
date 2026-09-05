@@ -451,7 +451,9 @@ func VisitFlags(callback FlagsObserver) {
 	callbackHandle := newFlagsObserverHandle(callback)
 	defer deleteCallbackHandle(callbackHandle)
 	raw.VisitFlags(uintptr(callbackHandle))
-	zigoRethrowCallbackPanic("VisitFlags", callbackHandle)
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("VisitFlags", callbackHandle)
+	}
 }
 
 // PanicError calls the Zig function panicError.

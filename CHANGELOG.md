@@ -6,6 +6,13 @@
 
 ## [Unreleased]
 
+### Changed
+
+- retained 콜백을 가진 타입의 메서드가 호출마다 콜백 slot을 모두 훑지 않습니다. raw 계층이
+  가져가지 않은 콜백 panic 수를 원자 카운터(`PendingCallbackPanics`)로 세고, 생성 함수는
+  0이 아닐 때만 slot을 순회합니다. `07-event-queue`의 `Enqueue`가 약 20% 빨라졌습니다.
+- `scripts/update-generator-cases.sh`로 생성기 케이스의 골든을 다시 만듭니다.
+
 ## [0.10.0] - 2026-09-06
 
 ### Added

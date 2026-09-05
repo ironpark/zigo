@@ -125,6 +125,10 @@ var callbackRegistry sync.Map // uintptr -> *callbackEntry
 var nextCallbackToken atomic.Uint64
 var activeCallbackHandles atomic.Int64
 
+// pendingCallbackPanics counts recorded panics no caller has taken yet, so the
+// generated caller can skip the per-slot sweep on the fast path.
+var pendingCallbackPanics atomic.Int64
+
 // NewCallbackHandle stores a callback value and returns its native userdata token.
 func NewCallbackHandle(value any) uintptr {
 	entry := &callbackEntry{value: value}
@@ -171,6 +175,7 @@ func (entry *callbackEntry) record(value any) {
 	entry.panicked = true
 	entry.panicValue = value
 	entry.panicStack = debug.Stack()
+	pendingCallbackPanics.Add(1)
 }
 
 // TakeCallbackPanic returns and clears the panic the callback behind token recorded.
@@ -187,8 +192,12 @@ func TakeCallbackPanic(token uintptr) (any, []byte, bool) {
 	}
 	value, stack := entry.panicValue, entry.panicStack
 	entry.panicValue, entry.panicStack, entry.panicked = nil, nil, false
+	pendingCallbackPanics.Add(-1)
 	return value, stack, true
 }
+
+// PendingCallbackPanics reports how many recorded callback panics no caller has taken yet.
+func PendingCallbackPanics() int64 { return pendingCallbackPanics.Load() }
 
 func acquireCallback(token uintptr) (*callbackEntry, any, bool) {
 	stored, loaded := callbackRegistry.Load(token)

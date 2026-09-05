@@ -184,6 +184,10 @@ frame을 풀 수 없기 때문입니다. native 쪽은 부호 있는 32비트 �
 시점의 stack(`Stack`)을 담습니다. `Unwrap`은 `Value`가 `error`일 때 그것을 돌려주므로
 `errors.Is`·`errors.As`가 원인까지 닿습니다.
 
+이 검사는 호출마다 콜백 slot을 모두 훑지 않습니다. raw 계층이 아직 가져가지 않은 panic의
+수를 원자 카운터로 세고, 생성된 함수는 그 값이 0이 아닐 때만 slot을 순회합니다. 정상 경로의
+비용은 원자적 load 한 번입니다.
+
 ```go
 defer func() {
     if recovered := recover(); recovered != nil {

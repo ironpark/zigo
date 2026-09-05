@@ -35,7 +35,9 @@ func NewHub(observer HubCreateObserver) (*Hub, error) {
 	defer runtime.UnlockOSThread()
 	observerHandle := newHubCreateObserverHandle(observer)
 	result, code := raw.HubCreate(raw.CallbackPointer0(), uintptr(observerHandle))
-	zigoRethrowCallbackPanic("NewHub", observerHandle)
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("NewHub", observerHandle)
+	}
 	if err := zigoCallbackError("NewHub", "observer", observerHandle); err != nil {
 		deleteCallbackHandle(observerHandle)
 		return nil, err
@@ -61,8 +63,10 @@ func (h *Hub) Run(value int32) (int32, error) {
 	}
 	defer h.zigoRelease()
 	result, code := raw.HubRun(ptr, value)
-	for slot := range 2 {
-		zigoRethrowCallbackPanic("Hub.Run", h.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 2 {
+			zigoRethrowCallbackPanic("Hub.Run", h.zigoCallbackHandle(slot))
+		}
 	}
 	for slot := range 2 {
 		if err := zigoCallbackError("Hub.Run", "callback", h.zigoCallbackHandle(slot)); err != nil {
@@ -92,9 +96,11 @@ func (h *Hub) SetObserver(observer HubSetObserverObserver) error {
 	observerHandleAdopted := false
 	defer func() { if !observerHandleAdopted { deleteCallbackHandle(observerHandle) } }()
 	code := raw.HubSetObserver(ptr, raw.CallbackPointer0(), uintptr(observerHandle))
-	zigoRethrowCallbackPanic("Hub.SetObserver", observerHandle)
-	for slot := range 2 {
-		zigoRethrowCallbackPanic("Hub.SetObserver", h.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("Hub.SetObserver", observerHandle)
+		for slot := range 2 {
+			zigoRethrowCallbackPanic("Hub.SetObserver", h.zigoCallbackHandle(slot))
+		}
 	}
 	if err := zigoCallbackError("Hub.SetObserver", "observer", observerHandle); err != nil {
 		return err
@@ -120,7 +126,9 @@ func Apply(value int32, observer ApplyObserverCallback) (int32, error) {
 	observerHandle := newApplyObserverCallbackHandle(observer)
 	defer deleteCallbackHandle(observerHandle)
 	result := raw.Apply(value, raw.CallbackPointer0(), uintptr(observerHandle))
-	zigoRethrowCallbackPanic("Apply", observerHandle)
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("Apply", observerHandle)
+	}
 	if err := zigoCallbackError("Apply", "observer", observerHandle); err != nil {
 		return 0, err
 	}
@@ -133,5 +141,7 @@ func Notify(value int32, observer NotifyObserverCallback) {
 	observerHandle := newNotifyObserverCallbackHandle(observer)
 	defer deleteCallbackHandle(observerHandle)
 	raw.Notify(value, raw.CallbackPointer1(), uintptr(observerHandle))
-	zigoRethrowCallbackPanic("Notify", observerHandle)
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("Notify", observerHandle)
+	}
 }

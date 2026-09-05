@@ -154,6 +154,14 @@ Windows용 로딩 API를 공개하지 않으므로 이 선택은 모듈 의존�
 경로 결정, `LoadLibrary`, `*LibraryError` 모양은 공용 파일에 그대로 남으므로 공개
 API는 세 OS에서 동일합니다.
 
+## 콜백 panic 검사 비용
+
+retained 콜백을 가진 타입의 메서드는 native 호출 뒤 콜백 slot을 확인합니다. raw 계층의
+`PendingCallbackPanics()`가 0이면 순회를 건너뛰므로 정상 경로는 원자적 load 한 번입니다.
+이 검사를 넣기 전 `EventQueue.Enqueue`는 slot 3개마다 mutex와 handle 조회를 했고,
+같은 환경에서 324 ns/op이 260 ns/op으로 줄었습니다(20코어 Apple Silicon, Go 1.27,
+`-count=5` 평균).
+
 ## 패닉 메시지와 스레드 고정 비용
 
 오류 메시지를 저장한 native 스레드에서 읽기 위해 생성 함수는 호출 동안 스레드를 고정합니다.

@@ -21,7 +21,9 @@ func NewTelemetryHub(inputName string, maxSamples uint, initialMode Mode, overfl
 	defer runtime.UnlockOSThread()
 	observerHandle := newTelemetryHubObserverHandle(observer)
 	result, code := raw.TelemetryHubCreate([]byte(inputName), maxSamples, uint32(initialMode), uint32(overflowPolicy), raw.CallbackPointer0(), uintptr(observerHandle))
-	zigoRethrowCallbackPanic("NewTelemetryHub", observerHandle)
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("NewTelemetryHub", observerHandle)
+	}
 	if code != 0 {
 		deleteCallbackHandle(observerHandle)
 		return nil, errorForCode("NewTelemetryHub", code)
@@ -42,8 +44,10 @@ func (t *TelemetryHub) Rename(newName string) error {
 	}
 	defer t.zigoRelease()
 	code := raw.TelemetryHubRename(ptr, []byte(newName))
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.Rename", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.Rename", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.Rename", code), t)
@@ -64,8 +68,10 @@ func (t *TelemetryHub) Name() (string, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubName(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.Name", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.Name", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return "", zigoPoisonAfterPanic(errorForCode("TelemetryHub.Name", code), t)
@@ -109,8 +115,10 @@ func (t *TelemetryHub) Reduce(ctx context.Context, rounds uint32) (float64, erro
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubReduce(ptr, rounds, &zigoCancel)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.Reduce", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.Reduce", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		zigoErr := zigoPoisonAfterPanic(errorForCode("TelemetryHub.Reduce", code), t)
@@ -135,8 +143,10 @@ func (t *TelemetryHub) Capacity() (uint, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubCapacity(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.Capacity", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.Capacity", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Capacity", code), t)
@@ -157,8 +167,10 @@ func (t *TelemetryHub) Len() (uint, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubLen(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.Len", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.Len", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Len", code), t)
@@ -179,8 +191,10 @@ func (t *TelemetryHub) IsEmpty() (bool, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubIsEmpty(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.IsEmpty", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.IsEmpty", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return false, zigoPoisonAfterPanic(errorForCode("TelemetryHub.IsEmpty", code), t)
@@ -201,8 +215,10 @@ func (t *TelemetryHub) IsFull() (bool, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubIsFull(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.IsFull", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.IsFull", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return false, zigoPoisonAfterPanic(errorForCode("TelemetryHub.IsFull", code), t)
@@ -223,8 +239,10 @@ func (t *TelemetryHub) Mode() (Mode, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubMode(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.Mode", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.Mode", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Mode", code), t)
@@ -245,8 +263,10 @@ func (t *TelemetryHub) SetMode(newMode Mode) (Mode, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubSetMode(ptr, uint32(newMode))
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.SetMode", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.SetMode", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.SetMode", code), t)
@@ -267,8 +287,10 @@ func (t *TelemetryHub) OverflowPolicy() (OverflowPolicy, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubOverflowPolicy(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.OverflowPolicy", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.OverflowPolicy", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.OverflowPolicy", code), t)
@@ -289,8 +311,10 @@ func (t *TelemetryHub) SetOverflowPolicy(newPolicy OverflowPolicy) (OverflowPoli
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubSetOverflowPolicy(ptr, uint32(newPolicy))
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.SetOverflowPolicy", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.SetOverflowPolicy", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.SetOverflowPolicy", code), t)
@@ -311,8 +335,10 @@ func (t *TelemetryHub) Enabled() (bool, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubEnabled(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.Enabled", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.Enabled", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return false, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Enabled", code), t)
@@ -333,8 +359,10 @@ func (t *TelemetryHub) SetEnabled(newEnabled bool) (bool, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubSetEnabled(ptr, boolToUint8(newEnabled))
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.SetEnabled", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.SetEnabled", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return false, zigoPoisonAfterPanic(errorForCode("TelemetryHub.SetEnabled", code), t)
@@ -355,8 +383,10 @@ func (t *TelemetryHub) Threshold() (float64, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubThreshold(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.Threshold", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.Threshold", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Threshold", code), t)
@@ -377,8 +407,10 @@ func (t *TelemetryHub) SetThreshold(newThreshold float64) error {
 	}
 	defer t.zigoRelease()
 	code := raw.TelemetryHubSetThreshold(ptr, newThreshold)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.SetThreshold", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.SetThreshold", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.SetThreshold", code), t)
@@ -399,8 +431,10 @@ func (t *TelemetryHub) ScaleFactor() (float64, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubScaleFactor(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.ScaleFactor", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.ScaleFactor", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.ScaleFactor", code), t)
@@ -421,8 +455,10 @@ func (t *TelemetryHub) SetScaleFactor(newFactor float64) error {
 	}
 	defer t.zigoRelease()
 	code := raw.TelemetryHubSetScaleFactor(ptr, newFactor)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.SetScaleFactor", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.SetScaleFactor", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.SetScaleFactor", code), t)
@@ -443,8 +479,10 @@ func (t *TelemetryHub) Offset() (float64, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubOffset(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.Offset", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.Offset", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Offset", code), t)
@@ -465,8 +503,10 @@ func (t *TelemetryHub) SetOffset(newOffset float64) error {
 	}
 	defer t.zigoRelease()
 	code := raw.TelemetryHubSetOffset(ptr, newOffset)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.SetOffset", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.SetOffset", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.SetOffset", code), t)
@@ -487,8 +527,10 @@ func (t *TelemetryHub) Push(id uint64, value float64) error {
 	}
 	defer t.zigoRelease()
 	code := raw.TelemetryHubPush(ptr, id, value)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.Push", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.Push", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.Push", code), t)
@@ -509,8 +551,10 @@ func (t *TelemetryHub) PushWithSeverity(id uint64, value float64, severity Sever
 	}
 	defer t.zigoRelease()
 	code := raw.TelemetryHubPushWithSeverity(ptr, id, value, uint32(severity))
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.PushWithSeverity", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.PushWithSeverity", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.PushWithSeverity", code), t)
@@ -531,8 +575,10 @@ func (t *TelemetryHub) PushBatch(values []float64) error {
 	}
 	defer t.zigoRelease()
 	code := raw.TelemetryHubPushBatch(ptr, values)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.PushBatch", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.PushBatch", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.PushBatch", code), t)
@@ -553,8 +599,10 @@ func (t *TelemetryHub) Process(limit uint) (uint, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubProcess(ptr, limit)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.Process", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.Process", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Process", code), t)
@@ -575,8 +623,10 @@ func (t *TelemetryHub) ProcessAll() (uint, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubProcessAll(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.ProcessAll", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.ProcessAll", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.ProcessAll", code), t)
@@ -597,8 +647,10 @@ func (t *TelemetryHub) Clear() (uint, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubClear(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.Clear", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.Clear", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Clear", code), t)
@@ -619,8 +671,10 @@ func (t *TelemetryHub) ResetStatistics() error {
 	}
 	defer t.zigoRelease()
 	code := raw.TelemetryHubResetStatistics(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.ResetStatistics", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.ResetStatistics", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.ResetStatistics", code), t)
@@ -641,8 +695,10 @@ func (t *TelemetryHub) Accepted() (uint, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubAccepted(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.Accepted", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.Accepted", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Accepted", code), t)
@@ -663,8 +719,10 @@ func (t *TelemetryHub) Rejected() (uint, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubRejected(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.Rejected", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.Rejected", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Rejected", code), t)
@@ -685,8 +743,10 @@ func (t *TelemetryHub) Dropped() (uint, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubDropped(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.Dropped", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.Dropped", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Dropped", code), t)
@@ -707,8 +767,10 @@ func (t *TelemetryHub) Processed() (uint, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubProcessed(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.Processed", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.Processed", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Processed", code), t)
@@ -729,8 +791,10 @@ func (t *TelemetryHub) Filtered() (uint, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubFiltered(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.Filtered", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.Filtered", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Filtered", code), t)
@@ -751,8 +815,10 @@ func (t *TelemetryHub) Sum() (float64, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubSum(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.Sum", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.Sum", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Sum", code), t)
@@ -773,8 +839,10 @@ func (t *TelemetryHub) Minimum() (float64, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubMinimum(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.Minimum", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.Minimum", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Minimum", code), t)
@@ -795,8 +863,10 @@ func (t *TelemetryHub) Maximum() (float64, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubMaximum(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.Maximum", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.Maximum", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Maximum", code), t)
@@ -817,8 +887,10 @@ func (t *TelemetryHub) Average() (float64, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubAverage(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.Average", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.Average", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Average", code), t)
@@ -839,8 +911,10 @@ func (t *TelemetryHub) FirstID() (uint64, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubFirstID(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.FirstID", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.FirstID", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.FirstID", code), t)
@@ -861,8 +935,10 @@ func (t *TelemetryHub) FirstValue() (float64, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubFirstValue(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.FirstValue", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.FirstValue", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.FirstValue", code), t)
@@ -883,8 +959,10 @@ func (t *TelemetryHub) LastID() (uint64, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubLastID(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.LastID", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.LastID", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.LastID", code), t)
@@ -905,8 +983,10 @@ func (t *TelemetryHub) LastValue() (float64, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubLastValue(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.LastValue", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.LastValue", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.LastValue", code), t)
@@ -927,8 +1007,10 @@ func (t *TelemetryHub) LastSeverity() (Severity, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubLastSeverity(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.LastSeverity", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.LastSeverity", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.LastSeverity", code), t)
@@ -949,8 +1031,10 @@ func (t *TelemetryHub) CountAbove(boundary float64) (uint, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubCountAbove(ptr, boundary)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.CountAbove", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.CountAbove", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.CountAbove", code), t)
@@ -971,8 +1055,10 @@ func (t *TelemetryHub) CountBelow(boundary float64) (uint, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubCountBelow(ptr, boundary)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.CountBelow", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.CountBelow", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.CountBelow", code), t)
@@ -993,8 +1079,10 @@ func (t *TelemetryHub) ContainsAbove(boundary float64) (bool, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubContainsAbove(ptr, boundary)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.ContainsAbove", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.ContainsAbove", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return false, zigoPoisonAfterPanic(errorForCode("TelemetryHub.ContainsAbove", code), t)
@@ -1015,8 +1103,10 @@ func (t *TelemetryHub) ContainsBelow(boundary float64) (bool, error) {
 	}
 	defer t.zigoRelease()
 	result, code := raw.TelemetryHubContainsBelow(ptr, boundary)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.ContainsBelow", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.ContainsBelow", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return false, zigoPoisonAfterPanic(errorForCode("TelemetryHub.ContainsBelow", code), t)
@@ -1037,8 +1127,10 @@ func (t *TelemetryHub) ScaleValues(factor float64) error {
 	}
 	defer t.zigoRelease()
 	code := raw.TelemetryHubScaleValues(ptr, factor)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.ScaleValues", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.ScaleValues", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.ScaleValues", code), t)
@@ -1059,8 +1151,10 @@ func (t *TelemetryHub) OffsetValues(delta float64) error {
 	}
 	defer t.zigoRelease()
 	code := raw.TelemetryHubOffsetValues(ptr, delta)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.OffsetValues", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.OffsetValues", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.OffsetValues", code), t)
@@ -1081,8 +1175,10 @@ func (t *TelemetryHub) ClampValues(lower float64, upper float64) error {
 	}
 	defer t.zigoRelease()
 	code := raw.TelemetryHubClampValues(ptr, lower, upper)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.ClampValues", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.ClampValues", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.ClampValues", code), t)
@@ -1103,8 +1199,10 @@ func (t *TelemetryHub) AbsoluteValues() error {
 	}
 	defer t.zigoRelease()
 	code := raw.TelemetryHubAbsoluteValues(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.AbsoluteValues", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.AbsoluteValues", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.AbsoluteValues", code), t)
@@ -1125,8 +1223,10 @@ func (t *TelemetryHub) NegateValues() error {
 	}
 	defer t.zigoRelease()
 	code := raw.TelemetryHubNegateValues(ptr)
-	for slot := range 1 {
-		zigoRethrowCallbackPanic("TelemetryHub.NegateValues", t.zigoCallbackHandle(slot))
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("TelemetryHub.NegateValues", t.zigoCallbackHandle(slot))
+		}
 	}
 	if code != 0 {
 		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.NegateValues", code), t)
