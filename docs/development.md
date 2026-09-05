@@ -144,6 +144,9 @@ zig build shared-library-smoke -- \
   테스트와 `check`/`snapshot`/`shared-library-smoke` 단계는 `build/tests.zig`, 생성기 모듈
   그래프는 `build/modules.zig`, `addGoBindings`가 배선하는 custom step은 `build/steps.zig`에
   있습니다.
+- `src/reflect/packages.zig`는 패키지 선택과 타입 closure를 담당합니다.
+  생성자 claim과 함수 연결은 `src/reflect/pairing.zig`를 공유하므로 패키지 모듈이
+  `walk.zig`에 의존하지 않습니다. 선언 탐색과 필드 접근자 처리는 `walk.zig`에 유지합니다.
 
 ### 백엔드 공통 계약 테스트
 
