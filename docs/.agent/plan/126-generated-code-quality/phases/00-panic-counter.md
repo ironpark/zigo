@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T22:54:17Z"
 perf_phase: true
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test` passes; 07 and 08 `go test` pass on both backends and the
 > NEXT: none

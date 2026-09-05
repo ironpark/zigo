@@ -7,7 +7,7 @@ registered_at: "2026-09-05T22:46:00Z"
 
 # Phases
 
-- [ ] [Phase 00: Pending callback-panic counter](phases/00-panic-counter.md)
+- [x] [Phase 00: Pending callback-panic counter](phases/00-panic-counter.md)
 - [ ] [Phase 01: Receiver names and GoDoc first line](phases/01-receiver-godoc.md)
 - [ ] [Phase 02: Single-copy strings and struct slices](phases/02-single-copy.md)
 - [ ] [Phase 03: Panic message slots without LockOSThread](phases/03-panic-slots.md)
