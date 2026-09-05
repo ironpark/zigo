@@ -20,7 +20,7 @@ func NewTelemetryHub(inputName string, maxSamples uint, initialMode Mode, overfl
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	observerHandle := newTelemetryHubObserverHandle(observer)
-	result, code := raw.TelemetryHubCreate([]byte(inputName), maxSamples, uint32(initialMode), uint32(overflowPolicy), uintptr(observerHandle))
+	result, code := raw.TelemetryHubCreate(inputName, maxSamples, uint32(initialMode), uint32(overflowPolicy), uintptr(observerHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("NewTelemetryHub", observerHandle)
 	}
@@ -43,7 +43,7 @@ func (t *TelemetryHub) Rename(newName string) error {
 		return err
 	}
 	defer t.zigoRelease()
-	code := raw.TelemetryHubRename(ptr, []byte(newName))
+	code := raw.TelemetryHubRename(ptr, newName)
 	if zigoCallbackPanicPending() {
 		for slot := range 1 {
 			zigoRethrowCallbackPanic("TelemetryHub.Rename", t.zigoCallbackHandle(slot))
@@ -76,7 +76,7 @@ func (t *TelemetryHub) Name() (string, error) {
 	if code != 0 {
 		return "", zigoPoisonAfterPanic(errorForCode("TelemetryHub.Name", code), t)
 	}
-	return string(result), nil
+	return result, nil
 }
 
 // Reduce: A deliberately long fold, polling a cancellation flag between rounds.

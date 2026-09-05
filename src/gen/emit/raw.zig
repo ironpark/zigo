@@ -458,7 +458,10 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
                 try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, element));
                 try writer.print("\n\tif {0s} != nil {{\n\t\t{0s}Ptr = &{0s}Zero\n\t\t{0s}Len = C.size_t(len(*{0s}))\n\t\tif {0s}Len != 0 {{\n\t\t\t{0s}Ptr = (*C.", .{slice_name});
                 try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, element));
-                try writer.print(")(unsafe.Pointer(&(*{s})[0]))\n\t\t}}\n\t}}\n", .{slice_name});
+                if (public_writers.rawTakesUtf8String(parameter))
+                    try writer.print(")(unsafe.Pointer(unsafe.StringData(*{s})))\n\t\t}}\n\t}}\n", .{slice_name})
+                else
+                    try writer.print(")(unsafe.Pointer(&(*{s})[0]))\n\t\t}}\n\t}}\n", .{slice_name});
             } else if (parameter.type == .slice and
                 !(function.materializesParam(parameter_index)))
             {
@@ -467,7 +470,12 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
                 try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, parameter.type.slice.element.*));
                 try writer.print("\n\t{s}Ptr := &{s}Zero\n\tif len({s}) != 0 {{\n\t\t{s}Ptr = (*C.", .{ slice_name, slice_name, slice_name, slice_name });
                 try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, parameter.type.slice.element.*));
-                try writer.print(")(unsafe.Pointer(&{s}[0]))\n\t}}\n", .{slice_name});
+                // A string's bytes are read in place for the call's duration,
+                // which the binding contract already promises for every slice.
+                if (public_writers.rawTakesUtf8String(parameter))
+                    try writer.print(")(unsafe.Pointer(unsafe.StringData({s})))\n\t}}\n", .{slice_name})
+                else
+                    try writer.print(")(unsafe.Pointer(&{s}[0]))\n\t}}\n", .{slice_name});
                 if (shim.hasWrittenOutParam(parameter)) try writer.print("\tvar {s}Written C.size_t\n", .{slice_name});
             }
         }
@@ -619,11 +627,12 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
         if (!returns_error) {
             if (function.slice_return_element) |element| {
                 const optional = returnsOptionalSlice(function);
-                if (optional) try writeSliceAbsentReturn(writer, "outResultPtr", "");
-                try writeCgoSliceReturn(allocator, writer, program, element, "outResultPtr", "outResultLen", function.ownership.asBuffer(), if (optional) ", true" else "");
+                const text = public_writers.rawReturnsUtf8String(function);
+                if (optional) try writeSliceAbsentReturn(writer, "outResultPtr", sliceZero(text), "");
+                try writeCgoSliceReturn(writer, program, element, "outResultPtr", "outResultLen", function.ownership.asBuffer(), if (optional) ", true" else "", text);
             } else if (function.materialized_out != null) {
                 const byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
-                try writeCgoSliceReturn(allocator, writer, program, byte, "outResultPtr", "outResultLen", function.ownership.asBuffer(), ", written");
+                try writeCgoSliceReturn(writer, program, byte, "outResultPtr", "outResultLen", function.ownership.asBuffer(), ", written", false);
             } else if (function.ret_optional) {
                 try writer.writeAll("\treturn ");
                 if (function.ret_struct) |record| {
@@ -668,17 +677,18 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
             if (function.materialized_out != null) {
                 try writer.writeAll("\tif code != 0 {\n\t\treturn nil, 0, code\n\t}\n");
                 const byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
-                try writeCgoSliceReturn(allocator, writer, program, byte, "outResultPtr", "outResultLen", function.ownership.asBuffer(), ", uint(outResult), code");
+                try writeCgoSliceReturn(writer, program, byte, "outResultPtr", "outResultLen", function.ownership.asBuffer(), ", uint(outResult), code", false);
             } else if (error_payload == .void) {
                 try writer.writeAll("\treturn code\n");
             } else if (function.slice_return_element) |element| {
                 // The failure path returns before the copy, so the out
                 // parameters the shim never wrote are never read -- and a
                 // declared release runs only after a successful call.
-                try writer.print("\tif code != 0 {{\n\t\treturn nil, {s}code\n\t}}\n", .{if (returnsOptionalSlice(function)) "false, " else ""});
                 const optional = returnsOptionalSlice(function);
-                if (optional) try writeSliceAbsentReturn(writer, "outResultPtr", ", code");
-                try writeCgoSliceReturn(allocator, writer, program, element, "outResultPtr", "outResultLen", function.ownership.asBuffer(), if (optional) ", true, code" else ", code");
+                const text = public_writers.rawReturnsUtf8String(function);
+                try writer.print("\tif code != 0 {{\n\t\treturn {s}, {s}code\n\t}}\n", .{ sliceZero(text), if (optional) "false, " else "" });
+                if (optional) try writeSliceAbsentReturn(writer, "outResultPtr", sliceZero(text), ", code");
+                try writeCgoSliceReturn(writer, program, element, "outResultPtr", "outResultLen", function.ownership.asBuffer(), if (optional) ", true, code" else ", code", text);
             } else if (error_payload == .optional) {
                 try writer.writeAll("\treturn ");
                 if (function.payload_struct) |record| {
@@ -713,11 +723,10 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
 /// time, naming the struct that drifted.
 fn renderCgoStructLayoutGuards(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
     for (program.structs) |record| {
-        if (!record.castable) continue;
         const type_name = try common.structRawTypeNameAlloc(allocator, record.name);
         defer allocator.free(type_name);
         try writer.print(
-            "\n// {s} crosses to C as a cast, so it must match {s} byte for byte.\n" ++
+            "\n// {s} slices are copied from C memory as one run, so it must match {s} byte for byte.\n" ++
                 "var _ = [1]struct{{}}{{}}[unsafe.Sizeof({s}{{}})-unsafe.Sizeof(C.{s}{{}})]\n",
             .{ type_name, record.c_name, type_name, record.c_name },
         );
@@ -830,12 +839,17 @@ pub fn returnsOptionalSlice(function: abi.AbiFn) bool {
 
 /// The `nil, false` early return an optional slice needs before the present
 /// path copies anything. `suffix` is whatever the present returns also carry.
-pub fn writeSliceAbsentReturn(writer: *std.Io.Writer, pointer_name: []const u8, suffix: []const u8) !void {
-    try writer.print("\tif {s} == nil {{ return nil, false{s} }}\n", .{ pointer_name, suffix });
+pub fn writeSliceAbsentReturn(writer: *std.Io.Writer, pointer_name: []const u8, zero: []const u8, suffix: []const u8) !void {
+    try writer.print("\tif {s} == nil {{ return {s}, false{s} }}\n", .{ pointer_name, zero, suffix });
+}
+
+/// What an absent or failed slice result returns in the raw layer: a
+/// `string` result has no nil.
+pub fn sliceZero(text: bool) []const u8 {
+    return if (text) "\"\"" else "nil";
 }
 
 fn writeCgoSliceReturn(
-    allocator: std.mem.Allocator,
     writer: *std.Io.Writer,
     program: abi.Program,
     element: semantic.TypeNode,
@@ -847,29 +861,31 @@ fn writeCgoSliceReturn(
     /// Appended to every `return` this writes, so a fallible slice return can
     /// hand the error code back alongside the copied payload.
     suffix: []const u8,
+    /// UTF-8 text: the copy is made straight into a Go `string`.
+    text: bool,
 ) !void {
     if (buffer) |owned| {
         // The payload is copied first and released immediately after, so the
         // returned Go slice never aliases memory the library still owns.
-        try writer.print("\tvar result []", .{});
-        try public_writers.writeRawGoType(writer, program, element);
+        if (text) {
+            try writer.writeAll("\tvar result string");
+        } else {
+            try writer.print("\tvar result []", .{});
+            try public_writers.writeRawGoType(writer, program, element);
+        }
         try writer.print("\n\tif {s} != 0 {{\n", .{length_name});
-        try writeCgoSliceCopyInto(allocator, writer, program, element, pointer_name, length_name, "\t\t");
+        try writeCgoSliceCopyInto(writer, program, element, pointer_name, length_name, "\t\t", text);
         try writer.print("\t}}\n\tC.{s}(", .{program.functions[owned.release].symbol});
         if (owned.release_receiver_c_name) |c_name| try writer.print("(*C.{s})(self), ", .{c_name});
         try writer.print("{s}, {s})\n\treturn result{s}\n", .{ pointer_name, length_name, suffix });
         return;
     }
-    // A castable element shares the C layout, so the copy below is one `copy`
-    // of the whole run rather than a per-field read. The contract is unchanged:
-    // the result is still a fresh Go allocation, never a view of native memory.
-    if (element == .value_struct and !program.structCastable(element.value_struct.ref)) {
-        const record = structRecord(program, element.value_struct.ref);
-        try writer.print("\tif {s} == 0 {{ return nil{s} }}\n\tcResult := unsafe.Slice((*C.{s})(unsafe.Pointer({s})), int({s}))\n\tresult := make([]", .{ length_name, suffix, record.c_name, pointer_name, length_name });
-        try public_writers.writeRawGoType(writer, program, element);
-        try writer.print(", int({s}))\n\tfor i := range result {{\n\t\tresult[i] = ", .{length_name});
-        try writeCgoStructRead(allocator, writer, program, record, "\t\t", "cResult[i]");
-        try writer.print("\n\t}}\n\treturn result{s}\n", .{suffix});
+    // Every struct mirror shares the C layout (the layout guards pin it), so a
+    // struct run is one `copy` of the whole run rather than a per-field read.
+    // The contract is unchanged: the result is still a fresh Go allocation,
+    // never a view of native memory.
+    if (text) {
+        try writer.print("\treturn C.GoStringN((*C.char)(unsafe.Pointer({s})), C.int({s})){s}\n", .{ pointer_name, length_name, suffix });
         return;
     }
     if (semantic.isByte(element)) {
@@ -887,26 +903,16 @@ fn writeCgoSliceReturn(
 /// so the release path can copy and then free without duplicating the per
 /// element-kind conversion.
 fn writeCgoSliceCopyInto(
-    allocator: std.mem.Allocator,
     writer: *std.Io.Writer,
     program: abi.Program,
     element: semantic.TypeNode,
     pointer_name: []const u8,
     length_name: []const u8,
     indent: []const u8,
+    text: bool,
 ) !void {
-    // A castable element shares the C layout, so the copy below is one `copy`
-    // of the whole run rather than a per-field read. The contract is unchanged:
-    // the result is still a fresh Go allocation, never a view of native memory.
-    if (element == .value_struct and !program.structCastable(element.value_struct.ref)) {
-        const record = structRecord(program, element.value_struct.ref);
-        try writer.print("{s}cResult := unsafe.Slice((*C.{s})(unsafe.Pointer({s})), int({s}))\n{s}result = make([]", .{ indent, record.c_name, pointer_name, length_name, indent });
-        try public_writers.writeRawGoType(writer, program, element);
-        try writer.print(", int({s}))\n{s}for i := range result {{\n{s}\tresult[i] = ", .{ length_name, indent, indent });
-        const nested = try std.fmt.allocPrint(allocator, "{s}\t", .{indent});
-        defer allocator.free(nested);
-        try writeCgoStructRead(allocator, writer, program, record, nested, "cResult[i]");
-        try writer.print("\n{s}}}\n", .{indent});
+    if (text) {
+        try writer.print("{s}result = C.GoStringN((*C.char)(unsafe.Pointer({s})), C.int({s}))\n", .{ indent, pointer_name, length_name });
         return;
     }
     if (semantic.isByte(element)) {

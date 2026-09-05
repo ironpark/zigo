@@ -318,7 +318,7 @@ func SumCopies(bias int64, left *Context, right *Context) (int64, error) {
 
 // Echo: Echoes UTF-8 text without changing its bytes.
 func Echo(text string) string {
-	return string(raw.Echo([]byte(text)))
+	return raw.Echo(text)
 }
 
 // Fallback calls the Zig function fallback.

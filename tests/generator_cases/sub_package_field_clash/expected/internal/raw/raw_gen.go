@@ -38,7 +38,7 @@ type ConfigData struct {
 	Y int32
 }
 
-// ConfigData crosses to C as a cast, so it must match zg_config byte for byte.
+// ConfigData slices are copied from C memory as one run, so it must match zg_config byte for byte.
 var _ = [1]struct{}{}[unsafe.Sizeof(ConfigData{})-unsafe.Sizeof(C.zg_config{})]
 var _ = [1]struct{}{}[unsafe.Offsetof(ConfigData{}.Mode)-unsafe.Offsetof(C.zg_config{}.mode)]
 var _ = [1]struct{}{}[unsafe.Offsetof(ConfigData{}.Y)-unsafe.Offsetof(C.zg_config{}.y)]

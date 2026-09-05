@@ -116,7 +116,7 @@ func NewPipeline(name string, mode Mode, callback PipelineCallback) (*Pipeline, 
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	callbackHandle := newPipelineCallbackHandle(callback)
-	result, code := raw.PipelineCreate([]byte(name), uint32(mode), uintptr(callbackHandle))
+	result, code := raw.PipelineCreate(name, uint32(mode), uintptr(callbackHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("NewPipeline", callbackHandle)
 	}
@@ -172,7 +172,7 @@ func (p *Pipeline) Name() (string, error) {
 	if code != 0 {
 		return "", zigoPoisonAfterPanic(errorForCode("Pipeline.Name", code), p)
 	}
-	return string(result), nil
+	return result, nil
 }
 
 // SampleValues calls the Zig function sampleValues.

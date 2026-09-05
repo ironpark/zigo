@@ -102,7 +102,7 @@ type PointData struct {
 	Y int16
 }
 
-// PointData crosses to C as a cast, so it must match zg_point byte for byte.
+// PointData slices are copied from C memory as one run, so it must match zg_point byte for byte.
 var _ = [1]struct{}{}[unsafe.Sizeof(PointData{})-unsafe.Sizeof(C.zg_point{})]
 var _ = [1]struct{}{}[unsafe.Offsetof(PointData{}.X)-unsafe.Offsetof(C.zg_point{}.x)]
 var _ = [1]struct{}{}[unsafe.Offsetof(PointData{}.Y)-unsafe.Offsetof(C.zg_point{}.y)]

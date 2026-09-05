@@ -12,12 +12,7 @@ import (
 
 // Measure calls the Zig function measure.
 func Measure(text *string) uint {
-	var textRaw *[]byte
-	if text != nil {
-		textRawValue := []byte(*text)
-		textRaw = &textRawValue
-	}
-	return raw.Measure(textRaw)
+	return raw.Measure(text)
 }
 
 // Label calls the Zig function label.
@@ -39,7 +34,7 @@ func Digits(count uint32) ([]int32, bool) {
 // Name calls the Zig function name.
 func Name(count uint32) (string, bool) {
 	zigoResult, zigoHas := raw.Name(count)
-	return string(zigoResult), zigoHas
+	return zigoResult, zigoHas
 }
 
 // CheckedDigits calls the Zig function checkedDigits.
@@ -75,5 +70,5 @@ func TakeOwnedCString() (string, bool, error) {
 	if code != 0 {
 		return "", false, errorForCode("TakeOwnedCString", code)
 	}
-	return string(result), zigoHas, nil
+	return result, zigoHas, nil
 }

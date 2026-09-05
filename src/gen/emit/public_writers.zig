@@ -320,8 +320,29 @@ pub fn writeRawTypeReferencePrefix(writer: *std.Io.Writer, options: emit.Options
     if (!options.raw_colocated) try writer.writeAll("raw.");
 }
 
+/// True when the function's result is a UTF-8 byte slice the raw layer hands
+/// over as a Go `string` (built with one copy) rather than as `[]uint8`.
+pub fn rawReturnsUtf8String(function: abi.AbiFn) bool {
+    return function.materialized_return == null and function.materialized_out == null and
+        semantic.isUtf8Slice(function.origin.@"return".errorPayload(), function.origin.return_semantic);
+}
+
+/// True when a UTF-8 input crosses the raw layer as a Go `string` (or
+/// `*string` when optional), read in place through `unsafe.StringData`.
+pub fn rawTakesUtf8String(parameter: semantic.Parameter) bool {
+    return parameter.direction == .in and semantic.isUtf8Slice(parameter.type, parameter.semantic);
+}
+
+/// The raw spelling of a result payload: `string` for UTF-8 text, otherwise
+/// the raw Go type.
+fn writeRawResultType(writer: *std.Io.Writer, program: abi.Program, node: semantic.TypeNode, text: bool) !void {
+    if (text) return writer.writeAll("string");
+    try writeRawGoType(writer, program, node);
+}
+
 pub fn writeRawReturnType(writer: *std.Io.Writer, program: abi.Program, function: abi.AbiFn) !void {
     if ((function.ret_string == .c_string)) return writer.writeAll(" string");
+    const text = rawReturnsUtf8String(function);
     if (function.materialized_return) |materialized|
         return writer.writeAll(if (materialized.fallible) " ([]byte, int32)" else " []byte");
     if (function.materialized_out) |output| {
@@ -336,22 +357,22 @@ pub fn writeRawReturnType(writer: *std.Io.Writer, program: abi.Program, function
                 try writer.writeAll(" int32");
             } else if (value.payload.* == .optional) {
                 try writer.writeAll(" (");
-                try writeRawGoType(writer, program, value.payload.optional.child.*);
+                try writeRawResultType(writer, program, value.payload.optional.child.*, text);
                 try writer.writeAll(", bool, int32)");
             } else {
                 try writer.writeAll(" (");
-                try writeRawGoType(writer, program, value.payload.*);
+                try writeRawResultType(writer, program, value.payload.*, text);
                 try writer.writeAll(", int32)");
             }
         },
         .optional => |value| {
             try writer.writeAll(" (");
-            try writeRawGoType(writer, program, value.child.*);
+            try writeRawResultType(writer, program, value.child.*, text);
             try writer.writeAll(", bool)");
         },
         else => {
             try writer.writeByte(' ');
-            try writeRawGoType(writer, program, function.origin.@"return");
+            try writeRawResultType(writer, program, function.origin.@"return", text);
         },
     }
 }
@@ -361,6 +382,10 @@ pub fn writeRawParameterType(writer: *std.Io.Writer, program: abi.Program, param
     // A NUL-terminated string is a Go `string`; an optional one is a pointer
     // to it, because an empty string is a real value here.
     if (semantic.isCStringSliceThroughOptional(parameter.type, parameter.semantic))
+        return writer.writeAll(if (semantic.isOptionalSlice(parameter.type)) "*string" else "string");
+    // UTF-8 text is a Go string on both sides; the raw layer reads its bytes
+    // in place, so the public layer never has to copy it into a []byte.
+    if (rawTakesUtf8String(parameter))
         return writer.writeAll(if (semantic.isOptionalSlice(parameter.type)) "*string" else "string");
     try writeRawGoType(writer, program, parameter.type);
 }

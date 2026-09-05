@@ -32,26 +32,26 @@ func TerminalResize(self unsafe.Pointer, columns uint32) int32 {
 	return code
 }
 // TerminalRender calls the generated C ABI wrapper for zg_terminal_render.
-func TerminalRender(self unsafe.Pointer) ([]uint8, int32) {
+func TerminalRender(self unsafe.Pointer) (string, int32) {
 	var outResultPtr *C.uint8_t
 	var outResultLen C.size_t
 	code := int32(C.zg_terminal_render((*C.zg_terminal)(self), &outResultPtr, &outResultLen))
 	if code != 0 {
-		return nil, code
+		return "", code
 	}
-	var result []uint8
+	var result string
 	if outResultLen != 0 {
-		result = C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))
+		result = C.GoStringN((*C.char)(unsafe.Pointer(outResultPtr)), C.int(outResultLen))
 	}
 	C.zg_free_string(outResultPtr, outResultLen)
 	return result, code
 }
 // FreeString calls the generated C ABI wrapper for zg_free_string.
-func FreeString(str []uint8) {
+func FreeString(str string) {
 	var strZero C.uint8_t
 	strPtr := &strZero
 	if len(str) != 0 {
-		strPtr = (*C.uint8_t)(unsafe.Pointer(&str[0]))
+		strPtr = (*C.uint8_t)(unsafe.Pointer(unsafe.StringData(str)))
 	}
 	C.zg_free_string(strPtr, C.size_t(len(str)))
 }

@@ -16,11 +16,11 @@ import "unsafe"
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
 // StoreOpen calls the generated C ABI wrapper for zg_store_open.
-func StoreOpen(name []uint8) (unsafe.Pointer, int32) {
+func StoreOpen(name string) (unsafe.Pointer, int32) {
 	var nameZero C.uint8_t
 	namePtr := &nameZero
 	if len(name) != 0 {
-		namePtr = (*C.uint8_t)(unsafe.Pointer(&name[0]))
+		namePtr = (*C.uint8_t)(unsafe.Pointer(unsafe.StringData(name)))
 	}
 	var outResult *C.zg_store
 	code := int32(C.zg_store_open(namePtr, C.size_t(len(name)), &outResult))

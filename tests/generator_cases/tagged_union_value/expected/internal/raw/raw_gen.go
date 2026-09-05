@@ -57,3 +57,20 @@ type ScrollViewportData struct {
 	RegionEnabled uint8
 	_ [5]byte
 }
+
+// RegionData slices are copied from C memory as one run, so it must match zg_region byte for byte.
+var _ = [1]struct{}{}[unsafe.Sizeof(RegionData{})-unsafe.Sizeof(C.zg_region{})]
+var _ = [1]struct{}{}[unsafe.Offsetof(RegionData{}.X)-unsafe.Offsetof(C.zg_region{}.x)]
+var _ = [1]struct{}{}[unsafe.Offsetof(RegionData{}.Enabled)-unsafe.Offsetof(C.zg_region{}.enabled)]
+
+// ScrollViewportData slices are copied from C memory as one run, so it must match zg_scroll_viewport_snapshot_t byte for byte.
+var _ = [1]struct{}{}[unsafe.Sizeof(ScrollViewportData{})-unsafe.Sizeof(C.zg_scroll_viewport_snapshot_t{})]
+var _ = [1]struct{}{}[unsafe.Offsetof(ScrollViewportData{}.Tag)-unsafe.Offsetof(C.zg_scroll_viewport_snapshot_t{}.tag)]
+var _ = [1]struct{}{}[unsafe.Offsetof(ScrollViewportData{}.Delta)-unsafe.Offsetof(C.zg_scroll_viewport_snapshot_t{}.delta)]
+var _ = [1]struct{}{}[unsafe.Offsetof(ScrollViewportData{}.Page)-unsafe.Offsetof(C.zg_scroll_viewport_snapshot_t{}.page)]
+var _ = [1]struct{}{}[unsafe.Offsetof(ScrollViewportData{}.Ratio)-unsafe.Offsetof(C.zg_scroll_viewport_snapshot_t{}.ratio)]
+var _ = [1]struct{}{}[unsafe.Offsetof(ScrollViewportData{}.Animated)-unsafe.Offsetof(C.zg_scroll_viewport_snapshot_t{}.animated)]
+var _ = [1]struct{}{}[unsafe.Offsetof(ScrollViewportData{}.Mode)-unsafe.Offsetof(C.zg_scroll_viewport_snapshot_t{}.mode)]
+var _ = [1]struct{}{}[unsafe.Offsetof(ScrollViewportData{}.Rgb)-unsafe.Offsetof(C.zg_scroll_viewport_snapshot_t{}.rgb)]
+var _ = [1]struct{}{}[unsafe.Offsetof(ScrollViewportData{}.RegionX)-unsafe.Offsetof(C.zg_scroll_viewport_snapshot_t{}.region_x)]
+var _ = [1]struct{}{}[unsafe.Offsetof(ScrollViewportData{}.RegionEnabled)-unsafe.Offsetof(C.zg_scroll_viewport_snapshot_t{}.region_enabled)]

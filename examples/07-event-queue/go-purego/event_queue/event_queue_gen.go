@@ -41,7 +41,7 @@ func NewEventQueue(name string, capacity uint, policy Policy, observer EventQueu
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
 	observerHandle := newEventQueueCreateObserverHandle(observer)
-	result, code := raw.EventQueueCreate([]byte(name), capacity, uint32(policy), raw.CallbackPointer0(), uintptr(observerHandle))
+	result, code := raw.EventQueueCreate(name, capacity, uint32(policy), raw.CallbackPointer0(), uintptr(observerHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("NewEventQueue", observerHandle)
 	}
@@ -544,7 +544,7 @@ func (e *EventQueue) Name() (string, error) {
 	if code != 0 {
 		return "", zigoPoisonAfterPanic(errorForCode("EventQueue.Name", code), e)
 	}
-	return string(result), nil
+	return result, nil
 }
 
 // MustName calls Name and panics with its typed error on failure.

@@ -40,6 +40,6 @@ type ConfigData struct {
 	Erase uint8
 }
 
-// ConfigData crosses to C as a cast, so it must match zg_config byte for byte.
+// ConfigData slices are copied from C memory as one run, so it must match zg_config byte for byte.
 var _ = [1]struct{}{}[unsafe.Sizeof(ConfigData{})-unsafe.Sizeof(C.zg_config{})]
 var _ = [1]struct{}{}[unsafe.Offsetof(ConfigData{}.Erase)-unsafe.Offsetof(C.zg_config{}.erase)]

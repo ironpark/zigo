@@ -354,17 +354,22 @@ type ScrollViewportData struct {
 	_             [6]byte
 }
 
-// PointData crosses to C as a cast, so it must match zg_point byte for byte.
+// ColorRecordData slices are copied from C memory as one run, so it must match zg_color_record byte for byte.
+var _ = [1]struct{}{}[unsafe.Sizeof(ColorRecordData{})-unsafe.Sizeof(C.zg_color_record{})]
+var _ = [1]struct{}{}[unsafe.Offsetof(ColorRecordData{}.Flags)-unsafe.Offsetof(C.zg_color_record{}.flags)]
+var _ = [1]struct{}{}[unsafe.Offsetof(ColorRecordData{}.Code)-unsafe.Offsetof(C.zg_color_record{}.code)]
+
+// PointData slices are copied from C memory as one run, so it must match zg_point byte for byte.
 var _ = [1]struct{}{}[unsafe.Sizeof(PointData{})-unsafe.Sizeof(C.zg_point{})]
 var _ = [1]struct{}{}[unsafe.Offsetof(PointData{}.X)-unsafe.Offsetof(C.zg_point{}.x)]
 var _ = [1]struct{}{}[unsafe.Offsetof(PointData{}.Y)-unsafe.Offsetof(C.zg_point{}.y)]
 
-// RegionData crosses to C as a cast, so it must match zg_region byte for byte.
+// RegionData slices are copied from C memory as one run, so it must match zg_region byte for byte.
 var _ = [1]struct{}{}[unsafe.Sizeof(RegionData{})-unsafe.Sizeof(C.zg_region{})]
 var _ = [1]struct{}{}[unsafe.Offsetof(RegionData{}.Origin)-unsafe.Offsetof(C.zg_region{}.origin)]
 var _ = [1]struct{}{}[unsafe.Offsetof(RegionData{}.Width)-unsafe.Offsetof(C.zg_region{}.width)]
 
-// ScrollViewportData crosses to C as a cast, so it must match zg_scroll_viewport_snapshot_t byte for byte.
+// ScrollViewportData slices are copied from C memory as one run, so it must match zg_scroll_viewport_snapshot_t byte for byte.
 var _ = [1]struct{}{}[unsafe.Sizeof(ScrollViewportData{})-unsafe.Sizeof(C.zg_scroll_viewport_snapshot_t{})]
 var _ = [1]struct{}{}[unsafe.Offsetof(ScrollViewportData{}.Tag)-unsafe.Offsetof(C.zg_scroll_viewport_snapshot_t{}.tag)]
 var _ = [1]struct{}{}[unsafe.Offsetof(ScrollViewportData{}.Delta)-unsafe.Offsetof(C.zg_scroll_viewport_snapshot_t{}.delta)]

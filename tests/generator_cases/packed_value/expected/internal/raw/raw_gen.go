@@ -135,3 +135,8 @@ type RecordData struct {
 	_ [2]byte
 	Count uint32
 }
+
+// RecordData slices are copied from C memory as one run, so it must match zg_record byte for byte.
+var _ = [1]struct{}{}[unsafe.Sizeof(RecordData{})-unsafe.Sizeof(C.zg_record{})]
+var _ = [1]struct{}{}[unsafe.Offsetof(RecordData{}.Flags)-unsafe.Offsetof(C.zg_record{}.flags)]
+var _ = [1]struct{}{}[unsafe.Offsetof(RecordData{}.Count)-unsafe.Offsetof(C.zg_record{}.count)]

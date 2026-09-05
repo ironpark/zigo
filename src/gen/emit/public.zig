@@ -130,8 +130,6 @@ fn writePublicCapturedReturn(writer: *std.Io.Writer, program: abi.Program, funct
             try writer.print("zigo{s}FromRaw(result)", .{value.ref}),
         .slice => |value| if (value.element.* == .value_struct)
             try writer.print("zigo{s}{s}(result)", .{ value.element.*.value_struct.ref, publicSliceFromRawSuffix(program, value.element.*.value_struct.ref) })
-        else if (semantic.isUtf8Slice(function.@"return", function.return_semantic))
-            try writer.writeAll("string(result)")
         else
             try writer.writeAll("result"),
         .bool => try writer.writeAll("result != 0"),
@@ -153,13 +151,6 @@ fn publicOptionalNeedsConversion(child: semantic.TypeNode) bool {
         .bool, .@"enum", .value_struct => true,
         else => false,
     };
-}
-
-/// True when a `?[]const u8` parameter is spelled `*string` publicly but
-/// `*[]uint8` in the raw layer, so the pointer has to be rebuilt over the
-/// converted bytes. A NUL-terminated string is `*string` on both sides.
-fn publicOptionalStringNeedsBytes(parameter: semantic.Parameter) bool {
-    return semantic.isOptionalSlice(parameter.type) and semantic.isUtf8Slice(parameter.type, parameter.semantic);
 }
 
 /// Rebuilds an optional parameter in its raw spelling ahead of the call. A nil
@@ -379,13 +370,6 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                 try writePublicOptionalRawSetup(allocator, writer, program, options, field.type.optional.child.*, name);
             };
             if (parameter.type != .optional) continue;
-            if (publicOptionalStringNeedsBytes(parameter)) {
-                try writer.print(
-                    "\tvar {0s}Raw *[]byte\n\tif {0s} != nil {{\n\t\t{0s}RawValue := []byte(*{0s})\n\t\t{0s}Raw = &{0s}RawValue\n\t}}\n",
-                    .{go_names[parameter_index]},
-                );
-                continue;
-            }
             try writePublicOptionalRawSetup(allocator, writer, program, options, parameter.type.optional.child.*, go_names[parameter_index]);
         }
         try writer.writeByte('\t');
@@ -423,9 +407,6 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
             try public_writers.writeRawReferencePrefix(writer, options);
         } else if ((function.ret_string == .c_string)) {
             try writer.writeAll("return ");
-            try public_writers.writeRawReferencePrefix(writer, options);
-        } else if (semantic.isUtf8Slice(function.origin.@"return", function.origin.return_semantic)) {
-            try writer.writeAll("return string(");
             try public_writers.writeRawReferencePrefix(writer, options);
         } else if (function.origin.@"return" != .void) {
             if (function.origin.@"return" == .@"enum") {
@@ -530,8 +511,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                     try writer.print("({s})", .{go_names[parameter_index]});
                 },
                 .opaque_ptr => try writer.print("{s}Ptr", .{go_names[parameter_index]}),
-                .optional => |optional| if (publicOptionalNeedsConversion(optional.child.*) or
-                    publicOptionalStringNeedsBytes(parameter))
+                .optional => |optional| if (publicOptionalNeedsConversion(optional.child.*))
                     try writer.print("{s}Raw", .{go_names[parameter_index]})
                 else
                     try writer.writeAll(go_names[parameter_index]),
@@ -541,10 +521,6 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                     try writer.print("{s}Raw", .{go_names[parameter_index]})
                 else if (function.paramString(parameter_index).role == .string_slice)
                     try writer.writeAll(go_names[parameter_index])
-                else if (function.paramString(parameter_index).role == .c_string)
-                    try writer.writeAll(go_names[parameter_index])
-                else if (semantic.isUtf8Slice(parameter.type, parameter.semantic))
-                    try writer.print("[]byte({s})", .{go_names[parameter_index]})
                 else
                     try writer.writeAll(go_names[parameter_index]),
                 else => try writer.writeAll(go_names[parameter_index]),
@@ -558,8 +534,6 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         if (!returns_error and !captures_return and function.origin.@"return" == .materialized) try writer.writeByte(')');
         if (!returns_error and !captures_return and function.origin.@"return" == .slice and function.origin.@"return".slice.element.* == .materialized) try writer.writeByte(')');
         if (!returns_error and !captures_return and function.origin.@"return" == .bool) try writer.writeAll(" != 0");
-        if (!returns_error and !captures_return and function.origin.@"return" != .optional and
-            semantic.isUtf8Slice(function.origin.@"return", function.origin.return_semantic)) try writer.writeByte(')');
         if (!returns_error and !captures_return and !borrowed_direct and !owned_direct and needs_check and
             function.origin.@"return" != .void and function.origin.@"return" != .optional) try writer.writeAll(", nil");
         try writer.writeByte('\n');
@@ -577,7 +551,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
             const child = function.origin.@"return".optional.child.*;
             try writer.writeAll("\treturn ");
             if (semantic.isStringSlice(child, function.origin.return_semantic))
-                try writer.writeAll("string(zigoResult)")
+                try writer.writeAll("zigoResult")
             else
                 try public_writers.writePublicResultConversion(scope, writer, program, child, "zigoResult");
             try writer.writeAll(", zigoHas");
@@ -660,12 +634,12 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                         try public_writers.writeBorrowedResult(allocator, writer, program, function.origin.*, "result");
                     } else if (error_payload == .optional) {
                         if (semantic.isStringSlice(error_payload.optional.child.*, function.origin.return_semantic))
-                            try writer.writeAll("string(result)")
+                            try writer.writeAll("result")
                         else
                             try public_writers.writePublicResultConversion(scope, writer, program, error_payload.optional.child.*, "result");
                         try writer.writeAll(", zigoHas");
                     } else if (semantic.isStringSlice(error_payload, function.origin.return_semantic)) {
-                        try writer.writeAll("string(result)");
+                        try writer.writeAll("result");
                     } else {
                         try public_writers.writePublicResultConversion(scope, writer, program, error_payload, "result");
                     }

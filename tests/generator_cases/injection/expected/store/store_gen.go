@@ -16,7 +16,7 @@ import (
 func NewStore(name string) (*Store, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	result, code := raw.StoreOpen([]byte(name))
+	result, code := raw.StoreOpen(name)
 	if code != 0 {
 		return nil, errorForCode("NewStore", code)
 	}

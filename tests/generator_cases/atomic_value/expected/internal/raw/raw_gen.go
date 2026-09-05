@@ -66,7 +66,11 @@ type EventData struct {
 	Count uint64
 }
 
-// EventData crosses to C as a cast, so it must match zg_event_snapshot_t byte for byte.
+// RecordData slices are copied from C memory as one run, so it must match zg_record byte for byte.
+var _ = [1]struct{}{}[unsafe.Sizeof(RecordData{})-unsafe.Sizeof(C.zg_record{})]
+var _ = [1]struct{}{}[unsafe.Offsetof(RecordData{}.Count)-unsafe.Offsetof(C.zg_record{}.count)]
+
+// EventData slices are copied from C memory as one run, so it must match zg_event_snapshot_t byte for byte.
 var _ = [1]struct{}{}[unsafe.Sizeof(EventData{})-unsafe.Sizeof(C.zg_event_snapshot_t{})]
 var _ = [1]struct{}{}[unsafe.Offsetof(EventData{}.Tag)-unsafe.Offsetof(C.zg_event_snapshot_t{}.tag)]
 var _ = [1]struct{}{}[unsafe.Offsetof(EventData{}.Count)-unsafe.Offsetof(C.zg_event_snapshot_t{}.count)]

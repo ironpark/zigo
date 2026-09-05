@@ -16,6 +16,13 @@
   않는 가장 짧은 접두사를 쓰므로 `c`와 `co`처럼 메서드마다 달라지지 않습니다.
 - 대문자 문장으로 시작하는 Zig doc은 `// Name: Sentence`로 생성됩니다. 이전에는 `// Name`
   한 줄 뒤에 문장이 따로 와서 `go doc` 요약이 이름만 보여줬습니다.
+- `.utf8_string` 문자열이 한 번만 복사됩니다. raw 계층이 입력을 `string`으로 받아
+  `unsafe.StringData`로 빌려주고, 반환은 native 메모리에서 바로 `string`을 만듭니다. 공개
+  계층의 `[]byte(s)`·`string(b)` 변환이 사라졌고, raw 함수의 시그니처가 `[]uint8`에서
+  `string`(optional은 `*string`)으로 바뀝니다.
+- 값 struct slice 반환을 raw 계층이 C 메모리에서 `[]TData`로 한 번에 복사합니다. 이전에는
+  캐스트할 수 없는 원소를 raw와 공개 계층에서 각각 원소별로 변환했습니다. 모든 `TData`에
+  C struct와의 레이아웃 guard가 생성됩니다.
 
 ## [0.10.0] - 2026-09-06
 

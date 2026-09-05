@@ -375,20 +375,18 @@ func SumCopies(bias int64, left unsafe.Pointer, right unsafe.Pointer) (int64, in
 }
 
 // Echo calls the generated purego ABI wrapper for zg_echo.
-func Echo(text []uint8) []uint8 {
+func Echo(text string) string {
 	var textPtr unsafe.Pointer
 	if len(text) != 0 {
-		textPtr = unsafe.Pointer(&text[0])
+		textPtr = unsafe.Pointer(unsafe.StringData(text))
 	}
 	var outResultPtr unsafe.Pointer
 	var outResultLen uintptr
 	bindings().fnEcho(textPtr, uintptr(len(text)), &outResultPtr, &outResultLen)
 	if outResultLen == 0 {
-		return nil
+		return ""
 	}
-	result := make([]uint8, int(outResultLen))
-	copy(result, unsafe.Slice((*uint8)(outResultPtr), int(outResultLen)))
-	return result
+	return string(unsafe.Slice((*uint8)(outResultPtr), int(outResultLen)))
 }
 
 // Fallback calls the generated purego ABI wrapper for zg_fallback.

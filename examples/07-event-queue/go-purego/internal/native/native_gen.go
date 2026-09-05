@@ -802,10 +802,10 @@ func EchoQueueSignal(signal uint8) uint8 {
 }
 
 // EventQueueCreate calls the generated purego ABI wrapper for zg_event_queue_create_purego_v2.
-func EventQueueCreate(name []uint8, capacity uint, policy uint32, observerCallback, observerToken uintptr) (unsafe.Pointer, int32) {
+func EventQueueCreate(name string, capacity uint, policy uint32, observerCallback, observerToken uintptr) (unsafe.Pointer, int32) {
 	var namePtr unsafe.Pointer
 	if len(name) != 0 {
-		namePtr = unsafe.Pointer(&name[0])
+		namePtr = unsafe.Pointer(unsafe.StringData(name))
 	}
 	var outResult unsafe.Pointer
 	code := bindings().fnEventQueueCreate(namePtr, uintptr(len(name)), uintptr(capacity), policy, observerCallback, observerToken, &outResult)
@@ -966,19 +966,17 @@ func EventQueueSetObserver(self unsafe.Pointer, observerCallback, observerToken 
 }
 
 // EventQueueName calls the generated purego ABI wrapper for zg_event_queue_name.
-func EventQueueName(self unsafe.Pointer) ([]uint8, int32) {
+func EventQueueName(self unsafe.Pointer) (string, int32) {
 	var outResultPtr unsafe.Pointer
 	var outResultLen uintptr
 	code := bindings().fnEventQueueName(self, &outResultPtr, &outResultLen)
 	if code != 0 {
-		return nil, code
+		return "", code
 	}
 	if outResultLen == 0 {
-		return nil, code
+		return "", code
 	}
-	result := make([]uint8, int(outResultLen))
-	copy(result, unsafe.Slice((*uint8)(outResultPtr), int(outResultLen)))
-	return result, code
+	return string(unsafe.Slice((*uint8)(outResultPtr), int(outResultLen))), code
 }
 
 // EventQueueSampleValues calls the generated purego ABI wrapper for zg_event_queue_sample_values.

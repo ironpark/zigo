@@ -199,7 +199,7 @@ func CheckedShift(origin *PointData, delta int16) (PointData, bool, int32) {
 }
 
 // DescribeText calls the generated C ABI wrapper for zg_describe_text.
-func DescribeText(label *[]uint8) uint8 {
+func DescribeText(label *string) uint8 {
 	var labelZero C.uint8_t
 	var labelLen C.size_t
 	var labelPtr *C.uint8_t
@@ -207,7 +207,7 @@ func DescribeText(label *[]uint8) uint8 {
 		labelPtr = &labelZero
 		labelLen = C.size_t(len(*label))
 		if labelLen != 0 {
-			labelPtr = (*C.uint8_t)(unsafe.Pointer(&(*label)[0]))
+			labelPtr = (*C.uint8_t)(unsafe.Pointer(unsafe.StringData(*label)))
 		}
 	}
 	return uint8(C.zg_describe_text(labelPtr, labelLen))
@@ -245,7 +245,7 @@ func LeadingDigits(count uint32) ([]int32, bool) {
 }
 
 // StyleName calls the generated C ABI wrapper for zg_style_name.
-func StyleName(style *uint8) ([]uint8, bool) {
+func StyleName(style *uint8) (string, bool) {
 	var outResultPtr *C.uint8_t
 	var outResultLen C.size_t
 	var styleValue C.uint8_t
@@ -256,9 +256,9 @@ func StyleName(style *uint8) ([]uint8, bool) {
 	}
 	C.zg_style_name(stylePtr, &outResultPtr, &outResultLen)
 	if outResultPtr == nil {
-		return nil, false
+		return "", false
 	}
-	return C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen)), true
+	return C.GoStringN((*C.char)(unsafe.Pointer(outResultPtr)), C.int(outResultLen)), true
 }
 
 // PointData mirrors the zg_point layout, padding included.
@@ -267,7 +267,7 @@ type PointData struct {
 	Y int16
 }
 
-// PointData crosses to C as a cast, so it must match zg_point byte for byte.
+// PointData slices are copied from C memory as one run, so it must match zg_point byte for byte.
 var _ = [1]struct{}{}[unsafe.Sizeof(PointData{})-unsafe.Sizeof(C.zg_point{})]
 var _ = [1]struct{}{}[unsafe.Offsetof(PointData{}.X)-unsafe.Offsetof(C.zg_point{}.x)]
 var _ = [1]struct{}{}[unsafe.Offsetof(PointData{}.Y)-unsafe.Offsetof(C.zg_point{}.y)]

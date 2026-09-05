@@ -157,20 +157,8 @@ func Configs() []ConfigData {
 	var outResultLen C.size_t
 	C.zg_configs(&outResultPtr, &outResultLen)
 	if outResultLen == 0 { return nil }
-	cResult := unsafe.Slice((*C.zg_config)(unsafe.Pointer(outResultPtr)), int(outResultLen))
 	result := make([]ConfigData, int(outResultLen))
-	for i := range result {
-		result[i] = ConfigData{
-			Enabled: uint8(cResult[i].enabled),
-			Width: int32(cResult[i].width),
-			Mode: uint8(cResult[i].mode),
-			Ratio: float64(cResult[i].ratio),
-			Origin: PointData{
-				X: int16(cResult[i].origin.x),
-				Y: int16(cResult[i].origin.y),
-			},
-		}
-	}
+	copy(result, unsafe.Slice((*ConfigData)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
 	return result
 }
 // Points calls the generated C ABI wrapper for zg_points.
@@ -215,7 +203,15 @@ type ConfigData struct {
 	_ [4]byte
 }
 
-// PointData crosses to C as a cast, so it must match zg_point byte for byte.
+// PointData slices are copied from C memory as one run, so it must match zg_point byte for byte.
 var _ = [1]struct{}{}[unsafe.Sizeof(PointData{})-unsafe.Sizeof(C.zg_point{})]
 var _ = [1]struct{}{}[unsafe.Offsetof(PointData{}.X)-unsafe.Offsetof(C.zg_point{}.x)]
 var _ = [1]struct{}{}[unsafe.Offsetof(PointData{}.Y)-unsafe.Offsetof(C.zg_point{}.y)]
+
+// ConfigData slices are copied from C memory as one run, so it must match zg_config byte for byte.
+var _ = [1]struct{}{}[unsafe.Sizeof(ConfigData{})-unsafe.Sizeof(C.zg_config{})]
+var _ = [1]struct{}{}[unsafe.Offsetof(ConfigData{}.Enabled)-unsafe.Offsetof(C.zg_config{}.enabled)]
+var _ = [1]struct{}{}[unsafe.Offsetof(ConfigData{}.Width)-unsafe.Offsetof(C.zg_config{}.width)]
+var _ = [1]struct{}{}[unsafe.Offsetof(ConfigData{}.Mode)-unsafe.Offsetof(C.zg_config{}.mode)]
+var _ = [1]struct{}{}[unsafe.Offsetof(ConfigData{}.Ratio)-unsafe.Offsetof(C.zg_config{}.ratio)]
+var _ = [1]struct{}{}[unsafe.Offsetof(ConfigData{}.Origin)-unsafe.Offsetof(C.zg_config{}.origin)]

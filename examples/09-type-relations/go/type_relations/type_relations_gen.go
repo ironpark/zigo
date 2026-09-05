@@ -246,12 +246,7 @@ func CheckedShift(origin *Point, delta int16) (Point, bool, error) {
 // DescribeText: A `?[]const u8` parameter: the slice's own pointer carries absence, so an
 // absent text and an empty one are different arguments.
 func DescribeText(label *string) uint8 {
-	var labelRaw *[]byte
-	if label != nil {
-		labelRawValue := []byte(*label)
-		labelRaw = &labelRawValue
-	}
-	return raw.DescribeText(labelRaw)
+	return raw.DescribeText(label)
 }
 
 // SumOrZero: A `?[]const i32` parameter, summed when present.
@@ -274,5 +269,5 @@ func StyleName(style *CursorStyle) (string, bool) {
 		styleRaw = &styleRawValue
 	}
 	zigoResult, zigoHas := raw.StyleName(styleRaw)
-	return string(zigoResult), zigoHas
+	return zigoResult, zigoHas
 }

@@ -521,15 +521,22 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         const slice_name = go_names[parameter_index];
         try writer.print(
             "\tvar {0s}Zero byte\n\tvar {0s}Ptr unsafe.Pointer\n\tvar {0s}Len uintptr\n\tif {0s} != nil {{\n" ++
-                "\t\t{0s}Ptr = unsafe.Pointer(&{0s}Zero)\n\t\t{0s}Len = uintptr(len(*{0s}))\n" ++
-                "\t\tif {0s}Len != 0 {{ {0s}Ptr = unsafe.Pointer(&(*{0s})[0]) }}\n\t}}\n",
+                "\t\t{0s}Ptr = unsafe.Pointer(&{0s}Zero)\n\t\t{0s}Len = uintptr(len(*{0s}))\n",
             .{slice_name},
         );
+        // A string's bytes are read in place; a slice's through its first element.
+        if (public_writers.rawTakesUtf8String(parameter))
+            try writer.print("\t\tif {0s}Len != 0 {{ {0s}Ptr = unsafe.Pointer(unsafe.StringData(*{0s})) }}\n\t}}\n", .{slice_name})
+        else
+            try writer.print("\t\tif {0s}Len != 0 {{ {0s}Ptr = unsafe.Pointer(&(*{0s})[0]) }}\n\t}}\n", .{slice_name});
     } else if (parameter.type == .slice) {
         if (function.paramString(parameter_index).role == .string_slice or function.paramString(parameter_index).role == .c_string) continue;
         if (function.materializesParam(parameter_index)) continue;
         const slice_name = go_names[parameter_index];
-        try writer.print("\tvar {s}Ptr unsafe.Pointer\n\tif len({s}) != 0 {{ {s}Ptr = unsafe.Pointer(&{s}[0]) }}\n", .{ slice_name, slice_name, slice_name, slice_name });
+        if (public_writers.rawTakesUtf8String(parameter))
+            try writer.print("\tvar {0s}Ptr unsafe.Pointer\n\tif len({0s}) != 0 {{ {0s}Ptr = unsafe.Pointer(unsafe.StringData({0s})) }}\n", .{slice_name})
+        else
+            try writer.print("\tvar {s}Ptr unsafe.Pointer\n\tif len({s}) != 0 {{ {s}Ptr = unsafe.Pointer(&{s}[0]) }}\n", .{ slice_name, slice_name, slice_name, slice_name });
         if (shim.hasWrittenOutParam(parameter)) try writer.print("\tvar {s}Written uintptr\n", .{slice_name});
     };
     if (function.slice_return_element != null or function.materialized_out != null)
@@ -667,26 +674,28 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         try writer.writeAll("\treturn zigoCStringString(result)\n");
     } else if (!returns_error and function.slice_return_element != null) {
         const optional = raw.returnsOptionalSlice(function);
-        if (optional) try raw.writeSliceAbsentReturn(writer, "outResultPtr", "");
-        try writePuregoSliceReturn(allocator, writer, program, function, function.slice_return_element.?, if (optional) ", true" else "");
+        const text = public_writers.rawReturnsUtf8String(function);
+        if (optional) try raw.writeSliceAbsentReturn(writer, "outResultPtr", raw.sliceZero(text), "");
+        try writePuregoSliceReturn(allocator, writer, program, function, function.slice_return_element.?, if (optional) ", true" else "", text);
     } else if (!returns_error and function.materialized_out != null) {
         const byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
-        try writePuregoSliceReturn(allocator, writer, program, function, byte, ", uint(written)");
+        try writePuregoSliceReturn(allocator, writer, program, function, byte, ", uint(written)", false);
     } else if (returns_error) {
         if (function.materialized_out != null) {
             try writer.writeAll("\tif code != 0 {\n\t\treturn nil, 0, code\n\t}\n");
             const byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
-            try writePuregoSliceReturn(allocator, writer, program, function, byte, ", uint(outResult), code");
+            try writePuregoSliceReturn(allocator, writer, program, function, byte, ", uint(outResult), code", false);
         } else if (error_payload == .void) {
             try writer.writeAll("\treturn code\n");
         } else if (function.slice_return_element) |element| {
             // The failure path returns before the copy, so the out parameters
             // the shim never wrote are never read -- and a declared release
             // runs only after a successful call.
-            try writer.print("\tif code != 0 {{\n\t\treturn nil, {s}code\n\t}}\n", .{if (raw.returnsOptionalSlice(function)) "false, " else ""});
             const optional = raw.returnsOptionalSlice(function);
-            if (optional) try raw.writeSliceAbsentReturn(writer, "outResultPtr", ", code");
-            try writePuregoSliceReturn(allocator, writer, program, function, element, if (optional) ", true, code" else ", code");
+            const text = public_writers.rawReturnsUtf8String(function);
+            try writer.print("\tif code != 0 {{\n\t\treturn {s}, {s}code\n\t}}\n", .{ raw.sliceZero(text), if (optional) "false, " else "" });
+            if (optional) try raw.writeSliceAbsentReturn(writer, "outResultPtr", raw.sliceZero(text), ", code");
+            try writePuregoSliceReturn(allocator, writer, program, function, element, if (optional) ", true, code" else ", code", text);
         } else if (error_payload == .optional) {
             try writer.writeAll("\treturn ");
             if (puregoPayloadNeedsConversion(error_payload.optional.child.*))
@@ -723,6 +732,8 @@ fn writePuregoSliceReturn(
     function: abi.AbiFn,
     element: semantic.TypeNode,
     suffix: []const u8,
+    /// UTF-8 text: the copy is made straight into a Go `string`.
+    text: bool,
 ) !void {
     if (function.ownership.asBuffer()) |owned| {
         // Copy first, then hand the native buffer straight back, so the
@@ -730,18 +741,26 @@ fn writePuregoSliceReturn(
         const release = program.functions[owned.release];
         const release_name = try common.rawGoNameAlloc(allocator, release.origin.*);
         defer allocator.free(release_name);
-        try writer.writeAll("\tvar result []");
-        try public_writers.writeRawGoType(writer, program, element);
-        try writer.writeAll("\n\tif outResultLen != 0 {\n\t\tresult = make([]");
-        try public_writers.writeRawGoType(writer, program, element);
-        try writer.writeAll(", int(outResultLen))\n\t\tcopy(result, unsafe.Slice((*");
-        try public_writers.writeRawGoType(writer, program, element);
-        try writer.writeAll(")(outResultPtr), int(outResultLen)))\n\t}\n");
+        if (text) {
+            try writer.writeAll("\tvar result string\n\tif outResultLen != 0 {\n\t\tresult = string(unsafe.Slice((*uint8)(outResultPtr), int(outResultLen)))\n\t}\n");
+        } else {
+            try writer.writeAll("\tvar result []");
+            try public_writers.writeRawGoType(writer, program, element);
+            try writer.writeAll("\n\tif outResultLen != 0 {\n\t\tresult = make([]");
+            try public_writers.writeRawGoType(writer, program, element);
+            try writer.writeAll(", int(outResultLen))\n\t\tcopy(result, unsafe.Slice((*");
+            try public_writers.writeRawGoType(writer, program, element);
+            try writer.writeAll(")(outResultPtr), int(outResultLen)))\n\t}\n");
+        }
         try writer.print("\tbindings().fn{s}({s}outResultPtr, outResultLen)\n\treturn result{s}\n", .{
             release_name,
             if (release.origin.receiver != null) "self, " else "",
             suffix,
         });
+        return;
+    }
+    if (text) {
+        try writer.print("\tif outResultLen == 0 {{ return \"\"{s} }}\n\treturn string(unsafe.Slice((*uint8)(outResultPtr), int(outResultLen))){s}\n", .{ suffix, suffix });
         return;
     }
     try writer.print("\tif outResultLen == 0 {{ return nil{s} }}\n\tresult := make([]", .{suffix});

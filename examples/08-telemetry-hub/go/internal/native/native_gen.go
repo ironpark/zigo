@@ -77,11 +77,11 @@ func zg_telemetry_hub_create_go_callback_observer(p0 C.uint64_t, p1 C.double, p2
 }
 
 // TelemetryHubCreate calls the generated C ABI wrapper for zg_telemetry_hub_create.
-func TelemetryHubCreate(inputName []uint8, maxSamples uint, initialMode uint32, overflowPolicy uint32, observerHandle uintptr) (unsafe.Pointer, int32) {
+func TelemetryHubCreate(inputName string, maxSamples uint, initialMode uint32, overflowPolicy uint32, observerHandle uintptr) (unsafe.Pointer, int32) {
 	var inputNameZero C.uint8_t
 	inputNamePtr := &inputNameZero
 	if len(inputName) != 0 {
-		inputNamePtr = (*C.uint8_t)(unsafe.Pointer(&inputName[0]))
+		inputNamePtr = (*C.uint8_t)(unsafe.Pointer(unsafe.StringData(inputName)))
 	}
 	var outResult *C.zg_telemetry_hub
 	code := int32(C.zg_telemetry_hub_create(inputNamePtr, C.size_t(len(inputName)), C.size_t(maxSamples), C.uint32_t(initialMode), C.uint32_t(overflowPolicy), C.size_t(observerHandle), &outResult))
@@ -89,25 +89,25 @@ func TelemetryHubCreate(inputName []uint8, maxSamples uint, initialMode uint32, 
 }
 
 // TelemetryHubRename calls the generated C ABI wrapper for zg_telemetry_hub_rename.
-func TelemetryHubRename(self unsafe.Pointer, newName []uint8) int32 {
+func TelemetryHubRename(self unsafe.Pointer, newName string) int32 {
 	var newNameZero C.uint8_t
 	newNamePtr := &newNameZero
 	if len(newName) != 0 {
-		newNamePtr = (*C.uint8_t)(unsafe.Pointer(&newName[0]))
+		newNamePtr = (*C.uint8_t)(unsafe.Pointer(unsafe.StringData(newName)))
 	}
 	code := int32(C.zg_telemetry_hub_rename((*C.zg_telemetry_hub)(self), newNamePtr, C.size_t(len(newName))))
 	return code
 }
 
 // TelemetryHubName calls the generated C ABI wrapper for zg_telemetry_hub_name.
-func TelemetryHubName(self unsafe.Pointer) ([]uint8, int32) {
+func TelemetryHubName(self unsafe.Pointer) (string, int32) {
 	var outResultPtr *C.uint8_t
 	var outResultLen C.size_t
 	code := int32(C.zg_telemetry_hub_name((*C.zg_telemetry_hub)(self), &outResultPtr, &outResultLen))
 	if code != 0 {
-		return nil, code
+		return "", code
 	}
-	return C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen)), code
+	return C.GoStringN((*C.char)(unsafe.Pointer(outResultPtr)), C.int(outResultLen)), code
 }
 
 // TelemetryHubReduce calls the generated C ABI wrapper for zg_telemetry_hub_reduce.

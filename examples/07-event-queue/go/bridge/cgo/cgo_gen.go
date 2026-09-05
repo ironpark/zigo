@@ -158,11 +158,11 @@ func EchoQueueSignal(signal uint8) uint8 {
 }
 
 // EventQueueCreate calls the generated C ABI wrapper for zg_event_queue_create.
-func EventQueueCreate(name []uint8, capacity uint, policy uint32, observerHandle uintptr) (unsafe.Pointer, int32) {
+func EventQueueCreate(name string, capacity uint, policy uint32, observerHandle uintptr) (unsafe.Pointer, int32) {
 	var nameZero C.uint8_t
 	namePtr := &nameZero
 	if len(name) != 0 {
-		namePtr = (*C.uint8_t)(unsafe.Pointer(&name[0]))
+		namePtr = (*C.uint8_t)(unsafe.Pointer(unsafe.StringData(name)))
 	}
 	var outResult *C.zg_event_queue
 	code := int32(C.zg_event_queue_create(namePtr, C.size_t(len(name)), C.size_t(capacity), C.uint32_t(policy), C.size_t(observerHandle), &outResult))
@@ -322,14 +322,14 @@ func EventQueueSetObserver(self unsafe.Pointer, observerHandle uintptr) int32 {
 }
 
 // EventQueueName calls the generated C ABI wrapper for zg_event_queue_name.
-func EventQueueName(self unsafe.Pointer) ([]uint8, int32) {
+func EventQueueName(self unsafe.Pointer) (string, int32) {
 	var outResultPtr *C.uint8_t
 	var outResultLen C.size_t
 	code := int32(C.zg_event_queue_name((*C.zg_event_queue)(self), &outResultPtr, &outResultLen))
 	if code != 0 {
-		return nil, code
+		return "", code
 	}
-	return C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen)), code
+	return C.GoStringN((*C.char)(unsafe.Pointer(outResultPtr)), C.int(outResultLen)), code
 }
 
 // EventQueueSampleValues calls the generated C ABI wrapper for zg_event_queue_sample_values.
@@ -589,18 +589,8 @@ func EventQueueSampleStats(self unsafe.Pointer) ([]StatsData, int32) {
 	if outResultLen == 0 {
 		return nil, code
 	}
-	cResult := unsafe.Slice((*C.zg_stats)(unsafe.Pointer(outResultPtr)), int(outResultLen))
 	result := make([]StatsData, int(outResultLen))
-	for i := range result {
-		result[i] = StatsData{
-			Len:       uint32(cResult[i].len),
-			Capacity:  uint32(cResult[i].capacity),
-			Dropped:   uint32(cResult[i].dropped),
-			Processed: uint32(cResult[i].processed),
-			Policy:    uint32(cResult[i].policy),
-			Saturated: uint8(cResult[i].saturated),
-		}
-	}
+	copy(result, unsafe.Slice((*StatsData)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
 	return result, code
 }
 
@@ -794,12 +784,21 @@ type TickerInfoData struct {
 	Ticks    uint32
 }
 
-// LimitsData crosses to C as a cast, so it must match zg_limits byte for byte.
+// StatsData slices are copied from C memory as one run, so it must match zg_stats byte for byte.
+var _ = [1]struct{}{}[unsafe.Sizeof(StatsData{})-unsafe.Sizeof(C.zg_stats{})]
+var _ = [1]struct{}{}[unsafe.Offsetof(StatsData{}.Len)-unsafe.Offsetof(C.zg_stats{}.len)]
+var _ = [1]struct{}{}[unsafe.Offsetof(StatsData{}.Capacity)-unsafe.Offsetof(C.zg_stats{}.capacity)]
+var _ = [1]struct{}{}[unsafe.Offsetof(StatsData{}.Dropped)-unsafe.Offsetof(C.zg_stats{}.dropped)]
+var _ = [1]struct{}{}[unsafe.Offsetof(StatsData{}.Processed)-unsafe.Offsetof(C.zg_stats{}.processed)]
+var _ = [1]struct{}{}[unsafe.Offsetof(StatsData{}.Policy)-unsafe.Offsetof(C.zg_stats{}.policy)]
+var _ = [1]struct{}{}[unsafe.Offsetof(StatsData{}.Saturated)-unsafe.Offsetof(C.zg_stats{}.saturated)]
+
+// LimitsData slices are copied from C memory as one run, so it must match zg_limits byte for byte.
 var _ = [1]struct{}{}[unsafe.Sizeof(LimitsData{})-unsafe.Sizeof(C.zg_limits{})]
 var _ = [1]struct{}{}[unsafe.Offsetof(LimitsData{}.Capacity)-unsafe.Offsetof(C.zg_limits{}.capacity)]
 var _ = [1]struct{}{}[unsafe.Offsetof(LimitsData{}.Policy)-unsafe.Offsetof(C.zg_limits{}.policy)]
 
-// TickerInfoData crosses to C as a cast, so it must match zg_ticker_info byte for byte.
+// TickerInfoData slices are copied from C memory as one run, so it must match zg_ticker_info byte for byte.
 var _ = [1]struct{}{}[unsafe.Sizeof(TickerInfoData{})-unsafe.Sizeof(C.zg_ticker_info{})]
 var _ = [1]struct{}{}[unsafe.Offsetof(TickerInfoData{}.Interval)-unsafe.Offsetof(C.zg_ticker_info{}.interval)]
 var _ = [1]struct{}{}[unsafe.Offsetof(TickerInfoData{}.Ticks)-unsafe.Offsetof(C.zg_ticker_info{}.ticks)]

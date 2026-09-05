@@ -171,11 +171,11 @@ func FloatBatchDeinit(self unsafe.Pointer) int32 {
 	return code
 }
 // PipelineCreate calls the generated C ABI wrapper for zg_pipeline_create.
-func PipelineCreate(name []uint8, mode uint32, callbackHandle uintptr) (unsafe.Pointer, int32) {
+func PipelineCreate(name string, mode uint32, callbackHandle uintptr) (unsafe.Pointer, int32) {
 	var nameZero C.uint8_t
 	namePtr := &nameZero
 	if len(name) != 0 {
-		namePtr = (*C.uint8_t)(unsafe.Pointer(&name[0]))
+		namePtr = (*C.uint8_t)(unsafe.Pointer(unsafe.StringData(name)))
 	}
 	var outResult *C.zg_pipeline
 	code := int32(C.zg_pipeline_create(namePtr, C.size_t(len(name)), C.uint32_t(mode), C.size_t(callbackHandle), &outResult))
@@ -193,14 +193,14 @@ func PipelineProcess(self unsafe.Pointer, values []int32) (int64, int32) {
 	return int64(outResult), code
 }
 // PipelineName calls the generated C ABI wrapper for zg_pipeline_name.
-func PipelineName(self unsafe.Pointer) ([]uint8, int32) {
+func PipelineName(self unsafe.Pointer) (string, int32) {
 	var outResultPtr *C.uint8_t
 	var outResultLen C.size_t
 	code := int32(C.zg_pipeline_name((*C.zg_pipeline)(self), &outResultPtr, &outResultLen))
 	if code != 0 {
-		return nil, code
+		return "", code
 	}
-	return C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen)), code
+	return C.GoStringN((*C.char)(unsafe.Pointer(outResultPtr)), C.int(outResultLen)), code
 }
 // SampleValues calls the generated C ABI wrapper for zg_sample_values.
 func SampleValues() []float32 {

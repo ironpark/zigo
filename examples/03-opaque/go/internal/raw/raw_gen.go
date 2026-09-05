@@ -123,16 +123,16 @@ func SumCopies(bias int64, left unsafe.Pointer, right unsafe.Pointer) (int64, in
 }
 
 // Echo calls the generated C ABI wrapper for zg_echo.
-func Echo(text []uint8) []uint8 {
+func Echo(text string) string {
 	var outResultPtr *C.uint8_t
 	var outResultLen C.size_t
 	var textZero C.uint8_t
 	textPtr := &textZero
 	if len(text) != 0 {
-		textPtr = (*C.uint8_t)(unsafe.Pointer(&text[0]))
+		textPtr = (*C.uint8_t)(unsafe.Pointer(unsafe.StringData(text)))
 	}
 	C.zg_echo(textPtr, C.size_t(len(text)), &outResultPtr, &outResultLen)
-	return C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))
+	return C.GoStringN((*C.char)(unsafe.Pointer(outResultPtr)), C.int(outResultLen))
 }
 
 // Fallback calls the generated C ABI wrapper for zg_fallback.

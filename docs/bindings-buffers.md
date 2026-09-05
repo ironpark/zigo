@@ -55,6 +55,7 @@ native ABI는 `paths_data`, `paths_data_len`, `paths_lens`, `paths_count` 네 sc
 ## 슬라이스 반환 소유권
 
 슬라이스를 반환하는 함수는 호출 시점에 native 메모리에서 Go가 소유한 새 사본을 만듭니다.
+`.utf8_string` 반환은 그 사본이 곧 Go `string`이며 추가 복사가 없습니다.
 따라서 반환된 `[]T`는 다음 native 호출이나 원본 객체의 `Close`와 독립적이며, 호출자는
 반환된 사본만 수정할 수 있습니다. tagged-union의 숫자 slice payload도 같은 복사 계약을
 따릅니다. 이 복사가 부담이라면 결과를 `.direction = .out` 파라미터로 받는

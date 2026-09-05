@@ -62,7 +62,7 @@ func (t *Terminal) Render() (string, error) {
 	if code != 0 {
 		return "", zigoPoisonAfterPanic(errorForCode("Terminal.Render", code), t)
 	}
-	return string(result), nil
+	return result, nil
 }
 
 // MustRender calls Render and panics with its typed error on failure.

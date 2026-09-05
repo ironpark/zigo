@@ -178,14 +178,14 @@ func zigoCStringBytes(value string) []byte {
 
 
 // Measure calls the generated purego ABI wrapper for zg_measure.
-func Measure(text *[]uint8) uint {
+func Measure(text *string) uint {
 	var textZero byte
 	var textPtr unsafe.Pointer
 	var textLen uintptr
 	if text != nil {
 		textPtr = unsafe.Pointer(&textZero)
 		textLen = uintptr(len(*text))
-		if textLen != 0 { textPtr = unsafe.Pointer(&(*text)[0]) }
+		if textLen != 0 { textPtr = unsafe.Pointer(unsafe.StringData(*text)) }
 	}
 	result := bindings().fnMeasure(textPtr, textLen)
 	return uint(result)
@@ -231,15 +231,13 @@ func Digits(count uint32) ([]int32, bool) {
 }
 
 // Name calls the generated purego ABI wrapper for zg_name.
-func Name(count uint32) ([]uint8, bool) {
+func Name(count uint32) (string, bool) {
 	var outResultPtr unsafe.Pointer
 	var outResultLen uintptr
 	bindings().fnName(count, &outResultPtr, &outResultLen)
-	if outResultPtr == nil { return nil, false }
-	if outResultLen == 0 { return nil, true }
-	result := make([]uint8, int(outResultLen))
-	copy(result, unsafe.Slice((*uint8)(outResultPtr), int(outResultLen)))
-	return result, true
+	if outResultPtr == nil { return "", false }
+	if outResultLen == 0 { return "", true }
+	return string(unsafe.Slice((*uint8)(outResultPtr), int(outResultLen))), true
 }
 
 // CheckedDigits calls the generated purego ABI wrapper for zg_checked_digits.

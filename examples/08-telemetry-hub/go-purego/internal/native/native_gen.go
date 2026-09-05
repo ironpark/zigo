@@ -674,10 +674,10 @@ func LastErrorMessage() string {
 }
 
 // TelemetryHubCreate calls the generated purego ABI wrapper for zg_telemetry_hub_create_purego_v2.
-func TelemetryHubCreate(inputName []uint8, maxSamples uint, initialMode uint32, overflowPolicy uint32, observerCallback, observerToken uintptr) (unsafe.Pointer, int32) {
+func TelemetryHubCreate(inputName string, maxSamples uint, initialMode uint32, overflowPolicy uint32, observerCallback, observerToken uintptr) (unsafe.Pointer, int32) {
 	var inputNamePtr unsafe.Pointer
 	if len(inputName) != 0 {
-		inputNamePtr = unsafe.Pointer(&inputName[0])
+		inputNamePtr = unsafe.Pointer(unsafe.StringData(inputName))
 	}
 	var outResult unsafe.Pointer
 	code := bindings().fnTelemetryHubCreate(inputNamePtr, uintptr(len(inputName)), uintptr(maxSamples), initialMode, overflowPolicy, observerCallback, observerToken, &outResult)
@@ -685,29 +685,27 @@ func TelemetryHubCreate(inputName []uint8, maxSamples uint, initialMode uint32, 
 }
 
 // TelemetryHubRename calls the generated purego ABI wrapper for zg_telemetry_hub_rename.
-func TelemetryHubRename(self unsafe.Pointer, newName []uint8) int32 {
+func TelemetryHubRename(self unsafe.Pointer, newName string) int32 {
 	var newNamePtr unsafe.Pointer
 	if len(newName) != 0 {
-		newNamePtr = unsafe.Pointer(&newName[0])
+		newNamePtr = unsafe.Pointer(unsafe.StringData(newName))
 	}
 	code := bindings().fnTelemetryHubRename(self, newNamePtr, uintptr(len(newName)))
 	return code
 }
 
 // TelemetryHubName calls the generated purego ABI wrapper for zg_telemetry_hub_name.
-func TelemetryHubName(self unsafe.Pointer) ([]uint8, int32) {
+func TelemetryHubName(self unsafe.Pointer) (string, int32) {
 	var outResultPtr unsafe.Pointer
 	var outResultLen uintptr
 	code := bindings().fnTelemetryHubName(self, &outResultPtr, &outResultLen)
 	if code != 0 {
-		return nil, code
+		return "", code
 	}
 	if outResultLen == 0 {
-		return nil, code
+		return "", code
 	}
-	result := make([]uint8, int(outResultLen))
-	copy(result, unsafe.Slice((*uint8)(outResultPtr), int(outResultLen)))
-	return result, code
+	return string(unsafe.Slice((*uint8)(outResultPtr), int(outResultLen))), code
 }
 
 // TelemetryHubReduce calls the generated purego ABI wrapper for zg_telemetry_hub_reduce.

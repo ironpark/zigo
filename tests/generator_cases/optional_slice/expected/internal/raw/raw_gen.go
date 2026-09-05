@@ -25,7 +25,7 @@ func zigoCString(value string) *C.char {
 }
 
 // Measure calls the generated C ABI wrapper for zg_measure.
-func Measure(text *[]uint8) uint {
+func Measure(text *string) uint {
 	var textZero C.uint8_t
 	var textLen C.size_t
 	var textPtr *C.uint8_t
@@ -33,7 +33,7 @@ func Measure(text *[]uint8) uint {
 		textPtr = &textZero
 		textLen = C.size_t(len(*text))
 		if textLen != 0 {
-			textPtr = (*C.uint8_t)(unsafe.Pointer(&(*text)[0]))
+			textPtr = (*C.uint8_t)(unsafe.Pointer(unsafe.StringData(*text)))
 		}
 	}
 	return uint(C.zg_measure(textPtr, textLen))
@@ -72,12 +72,12 @@ func Digits(count uint32) ([]int32, bool) {
 	return result, true
 }
 // Name calls the generated C ABI wrapper for zg_name.
-func Name(count uint32) ([]uint8, bool) {
+func Name(count uint32) (string, bool) {
 	var outResultPtr *C.uint8_t
 	var outResultLen C.size_t
 	C.zg_name(C.uint32_t(count), &outResultPtr, &outResultLen)
-	if outResultPtr == nil { return nil, false }
-	return C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen)), true
+	if outResultPtr == nil { return "", false }
+	return C.GoStringN((*C.char)(unsafe.Pointer(outResultPtr)), C.int(outResultLen)), true
 }
 // CheckedDigits calls the generated C ABI wrapper for zg_checked_digits.
 func CheckedDigits(count uint32) ([]int32, bool, int32) {
