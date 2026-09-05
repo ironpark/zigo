@@ -7,7 +7,7 @@ registered_at: "2026-09-05T11:27:17Z"
 
 # Phases
 
-- [ ] [Phase 00: Ownership lowering](phases/00-ownership-lowering.md)
+- [x] [Phase 00: Ownership lowering](phases/00-ownership-lowering.md)
 - [ ] [Phase 01: Handle emitter](phases/01-handle-emitter.md)
 - [ ] [Phase 02: Lifecycle contracts](phases/02-lifecycle-contracts.md)
 

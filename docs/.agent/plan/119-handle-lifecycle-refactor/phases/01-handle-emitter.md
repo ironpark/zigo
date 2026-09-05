@@ -2,7 +2,7 @@
 depends_on:
 - "119-handle-lifecycle-refactor#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Root tests and affected cgo/purego generation checks pass with no generated changes.
 > NEXT: none
