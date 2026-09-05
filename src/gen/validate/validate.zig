@@ -60,7 +60,10 @@ pub fn findMustVariantIssue(allocator: std.mem.Allocator, source_document: seman
             };
         };
         for (document.functions, public_names) |other, other_name| {
-            if (ownership.constructorDeinitFor(document, other) != null) continue;
+            // The destructor of a constructor pair never reaches the public
+            // API on its own -- generation emits a shared `zigoRelease` -- so
+            // it takes no public Go name and drops out of the collision check.
+            if (lower.constructorForDeinit(document.constructors, other) != null) continue;
             if (!std.mem.eql(u8, function.receiver orelse "", other.receiver orelse "")) continue;
             if (!semantic.optionalStringEqual(function.package, other.package)) continue;
             if (!std.mem.eql(u8, must_name, other_name)) continue;

@@ -1,6 +1,7 @@
 //! Return ownership: borrowed views, caller-owned handles and release targets.
 const std = @import("std");
 const diagnostic = @import("diagnostic");
+const lower = @import("lower");
 const semantic = @import("semantic");
 const site = @import("site.zig");
 const types = @import("types.zig");
@@ -9,7 +10,7 @@ const validate = @import("validate.zig");
 /// The registered opaque type behind a borrowed result. Optional pointers are
 /// represented by `opaque_ptr.nullable`; error unions wrap the same node.
 pub fn borrowedOpaqueReturn(document: semantic.Semantic, function: semantic.SemanticFn) ?[]const u8 {
-    const payload = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
+    const payload = function.@"return".errorPayload();
     if (payload != .opaque_ptr or !types.hasTypeKind(document, payload.opaque_ptr.ref, .@"opaque")) return null;
     return payload.opaque_ptr.ref;
 }
@@ -17,14 +18,10 @@ pub fn borrowedOpaqueReturn(document: semantic.Semantic, function: semantic.Sema
 /// Whether a `.returns = .caller` result can become an owned Go handle. Only a
 /// pointer to a type the binding constructs has a `newX` helper to wrap it and a
 /// destructor for the cleanup to call; anything else would emit a raw pointer
-/// against a typed signature, which does not compile.
+/// against a typed signature, which does not compile. The rule is the one
+/// lowering records as a `handle`.
 pub fn ownedReturnIsWrappable(document: semantic.Semantic, function: semantic.SemanticFn) bool {
-    const payload = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
-    if (payload != .opaque_ptr) return false;
-    for (document.constructors) |constructor| {
-        if (std.mem.eql(u8, constructor.type, payload.opaque_ptr.ref)) return true;
-    }
-    return false;
+    return lower.ownedOpaqueReturn(document.constructors, function) != null;
 }
 
 /// A slice return is the one non-handle result zigo can hand over: generated Go
@@ -38,7 +35,7 @@ pub fn returnsCount(node: semantic.TypeNode) bool {
 }
 
 pub fn isReleasableSliceReturn(function: semantic.SemanticFn) bool {
-    return releasableSliceReturnElement(function) != null;
+    return lower.releasableSliceReturnElement(function) != null;
 }
 
 /// The release target must exist and take exactly the returned slice, otherwise
@@ -51,59 +48,11 @@ pub fn releaseTargetIssue(document: semantic.Semantic, function: semantic.Semant
         .site = site.functionSite(function),
         .hint = "add `.release = \"<Type>.<fn>\"` naming an exposed `fn(slice) void` that takes exactly the returned slice type",
     };
-    const parameter = releaseCandidateParameter(document, function.release orelse return missing) orelse return missing;
+    const target = lower.releaseTarget(document.functions, function.release orelse return missing) orelse return missing;
+    const parameter = target.parameter;
     if (parameter.direction != .in or parameter.type != .slice) return missing;
-    if (!typeNodeEqual(parameter.type.slice.element.*, releasableSliceReturnElement(function).?)) return missing;
+    if (!typeNodeEqual(parameter.type.slice.element.*, lower.releasableSliceReturnElement(function).?)) return missing;
     return null;
-}
-
-/// The one parameter the named release function frees through: it must exist,
-/// return `void`, and expose exactly one parameter. An injected argument is
-/// not part of the signature the release call has to match: the shim fills it
-/// in, so a `fn(gpa, slice) void` frees exactly the same slice a
-/// `fn(slice) void` does.
-pub fn releaseCandidateParameter(document: semantic.Semantic, name: []const u8) ?semantic.Parameter {
-    for (document.functions) |candidate| {
-        if (!std.mem.eql(u8, candidate.name, name)) continue;
-        if (candidate.@"return" != .void) return null;
-        return onlyExposedParameter(candidate.params);
-    }
-    return null;
-}
-
-/// The one parameter a release target passes on from Go, or null when it takes
-/// any other number of them. Injected arguments do not count: they never reach
-/// the C signature the release call goes through.
-fn onlyExposedParameter(params: []const semantic.Parameter) ?semantic.Parameter {
-    var found: ?semantic.Parameter = null;
-    for (params) |parameter| {
-        if (parameter.injected != null) continue;
-        if (found != null) return null;
-        found = parameter;
-    }
-    return found;
-}
-
-/// The element of a slice return that needs a release target, or null when
-/// the function returns something else. This is the ownership question, not
-/// the calling-convention one: a caller-owned C-string return counts here
-/// because it still has to be freed, even though `emit.sliceReturnElement`
-/// excludes it -- that one asks which returns cross as an out-pointer plus
-/// length. Optional and error-union wrappers do not change the ownership of
-/// the underlying slice.
-pub fn releasableSliceReturnElement(function: semantic.SemanticFn) ?semantic.TypeNode {
-    const payload = switch (function.@"return") {
-        .error_union => |value| value.payload.*,
-        else => function.@"return",
-    };
-    const slice = switch (payload) {
-        .optional => |value| value.child.*,
-        else => payload,
-    };
-    return switch (slice) {
-        .slice => |value| value.element.*,
-        else => null,
-    };
 }
 
 fn typeNodeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
@@ -142,24 +91,6 @@ pub fn hasConstructorDeinit(document: semantic.Semantic, constructor: semantic.C
         return function.@"return" == .void;
     }
     return false;
-}
-
-/// The constructor a function serves as `.init` for, if any. A boxed `create`
-/// reaches the public API as `New<Type>` rather than the
-/// pascal-cased Zig name, so the collision check must resolve it the same way
-/// or it would flag two unrelated constructors (`Counter.create`,
-/// `Context.create`) as though they shared a Go identifier.
-/// The constructor pairing a method serves as `.deinit` for, if any. That
-/// method never reaches the public API on its own -- generation emits a
-/// shared `zigoRelease` instead -- so it takes no public Go name and drops
-/// out of the collision check entirely.
-pub fn constructorDeinitFor(document: semantic.Semantic, function: semantic.SemanticFn) ?semantic.Constructor {
-    const receiver = function.receiver orelse return null;
-    for (document.constructors) |constructor| {
-        if (std.mem.eql(u8, constructor.type, receiver) and
-            std.mem.eql(u8, constructor.deinit, function.name)) return constructor;
-    }
-    return null;
 }
 
 test "a release target may take the allocator zigo injects" {

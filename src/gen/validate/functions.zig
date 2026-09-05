@@ -2,6 +2,7 @@
 const std = @import("std");
 const abi = @import("abi");
 const diagnostic = @import("diagnostic");
+const lower = @import("lower");
 const semantic = @import("semantic");
 const callbacks = @import("callbacks.zig");
 const materialized = @import("materialized.zig");
@@ -262,7 +263,7 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic) 
         // A returned slice crosses as `T*` plus a length, so its element has to
         // be a value the C ABI can name. The error-union payload uses the same
         // out parameters and answers to the same rule.
-        if (ownership.releasableSliceReturnElement(function)) |element| {
+        if (lower.releasableSliceReturnElement(function)) |element| {
             if (containsPointer(element)) return .{
                 .severity = .@"error",
                 .code = "ZIGO005",

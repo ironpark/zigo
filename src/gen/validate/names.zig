@@ -1,6 +1,7 @@
 //! Go identifiers and the collisions between generated names.
 const std = @import("std");
 const diagnostic = @import("diagnostic");
+const lower = @import("lower");
 const semantic = @import("semantic");
 const naming = @import("naming");
 const ownership = @import("ownership.zig");
@@ -50,12 +51,12 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
         }
     }
     for (document.functions, 0..) |function, index| {
-        if (ownership.constructorDeinitFor(document, function) != null) continue;
+        if (lower.constructorForDeinit(document.constructors, function) != null) continue;
         const bucket = function.receiver orelse "";
         const name = try semantic.publicFunctionNameAlloc(allocator, document, function);
         defer allocator.free(name);
         for (document.functions[0..index]) |previous| {
-            if (ownership.constructorDeinitFor(document, previous) != null) continue;
+            if (lower.constructorForDeinit(document.constructors, previous) != null) continue;
             const previous_bucket = previous.receiver orelse "";
             if (!std.mem.eql(u8, bucket, previous_bucket)) continue;
             if (!semantic.optionalStringEqual(function.package, previous.package)) continue;

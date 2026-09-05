@@ -2,8 +2,8 @@
 const std = @import("std");
 const abi = @import("abi");
 const diagnostic = @import("diagnostic");
+const lower = @import("lower");
 const semantic = @import("semantic");
-const ownership = @import("ownership.zig");
 const site = @import("site.zig");
 const types = @import("types.zig");
 const validate = @import("validate.zig");
@@ -34,7 +34,8 @@ pub fn materializedReleaseTargetIssue(document: semantic.Semantic, function: sem
         .site = site.functionSite(function),
         .hint = "name an exposed `fn([]u8) void` release function that frees the serialized buffer with the registered allocator",
     };
-    const parameter = ownership.releaseCandidateParameter(document, function.release orelse return missing) orelse return missing;
+    const target = lower.releaseTarget(document.functions, function.release orelse return missing) orelse return missing;
+    const parameter = target.parameter;
     if (parameter.type != .slice or parameter.type.slice.element.* != .int or
         parameter.type.slice.element.int.bits != 8 or parameter.type.slice.element.int.signed) return missing;
     return null;
@@ -176,4 +177,32 @@ test "materialized validation reports nested unsupported field paths and cycles"
     const cycle = (try validate.findIssue(allocator, cyclic_document)).?;
     try std.testing.expectEqualStrings("ZIGO048", cycle.code);
     try std.testing.expect(std.mem.indexOf(u8, cycle.message, "child.parent") != null);
+}
+
+test "a materialized release target may take the allocator zigo injects" {
+    // ZIGO048 resolves the release function through the same rule ZIGO016
+    // does, so an injected allocator is invisible to both.
+    var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    const bytes: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte } };
+    const fields = [_]semantic.TypeField{.{ .name = "value", .type = .{ .int = .{ .bits = 32, .signed = true } } }};
+    const document: semantic.Semantic = .{
+        .allocator = "std.heap.smp_allocator",
+        .functions = &.{
+            .{ .name = "snapshot", .ownership = .caller, .params = &.{}, .release = "release", .@"return" = .{ .materialized = .{ .ref = "Node" } }, .symbol = "zg_snapshot" },
+            .{
+                .name = "release",
+                .params = &.{
+                    .{ .injected = .allocator, .name = "allocator", .type = .{ .void = {} } },
+                    .{ .name = "buffer", .type = bytes },
+                },
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_release",
+            },
+        },
+        .package = "tree",
+        .prefix = "zg",
+        .types = &.{.{ .fields = &fields, .kind = .materialized, .materialized_version = 1, .name = "Node", .zig_path = "Node" }},
+        .zig_version = "0.16.0",
+    };
+    try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try validate.findIssue(std.testing.allocator, document));
 }
