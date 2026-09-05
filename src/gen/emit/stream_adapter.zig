@@ -82,6 +82,10 @@ const ZigoWriterAdapter = struct {
             try self.push(w, last);
             written += last.len;
         }
+        // defaultRebase requests space by draining an empty slice. Leaving
+        // end unchanged here would make writableSliceGreedy loop forever.
+        // Buffered bytes do not contribute to the returned data count.
+        if (written == 0) try flush(w);
         return written;
     }
 
@@ -206,6 +210,69 @@ test "drain buffers what fits and repeats the splat slice" {
     try std.testing.expectEqualStrings("abcdefef", sink.calls.items[0]);
     try std.testing.expectEqualStrings("ef", sink.calls.items[1]);
     try std.testing.expectEqual(@as(usize, 2), sink.calls.items.len);
+}
+
+test "an empty drain makes room without counting buffered bytes" {
+    var sink: Sink = .{};
+    defer sink.deinit(std.testing.allocator);
+    var buffer: [8]u8 = undefined;
+    var adapter: ZigoWriterAdapter = .init(&buffer, Sink.write, @intFromPtr(&sink));
+    try adapter.interface.writeAll("12345678");
+    // defaultRebase calls drain with an empty slice. Test that call directly
+    // so a regression fails an assertion instead of hanging in rebase's loop.
+    const written = try ZigoWriterAdapter.drain(&adapter.interface, &.{""}, 1);
+    try std.testing.expectEqual(@as(usize, 0), written);
+    try std.testing.expectEqual(@as(usize, 0), adapter.interface.end);
+    try std.testing.expectEqual(@as(usize, 1), sink.calls.items.len);
+    try std.testing.expectEqualStrings("12345678", sink.calls.items[0]);
+}
+
+test "rebasing flushes the prefix and preserves the requested tail" {
+    var sink: Sink = .{};
+    defer sink.deinit(std.testing.allocator);
+    var buffer: [8]u8 = undefined;
+    var adapter: ZigoWriterAdapter = .init(&buffer, Sink.write, @intFromPtr(&sink));
+    try adapter.interface.writeAll("abcdefgh");
+    const available = try adapter.interface.writableSliceGreedyPreserve(3, 4);
+    try std.testing.expectEqual(@as(usize, 5), available.len);
+    try std.testing.expectEqualStrings("fgh", adapter.interface.buffered());
+    try std.testing.expectEqualStrings("abcde", sink.calls.items[0]);
+    try adapter.interface.writeAll("ij");
+    try adapter.interface.flush();
+    try std.testing.expectEqualStrings("fghij", sink.calls.items[1]);
+    try std.testing.expectEqual(@as(usize, 2), sink.calls.items.len);
+}
+
+test "a failed empty drain is reported without re-entering the callback" {
+    var sink: Sink = .{ .fail_after = 0 };
+    defer sink.deinit(std.testing.allocator);
+    var buffer: [8]u8 = undefined;
+    var adapter: ZigoWriterAdapter = .init(&buffer, Sink.write, @intFromPtr(&sink));
+    try adapter.interface.writeAll("12345678");
+    try std.testing.expectError(error.WriteFailed, adapter.interface.writableSliceGreedy(1));
+    try std.testing.expectError(error.WriteFailed, adapter.interface.writableSliceGreedy(1));
+    try std.testing.expectEqual(@as(usize, 1), sink.calls.items.len);
+    try std.testing.expect(!sink.reentered);
+}
+
+test "reader and writer adapters stream across repeated full buffers" {
+    const payload = "0123456789" ** 10;
+    var source: Sink = .{ .source = payload };
+    defer source.deinit(std.testing.allocator);
+    var sink: Sink = .{};
+    defer sink.deinit(std.testing.allocator);
+    var read_buffer: [4]u8 = undefined;
+    var write_buffer: [8]u8 = undefined;
+    var reader: ZigoReaderAdapter = .init(&read_buffer, Sink.read, @intFromPtr(&source));
+    var writer: ZigoWriterAdapter = .init(&write_buffer, Sink.write, @intFromPtr(&sink));
+    try std.testing.expectEqual(payload.len, try reader.interface.streamRemaining(&writer.interface));
+    try writer.interface.flush();
+    var offset: usize = 0;
+    for (sink.calls.items) |call| {
+        try std.testing.expectEqualStrings(payload[offset..][0..call.len], call);
+        offset += call.len;
+    }
+    try std.testing.expectEqual(payload.len, offset);
 }
 
 test "the drain result counts data bytes and never the buffered ones" {

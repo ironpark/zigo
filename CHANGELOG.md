@@ -4,6 +4,14 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Fixed
+
+- Go reader·writer를 Zig `streamRemaining`으로 연결할 때 writer staging 버퍼가 차면
+  멈추던 문제를 수정했습니다. 빈 `drain` 요청도 기존 버퍼를 비워 진행하며, cgo·purego에
+  동일하게 적용됩니다. 기존 사용자는 새 zigo로 native 라이브러리를 다시 빌드해야 합니다.
+
 ## [0.9.0] - 2026-09-05
 
 `semantic.json`에 `interfaces` 필드가 추가되어 minor 릴리스입니다. 인터페이스를 등록하지 않은

@@ -85,6 +85,10 @@ const ZigoWriterAdapter = struct {
             try self.push(w, last);
             written += last.len;
         }
+        // defaultRebase requests space by draining an empty slice. Leaving
+        // end unchanged here would make writableSliceGreedy loop forever.
+        // Buffered bytes do not contribute to the returned data count.
+        if (written == 0) try flush(w);
         return written;
     }
 

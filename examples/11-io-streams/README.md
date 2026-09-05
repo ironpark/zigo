@@ -18,9 +18,9 @@ printf 'hello from Go\n' | (cd go && go run ./cmd/stream-copy)
 실패는 stderr와 0이 아닌 종료 코드로 알립니다. 입력 전체를 Go 버퍼에 모으지 않습니다.
 이름과 달리 이 예제의 `Tee`는 두 출력으로 분기하지 않고 하나의 reader를 하나의 writer로 복사합니다.
 
-Zig의 복사 루프는 4 KiB 임시 버퍼를 사용합니다. 현재 생성 adapter 둘을
-`streamRemaining`으로 직접 연결하면 writer 버퍼가 찬 뒤 진행이 멈출 수 있어, 이 예제에서는
-`readSliceShort`와 `writeAll`로 진행을 명시합니다. generator 자체의 adapter 수정은 포함하지 않습니다.
+Zig의 `streamRemaining`으로 reader와 writer adapter를 직접 연결합니다. writer 버퍼가
+차면 adapter가 버퍼를 비워 다음 읽기의 공간을 확보하므로 대용량 입력도 계속 진행합니다.
+별도의 복사 루프나 입력 전체를 담는 버퍼는 필요하지 않습니다.
 
 [실행 가능한 Go 사용 예제](go/streams/example_test.go)는 메모리 스트림 복사와
 `io.ReadAll`로 native `Source` 읽기를 보여 줍니다.
