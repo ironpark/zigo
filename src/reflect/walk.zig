@@ -142,11 +142,14 @@ pub fn reflect(
     }
 
     const packages = try reflectPackages(allocator, declaration, types.items, functions.items, pairings.items);
+    // After the packages, so an interface can follow its types into theirs.
+    const interfaces = try reflectInterfaces(allocator, declaration, types.items);
 
     return .{
         .allocator = comptime injectionExpression(declaration, "allocator"),
         .constructors = try constructors.toOwnedSlice(allocator),
         .functions = try functions.toOwnedSlice(allocator),
+        .interfaces = if (interfaces.len == 0) null else interfaces,
         .io = comptime injectionExpression(declaration, "io"),
         .package = package_name,
         .packages = if (packages.len == 0) null else packages,
@@ -402,6 +405,46 @@ test "packages assign explicit functions owning types and longest namespaces" {
         if (std.mem.eql(u8, function.name, "width")) try std.testing.expectEqualStrings("unicode", function.package.?);
         if (std.mem.eql(u8, function.name, "rootFn")) try std.testing.expectEqualStrings("unicode", function.package.?);
     }
+}
+
+test "interfaces record their methods and registered type names in order" {
+    const Api = struct {
+        pub const IntBatch = opaque {
+            pub fn len(self: *IntBatch) usize {
+                _ = self;
+                return 0;
+            }
+        };
+        pub const FloatBatch = opaque {
+            pub fn len(self: *FloatBatch) usize {
+                _ = self;
+                return 0;
+            }
+        };
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Api,
+        .types = .{
+            .{ .type = Api.IntBatch, .repr = .@"opaque" },
+            .{ .name = "Floats", .type = Api.FloatBatch, .repr = .@"opaque" },
+        },
+        .functions = .{ .{ .path = "IntBatch.len" }, .{ .path = "Floats.len" } },
+        .packages = .{.{ .path = "batches", .types = .{ "IntBatch", "Floats" } }},
+        .interfaces = .{
+            .{ .name = "Batch", .methods = .{"len"}, .types = .{ Api.IntBatch, Api.FloatBatch }, .closer = false, .doc = "Batch counts values." },
+        },
+    }, "sample", "zg");
+    const interface = document.interfaces.?[0];
+    try std.testing.expectEqualStrings("Batch", interface.name);
+    try std.testing.expectEqualStrings("len", interface.methods[0]);
+    // The second type is spelled by its registered `.name`, not its Zig name.
+    try std.testing.expectEqualStrings("IntBatch", interface.types[0]);
+    try std.testing.expectEqualStrings("Floats", interface.types[1]);
+    try std.testing.expect(!interface.closer);
+    try std.testing.expectEqualStrings("Batch counts values.", interface.doc.?);
+    try std.testing.expectEqualStrings("batches", interface.package.?);
 }
 
 test "packages reject invalid paths and missing selectors" {
@@ -855,6 +898,45 @@ fn markClosureNode(types: []const semantic.TypeDecl, reachable: []bool, package_
         },
         else => false,
     };
+}
+
+/// The `.interfaces` entries as the binding wrote them. Types are named by
+/// their registered entry, so the document never carries a `@typeName`; what
+/// the entry has to say is checked here at compile time, and whether the
+/// types actually share the methods is left to validation, which can name
+/// the offending method in a diagnostic rather than a compile error.
+fn reflectInterfaces(
+    allocator: std.mem.Allocator,
+    comptime declaration: anytype,
+    types: []const semantic.TypeDecl,
+) ![]const semantic.Interface {
+    if (!@hasField(@TypeOf(declaration), "interfaces")) return &.{};
+    var interfaces: std.ArrayList(semantic.Interface) = .empty;
+    inline for (declaration.interfaces) |entry| {
+        comptime validateInterfaceEntry(entry);
+        const methods = try allocator.alloc([]const u8, entry.methods.len);
+        inline for (entry.methods, 0..) |method, index| methods[index] = method;
+        const type_names = try allocator.alloc([]const u8, entry.types.len);
+        inline for (entry.types, 0..) |T, index| type_names[index] = comptime registeredOpaqueName(declaration, T) orelse
+            @compileError("zigo interface types must be registered in `.types` with `.repr = .opaque`: " ++ @typeName(T));
+        try interfaces.append(allocator, .{
+            .closer = if (@hasField(@TypeOf(entry), "closer")) entry.closer else true,
+            .doc = if (@hasField(@TypeOf(entry), "doc")) entry.doc else null,
+            .methods = methods,
+            .name = entry.name,
+            .package = typePackage(types, type_names[0]),
+            .types = type_names,
+        });
+    }
+    return interfaces.toOwnedSlice(allocator);
+}
+
+fn validateInterfaceEntry(comptime entry: anytype) void {
+    if (!@hasField(@TypeOf(entry), "name")) @compileError("zigo interface entries require `.name`");
+    if (!@hasField(@TypeOf(entry), "methods") or entry.methods.len == 0)
+        @compileError("zigo interface entries require a non-empty `.methods` list of Zig method names");
+    if (!@hasField(@TypeOf(entry), "types") or entry.types.len == 0)
+        @compileError("zigo interface entries require a non-empty `.types` list of registered opaque types");
 }
 
 fn packageIssue(comptime detail: []const u8, args: anytype) error{PackageDeclaration} {

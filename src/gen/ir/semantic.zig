@@ -706,6 +706,25 @@ pub const Package = struct {
     path: []const u8,
 };
 
+/// A Go interface the binding declares over a chosen set of registered opaque
+/// handles. The reflector records only what the binding said; that every
+/// listed type has every method with one Go signature is checked by
+/// validation and generation, which also spell the interface out.
+pub const Interface = struct {
+    /// Whether `io.Closer` is part of the interface. Every constructed handle
+    /// has `Close`, so this defaults on.
+    closer: bool = true,
+    doc: ?[]const u8 = null,
+    /// Zig declaration names, in the order the interface lists them.
+    methods: []const []const u8,
+    name: []const u8,
+    /// Public sub-package name, following the types. Absent means the
+    /// binding's default package.
+    package: ?[]const u8 = null,
+    /// Registered opaque type names, in the order the binding listed them.
+    types: []const []const u8,
+};
+
 pub const Semantic = struct {
     /// The Zig expression the shim passes for `std.mem.Allocator` parameters.
     /// Set by the binding's `.allocator`; without it, a function that takes an
@@ -716,6 +735,9 @@ pub const Semantic = struct {
     /// the generated Go package doc unless `go_package_doc` overrides it.
     doc: ?[]const u8 = null,
     functions: []const SemanticFn = &.{},
+    /// Declared Go interfaces. Absent when the binding declares none, so
+    /// every document written before the field existed serializes the same.
+    interfaces: ?[]const Interface = null,
     /// The Zig expression the shim passes for `std.Io` parameters, from the
     /// binding's `.io`.
     io: ?[]const u8 = null,
@@ -1067,6 +1089,41 @@ test "package metadata is omitted by default and round trips when present" {
     try std.testing.expectEqualStrings("text", parsed.value.packages.?[0].name);
     try std.testing.expectEqualStrings("text", parsed.value.types[0].package.?);
     try std.testing.expectEqualStrings("text", parsed.value.functions[0].package.?);
+}
+
+test "interfaces are omitted by default and round trip when present" {
+    const legacy: Semantic = .{ .package = "sample", .prefix = "zg", .zig_version = "0.16.0" };
+    const legacy_bytes = try legacy.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(legacy_bytes);
+    try std.testing.expect(std.mem.indexOf(u8, legacy_bytes, "\"interfaces\"") == null);
+
+    const declared: Semantic = .{
+        .interfaces = &.{.{
+            .closer = false,
+            .doc = "Batch counts staged values.",
+            .methods = &.{ "len", "clear" },
+            .name = "Batch",
+            .types = &.{ "IntBatch", "FloatBatch" },
+        }},
+        .package = "sample",
+        .prefix = "zg",
+        .types = &.{
+            .{ .kind = .@"opaque", .name = "IntBatch" },
+            .{ .kind = .@"opaque", .name = "FloatBatch" },
+        },
+        .zig_version = "0.16.0",
+    };
+    const bytes = try declared.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    var parsed = try Semantic.parse(std.testing.allocator, bytes);
+    defer parsed.deinit();
+    const interface = parsed.value.interfaces.?[0];
+    try std.testing.expectEqualStrings("Batch", interface.name);
+    try std.testing.expect(!interface.closer);
+    try std.testing.expectEqualStrings("Batch counts staged values.", interface.doc.?);
+    try std.testing.expectEqualStrings("clear", interface.methods[1]);
+    try std.testing.expectEqualStrings("FloatBatch", interface.types[1]);
+    try std.testing.expect(interface.package == null);
 }
 
 test "string slice forms agree on every accepted element spelling" {
