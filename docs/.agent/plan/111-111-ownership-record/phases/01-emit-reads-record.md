@@ -2,7 +2,7 @@
 depends_on:
 - "111-111-ownership-record#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `zig build test` 녹색, golden 44개 바이트 동일.
 > NEXT: none

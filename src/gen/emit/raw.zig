@@ -586,10 +586,10 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
             if (function.slice_return_element) |element| {
                 const optional = returnsOptionalSlice(function);
                 if (optional) try writeSliceAbsentReturn(writer, "outResultPtr", "");
-                try writeCgoSliceReturn(allocator, writer, program, element, "outResultPtr", "outResultLen", function.release_symbol, common.releaseReceiverCName(program, function), if (optional) ", true" else "");
+                try writeCgoSliceReturn(allocator, writer, program, element, "outResultPtr", "outResultLen", function.ownership.asBuffer(), if (optional) ", true" else "");
             } else if (function.materialized_out != null) {
                 const byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
-                try writeCgoSliceReturn(allocator, writer, program, byte, "outResultPtr", "outResultLen", function.release_symbol, common.releaseReceiverCName(program, function), ", written");
+                try writeCgoSliceReturn(allocator, writer, program, byte, "outResultPtr", "outResultLen", function.ownership.asBuffer(), ", written");
             } else if (function.ret_optional) {
                 try writer.writeAll("\treturn ");
                 if (function.ret_struct) |record| {
@@ -634,7 +634,7 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
             if (function.materialized_out != null) {
                 try writer.writeAll("\tif code != 0 {\n\t\treturn nil, 0, code\n\t}\n");
                 const byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
-                try writeCgoSliceReturn(allocator, writer, program, byte, "outResultPtr", "outResultLen", function.release_symbol, common.releaseReceiverCName(program, function), ", uint(outResult), code");
+                try writeCgoSliceReturn(allocator, writer, program, byte, "outResultPtr", "outResultLen", function.ownership.asBuffer(), ", uint(outResult), code");
             } else if (error_payload == .void) {
                 try writer.writeAll("\treturn code\n");
             } else if (function.slice_return_element) |element| {
@@ -644,7 +644,7 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
                 try writer.print("\tif code != 0 {{\n\t\treturn nil, {s}code\n\t}}\n", .{if (returnsOptionalSlice(function)) "false, " else ""});
                 const optional = returnsOptionalSlice(function);
                 if (optional) try writeSliceAbsentReturn(writer, "outResultPtr", ", code");
-                try writeCgoSliceReturn(allocator, writer, program, element, "outResultPtr", "outResultLen", function.release_symbol, common.releaseReceiverCName(program, function), if (optional) ", true, code" else ", code");
+                try writeCgoSliceReturn(allocator, writer, program, element, "outResultPtr", "outResultLen", function.ownership.asBuffer(), if (optional) ", true, code" else ", code");
             } else if (error_payload == .optional) {
                 try writer.writeAll("\treturn ");
                 if (function.payload_struct) |record| {
@@ -807,22 +807,22 @@ fn writeCgoSliceReturn(
     element: semantic.TypeNode,
     pointer_name: []const u8,
     length_name: []const u8,
-    release_symbol: ?[]const u8,
-    /// The C typedef of the release function's receiver, when it has one.
-    release_receiver_c_name: ?[]const u8,
+    /// The ownership record of a buffer the library hands over, or null when
+    /// the slice stays library-owned and is only copied.
+    buffer: ?abi.Ownership.Buffer,
     /// Appended to every `return` this writes, so a fallible slice return can
     /// hand the error code back alongside the copied payload.
     suffix: []const u8,
 ) !void {
-    if (release_symbol) |symbol| {
+    if (buffer) |owned| {
         // The payload is copied first and released immediately after, so the
         // returned Go slice never aliases memory the library still owns.
         try writer.print("\tvar result []", .{});
         try public_writers.writeRawGoType(writer, program, element);
         try writer.print("\n\tif {s} != 0 {{\n", .{length_name});
         try writeCgoSliceCopyInto(allocator, writer, program, element, pointer_name, length_name, "\t\t");
-        try writer.print("\t}}\n\tC.{s}(", .{symbol});
-        if (release_receiver_c_name) |c_name| try writer.print("(*C.{s})(self), ", .{c_name});
+        try writer.print("\t}}\n\tC.{s}(", .{program.functions[owned.release].symbol});
+        if (owned.release_receiver_c_name) |c_name| try writer.print("(*C.{s})(self), ", .{c_name});
         try writer.print("{s}, {s})\n\treturn result{s}\n", .{ pointer_name, length_name, suffix });
         return;
     }
@@ -851,14 +851,6 @@ fn writeCgoSliceReturn(
 
 pub fn isReleaseTarget(program: abi.Program, function: semantic.SemanticFn) bool {
     return lower.isReleaseTarget(program.origins, function);
-}
-
-pub fn releaseFunction(program: abi.Program, function: abi.AbiFn) ?abi.AbiFn {
-    const symbol = function.release_symbol orelse return null;
-    for (program.functions) |candidate| {
-        if (std.mem.eql(u8, candidate.symbol, symbol)) return candidate;
-    }
-    return null;
 }
 
 /// Fills an already declared `result` from the native `ptr, len` pair. It exists

@@ -86,6 +86,11 @@ pub const Ownership = union(enum) {
     /// function before returning, so no native memory outlives the call.
     buffer: Buffer,
 
+    /// The buffer record, when the result is one the library hands over.
+    pub fn asBuffer(self: Ownership) ?Buffer {
+        return if (self == .buffer) self.buffer else null;
+    }
+
     pub const BorrowedView = struct {
         /// The registered opaque type the pointer refers to.
         type_name: []const u8,
@@ -359,9 +364,6 @@ pub const AbiFn = struct {
     ret_optional: bool = false,
     /// This synthetic error-union payload is a tagged-union return snapshot.
     value_union_return: bool = false,
-    /// Symbol of the function that frees a caller-owned slice result. Generated
-    /// Go copies the payload out and then calls this with the same `ptr, len`.
-    release_symbol: ?[]const u8 = null,
     /// Indexed by semantic parameter index: where this parameter's flattened
     /// fields start in `params`. Lowering appends one `flattened_field` per
     /// declared field, contiguously and in order, so field `n` sits at

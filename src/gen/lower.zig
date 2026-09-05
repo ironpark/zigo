@@ -483,8 +483,8 @@ pub fn semanticDocumentForBackend(
     try nameCallbackTypes(allocator, document, functions);
     const handles = try lowerHandles(allocator, document, prefix);
     try numberRetainedCallbackSlots(allocator, document, functions, handles);
-    // The ownership record names other functions by symbol and handles by
-    // slot count, so it is the last thing settled.
+    // The ownership record indexes other functions and reads handle slot
+    // counts, so it is the last thing settled.
     try recordOwnership(allocator, document, source_document.functions, functions, handles);
     const projections = try lowerTaggedUnionProjections(allocator, document, prefix);
     const snapshots = try lowerTaggedUnionSnapshots(allocator, document, prefix);
@@ -824,9 +824,6 @@ fn recordOwnership(
     for (functions) |*lowered| {
         lowered.ownership = ownershipOf(document, source_functions, functions, handles, lowered.*);
         lowered.param_ownership = try paramOwnershipOf(allocator, document, lowered.origin.*);
-        // The release target is another exported function, so its symbol is
-        // only known once every function has been named.
-        if (lowered.ownership == .buffer) lowered.release_symbol = functions[lowered.ownership.buffer.release].symbol;
     }
 }
 
@@ -2857,7 +2854,7 @@ test "lowering records who owns every result" {
 
     const take = functions[6].ownership.buffer;
     try std.testing.expectEqual(@as(usize, 7), take.release);
-    try std.testing.expectEqualStrings("zg_store_give", functions[6].release_symbol.?);
+    try std.testing.expectEqualStrings("zg_store_give", functions[take.release].symbol);
     try std.testing.expectEqualStrings("zg_store", take.release_receiver_c_name.?);
     // A method reports panics, so its promoted return is an error union.
     try std.testing.expect(take.absent and take.fallible and !take.narrow and take.materialized == null);

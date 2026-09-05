@@ -298,7 +298,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         // A release function is called for the caller by the raw layer. Exposing
         // it publicly would invite freeing a Go-owned copy, so it stays internal.
         if (raw.isReleaseTarget(program, function.origin.*)) continue;
-        const owned_type = if (constructor) |value| value.type else common.ownedOpaqueReturn(program, function.origin.*);
+        const owned_type: ?[]const u8 = if (function.ownership == .handle) function.ownership.handle.type_name else null;
         const go_names = try common.goParamNamesForAlloc(allocator, function.origin.params);
         defer naming.freeParamNames(allocator, go_names);
         const receiver_name = if (function.origin.receiver) |receiver|
@@ -634,8 +634,8 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
             if (docs.returnsBorrowedView(function.origin.*) and function.origin.@"return".opaque_ptr.nullable)
                 try writer.writeAll("\tif result == nil {\n\t\treturn nil, false, nil\n\t}\n");
             try writer.writeAll("\treturn ");
-            if (owned_type) |type_name|
-                try common.writeOwnedHandleResult(allocator, writer, program, function, type_name, "result")
+            if (owned_type != null)
+                try common.writeOwnedHandleResult(allocator, writer, function, "result")
             else
                 try public_writers.writeBorrowedResult(allocator, writer, function.origin.*, go_names, "result");
             if (docs.returnsBorrowedView(function.origin.*) and function.origin.@"return".opaque_ptr.nullable) try writer.writeAll(", true");
@@ -698,8 +698,8 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                     try writer.writeAll(", true, nil\n");
                 } else {
                     try writer.writeAll("\treturn ");
-                    if (owned_type) |type_name| {
-                        try common.writeOwnedHandleResult(allocator, writer, program, function, type_name, "result");
+                    if (owned_type != null) {
+                        try common.writeOwnedHandleResult(allocator, writer, function, "result");
                     } else if (error_payload == .opaque_ptr and docs.returnsBorrowedHandle(function.origin.*)) {
                         try public_writers.writeBorrowedResult(allocator, writer, function.origin.*, go_names, "result");
                     } else if (error_payload == .optional) {
@@ -1186,7 +1186,7 @@ fn writeAdoptRetainedMethodCallbacks(
     if (!std.mem.eql(u8, owner, receiver)) return;
     // A method that constructs an owned result transfers its retained callbacks
     // to that result, not to its receiver.
-    if (common.constructorForInit(program, function.origin.*) != null or common.ownedOpaqueReturn(program, function.origin.*) != null) return;
+    if (function.ownership == .handle) return;
     const go_names = try common.goParamNamesForAlloc(allocator, function.origin.params);
     defer naming.freeParamNames(allocator, go_names);
     const receiver_name = try common.receiverVariableAlloc(allocator, receiver, go_names);

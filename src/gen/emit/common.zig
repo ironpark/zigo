@@ -517,14 +517,6 @@ pub fn writeCParam(writer: *std.Io.Writer, value: abi.AbiScalar, name: []const u
 /// A handle argument crosses cgo as the header's typedef pointer, converted
 /// from the unsafe.Pointer the raw signature carries; anything else passes
 /// as it is.
-/// The C typedef of the receiver a function's release counterpart takes,
-/// or null when the release is a free function or there is none.
-pub fn releaseReceiverCName(program: abi.Program, function: abi.AbiFn) ?[]const u8 {
-    const release = raw.releaseFunction(program, function) orelse return null;
-    const receiver = release.origin.receiver orelse return null;
-    return handleRecord(program, receiver).c_name;
-}
-
 pub fn writeCgoHandleArgument(writer: *std.Io.Writer, scalar: abi.AbiScalar, name: []const u8) !void {
     if (scalar == .pointer and scalar.pointer.child.* == .@"opaque") {
         try writer.print("(*C.{s})({s})", .{ scalar.pointer.child.@"opaque".c_name, name });
@@ -1075,24 +1067,23 @@ pub fn ownedOpaqueReturn(program: abi.Program, function: semantic.SemanticFn) ?[
 
 /// Every constructed handle goes through its `new` helper, which is what
 /// registers the cleanup and adopts the callback handles the call retained.
+/// `function` owns its result as a `handle`.
 pub fn writeOwnedHandleResult(
     allocator: std.mem.Allocator,
     writer: *std.Io.Writer,
-    program: abi.Program,
     function: abi.AbiFn,
-    type_name: []const u8,
     expression: []const u8,
 ) !void {
-    try writer.print("new{s}({s}", .{ type_name, expression });
-    if (function.origin.childOfReceiver()) {
+    const handle = function.ownership.handle;
+    try writer.print("new{s}({s}", .{ handle.type_name, expression });
+    if (handle.child_of_receiver) {
         try writer.writeAll(", zigoChildParent");
     }
-    if (typeOwnsCallbacks(program, type_name)) {
+    if (handle.retained_slots != 0) {
         const go_names = try goParamNamesForAlloc(allocator, function.origin.params);
         defer naming.freeParamNames(allocator, go_names);
         try writer.writeAll(", []zigoCallbackHandle{");
-        const slot_count = program.retainedCallbackSlotCount(type_name);
-        for (0..slot_count) |slot| {
+        for (0..handle.retained_slots) |slot| {
             if (slot != 0) try writer.writeAll(", ");
             var wrote = false;
             for (function.origin.params, 0..) |parameter, parameter_index| {

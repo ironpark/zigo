@@ -750,9 +750,10 @@ fn writePuregoSliceReturn(
     element: semantic.TypeNode,
     suffix: []const u8,
 ) !void {
-    if (raw.releaseFunction(program, function)) |release| {
+    if (function.ownership.asBuffer()) |owned| {
         // Copy first, then hand the native buffer straight back, so the
         // returned slice is Go memory before the library frees anything.
+        const release = program.functions[owned.release];
         const release_name = try common.rawGoNameAlloc(allocator, release.origin.*);
         defer allocator.free(release_name);
         try writer.writeAll("\tvar result []");

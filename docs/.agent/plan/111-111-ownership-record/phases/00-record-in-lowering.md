@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T07:54:17Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test` 녹색, golden 44개 바이트 동일.
 > NEXT: none
