@@ -179,37 +179,6 @@ fn materializedLayout(program: abi.Program, name: []const u8) abi.MaterializedLa
     unreachable;
 }
 
-fn programUsesMaterializedType(program: abi.Program, name: []const u8) bool {
-    for (program.functions) |function| if (function.materialized_return) |result| {
-        if (materializedTreeContains(program, result.root, name)) return true;
-    };
-    for (program.functions) |function| if (function.materialized_out) |result| {
-        if (materializedTreeContains(program, result.root, name)) return true;
-    };
-    return false;
-}
-
-fn materializedTreeContains(program: abi.Program, root: []const u8, name: []const u8) bool {
-    if (std.mem.eql(u8, root, name)) return true;
-    const layout = materializedLayout(program, root);
-    for (layout.fields) |field| switch (field.kind) {
-        .node, .node_pointer => if (materializedTreeContains(program, field.node.materialized.ref, name)) return true,
-        .node_slice => if (materializedTreeContains(program, field.node.slice.element.materialized.ref, name)) return true,
-        else => {},
-    };
-    return false;
-}
-
-fn materializedRootUse(program: abi.Program, name: []const u8, is_slice: bool) bool {
-    for (program.functions) |function| if (function.materialized_return) |result| {
-        if (result.is_slice == is_slice and std.mem.eql(u8, result.root, name)) return true;
-    };
-    if (is_slice) for (program.functions) |function| if (function.materialized_out) |result| {
-        if (std.mem.eql(u8, result.root, name)) return true;
-    };
-    return false;
-}
-
 fn writeMaterializedPublicType(scope: public_writers.PublicScope, writer: *std.Io.Writer, node: semantic.TypeNode) !void {
     if (node == .slice) {
         const element = node.slice.element.*;
@@ -225,7 +194,7 @@ pub fn renderPublicMaterializedStructs(allocator: std.mem.Allocator, writer: *st
     const scope: public_writers.PublicScope = .{ .program = program, .options = options };
     const used = try allocator.alloc(bool, program.materialized_layouts.len);
     defer allocator.free(used);
-    for (program.materialized_layouts, used) |layout, *flag| flag.* = programUsesMaterializedType(program, layout.owner.name);
+    for (program.materialized_layouts, used) |layout, *flag| flag.* = options.emitsHelper(layout.owner.name);
     var any = false;
     for (program.materialized_layouts, used) |layout, is_used| {
         if (!is_used) continue;
@@ -274,11 +243,11 @@ fn renderMaterializedDecoder(allocator: std.mem.Allocator, writer: *std.Io.Write
     const scope: public_writers.PublicScope = .{ .program = program, .options = options };
     const public_name = try scope.typeNameAlloc(allocator, layout.owner.name);
     defer allocator.free(public_name);
-    if (materializedRootUse(program, layout.owner.name, false)) try writer.print(
+    if (options.emitsHelperFmt("zigoDecode{s}Buffer", .{layout.owner.name})) try writer.print(
         "func zigoDecode{s}Buffer(buffer []byte) {s} {{\n\toffset, count := zigoMaterializedHeader(buffer, {d})\n\tif count != 1 {{ panic(\"zigo: invalid materialized result buffer\") }}\n\treturn zigoDecode{s}At(buffer, offset)\n}}\n\n",
         .{ layout.owner.name, public_name, layout.id, layout.owner.name },
     );
-    if (materializedRootUse(program, layout.owner.name, true)) try writer.print(
+    if (options.emitsHelperFmt("zigoDecode{s}SliceBuffer", .{layout.owner.name})) try writer.print(
         "func zigoDecode{s}SliceBuffer(buffer []byte) []{s} {{\n\toffset, count := zigoMaterializedHeader(buffer, {d})\n\tresult := make([]{s}, int(count))\n\tfor i := range result {{ result[i] = zigoDecode{s}At(buffer, zigoMaterializedU64(buffer, offset+uint64(i)*8)) }}\n\treturn result\n}}\n\n",
         .{ layout.owner.name, public_name, layout.id, public_name, layout.owner.name },
     );

@@ -13,6 +13,7 @@ const public_types = @import("public_types.zig");
 const purego = @import("purego.zig");
 const raw = @import("raw.zig");
 const shim = @import("shim.zig");
+pub const references = @import("references.zig");
 
 pub const Options = struct {
     pub const Backend = enum { cgo, purego };
@@ -64,6 +65,25 @@ pub const Options = struct {
     library_env_vars: ?[]const u8 = null,
     library_automatic: bool = false,
     library_exported_api: bool = true,
+    /// The generated helpers the public package references, decided by
+    /// rendering it (`references.referencedHelpersAlloc`). Null emits every
+    /// gated helper, which only the discovery rendering itself relies on
+    /// being absent.
+    helpers: ?*const references.Referenced = null,
+
+    /// Whether a gated helper of this name is written.
+    pub fn emitsHelper(self: Options, name: []const u8) bool {
+        const set = self.helpers orelse return true;
+        return set.contains(name);
+    }
+
+    /// `emitsHelper` for a name spelled from a type name, such as
+    /// `zigo<Type>ToRaw`. A name too long to spell is treated as referenced.
+    pub fn emitsHelperFmt(self: Options, comptime format: []const u8, args: anytype) bool {
+        var buffer: [256]u8 = undefined;
+        const name = std.fmt.bufPrint(&buffer, format, args) catch return true;
+        return self.emitsHelper(name);
+    }
 };
 
 pub const Emitter = struct {
@@ -315,7 +335,9 @@ pub fn packageMatches(package: ?[]const u8, active: ?[]const u8) bool {
 /// The per-union files concatenated, so a test can assert over the whole
 /// tagged-union surface the way it did when one file held it.
 pub fn renderUnionFilesForTest(program: abi.Program) ![]u8 {
-    const files = try unionFilesAlloc(std.testing.allocator, program, .{ .go_module = "example.com/test" });
+    var referenced = try references.referencedHelpersAlloc(std.testing.allocator, program, .{ .go_module = "example.com/test" });
+    defer referenced.deinit(std.testing.allocator);
+    const files = try unionFilesAlloc(std.testing.allocator, program, .{ .go_module = "example.com/test", .helpers = &referenced });
     defer {
         for (files) |file| {
             std.testing.allocator.free(file.path);
@@ -330,9 +352,11 @@ pub fn renderUnionFilesForTest(program: abi.Program) ![]u8 {
 }
 
 pub fn renderForTest(render: *const fn (std.mem.Allocator, *std.Io.Writer, abi.Program, Options) anyerror!void, program: abi.Program) ![]u8 {
+    var referenced = try references.referencedHelpersAlloc(std.testing.allocator, program, .{ .go_module = "example.com/variant" });
+    defer referenced.deinit(std.testing.allocator);
     var output: std.Io.Writer.Allocating = .init(std.testing.allocator);
     errdefer output.deinit();
-    try render(std.testing.allocator, &output.writer, program, .{ .go_module = "example.com/variant" });
+    try render(std.testing.allocator, &output.writer, program, .{ .go_module = "example.com/variant", .helpers = &referenced });
     return output.toOwnedSlice();
 }
 
@@ -909,7 +933,9 @@ test "a stream parameter becomes a shim adapter and a fixed callback ABI" {
         .{ .code = 2, .name = "ReadFailed" },
     });
     try std.testing.expect(common.programUsesCallbackDiagnostics(program));
-    try std.testing.expect(!docs.programUsesOptionalPointer(program));
+    const handles_text = try renderForTest(public.renderPublicHandlesFile, program);
+    defer std.testing.allocator.free(handles_text);
+    try std.testing.expect(std.mem.indexOf(u8, handles_text, "zigoOptionalPointer") == null);
 
     const shim_text = try renderForTest(shim.renderShim, program);
     defer std.testing.allocator.free(shim_text);
@@ -1156,6 +1182,7 @@ test "target type spelling follows registered ancestors across modules" {
 }
 
 test {
+    _ = references;
     _ = shim;
     _ = @import("materialized.zig");
     _ = header;

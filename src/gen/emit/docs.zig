@@ -214,13 +214,3 @@ pub fn returnsBorrowedView(function: semantic.SemanticFn) bool {
 pub fn hasOpaqueParameter(function: semantic.SemanticFn) bool {
     return lower.hasOpaqueParameter(function);
 }
-
-pub fn programUsesOptionalPointer(program: abi.Program) bool {
-    for (program.functions) |function| {
-        if (!public.emitsPublicFunction(program, function)) continue;
-        for (function.origin.params) |parameter| {
-            if (parameter.type == .opaque_ptr and parameter.type.opaque_ptr.nullable) return true;
-        }
-    }
-    return false;
-}

@@ -837,6 +837,9 @@ pub fn hasRetainedCallback(function: semantic.SemanticFn) bool {
 /// The package-level callback counters diagnose ownership that can outlive a
 /// call: retained callbacks and stream adapters. A transient callback cannot
 /// leak beyond its wrapper, so emitting the accessors for it is dead code.
+/// The callback diagnostics (`activeCallbackHandleCount` and friends) are an
+/// API the package offers to its own tests, not a helper generated code
+/// calls, so they are decided here rather than read off the rendered text.
 pub fn programUsesCallbackDiagnostics(program: abi.Program) bool {
     if (programHasStreams(program)) return true;
     for (program.functions) |function| if (hasRetainedCallback(function.origin.*)) return true;
@@ -1115,50 +1118,6 @@ pub fn rawNameForSemanticAlloc(allocator: std.mem.Allocator, program: abi.Progra
         }
     }
     return null;
-}
-
-pub fn programNeedsBoolHelper(program: abi.Program) bool {
-    for (program.functions) |function| {
-        if (!public.emitsPublicFunction(program, function)) continue;
-        for (function.origin.params) |parameter| {
-            if (nodeUsesBoolHelper(program, parameter.type)) return true;
-            if (parameter.flatten) |fields| for (fields) |field| {
-                if (nodeUsesBoolHelper(program, field.type)) return true;
-            };
-        }
-    }
-    for (program.structs) |record| {
-        if (!public.programUsesStructToRaw(program, record.name)) continue;
-        if (structConversionUsesBool(program, record.name, 0)) return true;
-    }
-    return false;
-}
-
-fn nodeUsesBoolHelper(program: abi.Program, node: semantic.TypeNode) bool {
-    return switch (node) {
-        .bool => true,
-        .optional => |value| nodeUsesBoolHelper(program, value.child.*),
-        .value_struct => |value| blk: {
-            const declaration = enumDecl(program, value.ref);
-            if (declaration.kind == .tagged_union or declaration.layout == .@"packed") {
-                for (declaration.fields) |field| if (field.type) |child| {
-                    if (nodeUsesBoolHelper(program, child)) break :blk true;
-                };
-            }
-            break :blk false;
-        },
-        else => false,
-    };
-}
-
-fn structConversionUsesBool(program: abi.Program, name: []const u8, depth: usize) bool {
-    if (depth >= 16) return false;
-    for (raw.structRecord(program, name).fields) |field| {
-        if (field.node == .bool) return true;
-        if (field.node == .value_struct and !isPackedValue(program, field.node) and
-            structConversionUsesBool(program, field.node.value_struct.ref, depth + 1)) return true;
-    }
-    return false;
 }
 
 test "tagged union emitters generate checked pointer-only projections" {

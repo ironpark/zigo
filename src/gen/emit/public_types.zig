@@ -158,7 +158,7 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
         // comments; only the type references take the qualified form.
         const public_name = try scope.typeNameAlloc(allocator, record.name);
         defer allocator.free(public_name);
-        if (public.programUsesStructToRaw(program, record.name)) {
+        if (options.emitsHelperFmt("zigo{s}ToRaw", .{record.name})) {
             try writer.print("func zigo{s}ToRaw(value {s}) ", .{ record.name, public_name });
             try public_writers.writeRawTypeReferencePrefix(writer, options);
             try writer.print("{s} {{\n\treturn ", .{raw_type});
@@ -185,7 +185,7 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
             try writer.writeAll("\t}\n}\n\n");
         }
 
-        if (public.programUsesStructFromRaw(program, record.name)) {
+        if (options.emitsHelperFmt("zigo{s}FromRaw", .{record.name})) {
             try writer.print("func zigo{s}FromRaw(value ", .{record.name});
             try public_writers.writeRawTypeReferencePrefix(writer, options);
             try writer.print("{s}) {s} {{\n\treturn {s}{{\n", .{ raw_type, public_name, public_name });
@@ -214,7 +214,7 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
         // allocation the raw layer already copied into. The copying helpers
         // would be dead code for such a type and are not emitted at all.
         if (record.castable) {
-            if (public.programReturnsStructSlice(program, record.name)) {
+            if (options.emitsHelperFmt("zigo{s}SliceView", .{record.name})) {
                 try writer.print("// zigo{s}SliceView reinterprets a slice the raw layer already owns as\n// []{s} without copying it again.\nfunc zigo{s}SliceView(values []", .{ record.name, record.name, record.name });
                 try public_writers.writeRawTypeReferencePrefix(writer, options);
                 try writer.print("{s}) []{s} {{\n\tif len(values) == 0 {{\n\t\treturn nil\n\t}}\n\treturn unsafe.Slice((*{s})(unsafe.Pointer(&values[0])), len(values))\n}}\n\n", .{ raw_type, public_name, public_name });
@@ -222,7 +222,7 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
             continue;
         }
 
-        if (public.programUsesStructSlice(program, record.name, false)) {
+        if (options.emitsHelperFmt("zigo{s}SliceToRaw", .{record.name})) {
             try writer.print("func zigo{s}SliceToRaw(values []{s}) []", .{ record.name, public_name });
             try public_writers.writeRawTypeReferencePrefix(writer, options);
             try writer.print("{s} {{\n\tresult := make([]", .{raw_type});
@@ -230,13 +230,13 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
             try writer.print("{s}, len(values))\n\tfor i := range values {{\n\t\tresult[i] = zigo{s}ToRaw(values[i])\n\t}}\n\treturn result\n}}\n\n", .{ raw_type, record.name });
         }
 
-        if (public.programReturnsStructSlice(program, record.name)) {
+        if (options.emitsHelperFmt("zigo{s}SliceFromRaw", .{record.name})) {
             try writer.print("func zigo{s}SliceFromRaw(values []", .{record.name});
             try public_writers.writeRawTypeReferencePrefix(writer, options);
             try writer.print("{s}) []{s} {{\n\tresult := make([]{s}, len(values))\n\tfor i := range values {{\n\t\tresult[i] = zigo{s}FromRaw(values[i])\n\t}}\n\treturn result\n}}\n\n", .{ raw_type, public_name, public_name, record.name });
         }
 
-        if (public.programUsesStructSlice(program, record.name, true)) {
+        if (options.emitsHelperFmt("zigo{s}SliceCopyFromRaw", .{record.name})) {
             try writer.print("func zigo{s}SliceCopyFromRaw(dst []{s}, values []", .{ record.name, public_name });
             try public_writers.writeRawTypeReferencePrefix(writer, options);
             try writer.print("{s}, count int) {{\n\tif count > len(dst) {{ count = len(dst) }}\n\tif count > len(values) {{ count = len(values) }}\n\tfor i := 0; i < count; i++ {{\n\t\tdst[i] = zigo{s}FromRaw(values[i])\n\t}}\n}}\n\n", .{ raw_type, record.name });
@@ -1005,7 +1005,7 @@ pub fn renderGoHandleRuntime(writer: *std.Io.Writer, program: abi.Program, optio
         try writer.writeAll("type zigoHandle = lifecycle.Handle\n\n");
         if (common.programHasChildConstructors(program)) try writer.writeAll("type zigoChildHandle = lifecycle.ChildHandle\n\n");
         try writer.writeAll("func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, error) { return lifecycle.CheckedPointer(operation, value) }\n");
-        if (docs.programUsesOptionalPointer(program))
+        if (options.emitsHelper("zigoOptionalPointer"))
             try writer.writeAll("func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsafe.Pointer, error) { return lifecycle.OptionalPointer(operation, absent, value) }\n");
         return writer.writeAll("func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error { return lifecycle.PoisonAfterPanic(err, handles...) }\n\n");
     }
@@ -1034,7 +1034,7 @@ pub fn renderGoHandleRuntime(writer: *std.Io.Writer, program: abi.Program, optio
             "\treturn value.zigoAcquire(operation)\n" ++
             "}\n\n",
     );
-    if (docs.programUsesOptionalPointer(program)) try writer.writeAll(
+    if (options.emitsHelper("zigoOptionalPointer")) try writer.writeAll(
         "func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsafe.Pointer, error) {\n" ++
             "\tif absent {\n" ++
             "\t\treturn nil, nil\n" ++

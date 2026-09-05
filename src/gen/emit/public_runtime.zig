@@ -285,7 +285,7 @@ fn renderGoSentinels(writer: *std.Io.Writer, set: SentinelSet, options: emit.Opt
 pub fn renderPublicHelpers(writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
     const scope: public_writers.PublicScope = .{ .program = program, .options = options };
     const has_callbacks = common.programHasCallbacks(program);
-    const needs_bool = common.programNeedsBoolHelper(program);
+    const needs_bool = options.emitsHelper("boolToUint8");
     if (!has_callbacks and !needs_bool) return;
     if (needs_bool) try writer.writeAll(
         "func boolToUint8(value bool) uint8 {\n" ++

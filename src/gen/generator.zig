@@ -188,10 +188,16 @@ fn appendPublicPackage(allocator: std.mem.Allocator, prepared: *std.ArrayList(Pr
     for (full_program.functions) |function| if (emit.packageMatches(function.origin.package, options.active_package)) try functions.append(allocator, function);
     var program = full_program;
     program.functions = try functions.toOwnedSlice(allocator);
-    try appendEmitters(allocator, prepared, program, options, &emit.public_emitters);
+    // Which helpers the package needs is read off a rendering of it, so the
+    // files below are written with that answer in hand.
+    var referenced = try emit.references.referencedHelpersAlloc(allocator, program, options);
+    defer referenced.deinit(allocator);
+    var package_options = options;
+    package_options.helpers = &referenced;
+    try appendEmitters(allocator, prepared, program, package_options, &emit.public_emitters);
     // The tagged-union files are not in the emitter table: how many there are
     // depends on the bindings, so they are rendered per union.
-    for (try emit.unionFilesAlloc(allocator, program, options)) |file| {
+    for (try emit.unionFilesAlloc(allocator, program, package_options)) |file| {
         const body = std.mem.trimEnd(u8, file.contents, "\n");
         try prepared.append(allocator, .{
             .path = file.path,
