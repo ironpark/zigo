@@ -11,12 +11,16 @@ status: planned
 
 ## Planned Work
 
-- panic.c slot table and `zg_panic_message`; header declaration; cgo and
-  purego raw readers; `errorForCode` mapping; remove `LockOSThread` emission
-  and the `runtime` import predicate where it was the only reason.
-- Regenerate cases and examples; run the benchmark; rewrite the
-  `generated-runtime.md` section with the new measurements; update
-  `generated-abi.md` codes and CHANGELOG (minor bump note).
+- Parked: the implementation lives on the `experiment/panic-slots` branch
+  (sequence-tagged slot table, `{prefix}_caught_panic_message(code)`, panic
+  status codes at -256 and below, no `LockOSThread` in generated functions).
+  Measured after phase 0 it saves about 5 ns of a 260 ns call (2%), the same
+  figure plan 68 recorded, so it stays below the threshold for changing the
+  panic-message ABI. The 11% first seen was the per-slot mutex sweep that
+  phase 0 removed, not the thread pin.
+- If the entry condition is ever met: rebase the branch, fix the purego
+  cancel path's `runtime` reference and the generator unit test, regenerate
+  cases and examples, and document the code range in `generated-abi.md`.
 
 ## Done When
 

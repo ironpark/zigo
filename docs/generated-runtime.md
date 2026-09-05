@@ -165,21 +165,25 @@ retained 콜백을 가진 타입의 메서드는 native 호출 뒤 콜백 slot�
 ## 패닉 메시지와 스레드 고정 비용
 
 오류 메시지를 저장한 native 스레드에서 읽기 위해 생성 함수는 호출 동안 스레드를 고정합니다.
-아래는 기존 측정 기록이며 다른 환경의 성능을 보장하는 수치는 아닙니다.
+아래는 측정 기록이며 다른 환경의 성능을 보장하는 수치는 아닙니다.
 
 `examples/07-event-queue`의 `lock_os_thread_bench_test.go`가 그 비용을 잰다. 생성된
-`EventQueue.Enqueue`와, `LockOSThread` 쌍만 뺀 손으로 쓴 같은 함수를 비교한다
-(Apple M1 Ultra, macOS 15, Go 1.27, `go test -bench . -benchmem -count=5`):
+`EventQueue.Enqueue`와, `LockOSThread` 쌍만 뺀 손으로 쓴 같은 함수를 비교한다.
 
-| 백엔드 | 생성 경로 | `LockOSThread` 없음 | 차이 | 비율 |
+| 환경 | 생성 경로 | `LockOSThread` 없음 | 차이 | 비율 |
 | --- | --- | --- | --- | --- |
-| cgo | 289.2 ns/op | 284.4 ns/op | +4.8 ns | 1.7% |
-| purego | 516.0 ns/op | 505.6 ns/op | +10.4 ns | 2.0% |
+| Apple M1 Ultra, Go 1.27 (계획 68) | 289.2 ns/op | 284.4 ns/op | +4.8 ns | 1.7% |
+| 20코어 Apple Silicon, Go 1.27 (콜백 검사 개선 뒤) | 260 ns/op | 255 ns/op | +5 ns | 2% |
 
-`LockOSThread`/`UnlockOSThread` 쌍만 따로 재면 4.2 ns/op이고, 세 벤치마크 모두
-호출당 추가 할당이 없다(cgo 0 B/op, purego는 두 경로 모두 304 B/op로 동일).
+두 측정 모두 스레드 고정은 가벼운 error union 호출 총비용의 2% 안쪽이다. 계획 68이 정한
+기준(10% 이상)에 못 미치므로 패닉 메시지 전달 ABI를 바꾸지 않는다. 호출 비용을
+지배하는 것은 경계 통과 자체다.
 
-즉 스레드 고정은 가벼운 error union 호출 총비용의 2% 안쪽이다. 계획 68이 정한
-기준(10% 이상)에 못 미치므로, 패닉 메시지 전달 ABI(전역 슬롯 배열이나 호출자 버퍼
-포인터)로 바꾸지 않는다. 그 변경은 breaking이고 `{prefix}_last_error_message`를
-없애야 하는데, 2%를 위해 치를 값이 아니다. 호출 비용을 지배하는 것은 경계 통과 자체다.
+주의: 비교 함수는 생성 함수와 콜백 panic 검사까지 같아야 한다. 검사 방식이 다른 손 함수와
+비교하면 그 차이가 `LockOSThread` 비용으로 잘못 읽힌다. 실제로 slot마다 mutex를 잡던
+이전 검사와 비교했을 때는 35 ns(11%)로 보였고, 그 비용은 원자 카운터 검사가 없앴다.
+
+시퀀스 번호가 붙은 slot 테이블로 메시지를 전달해 스레드 고정을 없애는 구현은
+`experiment/panic-slots` 브랜치에 있다. C ABI에 `{prefix}_caught_panic_message`가 추가되고
+panic 상태 코드가 `-256` 이하로 바뀌므로, 기준을 넘는 측정이 나올 때만 가져온다.
+
