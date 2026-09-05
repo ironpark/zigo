@@ -9,8 +9,7 @@ import (
 	raw "example.com/zigo/event-queue/bridge/cgo"
 )
 
-// NewTicker
-// Opens a ticker the caller owns.
+// NewTicker: Opens a ticker the caller owns.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 func NewTicker(interval uint32) (*Ticker, error) {
@@ -68,8 +67,7 @@ func (t *Ticker) Elapsed() (uint32, error) {
 // MustElapsed calls Elapsed and panics with its typed error on failure.
 func (t *Ticker) MustElapsed() uint32 { return zigoMust(t.Elapsed()) }
 
-// LiveTickers
-// Tickers still owned by the library.
+// LiveTickers: Tickers still owned by the library.
 func LiveTickers() uint {
 	return raw.LiveTickers()
 }

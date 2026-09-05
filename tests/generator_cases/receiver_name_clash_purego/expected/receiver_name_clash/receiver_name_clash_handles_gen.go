@@ -16,42 +16,42 @@ type Terminal struct {
 	poison *NativePanicError
 }
 
-// zigoAcquire pins t open for one native call and hands back its pointer;
+// zigoAcquire pins recv open for one native call and hands back its pointer;
 // the call ends with zigoRelease. A nil, closed, or poisoned handle is the error.
-func (t *Terminal) zigoAcquire(operation string) (unsafe.Pointer, error) {
-	if t == nil {
+func (recv *Terminal) zigoAcquire(operation string) (unsafe.Pointer, error) {
+	if recv == nil {
 		return nil, &HandleError{Operation: operation}
 	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.closed || t.ptr == nil {
+	recv.mu.Lock()
+	defer recv.mu.Unlock()
+	if recv.closed || recv.ptr == nil {
 		return nil, &HandleError{Operation: operation}
 	}
-	if t.poison != nil {
-		return nil, t.poison.poisoned(operation)
+	if recv.poison != nil {
+		return nil, recv.poison.poisoned(operation)
 	}
-	t.active++
-	return t.ptr, nil
+	recv.active++
+	return recv.ptr, nil
 }
 
-func (t *Terminal) zigoRelease() {
-	if t == nil {
+func (recv *Terminal) zigoRelease() {
+	if recv == nil {
 		return
 	}
-	t.mu.Lock()
-	t.active--
-	t.mu.Unlock()
+	recv.mu.Lock()
+	recv.active--
+	recv.mu.Unlock()
 }
 
-// zigoPoison marks t unusable: a Zig panic unwound through native frames
+// zigoPoison marks recv unusable: a Zig panic unwound through native frames
 // without running their defers, so the state behind it is unknown.
-func (t *Terminal) zigoPoison(cause *NativePanicError) {
-	if t == nil {
+func (recv *Terminal) zigoPoison(cause *NativePanicError) {
+	if recv == nil {
 		return
 	}
-	t.mu.Lock()
-	defer t.mu.Unlock()
-	if t.poison == nil {
-		t.poison = cause
+	recv.mu.Lock()
+	defer recv.mu.Unlock()
+	if recv.poison == nil {
+		recv.poison = cause
 	}
 }

@@ -60,7 +60,7 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
             .{ declaration.name, declaration.name, declaration.name },
         );
         // One receiver name per type, matching the methods emitted elsewhere.
-        const recv = try common.receiverVariableAlloc(allocator, declaration.name, &.{});
+        const recv = try common.typeReceiverNameAlloc(allocator, program, declaration.name);
         defer allocator.free(recv);
         if (can_be_borrowed) try writer.print(
             "func newBorrowed{0s}(ptr unsafe.Pointer, owner zigoHandle) *{0s} {{\n" ++

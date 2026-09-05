@@ -10,8 +10,7 @@ import (
 )
 
 
-// CodepointWidth
-// Reports the display width of a codepoint.
+// CodepointWidth: Reports the display width of a codepoint.
 // A native panic is returned as *NativePanicError.
 func CodepointWidth(cp uint32) (uint8, error) {
 	if cp > 2097151 {
@@ -26,14 +25,12 @@ func CodepointWidth(cp uint32) (uint8, error) {
 	return result, nil
 }
 
-// Breaks
-// Reports whether a grapheme cluster breaks between two codepoints.
+// Breaks: Reports whether a grapheme cluster breaks between two codepoints.
 func Breaks(before uint32, after uint32) bool {
 	return raw.UnicodeGraphemeBreaks(before, after) != 0
 }
 
-// Parse
-// Parses one OSC byte.
+// Parse: Parses one OSC byte.
 func Parse(byte uint8) uint8 {
 	return raw.OscParserStateParse(byte)
 }

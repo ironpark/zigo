@@ -63,8 +63,7 @@ func (d *Document) Count() (uint, error) {
 	return result, nil
 }
 
-// Dump
-// Writes every line out, newline separated. The output is far larger than
+// Dump: Writes every line out, newline separated. The output is far larger than
 // the shim's staging buffer for a document of any size, which is the
 // point: the buffer is what keeps the crossings proportional to the
 // payload rather than to the number of `writeAll` calls.
@@ -97,8 +96,7 @@ func (d *Document) Dump(w io.Writer) error {
 	return nil
 }
 
-// Load
-// Reads newline-terminated lines until the stream ends, and reports how
+// Load: Reads newline-terminated lines until the stream ends, and reports how
 // many bytes it consumed. A trailing fragment with no newline is not a
 // line: `dump` always terminates, so a stream this can read always does.
 // It returns *HandleError if a required handle is nil or closed.
@@ -131,8 +129,7 @@ func (d *Document) Load(r io.Reader) (uint, error) {
 	return result, nil
 }
 
-// Banner
-// A free function taking a stream, so the example covers the shape that has
+// Banner: A free function taking a stream, so the example covers the shape that has
 // no receiver and no error union of its own.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -157,8 +154,7 @@ func Banner(w io.Writer, width uint32) error {
 	return nil
 }
 
-// Tee
-// Copies a reader into a writer, so one call exercises both directions at
+// Tee: Copies a reader into a writer, so one call exercises both directions at
 // once and the byte count comes back through the return value.
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
@@ -193,8 +189,7 @@ func Tee(r io.Reader, w io.Writer) (uint, error) {
 	return result, nil
 }
 
-// SumCodepoints
-// Sums Unicode scalar storage after the binding narrows each promoted Go
+// SumCodepoints: Sums Unicode scalar storage after the binding narrows each promoted Go
 // element into the `u21` representation used by Zig text code.
 func SumCodepoints(values []uint32) (uint32, error) {
 	for _, zigoValue := range values {
@@ -205,14 +200,12 @@ func SumCodepoints(values []uint32) (uint32, error) {
 	return raw.SumCodepoints(values), nil
 }
 
-// FillCodepoints
-// Writes narrow elements through a caller-owned output slice.
+// FillCodepoints: Writes narrow elements through a caller-owned output slice.
 func FillCodepoints(output []uint32) {
 	raw.FillCodepoints(output)
 }
 
-// TakeCodepoints
-// Returns caller-owned narrow storage; generated Go widens it before calling
+// TakeCodepoints: Returns caller-owned narrow storage; generated Go widens it before calling
 // `freeCodepoints` with the original allocation.
 func TakeCodepoints() []uint32 {
 	return raw.TakeCodepoints()

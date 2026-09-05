@@ -28,8 +28,7 @@ func (t *Terminal) CursorX() (uint16, error) {
 	return result, nil
 }
 
-// CursorVisible
-// Reports whether the cursor is visible.
+// CursorVisible: Reports whether the cursor is visible.
 // Zig field: Terminal.screen.cursor.visible.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.

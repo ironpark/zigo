@@ -10,8 +10,7 @@ import (
 )
 
 
-// ExtractAudio
-// Opens a terminal the caller owns.
+// ExtractAudio: Opens a terminal the caller owns.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 func ExtractAudio(columns uint32) (*Terminal, error) {
@@ -27,8 +26,7 @@ func ExtractAudio(columns uint32) (*Terminal, error) {
 // MustExtractAudio calls ExtractAudio and panics with its typed error on failure.
 func MustExtractAudio(columns uint32) *Terminal { return zigoMust(ExtractAudio(columns)) }
 
-// Resize
-// Resizes the terminal.
+// Resize: Resizes the terminal.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (t *Terminal) Resize(columns uint32) error {
@@ -49,8 +47,7 @@ func (t *Terminal) Resize(columns uint32) error {
 // MustResize calls Resize and panics with its typed error on failure.
 func (t *Terminal) MustResize(columns uint32) { _ = zigoMust(struct{}{}, t.Resize(columns)) }
 
-// Render
-// Renders the screen into memory the caller owns.
+// Render: Renders the screen into memory the caller owns.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (t *Terminal) Render() (string, error) {

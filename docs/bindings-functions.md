@@ -280,14 +280,14 @@ pub fn detached(self: *Flags) void { ... }      // 빈 줄이 묶음을 끊습�
 ```
 
 출력은 Go 관례대로 항상 식별자로 시작합니다. 본문이 선언 이름으로 시작하거나 소문자
-동사로 시작할 때만 한 줄로 이어 붙이고, 그 밖의 대문자로 시작하는 문장은 자기 줄을
-가집니다.
+동사로 시작할 때는 한 줄로 이어 붙이고, 그 밖의 대문자로 시작하는 문장은 콜론으로 잇습니다.
+`go doc`이 요약으로 보여주는 첫 문장이 식별자로 시작하면서도 작성자의 문장을 그대로
+유지합니다.
 
 ```go
 // Len reports how many events are queued.
 
-// SelectionSilent
-// The selection flag bits shared by the setters below.
+// SelectionSilent: The selection flag bits shared by the setters below.
 ```
 
 doc이 없는 함수는 `// Name calls the Zig function Owner.name.` 한 문장을 받습니다.

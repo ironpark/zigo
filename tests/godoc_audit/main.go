@@ -96,9 +96,9 @@ func firstDoc(primary, fallback *ast.CommentGroup) *ast.CommentGroup {
 }
 
 // A generated doc either splices the body onto the identifier ("Len reports
-// ...") or, when the body is a sentence of its own, opens with the identifier
-// alone on the first line. Both start at the identifier, which is what godoc
-// asks for.
+// ...") or, when the body is a sentence of its own, joins it with a colon
+// ("Echo: Echoes ...") so the first sentence godoc shows as the summary still
+// starts at the identifier and still says what the author wrote.
 func documents(group *ast.CommentGroup, name string) bool {
 	if group == nil {
 		return false
@@ -107,9 +107,8 @@ func documents(group *ast.CommentGroup, name string) bool {
 	if text == name {
 		return true
 	}
-	first, rest, _ := strings.Cut(text, "\n")
-	if strings.TrimSpace(first) == name {
-		return strings.TrimSpace(rest) != ""
+	if strings.HasPrefix(text, name+": ") {
+		return strings.TrimSpace(strings.TrimPrefix(text, name+": ")) != ""
 	}
 	return strings.HasPrefix(text, name+" ") && !splicesNounPhrase(text, name)
 }

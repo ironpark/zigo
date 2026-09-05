@@ -10,8 +10,7 @@ import (
 )
 
 
-// NewStore
-// Opens a store that owns its own memory.
+// NewStore: Opens a store that owns its own memory.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 func NewStore(name string) (*Store, error) {
@@ -24,8 +23,7 @@ func NewStore(name string) (*Store, error) {
 	return newStore(result), nil
 }
 
-// Flush
-// Writes pending records out through the injected Io.
+// Flush: Writes pending records out through the injected Io.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (s *Store) Flush() error {
@@ -43,8 +41,7 @@ func (s *Store) Flush() error {
 	return nil
 }
 
-// NewCursor
-// Builds a cursor the shim boxes so Go can hold a handle to it.
+// NewCursor: Builds a cursor the shim boxes so Go can hold a handle to it.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 func NewCursor(column uint32) (*Cursor, error) {

@@ -311,7 +311,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         const go_names = try common.goParamNamesForAlloc(allocator, function.origin.params);
         defer naming.freeParamNames(allocator, go_names);
         const receiver_name = if (function.origin.receiver) |receiver|
-            try common.receiverVariableAlloc(allocator, receiver, go_names)
+            try common.typeReceiverNameAlloc(allocator, program, receiver)
         else
             null;
         defer if (receiver_name) |name| allocator.free(name);
@@ -593,7 +593,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
             if (owned_type != null)
                 try handles.writeOwnedHandleResult(allocator, writer, function, "result")
             else
-                try public_writers.writeBorrowedResult(allocator, writer, function.origin.*, go_names, "result");
+                try public_writers.writeBorrowedResult(allocator, writer, program, function.origin.*, "result");
             if (docs.returnsBorrowedView(function.origin.*) and function.origin.@"return".opaque_ptr.nullable) try writer.writeAll(", true");
             if (needs_check) try writer.writeAll(", nil");
             try writer.writeByte('\n');
@@ -615,7 +615,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                 const canceled_name = try naming.pascalAlloc(allocator, function.origin.cancelError());
                 defer allocator.free(canceled_name);
                 try writer.writeAll("\t\tzigoErr := ");
-                try public_writers.writeErrorForCode(allocator, writer, function.origin.*, go_names, operation);
+                try public_writers.writeErrorForCode(allocator, writer, program, function.origin.*, go_names, operation);
                 try writer.print("\t\tif errors.Is(zigoErr, Err{s}) && ctx.Err() != nil {{\n\t\t\treturn ", .{canceled_name});
                 if (error_payload != .void) {
                     try public_writers.writePublicFailureValues(scope, writer, function.origin.*, error_payload);
@@ -629,7 +629,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
             if (cancellable)
                 try writer.writeAll("zigoErr\n")
             else
-                try public_writers.writeErrorForCode(allocator, writer, function.origin.*, go_names, operation);
+                try public_writers.writeErrorForCode(allocator, writer, program, function.origin.*, go_names, operation);
             try writer.writeAll("\t}\n");
             try writeAdoptRetainedMethodCallbacks(allocator, writer, program, function);
             if (hasOutValueStructSlice(function.origin.*)) {
@@ -650,14 +650,14 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                 if (function.origin.childOfReceiver()) try writer.writeAll("\tzigoChildCreated = true\n");
                 if (error_payload == .opaque_ptr and error_payload.opaque_ptr.nullable and docs.returnsBorrowedView(function.origin.*)) {
                     try writer.writeAll("\tif result == nil {\n\t\treturn nil, false, nil\n\t}\n\treturn ");
-                    try public_writers.writeBorrowedResult(allocator, writer, function.origin.*, go_names, "result");
+                    try public_writers.writeBorrowedResult(allocator, writer, program, function.origin.*, "result");
                     try writer.writeAll(", true, nil\n");
                 } else {
                     try writer.writeAll("\treturn ");
                     if (owned_type != null) {
                         try handles.writeOwnedHandleResult(allocator, writer, function, "result");
                     } else if (error_payload == .opaque_ptr and docs.returnsBorrowedOpaque(function.origin.*)) {
-                        try public_writers.writeBorrowedResult(allocator, writer, function.origin.*, go_names, "result");
+                        try public_writers.writeBorrowedResult(allocator, writer, program, function.origin.*, "result");
                     } else if (error_payload == .optional) {
                         if (semantic.isStringSlice(error_payload.optional.child.*, function.origin.return_semantic))
                             try writer.writeAll("string(result)")
@@ -1030,7 +1030,7 @@ fn renderCallbackRethrows(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
     }
     if (function.receiver) |receiver| {
         if (common.typeOwnsCallbacks(program, receiver)) {
-            const receiver_name = try common.receiverVariableAlloc(allocator, receiver, go_names);
+            const receiver_name = try common.typeReceiverNameAlloc(allocator, program, receiver);
             defer allocator.free(receiver_name);
             try writer.print("\t\tfor slot := range {d} {{\n\t\t\tzigoRethrowCallbackPanic(\"{s}\", {s}.zigoCallbackHandle(slot))\n\t\t}}\n", .{ program.retainedCallbackSlotCount(receiver), operation, receiver_name });
         }
@@ -1169,7 +1169,7 @@ fn renderCallbackErrorChecks(
     }
     if (function.receiver) |receiver| {
         if (common.typeOwnsErrorCallbacks(program, receiver)) {
-            const receiver_name = try common.receiverVariableAlloc(allocator, receiver, go_names);
+            const receiver_name = try common.typeReceiverNameAlloc(allocator, program, receiver);
             defer allocator.free(receiver_name);
             try writer.print("\tfor slot := range {d} {{\n\t\tif err := zigoCallbackError(\"{s}\", \"callback\", {s}.zigoCallbackHandle(slot)); err != nil {{\n\t\t\t", .{ program.retainedCallbackSlotCount(receiver), operation, receiver_name });
             try public_writers.writeCheckedErrorReturn(scope, writer, function, constructor, "err");
@@ -1246,7 +1246,7 @@ fn writeAdoptRetainedMethodCallbacks(
     if (function.ownership == .handle) return;
     const go_names = try common.goParamNamesForAlloc(allocator, function.origin.params);
     defer naming.freeParamNames(allocator, go_names);
-    const receiver_name = try common.receiverVariableAlloc(allocator, receiver, go_names);
+    const receiver_name = try common.typeReceiverNameAlloc(allocator, program, receiver);
     defer allocator.free(receiver_name);
     for (function.origin.params, 0..) |parameter, parameter_index| {
         if (parameter.type != .callback or parameter.retention != .retained) continue;

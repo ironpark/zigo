@@ -79,8 +79,7 @@ func (t *TelemetryHub) Name() (string, error) {
 	return string(result), nil
 }
 
-// Reduce
-// A deliberately long fold, polling a cancellation flag between rounds.
+// Reduce: A deliberately long fold, polling a cancellation flag between rounds.
 // The flag is Go's: a goroutine watching `ctx.Done()` raises it while
 // this is running, and the only thing that has to be true for that to be
 // safe is that this reads it atomically and never writes it.

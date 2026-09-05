@@ -291,8 +291,7 @@ func Apply(value int32, callback Observer) (int32, error) {
 	return result, nil
 }
 
-// ApplyUntilCancelled
-// Calls callback until limit is reached or cancel is raised. The callback's
+// ApplyUntilCancelled: Calls callback until limit is reached or cancel is raised. The callback's
 // return value is deliberately ignored so the generated failure path must
 // trip cancel rather than relying on an in-band sentinel to stop this loop.
 // Native failures are returned as generated error values.

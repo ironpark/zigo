@@ -5,8 +5,7 @@ package calculator
 
 import "example.com/zigo/quick-start/internal/raw"
 
-// Add
-// Adds two signed 32-bit integers. The sum must fit in i32.
+// Add: Adds two signed 32-bit integers. The sum must fit in i32.
 func Add(a int32, b int32) int32 {
 	return raw.Add(a, b)
 }

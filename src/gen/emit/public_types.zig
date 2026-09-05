@@ -383,7 +383,7 @@ fn renderPublicSnapshots(
         defer allocator.free(type_name);
         const raw_function = try common.snapshotRawFunctionNameAlloc(allocator, snapshot);
         defer allocator.free(raw_function);
-        const recv = try common.receiverVariableAlloc(allocator, declaration.name, &.{});
+        const recv = try common.typeReceiverNameAlloc(allocator, program, declaration.name);
         defer allocator.free(recv);
         try writer.print(
             "// {s} is a value copy of a {s}: one native call carries the active tag\n" ++
@@ -548,7 +548,7 @@ fn renderPublicUnionVariants(
         const declaration = entry.owner;
         const variant_names = entry;
         const tag_type = declaration.tag_type.?.@"enum".ref;
-        const recv = try common.receiverVariableAlloc(allocator, declaration.name, &.{});
+        const recv = try common.typeReceiverNameAlloc(allocator, program, declaration.name);
         defer allocator.free(recv);
         try writer.print(
             "// {0s}Variant is the sealed interface every {0s} variant implements. A type\n" ++
@@ -728,7 +728,7 @@ fn renderPublicTaggedUnionAccessors(
         if (tag_projection.kind != .tag) continue;
         const declaration = tag_projection.owner.*;
         if (!std.mem.eql(u8, declaration.name, owner.name)) continue;
-        const recv = try common.receiverVariableAlloc(allocator, declaration.name, &.{});
+        const recv = try common.typeReceiverNameAlloc(allocator, program, declaration.name);
         defer allocator.free(recv);
         const tag_type = declaration.tag_type.?.@"enum".ref;
 

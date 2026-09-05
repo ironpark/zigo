@@ -43,17 +43,17 @@ func NewContext() (*Context, error) {
 // Add calls the Zig function Context.add.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
-func (c *Context) Add(value int64) (int64, error) {
+func (co *Context) Add(value int64) (int64, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	ptr, err := zigoCheckedPointer("Context.Add receiver", c)
+	ptr, err := zigoCheckedPointer("Context.Add receiver", co)
 	if err != nil {
 		return 0, err
 	}
-	defer c.zigoRelease()
+	defer co.zigoRelease()
 	result, code := raw.ContextAdd(ptr, value)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Context.Add", code), c)
+		return 0, zigoPoisonAfterPanic(errorForCode("Context.Add", code), co)
 	}
 	return result, nil
 }
@@ -61,17 +61,17 @@ func (c *Context) Add(value int64) (int64, error) {
 // MaybeTotal calls the Zig function Context.maybeTotal.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
-func (c *Context) MaybeTotal(present bool) (int64, bool, error) {
+func (co *Context) MaybeTotal(present bool) (int64, bool, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	ptr, err := zigoCheckedPointer("Context.MaybeTotal receiver", c)
+	ptr, err := zigoCheckedPointer("Context.MaybeTotal receiver", co)
 	if err != nil {
 		return 0, false, err
 	}
-	defer c.zigoRelease()
+	defer co.zigoRelease()
 	result, zigoHas, code := raw.ContextMaybeTotal(ptr, boolToUint8(present))
 	if code != 0 {
-		return 0, false, zigoPoisonAfterPanic(errorForCode("Context.MaybeTotal", code), c)
+		return 0, false, zigoPoisonAfterPanic(errorForCode("Context.MaybeTotal", code), co)
 	}
 	return result, zigoHas, nil
 }
@@ -98,27 +98,27 @@ func (co *Context) SetTotal(c int64) error {
 // Bound with `.iterator`, so Go ranges over it as `All()`.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
-func (c *Context) Next() (int64, bool, error) {
+func (co *Context) Next() (int64, bool, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	ptr, err := zigoCheckedPointer("Context.Next receiver", c)
+	ptr, err := zigoCheckedPointer("Context.Next receiver", co)
 	if err != nil {
 		return 0, false, err
 	}
-	defer c.zigoRelease()
+	defer co.zigoRelease()
 	result, zigoHas, code := raw.ContextNext(ptr)
 	if code != 0 {
-		return 0, false, zigoPoisonAfterPanic(errorForCode("Context.Next", code), c)
+		return 0, false, zigoPoisonAfterPanic(errorForCode("Context.Next", code), co)
 	}
 	return result, zigoHas, nil
 }
 
 // All returns a sequence that calls Next until it reports no value.
 // A failed call yields its error once, with the zero int64, and the sequence ends.
-func (c *Context) All() iter.Seq2[int64, error] {
+func (co *Context) All() iter.Seq2[int64, error] {
 	return func(yield func(int64, error) bool) {
 		for {
-			value, ok, err := c.Next()
+			value, ok, err := co.Next()
 			if err != nil {
 				var zero int64
 				yield(zero, err)
@@ -135,27 +135,27 @@ func (c *Context) All() iter.Seq2[int64, error] {
 // error the sequence surfaces, rather than an empty sequence.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
-func (c *Context) NextChecked() (int64, bool, error) {
+func (co *Context) NextChecked() (int64, bool, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	ptr, err := zigoCheckedPointer("Context.NextChecked receiver", c)
+	ptr, err := zigoCheckedPointer("Context.NextChecked receiver", co)
 	if err != nil {
 		return 0, false, err
 	}
-	defer c.zigoRelease()
+	defer co.zigoRelease()
 	result, zigoHas, code := raw.ContextNextChecked(ptr)
 	if code != 0 {
-		return 0, false, zigoPoisonAfterPanic(errorForCode("Context.NextChecked", code), c)
+		return 0, false, zigoPoisonAfterPanic(errorForCode("Context.NextChecked", code), co)
 	}
 	return result, zigoHas, nil
 }
 
 // Checked returns a sequence that calls NextChecked until it reports no value.
 // A failed call yields its error once, with the zero int64, and the sequence ends.
-func (c *Context) Checked() iter.Seq2[int64, error] {
+func (co *Context) Checked() iter.Seq2[int64, error] {
 	return func(yield func(int64, error) bool) {
 		for {
-			value, ok, err := c.NextChecked()
+			value, ok, err := co.NextChecked()
 			if err != nil {
 				var zero int64
 				yield(zero, err)
@@ -171,17 +171,17 @@ func (c *Context) Checked() iter.Seq2[int64, error] {
 // Rewind calls the Zig function Context.rewind.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
-func (c *Context) Rewind() error {
+func (co *Context) Rewind() error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	ptr, err := zigoCheckedPointer("Context.Rewind receiver", c)
+	ptr, err := zigoCheckedPointer("Context.Rewind receiver", co)
 	if err != nil {
 		return err
 	}
-	defer c.zigoRelease()
+	defer co.zigoRelease()
 	code := raw.ContextRewind(ptr)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Context.Rewind", code), c)
+		return zigoPoisonAfterPanic(errorForCode("Context.Rewind", code), co)
 	}
 	return nil
 }
@@ -190,17 +190,17 @@ func (c *Context) Rewind() error {
 // to this call but cannot change the storage owned by the Go handle.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
-func (c *Context) AddCopy(value int64) (int64, error) {
+func (co *Context) AddCopy(value int64) (int64, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	ptr, err := zigoCheckedPointer("Context.AddCopy receiver", c)
+	ptr, err := zigoCheckedPointer("Context.AddCopy receiver", co)
 	if err != nil {
 		return 0, err
 	}
-	defer c.zigoRelease()
+	defer co.zigoRelease()
 	result, code := raw.ContextAddCopy(ptr, value)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Context.AddCopy", code), c)
+		return 0, zigoPoisonAfterPanic(errorForCode("Context.AddCopy", code), co)
 	}
 	return result, nil
 }
@@ -209,19 +209,19 @@ func (c *Context) AddCopy(value int64) (int64, error) {
 // The returned reference remains valid only while its parent handle remains open.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
-func (c *Context) BorrowView() (*ContextView, error) {
+func (co *Context) BorrowView() (*ContextView, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	ptr, err := zigoCheckedPointer("Context.BorrowView receiver", c)
+	ptr, err := zigoCheckedPointer("Context.BorrowView receiver", co)
 	if err != nil {
 		return nil, err
 	}
-	defer c.zigoRelease()
+	defer co.zigoRelease()
 	result, code := raw.ContextBorrowView(ptr)
 	if code != 0 {
-		return nil, zigoPoisonAfterPanic(errorForCode("Context.BorrowView", code), c)
+		return nil, zigoPoisonAfterPanic(errorForCode("Context.BorrowView", code), co)
 	}
-	return newBorrowedContextView(result, c), nil
+	return newBorrowedContextView(result, co), nil
 }
 
 // Total calls the Zig function ContextView.total.
@@ -245,17 +245,17 @@ func (c *ContextView) Total() (int64, error) {
 // Crash panics inside a method: what leaves a handle poisoned.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
-func (c *Context) Crash() error {
+func (co *Context) Crash() error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	ptr, err := zigoCheckedPointer("Context.Crash receiver", c)
+	ptr, err := zigoCheckedPointer("Context.Crash receiver", co)
 	if err != nil {
 		return err
 	}
-	defer c.zigoRelease()
+	defer co.zigoRelease()
 	code := raw.ContextCrash(ptr)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Context.Crash", code), c)
+		return zigoPoisonAfterPanic(errorForCode("Context.Crash", code), co)
 	}
 	return nil
 }
@@ -265,23 +265,22 @@ func (c *Context) Crash() error {
 // be reportable -- so the panic reaches the caller through that.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
-func (c *Context) CrashInfallible() (int64, error) {
+func (co *Context) CrashInfallible() (int64, error) {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	ptr, err := zigoCheckedPointer("Context.CrashInfallible receiver", c)
+	ptr, err := zigoCheckedPointer("Context.CrashInfallible receiver", co)
 	if err != nil {
 		return 0, err
 	}
-	defer c.zigoRelease()
+	defer co.zigoRelease()
 	result, code := raw.ContextCrashInfallible(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Context.CrashInfallible", code), c)
+		return 0, zigoPoisonAfterPanic(errorForCode("Context.CrashInfallible", code), co)
 	}
 	return result, nil
 }
 
-// CrashFatal
-// A free function with no handle and no promoted integer has no `error` in
+// CrashFatal: A free function with no handle and no promoted integer has no `error` in
 // its Go signature, so a panic here has nowhere to be reported. Zig calls
 // that fatal, and so does zigo: the message goes to stderr and the process
 // aborts.
@@ -317,8 +316,7 @@ func SumCopies(bias int64, left *Context, right *Context) (int64, error) {
 	return result, nil
 }
 
-// Echo
-// Echoes UTF-8 text without changing its bytes.
+// Echo: Echoes UTF-8 text without changing its bytes.
 func Echo(text string) string {
 	return string(raw.Echo([]byte(text)))
 }

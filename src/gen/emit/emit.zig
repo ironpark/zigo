@@ -682,20 +682,20 @@ test "a doc that opens with the declaration's own name is not repeated" {
             .doc = "ALGORITHMID names the negotiated algorithm.",
             .expected = "\n// AlgorithmID names the negotiated algorithm.\n",
         },
-        // A capitalized sentence stands on its own line rather than being
-        // lowercased into the identifier.
+        // A capitalized sentence is joined with a colon rather than being
+        // lowercased into the identifier, so the summary keeps its words.
         .{
             .go_name = "Echo",
             .zig_name = "echo",
             .doc = "Echoes UTF-8 text without changing its bytes.",
-            .expected = "\n// Echo\n// Echoes UTF-8 text without changing its bytes.\n",
+            .expected = "\n// Echo: Echoes UTF-8 text without changing its bytes.\n",
         },
         // The reported breakage: a noun phrase must never be spliced.
         .{
             .go_name = "SelectionSilent",
             .zig_name = "selectionSilent",
             .doc = "The selection flag bits shared by the setters below.",
-            .expected = "\n// SelectionSilent\n// The selection flag bits shared by the setters below.\n",
+            .expected = "\n// SelectionSilent: The selection flag bits shared by the setters below.\n",
         },
         // A lowercase verb was written to continue from a name, so it splices.
         .{

@@ -26,17 +26,17 @@ var DefaultLibraryName = raw.DefaultLibraryName
 // SetTitle calls the Zig function Terminal.setTitle.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
-func (te *Terminal) SetTitle(t []byte) error {
+func (recv *Terminal) SetTitle(t []byte) error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	ptr, err := zigoCheckedPointer("Terminal.SetTitle receiver", te)
+	ptr, err := zigoCheckedPointer("Terminal.SetTitle receiver", recv)
 	if err != nil {
 		return err
 	}
-	defer te.zigoRelease()
+	defer recv.zigoRelease()
 	code := raw.TerminalSetTitle(ptr, t)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Terminal.SetTitle", code), te)
+		return zigoPoisonAfterPanic(errorForCode("Terminal.SetTitle", code), recv)
 	}
 	return nil
 }
@@ -62,17 +62,17 @@ func (recv *Terminal) CollideAll(t int32, te int32, ter int32, term int32, termi
 // Clear calls the Zig function Terminal.clear.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
-func (t *Terminal) Clear() error {
+func (recv *Terminal) Clear() error {
 	runtime.LockOSThread()
 	defer runtime.UnlockOSThread()
-	ptr, err := zigoCheckedPointer("Terminal.Clear receiver", t)
+	ptr, err := zigoCheckedPointer("Terminal.Clear receiver", recv)
 	if err != nil {
 		return err
 	}
-	defer t.zigoRelease()
+	defer recv.zigoRelease()
 	code := raw.TerminalClear(ptr)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Terminal.Clear", code), t)
+		return zigoPoisonAfterPanic(errorForCode("Terminal.Clear", code), recv)
 	}
 	return nil
 }

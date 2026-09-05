@@ -7,7 +7,8 @@
 set -euo pipefail
 root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
-zig build test -Dtest-filter=__none__ >/dev/null 2>&1 || true
+# Build the runner (a filter that matches one case is enough to compile it).
+zig build test -Dtest-filter=scalar >/dev/null 2>&1 || true
 # Several runner builds can sit in the cache; the newest one is the one the
 # test step just produced.
 # `head` closing the pipe early would trip pipefail, so the status is masked.

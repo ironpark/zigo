@@ -33,7 +33,7 @@ pub fn renderHandleChecks(
     options: emit.Options,
 ) !void {
     if (function.receiver) |receiver| {
-        const receiver_name = try common.receiverVariableAlloc(allocator, receiver, go_names);
+        const receiver_name = try common.typeReceiverNameAlloc(allocator, scope.program, receiver);
         defer allocator.free(receiver_name);
         if (function.childOfReceiver())
             try writer.print("\tptr, zigoChildParent, err := {s}.zigoAcquireChild(\"{s} receiver\")\n", .{ receiver_name, operation })
@@ -76,6 +76,7 @@ pub fn renderHandleChecks(
 pub fn writeErrorForCode(
     allocator: std.mem.Allocator,
     writer: *std.Io.Writer,
+    program: abi.Program,
     function: semantic.SemanticFn,
     go_names: []const []const u8,
     operation: []const u8,
@@ -83,7 +84,7 @@ pub fn writeErrorForCode(
     if (function.receiver == null and !lower.hasOpaqueParameter(function)) return writer.print("errorForCode(\"{s}\", code)\n", .{operation});
     try writer.print("zigoPoisonAfterPanic(errorForCode(\"{s}\", code)", .{operation});
     if (function.receiver) |receiver| {
-        const receiver_name = try common.receiverVariableAlloc(allocator, receiver, go_names);
+        const receiver_name = try common.typeReceiverNameAlloc(allocator, program, receiver);
         defer allocator.free(receiver_name);
         try writer.print(", {s}", .{receiver_name});
     }
@@ -292,12 +293,12 @@ pub fn writePublicFunctionReturnType(scope: PublicScope, writer: *std.Io.Writer,
 pub fn writeBorrowedResult(
     allocator: std.mem.Allocator,
     writer: *std.Io.Writer,
+    program: abi.Program,
     function: semantic.SemanticFn,
-    go_names: []const []const u8,
     expression: []const u8,
 ) !void {
     const node = function.@"return".errorPayload();
-    const parent = if (function.receiver) |receiver| try common.receiverVariableAlloc(allocator, receiver, go_names) else null;
+    const parent = if (function.receiver) |receiver| try common.typeReceiverNameAlloc(allocator, program, receiver) else null;
     defer if (parent) |value| allocator.free(value);
     if (function.returnsBorrowedHandle())
         try writer.print("newBorrowed{s}({s}, {s})", .{ node.opaque_ptr.ref, expression, parent orelse "nil" })

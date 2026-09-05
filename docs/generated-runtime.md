@@ -95,12 +95,12 @@ purego registry는 이미 진행 중인 호출이 끝날 때까지 기다립니�
 - Zig snake_case parameter는 camelCase로 바뀝니다.
 - Go keyword나 생성 local과 충돌하면 `type_`, `code_`처럼 escape합니다.
 - 변환 후 이름이 겹치면 뒤쪽 이름에 숫자를 붙입니다.
-- method receiver는 receiver 타입의 snake_case 이름에서 가장 짧은 접두사를 고릅니다. 길이
-  1부터 늘리며 그 함수의 Go 파라미터 이름과 겹치지 않는 첫 접두사를 쓰고, 전체 이름까지
-  모두 겹치면 `recv`를 씁니다. 예를 들어 `Terminal.setTitle(t)`는
-  `func (te *Terminal) SetTitle(t []byte)`가 됩니다. 충돌이 없으면 이전과 같은 첫 글자를
-  유지하며, 한 함수의 header·handle 검사·native 호출 오류·release 경로는 모두 같은 이름을
-  씁니다. 파라미터가 없는 lifecycle·projection helper도 첫 글자를 유지합니다.
+- method receiver는 타입마다 한 번 정합니다. receiver 타입의 snake_case 이름에서 길이 1부터
+  늘리며, 그 타입의 **모든** 메서드가 쓰는 Go 파라미터 이름(flatten된 필드와 `ctx` 포함)과
+  겹치지 않는 첫 접두사를 쓰고, 전체 이름까지 모두 겹치면 `recv`를 씁니다. 예를 들어
+  `Terminal.setTitle(t)`가 있으면 `Terminal`의 모든 메서드와 lifecycle·projection helper가
+  `te`를 receiver로 씁니다. 메서드마다 다른 이름이 나오지 않으므로 `staticcheck`의
+  ST1016(receiver 이름 일관성)을 만족합니다.
 - 공개 Go 함수 이름은 namespace를 붙이지 않습니다. 중첩 namespace의 함수도
   `CodepointWidth`처럼 함수 이름만 씁니다.
 - C가 이름 붙일 수 없는 정수 폭(`u21`)은 파라미터·반환값에서 다음 폭으로 승격되어

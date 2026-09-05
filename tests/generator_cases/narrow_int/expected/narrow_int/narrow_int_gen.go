@@ -10,8 +10,7 @@ import (
 )
 
 
-// CodepointWidth
-// Reports the display width of a codepoint.
+// CodepointWidth: Reports the display width of a codepoint.
 // A native panic is returned as *NativePanicError.
 func CodepointWidth(cp uint32) (int8, error) {
 	if cp > 2097151 {
@@ -26,8 +25,7 @@ func CodepointWidth(cp uint32) (int8, error) {
 	return result, nil
 }
 
-// ClampOffset
-// Rounds a signed offset into the narrow range it is stored in.
+// ClampOffset: Rounds a signed offset into the narrow range it is stored in.
 // A native panic is returned as *NativePanicError.
 func ClampOffset(offset int32) (int32, error) {
 	if offset < -8388608 || offset > 8388607 {
@@ -42,8 +40,7 @@ func ClampOffset(offset int32) (int32, error) {
 	return result, nil
 }
 
-// Decode
-// Decodes the next codepoint, or fails on malformed input.
+// Decode: Decodes the next codepoint, or fails on malformed input.
 // Native failures are returned as generated error values.
 func Decode(byte uint8) (uint32, error) {
 	runtime.LockOSThread()
@@ -55,8 +52,7 @@ func Decode(byte uint8) (uint32, error) {
 	return result, nil
 }
 
-// SumCodepoints
-// Sums promoted codepoints after narrowing them in the shim.
+// SumCodepoints: Sums promoted codepoints after narrowing them in the shim.
 func SumCodepoints(values []uint32) (uint32, error) {
 	for _, zigoValue := range values {
 		if zigoValue > 2097151 {
@@ -66,14 +62,12 @@ func SumCodepoints(values []uint32) (uint32, error) {
 	return raw.SumCodepoints(values), nil
 }
 
-// FillCodepoints
-// Fills promoted output elements through a narrow temporary.
+// FillCodepoints: Fills promoted output elements through a narrow temporary.
 func FillCodepoints(values []uint32) {
 	raw.FillCodepoints(values)
 }
 
-// TakeCodepoints
-// Returns caller-owned narrow codepoints.
+// TakeCodepoints: Returns caller-owned narrow codepoints.
 func TakeCodepoints() []uint32 {
 	return raw.TakeCodepoints()
 }

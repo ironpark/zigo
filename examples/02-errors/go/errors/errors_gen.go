@@ -31,8 +31,7 @@ func NormalizeFormat(value Format) Format {
 	return Format(raw.NormalizeFormat(uint32(value)))
 }
 
-// CodepointWidth
-// A Unicode codepoint is `u21` in Zig, which C cannot name. zigo carries it
+// CodepointWidth: A Unicode codepoint is `u21` in Zig, which C cannot name. zigo carries it
 // in a `uint32_t` and the shim range-checks the value on the way in, so a Go
 // caller that passes something wider gets a native panic rather than a
 // truncated codepoint.

@@ -89,7 +89,10 @@ pub fn writeGoDoc(writer: *std.Io.Writer, go_name: []const u8, zig_name: []const
             try writer.print("// {s} {s}\n", .{ go_name, body });
             continue;
         }
-        try writer.print("// {s}\n// {s}\n", .{ go_name, body });
+        // Joined with a colon so the first sentence, which `go doc` shows as
+        // the summary, still starts with the identifier and still says what
+        // the Zig author wrote.
+        try writer.print("// {s}: {s}\n", .{ go_name, body });
     }
 }
 

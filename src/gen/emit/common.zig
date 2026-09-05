@@ -479,6 +479,35 @@ pub fn rawGoNameAlloc(allocator: std.mem.Allocator, function: semantic.SemanticF
 /// segment becomes one Pascal word, so `unicode.codepointWidth` reaches the
 /// raw layer as `UnicodeCodepointWidth`. A registered type name is already one
 /// Pascal word, which is why single-segment owners come out unchanged.
+/// The receiver variable every method of `receiver` uses: the shortest prefix
+/// of the snake-case type name that no Go parameter of any of its methods
+/// spells, so the name is the same across the type and never shadows an
+/// argument. Flattened option fields and the `ctx` of a cancellable method
+/// count as parameters too.
+pub fn typeReceiverNameAlloc(allocator: std.mem.Allocator, program: abi.Program, receiver: []const u8) ![]u8 {
+    var names: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (names.items) |name| allocator.free(name);
+        names.deinit(allocator);
+    }
+    for (program.functions) |function| {
+        const origin = function.origin.*;
+        if (origin.receiver == null or !std.mem.eql(u8, origin.receiver.?, receiver)) continue;
+        const go_names = try goParamNamesForAlloc(allocator, origin.params);
+        defer naming.freeParamNames(allocator, go_names);
+        for (go_names) |name| try names.append(allocator, try allocator.dupe(u8, name));
+        for (origin.params, 0..) |parameter, parameter_index| {
+            const fields = parameter.flatten orelse continue;
+            for (fields, 0..) |_, field_index| {
+                const abi_parameter = function.flattenedParam(parameter_index, field_index);
+                try names.append(allocator, try flattenedGoNameAlloc(allocator, abi_parameter.name));
+            }
+        }
+        if (origin.cancel != null) try names.append(allocator, try allocator.dupe(u8, "ctx"));
+    }
+    return receiverVariableAlloc(allocator, receiver, names.items);
+}
+
 pub fn receiverVariableAlloc(allocator: std.mem.Allocator, receiver: []const u8, go_names: []const []const u8) ![]u8 {
     const snake = try naming.snakeAlloc(allocator, receiver);
     defer allocator.free(snake);

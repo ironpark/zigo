@@ -93,8 +93,7 @@ func (e *EventQueue) MustClone(observer EventQueueCloneObserver) *EventQueue {
 	return zigoMust(e.Clone(observer))
 }
 
-// NewStream
-// Opens a stream owned by the caller. The allocator is injected before
+// NewStream: Opens a stream owned by the caller. The allocator is injected before
 // the receiver, matching APIs where one handle constructs another.
 // The caller must call Close on the returned handle.
 // It returns *HandleError if a required handle is nil or closed.
@@ -551,8 +550,7 @@ func (e *EventQueue) Name() (string, error) {
 // MustName calls Name and panics with its typed error on failure.
 func (e *EventQueue) MustName() string { return zigoMust(e.Name()) }
 
-// SampleValues
-// A numeric slice return intentionally points at native storage. The Go
+// SampleValues: A numeric slice return intentionally points at native storage. The Go
 // binding must copy it before returning so a caller cannot alias it.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
@@ -610,8 +608,7 @@ func (e *EventQueue) SampleValuesChecked() ([]float32, error) {
 // MustSampleValuesChecked calls SampleValuesChecked and panics with its typed error on failure.
 func (e *EventQueue) MustSampleValuesChecked() []float32 { return zigoMust(e.SampleValuesChecked()) }
 
-// SelectionString
-// A fallible optional slice with caller ownership. An empty queue has no
+// SelectionString: A fallible optional slice with caller ownership. An empty queue has no
 // selection; otherwise Go copies and releases the allocated name.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
@@ -639,8 +636,7 @@ func (e *EventQueue) SelectionString() ([]byte, bool, error) {
 // MustSelectionString calls SelectionString and panics with its typed error on failure.
 func (e *EventQueue) MustSelectionString() ([]byte, bool) { return zigoMustMatch(e.SelectionString()) }
 
-// EchoCString
-// Sentinel byte pointers use the C string lowering and surface as Go
+// EchoCString: Sentinel byte pointers use the C string lowering and surface as Go
 // strings without a separate length parameter.
 func EchoCString(text string) string {
 	return raw.EventQueueEchoCString(text)
@@ -666,8 +662,7 @@ func ExtractSentinelPointers(paths []string) uint {
 	return raw.EventQueueExtractSentinelPointers(paths)
 }
 
-// ExtractSamples
-// Hands the caller a freshly allocated buffer. Ownership moves with the
+// ExtractSamples: Hands the caller a freshly allocated buffer. Ownership moves with the
 // return value, so the generated binding must copy it and then call
 // `freeSamples` before handing the slice to Go.
 // It returns *HandleError if a required handle is nil or closed.
@@ -727,8 +722,7 @@ func (e *EventQueue) MustExtractSamplesChecked() []float32 {
 	return zigoMust(e.ExtractSamplesChecked())
 }
 
-// ExtractLimits
-// Caller-owned limit rows. `Limits` has no bool field, so the generated
+// ExtractLimits: Caller-owned limit rows. `Limits` has no bool field, so the generated
 // binding copies the buffer once, releases it, and reinterprets that copy
 // as `[]Limits` instead of converting every row again.
 // It returns *HandleError if a required handle is nil or closed.
@@ -757,8 +751,7 @@ func (e *EventQueue) ExtractLimits() ([]Limits, error) {
 // MustExtractLimits calls ExtractLimits and panics with its typed error on failure.
 func (e *EventQueue) MustExtractLimits() []Limits { return zigoMust(e.ExtractLimits()) }
 
-// AcceptStats
-// Accepts a batch of value snapshots so both backends exercise their
+// AcceptStats: Accepts a batch of value snapshots so both backends exercise their
 // struct-slice input conversion path.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
@@ -787,8 +780,7 @@ func (e *EventQueue) AcceptStats(values []Stats) (uint, error) {
 // MustAcceptStats calls AcceptStats and panics with its typed error on failure.
 func (e *EventQueue) MustAcceptStats(values []Stats) uint { return zigoMust(e.AcceptStats(values)) }
 
-// ExtractSamplesInto
-// The same samples as `extractSamples`, written into a buffer the caller
+// ExtractSamplesInto: The same samples as `extractSamples`, written into a buffer the caller
 // already has. Nothing is allocated and nothing has to be released: the
 // result says how many entries were filled, and everything past that is
 // still whatever the caller left there.
@@ -820,8 +812,7 @@ func (e *EventQueue) MustExtractSamplesInto(dst []float32) uint {
 	return zigoMust(e.ExtractSamplesInto(dst))
 }
 
-// LimitsInto
-// One `Limits` row per queued event, up to what the buffer holds. `Limits`
+// LimitsInto: One `Limits` row per queued event, up to what the buffer holds. `Limits`
 // has no bool field, so both backends hand the buffer's address straight
 // to the native call and neither direction copies.
 // It returns *HandleError if a required handle is nil or closed.
@@ -854,8 +845,7 @@ func (e *EventQueue) LimitsInto(dst []Limits) (uint, error) {
 // MustLimitsInto calls LimitsInto and panics with its typed error on failure.
 func (e *EventQueue) MustLimitsInto(dst []Limits) uint { return zigoMust(e.LimitsInto(dst)) }
 
-// Estimate
-// Fills one value snapshot per queued event. The return value is the
+// Estimate: Fills one value snapshot per queued event. The return value is the
 // number of output entries written, while the explicit out metadata keeps
 // the slice capacity visible in the C ABI.
 // It returns *HandleError if a required handle is nil or closed.
@@ -886,8 +876,7 @@ func (e *EventQueue) Estimate(output []Stats) (uint, error) {
 // MustEstimate calls Estimate and panics with its typed error on failure.
 func (e *EventQueue) MustEstimate(output []Stats) uint { return zigoMust(e.Estimate(output)) }
 
-// SampleStats
-// Returns value snapshots from native storage; the generated Go binding
+// SampleStats: Returns value snapshots from native storage; the generated Go binding
 // must copy each struct before exposing the slice.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
@@ -915,8 +904,7 @@ func (e *EventQueue) SampleStats() ([]Stats, error) {
 // MustSampleStats calls SampleStats and panics with its typed error on failure.
 func (e *EventQueue) MustSampleStats() []Stats { return zigoMust(e.SampleStats()) }
 
-// SampleLimits
-// Borrowed limit rows from native storage. The raw layer still copies
+// SampleLimits: Borrowed limit rows from native storage. The raw layer still copies
 // them out of native memory; only the public layer's second copy is gone.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
@@ -1189,8 +1177,7 @@ func (e *EventQueue) Clear() (uint, error) {
 // MustClear calls Clear and panics with its typed error on failure.
 func (e *EventQueue) MustClear() uint { return zigoMust(e.Clear()) }
 
-// InspectTicker
-// Exercises cross-package handle and value-struct parameters without making
+// InspectTicker: Exercises cross-package handle and value-struct parameters without making
 // this free function a Ticker method.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
@@ -1224,8 +1211,7 @@ func LiveQueues() uint {
 	return raw.LiveQueues()
 }
 
-// LiveSamples
-// Sample buffers still owned by the library. A correct binding returns this to
+// LiveSamples: Sample buffers still owned by the library. A correct binding returns this to
 // zero after every `extractSamples` call.
 func LiveSamples() uint {
 	return raw.LiveSamples()

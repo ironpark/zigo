@@ -71,8 +71,7 @@ func NewAccumulator() (*Accumulator, error) {
 	return newAccumulator(result), nil
 }
 
-// Absorb
-// Adds the current value of another exposed opaque type.
+// Absorb: Adds the current value of another exposed opaque type.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (a *Accumulator) Absorb(counter *Counter) (int64, error) {
@@ -123,8 +122,7 @@ func DefaultCursorStyle() CursorStyle {
 	return CursorStyle(raw.DefaultCursorStyle())
 }
 
-// CursorStyleBlinks
-// Reports whether a cursor of this style blinks.
+// CursorStyleBlinks: Reports whether a cursor of this style blinks.
 func CursorStyleBlinks(style CursorStyle) bool {
 	return raw.CursorStyleBlinks(uint8(style)) != 0
 }
@@ -144,8 +142,7 @@ func EchoEraseDisplay(value EraseDisplay) EraseDisplay {
 	return EraseDisplay(raw.EchoEraseDisplay(uint8(value)))
 }
 
-// RunWidth
-// Reports how many cells a run of codepoints occupies.
+// RunWidth: Reports how many cells a run of codepoints occupies.
 // A native panic is returned as *NativePanicError.
 func RunWidth(first uint32, second uint32) (uint16, error) {
 	if first > 2097151 {
@@ -163,8 +160,7 @@ func RunWidth(first uint32, second uint32) (uint16, error) {
 	return result, nil
 }
 
-// CodepointWidth
-// Reports how many terminal cells a codepoint occupies.
+// CodepointWidth: Reports how many terminal cells a codepoint occupies.
 // A native panic is returned as *NativePanicError.
 func CodepointWidth(cp uint32) (uint8, error) {
 	if cp > 2097151 {
@@ -179,15 +175,13 @@ func CodepointWidth(cp uint32) (uint8, error) {
 	return result, nil
 }
 
-// DoubleWidth
-// A `?u32` on both sides: absent in, absent out.
+// DoubleWidth: A `?u32` on both sides: absent in, absent out.
 func DoubleWidth(value *uint32) (uint32, bool) {
 	zigoResult, zigoHas := raw.DoubleWidth(value)
 	return zigoResult, zigoHas
 }
 
-// Invert
-// An optional bool has three states at the boundary, and Go sees all three.
+// Invert: An optional bool has three states at the boundary, and Go sees all three.
 func Invert(value *bool) (bool, bool) {
 	var valueRaw *uint8
 	if value != nil {
@@ -198,8 +192,7 @@ func Invert(value *bool) (bool, bool) {
 	return zigoResult != 0, zigoHas
 }
 
-// StyleOrDefault
-// An optional enum resolves to the default style when it is absent.
+// StyleOrDefault: An optional enum resolves to the default style when it is absent.
 func StyleOrDefault(style *CursorStyle) CursorStyle {
 	var styleRaw *uint8
 	if style != nil {
@@ -209,8 +202,7 @@ func StyleOrDefault(style *CursorStyle) CursorStyle {
 	return CursorStyle(raw.StyleOrDefault(styleRaw))
 }
 
-// BlinkingStyle
-// An optional enum on the way out: only a blinking style is reported.
+// BlinkingStyle: An optional enum on the way out: only a blinking style is reported.
 func BlinkingStyle(style *CursorStyle) (CursorStyle, bool) {
 	var styleRaw *uint8
 	if style != nil {
@@ -221,8 +213,7 @@ func BlinkingStyle(style *CursorStyle) (CursorStyle, bool) {
 	return CursorStyle(zigoResult), zigoHas
 }
 
-// ShiftPoint
-// A whole `extern struct` in and out, presence carried alongside.
+// ShiftPoint: A whole `extern struct` in and out, presence carried alongside.
 func ShiftPoint(origin *Point, delta int16) (Point, bool) {
 	var originRaw *raw.PointData
 	if origin != nil {
@@ -233,8 +224,7 @@ func ShiftPoint(origin *Point, delta int16) (Point, bool) {
 	return zigoPointFromRaw(zigoResult), zigoHas
 }
 
-// CheckedShift
-// An optional payload inside an error union: the status code carries the
+// CheckedShift: An optional payload inside an error union: the status code carries the
 // error and a separate flag carries presence, so all three outcomes are
 // distinguishable.
 // Native failures are returned as generated error values.
@@ -253,8 +243,7 @@ func CheckedShift(origin *Point, delta int16) (Point, bool, error) {
 	return zigoPointFromRaw(result), zigoHas, nil
 }
 
-// DescribeText
-// A `?[]const u8` parameter: the slice's own pointer carries absence, so an
+// DescribeText: A `?[]const u8` parameter: the slice's own pointer carries absence, so an
 // absent text and an empty one are different arguments.
 func DescribeText(label *string) uint8 {
 	var labelRaw *[]byte
@@ -265,22 +254,19 @@ func DescribeText(label *string) uint8 {
 	return raw.DescribeText(labelRaw)
 }
 
-// SumOrZero
-// A `?[]const i32` parameter, summed when present.
+// SumOrZero: A `?[]const i32` parameter, summed when present.
 func SumOrZero(values *[]int32) int64 {
 	return raw.SumOrZero(values)
 }
 
-// LeadingDigits
-// A `?[]const i32` return over static storage: absent above the table, and
+// LeadingDigits: A `?[]const i32` return over static storage: absent above the table, and
 // an empty-but-present slice at zero.
 func LeadingDigits(count uint32) ([]int32, bool) {
 	zigoResult, zigoHas := raw.LeadingDigits(count)
 	return zigoResult, zigoHas
 }
 
-// StyleName
-// A `?[]const u8` return, which Go sees as `(string, bool)`.
+// StyleName: A `?[]const u8` return, which Go sees as `(string, bool)`.
 func StyleName(style *CursorStyle) (string, bool) {
 	var styleRaw *uint8
 	if style != nil {

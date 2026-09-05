@@ -20,48 +20,48 @@ type Context struct {
 	cleanup runtime.Cleanup
 }
 
-// zigoAcquire pins c open for one native call and hands back its pointer;
+// zigoAcquire pins co open for one native call and hands back its pointer;
 // the call ends with zigoRelease. A nil, closed, or poisoned handle is the error.
-func (c *Context) zigoAcquire(operation string) (unsafe.Pointer, error) {
-	if c == nil {
+func (co *Context) zigoAcquire(operation string) (unsafe.Pointer, error) {
+	if co == nil {
 		return nil, &HandleError{Operation: operation}
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.closed || c.ptr == nil {
+	co.mu.Lock()
+	defer co.mu.Unlock()
+	if co.closed || co.ptr == nil {
 		return nil, &HandleError{Operation: operation}
 	}
-	if c.poison != nil {
-		return nil, c.poison.poisoned(operation)
+	if co.poison != nil {
+		return nil, co.poison.poisoned(operation)
 	}
-	c.active++
-	return c.ptr, nil
+	co.active++
+	return co.ptr, nil
 }
 
-func (c *Context) zigoRelease() {
-	if c == nil {
+func (co *Context) zigoRelease() {
+	if co == nil {
 		return
 	}
-	c.mu.Lock()
-	c.active--
-	state, release := c.zigoTakeLocked()
-	c.mu.Unlock()
+	co.mu.Lock()
+	co.active--
+	state, release := co.zigoTakeLocked()
+	co.mu.Unlock()
 	if release {
 		cleanupContext(state)
 	}
 }
 
-// zigoPoison marks c unusable: a Zig panic unwound through native frames
+// zigoPoison marks co unusable: a Zig panic unwound through native frames
 // without running their defers, so the state behind it is unknown.
-func (c *Context) zigoPoison(cause *NativePanicError) {
-	if c == nil {
+func (co *Context) zigoPoison(cause *NativePanicError) {
+	if co == nil {
 		return
 	}
-	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.poison == nil {
-		c.poison = cause
-		c.cleanup.Stop()
+	co.mu.Lock()
+	defer co.mu.Unlock()
+	if co.poison == nil {
+		co.poison = cause
+		co.cleanup.Stop()
 	}
 }
 
@@ -86,41 +86,41 @@ func cleanupContext(state contextCleanupState) {
 // The error result is always nil; it exists so Context satisfies io.Closer.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
-func (c *Context) Close() error {
-	if c == nil {
+func (co *Context) Close() error {
+	if co == nil {
 		return nil
 	}
-	c.mu.Lock()
-	if c.closed {
-		c.mu.Unlock()
+	co.mu.Lock()
+	if co.closed {
+		co.mu.Unlock()
 		return nil
 	}
-	if c.active != 0 {
-		active := c.active
-		c.mu.Unlock()
+	if co.active != 0 {
+		active := co.active
+		co.mu.Unlock()
 		return &HandleInUseError{Operation: "Context.Close", Children: active}
 	}
-	c.closed = true
-	c.cleanup.Stop()
-	state, release := c.zigoTakeLocked()
-	c.mu.Unlock()
+	co.closed = true
+	co.cleanup.Stop()
+	state, release := co.zigoTakeLocked()
+	co.mu.Unlock()
 	if release {
 		cleanupContext(state)
 	}
-	runtime.KeepAlive(c)
+	runtime.KeepAlive(co)
 	return nil
 }
 
-// zigoTakeLocked hands out what is left to release once c is closed and no
+// zigoTakeLocked hands out what is left to release once co is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
-func (c *Context) zigoTakeLocked() (contextCleanupState, bool) {
-	if !c.closed || c.active != 0 || c.ptr == nil {
+func (co *Context) zigoTakeLocked() (contextCleanupState, bool) {
+	if !co.closed || co.active != 0 || co.ptr == nil {
 		return contextCleanupState{}, false
 	}
-	state := contextCleanupState{ptr: c.ptr}
-	c.ptr = nil
-	if c.poison != nil {
+	state := contextCleanupState{ptr: co.ptr}
+	co.ptr = nil
+	if co.poison != nil {
 		state.ptr = nil
 	}
 	return state, true

@@ -12,6 +12,10 @@
   가져가지 않은 콜백 panic 수를 원자 카운터(`PendingCallbackPanics`)로 세고, 생성 함수는
   0이 아닐 때만 slot을 순회합니다. `07-event-queue`의 `Enqueue`가 약 20% 빨라졌습니다.
 - `scripts/update-generator-cases.sh`로 생성기 케이스의 골든을 다시 만듭니다.
+- method receiver 이름을 타입마다 한 번 정합니다. 그 타입의 모든 메서드 파라미터와 겹치지
+  않는 가장 짧은 접두사를 쓰므로 `c`와 `co`처럼 메서드마다 달라지지 않습니다.
+- 대문자 문장으로 시작하는 Zig doc은 `// Name: Sentence`로 생성됩니다. 이전에는 `// Name`
+  한 줄 뒤에 문장이 따로 와서 `go doc` 요약이 이름만 보여줬습니다.
 
 ## [0.10.0] - 2026-09-06
 

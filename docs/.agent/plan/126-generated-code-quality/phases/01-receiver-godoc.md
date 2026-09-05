@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: No example has two receiver spellings for one type; `zig build test` passes.
 > NEXT: none
