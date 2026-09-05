@@ -270,6 +270,10 @@ var libraryEnvVars = []string{"ZIGO_TELEMETRY_HUB_LIBRARY_PATH", "ZIGO_LIBRARY_P
 // librarySearchPaths are tried after the environment, in order.
 var librarySearchPaths = []string{"../../zig-out/purego-layout/lib"}
 
+// libraryPlatformDir is the per-platform subdirectory the build installs
+// the library into under every search-path directory.
+var libraryPlatformDir = runtime.GOOS + "_" + runtime.GOARCH
+
 // resolveSearchPath joins a directory entry with the platform library
 // name. It returns "" when the entry cannot be formed.
 func resolveSearchPath(entry string) string {
@@ -279,7 +283,7 @@ func resolveSearchPath(entry string) string {
 	if strings.HasSuffix(entry, filepath.Ext(DefaultLibraryName)) {
 		return entry
 	}
-	return filepath.Join(entry, DefaultLibraryName)
+	return filepath.Join(entry, libraryPlatformDir, DefaultLibraryName)
 }
 
 // libraryCandidates lists the paths a load attempt tries, in order.

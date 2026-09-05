@@ -1,0 +1,8 @@
+{
+  "backend": "purego",
+  "package": "scalar",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/scalar",
+  "library_search_paths": "${EXECUTABLE_DIR}/../lib:../../zig-out/lib",
+  "library_platform_dirs": true
+}

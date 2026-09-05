@@ -124,6 +124,11 @@ fn renderPuregoCandidates(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
             try writer.print("\"{s}\"", .{path});
         }
         try writer.writeAll("}\n\n");
+        if (options.library_platform_dirs) try writer.writeAll(
+            "// libraryPlatformDir is the per-platform subdirectory the build installs\n" ++
+                "// the library into under every search-path directory.\n" ++
+                "var libraryPlatformDir = runtime.GOOS + \"_\" + runtime.GOARCH\n\n",
+        );
         try writer.writeAll(
             "// resolveSearchPath joins a directory entry with the platform library\n" ++
                 "// name. It returns \"\" when the entry cannot be formed.\n" ++
@@ -140,8 +145,8 @@ fn renderPuregoCandidates(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
         try writer.print(
             "\tif {0s}DefaultLibraryName == \"\" {{ return \"\" }}\n" ++
                 "\tif strings.HasSuffix(entry, filepath.Ext({0s}DefaultLibraryName)) {{ return entry }}\n" ++
-                "\treturn filepath.Join(entry, {0s}DefaultLibraryName)\n}}\n\n",
-            .{loaderPrefix(options)},
+                "\treturn filepath.Join(entry, {1s}{0s}DefaultLibraryName)\n}}\n\n",
+            .{ loaderPrefix(options), if (options.library_platform_dirs) "libraryPlatformDir, " else "" },
         );
     }
     try writer.writeAll(

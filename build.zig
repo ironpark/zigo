@@ -76,13 +76,14 @@ pub const Options = struct {
     optimize: std.builtin.OptimizeMode,
     prefix: []const u8 = "zg",
     link: Link = .cgo_static,
-    /// Further platforms the cgo backends build the native library for, on
-    /// top of `target`. The Go tree is generated once; its cgo block carries a
-    /// `#cgo <goos>,<goarch> LDFLAGS` line per platform, each naming that
-    /// platform's library under `install.library_dir/<goos>_<goarch>/`. The
-    /// caller's module graph is rebuilt per platform, so it must not carry
-    /// prebuilt archives. Empty keeps the single-target layout. Not for purego,
-    /// which resolves the library at run time on every platform.
+    /// Further platforms the native library is built for, on top of
+    /// `target`. The Go tree is generated once and every platform's library
+    /// installs under `install.library_dir/<goos>_<goarch>/`. With cgo the
+    /// raw package carries a `#cgo <goos>,<goarch> LDFLAGS` line per platform;
+    /// with purego the generated loader looks for the library in the running
+    /// platform's subdirectory of every search path. The caller's module
+    /// graph is rebuilt per platform, so it must not carry prebuilt archives.
+    /// Empty keeps the single-target layout.
     targets: []const std.Build.ResolvedTarget = &.{},
     cgo_flags: ?CgoFlags = null,
     abi_base: ?[]const u8 = null,
@@ -484,9 +485,13 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         semantic_run.step.dependOn(&resolution.step);
     }
     if (static_link_inputs.paths.len != 0) generate.addArg("--ldflags-external");
-    if (options.targets.len != 0) {
+    if (options.targets.len != 0 and backend == .cgo) {
         for (native_targets) |native| generate.addArgs(&.{ "--cgo-target", b.fmt("{s}/{s}", .{ native.go_target.?.goos, native.go_target.?.goarch }) });
     }
+    // purego finds the library at run time, so the per-platform layout is a
+    // loader policy rather than a link line.
+    const library_platform_dirs = options.targets.len != 0 and backend == .purego;
+    if (library_platform_dirs) generate.addArg("--library-platform-dirs");
     if (options.cgo_flags) |flags| {
         for (flags.target_ldflags) |entry| {
             validateGoPlatformWord("cgo_flags.target_ldflags goos", entry.goos);
@@ -532,6 +537,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     report.addArgs(&.{ "--go-module", options.go_module, "--raw-package-path", raw_package.path, "--go-package", go_package, "--go-package-path", go_package_path });
     report.addArgs(&.{ "--backend", @tagName(backend) });
     if (backend == .purego) addLibraryLoadingArgs(b, report, library_loading);
+    if (library_platform_dirs) report.addArg("--library-platform-dirs");
     if (raw_package.colocated) report.addArg("--raw-colocated");
     const doctor = b.addRunArtifact(generator);
     doctor.has_side_effects = true;
@@ -679,9 +685,12 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         // against a freshly installed library and the module that loads it.
         // A cross-built artifact cannot be loaded here, so it is not offered:
         // the doctor reports that check as skipped rather than failing it.
-        doctor.step.dependOn(&primary.install_library.step);
-        if (isRunnableOnHost(options.target.result, b.graph.host.result))
-            doctor.addArgs(&.{ "--library", primary.library_path });
+        // With several targets, the one the host can run is the one checked.
+        const loadable = for (native_libraries.items) |native| {
+            if (isRunnableOnHost(native.target.result, b.graph.host.result)) break native;
+        } else null;
+        doctor.step.dependOn(&(if (loadable) |native| native.install_library else primary.install_library).step);
+        if (loadable) |native| doctor.addArgs(&.{ "--library", native.library_path });
         doctor.addArgs(&.{ "--go-mod", b.pathFromRoot(go_mod_path) });
     }
     update.step.dependOn(&install_header.step);
@@ -754,15 +763,15 @@ fn resolveNativeTargets(b: *std.Build, options: Options, backend: Backend, insta
         };
         return single;
     }
-    if (backend == .purego)
-        @panic("`targets` is only supported by the cgo backends; purego resolves the library at run time on every platform");
     var list: std.ArrayList(NativeTarget) = .empty;
     for (0..options.targets.len + 1) |index| {
         const resolved = if (index == 0) options.target else options.targets[index - 1];
         const go = build_options.goTarget(resolved.result) orelse std.debug.panic(
-            "targets: '{s}' has no Go platform name, so cgo cannot build for it",
+            "targets: '{s}' has no Go platform name, so a Go binding cannot be built for it",
             .{resolved.result.zigTriple(b.allocator) catch @panic("OOM")},
         );
+        if (backend == .purego and !build_options.puregoTargetSupported(resolved.result))
+            std.debug.panic("targets: '{s}' is not a purego platform; `.link = .purego` supports macOS, Linux and Windows on amd64/arm64 only", .{resolved.result.zigTriple(b.allocator) catch @panic("OOM")});
         for (list.items) |existing| {
             if (existing.go_target.?.eql(go)) std.debug.panic("targets lists {s}/{s} more than once (`target` counts as the first entry)", .{ go.goos, go.goarch });
         }

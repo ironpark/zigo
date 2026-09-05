@@ -159,11 +159,12 @@ LD_LIBRARY_PATH=$PWD/zig-out/lib go test ./...     # Linux
 배포 위치에 맞는 rpath나 `$ORIGIN`·`@executable_path` 기준 경로로 바꾸세요. zigo가 기본으로
 rpath를 넣지 않는 이유입니다.
 
-## 여러 타깃용 cgo 라이브러리
+## 여러 타깃용 네이티브 라이브러리
 
-`targets`에 타깃을 나열하면 한 번의 생성으로 여러 플랫폼용 cgo 트리를 만듭니다.
+`targets`에 타깃을 나열하면 한 번의 생성으로 여러 플랫폼용 Go 트리를 만듭니다.
 Go 소스는 한 번만 생성되고, 네이티브 라이브러리만 `target`과 `targets`의 각 항목마다
-빌드됩니다.
+빌드됩니다. cgo와 purego 모두 지원하며, 설치 배치는 같고 Go 쪽에서 라이브러리를 고르는
+방식만 다릅니다.
 
 ```zig
 const bindings = zigo.addGoBindings(b, .{
@@ -176,7 +177,7 @@ const bindings = zigo.addGoBindings(b, .{
 });
 ```
 
-이 모드에서는 설치 배치와 cgo 블록이 다음과 같이 바뀝니다.
+이 모드에서는 설치 배치와 생성물이 다음과 같이 바뀝니다.
 
 - 각 타깃의 라이브러리와 정적 링크 입력 archive는 `library_dir/<goos>_<goarch>/`에
   설치됩니다. 예를 들어 `zig-out/lib/linux_amd64/libmylib_zigo.a`입니다. `target`도
@@ -189,11 +190,15 @@ const bindings = zigo.addGoBindings(b, .{
   타깃의 shim을 컴파일합니다. `GoBindings.native_libraries`에 타깃별 설치 스텝과 경로가
   들어 있고, `lib`·`install_library`·`library_path`는 `target` 항목을 가리킵니다.
 - `go-doctor`는 나열한 타깃 중 하나라도 호스트에서 실행 가능하면 `PASS target`을 보고합니다.
+- `.link = .purego`이면 링크 줄 대신 로더 정책이 바뀝니다. 생성된 로더는 `search_paths`의
+  각 디렉터리 항목 아래에서 `runtime.GOOS + "_" + runtime.GOARCH` 하위 디렉터리를 찾고,
+  `LoadLibrary(path)`로 넘긴 명시 경로와 환경 변수 값은 그대로 사용합니다. doctor는
+  호스트에서 실행 가능한 타깃의 라이브러리를 로드해 검사합니다. 자세한 배포 방법은
+  [purego 가이드](purego.md#여러-타깃을-한-트리에서-배포하기)에 있습니다.
 
 다음 제약이 있습니다.
 
-- cgo 백엔드 전용입니다. purego는 실행 시 로드하므로 [타깃별 prefix](purego.md#크로스-컴파일)로
-  빌드하세요.
+- purego 타깃은 purego가 지원하는 플랫폼(macOS·Linux·Windows의 amd64·arm64)이어야 합니다.
 - 호출자의 module 그래프를 타깃마다 다시 빌드합니다. `linkLibrary`로 붙인 라이브러리와
   C/C++·어셈블리 소스는 따라오지만, `addObjectFile`로 붙인 미리 빌드된 archive는 다른 타깃용으로
   다시 만들 수 없어 빌드 그래프 생성 시 진단합니다. 그런 입력이 있으면 타깃마다
@@ -373,7 +378,7 @@ binding install이 그 artifact에 의존하게 합니다. 같은 라이브러�
 호출자 module의 C/C++ 소스가 그 라이브러리의 헤더, `link_libc` 또는 `link_libcpp` 설정에
 의존해도 reflection 컴파일에서 유지됩니다. 동적 라이브러리와 `addObjectFile`로 붙인 미리
 빌드된 archive는 호스트 실행 파일에 연결하지 않습니다. 여러 타깃을 한 번에 빌드하려면
-[여러 타깃용 cgo 라이브러리](#여러-타깃용-cgo-라이브러리)를 보세요.
+[여러 타깃용 네이티브 라이브러리](#여러-타깃용-네이티브-라이브러리)를 보세요.
 
 ## `gofmt` 선택
 

@@ -27,6 +27,9 @@ const CaseOptions = struct {
     cgo_targets: []const generator.CgoTarget = &.{},
     /// Per-platform appended `#cgo <constraint> LDFLAGS` lines.
     target_ldflags: []const generator.TargetLdflags = &.{},
+    /// purego run-time loading policy pieces a case can pin.
+    library_search_paths: []const u8 = "",
+    library_platform_dirs: bool = false,
 };
 
 pub fn main(init: std.process.Init) !void {
@@ -77,6 +80,8 @@ pub fn main(init: std.process.Init) !void {
         },
         .cgo_targets = options.cgo_targets,
         .target_ldflags = options.target_ldflags,
+        .library_search_paths = options.library_search_paths,
+        .library_platform_dirs = options.library_platform_dirs,
     });
 
     var result = try snapshot.compare(allocator, init.io, expected_dir, output_dir);

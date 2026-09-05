@@ -84,6 +84,10 @@ pub const Options = struct {
     library_env_vars: ?[]const u8 = null,
     library_automatic: bool = false,
     library_exported_api: bool = true,
+    /// Every search-path directory holds the library under a
+    /// `<goos>_<goarch>` subdirectory, the layout `targets` installs, so the
+    /// loader joins the running platform's name before the file name.
+    library_platform_dirs: bool = false,
     /// The generated helpers the public package references, decided by
     /// rendering it (`references.referencedHelpersAlloc`). Null emits every
     /// gated helper, which only the discovery rendering itself relies on

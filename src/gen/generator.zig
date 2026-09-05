@@ -47,6 +47,7 @@ pub const Options = struct {
     library_env_vars: ?[]const u8 = null,
     library_automatic: bool = false,
     library_exported_api: bool = true,
+    library_platform_dirs: bool = false,
 };
 
 const PreparedFile = struct {
@@ -119,6 +120,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .library_env_vars = options.library_env_vars,
         .library_automatic = options.library_automatic,
         .library_exported_api = options.library_exported_api,
+        .library_platform_dirs = options.library_platform_dirs,
     };
     var prepared: std.ArrayList(PreparedFile) = .empty;
     defer prepared.deinit(scratch_allocator);

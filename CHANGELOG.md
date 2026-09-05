@@ -29,6 +29,11 @@
   `iter.Seq2[T, error]`, 없으면 `iter.Seq[T]`이며 `.cancel` 메서드는 wrapper도 `ctx`를
   받습니다. 잘못된 형태는 `ZIGO050`, 이름 충돌은 `ZIGO024`이고 `abi-check`는 wrapper
   제거·이름 변경을 breaking으로 판정합니다.
+- `.link = .purego`도 `targets`를 받습니다. 나열한 플랫폼의 공유 라이브러리가
+  `library_dir/<goos>_<goarch>/`에 설치되고, 생성된 로더는 검색 경로의 디렉터리마다
+  실행 중인 `GOOS_GOARCH` 하위 디렉터리를 찾습니다. 생성기와 `report`는
+  `--library-platform-dirs` 플래그를 받고, doctor는 호스트에서 실행 가능한 타깃의
+  라이브러리를 검사합니다.
 
 ### Changed
 

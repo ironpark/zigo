@@ -41,6 +41,14 @@ pub fn build(b: *std.Build) void {
         .abi_base = "HEAD",
         .raw_package = "internal/native",
         .link = .purego,
+        // One more platform than the host, so the tree carries two shared
+        // libraries under purego-layout/lib/<goos>_<goarch>/ and the loader
+        // picks the running platform's directory. The second entry is chosen
+        // to differ from whatever host builds this example.
+        .targets = &.{b.resolveTargetQuery(if (target.result.os.tag == .linux)
+            .{ .cpu_arch = .x86_64, .os_tag = .windows, .abi = .gnu }
+        else
+            .{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .musl })},
         .install = .{
             .library_dir = .{ .custom = "purego-layout/lib" },
             .header_dir = .{ .custom = "purego-layout/include" },

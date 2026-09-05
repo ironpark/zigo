@@ -15,6 +15,7 @@ pub const Options = struct {
     library_env_vars: ?[]const u8 = null,
     library_automatic: bool = false,
     library_exported_api: bool = true,
+    library_platform_dirs: bool = false,
 };
 
 pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: semantic.Semantic, options: Options) !void {
@@ -69,6 +70,7 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
         try writer.print("library search paths: {s}\n", .{
             if (options.library_search_paths.len == 0) "none" else options.library_search_paths,
         });
+        if (options.library_platform_dirs) try writer.writeAll("library platform dirs: <goos>_<goarch> under every search path\n");
     }
 
     try writer.print("\ntypes ({d})\n", .{document.types.len});
@@ -221,10 +223,13 @@ test "purego report states the effective loading policy" {
         .library_env_vars = "",
         .library_automatic = true,
         .library_exported_api = false,
+        .library_platform_dirs = true,
     });
     try std.testing.expect(std.mem.indexOf(u8, automatic.written(), "library loading: automatic on first call, loader API internal") != null);
     try std.testing.expect(std.mem.indexOf(u8, automatic.written(), "library environment: none") != null);
     try std.testing.expect(std.mem.indexOf(u8, automatic.written(), "library search paths: ${EXECUTABLE_DIR}:/opt/app/lib") != null);
+    try std.testing.expect(std.mem.indexOf(u8, automatic.written(), "library platform dirs: <goos>_<goarch> under every search path") != null);
+    try std.testing.expect(std.mem.indexOf(u8, explicit.written(), "library platform dirs:") == null);
 
     // A cgo report has no loading policy to explain.
     var cgo: std.Io.Writer.Allocating = .init(std.testing.allocator);

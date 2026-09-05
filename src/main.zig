@@ -126,6 +126,7 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         .library_env_vars = options.library_env_vars,
         .library_automatic = options.library_automatic,
         .library_exported_api = options.library_exported_api,
+        .library_platform_dirs = options.library_platform_dirs,
     });
     try formatGeneratedGo(allocator, io, options.output_path, options.gofmt_executable);
 }
@@ -250,6 +251,7 @@ fn runReport(allocator: std.mem.Allocator, io: std.Io, options: cli.Report) !voi
         .library_env_vars = options.library_env_vars,
         .library_automatic = options.library_automatic,
         .library_exported_api = options.library_exported_api,
+        .library_platform_dirs = options.library_platform_dirs,
     });
     try stdout.interface.flush();
 }

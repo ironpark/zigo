@@ -57,6 +57,9 @@ pub const Generate = struct {
     library_env_vars: ?[]const u8 = null,
     library_automatic: bool = false,
     library_exported_api: bool = true,
+    /// The library lives in a `<goos>_<goarch>` subdirectory of every search
+    /// path entry, the layout `targets` installs.
+    library_platform_dirs: bool = false,
     /// Generated Go is formatted through `gofmt`, so generation runs it over
     /// its own output rather than leaving the caller to enumerate the files.
     gofmt_executable: []const u8 = "gofmt",
@@ -96,6 +99,7 @@ pub const Report = struct {
     library_env_vars: ?[]const u8 = null,
     library_automatic: bool = false,
     library_exported_api: bool = true,
+    library_platform_dirs: bool = false,
 };
 
 pub const Doctor = struct {
@@ -134,7 +138,7 @@ pub fn writeUsage(writer: *std.Io.Writer) std.Io.Writer.Error!void {
         \\  report    --semantic <file> [--go-module <path>] [options]
         \\            [--go-package <name>] [--go-package-path <path>]
         \\            [--library-search-paths <a:b>] [--library-env-vars <A,B>]
-        \\            [--library-automatic] [--library-internal-api]
+        \\            [--library-automatic] [--library-internal-api] [--library-platform-dirs]
         \\  doctor    [--go <path>] [--gofmt <path>] [--target native|cross]
         \\            [--backend cgo|purego] [--library <path>] [--go-mod <path>]
         \\
@@ -178,11 +182,15 @@ const LibraryLoadingArgs = struct {
     env_vars: ?[]const u8 = null,
     automatic: bool = false,
     exported_api: bool = true,
+    platform_dirs: bool = false,
 
     /// Consumes one loading-policy flag. Returns false for any other flag.
     fn parseFlag(self: *LibraryLoadingArgs, flag: []const u8, args: []const []const u8, index: *usize) ParseError!bool {
         if (std.mem.eql(u8, flag, "--library-search-paths")) {
             try set(&self.search_paths, try takeValue(args, index));
+        } else if (std.mem.eql(u8, flag, "--library-platform-dirs")) {
+            if (self.platform_dirs) return error.DuplicateArgument;
+            self.platform_dirs = true;
         } else if (std.mem.eql(u8, flag, "--library-env-vars")) {
             if (self.env_vars != null) return error.DuplicateArgument;
             self.env_vars = try takeValue(args, index);
@@ -350,6 +358,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .library_env_vars = loading.env_vars,
         .library_automatic = loading.automatic,
         .library_exported_api = loading.exported_api,
+        .library_platform_dirs = loading.platform_dirs,
         .gofmt_executable = gofmt_executable orelse "gofmt",
     };
 }
@@ -476,6 +485,7 @@ fn parseReport(args: []const []const u8) ParseError!Report {
         .library_env_vars = loading.env_vars,
         .library_automatic = loading.automatic,
         .library_exported_api = loading.exported_api,
+        .library_platform_dirs = loading.platform_dirs,
     };
 }
 
@@ -675,7 +685,11 @@ test "generate command parses named arguments" {
     try std.testing.expectEqualStrings("ZIGO_SCALAR_LIBRARY_PATH,ZIGO_LIBRARY_PATH", loading.library_env_vars.?);
     try std.testing.expect(loading.library_automatic);
     try std.testing.expect(!loading.library_exported_api);
+    try std.testing.expect(!loading.library_platform_dirs);
     try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--library-automatic", "--library-automatic" }));
+    const platform_dirs = (try parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--library-platform-dirs" })).generate;
+    try std.testing.expect(platform_dirs.library_platform_dirs);
+    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--library-platform-dirs", "--library-platform-dirs" }));
 
     // The same policy flags configure the report so it can explain the contract.
     const loading_report = (try parse(&.{ "report", "--semantic", "s.json", "--backend", "purego", "--library-env-vars", "" })).report;

@@ -45,8 +45,8 @@ Go race detector는 `CGO_ENABLED=0` 테스트에 사용할 수 없습니다.
   리플렉션 중 호출할 수 없습니다.
 - cgo doctor는 크로스 빌드에서 `FAIL target`을 보고합니다. purego doctor는 외래
   공유 라이브러리의 로드 검사를 `SKIP`합니다. 두 경우 모두 결과물은 타깃에서 테스트하세요.
-- cgo로 여러 플랫폼을 한 트리에서 지원하려면 `targets`를 사용하세요
-  ([설정](configuration.md#여러-타깃용-cgo-라이브러리)). `addObjectFile`로 붙인 미리
+- 여러 플랫폼을 한 트리에서 지원하려면 cgo와 purego 모두 `targets`를 사용하세요
+  ([설정](configuration.md#여러-타깃용-네이티브-라이브러리)). `addObjectFile`로 붙인 미리
   빌드된 archive는 다른 타깃용으로 다시 만들 수 없으므로 이 모드와 함께 쓸 수 없습니다.
 
 구체적인 명령은 [Windows cgo](getting-started.md#windows에서-cgo-백엔드-쓰기)와

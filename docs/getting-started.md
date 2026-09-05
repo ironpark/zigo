@@ -253,7 +253,7 @@ CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
   실행 파일은 타깃에서 실행해 확인하세요.
 - 호스트용과 Windows용을 한 트리에서 함께 링크하려면 `addGoBindings`에 `targets`를
   나열하세요. 타깃별 archive가 `zig-out/lib/<goos>_<goarch>/`에 설치되고 cgo 블록이
-  플랫폼별 줄을 갖습니다 ([설정](configuration.md#여러-타깃용-cgo-라이브러리)).
+  플랫폼별 줄을 갖습니다 ([설정](configuration.md#여러-타깃용-네이티브-라이브러리)).
 
 ## 문제가 생겼다면
 

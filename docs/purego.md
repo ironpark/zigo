@@ -41,6 +41,11 @@ _ = purego_bindings.addStandardSteps(b, .{ .name_prefix = "purego" });
 이 문서의 명령은 위 설정이 있는 프로젝트 루트에서 실행합니다.
 `name_prefix`를 바꾸거나 생략했다면 명령의 스텝 이름도 맞춰 바꾸세요.
 
+여러 OS·아키텍처의 공유 라이브러리를 한 트리에 두려면 `targets`를 나열합니다. 각 라이브러리는
+`install.library_dir/<goos>_<goarch>/`에 설치되고, 생성된 로더는 실행 중인 플랫폼의
+하위 디렉터리를 찾습니다. [여러 타깃을 한 트리에서 배포하기](#여러-타깃을-한-트리에서-배포하기)를
+참고하세요.
+
 cgo도 함께 제공하려면 별도의 `go_dir`·`go_module`로 등록합니다.
 [04-callback](../examples/04-callback/README.md)이 두 백엔드를 함께 구성하는 예제입니다.
 기본 파일명을 사용하면 cgo 정적 archive와 purego 공유 라이브러리·헤더는 서로 겹치지 않습니다.
@@ -146,7 +151,8 @@ if err := mylib.LoadLibrary("/opt/myapp/lib/" + mylib.DefaultLibraryName); err !
 3. `DefaultLibraryName`을 플랫폼 로더의 검색 경로에서 탐색
 
 검색 항목이 플랫폼 라이브러리 확장자로 끝나면 파일로, 그렇지 않으면 디렉터리로 보고
-기본 파일명을 붙입니다. `${EXECUTABLE_DIR}`는 실행 파일이 있는 디렉터리로 확장하며,
+기본 파일명을 붙입니다. `targets`를 나열한 빌드에서는 디렉터리 항목과 기본 파일명 사이에
+`<GOOS>_<GOARCH>` 하위 디렉터리가 들어갑니다. `${EXECUTABLE_DIR}`는 실행 파일이 있는 디렉터리로 확장하며,
 확인할 수 없으면 그 항목을 건너뜁니다.
 
 `search_paths`에는 `:`를 쓸 수 없습니다. Windows의 `C:/...` 같은 드라이브 경로는
@@ -186,10 +192,36 @@ Go 실행 파일과 타깃에 맞는 공유 라이브러리를 함께 배포합�
 native 라이브러리가 다른 동적 라이브러리에 의존하면 그 의존성도 준비해야 합니다.
 Go 생성 소스와 `zigo/`는 커밋하고, 공유 라이브러리는 릴리스 아티팩트로 관리하세요.
 
+### 여러 타깃을 한 트리에서 배포하기
+
+`addGoBindings`에 `targets`를 나열하면 한 번의 `zig build purego-go-lib`로 나열한 모든
+플랫폼의 공유 라이브러리를 만듭니다.
+
+```zig
+.link = .purego,
+.targets = &.{
+    b.resolveTargetQuery(.{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .musl }),
+    b.resolveTargetQuery(.{ .cpu_arch = .x86_64, .os_tag = .windows, .abi = .gnu }),
+},
+```
+
+`target`을 포함한 각 항목은 `install.library_dir/<goos>_<goarch>/`에 설치됩니다. 예를 들어
+`zig-out/lib/linux_amd64/libmylib_zigo.so`와 `zig-out/lib/windows_amd64/mylib_zigo.dll`입니다.
+생성된 로더는 `search_paths`의 디렉터리 항목마다 `runtime.GOOS + "_" + runtime.GOARCH`
+하위 디렉터리를 붙여 찾으므로, 그 디렉터리 구조를 그대로 배포하면 한 Go 트리가 모든
+플랫폼에서 자기 라이브러리를 고릅니다. `LoadLibrary(path)`의 명시 경로와 환경 변수 값은
+파일 경로로 그대로 사용합니다. `purego-go-report`는 이 정책을
+`library platform dirs`로 표시합니다.
+
+doctor는 호스트에서 실행할 수 있는 타깃의 라이브러리를 로드해 검사하고, 다른 타깃은 빌드만
+확인합니다. 타깃 목록을 켜거나 끄면 로더 파일과 설치 경로가 바뀌므로 `zig build purego-go`로
+다시 생성해 커밋하세요. [08-telemetry-hub](../examples/08-telemetry-hub/README.md)가
+호스트와 다른 플랫폼 하나를 함께 빌드하는 예제입니다.
+
 ### 크로스 컴파일
 
-한 호스트에서 여러 타깃을 빌드할 수 있습니다. 아키텍처가 달라도 파일명이 같을 수 있으므로
-타깃별 설치 prefix를 분리하세요.
+`targets` 없이도 한 호스트에서 여러 타깃을 빌드할 수 있습니다. 아키텍처가 달라도 파일명이
+같을 수 있으므로 타깃별 설치 prefix를 분리하세요.
 
 ```bash
 zig build purego-go-lib -Dtarget=x86_64-windows -p zig-out/windows-amd64
@@ -272,6 +304,7 @@ dispatcher·토큰·float 전달의 내부 계약은
 - zigo는 purego `v0.10.2`를 기준으로 생성·검증합니다. 다른 버전은 doctor가 경고합니다.
 - 모바일·32비트 타깃은 지원하지 않습니다.
 - 정적 링크는 cgo 전용입니다.
+- `targets`는 purego가 지원하는 플랫폼만 나열할 수 있습니다.
 - Go race detector는 cgo가 필요하므로 `CGO_ENABLED=0`에서는 실행할 수 없습니다.
 
 전체 지원 조건은 [지원 범위와 제한사항](limitations.md), OS별 로더 파일 구조는
