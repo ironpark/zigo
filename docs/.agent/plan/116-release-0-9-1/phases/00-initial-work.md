@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T10:56:27Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Local checks pass, release tag matches the verified commit, and the GitHub release is published.
 > NEXT: none
