@@ -186,3 +186,90 @@ pub fn isReleaseTarget(functions: []const semantic.SemanticFn, function: semanti
     }
     return false;
 }
+
+fn dependentParentType(program: abi.Program, type_name: []const u8) ?[]const u8 {
+    for (program.functions) |function| {
+        if (!function.origin.childOfReceiver()) continue;
+        const constructor = semantic.constructorForInit(program.constructors, function.origin.*) orelse continue;
+        if (!std.mem.eql(u8, constructor.type, type_name)) continue;
+        return function.origin.receiver;
+    }
+    return null;
+}
+
+fn typeHasDependentChildren(program: abi.Program, type_name: []const u8) bool {
+    return typeHasDependentChildrenWithin(program, type_name, program.types.len + 1);
+}
+
+fn typeHasDependentChildrenWithin(program: abi.Program, type_name: []const u8, remaining: usize) bool {
+    if (remaining == 0) return false;
+    for (program.functions) |function| {
+        if (function.origin.childOfReceiver() and
+            std.mem.eql(u8, function.origin.receiver orelse "", type_name)) return true;
+    }
+    for (program.functions) |function| {
+        const origin = function.origin.*;
+        if (!returnsBorrowedView(origin) or
+            !std.mem.eql(u8, origin.receiver orelse "", type_name)) continue;
+        const node = origin.@"return".errorPayload();
+        if (typeHasDependentChildrenWithin(program, node.opaque_ptr.ref, remaining - 1)) return true;
+    }
+    return false;
+}
+
+fn typeHasBorrowedRefs(program: abi.Program, type_name: []const u8) bool {
+    for (program.functions) |function| {
+        const origin = function.origin.*;
+        if (!returnsBorrowedOpaque(origin) or returnsBorrowedView(origin)) continue;
+        const node = origin.@"return".errorPayload();
+        if (std.mem.eql(u8, node.opaque_ptr.ref, type_name)) return true;
+    }
+    for (program.projections) |projection| {
+        if (projection.kind != .payload) continue;
+        const field = projection.field orelse continue;
+        const payload = field.type orelse continue;
+        if (payload == .opaque_ptr and std.mem.eql(u8, payload.opaque_ptr.ref, type_name)) return true;
+    }
+    return false;
+}
+
+fn typeCanBeBorrowed(program: abi.Program, type_name: []const u8) bool {
+    for (program.functions) |function| {
+        const origin = function.origin.*;
+        if (!returnsBorrowedView(origin)) continue;
+        const node = origin.@"return".errorPayload();
+        if (std.mem.eql(u8, node.opaque_ptr.ref, type_name)) return true;
+    }
+    return false;
+}
+
+fn typeReturnsBorrowedViews(program: abi.Program, type_name: []const u8) bool {
+    for (program.functions) |function| {
+        if (returnsBorrowedView(function.origin.*) and
+            std.mem.eql(u8, function.origin.receiver orelse "", type_name)) return true;
+    }
+    return false;
+}
+
+fn returnsBorrowedOpaque(function: semantic.SemanticFn) bool {
+    return function.@"return".errorPayload() == .opaque_ptr and function.ownership == .borrowed;
+}
+
+fn returnsBorrowedView(function: semantic.SemanticFn) bool {
+    return returnsBorrowedOpaque(function) and function.returnsBorrowedHandle();
+}
+
+/// Complete type-level facts after functions and union projections are lowered.
+/// These belong to Program.handles, not the ABI scalar's typedef-only copies.
+pub fn recordHandleLifecycles(program: abi.Program, handles: []abi.AbiOpaque) void {
+    for (handles) |*handle| {
+        handle.lifecycle = .{
+            .constructor = constructorForType(program.constructors, handle.name),
+            .dependent_parent = dependentParentType(program, handle.name),
+            .has_dependent_children = typeHasDependentChildren(program, handle.name),
+            .has_borrowed_refs = typeHasBorrowedRefs(program, handle.name),
+            .can_be_borrowed = typeCanBeBorrowed(program, handle.name),
+            .returns_borrowed_views = typeReturnsBorrowedViews(program, handle.name),
+        };
+    }
+}

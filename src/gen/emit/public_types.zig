@@ -437,7 +437,7 @@ fn renderPublicSnapshots(
         try writer.writeAll("\t}, nil\n}\n\n");
 
         inline for (.{ false, true }) |borrowed| {
-            if (!borrowed or common.typeHasBorrowedRefs(program, declaration.name)) {
+            if (!borrowed or common.handleRecord(program, declaration.name).lifecycle.has_borrowed_refs) {
                 const suffix = if (borrowed) "Ref" else "";
                 try writer.print(
                     "// Snapshot reads the tag and every payload in one native call, or\n" ++
@@ -631,7 +631,7 @@ fn renderPublicUnionVariants(
         );
 
         inline for (.{ false, true }) |borrowed| {
-            if (!borrowed or common.typeHasBorrowedRefs(program, declaration.name)) {
+            if (!borrowed or common.handleRecord(program, declaration.name).lifecycle.has_borrowed_refs) {
                 const suffix = if (borrowed) "Ref" else "";
                 try writer.print(
                     "// Variant returns the active variant as a concrete {1s}Variant, or a typed\n" ++
@@ -744,7 +744,7 @@ fn renderPublicTaggedUnionAccessors(
             .{ declaration.name, tag_type },
         );
         inline for (.{ false, true }) |borrowed| {
-            if (!borrowed or common.typeHasBorrowedRefs(program, declaration.name)) {
+            if (!borrowed or common.handleRecord(program, declaration.name).lifecycle.has_borrowed_refs) {
                 const suffix = if (borrowed) "Ref" else "";
                 try writer.print(
                     "// Tag returns the active tagged-union tag or a typed lifecycle/native error.\n" ++
@@ -796,7 +796,7 @@ fn renderPublicTaggedUnionAccessors(
             try writer.writeAll(", true, nil\n}\n\n");
 
             inline for (.{ false, true }) |borrowed| {
-                if (!borrowed or common.typeHasBorrowedRefs(program, declaration.name)) {
+                if (!borrowed or common.handleRecord(program, declaration.name).lifecycle.has_borrowed_refs) {
                     const suffix = if (borrowed) "Ref" else "";
                     try writer.print("// As{0s} returns the {1s} payload, whether it is active, and any lifecycle/native error.\nfunc ({2s} *{3s}{4s}) As{0s}() (", .{ field_name, field.name, recv, declaration.name, suffix });
                     try public_writers.writePayloadType(scope, writer, payload);

@@ -527,7 +527,7 @@ pub fn semanticDocumentForBackend(
     const interfaces = try lowerInterfaces(allocator, document, functions);
     const projections = try lowerTaggedUnionProjections(allocator, document, prefix);
     const snapshots = try lowerTaggedUnionSnapshots(allocator, document, prefix);
-    return .{
+    const program: abi.Program = .{
         .backend = backend,
         .callback_convention = if (backend == .purego) .function_pointer_userdata_v2 else .fixed_go_export,
         .constructors = document.constructors,
@@ -551,6 +551,8 @@ pub fn semanticDocumentForBackend(
         .structs = structs,
         .types = document.types,
     };
+    ownership_rules.recordHandleLifecycles(program, handles);
+    return program;
 }
 
 // ---------------------------------------------------------------------------
@@ -2668,6 +2670,16 @@ test "lowering records who owns every result" {
     defer arena.deinit();
     const program = try semanticDocument(arena.allocator(), document, "owners", "zg", &.{});
     const functions = program.functions;
+
+    // Type-level facts remain available independently of a package's function view.
+    const store_lifecycle = program.handles[0].lifecycle;
+    try std.testing.expect(store_lifecycle.constructor != null);
+    try std.testing.expect(store_lifecycle.has_dependent_children);
+    try std.testing.expect(store_lifecycle.returns_borrowed_views);
+    try std.testing.expect(!store_lifecycle.can_be_borrowed);
+    try std.testing.expect(program.handles[1].lifecycle.constructor != null);
+    try std.testing.expect(program.handles[2].lifecycle.can_be_borrowed);
+    try std.testing.expect(!program.handles[2].lifecycle.has_borrowed_refs);
 
     const open = functions[0].ownership.handle;
     try std.testing.expectEqualStrings("Store", open.type_name);

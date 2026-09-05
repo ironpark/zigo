@@ -18,13 +18,14 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
         if (!emit.packageMatches(declaration.package, options.active_package)) continue;
         if (!declaration.isHandle()) continue;
         if (common.isValueOnlyTaggedUnion(program, declaration.name)) continue;
-        const owns_callbacks = common.typeOwnsCallbacks(program, declaration.name);
-        const dependent_parent = common.dependentParentType(program, declaration.name);
-        const has_dependent_children = common.typeHasDependentChildren(program, declaration.name);
-        const can_be_borrowed = common.typeCanBeBorrowed(program, declaration.name);
-        const returns_borrowed_views = common.typeReturnsBorrowedViews(program, declaration.name);
+        const handle = common.handleRecord(program, declaration.name);
+        const owns_callbacks = handle.retained_callback_slots != 0;
+        const dependent_parent = handle.lifecycle.dependent_parent;
+        const has_dependent_children = handle.lifecycle.has_dependent_children;
+        const can_be_borrowed = handle.lifecycle.can_be_borrowed;
+        const returns_borrowed_views = handle.lifecycle.returns_borrowed_views;
         // Owning a constructor is what gives a handle Close and the cleanup net.
-        const constructor = common.constructorForType(program, declaration.name);
+        const constructor = handle.lifecycle.constructor;
         const auto_cleanup = constructor != null;
         if (auto_cleanup) {
             try writer.print("// {s} is a caller-owned native handle. Call Close when it is no longer needed.\n", .{declaration.name});
@@ -51,7 +52,7 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
         if (auto_cleanup) try writeStructField(writer, "cleanup", width, "runtime.Cleanup");
         try writer.writeAll("}\n\n");
         // The borrowed reference exists only when something hands one out.
-        const has_refs = common.typeHasBorrowedRefs(program, declaration.name);
+        const has_refs = handle.lifecycle.has_borrowed_refs;
         if (has_refs) try writer.print(
             "// {s}Ref is a borrowed {s} reference that remains valid only while its parent is open.\n" ++
                 "type {s}Ref struct {{\n\tptr    unsafe.Pointer\n\tparent zigoHandle\n}}\n\n",

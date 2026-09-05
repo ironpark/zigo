@@ -116,6 +116,9 @@ zig build shared-library-smoke -- \
 - 핸들의 생성자·해제 함수 연결과 소유권 판정은 `lower/ownership.zig`가 담당합니다.
   `lower.zig`는 기존 진입점을 유지하고, `emit/handles.zig`는 판정 결과로 Go 핸들 타입과
   호출·종료·정리 런타임을 생성합니다. 일반 공개 타입 출력은 `emit/public_types.zig`에 둡니다.
+- 타입별 부모, borrowed view·Ref, dependent child와 생성자 정보는
+  `AbiOpaque.lifecycle`에 기록합니다. 이 정보와 retained callback 슬롯 수는
+  `Program.handles`가 소유하며 emitter는 패키지별 함수 목록에서 다시 판정하지 않습니다.
 - Materialized의 레이아웃과 ABI 출력 슬롯은 `lower/materialized.zig`, Zig 직렬화는
   `emit/materialized_encoder.zig`, Go 디코딩은 `emit/materialized_decoder.zig`가 담당합니다.
   `emit/materialized.zig`는 native 호출과 이 직렬화기를 연결합니다. 버퍼 형식 상수는

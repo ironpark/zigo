@@ -238,6 +238,16 @@ pub const AbiOpaque = struct {
     /// size its handle array without rescanning the program. Only the entries
     /// in `Program.handles` carry it; a pointed-to copy inside a scalar keeps 0.
     retained_callback_slots: usize = 0,
+    lifecycle: Lifecycle = .{},
+
+    pub const Lifecycle = struct {
+        constructor: ?semantic.Constructor = null,
+        dependent_parent: ?[]const u8 = null,
+        has_dependent_children: bool = false,
+        has_borrowed_refs: bool = false,
+        can_be_borrowed: bool = false,
+        returns_borrowed_views: bool = false,
+    };
 };
 
 /// A user enum mirrored into C as its tag type plus one constant per member.

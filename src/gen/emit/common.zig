@@ -786,12 +786,7 @@ fn isAutoCleanupType(program: abi.Program, type_name: []const u8) bool {
 /// is a per-type question: a program can mix types that take callbacks with
 /// types that do not, and only the former need the bookkeeping.
 pub fn typeOwnsCallbacks(program: abi.Program, type_name: []const u8) bool {
-    for (program.functions) |function| {
-        const owner = retainedCallbackOwner(program, function) orelse continue;
-        if (!std.mem.eql(u8, owner, type_name)) continue;
-        if (hasRetainedCallback(function.origin.*)) return true;
-    }
-    return false;
+    return handleRecord(program, type_name).retained_callback_slots != 0;
 }
 
 pub fn retainedCallbackOwner(program: abi.Program, function: abi.AbiFn) ?[]const u8 {
@@ -965,36 +960,6 @@ pub fn constructorForType(program: abi.Program, type_name: []const u8) ?semantic
     return lower.constructorForType(program.constructors, type_name);
 }
 
-pub fn dependentParentType(program: abi.Program, type_name: []const u8) ?[]const u8 {
-    for (program.functions) |function| {
-        if (!function.origin.childOfReceiver()) continue;
-        const constructor = constructorForInit(program, function.origin.*) orelse continue;
-        if (!std.mem.eql(u8, constructor.type, type_name)) continue;
-        return function.origin.receiver;
-    }
-    return null;
-}
-
-pub fn typeHasDependentChildren(program: abi.Program, type_name: []const u8) bool {
-    return typeHasDependentChildrenWithin(program, type_name, program.types.len + 1);
-}
-
-fn typeHasDependentChildrenWithin(program: abi.Program, type_name: []const u8, remaining: usize) bool {
-    if (remaining == 0) return false;
-    for (program.functions) |function| {
-        if (function.origin.childOfReceiver() and
-            std.mem.eql(u8, function.origin.receiver orelse "", type_name)) return true;
-    }
-    for (program.functions) |function| {
-        const origin = function.origin.*;
-        if (!docs.returnsBorrowedView(origin) or
-            !std.mem.eql(u8, origin.receiver orelse "", type_name)) continue;
-        const node = origin.@"return".errorPayload();
-        if (typeHasDependentChildrenWithin(program, node.opaque_ptr.ref, remaining - 1)) return true;
-    }
-    return false;
-}
-
 pub fn programHasDependentHandles(program: abi.Program) bool {
     for (program.functions) |function| {
         if (function.origin.childOfReceiver() or docs.returnsBorrowedView(function.origin.*)) return true;
@@ -1019,40 +984,6 @@ pub fn programHasChildConstructors(program: abi.Program) bool {
 /// returns the handle without ownership, or a tagged-union payload projection
 /// whose payload is that handle. Nothing else can construct one, so a type
 /// without either gets no Ref type at all.
-pub fn typeHasBorrowedRefs(program: abi.Program, type_name: []const u8) bool {
-    for (program.functions) |function| {
-        const origin = function.origin.*;
-        if (!docs.returnsBorrowedOpaque(origin) or docs.returnsBorrowedView(origin)) continue;
-        const node = origin.@"return".errorPayload();
-        if (std.mem.eql(u8, node.opaque_ptr.ref, type_name)) return true;
-    }
-    for (program.projections) |projection| {
-        if (projection.kind != .payload) continue;
-        const field = projection.field orelse continue;
-        const payload = field.type orelse continue;
-        if (payload == .opaque_ptr and std.mem.eql(u8, payload.opaque_ptr.ref, type_name)) return true;
-    }
-    return false;
-}
-
-pub fn typeCanBeBorrowed(program: abi.Program, type_name: []const u8) bool {
-    for (program.functions) |function| {
-        const origin = function.origin.*;
-        if (!docs.returnsBorrowedView(origin)) continue;
-        const node = origin.@"return".errorPayload();
-        if (std.mem.eql(u8, node.opaque_ptr.ref, type_name)) return true;
-    }
-    return false;
-}
-
-pub fn typeReturnsBorrowedViews(program: abi.Program, type_name: []const u8) bool {
-    for (program.functions) |function| {
-        if (docs.returnsBorrowedView(function.origin.*) and
-            std.mem.eql(u8, function.origin.receiver orelse "", type_name)) return true;
-    }
-    return false;
-}
-
 /// Whether some other function names this one as its `.release` target.
 pub fn isReleaseTarget(program: abi.Program, function: semantic.SemanticFn) bool {
     return lower.isReleaseTarget(program.origins, function);
