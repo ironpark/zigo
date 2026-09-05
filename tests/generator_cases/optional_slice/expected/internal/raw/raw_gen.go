@@ -24,17 +24,35 @@ func zigoCString(value string) *C.char {
 	return (*C.char)(unsafe.Pointer(&buffer[0]))
 }
 
+// zigoZeroSlot is what an empty slice or string points at instead of NULL, so
+// the native side always receives a valid address beside a zero length.
+var zigoZeroSlot uint64
+
+// zigoSlicePtr is the address of a slice's first element, or of zigoZeroSlot
+// for an empty slice.
+func zigoSlicePtr[T any](values []T) unsafe.Pointer {
+	if len(values) == 0 {
+		return unsafe.Pointer(&zigoZeroSlot)
+	}
+	return unsafe.Pointer(&values[0])
+}
+
+// zigoStringPtr is the address of a string's bytes, read in place, or of
+// zigoZeroSlot for an empty string.
+func zigoStringPtr(value string) unsafe.Pointer {
+	if len(value) == 0 {
+		return unsafe.Pointer(&zigoZeroSlot)
+	}
+	return unsafe.Pointer(unsafe.StringData(value))
+}
+
 // Measure calls the generated C ABI wrapper for zg_measure.
 func Measure(text *string) uint {
-	var textZero C.uint8_t
 	var textLen C.size_t
 	var textPtr *C.uint8_t
 	if text != nil {
-		textPtr = &textZero
+		textPtr = (*C.uint8_t)(zigoStringPtr(*text))
 		textLen = C.size_t(len(*text))
-		if textLen != 0 {
-			textPtr = (*C.uint8_t)(unsafe.Pointer(unsafe.StringData(*text)))
-		}
 	}
 	return uint(C.zg_measure(textPtr, textLen))
 }
@@ -48,15 +66,11 @@ func Label(text *string) uint {
 }
 // Total calls the generated C ABI wrapper for zg_total.
 func Total(values *[]int32) int32 {
-	var valuesZero C.int32_t
 	var valuesLen C.size_t
 	var valuesPtr *C.int32_t
 	if values != nil {
-		valuesPtr = &valuesZero
+		valuesPtr = (*C.int32_t)(zigoSlicePtr(*values))
 		valuesLen = C.size_t(len(*values))
-		if valuesLen != 0 {
-			valuesPtr = (*C.int32_t)(unsafe.Pointer(&(*values)[0]))
-		}
 	}
 	return int32(C.zg_total(valuesPtr, valuesLen))
 }
@@ -111,11 +125,7 @@ func TakeOwned() ([]uint8, bool, int32) {
 }
 // FreeOwned calls the generated C ABI wrapper for zg_free_owned.
 func FreeOwned(value []uint8) {
-	var valueZero C.uint8_t
-	valuePtr := &valueZero
-	if len(value) != 0 {
-		valuePtr = (*C.uint8_t)(unsafe.Pointer(&value[0]))
-	}
+	valuePtr := (*C.uint8_t)(zigoSlicePtr(value))
 	C.zg_free_owned(valuePtr, C.size_t(len(value)))
 }
 // TakeOwnedCString calls the generated C ABI wrapper for zg_take_owned_c_string.
@@ -136,10 +146,6 @@ func TakeOwnedCString() ([]uint8, bool, int32) {
 }
 // FreeOwnedCString calls the generated C ABI wrapper for zg_free_owned_c_string.
 func FreeOwnedCString(value []uint8) {
-	var valueZero C.uint8_t
-	valuePtr := &valueZero
-	if len(value) != 0 {
-		valuePtr = (*C.uint8_t)(unsafe.Pointer(&value[0]))
-	}
+	valuePtr := (*C.uint8_t)(zigoSlicePtr(value))
 	C.zg_free_owned_c_string(valuePtr, C.size_t(len(value)))
 }

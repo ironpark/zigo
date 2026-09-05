@@ -15,6 +15,19 @@ import "unsafe"
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// zigoZeroSlot is what an empty slice or string points at instead of NULL, so
+// the native side always receives a valid address beside a zero length.
+var zigoZeroSlot uint64
+
+// zigoSlicePtr is the address of a slice's first element, or of zigoZeroSlot
+// for an empty slice.
+func zigoSlicePtr[T any](values []T) unsafe.Pointer {
+	if len(values) == 0 {
+		return unsafe.Pointer(&zigoZeroSlot)
+	}
+	return unsafe.Pointer(&values[0])
+}
+
 // CodepointWidth calls the generated C ABI wrapper for zg_codepoint_width.
 func CodepointWidth(cp uint32) (int8, int32) {
 	var outResult C.int8_t
@@ -35,20 +48,12 @@ func Decode(byte uint8) (uint32, int32) {
 }
 // SumCodepoints calls the generated C ABI wrapper for zg_sum_codepoints.
 func SumCodepoints(values []uint32) uint32 {
-	var valuesZero C.uint32_t
-	valuesPtr := &valuesZero
-	if len(values) != 0 {
-		valuesPtr = (*C.uint32_t)(unsafe.Pointer(&values[0]))
-	}
+	valuesPtr := (*C.uint32_t)(zigoSlicePtr(values))
 	return uint32(C.zg_sum_codepoints(valuesPtr, C.size_t(len(values))))
 }
 // FillCodepoints calls the generated C ABI wrapper for zg_fill_codepoints.
 func FillCodepoints(values []uint32) {
-	var valuesZero C.uint32_t
-	valuesPtr := &valuesZero
-	if len(values) != 0 {
-		valuesPtr = (*C.uint32_t)(unsafe.Pointer(&values[0]))
-	}
+	valuesPtr := (*C.uint32_t)(zigoSlicePtr(values))
 	var valuesWritten C.size_t
 	C.zg_fill_codepoints(valuesPtr, C.size_t(len(values)), &valuesWritten)
 }
@@ -67,10 +72,6 @@ func TakeCodepoints() []uint32 {
 }
 // FreeCodepoints calls the generated C ABI wrapper for zg_free_codepoints.
 func FreeCodepoints(values []uint32) {
-	var valuesZero C.uint32_t
-	valuesPtr := &valuesZero
-	if len(values) != 0 {
-		valuesPtr = (*C.uint32_t)(unsafe.Pointer(&values[0]))
-	}
+	valuesPtr := (*C.uint32_t)(zigoSlicePtr(values))
 	C.zg_free_codepoints(valuesPtr, C.size_t(len(values)))
 }

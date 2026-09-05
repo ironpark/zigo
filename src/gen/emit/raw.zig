@@ -234,15 +234,27 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
         try writer.print("\n#include \"{s}\"\n*/\nimport \"C\"\n", .{options.header_name})
     else
         try writer.print("\n#include \"zigo_{s}.h\"\n*/\nimport \"C\"\n", .{package});
-    if (common.programHasStreams(program)) try writer.writeAll("import \"io\"\n");
+    // One grouped block, in gofmt order. `import "C"` stays on its own line
+    // above: cgo requires it directly after the preamble comment.
+    var imports: std.ArrayList([]const u8) = .empty;
+    defer imports.deinit(allocator);
+    if (common.programHasStreams(program)) try imports.append(allocator, "io");
     // The callback panic counter needs sync/atomic whenever callbacks exist,
     // which covers the cancellation flag's use of it too.
-    if (common.programHasCallbacks(program)) try writer.writeAll("import \"runtime/cgo\"\nimport \"runtime/debug\"\nimport \"sync\"\nimport \"sync/atomic\"\n");
-    if (common.programNeedsUnsafe(program)) try writer.writeAll("import \"unsafe\"\n");
+    if (common.programHasCallbacks(program)) try imports.appendSlice(allocator, &.{ "runtime/cgo", "runtime/debug", "sync", "sync/atomic" });
+    if (common.programNeedsUnsafe(program)) try imports.append(allocator, "unsafe");
+    if (imports.items.len == 1) {
+        try writer.print("import \"{s}\"\n", .{imports.items[0]});
+    } else if (imports.items.len > 1) {
+        try writer.writeAll("import (\n");
+        for (imports.items) |path| try writer.print("\t\"{s}\"\n", .{path});
+        try writer.writeAll(")\n");
+    }
     try writer.writeByte('\n');
     const last_error_name = if (options.raw_colocated) "zigoRawLastErrorMessage" else "LastErrorMessage";
     try writer.print("// {0s} returns the most recent native panic message for this binding.\nfunc {0s}() string {{ return C.GoString(C.{1s}_last_error_message()) }}\n\n", .{ last_error_name, program.prefix });
     try renderCgoStringHelpers(writer, program);
+    try renderCgoSlicePointerHelpers(writer, program);
     try callbacks.renderRawCallbacks(allocator, writer, program, options);
 
     for (program.functions) |function| {
@@ -407,16 +419,7 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
                 // the C struct, so a castable element goes over as the address
                 // of the caller's own slice, exactly as purego passes it.
                 if (record.castable) {
-                    try writer.print("\tvar {s}Zero C.{s}\n\t{s}Ptr := &{s}Zero\n\tif len({s}) != 0 {{\n\t\t{s}Ptr = (*C.{s})(unsafe.Pointer(&{s}[0]))\n\t}}\n", .{
-                        slice_name,
-                        record.c_name,
-                        slice_name,
-                        slice_name,
-                        slice_name,
-                        slice_name,
-                        record.c_name,
-                        slice_name,
-                    });
+                    try writer.print("\t{s}Ptr := (*C.{s})(zigoSlicePtr({s}))\n", .{ slice_name, record.c_name, slice_name });
                 } else {
                     try writer.print("\tvar {s} []C.{s}\n\tif len({s}) != 0 {{\n\t\t{s} = make([]C.{s}, len({s}))\n", .{
                         c_values_name,
@@ -435,16 +438,7 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
                         try writeCgoStructConversionIndented(allocator, writer, program, record, c_value_name, go_value_name, "\t\t\t");
                         try writer.print("\t\t\t{s}[i] = {s}\n\t\t}}\n", .{ c_values_name, c_value_name });
                     }
-                    try writer.print("\t}}\n\tvar {s}Zero C.{s}\n\t{s}Ptr := &{s}Zero\n\tif len({s}) != 0 {{\n\t\t{s}Ptr = (*C.{s})(unsafe.Pointer(&{s}[0]))\n\t}}\n", .{
-                        slice_name,
-                        record.c_name,
-                        slice_name,
-                        slice_name,
-                        slice_name,
-                        slice_name,
-                        record.c_name,
-                        c_values_name,
-                    });
+                    try writer.print("\t}}\n\t{s}Ptr := (*C.{s})(zigoSlicePtr({s}))\n", .{ slice_name, record.c_name, c_values_name });
                 }
                 if (shim.hasWrittenOutParam(parameter)) try writer.print("\tvar {s}Written C.size_t\n", .{slice_name});
             } else if (semantic.isOptionalSlice(parameter.type)) {
@@ -452,30 +446,28 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
                 // slice still points at something: the zero local below.
                 const slice_name = go_names[parameter_index];
                 const element = parameter.type.optional.child.slice.element.*;
-                try writer.print("\tvar {s}Zero C.", .{slice_name});
+                try writer.print("\tvar {s}Len C.size_t\n\tvar {s}Ptr *C.", .{ slice_name, slice_name });
                 try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, element));
-                try writer.print("\n\tvar {s}Len C.size_t\n\tvar {s}Ptr *C.", .{ slice_name, slice_name });
+                try writer.print("\n\tif {0s} != nil {{\n\t\t{0s}Ptr = (*C.", .{slice_name});
                 try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, element));
-                try writer.print("\n\tif {0s} != nil {{\n\t\t{0s}Ptr = &{0s}Zero\n\t\t{0s}Len = C.size_t(len(*{0s}))\n\t\tif {0s}Len != 0 {{\n\t\t\t{0s}Ptr = (*C.", .{slice_name});
-                try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, element));
-                if (public_writers.rawTakesUtf8String(parameter))
-                    try writer.print(")(unsafe.Pointer(unsafe.StringData(*{s})))\n\t\t}}\n\t}}\n", .{slice_name})
-                else
-                    try writer.print(")(unsafe.Pointer(&(*{s})[0]))\n\t\t}}\n\t}}\n", .{slice_name});
+                try writer.print(")({s}(*{s}))\n\t\t{s}Len = C.size_t(len(*{s}))\n\t}}\n", .{
+                    if (public_writers.rawTakesUtf8String(parameter)) "zigoStringPtr" else "zigoSlicePtr",
+                    slice_name,
+                    slice_name,
+                    slice_name,
+                });
             } else if (parameter.type == .slice and
                 !(function.materializesParam(parameter_index)))
             {
                 const slice_name = go_names[parameter_index];
-                try writer.print("\tvar {s}Zero C.", .{slice_name});
-                try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, parameter.type.slice.element.*));
-                try writer.print("\n\t{s}Ptr := &{s}Zero\n\tif len({s}) != 0 {{\n\t\t{s}Ptr = (*C.", .{ slice_name, slice_name, slice_name, slice_name });
+                try writer.print("\t{s}Ptr := (*C.", .{slice_name});
                 try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, parameter.type.slice.element.*));
                 // A string's bytes are read in place for the call's duration,
                 // which the binding contract already promises for every slice.
-                if (public_writers.rawTakesUtf8String(parameter))
-                    try writer.print(")(unsafe.Pointer(unsafe.StringData({s})))\n\t}}\n", .{slice_name})
-                else
-                    try writer.print(")(unsafe.Pointer(&{s}[0]))\n\t}}\n", .{slice_name});
+                try writer.print(")({s}({s}))\n", .{
+                    if (public_writers.rawTakesUtf8String(parameter)) "zigoStringPtr" else "zigoSlicePtr",
+                    slice_name,
+                });
                 if (shim.hasWrittenOutParam(parameter)) try writer.print("\tvar {s}Written C.size_t\n", .{slice_name});
             }
         }
@@ -747,9 +739,64 @@ fn renderCgoStructLayoutGuards(allocator: std.mem.Allocator, writer: *std.Io.Wri
 fn writeCgoStringSliceSetup(writer: *std.Io.Writer, name: []const u8) !void {
     try writer.print(
         "\t{0s}Data, {0s}Lens := zigoStringSliceArgs({0s})\n" ++
-            "\t{0s}DataPtr := zigoBytesPtr({0s}Data)\n" ++
-            "\t{0s}LensPtr := zigoSizePtr({0s}Lens)\n",
+            "\t{0s}DataPtr := (*C.uint8_t)(zigoSlicePtr({0s}Data))\n" ++
+            "\t{0s}LensPtr := (*C.size_t)(zigoSlicePtr({0s}Lens))\n",
         .{name},
+    );
+}
+
+/// Whether any raw function hands a Go slice's (or string's) bytes to C, which
+/// is what the empty-slice pointer helpers exist for. Emitting them unused
+/// would only trip the unused-code audit.
+fn cgoSlicePointerUses(program: abi.Program) struct { slices: bool, strings: bool } {
+    var slices = false;
+    var strings = false;
+    for (program.functions) |function| {
+        for (function.origin.params, 0..) |parameter, index| {
+            const role = function.paramString(index).role;
+            if (role == .c_string or function.materializesParam(index)) continue;
+            if (role == .string_slice) {
+                slices = true;
+                continue;
+            }
+            const node = semantic.sliceThroughOptional(parameter.type);
+            if (node != .slice) continue;
+            if (public_writers.rawTakesUtf8String(parameter)) strings = true else slices = true;
+        }
+    }
+    return .{ .slices = slices, .strings = strings };
+}
+
+/// `zigoSlicePtr` and `zigoStringPtr`: the address a slice or string hands to
+/// C, or a shared zero word for an empty one so C never sees NULL beside a
+/// zero length. A uint64 keeps the word aligned for every scalar element.
+fn renderCgoSlicePointerHelpers(writer: *std.Io.Writer, program: abi.Program) !void {
+    const uses = cgoSlicePointerUses(program);
+    if (!uses.slices and !uses.strings) return;
+    try writer.writeAll(
+        "// zigoZeroSlot is what an empty slice or string points at instead of NULL, so\n" ++
+            "// the native side always receives a valid address beside a zero length.\n" ++
+            "var zigoZeroSlot uint64\n\n",
+    );
+    if (uses.slices) try writer.writeAll(
+        "// zigoSlicePtr is the address of a slice's first element, or of zigoZeroSlot\n" ++
+            "// for an empty slice.\n" ++
+            "func zigoSlicePtr[T any](values []T) unsafe.Pointer {\n" ++
+            "\tif len(values) == 0 {\n" ++
+            "\t\treturn unsafe.Pointer(&zigoZeroSlot)\n" ++
+            "\t}\n" ++
+            "\treturn unsafe.Pointer(&values[0])\n" ++
+            "}\n\n",
+    );
+    if (uses.strings) try writer.writeAll(
+        "// zigoStringPtr is the address of a string's bytes, read in place, or of\n" ++
+            "// zigoZeroSlot for an empty string.\n" ++
+            "func zigoStringPtr(value string) unsafe.Pointer {\n" ++
+            "\tif len(value) == 0 {\n" ++
+            "\t\treturn unsafe.Pointer(&zigoZeroSlot)\n" ++
+            "\t}\n" ++
+            "\treturn unsafe.Pointer(unsafe.StringData(value))\n" ++
+            "}\n\n",
     );
 }
 
@@ -802,22 +849,6 @@ fn renderCgoStringHelpers(writer: *std.Io.Writer, program: abi.Program) !void {
             "\t\toffset += len(value) + 1\n" ++
             "\t}\n" ++
             "\treturn data, lens\n" ++
-            "}\n\n" ++
-            "// The pointers an empty slice passes instead of NULL, so the native side\n" ++
-            "// always receives a valid address with a zero length.\n" ++
-            "var zigoZeroByte C.uint8_t\n" ++
-            "var zigoZeroSize C.size_t\n\n" ++
-            "func zigoBytesPtr(data []byte) *C.uint8_t {\n" ++
-            "\tif len(data) == 0 {\n" ++
-            "\t\treturn &zigoZeroByte\n" ++
-            "\t}\n" ++
-            "\treturn (*C.uint8_t)(unsafe.Pointer(&data[0]))\n" ++
-            "}\n\n" ++
-            "func zigoSizePtr(lens []C.size_t) *C.size_t {\n" ++
-            "\tif len(lens) == 0 {\n" ++
-            "\t\treturn &zigoZeroSize\n" ++
-            "\t}\n" ++
-            "\treturn (*C.size_t)(unsafe.Pointer(&lens[0]))\n" ++
             "}\n\n",
     );
 }

@@ -83,7 +83,7 @@ func cleanupTerminal(state terminalCleanupState) {
 }
 
 // Close releases the native Terminal resources. It is safe to call more than once.
-// The error result is always nil; it exists so Terminal satisfies io.Closer.
+// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (t *Terminal) Close() error {

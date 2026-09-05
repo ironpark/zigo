@@ -8,11 +8,13 @@ package callback
 #include "zigo_callback.h"
 */
 import "C"
-import "runtime/cgo"
-import "runtime/debug"
-import "sync"
-import "sync/atomic"
-import "unsafe"
+import (
+	"runtime/cgo"
+	"runtime/debug"
+	"sync"
+	"sync/atomic"
+	"unsafe"
+)
 
 // zigoRawLastErrorMessage returns the most recent native panic message for this binding.
 func zigoRawLastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }

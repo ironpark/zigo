@@ -15,6 +15,19 @@ import "unsafe"
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// zigoZeroSlot is what an empty slice or string points at instead of NULL, so
+// the native side always receives a valid address beside a zero length.
+var zigoZeroSlot uint64
+
+// zigoStringPtr is the address of a string's bytes, read in place, or of
+// zigoZeroSlot for an empty string.
+func zigoStringPtr(value string) unsafe.Pointer {
+	if len(value) == 0 {
+		return unsafe.Pointer(&zigoZeroSlot)
+	}
+	return unsafe.Pointer(unsafe.StringData(value))
+}
+
 // ContextCreate calls the generated C ABI wrapper for zg_context_create.
 func ContextCreate() (unsafe.Pointer, int32) {
 	var outResult *C.zg_context
@@ -126,11 +139,7 @@ func SumCopies(bias int64, left unsafe.Pointer, right unsafe.Pointer) (int64, in
 func Echo(text string) string {
 	var outResultPtr *C.uint8_t
 	var outResultLen C.size_t
-	var textZero C.uint8_t
-	textPtr := &textZero
-	if len(text) != 0 {
-		textPtr = (*C.uint8_t)(unsafe.Pointer(unsafe.StringData(text)))
-	}
+	textPtr := (*C.uint8_t)(zigoStringPtr(text))
 	C.zg_echo(textPtr, C.size_t(len(text)), &outResultPtr, &outResultLen)
 	return C.GoStringN((*C.char)(unsafe.Pointer(outResultPtr)), C.int(outResultLen))
 }

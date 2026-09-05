@@ -30,8 +30,7 @@ func (l *LegacyLeaf) zigoAcquire(operation string) (unsafe.Pointer, error) {
 		return nil, &HandleError{Operation: operation}
 	}
 	l.mu.Lock()
-	var parent zigoHandle
-	parent = l.owner
+	parent := l.owner
 	l.mu.Unlock()
 	if parent != nil {
 		if _, err := parent.zigoAcquire(operation); err != nil {
@@ -39,24 +38,23 @@ func (l *LegacyLeaf) zigoAcquire(operation string) (unsafe.Pointer, error) {
 		}
 	}
 	l.mu.Lock()
-	if l.closed || l.ptr == nil {
-		l.mu.Unlock()
-		if parent != nil {
-			parent.zigoRelease()
-		}
-		return nil, &HandleError{Operation: operation}
+	var err error
+	switch {
+	case l.closed || l.ptr == nil:
+		err = &HandleError{Operation: operation}
+	case l.poison != nil:
+		err = l.poison.poisoned(operation)
+	default:
+		l.active++
 	}
-	if l.poison != nil {
-		err := l.poison.poisoned(operation)
-		l.mu.Unlock()
+	ptr := l.ptr
+	l.mu.Unlock()
+	if err != nil {
 		if parent != nil {
 			parent.zigoRelease()
 		}
 		return nil, err
 	}
-	l.active++
-	ptr := l.ptr
-	l.mu.Unlock()
 	return ptr, nil
 }
 
@@ -66,8 +64,7 @@ func (l *LegacyLeaf) zigoRelease() {
 	}
 	l.mu.Lock()
 	l.active--
-	var parent zigoHandle
-	parent = l.owner
+	parent := l.owner
 	l.mu.Unlock()
 	if parent != nil {
 		parent.zigoRelease()
@@ -81,8 +78,7 @@ func (l *LegacyLeaf) zigoPoison(cause *NativePanicError) {
 		return
 	}
 	l.mu.Lock()
-	var parent zigoHandle
-	parent = l.owner
+	parent := l.owner
 	if l.poison == nil {
 		l.poison = cause
 	}
@@ -187,7 +183,7 @@ func cleanupLegacyProbe(state legacyProbeCleanupState) {
 }
 
 // Close releases the native LegacyProbe resources. It is safe to call more than once.
-// The error result is always nil; it exists so LegacyProbe satisfies io.Closer.
+// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (l *LegacyProbe) Close() error {

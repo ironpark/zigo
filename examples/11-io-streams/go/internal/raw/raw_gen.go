@@ -10,12 +10,14 @@ package raw
 #include "zigo_streams.h"
 */
 import "C"
-import "io"
-import "runtime/cgo"
-import "runtime/debug"
-import "sync"
-import "sync/atomic"
-import "unsafe"
+import (
+	"io"
+	"runtime/cgo"
+	"runtime/debug"
+	"sync"
+	"sync/atomic"
+	"unsafe"
+)
 
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
@@ -24,6 +26,19 @@ func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 // at. The shim tells the fast path from the trampoline path by the pointer
 // being non-NULL, so an empty stream still needs an address.
 var zigoEmptyStreamData byte
+
+// zigoZeroSlot is what an empty slice or string points at instead of NULL, so
+// the native side always receives a valid address beside a zero length.
+var zigoZeroSlot uint64
+
+// zigoSlicePtr is the address of a slice's first element, or of zigoZeroSlot
+// for an empty slice.
+func zigoSlicePtr[T any](values []T) unsafe.Pointer {
+	if len(values) == 0 {
+		return unsafe.Pointer(&zigoZeroSlot)
+	}
+	return unsafe.Pointer(&values[0])
+}
 
 // CallbackState carries one Go callback across the native boundary, and
 // the panic it raises there until the generated caller rethrows it. The
@@ -176,11 +191,7 @@ func DocumentDeinit(self unsafe.Pointer) int32 {
 
 // DocumentAppend calls the generated C ABI wrapper for zg_document_append.
 func DocumentAppend(self unsafe.Pointer, line []uint8) int32 {
-	var lineZero C.uint8_t
-	linePtr := &lineZero
-	if len(line) != 0 {
-		linePtr = (*C.uint8_t)(unsafe.Pointer(&line[0]))
-	}
+	linePtr := (*C.uint8_t)(zigoSlicePtr(line))
 	code := int32(C.zg_document_append((*C.zg_document)(self), linePtr, C.size_t(len(line))))
 	return code
 }
@@ -236,21 +247,13 @@ func Tee(rHandle uintptr, rData []byte, wHandle uintptr) (uint, int32) {
 
 // SumCodepoints calls the generated C ABI wrapper for zg_sum_codepoints.
 func SumCodepoints(values []uint32) uint32 {
-	var valuesZero C.uint32_t
-	valuesPtr := &valuesZero
-	if len(values) != 0 {
-		valuesPtr = (*C.uint32_t)(unsafe.Pointer(&values[0]))
-	}
+	valuesPtr := (*C.uint32_t)(zigoSlicePtr(values))
 	return uint32(C.zg_sum_codepoints(valuesPtr, C.size_t(len(values))))
 }
 
 // FillCodepoints calls the generated C ABI wrapper for zg_fill_codepoints.
 func FillCodepoints(output []uint32) {
-	var outputZero C.uint32_t
-	outputPtr := &outputZero
-	if len(output) != 0 {
-		outputPtr = (*C.uint32_t)(unsafe.Pointer(&output[0]))
-	}
+	outputPtr := (*C.uint32_t)(zigoSlicePtr(output))
 	var outputWritten C.size_t
 	C.zg_fill_codepoints(outputPtr, C.size_t(len(output)), &outputWritten)
 }
@@ -271,11 +274,7 @@ func TakeCodepoints() []uint32 {
 
 // FreeCodepoints calls the generated C ABI wrapper for zg_free_codepoints.
 func FreeCodepoints(values []uint32) {
-	var valuesZero C.uint32_t
-	valuesPtr := &valuesZero
-	if len(values) != 0 {
-		valuesPtr = (*C.uint32_t)(unsafe.Pointer(&values[0]))
-	}
+	valuesPtr := (*C.uint32_t)(zigoSlicePtr(values))
 	C.zg_free_codepoints(valuesPtr, C.size_t(len(values)))
 }
 
@@ -288,11 +287,7 @@ func SinkCreate() (unsafe.Pointer, int32) {
 
 // SinkWrite calls the generated C ABI wrapper for zg_sink_write.
 func SinkWrite(self unsafe.Pointer, bytes []uint8) (int, int32) {
-	var bytesZero C.uint8_t
-	bytesPtr := &bytesZero
-	if len(bytes) != 0 {
-		bytesPtr = (*C.uint8_t)(unsafe.Pointer(&bytes[0]))
-	}
+	bytesPtr := (*C.uint8_t)(zigoSlicePtr(bytes))
 	var outResult C.ptrdiff_t
 	code := int32(C.zg_sink_write((*C.zg_sink)(self), bytesPtr, C.size_t(len(bytes)), &outResult))
 	return int(outResult), code
@@ -319,11 +314,7 @@ func SinkDeinit(self unsafe.Pointer) int32 {
 
 // SourceCreate calls the generated C ABI wrapper for zg_source_create.
 func SourceCreate(bytes []uint8) (unsafe.Pointer, int32) {
-	var bytesZero C.uint8_t
-	bytesPtr := &bytesZero
-	if len(bytes) != 0 {
-		bytesPtr = (*C.uint8_t)(unsafe.Pointer(&bytes[0]))
-	}
+	bytesPtr := (*C.uint8_t)(zigoSlicePtr(bytes))
 	var outResult *C.zg_source
 	code := int32(C.zg_source_create(bytesPtr, C.size_t(len(bytes)), &outResult))
 	return unsafe.Pointer(outResult), code
@@ -331,11 +322,7 @@ func SourceCreate(bytes []uint8) (unsafe.Pointer, int32) {
 
 // SourceRead calls the generated C ABI wrapper for zg_source_read.
 func SourceRead(self unsafe.Pointer, buffer []uint8) (int, int32) {
-	var bufferZero C.uint8_t
-	bufferPtr := &bufferZero
-	if len(buffer) != 0 {
-		bufferPtr = (*C.uint8_t)(unsafe.Pointer(&buffer[0]))
-	}
+	bufferPtr := (*C.uint8_t)(zigoSlicePtr(buffer))
 	var outResult C.ptrdiff_t
 	code := int32(C.zg_source_read((*C.zg_source)(self), bufferPtr, C.size_t(len(buffer)), &outResult))
 	return int(outResult), code

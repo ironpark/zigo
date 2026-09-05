@@ -11,11 +11,13 @@ package raw
 #include "zigo_pipeline.h"
 */
 import "C"
-import "runtime/cgo"
-import "runtime/debug"
-import "sync"
-import "sync/atomic"
-import "unsafe"
+import (
+	"runtime/cgo"
+	"runtime/debug"
+	"sync"
+	"sync/atomic"
+	"unsafe"
+)
 
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
@@ -50,23 +52,26 @@ func zigoStringSliceArgs(values []string) (data []byte, lens []C.size_t) {
 	return data, lens
 }
 
-// The pointers an empty slice passes instead of NULL, so the native side
-// always receives a valid address with a zero length.
-var zigoZeroByte C.uint8_t
-var zigoZeroSize C.size_t
+// zigoZeroSlot is what an empty slice or string points at instead of NULL, so
+// the native side always receives a valid address beside a zero length.
+var zigoZeroSlot uint64
 
-func zigoBytesPtr(data []byte) *C.uint8_t {
-	if len(data) == 0 {
-		return &zigoZeroByte
+// zigoSlicePtr is the address of a slice's first element, or of zigoZeroSlot
+// for an empty slice.
+func zigoSlicePtr[T any](values []T) unsafe.Pointer {
+	if len(values) == 0 {
+		return unsafe.Pointer(&zigoZeroSlot)
 	}
-	return (*C.uint8_t)(unsafe.Pointer(&data[0]))
+	return unsafe.Pointer(&values[0])
 }
 
-func zigoSizePtr(lens []C.size_t) *C.size_t {
-	if len(lens) == 0 {
-		return &zigoZeroSize
+// zigoStringPtr is the address of a string's bytes, read in place, or of
+// zigoZeroSlot for an empty string.
+func zigoStringPtr(value string) unsafe.Pointer {
+	if len(value) == 0 {
+		return unsafe.Pointer(&zigoZeroSlot)
 	}
-	return (*C.size_t)(unsafe.Pointer(&lens[0]))
+	return unsafe.Pointer(unsafe.StringData(value))
 }
 
 // CallbackState carries one Go callback across the native boundary, and
@@ -172,22 +177,14 @@ func FloatBatchDeinit(self unsafe.Pointer) int32 {
 }
 // PipelineCreate calls the generated C ABI wrapper for zg_pipeline_create.
 func PipelineCreate(name string, mode uint32, callbackHandle uintptr) (unsafe.Pointer, int32) {
-	var nameZero C.uint8_t
-	namePtr := &nameZero
-	if len(name) != 0 {
-		namePtr = (*C.uint8_t)(unsafe.Pointer(unsafe.StringData(name)))
-	}
+	namePtr := (*C.uint8_t)(zigoStringPtr(name))
 	var outResult *C.zg_pipeline
 	code := int32(C.zg_pipeline_create(namePtr, C.size_t(len(name)), C.uint32_t(mode), C.size_t(callbackHandle), &outResult))
 	return unsafe.Pointer(outResult), code
 }
 // PipelineProcess calls the generated C ABI wrapper for zg_pipeline_process.
 func PipelineProcess(self unsafe.Pointer, values []int32) (int64, int32) {
-	var valuesZero C.int32_t
-	valuesPtr := &valuesZero
-	if len(values) != 0 {
-		valuesPtr = (*C.int32_t)(unsafe.Pointer(&values[0]))
-	}
+	valuesPtr := (*C.int32_t)(zigoSlicePtr(values))
 	var outResult C.int64_t
 	code := int32(C.zg_pipeline_process((*C.zg_pipeline)(self), valuesPtr, C.size_t(len(values)), &outResult))
 	return int64(outResult), code
@@ -256,11 +253,7 @@ func TakeSamplesChecked() ([]float32, int32) {
 }
 // ReleaseSamples calls the generated C ABI wrapper for zg_release_samples.
 func ReleaseSamples(samples []float32) {
-	var samplesZero C.float
-	samplesPtr := &samplesZero
-	if len(samples) != 0 {
-		samplesPtr = (*C.float)(unsafe.Pointer(&samples[0]))
-	}
+	samplesPtr := (*C.float)(zigoSlicePtr(samples))
 	C.zg_release_samples(samplesPtr, C.size_t(len(samples)))
 }
 // PipelineMode calls the generated C ABI wrapper for zg_pipeline_mode.
@@ -308,13 +301,13 @@ func EchoCString(text string) string {
 // ExtractPaths calls the generated C ABI wrapper for zg_extract_paths.
 func ExtractPaths(paths []string, sentinelSlices []string, sentinelPointers []string) uint {
 	pathsData, pathsLens := zigoStringSliceArgs(paths)
-	pathsDataPtr := zigoBytesPtr(pathsData)
-	pathsLensPtr := zigoSizePtr(pathsLens)
+	pathsDataPtr := (*C.uint8_t)(zigoSlicePtr(pathsData))
+	pathsLensPtr := (*C.size_t)(zigoSlicePtr(pathsLens))
 	sentinelSlicesData, sentinelSlicesLens := zigoStringSliceArgs(sentinelSlices)
-	sentinelSlicesDataPtr := zigoBytesPtr(sentinelSlicesData)
-	sentinelSlicesLensPtr := zigoSizePtr(sentinelSlicesLens)
+	sentinelSlicesDataPtr := (*C.uint8_t)(zigoSlicePtr(sentinelSlicesData))
+	sentinelSlicesLensPtr := (*C.size_t)(zigoSlicePtr(sentinelSlicesLens))
 	sentinelPointersData, sentinelPointersLens := zigoStringSliceArgs(sentinelPointers)
-	sentinelPointersDataPtr := zigoBytesPtr(sentinelPointersData)
-	sentinelPointersLensPtr := zigoSizePtr(sentinelPointersLens)
+	sentinelPointersDataPtr := (*C.uint8_t)(zigoSlicePtr(sentinelPointersData))
+	sentinelPointersLensPtr := (*C.size_t)(zigoSlicePtr(sentinelPointersLens))
 	return uint(C.zg_extract_paths(pathsDataPtr, C.size_t(len(pathsData)), pathsLensPtr, C.size_t(len(paths)), sentinelSlicesDataPtr, C.size_t(len(sentinelSlicesData)), sentinelSlicesLensPtr, C.size_t(len(sentinelSlices)), sentinelPointersDataPtr, C.size_t(len(sentinelPointersData)), sentinelPointersLensPtr, C.size_t(len(sentinelPointers))))
 }

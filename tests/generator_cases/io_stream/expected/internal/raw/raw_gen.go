@@ -10,12 +10,14 @@ package raw
 #include "zigo_stream.h"
 */
 import "C"
-import "io"
-import "runtime/cgo"
-import "runtime/debug"
-import "sync"
-import "sync/atomic"
-import "unsafe"
+import (
+	"io"
+	"runtime/cgo"
+	"runtime/debug"
+	"sync"
+	"sync/atomic"
+	"unsafe"
+)
 
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
@@ -24,6 +26,19 @@ func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 // at. The shim tells the fast path from the trampoline path by the pointer
 // being non-NULL, so an empty stream still needs an address.
 var zigoEmptyStreamData byte
+
+// zigoZeroSlot is what an empty slice or string points at instead of NULL, so
+// the native side always receives a valid address beside a zero length.
+var zigoZeroSlot uint64
+
+// zigoSlicePtr is the address of a slice's first element, or of zigoZeroSlot
+// for an empty slice.
+func zigoSlicePtr[T any](values []T) unsafe.Pointer {
+	if len(values) == 0 {
+		return unsafe.Pointer(&zigoZeroSlot)
+	}
+	return unsafe.Pointer(&values[0])
+}
 
 // CallbackState carries one Go callback across the native boundary, and
 // the panic it raises there until the generated caller rethrows it. The
@@ -176,11 +191,7 @@ func Banner(outHandle uintptr, width int32) {
 }
 // SinkWrite calls the generated C ABI wrapper for zg_sink_write.
 func SinkWrite(self unsafe.Pointer, bytes []uint8) (int, int32) {
-	var bytesZero C.uint8_t
-	bytesPtr := &bytesZero
-	if len(bytes) != 0 {
-		bytesPtr = (*C.uint8_t)(unsafe.Pointer(&bytes[0]))
-	}
+	bytesPtr := (*C.uint8_t)(zigoSlicePtr(bytes))
 	var outResult C.ptrdiff_t
 	code := int32(C.zg_sink_write((*C.zg_sink)(self), bytesPtr, C.size_t(len(bytes)), &outResult))
 	return int(outResult), code
@@ -192,11 +203,7 @@ func SinkFlush(self unsafe.Pointer) int32 {
 }
 // SinkRead calls the generated C ABI wrapper for zg_sink_read.
 func SinkRead(self unsafe.Pointer, buffer []uint8) (int, int32) {
-	var bufferZero C.uint8_t
-	bufferPtr := &bufferZero
-	if len(buffer) != 0 {
-		bufferPtr = (*C.uint8_t)(unsafe.Pointer(&buffer[0]))
-	}
+	bufferPtr := (*C.uint8_t)(zigoSlicePtr(buffer))
 	var outResult C.ptrdiff_t
 	code := int32(C.zg_sink_read((*C.zg_sink)(self), bufferPtr, C.size_t(len(buffer)), &outResult))
 	return int(outResult), code

@@ -15,13 +15,22 @@ import "unsafe"
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// zigoZeroSlot is what an empty slice or string points at instead of NULL, so
+// the native side always receives a valid address beside a zero length.
+var zigoZeroSlot uint64
+
+// zigoSlicePtr is the address of a slice's first element, or of zigoZeroSlot
+// for an empty slice.
+func zigoSlicePtr[T any](values []T) unsafe.Pointer {
+	if len(values) == 0 {
+		return unsafe.Pointer(&zigoZeroSlot)
+	}
+	return unsafe.Pointer(&values[0])
+}
+
 // TerminalSetTitle calls the generated C ABI wrapper for zg_terminal_set_title.
 func TerminalSetTitle(self unsafe.Pointer, t []uint8) int32 {
-	var tZero C.uint8_t
-	tPtr := &tZero
-	if len(t) != 0 {
-		tPtr = (*C.uint8_t)(unsafe.Pointer(&t[0]))
-	}
+	tPtr := (*C.uint8_t)(zigoSlicePtr(t))
 	code := int32(C.zg_terminal_set_title((*C.zg_terminal)(self), tPtr, C.size_t(len(t))))
 	return code
 }

@@ -113,7 +113,7 @@ func cleanupChild(state childCleanupState) {
 }
 
 // Close releases the native Child resources. It is safe to call more than once.
-// The error result is always nil; it exists so Child satisfies io.Closer.
+// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (c *Child) Close() error {
@@ -254,7 +254,7 @@ func cleanupValue(state valueCleanupState) {
 }
 
 // Close releases the native Value resources. It is safe to call more than once.
-// The error result is always nil; it exists so Value satisfies io.Closer.
+// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (v *Value) Close() error {
@@ -365,7 +365,7 @@ func cleanupSignal(state signalCleanupState) {
 }
 
 // Close releases the native Signal resources. It is safe to call more than once.
-// The error result is always nil; it exists so Signal satisfies io.Closer.
+// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (s *Signal) Close() error {
@@ -476,7 +476,7 @@ func cleanupPalette(state paletteCleanupState) {
 }
 
 // Close releases the native Palette resources. It is safe to call more than once.
-// The error result is always nil; it exists so Palette satisfies io.Closer.
+// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (p *Palette) Close() error {

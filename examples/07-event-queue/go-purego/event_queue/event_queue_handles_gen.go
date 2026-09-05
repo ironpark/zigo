@@ -152,7 +152,7 @@ func cleanupEventQueue(state eventQueueCleanupState) {
 }
 
 // Close releases the native EventQueue resources. It is safe to call more than once.
-// It returns *HandleInUseError while dependent children remain open.
+// It returns *HandleInUseError while a call is still inside native or a dependent child remains open.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (e *EventQueue) Close() error {
@@ -221,24 +221,23 @@ func (s *Stream) zigoAcquire(operation string) (unsafe.Pointer, error) {
 		}
 	}
 	s.mu.Lock()
-	if s.closed || s.ptr == nil {
-		s.mu.Unlock()
-		if parent != nil {
-			parent.ZigoRelease()
-		}
-		return nil, &HandleError{Operation: operation}
+	var err error
+	switch {
+	case s.closed || s.ptr == nil:
+		err = &HandleError{Operation: operation}
+	case s.poison != nil:
+		err = s.poison.Poisoned(operation)
+	default:
+		s.active++
 	}
-	if s.poison != nil {
-		err := s.poison.Poisoned(operation)
-		s.mu.Unlock()
+	ptr := s.ptr
+	s.mu.Unlock()
+	if err != nil {
 		if parent != nil {
 			parent.ZigoRelease()
 		}
 		return nil, err
 	}
-	s.active++
-	ptr := s.ptr
-	s.mu.Unlock()
 	return ptr, nil
 }
 
@@ -310,7 +309,7 @@ func cleanupStream(state streamCleanupState) {
 }
 
 // Close releases the native Stream resources. It is safe to call more than once.
-// The error result is always nil; it exists so Stream satisfies io.Closer.
+// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (s *Stream) Close() error {
@@ -469,7 +468,7 @@ func cleanupBorrowBox(state borrowBoxCleanupState) {
 }
 
 // Close releases the native BorrowBox resources. It is safe to call more than once.
-// It returns *HandleInUseError while dependent children remain open.
+// It returns *HandleInUseError while a call is still inside native or a dependent child remains open.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (b *BorrowBox) Close() error {
@@ -538,8 +537,7 @@ func (b *BorrowView) zigoAcquire(operation string) (unsafe.Pointer, error) {
 		return nil, &HandleError{Operation: operation}
 	}
 	b.mu.Lock()
-	var parent zigoHandle
-	parent = b.owner
+	parent := b.owner
 	b.mu.Unlock()
 	if parent != nil {
 		if _, err := parent.ZigoAcquire(operation); err != nil {
@@ -547,24 +545,23 @@ func (b *BorrowView) zigoAcquire(operation string) (unsafe.Pointer, error) {
 		}
 	}
 	b.mu.Lock()
-	if b.closed || b.ptr == nil {
-		b.mu.Unlock()
-		if parent != nil {
-			parent.ZigoRelease()
-		}
-		return nil, &HandleError{Operation: operation}
+	var err error
+	switch {
+	case b.closed || b.ptr == nil:
+		err = &HandleError{Operation: operation}
+	case b.poison != nil:
+		err = b.poison.Poisoned(operation)
+	default:
+		b.active++
 	}
-	if b.poison != nil {
-		err := b.poison.Poisoned(operation)
-		b.mu.Unlock()
+	ptr := b.ptr
+	b.mu.Unlock()
+	if err != nil {
 		if parent != nil {
 			parent.ZigoRelease()
 		}
 		return nil, err
 	}
-	b.active++
-	ptr := b.ptr
-	b.mu.Unlock()
 	return ptr, nil
 }
 
@@ -574,8 +571,7 @@ func (b *BorrowView) zigoRelease() {
 	}
 	b.mu.Lock()
 	b.active--
-	var parent zigoHandle
-	parent = b.owner
+	parent := b.owner
 	b.mu.Unlock()
 	if parent != nil {
 		parent.ZigoRelease()
@@ -589,8 +585,7 @@ func (b *BorrowView) zigoPoison(cause *NativePanicError) {
 		return
 	}
 	b.mu.Lock()
-	var parent zigoHandle
-	parent = b.owner
+	parent := b.owner
 	if b.poison == nil {
 		b.poison = cause
 	}
@@ -724,24 +719,23 @@ func (b *BorrowChild) zigoAcquire(operation string) (unsafe.Pointer, error) {
 		}
 	}
 	b.mu.Lock()
-	if b.closed || b.ptr == nil {
-		b.mu.Unlock()
-		if parent != nil {
-			parent.ZigoRelease()
-		}
-		return nil, &HandleError{Operation: operation}
+	var err error
+	switch {
+	case b.closed || b.ptr == nil:
+		err = &HandleError{Operation: operation}
+	case b.poison != nil:
+		err = b.poison.Poisoned(operation)
+	default:
+		b.active++
 	}
-	if b.poison != nil {
-		err := b.poison.Poisoned(operation)
-		b.mu.Unlock()
+	ptr := b.ptr
+	b.mu.Unlock()
+	if err != nil {
 		if parent != nil {
 			parent.ZigoRelease()
 		}
 		return nil, err
 	}
-	b.active++
-	ptr := b.ptr
-	b.mu.Unlock()
 	return ptr, nil
 }
 
@@ -813,7 +807,7 @@ func cleanupBorrowChild(state borrowChildCleanupState) {
 }
 
 // Close releases the native BorrowChild resources. It is safe to call more than once.
-// The error result is always nil; it exists so BorrowChild satisfies io.Closer.
+// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (b *BorrowChild) Close() error {
@@ -936,7 +930,7 @@ func cleanupTerminal(state terminalCleanupState) {
 }
 
 // Close releases the native Terminal resources. It is safe to call more than once.
-// The error result is always nil; it exists so Terminal satisfies io.Closer.
+// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (t *Terminal) Close() error {

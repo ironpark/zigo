@@ -15,6 +15,19 @@ import "unsafe"
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// zigoZeroSlot is what an empty slice or string points at instead of NULL, so
+// the native side always receives a valid address beside a zero length.
+var zigoZeroSlot uint64
+
+// zigoSlicePtr is the address of a slice's first element, or of zigoZeroSlot
+// for an empty slice.
+func zigoSlicePtr[T any](values []T) unsafe.Pointer {
+	if len(values) == 0 {
+		return unsafe.Pointer(&zigoZeroSlot)
+	}
+	return unsafe.Pointer(&values[0])
+}
+
 // Divide calls the generated C ABI wrapper for zg_divide.
 func Divide(numerator float64, denominator float64) (float64, int32) {
 	var outResult C.double
@@ -24,11 +37,7 @@ func Divide(numerator float64, denominator float64) (float64, int32) {
 
 // Sum calls the generated C ABI wrapper for zg_sum.
 func Sum(values []float64) float64 {
-	var valuesZero C.double
-	valuesPtr := &valuesZero
-	if len(values) != 0 {
-		valuesPtr = (*C.double)(unsafe.Pointer(&values[0]))
-	}
+	valuesPtr := (*C.double)(zigoSlicePtr(values))
 	return float64(C.zg_sum(valuesPtr, C.size_t(len(values))))
 }
 

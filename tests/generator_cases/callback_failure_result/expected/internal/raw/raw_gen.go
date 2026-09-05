@@ -10,10 +10,12 @@ package raw
 #include "zigo_fallback.h"
 */
 import "C"
-import "runtime/cgo"
-import "runtime/debug"
-import "sync"
-import "sync/atomic"
+import (
+	"runtime/cgo"
+	"runtime/debug"
+	"sync"
+	"sync/atomic"
+)
 
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }

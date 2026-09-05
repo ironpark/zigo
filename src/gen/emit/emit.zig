@@ -805,7 +805,7 @@ test "a scalar-only struct slice crosses as a cast while a bool-bearing one is c
     defer std.testing.allocator.free(raw_text);
     // The scalar-only element points the C call at the caller's own slice and
     // has nothing to read back afterwards.
-    try std.testing.expect(std.mem.indexOf(u8, raw_text, "outputPtr = (*C.zg_point)(unsafe.Pointer(&output[0]))") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw_text, "outputPtr := (*C.zg_point)(zigoSlicePtr(output))") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw_text, "outputValues[i].x") == null);
     // The bool-bearing element keeps its buffer, but an output parameter is
     // never converted on the way in.

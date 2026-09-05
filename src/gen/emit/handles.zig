@@ -88,13 +88,20 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
                 .{ recv, declaration.name },
             );
             try writeParentLookup(writer, recv, can_be_borrowed, dependent_parent != null, .block);
+            // The parent is pinned with this handle's lock dropped, so the
+            // two locks never nest; the second locked section decides once
+            // and unlocks once, and only an error hands the parent back.
             try writer.print(
                 "\t{0s}.mu.Unlock()\n" ++
                     "\tif parent != nil {{\n\t\tif _, err := parent.{2s}(operation); err != nil {{\n\t\t\treturn nil, err\n\t\t}}\n\t}}\n" ++
-                    "\t{0s}.mu.Lock()\n" ++
-                    "\tif {0s}.closed || {0s}.ptr == nil {{\n\t\t{0s}.mu.Unlock()\n\t\tif parent != nil {{\n\t\t\tparent.{3s}()\n\t\t}}\n\t\treturn nil, &HandleError{{Operation: operation}}\n\t}}\n" ++
-                    "\tif {0s}.poison != nil {{\n\t\terr := {0s}.poison.{1s}(operation)\n\t\t{0s}.mu.Unlock()\n\t\tif parent != nil {{\n\t\t\tparent.{3s}()\n\t\t}}\n\t\treturn nil, err\n\t}}\n" ++
-                    "\t{0s}.active++\n\tptr := {0s}.ptr\n\t{0s}.mu.Unlock()\n\treturn ptr, nil\n}}\n\n",
+                    "\t{0s}.mu.Lock()\n\tvar err error\n" ++
+                    "\tswitch {{\n" ++
+                    "\tcase {0s}.closed || {0s}.ptr == nil:\n\t\terr = &HandleError{{Operation: operation}}\n" ++
+                    "\tcase {0s}.poison != nil:\n\t\terr = {0s}.poison.{1s}(operation)\n" ++
+                    "\tdefault:\n\t\t{0s}.active++\n\t}}\n" ++
+                    "\tptr := {0s}.ptr\n\t{0s}.mu.Unlock()\n" ++
+                    "\tif err != nil {{\n\t\tif parent != nil {{\n\t\t\tparent.{3s}()\n\t\t}}\n\t\treturn nil, err\n\t}}\n" ++
+                    "\treturn ptr, nil\n}}\n\n",
                 .{ recv, names.poisoned, names.acquire, names.release },
             );
         } else {
@@ -239,9 +246,9 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
             // it set and returns.
             try writer.print("// Close releases the native {0s} resources. It is safe to call more than once.\n", .{declaration.name});
             if (has_dependent_children)
-                try writer.print("// It returns *HandleInUseError while dependent children remain open.\n", .{})
+                try writer.print("// It returns *HandleInUseError while a call is still inside native or a dependent child remains open.\n", .{})
             else
-                try writer.print("// The error result is always nil; it exists so {s} satisfies io.Closer.\n", .{declaration.name});
+                try writer.print("// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.\n", .{});
             try writer.print(
                 "// Close does not wait: a call still inside native keeps the resources until it\n" ++
                     "// returns, and every call made after Close fails with *HandleError.\n" ++
@@ -331,7 +338,7 @@ fn writeParentLookup(
     fallback: enum { block, line },
 ) !void {
     if (can_be_borrowed) {
-        try writer.print("\tvar parent zigoHandle\n\tparent = {0s}.owner\n", .{recv});
+        try writer.print("\tparent := {0s}.owner\n", .{recv});
         if (has_parent) switch (fallback) {
             .block => try writer.print("\tif parent == nil {{\n\t\tparent = {0s}.parent\n\t}}\n", .{recv}),
             .line => try writer.print("\tif parent == nil {{ parent = {0s}.parent }}\n", .{recv}),

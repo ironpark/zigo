@@ -10,14 +10,38 @@ package native
 #include "zigo_telemetry_hub.h"
 */
 import "C"
-import "runtime/cgo"
-import "runtime/debug"
-import "sync"
-import "sync/atomic"
-import "unsafe"
+import (
+	"runtime/cgo"
+	"runtime/debug"
+	"sync"
+	"sync/atomic"
+	"unsafe"
+)
 
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
+
+// zigoZeroSlot is what an empty slice or string points at instead of NULL, so
+// the native side always receives a valid address beside a zero length.
+var zigoZeroSlot uint64
+
+// zigoSlicePtr is the address of a slice's first element, or of zigoZeroSlot
+// for an empty slice.
+func zigoSlicePtr[T any](values []T) unsafe.Pointer {
+	if len(values) == 0 {
+		return unsafe.Pointer(&zigoZeroSlot)
+	}
+	return unsafe.Pointer(&values[0])
+}
+
+// zigoStringPtr is the address of a string's bytes, read in place, or of
+// zigoZeroSlot for an empty string.
+func zigoStringPtr(value string) unsafe.Pointer {
+	if len(value) == 0 {
+		return unsafe.Pointer(&zigoZeroSlot)
+	}
+	return unsafe.Pointer(unsafe.StringData(value))
+}
 
 // CallbackState carries one Go callback across the native boundary, and
 // the panic it raises there until the generated caller rethrows it. The
@@ -78,11 +102,7 @@ func zg_telemetry_hub_create_go_callback_observer(p0 C.uint64_t, p1 C.double, p2
 
 // TelemetryHubCreate calls the generated C ABI wrapper for zg_telemetry_hub_create.
 func TelemetryHubCreate(inputName string, maxSamples uint, initialMode uint32, overflowPolicy uint32, observerHandle uintptr) (unsafe.Pointer, int32) {
-	var inputNameZero C.uint8_t
-	inputNamePtr := &inputNameZero
-	if len(inputName) != 0 {
-		inputNamePtr = (*C.uint8_t)(unsafe.Pointer(unsafe.StringData(inputName)))
-	}
+	inputNamePtr := (*C.uint8_t)(zigoStringPtr(inputName))
 	var outResult *C.zg_telemetry_hub
 	code := int32(C.zg_telemetry_hub_create(inputNamePtr, C.size_t(len(inputName)), C.size_t(maxSamples), C.uint32_t(initialMode), C.uint32_t(overflowPolicy), C.size_t(observerHandle), &outResult))
 	return unsafe.Pointer(outResult), code
@@ -90,11 +110,7 @@ func TelemetryHubCreate(inputName string, maxSamples uint, initialMode uint32, o
 
 // TelemetryHubRename calls the generated C ABI wrapper for zg_telemetry_hub_rename.
 func TelemetryHubRename(self unsafe.Pointer, newName string) int32 {
-	var newNameZero C.uint8_t
-	newNamePtr := &newNameZero
-	if len(newName) != 0 {
-		newNamePtr = (*C.uint8_t)(unsafe.Pointer(unsafe.StringData(newName)))
-	}
+	newNamePtr := (*C.uint8_t)(zigoStringPtr(newName))
 	code := int32(C.zg_telemetry_hub_rename((*C.zg_telemetry_hub)(self), newNamePtr, C.size_t(len(newName))))
 	return code
 }
@@ -240,11 +256,7 @@ func TelemetryHubPushWithSeverity(self unsafe.Pointer, id uint64, value float64,
 
 // TelemetryHubPushBatch calls the generated C ABI wrapper for zg_telemetry_hub_push_batch.
 func TelemetryHubPushBatch(self unsafe.Pointer, values []float64) int32 {
-	var valuesZero C.double
-	valuesPtr := &valuesZero
-	if len(values) != 0 {
-		valuesPtr = (*C.double)(unsafe.Pointer(&values[0]))
-	}
+	valuesPtr := (*C.double)(zigoSlicePtr(values))
 	code := int32(C.zg_telemetry_hub_push_batch((*C.zg_telemetry_hub)(self), valuesPtr, C.size_t(len(values))))
 	return code
 }

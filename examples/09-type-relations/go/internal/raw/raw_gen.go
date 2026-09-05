@@ -15,6 +15,28 @@ import "unsafe"
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// zigoZeroSlot is what an empty slice or string points at instead of NULL, so
+// the native side always receives a valid address beside a zero length.
+var zigoZeroSlot uint64
+
+// zigoSlicePtr is the address of a slice's first element, or of zigoZeroSlot
+// for an empty slice.
+func zigoSlicePtr[T any](values []T) unsafe.Pointer {
+	if len(values) == 0 {
+		return unsafe.Pointer(&zigoZeroSlot)
+	}
+	return unsafe.Pointer(&values[0])
+}
+
+// zigoStringPtr is the address of a string's bytes, read in place, or of
+// zigoZeroSlot for an empty string.
+func zigoStringPtr(value string) unsafe.Pointer {
+	if len(value) == 0 {
+		return unsafe.Pointer(&zigoZeroSlot)
+	}
+	return unsafe.Pointer(unsafe.StringData(value))
+}
+
 // CounterCreate calls the generated C ABI wrapper for zg_counter_create.
 func CounterCreate(initial int64) (unsafe.Pointer, int32) {
 	var outResult *C.zg_counter
@@ -200,30 +222,22 @@ func CheckedShift(origin *PointData, delta int16) (PointData, bool, int32) {
 
 // DescribeText calls the generated C ABI wrapper for zg_describe_text.
 func DescribeText(label *string) uint8 {
-	var labelZero C.uint8_t
 	var labelLen C.size_t
 	var labelPtr *C.uint8_t
 	if label != nil {
-		labelPtr = &labelZero
+		labelPtr = (*C.uint8_t)(zigoStringPtr(*label))
 		labelLen = C.size_t(len(*label))
-		if labelLen != 0 {
-			labelPtr = (*C.uint8_t)(unsafe.Pointer(unsafe.StringData(*label)))
-		}
 	}
 	return uint8(C.zg_describe_text(labelPtr, labelLen))
 }
 
 // SumOrZero calls the generated C ABI wrapper for zg_sum_or_zero.
 func SumOrZero(values *[]int32) int64 {
-	var valuesZero C.int32_t
 	var valuesLen C.size_t
 	var valuesPtr *C.int32_t
 	if values != nil {
-		valuesPtr = &valuesZero
+		valuesPtr = (*C.int32_t)(zigoSlicePtr(*values))
 		valuesLen = C.size_t(len(*values))
-		if valuesLen != 0 {
-			valuesPtr = (*C.int32_t)(unsafe.Pointer(&(*values)[0]))
-		}
 	}
 	return int64(C.zg_sum_or_zero(valuesPtr, valuesLen))
 }

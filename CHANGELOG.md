@@ -20,6 +20,10 @@
   `unsafe.StringData`로 빌려주고, 반환은 native 메모리에서 바로 `string`을 만듭니다. 공개
   계층의 `[]byte(s)`·`string(b)` 변환이 사라졌고, raw 함수의 시그니처가 `[]uint8`에서
   `string`(optional은 `*string`)으로 바뀝니다.
+- 생성 코드 정리: borrowed handle의 `zigoAcquire`가 잠금을 한 번만 풀고, 부모 조회는
+  `parent := x.owner`로 줄었습니다. cgo raw 계층의 빈 slice 포인터 처리는 `zigoSlicePtr`·
+  `zigoStringPtr` 헬퍼 하나로 통일되고 import는 그룹 블록으로 나갑니다. `Close`의 GoDoc이
+  `*HandleInUseError` 반환 조건을 정확히 설명합니다.
 - 값 struct slice 반환을 raw 계층이 C 메모리에서 `[]TData`로 한 번에 복사합니다. 이전에는
   캐스트할 수 없는 원소를 raw와 공개 계층에서 각각 원소별로 변환했습니다. 모든 `TData`에
   C struct와의 레이아웃 guard가 생성됩니다.

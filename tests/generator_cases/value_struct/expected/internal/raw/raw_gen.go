@@ -15,6 +15,19 @@ import "unsafe"
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// zigoZeroSlot is what an empty slice or string points at instead of NULL, so
+// the native side always receives a valid address beside a zero length.
+var zigoZeroSlot uint64
+
+// zigoSlicePtr is the address of a slice's first element, or of zigoZeroSlot
+// for an empty slice.
+func zigoSlicePtr[T any](values []T) unsafe.Pointer {
+	if len(values) == 0 {
+		return unsafe.Pointer(&zigoZeroSlot)
+	}
+	return unsafe.Pointer(&values[0])
+}
+
 // Configure calls the generated C ABI wrapper for zg_configure.
 func Configure(config ConfigData) {
 	var cconfig C.zg_config
@@ -72,31 +85,19 @@ func Load() (ConfigData, int32) {
 }
 // AcceptPoints calls the generated C ABI wrapper for zg_accept_points.
 func AcceptPoints(values []PointData) {
-	var valuesZero C.zg_point
-	valuesPtr := &valuesZero
-	if len(values) != 0 {
-		valuesPtr = (*C.zg_point)(unsafe.Pointer(&values[0]))
-	}
+	valuesPtr := (*C.zg_point)(zigoSlicePtr(values))
 	C.zg_accept_points(valuesPtr, C.size_t(len(values)))
 }
 // FillPoints calls the generated C ABI wrapper for zg_fill_points.
 func FillPoints(output []PointData) (uint, int32) {
-	var outputZero C.zg_point
-	outputPtr := &outputZero
-	if len(output) != 0 {
-		outputPtr = (*C.zg_point)(unsafe.Pointer(&output[0]))
-	}
+	outputPtr := (*C.zg_point)(zigoSlicePtr(output))
 	var outResult C.size_t
 	code := int32(C.zg_fill_points(outputPtr, C.size_t(len(output)), &outResult))
 	return uint(outResult), code
 }
 // FillAllPoints calls the generated C ABI wrapper for zg_fill_all_points.
 func FillAllPoints(output []PointData) {
-	var outputZero C.zg_point
-	outputPtr := &outputZero
-	if len(output) != 0 {
-		outputPtr = (*C.zg_point)(unsafe.Pointer(&output[0]))
-	}
+	outputPtr := (*C.zg_point)(zigoSlicePtr(output))
 	var outputWritten C.size_t
 	C.zg_fill_all_points(outputPtr, C.size_t(len(output)), &outputWritten)
 }
@@ -118,11 +119,7 @@ func AcceptConfigs(values []ConfigData) {
 			valuesValues[i] = cvalues
 		}
 	}
-	var valuesZero C.zg_config
-	valuesPtr := &valuesZero
-	if len(values) != 0 {
-		valuesPtr = (*C.zg_config)(unsafe.Pointer(&valuesValues[0]))
-	}
+	valuesPtr := (*C.zg_config)(zigoSlicePtr(valuesValues))
 	C.zg_accept_configs(valuesPtr, C.size_t(len(values)))
 }
 // FillConfigs calls the generated C ABI wrapper for zg_fill_configs.
@@ -131,11 +128,7 @@ func FillConfigs(output []ConfigData) uint {
 	if len(output) != 0 {
 		outputValues = make([]C.zg_config, len(output))
 	}
-	var outputZero C.zg_config
-	outputPtr := &outputZero
-	if len(output) != 0 {
-		outputPtr = (*C.zg_config)(unsafe.Pointer(&outputValues[0]))
-	}
+	outputPtr := (*C.zg_config)(zigoSlicePtr(outputValues))
 	result := uint(C.zg_fill_configs(outputPtr, C.size_t(len(output))))
 	for i := 0; i < int(result) && i < len(output); i++ {
 		output[i] = ConfigData{

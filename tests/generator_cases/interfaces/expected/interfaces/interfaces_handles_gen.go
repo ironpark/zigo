@@ -83,7 +83,7 @@ func cleanupIntBatch(state intBatchCleanupState) {
 }
 
 // Close releases the native IntBatch resources. It is safe to call more than once.
-// The error result is always nil; it exists so IntBatch satisfies io.Closer.
+// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (i *IntBatch) Close() error {
@@ -199,7 +199,7 @@ func cleanupFloatBatch(state floatBatchCleanupState) {
 }
 
 // Close releases the native FloatBatch resources. It is safe to call more than once.
-// The error result is always nil; it exists so FloatBatch satisfies io.Closer.
+// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (f *FloatBatch) Close() error {
@@ -257,8 +257,7 @@ func (w *Window) zigoAcquire(operation string) (unsafe.Pointer, error) {
 		return nil, &HandleError{Operation: operation}
 	}
 	w.mu.Lock()
-	var parent zigoHandle
-	parent = w.owner
+	parent := w.owner
 	w.mu.Unlock()
 	if parent != nil {
 		if _, err := parent.zigoAcquire(operation); err != nil {
@@ -266,24 +265,23 @@ func (w *Window) zigoAcquire(operation string) (unsafe.Pointer, error) {
 		}
 	}
 	w.mu.Lock()
-	if w.closed || w.ptr == nil {
-		w.mu.Unlock()
-		if parent != nil {
-			parent.zigoRelease()
-		}
-		return nil, &HandleError{Operation: operation}
+	var err error
+	switch {
+	case w.closed || w.ptr == nil:
+		err = &HandleError{Operation: operation}
+	case w.poison != nil:
+		err = w.poison.poisoned(operation)
+	default:
+		w.active++
 	}
-	if w.poison != nil {
-		err := w.poison.poisoned(operation)
-		w.mu.Unlock()
+	ptr := w.ptr
+	w.mu.Unlock()
+	if err != nil {
 		if parent != nil {
 			parent.zigoRelease()
 		}
 		return nil, err
 	}
-	w.active++
-	ptr := w.ptr
-	w.mu.Unlock()
 	return ptr, nil
 }
 
@@ -293,8 +291,7 @@ func (w *Window) zigoRelease() {
 	}
 	w.mu.Lock()
 	w.active--
-	var parent zigoHandle
-	parent = w.owner
+	parent := w.owner
 	w.mu.Unlock()
 	if parent != nil { parent.zigoRelease() }
 }
@@ -306,8 +303,7 @@ func (w *Window) zigoPoison(cause *NativePanicError) {
 		return
 	}
 	w.mu.Lock()
-	var parent zigoHandle
-	parent = w.owner
+	parent := w.owner
 	if w.poison == nil {
 		w.poison = cause
 	}

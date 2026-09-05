@@ -83,7 +83,7 @@ func cleanupContext(state contextCleanupState) {
 }
 
 // Close releases the native Context resources. It is safe to call more than once.
-// The error result is always nil; it exists so Context satisfies io.Closer.
+// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (co *Context) Close() error {
@@ -146,8 +146,7 @@ func (c *ContextView) zigoAcquire(operation string) (unsafe.Pointer, error) {
 		return nil, &HandleError{Operation: operation}
 	}
 	c.mu.Lock()
-	var parent zigoHandle
-	parent = c.owner
+	parent := c.owner
 	c.mu.Unlock()
 	if parent != nil {
 		if _, err := parent.zigoAcquire(operation); err != nil {
@@ -155,24 +154,23 @@ func (c *ContextView) zigoAcquire(operation string) (unsafe.Pointer, error) {
 		}
 	}
 	c.mu.Lock()
-	if c.closed || c.ptr == nil {
-		c.mu.Unlock()
-		if parent != nil {
-			parent.zigoRelease()
-		}
-		return nil, &HandleError{Operation: operation}
+	var err error
+	switch {
+	case c.closed || c.ptr == nil:
+		err = &HandleError{Operation: operation}
+	case c.poison != nil:
+		err = c.poison.poisoned(operation)
+	default:
+		c.active++
 	}
-	if c.poison != nil {
-		err := c.poison.poisoned(operation)
-		c.mu.Unlock()
+	ptr := c.ptr
+	c.mu.Unlock()
+	if err != nil {
 		if parent != nil {
 			parent.zigoRelease()
 		}
 		return nil, err
 	}
-	c.active++
-	ptr := c.ptr
-	c.mu.Unlock()
 	return ptr, nil
 }
 
@@ -182,8 +180,7 @@ func (c *ContextView) zigoRelease() {
 	}
 	c.mu.Lock()
 	c.active--
-	var parent zigoHandle
-	parent = c.owner
+	parent := c.owner
 	c.mu.Unlock()
 	if parent != nil {
 		parent.zigoRelease()
@@ -197,8 +194,7 @@ func (c *ContextView) zigoPoison(cause *NativePanicError) {
 		return
 	}
 	c.mu.Lock()
-	var parent zigoHandle
-	parent = c.owner
+	parent := c.owner
 	if c.poison == nil {
 		c.poison = cause
 	}

@@ -11,11 +11,13 @@ package cgo
 #include "zigo_event_queue.h"
 */
 import "C"
-import "runtime/cgo"
-import "runtime/debug"
-import "sync"
-import "sync/atomic"
-import "unsafe"
+import (
+	"runtime/cgo"
+	"runtime/debug"
+	"sync"
+	"sync/atomic"
+	"unsafe"
+)
 
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
@@ -50,23 +52,26 @@ func zigoStringSliceArgs(values []string) (data []byte, lens []C.size_t) {
 	return data, lens
 }
 
-// The pointers an empty slice passes instead of NULL, so the native side
-// always receives a valid address with a zero length.
-var zigoZeroByte C.uint8_t
-var zigoZeroSize C.size_t
+// zigoZeroSlot is what an empty slice or string points at instead of NULL, so
+// the native side always receives a valid address beside a zero length.
+var zigoZeroSlot uint64
 
-func zigoBytesPtr(data []byte) *C.uint8_t {
-	if len(data) == 0 {
-		return &zigoZeroByte
+// zigoSlicePtr is the address of a slice's first element, or of zigoZeroSlot
+// for an empty slice.
+func zigoSlicePtr[T any](values []T) unsafe.Pointer {
+	if len(values) == 0 {
+		return unsafe.Pointer(&zigoZeroSlot)
 	}
-	return (*C.uint8_t)(unsafe.Pointer(&data[0]))
+	return unsafe.Pointer(&values[0])
 }
 
-func zigoSizePtr(lens []C.size_t) *C.size_t {
-	if len(lens) == 0 {
-		return &zigoZeroSize
+// zigoStringPtr is the address of a string's bytes, read in place, or of
+// zigoZeroSlot for an empty string.
+func zigoStringPtr(value string) unsafe.Pointer {
+	if len(value) == 0 {
+		return unsafe.Pointer(&zigoZeroSlot)
 	}
-	return (*C.size_t)(unsafe.Pointer(&lens[0]))
+	return unsafe.Pointer(unsafe.StringData(value))
 }
 
 // CallbackState carries one Go callback across the native boundary, and
@@ -159,11 +164,7 @@ func EchoQueueSignal(signal uint8) uint8 {
 
 // EventQueueCreate calls the generated C ABI wrapper for zg_event_queue_create.
 func EventQueueCreate(name string, capacity uint, policy uint32, observerHandle uintptr) (unsafe.Pointer, int32) {
-	var nameZero C.uint8_t
-	namePtr := &nameZero
-	if len(name) != 0 {
-		namePtr = (*C.uint8_t)(unsafe.Pointer(unsafe.StringData(name)))
-	}
+	namePtr := (*C.uint8_t)(zigoStringPtr(name))
 	var outResult *C.zg_event_queue
 	code := int32(C.zg_event_queue_create(namePtr, C.size_t(len(name)), C.size_t(capacity), C.uint32_t(policy), C.size_t(observerHandle), &outResult))
 	return unsafe.Pointer(outResult), code
@@ -385,11 +386,7 @@ func EventQueueSelectionString(self unsafe.Pointer) ([]uint8, bool, int32) {
 
 // EventQueueFreeSelectionString calls the generated C ABI wrapper for zg_event_queue_free_selection_string.
 func EventQueueFreeSelectionString(self unsafe.Pointer, value []uint8) int32 {
-	var valueZero C.uint8_t
-	valuePtr := &valueZero
-	if len(value) != 0 {
-		valuePtr = (*C.uint8_t)(unsafe.Pointer(&value[0]))
-	}
+	valuePtr := (*C.uint8_t)(zigoSlicePtr(value))
 	code := int32(C.zg_event_queue_free_selection_string((*C.zg_event_queue)(self), valuePtr, C.size_t(len(value))))
 	return code
 }
@@ -408,24 +405,24 @@ func EventQueueSampleCString() string {
 // EventQueueExtractPaths calls the generated C ABI wrapper for zg_event_queue_extract_paths.
 func EventQueueExtractPaths(paths []string) uint {
 	pathsData, pathsLens := zigoStringSliceArgs(paths)
-	pathsDataPtr := zigoBytesPtr(pathsData)
-	pathsLensPtr := zigoSizePtr(pathsLens)
+	pathsDataPtr := (*C.uint8_t)(zigoSlicePtr(pathsData))
+	pathsLensPtr := (*C.size_t)(zigoSlicePtr(pathsLens))
 	return uint(C.zg_event_queue_extract_paths(pathsDataPtr, C.size_t(len(pathsData)), pathsLensPtr, C.size_t(len(paths))))
 }
 
 // EventQueueExtractSentinelSlices calls the generated C ABI wrapper for zg_event_queue_extract_sentinel_slices.
 func EventQueueExtractSentinelSlices(paths []string) uint {
 	pathsData, pathsLens := zigoStringSliceArgs(paths)
-	pathsDataPtr := zigoBytesPtr(pathsData)
-	pathsLensPtr := zigoSizePtr(pathsLens)
+	pathsDataPtr := (*C.uint8_t)(zigoSlicePtr(pathsData))
+	pathsLensPtr := (*C.size_t)(zigoSlicePtr(pathsLens))
 	return uint(C.zg_event_queue_extract_sentinel_slices(pathsDataPtr, C.size_t(len(pathsData)), pathsLensPtr, C.size_t(len(paths))))
 }
 
 // EventQueueExtractSentinelPointers calls the generated C ABI wrapper for zg_event_queue_extract_sentinel_pointers.
 func EventQueueExtractSentinelPointers(paths []string) uint {
 	pathsData, pathsLens := zigoStringSliceArgs(paths)
-	pathsDataPtr := zigoBytesPtr(pathsData)
-	pathsLensPtr := zigoSizePtr(pathsLens)
+	pathsDataPtr := (*C.uint8_t)(zigoSlicePtr(pathsData))
+	pathsLensPtr := (*C.size_t)(zigoSlicePtr(pathsLens))
 	return uint(C.zg_event_queue_extract_sentinel_pointers(pathsDataPtr, C.size_t(len(pathsData)), pathsLensPtr, C.size_t(len(paths))))
 }
 
@@ -465,11 +462,7 @@ func EventQueueExtractSamplesChecked(self unsafe.Pointer) ([]float32, int32) {
 
 // EventQueueFreeSamples calls the generated C ABI wrapper for zg_event_queue_free_samples.
 func EventQueueFreeSamples(self unsafe.Pointer, samples []float32) int32 {
-	var samplesZero C.float
-	samplesPtr := &samplesZero
-	if len(samples) != 0 {
-		samplesPtr = (*C.float)(unsafe.Pointer(&samples[0]))
-	}
+	samplesPtr := (*C.float)(zigoSlicePtr(samples))
 	code := int32(C.zg_event_queue_free_samples((*C.zg_event_queue)(self), samplesPtr, C.size_t(len(samples))))
 	return code
 }
@@ -493,11 +486,7 @@ func EventQueueExtractLimits(self unsafe.Pointer) ([]LimitsData, int32) {
 
 // EventQueueFreeLimits calls the generated C ABI wrapper for zg_event_queue_free_limits.
 func EventQueueFreeLimits(self unsafe.Pointer, rows []LimitsData) int32 {
-	var rowsZero C.zg_limits
-	rowsPtr := &rowsZero
-	if len(rows) != 0 {
-		rowsPtr = (*C.zg_limits)(unsafe.Pointer(&rows[0]))
-	}
+	rowsPtr := (*C.zg_limits)(zigoSlicePtr(rows))
 	code := int32(C.zg_event_queue_free_limits((*C.zg_event_queue)(self), rowsPtr, C.size_t(len(rows))))
 	return code
 }
@@ -518,11 +507,7 @@ func EventQueueAcceptStats(self unsafe.Pointer, values []StatsData) (uint, int32
 			valuesValues[i] = cvalues
 		}
 	}
-	var valuesZero C.zg_stats
-	valuesPtr := &valuesZero
-	if len(values) != 0 {
-		valuesPtr = (*C.zg_stats)(unsafe.Pointer(&valuesValues[0]))
-	}
+	valuesPtr := (*C.zg_stats)(zigoSlicePtr(valuesValues))
 	var outResult C.size_t
 	code := int32(C.zg_event_queue_accept_stats((*C.zg_event_queue)(self), valuesPtr, C.size_t(len(values)), &outResult))
 	return uint(outResult), code
@@ -530,11 +515,7 @@ func EventQueueAcceptStats(self unsafe.Pointer, values []StatsData) (uint, int32
 
 // EventQueueExtractSamplesInto calls the generated C ABI wrapper for zg_event_queue_extract_samples_into.
 func EventQueueExtractSamplesInto(self unsafe.Pointer, dst []float32) (uint, int32) {
-	var dstZero C.float
-	dstPtr := &dstZero
-	if len(dst) != 0 {
-		dstPtr = (*C.float)(unsafe.Pointer(&dst[0]))
-	}
+	dstPtr := (*C.float)(zigoSlicePtr(dst))
 	var outResult C.size_t
 	code := int32(C.zg_event_queue_extract_samples_into((*C.zg_event_queue)(self), dstPtr, C.size_t(len(dst)), &outResult))
 	return uint(outResult), code
@@ -542,11 +523,7 @@ func EventQueueExtractSamplesInto(self unsafe.Pointer, dst []float32) (uint, int
 
 // EventQueueLimitsInto calls the generated C ABI wrapper for zg_event_queue_limits_into.
 func EventQueueLimitsInto(self unsafe.Pointer, dst []LimitsData) (uint, int32) {
-	var dstZero C.zg_limits
-	dstPtr := &dstZero
-	if len(dst) != 0 {
-		dstPtr = (*C.zg_limits)(unsafe.Pointer(&dst[0]))
-	}
+	dstPtr := (*C.zg_limits)(zigoSlicePtr(dst))
 	var outResult C.size_t
 	code := int32(C.zg_event_queue_limits_into((*C.zg_event_queue)(self), dstPtr, C.size_t(len(dst)), &outResult))
 	return uint(outResult), code
@@ -558,11 +535,7 @@ func EventQueueEstimate(self unsafe.Pointer, output []StatsData) (uint, int32) {
 	if len(output) != 0 {
 		outputValues = make([]C.zg_stats, len(output))
 	}
-	var outputZero C.zg_stats
-	outputPtr := &outputZero
-	if len(output) != 0 {
-		outputPtr = (*C.zg_stats)(unsafe.Pointer(&outputValues[0]))
-	}
+	outputPtr := (*C.zg_stats)(zigoSlicePtr(outputValues))
 	var outResult C.size_t
 	code := int32(C.zg_event_queue_estimate((*C.zg_event_queue)(self), outputPtr, C.size_t(len(output)), &outResult))
 	for i := 0; i < int(outResult) && i < len(output); i++ {

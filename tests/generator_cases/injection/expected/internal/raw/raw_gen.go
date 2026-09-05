@@ -15,13 +15,22 @@ import "unsafe"
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// zigoZeroSlot is what an empty slice or string points at instead of NULL, so
+// the native side always receives a valid address beside a zero length.
+var zigoZeroSlot uint64
+
+// zigoStringPtr is the address of a string's bytes, read in place, or of
+// zigoZeroSlot for an empty string.
+func zigoStringPtr(value string) unsafe.Pointer {
+	if len(value) == 0 {
+		return unsafe.Pointer(&zigoZeroSlot)
+	}
+	return unsafe.Pointer(unsafe.StringData(value))
+}
+
 // StoreOpen calls the generated C ABI wrapper for zg_store_open.
 func StoreOpen(name string) (unsafe.Pointer, int32) {
-	var nameZero C.uint8_t
-	namePtr := &nameZero
-	if len(name) != 0 {
-		namePtr = (*C.uint8_t)(unsafe.Pointer(unsafe.StringData(name)))
-	}
+	namePtr := (*C.uint8_t)(zigoStringPtr(name))
 	var outResult *C.zg_store
 	code := int32(C.zg_store_open(namePtr, C.size_t(len(name)), &outResult))
 	return unsafe.Pointer(outResult), code

@@ -83,7 +83,7 @@ func cleanupCursor(state cursorCleanupState) {
 }
 
 // Close releases the native Cursor resources. It is safe to call more than once.
-// The error result is always nil; it exists so Cursor satisfies io.Closer.
+// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (c *Cursor) Close() error {
@@ -194,7 +194,7 @@ func cleanupStore(state storeCleanupState) {
 }
 
 // Close releases the native Store resources. It is safe to call more than once.
-// The error result is always nil; it exists so Store satisfies io.Closer.
+// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (s *Store) Close() error {
