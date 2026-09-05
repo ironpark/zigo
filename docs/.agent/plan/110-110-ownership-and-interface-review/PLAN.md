@@ -8,7 +8,7 @@ registered_at: "2026-09-05T07:29:55Z"
 # Phases
 
 - [x] [Phase 00: Inventory ownership paths](phases/00-ownership-inventory.md)
-- [ ] [Phase 01: Ownership design and recommendation](phases/01-ownership-design.md)
+- [x] [Phase 01: Ownership design and recommendation](phases/01-ownership-design.md)
 - [ ] [Phase 02: Comptime interface survey](phases/02-interface-survey.md)
 - [ ] [Phase 03: Interface design and recommendation](phases/03-interface-design.md)
 - [ ] [Phase 04: Index and hand-off](phases/04-index-and-handoff.md)

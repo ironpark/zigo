@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-05T07:36:38Z"
 depends_on:
 - "110-110-ownership-and-interface-review#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: The design document has the mapping table, the feature assessment, the
 > NEXT: none
