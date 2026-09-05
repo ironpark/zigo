@@ -8,6 +8,7 @@
 package opaque
 
 import (
+	"iter"
 	"runtime"
 
 	"example.com/zigo/opaque-purego/internal/raw"
@@ -89,6 +90,98 @@ func (co *Context) SetTotal(c int64) error {
 	code := raw.ContextSetTotal(ptr, c)
 	if code != 0 {
 		return zigoPoisonAfterPanic(errorForCode("Context.SetTotal", code), co)
+	}
+	return nil
+}
+
+// Next counts from 1 up to the total, then reports the end with null.
+// Bound with `.iterator`, so Go ranges over it as `All()`.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (c *Context) Next() (int64, bool, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Context.Next receiver", c)
+	if err != nil {
+		return 0, false, err
+	}
+	defer c.zigoRelease()
+	result, zigoHas, code := raw.ContextNext(ptr)
+	if code != 0 {
+		return 0, false, zigoPoisonAfterPanic(errorForCode("Context.Next", code), c)
+	}
+	return result, zigoHas, nil
+}
+
+// All returns a sequence that calls Next until it reports no value.
+// A failed call yields its error once, with the zero int64, and the sequence ends.
+func (c *Context) All() iter.Seq2[int64, error] {
+	return func(yield func(int64, error) bool) {
+		for {
+			value, ok, err := c.Next()
+			if err != nil {
+				var zero int64
+				yield(zero, err)
+				return
+			}
+			if !ok || !yield(value, nil) {
+				return
+			}
+		}
+	}
+}
+
+// NextChecked is `next` with a failure path: a negative total is an
+// error the sequence surfaces, rather than an empty sequence.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+func (c *Context) NextChecked() (int64, bool, error) {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Context.NextChecked receiver", c)
+	if err != nil {
+		return 0, false, err
+	}
+	defer c.zigoRelease()
+	result, zigoHas, code := raw.ContextNextChecked(ptr)
+	if code != 0 {
+		return 0, false, zigoPoisonAfterPanic(errorForCode("Context.NextChecked", code), c)
+	}
+	return result, zigoHas, nil
+}
+
+// Checked returns a sequence that calls NextChecked until it reports no value.
+// A failed call yields its error once, with the zero int64, and the sequence ends.
+func (c *Context) Checked() iter.Seq2[int64, error] {
+	return func(yield func(int64, error) bool) {
+		for {
+			value, ok, err := c.NextChecked()
+			if err != nil {
+				var zero int64
+				yield(zero, err)
+				return
+			}
+			if !ok || !yield(value, nil) {
+				return
+			}
+		}
+	}
+}
+
+// Rewind calls the Zig function Context.rewind.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (c *Context) Rewind() error {
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+	ptr, err := zigoCheckedPointer("Context.Rewind receiver", c)
+	if err != nil {
+		return err
+	}
+	defer c.zigoRelease()
+	code := raw.ContextRewind(ptr)
+	if code != 0 {
+		return zigoPoisonAfterPanic(errorForCode("Context.Rewind", code), c)
 	}
 	return nil
 }

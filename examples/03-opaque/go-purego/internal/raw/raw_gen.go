@@ -54,6 +54,9 @@ type nativeBindings struct {
 	fnContextAdd             func(unsafe.Pointer, int64, *int64) int32
 	fnContextMaybeTotal      func(unsafe.Pointer, uint8, *uint8, *int64) int32
 	fnContextSetTotal        func(unsafe.Pointer, int64) int32
+	fnContextNext            func(unsafe.Pointer, *uint8, *int64) int32
+	fnContextNextChecked     func(unsafe.Pointer, *uint8, *int64) int32
+	fnContextRewind          func(unsafe.Pointer) int32
 	fnContextAddCopy         func(unsafe.Pointer, int64, *int64) int32
 	fnContextBorrowView      func(unsafe.Pointer, *unsafe.Pointer) int32
 	fnContextViewTotal       func(unsafe.Pointer, *int64) int32
@@ -162,6 +165,18 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_context_set_total", err)
 	}
+	addrContextNext, err := resolveSymbol(handle, "zg_context_next")
+	if err != nil {
+		return fail("zg_context_next", err)
+	}
+	addrContextNextChecked, err := resolveSymbol(handle, "zg_context_next_checked")
+	if err != nil {
+		return fail("zg_context_next_checked", err)
+	}
+	addrContextRewind, err := resolveSymbol(handle, "zg_context_rewind")
+	if err != nil {
+		return fail("zg_context_rewind", err)
+	}
 	addrContextAddCopy, err := resolveSymbol(handle, "zg_context_add_copy")
 	if err != nil {
 		return fail("zg_context_add_copy", err)
@@ -212,6 +227,9 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnContextAdd, addrContextAdd)
 	purego.RegisterFunc(&next.fnContextMaybeTotal, addrContextMaybeTotal)
 	purego.RegisterFunc(&next.fnContextSetTotal, addrContextSetTotal)
+	purego.RegisterFunc(&next.fnContextNext, addrContextNext)
+	purego.RegisterFunc(&next.fnContextNextChecked, addrContextNextChecked)
+	purego.RegisterFunc(&next.fnContextRewind, addrContextRewind)
 	purego.RegisterFunc(&next.fnContextAddCopy, addrContextAddCopy)
 	purego.RegisterFunc(&next.fnContextBorrowView, addrContextBorrowView)
 	purego.RegisterFunc(&next.fnContextViewTotal, addrContextViewTotal)
@@ -273,6 +291,28 @@ func ContextMaybeTotal(self unsafe.Pointer, present uint8) (int64, bool, int32) 
 // ContextSetTotal calls the generated purego ABI wrapper for zg_context_set_total.
 func ContextSetTotal(self unsafe.Pointer, c int64) int32 {
 	code := bindings().fnContextSetTotal(self, c)
+	return code
+}
+
+// ContextNext calls the generated purego ABI wrapper for zg_context_next.
+func ContextNext(self unsafe.Pointer) (int64, bool, int32) {
+	var outResultHas uint8
+	var outResult int64
+	code := bindings().fnContextNext(self, &outResultHas, &outResult)
+	return outResult, outResultHas != 0, code
+}
+
+// ContextNextChecked calls the generated purego ABI wrapper for zg_context_next_checked.
+func ContextNextChecked(self unsafe.Pointer) (int64, bool, int32) {
+	var outResultHas uint8
+	var outResult int64
+	code := bindings().fnContextNextChecked(self, &outResultHas, &outResult)
+	return outResult, outResultHas != 0, code
+}
+
+// ContextRewind calls the generated purego ABI wrapper for zg_context_rewind.
+func ContextRewind(self unsafe.Pointer) int32 {
+	code := bindings().fnContextRewind(self)
 	return code
 }
 

@@ -2,7 +2,23 @@
 
 package types
 
-import "strconv"
+import (
+	"strconv"
+	"strings"
+)
+
+// EnumParseError reports text that names no value of a generated enum.
+type EnumParseError struct {
+	// Type is the Go enum type name.
+	Type string
+	// Text is the rejected input.
+	Text string
+}
+
+// Error implements error.
+func (err *EnumParseError) Error() string {
+	return "zigo: " + err.Type + ": unknown value " + strconv.Quote(err.Text)
+}
 
 // QueueSignal represents the corresponding Zig open enum; values outside the named constants are valid.
 type QueueSignal uint8
@@ -24,4 +40,36 @@ func (value QueueSignal) String() string {
 	default:
 		return "QueueSignal(" + strconv.Itoa(int(value)) + ")"
 	}
+}
+
+// ParseQueueSignal returns the QueueSignal named by text, which is a Zig tag name.
+// Values outside the named constants are accepted in the QueueSignal(N) spelling String returns.
+func ParseQueueSignal(text string) (QueueSignal, error) {
+	switch text {
+	case "pause":
+		return QueueSignalPause, nil
+	case "continue_processing":
+		return QueueSignalContinueProcessing, nil
+	}
+	if strings.HasPrefix(text, "QueueSignal(") && strings.HasSuffix(text, ")") {
+		if number, err := strconv.ParseUint(text[len("QueueSignal("):len(text)-1], 10, 8); err == nil {
+			return QueueSignal(number), nil
+		}
+	}
+	return 0, &EnumParseError{Type: "QueueSignal", Text: text}
+}
+
+// MarshalText implements encoding.TextMarshaler with the String spelling.
+func (value QueueSignal) MarshalText() ([]byte, error) {
+	return []byte(value.String()), nil
+}
+
+// UnmarshalText implements encoding.TextUnmarshaler with ParseQueueSignal.
+func (value *QueueSignal) UnmarshalText(text []byte) error {
+	parsed, err := ParseQueueSignal(string(text))
+	if err != nil {
+		return err
+	}
+	*value = parsed
+	return nil
 }
