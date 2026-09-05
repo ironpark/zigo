@@ -37,10 +37,6 @@ const Scanned = struct {
         for (self.paths.items) |candidate| if (std.mem.eql(u8, candidate, path)) return true;
         return false;
     }
-
-    fn record(self: *Scanned, allocator: std.mem.Allocator, path: []const u8) !void {
-        try self.paths.append(allocator, path);
-    }
 };
 
 pub fn apply(
@@ -75,11 +71,16 @@ pub fn applyWithCoverageImports(
     defer scanned.paths.deinit(allocator);
     try applyRecording(allocator, io, document, bindings_path, source_root_path, diagnostics, &scanned);
     const root_path = source_root_path orelse return;
-    const root_source = scanned.root_source orelse std.Io.Dir.cwd().readFileAlloc(io, root_path, allocator, source_limit) catch |err| {
-        try writeReadError(diagnostics, root_path, err);
-        return err;
+    // A recorded root source means the first pass already read and listed
+    // `root_path`; only a root it never opened has to be read here.
+    const root_source = scanned.root_source orelse blk: {
+        const source = std.Io.Dir.cwd().readFileAlloc(io, root_path, allocator, source_limit) catch |err| {
+            try writeReadError(diagnostics, root_path, err);
+            return err;
+        };
+        try scanned.paths.append(allocator, root_path);
+        break :blk source;
     };
-    if (!scanned.seen(root_path)) try scanned.record(allocator, root_path);
     const functions = try allocator.dupe(semantic.SemanticFn, document.functions);
     const has_errors = try scanImportedSources(
         allocator,
@@ -107,7 +108,7 @@ fn applyRecording(
         try writeReadError(diagnostics, bindings_path, err);
         return err;
     };
-    try scanned.record(allocator, bindings_path);
+    try scanned.paths.append(allocator, bindings_path);
     const functions = try allocator.dupe(semantic.SemanticFn, document.functions);
     const directory = std.fs.path.dirname(bindings_path) orelse ".";
     var has_errors = try scanSourceWithDiagnostics(allocator, bindings_source, functions, try recordedPathAlloc(allocator, directory, bindings_path), diagnostics);
@@ -125,7 +126,7 @@ fn applyRecording(
     } else {
         if (std.Io.Dir.cwd().readFileAlloc(io, root_path, allocator, source_limit)) |root_source| {
             scanned.root_source = root_source;
-            try scanned.record(allocator, root_path);
+            try scanned.paths.append(allocator, root_path);
             if (document.doc == null) document.doc = try containerDocAlloc(allocator, root_source);
             has_errors = try scanSourceWithDiagnostics(allocator, root_source, functions, try recordedPathAlloc(allocator, directory, root_path), diagnostics) or has_errors;
         } else |err| switch (err) {
@@ -143,7 +144,7 @@ fn applyRecording(
     while (imports.next()) |referenced| {
         const path = try std.fs.path.join(allocator, &.{ directory, referenced });
         if (std.Io.Dir.cwd().readFileAlloc(io, path, allocator, source_limit)) |source| {
-            try scanned.record(allocator, path);
+            try scanned.paths.append(allocator, path);
             has_errors = try scanSourceWithDiagnostics(allocator, source, functions, try recordedPathAlloc(allocator, directory, path), diagnostics) or has_errors;
         } else |err| {
             try writeReadError(diagnostics, path, err);
@@ -168,7 +169,7 @@ fn scanImportedSources(
     while (imports.next()) |referenced| {
         const path = try std.fs.path.join(allocator, &.{ directory, referenced });
         if (scanned.seen(path)) continue;
-        try scanned.record(allocator, path);
+        try scanned.paths.append(allocator, path);
         if (std.Io.Dir.cwd().readFileAlloc(io, path, allocator, source_limit)) |imported| {
             has_errors = try scanSourceWithDiagnostics(allocator, imported, functions, path, diagnostics) or has_errors;
             has_errors = try scanImportedSources(

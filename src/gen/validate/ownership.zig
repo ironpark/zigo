@@ -24,9 +24,6 @@ pub fn ownedReturnIsWrappable(document: semantic.Semantic, function: semantic.Se
     return lower.ownedOpaqueReturn(document.constructors, function) != null;
 }
 
-/// A slice return is the one non-handle result zigo can hand over: generated Go
-/// copies it and then calls the declared release function. A fallible slice
-/// return hands over the same buffer, so `![]T` qualifies on the same terms.
 /// The count a `.written = .return` parameter reads back from. An error union
 /// reports it through its payload; the error path writes zero instead.
 pub fn returnsCount(node: semantic.TypeNode) bool {
@@ -34,6 +31,9 @@ pub fn returnsCount(node: semantic.TypeNode) bool {
     return payload == .int and payload.int.is_usize;
 }
 
+/// A slice return is the one non-handle result zigo can hand over: generated Go
+/// copies it and then calls the declared release function. A fallible slice
+/// return hands over the same buffer, so `![]T` qualifies on the same terms.
 pub fn isReleasableSliceReturn(function: semantic.SemanticFn) bool {
     return lower.releasableSliceReturnElement(function) != null;
 }

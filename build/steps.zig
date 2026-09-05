@@ -2,7 +2,6 @@
 //! pkg-config resolution, host reflection clones and the publish steps.
 const std = @import("std");
 const go_walk = @import("../src/gen/go_walk.zig");
-const build = @import("../build.zig");
 
 pub const volatile_cgo_link_file = "zigo_link_inputs_gen.go";
 
@@ -369,7 +368,7 @@ pub fn systemLibraryFlags(b: *std.Build, inputs: *const LinkInputCollector) []co
         if (input.library.use_pkg_config == .force) continue;
         flags.append(b.allocator, b.fmt("-l{s}", .{input.library.name})) catch @panic("OOM");
     }
-    return build.joinFlags(b, flags.items);
+    return joinFlags(b, flags.items);
 }
 
 pub fn frameworkFlags(b: *std.Build, inputs: *const LinkInputCollector) []const u8 {
@@ -378,7 +377,7 @@ pub fn frameworkFlags(b: *std.Build, inputs: *const LinkInputCollector) []const 
         flags.append(b.allocator, if (framework.options.weak) "-weak_framework" else "-framework") catch @panic("OOM");
         flags.append(b.allocator, framework.name) catch @panic("OOM");
     }
-    return build.joinFlags(b, flags.items);
+    return joinFlags(b, flags.items);
 }
 
 pub const ResolvePkgConfigLibraries = struct {
@@ -461,7 +460,7 @@ pub const ResolvePkgConfigLibraries = struct {
             names.append(b.allocator, resolved) catch @panic("OOM");
         }
 
-        const contents = build.joinFlags(b, names.items);
+        const contents = joinFlags(b, names.items);
         if (std.fs.path.dirname(self.output_sub_path)) |dirname|
             try b.cache_root.handle.createDirPath(io, dirname);
         try b.cache_root.handle.writeFile(io, .{ .sub_path = self.output_sub_path, .data = contents });
@@ -490,4 +489,8 @@ pub const ResolvePkgConfigLibraries = struct {
 
 fn moduleDisplayName(module: *std.Build.Module) []const u8 {
     return if (module.root_source_file) |root| root.getDisplayName() else "<module without a source root>";
+}
+
+pub fn joinFlags(b: *std.Build, flags: []const []const u8) []const u8 {
+    return std.mem.join(b.allocator, " ", flags) catch @panic("OOM");
 }

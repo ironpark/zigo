@@ -68,19 +68,9 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
     defer if (baseline) |*value| value.deinit(scratch_allocator);
     var lock: errors_lock.ErrorsLock = if (options.errors_lock_bytes) |bytes| try errors_lock.ErrorsLock.parse(scratch_allocator, bytes) else .{};
     defer lock.deinit(scratch_allocator);
-    var error_names: std.ArrayList([]const u8) = .empty;
-    defer error_names.deinit(scratch_allocator);
-    for (document.functions) |function| switch (function.@"return") {
-        .error_union => |value| for (value.error_set) |name| {
-            var exists = false;
-            for (error_names.items) |existing| {
-                if (std.mem.eql(u8, existing, name)) exists = true;
-            }
-            if (!exists) try error_names.append(scratch_allocator, name);
-        },
-        else => {},
-    };
-    try lock.assign(scratch_allocator, error_names.items);
+    const error_names = try lower.distinctErrorNamesAlloc(scratch_allocator, document);
+    defer scratch_allocator.free(error_names);
+    try lock.assign(scratch_allocator, error_names);
     if (baseline) |value| try lock.validateAgainst(value);
     const abi_codes = try scratch_allocator.alloc(abi.ErrorCode, lock.codes.items.len);
     for (lock.codes.items, 0..) |entry, index| abi_codes[index] = .{ .code = entry.code, .name = entry.name };
@@ -240,15 +230,8 @@ pub fn interfaceSignatureIssue(allocator: std.mem.Allocator, document: semantic.
     if (document.interfaces == null) return null;
     // Signatures do not depend on which code an error got, only on the
     // error set existing, so any assignment will do for this rendering.
-    var names: std.ArrayList([]const u8) = .empty;
-    defer names.deinit(allocator);
-    for (document.functions) |function| if (function.@"return" == .error_union) for (function.@"return".error_union.error_set) |name| {
-        for (names.items) |existing| if (std.mem.eql(u8, existing, name)) break;
-        try names.append(allocator, name);
-    };
-    const codes = try allocator.alloc(abi.ErrorCode, names.items.len);
+    const codes = try lower.provisionalErrorCodesAlloc(allocator, document);
     defer allocator.free(codes);
-    for (names.items, codes, 1..) |name, *code, number| code.* = .{ .code = @intCast(number), .name = name };
     const program = try lower.semanticDocumentForBackend(allocator, document, options.package, options.prefix, codes, switch (options.backend) {
         .cgo => .cgo,
         .purego => .purego,

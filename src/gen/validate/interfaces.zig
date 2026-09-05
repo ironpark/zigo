@@ -34,7 +34,7 @@ pub fn interfaceIssue(allocator: std.mem.Allocator, document: semantic.Semantic)
                 return try issueFmt(allocator, interface, "interface includes io.Closer but `{s}` has no constructor pair", .{type_name}, "pair the type with a constructor and destructor, or set `.closer = false`");
         };
         if (document.packages != null) for (interface.types) |type_name| {
-            if (!semantic.optionalStringEqual(typePackage(document, type_name), interface.package))
+            if (!semantic.optionalStringEqual((semantic.typeDecl(document.types, type_name) orelse continue).package, interface.package))
                 return try issueFmt(allocator, interface, "interface and `{s}` are in different public packages", .{type_name}, "assign the interface's types to one package");
         };
     }
@@ -53,11 +53,6 @@ pub fn methodOf(document: semantic.Semantic, type_name: []const u8, name: []cons
         }
         return function;
     }
-    return null;
-}
-
-fn typePackage(document: semantic.Semantic, type_name: []const u8) ?[]const u8 {
-    for (document.types) |declaration| if (std.mem.eql(u8, declaration.name, type_name)) return declaration.package;
     return null;
 }
 

@@ -1,5 +1,4 @@
 const std = @import("std");
-const abi = @import("abi");
 const semantic = @import("semantic");
 const lower = @import("lower");
 const naming = @import("naming");
@@ -22,19 +21,8 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
     var scratch = std.heap.ArenaAllocator.init(allocator);
     defer scratch.deinit();
     const scratch_allocator = scratch.allocator();
-    var error_codes: std.ArrayList(abi.ErrorCode) = .empty;
-    defer error_codes.deinit(scratch_allocator);
-    for (document.functions) |function| if (function.@"return" == .error_union) {
-        for (function.@"return".error_union.error_set) |name| {
-            var exists = false;
-            for (error_codes.items) |entry| if (std.mem.eql(u8, entry.name, name)) {
-                exists = true;
-                break;
-            };
-            if (!exists) try error_codes.append(scratch_allocator, .{ .code = @intCast(error_codes.items.len + 1), .name = name });
-        }
-    };
-    const program = try lower.semanticDocumentForBackend(scratch_allocator, document, document.package, document.prefix, error_codes.items, switch (options.backend) {
+    const error_codes = try lower.provisionalErrorCodesAlloc(scratch_allocator, document);
+    const program = try lower.semanticDocumentForBackend(scratch_allocator, document, document.package, document.prefix, error_codes, switch (options.backend) {
         .cgo => .cgo,
         .purego => .purego,
     });

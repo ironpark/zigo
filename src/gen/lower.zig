@@ -13,6 +13,32 @@ pub fn semanticDocument(
     return semanticDocumentForBackend(allocator, document, package, prefix, error_codes, .cgo);
 }
 
+/// Every error-set name the document's functions can fail with, in first-use
+/// order and without repeats. This is the order the errors lock numbers them.
+pub fn distinctErrorNamesAlloc(allocator: std.mem.Allocator, document: semantic.Semantic) ![]const []const u8 {
+    var names: std.ArrayList([]const u8) = .empty;
+    errdefer names.deinit(allocator);
+    for (document.functions) |function| {
+        if (function.@"return" != .error_union) continue;
+        next: for (function.@"return".error_union.error_set) |name| {
+            for (names.items) |existing| if (std.mem.eql(u8, existing, name)) continue :next;
+            try names.append(allocator, name);
+        }
+    }
+    return names.toOwnedSlice(allocator);
+}
+
+/// Error codes numbered 1..n over `distinctErrorNamesAlloc`, for renderings
+/// that need every error to have a code without consulting the errors lock:
+/// the report, `abi-diff`, and the interface signature check.
+pub fn provisionalErrorCodesAlloc(allocator: std.mem.Allocator, document: semantic.Semantic) ![]const abi.ErrorCode {
+    const names = try distinctErrorNamesAlloc(allocator, document);
+    defer allocator.free(names);
+    const codes = try allocator.alloc(abi.ErrorCode, names.len);
+    for (names, codes, 1..) |name, *code, number| code.* = .{ .code = @intCast(number), .name = name };
+    return codes;
+}
+
 pub fn semanticDocumentForBackend(
     allocator: std.mem.Allocator,
     source_document: semantic.Semantic,
@@ -762,19 +788,18 @@ pub fn ownershipOf(
                 receiver_c_name = handle.c_name;
             };
         }
-        if (lowered.materialized_return) |materialized| return .{ .buffer = .{
+        const materialized: ?struct { layout: usize, fallible: bool } = if (lowered.materialized_return) |value|
+            .{ .layout = value.layout, .fallible = value.fallible }
+        else if (lowered.materialized_out) |value|
+            .{ .layout = value.layout, .fallible = value.fallible }
+        else
+            null;
+        if (materialized) |value| return .{ .buffer = .{
             .element = byte,
             .release = release.index,
             .release_receiver_c_name = receiver_c_name,
-            .materialized = materialized.layout,
-            .fallible = materialized.fallible,
-        } };
-        if (lowered.materialized_out) |output| return .{ .buffer = .{
-            .element = byte,
-            .release = release.index,
-            .release_receiver_c_name = receiver_c_name,
-            .materialized = output.layout,
-            .fallible = output.fallible,
+            .materialized = value.layout,
+            .fallible = value.fallible,
         } };
         const element = releasableSliceReturnElement(function) orelse return .none;
         return .{ .buffer = .{

@@ -50,6 +50,27 @@ pub fn writeMustResultType(scope: public_writers.PublicScope, writer: *std.Io.Wr
     try public_writers.writePublicGoType(scope, writer, node);
 }
 
+/// The parameters and result of a `Must` variant, from the parameter list's
+/// opening parenthesis onward. Shared with the interface file so a method
+/// and the interface that lists it can never spell the variant differently.
+pub fn writeMustSignature(
+    scope: public_writers.PublicScope,
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    function: abi.AbiFn,
+    go_names: [][]u8,
+    owned_type: ?[]const u8,
+) !void {
+    try public.writePublicParameters(scope, allocator, writer, function, go_names);
+    try writer.writeByte(')');
+    if (function.origin.@"return".errorPayload() == .void) return;
+    try writer.writeByte(' ');
+    const second = mustHasSecondResult(function.origin.*);
+    if (second) try writer.writeByte('(');
+    try writeMustResultType(scope, writer, function.origin.*, owned_type);
+    if (second) try writer.writeAll(", bool)");
+}
+
 pub fn renderMustVariant(
     scope: public_writers.PublicScope,
     allocator: std.mem.Allocator,
@@ -67,15 +88,8 @@ pub fn renderMustVariant(
         try writer.print("func ({s} *{s}) {s}(", .{ receiver_name.?, receiver, must_name })
     else
         try writer.print("func {s}(", .{must_name});
-    try public.writePublicParameters(scope, allocator, writer, function, go_names);
-    try writer.writeByte(')');
+    try writeMustSignature(scope, allocator, writer, function, go_names, owned_type);
     const result = function.origin.@"return".errorPayload();
-    if (result != .void) {
-        try writer.writeByte(' ');
-        if (mustHasSecondResult(function.origin.*)) try writer.writeByte('(');
-        try writeMustResultType(scope, writer, function.origin.*, owned_type);
-        if (mustHasSecondResult(function.origin.*)) try writer.writeAll(", bool)");
-    }
     try writer.writeAll(" { ");
     if (result == .void)
         try writer.writeAll("_ = zigoMust(struct{}{}, ")

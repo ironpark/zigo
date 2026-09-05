@@ -44,11 +44,6 @@ pub fn addRepositorySteps(
             .{ .name = "semantic", .module = generator_modules.semantic },
         },
     });
-    const build_options_module = b.createModule(.{
-        .root_source_file = b.path("src/build_options.zig"),
-        .target = target,
-        .optimize = optimize,
-    });
     const emit_module = b.createModule(.{
         .root_source_file = b.path("src/gen/emit/emit.zig"),
         .target = target,
@@ -90,7 +85,7 @@ pub fn addRepositorySteps(
         .target = target,
         .optimize = optimize,
         .imports = &.{
-            .{ .name = "build_options", .module = build_options_module },
+            .{ .name = "build_options", .module = generator_modules.build_options },
             .{ .name = "dynamic_library", .module = generator_modules.dynamic_library },
         },
     });
@@ -137,7 +132,7 @@ pub fn addRepositorySteps(
         .optimize = optimize,
     }), .filters = test_filters });
     const run_cli_tests = b.addRunArtifact(cli_tests);
-    const build_options_tests = b.addTest(.{ .root_module = build_options_module, .filters = test_filters });
+    const build_options_tests = b.addTest(.{ .root_module = generator_modules.build_options, .filters = test_filters });
     const run_build_options_tests = b.addRunArtifact(build_options_tests);
     const emit_tests = b.addTest(.{ .root_module = emit_module, .filters = test_filters });
     const run_emit_tests = b.addRunArtifact(emit_tests);

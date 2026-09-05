@@ -7,6 +7,7 @@ const semantic = @import("semantic");
 const common = @import("common.zig");
 const docs = @import("docs.zig");
 const emit = @import("emit.zig");
+const must = @import("must.zig");
 const public = @import("public.zig");
 const public_writers = @import("public_writers.zig");
 
@@ -57,19 +58,19 @@ fn comparableSignatureAlloc(allocator: std.mem.Allocator, program: abi.Program, 
     var buffer: std.Io.Writer.Allocating = .init(allocator);
     errdefer buffer.deinit();
     // The only writer here allocates, so a failed write is a failed allocation.
-    writeComparableSignature(scope, allocator, &buffer.writer, function, options) catch |err| switch (err) {
+    writeComparableSignature(scope, allocator, &buffer.writer, function) catch |err| switch (err) {
         error.WriteFailed => return error.OutOfMemory,
         else => return err,
     };
     return buffer.toOwnedSlice();
 }
 
-fn writeComparableSignature(scope: public_writers.PublicScope, allocator: std.mem.Allocator, writer: *std.Io.Writer, function: abi.AbiFn, options: emit.Options) !void {
+fn writeComparableSignature(scope: public_writers.PublicScope, allocator: std.mem.Allocator, writer: *std.Io.Writer, function: abi.AbiFn) !void {
     const go_name = try naming.pascalAlloc(allocator, function.origin.name);
     defer allocator.free(go_name);
     try writer.writeAll(go_name);
     try public.writePublicSignature(scope, allocator, writer, function, null, null);
-    if (options.go_must_variants and function.must_variant) try writer.writeAll(" +Must");
+    if (scope.options.go_must_variants and function.must_variant) try writer.writeAll(" +Must");
 }
 
 pub fn interfacesPath(allocator: std.mem.Allocator, program: abi.Program, options: emit.Options) ![]u8 {
@@ -103,7 +104,7 @@ fn renderInterface(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     const scope: public_writers.PublicScope = .{ .program = program, .options = options };
     if (interface.doc) |doc| {
         var lines = std.mem.splitScalar(u8, doc, '\n');
-        while (lines.next()) |line| try writer.print("// {s}\n", .{line});
+        while (lines.next()) |line| try docs.writeCommentLine(writer, line);
     }
     try writer.print("// {s} is implemented by ", .{interface.name});
     for (interface.types, 0..) |type_name, index| {
@@ -133,8 +134,8 @@ fn renderInterface(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         try public.writePublicSignature(scope, allocator, writer, function, go_names, null);
         try writer.writeByte('\n');
         if (options.go_must_variants and function.must_variant) {
-            try writer.print("\t// Must{s} calls {s} and panics with its typed error on failure.\n\tMust{s}", .{ go_name, go_name, go_name });
-            try writeMustSignature(scope, allocator, writer, function, go_names);
+            try writer.print("\t// Must{s} calls {s} and panics with its typed error on failure.\n\tMust{s}(", .{ go_name, go_name, go_name });
+            try must.writeMustSignature(scope, allocator, writer, function, go_names, null);
             try writer.writeByte('\n');
         }
     }
@@ -142,22 +143,6 @@ fn renderInterface(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
     try writer.writeAll("}\n\n");
     for (interface.types) |type_name| try writer.print("var _ {s} = (*{s})(nil)\n", .{ interface.name, type_name });
 }
-
-/// The `Must` spelling of a method, as `must.renderMustVariant` writes it.
-fn writeMustSignature(scope: public_writers.PublicScope, allocator: std.mem.Allocator, writer: *std.Io.Writer, function: abi.AbiFn, go_names: [][]u8) !void {
-    try writer.writeByte('(');
-    try public.writePublicParameters(scope, allocator, writer, function, go_names);
-    try writer.writeByte(')');
-    const result = function.origin.@"return".errorPayload();
-    if (result == .void) return;
-    try writer.writeByte(' ');
-    const second = must.mustHasSecondResult(function.origin.*);
-    if (second) try writer.writeByte('(');
-    try must.writeMustResultType(scope, writer, function.origin.*, null);
-    if (second) try writer.writeAll(", bool)");
-}
-
-const must = @import("must.zig");
 
 test "an interface file lists the shared methods, Must variants, io.Closer and one assertion per type" {
     var int_batch: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "IntBatch" } };

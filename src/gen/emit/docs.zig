@@ -59,7 +59,7 @@ fn opensPackageDoc(line: []const u8, package: []const u8) bool {
     return rest.len == package.len or rest[package.len] == ' ';
 }
 
-fn writeCommentLine(writer: *std.Io.Writer, line: []const u8) !void {
+pub fn writeCommentLine(writer: *std.Io.Writer, line: []const u8) !void {
     if (line.len == 0) return writer.writeAll("//\n");
     try writer.print("// {s}\n", .{line});
 }

@@ -367,7 +367,7 @@ fn lowerFor(allocator: std.mem.Allocator, document: semantic.Semantic, backend: 
     // `semantic.json` keeps the stream-returning Zig method; lowering only
     // ever sees the operations it expands into, so the comparison does too.
     const expanded = try stream_return.expand(allocator, document);
-    return lower.semanticDocumentForBackend(allocator, expanded, document.package, document.prefix, try errorCodesFor(allocator, expanded), switch (backend) {
+    return lower.semanticDocumentForBackend(allocator, expanded, document.package, document.prefix, try lower.provisionalErrorCodesAlloc(allocator, expanded), switch (backend) {
         .cgo => .cgo,
         .purego => .purego,
     });
@@ -384,26 +384,6 @@ fn loweredSpans(allocator: std.mem.Allocator, document: semantic.Semantic) ![]co
     }
     starts[document.functions.len] = total;
     return starts;
-}
-
-/// The error codes lowering numbers a document with. The identity of an error
-/// is compared on the semantic error sets; these only have to exist, and to
-/// be numbered by the same rule generation uses, so the lowered shapes of two
-/// documents stay comparable.
-fn errorCodesFor(allocator: std.mem.Allocator, document: semantic.Semantic) ![]const abi.ErrorCode {
-    var codes: std.ArrayList(abi.ErrorCode) = .empty;
-    for (document.functions) |function| {
-        if (function.@"return" != .error_union) continue;
-        for (function.@"return".error_union.error_set) |name| {
-            var exists = false;
-            for (codes.items) |entry| if (std.mem.eql(u8, entry.name, name)) {
-                exists = true;
-                break;
-            };
-            if (!exists) try codes.append(allocator, .{ .code = @intCast(codes.items.len + 1), .name = name });
-        }
-    }
-    return codes.toOwnedSlice(allocator);
 }
 
 fn functionIdentity(allocator: std.mem.Allocator, function: semantic.SemanticFn) ![]u8 {
@@ -643,9 +623,7 @@ fn optionalTypeEqual(lhs: ?semantic.TypeNode, rhs: ?semantic.TypeNode) bool {
 
 fn optionalStringsEqual(lhs: ?[]const []const u8, rhs: ?[]const []const u8) bool {
     if (lhs == null or rhs == null) return lhs == null and rhs == null;
-    if (lhs.?.len != rhs.?.len) return false;
-    for (lhs.?, rhs.?) |a, b| if (!std.mem.eql(u8, a, b)) return false;
-    return true;
+    return stringListEqual(lhs.?, rhs.?);
 }
 
 fn typeFieldEqual(lhs: semantic.TypeField, rhs: semantic.TypeField) bool {

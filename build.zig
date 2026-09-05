@@ -388,9 +388,9 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     // Generation formats its own Go, so the set of generated files never has to
     // be spelled out here.
     if (options.gofmt) |gofmt| generate.addArgs(&.{ "--gofmt", gofmt });
-    const cflags_override = if (options.cgo_flags) |flags| joinFlags(b, flags.cflags) else "";
-    const ldflags_override = if (options.cgo_flags) |flags| joinFlags(b, flags.ldflags) else "";
-    const extra_ldflags = if (options.cgo_flags) |flags| joinFlags(b, flags.extra_ldflags) else "";
+    const cflags_override = if (options.cgo_flags) |flags| steps.joinFlags(b, flags.cflags) else "";
+    const ldflags_override = if (options.cgo_flags) |flags| steps.joinFlags(b, flags.ldflags) else "";
+    const extra_ldflags = if (options.cgo_flags) |flags| steps.joinFlags(b, flags.extra_ldflags) else "";
     var link_inputs: steps.LinkInputCollector = .{};
     link_inputs.collect(b, options.module);
     const system_ldflags = steps.systemLibraryFlags(b, &link_inputs);
@@ -702,8 +702,4 @@ fn relativeInstallPath(b: *std.Build, from: []const u8, to: []const u8) []const 
     // host, and the committed bytes must not depend on where generation ran.
     std.mem.replaceScalar(u8, relative, std.fs.path.sep_windows, std.fs.path.sep_posix);
     return relative;
-}
-
-pub fn joinFlags(b: *std.Build, flags: []const []const u8) []const u8 {
-    return std.mem.join(b.allocator, " ", flags) catch @panic("OOM");
 }

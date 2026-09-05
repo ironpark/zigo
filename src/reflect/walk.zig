@@ -685,7 +685,7 @@ fn reflectPackages(
             var found = false;
             for (functions) |*function| if (functionMatchesSelector(function.*, selector)) {
                 const owned = function.receiver orelse function.goOwner();
-                if (owned) |owner| if (typePackage(types, owner)) |owner_package| {
+                if (owned) |owner| if (semantic.typeDecl(types, owner)) |owner_decl| if (owner_decl.package) |owner_package| {
                     if (!std.mem.eql(u8, owner_package, packages.items[package_index].name))
                         return packageIssue("function `{s}` cannot be split from owning type `{s}`", .{ selector, owner });
                 };
@@ -788,7 +788,7 @@ fn reflectPackages(
 /// that disagrees is a declaration error rather than a split.
 fn assignOwnerPackages(types: []semantic.TypeDecl, functions: []semantic.SemanticFn) !void {
     for (functions) |*function| {
-        if (function.receiver orelse function.goOwner()) |owner| if (typePackage(types, owner)) |owner_package| {
+        if (function.receiver orelse function.goOwner()) |owner| if (semantic.typeDecl(types, owner)) |owner_decl| if (owner_decl.package) |owner_package| {
             if (function.package) |explicit| if (!std.mem.eql(u8, explicit, owner_package))
                 return packageIssue("function `{s}` cannot be split from owning type `{s}`", .{ function.name, owner });
             function.package = owner_package;
@@ -924,7 +924,7 @@ fn reflectInterfaces(
             .doc = if (@hasField(@TypeOf(entry), "doc")) entry.doc else null,
             .methods = methods,
             .name = entry.name,
-            .package = typePackage(types, type_names[0]),
+            .package = if (semantic.typeDecl(types, type_names[0])) |decl| decl.package else null,
             .types = type_names,
         });
     }
@@ -942,11 +942,6 @@ fn validateInterfaceEntry(comptime entry: anytype) void {
 fn packageIssue(comptime detail: []const u8, args: anytype) error{PackageDeclaration} {
     if (!@import("builtin").is_test) std.debug.print("error[ZIGO031]: " ++ detail ++ "\n  hint: each `.packages` entry must uniquely select existing declarations and keep owned functions with their type\n", args);
     return error.PackageDeclaration;
-}
-
-fn typePackage(types: []const semantic.TypeDecl, name: []const u8) ?[]const u8 {
-    for (types) |type_decl| if (std.mem.eql(u8, type_decl.name, name)) return type_decl.package;
-    return null;
 }
 
 fn namespaceMatches(namespace: []const u8, prefix: []const u8) bool {
