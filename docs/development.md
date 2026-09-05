@@ -79,8 +79,9 @@ done
 (cd examples/10-tagged-union/go-purego && CGO_ENABLED=0 go test ./...)
 ```
 
-`08-telemetry-hub`는 자동 내부 로더가 설정된 `zig-out/purego-layout/lib`의
-`telemetry_native` 공유 라이브러리를 찾습니다.
+`08-telemetry-hub`는 자동 내부 로더가 설정된 `zig-out/purego-layout/lib/<goos>_<goarch>/`의
+`telemetry_native` 공유 라이브러리를 찾습니다. `targets`로 호스트 외 플랫폼 하나를 함께
+빌드하므로 하위 디렉터리가 붙습니다.
 `10-tagged-union`의 로더 실패 경로 테스트는 `ZIGO_TEST_LIBRARY`와
 `ZIGO_TEST_WRONG_LIBRARY`가 없으면 건너뜁니다. CI의 전체 플랫폼 매트릭스와 환경 변수 구성은
 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)이 정본입니다.
