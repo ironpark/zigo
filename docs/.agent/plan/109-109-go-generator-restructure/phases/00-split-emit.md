@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: No file under `src/gen/emit/` exceeds 3,000 lines.
 > NEXT: none

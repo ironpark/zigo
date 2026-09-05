@@ -309,7 +309,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
     });
     const emit_module = b.createModule(.{
-        .root_source_file = b.path("src/gen/emit.zig"),
+        .root_source_file = b.path("src/gen/emit/emit.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{

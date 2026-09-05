@@ -1,5 +1,5 @@
 const std = @import("std");
-const emit = @import("emit.zig");
+const emit = @import("emit/emit.zig");
 const abi = @import("abi");
 const errors_lock = @import("errors_lock");
 const lower = @import("lower");

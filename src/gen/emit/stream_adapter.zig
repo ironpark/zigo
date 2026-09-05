@@ -1,5 +1,5 @@
 //! The `std.Io` adapters the generated shim wraps around a Go `io.Writer` or
-//! `io.Reader`. This file is the single source of truth for them: `emit.zig`
+//! `io.Reader`. This file is the single source of truth for them: `emit/shim.zig`
 //! embeds the region between the markers into every shim that needs it, and
 //! the tests below compile and exercise that exact text. A contract this
 //! fiddly -- drain order, splat, end of stream, not re-entering a panicked Go
