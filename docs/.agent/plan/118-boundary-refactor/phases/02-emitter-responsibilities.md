@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-05T11:21:10Z"
 depends_on:
 - "118-boundary-refactor#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Unit/snapshot tests and example generation checks show identical output.
 > NEXT: none

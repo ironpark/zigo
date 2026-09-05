@@ -105,14 +105,25 @@ zig build shared-library-smoke -- \
 파일을 씁니다. 함수 하나에 대한 결정은 낮추는 단계에서 한 번 내리고 emit과 validate는 읽기만
 합니다. 예를 들어 `Must` 변형을 낼지(`AbiFn.must_variant`), 콜백이 Go error를 낼 수
 있는지(`AbiFn.reaches_callback_errors`), materialized 결과가 어느 layout인지는 모두
-`src/gen/lower.zig`가 정합니다. 같은 사실을 emit이나 validate에서 다시 계산하지 마세요.
+`src/gen/lower.zig`와 `src/gen/lower/`가 정합니다. 같은 사실을 emit이나 validate에서 다시 계산하지 마세요.
 
-- `src/gen/emit/`: 출력 파일 하나당 소스 파일 하나입니다. `emit.zig`가 emitter 표와 파일
+- `src/gen/emit/`: 출력 대상과 책임별로 나뉩니다. `emit.zig`가 emitter 표와 파일
   이름을 가지고, `shim.zig`(Zig shim), `header.zig`(C 헤더), `raw.zig`(cgo raw 패키지),
   `purego.zig`(purego raw 패키지), `callbacks.zig`, `public.zig`(공개 함수 wrapper와 파일
   배선), `public_types.zig`, `public_runtime.zig`, `public_writers.zig`, `must.zig`,
   `materialized.zig`, `interfaces.zig`, `docs.zig`가 각 출력을 맡습니다. `common.zig`는 타입 철자와 이름,
   프로그램 전체 predicate처럼 여러 출력이 공유하는 helper입니다.
+- Materialized의 레이아웃과 ABI 출력 슬롯은 `lower/materialized.zig`, Zig 직렬화는
+  `emit/materialized_encoder.zig`, Go 디코딩은 `emit/materialized_decoder.zig`가 담당합니다.
+  `emit/materialized.zig`는 native 호출과 이 직렬화기를 연결합니다. 버퍼 형식 상수는
+  `ir/abi.zig`의 `MaterializedLayout`을 기준으로 유지합니다.
+- 스트림 콜백의 공통 읽기 처리와 cgo·purego 진입점은 `emit/stream_callbacks.zig`에
+  모읍니다. 콜백 등록·수명 관리는 `callbacks.zig`, Zig I/O 어댑터는 `stream_adapter.zig`에
+  남겨 각 책임을 분리합니다.
+- `tool_probe.zig`는 명령 구성·실행과 결과 버퍼의 소유권을 담당하고, `doctor.zig`는
+  결과 해석과 표시를 담당합니다. `Result`는 실행 여부, 오류, 종료 상태, stdout·stderr를
+  보존하며 `deinit`으로 해제합니다. 명령 테스트에는 주입 가능한 `Runner`를 사용해 전체
+  argv를 검사하고, 실제 `CC="zig cc"` 검증도 유지합니다.
 - 공개 패키지의 helper(`zigo<T>ToRaw`, `boolToUint8`, materialized decoder 등)는 렌더링한
   본문에서 참조된 식별자를 읽어 낼지 정합니다(`emit/references.zig`). import 블록과 같은
   방식이므로 emit 지점을 추가할 때 별도의 "사용 여부" predicate를 만들 필요가 없습니다.
@@ -124,6 +135,19 @@ zig build shared-library-smoke -- \
   테스트와 `check`/`snapshot`/`shared-library-smoke` 단계는 `build/tests.zig`, 생성기 모듈
   그래프는 `build/modules.zig`, `addGoBindings`가 배선하는 custom step은 `build/steps.zig`에
   있습니다.
+
+### 백엔드 공통 계약 테스트
+
+`tests/runtime_contracts`는 생성 코드에 의존하지 않는 Go 테스트 모듈입니다. 스트림의 빈 읽기·
+오류·대용량 처리와 Materialized 디코더 범위 검사를 한곳에서 정의합니다. 예제 11·12의
+cgo·purego 테스트는 각 백엔드의 함수를 이 테스트에 연결합니다.
+
+예제의 `go.mod`는 로컬 `replace`로 이 모듈을 참조하므로 테스트할 때 저장소의 디렉터리
+구조를 유지하세요. 일반 `go test ./...`가 공통 테스트를 함께 실행하며, 공통 모듈만 따로
+실행하는 것은 네이티브 바인딩 검증을 대신하지 않습니다.
+
+구조만 바꾸는 리팩토링에서는 먼저 `zig build test`와 각 예제의 `go-check`를 실행하세요.
+스냅샷을 갱신해야 한다면 단순 구조 변경이 아닌 이유를 별도로 확인해야 합니다.
 
 ## 문서 변경
 
