@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T11:36:27Z"
 description: Isolate ownership lowering and handle emission, and share lifecycle race contracts without ABI changes
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-05T11:27:17Z"
 ---
 > NEXT: Start with ownership lowering. ([Phase 0](phases/00-ownership-lowering.md))
@@ -9,7 +10,7 @@ registered_at: "2026-09-05T11:27:17Z"
 
 - [x] [Phase 00: Ownership lowering](phases/00-ownership-lowering.md)
 - [x] [Phase 01: Handle emitter](phases/01-handle-emitter.md)
-- [ ] [Phase 02: Lifecycle contracts](phases/02-lifecycle-contracts.md)
+- [x] [Phase 02: Lifecycle contracts](phases/02-lifecycle-contracts.md)
 
 # Shared Verification
 

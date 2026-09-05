@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-05T11:36:27Z"
 depends_on:
 - "119-handle-lifecycle-refactor#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Shared contracts pass, cgo race tests pass, Windows cross compilation and generation/ABI checks pass; changes committed without push.
 > NEXT: none
