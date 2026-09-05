@@ -3,7 +3,6 @@
 const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
-const naming = @import("naming");
 const common = @import("common.zig");
 const emit = @import("emit.zig");
 const public_writers = @import("public_writers.zig");

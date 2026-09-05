@@ -320,7 +320,7 @@ pub fn build(b: *std.Build) void {
         },
     });
     const validate_module = b.createModule(.{
-        .root_source_file = b.path("src/gen/validate.zig"),
+        .root_source_file = b.path("src/gen/validate/validate.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{

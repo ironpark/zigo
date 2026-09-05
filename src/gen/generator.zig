@@ -6,7 +6,7 @@ const lower = @import("lower");
 const naming = @import("naming");
 const semantic = @import("semantic");
 const stream_return = @import("stream_return");
-const validate = @import("validate.zig");
+const validate = @import("validate/validate.zig");
 
 pub const Options = struct {
     package: []const u8,

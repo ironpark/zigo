@@ -2,7 +2,7 @@
 depends_on:
 - "109-109-go-generator-restructure#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: No file under `src/gen/validate/` exceeds 1,500 lines.
 > NEXT: none

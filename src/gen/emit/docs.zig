@@ -2,9 +2,7 @@
 const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
-const naming = @import("naming");
 const emit = @import("emit.zig");
-const public = @import("public.zig");
 const lower = @import("lower");
 
 /// Every generated Go package gets exactly one `// Package ...` doc, on the

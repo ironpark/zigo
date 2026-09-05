@@ -7,7 +7,7 @@ const binding_report = @import("gen/report.zig");
 const semantic = @import("semantic");
 const stream_return = @import("stream_return");
 const sync_check = @import("sync_check");
-const validate = @import("gen/validate.zig");
+const validate = @import("gen/validate/validate.zig");
 
 pub fn main(init: std.process.Init) !void {
     const allocator = init.arena.allocator();
