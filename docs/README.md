@@ -17,11 +17,12 @@
 | 실행 가능한 코드에서 기능 찾기 | [예제 선택 가이드](examples.md) |
 | `CGO_ENABLED=0`으로 빌드하거나 공유 라이브러리 배포하기 | [공유 라이브러리와 purego](purego.md) |
 | 지원하지 않는 타입, ABI 또는 수명 제약 확인하기 | [지원 범위와 제한사항](limitations.md) |
+| materialized 결과 버퍼의 바이너리 형식 확인하기 | [Materialized 버퍼 ABI](abi.md) |
 | zigo 저장소를 빌드하고 변경 검증하기 | [프로젝트 개발](development.md) |
 
 ## 기본 경로와 선택 기능
 
-기본 사용 경로는 `.cgo_static`입니다. Zig와 Go가 설치된 네이티브 macOS/Linux 환경에서
+기본 사용 경로는 `.cgo_static`입니다. Zig, Go와 C 컴파일러가 준비된 네이티브 환경에서
 먼저 이 경로로 동작을 확인하세요. `.cgo_dynamic`, `.purego`, 자동 API 발견과 ABI 검사는
 필요가 분명할 때 추가하는 선택 기능입니다.
 

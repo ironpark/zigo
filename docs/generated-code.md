@@ -4,6 +4,10 @@ zigo는 Go 소스와 ABI 메타데이터를 소스 트리에 생성하고, 헤�
 `zig-out/`에 빌드합니다. 이 문서는 어떤 파일을 커밋하고 어떤 스텝을 CI에서 실행할지
 설명합니다.
 
+일상 작업에는 [표준 빌드 스텝](#표준-빌드-스텝), [생성 파일과 커밋 대상](#생성-파일),
+[개발 순서](#일상-개발-순서), [CI 구성](#ci-권장-구성)을 참고하세요.
+뒤의 타입별 C 표현과 [메타데이터 계약](#메타데이터-계약)은 ABI를 검토할 때 필요한 상세 설명입니다.
+
 ## 표준 빌드 스텝
 
 `addStandardSteps`를 호출하면 다음 스텝이 등록됩니다.
@@ -11,12 +15,18 @@ zigo는 Go 소스와 ABI 메타데이터를 소스 트리에 생성하고, 헤�
 | 스텝 | 소스 트리 수정 | 역할 |
 |---|---:|---|
 | `go` | 예 | Go 소스·메타데이터 생성, 헤더와 네이티브 라이브러리 설치 |
-| `go-check` | 아니요 | 커밋된 Go 생성물이 현재 선언과 같은지 검사 |
+| `go-check` | 링크 입력 파일만 가능¹ | 커밋된 Go 생성물이 현재 선언과 같은지 검사 |
 | `go-report` | 아니요 | 최종 이름, 심볼, ownership, retention과 타입 표현 설명 |
 | `go-doctor` | 아니요 | Go, `gofmt`, 백엔드별 도구·아티팩트 전제 검사 |
-| `go-lib` | 아니요 | 네이티브 바인딩 라이브러리를 `zig-out/lib`에 설치 |
-| `go-verify` | 아니요 | `go-check`, `go-lib`, `go-doctor`, 선택적 `abi-check` 집계 |
+| `go-lib` | 링크 입력 파일만 가능¹ | 네이티브 라이브러리와 헤더를 설정된 설치 경로에 설치 |
+| `go-verify` | 링크 입력 파일만 가능¹ | `go-check`, `go-lib`, `go-doctor`, 선택적 `abi-check` 집계 |
+| `go-coverage` | `coverage_json` 지정 시 | 공개 Zig API의 바인딩 포함·제외·누락 현황 출력 |
 | `abi-check` | 아니요 | `abi_base`가 있을 때 breaking contract 변경 검사 |
+
+¹ cgo 정적 링크에 별도 정적 입력이 있으면 `zigo_link_inputs_gen.go`를 생성하거나 갱신합니다. 이 파일은
+커밋·최신 상태 비교 대상에서 제외됩니다. `go-check`는 네이티브 코드를 빌드하지만 바인딩
+라이브러리 설치까지 보장하지 않으므로, 새 체크아웃에서 Go 테스트를 실행할 때는 `go-lib`도
+실행하세요. `go-verify`는 이 두 단계를 포함합니다.
 
 여러 바인딩 세트에 `name_prefix`를 사용하면 `admin-go`, `admin-go-check`처럼 이름 앞에
 접두사가 붙습니다.
@@ -42,7 +52,8 @@ zig build go-report
 
 최종 Go 이름과 C 심볼, 타입 표현, constructor/`Close` mapping, ownership,
 파라미터 retention과 이름 보강 출처, tagged union projection 및 purego 로딩 정책을
-출력합니다. 두 명령 모두 소스와 생성물을 수정하지 않습니다.
+출력합니다. 두 명령 모두 소스 트리를 수정하지 않습니다. 다만 purego의 `go-doctor`는
+검사할 공유 라이브러리를 설치 경로에 먼저 빌드·설치합니다.
 
 ## 생성 파일
 
@@ -82,19 +93,8 @@ purego의 로더·함수 테이블·callback token registry는 설정한 `intern
 생성 바이트와 공개 API를 유지합니다.
 
 `zigo_link_inputs_gen.go`는 다른 생성 파일과 달리 commit하지 않습니다. module이 별도 정적
-archive를 링크할 때만 build step이 실제 절대 경로로 다시 쓰며, `go-check`는 이 파일을
+archive를 링크할 때만 build step이 `${SRCDIR}` 기준 설치 상대 경로로 다시 쓰며, `go-check`는 이 파일을
 비교하거나 obsolete로 판정하지 않습니다.
-
-## `Must*` 동반 API
-
-`addGoBindings`에 `.go_must_variants = true`를 지정하면 생성된 Go 시그니처가 `error`를
-반환하는 모든 공개 함수와 메서드에 `Must<Name>`이 함께 생깁니다. 생성자는 최종 공개 이름
-`New<Type>`을 기준으로 `MustNew<Type>`이 되고, `Close`에는 동반 API를 만들지 않습니다.
-단일 값은 값만, optional 같은 다중 값은 오류를 뺀 값들을 반환하며, 오류 전용 함수는 반환값이
-없습니다. 실패 시 checked API가 만든 동일한 `*HandleError`, `*NativePanicError`, 생성
-오류 등을 panic 값으로 사용합니다. 생성 이름이 기존 공개 이름과 겹치면 `ZIGO024`입니다.
-
-옵션 기본값은 `false`이므로 켜지 않은 binding의 생성 파일은 바뀌지 않습니다.
 
 정적 아카이브 이름은 Windows 타깃에서도 `lib<name>_zigo.a`입니다. Zig 관례라면
 `<name>_zigo.lib`가 되겠지만, 생성된 `#cgo LDFLAGS` 줄이 모든 호스트에서 같은 경로를
@@ -103,9 +103,9 @@ archive를 링크할 때만 build step이 실제 절대 경로로 다시 쓰며,
 
 purego는 헤더를 `zigo_<name>_purego.h`, 라이브러리를 macOS의
 `lib<name>_zigo.dylib`, Linux의 `lib<name>_zigo.so`, Windows의 `<name>_zigo.dll`로
-설치합니다. Windows 파일명에는 관례대로 `lib` 접두사가 붙지 않고, 설치 디렉터리도
-`zig-out/lib`이 아니라 Zig 관례에 따라 `zig-out/bin`입니다(`lib`에는 import
-라이브러리가 들어갑니다). `GoBindings.library_path`가 실제 설치 경로입니다. cgo와 purego를
+설치합니다. Windows 파일명에는 관례대로 `lib` 접두사가 붙지 않습니다. 설치 디렉터리는
+Windows에서도 기본 `zig-out/lib`이며, `install.library_dir`로 바꿀 수 있습니다.
+`GoBindings.library_path`가 실제 설치 경로입니다. cgo 정적 링크와 purego를
 한 `zig-out`에 빌드해도 서로 덮어쓰지 않습니다.
 
 purego raw 패키지는 로더 primitive를 build tag로 나눈 파일 두 개를 함께 생성합니다.
@@ -136,8 +136,10 @@ API는 세 OS에서 동일합니다.
 
 | 위치 | 소유자 | Git에 커밋 |
 |---|---|---:|
-| `go/**/*_gen.go` | zigo | 예 |
+| `go/**/*_gen.go` (`zigo_link_inputs_gen.go` 제외) | zigo | 예 |
+| `go/**/zigo_link_inputs_gen.go` | 빌드 스텝 | 아니요 (`.gitignore`에 추가) |
 | `go/go.mod` | 사용자와 zigo | 예 |
+| `go/go.sum` (의존성이 있을 때) | Go 도구 | 예 |
 | `zigo/semantic.json` | zigo | 예 |
 | `zigo/errors.lock.json` | zigo | 예 |
 | `zig-out/` | 빌드 캐시/출력 | 아니요 |
@@ -146,6 +148,17 @@ API는 세 OS에서 동일합니다.
 API를 작성할 수 있습니다. stale 정리는 생성 marker가 있는 파일만 삭제하므로 루트 발행
 중에도 `go.mod`와 marker가 없는 사용자 파일을 보존합니다. 단, 생성될 파일과 **같은
 파일명**을 사용하면 갱신 대상이 되므로 피해야 합니다.
+
+## `Must*` 동반 API
+
+`addGoBindings`에 `.go_must_variants = true`를 지정하면 생성된 Go 시그니처가 `error`를
+반환하는 모든 공개 함수와 메서드에 `Must<Name>`이 함께 생깁니다. 생성자는 최종 공개 이름
+`New<Type>`을 기준으로 `MustNew<Type>`이 되고, `Close`에는 동반 API를 만들지 않습니다.
+단일 값은 값만, optional 같은 다중 값은 오류를 뺀 값들을 반환하며, 오류 전용 함수는 반환값이
+없습니다. 실패 시 checked API가 만든 동일한 `*HandleError`, `*NativePanicError`, 생성
+오류 등을 panic 값으로 사용합니다. 생성 이름이 기존 공개 이름과 겹치면 `ZIGO024`입니다.
+
+옵션 기본값은 `false`이므로 켜지 않은 binding의 생성 파일은 바뀌지 않습니다.
 
 ## `extern struct`에 필드를 더하는 일
 
@@ -168,7 +181,7 @@ API를 작성할 수 있습니다. stale 정리는 생성 marker가 있는 파�
 `?T`는 presence와 값을 함께 나릅니다. 어느 쪽도 값 하나에 겹쳐 넣지 않으므로 부재와
 "값이 0인 present"가 언제나 구별됩니다.
 
-- 매개변수는 nullable pointer 하나입니다. `?u32`는 `const int32_t *value`, `?Point`는
+- 매개변수는 nullable pointer 하나입니다. `?u32`는 `const uint32_t *value`, `?Point`는
   `const zg_point *origin`이 되고, NULL이 부재입니다. scalar에도 별도의 `bool has_x`를
   두지 않는 이유는 포인터 하나가 이미 두 상태를 다 담기 때문이고, 덕분에 `extern struct`
   optional과 lowering이 한 갈래로 유지됩니다.
@@ -503,15 +516,17 @@ zig build go-doctor
 git status --short
 ```
 
-raw 패키지 경로 또는 모드를 바꾸면 이전 `_gen.go`를 직접 삭제해야 합니다. `go-check`는 zigo
-marker가 있는 이전 파일을 오래된 파일로 보고합니다.
+raw 패키지 경로 또는 모드를 바꾼 뒤 `zig build go`를 실행하면 같은 `go_dir` 안의 이전
+zigo 생성 파일을 자동으로 정리합니다. `go-check`는 정리하지 않고 오래된 파일을 보고합니다.
+`go_dir` 자체를 옮겼다면 이전 디렉터리는 자동 정리 범위 밖이므로 사용자 파일을 확인한 뒤
+별도로 정리하세요. `zigo_link_inputs_gen.go`도 자동 정리에서 제외됩니다.
 
 ## CI 권장 구성
 
 기본 검사:
 
 ```bash
-zig build go-check
+zig build go-check go-lib
 (cd go && go test ./...)
 ```
 
@@ -529,6 +544,5 @@ zig build go-verify
 zig build go-check abi-check
 ```
 
-CI에서 `go`를 실행한 뒤 `git diff --exit-code`를 검사하는 방식도 가능하지만, 소스 트리를
-수정하지 않고 누락·내용 변경·오래된 파일을 구분하는 `go-check`가 의도를 더 직접적으로
-표현합니다.
+CI에서 `go`를 실행한 뒤 `git diff --exit-code`를 검사하는 방식도 가능합니다. `go-check`는
+커밋 대상 Go 생성물을 수정하지 않고 누락·내용 변경·오래된 파일을 구분해 보고합니다.

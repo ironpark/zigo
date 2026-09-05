@@ -29,7 +29,7 @@ zig build go
 
 ```bash
 for example in examples/*; do
-  (cd "$example" && zig build test go-check abi-check go-coverage --summary all)
+  (cd "$example" && zig build test go-check go-lib abi-check go-coverage --summary all)
   (cd "$example/go" && go test ./...)
 done
 ```
@@ -65,15 +65,18 @@ done
 purego 바인딩을 가진 예제는 공유 라이브러리를 먼저 만들고 cgo를 끈 상태에서 테스트합니다.
 
 ```bash
-for example in examples/04-callback examples/07-event-queue examples/08-telemetry-hub; do
+for example in examples/04-callback examples/07-event-queue examples/08-telemetry-hub \
+  examples/11-io-streams examples/12-materialized; do
   (cd "$example" && zig build purego-go purego-go-verify --summary all)
   (cd "$example/go-purego" && CGO_ENABLED=0 go test ./...)
 done
 
 (cd examples/10-tagged-union && zig build go go-verify -Dpurego --summary all)
+(cd examples/10-tagged-union/go-purego && CGO_ENABLED=0 go test ./...)
 ```
 
-`08-telemetry-hub`는 자동 내부 로더가 `../../zig-out/lib`에서 라이브러리를 찾습니다.
+`08-telemetry-hub`는 자동 내부 로더가 설정된 `zig-out/purego-layout/lib`의
+`telemetry_native` 공유 라이브러리를 찾습니다.
 `10-tagged-union`의 로더 실패 경로 테스트는 `ZIGO_TEST_LIBRARY`와
 `ZIGO_TEST_WRONG_LIBRARY`가 없으면 건너뜁니다. CI의 전체 플랫폼 매트릭스와 환경 변수 구성은
 [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)이 정본입니다.

@@ -20,8 +20,9 @@ go version
 go env CGO_ENABLED CC
 ```
 
-purego도 Zig 공유 라이브러리를 현재 호스트에서 빌드해야 합니다. 먼저 이 가이드의 기본
-경로를 완료한 뒤 [purego 가이드](purego.md)로 이동하는 것을 권장합니다.
+purego도 실행할 OS·아키텍처에 맞는 Zig 공유 라이브러리가 필요하며, 크로스 빌드할 수
+있습니다. 먼저 이 가이드의 기본 경로를 완료한 뒤 [purego 가이드](purego.md)로 이동하는 것을
+권장합니다.
 
 ### Windows에서 cgo 백엔드 쓰기
 
@@ -33,8 +34,9 @@ CRT, 링커를 함께 들고 다닙니다. 추가 `CGO_CFLAGS`나 `CGO_LDFLAGS`�
 $env:CGO_ENABLED = "1"
 $env:CC = "zig cc"
 zig build go
-cd go
+Push-Location go
 go test ./...
+Pop-Location
 ```
 
 POSIX 호스트에서 Windows용으로 크로스 빌드할 수도 있습니다. 정적 아카이브를 타깃으로
@@ -163,13 +165,39 @@ zig build go
 `zigo/` 아래에 ABI 메타데이터가 생깁니다. 이어서 Go 테스트를 실행합니다.
 
 ```bash
-cd go
-go test ./...
+(cd go && go test ./...)
 ```
 
 생성된 공개 패키지의 실제 import path는 기본적으로 `<go_module>/<go_package>`입니다.
 `go_package_path = "."`이면 `<go_module>`, 다른 경로이면 `<go_module>/<go_package_path>`입니다. `go_package`를
 지정하지 않았다면 `name`을 snake_case로 정규화한 값이 사용됩니다.
+
+실제 함수 호출까지 확인하려면 `go/mylib/add_test.go`를 직접 만드세요. 이 파일은 사용자
+코드이므로 바인딩을 다시 생성해도 보존됩니다.
+
+```go
+package mylib_test
+
+import (
+    "testing"
+
+    "example.com/mylib/go/mylib"
+)
+
+func TestAdd(t *testing.T) {
+    if got := mylib.Add(2, 3); got != 5 {
+        t.Fatalf("Add(2, 3) = %d, want 5", got)
+    }
+}
+```
+
+프로젝트 루트에서 다음을 실행하면 `TestAdd`가 통과해야 합니다. 사용자 테스트를 추가하기
+전의 `go test`는 생성 패키지의 컴파일만 확인하며 `[no test files]`를 출력할 수 있습니다.
+
+```bash
+gofmt -w go/mylib/add_test.go
+(cd go && go test -v ./...)
+```
 
 ## 5. 일상 개발 흐름
 
@@ -190,10 +218,11 @@ zig build go-doctor
 
 ## 6. CI에서 생성물 검사
 
-CI에서는 파일을 갱신하는 `go` 대신 읽기 전용 검사인 `go-check`를 사용합니다.
+CI에서는 `go-check`로 커밋된 생성물을 검사하고, `go-lib`로 Go 테스트에 필요한 네이티브
+라이브러리와 헤더를 설치합니다. 아래 명령은 프로젝트 루트에서 실행합니다.
 
 ```bash
-zig build go-check
+zig build go-check go-lib
 (cd go && go test ./...)
 ```
 
@@ -206,6 +235,10 @@ zig build go-check
 독립 배포된 이전 버전과 ABI 호환성을 유지해야 할 때만 `.abi_base = "HEAD"` 같은 기준을
 설정하고 CI에 `zig build abi-check`를 추가합니다. 같은 저장소 안에서 항상 함께 배포하는
 코드라면 필수 설정이 아닙니다.
+
+`go-check`는 커밋 대상 Go 생성물을 갱신하지 않습니다. 다만 별도 정적 링크 입력이 있는
+프로젝트에서는 커밋하지 않는 `zigo_link_inputs_gen.go`를 만들 수 있습니다.
+자세한 범위는 [생성물과 CI 관리](generated-code.md)를 참고하세요.
 
 ## 문제가 생겼다면
 

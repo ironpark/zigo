@@ -433,9 +433,10 @@ namespace가 들어가지 않으므로, 서로 다른 namespace의 같은 함수
 
 ## 생성물 관리
 
-생성된 Go 파일과 ABI metadata는 커밋하고 CI에서 `go-check`를 실행합니다. 독립 배포
+생성된 Go 파일(`zigo_link_inputs_gen.go` 제외)과 ABI metadata는 커밋하고 CI에서
+`go-check go-lib`를 실행한 뒤 Go 테스트를 실행합니다. 독립 배포
 버전과 호환성을 보증할 때는 `abi_base`와 `abi-check`도 사용합니다. raw package 경로를
-바꾼 뒤에는 이전 `_gen.go`를 직접 삭제해야 합니다.
+바꾼 뒤에는 `zig build go`로 같은 `go_dir` 안의 이전 zigo 생성 파일을 자동 정리합니다.
 
 생성기는 모든 산출물을 메모리에서 준비한 뒤 쓰므로 검증·렌더링·메모리 실패에는 기존
 tree가 유지됩니다. 다만 최종 파일 쓰기 중 전원 차단이나 filesystem 장애가 발생했을 때

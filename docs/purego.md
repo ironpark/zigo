@@ -15,7 +15,7 @@ zigo의 기본값 `.cgo_static`은 정적 링크와 cgo 호출을 사용합니�
 | 링크 시점 | 빌드 | 실행 |
 | Go 빌드 요구사항 | C 컴파일러, `CGO_ENABLED=1` | 없음, `CGO_ENABLED=0` 가능 |
 | 네이티브 아티팩트 | 빌드 시 링크 | 실행 시 로드 |
-| 배포 단위 | Go 바이너리 하나 | Go 바이너리 + 플랫폼별 공유 라이브러리 |
+| 배포 단위 | 정적: Go 바이너리, 동적: Go 바이너리 + 공유 라이브러리 | Go 바이너리 + 플랫폼별 공유 라이브러리 |
 | 추가 Go 의존성 | 없음 | `github.com/ebitengine/purego v0.10.2` |
 | 지원 범위 | macOS/Linux amd64·arm64, Windows amd64(`CC="zig cc"`), 크로스 컴파일 가능 | macOS/Linux/Windows amd64·arm64, 크로스 컴파일 가능 |
 
@@ -246,8 +246,8 @@ library search paths: ${EXECUTABLE_DIR}:${EXECUTABLE_DIR}/../lib:../../zig-out/l
   생성되는 Go 트리는 타깃과 무관하게 동일하다. 타깃에 따라 달라지는 진단도 없으므로
   어느 호스트에서 어느 타깃으로 생성해도 커밋된 트리는 바이트 단위로 같다.
 
-  cgo 백엔드를 `CC="zig cc -target x86_64-windows"`로 크로스 링크하는 방법은 검증하지
-  않았다. 후속 작업 후보일 뿐 지원 대상이 아니다.
+  Windows amd64용 cgo 크로스 링크도 지원합니다. GNU ABI를 명시하는 명령과 제약은
+  [Windows에서 cgo 백엔드 쓰기](getting-started.md#windows에서-cgo-백엔드-쓰기)를 참고하세요.
 - 크로스 컴파일에서 리플렉션은 **호스트**의 타입 레이아웃을 기록한다. 지원 타깃은 모두
   64비트 리틀엔디언이므로 고정폭 정수·실수·포인터는 일치하지만, `c_long`·`c_ulong`은
   Windows에서 4바이트, Linux·macOS에서 8바이트로 갈린다. 생성된 shim은 mirror하는 모든

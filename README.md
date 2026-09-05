@@ -57,6 +57,16 @@ pub fn build(b: *std.Build) void {
 
 `src/bindings.zig`에는 Go에 노출할 API를 선언합니다.
 
+먼저 `src/root.zig`에 예제에서 노출할 함수를 준비합니다.
+
+```zig
+pub fn add(a: i32, b: i32) i32 {
+    return a + b;
+}
+```
+
+다음 선언을 `src/bindings.zig`에 저장합니다.
+
 ```zig
 const zigo = @import("zigo");
 const mylib = @import("mylib");
@@ -71,11 +81,12 @@ pub const bindings = zigo.define(.{
 
 ```bash
 zig build go
-cd go
-go test ./...
+(cd go && go test ./...)
 ```
 
-생성된 Go 소스와 `zigo/` 메타데이터는 저장소에 커밋합니다. 전체 설정과 CI 연결은
+공개 함수는 `example.com/mylib/go/mylib` 패키지의 `mylib.Add(2, 3)`으로 호출합니다.
+생성된 Go 소스와 `zigo/` 메타데이터는 저장소에 커밋합니다
+([커밋 대상과 예외](docs/generated-code.md#생성-파일)). 실제 Go 호출 테스트와 CI 연결은
 [시작 가이드](docs/getting-started.md)에서 이어집니다.
 
 ## 백엔드 선택

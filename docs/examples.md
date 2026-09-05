@@ -44,8 +44,15 @@ zig build purego-go purego-go-verify
 (cd go-purego && CGO_ENABLED=0 go test ./...)
 ```
 
-`10-tagged-union`은 `-Dpurego` 옵션으로 같은 생성 경로의 백엔드를 바꿉니다. 세부적인 공유
-라이브러리 로드 전제는 [purego 가이드](purego.md)를 참고하세요.
+`10-tagged-union`은 `-Dpurego` 옵션을 사용하며, 생성 경로도 `go`에서 `go-purego`로 바뀝니다.
+
+```bash
+# 저장소 루트에서 실행
+(cd examples/10-tagged-union && zig build go go-verify -Dpurego)
+(cd examples/10-tagged-union/go-purego && CGO_ENABLED=0 go test ./...)
+```
+
+공유 라이브러리 로드 전제는 [purego 가이드](purego.md)를 참고하세요.
 
 ## 전체 예제
 
