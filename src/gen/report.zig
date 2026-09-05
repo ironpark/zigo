@@ -139,7 +139,7 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
 fn publicFunctionNameAlloc(allocator: std.mem.Allocator, document: semantic.Semantic, function: semantic.SemanticFn) ![]u8 {
     const name = try semantic.publicFunctionNameAlloc(allocator, document, function);
     defer allocator.free(name);
-    if (semantic.constructorForInit(document, function) == null and
+    if (semantic.constructorForInit(document.constructors, function) == null and
         constructorForDeinit(document, function) != null)
         return std.fmt.allocPrint(allocator, "(*{s}).Close [lifecycle mapping]", .{function.receiver.?});
     if (function.receiver) |receiver|

@@ -8,6 +8,7 @@ const common = @import("common.zig");
 const docs = @import("docs.zig");
 const emit = @import("emit.zig");
 const public = @import("public.zig");
+const lower = @import("lower");
 
 /// A handle payload surfaces as a borrowed reference; everything else keeps
 /// its ordinary public Go type.
@@ -115,18 +116,8 @@ pub fn writeCheckedErrorReturn(
     try writer.print("{s}\n", .{error_expression});
 }
 
-/// Whether any parameter is declared narrower than the C integer that carries
-/// it, which is what makes the Go signature grow an `error`.
 pub fn hasNarrowIntParameter(function: semantic.SemanticFn) bool {
-    for (function.params) |parameter| {
-        if (abi.narrowInt(parameter.type) != null) return true;
-        if (parameter.direction == .in and abi.narrowSliceElement(parameter.type) != null) return true;
-        if (parameter.flatten) |fields| for (fields) |field| {
-            const node = if (field.type == .optional) field.type.optional.child.* else field.type;
-            if (abi.narrowInt(node) != null) return true;
-        };
-    }
-    return false;
+    return lower.hasNarrowIntParameter(function);
 }
 
 pub fn programHasNarrowIntParameter(program: abi.Program) bool {

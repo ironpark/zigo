@@ -5,6 +5,7 @@ const semantic = @import("semantic");
 const naming = @import("naming");
 const emit = @import("emit.zig");
 const public = @import("public.zig");
+const lower = @import("lower");
 
 /// Every generated Go package gets exactly one `// Package ...` doc, on the
 /// file that carries the package's own API. The body comes from
@@ -211,8 +212,7 @@ pub fn returnsBorrowedView(function: semantic.SemanticFn) bool {
 }
 
 pub fn hasOpaqueParameter(function: semantic.SemanticFn) bool {
-    for (function.params) |parameter| if (parameter.type == .opaque_ptr) return true;
-    return false;
+    return lower.hasOpaqueParameter(function);
 }
 
 pub fn programUsesOptionalPointer(program: abi.Program) bool {

@@ -325,6 +325,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .imports = &.{
             .{ .name = "abi", .module = generator_modules.abi },
+            .{ .name = "lower", .module = generator_modules.lower },
             .{ .name = "naming", .module = generator_modules.naming },
             .{ .name = "diagnostic", .module = generator_modules.diagnostic },
             .{ .name = "semantic", .module = generator_modules.semantic },

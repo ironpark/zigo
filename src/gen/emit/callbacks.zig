@@ -8,6 +8,7 @@ const common = @import("common.zig");
 const emit = @import("emit.zig");
 const public_writers = @import("public_writers.zig");
 const purego = @import("purego.zig");
+const lower = @import("lower");
 
 pub fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
     const prefix = if (options.raw_colocated) "zigoRaw" else "";
@@ -240,7 +241,7 @@ pub fn callbackSignatureIndex(program: abi.Program, wanted: semantic.Parameter) 
     for (program.functions) |function| {
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (parameter.type != .callback or !isFirstCallbackSignatureAt(program, function.origin, parameter_index)) continue;
-            if (callbackSignatureEqual(parameter.type.callback, wanted.type.callback) and
+            if (lower.callbackSignatureEqual(parameter.type.callback, wanted.type.callback) and
                 callbackFailureResult(program, parameter) == callbackFailureResult(program, wanted)) return index;
             index += 1;
         }
@@ -253,32 +254,11 @@ fn isFirstCallbackSignatureAt(program: abi.Program, origin: *const semantic.Sema
     for (program.functions) |function| {
         for (function.origin.params, 0..) |parameter, candidate_index| {
             if (function.origin == origin and candidate_index == parameter_index) return true;
-            if (parameter.type == .callback and callbackSignatureEqual(parameter.type.callback, wanted.type.callback) and
+            if (parameter.type == .callback and lower.callbackSignatureEqual(parameter.type.callback, wanted.type.callback) and
                 callbackFailureResult(program, parameter) == callbackFailureResult(program, wanted)) return false;
         }
     }
     unreachable;
-}
-
-pub fn callbackSignatureEqual(lhs: semantic.Callback, rhs: semantic.Callback) bool {
-    if (lhs.params.len != rhs.params.len or !semanticTypeEqual(lhs.@"return".*, rhs.@"return".*)) return false;
-    for (lhs.params, rhs.params) |a, b| if (!semanticTypeEqual(a, b)) return false;
-    return true;
-}
-
-fn semanticTypeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
-    if (std.meta.activeTag(lhs) != std.meta.activeTag(rhs)) return false;
-    return switch (lhs) {
-        .void, .bool => true,
-        .int => |value| value.bits == rhs.int.bits and value.signed == rhs.int.signed and value.is_usize == rhs.int.is_usize,
-        .float => |value| value.bits == rhs.float.bits,
-        .@"enum" => |value| std.mem.eql(u8, value.ref, rhs.@"enum".ref),
-        .value_struct => |value| std.mem.eql(u8, value.ref, rhs.value_struct.ref),
-        .opaque_ptr => |value| value.by_value == rhs.opaque_ptr.by_value and value.@"const" == rhs.opaque_ptr.@"const" and value.nullable == rhs.opaque_ptr.nullable and std.mem.eql(u8, value.ref, rhs.opaque_ptr.ref),
-        .slice => |value| value.@"const" == rhs.slice.@"const" and value.sentinel == rhs.slice.sentinel and
-            value.sentinel_many == rhs.slice.sentinel_many and semanticTypeEqual(value.element.*, rhs.slice.element.*),
-        else => false,
-    };
 }
 
 /// The one place a Go error crossing back from a callback or a stream is

@@ -3,6 +3,7 @@ const abi = @import("abi");
 const diagnostic = @import("diagnostic");
 const semantic = @import("semantic");
 const naming = @import("naming");
+const lower = @import("lower");
 
 /// Every rejection reaches the user as a rendered diagnostic, so this only
 /// reports whether the document had one. Callers that want the text call
@@ -20,15 +21,19 @@ pub fn mustVariantNames(allocator: std.mem.Allocator, document: semantic.Semanti
     if (try findMustVariantIssue(scratch.allocator(), document) != null) return error.InvalidSemantic;
 }
 
-pub fn findMustVariantIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+pub fn findMustVariantIssue(allocator: std.mem.Allocator, source_document: semantic.Semantic) !?diagnostic.Diagnostic {
+    // The generator decides Must variants on the promoted functions, so the
+    // collision check looks at the same shapes it will emit.
+    var document = source_document;
+    document.functions = try lower.promoteCheckedFunctions(allocator, source_document, source_document.functions);
+    defer allocator.free(document.functions);
     // Every pair of functions compares public names, so they are spelled once.
     const public_names = try allocator.alloc([]const u8, document.functions.len);
     defer allocator.free(public_names);
     for (document.functions, public_names) |function, *name| name.* = try semantic.publicFunctionNameAlloc(allocator, document, function);
     defer for (public_names) |name| allocator.free(name);
     for (document.functions, public_names) |function, public_name| {
-        if (!mustVariantEligible(document, function)) continue;
-        if (std.mem.eql(u8, public_name, "Close")) continue;
+        if (!try lower.mustVariant(allocator, document, function)) continue;
         const must_name = try std.fmt.allocPrint(allocator, "Must{s}", .{public_name});
         defer allocator.free(must_name);
         if (function.receiver == null) for (document.types) |declaration| {
@@ -69,21 +74,6 @@ pub fn findMustVariantIssue(allocator: std.mem.Allocator, document: semantic.Sem
         }
     }
     return null;
-}
-
-fn mustVariantEligible(document: semantic.Semantic, function: semantic.SemanticFn) bool {
-    if (constructorDeinitFor(document, function) != null) return false;
-    if (semantic.constructorForInit(document, function) != null or function.@"return" == .error_union or function.receiver != null) return true;
-    for (function.params) |parameter| {
-        if (parameter.type == .opaque_ptr or parameter.type == .io_stream or parameter.goError()) return true;
-        if (abi.narrowInt(parameter.type) != null) return true;
-        if (parameter.type == .slice and abi.narrowInt(parameter.type.slice.element.*) != null) return true;
-        if (parameter.flatten) |fields| for (fields) |field| {
-            const node = if (field.type == .optional) field.type.optional.child.* else field.type;
-            if (abi.narrowInt(node) != null) return true;
-        };
-    }
-    return false;
 }
 
 /// Every purego callback dispatcher returns one pointer-sized integer, which is
@@ -190,7 +180,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             ),
         };
         if (function.childOfReceiver() and
-            (function.receiver == null or semantic.constructorForInit(document, function) == null)) return .{
+            (function.receiver == null or semantic.constructorForInit(document.constructors, function) == null)) return .{
             .severity = .@"error",
             .code = "ZIGO030",
             .message = "child-of-receiver metadata requires a receiver constructor",
@@ -624,9 +614,9 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 ),
                 .site = functionSiteFor(function, function_path),
                 .hint = "rename one declaration, or give it a `.name` that resolves to a different Go identifier",
-                .note = if (semantic.constructorForInit(document, function) != null)
+                .note = if (semantic.constructorForInit(document.constructors, function) != null)
                     try functionOrConstructorRenameNoteAlloc(allocator, document, function)
-                else if (semantic.constructorForInit(document, previous) != null)
+                else if (semantic.constructorForInit(document.constructors, previous) != null)
                     try functionOrConstructorRenameNoteAlloc(allocator, document, previous)
                 else
                     try functionRenameNoteAlloc(allocator, function),
@@ -1278,7 +1268,7 @@ fn cIdentifierBackendIssue(allocator: std.mem.Allocator, document: semantic.Sema
         const label = try std.fmt.allocPrint(scratch, "function `{s}`", .{try functionDeclarationAlloc(scratch, function)});
         // A constructor's symbol is named after the type it builds, so a
         // collision on it is answered by renaming that type.
-        const note: CIdentifierOrigin.Note = if (semantic.constructorForInit(document, function)) |constructor|
+        const note: CIdentifierOrigin.Note = if (semantic.constructorForInit(document.constructors, function)) |constructor|
             .{ .type = try typeNameRenameNoteAlloc(scratch, constructor.type, .@"opaque") }
         else
             .{ .function = try functionRenameNoteAlloc(scratch, function) };
@@ -1449,7 +1439,7 @@ fn functionRenameNoteAlloc(allocator: std.mem.Allocator, function: semantic.Sema
 }
 
 fn functionOrConstructorRenameNoteAlloc(allocator: std.mem.Allocator, document: semantic.Semantic, function: semantic.SemanticFn) ![]u8 {
-    if (semantic.constructorForInit(document, function)) |constructor| {
+    if (semantic.constructorForInit(document.constructors, function)) |constructor| {
         for (document.types) |declaration| {
             if (std.mem.eql(u8, declaration.name, constructor.type)) return typeRenameNoteAlloc(allocator, declaration);
         }
@@ -2228,6 +2218,43 @@ test "generated Must names participate in ZIGO024 collision checks" {
     try std.testing.expectEqualStrings("ZIGO024", issue.code);
     try std.testing.expect(std.mem.indexOf(u8, issue.message, "MustPing") != null);
     try std.testing.expectError(error.InvalidSemantic, mustVariantNames(std.testing.allocator, document));
+}
+
+test "a callback signature flagged go_error elsewhere gives a free function a Must variant" {
+    var status: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true, .is_usize = false } };
+    const observer: semantic.TypeNode = .{ .callback = .{ .has_userdata = true, .params = &.{}, .@"return" = &status } };
+    const usize_node: semantic.TypeNode = .{ .int = .{ .bits = 64, .signed = false, .is_usize = true } };
+    const document: semantic.Semantic = .{
+        .functions = &.{
+            .{
+                .name = "run",
+                .params = &.{
+                    .{ .name = "observer", .type = observer },
+                    .{ .name = "userdata", .type = usize_node },
+                },
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_run",
+            },
+            .{
+                .name = "watch",
+                .params = &.{
+                    .{ .go_error = true, .name = "observer", .type = observer },
+                    .{ .name = "userdata", .type = usize_node },
+                },
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_watch",
+            },
+            .{ .name = "mustRun", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_must_run" },
+        },
+        .package = "collision",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const issue = (try findMustVariantIssue(arena.allocator(), document)) orelse return error.MissingDiagnostic;
+    try std.testing.expectEqualStrings("ZIGO024", issue.code);
+    try std.testing.expect(std.mem.indexOf(u8, issue.message, "MustRun") != null);
 }
 
 fn hasMatchingRelease(document: semantic.Semantic, retaining: semantic.SemanticFn) bool {

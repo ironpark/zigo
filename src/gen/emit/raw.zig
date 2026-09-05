@@ -11,6 +11,7 @@ const public = @import("public.zig");
 const public_writers = @import("public_writers.zig");
 const purego = @import("purego.zig");
 const shim = @import("shim.zig");
+const lower = @import("lower");
 
 /// The Go mirror of an `extern struct`. cgo converts member by member and does
 /// not depend on this layout, but purego hands the address straight to the
@@ -848,16 +849,8 @@ fn writeCgoSliceReturn(
     try writer.print(")(unsafe.Pointer({s})), int({s})))\n\treturn result{s}\n", .{ pointer_name, length_name, suffix });
 }
 
-/// The lowered release function for a caller-owned slice return, if any. The
-/// symbol alone is enough for cgo, but purego calls through the bindings table
-/// and needs the function's Go name and receiver too.
-/// Whether this function is some other function's declared release target.
 pub fn isReleaseTarget(program: abi.Program, function: semantic.SemanticFn) bool {
-    for (program.functions) |candidate| {
-        const release = candidate.origin.release orelse continue;
-        if (std.mem.eql(u8, release, function.name)) return true;
-    }
-    return false;
+    return lower.isReleaseTarget(program.origins, function);
 }
 
 pub fn releaseFunction(program: abi.Program, function: abi.AbiFn) ?abi.AbiFn {

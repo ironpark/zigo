@@ -7,7 +7,7 @@ registered_at: "2026-09-05T06:56:05Z"
 
 # Phases
 
-- [ ] [Phase 00: Split emit.zig by output file](phases/00-split-emit.md)
+- [x] [Phase 00: Split emit.zig by output file](phases/00-split-emit.md)
 - [ ] [Phase 01: One Must-variant rule in lowering](phases/01-must-variant-rule.md)
 - [ ] [Phase 02: Helper references from rendered text](phases/02-helpers-by-render.md)
 - [ ] [Phase 03: Materialized layouts by index](phases/03-materialized-index.md)

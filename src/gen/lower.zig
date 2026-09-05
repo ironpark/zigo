@@ -443,6 +443,8 @@ pub fn semanticDocumentForBackend(
             .origin = function,
             .materialized_return = materialized_return,
             .materialized_out = materialized_out,
+            .must_variant = try mustVariant(allocator, document, function.*),
+            .reaches_callback_errors = functionReachesCallbackErrors(document.functions, document.constructors, function.*),
             .ret_struct = if (function.@"return" == .value_struct and !semantic.isPackedValue(document.types, function.@"return"))
                 structRecord(structs, function.@"return".value_struct.ref)
             else if (function.@"return" == .optional and function.@"return".optional.child.* == .value_struct and
@@ -503,6 +505,7 @@ pub fn semanticDocumentForBackend(
         .error_codes = error_codes,
         .handles = handles,
         .functions = functions,
+        .origins = document.functions,
         .live_fields = try lowerLiveFields(allocator, document),
         .materialized_layouts = materialized_layouts,
         .packed_structs = try lowerPackedStructs(allocator, document),
@@ -514,6 +517,180 @@ pub fn semanticDocumentForBackend(
         .structs = structs,
         .types = document.types,
     };
+}
+
+// ---------------------------------------------------------------------------
+// Function-shape rules. Emit and validate both ask these questions, so they
+// are answered here once, on the semantic document lowering works from, and
+// recorded on the lowered function where the answer is per function.
+// ---------------------------------------------------------------------------
+
+/// The single rule for whether the public package emits a `Must<Name>`
+/// wrapper: the function is public, its Go name is not `Close`, and its
+/// signature carries an error -- a constructor, an error-union return, or any
+/// of the checks that grow a signature by `error`.
+pub fn mustVariant(allocator: std.mem.Allocator, document: semantic.Semantic, function: semantic.SemanticFn) !bool {
+    const constructor = semantic.constructorForInit(document.constructors, function);
+    if (constructor == null and constructorForDeinit(document.constructors, function) != null) return false;
+    if (isReleaseTarget(document.functions, function)) return false;
+    const public_name = try semantic.publicFunctionNameAlloc(allocator, document, function);
+    defer allocator.free(public_name);
+    if (std.mem.eql(u8, public_name, "Close")) return false;
+    return constructor != null or function.@"return" == .error_union or needsCheck(document, function);
+}
+
+/// Whether the public wrapper returns an `error` the Zig signature does not
+/// declare: a handle that can be nil or closed, a narrow integer that can be
+/// out of range, a stream that can fail, or a callback that can return a Go
+/// error.
+pub fn needsCheck(document: semantic.Semantic, function: semantic.SemanticFn) bool {
+    return function.receiver != null or hasOpaqueParameter(function) or hasNarrowIntParameter(function) or
+        functionHasStream(function) or functionReachesCallbackErrors(document.functions, document.constructors, function);
+}
+
+pub fn hasOpaqueParameter(function: semantic.SemanticFn) bool {
+    for (function.params) |parameter| if (parameter.type == .opaque_ptr) return true;
+    return false;
+}
+
+pub fn functionHasStream(function: semantic.SemanticFn) bool {
+    for (function.params) |parameter| if (parameter.type == .io_stream) return true;
+    return false;
+}
+
+/// Whether any parameter is declared narrower than the C integer that carries
+/// it, which is what makes the Go signature grow an `error`.
+pub fn hasNarrowIntParameter(function: semantic.SemanticFn) bool {
+    for (function.params) |parameter| {
+        if (abi.narrowInt(parameter.type) != null) return true;
+        if (parameter.direction == .in and abi.narrowSliceElement(parameter.type) != null) return true;
+        if (parameter.flatten) |fields| for (fields) |field| {
+            const node = if (field.type == .optional) field.type.optional.child.* else field.type;
+            if (abi.narrowInt(node) != null) return true;
+        };
+    }
+    return false;
+}
+
+pub fn hasRetainedCallback(function: semantic.SemanticFn) bool {
+    for (function.params) |parameter| if (parameter.type == .callback and parameter.retention == .retained) return true;
+    return false;
+}
+
+/// True for a callback whose Go type returns an `error` alongside its value,
+/// from `param_meta.<name>.go_error`.
+pub fn isErrorCallback(parameter: semantic.Parameter) bool {
+    return parameter.type == .callback and parameter.goError();
+}
+
+/// `go_error` is a property of the callback *signature*, not of one
+/// parameter. One Go type is generated per ABI signature and shared by every
+/// parameter that has it, and on purego one dispatcher is too, so the answer
+/// has to be the same everywhere the signature appears: one `.go_error = true`
+/// makes the whole signature carry an error.
+pub fn callbackSignatureHasGoError(functions: []const semantic.SemanticFn, wanted: semantic.Callback) bool {
+    for (functions) |function| {
+        for (function.params) |parameter| {
+            if (!isErrorCallback(parameter)) continue;
+            if (callbackSignatureEqual(parameter.type.callback, wanted)) return true;
+        }
+    }
+    return false;
+}
+
+/// The effective answer for one parameter: the signature's, not the
+/// parameter's own flag.
+pub fn callbackHasGoError(functions: []const semantic.SemanticFn, parameter: semantic.Parameter) bool {
+    return parameter.type == .callback and callbackSignatureHasGoError(functions, parameter.type.callback);
+}
+
+pub fn callbackSignatureEqual(lhs: semantic.Callback, rhs: semantic.Callback) bool {
+    if (lhs.params.len != rhs.params.len or !semanticTypeEqual(lhs.@"return".*, rhs.@"return".*)) return false;
+    for (lhs.params, rhs.params) |a, b| if (!semanticTypeEqual(a, b)) return false;
+    return true;
+}
+
+fn semanticTypeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
+    if (std.meta.activeTag(lhs) != std.meta.activeTag(rhs)) return false;
+    return switch (lhs) {
+        .void, .bool => true,
+        .int => |value| value.bits == rhs.int.bits and value.signed == rhs.int.signed and value.is_usize == rhs.int.is_usize,
+        .float => |value| value.bits == rhs.float.bits,
+        .@"enum" => |value| std.mem.eql(u8, value.ref, rhs.@"enum".ref),
+        .value_struct => |value| std.mem.eql(u8, value.ref, rhs.value_struct.ref),
+        .opaque_ptr => |value| value.by_value == rhs.opaque_ptr.by_value and value.@"const" == rhs.opaque_ptr.@"const" and value.nullable == rhs.opaque_ptr.nullable and std.mem.eql(u8, value.ref, rhs.opaque_ptr.ref),
+        .slice => |value| value.@"const" == rhs.slice.@"const" and value.sentinel == rhs.slice.sentinel and
+            value.sentinel_many == rhs.slice.sentinel_many and semanticTypeEqual(value.element.*, rhs.slice.element.*),
+        else => false,
+    };
+}
+
+pub fn constructorForDeinit(constructors: []const semantic.Constructor, function: semantic.SemanticFn) ?semantic.Constructor {
+    const receiver = function.receiver orelse return null;
+    for (constructors) |constructor| {
+        if (std.mem.eql(u8, constructor.type, receiver) and std.mem.eql(u8, constructor.deinit, function.name)) return constructor;
+    }
+    return null;
+}
+
+pub fn constructorForType(constructors: []const semantic.Constructor, type_name: []const u8) ?semantic.Constructor {
+    for (constructors) |constructor| if (std.mem.eql(u8, constructor.type, type_name)) return constructor;
+    return null;
+}
+
+/// The constructed handle type a caller-owned function returns, when it is one.
+pub fn ownedOpaqueReturn(constructors: []const semantic.Constructor, function: semantic.SemanticFn) ?[]const u8 {
+    if (function.ownership != .caller) return null;
+    const node = function.@"return".errorPayload();
+    if (node != .opaque_ptr) return null;
+    if (constructorForType(constructors, node.opaque_ptr.ref) == null) return null;
+    return node.opaque_ptr.ref;
+}
+
+/// The handle type that keeps a function's retained callbacks alive: the
+/// constructed type, the owned return, or the receiver.
+pub fn retainedCallbackOwner(constructors: []const semantic.Constructor, function: semantic.SemanticFn) ?[]const u8 {
+    if (!hasRetainedCallback(function)) return null;
+    if (semantic.constructorForInit(constructors, function)) |constructor| return constructor.type;
+    if (ownedOpaqueReturn(constructors, function)) |owned| return owned;
+    return function.receiver;
+}
+
+/// True when a handle of this type retains a callback that can report a Go
+/// error. Such an error has nowhere to go at the moment it happens -- native
+/// code is running -- so it surfaces on the next call that touches the handle,
+/// exactly as a retained callback's panic does.
+pub fn typeOwnsErrorCallbacks(functions: []const semantic.SemanticFn, constructors: []const semantic.Constructor, type_name: []const u8) bool {
+    for (functions) |function| {
+        const owner = retainedCallbackOwner(constructors, function) orelse continue;
+        if (!std.mem.eql(u8, owner, type_name)) continue;
+        for (function.params) |parameter| {
+            if (parameter.retention == .retained and callbackHasGoError(functions, parameter)) return true;
+        }
+    }
+    return false;
+}
+
+/// True when native code running under this call can reach a Go callback that
+/// returns an `error`: one passed to the call, or one a touched handle retains.
+pub fn functionReachesCallbackErrors(functions: []const semantic.SemanticFn, constructors: []const semantic.Constructor, function: semantic.SemanticFn) bool {
+    if (function.receiver) |receiver| {
+        if (typeOwnsErrorCallbacks(functions, constructors, receiver)) return true;
+    }
+    for (function.params) |parameter| {
+        if (callbackHasGoError(functions, parameter)) return true;
+        if (parameter.type == .opaque_ptr and typeOwnsErrorCallbacks(functions, constructors, parameter.type.opaque_ptr.ref)) return true;
+    }
+    return false;
+}
+
+/// Whether this function is some other function's declared release target.
+pub fn isReleaseTarget(functions: []const semantic.SemanticFn, function: semantic.SemanticFn) bool {
+    for (functions) |candidate| {
+        const release = candidate.release orelse continue;
+        if (std.mem.eql(u8, release, function.name)) return true;
+    }
+    return false;
 }
 
 fn flattenedFieldNameAlloc(
@@ -771,7 +948,7 @@ fn lowerTaggedUnionSnapshots(allocator: std.mem.Allocator, document: semantic.Se
 ///
 /// Doing it here rather than in each emitter means the shim, the header, the
 /// raw layer, the public layer, and both backends all see one shape.
-fn promoteCheckedFunctions(
+pub fn promoteCheckedFunctions(
     allocator: std.mem.Allocator,
     document: semantic.Semantic,
     functions: []const semantic.SemanticFn,
@@ -1019,7 +1196,7 @@ fn numberRetainedCallbackSlots(
         @memset(tables[index], null);
     }
     const owners = try allocator.alloc(?[]const u8, functions.len);
-    for (functions, 0..) |lowered, index| owners[index] = retainedCallbackOwner(document, lowered.origin.*);
+    for (functions, 0..) |lowered, index| owners[index] = retainedCallbackOwner(document.constructors, lowered.origin.*);
     for (handles) |*handle| {
         var slot: usize = 0;
         for (functions, 0..) |lowered, index| {
@@ -1034,32 +1211,6 @@ fn numberRetainedCallbackSlots(
         handle.retained_callback_slots = slot;
     }
     for (functions, 0..) |*lowered, index| lowered.callback_slots = tables[index];
-}
-
-fn retainedCallbackOwner(document: semantic.Semantic, function: semantic.SemanticFn) ?[]const u8 {
-    var retains = false;
-    for (function.params) |parameter| {
-        if (parameter.type == .callback and parameter.retention == .retained) retains = true;
-    }
-    if (!retains) return null;
-    for (document.constructors) |constructor| {
-        if (std.mem.eql(u8, constructor.init, function.name) and
-            std.mem.eql(u8, constructor.type, function.goOwner() orelse "")) return constructor.type;
-    }
-    if (ownedOpaqueReturn(document, function)) |owned| return owned;
-    return function.receiver;
-}
-
-/// The handle type a caller-owned return hands over, when that type is one the
-/// document constructs.
-fn ownedOpaqueReturn(document: semantic.Semantic, function: semantic.SemanticFn) ?[]const u8 {
-    if (function.ownership != .caller) return null;
-    const node = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
-    if (node != .opaque_ptr) return null;
-    for (document.constructors) |constructor| {
-        if (std.mem.eql(u8, constructor.type, node.opaque_ptr.ref)) return node.opaque_ptr.ref;
-    }
-    return null;
 }
 
 /// The members `omit` left standing, per declaration. Applying the rule here

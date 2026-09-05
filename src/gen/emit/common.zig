@@ -13,6 +13,7 @@ const public_runtime = @import("public_runtime.zig");
 const public_writers = @import("public_writers.zig");
 const raw = @import("raw.zig");
 const shim = @import("shim.zig");
+const lower = @import("lower");
 
 /// Public Go package name: the override when set, otherwise the snake_case
 /// binding name. The C header and the native library keep the binding name.
@@ -687,8 +688,7 @@ pub fn programHasCallbacks(program: abi.Program) bool {
 }
 
 pub fn functionHasStream(function: semantic.SemanticFn) bool {
-    for (function.params) |parameter| if (parameter.type == .io_stream) return true;
-    return false;
+    return lower.functionHasStream(function);
 }
 
 /// True when some generated function takes a `context.Context` to be stopped
@@ -738,10 +738,8 @@ pub fn programHasStreamRead(program: abi.Program) bool {
     return false;
 }
 
-/// True for a callback whose Go type returns an `error` alongside its value,
-/// from `param_meta.<name>.go_error`.
 fn isErrorCallback(parameter: semantic.Parameter) bool {
-    return parameter.type == .callback and parameter.goError();
+    return lower.isErrorCallback(parameter);
 }
 
 pub fn programHasCallbackErrors(program: abi.Program) bool {
@@ -751,53 +749,16 @@ pub fn programHasCallbackErrors(program: abi.Program) bool {
     return false;
 }
 
-/// `go_error` is a property of the callback *signature*, not of one
-/// parameter. One Go type is generated per ABI signature and shared by every
-/// parameter that has it, and on purego one dispatcher is too, so the answer
-/// has to be the same everywhere the signature appears: one `.go_error = true`
-/// makes the whole signature carry an error.
 pub fn callbackSignatureHasGoError(program: abi.Program, wanted: semantic.Callback) bool {
-    for (program.functions) |function| {
-        for (function.origin.params) |parameter| {
-            if (!isErrorCallback(parameter)) continue;
-            if (callbacks.callbackSignatureEqual(parameter.type.callback, wanted)) return true;
-        }
-    }
-    return false;
+    return lower.callbackSignatureHasGoError(program.origins, wanted);
 }
 
-/// The effective answer for one parameter: the signature's, not the
-/// parameter's own flag.
 pub fn callbackHasGoError(program: abi.Program, parameter: semantic.Parameter) bool {
-    return parameter.type == .callback and callbackSignatureHasGoError(program, parameter.type.callback);
+    return lower.callbackHasGoError(program.origins, parameter);
 }
 
-/// True when a handle of this type retains a callback that can report a Go
-/// error. Such an error has nowhere to go at the moment it happens -- native
-/// code is running -- so it surfaces on the next call that touches the handle,
-/// exactly as a retained callback's panic does.
 pub fn typeOwnsErrorCallbacks(program: abi.Program, type_name: []const u8) bool {
-    for (program.functions) |function| {
-        const owner = retainedCallbackOwner(program, function) orelse continue;
-        if (!std.mem.eql(u8, owner, type_name)) continue;
-        for (function.origin.params) |parameter| {
-            if (parameter.retention == .retained and callbackHasGoError(program, parameter)) return true;
-        }
-    }
-    return false;
-}
-
-/// True when native code running under this call can reach a Go callback that
-/// returns an `error`: one passed to the call, or one a touched handle retains.
-pub fn functionReachesCallbackErrors(program: abi.Program, function: semantic.SemanticFn) bool {
-    if (function.receiver) |receiver| {
-        if (typeOwnsErrorCallbacks(program, receiver)) return true;
-    }
-    for (function.params) |parameter| {
-        if (callbackHasGoError(program, parameter)) return true;
-        if (parameter.type == .opaque_ptr and typeOwnsErrorCallbacks(program, parameter.type.opaque_ptr.ref)) return true;
-    }
-    return false;
+    return lower.typeOwnsErrorCallbacks(program.origins, program.constructors, type_name);
 }
 
 /// True for a `*std.Io.Reader` parameter, the only direction with a
@@ -843,14 +804,8 @@ pub fn typeOwnsCallbacks(program: abi.Program, type_name: []const u8) bool {
     return false;
 }
 
-/// The handle that owns callbacks retained by one function. Constructors and
-/// caller-owned handle returns transfer them to the new result; an ordinary
-/// retaining method transfers them to its receiver.
 pub fn retainedCallbackOwner(program: abi.Program, function: abi.AbiFn) ?[]const u8 {
-    if (!hasRetainedCallback(function.origin.*)) return null;
-    if (constructorForInit(program, function.origin.*)) |constructor| return constructor.type;
-    if (ownedOpaqueReturn(program, function.origin.*)) |owned| return owned;
-    return function.origin.receiver;
+    return lower.retainedCallbackOwner(program.constructors, function.origin.*);
 }
 
 pub fn retainedCallbacksBelongToReceiver(program: abi.Program, function: semantic.SemanticFn) bool {
@@ -876,8 +831,7 @@ pub fn publicNeedsRuntime(program: abi.Program) bool {
 }
 
 pub fn hasRetainedCallback(function: semantic.SemanticFn) bool {
-    for (function.params) |parameter| if (parameter.type == .callback and parameter.retention == .retained) return true;
-    return false;
+    return lower.hasRetainedCallback(function);
 }
 
 /// The package-level callback counters diagnose ownership that can outlive a
@@ -1013,24 +967,15 @@ test "receiver names extend past parameters and retain the short default" {
 }
 
 pub fn constructorForInit(program: abi.Program, function: semantic.SemanticFn) ?semantic.Constructor {
-    for (program.constructors) |constructor| {
-        if (std.mem.eql(u8, constructor.init, function.name) and
-            std.mem.eql(u8, constructor.type, function.goOwner() orelse "")) return constructor;
-    }
-    return null;
+    return semantic.constructorForInit(program.constructors, function);
 }
 
 pub fn constructorForDeinit(program: abi.Program, function: semantic.SemanticFn) ?semantic.Constructor {
-    const receiver = function.receiver orelse return null;
-    for (program.constructors) |constructor| {
-        if (std.mem.eql(u8, constructor.type, receiver) and std.mem.eql(u8, constructor.deinit, function.name)) return constructor;
-    }
-    return null;
+    return lower.constructorForDeinit(program.constructors, function);
 }
 
 pub fn constructorForType(program: abi.Program, type_name: []const u8) ?semantic.Constructor {
-    for (program.constructors) |constructor| if (std.mem.eql(u8, constructor.type, type_name)) return constructor;
-    return null;
+    return lower.constructorForType(program.constructors, type_name);
 }
 
 pub fn dependentParentType(program: abi.Program, type_name: []const u8) ?[]const u8 {
@@ -1122,11 +1067,7 @@ pub fn typeReturnsBorrowedViews(program: abi.Program, type_name: []const u8) boo
 }
 
 pub fn ownedOpaqueReturn(program: abi.Program, function: semantic.SemanticFn) ?[]const u8 {
-    if (function.ownership != .caller) return null;
-    const node = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
-    if (node != .opaque_ptr) return null;
-    if (constructorForType(program, node.opaque_ptr.ref) == null) return null;
-    return node.opaque_ptr.ref;
+    return lower.ownedOpaqueReturn(program.constructors, function);
 }
 
 /// Every constructed handle goes through its `new` helper, which is what

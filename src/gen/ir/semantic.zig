@@ -669,8 +669,8 @@ pub fn zigCallPathAlloc(allocator: std.mem.Allocator, function: SemanticFn) ![]u
 /// validate, the report and `abi-diff` -- has to match it: a method
 /// constructor carries a receiver, so screening receivers out here reports
 /// `(*T).Init` for a function the generator publishes as `NewT`.
-pub fn constructorForInit(document: Semantic, function: SemanticFn) ?Constructor {
-    for (document.constructors) |constructor| {
+pub fn constructorForInit(constructors: []const Constructor, function: SemanticFn) ?Constructor {
+    for (constructors) |constructor| {
         if (std.mem.eql(u8, constructor.init, function.name) and
             std.mem.eql(u8, constructor.type, function.goOwner() orelse "")) return constructor;
     }
@@ -691,7 +691,7 @@ pub fn publicFunctionNameAlloc(
     document: Semantic,
     function: SemanticFn,
 ) ![]u8 {
-    if (constructorForInit(document, function)) |constructor| {
+    if (constructorForInit(document.constructors, function)) |constructor| {
         if (constructor.name) |name| return naming.pascalAlloc(allocator, name);
         return std.fmt.allocPrint(allocator, "New{s}", .{constructor.type});
     }

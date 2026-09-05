@@ -2,7 +2,7 @@
 depends_on:
 - "109-109-go-generator-restructure#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `grep -rn "Close"` under `src/gen` shows one Must-variant exclusion.
 > NEXT: none

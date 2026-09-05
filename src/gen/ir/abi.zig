@@ -301,6 +301,13 @@ pub const AbiFn = struct {
     /// as one serialized buffer. Go decodes it back into the caller's slice.
     materialized_out: ?MaterializedOut = null,
 
+    /// Whether the public package also emits a `Must<Name>` wrapper. Decided
+    /// once by `lower.mustVariant`; the collision check reads the same rule.
+    must_variant: bool = false,
+    /// True when native code running under this call can reach a Go callback
+    /// that returns an `error`, which grows the public signature by one.
+    reaches_callback_errors: bool = false,
+
     pub const MaterializedReturn = struct { root: []const u8, is_slice: bool, fallible: bool = false };
     pub const MaterializedOut = struct { source_index: usize, root: []const u8, fallible: bool = false };
 
@@ -467,6 +474,9 @@ pub const Program = struct {
     error_codes: []const ErrorCode = &.{},
     handles: []const AbiOpaque = &.{},
     functions: []const AbiFn,
+    /// The semantic functions `functions[].origin` point into, after checked
+    /// promotion, for the rules that need to look across the whole program.
+    origins: []const semantic.SemanticFn = &.{},
     io: ?[]const u8 = null,
     live_fields: []const AbiLiveFields = &.{},
     materialized_layouts: []const MaterializedLayout = &.{},

@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T07:01:40Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: No file under `src/gen/emit/` exceeds 3,000 lines.
 > NEXT: none

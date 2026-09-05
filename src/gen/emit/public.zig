@@ -434,7 +434,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         // A callback that can return a Go error grows the signature the same
         // way a stream does: the error happened while native code was running
         // and has nowhere else to be told.
-        const has_callback_error = common.functionReachesCallbackErrors(program, function.origin.*);
+        const has_callback_error = function.reaches_callback_errors;
         const needs_check = needs_handle_check or needs_range_check or has_stream or has_callback_error;
         try docs.writePublicFunctionDoc(writer, function.origin.*, go_name, owned_type, public_writers.functionReachesCallbacks(program, function.origin.*), has_callback_error);
         if (function.origin.receiver) |receiver| {
@@ -817,8 +817,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
             }
         }
         try writer.writeAll("}\n");
-        if (options.go_must_variants and !std.mem.eql(u8, go_name, "Close") and
-            (constructor != null or needs_check or function.origin.@"return" == .error_union))
+        if (options.go_must_variants and function.must_variant)
             try must.renderMustVariant(scope, allocator, writer, function, go_names, receiver_name, go_name, owned_type);
     }
 }
