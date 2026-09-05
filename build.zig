@@ -39,6 +39,9 @@ pub const Link = enum {
 /// How a generated purego package finds its shared library at run time.
 pub const LibraryLoading = build_options.LibraryLoading;
 
+/// The `GOOS`/`GOARCH` pair of a native target.
+pub const GoTarget = build_options.GoTarget;
+
 /// Where the generated native artifacts are installed under Zig's prefix.
 pub const Install = struct {
     library_dir: std.Build.InstallDir = .lib,
@@ -61,6 +64,14 @@ pub const Options = struct {
     optimize: std.builtin.OptimizeMode,
     prefix: []const u8 = "zg",
     link: Link = .cgo_static,
+    /// Further platforms the cgo backends build the native library for, on
+    /// top of `target`. The Go tree is generated once; its cgo block carries a
+    /// `#cgo <goos>,<goarch> LDFLAGS` line per platform, each naming that
+    /// platform's library under `install.library_dir/<goos>_<goarch>/`. The
+    /// caller's module graph is rebuilt per platform, so it must not carry
+    /// prebuilt archives. Empty keeps the single-target layout. Not for purego,
+    /// which resolves the library at run time on every platform.
+    targets: []const std.Build.ResolvedTarget = &.{},
     cgo_flags: ?CgoFlags = null,
     abi_base: ?[]const u8 = null,
     /// Slash-separated path of the raw package inside `go_dir`. Setting it to
@@ -103,17 +114,33 @@ pub const GoBindings = struct {
     report: *std.Build.Step.Run,
     doctor: *std.Build.Step.Run,
     coverage: *std.Build.Step.Run,
+    /// The native library for `Options.target`. See `native_libraries` for
+    /// the others when `Options.targets` is set.
     lib: *std.Build.Step.Compile,
-    /// Installs the native binding library into the configured directory.
+    /// Installs the native binding library for `Options.target`.
     install_library: *std.Build.Step.InstallArtifact,
     /// Target-specific basename of the native binding library.
     library_filename: []const u8,
     /// Full path `install_library` writes the native binding library to.
     /// Use this rather than joining a directory with `library_filename`.
     library_path: []const u8,
+    /// One entry per platform, `Options.target` first. A single-target
+    /// binding set has exactly one.
+    native_libraries: []const NativeLibrary,
     semantic_json: std.Build.LazyPath,
     /// Build-time-resolved names used by the generated `#cgo pkg-config:` line.
     resolved_pkg_config: ?std.Build.LazyPath,
+
+    pub const NativeLibrary = struct {
+        target: std.Build.ResolvedTarget,
+        /// Go's name for the platform; null when Go has no cgo toolchain for
+        /// it, which only a single-target build can be.
+        go_target: ?GoTarget,
+        lib: *std.Build.Step.Compile,
+        install_library: *std.Build.Step.InstallArtifact,
+        /// Full path `install_library` writes the library to.
+        library_path: []const u8,
+    };
 
     pub const StandardStepOptions = struct {
         /// Prefixes conventional step names for projects with multiple binding sets.
@@ -154,9 +181,11 @@ pub const GoBindings = struct {
         const coverage = b.step(standardStepName(b, options.name_prefix, "go-coverage"), "Report public Zig API binding coverage");
         coverage.dependOn(&self.coverage.step);
         const library = b.step(standardStepName(b, options.name_prefix, "go-lib"), "Build and install the native Go binding library");
-        library.dependOn(&self.install_library.step);
-        if (options.install_library_by_default) {
-            b.getInstallStep().dependOn(&self.install_library.step);
+        for (self.native_libraries) |native| {
+            library.dependOn(&native.install_library.step);
+            if (options.install_library_by_default) {
+                b.getInstallStep().dependOn(&native.install_library.step);
+            }
         }
         const abi_check = if (self.abi_check) |run| step: {
             const value = b.step(standardStepName(b, options.name_prefix, "abi-check"), "Fail on a breaking Go binding ABI change");
@@ -306,6 +335,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         error.InvalidSearchPath => @panic("library_loading.search_paths entries must not contain quotes, backslashes or control characters"),
         error.InvalidEnvironmentName => @panic("library_loading.env_vars entries must be ASCII letters, digits and underscores, and must not start with a digit"),
     };
+    const native_targets = resolveNativeTargets(b, options, backend, install);
     const zigo_dependency = b.dependencyFromBuildZig(@This(), .{});
     const generator = modules.addGenerator(b, zigo_dependency.path("src/main.zig"), b.graph.host, .Debug);
     // Reflection runs the bindings module as an executable on the host, so the
@@ -432,6 +462,9 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         semantic_run.step.dependOn(&resolution.step);
     }
     if (static_link_inputs.paths.len != 0) generate.addArg("--ldflags-external");
+    if (options.targets.len != 0) {
+        for (native_targets) |native| generate.addArgs(&.{ "--cgo-target", b.fmt("{s}/{s}", .{ native.go_target.?.goos, native.go_target.?.goarch }) });
+    }
     if (options.go_must_variants) generate.addArg("--go-must-variants");
     if (backend == .purego) addLibraryLoadingArgs(b, generate, library_loading);
     if (raw_package.colocated) generate.addArg("--raw-colocated");
@@ -471,7 +504,12 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     if (raw_package.colocated) report.addArg("--raw-colocated");
     const doctor = b.addRunArtifact(generator);
     doctor.has_side_effects = true;
-    doctor.addArgs(&.{ "doctor", "--target", if (isRunnableOnHost(options.target.result, b.graph.host.result)) "native" else "cross" });
+    // One platform the host can run is enough for the checks that load or
+    // link the artifact; every other platform still cross-builds.
+    const any_native_target = for (native_targets) |native| {
+        if (isRunnableOnHost(native.resolved.result, b.graph.host.result)) break true;
+    } else false;
+    doctor.addArgs(&.{ "doctor", "--target", if (any_native_target) "native" else "cross" });
     doctor.addArgs(&.{ "--backend", @tagName(backend) });
     // Report the same gofmt the update step will format with.
     if (options.gofmt) |gofmt| doctor.addArgs(&.{ "--gofmt", gofmt });
@@ -493,73 +531,94 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         break :check run;
     } else null;
 
-    const shim_module = b.createModule(.{
-        .root_source_file = generated_dir.path(b, "shim.zig"),
-        .target = options.target,
-        .optimize = options.optimize,
-        .imports = &.{.{ .name = "zigo_target", .module = options.module }},
-    });
-    const lib = b.addLibrary(.{
-        .name = install.library_stem,
-        .linkage = switch (link_mode) {
-            .static => .static,
-            .dynamic => .dynamic,
-        },
-        .root_module = shim_module,
-    });
-    lib.root_module.addCSourceFile(.{ .file = generated_dir.path(b, "panic.c"), .flags = &.{"-fno-sanitize=undefined"} });
-    lib.root_module.linkSystemLibrary("c", .{});
-    // Zig names a Windows static archive `<name>.lib`, but the generated cgo
-    // `#cgo LDFLAGS` line spells the archive `lib<name>.a` on every host so the
-    // emitted block stays identical across targets. `zig cc` links a `.a`
-    // archive on Windows just as happily, so rename the install instead of
-    // teaching the generator a per-OS filename.
-    const static_windows_archive = link_mode == .static and
-        options.target.result.os.tag == .windows;
-    const install_lib = b.addInstallArtifact(lib, .{
-        .dest_dir = .{ .override = install.library_dir },
-        // A Windows cgo dynamic link consumes the import library, so it must
-        // follow the DLL into the configured search directory as well.
-        .implib_dir = if (link_mode == .dynamic and options.target.result.os.tag == .windows)
-            .{ .override = install.library_dir }
-        else
-            .disabled,
-        .dest_sub_path = if (static_windows_archive)
-            b.fmt("lib{s}.a", .{install.library_stem})
-        else
-            null,
-    });
+    var native_libraries: std.ArrayList(GoBindings.NativeLibrary) = .empty;
+    var target_link_flags: std.ArrayList(steps.PublishCgoLinkFlags.TargetFlags) = .empty;
+    for (native_targets) |native| {
+        const shim_module = b.createModule(.{
+            .root_source_file = generated_dir.path(b, "shim.zig"),
+            .target = native.resolved,
+            .optimize = options.optimize,
+            .imports = &.{.{ .name = "zigo_target", .module = native.module }},
+        });
+        const lib = b.addLibrary(.{
+            .name = install.library_stem,
+            .linkage = switch (link_mode) {
+                .static => .static,
+                .dynamic => .dynamic,
+            },
+            .root_module = shim_module,
+        });
+        lib.root_module.addCSourceFile(.{ .file = generated_dir.path(b, "panic.c"), .flags = &.{"-fno-sanitize=undefined"} });
+        lib.root_module.linkSystemLibrary("c", .{});
+        // Zig names a Windows static archive `<name>.lib`, but the generated cgo
+        // `#cgo LDFLAGS` line spells the archive `lib<name>.a` on every host so the
+        // emitted block stays identical across targets. `zig cc` links a `.a`
+        // archive on Windows just as happily, so rename the install instead of
+        // teaching the generator a per-OS filename.
+        const static_windows_archive = link_mode == .static and
+            native.resolved.result.os.tag == .windows;
+        const install_lib = b.addInstallArtifact(lib, .{
+            .dest_dir = .{ .override = native.library_dir },
+            // A Windows cgo dynamic link consumes the import library, so it must
+            // follow the DLL into the configured search directory as well.
+            .implib_dir = if (link_mode == .dynamic and native.resolved.result.os.tag == .windows)
+                .{ .override = native.library_dir }
+            else
+                .disabled,
+            .dest_sub_path = if (static_windows_archive)
+                b.fmt("lib{s}.a", .{install.library_stem})
+            else
+                null,
+        });
+        native_libraries.append(b.allocator, .{
+            .target = native.resolved,
+            .go_target = native.go_target,
+            .lib = lib,
+            .install_library = install_lib,
+            .library_path = installedLibraryPath(b, install_lib),
+        }) catch @panic("OOM");
+
+        if (static_link_inputs.paths.len == 0) continue;
+        // Every static input is installed beside the binding archive under the
+        // same `lib<name>.a` spelling, so the cgo line names install-relative
+        // paths on every host: cgo rejects a bare `.lib`, and a Windows absolute
+        // path with backslashes never survives its flag check. A retargeted
+        // module graph carries its own rebuilt inputs, collected here per target.
+        var native_inputs: steps.LinkInputCollector = .{};
+        native_inputs.collect(b, native.module);
+        const inputs = native_inputs.staticLibraryInputs();
+        var archives: std.ArrayList([]const u8) = .empty;
+        var installs: std.ArrayList(*std.Build.Step) = .empty;
+        for (inputs.paths, inputs.names) |path, name| {
+            if (std.mem.eql(u8, name, install.library_stem)) @panic(b.fmt("static link input '{s}' collides with the binding library name", .{name}));
+            const file_name = b.fmt("lib{s}.a", .{name});
+            const install_archive = b.addInstallFileWithDir(path, native.library_dir, file_name);
+            installs.append(b.allocator, &install_archive.step) catch @panic("OOM");
+            archives.append(b.allocator, b.fmt("{s}/{s}", .{ native.cgo_library_dir, file_name })) catch @panic("OOM");
+        }
+        target_link_flags.append(b.allocator, .{
+            .constraint = native.constraint,
+            .binding_archive = b.fmt("{s}/lib{s}.a", .{ native.cgo_library_dir, install.library_stem }),
+            .static_archives = archives.items,
+            .archive_installs = installs.items,
+        }) catch @panic("OOM");
+    }
+    const primary = native_libraries.items[0];
     const install_header = b.addInstallFileWithDir(
         generated_dir.path(b, install.generated_header_name),
         install.header_dir,
         install.header_name,
     );
-    // Every static input is installed beside the binding archive under the
-    // same `lib<name>.a` spelling, so the cgo line names install-relative
-    // paths on every host: cgo rejects a bare `.lib`, and a Windows absolute
-    // path with backslashes never survives its flag check.
-    const volatile_link_flags = if (static_link_inputs.paths.len != 0) flags: {
-        const relative_path = b.pathJoin(&.{ raw_package.path, steps.volatile_cgo_link_file });
-        var archives: std.ArrayList([]const u8) = .empty;
-        var installs: std.ArrayList(*std.Build.Step) = .empty;
-        for (static_link_inputs.paths, static_link_inputs.names) |path, name| {
-            if (std.mem.eql(u8, name, install.library_stem)) @panic(b.fmt("static link input '{s}' collides with the binding library name", .{name}));
-            const file_name = b.fmt("lib{s}.a", .{name});
-            const install_archive = b.addInstallFileWithDir(path, install.library_dir, file_name);
-            installs.append(b.allocator, &install_archive.step) catch @panic("OOM");
-            archives.append(b.allocator, b.fmt("{s}/{s}", .{ install.cgo_library_dir, file_name })) catch @panic("OOM");
-        }
-        const publish_flags = steps.PublishCgoLinkFlags.create(b, .{
-            .output_path = sourcePath(b, options.go_dir, relative_path),
+    const volatile_link_flags = if (static_link_inputs.paths.len != 0)
+        steps.PublishCgoLinkFlags.create(b, .{
+            .output_path = sourcePath(b, options.go_dir, b.pathJoin(&.{ raw_package.path, steps.volatile_cgo_link_file })),
             .package = raw_package.name,
-            .binding_archive = b.fmt("{s}/lib{s}.a", .{ install.cgo_library_dir, install.library_stem }),
-            .static_archives = archives.items,
-            .archive_installs = installs.items,
+            .targets = target_link_flags.items,
             .extra_ldflags = extra_ldflags,
             .system_ldflags = system_ldflags,
-        });
-        break :flags publish_flags;
-    } else null;
+        })
+    else
+        null;
     const publish = steps.PublishGeneratedGo.create(b, generated_dir, sourcePath(b, options.go_dir, "."));
     const update = b.addUpdateSourceFiles();
     update.step.dependOn(&publish.step);
@@ -589,29 +648,30 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         // against a freshly installed library and the module that loads it.
         // A cross-built artifact cannot be loaded here, so it is not offered:
         // the doctor reports that check as skipped rather than failing it.
-        doctor.step.dependOn(&install_lib.step);
+        doctor.step.dependOn(&primary.install_library.step);
         if (isRunnableOnHost(options.target.result, b.graph.host.result))
-            doctor.addArgs(&.{ "--library", installedLibraryPath(b, install_lib) });
+            doctor.addArgs(&.{ "--library", primary.library_path });
         doctor.addArgs(&.{ "--go-mod", b.pathFromRoot(go_mod_path) });
     }
-    update.step.dependOn(&install_lib.step);
     update.step.dependOn(&install_header.step);
-    // The archive is useless to cgo without the header beside it, so every
-    // step that installs the library (`go-lib`, the default `install`)
-    // installs the header as well.
-    install_lib.step.dependOn(&install_header.step);
+    for (native_libraries.items) |native| {
+        update.step.dependOn(&native.install_library.step);
+        // The archive is useless to cgo without the header beside it, so every
+        // step that installs a library (`go-lib`, the default `install`)
+        // installs the header as well.
+        native.install_library.step.dependOn(&install_header.step);
+        // Every platform's shim has to compile for the tree to be valid.
+        check.step.dependOn(&native.lib.step);
+        if (abi_check) |run| run.step.dependOn(&native.lib.step);
+    }
     if (volatile_link_flags) |flags| {
         update.step.dependOn(&flags.step);
         check.step.dependOn(&flags.step);
-        install_lib.step.dependOn(&flags.step);
-        for (flags.config.archive_installs) |archive_install| install_lib.step.dependOn(archive_install);
+        for (native_libraries.items, flags.config.targets) |native, target_flags| {
+            native.install_library.step.dependOn(&flags.step);
+            for (target_flags.archive_installs) |archive_install| native.install_library.step.dependOn(archive_install);
+        }
     }
-    check.step.dependOn(&lib.step);
-    if (abi_check) |run| run.step.dependOn(&lib.step);
-
-    _ = options.target;
-    _ = options.optimize;
-    _ = options.prefix;
 
     return .{
         .update = update,
@@ -620,13 +680,85 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         .report = report,
         .doctor = doctor,
         .coverage = coverage,
-        .lib = lib,
-        .install_library = install_lib,
-        .library_filename = install_lib.dest_sub_path,
-        .library_path = installedLibraryPath(b, install_lib),
+        .lib = primary.lib,
+        .install_library = primary.install_library,
+        .library_filename = primary.install_library.dest_sub_path,
+        .library_path = primary.library_path,
+        .native_libraries = native_libraries.items,
         .semantic_json = semantic_json,
         .resolved_pkg_config = if (pkg_config_resolution) |resolution| resolution.output() else null,
     };
+}
+
+/// One platform the native library is built for.
+const NativeTarget = struct {
+    resolved: std.Build.ResolvedTarget,
+    /// Go's name for the platform. Always set in multi-target mode.
+    go_target: ?GoTarget,
+    /// `<goos>,<goarch>` for the `#cgo` constraint; empty in single-target mode.
+    constraint: []const u8,
+    /// Where this target's library and static inputs install.
+    library_dir: std.Build.InstallDir,
+    /// The same directory spelled for the generated cgo line.
+    cgo_library_dir: []const u8,
+    /// The caller's module graph, rebuilt for this target when it is not the
+    /// one the caller built it for.
+    module: *std.Build.Module,
+};
+
+/// `Options.target` first, then `Options.targets`. Without extra targets the
+/// single entry keeps the caller's module and the flat install layout, so
+/// existing trees stay byte-identical. With them, every entry (including the
+/// first) gets a `<goos>_<goarch>` subdirectory and a qualified cgo line.
+fn resolveNativeTargets(b: *std.Build, options: Options, backend: Backend, install: ResolvedInstall) []const NativeTarget {
+    if (options.targets.len == 0) {
+        const single = b.allocator.alloc(NativeTarget, 1) catch @panic("OOM");
+        single[0] = .{
+            .resolved = options.target,
+            .go_target = build_options.goTarget(options.target.result),
+            .constraint = "",
+            .library_dir = install.library_dir,
+            .cgo_library_dir = install.cgo_library_dir,
+            .module = options.module,
+        };
+        return single;
+    }
+    if (backend == .purego)
+        @panic("`targets` is only supported by the cgo backends; purego resolves the library at run time on every platform");
+    var list: std.ArrayList(NativeTarget) = .empty;
+    for (0..options.targets.len + 1) |index| {
+        const resolved = if (index == 0) options.target else options.targets[index - 1];
+        const go = build_options.goTarget(resolved.result) orelse std.debug.panic(
+            "targets: '{s}' has no Go platform name, so cgo cannot build for it",
+            .{resolved.result.zigTriple(b.allocator) catch @panic("OOM")},
+        );
+        for (list.items) |existing| {
+            if (existing.go_target.?.eql(go)) std.debug.panic("targets lists {s}/{s} more than once (`target` counts as the first entry)", .{ go.goos, go.goarch });
+        }
+        const subdirectory = b.fmt("{s}_{s}", .{ go.goos, go.goarch });
+        var clones: steps.RetargetClones = .{};
+        list.append(b.allocator, .{
+            .resolved = resolved,
+            .go_target = go,
+            .constraint = b.fmt("{s},{s}", .{ go.goos, go.goarch }),
+            .library_dir = installSubdirectory(b, install.library_dir, subdirectory),
+            .cgo_library_dir = b.fmt("{s}/{s}", .{ install.cgo_library_dir, subdirectory }),
+            .module = if (index == 0)
+                options.module
+            else
+                steps.retargetModule(b, options.module, resolved, options.optimize, &clones, .native),
+        }) catch @panic("OOM");
+    }
+    return list.items;
+}
+
+/// `dir/<name>` as an install directory. Every install directory resolves to a
+/// path under the prefix, which is what `.custom` is relative to.
+fn installSubdirectory(b: *std.Build, dir: std.Build.InstallDir, name: []const u8) std.Build.InstallDir {
+    const base = relativeInstallPath(b, b.install_prefix, b.getInstallPath(dir, ""));
+    if (std.mem.startsWith(u8, base, ".."))
+        std.debug.panic("targets requires install.library_dir to live inside the install prefix, but it resolves to '{s}'", .{b.getInstallPath(dir, "")});
+    return .{ .custom = if (base.len == 0 or std.mem.eql(u8, base, ".")) b.dupe(name) else b.fmt("{s}/{s}", .{ base, name }) };
 }
 
 /// Passes the run-time loading policy as delimited lists, matching the

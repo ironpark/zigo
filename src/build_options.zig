@@ -11,6 +11,51 @@ pub fn puregoTargetSupported(target: std.Target) bool {
         (target.cpu.arch == .x86_64 or target.cpu.arch == .aarch64);
 }
 
+/// The `GOOS`/`GOARCH` pair Go uses for a native target. Both names are also
+/// the words a `#cgo GOOS,GOARCH` constraint accepts.
+pub const GoTarget = struct {
+    goos: []const u8,
+    goarch: []const u8,
+
+    pub fn eql(self: GoTarget, other: GoTarget) bool {
+        return std.mem.eql(u8, self.goos, other.goos) and std.mem.eql(u8, self.goarch, other.goarch);
+    }
+};
+
+/// Maps a Zig target to the Go platform cgo builds for, or null when Go has
+/// no name for it. Only platforms Go itself ships a cgo toolchain for are
+/// listed; anything else cannot be selected by a `#cgo` constraint anyway.
+pub fn goTarget(target: std.Target) ?GoTarget {
+    const goos: []const u8 = switch (target.os.tag) {
+        .macos => "darwin",
+        .linux => "linux",
+        .windows => "windows",
+        .freebsd => "freebsd",
+        .netbsd => "netbsd",
+        .openbsd => "openbsd",
+        .dragonfly => "dragonfly",
+        .illumos => "illumos",
+        else => return null,
+    };
+    const goarch: []const u8 = switch (target.cpu.arch) {
+        .x86_64 => "amd64",
+        .x86 => "386",
+        .aarch64 => "arm64",
+        .arm, .armeb, .thumb, .thumbeb => "arm",
+        .riscv64 => "riscv64",
+        .powerpc64 => "ppc64",
+        .powerpc64le => "ppc64le",
+        .s390x => "s390x",
+        .mips => "mips",
+        .mipsel => "mipsle",
+        .mips64 => "mips64",
+        .mips64el => "mips64le",
+        .loongarch64 => "loong64",
+        else => return null,
+    };
+    return .{ .goos = goos, .goarch = goarch };
+}
+
 /// How a generated purego package finds its shared library at run time.
 pub const LibraryLoading = struct {
     /// Who triggers the load, and whether the loader is part of the public API.
@@ -143,4 +188,23 @@ test "library loading policies reject unusable combinations" {
     try std.testing.expectError(error.InvalidSearchPath, validateLibraryLoading(.{ .search_paths = &.{"/opt/a:/opt/b"} }, true));
     try std.testing.expectError(error.InvalidEnvironmentName, validateLibraryLoading(.{ .env_vars = &.{"9BAD"} }, true));
     try std.testing.expectError(error.InvalidEnvironmentName, validateLibraryLoading(.{ .env_vars = &.{"BAD-NAME"} }, true));
+}
+
+test "go targets name the desktop matrix and reject platforms Go cannot build" {
+    var target = @import("builtin").target;
+    target.os.tag = .macos;
+    target.cpu.arch = .aarch64;
+    try std.testing.expect(goTarget(target).?.eql(.{ .goos = "darwin", .goarch = "arm64" }));
+    target.os.tag = .linux;
+    target.cpu.arch = .x86_64;
+    try std.testing.expect(goTarget(target).?.eql(.{ .goos = "linux", .goarch = "amd64" }));
+    target.os.tag = .windows;
+    target.cpu.arch = .x86;
+    try std.testing.expect(goTarget(target).?.eql(.{ .goos = "windows", .goarch = "386" }));
+    target.os.tag = .wasi;
+    target.cpu.arch = .wasm32;
+    try std.testing.expect(goTarget(target) == null);
+    target.os.tag = .linux;
+    target.cpu.arch = .sparc64;
+    try std.testing.expect(goTarget(target) == null);
 }
