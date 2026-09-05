@@ -20,6 +20,24 @@
 | materialized 결과 버퍼의 바이너리 형식 확인하기 | [Materialized 버퍼 ABI](abi.md) |
 | zigo 저장소를 빌드하고 변경 검증하기 | [프로젝트 개발](development.md) |
 
+## 바인딩 상세 가이드
+
+[`bindings.zig` 선언](bindings.md)에서 기본 구조를 확인한 뒤 필요한 주제만 읽으세요.
+
+| 주제 | 문서 |
+|---|---|
+| 함수 선택·이름·자동 발견·하위 패키지 | [함수와 패키지](bindings-functions.md) |
+| 정수·enum·struct·atomic·중첩 결과 | [값 타입과 결과 트리](bindings-types.md) |
+| 생성자·Close·borrowed·부모와 자식·인터페이스 | [객체 수명](bindings-handles.md) |
+| 문자열·slice·출력 버퍼·optional | [문자열과 버퍼](bindings-buffers.md) |
+| 콜백·Go 오류·panic | [콜백과 오류 처리](bindings-callbacks.md) |
+| io.Writer·io.Reader·context.Context | [스트림과 취소](bindings-streams.md) |
+| projection·Variant·snapshot·값 전달 | [Tagged union](bindings-unions.md) |
+
+생성 오류는 [진단 코드](diagnostics.md)로 찾을 수 있습니다. C 헤더나 생성기 자체를 검토할
+때는 [생성 ABI와 메타데이터](generated-abi.md), [생성 Go 코드의 내부 구조](generated-runtime.md)를
+참고하세요.
+
 ## 기본 경로와 선택 기능
 
 기본 사용 경로는 `.cgo_static`입니다. Zig, Go와 C 컴파일러가 준비된 네이티브 환경에서

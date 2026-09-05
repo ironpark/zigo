@@ -139,7 +139,7 @@ purego는 정적 링크와 조합되지 않습니다. 지원 플랫폼, 로딩 �
 `<go_module>/<go_package_path>`입니다. 경로는 `raw_package`와 같은 portable
 slash-separated 상대 경로 규칙을 따르며 `"."`만 루트 표기로 따로 허용합니다.
 
-`bindings.zig`의 [`.packages`](bindings.md#공개-go-하위-패키지)가 있으면 각 `path`는 이
+`bindings.zig`의 [`.packages`](bindings-functions.md#공개-go-하위-패키지)가 있으면 각 `path`는 이
 기본 경로 아래에 생성됩니다. 예를 들어 `go_package_path = "api"`와 `.path = "types"`는
 `<go_module>/api/types`입니다. `go_package_doc`은 기본 패키지에만 적용되고, 하위 패키지는
 각 항목의 `.doc`을 사용하며 없으면 기본 package 문장을 생성합니다.
@@ -284,7 +284,7 @@ binding install이 그 artifact에 의존하게 합니다. 같은 라이브러�
 안전망은 누수 대비일 뿐 명시적 `Close`를 대체하지 않습니다. 실행 시점이나 프로그램 종료
 전 실행은 보장되지 않으며 임의 goroutine에서 호출될 수 있습니다. retained callback의 참조
 순환이나 특정 OS thread에서만 가능한 해제에도 기대지 마세요. 수명주기 전체는
-[바인딩 작성](bindings.md#opaque-handle)에 정리되어 있습니다.
+[객체 수명](bindings-handles.md#opaque-handle)에 정리되어 있습니다.
 
 ## ABI 기준 설정
 
