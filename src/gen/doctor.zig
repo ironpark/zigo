@@ -42,6 +42,7 @@ pub const Probe = struct {
     cgo_enabled: ?[]const u8,
     c_compiler: ?[]const u8,
     c_compiler_available: bool,
+    c_compiler_probe_failed: bool = false,
     gofmt_available: bool,
     native_target: bool,
     purego: Purego = .{},
@@ -77,11 +78,16 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, writer: *std.Io.Writer, opt
     };
     // `go env CC` can be a whole command line rather than one program: the
     // supported Windows toolchain is `CC="zig cc"`, and a cross build adds
-    // `-target <triple>` on top of that. Probe the program, report the whole
-    // thing -- the arguments are the part a reader needs to see.
+    // `-target <triple>` on top of that. Preserve these arguments: probing
+    // just `zig --version` fails even when `zig cc --version` works.
     const cc_command = stdoutIfSucceeded(cc_result);
-    const cc_probe_result = if (cc_command) |command| std.process.run(allocator, io, .{
-        .argv = &.{ firstWord(command).?, "--version" },
+    const cc_argv = if (cc_command) |command| compilerProbeArgs(allocator, command) catch |err| switch (err) {
+        error.OutOfMemory => return err,
+        else => null,
+    } else null;
+    defer if (cc_argv) |argv| allocator.free(argv);
+    const cc_probe_result = if (cc_argv) |argv| std.process.run(allocator, io, .{
+        .argv = argv,
         .stdout_limit = .limited(64 * 1024),
         .stderr_limit = .limited(64 * 1024),
     }) catch null else null;
@@ -110,6 +116,7 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, writer: *std.Io.Writer, opt
         .cgo_enabled = stdoutIfSucceeded(cgo_result),
         .c_compiler = cc_command,
         .c_compiler_available = if (cc_probe_result) |result| termSucceeded(result.term) else false,
+        .c_compiler_probe_failed = if (cc_probe_result) |result| !termSucceeded(result.term) else false,
         .gofmt_available = gofmt_result != null,
         .native_target = options.native_target,
         .purego = if (options.backend == .purego) probePurego(options, go_mod_bytes, &library_error_buffer) else .{},
@@ -213,7 +220,10 @@ pub fn render(writer: *std.Io.Writer, probe: Probe, backend: Options.Backend) !b
             try writer.print("PASS C compiler: {s}\n", .{compiler});
         } else {
             healthy = false;
-            try writer.print("FAIL C compiler: {s} is configured by `go env CC` but {s} is not executable\n", .{ compiler, firstWord(compiler) orelse compiler });
+            if (probe.c_compiler_probe_failed)
+                try writer.print("FAIL C compiler: version probe for `{s} --version` exited unsuccessfully; check the compiler arguments\n", .{compiler})
+            else
+                try writer.print("FAIL C compiler: could not run version probe for `{s}` configured by `go env CC`; check quoting, executable path and permissions\n", .{compiler});
         }
     } else {
         healthy = false;
@@ -303,9 +313,31 @@ fn stdoutIfSucceeded(result: ?std.process.RunResult) ?[]const u8 {
 
 const whitespace = " \r\n\t";
 
-fn firstWord(output: []const u8) ?[]const u8 {
-    var words = std.mem.tokenizeAny(u8, output, whitespace);
-    return words.next();
+/// Follow Go's CC field conventions: leading single/double quotes group an
+/// argument, with no unescaping. In particular Windows backslashes survive.
+/// The returned argument strings borrow command; only the slice is owned.
+fn compilerProbeArgs(allocator: std.mem.Allocator, command: []const u8) ![]const []const u8 {
+    var args: std.ArrayList([]const u8) = .empty;
+    errdefer args.deinit(allocator);
+    var remaining = command;
+    while (true) {
+        remaining = std.mem.trimStart(u8, remaining, whitespace);
+        if (remaining.len == 0) break;
+        if (remaining[0] == '\'' or remaining[0] == '"') {
+            const quote = remaining[0];
+            remaining = remaining[1..];
+            const end = std.mem.indexOfScalar(u8, remaining, quote) orelse return error.InvalidCompilerCommand;
+            try args.append(allocator, remaining[0..end]);
+            remaining = remaining[end + 1 ..];
+        } else {
+            const end = std.mem.indexOfAny(u8, remaining, whitespace) orelse remaining.len;
+            try args.append(allocator, remaining[0..end]);
+            remaining = remaining[end..];
+        }
+    }
+    if (args.items.len == 0 or args.items[0].len == 0) return error.InvalidCompilerCommand;
+    try args.append(allocator, "--version");
+    return args.toOwnedSlice(allocator);
 }
 
 fn termSucceeded(term: std.process.Child.Term) bool {
@@ -318,6 +350,26 @@ fn termSucceeded(term: std.process.Child.Term) bool {
 test "compiler probe requires a successful exit" {
     try std.testing.expect(termSucceeded(.{ .exited = 0 }));
     try std.testing.expect(!termSucceeded(.{ .exited = 1 }));
+}
+
+test "compiler probe preserves drivers options and quoted Windows paths" {
+    const cases = [_]struct { command: []const u8, expected: []const []const u8 }{
+        .{ .command = "cc", .expected = &.{ "cc", "--version" } },
+        .{ .command = "zig cc", .expected = &.{ "zig", "cc", "--version" } },
+        .{ .command = "zig cc -target x86_64-windows-gnu", .expected = &.{ "zig", "cc", "-target", "x86_64-windows-gnu", "--version" } },
+        .{ .command = "\"D:\\Program Files\\Zig\\zig.exe\" cc", .expected = &.{ "D:\\Program Files\\Zig\\zig.exe", "cc", "--version" } },
+        .{ .command = "ccache '/opt/zig tools/zig' cc", .expected = &.{ "ccache", "/opt/zig tools/zig", "cc", "--version" } },
+        .{ .command = " \tzig\r\ncc \t", .expected = &.{ "zig", "cc", "--version" } },
+    };
+    for (cases) |case| {
+        const args = try compilerProbeArgs(std.testing.allocator, case.command);
+        defer std.testing.allocator.free(args);
+        try std.testing.expectEqual(case.expected.len, args.len);
+        for (case.expected, args) |expected, actual| try std.testing.expectEqualStrings(expected, actual);
+    }
+    for ([_][]const u8{ "", " \t", "''", "\"zig cc", "zig 'cc" }) |invalid| {
+        try std.testing.expectError(error.InvalidCompilerCommand, compilerProbeArgs(std.testing.allocator, invalid));
+    }
 }
 
 test "doctor distinguishes required failures from optional gofmt" {
@@ -347,7 +399,7 @@ test "doctor distinguishes required failures from optional gofmt" {
     }, .cgo));
     try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "install Go 1.24 or newer") != null);
     try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "CGO_ENABLED=1") != null);
-    try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "missing-cc is configured") != null);
+    try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "could not run version probe for `missing-cc`") != null);
     try std.testing.expect(std.mem.indexOf(u8, failed_output.written(), "the cgo backend cannot be validated from a cross build") != null);
 
     // A purego cross build is supported: the target line and the run-time
@@ -382,8 +434,7 @@ test "doctor distinguishes required failures from optional gofmt" {
 }
 
 test "doctor reports a multi-word CC in full" {
-    // `CC="zig cc"` is the supported Windows toolchain: the probe runs `zig`,
-    // but a report that printed only `zig` would hide which driver is in use.
+    // `CC="zig cc"` is the supported Windows toolchain; keep the driver visible.
     var probe: Probe = .{
         .go_version = "go version go1.26.0 windows/amd64",
         .cgo_enabled = "1",
@@ -401,8 +452,13 @@ test "doctor reports a multi-word CC in full" {
     var missing: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer missing.deinit();
     try std.testing.expect(!try render(&missing.writer, probe, .cgo));
-    // The blamed program is the one that was probed, not the whole line.
-    try std.testing.expect(std.mem.indexOf(u8, missing.written(), "zig cc is configured by `go env CC` but zig is not executable") != null);
+    // A command that could not run is distinct from a failed version probe.
+    try std.testing.expect(std.mem.indexOf(u8, missing.written(), "could not run version probe for `zig cc`") != null);
+    probe.c_compiler_probe_failed = true;
+    var failed: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer failed.deinit();
+    try std.testing.expect(!try render(&failed.writer, probe, .cgo));
+    try std.testing.expect(std.mem.indexOf(u8, failed.written(), "`zig cc --version` exited unsuccessfully") != null);
 }
 
 test "purego doctor does not require cgo or a C compiler" {

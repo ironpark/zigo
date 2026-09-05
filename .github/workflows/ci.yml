@@ -27,6 +27,12 @@ jobs:
         run: zig build check --summary all
       - name: Zig unit and snapshot tests
         run: zig build test --summary all
+      - name: Check doctor with the Zig C driver
+        working-directory: examples/01-scalar
+        env:
+          CC: zig cc
+          CGO_ENABLED: "1"
+        run: zig build go-doctor --summary all
       # Catches a Windows-only compile break here rather than on the Windows
       # runner, where it costs a whole job. Both arches, since purego supports
       # windows/arm64 too.
