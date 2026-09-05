@@ -61,6 +61,107 @@ pub fn materializedOut(function: semantic.SemanticFn) ?AbiFn.MaterializedOut {
     return null;
 }
 
+/// Who owns the native memory behind a function's result once the call
+/// returns, and what generated Go therefore has to do with it. Lowering
+/// decides this once from the semantic fields that each carry a piece of the
+/// answer (`ownership`, `release`, `borrowed_return`, `child_of_receiver`,
+/// `boxed`, `return_semantic`, the constructor table) and every backend reads
+/// only the record. The variants are the three transfer shapes zigo has and
+/// the two ways of not transferring: a `handle` is kept until its destructor,
+/// a `buffer` is copied and released before the call returns, and the two
+/// `borrowed_*` forms never own anything. Only `handle` (and the retained
+/// callback tokens a handle stores) ever registers a runtime cleanup.
+pub const Ownership = union(enum) {
+    /// A value, `void`, or a scalar: there is no memory to hand over.
+    none,
+    /// A pointer into an object the receiver owns. Go wraps it without a
+    /// destructor and the wrapper is only valid while the owner is.
+    borrowed_view: BorrowedView,
+    /// A slice or C string the library keeps owning. Go copies it during the
+    /// call and never releases anything.
+    borrowed_copy: BorrowedCopy,
+    /// A constructed object Go holds until its destructor runs.
+    handle: Handle,
+    /// A buffer the library hands over. Go copies it and calls the release
+    /// function before returning, so no native memory outlives the call.
+    buffer: Buffer,
+
+    pub const BorrowedView = struct {
+        /// The registered opaque type the pointer refers to.
+        type_name: []const u8,
+    };
+
+    pub const BorrowedCopy = struct {
+        /// The slice element; a byte for either string form.
+        element: semantic.TypeNode,
+        /// How the result carries text, when it does.
+        text: AbiFn.StringRole = .none,
+        /// The result may be absent (`?[]T` in any wrapper).
+        absent: bool = false,
+        /// The result sits behind an error union.
+        fallible: bool = false,
+    };
+
+    pub const Handle = struct {
+        /// The constructed type, as the constructor table names it.
+        type_name: []const u8,
+        /// Symbol of the destructor the constructor table pairs with the
+        /// type, or null when the pair has no lowered destructor.
+        destructor: ?[]const u8,
+        /// The constructor is the `create` half of a boxed pair.
+        boxed: bool = false,
+        /// The handle must close before the receiver it was created from.
+        child_of_receiver: bool = false,
+        /// How many retained callback tokens a handle of this type stores.
+        retained_slots: usize = 0,
+    };
+
+    pub const Buffer = struct {
+        /// The element the release function frees; a byte for a caller-owned
+        /// C string and for a materialized tree.
+        element: semantic.TypeNode,
+        /// Index in `Program.functions` of the release function.
+        release: usize,
+        /// C typedef of the release function's receiver, when it is a method.
+        release_receiver_c_name: ?[]const u8 = null,
+        /// The element is narrower than the C integer that carries it, so the
+        /// shim rewrites the buffer in place before handing it over.
+        narrow: bool = false,
+        /// The buffer is a serialized materialized tree: index in
+        /// `Program.materialized_layouts` of its root.
+        materialized: ?usize = null,
+        /// The result may be absent (`?[]T` in any wrapper).
+        absent: bool = false,
+        /// The result sits behind an error union.
+        fallible: bool = false,
+    };
+};
+
+/// What a parameter does with memory across the call, from the caller's
+/// point of view.
+pub const ParamOwnership = enum {
+    /// Read (or written) during the call only.
+    transient,
+    /// A retained callback: native code keeps the Go token until the owning
+    /// handle replaces or closes it.
+    retained_token,
+    /// The shim stages the argument in a temporary it frees itself, either
+    /// to widen narrow elements or to serialize a materialized out slice.
+    staged_copy,
+    /// A stream adapter that lives for the duration of the call.
+    stream,
+};
+
+/// The function a `.release` name resolves to and the one exposed parameter
+/// it frees through. Both the release lookup in lowering and the validation
+/// of that lookup read this, so the rule has one home.
+pub const ReleaseTarget = struct {
+    /// Index in the semantic function table.
+    index: usize,
+    function: semantic.SemanticFn,
+    parameter: semantic.Parameter,
+};
+
 pub const AbiScalar = union(enum) {
     void,
     bool_u8,
@@ -307,6 +408,12 @@ pub const AbiFn = struct {
     /// True when native code running under this call can reach a Go callback
     /// that returns an `error`, which grows the public signature by one.
     reaches_callback_errors: bool = false,
+    /// Who owns the result's memory after the call. Decided once by
+    /// `lower.ownershipOf`.
+    ownership: Ownership = .none,
+    /// Indexed by semantic parameter index: what each parameter does with
+    /// memory across the call. Decided once by `lower.paramOwnershipOf`.
+    param_ownership: []const ParamOwnership = &.{},
 
     /// `layout` indexes `Program.materialized_layouts`; lowering fills it
     /// once the layouts exist, so no emitter looks a layout up by name.
@@ -367,6 +474,12 @@ pub const AbiFn = struct {
     /// parameter `source_index`.
     pub fn flattenedParam(self: AbiFn, source_index: usize, field_index: usize) AbiParam {
         return self.params[self.flatten_start[source_index].? + field_index];
+    }
+
+    /// What semantic parameter `source_index` does with memory across the call.
+    pub fn paramOwnership(self: AbiFn, source_index: usize) ParamOwnership {
+        if (source_index >= self.param_ownership.len) return .transient;
+        return self.param_ownership[source_index];
     }
 
     /// The retained callback slot of semantic parameter `source_index`.

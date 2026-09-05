@@ -478,22 +478,14 @@ pub fn semanticDocumentForBackend(
             .userdata_for = try pairUserdataParams(allocator, function.*),
         };
     }
-    // The release target is another exported function, so its symbol is only
-    // known once every function has been named.
-    for (functions) |*lowered| {
-        const release = lowered.origin.release orelse continue;
-        for (functions) |candidate| {
-            if (std.mem.eql(u8, candidate.origin.name, release)) {
-                lowered.release_symbol = candidate.symbol;
-                break;
-            }
-        }
-    }
     // A callback's Go type name is chosen against every other callback in the
     // program, so it can only be settled once every function is lowered.
     try nameCallbackTypes(allocator, document, functions);
     const handles = try lowerHandles(allocator, document, prefix);
     try numberRetainedCallbackSlots(allocator, document, functions, handles);
+    // The ownership record names other functions by symbol and handles by
+    // slot count, so it is the last thing settled.
+    try recordOwnership(allocator, document, source_document.functions, functions, handles);
     const projections = try lowerTaggedUnionProjections(allocator, document, prefix);
     const snapshots = try lowerTaggedUnionSnapshots(allocator, document, prefix);
     return .{
@@ -684,6 +676,158 @@ pub fn functionReachesCallbackErrors(functions: []const semantic.SemanticFn, con
         if (parameter.type == .opaque_ptr and typeOwnsErrorCallbacks(functions, constructors, parameter.type.opaque_ptr.ref)) return true;
     }
     return false;
+}
+
+/// The function `name` (a `.release` value) resolves to, when it is one a
+/// generated release call can go through: it returns `void` and exposes
+/// exactly one parameter. An injected argument is not part of the signature
+/// the call has to match -- the shim fills it in, so a `fn(gpa, slice) void`
+/// frees exactly the same slice a `fn(slice) void` does. This is the one rule
+/// both lowering and validation apply.
+pub fn releaseTarget(functions: []const semantic.SemanticFn, name: []const u8) ?abi.ReleaseTarget {
+    for (functions, 0..) |candidate, index| {
+        if (!std.mem.eql(u8, candidate.name, name)) continue;
+        if (candidate.@"return" != .void) return null;
+        var found: ?semantic.Parameter = null;
+        for (candidate.params) |parameter| {
+            if (parameter.injected != null) continue;
+            if (found != null) return null;
+            found = parameter;
+        }
+        return .{ .index = index, .function = candidate, .parameter = found orelse return null };
+    }
+    return null;
+}
+
+/// The element of a slice result that would need a release target, or null
+/// when the function returns something else. This is the ownership question,
+/// not the calling-convention one: a caller-owned C-string return counts
+/// here because it still has to be freed, even though `sliceReturnElement`
+/// excludes it. Optional and error-union wrappers do not change who owns the
+/// underlying slice.
+pub fn releasableSliceReturnElement(function: semantic.SemanticFn) ?semantic.TypeNode {
+    const payload = function.@"return".errorPayload();
+    const slice = if (payload == .optional) payload.optional.child.* else payload;
+    return if (slice == .slice) slice.slice.element.* else null;
+}
+
+/// Who owns the result of `function` once the call returns. Runs on a
+/// validated document: a `.release` that resolves to nothing, or a caller
+/// owned pointer with no constructor, has already been reported, so both
+/// fall through to `.none` here rather than being decided again.
+/// `source_functions` is the table before checked promotion, the one the
+/// release rule was validated against: promotion gives a release method a
+/// synthetic error union the rule would otherwise refuse.
+pub fn ownershipOf(
+    document: semantic.Semantic,
+    source_functions: []const semantic.SemanticFn,
+    functions: []const abi.AbiFn,
+    handles: []const abi.AbiOpaque,
+    lowered: abi.AbiFn,
+) abi.Ownership {
+    const function = lowered.origin.*;
+    const payload = function.@"return".errorPayload();
+    const fallible = function.@"return" == .error_union;
+    if (function.returnsBorrowedHandle()) {
+        if (payload == .opaque_ptr) return .{ .borrowed_view = .{ .type_name = payload.opaque_ptr.ref } };
+        return .none;
+    }
+    if (ownedOpaqueReturn(document.constructors, function)) |type_name| {
+        var destructor: ?[]const u8 = null;
+        for (functions) |candidate| {
+            if (constructorForDeinit(document.constructors, candidate.origin.*)) |pair| {
+                if (std.mem.eql(u8, pair.type, type_name)) destructor = candidate.symbol;
+            }
+        }
+        var retained_slots: usize = 0;
+        for (handles) |handle| if (std.mem.eql(u8, handle.name, type_name)) {
+            retained_slots = handle.retained_callback_slots;
+        };
+        return .{ .handle = .{
+            .type_name = type_name,
+            .destructor = destructor,
+            .boxed = function.boxed == .create,
+            .child_of_receiver = function.childOfReceiver(),
+            .retained_slots = retained_slots,
+        } };
+    }
+    const byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    if (function.ownership == .caller) {
+        const release = releaseTarget(source_functions, function.release orelse return .none) orelse return .none;
+        var receiver_c_name: ?[]const u8 = null;
+        if (release.function.receiver) |receiver| {
+            for (handles) |handle| if (std.mem.eql(u8, handle.name, receiver)) {
+                receiver_c_name = handle.c_name;
+            };
+        }
+        if (lowered.materialized_return) |materialized| return .{ .buffer = .{
+            .element = byte,
+            .release = release.index,
+            .release_receiver_c_name = receiver_c_name,
+            .materialized = materialized.layout,
+            .fallible = materialized.fallible,
+        } };
+        if (lowered.materialized_out) |output| return .{ .buffer = .{
+            .element = byte,
+            .release = release.index,
+            .release_receiver_c_name = receiver_c_name,
+            .materialized = output.layout,
+            .fallible = output.fallible,
+        } };
+        const element = releasableSliceReturnElement(function) orelse return .none;
+        return .{ .buffer = .{
+            .element = element,
+            .release = release.index,
+            .release_receiver_c_name = receiver_c_name,
+            .narrow = abi.narrowInt(element) != null,
+            .absent = payload == .optional,
+            .fallible = fallible,
+        } };
+    }
+    const element = releasableSliceReturnElement(function) orelse return .none;
+    return .{ .borrowed_copy = .{
+        .element = if (lowered.ret_string == .c_string) byte else element,
+        .text = lowered.ret_string,
+        .absent = payload == .optional,
+        .fallible = fallible,
+    } };
+}
+
+/// What each parameter of `function` does with memory across the call,
+/// indexed by semantic parameter index.
+pub fn paramOwnershipOf(allocator: std.mem.Allocator, document: semantic.Semantic, function: semantic.SemanticFn) ![]const abi.ParamOwnership {
+    const table = try allocator.alloc(abi.ParamOwnership, function.params.len);
+    // A release target receives the buffer it frees exactly as the library
+    // handed it out, so the staging pass that would widen it is off.
+    const stages_narrow = document.allocator != null and !isReleaseTarget(document.functions, function);
+    for (function.params, 0..) |parameter, index| {
+        table[index] = if (parameter.type == .callback and parameter.retention == .retained)
+            .retained_token
+        else if (parameter.type == .io_stream)
+            .stream
+        else if (abi.materializedOutParameter(parameter) != null or
+            (stages_narrow and abi.narrowSliceElement(parameter.type) != null))
+            .staged_copy
+        else
+            .transient;
+    }
+    return table;
+}
+
+fn recordOwnership(
+    allocator: std.mem.Allocator,
+    document: semantic.Semantic,
+    source_functions: []const semantic.SemanticFn,
+    functions: []abi.AbiFn,
+    handles: []const abi.AbiOpaque,
+) !void {
+    for (functions) |*lowered| {
+        lowered.ownership = ownershipOf(document, source_functions, functions, handles, lowered.*);
+        lowered.param_ownership = try paramOwnershipOf(allocator, document, lowered.origin.*);
+        // The release target is another exported function, so its symbol is
+        // only known once every function has been named.
+        if (lowered.ownership == .buffer) lowered.release_symbol = functions[lowered.ownership.buffer.release].symbol;
+    }
 }
 
 /// Whether this function is some other function's declared release target.
@@ -2633,4 +2777,177 @@ test "struct castability follows the members, nested structs included" {
     // embeds one inherits the answer.
     try std.testing.expect(!program.structCastable("Flagged"));
     try std.testing.expect(!program.structCastable("Nested"));
+}
+
+test "lowering records who owns every result" {
+    var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    var narrow: semantic.TypeNode = .{ .int = .{ .bits = 21, .signed = false } };
+    var bytes: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte } };
+    const narrow_slice: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &narrow } };
+    var optional_bytes: semantic.TypeNode = .{ .optional = .{ .child = &bytes } };
+    var store: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Store" } };
+    var cursor: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Cursor" } };
+    const view: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = true, .ref = "View" } };
+    var node: semantic.TypeNode = .{ .materialized = .{ .ref = "Node" } };
+    const fields = [_]semantic.TypeField{.{ .name = "value", .type = .{ .int = .{ .bits = 32, .signed = true } } }};
+    const document: semantic.Semantic = .{
+        .allocator = "std.heap.smp_allocator",
+        .constructors = &.{
+            .{ .deinit = "close", .init = "open", .type = "Store" },
+            .{ .deinit = "destroy", .init = "create", .type = "Cursor" },
+        },
+        .functions = &.{
+            // 1. A constructed handle.
+            .{ .name = "open", .namespace = "Store", .ownership = .caller, .params = &.{}, .@"return" = .{ .error_union = .{ .error_set = &.{}, .payload = &store } }, .symbol = "zg_store_open" },
+            .{ .name = "close", .receiver = "Store", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_store_close" },
+            // 2. A boxed value constructor, created as a child of the store.
+            .{ .name = "create", .boxed = .create, .child_of_receiver = true, .receiver = "Store", .ownership = .caller, .params = &.{}, .@"return" = .{ .error_union = .{ .error_set = &.{}, .payload = &cursor } }, .symbol = "zg_store_create" },
+            .{ .name = "destroy", .boxed = .destroy, .receiver = "Cursor", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_cursor_destroy" },
+            // 4. A borrowed view into the receiver.
+            .{ .name = "view", .borrowed_return = true, .receiver = "Store", .params = &.{}, .@"return" = view, .symbol = "zg_store_view" },
+            // 5. A borrowed slice, copied and never released.
+            .{ .name = "peek", .receiver = "Store", .params = &.{}, .@"return" = .{ .error_union = .{ .error_set = &.{}, .payload = &optional_bytes } }, .symbol = "zg_store_peek" },
+            // 6. A caller-owned slice with a release method on the receiver.
+            .{ .name = "take", .receiver = "Store", .ownership = .caller, .release = "give", .params = &.{}, .@"return" = optional_bytes, .symbol = "zg_store_take" },
+            .{ .name = "give", .receiver = "Store", .params = &.{.{ .name = "buffer", .type = bytes }}, .@"return" = .{ .void = {} }, .symbol = "zg_store_give" },
+            // 7. Strings: borrowed crosses as a C pointer, caller-owned as a buffer.
+            .{ .name = "name", .return_semantic = .c_string, .params = &.{}, .@"return" = bytes, .symbol = "zg_name" },
+            .{ .name = "render", .ownership = .caller, .release = "free", .return_semantic = .c_string, .params = &.{}, .@"return" = bytes, .symbol = "zg_render" },
+            .{ .name = "free", .params = &.{.{ .name = "buffer", .type = bytes }}, .@"return" = .{ .void = {} }, .symbol = "zg_free" },
+            // 8. A narrow element the shim widens in place.
+            .{ .name = "codepoints", .ownership = .caller, .release = "freeCodepoints", .params = &.{}, .@"return" = narrow_slice, .symbol = "zg_codepoints" },
+            .{ .name = "freeCodepoints", .params = &.{.{ .name = "values", .type = narrow_slice }}, .@"return" = .{ .void = {} }, .symbol = "zg_free_codepoints" },
+            // 10. A materialized tree, returned and staged out.
+            .{ .name = "snapshot", .ownership = .caller, .release = "free", .params = &.{}, .@"return" = node, .symbol = "zg_snapshot" },
+            .{ .name = "fill", .ownership = .caller, .release = "free", .params = &.{.{ .direction = .out, .name = "output", .type = .{ .slice = .{ .@"const" = false, .element = &node } }, .written = .@"return" }}, .@"return" = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } }, .symbol = "zg_fill" },
+            // 13. A value.
+            .{ .name = "count", .params = &.{}, .@"return" = .{ .int = .{ .bits = 32, .signed = true } }, .symbol = "zg_count" },
+        },
+        .package = "owners",
+        .prefix = "zg",
+        .types = &.{
+            .{ .kind = .@"opaque", .name = "Store" },
+            .{ .kind = .@"opaque", .name = "Cursor" },
+            .{ .kind = .@"opaque", .name = "View" },
+            .{ .fields = &fields, .kind = .materialized, .materialized_version = 1, .name = "Node", .zig_path = "Node" },
+        },
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try semanticDocument(arena.allocator(), document, "owners", "zg", &.{});
+    const functions = program.functions;
+
+    const open = functions[0].ownership.handle;
+    try std.testing.expectEqualStrings("Store", open.type_name);
+    try std.testing.expectEqualStrings("zg_store_close", open.destructor.?);
+    try std.testing.expect(!open.boxed and !open.child_of_receiver);
+    try std.testing.expectEqual(abi.Ownership.none, functions[1].ownership);
+
+    const create = functions[2].ownership.handle;
+    try std.testing.expectEqualStrings("Cursor", create.type_name);
+    try std.testing.expectEqualStrings("zg_cursor_destroy", create.destructor.?);
+    try std.testing.expect(create.boxed and create.child_of_receiver);
+
+    try std.testing.expectEqualStrings("View", functions[4].ownership.borrowed_view.type_name);
+
+    const peek = functions[5].ownership.borrowed_copy;
+    try std.testing.expect(peek.element == .int and peek.absent and peek.fallible);
+    try std.testing.expectEqual(abi.AbiFn.StringRole.none, peek.text);
+
+    const take = functions[6].ownership.buffer;
+    try std.testing.expectEqual(@as(usize, 7), take.release);
+    try std.testing.expectEqualStrings("zg_store_give", functions[6].release_symbol.?);
+    try std.testing.expectEqualStrings("zg_store", take.release_receiver_c_name.?);
+    // A method reports panics, so its promoted return is an error union.
+    try std.testing.expect(take.absent and take.fallible and !take.narrow and take.materialized == null);
+    // The release target itself owns nothing.
+    try std.testing.expectEqual(abi.Ownership.none, functions[7].ownership);
+
+    const name = functions[8].ownership.borrowed_copy;
+    try std.testing.expectEqual(abi.AbiFn.StringRole.c_string, name.text);
+    try std.testing.expect(semantic.isByte(name.element));
+    // A caller-owned C string is a byte buffer with a release, not a C pointer.
+    const render = functions[9].ownership.buffer;
+    try std.testing.expect(semantic.isByte(render.element));
+    try std.testing.expectEqual(@as(usize, 10), render.release);
+    try std.testing.expect(render.release_receiver_c_name == null);
+
+    const codepoints = functions[11].ownership.buffer;
+    try std.testing.expect(codepoints.narrow);
+    try std.testing.expectEqual(@as(u16, 21), codepoints.element.int.bits);
+
+    const snapshot = functions[13].ownership.buffer;
+    try std.testing.expect(semantic.isByte(snapshot.element));
+    try std.testing.expectEqual(@as(?usize, 0), snapshot.materialized);
+    const fill = functions[14].ownership.buffer;
+    try std.testing.expectEqual(@as(?usize, 0), fill.materialized);
+    try std.testing.expectEqual(@as(usize, 10), fill.release);
+
+    try std.testing.expectEqual(abi.Ownership.none, functions[15].ownership);
+}
+
+test "lowering records what every parameter does with memory" {
+    var callback_result: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+    const callback: semantic.TypeNode = .{ .callback = .{ .has_userdata = false, .params = &.{}, .@"return" = &callback_result } };
+    var hub: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Hub" } };
+    var narrow: semantic.TypeNode = .{ .int = .{ .bits = 21, .signed = false } };
+    var node: semantic.TypeNode = .{ .materialized = .{ .ref = "Node" } };
+    var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    const narrow_slice: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &narrow } };
+    const fields = [_]semantic.TypeField{.{ .name = "value", .type = .{ .int = .{ .bits = 32, .signed = true } } }};
+    const document: semantic.Semantic = .{
+        .allocator = "std.heap.smp_allocator",
+        .constructors = &.{.{ .deinit = "deinit", .init = "create", .type = "Hub" }},
+        .functions = &.{
+            // 11. Retained callbacks become tokens the handle stores.
+            .{ .name = "create", .namespace = "Hub", .ownership = .caller, .params = &.{
+                .{ .name = "observer", .retention = .retained, .type = callback },
+                .{ .name = "userdata", .type = .{ .int = .{ .bits = 64, .signed = false } } },
+            }, .@"return" = .{ .error_union = .{ .error_set = &.{}, .payload = &hub } }, .symbol = "zg_hub_create" },
+            .{ .name = "deinit", .receiver = "Hub", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_hub_deinit" },
+            .{ .name = "watch", .receiver = "Hub", .params = &.{
+                .{ .name = "handler", .retention = .retained, .type = callback },
+                .{ .name = "once", .type = callback },
+            }, .@"return" = .{ .void = {} }, .symbol = "zg_hub_watch" },
+            // 12. A stream lives for the call.
+            .{ .name = "dump", .receiver = "Hub", .params = &.{.{ .name = "w", .type = .{ .io_stream = .{ .direction = .writer } } }}, .@"return" = .{ .void = {} }, .symbol = "zg_hub_dump" },
+            // 9. Narrow slices are staged, in either direction, except in the
+            // release target that must see the buffer as it was handed out.
+            .{ .name = "sum", .params = &.{
+                .{ .name = "values", .type = narrow_slice },
+                .{ .direction = .out, .name = "filled", .type = .{ .slice = .{ .@"const" = false, .element = &narrow } } },
+            }, .@"return" = .{ .void = {} }, .symbol = "zg_sum" },
+            .{ .name = "take", .ownership = .caller, .release = "freeCodepoints", .params = &.{}, .@"return" = narrow_slice, .symbol = "zg_take" },
+            .{ .name = "freeCodepoints", .params = &.{.{ .name = "values", .type = narrow_slice }}, .@"return" = .{ .void = {} }, .symbol = "zg_free_codepoints" },
+            // 10. A materialized out slice is staged in Zig too.
+            .{ .name = "fill", .ownership = .caller, .release = "free", .params = &.{.{ .direction = .out, .name = "output", .type = .{ .slice = .{ .@"const" = false, .element = &node } }, .written = .@"return" }}, .@"return" = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } }, .symbol = "zg_fill" },
+            .{ .name = "free", .params = &.{.{ .name = "buffer", .type = .{ .slice = .{ .@"const" = true, .element = &byte } } }}, .@"return" = .{ .void = {} }, .symbol = "zg_free" },
+        },
+        .package = "params",
+        .prefix = "zg",
+        .types = &.{
+            .{ .kind = .@"opaque", .name = "Hub" },
+            .{ .fields = &fields, .kind = .materialized, .materialized_version = 1, .name = "Node", .zig_path = "Node" },
+        },
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try semanticDocument(arena.allocator(), document, "params", "zg", &.{});
+    const functions = program.functions;
+
+    try std.testing.expectEqual(abi.ParamOwnership.retained_token, functions[0].paramOwnership(0));
+    try std.testing.expectEqual(abi.ParamOwnership.transient, functions[0].paramOwnership(1));
+    // The handle counts the tokens stored by its constructor and its methods.
+    try std.testing.expectEqual(@as(usize, 2), functions[0].ownership.handle.retained_slots);
+    try std.testing.expectEqual(abi.ParamOwnership.retained_token, functions[2].paramOwnership(0));
+    try std.testing.expectEqual(abi.ParamOwnership.transient, functions[2].paramOwnership(1));
+    try std.testing.expectEqual(abi.ParamOwnership.stream, functions[3].paramOwnership(0));
+    try std.testing.expectEqual(abi.ParamOwnership.staged_copy, functions[4].paramOwnership(0));
+    try std.testing.expectEqual(abi.ParamOwnership.staged_copy, functions[4].paramOwnership(1));
+    try std.testing.expectEqual(abi.ParamOwnership.transient, functions[6].paramOwnership(0));
+    try std.testing.expectEqual(abi.ParamOwnership.staged_copy, functions[7].paramOwnership(0));
+    // An index past the parameters answers the same as any plain argument.
+    try std.testing.expectEqual(abi.ParamOwnership.transient, functions[8].paramOwnership(3));
 }
