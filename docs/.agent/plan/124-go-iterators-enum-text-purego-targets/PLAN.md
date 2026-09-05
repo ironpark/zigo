@@ -7,7 +7,7 @@ registered_at: "2026-09-05T21:10:05Z"
 
 # Phases
 
-- [ ] [Phase 00: Enum text encoding](phases/00-enum-text.md)
+- [x] [Phase 00: Enum text encoding](phases/00-enum-text.md)
 - [ ] [Phase 01: Iterator wrappers](phases/01-iterators.md)
 - [ ] [Phase 02: purego targets](phases/02-purego-targets.md)
 
