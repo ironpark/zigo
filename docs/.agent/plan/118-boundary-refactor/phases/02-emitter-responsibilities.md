@@ -2,7 +2,7 @@
 depends_on:
 - "118-boundary-refactor#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Unit/snapshot tests and example generation checks show identical output.
 > NEXT: none

@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-05T11:18:55Z"
 depends_on:
 - "118-boundary-refactor#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Both backends execute the same tests including race checks where supported.
 > NEXT: none

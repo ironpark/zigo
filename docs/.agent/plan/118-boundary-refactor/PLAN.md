@@ -8,7 +8,7 @@ registered_at: "2026-09-05T11:14:16Z"
 # Phases
 
 - [x] [Phase 00: Tool probes](phases/00-tool-probes.md)
-- [ ] [Phase 01: Shared runtime contracts](phases/01-shared-contracts.md)
+- [x] [Phase 01: Shared runtime contracts](phases/01-shared-contracts.md)
 - [ ] [Phase 02: Emitter responsibilities](phases/02-emitter-responsibilities.md)
 - [ ] [Phase 03: Lowering and handoff](phases/03-lowering-handoff.md)
 

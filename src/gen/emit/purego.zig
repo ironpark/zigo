@@ -352,38 +352,6 @@ pub fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
     try raw.renderRawSnapshotAccessors(allocator, writer, program);
 }
 
-/// The two fixed purego dispatchers a stream parameter is called back through.
-/// They mirror the cgo trampolines exactly -- same result codes, same rules
-/// about short writes and end of stream -- because the shim adapter above them
-/// is the same code on both backends.
-pub fn writeStreamDispatchers(writer: *std.Io.Writer, program: abi.Program) !void {
-    if (common.programHasStreamDirection(program, .writer)) try writer.writeAll(
-        "\t\tstreamWriterPointer = purego.NewCallback(func(p0 unsafe.Pointer, p1 uintptr, p2 uintptr) (result uintptr) {\n" ++
-            "\t\t\tentry, stored, ok := acquireCallback(p2)\n" ++
-            "\t\t\tif !ok { return callbackResult(-4) }\n" ++
-            "\t\t\tdefer releaseCallback(entry)\n" ++
-            "\t\t\tdefer func() { if value := recover(); value != nil { entry.record(value); result = callbackResult(-3) } }()\n" ++
-            "\t\t\tn, err := stored.(io.Writer).Write(unsafe.Slice((*byte)(p0), int(p1)))\n" ++
-            "\t\t\tif err == nil && n != int(p1) { err = io.ErrShortWrite }\n" ++
-            "\t\t\tif err != nil { entry.recordErr(err); return callbackResult(-1) }\n" ++
-            "\t\t\treturn callbackResult(0)\n" ++
-            "\t\t})\n",
-    );
-    if (common.programHasStreamDirection(program, .reader)) try writer.writeAll(
-        "\t\tstreamReaderPointer = purego.NewCallback(func(p0 unsafe.Pointer, p1 uintptr, p2 uintptr) (result uintptr) {\n" ++
-            "\t\t\tentry, stored, ok := acquireCallback(p2)\n" ++
-            "\t\t\tif !ok { return callbackResult(-4) }\n" ++
-            "\t\t\tdefer releaseCallback(entry)\n" ++
-            "\t\t\tdefer func() { if value := recover(); value != nil { entry.record(value); result = callbackResult(-3) } }()\n" ++
-            "\t\t\tn, err := readStream(stored.(io.Reader), unsafe.Slice((*byte)(p0), int(p1)), &entry.readTerminal)\n" ++
-            "\t\t\tif err != nil && err != io.EOF { entry.recordErr(err) }\n" ++
-            "\t\t\tif n > 0 { return callbackResult(int32(n)) }\n" ++
-            "\t\t\tif err == io.EOF { return callbackResult(0) }\n" ++
-            "\t\t\treturn callbackResult(-1)\n" ++
-            "\t\t})\n",
-    );
-}
-
 /// purego uses the same pointer-free representation as cgo, but the ABI
 /// registration accepts uintptr-sized length arrays and unsafe.Pointer values.
 fn writePuregoStringSliceSetup(writer: *std.Io.Writer, name: []const u8) !void {

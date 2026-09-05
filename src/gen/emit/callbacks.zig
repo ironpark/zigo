@@ -6,22 +6,8 @@ const semantic = @import("semantic");
 const common = @import("common.zig");
 const emit = @import("emit.zig");
 const public_writers = @import("public_writers.zig");
-const purego = @import("purego.zig");
+const streams = @import("stream_callbacks.zig");
 const lower = @import("lower");
-
-fn renderStreamRead(writer: *std.Io.Writer) !void {
-    try writer.writeAll(
-        "// readStream preserves terminal errors and bounds retries for empty reads.\n" ++
-            "func readStream(reader io.Reader, buffer []byte, terminal *error) (int, error) {\n" ++
-            "\tif *terminal != nil { return 0, *terminal }\n" ++
-            "\tfor attempt := 0; attempt < 100; attempt++ {\n" ++
-            "\t\tn, err := reader.Read(buffer)\n" ++
-            "\t\tif n < 0 || n > len(buffer) { n, err = 0, io.ErrShortBuffer }\n" ++
-            "\t\tif err != nil { *terminal = err }\n" ++
-            "\t\tif n != 0 || err != nil { return n, err }\n" ++
-            "\t}\n\t*terminal = io.ErrNoProgress\n\treturn 0, *terminal\n}\n\n",
-    );
-}
 
 pub fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
     const prefix = if (options.raw_colocated) "zigoRaw" else "";
@@ -81,7 +67,7 @@ pub fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.I
             "func callbackResult(value int32) uintptr { return uintptr(uint32(value)) }\n\n",
     );
     const count = uniqueCallbackSignatureCount(program);
-    if (common.programHasReaderStream(program)) try renderStreamRead(writer);
+    if (common.programHasReaderStream(program)) try streams.renderStreamRead(writer);
     for ([_]semantic.StreamDirection{ .writer, .reader }) |direction| {
         if (!common.programHasStreamDirection(program, direction)) continue;
         try writer.print("var stream{s}Pointer uintptr\n", .{common.streamHandleName(direction)});
@@ -174,7 +160,7 @@ pub fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.I
             signature_index += 1;
         }
     }
-    try purego.writeStreamDispatchers(writer, program);
+    try streams.writeStreamDispatchers(writer, program);
     try writer.writeAll("\t})\n}\n\n");
     for ([_]semantic.StreamDirection{ .writer, .reader }) |direction| {
         if (!common.programHasStreamDirection(program, direction)) continue;
@@ -305,56 +291,6 @@ fn renderCgoCallbackErrorStorage(writer: *std.Io.Writer, program: abi.Program, p
     );
 }
 
-/// The cgo trampolines. Each recovers a panic in the Go callback -- a panic
-/// cannot unwind native frames -- and records it on the callback's state so
-/// the generated caller can rethrow it once the native call has returned.
-/// The two fixed `//export` trampolines a stream parameter is called back
-/// through. They are not user callbacks: the signature is the generator's, one
-/// per direction for the whole binding, so the shim can bind them by name and
-/// carry only the userdata token across the C signature.
-///
-/// A Go error is recorded rather than returned: the native side has no channel
-/// for it beyond "this failed", so the value is kept on the state and the
-/// public wrapper hands it back after the call. A panic takes the existing
-/// `-3` path, and the adapter never calls back into a frame that raised one.
-fn renderCgoStreamTrampolines(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
-    const prefix = if (options.raw_colocated) "zigoRaw" else "";
-    if (common.programHasStreamDirection(program, .writer)) {
-        const name = try common.streamTrampolineNameAlloc(allocator, program, .writer);
-        defer allocator.free(name);
-        try writer.print(
-            "//export {0s}\n" ++
-                "func {0s}(p0 *C.uint8_t, p1 C.size_t, p2 C.size_t) (result C.int32_t) {{\n" ++
-                "\tstate := cgo.Handle(p2).Value().(*{1s}CallbackState)\n" ++
-                "\tdefer func() {{\n\t\tif value := recover(); value != nil {{\n\t\t\tstate.record(value)\n\t\t\tresult = C.int32_t(-3)\n\t\t}}\n\t}}()\n" ++
-                "\tn, err := state.Writer.Write(unsafe.Slice((*byte)(unsafe.Pointer(p0)), int(p1)))\n" ++
-                "\tif err == nil && n != int(p1) {{\n\t\terr = io.ErrShortWrite\n\t}}\n" ++
-                "\tif err != nil {{\n\t\tstate.recordErr(err)\n\t\treturn C.int32_t(-1)\n\t}}\n" ++
-                "\treturn C.int32_t(0)\n}}\n\n",
-            .{ name, prefix },
-        );
-    }
-    if (common.programHasStreamDirection(program, .reader)) {
-        const name = try common.streamTrampolineNameAlloc(allocator, program, .reader);
-        defer allocator.free(name);
-        try writer.print(
-            "//export {0s}\n" ++
-                "func {0s}(p0 *C.uint8_t, p1 C.size_t, p2 C.size_t) (result C.int32_t) {{\n" ++
-                "\tstate := cgo.Handle(p2).Value().(*{1s}CallbackState)\n" ++
-                "\tdefer func() {{\n\t\tif value := recover(); value != nil {{\n\t\t\tstate.record(value)\n\t\t\tresult = C.int32_t(-3)\n\t\t}}\n\t}}()\n" ++
-                "\tn, err := readStream(state.Reader, unsafe.Slice((*byte)(unsafe.Pointer(p0)), int(p1)), &state.readTerminal)\n" ++
-                // A short read is not an end: only a zero count with nothing
-                // more to come is, and only io.EOF says so. Any other error is
-                // the caller's to see.
-                "\tif err != nil && err != io.EOF {{ state.recordErr(err) }}\n" ++
-                "\tif n > 0 {{\n\t\treturn C.int32_t(n)\n\t}}\n" ++
-                "\tif err == io.EOF {{\n\t\treturn C.int32_t(0)\n\t}}\n" ++
-                "\treturn C.int32_t(-1)\n}}\n\n",
-            .{ name, prefix },
-        );
-    }
-}
-
 pub fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
     if (!common.programHasCallbacks(program)) return;
     const prefix = if (options.raw_colocated) "zigoRaw" else "";
@@ -373,7 +309,7 @@ pub fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
             if (has_callback_cancellation) "\tcancel   atomic.Pointer[uint32]\n" else "",
         },
     );
-    if (common.programHasReaderStream(program)) try renderStreamRead(writer);
+    if (common.programHasReaderStream(program)) try streams.renderStreamRead(writer);
     if (has_callback_cancellation) try writer.print(
         "var callbackCancelFlags sync.Map // uintptr -> *uint32\n\n" ++
             "// {0s}SetCallbackCancel attaches a call-scoped cancellation flag to handle.\n" ++
@@ -396,7 +332,7 @@ pub fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
         },
     );
     try renderCgoCallbackErrorStorage(writer, program, prefix);
-    if (has_streams) try renderCgoStreamTrampolines(allocator, writer, program, options);
+    if (has_streams) try streams.renderCgoStreamTrampolines(allocator, writer, program, options);
     for (program.functions) |function| {
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (parameter.type != .callback) continue;
