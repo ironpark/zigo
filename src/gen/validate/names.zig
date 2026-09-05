@@ -85,6 +85,35 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
             };
         }
     }
+    // An iterator wrapper is one more method on its receiver, so it must not
+    // share a name with a bound method or another wrapper of that type.
+    for (document.functions, 0..) |function, index| {
+        const iterator = function.iterator orelse continue;
+        const receiver = function.receiver orelse continue;
+        for (document.functions, 0..) |other, other_index| {
+            if (!std.mem.eql(u8, other.receiver orelse "", receiver)) continue;
+            if (!semantic.optionalStringEqual(function.package, other.package)) continue;
+            const other_name = try semantic.publicFunctionNameAlloc(allocator, document, other);
+            defer allocator.free(other_name);
+            const clashes_method = std.mem.eql(u8, iterator.name, other_name);
+            const clashes_wrapper = other_index < index and other.iterator != null and std.mem.eql(u8, iterator.name, other.iterator.?.name);
+            if (!clashes_method and !clashes_wrapper) continue;
+            const function_path = try site.functionDeclarationAlloc(allocator, function);
+            const other_path = try site.functionDeclarationAlloc(allocator, other);
+            defer allocator.free(other_path);
+            return .{
+                .severity = .@"error",
+                .code = "ZIGO024",
+                .message = try std.fmt.allocPrint(
+                    allocator,
+                    "public Go name `{s}.{s}` collides between the iterator wrapper of `{s}` and `{s}`",
+                    .{ receiver, iterator.name, function_path, other_path },
+                ),
+                .site = site.functionSiteFor(function, function_path),
+                .hint = "give the wrapper another `.iterator = .{ .name = ... }`, or rename the other declaration",
+            };
+        }
+    }
     for (document.types) |declaration| {
         if (declaration.kind != .@"enum") continue;
         for (declaration.fields, 0..) |field, index| {

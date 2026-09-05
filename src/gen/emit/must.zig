@@ -7,7 +7,7 @@ const docs = @import("docs.zig");
 const public = @import("public.zig");
 const public_writers = @import("public_writers.zig");
 
-fn writeMustCallArguments(allocator: std.mem.Allocator, writer: *std.Io.Writer, function: abi.AbiFn, go_names: [][]u8) !void {
+pub fn writeMustCallArguments(allocator: std.mem.Allocator, writer: *std.Io.Writer, function: abi.AbiFn, go_names: [][]u8) !void {
     var index: usize = 0;
     if (function.origin.cancel != null) {
         try writer.writeAll("ctx");

@@ -232,6 +232,13 @@ materialized 결과의 필드나 소유권·해제 선언이 잘못되었습니�
 `.closer = true`이면 생성자·소멸자 짝도 필요합니다. 인터페이스와 구현 타입은 같은 공개
 패키지에 있어야 합니다. [객체 수명과 인터페이스](bindings-handles.md)를 참고하세요.
 
+### ZIGO050
+
+`.iterator`를 붙인 함수가 receiver가 없거나, receiver 외의 파라미터를 받거나, `?T`·`!?T`가
+아닌 값을 반환하거나, wrapper 이름이 exported Go 식별자가 아닙니다. 등록 opaque 타입의
+메서드로 옮기고 인자는 생성자로 빼세요.
+[Iterator wrapper](bindings-handles.md#iterator-wrapper)를 참고하세요.
+
 ### ZIGO051
 
 `.text = true`를 enum이 아닌 타입에 지정했습니다. 텍스트 인코딩은 `.repr = .enumeration`

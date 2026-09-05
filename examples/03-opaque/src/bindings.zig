@@ -15,6 +15,11 @@ pub const bindings = zigo.define(.{
         .{ .path = "Context.add", .params = .{"value"} },
         .{ .path = "Context.maybeTotal", .params = .{"present"} },
         .{ .path = "Context.setTotal", .params = .{"c"} },
+        // `.iterator` adds a range-over-func wrapper beside the method:
+        // `All()` here, and `Checked()` for the fallible variant.
+        .{ .path = "Context.next", .iterator = .{} },
+        .{ .path = "Context.nextChecked", .iterator = .{ .name = "Checked" } },
+        .{ .path = "Context.rewind" },
         .{ .path = "Context.addCopy", .params = .{"value"} },
         .{ .path = "Context.borrowView", .returns = .borrowed },
         .{ .path = "ContextView.total" },

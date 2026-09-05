@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `zig build test --summary all` passes with the new cases.
 > NEXT: none

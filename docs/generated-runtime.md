@@ -8,7 +8,7 @@
 
 ## 생성 파일의 역할
 
-- `<package>_gen.go`: 공개 함수와 method
+- `<package>_gen.go`: 공개 함수와 method, `.iterator` 메서드의 `iter.Seq` wrapper
 - `<package>_enums_gen.go`: enum type, 상수, `String()`
 - `<package>_structs_gen.go`: `extern struct` 공개 value type과 raw 변환, 값 매개변수로
   쓰는 tagged union의 variant constructor와 `Tag()` accessor

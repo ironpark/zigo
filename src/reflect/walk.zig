@@ -905,6 +905,12 @@ fn appendFunction(
         reflected_function.cancel = metadata.cancel.param;
         if (@hasField(@TypeOf(metadata.cancel), "canceled")) reflected_function.cancel_error = metadata.cancel.canceled;
     }
+    // `.iterator = .{}` names the wrapper `All`; `.iterator = .{ .name = "Rows" }`
+    // picks another. The shape (a receiver, no data parameters, `?T`) is
+    // checked by validation, where the whole signature is in hand.
+    if (@hasField(@TypeOf(metadata), "iterator")) reflected_function.iterator = .{
+        .name = if (@hasField(@TypeOf(metadata.iterator), "name")) metadata.iterator.name else "All",
+    };
     if (info.return_type) |return_type| {
         if (isSentinelBytePointer(return_type)) reflected_function.return_semantic = .c_string;
     }
@@ -2879,6 +2885,36 @@ test "a registered non-exhaustive enum records an explicit open opt-in" {
     const bytes = try document.serialize(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"open\": true") != null);
+}
+
+test "an iterator opt-in records the wrapper name" {
+    const Cursor = struct {
+        value: i64 = 0,
+        pub fn next(self: *@This()) ?i64 {
+            self.value += 1;
+            return if (self.value > 3) null else self.value;
+        }
+        pub fn nextNamed(self: *@This()) ?i64 {
+            return self.next();
+        }
+    };
+    const Fixture = struct {};
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{.{ .type = Cursor, .repr = .@"opaque" }},
+        .functions = .{
+            .{ .path = "Cursor.next", .iterator = .{} },
+            .{ .path = "Cursor.nextNamed", .iterator = .{ .name = "Named" } },
+        },
+    }, "terminal", "zg");
+
+    try std.testing.expectEqualStrings("All", document.functions[0].iterator.?.name);
+    try std.testing.expectEqualStrings("Named", document.functions[1].iterator.?.name);
+    const bytes = try document.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"iterator\": {") != null);
 }
 
 test "a registered enum records the text encoding opt-in" {

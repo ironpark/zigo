@@ -1,0 +1,49 @@
+{
+  "functions": [
+    {
+      "iterator": {"name": "All"},
+      "name": "next",
+      "params": [],
+      "receiver": "Cursor",
+      "return": {
+        "child": {"bits": 64, "is_usize": false, "kind": "int", "signed": true},
+        "kind": "optional"
+      },
+      "symbol": "zg_cursor_next"
+    },
+    {
+      "iterator": {"name": "Checked"},
+      "name": "nextChecked",
+      "params": [],
+      "receiver": "Cursor",
+      "return": {
+        "error_set": ["Exhausted"],
+        "kind": "error_union",
+        "payload": {
+          "child": {"kind": "enum", "ref": "Step"},
+          "kind": "optional"
+        }
+      },
+      "symbol": "zg_cursor_next_checked"
+    },
+    {
+      "name": "reset",
+      "params": [],
+      "receiver": "Cursor",
+      "return": {"kind": "void"},
+      "symbol": "zg_cursor_reset"
+    }
+  ],
+  "package": "cursor",
+  "prefix": "zg",
+  "types": [
+    {"kind": "opaque", "name": "Cursor"},
+    {
+      "fields": [{"name": "small", "value": 0}, {"name": "large", "value": 1}],
+      "kind": "enum",
+      "name": "Step",
+      "tag_type": {"bits": 8, "kind": "int", "signed": false}
+    }
+  ],
+  "zig_version": "0.16.0"
+}

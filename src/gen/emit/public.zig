@@ -11,6 +11,7 @@ const common = @import("common.zig");
 const docs = @import("docs.zig");
 const emit = @import("emit.zig");
 const must = @import("must.zig");
+const iterators = @import("iterators.zig");
 const public_runtime = @import("public_runtime.zig");
 const public_types = @import("public_types.zig");
 const public_writers = @import("public_writers.zig");
@@ -231,6 +232,8 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
     // A cancellable call takes a `context.Context`, matches the native error
     // against a sentinel, and raises its flag with an atomic store.
     const needs_cancel = common.programHasCancellation(program);
+    // An iterator wrapper is spelled with `iter.Seq`/`iter.Seq2`.
+    const needs_iter = common.programHasIterators(program);
     const needs_atomic_pointer = common.programHasAtomicPointers(program);
     var needs_lifecycle = false;
     if (options.shared_lifecycle) for (program.functions) |function| {
@@ -248,17 +251,18 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
     };
     const import_count = @as(usize, @intFromBool(needs_io)) + @as(usize, @intFromBool(needs_runtime)) +
         @as(usize, @intFromBool(needs_unsafe)) + @as(usize, @intFromBool(needs_raw)) +
-        @as(usize, @intFromBool(needs_cancel)) * 3 + @as(usize, @intFromBool(needs_atomic_pointer)) + @as(usize, @intFromBool(needs_lifecycle)) +
+        @as(usize, @intFromBool(needs_cancel)) * 3 + @as(usize, @intFromBool(needs_iter)) + @as(usize, @intFromBool(needs_atomic_pointer)) + @as(usize, @intFromBool(needs_lifecycle)) +
         @as(usize, @intFromBool(default_foreign)) + foreign.items.len;
     if (import_count > 1) {
         try writer.writeAll("import (\n");
         if (needs_cancel) try writer.writeAll("\t\"context\"\n\t\"errors\"\n");
         if (needs_io) try writer.writeAll("\t\"io\"\n");
+        if (needs_iter) try writer.writeAll("\t\"iter\"\n");
         if (needs_runtime) try writer.writeAll("\t\"runtime\"\n");
         if (needs_cancel or needs_atomic_pointer) try writer.writeAll("\t\"sync/atomic\"\n");
         if (needs_unsafe) try writer.writeAll("\t\"unsafe\"\n");
         if (needs_raw) {
-            if (needs_io or needs_runtime or needs_unsafe or needs_cancel or needs_atomic_pointer) try writer.writeByte('\n');
+            if (needs_io or needs_iter or needs_runtime or needs_unsafe or needs_cancel or needs_atomic_pointer) try writer.writeByte('\n');
             try public_writers.writeRawImport(writer, options, "\t");
         }
         if (needs_lifecycle) try writer.print("\tlifecycle \"{s}/{s}\"\n", .{ options.go_module, options.lifecycle_package_path });
@@ -267,6 +271,8 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         try writer.writeAll(")\n\n");
     } else if (needs_io) {
         try writer.writeAll("import \"io\"\n\n");
+    } else if (needs_iter) {
+        try writer.writeAll("import \"iter\"\n\n");
     } else if (needs_runtime) {
         try writer.writeAll("import \"runtime\"\n\n");
     } else if (needs_unsafe) {
@@ -670,6 +676,8 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         try writer.writeAll("}\n");
         if (options.go_must_variants and function.must_variant)
             try must.renderMustVariant(scope, allocator, writer, function, go_names, receiver_name, go_name, owned_type);
+        if (function.origin.iterator != null)
+            try iterators.renderIteratorWrapper(scope, allocator, writer, function, go_names, receiver_name.?, go_name, needs_check);
     }
 }
 

@@ -43,6 +43,28 @@ func ContextSetTotal(self unsafe.Pointer, c int64) int32 {
 	return code
 }
 
+// ContextNext calls the generated C ABI wrapper for zg_context_next.
+func ContextNext(self unsafe.Pointer) (int64, bool, int32) {
+	var outResultHas C.uint8_t
+	var outResult C.int64_t
+	code := int32(C.zg_context_next((*C.zg_context)(self), &outResultHas, &outResult))
+	return int64(outResult), outResultHas != 0, code
+}
+
+// ContextNextChecked calls the generated C ABI wrapper for zg_context_next_checked.
+func ContextNextChecked(self unsafe.Pointer) (int64, bool, int32) {
+	var outResultHas C.uint8_t
+	var outResult C.int64_t
+	code := int32(C.zg_context_next_checked((*C.zg_context)(self), &outResultHas, &outResult))
+	return int64(outResult), outResultHas != 0, code
+}
+
+// ContextRewind calls the generated C ABI wrapper for zg_context_rewind.
+func ContextRewind(self unsafe.Pointer) int32 {
+	code := int32(C.zg_context_rewind((*C.zg_context)(self)))
+	return code
+}
+
 // ContextAddCopy calls the generated C ABI wrapper for zg_context_add_copy.
 func ContextAddCopy(self unsafe.Pointer, value int64) (int64, int32) {
 	var outResult C.int64_t

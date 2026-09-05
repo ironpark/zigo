@@ -22,6 +22,7 @@
 | C++ 의존성 전파·cgo 정적/동적 링크 | [01-scalar](../examples/01-scalar/README.md) |
 | Zig 오류를 Go `error`로 처리 | [02-errors](../examples/02-errors) |
 | 객체 생성, 메서드, `Close` | [03-opaque](../examples/03-opaque) |
+| `?T` 메서드의 `iter.Seq` wrapper | [03-opaque](../examples/03-opaque)의 `iterator_test.go` |
 | Go 콜백 또는 generic 구체화 | [04-callback](../examples/04-callback) |
 | 여러 기능을 조합한 라이브러리 | [05-pipeline](../examples/05-pipeline) |
 | 실제 애플리케이션 형태의 수명 관리 | [07-event-queue](../examples/07-event-queue) |

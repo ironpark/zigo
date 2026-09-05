@@ -463,6 +463,12 @@ pub const FieldAccess = struct {
     setter: bool = false,
 };
 
+/// The `.iterator` opt-in: a method returning `?T` or `!?T` also gets a Go
+/// range-over-func wrapper of this name on its receiver.
+pub const Iterator = struct {
+    name: []const u8,
+};
+
 pub const SemanticFn = struct {
     /// Set on the two halves of a boxed constructor pair.
     boxed: ?Boxed = null,
@@ -492,6 +498,9 @@ pub const SemanticFn = struct {
     stream_accessor: ?StreamAccessor = null,
     doc: ?[]const u8 = null,
     has_comptime_params: ?bool = null,
+    /// Set by `.iterator`: the method is a `next()` and Go also gets an
+    /// `iter.Seq` wrapper. Go surface only; the C symbol is unchanged.
+    iterator: ?Iterator = null,
     /// The type a paired constructor is grouped under in Go, when that is not
     /// where the function is declared. `namespace` stays the Zig container the
     /// shim calls through, so a root-level `newTerminal` can be `Terminal`'s

@@ -27,7 +27,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 19,
+        "line": 21,
         "column": 12
       },
       "symbol": "zg_context_create"
@@ -42,7 +42,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 27,
+            "line": 29,
             "column": 32
           },
           "type": {
@@ -62,7 +62,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 27,
+        "line": 29,
         "column": 12
       },
       "symbol": "zg_context_add"
@@ -77,7 +77,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 32,
+            "line": 34,
             "column": 45
           },
           "type": {
@@ -97,7 +97,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 32,
+        "line": 34,
         "column": 12
       },
       "symbol": "zg_context_maybe_total"
@@ -112,7 +112,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 36,
+            "line": 38,
             "column": 37
           },
           "type": {
@@ -129,10 +129,81 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 36,
+        "line": 38,
         "column": 12
       },
       "symbol": "zg_context_set_total"
+    },
+    {
+      "doc": "next counts from 1 up to the total, then reports the end with null.\nBound with `.iterator`, so Go ranges over it as `All()`.",
+      "iterator": {
+        "name": "All"
+      },
+      "name": "next",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Context",
+      "return": {
+        "child": {
+          "bits": 64,
+          "is_usize": false,
+          "kind": "int",
+          "signed": true
+        },
+        "kind": "optional"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 44,
+        "column": 12
+      },
+      "symbol": "zg_context_next"
+    },
+    {
+      "doc": "nextChecked is `next` with a failure path: a negative total is an\nerror the sequence surfaces, rather than an empty sequence.",
+      "iterator": {
+        "name": "Checked"
+      },
+      "name": "nextChecked",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Context",
+      "return": {
+        "error_set": [
+          "NegativeTotal"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "child": {
+            "bits": 64,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          },
+          "kind": "optional"
+        }
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 52,
+        "column": 12
+      },
+      "symbol": "zg_context_next_checked"
+    },
+    {
+      "name": "rewind",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Context",
+      "return": {
+        "kind": "void"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 57,
+        "column": 12
+      },
+      "symbol": "zg_context_rewind"
     },
     {
       "doc": "addCopy receives a copy of the handle's value. Its mutation is visible\nto this call but cannot change the storage owned by the Go handle.",
@@ -145,7 +216,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 42,
+            "line": 63,
             "column": 35
           },
           "type": {
@@ -166,7 +237,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 42,
+        "line": 63,
         "column": 12
       },
       "symbol": "zg_context_add_copy"
@@ -185,7 +256,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 48,
+        "line": 69,
         "column": 12
       },
       "symbol": "zg_context_borrow_view"
@@ -225,7 +296,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 53,
+        "line": 74,
         "column": 12
       },
       "symbol": "zg_context_crash"
@@ -244,7 +315,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 61,
+        "line": 82,
         "column": 12
       },
       "symbol": "zg_context_crash_infallible"
@@ -259,7 +330,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 66,
+        "line": 87,
         "column": 12
       },
       "symbol": "zg_context_deinit"
@@ -274,7 +345,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 80,
+        "line": 101,
         "column": 8
       },
       "symbol": "zg_crash_fatal"
@@ -291,7 +362,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 84,
+        "line": 105,
         "column": 8
       },
       "symbol": "zg_live_bytes"
@@ -306,7 +377,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 72,
+            "line": 93,
             "column": 18
           },
           "type": {
@@ -322,7 +393,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 72,
+            "line": 93,
             "column": 29
           },
           "type": {
@@ -339,7 +410,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 72,
+            "line": 93,
             "column": 44
           },
           "type": {
@@ -359,7 +430,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 72,
+        "line": 93,
         "column": 8
       },
       "symbol": "zg_sum_copies"
@@ -376,7 +447,7 @@
           "retention": "borrowed",
           "semantic": "utf8_string",
           "source": {
-            "line": 89,
+            "line": 110,
             "column": 13
           },
           "type": {
@@ -404,7 +475,7 @@
       "return_semantic": "utf8_string",
       "source": {
         "path": "root.zig",
-        "line": 89,
+        "line": 110,
         "column": 8
       },
       "symbol": "zg_echo"

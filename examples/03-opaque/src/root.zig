@@ -15,6 +15,8 @@ pub const ContextView = struct {
 pub const Context = struct {
     total: i64 = 0,
     view_value: ContextView = undefined,
+    /// Where `next` is in its count-down from `total`.
+    cursor: i64 = 0,
 
     pub fn create() CreateError!*Context {
         const value = std.heap.page_allocator.create(Context) catch return error.OutOfMemory;
@@ -35,6 +37,25 @@ pub const Context = struct {
 
     pub fn setTotal(self: *Context, c: i64) void {
         self.total = c;
+    }
+
+    /// next counts from 1 up to the total, then reports the end with null.
+    /// Bound with `.iterator`, so Go ranges over it as `All()`.
+    pub fn next(self: *Context) ?i64 {
+        if (self.cursor >= self.total) return null;
+        self.cursor += 1;
+        return self.cursor;
+    }
+
+    /// nextChecked is `next` with a failure path: a negative total is an
+    /// error the sequence surfaces, rather than an empty sequence.
+    pub fn nextChecked(self: *Context) error{NegativeTotal}!?i64 {
+        if (self.total < 0) return error.NegativeTotal;
+        return self.next();
+    }
+
+    pub fn rewind(self: *Context) void {
+        self.cursor = 0;
     }
 
     /// addCopy receives a copy of the handle's value. Its mutation is visible

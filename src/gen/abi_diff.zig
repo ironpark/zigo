@@ -138,6 +138,12 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
             try add(allocator, &report, .breaking, identity, "cancellation error mapping changed");
         if (!semantic.optionalStringEqual(old.package, new.package))
             try add(allocator, &report, .breaking, identity, "Go package assignment changed");
+        // The wrapper is a Go method callers range over; losing or renaming
+        // it breaks them, gaining it does not.
+        if (old.iterator != null and (new.iterator == null or !std.mem.eql(u8, old.iterator.?.name, new.iterator.?.name)))
+            try add(allocator, &report, .breaking, identity, "iterator wrapper removed or renamed")
+        else if (old.iterator == null and new.iterator != null)
+            try add(allocator, &report, .compatible, identity, "iterator wrapper added");
         // The native signature is unchanged, but generated Go gains or loses
         // the parent/child Close ordering contract.
         if (old.childOfReceiver() != new.childOfReceiver())
@@ -866,6 +872,33 @@ test "changing an enum between exhaustive and open is breaking" {
     defer report.deinit(std.testing.allocator);
     try std.testing.expect(report.hasBreaking());
     try std.testing.expectEqualStrings("type definition changed", report.changes.items[0].detail);
+}
+
+test "iterator wrapper is compatible to add and breaking to remove" {
+    var payload: semantic.TypeNode = .{ .int = .{ .bits = 64, .signed = true } };
+    const optional: semantic.TypeNode = .{ .optional = .{ .child = &payload } };
+    const plain: semantic.Semantic = .{
+        .package = "cursor",
+        .prefix = "zg",
+        .functions = &.{.{ .name = "next", .params = &.{}, .receiver = "Cursor", .@"return" = optional, .symbol = "zg_cursor_next" }},
+        .types = &.{.{ .kind = .@"opaque", .name = "Cursor" }},
+        .zig_version = "0.16.0",
+    };
+    const wrapped: semantic.Semantic = .{
+        .package = "cursor",
+        .prefix = "zg",
+        .functions = &.{.{ .iterator = .{ .name = "All" }, .name = "next", .params = &.{}, .receiver = "Cursor", .@"return" = optional, .symbol = "zg_cursor_next" }},
+        .types = &.{.{ .kind = .@"opaque", .name = "Cursor" }},
+        .zig_version = "0.16.0",
+    };
+    var added = try diff(std.testing.allocator, plain, wrapped);
+    defer added.deinit(std.testing.allocator);
+    try std.testing.expect(!added.hasBreaking());
+    try std.testing.expectEqualStrings("iterator wrapper added", added.changes.items[0].detail);
+    var removed = try diff(std.testing.allocator, wrapped, plain);
+    defer removed.deinit(std.testing.allocator);
+    try std.testing.expect(removed.hasBreaking());
+    try std.testing.expectEqualStrings("iterator wrapper removed or renamed", removed.changes.items[0].detail);
 }
 
 test "enum text encoding is compatible to add and breaking to remove" {

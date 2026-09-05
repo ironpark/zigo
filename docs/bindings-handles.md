@@ -237,6 +237,45 @@ segment가 기본 이름이므로 위 선언은 `Cols()`, `CursorX()`, `CursorSt
 API를 만들고 `abi-check` 및 `abi-diff`에도 일반 함수처럼 나타납니다. 접근자를 추가하는 것은
 compatible append이며, 함수와 이름이 겹치면 기존 `ZIGO024`/`ZIGO036` 진단을 사용합니다.
 
+## Iterator wrapper
+
+`?T`를 반환하는 `next()` 형태의 메서드에 `.iterator`를 붙이면 Go에 range-over-func
+wrapper가 함께 생성됩니다.
+
+```zig
+.functions = .{
+    .{ .path = "Context.next", .iterator = .{} },
+    .{ .path = "Context.nextChecked", .iterator = .{ .name = "Checked" } },
+},
+```
+
+`Next() (int64, bool, error)`는 그대로 남고, 같은 타입에 `All() iter.Seq2[int64, error]`가
+추가됩니다. `.name`을 생략하면 wrapper 이름은 `All`이고, 한 타입에 iterator가 여러 개이면
+이름을 지정해 구분합니다. wrapper는 공개 메서드를 호출하므로 handle 검사와 오류 변환을
+그대로 공유합니다.
+
+```go
+for value, err := range ctx.All() {
+    if err != nil {
+        return err
+    }
+    use(value)
+}
+```
+
+- 메서드가 값을 돌려주지 않으면(`ok == false`) 시퀀스가 끝납니다.
+- 호출이 실패하면 zero 값과 오류를 한 번 yield하고 끝납니다. handle 메서드는 항상 `error`를
+  가지므로 wrapper는 `iter.Seq2[T, error]`입니다. Go 시그니처에 `error`가 없는 경우에만
+  `iter.Seq[T]`가 됩니다.
+- `.cancel`이 있는 메서드는 wrapper도 `ctx context.Context`를 받아 매 호출에 전달합니다.
+- 조기 `break`는 native 상태를 되돌리지 않습니다. 다시 처음부터 순회하려면 Zig 쪽에
+  `rewind` 같은 메서드가 필요합니다.
+
+메서드는 receiver 외에 Go가 넘기는 파라미터가 없어야 하고 반환은 `?T` 또는 `!?T`여야 합니다.
+어긋나면 `ZIGO050`이며, wrapper 이름이 같은 타입의 다른 메서드와 겹치면 `ZIGO024`입니다.
+`abi-check`는 wrapper 추가를 호환으로, 제거·이름 변경을 breaking으로 보고합니다.
+예제는 `03-opaque`의 `Context.next`에 있습니다.
+
 ## 인터페이스
 
 등록한 opaque handle 여러 개가 같은 메서드를 같은 Go 시그니처로 제공하면, `.interfaces`로

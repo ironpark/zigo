@@ -24,6 +24,11 @@
   `<Enum>(N)` 철자도 파싱합니다. 알 수 없는 문자열은 패키지 공용 `EnumParseError`로
   보고하며, enum이 아닌 항목의 opt-in은 `ZIGO051`입니다. `abi-check`는 인코딩 제거를
   breaking으로 판정합니다.
+- 함수 메타 `.iterator = .{ .name = "All" }`로 `?T`·`!?T`를 반환하는 메서드에
+  range-over-func wrapper를 생성합니다. Go 시그니처에 `error`가 있으면
+  `iter.Seq2[T, error]`, 없으면 `iter.Seq[T]`이며 `.cancel` 메서드는 wrapper도 `ctx`를
+  받습니다. 잘못된 형태는 `ZIGO050`, 이름 충돌은 `ZIGO024`이고 `abi-check`는 wrapper
+  제거·이름 변경을 breaking으로 판정합니다.
 
 ### Changed
 
