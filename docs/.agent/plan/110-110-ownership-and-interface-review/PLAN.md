@@ -1,6 +1,4 @@
 ---
-depends_on:
-- go-generator-restructure
 description: "Review plan: generalize ownership as a first-class IR concept and evaluate exporting Zig comptime interface patterns as Go interfaces"
 plan_status: in-progress
 registered_at: "2026-09-05T07:29:55Z"

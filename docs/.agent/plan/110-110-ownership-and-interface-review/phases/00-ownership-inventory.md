@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: The table is in `docs/.agent/design/10-ownership-model.md` and every row
 > NEXT: none
