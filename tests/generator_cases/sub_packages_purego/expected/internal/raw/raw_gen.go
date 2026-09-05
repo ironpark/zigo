@@ -44,6 +44,7 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
+	panicMessage func(int32) unsafe.Pointer
 	fnUseMode func(uint8)
 	fnInspectPoint func(unsafe.Pointer, unsafe.Pointer)
 	fnReset func()
@@ -104,6 +105,8 @@ func loadCandidate(path string) error {
 	fail := func(symbol string, cause error) error { closeLibrary(handle); return &LibraryError{Path: path, Symbol: symbol, Operation: "resolve", Cause: cause} }
 	addrLastError, err := resolveSymbol(handle, "zg_last_error_message")
 	if err != nil { return fail("zg_last_error_message", err) }
+	addrPanicMessage, err := resolveSymbol(handle, "zg_caught_panic_message")
+	if err != nil { return fail("zg_caught_panic_message", err) }
 	addrUseMode, err := resolveSymbol(handle, "zg_use_mode")
 	if err != nil { return fail("zg_use_mode", err) }
 	addrInspectPoint, err := resolveSymbol(handle, "zg_inspect_point")
@@ -112,6 +115,7 @@ func loadCandidate(path string) error {
 	if err != nil { return fail("zg_reset", err) }
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
+	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
 	purego.RegisterFunc(&next.fnUseMode, addrUseMode)
 	purego.RegisterFunc(&next.fnInspectPoint, addrInspectPoint)
 	purego.RegisterFunc(&next.fnReset, addrReset)
@@ -128,6 +132,15 @@ func bindings() *nativeBindings {
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string {
 	p := bindings().lastError()
+	if p == nil { return "" }
+	length := 0
+	for *(*byte)(unsafe.Add(p, length)) != 0 { length++ }
+	return string(unsafe.Slice((*byte)(p), length))
+}
+
+// PanicMessage returns the message of the native panic a status code of -256 or below names.
+func PanicMessage(code int32) string {
+	p := bindings().panicMessage(code)
 	if p == nil { return "" }
 	length := 0
 	for *(*byte)(unsafe.Add(p, length)) != 0 { length++ }

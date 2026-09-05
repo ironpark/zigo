@@ -36,5 +36,6 @@ ZIGO_EXPORT int32_t zg_owner_flags(const zg_owner * self, uint16_t * out_result)
 ZIGO_EXPORT int32_t zg_owner_set_flags(zg_owner * self, uint16_t v);
 ZIGO_EXPORT void zg_visit(size_t userdata);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_packedvalue_H

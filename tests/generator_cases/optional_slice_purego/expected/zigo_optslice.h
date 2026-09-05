@@ -27,5 +27,6 @@ ZIGO_EXPORT void zg_free_owned(const uint8_t * value_ptr, size_t value_len);
 ZIGO_EXPORT int32_t zg_take_owned_c_string(const uint8_t * * out_result_ptr, size_t * out_result_len);
 ZIGO_EXPORT void zg_free_owned_c_string(const uint8_t * value_ptr, size_t value_len);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_optslice_H

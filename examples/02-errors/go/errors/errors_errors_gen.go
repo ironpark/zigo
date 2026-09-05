@@ -88,9 +88,10 @@ var ErrDivideByZero = &Error{Code: 1, Name: "DivideByZero"}
 var ErrNotPrintable = &Error{Code: 2, Name: "NotPrintable"}
 
 func errorForCode(operation string, code int32) error {
+	if code <= -256 {
+		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(code)}
+	}
 	switch code {
-	case -2:
-		return &NativePanicError{Operation: operation, Message: raw.LastErrorMessage()}
 	case 1:
 		return &Error{Code: 1, Name: "DivideByZero", Operation: operation}
 	case 2:

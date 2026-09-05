@@ -162,28 +162,19 @@ retained 콜백을 가진 타입의 메서드는 native 호출 뒤 콜백 slot�
 같은 환경에서 324 ns/op이 260 ns/op으로 줄었습니다(20코어 Apple Silicon, Go 1.27,
 `-count=5` 평균).
 
-## 패닉 메시지와 스레드 고정 비용
+## 패닉 메시지 전달
 
-오류 메시지를 저장한 native 스레드에서 읽기 위해 생성 함수는 호출 동안 스레드를 고정합니다.
-아래는 측정 기록이며 다른 환경의 성능을 보장하는 수치는 아닙니다.
+Zig panic은 `panic.c`가 `setjmp`/`longjmp`로 붙잡습니다. 붙잡힌 메시지는 시퀀스 번호가 붙은
+64칸 slot 테이블에 실리고, C 함수는 `-(256 + 시퀀스)`를 상태 코드로 돌려줍니다. Go는
+`errorForCode`·`zigoProjectionError`에서 `-256` 이하 코드를 보면 `PanicMessage(code)`로
+그 slot을 읽어 `*NativePanicError`를 만듭니다. 메시지가 코드에 묶여 있으므로 어느
+스레드에서든 읽을 수 있고, 생성 함수는 OS 스레드를 고정하지 않습니다. 같은 slot이 64번
+뒤의 panic에 재사용되면 메시지는 빈 문자열이 되며 코드와 연산 이름은 그대로 남습니다.
 
-`examples/07-event-queue`의 `lock_os_thread_bench_test.go`가 그 비용을 잰다. 생성된
-`EventQueue.Enqueue`와, `LockOSThread` 쌍만 뺀 손으로 쓴 같은 함수를 비교한다.
+`{prefix}_last_error_message`는 마지막 panic의 thread-local 메시지를 돌려주는 진단용
+심볼로 남아 있습니다. 생성 코드는 더 이상 이 심볼로 오류를 만들지 않습니다.
 
-| 환경 | 생성 경로 | `LockOSThread` 없음 | 차이 | 비율 |
-| --- | --- | --- | --- | --- |
-| Apple M1 Ultra, Go 1.27 (계획 68) | 289.2 ns/op | 284.4 ns/op | +4.8 ns | 1.7% |
-| 20코어 Apple Silicon, Go 1.27 (콜백 검사 개선 뒤) | 260 ns/op | 255 ns/op | +5 ns | 2% |
-
-두 측정 모두 스레드 고정은 가벼운 error union 호출 총비용의 2% 안쪽이다. 계획 68이 정한
-기준(10% 이상)에 못 미치므로 패닉 메시지 전달 ABI를 바꾸지 않는다. 호출 비용을
-지배하는 것은 경계 통과 자체다.
-
-주의: 비교 함수는 생성 함수와 콜백 panic 검사까지 같아야 한다. 검사 방식이 다른 손 함수와
-비교하면 그 차이가 `LockOSThread` 비용으로 잘못 읽힌다. 실제로 slot마다 mutex를 잡던
-이전 검사와 비교했을 때는 35 ns(11%)로 보였고, 그 비용은 원자 카운터 검사가 없앴다.
-
-시퀀스 번호가 붙은 slot 테이블로 메시지를 전달해 스레드 고정을 없애는 구현은
-`experiment/panic-slots` 브랜치에 있다. C ABI에 `{prefix}_caught_panic_message`가 추가되고
-panic 상태 코드가 `-256` 이하로 바뀌므로, 기준을 넘는 측정이 나올 때만 가져온다.
+이전 설계는 메시지를 thread-local에만 두고 두 번째 호출로 읽었기 때문에 error union
+함수마다 `runtime.LockOSThread`가 필요했습니다. 그 비용은 호출당 약 5 ns(2%)로 작았고,
+raw 시그니처가 바뀌는 minor 릴리스에 맞춰 ABI를 정리하면서 없앴습니다.
 

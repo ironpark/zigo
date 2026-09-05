@@ -15,6 +15,9 @@ import "unsafe"
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// PanicMessage returns the message of the native panic a status code of -256 or below names.
+func PanicMessage(code int32) string { return C.GoString(C.zg_caught_panic_message(C.int32_t(code))) }
+
 // ScreenSelectAll calls the generated C ABI wrapper for zg_screen_select_all.
 func ScreenSelectAll(self unsafe.Pointer) int32 {
 	code := int32(C.zg_screen_select_all((*C.zg_screen)(self)))

@@ -21,5 +21,6 @@ ZIGO_EXPORT int32_t zg_terminal_set_title(zg_terminal * self, const uint8_t * t_
 ZIGO_EXPORT int32_t zg_terminal_collide_all(zg_terminal * self, int32_t t, int32_t te, int32_t ter, int32_t term, int32_t termi, int32_t termin, int32_t termina, int32_t terminal);
 ZIGO_EXPORT int32_t zg_terminal_clear(zg_terminal * self);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_receiver_name_clash_H

@@ -176,9 +176,10 @@ var ErrReadFailed = &Error{Code: 3, Name: "ReadFailed"}
 var ErrTooLarge = &Error{Code: 4, Name: "TooLarge"}
 
 func errorForCode(operation string, code int32) error {
+	if code <= -256 {
+		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(code)}
+	}
 	switch code {
-	case -2:
-		return &NativePanicError{Operation: operation, Message: raw.LastErrorMessage()}
 	case 1:
 		return &Error{Code: 1, Name: "OutOfMemory", Operation: operation}
 	case 2:

@@ -20,5 +20,6 @@ typedef struct zg_job zg_job;
 ZIGO_EXPORT int32_t zg_job_crunch(zg_job * self, uint32_t rounds, const uint32_t * cancel, double * out_result);
 ZIGO_EXPORT int32_t zg_job_total(zg_job * self, double * out_result);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_job_H

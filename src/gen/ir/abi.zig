@@ -547,11 +547,13 @@ pub const AbiProjection = struct {
     field: ?*const semantic.TypeField = null,
 
     pub const Kind = enum { tag, payload };
-    pub const Status = enum(u8) {
+    /// The `int32_t` every projection and snapshot returns. A caught Zig
+    /// panic is not a member: it reports `-(256 + sequence)`, the same code
+    /// range fallible functions use, so its message travels with the code.
+    pub const Status = enum(i32) {
         mismatch = 0,
         success = 1,
         invalid_handle = 2,
-        panic = 3,
     };
 };
 

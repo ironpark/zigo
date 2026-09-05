@@ -18,5 +18,6 @@
 
 ZIGO_EXPORT int32_t zg_add(int32_t p0, int32_t p1);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_scalar_H

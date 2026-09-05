@@ -25,5 +25,6 @@ ZIGO_EXPORT int32_t zg_parent_maybe_view(zg_parent * self, zg_view * * out_resul
 ZIGO_EXPORT int32_t zg_parent_checked_view(zg_parent * self, zg_view * * out_result);
 ZIGO_EXPORT int32_t zg_view_touch(zg_view * self, int32_t * out_result);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_borrowed_return_H

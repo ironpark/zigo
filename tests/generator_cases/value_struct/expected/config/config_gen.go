@@ -4,7 +4,6 @@
 package config
 
 import (
-	"runtime"
 	"unsafe"
 
 	"example.com/zigo/config/internal/raw"
@@ -29,8 +28,6 @@ func Translate(origin Point, dx int16) Point {
 // Load calls the Zig function load.
 // Native failures are returned as generated error values.
 func Load() (Config, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	result, code := raw.Load()
 	if code != 0 {
 		return Config{}, errorForCode("Load", code)
@@ -50,8 +47,6 @@ func AcceptPoints(values []Point) {
 // FillPoints calls the Zig function fillPoints.
 // Native failures are returned as generated error values.
 func FillPoints(output []Point) (uint, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	var outputRaw []raw.PointData
 	if len(output) != 0 {
 		outputRaw = unsafe.Slice((*raw.PointData)(unsafe.Pointer(&output[0])), len(output))
@@ -99,8 +94,6 @@ func Points() []Point {
 // PointsChecked calls the Zig function pointsChecked.
 // Native failures are returned as generated error values.
 func PointsChecked() ([]Point, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	result, code := raw.PointsChecked()
 	if code != 0 {
 		return nil, errorForCode("PointsChecked", code)

@@ -26,5 +26,6 @@ ZIGO_EXPORT int32_t zg_view_new_child(zg_view * self, zg_child * * out_result);
 ZIGO_EXPORT int32_t zg_child_free_child(zg_child * self);
 ZIGO_EXPORT int32_t zg_child_touch(zg_child * self);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_dependent_handle_H

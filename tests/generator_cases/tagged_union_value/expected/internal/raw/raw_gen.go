@@ -14,6 +14,9 @@ import "C"
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// PanicMessage returns the message of the native panic a status code of -256 or below names.
+func PanicMessage(code int32) string { return C.GoString(C.zg_caught_panic_message(C.int32_t(code))) }
+
 // Apply calls the generated C ABI wrapper for zg_apply.
 func Apply(behavior_tag uint8, behavior_delta int, behavior_page uint, behavior_ratio float64, behavior_animated uint8, behavior_mode uint8, behavior_rgb uint32, behavior_region_x int16, behavior_region_enabled uint8) int64 {
 	return int64(C.zg_apply(C.uint8_t(behavior_tag), C.ptrdiff_t(behavior_delta), C.size_t(behavior_page), C.double(behavior_ratio), C.uint8_t(behavior_animated), C.uint8_t(behavior_mode), C.uint32_t(behavior_rgb), C.int16_t(behavior_region_x), C.uint8_t(behavior_region_enabled)))

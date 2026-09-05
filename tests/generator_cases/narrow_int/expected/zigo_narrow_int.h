@@ -24,5 +24,6 @@ ZIGO_EXPORT void zg_fill_codepoints(uint32_t * values_ptr, size_t values_len, si
 ZIGO_EXPORT void zg_take_codepoints(const uint32_t * * out_result_ptr, size_t * out_result_len);
 ZIGO_EXPORT void zg_free_codepoints(const uint32_t * values_ptr, size_t values_len);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_narrow_int_H

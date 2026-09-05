@@ -28,5 +28,6 @@ typedef struct zg_config {
 ZIGO_EXPORT void zg_use_mode(uint8_t mode);
 ZIGO_EXPORT void zg_inspect_config(const zg_config * config, zg_config * out_result);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_packages_H

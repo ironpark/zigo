@@ -31,31 +31,31 @@ export fn zg_signal_set_active_impl(self: *target.Signal, active: u8) i32 {
     target.Signal.setActive(self, active != 0);
     return 0;
 }
-export fn zg_signal_project_tag_impl(self: *const target.Signal, out_value: *u8) u8 {
+export fn zg_signal_project_tag_impl(self: *const target.Signal, out_value: *u8) i32 {
     out_value.* = @intFromEnum(std.meta.activeTag(self.*));
     return 1;
 }
-export fn zg_signal_project_ticks_impl(self: *const target.Signal, out_value: *u32) u8 {
+export fn zg_signal_project_ticks_impl(self: *const target.Signal, out_value: *u32) i32 {
     if (std.meta.activeTag(self.*) != .ticks) return 0;
     out_value.* = self.ticks;
     return 1;
 }
-export fn zg_signal_project_level_impl(self: *const target.Signal, out_value: *f64) u8 {
+export fn zg_signal_project_level_impl(self: *const target.Signal, out_value: *f64) i32 {
     if (std.meta.activeTag(self.*) != .level) return 0;
     out_value.* = self.level;
     return 1;
 }
-export fn zg_signal_project_offset_impl(self: *const target.Signal, out_value: *i16) u8 {
+export fn zg_signal_project_offset_impl(self: *const target.Signal, out_value: *i16) i32 {
     if (std.meta.activeTag(self.*) != .offset) return 0;
     out_value.* = self.offset;
     return 1;
 }
-export fn zg_signal_project_mode_impl(self: *const target.Signal, out_value: *u8) u8 {
+export fn zg_signal_project_mode_impl(self: *const target.Signal, out_value: *u8) i32 {
     if (std.meta.activeTag(self.*) != .mode) return 0;
     out_value.* = @intFromEnum(self.mode);
     return 1;
 }
-export fn zg_signal_project_active_impl(self: *const target.Signal, out_value: *u8) u8 {
+export fn zg_signal_project_active_impl(self: *const target.Signal, out_value: *u8) i32 {
     if (std.meta.activeTag(self.*) != .active) return 0;
     out_value.* = @intFromBool(self.active);
     return 1;
@@ -74,7 +74,7 @@ comptime {
     std.debug.assert(@sizeOf(zg_signal_snapshot_t) == 24);
     std.debug.assert(@alignOf(zg_signal_snapshot_t) == 8);
 }
-export fn zg_signal_snapshot_impl(self: *const target.Signal, out_snapshot: *zg_signal_snapshot_t) u8 {
+export fn zg_signal_snapshot_impl(self: *const target.Signal, out_snapshot: *zg_signal_snapshot_t) i32 {
     out_snapshot.* = std.mem.zeroes(zg_signal_snapshot_t);
     out_snapshot.tag = @intFromEnum(std.meta.activeTag(self.*));
     switch (self.*) {

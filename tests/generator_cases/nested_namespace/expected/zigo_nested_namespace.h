@@ -20,5 +20,6 @@ ZIGO_EXPORT int32_t zg_unicode_codepoint_width(uint32_t cp, uint8_t * out_result
 ZIGO_EXPORT uint8_t zg_unicode_grapheme_breaks(uint32_t before, uint32_t after);
 ZIGO_EXPORT uint8_t zg_osc_parser_state_parse(uint8_t byte);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_nested_namespace_H

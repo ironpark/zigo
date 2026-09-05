@@ -3,11 +3,7 @@
 // Package types contains event-queue values and the standalone Ticker handle.
 package types
 
-import (
-	"runtime"
-
-	raw "example.com/zigo/event-queue-purego/internal/native"
-)
+import raw "example.com/zigo/event-queue-purego/internal/native"
 
 // LibraryError reports a native shared-library loading failure.
 type LibraryError = raw.LibraryError
@@ -26,8 +22,6 @@ var DefaultLibraryName = raw.DefaultLibraryName
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 func NewTicker(interval uint32) (*Ticker, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	result, code := raw.NewTicker(interval)
 	if code != 0 {
 		return nil, errorForCode("NewTicker", code)
@@ -42,8 +36,6 @@ func MustNewTicker(interval uint32) *Ticker { return zigoMust(NewTicker(interval
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (t *Ticker) Advance(steps uint32) (uint32, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Ticker.Advance receiver", t)
 	if err != nil {
 		return 0, err
@@ -63,8 +55,6 @@ func (t *Ticker) MustAdvance(steps uint32) uint32 { return zigoMust(t.Advance(st
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (t *Ticker) Elapsed() (uint32, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Ticker.Elapsed receiver", t)
 	if err != nil {
 		return 0, err

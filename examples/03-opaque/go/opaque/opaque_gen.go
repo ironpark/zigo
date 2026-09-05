@@ -9,7 +9,6 @@ package opaque
 
 import (
 	"iter"
-	"runtime"
 
 	"example.com/zigo/opaque/internal/raw"
 )
@@ -18,8 +17,6 @@ import (
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 func NewContext() (*Context, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	result, code := raw.ContextCreate()
 	if code != 0 {
 		return nil, errorForCode("NewContext", code)
@@ -31,8 +28,6 @@ func NewContext() (*Context, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (co *Context) Add(value int64) (int64, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Context.Add receiver", co)
 	if err != nil {
 		return 0, err
@@ -49,8 +44,6 @@ func (co *Context) Add(value int64) (int64, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (co *Context) MaybeTotal(present bool) (int64, bool, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Context.MaybeTotal receiver", co)
 	if err != nil {
 		return 0, false, err
@@ -67,8 +60,6 @@ func (co *Context) MaybeTotal(present bool) (int64, bool, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (co *Context) SetTotal(c int64) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Context.SetTotal receiver", co)
 	if err != nil {
 		return err
@@ -86,8 +77,6 @@ func (co *Context) SetTotal(c int64) error {
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (co *Context) Next() (int64, bool, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Context.Next receiver", co)
 	if err != nil {
 		return 0, false, err
@@ -123,8 +112,6 @@ func (co *Context) All() iter.Seq2[int64, error] {
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (co *Context) NextChecked() (int64, bool, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Context.NextChecked receiver", co)
 	if err != nil {
 		return 0, false, err
@@ -159,8 +146,6 @@ func (co *Context) Checked() iter.Seq2[int64, error] {
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (co *Context) Rewind() error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Context.Rewind receiver", co)
 	if err != nil {
 		return err
@@ -178,8 +163,6 @@ func (co *Context) Rewind() error {
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (co *Context) AddCopy(value int64) (int64, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Context.AddCopy receiver", co)
 	if err != nil {
 		return 0, err
@@ -197,8 +180,6 @@ func (co *Context) AddCopy(value int64) (int64, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (co *Context) BorrowView() (*ContextView, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Context.BorrowView receiver", co)
 	if err != nil {
 		return nil, err
@@ -215,8 +196,6 @@ func (co *Context) BorrowView() (*ContextView, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (c *ContextView) Total() (int64, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("ContextView.Total receiver", c)
 	if err != nil {
 		return 0, err
@@ -233,8 +212,6 @@ func (c *ContextView) Total() (int64, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (co *Context) Crash() error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Context.Crash receiver", co)
 	if err != nil {
 		return err
@@ -253,8 +230,6 @@ func (co *Context) Crash() error {
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (co *Context) CrashInfallible() (int64, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Context.CrashInfallible receiver", co)
 	if err != nil {
 		return 0, err
@@ -284,8 +259,6 @@ func LiveBytes() uint {
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func SumCopies(bias int64, left *Context, right *Context) (int64, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	leftPtr, err := zigoCheckedPointer("SumCopies parameter left", left)
 	if err != nil {
 		return 0, err

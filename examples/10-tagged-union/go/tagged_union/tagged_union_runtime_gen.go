@@ -40,18 +40,20 @@ func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error {
 }
 
 const (
-	zigoProjectionMismatch uint8 = iota
+	zigoProjectionMismatch int32 = iota
 	zigoProjectionSuccess
 	zigoProjectionInvalidHandle
-	zigoProjectionPanic
 )
 
-func zigoProjectionError(operation string, status uint8) error {
+// zigoProjectionError maps a projection status to its error. A status of -256
+// or below is a caught native panic whose message the code names.
+func zigoProjectionError(operation string, status int32) error {
+	if status <= -256 {
+		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(status)}
+	}
 	switch status {
 	case zigoProjectionInvalidHandle:
 		return &HandleError{Operation: operation}
-	case zigoProjectionPanic:
-		return &NativePanicError{Operation: operation, Message: raw.LastErrorMessage()}
 	default:
 		return &StatusError{Operation: operation, Status: status}
 	}

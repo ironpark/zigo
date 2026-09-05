@@ -5,7 +5,6 @@ package stream
 
 import (
 	"io"
-	"runtime"
 
 	"example.com/zigo/stream/internal/raw"
 )
@@ -19,8 +18,6 @@ func (d *Document) Dump(w io.Writer) error {
 	if w == nil {
 		return &StreamError{Operation: "Document.Dump", Parameter: "w", Err: ErrNilStream}
 	}
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Document.Dump receiver", d)
 	if err != nil {
 		return err
@@ -49,8 +46,6 @@ func (d *Document) Load(r io.Reader) (uint, error) {
 	if r == nil {
 		return 0, &StreamError{Operation: "Document.Load", Parameter: "r", Err: ErrNilStream}
 	}
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Document.Load receiver", d)
 	if err != nil {
 		return 0, err
@@ -95,8 +90,6 @@ func Banner(out io.Writer, width int32) error {
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (s *Sink) Write(bytes []byte) (int, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Sink.Write receiver", s)
 	if err != nil {
 		return 0, err
@@ -114,8 +107,6 @@ func (s *Sink) Write(bytes []byte) (int, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (s *Sink) Flush() error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Sink.Flush receiver", s)
 	if err != nil {
 		return err
@@ -134,8 +125,6 @@ func (s *Sink) Flush() error {
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (s *Sink) Read(buffer []byte) (int, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Sink.Read receiver", s)
 	if err != nil {
 		return 0, err

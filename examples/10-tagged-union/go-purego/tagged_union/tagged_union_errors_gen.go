@@ -73,7 +73,7 @@ type StatusError struct {
 	// Operation names the generated call or projection.
 	Operation string
 	// Status is the unexpected native status code.
-	Status uint8
+	Status int32
 }
 
 // Error implements error.
@@ -152,9 +152,10 @@ var ErrNever = &Error{Code: 3, Name: "Never"}
 var ErrInvalid = &Error{Code: 4, Name: "Invalid"}
 
 func errorForCode(operation string, code int32) error {
+	if code <= -256 {
+		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(code)}
+	}
 	switch code {
-	case -2:
-		return &NativePanicError{Operation: operation, Message: raw.LastErrorMessage()}
 	case -3:
 		return &Error{Code: -3, Name: "OmittedVariant", Operation: operation}
 	case 1:

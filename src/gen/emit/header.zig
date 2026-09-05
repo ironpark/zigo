@@ -45,6 +45,7 @@ pub fn renderHeader(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
     }
     try renderTaggedUnionHeader(writer, program);
     try writer.print("ZIGO_EXPORT const char *{s}_last_error_message(void);\n", .{program.prefix});
+    try writer.print("ZIGO_EXPORT const char *{s}_caught_panic_message(int32_t code);\n", .{program.prefix});
     try writer.print("\n#endif // ZIGO_{s}_H\n", .{package});
 }
 

@@ -360,16 +360,15 @@ pub fn retainedCallbacksBelongToReceiver(program: abi.Program, function: semanti
     return constructorForInit(program, function) == null and ownedOpaqueReturn(program, function) == null;
 }
 
-pub fn publicNeedsRuntime(program: abi.Program) bool {
+/// The public function file imports `runtime` only for the pinner and
+/// KeepAlive an atomic-pointer parameter needs, and for the pinner purego
+/// puts under a cancellation flag; nothing else in it reaches the package.
+pub fn publicNeedsRuntime(program: abi.Program, options: emit.Options) bool {
     for (program.functions) |function| {
         if (!public.emitsPublicFunction(program, function)) continue;
-        if (function.origin.@"return" == .error_union) return true;
-        if (function.origin.receiver) |receiver| {
-            if (isAutoCleanupType(program, receiver)) return true;
-        }
+        if (options.backend == .purego and function.origin.cancel != null) return true;
         for (function.origin.params) |parameter| switch (parameter.type) {
             .atomic_ptr => return true,
-            .opaque_ptr => |pointer| if (isAutoCleanupType(program, pointer.ref)) return true,
             else => {},
         };
     }
@@ -638,7 +637,7 @@ test "tagged union emitters generate checked pointer-only projections" {
 
     const shim_text = try emit.renderForTest(shim.renderShim, program);
     defer std.testing.allocator.free(shim_text);
-    try std.testing.expect(std.mem.indexOf(u8, shim_text, "export fn zg_value_project_tag_impl(self: *const target.Value, out_value: *u8) u8") != null);
+    try std.testing.expect(std.mem.indexOf(u8, shim_text, "export fn zg_value_project_tag_impl(self: *const target.Value, out_value: *u8) i32") != null);
     try std.testing.expect(std.mem.indexOf(u8, shim_text, "out_value.* = @intFromEnum(std.meta.activeTag(self.*));") != null);
     try std.testing.expect(std.mem.indexOf(u8, shim_text, "if (std.meta.activeTag(self.*) != .integer) return 0;") != null);
     try std.testing.expect(std.mem.indexOf(u8, shim_text, "out_value.* = @intFromBool(self.flag);") != null);
@@ -652,29 +651,31 @@ test "tagged union emitters generate checked pointer-only projections" {
     const header_text = try emit.renderForTest(header.renderHeader, program);
     defer std.testing.allocator.free(header_text);
     try std.testing.expect(std.mem.indexOf(u8, header_text, "typedef struct zg_value zg_value;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, header_text, "uint8_t zg_value_project_tag(const zg_value *self, uint8_t *out_value);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, header_text, "uint8_t zg_value_project_integer(const zg_value *self, int32_t *out_value);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, header_text, "uint8_t zg_value_project_samples(const zg_value *self, const int16_t **out_value_ptr, size_t *out_value_len);") != null);
-    try std.testing.expect(std.mem.indexOf(u8, header_text, "uint8_t zg_http_result_project_url_value(const zg_http_result *self, uint64_t *out_value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, header_text, "int32_t zg_value_project_tag(const zg_value *self, uint8_t *out_value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, header_text, "int32_t zg_value_project_integer(const zg_value *self, int32_t *out_value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, header_text, "int32_t zg_value_project_samples(const zg_value *self, const int16_t **out_value_ptr, size_t *out_value_len);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, header_text, "int32_t zg_http_result_project_url_value(const zg_http_result *self, uint64_t *out_value);") != null);
 
     const panic_source = try emit.renderForTest(shim.renderPanicSource, program);
     defer std.testing.allocator.free(panic_source);
-    try std.testing.expect(std.mem.indexOf(u8, panic_source, "uint8_t zg_value_project_tag_impl(const zg_value *self, uint8_t *out_value);") != null);
+    try std.testing.expect(std.mem.indexOf(u8, panic_source, "int32_t zg_value_project_tag_impl(const zg_value *self, uint8_t *out_value);") != null);
     try std.testing.expect(std.mem.indexOf(u8, panic_source, "if (self == NULL || out_value == NULL) return 2;") != null);
-    try std.testing.expect(std.mem.indexOf(u8, panic_source, "return 3;") != null);
+    try std.testing.expect(std.mem.indexOf(u8, panic_source, "return zg_panic_publish();") != null);
 
     const raw_text = try emit.renderForTest(raw.renderRaw, program);
     defer std.testing.allocator.free(raw_text);
-    try std.testing.expect(std.mem.indexOf(u8, raw_text, "func ValueProjectTag(self unsafe.Pointer) (uint8, uint8)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, raw_text, "func ValueProjectInteger(self unsafe.Pointer) (int32, uint8)") != null);
-    try std.testing.expect(std.mem.indexOf(u8, raw_text, "func HTTPResultProjectURLValue(self unsafe.Pointer) (uint64, uint8)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw_text, "func ValueProjectTag(self unsafe.Pointer) (uint8, int32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw_text, "func ValueProjectInteger(self unsafe.Pointer) (int32, int32)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw_text, "func HTTPResultProjectURLValue(self unsafe.Pointer) (uint64, int32)") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw_text, "if status != 1") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw_text, "result := make([]int16, int(outValueLen))") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw_text, "copy(result, unsafe.Slice((*int16)(unsafe.Pointer(outValuePtr)), int(outValueLen)))") != null);
 
     const public_types = try emit.renderUnionFilesForTest(program);
     defer std.testing.allocator.free(public_types);
-    try std.testing.expect(std.mem.indexOf(u8, public_types, "\t\"runtime\"\n") != null);
+    // No thread pin: the panic message travels with the status code, so the
+    // union files import nothing from runtime.
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "\t\"runtime\"\n") == null);
     try std.testing.expect(std.mem.indexOf(u8, public_types, "func (v *Value) Tag() (ValueTag, error)") != null);
     // No function or projection hands out a borrowed Value, so it has no Ref
     // surface; Child is a projection payload, so it does.

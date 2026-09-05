@@ -28,5 +28,6 @@ ZIGO_EXPORT uint8_t zg_echo(uint8_t value);
 ZIGO_EXPORT void zg_configure(const zg_config * config);
 ZIGO_EXPORT void zg_accept_values(const uint8_t * values_ptr, size_t values_len);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_openenum_H

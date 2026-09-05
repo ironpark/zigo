@@ -711,7 +711,9 @@ test "opt-in cleanup isolates state stops explicitly and keeps owners alive" {
     try std.testing.expect(std.mem.containsAtLeast(u8, shim, 1, "target.Context.deinit(self)"));
     const public = try temporary.dir.readFileAlloc(std.testing.io, "opaque/opaque_gen.go", std.testing.allocator, .limited(32 * 1024));
     defer std.testing.allocator.free(public);
-    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "import \"runtime\""));
+    // No thread pin: the panic message travels with the status code, so the
+    // public function file has no reason left to import runtime.
+    try std.testing.expect(std.mem.indexOf(u8, public, "import \"runtime\"") == null);
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func NewContext(callback ContextCallback) (*Context, error)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "zigoRawContextCreate("));
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "return newContext(result, []zigoCallbackHandle{callbackHandle}), nil"));
@@ -752,7 +754,7 @@ test "opt-in cleanup isolates state stops explicitly and keeps owners alive" {
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "runtime.KeepAlive(c)"));
     const public_errors = try temporary.dir.readFileAlloc(std.testing.io, "opaque/opaque_errors_gen.go", std.testing.allocator, .limited(32 * 1024));
     defer std.testing.allocator.free(public_errors);
-    try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "zigoRawLastErrorMessage()"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "zigoRawPanicMessage(code)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "\t\"errors\"\n\t\"fmt\"\n\t\"strconv\"\n"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "type HandleError struct"));
     const raw = try temporary.dir.readFileAlloc(std.testing.io, "opaque/opaque_cgo_gen.go", std.testing.allocator, .limited(32 * 1024));

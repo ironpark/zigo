@@ -115,7 +115,7 @@ func (err *CallbackError) Unwrap() error        { return err.Err }
 
 type StatusError struct {
 	Operation string
-	Status    uint8
+	Status    int32
 }
 
 func (err *StatusError) Error() string {

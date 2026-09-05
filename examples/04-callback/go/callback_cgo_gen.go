@@ -19,6 +19,11 @@ import (
 // zigoRawLastErrorMessage returns the most recent native panic message for this binding.
 func zigoRawLastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// zigoRawPanicMessage returns the message of the native panic a status code of -256 or below names.
+func zigoRawPanicMessage(code int32) string {
+	return C.GoString(C.zg_caught_panic_message(C.int32_t(code)))
+}
+
 // zigoRawCallbackState carries one Go callback across the native boundary, and
 // the panic it raises there until the generated caller rethrows it. The
 // trampoline has to recover: a panic cannot unwind native frames.

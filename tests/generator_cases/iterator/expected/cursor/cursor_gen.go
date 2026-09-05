@@ -5,7 +5,6 @@ package cursor
 
 import (
 	"iter"
-	"runtime"
 
 	"example.com/zigo/cursor/internal/raw"
 )
@@ -15,8 +14,6 @@ import (
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (c *Cursor) Next() (int64, bool, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Cursor.Next receiver", c)
 	if err != nil {
 		return 0, false, err
@@ -51,8 +48,6 @@ func (c *Cursor) All() iter.Seq2[int64, error] {
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (c *Cursor) NextChecked() (Step, bool, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Cursor.NextChecked receiver", c)
 	if err != nil {
 		return 0, false, err
@@ -87,8 +82,6 @@ func (c *Cursor) Checked() iter.Seq2[Step, error] {
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (c *Cursor) Reset() error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Cursor.Reset receiver", c)
 	if err != nil {
 		return err

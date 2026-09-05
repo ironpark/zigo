@@ -64,7 +64,7 @@ type StatusError struct {
 	// Operation names the generated call or projection.
 	Operation string
 	// Status is the unexpected native status code.
-	Status uint8
+	Status int32
 }
 
 // Error implements error.
@@ -105,9 +105,10 @@ func (err *Error) Is(target error) bool {
 var ErrOutOfMemory = &Error{Code: 1, Name: "OutOfMemory"}
 
 func errorForCode(operation string, code int32) error {
+	if code <= -256 {
+		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(code)}
+	}
 	switch code {
-	case -2:
-		return &NativePanicError{Operation: operation, Message: raw.LastErrorMessage()}
 	case 1:
 		return &Error{Code: 1, Name: "OutOfMemory", Operation: operation}
 	default:

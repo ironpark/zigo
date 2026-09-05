@@ -46,6 +46,7 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 
 type nativeBindings struct {
 	lastError func() unsafe.Pointer
+	panicMessage func(int32) unsafe.Pointer
 	fnDocumentDump func(unsafe.Pointer, uintptr, uintptr) int32
 	fnDocumentLoad func(unsafe.Pointer, uintptr, unsafe.Pointer, uintptr, uintptr, *uintptr) int32
 	fnBanner func(uintptr, uintptr, int32)
@@ -291,6 +292,8 @@ func loadCandidate(path string) error {
 	fail := func(symbol string, cause error) error { closeLibrary(handle); return &LibraryError{Path: path, Symbol: symbol, Operation: "resolve", Cause: cause} }
 	addrLastError, err := resolveSymbol(handle, "zg_last_error_message")
 	if err != nil { return fail("zg_last_error_message", err) }
+	addrPanicMessage, err := resolveSymbol(handle, "zg_caught_panic_message")
+	if err != nil { return fail("zg_caught_panic_message", err) }
 	addrDocumentDump, err := resolveSymbol(handle, "zg_document_dump_purego_v2")
 	if err != nil { return fail("zg_document_dump_purego_v2", err) }
 	addrDocumentLoad, err := resolveSymbol(handle, "zg_document_load_purego_v2")
@@ -305,6 +308,7 @@ func loadCandidate(path string) error {
 	if err != nil { return fail("zg_sink_read", err) }
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
+	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
 	purego.RegisterFunc(&next.fnDocumentDump, addrDocumentDump)
 	purego.RegisterFunc(&next.fnDocumentLoad, addrDocumentLoad)
 	purego.RegisterFunc(&next.fnBanner, addrBanner)
@@ -324,6 +328,15 @@ func bindings() *nativeBindings {
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string {
 	p := bindings().lastError()
+	if p == nil { return "" }
+	length := 0
+	for *(*byte)(unsafe.Add(p, length)) != 0 { length++ }
+	return string(unsafe.Slice((*byte)(p), length))
+}
+
+// PanicMessage returns the message of the native panic a status code of -256 or below names.
+func PanicMessage(code int32) string {
+	p := bindings().panicMessage(code)
 	if p == nil { return "" }
 	length := 0
 	for *(*byte)(unsafe.Add(p, length)) != 0 { length++ }

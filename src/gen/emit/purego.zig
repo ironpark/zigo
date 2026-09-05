@@ -214,7 +214,7 @@ pub fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
     );
     // An unsafe.Pointer return keeps the message read free of uintptr
     // round-trips, which `go vet` reports as a possible stale pointer.
-    try writer.writeAll("\tlastError func() unsafe.Pointer\n");
+    try writer.writeAll("\tlastError func() unsafe.Pointer\n\tpanicMessage func(int32) unsafe.Pointer\n");
     for (program.functions) |function| {
         const name = try common.rawGoNameAlloc(allocator, function.origin.*);
         defer allocator.free(name);
@@ -236,7 +236,7 @@ pub fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
             if (index != 0) try writer.writeAll(", ");
             try writePuregoAbiType(writer, parameter.scalar);
         }
-        try writer.writeAll(") uint8\n");
+        try writer.writeAll(") int32\n");
     }
     for (program.snapshots, 0..) |snapshot, snapshot_index| {
         try writer.print("\tfnSnapshot{d} func(", .{snapshot_index});
@@ -244,7 +244,7 @@ pub fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
             if (index != 0) try writer.writeAll(", ");
             try writePuregoAbiType(writer, parameter.scalar);
         }
-        try writer.writeAll(") uint8\n");
+        try writer.writeAll(") int32\n");
     }
     try writer.writeAll("}\n\n");
     if (common.programHasCallbacks(program)) try callbacks.renderPuregoCallbackRegistry(allocator, writer, program, options);
@@ -290,6 +290,9 @@ pub fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
     const last_error_symbol = try std.fmt.allocPrint(allocator, "{s}_last_error_message", .{program.prefix});
     defer allocator.free(last_error_symbol);
     try writePuregoResolve(writer, "addrLastError", last_error_symbol);
+    const panic_message_symbol = try std.fmt.allocPrint(allocator, "{s}_caught_panic_message", .{program.prefix});
+    defer allocator.free(panic_message_symbol);
+    try writePuregoResolve(writer, "addrPanicMessage", panic_message_symbol);
     for (program.functions) |function| {
         const name = try common.rawGoNameAlloc(allocator, function.origin.*);
         defer allocator.free(name);
@@ -307,7 +310,7 @@ pub fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
         defer allocator.free(variable);
         try writePuregoResolve(writer, variable, snapshot.symbol);
     }
-    try writer.writeAll("\tvar next nativeBindings\n\tpurego.RegisterFunc(&next.lastError, addrLastError)\n");
+    try writer.writeAll("\tvar next nativeBindings\n\tpurego.RegisterFunc(&next.lastError, addrLastError)\n\tpurego.RegisterFunc(&next.panicMessage, addrPanicMessage)\n");
     for (program.functions) |function| {
         const name = try common.rawGoNameAlloc(allocator, function.origin.*);
         defer allocator.free(name);
@@ -340,6 +343,11 @@ pub fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
         "\tp := bindings().lastError()\n\tif p == nil {{ return \"\" }}\n" ++
         "\tlength := 0\n\tfor *(*byte)(unsafe.Add(p, length)) != 0 {{ length++ }}\n" ++
         "\treturn string(unsafe.Slice((*byte)(p), length))\n}}\n", .{ last_error_name, last_error_name });
+    const panic_message_name = if (options.raw_colocated) "zigoRawPanicMessage" else "PanicMessage";
+    try writer.print("\n// {0s} returns the message of the native panic a status code of -256 or below names.\nfunc {0s}(code int32) string {{\n" ++
+        "\tp := bindings().panicMessage(code)\n\tif p == nil {{ return \"\" }}\n" ++
+        "\tlength := 0\n\tfor *(*byte)(unsafe.Add(p, length)) != 0 {{ length++ }}\n" ++
+        "\treturn string(unsafe.Slice((*byte)(p), length))\n}}\n", .{panic_message_name});
     if (common.programHasCString(program)) try writer.writeAll(
         "\nfunc zigoCStringString(p unsafe.Pointer) string {\n" ++
             "\tif p == nil { return \"\" }\n" ++
@@ -781,7 +789,7 @@ fn renderPuregoProjections(allocator: std.mem.Allocator, writer: *std.Io.Writer,
             .tag => {
                 try writer.print("\n// {s}ProjectTag returns the active tag and a projection status.\nfunc {s}ProjectTag(self unsafe.Pointer) (", .{ declaration.name, declaration.name });
                 try public_writers.writeRawGoType(writer, program, declaration.tag_type.?);
-                try writer.writeAll(", uint8) {\n\tvar outValue ");
+                try writer.writeAll(", int32) {\n\tvar outValue ");
                 try public_writers.writeRawGoType(writer, program, declaration.tag_type.?);
                 try writer.print("\n\tstatus := bindings().fnProjection{d}(self, &outValue)\n\treturn outValue, status\n}}\n", .{projection_index});
             },
@@ -792,7 +800,7 @@ fn renderPuregoProjections(allocator: std.mem.Allocator, writer: *std.Io.Writer,
                 defer allocator.free(field_name);
                 try writer.print("\n// {s}Project{s} returns the payload and a projection status.\nfunc {s}Project{s}(self unsafe.Pointer) (", .{ declaration.name, field_name, declaration.name, field_name });
                 try public_writers.writeRawGoType(writer, program, payload);
-                try writer.writeAll(", uint8) {\n");
+                try writer.writeAll(", int32) {\n");
                 if (payload == .slice) {
                     try writer.writeAll("\tvar outValuePtr unsafe.Pointer\n\tvar outValueLen uintptr\n");
                     try writer.print("\tstatus := bindings().fnProjection{d}(self, &outValuePtr, &outValueLen)\n", .{projection_index});

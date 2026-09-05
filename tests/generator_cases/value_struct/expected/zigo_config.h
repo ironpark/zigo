@@ -46,5 +46,6 @@ ZIGO_EXPORT void zg_configs(const zg_config * * out_result_ptr, size_t * out_res
 ZIGO_EXPORT void zg_points(const zg_point * * out_result_ptr, size_t * out_result_len);
 ZIGO_EXPORT int32_t zg_points_checked(const zg_point * * out_result_ptr, size_t * out_result_len);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_config_H

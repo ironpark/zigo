@@ -33,5 +33,6 @@ ZIGO_EXPORT uint8_t zg_echo(uint8_t value);
 ZIGO_EXPORT int32_t zg_pick(int32_t value);
 ZIGO_EXPORT uint8_t zg_echo_level(uint8_t value);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_enumtext_H

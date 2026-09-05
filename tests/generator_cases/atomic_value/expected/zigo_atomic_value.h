@@ -37,5 +37,6 @@ ZIGO_EXPORT void zg_configure(int32_t limit);
 ZIGO_EXPORT void zg_echo_record(const zg_record * value, zg_record * out_result);
 ZIGO_EXPORT int32_t zg_echo_event(uint8_t value_tag, uint64_t value_count, zg_event_snapshot_t * out_result);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_atomic_value_H

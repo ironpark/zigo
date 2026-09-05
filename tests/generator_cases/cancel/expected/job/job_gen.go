@@ -6,7 +6,6 @@ package job
 import (
 	"context"
 	"errors"
-	"runtime"
 	"sync/atomic"
 
 	"example.com/zigo/job/internal/raw"
@@ -33,8 +32,6 @@ func (j *Job) Crunch(ctx context.Context, rounds uint32) (float64, error) {
 			}
 		}()
 	}
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Job.Crunch receiver", j)
 	if err != nil {
 		return 0, err
@@ -55,8 +52,6 @@ func (j *Job) Crunch(ctx context.Context, rounds uint32) (float64, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (j *Job) Total() (float64, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Job.Total receiver", j)
 	if err != nil {
 		return 0, err

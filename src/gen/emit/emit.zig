@@ -198,7 +198,7 @@ fn renderLifecycle(_: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Pr
             "func (err *CallbackError) Error() string { return \"zigo: \" + err.Operation + \": callback \" + err.Callback + \": \" + err.Err.Error() }\n" ++
             "func (err *CallbackError) Is(target error) bool { return target == ErrCallbackFailed }\n" ++
             "func (err *CallbackError) Unwrap() error { return err.Err }\n\n" ++
-            "type StatusError struct { Operation string; Status uint8 }\n" ++
+            "type StatusError struct { Operation string; Status int32 }\n" ++
             "func (err *StatusError) Error() string { return \"zigo: \" + err.Operation + \": unrecognized native status\" }\n" ++
             "func (err *StatusError) Unwrap() error { return ErrNativeStatus }\n\n" ++
             "type CallbackPanicError struct { Operation string; Value any; Stack []byte }\n" ++

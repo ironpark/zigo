@@ -21,6 +21,9 @@ import (
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// PanicMessage returns the message of the native panic a status code of -256 or below names.
+func PanicMessage(code int32) string { return C.GoString(C.zg_caught_panic_message(C.int32_t(code))) }
+
 // zigoZeroSlot is what an empty slice or string points at instead of NULL, so
 // the native side always receives a valid address beside a zero length.
 var zigoZeroSlot uint64
@@ -402,147 +405,147 @@ type SignalSnapshotData struct {
 }
 
 // ValueProjectTag returns the active tag and a projection status.
-func ValueProjectTag(self unsafe.Pointer) (uint8, uint8) {
+func ValueProjectTag(self unsafe.Pointer) (uint8, int32) {
 	var outValue C.uint8_t
 	status := C.zg_value_project_tag((*C.zg_value)(self), &outValue)
-	return uint8(outValue), uint8(status)
+	return uint8(outValue), int32(status)
 }
 
 // ValueProjectInteger returns the payload and a projection status.
-func ValueProjectInteger(self unsafe.Pointer) (int64, uint8) {
+func ValueProjectInteger(self unsafe.Pointer) (int64, int32) {
 	var outValue C.int64_t
 	status := C.zg_value_project_integer((*C.zg_value)(self), &outValue)
 	if status != 1 {
-		return 0, uint8(status)
+		return 0, int32(status)
 	}
-	return int64(outValue), uint8(status)
+	return int64(outValue), int32(status)
 }
 
 // ValueProjectFlag returns the payload and a projection status.
-func ValueProjectFlag(self unsafe.Pointer) (uint8, uint8) {
+func ValueProjectFlag(self unsafe.Pointer) (uint8, int32) {
 	var outValue C.uint8_t
 	status := C.zg_value_project_flag((*C.zg_value)(self), &outValue)
 	if status != 1 {
-		return 0, uint8(status)
+		return 0, int32(status)
 	}
-	return uint8(outValue), uint8(status)
+	return uint8(outValue), int32(status)
 }
 
 // ValueProjectMode returns the payload and a projection status.
-func ValueProjectMode(self unsafe.Pointer) (uint8, uint8) {
+func ValueProjectMode(self unsafe.Pointer) (uint8, int32) {
 	var outValue C.uint8_t
 	status := C.zg_value_project_mode((*C.zg_value)(self), &outValue)
 	if status != 1 {
-		return 0, uint8(status)
+		return 0, int32(status)
 	}
-	return uint8(outValue), uint8(status)
+	return uint8(outValue), int32(status)
 }
 
 // ValueProjectSamples returns the payload and a projection status.
-func ValueProjectSamples(self unsafe.Pointer) ([]int16, uint8) {
+func ValueProjectSamples(self unsafe.Pointer) ([]int16, int32) {
 	var outValuePtr *C.int16_t
 	var outValueLen C.size_t
 	status := C.zg_value_project_samples((*C.zg_value)(self), &outValuePtr, &outValueLen)
 	if status != 1 {
-		return nil, uint8(status)
+		return nil, int32(status)
 	}
 	if outValueLen == 0 {
-		return nil, uint8(status)
+		return nil, int32(status)
 	}
 	result := make([]int16, int(outValueLen))
 	copy(result, unsafe.Slice((*int16)(unsafe.Pointer(outValuePtr)), int(outValueLen)))
-	return result, uint8(status)
+	return result, int32(status)
 }
 
 // ValueProjectChild returns the payload and a projection status.
-func ValueProjectChild(self unsafe.Pointer) (unsafe.Pointer, uint8) {
+func ValueProjectChild(self unsafe.Pointer) (unsafe.Pointer, int32) {
 	var outValue *C.zg_child
 	status := C.zg_value_project_child((*C.zg_value)(self), &outValue)
 	if status != 1 {
-		return nil, uint8(status)
+		return nil, int32(status)
 	}
-	return unsafe.Pointer(outValue), uint8(status)
+	return unsafe.Pointer(outValue), int32(status)
 }
 
 // ValueProjectMutableSamples returns the payload and a projection status.
-func ValueProjectMutableSamples(self unsafe.Pointer) ([]int16, uint8) {
+func ValueProjectMutableSamples(self unsafe.Pointer) ([]int16, int32) {
 	var outValuePtr *C.int16_t
 	var outValueLen C.size_t
 	status := C.zg_value_project_mutable_samples((*C.zg_value)(self), &outValuePtr, &outValueLen)
 	if status != 1 {
-		return nil, uint8(status)
+		return nil, int32(status)
 	}
 	if outValueLen == 0 {
-		return nil, uint8(status)
+		return nil, int32(status)
 	}
 	result := make([]int16, int(outValueLen))
 	copy(result, unsafe.Slice((*int16)(unsafe.Pointer(outValuePtr)), int(outValueLen)))
-	return result, uint8(status)
+	return result, int32(status)
 }
 
 // SignalProjectTag returns the active tag and a projection status.
-func SignalProjectTag(self unsafe.Pointer) (uint8, uint8) {
+func SignalProjectTag(self unsafe.Pointer) (uint8, int32) {
 	var outValue C.uint8_t
 	status := C.zg_signal_project_tag((*C.zg_signal)(self), &outValue)
-	return uint8(outValue), uint8(status)
+	return uint8(outValue), int32(status)
 }
 
 // SignalProjectTicks returns the payload and a projection status.
-func SignalProjectTicks(self unsafe.Pointer) (uint32, uint8) {
+func SignalProjectTicks(self unsafe.Pointer) (uint32, int32) {
 	var outValue C.uint32_t
 	status := C.zg_signal_project_ticks((*C.zg_signal)(self), &outValue)
 	if status != 1 {
-		return 0, uint8(status)
+		return 0, int32(status)
 	}
-	return uint32(outValue), uint8(status)
+	return uint32(outValue), int32(status)
 }
 
 // SignalProjectLevel returns the payload and a projection status.
-func SignalProjectLevel(self unsafe.Pointer) (float64, uint8) {
+func SignalProjectLevel(self unsafe.Pointer) (float64, int32) {
 	var outValue C.double
 	status := C.zg_signal_project_level((*C.zg_signal)(self), &outValue)
 	if status != 1 {
-		return 0, uint8(status)
+		return 0, int32(status)
 	}
-	return float64(outValue), uint8(status)
+	return float64(outValue), int32(status)
 }
 
 // SignalProjectOffset returns the payload and a projection status.
-func SignalProjectOffset(self unsafe.Pointer) (int16, uint8) {
+func SignalProjectOffset(self unsafe.Pointer) (int16, int32) {
 	var outValue C.int16_t
 	status := C.zg_signal_project_offset((*C.zg_signal)(self), &outValue)
 	if status != 1 {
-		return 0, uint8(status)
+		return 0, int32(status)
 	}
-	return int16(outValue), uint8(status)
+	return int16(outValue), int32(status)
 }
 
 // SignalProjectMode returns the payload and a projection status.
-func SignalProjectMode(self unsafe.Pointer) (uint8, uint8) {
+func SignalProjectMode(self unsafe.Pointer) (uint8, int32) {
 	var outValue C.uint8_t
 	status := C.zg_signal_project_mode((*C.zg_signal)(self), &outValue)
 	if status != 1 {
-		return 0, uint8(status)
+		return 0, int32(status)
 	}
-	return uint8(outValue), uint8(status)
+	return uint8(outValue), int32(status)
 }
 
 // SignalProjectActive returns the payload and a projection status.
-func SignalProjectActive(self unsafe.Pointer) (uint8, uint8) {
+func SignalProjectActive(self unsafe.Pointer) (uint8, int32) {
 	var outValue C.uint8_t
 	status := C.zg_signal_project_active((*C.zg_signal)(self), &outValue)
 	if status != 1 {
-		return 0, uint8(status)
+		return 0, int32(status)
 	}
-	return uint8(outValue), uint8(status)
+	return uint8(outValue), int32(status)
 }
 
 // SignalReadSnapshot fills a value snapshot in one native call and returns a projection status.
-func SignalReadSnapshot(self unsafe.Pointer) (SignalSnapshotData, uint8) {
+func SignalReadSnapshot(self unsafe.Pointer) (SignalSnapshotData, int32) {
 	var out C.zg_signal_snapshot_t
 	status := C.zg_signal_snapshot((*C.zg_signal)(self), &out)
 	if status != 1 {
-		return SignalSnapshotData{}, uint8(status)
+		return SignalSnapshotData{}, int32(status)
 	}
 	return SignalSnapshotData{
 		Tag:    uint8(out.tag),
@@ -551,5 +554,5 @@ func SignalReadSnapshot(self unsafe.Pointer) (SignalSnapshotData, uint8) {
 		Offset: int16(out.offset),
 		Mode:   uint8(out.mode),
 		Active: uint8(out.active),
-	}, uint8(status)
+	}, int32(status)
 }

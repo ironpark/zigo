@@ -248,7 +248,7 @@ fn renderGoSentinels(writer: *std.Io.Writer, set: SentinelSet, options: emit.Opt
         "// StatusError reports a native status code this binding does not recognize.\n" ++
             "type StatusError struct {\n" ++
             "\t// Operation names the generated call or projection.\n\tOperation string\n" ++
-            "\t// Status is the unexpected native status code.\n\tStatus uint8\n" ++
+            "\t// Status is the unexpected native status code.\n\tStatus int32\n" ++
             "}\n\n" ++
             "// Error implements error.\nfunc (err *StatusError) Error() string {\n" ++
             "\treturn \"zigo: \" + err.Operation + \": unrecognized native status\"\n" ++

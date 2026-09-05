@@ -22,5 +22,6 @@ typedef uint8_t zg_mode;
 
 ZIGO_EXPORT void zg_configure(uint8_t enabled, uint16_t options_rows, float scale, uint8_t mode, const uint32_t * limit, uint32_t rows);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_flattened_options_H

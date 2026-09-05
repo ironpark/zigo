@@ -20,5 +20,6 @@ typedef struct zg_screen zg_screen;
 ZIGO_EXPORT int32_t zg_screen_is_bottom(const zg_screen * self, uint8_t * out_result);
 ZIGO_EXPORT int32_t zg_same(uint8_t expected, const zg_screen * other, uint8_t * out_result);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_opaque_value_H

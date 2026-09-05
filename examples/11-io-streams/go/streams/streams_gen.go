@@ -9,7 +9,6 @@ package streams
 
 import (
 	"io"
-	"runtime"
 
 	"example.com/zigo/streams/internal/raw"
 )
@@ -18,8 +17,6 @@ import (
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 func NewDocument() (*Document, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	result, code := raw.DocumentCreate()
 	if code != 0 {
 		return nil, errorForCode("NewDocument", code)
@@ -31,8 +28,6 @@ func NewDocument() (*Document, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (d *Document) Append(line []byte) error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Document.Append receiver", d)
 	if err != nil {
 		return err
@@ -49,8 +44,6 @@ func (d *Document) Append(line []byte) error {
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (d *Document) Count() (uint, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Document.Count receiver", d)
 	if err != nil {
 		return 0, err
@@ -74,8 +67,6 @@ func (d *Document) Dump(w io.Writer) error {
 	if w == nil {
 		return &StreamError{Operation: "Document.Dump", Parameter: "w", Err: ErrNilStream}
 	}
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Document.Dump receiver", d)
 	if err != nil {
 		return err
@@ -106,8 +97,6 @@ func (d *Document) Load(r io.Reader) (uint, error) {
 	if r == nil {
 		return 0, &StreamError{Operation: "Document.Load", Parameter: "r", Err: ErrNilStream}
 	}
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Document.Load receiver", d)
 	if err != nil {
 		return 0, err
@@ -137,8 +126,6 @@ func Banner(w io.Writer, width uint32) error {
 	if w == nil {
 		return &StreamError{Operation: "Banner", Parameter: "w", Err: ErrNilStream}
 	}
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	wHandle := newZigoWriterHandle(w)
 	defer deleteCallbackHandle(wHandle)
 	code := raw.Banner(uintptr(wHandle), width)
@@ -165,8 +152,6 @@ func Tee(r io.Reader, w io.Writer) (uint, error) {
 	if w == nil {
 		return 0, &StreamError{Operation: "Tee", Parameter: "w", Err: ErrNilStream}
 	}
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	rHandle := newZigoReaderHandle(r)
 	defer deleteCallbackHandle(rHandle)
 	rData := zigoReaderBytes(r)
@@ -215,8 +200,6 @@ func TakeCodepoints() []uint32 {
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 func NewSink() (*Sink, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	result, code := raw.SinkCreate()
 	if code != 0 {
 		return nil, errorForCode("NewSink", code)
@@ -229,8 +212,6 @@ func NewSink() (*Sink, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (s *Sink) Write(bytes []byte) (int, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Sink.Write receiver", s)
 	if err != nil {
 		return 0, err
@@ -248,8 +229,6 @@ func (s *Sink) Write(bytes []byte) (int, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (s *Sink) Flush() error {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Sink.Flush receiver", s)
 	if err != nil {
 		return err
@@ -266,8 +245,6 @@ func (s *Sink) Flush() error {
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (s *Sink) Count() (uint, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Sink.Count receiver", s)
 	if err != nil {
 		return 0, err
@@ -284,8 +261,6 @@ func (s *Sink) Count() (uint, error) {
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
 func NewSource(bytes []byte) (*Source, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	result, code := raw.SourceCreate(bytes)
 	if code != 0 {
 		return nil, errorForCode("NewSource", code)
@@ -299,8 +274,6 @@ func NewSource(bytes []byte) (*Source, error) {
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
 func (s *Source) Read(buffer []byte) (int, error) {
-	runtime.LockOSThread()
-	defer runtime.UnlockOSThread()
 	ptr, err := zigoCheckedPointer("Source.Read receiver", s)
 	if err != nil {
 		return 0, err

@@ -85,9 +85,10 @@ func (err *Error) Is(target error) bool {
 
 
 func errorForCode(operation string, code int32) error {
+	if code <= -256 {
+		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(code)}
+	}
 	switch code {
-	case -2:
-		return &NativePanicError{Operation: operation, Message: raw.LastErrorMessage()}
 	default:
 		return &Error{Code: code, Name: "Unknown(" + strconv.Itoa(int(code)) + ")", Operation: operation}
 	}

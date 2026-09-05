@@ -25,5 +25,6 @@ ZIGO_EXPORT int32_t zg_sink_write(zg_sink * self, const uint8_t * bytes_ptr, siz
 ZIGO_EXPORT int32_t zg_sink_flush(zg_sink * self);
 ZIGO_EXPORT int32_t zg_sink_read(zg_sink * self, uint8_t * buffer_ptr, size_t buffer_len, ptrdiff_t * out_result);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_stream_H

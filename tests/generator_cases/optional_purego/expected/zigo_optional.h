@@ -32,5 +32,6 @@ ZIGO_EXPORT int32_t zg_checked_double(const int32_t * value, uint8_t * out_resul
 ZIGO_EXPORT uint8_t zg_shift_point(const zg_point * origin, zg_point * out_result);
 ZIGO_EXPORT int32_t zg_checked_point(const zg_point * origin, uint8_t * out_result_has, zg_point * out_result);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_optional_H

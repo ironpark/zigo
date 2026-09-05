@@ -24,5 +24,6 @@ ZIGO_EXPORT int32_t zg_hub_deinit(zg_hub * self);
 ZIGO_EXPORT int32_t zg_apply(int32_t value, size_t userdata);
 ZIGO_EXPORT void zg_notify(int32_t value, size_t userdata);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_cb_H

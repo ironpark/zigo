@@ -51,6 +51,7 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 
 type nativeBindings struct {
 	lastError                func() unsafe.Pointer
+	panicMessage             func(int32) unsafe.Pointer
 	fnPaletteFlags           func(unsafe.Pointer, *uint16) int32
 	fnPaletteSetFlags        func(unsafe.Pointer, uint16) int32
 	fnChildCreate            func(int32, *unsafe.Pointer) int32
@@ -88,20 +89,20 @@ type nativeBindings struct {
 	fnPaletteDeinit          func(unsafe.Pointer) int32
 	fnVisitFlags             func(uintptr, uintptr)
 	fnPanicError             func() int32
-	fnProjection0            func(unsafe.Pointer, *uint8) uint8
-	fnProjection1            func(unsafe.Pointer, *int64) uint8
-	fnProjection2            func(unsafe.Pointer, *uint8) uint8
-	fnProjection3            func(unsafe.Pointer, *uint8) uint8
-	fnProjection4            func(unsafe.Pointer, *unsafe.Pointer, *uintptr) uint8
-	fnProjection5            func(unsafe.Pointer, *unsafe.Pointer) uint8
-	fnProjection6            func(unsafe.Pointer, *unsafe.Pointer, *uintptr) uint8
-	fnProjection7            func(unsafe.Pointer, *uint8) uint8
-	fnProjection8            func(unsafe.Pointer, *uint32) uint8
-	fnProjection9            func(unsafe.Pointer, *float64) uint8
-	fnProjection10           func(unsafe.Pointer, *int16) uint8
-	fnProjection11           func(unsafe.Pointer, *uint8) uint8
-	fnProjection12           func(unsafe.Pointer, *uint8) uint8
-	fnSnapshot0              func(unsafe.Pointer, unsafe.Pointer) uint8
+	fnProjection0            func(unsafe.Pointer, *uint8) int32
+	fnProjection1            func(unsafe.Pointer, *int64) int32
+	fnProjection2            func(unsafe.Pointer, *uint8) int32
+	fnProjection3            func(unsafe.Pointer, *uint8) int32
+	fnProjection4            func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
+	fnProjection5            func(unsafe.Pointer, *unsafe.Pointer) int32
+	fnProjection6            func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
+	fnProjection7            func(unsafe.Pointer, *uint8) int32
+	fnProjection8            func(unsafe.Pointer, *uint32) int32
+	fnProjection9            func(unsafe.Pointer, *float64) int32
+	fnProjection10           func(unsafe.Pointer, *int16) int32
+	fnProjection11           func(unsafe.Pointer, *uint8) int32
+	fnProjection12           func(unsafe.Pointer, *uint8) int32
+	fnSnapshot0              func(unsafe.Pointer, unsafe.Pointer) int32
 }
 
 type callbackEntry struct {
@@ -335,6 +336,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_last_error_message", err)
 	}
+	addrPanicMessage, err := resolveSymbol(handle, "zg_caught_panic_message")
+	if err != nil {
+		return fail("zg_caught_panic_message", err)
+	}
 	addrPaletteFlags, err := resolveSymbol(handle, "zg_palette_flags")
 	if err != nil {
 		return fail("zg_palette_flags", err)
@@ -541,6 +546,7 @@ func loadCandidate(path string) error {
 	}
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
+	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
 	purego.RegisterFunc(&next.fnPaletteFlags, addrPaletteFlags)
 	purego.RegisterFunc(&next.fnPaletteSetFlags, addrPaletteSetFlags)
 	purego.RegisterFunc(&next.fnChildCreate, addrChildCreate)
@@ -607,6 +613,19 @@ func bindings() *nativeBindings {
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string {
 	p := bindings().lastError()
+	if p == nil {
+		return ""
+	}
+	length := 0
+	for *(*byte)(unsafe.Add(p, length)) != 0 {
+		length++
+	}
+	return string(unsafe.Slice((*byte)(p), length))
+}
+
+// PanicMessage returns the message of the native panic a status code of -256 or below names.
+func PanicMessage(code int32) string {
+	p := bindings().panicMessage(code)
 	if p == nil {
 		return ""
 	}
@@ -898,35 +917,35 @@ func PanicError() int32 {
 }
 
 // ValueProjectTag returns the active tag and a projection status.
-func ValueProjectTag(self unsafe.Pointer) (uint8, uint8) {
+func ValueProjectTag(self unsafe.Pointer) (uint8, int32) {
 	var outValue uint8
 	status := bindings().fnProjection0(self, &outValue)
 	return outValue, status
 }
 
 // ValueProjectInteger returns the payload and a projection status.
-func ValueProjectInteger(self unsafe.Pointer) (int64, uint8) {
+func ValueProjectInteger(self unsafe.Pointer) (int64, int32) {
 	var outValue int64
 	status := bindings().fnProjection1(self, &outValue)
 	return outValue, status
 }
 
 // ValueProjectFlag returns the payload and a projection status.
-func ValueProjectFlag(self unsafe.Pointer) (uint8, uint8) {
+func ValueProjectFlag(self unsafe.Pointer) (uint8, int32) {
 	var outValue uint8
 	status := bindings().fnProjection2(self, &outValue)
 	return outValue, status
 }
 
 // ValueProjectMode returns the payload and a projection status.
-func ValueProjectMode(self unsafe.Pointer) (uint8, uint8) {
+func ValueProjectMode(self unsafe.Pointer) (uint8, int32) {
 	var outValue uint8
 	status := bindings().fnProjection3(self, &outValue)
 	return outValue, status
 }
 
 // ValueProjectSamples returns the payload and a projection status.
-func ValueProjectSamples(self unsafe.Pointer) ([]int16, uint8) {
+func ValueProjectSamples(self unsafe.Pointer) ([]int16, int32) {
 	var outValuePtr unsafe.Pointer
 	var outValueLen uintptr
 	status := bindings().fnProjection4(self, &outValuePtr, &outValueLen)
@@ -939,14 +958,14 @@ func ValueProjectSamples(self unsafe.Pointer) ([]int16, uint8) {
 }
 
 // ValueProjectChild returns the payload and a projection status.
-func ValueProjectChild(self unsafe.Pointer) (unsafe.Pointer, uint8) {
+func ValueProjectChild(self unsafe.Pointer) (unsafe.Pointer, int32) {
 	var outValue unsafe.Pointer
 	status := bindings().fnProjection5(self, &outValue)
 	return outValue, status
 }
 
 // ValueProjectMutableSamples returns the payload and a projection status.
-func ValueProjectMutableSamples(self unsafe.Pointer) ([]int16, uint8) {
+func ValueProjectMutableSamples(self unsafe.Pointer) ([]int16, int32) {
 	var outValuePtr unsafe.Pointer
 	var outValueLen uintptr
 	status := bindings().fnProjection6(self, &outValuePtr, &outValueLen)
@@ -959,49 +978,49 @@ func ValueProjectMutableSamples(self unsafe.Pointer) ([]int16, uint8) {
 }
 
 // SignalProjectTag returns the active tag and a projection status.
-func SignalProjectTag(self unsafe.Pointer) (uint8, uint8) {
+func SignalProjectTag(self unsafe.Pointer) (uint8, int32) {
 	var outValue uint8
 	status := bindings().fnProjection7(self, &outValue)
 	return outValue, status
 }
 
 // SignalProjectTicks returns the payload and a projection status.
-func SignalProjectTicks(self unsafe.Pointer) (uint32, uint8) {
+func SignalProjectTicks(self unsafe.Pointer) (uint32, int32) {
 	var outValue uint32
 	status := bindings().fnProjection8(self, &outValue)
 	return outValue, status
 }
 
 // SignalProjectLevel returns the payload and a projection status.
-func SignalProjectLevel(self unsafe.Pointer) (float64, uint8) {
+func SignalProjectLevel(self unsafe.Pointer) (float64, int32) {
 	var outValue float64
 	status := bindings().fnProjection9(self, &outValue)
 	return outValue, status
 }
 
 // SignalProjectOffset returns the payload and a projection status.
-func SignalProjectOffset(self unsafe.Pointer) (int16, uint8) {
+func SignalProjectOffset(self unsafe.Pointer) (int16, int32) {
 	var outValue int16
 	status := bindings().fnProjection10(self, &outValue)
 	return outValue, status
 }
 
 // SignalProjectMode returns the payload and a projection status.
-func SignalProjectMode(self unsafe.Pointer) (uint8, uint8) {
+func SignalProjectMode(self unsafe.Pointer) (uint8, int32) {
 	var outValue uint8
 	status := bindings().fnProjection11(self, &outValue)
 	return outValue, status
 }
 
 // SignalProjectActive returns the payload and a projection status.
-func SignalProjectActive(self unsafe.Pointer) (uint8, uint8) {
+func SignalProjectActive(self unsafe.Pointer) (uint8, int32) {
 	var outValue uint8
 	status := bindings().fnProjection12(self, &outValue)
 	return outValue, status
 }
 
 // SignalReadSnapshot fills a value snapshot in one native call and returns a projection status.
-func SignalReadSnapshot(self unsafe.Pointer) (SignalSnapshotData, uint8) {
+func SignalReadSnapshot(self unsafe.Pointer) (SignalSnapshotData, int32) {
 	var out SignalSnapshotData
 	status := bindings().fnSnapshot0(self, unsafe.Pointer(&out))
 	if status != 1 {

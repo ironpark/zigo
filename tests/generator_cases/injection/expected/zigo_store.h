@@ -24,5 +24,6 @@ ZIGO_EXPORT int32_t zg_store_deinit(zg_store * self);
 ZIGO_EXPORT int32_t zg_cursor_init(uint32_t column, zg_cursor * * out_result);
 ZIGO_EXPORT int32_t zg_cursor_deinit(zg_cursor * self);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_store_H

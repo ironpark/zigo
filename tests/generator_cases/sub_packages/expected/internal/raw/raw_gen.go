@@ -15,6 +15,9 @@ import "unsafe"
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// PanicMessage returns the message of the native panic a status code of -256 or below names.
+func PanicMessage(code int32) string { return C.GoString(C.zg_caught_panic_message(C.int32_t(code))) }
+
 // UseMode calls the generated C ABI wrapper for zg_use_mode.
 func UseMode(mode uint8) {
 	C.zg_use_mode(C.uint8_t(mode))

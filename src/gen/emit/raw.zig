@@ -253,6 +253,8 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
     try writer.writeByte('\n');
     const last_error_name = if (options.raw_colocated) "zigoRawLastErrorMessage" else "LastErrorMessage";
     try writer.print("// {0s} returns the most recent native panic message for this binding.\nfunc {0s}() string {{ return C.GoString(C.{1s}_last_error_message()) }}\n\n", .{ last_error_name, program.prefix });
+    const panic_message_name = if (options.raw_colocated) "zigoRawPanicMessage" else "PanicMessage";
+    try writer.print("// {0s} returns the message of the native panic a status code of -256 or below names.\nfunc {0s}(code int32) string {{ return C.GoString(C.{1s}_caught_panic_message(C.int32_t(code))) }}\n\n", .{ panic_message_name, program.prefix });
     try renderCgoStringHelpers(writer, program);
     try renderCgoSlicePointerHelpers(writer, program);
     try callbacks.renderRawCallbacks(allocator, writer, program, options);
@@ -989,7 +991,7 @@ pub fn renderRawSnapshotAccessors(allocator: std.mem.Allocator, writer: *std.Io.
         const function_name = try common.snapshotRawFunctionNameAlloc(allocator, snapshot);
         defer allocator.free(function_name);
         try writer.print(
-            "\n// {s} fills a value snapshot in one native call and returns a projection status.\nfunc {s}(self unsafe.Pointer) ({s}, uint8) {{\n",
+            "\n// {s} fills a value snapshot in one native call and returns a projection status.\nfunc {s}(self unsafe.Pointer) ({s}, int32) {{\n",
             .{ function_name, function_name, type_name },
         );
         if (program.backend == .purego) {
@@ -1000,7 +1002,7 @@ pub fn renderRawSnapshotAccessors(allocator: std.mem.Allocator, writer: *std.Io.
         }
         try writer.print("\tvar out C.{s}\n", .{snapshot.type_name});
         try writer.print("\tstatus := C.{s}((*C.{s})(self), &out)\n", .{ snapshot.symbol, type_spelling.handleRecord(program, snapshot.owner.name).c_name });
-        try writer.print("\tif status != 1 {{\n\t\treturn {s}{{}}, uint8(status)\n\t}}\n\treturn {s}{{\n", .{ type_name, type_name });
+        try writer.print("\tif status != 1 {{\n\t\treturn {s}{{}}, int32(status)\n\t}}\n\treturn {s}{{\n", .{ type_name, type_name });
         for (snapshot.fields) |field| {
             if (field.kind == .padding) continue;
             const go_name = try common.snapshotGoFieldAlloc(allocator, field);
@@ -1009,7 +1011,7 @@ pub fn renderRawSnapshotAccessors(allocator: std.mem.Allocator, writer: *std.Io.
             try type_spelling.writeGoScalar(writer, field.scalar);
             try writer.print("(out.{s}),\n", .{field.name});
         }
-        try writer.writeAll("\t}, uint8(status)\n}\n");
+        try writer.writeAll("\t}, int32(status)\n}\n");
     }
 }
 
@@ -1021,12 +1023,12 @@ fn renderRawTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.Io.W
             .tag => {
                 try writer.print("\n// {s}ProjectTag returns the active tag and a projection status.\nfunc {s}ProjectTag(self unsafe.Pointer) (", .{ declaration.name, declaration.name });
                 try public_writers.writeRawGoType(writer, program, declaration.tag_type.?);
-                try writer.writeAll(", uint8) {\n\tvar outValue C.");
+                try writer.writeAll(", int32) {\n\tvar outValue C.");
                 try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, declaration.tag_type.?));
                 try writer.writeAll("\n\tstatus := C.");
                 try writer.print("{s}((*C.{s})(self), &outValue)\n\treturn ", .{ projection.symbol, union_c_name });
                 try public_writers.writeRawGoType(writer, program, declaration.tag_type.?);
-                try writer.writeAll("(outValue), uint8(status)\n}\n");
+                try writer.writeAll("(outValue), int32(status)\n}\n");
             },
             .payload => {
                 const field = projection.field.?.*;
@@ -1035,21 +1037,21 @@ fn renderRawTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.Io.W
                 defer allocator.free(field_name);
                 try writer.print("\n// {s}Project{s} returns the payload and a projection status.\nfunc {s}Project{s}(self unsafe.Pointer) (", .{ declaration.name, field_name, declaration.name, field_name });
                 try public_writers.writeRawGoType(writer, program, payload);
-                try writer.writeAll(", uint8) {\n");
+                try writer.writeAll(", int32) {\n");
                 if (payload == .slice) {
                     try writer.writeAll("\tvar outValuePtr *C.");
                     try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, payload.slice.element.*));
                     try writer.writeAll("\n\tvar outValueLen C.size_t\n\tstatus := C.");
                     try writer.print("{s}((*C.{s})(self), &outValuePtr, &outValueLen)\n", .{ projection.symbol, union_c_name });
-                    try writer.writeAll("\tif status != 1 {\n\t\treturn nil, uint8(status)\n\t}\n");
+                    try writer.writeAll("\tif status != 1 {\n\t\treturn nil, int32(status)\n\t}\n");
                     if (semantic.isByte(payload.slice.element.*)) {
-                        try writer.writeAll("\treturn C.GoBytes(unsafe.Pointer(outValuePtr), C.int(outValueLen)), uint8(status)\n");
+                        try writer.writeAll("\treturn C.GoBytes(unsafe.Pointer(outValuePtr), C.int(outValueLen)), int32(status)\n");
                     } else {
-                        try writer.writeAll("\tif outValueLen == 0 { return nil, uint8(status) }\n\tresult := make([]");
+                        try writer.writeAll("\tif outValueLen == 0 { return nil, int32(status) }\n\tresult := make([]");
                         try public_writers.writeRawGoType(writer, program, payload.slice.element.*);
                         try writer.writeAll(", int(outValueLen))\n\tcopy(result, unsafe.Slice((*");
                         try public_writers.writeRawGoType(writer, program, payload.slice.element.*);
-                        try writer.writeAll(")(unsafe.Pointer(outValuePtr)), int(outValueLen)))\n\treturn result, uint8(status)\n");
+                        try writer.writeAll(")(unsafe.Pointer(outValuePtr)), int(outValueLen)))\n\treturn result, int32(status)\n");
                     }
                 } else {
                     if (payload == .opaque_ptr) {
@@ -1061,9 +1063,9 @@ fn renderRawTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.Io.W
                     }
                     try writer.print("\tstatus := C.{s}((*C.{s})(self), &outValue)\n\tif status != 1 {{\n\t\treturn ", .{ projection.symbol, union_c_name });
                     try writer.writeAll(type_spelling.rawGoZero(payload));
-                    try writer.writeAll(", uint8(status)\n\t}\n\treturn ");
+                    try writer.writeAll(", int32(status)\n\t}\n\treturn ");
                     try public_writers.writeRawResultConversion(writer, program, payload, "outValue", options);
-                    try writer.writeAll(", uint8(status)\n");
+                    try writer.writeAll(", int32(status)\n");
                 }
                 try writer.writeAll("}\n");
             },

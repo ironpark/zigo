@@ -19,5 +19,6 @@ typedef struct zg_screen zg_screen;
 
 ZIGO_EXPORT int32_t zg_screen_select_all(zg_screen * self);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_display_H

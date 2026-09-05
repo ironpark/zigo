@@ -21,5 +21,6 @@ ZIGO_EXPORT int32_t zg_terminal_password(zg_terminal * self, uint8_t * out_resul
 ZIGO_EXPORT int32_t zg_checked_level(uint8_t level, uint8_t * out_result_has, int32_t * out_result);
 ZIGO_EXPORT int32_t zg_terminal_value(const zg_terminal * terminal, uint8_t * out_result_has, int32_t * out_result);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_optional_return_checks_H

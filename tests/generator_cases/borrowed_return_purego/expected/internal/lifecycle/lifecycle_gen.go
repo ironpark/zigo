@@ -65,7 +65,7 @@ func (err *CallbackError) Error() string { return "zigo: " + err.Operation + ": 
 func (err *CallbackError) Is(target error) bool { return target == ErrCallbackFailed }
 func (err *CallbackError) Unwrap() error { return err.Err }
 
-type StatusError struct { Operation string; Status uint8 }
+type StatusError struct { Operation string; Status int32 }
 func (err *StatusError) Error() string { return "zigo: " + err.Operation + ": unrecognized native status" }
 func (err *StatusError) Unwrap() error { return ErrNativeStatus }
 

@@ -2,7 +2,7 @@
 depends_on:
 - "126-generated-code-quality#0"
 perf_phase: true
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Panic tests in 03 and 07 still see the message; benchmark shows the pin gone.
 > NEXT: none

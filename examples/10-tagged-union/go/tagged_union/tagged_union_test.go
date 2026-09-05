@@ -188,7 +188,9 @@ func TestOpaqueArgumentsAndNativeErrorsAreTyped(t *testing.T) {
 	defer value.Close()
 	assertInvalidHandleError(t, "Value.SetChild parameter child", func() error { return value.SetChild(child) })
 
-	projectionErr := zigoProjectionError("Value.Tag", zigoProjectionPanic)
+	// A caught panic reports -(256 + sequence); -256 names a slot nothing was
+	// published in, so the error carries the operation and an empty message.
+	projectionErr := zigoProjectionError("Value.Tag", -256)
 	if !errors.Is(projectionErr, ErrNativePanic) {
 		t.Fatalf("errors.Is(%v, ErrNativePanic) = false", projectionErr)
 	}

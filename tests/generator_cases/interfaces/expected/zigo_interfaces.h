@@ -32,5 +32,6 @@ ZIGO_EXPORT int32_t zg_float_batch_deinit(zg_float_batch * self);
 ZIGO_EXPORT int32_t zg_window_size(zg_window * self, size_t * out_result);
 ZIGO_EXPORT int32_t zg_int_batch_window(zg_int_batch * self, zg_window * * out_result);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_interfaces_H

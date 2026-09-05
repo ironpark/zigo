@@ -23,5 +23,6 @@ ZIGO_EXPORT int32_t zg_terminal_resize(zg_terminal * self, uint32_t columns);
 ZIGO_EXPORT int32_t zg_terminal_render(zg_terminal * self, const uint8_t * * out_result_ptr, size_t * out_result_len);
 ZIGO_EXPORT void zg_free_string(const uint8_t * str_ptr, size_t str_len);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_terminal_H

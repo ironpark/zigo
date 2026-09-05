@@ -20,6 +20,12 @@
   `unsafe.StringData`로 빌려주고, 반환은 native 메모리에서 바로 `string`을 만듭니다. 공개
   계층의 `[]byte(s)`·`string(b)` 변환이 사라졌고, raw 함수의 시그니처가 `[]uint8`에서
   `string`(optional은 `*string`)으로 바뀝니다.
+- 생성 함수가 더 이상 `runtime.LockOSThread`로 OS 스레드를 고정하지 않습니다. 붙잡힌 Zig
+  panic의 메시지는 시퀀스 번호가 붙은 slot 테이블에 실리고 상태 코드 `-(256 + 시퀀스)`로
+  전달되며, 새 C 심볼 `{prefix}_caught_panic_message(code)`가 어느 스레드에서든 읽습니다.
+  projection·snapshot 접근자의 상태도 `uint8_t`에서 `int32_t`로 넓어져 같은 규칙을 씁니다.
+  `{prefix}_last_error_message`는 진단용으로 남습니다. `errors.lock.json`의 예약 코드
+  `-2`는 그대로이며 더 이상 생성되지 않습니다.
 - 생성 코드 정리: borrowed handle의 `zigoAcquire`가 잠금을 한 번만 풀고, 부모 조회는
   `parent := x.owner`로 줄었습니다. cgo raw 계층의 빈 slice 포인터 처리는 `zigoSlicePtr`·
   `zigoStringPtr` 헬퍼 하나로 통일되고 import는 그룹 블록으로 나갑니다. `Close`의 GoDoc이

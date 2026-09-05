@@ -15,6 +15,9 @@ import "unsafe"
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
 
+// PanicMessage returns the message of the native panic a status code of -256 or below names.
+func PanicMessage(code int32) string { return C.GoString(C.zg_caught_panic_message(C.int32_t(code))) }
+
 // SignalCreate calls the generated C ABI wrapper for zg_signal_create.
 func SignalCreate() (unsafe.Pointer, int32) {
 	var outResult *C.zg_signal
@@ -54,68 +57,68 @@ type SignalSnapshotData struct {
 }
 
 // SignalProjectTag returns the active tag and a projection status.
-func SignalProjectTag(self unsafe.Pointer) (uint8, uint8) {
+func SignalProjectTag(self unsafe.Pointer) (uint8, int32) {
 	var outValue C.uint8_t
 	status := C.zg_signal_project_tag((*C.zg_signal)(self), &outValue)
-	return uint8(outValue), uint8(status)
+	return uint8(outValue), int32(status)
 }
 
 // SignalProjectTicks returns the payload and a projection status.
-func SignalProjectTicks(self unsafe.Pointer) (uint32, uint8) {
+func SignalProjectTicks(self unsafe.Pointer) (uint32, int32) {
 	var outValue C.uint32_t
 	status := C.zg_signal_project_ticks((*C.zg_signal)(self), &outValue)
 	if status != 1 {
-		return 0, uint8(status)
+		return 0, int32(status)
 	}
-	return uint32(outValue), uint8(status)
+	return uint32(outValue), int32(status)
 }
 
 // SignalProjectLevel returns the payload and a projection status.
-func SignalProjectLevel(self unsafe.Pointer) (float64, uint8) {
+func SignalProjectLevel(self unsafe.Pointer) (float64, int32) {
 	var outValue C.double
 	status := C.zg_signal_project_level((*C.zg_signal)(self), &outValue)
 	if status != 1 {
-		return 0, uint8(status)
+		return 0, int32(status)
 	}
-	return float64(outValue), uint8(status)
+	return float64(outValue), int32(status)
 }
 
 // SignalProjectOffset returns the payload and a projection status.
-func SignalProjectOffset(self unsafe.Pointer) (int16, uint8) {
+func SignalProjectOffset(self unsafe.Pointer) (int16, int32) {
 	var outValue C.int16_t
 	status := C.zg_signal_project_offset((*C.zg_signal)(self), &outValue)
 	if status != 1 {
-		return 0, uint8(status)
+		return 0, int32(status)
 	}
-	return int16(outValue), uint8(status)
+	return int16(outValue), int32(status)
 }
 
 // SignalProjectMode returns the payload and a projection status.
-func SignalProjectMode(self unsafe.Pointer) (uint8, uint8) {
+func SignalProjectMode(self unsafe.Pointer) (uint8, int32) {
 	var outValue C.uint8_t
 	status := C.zg_signal_project_mode((*C.zg_signal)(self), &outValue)
 	if status != 1 {
-		return 0, uint8(status)
+		return 0, int32(status)
 	}
-	return uint8(outValue), uint8(status)
+	return uint8(outValue), int32(status)
 }
 
 // SignalProjectActive returns the payload and a projection status.
-func SignalProjectActive(self unsafe.Pointer) (uint8, uint8) {
+func SignalProjectActive(self unsafe.Pointer) (uint8, int32) {
 	var outValue C.uint8_t
 	status := C.zg_signal_project_active((*C.zg_signal)(self), &outValue)
 	if status != 1 {
-		return 0, uint8(status)
+		return 0, int32(status)
 	}
-	return uint8(outValue), uint8(status)
+	return uint8(outValue), int32(status)
 }
 
 // SignalReadSnapshot fills a value snapshot in one native call and returns a projection status.
-func SignalReadSnapshot(self unsafe.Pointer) (SignalSnapshotData, uint8) {
+func SignalReadSnapshot(self unsafe.Pointer) (SignalSnapshotData, int32) {
 	var out C.zg_signal_snapshot_t
 	status := C.zg_signal_snapshot((*C.zg_signal)(self), &out)
 	if status != 1 {
-		return SignalSnapshotData{}, uint8(status)
+		return SignalSnapshotData{}, int32(status)
 	}
 	return SignalSnapshotData{
 		Tag: uint8(out.tag),
@@ -124,5 +127,5 @@ func SignalReadSnapshot(self unsafe.Pointer) (SignalSnapshotData, uint8) {
 		Offset: int16(out.offset),
 		Mode: uint8(out.mode),
 		Active: uint8(out.active),
-	}, uint8(status)
+	}, int32(status)
 }

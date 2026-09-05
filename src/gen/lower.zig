@@ -857,7 +857,7 @@ fn lowerTaggedUnionProjections(allocator: std.mem.Allocator, document: semantic.
             .kind = .tag,
             .symbol = try naming.projectionSymbolAlloc(allocator, prefix, declaration.name, "tag"),
             .params = tag_params,
-            .ret = .bool_u8,
+            .ret = .{ .signed_int = 32 },
             .owner = declaration,
         });
         for (declaration.fields) |*field| {
@@ -895,7 +895,7 @@ fn lowerTaggedUnionProjections(allocator: std.mem.Allocator, document: semantic.
                 .kind = .payload,
                 .symbol = try naming.projectionSymbolAlloc(allocator, prefix, declaration.name, field.name),
                 .params = try params.toOwnedSlice(allocator),
-                .ret = .bool_u8,
+                .ret = .{ .signed_int = 32 },
                 .owner = declaration,
                 .field = field,
             });
@@ -933,7 +933,7 @@ fn lowerTaggedUnionSnapshots(allocator: std.mem.Allocator, document: semantic.Se
             .size = layout.size,
             .alignment = layout.alignment,
             .params = params,
-            .ret = .bool_u8,
+            .ret = .{ .signed_int = 32 },
         });
     }
     return snapshots.toOwnedSlice(allocator);
@@ -1947,11 +1947,10 @@ test "tagged union lowering records tag scalar slice and handle projections" {
     try std.testing.expectEqualStrings("Value", tag.params[0].scalar.pointer.child.@"opaque".name);
     try std.testing.expectEqual(abi.AbiParam.Role.payload_out, tag.params[1].role);
     try std.testing.expectEqual(@as(u16, 8), tag.params[1].scalar.pointer.child.unsigned_int);
-    try std.testing.expect(tag.ret == .bool_u8);
-    try std.testing.expectEqual(@as(u8, 0), @intFromEnum(abi.AbiProjection.Status.mismatch));
-    try std.testing.expectEqual(@as(u8, 1), @intFromEnum(abi.AbiProjection.Status.success));
-    try std.testing.expectEqual(@as(u8, 2), @intFromEnum(abi.AbiProjection.Status.invalid_handle));
-    try std.testing.expectEqual(@as(u8, 3), @intFromEnum(abi.AbiProjection.Status.panic));
+    try std.testing.expect(tag.ret == .signed_int and tag.ret.signed_int == 32);
+    try std.testing.expectEqual(@as(i32, 0), @intFromEnum(abi.AbiProjection.Status.mismatch));
+    try std.testing.expectEqual(@as(i32, 1), @intFromEnum(abi.AbiProjection.Status.success));
+    try std.testing.expectEqual(@as(i32, 2), @intFromEnum(abi.AbiProjection.Status.invalid_handle));
 
     const number = program.projections[1];
     try std.testing.expectEqual(abi.AbiProjection.Kind.payload, number.kind);
@@ -1959,7 +1958,7 @@ test "tagged union lowering records tag scalar slice and handle projections" {
     try std.testing.expectEqualStrings("number", number.field.?.name);
     try std.testing.expectEqual(abi.AbiParam.Role.payload_out, number.params[1].role);
     try std.testing.expectEqual(@as(u16, 32), number.params[1].scalar.pointer.child.signed_int);
-    try std.testing.expect(number.ret == .bool_u8);
+    try std.testing.expect(number.ret == .signed_int and number.ret.signed_int == 32);
 
     const samples = program.projections[2];
     try std.testing.expectEqual(abi.AbiParam.Role.return_slice_pointer, samples.params[1].role);
@@ -2105,7 +2104,7 @@ test "value snapshot lowering orders payloads by width and spells out padding" {
     try std.testing.expectEqual(abi.AbiParam.Role.receiver, snapshot.params[0].role);
     try std.testing.expect(snapshot.params[0].scalar.pointer.is_const);
     try std.testing.expectEqualStrings("zg_signal_snapshot_t", snapshot.params[1].scalar.pointer.child.snapshot);
-    try std.testing.expect(snapshot.ret == .bool_u8);
+    try std.testing.expect(snapshot.ret == .signed_int and snapshot.ret.signed_int == 32);
 }
 
 test "the projection representation lowers no snapshot" {

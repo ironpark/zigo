@@ -25,5 +25,6 @@ ZIGO_EXPORT int32_t zg_cursor_next(zg_cursor * self, uint8_t * out_result_has, i
 ZIGO_EXPORT int32_t zg_cursor_next_checked(zg_cursor * self, uint8_t * out_result_has, uint8_t * out_result);
 ZIGO_EXPORT int32_t zg_cursor_reset(zg_cursor * self);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_cursor_H

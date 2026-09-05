@@ -414,7 +414,7 @@ fn renderPublicSnapshots(
 
         // One reader per union, shared by the owned and borrowed handles.
         try writer.print(
-            "func zigo{0s}Snapshot(receiver zigoHandle) ({1s}, error) {{\n\truntime.LockOSThread()\n\tdefer runtime.UnlockOSThread()\n" ++
+            "func zigo{0s}Snapshot(receiver zigoHandle) ({1s}, error) {{\n" ++
                 "\tptr, err := zigoCheckedPointer(\"{0s}.Snapshot receiver\", receiver)\n\tif err != nil {{\n\t\treturn {1s}{{}}, err\n\t}}\n\tdefer receiver.zigoRelease()\n\tdata, status := ",
             .{ declaration.name, type_name },
         );
@@ -680,21 +680,23 @@ pub fn renderGoProjectionRuntime(writer: *std.Io.Writer, program: abi.Program, o
     }
     try writer.writeAll(
         "const (\n" ++
-            "\tzigoProjectionMismatch uint8 = iota\n" ++
+            "\tzigoProjectionMismatch int32 = iota\n" ++
             "\tzigoProjectionSuccess\n" ++
             "\tzigoProjectionInvalidHandle\n" ++
-            "\tzigoProjectionPanic\n" ++
             ")\n\n" ++
-            "func zigoProjectionError(operation string, status uint8) error {\n" ++
-            "\tswitch status {\n" ++
-            "\tcase zigoProjectionInvalidHandle:\n" ++
-            "\t\treturn &HandleError{Operation: operation}\n" ++
-            "\tcase zigoProjectionPanic:\n" ++
+            "// zigoProjectionError maps a projection status to its error. A status of -256\n" ++
+            "// or below is a caught native panic whose message the code names.\n" ++
+            "func zigoProjectionError(operation string, status int32) error {\n" ++
+            "\tif status <= -256 {\n" ++
             "\t\treturn &NativePanicError{Operation: operation, Message: ",
     );
     try public_writers.writeRawReferencePrefix(writer, options);
     try writer.writeAll(
-        "LastErrorMessage()}\n" ++
+        "PanicMessage(status)}\n" ++
+            "\t}\n" ++
+            "\tswitch status {\n" ++
+            "\tcase zigoProjectionInvalidHandle:\n" ++
+            "\t\treturn &HandleError{Operation: operation}\n" ++
             "\tdefault:\n" ++
             "\t\treturn &StatusError{Operation: operation, Status: status}\n" ++
             "\t}\n" ++
@@ -735,7 +737,7 @@ fn renderPublicTaggedUnionAccessors(
         // One implementation per projection, reached through the handle
         // interface so the owned and borrowed methods can both delegate to it.
         try writer.print(
-            "func zigo{0s}Tag(receiver zigoHandle) ({1s}, error) {{\n\truntime.LockOSThread()\n\tdefer runtime.UnlockOSThread()\n" ++
+            "func zigo{0s}Tag(receiver zigoHandle) ({1s}, error) {{\n" ++
                 "\tptr, err := zigoCheckedPointer(\"{0s}.Tag receiver\", receiver)\n\tif err != nil {{\n\t\treturn 0, err\n\t}}\n\tdefer receiver.zigoRelease()\n\tresult, status := ",
             .{ declaration.name, tag_type },
         );
@@ -768,7 +770,7 @@ fn renderPublicTaggedUnionAccessors(
 
             try writer.print("func zigo{s}As{s}(receiver zigoHandle) (", .{ declaration.name, field_name });
             try public_writers.writePayloadType(scope, writer, payload);
-            try writer.print(", bool, error) {{\n\truntime.LockOSThread()\n\tdefer runtime.UnlockOSThread()\n\tptr, err := zigoCheckedPointer(\"{s}.As{s} receiver\", receiver)\n\tif err != nil {{\n\t\treturn ", .{ declaration.name, field_name });
+            try writer.print(", bool, error) {{\n\tptr, err := zigoCheckedPointer(\"{s}.As{s} receiver\", receiver)\n\tif err != nil {{\n\t\treturn ", .{ declaration.name, field_name });
             try writer.writeAll(type_spelling.goZero(payload));
             try writer.writeAll(", false, err\n\t}\n\tdefer receiver.zigoRelease()\n\tresult, status := ");
             try public_writers.writeRawReferencePrefix(writer, options);
@@ -972,9 +974,11 @@ pub fn renderGoErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
         try writer.print("// Err{s} represents Zig error.{s}.\nvar Err{s} = &Error{{Code: {d}, Name: \"{s}\"}}\n", .{ name, entry.name, name, entry.code, entry.name });
     }
     if (!programReturnsErrorUnion(program)) return;
-    try writer.writeAll("\nfunc errorForCode(operation string, code int32) error {\n\tswitch code {\n\tcase -2:\n\t\treturn &NativePanicError{Operation: operation, Message: ");
+    // A caught panic reports a status of -256 or below; the code names the
+    // slot its message was published in, readable from any thread.
+    try writer.writeAll("\nfunc errorForCode(operation string, code int32) error {\n\tif code <= -256 {\n\t\treturn &NativePanicError{Operation: operation, Message: ");
     try public_writers.writeRawReferencePrefix(writer, options);
-    try writer.writeAll("LastErrorMessage()}\n");
+    try writer.writeAll("PanicMessage(code)}\n\t}\n\tswitch code {\n");
     if (programHasValueUnionReturn(program))
         try writer.writeAll("\tcase -3:\n\t\treturn &Error{Code: -3, Name: \"OmittedVariant\", Operation: operation}\n");
     for (program.error_codes) |entry| {

@@ -22,5 +22,6 @@ ZIGO_EXPORT void zg_release(uint8_t * buffer_ptr, size_t buffer_len);
 ZIGO_EXPORT size_t zg_fill(size_t output_len, uint8_t * * out_result_ptr, size_t * out_result_len);
 ZIGO_EXPORT int32_t zg_fill_checked(size_t output_len, size_t * out_written, uint8_t * * out_result_ptr, size_t * out_result_len);
 ZIGO_EXPORT const char *zg_last_error_message(void);
+ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 
 #endif // ZIGO_tree_H

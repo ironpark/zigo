@@ -186,6 +186,20 @@ var _ = [1]struct{}{}[unsafe.Offsetof(Point{}.X)-unsafe.Offsetof(raw.PointData{}
 배열 index가 상수로 평가되므로 배치가 어긋나면 `go build`가 그 자리에서 실패합니다.
 bool·atomic 필드가 있는 struct는 공개 계층에서 원소별 변환 경로를 사용합니다.
 
+## 상태 코드 범위
+
+error union 함수와 projection·snapshot 접근자는 모두 `int32_t`를 돌려줍니다.
+
+| 코드 | 의미 |
+|---|---|
+| `0` | 성공 (함수) / variant 불일치 (projection) |
+| `1` | 성공 (projection·snapshot) |
+| `2` | 잘못된 handle (projection·snapshot) |
+| `1` 이상 | `errors.lock.json`에 잠긴 Zig 오류 (함수) |
+| `-2` | 예약. 이전 릴리스의 panic 코드이며 지금은 생성되지 않음 |
+| `-3`, `-4` | 콜백: Go panic, 삭제된 토큰 |
+| `-256` 이하 | 붙잡힌 Zig panic. `-(256 + 시퀀스)`이며 `{prefix}_caught_panic_message(code)`가 메시지를 돌려줌 |
+
 ## UTF-8 문자열의 복사 횟수
 
 `.semantic = .utf8_string`인 `[]const u8` 입력은 raw 계층까지 Go `string`으로 내려가고,

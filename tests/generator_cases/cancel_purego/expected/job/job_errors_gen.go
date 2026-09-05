@@ -91,9 +91,10 @@ var ErrCanceled = &Error{Code: 1, Name: "Canceled"}
 var ErrEmpty = &Error{Code: 2, Name: "Empty"}
 
 func errorForCode(operation string, code int32) error {
+	if code <= -256 {
+		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(code)}
+	}
 	switch code {
-	case -2:
-		return &NativePanicError{Operation: operation, Message: raw.LastErrorMessage()}
 	case 1:
 		return &Error{Code: 1, Name: "Canceled", Operation: operation}
 	case 2:
