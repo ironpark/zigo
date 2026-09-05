@@ -92,6 +92,11 @@ pub const TypeNode = union(enum) {
     value_struct: Ref,
     void: void,
 
+    /// The node behind an error union, or the node itself.
+    pub fn errorPayload(self: TypeNode) TypeNode {
+        return if (self == .error_union) self.error_union.payload.* else self;
+    }
+
     pub fn jsonStringify(self: TypeNode, jw: anytype) !void {
         try jw.beginObject();
         switch (self) {
@@ -626,13 +631,37 @@ pub const Constructor = struct {
 /// A `packed struct` value type, which crosses the boundary as its backing
 /// integer rather than as an aggregate. Lowering and validation both gate the
 /// whole packed-value feature on this, so they read one rule.
-pub fn isPackedValue(document: Semantic, node: TypeNode) bool {
+pub fn isPackedValue(types: []const TypeDecl, node: TypeNode) bool {
     if (node != .value_struct) return false;
-    for (document.types) |declaration| {
-        if (std.mem.eql(u8, declaration.name, node.value_struct.ref))
-            return declaration.kind == .value_struct and declaration.layout == .@"packed";
-    }
-    return false;
+    const declaration = typeDecl(types, node.value_struct.ref) orelse return false;
+    return declaration.kind == .value_struct and declaration.layout == .@"packed";
+}
+
+/// The registered declaration of this name, if the document has one.
+pub fn typeDecl(types: []const TypeDecl, name: []const u8) ?TypeDecl {
+    for (types) |declaration| if (std.mem.eql(u8, declaration.name, name)) return declaration;
+    return null;
+}
+
+/// The failure result a callback parameter reports with: the parameter's own
+/// override first, else the default registered on its callback type. Emit,
+/// validation and `abi-diff` all resolve it through here.
+pub fn callbackFailure(types: []const TypeDecl, parameter: Parameter) ?CallbackFailure {
+    if (parameter.on_callback_failure) |value| return value;
+    if (parameter.type != .callback) return null;
+    const ref = parameter.type.callback.ref orelse return null;
+    const declaration = typeDecl(types, ref) orelse return null;
+    return if (declaration.kind == .callback) declaration.on_callback_failure else null;
+}
+
+/// The Zig declaration a shim calls, relative to the bound module. A document
+/// spells it out only when the owner and the name do not: the shim's call has
+/// to reach where the function is declared, not where Go presents it.
+pub fn zigCallPathAlloc(allocator: std.mem.Allocator, function: SemanticFn) ![]u8 {
+    if (function.zig_path) |path| return allocator.dupe(u8, path);
+    if (function.receiver orelse function.namespace) |owner|
+        return std.fmt.allocPrint(allocator, "{s}.{s}", .{ owner, function.name });
+    return allocator.dupe(u8, function.name);
 }
 
 /// The constructor whose `init` this function is, if any. Matched on the Zig

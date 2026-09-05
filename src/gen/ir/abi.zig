@@ -11,11 +11,54 @@ pub fn promotedIntBits(bits: u16) u16 {
 }
 
 /// The declared integer, when it is narrower than the C type carrying it.
+/// Widths outside 1..64 have no carrier at all, so they are not narrow either:
+/// validation rejects them as unsupported rather than staging them.
 pub fn narrowInt(node: semantic.TypeNode) ?semantic.Int {
     if (node != .int) return null;
     const value = node.int;
-    if (value.is_usize or promotedIntBits(value.bits) == value.bits) return null;
+    if (value.is_usize or value.bits == 0 or value.bits > 64 or promotedIntBits(value.bits) == value.bits) return null;
     return value;
+}
+
+/// The narrow integer directly carried by a plain slice parameter or return.
+/// Optional and sentinel forms deliberately do not qualify: their ABI shapes
+/// are separate features and remain rejected by the ordinary type walk.
+pub fn narrowSliceElement(node: semantic.TypeNode) ?semantic.TypeNode {
+    if (node != .slice or node.slice.sentinel != null) return null;
+    return if (narrowInt(node.slice.element.*) != null) node.slice.element.* else null;
+}
+
+/// The materialized shape of a return, when it has one. Lowering records it
+/// on the function and validation asks the same question, so one rule.
+pub fn materializedReturn(node: semantic.TypeNode) ?AbiFn.MaterializedReturn {
+    if (node == .materialized) return .{ .root = node.materialized.ref, .is_slice = false };
+    if (node == .slice and node.slice.element.* == .materialized)
+        return .{ .root = node.slice.element.materialized.ref, .is_slice = true };
+    if (node == .error_union) {
+        if (materializedReturn(node.error_union.payload.*)) |result| return .{
+            .root = result.root,
+            .is_slice = result.is_slice,
+            .fallible = true,
+        };
+    }
+    return null;
+}
+
+/// The root of an output slice of materialized values, when the parameter is
+/// one: the function reports its count through its return value.
+pub fn materializedOutParameter(parameter: semantic.Parameter) ?[]const u8 {
+    if (parameter.direction != .out or parameter.writtenHint() != .@"return" or parameter.type != .slice) return null;
+    const element = parameter.type.slice.element.*;
+    return if (element == .materialized and !element.materialized.pointer) element.materialized.ref else null;
+}
+
+pub fn materializedOut(function: semantic.SemanticFn) ?AbiFn.MaterializedOut {
+    for (function.params, 0..) |parameter, index| if (materializedOutParameter(parameter)) |root| return .{
+        .source_index = index,
+        .root = root,
+        .fallible = function.@"return" == .error_union,
+    };
+    return null;
 }
 
 pub const AbiScalar = union(enum) {

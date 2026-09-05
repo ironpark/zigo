@@ -298,28 +298,8 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
                 if (callbackHasPackedParam(program, parameter.type.callback)) {
                     const thunk = try callbackPackedThunkNameAlloc(allocator, function, parameter_index);
                     defer allocator.free(thunk);
-                    try writer.print("fn {s}(", .{thunk});
-                    for (parameter.type.callback.params, 0..) |callback_parameter, index| {
-                        if (index != 0) try writer.writeAll(", ");
-                        try writer.print("p{d}: ", .{index});
-                        if (isPackedValue(program, callback_parameter))
-                            try writeTargetType(writer, program, callback_parameter.value_struct.ref)
-                        else
-                            try writeZigType(writer, program, semanticScalar(program, callback_parameter));
-                    }
-                    try writer.writeAll(") callconv(.c) ");
-                    try writeZigType(writer, program, semanticScalar(program, parameter.type.callback.@"return".*));
-                    try writer.print(" {{\n    ", .{});
-                    if (parameter.type.callback.@"return".* != .void) try writer.writeAll("return ");
-                    try writer.print("{s}(", .{name});
-                    for (parameter.type.callback.params, 0..) |callback_parameter, index| {
-                        if (index != 0) try writer.writeAll(", ");
-                        if (isPackedValue(program, callback_parameter)) {
-                            try writePackedZigToBackingPrefix(writer, program, callback_parameter);
-                            try writer.print("p{d})))", .{index});
-                        } else try writer.print("p{d}", .{index});
-                    }
-                    try writer.writeAll(");\n}\n");
+                    try writeCallbackThunkSignature(writer, program, parameter.type.callback, thunk);
+                    try writeCallbackThunkCall(writer, program, parameter.type.callback, name, false);
                 }
             }
         }
@@ -498,15 +478,16 @@ fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi
         // A plain result has to be named before the written counts can quote
         // it, so a function with output slices binds it and returns the binding
         // rather than returning the call directly.
+        // A packed struct crosses as its backing integer, so only an aggregate
+        // struct return is written through the out pointer.
         const packed_return = isPackedValue(program, function.origin.@"return");
-        const binds_result = function.origin.@"return" != .void and
-            (function.origin.@"return" != .value_struct or packed_return) and
-            hasOutSliceParam(function);
-        const atomic_struct_return = function.origin.@"return" == .value_struct and !packed_return and
+        const struct_return = function.origin.@"return" == .value_struct and !packed_return;
+        const binds_result = function.origin.@"return" != .void and !struct_return and hasOutSliceParam(function);
+        const atomic_struct_return = struct_return and
             recordHasAtomicFields(program, structRecord(program, function.origin.@"return".value_struct.ref));
         if (atomic_struct_return) {
             try writer.writeAll("const result = ");
-        } else if (function.origin.@"return" == .value_struct and !packed_return) {
+        } else if (struct_return) {
             try writer.writeAll("out_result.* = ");
         } else if (binds_result) {
             try writer.writeAll("const result = ");
@@ -1147,16 +1128,6 @@ fn writeCFunctionDeclaration(writer: *std.Io.Writer, function: abi.AbiFn, implem
     try writer.writeByte(')');
 }
 
-/// The Zig declaration a shim calls, relative to the bound module. A document
-/// spells it out only when the owner and the name do not: the shim's call has
-/// to reach where the function is declared, not where Go presents it.
-fn zigCallPathAlloc(allocator: std.mem.Allocator, function: semantic.SemanticFn) ![]u8 {
-    if (function.zig_path) |path| return allocator.dupe(u8, path);
-    if (function.receiver orelse function.namespace) |owner|
-        return std.fmt.allocPrint(allocator, "{s}.{s}", .{ owner, function.name });
-    return allocator.dupe(u8, function.name);
-}
-
 fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, function: abi.AbiFn) !void {
     const bool_return = function.origin.@"return" == .bool;
     const enum_return = function.origin.@"return" == .@"enum";
@@ -1172,7 +1143,7 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
         // The declaration the shim calls is not the Go surface: a handle
         // parameter makes a function a method in Go without moving it inside
         // the type in Zig, and `.name` renames it for Go only.
-        const path = try zigCallPathAlloc(allocator, function.origin.*);
+        const path = try semantic.zigCallPathAlloc(allocator, function.origin.*);
         defer allocator.free(path);
         try writer.print("target.{s}(", .{path});
         if (function.origin.receiver != null and function.origin.receiver_at == null) {
@@ -1248,9 +1219,9 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                 try writer.print("zigoString{d}Strings", .{index})
             else if (function.paramString(index).role == .c_string)
                 try writer.writeAll(parameter.name)
-            else if (narrowSliceElement(parameter.type) != null and !isNarrowSliceReleaseTarget(program, function))
+            else if (abi.narrowSliceElement(parameter.type) != null and !isNarrowSliceReleaseTarget(program, function))
                 try writer.print("zigo_{s}_slice", .{parameter.name})
-            else if (narrowSliceElement(parameter.type)) |element| {
+            else if (abi.narrowSliceElement(parameter.type)) |element| {
                 try writer.writeAll("if (");
                 try writer.print("{0s}_len == 0) &.{{}} else @as([*]{1s}", .{ parameter.name, if (parameter.type.slice.@"const") "const " else "" });
                 try writeNarrowZigType(writer, element);
@@ -1273,14 +1244,7 @@ fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, program
                 else
                     try writer.print("if ({0s}_ptr) |zigo_{0s}| zigo_{0s}[0..{0s}_len] else null", .{parameter.name});
             } else try writeShimOptionalArgument(allocator, writer, program, parameter.name, optional.child.*),
-            else => if (parameter.atomic orelse false) {
-                try writer.writeAll(".init(");
-                try writeShimInboundValue(writer, program, parameter.name, parameter.type, false);
-                try writer.writeByte(')');
-            } else if (abi.narrowInt(parameter.type) != null)
-                try writer.print("@intCast({s})", .{parameter.name})
-            else
-                try writer.writeAll(parameter.name),
+            else => try writeShimInboundValue(writer, program, parameter.name, parameter.type, parameter.atomic orelse false),
         }
     }
     // A receiver declared last, behind nothing but injected arguments.
@@ -1426,32 +1390,45 @@ fn renderCallbackBitThunks(allocator: std.mem.Allocator, writer: *std.Io.Writer,
             try writer.print("var {s}: std.atomic.Value(?", .{binding});
             try writeZigType(writer, program, wire);
             try writer.writeAll(") = .init(null);\n");
-            try writer.print("fn {s}(", .{thunk});
-            for (callback.params, 0..) |callback_parameter, index| {
-                if (index != 0) try writer.writeAll(", ");
-                try writer.print("p{d}: ", .{index});
-                if (isPackedValue(program, callback_parameter))
-                    try writeTargetType(writer, program, callback_parameter.value_struct.ref)
-                else
-                    try writeZigType(writer, program, semanticScalar(program, callback_parameter));
-            }
-            try writer.writeAll(") callconv(.c) ");
-            try writeZigType(writer, program, semanticScalar(program, callback.@"return".*));
-            try writer.print(" {{\n    const dispatch = {s}.load(.acquire) orelse @panic(\"zigo: callback invoked before it was installed\");\n    ", .{binding});
-            if (callback.@"return".* != .void) try writer.writeAll("return ");
-            try writer.writeAll("dispatch(");
-            for (callback.params, 0..) |callback_parameter, index| {
-                if (index != 0) try writer.writeAll(", ");
-                if (callback_parameter == .float)
-                    try writer.print("@bitCast(p{d})", .{index})
-                else if (isPackedValue(program, callback_parameter)) {
-                    try writePackedZigToBackingPrefix(writer, program, callback_parameter);
-                    try writer.print("p{d})))", .{index});
-                } else try writer.print("p{d}", .{index});
-            }
-            try writer.writeAll(");\n}\n");
+            try writeCallbackThunkSignature(writer, program, callback, thunk);
+            try writer.print("const dispatch = {s}.load(.acquire) orelse @panic(\"zigo: callback invoked before it was installed\");\n    ", .{binding});
+            try writeCallbackThunkCall(writer, program, callback, "dispatch", true);
         }
     }
+}
+
+/// The `callconv(.c)` signature of a thunk that receives a callback's packed
+/// values as their Zig types, through the opening brace and first indent.
+fn writeCallbackThunkSignature(writer: *std.Io.Writer, program: abi.Program, callback: semantic.Callback, thunk: []const u8) !void {
+    try writer.print("fn {s}(", .{thunk});
+    for (callback.params, 0..) |callback_parameter, index| {
+        if (index != 0) try writer.writeAll(", ");
+        try writer.print("p{d}: ", .{index});
+        if (isPackedValue(program, callback_parameter))
+            try writeTargetType(writer, program, callback_parameter.value_struct.ref)
+        else
+            try writeZigType(writer, program, semanticScalar(program, callback_parameter));
+    }
+    try writer.writeAll(") callconv(.c) ");
+    try writeZigType(writer, program, semanticScalar(program, callback.@"return".*));
+    try writer.writeAll(" {\n    ");
+}
+
+/// The forwarding call that closes a thunk: packed values travel on as their
+/// backing integers, and floats as their bits when the callee takes them so.
+fn writeCallbackThunkCall(writer: *std.Io.Writer, program: abi.Program, callback: semantic.Callback, callee: []const u8, floats_as_bits: bool) !void {
+    if (callback.@"return".* != .void) try writer.writeAll("return ");
+    try writer.print("{s}(", .{callee});
+    for (callback.params, 0..) |callback_parameter, index| {
+        if (index != 0) try writer.writeAll(", ");
+        if (floats_as_bits and callback_parameter == .float)
+            try writer.print("@bitCast(p{d})", .{index})
+        else if (isPackedValue(program, callback_parameter)) {
+            try writePackedZigToBackingPrefix(writer, program, callback_parameter);
+            try writer.print("p{d})))", .{index});
+        } else try writer.print("p{d}", .{index});
+    }
+    try writer.writeAll(");\n}\n");
 }
 
 /// Records the Go dispatcher a thunk forwards to, before the native side can
@@ -1581,7 +1558,7 @@ fn writeNarrowIntegerGuards(writer: *std.Io.Writer, program: abi.Program, functi
             }
             continue;
         }
-        if (narrowSliceElement(parameter.type)) |element| {
+        if (abi.narrowSliceElement(parameter.type)) |element| {
             if (parameter.direction == .out or release_target) continue;
             const narrow = element.int;
             const spelling: u8 = if (narrow.signed) 'i' else 'u';
@@ -1608,7 +1585,7 @@ fn writeNarrowSliceSetups(writer: *std.Io.Writer, program: abi.Program, function
     // once here rather than re-derived for every parameter.
     if (isNarrowSliceReleaseTarget(program, function)) return;
     for (function.origin.params) |parameter| {
-        const element = narrowSliceElement(parameter.type) orelse continue;
+        const element = abi.narrowSliceElement(parameter.type) orelse continue;
         try writer.print("    const zigo_{0s}_slice = {1s}.alloc(", .{ parameter.name, allocator });
         try writeNarrowZigType(writer, element);
         try writer.print(", {0s}_len) catch @panic(\"zigo: out of memory converting argument `{0s}`\");\n", .{parameter.name});
@@ -1618,11 +1595,6 @@ fn writeNarrowSliceSetups(writer: *std.Io.Writer, program: abi.Program, function
     }
 }
 
-fn narrowSliceElement(node: semantic.TypeNode) ?semantic.TypeNode {
-    if (node != .slice or node.slice.sentinel != null) return null;
-    return if (abi.narrowInt(node.slice.element.*) != null) node.slice.element.* else null;
-}
-
 fn writeNarrowZigType(writer: *std.Io.Writer, node: semantic.TypeNode) !void {
     const integer = node.int;
     try writer.print("{c}{d}", .{ if (integer.signed) @as(u8, 'i') else @as(u8, 'u'), integer.bits });
@@ -1630,7 +1602,7 @@ fn writeNarrowZigType(writer: *std.Io.Writer, node: semantic.TypeNode) !void {
 
 fn isNarrowSliceReleaseTarget(program: abi.Program, function: abi.AbiFn) bool {
     if (!isReleaseTarget(program, function.origin.*)) return false;
-    for (function.origin.params) |parameter| if (narrowSliceElement(parameter.type) != null) return true;
+    for (function.origin.params) |parameter| if (abi.narrowSliceElement(parameter.type) != null) return true;
     return false;
 }
 
@@ -1654,13 +1626,11 @@ fn writeShimSliceReturn(writer: *std.Io.Writer, program: abi.Program, function: 
 /// afterwards.
 fn writeSliceWrittenAssignments(writer: *std.Io.Writer, function: abi.AbiFn) !void {
     for (function.origin.params) |parameter| {
-        if (parameter.direction == .out and narrowSliceElement(parameter.type) != null) {
-            const count = if (parameter.writtenHint() == .@"return") "@min(result, " else null;
-            if (count) |prefix| {
-                try writer.print("    for (zigo_{0s}_slice[0..{1s}{0s}_len)], 0..) |zigo_value, zigo_i| {0s}_ptr[zigo_i] = @intCast(zigo_value);\n", .{ parameter.name, prefix });
-            } else {
+        if (parameter.direction == .out and abi.narrowSliceElement(parameter.type) != null) {
+            if (parameter.writtenHint() == .@"return")
+                try writer.print("    for (zigo_{0s}_slice[0..@min(result, {0s}_len)], 0..) |zigo_value, zigo_i| {0s}_ptr[zigo_i] = @intCast(zigo_value);\n", .{parameter.name})
+            else
                 try writer.print("    for (zigo_{0s}_slice, 0..) |zigo_value, zigo_i| {0s}_ptr[zigo_i] = @intCast(zigo_value);\n", .{parameter.name});
-            }
         }
         if (!hasWrittenOutParam(parameter)) continue;
         try writer.print("    {0s}_written.* = {0s}_len;\n", .{parameter.name});
@@ -1921,21 +1891,10 @@ fn targetTypeSpellingAlloc(allocator: std.mem.Allocator, program: abi.Program, n
         return std.fmt.allocPrint(allocator, "target.{s}", .{name});
     if (std.mem.startsWith(u8, path, "root."))
         return std.fmt.allocPrint(allocator, "target.{s}", .{path["root.".len..]});
-    var ancestor: ?[]const u8 = null;
-    var ancestor_path_len: usize = 0;
-    for (program.types) |declaration| {
-        if (std.mem.eql(u8, declaration.name, name)) continue;
-        const other = registeredZigPath(program, declaration.name) orelse continue;
-        if (other.len >= path.len or !std.mem.startsWith(u8, path, other) or path[other.len] != '.') continue;
-        if (other.len > ancestor_path_len) {
-            ancestor = declaration.name;
-            ancestor_path_len = other.len;
-        }
-    }
-    if (ancestor) |parent| {
-        const parent_spelling = try targetTypeSpellingAlloc(allocator, program, parent);
+    if (registeredAncestor(program, name, path)) |ancestor| {
+        const parent_spelling = try targetTypeSpellingAlloc(allocator, program, ancestor.name);
         defer allocator.free(parent_spelling);
-        return std.fmt.allocPrint(allocator, "{s}{s}", .{ parent_spelling, path[ancestor_path_len..] });
+        return std.fmt.allocPrint(allocator, "{s}{s}", .{ parent_spelling, path[ancestor.path_len..] });
     }
     // A dependency-module type with no registered ancestor is whatever the
     // root module re-exports. When the registered name is the Zig name there
@@ -1953,6 +1912,22 @@ fn targetTypeSpellingAlloc(allocator: std.mem.Allocator, program: abi.Program, n
         return spelling.toOwnedSlice(allocator);
     }
     return std.fmt.allocPrint(allocator, "target.{s}", .{name});
+}
+
+const RegisteredAncestor = struct { name: []const u8, path_len: usize };
+
+/// The registered type whose Zig path is the longest proper prefix of `path`,
+/// which is the type the spelling nests under.
+fn registeredAncestor(program: abi.Program, name: []const u8, path: []const u8) ?RegisteredAncestor {
+    var ancestor: ?RegisteredAncestor = null;
+    for (program.types) |declaration| {
+        if (std.mem.eql(u8, declaration.name, name)) continue;
+        const other = registeredZigPath(program, declaration.name) orelse continue;
+        if (other.len >= path.len or !std.mem.startsWith(u8, path, other) or path[other.len] != '.') continue;
+        if (ancestor == null or other.len > ancestor.?.path_len)
+            ancestor = .{ .name = declaration.name, .path_len = other.len };
+    }
+    return ancestor;
 }
 
 const TargetTypeCandidates = struct {
@@ -1991,10 +1966,10 @@ fn programNeedsTargetTypeResolver(program: abi.Program) bool {
     for (program.types) |declaration| {
         const path = registeredZigPath(program, declaration.name) orelse continue;
         if (std.mem.startsWith(u8, path, "root.")) continue;
-        var buffer: [512]u8 = undefined;
-        var fba = std.heap.FixedBufferAllocator.init(&buffer);
-        const spelling = targetTypeSpellingAlloc(fba.allocator(), program, declaration.name) catch continue;
-        if (std.mem.startsWith(u8, spelling, "zigoTargetType(")) return true;
+        // A nested type is spelled through its ancestor, which is checked on
+        // its own turn through this loop.
+        if (registeredAncestor(program, declaration.name, path) != null) continue;
+        if (targetTypeCandidates(path, declaration.name) != null) return true;
     }
     return false;
 }
@@ -3521,14 +3496,8 @@ fn writeCallbackFailureValue(writer: *std.Io.Writer, node: semantic.TypeNode, pa
 }
 
 fn callbackFailureResult(program: abi.Program, parameter: semantic.Parameter) ?i128 {
-    if (parameter.on_callback_failure) |failure| return failure.result;
-    if (parameter.type != .callback) return null;
-    const ref = parameter.type.callback.ref orelse return null;
-    for (program.types) |declaration| {
-        if (declaration.kind == .callback and std.mem.eql(u8, declaration.name, ref))
-            return if (declaration.on_callback_failure) |failure| failure.result else null;
-    }
-    return null;
+    const failure = semantic.callbackFailure(program.types, parameter) orelse return null;
+    return failure.result;
 }
 
 /// True when any callback carries a float parameter, and so any dispatcher has
@@ -4465,10 +4434,6 @@ fn emitsPublicFunction(program: abi.Program, function: abi.AbiFn) bool {
     return !isReleaseTarget(program, function.origin.*);
 }
 
-fn returnPayload(node: semantic.TypeNode) semantic.TypeNode {
-    return if (node == .error_union) node.error_union.payload.* else node;
-}
-
 fn optionalPayload(node: semantic.TypeNode) semantic.TypeNode {
     return if (node == .optional) node.optional.child.* else node;
 }
@@ -4478,29 +4443,21 @@ fn optionalPayload(node: semantic.TypeNode) semantic.TypeNode {
 fn programReturnsStructSlice(program: abi.Program, name: []const u8) bool {
     for (program.functions) |function| {
         if (!emitsPublicFunction(program, function)) continue;
-        const node = optionalPayload(returnPayload(function.origin.@"return"));
+        const node = optionalPayload(function.origin.@"return".errorPayload());
         if (node == .slice and node.slice.element.* == .value_struct and
             std.mem.eql(u8, node.slice.element.*.value_struct.ref, name)) return true;
     }
     return false;
 }
 
-fn programUsesStructSliceToRaw(program: abi.Program, name: []const u8) bool {
+/// Whether any publicly emitted function takes a `[]T` of this struct in the
+/// given direction: inbound slices need the to-raw conversion, output slices
+/// the copy back from raw.
+fn programUsesStructSlice(program: abi.Program, name: []const u8, out: bool) bool {
     for (program.functions) |function| {
         if (!emitsPublicFunction(program, function)) continue;
         for (function.origin.params) |parameter| {
-            if (parameter.direction == .out or !isValueStructSlice(parameter.type)) continue;
-            if (std.mem.eql(u8, parameter.type.slice.element.*.value_struct.ref, name)) return true;
-        }
-    }
-    return false;
-}
-
-fn programUsesStructSliceCopyFromRaw(program: abi.Program, name: []const u8) bool {
-    for (program.functions) |function| {
-        if (!emitsPublicFunction(program, function)) continue;
-        for (function.origin.params) |parameter| {
-            if (parameter.direction != .out or !isValueStructSlice(parameter.type)) continue;
+            if ((parameter.direction == .out) != out or !isValueStructSlice(parameter.type)) continue;
             if (std.mem.eql(u8, parameter.type.slice.element.*.value_struct.ref, name)) return true;
         }
     }
@@ -4560,7 +4517,7 @@ fn programUsesStructToRaw(program: abi.Program, name: []const u8) bool {
 fn programUsesStructFromRaw(program: abi.Program, name: []const u8) bool {
     for (program.functions) |function| {
         if (!emitsPublicFunction(program, function)) continue;
-        const returned = optionalPayload(returnPayload(function.origin.@"return"));
+        const returned = optionalPayload(function.origin.@"return".errorPayload());
         if (returned == .value_struct and !isPackedValue(program, returned) and
             structConversionReaches(program, returned.value_struct.ref, name, 0)) return true;
         if (returned == .slice and returned.slice.element.* == .value_struct) {
@@ -4793,22 +4750,15 @@ fn writeMustCallArguments(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
     }
 }
 
-fn mustResultNode(function: semantic.SemanticFn) semantic.TypeNode {
-    return if (function.@"return" == .error_union)
-        function.@"return".error_union.payload.*
-    else
-        function.@"return";
-}
-
 fn mustHasSecondResult(function: semantic.SemanticFn) bool {
-    const result = mustResultNode(function);
+    const result = function.@"return".errorPayload();
     return result == .optional or
         (result == .opaque_ptr and result.opaque_ptr.nullable and returnsBorrowedView(function));
 }
 
 fn writeMustResultType(scope: PublicScope, writer: *std.Io.Writer, function: semantic.SemanticFn, owned_type: ?[]const u8) !void {
     if (owned_type) |name| return writer.print("*{s}", .{name});
-    const result = mustResultNode(function);
+    const result = function.@"return".errorPayload();
     const node = if (result == .optional) result.optional.child.* else result;
     if (node == .opaque_ptr and returnsBorrowedView(function))
         return writer.print("*{s}", .{node.opaque_ptr.ref});
@@ -4837,7 +4787,7 @@ fn renderMustVariant(
         try writer.print("func {s}(", .{must_name});
     try writeMustParameters(scope, allocator, writer, function, go_names);
     try writer.writeByte(')');
-    const result = mustResultNode(function.origin.*);
+    const result = function.origin.@"return".errorPayload();
     if (result != .void) {
         try writer.writeByte(' ');
         if (mustHasSecondResult(function.origin.*)) try writer.writeByte('(');
@@ -5865,7 +5815,7 @@ fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer
             continue;
         }
 
-        if (programUsesStructSliceToRaw(program, record.name)) {
+        if (programUsesStructSlice(program, record.name, false)) {
             try writer.print("func zigo{s}SliceToRaw(values []{s}) []", .{ record.name, public_name });
             try writeRawTypeReferencePrefix(writer, options);
             try writer.print("{s} {{\n\tresult := make([]", .{raw_type});
@@ -5879,7 +5829,7 @@ fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer
             try writer.print("{s}) []{s} {{\n\tresult := make([]{s}, len(values))\n\tfor i := range values {{\n\t\tresult[i] = zigo{s}FromRaw(values[i])\n\t}}\n\treturn result\n}}\n\n", .{ raw_type, public_name, public_name, record.name });
         }
 
-        if (programUsesStructSliceCopyFromRaw(program, record.name)) {
+        if (programUsesStructSlice(program, record.name, true)) {
             try writer.print("func zigo{s}SliceCopyFromRaw(dst []{s}, values []", .{ record.name, public_name });
             try writeRawTypeReferencePrefix(writer, options);
             try writer.print("{s}, count int) {{\n\tif count > len(dst) {{ count = len(dst) }}\n\tif count > len(values) {{ count = len(values) }}\n\tfor i := 0; i < count; i++ {{\n\t\tdst[i] = zigo{s}FromRaw(values[i])\n\t}}\n}}\n\n", .{ raw_type, record.name });
@@ -5932,9 +5882,12 @@ fn writeMaterializedPublicType(scope: PublicScope, writer: *std.Io.Writer, node:
 
 fn renderPublicMaterializedStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) !void {
     const scope: PublicScope = .{ .program = program, .options = options };
+    const used = try allocator.alloc(bool, program.materialized_layouts.len);
+    defer allocator.free(used);
+    for (program.materialized_layouts, used) |layout, *flag| flag.* = programUsesMaterializedType(program, layout.owner.name);
     var any = false;
-    for (program.materialized_layouts) |layout| {
-        if (!programUsesMaterializedType(program, layout.owner.name)) continue;
+    for (program.materialized_layouts, used) |layout, is_used| {
+        if (!is_used) continue;
         if (!typeBelongsToPackage(program, layout.owner.name, options.active_package)) continue;
         any = true;
         try writer.print("// {s} is an owned Go snapshot of the Zig struct of the same name.\ntype {s} struct {{\n", .{ layout.owner.name, layout.owner.name });
@@ -5970,8 +5923,8 @@ fn renderPublicMaterializedStructs(allocator: std.mem.Allocator, writer: *std.Io
             "\treturn zigoMaterializedU64(buffer, 24), zigoMaterializedU64(buffer, 16)\n" ++
             "}\n\n",
     );
-    for (program.materialized_layouts) |layout| {
-        if (!programUsesMaterializedType(program, layout.owner.name)) continue;
+    for (program.materialized_layouts, used) |layout, is_used| {
+        if (!is_used) continue;
         try renderMaterializedDecoder(allocator, writer, program, options, layout);
     }
 }
@@ -7614,7 +7567,7 @@ fn writeCheckedErrorReturn(
 fn hasNarrowIntParameter(function: semantic.SemanticFn) bool {
     for (function.params) |parameter| {
         if (abi.narrowInt(parameter.type) != null) return true;
-        if (parameter.direction == .in and narrowSliceElement(parameter.type) != null) return true;
+        if (parameter.direction == .in and abi.narrowSliceElement(parameter.type) != null) return true;
         if (parameter.flatten) |fields| for (fields) |field| {
             const node = if (field.type == .optional) field.type.optional.child.* else field.type;
             if (abi.narrowInt(node) != null) return true;
@@ -7686,7 +7639,7 @@ fn renderRangeChecks(
             }
             continue;
         }
-        if (parameter.direction == .in) if (narrowSliceElement(parameter.type)) |element| {
+        if (parameter.direction == .in) if (abi.narrowSliceElement(parameter.type)) |element| {
             const narrow = element.int;
             const name = go_names[parameter_index];
             const spelling: u8 = if (narrow.signed) 'i' else 'u';
@@ -7937,8 +7890,7 @@ fn writeRawReturnType(writer: *std.Io.Writer, program: abi.Program, function: ab
         return writer.writeAll(if (materialized.fallible) " ([]byte, int32)" else " []byte");
     if (function.materialized_out) |output| {
         try writer.writeAll(" ([]byte, ");
-        const count = if (output.fallible) function.origin.@"return".error_union.payload.* else function.origin.@"return";
-        try writeRawGoType(writer, program, count);
+        try writeRawGoType(writer, program, function.origin.@"return".errorPayload());
         return writer.writeAll(if (output.fallible) ", int32)" else ")");
     }
     switch (function.origin.@"return") {
@@ -8857,13 +8809,11 @@ fn enumRecord(program: abi.Program, name: []const u8) abi.AbiEnum {
 }
 
 fn enumDecl(program: abi.Program, name: []const u8) semantic.TypeDecl {
-    for (program.types) |declaration| if (std.mem.eql(u8, declaration.name, name)) return declaration;
-    unreachable;
+    return semantic.typeDecl(program.types, name) orelse unreachable;
 }
 
 fn isPackedValue(program: abi.Program, node: semantic.TypeNode) bool {
-    return node == .value_struct and enumDecl(program, node.value_struct.ref).kind == .value_struct and
-        enumDecl(program, node.value_struct.ref).layout == .@"packed";
+    return semantic.isPackedValue(program.types, node);
 }
 
 fn packedValuePubliclyUsed(program: abi.Program, name: []const u8) bool {

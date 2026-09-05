@@ -21,10 +21,13 @@ pub fn mustVariantNames(allocator: std.mem.Allocator, document: semantic.Semanti
 }
 
 pub fn findMustVariantIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
-    for (document.functions) |function| {
+    // Every pair of functions compares public names, so they are spelled once.
+    const public_names = try allocator.alloc([]const u8, document.functions.len);
+    defer allocator.free(public_names);
+    for (document.functions, public_names) |function, *name| name.* = try semantic.publicFunctionNameAlloc(allocator, document, function);
+    defer for (public_names) |name| allocator.free(name);
+    for (document.functions, public_names) |function, public_name| {
         if (!mustVariantEligible(document, function)) continue;
-        const public_name = try semantic.publicFunctionNameAlloc(allocator, document, function);
-        defer allocator.free(public_name);
         if (std.mem.eql(u8, public_name, "Close")) continue;
         const must_name = try std.fmt.allocPrint(allocator, "Must{s}", .{public_name});
         defer allocator.free(must_name);
@@ -44,12 +47,10 @@ pub fn findMustVariantIssue(allocator: std.mem.Allocator, document: semantic.Sem
                 .hint = "rename the function or conflicting type so the generated Must name is unique",
             };
         };
-        for (document.functions) |other| {
+        for (document.functions, public_names) |other, other_name| {
             if (constructorDeinitFor(document, other) != null) continue;
             if (!std.mem.eql(u8, function.receiver orelse "", other.receiver orelse "")) continue;
             if (!semantic.optionalStringEqual(function.package, other.package)) continue;
-            const other_name = try semantic.publicFunctionNameAlloc(allocator, document, other);
-            defer allocator.free(other_name);
             if (!std.mem.eql(u8, must_name, other_name)) continue;
             const function_path = try functionDeclarationAlloc(allocator, function);
             const other_path = try functionDeclarationAlloc(allocator, other);
@@ -245,7 +246,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             if (try callbackGoErrorIssue(allocator, function, parameter)) |issue| return issue;
             if (try callbackFailureResultIssue(allocator, document, function, parameter)) |issue| return issue;
             if (try callbackContractIssue(allocator, function, parameter)) |issue| return issue;
-            if (containsMaterialized(parameter.type) and !isMaterializedReleaseTarget(document, function) and !isMaterializedOutParameter(parameter)) return .{
+            if (containsMaterialized(parameter.type) and !isMaterializedReleaseTarget(document, function) and abi.materializedOutParameter(parameter) == null) return .{
                 .severity = .@"error",
                 .code = "ZIGO048",
                 .message = "materialized structs are result-only",
@@ -407,7 +408,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
         }
         // A caller-owned slice is handed over through `release` instead of a
         // handle destructor, so it answers to ZIGO016 rather than ZIGO015.
-        if (function.ownership == .caller and (isMaterializedReturn(function.@"return") or hasMaterializedOut(function))) {
+        if (function.ownership == .caller and (abi.materializedReturn(function.@"return") != null or abi.materializedOut(function) != null)) {
             if (materializedReleaseTargetIssue(document, function)) |issue| return issue;
         } else if (function.ownership == .caller and isReleasableSliceReturn(function)) {
             if (releaseTargetIssue(document, function)) |issue| return issue;
@@ -435,7 +436,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .hint = "return `usize` or `!usize` from the function, or use the default `.written = .all`",
             };
         }
-        if (function.release != null and !isReleasableSliceReturn(function) and !isMaterializedReturn(function.@"return") and !hasMaterializedOut(function)) return .{
+        if (function.release != null and !isReleasableSliceReturn(function) and abi.materializedReturn(function.@"return") == null and abi.materializedOut(function) == null) return .{
             .severity = .@"error",
             .code = "ZIGO016",
             .message = "release function declared on a return that zigo does not free",
@@ -443,7 +444,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .hint = "use `.release` only together with `.returns = .caller` on a slice return",
         };
     }
-    for (document.functions) |function| if ((isMaterializedReturn(function.@"return") or hasMaterializedOut(function)) and
+    for (document.functions) |function| if ((abi.materializedReturn(function.@"return") != null or abi.materializedOut(function) != null) and
         (function.ownership != .caller or function.release == null)) return .{
         .severity = .@"error",
         .code = "ZIGO048",
@@ -688,7 +689,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
     for (document.functions) |function| {
         for (function.params) |parameter| {
             if (parameter.type == .atomic_ptr) continue;
-            if (narrowSliceElement(parameter.type)) |_| {
+            if (abi.narrowSliceElement(parameter.type.errorPayload()) != null) {
                 if (document.allocator == null) return .{
                     .severity = .@"error",
                     .code = "ZIGO045",
@@ -707,7 +708,7 @@ pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 return try offenseDiagnostic(allocator, function, offense, location);
             }
         }
-        if (narrowSliceElement(function.@"return")) |element| {
+        if (abi.narrowSliceElement(function.@"return".errorPayload())) |element| {
             if (function.ownership != .caller or function.release == null) {
                 const spelling = try zigSpellingAlloc(allocator, element);
                 return .{
@@ -1014,24 +1015,13 @@ fn callbackGoErrorIssue(
     };
 }
 
-fn callbackFailureResult(document: semantic.Semantic, parameter: semantic.Parameter) ?semantic.CallbackFailure {
-    if (parameter.on_callback_failure) |value| return value;
-    if (parameter.type != .callback) return null;
-    const ref = parameter.type.callback.ref orelse return null;
-    for (document.types) |declaration| {
-        if (declaration.kind == .callback and std.mem.eql(u8, declaration.name, ref))
-            return declaration.on_callback_failure;
-    }
-    return null;
-}
-
 fn callbackFailureResultIssue(
     allocator: std.mem.Allocator,
     document: semantic.Semantic,
     function: semantic.SemanticFn,
     parameter: semantic.Parameter,
 ) !?diagnostic.Diagnostic {
-    const failure = callbackFailureResult(document, parameter) orelse return null;
+    const failure = semantic.callbackFailure(document.types, parameter) orelse return null;
     const declaration = try functionDeclarationAlloc(allocator, function);
     if (parameter.type != .callback) return .{
         .severity = .@"error",
@@ -1071,12 +1061,10 @@ fn callbackFailureValueFits(document: semantic.Semantic, node: semantic.TypeNode
         },
         .float => true,
         .@"enum" => |enum_ref| blk: {
-            for (document.types) |declaration| {
-                if (declaration.kind != .@"enum" or !std.mem.eql(u8, declaration.name, enum_ref.ref)) continue;
-                const tag = declaration.tag_type orelse break :blk false;
-                break :blk callbackFailureValueFits(document, tag, value);
-            }
-            break :blk false;
+            const declaration = semantic.typeDecl(document.types, enum_ref.ref) orelse break :blk false;
+            if (declaration.kind != .@"enum") break :blk false;
+            const tag = declaration.tag_type orelse break :blk false;
+            break :blk callbackFailureValueFits(document, tag, value);
         },
         else => false,
     };
@@ -1801,14 +1789,15 @@ fn taggedUnionValuePayloadSupported(document: semantic.Semantic, node: semantic.
         .int => |value| integerSupported(value),
         .float => |value| floatSupported(value),
         .@"enum" => |value| hasTypeKind(document, value.ref, .@"enum"),
-        .value_struct => |value| for (document.types) |declaration| {
-            if (!std.mem.eql(u8, declaration.name, value.ref) or declaration.kind != .value_struct) continue;
-            break switch (declaration.layout orelse return false) {
+        .value_struct => |value| blk: {
+            const declaration = semantic.typeDecl(document.types, value.ref) orelse break :blk false;
+            if (declaration.kind != .value_struct) break :blk false;
+            break :blk switch (declaration.layout orelse return false) {
                 .@"packed" => declaration.backing_type != null and declaration.backing_type.? == .int and
                     promotableInteger(declaration.backing_type.?.int),
                 .@"extern" => externStructProblem(document, declaration, 0) == null,
             };
-        } else false,
+        },
         else => false,
     };
 }
@@ -1833,7 +1822,7 @@ fn scalarPayloadSupported(document: semantic.Semantic, node: semantic.TypeNode) 
         .int => |value| integerSupported(value),
         .float => |value| floatSupported(value),
         .@"enum" => |value| hasTypeKind(document, value.ref, .@"enum"),
-        .value_struct => semantic.isPackedValue(document, node),
+        .value_struct => semantic.isPackedValue(document.types, node),
         else => false,
     };
 }
@@ -1959,7 +1948,7 @@ fn nestedValueStruct(document: semantic.Semantic, node: semantic.TypeNode) bool 
 }
 
 fn containsUnsupportedNestedValueStruct(document: semantic.Semantic, node: semantic.TypeNode) bool {
-    if (node == .value_struct) return !semantic.isPackedValue(document, node);
+    if (node == .value_struct) return !semantic.isPackedValue(document.types, node);
     return switch (node) {
         .slice => |value| containsUnsupportedNestedValueStruct(document, value.element.*),
         .optional => |value| containsUnsupportedNestedValueStruct(document, value.child.*),
@@ -1999,21 +1988,6 @@ fn integerSupported(value: semantic.Int) bool {
 /// 64 bits crosses in the next C integer that exists.
 fn promotableInteger(value: semantic.Int) bool {
     return !value.is_usize and value.bits >= 1 and value.bits <= 64;
-}
-
-/// The narrow integer directly carried by a plain slice parameter or return.
-/// Optional and sentinel forms deliberately do not qualify: their ABI shapes
-/// are separate features and remain rejected by the ordinary type walk.
-fn narrowSliceElement(node: semantic.TypeNode) ?semantic.TypeNode {
-    const payload = if (node == .error_union) node.error_union.payload.* else node;
-    if (payload != .slice or payload.slice.sentinel != null) return null;
-    return if (abiNarrowInt(payload.slice.element.*)) payload.slice.element.* else null;
-}
-
-fn abiNarrowInt(node: semantic.TypeNode) bool {
-    if (node != .int) return false;
-    const value = node.int;
-    return promotableInteger(value) and !integerSupported(value);
 }
 
 fn floatSupported(value: semantic.Float) bool {
@@ -2076,19 +2050,24 @@ fn releaseTargetIssue(document: semantic.Semantic, function: semantic.SemanticFn
         .site = functionSite(function),
         .hint = "add `.release = \"<Type>.<fn>\"` naming an exposed `fn(slice) void` that takes exactly the returned slice type",
     };
-    const name = function.release orelse return missing;
+    const parameter = releaseCandidateParameter(document, function.release orelse return missing) orelse return missing;
+    if (parameter.direction != .in or parameter.type != .slice) return missing;
+    if (!typeNodeEqual(parameter.type.slice.element.*, releasableSliceReturnElement(function).?)) return missing;
+    return null;
+}
+
+/// The one parameter the named release function frees through: it must exist,
+/// return `void`, and expose exactly one parameter. An injected argument is
+/// not part of the signature the release call has to match: the shim fills it
+/// in, so a `fn(gpa, slice) void` frees exactly the same slice a
+/// `fn(slice) void` does.
+fn releaseCandidateParameter(document: semantic.Semantic, name: []const u8) ?semantic.Parameter {
     for (document.functions) |candidate| {
         if (!std.mem.eql(u8, candidate.name, name)) continue;
-        if (candidate.@"return" != .void) return missing;
-        // An injected argument is not part of the signature the release call
-        // has to match: the shim fills it in, so a `fn(gpa, slice) void` frees
-        // exactly the same slice a `fn(slice) void` does.
-        const parameter = onlyExposedParameter(candidate.params) orelse return missing;
-        if (parameter.direction != .in or parameter.type != .slice) return missing;
-        if (!typeNodeEqual(parameter.type.slice.element.*, releasableSliceReturnElement(function).?)) return missing;
-        return null;
+        if (candidate.@"return" != .void) return null;
+        return onlyExposedParameter(candidate.params);
     }
-    return missing;
+    return null;
 }
 
 /// The one parameter a release target passes on from Go, or null when it takes
@@ -2140,25 +2119,9 @@ fn typeNodeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
     };
 }
 
-fn isMaterializedReturn(node: semantic.TypeNode) bool {
-    const payload = if (node == .error_union) node.error_union.payload.* else node;
-    return payload == .materialized or (payload == .slice and payload.slice.element.* == .materialized);
-}
-
-fn isMaterializedOutParameter(parameter: semantic.Parameter) bool {
-    return parameter.direction == .out and parameter.writtenHint() == .@"return" and
-        parameter.type == .slice and parameter.type.slice.element.* == .materialized and
-        !parameter.type.slice.element.materialized.pointer;
-}
-
-fn hasMaterializedOut(function: semantic.SemanticFn) bool {
-    for (function.params) |parameter| if (isMaterializedOutParameter(parameter)) return true;
-    return false;
-}
-
 fn materializedOutCount(function: semantic.SemanticFn) usize {
     var count: usize = 0;
-    for (function.params) |parameter| count += @intFromBool(isMaterializedOutParameter(parameter));
+    for (function.params) |parameter| count += @intFromBool(abi.materializedOutParameter(parameter) != null);
     return count;
 }
 
@@ -2170,20 +2133,15 @@ fn materializedReleaseTargetIssue(document: semantic.Semantic, function: semanti
         .site = functionSite(function),
         .hint = "name an exposed `fn([]u8) void` release function that frees the serialized buffer with the registered allocator",
     };
-    const name = function.release orelse return missing;
-    for (document.functions) |candidate| {
-        if (!std.mem.eql(u8, candidate.name, name) or candidate.@"return" != .void) continue;
-        const parameter = onlyExposedParameter(candidate.params) orelse return missing;
-        if (parameter.type != .slice or parameter.type.slice.element.* != .int or
-            parameter.type.slice.element.int.bits != 8 or parameter.type.slice.element.int.signed) return missing;
-        return null;
-    }
-    return missing;
+    const parameter = releaseCandidateParameter(document, function.release orelse return missing) orelse return missing;
+    if (parameter.type != .slice or parameter.type.slice.element.* != .int or
+        parameter.type.slice.element.int.bits != 8 or parameter.type.slice.element.int.signed) return missing;
+    return null;
 }
 
 fn isMaterializedReleaseTarget(document: semantic.Semantic, candidate: semantic.SemanticFn) bool {
     for (document.functions) |function| {
-        if ((isMaterializedReturn(function.@"return") or hasMaterializedOut(function)) and function.release != null and
+        if ((abi.materializedReturn(function.@"return") != null or abi.materializedOut(function) != null) and function.release != null and
             std.mem.eql(u8, function.release.?, candidate.name)) return true;
     }
     return false;
@@ -2351,12 +2309,9 @@ fn findGeneratedAccessorCollision(allocator: std.mem.Allocator, document: semant
 fn unsupportedValueStruct(document: semantic.Semantic, node: semantic.TypeNode) ?[]const u8 {
     return switch (node) {
         .value_struct => |value| blk: {
-            for (document.types) |declaration| {
-                if (declaration.kind == .value_struct and std.mem.eql(u8, declaration.name, value.ref)) {
-                    break :blk if (declaration.layout != .@"extern" and declaration.layout != .@"packed") declaration.name else null;
-                }
-            }
-            break :blk value.ref;
+            const declaration = semantic.typeDecl(document.types, value.ref) orelse break :blk value.ref;
+            if (declaration.kind != .value_struct) break :blk value.ref;
+            break :blk if (declaration.layout != .@"extern" and declaration.layout != .@"packed") declaration.name else null;
         },
         .slice => |value| unsupportedValueStruct(document, value.element.*),
         .optional => |value| unsupportedValueStruct(document, value.child.*),
@@ -2366,14 +2321,14 @@ fn unsupportedValueStruct(document: semantic.Semantic, node: semantic.TypeNode) 
 }
 
 fn byValueOpaqueReturn(node: semantic.TypeNode) ?semantic.OpaquePtr {
-    const payload = if (node == .error_union) node.error_union.payload.* else node;
+    const payload = node.errorPayload();
     if (payload != .opaque_ptr or !payload.opaque_ptr.by_value) return null;
     return payload.opaque_ptr;
 }
 
 fn isFlattenLeaf(document: semantic.Semantic, node: semantic.TypeNode) bool {
     const leaf = if (node == .optional) node.optional.child.* else node;
-    return leaf == .bool or leaf == .int or leaf == .float or leaf == .@"enum" or semantic.isPackedValue(document, leaf);
+    return leaf == .bool or leaf == .int or leaf == .float or leaf == .@"enum" or semantic.isPackedValue(document.types, leaf);
 }
 
 fn containsPointer(node: semantic.TypeNode) bool {
@@ -2447,7 +2402,7 @@ fn materializedNodeProblemAlloc(
                 .path = try allocator.dupe(u8, path),
                 .reason = "materialized trees cannot contain cycles",
             };
-            const declaration = findTypeDecl(document, value.ref) orelse return .{
+            const declaration = semantic.typeDecl(document.types, value.ref) orelse return .{
                 .path = try allocator.dupe(u8, path),
                 .reason = "register the referenced struct with `.repr = .materialized`",
             };
@@ -2469,11 +2424,6 @@ fn materializedNodeProblemAlloc(
         .path = try allocator.dupe(u8, path),
         .reason = "use scalars, bool, registered enums, strings, supported slices, or materialized structs and pointers",
     };
-}
-
-fn findTypeDecl(document: semantic.Semantic, name: []const u8) ?semantic.TypeDecl {
-    for (document.types) |declaration| if (std.mem.eql(u8, declaration.name, name)) return declaration;
-    return null;
 }
 
 test "materialized validation reports nested unsupported field paths and cycles" {

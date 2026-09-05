@@ -48,7 +48,7 @@ pub fn semanticDocumentForBackend(
             // The shim writes the value itself, so the parameter is absent
             // from the C signature and from everything derived from it.
             if (parameter.injected != null) continue;
-            if (materializedOutParameter(parameter) != null) {
+            if (abi.materializedOutParameter(parameter) != null) {
                 try params.append(allocator, .{
                     .name = try std.fmt.allocPrint(allocator, "{s}_len", .{parameter.name}),
                     .role = .slice_length,
@@ -295,8 +295,8 @@ pub fn semanticDocumentForBackend(
         }
 
         var function_errors: []const abi.ErrorCode = &.{};
-        const materialized_return = materializedReturn(function.@"return");
-        const materialized_out = materializedOut(function.*);
+        const materialized_return = abi.materializedReturn(function.@"return");
+        const materialized_out = abi.materializedOut(function.*);
         const caller_owned_c_string = function.ownership == .caller and function.release != null and
             returnContainsCStringSlice(function.@"return", function.return_semantic);
         const return_scalar = if (materialized_return) |materialized| result: {
@@ -369,7 +369,7 @@ pub fn semanticDocumentForBackend(
                     payload.* = try lowerValue(allocator, document, prefix, optional.child.*);
                     try params.append(allocator, .{
                         .name = "out_result",
-                        .role = if (optional.child.* == .value_struct and !semantic.isPackedValue(document, optional.child.*)) .struct_out else .payload_out,
+                        .role = if (optional.child.* == .value_struct and !semantic.isPackedValue(document.types, optional.child.*)) .struct_out else .payload_out,
                         .scalar = .{ .pointer = .{ .child = payload, .is_const = false } },
                         .source_index = function.params.len,
                     });
@@ -391,7 +391,7 @@ pub fn semanticDocumentForBackend(
                 break :result abi.AbiScalar{ .signed_int = 32 };
             },
             .value_struct => result: {
-                if (semantic.isPackedValue(document, function.@"return"))
+                if (semantic.isPackedValue(document.types, function.@"return"))
                     break :result try lowerValue(allocator, document, prefix, function.@"return");
                 const child = try allocator.create(abi.AbiScalar);
                 child.* = try lowerValue(allocator, document, prefix, function.@"return");
@@ -415,7 +415,7 @@ pub fn semanticDocumentForBackend(
                 child.* = try lowerValue(allocator, document, prefix, optional.child.*);
                 try params.append(allocator, .{
                     .name = "out_result",
-                    .role = if (optional.child.* == .value_struct and !semantic.isPackedValue(document, optional.child.*)) .struct_out else .payload_out,
+                    .role = if (optional.child.* == .value_struct and !semantic.isPackedValue(document.types, optional.child.*)) .struct_out else .payload_out,
                     .scalar = .{ .pointer = .{ .child = child, .is_const = false } },
                 });
                 break :result abi.AbiScalar.bool_u8;
@@ -443,10 +443,10 @@ pub fn semanticDocumentForBackend(
             .origin = function,
             .materialized_return = materialized_return,
             .materialized_out = materialized_out,
-            .ret_struct = if (function.@"return" == .value_struct and !semantic.isPackedValue(document, function.@"return"))
+            .ret_struct = if (function.@"return" == .value_struct and !semantic.isPackedValue(document.types, function.@"return"))
                 structRecord(structs, function.@"return".value_struct.ref)
             else if (function.@"return" == .optional and function.@"return".optional.child.* == .value_struct and
-                !semantic.isPackedValue(document, function.@"return".optional.child.*))
+                !semantic.isPackedValue(document.types, function.@"return".optional.child.*))
                 structRecord(structs, function.@"return".optional.child.value_struct.ref)
             else
                 null,
@@ -455,12 +455,12 @@ pub fn semanticDocumentForBackend(
             .ret_optional = function.@"return" == .optional and function.@"return".optional.child.* != .slice,
             .payload_struct = if (function.@"return" == .error_union and
                 function.@"return".error_union.payload.* == .value_struct and
-                !semantic.isPackedValue(document, function.@"return".error_union.payload.*))
+                !semantic.isPackedValue(document.types, function.@"return".error_union.payload.*))
                 structRecord(structs, function.@"return".error_union.payload.value_struct.ref)
             else if (function.@"return" == .error_union and
                 function.@"return".error_union.payload.* == .optional and
                 function.@"return".error_union.payload.optional.child.* == .value_struct and
-                !semantic.isPackedValue(document, function.@"return".error_union.payload.optional.child.*))
+                !semantic.isPackedValue(document.types, function.@"return".error_union.payload.optional.child.*))
                 structRecord(structs, function.@"return".error_union.payload.optional.child.value_struct.ref)
             else
                 null,
@@ -1303,35 +1303,6 @@ fn appendMaterializedReturnOuts(allocator: std.mem.Allocator, params: *std.Array
     });
 }
 
-fn materializedReturn(node: semantic.TypeNode) ?abi.AbiFn.MaterializedReturn {
-    if (node == .materialized) return .{ .root = node.materialized.ref, .is_slice = false };
-    if (node == .slice and node.slice.element.* == .materialized)
-        return .{ .root = node.slice.element.materialized.ref, .is_slice = true };
-    if (node == .error_union) {
-        if (materializedReturn(node.error_union.payload.*)) |result| return .{
-            .root = result.root,
-            .is_slice = result.is_slice,
-            .fallible = true,
-        };
-    }
-    return null;
-}
-
-fn materializedOutParameter(parameter: semantic.Parameter) ?[]const u8 {
-    if (parameter.direction != .out or parameter.writtenHint() != .@"return" or parameter.type != .slice) return null;
-    const element = parameter.type.slice.element.*;
-    return if (element == .materialized and !element.materialized.pointer) element.materialized.ref else null;
-}
-
-fn materializedOut(function: semantic.SemanticFn) ?abi.AbiFn.MaterializedOut {
-    for (function.params, 0..) |parameter, index| if (materializedOutParameter(parameter)) |root| return .{
-        .source_index = index,
-        .root = root,
-        .fallible = function.@"return" == .error_union,
-    };
-    return null;
-}
-
 fn lowerMaterializedLayouts(allocator: std.mem.Allocator, document: semantic.Semantic) ![]const abi.MaterializedLayout {
     var layouts: std.ArrayList(abi.MaterializedLayout) = .empty;
     for (document.types) |*declaration| {
@@ -1582,8 +1553,7 @@ fn returnContainsCStringSlice(node: semantic.TypeNode, hint: ?semantic.SemanticH
 }
 
 fn typeDeclaration(document: semantic.Semantic, name: []const u8) semantic.TypeDecl {
-    for (document.types) |declaration| if (std.mem.eql(u8, declaration.name, name)) return declaration;
-    unreachable;
+    return semantic.typeDecl(document.types, name) orelse unreachable;
 }
 
 fn taggedUnionValueDeclaration(document: semantic.Semantic, node: semantic.TypeNode) ?semantic.TypeDecl {

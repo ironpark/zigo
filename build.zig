@@ -958,18 +958,27 @@ fn addGoldenArtifactChecks(
     parse_shim.expectExitCode(0);
     test_step.dependOn(&parse_shim.step);
 
-    if (std.mem.eql(u8, name, "materialized")) {
+    // A case that ships a `roundtrip.zig` runs it against the golden shim.
+    if (hasCaseFile(files, name, "roundtrip.zig")) {
         // The target's release path frees through `std.heap.c_allocator`, as
         // the generated shim does, so the test links libc explicitly: macOS
         // links it implicitly and hides the omission, Linux does not.
         const roundtrip = b.addSystemCommand(&.{ b.graph.zig_exe, "test", "-lc", "--dep", "zigo_target" });
-        roundtrip.setName("materialized walker round trip");
+        roundtrip.setName(b.fmt("{s} walker round trip", .{name}));
         roundtrip.addPrefixedFileArg("-Mroot=", case.path(b, "roundtrip.zig"));
         roundtrip.addPrefixedFileArg("-Mzigo_target=", case.path(b, "target.zig"));
         roundtrip.addFileInput(expected.path(b, "shim.zig"));
         roundtrip.expectExitCode(0);
         test_step.dependOn(&roundtrip.step);
     }
+}
+
+fn hasCaseFile(files: []const []const u8, case_name: []const u8, file_name: []const u8) bool {
+    for (files) |file| {
+        if (file.len != case_name.len + 1 + file_name.len) continue;
+        if (std.mem.startsWith(u8, file, case_name) and file[case_name.len] == '/' and std.mem.endsWith(u8, file, file_name)) return true;
+    }
+    return false;
 }
 
 fn matchesAnyFilter(name: []const u8, filters: []const []const u8) bool {
@@ -1682,7 +1691,6 @@ const LinkInputCollector = struct {
     seen_modules: std.AutoHashMapUnmanaged(*std.Build.Module, void) = .empty,
     static_paths: std.ArrayList(std.Build.LazyPath) = .empty,
     static_names: std.ArrayList([]const u8) = .empty,
-    static_displays: std.ArrayList([]const u8) = .empty,
     static_compiles: std.ArrayList(*std.Build.Step.Compile) = .empty,
     library_paths: std.ArrayList(std.Build.LazyPath) = .empty,
     system_libraries: std.ArrayList(SystemLibraryInput) = .empty,
@@ -1734,14 +1742,13 @@ const LinkInputCollector = struct {
                 else => continue,
             };
             const display = path.getDisplayName();
-            for (self.static_names.items, self.static_displays.items) |existing_name, existing_display| {
+            for (self.static_names.items, self.static_paths.items) |existing_name, existing_path| {
                 if (!std.mem.eql(u8, existing_name, name)) continue;
-                if (std.mem.eql(u8, existing_display, display)) break;
+                if (std.mem.eql(u8, existing_path.getDisplayName(), display)) break;
                 @panic(b.fmt("two static link inputs would both install as lib{s}.a", .{name}));
             } else {
                 self.static_paths.append(b.allocator, path) catch @panic("OOM");
                 self.static_names.append(b.allocator, name) catch @panic("OOM");
-                self.static_displays.append(b.allocator, display) catch @panic("OOM");
             }
         }
     }
@@ -1845,31 +1852,22 @@ const ResolvePkgConfigLibraries = struct {
         var names: std.ArrayList([]const u8) = .empty;
 
         for (self.inputs) |input| {
-            switch (try probe(step, self.executable, input.name)) {
-                .found => {
-                    names.append(b.allocator, input.name) catch @panic("OOM");
-                    continue;
-                },
-                .missing_executable => {
-                    std.log.warn("pkg-config is unavailable; keeping original package name '{s}' declared by module '{s}'", .{ input.name, input.module });
-                    names.append(b.allocator, input.name) catch @panic("OOM");
-                    continue;
-                },
-                .not_found => {},
-            }
-
             const prefixed = b.fmt("lib{s}", .{input.name});
-            switch (try probe(step, self.executable, prefixed)) {
-                .found => names.append(b.allocator, prefixed) catch @panic("OOM"),
-                .missing_executable => {
-                    std.log.warn("pkg-config became unavailable; keeping original package name '{s}' declared by module '{s}'", .{ input.name, input.module });
-                    names.append(b.allocator, input.name) catch @panic("OOM");
-                },
-                .not_found => return step.fail(
+            const resolved = blk: {
+                for ([_][]const u8{ input.name, prefixed }) |candidate| switch (try probe(step, self.executable, candidate)) {
+                    .found => break :blk candidate,
+                    .missing_executable => {
+                        std.log.warn("pkg-config is unavailable; keeping original package name '{s}' declared by module '{s}'", .{ input.name, input.module });
+                        break :blk input.name;
+                    },
+                    .not_found => {},
+                };
+                return step.fail(
                     "pkg-config could not resolve library '{s}' declared by module '{s}' (tried '{s}' and '{s}')",
                     .{ input.name, input.module, input.name, prefixed },
-                ),
-            }
+                );
+            };
+            names.append(b.allocator, resolved) catch @panic("OOM");
         }
 
         const contents = joinFlags(b, names.items);

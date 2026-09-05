@@ -99,7 +99,7 @@ pub fn classify(
                 if (declaration.status != .unbound or !std.mem.eql(u8, declaration.path, wanted)) continue;
                 declaration.status = .wrapped;
                 declaration.reason = null;
-                declaration.via = try functionDisplayPath(allocator, function);
+                declaration.via = try semantic.zigCallPathAlloc(allocator, function);
                 break;
             }
         }
@@ -206,13 +206,6 @@ fn collectSourceFunctions(
 
 fn coverageDisplayPath(path: []const u8) []const u8 {
     return if (std.mem.startsWith(u8, path, "root.")) path["root.".len..] else path;
-}
-
-fn functionDisplayPath(allocator: std.mem.Allocator, function: semantic.SemanticFn) ![]const u8 {
-    if (function.zig_path) |path| return path;
-    if (function.receiver orelse function.namespace) |owner|
-        return std.fmt.allocPrint(allocator, "{s}.{s}", .{ owner, function.name });
-    return function.name;
 }
 
 fn collectContainer(
@@ -332,35 +325,25 @@ fn signatureReason(
     @setEvalBranchQuota(100_000);
     const info = @typeInfo(F).@"fn";
     var output: std.Io.Writer.Allocating = .init(allocator);
-    var count: usize = 0;
+    var wrote = false;
     inline for (info.params, 0..) |parameter, index| {
-        if (parameter.is_generic or parameter.type == null) {
-            if (count != 0) try output.writer.writeAll("; ");
-            try output.writer.writeAll("param ");
-            if (sourceParameterName(source_functions, owner, function_name, index)) |name|
-                try output.writer.writeAll(name)
-            else
-                try output.writer.print("p{d}", .{index});
-            try output.writer.writeAll(": comptime parameter");
-            count += 1;
-            continue;
-        }
-        const T = parameter.type.?;
-        const reason: ?[]const u8 = if (T == std.mem.Allocator)
+        const reason: ?[]const u8 = if (parameter.is_generic or parameter.type == null)
+            "comptime parameter"
+        else if (parameter.type.? == std.mem.Allocator)
             if (!@hasField(@TypeOf(binding), "allocator")) "allocator, no metadata" else null
-        else if (T == std.Io)
+        else if (parameter.type.? == std.Io)
             if (!@hasField(@TypeOf(binding), "io")) "io, no metadata" else null
         else
-            try typeReason(allocator, binding, document, T, true);
+            try typeReason(allocator, binding, document, parameter.type.?, true);
         if (reason) |detail| {
-            if (count != 0) try output.writer.writeAll("; ");
+            if (wrote) try output.writer.writeAll("; ");
             try output.writer.writeAll("param ");
             if (sourceParameterName(source_functions, owner, function_name, index)) |name|
                 try output.writer.writeAll(name)
             else
                 try output.writer.print("p{d}", .{index});
             try output.writer.print(": {s}", .{detail});
-            count += 1;
+            wrote = true;
         }
     }
     if (info.return_type) |T| {
@@ -369,12 +352,12 @@ fn signatureReason(
         else
             try typeReason(allocator, binding, document, T, true);
         if (reason) |detail| {
-            if (count != 0) try output.writer.writeAll("; ");
+            if (wrote) try output.writer.writeAll("; ");
             try output.writer.print("return: {s}", .{detail});
-            count += 1;
+            wrote = true;
         }
     }
-    if (count == 0) {
+    if (!wrote) {
         output.deinit();
         return "not listed";
     }
