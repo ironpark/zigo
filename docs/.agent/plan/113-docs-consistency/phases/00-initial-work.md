@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T09:16:36Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Documentation matches inspected implementation; local Markdown links and representative documented build/test commands pass.
 > NEXT: none
