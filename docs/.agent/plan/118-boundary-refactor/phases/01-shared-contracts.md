@@ -2,7 +2,7 @@
 depends_on:
 - "118-boundary-refactor#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Both backends execute the same tests including race checks where supported.
 > NEXT: none
