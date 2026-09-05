@@ -18,6 +18,12 @@ pub const ZigoMaterializedBuilder = struct {
         self.writeU64(0, 0x0001_4f47495a);
         return self;
     }
+    pub fn deinit(self: *ZigoMaterializedBuilder) void {
+        self.bytes.deinit(self.allocator);
+    }
+    fn reserveArray(self: *ZigoMaterializedBuilder, count: usize, stride: usize) !usize {
+        return self.reserve(try std.math.mul(usize, count, stride));
+    }
     fn reserve(self: *ZigoMaterializedBuilder, count: usize) !usize {
         const offset = self.bytes.items.len;
         try self.bytes.appendNTimes(self.allocator, 0, count);
@@ -58,21 +64,34 @@ pub fn zigoMaterialize_root(builder: *ZigoMaterializedBuilder, value: target.Roo
     builder.writeU64(record + 16 + 8, value.name.len);
     builder.writeU64(record + 32, try zigoMaterialize_leaf(builder, value.child.*));
     builder.writeU64(record + 48, if (value.maybe) |item| try zigoMaterialize_leaf(builder, item.*) else 0);
-    const children_nodes = try builder.reserve(value.children.len * 8);
+    const children_nodes = try builder.reserveArray(value.children.len, 8);
     for (value.children, 0..) |item, index| builder.writeU64(children_nodes + index * 8, try zigoMaterialize_leaf(builder, item));
     builder.writeU64(record + 64, children_nodes);
     builder.writeU64(record + 64 + 8, value.children.len);
     return @intCast(record);
 }
 
+pub fn zigoMaterialize_rootBuffer(allocator: std.mem.Allocator, value: anytype, comptime is_slice: bool) ![]u8 {
+    var builder = try ZigoMaterializedBuilder.init(allocator);
+    defer builder.deinit();
+    if (is_slice) {
+        const roots = try builder.reserveArray(value.len, 8);
+        for (value, 0..) |item, index| builder.writeU64(roots + index * 8, try zigoMaterialize_root(&builder, item));
+        return builder.finish(0, value.len, roots);
+    } else {
+        const root = try zigoMaterialize_root(&builder, value);
+        return builder.finish(0, 1, @intCast(root));
+    }
+}
+
 pub fn zigoMaterialize_leaf(builder: *ZigoMaterializedBuilder, value: target.Leaf) !u64 {
     const record = try builder.reserve(48);
     builder.writeU64(record + 0, zigoMaterializedScalar(value.ok));
-    const values_data = try builder.reserve(value.values.len * 8);
+    const values_data = try builder.reserveArray(value.values.len, 8);
     for (value.values, 0..) |item, index| builder.writeU64(values_data + index * 8, zigoMaterializedScalar(item));
     builder.writeU64(record + 16, values_data);
     builder.writeU64(record + 16 + 8, value.values.len);
-    const labels_data = try builder.reserve(value.labels.len * 16);
+    const labels_data = try builder.reserveArray(value.labels.len, 16);
     for (value.labels, 0..) |item, index| {
         builder.writeU64(labels_data + index * 16, try builder.appendBytes(item));
         builder.writeU64(labels_data + index * 16 + 8, item.len);
@@ -82,11 +101,22 @@ pub fn zigoMaterialize_leaf(builder: *ZigoMaterializedBuilder, value: target.Lea
     return @intCast(record);
 }
 
+pub fn zigoMaterialize_leafBuffer(allocator: std.mem.Allocator, value: anytype, comptime is_slice: bool) ![]u8 {
+    var builder = try ZigoMaterializedBuilder.init(allocator);
+    defer builder.deinit();
+    if (is_slice) {
+        const roots = try builder.reserveArray(value.len, 8);
+        for (value, 0..) |item, index| builder.writeU64(roots + index * 8, try zigoMaterialize_leaf(&builder, item));
+        return builder.finish(1, value.len, roots);
+    } else {
+        const root = try zigoMaterialize_leaf(&builder, value);
+        return builder.finish(1, 1, @intCast(root));
+    }
+}
+
 export fn zg_snapshot_impl(out_result_ptr: *[*c]u8, out_result_len: *usize) void {
     const result = target.snapshot();
-    var builder = ZigoMaterializedBuilder.init(std.heap.c_allocator) catch @panic("zigo: materialization allocation failed");
-    const root = zigoMaterialize_root(&builder, result) catch @panic("zigo: materialization allocation failed");
-    const buffer = builder.finish(0, 1, @intCast(root)) catch @panic("zigo: materialization allocation failed");
+    const buffer = zigoMaterialize_rootBuffer(std.heap.c_allocator, result, false) catch @panic("zigo: materialization allocation failed");
     out_result_ptr.* = buffer.ptr;
     out_result_len.* = buffer.len;
 }
@@ -94,10 +124,7 @@ export fn zg_many_impl(out_result_ptr: *[*c]u8, out_result_len: *usize) i32 {
     const result = target.many() catch |err| return switch (err) {
         error.Invalid => 1,
     };
-    var builder = ZigoMaterializedBuilder.init(std.heap.c_allocator) catch @panic("zigo: materialization allocation failed");
-    const roots = builder.reserve(result.len * 8) catch @panic("zigo: materialization allocation failed");
-    for (result, 0..) |item, index| builder.writeU64(roots + index * 8, zigoMaterialize_root(&builder, item) catch @panic("zigo: materialization allocation failed"));
-    const buffer = builder.finish(0, result.len, roots) catch @panic("zigo: materialization allocation failed");
+    const buffer = zigoMaterialize_rootBuffer(std.heap.c_allocator, result, true) catch @panic("zigo: materialization allocation failed");
     out_result_ptr.* = buffer.ptr;
     out_result_len.* = buffer.len;
     return 0;
@@ -110,10 +137,10 @@ export fn zg_fill_impl(output_len: usize, out_result_ptr: *[*c]u8, out_result_le
     defer std.heap.c_allocator.free(zigo_output_slice);
     const result = target.fill(zigo_output_slice);
     const written = @min(result, output_len);
-    var builder = ZigoMaterializedBuilder.init(std.heap.c_allocator) catch @panic("zigo: materialization allocation failed");
-    const roots = builder.reserve(written * 8) catch @panic("zigo: materialization allocation failed");
-    for (zigo_output_slice[0..written], 0..) |item, index| builder.writeU64(roots + index * 8, zigoMaterialize_root(&builder, item) catch @panic("zigo: materialization allocation failed"));
-    const buffer = builder.finish(0, written, roots) catch @panic("zigo: materialization allocation failed");
+    const buffer = zigoMaterialize_rootBuffer(std.heap.c_allocator, zigo_output_slice[0..written], true) catch {
+        std.heap.c_allocator.free(zigo_output_slice);
+        @panic("zigo: materialization allocation failed");
+    };
     out_result_ptr.* = buffer.ptr;
     out_result_len.* = buffer.len;
     return result;
@@ -125,10 +152,10 @@ export fn zg_fill_checked_impl(output_len: usize, out_written: *usize, out_resul
         error.Invalid => 1,
     };
     const written = @min(result, output_len);
-    var builder = ZigoMaterializedBuilder.init(std.heap.c_allocator) catch @panic("zigo: materialization allocation failed");
-    const roots = builder.reserve(written * 8) catch @panic("zigo: materialization allocation failed");
-    for (zigo_output_slice[0..written], 0..) |item, index| builder.writeU64(roots + index * 8, zigoMaterialize_root(&builder, item) catch @panic("zigo: materialization allocation failed"));
-    const buffer = builder.finish(0, written, roots) catch @panic("zigo: materialization allocation failed");
+    const buffer = zigoMaterialize_rootBuffer(std.heap.c_allocator, zigo_output_slice[0..written], true) catch {
+        std.heap.c_allocator.free(zigo_output_slice);
+        @panic("zigo: materialization allocation failed");
+    };
     out_result_ptr.* = buffer.ptr;
     out_result_len.* = buffer.len;
     out_written.* = result;

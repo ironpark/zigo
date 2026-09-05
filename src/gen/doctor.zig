@@ -109,7 +109,7 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, writer: *std.Io.Writer, opt
         .go_version = stdoutIfSucceeded(go_version_result),
         .cgo_enabled = stdoutIfSucceeded(cgo_result),
         .c_compiler = cc_command,
-        .c_compiler_available = cc_probe_result != null,
+        .c_compiler_available = if (cc_probe_result) |result| termSucceeded(result.term) else false,
         .gofmt_available = gofmt_result != null,
         .native_target = options.native_target,
         .purego = if (options.backend == .purego) probePurego(options, go_mod_bytes, &library_error_buffer) else .{},
@@ -313,6 +313,11 @@ fn termSucceeded(term: std.process.Child.Term) bool {
         .exited => |code| code == 0,
         else => false,
     };
+}
+
+test "compiler probe requires a successful exit" {
+    try std.testing.expect(termSucceeded(.{ .exited = 0 }));
+    try std.testing.expect(!termSucceeded(.{ .exited = 1 }));
 }
 
 test "doctor distinguishes required failures from optional gofmt" {

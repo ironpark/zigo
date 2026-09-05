@@ -64,6 +64,7 @@ type callbackEntry struct {
 	panicValue any
 	panicStack []byte
 	goErr error
+	readTerminal error
 }
 
 // callbackRegistry maps a userdata token to its entry without a global lock,
@@ -174,6 +175,19 @@ func releaseCallback(entry *callbackEntry) {
 // returning int32_t and reads only the low word, so the value round-trips.
 func callbackResult(value int32) uintptr { return uintptr(uint32(value)) }
 
+// readStream preserves terminal errors and bounds retries for empty reads.
+func readStream(reader io.Reader, buffer []byte, terminal *error) (int, error) {
+	if *terminal != nil { return 0, *terminal }
+	for attempt := 0; attempt < 100; attempt++ {
+		n, err := reader.Read(buffer)
+		if n < 0 || n > len(buffer) { n, err = 0, io.ErrShortBuffer }
+		if err != nil { *terminal = err }
+		if n != 0 || err != nil { return n, err }
+	}
+	*terminal = io.ErrNoProgress
+	return 0, *terminal
+}
+
 var streamWriterPointer uintptr
 var streamReaderPointer uintptr
 var callbackPointers [0]uintptr
@@ -196,10 +210,10 @@ func ensureCallbackDispatchers() {
 			if !ok { return callbackResult(-4) }
 			defer releaseCallback(entry)
 			defer func() { if value := recover(); value != nil { entry.record(value); result = callbackResult(-3) } }()
-			n, err := stored.(io.Reader).Read(unsafe.Slice((*byte)(p0), int(p1)))
+			n, err := readStream(stored.(io.Reader), unsafe.Slice((*byte)(p0), int(p1)), &entry.readTerminal)
+			if err != nil && err != io.EOF { entry.recordErr(err) }
 			if n > 0 { return callbackResult(int32(n)) }
-			if err == nil || err == io.EOF { return callbackResult(0) }
-			entry.recordErr(err)
+			if err == io.EOF { return callbackResult(0) }
 			return callbackResult(-1)
 		})
 	})

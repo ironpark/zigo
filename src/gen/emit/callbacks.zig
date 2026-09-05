@@ -9,6 +9,20 @@ const public_writers = @import("public_writers.zig");
 const purego = @import("purego.zig");
 const lower = @import("lower");
 
+fn renderStreamRead(writer: *std.Io.Writer) !void {
+    try writer.writeAll(
+        "// readStream preserves terminal errors and bounds retries for empty reads.\n" ++
+            "func readStream(reader io.Reader, buffer []byte, terminal *error) (int, error) {\n" ++
+            "\tif *terminal != nil { return 0, *terminal }\n" ++
+            "\tfor attempt := 0; attempt < 100; attempt++ {\n" ++
+            "\t\tn, err := reader.Read(buffer)\n" ++
+            "\t\tif n < 0 || n > len(buffer) { n, err = 0, io.ErrShortBuffer }\n" ++
+            "\t\tif err != nil { *terminal = err }\n" ++
+            "\t\tif n != 0 || err != nil { return n, err }\n" ++
+            "\t}\n\t*terminal = io.ErrNoProgress\n\treturn 0, *terminal\n}\n\n",
+    );
+}
+
 pub fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
     const prefix = if (options.raw_colocated) "zigoRaw" else "";
     const has_streams = common.programHasStreams(program);
@@ -21,6 +35,7 @@ pub fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.I
     // `go_error` callback -- carries the field, so a registry that cannot be
     // is byte for byte what it always was.
     if (has_streams or has_callback_errors) try writer.writeAll("\tgoErr error\n");
+    if (common.programHasReaderStream(program)) try writer.writeAll("\treadTerminal error\n");
     if (has_callback_cancellation) try writer.writeAll("\tcancel atomic.Pointer[uint32]\n");
     try writer.writeAll(
         "}\n\n" ++
@@ -66,6 +81,7 @@ pub fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.I
             "func callbackResult(value int32) uintptr { return uintptr(uint32(value)) }\n\n",
     );
     const count = uniqueCallbackSignatureCount(program);
+    if (common.programHasReaderStream(program)) try renderStreamRead(writer);
     for ([_]semantic.StreamDirection{ .writer, .reader }) |direction| {
         if (!common.programHasStreamDirection(program, direction)) continue;
         try writer.print("var stream{s}Pointer uintptr\n", .{common.streamHandleName(direction)});
@@ -326,13 +342,14 @@ fn renderCgoStreamTrampolines(allocator: std.mem.Allocator, writer: *std.Io.Writ
                 "func {0s}(p0 *C.uint8_t, p1 C.size_t, p2 C.size_t) (result C.int32_t) {{\n" ++
                 "\tstate := cgo.Handle(p2).Value().(*{1s}CallbackState)\n" ++
                 "\tdefer func() {{\n\t\tif value := recover(); value != nil {{\n\t\t\tstate.record(value)\n\t\t\tresult = C.int32_t(-3)\n\t\t}}\n\t}}()\n" ++
-                "\tn, err := state.Reader.Read(unsafe.Slice((*byte)(unsafe.Pointer(p0)), int(p1)))\n" ++
+                "\tn, err := readStream(state.Reader, unsafe.Slice((*byte)(unsafe.Pointer(p0)), int(p1)), &state.readTerminal)\n" ++
                 // A short read is not an end: only a zero count with nothing
                 // more to come is, and only io.EOF says so. Any other error is
                 // the caller's to see.
+                "\tif err != nil && err != io.EOF {{ state.recordErr(err) }}\n" ++
                 "\tif n > 0 {{\n\t\treturn C.int32_t(n)\n\t}}\n" ++
-                "\tif err == nil || err == io.EOF {{\n\t\treturn C.int32_t(0)\n\t}}\n" ++
-                "\tstate.recordErr(err)\n\treturn C.int32_t(-1)\n}}\n\n",
+                "\tif err == io.EOF {{\n\t\treturn C.int32_t(0)\n\t}}\n" ++
+                "\treturn C.int32_t(-1)\n}}\n\n",
             .{ name, prefix },
         );
     }
@@ -351,11 +368,12 @@ pub fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
             "type {0s}CallbackState struct {{\n\tFn       any\n{1s}\tmu       sync.Mutex\n\tvalue    any\n\tstack    []byte\n\tpanicked bool\n{2s}{3s}}}\n\n",
         .{
             prefix,
-            if (has_streams) "\tWriter   io.Writer\n\tReader   io.Reader\n" else "",
+            if (common.programHasReaderStream(program)) "\tWriter   io.Writer\n\tReader   io.Reader\n\treadTerminal error\n" else if (has_streams) "\tWriter   io.Writer\n\tReader   io.Reader\n" else "",
             if (has_streams or common.programHasCallbackErrors(program)) "\terr      error\n" else "",
             if (has_callback_cancellation) "\tcancel   atomic.Pointer[uint32]\n" else "",
         },
     );
+    if (common.programHasReaderStream(program)) try renderStreamRead(writer);
     if (has_callback_cancellation) try writer.print(
         "var callbackCancelFlags sync.Map // uintptr -> *uint32\n\n" ++
             "// {0s}SetCallbackCancel attaches a call-scoped cancellation flag to handle.\n" ++

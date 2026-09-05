@@ -50,6 +50,12 @@ Go `Write`가 error를 반환하면 그 error가 저장되고, native 호출이 
 `*CallbackPanicError`로 재전파되며, 어댑터는 panic한 프레임을 두 번 부르지 않습니다.
 `nil` 스트림은 native를 부르기 전에 `ErrNilStream`을 감싼 `*StreamError`로 거부합니다.
 
+`Read`가 데이터와 error를 함께 반환하면 데이터는 Zig reader에 전달하고, EOF가 아닌
+error는 최종 호출 결과에 보존합니다. 종료 error를 받은 reader는 다시 호출하지 않습니다.
+`(0, nil)`은 EOF가 아니므로 재시도하며, 연속 100회 진행이 없으면 `io.ErrNoProgress`를
+반환합니다. 반환한 길이가 음수이거나 제공한 버퍼보다 크면 `io.ErrShortBuffer`로 거부합니다.
+실패한 호출에서는 writer에 남은 staging 데이터의 flush나 부분 출력의 완전성을 보장하지 않습니다.
+
 스트림 파라미터가 있는 함수는 Zig 반환 타입과 무관하게 Go에서 `error`를 함께 반환합니다.
 
 ### 메모리 reader의 빠른 경로

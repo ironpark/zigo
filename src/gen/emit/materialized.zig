@@ -21,6 +21,12 @@ pub fn renderMaterializedWalker(allocator: std.mem.Allocator, writer: *std.Io.Wr
             "        self.writeU64(0, 0x0001_4f47495a);\n" ++
             "        return self;\n" ++
             "    }}\n" ++
+            "    pub fn deinit(self: *ZigoMaterializedBuilder) void {{\n" ++
+            "        self.bytes.deinit(self.allocator);\n" ++
+            "    }}\n" ++
+            "    fn reserveArray(self: *ZigoMaterializedBuilder, count: usize, stride: usize) !usize {{\n" ++
+            "        return self.reserve(try std.math.mul(usize, count, stride));\n" ++
+            "    }}\n" ++
             "    fn reserve(self: *ZigoMaterializedBuilder, count: usize) !usize {{\n" ++
             "        const offset = self.bytes.items.len;\n" ++
             "        try self.bytes.appendNTimes(self.allocator, 0, count);\n" ++
@@ -62,6 +68,20 @@ pub fn renderMaterializedWalker(allocator: std.mem.Allocator, writer: *std.Io.Wr
         try writer.print(") !u64 {{\n    const record = try builder.reserve({d});\n", .{layout.record_size});
         for (layout.fields) |field| try writeMaterializedField(allocator, writer, field, "value", "record");
         try writer.writeAll("    return @intCast(record);\n}\n\n");
+        try writer.print(
+            "pub fn {0s}Buffer(allocator: std.mem.Allocator, value: anytype, comptime is_slice: bool) ![]u8 {{\n" ++
+                "    var builder = try ZigoMaterializedBuilder.init(allocator);\n" ++
+                "    defer builder.deinit();\n" ++
+                "    if (is_slice) {{\n" ++
+                "        const roots = try builder.reserveArray(value.len, 8);\n" ++
+                "        for (value, 0..) |item, index| builder.writeU64(roots + index * 8, try {0s}(&builder, item));\n" ++
+                "        return builder.finish({1d}, value.len, roots);\n" ++
+                "    }} else {{\n" ++
+                "        const root = try {0s}(&builder, value);\n" ++
+                "        return builder.finish({1d}, 1, @intCast(root));\n" ++
+                "    }}\n}}\n\n",
+            .{ function_name, layout.id },
+        );
     }
 }
 
@@ -80,10 +100,10 @@ fn writeMaterializedField(
         .scalar => try writer.print("    builder.writeU64({s}, zigoMaterializedScalar({s}));\n", .{ slot, expression }),
         .string => try writer.print("    builder.writeU64({0s}, try builder.appendBytes({1s}));\n    builder.writeU64({0s} + 8, {1s}.len);\n", .{ slot, expression }),
         .scalar_slice => {
-            try writer.print("    const {0s}_data = try builder.reserve({1s}.len * 8);\n    for ({1s}, 0..) |item, index| builder.writeU64({0s}_data + index * 8, zigoMaterializedScalar(item));\n    builder.writeU64({2s}, {0s}_data);\n    builder.writeU64({2s} + 8, {1s}.len);\n", .{ field.name, expression, slot });
+            try writer.print("    const {0s}_data = try builder.reserveArray({1s}.len, 8);\n    for ({1s}, 0..) |item, index| builder.writeU64({0s}_data + index * 8, zigoMaterializedScalar(item));\n    builder.writeU64({2s}, {0s}_data);\n    builder.writeU64({2s} + 8, {1s}.len);\n", .{ field.name, expression, slot });
         },
         .string_slice => {
-            try writer.print("    const {0s}_data = try builder.reserve({1s}.len * 16);\n    for ({1s}, 0..) |item, index| {{\n        builder.writeU64({0s}_data + index * 16, try builder.appendBytes(item));\n        builder.writeU64({0s}_data + index * 16 + 8, item.len);\n    }}\n    builder.writeU64({2s}, {0s}_data);\n    builder.writeU64({2s} + 8, {1s}.len);\n", .{ field.name, expression, slot });
+            try writer.print("    const {0s}_data = try builder.reserveArray({1s}.len, 16);\n    for ({1s}, 0..) |item, index| {{\n        builder.writeU64({0s}_data + index * 16, try builder.appendBytes(item));\n        builder.writeU64({0s}_data + index * 16 + 8, item.len);\n    }}\n    builder.writeU64({2s}, {0s}_data);\n    builder.writeU64({2s} + 8, {1s}.len);\n", .{ field.name, expression, slot });
         },
         .node => {
             const name = try materializedEncoderNameAlloc(allocator, field.node.materialized.ref);
@@ -102,7 +122,7 @@ fn writeMaterializedField(
         .node_slice => {
             const name = try materializedEncoderNameAlloc(allocator, field.node.slice.element.materialized.ref);
             defer allocator.free(name);
-            try writer.print("    const {0s}_nodes = try builder.reserve({1s}.len * 8);\n    for ({1s}, 0..) |item, index| builder.writeU64({0s}_nodes + index * 8, try {2s}(builder, item));\n    builder.writeU64({3s}, {0s}_nodes);\n    builder.writeU64({3s} + 8, {1s}.len);\n", .{ field.name, expression, name, slot });
+            try writer.print("    const {0s}_nodes = try builder.reserveArray({1s}.len, 8);\n    for ({1s}, 0..) |item, index| builder.writeU64({0s}_nodes + index * 8, try {2s}(builder, item));\n    builder.writeU64({3s}, {0s}_nodes);\n    builder.writeU64({3s} + 8, {1s}.len);\n", .{ field.name, expression, name, slot });
         },
     }
 }
@@ -128,18 +148,9 @@ pub fn writeMaterializedReturn(
     try writer.writeAll("const result = ");
     try shim.writeTargetCall(allocator, writer, program, function);
     if (materialized.fallible) try shim.writeShimErrorCatch(writer, function) else try writer.writeAll(";\n");
-    try writer.print("    var builder = ZigoMaterializedBuilder.init({s}) " ++ materialize_oom ++ ";\n", .{program.allocator orelse "std.heap.c_allocator"});
     const encoder = try materializedEncoderNameAlloc(allocator, materialized.root);
     defer allocator.free(encoder);
-    const layout = program.materialized_layouts[materialized.layout];
-    if (materialized.is_slice) {
-        try writer.writeAll("    const roots = builder.reserve(result.len * 8) " ++ materialize_oom ++ ";\n    for (result, 0..) |item, index| builder.writeU64(roots + index * 8, ");
-        try writer.print("{s}(&builder, item) " ++ materialize_oom ++ ");\n", .{encoder});
-        try writer.print("    const buffer = builder.finish({d}, result.len, roots) " ++ materialize_oom ++ ";\n", .{layout.id});
-    } else {
-        try writer.print("    const root = {s}(&builder, result) " ++ materialize_oom ++ ";\n", .{encoder});
-        try writer.print("    const buffer = builder.finish({d}, 1, @intCast(root)) " ++ materialize_oom ++ ";\n", .{layout.id});
-    }
+    try writer.print("    const buffer = {s}Buffer({s}, result, {}) " ++ materialize_oom ++ ";\n", .{ encoder, program.allocator orelse "std.heap.c_allocator", materialized.is_slice });
     try writer.writeAll("    out_result_ptr.* = buffer.ptr;\n    out_result_len.* = buffer.len;\n");
     if (materialized.fallible) try writer.writeAll("    return 0;\n");
     try writer.writeAll("}\n");
@@ -157,14 +168,11 @@ pub fn writeMaterializedOutput(
     try shim.writeTargetCall(allocator, writer, program, function);
     if (output.fallible) try shim.writeShimErrorCatch(writer, function) else try writer.writeAll(";\n");
     try writer.print("    const written = @min(result, {s}_len);\n", .{parameter.name});
-    try writer.print("    var builder = ZigoMaterializedBuilder.init({s}) " ++ materialize_oom ++ ";\n", .{program.allocator orelse "std.heap.c_allocator"});
     const encoder = try materializedEncoderNameAlloc(allocator, output.root);
     defer allocator.free(encoder);
-    const layout = program.materialized_layouts[output.layout];
-    try writer.writeAll("    const roots = builder.reserve(written * 8) " ++ materialize_oom ++ ";\n");
-    try writer.print("    for (zigo_{s}_slice[0..written], 0..) |item, index| builder.writeU64(roots + index * 8, ", .{parameter.name});
-    try writer.print("{s}(&builder, item) " ++ materialize_oom ++ ");\n", .{encoder});
-    try writer.print("    const buffer = builder.finish({d}, written, roots) " ++ materialize_oom ++ ";\n", .{layout.id});
+    // The C panic bridge does not unwind Zig defers. Free staging storage
+    // explicitly after the helper has cleaned up its partial buffer.
+    try writer.print("    const buffer = {s}Buffer({s}, zigo_{s}_slice[0..written], true) catch {{\n        {s}.free(zigo_{s}_slice);\n        @panic(\"zigo: materialization allocation failed\");\n    }};\n", .{ encoder, program.allocator orelse "std.heap.c_allocator", parameter.name, program.allocator orelse "std.heap.c_allocator", parameter.name });
     try writer.writeAll("    out_result_ptr.* = buffer.ptr;\n    out_result_len.* = buffer.len;\n");
     if (output.fallible) {
         try writer.writeAll("    out_written.* = result;\n    return 0;\n");
@@ -219,8 +227,16 @@ pub fn renderPublicMaterializedStructs(allocator: std.mem.Allocator, writer: *st
             "\t\tpanic(\"zigo: invalid materialized result buffer\")\n" ++
             "\t}\n" ++
             "\treturn buffer[int(offset):int(offset+length)]\n" ++
-            "}\n\n" ++
-            "func zigoMaterializedHeader(buffer []byte, layout uint64) (uint64, uint64) {\n" ++
+            "}\n\n",
+    );
+    if (options.emitsHelper("zigoMaterializedArray")) try writer.writeAll(
+        "func zigoMaterializedArray(buffer []byte, offset, count, stride uint64) []byte {\n" ++
+            "\tif offset > uint64(len(buffer)) || count > (uint64(len(buffer))-offset)/stride {\n" ++
+            "\t\tpanic(\"zigo: invalid materialized result buffer\")\n" ++
+            "\t}\n\treturn zigoMaterializedBytes(buffer, offset, count*stride)\n}\n\n",
+    );
+    try writer.writeAll(
+        "func zigoMaterializedHeader(buffer []byte, layout uint64) (uint64, uint64) {\n" ++
             "\tif len(buffer) < 40 || zigoMaterializedU64(buffer, 0) != zigoMaterializedMagicVersion ||\n" ++
             "\tzigoMaterializedU64(buffer, 8) != layout || zigoMaterializedU64(buffer, 32) != uint64(len(buffer)) {\n" ++
             "\t\tpanic(\"zigo: invalid materialized result buffer\")\n" ++
@@ -243,7 +259,7 @@ fn renderMaterializedDecoder(allocator: std.mem.Allocator, writer: *std.Io.Write
         .{ layout.owner.name, public_name, layout.id, layout.owner.name },
     );
     if (options.emitsHelperFmt("zigoDecode{s}SliceBuffer", .{layout.owner.name})) try writer.print(
-        "func zigoDecode{s}SliceBuffer(buffer []byte) []{s} {{\n\toffset, count := zigoMaterializedHeader(buffer, {d})\n\tresult := make([]{s}, int(count))\n\tfor i := range result {{ result[i] = zigoDecode{s}At(buffer, zigoMaterializedU64(buffer, offset+uint64(i)*8)) }}\n\treturn result\n}}\n\n",
+        "func zigoDecode{s}SliceBuffer(buffer []byte) []{s} {{\n\toffset, count := zigoMaterializedHeader(buffer, {d})\n\t_ = zigoMaterializedArray(buffer, offset, count, 8)\n\tresult := make([]{s}, int(count))\n\tfor i := range result {{ result[i] = zigoDecode{s}At(buffer, zigoMaterializedU64(buffer, offset+uint64(i)*8)) }}\n\treturn result\n}}\n\n",
         .{ layout.owner.name, public_name, layout.id, public_name, layout.owner.name },
     );
     try writer.print("func zigoDecode{s}At(buffer []byte, offset uint64) {s} {{\n\t_ = zigoMaterializedBytes(buffer, offset, {d})\n\tvar result {s}\n", .{ layout.owner.name, public_name, layout.record_size, public_name });
@@ -256,6 +272,13 @@ fn writeMaterializedDecodeField(allocator: std.mem.Allocator, writer: *std.Io.Wr
     const member = try naming.pascalAlloc(allocator, field.name);
     defer allocator.free(member);
     try writer.print("\tzigo{s}Offset := zigoMaterializedU64(buffer, offset+{d})\n", .{ member, field.offset });
+    switch (field.kind) {
+        .scalar_slice, .string_slice, .node_slice => try writer.print(
+            "\t_ = zigoMaterializedArray(buffer, zigo{s}Offset, zigoMaterializedU64(buffer, offset+{d}), {d})\n",
+            .{ member, field.offset + 8, @as(u8, if (field.kind == .string_slice) 16 else 8) },
+        ),
+        else => {},
+    }
     switch (field.kind) {
         .scalar => {
             try writer.print("\tresult.{s} = ", .{member});

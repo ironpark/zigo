@@ -976,7 +976,8 @@ test "a stream parameter becomes a shim adapter and a fixed callback ABI" {
     // A short write is a failure the Go side names, not a silent truncation.
     try std.testing.expect(std.mem.indexOf(u8, raw_text, "\tif err == nil && n != int(p1) {\n\t\terr = io.ErrShortWrite\n\t}") != null);
     // Only io.EOF ends the stream; any other error is reported.
-    try std.testing.expect(std.mem.indexOf(u8, raw_text, "\tif err == nil || err == io.EOF {\n\t\treturn C.int32_t(0)\n\t}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw_text, "\tif err == io.EOF {\n\t\treturn C.int32_t(0)\n\t}") != null);
+    try std.testing.expect(std.mem.indexOf(u8, raw_text, "readStream(state.Reader,") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw_text, "\t\t\tresult = C.int32_t(-3)") != null);
     try std.testing.expect(std.mem.indexOf(u8, raw_text, "func TakeStreamError(handle cgo.Handle) (error, bool)") != null);
     // Only a reader carries the byte-slice fast path, and a present-but-empty

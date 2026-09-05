@@ -24,3 +24,18 @@ test "generated materialized walker round trips its buffer layout" {
 fn read(buffer: []const u8, offset: usize) u64 {
     return std.mem.readInt(u64, buffer[offset..][0..8], .little);
 }
+
+fn serializeWithFailures(allocator: std.mem.Allocator, is_slice: bool) !void {
+    const value = target.snapshot();
+    const buffer = if (is_slice)
+        try shim.zigoMaterialize_rootBuffer(allocator, &[_]target.Root{value} ** 32, true)
+    else
+        try shim.zigoMaterialize_rootBuffer(allocator, value, false);
+    defer allocator.free(buffer);
+    try std.testing.expectEqual(@as(u64, buffer.len), read(buffer, 32));
+}
+
+test "materialized serialization frees every partial allocation on failure" {
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, serializeWithFailures, .{false});
+    try std.testing.checkAllAllocationFailures(std.testing.allocator, serializeWithFailures, .{true});
+}

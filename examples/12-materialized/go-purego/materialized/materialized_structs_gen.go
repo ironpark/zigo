@@ -45,6 +45,13 @@ func zigoMaterializedBytes(buffer []byte, offset, length uint64) []byte {
 	return buffer[int(offset):int(offset+length)]
 }
 
+func zigoMaterializedArray(buffer []byte, offset, count, stride uint64) []byte {
+	if offset > uint64(len(buffer)) || count > (uint64(len(buffer))-offset)/stride {
+		panic("zigo: invalid materialized result buffer")
+	}
+	return zigoMaterializedBytes(buffer, offset, count*stride)
+}
+
 func zigoMaterializedHeader(buffer []byte, layout uint64) (uint64, uint64) {
 	if len(buffer) < 40 || zigoMaterializedU64(buffer, 0) != zigoMaterializedMagicVersion ||
 		zigoMaterializedU64(buffer, 8) != layout || zigoMaterializedU64(buffer, 32) != uint64(len(buffer)) {
@@ -64,6 +71,7 @@ func zigoDecodeLeafAt(buffer []byte, offset uint64) Leaf {
 	zigoLabelCount := zigoMaterializedU64(buffer, offset+40)
 	result.Label = string(zigoMaterializedBytes(buffer, zigoLabelOffset, zigoLabelCount))
 	zigoSamplesOffset := zigoMaterializedU64(buffer, offset+48)
+	_ = zigoMaterializedArray(buffer, zigoSamplesOffset, zigoMaterializedU64(buffer, offset+56), 8)
 	zigoSamplesCount := zigoMaterializedU64(buffer, offset+56)
 	result.Samples = make([]float64, int(zigoSamplesCount))
 	for i := range result.Samples {
@@ -83,6 +91,7 @@ func zigoDecodeProbeBuffer(buffer []byte) Probe {
 
 func zigoDecodeProbeSliceBuffer(buffer []byte) []Probe {
 	offset, count := zigoMaterializedHeader(buffer, 1)
+	_ = zigoMaterializedArray(buffer, offset, count, 8)
 	result := make([]Probe, int(count))
 	for i := range result {
 		result[i] = zigoDecodeProbeAt(buffer, zigoMaterializedU64(buffer, offset+uint64(i)*8))
@@ -103,6 +112,7 @@ func zigoDecodeProbeAt(buffer []byte, offset uint64) Probe {
 	zigoNameCount := zigoMaterializedU64(buffer, offset+56)
 	result.Name = string(zigoMaterializedBytes(buffer, zigoNameOffset, zigoNameCount))
 	zigoCodesOffset := zigoMaterializedU64(buffer, offset+64)
+	_ = zigoMaterializedArray(buffer, zigoCodesOffset, zigoMaterializedU64(buffer, offset+72), 8)
 	zigoCodesCount := zigoMaterializedU64(buffer, offset+72)
 	result.Codes = make([]int16, int(zigoCodesCount))
 	for i := range result.Codes {
@@ -110,6 +120,7 @@ func zigoDecodeProbeAt(buffer []byte, offset uint64) Probe {
 		result.Codes[i] = int16(zigoValue)
 	}
 	zigoTagsOffset := zigoMaterializedU64(buffer, offset+80)
+	_ = zigoMaterializedArray(buffer, zigoTagsOffset, zigoMaterializedU64(buffer, offset+88), 16)
 	zigoTagsCount := zigoMaterializedU64(buffer, offset+88)
 	result.Tags = make([]string, int(zigoTagsCount))
 	for i := range result.Tags {
@@ -127,6 +138,7 @@ func zigoDecodeProbeAt(buffer []byte, offset uint64) Probe {
 		result.Maybe = &zigoMaybeValue
 	}
 	zigoChildrenOffset := zigoMaterializedU64(buffer, offset+144)
+	_ = zigoMaterializedArray(buffer, zigoChildrenOffset, zigoMaterializedU64(buffer, offset+152), 8)
 	zigoChildrenCount := zigoMaterializedU64(buffer, offset+152)
 	result.Children = make([]Leaf, int(zigoChildrenCount))
 	for i := range result.Children {

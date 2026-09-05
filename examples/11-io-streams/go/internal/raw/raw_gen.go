@@ -28,14 +28,36 @@ var zigoEmptyStreamData byte
 // the panic it raises there until the generated caller rethrows it. The
 // trampoline has to recover: a panic cannot unwind native frames.
 type CallbackState struct {
-	Fn       any
-	Writer   io.Writer
-	Reader   io.Reader
-	mu       sync.Mutex
-	value    any
-	stack    []byte
-	panicked bool
-	err      error
+	Fn           any
+	Writer       io.Writer
+	Reader       io.Reader
+	readTerminal error
+	mu           sync.Mutex
+	value        any
+	stack        []byte
+	panicked     bool
+	err          error
+}
+
+// readStream preserves terminal errors and bounds retries for empty reads.
+func readStream(reader io.Reader, buffer []byte, terminal *error) (int, error) {
+	if *terminal != nil {
+		return 0, *terminal
+	}
+	for attempt := 0; attempt < 100; attempt++ {
+		n, err := reader.Read(buffer)
+		if n < 0 || n > len(buffer) {
+			n, err = 0, io.ErrShortBuffer
+		}
+		if err != nil {
+			*terminal = err
+		}
+		if n != 0 || err != nil {
+			return n, err
+		}
+	}
+	*terminal = io.ErrNoProgress
+	return 0, *terminal
 }
 
 func (state *CallbackState) record(value any) {
@@ -116,14 +138,16 @@ func zg_zigo_stream_read(p0 *C.uint8_t, p1 C.size_t, p2 C.size_t) (result C.int3
 			result = C.int32_t(-3)
 		}
 	}()
-	n, err := state.Reader.Read(unsafe.Slice((*byte)(unsafe.Pointer(p0)), int(p1)))
+	n, err := readStream(state.Reader, unsafe.Slice((*byte)(unsafe.Pointer(p0)), int(p1)), &state.readTerminal)
+	if err != nil && err != io.EOF {
+		state.recordErr(err)
+	}
 	if n > 0 {
 		return C.int32_t(n)
 	}
-	if err == nil || err == io.EOF {
+	if err == io.EOF {
 		return C.int32_t(0)
 	}
-	state.recordErr(err)
 	return C.int32_t(-1)
 }
 

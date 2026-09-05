@@ -36,6 +36,13 @@ func zigoMaterializedBytes(buffer []byte, offset, length uint64) []byte {
 	return buffer[int(offset):int(offset+length)]
 }
 
+func zigoMaterializedArray(buffer []byte, offset, count, stride uint64) []byte {
+	if offset > uint64(len(buffer)) || count > (uint64(len(buffer))-offset)/stride {
+		panic("zigo: invalid materialized result buffer")
+	}
+	return zigoMaterializedBytes(buffer, offset, count*stride)
+}
+
 func zigoMaterializedHeader(buffer []byte, layout uint64) (uint64, uint64) {
 	if len(buffer) < 40 || zigoMaterializedU64(buffer, 0) != zigoMaterializedMagicVersion ||
 	zigoMaterializedU64(buffer, 8) != layout || zigoMaterializedU64(buffer, 32) != uint64(len(buffer)) {
@@ -52,6 +59,7 @@ func zigoDecodeRootBuffer(buffer []byte) Root {
 
 func zigoDecodeRootSliceBuffer(buffer []byte) []Root {
 	offset, count := zigoMaterializedHeader(buffer, 0)
+	_ = zigoMaterializedArray(buffer, offset, count, 8)
 	result := make([]Root, int(count))
 	for i := range result { result[i] = zigoDecodeRootAt(buffer, zigoMaterializedU64(buffer, offset+uint64(i)*8)) }
 	return result
@@ -74,6 +82,7 @@ func zigoDecodeRootAt(buffer []byte, offset uint64) Root {
 	result.Maybe = &zigoMaybeValue
 	}
 	zigoChildrenOffset := zigoMaterializedU64(buffer, offset+64)
+	_ = zigoMaterializedArray(buffer, zigoChildrenOffset, zigoMaterializedU64(buffer, offset+72), 8)
 	zigoChildrenCount := zigoMaterializedU64(buffer, offset+72)
 	result.Children = make([]Leaf, int(zigoChildrenCount))
 	for i := range result.Children { result.Children[i] = zigoDecodeLeafAt(buffer, zigoMaterializedU64(buffer, zigoChildrenOffset+uint64(i)*8)) }
@@ -86,6 +95,7 @@ func zigoDecodeLeafAt(buffer []byte, offset uint64) Leaf {
 	zigoOkOffset := zigoMaterializedU64(buffer, offset+0)
 	result.Ok = zigoOkOffset != 0
 	zigoValuesOffset := zigoMaterializedU64(buffer, offset+16)
+	_ = zigoMaterializedArray(buffer, zigoValuesOffset, zigoMaterializedU64(buffer, offset+24), 8)
 	zigoValuesCount := zigoMaterializedU64(buffer, offset+24)
 	result.Values = make([]int32, int(zigoValuesCount))
 	for i := range result.Values {
@@ -93,6 +103,7 @@ func zigoDecodeLeafAt(buffer []byte, offset uint64) Leaf {
 		result.Values[i] = int32(zigoValue)
 	}
 	zigoLabelsOffset := zigoMaterializedU64(buffer, offset+32)
+	_ = zigoMaterializedArray(buffer, zigoLabelsOffset, zigoMaterializedU64(buffer, offset+40), 16)
 	zigoLabelsCount := zigoMaterializedU64(buffer, offset+40)
 	result.Labels = make([]string, int(zigoLabelsCount))
 	for i := range result.Labels {

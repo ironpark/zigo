@@ -8,6 +8,13 @@
 
 ### Fixed
 
+- Go reader의 일시적인 `(0, nil)`을 EOF로 오인하던 문제와 데이터와 함께 반환된 오류가
+  유실되던 문제를 수정했습니다. cgo·purego가 같은 읽기 처리를 사용하며, 연속 100회
+  진행이 없으면 `io.ErrNoProgress`를 반환합니다.
+- Materialized 반환값 직렬화 중 할당 실패가 발생하면 부분 버퍼를 정리합니다.
+  Go 디코더는 배열 범위와 개수를 메모리 할당 전에 검사합니다.
+- `go-doctor`는 C 컴파일러의 버전 조회가 실패한 경우 사용 가능으로 보고하지 않습니다.
+  위 런타임 수정을 적용하려면 Go 바인딩을 재생성하고 native 라이브러리를 다시 빌드해야 합니다.
 - Go reader·writer를 Zig `streamRemaining`으로 연결할 때 writer staging 버퍼가 차면
   멈추던 문제를 수정했습니다. 빈 `drain` 요청도 기존 버퍼를 비워 진행하며, cgo·purego에
   동일하게 적용됩니다. 기존 사용자는 새 zigo로 native 라이브러리를 다시 빌드해야 합니다.

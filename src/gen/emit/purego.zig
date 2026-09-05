@@ -375,10 +375,10 @@ pub fn writeStreamDispatchers(writer: *std.Io.Writer, program: abi.Program) !voi
             "\t\t\tif !ok { return callbackResult(-4) }\n" ++
             "\t\t\tdefer releaseCallback(entry)\n" ++
             "\t\t\tdefer func() { if value := recover(); value != nil { entry.record(value); result = callbackResult(-3) } }()\n" ++
-            "\t\t\tn, err := stored.(io.Reader).Read(unsafe.Slice((*byte)(p0), int(p1)))\n" ++
+            "\t\t\tn, err := readStream(stored.(io.Reader), unsafe.Slice((*byte)(p0), int(p1)), &entry.readTerminal)\n" ++
+            "\t\t\tif err != nil && err != io.EOF { entry.recordErr(err) }\n" ++
             "\t\t\tif n > 0 { return callbackResult(int32(n)) }\n" ++
-            "\t\t\tif err == nil || err == io.EOF { return callbackResult(0) }\n" ++
-            "\t\t\tentry.recordErr(err)\n" ++
+            "\t\t\tif err == io.EOF { return callbackResult(0) }\n" ++
             "\t\t\treturn callbackResult(-1)\n" ++
             "\t\t})\n",
     );

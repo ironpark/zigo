@@ -76,6 +76,14 @@ jobs:
               go test ./...
             )
           done
+      - name: Check callback and stream races
+        # Keep purego's CGO_ENABLED=0 coverage below; run the detector separately.
+        shell: bash
+        run: |
+          set -euo pipefail
+          for example in 04-callback 08-telemetry-hub 10-tagged-union 11-io-streams; do
+            (cd "examples/$example/go" && go test -race -timeout=2m ./...)
+          done
       - name: Check generated Go helpers are referenced
         shell: bash
         run: |
