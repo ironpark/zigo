@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-05T11:24:51Z"
 depends_on:
 - "118-boundary-refactor#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Zig tests, Windows compile checks and affected example verification pass; changes are committed.
 > NEXT: none
