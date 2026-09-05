@@ -391,20 +391,31 @@ pub const bindings = zigo.define(.{
 
 ## 9. 소유권 모델
 
-모든 포인터/슬라이스는 세 축을 갖는다.
+`semantic.json`은 소유권을 여러 필드 조각으로 적는다. 반환 쪽은 `ownership`
+(`borrowed` / `caller`; `library`는 예약된 값으로 생성기가 읽지 않는다), `release`,
+`borrowed_return`, `child_of_receiver`, `boxed`, `return_semantic`과 `constructors[]` 표이고,
+파라미터 쪽은 `direction` (`in` / `out` / `inout`), `retention` (`borrowed` / `retained`),
+`injected`다. 기본값은 `borrowed`, `in`이며 반환값도 명시하지 않으면 빌린 것이다.
 
-| 축 | 값 | 기본값 |
+lowering이 이 조각들을 함수마다 하나의 레코드로 모은다 (`abi.Ownership`, `lower.ownershipOf`).
+emit과 validate는 조각을 다시 해석하지 않고 레코드와 그 규칙 함수만 읽는다.
+
+| 레코드 | 뜻 | Go가 호출 뒤 native 메모리를 보유 |
 |---|---|---|
-| `direction` | `in` / `out` / `inout` | `in` |
-| `retention` | `borrowed` (호출 스코프 한정) / `retained` | `borrowed` |
-| `ownership` | `caller` / `callee` | 반환값은 `caller` |
+| `none` | 값, void, 스칼라 | 아니오 |
+| `borrowed_view` | receiver가 소유하는 객체를 가리키는 handle. 소멸자 없음 | 아니오 |
+| `borrowed_copy` | 라이브러리가 계속 소유하는 slice나 C string. 호출 중 복사 | 아니오 |
+| `handle` | 생성자 짝이 있는 객체. `Close` 또는 `runtime.AddCleanup`까지 보유 | 예 |
+| `buffer` | 라이브러리가 넘긴 버퍼. 복사 뒤 곧바로 `release` 호출. slice, caller-owned C string, narrow slice, materialized 트리 | 아니오 |
 
-**추론 (90%):**
-- `init|create|new|open` + `!*T` 반환 → 호출자가 해제. 대응 `deinit|destroy|close` 탐색 → Go `Close()` 생성
-- `*const T` 반환 → `borrowed` 추정 + **경고** (명시 권장)
-- 슬라이스 파라미터 → `borrowed`, `in`
+파라미터는 `abi.ParamOwnership`으로 `transient`, `retained_token` (콜백 토큰을 handle이
+보관), `staged_copy` (shim이 임시로 복사하는 narrow slice와 materialized out slice),
+`stream` 중 하나다.
 
-**명시 (10%):** 위와 다른 모든 경우. 애매하면 경고를 내고 메타데이터를 요구한다.
+불변식: `runtime.AddCleanup`에 등록되는 것은 `handle`과 그 안의 `retained_token`뿐이다.
+`buffer`는 언제나 호출 안에서 복사되고 release되므로 반환 slice는 항상 Go 메모리다. 새 소유권
+형태를 더하려면 이 둘 중 하나로 표현하거나 복사 정책을 따라야 한다. 상세는
+[10-ownership-model.md](10-ownership-model.md).
 
 ---
 

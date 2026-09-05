@@ -9,7 +9,7 @@ registered_at: "2026-09-05T07:47:46Z"
 
 - [x] [Phase 00: Record in lowering](phases/00-record-in-lowering.md)
 - [x] [Phase 01: Emit reads the record](phases/01-emit-reads-record.md)
-- [ ] [Phase 02: Validate shares the release lookup](phases/02-validate-shares-lookup.md)
+- [x] [Phase 02: Validate shares the release lookup](phases/02-validate-shares-lookup.md)
 - [ ] [Phase 03: Document the record](phases/03-document-record.md)
 
 # Shared Verification

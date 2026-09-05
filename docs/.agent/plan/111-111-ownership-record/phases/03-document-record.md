@@ -2,7 +2,7 @@
 depends_on:
 - "111-111-ownership-record#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 세 문서가 갱신되고 `zig build test` 녹색이다.
 > NEXT: none

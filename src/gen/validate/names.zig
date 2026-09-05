@@ -4,7 +4,6 @@ const diagnostic = @import("diagnostic");
 const lower = @import("lower");
 const semantic = @import("semantic");
 const naming = @import("naming");
-const ownership = @import("ownership.zig");
 const site = @import("site.zig");
 const validate = @import("validate.zig");
 

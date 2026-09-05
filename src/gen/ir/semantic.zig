@@ -317,6 +317,8 @@ pub const Retention = enum { borrowed, retained };
 pub const CallbackReentrancy = enum { allowed, forbidden };
 pub const CallbackThread = enum { caller, any };
 pub const SemanticHint = enum { c_string, opaque_bytes, utf8_string };
+/// Who owns a function's result. `library` is reserved: no generator rule
+/// reads it, and it stays only so documents that spelled it still parse.
 pub const Ownership = enum { borrowed, caller, library };
 /// How much of an `.out` slice the shim reports back as written. `.all` keeps
 /// the whole buffer, `.return` trusts the function's `usize` result.

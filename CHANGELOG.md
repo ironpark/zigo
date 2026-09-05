@@ -14,6 +14,10 @@
   `Must` 변형 여부와 콜백 Go error 도달 여부는 `lower`가 한 번 정해 `AbiFn`에 기록하고,
   공개 패키지 helper는 렌더링한 본문에서 참조를 읽어 냅니다. 생성물은 바이트 단위로 같습니다.
 - `go-coverage`가 root module과 bindings 파일이 함께 import하는 소스를 한 번만 읽고 파싱합니다.
+- 반환값과 파라미터의 소유권을 `lower`가 함수마다 하나의 레코드(`abi.Ownership`,
+  `abi.ParamOwnership`)로 기록하고, cgo·purego의 복사 후 release 경로, owned handle 결과,
+  ZIGO015/016/048의 release 후보 판정이 그 레코드와 규칙 함수 하나를 읽습니다. 생성물과
+  `semantic.json`은 그대로입니다.
 
 ### Fixed
 

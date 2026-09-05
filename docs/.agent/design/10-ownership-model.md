@@ -75,7 +75,7 @@ lowering은 이것을 `AbiFn.release_symbol`, `slice_return_element`, `ret_strin
 - (b)는 "복사 후 즉시 release"라는 한 정책만 있다. 사용자가 native 메모리를 Go에서 오래 들고
   있는 경로는 없으므로, `runtime.AddCleanup`이 필요한 것은 (a)와 (c)뿐이고 이미 그렇게 되어
   있다.
-- `ownership = library`는 읽는 곳이 없다. IR 정리 때 제거하거나 뜻을 정해야 한다.
+- `ownership = library`는 읽는 곳이 없다. 4절: 예약 값으로 문서화하고 남긴다.
 - 검증은 형태별로 흩어져 있지만 모두 같은 질문을 한다. "이 함수의 결과를 누가, 무엇으로,
   언제 돌려주는가."
 
@@ -210,3 +210,28 @@ C 시그니처가 바뀌는 새 기능이며, 레코드에는 `buffer.release`�
    줄인다.
 4. `ownership = library`를 "예약됨"으로 문서화하고, `01-architecture.md` 9절의 세 축 설명을
    레코드 기준으로 고친다.
+
+## 4. 구현 결과
+
+계획 `111-ownership-record`가 2절의 설계를 lowering 레코드로 구현했다. `semantic.json`과
+생성물은 바뀌지 않았다.
+
+- `abi.Ownership` (`none`, `borrowed_view`, `borrowed_copy`, `handle`, `buffer`)과
+  `abi.ParamOwnership` (`transient`, `retained_token`, `staged_copy`, `stream`)이
+  `AbiFn.ownership`, `AbiFn.param_ownership`에 기록된다. `lower.ownershipOf`가 검증된 문서
+  위에서, 모든 함수의 심볼과 handle 슬롯 수가 정해진 뒤 마지막으로 세운다.
+- 2.2의 초안과 다른 점: `buffer.release`는 심볼이 아니라 `Program.functions` 인덱스다.
+  purego는 release 함수의 Go 이름을, cgo는 심볼을 필요로 하므로 둘 다 인덱스에서 읽는다.
+  receiver는 C typedef 이름(`release_receiver_c_name`)으로 바로 적는다. `handle.destructor`도
+  심볼이다.
+- release 후보 찾기는 `lower.releaseTarget` 하나다. ZIGO016, ZIGO048, `ownershipOf`가 같은
+  함수를 부른다. 검증은 promotion 전 함수 표 위에서 돌고 lowering도 그 표(`source_document`)로
+  release를 해석한다. promotion이 receiver를 가진 release 메서드에 합성 error union을 붙이면
+  `void` 반환 조건이 깨지기 때문이다.
+- payload 벗기기는 `lower.releasableSliceReturnElement`(소유권 질문, optional까지 벗김)와
+  `lower.sliceReturnElement`(호출 규약 질문) 둘이며 모두 `TypeNode.errorPayload` 위에 있다.
+- 지운 것: `AbiFn.release_symbol`, `raw.releaseFunction`, `common.releaseReceiverCName`,
+  `validate.releaseCandidateParameter`, `validate.constructorDeinitFor`.
+- 남긴 것: `ret_string`, `slice_return_element`, `materialized_return`, `materialized_out`은
+  C 시그니처 모양을 말하는 호출 규약 필드라 그대로 둔다. `ownership = library`는 enum 값만
+  남긴 예약 값이며 생성기는 읽지 않는다. 옛 `semantic.json`이 파싱되도록 값은 제거하지 않는다.
