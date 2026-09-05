@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T14:25:41Z"
 description: 코드 검토에 근거한 후속 리팩토링 제안과 검증 기준
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-05T13:53:58Z"
 ---
 > NEXT: 세 구현 단계와 검증을 완료했다. ([Phase 0](phases/00-handle-facts.md))
@@ -9,7 +10,7 @@ registered_at: "2026-09-05T13:53:58Z"
 
 - [x] [Phase 00: Handle lifecycle facts in ABI](phases/00-handle-facts.md)
 - [x] [Phase 01: Separate common emitter responsibilities](phases/01-emitter-boundaries.md)
-- [ ] [Phase 02: Separate reflection responsibilities](phases/02-reflection-boundaries.md)
+- [x] [Phase 02: Separate reflection responsibilities](phases/02-reflection-boundaries.md)
 
 # Shared Verification
 

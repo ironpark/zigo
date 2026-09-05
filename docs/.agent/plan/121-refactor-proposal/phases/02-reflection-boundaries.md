@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-05T14:25:41Z"
 depends_on:
 - "121-refactor-proposal#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: semantic 스냅샷, 패키지 관계, 필드 접근자와 자동 발견 관련 기존 검증이 통과한다.
 > NEXT: none
