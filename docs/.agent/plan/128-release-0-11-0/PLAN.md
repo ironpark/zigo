@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-09-05T23:56:20Z"
 description: Publish the generated-code quality and hygiene work as 0.11.0
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-05T23:54:08Z"
 ---
 > NEXT: Release 0.11.0. ([Phase 0](phases/00-release.md))
 
 # Phases
 
-- [ ] [Phase 00: Release 0.11.0](phases/00-release.md)
+- [x] [Phase 00: Release 0.11.0](phases/00-release.md)
 
 # Shared Verification
 

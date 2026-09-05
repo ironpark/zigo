@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T23:56:20Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Tag `0.11.0` on origin with green CI and Release workflows.
 > NEXT: none
