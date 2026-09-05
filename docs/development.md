@@ -195,8 +195,33 @@ zig build shared-library-smoke -- \
 3. **fetch 안내 갱신**: README와 [시작 가이드](getting-started.md)의
    `zig fetch --save git+https://github.com/ironpark/zigo#<태그>` 줄을 새 태그로 바꿉니다.
    버전·변경 기록·설치 안내가 같은 릴리즈 커밋에 포함되어야 합니다.
-4. **검증과 커밋**: 위 테스트와 생성물 검사를 마친 뒤 변경을 검토하고 커밋합니다.
-5. **태그와 푸시**: 검증한 커밋에 `git tag x.y.z`로 태그합니다. `git push origin HEAD`로
+4. **포맷 확인**: `zig fmt --check build.zig build src tests/*.zig examples/*/build.zig examples/*/src`가
+   아무것도 출력하지 않아야 합니다. 걸린 파일은 `zig fmt`로 고쳐 릴리즈 커밋 전에 커밋합니다.
+5. **예제 생성물 최신화 확인**: 생성기나 바인딩을 바꿨다면 cgo 트리와 purego 트리를 모두
+   다시 생성해야 합니다. 예제마다 `zig build go` 뒤에 purego 바인딩이 있으면
+   `zig build purego-go`도 실행하고, 아래 명령으로 오래된 생성물이 남지 않았는지 확인합니다.
+
+   ```bash
+   set -eu
+   for example in examples/*/; do
+     if grep -q 'name_prefix = "purego"' "$example/build.zig"; then
+       (cd "$example" && zig build go-check purego-go-check --summary all)
+     else
+       (cd "$example" && zig build go-check --summary all)
+     fi
+   done
+   (cd examples/10-tagged-union && zig build go-check -Dpurego --summary all)
+   ```
+
+   `git status --short examples`가 비어 있어야 합니다. CI의 purego 잡은 이 검사와 같은
+   `purego-go-verify`를 실행하므로, 여기서 빠뜨리면 릴리즈 뒤 CI가 실패합니다.
+6. **CI 경로 확인**: 예제의 `install` 배치나 `targets`를 바꿨다면
+   [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)의 "Inspect the shared artifacts"
+   목록과 Windows 잡의 `test -f` 경로가 새 라이브러리 위치(예:
+   `purego-layout/lib/<goos>_<goarch>/`)를 가리키는지 확인합니다. 이 검사는 로컬 테스트에
+   포함되지 않으므로 CI에서만 드러납니다.
+7. **검증과 커밋**: 위 테스트와 생성물 검사를 마친 뒤 변경을 검토하고 커밋합니다.
+8. **태그와 푸시**: 검증한 커밋에 `git tag x.y.z`로 태그합니다. `git push origin HEAD`로
    브랜치를, `git push origin x.y.z`로 해당 태그만 푸시합니다. 태그 이름은 `v` 접두어 없이
    `CHANGELOG.md`의 절 이름과 정확히 같아야 합니다. 원격 이름이 다르면 `origin`을 바꾸세요.
 
