@@ -887,7 +887,7 @@ fn renderGoEnumText(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                 "\t\tif number, err := ",
             .{name},
         );
-        try writeEnumNumberParse(writer, declaration.tag_type.?, "text[len(\"" , name);
+        try writeEnumNumberParse(writer, declaration.tag_type.?, "text[len(\"", name);
         try writer.print("; err == nil {{\n\t\t\treturn {0s}(number), nil\n\t\t}}\n\t}}\n", .{name});
     }
     try writer.print(
