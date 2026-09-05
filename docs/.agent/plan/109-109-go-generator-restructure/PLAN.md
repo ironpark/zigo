@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T07:26:27Z"
 description: "Restructure the Go generator: split emit and validate, move shared decisions into lowering, and separate build.zig consumer API from test wiring"
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-05T06:56:05Z"
 ---
 > NEXT: Split emit.zig into `src/gen/emit/` by output file with goldens unchanged. ([Phase 0](phases/00-split-emit.md))
@@ -14,7 +15,7 @@ registered_at: "2026-09-05T06:56:05Z"
 - [x] [Phase 04: Split validate.zig into an ordered rule list](phases/04-split-validate.md)
 - [x] [Phase 05: build.zig consumer API only](phases/05-split-build.md)
 - [x] [Phase 06: Reflect scans each source once](phases/06-reflect-single-scan.md)
-- [ ] [Phase 07: Document the layout](phases/07-document-layout.md)
+- [x] [Phase 07: Document the layout](phases/07-document-layout.md)
 
 # Shared Verification
 

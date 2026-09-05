@@ -1,10 +1,11 @@
 ---
+completed_at: "2026-09-05T07:26:27Z"
 depends_on:
 - "109-109-go-generator-restructure#0"
 - "109-109-go-generator-restructure#4"
 - "109-109-go-generator-restructure#5"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Docs describe every new directory; `zig build test` green.
 > NEXT: none
