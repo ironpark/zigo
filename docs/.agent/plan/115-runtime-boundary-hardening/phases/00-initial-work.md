@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T10:51:22Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Root tests, affected example tests and race checks pass, changes are reviewed and committed.
 > NEXT: none
