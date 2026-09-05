@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-05T08:45:07Z"
 depends_on:
 - "112-112-explicit-interfaces#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test` 녹색, 예제 05의 생성물과 `semantic.json`이 커밋되어 있다.
 > NEXT: none

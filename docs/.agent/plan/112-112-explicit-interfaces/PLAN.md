@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T08:45:07Z"
 description: "Explicit `.interfaces` registration: a named Go interface over a chosen set of opaque handles, validated by rendered signature equality (ZIGO049), emitted as <pkg>_interfaces_gen.go. Minor release."
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-05T08:29:44Z"
 ---
 > NEXT: `Semantic.interfaces`와 reflector의 `.interfaces` 등록을 추가한다. ([Phase 0](phases/00-ir-and-reflector.md))
@@ -10,7 +11,7 @@ registered_at: "2026-09-05T08:29:44Z"
 - [x] [Phase 00: IR and reflector](phases/00-ir-and-reflector.md)
 - [x] [Phase 01: Structural validation](phases/01-structural-validation.md)
 - [x] [Phase 02: Lowering, signature rule and emitter](phases/02-lowering-and-emitter.md)
-- [ ] [Phase 03: Example, abi-diff and docs](phases/03-example-diff-docs.md)
+- [x] [Phase 03: Example, abi-diff and docs](phases/03-example-diff-docs.md)
 
 # Shared Verification
 
