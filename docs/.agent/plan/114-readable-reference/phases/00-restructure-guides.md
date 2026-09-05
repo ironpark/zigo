@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T09:34:47Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: The three entry pages are under 350 lines, task-oriented, and link to retained technical details.
 > NEXT: none
