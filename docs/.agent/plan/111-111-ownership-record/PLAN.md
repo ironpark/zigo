@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T07:59:20Z"
 description: Lowering builds one ownership record per function; emit and validate read it instead of re-deriving release, string, materialized and handle facts. Golden-invariant.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-05T07:47:46Z"
 ---
 > NEXT: `abi.Ownership`과 `lower.ownershipOf`를 추가하고 골든 case별 레코드 테스트를 쓴다. ([Phase 0](phases/00-record-in-lowering.md))
@@ -10,7 +11,7 @@ registered_at: "2026-09-05T07:47:46Z"
 - [x] [Phase 00: Record in lowering](phases/00-record-in-lowering.md)
 - [x] [Phase 01: Emit reads the record](phases/01-emit-reads-record.md)
 - [x] [Phase 02: Validate shares the release lookup](phases/02-validate-shares-lookup.md)
-- [ ] [Phase 03: Document the record](phases/03-document-record.md)
+- [x] [Phase 03: Document the record](phases/03-document-record.md)
 
 # Shared Verification
 
