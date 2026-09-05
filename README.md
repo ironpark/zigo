@@ -104,6 +104,8 @@ zig build go
 | C 컴파일러 없이 Go 빌드 | `.purego` | OS·아키텍처별 공유 라이브러리를 함께 배포합니다 |
 
 purego를 선택했다면 [공유 라이브러리와 purego](docs/purego.md)를 먼저 읽어 주세요.
+cgo로 여러 OS·아키텍처를 한 Go 트리에서 지원하려면 `targets`를 나열하세요
+([여러 타깃용 cgo 라이브러리](docs/configuration.md#여러-타깃용-cgo-라이브러리)).
 
 ## 문서
 

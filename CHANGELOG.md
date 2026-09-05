@@ -6,6 +6,15 @@
 
 ## [Unreleased]
 
+### Added
+
+- `addGoBindings`의 `targets`로 한 cgo 바인딩 세트가 여러 `GOOS`/`GOARCH`용 네이티브
+  라이브러리를 빌드합니다. Go 소스는 한 번 생성되고, raw 패키지는 타깃마다
+  `#cgo <goos>,<goarch> LDFLAGS:` 줄을 가지며 각 라이브러리와 정적 링크 입력은
+  `library_dir/<goos>_<goarch>/`에 설치됩니다. 생성기는 반복 가능한
+  `--cgo-target <goos>/<goarch>` 플래그를 받습니다. 목록을 비워 두면 기존 배치와 생성물이
+  그대로 유지됩니다.
+
 ### Changed
 
 - 외부 도구 실행 결과와 doctor 표시 로직을 분리하고, 스트림·Materialized의 생성 및

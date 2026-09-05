@@ -72,6 +72,7 @@ raw 패키지는 `internal/raw`에서 생성됩니다. `addStandardSteps`는 기
 | 옵션 | 기본값 | 용도 |
 |---|---|---|
 | `link` | `.cgo_static` | cgo 정적·cgo 동적·purego 선택 |
+| `targets` | `&.{}` | `target`에 더해 cgo 라이브러리를 빌드할 추가 타깃 |
 | `coverage_json` | `null` | API 커버리지 JSON 저장 경로 |
 | `cgo_flags` | 모듈에서 계산 | CFLAGS·LDFLAGS 보강 또는 교체 |
 | `gofmt` | `PATH`의 `gofmt` | Go 코드 포맷 도구 |
@@ -128,6 +129,51 @@ Go 패키지 기준 상대 경로가 기본 검색 경로가 됩니다. 명시�
 
 purego는 정적 링크와 조합되지 않습니다. 지원 플랫폼, 로딩 정책과 배포 방법은
 [공유 라이브러리와 purego](purego.md)를 참고하세요.
+
+## 여러 타깃용 cgo 라이브러리
+
+`targets`에 타깃을 나열하면 한 번의 생성으로 여러 플랫폼용 cgo 트리를 만듭니다.
+Go 소스는 한 번만 생성되고, 네이티브 라이브러리만 `target`과 `targets`의 각 항목마다
+빌드됩니다.
+
+```zig
+const bindings = zigo.addGoBindings(b, .{
+    // ...
+    .target = target,
+    .targets = &.{
+        b.resolveTargetQuery(.{ .cpu_arch = .x86_64, .os_tag = .linux, .abi = .gnu }),
+        b.resolveTargetQuery(.{ .cpu_arch = .x86_64, .os_tag = .windows, .abi = .gnu }),
+    },
+});
+```
+
+이 모드에서는 설치 배치와 cgo 블록이 다음과 같이 바뀝니다.
+
+- 각 타깃의 라이브러리와 정적 링크 입력 archive는 `library_dir/<goos>_<goarch>/`에
+  설치됩니다. 예를 들어 `zig-out/lib/linux_amd64/libmylib_zigo.a`입니다. `target`도
+  자기 하위 디렉터리를 갖습니다.
+- raw 패키지는 타깃마다 `#cgo <goos>,<goarch> LDFLAGS:` 줄을 하나씩 갖습니다. `go build`는
+  `GOOS`·`GOARCH`에 맞는 줄만 사용하므로, 호스트에서는 그대로 빌드하고 다른 플랫폼은
+  `GOOS=linux GOARCH=amd64 CGO_ENABLED=1 CC="zig cc -target x86_64-linux-gnu" go build`처럼
+  크로스 빌드합니다.
+- `go-lib`와 기본 `install` 스텝은 모든 타깃의 라이브러리를 설치합니다. `go-check`는 모든
+  타깃의 shim을 컴파일합니다. `GoBindings.native_libraries`에 타깃별 설치 스텝과 경로가
+  들어 있고, `lib`·`install_library`·`library_path`는 `target` 항목을 가리킵니다.
+- `go-doctor`는 나열한 타깃 중 하나라도 호스트에서 실행 가능하면 `PASS target`을 보고합니다.
+
+다음 제약이 있습니다.
+
+- cgo 백엔드 전용입니다. purego는 실행 시 로드하므로 [타깃별 prefix](purego.md#크로스-컴파일)로
+  빌드하세요.
+- 호출자의 module 그래프를 타깃마다 다시 빌드합니다. `linkLibrary`로 붙인 라이브러리와
+  C/C++·어셈블리 소스는 따라오지만, `addObjectFile`로 붙인 미리 빌드된 archive는 다른 타깃용으로
+  다시 만들 수 없어 빌드 그래프 생성 시 진단합니다. 그런 입력이 있으면 타깃마다
+  `addGoBindings`를 따로 호출하세요.
+- `cgo_flags.ldflags`로 링크 줄을 교체하면 타깃 한정자 없이 한 줄만 나갑니다.
+- 같은 `GOOS`/`GOARCH`로 매핑되는 타깃을 두 번 나열하면 진단합니다. `install.library_dir`은
+  설치 prefix 안에 있어야 합니다.
+- 타깃 목록을 켜거나 끄면 생성된 raw 파일과 설치 경로가 바뀌므로 `zig build go`로
+  다시 생성해 커밋하세요.
 
 ## 공개 Go 패키지 이름과 경로
 
@@ -287,7 +333,8 @@ binding install이 그 artifact에 의존하게 합니다. 같은 라이브러�
 `root_module`과 설치 헤더를 호스트용 정적 라이브러리로 한 번 더 복제해 연결합니다. 따라서
 호출자 module의 C/C++ 소스가 그 라이브러리의 헤더, `link_libc` 또는 `link_libcpp` 설정에
 의존해도 reflection 컴파일에서 유지됩니다. 동적 라이브러리와 `addObjectFile`로 붙인 미리
-빌드된 archive는 호스트 실행 파일에 연결하지 않습니다.
+빌드된 archive는 호스트 실행 파일에 연결하지 않습니다. 여러 타깃을 한 번에 빌드하려면
+[여러 타깃용 cgo 라이브러리](#여러-타깃용-cgo-라이브러리)를 보세요.
 
 ## `gofmt` 선택
 
