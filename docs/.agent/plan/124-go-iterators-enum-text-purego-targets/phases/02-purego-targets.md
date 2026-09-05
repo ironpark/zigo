@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T21:26:37Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test --summary all` passes.
 > NEXT: none
