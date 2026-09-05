@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T21:36:44Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Tag `0.10.0` exists on origin and the release workflow has been triggered.
 > NEXT: none

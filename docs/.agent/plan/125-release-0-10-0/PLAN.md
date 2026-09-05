@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-09-05T21:36:44Z"
 description: Publish enum text encoding, iterator wrappers and purego targets as 0.10.0
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-05T21:36:01Z"
 ---
 > NEXT: Release 0.10.0. ([Phase 0](phases/00-release.md))
 
 # Phases
 
-- [ ] [Phase 00: Release 0.10.0](phases/00-release.md)
+- [x] [Phase 00: Release 0.10.0](phases/00-release.md)
 
 # Shared Verification
 
