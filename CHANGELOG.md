@@ -6,6 +6,18 @@
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-09-05
+
+### Added
+
+- 최소 바인딩을 직접 실행할 수 있는 `00-quick-start` 예제와 stdin/stdout 스트림 복사 CLI를
+  추가했습니다. Go 실행 예제와 대용량·오류·메모리 경계 회귀 테스트도 보강했습니다.
+
+### Changed
+
+- 사용자 가이드와 예제 README를 작업 순서 중심으로 재구성하고, 현재 구현과 설명을 맞췄습니다.
+- CI에 콜백·핸들·스트림의 Go race 검사를 추가했습니다.
+
 ### Fixed
 
 - Go reader의 일시적인 `(0, nil)`을 EOF로 오인하던 문제와 데이터와 함께 반환된 오류가
@@ -573,6 +585,8 @@
 - 생성된 Go doc이 식별자로 시작하지 않는 문장을 두 줄 형식으로 내고, `//` 그룹 주석과
   빈 줄 없이 이어진 선언의 doc 공유를 지원합니다. 모든 생성 패키지에 패키지 doc이 있습니다.
 
+[Unreleased]: https://github.com/ironpark/zigo/compare/0.9.1...HEAD
+[0.9.1]: https://github.com/ironpark/zigo/compare/0.9.0...0.9.1
 [0.9.0]: https://github.com/ironpark/zigo/compare/0.8.1...0.9.0
 [0.8.1]: https://github.com/ironpark/zigo/compare/0.8.0...0.8.1
 [0.8.0]: https://github.com/ironpark/zigo/compare/0.7.4...0.8.0
