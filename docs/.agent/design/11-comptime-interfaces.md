@@ -97,6 +97,139 @@ type Batch interface { Len() (int, error); io.Closer }
 `push`처럼 원소 타입을 받는 메서드는 인터페이스에 넣을 수 없고, 넣으려 하면 시그니처 불일치
 진단이 난다.
 
-## 2. 설계 (phase 3에서 작성)
+## 2. 설계
 
-## 3. 권고 (phase 3에서 작성)
+### 2.1 범위
+
+구현 가치가 있는 것은 패턴 A와 D를 함께 덮는 **명시 등록 인터페이스** 하나다. 등록 opaque handle
+중 사용자가 고른 집합이 사용자가 고른 메서드 집합을 같은 Go 시그니처로 제공한다는 사실을
+검증하고, 그 사실을 Go 인터페이스와 컴파일 타임 단언으로 낸다. 패턴 B(`anytype`)는 1.3의 이유로
+노출하지 않고, 문서에 "Zig wrapper를 쓰라"고 적는다. 패턴 C는 이미 있다.
+
+### 2.2 등록 형태
+
+```zig
+pub const bindings = zigo.define(.{
+    .root = library,
+    .types = .{ ... },
+    .interfaces = .{
+        .{
+            .name = "Sink",                       // Go 인터페이스 이름. 필수
+            .methods = .{ "write", "flush" },     // Zig 선언 이름. 각 타입에서 같은 이름을 찾는다
+            .types = .{ library.FileSink, library.MemorySink },  // 등록된 opaque 타입
+            .closer = true,                       // 기본값 true: io.Closer 포함
+            .doc = "Sink receives rendered output.",
+        },
+    },
+});
+```
+
+- `.types`의 각 항목은 `.repr = .@"opaque"`로 등록된 타입이어야 한다. borrowed view(`*TRef`)나
+  value struct는 메서드 집합이 다르므로 받지 않는다.
+- `.methods`는 Zig 선언 이름이다. 함수 메타데이터 `.name`으로 Go 이름을 바꾼 메서드는 바뀐 Go
+  이름으로 인터페이스에 들어간다. 즉 매칭은 Zig 이름, 시그니처 비교는 Go 표면에서 한다.
+- `.closer`는 모든 타입이 생성자 짝을 가질 때만 참일 수 있다.
+
+### 2.3 IR
+
+`Semantic`에 `interfaces: ?[]const Interface = null`을 더한다.
+
+```zig
+pub const Interface = struct {
+    name: []const u8,
+    doc: ?[]const u8 = null,
+    /// Zig 선언 이름 순서대로. 인터페이스 메서드 순서가 된다.
+    methods: []const []const u8,
+    /// 등록 타입 이름. `types[].name`을 가리킨다.
+    types: []const []const u8,
+    closer: bool = true,
+    package: ?[]const u8 = null,
+};
+```
+
+`Semantic.parse`는 모르는 필드를 거부하므로 이 필드가 있는 `semantic.json`은 옛 zigo에서 파싱에
+실패한다. `emit_null_optional_fields = false` 덕에 인터페이스를 등록하지 않은 바인딩의 파일은
+바이트 단위로 같다. 따라서 이 기능은 minor 버전(`0.9.0`)이고, `ir_version`은 올리지 않는다.
+lowering은 `abi.Program.interfaces`에 메서드별 `*const AbiFn`을 해석해 넣는다.
+
+### 2.4 검증 (새 진단 ZIGO049)
+
+순서대로, 첫 위반이 진단이 된다.
+
+1. 이름이 유효한 Go 식별자이고 등록 타입·함수·다른 인터페이스와 충돌하지 않는다(기존 ZIGO024
+   경로에 인터페이스 이름을 합류시킨다).
+2. `.types`의 각 이름이 등록된 opaque 타입이다. 아니면 ZIGO049 "interface lists a type that is not an
+   opaque handle".
+3. 각 타입이 `.methods`의 각 이름을 노출 함수로 가진다(receiver가 그 타입인 함수). 없으면 ZIGO049
+   "type `X` has no exposed method `m`".
+4. 같은 메서드의 Go 시그니처가 모든 타입에서 같다. 비교는 lowering 뒤 emit의 시그니처 writer로
+   각 메서드의 Go 시그니처를 문자열로 렌더링해 비교한다. receiver 이름은 제외한다. 다르면 ZIGO049
+   "method `m` has signature `A` on `X` but `B` on `Y`". `Must` 변형 여부(`must_variant`)가 다른 것도
+   불일치다.
+5. `.closer = true`인데 생성자 짝이 없는 타입이 있으면 ZIGO049.
+6. 하위 패키지를 쓰는 문서에서는 인터페이스와 모든 타입이 같은 패키지에 있어야 한다.
+
+4번을 텍스트 비교로 하는 이유는 계획 109가 import와 helper 판정에 쓴 것과 같다. 시그니처를
+구조적으로 비교하는 두 번째 규칙을 두면 emit과 어긋날 수 있다.
+
+### 2.5 생성 Go
+
+인터페이스마다 다음을 낸다. 배치는 `<pkg>_interfaces_gen.go` 한 파일이며, tagged union의 sealed
+interface가 union 파일에 있는 것과 같은 정신으로 "인터페이스 표면은 자기 파일"에 둔다.
+
+```go
+// Sink receives rendered output.
+// Sink is implemented by *FileSink and *MemorySink.
+type Sink interface {
+	// Write ...(FileSink.Write의 doc을 그대로)
+	Write(data []byte) (int, error)
+	Flush() error
+	io.Closer
+}
+
+var _ Sink = (*FileSink)(nil)
+var _ Sink = (*MemorySink)(nil)
+```
+
+- 메서드 doc은 `.types`의 첫 타입 메서드 doc을 쓴다. 인터페이스가 다른 doc을 원하면 등록 `.doc`에
+  적는다.
+- `Must` 변형이 켜져 있으면 `MustWrite`도 인터페이스에 포함한다. 4번 검증이 이를 보장한다.
+- 단언 두 줄은 검증이 놓친 것을 `go build`가 잡게 하는 안전망이다.
+- cgo와 purego의 차이는 없다. 인터페이스는 공개 패키지 표면만 건드린다.
+
+### 2.6 abi-diff와 커버리지
+
+- 인터페이스 추가는 compatible, 제거와 메서드 제거는 breaking, 메서드 추가는 Go 인터페이스에
+  메서드가 늘면 사용자 구현체(있다면)가 깨지므로 breaking으로 본다. 다만 생성 인터페이스는 등록
+  handle만 구현하도록 의도되었으므로, 문서에 "사용자가 직접 구현하지 말 것"을 적고 메서드 추가를
+  compatible로 낮추는 선택지도 있다. 초기값은 보수적으로 breaking이다.
+- `go-coverage`는 영향이 없다. 인터페이스는 새 Zig 선언을 바인딩하지 않는다.
+
+### 2.7 하지 않는 것
+
+- Go generic 제약(`interface{ Push(T) }`)은 내지 않는다. 사용자 코드에서 `Batch[T]`처럼 쓸 자리가
+  없고, zigo가 generic Go를 내기 시작하면 gofmt 버전과 Go 최소 버전 계약이 늘어난다.
+- Zig vtable struct 자체를 반영해 메서드 집합을 자동으로 뽑지 않는다. vtable의 fn pointer 필드는
+  구현 handle의 메서드와 이름이 같다는 보장이 없고, 등록 한 줄이 그 매핑을 더 분명히 말한다.
+- 인터페이스를 파라미터 타입으로 받는 함수(Go 쪽에서 `func Use(s Sink)`)는 내지 않는다. C ABI에는
+  구체 포인터만 있으므로 Go 쪽에서 type switch로 구체 타입을 골라 다른 심볼을 불러야 하고, 이는
+  B의 specialization 문제로 돌아간다.
+
+## 3. 권고
+
+**부분 구현을 권한다. 명시 등록 인터페이스(2.2)만, `anytype`은 제외.** 이득은 분명하다.
+같은 generic에서 나온 handle들과 vtable 구현체들을 Go 쪽에서 하나의 타입으로 다룰 수 있고,
+검증이 "메서드 집합이 같다"는 사실을 릴리즈마다 지켜 준다. 비용은 새 semantic 필드 하나, 진단
+하나, emitter 하나이며 기존 생성물은 바뀌지 않는다.
+
+우선순위는 소유권 레코드(계획 `10-ownership-model.md`) 뒤다. 인터페이스 메서드 시그니처 비교는
+lowered 함수 위에서 하므로, 소유권이 `AbiFn.ownership` 하나로 정리된 뒤가 비교 규칙이 단순하다.
+
+### 후속 계획 초안 (4 phase)
+
+1. `Semantic.interfaces`와 reflector 등록(`zigo.define`의 `.interfaces`), `semantic.json` 골든 추가.
+   생성기는 아직 읽지 않는다.
+2. 검증 ZIGO049(2.4의 1~6)와 진단 스냅샷 테스트.
+3. lowering의 `Program.interfaces`와 `<pkg>_interfaces_gen.go` emitter, golden case
+   `interfaces`/`interfaces_purego`, 예제 `05-pipeline`에 `Batch` 인터페이스 적용.
+4. `abi-diff` 규칙, `docs/bindings.md` 절, CHANGELOG(`0.9.0` Added).

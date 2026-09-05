@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T07:39:48Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `docs/.agent/design/11-comptime-interfaces.md` lists the patterns, what is
 > NEXT: none
