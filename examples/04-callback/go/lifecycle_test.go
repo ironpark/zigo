@@ -3,9 +3,10 @@ package callback
 import (
 	"errors"
 	"runtime"
-	"sync"
 	"testing"
 	"time"
+
+	contracts "example.com/zigo/runtime-contracts"
 )
 
 // Close serializes against calls that are already inside the native boundary,
@@ -17,42 +18,10 @@ func TestConcurrentCallsRacingClose(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	const callers = 8
-	var wait sync.WaitGroup
-	start := make(chan struct{})
-	for range callers {
-		wait.Add(1)
-		go func() {
-			defer wait.Done()
-			<-start
-			for range 200 {
-				got, err := context.Run(7)
-				if err == nil {
-					if got != 8 {
-						t.Errorf("Run(7) = %d, want 8", got)
-					}
-					continue
-				}
-				var handleErr *HandleError
-				if !errors.As(err, &handleErr) {
-					t.Errorf("Run(7) after Close = %#v, want *HandleError", err)
-				}
-			}
-		}()
-	}
-	wait.Add(1)
-	go func() {
-		defer wait.Done()
-		<-start
-		runtime.Gosched()
-		context.Close()
-	}()
-	close(start)
-	wait.Wait()
-
-	if _, err := context.Run(7); !errors.Is(err, ErrInvalidHandle) {
-		t.Fatalf("Run after Close = %v, want ErrInvalidHandle", err)
-	}
+	contracts.CallsRacingClose(t, func() (int32, error) { return context.Run(7) }, context.Close, int32(8), ErrInvalidHandle, func(err error) bool {
+		var handleErr *HandleError
+		return errors.As(err, &handleErr)
+	})
 	if got := activeCallbackHandleCount(); got != 0 {
 		t.Fatalf("active callback handles = %d, want 0", got)
 	}

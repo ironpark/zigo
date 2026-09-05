@@ -113,6 +113,9 @@ zig build shared-library-smoke -- \
   배선), `public_types.zig`, `public_runtime.zig`, `public_writers.zig`, `must.zig`,
   `materialized.zig`, `interfaces.zig`, `docs.zig`가 각 출력을 맡습니다. `common.zig`는 타입 철자와 이름,
   프로그램 전체 predicate처럼 여러 출력이 공유하는 helper입니다.
+- 핸들의 생성자·해제 함수 연결과 소유권 판정은 `lower/ownership.zig`가 담당합니다.
+  `lower.zig`는 기존 진입점을 유지하고, `emit/handles.zig`는 판정 결과로 Go 핸들 타입과
+  호출·종료·정리 런타임을 생성합니다. 일반 공개 타입 출력은 `emit/public_types.zig`에 둡니다.
 - Materialized의 레이아웃과 ABI 출력 슬롯은 `lower/materialized.zig`, Zig 직렬화는
   `emit/materialized_encoder.zig`, Go 디코딩은 `emit/materialized_decoder.zig`가 담당합니다.
   `emit/materialized.zig`는 native 호출과 이 직렬화기를 연결합니다. 버퍼 형식 상수는
@@ -139,8 +142,10 @@ zig build shared-library-smoke -- \
 ### 백엔드 공통 계약 테스트
 
 `tests/runtime_contracts`는 생성 코드에 의존하지 않는 Go 테스트 모듈입니다. 스트림의 빈 읽기·
-오류·대용량 처리와 Materialized 디코더 범위 검사를 한곳에서 정의합니다. 예제 11·12의
-cgo·purego 테스트는 각 백엔드의 함수를 이 테스트에 연결합니다.
+오류·대용량 처리, Materialized 디코더 범위 검사, 핸들의 동시 호출과 `Close` 경합을
+한곳에서 정의합니다. 예제 04·10·11·12의 cgo·purego 테스트는 각 백엔드의 함수를
+이 테스트에 연결합니다. 콜백 등록 해제나 유니온 projection처럼 타입별로 다른 검증은
+각 예제에 유지합니다.
 
 예제의 `go.mod`는 로컬 `replace`로 이 모듈을 참조하므로 테스트할 때 저장소의 디렉터리
 구조를 유지하세요. 일반 `go test ./...`가 공통 테스트를 함께 실행하며, 공통 모듈만 따로

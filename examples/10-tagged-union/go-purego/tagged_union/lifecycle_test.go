@@ -5,6 +5,8 @@ import (
 	"runtime"
 	"sync"
 	"testing"
+
+	contracts "example.com/zigo/runtime-contracts"
 )
 
 // A binding without callbacks gets the same Close serialization as one with
@@ -19,42 +21,10 @@ func assertConcurrentCallsRacingClose(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	const callers = 8
-	var wait sync.WaitGroup
-	start := make(chan struct{})
-	for range callers {
-		wait.Add(1)
-		go func() {
-			defer wait.Done()
-			<-start
-			for range 200 {
-				got, err := child.Get()
-				if err == nil {
-					if got != 11 {
-						t.Errorf("Get() = %d, want 11", got)
-					}
-					continue
-				}
-				var handleErr *HandleError
-				if !errors.As(err, &handleErr) {
-					t.Errorf("Get() after Close = %#v, want *HandleError", err)
-				}
-			}
-		}()
-	}
-	wait.Add(1)
-	go func() {
-		defer wait.Done()
-		<-start
-		runtime.Gosched()
-		child.Close()
-	}()
-	close(start)
-	wait.Wait()
-
-	if _, err := child.Get(); !errors.Is(err, ErrInvalidHandle) {
-		t.Fatalf("Get after Close = %v, want ErrInvalidHandle", err)
-	}
+	contracts.CallsRacingClose(t, child.Get, child.Close, int32(11), ErrInvalidHandle, func(err error) bool {
+		var handleErr *HandleError
+		return errors.As(err, &handleErr)
+	})
 }
 
 // requireOpenOrClosed accepts either a successful projection or the typed
