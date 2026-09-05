@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `docs/.agent/design/11-comptime-interfaces.md` lists the patterns, what is
 > NEXT: none
