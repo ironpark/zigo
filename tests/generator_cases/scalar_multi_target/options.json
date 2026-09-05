@@ -3,8 +3,27 @@
   "prefix": "zg",
   "go_module": "example.com/zigo/scalar",
   "cgo_targets": [
-    {"goos": "darwin", "goarch": "arm64"},
-    {"goos": "linux", "goarch": "amd64"},
-    {"goos": "windows", "goarch": "amd64"}
+    {
+      "goos": "darwin",
+      "goarch": "arm64"
+    },
+    {
+      "goos": "linux",
+      "goarch": "amd64"
+    },
+    {
+      "goos": "windows",
+      "goarch": "amd64"
+    }
+  ],
+  "target_ldflags": [
+    {
+      "constraint": "linux",
+      "flags": "-ldl"
+    },
+    {
+      "constraint": "darwin,arm64",
+      "flags": "-framework Metal"
+    }
   ]
 }

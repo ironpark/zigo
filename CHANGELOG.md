@@ -14,6 +14,11 @@
   `library_dir/<goos>_<goarch>/`에 설치됩니다. 생성기는 반복 가능한
   `--cgo-target <goos>/<goarch>` 플래그를 받습니다. 목록을 비워 두면 기존 배치와 생성물이
   그대로 유지됩니다.
+- `cgo_flags.target_ldflags`로 한 플랫폼에만 붙는 링크 플래그를 지정합니다. 항목마다
+  `#cgo <goos>[,<goarch>] LDFLAGS:` 줄이 따로 생성되며, 생성기는 반복 가능한
+  `--target-ldflags <goos>[,<goarch>]=<flags>` 플래그를 받습니다.
+- `.cgo_dynamic` 실행 시 공유 라이브러리를 찾지 못하는 원인과 rpath·환경 변수 해결 방법을
+  설정 문서에 추가했습니다.
 
 ### Changed
 

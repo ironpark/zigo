@@ -86,6 +86,9 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
     const cgo_targets = try allocator.alloc(generator.CgoTarget, options.cgo_targets.len);
     defer allocator.free(cgo_targets);
     for (options.cgo_targets, cgo_targets) |source, *target| target.* = .{ .goos = source.goos, .goarch = source.goarch };
+    const target_ldflags = try allocator.alloc(generator.TargetLdflags, options.target_ldflags.len);
+    defer allocator.free(target_ldflags);
+    for (options.target_ldflags, target_ldflags) |source, *entry| entry.* = .{ .constraint = source.constraint, .flags = source.flags };
     try generator.generate(allocator, io, semantic_bytes, output, .{
         .package = options.package,
         .prefix = options.prefix,
@@ -117,6 +120,7 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
             .dynamic => .dynamic,
         },
         .cgo_targets = cgo_targets,
+        .target_ldflags = target_ldflags,
         .library_stem = options.library_stem,
         .library_search_paths = options.library_search_paths,
         .library_env_vars = options.library_env_vars,

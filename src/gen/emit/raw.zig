@@ -225,6 +225,9 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
     else
         try writer.print("-I{s}", .{options.include_dir});
     if (!options.ldflags_external) try writeCgoLinkDirectives(allocator, writer, program, options);
+    // Platform-only additions never name the archive, so they stay in this
+    // file even when the archive line moves to the volatile one.
+    for (options.target_ldflags) |entry| try writer.print("\n#cgo {s} LDFLAGS: {s}", .{ entry.constraint, entry.flags });
     if (options.framework_ldflags.len != 0) try writer.print("\n#cgo darwin LDFLAGS: {s}", .{options.framework_ldflags});
     if (common.programHasCString(program)) try writer.writeAll("\n#include <stdlib.h>");
     if (options.header_name.len != 0)

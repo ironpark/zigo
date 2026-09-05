@@ -10,6 +10,7 @@ const stream_return = @import("stream_return");
 const validate = @import("validate/validate.zig");
 
 pub const CgoTarget = emit.Options.CgoTarget;
+pub const TargetLdflags = emit.Options.TargetLdflags;
 
 pub const Options = struct {
     package: []const u8,
@@ -38,6 +39,7 @@ pub const Options = struct {
     backend: emit.Options.Backend = .cgo,
     link_mode: emit.Options.LinkMode = .static,
     cgo_targets: []const CgoTarget = &.{},
+    target_ldflags: []const TargetLdflags = &.{},
     /// Windows constrains the purego callback ABI, so generation rejects a
     /// binding it could only produce a dispatcher that panics for.
     library_stem: []const u8 = "",
@@ -111,6 +113,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .backend = options.backend,
         .link_mode = options.link_mode,
         .cgo_targets = options.cgo_targets,
+        .target_ldflags = options.target_ldflags,
         .library_stem = options.library_stem,
         .library_search_paths = options.library_search_paths,
         .library_env_vars = options.library_env_vars,

@@ -22,6 +22,13 @@ pub const Options = struct {
     pub const LinkMode = enum { static, dynamic };
     /// One Go platform the cgo raw package links a native library for.
     pub const CgoTarget = struct { goos: []const u8, goarch: []const u8 };
+    /// Extra link flags for one platform: a `#cgo <constraint> LDFLAGS:` line
+    /// of its own, so a flag one platform needs never reaches the others.
+    pub const TargetLdflags = struct {
+        /// `goos` or `goos,goarch`, spelled as cgo's build constraint.
+        constraint: []const u8,
+        flags: []const u8,
+    };
     go_module: []const u8,
     cflags_override: ?[]const u8 = null,
     ldflags_override: ?[]const u8 = null,
@@ -54,6 +61,8 @@ pub const Options = struct {
     /// `library_dir/<goos>_<goarch>/`, so one generated tree builds for each
     /// listed platform. Ignored by purego, which resolves the library at run time.
     cgo_targets: []const CgoTarget = &.{},
+    /// Appended per-platform lines, written after the library link lines.
+    target_ldflags: []const TargetLdflags = &.{},
     library_stem: []const u8 = "",
     /// Public Go package name. Empty derives it from the binding name.
     go_package: []const u8 = "",
@@ -532,6 +541,18 @@ test "a cgo target list qualifies one link line per platform" {
     });
     try std.testing.expect(std.mem.indexOf(u8, override_output.written(), "\n#cgo LDFLAGS: -L/opt/hub -lhub\n") != null);
     try std.testing.expect(std.mem.indexOf(u8, override_output.written(), "darwin,arm64") == null);
+
+    // Platform additions are separate lines, and they outlive an external
+    // archive line because they never name the archive.
+    var platform_output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer platform_output.deinit();
+    try raw.renderRaw(std.testing.allocator, &platform_output.writer, program, .{
+        .go_module = "example.com/hub",
+        .ldflags_external = true,
+        .target_ldflags = &.{ .{ .constraint = "linux", .flags = "-ldl" }, .{ .constraint = "darwin,arm64", .flags = "-framework Metal" } },
+    });
+    try std.testing.expect(std.mem.indexOf(u8, platform_output.written(), "\n#cgo LDFLAGS:") == null);
+    try std.testing.expect(std.mem.indexOf(u8, platform_output.written(), "\n#cgo linux LDFLAGS: -ldl\n#cgo darwin,arm64 LDFLAGS: -framework Metal\n") != null);
 }
 
 test "every entry point the loader resolves is annotated for the COFF export table" {

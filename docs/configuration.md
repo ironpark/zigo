@@ -130,6 +130,35 @@ Go 패키지 기준 상대 경로가 기본 검색 경로가 됩니다. 명시�
 purego는 정적 링크와 조합되지 않습니다. 지원 플랫폼, 로딩 정책과 배포 방법은
 [공유 라이브러리와 purego](purego.md)를 참고하세요.
 
+### `.cgo_dynamic`의 런타임 검색 경로
+
+`.cgo_dynamic`은 `-L<설치 디렉터리> -l<stem>`만 생성하고 rpath는 넣지 않습니다. Zig가 만든
+공유 라이브러리의 install name은 `@rpath/lib<stem>.dylib`(macOS)이므로, Go 실행 파일에
+검색 경로가 없으면 링크는 성공해도 실행 시 `dyld: Library not loaded: @rpath/...`로
+실패합니다. Linux도 `LD_LIBRARY_PATH` 없이는 같은 이유로 실패합니다. 해결 방법은 두 가지입니다.
+
+```bash
+# 실행 환경에서 경로를 지정
+DYLD_LIBRARY_PATH=$PWD/zig-out/lib go test ./...   # macOS
+LD_LIBRARY_PATH=$PWD/zig-out/lib go test ./...     # Linux
+```
+
+```zig
+// 개발 중 편의를 위해 설치 디렉터리를 rpath로 굽기
+.cgo_flags = .{
+    .target_ldflags = &.{
+        .{ .goos = "darwin", .ldflags = &.{"-Wl,-rpath,${SRCDIR}/../../zig-out/lib"} },
+        .{ .goos = "linux", .ldflags = &.{"-Wl,-rpath,${SRCDIR}/../../zig-out/lib"} },
+    },
+},
+```
+
+`${SRCDIR}`은 cgo가 raw 패키지 디렉터리로 확장하므로 `library_dir`까지의 상대 경로를
+그대로 적습니다. `targets`를 쓰면 라이브러리가 `<goos>_<goarch>` 하위 디렉터리에 있으므로
+`goarch`까지 지정한 항목에 그 하위 경로를 적습니다. rpath는 빌드 머신의 절대 경로를 실행 파일에 남기므로 배포 빌드에서는
+배포 위치에 맞는 rpath나 `$ORIGIN`·`@executable_path` 기준 경로로 바꾸세요. zigo가 기본으로
+rpath를 넣지 않는 이유입니다.
+
 ## 여러 타깃용 cgo 라이브러리
 
 `targets`에 타깃을 나열하면 한 번의 생성으로 여러 플랫폼용 cgo 트리를 만듭니다.
@@ -279,6 +308,10 @@ library path, framework 링크 정보를 생성된 `#cgo LDFLAGS`로 전달합�
     .cflags = &.{"-I/opt/mylib/include"},
     .ldflags = &.{ "-L/opt/mylib/lib", "-lmylib" },
     .extra_ldflags = &.{"-Wl,--as-needed"},
+    .target_ldflags = &.{
+        .{ .goos = "linux", .ldflags = &.{"-ldl"} },
+        .{ .goos = "darwin", .goarch = "arm64", .ldflags = &.{ "-framework", "Metal" } },
+    },
 },
 ```
 
@@ -288,6 +321,12 @@ system library, framework, pkg-config 정보도 그대로 함께 나갑니다. �
 module에서 해당 링크를 하지 마세요. 정적 backend의 순서는 바인딩 archive, module 그래프의 정적
 입력, `extra_ldflags`, system library입니다. `ldflags`를 지정하면 앞의 두 항목을 함께
 대체하고 뒤의 두 항목은 유지합니다.
+
+`target_ldflags`는 한 플랫폼에만 붙는 플래그입니다. 항목마다 `#cgo <goos> LDFLAGS:` 또는
+`#cgo <goos>,<goarch> LDFLAGS:` 줄이 따로 생성되어 다른 플랫폼에는 영향을 주지 않습니다.
+`goarch`를 생략하면 그 OS의 모든 아키텍처에 적용됩니다. `targets` 사용 여부와 무관하게
+동작하고, `ldflags`로 기본 줄을 교체해도 유지됩니다. `goos`·`goarch`는 Go가 쓰는 소문자
+이름이어야 하며, 다른 값은 빌드 그래프 생성 시 진단합니다.
 
 ## 링크 정보가 전달되는 방식
 

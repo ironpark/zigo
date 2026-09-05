@@ -9,6 +9,8 @@ package raw
 #cgo darwin,arm64 LDFLAGS: ${SRCDIR}/../../../zig-out/lib/darwin_arm64/libscalar_zigo.a
 #cgo linux,amd64 LDFLAGS: ${SRCDIR}/../../../zig-out/lib/linux_amd64/libscalar_zigo.a
 #cgo windows,amd64 LDFLAGS: ${SRCDIR}/../../../zig-out/lib/windows_amd64/libscalar_zigo.a
+#cgo linux LDFLAGS: -ldl
+#cgo darwin,arm64 LDFLAGS: -framework Metal
 #include "zigo_scalar.h"
 */
 import "C"

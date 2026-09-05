@@ -19,6 +19,8 @@ zig build go
 일반적인 바인딩에 모두 필요한 설정은 아닙니다. raw와 공개 Go 코드는 `go/scalar`에 함께 둡니다.
 
 `-Ddynamic`은 cgo 공유 라이브러리 링크를 선택합니다. 실행 시 플랫폼의 공유 라이브러리
-검색 경로를 준비해야 합니다. 기본 정적 경로로 돌아갈 때는 `zig build go`를 다시 실행하세요.
+검색 경로를 준비해야 합니다. 예를 들어 macOS에서는 `DYLD_LIBRARY_PATH=$PWD/../zig-out/lib go test ./...`
+입니다 ([런타임 검색 경로](../../docs/configuration.md#cgo_dynamic의-런타임-검색-경로)).
+기본 정적 경로로 돌아갈 때는 `zig build go`를 다시 실행하세요.
 
 [링크 설정](../../docs/configuration.md) · [전체 예제](../../docs/examples.md)

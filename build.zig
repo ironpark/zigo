@@ -9,8 +9,20 @@ pub const CgoFlags = struct {
     cflags: []const []const u8 = &.{},
     ldflags: []const []const u8 = &.{},
     /// Additional linker flags appended after zigo's default (or overridden)
-    /// binding-library flags.
+    /// binding-library flags, on every platform.
     extra_ldflags: []const []const u8 = &.{},
+    /// Linker flags for one platform only, each emitted as its own
+    /// `#cgo <goos>[,<goarch>] LDFLAGS:` line after the library lines. They
+    /// apply whether or not `targets` is set, and survive `ldflags` overrides.
+    target_ldflags: []const TargetLdflags = &.{},
+
+    pub const TargetLdflags = struct {
+        /// Go's OS name: `darwin`, `linux`, `windows`, ...
+        goos: []const u8,
+        /// Go's architecture name; null applies the flags to every architecture.
+        goarch: ?[]const u8 = null,
+        ldflags: []const []const u8,
+    };
 };
 
 const LinkMode = enum { static, dynamic };
@@ -265,6 +277,16 @@ fn resolveInstall(
     };
 }
 
+/// cgo build constraints are lowercase words, so a typo like `Linux` would
+/// silently select nothing.
+fn validateGoPlatformWord(option: []const u8, value: []const u8) void {
+    if (value.len == 0) std.debug.panic("{s} must not be empty", .{option});
+    for (value) |byte| {
+        if (!std.ascii.isLower(byte) and !std.ascii.isDigit(byte))
+            std.debug.panic("{s} must be a lowercase Go platform name, got '{s}'", .{ option, value });
+    }
+}
+
 fn validateInstallFilename(option: []const u8, value: []const u8) void {
     if (value.len == 0 or !std.mem.eql(u8, std.fs.path.basename(value), value) or
         std.mem.eql(u8, value, ".") or std.mem.eql(u8, value, ".."))
@@ -464,6 +486,15 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     if (static_link_inputs.paths.len != 0) generate.addArg("--ldflags-external");
     if (options.targets.len != 0) {
         for (native_targets) |native| generate.addArgs(&.{ "--cgo-target", b.fmt("{s}/{s}", .{ native.go_target.?.goos, native.go_target.?.goarch }) });
+    }
+    if (options.cgo_flags) |flags| {
+        for (flags.target_ldflags) |entry| {
+            validateGoPlatformWord("cgo_flags.target_ldflags goos", entry.goos);
+            if (entry.goarch) |goarch| validateGoPlatformWord("cgo_flags.target_ldflags goarch", goarch);
+            if (entry.ldflags.len == 0) @panic("cgo_flags.target_ldflags entries must list at least one flag");
+            const constraint = if (entry.goarch) |goarch| b.fmt("{s},{s}", .{ entry.goos, goarch }) else entry.goos;
+            generate.addArgs(&.{ "--target-ldflags", b.fmt("{s}={s}", .{ constraint, steps.joinFlags(b, entry.ldflags) }) });
+        }
     }
     if (options.go_must_variants) generate.addArg("--go-must-variants");
     if (backend == .purego) addLibraryLoadingArgs(b, generate, library_loading);
