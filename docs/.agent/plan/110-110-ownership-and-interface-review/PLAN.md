@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T07:41:43Z"
 description: "Review plan: generalize ownership as a first-class IR concept and evaluate exporting Zig comptime interface patterns as Go interfaces"
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-05T07:29:55Z"
 ---
 > NEXT: Inventory every ownership path with its lowering fields, emit sites and golden case. ([Phase 0](phases/00-ownership-inventory.md))
@@ -11,7 +12,7 @@ registered_at: "2026-09-05T07:29:55Z"
 - [x] [Phase 01: Ownership design and recommendation](phases/01-ownership-design.md)
 - [x] [Phase 02: Comptime interface survey](phases/02-interface-survey.md)
 - [x] [Phase 03: Interface design and recommendation](phases/03-interface-design.md)
-- [ ] [Phase 04: Index and hand-off](phases/04-index-and-handoff.md)
+- [x] [Phase 04: Index and hand-off](phases/04-index-and-handoff.md)
 
 # Shared Verification
 

@@ -1,9 +1,10 @@
 ---
+completed_at: "2026-09-05T07:41:43Z"
 depends_on:
 - "110-110-ownership-and-interface-review#1"
 - "110-110-ownership-and-interface-review#3"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Index updated; the user has both recommendations in one place.
 > NEXT: none
