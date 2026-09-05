@@ -1,0 +1,10 @@
+{
+  "package": "scalar",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/scalar",
+  "cgo_targets": [
+    {"goos": "darwin", "goarch": "arm64"},
+    {"goos": "linux", "goarch": "amd64"},
+    {"goos": "windows", "goarch": "amd64"}
+  ]
+}

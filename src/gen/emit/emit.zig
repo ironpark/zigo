@@ -20,6 +20,8 @@ pub const references = @import("references.zig");
 pub const Options = struct {
     pub const Backend = enum { cgo, purego };
     pub const LinkMode = enum { static, dynamic };
+    /// One Go platform the cgo raw package links a native library for.
+    pub const CgoTarget = struct { goos: []const u8, goarch: []const u8 };
     go_module: []const u8,
     cflags_override: ?[]const u8 = null,
     ldflags_override: ?[]const u8 = null,
@@ -46,6 +48,12 @@ pub const Options = struct {
     lifecycle_package_path: []const u8 = "internal/lifecycle",
     backend: Backend = .cgo,
     link_mode: Options.LinkMode = .static,
+    /// Go platforms the cgo raw package links for. Empty keeps one unqualified
+    /// `#cgo LDFLAGS` line naming `library_dir` directly. Otherwise every entry
+    /// gets its own `#cgo <goos>,<goarch> LDFLAGS` line naming the library in
+    /// `library_dir/<goos>_<goarch>/`, so one generated tree builds for each
+    /// listed platform. Ignored by purego, which resolves the library at run time.
+    cgo_targets: []const CgoTarget = &.{},
     library_stem: []const u8 = "",
     /// Public Go package name. Empty derives it from the binding name.
     go_package: []const u8 = "",
@@ -470,6 +478,60 @@ test "a colocated internal loader keeps the loader out of the exported names" {
     exported_options.library_exported_api = true;
     try raw.renderRaw(std.testing.allocator, &exported.writer, program, exported_options);
     try std.testing.expect(std.mem.indexOf(u8, exported.written(), "func LoadLibrary(") != null);
+}
+
+test "a cgo target list qualifies one link line per platform" {
+    const origin: semantic.SemanticFn = .{
+        .name = "ping",
+        .params = &.{},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_ping",
+    };
+    const program: abi.Program = .{
+        .functions = &.{.{ .symbol = "zg_ping", .params = &.{}, .ret = .void, .origin = &origin }},
+        .package = "hub",
+        .prefix = "zg",
+    };
+    const targets: []const Options.CgoTarget = &.{
+        .{ .goos = "darwin", .goarch = "arm64" },
+        .{ .goos = "linux", .goarch = "amd64" },
+    };
+
+    var static_output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer static_output.deinit();
+    try raw.renderRaw(std.testing.allocator, &static_output.writer, program, .{
+        .go_module = "example.com/hub",
+        .library_dir = "${SRCDIR}/lib",
+        .cgo_targets = targets,
+        .system_ldflags = "-lz",
+    });
+    const static_text = static_output.written();
+    try std.testing.expect(std.mem.indexOf(u8, static_text, "\n#cgo darwin,arm64 LDFLAGS: ${SRCDIR}/lib/darwin_arm64/libhub_zigo.a -lz\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, static_text, "\n#cgo linux,amd64 LDFLAGS: ${SRCDIR}/lib/linux_amd64/libhub_zigo.a -lz\n") != null);
+    // The unqualified line is what a single-target tree links with; it must
+    // not also appear here or every platform would link two archives.
+    try std.testing.expect(std.mem.indexOf(u8, static_text, "\n#cgo LDFLAGS:") == null);
+
+    var dynamic_output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer dynamic_output.deinit();
+    try raw.renderRaw(std.testing.allocator, &dynamic_output.writer, program, .{
+        .go_module = "example.com/hub",
+        .library_dir = "${SRCDIR}/lib",
+        .cgo_targets = targets,
+        .link_mode = .dynamic,
+    });
+    try std.testing.expect(std.mem.indexOf(u8, dynamic_output.written(), "\n#cgo linux,amd64 LDFLAGS: -L${SRCDIR}/lib/linux_amd64 -lhub_zigo\n") != null);
+
+    // An explicit override owns the whole line, target list or not.
+    var override_output: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer override_output.deinit();
+    try raw.renderRaw(std.testing.allocator, &override_output.writer, program, .{
+        .go_module = "example.com/hub",
+        .cgo_targets = targets,
+        .ldflags_override = "-L/opt/hub -lhub",
+    });
+    try std.testing.expect(std.mem.indexOf(u8, override_output.written(), "\n#cgo LDFLAGS: -L/opt/hub -lhub\n") != null);
+    try std.testing.expect(std.mem.indexOf(u8, override_output.written(), "darwin,arm64") == null);
 }
 
 test "every entry point the loader resolves is annotated for the COFF export table" {

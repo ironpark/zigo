@@ -5,6 +5,9 @@ pub const Backend = enum { cgo, purego };
 /// callback ABI in ways the other systems do not.
 pub const LinkMode = enum { static, dynamic };
 
+/// One `--cgo-target <goos>/<goarch>` value.
+pub const CgoTarget = struct { goos: []const u8, goarch: []const u8 };
+
 pub const ParseError = error{
     DuplicateArgument,
     InvalidValue,
@@ -41,6 +44,8 @@ pub const Generate = struct {
     errors_lock_path: ?[]const u8 = null,
     backend: Backend = .cgo,
     link_mode: LinkMode = .static,
+    /// cgo platforms in `--cgo-target` order; empty means one unqualified link line.
+    cgo_targets: []const CgoTarget = &.{},
     library_stem: []const u8 = "",
     /// Colon-separated candidate locations, in the order they are tried.
     library_search_paths: []const u8 = "",
@@ -118,6 +123,7 @@ pub fn writeUsage(writer: *std.Io.Writer) std.Io.Writer.Error!void {
         \\commands:
         \\  generate  --semantic <file> --output <dir> --package <name> [--gofmt <path>] [options]
         \\            [--go-package <name>] [--go-package-path <path>] [--go-must-variants]
+        \\            [--link-mode static|dynamic] [--cgo-target <goos>/<goarch>]...
         \\  check     --generated <dir> --source <dir> [--file <generated> <source>]...
         \\  abi-diff  --base <file> --current <file> [--base-backend cgo|purego] [--current-backend cgo|purego] [--json] [--fail-on breaking]
         \\  report    --semantic <file> [--go-module <path>] [options]
@@ -215,6 +221,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
     var go_must_variants = false;
     var backend: ?Backend = null;
     var link_mode: ?LinkMode = null;
+    var cgo_targets: std.ArrayList(CgoTarget) = .empty;
     var library_stem: ?[]const u8 = null;
     var loading: LibraryLoadingArgs = .{};
 
@@ -282,6 +289,13 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
             link_mode = parseLinkMode(try takeValue(args, &index)) orelse return error.InvalidValue;
         } else if (try loading.parseFlag(flag, args, &index)) {
             // handled by the shared loading-policy parser
+        } else if (std.mem.eql(u8, flag, "--cgo-target")) {
+            const target = parseCgoTarget(try takeValue(args, &index)) orelse return error.InvalidValue;
+            for (cgo_targets.items) |existing| {
+                if (std.mem.eql(u8, existing.goos, target.goos) and std.mem.eql(u8, existing.goarch, target.goarch))
+                    return error.DuplicateArgument;
+            }
+            cgo_targets.append(std.heap.page_allocator, target) catch @panic("OOM");
         } else if (std.mem.eql(u8, flag, "--library-stem")) {
             try set(&library_stem, try takeValue(args, &index));
         } else if (std.mem.eql(u8, flag, "--gofmt")) {
@@ -320,6 +334,7 @@ fn parseGenerate(args: []const []const u8) ParseError!Generate {
         .errors_lock_path = errors_lock_path,
         .backend = backend orelse .cgo,
         .link_mode = link_mode orelse .static,
+        .cgo_targets = cgo_targets.items,
         .library_stem = library_stem orelse "",
         .library_search_paths = loading.search_paths orelse "",
         .library_env_vars = loading.env_vars,
@@ -508,6 +523,24 @@ fn parseLinkMode(value: []const u8) ?LinkMode {
     return null;
 }
 
+/// `<goos>/<goarch>`, both parts non-empty and plain lowercase identifiers so
+/// they can be spelled straight into a `#cgo` constraint.
+fn parseCgoTarget(value: []const u8) ?CgoTarget {
+    const slash = std.mem.indexOfScalar(u8, value, '/') orelse return null;
+    const goos = value[0..slash];
+    const goarch = value[slash + 1 ..];
+    if (!isGoPlatformWord(goos) or !isGoPlatformWord(goarch)) return null;
+    return .{ .goos = goos, .goarch = goarch };
+}
+
+fn isGoPlatformWord(word: []const u8) bool {
+    if (word.len == 0) return false;
+    for (word) |byte| {
+        if (!std.ascii.isLower(byte) and !std.ascii.isDigit(byte)) return false;
+    }
+    return true;
+}
+
 fn parseBackend(value: []const u8) ?Backend {
     if (std.mem.eql(u8, value, "cgo")) return .cgo;
     if (std.mem.eql(u8, value, "purego")) return .purego;
@@ -589,6 +622,17 @@ test "generate command parses named arguments" {
     try std.testing.expectEqual(LinkMode.dynamic, dynamic_generate.link_mode);
     try std.testing.expectEqualStrings("scalar_zigo", dynamic_generate.library_stem);
     try std.testing.expectError(error.InvalidValue, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--link-mode", "shared" }));
+
+    const multi_target = (try parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--cgo-target", "darwin/arm64", "--cgo-target", "linux/amd64" })).generate;
+    try std.testing.expectEqual(@as(usize, 2), multi_target.cgo_targets.len);
+    try std.testing.expectEqualStrings("darwin", multi_target.cgo_targets[0].goos);
+    try std.testing.expectEqualStrings("arm64", multi_target.cgo_targets[0].goarch);
+    try std.testing.expectEqualStrings("linux", multi_target.cgo_targets[1].goos);
+    try std.testing.expectEqualStrings("amd64", multi_target.cgo_targets[1].goarch);
+    try std.testing.expectEqual(@as(usize, 0), dynamic_generate.cgo_targets.len);
+    try std.testing.expectError(error.InvalidValue, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--cgo-target", "darwin-arm64" }));
+    try std.testing.expectError(error.InvalidValue, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--cgo-target", "darwin/" }));
+    try std.testing.expectError(error.DuplicateArgument, parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--cgo-target", "linux/amd64", "--cgo-target", "linux/amd64" }));
 
     const loading = (try parse(&.{ "generate", "--semantic", "s.json", "--output", "out", "--package", "scalar", "--library-search-paths", "${EXECUTABLE_DIR}:/opt/app/lib", "--library-env-vars", "ZIGO_SCALAR_LIBRARY_PATH,ZIGO_LIBRARY_PATH", "--library-automatic", "--library-internal-api" })).generate;
     try std.testing.expectEqualStrings("${EXECUTABLE_DIR}:/opt/app/lib", loading.library_search_paths);

@@ -164,6 +164,50 @@ fn writeCgoStructRead(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
     try writer.print("{s}}}", .{indent});
 }
 
+/// The `#cgo LDFLAGS` directives, each on its own line with a leading newline.
+///
+/// An explicit override is one unqualified line: the caller owns the flags and
+/// the target set alike. Without an override, a target list produces one
+/// `#cgo <goos>,<goarch>` line per target naming that target's library in its
+/// own subdirectory, and an empty list keeps the historical single line so
+/// existing trees stay byte-identical.
+fn writeCgoLinkDirectives(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
+    if (options.ldflags_override) |flags| {
+        try writer.print("\n#cgo LDFLAGS: {s}", .{flags});
+        try writeTrailingLdflags(writer, options);
+        return;
+    }
+    const stem = try purego.libraryStemAlloc(allocator, program, options);
+    defer allocator.free(stem);
+    if (options.cgo_targets.len == 0) {
+        try writer.writeAll("\n#cgo LDFLAGS: ");
+        try writeLibraryLdflags(writer, options, options.library_dir, stem);
+        try writeTrailingLdflags(writer, options);
+        return;
+    }
+    for (options.cgo_targets) |target| {
+        const directory = try std.fmt.allocPrint(allocator, "{s}/{s}_{s}", .{ options.library_dir, target.goos, target.goarch });
+        defer allocator.free(directory);
+        try writer.print("\n#cgo {s},{s} LDFLAGS: ", .{ target.goos, target.goarch });
+        try writeLibraryLdflags(writer, options, directory, stem);
+        try writeTrailingLdflags(writer, options);
+    }
+}
+
+fn writeLibraryLdflags(writer: *std.Io.Writer, options: emit.Options, directory: []const u8, stem: []const u8) !void {
+    // Naming the archive keeps a same-named shared library in the install
+    // directory from satisfying a static link instead.
+    if (options.link_mode == .static)
+        try writer.print("{s}/lib{s}.a", .{ directory, stem })
+    else
+        try writer.print("-L{s} -l{s}", .{ directory, stem });
+}
+
+fn writeTrailingLdflags(writer: *std.Io.Writer, options: emit.Options) !void {
+    if (options.extra_ldflags.len != 0) try writer.print(" {s}", .{options.extra_ldflags});
+    if (options.system_ldflags.len != 0) try writer.print(" {s}", .{options.system_ldflags});
+}
+
 pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
     if (options.backend == .purego) return purego.renderPuregoRaw(allocator, writer, program, options);
     const package = try naming.snakeAlloc(allocator, program.package);
@@ -180,23 +224,7 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
         try writer.writeAll(flags)
     else
         try writer.print("-I{s}", .{options.include_dir});
-    if (!options.ldflags_external) {
-        try writer.writeAll("\n#cgo LDFLAGS: ");
-        if (options.ldflags_override) |flags|
-            try writer.writeAll(flags)
-        else {
-            const stem = try purego.libraryStemAlloc(allocator, program, options);
-            defer allocator.free(stem);
-            // Naming the archive keeps a same-named shared library in the install
-            // directory from satisfying a static link instead.
-            if (options.link_mode == .static)
-                try writer.print("{s}/lib{s}.a", .{ options.library_dir, stem })
-            else
-                try writer.print("-L{s} -l{s}", .{ options.library_dir, stem });
-        }
-        if (options.extra_ldflags.len != 0) try writer.print(" {s}", .{options.extra_ldflags});
-        if (options.system_ldflags.len != 0) try writer.print(" {s}", .{options.system_ldflags});
-    }
+    if (!options.ldflags_external) try writeCgoLinkDirectives(allocator, writer, program, options);
     if (options.framework_ldflags.len != 0) try writer.print("\n#cgo darwin LDFLAGS: {s}", .{options.framework_ldflags});
     if (common.programHasCString(program)) try writer.writeAll("\n#include <stdlib.h>");
     if (options.header_name.len != 0)

@@ -22,6 +22,9 @@ const CaseOptions = struct {
     raw_colocated: bool = false,
     go_must_variants: bool = false,
     errors_lock_path: ?[]const u8 = null,
+    link_mode: enum { static, dynamic } = .static,
+    /// cgo platforms the raw package links for; empty keeps the single line.
+    cgo_targets: []const generator.CgoTarget = &.{},
 };
 
 pub fn main(init: std.process.Init) !void {
@@ -66,6 +69,11 @@ pub fn main(init: std.process.Init) !void {
         .raw_colocated = options.raw_colocated,
         .go_must_variants = options.go_must_variants,
         .errors_lock_bytes = errors_lock_bytes,
+        .link_mode = switch (options.link_mode) {
+            .static => .static,
+            .dynamic => .dynamic,
+        },
+        .cgo_targets = options.cgo_targets,
     });
 
     var result = try snapshot.compare(allocator, init.io, expected_dir, output_dir);

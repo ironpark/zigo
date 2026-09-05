@@ -82,6 +82,10 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
         try std.Io.Dir.cwd().readFileAlloc(io, path, allocator, .limited(16 * 1024 * 1024))
     else
         null;
+    // The CLI keeps its own target record so it does not depend on the emitter.
+    const cgo_targets = try allocator.alloc(generator.CgoTarget, options.cgo_targets.len);
+    defer allocator.free(cgo_targets);
+    for (options.cgo_targets, cgo_targets) |source, *target| target.* = .{ .goos = source.goos, .goarch = source.goarch };
     try generator.generate(allocator, io, semantic_bytes, output, .{
         .package = options.package,
         .prefix = options.prefix,
@@ -112,6 +116,7 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
             .static => .static,
             .dynamic => .dynamic,
         },
+        .cgo_targets = cgo_targets,
         .library_stem = options.library_stem,
         .library_search_paths = options.library_search_paths,
         .library_env_vars = options.library_env_vars,
