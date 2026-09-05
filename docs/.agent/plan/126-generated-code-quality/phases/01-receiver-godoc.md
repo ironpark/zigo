@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T23:02:20Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: No example has two receiver spellings for one type; `zig build test` passes.
 > NEXT: none
