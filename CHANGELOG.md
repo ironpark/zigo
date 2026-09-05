@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.11.0] - 2026-09-06
+
 ### Changed
 
 - retained 콜백을 가진 타입의 메서드가 호출마다 콜백 slot을 모두 훑지 않습니다. raw 계층이
@@ -658,7 +660,8 @@
 - 생성된 Go doc이 식별자로 시작하지 않는 문장을 두 줄 형식으로 내고, `//` 그룹 주석과
   빈 줄 없이 이어진 선언의 doc 공유를 지원합니다. 모든 생성 패키지에 패키지 doc이 있습니다.
 
-[Unreleased]: https://github.com/ironpark/zigo/compare/0.10.0...HEAD
+[Unreleased]: https://github.com/ironpark/zigo/compare/0.11.0...HEAD
+[0.11.0]: https://github.com/ironpark/zigo/compare/0.10.0...0.11.0
 [0.10.0]: https://github.com/ironpark/zigo/compare/0.9.1...0.10.0
 [0.9.1]: https://github.com/ironpark/zigo/compare/0.9.0...0.9.1
 [0.9.0]: https://github.com/ironpark/zigo/compare/0.8.1...0.9.0

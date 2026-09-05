@@ -37,7 +37,7 @@ purego도 실행할 OS·아키텍처에 맞는 Zig 공유 라이브러리가 필
 필요한 바인딩 설정만 합치고 기존 빌드 스텝을 보존하세요.
 
 ```bash
-zig fetch --save git+https://github.com/ironpark/zigo#0.10.0
+zig fetch --save git+https://github.com/ironpark/zigo#0.11.0
 ```
 
 명령이 `build.zig.zon`에 `zigo` 의존성을 추가합니다. 재현 가능한 빌드를 위해 생성된
