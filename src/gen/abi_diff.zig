@@ -209,6 +209,25 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
     for (current.constructors) |new| if (findConstructor(base.constructors, new.type) == null)
         try add(allocator, &report, .added, new.type, "constructor mapping added");
 
+    // A generated interface is a Go type callers name and may implement, so
+    // any change to its method set or to who implements it can break them.
+    const base_interfaces = base.interfaces orelse &.{};
+    const current_interfaces = current.interfaces orelse &.{};
+    for (base_interfaces) |old| {
+        const new = findInterface(current_interfaces, old.name) orelse {
+            try add(allocator, &report, .breaking, old.name, "interface removed");
+            continue;
+        };
+        if (!stringListEqual(old.methods, new.methods))
+            try add(allocator, &report, .breaking, old.name, "interface method set changed")
+        else if (old.closer != new.closer)
+            try add(allocator, &report, .breaking, old.name, "interface io.Closer embedding changed");
+        if (!stringListEqual(old.types, new.types))
+            try add(allocator, &report, .breaking, old.name, "interface implementing types changed");
+    }
+    for (current_interfaces) |new| if (findInterface(base_interfaces, new.name) == null)
+        try add(allocator, &report, .added, new.name, "interface added");
+
     return report;
 }
 
@@ -670,6 +689,17 @@ fn optionalHintEqual(lhs: ?semantic.SemanticHint, rhs: ?semantic.SemanticHint) b
 fn findType(types: []const semantic.TypeDecl, name: []const u8) ?semantic.TypeDecl {
     for (types) |declaration| if (std.mem.eql(u8, declaration.name, name)) return declaration;
     return null;
+}
+
+fn findInterface(interfaces: []const semantic.Interface, name: []const u8) ?semantic.Interface {
+    for (interfaces) |interface| if (std.mem.eql(u8, interface.name, name)) return interface;
+    return null;
+}
+
+fn stringListEqual(lhs: []const []const u8, rhs: []const []const u8) bool {
+    if (lhs.len != rhs.len) return false;
+    for (lhs, rhs) |left, right| if (!std.mem.eql(u8, left, right)) return false;
+    return true;
 }
 
 fn findConstructor(constructors: []const semantic.Constructor, type_name: []const u8) ?semantic.Constructor {
@@ -1180,6 +1210,60 @@ test "constructor mapping changes break while additions are compatible" {
     try std.testing.expectEqual(@as(usize, 2), report.changes.items.len);
     try std.testing.expectEqual(ChangeKind.breaking, report.changes.items[0].kind);
     try std.testing.expectEqual(ChangeKind.added, report.changes.items[1].kind);
+}
+
+test "interface additions are compatible while method and type changes break" {
+    // Lowering resolves every interface method, so the documents carry the
+    // methods they name.
+    const count: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
+    const types = [_]semantic.TypeDecl{
+        .{ .kind = .@"opaque", .name = "IntBatch" },
+        .{ .kind = .@"opaque", .name = "FloatBatch" },
+        .{ .kind = .@"opaque", .name = "Window" },
+        .{ .kind = .@"opaque", .name = "Sink" },
+        .{ .kind = .@"opaque", .name = "Source" },
+    };
+    const functions = [_]semantic.SemanticFn{
+        .{ .name = "len", .receiver = "IntBatch", .params = &.{}, .@"return" = count, .symbol = "zg_int_batch_len" },
+        .{ .name = "clear", .receiver = "IntBatch", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_int_batch_clear" },
+        .{ .name = "len", .receiver = "FloatBatch", .params = &.{}, .@"return" = count, .symbol = "zg_float_batch_len" },
+        .{ .name = "size", .receiver = "Window", .params = &.{}, .@"return" = count, .symbol = "zg_window_size" },
+        .{ .name = "flush", .receiver = "Sink", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_sink_flush" },
+        .{ .name = "read", .receiver = "Source", .params = &.{}, .@"return" = count, .symbol = "zg_source_read" },
+    };
+    const base: semantic.Semantic = .{
+        .functions = &functions,
+        .package = "demo",
+        .prefix = "zg",
+        .types = &types,
+        .zig_version = "0.16.0",
+        .interfaces = &.{
+            .{ .closer = false, .methods = &.{"len"}, .name = "Batch", .types = &.{ "IntBatch", "FloatBatch" } },
+            .{ .closer = false, .methods = &.{"size"}, .name = "Sized", .types = &.{"Window"} },
+            .{ .closer = false, .methods = &.{"flush"}, .name = "Flusher", .types = &.{"Sink"} },
+        },
+    };
+    const current: semantic.Semantic = .{
+        .functions = &functions,
+        .package = "demo",
+        .prefix = "zg",
+        .types = &types,
+        .zig_version = "0.16.0",
+        .interfaces = &.{
+            .{ .closer = false, .methods = &.{ "len", "clear" }, .name = "Batch", .types = &.{"IntBatch"} },
+            .{ .closer = true, .methods = &.{"size"}, .name = "Sized", .types = &.{"Window"} },
+            .{ .closer = false, .methods = &.{"read"}, .name = "Reader", .types = &.{"Source"} },
+        },
+    };
+    var report = try diff(std.testing.allocator, base, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 5), report.changes.items.len);
+    try std.testing.expectEqualStrings("interface method set changed", report.changes.items[0].detail);
+    try std.testing.expectEqualStrings("interface implementing types changed", report.changes.items[1].detail);
+    try std.testing.expectEqualStrings("interface io.Closer embedding changed", report.changes.items[2].detail);
+    try std.testing.expectEqualStrings("interface removed", report.changes.items[3].detail);
+    try std.testing.expectEqual(ChangeKind.added, report.changes.items[4].kind);
+    try std.testing.expectEqualStrings("Reader", report.changes.items[4].subject);
 }
 
 test "changing the written hint of an output slice breaks the C signature" {

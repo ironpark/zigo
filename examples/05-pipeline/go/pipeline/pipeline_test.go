@@ -150,6 +150,16 @@ func TestGenericBatchSpecializations(t *testing.T) {
 	if got := must(floats.Len()); got != 1 {
 		t.Fatalf("FloatBatch.Len() = %d, want 1", got)
 	}
+
+	// The element-independent methods of both specializations are one
+	// generated interface, so a caller can hold them together.
+	var total uint
+	for _, batch := range []Batch{ints, floats} {
+		total += must(batch.Len())
+	}
+	if total != 4 {
+		t.Fatalf("summed Batch.Len() = %d, want 4", total)
+	}
 }
 
 func TestConcurrentPipelineLifecycle(t *testing.T) {

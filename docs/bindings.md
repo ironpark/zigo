@@ -1437,6 +1437,68 @@ snapshot은 zigo 소유 `extern struct`의 전체 크기를 ABI로 고정합니�
 change입니다. variant가 늘 수 있으면 projection을, 모양이 고정되고 FFI 왕복을 줄여야 하면
 snapshot을 선택하세요.
 
+## 인터페이스
+
+등록한 opaque handle 여러 개가 같은 메서드를 같은 Go 시그니처로 제공하면, `.interfaces`로
+그 메서드 집합에 이름을 붙여 하나의 Go 인터페이스로 내보낼 수 있습니다. 같은 generic에서
+나온 구체 타입(`Batch(i32)`, `Batch(f64)`)이나 같은 vtable을 채우는 구현체가 전형적인
+경우입니다.
+
+```zig
+pub const bindings = zigo.define(.{
+    .root = library,
+    .types = .{
+        .{ .name = "IntBatch", .type = library.IntBatch, .repr = .@"opaque" },
+        .{ .name = "FloatBatch", .type = library.FloatBatch, .repr = .@"opaque" },
+    },
+    .interfaces = .{
+        .{
+            .name = "Batch",                                   // Go 인터페이스 이름
+            .methods = .{"len"},                               // Zig 메서드 이름
+            .types = .{ library.IntBatch, library.FloatBatch }, // 등록된 opaque 타입
+            .closer = true,                                    // 기본값. io.Closer 포함
+            .doc = "Batch is any staged batch, whatever its element type.",
+        },
+    },
+    ...
+});
+```
+
+- `.types`의 각 항목은 `.repr = .@"opaque"`로 등록된 타입이어야 하며, `.methods`는 그 타입
+  모두가 receiver 메서드로 노출하는 Zig 선언 이름입니다. 소멸자는 메서드로 치지 않습니다.
+- `.closer`는 모든 타입이 생성자 짝을 가질 때만 참일 수 있습니다. 생성자 짝이 없는 타입을
+  묶으려면 `.closer = false`를 적습니다.
+- 하위 패키지를 쓰면 인터페이스는 첫 타입의 패키지에 들어가고, 모든 타입이 같은 패키지에
+  있어야 합니다.
+
+생성기는 각 메서드의 공개 Go 시그니처를 타입마다 렌더링해 비교합니다. 파라미터 이름은
+비교하지 않지만 타입, 반환값, `Must` 변형 여부는 같아야 합니다. 원소 타입이 시그니처에
+들어가는 메서드(`push(value: T)`)는 묶을 수 없고 `ZIGO049`로 거부됩니다. 이름 충돌은
+등록 타입과 같은 규칙으로 `ZIGO024`입니다.
+
+생성물은 `<package>_interfaces_gen.go` 한 파일입니다.
+
+```go
+// Batch is any staged batch, whatever its element type.
+// Batch is implemented by *IntBatch and *FloatBatch.
+type Batch interface {
+	// Len calls the Zig method len of the implementing handle.
+	Len() (uint, error)
+	MustLen() uint
+	io.Closer
+}
+
+var _ Batch = (*IntBatch)(nil)
+var _ Batch = (*FloatBatch)(nil)
+```
+
+메서드 doc은 첫 타입 메서드의 doc을 씁니다. 단언 두 줄은 시그니처 비교가 놓친 것을
+`go build`가 잡게 하는 안전망입니다. `abi-diff`는 인터페이스 추가를 호환으로, 제거와 메서드
+집합·구현 타입·`io.Closer` 변경을 breaking으로 보고합니다.
+
+`anytype`을 받는 Zig 함수는 인터페이스로 노출하지 않습니다. instantiation은 호출로만 생기므로
+구체 타입별 wrapper 함수를 Zig에 쓰고 그것을 등록하세요.
+
 ## 생성된 Go error 판별
 
 분류에는 내보낸 sentinel과 `errors.Is`를 사용하고, 세부 정보가 필요할 때만 `errors.As`를

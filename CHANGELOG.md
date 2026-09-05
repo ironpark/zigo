@@ -6,6 +6,17 @@
 
 ## [Unreleased]
 
+`semantic.json`에 `interfaces` 필드가 추가되므로 다음 릴리스는 minor(`0.9.0`)입니다. 인터페이스를
+등록하지 않은 바인딩의 `semantic.json`과 생성물은 그대로입니다.
+
+### Added
+
+- `.interfaces` 등록. 등록한 opaque handle 집합이 같은 Go 시그니처로 제공하는 메서드 집합에
+  이름을 붙여 `<package>_interfaces_gen.go`에 Go 인터페이스와 `var _ Iface = (*T)(nil)` 단언을
+  냅니다. 구조 검사와 렌더링한 시그니처 비교는 `ZIGO049`, 이름 충돌은 `ZIGO024`로 보고하고,
+  `abi-diff`는 인터페이스 추가를 호환, 제거와 메서드·타입·`io.Closer` 변경을 breaking으로
+  봅니다. `examples/05-pipeline`의 `Batch`가 예제입니다.
+
 ### Changed
 
 - 생성기 내부 구조를 정리했습니다. `src/gen/emit.zig`는 출력 파일별 `src/gen/emit/`으로,

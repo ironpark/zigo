@@ -535,6 +535,20 @@
       "symbol": "zg_compression_bound"
     }
   ],
+  "interfaces": [
+    {
+      "closer": true,
+      "doc": "Batch is any staged batch, whatever its element type.",
+      "methods": [
+        "len"
+      ],
+      "name": "Batch",
+      "types": [
+        "IntBatch",
+        "FloatBatch"
+      ]
+    }
+  ],
   "ir_version": 1,
   "package": "pipeline",
   "prefix": "zg",

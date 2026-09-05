@@ -8,6 +8,11 @@ pub const bindings = zigo.define(.{
         .{ .name = "IntBatch", .type = library.IntBatch, .repr = .@"opaque" },
         .{ .name = "FloatBatch", .type = library.FloatBatch, .repr = .@"opaque" },
     },
+    // Both batches come from the same generic, so the methods that do not
+    // mention the element type can be one Go interface.
+    .interfaces = .{
+        .{ .name = "Batch", .methods = .{"len"}, .types = .{ library.IntBatch, library.FloatBatch }, .doc = "Batch is any staged batch, whatever its element type." },
+    },
     .functions = .{
         .{ .path = "IntBatch.create" },
         .{ .path = "IntBatch.push" },

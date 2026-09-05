@@ -195,7 +195,10 @@
   zigo가 정의한 `extern struct`이며, variant 수만큼 멤버를 가지므로 variant가 많은 union은
   호출마다 그만큼을 복사한다.
 - generic 함수는 구체화 전에는 시그니처가 없으므로 직접 노출할 수 없다. generic 타입은
-  `types`에 구체화된 타입을 이름과 함께 등록한다.
+  `types`에 구체화된 타입을 이름과 함께 등록한다. 같은 generic에서 나온 구체 타입들이
+  원소 타입과 무관하게 공유하는 메서드는 `.interfaces`로 하나의 Go 인터페이스에 모을 수
+  있다. `anytype` 파라미터를 받는 함수는 호출 없이는 instantiation이 생기지 않으므로 Zig
+  쪽에 구체 타입별 wrapper 함수를 쓰고 그 wrapper를 등록한다.
 - `anyerror`, C 호출 규약이 아닌 함수 포인터, Go 포인터를 포함할 수 있는 슬라이스처럼
   안전한 계약을 만들 수 없는 선언은 생성 단계에서 거부한다.
 - C가 이름 붙일 수 없는 정수 폭(`u21`, `i24`)은 파라미터·반환값·error union payload와
