@@ -1,4 +1,5 @@
 const std = @import("std");
+const tool_probe = @import("tool_probe.zig");
 const build_options = @import("build_options");
 const dynamic_library = @import("dynamic_library");
 
@@ -41,69 +42,19 @@ pub const Probe = struct {
     go_version: ?[]const u8,
     cgo_enabled: ?[]const u8,
     c_compiler: ?[]const u8,
-    c_compiler_available: bool,
-    c_compiler_probe_failed: bool = false,
+    c_compiler_state: tool_probe.State,
     gofmt_available: bool,
     native_target: bool,
     purego: Purego = .{},
 };
 
 pub fn run(allocator: std.mem.Allocator, io: std.Io, writer: *std.Io.Writer, options: Options) !bool {
-    const go_version_result = std.process.run(allocator, io, .{
-        .argv = &.{ options.go_executable, "version" },
-        .stdout_limit = .limited(64 * 1024),
-        .stderr_limit = .limited(64 * 1024),
-    }) catch null;
-    defer if (go_version_result) |result| {
-        allocator.free(result.stdout);
-        allocator.free(result.stderr);
-    };
-    const cgo_result = if (go_version_result != null and options.backend == .cgo) std.process.run(allocator, io, .{
-        .argv = &.{ options.go_executable, "env", "CGO_ENABLED" },
-        .stdout_limit = .limited(64 * 1024),
-        .stderr_limit = .limited(64 * 1024),
-    }) catch null else null;
-    defer if (cgo_result) |result| {
-        allocator.free(result.stdout);
-        allocator.free(result.stderr);
-    };
-    const cc_result = if (go_version_result != null and options.backend == .cgo) std.process.run(allocator, io, .{
-        .argv = &.{ options.go_executable, "env", "CC" },
-        .stdout_limit = .limited(64 * 1024),
-        .stderr_limit = .limited(64 * 1024),
-    }) catch null else null;
-    defer if (cc_result) |result| {
-        allocator.free(result.stdout);
-        allocator.free(result.stderr);
-    };
-    // `go env CC` can be a whole command line rather than one program: the
-    // supported Windows toolchain is `CC="zig cc"`, and a cross build adds
-    // `-target <triple>` on top of that. Preserve these arguments: probing
-    // just `zig --version` fails even when `zig cc --version` works.
-    const cc_command = stdoutIfSucceeded(cc_result);
-    const cc_argv = if (cc_command) |command| compilerProbeArgs(allocator, command) catch |err| switch (err) {
-        error.OutOfMemory => return err,
-        else => null,
-    } else null;
-    defer if (cc_argv) |argv| allocator.free(argv);
-    const cc_probe_result = if (cc_argv) |argv| std.process.run(allocator, io, .{
-        .argv = argv,
-        .stdout_limit = .limited(64 * 1024),
-        .stderr_limit = .limited(64 * 1024),
-    }) catch null else null;
-    defer if (cc_probe_result) |result| {
-        allocator.free(result.stdout);
-        allocator.free(result.stderr);
-    };
-    const gofmt_result = std.process.run(allocator, io, .{
-        .argv = &.{ options.gofmt_executable, "-h" },
-        .stdout_limit = .limited(64 * 1024),
-        .stderr_limit = .limited(64 * 1024),
-    }) catch null;
-    defer if (gofmt_result) |result| {
-        allocator.free(result.stdout);
-        allocator.free(result.stderr);
-    };
+    var tools = try tool_probe.collect(allocator, io, .{
+        .go_executable = options.go_executable,
+        .gofmt_executable = options.gofmt_executable,
+        .cgo = options.backend == .cgo,
+    }, .{});
+    defer tools.deinit(allocator);
     // The parsed version borrows these bytes, so they must outlive `render`.
     const go_mod_bytes = if (options.backend == .purego and options.go_mod_path != null)
         std.Io.Dir.cwd().readFileAlloc(io, options.go_mod_path.?, allocator, .limited(4 * 1024 * 1024)) catch null
@@ -112,12 +63,11 @@ pub fn run(allocator: std.mem.Allocator, io: std.Io, writer: *std.Io.Writer, opt
     defer if (go_mod_bytes) |bytes| allocator.free(bytes);
     var library_error_buffer: [256]u8 = undefined;
     return render(writer, .{
-        .go_version = stdoutIfSucceeded(go_version_result),
-        .cgo_enabled = stdoutIfSucceeded(cgo_result),
-        .c_compiler = cc_command,
-        .c_compiler_available = if (cc_probe_result) |result| termSucceeded(result.term) else false,
-        .c_compiler_probe_failed = if (cc_probe_result) |result| !termSucceeded(result.term) else false,
-        .gofmt_available = gofmt_result != null,
+        .go_version = tools.go_version.stdout(),
+        .cgo_enabled = tools.cgo.stdout(),
+        .c_compiler = tools.cc.stdout(),
+        .c_compiler_state = tools.compiler.state(),
+        .gofmt_available = tools.gofmt.ran(),
         .native_target = options.native_target,
         .purego = if (options.backend == .purego) probePurego(options, go_mod_bytes, &library_error_buffer) else .{},
     }, options.backend);
@@ -216,11 +166,11 @@ pub fn render(writer: *std.Io.Writer, probe: Probe, backend: Options.Backend) !b
     if (backend == .purego) {
         // Runtime loading uses the prebuilt native library.
     } else if (probe.c_compiler) |compiler| {
-        if (probe.c_compiler_available) {
+        if (probe.c_compiler_state == .succeeded) {
             try writer.print("PASS C compiler: {s}\n", .{compiler});
         } else {
             healthy = false;
-            if (probe.c_compiler_probe_failed)
+            if (probe.c_compiler_state == .failed)
                 try writer.print("FAIL C compiler: version probe for `{s} --version` exited unsuccessfully; check the compiler arguments\n", .{compiler})
             else
                 try writer.print("FAIL C compiler: could not run version probe for `{s}` configured by `go env CC`; check quoting, executable path and permissions\n", .{compiler});
@@ -302,75 +252,7 @@ fn parseGoVersion(output: []const u8) ?GoVersion {
     return null;
 }
 
-/// The trimmed stdout of a probe that ran and exited zero; null when the
-/// probe could not run, failed, or printed nothing.
-fn stdoutIfSucceeded(result: ?std.process.RunResult) ?[]const u8 {
-    const ran = result orelse return null;
-    if (!termSucceeded(ran.term)) return null;
-    const trimmed = std.mem.trim(u8, ran.stdout, whitespace);
-    return if (trimmed.len == 0) null else trimmed;
-}
-
 const whitespace = " \r\n\t";
-
-/// Follow Go's CC field conventions: leading single/double quotes group an
-/// argument, with no unescaping. In particular Windows backslashes survive.
-/// The returned argument strings borrow command; only the slice is owned.
-fn compilerProbeArgs(allocator: std.mem.Allocator, command: []const u8) ![]const []const u8 {
-    var args: std.ArrayList([]const u8) = .empty;
-    errdefer args.deinit(allocator);
-    var remaining = command;
-    while (true) {
-        remaining = std.mem.trimStart(u8, remaining, whitespace);
-        if (remaining.len == 0) break;
-        if (remaining[0] == '\'' or remaining[0] == '"') {
-            const quote = remaining[0];
-            remaining = remaining[1..];
-            const end = std.mem.indexOfScalar(u8, remaining, quote) orelse return error.InvalidCompilerCommand;
-            try args.append(allocator, remaining[0..end]);
-            remaining = remaining[end + 1 ..];
-        } else {
-            const end = std.mem.indexOfAny(u8, remaining, whitespace) orelse remaining.len;
-            try args.append(allocator, remaining[0..end]);
-            remaining = remaining[end..];
-        }
-    }
-    if (args.items.len == 0 or args.items[0].len == 0) return error.InvalidCompilerCommand;
-    try args.append(allocator, "--version");
-    return args.toOwnedSlice(allocator);
-}
-
-fn termSucceeded(term: std.process.Child.Term) bool {
-    return switch (term) {
-        .exited => |code| code == 0,
-        else => false,
-    };
-}
-
-test "compiler probe requires a successful exit" {
-    try std.testing.expect(termSucceeded(.{ .exited = 0 }));
-    try std.testing.expect(!termSucceeded(.{ .exited = 1 }));
-}
-
-test "compiler probe preserves drivers options and quoted Windows paths" {
-    const cases = [_]struct { command: []const u8, expected: []const []const u8 }{
-        .{ .command = "cc", .expected = &.{ "cc", "--version" } },
-        .{ .command = "zig cc", .expected = &.{ "zig", "cc", "--version" } },
-        .{ .command = "zig cc -target x86_64-windows-gnu", .expected = &.{ "zig", "cc", "-target", "x86_64-windows-gnu", "--version" } },
-        .{ .command = "\"D:\\Program Files\\Zig\\zig.exe\" cc", .expected = &.{ "D:\\Program Files\\Zig\\zig.exe", "cc", "--version" } },
-        .{ .command = "ccache '/opt/zig tools/zig' cc", .expected = &.{ "ccache", "/opt/zig tools/zig", "cc", "--version" } },
-        .{ .command = " \tzig\r\ncc \t", .expected = &.{ "zig", "cc", "--version" } },
-    };
-    for (cases) |case| {
-        const args = try compilerProbeArgs(std.testing.allocator, case.command);
-        defer std.testing.allocator.free(args);
-        try std.testing.expectEqual(case.expected.len, args.len);
-        for (case.expected, args) |expected, actual| try std.testing.expectEqualStrings(expected, actual);
-    }
-    for ([_][]const u8{ "", " \t", "''", "\"zig cc", "zig 'cc" }) |invalid| {
-        try std.testing.expectError(error.InvalidCompilerCommand, compilerProbeArgs(std.testing.allocator, invalid));
-    }
-}
 
 test "doctor distinguishes required failures from optional gofmt" {
     var healthy_output: std.Io.Writer.Allocating = .init(std.testing.allocator);
@@ -379,7 +261,7 @@ test "doctor distinguishes required failures from optional gofmt" {
         .go_version = "go version go1.24.2 linux/amd64",
         .cgo_enabled = "1",
         .c_compiler = "cc",
-        .c_compiler_available = true,
+        .c_compiler_state = .succeeded,
         .gofmt_available = true,
         .native_target = true,
     }, .cgo));
@@ -393,7 +275,7 @@ test "doctor distinguishes required failures from optional gofmt" {
         .go_version = "go version go1.23.9 darwin/arm64",
         .cgo_enabled = "0",
         .c_compiler = "missing-cc",
-        .c_compiler_available = false,
+        .c_compiler_state = .unavailable,
         .gofmt_available = true,
         .native_target = false,
     }, .cgo));
@@ -410,7 +292,7 @@ test "doctor distinguishes required failures from optional gofmt" {
         .go_version = "go version go1.24.2 linux/amd64",
         .cgo_enabled = null,
         .c_compiler = null,
-        .c_compiler_available = false,
+        .c_compiler_state = .unavailable,
         .gofmt_available = true,
         .native_target = false,
         .purego = .{ .module = .{ .path = "go.mod", .state = .pinned } },
@@ -426,7 +308,7 @@ test "doctor distinguishes required failures from optional gofmt" {
         .go_version = "go version go1.24.2 linux/amd64",
         .cgo_enabled = "1",
         .c_compiler = "cc",
-        .c_compiler_available = true,
+        .c_compiler_state = .succeeded,
         .gofmt_available = false,
         .native_target = true,
     }, .cgo));
@@ -439,7 +321,7 @@ test "doctor reports a multi-word CC in full" {
         .go_version = "go version go1.26.0 windows/amd64",
         .cgo_enabled = "1",
         .c_compiler = "zig cc",
-        .c_compiler_available = true,
+        .c_compiler_state = .succeeded,
         .gofmt_available = true,
         .native_target = true,
     };
@@ -448,13 +330,13 @@ test "doctor reports a multi-word CC in full" {
     try std.testing.expect(try render(&output.writer, probe, .cgo));
     try std.testing.expect(std.mem.indexOf(u8, output.written(), "PASS C compiler: zig cc\n") != null);
 
-    probe.c_compiler_available = false;
+    probe.c_compiler_state = .unavailable;
     var missing: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer missing.deinit();
     try std.testing.expect(!try render(&missing.writer, probe, .cgo));
     // A command that could not run is distinct from a failed version probe.
     try std.testing.expect(std.mem.indexOf(u8, missing.written(), "could not run version probe for `zig cc`") != null);
-    probe.c_compiler_probe_failed = true;
+    probe.c_compiler_state = .failed;
     var failed: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer failed.deinit();
     try std.testing.expect(!try render(&failed.writer, probe, .cgo));
@@ -468,7 +350,7 @@ test "purego doctor does not require cgo or a C compiler" {
         .go_version = "go version go1.24.2 linux/amd64",
         .cgo_enabled = null,
         .c_compiler = null,
-        .c_compiler_available = false,
+        .c_compiler_state = .unavailable,
         .gofmt_available = true,
         .native_target = true,
     }, .purego));
@@ -480,7 +362,7 @@ test "purego doctor reports artifact, module, and platform problems" {
         .go_version = "go version go1.24.2 linux/amd64",
         .cgo_enabled = null,
         .c_compiler = null,
-        .c_compiler_available = false,
+        .c_compiler_state = .unavailable,
         .gofmt_available = true,
         .native_target = true,
     };
