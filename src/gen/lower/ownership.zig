@@ -81,22 +81,20 @@ pub fn ownershipOf(
         return .none;
     }
     if (ownedOpaqueReturn(document.constructors, function)) |type_name| {
+        // The destructor is the type's own deinit method, so only a method
+        // on this receiver can be one.
         var destructor: ?[]const u8 = null;
         for (functions) |candidate| {
-            if (constructorForDeinit(document.constructors, candidate.origin.*)) |pair| {
-                if (std.mem.eql(u8, pair.type, type_name)) destructor = candidate.symbol;
-            }
+            if (!std.mem.eql(u8, candidate.origin.receiver orelse continue, type_name)) continue;
+            if (constructorForDeinit(document.constructors, candidate.origin.*) != null) destructor = candidate.symbol;
         }
-        var retained_slots: usize = 0;
-        for (handles) |handle| if (std.mem.eql(u8, handle.name, type_name)) {
-            retained_slots = handle.retained_callback_slots;
-        };
+        const handle = handleNamed(handles, type_name);
         return .{ .handle = .{
             .type_name = type_name,
             .destructor = destructor,
             .boxed = function.boxed == .create,
             .child_of_receiver = function.childOfReceiver(),
-            .retained_slots = retained_slots,
+            .retained_slots = if (handle) |value| value.retained_callback_slots else 0,
         } };
     }
     const byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
@@ -104,9 +102,7 @@ pub fn ownershipOf(
         const release = releaseTarget(source_functions, function.release orelse return .none) orelse return .none;
         var receiver_c_name: ?[]const u8 = null;
         if (release.function.receiver) |receiver| {
-            for (handles) |handle| if (std.mem.eql(u8, handle.name, receiver)) {
-                receiver_c_name = handle.c_name;
-            };
+            if (handleNamed(handles, receiver)) |handle| receiver_c_name = handle.c_name;
         }
         const materialized: ?struct { layout: usize, fallible: bool } = if (lowered.materialized_return) |value|
             .{ .layout = value.layout, .fallible = value.fallible }
@@ -138,6 +134,14 @@ pub fn ownershipOf(
         .absent = payload == .optional,
         .fallible = fallible,
     } };
+}
+
+fn handleNamed(handles: []const abi.AbiOpaque, name: []const u8) ?abi.AbiOpaque {
+    var found: ?abi.AbiOpaque = null;
+    for (handles) |handle| if (std.mem.eql(u8, handle.name, name)) {
+        found = handle;
+    };
+    return found;
 }
 
 /// What each parameter of `function` does with memory across the call,

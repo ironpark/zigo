@@ -6,7 +6,7 @@ const naming = @import("naming");
 const common = @import("common.zig");
 const docs = @import("docs.zig");
 const emit = @import("emit.zig");
-const materialized = @import("materialized.zig");
+const materialized_decoder = @import("materialized_decoder.zig");
 const public = @import("public.zig");
 const public_writers = @import("public_writers.zig");
 const shim = @import("shim.zig");
@@ -67,7 +67,7 @@ fn renderPublicStructLayoutGuards(
 
 pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
     const scope: public_writers.PublicScope = .{ .program = program, .options = options };
-    try materialized.renderPublicMaterializedStructs(allocator, writer, program, options);
+    try materialized_decoder.renderPublicMaterializedStructs(allocator, writer, program, options);
     for (program.types) |declaration| {
         if (declaration.kind != .value_struct or declaration.layout != .@"packed") continue;
         if (!public_writers.typeBelongsToPackage(program, declaration.name, options.active_package)) continue;
@@ -483,11 +483,6 @@ fn publicIdentifiersAlloc(allocator: std.mem.Allocator, program: abi.Program) ![
     return names.toOwnedSlice(allocator);
 }
 
-fn freeIdentifiers(allocator: std.mem.Allocator, names: [][]u8) void {
-    for (names) |name| allocator.free(name);
-    allocator.free(names);
-}
-
 /// One tagged union and the variant type name each of its fields settled on.
 const UnionVariantNames = struct {
     owner: semantic.TypeDecl,
@@ -499,8 +494,11 @@ const UnionVariantNames = struct {
 /// program before any file is written, so splitting the unions across files
 /// cannot change the name a later union would have picked.
 pub fn unionVariantNamesAlloc(allocator: std.mem.Allocator, program: abi.Program) ![]UnionVariantNames {
-    var identifiers = try publicIdentifiersAlloc(allocator, program);
-    defer freeIdentifiers(allocator, identifiers);
+    var identifiers: std.ArrayList([]u8) = .fromOwnedSlice(try publicIdentifiersAlloc(allocator, program));
+    defer {
+        for (identifiers.items) |name| allocator.free(name);
+        identifiers.deinit(allocator);
+    }
 
     var entries: std.ArrayList(UnionVariantNames) = .empty;
     errdefer freeUnionVariantNames(allocator, entries.toOwnedSlice(allocator) catch &.{});
@@ -513,12 +511,12 @@ pub fn unionVariantNamesAlloc(allocator: std.mem.Allocator, program: abi.Program
             names.deinit(allocator);
         }
         for (declaration.fields) |field| {
-            const name = try naming.variantTypeNameAlloc(allocator, declaration.name, field.name, identifiers);
+            const name = try naming.variantTypeNameAlloc(allocator, declaration.name, field.name, identifiers.items);
             errdefer allocator.free(name);
             try names.append(allocator, name);
             const owned = try allocator.dupe(u8, name);
             errdefer allocator.free(owned);
-            identifiers = try appendIdentifier(allocator, identifiers, owned);
+            try identifiers.append(allocator, owned);
         }
         try entries.append(allocator, .{ .owner = declaration, .names = try names.toOwnedSlice(allocator) });
     }
@@ -658,13 +656,6 @@ fn snapshotForOwner(program: abi.Program, name: []const u8) ?abi.AbiSnapshot {
         if (std.mem.eql(u8, snapshot.owner.name, name)) return snapshot;
     }
     return null;
-}
-
-fn appendIdentifier(allocator: std.mem.Allocator, names: [][]u8, name: []u8) ![][]u8 {
-    var list: std.ArrayList([]u8) = .fromOwnedSlice(names);
-    errdefer list.deinit(allocator);
-    try list.append(allocator, name);
-    return list.toOwnedSlice(allocator);
 }
 
 pub const renderGoHandles = handle_emit.renderGoHandles;

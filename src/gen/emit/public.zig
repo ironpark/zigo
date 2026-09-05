@@ -13,6 +13,8 @@ const public_runtime = @import("public_runtime.zig");
 const public_types = @import("public_types.zig");
 const public_writers = @import("public_writers.zig");
 const raw = @import("raw.zig");
+const references = @import("references.zig");
+const lower = @import("lower");
 
 /// The helper the public layer calls to turn a `[]TData` into `[]T`. A castable
 /// element reinterprets the allocation the raw layer already owns, so the name
@@ -49,7 +51,9 @@ fn hasOutValueStructSlice(function: semantic.SemanticFn) bool {
 pub fn emitsPublicFunction(program: abi.Program, function: abi.AbiFn) bool {
     const constructor = common.constructorForInit(program, function.origin.*);
     if (constructor == null and common.constructorForDeinit(program, function.origin.*) != null) return false;
-    return !raw.isReleaseTarget(program, function.origin.*);
+    // A release function is called for the caller by the raw layer. Exposing
+    // it publicly would invite freeing a Go-owned copy, so it stays internal.
+    return !common.isReleaseTarget(program, function.origin.*);
 }
 
 /// Hands the raw layer the `[]TData` it expects. A castable element makes that
@@ -228,7 +232,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
     const needs_atomic_pointer = common.programHasAtomicPointers(program);
     var needs_lifecycle = false;
     if (options.shared_lifecycle) for (program.functions) |function| {
-        if (docs.hasOpaqueParameter(function.origin.*)) {
+        if (lower.hasOpaqueParameter(function.origin.*)) {
             needs_lifecycle = true;
             break;
         }
@@ -293,11 +297,8 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
             "var DefaultLibraryName = raw.DefaultLibraryName\n\n",
     );
     for (program.functions) |function| {
+        if (!emitsPublicFunction(program, function)) continue;
         const constructor = common.constructorForInit(program, function.origin.*);
-        if (constructor == null and common.constructorForDeinit(program, function.origin.*) != null) continue;
-        // A release function is called for the caller by the raw layer. Exposing
-        // it publicly would invite freeing a Go-owned copy, so it stays internal.
-        if (raw.isReleaseTarget(program, function.origin.*)) continue;
         const owned_type: ?[]const u8 = if (function.ownership == .handle) function.ownership.handle.type_name else null;
         const go_names = try common.goParamNamesForAlloc(allocator, function.origin.params);
         defer naming.freeParamNames(allocator, go_names);
@@ -382,7 +383,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         try writer.writeByte('\t');
         const returns_error = function.origin.@"return" == .error_union;
         const error_payload = if (returns_error) function.origin.@"return".error_union.payload.* else semantic.TypeNode{ .void = {} };
-        const borrowed_direct = !returns_error and docs.returnsBorrowedHandle(function.origin.*);
+        const borrowed_direct = !returns_error and docs.returnsBorrowedOpaque(function.origin.*);
         // A caller-owned handle returned without an error union still has to be
         // wrapped, so it is captured into `result` exactly like a borrowed one.
         const owned_direct = !returns_error and owned_type != null;
@@ -647,7 +648,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                     try writer.writeAll("\treturn ");
                     if (owned_type != null) {
                         try common.writeOwnedHandleResult(allocator, writer, function, "result");
-                    } else if (error_payload == .opaque_ptr and docs.returnsBorrowedHandle(function.origin.*)) {
+                    } else if (error_payload == .opaque_ptr and docs.returnsBorrowedOpaque(function.origin.*)) {
                         try public_writers.writeBorrowedResult(allocator, writer, function.origin.*, go_names, "result");
                     } else if (error_payload == .optional) {
                         if (semantic.isStringSlice(error_payload.optional.child.*, function.origin.return_semantic))
@@ -735,7 +736,7 @@ pub const SignatureShape = struct {
 };
 
 pub fn signatureShape(function: abi.AbiFn) SignatureShape {
-    const needs_handle_check = function.origin.receiver != null or docs.hasOpaqueParameter(function.origin.*);
+    const needs_handle_check = function.origin.receiver != null or lower.hasOpaqueParameter(function.origin.*);
     const needs_range_check = public_writers.hasNarrowIntParameter(function.origin.*);
     const has_stream = common.functionHasStream(function.origin.*);
     const has_callback_error = function.reaches_callback_errors;
@@ -897,12 +898,12 @@ fn bodyUsesQualifier(body: []const u8, qualifier: []const u8) bool {
             index += 1;
             continue;
         }
-        if (!isGoIdentifierByte(byte)) {
+        if (!references.isIdentifierByte(byte)) {
             index += 1;
             continue;
         }
         const begin = index;
-        while (index < body.len and isGoIdentifierByte(body[index])) index += 1;
+        while (index < body.len and references.isIdentifierByte(body[index])) index += 1;
         if (index < body.len and body[index] == '.' and std.mem.eql(u8, body[begin..index], qualifier)) return true;
     }
     return false;
@@ -958,7 +959,7 @@ fn nodeReferences(program: abi.Program, node: semantic.TypeNode, leaf: RefLeaf) 
         else => return false,
     };
     return switch (leaf) {
-        .package => |target| typeHasPackage(program, referenced, target),
+        .package => |target| public_writers.typeBelongsToPackage(program, referenced, target),
         .name => |target| std.mem.eql(u8, referenced, target),
     };
 }
@@ -969,16 +970,6 @@ fn programReferencesPackage(program: abi.Program, active: []const u8, target: []
 
 pub fn programReferencesType(program: abi.Program, active: []const u8, target: []const u8) bool {
     return programReferences(program, active, .{ .name = target });
-}
-
-fn typeHasPackage(program: abi.Program, name: []const u8, target: []const u8) bool {
-    for (program.types) |declaration| if (std.mem.eql(u8, declaration.name, name))
-        return if (declaration.package) |package| std.mem.eql(u8, package, target) else target.len == 0;
-    return false;
-}
-
-fn isGoIdentifierByte(byte: u8) bool {
-    return byte == '_' or std.ascii.isAlphanumeric(byte);
 }
 
 pub fn renderPublicEnumsFile(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {

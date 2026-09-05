@@ -329,10 +329,7 @@ test "the reader streams what Go hands over and reports end of stream at zero" {
 
     var collected: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer collected.deinit();
-    const streamed = adapter.interface.streamRemaining(&collected.writer) catch |err| switch (err) {
-        error.ReadFailed => return err,
-        else => return err,
-    };
+    const streamed = try adapter.interface.streamRemaining(&collected.writer);
     try std.testing.expectEqual(@as(usize, 11), streamed);
     try std.testing.expectEqualStrings("hello world", collected.written());
 }

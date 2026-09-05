@@ -7,6 +7,7 @@ const common = @import("common.zig");
 const emit = @import("emit.zig");
 const header = @import("header.zig");
 const materialized = @import("materialized.zig");
+const materialized_encoder = @import("materialized_encoder.zig");
 const raw = @import("raw.zig");
 
 pub fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, _: emit.Options) !void {
@@ -79,7 +80,7 @@ pub fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program:
     }
     if (wrote_prelude) try writer.writeByte('\n');
     if (common.programHasStreams(program)) try writer.writeAll(stream_adapters);
-    try materialized.renderMaterializedWalker(allocator, writer, program);
+    try materialized_encoder.renderMaterializedWalker(allocator, writer, program);
     try renderStreamAccessorHelpers(allocator, writer, program);
     for (program.functions) |function| {
         try writer.print("export fn {s}_impl(", .{function.symbol});
@@ -98,9 +99,9 @@ pub fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program:
         try writeNarrowSliceSetups(writer, program, function);
         if (function.materialized_out) |output| {
             const parameter = function.origin.params[output.source_index];
-            try writer.print("    const zigo_{0s}_slice = {1s}.alloc(", .{ parameter.name, program.allocator orelse "std.heap.c_allocator" });
+            try writer.print("    const zigo_{0s}_slice = {1s}.alloc(", .{ parameter.name, common.heapAllocator(program) });
             try common.writeTargetType(writer, program, output.root);
-            try writer.print(", {0s}_len) " ++ materialized.materialize_oom ++ ";\n    defer {1s}.free(zigo_{0s}_slice);\n", .{ parameter.name, program.allocator orelse "std.heap.c_allocator" });
+            try writer.print(", {0s}_len) " ++ materialized.materialize_oom ++ ";\n    defer {1s}.free(zigo_{0s}_slice);\n", .{ parameter.name, common.heapAllocator(program) });
         }
         try writer.writeAll("    ");
 
@@ -1184,7 +1185,7 @@ fn writeNarrowZigType(writer: *std.Io.Writer, node: semantic.TypeNode) !void {
 }
 
 fn isNarrowSliceReleaseTarget(program: abi.Program, function: abi.AbiFn) bool {
-    if (!raw.isReleaseTarget(program, function.origin.*)) return false;
+    if (!common.isReleaseTarget(program, function.origin.*)) return false;
     for (function.origin.params) |parameter| if (abi.narrowSliceElement(parameter.type) != null) return true;
     return false;
 }
@@ -1368,7 +1369,7 @@ fn writeShimStreamSetups(allocator: std.mem.Allocator, writer: *std.Io.Writer, p
         // deep call, so past the threshold the buffer is heap allocated for
         // the duration of the call and freed on the way out.
         if (size > semantic.stream_heap_threshold) {
-            const heap = common.streamHeapAllocator(program);
+            const heap = common.heapAllocator(program);
             try writer.print(
                 "    const {0s} = {1s}.alloc(u8, {2d}) catch @panic(\"zigo: out of memory allocating the `{3s}` stream buffer\");\n" ++
                     "    defer {1s}.free({0s});\n",

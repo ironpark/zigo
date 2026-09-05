@@ -44,7 +44,7 @@ pub fn writeMustResultType(scope: public_writers.PublicScope, writer: *std.Io.Wr
     const node = if (result == .optional) result.optional.child.* else result;
     if (node == .opaque_ptr and docs.returnsBorrowedView(function))
         return writer.print("*{s}", .{node.opaque_ptr.ref});
-    if (node == .opaque_ptr and docs.returnsBorrowedHandle(function))
+    if (node == .opaque_ptr and docs.returnsBorrowedOpaque(function))
         return writer.print("*{s}Ref", .{node.opaque_ptr.ref});
     if (semantic.isStringSlice(node, function.return_semantic)) return writer.writeAll("string");
     try public_writers.writePublicGoType(scope, writer, node);

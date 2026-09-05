@@ -849,10 +849,6 @@ fn writeCgoSliceReturn(
     try writer.print(")(unsafe.Pointer({s})), int({s})))\n\treturn result{s}\n", .{ pointer_name, length_name, suffix });
 }
 
-pub fn isReleaseTarget(program: abi.Program, function: semantic.SemanticFn) bool {
-    return lower.isReleaseTarget(program.origins, function);
-}
-
 /// Fills an already declared `result` from the native `ptr, len` pair. It exists
 /// so the release path can copy and then free without duplicating the per
 /// element-kind conversion.

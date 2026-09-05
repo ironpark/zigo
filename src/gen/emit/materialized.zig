@@ -2,12 +2,9 @@
 //! and Go decoding live in dedicated emitters.
 const std = @import("std");
 const abi = @import("abi");
+const common = @import("common.zig");
 const shim = @import("shim.zig");
-const encoding = @import("materialized_encoder.zig");
-
-pub const renderMaterializedWalker = encoding.renderMaterializedWalker;
-pub const renderPublicMaterializedStructs = @import("materialized_decoder.zig").renderPublicMaterializedStructs;
-const materializedEncoderNameAlloc = encoding.materializedEncoderNameAlloc;
+const materializedEncoderNameAlloc = @import("materialized_encoder.zig").materializedEncoderNameAlloc;
 
 /// Every materialization step allocates into the same builder, so they all
 /// fail the same way. Naming the panic once keeps the eleven emit sites from
@@ -26,7 +23,7 @@ pub fn writeMaterializedReturn(
     if (materialized.fallible) try shim.writeShimErrorCatch(writer, function) else try writer.writeAll(";\n");
     const encoder = try materializedEncoderNameAlloc(allocator, materialized.root);
     defer allocator.free(encoder);
-    try writer.print("    const buffer = {s}Buffer({s}, result, {}) " ++ materialize_oom ++ ";\n", .{ encoder, program.allocator orelse "std.heap.c_allocator", materialized.is_slice });
+    try writer.print("    const buffer = {s}Buffer({s}, result, {}) " ++ materialize_oom ++ ";\n", .{ encoder, common.heapAllocator(program), materialized.is_slice });
     try writer.writeAll("    out_result_ptr.* = buffer.ptr;\n    out_result_len.* = buffer.len;\n");
     if (materialized.fallible) try writer.writeAll("    return 0;\n");
     try writer.writeAll("}\n");
@@ -48,7 +45,7 @@ pub fn writeMaterializedOutput(
     defer allocator.free(encoder);
     // The C panic bridge does not unwind Zig defers. Free staging storage
     // explicitly after the helper has cleaned up its partial buffer.
-    try writer.print("    const buffer = {s}Buffer({s}, zigo_{s}_slice[0..written], true) catch {{\n        {s}.free(zigo_{s}_slice);\n        @panic(\"zigo: materialization allocation failed\");\n    }};\n", .{ encoder, program.allocator orelse "std.heap.c_allocator", parameter.name, program.allocator orelse "std.heap.c_allocator", parameter.name });
+    try writer.print("    const buffer = {s}Buffer({s}, zigo_{s}_slice[0..written], true) catch {{\n        {s}.free(zigo_{s}_slice);\n        @panic(\"zigo: materialization allocation failed\");\n    }};\n", .{ encoder, common.heapAllocator(program), parameter.name, common.heapAllocator(program), parameter.name });
     try writer.writeAll("    out_result_ptr.* = buffer.ptr;\n    out_result_len.* = buffer.len;\n");
     if (output.fallible) {
         try writer.writeAll("    out_written.* = result;\n    return 0;\n");

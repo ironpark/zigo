@@ -95,10 +95,10 @@ fn writeMaterializedField(
         .scalar => try writer.print("    builder.writeU64({s}, zigoMaterializedScalar({s}));\n", .{ slot, expression }),
         .string => try writer.print("    builder.writeU64({0s}, try builder.appendBytes({1s}));\n    builder.writeU64({0s} + 8, {1s}.len);\n", .{ slot, expression }),
         .scalar_slice => {
-            try writer.print("    const {0s}_data = try builder.reserveArray({1s}.len, 8);\n    for ({1s}, 0..) |item, index| builder.writeU64({0s}_data + index * 8, zigoMaterializedScalar(item));\n    builder.writeU64({2s}, {0s}_data);\n    builder.writeU64({2s} + 8, {1s}.len);\n", .{ field.name, expression, slot });
+            try writer.print("    const {0s}_data = try builder.reserveArray({1s}.len, {3d});\n    for ({1s}, 0..) |item, index| builder.writeU64({0s}_data + index * {3d}, zigoMaterializedScalar(item));\n    builder.writeU64({2s}, {0s}_data);\n    builder.writeU64({2s} + 8, {1s}.len);\n", .{ field.name, expression, slot, field.kind.elementStride() });
         },
         .string_slice => {
-            try writer.print("    const {0s}_data = try builder.reserveArray({1s}.len, 16);\n    for ({1s}, 0..) |item, index| {{\n        builder.writeU64({0s}_data + index * 16, try builder.appendBytes(item));\n        builder.writeU64({0s}_data + index * 16 + 8, item.len);\n    }}\n    builder.writeU64({2s}, {0s}_data);\n    builder.writeU64({2s} + 8, {1s}.len);\n", .{ field.name, expression, slot });
+            try writer.print("    const {0s}_data = try builder.reserveArray({1s}.len, {3d});\n    for ({1s}, 0..) |item, index| {{\n        builder.writeU64({0s}_data + index * {3d}, try builder.appendBytes(item));\n        builder.writeU64({0s}_data + index * {3d} + 8, item.len);\n    }}\n    builder.writeU64({2s}, {0s}_data);\n    builder.writeU64({2s} + 8, {1s}.len);\n", .{ field.name, expression, slot, field.kind.elementStride() });
         },
         .node => {
             const name = try materializedEncoderNameAlloc(allocator, field.node.materialized.ref);
@@ -117,7 +117,7 @@ fn writeMaterializedField(
         .node_slice => {
             const name = try materializedEncoderNameAlloc(allocator, field.node.slice.element.materialized.ref);
             defer allocator.free(name);
-            try writer.print("    const {0s}_nodes = try builder.reserveArray({1s}.len, 8);\n    for ({1s}, 0..) |item, index| builder.writeU64({0s}_nodes + index * 8, try {2s}(builder, item));\n    builder.writeU64({3s}, {0s}_nodes);\n    builder.writeU64({3s} + 8, {1s}.len);\n", .{ field.name, expression, name, slot });
+            try writer.print("    const {0s}_nodes = try builder.reserveArray({1s}.len, {4d});\n    for ({1s}, 0..) |item, index| builder.writeU64({0s}_nodes + index * {4d}, try {2s}(builder, item));\n    builder.writeU64({3s}, {0s}_nodes);\n    builder.writeU64({3s} + 8, {1s}.len);\n", .{ field.name, expression, name, slot, field.kind.elementStride() });
         },
     }
 }

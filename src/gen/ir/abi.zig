@@ -360,7 +360,22 @@ pub const MaterializedLayout = struct {
         node: semantic.TypeNode,
         kind: Kind,
 
-        pub const Kind = enum { scalar, string, scalar_slice, string_slice, node, node_pointer, node_slice };
+        pub const Kind = enum {
+            scalar,
+            string,
+            scalar_slice,
+            string_slice,
+            node,
+            node_pointer,
+            node_slice,
+
+            /// Bytes per element of a slice field's array: a string element is
+            /// an (offset, length) pair of `u64` slots, every other one slot.
+            /// Encoder and decoder both walk the array by this.
+            pub fn elementStride(self: Kind) u8 {
+                return if (self == .string_slice) 16 else 8;
+            }
+        };
     };
 };
 
@@ -433,10 +448,10 @@ pub const AbiFn = struct {
     /// that returns an `error`, which grows the public signature by one.
     reaches_callback_errors: bool = false,
     /// Who owns the result's memory after the call. Decided once by
-    /// `lower.ownershipOf`.
+    /// `lower/ownership.zig`'s `ownershipOf`.
     ownership: Ownership = .none,
     /// Indexed by semantic parameter index: what each parameter does with
-    /// memory across the call. Decided once by `lower.paramOwnershipOf`.
+    /// memory across the call. Decided once by `lower/ownership.zig`'s `paramOwnershipOf`.
     param_ownership: []const ParamOwnership = &.{},
 
     /// `layout` indexes `Program.materialized_layouts`; lowering fills it

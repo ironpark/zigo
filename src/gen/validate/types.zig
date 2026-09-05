@@ -579,10 +579,8 @@ pub fn floatSupported(value: semantic.Float) bool {
 }
 
 pub fn hasTypeKind(document: semantic.Semantic, name: []const u8, kind: semantic.TypeKind) bool {
-    for (document.types) |declaration| {
-        if (std.mem.eql(u8, declaration.name, name)) return declaration.kind == kind;
-    }
-    return false;
+    const declaration = semantic.typeDecl(document.types, name) orelse return false;
+    return declaration.kind == kind;
 }
 
 fn hasHandleType(document: semantic.Semantic, name: []const u8) bool {

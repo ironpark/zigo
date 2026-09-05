@@ -166,12 +166,9 @@ pub fn writeTargetTypeResolver(writer: *std.Io.Writer) !void {
 /// The reflected Zig path of a registered type when it can be spelled as a
 /// path: a generic instantiation or a disambiguated registration (`#`) cannot.
 fn registeredZigPath(program: abi.Program, name: []const u8) ?[]const u8 {
-    for (program.types) |declaration| {
-        if (!std.mem.eql(u8, declaration.name, name)) continue;
-        const path = declaration.zig_path orelse return null;
-        return if (std.mem.indexOfAny(u8, path, "(#") == null) path else null;
-    }
-    return null;
+    const declaration = semantic.typeDecl(program.types, name) orelse return null;
+    const path = declaration.zig_path orelse return null;
+    return if (std.mem.indexOfAny(u8, path, "(#") == null) path else null;
 }
 
 pub fn writeTargetType(writer: *std.Io.Writer, program: abi.Program, name: []const u8) !void {
@@ -432,7 +429,7 @@ fn writePublicTaggedUnionPayloadRawArguments(
 pub fn isValueOnlyTaggedUnion(program: abi.Program, name: []const u8) bool {
     if (enumDecl(program, name).kind != .tagged_union) return false;
     var by_value = false;
-    for (program.constructors) |constructor| if (std.mem.eql(u8, constructor.type, name)) return false;
+    if (constructorForType(program, name) != null) return false;
     for (program.functions) |function| {
         if (semantic.functionUsesAsHandle(function.origin.*, name)) return false;
         by_value = by_value or semantic.functionPassesByValue(function.origin.*, name);
@@ -659,10 +656,11 @@ pub fn streamAdapterNameAlloc(allocator: std.mem.Allocator, name: []const u8) ![
     return std.fmt.allocPrint(allocator, "{s}_stream", .{name});
 }
 
-/// The allocator a staging buffer too large for the shim's stack comes from.
-/// The binding's own allocator when it named one, so a program that routes
-/// every allocation through an arena keeps doing so.
-pub fn streamHeapAllocator(program: abi.Program) []const u8 {
+/// The allocator the shim heap-allocates from: a staging buffer too large for
+/// its stack, or a materialized result buffer. The binding's own allocator
+/// when it named one, so a program that routes every allocation through an
+/// arena keeps doing so.
+pub fn heapAllocator(program: abi.Program) []const u8 {
     return program.allocator orelse "std.heap.c_allocator";
 }
 
@@ -807,8 +805,7 @@ pub fn retainedCallbacksBelongToReceiver(program: abi.Program, function: semanti
 
 pub fn publicNeedsRuntime(program: abi.Program) bool {
     for (program.functions) |function| {
-        if (constructorForInit(program, function.origin.*) == null and constructorForDeinit(program, function.origin.*) != null) continue;
-        if (raw.isReleaseTarget(program, function.origin.*)) continue;
+        if (!public.emitsPublicFunction(program, function)) continue;
         if (function.origin.@"return" == .error_union) return true;
         if (function.origin.receiver) |receiver| {
             if (isAutoCleanupType(program, receiver)) return true;
@@ -895,11 +892,6 @@ pub fn needsCallbackBitThunk(program: abi.Program, function: abi.AbiFn, paramete
     const parameter = function.origin.params[parameter_index];
     if (parameter.type != .callback) return false;
     return callbackHasFloatParam(parameter.type.callback) or callbackHasPackedParam(program, parameter.type.callback);
-}
-
-fn publicTypeNameExists(program: abi.Program, name: []const u8) bool {
-    for (program.types) |declaration| if (std.mem.eql(u8, declaration.name, name)) return true;
-    return false;
 }
 
 pub fn programNeedsUnsafe(program: abi.Program) bool {
@@ -997,7 +989,7 @@ fn typeHasDependentChildrenWithin(program: abi.Program, type_name: []const u8, r
         const origin = function.origin.*;
         if (!docs.returnsBorrowedView(origin) or
             !std.mem.eql(u8, origin.receiver orelse "", type_name)) continue;
-        const node = if (origin.@"return" == .error_union) origin.@"return".error_union.payload.* else origin.@"return";
+        const node = origin.@"return".errorPayload();
         if (typeHasDependentChildrenWithin(program, node.opaque_ptr.ref, remaining - 1)) return true;
     }
     return false;
@@ -1030,8 +1022,8 @@ pub fn programHasChildConstructors(program: abi.Program) bool {
 pub fn typeHasBorrowedRefs(program: abi.Program, type_name: []const u8) bool {
     for (program.functions) |function| {
         const origin = function.origin.*;
-        if (!docs.returnsBorrowedHandle(origin) or docs.returnsBorrowedView(origin)) continue;
-        const node = if (origin.@"return" == .error_union) origin.@"return".error_union.payload.* else origin.@"return";
+        if (!docs.returnsBorrowedOpaque(origin) or docs.returnsBorrowedView(origin)) continue;
+        const node = origin.@"return".errorPayload();
         if (std.mem.eql(u8, node.opaque_ptr.ref, type_name)) return true;
     }
     for (program.projections) |projection| {
@@ -1047,7 +1039,7 @@ pub fn typeCanBeBorrowed(program: abi.Program, type_name: []const u8) bool {
     for (program.functions) |function| {
         const origin = function.origin.*;
         if (!docs.returnsBorrowedView(origin)) continue;
-        const node = if (origin.@"return" == .error_union) origin.@"return".error_union.payload.* else origin.@"return";
+        const node = origin.@"return".errorPayload();
         if (std.mem.eql(u8, node.opaque_ptr.ref, type_name)) return true;
     }
     return false;
@@ -1059,6 +1051,11 @@ pub fn typeReturnsBorrowedViews(program: abi.Program, type_name: []const u8) boo
             std.mem.eql(u8, function.origin.receiver orelse "", type_name)) return true;
     }
     return false;
+}
+
+/// Whether some other function names this one as its `.release` target.
+pub fn isReleaseTarget(program: abi.Program, function: semantic.SemanticFn) bool {
+    return lower.isReleaseTarget(program.origins, function);
 }
 
 pub fn ownedOpaqueReturn(program: abi.Program, function: semantic.SemanticFn) ?[]const u8 {

@@ -155,9 +155,9 @@ pub fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.Semanti
     }
     if (owned_type != null)
         try writer.writeAll("// The caller must call Close on the returned handle.\n");
-    if (returnsBorrowedHandle(function))
+    if (returnsBorrowedOpaque(function))
         try writer.writeAll("// The returned reference remains valid only while its parent handle remains open.\n");
-    if (function.receiver != null or hasOpaqueParameter(function))
+    if (function.receiver != null or lower.hasOpaqueParameter(function))
         try writer.writeAll("// It returns *HandleError if a required handle is nil or closed.\n");
     if (function.@"return" == .error_union) {
         if (function.@"return".error_union.error_set.len == 0)
@@ -200,15 +200,14 @@ pub fn writeCallbackContractDoc(writer: *std.Io.Writer, parameter: semantic.Para
     }
 }
 
-pub fn returnsBorrowedHandle(function: semantic.SemanticFn) bool {
-    const node = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
-    return node == .opaque_ptr and function.ownership == .borrowed;
+/// A handle handed out without ownership: the caller gets a `{T}Ref` (or,
+/// when the function also marks a borrowed view, a dependent `{T}`). Not the
+/// same question as `SemanticFn.returnsBorrowedHandle`, which is only the
+/// view flag.
+pub fn returnsBorrowedOpaque(function: semantic.SemanticFn) bool {
+    return function.@"return".errorPayload() == .opaque_ptr and function.ownership == .borrowed;
 }
 
 pub fn returnsBorrowedView(function: semantic.SemanticFn) bool {
-    return returnsBorrowedHandle(function) and function.returnsBorrowedHandle();
-}
-
-pub fn hasOpaqueParameter(function: semantic.SemanticFn) bool {
-    return lower.hasOpaqueParameter(function);
+    return returnsBorrowedOpaque(function) and function.returnsBorrowedHandle();
 }

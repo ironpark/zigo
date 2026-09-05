@@ -13,6 +13,7 @@ const public_writers = @import("public_writers.zig");
 /// the last one out releases it, so no caller ever waits on another.
 /// `cleanup` is the safety net for a handle the caller drops without closing.
 pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
+    const names: LifecycleNames = .of(options);
     for (program.types) |declaration| {
         if (!emit.packageMatches(declaration.package, options.active_package)) continue;
         if (!declaration.isHandle()) continue;
@@ -25,10 +26,6 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
         // Owning a constructor is what gives a handle Close and the cleanup net.
         const constructor = common.constructorForType(program, declaration.name);
         const auto_cleanup = constructor != null;
-        const poison_method = if (options.shared_lifecycle) "Poisoned" else "poisoned";
-        const parent_acquire_method = if (options.shared_lifecycle) "ZigoAcquire" else "zigoAcquire";
-        const parent_release_method = if (options.shared_lifecycle) "ZigoRelease" else "zigoRelease";
-        const parent_poison_method = if (options.shared_lifecycle) "ZigoPoison" else "zigoPoison";
         if (auto_cleanup) {
             try writer.print("// {s} is a caller-owned native handle. Call Close when it is no longer needed.\n", .{declaration.name});
         } else {
@@ -88,12 +85,7 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
                     "\t{0s}.mu.Lock()\n",
                 .{ recv, declaration.name },
             );
-            // A borrowed handle may have either an owner or a dependency parent;
-            // a purely dependent one only ever has the latter.
-            if (can_be_borrowed) {
-                try writer.print("\tvar parent zigoHandle\n\tparent = {0s}.owner\n", .{recv});
-                if (dependent_parent != null) try writer.print("\tif parent == nil {{\n\t\tparent = {0s}.parent\n\t}}\n", .{recv});
-            } else try writer.print("\tparent := {0s}.parent\n", .{recv});
+            try writeParentLookup(writer, recv, can_be_borrowed, dependent_parent != null, .block);
             try writer.print(
                 "\t{0s}.mu.Unlock()\n" ++
                     "\tif parent != nil {{\n\t\tif _, err := parent.{2s}(operation); err != nil {{\n\t\t\treturn nil, err\n\t\t}}\n\t}}\n" ++
@@ -101,7 +93,7 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
                     "\tif {0s}.closed || {0s}.ptr == nil {{\n\t\t{0s}.mu.Unlock()\n\t\tif parent != nil {{\n\t\t\tparent.{3s}()\n\t\t}}\n\t\treturn nil, &HandleError{{Operation: operation}}\n\t}}\n" ++
                     "\tif {0s}.poison != nil {{\n\t\terr := {0s}.poison.{1s}(operation)\n\t\t{0s}.mu.Unlock()\n\t\tif parent != nil {{\n\t\t\tparent.{3s}()\n\t\t}}\n\t\treturn nil, err\n\t}}\n" ++
                     "\t{0s}.active++\n\tptr := {0s}.ptr\n\t{0s}.mu.Unlock()\n\treturn ptr, nil\n}}\n\n",
-                .{ recv, poison_method, parent_acquire_method, parent_release_method },
+                .{ recv, names.poisoned, names.acquire, names.release },
             );
         } else {
             try writer.print(
@@ -113,28 +105,24 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
                     "\tif {0s}.closed || {0s}.ptr == nil {{\n\t\treturn nil, &HandleError{{Operation: operation}}\n\t}}\n" ++
                     "\tif {0s}.poison != nil {{\n\t\treturn nil, {0s}.poison.{2s}(operation)\n\t}}\n" ++
                     "\t{0s}.active++\n\treturn {0s}.ptr, nil\n}}\n\n",
-                .{ recv, declaration.name, poison_method },
+                .{ recv, declaration.name, names.poisoned },
             );
         }
         // The last call out of a closed handle is the one that releases it, so
         // only a handle with Close has anything to do after the decrement.
         try writer.print("func ({0s} *{1s}) zigoRelease() {{\n\tif {0s} == nil {{\n\t\treturn\n\t}}\n\t{0s}.mu.Lock()\n\t{0s}.active--\n", .{ recv, declaration.name });
         if (auto_cleanup) {
-            if (can_be_borrowed) {
-                try writer.print("\tvar parent zigoHandle\n\tparent = {0s}.owner\n", .{recv});
-                if (dependent_parent != null) try writer.print("\tif parent == nil {{ parent = {0s}.parent }}\n", .{recv});
-            } else if (dependent_parent != null) try writer.print("\tparent := {0s}.parent\n", .{recv});
+            try writeParentLookup(writer, recv, can_be_borrowed, dependent_parent != null, .line);
             try writer.print("\tstate, release := {0s}.zigoTakeLocked()\n\t{0s}.mu.Unlock()\n\tif release {{\n\t\tcleanup{1s}(state)\n\t}}\n", .{ recv, declaration.name });
             if (can_be_borrowed or dependent_parent != null)
-                try writer.print("\tif parent != nil {{\n\t\tparent.{s}()\n\t}}\n", .{parent_release_method});
+                try writer.print("\tif parent != nil {{\n\t\tparent.{s}()\n\t}}\n", .{names.release});
             try writer.writeAll("}\n\n");
         } else {
-            if (can_be_borrowed) {
-                try writer.print("\tvar parent zigoHandle\n\tparent = {0s}.owner\n", .{recv});
-                if (dependent_parent != null) try writer.print("\tif parent == nil {{ parent = {0s}.parent }}\n", .{recv});
-            }
+            // Without Close there is nothing of its own to release, so only a
+            // borrowed handle has a parent to let go of.
+            if (can_be_borrowed) try writeParentLookup(writer, recv, true, dependent_parent != null, .line);
             try writer.print("\t{0s}.mu.Unlock()\n", .{recv});
-            if (can_be_borrowed) try writer.print("\tif parent != nil {{ parent.{s}() }}\n", .{parent_release_method});
+            if (can_be_borrowed) try writer.print("\tif parent != nil {{ parent.{s}() }}\n", .{names.release});
             try writer.writeAll("}\n\n");
         }
         try writer.print(
@@ -143,10 +131,7 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
                 "func ({0s} *{1s}) zigoPoison(cause *NativePanicError) {{\n\tif {0s} == nil {{\n\t\treturn\n\t}}\n\t{0s}.mu.Lock()\n",
             .{ recv, declaration.name },
         );
-        if (can_be_borrowed) {
-            try writer.print("\tvar parent zigoHandle\n\tparent = {0s}.owner\n", .{recv});
-            if (dependent_parent != null) try writer.print("\tif parent == nil {{ parent = {0s}.parent }}\n", .{recv});
-        } else if (dependent_parent != null) try writer.print("\tparent := {0s}.parent\n", .{recv});
+        try writeParentLookup(writer, recv, can_be_borrowed, dependent_parent != null, .line);
         if (dependent_parent == null and !can_be_borrowed) try writer.print("\tdefer {0s}.mu.Unlock()\n", .{recv});
         try writer.print("\tif {0s}.poison == nil {{\n\t\t{0s}.poison = cause\n", .{recv});
         if (auto_cleanup) {
@@ -157,17 +142,9 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
         }
         try writer.writeAll("\t}\n");
         if (can_be_borrowed or dependent_parent != null)
-            try writer.print("\t{0s}.mu.Unlock()\n\tif parent != nil {{\n\t\tparent.{1s}(cause)\n\t}}\n", .{ recv, parent_poison_method });
+            try writer.print("\t{0s}.mu.Unlock()\n\tif parent != nil {{\n\t\tparent.{1s}(cause)\n\t}}\n", .{ recv, names.poison });
         try writer.writeAll("}\n\n");
-        if (options.shared_lifecycle) try writer.print(
-            "// ZigoAcquire implements the shared lifecycle handle contract.\n" ++
-                "func ({0s} *{1s}) ZigoAcquire(operation string) (unsafe.Pointer, error) {{ return {0s}.zigoAcquire(operation) }}\n" ++
-                "// ZigoRelease implements the shared lifecycle handle contract.\n" ++
-                "func ({0s} *{1s}) ZigoRelease() {{ {0s}.zigoRelease() }}\n" ++
-                "// ZigoPoison implements the shared lifecycle handle contract.\n" ++
-                "func ({0s} *{1s}) ZigoPoison(cause *NativePanicError) {{ {0s}.zigoPoison(cause) }}\n\n",
-            .{ recv, declaration.name },
-        );
+        if (options.shared_lifecycle) try writeSharedLifecycleWrappers(writer, recv, declaration.name, "");
 
         if (has_dependent_children) {
             if (can_be_borrowed) {
@@ -190,7 +167,7 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
                         "\tif {0s}.poison != nil {{\n\t\treturn nil, nil, {0s}.poison.{2s}(operation)\n\t}}\n" ++
                         "\t{0s}.active++\n\t{0s}.children++\n\treturn {0s}.ptr, {0s}, nil\n}}\n\n" ++
                         "func ({0s} *{1s}) zigoDropChild() {{\n\tif {0s} == nil {{\n\t\treturn\n\t}}\n\t{0s}.mu.Lock()\n\t{0s}.children--\n\t{0s}.mu.Unlock()\n}}\n\n",
-                    .{ recv, declaration.name, poison_method, if (options.shared_lifecycle) "ZigoAcquireChild" else "zigoAcquireChild", parent_release_method, if (options.shared_lifecycle) "ZigoDropChild" else "zigoDropChild" },
+                    .{ recv, declaration.name, names.poisoned, names.acquire_child, names.release, names.drop_child },
                 );
             } else try writer.print(
                 "// zigoAcquireChild reserves one dependent child atomically with the call pin.\n" ++
@@ -201,7 +178,7 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
                     "\tif {0s}.poison != nil {{\n\t\treturn nil, nil, {0s}.poison.{2s}(operation)\n\t}}\n" ++
                     "\t{0s}.active++\n\t{0s}.children++\n\treturn {0s}.ptr, {0s}, nil\n}}\n\n" ++
                     "func ({0s} *{1s}) zigoDropChild() {{\n\tif {0s} == nil {{\n\t\treturn\n\t}}\n\t{0s}.mu.Lock()\n\t{0s}.children--\n\t{0s}.mu.Unlock()\n}}\n\n",
-                .{ recv, declaration.name, poison_method },
+                .{ recv, declaration.name, names.poisoned },
             );
             if (options.shared_lifecycle) try writer.print(
                 "// ZigoAcquireChild reserves a dependent child through the shared lifecycle contract.\n" ++
@@ -222,15 +199,7 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
                 "func ({0s} *{1s}Ref) zigoPoison(cause *NativePanicError) {{\n\tif {0s} != nil && {0s}.parent != nil {{\n\t\t{0s}.parent.zigoPoison(cause)\n\t}}\n}}\n\n",
             .{ recv, declaration.name },
         );
-        if (has_refs and options.shared_lifecycle) try writer.print(
-            "// ZigoAcquire implements the shared lifecycle handle contract.\n" ++
-                "func ({0s} *{1s}Ref) ZigoAcquire(operation string) (unsafe.Pointer, error) {{ return {0s}.zigoAcquire(operation) }}\n" ++
-                "// ZigoRelease implements the shared lifecycle handle contract.\n" ++
-                "func ({0s} *{1s}Ref) ZigoRelease() {{ {0s}.zigoRelease() }}\n" ++
-                "// ZigoPoison implements the shared lifecycle handle contract.\n" ++
-                "func ({0s} *{1s}Ref) ZigoPoison(cause *NativePanicError) {{ {0s}.zigoPoison(cause) }}\n\n",
-            .{ recv, declaration.name },
-        );
+        if (has_refs and options.shared_lifecycle) try writeSharedLifecycleWrappers(writer, recv, declaration.name, "Ref");
         if (constructor) |owned| {
             const raw_deinit = try common.rawNameForSemanticAlloc(allocator, program, owned.deinit, owned.type) orelse continue;
             defer allocator.free(raw_deinit);
@@ -259,7 +228,7 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
             try public_writers.writeRawReferencePrefix(writer, options);
             try writer.print("{s}(state.ptr)\n\t}}\n", .{raw_deinit});
             if (owns_callbacks) try writer.writeAll("\tfor _, handle := range state.callbackHandles {\n\t\tdeleteCallbackHandle(handle)\n\t}\n");
-            if (dependent_parent != null) try writer.print("\tif state.parent != nil {{\n\t\tstate.parent.{s}()\n\t}}\n", .{if (options.shared_lifecycle) "ZigoDropChild" else "zigoDropChild"});
+            if (dependent_parent != null) try writer.print("\tif state.parent != nil {{\n\t\tstate.parent.{s}()\n\t}}\n", .{names.drop_child});
             try writer.writeAll("}\n\n");
             // Close only marks the handle. Whoever then finds it closed with
             // no call inside native -- Close itself, or the last zigoRelease --
@@ -278,15 +247,13 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
                     "\t{0s}.mu.Lock()\n\tif {0s}.closed {{\n\t\t{0s}.mu.Unlock()\n\t\treturn nil\n\t}}\n",
                 .{ recv, declaration.name },
             );
-            if (can_be_borrowed) try writer.print(
-                "\tif {0s}.owner != nil {{\n" ++
-                    "\t\tif {0s}.active != 0 {{\n\t\t\tactive := {0s}.active\n\t\t\t{0s}.mu.Unlock()\n" ++
-                    "\t\t\treturn &HandleInUseError{{Operation: \"{1s}.Close\", Children: active}}\n\t\t}}\n" ++
-                    "\t\t{0s}.closed = true\n\t\t{0s}.ptr = nil\n\t\t{0s}.owner = nil\n\t\t{0s}.mu.Unlock()\n\t\treturn nil\n\t}}\n",
-                .{ recv, declaration.name },
-            );
-            if (has_dependent_children) try writer.print("\tif {0s}.children != 0 {{\n\t\tchildren := {0s}.children\n\t\t{0s}.mu.Unlock()\n\t\treturn &HandleInUseError{{Operation: \"{1s}.Close\", Children: children}}\n\t}}\n", .{ recv, declaration.name });
-            if (returns_borrowed_views) try writer.print("\tif {0s}.active != 0 {{\n\t\tactive := {0s}.active\n\t\t{0s}.mu.Unlock()\n\t\treturn &HandleInUseError{{Operation: \"{1s}.Close\", Children: active}}\n\t}}\n", .{ recv, declaration.name });
+            if (can_be_borrowed) {
+                try writer.print("\tif {0s}.owner != nil {{\n", .{recv});
+                try writeInUseCheck(writer, recv, declaration.name, "active", "\t\t");
+                try writer.print("\t\t{0s}.closed = true\n\t\t{0s}.ptr = nil\n\t\t{0s}.owner = nil\n\t\t{0s}.mu.Unlock()\n\t\treturn nil\n\t}}\n", .{recv});
+            }
+            if (has_dependent_children) try writeInUseCheck(writer, recv, declaration.name, "children", "\t");
+            if (returns_borrowed_views) try writeInUseCheck(writer, recv, declaration.name, "active", "\t");
             try writer.print(
                 "\t{0s}.closed = true\n\t{0s}.cleanup.Stop()\n" ++
                     "\tstate, release := {0s}.zigoTakeLocked()\n\t{0s}.mu.Unlock()\n\tif release {{\n\t\tcleanup{1s}(state)\n\t}}\n" ++
@@ -312,14 +279,85 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
             try writer.print(
                 "// Close detaches this borrowed {1s} view without releasing native resources.\n" ++
                     "func ({0s} *{1s}) Close() error {{\n\tif {0s} == nil {{ return nil }}\n\t{0s}.mu.Lock()\n" ++
-                    "\tif {0s}.closed {{ {0s}.mu.Unlock(); return nil }}\n" ++
-                    "\tif {0s}.active != 0 {{\n\t\tactive := {0s}.active\n\t\t{0s}.mu.Unlock()\n" ++
-                    "\t\treturn &HandleInUseError{{Operation: \"{1s}.Close\", Children: active}}\n\t}}\n" ++
-                    "\t{0s}.closed = true\n\t{0s}.ptr = nil\n\t{0s}.owner = nil\n\t{0s}.mu.Unlock()\n\treturn nil\n}}\n\n",
+                    "\tif {0s}.closed {{ {0s}.mu.Unlock(); return nil }}\n",
                 .{ recv, declaration.name },
             );
+            try writeInUseCheck(writer, recv, declaration.name, "active", "\t");
+            try writer.print("\t{0s}.closed = true\n\t{0s}.ptr = nil\n\t{0s}.owner = nil\n\t{0s}.mu.Unlock()\n\treturn nil\n}}\n\n", .{recv});
         }
     }
+}
+
+/// The lifecycle methods a handle calls on its parent: the exported spelling
+/// under the shared lifecycle contract, the package-private one otherwise.
+const LifecycleNames = struct {
+    poisoned: []const u8,
+    acquire: []const u8,
+    release: []const u8,
+    poison: []const u8,
+    acquire_child: []const u8,
+    drop_child: []const u8,
+
+    fn of(options: emit.Options) LifecycleNames {
+        if (options.shared_lifecycle) return .{
+            .poisoned = "Poisoned",
+            .acquire = "ZigoAcquire",
+            .release = "ZigoRelease",
+            .poison = "ZigoPoison",
+            .acquire_child = "ZigoAcquireChild",
+            .drop_child = "ZigoDropChild",
+        };
+        return .{
+            .poisoned = "poisoned",
+            .acquire = "zigoAcquire",
+            .release = "zigoRelease",
+            .poison = "zigoPoison",
+            .acquire_child = "zigoAcquireChild",
+            .drop_child = "zigoDropChild",
+        };
+    }
+};
+
+/// Binds `parent` to the handle pinned alongside this one. A borrowed handle
+/// may have either an owner or a dependency parent; a purely dependent one
+/// only ever has the latter. `mu` is held, so the fields are stable.
+fn writeParentLookup(
+    writer: *std.Io.Writer,
+    recv: []const u8,
+    can_be_borrowed: bool,
+    has_parent: bool,
+    fallback: enum { block, line },
+) !void {
+    if (can_be_borrowed) {
+        try writer.print("\tvar parent zigoHandle\n\tparent = {0s}.owner\n", .{recv});
+        if (has_parent) switch (fallback) {
+            .block => try writer.print("\tif parent == nil {{\n\t\tparent = {0s}.parent\n\t}}\n", .{recv}),
+            .line => try writer.print("\tif parent == nil {{ parent = {0s}.parent }}\n", .{recv}),
+        };
+    } else if (has_parent) try writer.print("\tparent := {0s}.parent\n", .{recv});
+}
+
+/// Close refuses while `counter` calls or children are still inside: it
+/// unlocks and reports how many, so the caller can retry once they return.
+fn writeInUseCheck(writer: *std.Io.Writer, recv: []const u8, type_name: []const u8, counter: []const u8, indent: []const u8) !void {
+    try writer.print(
+        "{2s}if {0s}.{3s} != 0 {{\n{2s}\t{3s} := {0s}.{3s}\n{2s}\t{0s}.mu.Unlock()\n" ++
+            "{2s}\treturn &HandleInUseError{{Operation: \"{1s}.Close\", Children: {3s}}}\n{2s}}}\n",
+        .{ recv, type_name, indent, counter },
+    );
+}
+
+/// The exported methods that make `{type_name}{suffix}` a `lifecycle.Handle`.
+fn writeSharedLifecycleWrappers(writer: *std.Io.Writer, recv: []const u8, type_name: []const u8, suffix: []const u8) !void {
+    try writer.print(
+        "// ZigoAcquire implements the shared lifecycle handle contract.\n" ++
+            "func ({0s} *{1s}{2s}) ZigoAcquire(operation string) (unsafe.Pointer, error) {{ return {0s}.zigoAcquire(operation) }}\n" ++
+            "// ZigoRelease implements the shared lifecycle handle contract.\n" ++
+            "func ({0s} *{1s}{2s}) ZigoRelease() {{ {0s}.zigoRelease() }}\n" ++
+            "// ZigoPoison implements the shared lifecycle handle contract.\n" ++
+            "func ({0s} *{1s}{2s}) ZigoPoison(cause *NativePanicError) {{ {0s}.zigoPoison(cause) }}\n\n",
+        .{ recv, type_name, suffix },
+    );
 }
 
 /// The column gofmt aligns struct field types on: the longest name plus one

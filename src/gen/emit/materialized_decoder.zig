@@ -70,12 +70,12 @@ pub fn renderPublicMaterializedStructs(allocator: std.mem.Allocator, writer: *st
     );
     for (program.materialized_layouts, used) |layout, is_used| {
         if (!is_used) continue;
-        try renderMaterializedDecoder(allocator, writer, program, options, layout);
+        try renderMaterializedDecoder(allocator, writer, scope, layout);
     }
 }
 
-fn renderMaterializedDecoder(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options, layout: abi.MaterializedLayout) !void {
-    const scope: public_writers.PublicScope = .{ .program = program, .options = options };
+fn renderMaterializedDecoder(allocator: std.mem.Allocator, writer: *std.Io.Writer, scope: public_writers.PublicScope, layout: abi.MaterializedLayout) !void {
+    const options = scope.options;
     const public_name = try scope.typeNameAlloc(allocator, layout.owner.name);
     defer allocator.free(public_name);
     if (options.emitsHelperFmt("zigoDecode{s}Buffer", .{layout.owner.name})) try writer.print(
@@ -87,28 +87,32 @@ fn renderMaterializedDecoder(allocator: std.mem.Allocator, writer: *std.Io.Write
         .{ layout.owner.name, public_name, layout.id, public_name, layout.owner.name },
     );
     try writer.print("func zigoDecode{s}At(buffer []byte, offset uint64) {s} {{\n\t_ = zigoMaterializedBytes(buffer, offset, {d})\n\tvar result {s}\n", .{ layout.owner.name, public_name, layout.record_size, public_name });
-    for (layout.fields) |field| try writeMaterializedDecodeField(allocator, writer, program, options, field);
+    for (layout.fields) |field| try writeMaterializedDecodeField(allocator, writer, scope, field);
     try writer.writeAll("\treturn result\n}\n\n");
 }
 
-fn writeMaterializedDecodeField(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options, field: abi.MaterializedLayout.Field) !void {
-    const scope: public_writers.PublicScope = .{ .program = program, .options = options };
+/// A slice field's array is bounds-checked as a whole before its elements
+/// are read, so the per-element reads below cannot run off the buffer.
+fn writeArrayCheck(writer: *std.Io.Writer, member: []const u8, field: abi.MaterializedLayout.Field) !void {
+    try writer.print(
+        "\t_ = zigoMaterializedArray(buffer, zigo{s}Offset, zigoMaterializedU64(buffer, offset+{d}), {d})\n",
+        .{ member, field.offset + 8, field.kind.elementStride() },
+    );
+}
+
+fn writeMaterializedDecodeField(allocator: std.mem.Allocator, writer: *std.Io.Writer, scope: public_writers.PublicScope, field: abi.MaterializedLayout.Field) !void {
     const member = try naming.pascalAlloc(allocator, field.name);
     defer allocator.free(member);
     try writer.print("\tzigo{s}Offset := zigoMaterializedU64(buffer, offset+{d})\n", .{ member, field.offset });
-    switch (field.kind) {
-        .scalar_slice, .string_slice, .node_slice => try writer.print(
-            "\t_ = zigoMaterializedArray(buffer, zigo{s}Offset, zigoMaterializedU64(buffer, offset+{d}), {d})\n",
-            .{ member, field.offset + 8, @as(u8, if (field.kind == .string_slice) 16 else 8) },
-        ),
-        else => {},
-    }
     switch (field.kind) {
         .scalar => {
             try writer.print("\tresult.{s} = ", .{member});
             switch (field.node) {
                 .bool => try writer.print("zigo{s}Offset != 0", .{member}),
-                .int => try public_writers.writePublicGoType(scope, writer, field.node),
+                .int => {
+                    try public_writers.writePublicGoType(scope, writer, field.node);
+                    try writer.print("(zigo{s}Offset)", .{member});
+                },
                 .float => |value| try writer.print("math.Float{d}frombits(uint{d}(zigo{s}Offset))", .{ value.bits, value.bits, member }),
                 .@"enum" => |value| {
                     try scope.writeTypeName(writer, value.ref);
@@ -116,14 +120,14 @@ fn writeMaterializedDecodeField(allocator: std.mem.Allocator, writer: *std.Io.Wr
                 },
                 else => unreachable,
             }
-            if (field.node == .int) try writer.print("(zigo{s}Offset)", .{member});
             try writer.writeByte('\n');
         },
         .string => try writer.print("\tzigo{s}Count := zigoMaterializedU64(buffer, offset+{d})\n\tresult.{s} = string(zigoMaterializedBytes(buffer, zigo{s}Offset, zigo{s}Count))\n", .{ member, field.offset + 8, member, member, member }),
         .scalar_slice => {
+            try writeArrayCheck(writer, member, field);
             try writer.print("\tzigo{s}Count := zigoMaterializedU64(buffer, offset+{d})\n\tresult.{s} = make(", .{ member, field.offset + 8, member });
             try writeMaterializedPublicType(scope, writer, field.node);
-            try writer.print(", int(zigo{s}Count))\n\tfor i := range result.{s} {{\n\t\tzigoValue := zigoMaterializedU64(buffer, zigo{s}Offset+uint64(i)*8)\n\t\tresult.{s}[i] = ", .{ member, member, member, member });
+            try writer.print(", int(zigo{s}Count))\n\tfor i := range result.{s} {{\n\t\tzigoValue := zigoMaterializedU64(buffer, zigo{s}Offset+uint64(i)*{d})\n\t\tresult.{s}[i] = ", .{ member, member, member, field.kind.elementStride(), member });
             const element = field.node.slice.element.*;
             switch (element) {
                 .bool => try writer.writeAll("zigoValue != 0"),
@@ -139,13 +143,19 @@ fn writeMaterializedDecodeField(allocator: std.mem.Allocator, writer: *std.Io.Wr
             }
             try writer.writeAll("\n\t}\n");
         },
-        .string_slice => try writer.print("\tzigo{s}Count := zigoMaterializedU64(buffer, offset+{d})\n\tresult.{s} = make([]string, int(zigo{s}Count))\n\tfor i := range result.{s} {{\n\t\tzigoItem := zigo{s}Offset + uint64(i)*16\n\t\tresult.{s}[i] = string(zigoMaterializedBytes(buffer, zigoMaterializedU64(buffer, zigoItem), zigoMaterializedU64(buffer, zigoItem+8)))\n\t}}\n", .{ member, field.offset + 8, member, member, member, member, member }),
+        .string_slice => {
+            try writeArrayCheck(writer, member, field);
+            try writer.print("\tzigo{0s}Count := zigoMaterializedU64(buffer, offset+{1d})\n\tresult.{0s} = make([]string, int(zigo{0s}Count))\n\tfor i := range result.{0s} {{\n\t\tzigoItem := zigo{0s}Offset + uint64(i)*{2d}\n\t\tresult.{0s}[i] = string(zigoMaterializedBytes(buffer, zigoMaterializedU64(buffer, zigoItem), zigoMaterializedU64(buffer, zigoItem+8)))\n\t}}\n", .{ member, field.offset + 8, field.kind.elementStride() });
+        },
         .node => try writer.print("\tresult.{s} = zigoDecode{s}At(buffer, zigo{s}Offset)\n", .{ member, field.node.materialized.ref, member }),
         .node_pointer => {
             if (field.node.materialized.nullable) try writer.print("\tif zigo{s}Offset != 0 {{\n", .{member});
             try writer.print("\tzigo{s}Value := zigoDecode{s}At(buffer, zigo{s}Offset)\n\tresult.{s} = &zigo{s}Value\n", .{ member, field.node.materialized.ref, member, member, member });
             if (field.node.materialized.nullable) try writer.writeAll("\t}\n");
         },
-        .node_slice => try writer.print("\tzigo{s}Count := zigoMaterializedU64(buffer, offset+{d})\n\tresult.{s} = make([]{s}, int(zigo{s}Count))\n\tfor i := range result.{s} {{ result.{s}[i] = zigoDecode{s}At(buffer, zigoMaterializedU64(buffer, zigo{s}Offset+uint64(i)*8)) }}\n", .{ member, field.offset + 8, member, field.node.slice.element.materialized.ref, member, member, member, field.node.slice.element.materialized.ref, member }),
+        .node_slice => {
+            try writeArrayCheck(writer, member, field);
+            try writer.print("\tzigo{0s}Count := zigoMaterializedU64(buffer, offset+{1d})\n\tresult.{0s} = make([]{2s}, int(zigo{0s}Count))\n\tfor i := range result.{0s} {{ result.{0s}[i] = zigoDecode{2s}At(buffer, zigoMaterializedU64(buffer, zigo{0s}Offset+uint64(i)*{3d})) }}\n", .{ member, field.offset + 8, field.node.slice.element.materialized.ref, field.kind.elementStride() });
+        },
     }
 }

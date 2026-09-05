@@ -27,7 +27,7 @@ pub fn ownedReturnIsWrappable(document: semantic.Semantic, function: semantic.Se
 /// The count a `.written = .return` parameter reads back from. An error union
 /// reports it through its payload; the error path writes zero instead.
 pub fn returnsCount(node: semantic.TypeNode) bool {
-    const payload = if (node == .error_union) node.error_union.payload.* else node;
+    const payload = node.errorPayload();
     return payload == .int and payload.int.is_usize;
 }
 

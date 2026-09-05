@@ -77,7 +77,7 @@ pub fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, document: se
         if (declaration.package) |package| try writer.print(" | package {s}", .{package});
         if (declaration.isHandle()) {
             try writer.print(" | Go {s}, {s}Ref", .{ declaration.name, declaration.name });
-            if (findConstructorForType(document, declaration.name)) |constructor|
+            if (lower.constructorForType(document.constructors, declaration.name)) |constructor|
                 try writer.print(" | caller-owned via {s}, released by {s}/Close", .{ constructor.init, constructor.deinit })
             else
                 try writer.writeAll(" | borrowed/library-owned handle");
@@ -128,7 +128,7 @@ fn publicFunctionNameAlloc(allocator: std.mem.Allocator, document: semantic.Sema
     const name = try semantic.publicFunctionNameAlloc(allocator, document, function);
     defer allocator.free(name);
     if (semantic.constructorForInit(document.constructors, function) == null and
-        constructorForDeinit(document, function) != null)
+        lower.constructorForDeinit(document.constructors, function) != null)
         return std.fmt.allocPrint(allocator, "(*{s}).Close [lifecycle mapping]", .{function.receiver.?});
     if (function.receiver) |receiver|
         return std.fmt.allocPrint(allocator, "(*{s}).{s}", .{ receiver, name });
@@ -139,20 +139,6 @@ fn semanticIdentityAlloc(allocator: std.mem.Allocator, function: semantic.Semant
     if (function.receiver orelse function.namespace) |owner|
         return std.fmt.allocPrint(allocator, "{s}.{s}", .{ owner, function.name });
     return allocator.dupe(u8, function.name);
-}
-
-fn constructorForDeinit(document: semantic.Semantic, function: semantic.SemanticFn) ?semantic.Constructor {
-    const receiver = function.receiver orelse return null;
-    for (document.constructors) |constructor| {
-        if (std.mem.eql(u8, constructor.type, receiver) and std.mem.eql(u8, constructor.deinit, function.name))
-            return constructor;
-    }
-    return null;
-}
-
-fn findConstructorForType(document: semantic.Semantic, name: []const u8) ?semantic.Constructor {
-    for (document.constructors) |constructor| if (std.mem.eql(u8, constructor.type, name)) return constructor;
-    return null;
 }
 
 fn typeName(node: semantic.TypeNode) []const u8 {

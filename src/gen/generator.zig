@@ -168,14 +168,11 @@ fn appendEmitters(allocator: std.mem.Allocator, prepared: *std.ArrayList(Prepare
             error.WriteFailed => return error.OutOfMemory,
             else => return err,
         };
-        const contents = try rendered.toOwnedSlice();
-        try prepared.append(allocator, .{
-            .path = relative_path,
-            .contents = if (std.mem.endsWith(u8, relative_path, ".go")) blk: {
-                const body = std.mem.trimEnd(u8, contents, "\n");
-                break :blk try std.fmt.allocPrint(allocator, "{s}\n", .{body});
-            } else contents,
-        });
+        if (std.mem.endsWith(u8, relative_path, ".go")) {
+            rendered.shrinkRetainingCapacity(std.mem.trimEnd(u8, rendered.written(), "\n").len);
+            rendered.writer.writeByte('\n') catch return error.OutOfMemory;
+        }
+        try prepared.append(allocator, .{ .path = relative_path, .contents = try rendered.toOwnedSlice() });
     }
 }
 
@@ -194,11 +191,10 @@ fn appendPublicPackage(allocator: std.mem.Allocator, prepared: *std.ArrayList(Pr
     // The tagged-union files are not in the emitter table: how many there are
     // depends on the bindings, so they are rendered per union.
     for (try emit.unionFilesAlloc(allocator, program, package_options)) |file| {
-        const body = std.mem.trimEnd(u8, file.contents, "\n");
-        try prepared.append(allocator, .{
-            .path = file.path,
-            .contents = try std.fmt.allocPrint(allocator, "{s}\n", .{body}),
-        });
+        const body_len = std.mem.trimEnd(u8, file.contents, "\n").len;
+        const contents = try allocator.realloc(file.contents, body_len + 1);
+        contents[body_len] = '\n';
+        try prepared.append(allocator, .{ .path = file.path, .contents = contents });
     }
 }
 

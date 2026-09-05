@@ -12,8 +12,6 @@ pub const constructorForType = ownership_rules.constructorForType;
 pub const ownedOpaqueReturn = ownership_rules.ownedOpaqueReturn;
 pub const releaseTarget = ownership_rules.releaseTarget;
 pub const releasableSliceReturnElement = ownership_rules.releasableSliceReturnElement;
-pub const ownershipOf = ownership_rules.ownershipOf;
-pub const paramOwnershipOf = ownership_rules.paramOwnershipOf;
 pub const isReleaseTarget = ownership_rules.isReleaseTarget;
 const recordOwnership = ownership_rules.recordOwnership;
 
@@ -1525,7 +1523,7 @@ fn classifyParamStrings(allocator: std.mem.Allocator, function: semantic.Semanti
 /// out-pointer-and-length pair `sliceReturnElement` describes, and generated
 /// Go copies it and calls the release function.
 fn returnStringRole(function: semantic.SemanticFn) abi.AbiFn.StringRole {
-    const payload = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
+    const payload = function.@"return".errorPayload();
     const caller_owned = function.ownership == .caller and function.release != null;
     if (!caller_owned and semantic.isCStringSliceThroughOptional(payload, function.return_semantic)) return .c_string;
     if (semantic.isUtf8Slice(payload, function.return_semantic)) return .utf8_slice;
@@ -1598,13 +1596,30 @@ fn nameCallbackTypes(allocator: std.mem.Allocator, document: semantic.Semantic, 
         for (entries) |*entry| entry.* = null;
         lowered.callback_types = entries;
     }
+    // How many anonymous signatures derive each base name, counted once for
+    // the program: a base shared by two of them is what forces qualification.
+    var base_counts: std.StringHashMapUnmanaged(u32) = .empty;
+    defer {
+        var keys = base_counts.keyIterator();
+        while (keys.next()) |key| allocator.free(key.*);
+        base_counts.deinit(allocator);
+    }
+    for (functions) |lowered| for (lowered.origin.params, 0..) |parameter, index| {
+        if (parameter.type != .callback or parameter.type.callback.ref != null) continue;
+        const base = try callbackTypeBaseNameAlloc(allocator, lowered.origin.*, index);
+        const entry = try base_counts.getOrPut(allocator, base);
+        if (entry.found_existing) {
+            allocator.free(base);
+            entry.value_ptr.* += 1;
+        } else entry.value_ptr.* = 1;
+    };
     var seen: std.ArrayList([]const u8) = .empty;
     defer seen.deinit(allocator);
     for (functions) |*lowered| {
         const entries = @constCast(lowered.callback_types);
         for (lowered.origin.params, 0..) |parameter, index| {
             if (parameter.type != .callback) continue;
-            const name = try callbackTypeNameAlloc(allocator, document, functions, lowered.*, index);
+            const name = try callbackTypeNameAlloc(allocator, document, base_counts, lowered.*, index);
             var first_use = true;
             for (seen.items) |taken| if (std.mem.eql(u8, taken, name)) {
                 first_use = false;
@@ -1619,7 +1634,7 @@ fn nameCallbackTypes(allocator: std.mem.Allocator, document: semantic.Semantic, 
 fn callbackTypeNameAlloc(
     allocator: std.mem.Allocator,
     document: semantic.Semantic,
-    functions: []const abi.AbiFn,
+    base_counts: std.StringHashMapUnmanaged(u32),
     function: abi.AbiFn,
     parameter_index: usize,
 ) ![]u8 {
@@ -1628,16 +1643,7 @@ fn callbackTypeNameAlloc(
     if (function.origin.params[parameter_index].type.callback.ref) |ref| return allocator.dupe(u8, ref);
     const base = try callbackTypeBaseNameAlloc(allocator, function.origin.*, parameter_index);
     defer allocator.free(base);
-    var duplicate_base = false;
-    for (functions) |candidate| {
-        for (candidate.origin.params, 0..) |parameter, candidate_index| {
-            if (parameter.type != .callback) continue;
-            if (candidate.origin == function.origin and candidate_index == parameter_index) continue;
-            const candidate_base = try callbackTypeBaseNameAlloc(allocator, candidate.origin.*, candidate_index);
-            defer allocator.free(candidate_base);
-            if (std.mem.eql(u8, base, candidate_base)) duplicate_base = true;
-        }
-    }
+    const duplicate_base = (base_counts.get(base) orelse 0) > 1;
 
     const owner = function.origin.receiver orelse function.origin.namespace;
     const qualified = if (duplicate_base and owner != null) blk: {
@@ -1676,7 +1682,7 @@ fn callbackTypeBaseNameAlloc(allocator: std.mem.Allocator, function: semantic.Se
 }
 
 fn returnContainsCStringSlice(node: semantic.TypeNode, hint: ?semantic.SemanticHint) bool {
-    const payload = if (node == .error_union) node.error_union.payload.* else node;
+    const payload = node.errorPayload();
     const child = if (payload == .optional) payload.optional.child.* else payload;
     return semantic.isCStringSlice(child, hint);
 }

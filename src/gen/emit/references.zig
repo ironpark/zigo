@@ -72,7 +72,7 @@ fn isIdentifierStart(byte: u8) bool {
     return byte == '_' or std.ascii.isAlphabetic(byte);
 }
 
-fn isIdentifierByte(byte: u8) bool {
+pub fn isIdentifierByte(byte: u8) bool {
     return byte == '_' or std.ascii.isAlphanumeric(byte);
 }
 

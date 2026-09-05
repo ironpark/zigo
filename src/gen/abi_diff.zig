@@ -153,7 +153,7 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
     };
 
     for (base.types) |old| {
-        const new = findType(current.types, old.name) orelse {
+        const new = semantic.typeDecl(current.types, old.name) orelse {
             try add(allocator, &report, .breaking, old.name, "type removed");
             continue;
         };
@@ -195,18 +195,18 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
             .breaking => try add(allocator, &report, .breaking, old.name, "type definition changed"),
         }
     }
-    for (current.types) |new| if (findType(base.types, new.name) == null)
+    for (current.types) |new| if (semantic.typeDecl(base.types, new.name) == null)
         try add(allocator, &report, .added, new.name, "type added");
 
     for (base.constructors) |old| {
-        const new = findConstructor(current.constructors, old.type) orelse {
+        const new = lower.constructorForType(current.constructors, old.type) orelse {
             try add(allocator, &report, .breaking, old.type, "constructor mapping removed");
             continue;
         };
         if (!std.mem.eql(u8, old.init, new.init) or !std.mem.eql(u8, old.deinit, new.deinit))
             try add(allocator, &report, .breaking, old.type, "constructor or destructor mapping changed");
     }
-    for (current.constructors) |new| if (findConstructor(base.constructors, new.type) == null)
+    for (current.constructors) |new| if (lower.constructorForType(base.constructors, new.type) == null)
         try add(allocator, &report, .added, new.type, "constructor mapping added");
 
     // A generated interface is a Go type callers name and may implement, so
@@ -664,11 +664,6 @@ fn optionalHintEqual(lhs: ?semantic.SemanticHint, rhs: ?semantic.SemanticHint) b
     return lhs == rhs;
 }
 
-fn findType(types: []const semantic.TypeDecl, name: []const u8) ?semantic.TypeDecl {
-    for (types) |declaration| if (std.mem.eql(u8, declaration.name, name)) return declaration;
-    return null;
-}
-
 fn findInterface(interfaces: []const semantic.Interface, name: []const u8) ?semantic.Interface {
     for (interfaces) |interface| if (std.mem.eql(u8, interface.name, name)) return interface;
     return null;
@@ -678,11 +673,6 @@ fn stringListEqual(lhs: []const []const u8, rhs: []const []const u8) bool {
     if (lhs.len != rhs.len) return false;
     for (lhs, rhs) |left, right| if (!std.mem.eql(u8, left, right)) return false;
     return true;
-}
-
-fn findConstructor(constructors: []const semantic.Constructor, type_name: []const u8) ?semantic.Constructor {
-    for (constructors) |constructor| if (std.mem.eql(u8, constructor.type, type_name)) return constructor;
-    return null;
 }
 
 test "string slice element sentinels are not a signature change" {

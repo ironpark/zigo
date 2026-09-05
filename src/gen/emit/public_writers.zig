@@ -78,7 +78,7 @@ pub fn writeErrorForCode(
     go_names: []const []const u8,
     operation: []const u8,
 ) !void {
-    if (function.receiver == null and !docs.hasOpaqueParameter(function)) return writer.print("errorForCode(\"{s}\", code)\n", .{operation});
+    if (function.receiver == null and !lower.hasOpaqueParameter(function)) return writer.print("errorForCode(\"{s}\", code)\n", .{operation});
     try writer.print("zigoPoisonAfterPanic(errorForCode(\"{s}\", code)", .{operation});
     if (function.receiver) |receiver| {
         const receiver_name = try common.receiverVariableAlloc(allocator, receiver, go_names);
@@ -108,7 +108,7 @@ pub fn writeCheckedErrorReturn(
     error_expression: []const u8,
 ) !void {
     if (constructor != null) return writer.print("return nil, {s}\n", .{error_expression});
-    const payload = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
+    const payload = function.@"return".errorPayload();
     if (payload == .void) return writer.print("return {s}\n", .{error_expression});
     try writer.writeAll("return ");
     try writePublicFailureValues(scope, writer, function, payload);
@@ -246,7 +246,7 @@ pub fn writeCheckedFunctionReturnType(scope: PublicScope, writer: *std.Io.Writer
         try writer.writeAll("string");
     } else if (docs.returnsBorrowedView(function)) {
         try writer.print("*{s}", .{function.@"return".opaque_ptr.ref});
-    } else if (docs.returnsBorrowedHandle(function)) {
+    } else if (docs.returnsBorrowedOpaque(function)) {
         try writer.print("*{s}Ref", .{function.@"return".opaque_ptr.ref});
     } else {
         try writePublicGoType(scope, writer, function.@"return");
@@ -268,7 +268,7 @@ pub fn writePublicFunctionReturnType(scope: PublicScope, writer: *std.Io.Writer,
             try writer.print(" *{s}", .{function.@"return".opaque_ptr.ref});
         return;
     }
-    if (function.@"return" == .opaque_ptr and docs.returnsBorrowedHandle(function)) {
+    if (function.@"return" == .opaque_ptr and docs.returnsBorrowedOpaque(function)) {
         try writer.print(" *{s}Ref", .{function.@"return".opaque_ptr.ref});
         return;
     }
@@ -280,7 +280,7 @@ pub fn writePublicFunctionReturnType(scope: PublicScope, writer: *std.Io.Writer,
             try writer.print(" (*{s}, error)", .{pointer.ref});
         return;
     }
-    if (function.@"return" == .error_union and function.@"return".error_union.payload.* == .opaque_ptr and docs.returnsBorrowedHandle(function)) {
+    if (function.@"return" == .error_union and function.@"return".error_union.payload.* == .opaque_ptr and docs.returnsBorrowedOpaque(function)) {
         try writer.print(" (*{s}Ref, error)", .{function.@"return".error_union.payload.opaque_ptr.ref});
         return;
     }
@@ -294,7 +294,7 @@ pub fn writeBorrowedResult(
     go_names: []const []const u8,
     expression: []const u8,
 ) !void {
-    const node = if (function.@"return" == .error_union) function.@"return".error_union.payload.* else function.@"return";
+    const node = function.@"return".errorPayload();
     const parent = if (function.receiver) |receiver| try common.receiverVariableAlloc(allocator, receiver, go_names) else null;
     defer if (parent) |value| allocator.free(value);
     if (function.returnsBorrowedHandle())
@@ -363,8 +363,8 @@ pub fn writeRawParameterType(writer: *std.Io.Writer, program: abi.Program, param
 }
 
 pub fn typeBelongsToPackage(program: abi.Program, name: []const u8, active: ?[]const u8) bool {
-    for (program.types) |declaration| if (std.mem.eql(u8, declaration.name, name)) return emit.packageMatches(declaration.package, active);
-    return false;
+    const declaration = semantic.typeDecl(program.types, name) orelse return false;
+    return emit.packageMatches(declaration.package, active);
 }
 
 fn writePublicReturnType(scope: PublicScope, writer: *std.Io.Writer, node: semantic.TypeNode, hint: ?semantic.SemanticHint) !void {
