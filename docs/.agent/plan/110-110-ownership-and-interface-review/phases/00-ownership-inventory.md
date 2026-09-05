@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T07:34:49Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: The table is in `docs/.agent/design/10-ownership-model.md` and every row
 > NEXT: none

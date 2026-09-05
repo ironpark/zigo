@@ -79,6 +79,134 @@ lowering은 이것을 `AbiFn.release_symbol`, `slice_return_element`, `ret_strin
 - 검증은 형태별로 흩어져 있지만 모두 같은 질문을 한다. "이 함수의 결과를 누가, 무엇으로,
   언제 돌려주는가."
 
-## 2. 설계 (phase 1에서 작성)
+## 2. 설계
 
-## 3. 권고 (phase 1에서 작성)
+### 2.1 원칙
+
+`semantic.json`은 그대로 두고, lowering이 1.1의 조각들을 읽어 함수마다 하나의 소유권 레코드를
+세운다. emit과 validate는 레코드만 읽는다. 이는 계획 109가 `must_variant`와
+`reaches_callback_errors`에 적용한 규칙과 같다. IR 파일 계약을 바꾸지 않으므로 `ir_version`도,
+`abi-diff`도 바뀌지 않는다. `Semantic.parse`는 모르는 필드를 거부하므로(`parseFromValue` 기본
+옵션) 새 semantic 필드는 그 자체로 호환성 사건이고, 이 설계는 그 비용을 치르지 않는다.
+
+### 2.2 레코드
+
+```zig
+// abi.zig
+pub const Ownership = union(enum) {
+    /// 값, void, 스칼라. 넘길 메모리가 없다.
+    none,
+    /// receiver가 소유하는 native 객체를 가리키는 view. (표 4행)
+    borrowed_view: struct { handle: []const u8 },
+    /// native slice를 호출 시점에 복사한다. 부재 형태는 Go 시그니처가 정한다. (5, 7행)
+    borrowed_copy: struct { element: semantic.TypeNode, text: StringRole, absent: bool },
+    /// Go가 destructor까지 들고 있는 native 객체. (1, 2, 3행; 11행의 슬롯)
+    handle: struct {
+        type_name: []const u8,
+        destructor: []const u8, // 심볼
+        boxed: bool,
+        child_of_receiver: bool,
+        retained_slots: usize,
+    },
+    /// native가 준 버퍼를 복사하고 곧바로 돌려준다. (6, 7, 8, 10행)
+    buffer: struct {
+        element: semantic.TypeNode,
+        release: []const u8, // 심볼
+        release_receiver: ?[]const u8,
+        narrow: bool,
+        materialized: ?usize, // layout 인덱스
+        absent: bool,
+        fallible: bool,
+    },
+};
+
+pub const ParamOwnership = enum { transient, retained_token, staged_copy, stream };
+```
+
+`AbiFn.ownership: Ownership`과 `AbiFn.param_ownership: []const ParamOwnership`이 새 필드다.
+기존 필드(`release_symbol`, `slice_return_element`, `ret_string`, `materialized_return`,
+`materialized_out`, `callback_slots`)는 레코드가 자리를 잡은 뒤 하나씩 지운다.
+
+### 2.3 인벤토리 행의 매핑
+
+| 표 행 | 레코드 | 생성물 변화 |
+|---|---|---|
+| 1 생성자 짝 | `handle{ boxed=false, child=false }` | 없음 |
+| 2 boxed | `handle{ boxed=true }` | 없음. shim의 `create`/`destroy`는 `origin.boxed`를 계속 읽어도 된다 |
+| 3 자식 handle | `handle{ child_of_receiver=true }` | 없음 |
+| 4 borrowed view | `borrowed_view` | 없음 |
+| 5 borrowed slice | `borrowed_copy` | 없음 |
+| 6 caller-owned slice | `buffer{ narrow=false, materialized=null }` | 없음 |
+| 7 문자열 | borrowed는 `borrowed_copy{ text=c_string }`, caller-owned는 `buffer{ element=u8 }` | 없음. `caller_owned_c_string` 특례가 레코드 생성 한 곳으로 모인다 |
+| 8 narrow 반환 | `buffer{ narrow=true }` | 없음 |
+| 9 narrow 파라미터 | `param_ownership = staged_copy` | 없음 |
+| 10 materialized | `buffer{ element=u8, materialized=layout }` | 없음 |
+| 11 retained 콜백 | `param_ownership = retained_token` + `handle.retained_slots` | 없음 |
+| 12 스트림 | `param_ownership = stream` | 없음 |
+| 13 값 | `none` | 없음 |
+
+모든 행이 생성물 변화 없이 매핑된다. 유일하게 매핑되지 않는 것은 `ownership = library`인데,
+읽는 곳이 없으므로 레코드도 `none`으로 두고 문서에서 "예약됨"으로 적는다.
+
+### 2.4 레코드가 대신하는 코드
+
+- **validate.** `releaseTargetIssue`(ZIGO016), `materializedReleaseTargetIssue`(ZIGO048),
+  `ownedReturnIsWrappable`(ZIGO015)이 각자 하던 "release 후보 찾기"를
+  `lower.releaseTarget(document, function) ?ReleaseTarget` 하나로 모은다. 레코드 생성 자체는
+  검증 뒤에 돌아야 하므로 validate는 레코드가 아니라 이 helper를 읽는다.
+- **lower.** `release_symbol` 해석 루프, `returnStringRole`, `sliceReturnElement`,
+  `abi.materializedReturn/Out`이 레코드 생성 함수 `ownershipOf` 안으로 들어간다.
+- **emit.** `raw.writeCgoSliceReturn`과 `purego.writePuregoSliceReturn`의 release 분기는
+  `ownership == .buffer`를 묻고, materialized의 byte 특례는 `buffer.materialized`로 대체된다.
+  `common.writeOwnedHandleResult`와 handle 생성기는 `handle` 변형을 읽는다.
+  `common.releaseReceiverCName`은 `buffer.release_receiver`가 된다.
+
+### 2.5 동기가 된 두 기능의 평가
+
+**자동 `runtime.AddCleanup`.** 인벤토리 1.4가 보여주듯 Go가 호출 뒤에도 native 메모리를 드는
+형태는 handle과 retained 콜백 토큰뿐이고, 둘 다 이미 생성자 state를 통해 cleanup에 등록된다.
+버퍼 계열은 "복사 후 즉시 release"라 등록할 것이 없다. 따라서 이 기능은 새 코드가 아니라
+레코드의 불변식이다. `handle`과 `retained_token`만 cleanup 대상이고, 새 소유권 변형을 추가하는
+사람은 이 둘 중 하나로 표현하거나 복사 정책을 따라야 한다. 복사를 없애는 "native 메모리 위의
+zero-copy view"는 이 불변식을 깨는 새 기능이고, GC가 보지 못하는 포인터를 Go slice에 싣는
+문제와 `bindings.md`가 약속한 "반환 slice는 항상 Go 메모리" 계약을 모두 건드린다. 벤치마크가
+복사 비용을 문제로 증명하기 전에는 하지 않는다.
+
+**arena 스코프 API.** 모든 버퍼가 호출마다 release되므로 arena가 줄일 수 있는 것은 release
+호출 횟수뿐이다. 호출 하나에 경계 통과 하나가 붙는 구조에서 이는 작은 slice를 루프에서 많이
+반환하는 API에만 의미가 있고, 그 API는 이미 `...Into(dst)` out 파라미터 패턴으로 복사와
+release를 모두 피할 수 있다. Zig 쪽 arena를 handle로 노출해 주입 allocator 자리에 넣는 형태는
+C 시그니처가 바뀌는 새 기능이며, 레코드에는 `buffer.release`가 심볼이 아니라 "arena handle에
+귀속"이 되는 새 release 종류가 필요하다. 레코드가 있으면 그 변형 하나를 더하는 일이 되므로,
+순서는 레코드가 먼저다. 근거는 계획 68이 `LockOSThread`에 적용한 기준과 같다. 측정된 이득이
+호출 비용의 10%를 넘지 않으면 ABI를 바꾸지 않는다.
+
+### 2.6 호환성
+
+- `semantic.json` 변화 없음, `ir_version` 유지, golden 44개 바이트 동일이 각 phase의 완료 조건이다.
+- `abi-diff`는 semantic 필드를 비교하므로 바뀌지 않는다. 다만 지금 "release function changed"와
+  "return ownership or semantics changed"를 따로 보고하는데, 레코드가 생기면 두 변경을 레코드
+  비교 한 번으로 묶을 수 있다. 보고 문구가 바뀌므로 선택 사항으로 남긴다.
+- `ownership = library`는 생성기가 읽지 않으므로 제거해도 생성물은 같다. 그러나 필드 값이
+  사라지면 그 값을 적은 옛 `semantic.json`이 파싱에 실패하므로 enum 값은 두고 문서만 고친다.
+
+## 3. 권고
+
+**채택한다. 단 lowering 레코드로만 도입하고 IR 파일 계약은 건드리지 않는다.** 소유권은 이미
+세 형태(handle, buffer, token)로 수렴해 있고, 흩어진 것은 그 형태를 다시 알아내는 코드다.
+레코드는 그 코드를 한 곳으로 모으며 생성물을 바꾸지 않는다.
+
+`runtime.AddCleanup` 자동화는 이미 완성된 상태이므로 별도 작업이 없다. arena 스코프 API는
+레코드 이후로 미루고, 필요가 측정으로 입증될 때 별도 계획으로 설계한다.
+
+### 후속 계획 초안 (4 phase, 모두 golden 불변)
+
+1. `abi.Ownership`과 `lower.ownershipOf` 추가, `AbiFn.ownership`/`param_ownership` 기록. golden
+   case마다 기대 레코드를 단언하는 lower 테스트를 추가한다. emit 변경 없음.
+2. emit이 레코드를 읽는다. cgo와 purego의 복사 후 release 분기, materialized byte 특례,
+   `releaseReceiverCName`, `writeOwnedHandleResult`를 옮기고 대체된 `AbiFn` 필드를 지운다.
+3. validate가 `lower.releaseTarget`을 읽는다. ZIGO015/016/048의 후보 찾기를 한 helper로 모으고,
+   payload를 벗기는 네 함수를 `TypeNode.errorPayload` 위의 두 개(소유권 질문, 호출 규약 질문)로
+   줄인다.
+4. `ownership = library`를 "예약됨"으로 문서화하고, `01-architecture.md` 9절의 세 축 설명을
+   레코드 기준으로 고친다.
