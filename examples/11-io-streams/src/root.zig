@@ -128,10 +128,17 @@ pub fn banner(w: *std.Io.Writer, width: u32) DumpError!void {
 /// Copies a reader into a writer, so one call exercises both directions at
 /// once and the byte count comes back through the return value.
 pub fn tee(r: *std.Io.Reader, w: *std.Io.Writer) LoadError!usize {
-    return r.streamRemaining(w) catch |err| switch (err) {
-        error.ReadFailed => error.ReadFailed,
-        error.WriteFailed => error.ReadFailed,
-    };
+    // Keep progress explicit instead of asking the reader to reserve writable
+    // space in another adapter. This also bounds temporary storage for files
+    // larger than either adapter's staging buffer.
+    var buffer: [4096]u8 = undefined;
+    var total: usize = 0;
+    while (true) {
+        const count = r.readSliceShort(&buffer) catch return error.ReadFailed;
+        if (count == 0) return total;
+        w.writeAll(buffer[0..count]) catch return error.ReadFailed;
+        total += count;
+    }
 }
 
 /// Sums Unicode scalar storage after the binding narrows each promoted Go

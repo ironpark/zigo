@@ -14,8 +14,8 @@ pub const bindings = zigo.define(.{
         .{ .path = "Document.deinit" },
         .{ .path = "Document.append", .params = .{"line"} },
         .{ .path = "Document.count" },
-        // The default 64 KiB staging buffer: one Go `Write` per 64 KiB of
-        // output however many times the Zig side calls `writeAll`.
+        // The default 64 KiB staging buffer batches small writes. Explicit
+        // flushes and the writer's behavior also affect the call count.
         .{ .path = "Document.dump", .params = .{"w"} },
         // A deliberately small buffer, so the test can count the crossings a
         // known payload costs and see the size decide them.

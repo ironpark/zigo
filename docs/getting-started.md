@@ -9,6 +9,9 @@
 
 ## 준비 사항
 
+완성된 프로젝트에서 먼저 실습하려면 [00-quick-start](../examples/00-quick-start/README.md)를
+사용하세요. 아래 절차는 자신의 Zig 프로젝트에 같은 구성을 연결하는 방법입니다.
+
 - Zig 0.16.0
 - Go 1.24 이상과 Go 배포판에 포함된 `gofmt`
 - C 컴파일러를 사용할 수 있고 cgo가 활성화된 네이티브 macOS, Linux 또는 Windows 환경.

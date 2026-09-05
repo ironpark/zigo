@@ -69,7 +69,7 @@ purego 바인딩을 가진 예제는 공유 라이브러리를 먼저 만들고 
 
 ```bash
 set -eu
-for example in examples/04-callback examples/07-event-queue examples/08-telemetry-hub \
+for example in examples/03-opaque examples/04-callback examples/07-event-queue examples/08-telemetry-hub \
   examples/11-io-streams examples/12-materialized; do
   (cd "$example" && zig build purego-go purego-go-verify --summary all)
   (cd "$example/go-purego" && CGO_ENABLED=0 go test ./...)

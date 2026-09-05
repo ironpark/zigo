@@ -309,7 +309,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 139,
+            "line": 146,
             "column": 22
           },
           "type": {
@@ -332,7 +332,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 139,
+        "line": 146,
         "column": 8
       },
       "symbol": "zg_sum_codepoints"
@@ -348,7 +348,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 146,
+            "line": 153,
             "column": 23
           },
           "type": {
@@ -368,7 +368,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 146,
+        "line": 153,
         "column": 8
       },
       "symbol": "zg_fill_codepoints"
@@ -391,7 +391,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 153,
+        "line": 160,
         "column": 8
       },
       "symbol": "zg_take_codepoints"
@@ -406,7 +406,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 161,
+            "line": 168,
             "column": 23
           },
           "type": {
@@ -426,7 +426,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 161,
+        "line": 168,
         "column": 8
       },
       "symbol": "zg_free_codepoints"

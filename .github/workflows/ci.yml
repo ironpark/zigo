@@ -39,6 +39,7 @@ jobs:
         run: |
           set -euo pipefail
           examples=(
+            examples/00-quick-start
             examples/01-scalar
             examples/02-errors
             examples/03-opaque

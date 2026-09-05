@@ -1,0 +1,61 @@
+{
+  "constructors": [],
+  "functions": [
+    {
+      "doc": "Adds two signed 32-bit integers. The sum must fit in i32.",
+      "name": "add",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "a",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "source": {
+            "line": 2,
+            "column": 12
+          },
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          }
+        },
+        {
+          "direction": "in",
+          "name": "b",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "source": {
+            "line": 2,
+            "column": 20
+          },
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          }
+        }
+      ],
+      "return": {
+        "bits": 32,
+        "is_usize": false,
+        "kind": "int",
+        "signed": true
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 2,
+        "column": 8
+      },
+      "symbol": "zg_add"
+    }
+  ],
+  "ir_version": 1,
+  "package": "calculator",
+  "prefix": "zg",
+  "types": [],
+  "zig_version": "0.16.0"
+}
