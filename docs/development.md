@@ -28,6 +28,7 @@ zig build go
 모든 cgo 예제를 확인하려면 저장소 루트에서 실행합니다.
 
 ```bash
+set -eu
 for example in examples/*; do
   (cd "$example" && zig build test go-check go-lib abi-check go-coverage --summary all)
   (cd "$example/go" && go test ./...)
@@ -39,11 +40,13 @@ done
 JSON renderer까지 확인할 때는 예제가 `coverage_json`에 연결한
 `-Dcoverage-json=zigo/coverage.json`을 함께 넘깁니다.
 
+아래 purego 검증까지 실행해 모든 모듈의 생성물과 라이브러리를 준비한 다음,
 생성된 Go package에 참조되지 않는 내부 helper가 남지 않았는지는 CI와 같은 `U1000`
 검사로 확인합니다. 현재 CI 버전은 `staticcheck` v0.8.1입니다.
 
 ```bash
 go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
+set -eu
 for module in $(find examples -maxdepth 4 -name go.mod -print | sort); do
   (cd "${module%/go.mod}" && staticcheck -checks U1000 ./...)
 done
@@ -65,6 +68,7 @@ done
 purego 바인딩을 가진 예제는 공유 라이브러리를 먼저 만들고 cgo를 끈 상태에서 테스트합니다.
 
 ```bash
+set -eu
 for example in examples/04-callback examples/07-event-queue examples/08-telemetry-hub \
   examples/11-io-streams examples/12-materialized; do
   (cd "$example" && zig build purego-go purego-go-verify --summary all)
@@ -107,14 +111,14 @@ zig build shared-library-smoke -- \
   이름을 가지고, `shim.zig`(Zig shim), `header.zig`(C 헤더), `raw.zig`(cgo raw 패키지),
   `purego.zig`(purego raw 패키지), `callbacks.zig`, `public.zig`(공개 함수 wrapper와 파일
   배선), `public_types.zig`, `public_runtime.zig`, `public_writers.zig`, `must.zig`,
-  `materialized.zig`, `docs.zig`가 각 출력을 맡습니다. `common.zig`는 타입 철자와 이름,
+  `materialized.zig`, `interfaces.zig`, `docs.zig`가 각 출력을 맡습니다. `common.zig`는 타입 철자와 이름,
   프로그램 전체 predicate처럼 여러 출력이 공유하는 helper입니다.
 - 공개 패키지의 helper(`zigo<T>ToRaw`, `boolToUint8`, materialized decoder 등)는 렌더링한
   본문에서 참조된 식별자를 읽어 낼지 정합니다(`emit/references.zig`). import 블록과 같은
   방식이므로 emit 지점을 추가할 때 별도의 "사용 여부" predicate를 만들 필요가 없습니다.
 - `src/gen/validate/`: `validate.zig`의 `rules` 표가 진단 우선순위입니다. 먼저 나열된 규칙이
   먼저 이깁니다. 규칙과 helper는 `packages`, `names`, `functions`, `callbacks`, `types`,
-  `ownership`, `materialized`, `site`로 나뉘고, 전체 진단 스냅샷 테스트는
+  `ownership`, `materialized`, `interfaces`, `site`로 나뉘고, 전체 진단 스냅샷 테스트는
   `snapshot_tests.zig`에 있습니다.
 - `build.zig`는 소비자가 쓰는 `Options`, `GoBindings`, `addGoBindings`만 가집니다. 이 저장소의
   테스트와 `check`/`snapshot`/`shared-library-smoke` 단계는 `build/tests.zig`, 생성기 모듈
@@ -140,13 +144,13 @@ zig build shared-library-smoke -- \
    `release.yml`은 `scripts/extract-changelog-section.sh`로 이 절만 그대로 추출해 GitHub
    릴리즈 노트로 씁니다.
 2. **`build.zig.zon` 버전**: `.version` 필드를 같은 `x.y.z`로 올립니다.
-3. **커밋과 태그**: 위 변경을 커밋하고 `git tag x.y.z`로 태그한 뒤 `git push && git push
-   --tags`로 태그를 푸시합니다. 태그 이름은 `v` 접두어 없이 `CHANGELOG.md`의 절 이름과
-   정확히 같아야 `extract-changelog-section.sh`가 절을 찾습니다.
-4. **fetch 안내 갱신**: README와 [시작 가이드](getting-started.md)의
-   `zig fetch --save git+https://github.com/ironpark/zigo#<태그>` 줄을 새 태그로 바꾸고, 이
-   문서 변경도 릴리즈에 포함시킵니다(태그 자체는 재태그하지 않으므로 다음 커밋에 실려도
-   됩니다).
+3. **fetch 안내 갱신**: README와 [시작 가이드](getting-started.md)의
+   `zig fetch --save git+https://github.com/ironpark/zigo#<태그>` 줄을 새 태그로 바꿉니다.
+   버전·변경 기록·설치 안내가 같은 릴리즈 커밋에 포함되어야 합니다.
+4. **검증과 커밋**: 위 테스트와 생성물 검사를 마친 뒤 변경을 검토하고 커밋합니다.
+5. **태그와 푸시**: 검증한 커밋에 `git tag x.y.z`로 태그합니다. `git push origin HEAD`로
+   브랜치를, `git push origin x.y.z`로 해당 태그만 푸시합니다. 태그 이름은 `v` 접두어 없이
+   `CHANGELOG.md`의 절 이름과 정확히 같아야 합니다. 원격 이름이 다르면 `origin`을 바꾸세요.
 
 태그 푸시가 일으키는 워크플로는 `zig build test --summary all`을 돌리고, 그 절을 추출해
 `gh release create`(`GITHUB_TOKEN`, 저장소 기본 권한)로 GitHub 릴리즈를 만듭니다. 실제 태그

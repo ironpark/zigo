@@ -22,8 +22,9 @@ C 헤더를 검토하거나 바인딩의 호환성을 판단할 때 사용하는
 - 입력 자리에서는 native가 옛 버퍼의 끝을 넘어 읽어 새 필드를 쓰레기 값으로 봅니다.
 - purego는 미러 struct의 주소를 그대로 넘기므로 이 어긋남이 그대로 드러납니다.
 
-`.cgo_static`은 native archive가 Go 바이너리에 함께 링크되므로 두 쪽이 항상 같이
-갱신됩니다. 이 조합만 놓고 보면 필드 추가가 안전하지만, `abi-check`는 링크 방식을 가정하지
+`.cgo_static`은 native archive를 Go 바이너리에 함께 링크합니다. Go 생성 코드와 archive를
+같은 선언에서 다시 만들면 함께 갱신할 수 있지만, 정적 링크 자체가 두 버전의 일치를
+보장하지는 않습니다. `abi-check`는 링크 방식을 가정하지
 않으므로 판정은 계속 breaking입니다. 필드를 더해야 한다면 새 struct와 새 함수를 추가하거나,
 소비자와 native를 같은 시점에 배포하세요.
 
@@ -104,8 +105,9 @@ error와 같은 필드입니다: 저장 규칙이 같고(먼저 온 것이 이�
 `TakeStreamError`/`TakeCallbackError`로 갈립니다.
 
 공개 래퍼는 native 상태 코드를 보기 전에 `zigoCallbackError`로 그것을 가져와 `*CallbackError`
-로 반환합니다. retained 콜백은 handle의 `callbackHandles`를 순회하므로, error가 일어난 호출이
-아니라 그다음 호출에서 나옵니다. 생성자 경로에서 반환할 때는 이미 등록한 retained handle을
+로 반환합니다. retained 콜백은 native 호출 뒤 handle의 콜백 슬롯을 확인합니다.
+따라서 동기적으로 발생한 오류는 해당 호출에서, 호출 사이에 발생한 오류는 다음 호출에서
+전달될 수 있습니다. 생성자 경로에서 반환할 때는 이미 등록한 retained handle을
 먼저 해제합니다.
 
 `go_error`는 파라미터가 아니라 ABI 시그니처의 성질입니다: Go 타입 하나와 purego dispatcher
@@ -133,8 +135,8 @@ reader에는 `(const uint8_t *<name>_data, size_t <name>_data_len)` 한 쌍이 �
 
 shim은 어댑터 타입 두 개를 파일당 한 번만 내고, 파라미터마다 staging 버퍼와 어댑터를 만들어
 `&adapter.interface`를 대상 함수에 넘깁니다. writer 어댑터의 `drain`은 버퍼에 들어가는
-조각은 버퍼에 채우고 버퍼보다 큰 조각만 그대로 넘기므로, 경계를 넘는 횟수는 호출자가 몇
-번 썼는지가 아니라 총량과 버퍼 크기가 정합니다. 함수가 돌아오기 전에 `defer`로 `flush`합니다.
+조각은 버퍼에 채우고 큰 조각은 직접 전달해 작은 쓰기를 모읍니다. 실제 호출 횟수는 총량,
+버퍼 크기, 명시적 flush와 writer 동작에 따라 달라집니다. 정상 반환 전에 `defer`로 `flush`합니다.
 reader 어댑터의 `stream`은 대상 writer의 쓰기 가능한 영역을 Go가 직접 채우게 하므로 읽기당
 복사가 없습니다. `-1`이나 `-3`을 한 번 받은 어댑터는 이후 Go를 다시 부르지 않습니다.
 
@@ -149,6 +151,9 @@ Go 쪽에서는 `CallbackState`(cgo)와 토큰 레지스트리 항목(purego)이
 거기에 버퍼 길이를(오류 경로에서는 0을) 씁니다. `.@"return"`은 개수를 함수의 반환값으로
 알리므로 파라미터를 붙이지 않고, raw 계층도 그 반환값을 그대로 읽습니다. 두 힌트의 C
 시그니처가 다르므로 힌트를 바꾸는 것은 breaking입니다.
+
+오류 경로의 작성 개수 0은 native 쓰기를 롤백하지 않습니다. 직접 전달되는 버퍼는
+이미 변경되었을 수 있습니다. [출력 버퍼 계약](bindings-buffers.md#얼마나-채워졌는가-written)을 참고하세요.
 
 ## 값 struct slice의 캐스트 경로
 
@@ -166,7 +171,7 @@ bool·atomic 필드가 없는 `extern struct`는 Go mirror(`TData`)와 공개 �
 반환 방향도 같은 배치를 씁니다. raw 계층은 반환 slice를 Go 힙으로 한 번 복사해
 핸들 수명과 끊어 놓고(`.returns = .caller`는 복사한 뒤 release합니다), 공개 계층은 그
 결과를 `zigo{T}SliceView`로 `[]T`로 재해석하기만 합니다. 복사는 계층 전체에서 한 번뿐이고,
-길이가 0이면 `nil`입니다. bool 필드가 있는 원소만 공개 계층에서 `zigo{T}SliceFromRaw`로
+길이가 0이면 `nil`입니다. bool·atomic 필드가 있어 캐스트할 수 없는 원소는 공개 계층에서 `zigo{T}SliceFromRaw`로
 원소별 변환을 계속 씁니다.
 
 배치가 같다는 전제는 생성 코드가 compile 시점에 못 박습니다. shim의 `zigoAbiGuard`가

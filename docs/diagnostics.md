@@ -170,6 +170,25 @@ narrow integer를 직접 원소로 둔 입력·out slice의 임시 변환 버퍼
 없다. 바인딩에 `.allocator = .c_allocator`, `.page_allocator`, `.smp_allocator` 또는 선언 경로를
 지정한다.
 
+### ZIGO046
+
+`.on_callback_failure`를 콜백이 아닌 곳에 지정했거나, 반환 타입이 `void`이거나,
+지정한 `.result`가 콜백 반환 타입으로 표현되지 않습니다. 콜백에만 설정하고 반환 타입에
+맞는 실패값을 선택하세요. [콜백 가이드](bindings-callbacks.md)를 참고하세요.
+
+### ZIGO048
+
+materialized 결과의 필드나 소유권·해제 선언이 잘못되었습니다. 진단의 전체 필드 경로를
+먼저 확인하고, 결과에 `.returns = .caller`와 직렬화 버퍼 `[]u8`를 해제하는 `.release`를
+지정했는지 확인하세요. 필드 제약은 [Materialized 버퍼 ABI](abi.md)에 있습니다.
+
+### ZIGO049
+
+인터페이스의 타입·메서드 목록이나 생성 Go 시그니처가 맞지 않습니다. 등록 opaque 타입을
+중복 없이 나열하고, 모든 타입이 지정한 메서드를 같은 Go 시그니처로 노출하는지 확인하세요.
+`.closer = true`이면 생성자·소멸자 짝도 필요합니다. 인터페이스와 구현 타입은 같은 공개
+패키지에 있어야 합니다. [객체 수명과 인터페이스](bindings-handles.md)를 참고하세요.
+
 ## 리플렉션 단계의 오류
 
 `ZIGO027`, `ZIGO028`, `ZIGO037`, `ZIGO038`은 reflection이 문서를 만들기 전에 걸리므로 `semantic.json` 자리가

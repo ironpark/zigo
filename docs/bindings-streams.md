@@ -24,9 +24,9 @@ func (d *Document) Load(r io.Reader) (uint, error)
 ```
 
 shim이 파라미터마다 어댑터를 만들어 대상 함수에 넘깁니다. 어댑터는 staging 버퍼를 들고
-있고, 버퍼가 찰 때만 Go의 `Write`/`Read`를 부릅니다. Zig 쪽이 한 줄씩 `writeAll`을 해도
-경계를 넘는 횟수는 버퍼 크기가 정합니다: 총 `N` 바이트를 쓰면 `Write` 호출은
-`ceil(N / 버퍼)`회를 넘지 않습니다. 함수가 돌아오기 전에 shim이 `flush`하므로 대상 함수가
+있고, 데이터를 모아서 Go의 `Write`/`Read`를 호출합니다. 작은 쓰기를 묶어 호출 횟수를
+줄이지만, 실제 횟수는 명시적 flush와 reader·writer의 동작에도 영향을 받습니다.
+함수가 돌아오기 전에 shim이 `flush`하므로 대상 함수가
 직접 flush하지 않아도 남은 바이트가 나갑니다.
 
 버퍼 크기는 `param_meta.<name>.buffer`로 바꿉니다. 기본값 65536, 최소 4096, 최대 16 MiB이며,
@@ -54,8 +54,10 @@ shim이 파라미터마다 어댑터를 만들어 대상 함수에 넘깁니다.
 
 - `Bytes() []byte`를 가진 타입 — 표준 라이브러리의 `*bytes.Buffer`가 여기 해당합니다.
   관례상 "아직 읽지 않은 바이트"를 뜻하는 메서드입니다.
-- `zigoBytes() []byte`를 가진 타입 — 직접 정의한 타입을 이 경로에 넣는 공개 훅입니다.
+- `zigoBytes() []byte`를 가진 타입 — 생성된 adapter와 같은 Go 패키지 안에서 쓰는 내부 훅입니다.
   두 메서드가 다 있으면 `zigoBytes()`가 이깁니다.
+
+다른 Go 패키지에서 정의한 타입은 공개 메서드인 `Bytes()`를 사용하세요.
 
 그 밖의 모든 `io.Reader`(`*bytes.Reader`, 파일, 소켓, `io.LimitReader` 등)는 예전처럼
 트램폴린으로 한 덩어리씩 읽습니다. `*bytes.Reader`에는 내부 슬라이스를 내주는 메서드가

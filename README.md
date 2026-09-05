@@ -55,8 +55,6 @@ pub fn build(b: *std.Build) void {
 }
 ```
 
-`src/bindings.zig`에는 Go에 노출할 API를 선언합니다.
-
 먼저 `src/root.zig`에 예제에서 노출할 함수를 준비합니다.
 
 ```zig
@@ -83,6 +81,9 @@ pub const bindings = zigo.define(.{
 zig build go
 (cd go && go test ./...)
 ```
+
+아직 테스트 파일이 없다면 이 명령은 패키지 빌드만 확인합니다. 실제 호출을 검증하는
+테스트는 [시작 가이드](docs/getting-started.md)에 있습니다.
 
 공개 함수는 `example.com/mylib/go/mylib` 패키지의 `mylib.Add(2, 3)`으로 호출합니다.
 생성된 Go 소스와 `zigo/` 메타데이터는 저장소에 커밋합니다

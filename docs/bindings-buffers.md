@@ -19,7 +19,7 @@ pub fn echoCString(text: [*:0]const u8) [*:0]const u8 {
 
 cgo raw는 호출 중 `C.CString`을 만들고 호출이 끝나면 `free`하며, purego raw는 NUL을 붙인
 Go byte buffer를 호출 동안만 native에 전달합니다. 반환 문자열도 호출 시점에 Go `string`으로
-복사합니다. 따라서 Go 포인터가 native 메모리로 넘어가지 않습니다. mutable `[*:0]u8`,
+복사합니다. native 코드는 입력 포인터를 호출이 끝난 뒤 보관하면 안 됩니다. mutable `[*:0]u8`,
 0이 아닌 sentinel, 기타 many-pointer는 지원하지 않습니다.
 
 ## 문자열 slice 매개변수
@@ -124,8 +124,12 @@ breaking으로 봅니다.
 
 `.direction = .out`인 slice는 기본값 `.written = .all`로, 호출이 끝나면 버퍼 전체가
 채워진 것으로 봅니다. `.written = .@"return"`을 붙이면 함수가 반환한 개수만큼만
-채워진 것으로 보고, **그 뒤의 원소는 호출 전 값 그대로**입니다 — `io.Reader`와 같은
-모양입니다. 오류로 끝난 호출은 0을 보고하므로 버퍼는 전혀 건드려지지 않습니다.
+채워진 것으로 봅니다. 성공한 호출에서는 `buf[:n]`을 결과로 사용하세요.
+
+이 설정은 native 쓰기를 제한하거나 되돌리지 않습니다. 직접 전달되는 slice는 native가
+쓴 내용이 즉시 반영되므로 오류가 나거나 보고한 개수를 넘어 쓴 경우에도 버퍼가 바뀔 수
+있습니다. 별도 변환 버퍼를 사용하는 타입의 복사 동작에 의존하지 말고, Zig 함수 자체가
+버퍼 범위와 작성 개수 계약을 지키도록 작성하세요.
 
 `.@"return"`은 반환 payload가 `usize`(또는 `!usize`)일 때만 쓸 수 있고, `.out`이 아닌
 파라미터에 붙이면 `ZIGO017`로 거부됩니다.
@@ -160,7 +164,7 @@ pub fn extractSamplesInto(self: *Queue, dst: []f32) usize {
 ```go
 buf := make([]float32, 1024) // 한 번 할당해 계속 재사용
 n, err := queue.ExtractSamplesInto(buf)
-// buf[:n] 이 이번 호출의 결과, buf[n:] 는 그대로
+// 성공 시 buf[:n]이 이번 호출의 결과입니다.
 ```
 
 ## optional
@@ -193,8 +197,8 @@ _, ok = ShiftPoint(nil, 2)            // ok == false
 
 슬라이스·문자열 optional은 presence 플래그를 따로 두지 않습니다. 슬라이스가 이미 포인터를
 갖고 있으므로 그 포인터가 NULL인 것이 부재이고, 길이 0인 **존재하는** 슬라이스와 구별됩니다.
-Go에서 `[]T`나 `string`이 아니라 `*[]T`·`*string`인 이유도 같습니다 — nil 슬라이스와 빈
-슬라이스는 Go에서 이 구별을 표현하지 못합니다. 반환 `?[]T`와 `!?[]T`는 기존 슬라이스 반환의
+Go 인자는 `*[]T`·`*string`으로 존재 여부를 표현합니다. nil 포인터는 부재이며, nil slice나
+빈 slice를 가리키는 nil이 아닌 포인터는 존재하는 값입니다. 반환 `?[]T`와 `!?[]T`는 기존 슬라이스 반환의
 소유권 규칙(`.release` 포함)을 그대로 따르고 presence만 더합니다. caller-owned `!?[]T`의
 공개 결과는 `([]T, bool, error)`입니다.
 

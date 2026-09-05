@@ -12,22 +12,24 @@
 
 ## 기본 구조
 
+시작 가이드의 `pub fn add(a: i32, b: i32) i32`를 노출하는 최소 선언입니다.
+기본값만 쓰는 함수에는 `types`나 추가 수명 메타데이터가 필요하지 않습니다.
+
 ```zig
 const zigo = @import("zigo");
 const mylib = @import("mylib");
 
 pub const bindings = zigo.define(.{
     .root = mylib,
-    .types = .{
-        .{ .type = mylib.Context, .repr = .@"opaque" },
-    },
     .functions = .{
-        .{ .path = "Context.create", .params = .{"name"} },
-        .{ .path = "Context.deinit" },
-        .{ .path = "root.version" },
+        .{ .path = "root.add" },
     },
 });
 ```
+
+생성되는 공개 Go 함수는 `func Add(a int32, b int32) int32`입니다. 객체·enum·값 struct를
+추가할 때 아래의 `types` 등록을 함께 사용합니다. 객체 생성자의 소유권과 문자열 인자 같은
+추가 계약은 [객체 수명](bindings-handles.md)과 [문자열·버퍼](bindings-buffers.md)를 따릅니다.
 
 | 그룹 | 역할 |
 |---|---|

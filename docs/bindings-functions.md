@@ -200,7 +200,9 @@ release 함수로 취급되고, shim이 호출할 때 allocator를 채웁니다.
 
 기본값은 없습니다. 설정 없이 그런 파라미터를 만나면 `ZIGO022`로 거부합니다 — 어떤 메모리를
 쓸지는 zigo가 대신 정할 문제가 아닙니다. 주입 파라미터는 `semantic.json`에
-`"injected": "allocator"`로 남고, 주입 여부가 바뀌면 `abi-diff`가 breaking으로 봅니다.
+`"injected": "allocator"`로 남지만 ABI 비교에서는 제외됩니다. 주입 인자만 추가하거나
+옮기는 변경은 공개 시그니처를 바꾸지 않습니다. 반면 일반 인자를 주입 인자로 바꾸면
+공개 인자가 사라지므로 breaking 변경입니다.
 
 ## 공개 Go 하위 패키지
 

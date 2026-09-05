@@ -1,52 +1,49 @@
-# Tagged-union accessor example
+# Tagged union의 세 가지 표현
 
-This example registers `Value` with `.repr = .tagged_union`. zigo reflects its discriminant and
-payloads, then generates checked `Tag() (ValueTag, error)` and
-`As<Variant>() (payload, bool, error)` methods for both owned `*Value` and borrowed `*ValueRef`
-handles. `MustTag()` and `MustAs<Variant>() (payload, bool)` companions panic with the
-same typed errors. The Zig union stays behind an opaque C pointer.
+Zig tagged union을 handle projection, snapshot, 값 전달로 노출하는 예제입니다.
+표현별 선언과 지원 payload는 [Tagged union 가이드](../../docs/bindings-unions.md)에 있습니다.
 
-The projection ABI distinguishes mismatch, success, invalid input, and Zig panic. Public accessors
-reject nil, closed, and parent-invalid borrowed handles before entering native code. Checked calls
-support `errors.Is(err, ErrInvalidHandle)` and `errors.Is(err, ErrNativePanic)`. Ordinary generated
-methods and opaque arguments use the same lifecycle guard. Callers must still synchronize `Close`,
-variant mutation, and accessor calls on the same handle.
+## 어떤 API가 생성되나요?
 
-`Signal` sits alongside `Value` and registers with `.repr = .tagged_union, .access = .snapshot`. Every one of its
-variant payloads is void, a bool, a scalar, or an enum, so zigo also generates a value snapshot: a
-zigo-owned `extern struct` that the shim fills from the active variant. `Snapshot() (SignalSnapshot, error)`
-and its panicking `MustSnapshot()` companion carry the tag and the payload back in a single native call,
-and reading them off the snapshot afterwards is plain Go. The projection accessors stay available on
-the same type; the snapshot is an addition, not a replacement. Appending a variant to a snapshot
-union is a breaking ABI change, because the struct's size and layout move.
+| 등록 타입 | 표현 | 주요 Go API |
+|---|---|---|
+| `Value` | opaque handle 뒤의 union | `Tag() (ValueTag, error)`, `As<Variant>() (payload, bool, error)` |
+| `Signal` | handle에 snapshot 추가 | `Snapshot() (SignalSnapshot, error)`; projection도 유지 |
+| `ScrollViewport` | 수명 관리가 없는 Go 값 | variant 생성자, `Tag()`, 값 인자·반환 |
+| `RGB`, `Flags` | 직접 등록한 packed 값 | `Backing()`, `RGBFromBacking()` 등의 변환 |
 
-`ScrollViewport` demonstrates the value-parameter and value-return form. Its RGB payload is a
-`packed struct(u24)` carried as one integer, and its nested region payload is flattened into scalar
-slots. A slice-carrying `unknown` variant is excluded with `.omit_variants`; returning that
-tag produces a typed Go error instead of exposing invalid data. zigo generates a plain Go value with
-variant constructors and `Tag()`. The C ABI places the tag before one slot for every payload leaf,
-and returns use an out-parameter snapshot with that same order. This value has no handle lifecycle,
-and adding a variant is a breaking ABI change.
+이 예제는 `MustTag`, `MustAs<Variant>`, `MustSnapshot`도 생성합니다. 이 변형은
+검사형 API의 오류를 panic으로 바꾸므로 정상적인 실패 처리가 필요하면 검사형을 쓰세요.
 
-The same `RGB` packed struct is also registered directly with `.repr = .value`. Its Go mirror exposes
-`Backing()` and `RGBFromBacking()`, while direct parameters, returns, optionals, and error payloads
-cross C as its backing integer. A second `packed struct(u16)`, `Flags`, exercises extern struct fields,
-flattened fields, opaque field accessors, and callbacks. The cgo and purego tests cover conversion-only
-use and native round trips.
+`Value` projection은 소유한 `*Value`와 borrowed `*ValueRef`에서 사용할 수 있습니다.
+variant가 다르면 `bool`이 false이며, nil·닫힌 handle·무효한 부모는 native 호출 전에
+오류로 거부합니다. payload가 없는 variant에는 tag 상수만 있고 payload accessor는 없습니다.
 
-This example also enables Go 1.24 `runtime.AddCleanup` as a leak fallback. Explicit `Close` remains
-the deterministic lifecycle contract, including when projections are in use.
+`Signal` snapshot은 tag와 scalar·bool·enum payload를 한 번의 native 호출로 가져옵니다.
+이후 snapshot 읽기는 Go 값 접근입니다. snapshot union에 variant를 추가하면 레이아웃이
+바뀌므로 ABI breaking 변경입니다.
 
-The tests cover scalar and enum variants, wrong-variant access, a copied numeric-slice payload, an
-opaque child payload, and calls using every `ScrollViewport` value variant in both cgo and purego.
-They also verify output preservation and lifecycle rejection. Void projection variants have a tag
-constant but no payload accessor.
+`ScrollViewport`의 RGB payload는 `packed struct(u24)`, region payload는 평탄화한
+scalar 필드로 전달합니다. slice를 담는 `unknown` variant는 `.omit_variants`로 제외하며,
+native가 제외한 tag를 반환하면 Go 오류가 됩니다. 값 union의 variant 추가도 ABI를 바꿉니다.
+`Flags`는 extern struct 필드, 평탄화한 필드, opaque accessor와 콜백의 packed 변환을 검증합니다.
+
+## 실행
+
+이 디렉터리에서 실행합니다. 이 예제의 purego 선택은 다른 예제의 `purego-go` 스텝과 달리
+`-Dpurego` 옵션을 사용합니다.
 
 ```sh
-zig build test
-zig build go
-zig build go-doctor
-zig build go-report
-zig build go-check abi-check
-cd go && go test ./...
+zig build test go-check abi-check
+zig build go go-doctor go-report
+(cd go && go test ./...)
+
+zig build go go-verify -Dpurego
+(cd go-purego && CGO_ENABLED=0 go test ./...)
 ```
+
+테스트는 잘못된 variant, slice 복사, opaque 자식, 값 union의 왕복 변환과 수명 오류를
+확인합니다. 같은 handle의 variant 변경과 접근을 공유할 때는 호출자가 동기화해야 합니다.
+caller-owned handle의 GC 정리는 안전망이며 명시적인 `Close`를 대신하지 않습니다.
+
+전체 예제 목록은 [예제 선택 가이드](../../docs/examples.md)를 참고하세요.

@@ -29,6 +29,10 @@ raw 패키지는 `internal/raw`에서 생성됩니다. `addStandardSteps`는 기
 
 ## 전체 옵션
 
+처음에는 필수 입력만 설정하세요. 패키지 배치, 링크와 검증 옵션은 필요할 때 추가합니다.
+
+### 필수 입력
+
 | 옵션 | 필수 | 기본값 | 설명 |
 |---|---:|---|---|
 | `name` | 예 | — | 라이브러리, 헤더와 기본 Go 패키지의 기준 이름 |
@@ -38,15 +42,25 @@ raw 패키지는 `internal/raw`에서 생성됩니다. `addStandardSteps`는 기
 | `go_module` | 예 | — | 생성할 `go.mod`와 import에 사용할 모듈 경로 |
 | `target` | 예 | — | 네이티브 라이브러리 타깃 |
 | `optimize` | 예 | — | 네이티브 라이브러리 최적화 모드 |
+
+### 공개 API와 패키지
+
+| 옵션 | 필수 | 기본값 | 설명 |
+|---|---:|---|---|
 | `source_root` | 아니요 | 자동 탐색 | AST 파라미터 이름·GoDoc 보강에 사용할 실제 Zig root |
 | `prefix` | 아니요 | `"zg"` | 생성 C 심볼 접두사. 바인딩 함수뿐 아니라 zigo 런타임 심볼(`<prefix>_panic_bridge`, `<prefix>_last_error_message`)에도 붙으므로, 한 실행 파일에 링크되는 바인딩마다 다른 값을 준다 |
-| `link` | 아니요 | `.cgo_static` | `.cgo_static`, `.cgo_dynamic`, `.purego` 중 하나 |
 | `go_package` | 아니요 | `name`의 snake_case | 공개 Go 패키지 이름 |
 | `go_package_path` | 아니요 | `go_package` | `go_dir` 기준 공개 Go 패키지 경로. `"."`은 모듈 루트 |
 | `go_package_doc` | 아니요 | `bindings.zig`의 `//!`, 없으면 루트 모듈(`source_root`)의 `//!` | 생성된 공개 패키지의 `// Package …` doc 본문 |
 | `go_must_variants` | 아니요 | `false` | 오류를 반환하는 공개 함수·메서드에 panic 기반 `Must*` 동반 API 생성 |
-| `coverage_json` | 아니요 | `null` | `go-coverage`의 JSON 보고서를 기록할 소스 경로 |
 | `raw_package` | 아니요 | `"internal/raw"` | `go_dir` 기준 raw Go 패키지 경로 |
+
+### 링크·설치·검증
+
+| 옵션 | 필수 | 기본값 | 설명 |
+|---|---:|---|---|
+| `link` | 아니요 | `.cgo_static` | `.cgo_static`, `.cgo_dynamic`, `.purego` 중 하나 |
+| `coverage_json` | 아니요 | `null` | `go-coverage`의 JSON 보고서를 기록할 소스 경로 |
 | `cgo_flags` | 아니요 | 모듈에서 계산 | 생성할 CFLAGS/LDFLAGS 덮어쓰기와 추가 LDFLAGS |
 | `gofmt` | 아니요 | `PATH`의 `gofmt` | 생성 코드 포맷에 사용할 실행 파일 |
 | `abi_base` | 아니요 | `null` | ABI 비교 기준 Git ref. 없으면 검사 비활성화 |
@@ -113,7 +127,7 @@ purego는 정적 링크와 조합되지 않습니다. 지원 플랫폼, 로딩 �
 .go_package = "eventqueue",
 ```
 
-`go_package`는 소스의 `package` 절에 쓰는 이름만 정합니다. C 헤더
+`go_package`는 소스의 `package` 절 이름과 기본 생성 경로를 정합니다. C 헤더
 `zigo_event_queue.h`와 네이티브 라이브러리 `libevent_queue_zigo.a`는 계속 `name`을 사용합니다.
 유효한 Go 식별자가 아니면 빌드 그래프 생성 시점에 실패합니다.
 

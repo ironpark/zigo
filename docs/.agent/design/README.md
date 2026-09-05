@@ -1,19 +1,29 @@
 # 설계 문서
 
-이 디렉터리는 zigo의 설계 근거, 내부 표현, ABI 하강 규칙과 구현 기록을 보관한다.
-일반적인 설치와 사용 방법은 [사용자 문서](../../README.md)를 참고한다.
+이 디렉터리는 생성기를 수정하는 기여자를 위한 문서입니다. 설치·설정·바인딩 작성은
+[사용자 문서](../../README.md)에서 시작하세요.
 
-| 문서 | 내용 |
+## 현재 구현을 이해하기
+
+아래 문서는 현재 코드의 구조와 계약을 설명합니다. 옵션 전체나 사용 예제는 사용자 문서로
+연결하고, 여기서는 그 동작을 구현하는 위치와 설계 이유를 다룹니다.
+
+| 문서 | 답하는 질문 |
 |---|---|
-| [제약과 리스크](00-constraints.md) | 기술적 제약, 하강 실패 조건과 리스크 등록부 |
-| [아키텍처](01-architecture.md) | 빌드 그래프, 공개 빌드 API, 소유권 모델과 ABI 검사 |
-| [IR 명세](02-ir-spec.md) | semantic, layout, errors lock 데이터 구조 |
-| [ABI 하강 규칙](03-lowering-rules.md) | Zig 타입을 C ABI와 Go API로 변환하는 규칙 |
-| [구현 계획](04-implementation-plan.md) | 마일스톤, 디렉터리 구조와 검증 전략 |
-| [구현 상태](05-implementation-status.md) | 구현된 것, 설계와의 차이, 미구현 항목 |
-| [공유 라이브러리 계약](06-shared-library-contract.md) | 동적 아티팩트 파일명, export 심볼과 런타임 로딩 계약 (영문) |
-| [소유권 모델 검토](10-ownership-model.md) | native 메모리를 넘기고 빌리는 13개 경로의 인벤토리, lowering 소유권 레코드 설계와 권고 |
-| [comptime 인터페이스 검토](11-comptime-interfaces.md) | vtable, anytype, generic instantiation 패턴의 반영 가능성과 명시 등록 인터페이스 설계 |
+| [제약과 리스크](00-constraints.md) | 어떤 경계를 지키며, 무엇을 자동으로 보장하지 못하는가? |
+| [아키텍처](01-architecture.md) | 선언이 어떤 단계를 거쳐 Go와 네이티브 코드가 되는가? |
+| [IR 명세](02-ir-spec.md) | semantic IR, ABI IR, 오류 코드 잠금 파일의 역할은 무엇인가? |
+| [ABI 하강 규칙](03-lowering-rules.md) | Zig 타입과 수명 정보를 C ABI와 Go API로 어떻게 바꾸는가? |
+| [구현 상태](05-implementation-status.md) | 구현된 기능을 어디에서 확인하고 검증하는가? |
+| [공유 라이브러리 계약](06-shared-library-contract.md) | 동적 아티팩트와 purego 로더가 지켜야 하는 계약은 무엇인가? |
 
-00~04는 현재 구현을 서술한다. 설계 시점과 달라진 결정과 아직 없는 기능은
-[구현 상태](05-implementation-status.md)에 모아 두었다.
+## 과거 설계 검토 기록
+
+다음 문서는 당시의 문제와 대안을 보존합니다. 미구현이라는 표현, 옵션 이름과 체크리스트를
+현재 지원 범위로 해석하지 마세요. 현재 동작은 위 문서와 연결된 소스를 기준으로 확인합니다.
+
+| 문서 | 기록의 성격 |
+|---|---|
+| [초기 구현 계획](04-implementation-plan.md) | 초기 마일스톤과 검증 전략 |
+| [소유권 모델 검토](10-ownership-model.md) | 소유권 정보의 중앙화 제안과 구현 후 기록 |
+| [comptime 인터페이스 검토](11-comptime-interfaces.md) | 명시 등록 인터페이스를 도입하기 전의 조사와 제안 |

@@ -1,5 +1,9 @@
 # comptime 인터페이스 패턴의 Go 인터페이스 노출 검토
 
+> 과거 검토 기록입니다. 명시 등록 인터페이스는 이후 구현되었습니다. 아래 제안을 현재의
+> 미구현 목록으로 해석하지 마세요. 사용법은 [객체 수명](../../bindings-handles.md),
+> 현재 검증은 [interfaces.zig](../../../src/gen/validate/interfaces.zig)를 참고하세요.
+
 계획 `110-ownership-and-interface-review`의 두 번째 결과 문서다. 1절은 Zig 코드가 인터페이스를
 표현하는 패턴과 reflector(`src/reflect/walk.zig`)가 comptime에 볼 수 있는 것의 조사이고, 2절은
 등록 형태와 생성 Go의 설계, 3절은 권고다. 코드 변경은 없다.

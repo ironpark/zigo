@@ -4,6 +4,9 @@
 만듭니다. 완료하면 Zig 함수가 생성된 Go 패키지에서 호출되고, 생성물 최신 상태를 CI에서
 검사할 수 있습니다.
 
+명령은 별도 표기가 없으면 Bash·zsh 같은 POSIX 셸 기준입니다. Windows PowerShell에서는
+`(cd go && ...)` 대신 `Push-Location go`와 `Pop-Location`으로 디렉터리를 이동하세요.
+
 ## 준비 사항
 
 - Zig 0.16.0
@@ -24,44 +27,11 @@ purego도 실행할 OS·아키텍처에 맞는 Zig 공유 라이브러리가 필
 있습니다. 먼저 이 가이드의 기본 경로를 완료한 뒤 [purego 가이드](purego.md)로 이동하는 것을
 권장합니다.
 
-### Windows에서 cgo 백엔드 쓰기
-
-Windows의 cgo는 gcc 호환 C 툴체인을 요구합니다. mingw-w64를 설치하는 대신 이미 갖고
-있는 Zig를 그대로 쓰면 됩니다. `zig cc`는 gcc 호환 clang 드라이버이고 mingw 헤더와
-CRT, 링커를 함께 들고 다닙니다. 추가 `CGO_CFLAGS`나 `CGO_LDFLAGS`는 필요 없습니다.
-
-```powershell
-$env:CGO_ENABLED = "1"
-$env:CC = "zig cc"
-zig build go
-Push-Location go
-go test ./...
-Pop-Location
-```
-
-POSIX 호스트에서 Windows용으로 크로스 빌드할 수도 있습니다. 정적 아카이브를 타깃으로
-빌드한 다음 같은 타깃을 `CC`에 실어 링크합니다.
-
-```bash
-zig build go-lib -Dtarget=x86_64-windows-gnu
-cd go
-CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
-  CC="zig cc -target x86_64-windows-gnu" go build ./...
-```
-
-주의할 점:
-
-- amd64에 gnu ABI 전용입니다. `-target *-windows-msvc`, 386, arm32는 지원하지
-  않습니다.
-- 정적 아카이브는 Windows 타깃에서도 `zig-out/lib/lib<name>_zigo.a`로 설치됩니다.
-  생성된 `#cgo LDFLAGS` 줄이 모든 호스트에서 같은 이름을 쓰기 때문입니다.
-- 크로스 빌드에서는 `go-doctor`가 `FAIL target`을 보고합니다. `GOOS`와 `CC` 조합을
-  관찰할 수 없어 검증할 방법이 없기 때문이지, 링크가 안 된다는 뜻이 아닙니다. 결과
-  실행 파일은 타깃에서 실행해 확인하세요.
-
 ## 1. zigo 의존성 추가
 
-Zig 프로젝트 루트에서 실행합니다.
+기존 Zig 라이브러리 프로젝트의 루트에서 실행합니다. 아직 프로젝트가 없다면 빈 디렉터리에서
+`zig init`으로 만든 뒤 진행하세요. 아래 전체 `build.zig`는 최소 예제이므로, 기존 프로젝트에서는
+필요한 바인딩 설정만 합치고 기존 빌드 스텝을 보존하세요.
 
 ```bash
 zig fetch --save git+https://github.com/ironpark/zigo#0.9.0
@@ -199,6 +169,10 @@ gofmt -w go/mylib/add_test.go
 (cd go && go test -v ./...)
 ```
 
+Go 패키지를 다른 프로젝트에서 가져올 때도 native 아티팩트가 필요합니다. `go get`은
+`zig build`를 실행하지 않습니다. 패키지 제공자는 소비자의 빌드 환경에 맞는 헤더·라이브러리
+준비 방법을 함께 안내해야 합니다. 공유 라이브러리 배포는 [purego 가이드](purego.md)를 참고하세요.
+
 ## 5. 일상 개발 흐름
 
 Zig API나 `bindings.zig`를 바꾼 뒤에는 생성물을 갱신하고 테스트합니다.
@@ -239,6 +213,41 @@ zig build go-check go-lib
 `go-check`는 커밋 대상 Go 생성물을 갱신하지 않습니다. 다만 별도 정적 링크 입력이 있는
 프로젝트에서는 커밋하지 않는 `zigo_link_inputs_gen.go`를 만들 수 있습니다.
 자세한 범위는 [생성물과 CI 관리](generated-code.md)를 참고하세요.
+
+## Windows에서 cgo 백엔드 쓰기
+
+Windows의 cgo는 gcc 호환 C 툴체인을 요구합니다. mingw-w64를 설치하는 대신 이미 갖고
+있는 Zig를 그대로 쓰면 됩니다. `zig cc`는 gcc 호환 clang 드라이버이고 mingw 헤더와
+CRT, 링커를 함께 들고 다닙니다. 추가 `CGO_CFLAGS`나 `CGO_LDFLAGS`는 필요 없습니다.
+
+```powershell
+$env:CGO_ENABLED = "1"
+$env:CC = "zig cc"
+zig build go
+Push-Location go
+go test ./...
+Pop-Location
+```
+
+POSIX 호스트에서 Windows용으로 크로스 빌드할 수도 있습니다. 정적 아카이브를 타깃으로
+빌드한 다음 같은 타깃을 `CC`에 실어 링크합니다.
+
+```bash
+zig build go-lib -Dtarget=x86_64-windows-gnu
+cd go
+CGO_ENABLED=1 GOOS=windows GOARCH=amd64 \
+  CC="zig cc -target x86_64-windows-gnu" go build ./...
+```
+
+주의할 점:
+
+- amd64에 gnu ABI 전용입니다. `-target *-windows-msvc`, 386, arm32는 지원하지
+  않습니다.
+- 정적 아카이브는 Windows 타깃에서도 `zig-out/lib/lib<name>_zigo.a`로 설치됩니다.
+  생성된 `#cgo LDFLAGS` 줄이 모든 호스트에서 같은 이름을 쓰기 때문입니다.
+- 크로스 빌드에서는 `go-doctor`가 `FAIL target`을 보고합니다. `GOOS`와 `CC` 조합을
+  관찰할 수 없어 검증할 방법이 없기 때문이지, 링크가 안 된다는 뜻이 아닙니다. 결과
+  실행 파일은 타깃에서 실행해 확인하세요.
 
 ## 문제가 생겼다면
 

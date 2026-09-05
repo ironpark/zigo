@@ -2,7 +2,8 @@
 
 zigo의 기본값 `.cgo_static`은 정적 링크와 cgo 호출을 사용합니다. 선택적인 `.purego`는
 네이티브 공유 라이브러리를 runtime에 로드하므로 Go 프로그램을 `CGO_ENABLED=0`으로
-빌드할 수 있습니다. 공개 Go API는 두 backend에서 동일하고 raw 구현과 loader만 달라집니다.
+빌드할 수 있습니다. 바인딩 함수와 타입의 사용법은 공통이며, purego에는 raw 구현 외에
+라이브러리 로더 API와 추가 Go 의존성이 있습니다.
 
 > Zig shared library는 배포할 OS·architecture 조합마다 하나씩 필요하지만, 한 호스트에서
 > 모두 만들 수 있습니다. `zig build purego-go-lib -Dtarget=x86_64-windows`처럼
@@ -50,9 +51,20 @@ zig build purego-go
 # 2. 백엔드 전제, 모듈 핀, 설치된 아티팩트를 한 번에 검증한다.
 zig build purego-go-verify
 
-# 3. C 컴파일러 없이 테스트한다.
-cd go-purego && CGO_ENABLED=0 go test ./...
+# 3. 새 모듈의 의존성을 내려받고 go.sum을 준비한다.
+(cd go-purego && go mod tidy)
+
+# 4. C 컴파일러 없이 테스트한다.
+(cd go-purego && CGO_ENABLED=0 go test ./...)
 ```
+
+기존 Go 모듈에 purego를 추가한다면 생성 전에 그 모듈에서
+`go get github.com/ebitengine/purego@v0.10.2`를 실행하세요. 새 모듈에는 zigo가 요구사항을
+작성하지만 기존 `go.mod`는 수정하지 않습니다.
+
+테스트나 애플리케이션도 호출 전에 라이브러리를 로드해야 합니다. 위 명령은 예제처럼
+테스트 초기화에서 `LoadLibrary`를 호출하거나 자동 로딩을 설정한 경우를 전제로 합니다.
+처음 만든 패키지라면 아래 [라이브러리 로딩](#라이브러리-로딩) 코드를 먼저 추가하세요.
 
 > 한 빌드에 두 백엔드를 등록하면 두 아티팩트가 같은 `zig-out`에 설치되지만 이름이
 > 겹치지 않는다. 정적 바인딩은 `lib<name>_zigo.a`를 경로로 직접 링크하고, purego
@@ -178,10 +190,10 @@ Tier 1으로 지원하므로 콜백 경로는 공용 파일에 그대로 남는�
 그래프를 만드는 시점에 실패한다.
 
 `install.library_dir`을 `.custom` 등 `.lib`가 아닌 위치로 바꾸고 `search_paths`를
-생략하면 zigo가 공개 Go 패키지에서 설치 디렉터리까지의 상대 경로를 기본 후보로 넣습니다.
+생략하거나 빈 목록으로 두면 zigo가 공개 Go 패키지에서 설치 디렉터리까지의 상대 경로를 기본 후보로 넣습니다.
 따라서 checkout 안에서 `go test`할 때 설치 위치를 별도로 반복해 적을 필요가 없습니다.
 `install.library_name`을 지정하면 `DefaultLibraryName`도 같은 stem의 플랫폼 파일명으로
-바뀝니다. 명시적인 `search_paths`는 자동 후보 대신 그대로 사용합니다.
+바뀝니다. 비어 있지 않은 `search_paths`는 자동 후보 대신 사용합니다.
 
 ### 후보 순서
 
@@ -193,7 +205,8 @@ Tier 1으로 지원하므로 콜백 경로는 공용 파일에 그대로 남는�
 `search_paths` 항목이 플랫폼 라이브러리 확장자로 끝나면 파일 경로로 그대로 쓰고, 그렇지
 않으면 디렉터리로 보고 `DefaultLibraryName`을 붙인다. `${EXECUTABLE_DIR}`는 실행 중인
 실행 파일의 디렉터리로 확장되며, 확인할 수 없으면 그 항목은 건너뛴다. 항목에 `:`는 쓸 수
-없다. 생성기로 전달할 때 목록 구분자이기 때문이다.
+없다. 생성기로 전달할 때 목록 구분자이기 때문이다. 따라서 Windows의 `C:/...` 같은
+드라이브 경로는 이 목록이 아니라 `LoadLibrary` 인자나 환경 변수로 전달하세요.
 
 후보를 여러 개 시도해 모두 실패하면 하나의 `*LibraryError`가 모든 시도를 묶어 반환된다.
 후보가 하나뿐이면 그 시도의 경로와 심볼이 그대로 보존된다.

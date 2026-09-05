@@ -65,7 +65,7 @@ zig build purego-go purego-go-verify
 | [05-pipeline](../examples/05-pipeline) | opaque 상태, enum, 슬라이스, typed error, retained 콜백, AST 이름 보강, system library 링크 전파 |
 | [06-camel-case](../examples/06-camel-case) | Zig·Go·C 사이의 package, 식별자와 심볼 이름 정규화 |
 | [07-event-queue](../examples/07-event-queue) | 이벤트 큐 수명주기, observer 콜백, 강제 GC로 확인하는 cleanup 안전망, extern struct 값, cgo·purego 병행 |
-| [08-telemetry-hub](../examples/08-telemetry-hub) | 51개 함수 자동 발견, 여러 enum/error set, purego 자동 로딩과 비공개 로더 |
+| [08-telemetry-hub](../examples/08-telemetry-hub) | 큰 API 자동 발견, 여러 enum/error set, purego 자동 로딩과 비공개 로더 |
 | [09-type-relations](../examples/09-type-relations) | 한 바인딩 문서의 opaque 타입 2종과 borrowed 타입 간 참조 |
 | [10-tagged-union](../examples/10-tagged-union) | projection 방식의 `Tag`/`As*`, 값 snapshot 방식의 `Snapshot()`, sealed variant 방식의 `Variant()` |
 | [11-io-streams](../examples/11-io-streams) | `*std.Io.Writer`/`*std.Io.Reader` 파라미터가 `io.Writer`/`io.Reader`로, 버퍼 크기와 경계 횡단 횟수, writer error·panic·reader EOF 경로, cgo·purego 병행 |

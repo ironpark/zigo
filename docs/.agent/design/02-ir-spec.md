@@ -1,182 +1,85 @@
-# IR 명세 (v1)
+# IR 명세
 
-IR은 세 가지 역할을 한다: **reflector ↔ generator 프로세스 경계**,
-**ABI diff 기준**, **generator 테스트 픽스처**. 스키마는 Go 생성에 필요한 만큼만 유지한다.
+zigo는 외부 파일인 semantic IR과 오류 코드 잠금 파일, 생성기 내부의 ABI IR을 구분합니다.
+이 문서는 각 표현의 책임을 설명합니다. 필드 전체와 기본값은 연결된 Zig 자료구조가 기준이며,
+새 필드를 추가할 때 문서에 축약 스키마를 복제하지 않습니다.
 
-두 개의 파일로 나뉜다.
+## 표현별 역할
 
-| 파일 | 타깃 의존 | Git 커밋 | 용도 |
-|---|---|---|---|
-| `semantic.json` | ✗ | ✅ | 의미 API. diff 기준. generator의 입력 |
-| `errors.lock.json` | ✗ | ✅ | 에러명 → 안정 정수 코드 (append-only) |
+| 표현 | 저장 형태 | 역할 |
+|---|---|---|
+| semantic IR | `semantic.json` | reflector 출력, generator 입력, ABI 비교 기준 |
+| 오류 코드 잠금 | `errors.lock.json` | 오류 이름에 배정한 정수 코드 보존 |
+| ABI IR | 메모리의 `abi.Program` | 모든 emitter가 공유하는 하강 결과 |
 
----
+생성·커밋 정책은 [생성물과 CI 관리](../../generated-code.md)를 참고하세요.
+별도의 `layout.json` 파일은 사용하지 않습니다.
 
-## 1. semantic.json
+## Semantic IR
 
-```jsonc
-{
-  "ir_version": 1,
-  "package": "mylib",
-  "prefix": "zg",
-  "zig_version": "0.16.0",
+[semantic.zig](../../../src/gen/ir/semantic.zig)는 문서, 등록 타입, 함수와 타입 노드를
+정의합니다. 함수에는 Go 이름과 패키지, receiver, 매개변수·반환 타입, 소유권, release와
+콜백·스트림 등의 메타데이터가 포함됩니다. 주석과 파라미터 이름의 출처도 보존합니다.
 
-  "types": [
-    {
-      "name": "Context",
-      "kind": "opaque",              // opaque | value_struct | enum | error_set
-      "zig_path": "mylib.Context"
-    },
-    {
-      "name": "Format",
-      "kind": "enum",
-      "tag_type": { "kind": "int", "signed": false, "bits": 32 },
-      "fields": [ {"name":"pcm","value":0}, {"name":"flac","value":1} ]
-    },
-    {
-      "name": "Rect",
-      "kind": "value_struct",
-      "layout": "extern",            // extern | packed  (그 외는 IR에 도달 불가)
-      "fields": [
-        {"name":"x","type":{"kind":"float","bits":32}},
-        {"name":"y","type":{"kind":"float","bits":32}}
-      ]
-    },
-    {
-      "name": "Value",
-      "kind": "tagged_union",
-      "tag_type": {"kind":"enum","ref":"ValueTag"},
-      "fields": [
-        {"name":"none","value":0,"type":{"kind":"void"}},
-        {"name":"integer","value":1,"type":{"kind":"int","signed":true,"bits":64}}
-      ]
-    }
-  ],
+타입 노드는 다음 범주를 구분합니다.
 
-  "functions": [
-    {
-      "name": "process",
-      "symbol": "zg_context_process",
-      "receiver": "Context",         // null이면 자유 함수
-      "params": [
-        {
-          "name": "input",
-          "name_source": "sidecar",  // sidecar | ast | fallback
-          "type": {
-            "kind": "slice", "const": true,
-            "element": {"kind":"float","bits":32}
-          },
-          "direction": "in",
-          "retention": "borrowed",
-          "semantic": null           // null | utf8_string | c_string | opaque_bytes
-        },
-        {
-          "name": "output",
-          "type": {"kind":"slice","const":false,"element":{"kind":"float","bits":32}},
-          "direction": "out",
-          "retention": "borrowed"
-        }
-      ],
-      "return": {
-        "kind": "error_union",
-        "error_set": ["OutOfMemory", "InvalidInput"],
-        "payload": {"kind":"int","signed":false,"bits":64,"is_usize":true}
-      },
-      "ownership": "caller",
-      "doc": "Processes input samples into output."
-    }
-  ],
+| 범주 | 노드 |
+|---|---|
+| 기본값 | `void`, `bool`, `int`, `float`, `enum` |
+| 등록 타입 | `opaque_ptr`, `value_struct`, `materialized` |
+| 조합 | `optional`, `error_union`, `slice` |
+| 호출 지원 | `callback`, `atomic_ptr`, `cancel_flag`, `io_stream` |
 
-  "constructors": [
-    { "type": "Context", "init": "init", "deinit": "deinit" }
-  ]
-}
-```
+정수의 `is_usize`는 포인터 크기 정수임을 표시하고 `signed`가 `usize`와 `isize`를
+구분합니다. slice의 const·sentinel 정보는 원래 Zig 타입의 재구성에 사용합니다.
+문자열 의미는 단순 byte slice와 별도로 보존합니다.
 
-### 1.1 타입 노드 (`type`)
+semantic 파일을 타깃에서 그대로 사용할 수 있는 메모리 레이아웃 명세로 해석해서는
+안 됩니다. reflector는 호스트에서 실행되고, 타깃 표현은 하강과 shim의 레이아웃 검사에서
+확인합니다.
 
-```jsonc
-{"kind":"void"}
-{"kind":"bool"}
-{"kind":"int",   "signed":true, "bits":32, "is_usize":false}
-{"kind":"float", "bits":64}
-{"kind":"enum",  "ref":"Format"}
-{"kind":"opaque_ptr", "ref":"Context", "const":false, "nullable":false}
-{"kind":"value_struct", "ref":"Rect"}
-{"kind":"slice", "const":true, "element":<type>}
-{"kind":"optional", "child":<type>}
-{"kind":"error_union", "error_set":[...], "payload":<type>}
-{"kind":"callback", "params":[<type>...], "return":<type>, "has_userdata":true}
-```
+등록 타입 참조, 생성자·소멸자와 release 함수의 관계는 검증 대상입니다. release 선언은
+semantic 단계에서 함수 이름을 가리키며, lowering에서 해당 ABI 함수와 연결합니다.
+materialized 결과의 release는 직렬화 버퍼를 해제하므로 일반 slice와 같은 원소 타입을
+요구하는 규칙을 그대로 적용하지 않습니다.
 
-`is_usize`는 별도 플래그로 둔다. 타깃별 비트폭은 layout 파일에 있으므로
-semantic.json은 "usize다"라는 사실만 기록한다 → 타깃 독립성 유지.
+실제 출력 예시는 [01-scalar의 메타데이터](../../../examples/01-scalar/) 등
+[예제](../../examples.md)의 `zigo/` 디렉터리에서 확인할 수 있습니다.
 
-`semantic`/`return_semantic`의 `c_string`은 reflector가 발견한
-`[*:0]const u8`를 표시한다. 타입 노드는 byte slice 모양을 유지하되 이 힌트가 있으면
-하강 시 길이 없는 `const char*`로 바뀐다. 따라서 이 힌트가 붙은 slice에는 별도의
-`*_len` ABI 인자가 없다.
+## 오류 코드 잠금 파일
 
-function의 선택적 `release`는 `.returns = "caller"` slice 반환을 해제하는 함수의 이름을
-담는다. 그 이름은 같은 문서의 `functions`에 있어야 하고, 반환 slice와 같은 원소 타입의
-slice 하나만 받는 void 함수여야 한다. 하강 단계가 이 이름을 상대 함수의 심볼로 바꾼다.
+[errors_lock.zig](../../../src/gen/ir/errors_lock.zig)가 읽기·검증·추가 규칙을 정의합니다.
 
-slice 노드의 선택적 `sentinel`/`sentinel_many`는 문자열 slice 매개변수의 element 원형을
-보존한다. `sentinel=0`과 `sentinel_many=false`는 `[:0]const u8`, `true`는
-`[*:0]const u8`를 뜻하고, 두 필드가 없으면 `[]const u8`이다. 이 정보는 하강된 C ABI
-모양을 바꾸지 않고 shim이 원래 Zig element 타입을 다시 만들 때만 사용한다.
-
-모든 `ref`는 같은 문서의 `types`에서 정확히 한 번 선언되어야 하며 노드 종류와 선언
-종류가 일치해야 한다. `enum`은 유효한 정수 `tag_type`을 가져야 한다. constructor의
-`type`은 opaque 또는 tagged-union handle 선언이어야 하고, `init`은 해당 namespace에서 caller-owned non-null
-handle pointer를 error union으로 반환하며, `deinit`은 인자 없이 `void`를 반환하는
-해당 타입의 receiver 함수여야 한다. 이 무결성 조건은 lowering 전에 `ZIGO010`으로
-검사한다.
-
-### 1.2 왜 doc 필드가 있는가
-
-`@typeInfo`는 doc comment를 주지 않는다. `name_source: "ast"` 경로에서
-파라미터 이름을 뽑을 때 doc comment도 함께 수집한다. 없으면 `null`.
-생성된 Go 코드의 주석 품질을 좌우하므로 선택적이지만 가치가 크다.
-
----
-
-## 2. errors.lock.json
-
-```jsonc
+```json
 {
   "ir_version": 1,
   "next_code": 4,
   "codes": { "OutOfMemory": 1, "InvalidInput": 2, "Timeout": 3 },
-  "reserved": { "0": "OK", "-1": "Unknown", "-2": "PanicCaught",
-                "-3": "CallbackPanic", "-4": "InvalidHandle" }
+  "reserved": {
+    "0": "OK",
+    "-1": "Unknown",
+    "-2": "PanicCaught",
+    "-3": "CallbackPanic",
+    "-4": "InvalidHandle"
+  }
 }
 ```
 
-규칙:
-- 코드는 배정 후 **불변**. 삭제된 에러의 코드는 재사용하지 않는다 (`next_code`만 증가).
-- 도구가 기존 매핑을 바꾸려 하면 즉시 실패한다.
-- 음수는 프레임워크 예약이며 사용자 에러에 배정되지 않는다.
-- `ir_version`과 예약 매핑은 정확히 일치해야 하며, 양수 코드는 `1..next_code-1`을
-  중복이나 빈자리 없이 보존한다. 새 이름 배정은 overflow와 메모리 확보를 먼저 검사한
-  뒤 한 번에 append한다.
+오류 코드는 한 번 배정하면 바꾸거나 재사용하지 않습니다. 삭제된 오류의 코드도 보존하며,
+새 오류는 `next_code`부터 추가합니다. 스키마 버전, 예약 코드, 양수 코드의 중복·빈자리를
+검증합니다. 콜백 호출 ABI의 별도 상태값을 이 파일의 예약 코드와 혼동하지 마세요.
 
----
+## ABI IR
 
-## 3. ABI IR (내부 표현, 파일로 쓰지 않음)
+[abi.zig](../../../src/gen/ir/abi.zig)의 `Program`이 emitter 입력입니다.
+[lower.zig](../../../src/gen/lower.zig)는 함수의 C 매개변수, 반환 표현, 공개 Go 호출에
+필요한 정보와 수명 정책을 함께 결정합니다.
 
-validate/lower 단계의 결과. emitter가 소비하는 유일한 자료구조.
-semantic IR과의 차이는 **모든 타입이 C ABI 표현으로 평탄화되어 있다**는 점이다.
+반환 소유권은 `none`, `borrowed_view`, `borrowed_copy`, `handle`, `buffer`로
+구분합니다. buffer 레코드의 `release`는 심볼 문자열이 아니라 `Program.functions`의
+인덱스입니다. handle 레코드는 destructor, boxing, 부모 관계와 retained 슬롯 등을 담습니다.
+매개변수는 `transient`, `retained_token`, `staged_copy`, `stream` 정책을 구분합니다.
 
-```zig
-pub const AbiFn = struct {
-    symbol: []const u8,
-    params: []const AbiParam,      // 슬라이스 → ptr+len 2개로 이미 분해됨
-    ret: AbiScalar,                // 항상 스칼라 (에러코드 i32 또는 void)
-    origin: *const SemanticFn,     // 상위 계층 생성용 역참조
-};
-```
-
-emitter가 하강 규칙을 다시 구현하지 않도록, **분해는 전부 lower 단계에서 끝낸다.**
-Go emitter, C 헤더 emitter, Zig shim emitter가 서로 다른 하강을 하면 세 산출물의 ABI가
-어긋난다. 이 셋은 반드시 동일한 `AbiFn`을 읽어야 하며, 이는 정확성 요구사항이다.
+이 정보는 C 표현만으로 알 수 없는 Go 쪽 복사·해제·호출 보호에도 쓰입니다. emitter에서
+semantic 정보를 다시 해석해 다른 소유권 결정을 만들지 않습니다. 구체적인 변환은
+[ABI 하강 규칙](03-lowering-rules.md)을 참고하세요.

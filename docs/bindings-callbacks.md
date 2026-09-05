@@ -81,9 +81,9 @@ var callbackErr *CallbackError
 errors.As(err, &callbackErr)     // Operation, Callback, Err
 ```
 
-retained 콜백의 error는 그것이 일어난 호출이 이미 끝났으므로 **그 handle을 건드리는 다음
-호출**에서 나옵니다. panic 규칙과 같습니다. 한 번 반환되면 지워지므로 그다음 호출은 다시
-깨끗합니다.
+retained 콜백도 오류를 해당 handle에 저장합니다. 호출 중 동기적으로 발생한 오류는 그 호출의
+오류 확인 단계에서 전달될 수 있고, 호출 사이에 발생한 오류는 그 handle의 다음 호출에서
+전달될 수 있습니다. panic도 같은 방식으로 확인합니다. 전달한 오류 상태는 지웁니다.
 
 C ABI는 바뀌지 않습니다 — `go_error`는 Go 표면만 넓힙니다. 다만 Go 콜백 타입이 바뀌므로
 `abi-diff`는 이것을 breaking으로 봅니다.

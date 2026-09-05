@@ -1,113 +1,67 @@
-# Shared-library artifact contract
+# 공유 라이브러리 계약
 
-`Options.link_mode = .dynamic` builds a native shared library and the standard
-`go-lib` step installs it in `zig-out/lib`, or `zig-out/bin` for a Windows DLL. The returned `GoBindings` exposes
-the compile step as `lib`, the install step as `install_library`, and the
-target-specific basename as `library_filename` and the full installed path as
-`library_path`. Both are read back off the `InstallArtifact` step rather than
-recomputed, because Zig installs a DLL into `bin` and everything else into
-`lib`.
+이 문서는 native 아티팩트와 생성 로더 사이의 내부 계약입니다. 빌드·배포 절차와 로딩
+설정 예제는 [공유 라이브러리와 purego](../../purego.md)를 참고하세요.
 
-The native filename follows the target ABI: `lib<name>_zigo.dylib` on macOS,
-`lib<name>_zigo.so` on Linux, and `<name>_zigo.dll` on Windows. The library does not embed a Zig-cache path. Its
-only runtime dependencies are dependencies of the bound Zig module and the
-platform C runtime used by the generated panic boundary. Applications are
-responsible for passing an explicit path or arranging their platform loader
-search path.
+## 빌드 선택과 설치 위치
 
-The shared library is target-specific. A native shared build is suitable for
-runtime loading; it is not a cross-platform binary or a cross-target generation
-mechanism.
+공개 옵션 `Options.link`는 `.cgo_static`, `.cgo_dynamic`, `.purego` 중 하나입니다.
+뒤의 두 선택지는 공유 라이브러리를 만듭니다.
 
-## purego backend
+기본 native 파일명은 macOS의 `lib<name>_zigo.dylib`, Linux의 `lib<name>_zigo.so`,
+Windows의 `<name>_zigo.dll`입니다. 기본 설치 디렉터리는 `zig-out/lib`이며
+`install.library_dir`로 바꿀 수 있습니다. Windows DLL도 이 설정을 따릅니다.
 
-Set both `.backend = .purego` and `.link_mode = .dynamic`. The initial backend
-supports native macOS and Linux on amd64 and arm64. Generated Go must call
-`LoadLibrary(path)` before any binding call; `LibraryLoaded()` reports whether
-all symbols were resolved and atomically published. Successful libraries stay
-loaded for the process lifetime.
+`GoBindings.lib`는 컴파일 스텝, `install_library`는 설치 스텝입니다.
+`library_filename`과 `library_path`는 실제 아티팩트의 이름과 설치 경로를 제공합니다.
+사용자 정의 스텝은 플랫폼 이름을 다시 조합하기보다 이 값을 사용해야 합니다.
 
-Generated Go selects the platform basename at run time, so the committed loader
-is byte-identical on macOS and Linux: `DefaultLibraryName` is
-`map[string]string{"darwin": ..., "linux": ...}[runtime.GOOS]`. `LoadLibrary`
-resolves its path from the explicit argument, then `ZIGO_LIBRARY_PATH`, then
-`DefaultLibraryName` through the platform loader search path.
+정적 cgo 라이브러리와 purego 공유 라이브러리는 같은 prefix에 설치할 수 있습니다.
+정적 링크는 archive 경로를 사용하고 purego 헤더에는 `_purego` 접미사가 붙습니다.
+서로 다른 타깃의 빌드는 같은 파일명을 덮어쓸 수 있으므로 prefix를 분리하세요.
 
-`Options.library_loading` configures the candidate order: the explicit argument,
-then each configured environment variable, then each configured search path,
-then the platform default name. It can also load on the first binding call and
-keep the loader out of the public package. The default policy is an explicit
-`LoadLibrary`, the package-specific and shared environment variables, and the
-platform default name. See [the purego page](../../purego.md) for the full option.
+## 로더
 
-If zigo creates `go.mod`, it pins `github.com/ebitengine/purego v0.10.2`. For an
-existing module, add it explicitly:
+purego는 macOS·Linux·Windows의 amd64·arm64를 지원합니다. 라이브러리는 타깃별로
+빌드하며, 크로스 컴파일된 아티팩트의 실행 검증은 해당 타깃에서 수행합니다.
 
-```sh
-go get github.com/ebitengine/purego@v0.10.2
-```
+기본 정책에서는 바인딩 호출 전에 `LoadLibrary`를 호출합니다. 자동 로딩과 공개 로더 API를
+숨기는 정책은 `library_loading`으로 선택합니다. 후보 경로와 환경 변수의 우선순위,
+경로 검증과 실패 동작은 [로딩 가이드](../../purego.md)에 정의되어 있습니다.
 
-Callback-bearing purego libraries use a versioned native entry point ending in
-`_purego_v2`. Its C signature contains the callback function pointer explicitly,
-followed by the existing integer userdata parameter. Callback types and return
-types are lowered from semantic IR and use the C calling convention. The shared
-library therefore has no unresolved dependency on a Go `//export` trampoline.
+로더는 필요한 심볼을 모두 찾은 뒤 호출 가능한 상태를 게시합니다. 성공적으로 로드된
+라이브러리는 프로세스 종료까지 유지되며 hot reload를 제공하지 않습니다.
 
-The version in that suffix is the callback ABI's version, and it is what makes a
-callback ABI change safe: a stale library and regenerated Go fail to resolve the
-symbol at load instead of misreading bits. `_purego_v2` carries float callback
-parameters as their IEEE-754 bit pattern in an integer of the same width, on
-every platform, because Windows' `compileCallback` refuses a floating-point
-argument. The generated shim converts at both ends -- a static thunk `@bitCast`s
-on the native side, the dispatcher calls `math.Float*frombits` on the Go side --
-so the callback types Go code writes still take real floats. A callback result,
-by contrast, must be `void` or a signed 32-bit integer: every dispatcher returns
-one `uintptr`, so anything else has nowhere to go and is refused with `ZIGO014`.
+새 `go.mod`를 생성하면 purego 버전 요구사항도 기록합니다. 기존 모듈의 의존성을 임의로
+수정하지 않으므로 사용자가 해당 요구사항과 `go.sum`을 준비해야 합니다.
 
-The cgo backend keeps its original symbols and fixed generated trampolines. This
-dual-symbol strategy avoids changing an existing cgo ABI in place. Binding
-reports identify the backend and callback convention; `abi-diff` accepts
-`--base-backend` and `--current-backend` so a backend/convention switch is
-reported as breaking rather than mistaken for an unchanged semantic signature.
+## purego 콜백 ABI
 
-For purego callbacks, generated code creates one permanent native dispatcher per
-unique callback signature. Individual Go callback values live in a synchronized
-integer-token registry; native code retains only the dispatcher pointer and the
-token, never Go memory. Borrowed tokens are removed after the call. Retained
-tokens move into the returned owner and are removed on constructor rollback,
-explicit `Close`, or automatic cleanup when enabled. Deletion rejects new
-invocations and waits for calls already in flight. Dispatcher recovery converts
-Go panics to the existing `-3` callback-panic status for signed 32-bit callback
-results; a released token deterministically returns `-4`.
+콜백이 있는 purego 진입점에는 `_purego_v2` 접미사가 붙습니다. C 시그니처는 callback
+함수 포인터와 정수 userdata를 받으므로 native 라이브러리가 Go의 `//export` trampoline
+심볼에 의존하지 않습니다. cgo는 기존 진입점과 생성 trampoline을 사용합니다.
 
-## Validation
+접미사의 버전은 콜백 ABI 버전입니다. 오래된 라이브러리를 새 Go 코드와 결합하면 잘못된
+표현으로 호출하기 전에 심볼 해석이 실패하게 합니다. float 콜백 인자는 같은 폭의 정수에
+IEEE-754 비트를 담아 전달하고 양쪽 adapter가 변환합니다. 공개 Go 콜백 인자는 float를
+유지합니다. purego 콜백 반환은 `void` 또는 signed 32-bit 정수로 제한합니다.
 
-`addStandardSteps` registers `go-lib` (build and install the artifact) and
-`go-verify`, which aggregates staleness, the installed library, `go-doctor` and,
-when `abi_base` is set, `abi-check`. For the purego backend `go-doctor` checks
-host platform support, the `go.mod` purego requirement, and loads the installed
-artifact with the platform loader; failures name the command that fixes them.
+고유 시그니처마다 native dispatcher를 만들고, 개별 Go 콜백은 동기화된 정수 토큰 레지스트리로
+찾습니다. borrowed·retained 수명과 오류 전달의 사용자 계약은
+[콜백과 오류 처리](../../bindings-callbacks.md)에 있습니다.
 
-Two repository tools inspect a built artifact directly:
+## 검증
+
+`go-lib`는 아티팩트를 설치합니다. `go-verify`는 생성물 최신 상태, 설치와 환경 진단,
+설정된 경우 ABI 검사를 묶습니다. purego doctor는 의존성과 native 로딩을 검사하며,
+호스트에서 실행할 수 없는 크로스 타깃의 로딩 검사는 건너뜁니다.
+
+저장소의 아래 도구는 지원되는 POSIX 호스트에서 실제 export 심볼과 로딩을 검사합니다.
 
 ```sh
 tests/inspect_shared_library.sh <library> <symbol>...
 zig build shared-library-smoke -- <library> <symbol>...
 ```
 
-The script asserts the platform filename, that no build-cache path is baked into
-the runtime dependencies, that the requested symbols are exported, and that no
-generated `zg_` symbol is left undefined — an undefined one would mean a cgo
-trampoline dependency that a `CGO_ENABLED=0` process cannot satisfy. The smoke
-loader performs the same symbol check through the real platform loader.
-
-Both backends can install into one prefix. The cgo raw file links
-`lib<name>_zigo.a` by explicit path for a static link mode, and the purego C
-header installs as `zigo_<name>_purego.h`, so neither artifact shadows the
-other and the order of the two builds does not matter.
-
-Because a shared library is target specific, CI needs one job per supported
-OS/architecture pair: macOS and Linux on amd64 and arm64. purego removes the C
-compiler from the Go application build; it does not remove the per-target Zig
-build. User-facing packaging, loading, and security guidance lives in
-[the purego page](../../purego.md).
+실행 명령과 플랫폼별 차이는 [프로젝트 개발](../../development.md),
+실제 검증 매트릭스는 [CI](../../../.github/workflows/ci.yml)를 참고하세요.
