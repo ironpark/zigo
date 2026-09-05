@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T23:53:23Z"
 description: Cheaper callback-panic sweep, stable receiver names and GoDoc, single-copy strings and struct slices, and a panic-message ABI that drops LockOSThread
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-05T22:46:00Z"
 ---
 > NEXT: Pending callback-panic counter. ([Phase 0](phases/00-panic-counter.md))
@@ -10,7 +11,7 @@ registered_at: "2026-09-05T22:46:00Z"
 - [x] [Phase 00: Pending callback-panic counter](phases/00-panic-counter.md)
 - [x] [Phase 01: Receiver names and GoDoc first line](phases/01-receiver-godoc.md)
 - [x] [Phase 02: Single-copy strings and struct slices](phases/02-single-copy.md)
-- [ ] [Phase 03: Panic message slots without LockOSThread](phases/03-panic-slots.md)
+- [x] [Phase 03: Panic message slots without LockOSThread](phases/03-panic-slots.md)
 
 # Shared Verification
 
