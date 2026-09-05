@@ -12,6 +12,8 @@
 | [구현 계획](04-implementation-plan.md) | 마일스톤, 디렉터리 구조와 검증 전략 |
 | [구현 상태](05-implementation-status.md) | 구현된 것, 설계와의 차이, 미구현 항목 |
 | [공유 라이브러리 계약](06-shared-library-contract.md) | 동적 아티팩트 파일명, export 심볼과 런타임 로딩 계약 (영문) |
+| [소유권 모델 검토](10-ownership-model.md) | native 메모리를 넘기고 빌리는 13개 경로의 인벤토리, lowering 소유권 레코드 설계와 권고 |
+| [comptime 인터페이스 검토](11-comptime-interfaces.md) | vtable, anytype, generic instantiation 패턴의 반영 가능성과 명시 등록 인터페이스 설계 |
 
 00~04는 현재 구현을 서술한다. 설계 시점과 달라진 결정과 아직 없는 기능은
 [구현 상태](05-implementation-status.md)에 모아 두었다.

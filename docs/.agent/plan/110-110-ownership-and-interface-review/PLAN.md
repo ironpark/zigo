@@ -10,7 +10,7 @@ registered_at: "2026-09-05T07:29:55Z"
 - [x] [Phase 00: Inventory ownership paths](phases/00-ownership-inventory.md)
 - [x] [Phase 01: Ownership design and recommendation](phases/01-ownership-design.md)
 - [x] [Phase 02: Comptime interface survey](phases/02-interface-survey.md)
-- [ ] [Phase 03: Interface design and recommendation](phases/03-interface-design.md)
+- [x] [Phase 03: Interface design and recommendation](phases/03-interface-design.md)
 - [ ] [Phase 04: Index and hand-off](phases/04-index-and-handoff.md)
 
 # Shared Verification
@@ -29,4 +29,20 @@ described.
 
 # Next Implementation Target
 
-Inventory every ownership path with its lowering fields, emit sites and golden case.
+Both reviews are written and linked from `docs/.agent/design/README.md`.
+
+- Ownership (`10-ownership-model.md`): adopt as a lowering-only record.
+  `AbiFn.ownership` and `param_ownership` derived from today's semantic
+  fields; no `semantic.json` change, no ir_version bump, all goldens
+  byte-identical. Automatic `runtime.AddCleanup` needs no work (handles and
+  callback tokens already register it; buffers are copy-then-release). The
+  arena scope API is deferred until a measurement shows release calls
+  above the 10% threshold. Follow-up plan: 4 phases.
+- Interfaces (`11-comptime-interfaces.md`): implement the explicit
+  `.interfaces` registration over opaque handles only, validated by rendered
+  Go signature equality (ZIGO049), emitted as `<pkg>_interfaces_gen.go` with
+  compile-time assertions. `anytype` functions and Go generics stay out.
+  Minor release (`0.9.0`). Follow-up plan: 4 phases.
+
+Suggested order: ownership record first, then interfaces, since signature
+comparison is simpler once ownership is one field on the lowered function.

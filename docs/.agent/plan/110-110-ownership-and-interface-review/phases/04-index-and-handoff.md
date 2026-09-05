@@ -3,7 +3,7 @@ depends_on:
 - "110-110-ownership-and-interface-review#1"
 - "110-110-ownership-and-interface-review#3"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Index updated; the user has both recommendations in one place.
 > NEXT: none

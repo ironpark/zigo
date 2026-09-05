@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-05T07:41:01Z"
 depends_on:
 - "110-110-ownership-and-interface-review#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: The design document has the registration shape, the validation rules, the
 > NEXT: none
