@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: A run of `coverage` reads and parses each `.zig` file at most once
 > NEXT: none

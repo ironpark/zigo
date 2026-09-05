@@ -12,7 +12,7 @@ registered_at: "2026-09-05T06:56:05Z"
 - [x] [Phase 02: Helper references from rendered text](phases/02-helpers-by-render.md)
 - [x] [Phase 03: Materialized layouts by index](phases/03-materialized-index.md)
 - [x] [Phase 04: Split validate.zig into an ordered rule list](phases/04-split-validate.md)
-- [ ] [Phase 05: build.zig consumer API only](phases/05-split-build.md)
+- [x] [Phase 05: build.zig consumer API only](phases/05-split-build.md)
 - [ ] [Phase 06: Reflect scans each source once](phases/06-reflect-single-scan.md)
 - [ ] [Phase 07: Document the layout](phases/07-document-layout.md)
 

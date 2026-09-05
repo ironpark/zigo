@@ -26,6 +26,23 @@ const ImportIterator = struct {
 
 /// Enriches reflection-only IR with syntax-only names and doc comments.
 /// This pass deliberately does not inspect or alter any type node.
+/// The files one enrichment pass has read, so a later pass over the same
+/// binding neither reads nor parses any of them again. The root source is
+/// kept because the coverage traversal starts from it.
+const Scanned = struct {
+    paths: std.ArrayList([]const u8) = .empty,
+    root_source: ?[]const u8 = null,
+
+    fn seen(self: *const Scanned, path: []const u8) bool {
+        for (self.paths.items) |candidate| if (std.mem.eql(u8, candidate, path)) return true;
+        return false;
+    }
+
+    fn record(self: *Scanned, allocator: std.mem.Allocator, path: []const u8) !void {
+        try self.paths.append(allocator, path);
+    }
+};
+
 pub fn apply(
     allocator: std.mem.Allocator,
     io: std.Io,
@@ -34,10 +51,63 @@ pub fn apply(
     source_root_path: ?[]const u8,
     diagnostics: *std.Io.Writer,
 ) !void {
+    var scanned: Scanned = .{};
+    defer scanned.paths.deinit(allocator);
+    try applyRecording(allocator, io, document, bindings_path, source_root_path, diagnostics, &scanned);
+}
+
+/// `apply`, then the coverage traversal of everything the root module imports,
+/// reading each source file once between the two.
+///
+/// Coverage catalogs declarations that semantic reflection deliberately
+/// omits, including methods declared in `.zig` files imported by the root.
+/// The traversal is coverage-only: ordinary semantic enrichment retains its
+/// established source set and byte-for-byte output.
+pub fn applyWithCoverageImports(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    document: *semantic.Semantic,
+    bindings_path: []const u8,
+    source_root_path: ?[]const u8,
+    diagnostics: *std.Io.Writer,
+) !void {
+    var scanned: Scanned = .{};
+    defer scanned.paths.deinit(allocator);
+    try applyRecording(allocator, io, document, bindings_path, source_root_path, diagnostics, &scanned);
+    const root_path = source_root_path orelse return;
+    const root_source = scanned.root_source orelse std.Io.Dir.cwd().readFileAlloc(io, root_path, allocator, source_limit) catch |err| {
+        try writeReadError(diagnostics, root_path, err);
+        return err;
+    };
+    if (!scanned.seen(root_path)) try scanned.record(allocator, root_path);
+    const functions = try allocator.dupe(semantic.SemanticFn, document.functions);
+    const has_errors = try scanImportedSources(
+        allocator,
+        io,
+        root_source,
+        std.fs.path.dirname(root_path) orelse ".",
+        functions,
+        &scanned,
+        diagnostics,
+    );
+    document.functions = functions;
+    if (has_errors) return error.EnrichmentFailed;
+}
+
+fn applyRecording(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    document: *semantic.Semantic,
+    bindings_path: []const u8,
+    source_root_path: ?[]const u8,
+    diagnostics: *std.Io.Writer,
+    scanned: *Scanned,
+) !void {
     const bindings_source = std.Io.Dir.cwd().readFileAlloc(io, bindings_path, allocator, source_limit) catch |err| {
         try writeReadError(diagnostics, bindings_path, err);
         return err;
     };
+    try scanned.record(allocator, bindings_path);
     const functions = try allocator.dupe(semantic.SemanticFn, document.functions);
     const directory = std.fs.path.dirname(bindings_path) orelse ".";
     var has_errors = try scanSourceWithDiagnostics(allocator, bindings_source, functions, try recordedPathAlloc(allocator, directory, bindings_path), diagnostics);
@@ -50,8 +120,12 @@ pub fn apply(
     if (document.doc == null) document.doc = try containerDocAlloc(allocator, bindings_source);
 
     const root_path = source_root_path orelse try std.fs.path.join(allocator, &.{ directory, "root.zig" });
-    if (!std.mem.eql(u8, root_path, bindings_path)) {
+    if (std.mem.eql(u8, root_path, bindings_path)) {
+        scanned.root_source = bindings_source;
+    } else {
         if (std.Io.Dir.cwd().readFileAlloc(io, root_path, allocator, source_limit)) |root_source| {
+            scanned.root_source = root_source;
+            try scanned.record(allocator, root_path);
             if (document.doc == null) document.doc = try containerDocAlloc(allocator, root_source);
             has_errors = try scanSourceWithDiagnostics(allocator, root_source, functions, try recordedPathAlloc(allocator, directory, root_path), diagnostics) or has_errors;
         } else |err| switch (err) {
@@ -69,6 +143,7 @@ pub fn apply(
     while (imports.next()) |referenced| {
         const path = try std.fs.path.join(allocator, &.{ directory, referenced });
         if (std.Io.Dir.cwd().readFileAlloc(io, path, allocator, source_limit)) |source| {
+            try scanned.record(allocator, path);
             has_errors = try scanSourceWithDiagnostics(allocator, source, functions, try recordedPathAlloc(allocator, directory, path), diagnostics) or has_errors;
         } else |err| {
             try writeReadError(diagnostics, path, err);
@@ -79,59 +154,21 @@ pub fn apply(
     if (has_errors) return error.EnrichmentFailed;
 }
 
-/// Coverage catalogs declarations that semantic reflection deliberately
-/// omits, including methods declared in `.zig` files imported by the root.
-/// Keep this traversal coverage-only: ordinary semantic enrichment retains
-/// its established source set and byte-for-byte output.
-pub fn applyCoverageImports(
-    allocator: std.mem.Allocator,
-    io: std.Io,
-    document: *semantic.Semantic,
-    source_root_path: ?[]const u8,
-    diagnostics: *std.Io.Writer,
-) !void {
-    const root_path = source_root_path orelse return;
-    const root_source = std.Io.Dir.cwd().readFileAlloc(io, root_path, allocator, source_limit) catch |err| {
-        try writeReadError(diagnostics, root_path, err);
-        return err;
-    };
-    var visited: std.ArrayList([]const u8) = .empty;
-    defer visited.deinit(allocator);
-    try visited.append(allocator, root_path);
-    const functions = try allocator.dupe(semantic.SemanticFn, document.functions);
-    const has_errors = try scanImportedSources(
-        allocator,
-        io,
-        root_source,
-        std.fs.path.dirname(root_path) orelse ".",
-        functions,
-        &visited,
-        diagnostics,
-    );
-    document.functions = functions;
-    if (has_errors) return error.EnrichmentFailed;
-}
-
 fn scanImportedSources(
     allocator: std.mem.Allocator,
     io: std.Io,
     source: []const u8,
     directory: []const u8,
     functions: []semantic.SemanticFn,
-    visited: *std.ArrayList([]const u8),
+    scanned: *Scanned,
     diagnostics: *std.Io.Writer,
 ) !bool {
     var has_errors = false;
     var imports: ImportIterator = .{ .source = source };
     while (imports.next()) |referenced| {
         const path = try std.fs.path.join(allocator, &.{ directory, referenced });
-        var already_seen = false;
-        for (visited.items) |candidate| if (std.mem.eql(u8, candidate, path)) {
-            already_seen = true;
-            break;
-        };
-        if (already_seen) continue;
-        try visited.append(allocator, path);
+        if (scanned.seen(path)) continue;
+        try scanned.record(allocator, path);
         if (std.Io.Dir.cwd().readFileAlloc(io, path, allocator, source_limit)) |imported| {
             has_errors = try scanSourceWithDiagnostics(allocator, imported, functions, path, diagnostics) or has_errors;
             has_errors = try scanImportedSources(
@@ -140,7 +177,7 @@ fn scanImportedSources(
                 imported,
                 std.fs.path.dirname(path) orelse ".",
                 functions,
-                visited,
+                scanned,
                 diagnostics,
             ) or has_errors;
         } else |err| {
@@ -687,6 +724,30 @@ test "auxiliary read and parse failures identify their source paths" {
     try std.testing.expect(std.mem.indexOf(u8, diagnostics.written(), "missing.zig: FileNotFound") != null);
     try std.testing.expect(std.mem.indexOf(u8, diagnostics.written(), "root.zig") == null);
     try std.testing.expectEqual(.fallback, document.functions[0].params[0].name_source);
+}
+
+test "the coverage traversal parses a source the enrichment pass already read only once" {
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "bindings.zig", .data = "const shared = @import(\"shared.zig\");\n" });
+    try temporary.dir.writeFile(std.testing.io, .{
+        .sub_path = "root.zig",
+        .data = "const shared = @import(\"shared.zig\");\nconst bindings = @import(\"bindings.zig\");\n",
+    });
+    // A parse error is reported once per parse, which counts the parses.
+    try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "shared.zig", .data = "pub fn (\n" });
+    const bindings_path = try std.fmt.allocPrint(std.testing.allocator, ".zig-cache/tmp/{s}/bindings.zig", .{temporary.sub_path});
+    defer std.testing.allocator.free(bindings_path);
+    const root_path = try std.fmt.allocPrint(std.testing.allocator, ".zig-cache/tmp/{s}/root.zig", .{temporary.sub_path});
+    defer std.testing.allocator.free(root_path);
+
+    var document: semantic.Semantic = .{ .package = "names", .prefix = "zg", .zig_version = "0.16.0" };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var diagnostics: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer diagnostics.deinit();
+    try std.testing.expectError(error.EnrichmentFailed, applyWithCoverageImports(arena.allocator(), std.testing.io, &document, bindings_path, root_path, &diagnostics.writer));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, diagnostics.written(), "shared.zig: 1 Zig parse error(s)"));
 }
 
 test "the bindings file's own block is the package doc" {

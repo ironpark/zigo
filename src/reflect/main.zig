@@ -12,8 +12,7 @@ pub fn main(init: std.process.Init) !void {
         var source_document = try coverage.sourceDocument(allocator, bindings.bindings, args[2], args[3]);
         var stderr_buffer: [1024]u8 = undefined;
         var stderr = std.Io.File.Writer.init(.stderr(), init.io, &stderr_buffer);
-        try names.apply(allocator, init.io, &source_document, args[4], if (args.len == 6) args[5] else null, &stderr.interface);
-        try names.applyCoverageImports(allocator, init.io, &source_document, if (args.len == 6) args[5] else null, &stderr.interface);
+        try names.applyWithCoverageImports(allocator, init.io, &source_document, args[4], if (args.len == 6) args[5] else null, &stderr.interface);
         try stderr.interface.flush();
         const report = try coverage.classify(allocator, bindings.bindings, args[2], document, source_document.functions);
         var stdout_buffer: [4096]u8 = undefined;

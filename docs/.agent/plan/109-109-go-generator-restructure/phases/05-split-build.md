@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T07:24:10Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `build.zig` is under 1,000 lines.
 > NEXT: none
