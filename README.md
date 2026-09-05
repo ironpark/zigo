@@ -27,7 +27,7 @@ cgo 코드, 사용하기 편한 Go API를 함께 만듭니다.
 Zig 라이브러리 프로젝트에서 zigo를 의존성으로 추가합니다.
 
 ```bash
-zig fetch --save git+https://github.com/ironpark/zigo#0.9.1
+zig fetch --save git+https://github.com/ironpark/zigo#0.10.0
 ```
 
 `build.zig`에 바인딩 생성을 연결합니다. 아래는 기본값인 cgo 정적 링크 구성입니다.

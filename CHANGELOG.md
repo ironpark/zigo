@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-09-06
+
 ### Added
 
 - `addGoBindings`의 `targets`로 한 cgo 바인딩 세트가 여러 `GOOS`/`GOARCH`용 네이티브
@@ -628,7 +630,8 @@
 - 생성된 Go doc이 식별자로 시작하지 않는 문장을 두 줄 형식으로 내고, `//` 그룹 주석과
   빈 줄 없이 이어진 선언의 doc 공유를 지원합니다. 모든 생성 패키지에 패키지 doc이 있습니다.
 
-[Unreleased]: https://github.com/ironpark/zigo/compare/0.9.1...HEAD
+[Unreleased]: https://github.com/ironpark/zigo/compare/0.10.0...HEAD
+[0.10.0]: https://github.com/ironpark/zigo/compare/0.9.1...0.10.0
 [0.9.1]: https://github.com/ironpark/zigo/compare/0.9.0...0.9.1
 [0.9.0]: https://github.com/ironpark/zigo/compare/0.8.1...0.9.0
 [0.8.1]: https://github.com/ironpark/zigo/compare/0.8.0...0.8.1
