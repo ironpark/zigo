@@ -1,6 +1,8 @@
 //! Writers for public Go signatures: parameter, return and callback types,
 //! and the conversions between raw and public values.
+const type_spelling = @import("type_spelling.zig");
 const std = @import("std");
+const naming = @import("naming");
 const abi = @import("abi");
 const semantic = @import("semantic");
 const common = @import("common.zig");
@@ -214,8 +216,8 @@ fn writePublicZeroValue(scope: PublicScope, writer: *std.Io.Writer, function: se
     if (semantic.isStringSlice(payload, function.return_semantic)) return writer.writeAll("\"\"");
     // A `?T` payload returns the zero of `T` beside a false presence flag:
     // there is no zero value of the optional itself to write.
-    if (payload == .optional) return common.writeGoZeroValue(scope, writer, payload.optional.child.*);
-    try common.writeGoZeroValue(scope, writer, payload);
+    if (payload == .optional) return writeGoZeroValue(scope, writer, payload.optional.child.*);
+    try writeGoZeroValue(scope, writer, payload);
 }
 
 /// The result values that precede an error on a failed public call. Optional
@@ -422,7 +424,7 @@ fn writeOptionalPublicPayloadType(scope: PublicScope, writer: *std.Io.Writer, ch
 pub fn writePublicResultConversion(scope: PublicScope, writer: *std.Io.Writer, program: abi.Program, node: semantic.TypeNode, expression: []const u8) !void {
     switch (node) {
         .bool => try writer.print("{s} != 0", .{expression}),
-        .value_struct => |value| if (common.isPackedValue(program, node))
+        .value_struct => |value| if (type_spelling.isPackedValue(program, node))
             try writer.print("{s}FromBacking({s})", .{ value.ref, expression })
         else
             try writer.print("zigo{s}FromRaw({s})", .{ value.ref, expression }),
@@ -448,11 +450,11 @@ pub fn writeRawGoType(writer: *std.Io.Writer, program: abi.Program, node: semant
             try writer.writeAll("[]");
             try writeRawGoType(writer, program, value.element.*);
         },
-        .@"enum" => try writer.writeAll(common.rawGoTypeName(program, node)),
+        .@"enum" => try writer.writeAll(type_spelling.rawGoTypeName(program, node)),
         .opaque_ptr => try writer.writeAll("unsafe.Pointer"),
         .materialized => try writer.writeAll("[]byte"),
-        .value_struct => |value| if (common.isPackedValue(program, node))
-            try writeRawGoType(writer, program, common.enumDecl(program, value.ref).backing_type.?)
+        .value_struct => |value| if (type_spelling.isPackedValue(program, node))
+            try writeRawGoType(writer, program, type_spelling.enumDecl(program, value.ref).backing_type.?)
         else
             try writer.print("{s}{s}", .{ value.ref, common.raw_struct_suffix }),
         // `?T` crosses the C ABI as one nullable pointer, and the raw layer
@@ -461,7 +463,7 @@ pub fn writeRawGoType(writer: *std.Io.Writer, program: abi.Program, node: semant
             try writer.writeByte('*');
             try writeRawGoType(writer, program, value.child.*);
         },
-        else => try common.writeGoScalar(writer, common.semanticScalar(program, node)),
+        else => try type_spelling.writeGoScalar(writer, type_spelling.semanticScalar(program, node)),
     }
 }
 
@@ -505,7 +507,7 @@ pub fn writePublicGoType(scope: PublicScope, writer: *std.Io.Writer, node: seman
     switch (node) {
         .atomic_ptr => |value| {
             try writer.writeAll("*atomic.");
-            try common.writeAtomicGoName(writer, value.child.*);
+            try type_spelling.writeAtomicGoName(writer, value.child.*);
         },
         .slice => |value| {
             if (semantic.isByte(value.element.*)) {
@@ -522,7 +524,7 @@ pub fn writePublicGoType(scope: PublicScope, writer: *std.Io.Writer, node: seman
         else
             // Go spells only the widths C names, so a narrow Zig integer
             // shows up in the public API as the one carrying it.
-            try common.writeIntegerName(writer, integer.signed, abi.promotedIntBits(integer.bits), false),
+            try type_spelling.writeIntegerName(writer, integer.signed, abi.promotedIntBits(integer.bits), false),
         .float => |value| try writer.print("float{d}", .{value.bits}),
         .opaque_ptr => |value| {
             try writer.writeByte('*');
@@ -581,7 +583,7 @@ pub fn writePublicCallbackType(scope: PublicScope, writer: *std.Io.Writer, progr
 
 pub fn callbackNeedsPackedAdapter(program: abi.Program, callback: semantic.Callback) bool {
     const value_count = if (callback.has_userdata and callback.params.len != 0) callback.params.len - 1 else callback.params.len;
-    for (callback.params[0..value_count]) |parameter| if (common.isPackedValue(program, parameter)) return true;
+    for (callback.params[0..value_count]) |parameter| if (type_spelling.isPackedValue(program, parameter)) return true;
     return false;
 }
 
@@ -605,7 +607,7 @@ pub fn writePackedCallbackAdapter(writer: *std.Io.Writer, program: abi.Program, 
     try writer.print("{s}(", .{value_name});
     for (callback.params[0..value_count], 0..) |parameter, index| {
         if (index != 0) try writer.writeAll(", ");
-        if (common.isPackedValue(program, parameter))
+        if (type_spelling.isPackedValue(program, parameter))
             try writer.print("{s}FromBacking(p{d})", .{ parameter.value_struct.ref, index })
         else
             try writer.print("p{d}", .{index});
@@ -625,4 +627,67 @@ pub fn functionReachesCallbacks(program: abi.Program, function: semantic.Semanti
         else => {},
     };
     return false;
+}
+
+/// The zero value an error path returns. A struct needs its own composite
+/// literal, so callers that can see one use this instead of `goZero`.
+pub fn writeGoZeroValue(scope: PublicScope, writer: *std.Io.Writer, node: semantic.TypeNode) !void {
+    if (node == .value_struct or (node == .materialized and !node.materialized.pointer)) {
+        try scope.writeTypeName(writer, if (node == .value_struct) node.value_struct.ref else node.materialized.ref);
+        return writer.writeAll("{}");
+    }
+    try writer.writeAll(type_spelling.goZero(node));
+}
+
+pub fn writePublicTaggedUnionRawArguments(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    declaration: semantic.TypeDecl,
+    value_name: []const u8,
+) !void {
+    try writer.writeAll(type_spelling.rawGoTypeName(program, declaration.tag_type.?));
+    try writer.print("({s}.tag)", .{value_name});
+    for (program.liveFields(declaration.name)) |field| {
+        const payload = field.type.?;
+        if (payload == .void) continue;
+        const member = try naming.camelAlloc(allocator, field.name);
+        defer allocator.free(member);
+        const expression = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ value_name, member });
+        defer allocator.free(expression);
+        try writePublicTaggedUnionPayloadRawArguments(allocator, writer, program, payload, expression);
+    }
+}
+
+fn writePublicTaggedUnionPayloadRawArguments(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    node: semantic.TypeNode,
+    expression: []const u8,
+) !void {
+    if (node == .value_struct) {
+        const declaration = type_spelling.enumDecl(program, node.value_struct.ref);
+        if (declaration.layout == .@"packed") {
+            try writer.print(", zigo{s}ToBacking({s})", .{ declaration.name, expression });
+            return;
+        }
+        for (declaration.fields) |field| {
+            const member = try naming.pascalAlloc(allocator, field.name);
+            defer allocator.free(member);
+            const child = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ expression, member });
+            defer allocator.free(child);
+            try writePublicTaggedUnionPayloadRawArguments(allocator, writer, program, field.type.?, child);
+        }
+        return;
+    }
+    try writer.writeAll(", ");
+    switch (node) {
+        .bool => try writer.print("boolToUint8({s})", .{expression}),
+        .@"enum" => {
+            try writer.writeAll(type_spelling.rawGoTypeName(program, node));
+            try writer.print("({s})", .{expression});
+        },
+        else => try writer.writeAll(expression),
+    }
 }

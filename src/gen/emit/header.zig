@@ -1,4 +1,5 @@
 //! The C header that declares the shim exports and the value types.
+const type_spelling = @import("type_spelling.zig");
 const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
@@ -15,14 +16,14 @@ pub fn renderHeader(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
     // user wrote them; the names themselves come from lowering.
     for (program.types) |declaration| {
         if (declaration.isHandle() and !common.isValueOnlyTaggedUnion(program, declaration.name)) {
-            const handle = common.handleRecord(program, declaration.name);
+            const handle = type_spelling.handleRecord(program, declaration.name);
             try writer.print("typedef struct {s} {s};\n", .{ handle.c_name, handle.c_name });
             continue;
         }
         if (declaration.kind != .@"enum") continue;
-        const record = common.enumRecord(program, declaration.name);
+        const record = type_spelling.enumRecord(program, declaration.name);
         try writer.writeAll("typedef ");
-        try common.writeCType(writer, record.tag);
+        try type_spelling.writeCType(writer, record.tag);
         try writer.print(" {s};\n", .{record.c_name});
         for (record.constants) |constant|
             try writer.print("#define {s} {d}\n", .{ constant.c_name, constant.value });
@@ -33,12 +34,12 @@ pub fn renderHeader(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
     try renderSnapshotTypes(writer, program);
     for (program.functions) |function| {
         try writer.writeAll("ZIGO_EXPORT ");
-        try common.writeCType(writer, function.ret);
+        try type_spelling.writeCType(writer, function.ret);
         try writer.print(" {s}(", .{function.symbol});
         if (function.params.len == 0) try writer.writeAll("void");
         for (function.params, 0..) |parameter, index| {
             if (index != 0) try writer.writeAll(", ");
-            try common.writeCParam(writer, parameter.scalar, parameter.name);
+            try type_spelling.writeCParam(writer, parameter.scalar, parameter.name);
         }
         try writer.writeAll(");\n");
     }
@@ -82,9 +83,9 @@ fn writeCMemberType(
     scalar: abi.AbiScalar,
 ) !void {
     if (node) |value| if (value == .@"enum") {
-        return writer.writeAll(common.enumRecord(program, value.@"enum".ref).c_name);
+        return writer.writeAll(type_spelling.enumRecord(program, value.@"enum".ref).c_name);
     };
-    try common.writeCType(writer, scalar);
+    try type_spelling.writeCType(writer, scalar);
 }
 
 /// The value snapshot struct as C sees it. Padding is spelled out so the Zig
@@ -119,7 +120,7 @@ pub fn writeCUnionDeclaration(
     // Same split as writeCFunctionDeclaration: the public wrapper is resolved
     // by name out of the artifact, the `_impl` half never is.
     if (!implementation) try writer.writeAll("ZIGO_EXPORT ");
-    try common.writeCType(writer, ret);
+    try type_spelling.writeCType(writer, ret);
     try writer.print(" {s}{s}(", .{ symbol, if (implementation) "_impl" else "" });
     for (params, 0..) |parameter, index| {
         if (index != 0) try writer.writeAll(", ");
@@ -130,7 +131,7 @@ pub fn writeCUnionDeclaration(
 
 fn writeUnionCParam(writer: *std.Io.Writer, program: abi.Program, owner: []const u8, parameter: abi.AbiParam) !void {
     if (parameter.role == .receiver) {
-        try writer.print("const {s} *{s}", .{ common.handleRecord(program, owner).c_name, parameter.name });
+        try writer.print("const {s} *{s}", .{ type_spelling.handleRecord(program, owner).c_name, parameter.name });
         return;
     }
     var wrote_pointer = false;
@@ -140,7 +141,7 @@ fn writeUnionCParam(writer: *std.Io.Writer, program: abi.Program, owner: []const
 
 fn writeProjectionCType(writer: *std.Io.Writer, value: abi.AbiScalar, wrote_pointer: *bool) !void {
     if (value != .pointer) {
-        try common.writeCType(writer, value);
+        try type_spelling.writeCType(writer, value);
         return;
     }
     const pointer = value.pointer;

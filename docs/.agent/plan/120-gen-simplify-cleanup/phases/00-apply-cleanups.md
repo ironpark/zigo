@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T14:17:54Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test` passes and `git diff` shows no snapshot changes.
 > NEXT: none

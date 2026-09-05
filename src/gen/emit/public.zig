@@ -1,5 +1,7 @@
 //! The public Go package: one wrapper per function and the file plumbing
 //! that decides which imports each concern file needs.
+const handles = @import("handles.zig");
+const type_spelling = @import("type_spelling.zig");
 const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
@@ -121,7 +123,7 @@ fn writePublicMaterializedOutCopy(writer: *std.Io.Writer, function: abi.AbiFn, g
 fn writePublicCapturedReturn(writer: *std.Io.Writer, program: abi.Program, function: semantic.SemanticFn, needs_handle_check: bool) !void {
     try writer.writeAll("\treturn ");
     switch (function.@"return") {
-        .value_struct => |value| if (common.isPackedValue(program, function.@"return"))
+        .value_struct => |value| if (type_spelling.isPackedValue(program, function.@"return"))
             try writer.print("{s}FromBacking(result)", .{value.ref})
         else
             try writer.print("zigo{s}FromRaw(result)", .{value.ref}),
@@ -173,7 +175,7 @@ fn writePublicOptionalRawSetup(
     if (!publicOptionalNeedsConversion(child)) return;
     try writer.print("\tvar {s}Raw *", .{name});
     if (child == .value_struct) {
-        if (common.isPackedValue(program, child)) {
+        if (type_spelling.isPackedValue(program, child)) {
             try public_writers.writeRawGoType(writer, program, child);
         } else {
             const record = raw.structRecord(program, child.value_struct.ref);
@@ -189,10 +191,10 @@ fn writePublicOptionalRawSetup(
     switch (child) {
         .bool => try writer.print("boolToUint8(*{s})", .{name}),
         .@"enum" => {
-            try writer.writeAll(common.rawGoTypeName(program, child));
+            try writer.writeAll(type_spelling.rawGoTypeName(program, child));
             try writer.print("(*{s})", .{name});
         },
-        .value_struct => |value| if (common.isPackedValue(program, child))
+        .value_struct => |value| if (type_spelling.isPackedValue(program, child))
             try writer.print("(*{s}).Backing()", .{name})
         else
             try writer.print("zigo{s}ToRaw(*{s})", .{ value.ref, name }),
@@ -426,7 +428,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                 try writer.writeByte('(');
                 try public_writers.writeRawReferencePrefix(writer, options);
             } else if (function.origin.@"return" == .value_struct) {
-                if (common.isPackedValue(program, function.origin.@"return"))
+                if (type_spelling.isPackedValue(program, function.origin.@"return"))
                     try writer.print("return {s}FromBacking(", .{function.origin.@"return".value_struct.ref})
                 else
                     try writer.print("return zigo{s}FromRaw(", .{function.origin.@"return".value_struct.ref});
@@ -470,10 +472,10 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                     } else switch (node) {
                         .bool => try writer.print("boolToUint8({s})", .{name}),
                         .@"enum" => {
-                            try writer.writeAll(common.rawGoTypeName(program, node));
+                            try writer.writeAll(type_spelling.rawGoTypeName(program, node));
                             try writer.print("({s})", .{name});
                         },
-                        .value_struct => if (common.isPackedValue(program, node))
+                        .value_struct => if (type_spelling.isPackedValue(program, node))
                             try writer.print("{s}.Backing()", .{name})
                         else
                             try writer.writeAll(name),
@@ -512,13 +514,13 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                 .atomic_ptr => try writer.print("unsafe.Pointer({s})", .{go_names[parameter_index]}),
                 .bool => try writer.print("boolToUint8({s})", .{go_names[parameter_index]}),
                 .value_struct => |value| if (common.isTaggedUnionValue(program, parameter.type))
-                    try common.writePublicTaggedUnionRawArguments(allocator, writer, program, common.enumDecl(program, value.ref), go_names[parameter_index])
-                else if (common.isPackedValue(program, parameter.type))
+                    try public_writers.writePublicTaggedUnionRawArguments(allocator, writer, program, type_spelling.enumDecl(program, value.ref), go_names[parameter_index])
+                else if (type_spelling.isPackedValue(program, parameter.type))
                     try writer.print("{s}.Backing()", .{go_names[parameter_index]})
                 else
                     try writer.print("zigo{s}ToRaw({s})", .{ value.ref, go_names[parameter_index] }),
                 .@"enum" => {
-                    try writer.writeAll(common.rawGoTypeName(program, parameter.type));
+                    try writer.writeAll(type_spelling.rawGoTypeName(program, parameter.type));
                     try writer.print("({s})", .{go_names[parameter_index]});
                 },
                 .opaque_ptr => try writer.print("{s}Ptr", .{go_names[parameter_index]}),
@@ -583,7 +585,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                 try writer.writeAll("\tif result == nil {\n\t\treturn nil, false, nil\n\t}\n");
             try writer.writeAll("\treturn ");
             if (owned_type != null)
-                try common.writeOwnedHandleResult(allocator, writer, function, "result")
+                try handles.writeOwnedHandleResult(allocator, writer, function, "result")
             else
                 try public_writers.writeBorrowedResult(allocator, writer, function.origin.*, go_names, "result");
             if (docs.returnsBorrowedView(function.origin.*) and function.origin.@"return".opaque_ptr.nullable) try writer.writeAll(", true");
@@ -647,7 +649,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                 } else {
                     try writer.writeAll("\treturn ");
                     if (owned_type != null) {
-                        try common.writeOwnedHandleResult(allocator, writer, function, "result");
+                        try handles.writeOwnedHandleResult(allocator, writer, function, "result");
                     } else if (error_payload == .opaque_ptr and docs.returnsBorrowedOpaque(function.origin.*)) {
                         try public_writers.writeBorrowedResult(allocator, writer, function.origin.*, go_names, "result");
                     } else if (error_payload == .optional) {

@@ -2,7 +2,7 @@
 depends_on:
 - "121-refactor-proposal#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 공통 타입 표기 모듈이 구체 emitter를 import하지 않고 기존 출력이 동일하다.
 > NEXT: none

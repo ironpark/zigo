@@ -1,5 +1,5 @@
-//! Helpers every output file shares: type spellings for Zig, C and Go,
-//! generated names, and the program-wide predicates emitters gate on.
+//! Generated names and program-wide predicates shared by output emitters.
+const type_spelling = @import("type_spelling.zig");
 const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
@@ -10,7 +10,6 @@ const emit = @import("emit.zig");
 const header = @import("header.zig");
 const public = @import("public.zig");
 const public_runtime = @import("public_runtime.zig");
-const public_writers = @import("public_writers.zig");
 const raw = @import("raw.zig");
 const shim = @import("shim.zig");
 const lower = @import("lower");
@@ -33,152 +32,6 @@ pub fn goParamNamesForAlloc(allocator: std.mem.Allocator, params: []const semant
     defer allocator.free(zig_names);
     for (params, 0..) |parameter, index| zig_names[index] = parameter.name;
     return naming.goParamNamesAlloc(allocator, zig_names);
-}
-
-/// The Zig spelling of a registered type inside the shim, which imports the
-/// user's root module as `target`. A type declared inside a container is only
-/// reachable through that container, so the reflected `zig_path` decides the
-/// spelling. A path under `root.` maps straight onto `target.`; a path from a
-/// dependency module (`terminal.Terminal.Options`) is reached through the
-/// nearest registered ancestor whose path is a prefix of it (`Terminal`, so
-/// `target.Terminal.Options`), which holds whatever the module is called. A
-/// path with a generic instantiation, or one with no registered ancestor,
-/// keeps the bare registered name as before: that name is what the root
-/// module is expected to export.
-pub fn targetTypeSpellingAlloc(allocator: std.mem.Allocator, program: abi.Program, name: []const u8) ![]u8 {
-    const path = registeredZigPath(program, name) orelse
-        return std.fmt.allocPrint(allocator, "target.{s}", .{name});
-    if (std.mem.startsWith(u8, path, "root."))
-        return std.fmt.allocPrint(allocator, "target.{s}", .{path["root.".len..]});
-    if (registeredAncestor(program, name, path)) |ancestor| {
-        const parent_spelling = try targetTypeSpellingAlloc(allocator, program, ancestor.name);
-        defer allocator.free(parent_spelling);
-        return std.fmt.allocPrint(allocator, "{s}{s}", .{ parent_spelling, path[ancestor.path_len..] });
-    }
-    // A dependency-module type with no registered ancestor is whatever the
-    // root module re-exports. When the registered name is the Zig name there
-    // is one spelling; otherwise the root may export either, so the shim
-    // resolves the first one it finds at comptime.
-    if (targetTypeCandidates(path, name)) |candidates| {
-        var spelling: std.ArrayList(u8) = .empty;
-        errdefer spelling.deinit(allocator);
-        try spelling.appendSlice(allocator, "zigoTargetType(&.{ ");
-        for (candidates.slice(), 0..) |candidate, index| {
-            if (index != 0) try spelling.appendSlice(allocator, ", ");
-            try spelling.print(allocator, "\"{s}\"", .{candidate});
-        }
-        try spelling.appendSlice(allocator, " })");
-        return spelling.toOwnedSlice(allocator);
-    }
-    return std.fmt.allocPrint(allocator, "target.{s}", .{name});
-}
-
-const RegisteredAncestor = struct { name: []const u8, path_len: usize };
-
-/// The registered type whose Zig path is the longest proper prefix of `path`,
-/// which is the type the spelling nests under.
-fn registeredAncestor(program: abi.Program, name: []const u8, path: []const u8) ?RegisteredAncestor {
-    var ancestor: ?RegisteredAncestor = null;
-    for (program.types) |declaration| {
-        if (std.mem.eql(u8, declaration.name, name)) continue;
-        const other = registeredZigPath(program, declaration.name) orelse continue;
-        if (other.len >= path.len or !std.mem.startsWith(u8, path, other) or path[other.len] != '.') continue;
-        if (ancestor == null or other.len > ancestor.?.path_len)
-            ancestor = .{ .name = declaration.name, .path_len = other.len };
-    }
-    return ancestor;
-}
-
-const TargetTypeCandidates = struct {
-    items: [3][]const u8,
-    len: usize,
-
-    fn slice(self: *const TargetTypeCandidates) []const []const u8 {
-        return self.items[0..self.len];
-    }
-};
-
-/// The names a dependency-module type may be reached by from the root
-/// module, most specific first: the path below the module (`Nested.Impl`),
-/// the type's own name (`Impl`), and the registered name (`Probe`). Null when
-/// the registered name already is the Zig name, which the plain `target.`
-/// spelling covers.
-fn targetTypeCandidates(path: []const u8, name: []const u8) ?TargetTypeCandidates {
-    const module_end = std.mem.indexOfScalar(u8, path, '.') orelse return null;
-    const below_module = path[module_end + 1 ..];
-    const last = if (std.mem.lastIndexOfScalar(u8, path, '.')) |dot| path[dot + 1 ..] else path;
-    if (std.mem.eql(u8, last, name)) return null;
-    var result: TargetTypeCandidates = .{ .items = undefined, .len = 0 };
-    for ([_][]const u8{ below_module, last, name }) |candidate| {
-        var duplicate = false;
-        for (result.slice()) |existing| duplicate = duplicate or std.mem.eql(u8, existing, candidate);
-        if (duplicate) continue;
-        result.items[result.len] = candidate;
-        result.len += 1;
-    }
-    return result;
-}
-
-/// True when some registered type is spelled through `zigoTargetType`, so
-/// the shim has to define it.
-pub fn programNeedsTargetTypeResolver(program: abi.Program) bool {
-    for (program.types) |declaration| {
-        const path = registeredZigPath(program, declaration.name) orelse continue;
-        if (std.mem.startsWith(u8, path, "root.")) continue;
-        // A nested type is spelled through its ancestor, which is checked on
-        // its own turn through this loop.
-        if (registeredAncestor(program, declaration.name, path) != null) continue;
-        if (targetTypeCandidates(path, declaration.name) != null) return true;
-    }
-    return false;
-}
-
-pub fn writeTargetTypeResolver(writer: *std.Io.Writer) !void {
-    try writer.writeAll(
-        "/// A registered type from a dependency module, reached through whichever\n" ++
-            "/// of its names the root module exports.\n" ++
-            "fn zigoTargetType(comptime candidates: []const []const u8) type {\n" ++
-            "    comptime {\n" ++
-            "        var message: []const u8 = \"zigo: the root module exports none of the names this type can be reached by:\";\n" ++
-            "        for (candidates) |candidate| {\n" ++
-            "            if (zigoResolveTargetDecl(candidate)) |T| return T;\n" ++
-            "            message = message ++ \" \" ++ candidate;\n" ++
-            "        }\n" ++
-            "        @compileError(message);\n" ++
-            "    }\n" ++
-            "}\n" ++
-            "fn zigoResolveTargetDecl(comptime path: []const u8) ?type {\n" ++
-            "    comptime {\n" ++
-            "        var current: type = target;\n" ++
-            "        var segments = std.mem.splitScalar(u8, path, '.');\n" ++
-            "        while (segments.next()) |segment| {\n" ++
-            "            if (!@hasDecl(current, segment)) return null;\n" ++
-            "            const next = @field(current, segment);\n" ++
-            "            if (@TypeOf(next) != type) return null;\n" ++
-            "            current = next;\n" ++
-            "        }\n" ++
-            "        return current;\n" ++
-            "    }\n" ++
-            "}\n\n",
-    );
-}
-
-/// The reflected Zig path of a registered type when it can be spelled as a
-/// path: a generic instantiation or a disambiguated registration (`#`) cannot.
-fn registeredZigPath(program: abi.Program, name: []const u8) ?[]const u8 {
-    const declaration = semantic.typeDecl(program.types, name) orelse return null;
-    const path = declaration.zig_path orelse return null;
-    return if (std.mem.indexOfAny(u8, path, "(#") == null) path else null;
-}
-
-pub fn writeTargetType(writer: *std.Io.Writer, program: abi.Program, name: []const u8) !void {
-    var buffer: [512]u8 = undefined;
-    var fba = std.heap.FixedBufferAllocator.init(&buffer);
-    const spelling = targetTypeSpellingAlloc(fba.allocator(), program, name) catch {
-        try writer.print("target.{s}", .{name});
-        return;
-    };
-    try writer.writeAll(spelling);
 }
 
 pub fn flattenedGoNameAlloc(allocator: std.mem.Allocator, abi_name: []const u8) ![]u8 {
@@ -214,106 +67,6 @@ pub fn snapshotRawFunctionNameAlloc(allocator: std.mem.Allocator, snapshot: abi.
     return std.fmt.allocPrint(allocator, "{s}ReadSnapshot", .{snapshot.owner.name});
 }
 
-pub fn rawGoTypeName(program: abi.Program, node: semantic.TypeNode) []const u8 {
-    const scalar = semanticScalar(program, node);
-    return switch (scalar) {
-        .usize => "uint",
-        .isize => "int",
-        .bool_u8 => "uint8",
-        .signed_int => |bits| switch (bits) {
-            8 => "int8",
-            16 => "int16",
-            32 => "int32",
-            64 => "int64",
-            else => unreachable,
-        },
-        .unsigned_int => |bits| switch (bits) {
-            8 => "uint8",
-            16 => "uint16",
-            32 => "uint32",
-            64 => "uint64",
-            else => unreachable,
-        },
-        .float => |bits| switch (bits) {
-            32 => "float32",
-            64 => "float64",
-            else => unreachable,
-        },
-        else => unreachable,
-    };
-}
-
-pub fn goZero(node: semantic.TypeNode) []const u8 {
-    return switch (node) {
-        .bool => "false",
-        .slice, .opaque_ptr => "nil",
-        .materialized => |value| if (value.pointer) "nil" else "0",
-        else => "0",
-    };
-}
-
-/// The zero value an error path returns. A struct needs its own composite
-/// literal, so callers that can see one use this instead of `goZero`.
-pub fn writeGoZeroValue(scope: public_writers.PublicScope, writer: *std.Io.Writer, node: semantic.TypeNode) !void {
-    if (node == .value_struct or (node == .materialized and !node.materialized.pointer)) {
-        try scope.writeTypeName(writer, if (node == .value_struct) node.value_struct.ref else node.materialized.ref);
-        return writer.writeAll("{}");
-    }
-    try writer.writeAll(goZero(node));
-}
-
-pub fn rawGoZero(node: semantic.TypeNode) []const u8 {
-    return switch (node) {
-        .slice, .opaque_ptr => "nil",
-        else => "0",
-    };
-}
-
-pub fn semanticScalar(program: abi.Program, node: semantic.TypeNode) abi.AbiScalar {
-    return switch (node) {
-        .void => .void,
-        .bool => .bool_u8,
-        // The promoted width, matching what lowering put in the ABI, so a
-        // narrow integer spells the same C, Zig, and Go type everywhere.
-        .int => |value| if (value.is_usize)
-            (if (value.signed) .isize else .usize)
-        else if (value.signed)
-            .{ .signed_int = abi.promotedIntBits(value.bits) }
-        else
-            .{ .unsigned_int = abi.promotedIntBits(value.bits) },
-        .float => |value| .{ .float = value.bits },
-        .@"enum" => |value| semanticScalar(program, enumDecl(program, value.ref).tag_type.?),
-        .value_struct => if (isPackedValue(program, node))
-            semanticScalar(program, enumDecl(program, node.value_struct.ref).backing_type.?)
-        else
-            unreachable,
-        .opaque_ptr => |value| .{ .@"opaque" = handleRecord(program, value.ref) },
-        else => unreachable,
-    };
-}
-
-/// The lowered handle for a semantic type name. Lowering records one for every
-/// `opaque` and tagged union, so a missing entry is a malformed program.
-pub fn handleRecord(program: abi.Program, name: []const u8) abi.AbiOpaque {
-    for (program.handles) |handle| if (std.mem.eql(u8, handle.name, name)) return handle;
-    unreachable;
-}
-
-/// The lowered enum for a semantic type name, on the same terms as
-/// `handleRecord`.
-pub fn enumRecord(program: abi.Program, name: []const u8) abi.AbiEnum {
-    for (program.enums) |record| if (std.mem.eql(u8, record.name, name)) return record;
-    unreachable;
-}
-
-pub fn enumDecl(program: abi.Program, name: []const u8) semantic.TypeDecl {
-    return semantic.typeDecl(program.types, name) orelse unreachable;
-}
-
-pub fn isPackedValue(program: abi.Program, node: semantic.TypeNode) bool {
-    return semantic.isPackedValue(program.types, node);
-}
-
 pub fn packedValuePubliclyUsed(program: abi.Program, name: []const u8) bool {
     for (program.functions) |function| {
         for (function.origin.params) |parameter| {
@@ -332,7 +85,7 @@ fn packedValueReachable(program: abi.Program, node: semantic.TypeNode, name: []c
     return switch (node) {
         .value_struct => |value| blk: {
             if (std.mem.eql(u8, value.ref, name)) break :blk true;
-            const declaration = enumDecl(program, value.ref);
+            const declaration = type_spelling.enumDecl(program, value.ref);
             if (declaration.kind == .tagged_union) break :blk false;
             for (declaration.fields) |field| if (field.type) |child| {
                 if (packedValueReachable(program, child, name, depth + 1)) break :blk true;
@@ -350,84 +103,14 @@ fn packedValueReachable(program: abi.Program, node: semantic.TypeNode, name: []c
     };
 }
 
-pub fn writePackedZigToBackingPrefix(writer: *std.Io.Writer, program: abi.Program, node: semantic.TypeNode) !void {
-    const backing = enumDecl(program, node.value_struct.ref).backing_type.?.int;
-    try writer.print("@intCast(@as({c}{d}, @bitCast(", .{
-        if (backing.signed) @as(u8, 'i') else @as(u8, 'u'),
-        backing.bits,
-    });
-}
-
-pub fn writePackedZigFromBacking(writer: *std.Io.Writer, program: abi.Program, node: semantic.TypeNode, expression: []const u8) !void {
-    const backing = enumDecl(program, node.value_struct.ref).backing_type.?.int;
-    try writer.print("@bitCast(@as({c}{d}, @truncate({s})))", .{
-        if (backing.signed) @as(u8, 'i') else @as(u8, 'u'),
-        backing.bits,
-        expression,
-    });
-}
-
 pub fn isTaggedUnionValue(program: abi.Program, node: semantic.TypeNode) bool {
-    return node == .value_struct and enumDecl(program, node.value_struct.ref).kind == .tagged_union;
-}
-
-pub fn writePublicTaggedUnionRawArguments(
-    allocator: std.mem.Allocator,
-    writer: *std.Io.Writer,
-    program: abi.Program,
-    declaration: semantic.TypeDecl,
-    value_name: []const u8,
-) !void {
-    try writer.writeAll(rawGoTypeName(program, declaration.tag_type.?));
-    try writer.print("({s}.tag)", .{value_name});
-    for (program.liveFields(declaration.name)) |field| {
-        const payload = field.type.?;
-        if (payload == .void) continue;
-        const member = try naming.camelAlloc(allocator, field.name);
-        defer allocator.free(member);
-        const expression = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ value_name, member });
-        defer allocator.free(expression);
-        try writePublicTaggedUnionPayloadRawArguments(allocator, writer, program, payload, expression);
-    }
-}
-
-fn writePublicTaggedUnionPayloadRawArguments(
-    allocator: std.mem.Allocator,
-    writer: *std.Io.Writer,
-    program: abi.Program,
-    node: semantic.TypeNode,
-    expression: []const u8,
-) !void {
-    if (node == .value_struct) {
-        const declaration = enumDecl(program, node.value_struct.ref);
-        if (declaration.layout == .@"packed") {
-            try writer.print(", zigo{s}ToBacking({s})", .{ declaration.name, expression });
-            return;
-        }
-        for (declaration.fields) |field| {
-            const member = try naming.pascalAlloc(allocator, field.name);
-            defer allocator.free(member);
-            const child = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ expression, member });
-            defer allocator.free(child);
-            try writePublicTaggedUnionPayloadRawArguments(allocator, writer, program, field.type.?, child);
-        }
-        return;
-    }
-    try writer.writeAll(", ");
-    switch (node) {
-        .bool => try writer.print("boolToUint8({s})", .{expression}),
-        .@"enum" => {
-            try writer.writeAll(rawGoTypeName(program, node));
-            try writer.print("({s})", .{expression});
-        },
-        else => try writer.writeAll(expression),
-    }
+    return node == .value_struct and type_spelling.enumDecl(program, node.value_struct.ref).kind == .tagged_union;
 }
 
 /// The `semantic.Semantic` rule applied to lowered functions: a tagged union
 /// that only ever crosses by value gets a snapshot struct, not a handle.
 pub fn isValueOnlyTaggedUnion(program: abi.Program, name: []const u8) bool {
-    if (enumDecl(program, name).kind != .tagged_union) return false;
+    if (type_spelling.enumDecl(program, name).kind != .tagged_union) return false;
     var by_value = false;
     if (constructorForType(program, name) != null) return false;
     for (program.functions) |function| {
@@ -435,91 +118,6 @@ pub fn isValueOnlyTaggedUnion(program: abi.Program, name: []const u8) bool {
         by_value = by_value or semantic.functionPassesByValue(function.origin.*, name);
     }
     return by_value;
-}
-
-pub fn writeZigType(writer: *std.Io.Writer, program: abi.Program, value: abi.AbiScalar) !void {
-    switch (value) {
-        .void => try writer.writeAll("void"),
-        .bool_u8 => try writer.writeAll("u8"),
-        .usize => try writer.writeAll("usize"),
-        .isize => try writer.writeAll("isize"),
-        .signed_int => |bits| try writer.print("i{d}", .{bits}),
-        .unsigned_int => |bits| try writer.print("u{d}", .{bits}),
-        .float => |bits| try writer.print("f{d}", .{bits}),
-        .@"opaque" => |handle| try writeTargetType(writer, program, handle.name),
-        .snapshot => |name| try writer.writeAll(name),
-        .value_struct => |record| try writeTargetType(writer, program, record.name),
-        .pointer => |pointer| {
-            // A `[*c]` pointer is already nullable and has no `?` spelling:
-            // `?[*c]T` is rejected outright in a `callconv(.c)` signature.
-            // Only `*T` and `[*:0]T` need the marker written out.
-            if (pointer.is_optional and (!pointer.is_many or pointer.is_c_string)) try writer.writeByte('?');
-            try writer.writeAll(if (pointer.is_c_string) "[*:0]" else if (pointer.is_many) "[*c]" else "*");
-            if (pointer.is_const) try writer.writeAll("const ");
-            try writeZigType(writer, program, pointer.child.*);
-        },
-        .callback => |callback| {
-            try writer.writeAll("*const fn (");
-            for (callback.params, 0..) |parameter, index| {
-                if (index != 0) try writer.writeAll(", ");
-                try writeZigType(writer, program, parameter);
-            }
-            try writer.writeAll(") callconv(.c) ");
-            try writeZigType(writer, program, callback.ret.*);
-        },
-    }
-}
-
-pub fn writeCType(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
-    switch (value) {
-        .void => try writer.writeAll("void"),
-        .bool_u8 => try writer.writeAll("uint8_t"),
-        .usize => try writer.writeAll("size_t"),
-        .isize => try writer.writeAll("ptrdiff_t"),
-        .signed_int => |bits| try writer.print("int{d}_t", .{bits}),
-        .unsigned_int => |bits| try writer.print("uint{d}_t", .{bits}),
-        .float => |bits| try writer.writeAll(if (bits == 32) "float" else "double"),
-        // The handle's own typedef, so a C consumer cannot hand one type's
-        // handle to another's function. The projections already spell it.
-        .@"opaque" => |handle| try writer.writeAll(handle.c_name),
-        .snapshot => |name| try writer.writeAll(name),
-        .value_struct => |record| try writer.writeAll(record.c_name),
-        .pointer => |pointer| {
-            if (pointer.is_c_string) return writer.writeAll("const char *");
-            if (pointer.is_const) try writer.writeAll("const ");
-            try writeCType(writer, pointer.child.*);
-            try writer.writeAll(" *");
-        },
-        .callback => unreachable,
-    }
-}
-
-pub fn writeCParam(writer: *std.Io.Writer, value: abi.AbiScalar, name: []const u8) !void {
-    if (value != .callback) {
-        try writeCType(writer, value);
-        try writer.print(" {s}", .{name});
-        return;
-    }
-    const callback = value.callback;
-    try writeCType(writer, callback.ret.*);
-    try writer.print(" (*{s})(", .{name});
-    if (callback.params.len == 0) try writer.writeAll("void");
-    for (callback.params, 0..) |parameter, index| {
-        if (index != 0) try writer.writeAll(", ");
-        try writeCType(writer, parameter);
-    }
-    try writer.writeByte(')');
-}
-
-/// A handle argument crosses cgo as the header's typedef pointer, converted
-/// from the unsafe.Pointer the raw signature carries; anything else passes
-/// as it is.
-pub fn writeCgoHandleArgument(writer: *std.Io.Writer, scalar: abi.AbiScalar, name: []const u8) !void {
-    if (scalar == .pointer and scalar.pointer.child.* == .@"opaque") {
-        try writer.print("(*C.{s})({s})", .{ scalar.pointer.child.@"opaque".c_name, name });
-        return;
-    }
-    try writer.writeAll(name);
 }
 
 /// The typedef behind a constructor's `out_result`, so the raw layer can
@@ -530,47 +128,6 @@ pub fn payloadOutHandleCName(function: abi.AbiFn) []const u8 {
         return parameter.scalar.pointer.child.pointer.child.@"opaque".c_name;
     }
     unreachable;
-}
-
-pub fn writeCgoType(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
-    switch (value) {
-        .void => try writer.writeAll("void"),
-        .bool_u8 => try writer.writeAll("uint8_t"),
-        .usize => try writer.writeAll("size_t"),
-        .isize => try writer.writeAll("ptrdiff_t"),
-        .signed_int => |bits| try writer.print("int{d}_t", .{bits}),
-        .unsigned_int => |bits| try writer.print("uint{d}_t", .{bits}),
-        .float => |bits| try writer.writeAll(if (bits == 32) "float" else "double"),
-        .@"opaque" => try writer.writeAll("void"),
-        .snapshot => |name| try writer.writeAll(name),
-        .value_struct => |record| try writer.writeAll(record.c_name),
-        .pointer => unreachable,
-        .callback => unreachable,
-    }
-}
-
-pub fn writeGoScalar(writer: *std.Io.Writer, value: abi.AbiScalar) !void {
-    switch (value) {
-        .bool_u8 => try writer.writeAll("uint8"),
-        .usize => try writer.writeAll("uint"),
-        .isize => try writer.writeAll("int"),
-        .signed_int => |bits| try writeIntegerName(writer, true, bits, false),
-        .unsigned_int => |bits| try writeIntegerName(writer, false, bits, false),
-        .float => |bits| try writer.print("float{d}", .{bits}),
-        .@"opaque", .pointer => try writer.writeAll("unsafe.Pointer"),
-        .callback => try writer.writeAll("uintptr"),
-        else => unreachable,
-    }
-}
-
-pub fn writeIntegerName(writer: *std.Io.Writer, signed: bool, bits: u16, c_name: bool) !void {
-    _ = c_name;
-    try writer.print("{s}{d}", .{ if (signed) "int" else "uint", bits });
-}
-
-pub fn writeAtomicGoName(writer: *std.Io.Writer, node: semantic.TypeNode) !void {
-    const integer = node.int;
-    try writer.print("{s}{d}", .{ if (integer.signed) "Int" else "Uint", integer.bits });
 }
 
 fn programHasSlices(program: abi.Program) bool {
@@ -786,7 +343,7 @@ fn isAutoCleanupType(program: abi.Program, type_name: []const u8) bool {
 /// is a per-type question: a program can mix types that take callbacks with
 /// types that do not, and only the former need the bookkeeping.
 pub fn typeOwnsCallbacks(program: abi.Program, type_name: []const u8) bool {
-    return handleRecord(program, type_name).retained_callback_slots != 0;
+    return type_spelling.handleRecord(program, type_name).retained_callback_slots != 0;
 }
 
 pub fn retainedCallbackOwner(program: abi.Program, function: abi.AbiFn) ?[]const u8 {
@@ -858,7 +415,7 @@ pub fn callbackPackedThunkNameAlloc(allocator: std.mem.Allocator, function: abi.
 }
 
 pub fn callbackHasPackedParam(program: abi.Program, callback: semantic.Callback) bool {
-    for (callback.params) |parameter| if (isPackedValue(program, parameter)) return true;
+    for (callback.params) |parameter| if (type_spelling.isPackedValue(program, parameter)) return true;
     return false;
 }
 
@@ -972,18 +529,6 @@ pub fn programHasChildConstructors(program: abi.Program) bool {
     return false;
 }
 
-/// The handle type a caller-owned return hands over.
-///
-/// Ownership metadata is authoritative, not the function name: `.returns =
-/// .caller` makes any function a factory, so a `clone` or `openChild` produces
-/// the same owned handle a named constructor does. Registration in
-/// `program.constructors` stays name-based because that list also names the
-/// deinit that `newX` schedules; this is the wider question of which returns
-/// need wrapping at all.
-/// True when some generated code hands out a `{name}Ref`: a function that
-/// returns the handle without ownership, or a tagged-union payload projection
-/// whose payload is that handle. Nothing else can construct one, so a type
-/// without either gets no Ref type at all.
 /// Whether some other function names this one as its `.release` target.
 pub fn isReleaseTarget(program: abi.Program, function: semantic.SemanticFn) bool {
     return lower.isReleaseTarget(program.origins, function);
@@ -991,41 +536,6 @@ pub fn isReleaseTarget(program: abi.Program, function: semantic.SemanticFn) bool
 
 pub fn ownedOpaqueReturn(program: abi.Program, function: semantic.SemanticFn) ?[]const u8 {
     return lower.ownedOpaqueReturn(program.constructors, function);
-}
-
-/// Every constructed handle goes through its `new` helper, which is what
-/// registers the cleanup and adopts the callback handles the call retained.
-/// `function` owns its result as a `handle`.
-pub fn writeOwnedHandleResult(
-    allocator: std.mem.Allocator,
-    writer: *std.Io.Writer,
-    function: abi.AbiFn,
-    expression: []const u8,
-) !void {
-    const handle = function.ownership.handle;
-    try writer.print("new{s}({s}", .{ handle.type_name, expression });
-    if (handle.child_of_receiver) {
-        try writer.writeAll(", zigoChildParent");
-    }
-    if (handle.retained_slots != 0) {
-        const go_names = try goParamNamesForAlloc(allocator, function.origin.params);
-        defer naming.freeParamNames(allocator, go_names);
-        try writer.writeAll(", []zigoCallbackHandle{");
-        for (0..handle.retained_slots) |slot| {
-            if (slot != 0) try writer.writeAll(", ");
-            var wrote = false;
-            for (function.origin.params, 0..) |parameter, parameter_index| {
-                if (parameter.type != .callback or parameter.retention != .retained) continue;
-                if (function.callbackSlot(parameter_index).? != slot) continue;
-                try writer.print("{s}Handle", .{go_names[parameter_index]});
-                wrote = true;
-                break;
-            }
-            if (!wrote) try writer.writeByte('0');
-        }
-        try writer.writeByte('}');
-    }
-    try writer.writeByte(')');
 }
 
 pub fn rawNameForSemanticAlloc(allocator: std.mem.Allocator, program: abi.Program, name: []const u8, receiver: []const u8) !?[]u8 {

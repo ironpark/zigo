@@ -1,5 +1,6 @@
 //! The purego raw Go package: library loading, symbol resolution and calls
 //! that need no cgo.
+const type_spelling = @import("type_spelling.zig");
 const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
@@ -453,7 +454,7 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
                     (abi_parameter.role != .union_tag and abi_parameter.role != .union_payload)) continue;
                 if (parameter_count != 0) try writer.writeAll(", ");
                 try writer.print("{s} ", .{abi_parameter.name});
-                try common.writeGoScalar(writer, abi_parameter.scalar);
+                try type_spelling.writeGoScalar(writer, abi_parameter.scalar);
                 parameter_count += 1;
             }
             continue;
@@ -552,7 +553,7 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
         if (payload == .value_struct)
             try public_writers.writeRawGoType(writer, program, payload)
         else if (puregoPayloadNeedsConversion(payload))
-            try writePuregoAbiType(writer, common.semanticScalar(program, payload))
+            try writePuregoAbiType(writer, type_spelling.semanticScalar(program, payload))
         else
             try public_writers.writeRawGoType(writer, program, payload);
         try writer.writeByte('\n');

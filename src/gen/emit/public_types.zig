@@ -1,4 +1,5 @@
 //! Public Go types: enums, value structs, tagged unions, snapshots and handles.
+const type_spelling = @import("type_spelling.zig");
 const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
@@ -112,7 +113,7 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
                 defer allocator.free(expression);
                 switch (semantic_field.type.?) {
                     .bool => try writer.print("{s} != 0", .{expression}),
-                    .value_struct => |nested| try writer.print("{s}FromBacking({s}({s}))", .{ nested.ref, common.rawGoTypeName(program, semantic_field.type.?), expression }),
+                    .value_struct => |nested| try writer.print("{s}FromBacking({s}({s}))", .{ nested.ref, type_spelling.rawGoTypeName(program, semantic_field.type.?), expression }),
                     .int => |integer| if (integer.signed and integer.bits < abi.promotedIntBits(integer.bits)) {
                         const promoted = abi.promotedIntBits(integer.bits);
                         const shift = promoted - integer.bits;
@@ -170,13 +171,13 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
                 defer allocator.free(member);
                 try writer.print("\t\t{s}: ", .{member});
                 switch (field.node) {
-                    .value_struct => |nested| if (common.isPackedValue(program, field.node))
+                    .value_struct => |nested| if (type_spelling.isPackedValue(program, field.node))
                         try writer.print("value.{s}.Backing()", .{member})
                     else
                         try writer.print("zigo{s}ToRaw(value.{s})", .{ nested.ref, member }),
                     .bool => try writer.print("boolToUint8(value.{s})", .{member}),
                     .@"enum" => {
-                        try writer.writeAll(common.rawGoTypeName(program, field.node));
+                        try writer.writeAll(type_spelling.rawGoTypeName(program, field.node));
                         try writer.print("(value.{s})", .{member});
                     },
                     else => try writer.print("value.{s}", .{member}),
@@ -195,7 +196,7 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
                 defer allocator.free(member);
                 try writer.print("\t\t{s}: ", .{member});
                 switch (field.node) {
-                    .value_struct => |nested| if (common.isPackedValue(program, field.node))
+                    .value_struct => |nested| if (type_spelling.isPackedValue(program, field.node))
                         try writer.print("{s}FromBacking(value.{s})", .{ nested.ref, member })
                     else
                         try writer.print("zigo{s}FromRaw(value.{s})", .{ nested.ref, member }),
@@ -289,7 +290,7 @@ fn writeValueUnionPayloadFromRaw(
     raw_value: []const u8,
 ) !void {
     if (node == .value_struct) {
-        const declaration = common.enumDecl(program, node.value_struct.ref);
+        const declaration = type_spelling.enumDecl(program, node.value_struct.ref);
         try writer.print("{s}{{", .{declaration.name});
         const layout = program.packedLayout(declaration.name);
         for (declaration.fields, 0..) |field, index| {
@@ -437,7 +438,7 @@ fn renderPublicSnapshots(
         try writer.writeAll("\t}, nil\n}\n\n");
 
         inline for (.{ false, true }) |borrowed| {
-            if (!borrowed or common.handleRecord(program, declaration.name).lifecycle.has_borrowed_refs) {
+            if (!borrowed or type_spelling.handleRecord(program, declaration.name).lifecycle.has_borrowed_refs) {
                 const suffix = if (borrowed) "Ref" else "";
                 try writer.print(
                     "// Snapshot reads the tag and every payload in one native call, or\n" ++
@@ -631,7 +632,7 @@ fn renderPublicUnionVariants(
         );
 
         inline for (.{ false, true }) |borrowed| {
-            if (!borrowed or common.handleRecord(program, declaration.name).lifecycle.has_borrowed_refs) {
+            if (!borrowed or type_spelling.handleRecord(program, declaration.name).lifecycle.has_borrowed_refs) {
                 const suffix = if (borrowed) "Ref" else "";
                 try writer.print(
                     "// Variant returns the active variant as a concrete {1s}Variant, or a typed\n" ++
@@ -744,7 +745,7 @@ fn renderPublicTaggedUnionAccessors(
             .{ declaration.name, tag_type },
         );
         inline for (.{ false, true }) |borrowed| {
-            if (!borrowed or common.handleRecord(program, declaration.name).lifecycle.has_borrowed_refs) {
+            if (!borrowed or type_spelling.handleRecord(program, declaration.name).lifecycle.has_borrowed_refs) {
                 const suffix = if (borrowed) "Ref" else "";
                 try writer.print(
                     "// Tag returns the active tagged-union tag or a typed lifecycle/native error.\n" ++
@@ -768,13 +769,13 @@ fn renderPublicTaggedUnionAccessors(
             try writer.print("func zigo{s}As{s}(receiver zigoHandle) (", .{ declaration.name, field_name });
             try public_writers.writePayloadType(scope, writer, payload);
             try writer.print(", bool, error) {{\n\truntime.LockOSThread()\n\tdefer runtime.UnlockOSThread()\n\tptr, err := zigoCheckedPointer(\"{s}.As{s} receiver\", receiver)\n\tif err != nil {{\n\t\treturn ", .{ declaration.name, field_name });
-            try writer.writeAll(common.goZero(payload));
+            try writer.writeAll(type_spelling.goZero(payload));
             try writer.writeAll(", false, err\n\t}\n\tdefer receiver.zigoRelease()\n\tresult, status := ");
             try public_writers.writeRawReferencePrefix(writer, options);
             try writer.print("{s}Project{s}(ptr)\n\tif status == zigoProjectionMismatch {{\n\t\treturn ", .{ declaration.name, field_name });
-            try writer.writeAll(common.goZero(payload));
+            try writer.writeAll(type_spelling.goZero(payload));
             try writer.writeAll(", false, nil\n\t}\n\tif status != zigoProjectionSuccess {\n\t\treturn ");
-            try writer.writeAll(common.goZero(payload));
+            try writer.writeAll(type_spelling.goZero(payload));
             try writer.print(", false, zigoPoisonAfterPanic(zigoProjectionError(\"{s}.As{s}\", status), receiver)\n\t}}\n\treturn ", .{ declaration.name, field_name });
             if (payload == .opaque_ptr) {
                 try writer.print("&{s}Ref{{ptr: result, parent: receiver}}", .{payload.opaque_ptr.ref});
@@ -796,7 +797,7 @@ fn renderPublicTaggedUnionAccessors(
             try writer.writeAll(", true, nil\n}\n\n");
 
             inline for (.{ false, true }) |borrowed| {
-                if (!borrowed or common.handleRecord(program, declaration.name).lifecycle.has_borrowed_refs) {
+                if (!borrowed or type_spelling.handleRecord(program, declaration.name).lifecycle.has_borrowed_refs) {
                     const suffix = if (borrowed) "Ref" else "";
                     try writer.print("// As{0s} returns the {1s} payload, whether it is active, and any lifecycle/native error.\nfunc ({2s} *{3s}{4s}) As{0s}() (", .{ field_name, field.name, recv, declaration.name, suffix });
                     try public_writers.writePayloadType(scope, writer, payload);

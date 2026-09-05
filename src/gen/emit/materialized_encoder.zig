@@ -1,4 +1,5 @@
 //! Zig serialization of layouts already decided by lowering.
+const target_types = @import("target_types.zig");
 const std = @import("std");
 const abi = @import("abi");
 const naming = @import("naming");
@@ -59,7 +60,7 @@ pub fn renderMaterializedWalker(allocator: std.mem.Allocator, writer: *std.Io.Wr
         const function_name = try materializedEncoderNameAlloc(allocator, layout.owner.name);
         defer allocator.free(function_name);
         try writer.print("pub fn {s}(builder: *ZigoMaterializedBuilder, value: ", .{function_name});
-        try common.writeTargetType(writer, program, layout.owner.name);
+        try target_types.writeTargetType(writer, program, layout.owner.name);
         try writer.print(") !u64 {{\n    const record = try builder.reserve({d});\n", .{layout.record_size});
         for (layout.fields) |field| try writeMaterializedField(allocator, writer, field, "value", "record");
         try writer.writeAll("    return @intCast(record);\n}\n\n");

@@ -1,4 +1,6 @@
 //! The cgo raw Go package: struct mirrors, string helpers and the raw calls.
+const type_spelling = @import("type_spelling.zig");
+const target_types = @import("target_types.zig");
 const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
@@ -43,13 +45,13 @@ pub fn renderRawStructTypes(allocator: std.mem.Allocator, writer: *std.Io.Writer
 
 fn writeRawStructFieldType(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, field: abi.AbiStruct.Field) !void {
     if (field.node == .value_struct) {
-        if (common.isPackedValue(program, field.node)) return common.writeGoScalar(writer, field.scalar);
+        if (type_spelling.isPackedValue(program, field.node)) return type_spelling.writeGoScalar(writer, field.scalar);
         const nested = structRecord(program, field.node.value_struct.ref);
         const nested_name = try common.structRawTypeNameAlloc(allocator, nested.name);
         defer allocator.free(nested_name);
         return writer.writeAll(nested_name);
     }
-    try common.writeGoScalar(writer, field.scalar);
+    try type_spelling.writeGoScalar(writer, field.scalar);
 }
 
 /// An `extern struct` whose Go mirror is a bit-for-bit copy of the C layout, so
@@ -68,7 +70,7 @@ pub fn structRecord(program: abi.Program, name: []const u8) abi.AbiStruct {
 pub fn recordHasAtomicFields(program: abi.Program, record: abi.AbiStruct) bool {
     for (record.fields) |field| {
         if (field.atomic) return true;
-        if (field.node == .value_struct and !common.isPackedValue(program, field.node) and
+        if (field.node == .value_struct and !type_spelling.isPackedValue(program, field.node) and
             recordHasAtomicFields(program, structRecord(program, field.node.value_struct.ref))) return true;
     }
     return false;
@@ -84,14 +86,14 @@ pub fn writeZigAtomicStructCopy(
     record: abi.AbiStruct,
     expression: []const u8,
 ) !void {
-    try common.writeTargetType(writer, program, record.name);
+    try target_types.writeTargetType(writer, program, record.name);
     try writer.writeByte('{');
     for (record.fields, 0..) |field, index| {
         if (index != 0) try writer.writeByte(',');
         try writer.print(" .{s} = ", .{field.name});
         const child_expression = try std.fmt.allocPrint(allocator, "({s}).{s}", .{ expression, field.name });
         defer allocator.free(child_expression);
-        if (field.node == .value_struct and !common.isPackedValue(program, field.node)) {
+        if (field.node == .value_struct and !type_spelling.isPackedValue(program, field.node)) {
             try writeZigAtomicStructCopy(allocator, writer, program, structRecord(program, field.node.value_struct.ref), child_expression);
         } else if (field.atomic) {
             try writer.print(".init({s}.raw)", .{child_expression});
@@ -121,7 +123,7 @@ fn writeCgoStructConversionIndented(
     for (record.fields) |field| {
         const member = try naming.pascalAlloc(allocator, field.name);
         defer allocator.free(member);
-        if (field.node == .value_struct and !common.isPackedValue(program, field.node)) {
+        if (field.node == .value_struct and !type_spelling.isPackedValue(program, field.node)) {
             const nested = structRecord(program, field.node.value_struct.ref);
             const nested_c = try std.fmt.allocPrint(allocator, "{s}{s}", .{ c_name, member });
             defer allocator.free(nested_c);
@@ -132,7 +134,7 @@ fn writeCgoStructConversionIndented(
             continue;
         }
         try writer.print("{s}{s}.{s} = C.", .{ indent, c_name, field.name });
-        try common.writeCgoType(writer, field.scalar);
+        try type_spelling.writeCgoType(writer, field.scalar);
         try writer.print("({s}.{s})\n", .{ go_name, member });
     }
 }
@@ -146,7 +148,7 @@ fn writeCgoStructRead(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
         const member = try naming.pascalAlloc(allocator, field.name);
         defer allocator.free(member);
         try writer.print("{s}\t{s}: ", .{ indent, member });
-        if (field.node == .value_struct and !common.isPackedValue(program, field.node)) {
+        if (field.node == .value_struct and !type_spelling.isPackedValue(program, field.node)) {
             const nested = structRecord(program, field.node.value_struct.ref);
             const nested_c = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ c_name, field.name });
             defer allocator.free(nested_c);
@@ -154,7 +156,7 @@ fn writeCgoStructRead(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
             defer allocator.free(nested_indent);
             try writeCgoStructRead(allocator, writer, program, nested, nested_indent, nested_c);
         } else {
-            try common.writeGoScalar(writer, field.scalar);
+            try type_spelling.writeGoScalar(writer, field.scalar);
             try writer.print("({s}.{s})", .{ c_name, field.name });
         }
         try writer.writeAll(",\n");
@@ -245,7 +247,7 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
                         (abi_parameter.role != .union_tag and abi_parameter.role != .union_payload)) continue;
                     if (raw_parameter_index != 0) try writer.writeAll(", ");
                     try writer.print("{s} ", .{abi_parameter.name});
-                    try common.writeGoScalar(writer, abi_parameter.scalar);
+                    try type_spelling.writeGoScalar(writer, abi_parameter.scalar);
                     raw_parameter_index += 1;
                 }
                 continue;
@@ -300,7 +302,7 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
                 const record = structRecord(program, element.value_struct.ref);
                 try writer.writeAll(record.c_name);
             } else {
-                try common.writeCgoType(writer, common.semanticScalar(program, element));
+                try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, element));
             }
             try writer.writeAll("\n\tvar outResultLen C.size_t\n");
         } else if (function.materialized_out != null) {
@@ -308,7 +310,7 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
         }
         for (function.origin.params, 0..) |parameter, parameter_index| {
             if (parameter.flatten == null and parameter.type == .value_struct and
-                !common.isTaggedUnionValue(program, parameter.type) and !common.isPackedValue(program, parameter.type))
+                !common.isTaggedUnionValue(program, parameter.type) and !type_spelling.isPackedValue(program, parameter.type))
             {
                 const record = structRecord(program, parameter.type.value_struct.ref);
                 const c_name = try std.fmt.allocPrint(allocator, "c{s}", .{go_names[parameter_index]});
@@ -321,11 +323,11 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
                 const name = try common.flattenedGoNameAlloc(allocator, abi_parameter.name);
                 defer allocator.free(name);
                 try writer.print("\tvar {0s}Value C.", .{name});
-                try common.writeCgoType(writer, common.semanticScalar(program, field.type.optional.child.*));
+                try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, field.type.optional.child.*));
                 try writer.print("\n\tvar {0s}Ptr *C.", .{name});
-                try common.writeCgoType(writer, common.semanticScalar(program, field.type.optional.child.*));
+                try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, field.type.optional.child.*));
                 try writer.print("\n\tif {0s} != nil {{\n\t\t{0s}Value = C.", .{name});
-                try common.writeCgoType(writer, common.semanticScalar(program, field.type.optional.child.*));
+                try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, field.type.optional.child.*));
                 try writer.print("(*{0s})\n\t\t{0s}Ptr = &{0s}Value\n\t}}\n", .{name});
             };
             // An optional slice reuses the slice setup below; only a scalar
@@ -337,7 +339,7 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
                 // even when they have the same width.
                 const name = go_names[parameter_index];
                 const child = parameter.type.optional.child.*;
-                if (child == .value_struct and !common.isPackedValue(program, child)) {
+                if (child == .value_struct and !type_spelling.isPackedValue(program, child)) {
                     const record = structRecord(program, child.value_struct.ref);
                     try writer.print("\tvar {s}Ptr *C.{s}\n\tif {s} != nil {{\n", .{ name, record.c_name, name });
                     const c_name = try std.fmt.allocPrint(allocator, "c{s}", .{name});
@@ -348,11 +350,11 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
                     try writer.print("\t\t{s}Ptr = &{s}\n\t}}\n", .{ name, c_name });
                 } else {
                     try writer.print("\tvar {s}Value C.", .{name});
-                    try common.writeCgoType(writer, common.semanticScalar(program, child));
+                    try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, child));
                     try writer.print("\n\tvar {s}Ptr *C.", .{name});
-                    try common.writeCgoType(writer, common.semanticScalar(program, child));
+                    try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, child));
                     try writer.print("\n\tif {0s} != nil {{\n\t\t{0s}Value = C.", .{name});
-                    try common.writeCgoType(writer, common.semanticScalar(program, child));
+                    try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, child));
                     try writer.print("(*{0s})\n\t\t{0s}Ptr = &{0s}Value\n\t}}\n", .{name});
                 }
                 continue;
@@ -419,20 +421,20 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
                 const slice_name = go_names[parameter_index];
                 const element = parameter.type.optional.child.slice.element.*;
                 try writer.print("\tvar {s}Zero C.", .{slice_name});
-                try common.writeCgoType(writer, common.semanticScalar(program, element));
+                try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, element));
                 try writer.print("\n\tvar {s}Len C.size_t\n\tvar {s}Ptr *C.", .{ slice_name, slice_name });
-                try common.writeCgoType(writer, common.semanticScalar(program, element));
+                try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, element));
                 try writer.print("\n\tif {0s} != nil {{\n\t\t{0s}Ptr = &{0s}Zero\n\t\t{0s}Len = C.size_t(len(*{0s}))\n\t\tif {0s}Len != 0 {{\n\t\t\t{0s}Ptr = (*C.", .{slice_name});
-                try common.writeCgoType(writer, common.semanticScalar(program, element));
+                try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, element));
                 try writer.print(")(unsafe.Pointer(&(*{s})[0]))\n\t\t}}\n\t}}\n", .{slice_name});
             } else if (parameter.type == .slice and
                 !(function.materializesParam(parameter_index)))
             {
                 const slice_name = go_names[parameter_index];
                 try writer.print("\tvar {s}Zero C.", .{slice_name});
-                try common.writeCgoType(writer, common.semanticScalar(program, parameter.type.slice.element.*));
+                try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, parameter.type.slice.element.*));
                 try writer.print("\n\t{s}Ptr := &{s}Zero\n\tif len({s}) != 0 {{\n\t\t{s}Ptr = (*C.", .{ slice_name, slice_name, slice_name, slice_name });
-                try common.writeCgoType(writer, common.semanticScalar(program, parameter.type.slice.element.*));
+                try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, parameter.type.slice.element.*));
                 try writer.print(")(unsafe.Pointer(&{s}[0]))\n\t}}\n", .{slice_name});
                 if (shim.hasWrittenOutParam(parameter)) try writer.print("\tvar {s}Written C.size_t\n", .{slice_name});
             }
@@ -445,7 +447,7 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
             // A scalar `?T` return still needs an out parameter to carry the
             // value; only the struct case declares one above.
             try writer.writeAll("\tvar outResult C.");
-            try common.writeCgoType(writer, common.semanticScalar(program, function.origin.@"return".optional.child.*));
+            try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, function.origin.@"return".optional.child.*));
             try writer.writeByte('\n');
         }
         // An optional slice payload takes the slice-return out parameters
@@ -455,14 +457,14 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
         {
             if (error_payload == .optional) {
                 try writer.writeAll("\tvar outResultHas C.");
-                try common.writeCgoType(writer, .bool_u8);
+                try type_spelling.writeCgoType(writer, .bool_u8);
                 try writer.writeByte('\n');
                 const child = error_payload.optional.child.*;
                 if (function.payload_struct) |record| {
                     try writer.print("\tvar outResult C.{s}\n", .{record.c_name});
                 } else {
                     try writer.writeAll("\tvar outResult C.");
-                    try common.writeCgoType(writer, common.semanticScalar(program, child));
+                    try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, child));
                     try writer.writeByte('\n');
                 }
             } else if (error_payload == .opaque_ptr) {
@@ -471,7 +473,7 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
                 try writer.print("\tvar outResult C.{s}\n", .{record.c_name});
             } else {
                 try writer.writeAll("\tvar outResult C.");
-                try common.writeCgoType(writer, common.semanticScalar(program, error_payload));
+                try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, error_payload));
                 try writer.writeByte('\n');
             }
         }
@@ -502,7 +504,7 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
         for (function.params, 0..) |parameter, index| {
             if (index != 0) try writer.writeAll(", ");
             switch (parameter.role) {
-                .receiver => try common.writeCgoHandleArgument(writer, parameter.scalar, "self"),
+                .receiver => try writeCgoHandleArgument(writer, parameter.scalar, "self"),
                 .flattened_field => {
                     const field = common.flattenedField(function.origin.params[parameter.source_index], parameter);
                     const name = try common.flattenedGoNameAlloc(allocator, parameter.name);
@@ -511,29 +513,29 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
                         try writer.print("{s}Ptr", .{name});
                     } else {
                         try writer.writeAll("C.");
-                        try common.writeCgoType(writer, parameter.scalar);
+                        try type_spelling.writeCgoType(writer, parameter.scalar);
                         try writer.print("({s})", .{name});
                     }
                 },
                 .struct_in => try writer.print("&c{s}", .{go_names[parameter.source_index]}),
                 .union_tag, .union_payload => {
                     try writer.writeAll("C.");
-                    try common.writeCgoType(writer, parameter.scalar);
+                    try type_spelling.writeCgoType(writer, parameter.scalar);
                     try writer.print("({s})", .{parameter.name});
                 },
                 .struct_out => try writer.writeAll("&outResult"),
                 .value => {
                     if (function.userdataFor(parameter.source_index)) |callback_index| {
                         try writer.writeAll("C.");
-                        try common.writeCgoType(writer, parameter.scalar);
+                        try type_spelling.writeCgoType(writer, parameter.scalar);
                         try writer.print("({s}Handle)", .{go_names[callback_index]});
                     } else if (function.paramString(parameter.source_index).role == .c_string) {
                         try writer.print("{s}CString", .{go_names[parameter.source_index]});
                     } else if (parameter.scalar == .pointer) {
-                        try common.writeCgoHandleArgument(writer, parameter.scalar, go_names[parameter.source_index]);
+                        try writeCgoHandleArgument(writer, parameter.scalar, go_names[parameter.source_index]);
                     } else {
                         try writer.writeAll("C.");
-                        try common.writeCgoType(writer, parameter.scalar);
+                        try type_spelling.writeCgoType(writer, parameter.scalar);
                         try writer.print("({s})", .{go_names[parameter.source_index]});
                     }
                 },
@@ -566,7 +568,7 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
                 .cancel_flag => try writer.print("(*C.uint32_t)(unsafe.Pointer({s}))", .{go_names[parameter.source_index]}),
                 .atomic_ptr => {
                     try writer.writeAll("(*C.");
-                    try common.writeCgoType(writer, parameter.scalar.pointer.child.*);
+                    try type_spelling.writeCgoType(writer, parameter.scalar.pointer.child.*);
                     try writer.print(")({s})", .{go_names[parameter.source_index]});
                 },
                 .stream_data => try writer.print("{s}DataPtr", .{go_names[parameter.source_index]}),
@@ -903,7 +905,7 @@ pub fn renderRawSnapshotTypes(allocator: std.mem.Allocator, writer: *std.Io.Writ
             if (field.kind == .padding) {
                 try writer.print("[{d}]byte\n", .{field.bytes});
             } else {
-                try common.writeGoScalar(writer, field.scalar);
+                try type_spelling.writeGoScalar(writer, field.scalar);
                 try writer.writeByte('\n');
             }
         }
@@ -928,14 +930,14 @@ pub fn renderRawSnapshotAccessors(allocator: std.mem.Allocator, writer: *std.Io.
             continue;
         }
         try writer.print("\tvar out C.{s}\n", .{snapshot.type_name});
-        try writer.print("\tstatus := C.{s}((*C.{s})(self), &out)\n", .{ snapshot.symbol, common.handleRecord(program, snapshot.owner.name).c_name });
+        try writer.print("\tstatus := C.{s}((*C.{s})(self), &out)\n", .{ snapshot.symbol, type_spelling.handleRecord(program, snapshot.owner.name).c_name });
         try writer.print("\tif status != 1 {{\n\t\treturn {s}{{}}, uint8(status)\n\t}}\n\treturn {s}{{\n", .{ type_name, type_name });
         for (snapshot.fields) |field| {
             if (field.kind == .padding) continue;
             const go_name = try common.snapshotGoFieldAlloc(allocator, field);
             defer allocator.free(go_name);
             try writer.print("\t\t{s}: ", .{go_name});
-            try common.writeGoScalar(writer, field.scalar);
+            try type_spelling.writeGoScalar(writer, field.scalar);
             try writer.print("(out.{s}),\n", .{field.name});
         }
         try writer.writeAll("\t}, uint8(status)\n}\n");
@@ -945,13 +947,13 @@ pub fn renderRawSnapshotAccessors(allocator: std.mem.Allocator, writer: *std.Io.
 fn renderRawTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
     for (program.projections) |projection| {
         const declaration = projection.owner.*;
-        const union_c_name = common.handleRecord(program, declaration.name).c_name;
+        const union_c_name = type_spelling.handleRecord(program, declaration.name).c_name;
         switch (projection.kind) {
             .tag => {
                 try writer.print("\n// {s}ProjectTag returns the active tag and a projection status.\nfunc {s}ProjectTag(self unsafe.Pointer) (", .{ declaration.name, declaration.name });
                 try public_writers.writeRawGoType(writer, program, declaration.tag_type.?);
                 try writer.writeAll(", uint8) {\n\tvar outValue C.");
-                try common.writeCgoType(writer, common.semanticScalar(program, declaration.tag_type.?));
+                try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, declaration.tag_type.?));
                 try writer.writeAll("\n\tstatus := C.");
                 try writer.print("{s}((*C.{s})(self), &outValue)\n\treturn ", .{ projection.symbol, union_c_name });
                 try public_writers.writeRawGoType(writer, program, declaration.tag_type.?);
@@ -967,7 +969,7 @@ fn renderRawTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.Io.W
                 try writer.writeAll(", uint8) {\n");
                 if (payload == .slice) {
                     try writer.writeAll("\tvar outValuePtr *C.");
-                    try common.writeCgoType(writer, common.semanticScalar(program, payload.slice.element.*));
+                    try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, payload.slice.element.*));
                     try writer.writeAll("\n\tvar outValueLen C.size_t\n\tstatus := C.");
                     try writer.print("{s}((*C.{s})(self), &outValuePtr, &outValueLen)\n", .{ projection.symbol, union_c_name });
                     try writer.writeAll("\tif status != 1 {\n\t\treturn nil, uint8(status)\n\t}\n");
@@ -982,14 +984,14 @@ fn renderRawTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.Io.W
                     }
                 } else {
                     if (payload == .opaque_ptr) {
-                        try writer.print("\tvar outValue *C.{s}\n", .{common.handleRecord(program, payload.opaque_ptr.ref).c_name});
+                        try writer.print("\tvar outValue *C.{s}\n", .{type_spelling.handleRecord(program, payload.opaque_ptr.ref).c_name});
                     } else {
                         try writer.writeAll("\tvar outValue C.");
-                        try common.writeCgoType(writer, common.semanticScalar(program, payload));
+                        try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, payload));
                         try writer.writeByte('\n');
                     }
                     try writer.print("\tstatus := C.{s}((*C.{s})(self), &outValue)\n\tif status != 1 {{\n\t\treturn ", .{ projection.symbol, union_c_name });
-                    try writer.writeAll(common.rawGoZero(payload));
+                    try writer.writeAll(type_spelling.rawGoZero(payload));
                     try writer.writeAll(", uint8(status)\n\t}\n\treturn ");
                     try public_writers.writeRawResultConversion(writer, program, payload, "outValue", options);
                     try writer.writeAll(", uint8(status)\n");
@@ -998,4 +1000,15 @@ fn renderRawTaggedUnionAccessors(allocator: std.mem.Allocator, writer: *std.Io.W
             },
         }
     }
+}
+
+/// A handle argument crosses cgo as the header's typedef pointer, converted
+/// from the unsafe.Pointer the raw signature carries; anything else passes
+/// as it is.
+pub fn writeCgoHandleArgument(writer: *std.Io.Writer, scalar: abi.AbiScalar, name: []const u8) !void {
+    if (scalar == .pointer and scalar.pointer.child.* == .@"opaque") {
+        try writer.print("(*C.{s})({s})", .{ scalar.pointer.child.@"opaque".c_name, name });
+        return;
+    }
+    try writer.writeAll(name);
 }

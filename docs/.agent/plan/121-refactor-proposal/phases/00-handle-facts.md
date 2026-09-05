@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T14:17:41Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 기존 스냅샷과 생성물이 동일하며 핸들 runtime contracts가 cgo와 purego에서 통과한다.
 > NEXT: none

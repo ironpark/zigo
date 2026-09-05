@@ -1,5 +1,6 @@
 //! Entry point of the Go generator: the emitter tables the generator runs,
 //! the output file names, and the tests that render whole files.
+const target_types = @import("target_types.zig");
 const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
@@ -1146,10 +1147,10 @@ test "dependency-module types registered under another name resolve through the 
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const program = try @import("lower").semanticDocumentForBackend(arena.allocator(), document, "probe", "zg", &.{}, .cgo);
-    const probe_spelling = try common.targetTypeSpellingAlloc(std.testing.allocator, program, "Probe");
+    const probe_spelling = try target_types.targetTypeSpellingAlloc(std.testing.allocator, program, "Probe");
     defer std.testing.allocator.free(probe_spelling);
     try std.testing.expectEqualStrings("zigoTargetType(&.{ \"Nested.ProbeReader\", \"ProbeReader\", \"Probe\" })", probe_spelling);
-    const leaf_spelling = try common.targetTypeSpellingAlloc(std.testing.allocator, program, "Leaf");
+    const leaf_spelling = try target_types.targetTypeSpellingAlloc(std.testing.allocator, program, "Leaf");
     defer std.testing.allocator.free(leaf_spelling);
     try std.testing.expectEqualStrings("target.Leaf", leaf_spelling);
     const shim_text = try renderForTest(shim.renderShim, program);
@@ -1178,7 +1179,7 @@ test "target type spelling follows registered ancestors across modules" {
         .{ "FloatBuffer", "target.FloatBuffer" },
     };
     for (expectations) |pair| {
-        const spelling = try common.targetTypeSpellingAlloc(std.testing.allocator, program, pair[0]);
+        const spelling = try target_types.targetTypeSpellingAlloc(std.testing.allocator, program, pair[0]);
         defer std.testing.allocator.free(spelling);
         try std.testing.expectEqualStrings(pair[1], spelling);
     }

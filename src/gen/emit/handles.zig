@@ -1,4 +1,5 @@
 //! Go handle types and their shared lifecycle runtime.
+const type_spelling = @import("type_spelling.zig");
 const std = @import("std");
 const abi = @import("abi");
 const naming = @import("naming");
@@ -18,7 +19,7 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
         if (!emit.packageMatches(declaration.package, options.active_package)) continue;
         if (!declaration.isHandle()) continue;
         if (common.isValueOnlyTaggedUnion(program, declaration.name)) continue;
-        const handle = common.handleRecord(program, declaration.name);
+        const handle = type_spelling.handleRecord(program, declaration.name);
         const owns_callbacks = handle.retained_callback_slots != 0;
         const dependent_parent = handle.lifecycle.dependent_parent;
         const has_dependent_children = handle.lifecycle.has_dependent_children;
@@ -435,4 +436,39 @@ pub fn renderGoHandleRuntime(writer: *std.Io.Writer, program: abi.Program, optio
             "\treturn err\n" ++
             "}\n\n",
     );
+}
+
+/// Every constructed handle goes through its `new` helper, which is what
+/// registers the cleanup and adopts the callback handles the call retained.
+/// `function` owns its result as a `handle`.
+pub fn writeOwnedHandleResult(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    function: abi.AbiFn,
+    expression: []const u8,
+) !void {
+    const handle = function.ownership.handle;
+    try writer.print("new{s}({s}", .{ handle.type_name, expression });
+    if (handle.child_of_receiver) {
+        try writer.writeAll(", zigoChildParent");
+    }
+    if (handle.retained_slots != 0) {
+        const go_names = try common.goParamNamesForAlloc(allocator, function.origin.params);
+        defer naming.freeParamNames(allocator, go_names);
+        try writer.writeAll(", []zigoCallbackHandle{");
+        for (0..handle.retained_slots) |slot| {
+            if (slot != 0) try writer.writeAll(", ");
+            var wrote = false;
+            for (function.origin.params, 0..) |parameter, parameter_index| {
+                if (parameter.type != .callback or parameter.retention != .retained) continue;
+                if (function.callbackSlot(parameter_index).? != slot) continue;
+                try writer.print("{s}Handle", .{go_names[parameter_index]});
+                wrote = true;
+                break;
+            }
+            if (!wrote) try writer.writeByte('0');
+        }
+        try writer.writeByte('}');
+    }
+    try writer.writeByte(')');
 }

@@ -111,8 +111,11 @@ zig build shared-library-smoke -- \
   이름을 가지고, `shim.zig`(Zig shim), `header.zig`(C 헤더), `raw.zig`(cgo raw 패키지),
   `purego.zig`(purego raw 패키지), `callbacks.zig`, `public.zig`(공개 함수 wrapper와 파일
   배선), `public_types.zig`, `public_runtime.zig`, `public_writers.zig`, `must.zig`,
-  `materialized.zig`, `interfaces.zig`, `docs.zig`가 각 출력을 맡습니다. `common.zig`는 타입 철자와 이름,
-  프로그램 전체 predicate처럼 여러 출력이 공유하는 helper입니다.
+  `materialized.zig`, `interfaces.zig`, `docs.zig`가 각 출력을 맡습니다. `common.zig`는 생성 이름과
+  프로그램 전체 predicate를 공유합니다. `type_spelling.zig`는 ABI 타입 표기와 스칼라 변환,
+  `target_types.zig`는 Zig 타입 경로 해석을 맡으며 구체 emitter에 의존하지 않습니다.
+  공개 zero value·union 인자는 `public_writers.zig`, cgo handle 인자는 `raw.zig`,
+  소유 핸들 결과 표현식은 `handles.zig`가 씁니다.
 - 핸들의 생성자·해제 함수 연결과 소유권 판정은 `lower/ownership.zig`가 담당합니다.
   `lower.zig`는 기존 진입점을 유지하고, `emit/handles.zig`는 판정 결과로 Go 핸들 타입과
   호출·종료·정리 런타임을 생성합니다. 일반 공개 타입 출력은 `emit/public_types.zig`에 둡니다.

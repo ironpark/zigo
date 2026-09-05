@@ -7,7 +7,7 @@ registered_at: "2026-09-05T13:53:58Z"
 
 # Phases
 
-- [ ] [Phase 00: Handle lifecycle facts in ABI](phases/00-handle-facts.md)
+- [x] [Phase 00: Handle lifecycle facts in ABI](phases/00-handle-facts.md)
 - [ ] [Phase 01: Separate common emitter responsibilities](phases/01-emitter-boundaries.md)
 - [ ] [Phase 02: Separate reflection responsibilities](phases/02-reflection-boundaries.md)
 

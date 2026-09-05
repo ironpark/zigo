@@ -1,5 +1,6 @@
 //! Callback plumbing for both backends: the cgo trampolines and error
 //! storage, and the purego callback registry.
+const type_spelling = @import("type_spelling.zig");
 const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
@@ -344,13 +345,13 @@ pub fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
             for (callback.params, 0..) |callback_parameter, index| {
                 if (index != 0) try writer.writeAll(", ");
                 try writer.print("p{d} C.", .{index});
-                try common.writeCgoType(writer, common.semanticScalar(program, callback_parameter));
+                try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, callback_parameter));
             }
             if (callback.@"return".* == .void) {
                 try writer.writeByte(')');
             } else {
                 try writer.writeAll(") (result C.");
-                try common.writeCgoType(writer, common.semanticScalar(program, callback.@"return".*));
+                try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, callback.@"return".*));
                 try writer.writeByte(')');
             }
             try writer.writeAll(" {\n");
@@ -359,7 +360,7 @@ pub fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
                 if (has_callback_cancellation) try writer.print("\t\ttripCallbackCancel(uintptr(p{d}))\n", .{callback.params.len - 1});
                 if (callback.@"return".* != .void) {
                     try writer.writeAll("\t\treturn C.");
-                    try common.writeCgoType(writer, common.semanticScalar(program, callback.@"return".*));
+                    try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, callback.@"return".*));
                     try writer.writeByte('(');
                     if (callbackFailureResult(program, parameter)) |fallback|
                         try writer.print("{d}", .{fallback})
@@ -379,7 +380,7 @@ pub fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
             if (callback.@"return".* != .void) {
                 if (callbackFailureResult(program, parameter)) |fallback| {
                     try writer.writeAll("\t\t\tresult = C.");
-                    try common.writeCgoType(writer, common.semanticScalar(program, callback.@"return".*));
+                    try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, callback.@"return".*));
                     try writer.print("({d})\n", .{fallback});
                 } else if (callback.@"return".* == .int and callback.@"return".int.signed and callback.@"return".int.bits == 32) {
                     try writer.writeAll("\t\t\tresult = C.int32_t(-3)\n");
@@ -408,7 +409,7 @@ pub fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
                 try writer.writeAll("value, err := ");
             } else if (callback.@"return".* != .void) {
                 try writer.writeAll("return C.");
-                try common.writeCgoType(writer, common.semanticScalar(program, callback.@"return".*));
+                try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, callback.@"return".*));
                 try writer.writeByte('(');
             }
             try writer.writeAll("callback(");
@@ -427,13 +428,13 @@ pub fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
             // or `-5` by default, says that the Go side failed. The value the
             // callback computed is not the one the native caller reads.
             try writer.writeAll("\n\tif err != nil {\n\t\tstate.recordErr(err)\n\t\treturn C.");
-            try common.writeCgoType(writer, common.semanticScalar(program, callback.@"return".*));
+            try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, callback.@"return".*));
             if (callbackFailureResult(program, parameter)) |fallback|
                 try writer.print("({d})\n", .{fallback})
             else
                 try writer.writeAll("(-5)\n");
             try writer.writeAll("\t}\n\treturn C.");
-            try common.writeCgoType(writer, common.semanticScalar(program, callback.@"return".*));
+            try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, callback.@"return".*));
             try writer.writeAll("(value)\n}\n\n");
         }
     }
