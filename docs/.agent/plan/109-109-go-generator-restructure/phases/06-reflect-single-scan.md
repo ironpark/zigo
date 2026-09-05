@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-05T07:25:50Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: A run of `coverage` reads and parses each `.zig` file at most once
 > NEXT: none

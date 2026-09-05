@@ -4,6 +4,23 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Changed
+
+- 생성기 내부 구조를 정리했습니다. `src/gen/emit.zig`는 출력 파일별 `src/gen/emit/`으로,
+  `src/gen/validate.zig`는 순서가 곧 우선순위인 규칙 표와 관심사별 `src/gen/validate/`로
+  나뉘었고, `build.zig`는 소비자 API만 남기고 저장소 테스트 배선을 `build/`로 옮겼습니다.
+  `Must` 변형 여부와 콜백 Go error 도달 여부는 `lower`가 한 번 정해 `AbiFn`에 기록하고,
+  공개 패키지 helper는 렌더링한 본문에서 참조를 읽어 냅니다. 생성물은 바이트 단위로 같습니다.
+- `go-coverage`가 root module과 bindings 파일이 함께 import하는 소스를 한 번만 읽고 파싱합니다.
+
+### Fixed
+
+- `errors.lock.json` 직렬화 중 메모리 부족이 `WriteFailed`로 보고되던 문제를 고쳤습니다.
+- 다른 함수에서 `.go_error = true`로 표시한 콜백 시그니처를 쓰는 함수도 `Must` 변형을 얻으므로,
+  ZIGO024 충돌 검사가 그 이름까지 확인합니다.
+
 ## [0.8.1] - 2026-09-03
 
 ### Fixed

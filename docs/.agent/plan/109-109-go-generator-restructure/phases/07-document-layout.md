@@ -4,7 +4,7 @@ depends_on:
 - "109-109-go-generator-restructure#4"
 - "109-109-go-generator-restructure#5"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Docs describe every new directory; `zig build test` green.
 > NEXT: none

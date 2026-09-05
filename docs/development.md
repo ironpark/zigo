@@ -92,6 +92,32 @@ zig build shared-library-smoke -- \
   zg_last_error_message
 ```
 
+## 코드 구조
+
+생성기는 `semantic.json`을 읽어 `lower`가 `abi.Program`으로 낮추고, emit이 그 프로그램만 읽어
+파일을 씁니다. 함수 하나에 대한 결정은 낮추는 단계에서 한 번 내리고 emit과 validate는 읽기만
+합니다. 예를 들어 `Must` 변형을 낼지(`AbiFn.must_variant`), 콜백이 Go error를 낼 수
+있는지(`AbiFn.reaches_callback_errors`), materialized 결과가 어느 layout인지는 모두
+`src/gen/lower.zig`가 정합니다. 같은 사실을 emit이나 validate에서 다시 계산하지 마세요.
+
+- `src/gen/emit/`: 출력 파일 하나당 소스 파일 하나입니다. `emit.zig`가 emitter 표와 파일
+  이름을 가지고, `shim.zig`(Zig shim), `header.zig`(C 헤더), `raw.zig`(cgo raw 패키지),
+  `purego.zig`(purego raw 패키지), `callbacks.zig`, `public.zig`(공개 함수 wrapper와 파일
+  배선), `public_types.zig`, `public_runtime.zig`, `public_writers.zig`, `must.zig`,
+  `materialized.zig`, `docs.zig`가 각 출력을 맡습니다. `common.zig`는 타입 철자와 이름,
+  프로그램 전체 predicate처럼 여러 출력이 공유하는 helper입니다.
+- 공개 패키지의 helper(`zigo<T>ToRaw`, `boolToUint8`, materialized decoder 등)는 렌더링한
+  본문에서 참조된 식별자를 읽어 낼지 정합니다(`emit/references.zig`). import 블록과 같은
+  방식이므로 emit 지점을 추가할 때 별도의 "사용 여부" predicate를 만들 필요가 없습니다.
+- `src/gen/validate/`: `validate.zig`의 `rules` 표가 진단 우선순위입니다. 먼저 나열된 규칙이
+  먼저 이깁니다. 규칙과 helper는 `packages`, `names`, `functions`, `callbacks`, `types`,
+  `ownership`, `materialized`, `site`로 나뉘고, 전체 진단 스냅샷 테스트는
+  `snapshot_tests.zig`에 있습니다.
+- `build.zig`는 소비자가 쓰는 `Options`, `GoBindings`, `addGoBindings`만 가집니다. 이 저장소의
+  테스트와 `check`/`snapshot`/`shared-library-smoke` 단계는 `build/tests.zig`, 생성기 모듈
+  그래프는 `build/modules.zig`, `addGoBindings`가 배선하는 custom step은 `build/steps.zig`에
+  있습니다.
+
 ## 문서 변경
 
 사용자 문서의 옵션과 명령은 `build.zig`, `examples/`와 CI를 기준으로 확인합니다. 공개 동작이나
