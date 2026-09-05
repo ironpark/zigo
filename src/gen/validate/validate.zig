@@ -5,6 +5,7 @@ const diagnostic = @import("diagnostic");
 const semantic = @import("semantic");
 const lower = @import("lower");
 const functions = @import("functions.zig");
+const interfaces = @import("interfaces.zig");
 const materialized = @import("materialized.zig");
 const names = @import("names.zig");
 const ownership = @import("ownership.zig");
@@ -141,6 +142,7 @@ const rules = [_]Rule{
     names.cIdentifierIssue,
     names.generatedAccessorCollisionIssue,
     names.publicNameCollisionIssue,
+    interfaces.interfaceIssue,
     types.integrityIssue,
     functions.optionalOutIssue,
     types.abiTypeIssue,
@@ -248,6 +250,7 @@ test "a callback signature flagged go_error elsewhere gives a free function a Mu
 
 test {
     _ = functions;
+    _ = interfaces;
     _ = materialized;
     _ = types;
     _ = names;

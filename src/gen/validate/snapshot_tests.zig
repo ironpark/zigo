@@ -603,3 +603,58 @@ test "C typedef and function symbol collisions have a stable diagnostic" {
         rendered,
     );
 }
+
+test "interface diagnostics have stable snapshots" {
+    const interfaces = @import("interfaces.zig");
+    const cases = [_]struct { document: semantic.Semantic, snapshot: []const u8 }{
+        .{ .document = interfaces.batchDocument(.{ .interfaces = &.{.{ .methods = &.{"len"}, .name = "batch-set", .types = &.{"IntBatch"} }} }), .snapshot = "error[ZIGO049]: interface name is not a Go identifier\n  --> semantic.json (batch-set)\n  hint: give the interface a `.name` that is a valid exported Go identifier\n" },
+        .{ .document = interfaces.batchDocument(.{ .interfaces = &.{.{ .methods = &.{"len"}, .name = "IntBatch", .types = &.{"IntBatch"} }} }), .snapshot = "error[ZIGO024]: public Go name `IntBatch` collides between interface `IntBatch` and type `IntBatch`\n  --> semantic.json (IntBatch)\n  hint: give the interface a `.name` that resolves to a different Go identifier\n" },
+        .{ .document = interfaces.batchDocument(.{ .interfaces = &.{.{ .methods = &.{"len"}, .name = "Batch", .types = &.{ "IntBatch", "Missing" } }} }), .snapshot = "error[ZIGO049]: interface lists `Missing`, which is not a registered opaque handle\n  --> semantic.json (Batch)\n  hint: list only types registered with `.repr = .opaque`\n" },
+        .{ .document = interfaces.batchDocument(.{ .interfaces = &.{.{ .methods = &.{"len"}, .name = "Batch", .types = &.{ "IntBatch", "IntBatch" } }} }), .snapshot = "error[ZIGO049]: interface lists `IntBatch` twice\n  --> semantic.json (Batch)\n  hint: list each implementing type once\n" },
+        .{ .document = interfaces.batchDocument(.{ .interfaces = &.{.{ .methods = &.{ "len", "clear" }, .name = "Batch", .types = &.{ "IntBatch", "FloatBatch" } }} }), .snapshot = "error[ZIGO049]: type `IntBatch` has no exposed method `clear`\n  --> semantic.json (Batch)\n  hint: expose the method on every listed type, or drop it from `.methods`\n" },
+        // The destructor is not a method a live handle offers.
+        .{ .document = interfaces.batchDocument(.{ .interfaces = &.{.{ .methods = &.{"deinit"}, .name = "Batch", .types = &.{"IntBatch"} }} }), .snapshot = "error[ZIGO049]: type `IntBatch` has no exposed method `deinit`\n  --> semantic.json (Batch)\n  hint: expose the method on every listed type, or drop it from `.methods`\n" },
+        .{ .document = interfaces.batchDocument(.{ .interfaces = &.{.{ .methods = &.{ "len", "len" }, .name = "Batch", .types = &.{"IntBatch"} }} }), .snapshot = "error[ZIGO049]: interface lists method `len` twice\n  --> semantic.json (Batch)\n  hint: list each method once\n" },
+        .{ .document = interfaces.batchDocument(.{
+            .constructors = &.{.{ .deinit = "deinit", .init = "create", .type = "IntBatch" }},
+            .functions = &(interfaces.batch_functions[0..3].* ++ interfaces.batch_functions[4..5].*),
+        }), .snapshot = "error[ZIGO049]: interface includes io.Closer but `FloatBatch` has no constructor pair\n  --> semantic.json (Batch)\n  hint: pair the type with a constructor and destructor, or set `.closer = false`\n" },
+    };
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
+    for (cases) |case| {
+        const issue = (try validate.findIssue(scratch.allocator(), case.document)) orelse return error.MissingDiagnostic;
+        const rendered = try issue.renderAlloc(std.testing.allocator);
+        defer std.testing.allocator.free(rendered);
+        try std.testing.expectEqualStrings(case.snapshot, rendered);
+    }
+}
+
+test "an interface must stay in the package of its types" {
+    const interfaces = @import("interfaces.zig");
+    const split_types = [_]semantic.TypeDecl{
+        .{ .kind = .@"opaque", .name = "IntBatch", .package = "ints" },
+        .{ .kind = .@"opaque", .name = "FloatBatch" },
+    };
+    var document = interfaces.batchDocument(.{
+        .extra_types = &split_types,
+        .packages = &.{.{ .name = "ints", .path = "ints" }},
+        .interfaces = &.{.{ .closer = false, .methods = &.{"len"}, .name = "Batch", .package = "ints", .types = &.{ "IntBatch", "FloatBatch" } }},
+    });
+    // The split document also has to keep IntBatch's methods in its package.
+    var functions: [6]semantic.SemanticFn = undefined;
+    for (document.functions, 0..) |function, index| {
+        functions[index] = function;
+        if (std.mem.eql(u8, function.receiver orelse function.namespace orelse "", "IntBatch")) functions[index].package = "ints";
+    }
+    document.functions = &functions;
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
+    const issue = (try validate.findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
+    const rendered = try issue.renderAlloc(std.testing.allocator);
+    defer std.testing.allocator.free(rendered);
+    try std.testing.expectEqualStrings(
+        "error[ZIGO049]: interface and `FloatBatch` are in different public packages\n  --> semantic.json (Batch)\n  hint: assign the interface's types to one package\n",
+        rendered,
+    );
+}

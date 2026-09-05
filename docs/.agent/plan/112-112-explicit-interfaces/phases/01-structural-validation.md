@@ -2,7 +2,7 @@
 depends_on:
 - "112-112-explicit-interfaces#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `zig build test` 녹색, golden 불변.
 > NEXT: none
