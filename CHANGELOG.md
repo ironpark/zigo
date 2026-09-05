@@ -4,10 +4,10 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
-## [Unreleased]
+## [0.9.0] - 2026-09-05
 
-`semantic.json`에 `interfaces` 필드가 추가되므로 다음 릴리스는 minor(`0.9.0`)입니다. 인터페이스를
-등록하지 않은 바인딩의 `semantic.json`과 생성물은 그대로입니다.
+`semantic.json`에 `interfaces` 필드가 추가되어 minor 릴리스입니다. 인터페이스를 등록하지 않은
+바인딩의 `semantic.json`과 생성물은 그대로입니다.
 
 ### Added
 
@@ -558,6 +558,7 @@
 - 생성된 Go doc이 식별자로 시작하지 않는 문장을 두 줄 형식으로 내고, `//` 그룹 주석과
   빈 줄 없이 이어진 선언의 doc 공유를 지원합니다. 모든 생성 패키지에 패키지 doc이 있습니다.
 
+[0.9.0]: https://github.com/ironpark/zigo/compare/0.8.1...0.9.0
 [0.8.1]: https://github.com/ironpark/zigo/compare/0.8.0...0.8.1
 [0.8.0]: https://github.com/ironpark/zigo/compare/0.7.4...0.8.0
 [0.7.4]: https://github.com/ironpark/zigo/compare/0.7.3...0.7.4
