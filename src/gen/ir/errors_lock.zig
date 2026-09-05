@@ -116,7 +116,14 @@ pub const ErrorsLock = struct {
 
         var allocating: std.Io.Writer.Allocating = .init(allocator);
         defer allocating.deinit();
-        var stringify: std.json.Stringify = .{ .writer = &allocating.writer, .options = .{ .whitespace = .indent_2 } };
+        // The only way writing into memory fails is running out of it, and
+        // callers treat this as the allocation failure it is.
+        writeJson(sorted, self, &allocating.writer) catch return error.OutOfMemory;
+        return allocating.toOwnedSlice();
+    }
+
+    fn writeJson(sorted: []const ErrorCode, self: ErrorsLock, writer: *std.Io.Writer) std.Io.Writer.Error!void {
+        var stringify: std.json.Stringify = .{ .writer = writer, .options = .{ .whitespace = .indent_2 } };
         try stringify.beginObject();
         try stringify.objectField("codes");
         try stringify.beginObject();
@@ -138,8 +145,7 @@ pub const ErrorsLock = struct {
             .@"0" = "OK",
         });
         try stringify.endObject();
-        try allocating.writer.writeByte('\n');
-        return allocating.toOwnedSlice();
+        try writer.writeByte('\n');
     }
 
     pub fn find(self: ErrorsLock, name: []const u8) ?i32 {

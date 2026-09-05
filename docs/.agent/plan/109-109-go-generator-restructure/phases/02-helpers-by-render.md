@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-05T07:12:36Z"
 depends_on:
 - "109-109-go-generator-restructure#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: None of the listed predicates remain.
 > NEXT: none

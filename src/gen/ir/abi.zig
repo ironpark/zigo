@@ -308,8 +308,10 @@ pub const AbiFn = struct {
     /// that returns an `error`, which grows the public signature by one.
     reaches_callback_errors: bool = false,
 
-    pub const MaterializedReturn = struct { root: []const u8, is_slice: bool, fallible: bool = false };
-    pub const MaterializedOut = struct { source_index: usize, root: []const u8, fallible: bool = false };
+    /// `layout` indexes `Program.materialized_layouts`; lowering fills it
+    /// once the layouts exist, so no emitter looks a layout up by name.
+    pub const MaterializedReturn = struct { root: []const u8, is_slice: bool, fallible: bool = false, layout: usize = 0 };
+    pub const MaterializedOut = struct { source_index: usize, root: []const u8, fallible: bool = false, layout: usize = 0 };
 
     /// How a parameter or return carries text.
     pub const StringRole = enum {

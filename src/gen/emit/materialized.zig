@@ -131,7 +131,7 @@ pub fn writeMaterializedReturn(
     try writer.print("    var builder = ZigoMaterializedBuilder.init({s}) " ++ materialize_oom ++ ";\n", .{program.allocator orelse "std.heap.c_allocator"});
     const encoder = try materializedEncoderNameAlloc(allocator, materialized.root);
     defer allocator.free(encoder);
-    const layout = materializedLayout(program, materialized.root);
+    const layout = program.materialized_layouts[materialized.layout];
     if (materialized.is_slice) {
         try writer.writeAll("    const roots = builder.reserve(result.len * 8) " ++ materialize_oom ++ ";\n    for (result, 0..) |item, index| builder.writeU64(roots + index * 8, ");
         try writer.print("{s}(&builder, item) " ++ materialize_oom ++ ");\n", .{encoder});
@@ -160,7 +160,7 @@ pub fn writeMaterializedOutput(
     try writer.print("    var builder = ZigoMaterializedBuilder.init({s}) " ++ materialize_oom ++ ";\n", .{program.allocator orelse "std.heap.c_allocator"});
     const encoder = try materializedEncoderNameAlloc(allocator, output.root);
     defer allocator.free(encoder);
-    const layout = materializedLayout(program, output.root);
+    const layout = program.materialized_layouts[output.layout];
     try writer.writeAll("    const roots = builder.reserve(written * 8) " ++ materialize_oom ++ ";\n");
     try writer.print("    for (zigo_{s}_slice[0..written], 0..) |item, index| builder.writeU64(roots + index * 8, ", .{parameter.name});
     try writer.print("{s}(&builder, item) " ++ materialize_oom ++ ");\n", .{encoder});
@@ -172,11 +172,6 @@ pub fn writeMaterializedOutput(
         try writer.writeAll("    return result;\n");
     }
     try writer.writeAll("}\n");
-}
-
-fn materializedLayout(program: abi.Program, name: []const u8) abi.MaterializedLayout {
-    for (program.materialized_layouts) |layout| if (std.mem.eql(u8, layout.owner.name, name)) return layout;
-    unreachable;
 }
 
 fn writeMaterializedPublicType(scope: public_writers.PublicScope, writer: *std.Io.Writer, node: semantic.TypeNode) !void {

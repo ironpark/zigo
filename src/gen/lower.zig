@@ -295,8 +295,10 @@ pub fn semanticDocumentForBackend(
         }
 
         var function_errors: []const abi.ErrorCode = &.{};
-        const materialized_return = abi.materializedReturn(function.@"return");
-        const materialized_out = abi.materializedOut(function.*);
+        var materialized_return = abi.materializedReturn(function.@"return");
+        if (materialized_return) |*result| result.layout = materializedLayoutIndex(materialized_layouts, result.root);
+        var materialized_out = abi.materializedOut(function.*);
+        if (materialized_out) |*output| output.layout = materializedLayoutIndex(materialized_layouts, output.root);
         const caller_owned_c_string = function.ownership == .caller and function.release != null and
             returnContainsCStringSlice(function.@"return", function.return_semantic);
         const return_scalar = if (materialized_return) |materialized| result: {
@@ -1476,6 +1478,13 @@ fn lowerMaterializedLayouts(allocator: std.mem.Allocator, document: semantic.Sem
         });
     }
     return layouts.toOwnedSlice(allocator);
+}
+
+/// Validation has already required every materialized reference to name a
+/// registered layout, so the lookup cannot miss.
+fn materializedLayoutIndex(layouts: []const abi.MaterializedLayout, root: []const u8) usize {
+    for (layouts, 0..) |layout, index| if (std.mem.eql(u8, layout.owner.name, root)) return index;
+    unreachable;
 }
 
 fn materializedFieldKind(node: semantic.TypeNode) abi.MaterializedLayout.Field.Kind {
