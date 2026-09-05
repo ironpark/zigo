@@ -19,6 +19,11 @@
   `--target-ldflags <goos>[,<goarch>]=<flags>` 플래그를 받습니다.
 - `.cgo_dynamic` 실행 시 공유 라이브러리를 찾지 못하는 원인과 rpath·환경 변수 해결 방법을
   설정 문서에 추가했습니다.
+- `.repr = .enumeration` 등록 항목의 `.text = true`로 Go enum에 `Parse<Enum>`,
+  `MarshalText`, `UnmarshalText`를 생성합니다. open enum은 `String()`이 돌려주는
+  `<Enum>(N)` 철자도 파싱합니다. 알 수 없는 문자열은 패키지 공용 `EnumParseError`로
+  보고하며, enum이 아닌 항목의 opt-in은 `ZIGO051`입니다. `abi-check`는 인코딩 제거를
+  breaking으로 판정합니다.
 
 ### Changed
 

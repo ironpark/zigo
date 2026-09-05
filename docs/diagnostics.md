@@ -232,6 +232,12 @@ materialized 결과의 필드나 소유권·해제 선언이 잘못되었습니�
 `.closer = true`이면 생성자·소멸자 짝도 필요합니다. 인터페이스와 구현 타입은 같은 공개
 패키지에 있어야 합니다. [객체 수명과 인터페이스](bindings-handles.md)를 참고하세요.
 
+### ZIGO051
+
+`.text = true`를 enum이 아닌 타입에 지정했습니다. 텍스트 인코딩은 `.repr = .enumeration`
+등록 항목에서만 켤 수 있습니다. [Enum 텍스트 인코딩](bindings-types.md#enum-텍스트-인코딩)을
+참고하세요.
+
 ## 리플렉션 단계의 오류
 
 `ZIGO027`, `ZIGO028`, `ZIGO037`, `ZIGO038`은 reflection이 문서를 만들기 전에 걸리므로 `semantic.json` 자리가

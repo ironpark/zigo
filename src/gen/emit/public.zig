@@ -710,6 +710,7 @@ const public_std_imports = [_]struct { qualifier: []const u8, path: []const u8 }
     .{ .qualifier = "runtime", .path = "runtime" },
     .{ .qualifier = "cgo", .path = "runtime/cgo" },
     .{ .qualifier = "strconv", .path = "strconv" },
+    .{ .qualifier = "strings", .path = "strings" },
     .{ .qualifier = "sync", .path = "sync" },
     .{ .qualifier = "atomic", .path = "sync/atomic" },
     .{ .qualifier = "unsafe", .path = "unsafe" },

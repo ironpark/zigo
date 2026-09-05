@@ -93,6 +93,37 @@ Zig enum이 `enum(u8) { below, above, _ }`처럼 non-exhaustive이면 자동 등
 `ZIGO029`이며, 생략한 기존 등록은 그대로 exhaustive 계약입니다. tagged union의 tag가
 non-exhaustive인 경우에는 이 opt-in을 적용하지 않으며 계속 거부합니다.
 
+## Enum 텍스트 인코딩
+
+생성된 enum은 기본적으로 `String()`만 갖습니다. JSON, CLI 플래그, 설정 파일처럼 문자열에서
+값을 복원해야 하면 등록 항목에 `.text = true`를 적습니다.
+
+```zig
+.types = .{
+    .{ .type = library.QueueSignal, .repr = .enumeration, .exhaustive = false, .text = true },
+},
+```
+
+Go에는 다음이 추가됩니다.
+
+| 생성물 | 동작 |
+|---|---|
+| `ParseQueueSignal(text string) (QueueSignal, error)` | Zig tag 이름을 값으로 바꿉니다 |
+| `func (QueueSignal) MarshalText() ([]byte, error)` | `String()` 결과를 돌려주며 실패하지 않습니다 |
+| `func (*QueueSignal) UnmarshalText([]byte) error` | `ParseQueueSignal`로 값을 채웁니다 |
+| `EnumParseError{Type, Text}` | 알 수 없는 문자열의 오류 타입. 패키지마다 하나 생성됩니다 |
+
+`encoding.TextMarshaler`·`TextUnmarshaler`를 구현하므로 `encoding/json`이 enum을 tag 이름
+문자열로 읽고 씁니다. `.exhaustive = false`인 open enum은 `String()`이 이름 없는 값에
+`QueueSignal(42)`를 돌려주므로, `Parse`도 같은 철자를 받아들여 모든 `String()` 결과가
+왕복합니다. 숫자는 tag 타입의 폭으로 검사해 범위를 벗어나면 거부합니다.
+
+이 옵션은 `.repr = .enumeration` 항목에서만 유효합니다. 다른 repr에 붙이면 `bindings.zig`
+컴파일 오류이고, `semantic.json`을 직접 편집한 경우에는 `ZIGO051`입니다. signature에서
+자동 등록된 enum에 텍스트 인코딩을 붙이려면 명시적으로 등록하세요. `abi-check`는 인코딩
+추가를 호환으로, 제거를 breaking으로 보고합니다. 예제는 `07-event-queue`의 `QueueSignal`에
+있습니다.
+
 ## Extern struct 값
 
 Go에서 struct를 값처럼 주고받으려면 Zig 타입을 `extern struct`로 선언하고 등록합니다.

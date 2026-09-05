@@ -601,6 +601,9 @@ pub const TypeDecl = struct {
     /// enum into the public surface with `.exhaustive = false`.
     open: ?bool = null,
     tag_type: ?TypeNode = null,
+    /// Present only when the binding registered the enum with `.text = true`,
+    /// asking for `Parse<Enum>`, `MarshalText` and `UnmarshalText` in Go.
+    text: ?bool = null,
     zig_path: ?[]const u8 = null,
 
     /// The access strategy a type was registered with. Types that only have

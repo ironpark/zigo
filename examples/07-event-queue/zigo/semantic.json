@@ -2286,6 +2286,7 @@
         "kind": "int",
         "signed": false
       },
+      "text": true,
       "zig_path": "root.QueueSignal"
     },
     {

@@ -59,7 +59,7 @@ pub fn reflect(
                 // built by a comptime function has a `@typeName` that ends in
                 // the expression that built it, and no name of its own.
                 .enumeration => switch (info) {
-                    .@"enum" => try appendEnum(allocator, &types, declaration, T, type_name, comptime enumOpenOptIn(entry), try registeredZigPath(allocator, declaration, T, type_name)),
+                    .@"enum" => try appendEnum(allocator, &types, declaration, T, type_name, comptime enumOpenOptIn(entry), comptime enumTextOptIn(entry), try registeredZigPath(allocator, declaration, T, type_name)),
                     else => @compileError("zigo enumeration type entries must name an enum"),
                 },
                 .tagged_union => switch (info) {
@@ -90,6 +90,8 @@ pub fn reflect(
             }
             if (entry.repr != .@"opaque" and @hasField(@TypeOf(entry), "fields"))
                 @compileError("zigo `.fields` metadata is supported only on `.repr = .opaque` type entries");
+            if (entry.repr != .enumeration and @hasField(@TypeOf(entry), "text"))
+                @compileError("zigo `.text` is supported only on `.repr = .enumeration` type entries");
         }
     }
     if (comptime discoveryEnabled(declaration)) {
@@ -1648,7 +1650,7 @@ fn typeNode(
             for (types.items) |type_declaration| {
                 if (std.mem.eql(u8, type_declaration.name, name)) exists = true;
             }
-            if (!exists) try appendEnum(allocator, types, declaration, T, name, false, @typeName(T));
+            if (!exists) try appendEnum(allocator, types, declaration, T, name, false, false, @typeName(T));
             break :blk .{ .@"enum" = .{ .ref = name } };
         },
         .@"struct" => blk: {
@@ -1994,6 +1996,14 @@ fn enumOpenOptIn(comptime entry: anytype) bool {
     return !entry.exhaustive;
 }
 
+/// `.text = true` on an enum registration asks for the Go text encoding:
+/// `Parse<Enum>`, `MarshalText` and `UnmarshalText`. Only an enumeration
+/// entry can carry it; any other repr is a comptime error at the entry.
+fn enumTextOptIn(comptime entry: anytype) bool {
+    if (!@hasField(@TypeOf(entry), "text")) return false;
+    return entry.text;
+}
+
 /// A value struct carries its field types into the IR. Validation needs them
 /// to decide whether the struct can cross the C ABI, and lowering needs them
 /// to mirror the struct in the C header.
@@ -2006,6 +2016,7 @@ fn appendEnum(
     comptime T: type,
     name: []const u8,
     open: bool,
+    text: bool,
     zig_path: []const u8,
 ) !void {
     const info = @typeInfo(T).@"enum";
@@ -2019,6 +2030,7 @@ fn appendEnum(
         .name = name,
         .open = if (open) true else null,
         .tag_type = tag_type,
+        .text = if (text) true else null,
         .zig_path = zig_path,
     });
 }
@@ -2867,6 +2879,28 @@ test "a registered non-exhaustive enum records an explicit open opt-in" {
     const bytes = try document.serialize(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"open\": true") != null);
+}
+
+test "a registered enum records the text encoding opt-in" {
+    const Mode = enum(u8) { fast, slow };
+    const Fixture = struct {
+        pub fn echo(value: Mode) Mode {
+            return value;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{.{ .type = Mode, .repr = .enumeration, .text = true }},
+        .functions = .{.{ .path = "root.echo", .params = .{"value"} }},
+    }, "terminal", "zg");
+
+    try std.testing.expectEqual(@as(?bool, true), document.types[0].text);
+    try std.testing.expectEqual(@as(?bool, null), document.types[0].open);
+    const bytes = try document.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"text\": true") != null);
 }
 
 test "an unregistered generated enum is named from @typeName and rejected downstream" {

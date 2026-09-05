@@ -1,0 +1,49 @@
+{
+  "functions": [
+    {
+      "name": "echo",
+      "params": [{"name": "value", "type": {"kind": "enum", "ref": "EraseDisplay"}}],
+      "return": {"kind": "enum", "ref": "EraseDisplay"},
+      "symbol": "zg_echo"
+    },
+    {
+      "name": "pick",
+      "params": [{"name": "value", "type": {"kind": "enum", "ref": "Priority"}}],
+      "return": {"kind": "enum", "ref": "Priority"},
+      "symbol": "zg_pick"
+    },
+    {
+      "name": "echoLevel",
+      "params": [{"name": "value", "type": {"kind": "enum", "ref": "Level"}}],
+      "return": {"kind": "enum", "ref": "Level"},
+      "symbol": "zg_echo_level"
+    }
+  ],
+  "package": "enumtext",
+  "prefix": "zg",
+  "types": [
+    {
+      "exhaustive": false,
+      "fields": [{"name": "below", "value": 0}, {"name": "above", "value": 1}],
+      "kind": "enum",
+      "name": "EraseDisplay",
+      "open": true,
+      "tag_type": {"bits": 8, "kind": "int", "signed": false},
+      "text": true
+    },
+    {
+      "fields": [{"name": "low", "value": -1}, {"name": "normal", "value": 0}, {"name": "high", "value": 1}],
+      "kind": "enum",
+      "name": "Priority",
+      "tag_type": {"bits": 32, "kind": "int", "signed": true},
+      "text": true
+    },
+    {
+      "fields": [{"name": "debug", "value": 0}, {"name": "info", "value": 1}],
+      "kind": "enum",
+      "name": "Level",
+      "tag_type": {"bits": 8, "kind": "int", "signed": false}
+    }
+  ],
+  "zig_version": "0.16.0"
+}

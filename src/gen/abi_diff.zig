@@ -161,6 +161,12 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
             try add(allocator, &report, .breaking, old.name, "Go package assignment changed");
         if (!std.meta.eql(old.on_callback_failure, new.on_callback_failure))
             try add(allocator, &report, .compatible, old.name, "callback failure result changed");
+        // The text encoding is Go surface only: `Parse<Enum>` and the
+        // `encoding.Text*` methods come and go without touching C.
+        if (old.text == true and new.text != true)
+            try add(allocator, &report, .breaking, old.name, "enum text encoding removed")
+        else if (old.text != true and new.text == true)
+            try add(allocator, &report, .compatible, old.name, "enum text encoding added");
         switch (classifyTypeChange(old, new)) {
             .equal => {},
             .appended => if (old.kind == .tagged_union and base.taggedUnionUsedByValue(old.name))
@@ -860,6 +866,40 @@ test "changing an enum between exhaustive and open is breaking" {
     defer report.deinit(std.testing.allocator);
     try std.testing.expect(report.hasBreaking());
     try std.testing.expectEqualStrings("type definition changed", report.changes.items[0].detail);
+}
+
+test "enum text encoding is compatible to add and breaking to remove" {
+    const plain: semantic.Semantic = .{
+        .package = "terminal",
+        .prefix = "zg",
+        .types = &.{.{
+            .fields = &.{.{ .name = "below", .value = 0 }},
+            .kind = .@"enum",
+            .name = "EraseDisplay",
+            .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+        }},
+        .zig_version = "0.16.0",
+    };
+    const text: semantic.Semantic = .{
+        .package = "terminal",
+        .prefix = "zg",
+        .types = &.{.{
+            .fields = &.{.{ .name = "below", .value = 0 }},
+            .kind = .@"enum",
+            .name = "EraseDisplay",
+            .tag_type = .{ .int = .{ .bits = 8, .signed = false } },
+            .text = true,
+        }},
+        .zig_version = "0.16.0",
+    };
+    var added = try diff(std.testing.allocator, plain, text);
+    defer added.deinit(std.testing.allocator);
+    try std.testing.expect(!added.hasBreaking());
+    try std.testing.expectEqualStrings("enum text encoding added", added.changes.items[0].detail);
+    var removed = try diff(std.testing.allocator, text, plain);
+    defer removed.deinit(std.testing.allocator);
+    try std.testing.expect(removed.hasBreaking());
+    try std.testing.expectEqualStrings("enum text encoding removed", removed.changes.items[0].detail);
 }
 
 test "appending tagged union variants and tag values is ABI compatible" {

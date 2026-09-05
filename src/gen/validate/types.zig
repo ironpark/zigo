@@ -59,6 +59,13 @@ pub fn typeIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .site = .{ .path = "semantic.json", .declaration = declaration.name },
             .hint = "remove `.exhaustive = false`, or make the Zig enum non-exhaustive",
         };
+        if (declaration.text == true and declaration.kind != .@"enum") return .{
+            .severity = .@"error",
+            .code = "ZIGO051",
+            .message = "text encoding opt-in applied to a type that is not an enum",
+            .site = .{ .path = "semantic.json", .declaration = declaration.name },
+            .hint = "`.text = true` belongs on `.repr = .enumeration` entries only",
+        };
         if (declaration.kind == .@"enum" and !declaration.exhaustive and declaration.open != true) return .{
             .severity = .@"error",
             .code = "ZIGO002",

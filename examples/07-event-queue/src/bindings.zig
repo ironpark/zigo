@@ -20,7 +20,7 @@ pub const bindings = zigo.define(.{
         .{ .type = library.EventQueue, .repr = .@"opaque" },
         .{ .type = library.Stats, .repr = .value },
         .{ .type = library.Limits, .repr = .value },
-        .{ .type = library.QueueSignal, .repr = .enumeration, .exhaustive = false },
+        .{ .type = library.QueueSignal, .repr = .enumeration, .exhaustive = false, .text = true },
         .{ .type = library.Ticker, .repr = .@"opaque" },
         .{ .type = library.TickerInfo, .repr = .value },
         .{ .type = library.Stream, .repr = .@"opaque" },

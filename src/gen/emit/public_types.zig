@@ -813,6 +813,19 @@ fn renderPublicTaggedUnionAccessors(
 
 pub fn renderGoEnums(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
     const scope: public_writers.PublicScope = .{ .program = program, .options = options };
+    // The parse error type is shared by every text-encoded enum of the
+    // package, so it is written once, ahead of the first enum.
+    if (packageHasTextEnum(program, options)) try writer.writeAll(
+        "// EnumParseError reports text that names no value of a generated enum.\n" ++
+            "type EnumParseError struct {\n" ++
+            "\t// Type is the Go enum type name.\n\tType string\n" ++
+            "\t// Text is the rejected input.\n\tText string\n" ++
+            "}\n\n" ++
+            "// Error implements error.\n" ++
+            "func (err *EnumParseError) Error() string {\n" ++
+            "\treturn \"zigo: \" + err.Type + \": unknown value \" + strconv.Quote(err.Text)\n" ++
+            "}\n\n",
+    );
     for (program.types) |declaration| {
         if (!emit.packageMatches(declaration.package, options.active_package)) continue;
         if (declaration.kind != .@"enum") continue;
@@ -840,7 +853,63 @@ pub fn renderGoEnums(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
         try writer.print("\tdefault:\n\t\treturn \"{s}(\" + ", .{declaration.name});
         try writeEnumNumberFormat(writer, declaration.tag_type.?);
         try writer.writeAll(" + \")\"\n\t}\n}\n\n");
+        if (declaration.text == true) try renderGoEnumText(allocator, writer, program, declaration);
     }
+}
+
+fn packageHasTextEnum(program: abi.Program, options: emit.Options) bool {
+    for (program.types) |declaration| {
+        if (!emit.packageMatches(declaration.package, options.active_package)) continue;
+        if (declaration.kind == .@"enum" and declaration.text == true) return true;
+    }
+    return false;
+}
+
+/// `Parse<Enum>`, `MarshalText` and `UnmarshalText` for an enum registered
+/// with `.text = true`. Parsing accepts the Zig tag names `String` returns;
+/// an open enum also accepts the `<Enum>(N)` spelling `String` gives values
+/// outside the named constants, so every `String` result round-trips.
+fn renderGoEnumText(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, declaration: semantic.TypeDecl) !void {
+    const name = declaration.name;
+    const open = declaration.open == true;
+    try writer.print("// Parse{0s} returns the {0s} named by text, which is a Zig tag name.\n", .{name});
+    if (open) try writer.print("// Values outside the named constants are accepted in the {0s}(N) spelling String returns.\n", .{name});
+    try writer.print("func Parse{0s}(text string) ({0s}, error) {{\n\tswitch text {{\n", .{name});
+    for (program.liveFields(name)) |field| {
+        const field_name = try naming.pascalAlloc(allocator, field.name);
+        defer allocator.free(field_name);
+        try writer.print("\tcase \"{s}\":\n\t\treturn {s}{s}, nil\n", .{ field.name, name, field_name });
+    }
+    try writer.writeAll("\t}\n");
+    if (open) {
+        try writer.print(
+            "\tif strings.HasPrefix(text, \"{0s}(\") && strings.HasSuffix(text, \")\") {{\n" ++
+                "\t\tif number, err := ",
+            .{name},
+        );
+        try writeEnumNumberParse(writer, declaration.tag_type.?, "text[len(\"" , name);
+        try writer.print("; err == nil {{\n\t\t\treturn {0s}(number), nil\n\t\t}}\n\t}}\n", .{name});
+    }
+    try writer.print(
+        "\treturn 0, &EnumParseError{{Type: \"{0s}\", Text: text}}\n}}\n\n" ++
+            "// MarshalText implements encoding.TextMarshaler with the String spelling.\n" ++
+            "func (value {0s}) MarshalText() ([]byte, error) {{\n\treturn []byte(value.String()), nil\n}}\n\n" ++
+            "// UnmarshalText implements encoding.TextUnmarshaler with Parse{0s}.\n" ++
+            "func (value *{0s}) UnmarshalText(text []byte) error {{\n" ++
+            "\tparsed, err := Parse{0s}(string(text))\n" ++
+            "\tif err != nil {{\n\t\treturn err\n\t}}\n" ++
+            "\t*value = parsed\n\treturn nil\n}}\n\n",
+        .{name},
+    );
+}
+
+/// The `strconv` call that reads the number inside `<Enum>(N)`, sized to the
+/// tag type so an out-of-range digit string is rejected rather than wrapped.
+fn writeEnumNumberParse(writer: *std.Io.Writer, tag_type: semantic.TypeNode, prefix: []const u8, name: []const u8) !void {
+    const integer = tag_type.int;
+    const bits: u16 = if (integer.is_usize) 64 else integer.bits;
+    const parse = if (integer.signed) "strconv.ParseInt" else "strconv.ParseUint";
+    try writer.print("{s}({s}{s}(\"):len(text)-1], 10, {d})", .{ parse, prefix, name, bits });
 }
 
 /// How an unknown enum value prints itself. `strconv.Itoa` covers every width
