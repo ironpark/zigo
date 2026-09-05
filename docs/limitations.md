@@ -51,12 +51,19 @@ Go race detector는 `CGO_ENABLED=0` 테스트에 사용할 수 없습니다.
 
 ## Zig 타입과 ABI
 
+### 기본값과 객체
+
 | 노출할 데이터 | 사용할 표현 | 주요 조건 |
 |---|---|---|
 | bool·정수·실수 | scalar | 정수는 최대 64비트, 실수는 `f32`·`f64` |
 | `u21` 같은 비정규 폭 정수 | 다음 표준 폭의 Go 정수 | 입력 범위 검사로 `error`가 추가될 수 있음 |
 | enum | `.enumeration` | 열린 enum은 `.exhaustive = false` 명시 |
 | 상태를 가진 일반 struct | `.@"opaque"` | 생성자·소멸자와 소유권 지정 |
+
+### 구조화된 데이터
+
+| 노출할 데이터 | 사용할 표현 | 주요 조건 |
+|---|---|---|
 | 단순 값 struct | `.value` + `extern struct` | 필드는 scalar·등록 enum·적격 extern struct; 빈 struct 불가 |
 | 비트 필드 | `.value` + 정수 backing의 `packed struct` | bool·정수·등록 enum·등록 packed struct 필드 |
 | 중첩 pointer·string·slice 결과 트리 | `.materialized` | allocator, `.returns = .caller`, `[]u8` 해제 함수 필요 |
@@ -66,7 +73,8 @@ Go race detector는 `CGO_ENABLED=0` 테스트에 사용할 수 없습니다.
 `extern struct`는 Go에서는 값이지만 C 경계에서는 포인터로 전달합니다.
 pointer·slice·optional 등을 필드로 가진 일반 결과 트리는 `.value`로 등록할 수 없습니다.
 그런 반환은 materialized 결과로 복사하거나 opaque handle로 노출하세요.
-materialized 결과의 순환·opaque pointer·callback·union 필드는 거부됩니다. `anyerror`와 C 호출 규약이 아닌 함수 포인터도 노출할 수 없습니다.
+materialized 결과의 순환·opaque pointer·callback·union 필드는 거부됩니다.
+`anyerror`와 C 호출 규약이 아닌 함수 포인터도 노출할 수 없습니다.
 
 tagged union의 값 전달·반환에는 scalar, 등록 enum, 적격 packed/extern struct payload를
 쓸 수 있습니다. 같은 union을 handle 표현과 값 표현으로 동시에 사용하거나 다른 타입 안에

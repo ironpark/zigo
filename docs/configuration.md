@@ -6,6 +6,10 @@
 [생성물과 CI 관리](generated-code.md)에
 각각 정리되어 있습니다.
 
+패키지 import 경로를 바꾸려면 [공개 패키지](#공개-go-패키지-이름과-경로),
+배포 파일의 위치를 바꾸려면 [설치 위치](#설치-위치), 외부 C 라이브러리가 있다면
+[링크 설정](#cgo-플래그-덮어쓰기)을 확인하세요. 전체 옵션 표는 값 조회용입니다.
+
 ## 기본 구성
 
 ```zig
@@ -33,39 +37,47 @@ raw 패키지는 `internal/raw`에서 생성됩니다. `addStandardSteps`는 기
 
 ### 필수 입력
 
-| 옵션 | 필수 | 기본값 | 설명 |
-|---|---:|---|---|
-| `name` | 예 | — | 라이브러리, 헤더와 기본 Go 패키지의 기준 이름 |
-| `module` | 예 | — | reflection하고 링크할 `*std.Build.Module` |
-| `bindings` | 예 | — | `zigo.define` 선언 파일 |
-| `go_dir` | 예 | — | 생성된 Go 모듈을 둘 소스 경로 |
-| `go_module` | 예 | — | 생성할 `go.mod`와 import에 사용할 모듈 경로 |
-| `target` | 예 | — | 네이티브 라이브러리 타깃 |
-| `optimize` | 예 | — | 네이티브 라이브러리 최적화 모드 |
+| 옵션 | 지정할 값 |
+|---|---|
+| `name` | 라이브러리·헤더·기본 Go 패키지의 기준 이름 |
+| `module` | 리플렉션하고 링크할 `*std.Build.Module` |
+| `bindings` | `zigo.define` 선언 파일 |
+| `go_dir` | 생성된 Go 모듈을 둘 경로 |
+| `go_module` | Go 모듈의 import 경로 |
+| `target` | native 라이브러리 타깃 |
+| `optimize` | native 라이브러리 최적화 모드 |
 
 ### 공개 API와 패키지
 
-| 옵션 | 필수 | 기본값 | 설명 |
-|---|---:|---|---|
-| `source_root` | 아니요 | 자동 탐색 | AST 파라미터 이름·GoDoc 보강에 사용할 실제 Zig root |
-| `prefix` | 아니요 | `"zg"` | 생성 C 심볼 접두사. 바인딩 함수뿐 아니라 zigo 런타임 심볼(`<prefix>_panic_bridge`, `<prefix>_last_error_message`)에도 붙으므로, 한 실행 파일에 링크되는 바인딩마다 다른 값을 준다 |
-| `go_package` | 아니요 | `name`의 snake_case | 공개 Go 패키지 이름 |
-| `go_package_path` | 아니요 | `go_package` | `go_dir` 기준 공개 Go 패키지 경로. `"."`은 모듈 루트 |
-| `go_package_doc` | 아니요 | `bindings.zig`의 `//!`, 없으면 루트 모듈(`source_root`)의 `//!` | 생성된 공개 패키지의 `// Package …` doc 본문 |
-| `go_must_variants` | 아니요 | `false` | 오류를 반환하는 공개 함수·메서드에 panic 기반 `Must*` 동반 API 생성 |
-| `raw_package` | 아니요 | `"internal/raw"` | `go_dir` 기준 raw Go 패키지 경로 |
+모두 선택 옵션입니다.
+
+| 옵션 | 기본값 | 용도 |
+|---|---|---|
+| `source_root` | 자동 탐색 | Zig 소스에서 이름·주석 보강 |
+| `prefix` | `"zg"` | C 심볼 접두사 |
+| `go_package` | `name`의 snake_case | 공개 Go 패키지 이름 |
+| `go_package_path` | `go_package` | `go_dir` 기준 공개 패키지 경로 |
+| `go_package_doc` | Zig 모듈 주석 | 공개 패키지의 GoDoc 본문 |
+| `go_must_variants` | `false` | 오류를 panic으로 바꾸는 `Must*` API 추가 |
+| `raw_package` | `"internal/raw"` | `go_dir` 기준 raw 패키지 경로 |
+
+`prefix`는 함수뿐 아니라 런타임 심볼에도 적용됩니다. 한 실행 파일에 여러 바인딩을
+링크한다면 서로 다른 값을 지정하세요. 패키지 주석은 `bindings.zig`의 `//!`를 우선하고,
+없으면 루트 모듈의 `//!`를 사용합니다.
 
 ### 링크·설치·검증
 
-| 옵션 | 필수 | 기본값 | 설명 |
-|---|---:|---|---|
-| `link` | 아니요 | `.cgo_static` | `.cgo_static`, `.cgo_dynamic`, `.purego` 중 하나 |
-| `coverage_json` | 아니요 | `null` | `go-coverage`의 JSON 보고서를 기록할 소스 경로 |
-| `cgo_flags` | 아니요 | 모듈에서 계산 | 생성할 CFLAGS/LDFLAGS 덮어쓰기와 추가 LDFLAGS |
-| `gofmt` | 아니요 | `PATH`의 `gofmt` | 생성 코드 포맷에 사용할 실행 파일 |
-| `abi_base` | 아니요 | `null` | ABI 비교 기준 Git ref. 없으면 검사 비활성화 |
-| `library_loading` | 아니요 | 명시적 로드 | purego 전용 런타임 로딩 정책 |
-| `install` | 아니요 | `.lib` / `.header`, 기본 파일명 | 네이티브 라이브러리와 C 헤더의 설치 위치·이름 |
+모두 선택 옵션입니다.
+
+| 옵션 | 기본값 | 용도 |
+|---|---|---|
+| `link` | `.cgo_static` | cgo 정적·cgo 동적·purego 선택 |
+| `coverage_json` | `null` | API 커버리지 JSON 저장 경로 |
+| `cgo_flags` | 모듈에서 계산 | CFLAGS·LDFLAGS 보강 또는 교체 |
+| `gofmt` | `PATH`의 `gofmt` | Go 코드 포맷 도구 |
+| `abi_base` | `null` | ABI 비교 기준 Git ref |
+| `library_loading` | 명시적 로드 | purego 로딩 정책 |
+| `install` | `.lib` / `.header` | 라이브러리·헤더 설치 위치와 이름 |
 
 ## 설치 위치
 

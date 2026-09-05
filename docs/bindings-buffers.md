@@ -6,6 +6,13 @@
 [해제 함수](#호출자-소유-slice-반환)를 지정하고, Go 버퍼를 재사용하려면
 [out 파라미터](#큰-결과는-out-파라미터로)를 사용하세요.
 
+| 필요한 동작 | 먼저 읽을 절 |
+|---|---|
+| NUL 종료 문자열·문자열 목록 입력 | [C 문자열](#sentinel-c-문자열), [문자열 slice](#문자열-slice-매개변수) |
+| 새 native 버퍼를 반환하고 해제 | [호출자 소유 반환](#호출자-소유-slice-반환) |
+| Go 버퍼를 재사용해 결과 받기 | [out 파라미터](#큰-결과는-out-파라미터로), [작성 개수](#얼마나-채워졌는가-written) |
+| 값이 없는 상태 표현 | [optional](#optional) |
+
 ## Sentinel C 문자열
 
 Zig API가 NUL 종료 포인터를 쓴다면 `[*:0]const u8`를 그대로 노출할 수 있습니다. 이 타입은
@@ -164,6 +171,9 @@ pub fn extractSamplesInto(self: *Queue, dst: []f32) usize {
 ```go
 buf := make([]float32, 1024) // 한 번 할당해 계속 재사용
 n, err := queue.ExtractSamplesInto(buf)
+if err != nil {
+    return err
+}
 // 성공 시 buf[:n]이 이번 호출의 결과입니다.
 ```
 
@@ -173,17 +183,19 @@ n, err := queue.ExtractSamplesInto(buf)
 bool, 정수(승격 대상인 좁은 정수 포함), 부동소수, 등록 enum, `extern struct`, 그리고
 선언된 opaque type의 pointer를 지원합니다.
 
-| Zig | C | Go |
-| --- | --- | --- |
-| 매개변수 `?T` (scalar·bool·enum) | `const T *x` (NULL = 부재) | `*T` (nil = 부재) |
-| 매개변수 `?ExternStruct` | `const T *x` (NULL = 부재) | `*T` (nil = 부재) |
-| 매개변수 `?*Handle` | `T *x` | `*Handle` |
-| 반환 `?T` | `bool` 반환 + `T *out_result` | `(T, bool)` |
-| 반환 `E!?T` | `int32_t` 상태 + `bool *out_result_has` + `T *out_result` | `(T, bool, error)` |
-| 매개변수 `?[]T` | `const T *x_ptr, size_t x_len` (`x_ptr == NULL` = 부재) | `*[]T` |
-| 매개변수 `?[]const u8`(utf8)·`?[:0]const u8` | 같음 / `const char *x` | `*string` |
-| 반환 `?[]T` | `T **out_result_ptr, size_t *out_result_len` (NULL = 부재) | `([]T, bool)` |
-| 반환 `?[]const u8`(utf8) | 같음 | `(string, bool)` |
+| Zig에서 사용하는 위치 | 공개 Go 표현 |
+|---|---|
+| 인자 `?T` — scalar·bool·enum·extern struct | `*T`; nil은 부재 |
+| 인자 `?*Handle` | `*Handle`; nil 허용 |
+| 인자 `?[]T` | `*[]T` |
+| optional 문자열 인자 | `*string` |
+| 반환 `?T` | `(T, bool)` |
+| 반환 `E!?T` | `(T, bool, error)` |
+| 반환 `?[]T` | `([]T, bool)` |
+| optional 문자열 반환 | `(string, bool)` |
+
+반환값의 `bool`은 값의 존재 여부입니다. handle 검사 등으로 `error`가 추가될 수 있습니다.
+C 포인터·출력 인자의 상세 표현은 [optional ABI](generated-abi.md#optional의-c-표현)를 참고하세요.
 
 ```zig
 pub fn shiftPoint(origin: ?Point, delta: i16) ?Point { /* ... */ }

@@ -1,26 +1,28 @@
 # 공유 라이브러리와 purego
 
-zigo의 기본값 `.cgo_static`은 정적 링크와 cgo 호출을 사용합니다. 선택적인 `.purego`는
-네이티브 공유 라이브러리를 runtime에 로드하므로 Go 프로그램을 `CGO_ENABLED=0`으로
-빌드할 수 있습니다. 바인딩 함수와 타입의 사용법은 공통이며, purego에는 raw 구현 외에
-라이브러리 로더 API와 추가 Go 의존성이 있습니다.
+purego를 선택하면 Go 프로그램을 `CGO_ENABLED=0`으로 빌드할 수 있습니다.
+대신 실행할 OS·아키텍처에 맞는 Zig 공유 라이브러리를 함께 배포하고, 사용 전에 로드해야 합니다.
 
-> Zig shared library는 배포할 OS·architecture 조합마다 하나씩 필요하지만, 한 호스트에서
-> 모두 만들 수 있습니다. `zig build purego-go-lib -Dtarget=x86_64-windows`처럼
-> 크로스 컴파일을 지원합니다. Go 쪽도 마찬가지입니다. 생성된 purego 패키지는 순수
-> Go이므로 C 툴체인 없이 `GOOS=windows CGO_ENABLED=0 go build ./...`로 빌드할 수
-> 있습니다. 단일 실행 파일이 목적이라면 기본 `.cgo_static`을 사용하세요.
+기본 cgo 설정을 아직 실행해 보지 않았다면 [시작 가이드](getting-started.md)를 먼저 보세요.
+이 문서는 설정 → 생성 → 로딩 → 배포 순서로 설명합니다.
+이미 설정을 마쳤다면 [로딩 정책](#로딩-정책-설정)이나 [문제 해결](#문제-해결)로 이동하세요.
 
-| 항목 | `.cgo_static` / `.cgo_dynamic` | `.purego` |
+| 선택 기준 | cgo | purego |
 |---|---|---|
-| 링크 시점 | 빌드 | 실행 |
-| Go 빌드 요구사항 | C 컴파일러, `CGO_ENABLED=1` | 없음, `CGO_ENABLED=0` 가능 |
-| 네이티브 아티팩트 | 빌드 시 링크 | 실행 시 로드 |
-| 배포 단위 | 정적: Go 바이너리, 동적: Go 바이너리 + 공유 라이브러리 | Go 바이너리 + 플랫폼별 공유 라이브러리 |
-| 추가 Go 의존성 | 없음 | `github.com/ebitengine/purego v0.10.2` |
-| 지원 범위 | macOS/Linux amd64·arm64, Windows amd64(`CC="zig cc"`), 크로스 컴파일 가능 | macOS/Linux/Windows amd64·arm64, 크로스 컴파일 가능 |
+| Go 빌드에 C 컴파일러 사용 | 필요 | 불필요 |
+| native 라이브러리 연결 | 빌드 시 링크 | 실행 시 로드 |
+| 정적 링크 | 지원 | 미지원 |
+| 공유 라이브러리 배포 | `.cgo_dynamic` 선택 시 필요 | 항상 필요 |
+
+바인딩 함수·타입의 사용법은 공통입니다. purego에는 로더 API와
+`github.com/ebitengine/purego v0.10.2` 의존성이 추가됩니다.
+지원 타깃은 macOS·Linux·Windows의 amd64·arm64입니다.
+플랫폼 전체 조건은 [지원 환경](limitations.md#지원-환경)을 참고하세요.
 
 ## 빌드 설정
+
+`build.zig`에서 `.link = .purego`를 지정합니다. 아래는 시작 가이드의 모듈·타깃 설정을
+사용하는 바인딩 등록 부분입니다.
 
 ```zig
 const purego_bindings = zigo.addGoBindings(b, .{
@@ -36,351 +38,241 @@ const purego_bindings = zigo.addGoBindings(b, .{
 _ = purego_bindings.addStandardSteps(b, .{ .name_prefix = "purego" });
 ```
 
-`.link = .purego`는 하나의 값이므로 "purego + 정적 링크" 같은 조합은 표현되지 않는다.
-지원하지 않는 타깃은 빌드 그래프를 만드는 시점에 실패한다. 한 저장소에서 두 백엔드를 모두 제공하려면 위처럼
-`go_dir`과 `go_module`이 다른 바인딩 세트를 각각 등록하고 `name_prefix`로 스텝 이름을
-분리한다. `examples/04-callback`, `examples/07-event-queue`,
-`examples/08-telemetry-hub`가 이 구성을 사용한다.
+이 문서의 명령은 위 설정이 있는 프로젝트 루트에서 실행합니다.
+`name_prefix`를 바꾸거나 생략했다면 명령의 스텝 이름도 맞춰 바꾸세요.
+
+cgo도 함께 제공하려면 별도의 `go_dir`·`go_module`로 등록합니다.
+[04-callback](../examples/04-callback/README.md)이 두 백엔드를 함께 구성하는 예제입니다.
+기본 파일명을 사용하면 cgo 정적 archive와 purego 공유 라이브러리·헤더는 서로 겹치지 않습니다.
 
 ## 재현 절차
 
+기존 Go 모듈에 purego를 추가하는 경우, 생성 전에 해당 모듈에서 의존성을 추가하세요.
+
 ```bash
-# 1. 공유 라이브러리와 Go 소스를 생성하고 zig-out/lib에 설치한다.
+(cd go-purego && go get github.com/ebitengine/purego@v0.10.2)
+```
+
+아직 `go.mod`가 없다면 이 단계는 건너뜁니다. zigo가 새 모듈을 만들 때는 버전 요구사항을
+기록하지만 기존 `go.mod`를 수정하지는 않습니다.
+
+공유 라이브러리와 Go 소스를 생성하고 의존성을 준비합니다.
+
+```bash
 zig build purego-go
-
-# 2. 백엔드 전제, 모듈 핀, 설치된 아티팩트를 한 번에 검증한다.
-zig build purego-go-verify
-
-# 3. 새 모듈의 의존성을 내려받고 go.sum을 준비한다.
 (cd go-purego && go mod tidy)
+zig build purego-go-verify
+```
 
-# 4. C 컴파일러 없이 테스트한다.
+`purego-go`는 기본적으로 `zig-out/lib`에 라이브러리를 설치합니다.
+`purego-go-verify`는 생성물, 설치 아티팩트, Go 환경과 라이브러리 로딩을 검사합니다.
+`abi_base`가 있으면 ABI 검사도 포함합니다. Go 테스트 자체는 실행하지 않습니다.
+
+다음 절의 로딩 코드를 애플리케이션이나 테스트 초기화에 추가한 뒤 테스트하세요.
+
+```bash
 (cd go-purego && CGO_ENABLED=0 go test ./...)
 ```
 
-기존 Go 모듈에 purego를 추가한다면 생성 전에 그 모듈에서
-`go get github.com/ebitengine/purego@v0.10.2`를 실행하세요. 새 모듈에는 zigo가 요구사항을
-작성하지만 기존 `go.mod`는 수정하지 않습니다.
-
-테스트나 애플리케이션도 호출 전에 라이브러리를 로드해야 합니다. 위 명령은 예제처럼
-테스트 초기화에서 `LoadLibrary`를 호출하거나 자동 로딩을 설정한 경우를 전제로 합니다.
-처음 만든 패키지라면 아래 [라이브러리 로딩](#라이브러리-로딩) 코드를 먼저 추가하세요.
-
-> 한 빌드에 두 백엔드를 등록하면 두 아티팩트가 같은 `zig-out`에 설치되지만 이름이
-> 겹치지 않는다. 정적 바인딩은 `lib<name>_zigo.a`를 경로로 직접 링크하고, purego
-> 헤더는 `zigo_<name>_purego.h`로 설치된다. 따라서 순서에 상관없이 두 백엔드를 한
-> 트리에서 생성하고 테스트할 수 있다. 아티팩트를 다른 위치에 설치했다면 테스트에는
-> `ZIGO_LIBRARY_PATH`로 실제 경로를 알려준다.
-
-`purego-go-verify`는 생성물 최신 상태(`go-check`), 네이티브 라이브러리 설치(`go-lib`),
-`go-doctor`, 그리고 `abi_base`가 설정된 경우 `abi-check`까지 의존한다. purego 백엔드의
-`go-doctor`는 cgo 대신 다음을 검사한다.
-
-- 호스트 플랫폼이 지원 대상(macOS/Linux/Windows, amd64/arm64)인지
-- `go.mod`가 검증된 purego 버전을 요구하는지
-- 설치된 공유 라이브러리가 존재하고 플랫폼 로더로 실제 로드되는지
-
-크로스 빌드에서는 호스트가 외래 아티팩트를 로드할 수 없으므로 마지막 검사를 실패가
-아니라 `SKIP`으로 보고한다. 나머지 검사는 그대로 수행하므로
-`zig build purego-go-verify -Dtarget=x86_64-windows`는 통과한다. 아티팩트의 실행 검증은
-타깃 호스트에서 해야 한다. zigo 자신의 CI가 그렇게 한다. Ubuntu 잡이
-`examples/07-event-queue`의 Windows DLL을 크로스 빌드해 아티팩트로 올리고, Windows 잡이
-그것을 내려받아 `ZIGO_LIBRARY_PATH`로 가리킨 뒤 07의 Go 스위트를 돌린다.
-
-```
-PASS purego: no C compiler required at Go build time
-PASS purego platform: macos/aarch64 is supported
-PASS purego module: github.com/ebitengine/purego v0.10.2
-PASS shared library: /…/zig-out/lib/libmylib_zigo.dylib loads at run time
-```
-
-실패는 실행할 명령을 함께 알려준다. 예를 들어 아티팩트가 없으면
-`run \`zig build go-lib\``, 모듈 요구사항이 없으면
-`run \`go get github.com/ebitengine/purego@v0.10.2\``를 출력하고 종료 코드 1로 끝난다.
+저장소 예제는 로딩 초기화가 이미 준비되어 있습니다.
+처음 만든 패키지에서는 환경 변수만 설정해도 자동으로 로드된다고 가정하지 마세요.
+자동 로딩을 원하면 [로딩 정책](#자동-로딩)을 별도로 선택해야 합니다.
 
 ## 라이브러리 로딩
 
-생성된 공개 패키지는 로더 API를 함께 노출한다.
+기본 정책은 명시적 로딩입니다. `error`를 반환하는 초기화 함수 안에서 다음처럼 호출합니다.
+예제의 `mylib`는 생성된 공개 패키지의 import 이름입니다.
 
 ```go
-// 명시 경로가 가장 우선한다.
 if err := mylib.LoadLibrary("/opt/myapp/lib/" + mylib.DefaultLibraryName); err != nil {
     return err
 }
-if !mylib.LibraryLoaded() {
-    return errors.New("bindings are not ready")
-}
+// 이 시점부터 바인딩 함수를 호출할 수 있습니다.
 ```
 
-`LoadLibrary(path)`의 경로 결정 순서는 다음과 같다. 후보는 [로딩 정책](#로딩-정책-설정)으로
-바꿀 수 있다.
+`LibraryLoaded()`는 로딩 완료 여부를 반환합니다.
+필요한 심볼을 모두 찾은 뒤에만 호출 가능한 상태가 되므로, 실패한 로드는 일부 함수만
+사용 가능한 상태를 남기지 않습니다. 명시적 로딩 실패 뒤에는 다른 경로로 재시도할 수 있습니다.
 
-1. 인자로 받은 경로
-2. 설정된 환경 변수 (기본값은 `ZIGO_<PACKAGE>_LIBRARY_PATH`, `ZIGO_LIBRARY_PATH`)
-3. 설정된 search path
-4. `DefaultLibraryName` (플랫폼 기본 파일명; 플랫폼 로더의 검색 경로에서 찾는다)
+주의: 기본 정책에서 로드 전에 바인딩 함수를 호출하면 panic합니다.
+성공적으로 로드한 라이브러리는 프로세스 종료까지 유지되며 unload·hot reload는 제공하지 않습니다.
 
-로딩은 원자적이다. 필요한 심볼을 모두 해석한 뒤에만 호출 표면을 공개하므로, 실패한
-로드는 부분적으로 호출 가능한 패키지를 남기지 않고 다른 경로로 재시도할 수 있다.
-실패는 `errors.Is(err, ErrLibraryLoad)`로 판별한다. 경로·심볼·원인은 `*LibraryError`에
-담기며 플랫폼 로더 오류를 `Unwrap`으로
-노출한다. 로드에 성공한 핸들은 프로세스 수명 동안 닫지 않는다. 생성된 함수 포인터와
-살아 있는 네이티브 핸들 때문에 안전한 unload가 불가능하기 때문이다. 로드 전에 바인딩을
-호출하면 같은 진단 메시지로 panic한다.
+### 기본 파일명
 
-`DefaultLibraryName`은 생성 시점이 아니라 실행 시점에 `runtime.GOOS`로 결정된다. 따라서
-커밋된 생성물은 macOS, Linux, Windows에서 동일하며, 생성물 최신 상태 검사도 세 플랫폼에서
-같은 결과를 낸다.
+`DefaultLibraryName`은 실행 중인 OS에 따라 정해집니다.
 
-| `GOOS` | `DefaultLibraryName` |
+| OS | 기본 파일명 |
 |---|---|
-| `darwin` | `lib<name>_zigo.dylib` |
-| `linux` | `lib<name>_zigo.so` |
-| `windows` | `<name>_zigo.dll` |
+| macOS | `lib<name>_zigo.dylib` |
+| Linux | `lib<name>_zigo.so` |
+| Windows | `<name>_zigo.dll` |
 
-Windows 파일명에는 관례대로 `lib` 접두사가 붙지 않는다. OS별 로더 primitive는 build
-tag로 나뉜 `raw_load_posix_gen.go`(`//go:build !windows`)와
-`raw_load_windows_gen.go`(`//go:build windows`)에 있고, 각각 `openLibrary`,
-`closeLibrary`, `resolveSymbol`을 똑같이 정의한다. POSIX는 purego의
-`Dlopen`/`Dlsym`/`Dlclose`를, Windows는 표준 라이브러리
-`syscall.LoadLibrary`/`GetProcAddress`/`FreeLibrary`를 쓴다. purego v0.10.2는 Windows
-로딩 API를 공개하지 않으므로(`dlfcn.go`가 POSIX 전용이고 `loadSymbol`은 비공개) 이
-선택은 모듈 의존성을 늘리지 않는다. `purego.NewCallback`과 `RegisterFunc`는 Windows를
-Tier 1으로 지원하므로 콜백 경로는 공용 파일에 그대로 남는다. 후보 경로 결정,
-`LoadLibrary`, `*LibraryError` 모양은 세 OS에서 동일하다.
+`install.library_name`을 바꾸면 같은 이름이 로더에도 반영됩니다.
+사용자 정의 빌드 스텝에서는 `GoBindings.library_path`로 실제 설치 경로를 확인할 수 있습니다.
 
 ## 로딩 정책 설정
 
-`library_loading`으로 라이브러리를 어디서 어떤 순서로 찾을지, 첫 호출에 자동으로 로드할지,
-로더를 공개 API로 노출할지를 선언한다. 기본값은 위에서 설명한 동작 그대로다.
+`library_loading`은 purego 전용 옵션입니다. 검색 경로·환경 변수·로딩 시점을 함께 설정합니다.
+아래 예제는 실행 파일 옆의 라이브러리를 첫 호출에 자동으로 로드합니다.
 
 ```zig
 .library_loading = .{
-    // 환경 변수 다음에 이 순서로 시도한다. 파일이 아니면 디렉터리로 보고
-    // 플랫폼 라이브러리 이름을 붙인다.
-    .search_paths = &.{ "${EXECUTABLE_DIR}", "${EXECUTABLE_DIR}/../lib", "/opt/myapp/lib" },
-    // 첫 바인딩 호출에서 위 후보를 한 번 시도한다.
-    // 첫 호출에서 자동으로 로드하고, 공개 패키지에서
-    // LoadLibrary/LibraryLoaded/DefaultLibraryName을 감춘다.
-    .loader = .automatic_internal,
-    // 기본값은 패키지 전용 이름과 공용 이름 두 개다.
+    .search_paths = &.{ "${EXECUTABLE_DIR}", "${EXECUTABLE_DIR}/../lib" },
     .env_vars = &.{ "MYAPP_LIBRARY_PATH" },
+    .loader = .automatic,
 },
 ```
 
-| 필드 | 기본값 | 설명 |
+| 필드 | 기본값 | 용도 |
 |---|---|---|
-| `search_paths` | 없음 (`install.library_dir`이 `.lib`가 아니면 그 위치) | 환경 변수 다음에 순서대로 시도할 위치 |
-| `env_vars` | `null` | `null`은 `ZIGO_<PACKAGE>_LIBRARY_PATH`와 `ZIGO_LIBRARY_PATH`. 빈 목록은 환경 변수를 보지 않음 |
-| `loader` | `.explicit` | 누가 로드를 시작하는지, 로더가 공개 API인지 |
+| `search_paths` | 빈 목록 | 라이브러리 파일 또는 디렉터리 후보 |
+| `env_vars` | `null` | 경로를 읽을 환경 변수 목록 |
+| `loader` | `.explicit` | 로딩 시점과 공개 로더 API 선택 |
 
-`loader`는 세 값을 가진다.
+기본값에는 두 가지 규칙이 있습니다.
 
-| 값 | 뜻 |
-|---|---|
-| `.explicit` | 호출자가 `LoadLibrary`를 직접 부른다 |
-| `.automatic` | 첫 바인딩 호출에서 자동 로드하고 `LoadLibrary`도 그대로 노출한다 |
-| `.automatic_internal` | 자동 로드하고 로더를 공개 API에서 감춘다 |
-
-"자동 로드도 안 하고 로더도 노출하지 않는" 조합은 아무도 라이브러리를 로드할 수 없으므로
-축을 하나로 접어 아예 표현되지 않게 했다. raw 패키지를 public 패키지와 같은 위치에 둔
-경우 `.automatic_internal`은 raw 로더 이름을 내보내지 않는 방식으로 지켜진다.
-
-`library_loading`은 `.link = .purego`에서만 쓸 수 있다. 잘못된 조합은 빌드
-그래프를 만드는 시점에 실패한다.
-
-`install.library_dir`을 `.custom` 등 `.lib`가 아닌 위치로 바꾸고 `search_paths`를
-생략하거나 빈 목록으로 두면 zigo가 공개 Go 패키지에서 설치 디렉터리까지의 상대 경로를 기본 후보로 넣습니다.
-따라서 checkout 안에서 `go test`할 때 설치 위치를 별도로 반복해 적을 필요가 없습니다.
-`install.library_name`을 지정하면 `DefaultLibraryName`도 같은 stem의 플랫폼 파일명으로
-바뀝니다. 비어 있지 않은 `search_paths`는 자동 후보 대신 사용합니다.
+- `env_vars = null`은 기본 환경 변수 두 개를 사용합니다. 빈 목록 `&.{}`은 환경 변수를 사용하지 않습니다.
+- `search_paths`가 비어 있고 `install.library_dir`이 `.lib`가 아니면, 공개 Go 패키지에서
+  설치 디렉터리까지의 상대 경로를 기본 후보로 사용합니다. 비어 있지 않은 목록을 지정하면
+  그 목록으로 대체합니다.
 
 ### 후보 순서
 
-1. `LoadLibrary(path)`에 넘긴 경로 (비어 있지 않으면 이것만 시도한다)
-2. `env_vars`의 각 환경 변수 중 값이 있는 것
-3. `search_paths`의 각 항목
-4. `DefaultLibraryName` (플랫폼 로더 검색 경로)
+`LoadLibrary(path)`에 비어 있지 않은 경로를 넘기면 그 경로만 시도합니다.
+빈 문자열을 넘기거나 자동 로딩을 사용하면 다음 순서로 찾습니다.
 
-`search_paths` 항목이 플랫폼 라이브러리 확장자로 끝나면 파일 경로로 그대로 쓰고, 그렇지
-않으면 디렉터리로 보고 `DefaultLibraryName`을 붙인다. `${EXECUTABLE_DIR}`는 실행 중인
-실행 파일의 디렉터리로 확장되며, 확인할 수 없으면 그 항목은 건너뛴다. 항목에 `:`는 쓸 수
-없다. 생성기로 전달할 때 목록 구분자이기 때문이다. 따라서 Windows의 `C:/...` 같은
-드라이브 경로는 이 목록이 아니라 `LoadLibrary` 인자나 환경 변수로 전달하세요.
+1. `env_vars`에 지정한 환경 변수 중 값이 있는 것
+2. `search_paths`의 각 항목
+3. `DefaultLibraryName`을 플랫폼 로더의 검색 경로에서 탐색
 
-후보를 여러 개 시도해 모두 실패하면 하나의 `*LibraryError`가 모든 시도를 묶어 반환된다.
-후보가 하나뿐이면 그 시도의 경로와 심볼이 그대로 보존된다.
+검색 항목이 플랫폼 라이브러리 확장자로 끝나면 파일로, 그렇지 않으면 디렉터리로 보고
+기본 파일명을 붙입니다. `${EXECUTABLE_DIR}`는 실행 파일이 있는 디렉터리로 확장하며,
+확인할 수 없으면 그 항목을 건너뜁니다.
+
+`search_paths`에는 `:`를 쓸 수 없습니다. Windows의 `C:/...` 같은 드라이브 경로는
+`LoadLibrary` 인자나 환경 변수로 전달하세요. 일반 상대 경로는 실행 시 작업 디렉터리에
+따라 달라지므로 배포할 때 주의해야 합니다.
 
 ### 자동 로딩
 
-`.loader = .automatic` 또는 `.automatic_internal`이면 첫 바인딩 호출이 후보 목록을
-**한 번** 시도한다. 성공하면 이후
-호출은 그대로 진행되고, 모두 실패하면 모든 후보를 담은 오류로 panic한다. 공개 API가 오류를
-반환하지 않는 형태이므로 panic 외에 다른 선택지가 없다. 실패 후에도 `LoadLibrary`가 노출된
-`.automatic` 구성이라면 다른 경로로 명시적 재시도를 할 수 있다.
+| `loader` | 로딩 시작 | 공개 로더 API |
+|---|---|---|
+| `.explicit` | 사용자의 `LoadLibrary` 호출 | 있음 |
+| `.automatic` | 첫 바인딩 호출 | 있음 |
+| `.automatic_internal` | 첫 바인딩 호출 | 없음 |
 
-`examples/08-telemetry-hub`의 purego 바인딩이 이 구성을 사용한다. 테스트는 로더를 전혀
-호출하지 않고, 공개 패키지에는 바인딩된 API만 있다.
+자동 로딩은 후보 목록을 한 번 시도합니다. 모두 실패하면 `*LibraryError`로 panic합니다.
+`.automatic`은 로더 API가 있으므로 실패 후 `LoadLibrary`로 명시적으로 재시도할 수 있습니다.
+`.automatic_internal`은 `LoadLibrary`·`LibraryLoaded`·`DefaultLibraryName`을 공개하지 않습니다.
+
+실행 예제는 [08-telemetry-hub](../examples/08-telemetry-hub/README.md)에 있습니다.
 
 ### 환경 변수 이름
 
-기본 환경 변수는 패키지 전용 이름(`ZIGO_TELEMETRY_HUB_LIBRARY_PATH`)이 먼저이고 공용
-`ZIGO_LIBRARY_PATH`가 그다음이다. 한 프로세스가 zigo purego 패키지를 둘 이상 로드할 때
-공용 변수 하나로 서로의 라이브러리를 가리키지 않도록 하기 위한 것이다. 배포에서 환경 변수를
-아예 쓰지 않으려면 `.env_vars = &.{}`로 비운다.
-
-`go-report`가 적용된 정책을 출력한다.
+기본값은 패키지 전용 이름이 먼저이고 공용 이름이 나중입니다.
+예를 들어 `telemetry_hub` 패키지는 다음 두 변수를 사용합니다.
 
 ```text
-library loading: automatic on first call, loader API internal
-library environment: ZIGO_TELEMETRY_HUB_LIBRARY_PATH,ZIGO_LIBRARY_PATH
-library search paths: ${EXECUTABLE_DIR}:${EXECUTABLE_DIR}/../lib:../../zig-out/lib
+ZIGO_TELEMETRY_HUB_LIBRARY_PATH
+ZIGO_LIBRARY_PATH
 ```
+
+한 프로세스에서 여러 바인딩을 쓰면 패키지 전용 변수로 각 라이브러리를 지정하세요.
+실제 적용된 정책은 `zig build purego-go-report`로 확인합니다.
 
 ## 패키징과 배포
 
-- 공유 라이브러리는 타깃별 아티팩트다. 기본 파일명은 macOS
-  `lib<name>_zigo.dylib`, Linux `lib<name>_zigo.so`, Windows `<name>_zigo.dll`이며
-  `install.library_name`으로 stem을 바꿀 수 있다. 기본 설치 위치는 `zig-out/lib`이고
-  `install.library_dir`로 바꿀 수 있다. 경로를 직접 조립하지 말고
-  `GoBindings.library_path`를 읽으면 플랫폼과 무관하게 실제 설치 경로를 얻는다.
-- 배포 대상 OS·아키텍처 조합마다 아티팩트를 하나씩 만들지만, 호스트는 하나면 된다.
-  `-Dtarget`을 넘기면 그 타깃으로 라이브러리를 빌드한다. 리플렉션 파이프라인은 항상
-  호스트로 빌드해 실행하고, `-Dtarget`은 라이브러리·shim·헤더에만 적용된다.
+Go 실행 파일과 타깃에 맞는 공유 라이브러리를 함께 배포합니다.
+native 라이브러리가 다른 동적 라이브러리에 의존하면 그 의존성도 준비해야 합니다.
+Go 생성 소스와 `zigo/`는 커밋하고, 공유 라이브러리는 릴리스 아티팩트로 관리하세요.
 
-  ```bash
-  # 한 macOS/Linux 호스트에서 세 플랫폼 아티팩트를 모두 만든다.
-  zig build purego-go-lib -Dtarget=x86_64-windows   # -> zig-out/lib/<name>_zigo.dll
-  zig build purego-go-lib -Dtarget=aarch64-windows  # -> zig-out/lib/<name>_zigo.dll
-  zig build purego-go-lib -Dtarget=x86_64-linux-gnu # -> zig-out/lib/lib<name>_zigo.so
-  zig build purego-go-lib                           # 호스트 네이티브
-  ```
+### 크로스 컴파일
 
-  생성되는 Go 트리는 타깃과 무관하게 동일하다. 타깃에 따라 달라지는 진단도 없으므로
-  어느 호스트에서 어느 타깃으로 생성해도 커밋된 트리는 바이트 단위로 같다.
+한 호스트에서 여러 타깃을 빌드할 수 있습니다. 아키텍처가 달라도 파일명이 같을 수 있으므로
+타깃별 설치 prefix를 분리하세요.
 
-  Windows amd64용 cgo 크로스 링크도 지원합니다. GNU ABI를 명시하는 명령과 제약은
-  [Windows에서 cgo 백엔드 쓰기](getting-started.md#windows에서-cgo-백엔드-쓰기)를 참고하세요.
-- 크로스 컴파일에서 리플렉션은 **호스트**의 타입 레이아웃을 기록한다. 지원 타깃은 모두
-  64비트 리틀엔디언이므로 고정폭 정수·실수·포인터는 일치하지만, `c_long`·`c_ulong`은
-  Windows에서 4바이트, Linux·macOS에서 8바이트로 갈린다. 생성된 shim은 mirror하는 모든
-  `extern struct`의 크기·정렬·필드 오프셋을 comptime으로 고정하므로 어긋나면 타깃
-  컴파일이 다음처럼 실패한다.
+```bash
+zig build purego-go-lib -Dtarget=x86_64-windows -p zig-out/windows-amd64
+zig build purego-go-lib -Dtarget=aarch64-windows -p zig-out/windows-arm64
+zig build purego-go-lib -Dtarget=x86_64-linux-gnu -p zig-out/linux-amd64
+```
 
-  ```text
-  error: zigo ABI guard: @sizeOf(Sizes) is 8 on this target, but zigo reflected 16
-  on the build host. ... A C type whose width varies by target, such as c_long or
-  c_ulong, is the usual cause; replace it with a fixed-width type.
-  ```
+예를 들어 첫 명령의 DLL은 `zig-out/windows-amd64/lib/`에 설치됩니다.
+Go 애플리케이션도 같은 OS·아키텍처로 빌드하세요.
 
-  구조체 밖의 스칼라는 별도 가드가 필요 없다. 파라미터와 콜백은 Zig 자신의 타입
-  오류로 즉시 걸리고, 반환값과 union payload는 shim 경계에서 손실 없이 넓혀진다.
-  반면 타깃에 따라 export 자체가 달라지는 바인딩 표면은 지원하지 않는다. 리플렉션은
-  호스트 표면 하나만 보고, 가드는 레이아웃 차이를 잡지 표면 차이를 잡지 못한다.
-- Go 애플리케이션 쪽은 그대로 크로스 컴파일된다. 생성된 purego 패키지에는 cgo가 없으므로
-  어떤 호스트에서든 C 툴체인 없이 빌드할 수 있고, 실행 시 짝이 되는 라이브러리만
-  옆에 두면 된다.
+```bash
+(cd go-purego && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...)
+```
 
-  ```bash
-  cd go-purego && GOOS=windows GOARCH=amd64 CGO_ENABLED=0 go build ./...
-  ```
-- 아티팩트에는 Zig 캐시 경로가 새겨지지 않는다. 런타임 의존성은 바인딩한 Zig 모듈의
-  의존성과 생성된 panic 경계가 사용하는 플랫폼 C 런타임뿐이다.
-- 애플리케이션은 배포 레이아웃에 맞는 절대 경로를 `LoadLibrary`에 넘기거나, 플랫폼
-  로더 검색 경로(`@rpath`, `LD_LIBRARY_PATH`, 시스템 라이브러리 디렉터리)를 직접
-  구성해야 한다. zigo는 생성된 Go 코드에 빌드 머신 경로를 커밋하지 않는다.
-- 커밋 대상은 생성된 Go 소스와 `zigo/` 메타데이터다. 공유 라이브러리는 릴리스
-  아티팩트로 배포한다.
+이 명령은 Go 패키지를 빌드합니다. 배포할 실행 파일이 필요하면 자신의 `main` 패키지와
+`-o` 경로를 지정하세요.
+
+리플렉션은 호스트에서 실행합니다. `c_long`처럼 타깃별 폭이 다른 타입은 고정 폭 타입으로
+바꾸고, 타깃별 공개 선언이 다른 API는 해당 타깃에서 생성하세요.
+[크로스 컴파일 제약](limitations.md#크로스-컴파일)을 함께 확인해야 합니다.
+
+크로스 타깃의 doctor는 호스트에서 로드할 수 없는 라이브러리 검사를 `SKIP`합니다.
+생성·컴파일 성공은 타깃에서의 실행 검증을 대신하지 않습니다.
 
 ### 보안 주의사항
 
-- `LoadLibrary`는 임의의 네이티브 코드를 프로세스에 로드한다. 경로는 애플리케이션이
-  통제하는 위치여야 하며, 쓰기 가능한 공용 디렉터리나 사용자 입력에서 온 경로를 그대로
-  넘기지 않는다.
-- 자동 로딩은 이 결정을 빌드 시점의 정책으로 옮긴다. `search_paths`에는 배포에서 쓰기
-  권한이 통제되는 위치만 넣고, 상대 경로는 실행 시점의 작업 디렉터리에 따라 달라지므로
-  배포용으로는 `${EXECUTABLE_DIR}` 기준 경로나 절대 경로를 쓴다.
-- 환경 변수는 후보 중 가장 먼저 시도된다. 신뢰 경계가 중요한 배포에서는
-  `.env_vars = &.{}`로 비워 외부에서 로드 대상을 바꿀 수 없게 한다.
-- `ZIGO_LIBRARY_PATH`와 파일명 fallback은 편의 기능이다. 신뢰 경계가 중요한 배포에서는
-  절대 경로를 명시하고, 필요하면 로드 전에 서명이나 체크섬을 검증한다.
-- 로드된 라이브러리는 언로드되지 않으므로, 잘못된 아티팩트를 로드한 프로세스는 재시작해야
-  한다.
+라이브러리 로드는 native 코드 실행입니다. 사용자가 임의로 지정한 경로를 그대로 로드하지 마세요.
+
+- 애플리케이션이 통제하는 디렉터리나 검증한 절대 경로를 사용합니다.
+- 환경 변수를 통한 경로 변경을 막으려면 `.env_vars = &.{}`를 설정합니다.
+- 배포 요구사항에 따라 로드 전에 서명·체크섬을 확인합니다.
+- 잘못된 라이브러리를 로드했다면 프로세스를 재시작합니다.
 
 ## 콜백
 
-purego 백엔드는 콜백 파라미터를 C 함수 포인터와 `uintptr_t` userdata로 낮추고, 콜백을
-받는 네이티브 진입점에 `_purego_v2` 접미사를 붙인다. cgo 백엔드의 심볼과 트램폴린은
-그대로 유지되므로 기존 cgo ABI는 바뀌지 않는다.
+purego도 Go 콜백을 지원합니다. 콜백 반환 타입은 `void` 또는 `i32`이며,
+부동소수 인자는 지원합니다. 선언과 수명은 [콜백 가이드](bindings-callbacks.md)를 따릅니다.
 
-접미사의 버전이 곧 콜백 ABI의 버전이다. 콜백 ABI가 바뀌면 접미사가 올라가므로, 오래된
-라이브러리와 새로 생성한 Go를 섞으면 비트를 잘못 읽는 대신 로드 시점에 심볼을 찾지
-못하고 실패한다. `zigo-gen report`는 이 버전을 `callback ABI:` 줄에 출력한다.
-
-- 부동소수 콜백 파라미터는 같은 폭의 정수에 IEEE-754 비트 패턴으로 실려 건너간다.
-  `f64`는 `uint64_t`, `f32`는 `uint32_t`다. Windows의 `purego.NewCallback`은
-  `syscall.NewCallback`을 그대로 감싸고, 그 뒤의 `compileCallback`은 386이 아닌
-  아키텍처에서 부동소수 인자를 거부하기 때문이다(값이 트램폴린이 스필하지 않는
-  부동소수 레지스터로 전달된다). 변환은 양쪽 끝에서 일어난다. 네이티브 쪽은 여전히
-  진짜 부동소수로 호출하고, shim이 생성한 정적 thunk가 `@bitCast`해서 Go dispatcher로
-  넘기며, dispatcher가 `math.Float64frombits`로 되돌린다. Go에서 쓰는 콜백 타입은
-  그대로 `float64`다.
-- 이 lowering은 모든 플랫폼에 동일하게 적용된다. 타깃마다 다른 ABI를 내보내면 커밋된
-  생성 트리가 호스트·타깃에 따라 달라지기 때문이다.
-
-- 고유한 콜백 시그니처마다 영구 dispatcher를 하나 만든다. `purego.NewCallback` 슬롯은
-  회수할 수 없으므로 콜백 값마다 네이티브 콜백을 만들지 않는다.
-- `void` callback도 Windows callback ABI를 위해 내부 dispatcher에서는 `uintptr(0)`을
-  돌려주지만, shim과 native callback 시그니처는 `void`이고 그 값은 읽지 않는다.
-- 콜백 값은 동기화된 정수 토큰 레지스트리에 저장한다. borrowed 토큰은 호출이 끝나면,
-  retained 토큰은 소유 handle의 함수·파라미터별 slot에 저장되어 재등록 성공 시 교체되고,
-  `Close`나 자동 cleanup에서 삭제된다. 삭제는 진행 중인 호출을 기다린다.
-- 콜백에서 발생한 panic은 부호 있는 32비트 결과를 가진 콜백 ABI에서 `-3`으로, 이미
-  해제된 토큰 호출은 `-4`로 결정적으로 변환된다. `-3`은 native가 정리하고 반환할 수 있게
-  하는 값일 뿐이고, 호출이 돌아오면 생성된 함수가 그 panic을 `*CallbackPanicError`로 다시
-  일으킨다 — cgo 백엔드와 같은 규칙이다.
+콜백 진입점에는 `_purego_v2`가 붙습니다. native 라이브러리와 Go 생성물이 맞지 않으면
+로딩 시 심볼을 찾지 못할 수 있으므로 두 결과를 함께 갱신하세요.
+dispatcher·토큰·float 전달의 내부 계약은
+[공유 라이브러리 계약](.agent/design/06-shared-library-contract.md)에 있습니다.
 
 ### 콜백이 돌려주는 Go error
 
-`.go_error` 콜백도 dispatcher 하나를 시그니처 단위로 공유한다. dispatcher는 저장된 값을
-`func(...) (int32, error)`로 단정하고, error가 있으면 registry entry에 저장한 뒤
-`callbackResult(-5)`를 돌려준다. 결과가 여전히 `i32`이므로 `ZIGO014` 제약을 그대로 만족한다.
-`go_error`가 시그니처의 성질인 이유가 여기 있다: dispatcher 하나가 두 가지 Go 타입을 동시에
-단정할 수는 없다.
+`.go_error`를 켜면 Go 콜백이 반환한 오류를 `*CallbackError`로 전달합니다.
+같은 ABI 시그니처의 콜백들은 이 설정을 공유합니다.
+[오류 선언과 판별](bindings-callbacks.md#콜백이-돌려주는-go-error)을 참고하세요.
 
 ### 취소 플래그
 
-`.cancel` 함수의 플래그는 Go가 소유하는 `uint32` 한 워드이고, purego는 그 주소를 그대로
-바인딩 테이블의 `*uint32` 인자로 넘긴다. dispatcher도 콜백도 필요 없다. 다만 cgo와 달리
-purego에는 "C에 넘긴 Go 포인터를 호출 동안 고정한다"는 보장이 없으므로, 생성된 공개
-래퍼가 `runtime.Pinner`로 워드를 직접 고정하고 raw 계층이 호출 뒤 `runtime.KeepAlive`한다.
+`.cancel`은 purego에서도 `context.Context`와 연결됩니다. Zig 함수가 취소 플래그를
+확인해야 하며 native 호출을 강제로 중단하지는 않습니다.
+[취소 설정](bindings-streams.md#취소-cancel)과
+[메모리 고정 계약](generated-abi.md#취소-플래그)을 참고하세요.
 
 ### `std.Io` 스트림
 
-`*std.Io.Writer`/`*std.Io.Reader` 파라미터도 같은 메커니즘을 쓴다. 방향마다 영구
-dispatcher가 하나씩 있고(`StreamWriterCallbackPointer`, `StreamReaderCallbackPointer`),
-스트림 값은 사용자 콜백과 같은 토큰 레지스트리에 들어간다. 스트림은 항상 call-scoped이므로
-토큰은 호출이 끝나면 삭제된다. 결과는 `i32`라 `ZIGO014` 제약을 그대로 만족한다. 스트림
-파라미터를 받는 진입점도 `_purego_v2` 접미사를 받는다.
-reader의 무콜백 경로도 그대로 쓴다: 공개 래퍼가 `zigoReaderBytes`로 슬라이스를 얻어 raw
-함수에 `[]byte`로 넘기고, raw가 그 주소와 길이를 dispatcher 포인터·토큰과 함께 실어 보낸다.
-슬라이스가 살아 있도록 호출 뒤에 `runtime.KeepAlive`를 부른다. 이 경로에서는 dispatcher가
-한 번도 불리지 않는다.
+`io.Reader`·`io.Writer`도 지원합니다. 스트림은 호출 중에만 빌리며 호출 종료 후 보관할
+수 없습니다. reader의 빠른 경로에서는 읽기 위치가 전진하지 않는다는 점도 cgo와 같습니다.
+[스트림 가이드](bindings-streams.md)와 [실행 예제](../examples/11-io-streams/README.md)를 참고하세요.
+
+## 문제 해결
+
+| 증상 | 먼저 할 일 |
+|---|---|
+| purego 모듈 요구사항 누락 | Go 모듈에서 `go get github.com/ebitengine/purego@v0.10.2` |
+| `go.sum` 관련 오류 | Go 모듈에서 `go mod tidy` |
+| 라이브러리 파일을 찾지 못함 | 설치 경로와 `LoadLibrary` 인자 확인 |
+| 필요한 심볼을 찾지 못함 | 같은 선언·버전에서 Go 소스와 native 라이브러리를 다시 생성 |
+| 첫 함수 호출에서 로딩 panic | 명시적 로드 여부 또는 자동 로딩의 후보 경로 확인 |
+| 크로스 빌드 doctor의 `SKIP` | 타깃 호스트에서 라이브러리를 실행해 검증 |
+
+명시적 로드 실패는 `errors.Is(err, mylib.ErrLibraryLoad)`로 분류하고
+`*mylib.LibraryError`에서 경로·심볼·원인을 확인합니다.
+후보가 여러 개면 오류에 각 시도가 포함됩니다.
 
 ## 알려진 제약
 
-- purego는 v1 이전 베타 소프트웨어다. zigo는 `v0.10.2`를 고정해 생성·검증하고, 사용은
-  생성된 raw 파일에만 격리한다. 다른 버전을 요구하는 `go.mod`는 `go-doctor`가 경고한다.
-- 지원 범위는 네이티브 macOS/Linux/Windows amd64·arm64다. 모바일과 purego Tier 2
-  타깃은 후속 작업이다. Windows에서는 cgo 백엔드도 `CC="zig cc"`로 쓸 수 있으므로
-  (amd64, gnu ABI), 이 표의 선택 기준은 Windows에서도 다른 플랫폼과 같다.
-- 콜백 결과는 `void`나 `i32`만 지원하고, 그 밖의 타입은 `ZIGO014`로 거부한다.
-  값은 userdata로 돌려준다.
-- 정적 링크는 cgo 전용이다.
-- Go race detector는 여전히 cgo를 요구하므로 `CGO_ENABLED=0` 테스트에서는 사용할 수 없다.
-  race 커버리지는 cgo 백엔드 테스트에서 확보한다. Windows purego 잡도 마찬가지다.
-- zigo가 `go.mod`를 새로 만들 때만 purego 요구사항을 기록한다. 이미 있는 모듈은 직접
-  `go get github.com/ebitengine/purego@v0.10.2`를 실행한다.
+- zigo는 purego `v0.10.2`를 기준으로 생성·검증합니다. 다른 버전은 doctor가 경고합니다.
+- 모바일·32비트 타깃은 지원하지 않습니다.
+- 정적 링크는 cgo 전용입니다.
+- Go race detector는 cgo가 필요하므로 `CGO_ENABLED=0`에서는 실행할 수 없습니다.
 
-아티팩트 계약의 세부 사항은 설계 문서
-[공유 라이브러리 계약](.agent/design/06-shared-library-contract.md)에 있다.
+전체 지원 조건은 [지원 범위와 제한사항](limitations.md), OS별 로더 파일 구조는
+[생성 Go 코드의 내부 구조](generated-runtime.md#purego-로더-파일)에 있습니다.

@@ -100,14 +100,22 @@ error입니다.
 | `constructs` | 이 함수가 만드는 opaque 타입 이름 |
 | `destroys` | 이 함수가 없애는 opaque 타입 이름 |
 | `child_of_receiver` | 생성된 handle이 receiver보다 먼저 닫혀야 하는지 여부 |
-| `param_meta` | 파라미터별 `semantic`, `retention`, `reentrancy`, `thread`, `go_error`, `on_callback_failure`, `direction`, `written`, `buffer`, `flatten` |
+| `param_meta` | 문자열·버퍼·콜백 등 파라미터별 추가 계약 |
 | `semantic` | 반환값 의미. 예: `.utf8_string` |
 | `returns` | 반환 pointer의 ownership |
+| `release` | caller-owned 반환 버퍼를 해제할 함수 경로 |
+
+`param_meta`에서는 필요한 계약만 지정합니다. 문자열·`direction`·`written`은
+[버퍼 가이드](bindings-buffers.md), `retention`·`go_error`·`on_callback_failure`와
+스레드 계약은 [콜백 가이드](bindings-callbacks.md), `buffer`는
+[스트림 가이드](bindings-streams.md)를 참고하세요. `flatten`은 아래에서 설명합니다.
 
 문자열 의미, 반환 pointer ownership, retained pointer와 callback 수명은 타입만으로 결정할 수
 없으므로 명시해야 합니다.
 
-등록 타입을 선언한 upstream module을 고칠 수 없을 때는 자유 함수의 첫 번째 비주입
+### 자유 함수를 메서드로 등록하기
+
+등록 타입을 선언한 외부 모듈을 고칠 수 없을 때는 자유 함수의 첫 번째 비주입
 파라미터를 receiver로 지정할 수 있습니다. `.receiver = "Screen"`이면
 `std.mem.Allocator`나 `std.Io` 뒤의 첫 파라미터가 `*Screen` 또는 `*const Screen`인지
 reflection이 확인하고, 이후 단계는 타입 안에 선언된 method와 똑같이 처리합니다.
@@ -143,16 +151,18 @@ nested 항목에 둡니다. receiver 타입이나 첫 파라미터가 맞지 않
 }
 ```
 
-`params`에는 **Go가 넘기는 파라미터만** 적습니다. receiver(`self`)와 주입 파라미터
-(`std.mem.Allocator`, `std.Io`)는 C에도 Go에도 나타나지 않으므로 이름을 붙일 자리가
-없습니다. `fn freeString(gpa: Allocator, str: []const u8) void`의 `params`는
+`params`에는 receiver와 주입 파라미터를 제외한 이름을 적습니다. receiver(`self`)는
+생성된 Go 메서드의 수신자가 되고, 주입 파라미터(`std.mem.Allocator`, `std.Io`)는
+공개 인자에서 빠집니다. `fn freeString(gpa: Allocator, str: []const u8) void`의 `params`는
 `.{"str"}` 하나입니다. 개수가 맞지 않으면 reflection 단계에서 `ZIGO027`로 거부됩니다.
 
 `param_meta`의 field는 파라미터 이름과 일치해야 합니다. 해당 이름을 reflection 단계에서
 확실히 식별하려면 같은 항목에 `params`도 적으세요. 이름은 명시적 `params`, 대상 source AST,
 `p0` fallback 순으로 결정됩니다.
 
-plain struct 파라미터에서 일부 scalar field만 Go 인자로 받고 싶으면 `flatten`에 field 이름을
+### 설정 struct의 일부 필드만 인자로 받기
+
+일반 struct 파라미터에서 일부 scalar 필드만 Go 인자로 받고 싶으면 `flatten`에 필드 이름을
 순서대로 적습니다. `params`는 flatten 뒤의 인자 수가 아니라 원래 struct 파라미터 하나를
 셉니다. field 이름이 다른 파라미터나 다른 flattened field와 겹치지 않으면 그대로 Go 이름이
 되고, 겹치면 `<파라미터>_<field>`가 됩니다.

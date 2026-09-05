@@ -59,8 +59,10 @@ callconv(.c) void`는 Go에서 반환값 없는 `func(...)`가 되고, cgo와 pu
 }
 ```
 
-```go
-type Observer func(int32) (int32, error)   // .go_error = false 였다면 func(int32) int32
+생성되는 API:
+
+```text
+type Observer func(int32) (int32, error)
 
 func Apply(value int32, callback Observer) (int32, error)
 ```
@@ -140,15 +142,21 @@ callback state에 기록하고, 생성된 공개 함수는 native 호출이 끝�
 | `ErrNativePanic` | Zig panic | `*NativePanicError` |
 | `ErrNativeStatus` | 알려지지 않은 native status | `*StatusError` |
 | `ErrLibraryLoad` | purego library·symbol load 실패 | `*LibraryError` |
-| `ErrCallbackPanic` | Go 콜백 안에서 발생한 panic (반환이 아니라 **rethrow**) | `*CallbackPanicError` |
+| `ErrCallbackPanic` | Go 콜백 panic; 오류 반환이 아니라 다시 panic | `*CallbackPanicError` |
 | `ErrCallbackFailed` | `.go_error` 콜백이 돌려준 error | `*CallbackError` |
-| `Err<ZigError>` | Zig error set 값. 반환된 값의 `Operation`이 어느 호출에서 났는지 말한다 | `*Error` |
+| `Err<ZigError>` | Zig error set의 오류 | `*Error` |
+
+`Operation`은 오류가 발생한 호출 이름입니다. 아래는 `err`를 받은 뒤 분류하는 코드이며,
+생성된 타입·오류 이름은 실제로 import한 패키지 이름을 붙여 사용하세요.
 
 ```go
 switch {
 case errors.Is(err, ErrInvalidHandle):
+    // 객체가 유효한지, 이미 닫혔는지 확인합니다.
 case errors.Is(err, ErrNativePanic):
+    // 작업을 중단하고 관련 handle을 재사용하지 않습니다.
 case errors.Is(err, ErrOutOfMemory):
+    // 라이브러리의 메모리 부족 오류를 처리합니다.
 }
 
 var panicErr *NativePanicError

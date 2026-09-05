@@ -2,11 +2,32 @@
 
 native 객체를 Go handle로 노출하고, 누가 언제 닫을지 정합니다. 선언의 기본 형태는 [`bindings.zig` 선언](bindings.md)을 참고하세요.
 
-처음에는 [opaque 등록](#opaque-handle)과 [생성자·소멸자 짝](#타입-밖에-선언된-생성자와-소멸자)을
-확인하세요. 부모 객체에 의존하면 [borrowed 반환](#receiver가-소유하는-borrowed-handle-반환)과
+먼저 아래의 수명 규칙을 확인한 뒤 [opaque 등록](#opaque-handle)을 작성하세요.
+타입 밖에 생성자·소멸자가 있다면 [명시적 짝 지정](#타입-밖에-선언된-생성자와-소멸자)을 사용합니다. 부모 객체에 의존하면 [borrowed 반환](#receiver가-소유하는-borrowed-handle-반환)과
 [자식 생성자](#다른-handle의-메서드인-생성자)를 구분해야 합니다.
 
+## 호출과 Close의 수명 규칙
+
+| 상황 | 생성된 API의 동작 |
+|---|---|
+| nil·닫힌 handle 호출 | native에 진입하기 전에 `*HandleError` 반환 |
+| 일반 handle의 `Close` | 닫힘으로 표시하고, 진행 중 호출이 모두 끝나면 해제 |
+| 열린 자식이 있는 부모의 `Close` | `ErrHandleInUse`; 자식을 먼저 닫아야 함 |
+| borrowed view 호출 중 부모의 `Close` | `ErrHandleInUse`; 호출 후 다시 시도 |
+| Zig panic에 참여한 handle | poison 상태로 바뀌고 재사용 불가 |
+| GC cleanup | 정리 안전망이며 실행 시점은 보장하지 않음 |
+
+진행 중 호출이 native 메모리를 붙잡고 있어도 객체의 모든 동작을 직렬화하지는 않습니다.
+원래 Zig 타입이 동시 호출을 허용하지 않으면 Go 호출자가 잠금을 제공해야 합니다.
+
+retained 콜백과 포인터는 소유 객체가 닫힐 때까지 유효해야 합니다. 콜백 교체와 native 자원
+해제의 내부 순서는 [생성 runtime](generated-runtime.md#handle의-수명-관리)에 있습니다.
+Zig panic 후에는 native 소멸자도 실행하지 않으므로 [panic 처리 조건](limitations.md#오류와-panic)을
+확인하고 해당 작업을 중단하세요.
+
 ## Opaque handle
+
+완성된 생성·호출·종료 코드는 [03-opaque 사용 예제](../examples/03-opaque/go/opaque/example_test.go)에 있습니다.
 
 일반 Zig struct나 상태를 가진 객체는 pointer handle로 등록합니다.
 
@@ -23,6 +44,8 @@ constructor와 멱등 `Close() error`가 생성됩니다. 보통 반환 error는
 nil·closed 상태를 검사합니다. 검사 결과는 항상 반환값으로 전달되며, 오류 반환 자리가
 없던 메서드에는 `error` 결과가 추가됩니다.
 
+### 객체를 값 인자로 전달하기
+
 등록한 opaque struct는 파라미터에서 값으로 받을 수도 있습니다. `fn isBottom(self: Screen)`은
 Go에서 pointer receiver와 같은 `func (s *Screen) IsBottom() (..., error)` 메서드가 되고,
 `fn compare(expected: bool, other: Screen)`의 `other`는 Go에서 `*Screen`입니다. 두 경우 모두
@@ -35,10 +58,12 @@ handle과 같습니다.
 것은 `ZIGO003`으로 계속 거부됩니다. 소유할 값을 반환하려면 pointer를 반환하고
 `.constructs`를 지정하거나, `.allocator`를 설정해 값 생성자를 boxing하는 경로를 사용하십시오.
 
+### 복제 함수와 추가 생성 경로
+
 `init`/`create`/`new`/`open` 이름을 쓰지 않는 factory도 `.returns = .caller`를 붙이면
 같은 owned handle을 돌려줍니다. 이름이 아니라 ownership metadata가 기준이므로,
 `clone`이나 `openChild` 같은 메서드도 `newX` helper를 거쳐 cleanup과 retained callback
-등록을 그대로 받습니다. 다만 이것은 **그 타입에 이미 짝지어진 생성자와 소멸자가 있을 때**의
+등록을 그대로 받습니다. 다만 이것은 그 타입에 이미 짝지어진 생성자와 소멸자가 있을 때의
 이야기입니다(없으면 `ZIGO015`). 짝 자체를 만드는 것은 아래의 `.constructs`/`.destroys`입니다.
 
 ```zig
@@ -211,25 +236,6 @@ segment가 기본 이름이므로 위 선언은 `Cols()`, `CursorX()`, `CursorSt
 거부합니다. getter/setter는 reflection에서 일반 메서드로 합성되므로 cgo와 purego에 같은 Go
 API를 만들고 `abi-check` 및 `abi-diff`에도 일반 함수처럼 나타납니다. 접근자를 추가하는 것은
 compatible append이며, 함수와 이름이 겹치면 기존 `ZIGO024`/`ZIGO036` 진단을 사용합니다.
-
-## 호출과 Close의 수명 규칙
-
-| 상황 | 생성된 API의 동작 |
-|---|---|
-| nil·닫힌 handle 호출 | native에 진입하기 전에 `*HandleError` 반환 |
-| 일반 handle의 `Close` | 닫힘으로 표시하고, 진행 중 호출이 모두 끝나면 해제 |
-| 열린 자식이 있는 부모의 `Close` | `ErrHandleInUse`; 자식을 먼저 닫아야 함 |
-| borrowed view 호출 중 부모의 `Close` | `ErrHandleInUse`; 호출 후 다시 시도 |
-| Zig panic에 참여한 handle | poison 상태로 바뀌고 재사용 불가 |
-| GC cleanup | 정리 안전망이며 실행 시점은 보장하지 않음 |
-
-진행 중 호출이 native 메모리를 붙잡고 있어도 객체의 모든 동작을 직렬화하지는 않습니다.
-원래 Zig 타입이 동시 호출을 허용하지 않으면 Go 호출자가 잠금을 제공해야 합니다.
-
-retained 콜백과 포인터는 소유 객체가 닫힐 때까지 유효해야 합니다. 콜백 교체와 native 자원
-해제의 내부 순서는 [생성 runtime](generated-runtime.md#handle의-수명-관리)에 있습니다.
-Zig panic 후에는 native 소멸자도 실행하지 않으므로 [panic 처리 조건](limitations.md#오류와-panic)을
-확인하고 해당 작업을 중단하세요.
 
 ## 인터페이스
 

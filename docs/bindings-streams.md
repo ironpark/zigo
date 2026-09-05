@@ -17,13 +17,16 @@ pub fn dump(self: *Document, w: *std.Io.Writer) error{WriteFailed}!void { ... }
 pub fn load(self: *Document, r: *std.Io.Reader) error{ReadFailed}!usize { ... }
 ```
 
-```go
-// Go
+생성되는 API:
+
+```text
 func (d *Document) Dump(w io.Writer) error
 func (d *Document) Load(r io.Reader) (uint, error)
 ```
 
-shim이 파라미터마다 어댑터를 만들어 대상 함수에 넘깁니다. 어댑터는 staging 버퍼를 들고
+### 버퍼 크기 선택
+
+shim이 파라미터마다 어댑터를 만들어 대상 함수에 넘깁니다. 어댑터는 임시 버퍼를 들고
 있고, 데이터를 모아서 Go의 `Write`/`Read`를 호출합니다. 작은 쓰기를 묶어 호출 횟수를
 줄이지만, 실제 횟수는 명시적 flush와 reader·writer의 동작에도 영향을 받습니다.
 함수가 돌아오기 전에 shim이 `flush`하므로 대상 함수가
@@ -37,9 +40,10 @@ shim이 파라미터마다 어댑터를 만들어 대상 함수에 넘깁니다.
 .{ .path = "Document.load", .params = .{"r"}, .param_meta = .{ .r = .{ .buffer = 4096 } } }
 ```
 
-**실패와 panic.** Go `Write`가 error를 반환하면 그 error가 저장되고, native 호출이 끝난 뒤
-공개 함수가 `*StreamError`로 감싸 돌려줍니다. native 결과보다 우선합니다: 출력이 도착하지
-않은 작업에 라이브러리가 성공을 보고했더라도 호출자가 원하는 것은 자기 error입니다.
+### 실패와 panic
+
+Go `Write`가 error를 반환하면 그 error가 저장되고, native 호출이 끝난 뒤
+공개 함수가 `*StreamError`로 감싸 돌려줍니다. 저장된 Go 오류는 native 반환 결과보다 우선합니다.
 `Unwrap`이 원래 error를 내주므로 `errors.Is`가 그대로 통합니다. short write는
 `io.ErrShortWrite`입니다. Go `Read`가 `0, io.EOF`를 주면 스트림 끝이고, 그 외의 error는
 `*StreamError`로 돌아옵니다. Go 쪽이 panic하면 기존 콜백 경로와 같이
@@ -48,9 +52,11 @@ shim이 파라미터마다 어댑터를 만들어 대상 함수에 넘깁니다.
 
 스트림 파라미터가 있는 함수는 Zig 반환 타입과 무관하게 Go에서 `error`를 함께 반환합니다.
 
-**`[]byte` 무콜백 경로.** `io.Reader` 인자가 남은 바이트를 통째로 내줄 수 있으면 zigo는
+### 메모리 reader의 빠른 경로
+
+`io.Reader` 인자가 남은 바이트를 통째로 내줄 수 있으면 zigo는
 슬라이스 하나를 그대로 넘기고, shim은 `std.Io.Reader.fixed`로 감쌉니다. 이때 경계를 넘는
-콜백은 **0회**입니다. 자격이 있는 타입은 두 가지입니다.
+콜백을 호출하지 않습니다. 사용할 수 있는 타입은 두 가지입니다.
 
 - `Bytes() []byte`를 가진 타입 — 표준 라이브러리의 `*bytes.Buffer`가 여기 해당합니다.
   관례상 "아직 읽지 않은 바이트"를 뜻하는 메서드입니다.
@@ -66,26 +72,26 @@ shim이 파라미터마다 어댑터를 만들어 대상 함수에 넘깁니다.
 빈 슬라이스도 "없음"이 아니라 "비어 있음"입니다: 빈 `*bytes.Buffer`는 빠른 경로로 즉시
 스트림 끝이 되고, 콜백으로 되돌아가지 않습니다.
 
-> **주의.** 이 경로를 타면 zigo는 Go reader를 **전진시키지 않습니다**. ABI가 native가
+> 주의: 이 경로에서는 Go reader의 읽기 위치가 전진하지 않습니다. ABI가 native가
 > 몇 바이트를 읽었는지 보고하지 않기 때문입니다. 호출 뒤에도 `*bytes.Buffer`에는 같은
 > 바이트가 그대로 남아 있습니다. 한 reader를 여러 호출에 나눠 쓰면서 소비 위치가
 > 중요하다면 `bytes.NewReader(...)`처럼 빠른 경로에 들어가지 않는 타입을 쓰십시오.
 
-**스레드.** 콜백은 native 호출 안에서 같은 스레드로 동기 호출되므로, Go 값은 호출한
+### 스레드와 수명 제한
+
+콜백은 native 호출 안에서 같은 스레드로 동기 호출되므로, Go 값은 호출한
 goroutine이 계속 소유합니다. 대상 함수가 어댑터를 다른 스레드로 넘겨 호출이 끝난 뒤에도
 쓰면 동작은 정의되지 않습니다.
 
-**허용되지 않는 위치.** 어댑터가 호출 스택에 살기 때문에 스트림은 파라미터 자리에서만,
+어댑터가 호출 스택에 살기 때문에 스트림은 파라미터 자리에서만,
 그리고 call-scoped로만 쓸 수 있습니다. extern struct 필드, 콜백 시그니처, 슬라이스 원소,
 optional, `.retention = .retained`는 각각 이유를 담은 `ZIGO023`으로 거부합니다. 반환 위치는
 아래의 규칙을 따릅니다.
 
 ## Zig가 내주는 스트림
 
-메서드가 스트림을 **내줄** 수도 있습니다. 포인터 자체는 Go로 건너가지 않습니다 — 그것은
-객체의 것이고, 객체보다 오래 사는 Go 값은 안전하게 만들 수 없기 때문입니다. 대신 Go가
-그 스트림에 실제로 원하는 것, 즉 `io.Writer`·`io.Reader`가 요구하는 메서드를 handle에
-생성합니다.
+Zig 메서드가 스트림을 반환하면 handle에 `io.Writer`·`io.Reader`를 만족하는 Go 메서드를
+생성합니다. 스트림 포인터 자체는 Go에 반환하지 않으며 원래 객체의 수명 안에서 사용합니다.
 
 ```zig
 // Zig
@@ -93,26 +99,38 @@ pub fn writer(self: *Sink) *std.Io.Writer { return &self.inner.writer; }
 pub fn reader(self: *Source) *std.Io.Reader { return &self.inner; }
 ```
 
-```go
-// Go
+생성되는 API:
+
+```text
 func (s *Sink) Write(bytes []byte) (int, error)
 func (s *Sink) Flush() error
 func (s *Source) Read(buffer []byte) (int, error)
-
-io.Copy(sink, src)   // 둘 다 그대로 표준 인터페이스다
-io.Copy(dst, source)
 ```
 
-메서드마다 shim이 `writer()`/`reader()`를 **다시 부릅니다**. 포인터를 어디에도 보관하지
-않으므로 상하지 않고, 수명 질문은 receiver handle의 기존 획득/해제/poison 규칙이 그대로
-답합니다 — 닫힌 handle의 `Write`는 다른 메서드와 똑같이 `ErrInvalidHandle`입니다.
+사용 예제 — 생성한 handle을 표준 Go 함수에 넘깁니다.
+
+```go
+if _, err := io.Copy(sink, src); err != nil {
+    return err
+}
+if err := sink.Flush(); err != nil {
+    return err
+}
+```
+
+메서드 호출마다 shim이 `writer()`/`reader()`를 다시 호출합니다. 스트림 포인터를 Go에
+보관하지 않으며 기존 handle 수명 검사를 적용합니다. 닫힌 handle의 `Write`도 다른
+메서드와 마찬가지로 `ErrInvalidHandle`입니다.
 
 `Read`는 `io.Reader` 규약을 따릅니다: 스트림 끝은 0바이트가 아니라 `io.EOF`입니다. Zig 쪽은
 `readSliceShort`가 짧은 개수로 끝을 알리고, 그 0을 Go가 `io.EOF`로 옮깁니다.
 
-규칙: 스트림 반환은 **메서드**여야 하고(생성된 연산이 receiver에게 다시 물어야 하므로),
-**파라미터가 없어야 하며**(`Write`/`Read`/`Flush`에 그것을 실을 자리가 없습니다), error
-union이나 optional 안이 아니라 **반환 타입 그 자체**여야 합니다. 셋 다 `ZIGO023`입니다.
+스트림 반환은 다음 조건을 모두 만족해야 합니다. 어기면 `ZIGO023`으로 거부합니다.
+
+- receiver가 있는 메서드여야 합니다.
+- receiver 외의 파라미터가 없어야 합니다.
+- 반환 타입이 직접 `*std.Io.Writer` 또는 `*std.Io.Reader`여야 합니다. error union·optional로 감쌀 수 없습니다.
+
 한 타입이 writer 하나와 reader 하나를 함께 낼 수는 있지만, 같은 방향을 둘 내면 Go 이름이
 겹쳐 `ZIGO024`가 됩니다.
 
@@ -147,13 +165,21 @@ pub fn reduce(self: *Hub, rounds: u32, cancel: *const std.atomic.Value(u32)) Red
 }
 ```
 
-```go
-func (h *Hub) Reduce(ctx context.Context, rounds uint32) (float64, error)
+생성되는 API:
 
+```text
+func (h *Hub) Reduce(ctx context.Context, rounds uint32) (float64, error)
+```
+
+사용 예제 — 호출 시간 제한을 설정합니다.
+
+```go
 ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 defer cancel()
 total, err := hub.Reduce(ctx, 1 << 30)
-errors.Is(err, context.DeadlineExceeded) // true
+if errors.Is(err, context.DeadlineExceeded) {
+    // 제한 시간 안에 완료하지 못했습니다.
+}
 ```
 
 ### 취소가 적용되는 시점

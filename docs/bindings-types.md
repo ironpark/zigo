@@ -22,12 +22,16 @@ C는 8, 16, 32, 64비트 정수만 이름 붙일 수 있습니다. `u21`이나 `
 `semantic.json`에는 원래 폭(`"bits": 21`)이 그대로 기록되므로 `abi-diff`는 21 → 32 변경을
 여전히 breaking으로 봅니다.
 
+### 입력 범위와 오류
+
 승격된 파라미터가 하나라도 있으면 그 함수의 공개 Go 시그니처는 `error`를 하나 더 반환합니다.
 범위 검사는 Go에서, cgo 호출 이전에 이뤄지므로 `u21`에 담기지 않는 값은 native를 건드리지도
 않고 `*RangeError`로 돌아옵니다. `errors.Is(err, ErrOutOfRange)`로 판별하고, `errors.As`로
 `Operation`, `Parameter`, `Type`(`"u21"`)을 읽습니다. native 호출이 없었으므로
 `LastErrorMessage()`도 그대로입니다. shim도 같은 검사를 유지하지만, 그것은 raw 패키지를
 직접 부르는 코드를 위한 두 번째 방어선입니다.
+
+### 비표준 폭 정수의 slice
 
 `[]const u21` 입력은 Go의 `[]uint32`가 되고 shim이 바인딩의 `.allocator`로 `[]u21` 임시
 버퍼를 만들어 범위를 검사하며 원소별로 좁힙니다. `.direction = .out`인 `[]u21`도 같은 임시
