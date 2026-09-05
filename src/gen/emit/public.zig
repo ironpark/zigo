@@ -319,72 +319,19 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         else
             try allocator.dupe(u8, go_name);
         defer allocator.free(operation);
-        // A nil or closed handle is a caller error, so it leaves through the
-        // return value instead of a panic. Functions that do not touch a
-        // handle keep their plain signature.
-        const needs_handle_check = function.origin.receiver != null or docs.hasOpaqueParameter(function.origin.*);
-        // A promoted integer parameter is checked in Go, before the cgo call,
-        // so an out-of-range argument costs nothing native and the caller gets
-        // a `RangeError` rather than a panic the C wrapper would swallow. Both
-        // reasons grow the signature the same way.
-        const needs_range_check = public_writers.hasNarrowIntParameter(function.origin.*);
-        // A stream parameter can be nil, and the Go value behind it can fail
-        // inside the call. Either way the caller needs somewhere to be told,
-        // so a stream grows the signature by an `error` just as a handle does.
-        const has_stream = common.functionHasStream(function.origin.*);
-        // A callback that can return a Go error grows the signature the same
-        // way a stream does: the error happened while native code was running
-        // and has nowhere else to be told.
-        const has_callback_error = function.reaches_callback_errors;
-        const needs_check = needs_handle_check or needs_range_check or has_stream or has_callback_error;
+        const shape = signatureShape(function);
+        const needs_handle_check = shape.needs_handle_check;
+        const needs_range_check = shape.needs_range_check;
+        const has_stream = shape.has_stream;
+        const has_callback_error = shape.has_callback_error;
+        const needs_check = shape.needs_check;
         try docs.writePublicFunctionDoc(writer, function.origin.*, go_name, owned_type, public_writers.functionReachesCallbacks(program, function.origin.*), has_callback_error);
         if (function.origin.receiver) |receiver| {
-            try writer.print("func ({s} *{s}) {s}(", .{ receiver_name.?, receiver, go_name });
+            try writer.print("func ({s} *{s}) {s}", .{ receiver_name.?, receiver, go_name });
         } else {
-            try writer.print("func {s}(", .{go_name});
+            try writer.print("func {s}", .{go_name});
         }
-        var public_parameter_index: usize = 0;
-        // A cancellable call takes the context first, the way every Go API
-        // that can be cancelled does. The flag behind it is the binding's
-        // business, so the parameter carrying it is not in the signature.
-        if (function.origin.cancel != null) {
-            try writer.writeAll("ctx context.Context");
-            public_parameter_index = 1;
-        }
-        for (function.origin.params, 0..) |parameter, parameter_index| {
-            if (function.userdataFor(parameter_index) != null) continue;
-            if (parameter.injected != null) continue;
-            if (parameter.type == .cancel_flag) continue;
-            if (parameter.flatten) |fields| {
-                for (fields, 0..) |field, field_index| {
-                    const abi_parameter = function.flattenedParam(parameter_index, field_index);
-                    const name = try common.flattenedGoNameAlloc(allocator, abi_parameter.name);
-                    defer allocator.free(name);
-                    if (public_parameter_index != 0) try writer.writeAll(", ");
-                    try writer.print("{s} ", .{name});
-                    try public_writers.writePublicGoType(scope, writer, field.type);
-                    public_parameter_index += 1;
-                }
-                continue;
-            }
-            if (public_parameter_index != 0) try writer.writeAll(", ");
-            try writer.print("{s} ", .{go_names[parameter_index]});
-            if (parameter.type == .callback) {
-                const callback_name = function.callbackType(parameter_index).?.name;
-                try writer.writeAll(callback_name);
-            } else {
-                try public_writers.writePublicParameterType(scope, writer, parameter);
-            }
-            public_parameter_index += 1;
-        }
-        try writer.writeByte(')');
-        if (constructor) |value| {
-            try writer.print(" (*{s}, error)", .{value.type});
-        } else if (needs_check and function.origin.@"return" != .error_union) {
-            try public_writers.writeCheckedFunctionReturnType(scope, writer, function.origin.*);
-        } else {
-            try public_writers.writePublicFunctionReturnType(scope, writer, function.origin.*);
-        }
+        try writePublicSignature(scope, allocator, writer, function, go_names, constructor);
         try writer.writeAll(" {\n");
         // No runtime.KeepAlive for handles here: renderHandleChecks emits a
         // `defer x.zigoRelease()` per acquired handle, which already holds the
@@ -764,6 +711,110 @@ const public_std_imports = [_]struct { qualifier: []const u8, path: []const u8 }
     .{ .qualifier = "atomic", .path = "sync/atomic" },
     .{ .qualifier = "unsafe", .path = "unsafe" },
 };
+
+/// What grows a public function's Go signature beyond its parameters.
+pub const SignatureShape = struct {
+    /// A nil or closed handle is a caller error, so it leaves through the
+    /// return value instead of a panic. Functions that do not touch a
+    /// handle keep their plain signature.
+    needs_handle_check: bool,
+    /// A promoted integer parameter is checked in Go, before the cgo call,
+    /// so an out-of-range argument costs nothing native and the caller gets
+    /// a `RangeError` rather than a panic the C wrapper would swallow.
+    needs_range_check: bool,
+    /// A stream parameter can be nil, and the Go value behind it can fail
+    /// inside the call. Either way the caller needs somewhere to be told,
+    /// so a stream grows the signature by an `error` just as a handle does.
+    has_stream: bool,
+    /// A callback that can return a Go error grows the signature the same
+    /// way a stream does: the error happened while native code was running
+    /// and has nowhere else to be told.
+    has_callback_error: bool,
+    /// Any of the above.
+    needs_check: bool,
+};
+
+pub fn signatureShape(function: abi.AbiFn) SignatureShape {
+    const needs_handle_check = function.origin.receiver != null or docs.hasOpaqueParameter(function.origin.*);
+    const needs_range_check = public_writers.hasNarrowIntParameter(function.origin.*);
+    const has_stream = common.functionHasStream(function.origin.*);
+    const has_callback_error = function.reaches_callback_errors;
+    return .{
+        .needs_handle_check = needs_handle_check,
+        .needs_range_check = needs_range_check,
+        .has_stream = has_stream,
+        .has_callback_error = has_callback_error,
+        .needs_check = needs_handle_check or needs_range_check or has_stream or has_callback_error,
+    };
+}
+
+/// The parameter list and result of a public function, from the opening
+/// parenthesis to the end of the result: everything in the signature after
+/// the name. `go_names` null writes the parameter types alone, which is the
+/// spelling that decides whether two methods satisfy one interface.
+pub fn writePublicSignature(
+    scope: public_writers.PublicScope,
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    function: abi.AbiFn,
+    go_names: ?[][]u8,
+    constructor: ?semantic.Constructor,
+) !void {
+    try writer.writeByte('(');
+    try writePublicParameters(scope, allocator, writer, function, go_names);
+    try writer.writeByte(')');
+    if (constructor) |value| {
+        try writer.print(" (*{s}, error)", .{value.type});
+    } else if (signatureShape(function).needs_check and function.origin.@"return" != .error_union) {
+        try public_writers.writeCheckedFunctionReturnType(scope, writer, function.origin.*);
+    } else {
+        try public_writers.writePublicFunctionReturnType(scope, writer, function.origin.*);
+    }
+}
+
+/// The public parameter list, without its parentheses. A cancellable call
+/// takes the context first, the way every Go API that can be cancelled does;
+/// the flag behind it is the binding's business, so the parameter carrying
+/// it is not in the signature, and neither are userdata tokens or injected
+/// arguments.
+pub fn writePublicParameters(
+    scope: public_writers.PublicScope,
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    function: abi.AbiFn,
+    go_names: ?[][]u8,
+) !void {
+    var index: usize = 0;
+    if (function.origin.cancel != null) {
+        try writer.writeAll(if (go_names != null) "ctx context.Context" else "context.Context");
+        index = 1;
+    }
+    for (function.origin.params, 0..) |parameter, parameter_index| {
+        if (function.userdataFor(parameter_index) != null) continue;
+        if (parameter.injected != null) continue;
+        if (parameter.type == .cancel_flag) continue;
+        if (parameter.flatten) |fields| {
+            for (fields, 0..) |field, field_index| {
+                const abi_parameter = function.flattenedParam(parameter_index, field_index);
+                const name = try common.flattenedGoNameAlloc(allocator, abi_parameter.name);
+                defer allocator.free(name);
+                if (index != 0) try writer.writeAll(", ");
+                if (go_names != null) try writer.print("{s} ", .{name});
+                try public_writers.writePublicGoType(scope, writer, field.type);
+                index += 1;
+            }
+            continue;
+        }
+        if (index != 0) try writer.writeAll(", ");
+        if (go_names) |names| try writer.print("{s} ", .{names[parameter_index]});
+        if (parameter.type == .callback) {
+            try writer.writeAll(function.callbackType(parameter_index).?.name);
+        } else {
+            try public_writers.writePublicParameterType(scope, writer, parameter);
+        }
+        index += 1;
+    }
+}
 
 pub fn writePublicImports(allocator: std.mem.Allocator, writer: *std.Io.Writer, body: []const u8, program: abi.Program, options: emit.Options) !void {
     var needed: [public_std_imports.len][]const u8 = undefined;

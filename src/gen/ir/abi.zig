@@ -157,6 +157,28 @@ pub const ParamOwnership = enum {
     stream,
 };
 
+/// A declared Go interface with every method resolved to the lowered
+/// function that implements it on each listed type. Whether those functions
+/// spell one Go signature is judged on the rendered text by generation.
+pub const AbiInterface = struct {
+    name: []const u8,
+    doc: ?[]const u8 = null,
+    closer: bool = true,
+    package: ?[]const u8 = null,
+    /// Registered type names, in declaration order.
+    types: []const []const u8,
+    methods: []const Method,
+
+    pub const Method = struct {
+        /// The Zig declaration name the binding listed.
+        name: []const u8,
+        /// Indexed like `types`: the method on each implementing type. The
+        /// pointers reach into the full function table, so a per-package
+        /// view of the program does not invalidate them.
+        functions: []const *const AbiFn,
+    };
+};
+
 /// The function a `.release` name resolves to and the one exposed parameter
 /// it frees through. Both the release lookup in lowering and the validation
 /// of that lookup read this, so the rule has one home.
@@ -591,6 +613,7 @@ pub const Program = struct {
     error_codes: []const ErrorCode = &.{},
     handles: []const AbiOpaque = &.{},
     functions: []const AbiFn,
+    interfaces: []const AbiInterface = &.{},
     /// The semantic functions `functions[].origin` point into, after checked
     /// promotion, for the rules that need to look across the whole program.
     origins: []const semantic.SemanticFn = &.{},

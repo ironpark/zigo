@@ -1,6 +1,7 @@
 const std = @import("std");
 const emit = @import("emit/emit.zig");
 const abi = @import("abi");
+const diagnostic = @import("diagnostic");
 const errors_lock = @import("errors_lock");
 const lower = @import("lower");
 const naming = @import("naming");
@@ -92,6 +93,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .cgo => .cgo,
         .purego => .purego,
     });
+    if (try interfaceSignatureMismatch(scratch_allocator, program, options)) |_| return error.InvalidSemantic;
     var emitter_options: emit.Options = .{
         .go_module = options.go_module,
         .cflags_override = options.cflags_override,
@@ -171,7 +173,11 @@ fn appendEmitters(allocator: std.mem.Allocator, prepared: *std.ArrayList(Prepare
         const relative_path = try emitter.pathAlloc(allocator, program, options);
         var rendered: std.Io.Writer.Allocating = .init(allocator);
         defer rendered.deinit();
-        try emitter.render(allocator, &rendered.writer, program, options);
+        // The writer only allocates, so a failed write is a failed allocation.
+        emitter.render(allocator, &rendered.writer, program, options) catch |err| switch (err) {
+            error.WriteFailed => return error.OutOfMemory,
+            else => return err,
+        };
         const contents = try rendered.toOwnedSlice();
         try prepared.append(allocator, .{
             .path = relative_path,
@@ -225,6 +231,42 @@ test "split documents emit package directories shared lifecycle and cross import
     try std.testing.expect(std.mem.indexOf(u8, child, "zigo_default \"example.com/sample/sample\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, child, "mode zigo_default.Mode") != null);
     _ = try temporary.dir.statFile(std.testing.io, "sample/sample_enums_gen.go", .{});
+}
+
+/// The one interface rule that has to see the generated surface: every
+/// implementation of a method spells the same Go signature. The CLI renders
+/// it as a ZIGO049 diagnostic; `generate` only refuses.
+pub fn interfaceSignatureIssue(allocator: std.mem.Allocator, document: semantic.Semantic, options: Options) !?diagnostic.Diagnostic {
+    if (document.interfaces == null) return null;
+    // Signatures do not depend on which code an error got, only on the
+    // error set existing, so any assignment will do for this rendering.
+    var names: std.ArrayList([]const u8) = .empty;
+    defer names.deinit(allocator);
+    for (document.functions) |function| if (function.@"return" == .error_union) for (function.@"return".error_union.error_set) |name| {
+        for (names.items) |existing| if (std.mem.eql(u8, existing, name)) break;
+        try names.append(allocator, name);
+    };
+    const codes = try allocator.alloc(abi.ErrorCode, names.items.len);
+    defer allocator.free(codes);
+    for (names.items, codes, 1..) |name, *code, number| code.* = .{ .code = @intCast(number), .name = name };
+    const program = try lower.semanticDocumentForBackend(allocator, document, options.package, options.prefix, codes, switch (options.backend) {
+        .cgo => .cgo,
+        .purego => .purego,
+    });
+    const mismatch = try interfaceSignatureMismatch(allocator, program, options) orelse return null;
+    return .{
+        .severity = .@"error",
+        .code = "ZIGO049",
+        .message = try std.fmt.allocPrint(allocator, "method `{s}` has signature `{s}` on `{s}` but `{s}` on `{s}`", .{
+            mismatch.method, mismatch.first_signature, mismatch.first_type, mismatch.second_signature, mismatch.second_type,
+        }),
+        .site = .{ .path = "semantic.json", .declaration = mismatch.interface },
+        .hint = "give every listed type the same Go signature for the method, or drop the method or the type from the interface",
+    };
+}
+
+fn interfaceSignatureMismatch(allocator: std.mem.Allocator, program: abi.Program, options: Options) !?emit.interfaces.Mismatch {
+    return emit.interfaces.signatureMismatch(allocator, program, .{ .go_module = options.go_module, .go_must_variants = options.go_must_variants });
 }
 
 /// True for a Go file that got no further than its own prelude. Every emitter
@@ -1139,4 +1181,48 @@ test "purego generation emits an atomic retryable loader and explicit callback A
     const legacy_shim = try legacy.dir.readFileAlloc(std.testing.io, "shim.zig", std.testing.allocator, .limited(16 * 1024));
     defer std.testing.allocator.free(legacy_shim);
     try std.testing.expect(std.mem.containsAtLeast(u8, legacy_shim, 1, "extern fn zg_install_go_callback_callback"));
+}
+
+test "an interface whose implementations disagree on a signature is a ZIGO049" {
+    var int_batch: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "IntBatch" } };
+    var float_batch: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "FloatBatch" } };
+    const document: semantic.Semantic = .{
+        .constructors = &.{
+            .{ .deinit = "deinit", .init = "create", .type = "IntBatch" },
+            .{ .deinit = "deinit", .init = "create", .type = "FloatBatch" },
+        },
+        .functions = &.{
+            .{ .name = "create", .namespace = "IntBatch", .ownership = .caller, .params = &.{}, .@"return" = .{ .error_union = .{ .error_set = &.{"OutOfMemory"}, .payload = &int_batch } }, .symbol = "zg_int_batch_create" },
+            .{ .name = "push", .receiver = "IntBatch", .params = &.{.{ .name = "value", .type = .{ .int = .{ .bits = 32, .signed = true } } }}, .@"return" = .{ .void = {} }, .symbol = "zg_int_batch_push" },
+            .{ .name = "deinit", .receiver = "IntBatch", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_int_batch_deinit" },
+            .{ .name = "create", .namespace = "FloatBatch", .ownership = .caller, .params = &.{}, .@"return" = .{ .error_union = .{ .error_set = &.{"OutOfMemory"}, .payload = &float_batch } }, .symbol = "zg_float_batch_create" },
+            .{ .name = "push", .receiver = "FloatBatch", .params = &.{.{ .name = "value", .type = .{ .float = .{ .bits = 64 } } }}, .@"return" = .{ .void = {} }, .symbol = "zg_float_batch_push" },
+            .{ .name = "deinit", .receiver = "FloatBatch", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_float_batch_deinit" },
+        },
+        .interfaces = &.{.{ .methods = &.{"push"}, .name = "Batch", .types = &.{ "IntBatch", "FloatBatch" } }},
+        .package = "batches",
+        .prefix = "zg",
+        .types = &.{
+            .{ .kind = .@"opaque", .name = "IntBatch" },
+            .{ .kind = .@"opaque", .name = "FloatBatch" },
+        },
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    // Structural validation lets it through: both types have `push`.
+    try validate.semanticDocument(arena.allocator(), document);
+    const options: Options = .{ .package = "batches", .prefix = "zg", .go_module = "example.com/batches" };
+    const issue = (try interfaceSignatureIssue(arena.allocator(), document, options)) orelse return error.MissingDiagnostic;
+    const rendered = try issue.renderAlloc(arena.allocator());
+    try std.testing.expectEqualStrings(
+        "error[ZIGO049]: method `push` has signature `Push(int32) error` on `IntBatch` but `Push(float64) error` on `FloatBatch`\n" ++
+            "  --> semantic.json (Batch)\n" ++
+            "  hint: give every listed type the same Go signature for the method, or drop the method or the type from the interface\n",
+        rendered,
+    );
+    const bytes = try document.serialize(arena.allocator());
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    try std.testing.expectError(error.InvalidSemantic, generate(arena.allocator(), std.testing.io, bytes, temporary.dir, options));
 }

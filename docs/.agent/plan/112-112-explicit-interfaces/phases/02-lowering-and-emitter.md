@@ -2,7 +2,7 @@
 depends_on:
 - "112-112-explicit-interfaces#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `zig build test` 녹색. 기존 golden 44개 불변, 새 golden 2개가 `go vet` 단계를 통과한다.
 > NEXT: none

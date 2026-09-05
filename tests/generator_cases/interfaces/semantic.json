@@ -1,0 +1,126 @@
+{
+  "constructors": [
+    { "deinit": "deinit", "init": "create", "type": "IntBatch" },
+    { "deinit": "deinit", "init": "create", "type": "FloatBatch" }
+  ],
+  "functions": [
+    {
+      "name": "create",
+      "namespace": "IntBatch",
+      "ownership": "caller",
+      "params": [],
+      "return": {
+        "error_set": ["OutOfMemory"],
+        "kind": "error_union",
+        "payload": { "const": false, "kind": "opaque_ptr", "nullable": false, "ref": "IntBatch" }
+      },
+      "symbol": "zg_int_batch_create"
+    },
+    {
+      "doc": "len reports how many values are staged.",
+      "name": "len",
+      "params": [],
+      "receiver": "IntBatch",
+      "return": { "bits": 64, "is_usize": true, "kind": "int", "signed": false },
+      "symbol": "zg_int_batch_len"
+    },
+    {
+      "name": "clear",
+      "params": [{ "name": "keep", "type": { "bits": 64, "is_usize": true, "kind": "int", "signed": false } }],
+      "receiver": "IntBatch",
+      "return": { "error_set": ["OutOfRange"], "kind": "error_union", "payload": { "kind": "void" } },
+      "symbol": "zg_int_batch_clear"
+    },
+    {
+      "name": "push",
+      "params": [{ "name": "value", "type": { "bits": 32, "is_usize": false, "kind": "int", "signed": true } }],
+      "receiver": "IntBatch",
+      "return": { "kind": "void" },
+      "symbol": "zg_int_batch_push"
+    },
+    {
+      "name": "deinit",
+      "params": [],
+      "receiver": "IntBatch",
+      "return": { "kind": "void" },
+      "symbol": "zg_int_batch_deinit"
+    },
+    {
+      "name": "create",
+      "namespace": "FloatBatch",
+      "ownership": "caller",
+      "params": [],
+      "return": {
+        "error_set": ["OutOfMemory"],
+        "kind": "error_union",
+        "payload": { "const": false, "kind": "opaque_ptr", "nullable": false, "ref": "FloatBatch" }
+      },
+      "symbol": "zg_float_batch_create"
+    },
+    {
+      "name": "len",
+      "params": [],
+      "receiver": "FloatBatch",
+      "return": { "bits": 64, "is_usize": true, "kind": "int", "signed": false },
+      "symbol": "zg_float_batch_len"
+    },
+    {
+      "name": "clear",
+      "params": [{ "name": "retain", "type": { "bits": 64, "is_usize": true, "kind": "int", "signed": false } }],
+      "receiver": "FloatBatch",
+      "return": { "error_set": ["OutOfRange"], "kind": "error_union", "payload": { "kind": "void" } },
+      "symbol": "zg_float_batch_clear"
+    },
+    {
+      "name": "push",
+      "params": [{ "name": "value", "type": { "bits": 64, "kind": "float" } }],
+      "receiver": "FloatBatch",
+      "return": { "kind": "void" },
+      "symbol": "zg_float_batch_push"
+    },
+    {
+      "name": "deinit",
+      "params": [],
+      "receiver": "FloatBatch",
+      "return": { "kind": "void" },
+      "symbol": "zg_float_batch_deinit"
+    },
+    {
+      "name": "size",
+      "params": [],
+      "receiver": "Window",
+      "return": { "bits": 64, "is_usize": true, "kind": "int", "signed": false },
+      "symbol": "zg_window_size"
+    },
+    {
+      "borrowed_return": true,
+      "name": "window",
+      "params": [],
+      "receiver": "IntBatch",
+      "return": { "const": false, "kind": "opaque_ptr", "nullable": false, "ref": "Window" },
+      "symbol": "zg_int_batch_window"
+    }
+  ],
+  "interfaces": [
+    {
+      "doc": "Batch is any staged batch, whatever its element type.",
+      "methods": ["len", "clear"],
+      "name": "Batch",
+      "types": ["IntBatch", "FloatBatch"]
+    },
+    {
+      "closer": false,
+      "methods": ["len"],
+      "name": "Counted",
+      "types": ["IntBatch", "FloatBatch"]
+    }
+  ],
+  "package": "interfaces",
+  "prefix": "zg",
+  "types": [
+    { "kind": "opaque", "name": "IntBatch" },
+    { "kind": "opaque", "name": "FloatBatch" },
+    { "kind": "opaque", "name": "Window" }
+  ],
+  "zig_version": "0.16.0"
+}

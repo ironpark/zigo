@@ -7,6 +7,7 @@ const naming = @import("naming");
 const common = @import("common.zig");
 const docs = @import("docs.zig");
 const header = @import("header.zig");
+pub const interfaces = @import("interfaces.zig");
 const public = @import("public.zig");
 const public_runtime = @import("public_runtime.zig");
 const public_types = @import("public_types.zig");
@@ -108,6 +109,7 @@ pub const public_emitters = [_]Emitter{
     .{ .pathAlloc = publicHandlesPath, .render = public.renderPublicHandlesFile },
     .{ .pathAlloc = publicRuntimePath, .render = public.renderPublicRuntimeFile },
     .{ .pathAlloc = publicErrorsPath, .render = public_runtime.renderPublicErrors },
+    .{ .pathAlloc = interfaces.interfacesPath, .render = interfaces.renderInterfacesFile },
 };
 
 fn lifecyclePath(allocator: std.mem.Allocator, _: abi.Program, options: Options) ![]u8 {
@@ -268,7 +270,7 @@ fn publicUnionPathAlloc(allocator: std.mem.Allocator, program: abi.Program, opti
 
 /// One naming rule for every concern-scoped file in the public package, so a
 /// new concern cannot drift from `<package>_<concern>_gen.go`.
-fn publicConcernPathAlloc(allocator: std.mem.Allocator, program: abi.Program, options: Options, concern: []const u8) ![]u8 {
+pub fn publicConcernPathAlloc(allocator: std.mem.Allocator, program: abi.Program, options: Options, concern: []const u8) ![]u8 {
     const package = try common.publicPackageAlloc(allocator, program, options);
     defer allocator.free(package);
     const filename = try std.fmt.allocPrint(allocator, "{s}_{s}_gen.go", .{ package, concern });
@@ -1194,6 +1196,7 @@ test {
     _ = @import("must.zig");
     _ = public_types;
     _ = public_runtime;
+    _ = interfaces;
     _ = @import("public_writers.zig");
     _ = docs;
 }

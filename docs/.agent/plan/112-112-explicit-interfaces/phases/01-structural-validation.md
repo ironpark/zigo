@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-05T08:34:35Z"
 depends_on:
 - "112-112-explicit-interfaces#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test` 녹색, golden 불변.
 > NEXT: none

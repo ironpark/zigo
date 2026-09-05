@@ -8,7 +8,7 @@ registered_at: "2026-09-05T08:29:44Z"
 # Phases
 
 - [x] [Phase 00: IR and reflector](phases/00-ir-and-reflector.md)
-- [ ] [Phase 01: Structural validation](phases/01-structural-validation.md)
+- [x] [Phase 01: Structural validation](phases/01-structural-validation.md)
 - [ ] [Phase 02: Lowering, signature rule and emitter](phases/02-lowering-and-emitter.md)
 - [ ] [Phase 03: Example, abi-diff and docs](phases/03-example-diff-docs.md)
 

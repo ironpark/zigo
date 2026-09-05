@@ -55,6 +55,19 @@ fn runGenerate(allocator: std.mem.Allocator, io: std.Io, options: cli.Generate) 
     }
     if (issue == null and options.backend == .purego)
         issue = validate.puregoCallbackIssue(parsed.value);
+    if (issue == null and parsed.value.interfaces != null) {
+        const expanded = try stream_return.expand(scratch.allocator(), parsed.value);
+        issue = try generator.interfaceSignatureIssue(scratch.allocator(), expanded, .{
+            .package = options.package,
+            .prefix = options.prefix,
+            .go_module = options.go_module,
+            .go_must_variants = options.go_must_variants,
+            .backend = switch (options.backend) {
+                .cgo => .cgo,
+                .purego => .purego,
+            },
+        });
+    }
     if (issue) |found| {
         var buffer: [1024]u8 = undefined;
         var stderr = std.Io.File.Writer.init(.stderr(), io, &buffer);

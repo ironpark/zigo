@@ -486,6 +486,7 @@ pub fn semanticDocumentForBackend(
     // The ownership record indexes other functions and reads handle slot
     // counts, so it is the last thing settled.
     try recordOwnership(allocator, document, source_document.functions, functions, handles);
+    const interfaces = try lowerInterfaces(allocator, document, functions);
     const projections = try lowerTaggedUnionProjections(allocator, document, prefix);
     const snapshots = try lowerTaggedUnionSnapshots(allocator, document, prefix);
     return .{
@@ -499,6 +500,7 @@ pub fn semanticDocumentForBackend(
         .error_codes = error_codes,
         .handles = handles,
         .functions = functions,
+        .interfaces = interfaces,
         .origins = document.functions,
         .live_fields = try lowerLiveFields(allocator, document),
         .materialized_layouts = materialized_layouts,
@@ -1354,6 +1356,36 @@ fn numberRetainedCallbackSlots(
         handle.retained_callback_slots = slot;
     }
     for (functions, 0..) |*lowered, index| lowered.callback_slots = tables[index];
+}
+
+/// Every declared interface with its methods resolved per type. Validation
+/// has already required each method to exist, so a missing one here is a
+/// document that skipped validation and is treated as such.
+fn lowerInterfaces(allocator: std.mem.Allocator, document: semantic.Semantic, functions: []const abi.AbiFn) ![]const abi.AbiInterface {
+    const declared = document.interfaces orelse return &.{};
+    const interfaces = try allocator.alloc(abi.AbiInterface, declared.len);
+    for (declared, interfaces) |interface, *lowered| {
+        const methods = try allocator.alloc(abi.AbiInterface.Method, interface.methods.len);
+        for (interface.methods, methods) |method, *record| {
+            const implementations = try allocator.alloc(*const abi.AbiFn, interface.types.len);
+            for (interface.types, implementations) |type_name, *implementation| {
+                implementation.* = for (functions) |*candidate| {
+                    const receiver = candidate.origin.receiver orelse continue;
+                    if (std.mem.eql(u8, receiver, type_name) and std.mem.eql(u8, candidate.origin.name, method)) break candidate;
+                } else return error.InvalidSemantic;
+            }
+            record.* = .{ .name = method, .functions = implementations };
+        }
+        lowered.* = .{
+            .name = interface.name,
+            .doc = interface.doc,
+            .closer = interface.closer,
+            .package = interface.package,
+            .types = interface.types,
+            .methods = methods,
+        };
+    }
+    return interfaces;
 }
 
 /// The members `omit` left standing, per declaration. Applying the rule here
