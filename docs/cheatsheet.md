@@ -12,7 +12,7 @@ const bindings = zigo.addGoBindings(b, .{
     .name = "mylib",
     .module = mylib,                       // *std.Build.Module
     .bindings = b.path("src/bindings.zig"),
-    .source_root = b.path("src/root.zig"), // 이름·주석 보강 (선택)
+    .source_root = b.path("src/root.zig"), // 이름·주석 보강 (선택, import까지 재귀 스캔)
     .go_dir = b.path("go"),
     .go_module = "example.com/mylib/go",
     .target = target,
@@ -111,7 +111,7 @@ cd go && go test ./...
 | `.value` | `extern struct`, 정수 backing `packed struct` | `go`(어댑터), `field_meta` | [값 타입](bindings-types.md#extern-struct-값) |
 | `.enumeration` | enum | `exhaustive = false`(열린 enum), `text = true`, `go`, `covers`(Go enum이 대신하는 Zig 메서드 경로) | [값 타입](bindings-types.md#enum-이름-지정) |
 | `.tagged_union` | `union(enum)` | `access = .snapshot`, `omit_variants` | [Tagged union](bindings-unions.md) |
-| `.materialized` | pointer·string·slice 결과 트리 | `field_meta`(`[]const u8` 필드를 `[]byte`로) | [값 타입](bindings-types.md#materialized-결과-트리) |
+| `.materialized` | pointer·string·slice 결과 트리 | `field_meta`(`[]const u8` 필드를 `.opaque_bytes`로 두면 `[]byte`) | [값 타입](bindings-types.md#materialized-결과-트리) |
 | `.callback` | `*const fn (...) callconv(.c)` | `on_callback_failure`, `param_semantics`, `semantic`, `userdata`(`.first`/`.last`/`.{ .index = n }`) | [콜백](bindings-callbacks.md#콜백-시그니처-규약) |
 
 ```zig
@@ -129,6 +129,21 @@ cd go && go test ./...
     .{ .name = "Reducer", .type = mylib.Reducer, .repr = .callback, .userdata = .first },   // ctx가 첫 인자인 콜백
 },
 ```
+
+### materialized 필드 모양
+
+| Zig 필드 | Go 필드 |
+|---|---|
+| scalar·등록 enum·packed 값 | 같은 타입 |
+| `[]const u8` | `string` (`.semantic = .opaque_bytes`면 `[]byte`) |
+| `[]T`, `[N]T`, `[][]T` | `[]T`, `[][]T` (원소는 scalar·string·extern struct·materialized·slice) |
+| 등록 `extern struct`, 중첩 materialized struct | 값 mirror struct / 값 |
+| `*const T` | `*T` |
+| `?scalar`, `?[]const u8`, `?ExternStruct`, `?Node`, `?*const Node` | `*T`, `*string`; nil이 없음 |
+
+`?[]T`, `[]?T`, 순환, 일반 struct, opaque pointer, callback, union은 `ZIGO048`입니다. 버퍼는
+version 2 layout(자연 폭·정렬, record 8바이트 정렬)이라 `T`↔`?T`를 포함한 모양 변경은
+`abi-check`에서 breaking입니다.
 
 ## `functions` 항목
 
@@ -246,7 +261,7 @@ ZIGO_LIBRARY_PATH=/path/libmylib_zigo.so go run .   # 또는 ZIGO_<PACKAGE>_LIBR
 ```
 
 `.explicit` 로더는 `LoadLibrary(path)`를 공개하고, `.automatic`은 첫 호출에 후보 경로를
-차례로 시도합니다. 콜백 결과는 `void`·`i32`만 가능합니다. 자세한 내용은
+차례로 시도합니다. 콜백 결과는 `void`·`bool`·`i32`만 가능합니다(`ZIGO014`). 자세한 내용은
 [공유 라이브러리와 purego](purego.md).
 
 ## 자주 만나는 진단
@@ -260,7 +275,9 @@ ZIGO_LIBRARY_PATH=/path/libmylib_zigo.so go run .   # 또는 ZIGO_<PACKAGE>_LIBR
 | ZIGO028 / ZIGO035 | 생성자·소멸자 짝 / 소유권 미지정 | `.constructs`/`.destroys`, `.returns` |
 | ZIGO045 | narrow slice용 allocator 없음 | `.allocator = .c_allocator` |
 | ZIGO050 / ZIGO051 / ZIGO052 / ZIGO053 | `iterator` / `text` / `go` / `codepoint` 오용 | 해당 표의 적용 대상 확인 |
+| ZIGO048 | materialized 트리가 지원하지 않는 필드 모양 | 위 materialized 필드 표 확인 |
 | ZIGO054 | 경로 중복 또는 `functions`·`exclude` 충돌 | 경로 한 번만 |
+| ZIGO055 | 콜백 userdata 규약 위반(`usize` 자리 없음·자리 불일치) | `.userdata`, `param_meta.<콜백>.userdata` 확인 |
 
 전체 목록은 [진단 코드](diagnostics.md).
 
