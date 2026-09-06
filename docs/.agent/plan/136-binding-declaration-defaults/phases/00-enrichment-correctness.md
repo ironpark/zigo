@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: A wrapper bound from `root.searchFeed` takes its names from that declaration
 > NEXT: none
