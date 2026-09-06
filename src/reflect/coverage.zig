@@ -94,16 +94,19 @@ pub fn classify(
     // otherwise-unbound declaration's classification.
     for (document.functions) |function| {
         for (function.covers orelse &.{}) |covered_path| {
-            const wanted = coverageDisplayPath(covered_path);
-            for (declarations.items) |*declaration| {
-                if (declaration.status != .unbound or !std.mem.eql(u8, declaration.path, wanted)) continue;
-                declaration.status = .wrapped;
-                declaration.reason = null;
-                declaration.via = try semantic.zigCallPathAlloc(allocator, function);
-                break;
-            }
+            markWrapped(declarations.items, covered_path, try semantic.zigCallPathAlloc(allocator, function));
         }
     }
+    // A registered enum can cover the Zig methods its Go counterpart makes
+    // redundant (a `name()` the generated `String()` replaces, say). The
+    // entry itself is the wrapper, so its name is what the report cites.
+    if (@hasField(@TypeOf(binding), "types")) inline for (binding.types) |entry| {
+        if (@hasField(@TypeOf(entry), "covers")) {
+            for (comptime walk.coveragePaths(entry.covers)) |covered_path| {
+                markWrapped(declarations.items, covered_path, comptime walk.typeEntryName(entry));
+            }
+        }
+    };
 
     var unregistered: std.ArrayList([]const u8) = .empty;
     for (referenced_types.items) |full_name| {
@@ -270,6 +273,18 @@ fn collectContainer(
             path_prefix ++ "." ++ candidate.name,
             comptime discovered and walk.discoveryRecursive(binding),
         );
+    }
+}
+
+/// Reclassifies the unbound declaration at `covered_path` as wrapped by `via`.
+fn markWrapped(declarations: []Declaration, covered_path: []const u8, via: []const u8) void {
+    const wanted = coverageDisplayPath(covered_path);
+    for (declarations) |*declaration| {
+        if (declaration.status != .unbound or !std.mem.eql(u8, declaration.path, wanted)) continue;
+        declaration.status = .wrapped;
+        declaration.reason = null;
+        declaration.via = via;
+        return;
     }
 }
 
@@ -540,6 +555,40 @@ test "classifier distinguishes selected and unsupported functions" {
     try std.testing.expectEqualStrings("not listed", report.declarations[0].reason.?);
     try std.testing.expectEqualStrings("param p0: Nested.Hidden unregistered", report.declarations[1].reason.?);
     try std.testing.expectEqualStrings("Nested.Hidden", report.unregistered_types[0]);
+}
+
+test "an enum entry's covers wrap the methods its Go enum replaces" {
+    const Api = struct {
+        pub const Mode = enum(u8) {
+            ready,
+            busy,
+            pub fn label(self: Mode) []const u8 {
+                return @tagName(self);
+            }
+        };
+        pub fn mode() Mode {
+            return .ready;
+        }
+    };
+    const binding = .{
+        .root = Api,
+        .types = .{.{ .type = Api.Mode, .repr = .enumeration, .covers = "Mode.label" }},
+        .functions = .{.{ .path = "root.mode" }},
+    };
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const document = try walk.reflect(allocator, binding, "sample", "zg");
+    const report = try classify(allocator, binding, "sample", document, &.{});
+
+    try std.testing.expectEqual(@as(usize, 2), report.bound);
+    try std.testing.expectEqual(@as(usize, 0), report.unbound);
+    try std.testing.expectEqual(.wrapped, report.declarations[0].status);
+    try std.testing.expectEqualStrings("Mode.label", report.declarations[0].path);
+    try std.testing.expectEqualStrings("Mode", report.declarations[0].via.?);
+    var rendered: std.Io.Writer.Allocating = .init(allocator);
+    try report.render(&rendered.writer);
+    try std.testing.expect(std.mem.indexOf(u8, rendered.written(), "Mode.label <- Mode") != null);
 }
 
 test "covers classifies wrapped declarations in text and JSON" {

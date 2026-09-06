@@ -1380,6 +1380,17 @@ fn validateSelectors(comptime declaration: anytype) void {
     if (@hasField(@TypeOf(declaration), "functions")) {
         inline for (declaration.functions) |entry| validateFunctionEntry(declaration, entry, false);
     }
+    // A registered enum contributes no functions of its own, so the Go enum
+    // it produces may stand in for the Zig methods it makes redundant. Other
+    // type entries expose functions directly and cover nothing.
+    if (@hasField(@TypeOf(declaration), "types")) {
+        inline for (declaration.types) |entry| {
+            if (@hasField(@TypeOf(entry), "covers")) {
+                if (entry.repr != .enumeration) @compileError("zigo `.covers` on a type entry is only supported for `.repr = .enumeration`");
+                validateCoveragePaths(declaration, entry.covers);
+            }
+        }
+    }
     if (!discoveryEnabled(declaration)) {
         if (@hasField(@TypeOf(declaration), "exclude")) {
             @compileError("zigo `.exclude` requires `.discover = .public`; an explicit list simply omits the function");
@@ -1424,13 +1435,13 @@ fn validateCoveragePaths(comptime declaration: anytype, comptime covers: anytype
 }
 
 fn validateCoveragePath(comptime declaration: anytype, comptime path: []const u8) void {
-    if (!declarationPathExists(declaration, path)) {
+    if (!declarationPathExists(declaration, path) and !enumMethodPathExists(declaration, path)) {
         @compileError("zigo `.covers` path does not name a public function: " ++ path ++
             " (use `root.<name>` for a function in `.root`, or `<Type>.<name>` for one in a registered type)");
     }
 }
 
-fn coveragePaths(comptime covers: anytype) []const []const u8 {
+pub fn coveragePaths(comptime covers: anytype) []const []const u8 {
     if (comptime isStringEntry(@TypeOf(covers))) {
         const paths = [_][]const u8{covers};
         return &paths;
@@ -1568,6 +1579,22 @@ fn registeredContainer(comptime declaration: anytype, comptime name: []const u8)
         }
     }
     return null;
+}
+
+/// `<Enum>.<fn>` for a registered enumeration entry. Function paths never
+/// resolve through an enum (it contributes no bindings), but a coverage path
+/// may name one of its methods as covered by the generated Go enum.
+fn enumMethodPathExists(comptime declaration: anytype, comptime wanted: []const u8) bool {
+    comptime {
+        const dot = std.mem.indexOfScalar(u8, wanted, '.') orelse return false;
+        if (@hasField(@TypeOf(declaration), "types")) {
+            for (declaration.types) |entry| {
+                if (entry.repr == .enumeration and std.mem.eql(u8, typeEntryName(entry), wanted[0..dot]))
+                    return containerHasPath(entry.type, wanted[dot + 1 ..]);
+            }
+        }
+        return false;
+    }
 }
 
 fn rootContainerChild(comptime Container: type, comptime name: []const u8, comptime path: []const u8) type {
