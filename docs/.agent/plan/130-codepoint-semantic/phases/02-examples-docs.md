@@ -2,7 +2,7 @@
 depends_on:
 - "130-codepoint-semantic#1"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `zig build go-check` / `purego-go-check` current and `go vet` / `go test` pass on both backends for 02 and 11.
 > NEXT: none
