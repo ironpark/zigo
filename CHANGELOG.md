@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.12.1] - 2026-09-06
+
 ### Fixed
 
 - 함수 등록이 수백 개인 바인딩에서 reflection이 `evaluation exceeded 100000 backwards
