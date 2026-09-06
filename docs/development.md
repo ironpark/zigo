@@ -88,7 +88,11 @@ done
 빌드하므로 하위 디렉터리가 붙습니다.
 `10-tagged-union`의 로더 실패 경로 테스트는 `ZIGO_TEST_LIBRARY`와
 `ZIGO_TEST_WRONG_LIBRARY`가 없으면 건너뜁니다. CI의 전체 플랫폼 매트릭스와 환경 변수 구성은
-[`.github/workflows/ci.yml`](../.github/workflows/ci.yml)이 정본입니다.
+[`.github/workflows/ci.yml`](../.github/workflows/ci.yml)이 정본입니다. `*.md`, `docs/`,
+`.planr/`만 바뀐 push는 CI를 건너뛰고(`paths-ignore`), 태그 push는 항상 전부 실행합니다.
+Ubuntu 쪽은 생성기 테스트(`test`), 예제 스위트(`examples`), Windows 크로스 빌드
+(`windows-cross-build`)로 나뉘어 병렬로 돕니다. Zig 전역 캐시는 `setup-zig`가, Go 모듈·빌드
+캐시는 `setup-go`가, `staticcheck` 바이너리는 `actions/cache`가 실행 사이에 보존합니다.
 
 공유 라이브러리 자체는 다음 도구로 검사할 수 있습니다. 확장자는 현재 플랫폼에 맞게
 `.dylib` 또는 `.so`를 사용합니다. 두 도구 모두 POSIX 전용이므로 Windows CI 잡
@@ -219,7 +223,7 @@ zig build shared-library-smoke -- \
 
    `git status --short examples`가 비어 있어야 합니다. CI의 purego 잡은 이 검사와 같은
    `purego-go-verify`를 실행하므로, 여기서 빠뜨리면 릴리즈 뒤 CI가 실패합니다.
-   CI의 `test` 잡은 예제 Go 모듈마다 `staticcheck -checks U1000 ./...`도 돌려 참조되지 않는
+   CI의 `examples` 잡은 예제 Go 모듈마다 `staticcheck -checks U1000 ./...`도 돌려 참조되지 않는
    생성 헬퍼와 사용자 함수를 잡습니다. 같은 검사를 로컬에서 먼저 돌리세요(`staticcheck`는
    Go 툴체인과 맞는 최신 버전이어야 합니다):
 

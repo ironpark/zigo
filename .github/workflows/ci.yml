@@ -3,9 +3,26 @@ name: CI
 permissions:
   contents: read
 
+# Documentation, plans, and other prose never reach the build, so a push that
+# touches only those skips every job here. Tag pushes ignore path filters and
+# always run, which is what the release checks rely on.
 on:
   push:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - ".planr/**"
+      - ".planr.yaml"
+      - "LICENSE"
+      - ".gitignore"
   pull_request:
+    paths-ignore:
+      - "**.md"
+      - "docs/**"
+      - ".planr/**"
+      - ".planr.yaml"
+      - "LICENSE"
+      - ".gitignore"
 
 jobs:
   test:
@@ -18,9 +35,8 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: "1.26.x"
-          cache: false
-      - name: Install staticcheck
-        run: go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
+          cache: true
+          cache-dependency-path: examples/**/go.sum
       - name: Check Zig formatting
         run: zig fmt --check build.zig src tests examples
       - name: Compile all Zig artifacts
@@ -33,13 +49,31 @@ jobs:
           CC: zig cc
           CGO_ENABLED: "1"
         run: zig build go-doctor --summary all
-      # Catches a Windows-only compile break here rather than on the Windows
-      # runner, where it costs a whole job. Both arches, since purego supports
-      # windows/arm64 too.
-      - name: Compile all Zig artifacts for Windows
-        run: |
-          zig build check -Dtarget=x86_64-windows-gnu --summary all
-          zig build check -Dtarget=aarch64-windows-gnu --summary all
+
+  # The example suites are independent of the generator's own tests, so they
+  # run beside them rather than after them. staticcheck is a compiled Go tool
+  # whose build is the same every run; its binary is cached by version.
+  examples:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26.x"
+          cache: true
+          cache-dependency-path: examples/**/go.sum
+      - name: Restore staticcheck
+        id: staticcheck
+        uses: actions/cache@v4
+        with:
+          path: ~/go/bin/staticcheck
+          key: staticcheck-v0.8.1-go1.26-${{ runner.os }}
+      - name: Install staticcheck
+        if: steps.staticcheck.outputs.cache-hit != 'true'
+        run: go install honnef.co/go/tools/cmd/staticcheck@v0.8.1
       - name: Check, generate, and test all examples
         shell: bash
         run: |
@@ -101,6 +135,28 @@ jobs:
       - name: Record cgo call overhead
         working-directory: examples/01-scalar/go
         run: go test ./scalar -run '^$' -bench '^BenchmarkAddCgo$' -benchmem
+  # Windows compiles that need no Windows runner: the cross-check of every Zig
+  # artifact, and the cgo test executables `cgo-windows-cross` runs. Both were
+  # once the longest steps of the `test` job; here they overlap with it.
+  windows-cross-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.16.0
+      - uses: actions/setup-go@v7
+        with:
+          go-version: "1.26.x"
+          cache: true
+          cache-dependency-path: examples/**/go.sum
+      # Catches a Windows-only compile break here rather than on the Windows
+      # runner, where it costs a whole job. Both arches, since purego supports
+      # windows/arm64 too.
+      - name: Compile all Zig artifacts for Windows
+        run: |
+          zig build check -Dtarget=x86_64-windows-gnu --summary all
+          zig build check -Dtarget=aarch64-windows-gnu --summary all
       # Reflection builds for the host (plan 57), so a POSIX runner can also
       # produce the Windows static archive; `zig cc` supplies the mingw
       # headers, CRT, and linker that cgo would otherwise need from mingw-w64.
@@ -145,7 +201,8 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: "1.26.x"
-          cache: false
+          cache: true
+          cache-dependency-path: examples/**/go.sum
       - name: Generate and validate purego bindings
         shell: bash
         # 08-telemetry-hub uses the automatic, internal-loader policy; the others
@@ -267,7 +324,8 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: "1.26.x"
-          cache: false
+          cache: true
+          cache-dependency-path: examples/**/go.sum
       # `check` compiles every artifact without running any of them. That is
       # exactly the regression that broke this job's first run -- doctor.zig
       # referencing std.DynLib, which has no Windows implementation -- and it
@@ -330,7 +388,8 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: "1.26.x"
-          cache: false
+          cache: true
+          cache-dependency-path: examples/**/go.sum
       - uses: actions/download-artifact@v4
         with:
           name: event-queue-windows-dll
@@ -374,7 +433,8 @@ jobs:
       - uses: actions/setup-go@v7
         with:
           go-version: "1.26.x"
-          cache: false
+          cache: true
+          cache-dependency-path: examples/**/go.sum
       - name: Generate, build, and validate the cgo bindings
         shell: bash
         # go-verify covers staleness, the toolchain doctor, and the native
@@ -419,7 +479,7 @@ jobs:
   # job: this one needs neither Zig nor Go generation, only the artifact.
   cgo-windows-cross:
     runs-on: windows-latest
-    needs: test
+    needs: windows-cross-build
     steps:
       - uses: actions/download-artifact@v4
         with:
