@@ -21,6 +21,10 @@ func pointFromRaw(p raw.PointData) image.Point {
 // function-level `.go` names these two conversions for the uint result.
 type ObjectCount uint
 
+// The adapter contract names both directions even though ObjectCount is only
+// ever returned, so the generated code never calls this one.
 func objectCountToRaw(count ObjectCount) uint { return uint(count) }
+
+var _ = objectCountToRaw
 
 func objectCountFromRaw(count uint) ObjectCount { return ObjectCount(count) }
