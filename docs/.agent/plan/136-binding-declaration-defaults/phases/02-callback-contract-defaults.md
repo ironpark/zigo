@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Removing the three-line block from a call site whose callback type declares
 > NEXT: none
