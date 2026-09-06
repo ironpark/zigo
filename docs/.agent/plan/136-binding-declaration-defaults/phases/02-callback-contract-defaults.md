@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-06T15:02:15Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Removing the three-line block from a call site whose callback type declares
 > NEXT: none
