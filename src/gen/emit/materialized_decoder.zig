@@ -7,6 +7,12 @@ const emit = @import("emit.zig");
 const public_writers = @import("public_writers.zig");
 
 fn writeMaterializedPublicType(scope: public_writers.PublicScope, writer: *std.Io.Writer, node: semantic.TypeNode) !void {
+    // `?T` is `*T` here as everywhere in the public API; a string child spells
+    // `*string` rather than the `*[]byte` the generic writer would produce.
+    if (node == .optional) {
+        try writer.writeByte('*');
+        return writeMaterializedPublicType(scope, writer, node.optional.child.*);
+    }
     if (node == .slice) {
         const element = node.slice.element.*;
         if (semantic.isByte(element)) return writer.writeAll("string");
@@ -91,6 +97,23 @@ fn renderMaterializedDecoder(allocator: std.mem.Allocator, writer: *std.Io.Write
     try writer.writeAll("\treturn result\n}\n\n");
 }
 
+/// The Go expression that turns one decoded `u64` word into the field's type.
+fn writeScalarConversion(scope: public_writers.PublicScope, writer: *std.Io.Writer, node: semantic.TypeNode, source: []const u8) !void {
+    switch (node) {
+        .bool => try writer.print("{s} != 0", .{source}),
+        .int => {
+            try public_writers.writePublicGoType(scope, writer, node);
+            try writer.print("({s})", .{source});
+        },
+        .float => |value| try writer.print("math.Float{d}frombits(uint{d}({s}))", .{ value.bits, value.bits, source }),
+        .@"enum" => |value| {
+            try scope.writeTypeName(writer, value.ref);
+            try writer.print("({s})", .{source});
+        },
+        else => unreachable,
+    }
+}
+
 /// A slice field's array is bounds-checked as a whole before its elements
 /// are read, so the per-element reads below cannot run off the buffer.
 fn writeArrayCheck(writer: *std.Io.Writer, member: []const u8, field: abi.MaterializedLayout.Field) !void {
@@ -107,22 +130,20 @@ fn writeMaterializedDecodeField(allocator: std.mem.Allocator, writer: *std.Io.Wr
     switch (field.kind) {
         .scalar => {
             try writer.print("\tresult.{s} = ", .{member});
-            switch (field.node) {
-                .bool => try writer.print("zigo{s}Offset != 0", .{member}),
-                .int => {
-                    try public_writers.writePublicGoType(scope, writer, field.node);
-                    try writer.print("(zigo{s}Offset)", .{member});
-                },
-                .float => |value| try writer.print("math.Float{d}frombits(uint{d}(zigo{s}Offset))", .{ value.bits, value.bits, member }),
-                .@"enum" => |value| {
-                    try scope.writeTypeName(writer, value.ref);
-                    try writer.print("(zigo{s}Offset)", .{member});
-                },
-                else => unreachable,
-            }
+            const source = try std.fmt.allocPrint(allocator, "zigo{s}Offset", .{member});
+            defer allocator.free(source);
+            try writeScalarConversion(scope, writer, field.node, source);
             try writer.writeByte('\n');
         },
+        .optional_scalar => {
+            const source = try std.fmt.allocPrint(allocator, "zigoMaterializedU64(buffer, offset+{d})", .{field.offset + 8});
+            defer allocator.free(source);
+            try writer.print("\tif zigo{0s}Offset != 0 {{\n\t\tzigo{0s}Value := ", .{member});
+            try writeScalarConversion(scope, writer, field.node.optional.child.*, source);
+            try writer.print("\n\t\tresult.{0s} = &zigo{0s}Value\n\t}}\n", .{member});
+        },
         .string => try writer.print("\tzigo{s}Count := zigoMaterializedU64(buffer, offset+{d})\n\tresult.{s} = string(zigoMaterializedBytes(buffer, zigo{s}Offset, zigo{s}Count))\n", .{ member, field.offset + 8, member, member, member }),
+        .optional_string => try writer.print("\tif zigo{0s}Offset != 0 {{\n\t\tzigo{0s}Value := string(zigoMaterializedBytes(buffer, zigo{0s}Offset, zigoMaterializedU64(buffer, offset+{1d})))\n\t\tresult.{0s} = &zigo{0s}Value\n\t}}\n", .{ member, field.offset + 8 }),
         .scalar_slice => {
             try writeArrayCheck(writer, member, field);
             try writer.print("\tzigo{s}Count := zigoMaterializedU64(buffer, offset+{d})\n\tresult.{s} = make(", .{ member, field.offset + 8, member });

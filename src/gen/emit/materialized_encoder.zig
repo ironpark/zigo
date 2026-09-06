@@ -95,6 +95,10 @@ fn writeMaterializedField(
     switch (field.kind) {
         .scalar => try writer.print("    builder.writeU64({s}, zigoMaterializedScalar({s}));\n", .{ slot, expression }),
         .string => try writer.print("    builder.writeU64({0s}, try builder.appendBytes({1s}));\n    builder.writeU64({0s} + 8, {1s}.len);\n", .{ slot, expression }),
+        // `reserve` zero-fills the record, so an absent value writes nothing:
+        // the presence word (or the string offset) stays 0.
+        .optional_scalar => try writer.print("    if ({1s}) |item| {{\n        builder.writeU64({0s}, 1);\n        builder.writeU64({0s} + 8, zigoMaterializedScalar(item));\n    }}\n", .{ slot, expression }),
+        .optional_string => try writer.print("    if ({1s}) |item| {{\n        builder.writeU64({0s}, try builder.appendBytes(item));\n        builder.writeU64({0s} + 8, item.len);\n    }}\n", .{ slot, expression }),
         .scalar_slice => {
             try writer.print("    const {0s}_data = try builder.reserveArray({1s}.len, {3d});\n    for ({1s}, 0..) |item, index| builder.writeU64({0s}_data + index * {3d}, zigoMaterializedScalar(item));\n    builder.writeU64({2s}, {0s}_data);\n    builder.writeU64({2s} + 8, {1s}.len);\n", .{ field.name, expression, slot, field.kind.elementStride() });
         },

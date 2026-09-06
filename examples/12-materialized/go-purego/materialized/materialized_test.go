@@ -19,6 +19,12 @@ func checkProbe(t testing.TB, got Probe) {
 	if len(got.Child.Samples) != 3 || got.Child.Samples[2] != 9.75 {
 		t.Fatalf("samples = %+v", got.Child.Samples)
 	}
+	if got.Weight == nil || *got.Weight != 0.5 || got.Note != nil {
+		t.Fatalf("optional fields = %+v / %+v", got.Weight, got.Note)
+	}
+	if got.Child.Alias == nil || *got.Child.Alias != "L" || got.Children[1].Alias != nil {
+		t.Fatalf("optional strings = %+v / %+v", got.Child.Alias, got.Children[1].Alias)
+	}
 }
 
 func TestMaterializedPositions(t *testing.T) {

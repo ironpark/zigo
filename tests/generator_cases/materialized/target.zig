@@ -12,13 +12,15 @@ pub const Root = struct {
     child: *const Leaf,
     maybe: ?*const Leaf,
     children: []const Leaf,
+    limit: ?u32,
+    label: ?[]const u8,
 };
 
 const values = [_]i32{ 3, -5 };
 const labels = [_][]const u8{ "one", "two" };
 const leaf: Leaf = .{ .ok = true, .values = &values, .labels = &labels };
 const children = [_]Leaf{leaf};
-const root: Root = .{ .count = 1, .name = "root", .child = &leaf, .maybe = null, .children = &children };
+const root: Root = .{ .count = 1, .name = "root", .child = &leaf, .maybe = null, .children = &children, .limit = 7, .label = null };
 const roots = [_]Root{root};
 
 pub fn snapshot() Root {

@@ -19,6 +19,23 @@ test "generated materialized walker round trips its buffer layout" {
     const child: usize = @intCast(read(buffer, root + 32));
     try std.testing.expectEqual(@as(u64, 1), read(buffer, child));
     try std.testing.expectEqual(@as(u64, 0), read(buffer, root + 48));
+    // Optional scalar: presence word then value; optional string: offset 0.
+    try std.testing.expectEqual(@as(u64, 1), read(buffer, root + 80));
+    try std.testing.expectEqual(@as(u64, 7), read(buffer, root + 88));
+    try std.testing.expectEqual(@as(u64, 0), read(buffer, root + 96));
+
+    var present = target.snapshot();
+    present.limit = null;
+    present.label = "";
+    var second = try shim.ZigoMaterializedBuilder.init(std.testing.allocator);
+    const present_offset: usize = @intCast(try shim.zigoMaterialize_root(&second, present));
+    const present_buffer = try second.finish(0, 1, present_offset);
+    defer std.testing.allocator.free(present_buffer);
+    try std.testing.expectEqual(@as(u64, 0), read(present_buffer, present_offset + 80));
+    // An empty present string still points past the header, so it stays
+    // distinguishable from an absent one.
+    try std.testing.expect(read(present_buffer, present_offset + 96) != 0);
+    try std.testing.expectEqual(@as(u64, 0), read(present_buffer, present_offset + 104));
 }
 
 fn read(buffer: []const u8, offset: usize) u64 {

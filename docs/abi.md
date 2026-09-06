@@ -28,7 +28,9 @@ native 포인터 자체는 기록하지 않습니다.
 | 필드 | 슬롯 또는 참조 대상의 표현 |
 |---|---|
 | scalar | 슬롯의 앞 8바이트 |
+| optional scalar | 앞 8바이트에 presence(1이면 존재), 뒤 8바이트에 값 |
 | string·slice | offset와 길이 |
+| optional string | string과 같은 offset·길이 쌍; offset 0은 null (데이터는 항상 헤더 뒤에 놓이므로 빈 문자열도 0이 아님) |
 | 내장 노드·노드 포인터 | node record offset; optional 포인터의 0은 null |
 | 노드 slice | node offset table의 offset와 원소 수 |
 | scalar slice의 원소 | 원소당 8바이트 |
@@ -50,8 +52,10 @@ Go 코드는 받은 버퍼를 복사·디코딩한 뒤 release를 한 번 호출
 
 ## 지원 필드와 검증
 
-scalar, bool, 등록 enum, string, 내장 materialized struct, 필수·optional materialized
-포인터와 scalar·string·materialized struct의 slice를 지원합니다.
+scalar, bool, 등록 enum, string, optional scalar·string(`?i32`, `?[]const u8`), 내장
+materialized struct, 필수·optional materialized 포인터와 scalar·string·materialized struct의
+slice를 지원합니다. optional slice(`?[]T`)와 optional 원소(`[]?T`)는 presence를 실을 자리가
+없어 거부됩니다.
 순환 참조, opaque 포인터, callback과 union은 lowering 전에 `ZIGO048`로 거부하며
 진단에 전체 필드 경로를 표시합니다.
 

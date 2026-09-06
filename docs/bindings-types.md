@@ -411,8 +411,10 @@ pub const bindings = zigo.define(.{
 
 함수는 등록 allocator와 `.returns = .caller`, `[]u8`을 받는 `.release`를 사용해야 합니다.
 scalar, bool, 등록 enum, string, 중첩 materialized struct, materialized struct pointer와 optional
-pointer, 그리고 scalar/string/materialized struct slice를 지원합니다. 순환, opaque pointer,
-callback, union은 `ZIGO048`과 해당 field path로 거부됩니다.
+pointer, 그리고 scalar/string/materialized struct slice를 지원합니다. `?i32`·`?Status` 같은
+optional scalar와 `?[]const u8` optional string 필드도 지원하며 Go에서는 `*int32`, `*string`처럼
+포인터로 노출되어 nil이 없음을 뜻합니다. optional slice(`?[]T`)와 optional 원소(`[]?T`), 순환,
+opaque pointer, callback, union은 `ZIGO048`과 해당 field path로 거부됩니다.
 
 위 예제는 `probeMany`가 `Result`를 반환하고 `release`가 버퍼를 해제하는 라이브러리를
 가정합니다. 실행 가능한 전체 구현은 [12-materialized](../examples/12-materialized)에 있습니다.

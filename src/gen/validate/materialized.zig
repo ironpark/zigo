@@ -96,6 +96,23 @@ fn materializedNodeProblemAlloc(
         .int => |value| if (types.integerSupported(value)) return null,
         .float => |value| if (types.floatSupported(value)) return null,
         .@"enum" => return null,
+        // Presence rides in the field's own slot, so only leaves that fit a
+        // slot can be optional: a scalar beside its flag, or a string whose
+        // offset doubles as the flag. An optional node is already spelled as
+        // a nullable pointer; an optional slice has no room for a flag.
+        .optional => |value| {
+            if (in_slice) return .{ .path = try allocator.dupe(u8, path), .reason = "slices may contain scalars, strings, or materialized structs" };
+            const child = value.child.*;
+            const supported = switch (child) {
+                .bool, .@"enum" => true,
+                .int => |integer| types.integerSupported(integer),
+                .float => |float| types.floatSupported(float),
+                .slice => |slice| semantic.isByte(slice.element.*),
+                else => false,
+            };
+            if (supported) return null;
+            return .{ .path = try allocator.dupe(u8, path), .reason = "optional fields may hold a scalar, bool, registered enum, or string; spell an optional node as `?*const T`" };
+        },
         .slice => |value| {
             const element = value.element.*;
             if (element == .slice) {
@@ -177,6 +194,39 @@ test "materialized validation reports nested unsupported field paths and cycles"
     const cycle = (try validate.findIssue(allocator, cyclic_document)).?;
     try std.testing.expectEqualStrings("ZIGO048", cycle.code);
     try std.testing.expect(std.mem.indexOf(u8, cycle.message, "child.parent") != null);
+}
+
+test "materialized fields accept optional scalars and strings but not optional slices" {
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    var string: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &byte } };
+    var count: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = false } };
+    var counts: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &count } };
+    const ok_fields = [_]semantic.TypeField{
+        .{ .name = "limit", .type = .{ .optional = .{ .child = &count } } },
+        .{ .name = "label", .type = .{ .optional = .{ .child = &string } } },
+    };
+    const ok_document: semantic.Semantic = .{
+        .package = "tree",
+        .prefix = "zg",
+        .types = &.{.{ .fields = &ok_fields, .kind = .materialized, .materialized_version = 1, .name = "Root", .zig_path = "Root" }},
+        .zig_version = "0.16.0",
+    };
+    try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try validate.findIssue(allocator, ok_document));
+
+    const bad_fields = [_]semantic.TypeField{.{ .name = "counts", .type = .{ .optional = .{ .child = &counts } } }};
+    const bad_document: semantic.Semantic = .{
+        .package = "tree",
+        .prefix = "zg",
+        .types = &.{.{ .fields = &bad_fields, .kind = .materialized, .materialized_version = 1, .name = "Root", .zig_path = "Root" }},
+        .zig_version = "0.16.0",
+    };
+    const issue = (try validate.findIssue(allocator, bad_document)).?;
+    try std.testing.expectEqualStrings("ZIGO048", issue.code);
+    try std.testing.expect(std.mem.indexOf(u8, issue.message, "counts") != null);
+    try std.testing.expect(std.mem.indexOf(u8, issue.hint, "optional fields may hold") != null);
 }
 
 test "a materialized release target may take the allocator zigo injects" {

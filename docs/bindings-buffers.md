@@ -225,7 +225,7 @@ scalar optional을 Go에서 `*T`로 적는 것은 의도한 선택입니다. 제
 `abi-check`는 `T`와 `?T` 사이의 변경을 breaking으로 봅니다. C 시그니처가 통째로 달라지기
 때문입니다.
 
-`extern struct`의 field, callback signature, slice 원소(`[]?T`), optional의
+`extern struct`의 field(materialized 필드의 optional scalar·string은 지원), callback signature, slice 원소(`[]?T`), optional의
 optional(`??T`), `.out` 슬라이스 매개변수(버퍼는 호출자가 잡습니다), 슬라이스의
 슬라이스(`?[][]const u8`), `extern struct` 슬라이스(`?[]Point`)에는 presence를 실을 자리가
 없어 `ZIGO019`(구조체가 걸린 경우 `ZIGO013`)로 거부됩니다. reflection이

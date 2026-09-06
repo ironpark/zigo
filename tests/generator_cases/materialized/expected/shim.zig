@@ -58,7 +58,7 @@ fn zigoMaterializedScalar(value: anytype) u64 {
 }
 
 pub fn zigoMaterialize_root(builder: *ZigoMaterializedBuilder, value: target.Root) !u64 {
-    const record = try builder.reserve(80);
+    const record = try builder.reserve(112);
     builder.writeU64(record + 0, zigoMaterializedScalar(value.count));
     builder.writeU64(record + 16, try builder.appendBytes(value.name));
     builder.writeU64(record + 16 + 8, value.name.len);
@@ -68,6 +68,14 @@ pub fn zigoMaterialize_root(builder: *ZigoMaterializedBuilder, value: target.Roo
     for (value.children, 0..) |item, index| builder.writeU64(children_nodes + index * 8, try zigoMaterialize_leaf(builder, item));
     builder.writeU64(record + 64, children_nodes);
     builder.writeU64(record + 64 + 8, value.children.len);
+    if (value.limit) |item| {
+        builder.writeU64(record + 80, 1);
+        builder.writeU64(record + 80 + 8, zigoMaterializedScalar(item));
+    }
+    if (value.label) |item| {
+        builder.writeU64(record + 96, try builder.appendBytes(item));
+        builder.writeU64(record + 96 + 8, item.len);
+    }
     return @intCast(record);
 }
 

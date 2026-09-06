@@ -13,6 +13,7 @@ type Leaf struct {
 	Enabled bool
 	Label   string
 	Samples []float64
+	Alias   *string
 }
 
 // Probe is an owned Go snapshot of the Zig struct of the same name.
@@ -27,6 +28,8 @@ type Probe struct {
 	Child    *Leaf
 	Maybe    *Leaf
 	Children []Leaf
+	Weight   *float64
+	Note     *string
 }
 
 const zigoMaterializedMagicVersion = uint64(0x00014f47495a)
@@ -61,7 +64,7 @@ func zigoMaterializedHeader(buffer []byte, layout uint64) (uint64, uint64) {
 }
 
 func zigoDecodeLeafAt(buffer []byte, offset uint64) Leaf {
-	_ = zigoMaterializedBytes(buffer, offset, 64)
+	_ = zigoMaterializedBytes(buffer, offset, 80)
 	var result Leaf
 	zigoValueOffset := zigoMaterializedU64(buffer, offset+0)
 	result.Value = int32(zigoValueOffset)
@@ -77,6 +80,11 @@ func zigoDecodeLeafAt(buffer []byte, offset uint64) Leaf {
 	for i := range result.Samples {
 		zigoValue := zigoMaterializedU64(buffer, zigoSamplesOffset+uint64(i)*8)
 		result.Samples[i] = math.Float64frombits(uint64(zigoValue))
+	}
+	zigoAliasOffset := zigoMaterializedU64(buffer, offset+64)
+	if zigoAliasOffset != 0 {
+		zigoAliasValue := string(zigoMaterializedBytes(buffer, zigoAliasOffset, zigoMaterializedU64(buffer, offset+72)))
+		result.Alias = &zigoAliasValue
 	}
 	return result
 }
@@ -100,7 +108,7 @@ func zigoDecodeProbeSliceBuffer(buffer []byte) []Probe {
 }
 
 func zigoDecodeProbeAt(buffer []byte, offset uint64) Probe {
-	_ = zigoMaterializedBytes(buffer, offset, 160)
+	_ = zigoMaterializedBytes(buffer, offset, 192)
 	var result Probe
 	zigoIDOffset := zigoMaterializedU64(buffer, offset+0)
 	result.ID = uint64(zigoIDOffset)
@@ -143,6 +151,16 @@ func zigoDecodeProbeAt(buffer []byte, offset uint64) Probe {
 	result.Children = make([]Leaf, int(zigoChildrenCount))
 	for i := range result.Children {
 		result.Children[i] = zigoDecodeLeafAt(buffer, zigoMaterializedU64(buffer, zigoChildrenOffset+uint64(i)*8))
+	}
+	zigoWeightOffset := zigoMaterializedU64(buffer, offset+160)
+	if zigoWeightOffset != 0 {
+		zigoWeightValue := math.Float64frombits(uint64(zigoMaterializedU64(buffer, offset+168)))
+		result.Weight = &zigoWeightValue
+	}
+	zigoNoteOffset := zigoMaterializedU64(buffer, offset+176)
+	if zigoNoteOffset != 0 {
+		zigoNoteValue := string(zigoMaterializedBytes(buffer, zigoNoteOffset, zigoMaterializedU64(buffer, offset+184)))
+		result.Note = &zigoNoteValue
 	}
 	return result
 }

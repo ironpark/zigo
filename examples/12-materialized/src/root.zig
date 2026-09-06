@@ -7,6 +7,7 @@ pub const Leaf = struct {
     enabled: bool,
     label: []const u8,
     samples: []const f64,
+    alias: ?[]const u8,
 };
 
 pub const Probe = struct {
@@ -20,15 +21,17 @@ pub const Probe = struct {
     child: *const Leaf,
     maybe: ?*const Leaf,
     children: []const Leaf,
+    weight: ?f64,
+    note: ?[]const u8,
 };
 
 const samples = [_]f64{ 1.25, -2.5, 9.75 };
 const codes = [_]i16{ 3, -7, 21 };
 const tags = [_][]const u8{ "alpha", "beta" };
-const leaf = Leaf{ .value = 42, .enabled = true, .label = "leaf", .samples = &samples };
+const leaf = Leaf{ .value = 42, .enabled = true, .label = "leaf", .samples = &samples, .alias = "L" };
 const children = [_]Leaf{
     leaf,
-    .{ .value = -9, .enabled = false, .label = "second", .samples = &samples },
+    .{ .value = -9, .enabled = false, .label = "second", .samples = &samples, .alias = null },
 };
 const probe = Probe{
     .id = 0xfeed_beef,
@@ -41,6 +44,8 @@ const probe = Probe{
     .child = &leaf,
     .maybe = null,
     .children = &children,
+    .weight = 0.5,
+    .note = null,
 };
 const corpus = [_]Probe{probe} ** 128;
 

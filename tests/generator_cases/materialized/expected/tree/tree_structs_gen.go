@@ -11,6 +11,8 @@ type Root struct {
 	Child *Leaf
 	Maybe *Leaf
 	Children []Leaf
+	Limit *uint32
+	Label *string
 }
 
 // Leaf is an owned Go snapshot of the Zig struct of the same name.
@@ -66,7 +68,7 @@ func zigoDecodeRootSliceBuffer(buffer []byte) []Root {
 }
 
 func zigoDecodeRootAt(buffer []byte, offset uint64) Root {
-	_ = zigoMaterializedBytes(buffer, offset, 80)
+	_ = zigoMaterializedBytes(buffer, offset, 112)
 	var result Root
 	zigoCountOffset := zigoMaterializedU64(buffer, offset+0)
 	result.Count = uint(zigoCountOffset)
@@ -86,6 +88,16 @@ func zigoDecodeRootAt(buffer []byte, offset uint64) Root {
 	zigoChildrenCount := zigoMaterializedU64(buffer, offset+72)
 	result.Children = make([]Leaf, int(zigoChildrenCount))
 	for i := range result.Children { result.Children[i] = zigoDecodeLeafAt(buffer, zigoMaterializedU64(buffer, zigoChildrenOffset+uint64(i)*8)) }
+	zigoLimitOffset := zigoMaterializedU64(buffer, offset+80)
+	if zigoLimitOffset != 0 {
+		zigoLimitValue := uint32(zigoMaterializedU64(buffer, offset+88))
+		result.Limit = &zigoLimitValue
+	}
+	zigoLabelOffset := zigoMaterializedU64(buffer, offset+96)
+	if zigoLabelOffset != 0 {
+		zigoLabelValue := string(zigoMaterializedBytes(buffer, zigoLabelOffset, zigoMaterializedU64(buffer, offset+104)))
+		result.Label = &zigoLabelValue
+	}
 	return result
 }
 

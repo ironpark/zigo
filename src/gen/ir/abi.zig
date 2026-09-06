@@ -373,6 +373,10 @@ pub const MaterializedLayout = struct {
         pub const Kind = enum {
             scalar,
             string,
+            /// Presence in the first `u64` of the slot, the value in the second.
+            optional_scalar,
+            /// The string pair; an offset of 0 (inside the header) means absent.
+            optional_string,
             scalar_slice,
             string_slice,
             node,

@@ -88,6 +88,9 @@
 
 ### Added
 
+- materialized 결과 트리의 필드에 optional scalar(`?i32`, `?bool`, `?f64`, `?Enum`)와
+  optional string(`?[]const u8`)을 허용합니다. 슬롯의 presence 워드 또는 offset 0으로
+  없음을 표현하고 Go에서는 `*T`, `*string`으로 디코딩합니다. `T`↔`?T` 변경은 breaking입니다.
 - `addGoBindings`의 `targets`로 한 cgo 바인딩 세트가 여러 `GOOS`/`GOARCH`용 네이티브
   라이브러리를 빌드합니다. Go 소스는 한 번 생성되고, raw 패키지는 타깃마다
   `#cgo <goos>,<goarch> LDFLAGS:` 줄을 가지며 각 라이브러리와 정적 링크 입력은

@@ -19,7 +19,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 47,
+        "line": 52,
         "column": 8
       },
       "symbol": "zg_snapshot"
@@ -45,7 +45,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 51,
+        "line": 56,
         "column": 8
       },
       "symbol": "zg_probe_many"
@@ -60,7 +60,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 55,
+            "line": 60,
             "column": 13
           },
           "type": {
@@ -83,7 +83,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 55,
+        "line": 60,
         "column": 8
       },
       "symbol": "zg_fill"
@@ -98,7 +98,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 61,
+            "line": 66,
             "column": 16
           },
           "type": {
@@ -118,7 +118,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 61,
+        "line": 66,
         "column": 8
       },
       "symbol": "zg_release"
@@ -134,7 +134,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 77,
+            "line": 82,
             "column": 19
           },
           "type": {
@@ -159,7 +159,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 77,
+        "line": 82,
         "column": 12
       },
       "symbol": "zg_legacy_probe_create"
@@ -177,7 +177,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 84,
+        "line": 89,
         "column": 12
       },
       "symbol": "zg_legacy_probe_id"
@@ -192,7 +192,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 88,
+        "line": 93,
         "column": 12
       },
       "symbol": "zg_legacy_probe_active"
@@ -211,7 +211,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 92,
+        "line": 97,
         "column": 12
       },
       "symbol": "zg_legacy_probe_child"
@@ -226,7 +226,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 96,
+        "line": 101,
         "column": 12
       },
       "symbol": "zg_legacy_probe_deinit"
@@ -244,7 +244,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 68,
+        "line": 73,
         "column": 12
       },
       "symbol": "zg_legacy_leaf_value"
@@ -316,6 +316,22 @@
               "kind": "float"
             },
             "kind": "slice"
+          }
+        },
+        {
+          "name": "alias",
+          "type": {
+            "child": {
+              "const": true,
+              "element": {
+                "bits": 8,
+                "is_usize": false,
+                "kind": "int",
+                "signed": false
+              },
+              "kind": "slice"
+            },
+            "kind": "optional"
           }
         }
       ],
@@ -425,6 +441,32 @@
               "ref": "Leaf"
             },
             "kind": "slice"
+          }
+        },
+        {
+          "name": "weight",
+          "type": {
+            "child": {
+              "bits": 64,
+              "kind": "float"
+            },
+            "kind": "optional"
+          }
+        },
+        {
+          "name": "note",
+          "type": {
+            "child": {
+              "const": true,
+              "element": {
+                "bits": 8,
+                "is_usize": false,
+                "kind": "int",
+                "signed": false
+              },
+              "kind": "slice"
+            },
+            "kind": "optional"
           }
         }
       ],

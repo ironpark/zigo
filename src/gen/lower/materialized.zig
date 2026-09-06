@@ -57,6 +57,7 @@ pub fn materializedLayoutIndex(layouts: []const abi.MaterializedLayout, root: []
 fn materializedFieldKind(node: semantic.TypeNode) abi.MaterializedLayout.Field.Kind {
     return switch (node) {
         .bool, .int, .float, .@"enum" => .scalar,
+        .optional => |value| if (value.child.* == .slice) .optional_string else .optional_scalar,
         .materialized => |value| if (value.pointer) .node_pointer else .node,
         .slice => |value| switch (value.element.*) {
             .materialized => .node_slice,

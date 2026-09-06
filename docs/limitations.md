@@ -76,7 +76,8 @@ Go race detector는 `CGO_ENABLED=0` 테스트에 사용할 수 없습니다.
 
 `extern struct`는 Go에서는 값이지만 C 경계에서는 포인터로 전달합니다.
 pointer·slice·optional 등을 필드로 가진 일반 결과 트리는 `.value`로 등록할 수 없습니다.
-그런 반환은 materialized 결과로 복사하거나 opaque handle로 노출하세요.
+그런 반환은 materialized 결과로 복사하거나 opaque handle로 노출하세요. materialized 필드는
+optional scalar와 optional string을 Go 포인터로 노출합니다.
 materialized 결과의 순환·opaque pointer·callback·union 필드는 거부됩니다.
 `anyerror`와 C 호출 규약이 아닌 함수 포인터도 노출할 수 없습니다.
 
@@ -97,7 +98,7 @@ union 값을 중첩할 수는 없습니다. snapshot은 scalar·enum payload로 
 | `[]string` 입력 | 문자열 의미가 지정된 const 문자열 slice 또는 sentinel 문자열 원소 |
 | 일반 `[]string` 반환 | 미지원; materialized 결과 안의 string slice는 별도 지원 |
 | NUL 종료 pointer | `[*:0]const u8` 지원; mutable·다른 sentinel·기타 many-pointer는 미지원 |
-| `?T` | 파라미터·반환·error payload 지원; struct 필드·콜백·`[]?T`·`??T`는 미지원 |
+| `?T` | 파라미터·반환·error payload 지원; materialized 필드는 scalar·string만 지원; extern struct 필드·콜백·`[]?T`·`??T`는 미지원 |
 | optional slice | out slice·중첩 slice·extern struct slice에는 사용 불가 |
 
 값이 없다는 것과 비어 있는 값은 다릅니다. optional 입력은 Go의 `*T`, 반환은
