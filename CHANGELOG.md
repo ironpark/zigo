@@ -4,6 +4,28 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [0.13.1] - 2026-09-06
+
+### Fixed
+
+- 루트 모듈이 여러 파일로 나뉜 바인딩에서 doc 주석과 파라미터 이름이 생성 코드에 닿지
+  않던 문제를 고쳤습니다. 이름 보강이 bindings 파일과 그 직접 import, `root.zig`만 읽어서
+  루트가 다시 import한 파일에 선언된 함수는 doc과 인자 이름을 잃었습니다. 이제 coverage
+  전용이던 루트 import 순회를 일반 보강에서도 돌리며, 기록되는 경로는 루트 디렉터리 기준
+  상대 경로라 `semantic.json`이 기계마다 같습니다.
+
+## [Unreleased]
+
+### Fixed
+
+- root 모듈이 여러 파일로 나뉘어 있을 때 doc 주석과 파라미터 이름이 생성물에 실리지 않던
+  문제를 고쳤습니다. 이름·문서 보강 패스는 bindings 파일과 그 직접 import, 그리고 `root.zig`만
+  읽었고, root가 다시 import하는 파일은 coverage 경로에서만 훑었습니다. 이제 일반 생성도 같은
+  재귀 스캔을 하므로 선언이 어느 파일에 쓰였든 문서가 따라옵니다. 기록되는 소스 경로는
+  root 디렉터리 기준 상대경로라 `semantic.json`은 머신과 무관하게 같습니다. 바인딩이
+  `source_root`를 넘기지 않으면 bindings 파일 옆의 `root.zig`를 쓰고, 그런 파일이 없으면
+  조용히 넘어갑니다.
+
 ## [0.13.0] - 2026-09-06
 
 ### Added
@@ -739,7 +761,8 @@
 - 생성된 Go doc이 식별자로 시작하지 않는 문장을 두 줄 형식으로 내고, `//` 그룹 주석과
   빈 줄 없이 이어진 선언의 doc 공유를 지원합니다. 모든 생성 패키지에 패키지 doc이 있습니다.
 
-[Unreleased]: https://github.com/ironpark/zigo/compare/0.13.0...HEAD
+[Unreleased]: https://github.com/ironpark/zigo/compare/0.13.1...HEAD
+[0.13.1]: https://github.com/ironpark/zigo/compare/0.13.0...0.13.1
 [0.13.0]: https://github.com/ironpark/zigo/compare/0.12.1...0.13.0
 [0.12.1]: https://github.com/ironpark/zigo/compare/0.12.0...0.12.1
 [0.12.0]: https://github.com/ironpark/zigo/compare/0.11.0...0.12.0

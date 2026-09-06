@@ -50,6 +50,56 @@ pub fn apply(
     var scanned: Scanned = .{};
     defer scanned.paths.deinit(allocator);
     try applyRecording(allocator, io, document, bindings_path, source_root_path, diagnostics, &scanned);
+    try applyRootImports(allocator, io, document, bindings_path, source_root_path, diagnostics, &scanned);
+}
+
+/// The root module may be split across files. `applyRecording` reads the
+/// bindings file, its direct imports and `root.zig`; this reads what the root
+/// imports in turn, so a declaration's doc comment and parameter names reach
+/// the generated code from whichever file it was written in.
+fn applyRootImports(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    document: *semantic.Semantic,
+    bindings_path: []const u8,
+    source_root_path: ?[]const u8,
+    diagnostics: *std.Io.Writer,
+    scanned: *Scanned,
+) !void {
+    // The same fallback `applyRecording` uses: a binding that does not declare
+    // its root still has one, next to the bindings file.
+    const root_path = source_root_path orelse try std.fs.path.join(
+        allocator,
+        &.{ std.fs.path.dirname(bindings_path) orelse ".", "root.zig" },
+    );
+    // A recorded root source means the first pass already read and listed
+    // `root_path`; only a root it never opened has to be read here.
+    const root_source = scanned.root_source orelse blk: {
+        const source = std.Io.Dir.cwd().readFileAlloc(io, root_path, allocator, source_limit) catch |err| switch (err) {
+            // The fallback guesses at a root next to the bindings file. A
+            // binding whose root is the bindings file itself has none, and
+            // that is not an error.
+            error.FileNotFound => return,
+            else => {
+                try writeReadError(diagnostics, root_path, err);
+                return err;
+            },
+        };
+        try scanned.paths.append(allocator, root_path);
+        break :blk source;
+    };
+    const functions = try allocator.dupe(semantic.SemanticFn, document.functions);
+    const has_errors = try scanImportedSources(
+        allocator,
+        io,
+        root_source,
+        std.fs.path.dirname(root_path) orelse ".",
+        functions,
+        scanned,
+        diagnostics,
+    );
+    document.functions = functions;
+    if (has_errors) return error.EnrichmentFailed;
 }
 
 /// `apply`, then the coverage traversal of everything the root module imports,
@@ -70,29 +120,7 @@ pub fn applyWithCoverageImports(
     var scanned: Scanned = .{};
     defer scanned.paths.deinit(allocator);
     try applyRecording(allocator, io, document, bindings_path, source_root_path, diagnostics, &scanned);
-    const root_path = source_root_path orelse return;
-    // A recorded root source means the first pass already read and listed
-    // `root_path`; only a root it never opened has to be read here.
-    const root_source = scanned.root_source orelse blk: {
-        const source = std.Io.Dir.cwd().readFileAlloc(io, root_path, allocator, source_limit) catch |err| {
-            try writeReadError(diagnostics, root_path, err);
-            return err;
-        };
-        try scanned.paths.append(allocator, root_path);
-        break :blk source;
-    };
-    const functions = try allocator.dupe(semantic.SemanticFn, document.functions);
-    const has_errors = try scanImportedSources(
-        allocator,
-        io,
-        root_source,
-        std.fs.path.dirname(root_path) orelse ".",
-        functions,
-        &scanned,
-        diagnostics,
-    );
-    document.functions = functions;
-    if (has_errors) return error.EnrichmentFailed;
+    try applyRootImports(allocator, io, document, bindings_path, source_root_path, diagnostics, &scanned);
 }
 
 fn applyRecording(
@@ -164,6 +192,23 @@ fn scanImportedSources(
     scanned: *Scanned,
     diagnostics: *std.Io.Writer,
 ) !bool {
+    return scanImportedSourcesFrom(allocator, io, source, directory, directory, functions, scanned, diagnostics);
+}
+
+/// `root` is the directory every recorded path is written relative to, so a
+/// split root module records `stream.zig` rather than an absolute path and the
+/// document stays the same on every machine. `directory` is where this
+/// source's own imports resolve from, which differs once the walk descends.
+fn scanImportedSourcesFrom(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    source: []const u8,
+    directory: []const u8,
+    root: []const u8,
+    functions: []semantic.SemanticFn,
+    scanned: *Scanned,
+    diagnostics: *std.Io.Writer,
+) !bool {
     var has_errors = false;
     var imports: ImportIterator = .{ .source = source };
     while (imports.next()) |referenced| {
@@ -171,12 +216,13 @@ fn scanImportedSources(
         if (scanned.seen(path)) continue;
         try scanned.paths.append(allocator, path);
         if (std.Io.Dir.cwd().readFileAlloc(io, path, allocator, source_limit)) |imported| {
-            has_errors = try scanSourceWithDiagnostics(allocator, imported, functions, path, diagnostics) or has_errors;
-            has_errors = try scanImportedSources(
+            has_errors = try scanSourceWithDiagnostics(allocator, imported, functions, try recordedPathAlloc(allocator, root, path), diagnostics) or has_errors;
+            has_errors = try scanImportedSourcesFrom(
                 allocator,
                 io,
                 imported,
                 std.fs.path.dirname(path) orelse ".",
+                root,
                 functions,
                 scanned,
                 diagnostics,
