@@ -52,8 +52,9 @@ cd go && go test ./...
 | `go-coverage` | 공개 API 중 바인딩된 비율 |
 | `abi-check` | `abi_base` ref의 `semantic.json`과 호환성 비교 |
 
-`name_prefix = "purego"`처럼 두 번째 바인딩을 붙이면 `purego-go`, `purego-go-check`가 됩니다.
-전체 옵션은 [빌드 설정](configuration.md).
+`addStandardSteps(b, .{ .name_prefix = "purego", .install_library_by_default = false })`처럼
+두 번째 바인딩에 접두사를 주면 `purego-go`, `purego-go-report`가 되고, 기본 `zig build`의
+라이브러리 설치를 끌 수 있습니다. 전체 옵션은 [빌드 설정](configuration.md).
 
 ## `addGoBindings` 옵션 요약
 
@@ -63,12 +64,14 @@ cd go && go test ./...
 | `prefix` | `"zg"` | C 심볼 접두사. 바인딩이 여럿이면 다르게 |
 | `go_package`, `go_package_path` | `name` 기반 | 공개 패키지 이름·경로 |
 | `raw_package` | `"internal/raw"` | raw 계층 경로 |
+| `go_package_doc` | 모듈 `//!` 주석 | 공개 패키지 GoDoc |
 | `go_must_variants` | `false` | `Must*` 동반 API 생성 |
+| `gofmt` | `PATH`의 `gofmt` | 생성물 포맷 도구 경로 |
 | `targets` | `&.{}` | 추가 타깃용 네이티브 라이브러리 (`library_dir/<goos>_<goarch>/`) |
-| `cgo_flags` | 모듈에서 계산 | CFLAGS·LDFLAGS 보강/교체 |
+| `cgo_flags` | 모듈에서 계산 | `.cflags`, `.ldflags`(교체), `.extra_ldflags`(보강), `.target_ldflags`(GOOS별) |
 | `abi_base` | `null` | `abi-check` 기준 Git ref (예: `"HEAD"`) |
 | `library_loading` | 명시적 로드 | purego 검색 경로·환경 변수·`.explicit`/`.automatic` |
-| `install` | `.lib` / `.header` | 설치 디렉터리·파일명 |
+| `install` | `.lib` / `.header` | `.library_dir`, `.header_dir`, `.library_name`(`<name>_zigo`), `.header_name`(`zigo_<name>.h`) |
 | `coverage_json` | `null` | 커버리지 보고서 경로 |
 
 ## `zigo.define` 최상위 키
@@ -85,6 +88,18 @@ cd go && go test ./...
 | `allocator` | `.c_allocator` / `.page_allocator` / `.smp_allocator` / `"gpa"` 선언 경로. `std.mem.Allocator` 주입·narrow slice·materialized에 필요 |
 | `io` | `std.Io`를 주입할 선언 경로 |
 | `codepoints` | `.infer_u21`이면 모든 `u21`이 `rune` ([코드포인트](bindings-types.md#코드포인트)) |
+
+```zig
+.interfaces = .{
+    .{ .name = "Batch", .methods = .{"len"}, .types = .{ mylib.IntBatch, mylib.FloatBatch },
+       .closer = true, .doc = "Batch is any staged batch." },
+},
+.packages = .{
+    .{ .path = "types", .name = "types", .doc = "Package types ...",
+       .types = .{ "Ticker", "Key*" }, .namespaces = .{"text.*"}, .functions = .{"root.liveTickers"},
+       .closure = true },   // 도달 가능한 등록 타입을 같은 패키지로
+},
+```
 
 ## `types` 항목
 
@@ -206,7 +221,8 @@ v := MustParse(s)                      // go_must_variants = true일 때
 | `ErrCallbackFailed` | `.go_error` 콜백이 돌려준 error | `*CallbackError` |
 | `ErrCallbackPanic` | Go 콜백 panic — 다시 panic됨 | `*CallbackPanicError` |
 | `Err<ZigError>` | Zig error set 값 | `*Error` |
-| `*HandleInUseError` | `Close` 중 호출·자식이 남아 있음 | — |
+| `ErrHandleInUse` | `Close` 시점에 진행 중 호출이나 열린 자식이 있음 | `*HandleInUseError` |
+| `ErrNilStream`, 사용자 `io` 오류, `io.ErrShortWrite` 등 | `io.Writer`/`io.Reader` 파라미터의 실패 | `*StreamError` (`Unwrap`으로 원인) |
 
 raw 패키지(공유 시 `support/ffi`)의 `LastErrorMessage()`는 마지막 native 오류 메시지를,
 `PanicMessage(code)`는 붙잡힌 panic 메시지를 돌려주지만, 보통은 `errors.As`로 얻는
