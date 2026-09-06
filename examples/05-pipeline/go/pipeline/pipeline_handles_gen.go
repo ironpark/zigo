@@ -104,7 +104,7 @@ func zigoCleanupPipeline(state zigoPipelineCleanupState) {
 }
 
 // Close releases the native Pipeline resources. It is safe to call more than once.
-// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
+// The error result is always nil; it exists so Pipeline satisfies io.Closer.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (p *Pipeline) Close() error {
@@ -216,7 +216,7 @@ func zigoCleanupIntBatch(state zigoIntBatchCleanupState) {
 }
 
 // Close releases the native IntBatch resources. It is safe to call more than once.
-// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
+// The error result is always nil; it exists so IntBatch satisfies io.Closer.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (i *IntBatch) Close() error {
@@ -327,7 +327,7 @@ func zigoCleanupFloatBatch(state zigoFloatBatchCleanupState) {
 }
 
 // Close releases the native FloatBatch resources. It is safe to call more than once.
-// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
+// The error result is always nil; it exists so FloatBatch satisfies io.Closer.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (f *FloatBatch) Close() error {

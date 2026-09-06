@@ -83,7 +83,7 @@ func zigoCleanupCounter(state zigoCounterCleanupState) {
 }
 
 // Close releases the native Counter resources. It is safe to call more than once.
-// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
+// The error result is always nil; it exists so Counter satisfies io.Closer.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (c *Counter) Close() error {
@@ -194,7 +194,7 @@ func zigoCleanupAccumulator(state zigoAccumulatorCleanupState) {
 }
 
 // Close releases the native Accumulator resources. It is safe to call more than once.
-// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
+// The error result is always nil; it exists so Accumulator satisfies io.Closer.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (a *Accumulator) Close() error {

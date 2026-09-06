@@ -104,7 +104,7 @@ func zigoCleanupCallbackContext(state zigoCallbackContextCleanupState) {
 }
 
 // Close releases the native CallbackContext resources. It is safe to call more than once.
-// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
+// The error result is always nil; it exists so CallbackContext satisfies io.Closer.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (c *CallbackContext) Close() error {
@@ -216,7 +216,7 @@ func zigoCleanupFloatBuffer(state zigoFloatBufferCleanupState) {
 }
 
 // Close releases the native FloatBuffer resources. It is safe to call more than once.
-// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
+// The error result is always nil; it exists so FloatBuffer satisfies io.Closer.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (f *FloatBuffer) Close() error {
@@ -327,7 +327,7 @@ func zigoCleanupIntBuffer(state zigoIntBufferCleanupState) {
 }
 
 // Close releases the native IntBuffer resources. It is safe to call more than once.
-// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
+// The error result is always nil; it exists so IntBuffer satisfies io.Closer.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (i *IntBuffer) Close() error {

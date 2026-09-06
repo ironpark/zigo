@@ -6,6 +6,12 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- 빌리거나 자식을 두거나 borrowed view를 돌려주지 않는 handle의 `Close` doc이
+  `*HandleInUseError`를 반환한다고 잘못 적혀 있었습니다. 그런 handle의 `Close`는 항상 nil을
+  돌려주므로 0.11.0 이전처럼 "always nil; it exists so T satisfies io.Closer"로 되돌렸습니다.
+
 ## [0.12.0] - 2026-09-06
 
 ### Added

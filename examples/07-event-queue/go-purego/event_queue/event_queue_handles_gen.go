@@ -309,7 +309,7 @@ func zigoCleanupStream(state zigoStreamCleanupState) {
 }
 
 // Close releases the native Stream resources. It is safe to call more than once.
-// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
+// The error result is always nil; it exists so Stream satisfies io.Closer.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (s *Stream) Close() error {
@@ -807,7 +807,7 @@ func zigoCleanupBorrowChild(state zigoBorrowChildCleanupState) {
 }
 
 // Close releases the native BorrowChild resources. It is safe to call more than once.
-// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
+// The error result is always nil; it exists so BorrowChild satisfies io.Closer.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (b *BorrowChild) Close() error {
@@ -930,7 +930,7 @@ func zigoCleanupTerminal(state zigoTerminalCleanupState) {
 }
 
 // Close releases the native Terminal resources. It is safe to call more than once.
-// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
+// The error result is always nil; it exists so Terminal satisfies io.Closer.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (t *Terminal) Close() error {

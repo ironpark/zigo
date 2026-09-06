@@ -83,7 +83,7 @@ func zigoCleanupDocument(state zigoDocumentCleanupState) {
 }
 
 // Close releases the native Document resources. It is safe to call more than once.
-// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
+// The error result is always nil; it exists so Document satisfies io.Closer.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (d *Document) Close() error {
@@ -194,7 +194,7 @@ func zigoCleanupSink(state zigoSinkCleanupState) {
 }
 
 // Close releases the native Sink resources. It is safe to call more than once.
-// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
+// The error result is always nil; it exists so Sink satisfies io.Closer.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (s *Sink) Close() error {
@@ -305,7 +305,7 @@ func zigoCleanupSource(state zigoSourceCleanupState) {
 }
 
 // Close releases the native Source resources. It is safe to call more than once.
-// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
+// The error result is always nil; it exists so Source satisfies io.Closer.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (s *Source) Close() error {

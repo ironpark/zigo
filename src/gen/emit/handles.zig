@@ -243,10 +243,15 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
             // caller wait. `closed` carries idempotency: a second Close finds
             // it set and returns.
             try writer.print("// Close releases the native {0s} resources. It is safe to call more than once.\n", .{declaration.name});
+            // The doc has to match the body: only a handle that can refuse
+            // (an in-use check is written below) may promise the error.
+            const may_refuse = has_dependent_children or can_be_borrowed or returns_borrowed_views;
             if (has_dependent_children)
                 try writer.print("// It returns *HandleInUseError while a call is still inside native or a dependent child remains open.\n", .{})
+            else if (may_refuse)
+                try writer.print("// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.\n", .{})
             else
-                try writer.print("// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.\n", .{});
+                try writer.print("// The error result is always nil; it exists so {0s} satisfies io.Closer.\n", .{declaration.name});
             try writer.print(
                 "// Close does not wait: a call still inside native keeps the resources until it\n" ++
                     "// returns, and every call made after Close fails with *HandleError.\n" ++

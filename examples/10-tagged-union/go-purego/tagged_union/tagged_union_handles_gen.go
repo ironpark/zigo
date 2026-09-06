@@ -113,7 +113,7 @@ func zigoCleanupChild(state zigoChildCleanupState) {
 }
 
 // Close releases the native Child resources. It is safe to call more than once.
-// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
+// The error result is always nil; it exists so Child satisfies io.Closer.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (c *Child) Close() error {
@@ -254,7 +254,7 @@ func zigoCleanupValue(state zigoValueCleanupState) {
 }
 
 // Close releases the native Value resources. It is safe to call more than once.
-// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
+// The error result is always nil; it exists so Value satisfies io.Closer.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (v *Value) Close() error {
@@ -365,7 +365,7 @@ func zigoCleanupSignal(state zigoSignalCleanupState) {
 }
 
 // Close releases the native Signal resources. It is safe to call more than once.
-// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
+// The error result is always nil; it exists so Signal satisfies io.Closer.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (s *Signal) Close() error {
@@ -476,7 +476,7 @@ func zigoCleanupPalette(state zigoPaletteCleanupState) {
 }
 
 // Close releases the native Palette resources. It is safe to call more than once.
-// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
+// The error result is always nil; it exists so Palette satisfies io.Closer.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (p *Palette) Close() error {
