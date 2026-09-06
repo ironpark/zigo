@@ -30,14 +30,43 @@ const ImportIterator = struct {
 /// binding neither reads nor parses any of them again. The root source is
 /// kept because the coverage traversal starts from it.
 const Scanned = struct {
-    paths: std.ArrayList([]const u8) = .empty,
+    paths: std.StringHashMapUnmanaged(void) = .empty,
     root_source: ?[]const u8 = null,
 
-    fn seen(self: *const Scanned, path: []const u8) bool {
-        for (self.paths.items) |candidate| if (std.mem.eql(u8, candidate, path)) return true;
-        return false;
+    /// Whether this file has been read already. The key is the resolved path,
+    /// not the spelling the import used: the same file is reached as
+    /// `lib/a/../b/x.zig` from one directory and `lib/b/x.zig` from another,
+    /// and comparing spellings makes each route a new file. In a dependency
+    /// graph where files import across directories, that turns the walk from
+    /// one pass over N files into one that re-walks every subtree per route.
+    fn seen(self: *const Scanned, canonical: []const u8) bool {
+        return self.paths.contains(canonical);
+    }
+
+    fn record(self: *Scanned, allocator: std.mem.Allocator, canonical: []const u8) !void {
+        try self.paths.put(allocator, canonical, {});
     }
 };
+
+/// The path with `.` and `..` resolved, which is what identifies a file. The
+/// result is absolute, so two spellings of one file collide as they should.
+fn canonicalAlloc(allocator: std.mem.Allocator, path: []const u8) ![]const u8 {
+    return std.fs.path.resolve(allocator, &.{path}) catch allocator.dupe(u8, path);
+}
+
+/// Whether any function still lacks something enrichment could supply. Once
+/// every doc, source location and parameter name is filled, no later file can
+/// change the document -- enrichment only fills absences -- so the walk stops
+/// instead of parsing the rest of a dependency graph.
+fn needsEnrichment(functions: []const semantic.SemanticFn) bool {
+    for (functions) |function| {
+        if (function.doc == null or function.source == null) return true;
+        for (function.params) |parameter| {
+            if (parameter.name_source == .fallback or parameter.source == null) return true;
+        }
+    }
+    return false;
+}
 
 pub fn apply(
     allocator: std.mem.Allocator,
@@ -71,13 +100,17 @@ fn applyDependencyRoots(
     const functions = try allocator.dupe(semantic.SemanticFn, document.functions);
     var has_errors = false;
     for (dependency_roots) |root_path| {
-        if (scanned.seen(root_path)) continue;
+        // A dependency graph can be thousands of files; there is nothing left
+        // to learn from them once every name and doc is in place.
+        if (!needsEnrichment(functions)) break;
+        const canonical = try canonicalAlloc(allocator, root_path);
+        if (scanned.seen(canonical)) continue;
         const source = std.Io.Dir.cwd().readFileAlloc(io, root_path, allocator, source_limit) catch |err| {
             try writeReadError(diagnostics, root_path, err);
             has_errors = true;
             continue;
         };
-        try scanned.paths.append(allocator, root_path);
+        try scanned.record(allocator, canonical);
         // A dependency lives outside the binding's tree -- usually in the
         // package cache -- so its own directory, not the bindings directory,
         // is what its recorded paths stay relative to.
@@ -121,7 +154,7 @@ fn applyRootImports(
                 return err;
             },
         };
-        try scanned.paths.append(allocator, root_path);
+        try scanned.record(allocator, try canonicalAlloc(allocator, root_path));
         break :blk source;
     };
     const functions = try allocator.dupe(semantic.SemanticFn, document.functions);
@@ -174,7 +207,7 @@ fn applyRecording(
         try writeReadError(diagnostics, bindings_path, err);
         return err;
     };
-    try scanned.paths.append(allocator, bindings_path);
+    try scanned.record(allocator, try canonicalAlloc(allocator, bindings_path));
     const functions = try allocator.dupe(semantic.SemanticFn, document.functions);
     const directory = std.fs.path.dirname(bindings_path) orelse ".";
     var has_errors = try scanSourceWithDiagnostics(allocator, bindings_source, functions, try recordedPathAlloc(allocator, directory, bindings_path), diagnostics);
@@ -192,7 +225,7 @@ fn applyRecording(
     } else {
         if (std.Io.Dir.cwd().readFileAlloc(io, root_path, allocator, source_limit)) |root_source| {
             scanned.root_source = root_source;
-            try scanned.paths.append(allocator, root_path);
+            try scanned.record(allocator, try canonicalAlloc(allocator, root_path));
             if (document.doc == null) document.doc = try containerDocAlloc(allocator, root_source);
             has_errors = try scanSourceWithDiagnostics(allocator, root_source, functions, try recordedPathAlloc(allocator, directory, root_path), diagnostics) or has_errors;
         } else |err| switch (err) {
@@ -210,7 +243,7 @@ fn applyRecording(
     while (imports.next()) |referenced| {
         const path = try std.fs.path.join(allocator, &.{ directory, referenced });
         if (std.Io.Dir.cwd().readFileAlloc(io, path, allocator, source_limit)) |source| {
-            try scanned.paths.append(allocator, path);
+            try scanned.record(allocator, try canonicalAlloc(allocator, path));
             has_errors = try scanSourceWithDiagnostics(allocator, source, functions, try recordedPathAlloc(allocator, directory, path), diagnostics) or has_errors;
         } else |err| {
             try writeReadError(diagnostics, path, err);
@@ -250,11 +283,16 @@ fn scanImportedSourcesFrom(
     var has_errors = false;
     var imports: ImportIterator = .{ .source = source };
     while (imports.next()) |referenced| {
+        if (!needsEnrichment(functions)) return has_errors;
         const path = try std.fs.path.join(allocator, &.{ directory, referenced });
-        if (scanned.seen(path)) continue;
-        try scanned.paths.append(allocator, path);
+        const canonical = try canonicalAlloc(allocator, path);
+        if (scanned.seen(canonical)) continue;
+        try scanned.record(allocator, canonical);
         if (std.Io.Dir.cwd().readFileAlloc(io, path, allocator, source_limit)) |imported| {
-            has_errors = try scanSourceWithDiagnostics(allocator, imported, functions, try recordedPathAlloc(allocator, root, path), diagnostics) or has_errors;
+            // Recorded from the resolved path, so a file reached through
+            // `../` is written the same way as one reached directly.
+            const recorded = try recordedPathAlloc(allocator, try canonicalAlloc(allocator, root), canonical);
+            has_errors = try scanSourceWithDiagnostics(allocator, imported, functions, recorded, diagnostics) or has_errors;
             has_errors = try scanImportedSourcesFrom(
                 allocator,
                 io,
@@ -1139,4 +1177,83 @@ test "recorded source paths are relative to the bindings directory with slash se
         defer allocator.free(recorded);
         try std.testing.expectEqualStrings(case.expected, recorded);
     }
+}
+
+test "a dependency graph that reaches one file by two routes is walked once" {
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "bindings.zig", .data = "const x = 0;\n" });
+    try temporary.dir.createDirPath(std.testing.io, "library/left");
+    try temporary.dir.createDirPath(std.testing.io, "library/right");
+    // `main` reaches `search.zig` directly and again through `right/echo.zig`,
+    // which spells it `../left/search.zig`, and `echo.zig` imports back into
+    // `left`. Before the walk resolved paths, each spelling counted as a new
+    // file and the cycle re-walked the graph until the process was killed.
+    try temporary.dir.writeFile(std.testing.io, .{
+        .sub_path = "library/main.zig",
+        .data =
+        \\pub const Search = @import("left/search.zig").Search;
+        \\pub const Echo = @import("right/echo.zig").Echo;
+        ,
+    });
+    try temporary.dir.writeFile(std.testing.io, .{
+        .sub_path = "library/left/search.zig",
+        .data =
+        \\const echo = @import("../right/echo.zig");
+        \\pub const Search = struct {
+        \\    /// Feeds one byte to the search.
+        \\    pub fn feed(self: *Search, byte: u8) void { _ = self; _ = byte; }
+        \\};
+        ,
+    });
+    try temporary.dir.writeFile(std.testing.io, .{
+        .sub_path = "library/right/echo.zig",
+        .data =
+        \\const search = @import("../left/search.zig");
+        \\pub const Echo = struct {
+        \\    /// Repeats one byte.
+        \\    pub fn repeat(self: *Echo, count: u8) void { _ = self; _ = count; }
+        \\};
+        ,
+    });
+    const directory = try std.fmt.allocPrint(std.testing.allocator, ".zig-cache/tmp/{s}", .{temporary.sub_path});
+    defer std.testing.allocator.free(directory);
+    const bindings_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/bindings.zig", .{directory});
+    defer std.testing.allocator.free(bindings_path);
+    const dependency_root = try std.fmt.allocPrint(std.testing.allocator, "{s}/library/main.zig", .{directory});
+    defer std.testing.allocator.free(dependency_root);
+
+    var functions = [_]semantic.SemanticFn{
+        .{
+            .name = "feed",
+            .params = &.{.{ .name = "p0", .type = .{ .int = .{ .bits = 8, .signed = false } } }},
+            .receiver = "Search",
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_search_feed",
+        },
+        .{
+            .name = "repeat",
+            .params = &.{.{ .name = "p0", .type = .{ .int = .{ .bits = 8, .signed = false } } }},
+            .receiver = "Echo",
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_echo_repeat",
+        },
+    };
+    var document: semantic.Semantic = .{
+        .functions = &functions,
+        .package = "names",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var diagnostics: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer diagnostics.deinit();
+    try apply(arena.allocator(), std.testing.io, &document, bindings_path, bindings_path, &.{dependency_root}, &diagnostics.writer);
+
+    try std.testing.expectEqualStrings("byte", document.functions[0].params[0].name);
+    try std.testing.expectEqualStrings("count", document.functions[1].params[0].name);
+    // Recorded from the resolved path, so the route taken does not show.
+    try std.testing.expectEqualStrings("left/search.zig", document.functions[0].source.?.path);
+    try std.testing.expectEqualStrings("right/echo.zig", document.functions[1].source.?.path);
 }
