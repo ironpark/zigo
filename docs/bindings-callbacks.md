@@ -102,6 +102,37 @@ userdata는 제외) 코드포인트가 아닌 자리는 `.integer`로 채웁니�
 않으며, 콜백이 아닌 파라미터에 두 값을 쓰면 기존 callback metadata 오용 진단인
 `ZIGO025`로 거부합니다.
 
+계약이 그 콜백 타입 자체의 성질이라면 등록 항목에 한 번만 적을 수 있습니다.
+`.repr = .callback` 항목의 `retention`·`reentrancy`·`thread`는 그 타입을 받는 모든
+파라미터가 물려받습니다.
+
+```zig
+.types = .{
+    .{
+        .name = "ClipboardHandler",
+        .type = mylib.ClipboardFn,
+        .repr = .callback,
+        .retention = .retained,
+        .reentrancy = .allowed,
+        .thread = .caller,
+    },
+},
+.functions = .{
+    // 세 줄짜리 계약 블록이 필요 없습니다.
+    .{ .path = "Stream.onClipboardWriteRequest", .params = .{ "callback", "userdata" } },
+    // 자리마다 필드 단위로 덮어쓸 수 있습니다. 나머지 둘은 그대로 물려받습니다.
+    .{
+        .path = "Stream.onClipboardPeek",
+        .params = .{ "callback", "userdata" },
+        .param_meta = .{ .callback = .{ .retention = .borrowed } },
+    },
+},
+```
+
+기본값은 reflection 단계에서 풀리므로 `semantic.json`은 자리마다 직접 적었을 때와 완전히
+같습니다. 생성물과 `abi-check` 판정도 달라지지 않습니다. 콜백이 아닌 등록 항목에 이 세 키를
+두면 `.userdata`·`.text`와 마찬가지로 `bindings.zig` 컴파일 시점에 거부됩니다.
+
 ## 콜백이 돌려주는 Go error
 
 기본적으로 Go 콜백은 Zig 시그니처가 말하는 값만 돌려줍니다. `param_meta.<이름>.go_error`를

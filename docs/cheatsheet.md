@@ -12,7 +12,7 @@ const bindings = zigo.addGoBindings(b, .{
     .name = "mylib",
     .module = mylib,                       // *std.Build.Module
     .bindings = b.path("src/bindings.zig"),
-    .source_root = b.path("src/root.zig"), // 이름·주석 보강 (선택, import까지 재귀 스캔)
+    .source_root = b.path("src/root.zig"), // 이름·주석 보강 (선택, import과 의존 module까지 스캔)
     .go_dir = b.path("go"),
     .go_module = "example.com/mylib/go",
     .target = target,
@@ -88,6 +88,8 @@ cd go && go test ./...
 | `allocator` | `.c_allocator` / `.page_allocator` / `.smp_allocator` / `"gpa"` 선언 경로. `std.mem.Allocator` 주입·narrow slice·materialized에 필요 |
 | `io` | `std.Io`를 주입할 선언 경로 |
 | `codepoints` | `.infer_u21`이면 모든 `u21`이 `rune` ([코드포인트](bindings-types.md#코드포인트)) |
+| `strings` | `.infer_utf8`이면 힌트 없는 `[]const u8` 파라미터·반환이 `string`. 자리별 opt-out은 `.opaque_bytes` ([문자열](bindings-buffers.md#바인딩-전체의-문자열-기본값)) |
+| `string_release` | `.returns = .caller` 문자열 결과의 기본 `.release` 함수 경로 |
 
 ```zig
 .interfaces = .{
@@ -112,7 +114,7 @@ cd go && go test ./...
 | `.enumeration` | enum | `exhaustive = false`(열린 enum), `text = true`, `go`, `covers`(Go enum이 대신하는 Zig 메서드 경로). `.path = "<Enum>.<메서드>"`로 메서드를 바인딩 | [값 타입](bindings-types.md#enum-이름-지정) |
 | `.tagged_union` | `union(enum)` | `access = .snapshot`, `omit_variants` | [Tagged union](bindings-unions.md) |
 | `.materialized` | pointer·string·slice 결과 트리 | `field_meta`(`[]const u8` 필드를 `.opaque_bytes`로 두면 `[]byte`) | [값 타입](bindings-types.md#materialized-결과-트리) |
-| `.callback` | `*const fn (...) callconv(.c)` | `on_callback_failure`, `param_semantics`, `semantic`, `userdata`(`.first`/`.last`/`.{ .index = n }`) | [콜백](bindings-callbacks.md#콜백-시그니처-규약) |
+| `.callback` | `*const fn (...) callconv(.c)` | `on_callback_failure`, `param_semantics`, `semantic`, `userdata`(`.first`/`.last`/`.{ .index = n }`), `retention`·`reentrancy`·`thread`(호출 자리가 물려받는 계약) | [콜백](bindings-callbacks.md#콜백-시그니처-규약) |
 
 ```zig
 .types = .{
@@ -127,6 +129,8 @@ cd go && go test ./...
     .{ .name = "Observer", .type = mylib.Observer, .repr = .callback, .on_callback_failure = .{ .result = 0 } },
     .{ .name = "Visitor", .type = mylib.Visitor, .repr = .callback, .param_semantics = .{ .codepoint, .integer }, .semantic = .codepoint },
     .{ .name = "Reducer", .type = mylib.Reducer, .repr = .callback, .userdata = .first },   // ctx가 첫 인자인 콜백
+    .{ .name = "ClipboardHandler", .type = mylib.ClipboardFn, .repr = .callback,
+       .retention = .retained, .reentrancy = .allowed, .thread = .caller },                 // 호출 자리가 물려받음
 },
 ```
 
@@ -178,7 +182,7 @@ version 2 layout(자연 폭·정렬, record 8바이트 정렬)이라 `T`↔`?T`�
 | `go_error` | `true` | 콜백이 Go `error`를 돌려줄 수 있음 (Zig 반환 `i32`) |
 | `on_callback_failure` | `.{ .result = n }` | 콜백 panic·error 시 native에 돌려줄 값 |
 | `userdata` | 파라미터 이름 | 콜백의 토큰을 받는 `usize` 파라미터가 콜백 바로 다음이 아닐 때 |
-| `reentrancy`, `thread` | `.allowed`/`.forbidden`, `.caller`/`.any` | 콜백 계약 (doc에만 반영) |
+| `reentrancy`, `thread` | `.allowed`/`.forbidden`, `.caller`/`.any` | 콜백 계약 (doc에만 반영). `retention`과 함께 등록 항목에서 물려받고 여기서 필드 단위로 덮어씀 |
 | `buffer` | 바이트 수 | `std.Io` 스트림 staging 버퍼 |
 | `go` | 어댑터 | scalar 파라미터 하나 |
 

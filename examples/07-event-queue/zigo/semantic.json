@@ -1946,6 +1946,7 @@
       "symbol": "zg_ticker_free_ticker"
     },
     {
+      "doc": "Advances a ticker and reports how many whole intervals have elapsed.",
       "name": "advance",
       "package": "types",
       "ownership": "borrowed",
@@ -1955,6 +1956,10 @@
           "name": "steps",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "source": {
+            "line": 558,
+            "column": 39
+          },
           "type": {
             "bits": 32,
             "is_usize": false,
@@ -1970,10 +1975,16 @@
         "kind": "int",
         "signed": false
       },
+      "source": {
+        "path": "root.zig",
+        "line": 558,
+        "column": 8
+      },
       "zig_path": "tickerAdvance",
       "symbol": "zg_ticker_advance"
     },
     {
+      "doc": "Reports the raw elapsed tick count.",
       "name": "elapsed",
       "package": "types",
       "ownership": "borrowed",
@@ -1984,6 +1995,11 @@
         "is_usize": false,
         "kind": "int",
         "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 564,
+        "column": 8
       },
       "zig_path": "tickerElapsed",
       "symbol": "zg_ticker_elapsed"

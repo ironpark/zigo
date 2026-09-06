@@ -115,7 +115,7 @@ func (d DeccolmMode) Columns() uint16 {
 	return raw.DeccolmModeColumns(uint8(d))
 }
 
-// Blinks calls the Zig function CursorStyle.blinks.
+// Blinks: Reports whether a cursor of this style blinks.
 func (c CursorStyle) Blinks() bool {
 	return raw.CursorStyleBlinks(uint8(c)) != 0
 }

@@ -29,6 +29,35 @@ Go byte buffer를 호출 동안만 native에 전달합니다. 반환 문자열�
 복사합니다. native 코드는 입력 포인터를 호출이 끝난 뒤 보관하면 안 됩니다. mutable `[*:0]u8`,
 0이 아닌 sentinel, 기타 many-pointer는 지원하지 않습니다.
 
+## 바인딩 전체의 문자열 기본값
+
+라이브러리의 `[]const u8`이 대부분 텍스트라면 `zigo.define`에 `.strings = .infer_utf8`을
+지정해 자리마다 `.semantic = .utf8_string`을 쓰지 않을 수 있습니다. 이 옵션은 힌트가 없는
+plain byte slice 파라미터와 반환값(그리고 `[]const []const u8`)을 `.utf8_string`으로 봅니다.
+`?`와 `!`는 통과합니다.
+
+```zig
+pub const bindings = zigo.define(.{
+    .root = mylib,
+    .strings = .infer_utf8,
+    .functions = .{
+        .{ .path = "root.render", .params = .{"text"} },                 // text: []const u8 → string
+        .{ .path = "root.digest", .params = .{"payload"},
+           .param_meta = .{ .payload = .{ .semantic = .opaque_bytes } } }, // → []byte
+    },
+});
+```
+
+- 자리에 쓴 힌트가 항상 이깁니다. 바이트로 남길 자리는 `.semantic = .opaque_bytes`로 빼며,
+  이 힌트는 문서에 기록되지 않고 추론만 멈춥니다. 결과는 `.strings`를 쓰기 전과 같습니다.
+- sentinel 스펠링(`[:0]const u8`, `[*:0]const u8`)은 이미 C 문자열 규칙을 따르므로 추론
+  대상이 아닙니다.
+- `[]u8` **파라미터**는 callee가 채우는 버퍼(`.direction = .out` 포함)로 보고 추론하지
+  않습니다. `[]u8` **반환**은 방금 만들어 넘기는 저장소이므로 텍스트로 봅니다.
+- 콜백 파라미터와 materialized 필드는 이 추론이 닿지 않습니다. materialized 필드는 이미
+  `[]const u8`을 문자열로 보고 `.field_meta`의 `.opaque_bytes`로 빼며, 콜백은 자리마다
+  선언합니다.
+
 ## 문자열 slice 매개변수
 
 여러 문자열을 입력으로 넘길 때는 `[]const []const u8`에 `.utf8_string`을 지정하거나,
@@ -86,6 +115,27 @@ pub fn freeSamples(_: *EventQueue, samples: []f32) void { /* 버퍼 해제 */ }
 },
 .{ .path = "EventQueue.freeSamples", .params = .{"samples"} },
 ```
+
+문자열 결과의 해제 함수가 바인딩 전체에서 하나라면 `zigo.define`의
+`.string_release = "root.freeString"`으로 한 번만 적을 수 있습니다. `.returns = .caller`인
+문자열 결과(`.utf8_string`·`.c_string`으로 표시된 byte slice)가 `.release`를 적지 않았을 때
+이 함수가 쓰이며, 자리에 적은 `.release`가 항상 이깁니다. 문자열이 아닌 버퍼 결과는 그대로
+자기 `.release`가 필요합니다.
+
+```zig
+pub const bindings = zigo.define(.{
+    .root = mylib,
+    .strings = .infer_utf8,
+    .string_release = "root.freeString",
+    .functions = .{
+        .{ .path = "Terminal.plainString", .returns = .caller },   // 세 줄이 한 줄로
+        .{ .path = "root.freeString", .params = .{"str"} },
+    },
+});
+```
+
+`.string_release`가 노출되지 않았거나 모양이 맞지 않는 함수를 가리키면, 직접 적은
+`.release`와 똑같이 `ZIGO016`으로 거부됩니다.
 
 생성된 raw 계층은 native가 채운 `ptr, len`을 먼저 Go slice로 복사한 뒤 곧바로 release
 심볼을 같은 `ptr, len`으로 호출합니다. 따라서 반환된 slice는 항상 Go 메모리이고, 호출자가

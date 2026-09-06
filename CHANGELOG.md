@@ -18,6 +18,16 @@
 
 ### Added
 
+- `zigo.define`의 `.strings = .infer_utf8`로 힌트 없는 plain `[]const u8` 파라미터·반환과
+  `[]const []const u8`을 `.utf8_string`으로 추론합니다. 자리별 opt-out은
+  `.semantic = .opaque_bytes`이며 이 힌트는 문서에 기록되지 않고 추론만 멈춥니다. sentinel
+  스펠링은 기존 `.c_string` 규칙을 유지하고, `[]u8` 파라미터는 callee가 채우는 버퍼로 보아
+  추론하지 않습니다. 콜백 파라미터와 materialized 필드에는 적용되지 않습니다.
+- `zigo.define`의 `.string_release`로 `.returns = .caller` 문자열 결과의 기본 해제 함수를 한 번만
+  적습니다. 자리에 적은 `.release`가 이기고, 잘못된 대상은 명시 `.release`와 같은 `ZIGO016`입니다.
+- `.repr = .callback` 등록 항목의 `retention`·`reentrancy`·`thread`를 그 콜백 타입을 받는 모든
+  파라미터가 물려받고, `param_meta`가 필드 단위로 덮어씁니다. 기본값은 reflection 단계에서
+  풀리므로 `semantic.json`과 생성물은 자리마다 직접 적었을 때와 동일합니다.
 - `.repr = .enumeration`으로 등록한 enum이 메서드를 가질 수 있습니다. 경로가 그 enum을 거치거나
   (`.path = "DeccolmMode.columns"`) `.receiver`가 지목하고 첫 비주입 파라미터가 그 enum을 값으로
   받으면 Go에서 값 receiver 메서드(`func (d DeccolmMode) Columns() uint16`)가 됩니다. enum을
@@ -32,6 +42,15 @@
   변경을 잃으므로 받지 않습니다.
 
 ### Fixed
+
+- 이름·문서 보강이 바인딩이 지목하지 않은 선언에서 파라미터 이름을 가져오던 문제를 고쳤습니다.
+  매칭이 Go 이름과 인자 개수만 봤기 때문에, `.name`이나 receiver group의 `strip_prefix`로 이름이
+  바뀐 래퍼가 다른 파일의 동명 함수에서 이름을 집어 `Search.Feed(bytes bool)` 같은 결과가
+  나왔습니다. 이제 `zig_path`가 가리키는 실제 선언과 그 컨테이너로 매칭하며, 익명 컨테이너용
+  fallback은 소스가 다른 owner를 선언한 함수를 가져가지 못합니다.
+- `source_root`를 지정하면 대상 module이 import하는 module 그래프의 root 소스까지 훑습니다.
+  바인딩 대상 라이브러리가 별도 Zig module이면 그 선언은 파라미터 이름이 `p0`로 남았습니다.
+  기록되는 경로는 각 root 기준 상대 경로입니다.
 
 - root 모듈이 여러 파일로 나뉘어 있을 때 doc 주석과 파라미터 이름이 생성물에 실리지 않던
   문제를 고쳤습니다. 이름·문서 보강 패스는 bindings 파일과 그 직접 import, 그리고 `root.zig`만
