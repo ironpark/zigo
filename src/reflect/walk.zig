@@ -94,6 +94,8 @@ pub fn reflect(
             }
             if (entry.repr != .@"opaque" and @hasField(@TypeOf(entry), "fields"))
                 @compileError("zigo `.fields` metadata is supported only on `.repr = .opaque` type entries");
+            if (entry.repr != .callback and @hasField(@TypeOf(entry), "userdata"))
+                @compileError("zigo `.userdata` is supported only on `.repr = .callback` type entries");
             if (entry.repr != .enumeration and @hasField(@TypeOf(entry), "text"))
                 @compileError("zigo `.text` is supported only on `.repr = .enumeration` type entries");
             if (entry.repr != .value and entry.repr != .enumeration and @hasField(@TypeOf(entry), "go"))
@@ -877,6 +879,7 @@ fn appendFunction(
                     reflected.on_callback_failure = .{ .result = value.on_callback_failure.result };
                 if (@hasField(@TypeOf(value), "reentrancy")) reflected.reentrancy = value.reentrancy;
                 if (@hasField(@TypeOf(value), "thread")) reflected.thread = value.thread;
+                if (@hasField(@TypeOf(value), "userdata")) reflected.userdata = value.userdata;
                 if (@hasField(@TypeOf(value), "flatten")) reflected.flatten = flattened_fields;
                 if (@hasField(@TypeOf(value), "go")) reflected.go_adapter = comptime goAdapterValue(value.go);
             }
@@ -1693,11 +1696,20 @@ fn typeNode(
                 }
                 if (@typeInfo(info.child) == .@"fn") {
                     const function_info = @typeInfo(info.child).@"fn";
-                    const callback_params = try allocator.alloc(semantic.TypeNode, function_info.params.len);
+                    const native_count = function_info.params.len;
+                    // The userdata slot: where the registered entry points, or
+                    // the trailing `usize`. A declared slot is taken as is so
+                    // validation can name a wrong type against the binding.
+                    const userdata_native: ?usize = comptime callbackEntryUserdata(declaration, T, native_count) orelse
+                        (if (native_count != 0 and function_info.params[native_count - 1].type == usize) native_count - 1 else null);
+                    const has_userdata = userdata_native != null;
+                    // `params` is in Go order: values as declared, userdata
+                    // last. Native order is remembered as `userdata_at`.
+                    const callback_params = try allocator.alloc(semantic.TypeNode, native_count);
                     inline for (function_info.params, 0..) |parameter, index| {
                         const parameter_type = parameter.type orelse
                             @compileError("zigo cannot reflect a generic callback parameter, at " ++ context);
-                        callback_params[index] = try typeNode(
+                        callback_params[comptime goOrderIndex(userdata_native, native_count, index)] = try typeNode(
                             allocator,
                             declaration,
                             parameter_type,
@@ -1709,11 +1721,9 @@ fn typeNode(
                     const callback_return_type = function_info.return_type orelse
                         @compileError("zigo cannot reflect a generic callback return type, at " ++ context);
                     callback_return.* = try typeNode(allocator, declaration, callback_return_type, types, context ++ " (callback return value)");
-                    const has_userdata = function_info.params.len != 0 and
-                        function_info.params[function_info.params.len - 1].type == usize;
                     // Hints come from the registered callback entry, then
                     // inference; the userdata slot never carries one.
-                    const value_count = if (has_userdata) function_info.params.len - 1 else function_info.params.len;
+                    const value_count = if (has_userdata) native_count - 1 else native_count;
                     const declared = comptime callbackEntryHints(declaration, T, value_count);
                     const hints = try allocator.alloc(?semantic.SemanticHint, function_info.params.len);
                     var any_hint = false;
@@ -1724,6 +1734,7 @@ fn typeNode(
                     break :blk .{ .callback = .{
                         .c_callconv = std.meta.eql(function_info.calling_convention, std.builtin.CallingConvention.c),
                         .has_userdata = has_userdata,
+                        .userdata_at = if (userdata_native) |at| (if (at == native_count - 1) null else at) else null,
                         .params = callback_params,
                         .param_semantics = if (any_hint) hints else null,
                         .ref = registeredTypeName(declaration, T, .callback) orelse callbackNameForPath(types.items, @typeName(T)),
@@ -2060,6 +2071,45 @@ const CallbackEntryHints = struct { params: []const ?semantic.SemanticHint, ret:
 /// The `.param_semantics` and `.semantic` a registered `.repr = .callback`
 /// entry declares for `T`, positionally over the value parameters (the
 /// trailing userdata is not listed). Unregistered callbacks have none.
+/// The `params` index a native callback parameter lands on: values keep
+/// their relative order and the userdata slot moves to the end.
+fn goOrderIndex(userdata_native: ?usize, count: usize, native: usize) usize {
+    const userdata = userdata_native orelse return native;
+    if (native < userdata) return native;
+    if (native == userdata) return count - 1;
+    return native - 1;
+}
+
+/// The native position of the userdata slot a registered callback entry
+/// declares with `.userdata`, or null to take the trailing `usize`.
+fn callbackEntryUserdata(comptime declaration: anytype, comptime T: type, comptime count: usize) ?usize {
+    comptime {
+        if (!@hasField(@TypeOf(declaration), "types")) return null;
+        for (declaration.types) |entry| {
+            if (entry.repr != .callback or entry.type != T) continue;
+            if (!@hasField(@TypeOf(entry), "userdata")) return null;
+            const spec = entry.userdata;
+            const Spec = @TypeOf(spec);
+            const shape_error = "zigo `.userdata` on callback `" ++ entry.name ++ "` must be `.first`, `.last`, or `.{ .index = n }`";
+            if (Spec == @TypeOf(.enum_literal)) {
+                if (count == 0) @compileError("zigo `.userdata` on callback `" ++ entry.name ++ "` points at a parameter, but the callback has none");
+                if (spec == .first) return 0;
+                if (spec == .last) return count - 1;
+                @compileError(shape_error);
+            }
+            if (@typeInfo(Spec) == .@"struct" and @hasField(Spec, "index")) {
+                if (spec.index >= count) @compileError(std.fmt.comptimePrint(
+                    "zigo `.userdata` on callback `{s}` names parameter {d}, but the callback has {d} parameters",
+                    .{ entry.name, spec.index, count },
+                ));
+                return spec.index;
+            }
+            @compileError(shape_error);
+        }
+        return null;
+    }
+}
+
 fn callbackEntryHints(comptime declaration: anytype, comptime T: type, comptime value_count: usize) CallbackEntryHints {
     comptime {
         var params: [value_count]?semantic.SemanticHint = @splat(null);
@@ -4367,4 +4417,42 @@ test "packed value fields require registered enum and packed struct identities" 
         }
     }
     try std.testing.expect(saw_flags and saw_invalid);
+}
+
+test "a declared userdata position reorders the callback signature to Go order" {
+    const Fixture = struct {
+        pub const Reducer = *const fn (ctx: usize, acc: i32, value: u8) callconv(.c) i32;
+        pub fn reduce(ctx: usize, callback: Reducer, acc: i32) i32 {
+            return callback(ctx, acc, 1);
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{.{ .name = "Reducer", .type = Fixture.Reducer, .repr = .callback, .userdata = .first }},
+        .functions = .{.{
+            .path = "root.reduce",
+            .params = .{ "ctx", "callback", "acc" },
+            .param_meta = .{ .callback = .{ .userdata = "ctx" } },
+        }},
+    }, "callbacks", "zg");
+    const callback = document.functions[0].params[1];
+    try std.testing.expectEqualStrings("ctx", callback.userdata.?);
+    const signature = callback.type.callback;
+    try std.testing.expect(signature.has_userdata);
+    try std.testing.expectEqual(@as(?usize, 0), signature.userdata_at);
+    // Values keep their order and the userdata slot moves last.
+    try std.testing.expectEqual(@as(usize, 3), signature.params.len);
+    try std.testing.expectEqual(@as(u16, 32), signature.params[0].int.bits);
+    try std.testing.expectEqual(@as(u16, 8), signature.params[1].int.bits);
+    try std.testing.expect(signature.params[2].int.is_usize);
+    // Native `ctx, acc, value` is Go `acc, value, ctx`.
+    try std.testing.expectEqual(@as(usize, 2), signature.goIndexOfNative(0));
+    try std.testing.expectEqual(@as(usize, 0), signature.goIndexOfNative(1));
+    try std.testing.expectEqual(@as(usize, 1), signature.goIndexOfNative(2));
+    const bytes = try document.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"userdata_at\": 0") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"userdata\": \"ctx\"") != null);
 }

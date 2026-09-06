@@ -1581,15 +1581,21 @@ test "narrow integer slice elements cross at their promoted width" {
 }
 
 /// The callback each userdata parameter belongs to. A callback that carries
-/// userdata is always followed immediately by its token, so the pairing is
-/// fixed by position rather than by name.
+/// userdata is followed immediately by its token unless the binding named
+/// the token parameter with `param_meta.<callback>.userdata`.
 fn pairUserdataParams(allocator: std.mem.Allocator, function: semantic.SemanticFn) ![]const ?usize {
     const result = try allocator.alloc(?usize, function.params.len);
-    for (result, 0..) |*entry, index| {
-        entry.* = null;
-        if (index == 0) continue;
-        const callback = function.params[index - 1];
-        if (callback.type == .callback and callback.type.callback.has_userdata) entry.* = index - 1;
+    @memset(result, null);
+    for (function.params, 0..) |parameter, index| {
+        if (parameter.type != .callback or !parameter.type.callback.has_userdata) continue;
+        if (parameter.userdata) |name| {
+            for (function.params, 0..) |candidate, candidate_index| {
+                if (candidate_index != index and std.mem.eql(u8, candidate.name, name)) {
+                    result[candidate_index] = index;
+                    break;
+                }
+            }
+        } else if (index + 1 < function.params.len) result[index + 1] = index;
     }
     return result;
 }
@@ -2799,4 +2805,32 @@ test "lowering records what every parameter does with memory" {
     try std.testing.expectEqual(abi.ParamOwnership.staged_copy, functions[7].paramOwnership(0));
     // An index past the parameters answers the same as any plain argument.
     try std.testing.expectEqual(abi.ParamOwnership.transient, functions[8].paramOwnership(3));
+}
+
+test "lowering pairs a named userdata parameter with its callback" {
+    var callback_return: semantic.TypeNode = .{ .void = {} };
+    const usize_node: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
+    const callback: semantic.TypeNode = .{ .callback = .{ .params = &.{usize_node}, .@"return" = &callback_return, .has_userdata = true } };
+    const document: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "reduce",
+            .params = &.{
+                .{ .name = "ctx", .type = usize_node },
+                .{ .name = "callback", .type = callback, .userdata = "ctx" },
+                .{ .name = "acc", .type = .{ .int = .{ .bits = 32, .signed = true } } },
+            },
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_reduce",
+        }},
+        .package = "reduce",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const program = try semanticDocument(arena.allocator(), document, "reduce", "zg", &.{});
+    const reduce = program.functions[0];
+    try std.testing.expectEqual(@as(?usize, 1), reduce.userdataFor(0));
+    try std.testing.expectEqual(@as(?usize, null), reduce.userdataFor(1));
+    try std.testing.expectEqual(@as(?usize, null), reduce.userdataFor(2));
 }

@@ -15,6 +15,9 @@ pub const bindings = zigo.define(.{
         .{ .name = "VoidObserver", .type = library.VoidObserver, .repr = .callback },
         // `bool` in a callback signature becomes Go `bool` on both backends.
         .{ .name = "Predicate", .type = library.Predicate, .repr = .callback },
+        // The native signature puts the context first; `.userdata` says so and
+        // the generated shim reorders the arguments for the Go dispatcher.
+        .{ .name = "Reducer", .type = library.Reducer, .repr = .callback, .userdata = .first },
         // The visitor's `u32` parameter is a codepoint, so the Go type is
         // `func(rune)`. Hints are positional over the value parameters; the
         // trailing userdata is not listed.
@@ -61,6 +64,12 @@ pub const bindings = zigo.define(.{
         .{
             .path = "root.filter",
             .params = .{ "value", "strict", "predicate", "userdata" },
+        },
+        .{
+            .path = "root.reduce",
+            .params = .{ "ctx", "values", "reducer" },
+            // The token parameter is not next to the callback, so it is named.
+            .param_meta = .{ .reducer = .{ .userdata = "ctx" } },
         },
         .{
             .path = "root.visitCodepoints",

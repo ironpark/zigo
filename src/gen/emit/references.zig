@@ -92,7 +92,11 @@ pub fn referencedHelpersAlloc(allocator: std.mem.Allocator, program: abi.Program
         for (emit.public_emitters) |emitter| {
             var rendered: std.Io.Writer.Allocating = .init(allocator);
             defer rendered.deinit();
-            try emitter.render(allocator, &rendered.writer, program, trial);
+            // The writer only allocates, so a failed write is a failed allocation.
+            emitter.render(allocator, &rendered.writer, program, trial) catch |err| switch (err) {
+                error.WriteFailed => return error.OutOfMemory,
+                else => return err,
+            };
             try scanBody(allocator, &next, rendered.written());
         }
         const files = try emit.unionFilesAlloc(allocator, program, trial);

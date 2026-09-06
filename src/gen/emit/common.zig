@@ -451,14 +451,15 @@ pub fn callbackWireScalar(function: abi.AbiFn, source_index: usize) ?abi.AbiScal
 
 /// A callback whose native signature differs from what Go receives needs the
 /// shim to sit between the native caller and Go: packed values travel as their
-/// backing integer, `bool` as `u8`, and on purego floats as their bits, because
-/// the native side calls the callback pointer directly with its own types and
-/// the shim is the only code that can convert them.
+/// backing integer, `bool` as `u8`, a userdata slot declared anywhere but last
+/// moves to the end, and on purego floats travel as their bits. The native
+/// side calls the callback pointer directly with its own signature and the
+/// shim is the only code that can adapt it.
 pub fn needsCallbackThunk(program: abi.Program, function: abi.AbiFn, parameter_index: usize) bool {
     const parameter = function.origin.params[parameter_index];
     if (parameter.type != .callback) return false;
     const callback = parameter.type.callback;
-    if (callbackHasPackedParam(program, callback) or callbackHasBool(callback)) return true;
+    if (callbackHasPackedParam(program, callback) or callbackHasBool(callback) or callback.userdata_at != null) return true;
     return program.backend == .purego and callbackHasFloatParam(callback);
 }
 

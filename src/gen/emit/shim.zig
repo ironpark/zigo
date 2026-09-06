@@ -1016,10 +1016,13 @@ fn renderCallbackBitThunks(allocator: std.mem.Allocator, writer: *std.Io.Writer,
 /// values as their Zig types, through the opening brace and first indent.
 fn writeCallbackThunkSignature(writer: *std.Io.Writer, program: abi.Program, callback: semantic.Callback, thunk: []const u8) !void {
     try writer.print("fn {s}(", .{thunk});
-    for (callback.params, 0..) |callback_parameter, index| {
-        if (index != 0) try writer.writeAll(", ");
+    // Parameters are declared in native order but named by their Go-order
+    // index, so the forwarding call can list `p0..pN` in order.
+    for (0..callback.params.len) |native| {
+        if (native != 0) try writer.writeAll(", ");
+        const index = callback.goIndexOfNative(native);
         try writer.print("p{d}: ", .{index});
-        try writeCallbackNativeType(writer, program, callback_parameter);
+        try writeCallbackNativeType(writer, program, callback.params[index]);
     }
     try writer.writeAll(") callconv(.c) ");
     try writeCallbackNativeType(writer, program, callback.@"return".*);

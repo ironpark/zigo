@@ -28,3 +28,17 @@ func TestBoolCallbackRoundTrip(t *testing.T) {
 		t.Fatalf("strict flags did not round-trip: %v", seenStrict)
 	}
 }
+
+// The native reducer takes its context first; Go sees the values only.
+var _ Reducer = func(acc, value int32) int32 { return acc + value }
+
+func TestUserdataFirstCallback(t *testing.T) {
+	calls := 0
+	sum := Reduce([]int32{1, 2, 3}, func(acc, value int32) int32 {
+		calls++
+		return acc + value
+	})
+	if sum != 6 || calls != 3 {
+		t.Fatalf("reduce = %d after %d calls, want 6 after 3", sum, calls)
+	}
+}

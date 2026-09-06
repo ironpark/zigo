@@ -345,7 +345,11 @@ pub fn unionFilesAlloc(allocator: std.mem.Allocator, program: abi.Program, optio
         errdefer allocator.free(path);
         var rendered: std.Io.Writer.Allocating = .init(allocator);
         defer rendered.deinit();
-        try public_types.renderUnionFile(allocator, &rendered.writer, program, options, entry);
+        // The writer only allocates, so a failed write is a failed allocation.
+        public_types.renderUnionFile(allocator, &rendered.writer, program, options, entry) catch |err| switch (err) {
+            error.WriteFailed => return error.OutOfMemory,
+            else => return err,
+        };
         try files.append(allocator, .{ .path = path, .contents = try rendered.toOwnedSlice() });
     }
     return files.toOwnedSlice(allocator);

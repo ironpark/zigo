@@ -81,6 +81,18 @@ pub fn visitCodepoints(text: []const u8, visitor: Visitor, userdata: usize) u32 
     return last;
 }
 
+/// A reducer takes its context first, the way many C libraries declare their
+/// callbacks. The binding points `.userdata = .first` at it and the shim thunk
+/// reorders the arguments into the order Go dispatches in.
+pub const Reducer = *const fn (ctx: usize, acc: i32, value: i32) callconv(.c) i32;
+
+/// Folds values through reducer, starting from zero.
+pub fn reduce(ctx: usize, values: []const i32, reducer: Reducer) i32 {
+    var acc: i32 = 0;
+    for (values) |value| acc = reducer(ctx, acc, value);
+    return acc;
+}
+
 pub const CallbackContext = struct {
     const Stats = struct { runs: std.atomic.Value(u32) = .init(0) };
 
@@ -148,6 +160,13 @@ test "generic specializations and callback context" {
     }.call;
     try std.testing.expect(!filter(0, true, &predicate, 0));
     try std.testing.expect(filter(0, false, &predicate, 0));
+
+    const reducer = struct {
+        fn call(_: usize, acc: i32, value: i32) callconv(.c) i32 {
+            return acc + value;
+        }
+    }.call;
+    try std.testing.expectEqual(@as(i32, 6), reduce(0, &.{ 1, 2, 3 }, &reducer));
 
     var notified: i32 = 0;
     const void_callback = struct {

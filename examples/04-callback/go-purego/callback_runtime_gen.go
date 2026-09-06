@@ -46,6 +46,9 @@ type VoidObserver func(int32)
 // Predicate is the Go callback signature accepted by the generated binding.
 type Predicate func(int32, bool) bool
 
+// Reducer is the Go callback signature accepted by the generated binding.
+type Reducer func(int32, int32) int32
+
 // Visitor is the Go callback signature accepted by the generated binding.
 type Visitor func(rune)
 
@@ -70,6 +73,10 @@ func zigoNewPredicateHandle(value Predicate) zigoCallbackHandle {
 	return raw.NewCallbackHandle(func(p0 int32, p1 uint8) uint8 {
 		return zigoBoolToUint8(value(p0, p1 != 0))
 	})
+}
+
+func zigoNewReducerHandle(value Reducer) zigoCallbackHandle {
+	return raw.NewCallbackHandle((func(int32, int32) int32)(value))
 }
 
 func zigoNewVisitorHandle(value Visitor) zigoCallbackHandle {

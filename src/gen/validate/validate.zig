@@ -5,6 +5,7 @@ const diagnostic = @import("diagnostic");
 const semantic = @import("semantic");
 const lower = @import("lower");
 const functions = @import("functions.zig");
+const callbacks = @import("callbacks.zig");
 const interfaces = @import("interfaces.zig");
 const materialized = @import("materialized.zig");
 const names = @import("names.zig");
@@ -146,6 +147,7 @@ const rules = [_]Rule{
     types.integrityIssue,
     functions.optionalOutIssue,
     types.abiTypeIssue,
+    callbacks.callbackUserdataRule,
 };
 
 pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {

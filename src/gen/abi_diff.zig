@@ -686,7 +686,7 @@ fn declaredTypeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
         .error_union => |a| a.anyerror == rhs.error_union.anyerror and declaredTypeEqual(a.payload.*, rhs.error_union.payload.*),
         .callback => |a| blk: {
             const b = rhs.callback;
-            if (a.c_callconv != b.c_callconv or a.has_userdata != b.has_userdata or a.params.len != b.params.len or !declaredTypeEqual(a.@"return".*, b.@"return".*)) break :blk false;
+            if (a.c_callconv != b.c_callconv or a.has_userdata != b.has_userdata or a.userdata_at != b.userdata_at or a.params.len != b.params.len or !declaredTypeEqual(a.@"return".*, b.@"return".*)) break :blk false;
             for (a.params, b.params) |x, y| if (!declaredTypeEqual(x, y)) break :blk false;
             break :blk true;
         },
@@ -1919,5 +1919,25 @@ test "a sentinel the lowered program never sees is not a change" {
     // produced, so there is nothing to report.
     var report = try diff(std.testing.allocator, base, current);
     defer report.deinit(std.testing.allocator);
+    try std.testing.expectEqual(@as(usize, 0), report.changes.items.len);
+}
+
+test "moving the native userdata slot of a callback leaves the ABI untouched" {
+    var result: semantic.TypeNode = .{ .void = {} };
+    const usize_node: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
+    const callback_params = [_]semantic.TypeNode{ .{ .int = .{ .bits = 32, .signed = true } }, usize_node };
+    const last: semantic.TypeNode = .{ .callback = .{ .has_userdata = true, .params = &callback_params, .@"return" = &result } };
+    const first: semantic.TypeNode = .{ .callback = .{ .has_userdata = true, .userdata_at = 0, .params = &callback_params, .@"return" = &result } };
+    const last_params = [_]semantic.Parameter{ .{ .name = "callback", .type = last }, .{ .name = "userdata", .type = usize_node } };
+    const first_params = [_]semantic.Parameter{ .{ .name = "callback", .type = first }, .{ .name = "userdata", .type = usize_node } };
+    const last_functions = [_]semantic.SemanticFn{.{ .name = "run", .params = &last_params, .@"return" = .{ .void = {} }, .symbol = "zg_run" }};
+    const first_functions = [_]semantic.SemanticFn{.{ .name = "run", .params = &first_params, .@"return" = .{ .void = {} }, .symbol = "zg_run" }};
+    const base: semantic.Semantic = .{ .functions = &last_functions, .package = "cb", .prefix = "zg", .zig_version = "0.16.0" };
+    const current: semantic.Semantic = .{ .functions = &first_functions, .package = "cb", .prefix = "zg", .zig_version = "0.16.0" };
+    var report = try diff(std.testing.allocator, current, base);
+    defer report.deinit(std.testing.allocator);
+    // The Go dispatcher and the C signature see the same shape either way;
+    // only the shim thunk between them changes.
+    try std.testing.expect(!report.hasBreaking());
     try std.testing.expectEqual(@as(usize, 0), report.changes.items.len);
 }

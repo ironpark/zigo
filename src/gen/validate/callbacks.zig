@@ -103,6 +103,99 @@ fn callbackFailureValueFits(document: semantic.Semantic, node: semantic.TypeNode
     };
 }
 
+fn isUsize(node: semantic.TypeNode) bool {
+    return node == .int and node.int.is_usize and !node.int.signed;
+}
+
+/// The userdata contract: a callback carries its Go token in a `usize` slot,
+/// last unless its type entry says otherwise, and the function that takes the
+/// callback passes the token through a `usize` parameter of its own, the one
+/// right after the callback unless `param_meta.<callback>.userdata` names it.
+/// Everything a misplaced slot used to do at runtime -- dispatch on the wrong
+/// argument, or fail generation without a site -- is refused here instead.
+pub fn callbackUserdataIssue(
+    allocator: std.mem.Allocator,
+    function: semantic.SemanticFn,
+    parameter_index: usize,
+) !?diagnostic.Diagnostic {
+    const parameter = function.params[parameter_index];
+    if (parameter.type != .callback) {
+        if (parameter.userdata == null) return null;
+        const declaration = try site.functionDeclarationAlloc(allocator, function);
+        return .{
+            .severity = .@"error",
+            .code = "ZIGO055",
+            .message = try std.fmt.allocPrint(allocator, "`userdata` declared on parameter `{s}`, which is not a callback", .{parameter.name}),
+            .site = site.functionSiteFor(function, declaration),
+            .hint = "use `.userdata` only on a function-pointer parameter",
+        };
+    }
+    const callback = parameter.type.callback;
+    if (!callback.has_userdata or callback.params.len == 0) {
+        const declaration = try site.functionDeclarationAlloc(allocator, function);
+        return .{
+            .severity = .@"error",
+            .code = "ZIGO055",
+            .message = try std.fmt.allocPrint(allocator, "callback `{s}` has no userdata parameter", .{parameter.name}),
+            .site = site.functionSiteFor(function, declaration),
+            .hint = "make the callback's last parameter a `usize` userdata, or point `.userdata` on its type entry at the parameter that carries it",
+        };
+    }
+    if (!isUsize(callback.params[callback.params.len - 1])) {
+        const declaration = try site.functionDeclarationAlloc(allocator, function);
+        return .{
+            .severity = .@"error",
+            .code = "ZIGO055",
+            .message = try std.fmt.allocPrint(allocator, "callback `{s}` userdata parameter {d} is not `usize`", .{ parameter.name, callback.nativeUserdataIndex().? }),
+            .site = site.functionSiteFor(function, declaration),
+            .hint = "declare the userdata slot as `usize`; the Go token travels through it",
+        };
+    }
+    if (parameter.userdata) |name| {
+        for (function.params, 0..) |candidate, candidate_index| {
+            if (candidate_index == parameter_index or !std.mem.eql(u8, candidate.name, name)) continue;
+            if (isUsize(candidate.type)) return null;
+            const declaration = try site.functionDeclarationAlloc(allocator, function);
+            return .{
+                .severity = .@"error",
+                .code = "ZIGO055",
+                .message = try std.fmt.allocPrint(allocator, "userdata parameter `{s}` of callback `{s}` is not `usize`", .{ name, parameter.name }),
+                .site = site.functionSiteFor(function, declaration),
+                .hint = "name a `usize` parameter with `.userdata`; the Go token travels through it",
+            };
+        }
+        const declaration = try site.functionDeclarationAlloc(allocator, function);
+        return .{
+            .severity = .@"error",
+            .code = "ZIGO055",
+            .message = try std.fmt.allocPrint(allocator, "callback `{s}` names userdata parameter `{s}`, which the function does not have", .{ parameter.name, name }),
+            .site = site.functionSiteFor(function, declaration),
+            .hint = "set `.userdata` to the name of the `usize` parameter that carries the token",
+        };
+    }
+    if (parameter_index + 1 < function.params.len and isUsize(function.params[parameter_index + 1].type)) return null;
+    const declaration = try site.functionDeclarationAlloc(allocator, function);
+    return .{
+        .severity = .@"error",
+        .code = "ZIGO055",
+        .message = try std.fmt.allocPrint(allocator, "callback `{s}` is not followed by its `usize` userdata parameter", .{parameter.name}),
+        .site = site.functionSiteFor(function, declaration),
+        .hint = "declare a `usize` parameter directly after the callback, or name the one that carries the token with `.userdata` in `param_meta`",
+    };
+}
+
+/// The userdata contract over the whole document. It runs last: a callback
+/// with a sharper fault (calling convention, a type it cannot carry) is
+/// reported for that first.
+pub fn callbackUserdataRule(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+    for (document.functions) |function| {
+        for (function.params, 0..) |_, parameter_index| {
+            if (try callbackUserdataIssue(allocator, function, parameter_index)) |issue| return issue;
+        }
+    }
+    return null;
+}
+
 pub fn callbackContractIssue(
     allocator: std.mem.Allocator,
     function: semantic.SemanticFn,
@@ -142,7 +235,7 @@ test "a purego callback result outside the uintptr ABI is rejected" {
     const document: semantic.Semantic = .{
         .functions = &.{.{
             .name = "observe",
-            .params = &.{.{ .name = "sink", .type = float_callback }},
+            .params = &.{ .{ .name = "sink", .type = float_callback }, .{ .name = "userdata", .type = usize_param } },
             .@"return" = .{ .void = {} },
             .symbol = "ignored",
         }},
@@ -164,7 +257,7 @@ test "a purego callback result outside the uintptr ABI is rejected" {
     var float_result = document;
     float_result.functions = &.{.{
         .name = "observe",
-        .params = &.{.{ .name = "sink", .type = float_result_callback }},
+        .params = &.{ .{ .name = "sink", .type = float_result_callback }, .{ .name = "userdata", .type = usize_param } },
         .@"return" = .{ .void = {} },
         .symbol = "ignored",
     }};
@@ -187,7 +280,7 @@ test "a purego callback result outside the uintptr ABI is rejected" {
     var bool_result = document;
     bool_result.functions = &.{.{
         .name = "filter",
-        .params = &.{.{ .name = "predicate", .type = bool_result_callback }},
+        .params = &.{ .{ .name = "predicate", .type = bool_result_callback }, .{ .name = "userdata", .type = usize_param } },
         .@"return" = .{ .void = {} },
         .symbol = "ignored",
     }};
@@ -286,7 +379,7 @@ test "callback failure result must fit a non-void callback return" {
         .params = &callback_params,
         .@"return" = &void_node,
     } };
-    const good_params = [_]semantic.Parameter{.{ .name = "callback", .on_callback_failure = .{ .result = -128 }, .type = narrow_callback }};
+    const good_params = [_]semantic.Parameter{ .{ .name = "callback", .on_callback_failure = .{ .result = -128 }, .type = narrow_callback }, .{ .name = "userdata", .type = usize_node } };
     const wide_params = [_]semantic.Parameter{.{ .name = "callback", .on_callback_failure = .{ .result = -129 }, .type = narrow_callback }};
     const void_params = [_]semantic.Parameter{.{ .name = "callback", .on_callback_failure = .{ .result = 0 }, .type = void_callback }};
     const good_functions = [_]semantic.SemanticFn{.{ .name = "run", .params = &good_params, .@"return" = .{ .void = {} }, .symbol = "zg_run" }};
@@ -427,4 +520,44 @@ test "a cancellable function has to name a flag its shim can pass and an error i
         .zig_version = "0.16.0",
     };
     try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try validate.findIssue(scratch.allocator(), configured));
+}
+
+test "the userdata contract is refused with a site" {
+    var void_node: semantic.TypeNode = .{ .void = {} };
+    const usize_node: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
+    const i32_node: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+    const no_userdata: semantic.TypeNode = .{ .callback = .{ .has_userdata = false, .params = &.{i32_node}, .@"return" = &void_node } };
+    // What reflection produces when `.userdata` points at a non-`usize` slot.
+    const wrong_slot: semantic.TypeNode = .{ .callback = .{ .has_userdata = true, .params = &.{ usize_node, i32_node }, .@"return" = &void_node } };
+    const good: semantic.TypeNode = .{ .callback = .{ .has_userdata = true, .params = &.{ i32_node, usize_node }, .@"return" = &void_node } };
+    const cases = [_]struct { params: []const semantic.Parameter, message: ?[]const u8 }{
+        .{ .params = &.{ .{ .name = "callback", .type = no_userdata }, .{ .name = "userdata", .type = usize_node } }, .message = "has no userdata parameter" },
+        .{ .params = &.{ .{ .name = "callback", .type = wrong_slot }, .{ .name = "userdata", .type = usize_node } }, .message = "userdata parameter 1 is not `usize`" },
+        .{ .params = &.{.{ .name = "callback", .type = good }}, .message = "is not followed by its `usize` userdata parameter" },
+        .{ .params = &.{ .{ .name = "callback", .type = good }, .{ .name = "count", .type = i32_node } }, .message = "is not followed by its `usize` userdata parameter" },
+        .{ .params = &.{ .{ .name = "callback", .type = good, .userdata = "ctx" }, .{ .name = "count", .type = i32_node } }, .message = "names userdata parameter `ctx`, which the function does not have" },
+        .{ .params = &.{ .{ .name = "ctx", .type = i32_node }, .{ .name = "callback", .type = good, .userdata = "ctx" } }, .message = "userdata parameter `ctx` of callback `callback` is not `usize`" },
+        .{ .params = &.{ .{ .name = "count", .type = i32_node, .userdata = "ctx" }, .{ .name = "ctx", .type = usize_node } }, .message = "which is not a callback" },
+        .{ .params = &.{ .{ .name = "ctx", .type = usize_node }, .{ .name = "callback", .type = good, .userdata = "ctx" } }, .message = null },
+        .{ .params = &.{ .{ .name = "callback", .type = good }, .{ .name = "userdata", .type = usize_node } }, .message = null },
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    for (cases) |case| {
+        const document: semantic.Semantic = .{
+            .functions = &.{.{ .name = "run", .params = case.params, .@"return" = .{ .void = {} }, .symbol = "zg_run" }},
+            .package = "cb",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        };
+        const issue = try validate.findIssue(arena.allocator(), document);
+        if (case.message) |message| {
+            const found = issue orelse return error.MissingDiagnostic;
+            try std.testing.expectEqualStrings("ZIGO055", found.code);
+            try std.testing.expectEqualStrings("run", found.site.declaration);
+            try std.testing.expect(std.mem.containsAtLeast(u8, found.message, 1, message));
+        } else {
+            try std.testing.expect(issue == null);
+        }
+    }
 }

@@ -316,6 +316,18 @@ func Filter(value int32, strict bool, predicate Predicate) bool {
 	return result != 0
 }
 
+// Reduce: Folds values through reducer, starting from zero.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+func Reduce(values []int32, reducer Reducer) int32 {
+	reducerHandle := zigoNewReducerHandle(reducer)
+	defer zigoDeleteCallbackHandle(reducerHandle)
+	result := zigoRawReduce(values, uintptr(reducerHandle))
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("Reduce", reducerHandle)
+	}
+	return result
+}
+
 // VisitCodepoints: Calls visitor for every codepoint of text and returns the last one, or 0
 // for empty text. Malformed bytes are visited as U+FFFD.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.

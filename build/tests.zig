@@ -160,6 +160,8 @@ pub fn addRepositorySteps(
         "tests/generator_cases/callback_bool_purego/expected",
         "tests/generator_cases/callback_error/expected",
         "tests/generator_cases/callback_error_purego/expected",
+        "tests/generator_cases/callback_userdata_first/expected",
+        "tests/generator_cases/callback_userdata_first_purego/expected",
         "tests/generator_cases/callback_failure_result/expected",
         "tests/generator_cases/callback_failure_result_purego/expected",
         "tests/generator_cases/cancel/expected",

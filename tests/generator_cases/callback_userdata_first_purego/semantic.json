@@ -1,0 +1,80 @@
+{
+  "functions": [
+    {
+      "name": "reduce",
+      "params": [
+        {
+          "direction": "in",
+          "name": "ctx",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": { "bits": 64, "is_usize": true, "kind": "int", "signed": false }
+        },
+        {
+          "direction": "in",
+          "name": "acc",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": { "bits": 32, "is_usize": false, "kind": "int", "signed": true }
+        },
+        {
+          "direction": "in",
+          "name": "reducer",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "userdata": "ctx",
+          "type": {
+            "c_callconv": true,
+            "has_userdata": true,
+            "kind": "callback",
+            "userdata_at": 0,
+            "params": [
+              { "bits": 32, "is_usize": false, "kind": "int", "signed": true },
+              { "bits": 32, "is_usize": false, "kind": "int", "signed": true },
+              { "bits": 64, "is_usize": true, "kind": "int", "signed": false }
+            ],
+            "return": { "bits": 32, "is_usize": false, "kind": "int", "signed": true }
+          }
+        }
+      ],
+      "return": { "bits": 32, "is_usize": false, "kind": "int", "signed": true },
+      "symbol": "zg_reduce"
+    },
+    {
+      "name": "visit",
+      "params": [
+        {
+          "direction": "in",
+          "name": "visitor",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "c_callconv": true,
+            "has_userdata": true,
+            "kind": "callback",
+            "userdata_at": 1,
+            "params": [
+              { "bits": 32, "is_usize": false, "kind": "int", "signed": true },
+              { "kind": "bool" },
+              { "bits": 64, "is_usize": true, "kind": "int", "signed": false }
+            ],
+            "return": { "kind": "void" }
+          }
+        },
+        {
+          "direction": "in",
+          "name": "userdata",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": { "bits": 64, "is_usize": true, "kind": "int", "signed": false }
+        }
+      ],
+      "return": { "kind": "void" },
+      "symbol": "zg_visit"
+    }
+  ],
+  "package": "cb",
+  "prefix": "zg",
+  "types": [],
+  "zig_version": "0.16.0"
+}

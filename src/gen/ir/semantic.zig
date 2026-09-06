@@ -62,6 +62,11 @@ pub const CallbackFailure = struct { result: i128 };
 pub const Callback = struct {
     c_callconv: bool = true,
     has_userdata: bool,
+    /// `params` lists the value parameters in native order with the userdata
+    /// slot last, which is the order Go dispatches in. When the native
+    /// signature declares userdata elsewhere this is its native position and
+    /// the shim thunk reorders the arguments; absent means it is last there too.
+    userdata_at: ?usize = null,
     params: []const TypeNode,
     /// One hint per entry of `params` (the userdata slot is always null).
     /// Only `codepoint` on a `u32` is meaningful; absent when no parameter
@@ -78,6 +83,25 @@ pub const Callback = struct {
     pub fn paramHint(self: Callback, index: usize) ?SemanticHint {
         const hints = self.param_semantics orelse return null;
         return if (index < hints.len) hints[index] else null;
+    }
+
+    /// How many of `params` carry a value; the userdata slot is not one.
+    pub fn valueCount(self: Callback) usize {
+        return if (self.has_userdata and self.params.len != 0) self.params.len - 1 else self.params.len;
+    }
+
+    /// Where the userdata slot sits in the native signature.
+    pub fn nativeUserdataIndex(self: Callback) ?usize {
+        if (!self.has_userdata or self.params.len == 0) return null;
+        return self.userdata_at orelse self.params.len - 1;
+    }
+
+    /// The `params` index of the parameter at native position `native`.
+    pub fn goIndexOfNative(self: Callback, native: usize) usize {
+        const userdata = self.nativeUserdataIndex() orelse return native;
+        if (native < userdata) return native;
+        if (native == userdata) return self.params.len - 1;
+        return native - 1;
     }
 
     /// Whether any position of the signature is spelled differently in Go
@@ -133,6 +157,10 @@ pub const TypeNode = union(enum) {
                 try jw.objectField("has_userdata");
                 try jw.write(value.has_userdata);
                 try writeKind(jw, "callback");
+                if (value.userdata_at) |at| {
+                    try jw.objectField("userdata_at");
+                    try jw.write(at);
+                }
                 if (value.param_semantics) |hints| {
                     try jw.objectField("param_semantics");
                     try jw.write(hints);
@@ -304,6 +332,7 @@ pub const TypeNode = union(enum) {
         if (std.mem.eql(u8, kind, "callback")) return .{ .callback = .{
             .c_callconv = try parseOptionalField(bool, allocator, object, "c_callconv", true, options),
             .has_userdata = try parseField(bool, allocator, object, "has_userdata", options),
+            .userdata_at = try parseOptionalField(?usize, allocator, object, "userdata_at", null, options),
             .param_semantics = try parseOptionalField(?[]const ?SemanticHint, allocator, object, "param_semantics", null, options),
             .params = try parseField([]const TypeNode, allocator, object, "params", options),
             .ref = try parseOptionalField(?[]const u8, allocator, object, "ref", null, options),
@@ -414,6 +443,10 @@ pub const Parameter = struct {
     /// Which native thread may invoke this callback. Documentation only;
     /// zigo deliberately does not add thread pinning for this contract.
     thread: ?CallbackThread = null,
+    /// `param_meta.<name>.userdata`: the parameter of the same function that
+    /// carries this callback's Go token. Absent means the one right after
+    /// the callback.
+    userdata: ?[]const u8 = null,
     /// Set when the shim supplies this argument. An injected parameter is
     /// absent from the C and Go signatures, so adding or removing one is a
     /// breaking change even though nothing about the Zig type moved.
