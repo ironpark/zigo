@@ -114,6 +114,35 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
             };
         }
     }
+    // A method bound onto a registered enum shares a namespace with the
+    // methods zigo generates on that enum, and Go has no way to tell two
+    // `String()` declarations apart.
+    for (document.functions) |function| {
+        if (!function.receiverIsValue()) continue;
+        const declaration = semantic.typeDecl(document.types, function.receiver.?) orelse continue;
+        if (declaration.kind != .@"enum") continue;
+        const name = try semantic.publicFunctionNameAlloc(allocator, document, function);
+        defer allocator.free(name);
+        const generated: []const []const u8 = if (declaration.text orelse false)
+            &.{ "String", "MarshalText", "UnmarshalText" }
+        else
+            &.{"String"};
+        for (generated) |reserved| {
+            if (!std.mem.eql(u8, name, reserved)) continue;
+            const function_path = try site.functionDeclarationAlloc(allocator, function);
+            return .{
+                .severity = .@"error",
+                .code = "ZIGO024",
+                .message = try std.fmt.allocPrint(
+                    allocator,
+                    "public Go name `{s}.{s}` collides with the method zigo generates on enum `{s}`",
+                    .{ declaration.name, reserved, declaration.name },
+                ),
+                .site = site.functionSiteFor(function, function_path),
+                .hint = "give the method a `.name` that is not one zigo generates (`String`, and `MarshalText`/`UnmarshalText` with `.text = true`)",
+            };
+        }
+    }
     for (document.types) |declaration| {
         if (declaration.kind != .@"enum") continue;
         for (declaration.fields, 0..) |field, index| {
@@ -759,4 +788,45 @@ test "a variant named tag collides with the snapshot discriminant member" {
     const issue = (try validate.findIssue(std.testing.allocator, document)) orelse return error.MissingDiagnostic;
     try std.testing.expectEqualStrings("ZIGO011", issue.code);
     try std.testing.expectEqualStrings("tag", issue.site.declaration);
+}
+
+test "an enum method cannot take a name zigo generates on that enum" {
+    const tag: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    const plain: semantic.TypeDecl = .{ .kind = .@"enum", .name = "Key", .fields = &.{.{ .name = "a", .value = 0 }}, .tag_type = tag };
+    const textual: semantic.TypeDecl = .{ .kind = .@"enum", .name = "Key", .fields = &.{.{ .name = "a", .value = 0 }}, .tag_type = tag, .text = true };
+    const method: semantic.SemanticFn = .{
+        .name = "string",
+        .params = &.{},
+        .receiver = "Key",
+        .receiver_kind = .value,
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_key_string",
+    };
+    var marshal = method;
+    marshal.name = "marshalText";
+    marshal.symbol = "zg_key_marshal_text";
+
+    const cases = [_]struct { function: semantic.SemanticFn, declaration: semantic.TypeDecl, collides: bool }{
+        .{ .function = method, .declaration = plain, .collides = true },
+        .{ .function = marshal, .declaration = textual, .collides = true },
+        // Without `.text` there is no `MarshalText` to collide with.
+        .{ .function = marshal, .declaration = plain, .collides = false },
+    };
+    for (cases) |case| {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const document: semantic.Semantic = .{
+            .functions = &.{case.function},
+            .package = "input",
+            .prefix = "zg",
+            .types = &.{case.declaration},
+            .zig_version = "0.16.0",
+        };
+        const issue = try publicNameCollisionIssue(scratch.allocator(), document);
+        if (!case.collides) {
+            try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), issue);
+            continue;
+        }
+        try std.testing.expectEqualStrings("ZIGO024", (issue orelse return error.MissingDiagnostic).code);
+    }
 }

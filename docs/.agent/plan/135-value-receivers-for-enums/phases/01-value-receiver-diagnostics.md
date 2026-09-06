@@ -2,7 +2,7 @@
 depends_on:
 - "135-value-receivers-for-enums#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Each rejection has a case with the declaration site in the message, and the
 > NEXT: none

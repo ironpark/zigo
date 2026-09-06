@@ -92,7 +92,9 @@ tagged union의 non-exhaustive tag에는 이 설정을 적용할 수 없습니�
 
 진단에 나온 두 선언 중 하나의 `.name`을 바꾸세요. 서로 다른 Zig namespace의 자유 함수도
 Go에서는 충돌할 수 있고, enum tag도 Go 상수 이름으로 변환한 뒤 충돌을 검사합니다.
-다른 receiver의 메서드나 서로 다른 공개 패키지는 별도 이름 공간입니다.
+다른 receiver의 메서드나 서로 다른 공개 패키지는 별도 이름 공간입니다. 등록 enum을 receiver로
+쓰는 메서드는 zigo가 그 enum에 생성하는 메서드(`String`, `.text = true`면 `MarshalText`와
+`UnmarshalText`)와도 겹칠 수 없습니다.
 
 ### ZIGO025
 
@@ -275,6 +277,16 @@ optional 파라미터·sentinel slice·flatten 필드·주입 파라미터에는
 `functions`와 `exclude`에 모두 있습니다. 경로는 한 번만 적고, 제외할 함수는 `functions`에서
 빼세요. 이 검사는 등록 수에 비례하도록 reflection 런타임에서 수행되므로, 존재하지 않는
 경로와 달리 `@compileError`가 아니라 생성기 진단으로 나옵니다.
+
+### ZIGO056
+
+값 receiver가 handle에만 있는 것을 요구했습니다. 등록 enum의 메서드에는 닫을 handle도, 부모도,
+빌려줄 수명도 없으므로 `.constructs`, `.child_of_receiver`, `.returns = .borrowed`,
+`.iterator`, `std.Io` 스트림 파라미터를 쓸 수 없습니다. 또 `.go` 어댑터가 붙은 enum은 Go에서
+남의 패키지 타입이라 메서드를 가질 수 없습니다. 함수를 패키지 레벨로 바인딩하거나, 상태가
+있는 타입이라면 `.repr = .@"opaque"`로 등록하세요.
+[자유 함수를 메서드로 등록하기](bindings-functions.md#자유-함수를-메서드로-등록하기)를
+참고하세요.
 
 ## 리플렉션 단계의 오류
 

@@ -396,7 +396,11 @@ fn findIntegrityProblem(document: semantic.Semantic) ?[]const u8 {
     }
     for (document.functions) |function| {
         if (function.receiver) |receiver| {
-            if (!hasHandleType(document, receiver)) return function.name;
+            if (function.receiverIsValue()) {
+                // A value receiver names a registered enum, not a handle.
+                const declaration = semantic.typeDecl(document.types, receiver) orelse return function.name;
+                if (declaration.kind != .@"enum") return function.name;
+            } else if (!hasHandleType(document, receiver)) return function.name;
         }
         for (function.params) |parameter| {
             if (!referencesValid(document, parameter.type)) return function.name;

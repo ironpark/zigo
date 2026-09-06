@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-06T14:13:06Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `semantic.json` for an enum-receiver fixture shows the method under its
 > NEXT: none

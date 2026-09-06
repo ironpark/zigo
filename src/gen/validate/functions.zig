@@ -37,6 +37,7 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic) 
             .site = site.functionSite(function),
             .hint = "use an explicit error set in the Zig function signature",
         };
+        if (try valueReceiverIssue(allocator, document, function)) |issue| return issue;
         if (try iteratorIssue(allocator, function)) |issue| return issue;
         if (try scalarAdapterIssue(allocator, function)) |issue| return issue;
         if (try codepointIssue(allocator, function)) |issue| return issue;
@@ -488,6 +489,53 @@ fn isGoIdentifierName(name: []const u8) bool {
     if (name.len == 0 or std.ascii.isDigit(name[0])) return false;
     for (name) |byte| if (!(std.ascii.isAlphanumeric(byte) or byte == '_')) return false;
     return true;
+}
+
+/// What a value receiver cannot be asked to do. A registered enum owns its
+/// methods without owning a lifetime: there is no handle to construct, to
+/// close, to lend a view of, or to keep a stream in, and Go cannot define a
+/// method on a type another package declares.
+fn valueReceiverIssue(
+    allocator: std.mem.Allocator,
+    document: semantic.Semantic,
+    function: semantic.SemanticFn,
+) !?diagnostic.Diagnostic {
+    if (!function.receiverIsValue()) return null;
+    const receiver = function.receiver.?;
+    const declaration = semantic.typeDecl(document.types, receiver);
+    if (declaration) |entry| {
+        if (entry.go_adapter != null) return .{
+            .severity = .@"error",
+            .code = "ZIGO056",
+            .message = try std.fmt.allocPrint(allocator, "`{s}` is spelled as a Go type from another package, which cannot carry methods", .{receiver}),
+            .site = site.functionSite(function),
+            .hint = "drop `.go` from the enum entry, or bind the function at package level",
+        };
+    }
+    const offender: ?[]const u8 = blk: {
+        if (function.childOfReceiver()) break :blk "`.child_of_receiver`";
+        if (function.returnsBorrowedHandle()) break :blk "`.returns = .borrowed`";
+        if (function.iterator != null) break :blk "`.iterator`";
+        if (function.boxed != null) break :blk "a boxed constructor";
+        // `.destroys` already needs the destroyed type as its receiver, so
+        // only the constructor side can reach a value receiver.
+        for (document.constructors) |pair| {
+            if (std.mem.eql(u8, pair.init, function.name) and
+                std.mem.eql(u8, function.go_owner orelse "", pair.type)) break :blk "`.constructs`";
+        }
+        for (function.params) |parameter| {
+            if (parameter.type == .io_stream) break :blk "an `std.Io` stream parameter";
+        }
+        break :blk null;
+    };
+    if (offender) |what| return .{
+        .severity = .@"error",
+        .code = "ZIGO056",
+        .message = try std.fmt.allocPrint(allocator, "{s} on `{s}.{s}`, whose receiver is a value and owns no lifetime", .{ what, receiver, function.name }),
+        .site = site.functionSite(function),
+        .hint = "a value receiver has no handle to construct, close, lend, or keep a stream in; move the function to a registered opaque type or bind it at package level",
+    };
+    return null;
 }
 
 /// An iterator wrapper drives `next()` for the caller, so the method has to
@@ -1066,5 +1114,59 @@ test "callback codepoint hints are limited to u32 positions" {
         } else {
             try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), issue);
         }
+    }
+}
+
+test "a value receiver rejects the metadata that needs a handle" {
+    const tag: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    const key_enum: semantic.TypeDecl = .{ .kind = .@"enum", .name = "Key", .fields = &.{.{ .name = "a", .value = 0 }}, .tag_type = tag };
+    const adapted: semantic.TypeDecl = .{
+        .kind = .@"enum",
+        .name = "Mode",
+        .fields = &.{.{ .name = "a", .value = 0 }},
+        .tag_type = tag,
+        .go_adapter = .{ .type = "image.Point", .import = "image", .to_raw = "toRaw", .from_raw = "fromRaw" },
+    };
+    const bool_node: semantic.TypeNode = .{ .bool = {} };
+    var optional_bool: semantic.TypeNode = bool_node;
+
+    const accepted: semantic.SemanticFn = .{
+        .name = "printable",
+        .params = &.{},
+        .receiver = "Key",
+        .receiver_kind = .value,
+        .@"return" = bool_node,
+        .symbol = "zg_key_printable",
+    };
+    {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const document: semantic.Semantic = .{ .functions = &.{accepted}, .package = "input", .prefix = "zg", .types = &.{key_enum}, .zig_version = "0.16.0" };
+        try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try validate.findIssue(scratch.allocator(), document));
+    }
+
+    var borrowed = accepted;
+    borrowed.borrowed_return = true;
+    var iterating = accepted;
+    iterating.iterator = .{ .name = "All" };
+    iterating.@"return" = .{ .optional = .{ .child = &optional_bool } };
+    var child = accepted;
+    child.child_of_receiver = true;
+    var adapted_receiver = accepted;
+    adapted_receiver.receiver = "Mode";
+    adapted_receiver.symbol = "zg_mode_printable";
+
+    const rejected = [_]struct { function: semantic.SemanticFn, types: []const semantic.TypeDecl }{
+        .{ .function = borrowed, .types = &.{key_enum} },
+        .{ .function = iterating, .types = &.{key_enum} },
+        .{ .function = child, .types = &.{key_enum} },
+        .{ .function = adapted_receiver, .types = &.{adapted} },
+    };
+    for (rejected) |case| {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const document: semantic.Semantic = .{ .functions = &.{case.function}, .package = "input", .prefix = "zg", .types = case.types, .zig_version = "0.16.0" };
+        const issue = (try validate.findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
+        try std.testing.expectEqualStrings("ZIGO056", issue.code);
     }
 }
