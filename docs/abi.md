@@ -10,11 +10,11 @@
 모든 값은 little-endian이며, offset은 버퍼 시작을 기준으로 한 unsigned 64-bit 값입니다.
 native 포인터 자체는 기록하지 않습니다.
 
-버전 1 헤더는 40바이트입니다.
+버전 2 헤더는 40바이트입니다.
 
 | Offset | 크기 | 의미 |
 |---|---|---|
-| 0 | 8 | magic `ZIGO`와 layout version 1 (`0x0001_4f47495a`) |
+| 0 | 8 | magic `ZIGO`와 layout version 2 (`0x0002_4f47495a`) |
 | 8 | 8 | lowering이 배정한 root layout ID |
 | 16 | 8 | root 값 개수 |
 | 24 | 8 | root record offset; slice 결과라면 root offset table의 offset |
@@ -22,28 +22,28 @@ native 포인터 자체는 기록하지 않습니다.
 
 ## 필드 표현
 
-각 materialized struct의 `MaterializedLayout`은 lowering에서 결정합니다.
-필드는 선언 순서를 유지하며 각 필드가 고정 16바이트 슬롯을 차지합니다.
+각 materialized struct의 `MaterializedLayout`은 lowering에서 결정합니다. 필드는 선언 순서를
+유지하며 각 필드는 자기 shape의 자연 정렬에 맞춰 record 안에 놓입니다. record와 배열은
+8바이트 경계에서 시작하고 record 크기는 8의 배수로 채웁니다.
 
-| 필드 | 슬롯 또는 참조 대상의 표현 |
-|---|---|
-| scalar | 슬롯의 앞 8바이트 |
-| optional scalar | 앞 8바이트에 presence(1이면 존재), 뒤 8바이트에 값 |
-| string·slice | offset와 길이 |
-| optional string | string과 같은 offset·길이 쌍; offset 0은 null (데이터는 항상 헤더 뒤에 놓이므로 빈 문자열도 0이 아님) |
-| 내장 노드·노드 포인터 | node record offset; optional 포인터의 0은 null |
-| 노드 slice | node offset table의 offset와 원소 수 |
-| scalar slice의 원소 | 원소당 8바이트 |
-| string slice의 원소 | 문자열마다 16바이트 offset·길이 쌍 |
+| shape | 크기·정렬 | 표현 |
+|---|---|---|
+| scalar | 1·2·4·8 | bool은 1바이트, 정수·부동소수는 비트 폭을 담는 최소 폭, enum은 tag 폭, packed struct는 backing 정수 폭 |
+| string | 16 / 8 | offset과 길이. `?[]const u8`은 offset 0이 null (데이터는 항상 헤더 뒤에 놓이므로 빈 문자열도 0이 아님) |
+| optional | child 정렬 + child 크기 | presence 1바이트 뒤 child 정렬 위치에 값 (`?i32`, `?Point`) |
+| sequence | 16 / 8 | offset과 원소 수. 원소는 원소 shape의 stride 간격으로 8바이트 정렬된 배열에 놓임 (`[]T`, `[N]T`, `[][]T`) |
+| node | 8 | 별도 record의 offset. 내장 값·포인터 모두 같은 표현이며 nullable(`?*const T`, `?T`)은 0이 null |
+| value_struct | 필드 합 | `extern struct` 필드를 record 안에 인라인 |
 
 layout version과 전체 필드 정보는 semantic ABI 비교에 포함됩니다. 버전, 필드 순서·종류,
-중첩 참조, 포인터 형태나 nullability를 바꾸면 breaking 변경입니다.
+중첩 참조, 포인터 형태나 nullability를 바꾸면 breaking 변경입니다. 버전 1 버퍼는 읽지 않습니다.
 
 ## 할당과 해제
 
 Zig walker는 바인딩에 등록한 allocator로 버퍼를 만듭니다. 결과 선언에는
 `.returns = .caller`와 `[]u8`를 받는 `.release` 함수가 필요합니다.
-Go 코드는 받은 버퍼를 복사·디코딩한 뒤 release를 한 번 호출합니다.
+Go raw 계층은 native 버퍼의 view를 그대로 넘기고, 공개 래퍼가 디코딩하면서 필요한 값을 모두
+복사한 뒤 release를 한 번 호출합니다. 디코딩 결과는 버퍼를 참조하지 않습니다.
 
 직접 반환, error union payload와 `[]T` 반환을 지원합니다. slice 결과도 배치 전체에
 헤더 하나와 버퍼 하나를 사용합니다. out `[]T`는 `.direction = .out`,
@@ -52,10 +52,11 @@ Go 코드는 받은 버퍼를 복사·디코딩한 뒤 release를 한 번 호출
 
 ## 지원 필드와 검증
 
-scalar, bool, 등록 enum, string, optional scalar·string(`?i32`, `?[]const u8`), 내장
-materialized struct, 필수·optional materialized 포인터와 scalar·string·materialized struct의
-slice를 지원합니다. optional slice(`?[]T`)와 optional 원소(`[]?T`)는 presence를 실을 자리가
-없어 거부됩니다.
+scalar, bool, 등록 enum, `extern struct`·packed 값, string과 `[]byte`
+(`.field_meta = .{ .name = .{ .semantic = .opaque_bytes } }`), optional scalar·string·struct·node,
+내장 materialized struct, 필수·optional materialized 포인터, 그리고 scalar·string·struct·
+materialized struct의 slice와 배열(중첩 가능)을 지원합니다. optional slice(`?[]T`)와 optional
+원소(`[]?T`)는 presence를 실을 자리가 없어 거부됩니다.
 순환 참조, opaque 포인터, callback과 union은 lowering 전에 `ZIGO048`로 거부하며
 진단에 전체 필드 경로를 표시합니다.
 

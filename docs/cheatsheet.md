@@ -109,9 +109,9 @@ cd go && go test ./...
 |---|---|---|---|
 | `.@"opaque"` | 상태를 가진 struct | `fields`(getter/setter 접근자) | [객체 수명](bindings-handles.md) |
 | `.value` | `extern struct`, 정수 backing `packed struct` | `go`(어댑터), `field_meta` | [값 타입](bindings-types.md#extern-struct-값) |
-| `.enumeration` | enum | `exhaustive = false`(열린 enum), `text = true`, `go` | [값 타입](bindings-types.md#enum-이름-지정) |
+| `.enumeration` | enum | `exhaustive = false`(열린 enum), `text = true`, `go`, `covers`(Go enum이 대신하는 Zig 메서드 경로) | [값 타입](bindings-types.md#enum-이름-지정) |
 | `.tagged_union` | `union(enum)` | `access = .snapshot`, `omit_variants` | [Tagged union](bindings-unions.md) |
-| `.materialized` | pointer·string·slice 결과 트리 | — | [값 타입](bindings-types.md#materialized-결과-트리) |
+| `.materialized` | pointer·string·slice 결과 트리 | `field_meta`(`[]const u8` 필드를 `[]byte`로) | [값 타입](bindings-types.md#materialized-결과-트리) |
 | `.callback` | `*const fn (...) callconv(.c)` | `on_callback_failure`, `param_semantics`, `semantic` | [콜백](bindings-callbacks.md) |
 
 ```zig

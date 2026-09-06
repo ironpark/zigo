@@ -410,11 +410,20 @@ pub const bindings = zigo.define(.{
 ```
 
 함수는 등록 allocator와 `.returns = .caller`, `[]u8`을 받는 `.release`를 사용해야 합니다.
-scalar, bool, 등록 enum, string, 중첩 materialized struct, materialized struct pointer와 optional
-pointer, 그리고 scalar/string/materialized struct slice를 지원합니다. `?i32`·`?Status` 같은
-optional scalar와 `?[]const u8` optional string 필드도 지원하며 Go에서는 `*int32`, `*string`처럼
-포인터로 노출되어 nil이 없음을 뜻합니다. optional slice(`?[]T`)와 optional 원소(`[]?T`), 순환,
-opaque pointer, callback, union은 `ZIGO048`과 해당 field path로 거부됩니다.
+지원 필드와 Go 표현은 다음과 같습니다.
+
+| Zig 필드 | Go 필드 |
+|---|---|
+| bool, 정수, 부동소수, 등록 enum, packed 값 | 같은 scalar·enum·packed 타입 |
+| `[]const u8` | `string`; `.field_meta = .{ .name = .{ .semantic = .opaque_bytes } }`이면 `[]byte` |
+| `[]T`, `[N]T`, `[][]T` (원소는 scalar·string·extern struct·materialized struct·slice) | `[]T`, `[][]T` |
+| 등록 `extern struct` | 값 mirror struct |
+| 중첩 materialized struct, `*const T` | 값 또는 `*T` |
+| `?scalar`, `?[]const u8`, `?ExternStruct`, `?Node`, `?*const Node` | `*T`; nil이 없음 |
+
+optional slice(`?[]T`)와 optional 원소(`[]?T`), 순환, 일반 struct, opaque pointer, callback,
+union은 `ZIGO048`과 해당 field path로 거부됩니다. 버퍼 형식은 [Materialized 버퍼 ABI](abi.md)에
+있습니다.
 
 위 예제는 `probeMany`가 `Result`를 반환하고 `release`가 버퍼를 해제하는 라이브러리를
 가정합니다. 실행 가능한 전체 구현은 [12-materialized](../examples/12-materialized)에 있습니다.
