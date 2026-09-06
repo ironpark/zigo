@@ -1,5 +1,5 @@
 ---
-completed_at: "2026-09-06T01:25:28Z"
+completed_at: "2026-09-06T02:18:05Z"
 description: Reserved zigo* names for generated unexported identifiers and .go type adapters on value structs
 plan_status: done
 registered_at: "2026-09-06T01:10:46Z"
