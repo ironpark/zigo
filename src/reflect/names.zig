@@ -45,12 +45,48 @@ pub fn apply(
     document: *semantic.Semantic,
     bindings_path: []const u8,
     source_root_path: ?[]const u8,
+    dependency_roots: []const []const u8,
     diagnostics: *std.Io.Writer,
 ) !void {
     var scanned: Scanned = .{};
     defer scanned.paths.deinit(allocator);
     try applyRecording(allocator, io, document, bindings_path, source_root_path, diagnostics, &scanned);
     try applyRootImports(allocator, io, document, bindings_path, source_root_path, diagnostics, &scanned);
+    try applyDependencyRoots(allocator, io, document, dependency_roots, diagnostics, &scanned);
+}
+
+/// The root modules of everything the bound module imports. A binding whose
+/// library is a Zig module of its own reaches that library's declarations only
+/// here: neither the bindings file nor the root module names those sources by
+/// path, so without this pass they keep `p0`-style names and no doc comments.
+fn applyDependencyRoots(
+    allocator: std.mem.Allocator,
+    io: std.Io,
+    document: *semantic.Semantic,
+    dependency_roots: []const []const u8,
+    diagnostics: *std.Io.Writer,
+    scanned: *Scanned,
+) !void {
+    if (dependency_roots.len == 0) return;
+    const functions = try allocator.dupe(semantic.SemanticFn, document.functions);
+    var has_errors = false;
+    for (dependency_roots) |root_path| {
+        if (scanned.seen(root_path)) continue;
+        const source = std.Io.Dir.cwd().readFileAlloc(io, root_path, allocator, source_limit) catch |err| {
+            try writeReadError(diagnostics, root_path, err);
+            has_errors = true;
+            continue;
+        };
+        try scanned.paths.append(allocator, root_path);
+        // A dependency lives outside the binding's tree -- usually in the
+        // package cache -- so its own directory, not the bindings directory,
+        // is what its recorded paths stay relative to.
+        const directory = std.fs.path.dirname(root_path) orelse ".";
+        has_errors = try scanSourceWithDiagnostics(allocator, source, functions, try recordedPathAlloc(allocator, directory, root_path), diagnostics) or has_errors;
+        has_errors = try scanImportedSources(allocator, io, source, directory, functions, scanned, diagnostics) or has_errors;
+    }
+    document.functions = functions;
+    if (has_errors) return error.EnrichmentFailed;
 }
 
 /// The root module may be split across files. `applyRecording` reads the
@@ -115,12 +151,14 @@ pub fn applyWithCoverageImports(
     document: *semantic.Semantic,
     bindings_path: []const u8,
     source_root_path: ?[]const u8,
+    dependency_roots: []const []const u8,
     diagnostics: *std.Io.Writer,
 ) !void {
     var scanned: Scanned = .{};
     defer scanned.paths.deinit(allocator);
     try applyRecording(allocator, io, document, bindings_path, source_root_path, diagnostics, &scanned);
     try applyRootImports(allocator, io, document, bindings_path, source_root_path, diagnostics, &scanned);
+    try applyDependencyRoots(allocator, io, document, dependency_roots, diagnostics, &scanned);
 }
 
 fn applyRecording(
@@ -321,7 +359,16 @@ fn scanSource(allocator: std.mem.Allocator, source: []const u8, functions: []sem
     defer allocator.free(matched);
     @memset(matched, false);
 
-    try scanMembers(allocator, tree, tree.rootDecls(), null, functions, visited, matched, path);
+    // Every container this file spells out by name. The unqualified fallback
+    // below consults it, so a declaration in an anonymous container is never
+    // handed to a function whose owner this very file declares elsewhere.
+    var owners: std.ArrayList([]const u8) = .empty;
+    defer {
+        for (owners.items) |owner| allocator.free(owner);
+        owners.deinit(allocator);
+    }
+
+    try scanMembers(allocator, tree, tree.rootDecls(), null, functions, visited, matched, path, &owners);
 
     // Generic type factories contain methods in anonymous containers rather
     // than a named source-level owner. Give those remaining declarations a
@@ -333,9 +380,32 @@ fn scanSource(allocator: std.mem.Allocator, source: []const u8, functions: []sem
         const proto = tree.fullFnProto(&buffer, node) orelse continue;
         const doc = try declDocAlloc(allocator, tree, proto.firstToken());
         defer if (doc) |value| allocator.free(value);
-        try enrichMatches(allocator, tree, proto, null, functions, matched, false, doc, path);
+        try enrichMatches(allocator, tree, proto, null, functions, matched, false, doc, path, owners.items);
     }
     return 0;
+}
+
+/// The declaration a binding named, which is not always the name Go sees: a
+/// `.name` rename or a receiver group's `strip_prefix` renames the Go surface
+/// while `zig_path` keeps spelling the Zig declaration out. Enrichment has to
+/// match the latter, or two unrelated declarations that happen to share one Go
+/// name trade parameter names with each other.
+const Declaration = struct {
+    name: []const u8,
+    owner: ?[]const u8,
+};
+
+fn declarationOf(function: semantic.SemanticFn) Declaration {
+    if (function.zig_path) |path| {
+        // `zig_path` is the lexical path inside the bound module, so whatever
+        // precedes the last segment is the container the declaration sits in
+        // and a bare segment means the module root. Neither has to agree with
+        // the receiver or namespace Go groups the function under.
+        if (std.mem.lastIndexOfScalar(u8, path, '.')) |index|
+            return .{ .name = path[index + 1 ..], .owner = path[0..index] };
+        return .{ .name = path, .owner = null };
+    }
+    return .{ .name = function.name, .owner = functionOwner(function) };
 }
 
 fn scanMembers(
@@ -347,6 +417,7 @@ fn scanMembers(
     visited: []bool,
     matched: []bool,
     path: []const u8,
+    owners: *std.ArrayList([]const u8),
 ) !void {
     // A run of declarations written with no blank line between them reads as
     // one documented group in Zig source, so an undocumented member of the run
@@ -371,7 +442,7 @@ fn scanMembers(
                 if (group_doc) |previous| allocator.free(previous);
                 group_doc = null;
             }
-            try enrichMatches(allocator, tree, proto, owner, functions, matched, true, group_doc, path);
+            try enrichMatches(allocator, tree, proto, owner, functions, matched, true, group_doc, path, &.{});
             group_end = declarationEnd(tree, node);
             continue;
         }
@@ -392,7 +463,8 @@ fn scanMembers(
         else
             try allocator.dupe(u8, declaration_name);
         defer allocator.free(nested_owner);
-        try scanMembers(allocator, tree, container.ast.members, nested_owner, functions, visited, matched, path);
+        try owners.append(allocator, try allocator.dupe(u8, nested_owner));
+        try scanMembers(allocator, tree, container.ast.members, nested_owner, functions, visited, matched, path, owners);
     }
 }
 
@@ -406,6 +478,9 @@ fn enrichMatches(
     qualified: bool,
     doc: ?[]const u8,
     path: []const u8,
+    /// Containers this file declares by name. Only the unqualified pass reads
+    /// it; the qualified one already knows the owner it is standing in.
+    declared_owners: []const []const u8,
 ) !void {
     const name_token = proto.name_token orelse return;
     const declaration_name = tree.tokenSlice(name_token);
@@ -422,8 +497,23 @@ fn enrichMatches(
     }
 
     for (functions, 0..) |*function, index| {
-        if (matched[index] or !std.mem.eql(u8, function.name, declaration_name)) continue;
-        if (qualified and !semantic.optionalStringEqual(functionOwner(function.*), source_owner)) continue;
+        if (matched[index]) continue;
+        const declaration = declarationOf(function.*);
+        if (!std.mem.eql(u8, declaration.name, declaration_name)) continue;
+        if (qualified) {
+            if (!semantic.optionalStringEqual(declaration.owner, source_owner)) continue;
+        } else if (declaration.owner) |owner| {
+            // A declaration in an anonymous container cannot be the one this
+            // function names when the same file writes that owner out.
+            var contradicted = false;
+            for (declared_owners) |declared| {
+                if (std.mem.eql(u8, declared, owner)) {
+                    contradicted = true;
+                    break;
+                }
+            }
+            if (contradicted) continue;
+        }
         const receiver_count: usize = @intFromBool(function.receiver != null);
         if (names.items.len != function.params.len + receiver_count) continue;
 
@@ -702,6 +792,87 @@ test "AST enrichment applies a generic factory method to every specialization" {
     try std.testing.expectEqual(.ast, functions[1].params[0].name_source);
 }
 
+test "AST enrichment follows the declaration a receiver group renamed" {
+    // The shape libghostty-vt hit: a `strip_prefix` group presents
+    // `searchFeed` as `Search.feed`, and an unrelated generic `Stream(...)`
+    // in another file declares a `feed` of exactly the same arity.
+    const stream_source =
+        \\pub fn Stream(comptime Handler: type) type {
+        \\    return struct {
+        \\        /// Feeds raw bytes.
+        \\        pub fn feed(self: *@This(), bytes: []const u8) void { _ = self; _ = bytes; }
+        \\    };
+        \\}
+    ;
+    const search_source =
+        \\/// Feeds one byte to the search.
+        \\pub fn searchFeed(search: *Search, byte: u8) void { _ = search; _ = byte; }
+    ;
+    var functions = [_]semantic.SemanticFn{.{
+        .name = "feed",
+        .params = &.{.{ .name = "p0", .type = .{ .int = .{ .bits = 8, .signed = false } } }},
+        .receiver = "Search",
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_search_feed",
+        .zig_path = "searchFeed",
+    }};
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), stream_source, &functions, "stream.zig"));
+    try std.testing.expectEqual(.fallback, functions[0].params[0].name_source);
+    try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), search_source, &functions, "search.zig"));
+    try std.testing.expectEqualStrings("byte", functions[0].params[0].name);
+    try std.testing.expectEqualStrings("Feeds one byte to the search.", functions[0].doc.?);
+    try std.testing.expectEqualStrings("search.zig", functions[0].source.?.path);
+}
+
+test "AST enrichment follows the declaration an explicit `.name` renamed" {
+    const source =
+        \\pub const Alpha = struct {
+        \\    /// Scales the alpha.
+        \\    pub fn compute(self: *Alpha, ratio: f64) void { _ = self; _ = ratio; }
+        \\};
+    ;
+    var functions = [_]semantic.SemanticFn{.{
+        .name = "Calculate",
+        .params = &.{.{ .name = "p0", .type = .{ .float = .{ .bits = 64 } } }},
+        .receiver = "Alpha",
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_alpha_calculate",
+        .zig_path = "Alpha.compute",
+    }};
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), source, &functions, "bindings.zig"));
+    try std.testing.expectEqualStrings("ratio", functions[0].params[0].name);
+    try std.testing.expectEqualStrings("Scales the alpha.", functions[0].doc.?);
+}
+
+test "the anonymous-container fallback refuses an owner the source contradicts" {
+    const source =
+        \\pub const Alpha = struct {
+        \\    pub fn reset(self: *Alpha) void { _ = self; }
+        \\};
+        \\pub fn Factory(comptime T: type) type {
+        \\    return struct {
+        \\        pub fn update(self: *@This(), scale: T) void { _ = self; _ = scale; }
+        \\    };
+        \\}
+    ;
+    var functions = [_]semantic.SemanticFn{.{
+        .name = "update",
+        .params = &.{.{ .name = "p0", .type = .{ .float = .{ .bits = 64 } } }},
+        .receiver = "Alpha",
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_alpha_update",
+    }};
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), source, &functions, "bindings.zig"));
+    try std.testing.expectEqual(.fallback, functions[0].params[0].name_source);
+    try std.testing.expectEqualStrings("p0", functions[0].params[0].name);
+}
+
 test "fallback names emit a concise warning" {
     const document: semantic.Semantic = .{
         .functions = &.{.{
@@ -734,6 +905,7 @@ test "missing primary binding source is fatal" {
         &document,
         ".zig-cache/zigo-missing-bindings.zig",
         null,
+        &.{},
         &diagnostics.writer,
     ));
     try std.testing.expect(std.mem.indexOf(u8, diagnostics.written(), "zigo-missing-bindings.zig: FileNotFound") != null);
@@ -765,7 +937,7 @@ test "auxiliary read and parse failures identify their source paths" {
     defer arena.deinit();
     var diagnostics: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer diagnostics.deinit();
-    try std.testing.expectError(error.EnrichmentFailed, apply(arena.allocator(), std.testing.io, &document, bindings_path, null, &diagnostics.writer));
+    try std.testing.expectError(error.EnrichmentFailed, apply(arena.allocator(), std.testing.io, &document, bindings_path, null, &.{}, &diagnostics.writer));
 
     try std.testing.expect(std.mem.indexOf(u8, diagnostics.written(), "broken.zig: 1 Zig parse error(s)") != null);
     try std.testing.expect(std.mem.indexOf(u8, diagnostics.written(), "missing.zig: FileNotFound") != null);
@@ -793,8 +965,62 @@ test "the coverage traversal parses a source the enrichment pass already read on
     defer arena.deinit();
     var diagnostics: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer diagnostics.deinit();
-    try std.testing.expectError(error.EnrichmentFailed, applyWithCoverageImports(arena.allocator(), std.testing.io, &document, bindings_path, root_path, &diagnostics.writer));
+    try std.testing.expectError(error.EnrichmentFailed, applyWithCoverageImports(arena.allocator(), std.testing.io, &document, bindings_path, root_path, &.{}, &diagnostics.writer));
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, diagnostics.written(), "shared.zig: 1 Zig parse error(s)"));
+}
+
+test "a dependency module's sources enrich from its own root" {
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "bindings.zig", .data = "const x = 0;\n" });
+    try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "root.zig", .data = "const library = @import(\"library\");\n" });
+    try temporary.dir.createDirPath(std.testing.io, "library");
+    try temporary.dir.writeFile(std.testing.io, .{
+        .sub_path = "library/main.zig",
+        .data = "pub const Search = @import(\"search.zig\").Search;\n",
+    });
+    try temporary.dir.writeFile(std.testing.io, .{
+        .sub_path = "library/search.zig",
+        .data =
+        \\pub const Search = struct {
+        \\    /// Feeds one byte to the search.
+        \\    pub fn feed(self: *Search, byte: u8) void { _ = self; _ = byte; }
+        \\};
+        ,
+    });
+    const directory = try std.fmt.allocPrint(std.testing.allocator, ".zig-cache/tmp/{s}", .{temporary.sub_path});
+    defer std.testing.allocator.free(directory);
+    const bindings_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/bindings.zig", .{directory});
+    defer std.testing.allocator.free(bindings_path);
+    const root_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/root.zig", .{directory});
+    defer std.testing.allocator.free(root_path);
+    const dependency_root = try std.fmt.allocPrint(std.testing.allocator, "{s}/library/main.zig", .{directory});
+    defer std.testing.allocator.free(dependency_root);
+
+    var functions = [_]semantic.SemanticFn{.{
+        .name = "feed",
+        .params = &.{.{ .name = "p0", .type = .{ .int = .{ .bits = 8, .signed = false } } }},
+        .receiver = "Search",
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_search_feed",
+    }};
+    var document: semantic.Semantic = .{
+        .functions = &functions,
+        .package = "names",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var diagnostics: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer diagnostics.deinit();
+    try apply(arena.allocator(), std.testing.io, &document, bindings_path, root_path, &.{dependency_root}, &diagnostics.writer);
+
+    try std.testing.expectEqualStrings("byte", document.functions[0].params[0].name);
+    try std.testing.expectEqualStrings("Feeds one byte to the search.", document.functions[0].doc.?);
+    // Recorded relative to the dependency's own root, so the document does not
+    // carry the package cache path of whichever machine generated it.
+    try std.testing.expectEqualStrings("search.zig", document.functions[0].source.?.path);
 }
 
 test "the bindings file's own block is the package doc" {
@@ -820,7 +1046,7 @@ test "the bindings file's own block is the package doc" {
     defer arena.deinit();
     var diagnostics: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer diagnostics.deinit();
-    try apply(arena.allocator(), std.testing.io, &document, bindings_path, null, &diagnostics.writer);
+    try apply(arena.allocator(), std.testing.io, &document, bindings_path, null, &.{}, &diagnostics.writer);
 
     // The bindings file is what the binding's author owns; the root module
     // belongs to whoever wrote the library being bound.
@@ -847,7 +1073,7 @@ test "the root module block is the package doc when the bindings file has none" 
     defer arena.deinit();
     var diagnostics: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer diagnostics.deinit();
-    try apply(arena.allocator(), std.testing.io, &document, bindings_path, null, &diagnostics.writer);
+    try apply(arena.allocator(), std.testing.io, &document, bindings_path, null, &.{}, &diagnostics.writer);
 
     try std.testing.expectEqualStrings("Library root documentation.\nSecond line.", document.doc.?);
 }
@@ -870,7 +1096,7 @@ test "an explicit package doc wins over both container blocks" {
     defer arena.deinit();
     var diagnostics: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer diagnostics.deinit();
-    try apply(arena.allocator(), std.testing.io, &document, bindings_path, null, &diagnostics.writer);
+    try apply(arena.allocator(), std.testing.io, &document, bindings_path, null, &.{}, &diagnostics.writer);
 
     try std.testing.expectEqualStrings("Configured package doc.", document.doc.?);
 }
@@ -894,7 +1120,7 @@ test "no container block anywhere leaves the package doc to the default sentence
     defer arena.deinit();
     var diagnostics: std.Io.Writer.Allocating = .init(std.testing.allocator);
     defer diagnostics.deinit();
-    try apply(arena.allocator(), std.testing.io, &document, bindings_path, null, &diagnostics.writer);
+    try apply(arena.allocator(), std.testing.io, &document, bindings_path, null, &.{}, &diagnostics.writer);
 
     try std.testing.expect(document.doc == null);
 }

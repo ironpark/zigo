@@ -302,6 +302,14 @@ Zig reflection에는 함수 파라미터 이름이 없습니다. zigo는 다음 
 `source_root`를 생략하면 `bindings.zig` 옆의 `root.zig`를 찾습니다. 실제 module root가 다른
 위치라면 명시하세요. AST는 이름과 문서만 보강하며 타입 판단에는 사용되지 않습니다.
 
+`source_root`를 지정하면 대상 module이 import하는 module 그래프의 root 소스까지 함께
+탐색합니다. 바인딩하는 라이브러리가 별도 Zig module(패키지 의존성)로 존재해도 그 쪽
+선언의 파라미터 이름과 문서 주석이 생성 결과에 반영됩니다. 기록되는 소스 경로는 각
+root 기준 상대 경로라 패키지 캐시 위치에 의존하지 않습니다.
+
+보강 대상은 Go에 노출되는 이름이 아니라 바인딩이 지목한 Zig 선언입니다. `.name` 이나
+receiver group의 `strip_prefix` 로 이름이 바뀌어도 원래 선언에서 이름과 문서를 가져옵니다.
+
 ## cgo 플래그 덮어쓰기
 
 기본적으로 대상 module과 그 module이 import하는 전체 module 그래프의 system library,

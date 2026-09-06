@@ -406,11 +406,19 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
             },
         }),
     });
+    // The bound library may be a Zig module of its own, whose sources neither
+    // the bindings file nor the root module names by path. Its root sources
+    // trail the source root so enrichment can reach them; they are positional,
+    // so an absent source root leaves them out too.
+    const dependency_roots = dependencySourceRoots(b, options.module);
     const semantic_run = b.addRunArtifact(reflector);
     semantic_run.addArgs(&.{ options.name, options.prefix });
     semantic_run.addFileArg(options.bindings);
     // An absent source root is an absent argument, not an empty one.
-    if (options.source_root) |source_root| semantic_run.addFileArg(source_root);
+    if (options.source_root) |source_root| {
+        semantic_run.addFileArg(source_root);
+        for (dependency_roots) |root| semantic_run.addFileArg(root);
+    }
     const semantic_json = semantic_run.captureStdOut(.{ .basename = "semantic.json", .trim_whitespace = .none });
     // Successful fallback warnings stay captured so Zig does not label a
     // successful command as failed. On a non-zero exit, Step.Run reports the
@@ -421,12 +429,18 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     coverage.has_side_effects = true;
     coverage.addArgs(&.{ "coverage", options.name, options.prefix });
     coverage.addFileArg(options.bindings);
-    if (options.source_root) |source_root| coverage.addFileArg(source_root);
+    if (options.source_root) |source_root| {
+        coverage.addFileArg(source_root);
+        for (dependency_roots) |root| coverage.addFileArg(root);
+    }
     if (options.coverage_json) |destination| {
         const coverage_json_run = b.addRunArtifact(reflector);
         coverage_json_run.addArgs(&.{ "coverage-json", options.name, options.prefix });
         coverage_json_run.addFileArg(options.bindings);
-        if (options.source_root) |source_root| coverage_json_run.addFileArg(source_root);
+        if (options.source_root) |source_root| {
+            coverage_json_run.addFileArg(source_root);
+            for (dependency_roots) |root| coverage_json_run.addFileArg(root);
+        }
         const coverage_json = coverage_json_run.captureStdOut(.{ .basename = "coverage.json", .trim_whitespace = .none });
         const publish_coverage = b.addUpdateSourceFiles();
         publish_coverage.addCopyFileToSource(coverage_json, destination);
@@ -745,6 +759,34 @@ const NativeTarget = struct {
     /// one the caller built it for.
     module: *std.Build.Module,
 };
+
+/// The root source of every module the bound module imports, transitively.
+/// Enrichment reads the bindings file and the root module's own import graph;
+/// a library packaged as a separate Zig module is outside both, so its
+/// parameter names and doc comments are only reachable from these roots.
+fn dependencySourceRoots(b: *std.Build, module: *std.Build.Module) []const std.Build.LazyPath {
+    var roots: std.ArrayList(std.Build.LazyPath) = .empty;
+    var seen: std.AutoHashMapUnmanaged(*std.Build.Module, void) = .empty;
+    collectDependencySourceRoots(b, module, &roots, &seen);
+    return roots.toOwnedSlice(b.allocator) catch @panic("OOM");
+}
+
+fn collectDependencySourceRoots(
+    b: *std.Build,
+    module: *std.Build.Module,
+    roots: *std.ArrayList(std.Build.LazyPath),
+    seen: *std.AutoHashMapUnmanaged(*std.Build.Module, void),
+) void {
+    for (module.import_table.values()) |imported| {
+        // A diamond in the module graph would otherwise hand the reflector the
+        // same root twice, and a cycle would not terminate at all.
+        if (seen.contains(imported)) continue;
+        seen.put(b.allocator, imported, {}) catch @panic("OOM");
+        // A module can be C sources alone, with no Zig root to enrich from.
+        if (imported.root_source_file) |path| roots.append(b.allocator, path) catch @panic("OOM");
+        collectDependencySourceRoots(b, imported, roots, seen);
+    }
+}
 
 /// `Options.target` first, then `Options.targets`. Without extra targets the
 /// single entry keeps the caller's module and the flat install layout, so
