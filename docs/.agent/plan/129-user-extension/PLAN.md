@@ -7,7 +7,7 @@ registered_at: "2026-09-06T01:10:46Z"
 
 # Phases
 
-- [ ] [Phase 00: Reserved zigo names](phases/00-reserved-names.md)
+- [x] [Phase 00: Reserved zigo names](phases/00-reserved-names.md)
 - [ ] [Phase 01: Type adapters](phases/01-type-adapters.md)
 
 # Shared Verification

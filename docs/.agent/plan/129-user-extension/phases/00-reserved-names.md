@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-06T01:18:48Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: grep finds no unprefixed unexported generated identifier in example public packages; all tests pass.
 > NEXT: none
