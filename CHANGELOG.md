@@ -6,6 +6,8 @@
 
 ## [Unreleased]
 
+## [0.12.0] - 2026-09-06
+
 ### Added
 
 - `.repr = .value` 등록 항목의 `.go = .{ .type, .import, .to_raw, .from_raw }`로 extern struct를
