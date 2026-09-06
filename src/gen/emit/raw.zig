@@ -269,7 +269,10 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
         try writer.print("// {s} calls the generated C ABI wrapper for {s}.\nfunc {s}(", .{ raw_public_name, function.symbol, raw_public_name });
         var raw_parameter_index: usize = 0;
         if (function.origin.receiver != null) {
-            try writer.writeAll("self unsafe.Pointer");
+            if (function.origin.receiverIsValue()) {
+                try writer.writeAll("self ");
+                try type_spelling.writeGoScalar(writer, function.params[0].scalar);
+            } else try writer.writeAll("self unsafe.Pointer");
             raw_parameter_index = 1;
         }
         for (function.origin.params, 0..) |parameter, parameter_index| {
@@ -538,7 +541,11 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
         for (function.params, 0..) |parameter, index| {
             if (index != 0) try writer.writeAll(", ");
             switch (parameter.role) {
-                .receiver => try writeCgoHandleArgument(writer, parameter.scalar, "self"),
+                .receiver => if (function.origin.receiverIsValue()) {
+                    try writer.writeAll("C.");
+                    try type_spelling.writeCgoType(writer, parameter.scalar);
+                    try writer.writeAll("(self)");
+                } else try writeCgoHandleArgument(writer, parameter.scalar, "self"),
                 .flattened_field => {
                     const field = common.flattenedField(function.origin.params[parameter.source_index], parameter);
                     const name = try common.flattenedGoNameAlloc(allocator, parameter.name);

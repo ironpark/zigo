@@ -133,7 +133,8 @@ fn publicFunctionNameAlloc(allocator: std.mem.Allocator, document: semantic.Sema
         lower.constructorForDeinit(document.constructors, function) != null)
         return std.fmt.allocPrint(allocator, "(*{s}).Close [lifecycle mapping]", .{function.receiver.?});
     if (function.receiver) |receiver|
-        return std.fmt.allocPrint(allocator, "(*{s}).{s}", .{ receiver, name });
+        // A value receiver is spelled by value, the way the method reads in Go.
+        return std.fmt.allocPrint(allocator, "({s}{s}).{s}", .{ if (function.receiverIsValue()) "" else "*", receiver, name });
     return allocator.dupe(u8, name);
 }
 

@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-06T14:18:27Z"
 depends_on:
 - "135-value-receivers-for-enums#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Each rejection has a case with the declaration site in the message, and the
 > NEXT: none

@@ -443,7 +443,10 @@ fn renderPuregoFunction(allocator: std.mem.Allocator, writer: *std.Io.Writer, pr
     try writer.print("\n// {s} calls the generated purego ABI wrapper for {s}.\nfunc {s}(", .{ raw_name, function.symbol, raw_name });
     var parameter_count: usize = 0;
     if (function.origin.receiver != null) {
-        try writer.writeAll("self unsafe.Pointer");
+        if (function.origin.receiverIsValue()) {
+            try writer.writeAll("self ");
+            try type_spelling.writeGoScalar(writer, function.params[0].scalar);
+        } else try writer.writeAll("self unsafe.Pointer");
         parameter_count = 1;
     }
     for (function.origin.params, 0..) |parameter, parameter_index| {

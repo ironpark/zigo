@@ -1,0 +1,64 @@
+{
+  "functions": [
+    {
+      "name": "printable",
+      "params": [],
+      "receiver": "Key",
+      "receiver_kind": "value",
+      "return": {"kind": "bool"},
+      "symbol": "zg_key_printable"
+    },
+    {
+      "name": "codepoint",
+      "params": [],
+      "receiver": "Key",
+      "receiver_kind": "value",
+      "return": {"bits": 21, "kind": "int", "signed": false},
+      "return_semantic": "codepoint",
+      "symbol": "zg_key_codepoint"
+    },
+    {
+      "name": "combine",
+      "params": [{"name": "other", "type": {"kind": "enum", "ref": "Key"}}],
+      "receiver": "Key",
+      "receiver_kind": "value",
+      "return": {"kind": "enum", "ref": "Key"},
+      "symbol": "zg_key_combine"
+    },
+    {
+      "name": "enabled",
+      "params": [],
+      "receiver": "Mode",
+      "receiver_kind": "value",
+      "return": {"kind": "bool"},
+      "symbol": "zg_mode_enabled"
+    },
+    {
+      "name": "fromASCII",
+      "params": [{"name": "ch", "type": {"bits": 8, "kind": "int", "signed": false}}],
+      "return": {"kind": "enum", "ref": "Key"},
+      "symbol": "zg_from_ascii",
+      "zig_path": "keyFromASCII"
+    }
+  ],
+  "package": "input",
+  "prefix": "zg",
+  "types": [
+    {
+      "fields": [{"name": "a", "value": 0}, {"name": "enter", "value": 1}],
+      "kind": "enum",
+      "name": "Key",
+      "tag_type": {"bits": 8, "kind": "int", "signed": false},
+      "text": true
+    },
+    {
+      "exhaustive": false,
+      "fields": [{"name": "off", "value": 0}, {"name": "on", "value": 1}],
+      "kind": "enum",
+      "name": "Mode",
+      "open": true,
+      "tag_type": {"bits": 32, "kind": "int", "signed": true}
+    }
+  ],
+  "zig_version": "0.16.0"
+}

@@ -160,7 +160,7 @@ pub fn writePublicFunctionDoc(writer: *std.Io.Writer, function: semantic.Semanti
         try writer.writeAll("// The caller must call Close on the returned handle.\n");
     if (returnsBorrowedOpaque(function))
         try writer.writeAll("// The returned reference remains valid only while its parent handle remains open.\n");
-    if (function.receiver != null or lower.hasOpaqueParameter(function))
+    if (function.receiverIsHandle() or lower.hasOpaqueParameter(function))
         try writer.writeAll("// It returns *HandleError if a required handle is nil or closed.\n");
     if (function.@"return" == .error_union) {
         if (function.@"return".error_union.error_set.len == 0)

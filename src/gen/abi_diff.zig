@@ -1941,3 +1941,52 @@ test "moving the native userdata slot of a callback leaves the ABI untouched" {
     try std.testing.expect(!report.hasBreaking());
     try std.testing.expectEqual(@as(usize, 0), report.changes.items.len);
 }
+
+test "turning a package-level function into an enum method is breaking" {
+    const tag: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    const key: semantic.TypeDecl = .{
+        .kind = .@"enum",
+        .name = "Key",
+        .fields = &.{ .{ .name = "a", .value = 0 }, .{ .name = "enter", .value = 1 } },
+        .tag_type = tag,
+    };
+    const free_function: semantic.SemanticFn = .{
+        .name = "keyPrintable",
+        .params = &.{.{ .name = "key", .type = .{ .@"enum" = .{ .ref = "Key" } } }},
+        .@"return" = .{ .bool = {} },
+        .symbol = "zg_key_printable",
+    };
+    const method: semantic.SemanticFn = .{
+        .name = "printable",
+        .params = &.{},
+        .receiver = "Key",
+        .receiver_kind = .value,
+        .@"return" = .{ .bool = {} },
+        .symbol = "zg_key_printable",
+    };
+    const base: semantic.Semantic = .{ .package = "input", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{free_function}, .types = &.{key} };
+    const current: semantic.Semantic = .{ .package = "input", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{method}, .types = &.{key} };
+    var report = try diff(std.testing.allocator, base, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expect(report.hasBreaking());
+}
+
+test "a receiver that stops being a handle is breaking" {
+    const tag: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    const key_enum: semantic.TypeDecl = .{ .kind = .@"enum", .name = "Key", .fields = &.{.{ .name = "a", .value = 0 }}, .tag_type = tag };
+    const key_handle: semantic.TypeDecl = .{ .kind = .@"opaque", .name = "Key" };
+    const handle_method: semantic.SemanticFn = .{
+        .name = "printable",
+        .params = &.{},
+        .receiver = "Key",
+        .@"return" = .{ .bool = {} },
+        .symbol = "zg_key_printable",
+    };
+    var value_method = handle_method;
+    value_method.receiver_kind = .value;
+    const base: semantic.Semantic = .{ .package = "input", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{handle_method}, .types = &.{key_handle} };
+    const current: semantic.Semantic = .{ .package = "input", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{value_method}, .types = &.{key_enum} };
+    var report = try diff(std.testing.allocator, base, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expect(report.hasBreaking());
+}

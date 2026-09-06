@@ -405,7 +405,10 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         const needs_check = shape.needs_check;
         try docs.writePublicFunctionDoc(writer, function.origin.*, go_name, owned_type, public_writers.functionReachesCallbacks(program, function.origin.*), has_callback_error);
         if (function.origin.receiver) |receiver| {
-            try writer.print("func ({s} *{s}) {s}", .{ receiver_name.?, receiver, go_name });
+            // A value receiver is spelled by value: there is no handle to
+            // point at, and nothing the method could mutate through a pointer.
+            const pointer = if (function.origin.receiverIsValue()) "" else "*";
+            try writer.print("func ({s} {s}{s}) {s}", .{ receiver_name.?, pointer, receiver, go_name });
         } else {
             try writer.print("func {s}", .{go_name});
         }
@@ -530,8 +533,15 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         defer allocator.free(raw_name);
         try writer.print("{s}(", .{raw_name});
         var call_index: usize = 0;
-        if (function.origin.receiver != null) {
-            try writer.writeAll("ptr");
+        if (function.origin.receiver) |receiver| {
+            if (function.origin.receiverIsValue()) {
+                // The receiver is the value itself; the raw layer takes the
+                // enum's backing integer.
+                const variable = try common.typeReceiverNameAlloc(allocator, program, receiver);
+                defer allocator.free(variable);
+                try public_writers.writeRawGoType(writer, program, .{ .@"enum" = .{ .ref = receiver } });
+                try writer.print("({s})", .{variable});
+            } else try writer.writeAll("ptr");
             call_index = 1;
         }
         for (function.origin.params, 0..) |parameter, parameter_index| {
@@ -825,7 +835,7 @@ pub const SignatureShape = struct {
 };
 
 pub fn signatureShape(function: abi.AbiFn) SignatureShape {
-    const needs_handle_check = function.origin.receiver != null or lower.hasOpaqueParameter(function.origin.*);
+    const needs_handle_check = function.origin.receiverIsHandle() or lower.hasOpaqueParameter(function.origin.*);
     const needs_range_check = public_writers.hasNarrowIntParameter(function.origin.*);
     const has_stream = common.functionHasStream(function.origin.*);
     const has_callback_error = function.reaches_callback_errors;
@@ -1151,7 +1161,7 @@ fn renderCallbackRethrows(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
         if (parameter.type != .callback and parameter.type != .io_stream) continue;
         try writer.print("\t\tzigoRethrowCallbackPanic(\"{s}\", {s}Handle)\n", .{ operation, go_names[parameter_index] });
     }
-    if (function.receiver) |receiver| {
+    if (if (function.receiverIsHandle()) function.receiver else null) |receiver| {
         if (common.typeOwnsCallbacks(program, receiver)) {
             const receiver_name = try common.typeReceiverNameAlloc(allocator, program, receiver);
             defer allocator.free(receiver_name);
@@ -1290,7 +1300,7 @@ fn renderCallbackErrorChecks(
         try public_writers.writeCheckedErrorReturn(scope, writer, function, constructor, "err");
         try writer.writeAll("\t}\n");
     }
-    if (function.receiver) |receiver| {
+    if (if (function.receiverIsHandle()) function.receiver else null) |receiver| {
         if (common.typeOwnsErrorCallbacks(program, receiver)) {
             const receiver_name = try common.typeReceiverNameAlloc(allocator, program, receiver);
             defer allocator.free(receiver_name);

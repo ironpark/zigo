@@ -32,7 +32,7 @@ pub fn renderHandleChecks(
     constructor: ?semantic.Constructor,
     options: emit.Options,
 ) !void {
-    if (function.receiver) |receiver| {
+    if (if (function.receiverIsHandle()) function.receiver else null) |receiver| {
         const receiver_name = try common.typeReceiverNameAlloc(allocator, scope.program, receiver);
         defer allocator.free(receiver_name);
         if (function.childOfReceiver())
@@ -81,9 +81,9 @@ pub fn writeErrorForCode(
     go_names: []const []const u8,
     operation: []const u8,
 ) !void {
-    if (function.receiver == null and !lower.hasOpaqueParameter(function)) return writer.print("zigoErrorForCode(\"{s}\", code)\n", .{operation});
+    if (!function.receiverIsHandle() and !lower.hasOpaqueParameter(function)) return writer.print("zigoErrorForCode(\"{s}\", code)\n", .{operation});
     try writer.print("zigoPoisonAfterPanic(zigoErrorForCode(\"{s}\", code)", .{operation});
-    if (function.receiver) |receiver| {
+    if (if (function.receiverIsHandle()) function.receiver else null) |receiver| {
         const receiver_name = try common.typeReceiverNameAlloc(allocator, program, receiver);
         defer allocator.free(receiver_name);
         try writer.print(", {s}", .{receiver_name});
@@ -327,7 +327,7 @@ pub fn writeBorrowedResult(
     expression: []const u8,
 ) !void {
     const node = function.@"return".errorPayload();
-    const parent = if (function.receiver) |receiver| try common.typeReceiverNameAlloc(allocator, program, receiver) else null;
+    const parent = if (if (function.receiverIsHandle()) function.receiver else null) |receiver| try common.typeReceiverNameAlloc(allocator, program, receiver) else null;
     defer if (parent) |value| allocator.free(value);
     if (function.returnsBorrowedHandle())
         try writer.print("zigoNewBorrowed{s}({s}, {s})", .{ node.opaque_ptr.ref, expression, parent orelse "nil" })
@@ -785,8 +785,8 @@ pub fn writeCallbackAdapter(writer: *std.Io.Writer, program: abi.Program, callba
 /// True when native code running under this call can invoke a Go callback:
 /// one passed to the call, or one retained by a handle the call touches.
 pub fn functionReachesCallbacks(program: abi.Program, function: semantic.SemanticFn) bool {
-    if (function.receiver) |receiver| {
-        if (common.typeOwnsCallbacks(program, receiver)) return true;
+    if (function.receiverIsHandle()) {
+        if (common.typeOwnsCallbacks(program, function.receiver.?)) return true;
     }
     for (function.params) |parameter| switch (parameter.type) {
         .callback, .io_stream => return true,

@@ -73,14 +73,17 @@ pub fn semanticDocumentForBackend(
         const flatten_start = try allocator.alloc(?usize, function.params.len);
         @memset(flatten_start, null);
         if (function.receiver) |receiver| {
-            const child = try allocator.create(abi.AbiScalar);
-            child.* = .{ .@"opaque" = try lowerOpaque(allocator, prefix, receiver) };
-            const receiver_const = function.receiverByValue() or if (function.field_access) |access| !access.setter else false;
-            try params.append(allocator, .{
-                .name = "self",
-                .role = .receiver,
-                .scalar = .{ .pointer = .{ .child = child, .is_const = receiver_const } },
-            });
+            // A value receiver crosses as the value it is -- an enum's
+            // backing integer -- rather than as a handle pointer.
+            const scalar: abi.AbiScalar = if (function.receiverIsValue())
+                try lowerValue(allocator, document, prefix, .{ .@"enum" = .{ .ref = receiver } })
+            else blk: {
+                const child = try allocator.create(abi.AbiScalar);
+                child.* = .{ .@"opaque" = try lowerOpaque(allocator, prefix, receiver) };
+                const receiver_const = function.receiverByValue() or if (function.field_access) |access| !access.setter else false;
+                break :blk .{ .pointer = .{ .child = child, .is_const = receiver_const } };
+            };
+            try params.append(allocator, .{ .name = "self", .role = .receiver, .scalar = scalar });
         }
         for (function.params, 0..) |parameter, parameter_index| {
             // The shim writes the value itself, so the parameter is absent
@@ -580,7 +583,7 @@ pub fn mustVariant(allocator: std.mem.Allocator, document: semantic.Semantic, fu
 /// out of range, a stream that can fail, or a callback that can return a Go
 /// error.
 pub fn needsCheck(document: semantic.Semantic, function: semantic.SemanticFn) bool {
-    return function.receiver != null or hasOpaqueParameter(function) or hasNarrowIntParameter(function) or
+    return function.receiverIsHandle() or hasOpaqueParameter(function) or hasNarrowIntParameter(function) or
         functionHasStream(function) or functionReachesCallbackErrors(document.functions, document.constructors, function);
 }
 
@@ -691,8 +694,8 @@ pub fn typeOwnsErrorCallbacks(functions: []const semantic.SemanticFn, constructo
 /// True when native code running under this call can reach a Go callback that
 /// returns an `error`: one passed to the call, or one a touched handle retains.
 pub fn functionReachesCallbackErrors(functions: []const semantic.SemanticFn, constructors: []const semantic.Constructor, function: semantic.SemanticFn) bool {
-    if (function.receiver) |receiver| {
-        if (typeOwnsErrorCallbacks(functions, constructors, receiver)) return true;
+    if (function.receiverIsHandle()) {
+        if (typeOwnsErrorCallbacks(functions, constructors, function.receiver.?)) return true;
     }
     for (function.params) |parameter| {
         if (callbackHasGoError(functions, parameter)) return true;
@@ -978,7 +981,7 @@ pub fn promoteCheckedFunctions(
 /// receiver puts one there (a nil or closed handle has to be reportable), and
 /// so does a promoted integer parameter (an out-of-range argument has to be).
 fn reportsPanics(function: semantic.SemanticFn) bool {
-    if (function.receiver != null) return true;
+    if (function.receiverIsHandle()) return true;
     for (function.params) |parameter| {
         if (parameter.type == .opaque_ptr) return true;
         if (abi.narrowInt(parameter.type) != null) return true;

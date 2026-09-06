@@ -110,9 +110,14 @@ func DefaultCursorStyle() CursorStyle {
 	return CursorStyle(raw.DefaultCursorStyle())
 }
 
-// CursorStyleBlinks: Reports whether a cursor of this style blinks.
-func CursorStyleBlinks(style CursorStyle) bool {
-	return raw.CursorStyleBlinks(uint8(style)) != 0
+// Columns: How many columns this mode selects.
+func (d DeccolmMode) Columns() uint16 {
+	return raw.DeccolmModeColumns(uint8(d))
+}
+
+// Blinks calls the Zig function CursorStyle.blinks.
+func (c CursorStyle) Blinks() bool {
+	return raw.CursorStyleBlinks(uint8(c)) != 0
 }
 
 // ConfigureStyles calls the Zig function configureStyles.

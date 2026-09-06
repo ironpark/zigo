@@ -87,8 +87,16 @@ func TestRegisteredEnum(t *testing.T) {
 	if got := CursorStyleBar.String(); got != "bar" {
 		t.Fatalf("CursorStyleBar.String() = %q, want \"bar\"", got)
 	}
-	if !CursorStyleBlinks(CursorStyleUnderline) || CursorStyleBlinks(CursorStyleBlock) {
-		t.Fatal("CursorStyleBlinks disagrees with the Zig function")
+	// The enum owns its methods: a Zig method on the enum and a free function
+	// the binding attached to it both read as methods on the value.
+	if !CursorStyleUnderline.Blinks() || CursorStyleBlock.Blinks() {
+		t.Fatal("CursorStyle.Blinks disagrees with the Zig function")
+	}
+	if got := DeccolmMode132Cols.Columns(); got != 132 {
+		t.Fatalf("DeccolmMode132Cols.Columns() = %d, want 132", got)
+	}
+	if got := DeccolmMode80Cols.Columns(); got != 80 {
+		t.Fatalf("DeccolmMode80Cols.Columns() = %d, want 80", got)
 	}
 	if !ConfigureStyles(CharsetSlotBlock, CursorStyleBar) {
 		t.Fatal("ConfigureStyles did not preserve the two distinct generated enum types")

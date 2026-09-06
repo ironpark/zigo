@@ -35,7 +35,16 @@ pub const bindings = zigo.define(.{
         // a type defined beside the generated files, instead of uint.
         .{ .path = "root.liveObjects", .go = .{ .type = "ObjectCount", .to_raw = "objectCountToRaw", .from_raw = "objectCountFromRaw" } },
         .{ .path = "root.defaultCursorStyle" },
-        .{ .path = "root.cursorStyleBlinks", .params = .{"style"} },
+        // A registered enum owns its methods. `DeccolmMode.columns` is a Zig
+        // method and binds as one; `cursorStyleBlinks` is a free function the
+        // group attaches to `CursorStyle`, dropping the shared prefix. Both
+        // become Go methods on the enum, with the enum value as the receiver.
+        .{ .path = "DeccolmMode.columns" },
+        .{
+            .receiver = "CursorStyle",
+            .strip_prefix = "cursorStyle",
+            .functions = .{"root.cursorStyleBlinks"},
+        },
         .{ .path = "root.configureStyles", .params = .{ "slot", "style" } },
         .{ .path = "root.isWideColumns", .params = .{"mode"} },
         .{ .path = "root.echoEraseDisplay", .params = .{"value"} },

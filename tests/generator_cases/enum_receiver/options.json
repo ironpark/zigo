@@ -1,0 +1,5 @@
+{
+  "package": "input",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/input"
+}

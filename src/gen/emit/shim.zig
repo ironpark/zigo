@@ -873,6 +873,11 @@ pub fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
 }
 
 fn writeShimReceiverArgument(writer: *std.Io.Writer, function: semantic.SemanticFn) !void {
+    if (function.receiverIsValue()) {
+        // The receiver crossed as the enum's backing integer.
+        try writer.writeAll("@enumFromInt(self)");
+        return;
+    }
     try writer.writeAll(if (function.receiverByValue()) "self.*" else "self");
 }
 

@@ -67,7 +67,18 @@ pub fn Enum(comptime names: []const []const u8) type {
 
 pub const CursorStyle = Enum(([_][]const u8{ "block", "bar", "underline" })[0..3]);
 pub const CharsetSlot = Enum(([_][]const u8{ "block", "bar", "g2" })[0..3]);
-pub const DeccolmMode = enum(u8) { @"80_cols", @"132_cols" };
+pub const DeccolmMode = enum(u8) {
+    @"80_cols",
+    @"132_cols",
+
+    /// How many columns this mode selects.
+    pub fn columns(self: DeccolmMode) u16 {
+        return switch (self) {
+            .@"80_cols" => 80,
+            .@"132_cols" => 132,
+        };
+    }
+};
 
 pub fn configureStyles(slot: CharsetSlot, style: CursorStyle) bool {
     return slot == .block and style != .block;

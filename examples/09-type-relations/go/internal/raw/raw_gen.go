@@ -104,9 +104,14 @@ func DefaultCursorStyle() uint8 {
 	return uint8(C.zg_default_cursor_style())
 }
 
+// DeccolmModeColumns calls the generated C ABI wrapper for zg_deccolm_mode_columns.
+func DeccolmModeColumns(self uint8) uint16 {
+	return uint16(C.zg_deccolm_mode_columns(C.uint8_t(self)))
+}
+
 // CursorStyleBlinks calls the generated C ABI wrapper for zg_cursor_style_blinks.
-func CursorStyleBlinks(style uint8) uint8 {
-	return uint8(C.zg_cursor_style_blinks(C.uint8_t(style)))
+func CursorStyleBlinks(self uint8) uint8 {
+	return uint8(C.zg_cursor_style_blinks(C.uint8_t(self)))
 }
 
 // ConfigureStyles calls the generated C ABI wrapper for zg_configure_styles.

@@ -470,7 +470,7 @@ pub fn programNeedsUnsafe(program: abi.Program) bool {
     // The layout guards a castable struct carries are spelled with `unsafe`.
     for (program.structs) |record| if (record.castable) return true;
     for (program.functions) |function| {
-        if (function.origin.receiver != null) return true;
+        if (function.origin.receiverIsHandle()) return true;
         for (function.origin.params) |parameter| if (parameter.type == .opaque_ptr) return true;
         if (function.origin.@"return" == .opaque_ptr) return true;
         if (function.origin.@"return" == .error_union and function.origin.@"return".error_union.payload.* == .opaque_ptr) return true;
