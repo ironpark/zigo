@@ -591,6 +591,38 @@ test "an enum entry's covers wrap the methods its Go enum replaces" {
     try std.testing.expect(std.mem.indexOf(u8, rendered.written(), "Mode.label <- Mode") != null);
 }
 
+test "a bound enum method needs no covers entry" {
+    const Api = struct {
+        pub const Mode = enum(u8) {
+            ready,
+            busy,
+            pub fn label(self: Mode) []const u8 {
+                return @tagName(self);
+            }
+        };
+        pub fn mode() Mode {
+            return .ready;
+        }
+    };
+    const binding = .{
+        .root = Api,
+        .types = .{.{ .type = Api.Mode, .repr = .enumeration }},
+        .functions = .{ .{ .path = "root.mode" }, .{ .path = "Mode.label" } },
+    };
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const document = try walk.reflect(allocator, binding, "sample", "zg");
+    const report = try classify(allocator, binding, "sample", document, &.{});
+
+    try std.testing.expectEqual(@as(usize, 2), report.bound);
+    try std.testing.expectEqual(@as(usize, 0), report.unbound);
+    // Bound outright, not wrapped: the method is the Go method.
+    try std.testing.expectEqual(.bound, report.declarations[0].status);
+    try std.testing.expectEqualStrings("Mode.label", report.declarations[0].path);
+    try std.testing.expect(report.declarations[0].via == null);
+}
+
 test "covers classifies wrapped declarations in text and JSON" {
     const Api = struct {
         pub const Service = struct {

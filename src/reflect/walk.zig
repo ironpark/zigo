@@ -753,13 +753,26 @@ fn appendFunction(
     // `std.mem.Allocator` or `std.Io` ahead of the handle never reaches the
     // C signature, so it does not stop the function from being a method.
     const inferred_receiver_index = comptime receiverIndex(info, declaration);
-    const receiver_index = comptime if (explicit_receiver != null) firstNonInjectedIndex(info) else inferred_receiver_index;
-    if (explicit_receiver) |expected| {
+    // A registered enum owns a method when the binding reached the
+    // declaration through it -- `.path = "Key.codepoint"` or an explicit
+    // `.receiver = "Key"` -- and the first parameter Go would see is that
+    // enum by value. Inference alone never promotes a function that merely
+    // takes an enum, so a root-level `colorNameDefault(name: ColorName)`
+    // stays the package-level function it has always been.
+    const enum_receiver = comptime enumReceiverName(declaration, info, explicit_receiver orelse discovered_owner);
+    if (comptime enum_receiver == null and explicit_receiver != null and enumEntryNamed(declaration, explicit_receiver.?) != null)
+        return receiverIssue(allocator, "function `{s}` declares `.receiver = \"{s}\"` but its first non-injected parameter is not `{s}` by value", .{ source_name, explicit_receiver.?, explicit_receiver.? });
+    const receiver_index = comptime if (enum_receiver != null or explicit_receiver != null) firstNonInjectedIndex(info) else inferred_receiver_index;
+    if (comptime enum_receiver == null) if (explicit_receiver) |expected| {
         const actual = comptime if (receiver_index) |index| receiverNameAt(info, declaration, index) else null;
         if (actual == null or !std.mem.eql(u8, actual.?, expected))
             return receiverIssue(allocator, "function `{s}` declares `.receiver = \"{s}\"` but its first non-injected parameter is not `{s}`, `*{s}`, or `*const {s}`", .{ source_name, expected, expected, expected, expected });
-    }
-    const receiver: ?[]const u8 = comptime explicit_receiver orelse if (receiver_index) |index| receiverNameAt(info, declaration, index) else null;
+    };
+    const receiver: ?[]const u8 = comptime blk: {
+        if (enum_receiver) |value| break :blk value;
+        if (explicit_receiver) |value| break :blk value;
+        break :blk if (receiver_index) |index| receiverNameAt(info, declaration, index) else null;
+    };
     // What the message calls the declaration: the owner it was reached through
     // plus the source name, which is the spelling the binding's `.path` uses.
     const owner_label = comptime if (receiver) |value|
@@ -926,10 +939,11 @@ fn appendFunction(
         .namespace = if (receiver == null) discovered_owner else null,
         .params = params,
         .receiver = receiver,
-        .receiver_by_value = comptime if (receiver_index) |index|
+        .receiver_by_value = comptime if (enum_receiver != null) null else if (receiver_index) |index|
             if (@typeInfo(info.params[index].type.?) == .pointer) null else true
         else
             null,
+        .receiver_kind = comptime if (enum_receiver != null) .value else null,
         // The shim passes `self` where Zig declared it; only injected
         // arguments can sit ahead of it, and they are counted here.
         .receiver_at = comptime if (receiver_index != null and receiver_index.? != 0) receiver_index.? else null,
@@ -1573,12 +1587,13 @@ fn pathContainer(comptime declaration: anytype, comptime owner: ?[]const u8) typ
 }
 
 /// The first segment of an owner may name a registered `types` entry, which is
-/// how `<Type>.<name>` has always addressed a method. Everything after it is
-/// an ordinary public container declaration.
+/// how `<Type>.<name>` has always addressed a method. Enumerations resolve
+/// here too, so `<Enum>.<name>` reaches a method the generated Go enum will
+/// carry. Everything after it is an ordinary public container declaration.
 fn registeredContainer(comptime declaration: anytype, comptime name: []const u8) ?type {
     if (@hasField(@TypeOf(declaration), "types")) {
         inline for (declaration.types) |entry| {
-            if (comptime entry.repr != .callback and entry.repr != .enumeration and std.mem.eql(u8, typeEntryName(entry), name)) return entry.type;
+            if (comptime entry.repr != .callback and std.mem.eql(u8, typeEntryName(entry), name)) return entry.type;
         }
     }
     return null;
@@ -1598,6 +1613,28 @@ fn enumMethodPathExists(comptime declaration: anytype, comptime wanted: []const 
         }
         return false;
     }
+}
+
+/// The registered enumeration entry named `name`, if there is one.
+fn enumEntryNamed(comptime declaration: anytype, comptime name: []const u8) ?type {
+    if (@hasField(@TypeOf(declaration), "types")) {
+        inline for (declaration.types) |entry| {
+            if (comptime entry.repr == .enumeration and std.mem.eql(u8, typeEntryName(entry), name)) return entry.type;
+        }
+    }
+    return null;
+}
+
+/// The enum a method belongs to: `owner` names a registered enumeration and
+/// the first parameter Go would see is that enum by value. A `*Enum` first
+/// parameter is not a receiver here -- Go value receivers would drop the
+/// mutation -- and returns null so the caller can say so.
+fn enumReceiverName(comptime declaration: anytype, comptime info: std.builtin.Type.Fn, comptime owner: ?[]const u8) ?[]const u8 {
+    const name = owner orelse return null;
+    const Enum = enumEntryNamed(declaration, name) orelse return null;
+    const index = firstNonInjectedIndex(info) orelse return null;
+    const T = info.params[index].type orelse return null;
+    return if (T == Enum) name else null;
 }
 
 fn rootContainerChild(comptime Container: type, comptime name: []const u8, comptime path: []const u8) type {
@@ -3819,6 +3856,92 @@ test "receiver metadata diagnostics use ZIGO038" {
             "  hint: name a registered opaque type whose value or pointer is the function's first parameter after any injected `std.mem.Allocator` or `std.Io`\n",
         mismatch,
     );
+}
+
+test "a registered enum owns the methods addressed through it" {
+    const Fixture = struct {
+        const Key = enum(u8) {
+            a,
+            enter,
+
+            pub fn printable(self: @This()) bool {
+                return self == .a;
+            }
+
+            pub fn codepoint(self: @This()) u21 {
+                return if (self == .a) 'a' else '\n';
+            }
+        };
+
+        pub fn keyModifier(key: Key) bool {
+            return key == .enter;
+        }
+
+        pub fn keyKeypad(key: Key) bool {
+            return key == .enter;
+        }
+
+        pub fn defaultKey(key: Key) Key {
+            return key;
+        }
+    };
+    const types = .{.{ .type = Fixture.Key, .repr = .enumeration, .name = "Key" }};
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = types,
+        .functions = .{
+            .{ .path = "Key.printable" },
+            .{ .path = "root.keyModifier", .receiver = "Key", .params = .{} },
+            .{ .path = "root.defaultKey", .params = .{"key"} },
+            .{ .receiver = "Key", .strip_prefix = "key", .functions = .{"root.keyKeypad"} },
+        },
+    }, "input", "zg");
+
+    const method = document.functions[0];
+    try std.testing.expectEqualStrings("Key", method.receiver.?);
+    try std.testing.expect(method.receiverIsValue());
+    try std.testing.expect(!method.receiverIsHandle());
+    // A value receiver is not a handle taken by value: nothing dereferences it.
+    try std.testing.expect(!method.receiverByValue());
+    try std.testing.expectEqual(@as(usize, 0), method.params.len);
+    try std.testing.expectEqualStrings("zg_key_printable", method.symbol);
+
+    // Declared rather than addressed: the free function becomes the method.
+    try std.testing.expectEqualStrings("Key", document.functions[1].receiver.?);
+    try std.testing.expectEqualStrings("keyModifier", document.functions[1].zig_path.?);
+
+    // A function that merely takes the enum keeps its parameter.
+    try std.testing.expect(document.functions[2].receiver == null);
+    try std.testing.expectEqual(@as(usize, 1), document.functions[2].params.len);
+
+    const grouped = document.functions[3];
+    try std.testing.expectEqualStrings("Key", grouped.receiver.?);
+    try std.testing.expectEqualStrings("keypad", grouped.name);
+
+    const json = try document.serialize(arena.allocator());
+    try std.testing.expect(std.mem.indexOf(u8, json, "\"receiver_kind\": \"value\"") != null);
+}
+
+test "an enum receiver has to be taken by value" {
+    const Fixture = struct {
+        const Key = enum(u8) {
+            a,
+            enter,
+
+            pub fn clear(self: *@This()) void {
+                self.* = .a;
+            }
+        };
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectError(error.ReceiverMetadata, reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{.{ .type = Fixture.Key, .repr = .enumeration, .name = "Key" }},
+        .functions = .{.{ .path = "Key.clear", .receiver = "Key" }},
+    }, "input", "zg"));
 }
 
 test "registered opaque values become receiver and parameter handles" {

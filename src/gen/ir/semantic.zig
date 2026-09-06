@@ -612,6 +612,12 @@ pub const SemanticFn = struct {
     /// an ordinary handle method and the C ABI still receives a const handle
     /// pointer; the shim alone dereferences it before calling Zig.
     receiver_by_value: ?bool = null,
+    /// What the receiver is. Absent means `handle`, which is what every
+    /// receiver was before registered enums could own methods. A `value`
+    /// receiver crosses as its own value rather than as a handle pointer, so
+    /// none of the handle bookkeeping -- acquire, parent, `ErrInvalidHandle`,
+    /// the retained-callback sweep -- applies to it.
+    receiver_kind: ?ReceiverKind = null,
     /// How many entries of `params` Zig declared ahead of the receiver. Only
     /// injected arguments can precede it, so this is absent (zero) unless an
     /// allocator or io comes before the handle, as in
@@ -661,7 +667,24 @@ pub const SemanticFn = struct {
     pub fn receiverByValue(self: SemanticFn) bool {
         return self.receiver_by_value orelse false;
     }
+
+    /// Whether the receiver, if there is one, is a handle. Every site that
+    /// reads a receiver to mean "there is an object with a lifetime" asks
+    /// this rather than testing `receiver` for null.
+    pub fn receiverIsHandle(self: SemanticFn) bool {
+        if (self.receiver == null) return false;
+        return (self.receiver_kind orelse .handle) == .handle;
+    }
+
+    /// Whether the receiver is a registered value type passed by its own
+    /// value: an enum today.
+    pub fn receiverIsValue(self: SemanticFn) bool {
+        return self.receiver != null and (self.receiver_kind orelse .handle) == .value;
+    }
 };
+
+/// A receiver is either an object with a lifetime or a plain value.
+pub const ReceiverKind = enum { handle, value };
 
 pub const TypeKind = enum { callback, @"enum", error_set, materialized, @"opaque", tagged_union, value_struct };
 pub const Layout = enum { @"extern", @"packed" };
