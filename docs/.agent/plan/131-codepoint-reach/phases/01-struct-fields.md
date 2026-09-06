@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-06T03:20:29Z"
 depends_on:
 - "131-codepoint-reach#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `value_adapter`-style case shows a `rune` field crossing both ways; tests green.
 > NEXT: none
