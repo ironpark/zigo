@@ -4,7 +4,7 @@ depends_on:
 - "136-binding-declaration-defaults#1"
 - "136-binding-declaration-defaults#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `zig build test --summary all` passes, `zig fmt --check` is clean, examples
 > NEXT: none
