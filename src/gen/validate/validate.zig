@@ -103,14 +103,14 @@ pub fn puregoCallbackIssue(document: semantic.Semantic) ?diagnostic.Diagnostic {
         for (function.params) |parameter| {
             if (parameter.type != .callback) continue;
             const result = parameter.type.callback.@"return".*;
-            if (result == .void) continue;
+            if (result == .void or result == .bool) continue;
             if (result == .int and result.int.signed and result.int.bits == 32) continue;
             return .{
                 .severity = .@"error",
                 .code = "ZIGO014",
-                .message = "purego callback result must be void or a signed 32-bit integer",
+                .message = "purego callback result must be void, bool or a signed 32-bit integer",
                 .site = site.functionSite(function),
-                .hint = "return `void` or `i32` from the callback, or report the value through userdata",
+                .hint = "return `void`, `bool` or `i32` from the callback, or report the value through userdata",
             };
         }
     }

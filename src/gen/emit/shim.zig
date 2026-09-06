@@ -51,7 +51,7 @@ pub fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program:
                 try writer.writeAll(") callconv(.c) ");
                 try type_spelling.writeZigType(writer, program, type_spelling.semanticScalar(program, parameter.type.callback.@"return".*));
                 try writer.writeAll(";\n");
-                if (common.callbackHasPackedParam(program, parameter.type.callback)) {
+                if (common.needsCallbackThunk(program, function, parameter_index)) {
                     const thunk = try common.callbackPackedThunkNameAlloc(allocator, function, parameter_index);
                     defer allocator.free(thunk);
                     try writeCallbackThunkSignature(writer, program, parameter.type.callback, thunk);
@@ -75,7 +75,7 @@ pub fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program:
     if (program.backend == .purego) {
         for (program.functions) |function| {
             for (function.origin.params, 0..) |_, parameter_index| {
-                if (common.needsCallbackBitThunk(program, function, parameter_index)) wrote_prelude = true;
+                if (common.needsCallbackThunk(program, function, parameter_index)) wrote_prelude = true;
             }
         }
         try renderCallbackBitThunks(allocator, writer, program);
@@ -797,11 +797,11 @@ pub fn writeTargetCall(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
         }
         switch (parameter.type) {
             .callback => {
-                if (program.backend == .cgo and common.callbackHasPackedParam(program, parameter.type.callback)) {
+                if (program.backend == .cgo and common.needsCallbackThunk(program, function, index)) {
                     const thunk = try common.callbackPackedThunkNameAlloc(allocator, function, index);
                     defer allocator.free(thunk);
                     try writer.print("&{s}", .{thunk});
-                } else if (common.needsCallbackBitThunk(program, function, index)) {
+                } else if (common.needsCallbackThunk(program, function, index)) {
                     const thunk = try common.callbackThunkNameAlloc(allocator, function, index);
                     defer allocator.free(thunk);
                     try writer.print("&{s}", .{thunk});
@@ -994,7 +994,7 @@ fn taggedUnionAbiParam(
 fn renderCallbackBitThunks(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program) !void {
     for (program.functions) |function| {
         for (function.origin.params, 0..) |parameter, parameter_index| {
-            if (!common.needsCallbackBitThunk(program, function, parameter_index)) continue;
+            if (!common.needsCallbackThunk(program, function, parameter_index)) continue;
             const callback = parameter.type.callback;
             const wire = common.callbackWireScalar(function, parameter_index) orelse return error.CallbackRequiresUserdata;
             const binding = try common.callbackBindingNameAlloc(allocator, function, parameter_index);
@@ -1019,38 +1019,51 @@ fn writeCallbackThunkSignature(writer: *std.Io.Writer, program: abi.Program, cal
     for (callback.params, 0..) |callback_parameter, index| {
         if (index != 0) try writer.writeAll(", ");
         try writer.print("p{d}: ", .{index});
-        if (type_spelling.isPackedValue(program, callback_parameter))
-            try target_types.writeTargetType(writer, program, callback_parameter.value_struct.ref)
-        else
-            try type_spelling.writeZigType(writer, program, type_spelling.semanticScalar(program, callback_parameter));
+        try writeCallbackNativeType(writer, program, callback_parameter);
     }
     try writer.writeAll(") callconv(.c) ");
-    try type_spelling.writeZigType(writer, program, type_spelling.semanticScalar(program, callback.@"return".*));
+    try writeCallbackNativeType(writer, program, callback.@"return".*);
     try writer.writeAll(" {\n    ");
+}
+
+/// The type a callback value has in the native signature: a packed struct and
+/// a `bool` keep their Zig spelling, everything else its promoted wire scalar.
+fn writeCallbackNativeType(writer: *std.Io.Writer, program: abi.Program, node: semantic.TypeNode) !void {
+    if (node == .bool) return writer.writeAll("bool");
+    if (type_spelling.isPackedValue(program, node))
+        try target_types.writeTargetType(writer, program, node.value_struct.ref)
+    else
+        try type_spelling.writeZigType(writer, program, type_spelling.semanticScalar(program, node));
 }
 
 /// The forwarding call that closes a thunk: packed values travel on as their
 /// backing integers, and floats as their bits when the callee takes them so.
 fn writeCallbackThunkCall(writer: *std.Io.Writer, program: abi.Program, callback: semantic.Callback, callee: []const u8, floats_as_bits: bool) !void {
+    const bool_result = callback.@"return".* == .bool;
     if (callback.@"return".* != .void) try writer.writeAll("return ");
     try writer.print("{s}(", .{callee});
     for (callback.params, 0..) |callback_parameter, index| {
         if (index != 0) try writer.writeAll(", ");
         if (floats_as_bits and callback_parameter == .float)
             try writer.print("@bitCast(p{d})", .{index})
+        else if (callback_parameter == .bool)
+            try writer.print("@intFromBool(p{d})", .{index})
         else if (type_spelling.isPackedValue(program, callback_parameter)) {
             try type_spelling.writePackedZigToBackingPrefix(writer, program, callback_parameter);
             try writer.print("p{d})))", .{index});
         } else try writer.print("p{d}", .{index});
     }
-    try writer.writeAll(");\n}\n");
+    try writer.writeAll(if (bool_result) ") != 0;\n}\n" else ");\n}\n");
 }
 
 /// Records the Go dispatcher a thunk forwards to, before the native side can
 /// reach the callback it is being installed for.
 fn writeCallbackBitBindings(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, function: abi.AbiFn) !void {
+    // A cgo thunk calls the exported trampoline directly; only purego routes
+    // through a stored dispatcher address.
+    if (program.backend != .purego) return;
     for (function.origin.params, 0..) |parameter, parameter_index| {
-        if (!common.needsCallbackBitThunk(program, function, parameter_index)) continue;
+        if (!common.needsCallbackThunk(program, function, parameter_index)) continue;
         const binding = try common.callbackBindingNameAlloc(allocator, function, parameter_index);
         defer allocator.free(binding);
         try writer.print("    {s}.store({s}, .release);\n", .{ binding, parameter.name });

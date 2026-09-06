@@ -72,6 +72,7 @@ type nativeBindings struct {
 	fnApply                      func(int32, uintptr, uintptr) int32
 	fnApplyUntilCancelled        func(uint32, uintptr, uintptr, *uint32, *uint32) int32
 	fnNotify                     func(int32, uintptr, uintptr)
+	fnFilter                     func(int32, uint8, uintptr, uintptr) uint8
 	fnVisitCodepoints            func(unsafe.Pointer, uintptr, uintptr, uintptr) uint32
 }
 
@@ -261,7 +262,7 @@ func releaseCallback(entry *callbackEntry) {
 // returning int32_t and reads only the low word, so the value round-trips.
 func callbackResult(value int32) uintptr { return uintptr(uint32(value)) }
 
-var callbackPointers [3]uintptr
+var callbackPointers [4]uintptr
 var callbackDispatchersOnce sync.Once
 
 func ensureCallbackDispatchers() {
@@ -304,7 +305,23 @@ func ensureCallbackDispatchers() {
 			callback(p0)
 			return 0
 		})
-		callbackPointers[2] = purego.NewCallback(func(p0 uint32, p1 uint) (result uintptr) {
+		callbackPointers[2] = purego.NewCallback(func(p0 int32, p1 uint8, p2 uint) (result uintptr) {
+			entry, stored, ok := acquireCallback(uintptr(p2))
+			if !ok {
+				tripCallbackCancel(uintptr(p2))
+				return 0
+			}
+			defer releaseCallback(entry)
+			defer func() {
+				if value := recover(); value != nil {
+					entry.record(value)
+					result = 0
+				}
+			}()
+			callback := stored.(func(int32, uint8) uint8)
+			return uintptr(callback(p0, p1))
+		})
+		callbackPointers[3] = purego.NewCallback(func(p0 uint32, p1 uint) (result uintptr) {
 			entry, stored, ok := acquireCallback(uintptr(p1))
 			if !ok {
 				tripCallbackCancel(uintptr(p1))
@@ -332,6 +349,9 @@ func CallbackPointer1() uintptr { ensureCallbackDispatchers(); return callbackPo
 
 // CallbackPointer2 returns the permanent dispatcher for callback ABI signature 2.
 func CallbackPointer2() uintptr { ensureCallbackDispatchers(); return callbackPointers[2] }
+
+// CallbackPointer3 returns the permanent dispatcher for callback ABI signature 3.
+func CallbackPointer3() uintptr { ensureCallbackDispatchers(); return callbackPointers[3] }
 
 // CallbackDispatcherCount reports the number of unique callback ABI dispatchers.
 func CallbackDispatcherCount() int { ensureCallbackDispatchers(); return len(callbackPointers) }
@@ -500,6 +520,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_notify_purego_v2", err)
 	}
+	addrFilter, err := resolveSymbol(handle, "zg_filter_purego_v2")
+	if err != nil {
+		return fail("zg_filter_purego_v2", err)
+	}
 	addrVisitCodepoints, err := resolveSymbol(handle, "zg_visit_codepoints_purego_v2")
 	if err != nil {
 		return fail("zg_visit_codepoints_purego_v2", err)
@@ -527,6 +551,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnApply, addrApply)
 	purego.RegisterFunc(&next.fnApplyUntilCancelled, addrApplyUntilCancelled)
 	purego.RegisterFunc(&next.fnNotify, addrNotify)
+	purego.RegisterFunc(&next.fnFilter, addrFilter)
 	purego.RegisterFunc(&next.fnVisitCodepoints, addrVisitCodepoints)
 	loadedBindings.Store(&next)
 	return nil
@@ -694,6 +719,12 @@ func ApplyUntilCancelled(limit uint32, callbackCallback, callbackToken uintptr, 
 // Notify calls the generated purego ABI wrapper for zg_notify_purego_v2.
 func Notify(value int32, callbackCallback, callbackToken uintptr) {
 	bindings().fnNotify(value, callbackCallback, callbackToken)
+}
+
+// Filter calls the generated purego ABI wrapper for zg_filter_purego_v2.
+func Filter(value int32, strict uint8, predicateCallback, predicateToken uintptr) uint8 {
+	result := bindings().fnFilter(value, strict, predicateCallback, predicateToken)
+	return uint8(result)
 }
 
 // VisitCodepoints calls the generated purego ABI wrapper for zg_visit_codepoints_purego_v2.

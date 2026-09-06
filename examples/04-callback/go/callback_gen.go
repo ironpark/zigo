@@ -303,6 +303,19 @@ func Notify(value int32, callback VoidObserver) {
 	}
 }
 
+// Filter: True when predicate accepts value. `strict` is passed through untouched so
+// the round trip of a `bool` parameter is observable from Go.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+func Filter(value int32, strict bool, predicate Predicate) bool {
+	predicateHandle := zigoNewPredicateHandle(predicate)
+	defer zigoDeleteCallbackHandle(predicateHandle)
+	result := zigoRawFilter(value, zigoBoolToUint8(strict), uintptr(predicateHandle))
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("Filter", predicateHandle)
+	}
+	return result != 0
+}
+
 // VisitCodepoints: Calls visitor for every codepoint of text and returns the last one, or 0
 // for empty text. Malformed bytes are visited as U+FFFD.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.

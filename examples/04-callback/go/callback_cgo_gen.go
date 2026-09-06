@@ -226,6 +226,23 @@ func zg_notify_go_callback_callback(p0 C.int32_t, p1 C.size_t) {
 	callback(int32(p0))
 }
 
+//export zg_filter_go_callback_predicate
+func zg_filter_go_callback_predicate(p0 C.int32_t, p1 C.uint8_t, p2 C.size_t) (result C.uint8_t) {
+	state, ok := callbackState(cgo.Handle(p2))
+	if !ok {
+		tripCallbackCancel(uintptr(p2))
+		return C.uint8_t(0)
+	}
+	defer func() {
+		if value := recover(); value != nil {
+			state.record(value)
+			result = 0
+		}
+	}()
+	callback := state.Fn.(func(int32, uint8) uint8)
+	return C.uint8_t(callback(int32(p0), uint8(p1)))
+}
+
 //export zg_visit_codepoints_go_callback_visitor
 func zg_visit_codepoints_go_callback_visitor(p0 C.uint32_t, p1 C.size_t) {
 	state, ok := callbackState(cgo.Handle(p1))
@@ -363,6 +380,11 @@ func zigoRawApplyUntilCancelled(limit uint32, callbackHandle uintptr, cancel *ui
 // zigoRawNotify calls the generated C ABI wrapper for zg_notify.
 func zigoRawNotify(value int32, callbackHandle uintptr) {
 	C.zg_notify(C.int32_t(value), C.size_t(callbackHandle))
+}
+
+// zigoRawFilter calls the generated C ABI wrapper for zg_filter.
+func zigoRawFilter(value int32, strict uint8, predicateHandle uintptr) uint8 {
+	return uint8(C.zg_filter(C.int32_t(value), C.uint8_t(strict), C.size_t(predicateHandle)))
 }
 
 // zigoRawVisitCodepoints calls the generated C ABI wrapper for zg_visit_codepoints.

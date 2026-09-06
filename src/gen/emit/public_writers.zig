@@ -723,14 +723,15 @@ pub fn writePublicCallbackType(scope: PublicScope, writer: *std.Io.Writer, progr
 /// wrap the user's function instead of converting its type.
 pub fn callbackNeedsAdapter(program: abi.Program, callback: semantic.Callback) bool {
     const value_count = if (callback.has_userdata and callback.params.len != 0) callback.params.len - 1 else callback.params.len;
-    for (callback.params[0..value_count]) |parameter| if (type_spelling.isPackedValue(program, parameter)) return true;
-    return callback.hasCodepoints();
+    for (callback.params[0..value_count]) |parameter| if (type_spelling.isPackedValue(program, parameter) or parameter == .bool) return true;
+    return callback.@"return".* == .bool or callback.hasCodepoints();
 }
 
 pub fn writeCallbackAdapter(writer: *std.Io.Writer, program: abi.Program, callback: semantic.Callback, value_name: []const u8) !void {
     const value_count = if (callback.has_userdata and callback.params.len != 0) callback.params.len - 1 else callback.params.len;
     const go_error = common.callbackSignatureHasGoError(program, callback);
     const codepoint_result = semantic.isCodepoint(callback.@"return".*, callback.return_semantic);
+    const bool_result = callback.@"return".* == .bool;
     try writer.writeAll("func(");
     for (callback.params[0..value_count], 0..) |parameter, index| {
         if (index != 0) try writer.writeAll(", ");
@@ -752,6 +753,10 @@ pub fn writeCallbackAdapter(writer: *std.Io.Writer, program: abi.Program, callba
             try writer.writeAll("zigoResult, err := ")
         else if (codepoint_result)
             try writer.writeAll("return uint32(")
+        else if (bool_result and go_error)
+            try writer.writeAll("zigoResult, err := ")
+        else if (bool_result)
+            try writer.writeAll("return zigoBoolToUint8(")
         else
             try writer.writeAll("return ");
     }
@@ -760,6 +765,8 @@ pub fn writeCallbackAdapter(writer: *std.Io.Writer, program: abi.Program, callba
         if (index != 0) try writer.writeAll(", ");
         if (type_spelling.isPackedValue(program, parameter))
             try writer.print("{s}FromBacking(p{d})", .{ parameter.value_struct.ref, index })
+        else if (parameter == .bool)
+            try writer.print("p{d} != 0", .{index})
         else if (semantic.isCodepoint(parameter, callback.paramHint(index)))
             try writer.print("rune(p{d})", .{index})
         else
@@ -768,7 +775,9 @@ pub fn writeCallbackAdapter(writer: *std.Io.Writer, program: abi.Program, callba
     try writer.writeByte(')');
     if (codepoint_result and go_error)
         try writer.writeAll("\n\t\treturn uint32(zigoResult), err")
-    else if (codepoint_result)
+    else if (bool_result and go_error)
+        try writer.writeAll("\n\t\treturn zigoBoolToUint8(zigoResult), err")
+    else if (codepoint_result or bool_result)
         try writer.writeByte(')');
     try writer.writeAll("\n\t}");
 }

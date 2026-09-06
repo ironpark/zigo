@@ -43,8 +43,18 @@ type Observer func(int32) (int32, error)
 // VoidObserver is the Go callback signature accepted by the generated binding.
 type VoidObserver func(int32)
 
+// Predicate is the Go callback signature accepted by the generated binding.
+type Predicate func(int32, bool) bool
+
 // Visitor is the Go callback signature accepted by the generated binding.
 type Visitor func(rune)
+
+func zigoBoolToUint8(value bool) uint8 {
+	if value {
+		return 1
+	}
+	return 0
+}
 
 var zigoActiveCallbackHandles atomic.Int64
 
@@ -59,6 +69,15 @@ func zigoNewObserverHandle(value Observer) zigoCallbackHandle {
 
 func zigoNewVoidObserverHandle(value VoidObserver) zigoCallbackHandle {
 	stored := (func(int32))(value)
+	handle := cgo.NewHandle(&zigoRawCallbackState{Fn: stored})
+	zigoActiveCallbackHandles.Add(1)
+	return handle
+}
+
+func zigoNewPredicateHandle(value Predicate) zigoCallbackHandle {
+	stored := func(p0 int32, p1 uint8) uint8 {
+		return zigoBoolToUint8(value(p0, p1 != 0))
+	}
 	handle := cgo.NewHandle(&zigoRawCallbackState{Fn: stored})
 	zigoActiveCallbackHandles.Add(1)
 	return handle

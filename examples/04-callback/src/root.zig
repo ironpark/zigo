@@ -54,6 +54,16 @@ pub fn notify(value: i32, callback: VoidObserver, userdata: usize) void {
     callback(value, userdata);
 }
 
+/// A predicate takes and returns `bool`. The shim converts between the `u8`
+/// the wire carries and the `bool` this signature declares.
+pub const Predicate = *const fn (value: i32, strict: bool, userdata: usize) callconv(.c) bool;
+
+/// True when predicate accepts value. `strict` is passed through untouched so
+/// the round trip of a `bool` parameter is observable from Go.
+pub fn filter(value: i32, strict: bool, predicate: Predicate, userdata: usize) bool {
+    return predicate(value, strict, userdata);
+}
+
 /// A visitor receives one codepoint. It returns nothing because purego only
 /// carries `void` or `i32` callback results.
 pub const Visitor = *const fn (cp: u32, userdata: usize) callconv(.c) void;
@@ -130,6 +140,14 @@ test "generic specializations and callback context" {
 
     var cancel: std.atomic.Value(u32) = .init(0);
     try std.testing.expectEqual(@as(u32, 3), applyUntilCancelled(3, &callback, 0, &cancel));
+
+    const predicate = struct {
+        fn call(value: i32, strict: bool, _: usize) callconv(.c) bool {
+            return if (strict) value > 0 else value >= 0;
+        }
+    }.call;
+    try std.testing.expect(!filter(0, true, &predicate, 0));
+    try std.testing.expect(filter(0, false, &predicate, 0));
 
     var notified: i32 = 0;
     const void_callback = struct {

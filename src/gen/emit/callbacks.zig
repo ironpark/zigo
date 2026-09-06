@@ -113,6 +113,9 @@ pub fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.I
             try writeCallbackFailureValue(writer, callback.@"return".*, true, callbackFailureResult(program, parameter));
             try writer.writeAll(" } }()\n");
             const widens = callbackResultWidens(callback.@"return".*);
+            // A `bool` result is a `u8` on the wire; the dispatcher hands it
+            // back in the low byte of the uintptr every dispatcher returns.
+            const bool_result = callback.@"return".* == .bool;
             // A `go_error` signature stores a Go function with a wider result,
             // so the assertion has to name that type instead. One dispatcher
             // serves the whole signature, and `go_error` is a property of the
@@ -136,6 +139,7 @@ pub fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.I
             try writer.writeAll(")\n\t\t\t");
             if (go_error) try writer.writeAll("value, err := ");
             if (!go_error and widens) try writer.writeAll("return callbackResult(");
+            if (!go_error and bool_result) try writer.writeAll("return uintptr(");
             try writer.writeAll("callback(");
             for (callback.params[0..userdata_index], 0..) |callback_parameter, index| {
                 if (index != 0) try writer.writeAll(", ");
@@ -154,7 +158,7 @@ pub fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.I
                 else
                     try writer.writeAll("callbackResult(-5)");
                 try writer.writeAll(" }\n\t\t\treturn callbackResult(value)");
-            } else if (widens) {
+            } else if (widens or bool_result) {
                 try writer.writeAll(")");
             } else {
                 try writer.writeAll("\n\t\t\treturn 0");

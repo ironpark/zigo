@@ -430,6 +430,15 @@ pub fn callbackHasFloatParam(callback: semantic.Callback) bool {
     return false;
 }
 
+/// True when a `bool` appears anywhere in the callback signature. The wire
+/// carries it as `u8`, and only the shim can convert between that and the
+/// `bool` the native side declares.
+pub fn callbackHasBool(callback: semantic.Callback) bool {
+    if (callback.@"return".* == .bool) return true;
+    for (callback.params) |parameter| if (parameter == .bool) return true;
+    return false;
+}
+
 /// The lowered wire signature for a callback parameter: the same shape the
 /// header and the exported shim function spell, with floats already replaced
 /// by integers.
@@ -440,14 +449,17 @@ pub fn callbackWireScalar(function: abi.AbiFn, source_index: usize) ?abi.AbiScal
     return null;
 }
 
-/// Every purego callback parameter that carries a float needs the shim to sit
-/// between the native caller and Go: the native side calls with real floats and
-/// Go must receive their bits.
-pub fn needsCallbackBitThunk(program: abi.Program, function: abi.AbiFn, parameter_index: usize) bool {
-    if (program.backend != .purego) return false;
+/// A callback whose native signature differs from what Go receives needs the
+/// shim to sit between the native caller and Go: packed values travel as their
+/// backing integer, `bool` as `u8`, and on purego floats as their bits, because
+/// the native side calls the callback pointer directly with its own types and
+/// the shim is the only code that can convert them.
+pub fn needsCallbackThunk(program: abi.Program, function: abi.AbiFn, parameter_index: usize) bool {
     const parameter = function.origin.params[parameter_index];
     if (parameter.type != .callback) return false;
-    return callbackHasFloatParam(parameter.type.callback) or callbackHasPackedParam(program, parameter.type.callback);
+    const callback = parameter.type.callback;
+    if (callbackHasPackedParam(program, callback) or callbackHasBool(callback)) return true;
+    return program.backend == .purego and callbackHasFloatParam(callback);
 }
 
 pub fn programNeedsUnsafe(program: abi.Program) bool {

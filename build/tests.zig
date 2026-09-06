@@ -156,6 +156,8 @@ pub fn addRepositorySteps(
     godoc_audit.addArgs(&.{
         "tests/generator_cases/atomic_value/expected",
         "tests/generator_cases/by_value_opaque/expected",
+        "tests/generator_cases/callback_bool/expected",
+        "tests/generator_cases/callback_bool_purego/expected",
         "tests/generator_cases/callback_error/expected",
         "tests/generator_cases/callback_error_purego/expected",
         "tests/generator_cases/callback_failure_result/expected",

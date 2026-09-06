@@ -174,6 +174,24 @@ test "a purego callback result outside the uintptr ABI is rejected" {
     // The result shape is a purego-backend rule, not a platform one, so the
     // general validator stays silent about it.
     try std.testing.expect((try validate.findIssue(std.testing.allocator, float_result)) == null);
+
+    // A `bool` result crosses as `u8` through the shim thunk, so purego
+    // accepts it alongside `void` and `i32`.
+    var bool_return: semantic.TypeNode = .{ .bool = {} };
+    const bool_result_callback: semantic.TypeNode = .{ .callback = .{
+        .c_callconv = true,
+        .has_userdata = true,
+        .params = &.{ .{ .bool = {} }, usize_param },
+        .@"return" = &bool_return,
+    } };
+    var bool_result = document;
+    bool_result.functions = &.{.{
+        .name = "filter",
+        .params = &.{.{ .name = "predicate", .type = bool_result_callback }},
+        .@"return" = .{ .void = {} },
+        .symbol = "ignored",
+    }};
+    try std.testing.expect(validate.puregoCallbackIssue(bool_result) == null);
 }
 
 test "a Go error on a callback is refused unless the Zig result is i32" {
