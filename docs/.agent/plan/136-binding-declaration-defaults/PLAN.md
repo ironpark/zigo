@@ -8,7 +8,7 @@ registered_at: "2026-09-06T14:40:15Z"
 # Phases
 
 - [x] [Phase 00: Correct and widen name enrichment](phases/00-enrichment-correctness.md)
-- [ ] [Phase 01: Define-level string defaults](phases/01-string-defaults.md)
+- [x] [Phase 01: Define-level string defaults](phases/01-string-defaults.md)
 - [ ] [Phase 02: Callback contract defaults](phases/02-callback-contract-defaults.md)
 - [ ] [Phase 03: Integrate, document and land](phases/03-integrate-and-document.md)
 

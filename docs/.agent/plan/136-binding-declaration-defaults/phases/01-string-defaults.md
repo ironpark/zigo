@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-06T15:01:58Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: A binding that sets both writes `.returns = .caller` alone for a
 > NEXT: none
