@@ -7,7 +7,7 @@ registered_at: "2026-09-06T02:26:02Z"
 
 # Phases
 
-- [ ] [Phase 00: IR, validation and diff](phases/00-ir-validation.md)
+- [x] [Phase 00: IR, validation and diff](phases/00-ir-validation.md)
 - [ ] [Phase 01: Public emission and generator cases](phases/01-emit.md)
 - [ ] [Phase 02: Examples and docs](phases/02-examples-docs.md)
 

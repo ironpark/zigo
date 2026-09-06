@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-06T02:29:31Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test` passes with the new tests; `docs/diagnostics.md` has the `ZIGO053` entry.
 > NEXT: none
