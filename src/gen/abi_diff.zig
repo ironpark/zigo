@@ -169,6 +169,8 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
             try add(allocator, &report, .compatible, old.name, "callback failure result changed");
         // The text encoding is Go surface only: `Parse<Enum>` and the
         // `encoding.Text*` methods come and go without touching C.
+        if (!goAdapterEqual(old.go_adapter, new.go_adapter))
+            try add(allocator, &report, .breaking, old.name, "Go adapter changed");
         if (old.text == true and new.text != true)
             try add(allocator, &report, .breaking, old.name, "enum text encoding removed")
         else if (old.text != true and new.text == true)
@@ -626,6 +628,12 @@ fn classifyTypeChange(lhs: semantic.TypeDecl, rhs: semantic.TypeDecl) TypeChange
     if (lhs.kind == .value_struct and lhs.layout == .@"packed") return .appended;
     if (lhs.kind != .tagged_union) return .breaking;
     return if (lhs.accessStrategy() == .snapshot) .snapshot_appended else .appended;
+}
+
+fn goAdapterEqual(lhs: ?semantic.GoAdapter, rhs: ?semantic.GoAdapter) bool {
+    if (lhs == null or rhs == null) return lhs == null and rhs == null;
+    return std.mem.eql(u8, lhs.?.type, rhs.?.type) and semantic.optionalStringEqual(lhs.?.import, rhs.?.import) and
+        std.mem.eql(u8, lhs.?.to_raw, rhs.?.to_raw) and std.mem.eql(u8, lhs.?.from_raw, rhs.?.from_raw);
 }
 
 fn optionalTypeEqual(lhs: ?semantic.TypeNode, rhs: ?semantic.TypeNode) bool {

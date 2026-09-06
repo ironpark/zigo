@@ -1072,6 +1072,9 @@ fn lowerValueStructs(allocator: std.mem.Allocator, document: semantic.Semantic, 
 /// `bool` member rules it out -- Go does not promise C's representation for
 /// it -- and so does a member struct that is itself not castable.
 fn structCastable(records: []const abi.AbiStruct, record: abi.AbiStruct) bool {
+    // A user-adapted type has whatever layout the user chose; only the two
+    // conversion functions relate it to the mirror.
+    if (record.owner.go_adapter != null) return false;
     for (record.fields) |field| {
         if (field.atomic) return false;
         if (field.node == .bool) return false;

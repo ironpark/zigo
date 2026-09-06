@@ -469,6 +469,26 @@ pub const Iterator = struct {
     name: []const u8,
 };
 
+/// The `.go` opt-in on a value struct: the public API spells the user's Go
+/// type instead of a generated mirror, and the conversions to and from the
+/// raw mirror are two functions the user writes in the public package.
+pub const GoAdapter = struct {
+    /// Function taking the raw mirror and returning `type`.
+    from_raw: []const u8,
+    /// Import path of the qualifier `type` uses; absent for a same-package type.
+    import: ?[]const u8 = null,
+    /// Function taking `type` and returning the raw mirror.
+    to_raw: []const u8,
+    /// Go spelling of the type, such as `image.Point` or `Timestamp`.
+    type: []const u8,
+
+    /// The package qualifier `type` is written with, or null for a bare name.
+    pub fn qualifier(self: GoAdapter) ?[]const u8 {
+        const dot = std.mem.indexOfScalar(u8, self.type, '.') orelse return null;
+        return self.type[0..dot];
+    }
+};
+
 pub const SemanticFn = struct {
     /// Set on the two halves of a boxed constructor pair.
     boxed: ?Boxed = null,
@@ -592,6 +612,8 @@ pub const TypeDecl = struct {
     backing_type: ?TypeNode = null,
     exhaustive: bool = true,
     fields: []const TypeField = &.{},
+    /// Present only when the binding registered the value struct with `.go`.
+    go_adapter: ?GoAdapter = null,
     kind: TypeKind,
     layout: ?Layout = null,
     /// Serialized tree layout version. Present only for materialized structs.

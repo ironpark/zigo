@@ -46,7 +46,7 @@ pub fn reflect(
                     };
                 },
                 .value => switch (info) {
-                    .@"struct" => try appendValueStruct(allocator, &types, declaration, T, type_name, try registeredZigPath(allocator, declaration, T, type_name), true),
+                    .@"struct" => try appendValueStruct(allocator, &types, declaration, T, type_name, try registeredZigPath(allocator, declaration, T, type_name), true, comptime goAdapter(entry)),
                     else => @compileError("zigo value type entries must name a struct"),
                 },
                 .materialized => switch (info) {
@@ -92,6 +92,8 @@ pub fn reflect(
                 @compileError("zigo `.fields` metadata is supported only on `.repr = .opaque` type entries");
             if (entry.repr != .enumeration and @hasField(@TypeOf(entry), "text"))
                 @compileError("zigo `.text` is supported only on `.repr = .enumeration` type entries");
+            if (entry.repr != .value and @hasField(@TypeOf(entry), "go"))
+                @compileError("zigo `.go` adapters are supported only on `.repr = .value` type entries");
         }
     }
     if (comptime discoveryEnabled(declaration)) {
@@ -1672,7 +1674,7 @@ fn typeNode(
                     break;
                 }
             }
-            if (!exists) try appendValueStruct(allocator, types, declaration, T, name, @typeName(T), false);
+            if (!exists) try appendValueStruct(allocator, types, declaration, T, name, @typeName(T), false, null);
             break :blk .{ .value_struct = .{ .ref = name } };
         },
         .@"union" => blk: {
@@ -2041,6 +2043,22 @@ fn appendEnum(
     });
 }
 
+/// `.go = .{ .type, .import, .to_raw, .from_raw }` on a value entry. The
+/// shape is checked here so a missing member is a comptime error naming the
+/// entry; validation checks the strings once the document exists.
+fn goAdapter(comptime entry: anytype) ?semantic.GoAdapter {
+    if (!@hasField(@TypeOf(entry), "go")) return null;
+    const go = entry.go;
+    if (!@hasField(@TypeOf(go), "type") or !@hasField(@TypeOf(go), "to_raw") or !@hasField(@TypeOf(go), "from_raw"))
+        @compileError("zigo `.go` adapters need `.type`, `.to_raw` and `.from_raw`");
+    return .{
+        .from_raw = go.from_raw,
+        .import = if (@hasField(@TypeOf(go), "import")) go.import else null,
+        .to_raw = go.to_raw,
+        .type = go.type,
+    };
+}
+
 fn appendValueStruct(
     allocator: std.mem.Allocator,
     types: *std.ArrayList(semantic.TypeDecl),
@@ -2049,6 +2067,7 @@ fn appendValueStruct(
     name: []const u8,
     zig_path: []const u8,
     explicitly_registered: bool,
+    go_adapter: ?semantic.GoAdapter,
 ) !void {
     const info = @typeInfo(T).@"struct";
     const index = types.items.len;
@@ -2057,6 +2076,7 @@ fn appendValueStruct(
             try typeNode(allocator, declaration, info.backing_integer.?, types, "packed struct backing integer")
         else
             null,
+        .go_adapter = go_adapter,
         .kind = .value_struct,
         .layout = switch (info.layout) {
             .@"extern" => .@"extern",
@@ -2915,6 +2935,31 @@ test "an iterator opt-in records the wrapper name" {
     const bytes = try document.serialize(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"iterator\": {") != null);
+}
+
+test "a value struct records its Go adapter" {
+    const Point = extern struct { x: i16, y: i16 };
+    const Fixture = struct {
+        pub fn translate(origin: Point, dx: i16) Point {
+            return .{ .x = origin.x + dx, .y = origin.y };
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{.{ .type = Point, .repr = .value, .go = .{ .type = "image.Point", .import = "image", .to_raw = "pointToRaw", .from_raw = "pointFromRaw" } }},
+        .functions = .{.{ .path = "root.translate", .params = .{ "origin", "dx" } }},
+    }, "geometry", "zg");
+
+    const adapter = document.types[0].go_adapter.?;
+    try std.testing.expectEqualStrings("image.Point", adapter.type);
+    try std.testing.expectEqualStrings("image", adapter.import.?);
+    try std.testing.expectEqualStrings("image", adapter.qualifier().?);
+    try std.testing.expectEqualStrings("pointToRaw", adapter.to_raw);
+    const bytes = try document.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"go_adapter\": {") != null);
 }
 
 test "a registered enum records the text encoding opt-in" {

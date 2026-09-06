@@ -59,6 +59,20 @@ pub fn typeIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .site = .{ .path = "semantic.json", .declaration = declaration.name },
             .hint = "remove `.exhaustive = false`, or make the Zig enum non-exhaustive",
         };
+        if (declaration.go_adapter) |adapter| {
+            const wrong_kind = declaration.kind != .value_struct or declaration.layout != .@"extern";
+            const bad_names = adapter.type.len == 0 or !isGoIdentifier(adapter.to_raw) or !isGoIdentifier(adapter.from_raw);
+            if (wrong_kind or bad_names) return .{
+                .severity = .@"error",
+                .code = "ZIGO052",
+                .message = if (wrong_kind)
+                    "`.go` adapter applied to a type that is not an extern struct value"
+                else
+                    "`.go` adapter names are not Go identifiers",
+                .site = .{ .path = "semantic.json", .declaration = declaration.name },
+                .hint = "`.go` belongs on `.repr = .value` entries for `extern struct`; `.type` must be non-empty and `.to_raw`/`.from_raw` must name functions in the public package",
+            };
+        }
         if (declaration.text == true and declaration.kind != .@"enum") return .{
             .severity = .@"error",
             .code = "ZIGO051",
@@ -1489,4 +1503,10 @@ test "an optional slice is accepted while its unsupported combinations are not" 
         };
         try std.testing.expect((try validate.findIssue(scratch.allocator(), rejected)) != null);
     }
+}
+
+fn isGoIdentifier(name: []const u8) bool {
+    if (name.len == 0 or std.ascii.isDigit(name[0])) return false;
+    for (name) |byte| if (!(std.ascii.isAlphanumeric(byte) or byte == '_')) return false;
+    return true;
 }

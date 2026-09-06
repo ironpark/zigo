@@ -1,0 +1,6 @@
+{
+  "backend": "purego",
+  "package": "geometry",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/geometry"
+}

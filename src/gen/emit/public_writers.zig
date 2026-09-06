@@ -513,6 +513,11 @@ pub const PublicScope = struct {
     }
 
     pub fn writeTypeName(self: PublicScope, writer: *std.Io.Writer, name: []const u8) !void {
+        // An adapted type is spelled the way the user wrote it, in every
+        // package: the qualifier it carries is an import, not a sub-package.
+        if (semantic.typeDecl(self.program.types, name)) |declaration| {
+            if (declaration.go_adapter) |adapter| return writer.writeAll(adapter.type);
+        }
         const active = self.options.active_package orelse return writer.writeAll(name);
         for (self.program.types) |declaration| {
             if (!std.mem.eql(u8, declaration.name, name)) continue;

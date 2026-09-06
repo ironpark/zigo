@@ -1034,6 +1034,12 @@
           }
         }
       ],
+      "go_adapter": {
+        "from_raw": "pointFromRaw",
+        "import": "image",
+        "to_raw": "pointToRaw",
+        "type": "image.Point"
+      },
       "kind": "value_struct",
       "layout": "extern",
       "name": "Point",

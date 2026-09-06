@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+### Added
+
+- `.repr = .value` 등록 항목의 `.go = .{ .type, .import, .to_raw, .from_raw }`로 extern struct를
+  사용자가 고른 Go 타입(`image.Point` 등)으로 노출합니다. mirror struct 대신 그 타입이
+  파라미터·반환·slice·optional·필드에 쓰이고, 변환은 사용자가 공개 패키지에 쓴 두 함수가
+  맡습니다. 잘못된 어댑터는 `ZIGO052`이며 `abi-check`는 어댑터 변경을 breaking으로
+  판정합니다.
+
 ### Changed
 
 - 공개 패키지의 비공개 생성 식별자가 모두 `zigo` 접두사를 갖습니다(`zigoNewContext`,

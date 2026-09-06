@@ -169,6 +169,55 @@ API는 `[]T`를 받습니다. bool field가 없는 struct는 Go mirror가 C layo
 반환 slice는 어느 쪽이든 `[]T`의 새 사본이며 native 메모리를 alias하지 않습니다.
 out slice로 선언하려면 해당 파라미터에 `param_meta.direction = .out`을 명시해야 합니다.
 
+### Go 타입 어댑터
+
+생성된 mirror struct 대신 사용자가 고른 Go 타입으로 값을 주고받으려면 등록 항목에 `.go`를
+적습니다. `image.Point`처럼 이미 쓰는 타입이나 `time.Duration` 같은 표준 타입을 API 표면에
+바로 드러낼 수 있습니다.
+
+```zig
+.types = .{
+    .{ .type = mylib.Point, .repr = .value, .go = .{
+        .type = "image.Point",
+        .import = "image",
+        .to_raw = "pointToRaw",
+        .from_raw = "pointFromRaw",
+    } },
+},
+```
+
+| 필드 | 역할 |
+|---|---|
+| `type` | 공개 API가 쓰는 Go 타입 철자. `pkg.Name` 또는 같은 패키지의 `Name` |
+| `import` | `type`의 한정자가 가리키는 import 경로. 같은 패키지 타입이면 생략 |
+| `to_raw` | `type` 값을 raw mirror(`raw.PointData`)로 바꾸는 함수 이름 |
+| `from_raw` | raw mirror를 `type`으로 바꾸는 함수 이름 |
+
+두 변환 함수는 사용자가 공개 패키지에 직접 씁니다. raw 패키지는 같은 모듈 안이라 import할
+수 있습니다.
+
+```go
+package mylib
+
+import (
+    "image"
+
+    "example.com/mylib/go/internal/raw"
+)
+
+func pointToRaw(p image.Point) raw.PointData { return raw.PointData{X: int16(p.X), Y: int16(p.Y)} }
+func pointFromRaw(p raw.PointData) image.Point { return image.Point{X: int(p.X), Y: int(p.Y)} }
+```
+
+생성기는 `Point` mirror struct를 만들지 않고, 파라미터·반환·slice·optional·다른 struct의
+필드에서 `image.Point`를 그대로 씁니다. 내부 변환 헬퍼 `zigoPointToRaw`/`FromRaw`는 두
+함수를 호출하는 한 줄이 되며, 필요한 파일마다 `import`가 추가됩니다. 어댑터 타입은 raw와
+레이아웃을 공유하지 않으므로 slice는 언제나 원소별로 변환됩니다.
+
+이 옵션은 `extern struct`를 `.repr = .value`로 등록한 항목에서만 유효합니다. packed struct,
+enum, union에는 적용할 수 없고 어긋나면 `ZIGO052`입니다. `abi-check`는 어댑터의 추가·제거·
+변경을 breaking으로 보고합니다. 예제는 `09-type-relations`의 `Point`에 있습니다.
+
 ## Packed struct 값
 
 정수 backing을 명시한 packed struct도 같은 `.repr = .value`로 등록합니다.

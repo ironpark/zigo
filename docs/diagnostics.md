@@ -239,6 +239,12 @@ materialized 결과의 필드나 소유권·해제 선언이 잘못되었습니�
 메서드로 옮기고 인자는 생성자로 빼세요.
 [Iterator wrapper](bindings-handles.md#iterator-wrapper)를 참고하세요.
 
+### ZIGO052
+
+`.go` 어댑터를 `extern struct` 값이 아닌 타입에 붙였거나, `.type`이 비어 있거나,
+`.to_raw`/`.from_raw`가 Go 식별자가 아닙니다.
+[Go 타입 어댑터](bindings-types.md#go-타입-어댑터)를 참고하세요.
+
 ### ZIGO051
 
 `.text = true`를 enum이 아닌 타입에 지정했습니다. 텍스트 인코딩은 `.repr = .enumeration`

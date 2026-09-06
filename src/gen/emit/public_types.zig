@@ -135,6 +135,8 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
     for (program.structs) |record| {
         if (record.owner.kind == .tagged_union) continue;
         if (!public_writers.typeBelongsToPackage(program, record.name, options.active_package)) continue;
+        // An adapted struct is the user's own Go type; nothing to mirror.
+        if (record.owner.go_adapter != null) continue;
         try writer.print("// {s} mirrors the Zig `extern struct` of the same name.\ntype {s} struct {{\n", .{ record.name, record.name });
         for (record.fields) |field| {
             const member = try naming.pascalAlloc(allocator, field.name);
@@ -160,7 +162,20 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
         // comments; only the type references take the qualified form.
         const public_name = try scope.typeNameAlloc(allocator, record.name);
         defer allocator.free(public_name);
-        if (options.emitsHelperFmt("zigo{s}ToRaw", .{record.name})) {
+        if (record.owner.go_adapter) |adapter| {
+            // The user's two functions are the whole conversion; the generated
+            // names stay so every call site is the same as for a mirror.
+            if (options.emitsHelperFmt("zigo{s}ToRaw", .{record.name})) {
+                try writer.print("// zigo{s}ToRaw converts through the binding's `.go` adapter ({s}).\nfunc zigo{s}ToRaw(value {s}) ", .{ record.name, adapter.to_raw, record.name, public_name });
+                try public_writers.writeRawTypeReferencePrefix(writer, options);
+                try writer.print("{s} {{\n\treturn {s}(value)\n}}\n\n", .{ raw_type, adapter.to_raw });
+            }
+            if (options.emitsHelperFmt("zigo{s}FromRaw", .{record.name})) {
+                try writer.print("// zigo{s}FromRaw converts through the binding's `.go` adapter ({s}).\nfunc zigo{s}FromRaw(value ", .{ record.name, adapter.from_raw, record.name });
+                try public_writers.writeRawTypeReferencePrefix(writer, options);
+                try writer.print("{s}) {s} {{\n\treturn {s}(value)\n}}\n\n", .{ raw_type, public_name, adapter.from_raw });
+            }
+        } else if (options.emitsHelperFmt("zigo{s}ToRaw", .{record.name})) {
             try writer.print("func zigo{s}ToRaw(value {s}) ", .{ record.name, public_name });
             try public_writers.writeRawTypeReferencePrefix(writer, options);
             try writer.print("{s} {{\n\treturn ", .{raw_type});
@@ -187,7 +202,7 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
             try writer.writeAll("\t}\n}\n\n");
         }
 
-        if (options.emitsHelperFmt("zigo{s}FromRaw", .{record.name})) {
+        if (record.owner.go_adapter == null and options.emitsHelperFmt("zigo{s}FromRaw", .{record.name})) {
             try writer.print("func zigo{s}FromRaw(value ", .{record.name});
             try public_writers.writeRawTypeReferencePrefix(writer, options);
             try writer.print("{s}) {s} {{\n\treturn {s}{{\n", .{ raw_type, public_name, public_name });

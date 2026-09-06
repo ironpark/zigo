@@ -240,7 +240,17 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         if (std.mem.eql(u8, foreign_package.name, options.active_package.?)) continue;
         if (programReferencesPackage(program, options.active_package.?, foreign_package.name)) try foreign.append(allocator, foreign_package);
     };
-    const import_count = @as(usize, @intFromBool(needs_io)) + @as(usize, @intFromBool(needs_runtime)) +
+    // A `.go` adapter with an import brings that package in wherever the
+    // adapted type is spelled.
+    var adapter_imports: std.ArrayList(semantic.GoAdapter) = .empty;
+    defer adapter_imports.deinit(allocator);
+    for (program.types) |declaration| {
+        const adapter = declaration.go_adapter orelse continue;
+        if (adapter.import == null) continue;
+        if (!programReferencesType(program, options.active_package orelse "", declaration.name)) continue;
+        try appendAdapterImport(allocator, &adapter_imports, adapter);
+    }
+    const import_count = adapter_imports.items.len + @as(usize, @intFromBool(needs_io)) + @as(usize, @intFromBool(needs_runtime)) +
         @as(usize, @intFromBool(needs_unsafe)) + @as(usize, @intFromBool(needs_raw)) +
         @as(usize, @intFromBool(needs_cancel)) * 3 + @as(usize, @intFromBool(needs_iter)) + @as(usize, @intFromBool(needs_atomic_pointer)) + @as(usize, @intFromBool(needs_lifecycle)) +
         @as(usize, @intFromBool(default_foreign)) + foreign.items.len;
@@ -252,14 +262,19 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         if (needs_runtime) try writer.writeAll("\t\"runtime\"\n");
         if (needs_cancel or needs_atomic_pointer) try writer.writeAll("\t\"sync/atomic\"\n");
         if (needs_unsafe) try writer.writeAll("\t\"unsafe\"\n");
+        for (adapter_imports.items) |adapter| try writeAdapterImport(writer, adapter, "\t");
         if (needs_raw) {
-            if (needs_io or needs_iter or needs_runtime or needs_unsafe or needs_cancel or needs_atomic_pointer) try writer.writeByte('\n');
+            if (needs_io or needs_iter or needs_runtime or needs_unsafe or needs_cancel or needs_atomic_pointer or adapter_imports.items.len != 0) try writer.writeByte('\n');
             try public_writers.writeRawImport(writer, options, "\t");
         }
         if (needs_lifecycle) try writer.print("\tlifecycle \"{s}/{s}\"\n", .{ options.go_module, options.lifecycle_package_path });
         if (default_foreign) try writeDefaultPackageImport(writer, options, "\t");
         for (foreign.items) |foreign_package| try writeForeignImport(writer, foreign_package, options, "\t");
         try writer.writeAll(")\n\n");
+    } else if (adapter_imports.items.len == 1) {
+        try writer.writeAll("import ");
+        try writeAdapterImport(writer, adapter_imports.items[0], "");
+        try writer.writeByte('\n');
     } else if (needs_io) {
         try writer.writeAll("import \"io\"\n\n");
     } else if (needs_iter) {
@@ -821,10 +836,21 @@ pub fn writePublicImports(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
         const qualifier = std.fmt.bufPrint(&qualifier_buffer, "zigo_pkg_{s}", .{package.name}) catch continue;
         if (bodyUsesQualifier(body, qualifier)) try foreign.append(allocator, package);
     };
-    if (count == 0 and !uses_raw and !lifecycle and !default_foreign and foreign.items.len == 0) return writer.writeByte('\n');
-    if (count + @as(usize, @intFromBool(uses_raw)) + @as(usize, @intFromBool(lifecycle)) + @as(usize, @intFromBool(default_foreign)) + foreign.items.len == 1) {
+    var adapters: std.ArrayList(semantic.GoAdapter) = .empty;
+    defer adapters.deinit(allocator);
+    for (program.types) |declaration| {
+        const adapter = declaration.go_adapter orelse continue;
+        const path = adapter.import orelse continue;
+        const last = if (std.mem.lastIndexOfScalar(u8, path, '/')) |slash| path[slash + 1 ..] else path;
+        if (!bodyUsesQualifier(body, adapter.qualifier() orelse last)) continue;
+        try appendAdapterImport(allocator, &adapters, adapter);
+    }
+    if (count == 0 and !uses_raw and !lifecycle and !default_foreign and foreign.items.len == 0 and adapters.items.len == 0) return writer.writeByte('\n');
+    if (count + @as(usize, @intFromBool(uses_raw)) + @as(usize, @intFromBool(lifecycle)) + @as(usize, @intFromBool(default_foreign)) + foreign.items.len + adapters.items.len == 1) {
         try writer.writeAll("\nimport ");
-        if (uses_raw) {
+        if (adapters.items.len == 1) {
+            try writeAdapterImport(writer, adapters.items[0], "");
+        } else if (uses_raw) {
             try public_writers.writeRawImport(writer, options, "");
         } else if (foreign.items.len == 1) {
             try writeForeignImport(writer, foreign.items[0], options, "");
@@ -839,8 +865,9 @@ pub fn writePublicImports(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
     }
     try writer.writeAll("\nimport (\n");
     for (needed[0..count]) |path| try writer.print("\t\"{s}\"\n", .{path});
+    for (adapters.items) |adapter| try writeAdapterImport(writer, adapter, "\t");
     if (uses_raw) {
-        if (count != 0) try writer.writeByte('\n');
+        if (count != 0 or adapters.items.len != 0) try writer.writeByte('\n');
         try public_writers.writeRawImport(writer, options, "\t");
     }
     if (lifecycle) try writer.print("\tlifecycle \"{s}/{s}\"\n", .{ options.go_module, options.lifecycle_package_path });
@@ -850,6 +877,24 @@ pub fn writePublicImports(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
         for (foreign.items) |package| try writeForeignImport(writer, package, options, "\t");
     }
     try writer.writeAll(")\n\n");
+}
+
+/// One `import` line for a `.go` adapter: aliased when the qualifier the
+/// type is written with is not the import path's last segment.
+fn writeAdapterImport(writer: *std.Io.Writer, adapter: semantic.GoAdapter, indent: []const u8) !void {
+    const path = adapter.import.?;
+    const last = if (std.mem.lastIndexOfScalar(u8, path, '/')) |slash| path[slash + 1 ..] else path;
+    const qualifier = adapter.qualifier() orelse last;
+    if (std.mem.eql(u8, qualifier, last))
+        try writer.print("{s}\"{s}\"\n", .{ indent, path })
+    else
+        try writer.print("{s}{s} \"{s}\"\n", .{ indent, qualifier, path });
+}
+
+/// Adds an adapter's import once per file, keyed by import path.
+fn appendAdapterImport(allocator: std.mem.Allocator, list: *std.ArrayList(semantic.GoAdapter), adapter: semantic.GoAdapter) !void {
+    for (list.items) |existing| if (std.mem.eql(u8, existing.import.?, adapter.import.?)) return;
+    try list.append(allocator, adapter);
 }
 
 fn writeDefaultPackageImport(writer: *std.Io.Writer, options: emit.Options, indent: []const u8) !void {

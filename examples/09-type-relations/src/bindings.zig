@@ -12,7 +12,15 @@ pub const bindings = zigo.define(.{
         .{ .name = "CharsetSlot", .type = library.CharsetSlot, .repr = .enumeration },
         .{ .name = "DeccolmMode", .type = library.DeccolmMode, .repr = .enumeration },
         .{ .name = "EraseDisplay", .type = library.EraseDisplay, .repr = .enumeration, .exhaustive = false },
-        .{ .type = library.Point, .repr = .value },
+        // `.go` maps the extern struct onto a Go type the caller already
+        // uses; the two conversions live in point_adapter.go beside the
+        // generated files.
+        .{ .type = library.Point, .repr = .value, .go = .{
+            .type = "image.Point",
+            .import = "image",
+            .to_raw = "pointToRaw",
+            .from_raw = "pointFromRaw",
+        } },
     },
     .functions = .{
         .{ .path = "Counter.create", .params = .{"initial"} },

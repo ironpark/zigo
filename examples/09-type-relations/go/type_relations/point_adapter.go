@@ -1,0 +1,18 @@
+package type_relations
+
+import (
+	"image"
+
+	"example.com/zigo/type-relations/internal/raw"
+)
+
+// pointToRaw and pointFromRaw are the two halves of the `.go` adapter the
+// binding declares for Point: the generated code spells image.Point in its
+// API and calls these to cross the raw mirror.
+func pointToRaw(p image.Point) raw.PointData {
+	return raw.PointData{X: int16(p.X), Y: int16(p.Y)}
+}
+
+func pointFromRaw(p raw.PointData) image.Point {
+	return image.Point{X: int(p.X), Y: int(p.Y)}
+}

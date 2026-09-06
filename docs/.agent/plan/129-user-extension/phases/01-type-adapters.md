@@ -2,7 +2,7 @@
 depends_on:
 - "129-user-extension#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Adapter case pinned; example round-trips; all tests pass on both backends.
 > NEXT: none

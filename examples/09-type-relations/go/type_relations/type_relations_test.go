@@ -1,6 +1,7 @@
 package type_relations
 
 import (
+	"image"
 	"io"
 	"testing"
 )
@@ -157,8 +158,8 @@ func TestOptionalEnum(t *testing.T) {
 // A whole extern struct crosses behind one nullable pointer, and an error
 // union over it keeps the error and the absence apart.
 func TestOptionalStruct(t *testing.T) {
-	origin := Point{X: 1, Y: 2}
-	if got, ok := ShiftPoint(&origin, 2); !ok || got != (Point{X: 3, Y: 4}) {
+	origin := image.Point{X: 1, Y: 2}
+	if got, ok := ShiftPoint(&origin, 2); !ok || got != (image.Point{X: 3, Y: 4}) {
 		t.Fatalf("ShiftPoint({1,2}, 2) = %+v, %v, want {3,4}, true", got, ok)
 	}
 	if _, ok := ShiftPoint(nil, 2); ok {
@@ -166,7 +167,7 @@ func TestOptionalStruct(t *testing.T) {
 	}
 
 	got, ok, err := CheckedShift(&origin, 1)
-	if err != nil || !ok || got != (Point{X: 2, Y: 3}) {
+	if err != nil || !ok || got != (image.Point{X: 2, Y: 3}) {
 		t.Fatalf("CheckedShift({1,2}, 1) = %+v, %v, %v, want {2,3}, true, nil", got, ok, err)
 	}
 	// Absent is not an error: the code is 0 and only the flag is false.

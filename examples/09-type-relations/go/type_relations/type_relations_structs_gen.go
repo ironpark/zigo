@@ -3,35 +3,17 @@
 package type_relations
 
 import (
-	"unsafe"
+	"image"
 
 	"example.com/zigo/type-relations/internal/raw"
 )
 
-// Point mirrors the Zig `extern struct` of the same name.
-type Point struct {
-	// X corresponds to the Zig field x.
-	X int16
-	// Y corresponds to the Zig field y.
-	Y int16
+// zigoPointToRaw converts through the binding's `.go` adapter (pointToRaw).
+func zigoPointToRaw(value image.Point) raw.PointData {
+	return pointToRaw(value)
 }
 
-// Point is reinterpreted as raw.PointData instead of copied, so the two
-// layouts must stay identical.
-var _ = [1]struct{}{}[unsafe.Sizeof(Point{})-unsafe.Sizeof(raw.PointData{})]
-var _ = [1]struct{}{}[unsafe.Offsetof(Point{}.X)-unsafe.Offsetof(raw.PointData{}.X)]
-var _ = [1]struct{}{}[unsafe.Offsetof(Point{}.Y)-unsafe.Offsetof(raw.PointData{}.Y)]
-
-func zigoPointToRaw(value Point) raw.PointData {
-	return raw.PointData{
-		X: value.X,
-		Y: value.Y,
-	}
-}
-
-func zigoPointFromRaw(value raw.PointData) Point {
-	return Point{
-		X: value.X,
-		Y: value.Y,
-	}
+// zigoPointFromRaw converts through the binding's `.go` adapter (pointFromRaw).
+func zigoPointFromRaw(value raw.PointData) image.Point {
+	return pointFromRaw(value)
 }
