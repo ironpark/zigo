@@ -923,6 +923,7 @@ fn appendFunction(
         // intentionally opt-in through `.semantic = .utf8_string`.
         if (isSentinelStringSlice(param.type.?)) reflected.semantic = .utf8_string;
         reflected.semantic = resolveCodepointHint(declaration, reflected.semantic, reflected.type);
+        reflected.semantic = resolveStringHint(declaration, reflected.semantic, reflected.type, .parameter);
         params[output_index] = reflected;
     }
     // A Zig `init` that returns its value has no C representation, so with an
@@ -974,6 +975,7 @@ fn appendFunction(
     if (boxed_type != null) reflected_function.ownership = .caller;
     if (@hasField(@TypeOf(metadata), "semantic")) reflected_function.return_semantic = metadata.semantic;
     reflected_function.return_semantic = resolveCodepointHint(declaration, reflected_function.return_semantic, reflected_function.@"return".errorPayload());
+    reflected_function.return_semantic = resolveStringHint(declaration, reflected_function.return_semantic, reflected_function.@"return".errorPayload(), .result);
     if (@hasField(@TypeOf(metadata), "go")) reflected_function.return_go_adapter = comptime goAdapterValue(metadata.go);
     if (@hasField(@TypeOf(metadata), "returns")) {
         reflected_function.ownership = metadata.returns;
@@ -995,6 +997,17 @@ fn appendFunction(
     if (info.return_type) |return_type| {
         if (isSentinelBytePointer(return_type)) reflected_function.return_semantic = .c_string;
     }
+    // A caller-owned string result needs a release function, and in a binding
+    // that has one it is the same function every time. `.string_release`
+    // names it once at the define; a written `.release` still wins, and a
+    // `.string_release` that names nothing exposed fails through the ordinary
+    // ZIGO016 release check rather than a rule of its own. This runs last so
+    // that both the inferred and the sentinel-driven text hints are in place.
+    if (@hasField(@TypeOf(declaration), "string_release") and
+        reflected_function.release == null and
+        reflected_function.ownership == .caller and
+        isTextResult(reflected_function))
+        reflected_function.release = comptime pathMember(declaration.string_release);
     // A binding pairs a constructor with a destructor by naming the type they
     // make and unmake. The claim is checked against the signature here, where
     // the declaration is still in hand; the pair is formed once the walk ends.
@@ -1354,6 +1367,71 @@ fn resolveCodepointHint(comptime declaration: anytype, hint: ?semantic.SemanticH
 
 fn isNarrowCodepointInt(node: semantic.TypeNode) bool {
     return node == .int and !node.int.signed and !node.int.is_usize and node.int.bits == 21;
+}
+
+/// Whether the binding asked for every plain byte slice to be text.
+pub fn infersStrings(comptime declaration: anytype) bool {
+    if (!@hasField(@TypeOf(declaration), "strings")) return false;
+    if (declaration.strings != .explicit and declaration.strings != .infer_utf8)
+        @compileError("zigo `.strings` must be `.explicit` or `.infer_utf8`");
+    return declaration.strings == .infer_utf8;
+}
+
+/// The hint a text position ends up with once inference and the
+/// `.opaque_bytes` opt-out are applied. Like `.integer` for codepoints,
+/// `.opaque_bytes` never reaches the document from a parameter or a return:
+/// an unhinted byte slice already crosses as raw bytes there, and the only
+/// position where the hint carries meaning of its own is a materialized
+/// field, which this path does not touch. Dropping it keeps a binding that
+/// opts one site out generating exactly what it generated before `.strings`
+/// existed.
+fn resolveStringHint(
+    comptime declaration: anytype,
+    hint: ?semantic.SemanticHint,
+    node: semantic.TypeNode,
+    position: StringPosition,
+) ?semantic.SemanticHint {
+    if (hint == .opaque_bytes) return null;
+    if (hint != null or !comptime infersStrings(declaration)) return hint;
+    const value = if (node == .optional) node.optional.child.* else node;
+    if (isPlainByteSlice(value, position)) return .utf8_string;
+    // `[]const []const u8` is the one collection whose element spelling needs
+    // the hint to say the bytes are text; the sentinel spellings already say
+    // so on their own and are marked without inference. The outer slice is
+    // always borrowed, so it is required to be const in either position.
+    if (value == .slice and value.slice.@"const" and value.slice.sentinel == null and
+        isPlainByteSlice(value.slice.element.*, .parameter)) return .utf8_string;
+    return hint;
+}
+
+/// Where a byte slice sits, which decides whether a mutable one can be text.
+/// A `[]u8` parameter is a buffer the callee fills -- `.direction = .out` says
+/// so outright, and even an in one is written through -- so inference leaves
+/// it alone; a returned `[]u8` is storage the callee just produced, which is
+/// how an `allocPrint`-shaped result is spelled, so it is text like its const
+/// twin.
+const StringPosition = enum { parameter, result };
+
+/// Whether a result is a string zigo would hand over: a byte slice, through
+/// `!` and `?`, that the binding or inference marked as text. The `.c_string`
+/// spelling is included because it is freed the same way; only the marked
+/// slices qualify, so a plain byte buffer result keeps needing its own
+/// `.release`.
+fn isTextResult(function: semantic.SemanticFn) bool {
+    const hint = function.return_semantic orelse return false;
+    if (hint != .utf8_string and hint != .c_string) return false;
+    const payload = function.@"return".errorPayload();
+    const value = if (payload == .optional) payload.optional.child.* else payload;
+    return value == .slice and semantic.isByte(value.slice.element.*);
+}
+
+/// A byte slice with no sentinel. The sentinel spellings (`[:0]const u8` and
+/// `[*:0]const u8`) already mean a C string and are hinted `.c_string` where
+/// they are recognised, so inference must leave them alone.
+fn isPlainByteSlice(node: semantic.TypeNode, position: StringPosition) bool {
+    if (node != .slice or node.slice.sentinel != null) return false;
+    if (position == .parameter and !node.slice.@"const") return false;
+    return semantic.isByte(node.slice.element.*);
 }
 
 pub fn discoveryEnabled(comptime declaration: anytype) bool {
@@ -3562,6 +3640,118 @@ test "infer_u21 marks u21 positions as codepoints unless the site says integer" 
     try std.testing.expectEqual(@as(?semantic.SemanticHint, null), document.functions[2].params[0].semantic);
     try std.testing.expectEqual(@as(?semantic.SemanticHint, null), document.functions[2].return_semantic);
     try std.testing.expectEqual(@as(?semantic.SemanticHint, null), document.functions[3].params[0].semantic);
+}
+
+test "infer_utf8 marks byte slices as text unless the site says opaque bytes" {
+    const Fixture = struct {
+        pub fn upper(text: []const u8) []const u8 {
+            return text;
+        }
+        pub fn join(parts: []const []const u8) usize {
+            return parts.len;
+        }
+        pub fn checksum(bytes: []const u8) u32 {
+            return @intCast(bytes.len);
+        }
+        pub fn label(id: u32) ?[]const u8 {
+            _ = id;
+            return null;
+        }
+        pub fn cstring(path: [:0]const u8) usize {
+            return path.len;
+        }
+        pub fn fill(buffer: []u8) usize {
+            return buffer.len;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .strings = .infer_utf8,
+        .functions = .{
+            .{ .path = "root.upper", .params = .{"text"} },
+            .{ .path = "root.join", .params = .{"parts"} },
+            .{ .path = "root.checksum", .params = .{"bytes"}, .param_meta = .{ .bytes = .{ .semantic = .opaque_bytes } } },
+            .{ .path = "root.label", .params = .{"id"}, .semantic = .c_string },
+            .{ .path = "root.cstring", .params = .{"path"} },
+            .{ .path = "root.fill", .params = .{"buffer"}, .param_meta = .{ .buffer = .{ .direction = .out } } },
+        },
+    }, "text", "zg");
+
+    try std.testing.expectEqual(semantic.SemanticHint.utf8_string, document.functions[0].params[0].semantic.?);
+    try std.testing.expectEqual(semantic.SemanticHint.utf8_string, document.functions[0].return_semantic.?);
+    try std.testing.expectEqual(semantic.SemanticHint.utf8_string, document.functions[1].params[0].semantic.?);
+    // The opt-out only stops inference; it is not recorded, because an
+    // unhinted byte slice parameter already crosses as raw bytes.
+    try std.testing.expectEqual(@as(?semantic.SemanticHint, null), document.functions[2].params[0].semantic);
+    // An explicitly written hint wins over the inferred one.
+    try std.testing.expectEqual(semantic.SemanticHint.c_string, document.functions[3].return_semantic.?);
+    // A sentinel slice already carries its terminator in the Zig type, so
+    // inference leaves it to the `.c_string` rules rather than calling it
+    // UTF-8 text.
+    try std.testing.expectEqual(@as(?semantic.SemanticHint, null), document.functions[4].params[0].semantic);
+    // A mutable byte slice parameter is a buffer, not text.
+    try std.testing.expectEqual(@as(?semantic.SemanticHint, null), document.functions[5].params[0].semantic);
+}
+
+test "a binding without .strings keeps every byte slice unhinted" {
+    const Fixture = struct {
+        pub fn upper(text: []const u8) []const u8 {
+            return text;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .functions = .{.{ .path = "root.upper", .params = .{"text"} }},
+    }, "text", "zg");
+
+    try std.testing.expectEqual(@as(?semantic.SemanticHint, null), document.functions[0].params[0].semantic);
+    try std.testing.expectEqual(@as(?semantic.SemanticHint, null), document.functions[0].return_semantic);
+}
+
+test "string_release supplies the release of a caller-owned string result" {
+    const Fixture = struct {
+        pub fn describe(value: u32) ![]u8 {
+            _ = value;
+            return error.OutOfMemory;
+        }
+        pub fn render(value: u32) ![]u8 {
+            _ = value;
+            return error.OutOfMemory;
+        }
+        pub fn freeString(text: []u8) void {
+            _ = text;
+        }
+        pub fn freeOther(text: []u8) void {
+            _ = text;
+        }
+        pub fn count(text: []const u8) usize {
+            return text.len;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .strings = .infer_utf8,
+        .string_release = "root.freeString",
+        .functions = .{
+            .{ .path = "root.describe", .params = .{"value"}, .returns = .caller },
+            .{ .path = "root.render", .params = .{"value"}, .returns = .caller, .release = "root.freeOther" },
+            .{ .path = "root.freeString", .params = .{"text"} },
+            .{ .path = "root.freeOther", .params = .{"text"} },
+            .{ .path = "root.count", .params = .{"text"} },
+        },
+    }, "text", "zg");
+
+    try std.testing.expectEqualStrings("freeString", document.functions[0].release.?);
+    // A written `.release` still wins over the define-level default.
+    try std.testing.expectEqualStrings("freeOther", document.functions[1].release.?);
+    // A borrowed string result is not freed, so it gets no release.
+    try std.testing.expectEqual(@as(?[]const u8, null), document.functions[4].release);
 }
 
 test "a registered enum records the text encoding opt-in" {
