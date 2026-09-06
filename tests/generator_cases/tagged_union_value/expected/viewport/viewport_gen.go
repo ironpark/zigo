@@ -8,7 +8,7 @@ import "example.com/zigo/viewport/internal/raw"
 
 // Apply calls the Zig function apply.
 func Apply(behavior ScrollViewport) int64 {
-	return raw.Apply(uint8(behavior.tag), behavior.delta, behavior.page, behavior.ratio, boolToUint8(behavior.animated), uint8(behavior.mode), zigoRGBToBacking(behavior.rgb), behavior.region.X, boolToUint8(behavior.region.Enabled))
+	return raw.Apply(uint8(behavior.tag), behavior.delta, behavior.page, behavior.ratio, zigoBoolToUint8(behavior.animated), uint8(behavior.mode), zigoRGBToBacking(behavior.rgb), behavior.region.X, zigoBoolToUint8(behavior.region.Enabled))
 }
 
 // Current calls the Zig function current.
@@ -16,7 +16,7 @@ func Apply(behavior ScrollViewport) int64 {
 func Current() (ScrollViewport, error) {
 	result, code := raw.Current()
 	if code != 0 {
-		return ScrollViewport{}, errorForCode("Current", code)
+		return ScrollViewport{}, zigoErrorForCode("Current", code)
 	}
 	return zigoScrollViewportFromRaw(result), nil
 }

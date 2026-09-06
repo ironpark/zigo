@@ -64,7 +64,7 @@ func (t *TelemetryHub) zigoRelease() {
 	state, release := t.zigoTakeLocked()
 	t.mu.Unlock()
 	if release {
-		cleanupTelemetryHub(state)
+		zigoCleanupTelemetryHub(state)
 	}
 }
 
@@ -82,24 +82,24 @@ func (t *TelemetryHub) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-type telemetryHubCleanupState struct {
+type zigoTelemetryHubCleanupState struct {
 	ptr             unsafe.Pointer
 	callbackHandles []zigoCallbackHandle
 }
 
-func newTelemetryHub(ptr unsafe.Pointer, callbackHandles []zigoCallbackHandle) *TelemetryHub {
+func zigoNewTelemetryHub(ptr unsafe.Pointer, callbackHandles []zigoCallbackHandle) *TelemetryHub {
 	value := &TelemetryHub{ptr: ptr, callbackHandles: callbackHandles}
-	state := telemetryHubCleanupState{ptr: ptr, callbackHandles: callbackHandles}
-	value.cleanup = runtime.AddCleanup(value, cleanupTelemetryHub, state)
+	state := zigoTelemetryHubCleanupState{ptr: ptr, callbackHandles: callbackHandles}
+	value.cleanup = runtime.AddCleanup(value, zigoCleanupTelemetryHub, state)
 	return value
 }
 
-func cleanupTelemetryHub(state telemetryHubCleanupState) {
+func zigoCleanupTelemetryHub(state zigoTelemetryHubCleanupState) {
 	if state.ptr != nil {
 		raw.TelemetryHubDeinit(state.ptr)
 	}
 	for _, handle := range state.callbackHandles {
-		deleteCallbackHandle(handle)
+		zigoDeleteCallbackHandle(handle)
 	}
 }
 
@@ -121,7 +121,7 @@ func (t *TelemetryHub) Close() error {
 	state, release := t.zigoTakeLocked()
 	t.mu.Unlock()
 	if release {
-		cleanupTelemetryHub(state)
+		zigoCleanupTelemetryHub(state)
 	}
 	runtime.KeepAlive(t)
 	return nil
@@ -130,11 +130,11 @@ func (t *TelemetryHub) Close() error {
 // zigoTakeLocked hands out what is left to release once t is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
-func (t *TelemetryHub) zigoTakeLocked() (telemetryHubCleanupState, bool) {
+func (t *TelemetryHub) zigoTakeLocked() (zigoTelemetryHubCleanupState, bool) {
 	if !t.closed || t.active != 0 || t.ptr == nil {
-		return telemetryHubCleanupState{}, false
+		return zigoTelemetryHubCleanupState{}, false
 	}
-	state := telemetryHubCleanupState{ptr: t.ptr, callbackHandles: t.callbackHandles}
+	state := zigoTelemetryHubCleanupState{ptr: t.ptr, callbackHandles: t.callbackHandles}
 	t.ptr = nil
 	t.callbackHandles = nil
 	if t.poison != nil {

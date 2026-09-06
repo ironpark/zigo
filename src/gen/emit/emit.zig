@@ -922,7 +922,7 @@ test "a returned struct slice is reinterpreted for a castable element and copied
     defer std.testing.allocator.free(runtime);
     // Merely reading back a bool-bearing struct does not reference the
     // bool-to-ABI conversion helper.
-    try std.testing.expect(std.mem.indexOf(u8, runtime, "func boolToUint8(") == null);
+    try std.testing.expect(std.mem.indexOf(u8, runtime, "func zigoBoolToUint8(") == null);
 }
 
 test "public helpers are emitted only for matching parameter references" {
@@ -980,9 +980,9 @@ test "public helpers are emitted only for matching parameter references" {
 
     const runtime = try renderForTest(public.renderPublicRuntimeFile, program);
     defer std.testing.allocator.free(runtime);
-    try std.testing.expect(std.mem.indexOf(u8, runtime, "func boolToUint8(") != null);
+    try std.testing.expect(std.mem.indexOf(u8, runtime, "func zigoBoolToUint8(") != null);
     try std.testing.expect(std.mem.indexOf(u8, runtime, "func zigoOptionalPointer(") != null);
-    try std.testing.expect(std.mem.indexOf(u8, runtime, "func activeCallbackHandleCount(") == null);
+    try std.testing.expect(std.mem.indexOf(u8, runtime, "func zigoActiveCallbackHandleCount(") == null);
 }
 
 test "a stream parameter becomes a shim adapter and a fixed callback ABI" {
@@ -1083,7 +1083,7 @@ test "a stream parameter becomes a shim adapter and a fixed callback ABI" {
     // and a failing one both have to reach the caller.
     try std.testing.expect(std.mem.indexOf(u8, public_text, "func Banner(out io.Writer) error {") != null);
     try std.testing.expect(std.mem.indexOf(u8, public_text, "\tif w == nil {\n\t\treturn &StreamError{Operation: \"Document.Dump\", Parameter: \"w\", Err: ErrNilStream}\n\t}") != null);
-    try std.testing.expect(std.mem.indexOf(u8, public_text, "\twHandle := newZigoWriterHandle(w)\n\tdefer deleteCallbackHandle(wHandle)") != null);
+    try std.testing.expect(std.mem.indexOf(u8, public_text, "\twHandle := zigoNewWriterStreamHandle(w)\n\tdefer zigoDeleteCallbackHandle(wHandle)") != null);
     // The stream's own error is taken before the native status is judged.
     // A reader is offered to the fast path; a writer has none to be offered.
     try std.testing.expect(std.mem.indexOf(u8, public_text, "\trData := zigoReaderBytes(r)") != null);
@@ -1098,7 +1098,7 @@ test "a stream parameter becomes a shim adapter and a fixed callback ABI" {
     try std.testing.expect(zigo_bytes < bytes);
     const rethrow = std.mem.indexOf(u8, public_text, "zigoRethrowCallbackPanic(\"Document.Dump\"").?;
     const stream_error = std.mem.indexOf(u8, public_text, "zigoStreamError(\"Document.Dump\", \"w\", wHandle)").?;
-    const status = std.mem.indexOf(u8, public_text, "errorForCode(\"Document.Dump\"").?;
+    const status = std.mem.indexOf(u8, public_text, "zigoErrorForCode(\"Document.Dump\"").?;
     try std.testing.expect(rethrow < stream_error and stream_error < status);
 }
 

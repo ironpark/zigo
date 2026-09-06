@@ -47,7 +47,7 @@ func (c *Cursor) zigoRelease() {
 	state, release := c.zigoTakeLocked()
 	c.mu.Unlock()
 	if release {
-		cleanupCursor(state)
+		zigoCleanupCursor(state)
 	}
 }
 
@@ -65,18 +65,18 @@ func (c *Cursor) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-type cursorCleanupState struct {
+type zigoCursorCleanupState struct {
 	ptr unsafe.Pointer
 }
 
-func newCursor(ptr unsafe.Pointer) *Cursor {
+func zigoNewCursor(ptr unsafe.Pointer) *Cursor {
 	value := &Cursor{ptr: ptr}
-	state := cursorCleanupState{ptr: ptr}
-	value.cleanup = runtime.AddCleanup(value, cleanupCursor, state)
+	state := zigoCursorCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, zigoCleanupCursor, state)
 	return value
 }
 
-func cleanupCursor(state cursorCleanupState) {
+func zigoCleanupCursor(state zigoCursorCleanupState) {
 	if state.ptr != nil {
 		raw.CursorDeinit(state.ptr)
 	}
@@ -100,7 +100,7 @@ func (c *Cursor) Close() error {
 	state, release := c.zigoTakeLocked()
 	c.mu.Unlock()
 	if release {
-		cleanupCursor(state)
+		zigoCleanupCursor(state)
 	}
 	runtime.KeepAlive(c)
 	return nil
@@ -109,11 +109,11 @@ func (c *Cursor) Close() error {
 // zigoTakeLocked hands out what is left to release once c is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
-func (c *Cursor) zigoTakeLocked() (cursorCleanupState, bool) {
+func (c *Cursor) zigoTakeLocked() (zigoCursorCleanupState, bool) {
 	if !c.closed || c.active != 0 || c.ptr == nil {
-		return cursorCleanupState{}, false
+		return zigoCursorCleanupState{}, false
 	}
-	state := cursorCleanupState{ptr: c.ptr}
+	state := zigoCursorCleanupState{ptr: c.ptr}
 	c.ptr = nil
 	if c.poison != nil {
 		state.ptr = nil
@@ -158,7 +158,7 @@ func (s *Store) zigoRelease() {
 	state, release := s.zigoTakeLocked()
 	s.mu.Unlock()
 	if release {
-		cleanupStore(state)
+		zigoCleanupStore(state)
 	}
 }
 
@@ -176,18 +176,18 @@ func (s *Store) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-type storeCleanupState struct {
+type zigoStoreCleanupState struct {
 	ptr unsafe.Pointer
 }
 
-func newStore(ptr unsafe.Pointer) *Store {
+func zigoNewStore(ptr unsafe.Pointer) *Store {
 	value := &Store{ptr: ptr}
-	state := storeCleanupState{ptr: ptr}
-	value.cleanup = runtime.AddCleanup(value, cleanupStore, state)
+	state := zigoStoreCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, zigoCleanupStore, state)
 	return value
 }
 
-func cleanupStore(state storeCleanupState) {
+func zigoCleanupStore(state zigoStoreCleanupState) {
 	if state.ptr != nil {
 		raw.StoreDeinit(state.ptr)
 	}
@@ -211,7 +211,7 @@ func (s *Store) Close() error {
 	state, release := s.zigoTakeLocked()
 	s.mu.Unlock()
 	if release {
-		cleanupStore(state)
+		zigoCleanupStore(state)
 	}
 	runtime.KeepAlive(s)
 	return nil
@@ -220,11 +220,11 @@ func (s *Store) Close() error {
 // zigoTakeLocked hands out what is left to release once s is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
-func (s *Store) zigoTakeLocked() (storeCleanupState, bool) {
+func (s *Store) zigoTakeLocked() (zigoStoreCleanupState, bool) {
 	if !s.closed || s.active != 0 || s.ptr == nil {
-		return storeCleanupState{}, false
+		return zigoStoreCleanupState{}, false
 	}
-	state := storeCleanupState{ptr: s.ptr}
+	state := zigoStoreCleanupState{ptr: s.ptr}
 	s.ptr = nil
 	if s.poison != nil {
 		state.ptr = nil

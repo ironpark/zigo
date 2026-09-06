@@ -62,7 +62,7 @@ func (c *CallbackContext) zigoRelease() {
 	state, release := c.zigoTakeLocked()
 	c.mu.Unlock()
 	if release {
-		cleanupCallbackContext(state)
+		zigoCleanupCallbackContext(state)
 	}
 }
 
@@ -80,24 +80,24 @@ func (c *CallbackContext) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-type callbackContextCleanupState struct {
+type zigoCallbackContextCleanupState struct {
 	ptr             unsafe.Pointer
 	callbackHandles []zigoCallbackHandle
 }
 
-func newCallbackContext(ptr unsafe.Pointer, callbackHandles []zigoCallbackHandle) *CallbackContext {
+func zigoNewCallbackContext(ptr unsafe.Pointer, callbackHandles []zigoCallbackHandle) *CallbackContext {
 	value := &CallbackContext{ptr: ptr, callbackHandles: callbackHandles}
-	state := callbackContextCleanupState{ptr: ptr, callbackHandles: callbackHandles}
-	value.cleanup = runtime.AddCleanup(value, cleanupCallbackContext, state)
+	state := zigoCallbackContextCleanupState{ptr: ptr, callbackHandles: callbackHandles}
+	value.cleanup = runtime.AddCleanup(value, zigoCleanupCallbackContext, state)
 	return value
 }
 
-func cleanupCallbackContext(state callbackContextCleanupState) {
+func zigoCleanupCallbackContext(state zigoCallbackContextCleanupState) {
 	if state.ptr != nil {
 		zigoRawCallbackContextDeinit(state.ptr)
 	}
 	for _, handle := range state.callbackHandles {
-		deleteCallbackHandle(handle)
+		zigoDeleteCallbackHandle(handle)
 	}
 }
 
@@ -119,7 +119,7 @@ func (c *CallbackContext) Close() error {
 	state, release := c.zigoTakeLocked()
 	c.mu.Unlock()
 	if release {
-		cleanupCallbackContext(state)
+		zigoCleanupCallbackContext(state)
 	}
 	runtime.KeepAlive(c)
 	return nil
@@ -128,11 +128,11 @@ func (c *CallbackContext) Close() error {
 // zigoTakeLocked hands out what is left to release once c is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
-func (c *CallbackContext) zigoTakeLocked() (callbackContextCleanupState, bool) {
+func (c *CallbackContext) zigoTakeLocked() (zigoCallbackContextCleanupState, bool) {
 	if !c.closed || c.active != 0 || c.ptr == nil {
-		return callbackContextCleanupState{}, false
+		return zigoCallbackContextCleanupState{}, false
 	}
-	state := callbackContextCleanupState{ptr: c.ptr, callbackHandles: c.callbackHandles}
+	state := zigoCallbackContextCleanupState{ptr: c.ptr, callbackHandles: c.callbackHandles}
 	c.ptr = nil
 	c.callbackHandles = nil
 	if c.poison != nil {
@@ -178,7 +178,7 @@ func (f *FloatBuffer) zigoRelease() {
 	state, release := f.zigoTakeLocked()
 	f.mu.Unlock()
 	if release {
-		cleanupFloatBuffer(state)
+		zigoCleanupFloatBuffer(state)
 	}
 }
 
@@ -196,18 +196,18 @@ func (f *FloatBuffer) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-type floatBufferCleanupState struct {
+type zigoFloatBufferCleanupState struct {
 	ptr unsafe.Pointer
 }
 
-func newFloatBuffer(ptr unsafe.Pointer) *FloatBuffer {
+func zigoNewFloatBuffer(ptr unsafe.Pointer) *FloatBuffer {
 	value := &FloatBuffer{ptr: ptr}
-	state := floatBufferCleanupState{ptr: ptr}
-	value.cleanup = runtime.AddCleanup(value, cleanupFloatBuffer, state)
+	state := zigoFloatBufferCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, zigoCleanupFloatBuffer, state)
 	return value
 }
 
-func cleanupFloatBuffer(state floatBufferCleanupState) {
+func zigoCleanupFloatBuffer(state zigoFloatBufferCleanupState) {
 	if state.ptr != nil {
 		zigoRawFloatBufferDeinit(state.ptr)
 	}
@@ -231,7 +231,7 @@ func (f *FloatBuffer) Close() error {
 	state, release := f.zigoTakeLocked()
 	f.mu.Unlock()
 	if release {
-		cleanupFloatBuffer(state)
+		zigoCleanupFloatBuffer(state)
 	}
 	runtime.KeepAlive(f)
 	return nil
@@ -240,11 +240,11 @@ func (f *FloatBuffer) Close() error {
 // zigoTakeLocked hands out what is left to release once f is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
-func (f *FloatBuffer) zigoTakeLocked() (floatBufferCleanupState, bool) {
+func (f *FloatBuffer) zigoTakeLocked() (zigoFloatBufferCleanupState, bool) {
 	if !f.closed || f.active != 0 || f.ptr == nil {
-		return floatBufferCleanupState{}, false
+		return zigoFloatBufferCleanupState{}, false
 	}
-	state := floatBufferCleanupState{ptr: f.ptr}
+	state := zigoFloatBufferCleanupState{ptr: f.ptr}
 	f.ptr = nil
 	if f.poison != nil {
 		state.ptr = nil
@@ -289,7 +289,7 @@ func (i *IntBuffer) zigoRelease() {
 	state, release := i.zigoTakeLocked()
 	i.mu.Unlock()
 	if release {
-		cleanupIntBuffer(state)
+		zigoCleanupIntBuffer(state)
 	}
 }
 
@@ -307,18 +307,18 @@ func (i *IntBuffer) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-type intBufferCleanupState struct {
+type zigoIntBufferCleanupState struct {
 	ptr unsafe.Pointer
 }
 
-func newIntBuffer(ptr unsafe.Pointer) *IntBuffer {
+func zigoNewIntBuffer(ptr unsafe.Pointer) *IntBuffer {
 	value := &IntBuffer{ptr: ptr}
-	state := intBufferCleanupState{ptr: ptr}
-	value.cleanup = runtime.AddCleanup(value, cleanupIntBuffer, state)
+	state := zigoIntBufferCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, zigoCleanupIntBuffer, state)
 	return value
 }
 
-func cleanupIntBuffer(state intBufferCleanupState) {
+func zigoCleanupIntBuffer(state zigoIntBufferCleanupState) {
 	if state.ptr != nil {
 		zigoRawIntBufferDeinit(state.ptr)
 	}
@@ -342,7 +342,7 @@ func (i *IntBuffer) Close() error {
 	state, release := i.zigoTakeLocked()
 	i.mu.Unlock()
 	if release {
-		cleanupIntBuffer(state)
+		zigoCleanupIntBuffer(state)
 	}
 	runtime.KeepAlive(i)
 	return nil
@@ -351,11 +351,11 @@ func (i *IntBuffer) Close() error {
 // zigoTakeLocked hands out what is left to release once i is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
-func (i *IntBuffer) zigoTakeLocked() (intBufferCleanupState, bool) {
+func (i *IntBuffer) zigoTakeLocked() (zigoIntBufferCleanupState, bool) {
 	if !i.closed || i.active != 0 || i.ptr == nil {
-		return intBufferCleanupState{}, false
+		return zigoIntBufferCleanupState{}, false
 	}
-	state := intBufferCleanupState{ptr: i.ptr}
+	state := zigoIntBufferCleanupState{ptr: i.ptr}
 	i.ptr = nil
 	if i.poison != nil {
 		state.ptr = nil

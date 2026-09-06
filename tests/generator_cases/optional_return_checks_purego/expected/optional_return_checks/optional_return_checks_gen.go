@@ -30,7 +30,7 @@ func (t *Terminal) Password() (int32, bool, error) {
 	defer t.zigoRelease()
 	result, zigoHas, code := raw.TerminalPassword(ptr)
 	if code != 0 {
-		return 0, false, zigoPoisonAfterPanic(errorForCode("Terminal.Password", code), t)
+		return 0, false, zigoPoisonAfterPanic(zigoErrorForCode("Terminal.Password", code), t)
 	}
 	return result, zigoHas, nil
 }
@@ -43,7 +43,7 @@ func CheckedLevel(level uint8) (int32, bool, error) {
 	}
 	result, zigoHas, code := raw.CheckedLevel(level)
 	if code != 0 {
-		return 0, false, errorForCode("CheckedLevel", code)
+		return 0, false, zigoErrorForCode("CheckedLevel", code)
 	}
 	return result, zigoHas, nil
 }
@@ -59,7 +59,7 @@ func TerminalValue(terminal *Terminal) (int32, bool, error) {
 	defer terminal.zigoRelease()
 	result, zigoHas, code := raw.TerminalValue(terminalPtr)
 	if code != 0 {
-		return 0, false, zigoPoisonAfterPanic(errorForCode("TerminalValue", code), terminal)
+		return 0, false, zigoPoisonAfterPanic(zigoErrorForCode("TerminalValue", code), terminal)
 	}
 	return result, zigoHas, nil
 }

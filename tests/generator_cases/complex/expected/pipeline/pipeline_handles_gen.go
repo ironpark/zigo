@@ -64,7 +64,7 @@ func (p *Pipeline) zigoRelease() {
 	state, release := p.zigoTakeLocked()
 	p.mu.Unlock()
 	if release {
-		cleanupPipeline(state)
+		zigoCleanupPipeline(state)
 	}
 }
 
@@ -82,24 +82,24 @@ func (p *Pipeline) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-type pipelineCleanupState struct {
+type zigoPipelineCleanupState struct {
 	ptr             unsafe.Pointer
 	callbackHandles []zigoCallbackHandle
 }
 
-func newPipeline(ptr unsafe.Pointer, callbackHandles []zigoCallbackHandle) *Pipeline {
+func zigoNewPipeline(ptr unsafe.Pointer, callbackHandles []zigoCallbackHandle) *Pipeline {
 	value := &Pipeline{ptr: ptr, callbackHandles: callbackHandles}
-	state := pipelineCleanupState{ptr: ptr, callbackHandles: callbackHandles}
-	value.cleanup = runtime.AddCleanup(value, cleanupPipeline, state)
+	state := zigoPipelineCleanupState{ptr: ptr, callbackHandles: callbackHandles}
+	value.cleanup = runtime.AddCleanup(value, zigoCleanupPipeline, state)
 	return value
 }
 
-func cleanupPipeline(state pipelineCleanupState) {
+func zigoCleanupPipeline(state zigoPipelineCleanupState) {
 	if state.ptr != nil {
 		raw.PipelineDeinit(state.ptr)
 	}
 	for _, handle := range state.callbackHandles {
-		deleteCallbackHandle(handle)
+		zigoDeleteCallbackHandle(handle)
 	}
 }
 
@@ -121,7 +121,7 @@ func (p *Pipeline) Close() error {
 	state, release := p.zigoTakeLocked()
 	p.mu.Unlock()
 	if release {
-		cleanupPipeline(state)
+		zigoCleanupPipeline(state)
 	}
 	runtime.KeepAlive(p)
 	return nil
@@ -130,11 +130,11 @@ func (p *Pipeline) Close() error {
 // zigoTakeLocked hands out what is left to release once p is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
-func (p *Pipeline) zigoTakeLocked() (pipelineCleanupState, bool) {
+func (p *Pipeline) zigoTakeLocked() (zigoPipelineCleanupState, bool) {
 	if !p.closed || p.active != 0 || p.ptr == nil {
-		return pipelineCleanupState{}, false
+		return zigoPipelineCleanupState{}, false
 	}
-	state := pipelineCleanupState{ptr: p.ptr, callbackHandles: p.callbackHandles}
+	state := zigoPipelineCleanupState{ptr: p.ptr, callbackHandles: p.callbackHandles}
 	p.ptr = nil
 	p.callbackHandles = nil
 	if p.poison != nil {
@@ -180,7 +180,7 @@ func (i *IntBatch) zigoRelease() {
 	state, release := i.zigoTakeLocked()
 	i.mu.Unlock()
 	if release {
-		cleanupIntBatch(state)
+		zigoCleanupIntBatch(state)
 	}
 }
 
@@ -198,18 +198,18 @@ func (i *IntBatch) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-type intBatchCleanupState struct {
+type zigoIntBatchCleanupState struct {
 	ptr unsafe.Pointer
 }
 
-func newIntBatch(ptr unsafe.Pointer) *IntBatch {
+func zigoNewIntBatch(ptr unsafe.Pointer) *IntBatch {
 	value := &IntBatch{ptr: ptr}
-	state := intBatchCleanupState{ptr: ptr}
-	value.cleanup = runtime.AddCleanup(value, cleanupIntBatch, state)
+	state := zigoIntBatchCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, zigoCleanupIntBatch, state)
 	return value
 }
 
-func cleanupIntBatch(state intBatchCleanupState) {
+func zigoCleanupIntBatch(state zigoIntBatchCleanupState) {
 	if state.ptr != nil {
 		raw.IntBatchDeinit(state.ptr)
 	}
@@ -233,7 +233,7 @@ func (i *IntBatch) Close() error {
 	state, release := i.zigoTakeLocked()
 	i.mu.Unlock()
 	if release {
-		cleanupIntBatch(state)
+		zigoCleanupIntBatch(state)
 	}
 	runtime.KeepAlive(i)
 	return nil
@@ -242,11 +242,11 @@ func (i *IntBatch) Close() error {
 // zigoTakeLocked hands out what is left to release once i is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
-func (i *IntBatch) zigoTakeLocked() (intBatchCleanupState, bool) {
+func (i *IntBatch) zigoTakeLocked() (zigoIntBatchCleanupState, bool) {
 	if !i.closed || i.active != 0 || i.ptr == nil {
-		return intBatchCleanupState{}, false
+		return zigoIntBatchCleanupState{}, false
 	}
-	state := intBatchCleanupState{ptr: i.ptr}
+	state := zigoIntBatchCleanupState{ptr: i.ptr}
 	i.ptr = nil
 	if i.poison != nil {
 		state.ptr = nil
@@ -291,7 +291,7 @@ func (f *FloatBatch) zigoRelease() {
 	state, release := f.zigoTakeLocked()
 	f.mu.Unlock()
 	if release {
-		cleanupFloatBatch(state)
+		zigoCleanupFloatBatch(state)
 	}
 }
 
@@ -309,18 +309,18 @@ func (f *FloatBatch) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-type floatBatchCleanupState struct {
+type zigoFloatBatchCleanupState struct {
 	ptr unsafe.Pointer
 }
 
-func newFloatBatch(ptr unsafe.Pointer) *FloatBatch {
+func zigoNewFloatBatch(ptr unsafe.Pointer) *FloatBatch {
 	value := &FloatBatch{ptr: ptr}
-	state := floatBatchCleanupState{ptr: ptr}
-	value.cleanup = runtime.AddCleanup(value, cleanupFloatBatch, state)
+	state := zigoFloatBatchCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, zigoCleanupFloatBatch, state)
 	return value
 }
 
-func cleanupFloatBatch(state floatBatchCleanupState) {
+func zigoCleanupFloatBatch(state zigoFloatBatchCleanupState) {
 	if state.ptr != nil {
 		raw.FloatBatchDeinit(state.ptr)
 	}
@@ -344,7 +344,7 @@ func (f *FloatBatch) Close() error {
 	state, release := f.zigoTakeLocked()
 	f.mu.Unlock()
 	if release {
-		cleanupFloatBatch(state)
+		zigoCleanupFloatBatch(state)
 	}
 	runtime.KeepAlive(f)
 	return nil
@@ -353,11 +353,11 @@ func (f *FloatBatch) Close() error {
 // zigoTakeLocked hands out what is left to release once f is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
-func (f *FloatBatch) zigoTakeLocked() (floatBatchCleanupState, bool) {
+func (f *FloatBatch) zigoTakeLocked() (zigoFloatBatchCleanupState, bool) {
 	if !f.closed || f.active != 0 || f.ptr == nil {
-		return floatBatchCleanupState{}, false
+		return zigoFloatBatchCleanupState{}, false
 	}
-	state := floatBatchCleanupState{ptr: f.ptr}
+	state := zigoFloatBatchCleanupState{ptr: f.ptr}
 	f.ptr = nil
 	if f.poison != nil {
 		state.ptr = nil

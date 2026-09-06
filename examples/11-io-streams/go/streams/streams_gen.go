@@ -19,9 +19,9 @@ import (
 func NewDocument() (*Document, error) {
 	result, code := raw.DocumentCreate()
 	if code != 0 {
-		return nil, errorForCode("NewDocument", code)
+		return nil, zigoErrorForCode("NewDocument", code)
 	}
-	return newDocument(result), nil
+	return zigoNewDocument(result), nil
 }
 
 // Append calls the Zig function Document.append.
@@ -35,7 +35,7 @@ func (d *Document) Append(line []byte) error {
 	defer d.zigoRelease()
 	code := raw.DocumentAppend(ptr, line)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Document.Append", code), d)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Document.Append", code), d)
 	}
 	return nil
 }
@@ -51,7 +51,7 @@ func (d *Document) Count() (uint, error) {
 	defer d.zigoRelease()
 	result, code := raw.DocumentCount(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Document.Count", code), d)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Document.Count", code), d)
 	}
 	return result, nil
 }
@@ -72,8 +72,8 @@ func (d *Document) Dump(w io.Writer) error {
 		return err
 	}
 	defer d.zigoRelease()
-	wHandle := newZigoWriterHandle(w)
-	defer deleteCallbackHandle(wHandle)
+	wHandle := zigoNewWriterStreamHandle(w)
+	defer zigoDeleteCallbackHandle(wHandle)
 	code := raw.DocumentDump(ptr, uintptr(wHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("Document.Dump", wHandle)
@@ -82,7 +82,7 @@ func (d *Document) Dump(w io.Writer) error {
 		return err
 	}
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Document.Dump", code), d)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Document.Dump", code), d)
 	}
 	return nil
 }
@@ -102,8 +102,8 @@ func (d *Document) Load(r io.Reader) (uint, error) {
 		return 0, err
 	}
 	defer d.zigoRelease()
-	rHandle := newZigoReaderHandle(r)
-	defer deleteCallbackHandle(rHandle)
+	rHandle := zigoNewReaderStreamHandle(r)
+	defer zigoDeleteCallbackHandle(rHandle)
 	rData := zigoReaderBytes(r)
 	result, code := raw.DocumentLoad(ptr, uintptr(rHandle), rData)
 	if zigoCallbackPanicPending() {
@@ -113,7 +113,7 @@ func (d *Document) Load(r io.Reader) (uint, error) {
 		return 0, err
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Document.Load", code), d)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Document.Load", code), d)
 	}
 	return result, nil
 }
@@ -126,8 +126,8 @@ func Banner(w io.Writer, width uint32) error {
 	if w == nil {
 		return &StreamError{Operation: "Banner", Parameter: "w", Err: ErrNilStream}
 	}
-	wHandle := newZigoWriterHandle(w)
-	defer deleteCallbackHandle(wHandle)
+	wHandle := zigoNewWriterStreamHandle(w)
+	defer zigoDeleteCallbackHandle(wHandle)
 	code := raw.Banner(uintptr(wHandle), width)
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("Banner", wHandle)
@@ -136,7 +136,7 @@ func Banner(w io.Writer, width uint32) error {
 		return err
 	}
 	if code != 0 {
-		return errorForCode("Banner", code)
+		return zigoErrorForCode("Banner", code)
 	}
 	return nil
 }
@@ -152,11 +152,11 @@ func Tee(r io.Reader, w io.Writer) (uint, error) {
 	if w == nil {
 		return 0, &StreamError{Operation: "Tee", Parameter: "w", Err: ErrNilStream}
 	}
-	rHandle := newZigoReaderHandle(r)
-	defer deleteCallbackHandle(rHandle)
+	rHandle := zigoNewReaderStreamHandle(r)
+	defer zigoDeleteCallbackHandle(rHandle)
 	rData := zigoReaderBytes(r)
-	wHandle := newZigoWriterHandle(w)
-	defer deleteCallbackHandle(wHandle)
+	wHandle := zigoNewWriterStreamHandle(w)
+	defer zigoDeleteCallbackHandle(wHandle)
 	result, code := raw.Tee(uintptr(rHandle), rData, uintptr(wHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("Tee", rHandle)
@@ -169,7 +169,7 @@ func Tee(r io.Reader, w io.Writer) (uint, error) {
 		return 0, err
 	}
 	if code != 0 {
-		return 0, errorForCode("Tee", code)
+		return 0, zigoErrorForCode("Tee", code)
 	}
 	return result, nil
 }
@@ -202,9 +202,9 @@ func TakeCodepoints() []uint32 {
 func NewSink() (*Sink, error) {
 	result, code := raw.SinkCreate()
 	if code != 0 {
-		return nil, errorForCode("NewSink", code)
+		return nil, zigoErrorForCode("NewSink", code)
 	}
-	return newSink(result), nil
+	return zigoNewSink(result), nil
 }
 
 // Write writes to the stream Sink.writer() hands out, satisfying io.Writer.
@@ -219,7 +219,7 @@ func (s *Sink) Write(bytes []byte) (int, error) {
 	defer s.zigoRelease()
 	result, code := raw.SinkWrite(ptr, bytes)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Sink.Write", code), s)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Sink.Write", code), s)
 	}
 	return result, nil
 }
@@ -236,7 +236,7 @@ func (s *Sink) Flush() error {
 	defer s.zigoRelease()
 	code := raw.SinkFlush(ptr)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Sink.Flush", code), s)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Sink.Flush", code), s)
 	}
 	return nil
 }
@@ -252,7 +252,7 @@ func (s *Sink) Count() (uint, error) {
 	defer s.zigoRelease()
 	result, code := raw.SinkCount(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Sink.Count", code), s)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Sink.Count", code), s)
 	}
 	return result, nil
 }
@@ -263,9 +263,9 @@ func (s *Sink) Count() (uint, error) {
 func NewSource(bytes []byte) (*Source, error) {
 	result, code := raw.SourceCreate(bytes)
 	if code != 0 {
-		return nil, errorForCode("NewSource", code)
+		return nil, zigoErrorForCode("NewSource", code)
 	}
-	return newSource(result), nil
+	return zigoNewSource(result), nil
 }
 
 // Read reads from the stream Source.reader() hands out, satisfying io.Reader.
@@ -281,7 +281,7 @@ func (s *Source) Read(buffer []byte) (int, error) {
 	defer s.zigoRelease()
 	result, code := raw.SourceRead(ptr, buffer)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Source.Read", code), s)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Source.Read", code), s)
 	}
 	if result == 0 {
 		return 0, io.EOF

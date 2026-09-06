@@ -25,9 +25,9 @@ var DefaultLibraryName = raw.DefaultLibraryName
 func NewParent() (*Parent, error) {
 	result, code := raw.NewParent()
 	if code != 0 {
-		return nil, errorForCode("NewParent", code)
+		return nil, zigoErrorForCode("NewParent", code)
 	}
-	return newParent(result), nil
+	return zigoNewParent(result), nil
 }
 
 // View calls the Zig function Parent.view.
@@ -42,9 +42,9 @@ func (p *Parent) View() (*View, error) {
 	defer p.zigoRelease()
 	result, code := raw.ParentView(ptr)
 	if code != 0 {
-		return nil, zigoPoisonAfterPanic(errorForCode("Parent.View", code), p)
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("Parent.View", code), p)
 	}
-	return newBorrowedView(result, p), nil
+	return zigoNewBorrowedView(result, p), nil
 }
 
 // NewChild creates a caller-owned Child.
@@ -65,10 +65,10 @@ func (v *View) NewChild() (*Child, error) {
 	}()
 	result, code := raw.ViewNewChild(ptr)
 	if code != 0 {
-		return nil, zigoPoisonAfterPanic(errorForCode("View.NewChild", code), v)
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("View.NewChild", code), v)
 	}
 	zigoChildCreated = true
-	return newChild(result, zigoChildParent), nil
+	return zigoNewChild(result, zigoChildParent), nil
 }
 
 // Touch calls the Zig function Child.touch.
@@ -82,7 +82,7 @@ func (c *Child) Touch() error {
 	defer c.zigoRelease()
 	code := raw.ChildTouch(ptr)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Child.Touch", code), c)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Child.Touch", code), c)
 	}
 	return nil
 }

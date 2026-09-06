@@ -46,7 +46,7 @@ type EventQueueCloneObserver func(uint64, int32) int32
 // EventQueueSetObserverObserver is the Go callback signature accepted by the generated binding.
 type EventQueueSetObserverObserver func(uint64, int32) int32
 
-func boolToUint8(value bool) uint8 {
+func zigoBoolToUint8(value bool) uint8 {
 	if value {
 		return 1
 	}
@@ -55,22 +55,22 @@ func boolToUint8(value bool) uint8 {
 
 type zigoCallbackHandle = uintptr
 
-func newEventQueueCreateObserverHandle(value EventQueueCreateObserver) zigoCallbackHandle {
+func zigoNewEventQueueCreateObserverHandle(value EventQueueCreateObserver) zigoCallbackHandle {
 	return raw.NewCallbackHandle((func(uint64, int32) int32)(value))
 }
 
-func newEventQueueCloneObserverHandle(value EventQueueCloneObserver) zigoCallbackHandle {
+func zigoNewEventQueueCloneObserverHandle(value EventQueueCloneObserver) zigoCallbackHandle {
 	return raw.NewCallbackHandle((func(uint64, int32) int32)(value))
 }
 
-func newEventQueueSetObserverObserverHandle(value EventQueueSetObserverObserver) zigoCallbackHandle {
+func zigoNewEventQueueSetObserverObserverHandle(value EventQueueSetObserverObserver) zigoCallbackHandle {
 	return raw.NewCallbackHandle((func(uint64, int32) int32)(value))
 }
 
-func deleteCallbackHandle(handle zigoCallbackHandle) { raw.DeleteCallbackHandle(handle) }
+func zigoDeleteCallbackHandle(handle zigoCallbackHandle) { raw.DeleteCallbackHandle(handle) }
 
-func activeCallbackHandleCount() int64 { return raw.ActiveCallbackHandleCount() }
-func callbackDispatcherCount() int     { return raw.CallbackDispatcherCount() }
+func zigoActiveCallbackHandleCount() int64 { return raw.ActiveCallbackHandleCount() }
+func zigoCallbackDispatcherCount() int     { return raw.CallbackDispatcherCount() }
 
 // zigoCallbackPanicPending is the fast-path check ahead of the per-slot sweep:
 // one atomic load says whether any callback recorded a panic nobody has taken.

@@ -61,7 +61,7 @@ func zigoPointSliceView(values []raw.PointData) []Point {
 
 func zigoConfigToRaw(value Config) raw.ConfigData {
 	return raw.ConfigData{
-		Enabled: boolToUint8(value.Enabled),
+		Enabled: zigoBoolToUint8(value.Enabled),
 		Width: value.Width,
 		Mode: uint8(value.Mode),
 		Ratio: value.Ratio,

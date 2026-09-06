@@ -257,7 +257,7 @@ func TestObserverPanicIsRethrown(t *testing.T) {
 }
 
 func TestRetainedMethodCallbackHandlesAreReplacedAndClosed(t *testing.T) {
-	before := activeCallbackHandleCount()
+	before := zigoActiveCallbackHandleCount()
 	queue, err := NewEventQueue("replace observer", 1, PolicyReject, func(uint64, int32) int32 { return 0 })
 	if err != nil {
 		t.Fatal(err)
@@ -268,13 +268,13 @@ func TestRetainedMethodCallbackHandlesAreReplacedAndClosed(t *testing.T) {
 	if err := queue.SetObserver(func(uint64, int32) int32 { return 2 }); err != nil {
 		t.Fatal(err)
 	}
-	if got := activeCallbackHandleCount(); got != before+2 {
+	if got := zigoActiveCallbackHandleCount(); got != before+2 {
 		t.Fatalf("active callback handles after replacement = %d, want %d", got, before+2)
 	}
 	if err := queue.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if got := activeCallbackHandleCount(); got != before {
+	if got := zigoActiveCallbackHandleCount(); got != before {
 		t.Fatalf("active callback handles after Close = %d, want %d", got, before)
 	}
 }
@@ -337,7 +337,7 @@ func TestRuntimeCleanupFallbackReleasesQueueAndObserver(t *testing.T) {
 		if got := LiveQueues(); got != 1 {
 			t.Fatalf("LiveQueues() before fallback = %d, want 1", got)
 		}
-		if got := activeCallbackHandleCount(); got != 1 {
+		if got := zigoActiveCallbackHandleCount(); got != 1 {
 			t.Fatalf("active callback handles before fallback = %d, want 1", got)
 		}
 		runtime.KeepAlive(queue)
@@ -368,11 +368,11 @@ func waitForRuntimeCleanup(t *testing.T) {
 	for {
 		runtime.GC()
 		runtime.Gosched()
-		if activeCallbackHandleCount() == 0 && LiveQueues() == 0 {
+		if zigoActiveCallbackHandleCount() == 0 && LiveQueues() == 0 {
 			return
 		}
 		if time.Now().After(deadline) {
-			t.Fatalf("runtime cleanup timed out: callback handles=%d live queues=%d", activeCallbackHandleCount(), LiveQueues())
+			t.Fatalf("runtime cleanup timed out: callback handles=%d live queues=%d", zigoActiveCallbackHandleCount(), LiveQueues())
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
@@ -380,7 +380,7 @@ func waitForRuntimeCleanup(t *testing.T) {
 
 func assertNoLiveQueueResources(t *testing.T) {
 	t.Helper()
-	if got := activeCallbackHandleCount(); got != 0 {
+	if got := zigoActiveCallbackHandleCount(); got != 0 {
 		t.Fatalf("active callback handles = %d, want 0", got)
 	}
 	if got := LiveQueues(); got != 0 {

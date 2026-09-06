@@ -12,21 +12,21 @@ import (
 // Observer is the Go callback signature accepted by the generated binding.
 type Observer func(int32) int32
 
-var activeCallbackHandles atomic.Int64
+var zigoActiveCallbackHandles atomic.Int64
 
 type zigoCallbackHandle = cgo.Handle
 
-func newObserverHandle(value Observer) zigoCallbackHandle {
+func zigoNewObserverHandle(value Observer) zigoCallbackHandle {
 	stored := (func(int32) int32)(value)
 	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
-	activeCallbackHandles.Add(1)
+	zigoActiveCallbackHandles.Add(1)
 	return handle
 }
 
-func deleteCallbackHandle(handle zigoCallbackHandle) {
+func zigoDeleteCallbackHandle(handle zigoCallbackHandle) {
 	if handle == 0 { return }
 	handle.Delete()
-	activeCallbackHandles.Add(-1)
+	zigoActiveCallbackHandles.Add(-1)
 }
 
 // zigoCallbackPanicPending is the fast-path check ahead of the per-slot sweep:

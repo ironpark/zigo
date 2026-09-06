@@ -47,7 +47,7 @@ func (s *Signal) zigoRelease() {
 	state, release := s.zigoTakeLocked()
 	s.mu.Unlock()
 	if release {
-		cleanupSignal(state)
+		zigoCleanupSignal(state)
 	}
 }
 
@@ -65,18 +65,18 @@ func (s *Signal) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-type signalCleanupState struct {
+type zigoSignalCleanupState struct {
 	ptr unsafe.Pointer
 }
 
-func newSignal(ptr unsafe.Pointer) *Signal {
+func zigoNewSignal(ptr unsafe.Pointer) *Signal {
 	value := &Signal{ptr: ptr}
-	state := signalCleanupState{ptr: ptr}
-	value.cleanup = runtime.AddCleanup(value, cleanupSignal, state)
+	state := zigoSignalCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, zigoCleanupSignal, state)
 	return value
 }
 
-func cleanupSignal(state signalCleanupState) {
+func zigoCleanupSignal(state zigoSignalCleanupState) {
 	if state.ptr != nil {
 		raw.SignalDeinit(state.ptr)
 	}
@@ -100,7 +100,7 @@ func (s *Signal) Close() error {
 	state, release := s.zigoTakeLocked()
 	s.mu.Unlock()
 	if release {
-		cleanupSignal(state)
+		zigoCleanupSignal(state)
 	}
 	runtime.KeepAlive(s)
 	return nil
@@ -109,11 +109,11 @@ func (s *Signal) Close() error {
 // zigoTakeLocked hands out what is left to release once s is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
-func (s *Signal) zigoTakeLocked() (signalCleanupState, bool) {
+func (s *Signal) zigoTakeLocked() (zigoSignalCleanupState, bool) {
 	if !s.closed || s.active != 0 || s.ptr == nil {
-		return signalCleanupState{}, false
+		return zigoSignalCleanupState{}, false
 	}
-	state := signalCleanupState{ptr: s.ptr}
+	state := zigoSignalCleanupState{ptr: s.ptr}
 	s.ptr = nil
 	if s.poison != nil {
 		state.ptr = nil

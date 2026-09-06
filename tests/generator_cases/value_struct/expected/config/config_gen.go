@@ -30,7 +30,7 @@ func Translate(origin Point, dx int16) Point {
 func Load() (Config, error) {
 	result, code := raw.Load()
 	if code != 0 {
-		return Config{}, errorForCode("Load", code)
+		return Config{}, zigoErrorForCode("Load", code)
 	}
 	return zigoConfigFromRaw(result), nil
 }
@@ -53,7 +53,7 @@ func FillPoints(output []Point) (uint, error) {
 	}
 	result, code := raw.FillPoints(outputRaw)
 	if code != 0 {
-		return 0, errorForCode("FillPoints", code)
+		return 0, zigoErrorForCode("FillPoints", code)
 	}
 	return result, nil
 }
@@ -96,7 +96,7 @@ func Points() []Point {
 func PointsChecked() ([]Point, error) {
 	result, code := raw.PointsChecked()
 	if code != 0 {
-		return nil, errorForCode("PointsChecked", code)
+		return nil, zigoErrorForCode("PointsChecked", code)
 	}
 	return zigoPointSliceView(result), nil
 }

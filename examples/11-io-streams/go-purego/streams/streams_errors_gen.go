@@ -178,7 +178,7 @@ var ErrReadFailed = &Error{Code: 3, Name: "ReadFailed"}
 // ErrTooLarge represents Zig error.TooLarge.
 var ErrTooLarge = &Error{Code: 4, Name: "TooLarge"}
 
-func errorForCode(operation string, code int32) error {
+func zigoErrorForCode(operation string, code int32) error {
 	if code <= -256 {
 		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(code)}
 	}

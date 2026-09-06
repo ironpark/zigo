@@ -47,7 +47,7 @@ func (p *Parent) zigoRelease() {
 	state, release := p.zigoTakeLocked()
 	p.mu.Unlock()
 	if release {
-		cleanupParent(state)
+		zigoCleanupParent(state)
 	}
 }
 
@@ -65,18 +65,18 @@ func (p *Parent) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-type parentCleanupState struct {
+type zigoParentCleanupState struct {
 	ptr unsafe.Pointer
 }
 
-func newParent(ptr unsafe.Pointer) *Parent {
+func zigoNewParent(ptr unsafe.Pointer) *Parent {
 	value := &Parent{ptr: ptr}
-	state := parentCleanupState{ptr: ptr}
-	value.cleanup = runtime.AddCleanup(value, cleanupParent, state)
+	state := zigoParentCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, zigoCleanupParent, state)
 	return value
 }
 
-func cleanupParent(state parentCleanupState) {
+func zigoCleanupParent(state zigoParentCleanupState) {
 	if state.ptr != nil {
 		raw.ParentFreeParent(state.ptr)
 	}
@@ -105,7 +105,7 @@ func (p *Parent) Close() error {
 	state, release := p.zigoTakeLocked()
 	p.mu.Unlock()
 	if release {
-		cleanupParent(state)
+		zigoCleanupParent(state)
 	}
 	runtime.KeepAlive(p)
 	return nil
@@ -114,11 +114,11 @@ func (p *Parent) Close() error {
 // zigoTakeLocked hands out what is left to release once p is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
-func (p *Parent) zigoTakeLocked() (parentCleanupState, bool) {
+func (p *Parent) zigoTakeLocked() (zigoParentCleanupState, bool) {
 	if !p.closed || p.active != 0 || p.ptr == nil {
-		return parentCleanupState{}, false
+		return zigoParentCleanupState{}, false
 	}
-	state := parentCleanupState{ptr: p.ptr}
+	state := zigoParentCleanupState{ptr: p.ptr}
 	p.ptr = nil
 	if p.poison != nil {
 		state.ptr = nil
@@ -136,7 +136,7 @@ type View struct {
 	owner  zigoHandle
 }
 
-func newBorrowedView(ptr unsafe.Pointer, owner zigoHandle) *View {
+func zigoNewBorrowedView(ptr unsafe.Pointer, owner zigoHandle) *View {
 	return &View{ptr: ptr, owner: owner}
 }
 

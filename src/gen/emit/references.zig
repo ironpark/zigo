@@ -1,5 +1,5 @@
 //! Which generated helpers the public package references, read off its own
-//! rendered text. A helper such as `zigoPointToRaw` or `boolToUint8` is
+//! rendered text. A helper such as `zigoPointToRaw` or `zigoBoolToUint8` is
 //! emitted only when some rendered body names it, the way the import block
 //! is derived from the body rather than from a parallel set of predicates.
 const std = @import("std");

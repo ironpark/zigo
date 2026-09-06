@@ -61,7 +61,7 @@ func TestCloseDoesNotBlockOtherCalls(t *testing.T) {
 	if err := <-first; err != nil {
 		t.Fatalf("the call inside native during Close failed: %v", err)
 	}
-	if got := activeCallbackHandleCount(); got != 0 {
+	if got := zigoActiveCallbackHandleCount(); got != 0 {
 		t.Fatalf("active callback handles = %d, want 0", got)
 	}
 }

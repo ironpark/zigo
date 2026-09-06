@@ -16,16 +16,16 @@ import (
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func NewTelemetryHub(inputName string, maxSamples uint, initialMode Mode, overflowPolicy OverflowPolicy, observer TelemetryHubObserver) (*TelemetryHub, error) {
-	observerHandle := newTelemetryHubObserverHandle(observer)
+	observerHandle := zigoNewTelemetryHubObserverHandle(observer)
 	result, code := raw.TelemetryHubCreate(inputName, maxSamples, uint32(initialMode), uint32(overflowPolicy), uintptr(observerHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("NewTelemetryHub", observerHandle)
 	}
 	if code != 0 {
-		deleteCallbackHandle(observerHandle)
-		return nil, errorForCode("NewTelemetryHub", code)
+		zigoDeleteCallbackHandle(observerHandle)
+		return nil, zigoErrorForCode("NewTelemetryHub", code)
 	}
-	return newTelemetryHub(result, []zigoCallbackHandle{observerHandle}), nil
+	return zigoNewTelemetryHub(result, []zigoCallbackHandle{observerHandle}), nil
 }
 
 // Rename calls the Zig function TelemetryHub.rename.
@@ -45,7 +45,7 @@ func (t *TelemetryHub) Rename(newName string) error {
 		}
 	}
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.Rename", code), t)
+		return zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.Rename", code), t)
 	}
 	return nil
 }
@@ -67,7 +67,7 @@ func (t *TelemetryHub) Name() (string, error) {
 		}
 	}
 	if code != 0 {
-		return "", zigoPoisonAfterPanic(errorForCode("TelemetryHub.Name", code), t)
+		return "", zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.Name", code), t)
 	}
 	return result, nil
 }
@@ -108,7 +108,7 @@ func (t *TelemetryHub) Reduce(ctx context.Context, rounds uint32) (float64, erro
 		}
 	}
 	if code != 0 {
-		zigoErr := zigoPoisonAfterPanic(errorForCode("TelemetryHub.Reduce", code), t)
+		zigoErr := zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.Reduce", code), t)
 		if errors.Is(zigoErr, ErrCancelled) && ctx.Err() != nil {
 			return 0, ctx.Err()
 		}
@@ -134,7 +134,7 @@ func (t *TelemetryHub) Capacity() (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Capacity", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.Capacity", code), t)
 	}
 	return result, nil
 }
@@ -156,7 +156,7 @@ func (t *TelemetryHub) Len() (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Len", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.Len", code), t)
 	}
 	return result, nil
 }
@@ -178,7 +178,7 @@ func (t *TelemetryHub) IsEmpty() (bool, error) {
 		}
 	}
 	if code != 0 {
-		return false, zigoPoisonAfterPanic(errorForCode("TelemetryHub.IsEmpty", code), t)
+		return false, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.IsEmpty", code), t)
 	}
 	return result != 0, nil
 }
@@ -200,7 +200,7 @@ func (t *TelemetryHub) IsFull() (bool, error) {
 		}
 	}
 	if code != 0 {
-		return false, zigoPoisonAfterPanic(errorForCode("TelemetryHub.IsFull", code), t)
+		return false, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.IsFull", code), t)
 	}
 	return result != 0, nil
 }
@@ -222,7 +222,7 @@ func (t *TelemetryHub) Mode() (Mode, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Mode", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.Mode", code), t)
 	}
 	return Mode(result), nil
 }
@@ -244,7 +244,7 @@ func (t *TelemetryHub) SetMode(newMode Mode) (Mode, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.SetMode", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.SetMode", code), t)
 	}
 	return Mode(result), nil
 }
@@ -266,7 +266,7 @@ func (t *TelemetryHub) OverflowPolicy() (OverflowPolicy, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.OverflowPolicy", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.OverflowPolicy", code), t)
 	}
 	return OverflowPolicy(result), nil
 }
@@ -288,7 +288,7 @@ func (t *TelemetryHub) SetOverflowPolicy(newPolicy OverflowPolicy) (OverflowPoli
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.SetOverflowPolicy", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.SetOverflowPolicy", code), t)
 	}
 	return OverflowPolicy(result), nil
 }
@@ -310,7 +310,7 @@ func (t *TelemetryHub) Enabled() (bool, error) {
 		}
 	}
 	if code != 0 {
-		return false, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Enabled", code), t)
+		return false, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.Enabled", code), t)
 	}
 	return result != 0, nil
 }
@@ -325,14 +325,14 @@ func (t *TelemetryHub) SetEnabled(newEnabled bool) (bool, error) {
 		return false, err
 	}
 	defer t.zigoRelease()
-	result, code := raw.TelemetryHubSetEnabled(ptr, boolToUint8(newEnabled))
+	result, code := raw.TelemetryHubSetEnabled(ptr, zigoBoolToUint8(newEnabled))
 	if zigoCallbackPanicPending() {
 		for slot := range 1 {
 			zigoRethrowCallbackPanic("TelemetryHub.SetEnabled", t.zigoCallbackHandle(slot))
 		}
 	}
 	if code != 0 {
-		return false, zigoPoisonAfterPanic(errorForCode("TelemetryHub.SetEnabled", code), t)
+		return false, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.SetEnabled", code), t)
 	}
 	return result != 0, nil
 }
@@ -354,7 +354,7 @@ func (t *TelemetryHub) Threshold() (float64, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Threshold", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.Threshold", code), t)
 	}
 	return result, nil
 }
@@ -376,7 +376,7 @@ func (t *TelemetryHub) SetThreshold(newThreshold float64) error {
 		}
 	}
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.SetThreshold", code), t)
+		return zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.SetThreshold", code), t)
 	}
 	return nil
 }
@@ -398,7 +398,7 @@ func (t *TelemetryHub) ScaleFactor() (float64, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.ScaleFactor", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.ScaleFactor", code), t)
 	}
 	return result, nil
 }
@@ -420,7 +420,7 @@ func (t *TelemetryHub) SetScaleFactor(newFactor float64) error {
 		}
 	}
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.SetScaleFactor", code), t)
+		return zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.SetScaleFactor", code), t)
 	}
 	return nil
 }
@@ -442,7 +442,7 @@ func (t *TelemetryHub) Offset() (float64, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Offset", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.Offset", code), t)
 	}
 	return result, nil
 }
@@ -464,7 +464,7 @@ func (t *TelemetryHub) SetOffset(newOffset float64) error {
 		}
 	}
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.SetOffset", code), t)
+		return zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.SetOffset", code), t)
 	}
 	return nil
 }
@@ -486,7 +486,7 @@ func (t *TelemetryHub) Push(id uint64, value float64) error {
 		}
 	}
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.Push", code), t)
+		return zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.Push", code), t)
 	}
 	return nil
 }
@@ -508,7 +508,7 @@ func (t *TelemetryHub) PushWithSeverity(id uint64, value float64, severity Sever
 		}
 	}
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.PushWithSeverity", code), t)
+		return zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.PushWithSeverity", code), t)
 	}
 	return nil
 }
@@ -530,7 +530,7 @@ func (t *TelemetryHub) PushBatch(values []float64) error {
 		}
 	}
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.PushBatch", code), t)
+		return zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.PushBatch", code), t)
 	}
 	return nil
 }
@@ -552,7 +552,7 @@ func (t *TelemetryHub) Process(limit uint) (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Process", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.Process", code), t)
 	}
 	return result, nil
 }
@@ -574,7 +574,7 @@ func (t *TelemetryHub) ProcessAll() (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.ProcessAll", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.ProcessAll", code), t)
 	}
 	return result, nil
 }
@@ -596,7 +596,7 @@ func (t *TelemetryHub) Clear() (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Clear", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.Clear", code), t)
 	}
 	return result, nil
 }
@@ -618,7 +618,7 @@ func (t *TelemetryHub) ResetStatistics() error {
 		}
 	}
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.ResetStatistics", code), t)
+		return zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.ResetStatistics", code), t)
 	}
 	return nil
 }
@@ -640,7 +640,7 @@ func (t *TelemetryHub) Accepted() (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Accepted", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.Accepted", code), t)
 	}
 	return result, nil
 }
@@ -662,7 +662,7 @@ func (t *TelemetryHub) Rejected() (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Rejected", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.Rejected", code), t)
 	}
 	return result, nil
 }
@@ -684,7 +684,7 @@ func (t *TelemetryHub) Dropped() (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Dropped", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.Dropped", code), t)
 	}
 	return result, nil
 }
@@ -706,7 +706,7 @@ func (t *TelemetryHub) Processed() (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Processed", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.Processed", code), t)
 	}
 	return result, nil
 }
@@ -728,7 +728,7 @@ func (t *TelemetryHub) Filtered() (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Filtered", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.Filtered", code), t)
 	}
 	return result, nil
 }
@@ -750,7 +750,7 @@ func (t *TelemetryHub) Sum() (float64, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Sum", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.Sum", code), t)
 	}
 	return result, nil
 }
@@ -772,7 +772,7 @@ func (t *TelemetryHub) Minimum() (float64, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Minimum", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.Minimum", code), t)
 	}
 	return result, nil
 }
@@ -794,7 +794,7 @@ func (t *TelemetryHub) Maximum() (float64, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Maximum", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.Maximum", code), t)
 	}
 	return result, nil
 }
@@ -816,7 +816,7 @@ func (t *TelemetryHub) Average() (float64, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.Average", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.Average", code), t)
 	}
 	return result, nil
 }
@@ -838,7 +838,7 @@ func (t *TelemetryHub) FirstID() (uint64, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.FirstID", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.FirstID", code), t)
 	}
 	return result, nil
 }
@@ -860,7 +860,7 @@ func (t *TelemetryHub) FirstValue() (float64, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.FirstValue", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.FirstValue", code), t)
 	}
 	return result, nil
 }
@@ -882,7 +882,7 @@ func (t *TelemetryHub) LastID() (uint64, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.LastID", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.LastID", code), t)
 	}
 	return result, nil
 }
@@ -904,7 +904,7 @@ func (t *TelemetryHub) LastValue() (float64, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.LastValue", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.LastValue", code), t)
 	}
 	return result, nil
 }
@@ -926,7 +926,7 @@ func (t *TelemetryHub) LastSeverity() (Severity, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.LastSeverity", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.LastSeverity", code), t)
 	}
 	return Severity(result), nil
 }
@@ -948,7 +948,7 @@ func (t *TelemetryHub) CountAbove(boundary float64) (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.CountAbove", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.CountAbove", code), t)
 	}
 	return result, nil
 }
@@ -970,7 +970,7 @@ func (t *TelemetryHub) CountBelow(boundary float64) (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("TelemetryHub.CountBelow", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.CountBelow", code), t)
 	}
 	return result, nil
 }
@@ -992,7 +992,7 @@ func (t *TelemetryHub) ContainsAbove(boundary float64) (bool, error) {
 		}
 	}
 	if code != 0 {
-		return false, zigoPoisonAfterPanic(errorForCode("TelemetryHub.ContainsAbove", code), t)
+		return false, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.ContainsAbove", code), t)
 	}
 	return result != 0, nil
 }
@@ -1014,7 +1014,7 @@ func (t *TelemetryHub) ContainsBelow(boundary float64) (bool, error) {
 		}
 	}
 	if code != 0 {
-		return false, zigoPoisonAfterPanic(errorForCode("TelemetryHub.ContainsBelow", code), t)
+		return false, zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.ContainsBelow", code), t)
 	}
 	return result != 0, nil
 }
@@ -1036,7 +1036,7 @@ func (t *TelemetryHub) ScaleValues(factor float64) error {
 		}
 	}
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.ScaleValues", code), t)
+		return zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.ScaleValues", code), t)
 	}
 	return nil
 }
@@ -1058,7 +1058,7 @@ func (t *TelemetryHub) OffsetValues(delta float64) error {
 		}
 	}
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.OffsetValues", code), t)
+		return zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.OffsetValues", code), t)
 	}
 	return nil
 }
@@ -1080,7 +1080,7 @@ func (t *TelemetryHub) ClampValues(lower float64, upper float64) error {
 		}
 	}
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.ClampValues", code), t)
+		return zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.ClampValues", code), t)
 	}
 	return nil
 }
@@ -1102,7 +1102,7 @@ func (t *TelemetryHub) AbsoluteValues() error {
 		}
 	}
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.AbsoluteValues", code), t)
+		return zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.AbsoluteValues", code), t)
 	}
 	return nil
 }
@@ -1124,7 +1124,7 @@ func (t *TelemetryHub) NegateValues() error {
 		}
 	}
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("TelemetryHub.NegateValues", code), t)
+		return zigoPoisonAfterPanic(zigoErrorForCode("TelemetryHub.NegateValues", code), t)
 	}
 	return nil
 }

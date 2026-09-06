@@ -49,8 +49,8 @@ func TestPuregoTelemetryPipelineAndPanic(t *testing.T) {
 	}
 	expectCallbackPanic(t, "TelemetryHub.ProcessAll", "observer", func() { _, _ = panicking.ProcessAll() })
 	panicking.Close()
-	if activeCallbackHandleCount() != 0 {
-		t.Fatalf("callback leak = %d", activeCallbackHandleCount())
+	if zigoActiveCallbackHandleCount() != 0 {
+		t.Fatalf("callback leak = %d", zigoActiveCallbackHandleCount())
 	}
 }
 
@@ -87,11 +87,11 @@ func TestPuregoConcurrentIndependentLifecycles(t *testing.T) {
 	for err := range errs {
 		t.Error(err)
 	}
-	if activeCallbackHandleCount() != 0 || LiveHubs() != 0 {
-		t.Fatalf("lifecycle leak: callbacks=%d hubs=%d", activeCallbackHandleCount(), LiveHubs())
+	if zigoActiveCallbackHandleCount() != 0 || LiveHubs() != 0 {
+		t.Fatalf("lifecycle leak: callbacks=%d hubs=%d", zigoActiveCallbackHandleCount(), LiveHubs())
 	}
-	if callbackDispatcherCount() != 1 {
-		t.Fatalf("dispatchers = %d", callbackDispatcherCount())
+	if zigoCallbackDispatcherCount() != 1 {
+		t.Fatalf("dispatchers = %d", zigoCallbackDispatcherCount())
 	}
 }
 

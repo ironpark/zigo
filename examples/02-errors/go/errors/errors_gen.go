@@ -10,7 +10,7 @@ import raw "example.com/zigo/errors/support/ffi"
 func Divide(numerator float64, denominator float64) (float64, error) {
 	result, code := raw.Divide(numerator, denominator)
 	if code != 0 {
-		return 0, errorForCode("Divide", code)
+		return 0, zigoErrorForCode("Divide", code)
 	}
 	return result, nil
 }
@@ -36,7 +36,7 @@ func CodepointWidth(cp uint32) (uint32, error) {
 	}
 	result, code := raw.CodepointWidth(cp)
 	if code != 0 {
-		return 0, errorForCode("CodepointWidth", code)
+		return 0, zigoErrorForCode("CodepointWidth", code)
 	}
 	return result, nil
 }

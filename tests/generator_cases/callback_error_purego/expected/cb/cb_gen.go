@@ -27,20 +27,20 @@ var DefaultLibraryName = raw.DefaultLibraryName
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 // An error a Go callback returned is returned as *CallbackError once the native call returns.
 func NewHub(observer HubCreateObserver) (*Hub, error) {
-	observerHandle := newHubCreateObserverHandle(observer)
+	observerHandle := zigoNewHubCreateObserverHandle(observer)
 	result, code := raw.HubCreate(raw.CallbackPointer0(), uintptr(observerHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("NewHub", observerHandle)
 	}
 	if err := zigoCallbackError("NewHub", "observer", observerHandle); err != nil {
-		deleteCallbackHandle(observerHandle)
+		zigoDeleteCallbackHandle(observerHandle)
 		return nil, err
 	}
 	if code != 0 {
-		deleteCallbackHandle(observerHandle)
-		return nil, errorForCode("NewHub", code)
+		zigoDeleteCallbackHandle(observerHandle)
+		return nil, zigoErrorForCode("NewHub", code)
 	}
-	return newHub(result, []zigoCallbackHandle{observerHandle, 0}), nil
+	return zigoNewHub(result, []zigoCallbackHandle{observerHandle, 0}), nil
 }
 
 // Run calls the Zig function Hub.run.
@@ -66,7 +66,7 @@ func (h *Hub) Run(value int32) (int32, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Hub.Run", code), h)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Hub.Run", code), h)
 	}
 	return result, nil
 }
@@ -82,9 +82,9 @@ func (h *Hub) SetObserver(observer HubSetObserverObserver) error {
 		return err
 	}
 	defer h.zigoRelease()
-	observerHandle := newHubSetObserverObserverHandle(observer)
+	observerHandle := zigoNewHubSetObserverObserverHandle(observer)
 	observerHandleAdopted := false
-	defer func() { if !observerHandleAdopted { deleteCallbackHandle(observerHandle) } }()
+	defer func() { if !observerHandleAdopted { zigoDeleteCallbackHandle(observerHandle) } }()
 	code := raw.HubSetObserver(ptr, raw.CallbackPointer0(), uintptr(observerHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("Hub.SetObserver", observerHandle)
@@ -101,11 +101,11 @@ func (h *Hub) SetObserver(observer HubSetObserverObserver) error {
 		}
 	}
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Hub.SetObserver", code), h)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Hub.SetObserver", code), h)
 	}
 	observerPreviousHandle := h.zigoReplaceCallbackHandle(1, observerHandle)
 	observerHandleAdopted = true
-	deleteCallbackHandle(observerPreviousHandle)
+	zigoDeleteCallbackHandle(observerPreviousHandle)
 	return nil
 }
 
@@ -113,8 +113,8 @@ func (h *Hub) SetObserver(observer HubSetObserverObserver) error {
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 // An error a Go callback returned is returned as *CallbackError once the native call returns.
 func Apply(value int32, observer ApplyObserverCallback) (int32, error) {
-	observerHandle := newApplyObserverCallbackHandle(observer)
-	defer deleteCallbackHandle(observerHandle)
+	observerHandle := zigoNewApplyObserverCallbackHandle(observer)
+	defer zigoDeleteCallbackHandle(observerHandle)
 	result := raw.Apply(value, raw.CallbackPointer0(), uintptr(observerHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("Apply", observerHandle)
@@ -128,8 +128,8 @@ func Apply(value int32, observer ApplyObserverCallback) (int32, error) {
 // Notify calls the Zig function notify.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func Notify(value int32, observer NotifyObserverCallback) {
-	observerHandle := newNotifyObserverCallbackHandle(observer)
-	defer deleteCallbackHandle(observerHandle)
+	observerHandle := zigoNewNotifyObserverCallbackHandle(observer)
+	defer zigoDeleteCallbackHandle(observerHandle)
 	raw.Notify(value, raw.CallbackPointer1(), uintptr(observerHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("Notify", observerHandle)

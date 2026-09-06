@@ -70,7 +70,7 @@ pub fn renderHandleChecks(
     }
 }
 
-/// The `errorForCode` call a failed native call returns. When the call reached
+/// The `zigoErrorForCode` call a failed native call returns. When the call reached
 /// handles it goes through zigoPoisonAfterPanic, so a `-2` leaves them all
 /// unusable; a call with no handles has nothing to poison.
 pub fn writeErrorForCode(
@@ -81,8 +81,8 @@ pub fn writeErrorForCode(
     go_names: []const []const u8,
     operation: []const u8,
 ) !void {
-    if (function.receiver == null and !lower.hasOpaqueParameter(function)) return writer.print("errorForCode(\"{s}\", code)\n", .{operation});
-    try writer.print("zigoPoisonAfterPanic(errorForCode(\"{s}\", code)", .{operation});
+    if (function.receiver == null and !lower.hasOpaqueParameter(function)) return writer.print("zigoErrorForCode(\"{s}\", code)\n", .{operation});
+    try writer.print("zigoPoisonAfterPanic(zigoErrorForCode(\"{s}\", code)", .{operation});
     if (function.receiver) |receiver| {
         const receiver_name = try common.typeReceiverNameAlloc(allocator, program, receiver);
         defer allocator.free(receiver_name);
@@ -301,7 +301,7 @@ pub fn writeBorrowedResult(
     const parent = if (function.receiver) |receiver| try common.typeReceiverNameAlloc(allocator, program, receiver) else null;
     defer if (parent) |value| allocator.free(value);
     if (function.returnsBorrowedHandle())
-        try writer.print("newBorrowed{s}({s}, {s})", .{ node.opaque_ptr.ref, expression, parent orelse "nil" })
+        try writer.print("zigoNewBorrowed{s}({s}, {s})", .{ node.opaque_ptr.ref, expression, parent orelse "nil" })
     else
         try writer.print("&{s}Ref{{ptr: {s}, parent: {s}}}", .{ node.opaque_ptr.ref, expression, parent orelse "nil" });
 }
@@ -709,7 +709,7 @@ fn writePublicTaggedUnionPayloadRawArguments(
     }
     try writer.writeAll(", ");
     switch (node) {
-        .bool => try writer.print("boolToUint8({s})", .{expression}),
+        .bool => try writer.print("zigoBoolToUint8({s})", .{expression}),
         .@"enum" => {
             try writer.writeAll(type_spelling.rawGoTypeName(program, node));
             try writer.print("({s})", .{expression});

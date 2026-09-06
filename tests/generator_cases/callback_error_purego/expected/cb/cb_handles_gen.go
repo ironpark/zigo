@@ -64,7 +64,7 @@ func (h *Hub) zigoRelease() {
 	state, release := h.zigoTakeLocked()
 	h.mu.Unlock()
 	if release {
-		cleanupHub(state)
+		zigoCleanupHub(state)
 	}
 }
 
@@ -82,24 +82,24 @@ func (h *Hub) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-type hubCleanupState struct {
+type zigoHubCleanupState struct {
 	ptr             unsafe.Pointer
 	callbackHandles []zigoCallbackHandle
 }
 
-func newHub(ptr unsafe.Pointer, callbackHandles []zigoCallbackHandle) *Hub {
+func zigoNewHub(ptr unsafe.Pointer, callbackHandles []zigoCallbackHandle) *Hub {
 	value := &Hub{ptr: ptr, callbackHandles: callbackHandles}
-	state := hubCleanupState{ptr: ptr, callbackHandles: callbackHandles}
-	value.cleanup = runtime.AddCleanup(value, cleanupHub, state)
+	state := zigoHubCleanupState{ptr: ptr, callbackHandles: callbackHandles}
+	value.cleanup = runtime.AddCleanup(value, zigoCleanupHub, state)
 	return value
 }
 
-func cleanupHub(state hubCleanupState) {
+func zigoCleanupHub(state zigoHubCleanupState) {
 	if state.ptr != nil {
 		raw.HubDeinit(state.ptr)
 	}
 	for _, handle := range state.callbackHandles {
-		deleteCallbackHandle(handle)
+		zigoDeleteCallbackHandle(handle)
 	}
 }
 
@@ -121,7 +121,7 @@ func (h *Hub) Close() error {
 	state, release := h.zigoTakeLocked()
 	h.mu.Unlock()
 	if release {
-		cleanupHub(state)
+		zigoCleanupHub(state)
 	}
 	runtime.KeepAlive(h)
 	return nil
@@ -130,11 +130,11 @@ func (h *Hub) Close() error {
 // zigoTakeLocked hands out what is left to release once h is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
-func (h *Hub) zigoTakeLocked() (hubCleanupState, bool) {
+func (h *Hub) zigoTakeLocked() (zigoHubCleanupState, bool) {
 	if !h.closed || h.active != 0 || h.ptr == nil {
-		return hubCleanupState{}, false
+		return zigoHubCleanupState{}, false
 	}
-	state := hubCleanupState{ptr: h.ptr, callbackHandles: h.callbackHandles}
+	state := zigoHubCleanupState{ptr: h.ptr, callbackHandles: h.callbackHandles}
 	h.ptr = nil
 	h.callbackHandles = nil
 	if h.poison != nil {

@@ -47,7 +47,7 @@ func (t *Ticker) zigoRelease() {
 	state, release := t.zigoTakeLocked()
 	t.mu.Unlock()
 	if release {
-		cleanupTicker(state)
+		zigoCleanupTicker(state)
 	}
 }
 
@@ -76,18 +76,18 @@ func (t *Ticker) ZigoRelease() { t.zigoRelease() }
 // ZigoPoison implements the shared lifecycle handle contract.
 func (t *Ticker) ZigoPoison(cause *NativePanicError) { t.zigoPoison(cause) }
 
-type tickerCleanupState struct {
+type zigoTickerCleanupState struct {
 	ptr unsafe.Pointer
 }
 
-func newTicker(ptr unsafe.Pointer) *Ticker {
+func zigoNewTicker(ptr unsafe.Pointer) *Ticker {
 	value := &Ticker{ptr: ptr}
-	state := tickerCleanupState{ptr: ptr}
-	value.cleanup = runtime.AddCleanup(value, cleanupTicker, state)
+	state := zigoTickerCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, zigoCleanupTicker, state)
 	return value
 }
 
-func cleanupTicker(state tickerCleanupState) {
+func zigoCleanupTicker(state zigoTickerCleanupState) {
 	if state.ptr != nil {
 		raw.TickerFreeTicker(state.ptr)
 	}
@@ -111,7 +111,7 @@ func (t *Ticker) Close() error {
 	state, release := t.zigoTakeLocked()
 	t.mu.Unlock()
 	if release {
-		cleanupTicker(state)
+		zigoCleanupTicker(state)
 	}
 	runtime.KeepAlive(t)
 	return nil
@@ -120,11 +120,11 @@ func (t *Ticker) Close() error {
 // zigoTakeLocked hands out what is left to release once t is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
-func (t *Ticker) zigoTakeLocked() (tickerCleanupState, bool) {
+func (t *Ticker) zigoTakeLocked() (zigoTickerCleanupState, bool) {
 	if !t.closed || t.active != 0 || t.ptr == nil {
-		return tickerCleanupState{}, false
+		return zigoTickerCleanupState{}, false
 	}
-	state := tickerCleanupState{ptr: t.ptr}
+	state := zigoTickerCleanupState{ptr: t.ptr}
 	t.ptr = nil
 	if t.poison != nil {
 		state.ptr = nil

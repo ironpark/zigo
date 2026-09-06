@@ -25,9 +25,9 @@ var DefaultLibraryName = raw.DefaultLibraryName
 func NewParent() (*Parent, error) {
 	result, code := raw.NewParent()
 	if code != 0 {
-		return nil, errorForCode("NewParent", code)
+		return nil, zigoErrorForCode("NewParent", code)
 	}
-	return newParent(result), nil
+	return zigoNewParent(result), nil
 }
 
 // View calls the Zig function Parent.view.
@@ -42,9 +42,9 @@ func (p *Parent) View() (*View, error) {
 	defer p.zigoRelease()
 	result, code := raw.ParentView(ptr)
 	if code != 0 {
-		return nil, zigoPoisonAfterPanic(errorForCode("Parent.View", code), p)
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("Parent.View", code), p)
 	}
-	return newBorrowedView(result, p), nil
+	return zigoNewBorrowedView(result, p), nil
 }
 
 // MaybeView calls the Zig function Parent.maybeView.
@@ -59,12 +59,12 @@ func (p *Parent) MaybeView() (*View, bool, error) {
 	defer p.zigoRelease()
 	result, code := raw.ParentMaybeView(ptr)
 	if code != 0 {
-		return nil, false, zigoPoisonAfterPanic(errorForCode("Parent.MaybeView", code), p)
+		return nil, false, zigoPoisonAfterPanic(zigoErrorForCode("Parent.MaybeView", code), p)
 	}
 	if result == nil {
 		return nil, false, nil
 	}
-	return newBorrowedView(result, p), true, nil
+	return zigoNewBorrowedView(result, p), true, nil
 }
 
 // CheckedView calls the Zig function Parent.checkedView.
@@ -79,12 +79,12 @@ func (p *Parent) CheckedView() (*View, bool, error) {
 	defer p.zigoRelease()
 	result, code := raw.ParentCheckedView(ptr)
 	if code != 0 {
-		return nil, false, zigoPoisonAfterPanic(errorForCode("Parent.CheckedView", code), p)
+		return nil, false, zigoPoisonAfterPanic(zigoErrorForCode("Parent.CheckedView", code), p)
 	}
 	if result == nil {
 		return nil, false, nil
 	}
-	return newBorrowedView(result, p), true, nil
+	return zigoNewBorrowedView(result, p), true, nil
 }
 
 // Touch calls the Zig function View.touch.
@@ -98,7 +98,7 @@ func (v *View) Touch() (int32, error) {
 	defer v.zigoRelease()
 	result, code := raw.ViewTouch(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("View.Touch", code), v)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("View.Touch", code), v)
 	}
 	return result, nil
 }

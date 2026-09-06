@@ -382,7 +382,7 @@ pub fn hasRetainedCallback(function: semantic.SemanticFn) bool {
 /// The package-level callback counters diagnose ownership that can outlive a
 /// call: retained callbacks and stream adapters. A transient callback cannot
 /// leak beyond its wrapper, so emitting the accessors for it is dead code.
-/// The callback diagnostics (`activeCallbackHandleCount` and friends) are an
+/// The callback diagnostics (`zigoActiveCallbackHandleCount` and friends) are an
 /// API the package offers to its own tests, not a helper generated code
 /// calls, so they are decided here rather than read off the rendered text.
 pub fn programUsesCallbackDiagnostics(program: abi.Program) bool {

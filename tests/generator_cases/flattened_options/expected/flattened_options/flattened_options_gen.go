@@ -8,5 +8,5 @@ import "example.com/zigo/flattened-options/internal/raw"
 
 // Configure calls the Zig function configure.
 func Configure(enabled bool, optionsRows uint16, scale float32, mode Mode, limit *uint32, rows uint32) {
-	raw.Configure(boolToUint8(enabled), optionsRows, scale, uint8(mode), limit, rows)
+	raw.Configure(zigoBoolToUint8(enabled), optionsRows, scale, uint8(mode), limit, rows)
 }

@@ -40,7 +40,7 @@ func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error {
 // TelemetryHubObserver is the Go callback signature accepted by the generated binding.
 type TelemetryHubObserver func(uint64, float64) int32
 
-func boolToUint8(value bool) uint8 {
+func zigoBoolToUint8(value bool) uint8 {
 	if value {
 		return 1
 	}
@@ -49,14 +49,14 @@ func boolToUint8(value bool) uint8 {
 
 type zigoCallbackHandle = uintptr
 
-func newTelemetryHubObserverHandle(value TelemetryHubObserver) zigoCallbackHandle {
+func zigoNewTelemetryHubObserverHandle(value TelemetryHubObserver) zigoCallbackHandle {
 	return raw.NewCallbackHandle((func(uint64, float64) int32)(value))
 }
 
-func deleteCallbackHandle(handle zigoCallbackHandle) { raw.DeleteCallbackHandle(handle) }
+func zigoDeleteCallbackHandle(handle zigoCallbackHandle) { raw.DeleteCallbackHandle(handle) }
 
-func activeCallbackHandleCount() int64 { return raw.ActiveCallbackHandleCount() }
-func callbackDispatcherCount() int     { return raw.CallbackDispatcherCount() }
+func zigoActiveCallbackHandleCount() int64 { return raw.ActiveCallbackHandleCount() }
+func zigoCallbackDispatcherCount() int     { return raw.CallbackDispatcherCount() }
 
 // zigoCallbackPanicPending is the fast-path check ahead of the per-slot sweep:
 // one atomic load says whether any callback recorded a panic nobody has taken.

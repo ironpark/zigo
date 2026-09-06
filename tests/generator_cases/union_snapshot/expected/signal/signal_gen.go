@@ -12,9 +12,9 @@ import "example.com/zigo/signal/internal/raw"
 func NewSignal() (*Signal, error) {
 	result, code := raw.SignalCreate()
 	if code != 0 {
-		return nil, errorForCode("NewSignal", code)
+		return nil, zigoErrorForCode("NewSignal", code)
 	}
-	return newSignal(result), nil
+	return zigoNewSignal(result), nil
 }
 
 // SetTicks calls the Zig function Signal.setTicks.
@@ -28,7 +28,7 @@ func (s *Signal) SetTicks(ticks uint32) error {
 	defer s.zigoRelease()
 	code := raw.SignalSetTicks(ptr, ticks)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Signal.SetTicks", code), s)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Signal.SetTicks", code), s)
 	}
 	return nil
 }
@@ -44,7 +44,7 @@ func (s *Signal) SetMode(mode Mode) error {
 	defer s.zigoRelease()
 	code := raw.SignalSetMode(ptr, uint8(mode))
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Signal.SetMode", code), s)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Signal.SetMode", code), s)
 	}
 	return nil
 }
@@ -58,9 +58,9 @@ func (s *Signal) SetActive(active bool) error {
 		return err
 	}
 	defer s.zigoRelease()
-	code := raw.SignalSetActive(ptr, boolToUint8(active))
+	code := raw.SignalSetActive(ptr, zigoBoolToUint8(active))
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Signal.SetActive", code), s)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Signal.SetActive", code), s)
 	}
 	return nil
 }

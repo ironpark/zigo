@@ -53,26 +53,26 @@ type NotifyObserverCallback func(int32)
 
 type zigoCallbackHandle = uintptr
 
-func newHubCreateObserverHandle(value HubCreateObserver) zigoCallbackHandle {
+func zigoNewHubCreateObserverHandle(value HubCreateObserver) zigoCallbackHandle {
 	return raw.NewCallbackHandle((func(int32) (int32, error))(value))
 }
 
-func newHubSetObserverObserverHandle(value HubSetObserverObserver) zigoCallbackHandle {
+func zigoNewHubSetObserverObserverHandle(value HubSetObserverObserver) zigoCallbackHandle {
 	return raw.NewCallbackHandle((func(int32) (int32, error))(value))
 }
 
-func newApplyObserverCallbackHandle(value ApplyObserverCallback) zigoCallbackHandle {
+func zigoNewApplyObserverCallbackHandle(value ApplyObserverCallback) zigoCallbackHandle {
 	return raw.NewCallbackHandle((func(int32) (int32, error))(value))
 }
 
-func newNotifyObserverCallbackHandle(value NotifyObserverCallback) zigoCallbackHandle {
+func zigoNewNotifyObserverCallbackHandle(value NotifyObserverCallback) zigoCallbackHandle {
 	return raw.NewCallbackHandle((func(int32))(value))
 }
 
-func deleteCallbackHandle(handle zigoCallbackHandle) { raw.DeleteCallbackHandle(handle) }
+func zigoDeleteCallbackHandle(handle zigoCallbackHandle) { raw.DeleteCallbackHandle(handle) }
 
-func activeCallbackHandleCount() int64 { return raw.ActiveCallbackHandleCount() }
-func callbackDispatcherCount() int { return raw.CallbackDispatcherCount() }
+func zigoActiveCallbackHandleCount() int64 { return raw.ActiveCallbackHandleCount() }
+func zigoCallbackDispatcherCount() int { return raw.CallbackDispatcherCount() }
 
 // zigoCallbackPanicPending is the fast-path check ahead of the per-slot sweep:
 // one atomic load says whether any callback recorded a panic nobody has taken.

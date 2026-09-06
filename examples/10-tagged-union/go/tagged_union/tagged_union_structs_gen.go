@@ -45,7 +45,7 @@ type Flags struct {
 
 func zigoFlagsToBacking(value Flags) uint16 {
 	var result uint64
-	result |= (uint64(boolToUint8(value.Enabled)) & 0x1) << 0
+	result |= (uint64(zigoBoolToUint8(value.Enabled)) & 0x1) << 0
 	result |= (uint64(value.Level) & 0x7) << 1
 	result |= (uint64(value.Mode) & 0xff) << 4
 	result |= (uint64(value.Reserved) & 0xf) << 12

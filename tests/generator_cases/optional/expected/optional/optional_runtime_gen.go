@@ -16,7 +16,7 @@ func zigoMustMatch[T any](value T, matched bool, err error) (T, bool) {
 	return value, matched
 }
 
-func boolToUint8(value bool) uint8 {
+func zigoBoolToUint8(value bool) uint8 {
 	if value {
 		return 1
 	}

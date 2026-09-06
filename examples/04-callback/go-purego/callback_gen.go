@@ -50,7 +50,7 @@ func (c *CallbackContext) RunCount() (uint32, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("CallbackContext.RunCount", code), c)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("CallbackContext.RunCount", code), c)
 	}
 	return result, nil
 }
@@ -79,7 +79,7 @@ func (c *CallbackContext) SetRunCount(v uint32) error {
 		}
 	}
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("CallbackContext.SetRunCount", code), c)
+		return zigoPoisonAfterPanic(zigoErrorForCode("CallbackContext.SetRunCount", code), c)
 	}
 	return nil
 }
@@ -90,9 +90,9 @@ func (c *CallbackContext) SetRunCount(v uint32) error {
 func NewFloatBuffer() (*FloatBuffer, error) {
 	result, code := raw.FloatBufferCreate()
 	if code != 0 {
-		return nil, errorForCode("NewFloatBuffer", code)
+		return nil, zigoErrorForCode("NewFloatBuffer", code)
 	}
-	return newFloatBuffer(result), nil
+	return zigoNewFloatBuffer(result), nil
 }
 
 // Push calls the Zig function FloatBuffer.push.
@@ -106,7 +106,7 @@ func (f *FloatBuffer) Push(value float32) error {
 	defer f.zigoRelease()
 	code := raw.FloatBufferPush(ptr, value)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("FloatBuffer.Push", code), f)
+		return zigoPoisonAfterPanic(zigoErrorForCode("FloatBuffer.Push", code), f)
 	}
 	return nil
 }
@@ -122,7 +122,7 @@ func (f *FloatBuffer) Len() (uint, error) {
 	defer f.zigoRelease()
 	result, code := raw.FloatBufferLen(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("FloatBuffer.Len", code), f)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("FloatBuffer.Len", code), f)
 	}
 	return result, nil
 }
@@ -133,9 +133,9 @@ func (f *FloatBuffer) Len() (uint, error) {
 func NewIntBuffer() (*IntBuffer, error) {
 	result, code := raw.IntBufferCreate()
 	if code != 0 {
-		return nil, errorForCode("NewIntBuffer", code)
+		return nil, zigoErrorForCode("NewIntBuffer", code)
 	}
-	return newIntBuffer(result), nil
+	return zigoNewIntBuffer(result), nil
 }
 
 // Push calls the Zig function IntBuffer.push.
@@ -149,7 +149,7 @@ func (i *IntBuffer) Push(value int32) error {
 	defer i.zigoRelease()
 	code := raw.IntBufferPush(ptr, value)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("IntBuffer.Push", code), i)
+		return zigoPoisonAfterPanic(zigoErrorForCode("IntBuffer.Push", code), i)
 	}
 	return nil
 }
@@ -165,7 +165,7 @@ func (i *IntBuffer) Len() (uint, error) {
 	defer i.zigoRelease()
 	result, code := raw.IntBufferLen(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("IntBuffer.Len", code), i)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("IntBuffer.Len", code), i)
 	}
 	return result, nil
 }
@@ -176,20 +176,20 @@ func (i *IntBuffer) Len() (uint, error) {
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 // An error a Go callback returned is returned as *CallbackError once the native call returns.
 func NewCallbackContext(callback Observer) (*CallbackContext, error) {
-	callbackHandle := newObserverHandle(callback)
+	callbackHandle := zigoNewObserverHandle(callback)
 	result, code := raw.CallbackContextCreate(raw.CallbackPointer0(), uintptr(callbackHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("NewCallbackContext", callbackHandle)
 	}
 	if err := zigoCallbackError("NewCallbackContext", "callback", callbackHandle); err != nil {
-		deleteCallbackHandle(callbackHandle)
+		zigoDeleteCallbackHandle(callbackHandle)
 		return nil, err
 	}
 	if code != 0 {
-		deleteCallbackHandle(callbackHandle)
-		return nil, errorForCode("NewCallbackContext", code)
+		zigoDeleteCallbackHandle(callbackHandle)
+		return nil, zigoErrorForCode("NewCallbackContext", code)
 	}
-	return newCallbackContext(result, []zigoCallbackHandle{callbackHandle}), nil
+	return zigoNewCallbackContext(result, []zigoCallbackHandle{callbackHandle}), nil
 }
 
 // Run calls the Zig function CallbackContext.run.
@@ -215,7 +215,7 @@ func (c *CallbackContext) Run(value int32) (int32, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("CallbackContext.Run", code), c)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("CallbackContext.Run", code), c)
 	}
 	return result, nil
 }
@@ -225,7 +225,7 @@ func (c *CallbackContext) Run(value int32) (int32, error) {
 func PanicNow() error {
 	code := raw.PanicNow()
 	if code != 0 {
-		return errorForCode("PanicNow", code)
+		return zigoErrorForCode("PanicNow", code)
 	}
 	return nil
 }
@@ -257,8 +257,8 @@ func ReadShared(value *atomic.Int32) int32 {
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 // An error a Go callback returned is returned as *CallbackError once the native call returns.
 func Apply(value int32, callback Observer) (int32, error) {
-	callbackHandle := newObserverHandle(callback)
-	defer deleteCallbackHandle(callbackHandle)
+	callbackHandle := zigoNewObserverHandle(callback)
+	defer zigoDeleteCallbackHandle(callbackHandle)
 	result := raw.Apply(value, raw.CallbackPointer0(), uintptr(callbackHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("Apply", callbackHandle)
@@ -295,8 +295,8 @@ func ApplyUntilCancelled(ctx context.Context, limit uint32, callback Observer) (
 			}
 		}()
 	}
-	callbackHandle := newObserverHandle(callback)
-	defer deleteCallbackHandle(callbackHandle)
+	callbackHandle := zigoNewObserverHandle(callback)
+	defer zigoDeleteCallbackHandle(callbackHandle)
 	setCallbackCancel(callbackHandle, &zigoCancel)
 	defer setCallbackCancel(callbackHandle, nil)
 	result, code := raw.ApplyUntilCancelled(limit, raw.CallbackPointer0(), uintptr(callbackHandle), &zigoCancel)
@@ -307,7 +307,7 @@ func ApplyUntilCancelled(ctx context.Context, limit uint32, callback Observer) (
 		return 0, err
 	}
 	if code != 0 {
-		zigoErr := errorForCode("ApplyUntilCancelled", code)
+		zigoErr := zigoErrorForCode("ApplyUntilCancelled", code)
 		if errors.Is(zigoErr, ErrCanceled) && ctx.Err() != nil {
 			return 0, ctx.Err()
 		}
@@ -319,8 +319,8 @@ func ApplyUntilCancelled(ctx context.Context, limit uint32, callback Observer) (
 // Notify calls the Zig function notify.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func Notify(value int32, callback VoidObserver) {
-	callbackHandle := newVoidObserverHandle(callback)
-	defer deleteCallbackHandle(callbackHandle)
+	callbackHandle := zigoNewVoidObserverHandle(callback)
+	defer zigoDeleteCallbackHandle(callbackHandle)
 	raw.Notify(value, raw.CallbackPointer1(), uintptr(callbackHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("Notify", callbackHandle)

@@ -143,7 +143,7 @@ var ErrWriteFailed = &Error{Code: 1, Name: "WriteFailed"}
 // ErrReadFailed represents Zig error.ReadFailed.
 var ErrReadFailed = &Error{Code: 2, Name: "ReadFailed"}
 
-func errorForCode(operation string, code int32) error {
+func zigoErrorForCode(operation string, code int32) error {
 	if code <= -256 {
 		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(code)}
 	}

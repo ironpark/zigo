@@ -12,9 +12,9 @@ import "example.com/zigo/store/internal/raw"
 func NewStore(name string) (*Store, error) {
 	result, code := raw.StoreOpen(name)
 	if code != 0 {
-		return nil, errorForCode("NewStore", code)
+		return nil, zigoErrorForCode("NewStore", code)
 	}
-	return newStore(result), nil
+	return zigoNewStore(result), nil
 }
 
 // Flush: Writes pending records out through the injected Io.
@@ -28,7 +28,7 @@ func (s *Store) Flush() error {
 	defer s.zigoRelease()
 	code := raw.StoreFlush(ptr)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Store.Flush", code), s)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Store.Flush", code), s)
 	}
 	return nil
 }
@@ -39,7 +39,7 @@ func (s *Store) Flush() error {
 func NewCursor(column uint32) (*Cursor, error) {
 	result, code := raw.CursorInit(column)
 	if code != 0 {
-		return nil, errorForCode("NewCursor", code)
+		return nil, zigoErrorForCode("NewCursor", code)
 	}
-	return newCursor(result), nil
+	return zigoNewCursor(result), nil
 }

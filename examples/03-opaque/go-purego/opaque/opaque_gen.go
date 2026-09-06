@@ -32,9 +32,9 @@ var DefaultLibraryName = raw.DefaultLibraryName
 func NewContext() (*Context, error) {
 	result, code := raw.ContextCreate()
 	if code != 0 {
-		return nil, errorForCode("NewContext", code)
+		return nil, zigoErrorForCode("NewContext", code)
 	}
-	return newContext(result), nil
+	return zigoNewContext(result), nil
 }
 
 // Add calls the Zig function Context.add.
@@ -48,7 +48,7 @@ func (co *Context) Add(value int64) (int64, error) {
 	defer co.zigoRelease()
 	result, code := raw.ContextAdd(ptr, value)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Context.Add", code), co)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Context.Add", code), co)
 	}
 	return result, nil
 }
@@ -62,9 +62,9 @@ func (co *Context) MaybeTotal(present bool) (int64, bool, error) {
 		return 0, false, err
 	}
 	defer co.zigoRelease()
-	result, zigoHas, code := raw.ContextMaybeTotal(ptr, boolToUint8(present))
+	result, zigoHas, code := raw.ContextMaybeTotal(ptr, zigoBoolToUint8(present))
 	if code != 0 {
-		return 0, false, zigoPoisonAfterPanic(errorForCode("Context.MaybeTotal", code), co)
+		return 0, false, zigoPoisonAfterPanic(zigoErrorForCode("Context.MaybeTotal", code), co)
 	}
 	return result, zigoHas, nil
 }
@@ -80,7 +80,7 @@ func (co *Context) SetTotal(c int64) error {
 	defer co.zigoRelease()
 	code := raw.ContextSetTotal(ptr, c)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Context.SetTotal", code), co)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Context.SetTotal", code), co)
 	}
 	return nil
 }
@@ -97,7 +97,7 @@ func (co *Context) Next() (int64, bool, error) {
 	defer co.zigoRelease()
 	result, zigoHas, code := raw.ContextNext(ptr)
 	if code != 0 {
-		return 0, false, zigoPoisonAfterPanic(errorForCode("Context.Next", code), co)
+		return 0, false, zigoPoisonAfterPanic(zigoErrorForCode("Context.Next", code), co)
 	}
 	return result, zigoHas, nil
 }
@@ -132,7 +132,7 @@ func (co *Context) NextChecked() (int64, bool, error) {
 	defer co.zigoRelease()
 	result, zigoHas, code := raw.ContextNextChecked(ptr)
 	if code != 0 {
-		return 0, false, zigoPoisonAfterPanic(errorForCode("Context.NextChecked", code), co)
+		return 0, false, zigoPoisonAfterPanic(zigoErrorForCode("Context.NextChecked", code), co)
 	}
 	return result, zigoHas, nil
 }
@@ -166,7 +166,7 @@ func (co *Context) Rewind() error {
 	defer co.zigoRelease()
 	code := raw.ContextRewind(ptr)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Context.Rewind", code), co)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Context.Rewind", code), co)
 	}
 	return nil
 }
@@ -183,7 +183,7 @@ func (co *Context) AddCopy(value int64) (int64, error) {
 	defer co.zigoRelease()
 	result, code := raw.ContextAddCopy(ptr, value)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Context.AddCopy", code), co)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Context.AddCopy", code), co)
 	}
 	return result, nil
 }
@@ -200,9 +200,9 @@ func (co *Context) BorrowView() (*ContextView, error) {
 	defer co.zigoRelease()
 	result, code := raw.ContextBorrowView(ptr)
 	if code != 0 {
-		return nil, zigoPoisonAfterPanic(errorForCode("Context.BorrowView", code), co)
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("Context.BorrowView", code), co)
 	}
-	return newBorrowedContextView(result, co), nil
+	return zigoNewBorrowedContextView(result, co), nil
 }
 
 // Total calls the Zig function ContextView.total.
@@ -216,7 +216,7 @@ func (c *ContextView) Total() (int64, error) {
 	defer c.zigoRelease()
 	result, code := raw.ContextViewTotal(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("ContextView.Total", code), c)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("ContextView.Total", code), c)
 	}
 	return result, nil
 }
@@ -232,7 +232,7 @@ func (co *Context) Crash() error {
 	defer co.zigoRelease()
 	code := raw.ContextCrash(ptr)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Context.Crash", code), co)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Context.Crash", code), co)
 	}
 	return nil
 }
@@ -250,7 +250,7 @@ func (co *Context) CrashInfallible() (int64, error) {
 	defer co.zigoRelease()
 	result, code := raw.ContextCrashInfallible(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Context.CrashInfallible", code), co)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Context.CrashInfallible", code), co)
 	}
 	return result, nil
 }
@@ -284,7 +284,7 @@ func SumCopies(bias int64, left *Context, right *Context) (int64, error) {
 	defer right.zigoRelease()
 	result, code := raw.SumCopies(bias, leftPtr, rightPtr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("SumCopies", code), left, right)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("SumCopies", code), left, right)
 	}
 	return result, nil
 }

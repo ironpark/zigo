@@ -14,7 +14,7 @@ func CodepointWidth(cp uint32) (uint8, error) {
 	}
 	result, code := raw.UnicodeCodepointWidth(cp)
 	if code != 0 {
-		return 0, errorForCode("CodepointWidth", code)
+		return 0, zigoErrorForCode("CodepointWidth", code)
 	}
 	return result, nil
 }

@@ -51,7 +51,7 @@ func Name(count uint32) (string, bool) {
 func CheckedDigits(count uint32) ([]int32, bool, error) {
 	result, zigoHas, code := raw.CheckedDigits(count)
 	if code != 0 {
-		return nil, false, errorForCode("CheckedDigits", code)
+		return nil, false, zigoErrorForCode("CheckedDigits", code)
 	}
 	return result, zigoHas, nil
 }
@@ -61,7 +61,7 @@ func CheckedDigits(count uint32) ([]int32, bool, error) {
 func TakeOwned() ([]byte, bool, error) {
 	result, zigoHas, code := raw.TakeOwned()
 	if code != 0 {
-		return nil, false, errorForCode("TakeOwned", code)
+		return nil, false, zigoErrorForCode("TakeOwned", code)
 	}
 	return result, zigoHas, nil
 }
@@ -71,7 +71,7 @@ func TakeOwned() ([]byte, bool, error) {
 func TakeOwnedCString() (string, bool, error) {
 	result, zigoHas, code := raw.TakeOwnedCString()
 	if code != 0 {
-		return "", false, errorForCode("TakeOwnedCString", code)
+		return "", false, zigoErrorForCode("TakeOwnedCString", code)
 	}
 	return result, zigoHas, nil
 }

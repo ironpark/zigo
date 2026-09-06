@@ -2,7 +2,7 @@
 
 package flattened_options
 
-func boolToUint8(value bool) uint8 {
+func zigoBoolToUint8(value bool) uint8 {
 	if value {
 		return 1
 	}

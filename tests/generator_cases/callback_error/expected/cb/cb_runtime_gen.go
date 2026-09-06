@@ -53,45 +53,45 @@ type ApplyObserverCallback func(int32) (int32, error)
 // NotifyObserverCallback is the Go callback signature accepted by the generated binding.
 type NotifyObserverCallback func(int32)
 
-var activeCallbackHandles atomic.Int64
+var zigoActiveCallbackHandles atomic.Int64
 
 type zigoCallbackHandle = cgo.Handle
 
-func newHubCreateObserverHandle(value HubCreateObserver) zigoCallbackHandle {
+func zigoNewHubCreateObserverHandle(value HubCreateObserver) zigoCallbackHandle {
 	stored := (func(int32) (int32, error))(value)
 	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
-	activeCallbackHandles.Add(1)
+	zigoActiveCallbackHandles.Add(1)
 	return handle
 }
 
-func newHubSetObserverObserverHandle(value HubSetObserverObserver) zigoCallbackHandle {
+func zigoNewHubSetObserverObserverHandle(value HubSetObserverObserver) zigoCallbackHandle {
 	stored := (func(int32) (int32, error))(value)
 	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
-	activeCallbackHandles.Add(1)
+	zigoActiveCallbackHandles.Add(1)
 	return handle
 }
 
-func newApplyObserverCallbackHandle(value ApplyObserverCallback) zigoCallbackHandle {
+func zigoNewApplyObserverCallbackHandle(value ApplyObserverCallback) zigoCallbackHandle {
 	stored := (func(int32) (int32, error))(value)
 	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
-	activeCallbackHandles.Add(1)
+	zigoActiveCallbackHandles.Add(1)
 	return handle
 }
 
-func newNotifyObserverCallbackHandle(value NotifyObserverCallback) zigoCallbackHandle {
+func zigoNewNotifyObserverCallbackHandle(value NotifyObserverCallback) zigoCallbackHandle {
 	stored := (func(int32))(value)
 	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
-	activeCallbackHandles.Add(1)
+	zigoActiveCallbackHandles.Add(1)
 	return handle
 }
 
-func deleteCallbackHandle(handle zigoCallbackHandle) {
+func zigoDeleteCallbackHandle(handle zigoCallbackHandle) {
 	if handle == 0 { return }
 	handle.Delete()
-	activeCallbackHandles.Add(-1)
+	zigoActiveCallbackHandles.Add(-1)
 }
 
-func activeCallbackHandleCount() int64 { return activeCallbackHandles.Load() }
+func zigoActiveCallbackHandleCount() int64 { return zigoActiveCallbackHandles.Load() }
 
 // zigoCallbackPanicPending is the fast-path check ahead of the per-slot sweep:
 // one atomic load says whether any callback recorded a panic nobody has taken.

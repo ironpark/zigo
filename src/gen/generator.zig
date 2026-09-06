@@ -290,14 +290,14 @@ test "bool is lowered to uint8 at the ABI boundary" {
     try std.testing.expect(std.mem.containsAtLeast(u8, header, 1, "uint8_t zg_negate(uint8_t p0)"));
     const public = try temporary.dir.readFileAlloc(std.testing.io, "scalar/scalar_gen.go", std.testing.allocator, .limited(16 * 1024));
     defer std.testing.allocator.free(public);
-    try std.testing.expect(std.mem.indexOf(u8, public, "func boolToUint8") == null);
+    try std.testing.expect(std.mem.indexOf(u8, public, "func zigoBoolToUint8") == null);
     const runtime_file = try temporary.dir.readFileAlloc(std.testing.io, "scalar/scalar_runtime_gen.go", std.testing.allocator, .limited(16 * 1024));
     defer std.testing.allocator.free(runtime_file);
     try std.testing.expect(std.mem.containsAtLeast(
         u8,
         runtime_file,
         1,
-        "func boolToUint8(value bool) uint8 {\n" ++
+        "func zigoBoolToUint8(value bool) uint8 {\n" ++
             "\tif value {\n" ++
             "\t\treturn 1\n" ++
             "\t}\n" ++
@@ -584,8 +584,8 @@ test "errors enums and slices share one lowered ABI" {
     try std.testing.expect(std.mem.indexOf(u8, public, "ErrDivideByZero") == null);
     try std.testing.expect(std.mem.indexOf(u8, public, "type Format") == null);
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func Sum(p0 []float64) float64"));
-    try std.testing.expect(std.mem.indexOf(u8, public, "func boolToUint8") == null);
-    try std.testing.expect(std.mem.indexOf(u8, public, "activeCallbackHandles") == null);
+    try std.testing.expect(std.mem.indexOf(u8, public, "func zigoBoolToUint8") == null);
+    try std.testing.expect(std.mem.indexOf(u8, public, "zigoActiveCallbackHandles") == null);
     const public_types = try temporary.dir.readFileAlloc(std.testing.io, "features/features_enums_gen.go", std.testing.allocator, .limited(64 * 1024));
     defer std.testing.allocator.free(public_types);
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "type Format"));
@@ -593,7 +593,7 @@ test "errors enums and slices share one lowered ABI" {
     const public_errors = try temporary.dir.readFileAlloc(std.testing.io, "features/features_errors_gen.go", std.testing.allocator, .limited(64 * 1024));
     defer std.testing.allocator.free(public_errors);
     try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "ErrDivideByZero"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "func errorForCode(operation string, code int32) error"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "func zigoErrorForCode(operation string, code int32) error"));
     // The error file also converts an unrecognized code, so its imports are a block.
     try std.testing.expect(std.mem.containsAtLeast(u8, public_errors, 1, "\t\"strconv\"\n\n\t\"example.com/features/internal/raw\""));
     const shim = try temporary.dir.readFileAlloc(std.testing.io, "shim.zig", std.testing.allocator, .limited(64 * 1024));
@@ -631,7 +631,7 @@ test "a declared callback type names every parameter of its signature once" {
     // One type and one handle helper, at the first use; the second parameter
     // reuses them.
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, public_types, "type Observer func(int32) int32"));
-    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, public_types, "func newObserverHandle(value Observer) zigoCallbackHandle"));
+    try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, public_types, "func zigoNewObserverHandle(value Observer) zigoCallbackHandle"));
     try std.testing.expect(std.mem.indexOf(u8, public_types, "WatchObserver") == null);
 }
 
@@ -659,7 +659,7 @@ test "callbacks use role-specific public types and typed handle helpers" {
     defer std.testing.allocator.free(public);
     try std.testing.expect(std.mem.indexOf(u8, public, "type SubscribeHandlerCallback") == null);
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func Subscribe(handler SubscribeHandlerCallback)"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "defer deleteCallbackHandle(handlerHandle)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "defer zigoDeleteCallbackHandle(handlerHandle)"));
     const public_types = try temporary.dir.readFileAlloc(std.testing.io, "callbacks/callbacks_runtime_gen.go", std.testing.allocator, .limited(64 * 1024));
     defer std.testing.allocator.free(public_types);
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "type SubscribeHandlerCallback func(int32) int32"));
@@ -668,7 +668,7 @@ test "callbacks use role-specific public types and typed handle helpers" {
     // The callback signature types and the handle helpers that wrap them are
     // one concern, so the runtime file carries both.
     const helpers = public_types;
-    try std.testing.expect(std.mem.containsAtLeast(u8, helpers, 1, "func newSubscribeHandlerCallbackHandle(value SubscribeHandlerCallback) zigoCallbackHandle"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, helpers, 1, "func zigoNewSubscribeHandlerCallbackHandle(value SubscribeHandlerCallback) zigoCallbackHandle"));
     try std.testing.expect(std.mem.containsAtLeast(u8, helpers, 1, "stored := (func(int32) int32)(value)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, helpers, 1, "stored := (func(uint64) int32)(value)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, helpers, 1, "stored := (func(uint8) int32)(value)"));
@@ -716,7 +716,7 @@ test "opt-in cleanup isolates state stops explicitly and keeps owners alive" {
     try std.testing.expect(std.mem.indexOf(u8, public, "import \"runtime\"") == null);
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "func NewContext(callback ContextCallback) (*Context, error)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "zigoRawContextCreate("));
-    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "return newContext(result, []zigoCallbackHandle{callbackHandle}), nil"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public, 1, "return zigoNewContext(result, []zigoCallbackHandle{callbackHandle}), nil"));
     // The handle check's `defer x.zigoRelease()` keeps a handle alive for the
     // whole call, so no method defers a KeepAlive on the receiver or a handle
     // parameter.
@@ -737,17 +737,17 @@ test "opt-in cleanup isolates state stops explicitly and keeps owners alive" {
         u8,
         public_types,
         1,
-        "type contextCleanupState struct {\n" ++
+        "type zigoContextCleanupState struct {\n" ++
             "\tptr             unsafe.Pointer\n" ++
             "\tcallbackHandles []zigoCallbackHandle\n" ++
             "}\n",
     ));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "callbackHandles []zigoCallbackHandle"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "runtime.AddCleanup(value, cleanupContext, state)"));
-    try std.testing.expect(std.mem.indexOf(u8, public_types, "runtime.AddCleanup(value, cleanupContext, value)") == null);
-    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "func cleanupContext(state contextCleanupState)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "runtime.AddCleanup(value, zigoCleanupContext, state)"));
+    try std.testing.expect(std.mem.indexOf(u8, public_types, "runtime.AddCleanup(value, zigoCleanupContext, value)") == null);
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "func zigoCleanupContext(state zigoContextCleanupState)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "zigoRawContextDeinit(state.ptr)"));
-    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "deleteCallbackHandle(handle)"));
+    try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "zigoDeleteCallbackHandle(handle)"));
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "c.mu.Lock()\n\tif c.closed {\n\t\tc.mu.Unlock()\n\t\treturn nil\n\t}\n\tc.closed = true\n\tc.cleanup.Stop()\n"));
     try std.testing.expect(std.mem.indexOf(u8, public_types, "sync.Once") == null);
     try std.testing.expect(std.mem.containsAtLeast(u8, public_types, 1, "c.cleanup.Stop()"));

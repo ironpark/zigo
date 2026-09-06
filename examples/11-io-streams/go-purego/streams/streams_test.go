@@ -260,7 +260,7 @@ func TestStreamHandlesAreReleased(t *testing.T) {
 	if err := document.Dump(&out); err != nil {
 		t.Fatalf("Dump: %v", err)
 	}
-	if live := activeCallbackHandleCount(); live != 0 {
+	if live := zigoActiveCallbackHandleCount(); live != 0 {
 		t.Fatalf("%d stream handles outlived the call", live)
 	}
 }

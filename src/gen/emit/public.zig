@@ -181,7 +181,7 @@ fn writePublicOptionalRawSetup(
     }
     try writer.print("\n\tif {0s} != nil {{\n\t\t{0s}RawValue := ", .{name});
     switch (child) {
-        .bool => try writer.print("boolToUint8(*{s})", .{name}),
+        .bool => try writer.print("zigoBoolToUint8(*{s})", .{name}),
         .@"enum" => {
             try writer.writeAll(type_spelling.rawGoTypeName(program, child));
             try writer.print("(*{s})", .{name});
@@ -338,7 +338,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         // handle live to the end of the function. What still needs KeepAlive is
         // (a) Close, which must outlive cleanup.Stop, and (b) Go memory whose
         // pointer was handed to native for the duration of the call.
-        // errorForCode reads the panic message out of native thread-local
+        // zigoErrorForCode reads the panic message out of native thread-local
         // storage in a second cgo call, so the goroutine must stay on the
         // thread that made the first one until it has been read.
         // Before the thread pin, because a rejected argument costs no cgo call
@@ -455,7 +455,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                     if (field.type == .optional and publicOptionalNeedsConversion(node)) {
                         try writer.print("{s}Raw", .{name});
                     } else switch (node) {
-                        .bool => try writer.print("boolToUint8({s})", .{name}),
+                        .bool => try writer.print("zigoBoolToUint8({s})", .{name}),
                         .@"enum" => {
                             try writer.writeAll(type_spelling.rawGoTypeName(program, node));
                             try writer.print("({s})", .{name});
@@ -497,7 +497,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                 },
                 .cancel_flag => try writer.writeAll("&zigoCancel"),
                 .atomic_ptr => try writer.print("unsafe.Pointer({s})", .{go_names[parameter_index]}),
-                .bool => try writer.print("boolToUint8({s})", .{go_names[parameter_index]}),
+                .bool => try writer.print("zigoBoolToUint8({s})", .{go_names[parameter_index]}),
                 .value_struct => |value| if (common.isTaggedUnionValue(program, parameter.type))
                     try public_writers.writePublicTaggedUnionRawArguments(allocator, writer, program, type_spelling.enumDecl(program, value.ref), go_names[parameter_index])
                 else if (type_spelling.isPackedValue(program, parameter.type))
@@ -1165,7 +1165,7 @@ fn renderCallbackHandleSetup(allocator: std.mem.Allocator, writer: *std.Io.Write
         if (parameter.type == .io_stream) {
             // A stream is always call-scoped: the shim adapter around it lives
             // on the native stack, so the handle dies with the call.
-            try writer.print("\t{0s}Handle := newZigo{1s}Handle({0s})\n\tdefer deleteCallbackHandle({0s}Handle)\n", .{
+            try writer.print("\t{0s}Handle := zigoNew{1s}StreamHandle({0s})\n\tdefer zigoDeleteCallbackHandle({0s}Handle)\n", .{
                 go_names[parameter_index],
                 common.streamHandleName(parameter.type.io_stream.direction),
             });
@@ -1175,13 +1175,13 @@ fn renderCallbackHandleSetup(allocator: std.mem.Allocator, writer: *std.Io.Write
         }
         if (parameter.type != .callback) continue;
         const callback_name = function.callbackType(parameter_index).?.name;
-        try writer.print("\t{s}Handle := new{s}Handle({s})\n", .{ go_names[parameter_index], callback_name, go_names[parameter_index] });
+        try writer.print("\t{s}Handle := zigoNew{s}Handle({s})\n", .{ go_names[parameter_index], callback_name, go_names[parameter_index] });
         if (parameter.retention == .borrowed) {
-            try writer.print("\tdefer deleteCallbackHandle({s}Handle)\n", .{go_names[parameter_index]});
+            try writer.print("\tdefer zigoDeleteCallbackHandle({s}Handle)\n", .{go_names[parameter_index]});
         } else if (common.retainedCallbacksBelongToReceiver(program, function.origin.*)) {
             try writer.print(
                 "\t{0s}HandleAdopted := false\n" ++
-                    "\tdefer func() {{ if !{0s}HandleAdopted {{ deleteCallbackHandle({0s}Handle) }} }}()\n",
+                    "\tdefer func() {{ if !{0s}HandleAdopted {{ zigoDeleteCallbackHandle({0s}Handle) }} }}()\n",
                 .{go_names[parameter_index]},
             );
         }
@@ -1197,7 +1197,7 @@ fn writeDeleteRetainedCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Wr
     defer naming.freeParamNames(allocator, go_names);
     for (function.params, 0..) |parameter, parameter_index| {
         if (parameter.type == .callback and parameter.retention == .retained)
-            try writer.print("\t\tdeleteCallbackHandle({s}Handle)\n", .{go_names[parameter_index]});
+            try writer.print("\t\tzigoDeleteCallbackHandle({s}Handle)\n", .{go_names[parameter_index]});
     }
 }
 
@@ -1226,7 +1226,7 @@ fn writeAdoptRetainedMethodCallbacks(
         try writer.print(
             "\t{0s}PreviousHandle := {1s}.zigoReplaceCallbackHandle({2d}, {0s}Handle)\n" ++
                 "\t{0s}HandleAdopted = true\n" ++
-                "\tdeleteCallbackHandle({0s}PreviousHandle)\n",
+                "\tzigoDeleteCallbackHandle({0s}PreviousHandle)\n",
             .{ go_names[parameter_index], receiver_name, slot },
         );
     }

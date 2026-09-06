@@ -16,7 +16,7 @@ func Double(value *int32) (int32, bool) {
 func Flag(value *bool) bool {
 	var valueRaw *uint8
 	if value != nil {
-		valueRawValue := boolToUint8(*value)
+		valueRawValue := zigoBoolToUint8(*value)
 		valueRaw = &valueRawValue
 	}
 	return raw.Flag(valueRaw) != 0
@@ -38,7 +38,7 @@ func PickMode(value *Mode) (Mode, bool) {
 func CheckedDouble(value *int32) (int32, bool, error) {
 	result, zigoHas, code := raw.CheckedDouble(value)
 	if code != 0 {
-		return 0, false, errorForCode("CheckedDouble", code)
+		return 0, false, zigoErrorForCode("CheckedDouble", code)
 	}
 	return result, zigoHas, nil
 }
@@ -67,7 +67,7 @@ func CheckedPoint(origin *Point) (Point, bool, error) {
 	}
 	result, zigoHas, code := raw.CheckedPoint(originRaw)
 	if code != 0 {
-		return Point{}, false, errorForCode("CheckedPoint", code)
+		return Point{}, false, zigoErrorForCode("CheckedPoint", code)
 	}
 	return zigoPointFromRaw(result), zigoHas, nil
 }

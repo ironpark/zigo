@@ -11,9 +11,9 @@ import "example.com/zigo/pipeline/internal/raw"
 func NewIntBatch() (*IntBatch, error) {
 	result, code := raw.IntBatchCreate()
 	if code != 0 {
-		return nil, errorForCode("NewIntBatch", code)
+		return nil, zigoErrorForCode("NewIntBatch", code)
 	}
-	return newIntBatch(result), nil
+	return zigoNewIntBatch(result), nil
 }
 
 // Push calls the Zig function IntBatch.push.
@@ -27,7 +27,7 @@ func (i *IntBatch) Push(value int32) error {
 	defer i.zigoRelease()
 	code := raw.IntBatchPush(ptr, value)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("IntBatch.Push", code), i)
+		return zigoPoisonAfterPanic(zigoErrorForCode("IntBatch.Push", code), i)
 	}
 	return nil
 }
@@ -43,7 +43,7 @@ func (i *IntBatch) Len() (uint, error) {
 	defer i.zigoRelease()
 	result, code := raw.IntBatchLen(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("IntBatch.Len", code), i)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("IntBatch.Len", code), i)
 	}
 	return result, nil
 }
@@ -54,9 +54,9 @@ func (i *IntBatch) Len() (uint, error) {
 func NewFloatBatch() (*FloatBatch, error) {
 	result, code := raw.FloatBatchCreate()
 	if code != 0 {
-		return nil, errorForCode("NewFloatBatch", code)
+		return nil, zigoErrorForCode("NewFloatBatch", code)
 	}
-	return newFloatBatch(result), nil
+	return zigoNewFloatBatch(result), nil
 }
 
 // Push calls the Zig function FloatBatch.push.
@@ -70,7 +70,7 @@ func (f *FloatBatch) Push(value float64) error {
 	defer f.zigoRelease()
 	code := raw.FloatBatchPush(ptr, value)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("FloatBatch.Push", code), f)
+		return zigoPoisonAfterPanic(zigoErrorForCode("FloatBatch.Push", code), f)
 	}
 	return nil
 }
@@ -86,7 +86,7 @@ func (f *FloatBatch) Len() (uint, error) {
 	defer f.zigoRelease()
 	result, code := raw.FloatBatchLen(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("FloatBatch.Len", code), f)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("FloatBatch.Len", code), f)
 	}
 	return result, nil
 }
@@ -96,16 +96,16 @@ func (f *FloatBatch) Len() (uint, error) {
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func NewPipeline(name string, mode Mode, callback PipelineCallback) (*Pipeline, error) {
-	callbackHandle := newPipelineCallbackHandle(callback)
+	callbackHandle := zigoNewPipelineCallbackHandle(callback)
 	result, code := raw.PipelineCreate(name, uint32(mode), uintptr(callbackHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("NewPipeline", callbackHandle)
 	}
 	if code != 0 {
-		deleteCallbackHandle(callbackHandle)
-		return nil, errorForCode("NewPipeline", code)
+		zigoDeleteCallbackHandle(callbackHandle)
+		return nil, zigoErrorForCode("NewPipeline", code)
 	}
-	return newPipeline(result, []zigoCallbackHandle{callbackHandle}), nil
+	return zigoNewPipeline(result, []zigoCallbackHandle{callbackHandle}), nil
 }
 
 // Process calls the Zig function Pipeline.process.
@@ -125,7 +125,7 @@ func (p *Pipeline) Process(values []int32) (int64, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Pipeline.Process", code), p)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Pipeline.Process", code), p)
 	}
 	return result, nil
 }
@@ -147,7 +147,7 @@ func (p *Pipeline) Name() (string, error) {
 		}
 	}
 	if code != 0 {
-		return "", zigoPoisonAfterPanic(errorForCode("Pipeline.Name", code), p)
+		return "", zigoPoisonAfterPanic(zigoErrorForCode("Pipeline.Name", code), p)
 	}
 	return result, nil
 }
@@ -169,7 +169,7 @@ func (p *Pipeline) Mode() (Mode, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Pipeline.Mode", code), p)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Pipeline.Mode", code), p)
 	}
 	return Mode(result), nil
 }
@@ -184,14 +184,14 @@ func (p *Pipeline) SetEnabled(enabled bool) (bool, error) {
 		return false, err
 	}
 	defer p.zigoRelease()
-	result, code := raw.PipelineSetEnabled(ptr, boolToUint8(enabled))
+	result, code := raw.PipelineSetEnabled(ptr, zigoBoolToUint8(enabled))
 	if zigoCallbackPanicPending() {
 		for slot := range 1 {
 			zigoRethrowCallbackPanic("Pipeline.SetEnabled", p.zigoCallbackHandle(slot))
 		}
 	}
 	if code != 0 {
-		return false, zigoPoisonAfterPanic(errorForCode("Pipeline.SetEnabled", code), p)
+		return false, zigoPoisonAfterPanic(zigoErrorForCode("Pipeline.SetEnabled", code), p)
 	}
 	return result != 0, nil
 }
@@ -213,7 +213,7 @@ func (p *Pipeline) Processed() (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Pipeline.Processed", code), p)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Pipeline.Processed", code), p)
 	}
 	return result, nil
 }
@@ -235,7 +235,7 @@ func (p *Pipeline) Total() (int64, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Pipeline.Total", code), p)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Pipeline.Total", code), p)
 	}
 	return result, nil
 }

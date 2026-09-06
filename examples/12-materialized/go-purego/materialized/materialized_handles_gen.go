@@ -20,7 +20,7 @@ type LegacyLeaf struct {
 	owner  zigoHandle
 }
 
-func newBorrowedLegacyLeaf(ptr unsafe.Pointer, owner zigoHandle) *LegacyLeaf {
+func zigoNewBorrowedLegacyLeaf(ptr unsafe.Pointer, owner zigoHandle) *LegacyLeaf {
 	return &LegacyLeaf{ptr: ptr, owner: owner}
 }
 
@@ -147,7 +147,7 @@ func (l *LegacyProbe) zigoRelease() {
 	state, release := l.zigoTakeLocked()
 	l.mu.Unlock()
 	if release {
-		cleanupLegacyProbe(state)
+		zigoCleanupLegacyProbe(state)
 	}
 }
 
@@ -165,18 +165,18 @@ func (l *LegacyProbe) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-type legacyProbeCleanupState struct {
+type zigoLegacyProbeCleanupState struct {
 	ptr unsafe.Pointer
 }
 
-func newLegacyProbe(ptr unsafe.Pointer) *LegacyProbe {
+func zigoNewLegacyProbe(ptr unsafe.Pointer) *LegacyProbe {
 	value := &LegacyProbe{ptr: ptr}
-	state := legacyProbeCleanupState{ptr: ptr}
-	value.cleanup = runtime.AddCleanup(value, cleanupLegacyProbe, state)
+	state := zigoLegacyProbeCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, zigoCleanupLegacyProbe, state)
 	return value
 }
 
-func cleanupLegacyProbe(state legacyProbeCleanupState) {
+func zigoCleanupLegacyProbe(state zigoLegacyProbeCleanupState) {
 	if state.ptr != nil {
 		raw.LegacyProbeDeinit(state.ptr)
 	}
@@ -205,7 +205,7 @@ func (l *LegacyProbe) Close() error {
 	state, release := l.zigoTakeLocked()
 	l.mu.Unlock()
 	if release {
-		cleanupLegacyProbe(state)
+		zigoCleanupLegacyProbe(state)
 	}
 	runtime.KeepAlive(l)
 	return nil
@@ -214,11 +214,11 @@ func (l *LegacyProbe) Close() error {
 // zigoTakeLocked hands out what is left to release once l is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
-func (l *LegacyProbe) zigoTakeLocked() (legacyProbeCleanupState, bool) {
+func (l *LegacyProbe) zigoTakeLocked() (zigoLegacyProbeCleanupState, bool) {
 	if !l.closed || l.active != 0 || l.ptr == nil {
-		return legacyProbeCleanupState{}, false
+		return zigoLegacyProbeCleanupState{}, false
 	}
-	state := legacyProbeCleanupState{ptr: l.ptr}
+	state := zigoLegacyProbeCleanupState{ptr: l.ptr}
 	l.ptr = nil
 	if l.poison != nil {
 		state.ptr = nil

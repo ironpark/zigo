@@ -22,7 +22,7 @@ func TestConcurrentCallsRacingClose(t *testing.T) {
 		var handleErr *HandleError
 		return errors.As(err, &handleErr)
 	})
-	if got := activeCallbackHandleCount(); got != 0 {
+	if got := zigoActiveCallbackHandleCount(); got != 0 {
 		t.Fatalf("active callback handles = %d, want 0", got)
 	}
 }
@@ -31,7 +31,7 @@ func TestConcurrentCallsRacingClose(t *testing.T) {
 // registered at construction frees the native context and its retained
 // callback once the handle becomes unreachable.
 func TestAbandonedHandleIsReclaimed(t *testing.T) {
-	baseline := activeCallbackHandleCount()
+	baseline := zigoActiveCallbackHandleCount()
 
 	func() {
 		context, err := NewCallbackContext(func(value int32) (int32, error) { return value + 1, nil })
@@ -50,10 +50,10 @@ func TestAbandonedHandleIsReclaimed(t *testing.T) {
 	}()
 
 	deadline := time.Now().Add(5 * time.Second)
-	for activeCallbackHandleCount() != baseline {
+	for zigoActiveCallbackHandleCount() != baseline {
 		if time.Now().After(deadline) {
 			t.Fatalf("abandoned handle was not reclaimed: active callback handles = %d, want %d",
-				activeCallbackHandleCount(), baseline)
+				zigoActiveCallbackHandleCount(), baseline)
 		}
 		runtime.GC()
 		runtime.Gosched()

@@ -6,6 +6,14 @@
 
 ## [Unreleased]
 
+### Changed
+
+- 공개 패키지의 비공개 생성 식별자가 모두 `zigo` 접두사를 갖습니다(`zigoNewContext`,
+  `zigoErrorForCode`, `zigoBoolToUint8`, `zigoDeleteCallbackHandle`,
+  `zigo<T>CleanupState` 등). 사용자가 같은 패키지에 파일을 추가할 때 이름이 충돌하지 않도록
+  예약 규칙을 [생성물과 CI 관리](docs/generated-code.md#생성-패키지-확장하기)에 적었습니다.
+  생성 패키지 안에서 이전 이름을 직접 참조하던 테스트 코드는 바꿔야 합니다.
+
 ## [0.11.0] - 2026-09-06
 
 ### Changed

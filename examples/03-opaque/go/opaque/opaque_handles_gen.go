@@ -47,7 +47,7 @@ func (co *Context) zigoRelease() {
 	state, release := co.zigoTakeLocked()
 	co.mu.Unlock()
 	if release {
-		cleanupContext(state)
+		zigoCleanupContext(state)
 	}
 }
 
@@ -65,18 +65,18 @@ func (co *Context) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-type contextCleanupState struct {
+type zigoContextCleanupState struct {
 	ptr unsafe.Pointer
 }
 
-func newContext(ptr unsafe.Pointer) *Context {
+func zigoNewContext(ptr unsafe.Pointer) *Context {
 	value := &Context{ptr: ptr}
-	state := contextCleanupState{ptr: ptr}
-	value.cleanup = runtime.AddCleanup(value, cleanupContext, state)
+	state := zigoContextCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, zigoCleanupContext, state)
 	return value
 }
 
-func cleanupContext(state contextCleanupState) {
+func zigoCleanupContext(state zigoContextCleanupState) {
 	if state.ptr != nil {
 		raw.ContextDeinit(state.ptr)
 	}
@@ -105,7 +105,7 @@ func (co *Context) Close() error {
 	state, release := co.zigoTakeLocked()
 	co.mu.Unlock()
 	if release {
-		cleanupContext(state)
+		zigoCleanupContext(state)
 	}
 	runtime.KeepAlive(co)
 	return nil
@@ -114,11 +114,11 @@ func (co *Context) Close() error {
 // zigoTakeLocked hands out what is left to release once co is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
-func (co *Context) zigoTakeLocked() (contextCleanupState, bool) {
+func (co *Context) zigoTakeLocked() (zigoContextCleanupState, bool) {
 	if !co.closed || co.active != 0 || co.ptr == nil {
-		return contextCleanupState{}, false
+		return zigoContextCleanupState{}, false
 	}
-	state := contextCleanupState{ptr: co.ptr}
+	state := zigoContextCleanupState{ptr: co.ptr}
 	co.ptr = nil
 	if co.poison != nil {
 		state.ptr = nil
@@ -136,7 +136,7 @@ type ContextView struct {
 	owner  zigoHandle
 }
 
-func newBorrowedContextView(ptr unsafe.Pointer, owner zigoHandle) *ContextView {
+func zigoNewBorrowedContextView(ptr unsafe.Pointer, owner zigoHandle) *ContextView {
 	return &ContextView{ptr: ptr, owner: owner}
 }
 

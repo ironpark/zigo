@@ -9,8 +9,8 @@ import "example.com/zigo/fallback/internal/raw"
 // Apply calls the Zig function apply.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func Apply(value int32, callback Observer) int32 {
-	callbackHandle := newObserverHandle(callback)
-	defer deleteCallbackHandle(callbackHandle)
+	callbackHandle := zigoNewObserverHandle(callback)
+	defer zigoDeleteCallbackHandle(callbackHandle)
 	result := raw.Apply(value, uintptr(callbackHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("Apply", callbackHandle)

@@ -153,7 +153,7 @@ var ErrCanceled = &Error{Code: 11, Name: "Canceled"}
 // ErrCancelled represents Zig error.Cancelled.
 var ErrCancelled = &Error{Code: 12, Name: "Cancelled"}
 
-func errorForCode(operation string, code int32) error {
+func zigoErrorForCode(operation string, code int32) error {
 	if code <= -256 {
 		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(code)}
 	}

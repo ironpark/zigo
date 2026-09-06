@@ -147,7 +147,7 @@ var ErrOutOfMemory = &Error{Code: 1, Name: "OutOfMemory"}
 // ErrCanceled represents Zig error.Canceled.
 var ErrCanceled = &Error{Code: 2, Name: "Canceled"}
 
-func errorForCode(operation string, code int32) error {
+func zigoErrorForCode(operation string, code int32) error {
 	if code <= -256 {
 		return &NativePanicError{Operation: operation, Message: zigoRawPanicMessage(code)}
 	}

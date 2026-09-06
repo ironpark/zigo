@@ -17,7 +17,7 @@ func (recv *Terminal) SetTitle(t []byte) error {
 	defer recv.zigoRelease()
 	code := raw.TerminalSetTitle(ptr, t)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Terminal.SetTitle", code), recv)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Terminal.SetTitle", code), recv)
 	}
 	return nil
 }
@@ -33,7 +33,7 @@ func (recv *Terminal) CollideAll(t int32, te int32, ter int32, term int32, termi
 	defer recv.zigoRelease()
 	code := raw.TerminalCollideAll(ptr, t, te, ter, term, termi, termin, termina, terminal)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Terminal.CollideAll", code), recv)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Terminal.CollideAll", code), recv)
 	}
 	return nil
 }
@@ -49,7 +49,7 @@ func (recv *Terminal) Clear() error {
 	defer recv.zigoRelease()
 	code := raw.TerminalClear(ptr)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Terminal.Clear", code), recv)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Terminal.Clear", code), recv)
 	}
 	return nil
 }

@@ -113,7 +113,7 @@ var ErrOutOfMemory = &Error{Code: 1, Name: "OutOfMemory"}
 // ErrNegativeTotal represents Zig error.NegativeTotal.
 var ErrNegativeTotal = &Error{Code: 2, Name: "NegativeTotal"}
 
-func errorForCode(operation string, code int32) error {
+func zigoErrorForCode(operation string, code int32) error {
 	if code <= -256 {
 		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(code)}
 	}

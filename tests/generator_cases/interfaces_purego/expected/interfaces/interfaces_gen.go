@@ -25,9 +25,9 @@ var DefaultLibraryName = raw.DefaultLibraryName
 func NewIntBatch() (*IntBatch, error) {
 	result, code := raw.IntBatchCreate()
 	if code != 0 {
-		return nil, errorForCode("NewIntBatch", code)
+		return nil, zigoErrorForCode("NewIntBatch", code)
 	}
-	return newIntBatch(result), nil
+	return zigoNewIntBatch(result), nil
 }
 
 // MustNewIntBatch calls NewIntBatch and panics with its typed error on failure.
@@ -44,7 +44,7 @@ func (i *IntBatch) Len() (uint, error) {
 	defer i.zigoRelease()
 	result, code := raw.IntBatchLen(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("IntBatch.Len", code), i)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("IntBatch.Len", code), i)
 	}
 	return result, nil
 }
@@ -63,7 +63,7 @@ func (i *IntBatch) Clear(keep uint) error {
 	defer i.zigoRelease()
 	code := raw.IntBatchClear(ptr, keep)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("IntBatch.Clear", code), i)
+		return zigoPoisonAfterPanic(zigoErrorForCode("IntBatch.Clear", code), i)
 	}
 	return nil
 }
@@ -82,7 +82,7 @@ func (i *IntBatch) Push(value int32) error {
 	defer i.zigoRelease()
 	code := raw.IntBatchPush(ptr, value)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("IntBatch.Push", code), i)
+		return zigoPoisonAfterPanic(zigoErrorForCode("IntBatch.Push", code), i)
 	}
 	return nil
 }
@@ -96,9 +96,9 @@ func (i *IntBatch) MustPush(value int32) { _ = zigoMust(struct{}{}, i.Push(value
 func NewFloatBatch() (*FloatBatch, error) {
 	result, code := raw.FloatBatchCreate()
 	if code != 0 {
-		return nil, errorForCode("NewFloatBatch", code)
+		return nil, zigoErrorForCode("NewFloatBatch", code)
 	}
-	return newFloatBatch(result), nil
+	return zigoNewFloatBatch(result), nil
 }
 
 // MustNewFloatBatch calls NewFloatBatch and panics with its typed error on failure.
@@ -115,7 +115,7 @@ func (f *FloatBatch) Len() (uint, error) {
 	defer f.zigoRelease()
 	result, code := raw.FloatBatchLen(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("FloatBatch.Len", code), f)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("FloatBatch.Len", code), f)
 	}
 	return result, nil
 }
@@ -134,7 +134,7 @@ func (f *FloatBatch) Clear(retain uint) error {
 	defer f.zigoRelease()
 	code := raw.FloatBatchClear(ptr, retain)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("FloatBatch.Clear", code), f)
+		return zigoPoisonAfterPanic(zigoErrorForCode("FloatBatch.Clear", code), f)
 	}
 	return nil
 }
@@ -153,7 +153,7 @@ func (f *FloatBatch) Push(value float64) error {
 	defer f.zigoRelease()
 	code := raw.FloatBatchPush(ptr, value)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("FloatBatch.Push", code), f)
+		return zigoPoisonAfterPanic(zigoErrorForCode("FloatBatch.Push", code), f)
 	}
 	return nil
 }
@@ -172,7 +172,7 @@ func (w *Window) Size() (uint, error) {
 	defer w.zigoRelease()
 	result, code := raw.WindowSize(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Window.Size", code), w)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Window.Size", code), w)
 	}
 	return result, nil
 }
@@ -192,9 +192,9 @@ func (i *IntBatch) Window() (*Window, error) {
 	defer i.zigoRelease()
 	result, code := raw.IntBatchWindow(ptr)
 	if code != 0 {
-		return nil, zigoPoisonAfterPanic(errorForCode("IntBatch.Window", code), i)
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("IntBatch.Window", code), i)
 	}
-	return newBorrowedWindow(result, i), nil
+	return zigoNewBorrowedWindow(result, i), nil
 }
 
 // MustWindow calls Window and panics with its typed error on failure.

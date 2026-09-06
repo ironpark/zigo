@@ -89,7 +89,7 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
             defer allocator.free(member);
             try writer.writeAll("\tresult |= (uint64(");
             switch (semantic_field.type.?) {
-                .bool => try writer.print("boolToUint8(value.{s})", .{member}),
+                .bool => try writer.print("zigoBoolToUint8(value.{s})", .{member}),
                 .value_struct => |nested| try writer.print("zigo{s}ToBacking(value.{s})", .{ nested.ref, member }),
                 else => try writer.print("value.{s}", .{member}),
             }
@@ -175,7 +175,7 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
                         try writer.print("value.{s}.Backing()", .{member})
                     else
                         try writer.print("zigo{s}ToRaw(value.{s})", .{ nested.ref, member }),
-                    .bool => try writer.print("boolToUint8(value.{s})", .{member}),
+                    .bool => try writer.print("zigoBoolToUint8(value.{s})", .{member}),
                     .@"enum" => {
                         try writer.writeAll(type_spelling.rawGoTypeName(program, field.node));
                         try writer.print("(value.{s})", .{member});
@@ -948,7 +948,7 @@ pub fn programReturnsErrorUnion(program: abi.Program) bool {
 
 pub fn renderGoErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
     if (!programReturnsErrorUnion(program) and program.error_codes.len == 0) return;
-    // Emitted even with no named Zig errors: `errorForCode` still has to have
+    // Emitted even with no named Zig errors: `zigoErrorForCode` still has to have
     // something to say about a status code nothing in the lock file explains.
     if (!options.shared_lifecycle) try writer.writeAll(
         "// Error is a stable Zig error-set value returned by the generated binding.\n" ++
@@ -976,7 +976,7 @@ pub fn renderGoErrors(allocator: std.mem.Allocator, writer: *std.Io.Writer, prog
     if (!programReturnsErrorUnion(program)) return;
     // A caught panic reports a status of -256 or below; the code names the
     // slot its message was published in, readable from any thread.
-    try writer.writeAll("\nfunc errorForCode(operation string, code int32) error {\n\tif code <= -256 {\n\t\treturn &NativePanicError{Operation: operation, Message: ");
+    try writer.writeAll("\nfunc zigoErrorForCode(operation string, code int32) error {\n\tif code <= -256 {\n\t\treturn &NativePanicError{Operation: operation, Message: ");
     try public_writers.writeRawReferencePrefix(writer, options);
     try writer.writeAll("PanicMessage(code)}\n\t}\n\tswitch code {\n");
     if (programHasValueUnionReturn(program))

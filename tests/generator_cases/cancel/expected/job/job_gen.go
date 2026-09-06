@@ -39,7 +39,7 @@ func (j *Job) Crunch(ctx context.Context, rounds uint32) (float64, error) {
 	defer j.zigoRelease()
 	result, code := raw.JobCrunch(ptr, rounds, &zigoCancel)
 	if code != 0 {
-		zigoErr := zigoPoisonAfterPanic(errorForCode("Job.Crunch", code), j)
+		zigoErr := zigoPoisonAfterPanic(zigoErrorForCode("Job.Crunch", code), j)
 		if errors.Is(zigoErr, ErrCancelled) && ctx.Err() != nil {
 			return 0, ctx.Err()
 		}
@@ -59,7 +59,7 @@ func (j *Job) Total() (float64, error) {
 	defer j.zigoRelease()
 	result, code := raw.JobTotal(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Job.Total", code), j)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Job.Total", code), j)
 	}
 	return result, nil
 }

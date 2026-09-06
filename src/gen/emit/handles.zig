@@ -63,7 +63,7 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
         const recv = try common.typeReceiverNameAlloc(allocator, program, declaration.name);
         defer allocator.free(recv);
         if (can_be_borrowed) try writer.print(
-            "func newBorrowed{0s}(ptr unsafe.Pointer, owner zigoHandle) *{0s} {{\n" ++
+            "func zigoNewBorrowed{0s}(ptr unsafe.Pointer, owner zigoHandle) *{0s} {{\n" ++
                 "\treturn &{0s}{{ptr: ptr, owner: owner}}\n}}\n\n",
             .{declaration.name},
         );
@@ -122,7 +122,7 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
         try writer.print("func ({0s} *{1s}) zigoRelease() {{\n\tif {0s} == nil {{\n\t\treturn\n\t}}\n\t{0s}.mu.Lock()\n\t{0s}.active--\n", .{ recv, declaration.name });
         if (auto_cleanup) {
             try writeParentLookup(writer, recv, can_be_borrowed, dependent_parent != null, .line);
-            try writer.print("\tstate, release := {0s}.zigoTakeLocked()\n\t{0s}.mu.Unlock()\n\tif release {{\n\t\tcleanup{1s}(state)\n\t}}\n", .{ recv, declaration.name });
+            try writer.print("\tstate, release := {0s}.zigoTakeLocked()\n\t{0s}.mu.Unlock()\n\tif release {{\n\t\tzigoCleanup{1s}(state)\n\t}}\n", .{ recv, declaration.name });
             if (can_be_borrowed or dependent_parent != null)
                 try writer.print("\tif parent != nil {{\n\t\tparent.{s}()\n\t}}\n", .{names.release});
             try writer.writeAll("}\n\n");
@@ -212,31 +212,29 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
         if (constructor) |owned| {
             const raw_deinit = try common.rawNameForSemanticAlloc(allocator, program, owned.deinit, owned.type) orelse continue;
             defer allocator.free(raw_deinit);
-            const private_name = try naming.camelAlloc(allocator, declaration.name);
-            defer allocator.free(private_name);
             // The cleanup state copies what has to be released. It must not
             // reach the handle itself, or the handle stays reachable and the
             // cleanup never runs.
-            try writer.print("type {s}CleanupState struct {{\n", .{private_name});
+            try writer.print("type zigo{s}CleanupState struct {{\n", .{declaration.name});
             const state_width = fieldNameWidth(&.{ "ptr", if (dependent_parent != null) "parent" else "", if (owns_callbacks) "callbackHandles" else "" });
             try writeStructField(writer, "ptr", state_width, "unsafe.Pointer");
             if (dependent_parent != null) try writeStructField(writer, "parent", state_width, "zigoChildHandle");
             if (owns_callbacks) try writeStructField(writer, "callbackHandles", state_width, "[]zigoCallbackHandle");
             try writer.writeAll("}\n\n");
-            try writer.print("func new{s}(ptr unsafe.Pointer", .{declaration.name});
+            try writer.print("func zigoNew{s}(ptr unsafe.Pointer", .{declaration.name});
             if (dependent_parent != null) try writer.writeAll(", parent zigoChildHandle");
             if (owns_callbacks) try writer.writeAll(", callbackHandles []zigoCallbackHandle");
             try writer.print(") *{s} {{\n\tvalue := &{s}{{ptr: ptr", .{ declaration.name, declaration.name });
             if (dependent_parent != null) try writer.writeAll(", parent: parent");
             if (owns_callbacks) try writer.writeAll(", callbackHandles: callbackHandles");
-            try writer.print("}}\n\tstate := {s}CleanupState{{ptr: ptr", .{private_name});
+            try writer.print("}}\n\tstate := zigo{s}CleanupState{{ptr: ptr", .{declaration.name});
             if (dependent_parent != null) try writer.writeAll(", parent: parent");
             if (owns_callbacks) try writer.writeAll(", callbackHandles: callbackHandles");
-            try writer.print("}}\n\tvalue.cleanup = runtime.AddCleanup(value, cleanup{s}, state)\n\treturn value\n}}\n\n", .{declaration.name});
-            try writer.print("func cleanup{s}(state {s}CleanupState) {{\n\tif state.ptr != nil {{\n\t\t", .{ declaration.name, private_name });
+            try writer.print("}}\n\tvalue.cleanup = runtime.AddCleanup(value, zigoCleanup{s}, state)\n\treturn value\n}}\n\n", .{declaration.name});
+            try writer.print("func zigoCleanup{s}(state zigo{s}CleanupState) {{\n\tif state.ptr != nil {{\n\t\t", .{ declaration.name, declaration.name });
             try public_writers.writeRawReferencePrefix(writer, options);
             try writer.print("{s}(state.ptr)\n\t}}\n", .{raw_deinit});
-            if (owns_callbacks) try writer.writeAll("\tfor _, handle := range state.callbackHandles {\n\t\tdeleteCallbackHandle(handle)\n\t}\n");
+            if (owns_callbacks) try writer.writeAll("\tfor _, handle := range state.callbackHandles {\n\t\tzigoDeleteCallbackHandle(handle)\n\t}\n");
             if (dependent_parent != null) try writer.print("\tif state.parent != nil {{\n\t\tstate.parent.{s}()\n\t}}\n", .{names.drop_child});
             try writer.writeAll("}\n\n");
             // Close only marks the handle. Whoever then finds it closed with
@@ -265,7 +263,7 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
             if (returns_borrowed_views) try writeInUseCheck(writer, recv, declaration.name, "active", "\t");
             try writer.print(
                 "\t{0s}.closed = true\n\t{0s}.cleanup.Stop()\n" ++
-                    "\tstate, release := {0s}.zigoTakeLocked()\n\t{0s}.mu.Unlock()\n\tif release {{\n\t\tcleanup{1s}(state)\n\t}}\n" ++
+                    "\tstate, release := {0s}.zigoTakeLocked()\n\t{0s}.mu.Unlock()\n\tif release {{\n\t\tzigoCleanup{1s}(state)\n\t}}\n" ++
                     "\truntime.KeepAlive({0s})\n\treturn nil\n}}\n\n",
                 .{ recv, declaration.name },
             );
@@ -273,10 +271,10 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
                 "// zigoTakeLocked hands out what is left to release once {0s} is closed and no\n" ++
                     "// call is inside native; mu must be held. A poisoned handle keeps its native\n" ++
                     "// object: releasing state a panic left half-changed could fault, so it leaks.\n" ++
-                    "func ({0s} *{1s}) zigoTakeLocked() ({2s}CleanupState, bool) {{\n" ++
-                    "\tif !{0s}.closed || {0s}.active != 0 || {0s}.ptr == nil {{\n\t\treturn {2s}CleanupState{{}}, false\n\t}}\n" ++
-                    "\tstate := {2s}CleanupState{{ptr: {0s}.ptr",
-                .{ recv, declaration.name, private_name },
+                    "func ({0s} *{1s}) zigoTakeLocked() (zigo{1s}CleanupState, bool) {{\n" ++
+                    "\tif !{0s}.closed || {0s}.active != 0 || {0s}.ptr == nil {{\n\t\treturn zigo{1s}CleanupState{{}}, false\n\t}}\n" ++
+                    "\tstate := zigo{1s}CleanupState{{ptr: {0s}.ptr",
+                .{ recv, declaration.name },
             );
             if (owns_callbacks) try writer.print(", callbackHandles: {0s}.callbackHandles", .{recv});
             if (dependent_parent != null) try writer.print(", parent: {0s}.parent", .{recv});
@@ -455,7 +453,7 @@ pub fn writeOwnedHandleResult(
     expression: []const u8,
 ) !void {
     const handle = function.ownership.handle;
-    try writer.print("new{s}({s}", .{ handle.type_name, expression });
+    try writer.print("zigoNew{s}({s}", .{ handle.type_name, expression });
     if (handle.child_of_receiver) {
         try writer.writeAll(", zigoChildParent");
     }

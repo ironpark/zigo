@@ -24,9 +24,9 @@ var DefaultLibraryName = raw.DefaultLibraryName
 func NewTicker(interval uint32) (*Ticker, error) {
 	result, code := raw.NewTicker(interval)
 	if code != 0 {
-		return nil, errorForCode("NewTicker", code)
+		return nil, zigoErrorForCode("NewTicker", code)
 	}
-	return newTicker(result), nil
+	return zigoNewTicker(result), nil
 }
 
 // MustNewTicker calls NewTicker and panics with its typed error on failure.
@@ -43,7 +43,7 @@ func (t *Ticker) Advance(steps uint32) (uint32, error) {
 	defer t.zigoRelease()
 	result, code := raw.TickerAdvance(ptr, steps)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Ticker.Advance", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Ticker.Advance", code), t)
 	}
 	return result, nil
 }
@@ -62,7 +62,7 @@ func (t *Ticker) Elapsed() (uint32, error) {
 	defer t.zigoRelease()
 	result, code := raw.TickerElapsed(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Ticker.Elapsed", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Ticker.Elapsed", code), t)
 	}
 	return result, nil
 }

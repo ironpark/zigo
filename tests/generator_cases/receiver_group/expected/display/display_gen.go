@@ -17,7 +17,7 @@ func (s *Screen) SelectAll() error {
 	defer s.zigoRelease()
 	code := raw.ScreenSelectAll(ptr)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Screen.SelectAll", code), s)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Screen.SelectAll", code), s)
 	}
 	return nil
 }

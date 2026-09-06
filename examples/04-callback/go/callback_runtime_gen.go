@@ -43,33 +43,33 @@ type Observer func(int32) (int32, error)
 // VoidObserver is the Go callback signature accepted by the generated binding.
 type VoidObserver func(int32)
 
-var activeCallbackHandles atomic.Int64
+var zigoActiveCallbackHandles atomic.Int64
 
 type zigoCallbackHandle = cgo.Handle
 
-func newObserverHandle(value Observer) zigoCallbackHandle {
+func zigoNewObserverHandle(value Observer) zigoCallbackHandle {
 	stored := (func(int32) (int32, error))(value)
 	handle := cgo.NewHandle(&zigoRawCallbackState{Fn: stored})
-	activeCallbackHandles.Add(1)
+	zigoActiveCallbackHandles.Add(1)
 	return handle
 }
 
-func newVoidObserverHandle(value VoidObserver) zigoCallbackHandle {
+func zigoNewVoidObserverHandle(value VoidObserver) zigoCallbackHandle {
 	stored := (func(int32))(value)
 	handle := cgo.NewHandle(&zigoRawCallbackState{Fn: stored})
-	activeCallbackHandles.Add(1)
+	zigoActiveCallbackHandles.Add(1)
 	return handle
 }
 
-func deleteCallbackHandle(handle zigoCallbackHandle) {
+func zigoDeleteCallbackHandle(handle zigoCallbackHandle) {
 	if handle == 0 {
 		return
 	}
 	handle.Delete()
-	activeCallbackHandles.Add(-1)
+	zigoActiveCallbackHandles.Add(-1)
 }
 
-func activeCallbackHandleCount() int64 { return activeCallbackHandles.Load() }
+func zigoActiveCallbackHandleCount() int64 { return zigoActiveCallbackHandles.Load() }
 
 func setCallbackCancel(handle zigoCallbackHandle, flag *uint32) {
 	zigoRawSetCallbackCancel(handle, flag)

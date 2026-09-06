@@ -88,7 +88,7 @@ var ErrOutOfMemory = &Error{Code: 1, Name: "OutOfMemory"}
 // ErrInvalid represents Zig error.Invalid.
 var ErrInvalid = &Error{Code: 2, Name: "Invalid"}
 
-func errorForCode(operation string, code int32) error {
+func zigoErrorForCode(operation string, code int32) error {
 	if code <= -256 {
 		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(code)}
 	}

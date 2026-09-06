@@ -29,7 +29,7 @@ func Snapshot() Root {
 func Many() ([]Root, error) {
 	result, code := raw.Many()
 	if code != 0 {
-		return nil, errorForCode("Many", code)
+		return nil, zigoErrorForCode("Many", code)
 	}
 	return zigoDecodeRootSliceBuffer(result), nil
 }
@@ -47,7 +47,7 @@ func Fill(output []Root) uint {
 func FillChecked(output []Root) (uint, error) {
 	zigoBuffer, result, code := raw.FillChecked(len(output))
 	if code != 0 {
-		return 0, errorForCode("FillChecked", code)
+		return 0, zigoErrorForCode("FillChecked", code)
 	}
 	zigoDecoded := zigoDecodeRootSliceBuffer(zigoBuffer)
 	copy(output, zigoDecoded)

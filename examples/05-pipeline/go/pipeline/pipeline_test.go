@@ -64,7 +64,7 @@ func TestConstructorFailureReleasesCallback(t *testing.T) {
 	if _, err := NewPipeline("", ModeSum, func(value int32) int32 { return value }); !errors.Is(err, ErrInvalidName) {
 		t.Fatalf("NewPipeline() error = %v, want %v", err, ErrInvalidName)
 	}
-	if got := activeCallbackHandleCount(); got != 0 {
+	if got := zigoActiveCallbackHandleCount(); got != 0 {
 		t.Fatalf("active callback handles = %d, want 0", got)
 	}
 	if got := LiveBytes(); got != 0 {
@@ -220,7 +220,7 @@ func must[T any](value T, err error) T {
 
 func assertNoLiveResources(t *testing.T) {
 	t.Helper()
-	if got := activeCallbackHandleCount(); got != 0 {
+	if got := zigoActiveCallbackHandleCount(); got != 0 {
 		t.Fatalf("active callback handles = %d, want 0", got)
 	}
 	if got := LiveBytes(); got != 0 {

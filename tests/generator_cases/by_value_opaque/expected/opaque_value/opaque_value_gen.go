@@ -17,7 +17,7 @@ func (s *Screen) IsBottom() (bool, error) {
 	defer s.zigoRelease()
 	result, code := raw.ScreenIsBottom(ptr)
 	if code != 0 {
-		return false, zigoPoisonAfterPanic(errorForCode("Screen.IsBottom", code), s)
+		return false, zigoPoisonAfterPanic(zigoErrorForCode("Screen.IsBottom", code), s)
 	}
 	return result != 0, nil
 }
@@ -31,9 +31,9 @@ func Same(expected bool, other *Screen) (bool, error) {
 		return false, err
 	}
 	defer other.zigoRelease()
-	result, code := raw.Same(boolToUint8(expected), otherPtr)
+	result, code := raw.Same(zigoBoolToUint8(expected), otherPtr)
 	if code != 0 {
-		return false, zigoPoisonAfterPanic(errorForCode("Same", code), other)
+		return false, zigoPoisonAfterPanic(zigoErrorForCode("Same", code), other)
 	}
 	return result != 0, nil
 }

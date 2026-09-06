@@ -29,7 +29,7 @@ func (p *Palette) Flags() (Flags, error) {
 	defer p.zigoRelease()
 	result, code := raw.PaletteFlags(ptr)
 	if code != 0 {
-		return Flags{}, zigoPoisonAfterPanic(errorForCode("Palette.Flags", code), p)
+		return Flags{}, zigoPoisonAfterPanic(zigoErrorForCode("Palette.Flags", code), p)
 	}
 	return FlagsFromBacking(result), nil
 }
@@ -45,7 +45,7 @@ func (p *Palette) SetFlags(v Flags) error {
 	defer p.zigoRelease()
 	code := raw.PaletteSetFlags(ptr, v.Backing())
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Palette.SetFlags", code), p)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Palette.SetFlags", code), p)
 	}
 	return nil
 }
@@ -56,9 +56,9 @@ func (p *Palette) SetFlags(v Flags) error {
 func NewChild(value int32) (*Child, error) {
 	result, code := raw.ChildCreate(value)
 	if code != 0 {
-		return nil, errorForCode("NewChild", code)
+		return nil, zigoErrorForCode("NewChild", code)
 	}
-	return newChild(result), nil
+	return zigoNewChild(result), nil
 }
 
 // Get calls the Zig function Child.get.
@@ -72,7 +72,7 @@ func (c *Child) Get() (int32, error) {
 	defer c.zigoRelease()
 	result, code := raw.ChildGet(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Child.Get", code), c)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Child.Get", code), c)
 	}
 	return result, nil
 }
@@ -83,9 +83,9 @@ func (c *Child) Get() (int32, error) {
 func NewValue(initial int64) (*Value, error) {
 	result, code := raw.ValueCreate(initial)
 	if code != 0 {
-		return nil, errorForCode("NewValue", code)
+		return nil, zigoErrorForCode("NewValue", code)
 	}
-	return newValue(result), nil
+	return zigoNewValue(result), nil
 }
 
 // SetNone calls the Zig function Value.setNone.
@@ -99,7 +99,7 @@ func (v *Value) SetNone() error {
 	defer v.zigoRelease()
 	code := raw.ValueSetNone(ptr)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Value.SetNone", code), v)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Value.SetNone", code), v)
 	}
 	return nil
 }
@@ -113,9 +113,9 @@ func (v *Value) SetFlag(flag bool) error {
 		return err
 	}
 	defer v.zigoRelease()
-	code := raw.ValueSetFlag(ptr, boolToUint8(flag))
+	code := raw.ValueSetFlag(ptr, zigoBoolToUint8(flag))
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Value.SetFlag", code), v)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Value.SetFlag", code), v)
 	}
 	return nil
 }
@@ -131,7 +131,7 @@ func (v *Value) SetMode(mode Mode) error {
 	defer v.zigoRelease()
 	code := raw.ValueSetMode(ptr, uint8(mode))
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Value.SetMode", code), v)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Value.SetMode", code), v)
 	}
 	return nil
 }
@@ -147,7 +147,7 @@ func (v *Value) UsePresetSamples() error {
 	defer v.zigoRelease()
 	code := raw.ValueUsePresetSamples(ptr)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Value.UsePresetSamples", code), v)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Value.UsePresetSamples", code), v)
 	}
 	return nil
 }
@@ -163,7 +163,7 @@ func (v *Value) UseEmptySamples() error {
 	defer v.zigoRelease()
 	code := raw.ValueUseEmptySamples(ptr)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Value.UseEmptySamples", code), v)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Value.UseEmptySamples", code), v)
 	}
 	return nil
 }
@@ -179,7 +179,7 @@ func (v *Value) UseMutableSamples() error {
 	defer v.zigoRelease()
 	code := raw.ValueUseMutableSamples(ptr)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Value.UseMutableSamples", code), v)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Value.UseMutableSamples", code), v)
 	}
 	return nil
 }
@@ -200,7 +200,7 @@ func (v *Value) SetChild(child *Child) error {
 	defer child.zigoRelease()
 	code := raw.ValueSetChild(ptr, childPtr)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Value.SetChild", code), v, child)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Value.SetChild", code), v, child)
 	}
 	return nil
 }
@@ -217,7 +217,7 @@ func (v *Value) Borrow() (*ValueRef, error) {
 	defer v.zigoRelease()
 	result, code := raw.ValueBorrow(ptr)
 	if code != 0 {
-		return nil, zigoPoisonAfterPanic(errorForCode("Value.Borrow", code), v)
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("Value.Borrow", code), v)
 	}
 	return &ValueRef{ptr: result, parent: v}, nil
 }
@@ -228,9 +228,9 @@ func (v *Value) Borrow() (*ValueRef, error) {
 func NewSignal(initial uint32) (*Signal, error) {
 	result, code := raw.SignalCreate(initial)
 	if code != 0 {
-		return nil, errorForCode("NewSignal", code)
+		return nil, zigoErrorForCode("NewSignal", code)
 	}
-	return newSignal(result), nil
+	return zigoNewSignal(result), nil
 }
 
 // SetIdle calls the Zig function Signal.setIdle.
@@ -244,7 +244,7 @@ func (s *Signal) SetIdle() error {
 	defer s.zigoRelease()
 	code := raw.SignalSetIdle(ptr)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Signal.SetIdle", code), s)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Signal.SetIdle", code), s)
 	}
 	return nil
 }
@@ -260,7 +260,7 @@ func (s *Signal) SetTicks(ticks uint32) error {
 	defer s.zigoRelease()
 	code := raw.SignalSetTicks(ptr, ticks)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Signal.SetTicks", code), s)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Signal.SetTicks", code), s)
 	}
 	return nil
 }
@@ -276,7 +276,7 @@ func (s *Signal) SetLevel(level float64) error {
 	defer s.zigoRelease()
 	code := raw.SignalSetLevel(ptr, level)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Signal.SetLevel", code), s)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Signal.SetLevel", code), s)
 	}
 	return nil
 }
@@ -292,7 +292,7 @@ func (s *Signal) SetOffset(offset int16) error {
 	defer s.zigoRelease()
 	code := raw.SignalSetOffset(ptr, offset)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Signal.SetOffset", code), s)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Signal.SetOffset", code), s)
 	}
 	return nil
 }
@@ -308,7 +308,7 @@ func (s *Signal) SetMode(mode Mode) error {
 	defer s.zigoRelease()
 	code := raw.SignalSetMode(ptr, uint8(mode))
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Signal.SetMode", code), s)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Signal.SetMode", code), s)
 	}
 	return nil
 }
@@ -322,9 +322,9 @@ func (s *Signal) SetActive(active bool) error {
 		return err
 	}
 	defer s.zigoRelease()
-	code := raw.SignalSetActive(ptr, boolToUint8(active))
+	code := raw.SignalSetActive(ptr, zigoBoolToUint8(active))
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Signal.SetActive", code), s)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Signal.SetActive", code), s)
 	}
 	return nil
 }
@@ -339,7 +339,7 @@ func LiveValues() uint {
 func Divide(numerator float64, denominator float64) (float64, error) {
 	result, code := raw.Divide(numerator, denominator)
 	if code != 0 {
-		return 0, errorForCode("Divide", code)
+		return 0, zigoErrorForCode("Divide", code)
 	}
 	return result, nil
 }
@@ -359,7 +359,7 @@ func ScrollAmount(behavior ScrollViewport) int {
 func CurrentViewport(kind uint8) (ScrollViewport, error) {
 	result, code := raw.CurrentViewport(kind)
 	if code != 0 {
-		return ScrollViewport{}, errorForCode("CurrentViewport", code)
+		return ScrollViewport{}, zigoErrorForCode("CurrentViewport", code)
 	}
 	return zigoScrollViewportFromRaw(result), nil
 }
@@ -371,16 +371,16 @@ func EchoRgb(value RGB) RGB {
 
 // MaybeRgb calls the Zig function maybeRGB.
 func MaybeRgb(present bool) (RGB, bool) {
-	zigoResult, zigoHas := raw.MaybeRgb(boolToUint8(present))
+	zigoResult, zigoHas := raw.MaybeRgb(zigoBoolToUint8(present))
 	return RGBFromBacking(zigoResult), zigoHas
 }
 
 // CheckedRgb calls the Zig function checkedRGB.
 // Native failures are returned as generated error values.
 func CheckedRgb(valid bool) (RGB, error) {
-	result, code := raw.CheckedRgb(boolToUint8(valid))
+	result, code := raw.CheckedRgb(zigoBoolToUint8(valid))
 	if code != 0 {
-		return RGB{}, errorForCode("CheckedRgb", code)
+		return RGB{}, zigoErrorForCode("CheckedRgb", code)
 	}
 	return RGBFromBacking(result), nil
 }
@@ -401,16 +401,16 @@ func FlattenFlags(flags Flags) Flags {
 func NewPalette(flags Flags) (*Palette, error) {
 	result, code := raw.PaletteCreate(flags.Backing())
 	if code != 0 {
-		return nil, errorForCode("NewPalette", code)
+		return nil, zigoErrorForCode("NewPalette", code)
 	}
-	return newPalette(result), nil
+	return zigoNewPalette(result), nil
 }
 
 // VisitFlags calls the Zig function visitFlags.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func VisitFlags(callback FlagsObserver) {
-	callbackHandle := newFlagsObserverHandle(callback)
-	defer deleteCallbackHandle(callbackHandle)
+	callbackHandle := zigoNewFlagsObserverHandle(callback)
+	defer zigoDeleteCallbackHandle(callbackHandle)
 	raw.VisitFlags(raw.CallbackPointer0(), uintptr(callbackHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("VisitFlags", callbackHandle)
@@ -422,7 +422,7 @@ func VisitFlags(callback FlagsObserver) {
 func PanicError() error {
 	code := raw.PanicError()
 	if code != 0 {
-		return errorForCode("PanicError", code)
+		return zigoErrorForCode("PanicError", code)
 	}
 	return nil
 }

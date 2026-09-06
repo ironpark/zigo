@@ -34,7 +34,7 @@ func (c *Cursor) Next() (int64, bool, error) {
 	defer c.zigoRelease()
 	result, zigoHas, code := raw.CursorNext(ptr)
 	if code != 0 {
-		return 0, false, zigoPoisonAfterPanic(errorForCode("Cursor.Next", code), c)
+		return 0, false, zigoPoisonAfterPanic(zigoErrorForCode("Cursor.Next", code), c)
 	}
 	return result, zigoHas, nil
 }
@@ -68,7 +68,7 @@ func (c *Cursor) NextChecked() (Step, bool, error) {
 	defer c.zigoRelease()
 	result, zigoHas, code := raw.CursorNextChecked(ptr)
 	if code != 0 {
-		return 0, false, zigoPoisonAfterPanic(errorForCode("Cursor.NextChecked", code), c)
+		return 0, false, zigoPoisonAfterPanic(zigoErrorForCode("Cursor.NextChecked", code), c)
 	}
 	return Step(result), zigoHas, nil
 }
@@ -102,7 +102,7 @@ func (c *Cursor) Reset() error {
 	defer c.zigoRelease()
 	code := raw.CursorReset(ptr)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Cursor.Reset", code), c)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Cursor.Reset", code), c)
 	}
 	return nil
 }

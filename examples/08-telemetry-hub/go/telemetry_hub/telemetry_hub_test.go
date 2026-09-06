@@ -301,7 +301,7 @@ func assertFloatQuery(t *testing.T, name string, query func() (float64, error), 
 
 func assertNoLiveResources(t *testing.T) {
 	t.Helper()
-	if got := activeCallbackHandleCount(); got != 0 {
+	if got := zigoActiveCallbackHandleCount(); got != 0 {
 		t.Fatalf("active callback handles=%d, want 0", got)
 	}
 	if got := LiveHubs(); got != 0 {

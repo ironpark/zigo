@@ -47,7 +47,7 @@ func (t *Terminal) zigoRelease() {
 	state, release := t.zigoTakeLocked()
 	t.mu.Unlock()
 	if release {
-		cleanupTerminal(state)
+		zigoCleanupTerminal(state)
 	}
 }
 
@@ -65,18 +65,18 @@ func (t *Terminal) zigoPoison(cause *NativePanicError) {
 	}
 }
 
-type terminalCleanupState struct {
+type zigoTerminalCleanupState struct {
 	ptr unsafe.Pointer
 }
 
-func newTerminal(ptr unsafe.Pointer) *Terminal {
+func zigoNewTerminal(ptr unsafe.Pointer) *Terminal {
 	value := &Terminal{ptr: ptr}
-	state := terminalCleanupState{ptr: ptr}
-	value.cleanup = runtime.AddCleanup(value, cleanupTerminal, state)
+	state := zigoTerminalCleanupState{ptr: ptr}
+	value.cleanup = runtime.AddCleanup(value, zigoCleanupTerminal, state)
 	return value
 }
 
-func cleanupTerminal(state terminalCleanupState) {
+func zigoCleanupTerminal(state zigoTerminalCleanupState) {
 	if state.ptr != nil {
 		raw.TerminalFreeTerminal(state.ptr)
 	}
@@ -100,7 +100,7 @@ func (t *Terminal) Close() error {
 	state, release := t.zigoTakeLocked()
 	t.mu.Unlock()
 	if release {
-		cleanupTerminal(state)
+		zigoCleanupTerminal(state)
 	}
 	runtime.KeepAlive(t)
 	return nil
@@ -109,11 +109,11 @@ func (t *Terminal) Close() error {
 // zigoTakeLocked hands out what is left to release once t is closed and no
 // call is inside native; mu must be held. A poisoned handle keeps its native
 // object: releasing state a panic left half-changed could fault, so it leaks.
-func (t *Terminal) zigoTakeLocked() (terminalCleanupState, bool) {
+func (t *Terminal) zigoTakeLocked() (zigoTerminalCleanupState, bool) {
 	if !t.closed || t.active != 0 || t.ptr == nil {
-		return terminalCleanupState{}, false
+		return zigoTerminalCleanupState{}, false
 	}
-	state := terminalCleanupState{ptr: t.ptr}
+	state := zigoTerminalCleanupState{ptr: t.ptr}
 	t.ptr = nil
 	if t.poison != nil {
 		state.ptr = nil

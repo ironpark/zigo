@@ -37,7 +37,7 @@ func TestBorrowedAndRetainedCallbacks(t *testing.T) {
 		if got != i+1 {
 			t.Fatalf("Apply(%d) = %d", i, got)
 		}
-		if got := activeCallbackHandleCount(); got != 0 {
+		if got := zigoActiveCallbackHandleCount(); got != 0 {
 			t.Fatalf("borrowed callback handles = %d, want 0", got)
 		}
 	}
@@ -54,10 +54,10 @@ func TestBorrowedAndRetainedCallbacks(t *testing.T) {
 	}
 	context.Close()
 	context.Close()
-	if got := activeCallbackHandleCount(); got != 0 {
+	if got := zigoActiveCallbackHandleCount(); got != 0 {
 		t.Fatalf("retained callback handles = %d, want 0", got)
 	}
-	if got := callbackDispatcherCount(); got != 2 {
+	if got := zigoCallbackDispatcherCount(); got != 2 {
 		t.Fatalf("permanent callback dispatchers = %d, want two unique signatures", got)
 	}
 }
@@ -95,7 +95,7 @@ func TestCallbackPanicAndConcurrentClose(t *testing.T) {
 	go func() { defer wait.Done(); context.Close() }()
 	close(release)
 	wait.Wait()
-	if got := activeCallbackHandleCount(); got != 0 {
+	if got := zigoActiveCallbackHandleCount(); got != 0 {
 		t.Fatalf("callback handles after concurrent Close = %d", got)
 	}
 }
@@ -160,7 +160,7 @@ func TestBorrowedCallbackErrorReachesTheCaller(t *testing.T) {
 	if callbackErr.Operation != "Apply" || callbackErr.Callback != "callback" {
 		t.Fatalf("CallbackError names %q/%q", callbackErr.Operation, callbackErr.Callback)
 	}
-	if live := activeCallbackHandleCount(); live != 0 {
+	if live := zigoActiveCallbackHandleCount(); live != 0 {
 		t.Fatalf("%d callback handles outlived the failing call", live)
 	}
 }
@@ -204,7 +204,7 @@ func TestRetainedCallbackErrorIsDeferredToTheNextCall(t *testing.T) {
 // The construction path has its own early return, and it must not strand the
 // retained handle it had already registered.
 func TestConstructorCallbackErrorReleasesTheHandle(t *testing.T) {
-	before := activeCallbackHandleCount()
+	before := zigoActiveCallbackHandleCount()
 	context, err := NewCallbackContext(func(int32) (int32, error) { return 0, errCallbackRefused })
 	if err != nil {
 		// Nothing calls the callback during construction, so this path is not
@@ -212,7 +212,7 @@ func TestConstructorCallbackErrorReleasesTheHandle(t *testing.T) {
 		t.Fatalf("NewCallbackContext: %v", err)
 	}
 	defer context.Close()
-	if got := activeCallbackHandleCount(); got != before+1 {
+	if got := zigoActiveCallbackHandleCount(); got != before+1 {
 		t.Fatalf("active callback handles = %d, want %d", got, before+1)
 	}
 }

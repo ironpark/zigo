@@ -87,7 +87,7 @@ var ErrDivideByZero = &Error{Code: 1, Name: "DivideByZero"}
 // ErrNotPrintable represents Zig error.NotPrintable.
 var ErrNotPrintable = &Error{Code: 2, Name: "NotPrintable"}
 
-func errorForCode(operation string, code int32) error {
+func zigoErrorForCode(operation string, code int32) error {
 	if code <= -256 {
 		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(code)}
 	}

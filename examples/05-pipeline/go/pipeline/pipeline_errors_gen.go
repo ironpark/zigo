@@ -132,7 +132,7 @@ var ErrDisabled = &Error{Code: 4, Name: "Disabled"}
 // ErrCallbackPanicked represents Zig error.CallbackPanicked.
 var ErrCallbackPanicked = &Error{Code: 5, Name: "CallbackPanicked"}
 
-func errorForCode(operation string, code int32) error {
+func zigoErrorForCode(operation string, code int32) error {
 	if code <= -256 {
 		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(code)}
 	}

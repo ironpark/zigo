@@ -16,7 +16,7 @@ func RoundTrip(flags Flags) Flags {
 func Checked() (Flags, error) {
 	result, code := raw.Checked()
 	if code != 0 {
-		return Flags{}, errorForCode("Checked", code)
+		return Flags{}, zigoErrorForCode("Checked", code)
 	}
 	return FlagsFromBacking(result), nil
 }
@@ -53,7 +53,7 @@ func (o *Owner) Flags() (Flags, error) {
 	defer o.zigoRelease()
 	result, code := raw.OwnerFlags(ptr)
 	if code != 0 {
-		return Flags{}, zigoPoisonAfterPanic(errorForCode("Owner.Flags", code), o)
+		return Flags{}, zigoPoisonAfterPanic(zigoErrorForCode("Owner.Flags", code), o)
 	}
 	return FlagsFromBacking(result), nil
 }
@@ -69,7 +69,7 @@ func (o *Owner) SetFlags(v Flags) error {
 	defer o.zigoRelease()
 	code := raw.OwnerSetFlags(ptr, v.Backing())
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Owner.SetFlags", code), o)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Owner.SetFlags", code), o)
 	}
 	return nil
 }
@@ -77,8 +77,8 @@ func (o *Owner) SetFlags(v Flags) error {
 // Visit calls the Zig function visit.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func Visit(callback VisitCallback) {
-	callbackHandle := newVisitCallbackHandle(callback)
-	defer deleteCallbackHandle(callbackHandle)
+	callbackHandle := zigoNewVisitCallbackHandle(callback)
+	defer zigoDeleteCallbackHandle(callbackHandle)
 	raw.Visit(uintptr(callbackHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("Visit", callbackHandle)

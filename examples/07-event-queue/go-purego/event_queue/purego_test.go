@@ -48,7 +48,7 @@ func TestPuregoRetainedRollbackCloseAndPanic(t *testing.T) {
 	if _, err := NewEventQueue("", 1, PolicyReject, observer); !errors.Is(err, ErrInvalidName) {
 		t.Fatalf("constructor rollback error = %v", err)
 	}
-	if got := activeCallbackHandleCount(); got != 0 {
+	if got := zigoActiveCallbackHandleCount(); got != 0 {
 		t.Fatalf("handles after rollback = %d", got)
 	}
 
@@ -62,16 +62,16 @@ func TestPuregoRetainedRollbackCloseAndPanic(t *testing.T) {
 	expectCallbackPanic(t, "EventQueue.Process", "observer", func() { _, _ = queue.Process(1) })
 	queue.Close()
 	queue.Close()
-	if got := activeCallbackHandleCount(); got != 0 {
+	if got := zigoActiveCallbackHandleCount(); got != 0 {
 		t.Fatalf("handles after Close = %d", got)
 	}
-	if got := callbackDispatcherCount(); got != 1 {
+	if got := zigoCallbackDispatcherCount(); got != 1 {
 		t.Fatalf("dispatchers = %d, want 1", got)
 	}
 }
 
 func TestRetainedMethodCallbackHandlesAreReplacedAndClosed(t *testing.T) {
-	before := activeCallbackHandleCount()
+	before := zigoActiveCallbackHandleCount()
 	queue, err := NewEventQueue("replace observer", 1, PolicyReject, func(uint64, int32) int32 { return 0 })
 	if err != nil {
 		t.Fatal(err)
@@ -82,13 +82,13 @@ func TestRetainedMethodCallbackHandlesAreReplacedAndClosed(t *testing.T) {
 	if err := queue.SetObserver(func(uint64, int32) int32 { return 2 }); err != nil {
 		t.Fatal(err)
 	}
-	if got := activeCallbackHandleCount(); got != before+2 {
+	if got := zigoActiveCallbackHandleCount(); got != before+2 {
 		t.Fatalf("active callback handles after replacement = %d, want %d", got, before+2)
 	}
 	if err := queue.Close(); err != nil {
 		t.Fatal(err)
 	}
-	if got := activeCallbackHandleCount(); got != before {
+	if got := zigoActiveCallbackHandleCount(); got != before {
 		t.Fatalf("active callback handles after Close = %d, want %d", got, before)
 	}
 }
@@ -137,7 +137,7 @@ func TestPuregoCloneOwnsItsObserverHandle(t *testing.T) {
 	if got := LiveQueues(); got != 2 {
 		t.Fatalf("LiveQueues() = %d, want 2", got)
 	}
-	if got := activeCallbackHandleCount(); got != 2 {
+	if got := zigoActiveCallbackHandleCount(); got != 2 {
 		t.Fatalf("handles after Clone = %d, want 2", got)
 	}
 	if got, err := copied.Process(1); err != nil || got != 1 {
@@ -148,11 +148,11 @@ func TestPuregoCloneOwnsItsObserverHandle(t *testing.T) {
 	if got := LiveQueues(); got != 1 {
 		t.Fatalf("LiveQueues() after clone Close = %d, want 1", got)
 	}
-	if got := activeCallbackHandleCount(); got != 1 {
+	if got := zigoActiveCallbackHandleCount(); got != 1 {
 		t.Fatalf("handles after clone Close = %d, want 1", got)
 	}
 	queue.Close()
-	if got := activeCallbackHandleCount(); got != 0 {
+	if got := zigoActiveCallbackHandleCount(); got != 0 {
 		t.Fatalf("handles after Close = %d, want 0", got)
 	}
 }
@@ -192,12 +192,12 @@ func TestPuregoAutomaticCleanup(t *testing.T) {
 		_ = queue
 	}()
 	deadline := time.Now().Add(5 * time.Second)
-	for (activeCallbackHandleCount() != 0 || LiveQueues() != 0) && time.Now().Before(deadline) {
+	for (zigoActiveCallbackHandleCount() != 0 || LiveQueues() != 0) && time.Now().Before(deadline) {
 		runtime.GC()
 		time.Sleep(10 * time.Millisecond)
 	}
-	if activeCallbackHandleCount() != 0 || LiveQueues() != 0 {
-		t.Fatalf("automatic cleanup leaked: callbacks=%d queues=%d", activeCallbackHandleCount(), LiveQueues())
+	if zigoActiveCallbackHandleCount() != 0 || LiveQueues() != 0 {
+		t.Fatalf("automatic cleanup leaked: callbacks=%d queues=%d", zigoActiveCallbackHandleCount(), LiveQueues())
 	}
 }
 

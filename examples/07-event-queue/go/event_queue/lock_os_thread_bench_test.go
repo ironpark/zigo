@@ -10,7 +10,7 @@ import (
 // enqueueUnlocked is Enqueue with the runtime.LockOSThread pair taken out and
 // nothing else changed: the same handle check, the same native call, the same
 // callback-panic sweep. Benchmarking the two against each other prices the
-// thread pinning that errorForCode needs to read the panic message.
+// thread pinning that zigoErrorForCode needs to read the panic message.
 func (e *EventQueue) enqueueUnlocked(id uint64, value int32) error {
 	ptr, err := zigoCheckedPointer("EventQueue.Enqueue receiver", e)
 	if err != nil {
@@ -24,7 +24,7 @@ func (e *EventQueue) enqueueUnlocked(id uint64, value int32) error {
 		}
 	}
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("EventQueue.Enqueue", code), e)
+		return zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.Enqueue", code), e)
 	}
 	return nil
 }

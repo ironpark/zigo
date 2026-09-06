@@ -47,7 +47,7 @@ func zigoStatsToRaw(value Stats) raw.StatsData {
 		Dropped:   value.Dropped,
 		Processed: value.Processed,
 		Policy:    uint32(value.Policy),
-		Saturated: boolToUint8(value.Saturated),
+		Saturated: zigoBoolToUint8(value.Saturated),
 	}
 }
 

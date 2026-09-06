@@ -17,7 +17,7 @@ func (t *Terminal) CursorX() (uint16, error) {
 	defer t.zigoRelease()
 	result, code := raw.TerminalCursorX(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Terminal.CursorX", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Terminal.CursorX", code), t)
 	}
 	return result, nil
 }
@@ -34,7 +34,7 @@ func (t *Terminal) CursorVisible() (bool, error) {
 	defer t.zigoRelease()
 	result, code := raw.TerminalCursorVisible(ptr)
 	if code != 0 {
-		return false, zigoPoisonAfterPanic(errorForCode("Terminal.CursorVisible", code), t)
+		return false, zigoPoisonAfterPanic(zigoErrorForCode("Terminal.CursorVisible", code), t)
 	}
 	return result != 0, nil
 }
@@ -50,7 +50,7 @@ func (t *Terminal) SetCursorStyle(v CursorStyle) error {
 	defer t.zigoRelease()
 	code := raw.TerminalSetCursorStyle(ptr, uint8(v))
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Terminal.SetCursorStyle", code), t)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Terminal.SetCursorStyle", code), t)
 	}
 	return nil
 }
@@ -69,7 +69,7 @@ func (t *Terminal) SetCursorX(v uint16) error {
 	defer t.zigoRelease()
 	code := raw.TerminalSetCursorX(ptr, v)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Terminal.SetCursorX", code), t)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Terminal.SetCursorX", code), t)
 	}
 	return nil
 }

@@ -144,7 +144,7 @@ func (err *Error) Is(target error) bool {
 // ErrOutOfMemory represents Zig error.OutOfMemory.
 var ErrOutOfMemory = &Error{Code: 1, Name: "OutOfMemory"}
 
-func errorForCode(operation string, code int32) error {
+func zigoErrorForCode(operation string, code int32) error {
 	if code <= -256 {
 		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(code)}
 	}

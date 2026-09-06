@@ -42,30 +42,30 @@ func zigoPoisonAfterPanic(err error, handles ...zigoHandle) error {
 // VisitCallback is the Go callback signature accepted by the generated binding.
 type VisitCallback func(Flags)
 
-func boolToUint8(value bool) uint8 {
+func zigoBoolToUint8(value bool) uint8 {
 	if value {
 		return 1
 	}
 	return 0
 }
 
-var activeCallbackHandles atomic.Int64
+var zigoActiveCallbackHandles atomic.Int64
 
 type zigoCallbackHandle = cgo.Handle
 
-func newVisitCallbackHandle(value VisitCallback) zigoCallbackHandle {
+func zigoNewVisitCallbackHandle(value VisitCallback) zigoCallbackHandle {
 	stored := func(p0 uint16) {
 		value(FlagsFromBacking(p0))
 	}
 	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
-	activeCallbackHandles.Add(1)
+	zigoActiveCallbackHandles.Add(1)
 	return handle
 }
 
-func deleteCallbackHandle(handle zigoCallbackHandle) {
+func zigoDeleteCallbackHandle(handle zigoCallbackHandle) {
 	if handle == 0 { return }
 	handle.Delete()
-	activeCallbackHandles.Add(-1)
+	zigoActiveCallbackHandles.Add(-1)
 }
 
 // zigoCallbackPanicPending is the fast-path check ahead of the per-slot sweep:

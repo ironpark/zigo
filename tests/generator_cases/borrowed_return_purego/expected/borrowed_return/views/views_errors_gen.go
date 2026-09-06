@@ -53,7 +53,7 @@ var ErrLibraryLoad = raw.ErrLibraryLoad
 // ErrMissing represents Zig error.Missing.
 var ErrMissing = &Error{Code: 1, Name: "Missing"}
 
-func errorForCode(operation string, code int32) error {
+func zigoErrorForCode(operation string, code int32) error {
 	if code <= -256 {
 		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(code)}
 	}

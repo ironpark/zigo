@@ -75,6 +75,27 @@ zig-out/
 `GoBindings.library_path`에서 실제 경로를 확인하세요.
 설정 방법은 [설치 위치](configuration.md#설치-위치), 배포 방법은 [purego 가이드](purego.md)에 있습니다.
 
+## 생성 패키지 확장하기
+
+생성된 공개 패키지에는 사용자 파일을 함께 둘 수 있습니다. Go는 같은 패키지의 다른 파일에서
+타입에 메서드를 붙일 수 있으므로, `context_ext.go` 같은 파일에서 생성된 `Context`에
+`String()`이나 `MarshalJSON()`, 편의 메서드를 더하면 됩니다. `go-check`는 `_gen.go` 파일만
+비교하므로 사용자 파일은 검사 대상이 아닙니다.
+
+충돌을 피하기 위해 생성기는 이름을 예약합니다.
+
+- 공개 패키지의 **비공개(unexported) 생성 식별자는 모두 `zigo` 접두사**로 시작합니다.
+  `zigoNewContext`, `zigoErrorForCode`, `zigoBoolToUint8`, `zigoContextCleanupState`처럼요.
+  사용자 파일에서는 `zigo`로 시작하는 이름을 쓰지 마세요. cgo 콜백 트램폴린의
+  `//export` 심볼(`<prefix>_..._go_callback_...`)은 C 링크 이름이라 예외입니다.
+- 공개 식별자는 바인딩이 선언한 타입·함수·오류(`Err*`)와 `Must*`, `New<T>`, `Close`,
+  `LoadLibrary` 계열의 로더 API입니다. 이 이름은 사용자 파일에서 다시 정의할 수 없습니다.
+- `.raw_package`를 공개 패키지와 같은 경로에 두는 colocated 구성에서는 raw 계층의 내부
+  이름도 같은 패키지에 들어오므로 위 예약이 보장되지 않습니다. 확장 파일을 둘 계획이면
+  raw 패키지를 기본값(`internal/raw`)대로 분리하세요.
+- 사용자 파일에서 raw 계층이 필요하면 같은 모듈 안이므로 `internal/raw`를 import할 수
+  있습니다. 다만 raw API는 지원 대상이 아니며 릴리스마다 바뀔 수 있습니다.
+
 ## CI 권장 구성
 
 새 체크아웃에서 생성물을 검사하고 Go 테스트를 실행하는 기본 구성입니다.

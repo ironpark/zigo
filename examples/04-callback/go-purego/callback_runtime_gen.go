@@ -45,18 +45,18 @@ type VoidObserver func(int32)
 
 type zigoCallbackHandle = uintptr
 
-func newObserverHandle(value Observer) zigoCallbackHandle {
+func zigoNewObserverHandle(value Observer) zigoCallbackHandle {
 	return raw.NewCallbackHandle((func(int32) (int32, error))(value))
 }
 
-func newVoidObserverHandle(value VoidObserver) zigoCallbackHandle {
+func zigoNewVoidObserverHandle(value VoidObserver) zigoCallbackHandle {
 	return raw.NewCallbackHandle((func(int32))(value))
 }
 
-func deleteCallbackHandle(handle zigoCallbackHandle) { raw.DeleteCallbackHandle(handle) }
+func zigoDeleteCallbackHandle(handle zigoCallbackHandle) { raw.DeleteCallbackHandle(handle) }
 
-func activeCallbackHandleCount() int64 { return raw.ActiveCallbackHandleCount() }
-func callbackDispatcherCount() int     { return raw.CallbackDispatcherCount() }
+func zigoActiveCallbackHandleCount() int64 { return raw.ActiveCallbackHandleCount() }
+func zigoCallbackDispatcherCount() int     { return raw.CallbackDispatcherCount() }
 
 func setCallbackCancel(handle zigoCallbackHandle, flag *uint32) { raw.SetCallbackCancel(handle, flag) }
 

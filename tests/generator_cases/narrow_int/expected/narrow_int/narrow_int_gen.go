@@ -14,7 +14,7 @@ func CodepointWidth(cp uint32) (int8, error) {
 	}
 	result, code := raw.CodepointWidth(cp)
 	if code != 0 {
-		return 0, errorForCode("CodepointWidth", code)
+		return 0, zigoErrorForCode("CodepointWidth", code)
 	}
 	return result, nil
 }
@@ -27,7 +27,7 @@ func ClampOffset(offset int32) (int32, error) {
 	}
 	result, code := raw.ClampOffset(offset)
 	if code != 0 {
-		return 0, errorForCode("ClampOffset", code)
+		return 0, zigoErrorForCode("ClampOffset", code)
 	}
 	return result, nil
 }
@@ -37,7 +37,7 @@ func ClampOffset(offset int32) (int32, error) {
 func Decode(byte uint8) (uint32, error) {
 	result, code := raw.Decode(byte)
 	if code != 0 {
-		return 0, errorForCode("Decode", code)
+		return 0, zigoErrorForCode("Decode", code)
 	}
 	return result, nil
 }

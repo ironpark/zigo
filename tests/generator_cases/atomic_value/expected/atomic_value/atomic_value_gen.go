@@ -17,7 +17,7 @@ func (h *Handle) Counter() (uint64, error) {
 	defer h.zigoRelease()
 	result, code := raw.HandleCounter(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Handle.Counter", code), h)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Handle.Counter", code), h)
 	}
 	return result, nil
 }
@@ -33,7 +33,7 @@ func (h *Handle) SetCounter(v uint64) error {
 	defer h.zigoRelease()
 	code := raw.HandleSetCounter(ptr, v)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Handle.SetCounter", code), h)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Handle.SetCounter", code), h)
 	}
 	return nil
 }
@@ -58,7 +58,7 @@ func EchoRecord(value Record) Record {
 func EchoEvent(value Event) (Event, error) {
 	result, code := raw.EchoEvent(uint8(value.tag), value.count)
 	if code != 0 {
-		return Event{}, errorForCode("EchoEvent", code)
+		return Event{}, zigoErrorForCode("EchoEvent", code)
 	}
 	return zigoEventFromRaw(result), nil
 }

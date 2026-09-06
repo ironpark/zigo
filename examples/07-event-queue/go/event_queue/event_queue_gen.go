@@ -24,16 +24,16 @@ func EchoQueueSignal(signal zigo_pkg_types.QueueSignal) zigo_pkg_types.QueueSign
 // Native failures are returned as generated error values.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func NewEventQueue(name string, capacity uint, policy Policy, observer EventQueueCreateObserver) (*EventQueue, error) {
-	observerHandle := newEventQueueCreateObserverHandle(observer)
+	observerHandle := zigoNewEventQueueCreateObserverHandle(observer)
 	result, code := raw.EventQueueCreate(name, capacity, uint32(policy), uintptr(observerHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("NewEventQueue", observerHandle)
 	}
 	if code != 0 {
-		deleteCallbackHandle(observerHandle)
-		return nil, errorForCode("NewEventQueue", code)
+		zigoDeleteCallbackHandle(observerHandle)
+		return nil, zigoErrorForCode("NewEventQueue", code)
 	}
-	return newEventQueue(result, []zigoCallbackHandle{observerHandle, 0, 0}), nil
+	return zigoNewEventQueue(result, []zigoCallbackHandle{observerHandle, 0, 0}), nil
 }
 
 // MustNewEventQueue calls NewEventQueue and panics with its typed error on failure.
@@ -55,7 +55,7 @@ func (e *EventQueue) Clone(observer EventQueueCloneObserver) (*EventQueue, error
 		return nil, err
 	}
 	defer e.zigoRelease()
-	observerHandle := newEventQueueCloneObserverHandle(observer)
+	observerHandle := zigoNewEventQueueCloneObserverHandle(observer)
 	result, code := raw.EventQueueClone(ptr, uintptr(observerHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("EventQueue.Clone", observerHandle)
@@ -64,10 +64,10 @@ func (e *EventQueue) Clone(observer EventQueueCloneObserver) (*EventQueue, error
 		}
 	}
 	if code != 0 {
-		deleteCallbackHandle(observerHandle)
-		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.Clone", code), e)
+		zigoDeleteCallbackHandle(observerHandle)
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.Clone", code), e)
 	}
-	return newEventQueue(result, []zigoCallbackHandle{0, observerHandle, 0}), nil
+	return zigoNewEventQueue(result, []zigoCallbackHandle{0, observerHandle, 0}), nil
 }
 
 // MustClone calls Clone and panics with its typed error on failure.
@@ -100,10 +100,10 @@ func (e *EventQueue) NewStream() (*Stream, error) {
 		}
 	}
 	if code != 0 {
-		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.NewStream", code), e)
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.NewStream", code), e)
 	}
 	zigoChildCreated = true
-	return newStream(result, zigoChildParent), nil
+	return zigoNewStream(result, zigoChildParent), nil
 }
 
 // MustNewStream calls NewStream and panics with its typed error on failure.
@@ -115,9 +115,9 @@ func (e *EventQueue) MustNewStream() *Stream { return zigoMust(e.NewStream()) }
 func NewBorrowBox(value int32) (*BorrowBox, error) {
 	result, code := raw.BorrowBoxCreate(value)
 	if code != 0 {
-		return nil, errorForCode("NewBorrowBox", code)
+		return nil, zigoErrorForCode("NewBorrowBox", code)
 	}
-	return newBorrowBox(result), nil
+	return zigoNewBorrowBox(result), nil
 }
 
 // MustNewBorrowBox calls NewBorrowBox and panics with its typed error on failure.
@@ -135,9 +135,9 @@ func (b *BorrowBox) View() (*BorrowView, error) {
 	defer b.zigoRelease()
 	result, code := raw.BorrowBoxView(ptr)
 	if code != 0 {
-		return nil, zigoPoisonAfterPanic(errorForCode("BorrowBox.View", code), b)
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("BorrowBox.View", code), b)
 	}
-	return newBorrowedBorrowView(result, b), nil
+	return zigoNewBorrowedBorrowView(result, b), nil
 }
 
 // MustView calls View and panics with its typed error on failure.
@@ -155,9 +155,9 @@ func (b *BorrowView) View() (*BorrowView, error) {
 	defer b.zigoRelease()
 	result, code := raw.BorrowViewView(ptr)
 	if code != 0 {
-		return nil, zigoPoisonAfterPanic(errorForCode("BorrowView.View", code), b)
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("BorrowView.View", code), b)
 	}
-	return newBorrowedBorrowView(result, b), nil
+	return zigoNewBorrowedBorrowView(result, b), nil
 }
 
 // MustView calls View and panics with its typed error on failure.
@@ -181,10 +181,10 @@ func (b *BorrowView) NewBorrowChild() (*BorrowChild, error) {
 	}()
 	result, code := raw.BorrowViewNewChild(ptr)
 	if code != 0 {
-		return nil, zigoPoisonAfterPanic(errorForCode("BorrowView.NewBorrowChild", code), b)
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("BorrowView.NewBorrowChild", code), b)
 	}
 	zigoChildCreated = true
-	return newBorrowChild(result, zigoChildParent), nil
+	return zigoNewBorrowChild(result, zigoChildParent), nil
 }
 
 // MustNewBorrowChild calls NewBorrowChild and panics with its typed error on failure.
@@ -201,7 +201,7 @@ func (b *BorrowView) Get() (int32, error) {
 	defer b.zigoRelease()
 	result, code := raw.BorrowViewGet(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("BorrowView.Get", code), b)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("BorrowView.Get", code), b)
 	}
 	return result, nil
 }
@@ -220,7 +220,7 @@ func (b *BorrowView) Explode() error {
 	defer b.zigoRelease()
 	code := raw.BorrowViewExplode(ptr)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("BorrowView.Explode", code), b)
+		return zigoPoisonAfterPanic(zigoErrorForCode("BorrowView.Explode", code), b)
 	}
 	return nil
 }
@@ -239,7 +239,7 @@ func (b *BorrowChild) Get() (int32, error) {
 	defer b.zigoRelease()
 	result, code := raw.BorrowChildGet(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("BorrowChild.Get", code), b)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("BorrowChild.Get", code), b)
 	}
 	return result, nil
 }
@@ -258,9 +258,9 @@ func LiveBorrowChildren() uint {
 func NewTerminal(cols uint16, rows uint16, maxScrollbackBytes uint) (*Terminal, error) {
 	result, code := raw.TerminalInit(cols, rows, maxScrollbackBytes)
 	if code != 0 {
-		return nil, errorForCode("NewTerminal", code)
+		return nil, zigoErrorForCode("NewTerminal", code)
 	}
-	return newTerminal(result), nil
+	return zigoNewTerminal(result), nil
 }
 
 // MustNewTerminal calls NewTerminal and panics with its typed error on failure.
@@ -279,7 +279,7 @@ func (t *Terminal) Cols() (uint16, error) {
 	defer t.zigoRelease()
 	result, code := raw.TerminalCols(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Terminal.Cols", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Terminal.Cols", code), t)
 	}
 	return result, nil
 }
@@ -298,7 +298,7 @@ func (t *Terminal) Rows() (uint16, error) {
 	defer t.zigoRelease()
 	result, code := raw.TerminalRows(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Terminal.Rows", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Terminal.Rows", code), t)
 	}
 	return result, nil
 }
@@ -317,7 +317,7 @@ func (t *Terminal) MaxScrollbackBytes() (uint, error) {
 	defer t.zigoRelease()
 	result, code := raw.TerminalMaxScrollbackBytes(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Terminal.MaxScrollbackBytes", code), t)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Terminal.MaxScrollbackBytes", code), t)
 	}
 	return result, nil
 }
@@ -336,7 +336,7 @@ func (s *Stream) Capacity() (uint32, error) {
 	defer s.zigoRelease()
 	result, code := raw.StreamCapacity(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Stream.Capacity", code), s)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Stream.Capacity", code), s)
 	}
 	return result, nil
 }
@@ -361,7 +361,7 @@ func (e *EventQueue) Enqueue(id uint64, value int32) error {
 		}
 	}
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("EventQueue.Enqueue", code), e)
+		return zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.Enqueue", code), e)
 	}
 	return nil
 }
@@ -400,7 +400,7 @@ func (e *EventQueue) MergeFrom(source *EventQueue) (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.MergeFrom", code), e, source)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.MergeFrom", code), e, source)
 	}
 	return result, nil
 }
@@ -425,7 +425,7 @@ func (e *EventQueue) Process(limit uint) (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.Process", code), e)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.Process", code), e)
 	}
 	return result, nil
 }
@@ -443,11 +443,11 @@ func (e *EventQueue) SetObserver(observer EventQueueSetObserverObserver) error {
 		return err
 	}
 	defer e.zigoRelease()
-	observerHandle := newEventQueueSetObserverObserverHandle(observer)
+	observerHandle := zigoNewEventQueueSetObserverObserverHandle(observer)
 	observerHandleAdopted := false
 	defer func() {
 		if !observerHandleAdopted {
-			deleteCallbackHandle(observerHandle)
+			zigoDeleteCallbackHandle(observerHandle)
 		}
 	}()
 	code := raw.EventQueueSetObserver(ptr, uintptr(observerHandle))
@@ -458,11 +458,11 @@ func (e *EventQueue) SetObserver(observer EventQueueSetObserverObserver) error {
 		}
 	}
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("EventQueue.SetObserver", code), e)
+		return zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.SetObserver", code), e)
 	}
 	observerPreviousHandle := e.zigoReplaceCallbackHandle(2, observerHandle)
 	observerHandleAdopted = true
-	deleteCallbackHandle(observerPreviousHandle)
+	zigoDeleteCallbackHandle(observerPreviousHandle)
 	return nil
 }
 
@@ -488,7 +488,7 @@ func (e *EventQueue) Name() (string, error) {
 		}
 	}
 	if code != 0 {
-		return "", zigoPoisonAfterPanic(errorForCode("EventQueue.Name", code), e)
+		return "", zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.Name", code), e)
 	}
 	return result, nil
 }
@@ -514,7 +514,7 @@ func (e *EventQueue) SampleValues() ([]float32, error) {
 		}
 	}
 	if code != 0 {
-		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.SampleValues", code), e)
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.SampleValues", code), e)
 	}
 	return result, nil
 }
@@ -542,7 +542,7 @@ func (e *EventQueue) SampleValuesChecked() ([]float32, error) {
 		}
 	}
 	if code != 0 {
-		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.SampleValuesChecked", code), e)
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.SampleValuesChecked", code), e)
 	}
 	return result, nil
 }
@@ -568,7 +568,7 @@ func (e *EventQueue) SelectionString() ([]byte, bool, error) {
 		}
 	}
 	if code != 0 {
-		return nil, false, zigoPoisonAfterPanic(errorForCode("EventQueue.SelectionString", code), e)
+		return nil, false, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.SelectionString", code), e)
 	}
 	return result, zigoHas, nil
 }
@@ -621,7 +621,7 @@ func (e *EventQueue) ExtractSamples() ([]float32, error) {
 		}
 	}
 	if code != 0 {
-		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.ExtractSamples", code), e)
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.ExtractSamples", code), e)
 	}
 	return result, nil
 }
@@ -648,7 +648,7 @@ func (e *EventQueue) ExtractSamplesChecked() ([]float32, error) {
 		}
 	}
 	if code != 0 {
-		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.ExtractSamplesChecked", code), e)
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.ExtractSamplesChecked", code), e)
 	}
 	return result, nil
 }
@@ -677,7 +677,7 @@ func (e *EventQueue) ExtractLimits() ([]Limits, error) {
 		}
 	}
 	if code != 0 {
-		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.ExtractLimits", code), e)
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.ExtractLimits", code), e)
 	}
 	return zigoLimitsSliceView(result), nil
 }
@@ -704,7 +704,7 @@ func (e *EventQueue) AcceptStats(values []Stats) (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.AcceptStats", code), e)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.AcceptStats", code), e)
 	}
 	return result, nil
 }
@@ -732,7 +732,7 @@ func (e *EventQueue) ExtractSamplesInto(dst []float32) (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.ExtractSamplesInto", code), e)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.ExtractSamplesInto", code), e)
 	}
 	return result, nil
 }
@@ -765,7 +765,7 @@ func (e *EventQueue) LimitsInto(dst []Limits) (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.LimitsInto", code), e)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.LimitsInto", code), e)
 	}
 	return result, nil
 }
@@ -793,7 +793,7 @@ func (e *EventQueue) Estimate(output []Stats) (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.Estimate", code), e)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.Estimate", code), e)
 	}
 	zigoStatsSliceCopyFromRaw(output, outputRaw, int(result))
 	return result, nil
@@ -820,7 +820,7 @@ func (e *EventQueue) SampleStats() ([]Stats, error) {
 		}
 	}
 	if code != 0 {
-		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.SampleStats", code), e)
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.SampleStats", code), e)
 	}
 	return zigoStatsSliceFromRaw(result), nil
 }
@@ -846,7 +846,7 @@ func (e *EventQueue) SampleLimits() ([]Limits, error) {
 		}
 	}
 	if code != 0 {
-		return nil, zigoPoisonAfterPanic(errorForCode("EventQueue.SampleLimits", code), e)
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.SampleLimits", code), e)
 	}
 	return zigoLimitsSliceView(result), nil
 }
@@ -871,7 +871,7 @@ func (e *EventQueue) Len() (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.Len", code), e)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.Len", code), e)
 	}
 	return result, nil
 }
@@ -896,7 +896,7 @@ func (e *EventQueue) Capacity() (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.Capacity", code), e)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.Capacity", code), e)
 	}
 	return result, nil
 }
@@ -921,7 +921,7 @@ func (e *EventQueue) Policy() (Policy, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.Policy", code), e)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.Policy", code), e)
 	}
 	return Policy(result), nil
 }
@@ -946,7 +946,7 @@ func (e *EventQueue) Dropped() (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.Dropped", code), e)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.Dropped", code), e)
 	}
 	return result, nil
 }
@@ -971,7 +971,7 @@ func (e *EventQueue) Processed() (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.Processed", code), e)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.Processed", code), e)
 	}
 	return result, nil
 }
@@ -996,7 +996,7 @@ func (e *EventQueue) Stats() (Stats, error) {
 		}
 	}
 	if code != 0 {
-		return Stats{}, zigoPoisonAfterPanic(errorForCode("EventQueue.Stats", code), e)
+		return Stats{}, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.Stats", code), e)
 	}
 	return zigoStatsFromRaw(result), nil
 }
@@ -1021,7 +1021,7 @@ func (e *EventQueue) Limits() (Limits, error) {
 		}
 	}
 	if code != 0 {
-		return Limits{}, zigoPoisonAfterPanic(errorForCode("EventQueue.Limits", code), e)
+		return Limits{}, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.Limits", code), e)
 	}
 	return zigoLimitsFromRaw(result), nil
 }
@@ -1046,7 +1046,7 @@ func (e *EventQueue) ApplyLimits(updated Limits) error {
 		}
 	}
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("EventQueue.ApplyLimits", code), e)
+		return zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.ApplyLimits", code), e)
 	}
 	return nil
 }
@@ -1073,7 +1073,7 @@ func (e *EventQueue) Clear() (uint, error) {
 		}
 	}
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("EventQueue.Clear", code), e)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("EventQueue.Clear", code), e)
 	}
 	return result, nil
 }
@@ -1093,7 +1093,7 @@ func InspectTicker(info zigo_pkg_types.TickerInfo, ticker *zigo_pkg_types.Ticker
 	defer lifecycle.Release(ticker)
 	result, code := raw.InspectTicker(zigoTickerInfoToRaw(info), tickerPtr)
 	if code != 0 {
-		return zigo_pkg_types.TickerInfo{}, zigoPoisonAfterPanic(errorForCode("InspectTicker", code), ticker)
+		return zigo_pkg_types.TickerInfo{}, zigoPoisonAfterPanic(zigoErrorForCode("InspectTicker", code), ticker)
 	}
 	return zigoTickerInfoFromRaw(result), nil
 }

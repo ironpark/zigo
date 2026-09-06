@@ -74,7 +74,7 @@ func zigoMustMatch[T any](value T, matched bool, err error) (T, bool) {
 // FlagsObserver is the Go callback signature accepted by the generated binding.
 type FlagsObserver func(Flags)
 
-func boolToUint8(value bool) uint8 {
+func zigoBoolToUint8(value bool) uint8 {
 	if value {
 		return 1
 	}
@@ -83,13 +83,13 @@ func boolToUint8(value bool) uint8 {
 
 type zigoCallbackHandle = uintptr
 
-func newFlagsObserverHandle(value FlagsObserver) zigoCallbackHandle {
+func zigoNewFlagsObserverHandle(value FlagsObserver) zigoCallbackHandle {
 	return raw.NewCallbackHandle(func(p0 uint16) {
 		value(FlagsFromBacking(p0))
 	})
 }
 
-func deleteCallbackHandle(handle zigoCallbackHandle) { raw.DeleteCallbackHandle(handle) }
+func zigoDeleteCallbackHandle(handle zigoCallbackHandle) { raw.DeleteCallbackHandle(handle) }
 
 // zigoCallbackPanicPending is the fast-path check ahead of the per-slot sweep:
 // one atomic load says whether any callback recorded a panic nobody has taken.

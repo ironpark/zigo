@@ -88,7 +88,7 @@ func (err *Error) Is(target error) bool {
 // ErrExhausted represents Zig error.Exhausted.
 var ErrExhausted = &Error{Code: 1, Name: "Exhausted"}
 
-func errorForCode(operation string, code int32) error {
+func zigoErrorForCode(operation string, code int32) error {
 	if code <= -256 {
 		return &NativePanicError{Operation: operation, Message: raw.PanicMessage(code)}
 	}

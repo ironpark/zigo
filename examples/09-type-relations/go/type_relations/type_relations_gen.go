@@ -11,9 +11,9 @@ import "example.com/zigo/type-relations/internal/raw"
 func NewCounter(initial int64) (*Counter, error) {
 	result, code := raw.CounterCreate(initial)
 	if code != 0 {
-		return nil, errorForCode("NewCounter", code)
+		return nil, zigoErrorForCode("NewCounter", code)
 	}
-	return newCounter(result), nil
+	return zigoNewCounter(result), nil
 }
 
 // Get calls the Zig function Counter.get.
@@ -27,7 +27,7 @@ func (c *Counter) Get() (int64, error) {
 	defer c.zigoRelease()
 	result, code := raw.CounterGet(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Counter.Get", code), c)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Counter.Get", code), c)
 	}
 	return result, nil
 }
@@ -43,7 +43,7 @@ func (c *Counter) Add(delta int64) (int64, error) {
 	defer c.zigoRelease()
 	result, code := raw.CounterAdd(ptr, delta)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Counter.Add", code), c)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Counter.Add", code), c)
 	}
 	return result, nil
 }
@@ -54,9 +54,9 @@ func (c *Counter) Add(delta int64) (int64, error) {
 func NewAccumulator() (*Accumulator, error) {
 	result, code := raw.AccumulatorCreate()
 	if code != 0 {
-		return nil, errorForCode("NewAccumulator", code)
+		return nil, zigoErrorForCode("NewAccumulator", code)
 	}
-	return newAccumulator(result), nil
+	return zigoNewAccumulator(result), nil
 }
 
 // Absorb: Adds the current value of another exposed opaque type.
@@ -75,7 +75,7 @@ func (a *Accumulator) Absorb(counter *Counter) (int64, error) {
 	defer counter.zigoRelease()
 	result, code := raw.AccumulatorAbsorb(ptr, counterPtr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Accumulator.Absorb", code), a, counter)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Accumulator.Absorb", code), a, counter)
 	}
 	return result, nil
 }
@@ -91,7 +91,7 @@ func (a *Accumulator) Total() (int64, error) {
 	defer a.zigoRelease()
 	result, code := raw.AccumulatorTotal(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("Accumulator.Total", code), a)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Accumulator.Total", code), a)
 	}
 	return result, nil
 }
@@ -137,7 +137,7 @@ func RunWidth(first uint32, second uint32) (uint16, error) {
 	}
 	result, code := raw.TextRunWidth(first, second)
 	if code != 0 {
-		return 0, errorForCode("RunWidth", code)
+		return 0, zigoErrorForCode("RunWidth", code)
 	}
 	return result, nil
 }
@@ -150,7 +150,7 @@ func CodepointWidth(cp uint32) (uint8, error) {
 	}
 	result, code := raw.TextUnicodeCodepointWidth(cp)
 	if code != 0 {
-		return 0, errorForCode("CodepointWidth", code)
+		return 0, zigoErrorForCode("CodepointWidth", code)
 	}
 	return result, nil
 }
@@ -165,7 +165,7 @@ func DoubleWidth(value *uint32) (uint32, bool) {
 func Invert(value *bool) (bool, bool) {
 	var valueRaw *uint8
 	if value != nil {
-		valueRawValue := boolToUint8(*value)
+		valueRawValue := zigoBoolToUint8(*value)
 		valueRaw = &valueRawValue
 	}
 	zigoResult, zigoHas := raw.Invert(valueRaw)
@@ -216,7 +216,7 @@ func CheckedShift(origin *Point, delta int16) (Point, bool, error) {
 	}
 	result, zigoHas, code := raw.CheckedShift(originRaw, delta)
 	if code != 0 {
-		return Point{}, false, errorForCode("CheckedShift", code)
+		return Point{}, false, zigoErrorForCode("CheckedShift", code)
 	}
 	return zigoPointFromRaw(result), zigoHas, nil
 }

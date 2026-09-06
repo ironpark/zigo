@@ -9,11 +9,11 @@ type Observer func(int32) int32
 
 type zigoCallbackHandle = uintptr
 
-func newObserverHandle(value Observer) zigoCallbackHandle {
+func zigoNewObserverHandle(value Observer) zigoCallbackHandle {
 	return raw.NewCallbackHandle((func(int32) int32)(value))
 }
 
-func deleteCallbackHandle(handle zigoCallbackHandle) { raw.DeleteCallbackHandle(handle) }
+func zigoDeleteCallbackHandle(handle zigoCallbackHandle) { raw.DeleteCallbackHandle(handle) }
 
 // zigoCallbackPanicPending is the fast-path check ahead of the per-slot sweep:
 // one atomic load says whether any callback recorded a panic nobody has taken.

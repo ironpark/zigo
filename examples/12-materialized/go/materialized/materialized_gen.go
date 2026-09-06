@@ -15,7 +15,7 @@ func Snapshot() Probe {
 func ProbeMany() ([]Probe, error) {
 	result, code := raw.ProbeMany()
 	if code != 0 {
-		return nil, errorForCode("ProbeMany", code)
+		return nil, zigoErrorForCode("ProbeMany", code)
 	}
 	return zigoDecodeProbeSliceBuffer(result), nil
 }
@@ -34,9 +34,9 @@ func Fill(output []Probe) uint {
 func NewLegacyProbe(index uint) (*LegacyProbe, error) {
 	result, code := raw.LegacyProbeCreate(index)
 	if code != 0 {
-		return nil, errorForCode("NewLegacyProbe", code)
+		return nil, zigoErrorForCode("NewLegacyProbe", code)
 	}
-	return newLegacyProbe(result), nil
+	return zigoNewLegacyProbe(result), nil
 }
 
 // ID calls the Zig function LegacyProbe.id.
@@ -50,7 +50,7 @@ func (l *LegacyProbe) ID() (uint64, error) {
 	defer l.zigoRelease()
 	result, code := raw.LegacyProbeID(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("LegacyProbe.ID", code), l)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("LegacyProbe.ID", code), l)
 	}
 	return result, nil
 }
@@ -66,7 +66,7 @@ func (l *LegacyProbe) Active() (bool, error) {
 	defer l.zigoRelease()
 	result, code := raw.LegacyProbeActive(ptr)
 	if code != 0 {
-		return false, zigoPoisonAfterPanic(errorForCode("LegacyProbe.Active", code), l)
+		return false, zigoPoisonAfterPanic(zigoErrorForCode("LegacyProbe.Active", code), l)
 	}
 	return result != 0, nil
 }
@@ -83,9 +83,9 @@ func (l *LegacyProbe) Child() (*LegacyLeaf, error) {
 	defer l.zigoRelease()
 	result, code := raw.LegacyProbeChild(ptr)
 	if code != 0 {
-		return nil, zigoPoisonAfterPanic(errorForCode("LegacyProbe.Child", code), l)
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("LegacyProbe.Child", code), l)
 	}
-	return newBorrowedLegacyLeaf(result, l), nil
+	return zigoNewBorrowedLegacyLeaf(result, l), nil
 }
 
 // Value calls the Zig function LegacyLeaf.value.
@@ -99,7 +99,7 @@ func (l *LegacyLeaf) Value() (int32, error) {
 	defer l.zigoRelease()
 	result, code := raw.LegacyLeafValue(ptr)
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(errorForCode("LegacyLeaf.Value", code), l)
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("LegacyLeaf.Value", code), l)
 	}
 	return result, nil
 }

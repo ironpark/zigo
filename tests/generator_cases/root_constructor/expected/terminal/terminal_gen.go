@@ -12,9 +12,9 @@ import "example.com/zigo/terminal/internal/raw"
 func ExtractAudio(columns uint32) (*Terminal, error) {
 	result, code := raw.NewTerminal(columns)
 	if code != 0 {
-		return nil, errorForCode("ExtractAudio", code)
+		return nil, zigoErrorForCode("ExtractAudio", code)
 	}
-	return newTerminal(result), nil
+	return zigoNewTerminal(result), nil
 }
 
 // MustExtractAudio calls ExtractAudio and panics with its typed error on failure.
@@ -31,7 +31,7 @@ func (t *Terminal) Resize(columns uint32) error {
 	defer t.zigoRelease()
 	code := raw.TerminalResize(ptr, columns)
 	if code != 0 {
-		return zigoPoisonAfterPanic(errorForCode("Terminal.Resize", code), t)
+		return zigoPoisonAfterPanic(zigoErrorForCode("Terminal.Resize", code), t)
 	}
 	return nil
 }
@@ -50,7 +50,7 @@ func (t *Terminal) Render() (string, error) {
 	defer t.zigoRelease()
 	result, code := raw.TerminalRender(ptr)
 	if code != 0 {
-		return "", zigoPoisonAfterPanic(errorForCode("Terminal.Render", code), t)
+		return "", zigoPoisonAfterPanic(zigoErrorForCode("Terminal.Render", code), t)
 	}
 	return result, nil
 }
