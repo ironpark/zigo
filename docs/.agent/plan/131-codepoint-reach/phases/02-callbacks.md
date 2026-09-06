@@ -2,7 +2,7 @@
 depends_on:
 - "131-codepoint-reach#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Callback case output compiles in the example and round-trips a rune; tests green.
 > NEXT: none
