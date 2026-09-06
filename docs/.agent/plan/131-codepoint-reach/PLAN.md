@@ -9,7 +9,7 @@ registered_at: "2026-09-06T03:12:32Z"
 
 # Phases
 
-- [ ] [Phase 00: Unicode range and u21 inference](phases/00-range-inference.md)
+- [x] [Phase 00: Unicode range and u21 inference](phases/00-range-inference.md)
 - [ ] [Phase 01: Extern struct fields](phases/01-struct-fields.md)
 - [ ] [Phase 02: Callback signatures](phases/02-callbacks.md)
 

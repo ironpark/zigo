@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-06T03:17:27Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Tests green; example 02 `CodepointWidth(0x110000)` and `(-1)` return `ErrOutOfRange` with `Type == "codepoint"`.
 > NEXT: none
