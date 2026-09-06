@@ -1,0 +1,5 @@
+{
+  "package": "codepoint",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/codepoint"
+}

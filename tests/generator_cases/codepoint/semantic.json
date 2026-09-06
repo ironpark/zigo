@@ -1,0 +1,85 @@
+{
+  "allocator": "std.heap.c_allocator",
+  "functions": [
+    {
+      "doc": "Reports the display width of a codepoint.",
+      "name": "codepointWidth",
+      "params": [
+        {"name": "cp", "semantic": "codepoint", "type": {"bits": 21, "is_usize": false, "kind": "int", "signed": false}}
+      ],
+      "return": {"bits": 8, "is_usize": false, "kind": "int", "signed": true},
+      "symbol": "ignored"
+    },
+    {
+      "doc": "Folds a codepoint to lower case.",
+      "name": "toLower",
+      "params": [
+        {"name": "cp", "semantic": "codepoint", "type": {"bits": 32, "is_usize": false, "kind": "int", "signed": false}}
+      ],
+      "return": {"bits": 32, "is_usize": false, "kind": "int", "signed": false},
+      "return_semantic": "codepoint",
+      "symbol": "ignored"
+    },
+    {
+      "doc": "Decodes the next codepoint, or fails on malformed input.",
+      "name": "decode",
+      "params": [
+        {"name": "byte", "type": {"bits": 8, "is_usize": false, "kind": "int", "signed": false}}
+      ],
+      "return": {
+        "error_set": ["Invalid"],
+        "kind": "error_union",
+        "payload": {"bits": 21, "is_usize": false, "kind": "int", "signed": false}
+      },
+      "return_semantic": "codepoint",
+      "symbol": "ignored"
+    },
+    {
+      "doc": "Peeks at the next codepoint, if there is one.",
+      "name": "peek",
+      "params": [],
+      "return": {"child": {"bits": 21, "is_usize": false, "kind": "int", "signed": false}, "kind": "optional"},
+      "return_semantic": "codepoint",
+      "symbol": "ignored"
+    },
+    {
+      "doc": "Sums codepoints after narrowing them in the shim.",
+      "name": "sumCodepoints",
+      "params": [
+        {"name": "values", "semantic": "codepoint", "type": {"const": true, "element": {"bits": 21, "is_usize": false, "kind": "int", "signed": false}, "kind": "slice"}}
+      ],
+      "return": {"bits": 32, "is_usize": false, "kind": "int", "signed": false},
+      "symbol": "ignored"
+    },
+    {
+      "doc": "Fills the caller's buffer with codepoints.",
+      "name": "fillCodepoints",
+      "params": [
+        {"direction": "out", "name": "values", "semantic": "codepoint", "type": {"const": false, "element": {"bits": 32, "is_usize": false, "kind": "int", "signed": false}, "kind": "slice"}, "written": "all"}
+      ],
+      "return": {"kind": "void"},
+      "symbol": "ignored"
+    },
+    {
+      "doc": "Returns caller-owned codepoints.",
+      "name": "takeCodepoints",
+      "ownership": "caller",
+      "params": [],
+      "release": "freeCodepoints",
+      "return": {"const": true, "element": {"bits": 21, "is_usize": false, "kind": "int", "signed": false}, "kind": "slice"},
+      "return_semantic": "codepoint",
+      "symbol": "ignored"
+    },
+    {
+      "name": "freeCodepoints",
+      "params": [
+        {"name": "values", "type": {"const": true, "element": {"bits": 21, "is_usize": false, "kind": "int", "signed": false}, "kind": "slice"}}
+      ],
+      "return": {"kind": "void"},
+      "symbol": "ignored"
+    }
+  ],
+  "package": "codepoint",
+  "prefix": "zg",
+  "zig_version": "0.16.0"
+}

@@ -47,6 +47,7 @@ pub fn writeMustResultType(scope: public_writers.PublicScope, writer: *std.Io.Wr
     if (node == .opaque_ptr and docs.returnsBorrowedOpaque(function))
         return writer.print("*{s}Ref", .{node.opaque_ptr.ref});
     if (semantic.isStringSlice(node, function.return_semantic)) return writer.writeAll("string");
+    if (public_writers.codepointTypeName(node, function.return_semantic)) |name| return writer.writeAll(name);
     if (function.return_go_adapter) |adapter| return writer.writeAll(adapter.type);
     try public_writers.writePublicGoType(scope, writer, node);
 }

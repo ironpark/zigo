@@ -139,6 +139,7 @@ fn writeRangeCheck(
     function: abi.AbiFn,
     name: []const u8,
     type_node: semantic.TypeNode,
+    hint: ?semantic.SemanticHint,
     operation: []const u8,
     constructor: ?semantic.Constructor,
 ) !void {
@@ -151,6 +152,10 @@ fn writeRangeCheck(
     if (narrow.signed) {
         const limit = @as(i128, 1) << @intCast(narrow.bits - 1);
         try writer.print("\tif {3s}{0s} < {1d} || {3s}{0s} > {2d} {{\n\t\t", .{ name, -limit, limit - 1, deref });
+    } else if (semantic.isCodepoint(node, hint)) {
+        // A `rune` is signed, so the unsigned Zig range needs both bounds.
+        const limit = (@as(u128, 1) << @intCast(narrow.bits)) - 1;
+        try writer.print("\tif {2s}{0s} < 0 || {2s}{0s} > {1d} {{\n\t\t", .{ name, limit, deref });
     } else {
         const limit = (@as(u128, 1) << @intCast(narrow.bits)) - 1;
         try writer.print("\tif {2s}{0s} > {1d} {{\n\t\t", .{ name, limit, deref });
@@ -181,7 +186,7 @@ pub fn renderRangeChecks(
                 const abi_parameter = function.flattenedParam(parameter_index, field_index);
                 const name = try common.flattenedGoNameAlloc(allocator, abi_parameter.name);
                 defer allocator.free(name);
-                try writeRangeCheck(scope, allocator, writer, function, name, field.type, operation, constructor);
+                try writeRangeCheck(scope, allocator, writer, function, name, field.type, null, operation, constructor);
             }
             continue;
         }
@@ -193,6 +198,9 @@ pub fn renderRangeChecks(
             if (narrow.signed) {
                 const limit = @as(i128, 1) << @intCast(narrow.bits - 1);
                 try writer.print("\t\tif zigoValue < {d} || zigoValue > {d} {{\n\t\t\t", .{ -limit, limit - 1 });
+            } else if (semantic.isCodepointSlice(parameter.type, parameter.semantic)) {
+                const limit = (@as(u128, 1) << @intCast(narrow.bits)) - 1;
+                try writer.print("\t\tif zigoValue < 0 || zigoValue > {d} {{\n\t\t\t", .{limit});
             } else {
                 const limit = (@as(u128, 1) << @intCast(narrow.bits)) - 1;
                 try writer.print("\t\tif zigoValue > {d} {{\n\t\t\t", .{limit});
@@ -207,7 +215,7 @@ pub fn renderRangeChecks(
             try writer.writeAll("\t\t}\n\t}\n");
             continue;
         };
-        try writeRangeCheck(scope, allocator, writer, function, go_names[parameter_index], parameter.type, operation, constructor);
+        try writeRangeCheck(scope, allocator, writer, function, go_names[parameter_index], parameter.type, parameter.semantic, operation, constructor);
     }
 }
 
@@ -416,6 +424,8 @@ fn writePublicReturnType(scope: PublicScope, writer: *std.Io.Writer, node: seman
                     try writer.writeAll(value_adapter.type)
                 else if (semantic.isStringSlice(value.payload.*, hint))
                     try writer.writeAll("string")
+                else if (codepointTypeName(value.payload.*, hint)) |name|
+                    try writer.writeAll(name)
                 else
                     try writePublicGoType(scope, writer, value.payload.*);
                 try writer.writeAll(", error)");
@@ -430,10 +440,49 @@ fn writePublicReturnType(scope: PublicScope, writer: *std.Io.Writer, node: seman
             try writer.writeByte(' ');
             if (adapter) |value_adapter|
                 try writer.writeAll(value_adapter.type)
+            else if (codepointTypeName(node, hint)) |name|
+                try writer.writeAll(name)
             else
                 try writePublicGoType(scope, writer, node);
         },
     }
+}
+
+/// The public spelling of a codepoint position: `rune` for the scalar,
+/// `[]rune` for a plain slice, null when the hint does not apply.
+pub fn codepointTypeName(node: semantic.TypeNode, hint: ?semantic.SemanticHint) ?[]const u8 {
+    if (semantic.isCodepoint(node, hint)) return "rune";
+    if (semantic.isCodepointSlice(node, hint)) return "[]rune";
+    return null;
+}
+
+/// Writes the public value of a raw codepoint result -- `rune(x)` or the
+/// `[]rune` view of a `[]uint32` -- and reports whether the hint applied.
+pub fn writeCodepointResult(writer: *std.Io.Writer, node: semantic.TypeNode, hint: ?semantic.SemanticHint, expression: []const u8) !bool {
+    if (semantic.isCodepoint(node, hint)) {
+        try writer.print("rune({s})", .{expression});
+        return true;
+    }
+    if (semantic.isCodepointSlice(node, hint)) {
+        try writer.print("zigoUint32ToRunes({s})", .{expression});
+        return true;
+    }
+    return false;
+}
+
+/// Writes the raw argument of a public codepoint parameter and reports
+/// whether the hint applied. A `[]rune` is viewed as `[]uint32` in place, so
+/// an `.out` slice is written straight into the caller's memory.
+pub fn writeCodepointArgument(writer: *std.Io.Writer, parameter: semantic.Parameter, expression: []const u8) !bool {
+    if (semantic.isCodepoint(parameter.type, parameter.semantic)) {
+        try writer.print("uint32({s})", .{expression});
+        return true;
+    }
+    if (semantic.isCodepointSlice(parameter.type, parameter.semantic)) {
+        try writer.print("zigoRunesToUint32({s})", .{expression});
+        return true;
+    }
+    return false;
 }
 
 pub fn writeRawConversionPrefix(writer: *std.Io.Writer, program: abi.Program, node: semantic.TypeNode) !void {
@@ -454,6 +503,7 @@ pub fn writeRawResultConversion(writer: *std.Io.Writer, program: abi.Program, no
 /// optional; everything else spells its own Go type.
 fn writeOptionalPublicPayloadType(scope: PublicScope, writer: *std.Io.Writer, child: semantic.TypeNode, hint: ?semantic.SemanticHint) !void {
     if (semantic.isStringSlice(child, hint)) return writer.writeAll("string");
+    if (semantic.isCodepoint(child, hint)) return writer.writeAll("rune");
     try writePublicGoType(scope, writer, child);
 }
 
@@ -610,6 +660,8 @@ pub fn writePublicGoType(scope: PublicScope, writer: *std.Io.Writer, node: seman
 
 pub fn writePublicParameterType(scope: PublicScope, writer: *std.Io.Writer, parameter: semantic.Parameter) !void {
     if (parameter.go_adapter) |adapter| return writer.writeAll(adapter.type);
+    if (semantic.isCodepoint(parameter.type, parameter.semantic)) return writer.writeAll("rune");
+    if (semantic.isCodepointSlice(parameter.type, parameter.semantic)) return writer.writeAll("[]rune");
     if (semantic.isStringSliceParameter(parameter)) return writer.writeAll("[]string");
     // `?[]T` and `?[]const u8` become `*[]T` and `*string`: a Go slice or
     // string has no spelling for absence that an empty one does not also have.

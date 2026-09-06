@@ -137,7 +137,8 @@ fn writePublicCapturedReturn(scope: public_writers.PublicScope, writer: *std.Io.
             try writer.writeAll("result"),
         .bool => try writer.writeAll("result != 0"),
         .@"enum" => |value| try public_writers.writeEnumFromRaw(scope, writer, value.ref, "result"),
-        else => try writer.writeAll("result"),
+        else => if (!try public_writers.writeCodepointResult(writer, function.@"return", function.return_semantic, "result"))
+            try writer.writeAll("result"),
     }
     if (function.return_go_adapter != null) try writer.writeByte(')');
     if (needs_handle_check) try writer.writeAll(", nil");
@@ -201,6 +202,7 @@ fn writePublicOptionalRawSetup(
 }
 
 fn publicNeedsUnsafe(program: abi.Program) bool {
+    if (programHasCodepointSlice(program)) return true;
     for (program.functions) |function| {
         for (function.origin.params) |parameter| {
             if (parameter.type == .atomic_ptr) return true;
@@ -209,6 +211,34 @@ fn publicNeedsUnsafe(program: abi.Program) bool {
         }
     }
     return false;
+}
+
+/// Whether any public signature carries a `[]rune`, which the two view
+/// helpers at the end of the file reinterpret as the raw `[]uint32`.
+fn programHasCodepointSlice(program: abi.Program) bool {
+    for (program.functions) |function| {
+        if (!emitsPublicFunction(program, function)) continue;
+        if (semantic.isCodepointSlice(function.origin.@"return".errorPayload(), function.origin.return_semantic)) return true;
+        for (function.origin.params) |parameter| {
+            if (semantic.isCodepointSlice(parameter.type, parameter.semantic)) return true;
+        }
+    }
+    return false;
+}
+
+/// `[]rune` and `[]uint32` share one memory layout, so a public codepoint
+/// slice is viewed rather than copied in both directions.
+fn renderCodepointSliceHelpers(writer: *std.Io.Writer) !void {
+    try writer.writeAll(
+        "\n// zigoRunesToUint32 views a []rune as the []uint32 the raw layer takes, without copying.\n" ++
+            "func zigoRunesToUint32(values []rune) []uint32 {\n" ++
+            "\treturn unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(values))), len(values))\n" ++
+            "}\n\n" ++
+            "// zigoUint32ToRunes views a []uint32 from the raw layer as a []rune, without copying.\n" ++
+            "func zigoUint32ToRunes(values []uint32) []rune {\n" ++
+            "\treturn unsafe.Slice((*rune)(unsafe.Pointer(unsafe.SliceData(values))), len(values))\n" ++
+            "}\n",
+    );
 }
 
 pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: emit.Options) !void {
@@ -463,6 +493,9 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
             } else if (function.origin.@"return" == .slice and function.origin.@"return".slice.element.* == .materialized) {
                 try writer.print("return zigoDecode{s}SliceBuffer(", .{function.origin.@"return".slice.element.materialized.ref});
                 try public_writers.writeRawReferencePrefix(writer, options);
+            } else if (public_writers.codepointTypeName(function.origin.@"return", function.origin.return_semantic)) |name| {
+                try writer.writeAll(if (name[0] == '[') "return zigoUint32ToRunes(" else "return rune(");
+                try public_writers.writeRawReferencePrefix(writer, options);
             } else {
                 try writer.writeAll("return ");
                 try public_writers.writeRawReferencePrefix(writer, options);
@@ -556,11 +589,11 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                     try writer.writeAll(go_names[parameter_index])
                 else if (parameter.type.slice.element.* == .@"enum" and public_writers.enumAdapter(program, parameter.type.slice.element.@"enum".ref) != null)
                     try writer.print("zigo{s}SliceToRaw({s})", .{ parameter.type.slice.element.@"enum".ref, go_names[parameter_index] })
-                else
+                else if (!try public_writers.writeCodepointArgument(writer, parameter, go_names[parameter_index]))
                     try writer.writeAll(go_names[parameter_index]),
                 else => if (parameter.go_adapter) |adapter|
                     try writer.print("{s}({s})", .{ adapter.to_raw, go_names[parameter_index] })
-                else
+                else if (!try public_writers.writeCodepointArgument(writer, parameter, go_names[parameter_index]))
                     try writer.writeAll(go_names[parameter_index]),
             }
             call_index += 1;
@@ -574,6 +607,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         if (!returns_error and !captures_return and function.origin.@"return" == .slice and function.origin.@"return".slice.element.* == .materialized) try writer.writeByte(')');
         if (!returns_error and !captures_return and function.origin.@"return" == .bool) try writer.writeAll(" != 0");
         if (!returns_error and !captures_return and function.origin.return_go_adapter != null) try writer.writeByte(')');
+        if (!returns_error and !captures_return and public_writers.codepointTypeName(function.origin.@"return", function.origin.return_semantic) != null) try writer.writeByte(')');
         if (!returns_error and !captures_return and !borrowed_direct and !owned_direct and needs_check and
             function.origin.@"return" != .void and function.origin.@"return" != .optional) try writer.writeAll(", nil");
         try writer.writeByte('\n');
@@ -592,7 +626,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
             try writer.writeAll("\treturn ");
             if (semantic.isStringSlice(child, function.origin.return_semantic))
                 try writer.writeAll("zigoResult")
-            else
+            else if (!try public_writers.writeCodepointResult(writer, child, function.origin.return_semantic, "zigoResult"))
                 try public_writers.writePublicResultConversion(scope, writer, program, child, "zigoResult");
             try writer.writeAll(", zigoHas");
             if (needs_check) try writer.writeAll(", nil");
@@ -675,7 +709,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                     } else if (error_payload == .optional) {
                         if (semantic.isStringSlice(error_payload.optional.child.*, function.origin.return_semantic))
                             try writer.writeAll("result")
-                        else
+                        else if (!try public_writers.writeCodepointResult(writer, error_payload.optional.child.*, function.origin.return_semantic, "result"))
                             try public_writers.writePublicResultConversion(scope, writer, program, error_payload.optional.child.*, "result");
                         try writer.writeAll(", zigoHas");
                     } else if (semantic.isStringSlice(error_payload, function.origin.return_semantic)) {
@@ -684,7 +718,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                         try writer.print("{s}(", .{adapter.from_raw});
                         try public_writers.writePublicResultConversion(scope, writer, program, error_payload, "result");
                         try writer.writeByte(')');
-                    } else {
+                    } else if (!try public_writers.writeCodepointResult(writer, error_payload, function.origin.return_semantic, "result")) {
                         try public_writers.writePublicResultConversion(scope, writer, program, error_payload, "result");
                     }
                     try writer.writeAll(", nil\n");
@@ -697,6 +731,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         if (function.origin.iterator != null)
             try iterators.renderIteratorWrapper(scope, allocator, writer, function, go_names, receiver_name.?, go_name, needs_check);
     }
+    if (programHasCodepointSlice(program)) try renderCodepointSliceHelpers(writer);
 }
 
 /// Renders one concern-scoped file of the public package: the generated
