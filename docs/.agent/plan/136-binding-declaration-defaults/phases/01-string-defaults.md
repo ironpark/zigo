@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: A binding that sets both writes `.returns = .caller` alone for a
 > NEXT: none
