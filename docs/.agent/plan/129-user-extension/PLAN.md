@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-06T01:25:28Z"
 description: Reserved zigo* names for generated unexported identifiers and .go type adapters on value structs
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-06T01:10:46Z"
 ---
 > NEXT: Reserved zigo names. ([Phase 0](phases/00-reserved-names.md))
@@ -8,7 +9,7 @@ registered_at: "2026-09-06T01:10:46Z"
 # Phases
 
 - [x] [Phase 00: Reserved zigo names](phases/00-reserved-names.md)
-- [ ] [Phase 01: Type adapters](phases/01-type-adapters.md)
+- [x] [Phase 01: Type adapters](phases/01-type-adapters.md)
 
 # Shared Verification
 

@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-06T01:25:28Z"
 depends_on:
 - "129-user-extension#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Adapter case pinned; example round-trips; all tests pass on both backends.
 > NEXT: none
