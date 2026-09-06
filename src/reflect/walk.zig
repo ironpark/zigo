@@ -96,6 +96,12 @@ pub fn reflect(
                 @compileError("zigo `.fields` metadata is supported only on `.repr = .opaque` type entries");
             if (entry.repr != .callback and @hasField(@TypeOf(entry), "userdata"))
                 @compileError("zigo `.userdata` is supported only on `.repr = .callback` type entries");
+            // The contract describes how a call site may invoke a function
+            // pointer, so it means nothing on any other kind of entry.
+            if (entry.repr != .callback) inline for (.{ "retention", "reentrancy", "thread" }) |key| {
+                if (@hasField(@TypeOf(entry), key))
+                    @compileError("zigo `." ++ key ++ "` is supported only on `.repr = .callback` type entries");
+            };
             if (entry.repr != .enumeration and @hasField(@TypeOf(entry), "text"))
                 @compileError("zigo `.text` is supported only on `.repr = .enumeration` type entries");
             if (entry.repr != .value and entry.repr != .enumeration and @hasField(@TypeOf(entry), "go"))
@@ -878,6 +884,15 @@ fn appendFunction(
             .name_source = if (named_by_sidecar) .sidecar else .fallback,
             .type = parameter_type,
         };
+        // The lifetime, re-entrancy and thread contract is a property of the
+        // callback type, not of each call site, so a registered entry declares
+        // it once and every parameter of that type inherits it. The
+        // `param_meta` block below still assigns field by field, which is what
+        // makes a call site able to override one field and inherit the rest.
+        const contract = comptime callbackEntryContract(declaration, param.type.?);
+        if (comptime contract.retention) |value| reflected.retention = value;
+        if (comptime contract.reentrancy) |value| reflected.reentrancy = value;
+        if (comptime contract.thread) |value| reflected.thread = value;
         if (named_by_sidecar and @hasField(@TypeOf(metadata), "param_meta")) {
             const meta = metadata.param_meta;
             if (@hasField(@TypeOf(meta), parameter_name)) {
@@ -2117,6 +2132,35 @@ fn goOrderIndex(userdata_native: ?usize, count: usize, native: usize) usize {
     return native - 1;
 }
 
+/// The call-site contract a registered `.repr = .callback` entry declares.
+/// A field left null is one the entry did not spell, so the call site keeps
+/// whatever it says itself (or the `semantic.Parameter` default).
+const CallbackContract = struct {
+    retention: ?semantic.Retention = null,
+    reentrancy: ?semantic.CallbackReentrancy = null,
+    thread: ?semantic.CallbackThread = null,
+};
+
+/// The contract a registered callback entry declares for `T`. Resolving it
+/// here, during reflection, keeps the recorded document identical to one whose
+/// call sites spelled the contract themselves, so nothing downstream of the
+/// document has to know defaults exist.
+fn callbackEntryContract(comptime declaration: anytype, comptime T: type) CallbackContract {
+    comptime {
+        if (!@hasField(@TypeOf(declaration), "types")) return .{};
+        for (declaration.types) |entry| {
+            if (entry.repr != .callback or entry.type != T) continue;
+            const Entry = @TypeOf(entry);
+            return .{
+                .retention = if (@hasField(Entry, "retention")) @as(semantic.Retention, entry.retention) else null,
+                .reentrancy = if (@hasField(Entry, "reentrancy")) @as(semantic.CallbackReentrancy, entry.reentrancy) else null,
+                .thread = if (@hasField(Entry, "thread")) @as(semantic.CallbackThread, entry.thread) else null,
+            };
+        }
+        return .{};
+    }
+}
+
 /// The native position of the userdata slot a registered callback entry
 /// declares with `.userdata`, or null to take the trailing `usize`.
 fn callbackEntryUserdata(comptime declaration: anytype, comptime T: type, comptime count: usize) ?usize {
@@ -2744,6 +2788,86 @@ test "callback parameter contracts reflect into semantic metadata" {
     defer std.testing.allocator.free(bytes);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"reentrancy\": \"forbidden\"") != null);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"thread\": \"any\"") != null);
+}
+
+test "a registered callback type declares the contract its call sites inherit" {
+    const Fixture = struct {
+        const ClipboardFn = *const fn (i32, usize) callconv(.c) void;
+        pub fn onRequest(callback: ClipboardFn, userdata: usize) void {
+            callback(1, userdata);
+        }
+        pub fn onConfirm(callback: ClipboardFn, userdata: usize) void {
+            callback(2, userdata);
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{.{
+            .name = "ClipboardFn",
+            .type = Fixture.ClipboardFn,
+            .repr = .callback,
+            .retention = .retained,
+            .reentrancy = .allowed,
+            .thread = .caller,
+        }},
+        .functions = .{
+            .{ .path = "root.onRequest", .params = .{ "callback", "userdata" } },
+            // The site overrides one field and inherits the other two.
+            .{
+                .path = "root.onConfirm",
+                .params = .{ "callback", "userdata" },
+                .param_meta = .{ .callback = .{ .thread = .any } },
+            },
+        },
+    }, "callbacks", "zg");
+    const inherited = document.functions[0].params[0];
+    try std.testing.expectEqual(semantic.Retention.retained, inherited.retention);
+    try std.testing.expectEqual(semantic.CallbackReentrancy.allowed, inherited.reentrancy.?);
+    try std.testing.expectEqual(semantic.CallbackThread.caller, inherited.thread.?);
+    const overridden = document.functions[1].params[0];
+    try std.testing.expectEqual(semantic.CallbackThread.any, overridden.thread.?);
+    try std.testing.expectEqual(semantic.Retention.retained, overridden.retention);
+    try std.testing.expectEqual(semantic.CallbackReentrancy.allowed, overridden.reentrancy.?);
+    // The userdata parameter is not a callback, so it keeps the defaults.
+    try std.testing.expectEqual(semantic.Retention.borrowed, document.functions[0].params[1].retention);
+    try std.testing.expect(document.functions[0].params[1].thread == null);
+    // A retained default is recorded exactly as a spelled one would be, which
+    // is what lets lowering do its retained-callback bookkeeping unchanged.
+    const bytes = try document.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expectEqual(@as(usize, 2), std.mem.count(u8, bytes, "\"retention\": \"retained\""));
+}
+
+test "a call site may override an inherited retention while keeping the rest" {
+    const Fixture = struct {
+        const SysFn = *const fn (usize) callconv(.c) void;
+        pub fn scoped(callback: SysFn, userdata: usize) void {
+            _ = callback;
+            _ = userdata;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{.{
+            .name = "SysFn",
+            .type = Fixture.SysFn,
+            .repr = .callback,
+            .retention = .retained,
+            .thread = .any,
+        }},
+        .functions = .{.{
+            .path = "root.scoped",
+            .params = .{ "callback", "userdata" },
+            .param_meta = .{ .callback = .{ .retention = .borrowed } },
+        }},
+    }, "callbacks", "zg");
+    const callback = document.functions[0].params[0];
+    try std.testing.expectEqual(semantic.Retention.borrowed, callback.retention);
+    try std.testing.expectEqual(semantic.CallbackThread.any, callback.thread.?);
 }
 
 test "callback failure results reflect from type and parameter metadata" {
