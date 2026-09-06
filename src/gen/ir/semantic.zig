@@ -316,7 +316,10 @@ pub const Direction = enum { in, inout, out };
 pub const Retention = enum { borrowed, retained };
 pub const CallbackReentrancy = enum { allowed, forbidden };
 pub const CallbackThread = enum { caller, any };
-pub const SemanticHint = enum { c_string, opaque_bytes, utf8_string };
+/// `codepoint` marks a `u21`/`u32` (or a plain slice of one) as a Unicode
+/// scalar value: the raw carrier stays `uint32`, and the public Go API spells
+/// it `rune`.
+pub const SemanticHint = enum { c_string, opaque_bytes, utf8_string, codepoint };
 /// Who owns a function's result. `library` is reserved: no generator rule
 /// reads it, and it stays only so documents that spelled it still parse.
 pub const Ownership = enum { borrowed, caller, library };
@@ -956,6 +959,23 @@ pub fn isCStringSliceThroughOptional(node: TypeNode, hint: ?SemanticHint) bool {
     return isCStringSlice(sliceThroughOptional(node), hint);
 }
 
+/// The integer widths a codepoint hint may sit on: Zig's own `u21` and the
+/// `u32` most C text APIs use. Both promote to a `uint32` carrier.
+pub fn isCodepointInt(node: TypeNode) bool {
+    return node == .int and !node.int.signed and !node.int.is_usize and (node.int.bits == 21 or node.int.bits == 32);
+}
+
+/// A scalar the binding marked as a codepoint: Go sees `rune`.
+pub fn isCodepoint(node: TypeNode, hint: ?SemanticHint) bool {
+    return hint == .codepoint and isCodepointInt(node);
+}
+
+/// A plain (unsentinelled, non-optional) slice of codepoints: Go sees `[]rune`
+/// over the same memory the raw `[]uint32` uses.
+pub fn isCodepointSlice(node: TypeNode, hint: ?SemanticHint) bool {
+    return hint == .codepoint and node == .slice and node.slice.sentinel == null and isCodepointInt(node.slice.element.*);
+}
+
 /// Either kind of string: both are rendered as a Go `string`.
 pub fn isStringSlice(node: TypeNode, hint: ?SemanticHint) bool {
     return isUtf8Slice(node, hint) or isCStringSliceThroughOptional(node, hint);
@@ -1208,4 +1228,24 @@ test "a callback or a stream parameter both make a function callback-bearing" {
     try std.testing.expect(functionHasCallback(callback));
     try std.testing.expect(functionHasCallback(stream));
     try std.testing.expect(!functionHasCallback(plain));
+}
+
+test "codepoint predicates accept u21/u32 scalars and plain slices only" {
+    var narrow21: TypeNode = .{ .int = .{ .bits = 21, .signed = false } };
+    var u32_node: TypeNode = .{ .int = .{ .bits = 32, .signed = false } };
+    var i32_node: TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+    const slice: TypeNode = .{ .slice = .{ .@"const" = true, .element = &narrow21 } };
+    const out_slice: TypeNode = .{ .slice = .{ .@"const" = false, .element = &u32_node } };
+    const sentinel: TypeNode = .{ .slice = .{ .@"const" = true, .element = &u32_node, .sentinel = 0 } };
+    const signed_slice: TypeNode = .{ .slice = .{ .@"const" = true, .element = &i32_node } };
+    try std.testing.expect(isCodepoint(narrow21, .codepoint));
+    try std.testing.expect(isCodepoint(u32_node, .codepoint));
+    try std.testing.expect(!isCodepoint(i32_node, .codepoint));
+    try std.testing.expect(!isCodepoint(u32_node, null));
+    try std.testing.expect(!isCodepoint(u32_node, .utf8_string));
+    try std.testing.expect(isCodepointSlice(slice, .codepoint));
+    try std.testing.expect(isCodepointSlice(out_slice, .codepoint));
+    try std.testing.expect(!isCodepointSlice(sentinel, .codepoint));
+    try std.testing.expect(!isCodepointSlice(signed_slice, .codepoint));
+    try std.testing.expect(!isCodepointSlice(narrow21, .codepoint));
 }

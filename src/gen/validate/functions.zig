@@ -39,6 +39,7 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic) 
         };
         if (try iteratorIssue(allocator, function)) |issue| return issue;
         if (try scalarAdapterIssue(allocator, function)) |issue| return issue;
+        if (try codepointIssue(allocator, function)) |issue| return issue;
         if (function.has_comptime_params == true) return .{
             .severity = .@"error",
             .code = "ZIGO008",
@@ -418,6 +419,37 @@ fn scalarAdapterIssue(allocator: std.mem.Allocator, function: semantic.SemanticF
             .message = "`.go` on a function whose result is not a plain scalar",
             .site = site.functionSite(function),
             .hint = "a return adapter needs a bool, float, or integer of 8/16/32/64 bits (or usize), possibly inside an error union; optional results keep their generated spelling",
+        };
+    }
+    return null;
+}
+
+/// `.codepoint` promises Go a `rune` over the raw `uint32`, which only holds
+/// for a plain `u21`/`u32` or a plain slice of one. Anything else -- another
+/// width, an optional, a sentinel slice, a flatten or injected parameter --
+/// has no `rune` spelling to promise.
+fn codepointIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !?diagnostic.Diagnostic {
+    for (function.params) |parameter| {
+        if (parameter.semantic != .codepoint) continue;
+        const plain = parameter.injected == null and parameter.flatten == null;
+        if (plain and (semantic.isCodepoint(parameter.type, .codepoint) or semantic.isCodepointSlice(parameter.type, .codepoint))) continue;
+        return .{
+            .severity = .@"error",
+            .code = "ZIGO053",
+            .message = try std.fmt.allocPrint(allocator, "`.semantic = .codepoint` on parameter `{s}`, which is not a u21/u32 or a plain slice of one", .{parameter.name}),
+            .site = site.functionSite(function),
+            .hint = "a codepoint is a `u21` or `u32` scalar or a `[]const`/`[]` slice of one; drop the hint or change the Zig type",
+        };
+    }
+    if (function.return_semantic == .codepoint) {
+        const payload = function.@"return".errorPayload();
+        const scalar = if (payload == .optional) payload.optional.child.* else payload;
+        if (!semantic.isCodepoint(scalar, .codepoint) and !semantic.isCodepointSlice(payload, .codepoint)) return .{
+            .severity = .@"error",
+            .code = "ZIGO053",
+            .message = "`.semantic = .codepoint` on a function whose result is not a u21/u32 or a plain slice of one",
+            .site = site.functionSite(function),
+            .hint = "a codepoint result is a `u21`/`u32`, possibly inside `!` or `?`, or a plain slice of one; drop the hint or change the Zig type",
         };
     }
     return null;
@@ -940,4 +972,38 @@ test "registered opaque values are accepted as parameters but rejected as return
     try std.testing.expectEqualStrings("cannot return a registered opaque type by value", issue.message);
     try std.testing.expect(std.mem.indexOf(u8, issue.hint, ".constructs") != null);
     try std.testing.expect(std.mem.indexOf(u8, issue.hint, "box") != null);
+}
+
+test "codepoint hints are accepted on u21/u32 scalars and slices and rejected elsewhere" {
+    var narrow21: semantic.TypeNode = .{ .int = .{ .bits = 21, .signed = false } };
+    var u32_node: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = false } };
+    const u64_node: semantic.TypeNode = .{ .int = .{ .bits = 64, .signed = false } };
+    const slice: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &narrow21 } };
+    const optional_u32: semantic.TypeNode = .{ .optional = .{ .child = &u32_node } };
+    const accepted = [_]semantic.SemanticFn{
+        .{ .name = "width", .params = &.{.{ .name = "cp", .semantic = .codepoint, .type = narrow21 }}, .@"return" = u32_node, .return_semantic = .codepoint, .symbol = "zg_width" },
+        .{ .name = "sum", .params = &.{.{ .name = "values", .semantic = .codepoint, .type = slice }}, .@"return" = .{ .error_union = .{ .error_set = &.{"Bad"}, .payload = &narrow21 } }, .return_semantic = .codepoint, .symbol = "zg_sum" },
+        .{ .name = "peek", .params = &.{}, .@"return" = optional_u32, .return_semantic = .codepoint, .symbol = "zg_peek" },
+        .{ .name = "take", .ownership = .caller, .params = &.{}, .release = "free", .@"return" = slice, .return_semantic = .codepoint, .symbol = "zg_take" },
+        .{ .name = "free", .params = &.{.{ .name = "values", .type = slice }}, .@"return" = .{ .void = {} }, .symbol = "zg_free" },
+    };
+    {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const document: semantic.Semantic = .{ .allocator = "std.heap.c_allocator", .functions = &accepted, .package = "text", .prefix = "zg", .zig_version = "0.16.0" };
+        try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try validate.findIssue(scratch.allocator(), document));
+    }
+    const rejected = [_]semantic.SemanticFn{
+        .{ .name = "wide", .params = &.{.{ .name = "cp", .semantic = .codepoint, .type = u64_node }}, .@"return" = .{ .void = {} }, .symbol = "zg_wide" },
+        .{ .name = "maybe", .params = &.{.{ .name = "cp", .semantic = .codepoint, .type = optional_u32 }}, .@"return" = .{ .void = {} }, .symbol = "zg_maybe" },
+        .{ .name = "count", .params = &.{}, .@"return" = u64_node, .return_semantic = .codepoint, .symbol = "zg_count" },
+        .{ .name = "nothing", .params = &.{}, .@"return" = .{ .void = {} }, .return_semantic = .codepoint, .symbol = "zg_nothing" },
+    };
+    for (rejected) |function| {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const document: semantic.Semantic = .{ .allocator = "std.heap.c_allocator", .functions = &.{function}, .package = "text", .prefix = "zg", .zig_version = "0.16.0" };
+        const issue = (try validate.findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
+        try std.testing.expectEqualStrings("ZIGO053", issue.code);
+    }
 }

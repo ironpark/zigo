@@ -726,6 +726,27 @@ test "string slice element sentinels are not a signature change" {
     try std.testing.expectEqual(@as(usize, 0), report.changes.items.len);
 }
 
+test "adding a codepoint hint changes the Go surface" {
+    const u32_node: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = false } };
+    const old: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{.{
+        .name = "width",
+        .params = &.{.{ .name = "cp", .type = u32_node }},
+        .@"return" = u32_node,
+        .symbol = "zg_width",
+    }} };
+    const current: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{.{
+        .name = "width",
+        .params = &.{.{ .name = "cp", .semantic = .codepoint, .type = u32_node }},
+        .@"return" = u32_node,
+        .return_semantic = .codepoint,
+        .symbol = "zg_width",
+    }} };
+    var report = try diff(std.testing.allocator, old, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expect(report.changes.items.len >= 1);
+    try std.testing.expect(report.hasBreaking());
+}
+
 test "parameter type changes are breaking and functions are added" {
     const old: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .functions = &.{.{
         .name = "value",

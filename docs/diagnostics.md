@@ -246,6 +246,13 @@ materialized 결과의 필드나 소유권·해제 선언이 잘못되었습니�
 붙였거나, `.type`이 비어 있거나, `.to_raw`/`.from_raw`가 Go 식별자가 아닙니다.
 [Go 타입 어댑터](bindings-types.md#go-타입-어댑터)를 참고하세요.
 
+### ZIGO053
+
+`.semantic = .codepoint`를 `u21`/`u32` 스칼라나 그 plain slice(`[]const T`, `[]T`)가 아닌
+파라미터·반환값에 붙였습니다. 반환값은 `!`나 `?` 안의 스칼라, 또는 plain slice여야 하며,
+optional 파라미터·sentinel slice·flatten 필드·주입 파라미터에는 붙일 수 없습니다.
+[코드포인트](bindings-types.md#코드포인트)를 참고하세요.
+
 ### ZIGO051
 
 `.text = true`를 enum이 아닌 타입에 지정했습니다. 텍스트 인코딩은 `.repr = .enumeration`

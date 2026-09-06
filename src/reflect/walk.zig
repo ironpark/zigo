@@ -3000,6 +3000,31 @@ test "enum and scalar adapters are recorded where they were declared" {
     try std.testing.expectEqual(@as(?semantic.GoAdapter, null), document.functions[0].return_go_adapter);
 }
 
+test "codepoint hints are recorded on parameters and returns" {
+    const Fixture = struct {
+        pub fn width(cp: u21) u32 {
+            return cp;
+        }
+        pub fn sum(values: []const u32) u21 {
+            return @intCast(values.len);
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .functions = .{
+            .{ .path = "root.width", .params = .{"cp"}, .semantic = .codepoint, .param_meta = .{ .cp = .{ .semantic = .codepoint } } },
+            .{ .path = "root.sum", .params = .{"values"}, .param_meta = .{ .values = .{ .semantic = .codepoint } } },
+        },
+    }, "text", "zg");
+
+    try std.testing.expectEqual(semantic.SemanticHint.codepoint, document.functions[0].params[0].semantic.?);
+    try std.testing.expectEqual(semantic.SemanticHint.codepoint, document.functions[0].return_semantic.?);
+    try std.testing.expectEqual(semantic.SemanticHint.codepoint, document.functions[1].params[0].semantic.?);
+    try std.testing.expectEqual(@as(?semantic.SemanticHint, null), document.functions[1].return_semantic);
+}
+
 test "a registered enum records the text encoding opt-in" {
     const Mode = enum(u8) { fast, slow };
     const Fixture = struct {
