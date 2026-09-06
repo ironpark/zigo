@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-06T15:01:40Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: A wrapper bound from `root.searchFeed` takes its names from that declaration
 > NEXT: none
