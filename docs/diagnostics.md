@@ -261,9 +261,16 @@ optional 파라미터·sentinel slice·flatten 필드·주입 파라미터에는
 등록 항목에서만 켤 수 있습니다. [Enum 텍스트 인코딩](bindings-types.md#enum-텍스트-인코딩)을
 참고하세요.
 
+### ZIGO054
+
+`functions`에 같은 경로를 두 번 적었거나, `exclude`에 같은 경로를 두 번 적었거나, 한 경로가
+`functions`와 `exclude`에 모두 있습니다. 경로는 한 번만 적고, 제외할 함수는 `functions`에서
+빼세요. 이 검사는 등록 수에 비례하도록 reflection 런타임에서 수행되므로, 존재하지 않는
+경로와 달리 `@compileError`가 아니라 생성기 진단으로 나옵니다.
+
 ## 리플렉션 단계의 오류
 
-`ZIGO027`, `ZIGO028`, `ZIGO037`, `ZIGO038`은 reflection이 문서를 만들기 전에 걸리므로 `semantic.json` 자리가
+`ZIGO027`, `ZIGO028`, `ZIGO037`, `ZIGO038`, `ZIGO054`는 reflection이 문서를 만들기 전에 걸리므로 `semantic.json` 자리가
 아니라 선언 경로를 가리키며, 생성기는 이 진단을 출력하고 종료합니다.
 
 리플렉션 단계의 거부는 `bindings.zig`를 빌드할 때의 `@compileError`로 나오며, 제약과 함께

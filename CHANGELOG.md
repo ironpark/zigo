@@ -8,6 +8,12 @@
 
 ### Fixed
 
+- 함수 등록이 수백 개인 바인딩에서 reflection이 `evaluation exceeded 100000 backwards
+  branches`로 실패하던 문제를 고쳤습니다. 중복 경로 검사가 등록마다 전체 목록을 comptime에
+  다시 훑는 O(n²)였는데, 경로 중복·`exclude` 중복·`functions`와 `exclude`의 충돌을 런타임
+  해시 검사(`ZIGO054`)로 옮겨 comptime 작업이 등록 수에 선형이 되게 했습니다. 함수 400개짜리
+  fixture가 이전 quota로도 통과하며, quota 자체도 여유 있게 올렸습니다. 이 세 오류는 더 이상
+  `@compileError`가 아니라 생성기가 출력하는 진단입니다.
 - 빌리거나 자식을 두거나 borrowed view를 돌려주지 않는 handle의 `Close` doc이
   `*HandleInUseError`를 반환한다고 잘못 적혀 있었습니다. 그런 handle의 `Close`는 항상 nil을
   돌려주므로 0.11.0 이전처럼 "always nil; it exists so T satisfies io.Closer"로 되돌렸습니다.

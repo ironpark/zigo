@@ -80,8 +80,8 @@ pub const bindings = zigo.define(.{
 
 자동 발견은 등록한 타입의 공개 함수, 이어서 `root` module의 공개 함수를 찾습니다.
 `functions`는 발견 대상을 제한하지 않고 메타데이터를 붙이며, `exclude`가 제외 대상을
-지정합니다. 존재하지 않거나 중복된 경로, `functions`와 `exclude`의 충돌은 compile
-error입니다.
+지정합니다. 존재하지 않는 경로는 compile error이고, 중복된 경로와 `functions`·`exclude`의
+충돌은 생성기가 `ZIGO054`로 거부합니다.
 
 자동 발견에서는 새 `pub fn`이 C/Go API에도 추가됩니다. 생성물 `go-check`와 독립 배포
 계약이 있다면 `abi-check`를 함께 사용하세요.

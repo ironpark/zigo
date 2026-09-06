@@ -13,8 +13,11 @@ pub fn reflect(
 ) !semantic.Semantic {
     // Reflection deliberately unrolls binding and parameter metadata so invalid
     // declarations fail at compile time. Broad APIs can legitimately exceed
-    // Zig's default quota of 1,000 branches while doing that work.
-    @setEvalBranchQuota(100_000);
+    // Zig's default quota of 1,000 branches while doing that work. Every
+    // comptime check here is linear in the declaration -- anything that would
+    // compare entries against each other runs at runtime instead
+    // (`checkDeclaredPaths`) -- so the quota only has to grow with the API.
+    @setEvalBranchQuota(10_000_000);
     if (!@hasField(@TypeOf(declaration), "functions") and !comptime discoveryEnabled(declaration)) {
         @compileError("zigo declarations require `.functions` or opt-in `.discover = .public`");
     }
@@ -22,6 +25,7 @@ pub fn reflect(
         @compileError("zigo declarations require `.root`; paths in `.functions` resolve against it");
     }
     comptime validateSelectors(declaration);
+    try checkDeclaredPaths(allocator, declaration);
 
     var functions: std.ArrayList(semantic.SemanticFn) = .empty;
     var types: std.ArrayList(semantic.TypeDecl) = .empty;
@@ -375,6 +379,45 @@ fn fieldAccessMessageAlloc(allocator: std.mem.Allocator, comptime path: []const 
             "  hint: paths may cross struct values or non-optional single pointers and must end at a bool, integer, float, registered enum, or registered packed value\n",
         .{ path, detail },
     );
+}
+
+test "duplicate and conflicting function paths are runtime diagnostics" {
+    const Fixture = struct {
+        pub fn add(a: i32, b: i32) i32 {
+            return a + b;
+        }
+        pub fn sub(a: i32, b: i32) i32 {
+            return a - b;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectError(error.DuplicatePath, reflect(arena.allocator(), .{
+        .root = Fixture,
+        .functions = .{ .{ .path = "root.add" }, .{ .path = "root.sub" }, .{ .path = "root.add" } },
+    }, "math", "zg"));
+    try std.testing.expectError(error.DuplicatePath, reflect(arena.allocator(), .{
+        .root = Fixture,
+        .functions = .{.{ .receiver = null, .strip_prefix = "", .functions = .{ "root.add", .{ .path = "root.add" } } }},
+    }, "math", "zg"));
+    try std.testing.expectError(error.DuplicatePath, reflect(arena.allocator(), .{
+        .root = Fixture,
+        .discover = .public,
+        .functions = .{.{ .path = "root.add" }},
+        .exclude = .{"root.add"},
+    }, "math", "zg"));
+    try std.testing.expectError(error.DuplicatePath, reflect(arena.allocator(), .{
+        .root = Fixture,
+        .discover = .public,
+        .exclude = .{ "root.sub", "root.sub" },
+    }, "math", "zg"));
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .discover = .public,
+        .functions = .{.{ .path = "root.add" }},
+        .exclude = .{"root.sub"},
+    }, "math", "zg");
+    try std.testing.expectEqual(@as(usize, 1), document.functions.len);
 }
 
 test "packages assign explicit functions owning types and longest namespaces" {
@@ -1344,12 +1387,9 @@ fn validateSelectors(comptime declaration: anytype) void {
         return;
     }
     if (@hasField(@TypeOf(declaration), "exclude")) {
-        inline for (declaration.exclude, 0..) |path, index| {
+        inline for (declaration.exclude) |path| {
             if (!declarationPathExists(declaration, path)) {
                 @compileError("zigo exclusion path does not name a discovered public function: " ++ path);
-            }
-            inline for (declaration.exclude, 0..) |previous, previous_index| {
-                if (previous_index < index and std.mem.eql(u8, previous, path)) @compileError("duplicate zigo exclusion path: " ++ path);
             }
         }
     }
@@ -1406,22 +1446,72 @@ fn validateFunctionPath(comptime declaration: anytype, comptime path: []const u8
         @compileError("zigo path does not name a public function: " ++ path ++
             " (use `root.<name>` for a function in `.root`, or `<Type>.<name>` for one in a registered type)");
     }
-    if (countFunctionPath(declaration.functions, path) > 1) @compileError("duplicate zigo function path: " ++ path);
-    if (selectorContains(declaration, "exclude", path)) @compileError("zigo path cannot be both listed and excluded: " ++ path);
 }
 
-fn countFunctionPath(comptime entries: anytype, comptime path: []const u8) usize {
-    var count: usize = 0;
-    inline for (entries) |entry| {
-        if (comptime isStringEntry(@TypeOf(entry))) {
-            if (std.mem.eql(u8, entry, path)) count += 1;
-        } else if (@hasField(@TypeOf(entry), "functions")) {
-            count += countFunctionPath(entry.functions, path);
-        } else if (@hasField(@TypeOf(entry), "path") and std.mem.eql(u8, entry.path, path)) {
-            count += 1;
+/// Every function path the declaration lists, groups flattened, in order.
+/// Built once, linearly, so the cross-entry checks can run at runtime over a
+/// hash set instead of comparing every entry against every other at comptime.
+fn declaredFunctionPaths(comptime declaration: anytype) []const []const u8 {
+    comptime {
+        if (!@hasField(@TypeOf(declaration), "functions")) return &.{};
+        var count: usize = 0;
+        for (declaration.functions) |entry| {
+            count += if (!isStringEntry(@TypeOf(entry)) and @hasField(@TypeOf(entry), "functions")) entry.functions.len else 1;
+        }
+        var paths: [count][]const u8 = undefined;
+        var index: usize = 0;
+        for (declaration.functions) |entry| {
+            if (isStringEntry(@TypeOf(entry))) {
+                paths[index] = entry;
+                index += 1;
+            } else if (@hasField(@TypeOf(entry), "functions")) {
+                for (entry.functions) |nested| {
+                    paths[index] = if (isStringEntry(@TypeOf(nested))) nested else nested.path;
+                    index += 1;
+                }
+            } else {
+                paths[index] = entry.path;
+                index += 1;
+            }
+        }
+        const frozen = paths;
+        return &frozen;
+    }
+}
+
+/// The checks that relate one entry to another: a path listed twice, an
+/// exclusion listed twice, and a path both listed and excluded. Each entry is
+/// visited once against a hash set, so a binding of a thousand functions costs
+/// what a thousand lookups cost -- at runtime, where the comptime branch quota
+/// does not apply.
+fn checkDeclaredPaths(allocator: std.mem.Allocator, comptime declaration: anytype) error{ DuplicatePath, OutOfMemory }!void {
+    var listed = std.StringHashMap(void).init(allocator);
+    defer listed.deinit();
+    for (comptime declaredFunctionPaths(declaration)) |path| {
+        const slot = try listed.getOrPut(path);
+        if (slot.found_existing) return selectorIssue(allocator, "duplicate zigo function path: `{s}`", .{path});
+    }
+    if (@hasField(@TypeOf(declaration), "exclude")) {
+        var excluded = std.StringHashMap(void).init(allocator);
+        defer excluded.deinit();
+        inline for (declaration.exclude) |path| {
+            const slot = try excluded.getOrPut(path);
+            if (slot.found_existing) return selectorIssue(allocator, "duplicate zigo exclusion path: `{s}`", .{path});
+            if (listed.contains(path)) return selectorIssue(allocator, "zigo path cannot be both listed and excluded: `{s}`", .{path});
         }
     }
-    return count;
+}
+
+fn selectorIssue(allocator: std.mem.Allocator, comptime detail: []const u8, args: anytype) error{ DuplicatePath, OutOfMemory } {
+    const message = try std.fmt.allocPrint(
+        allocator,
+        "error[ZIGO054]: " ++ detail ++ "\n" ++
+            "  hint: list every function path once; a path in `.exclude` cannot also appear in `.functions`\n",
+        args,
+    );
+    defer allocator.free(message);
+    if (!@import("builtin").is_test) std.debug.print("{s}", .{message});
+    return error.DuplicatePath;
 }
 
 pub fn isStringEntry(comptime T: type) bool {
