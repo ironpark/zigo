@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-06T14:28:34Z"
 depends_on:
 - "135-value-receivers-for-enums#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Docs describe the supported shape and every rejection, and the changelog says
 > NEXT: none

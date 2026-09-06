@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-06T14:28:34Z"
 description: Allow registered enums to be method receivers so wrapper free functions and .covers disappear
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-06T14:05:56Z"
 ---
 > NEXT: Teach reflection to resolve a registered enum as a value receiver and carry the ([Phase 0](phases/00-reflect-enum-receivers.md))
@@ -10,7 +11,7 @@ registered_at: "2026-09-06T14:05:56Z"
 - [x] [Phase 00: Reflect enum receivers](phases/00-reflect-enum-receivers.md)
 - [x] [Phase 01: Reject what a value receiver cannot mean](phases/01-value-receiver-diagnostics.md)
 - [x] [Phase 02: Emit value-receiver methods](phases/02-emit-value-receiver.md)
-- [ ] [Phase 03: Document and land](phases/03-document-and-land.md)
+- [x] [Phase 03: Document and land](phases/03-document-and-land.md)
 
 # Shared Verification
 
