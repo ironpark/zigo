@@ -22,3 +22,6 @@ ref/
 
 # planr phase locks
 .planr.lock
+
+# Agent worktrees
+.claude/
