@@ -4,7 +4,7 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
-## [Unreleased]
+## [0.13.0] - 2026-09-06
 
 ### Added
 
@@ -739,7 +739,10 @@
 - 생성된 Go doc이 식별자로 시작하지 않는 문장을 두 줄 형식으로 내고, `//` 그룹 주석과
   빈 줄 없이 이어진 선언의 doc 공유를 지원합니다. 모든 생성 패키지에 패키지 doc이 있습니다.
 
-[Unreleased]: https://github.com/ironpark/zigo/compare/0.11.0...HEAD
+[Unreleased]: https://github.com/ironpark/zigo/compare/0.13.0...HEAD
+[0.13.0]: https://github.com/ironpark/zigo/compare/0.12.1...0.13.0
+[0.12.1]: https://github.com/ironpark/zigo/compare/0.12.0...0.12.1
+[0.12.0]: https://github.com/ironpark/zigo/compare/0.11.0...0.12.0
 [0.11.0]: https://github.com/ironpark/zigo/compare/0.10.0...0.11.0
 [0.10.0]: https://github.com/ironpark/zigo/compare/0.9.1...0.10.0
 [0.9.1]: https://github.com/ironpark/zigo/compare/0.9.0...0.9.1
