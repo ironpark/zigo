@@ -1,10 +1,11 @@
 ---
+completed_at: "2026-09-06T15:02:33Z"
 depends_on:
 - "136-binding-declaration-defaults#0"
 - "136-binding-declaration-defaults#1"
 - "136-binding-declaration-defaults#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test --summary all` passes, `zig fmt --check` is clean, examples
 > NEXT: none

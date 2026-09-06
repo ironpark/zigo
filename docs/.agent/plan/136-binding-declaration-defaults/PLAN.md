@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-06T15:02:33Z"
 description: Define-level string defaults, callback contract defaults, and correct source-name enrichment
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-06T14:40:15Z"
 ---
 > NEXT: Fix the enrichment match so a renamed wrapper cannot inherit another ([Phase 0](phases/00-enrichment-correctness.md))
@@ -10,7 +11,7 @@ registered_at: "2026-09-06T14:40:15Z"
 - [x] [Phase 00: Correct and widen name enrichment](phases/00-enrichment-correctness.md)
 - [x] [Phase 01: Define-level string defaults](phases/01-string-defaults.md)
 - [x] [Phase 02: Callback contract defaults](phases/02-callback-contract-defaults.md)
-- [ ] [Phase 03: Integrate, document and land](phases/03-integrate-and-document.md)
+- [x] [Phase 03: Integrate, document and land](phases/03-integrate-and-document.md)
 
 # Shared Verification
 
