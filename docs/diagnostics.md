@@ -250,7 +250,8 @@ materialized 결과의 필드나 소유권·해제 선언이 잘못되었습니�
 
 `.semantic = .codepoint`를 `u21`/`u32` 스칼라나 그 plain slice(`[]const T`, `[]T`)가 아닌
 파라미터·반환값에 붙였거나, `.field_meta`로 extern struct의 `u32`가 아닌 필드에 붙였거나,
-손으로 쓴 `semantic.json`에 `.integer` 힌트가 남아 있습니다. 반환값은 `!`나 `?` 안의 스칼라, 또는 plain slice여야 하며,
+등록 callback의 `u32` 스칼라가 아닌 자리에 붙였거나, 손으로 쓴 `semantic.json`에 `.integer`
+힌트가 남아 있습니다. 반환값은 `!`나 `?` 안의 스칼라, 또는 plain slice여야 하며,
 optional 파라미터·sentinel slice·flatten 필드·주입 파라미터에는 붙일 수 없습니다.
 [코드포인트](bindings-types.md#코드포인트)를 참고하세요.
 

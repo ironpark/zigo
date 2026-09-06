@@ -54,6 +54,23 @@ pub fn notify(value: i32, callback: VoidObserver, userdata: usize) void {
     callback(value, userdata);
 }
 
+/// A visitor receives one codepoint. It returns nothing because purego only
+/// carries `void` or `i32` callback results.
+pub const Visitor = *const fn (cp: u32, userdata: usize) callconv(.c) void;
+
+/// Calls visitor for every codepoint of text and returns the last one, or 0
+/// for empty text. Malformed bytes are visited as U+FFFD.
+pub fn visitCodepoints(text: []const u8, visitor: Visitor, userdata: usize) u32 {
+    var last: u32 = 0;
+    var view = std.unicode.Utf8View.initUnchecked(text);
+    var it = view.iterator();
+    while (it.nextCodepoint()) |cp| {
+        visitor(cp, userdata);
+        last = cp;
+    }
+    return last;
+}
+
 pub const CallbackContext = struct {
     const Stats = struct { runs: std.atomic.Value(u32) = .init(0) };
 

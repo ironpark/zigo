@@ -1592,13 +1592,26 @@ fn typeNode(
                     const callback_return_type = function_info.return_type orelse
                         @compileError("zigo cannot reflect a generic callback return type, at " ++ context);
                     callback_return.* = try typeNode(allocator, declaration, callback_return_type, types, context ++ " (callback return value)");
+                    const has_userdata = function_info.params.len != 0 and
+                        function_info.params[function_info.params.len - 1].type == usize;
+                    // Hints come from the registered callback entry, then
+                    // inference; the userdata slot never carries one.
+                    const value_count = if (has_userdata) function_info.params.len - 1 else function_info.params.len;
+                    const declared = comptime callbackEntryHints(declaration, T, value_count);
+                    const hints = try allocator.alloc(?semantic.SemanticHint, function_info.params.len);
+                    var any_hint = false;
+                    for (hints, 0..) |*slot, index| {
+                        slot.* = if (index < value_count) resolveCodepointHint(declaration, declared.params[index], callback_params[index]) else null;
+                        if (slot.* != null) any_hint = true;
+                    }
                     break :blk .{ .callback = .{
                         .c_callconv = std.meta.eql(function_info.calling_convention, std.builtin.CallingConvention.c),
-                        .has_userdata = function_info.params.len != 0 and
-                            function_info.params[function_info.params.len - 1].type == usize,
+                        .has_userdata = has_userdata,
                         .params = callback_params,
+                        .param_semantics = if (any_hint) hints else null,
                         .ref = registeredTypeName(declaration, T, .callback) orelse callbackNameForPath(types.items, @typeName(T)),
                         .@"return" = callback_return,
+                        .return_semantic = resolveCodepointHint(declaration, declared.ret, callback_return.*),
                     } };
                 }
                 if (comptime registeredTypeName(declaration, info.child, .materialized)) |name|
@@ -1916,6 +1929,34 @@ fn registeredTypeName(comptime declaration: anytype, comptime T: type, comptime 
         }
     }
     return null;
+}
+
+const CallbackEntryHints = struct { params: []const ?semantic.SemanticHint, ret: ?semantic.SemanticHint };
+
+/// The `.param_semantics` and `.semantic` a registered `.repr = .callback`
+/// entry declares for `T`, positionally over the value parameters (the
+/// trailing userdata is not listed). Unregistered callbacks have none.
+fn callbackEntryHints(comptime declaration: anytype, comptime T: type, comptime value_count: usize) CallbackEntryHints {
+    comptime {
+        var params: [value_count]?semantic.SemanticHint = @splat(null);
+        var ret: ?semantic.SemanticHint = null;
+        if (@hasField(@TypeOf(declaration), "types")) {
+            for (declaration.types) |entry| {
+                if (entry.repr != .callback or entry.type != T) continue;
+                if (@hasField(@TypeOf(entry), "param_semantics")) {
+                    if (entry.param_semantics.len != value_count) @compileError(std.fmt.comptimePrint(
+                        "zigo `.param_semantics` on callback `{s}` lists {d} hints but the callback has {d} value parameters (userdata is not listed)",
+                        .{ entry.name, entry.param_semantics.len, value_count },
+                    ));
+                    for (entry.param_semantics, 0..) |hint, index| params[index] = @as(semantic.SemanticHint, hint);
+                }
+                if (@hasField(@TypeOf(entry), "semantic")) ret = @as(semantic.SemanticHint, entry.semantic);
+                break;
+            }
+        }
+        const frozen = params;
+        return .{ .params = &frozen, .ret = ret };
+    }
 }
 
 fn registeredOpaqueName(comptime declaration: anytype, comptime T: type) ?[]const u8 {
@@ -2993,6 +3034,28 @@ test "an iterator opt-in records the wrapper name" {
     const bytes = try document.serialize(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"iterator\": {") != null);
+}
+
+test "registered callbacks record positional codepoint hints" {
+    const Visitor = *const fn (cp: u32, index: u32, userdata: usize) callconv(.c) u32;
+    const Fixture = struct {
+        pub fn visit(callback: Visitor, userdata: usize) u32 {
+            return callback('a', 0, userdata);
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{.{ .name = "Visitor", .type = Visitor, .repr = .callback, .param_semantics = .{ .codepoint, .integer }, .semantic = .codepoint }},
+        .functions = .{.{ .path = "root.visit", .params = .{ "callback", "userdata" } }},
+    }, "text", "zg");
+
+    const callback = document.functions[0].params[0].type.callback;
+    try std.testing.expectEqual(semantic.SemanticHint.codepoint, callback.paramHint(0).?);
+    try std.testing.expectEqual(@as(?semantic.SemanticHint, null), callback.paramHint(1));
+    try std.testing.expectEqual(@as(?semantic.SemanticHint, null), callback.paramHint(2));
+    try std.testing.expectEqual(semantic.SemanticHint.codepoint, callback.return_semantic.?);
 }
 
 test "field_meta records a codepoint hint on an extern struct member" {

@@ -8,6 +8,8 @@ fn panicHandler(message: []const u8, _: ?usize) noreturn {
 }
 pub const panic = std.debug.FullPanic(panicHandler);
 
+extern fn zg_visit_go_callback_callback(p0: u32, p1: usize) callconv(.c) u32;
+
 export fn zg_codepoint_width_impl(cp: u32, out_result: *i8) i32 {
     if (cp > std.math.maxInt(u21)) @panic("zigo: argument `cp` is out of range for u21");
     const result = target.codepointWidth(@intCast(cp));
@@ -56,6 +58,9 @@ export fn zg_measure_impl(glyph: *const target.Glyph, out_result: *target.Glyph)
 }
 export fn zg_count_wide_impl(glyphs_ptr: [*c]const target.Glyph, glyphs_len: usize) u64 {
     return target.countWide(if (glyphs_len == 0) &.{} else glyphs_ptr[0..glyphs_len]);
+}
+export fn zg_visit_impl(text_ptr: [*c]const u8, text_len: usize, userdata: usize) u32 {
+    return target.visit(if (text_len == 0) &.{} else text_ptr[0..text_len], &zg_visit_go_callback_callback, userdata);
 }
 export fn zg_free_codepoints_impl(values_ptr: [*c]const u32, values_len: usize) void {
     target.freeCodepoints(if (values_len == 0) &.{} else @as([*]const u21, @ptrCast(values_ptr))[0..values_len]);

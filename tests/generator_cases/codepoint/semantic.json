@@ -208,6 +208,76 @@
       "symbol": "ignored"
     },
     {
+      "doc": "Calls the visitor for each codepoint of text and returns the last visitor result.",
+      "name": "visit",
+      "params": [
+        {
+          "name": "text",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        },
+        {
+          "name": "callback",
+          "type": {
+            "c_callconv": true,
+            "has_userdata": true,
+            "kind": "callback",
+            "param_semantics": [
+              "codepoint",
+              null
+            ],
+            "params": [
+              {
+                "bits": 32,
+                "is_usize": false,
+                "kind": "int",
+                "signed": false
+              },
+              {
+                "bits": 64,
+                "is_usize": true,
+                "kind": "int",
+                "signed": false
+              }
+            ],
+            "ref": "Visitor",
+            "return": {
+              "bits": 32,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "return_semantic": "codepoint"
+          }
+        },
+        {
+          "name": "userdata",
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "bits": 32,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "return_semantic": "codepoint",
+      "symbol": "ignored"
+    },
+    {
       "name": "freeCodepoints",
       "params": [
         {
@@ -259,6 +329,10 @@
       "kind": "value_struct",
       "layout": "extern",
       "name": "Glyph"
+    },
+    {
+      "kind": "callback",
+      "name": "Visitor"
     }
   ]
 }

@@ -57,6 +57,9 @@ export fn zg_measure_impl(glyph: *const target.Glyph, out_result: *target.Glyph)
 export fn zg_count_wide_impl(glyphs_ptr: [*c]const target.Glyph, glyphs_len: usize) u64 {
     return target.countWide(if (glyphs_len == 0) &.{} else glyphs_ptr[0..glyphs_len]);
 }
+export fn zg_visit_purego_v2_impl(text_ptr: [*c]const u8, text_len: usize, callback: *const fn (u32, usize) callconv(.c) void, userdata: usize) u32 {
+    return target.visit(if (text_len == 0) &.{} else text_ptr[0..text_len], callback, userdata);
+}
 export fn zg_free_codepoints_impl(values_ptr: [*c]const u32, values_len: usize) void {
     target.freeCodepoints(if (values_len == 0) &.{} else @as([*]const u21, @ptrCast(values_ptr))[0..values_len]);
 }

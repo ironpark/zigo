@@ -26,6 +26,9 @@
 - `.repr = .value` 등록 항목의 `.field_meta = .{ .<field> = .{ .semantic = .codepoint } }`로
   extern struct의 `u32` 필드를 mirror struct에서 `rune`으로 노출합니다. 배치가 같아 castable
   여부는 바뀌지 않습니다.
+- `.repr = .callback` 등록 항목의 `.param_semantics = .{ .codepoint, .integer }`와
+  `.semantic = .codepoint`로 콜백의 `u32` 파라미터·결과를 Go `rune`으로 노출합니다. 생성된
+  handle 생성자가 양방향 변환을 맡고 raw 시그니처는 그대로입니다.
 
 ### Changed
 

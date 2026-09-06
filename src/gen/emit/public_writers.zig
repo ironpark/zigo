@@ -695,7 +695,10 @@ pub fn writePublicCallbackType(scope: PublicScope, writer: *std.Io.Writer, progr
     try writer.writeAll("func(");
     for (callback.params[0..value_count], 0..) |parameter, index| {
         if (index != 0) try writer.writeAll(", ");
-        try writePublicGoType(scope, writer, parameter);
+        if (semantic.isCodepoint(parameter, callback.paramHint(index)))
+            try writer.writeAll("rune")
+        else
+            try writePublicGoType(scope, writer, parameter);
     }
     try writer.writeByte(')');
     // `go_error` widens the result to a Go pair. The Zig result is always
@@ -708,18 +711,26 @@ pub fn writePublicCallbackType(scope: PublicScope, writer: *std.Io.Writer, progr
     }
     if (callback.@"return".* != .void) {
         try writer.writeByte(' ');
-        try writePublicGoType(scope, writer, callback.@"return".*);
+        if (semantic.isCodepoint(callback.@"return".*, callback.return_semantic))
+            try writer.writeAll("rune")
+        else
+            try writePublicGoType(scope, writer, callback.@"return".*);
     }
 }
 
-pub fn callbackNeedsPackedAdapter(program: abi.Program, callback: semantic.Callback) bool {
+/// Whether the public callback type and the raw closure the trampoline
+/// stores spell any position differently, so the handle constructor has to
+/// wrap the user's function instead of converting its type.
+pub fn callbackNeedsAdapter(program: abi.Program, callback: semantic.Callback) bool {
     const value_count = if (callback.has_userdata and callback.params.len != 0) callback.params.len - 1 else callback.params.len;
     for (callback.params[0..value_count]) |parameter| if (type_spelling.isPackedValue(program, parameter)) return true;
-    return false;
+    return callback.hasCodepoints();
 }
 
-pub fn writePackedCallbackAdapter(writer: *std.Io.Writer, program: abi.Program, callback: semantic.Callback, value_name: []const u8) !void {
+pub fn writeCallbackAdapter(writer: *std.Io.Writer, program: abi.Program, callback: semantic.Callback, value_name: []const u8) !void {
     const value_count = if (callback.has_userdata and callback.params.len != 0) callback.params.len - 1 else callback.params.len;
+    const go_error = common.callbackSignatureHasGoError(program, callback);
+    const codepoint_result = semantic.isCodepoint(callback.@"return".*, callback.return_semantic);
     try writer.writeAll("func(");
     for (callback.params[0..value_count], 0..) |parameter, index| {
         if (index != 0) try writer.writeAll(", ");
@@ -729,21 +740,37 @@ pub fn writePackedCallbackAdapter(writer: *std.Io.Writer, program: abi.Program, 
     try writer.writeByte(')');
     if (callback.@"return".* != .void) {
         try writer.writeByte(' ');
-        if (common.callbackSignatureHasGoError(program, callback)) try writer.writeByte('(');
+        if (go_error) try writer.writeByte('(');
         try writeRawGoType(writer, program, callback.@"return".*);
-        if (common.callbackSignatureHasGoError(program, callback)) try writer.writeAll(", error)");
+        if (go_error) try writer.writeAll(", error)");
     }
     try writer.writeAll(" {\n\t\t");
-    if (callback.@"return".* != .void) try writer.writeAll("return ");
+    // A `rune` result is converted back to its carrier; with `go_error` the
+    // pair has to be taken apart first.
+    if (callback.@"return".* != .void) {
+        if (codepoint_result and go_error)
+            try writer.writeAll("zigoResult, err := ")
+        else if (codepoint_result)
+            try writer.writeAll("return uint32(")
+        else
+            try writer.writeAll("return ");
+    }
     try writer.print("{s}(", .{value_name});
     for (callback.params[0..value_count], 0..) |parameter, index| {
         if (index != 0) try writer.writeAll(", ");
         if (type_spelling.isPackedValue(program, parameter))
             try writer.print("{s}FromBacking(p{d})", .{ parameter.value_struct.ref, index })
+        else if (semantic.isCodepoint(parameter, callback.paramHint(index)))
+            try writer.print("rune(p{d})", .{index})
         else
             try writer.print("p{d}", .{index});
     }
-    try writer.writeAll(")\n\t}");
+    try writer.writeByte(')');
+    if (codepoint_result and go_error)
+        try writer.writeAll("\n\t\treturn uint32(zigoResult), err")
+    else if (codepoint_result)
+        try writer.writeByte(')');
+    try writer.writeAll("\n\t}");
 }
 
 /// True when native code running under this call can invoke a Go callback:

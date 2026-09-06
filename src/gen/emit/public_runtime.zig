@@ -305,8 +305,8 @@ pub fn renderPublicHelpers(writer: *std.Io.Writer, program: abi.Program, options
                     try writer.print("func zigoNew{s}Handle(value {s}) zigoCallbackHandle {{\n\treturn ", .{ callback_name, callback_name });
                     try public_writers.writeRawReferencePrefix(writer, options);
                     try writer.writeAll("NewCallbackHandle(");
-                    if (public_writers.callbackNeedsPackedAdapter(program, parameter.type.callback))
-                        try public_writers.writePackedCallbackAdapter(writer, program, parameter.type.callback, "value")
+                    if (public_writers.callbackNeedsAdapter(program, parameter.type.callback))
+                        try public_writers.writeCallbackAdapter(writer, program, parameter.type.callback, "value")
                     else {
                         try writer.writeByte('(');
                         try public_writers.writePublicCallbackType(scope, writer, program, parameter.type.callback);
@@ -346,8 +346,8 @@ pub fn renderPublicHelpers(writer: *std.Io.Writer, program: abi.Program, options
                 if (!function.callbackType(parameter_index).?.first_use) continue;
                 const callback_name = function.callbackType(parameter_index).?.name;
                 try writer.print("func zigoNew{s}Handle(value {s}) zigoCallbackHandle {{\n\tstored := ", .{ callback_name, callback_name });
-                if (public_writers.callbackNeedsPackedAdapter(program, parameter.type.callback))
-                    try public_writers.writePackedCallbackAdapter(writer, program, parameter.type.callback, "value")
+                if (public_writers.callbackNeedsAdapter(program, parameter.type.callback))
+                    try public_writers.writeCallbackAdapter(writer, program, parameter.type.callback, "value")
                 else {
                     try writer.writeByte('(');
                     try public_writers.writePublicCallbackType(scope, writer, program, parameter.type.callback);

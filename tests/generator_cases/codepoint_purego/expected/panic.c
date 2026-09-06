@@ -176,6 +176,18 @@ ZIGO_EXPORT uint64_t zg_count_wide(const zg_glyph * glyphs_ptr, size_t glyphs_le
     return result;
 }
 
+uint32_t zg_visit_purego_v2_impl(const uint8_t * text_ptr, size_t text_len, void (*callback)(uint32_t, size_t), size_t userdata);
+ZIGO_EXPORT uint32_t zg_visit_purego_v2(const uint8_t * text_ptr, size_t text_len, void (*callback)(uint32_t, size_t), size_t userdata) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        zg_panic_fatal();
+    }
+    uint32_t result = zg_visit_purego_v2_impl(text_ptr, text_len, callback, userdata);
+    zg_panic_active = 0;
+    return result;
+}
+
 void zg_free_codepoints_impl(const uint32_t * values_ptr, size_t values_len);
 ZIGO_EXPORT void zg_free_codepoints(const uint32_t * values_ptr, size_t values_len) {
     zg_panic_active = 1;

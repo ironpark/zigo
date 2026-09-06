@@ -67,6 +67,7 @@ Zig 텍스트 코드는 유니코드 코드포인트를 `u21`이나 `u32`로 다
 | scalar 파라미터·반환값 | `u21`, `u32` (`!T`, 반환 `?T` 포함) | `rune`, `(rune, error)`, `(rune, bool)` |
 | plain slice 파라미터(입력·`.out`)와 반환 | `[]const u21`, `[]u32`, ... | `[]rune` |
 | `.repr = .value` extern struct의 `u32` 필드(`.field_meta`) | `u32` | `rune` |
+| 등록 callback의 `u32` 파라미터·결과(`.param_semantics`, `.semantic`) | `u32` | `rune` ([콜백](bindings-callbacks.md#콜백-타입-이름)) |
 
 `[]rune`과 `[]uint32`는 메모리 배치가 같아 slice는 복사 없이 같은 메모리를 다시 해석합니다.
 `.out` slice는 호출자의 `[]rune`에 직접 쓰이고, caller-owned 반환은 Go가 복사해 둔
@@ -86,8 +87,8 @@ extern struct 필드는 등록 항목의 `.field_meta`로 지정합니다. mirro
 ```
 
 힌트를 붙일 수 있는 자리는 위 표가 전부입니다. optional 파라미터, sentinel slice, packed·
-materialized struct 필드, tagged union payload, flatten 필드, 주입 파라미터에 붙이면
-`ZIGO053`입니다.
+materialized struct 필드, tagged union payload, flatten 필드, 주입 파라미터, 콜백의 slice나
+`u32`가 아닌 자리에 붙이면 `ZIGO053`입니다.
 
 ### u21 자동 추론
 

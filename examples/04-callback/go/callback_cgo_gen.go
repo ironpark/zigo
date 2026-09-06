@@ -24,6 +24,19 @@ func zigoRawPanicMessage(code int32) string {
 	return C.GoString(C.zg_caught_panic_message(C.int32_t(code)))
 }
 
+// zigoZeroSlot is what an empty slice or string points at instead of NULL, so
+// the native side always receives a valid address beside a zero length.
+var zigoZeroSlot uint64
+
+// zigoSlicePtr is the address of a slice's first element, or of zigoZeroSlot
+// for an empty slice.
+func zigoSlicePtr[T any](values []T) unsafe.Pointer {
+	if len(values) == 0 {
+		return unsafe.Pointer(&zigoZeroSlot)
+	}
+	return unsafe.Pointer(&values[0])
+}
+
 // zigoRawCallbackState carries one Go callback across the native boundary, and
 // the panic it raises there until the generated caller rethrows it. The
 // trampoline has to recover: a panic cannot unwind native frames.
@@ -213,6 +226,22 @@ func zg_notify_go_callback_callback(p0 C.int32_t, p1 C.size_t) {
 	callback(int32(p0))
 }
 
+//export zg_visit_codepoints_go_callback_visitor
+func zg_visit_codepoints_go_callback_visitor(p0 C.uint32_t, p1 C.size_t) {
+	state, ok := callbackState(cgo.Handle(p1))
+	if !ok {
+		tripCallbackCancel(uintptr(p1))
+		return
+	}
+	defer func() {
+		if value := recover(); value != nil {
+			state.record(value)
+		}
+	}()
+	callback := state.Fn.(func(uint32))
+	callback(uint32(p0))
+}
+
 // zigoRawCallbackContextRunCount calls the generated C ABI wrapper for zg_callback_context_run_count.
 func zigoRawCallbackContextRunCount(self unsafe.Pointer) (uint32, int32) {
 	var outResult C.uint32_t
@@ -334,4 +363,10 @@ func zigoRawApplyUntilCancelled(limit uint32, callbackHandle uintptr, cancel *ui
 // zigoRawNotify calls the generated C ABI wrapper for zg_notify.
 func zigoRawNotify(value int32, callbackHandle uintptr) {
 	C.zg_notify(C.int32_t(value), C.size_t(callbackHandle))
+}
+
+// zigoRawVisitCodepoints calls the generated C ABI wrapper for zg_visit_codepoints.
+func zigoRawVisitCodepoints(text []uint8, visitorHandle uintptr) uint32 {
+	textPtr := (*C.uint8_t)(zigoSlicePtr(text))
+	return uint32(C.zg_visit_codepoints(textPtr, C.size_t(len(text)), C.size_t(visitorHandle)))
 }

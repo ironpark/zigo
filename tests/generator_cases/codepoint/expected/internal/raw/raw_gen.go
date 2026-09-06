@@ -10,7 +10,13 @@ package raw
 #include "zigo_codepoint.h"
 */
 import "C"
-import "unsafe"
+import (
+	"runtime/cgo"
+	"runtime/debug"
+	"sync"
+	"sync/atomic"
+	"unsafe"
+)
 
 // LastErrorMessage returns the most recent native panic message for this binding.
 func LastErrorMessage() string { return C.GoString(C.zg_last_error_message()) }
@@ -29,6 +35,63 @@ func zigoSlicePtr[T any](values []T) unsafe.Pointer {
 		return unsafe.Pointer(&zigoZeroSlot)
 	}
 	return unsafe.Pointer(&values[0])
+}
+
+// CallbackState carries one Go callback across the native boundary, and
+// the panic it raises there until the generated caller rethrows it. The
+// trampoline has to recover: a panic cannot unwind native frames.
+type CallbackState struct {
+	Fn       any
+	mu       sync.Mutex
+	value    any
+	stack    []byte
+	panicked bool
+}
+
+// pendingCallbackPanics counts recorded panics no caller has taken yet, so the
+// generated caller can skip the per-slot sweep on the fast path.
+var pendingCallbackPanics atomic.Int64
+
+// PendingCallbackPanics reports how many recorded callback panics no caller has taken yet.
+func PendingCallbackPanics() int64 { return pendingCallbackPanics.Load() }
+
+func (state *CallbackState) record(value any) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if state.panicked {
+		return
+	}
+	state.panicked = true
+	state.value = value
+	state.stack = debug.Stack()
+	pendingCallbackPanics.Add(1)
+}
+
+// TakeCallbackPanic returns and clears the panic the callback behind handle recorded.
+func TakeCallbackPanic(handle cgo.Handle) (any, []byte, bool) {
+	state := handle.Value().(*CallbackState)
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if !state.panicked {
+		return nil, nil, false
+	}
+	value, stack := state.value, state.stack
+	state.value, state.stack, state.panicked = nil, nil, false
+	pendingCallbackPanics.Add(-1)
+	return value, stack, true
+}
+
+//export zg_visit_go_callback_callback
+func zg_visit_go_callback_callback(p0 C.uint32_t, p1 C.size_t) (result C.uint32_t) {
+	state := cgo.Handle(p1).Value().(*CallbackState)
+	defer func() {
+		if value := recover(); value != nil {
+			state.record(value)
+			result = 0
+		}
+	}()
+	callback := state.Fn.(func(uint32) uint32)
+	return C.uint32_t(callback(uint32(p0)))
 }
 
 // CodepointWidth calls the generated C ABI wrapper for zg_codepoint_width.
@@ -93,6 +156,11 @@ func Measure(glyph GlyphData) GlyphData {
 func CountWide(glyphs []GlyphData) uint64 {
 	glyphsPtr := (*C.zg_glyph)(zigoSlicePtr(glyphs))
 	return uint64(C.zg_count_wide(glyphsPtr, C.size_t(len(glyphs))))
+}
+// Visit calls the generated C ABI wrapper for zg_visit.
+func Visit(text []uint8, callbackHandle uintptr) uint32 {
+	textPtr := (*C.uint8_t)(zigoSlicePtr(text))
+	return uint32(C.zg_visit(textPtr, C.size_t(len(text)), C.size_t(callbackHandle)))
 }
 // FreeCodepoints calls the generated C ABI wrapper for zg_free_codepoints.
 func FreeCodepoints(values []uint32) {

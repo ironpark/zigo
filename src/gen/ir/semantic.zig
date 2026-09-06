@@ -63,11 +63,29 @@ pub const Callback = struct {
     c_callconv: bool = true,
     has_userdata: bool,
     params: []const TypeNode,
+    /// One hint per entry of `params` (the userdata slot is always null).
+    /// Only `codepoint` on a `u32` is meaningful; absent when no parameter
+    /// carries a hint.
+    param_semantics: ?[]const ?SemanticHint = null,
+    /// The hint on the callback's result.
+    return_semantic: ?SemanticHint = null,
     /// The declared callback type this signature was registered under, when
     /// the binding registered one (`.repr = .callback`). It names the Go
     /// type; the signature alone still decides the ABI.
     ref: ?[]const u8 = null,
     @"return": *TypeNode,
+
+    pub fn paramHint(self: Callback, index: usize) ?SemanticHint {
+        const hints = self.param_semantics orelse return null;
+        return if (index < hints.len) hints[index] else null;
+    }
+
+    /// Whether any position of the signature is spelled differently in Go
+    /// than in the raw closure, so the handle constructor needs an adapter.
+    pub fn hasCodepoints(self: Callback) bool {
+        if (self.param_semantics) |hints| for (hints, self.params) |hint, node| if (isCodepoint(node, hint)) return true;
+        return isCodepoint(self.@"return".*, self.return_semantic);
+    }
 };
 
 pub const TypeNode = union(enum) {
@@ -115,6 +133,10 @@ pub const TypeNode = union(enum) {
                 try jw.objectField("has_userdata");
                 try jw.write(value.has_userdata);
                 try writeKind(jw, "callback");
+                if (value.param_semantics) |hints| {
+                    try jw.objectField("param_semantics");
+                    try jw.write(hints);
+                }
                 try jw.objectField("params");
                 try jw.write(value.params);
                 if (value.ref) |ref| {
@@ -123,6 +145,10 @@ pub const TypeNode = union(enum) {
                 }
                 try jw.objectField("return");
                 try jw.write(value.@"return".*);
+                if (value.return_semantic) |hint| {
+                    try jw.objectField("return_semantic");
+                    try jw.write(hint);
+                }
             },
             .@"enum" => |value| {
                 try writeKind(jw, "enum");
@@ -278,9 +304,11 @@ pub const TypeNode = union(enum) {
         if (std.mem.eql(u8, kind, "callback")) return .{ .callback = .{
             .c_callconv = try parseOptionalField(bool, allocator, object, "c_callconv", true, options),
             .has_userdata = try parseField(bool, allocator, object, "has_userdata", options),
+            .param_semantics = try parseOptionalField(?[]const ?SemanticHint, allocator, object, "param_semantics", null, options),
             .params = try parseField([]const TypeNode, allocator, object, "params", options),
             .ref = try parseOptionalField(?[]const u8, allocator, object, "ref", null, options),
             .@"return" = try parseTypePointer(allocator, object, "return", options),
+            .return_semantic = try parseOptionalField(?SemanticHint, allocator, object, "return_semantic", null, options),
         } };
         return error.InvalidEnumTag;
     }
@@ -1265,4 +1293,35 @@ test "codepoint predicates accept u21/u32 scalars and plain slices only" {
     try std.testing.expect(!isCodepointSlice(sentinel, .codepoint));
     try std.testing.expect(!isCodepointSlice(signed_slice, .codepoint));
     try std.testing.expect(!isCodepointSlice(narrow21, .codepoint));
+}
+
+test "callback hints round-trip through the semantic document" {
+    var cp: TypeNode = .{ .int = .{ .bits = 32, .signed = false } };
+    const userdata: TypeNode = .{ .int = .{ .bits = 64, .signed = false, .is_usize = true } };
+    const document: Semantic = .{
+        .functions = &.{.{
+            .name = "visit",
+            .params = &.{.{ .name = "callback", .type = .{ .callback = .{
+                .has_userdata = true,
+                .params = &.{ cp, userdata },
+                .param_semantics = &.{ .codepoint, null },
+                .@"return" = &cp,
+                .return_semantic = .codepoint,
+            } } }},
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_visit",
+        }},
+        .package = "text",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    const bytes = try document.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    var parsed = try Semantic.parse(std.testing.allocator, bytes);
+    defer parsed.deinit();
+    const callback = parsed.value.functions[0].params[0].type.callback;
+    try std.testing.expectEqual(SemanticHint.codepoint, callback.paramHint(0).?);
+    try std.testing.expectEqual(@as(?SemanticHint, null), callback.paramHint(1));
+    try std.testing.expectEqual(SemanticHint.codepoint, callback.return_semantic.?);
+    try std.testing.expect(callback.hasCodepoints());
 }

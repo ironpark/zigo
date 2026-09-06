@@ -530,7 +530,10 @@ fn goTypeEqual(lhs: semantic.TypeNode, rhs: semantic.TypeNode) bool {
         .callback => |a| blk: {
             const b = rhs.callback;
             if (a.params.len != b.params.len or !goTypeEqual(a.@"return".*, b.@"return".*)) break :blk false;
-            for (a.params, b.params) |x, y| if (!goTypeEqual(x, y)) break :blk false;
+            if (a.return_semantic != b.return_semantic) break :blk false;
+            for (a.params, b.params, 0..) |x, y, index| {
+                if (!goTypeEqual(x, y) or a.paramHint(index) != b.paramHint(index)) break :blk false;
+            }
             break :blk true;
         },
         else => true,

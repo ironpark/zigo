@@ -13,6 +13,10 @@ pub const bindings = zigo.define(.{
         // Zig alias: the alias itself has no reflectable name.
         .{ .name = "Observer", .type = library.Observer, .repr = .callback, .on_callback_failure = .{ .result = 0 } },
         .{ .name = "VoidObserver", .type = library.VoidObserver, .repr = .callback },
+        // The visitor's `u32` parameter is a codepoint, so the Go type is
+        // `func(rune)`. Hints are positional over the value parameters; the
+        // trailing userdata is not listed.
+        .{ .name = "Visitor", .type = library.Visitor, .repr = .callback, .param_semantics = .{.codepoint} },
     },
     .functions = .{
         .{ .path = "FloatBuffer.create" },
@@ -51,6 +55,11 @@ pub const bindings = zigo.define(.{
         .{
             .path = "root.notify",
             .params = .{ "value", "callback", "userdata" },
+        },
+        .{
+            .path = "root.visitCodepoints",
+            .params = .{ "text", "visitor", "userdata" },
+            .semantic = .codepoint,
         },
     },
 });

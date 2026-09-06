@@ -4,6 +4,7 @@ package codepoint
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 
 	"example.com/zigo/codepoint/internal/raw"
@@ -11,6 +12,8 @@ import (
 
 // ErrNativePanic identifies a Zig panic caught at the native boundary.
 var ErrNativePanic = errors.New("zigo: native panic")
+// ErrCallbackPanic identifies a panic raised by a Go callback inside a native call.
+var ErrCallbackPanic = errors.New("zigo: callback panic")
 // ErrOutOfRange identifies an argument outside the range of the Zig integer that carries it.
 var ErrOutOfRange = errors.New("zigo: argument out of range")
 // ErrLibraryLoad identifies a shared-library load or symbol resolution failure.
@@ -55,6 +58,34 @@ func (err *RangeError) Error() string {
 
 // Unwrap returns ErrOutOfRange for errors.Is classification.
 func (err *RangeError) Unwrap() error { return ErrOutOfRange }
+
+// CallbackPanicError is what a generated call panics with after a Go callback
+// panicked inside it. The trampoline recovers the panic so the native frames
+// can unwind, and the call rethrows it once the native code has returned.
+type CallbackPanicError struct {
+	// Operation names the generated call the callback was running under.
+	Operation string
+	// Value is the original panic value.
+	Value any
+	// Stack is the callback goroutine's stack where the panic was recovered.
+	Stack []byte
+}
+
+// Error implements error.
+func (err *CallbackPanicError) Error() string {
+	return "zigo: " + err.Operation + ": callback panic: " + fmt.Sprint(err.Value)
+}
+
+// Is reports ErrCallbackPanic for errors.Is classification.
+func (err *CallbackPanicError) Is(target error) bool { return target == ErrCallbackPanic }
+
+// Unwrap returns the original panic value when it is an error, so errors.Is and errors.As reach it.
+func (err *CallbackPanicError) Unwrap() error {
+	if cause, ok := err.Value.(error); ok {
+		return cause
+	}
+	return nil
+}
 
 // Error is a stable Zig error-set value returned by the generated binding.
 // Classify it with errors.Is against the Err* sentinels; a returned value

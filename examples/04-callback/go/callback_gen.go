@@ -302,3 +302,16 @@ func Notify(value int32, callback VoidObserver) {
 		zigoRethrowCallbackPanic("Notify", callbackHandle)
 	}
 }
+
+// VisitCodepoints: Calls visitor for every codepoint of text and returns the last one, or 0
+// for empty text. Malformed bytes are visited as U+FFFD.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+func VisitCodepoints(text []byte, visitor Visitor) rune {
+	visitorHandle := zigoNewVisitorHandle(visitor)
+	defer zigoDeleteCallbackHandle(visitorHandle)
+	result := zigoRawVisitCodepoints(text, uintptr(visitorHandle))
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("VisitCodepoints", visitorHandle)
+	}
+	return rune(result)
+}

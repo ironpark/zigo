@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"runtime/debug"
 	"sync"
 	"sync/atomic"
 	"unsafe"
@@ -54,8 +55,131 @@ type nativeBindings struct {
 	fnTakeCodepoints func(*unsafe.Pointer, *uintptr)
 	fnMeasure func(unsafe.Pointer, unsafe.Pointer)
 	fnCountWide func(unsafe.Pointer, uintptr) uint64
+	fnVisit func(unsafe.Pointer, uintptr, uintptr, uintptr) uint32
 	fnFreeCodepoints func(unsafe.Pointer, uintptr)
 }
+
+type callbackEntry struct {
+	mu sync.Mutex
+	cond *sync.Cond
+	value any
+	closing bool
+	active int
+	panicked bool
+	panicValue any
+	panicStack []byte
+}
+
+// callbackRegistry maps a userdata token to its entry without a global lock,
+// mirroring the sync.Map behind runtime/cgo.Handle on the cgo backend.
+// Delete races an in-flight acquire safely through the entry's closing flag:
+// an acquire either takes active++ before closing is set, in which case
+// DeleteCallbackHandle waits for it to drain, or it observes closing and
+// reports the token as gone.
+var callbackRegistry sync.Map // uintptr -> *callbackEntry
+var nextCallbackToken atomic.Uint64
+var activeCallbackHandles atomic.Int64
+
+// pendingCallbackPanics counts recorded panics no caller has taken yet, so the
+// generated caller can skip the per-slot sweep on the fast path.
+var pendingCallbackPanics atomic.Int64
+
+// NewCallbackHandle stores a callback value and returns its native userdata token.
+func NewCallbackHandle(value any) uintptr {
+	entry := &callbackEntry{value: value}
+	entry.cond = sync.NewCond(&entry.mu)
+	token := uintptr(nextCallbackToken.Add(1))
+	if token == 0 { token = uintptr(nextCallbackToken.Add(1)) }
+	callbackRegistry.Store(token, entry)
+	activeCallbackHandles.Add(1)
+	return token
+}
+
+// DeleteCallbackHandle releases a callback token after in-flight calls finish.
+func DeleteCallbackHandle(token uintptr) {
+	if token == 0 { return }
+	stored, loaded := callbackRegistry.LoadAndDelete(token)
+	if !loaded { return }
+	entry := stored.(*callbackEntry)
+	entry.mu.Lock()
+	entry.closing = true
+	for entry.active != 0 { entry.cond.Wait() }
+	entry.value = nil
+	entry.mu.Unlock()
+	activeCallbackHandles.Add(-1)
+}
+
+// ActiveCallbackHandleCount reports the number of live callback tokens.
+func ActiveCallbackHandleCount() int64 { return activeCallbackHandles.Load() }
+
+// record keeps the first panic a callback raised until the generated caller takes it.
+func (entry *callbackEntry) record(value any) {
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	if entry.panicked { return }
+	entry.panicked = true
+	entry.panicValue = value
+	entry.panicStack = debug.Stack()
+	pendingCallbackPanics.Add(1)
+}
+
+// TakeCallbackPanic returns and clears the panic the callback behind token recorded.
+func TakeCallbackPanic(token uintptr) (any, []byte, bool) {
+	stored, loaded := callbackRegistry.Load(token)
+	if !loaded { return nil, nil, false }
+	entry := stored.(*callbackEntry)
+	entry.mu.Lock()
+	defer entry.mu.Unlock()
+	if !entry.panicked { return nil, nil, false }
+	value, stack := entry.panicValue, entry.panicStack
+	entry.panicValue, entry.panicStack, entry.panicked = nil, nil, false
+	pendingCallbackPanics.Add(-1)
+	return value, stack, true
+}
+
+// PendingCallbackPanics reports how many recorded callback panics no caller has taken yet.
+func PendingCallbackPanics() int64 { return pendingCallbackPanics.Load() }
+
+func acquireCallback(token uintptr) (*callbackEntry, any, bool) {
+	stored, loaded := callbackRegistry.Load(token)
+	if !loaded { return nil, nil, false }
+	entry := stored.(*callbackEntry)
+	entry.mu.Lock()
+	if entry.closing { entry.mu.Unlock(); return nil, nil, false }
+	entry.active++
+	value := entry.value
+	entry.mu.Unlock()
+	return entry, value, true
+}
+
+func releaseCallback(entry *callbackEntry) {
+	entry.mu.Lock()
+	entry.active--
+	if entry.closing && entry.active == 0 { entry.cond.Broadcast() }
+	entry.mu.Unlock()
+}
+
+var callbackPointers [1]uintptr
+var callbackDispatchersOnce sync.Once
+
+func ensureCallbackDispatchers() {
+	callbackDispatchersOnce.Do(func() {
+		callbackPointers[0] = purego.NewCallback(func(p0 uint32, p1 uint) (result uintptr) {
+			entry, stored, ok := acquireCallback(uintptr(p1))
+			if !ok { return 0 }
+			defer releaseCallback(entry)
+			defer func() { if value := recover(); value != nil { entry.record(value); result = 0 } }()
+			callback := stored.(func(uint32))
+			callback(p0)
+			return 0
+		})
+	})
+}
+
+// CallbackPointer0 returns the permanent dispatcher for callback ABI signature 0.
+func CallbackPointer0() uintptr { ensureCallbackDispatchers(); return callbackPointers[0] }
+// CallbackDispatcherCount reports the number of unique callback ABI dispatchers.
+func CallbackDispatcherCount() int { ensureCallbackDispatchers(); return len(callbackPointers) }
 
 var loadedBindings atomic.Pointer[nativeBindings]
 var loadMu sync.Mutex
@@ -94,6 +218,7 @@ func loadLibraryLocked(explicit string) error {
 		for _, candidate := range candidates { if candidate == successfulLibraryPath { return nil } }
 		return &LibraryError{Path: candidates[0], Operation: "load", Cause: errors.New("a different library is already loaded")}
 	}
+	ensureCallbackDispatchers()
 	attempts := make([]error, 0, len(candidates))
 	for _, candidate := range candidates {
 		if err := loadCandidate(candidate); err != nil { attempts = append(attempts, err); continue }
@@ -132,6 +257,8 @@ func loadCandidate(path string) error {
 	if err != nil { return fail("zg_measure", err) }
 	addrCountWide, err := resolveSymbol(handle, "zg_count_wide")
 	if err != nil { return fail("zg_count_wide", err) }
+	addrVisit, err := resolveSymbol(handle, "zg_visit_purego_v2")
+	if err != nil { return fail("zg_visit_purego_v2", err) }
 	addrFreeCodepoints, err := resolveSymbol(handle, "zg_free_codepoints")
 	if err != nil { return fail("zg_free_codepoints", err) }
 	var next nativeBindings
@@ -146,6 +273,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnTakeCodepoints, addrTakeCodepoints)
 	purego.RegisterFunc(&next.fnMeasure, addrMeasure)
 	purego.RegisterFunc(&next.fnCountWide, addrCountWide)
+	purego.RegisterFunc(&next.fnVisit, addrVisit)
 	purego.RegisterFunc(&next.fnFreeCodepoints, addrFreeCodepoints)
 	loadedBindings.Store(&next)
 	return nil
@@ -252,6 +380,14 @@ func CountWide(glyphs []GlyphData) uint64 {
 	if len(glyphs) != 0 { glyphsPtr = unsafe.Pointer(&glyphs[0]) }
 	result := bindings().fnCountWide(glyphsPtr, uintptr(len(glyphs)))
 	return uint64(result)
+}
+
+// Visit calls the generated purego ABI wrapper for zg_visit_purego_v2.
+func Visit(text []uint8, callbackCallback, callbackToken uintptr) uint32 {
+	var textPtr unsafe.Pointer
+	if len(text) != 0 { textPtr = unsafe.Pointer(&text[0]) }
+	result := bindings().fnVisit(textPtr, uintptr(len(text)), callbackCallback, callbackToken)
+	return uint32(result)
 }
 
 // FreeCodepoints calls the generated purego ABI wrapper for zg_free_codepoints.

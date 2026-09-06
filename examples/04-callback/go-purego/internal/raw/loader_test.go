@@ -16,7 +16,7 @@ func installDir() string { return "lib" }
 func TestCallbackDispatcherIsPermanentAcrossLoadRetry(t *testing.T) {
 	first := CallbackPointer0()
 	second := CallbackPointer1()
-	if first == 0 || second == 0 || CallbackDispatcherCount() != 2 {
+	if first == 0 || second == 0 || CallbackDispatcherCount() != 3 {
 		t.Fatal("callback dispatcher was not initialized")
 	}
 	if err := LoadLibrary(filepath.Join(t.TempDir(), "missing-library")); err == nil {

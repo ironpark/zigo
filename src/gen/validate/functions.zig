@@ -448,6 +448,28 @@ fn codepointIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !
             .hint = "a codepoint is a `u21` or `u32` scalar or a `[]const`/`[]` slice of one; drop the hint or change the Zig type",
         };
     }
+    for (function.params) |parameter| {
+        if (parameter.type != .callback) continue;
+        const callback = parameter.type.callback;
+        var bad = false;
+        if (callback.param_semantics) |hints| {
+            if (hints.len != callback.params.len) bad = true;
+            for (hints, callback.params) |hint, node| {
+                if (hint == null) continue;
+                if (hint != .codepoint or !semantic.isCodepointInt(node)) bad = true;
+            }
+        }
+        if (callback.return_semantic) |hint| {
+            if (hint != .codepoint or !semantic.isCodepointInt(callback.@"return".*)) bad = true;
+        }
+        if (bad) return .{
+            .severity = .@"error",
+            .code = "ZIGO053",
+            .message = try std.fmt.allocPrint(allocator, "callback `{s}` carries a semantic hint on a position that is not a u32 scalar", .{parameter.name}),
+            .site = site.functionSite(function),
+            .hint = "a callback hint is `.codepoint` on a `u32` parameter or result of a registered `.repr = .callback` entry; slices and other widths take no hint",
+        };
+    }
     if (function.return_semantic == .codepoint) {
         const payload = function.@"return".errorPayload();
         const scalar = if (payload == .optional) payload.optional.child.* else payload;
@@ -1012,5 +1034,37 @@ test "codepoint hints are accepted on u21/u32 scalars and slices and rejected el
         const document: semantic.Semantic = .{ .allocator = "std.heap.c_allocator", .functions = &.{function}, .package = "text", .prefix = "zg", .zig_version = "0.16.0" };
         const issue = (try validate.findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
         try std.testing.expectEqualStrings("ZIGO053", issue.code);
+    }
+}
+
+test "callback codepoint hints are limited to u32 positions" {
+    var cp: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = false } };
+    var wide: semantic.TypeNode = .{ .int = .{ .bits = 64, .signed = false } };
+    const userdata: semantic.TypeNode = .{ .int = .{ .bits = 64, .signed = false, .is_usize = true } };
+    const cases = [_]struct { callback: semantic.Callback, code: ?[]const u8 }{
+        .{ .callback = .{ .has_userdata = true, .params = &.{ cp, userdata }, .param_semantics = &.{ .codepoint, null }, .@"return" = &cp, .return_semantic = .codepoint }, .code = null },
+        .{ .callback = .{ .has_userdata = true, .params = &.{ wide, userdata }, .param_semantics = &.{ .codepoint, null }, .@"return" = &cp }, .code = "ZIGO053" },
+        .{ .callback = .{ .has_userdata = true, .params = &.{ cp, userdata }, .@"return" = &wide, .return_semantic = .codepoint }, .code = "ZIGO053" },
+    };
+    for (cases) |case| {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const document: semantic.Semantic = .{
+            .functions = &.{.{
+                .name = "visit",
+                .params = &.{ .{ .name = "callback", .type = .{ .callback = case.callback } }, .{ .name = "userdata", .type = userdata } },
+                .@"return" = .{ .void = {} },
+                .symbol = "zg_visit",
+            }},
+            .package = "text",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        };
+        const issue = try validate.findIssue(scratch.allocator(), document);
+        if (case.code) |code| {
+            try std.testing.expectEqualStrings(code, (issue orelse return error.MissingDiagnostic).code);
+        } else {
+            try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), issue);
+        }
     }
 }

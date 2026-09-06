@@ -26,6 +26,19 @@ alias라 reflection이 이름을 알 수 없으니, 하나의 이름을 원하�
 callconv(.c) void`는 Go에서 반환값 없는 `func(...)`가 되고, cgo와 purego 모두 native 호출이
 돌아온 뒤 같은 panic 전달과 수명 규칙을 적용합니다.
 
+콜백의 `u32` 파라미터나 결과가 코드포인트라면 등록 항목에 힌트를 붙여 Go 타입을
+`func(rune) rune`으로 만듭니다. `param_semantics`는 값 파라미터 순서대로 나열하며(뒤의
+userdata는 제외) 코드포인트가 아닌 자리는 `.integer`로 채웁니다. `semantic`은 결과에
+적용되며, purego는 콜백 결과로 `void`와 `i32`만 허용하므로(`ZIGO014`) 코드포인트 결과는
+cgo 전용입니다. 생성된 handle 생성자가 `rune`과 `uint32`를 양방향으로 변환하고, 결과에는
+범위 검사가 없어 잘못된 `rune`이 그대로 `uint32`로 재해석됩니다. 등록하지 않은 콜백은
+힌트를 가질 수 없고, `.codepoints = .infer_u21` 추론은 콜백에는 해당하는 자리(`u21`)가
+`ZIGO018`로 거부되므로 사실상 영향이 없습니다.
+
+```zig
+.{ .name = "Visitor", .type = mylib.Visitor, .repr = .callback, .param_semantics = .{ .codepoint, .integer }, .semantic = .codepoint },
+```
+
 콜백이 호출 중 바인딩을 다시 부를 수 있는지와 어떤 thread에서 불리는지는 파라미터별
 계약으로 기록할 수 있습니다. 둘 다 생략이 기본이며, 생성기의 동작은 바뀌지 않고 생성된
 콜백 타입과 그 콜백을 받는 함수의 Go doc에만 나타납니다.

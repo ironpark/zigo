@@ -30,6 +30,7 @@ ZIGO_EXPORT void zg_fill_codepoints(uint32_t * values_ptr, size_t values_len, si
 ZIGO_EXPORT void zg_take_codepoints(const uint32_t * * out_result_ptr, size_t * out_result_len);
 ZIGO_EXPORT void zg_measure(const zg_glyph * glyph, zg_glyph * out_result);
 ZIGO_EXPORT uint64_t zg_count_wide(const zg_glyph * glyphs_ptr, size_t glyphs_len);
+ZIGO_EXPORT uint32_t zg_visit(const uint8_t * text_ptr, size_t text_len, size_t userdata);
 ZIGO_EXPORT void zg_free_codepoints(const uint32_t * values_ptr, size_t values_len);
 ZIGO_EXPORT const char *zg_last_error_message(void);
 ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);

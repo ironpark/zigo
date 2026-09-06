@@ -43,6 +43,9 @@ type Observer func(int32) (int32, error)
 // VoidObserver is the Go callback signature accepted by the generated binding.
 type VoidObserver func(int32)
 
+// Visitor is the Go callback signature accepted by the generated binding.
+type Visitor func(rune)
+
 type zigoCallbackHandle = uintptr
 
 func zigoNewObserverHandle(value Observer) zigoCallbackHandle {
@@ -51,6 +54,12 @@ func zigoNewObserverHandle(value Observer) zigoCallbackHandle {
 
 func zigoNewVoidObserverHandle(value VoidObserver) zigoCallbackHandle {
 	return raw.NewCallbackHandle((func(int32))(value))
+}
+
+func zigoNewVisitorHandle(value Visitor) zigoCallbackHandle {
+	return raw.NewCallbackHandle(func(p0 uint32) {
+		value(rune(p0))
+	})
 }
 
 func zigoDeleteCallbackHandle(handle zigoCallbackHandle) { raw.DeleteCallbackHandle(handle) }
