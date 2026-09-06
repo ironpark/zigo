@@ -19,6 +19,14 @@
 - bool 파라미터나 결과를 가진 콜백을 두 백엔드 모두 지원합니다. wire는 `u8`이고 native 콜백은
   `bool`이므로 shim thunk가 `@intFromBool`로 넓히고 `!= 0`으로 좁히며, Go handle 생성자가
   저장된 함수를 raw 타입에 맞춥니다. purego도 bool 결과 콜백을 받습니다(`ZIGO014`).
+- 콜백의 userdata 위치를 선언할 수 있습니다. `.repr = .callback` 항목의
+  `.userdata = .first | .last | .{ .index = n }`이 native 시그니처의 자리를 가리키고,
+  `param_meta.<콜백>.userdata`가 콜백 바로 다음이 아닌 토큰 파라미터를 이름으로 가리킵니다.
+  shim thunk가 인자 순서를 Go 규약(값, 그다음 userdata)으로 바꾸므로 C·Go ABI는 그대로이고
+  `semantic.json`에는 `userdata_at`이 기록됩니다.
+- userdata 규약 위반(콜백에 `usize` 자리가 없거나, 선언한 자리가 `usize`가 아니거나, 함수에
+  토큰을 넘길 `usize` 파라미터가 없을 때)을 `ZIGO055`로 선언 위치와 함께 거부합니다. 전에는
+  생성 단계에서 위치 없이 실패하거나 엉뚱한 인자를 토큰으로 써 호출 시점에 panic했습니다.
 
 ### Changed
 
