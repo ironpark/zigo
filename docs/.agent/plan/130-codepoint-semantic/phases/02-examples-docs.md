@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-06T02:35:56Z"
 depends_on:
 - "130-codepoint-semantic#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build go-check` / `purego-go-check` current and `go vet` / `go test` pass on both backends for 02 and 11.
 > NEXT: none
