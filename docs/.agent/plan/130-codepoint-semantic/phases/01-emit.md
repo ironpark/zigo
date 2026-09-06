@@ -2,7 +2,7 @@
 depends_on:
 - "130-codepoint-semantic#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `zig build test` passes and the new cases' expected output is committed via `scripts/update-generator-cases.sh`.
 > NEXT: none
