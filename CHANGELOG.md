@@ -4,6 +4,20 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [0.14.2] - 2026-09-07
+
+### Fixed
+
+- 의존 module 쪽 소스를 읽지 못해도 생성이 실패하지 않습니다. 조건부·lazy import처럼 이 빌드
+  구성에서는 디스크에 없는 파일, 생성 module의 형제 파일, 주석 안의 `@import`까지 따라가다
+  `FileNotFound`가 나면 전체 생성이 exit 2로 죽었습니다. 이름 보강은 비어 있는 값만 채우는
+  단계이므로, 이제 의존 root 아래에서 읽거나 파싱하지 못한 파일은 경고로 남기고 건너뜁니다.
+  바인딩 자신의 파일(`bindings.zig`, root module과 그 import)은 지금처럼 오류입니다.
+- 도달한 root 바깥에 있는 파일의 소스 위치를 `semantic.json`에 적지 않습니다. 생성 module은
+  `.zig-cache/o/<hash>/`에 있어 그 절대 경로가 기계마다·빌드마다 달라지므로, 기록하면
+  커밋된 `semantic.json`이 흔들리고 `go-check`가 깨집니다. 그런 파일도 이름과 doc은 그대로
+  보강하고 위치만 남기지 않습니다.
+
 ## [0.14.1] - 2026-09-07
 
 ### Fixed

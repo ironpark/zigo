@@ -98,7 +98,6 @@ fn applyDependencyRoots(
 ) !void {
     if (dependency_roots.len == 0) return;
     const functions = try allocator.dupe(semantic.SemanticFn, document.functions);
-    var has_errors = false;
     for (dependency_roots) |root_path| {
         // A dependency graph can be thousands of files; there is nothing left
         // to learn from them once every name and doc is in place.
@@ -106,8 +105,7 @@ fn applyDependencyRoots(
         const canonical = try canonicalAlloc(allocator, root_path);
         if (scanned.seen(canonical)) continue;
         const source = std.Io.Dir.cwd().readFileAlloc(io, root_path, allocator, source_limit) catch |err| {
-            try writeReadError(diagnostics, root_path, err);
-            has_errors = true;
+            try writeReadWarning(diagnostics, root_path, err);
             continue;
         };
         try scanned.record(allocator, canonical);
@@ -115,11 +113,10 @@ fn applyDependencyRoots(
         // package cache -- so its own directory, not the bindings directory,
         // is what its recorded paths stay relative to.
         const directory = std.fs.path.dirname(root_path) orelse ".";
-        has_errors = try scanSourceWithDiagnostics(allocator, source, functions, try recordedPathAlloc(allocator, directory, root_path), diagnostics) or has_errors;
-        has_errors = try scanImportedSources(allocator, io, source, directory, functions, scanned, diagnostics) or has_errors;
+        _ = try scanSourceWithDiagnostics(allocator, source, functions, try recordedPathAlloc(allocator, directory, root_path), diagnostics, .best_effort);
+        _ = try scanImportedSources(allocator, io, source, directory, functions, scanned, diagnostics, .best_effort);
     }
     document.functions = functions;
-    if (has_errors) return error.EnrichmentFailed;
 }
 
 /// The root module may be split across files. `applyRecording` reads the
@@ -166,6 +163,7 @@ fn applyRootImports(
         functions,
         scanned,
         diagnostics,
+        .strict,
     );
     document.functions = functions;
     if (has_errors) return error.EnrichmentFailed;
@@ -210,7 +208,7 @@ fn applyRecording(
     try scanned.record(allocator, try canonicalAlloc(allocator, bindings_path));
     const functions = try allocator.dupe(semantic.SemanticFn, document.functions);
     const directory = std.fs.path.dirname(bindings_path) orelse ".";
-    var has_errors = try scanSourceWithDiagnostics(allocator, bindings_source, functions, try recordedPathAlloc(allocator, directory, bindings_path), diagnostics);
+    var has_errors = try scanSourceWithDiagnostics(allocator, bindings_source, functions, try recordedPathAlloc(allocator, directory, bindings_path), diagnostics, .strict);
 
     // The bindings file is the one file the binding's author owns, so its
     // `//!` speaks to Go readers. The root module's `//!` is only reached when
@@ -227,7 +225,7 @@ fn applyRecording(
             scanned.root_source = root_source;
             try scanned.record(allocator, try canonicalAlloc(allocator, root_path));
             if (document.doc == null) document.doc = try containerDocAlloc(allocator, root_source);
-            has_errors = try scanSourceWithDiagnostics(allocator, root_source, functions, try recordedPathAlloc(allocator, directory, root_path), diagnostics) or has_errors;
+            has_errors = try scanSourceWithDiagnostics(allocator, root_source, functions, try recordedPathAlloc(allocator, directory, root_path), diagnostics, .strict) or has_errors;
         } else |err| switch (err) {
             error.FileNotFound => {},
             else => {
@@ -244,7 +242,7 @@ fn applyRecording(
         const path = try std.fs.path.join(allocator, &.{ directory, referenced });
         if (std.Io.Dir.cwd().readFileAlloc(io, path, allocator, source_limit)) |source| {
             try scanned.record(allocator, try canonicalAlloc(allocator, path));
-            has_errors = try scanSourceWithDiagnostics(allocator, source, functions, try recordedPathAlloc(allocator, directory, path), diagnostics) or has_errors;
+            has_errors = try scanSourceWithDiagnostics(allocator, source, functions, try recordedPathAlloc(allocator, directory, path), diagnostics, .strict) or has_errors;
         } else |err| {
             try writeReadError(diagnostics, path, err);
             has_errors = true;
@@ -254,6 +252,16 @@ fn applyRecording(
     if (has_errors) return error.EnrichmentFailed;
 }
 
+/// How a file that cannot be read or parsed is reported. The binding's own
+/// tree is `strict`: a file the author named is a file that has to be there.
+/// Everything under a dependency root is `best_effort` -- a conditional or
+/// lazy import is not written to disk in every build configuration, a
+/// generated module's siblings live in another cache directory, and the import
+/// scan is textual enough to pick an `@import` out of a comment. None of that
+/// is the binding author's mistake, and enrichment only ever adds names and
+/// docs, so a file it cannot read is skipped with a warning.
+const Strictness = enum { strict, best_effort };
+
 fn scanImportedSources(
     allocator: std.mem.Allocator,
     io: std.Io,
@@ -262,8 +270,9 @@ fn scanImportedSources(
     functions: []semantic.SemanticFn,
     scanned: *Scanned,
     diagnostics: *std.Io.Writer,
+    strictness: Strictness,
 ) !bool {
-    return scanImportedSourcesFrom(allocator, io, source, directory, directory, functions, scanned, diagnostics);
+    return scanImportedSourcesFrom(allocator, io, source, directory, directory, functions, scanned, diagnostics, strictness);
 }
 
 /// `root` is the directory every recorded path is written relative to, so a
@@ -279,6 +288,7 @@ fn scanImportedSourcesFrom(
     functions: []semantic.SemanticFn,
     scanned: *Scanned,
     diagnostics: *std.Io.Writer,
+    strictness: Strictness,
 ) !bool {
     var has_errors = false;
     var imports: ImportIterator = .{ .source = source };
@@ -292,7 +302,7 @@ fn scanImportedSourcesFrom(
             // Recorded from the resolved path, so a file reached through
             // `../` is written the same way as one reached directly.
             const recorded = try recordedPathAlloc(allocator, try canonicalAlloc(allocator, root), canonical);
-            has_errors = try scanSourceWithDiagnostics(allocator, imported, functions, recorded, diagnostics) or has_errors;
+            has_errors = try scanSourceWithDiagnostics(allocator, imported, functions, recorded, diagnostics, strictness) or has_errors;
             has_errors = try scanImportedSourcesFrom(
                 allocator,
                 io,
@@ -302,10 +312,14 @@ fn scanImportedSourcesFrom(
                 functions,
                 scanned,
                 diagnostics,
+                strictness,
             ) or has_errors;
-        } else |err| {
-            try writeReadError(diagnostics, path, err);
-            has_errors = true;
+        } else |err| switch (strictness) {
+            .strict => {
+                try writeReadError(diagnostics, path, err);
+                has_errors = true;
+            },
+            .best_effort => try writeReadWarning(diagnostics, path, err),
         }
     }
     return has_errors;
@@ -352,13 +366,18 @@ fn scanSourceWithDiagnostics(
     allocator: std.mem.Allocator,
     source: []const u8,
     functions: []semantic.SemanticFn,
-    path: []const u8,
+    path: ?[]const u8,
     diagnostics: *std.Io.Writer,
+    strictness: Strictness,
 ) !bool {
     const parse_error_count = try scanSource(allocator, source, functions, path);
     if (parse_error_count != 0) {
-        try diagnostics.print("error: zigo could not enrich names from {s}: {d} Zig parse error(s)\n", .{ path, parse_error_count });
-        return true;
+        const label = switch (strictness) {
+            .strict => "error",
+            .best_effort => "warning",
+        };
+        try diagnostics.print("{s}: zigo could not enrich names from {s}: {d} Zig parse error(s)\n", .{ label, path orelse "an unnamed source", parse_error_count });
+        return strictness == .strict;
     }
     return false;
 }
@@ -368,22 +387,37 @@ fn scanSourceWithDiagnostics(
 /// generated metadata does not depend on where the generator was invoked or
 /// on the host's path separator -- CI regenerates every example on Linux and
 /// Windows and compares bytes.
-fn recordedPathAlloc(allocator: std.mem.Allocator, directory: []const u8, path: []const u8) ![]const u8 {
-    var relative = path;
-    if (std.mem.startsWith(u8, path, directory)) {
+/// The path a document records for a file, relative to the root it was
+/// reached from. A file outside that root -- a generated module whose
+/// siblings live in another cache directory, say -- has no stable spelling:
+/// its absolute path names a build cache that differs per machine and per
+/// build, and recording it would make `semantic.json` churn. Such a file
+/// still contributes its names and docs; it contributes no source location.
+fn recordedPathAlloc(allocator: std.mem.Allocator, directory: []const u8, path: []const u8) !?[]const u8 {
+    const relative = blk: {
+        // A relative path is already written against the current directory.
+        if (std.mem.eql(u8, directory, ".") and !std.fs.path.isAbsolute(path)) break :blk path;
+        if (!std.mem.startsWith(u8, path, directory)) return null;
         const rest = path[directory.len..];
-        if (rest.len > 0 and (rest[0] == '/' or rest[0] == '\\')) relative = rest[1..];
-    }
+        if (rest.len == 0 or (rest[0] != '/' and rest[0] != '\\')) return null;
+        break :blk rest[1..];
+    };
     const recorded = try allocator.dupe(u8, relative);
     std.mem.replaceScalar(u8, recorded, '\\', '/');
     return recorded;
+}
+
+/// A file enrichment would have liked to read but could not. Reported so the
+/// reason is visible, without failing a generation the file cannot change.
+fn writeReadWarning(writer: *std.Io.Writer, path: []const u8, err: anyerror) !void {
+    try writer.print("warning: zigo skipped enrichment source {s}: {s}\n", .{ path, @errorName(err) });
 }
 
 fn writeReadError(writer: *std.Io.Writer, path: []const u8, err: anyerror) !void {
     try writer.print("error: zigo could not read enrichment source {s}: {s}\n", .{ path, @errorName(err) });
 }
 
-fn scanSource(allocator: std.mem.Allocator, source: []const u8, functions: []semantic.SemanticFn, path: []const u8) !usize {
+fn scanSource(allocator: std.mem.Allocator, source: []const u8, functions: []semantic.SemanticFn, path: ?[]const u8) !usize {
     const terminated = try allocator.dupeZ(u8, source);
     defer allocator.free(terminated);
     var tree = try std.zig.Ast.parse(allocator, terminated, .zig);
@@ -454,7 +488,7 @@ fn scanMembers(
     functions: []semantic.SemanticFn,
     visited: []bool,
     matched: []bool,
-    path: []const u8,
+    path: ?[]const u8,
     owners: *std.ArrayList([]const u8),
 ) !void {
     // A run of declarations written with no blank line between them reads as
@@ -515,7 +549,7 @@ fn enrichMatches(
     matched: []bool,
     qualified: bool,
     doc: ?[]const u8,
-    path: []const u8,
+    path: ?[]const u8,
     /// Containers this file declares by name. Only the unqualified pass reads
     /// it; the qualified one already knows the owner it is standing in.
     declared_owners: []const []const u8,
@@ -578,10 +612,12 @@ fn enrichMatches(
         if (function.doc == null) {
             if (doc) |value| function.doc = try allocator.dupe(u8, value);
         }
-        if (function.source == null) {
+        // A file with no stable spelling relative to its root still gives
+        // names and docs; only the location it would record is dropped.
+        if (function.source == null) if (path) |value| {
             const location = tree.tokenLocation(0, name_token);
-            function.source = .{ .path = try allocator.dupe(u8, path), .line = @intCast(location.line + 1), .column = @intCast(location.column + 1) };
-        }
+            function.source = .{ .path = try allocator.dupe(u8, value), .line = @intCast(location.line + 1), .column = @intCast(location.column + 1) };
+        };
         matched[index] = true;
     }
 }
@@ -1165,17 +1201,23 @@ test "no container block anywhere leaves the package doc to the default sentence
 
 test "recorded source paths are relative to the bindings directory with slash separators" {
     const allocator = std.testing.allocator;
-    const cases = [_]struct { directory: []const u8, path: []const u8, expected: []const u8 }{
+    const cases = [_]struct { directory: []const u8, path: []const u8, expected: ?[]const u8 }{
         .{ .directory = "/home/runner/work/zigo/examples/04-callback/src", .path = "/home/runner/work/zigo/examples/04-callback/src/root.zig", .expected = "root.zig" },
         .{ .directory = "./examples/04-callback/src", .path = "./examples/04-callback/src/sub/extra.zig", .expected = "sub/extra.zig" },
         .{ .directory = "C:\\work\\zigo\\src", .path = "C:\\work\\zigo\\src\\root.zig", .expected = "root.zig" },
         .{ .directory = ".", .path = "bindings.zig", .expected = "bindings.zig" },
-        .{ .directory = "/a/src", .path = "/elsewhere/root.zig", .expected = "/elsewhere/root.zig" },
+        // Outside the root it was reached from: no spelling this document
+        // could record would mean the same thing on another machine.
+        .{ .directory = "/a/src", .path = "/elsewhere/root.zig", .expected = null },
     };
     for (cases) |case| {
         const recorded = try recordedPathAlloc(allocator, case.directory, case.path);
-        defer allocator.free(recorded);
-        try std.testing.expectEqualStrings(case.expected, recorded);
+        defer if (recorded) |value| allocator.free(value);
+        if (case.expected) |expected| {
+            try std.testing.expectEqualStrings(expected, recorded orelse return error.MissingPath);
+        } else {
+            try std.testing.expect(recorded == null);
+        }
     }
 }
 
@@ -1256,4 +1298,96 @@ test "a dependency graph that reaches one file by two routes is walked once" {
     // Recorded from the resolved path, so the route taken does not show.
     try std.testing.expectEqualStrings("left/search.zig", document.functions[0].source.?.path);
     try std.testing.expectEqualStrings("right/echo.zig", document.functions[1].source.?.path);
+}
+
+test "an unreadable dependency source is skipped, not fatal" {
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "bindings.zig", .data = "const x = 0;\n" });
+    try temporary.dir.createDirPath(std.testing.io, "library");
+    // The first import is conditional in the real build and is not on disk in
+    // this configuration; the second is, and still has to be enriched from.
+    try temporary.dir.writeFile(std.testing.io, .{
+        .sub_path = "library/main.zig",
+        .data =
+        \\pub const missing = @import("../font/test.zig");
+        \\pub const Search = @import("search.zig").Search;
+        ,
+    });
+    try temporary.dir.writeFile(std.testing.io, .{
+        .sub_path = "library/search.zig",
+        .data =
+        \\pub const Search = struct {
+        \\    /// Feeds one byte to the search.
+        \\    pub fn feed(self: *Search, byte: u8) void { _ = self; _ = byte; }
+        \\};
+        ,
+    });
+    const directory = try std.fmt.allocPrint(std.testing.allocator, ".zig-cache/tmp/{s}", .{temporary.sub_path});
+    defer std.testing.allocator.free(directory);
+    const bindings_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/bindings.zig", .{directory});
+    defer std.testing.allocator.free(bindings_path);
+    const dependency_root = try std.fmt.allocPrint(std.testing.allocator, "{s}/library/main.zig", .{directory});
+    defer std.testing.allocator.free(dependency_root);
+    const absent_root = try std.fmt.allocPrint(std.testing.allocator, "{s}/library/gone.zig", .{directory});
+    defer std.testing.allocator.free(absent_root);
+
+    var functions = [_]semantic.SemanticFn{.{
+        .name = "feed",
+        .params = &.{.{ .name = "p0", .type = .{ .int = .{ .bits = 8, .signed = false } } }},
+        .receiver = "Search",
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_search_feed",
+    }};
+    var document: semantic.Semantic = .{
+        .functions = &functions,
+        .package = "names",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var diagnostics: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer diagnostics.deinit();
+    // A dependency root the build named but that is not on disk is skipped too.
+    try apply(arena.allocator(), std.testing.io, &document, bindings_path, bindings_path, &.{ absent_root, dependency_root }, &diagnostics.writer);
+
+    try std.testing.expectEqualStrings("byte", document.functions[0].params[0].name);
+    const written = diagnostics.written();
+    try std.testing.expect(std.mem.indexOf(u8, written, "warning: zigo skipped enrichment source") != null);
+    try std.testing.expect(std.mem.indexOf(u8, written, "font/test.zig") != null);
+    try std.testing.expect(std.mem.indexOf(u8, written, "error:") == null);
+}
+
+test "a dependency source that does not parse is a warning, the binding's own is not" {
+    var temporary = std.testing.tmpDir(.{ .iterate = true });
+    defer temporary.cleanup();
+    try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "bindings.zig", .data = "const x = 0;\n" });
+    try temporary.dir.createDirPath(std.testing.io, "library");
+    try temporary.dir.writeFile(std.testing.io, .{ .sub_path = "library/main.zig", .data = "pub fn (\n" });
+    const directory = try std.fmt.allocPrint(std.testing.allocator, ".zig-cache/tmp/{s}", .{temporary.sub_path});
+    defer std.testing.allocator.free(directory);
+    const bindings_path = try std.fmt.allocPrint(std.testing.allocator, "{s}/bindings.zig", .{directory});
+    defer std.testing.allocator.free(bindings_path);
+    const dependency_root = try std.fmt.allocPrint(std.testing.allocator, "{s}/library/main.zig", .{directory});
+    defer std.testing.allocator.free(dependency_root);
+
+    var functions = [_]semantic.SemanticFn{.{
+        .name = "feed",
+        .params = &.{.{ .name = "p0", .type = .{ .int = .{ .bits = 8, .signed = false } } }},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_feed",
+    }};
+    var document: semantic.Semantic = .{
+        .functions = &functions,
+        .package = "names",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var diagnostics: std.Io.Writer.Allocating = .init(std.testing.allocator);
+    defer diagnostics.deinit();
+    try apply(arena.allocator(), std.testing.io, &document, bindings_path, bindings_path, &.{dependency_root}, &diagnostics.writer);
+    try std.testing.expect(std.mem.indexOf(u8, diagnostics.written(), "warning: zigo could not enrich names from") != null);
 }
