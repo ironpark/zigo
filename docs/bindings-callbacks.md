@@ -6,6 +6,48 @@ Go 함수를 Zig에 넘길 때의 수명, 오류 반환과 panic 전달을 설�
 [`go_error`](#콜백이-돌려주는-go-error)를 지정하세요.
 호출 결과는 [오류 분류](#생성된-go-error-판별)로 확인합니다.
 
+## 콜백 시그니처 규약
+
+Go 콜백은 native가 부를 때 함께 넘기는 `usize` 토큰(userdata)으로 찾습니다. 기본 규약은
+위치로 정해집니다.
+
+- 콜백 시그니처의 **마지막 파라미터**가 `usize`이면 그것이 userdata입니다. Go 타입에는
+  나타나지 않습니다: `*const fn (value: i32, userdata: usize) callconv(.c) void`는
+  `func(int32)`가 됩니다.
+- 콜백을 받는 함수는 **콜백 바로 다음** `usize` 파라미터로 토큰을 받아 native에 전달합니다.
+  `fn apply(value: i32, callback: Observer, userdata: usize)`처럼 둘을 붙여 선언합니다.
+
+reflection은 파라미터 이름을 볼 수 없으므로 이름은 자유이고 위치만 봅니다. C 라이브러리처럼
+context를 첫 인자에 두는 시그니처는 등록 항목에 위치를 선언합니다. 값은 `.first`, `.last`,
+`.{ .index = n }`(native 시그니처 기준 0부터) 중 하나입니다.
+
+```zig
+pub const Reducer = *const fn (ctx: usize, acc: i32, value: i32) callconv(.c) i32;
+pub fn reduce(ctx: usize, values: []const i32, reducer: Reducer) i32 { ... }
+```
+
+```zig
+.types = .{
+    .{ .name = "Reducer", .type = mylib.Reducer, .repr = .callback, .userdata = .first },
+},
+.functions = .{
+    .{
+        .path = "root.reduce",
+        .params = .{ "ctx", "values", "reducer" },
+        // 토큰 파라미터가 콜백 바로 다음이 아니면 이름으로 가리킵니다.
+        .param_meta = .{ .reducer = .{ .userdata = "ctx" } },
+    },
+},
+```
+
+Go 타입은 값 파라미터만 native 순서대로 받습니다(`func(acc, value int32) int32`). 생성된
+shim이 native 순서와 Go dispatcher 순서 사이를 thunk로 바꿔 주므로 C 시그니처와 Go 타입은
+userdata를 어디에 두든 같고, `abi-diff`도 위치 이동을 변경으로 보지 않습니다.
+
+규약이 깨지면 생성기가 `ZIGO055`로 거부합니다: 콜백에 userdata 자리가 없거나, 선언한 자리가
+`usize`가 아니거나, 함수 쪽에 토큰을 받을 `usize` 파라미터가 없을 때입니다. 예전에는 이런
+선언이 생성 단계에서 위치 없이 실패하거나, 엉뚱한 인자를 토큰으로 써서 호출 시점에 panic했습니다.
+
 ## 콜백 타입 이름
 
 콜백 파라미터마다 Go 함수 타입이 하나씩 생깁니다. 이름은 기본적으로 소유 타입이나 함수와
@@ -24,13 +66,14 @@ alias라 reflection이 이름을 알 수 없으니, 하나의 이름을 원하�
 
 콜백 반환은 scalar뿐 아니라 `void`도 지원합니다. `*const fn (..., userdata: usize)
 callconv(.c) void`는 Go에서 반환값 없는 `func(...)`가 되고, cgo와 purego 모두 native 호출이
-돌아온 뒤 같은 panic 전달과 수명 규칙을 적용합니다.
+돌아온 뒤 같은 panic 전달과 수명 규칙을 적용합니다. 파라미터와 결과의 `bool`은 Go `bool`이
+됩니다. wire에서는 `u8`로 건너가고 shim thunk가 native 시그니처의 `bool`과 맞춥니다.
 
 콜백의 `u32` 파라미터나 결과가 코드포인트라면 등록 항목에 힌트를 붙여 Go 타입을
 `func(rune) rune`으로 만듭니다. `param_semantics`는 값 파라미터 순서대로 나열하며(뒤의
 userdata는 제외) 코드포인트가 아닌 자리는 `.integer`로 채웁니다. `semantic`은 결과에
-적용되며, purego는 콜백 결과로 `void`와 `i32`만 허용하므로(`ZIGO014`) 코드포인트 결과는
-cgo 전용입니다. 생성된 handle 생성자가 `rune`과 `uint32`를 양방향으로 변환하고, 결과에는
+적용되며, purego는 콜백 결과로 `void`, `bool`, `i32`만 허용하므로(`ZIGO014`) 코드포인트
+결과는 cgo 전용입니다. 생성된 handle 생성자가 `rune`과 `uint32`를 양방향으로 변환하고, 결과에는
 범위 검사가 없어 잘못된 `rune`이 그대로 `uint32`로 재해석됩니다. 등록하지 않은 콜백은
 힌트를 가질 수 없고, `.codepoints = .infer_u21` 추론은 콜백에는 해당하는 자리(`u21`)가
 `ZIGO018`로 거부되므로 사실상 영향이 없습니다.

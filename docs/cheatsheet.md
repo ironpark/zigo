@@ -112,7 +112,7 @@ cd go && go test ./...
 | `.enumeration` | enum | `exhaustive = false`(열린 enum), `text = true`, `go`, `covers`(Go enum이 대신하는 Zig 메서드 경로) | [값 타입](bindings-types.md#enum-이름-지정) |
 | `.tagged_union` | `union(enum)` | `access = .snapshot`, `omit_variants` | [Tagged union](bindings-unions.md) |
 | `.materialized` | pointer·string·slice 결과 트리 | `field_meta`(`[]const u8` 필드를 `[]byte`로) | [값 타입](bindings-types.md#materialized-결과-트리) |
-| `.callback` | `*const fn (...) callconv(.c)` | `on_callback_failure`, `param_semantics`, `semantic` | [콜백](bindings-callbacks.md) |
+| `.callback` | `*const fn (...) callconv(.c)` | `on_callback_failure`, `param_semantics`, `semantic`, `userdata`(`.first`/`.last`/`.{ .index = n }`) | [콜백](bindings-callbacks.md#콜백-시그니처-규약) |
 
 ```zig
 .types = .{
@@ -126,6 +126,7 @@ cd go && go test ./...
     .{ .type = mylib.Signal, .repr = .tagged_union, .access = .snapshot },
     .{ .name = "Observer", .type = mylib.Observer, .repr = .callback, .on_callback_failure = .{ .result = 0 } },
     .{ .name = "Visitor", .type = mylib.Visitor, .repr = .callback, .param_semantics = .{ .codepoint, .integer }, .semantic = .codepoint },
+    .{ .name = "Reducer", .type = mylib.Reducer, .repr = .callback, .userdata = .first },   // ctx가 첫 인자인 콜백
 },
 ```
 
@@ -161,6 +162,7 @@ cd go && go test ./...
 | `retention` | `.borrowed` / `.retained` | 콜백·atomic 포인터를 호출 뒤에도 보관하는지 |
 | `go_error` | `true` | 콜백이 Go `error`를 돌려줄 수 있음 (Zig 반환 `i32`) |
 | `on_callback_failure` | `.{ .result = n }` | 콜백 panic·error 시 native에 돌려줄 값 |
+| `userdata` | 파라미터 이름 | 콜백의 토큰을 받는 `usize` 파라미터가 콜백 바로 다음이 아닐 때 |
 | `reentrancy`, `thread` | `.allowed`/`.forbidden`, `.caller`/`.any` | 콜백 계약 (doc에만 반영) |
 | `buffer` | 바이트 수 | `std.Io` 스트림 staging 버퍼 |
 | `go` | 어댑터 | scalar 파라미터 하나 |
@@ -195,7 +197,7 @@ cd go && go test ./...
 | `*Opaque` | `*Opaque` handle | `Close()`, `ErrInvalidHandle` |
 | 등록 enum | `type E uint8` + 상수 + `String()` | `.text`면 `ParseE`, `MarshalText`/`UnmarshalText` |
 | `extern struct` | mirror struct 또는 `.go` 어댑터 타입 | |
-| `*const fn(..., userdata: usize) callconv(.c)` | `func(...)` | 마지막 `usize`가 userdata |
+| `*const fn(..., userdata: usize) callconv(.c)` | `func(...)` | 마지막 `usize`가 userdata; 다른 자리면 `.userdata`로 지정. `bool` 인자·결과 가능 |
 | `*std.Io.Writer` / `*std.Io.Reader` | `io.Writer` / `io.Reader` | |
 | `*const std.atomic.Value(u32)` + `.cancel` | `context.Context` | |
 

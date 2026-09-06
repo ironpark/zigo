@@ -95,6 +95,25 @@ goroutine이 `atomic.StoreUint32`로 그것을 세웁니다(`zigoStop` 채널로
 포인터는 헬퍼 밖으로 나가지 않습니다. `read`는 `readSliceShort`를 쓰므로 스트림 끝이
 짧은 개수로 오고, 공개 Go가 0을 `io.EOF`로 옮깁니다.
 
+## 콜백 thunk
+
+Go dispatcher(purego)와 `//export` trampoline(cgo)이 받는 콜백 시그니처는 하나의 규약을
+따릅니다: 값 파라미터가 native 순서대로 오고 userdata `usize`가 마지막이며, scalar는 승격된
+폭이고 `bool`은 `uint8_t`입니다. native 시그니처가 이와 다르면 shim이 콜백 파라미터마다
+thunk 함수 하나를 두고 native에는 그 주소를 넘깁니다. thunk가 흡수하는 차이는 다음과
+같습니다.
+
+| native 시그니처 | thunk가 하는 일 |
+|---|---|
+| packed struct 값 | backing 정수로 변환 |
+| `bool` 파라미터·결과 | `@intFromBool`로 넓히고 결과는 `!= 0`으로 되돌림 |
+| userdata가 마지막이 아님(`.userdata`) | 인자 순서를 Go 규약으로 재배열 |
+| float 파라미터(purego만) | 비트 패턴 정수로 전달 |
+
+cgo thunk는 trampoline을 직접 부르고, purego thunk는 함수마다 하나 있는 전역에 저장된
+dispatcher 주소를 부릅니다. `semantic.json`의 콜백 `params`는 Go 규약 순서이고, native
+위치는 `userdata_at`(마지막이면 생략)으로 기록됩니다.
+
 ## 콜백이 돌려주는 Go error
 
 `param_meta.<이름>.go_error`가 켜진 콜백은 Go 타입이 `func(...) (int32, error)`가 되고, C

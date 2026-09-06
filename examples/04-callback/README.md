@@ -25,7 +25,8 @@ zig build purego-go purego-go-verify
 1. [src/bindings.zig](src/bindings.zig): 콜백 타입·수명·`go_error` 계약
 2. [Go 사용 예제](go/example_test.go): 호출 동안 빌리는 콜백
 3. `go/generated_test.go`: retained 콜백과 generic 구체화
-4. `go/cancel_test.go`, `go/lifecycle_test.go`: 취소와 수명 경계
+4. `go/bool_test.go`: `bool` 인자·결과 콜백과 context를 첫 인자로 받는 콜백(`.userdata = .first`)
+5. `go/cancel_test.go`, `go/lifecycle_test.go`: 취소와 수명 경계
 
 retained 콜백은 owner가 닫힐 때까지 유지됩니다. owner는 명시적으로 닫고, native 코드는
 콜백의 실패 반환값을 처리해야 합니다. Go 오류가 생긴다고 native 실행이 강제로 중단되지는

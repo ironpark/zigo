@@ -44,7 +44,7 @@ purego는 macOS·Linux·Windows의 amd64·arm64를 지원합니다. 라이브러
 접미사의 버전은 콜백 ABI 버전입니다. 오래된 라이브러리를 새 Go 코드와 결합하면 잘못된
 표현으로 호출하기 전에 심볼 해석이 실패하게 합니다. float 콜백 인자는 같은 폭의 정수에
 IEEE-754 비트를 담아 전달하고 양쪽 adapter가 변환합니다. 공개 Go 콜백 인자는 float를
-유지합니다. purego 콜백 반환은 `void` 또는 signed 32-bit 정수로 제한합니다.
+유지합니다. purego 콜백 반환은 `void`, `bool` 또는 signed 32-bit 정수로 제한합니다.
 
 고유 시그니처마다 native dispatcher를 만들고, 개별 Go 콜백은 동기화된 정수 토큰 레지스트리로
 찾습니다. borrowed·retained 수명과 오류 전달의 사용자 계약은
