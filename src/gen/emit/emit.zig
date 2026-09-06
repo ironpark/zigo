@@ -1136,12 +1136,14 @@ test "materialized decoders and output reuse are emitted for both raw backends" 
         defer std.testing.allocator.free(public_text);
         try std.testing.expect(std.mem.indexOf(u8, public_text, "return zigoDecodeNodeBuffer(") != null);
         try std.testing.expect(std.mem.indexOf(u8, public_text, "zigoBuffer, result := ") != null);
-        try std.testing.expect(std.mem.indexOf(u8, public_text, "copy(output, zigoDecoded)") != null);
+        try std.testing.expect(std.mem.indexOf(u8, public_text, "zigoDecodeNodeSliceInto(zigoBuffer, output)") != null);
+        // The buffer is a view of native memory, released after decoding.
+        try std.testing.expect(std.mem.indexOf(u8, public_text, "defer raw.Release(result)") != null);
         const structs = try renderForTest(public.renderPublicStructsFile, program);
         defer std.testing.allocator.free(structs);
         try std.testing.expect(std.mem.indexOf(u8, structs, "type Node struct") != null);
         try std.testing.expect(std.mem.indexOf(u8, structs, "type Unused struct") == null);
-        try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoDecodeNodeSliceBuffer") != null);
+        try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoDecodeNodeSliceInto") != null);
         const raw_text = try renderForTest(raw.renderRaw, program);
         defer std.testing.allocator.free(raw_text);
         try std.testing.expect(std.mem.indexOf(u8, raw_text, "func Fill(output int) ([]byte, uint)") != null);

@@ -76,6 +76,14 @@ func zigoDecodeRootSliceBuffer(buffer []byte) []Root {
 	return result
 }
 
+func zigoDecodeRootSliceInto(buffer []byte, output []Root) {
+	if len(buffer) == 0 { return }
+	offset, count := zigoMaterializedHeader(buffer, 0)
+	_ = zigoMaterializedArray(buffer, offset, count, 8)
+	if count > uint64(len(output)) { count = uint64(len(output)) }
+	for i := range int(count) { zigoDecodeRootInto(buffer, zigoMaterializedU64(buffer, offset+uint64(i)*8), &output[i]) }
+}
+
 func zigoDecodeRootInto(buffer []byte, offset uint64, result *Root) {
 	_ = zigoMaterializedBytes(buffer, offset, 56)
 	result.Count = uint(zigoMaterializedU64(buffer, offset+0))

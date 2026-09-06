@@ -111,6 +111,12 @@ fn renderMaterializedDecoder(allocator: std.mem.Allocator, writer: *std.Io.Write
         "func zigoDecode{s}SliceBuffer(buffer []byte) []{s} {{\n\toffset, count := zigoMaterializedHeader(buffer, {d})\n\t_ = zigoMaterializedArray(buffer, offset, count, 8)\n\tresult := make([]{s}, int(count))\n\tfor i := range result {{ zigoDecode{s}Into(buffer, zigoMaterializedU64(buffer, offset+uint64(i)*8), &result[i]) }}\n\treturn result\n}}\n\n",
         .{ layout.owner.name, public_name, layout.id, public_name, layout.owner.name },
     );
+    // An `.out` slice result decodes straight into the caller's elements;
+    // the shim only serialized as many as it wrote.
+    if (options.emitsHelperFmt("zigoDecode{s}SliceInto", .{layout.owner.name})) try writer.print(
+        "func zigoDecode{s}SliceInto(buffer []byte, output []{s}) {{\n\tif len(buffer) == 0 {{ return }}\n\toffset, count := zigoMaterializedHeader(buffer, {d})\n\t_ = zigoMaterializedArray(buffer, offset, count, 8)\n\tif count > uint64(len(output)) {{ count = uint64(len(output)) }}\n\tfor i := range int(count) {{ zigoDecode{s}Into(buffer, zigoMaterializedU64(buffer, offset+uint64(i)*8), &output[i]) }}\n}}\n\n",
+        .{ layout.owner.name, public_name, layout.id, layout.owner.name },
+    );
     try writer.print("func zigoDecode{s}Into(buffer []byte, offset uint64, result *{s}) {{\n\t_ = zigoMaterializedBytes(buffer, offset, {d})\n", .{ layout.owner.name, public_name, layout.record_size });
     for (layout.fields) |field| try writeDecodeField(allocator, writer, scope, field, "result", "offset", 0);
     try writer.writeAll("}\n\n");

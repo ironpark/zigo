@@ -74,12 +74,12 @@ pub fn zigoMaterialize_root(builder: *ZigoMaterializedBuilder, value: target.Roo
     builder.writeU64(record + 24, try zigoMaterialize_leaf(builder, value.child.*));
     builder.writeU64(record + 32, if (value.maybe) |zigo_item0| try zigoMaterialize_leaf(builder, zigo_item0.*) else 0);
     {
-    const zigo_data0 = try builder.reserveArray(value.children.len, 8);
-    for (value.children[0..], 0..) |zigo_item0, zigo_index0| {
-    builder.writeU64(zigo_data0 + zigo_index0 * 8, try zigoMaterialize_leaf(builder, zigo_item0));
-    }
-    builder.writeU64(record + 40, zigo_data0);
-    builder.writeU64(record + 40 + 8, value.children.len);
+        const zigo_data0 = try builder.reserveArray(value.children.len, 8);
+        for (value.children[0..], 0..) |zigo_item0, zigo_index0| {
+            builder.writeU64(zigo_data0 + zigo_index0 * 8, try zigoMaterialize_leaf(builder, zigo_item0));
+        }
+        builder.writeU64(record + 40, zigo_data0);
+        builder.writeU64(record + 40 + 8, value.children.len);
     }
     return @intCast(record);
 }
@@ -101,21 +101,21 @@ pub fn zigoMaterialize_leaf(builder: *ZigoMaterializedBuilder, value: target.Lea
     const record = try builder.reserve(40);
     builder.writeWord(record + 0, 1, zigoMaterializedScalar(value.ok));
     {
-    const zigo_data0 = try builder.reserveArray(value.values.len, 4);
-    for (value.values[0..], 0..) |zigo_item0, zigo_index0| {
-    builder.writeWord(zigo_data0 + zigo_index0 * 4, 4, zigoMaterializedScalar(zigo_item0));
-    }
-    builder.writeU64(record + 8, zigo_data0);
-    builder.writeU64(record + 8 + 8, value.values.len);
+        const zigo_data0 = try builder.reserveArray(value.values.len, 4);
+        for (value.values[0..], 0..) |zigo_item0, zigo_index0| {
+            builder.writeWord(zigo_data0 + zigo_index0 * 4, 4, zigoMaterializedScalar(zigo_item0));
+        }
+        builder.writeU64(record + 8, zigo_data0);
+        builder.writeU64(record + 8 + 8, value.values.len);
     }
     {
-    const zigo_data0 = try builder.reserveArray(value.labels.len, 16);
-    for (value.labels[0..], 0..) |zigo_item0, zigo_index0| {
-    builder.writeU64(zigo_data0 + zigo_index0 * 16, try builder.appendBytes(zigo_item0[0..]));
-    builder.writeU64(zigo_data0 + zigo_index0 * 16 + 8, zigo_item0.len);
-    }
-    builder.writeU64(record + 24, zigo_data0);
-    builder.writeU64(record + 24 + 8, value.labels.len);
+        const zigo_data0 = try builder.reserveArray(value.labels.len, 16);
+        for (value.labels[0..], 0..) |zigo_item0, zigo_index0| {
+            builder.writeU64(zigo_data0 + zigo_index0 * 16, try builder.appendBytes(zigo_item0[0..]));
+            builder.writeU64(zigo_data0 + zigo_index0 * 16 + 8, zigo_item0.len);
+        }
+        builder.writeU64(record + 24, zigo_data0);
+        builder.writeU64(record + 24 + 8, value.labels.len);
     }
     return @intCast(record);
 }

@@ -623,10 +623,10 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
                 const optional = returnsOptionalSlice(function);
                 const text = public_writers.rawReturnsUtf8String(function);
                 if (optional) try writeSliceAbsentReturn(writer, "outResultPtr", sliceZero(text), "");
-                try writeCgoSliceReturn(writer, program, element, "outResultPtr", "outResultLen", function.ownership.asBuffer(), if (optional) ", true" else "", text);
+                try writeCgoSliceReturn(writer, program, element, "outResultPtr", "outResultLen", function.ownership.asBuffer(), if (optional) ", true" else "", text, function.materialized_return != null);
             } else if (function.materialized_out != null) {
                 const byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
-                try writeCgoSliceReturn(writer, program, byte, "outResultPtr", "outResultLen", function.ownership.asBuffer(), ", written", false);
+                try writeCgoSliceReturn(writer, program, byte, "outResultPtr", "outResultLen", function.ownership.asBuffer(), ", written", false, true);
             } else if (function.ret_optional) {
                 try writer.writeAll("\treturn ");
                 if (function.ret_struct) |record| {
@@ -671,7 +671,7 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
             if (function.materialized_out != null) {
                 try writer.writeAll("\tif code != 0 {\n\t\treturn nil, 0, code\n\t}\n");
                 const byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
-                try writeCgoSliceReturn(writer, program, byte, "outResultPtr", "outResultLen", function.ownership.asBuffer(), ", uint(outResult), code", false);
+                try writeCgoSliceReturn(writer, program, byte, "outResultPtr", "outResultLen", function.ownership.asBuffer(), ", uint(outResult), code", false, true);
             } else if (error_payload == .void) {
                 try writer.writeAll("\treturn code\n");
             } else if (function.slice_return_element) |element| {
@@ -682,7 +682,7 @@ pub fn renderRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: 
                 const text = public_writers.rawReturnsUtf8String(function);
                 try writer.print("\tif code != 0 {{\n\t\treturn {s}, {s}code\n\t}}\n", .{ sliceZero(text), if (optional) "false, " else "" });
                 if (optional) try writeSliceAbsentReturn(writer, "outResultPtr", sliceZero(text), ", code");
-                try writeCgoSliceReturn(writer, program, element, "outResultPtr", "outResultLen", function.ownership.asBuffer(), if (optional) ", true, code" else ", code", text);
+                try writeCgoSliceReturn(writer, program, element, "outResultPtr", "outResultLen", function.ownership.asBuffer(), if (optional) ", true, code" else ", code", text, function.materialized_return != null);
             } else if (error_payload == .optional) {
                 try writer.writeAll("\treturn ");
                 if (function.payload_struct) |record| {
@@ -857,7 +857,9 @@ fn renderCgoStringHelpers(writer: *std.Io.Writer, program: abi.Program) !void {
 
 /// A cgo slice return must not expose native memory. `C.GoBytes` is the byte
 /// special case; every other element gets a typed Go allocation so the result
-/// has the same element type as the raw function signature.
+/// has the same element type as the raw function signature. The one
+/// exception is a materialized result buffer, which the public wrapper
+/// decodes and releases itself (see `writeCgoSliceReturn`'s `view`).
 /// True when the function hands back `?[]T` rather than `[]T`. The out
 /// pointer being NULL is the absence, so every slice return below only has to
 /// answer that question once, before the copy it would otherwise make.
@@ -896,7 +898,15 @@ fn writeCgoSliceReturn(
     suffix: []const u8,
     /// UTF-8 text: the copy is made straight into a Go `string`.
     text: bool,
+    /// A materialized result buffer: the decoder copies every value it keeps,
+    /// so the raw layer hands back a view of the native buffer and the public
+    /// wrapper releases it once decoding is done, saving a whole-buffer copy.
+    view: bool,
 ) !void {
+    if (buffer != null and view) {
+        try writer.print("\tvar result []uint8\n\tif {s} != 0 {{\n\t\tresult = unsafe.Slice((*uint8)(unsafe.Pointer({s})), int({s}))\n\t}}\n\treturn result{s}\n", .{ length_name, pointer_name, length_name, suffix });
+        return;
+    }
     if (buffer) |owned| {
         // The payload is copied first and released immediately after, so the
         // returned Go slice never aliases memory the library still owns.

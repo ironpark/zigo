@@ -118,13 +118,36 @@ fn writePublicValueStructSliceCopyBacks(
 fn writePublicMaterializedOutCopy(writer: *std.Io.Writer, function: abi.AbiFn, go_names: [][]u8) !void {
     const output = function.materialized_out orelse return;
     const name = go_names[output.source_index];
-    try writer.print("\tzigoDecoded := zigoDecode{s}SliceBuffer(zigoBuffer)\n\tcopy({s}, zigoDecoded)\n", .{ output.root, name });
+    try writer.print("\tzigoDecode{s}SliceInto(zigoBuffer, {s})\n", .{ output.root, name });
+}
+
+/// The raw layer returns a materialized buffer as a view of native memory;
+/// decoding copies everything it keeps, so the buffer is released when the
+/// wrapper returns. A failed call never produced a buffer, so this is written
+/// after the status check.
+fn writePublicMaterializedRelease(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    program: abi.Program,
+    options: emit.Options,
+    function: abi.AbiFn,
+    buffer_name: []const u8,
+) !void {
+    if (function.materialized_return == null and function.materialized_out == null) return;
+    const owned = function.ownership.asBuffer() orelse return;
+    const release = program.functions[owned.release];
+    const release_name = try common.rawGoNameAlloc(allocator, release.origin.*);
+    defer allocator.free(release_name);
+    try writer.writeAll("\tdefer ");
+    try public_writers.writeRawReferencePrefix(writer, options);
+    try writer.print("{s}({s}{s})\n", .{ release_name, if (release.origin.receiver != null) "ptr, " else "", buffer_name });
 }
 
 fn writePublicCapturedReturn(scope: public_writers.PublicScope, writer: *std.Io.Writer, program: abi.Program, function: semantic.SemanticFn, needs_handle_check: bool) !void {
     try writer.writeAll("\treturn ");
     if (function.return_go_adapter) |adapter| try writer.print("{s}(", .{adapter.from_raw});
     switch (function.@"return") {
+        .materialized => |value| try writer.print("zigoDecode{s}Buffer(result)", .{value.ref}),
         .value_struct => |value| if (type_spelling.isPackedValue(program, function.@"return"))
             try writer.print("{s}FromBacking(result)", .{value.ref})
         else
@@ -436,7 +459,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         // one cannot be the return expression itself.
         const needs_rethrow = public_writers.functionReachesCallbacks(program, function.origin.*);
         const captures_return = !returns_error and !borrowed_direct and !owned_direct and
-            (hasOutValueStructSlice(function.origin.*) or function.materialized_out != null or needs_rethrow) and function.origin.@"return" != .void;
+            (hasOutValueStructSlice(function.origin.*) or function.materialized_out != null or function.materialized_return != null or needs_rethrow) and function.origin.@"return" != .void;
         if (returns_error) {
             if (function.materialized_out != null)
                 try writer.writeAll("zigoBuffer, result, code := ")
@@ -619,6 +642,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         if (!returns_error and hasOutValueStructSlice(function.origin.*)) {
             try writePublicValueStructSliceCopyBacks(writer, program, function.origin.*, go_names);
         }
+        if (!returns_error) try writePublicMaterializedRelease(allocator, writer, program, options, function, if (function.materialized_out != null) "zigoBuffer" else "result");
         if (!returns_error and function.materialized_out != null)
             try writePublicMaterializedOutCopy(writer, function, go_names);
         if (!returns_error and function.origin.@"return" == .optional) {
@@ -683,6 +707,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
             if (hasOutValueStructSlice(function.origin.*)) {
                 try writePublicValueStructSliceCopyBacks(writer, program, function.origin.*, go_names);
             }
+            try writePublicMaterializedRelease(allocator, writer, program, options, function, if (function.materialized_out != null) "zigoBuffer" else "result");
             if (function.materialized_out != null)
                 try writePublicMaterializedOutCopy(writer, function, go_names);
             if (error_payload == .void) {

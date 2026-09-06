@@ -20,7 +20,9 @@ var DefaultLibraryName = raw.DefaultLibraryName
 
 // Snapshot calls the Zig function snapshot.
 func Snapshot() Probe {
-	return zigoDecodeProbeBuffer(raw.Snapshot())
+	result := raw.Snapshot()
+	defer raw.Release(result)
+	return zigoDecodeProbeBuffer(result)
 }
 
 // ProbeMany calls the Zig function probeMany.
@@ -30,14 +32,15 @@ func ProbeMany() ([]Probe, error) {
 	if code != 0 {
 		return nil, zigoErrorForCode("ProbeMany", code)
 	}
+	defer raw.Release(result)
 	return zigoDecodeProbeSliceBuffer(result), nil
 }
 
 // Fill calls the Zig function fill.
 func Fill(output []Probe) uint {
 	zigoBuffer, result := raw.Fill(len(output))
-	zigoDecoded := zigoDecodeProbeSliceBuffer(zigoBuffer)
-	copy(output, zigoDecoded)
+	defer raw.Release(zigoBuffer)
+	zigoDecodeProbeSliceInto(zigoBuffer, output)
 	return result
 }
 

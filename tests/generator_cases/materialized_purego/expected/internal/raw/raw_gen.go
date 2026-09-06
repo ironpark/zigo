@@ -162,10 +162,8 @@ func Snapshot() []byte {
 	bindings().fnSnapshot(&outResultPtr, &outResultLen)
 	var result []uint8
 	if outResultLen != 0 {
-		result = make([]uint8, int(outResultLen))
-		copy(result, unsafe.Slice((*uint8)(outResultPtr), int(outResultLen)))
+		result = unsafe.Slice((*uint8)(outResultPtr), int(outResultLen))
 	}
-	bindings().fnRelease(outResultPtr, outResultLen)
 	return result
 }
 
@@ -179,10 +177,8 @@ func Many() ([]byte, int32) {
 	}
 	var result []uint8
 	if outResultLen != 0 {
-		result = make([]uint8, int(outResultLen))
-		copy(result, unsafe.Slice((*uint8)(outResultPtr), int(outResultLen)))
+		result = unsafe.Slice((*uint8)(outResultPtr), int(outResultLen))
 	}
-	bindings().fnRelease(outResultPtr, outResultLen)
 	return result, code
 }
 
@@ -200,10 +196,8 @@ func Fill(output int) ([]byte, uint) {
 	written := bindings().fnFill(uintptr(output), &outResultPtr, &outResultLen)
 	var result []uint8
 	if outResultLen != 0 {
-		result = make([]uint8, int(outResultLen))
-		copy(result, unsafe.Slice((*uint8)(outResultPtr), int(outResultLen)))
+		result = unsafe.Slice((*uint8)(outResultPtr), int(outResultLen))
 	}
-	bindings().fnRelease(outResultPtr, outResultLen)
 	return result, uint(written)
 }
 
@@ -218,9 +212,7 @@ func FillChecked(output int) ([]byte, uint, int32) {
 	}
 	var result []uint8
 	if outResultLen != 0 {
-		result = make([]uint8, int(outResultLen))
-		copy(result, unsafe.Slice((*uint8)(outResultPtr), int(outResultLen)))
+		result = unsafe.Slice((*uint8)(outResultPtr), int(outResultLen))
 	}
-	bindings().fnRelease(outResultPtr, outResultLen)
 	return result, uint(outResult), code
 }

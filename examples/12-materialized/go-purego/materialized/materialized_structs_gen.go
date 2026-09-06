@@ -123,6 +123,20 @@ func zigoDecodeProbeSliceBuffer(buffer []byte) []Probe {
 	return result
 }
 
+func zigoDecodeProbeSliceInto(buffer []byte, output []Probe) {
+	if len(buffer) == 0 {
+		return
+	}
+	offset, count := zigoMaterializedHeader(buffer, 1)
+	_ = zigoMaterializedArray(buffer, offset, count, 8)
+	if count > uint64(len(output)) {
+		count = uint64(len(output))
+	}
+	for i := range int(count) {
+		zigoDecodeProbeInto(buffer, zigoMaterializedU64(buffer, offset+uint64(i)*8), &output[i])
+	}
+}
+
 func zigoDecodeProbeInto(buffer []byte, offset uint64, result *Probe) {
 	_ = zigoMaterializedBytes(buffer, offset, 200)
 	result.ID = uint64(zigoMaterializedU64(buffer, offset+0))

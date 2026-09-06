@@ -97,12 +97,20 @@ fn writeField(
     value: []const u8,
     base: []const u8,
     depth: usize,
-) !void {
+) anyerror!void {
     const expression = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ value, field.name });
     defer allocator.free(expression);
     const offset = try std.fmt.allocPrint(allocator, "{s} + {d}", .{ base, field.offset });
     defer allocator.free(offset);
     try writeShape(allocator, writer, field.shape, expression, offset, depth);
+}
+
+/// Four spaces per nesting level, so the generated shim is already `zig fmt`
+/// clean and the golden files can be compared byte for byte.
+fn indentAlloc(allocator: std.mem.Allocator, depth: usize) ![]u8 {
+    const spaces = try allocator.alloc(u8, 4 * (depth + 1));
+    @memset(spaces, ' ');
+    return spaces;
 }
 
 /// Serializes `expression`, whose storage starts at byte `offset`, according
@@ -116,23 +124,25 @@ fn writeShape(
     offset: []const u8,
     depth: usize,
 ) anyerror!void {
+    const indent = try indentAlloc(allocator, depth);
+    defer allocator.free(indent);
     switch (shape) {
         .scalar => |scalar| if (scalar.width == 8)
-            try writer.print("    builder.writeU64({s}, zigoMaterializedScalar({s}));\n", .{ offset, expression })
+            try writer.print("{s}builder.writeU64({s}, zigoMaterializedScalar({s}));\n", .{ indent, offset, expression })
         else
-            try writer.print("    builder.writeWord({s}, {d}, zigoMaterializedScalar({s}));\n", .{ offset, scalar.width, expression }),
+            try writer.print("{s}builder.writeWord({s}, {d}, zigoMaterializedScalar({s}));\n", .{ indent, offset, scalar.width, expression }),
         .string => |string| if (string.nullable)
-            try writer.print("    if ({1s}) |zigo_item{2d}| {{\n        builder.writeU64({0s}, try builder.appendBytes(zigo_item{2d}[0..]));\n        builder.writeU64({0s} + 8, zigo_item{2d}.len);\n    }}\n", .{ offset, expression, depth })
+            try writer.print("{3s}if ({1s}) |zigo_item{2d}| {{\n{3s}    builder.writeU64({0s}, try builder.appendBytes(zigo_item{2d}[0..]));\n{3s}    builder.writeU64({0s} + 8, zigo_item{2d}.len);\n{3s}}}\n", .{ offset, expression, depth, indent })
         else
-            try writer.print("    builder.writeU64({0s}, try builder.appendBytes({1s}[0..]));\n    builder.writeU64({0s} + 8, {1s}.len);\n", .{ offset, expression }),
+            try writer.print("{2s}builder.writeU64({0s}, try builder.appendBytes({1s}[0..]));\n{2s}builder.writeU64({0s} + 8, {1s}.len);\n", .{ offset, expression, indent }),
         .optional => |child| {
             const item = try std.fmt.allocPrint(allocator, "zigo_item{d}", .{depth});
             defer allocator.free(item);
             const child_offset = try std.fmt.allocPrint(allocator, "{s} + {d}", .{ offset, child.alignment() });
             defer allocator.free(child_offset);
-            try writer.print("    if ({s}) |{s}| {{\n        builder.writeWord({s}, 1, 1);\n", .{ expression, item, offset });
+            try writer.print("{0s}if ({1s}) |{2s}| {{\n{0s}    builder.writeWord({3s}, 1, 1);\n", .{ indent, expression, item, offset });
             try writeShape(allocator, writer, child.*, item, child_offset, depth + 1);
-            try writer.writeAll("    }\n");
+            try writer.print("{s}}}\n", .{indent});
         },
         .sequence => |element| {
             const data = try std.fmt.allocPrint(allocator, "zigo_data{d}", .{depth});
@@ -143,18 +153,18 @@ fn writeShape(
             defer allocator.free(element_offset);
             // Each sequence keeps its temporaries in a block so sibling
             // fields at the same depth can reuse the names.
-            try writer.print("    {{\n    const {0s} = try builder.reserveArray({1s}.len, {2d});\n    for ({1s}[0..], 0..) |{3s}, zigo_index{4d}| {{\n", .{ data, expression, element.stride(), item, depth });
-            try writeShape(allocator, writer, element.*, item, element_offset, depth + 1);
-            try writer.print("    }}\n    builder.writeU64({0s}, {1s});\n    builder.writeU64({0s} + 8, {2s}.len);\n    }}\n", .{ offset, data, expression });
+            try writer.print("{0s}{{\n{0s}    const {1s} = try builder.reserveArray({2s}.len, {3d});\n{0s}    for ({2s}[0..], 0..) |{4s}, zigo_index{5d}| {{\n", .{ indent, data, expression, element.stride(), item, depth });
+            try writeShape(allocator, writer, element.*, item, element_offset, depth + 2);
+            try writer.print("{0s}    }}\n{0s}    builder.writeU64({1s}, {2s});\n{0s}    builder.writeU64({1s} + 8, {3s}.len);\n{0s}}}\n", .{ indent, offset, data, expression });
         },
         .node => |node| {
             const name = try materializedEncoderNameAlloc(allocator, node.ref);
             defer allocator.free(name);
             const deref: []const u8 = if (node.pointer) ".*" else "";
             if (node.nullable)
-                try writer.print("    builder.writeU64({s}, if ({s}) |zigo_item{d}| try {s}(builder, zigo_item{d}{s}) else 0);\n", .{ offset, expression, depth, name, depth, deref })
+                try writer.print("{s}builder.writeU64({s}, if ({s}) |zigo_item{d}| try {s}(builder, zigo_item{d}{s}) else 0);\n", .{ indent, offset, expression, depth, name, depth, deref })
             else
-                try writer.print("    builder.writeU64({s}, try {s}(builder, {s}{s}));\n", .{ offset, name, expression, deref });
+                try writer.print("{s}builder.writeU64({s}, try {s}(builder, {s}{s}));\n", .{ indent, offset, name, expression, deref });
         },
         .value_struct => |record| for (record.fields) |field| try writeField(allocator, writer, field, expression, offset, depth),
     }

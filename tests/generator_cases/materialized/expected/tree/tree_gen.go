@@ -8,7 +8,9 @@ import "example.com/zigo/tree/internal/raw"
 
 // Snapshot calls the Zig function snapshot.
 func Snapshot() Root {
-	return zigoDecodeRootBuffer(raw.Snapshot())
+	result := raw.Snapshot()
+	defer raw.Release(result)
+	return zigoDecodeRootBuffer(result)
 }
 
 // Many calls the Zig function many.
@@ -18,14 +20,15 @@ func Many() ([]Root, error) {
 	if code != 0 {
 		return nil, zigoErrorForCode("Many", code)
 	}
+	defer raw.Release(result)
 	return zigoDecodeRootSliceBuffer(result), nil
 }
 
 // Fill calls the Zig function fill.
 func Fill(output []Root) uint {
 	zigoBuffer, result := raw.Fill(len(output))
-	zigoDecoded := zigoDecodeRootSliceBuffer(zigoBuffer)
-	copy(output, zigoDecoded)
+	defer raw.Release(zigoBuffer)
+	zigoDecodeRootSliceInto(zigoBuffer, output)
 	return result
 }
 
@@ -36,7 +39,7 @@ func FillChecked(output []Root) (uint, error) {
 	if code != 0 {
 		return 0, zigoErrorForCode("FillChecked", code)
 	}
-	zigoDecoded := zigoDecodeRootSliceBuffer(zigoBuffer)
-	copy(output, zigoDecoded)
+	defer raw.Release(zigoBuffer)
+	zigoDecodeRootSliceInto(zigoBuffer, output)
 	return result, nil
 }

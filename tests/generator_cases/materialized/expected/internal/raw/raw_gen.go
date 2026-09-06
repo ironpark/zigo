@@ -38,9 +38,8 @@ func Snapshot() []byte {
 	C.zg_snapshot(&outResultPtr, &outResultLen)
 	var result []uint8
 	if outResultLen != 0 {
-		result = C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))
+		result = unsafe.Slice((*uint8)(unsafe.Pointer(outResultPtr)), int(outResultLen))
 	}
-	C.zg_release(outResultPtr, outResultLen)
 	return result
 }
 // Many calls the generated C ABI wrapper for zg_many.
@@ -53,9 +52,8 @@ func Many() ([]byte, int32) {
 	}
 	var result []uint8
 	if outResultLen != 0 {
-		result = C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))
+		result = unsafe.Slice((*uint8)(unsafe.Pointer(outResultPtr)), int(outResultLen))
 	}
-	C.zg_release(outResultPtr, outResultLen)
 	return result, code
 }
 // Release calls the generated C ABI wrapper for zg_release.
@@ -70,9 +68,8 @@ func Fill(output int) ([]byte, uint) {
 	written := uint(C.zg_fill(C.size_t(output), &outResultPtr, &outResultLen))
 	var result []uint8
 	if outResultLen != 0 {
-		result = C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))
+		result = unsafe.Slice((*uint8)(unsafe.Pointer(outResultPtr)), int(outResultLen))
 	}
-	C.zg_release(outResultPtr, outResultLen)
 	return result, written
 }
 // FillChecked calls the generated C ABI wrapper for zg_fill_checked.
@@ -86,8 +83,7 @@ func FillChecked(output int) ([]byte, uint, int32) {
 	}
 	var result []uint8
 	if outResultLen != 0 {
-		result = C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))
+		result = unsafe.Slice((*uint8)(unsafe.Pointer(outResultPtr)), int(outResultLen))
 	}
-	C.zg_release(outResultPtr, outResultLen)
 	return result, uint(outResult), code
 }

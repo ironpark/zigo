@@ -744,6 +744,13 @@ fn writePuregoSliceReturn(
     text: bool,
 ) !void {
     if (function.ownership.asBuffer()) |owned| {
+        // A materialized buffer is decoded by the public wrapper, which
+        // copies what it keeps and releases the buffer afterwards, so the raw
+        // layer returns a view rather than copying the whole buffer.
+        if (function.materialized_return != null or function.materialized_out != null) {
+            try writer.print("\tvar result []uint8\n\tif outResultLen != 0 {{\n\t\tresult = unsafe.Slice((*uint8)(outResultPtr), int(outResultLen))\n\t}}\n\treturn result{s}\n", .{suffix});
+            return;
+        }
         // Copy first, then hand the native buffer straight back, so the
         // returned slice is Go memory before the library frees anything.
         const release = program.functions[owned.release];

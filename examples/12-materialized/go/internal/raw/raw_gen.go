@@ -38,9 +38,8 @@ func Snapshot() []byte {
 	C.zg_snapshot(&outResultPtr, &outResultLen)
 	var result []uint8
 	if outResultLen != 0 {
-		result = C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))
+		result = unsafe.Slice((*uint8)(unsafe.Pointer(outResultPtr)), int(outResultLen))
 	}
-	C.zg_release(outResultPtr, outResultLen)
 	return result
 }
 
@@ -54,9 +53,8 @@ func ProbeMany() ([]byte, int32) {
 	}
 	var result []uint8
 	if outResultLen != 0 {
-		result = C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))
+		result = unsafe.Slice((*uint8)(unsafe.Pointer(outResultPtr)), int(outResultLen))
 	}
-	C.zg_release(outResultPtr, outResultLen)
 	return result, code
 }
 
@@ -67,9 +65,8 @@ func Fill(output int) ([]byte, uint) {
 	written := uint(C.zg_fill(C.size_t(output), &outResultPtr, &outResultLen))
 	var result []uint8
 	if outResultLen != 0 {
-		result = C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen))
+		result = unsafe.Slice((*uint8)(unsafe.Pointer(outResultPtr)), int(outResultLen))
 	}
-	C.zg_release(outResultPtr, outResultLen)
 	return result, written
 }
 
