@@ -1,15 +1,16 @@
 ---
+completed_at: "2026-09-06T06:55:08Z"
 description: Shim thunk adapts bool callbacks and declared userdata positions; validate enforces the userdata contract
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-06T06:31:46Z"
 ---
 > NEXT: Bool callbacks through the shim thunk. ([Phase 0](phases/00-bool-thunk.md))
 
 # Phases
 
-- [ ] [Phase 00: Bool callbacks through the shim thunk](phases/00-bool-thunk.md)
-- [ ] [Phase 01: Declared userdata position](phases/01-userdata-index.md)
-- [ ] [Phase 02: Docs](phases/02-docs.md)
+- [x] [Phase 00: Bool callbacks through the shim thunk](phases/00-bool-thunk.md)
+- [x] [Phase 01: Declared userdata position](phases/01-userdata-index.md)
+- [x] [Phase 02: Docs](phases/02-docs.md)
 
 # Shared Verification
 

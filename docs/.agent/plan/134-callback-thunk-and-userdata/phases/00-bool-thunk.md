@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-06T06:54:38Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Both cases generate, `zig build test` passes, and the shim for the cgo case compiles under `zig build` in a scratch example.
 > NEXT: none

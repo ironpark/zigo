@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-06T06:55:08Z"
 depends_on:
 - "134-callback-thunk-and-userdata#1"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: Docs describe the default rule, the overrides, and the new diagnostic code.
 > NEXT: none

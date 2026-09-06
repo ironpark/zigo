@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-06T06:54:53Z"
 depends_on:
 - "134-callback-thunk-and-userdata#0"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: Existing snapshots unchanged; the new case dispatches on the declared slot; the diagnostic has a function site.
 > NEXT: none
