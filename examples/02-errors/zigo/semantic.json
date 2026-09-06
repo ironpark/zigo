@@ -125,6 +125,7 @@
           "name": "cp",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "semantic": "codepoint",
           "source": {
             "line": 24,
             "column": 23

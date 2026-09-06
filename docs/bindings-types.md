@@ -49,6 +49,33 @@ slice도 아직 지원하지 않습니다.
 안의 field, tagged union payload, callback 시그니처, 중첩 slice는 C로 정해진 배치를 그대로
 비추므로 그 자리의 비정규 폭은 기존처럼 `ZIGO018`로 거부됩니다.
 
+## 코드포인트
+
+Zig 텍스트 코드는 유니코드 코드포인트를 `u21`이나 `u32`로 다루지만 Go의 관용 타입은
+`rune`입니다. 파라미터의 `param_meta`나 함수 메타데이터에 `.semantic = .codepoint`를 붙이면
+공개 Go 시그니처가 `rune`을 씁니다. raw 계층과 C ABI는 그대로 `uint32`이므로 헤더·shim·
+`abi-check`의 심볼 시그니처는 바뀌지 않고, Go 표면 변경만 breaking으로 기록됩니다.
+
+```zig
+.{ .path = "root.codepointWidth", .params = .{"cp"}, .param_meta = .{ .cp = .{ .semantic = .codepoint } } },
+.{ .path = "root.sumCodepoints", .params = .{"values"}, .param_meta = .{ .values = .{ .semantic = .codepoint } } },
+.{ .path = "root.takeCodepoints", .returns = .caller, .release = "root.freeCodepoints", .semantic = .codepoint },
+```
+
+| 자리 | Zig | Go |
+| --- | --- | --- |
+| scalar 파라미터·반환값 | `u21`, `u32` (`!T`, 반환 `?T` 포함) | `rune`, `(rune, error)`, `(rune, bool)` |
+| plain slice 파라미터(입력·`.out`)와 반환 | `[]const u21`, `[]u32`, ... | `[]rune` |
+
+`[]rune`과 `[]uint32`는 메모리 배치가 같아 slice는 복사 없이 같은 메모리를 다시 해석합니다.
+`.out` slice는 호출자의 `[]rune`에 직접 쓰이고, caller-owned 반환은 Go가 복사해 둔
+`[]uint32`를 `[]rune`으로 봅니다. `u21`의 [입력 범위 검사](#입력-범위와-오류)는 유지되며
+`rune`이 부호 있는 타입이므로 음수도 `*RangeError`(`Type: "u21"`)입니다. `u32` 자리에는
+범위 검사가 없어 음수 `rune`이 그대로 `uint32`로 재해석됩니다.
+
+힌트를 붙일 수 있는 자리는 위 표가 전부입니다. optional 파라미터, sentinel slice, struct
+필드, callback 파라미터, flatten 필드, 주입 파라미터에 붙이면 `ZIGO053`입니다.
+
 ## Enum 이름 지정
 
 enum은 signature에 나타나기만 해도 자동으로 등록되며, 이름은 `@typeName`의 마지막 점 뒤

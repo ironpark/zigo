@@ -16,6 +16,11 @@
   사용자 타입으로 바꿉니다. 잘못된 어댑터는 `ZIGO052`이며 `abi-check`는 어댑터 변경을
   breaking으로 판정합니다.
 
+- `param_meta`와 함수 메타데이터의 `.semantic = .codepoint`로 `u21`/`u32` 스칼라와 그 plain
+  slice를 Go `rune`·`[]rune`으로 노출합니다. raw 계층과 C ABI는 `uint32` 그대로이고 slice는
+  복사 없이 같은 메모리를 다시 해석하며, `u21`의 범위 검사는 음수 `rune`까지 잡습니다. 다른
+  자리에 붙인 힌트는 `ZIGO053`입니다.
+
 ### Changed
 
 - 공개 패키지의 비공개 생성 식별자가 모두 `zigo` 접두사를 갖습니다(`zigoNewContext`,

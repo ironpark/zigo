@@ -30,11 +30,11 @@ func NormalizeFormat(value Format) Format {
 // caller that passes something wider gets a native panic rather than a
 // truncated codepoint.
 // Native failures are returned as generated error values.
-func CodepointWidth(cp uint32) (uint32, error) {
-	if cp > 2097151 {
+func CodepointWidth(cp rune) (uint32, error) {
+	if cp < 0 || cp > 2097151 {
 		return 0, &RangeError{Operation: "CodepointWidth", Parameter: "cp", Type: "u21"}
 	}
-	result, code := raw.CodepointWidth(cp)
+	result, code := raw.CodepointWidth(uint32(cp))
 	if code != 0 {
 		return 0, zigoErrorForCode("CodepointWidth", code)
 	}

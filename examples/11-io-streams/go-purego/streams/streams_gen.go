@@ -9,6 +9,7 @@ package streams
 
 import (
 	"io"
+	"unsafe"
 
 	"example.com/zigo/streams-purego/internal/raw"
 )
@@ -189,24 +190,24 @@ func Tee(r io.Reader, w io.Writer) (uint, error) {
 
 // SumCodepoints: Sums Unicode scalar storage after the binding narrows each promoted Go
 // element into the `u21` representation used by Zig text code.
-func SumCodepoints(values []uint32) (uint32, error) {
+func SumCodepoints(values []rune) (uint32, error) {
 	for _, zigoValue := range values {
-		if zigoValue > 2097151 {
+		if zigoValue < 0 || zigoValue > 2097151 {
 			return 0, &RangeError{Operation: "SumCodepoints", Parameter: "values", Type: "u21"}
 		}
 	}
-	return raw.SumCodepoints(values), nil
+	return raw.SumCodepoints(zigoRunesToUint32(values)), nil
 }
 
 // FillCodepoints: Writes narrow elements through a caller-owned output slice.
-func FillCodepoints(output []uint32) {
-	raw.FillCodepoints(output)
+func FillCodepoints(output []rune) {
+	raw.FillCodepoints(zigoRunesToUint32(output))
 }
 
 // TakeCodepoints: Returns caller-owned narrow storage; generated Go widens it before calling
 // `freeCodepoints` with the original allocation.
-func TakeCodepoints() []uint32 {
-	return raw.TakeCodepoints()
+func TakeCodepoints() []rune {
+	return zigoUint32ToRunes(raw.TakeCodepoints())
 }
 
 // NewSink creates a caller-owned Sink.
@@ -300,4 +301,14 @@ func (s *Source) Read(buffer []byte) (int, error) {
 		return 0, io.EOF
 	}
 	return result, nil
+}
+
+// zigoRunesToUint32 views a []rune as the []uint32 the raw layer takes, without copying.
+func zigoRunesToUint32(values []rune) []uint32 {
+	return unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(values))), len(values))
+}
+
+// zigoUint32ToRunes views a []uint32 from the raw layer as a []rune, without copying.
+func zigoUint32ToRunes(values []uint32) []rune {
+	return unsafe.Slice((*rune)(unsafe.Pointer(unsafe.SliceData(values))), len(values))
 }

@@ -308,6 +308,7 @@
           "name": "values",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "semantic": "codepoint",
           "source": {
             "line": 139,
             "column": 22
@@ -347,6 +348,7 @@
           "name": "output",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "semantic": "codepoint",
           "source": {
             "line": 146,
             "column": 23
@@ -389,6 +391,7 @@
         },
         "kind": "slice"
       },
+      "return_semantic": "codepoint",
       "source": {
         "path": "root.zig",
         "line": 153,

@@ -60,6 +60,7 @@ Go race detector는 `CGO_ENABLED=0` 테스트에 사용할 수 없습니다.
 |---|---|---|
 | bool·정수·실수 | scalar | 정수는 최대 64비트, 실수는 `f32`·`f64` |
 | `u21` 같은 비정규 폭 정수 | 다음 표준 폭의 Go 정수 | 입력 범위 검사로 `error`가 추가될 수 있음 |
+| `.semantic = .codepoint`인 `u21`/`u32`와 그 slice | `rune`, `[]rune` | raw는 `uint32`; slice는 복사 없이 재해석 |
 | enum | `.enumeration` | 열린 enum은 `.exhaustive = false` 명시 |
 | 상태를 가진 일반 struct | `.@"opaque"` | 생성자·소멸자와 소유권 지정 |
 

@@ -225,7 +225,7 @@ func TestBannerWritesThroughAFreeFunction(t *testing.T) {
 }
 
 func TestNarrowIntegerSlices(t *testing.T) {
-	values := []uint32{'A', 0x1f642, 0x10ffff}
+	values := []rune{'A', 0x1f642, 0x10ffff}
 	got, err := SumCodepoints(values)
 	if err != nil {
 		t.Fatalf("SumCodepoints: %v", err)
@@ -234,9 +234,9 @@ func TestNarrowIntegerSlices(t *testing.T) {
 		t.Fatalf("SumCodepoints = %d", got)
 	}
 
-	output := make([]uint32, 5)
+	output := make([]rune, 5)
 	FillCodepoints(output)
-	want := []uint32{'A', 0x1f642, 0x10ffff, 'A', 0x1f642}
+	want := []rune{'A', 0x1f642, 0x10ffff, 'A', 0x1f642}
 	for i := range want {
 		if output[i] != want[i] {
 			t.Fatalf("FillCodepoints[%d] = %#x, want %#x", i, output[i], want[i])
@@ -248,8 +248,11 @@ func TestNarrowIntegerSlices(t *testing.T) {
 		t.Fatalf("TakeCodepoints = %#v", owned)
 	}
 
-	if _, err := SumCodepoints([]uint32{0x200000}); !errors.Is(err, ErrOutOfRange) {
+	if _, err := SumCodepoints([]rune{0x200000}); !errors.Is(err, ErrOutOfRange) {
 		t.Fatalf("out-of-range SumCodepoints returned %v", err)
+	}
+	if _, err := SumCodepoints([]rune{-1}); !errors.Is(err, ErrOutOfRange) {
+		t.Fatalf("negative-rune SumCodepoints returned %v", err)
 	}
 }
 

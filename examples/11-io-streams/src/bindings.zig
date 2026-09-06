@@ -22,13 +22,15 @@ pub const bindings = zigo.define(.{
         .{ .path = "Document.load", .params = .{"r"}, .param_meta = .{ .r = .{ .buffer = 4096 } } },
         .{ .path = "root.banner", .params = .{ "w", "width" } },
         .{ .path = "root.tee", .params = .{ "r", "w" } },
-        .{ .path = "root.sumCodepoints", .params = .{"values"} },
+        // `.semantic = .codepoint` spells these `[]u21` as Go `[]rune` over
+        // the same memory the raw `[]uint32` uses; the u21 range check stays.
+        .{ .path = "root.sumCodepoints", .params = .{"values"}, .param_meta = .{ .values = .{ .semantic = .codepoint } } },
         .{
             .path = "root.fillCodepoints",
             .params = .{"output"},
-            .param_meta = .{ .output = .{ .direction = .out } },
+            .param_meta = .{ .output = .{ .direction = .out, .semantic = .codepoint } },
         },
-        .{ .path = "root.takeCodepoints", .returns = .caller, .release = "root.freeCodepoints" },
+        .{ .path = "root.takeCodepoints", .returns = .caller, .release = "root.freeCodepoints", .semantic = .codepoint },
         .{ .path = "root.freeCodepoints", .params = .{"values"} },
         // A method that hands a stream out. It generates `Write` and `Flush`
         // on the handle rather than a Go value standing for the pointer, so

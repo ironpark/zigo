@@ -31,7 +31,8 @@ func TestFormat(t *testing.T) {
 }
 
 func TestCodepointWidth(t *testing.T) {
-	if got, err := CodepointWidth(0x1100); err != nil || got != 2 {
+	var cp rune = 0x1100
+	if got, err := CodepointWidth(cp); err != nil || got != 2 {
 		t.Fatalf("CodepointWidth(0x1100) = %d, %v, want 2, nil", got, err)
 	}
 	if _, err := CodepointWidth(0x1F); !stderrors.Is(err, ErrNotPrintable) {
@@ -39,8 +40,8 @@ func TestCodepointWidth(t *testing.T) {
 	}
 }
 
-// A `u21` argument travels in a `uint32`, so Go can hand over a value the Zig
-// type cannot hold. The generated function checks the range itself and returns
+// A `u21` argument is a Go `rune` that travels in a `uint32`, so Go can hand
+// over a value the Zig type cannot hold, in either direction. The generated function checks the range itself and returns
 // a RangeError; the native library is never called, which is why the panic
 // message left behind by any earlier call is still whatever it was.
 func TestCodepointWidthOutOfRange(t *testing.T) {
@@ -57,5 +58,8 @@ func TestCodepointWidthOutOfRange(t *testing.T) {
 	}
 	if message := ffi.LastErrorMessage(); message != "" {
 		t.Fatalf("LastErrorMessage() = %q, want empty: no native call was made", message)
+	}
+	if _, err := CodepointWidth(-1); !stderrors.Is(err, ErrOutOfRange) {
+		t.Fatalf("CodepointWidth(-1) error = %v, want ErrOutOfRange", err)
 	}
 }

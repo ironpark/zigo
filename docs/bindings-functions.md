@@ -101,7 +101,7 @@ error입니다.
 | `destroys` | 이 함수가 없애는 opaque 타입 이름 |
 | `child_of_receiver` | 생성된 handle이 receiver보다 먼저 닫혀야 하는지 여부 |
 | `param_meta` | 문자열·버퍼·콜백 등 파라미터별 추가 계약 |
-| `semantic` | 반환값 의미. 예: `.utf8_string` |
+| `semantic` | 반환값 의미. 예: `.utf8_string`, `.codepoint` ([코드포인트](bindings-types.md#코드포인트)) |
 | `returns` | 반환 pointer의 ownership |
 | `release` | caller-owned 반환 버퍼를 해제할 함수 경로 |
 | `iterator` | `?T`를 반환하는 메서드에 `iter.Seq` wrapper를 추가 ([Iterator wrapper](bindings-handles.md#iterator-wrapper)) |
@@ -112,6 +112,8 @@ error입니다.
 스레드 계약은 [콜백 가이드](bindings-callbacks.md), `buffer`는
 [스트림 가이드](bindings-streams.md)를 참고하세요. `go`는 scalar 파라미터 하나를 사용자 Go
 타입으로 바꾸는 어댑터입니다([Go 타입 어댑터](bindings-types.md#go-타입-어댑터)).
+`semantic = .codepoint`는 `u21`/`u32` 파라미터와 그 slice를 `rune`으로
+노출합니다([코드포인트](bindings-types.md#코드포인트)).
 `flatten`은 아래에서 설명합니다.
 
 문자열 의미, 반환 pointer ownership, retained pointer와 callback 수명은 타입만으로 결정할 수
