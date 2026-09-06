@@ -9,7 +9,7 @@ registered_at: "2026-09-06T14:05:56Z"
 
 - [x] [Phase 00: Reflect enum receivers](phases/00-reflect-enum-receivers.md)
 - [x] [Phase 01: Reject what a value receiver cannot mean](phases/01-value-receiver-diagnostics.md)
-- [ ] [Phase 02: Emit value-receiver methods](phases/02-emit-value-receiver.md)
+- [x] [Phase 02: Emit value-receiver methods](phases/02-emit-value-receiver.md)
 - [ ] [Phase 03: Document and land](phases/03-document-and-land.md)
 
 # Shared Verification

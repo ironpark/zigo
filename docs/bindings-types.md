@@ -153,6 +153,11 @@ Zig enum이 `enum(u8) { below, above, _ }`처럼 non-exhaustive이면 자동 등
 `ZIGO029`이며, 생략한 기존 등록은 그대로 exhaustive 계약입니다. tagged union의 tag가
 non-exhaustive인 경우에는 이 opt-in을 적용하지 않으며 계속 거부합니다.
 
+등록 enum은 메서드도 가질 수 있습니다. `.path = "<Enum>.<메서드>"`로 주소를 지정하거나
+`.receiver`로 지목하면 Go에서 값 receiver 메서드가 됩니다. 규칙과 제약은
+[등록 enum의 메서드](bindings-functions.md#등록-enum의-메서드)에 있습니다. `.go` 어댑터를
+붙인 enum은 Go 타입이 다른 패키지의 것이므로 메서드를 가질 수 없습니다.
+
 ## Enum 텍스트 인코딩
 
 생성된 enum은 기본적으로 `String()`만 갖습니다. JSON, CLI 플래그, 설정 파일처럼 문자열에서

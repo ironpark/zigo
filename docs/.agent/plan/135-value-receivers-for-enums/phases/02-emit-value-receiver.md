@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-06T14:27:12Z"
 depends_on:
 - "135-value-receivers-for-enums#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: The new cases' goldens compile and their Go tests pass under cgo and purego,
 > NEXT: none

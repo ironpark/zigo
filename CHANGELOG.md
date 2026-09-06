@@ -16,6 +16,21 @@
 
 ## [Unreleased]
 
+### Added
+
+- `.repr = .enumeration`으로 등록한 enum이 메서드를 가질 수 있습니다. 경로가 그 enum을 거치거나
+  (`.path = "DeccolmMode.columns"`) `.receiver`가 지목하고 첫 비주입 파라미터가 그 enum을 값으로
+  받으면 Go에서 값 receiver 메서드(`func (d DeccolmMode) Columns() uint16`)가 됩니다. enum을
+  위해 두던 래퍼 함수와 그 `.covers` 항목이 필요 없어집니다. receiver는 enum의 backing 정수로
+  건너가므로 새 wire 형식은 없고, handle 검사·수명 관리·retained 콜백 순회도 붙지 않습니다.
+  단순히 enum을 파라미터로 받는 함수는 그대로 패키지 레벨 함수입니다. 기존 래퍼를 메서드로
+  옮기면 C 심볼과 Go 표면이 바뀌므로 `abi-check`가 breaking으로 보고합니다.
+- 값 receiver가 handle 전용 메타데이터(`.constructs`, `.child_of_receiver`,
+  `.returns = .borrowed`, `.iterator`, `std.Io` 스트림 파라미터)를 갖거나 `.go` 어댑터가 붙은
+  enum을 receiver로 쓰면 `ZIGO056`입니다. 메서드 이름이 zigo가 그 enum에 생성하는 `String`,
+  `MarshalText`, `UnmarshalText`와 겹치면 `ZIGO024`입니다. `*Enum` receiver는 Go 값 receiver가
+  변경을 잃으므로 받지 않습니다.
+
 ### Fixed
 
 - root 모듈이 여러 파일로 나뉘어 있을 때 doc 주석과 파라미터 이름이 생성물에 실리지 않던

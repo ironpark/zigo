@@ -166,6 +166,41 @@ nested 항목에 둡니다. receiver 타입이나 첫 파라미터가 맞지 않
 확실히 식별하려면 같은 항목에 `params`도 적으세요. 이름은 명시적 `params`, 대상 source AST,
 `p0` fallback 순으로 결정됩니다.
 
+### 등록 enum의 메서드
+
+`.repr = .enumeration`으로 등록한 enum도 메서드를 가질 수 있습니다. 경로가 그 enum을
+거치거나(`.path = "DeccolmMode.columns"`) `.receiver`가 그 enum을 지목하고, 첫 번째 비주입
+파라미터가 그 enum을 값으로 받으면 메서드가 됩니다. Go에서는 값 receiver가 됩니다.
+
+```zig
+.{ .path = "DeccolmMode.columns" },              // Zig가 enum 안에 선언한 메서드
+.{
+    .receiver = "CursorStyle",                   // 루트에 선언된 자유 함수
+    .strip_prefix = "cursorStyle",
+    .functions = .{"root.cursorStyleBlinks"},
+},
+```
+
+```go
+n := DeccolmMode132Cols.Columns()   // uint16
+blinks := CursorStyleUnderline.Blinks()
+```
+
+값 receiver에는 handle이 없습니다. C ABI로는 enum의 backing 정수가 그대로 건너가고,
+`ErrInvalidHandle` 검사도, 부모·자식 수명도, retained 콜백 순회도 없습니다. 그래서
+`.constructs`, `.child_of_receiver`, `.returns = .borrowed`, `.iterator`, `std.Io` 스트림
+파라미터는 값 receiver에 쓸 수 없고 `ZIGO056`입니다. `.go` 어댑터가 붙은 enum도 Go에서 남의
+패키지 타입이라 메서드를 가질 수 없습니다. 메서드 이름은 zigo가 그 enum에 생성하는
+`String`(그리고 `.text = true`면 `MarshalText`·`UnmarshalText`)과 겹칠 수 없습니다(`ZIGO024`).
+
+`*Enum`을 받는 메서드는 받지 않습니다. Go 값 receiver로 내보내면 변경이 복사본에 남기
+때문이며, 그런 함수는 파라미터를 가진 패키지 레벨 함수로 바인딩하세요. 단순히 enum을
+파라미터로 받는 함수는 지금처럼 그대로 패키지 레벨 함수입니다. 메서드는 그 enum이 배정된
+패키지에 함께 놓입니다.
+
+자유 함수를 메서드로 옮기면 C 심볼과 Go 표면이 모두 바뀌므로 `abi-check`가 breaking으로
+보고합니다.
+
 ### 설정 struct의 일부 필드만 인자로 받기
 
 일반 struct 파라미터에서 일부 scalar 필드만 Go 인자로 받고 싶으면 `flatten`에 필드 이름을

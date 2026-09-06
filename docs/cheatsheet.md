@@ -109,7 +109,7 @@ cd go && go test ./...
 |---|---|---|---|
 | `.@"opaque"` | 상태를 가진 struct | `fields`(getter/setter 접근자) | [객체 수명](bindings-handles.md) |
 | `.value` | `extern struct`, 정수 backing `packed struct` | `go`(어댑터), `field_meta` | [값 타입](bindings-types.md#extern-struct-값) |
-| `.enumeration` | enum | `exhaustive = false`(열린 enum), `text = true`, `go`, `covers`(Go enum이 대신하는 Zig 메서드 경로) | [값 타입](bindings-types.md#enum-이름-지정) |
+| `.enumeration` | enum | `exhaustive = false`(열린 enum), `text = true`, `go`, `covers`(Go enum이 대신하는 Zig 메서드 경로). `.path = "<Enum>.<메서드>"`로 메서드를 바인딩 | [값 타입](bindings-types.md#enum-이름-지정) |
 | `.tagged_union` | `union(enum)` | `access = .snapshot`, `omit_variants` | [Tagged union](bindings-unions.md) |
 | `.materialized` | pointer·string·slice 결과 트리 | `field_meta`(`[]const u8` 필드를 `.opaque_bytes`로 두면 `[]byte`) | [값 타입](bindings-types.md#materialized-결과-트리) |
 | `.callback` | `*const fn (...) callconv(.c)` | `on_callback_failure`, `param_semantics`, `semantic`, `userdata`(`.first`/`.last`/`.{ .index = n }`) | [콜백](bindings-callbacks.md#콜백-시그니처-규약) |
@@ -153,7 +153,7 @@ version 2 layout(자연 폭·정렬, record 8바이트 정렬)이라 `T`↔`?T`�
 | `name` | 문자열 | 공개 Go 이름 override |
 | `params` | 이름 목록 | Go가 넘기는 파라미터 이름 (receiver·주입 인자 제외) |
 | `param_meta` | 파라미터별 계약 | 아래 표 |
-| `receiver` | 등록 opaque 타입 이름 | 자유 함수를 메서드로 |
+| `receiver` | 등록 opaque·enum 타입 이름 | 자유 함수를 메서드로. enum은 값 receiver |
 | `functions` + `receiver` + `strip_prefix` | 그룹 | 여러 함수에 같은 receiver·접두사 제거 |
 | `constructs` / `destroys` | opaque 타입 이름 | 이름 규칙(`init`/`create`/`new`/`open`, `deinit`)이 맞지 않는 생성자·소멸자 |
 | `child_of_receiver` | `true` | 생성된 handle이 receiver보다 먼저 닫혀야 함 |
@@ -191,6 +191,7 @@ version 2 layout(자연 폭·정렬, record 8바이트 정렬)이라 `T`↔`?T`�
 .{ .path = "Terminal.init", .params = .{"options"}, .param_meta = .{ .options = .{ .flatten = .{ "cols", "rows" } } } },
 .{ .path = "root.takeCodepoints", .returns = .caller, .release = "root.freeCodepoints", .semantic = .codepoint },
 .{ .path = "Context.next", .iterator = .{} },
+.{ .path = "Key.codepoint" },                        // 등록 enum의 메서드 → func (k Key) Codepoint() rune
 .{ .path = "root.run", .params = .{ "limit", "callback", "userdata", "cancel" },
    .param_meta = .{ .callback = .{ .retention = .retained, .go_error = true } },
    .cancel = .{ .param = "cancel" } },
@@ -277,6 +278,7 @@ ZIGO_LIBRARY_PATH=/path/libmylib_zigo.so go run .   # 또는 ZIGO_<PACKAGE>_LIBR
 | ZIGO050 / ZIGO051 / ZIGO052 / ZIGO053 | `iterator` / `text` / `go` / `codepoint` 오용 | 해당 표의 적용 대상 확인 |
 | ZIGO048 | materialized 트리가 지원하지 않는 필드 모양 | 위 materialized 필드 표 확인 |
 | ZIGO054 | 경로 중복 또는 `functions`·`exclude` 충돌 | 경로 한 번만 |
+| ZIGO056 | 값 receiver(등록 enum)에 handle 전용 메타데이터 | 소유권·`iterator`·스트림은 opaque 타입에만 |
 | ZIGO055 | 콜백 userdata 규약 위반(`usize` 자리 없음·자리 불일치) | `.userdata`, `param_meta.<콜백>.userdata` 확인 |
 
 전체 목록은 [진단 코드](diagnostics.md).

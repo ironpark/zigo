@@ -2,7 +2,7 @@
 depends_on:
 - "135-value-receivers-for-enums#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Docs describe the supported shape and every rejection, and the changelog says
 > NEXT: none
