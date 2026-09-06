@@ -11,8 +11,10 @@
 - `.repr = .value` 등록 항목의 `.go = .{ .type, .import, .to_raw, .from_raw }`로 extern struct를
   사용자가 고른 Go 타입(`image.Point` 등)으로 노출합니다. mirror struct 대신 그 타입이
   파라미터·반환·slice·optional·필드에 쓰이고, 변환은 사용자가 공개 패키지에 쓴 두 함수가
-  맡습니다. 잘못된 어댑터는 `ZIGO052`이며 `abi-check`는 어댑터 변경을 breaking으로
-  판정합니다.
+  맡습니다. 같은 `.go`를 `.repr = .enumeration` 항목(tag enum 제외)에 붙이면 enum 타입 대신
+  사용자 타입이 쓰이고, 함수 메타와 `param_meta`의 `.go`는 plain scalar 반환값·파라미터를
+  사용자 타입으로 바꿉니다. 잘못된 어댑터는 `ZIGO052`이며 `abi-check`는 어댑터 변경을
+  breaking으로 판정합니다.
 
 ### Changed
 

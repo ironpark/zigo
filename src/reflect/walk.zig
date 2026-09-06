@@ -59,7 +59,7 @@ pub fn reflect(
                 // built by a comptime function has a `@typeName` that ends in
                 // the expression that built it, and no name of its own.
                 .enumeration => switch (info) {
-                    .@"enum" => try appendEnum(allocator, &types, declaration, T, type_name, comptime enumOpenOptIn(entry), comptime enumTextOptIn(entry), try registeredZigPath(allocator, declaration, T, type_name)),
+                    .@"enum" => try appendEnum(allocator, &types, declaration, T, type_name, comptime enumOpenOptIn(entry), comptime enumTextOptIn(entry), comptime goAdapter(entry), try registeredZigPath(allocator, declaration, T, type_name)),
                     else => @compileError("zigo enumeration type entries must name an enum"),
                 },
                 .tagged_union => switch (info) {
@@ -92,8 +92,8 @@ pub fn reflect(
                 @compileError("zigo `.fields` metadata is supported only on `.repr = .opaque` type entries");
             if (entry.repr != .enumeration and @hasField(@TypeOf(entry), "text"))
                 @compileError("zigo `.text` is supported only on `.repr = .enumeration` type entries");
-            if (entry.repr != .value and @hasField(@TypeOf(entry), "go"))
-                @compileError("zigo `.go` adapters are supported only on `.repr = .value` type entries");
+            if (entry.repr != .value and entry.repr != .enumeration and @hasField(@TypeOf(entry), "go"))
+                @compileError("zigo `.go` adapters are supported only on `.repr = .value` and `.repr = .enumeration` type entries");
         }
     }
     if (comptime discoveryEnabled(declaration)) {
@@ -835,6 +835,7 @@ fn appendFunction(
                 if (@hasField(@TypeOf(value), "reentrancy")) reflected.reentrancy = value.reentrancy;
                 if (@hasField(@TypeOf(value), "thread")) reflected.thread = value.thread;
                 if (@hasField(@TypeOf(value), "flatten")) reflected.flatten = flattened_fields;
+                if (@hasField(@TypeOf(value), "go")) reflected.go_adapter = comptime goAdapterValue(value.go);
             }
         }
         // A cancel parameter whose spelling did not match keeps the `void`
@@ -896,6 +897,7 @@ fn appendFunction(
         reflected_function.child_of_receiver = true;
     if (boxed_type != null) reflected_function.ownership = .caller;
     if (@hasField(@TypeOf(metadata), "semantic")) reflected_function.return_semantic = metadata.semantic;
+    if (@hasField(@TypeOf(metadata), "go")) reflected_function.return_go_adapter = comptime goAdapterValue(metadata.go);
     if (@hasField(@TypeOf(metadata), "returns")) {
         reflected_function.ownership = metadata.returns;
         if (metadata.returns == .borrowed) reflected_function.borrowed_return = true;
@@ -1658,7 +1660,7 @@ fn typeNode(
             for (types.items) |type_declaration| {
                 if (std.mem.eql(u8, type_declaration.name, name)) exists = true;
             }
-            if (!exists) try appendEnum(allocator, types, declaration, T, name, false, false, @typeName(T));
+            if (!exists) try appendEnum(allocator, types, declaration, T, name, false, false, null, @typeName(T));
             break :blk .{ .@"enum" = .{ .ref = name } };
         },
         .@"struct" => blk: {
@@ -2025,6 +2027,7 @@ fn appendEnum(
     name: []const u8,
     open: bool,
     text: bool,
+    go_adapter: ?semantic.GoAdapter,
     zig_path: []const u8,
 ) !void {
     const info = @typeInfo(T).@"enum";
@@ -2034,6 +2037,7 @@ fn appendEnum(
     try types.append(allocator, .{
         .exhaustive = info.is_exhaustive,
         .fields = fields,
+        .go_adapter = go_adapter,
         .kind = .@"enum",
         .name = name,
         .open = if (open) true else null,
@@ -2048,7 +2052,12 @@ fn appendEnum(
 /// entry; validation checks the strings once the document exists.
 fn goAdapter(comptime entry: anytype) ?semantic.GoAdapter {
     if (!@hasField(@TypeOf(entry), "go")) return null;
-    const go = entry.go;
+    return goAdapterValue(entry.go);
+}
+
+/// The `.go` value itself, from a type entry, a function entry or a
+/// `param_meta` entry.
+fn goAdapterValue(comptime go: anytype) semantic.GoAdapter {
     if (!@hasField(@TypeOf(go), "type") or !@hasField(@TypeOf(go), "to_raw") or !@hasField(@TypeOf(go), "from_raw"))
         @compileError("zigo `.go` adapters need `.type`, `.to_raw` and `.from_raw`");
     return .{
@@ -2960,6 +2969,35 @@ test "a value struct records its Go adapter" {
     const bytes = try document.serialize(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"go_adapter\": {") != null);
+}
+
+test "enum and scalar adapters are recorded where they were declared" {
+    const Speed = enum(u8) { fast, slow };
+    const Fixture = struct {
+        pub fn setSpeed(speed: Speed) Speed {
+            return speed;
+        }
+        pub fn elapsed(since: u64) u64 {
+            return since;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const duration = .{ .type = "time.Duration", .import = "time", .to_raw = "durationToRaw", .from_raw = "durationFromRaw" };
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{.{ .type = Speed, .repr = .enumeration, .go = .{ .type = "Mode", .to_raw = "modeToRaw", .from_raw = "modeFromRaw" } }},
+        .functions = .{
+            .{ .path = "root.setSpeed", .params = .{"speed"} },
+            .{ .path = "root.elapsed", .params = .{"since"}, .go = duration, .param_meta = .{ .since = .{ .go = duration } } },
+        },
+    }, "geometry", "zg");
+
+    try std.testing.expectEqualStrings("Mode", document.types[0].go_adapter.?.type);
+    try std.testing.expectEqual(@as(?[]const u8, null), document.types[0].go_adapter.?.import);
+    try std.testing.expectEqualStrings("time.Duration", document.functions[1].return_go_adapter.?.type);
+    try std.testing.expectEqualStrings("durationToRaw", document.functions[1].params[0].go_adapter.?.to_raw);
+    try std.testing.expectEqual(@as(?semantic.GoAdapter, null), document.functions[0].return_go_adapter);
 }
 
 test "a registered enum records the text encoding opt-in" {

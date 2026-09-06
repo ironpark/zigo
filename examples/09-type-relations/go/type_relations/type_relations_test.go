@@ -59,7 +59,7 @@ func TestIndependentLifecycles(t *testing.T) {
 	accumulator.Close()
 	counter.Close()
 	counter.Close()
-	if got := LiveObjects(); got != 0 {
+	if got := LiveObjects(); got != ObjectCount(0) {
 		t.Fatalf("LiveObjects() = %d, want 0", got)
 	}
 }

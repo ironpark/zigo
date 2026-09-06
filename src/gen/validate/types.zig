@@ -60,17 +60,22 @@ pub fn typeIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .hint = "remove `.exhaustive = false`, or make the Zig enum non-exhaustive",
         };
         if (declaration.go_adapter) |adapter| {
-            const wrong_kind = declaration.kind != .value_struct or declaration.layout != .@"extern";
+            const is_extern_struct = declaration.kind == .value_struct and declaration.layout == .@"extern";
+            const is_enum = declaration.kind == .@"enum";
+            const wrong_kind = !is_extern_struct and !is_enum;
+            const is_union_tag = is_enum and enumIsUnionTag(document, declaration.name);
             const bad_names = adapter.type.len == 0 or !isGoIdentifier(adapter.to_raw) or !isGoIdentifier(adapter.from_raw);
-            if (wrong_kind or bad_names) return .{
+            if (wrong_kind or is_union_tag or bad_names) return .{
                 .severity = .@"error",
                 .code = "ZIGO052",
                 .message = if (wrong_kind)
-                    "`.go` adapter applied to a type that is not an extern struct value"
+                    "`.go` adapter applied to a type that is neither an extern struct value nor an enum"
+                else if (is_union_tag)
+                    "`.go` adapter applied to the tag enum of a tagged union"
                 else
                     "`.go` adapter names are not Go identifiers",
                 .site = .{ .path = "semantic.json", .declaration = declaration.name },
-                .hint = "`.go` belongs on `.repr = .value` entries for `extern struct`; `.type` must be non-empty and `.to_raw`/`.from_raw` must name functions in the public package",
+                .hint = "`.go` belongs on `.repr = .value` entries for `extern struct` and on `.repr = .enumeration` entries whose enum is not a union tag; `.type` must be non-empty and `.to_raw`/`.from_raw` must name functions in the public package",
             };
         }
         if (declaration.text == true and declaration.kind != .@"enum") return .{
@@ -1509,4 +1514,15 @@ fn isGoIdentifier(name: []const u8) bool {
     if (name.len == 0 or std.ascii.isDigit(name[0])) return false;
     for (name) |byte| if (!(std.ascii.isAlphanumeric(byte) or byte == '_')) return false;
     return true;
+}
+
+/// Projections and snapshots spell the tag through the generated enum, so a
+/// tag enum cannot be replaced by a user type.
+fn enumIsUnionTag(document: semantic.Semantic, name: []const u8) bool {
+    for (document.types) |declaration| {
+        if (declaration.kind != .tagged_union) continue;
+        const tag = declaration.tag_type orelse continue;
+        if (tag == .@"enum" and std.mem.eql(u8, tag.@"enum".ref, name)) return true;
+    }
+    return false;
 }

@@ -31,7 +31,9 @@ pub const bindings = zigo.define(.{
         .{ .path = "Accumulator.absorb", .params = .{"counter"} },
         .{ .path = "Accumulator.total" },
         .{ .path = "Accumulator.deinit" },
-        .{ .path = "root.liveObjects" },
+        // A per-function `.go` adapts a scalar result: Go sees ObjectCount,
+        // a type defined beside the generated files, instead of uint.
+        .{ .path = "root.liveObjects", .go = .{ .type = "ObjectCount", .to_raw = "objectCountToRaw", .from_raw = "objectCountFromRaw" } },
         .{ .path = "root.defaultCursorStyle" },
         .{ .path = "root.cursorStyleBlinks", .params = .{"style"} },
         .{ .path = "root.configureStyles", .params = .{ "slot", "style" } },

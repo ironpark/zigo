@@ -224,6 +224,11 @@
         "kind": "int",
         "signed": false
       },
+      "return_go_adapter": {
+        "from_raw": "objectCountFromRaw",
+        "to_raw": "objectCountToRaw",
+        "type": "ObjectCount"
+      },
       "source": {
         "path": "root.zig",
         "line": 101,

@@ -5,6 +5,7 @@ package geometry
 
 import (
 	"image"
+	"time"
 
 	"example.com/zigo/geometry/internal/raw"
 )
@@ -25,7 +26,7 @@ func Shift(origin *image.Point) (image.Point, bool, error) {
 	}
 	result, zigoHas, code := raw.Shift(originRaw)
 	if code != 0 {
-		return image.Point{}, false, zigoErrorForCode("Shift", code)
+		return *new(image.Point), false, zigoErrorForCode("Shift", code)
 	}
 	return zigoPointFromRaw(result), zigoHas, nil
 }
@@ -44,4 +45,29 @@ func Corners() []image.Point {
 // Bounds calls the Zig function bounds.
 func Bounds() Rect {
 	return zigoRectFromRaw(raw.Bounds())
+}
+
+// SetSpeed calls the Zig function setSpeed.
+func SetSpeed(speed Mode) Mode {
+	return zigoSpeedFromRaw(raw.SetSpeed(zigoSpeedToRaw(speed)))
+}
+
+// Speeds calls the Zig function speeds.
+func Speeds(values []Mode) []Mode {
+	return zigoSpeedSliceFromRaw(raw.Speeds(zigoSpeedSliceToRaw(values)))
+}
+
+// Elapsed calls the Zig function elapsed.
+func Elapsed(since time.Duration) time.Duration {
+	return durationFromRaw(raw.Elapsed(durationToRaw(since)))
+}
+
+// CheckedElapsed calls the Zig function checkedElapsed.
+// Native failures are returned as generated error values.
+func CheckedElapsed(strict Flag) (time.Duration, error) {
+	result, code := raw.CheckedElapsed(zigoBoolToUint8(flagToRaw(strict)))
+	if code != 0 {
+		return *new(time.Duration), zigoErrorForCode("CheckedElapsed", code)
+	}
+	return durationFromRaw(result), nil
 }

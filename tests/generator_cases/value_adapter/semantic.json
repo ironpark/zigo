@@ -3,35 +3,211 @@
     {
       "name": "translate",
       "params": [
-        {"name": "origin", "type": {"kind": "value_struct", "ref": "Point"}},
-        {"name": "dx", "type": {"bits": 16, "kind": "int", "signed": true}}
+        {
+          "name": "origin",
+          "type": {
+            "kind": "value_struct",
+            "ref": "Point"
+          }
+        },
+        {
+          "name": "dx",
+          "type": {
+            "bits": 16,
+            "kind": "int",
+            "signed": true
+          }
+        }
       ],
-      "return": {"kind": "value_struct", "ref": "Point"},
+      "return": {
+        "kind": "value_struct",
+        "ref": "Point"
+      },
       "symbol": "zg_translate"
     },
     {
       "name": "shift",
-      "params": [{"name": "origin", "type": {"child": {"kind": "value_struct", "ref": "Point"}, "kind": "optional"}}],
-      "return": {"error_set": ["Overflow"], "kind": "error_union", "payload": {"child": {"kind": "value_struct", "ref": "Point"}, "kind": "optional"}},
+      "params": [
+        {
+          "name": "origin",
+          "type": {
+            "child": {
+              "kind": "value_struct",
+              "ref": "Point"
+            },
+            "kind": "optional"
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "Overflow"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "child": {
+            "kind": "value_struct",
+            "ref": "Point"
+          },
+          "kind": "optional"
+        }
+      },
       "symbol": "zg_shift"
     },
     {
       "name": "acceptPoints",
-      "params": [{"name": "values", "type": {"const": true, "element": {"kind": "value_struct", "ref": "Point"}, "kind": "slice"}}],
-      "return": {"bits": 64, "is_usize": true, "kind": "int", "signed": false},
+      "params": [
+        {
+          "name": "values",
+          "type": {
+            "const": true,
+            "element": {
+              "kind": "value_struct",
+              "ref": "Point"
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
       "symbol": "zg_accept_points"
     },
     {
       "name": "corners",
       "params": [],
-      "return": {"const": true, "element": {"kind": "value_struct", "ref": "Point"}, "kind": "slice"},
+      "return": {
+        "const": true,
+        "element": {
+          "kind": "value_struct",
+          "ref": "Point"
+        },
+        "kind": "slice"
+      },
       "symbol": "zg_corners"
     },
     {
       "name": "bounds",
       "params": [],
-      "return": {"kind": "value_struct", "ref": "Rect"},
+      "return": {
+        "kind": "value_struct",
+        "ref": "Rect"
+      },
       "symbol": "zg_bounds"
+    },
+    {
+      "name": "setSpeed",
+      "params": [
+        {
+          "name": "speed",
+          "type": {
+            "kind": "enum",
+            "ref": "Speed"
+          }
+        }
+      ],
+      "return": {
+        "kind": "enum",
+        "ref": "Speed"
+      },
+      "symbol": "zg_set_speed"
+    },
+    {
+      "name": "speeds",
+      "params": [
+        {
+          "name": "values",
+          "type": {
+            "const": true,
+            "element": {
+              "kind": "enum",
+              "ref": "Speed"
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "return": {
+        "const": true,
+        "element": {
+          "kind": "enum",
+          "ref": "Speed"
+        },
+        "kind": "slice"
+      },
+      "symbol": "zg_speeds"
+    },
+    {
+      "name": "elapsed",
+      "params": [
+        {
+          "go_adapter": {
+            "from_raw": "durationFromRaw",
+            "import": "time",
+            "to_raw": "durationToRaw",
+            "type": "time.Duration"
+          },
+          "name": "since",
+          "type": {
+            "bits": 64,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "bits": 64,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "return_go_adapter": {
+        "from_raw": "durationFromRaw",
+        "import": "time",
+        "to_raw": "durationToRaw",
+        "type": "time.Duration"
+      },
+      "symbol": "zg_elapsed"
+    },
+    {
+      "name": "checkedElapsed",
+      "params": [
+        {
+          "go_adapter": {
+            "from_raw": "flagFromRaw",
+            "to_raw": "flagToRaw",
+            "type": "Flag"
+          },
+          "name": "strict",
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "Overflow"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "is_usize": false,
+          "kind": "int",
+          "signed": false
+        }
+      },
+      "return_go_adapter": {
+        "from_raw": "durationFromRaw",
+        "import": "time",
+        "to_raw": "durationToRaw",
+        "type": "time.Duration"
+      },
+      "symbol": "zg_checked_elapsed"
     }
   ],
   "package": "geometry",
@@ -39,22 +215,84 @@
   "types": [
     {
       "fields": [
-        {"name": "x", "type": {"bits": 16, "kind": "int", "signed": true}},
-        {"name": "y", "type": {"bits": 16, "kind": "int", "signed": true}}
+        {
+          "name": "x",
+          "type": {
+            "bits": 16,
+            "kind": "int",
+            "signed": true
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "bits": 16,
+            "kind": "int",
+            "signed": true
+          }
+        }
       ],
-      "go_adapter": {"from_raw": "pointFromRaw", "import": "image", "to_raw": "pointToRaw", "type": "image.Point"},
+      "go_adapter": {
+        "from_raw": "pointFromRaw",
+        "import": "image",
+        "to_raw": "pointToRaw",
+        "type": "image.Point"
+      },
       "kind": "value_struct",
       "layout": "extern",
       "name": "Point"
     },
     {
       "fields": [
-        {"name": "min", "type": {"kind": "value_struct", "ref": "Point"}},
-        {"name": "max", "type": {"kind": "value_struct", "ref": "Point"}}
+        {
+          "name": "min",
+          "type": {
+            "kind": "value_struct",
+            "ref": "Point"
+          }
+        },
+        {
+          "name": "max",
+          "type": {
+            "kind": "value_struct",
+            "ref": "Point"
+          }
+        },
+        {
+          "name": "speed",
+          "type": {
+            "kind": "enum",
+            "ref": "Speed"
+          }
+        }
       ],
       "kind": "value_struct",
       "layout": "extern",
       "name": "Rect"
+    },
+    {
+      "fields": [
+        {
+          "name": "fast",
+          "value": 0
+        },
+        {
+          "name": "slow",
+          "value": 1
+        }
+      ],
+      "go_adapter": {
+        "from_raw": "modeFromRaw",
+        "to_raw": "modeToRaw",
+        "type": "Mode"
+      },
+      "kind": "enum",
+      "name": "Speed",
+      "tag_type": {
+        "bits": 8,
+        "kind": "int",
+        "signed": false
+      }
     }
   ],
   "zig_version": "0.16.0"

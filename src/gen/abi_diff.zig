@@ -123,6 +123,8 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
             try add(allocator, &report, .breaking, identity, "return ownership or semantics changed");
         if (!retentionEqual(old.params, new.params))
             try add(allocator, &report, .breaking, identity, "parameter retention changed");
+        if (!paramAdaptersEqual(old.params, new.params) or !goAdapterEqual(old.return_go_adapter, new.return_go_adapter))
+            try add(allocator, &report, .breaking, identity, "Go adapter changed");
         // The C signature does not move, but the Go callback type does: it
         // gains or loses a second result, and every caller's function literal
         // stops compiling. Breaking on the surface consumers actually write.
@@ -547,6 +549,14 @@ fn callbackFailureEqual(lhs: []const semantic.Parameter, rhs: []const semantic.P
     return exposedParamsMatch(lhs, rhs, struct {
         fn matches(a: semantic.Parameter, b: semantic.Parameter) bool {
             return std.meta.eql(a.on_callback_failure, b.on_callback_failure);
+        }
+    }.matches);
+}
+
+fn paramAdaptersEqual(lhs: []const semantic.Parameter, rhs: []const semantic.Parameter) bool {
+    return exposedParamsMatch(lhs, rhs, struct {
+        fn matches(a: semantic.Parameter, b: semantic.Parameter) bool {
+            return goAdapterEqual(a.go_adapter, b.go_adapter);
         }
     }.matches);
 }

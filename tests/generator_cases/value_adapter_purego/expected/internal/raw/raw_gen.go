@@ -50,6 +50,10 @@ type nativeBindings struct {
 	fnAcceptPoints func(unsafe.Pointer, uintptr) uintptr
 	fnCorners func(*unsafe.Pointer, *uintptr)
 	fnBounds func(unsafe.Pointer)
+	fnSetSpeed func(uint8) uint8
+	fnSpeeds func(unsafe.Pointer, uintptr, *unsafe.Pointer, *uintptr)
+	fnElapsed func(uint64) uint64
+	fnCheckedElapsed func(uint8, *uint64) int32
 }
 
 var loadedBindings atomic.Pointer[nativeBindings]
@@ -119,6 +123,14 @@ func loadCandidate(path string) error {
 	if err != nil { return fail("zg_corners", err) }
 	addrBounds, err := resolveSymbol(handle, "zg_bounds")
 	if err != nil { return fail("zg_bounds", err) }
+	addrSetSpeed, err := resolveSymbol(handle, "zg_set_speed")
+	if err != nil { return fail("zg_set_speed", err) }
+	addrSpeeds, err := resolveSymbol(handle, "zg_speeds")
+	if err != nil { return fail("zg_speeds", err) }
+	addrElapsed, err := resolveSymbol(handle, "zg_elapsed")
+	if err != nil { return fail("zg_elapsed", err) }
+	addrCheckedElapsed, err := resolveSymbol(handle, "zg_checked_elapsed")
+	if err != nil { return fail("zg_checked_elapsed", err) }
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
@@ -127,6 +139,10 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnAcceptPoints, addrAcceptPoints)
 	purego.RegisterFunc(&next.fnCorners, addrCorners)
 	purego.RegisterFunc(&next.fnBounds, addrBounds)
+	purego.RegisterFunc(&next.fnSetSpeed, addrSetSpeed)
+	purego.RegisterFunc(&next.fnSpeeds, addrSpeeds)
+	purego.RegisterFunc(&next.fnElapsed, addrElapsed)
+	purego.RegisterFunc(&next.fnCheckedElapsed, addrCheckedElapsed)
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -165,6 +181,8 @@ type PointData struct {
 type RectData struct {
 	Min PointData
 	Max PointData
+	Speed uint8
+	_ [1]byte
 }
 
 // Translate calls the generated purego ABI wrapper for zg_translate.
@@ -206,4 +224,36 @@ func Bounds() RectData {
 	var outResult RectData
 	bindings().fnBounds(unsafe.Pointer(&outResult))
 	return outResult
+}
+
+// SetSpeed calls the generated purego ABI wrapper for zg_set_speed.
+func SetSpeed(speed uint8) uint8 {
+	result := bindings().fnSetSpeed(speed)
+	return uint8(result)
+}
+
+// Speeds calls the generated purego ABI wrapper for zg_speeds.
+func Speeds(values []uint8) []uint8 {
+	var valuesPtr unsafe.Pointer
+	if len(values) != 0 { valuesPtr = unsafe.Pointer(&values[0]) }
+	var outResultPtr unsafe.Pointer
+	var outResultLen uintptr
+	bindings().fnSpeeds(valuesPtr, uintptr(len(values)), &outResultPtr, &outResultLen)
+	if outResultLen == 0 { return nil }
+	result := make([]uint8, int(outResultLen))
+	copy(result, unsafe.Slice((*uint8)(outResultPtr), int(outResultLen)))
+	return result
+}
+
+// Elapsed calls the generated purego ABI wrapper for zg_elapsed.
+func Elapsed(since uint64) uint64 {
+	result := bindings().fnElapsed(since)
+	return uint64(result)
+}
+
+// CheckedElapsed calls the generated purego ABI wrapper for zg_checked_elapsed.
+func CheckedElapsed(strict uint8) (uint64, int32) {
+	var outResult uint64
+	code := bindings().fnCheckedElapsed(strict, &outResult)
+	return outResult, code
 }

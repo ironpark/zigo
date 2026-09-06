@@ -16,3 +16,11 @@ func pointToRaw(p image.Point) raw.PointData {
 func pointFromRaw(p raw.PointData) image.Point {
 	return image.Point{X: int(p.X), Y: int(p.Y)}
 }
+
+// ObjectCount is the adapted result type of LiveObjects: the binding's
+// function-level `.go` names these two conversions for the uint result.
+type ObjectCount uint
+
+func objectCountToRaw(count ObjectCount) uint { return uint(count) }
+
+func objectCountFromRaw(count uint) ObjectCount { return ObjectCount(count) }

@@ -98,7 +98,33 @@ func Bounds() RectData {
 			X: int16(outResult.max.x),
 			Y: int16(outResult.max.y),
 		},
+		Speed: uint8(outResult.speed),
 	}
+}
+// SetSpeed calls the generated C ABI wrapper for zg_set_speed.
+func SetSpeed(speed uint8) uint8 {
+	return uint8(C.zg_set_speed(C.uint8_t(speed)))
+}
+// Speeds calls the generated C ABI wrapper for zg_speeds.
+func Speeds(values []uint8) []uint8 {
+	var outResultPtr *C.uint8_t
+	var outResultLen C.size_t
+	valuesPtr := (*C.uint8_t)(zigoSlicePtr(values))
+	C.zg_speeds(valuesPtr, C.size_t(len(values)), &outResultPtr, &outResultLen)
+	if outResultLen == 0 { return nil }
+	result := make([]uint8, int(outResultLen))
+	copy(result, unsafe.Slice((*uint8)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
+	return result
+}
+// Elapsed calls the generated C ABI wrapper for zg_elapsed.
+func Elapsed(since uint64) uint64 {
+	return uint64(C.zg_elapsed(C.uint64_t(since)))
+}
+// CheckedElapsed calls the generated C ABI wrapper for zg_checked_elapsed.
+func CheckedElapsed(strict uint8) (uint64, int32) {
+	var outResult C.uint64_t
+	code := int32(C.zg_checked_elapsed(C.uint8_t(strict), &outResult))
+	return uint64(outResult), code
 }
 
 // PointData mirrors the zg_point layout, padding included.
@@ -111,6 +137,8 @@ type PointData struct {
 type RectData struct {
 	Min PointData
 	Max PointData
+	Speed uint8
+	_ [1]byte
 }
 
 // PointData slices are copied from C memory as one run, so it must match zg_point byte for byte.
@@ -122,3 +150,4 @@ var _ = [1]struct{}{}[unsafe.Offsetof(PointData{}.Y)-unsafe.Offsetof(C.zg_point{
 var _ = [1]struct{}{}[unsafe.Sizeof(RectData{})-unsafe.Sizeof(C.zg_rect{})]
 var _ = [1]struct{}{}[unsafe.Offsetof(RectData{}.Min)-unsafe.Offsetof(C.zg_rect{}.min)]
 var _ = [1]struct{}{}[unsafe.Offsetof(RectData{}.Max)-unsafe.Offsetof(C.zg_rect{}.max)]
+var _ = [1]struct{}{}[unsafe.Offsetof(RectData{}.Speed)-unsafe.Offsetof(C.zg_rect{}.speed)]

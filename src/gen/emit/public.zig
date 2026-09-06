@@ -121,8 +121,9 @@ fn writePublicMaterializedOutCopy(writer: *std.Io.Writer, function: abi.AbiFn, g
     try writer.print("\tzigoDecoded := zigoDecode{s}SliceBuffer(zigoBuffer)\n\tcopy({s}, zigoDecoded)\n", .{ output.root, name });
 }
 
-fn writePublicCapturedReturn(writer: *std.Io.Writer, program: abi.Program, function: semantic.SemanticFn, needs_handle_check: bool) !void {
+fn writePublicCapturedReturn(scope: public_writers.PublicScope, writer: *std.Io.Writer, program: abi.Program, function: semantic.SemanticFn, needs_handle_check: bool) !void {
     try writer.writeAll("\treturn ");
+    if (function.return_go_adapter) |adapter| try writer.print("{s}(", .{adapter.from_raw});
     switch (function.@"return") {
         .value_struct => |value| if (type_spelling.isPackedValue(program, function.@"return"))
             try writer.print("{s}FromBacking(result)", .{value.ref})
@@ -130,12 +131,15 @@ fn writePublicCapturedReturn(writer: *std.Io.Writer, program: abi.Program, funct
             try writer.print("zigo{s}FromRaw(result)", .{value.ref}),
         .slice => |value| if (value.element.* == .value_struct)
             try writer.print("zigo{s}{s}(result)", .{ value.element.*.value_struct.ref, publicSliceFromRawSuffix(program, value.element.*.value_struct.ref) })
+        else if (value.element.* == .@"enum" and public_writers.enumAdapter(program, value.element.@"enum".ref) != null)
+            try writer.print("zigo{s}SliceFromRaw(result)", .{value.element.@"enum".ref})
         else
             try writer.writeAll("result"),
         .bool => try writer.writeAll("result != 0"),
-        .@"enum" => |value| try writer.print("{s}(result)", .{value.ref}),
+        .@"enum" => |value| try public_writers.writeEnumFromRaw(scope, writer, value.ref, "result"),
         else => try writer.writeAll("result"),
     }
+    if (function.return_go_adapter != null) try writer.writeByte(')');
     if (needs_handle_check) try writer.writeAll(", nil");
     try writer.writeByte('\n');
 }
@@ -182,9 +186,10 @@ fn writePublicOptionalRawSetup(
     try writer.print("\n\tif {0s} != nil {{\n\t\t{0s}RawValue := ", .{name});
     switch (child) {
         .bool => try writer.print("zigoBoolToUint8(*{s})", .{name}),
-        .@"enum" => {
-            try writer.writeAll(type_spelling.rawGoTypeName(program, child));
-            try writer.print("(*{s})", .{name});
+        .@"enum" => |value| {
+            const deref = try std.fmt.allocPrint(allocator, "*{s}", .{name});
+            defer allocator.free(deref);
+            try public_writers.writeEnumToRaw(program, writer, value.ref, deref);
         },
         .value_struct => |value| if (type_spelling.isPackedValue(program, child))
             try writer.print("(*{s}).Backing()", .{name})
@@ -249,6 +254,11 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         if (adapter.import == null) continue;
         if (!programReferencesType(program, options.active_package orelse "", declaration.name)) continue;
         try appendAdapterImport(allocator, &adapter_imports, adapter);
+    }
+    for (program.functions) |function| {
+        if (!emitsPublicFunction(program, function)) continue;
+        if (function.origin.return_go_adapter) |adapter| if (adapter.import != null) try appendAdapterImport(allocator, &adapter_imports, adapter);
+        for (function.origin.params) |parameter| if (parameter.go_adapter) |adapter| if (adapter.import != null) try appendAdapterImport(allocator, &adapter_imports, adapter);
     }
     const import_count = adapter_imports.items.len + @as(usize, @intFromBool(needs_io)) + @as(usize, @intFromBool(needs_runtime)) +
         @as(usize, @intFromBool(needs_unsafe)) + @as(usize, @intFromBool(needs_raw)) +
@@ -423,9 +433,17 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
             try public_writers.writeRawReferencePrefix(writer, options);
         } else if (function.origin.@"return" != .void) {
             if (function.origin.@"return" == .@"enum") {
-                try writer.writeAll("return ");
-                try scope.writeTypeName(writer, function.origin.@"return".@"enum".ref);
-                try writer.writeByte('(');
+                const ref = function.origin.@"return".@"enum".ref;
+                if (public_writers.enumAdapter(program, ref) != null) {
+                    try writer.print("return zigo{s}FromRaw(", .{ref});
+                } else {
+                    try writer.writeAll("return ");
+                    try scope.writeTypeName(writer, ref);
+                    try writer.writeByte('(');
+                }
+                try public_writers.writeRawReferencePrefix(writer, options);
+            } else if (function.origin.return_go_adapter) |adapter| {
+                try writer.print("return {s}(", .{adapter.from_raw});
                 try public_writers.writeRawReferencePrefix(writer, options);
             } else if (function.origin.@"return" == .value_struct) {
                 if (type_spelling.isPackedValue(program, function.origin.@"return"))
@@ -435,6 +453,9 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                 try public_writers.writeRawReferencePrefix(writer, options);
             } else if (isValueStructSlice(function.origin.@"return")) {
                 try writer.print("return zigo{s}{s}(", .{ function.origin.@"return".slice.element.*.value_struct.ref, publicSliceFromRawSuffix(program, function.origin.@"return".slice.element.*.value_struct.ref) });
+                try public_writers.writeRawReferencePrefix(writer, options);
+            } else if (isAdaptedEnumSlice(program, function.origin.@"return")) {
+                try writer.print("return zigo{s}SliceFromRaw(", .{function.origin.@"return".slice.element.@"enum".ref});
                 try public_writers.writeRawReferencePrefix(writer, options);
             } else if (function.origin.@"return" == .materialized) {
                 try writer.print("return zigoDecode{s}Buffer(", .{function.origin.@"return".materialized.ref});
@@ -471,10 +492,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                         try writer.print("{s}Raw", .{name});
                     } else switch (node) {
                         .bool => try writer.print("zigoBoolToUint8({s})", .{name}),
-                        .@"enum" => {
-                            try writer.writeAll(type_spelling.rawGoTypeName(program, node));
-                            try writer.print("({s})", .{name});
-                        },
+                        .@"enum" => |value| try public_writers.writeEnumToRaw(program, writer, value.ref, name),
                         .value_struct => if (type_spelling.isPackedValue(program, node))
                             try writer.print("{s}.Backing()", .{name})
                         else
@@ -512,17 +530,19 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                 },
                 .cancel_flag => try writer.writeAll("&zigoCancel"),
                 .atomic_ptr => try writer.print("unsafe.Pointer({s})", .{go_names[parameter_index]}),
-                .bool => try writer.print("zigoBoolToUint8({s})", .{go_names[parameter_index]}),
+                // A per-site adapter converts the scalar first; the raw
+                // conversion (if any) wraps the converted value.
+                .bool => if (parameter.go_adapter) |adapter|
+                    try writer.print("zigoBoolToUint8({s}({s}))", .{ adapter.to_raw, go_names[parameter_index] })
+                else
+                    try writer.print("zigoBoolToUint8({s})", .{go_names[parameter_index]}),
                 .value_struct => |value| if (common.isTaggedUnionValue(program, parameter.type))
                     try public_writers.writePublicTaggedUnionRawArguments(allocator, writer, program, type_spelling.enumDecl(program, value.ref), go_names[parameter_index])
                 else if (type_spelling.isPackedValue(program, parameter.type))
                     try writer.print("{s}.Backing()", .{go_names[parameter_index]})
                 else
                     try writer.print("zigo{s}ToRaw({s})", .{ value.ref, go_names[parameter_index] }),
-                .@"enum" => {
-                    try writer.writeAll(type_spelling.rawGoTypeName(program, parameter.type));
-                    try writer.print("({s})", .{go_names[parameter_index]});
-                },
+                .@"enum" => |value| try public_writers.writeEnumToRaw(program, writer, value.ref, go_names[parameter_index]),
                 .opaque_ptr => try writer.print("{s}Ptr", .{go_names[parameter_index]}),
                 .optional => |optional| if (publicOptionalNeedsConversion(optional.child.*))
                     try writer.print("{s}Raw", .{go_names[parameter_index]})
@@ -534,9 +554,14 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                     try writer.print("{s}Raw", .{go_names[parameter_index]})
                 else if (function.paramString(parameter_index).role == .string_slice)
                     try writer.writeAll(go_names[parameter_index])
+                else if (parameter.type.slice.element.* == .@"enum" and public_writers.enumAdapter(program, parameter.type.slice.element.@"enum".ref) != null)
+                    try writer.print("zigo{s}SliceToRaw({s})", .{ parameter.type.slice.element.@"enum".ref, go_names[parameter_index] })
                 else
                     try writer.writeAll(go_names[parameter_index]),
-                else => try writer.writeAll(go_names[parameter_index]),
+                else => if (parameter.go_adapter) |adapter|
+                    try writer.print("{s}({s})", .{ adapter.to_raw, go_names[parameter_index] })
+                else
+                    try writer.writeAll(go_names[parameter_index]),
             }
             call_index += 1;
         }
@@ -544,9 +569,11 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
         if (!returns_error and !captures_return and function.origin.@"return" == .@"enum") try writer.writeByte(')');
         if (!returns_error and !captures_return and function.origin.@"return" == .value_struct) try writer.writeByte(')');
         if (!returns_error and !captures_return and isValueStructSlice(function.origin.@"return")) try writer.writeByte(')');
+        if (!returns_error and !captures_return and isAdaptedEnumSlice(program, function.origin.@"return")) try writer.writeByte(')');
         if (!returns_error and !captures_return and function.origin.@"return" == .materialized) try writer.writeByte(')');
         if (!returns_error and !captures_return and function.origin.@"return" == .slice and function.origin.@"return".slice.element.* == .materialized) try writer.writeByte(')');
         if (!returns_error and !captures_return and function.origin.@"return" == .bool) try writer.writeAll(" != 0");
+        if (!returns_error and !captures_return and function.origin.return_go_adapter != null) try writer.writeByte(')');
         if (!returns_error and !captures_return and !borrowed_direct and !owned_direct and needs_check and
             function.origin.@"return" != .void and function.origin.@"return" != .optional) try writer.writeAll(", nil");
         try writer.writeByte('\n');
@@ -571,7 +598,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
             if (needs_check) try writer.writeAll(", nil");
             try writer.writeByte('\n');
         }
-        if (captures_return) try writePublicCapturedReturn(writer, program, function.origin.*, needs_check);
+        if (captures_return) try writePublicCapturedReturn(scope, writer, program, function.origin.*, needs_check);
         if (borrowed_direct or owned_direct) {
             if (function.origin.childOfReceiver()) try writer.writeAll("\tzigoChildCreated = true\n");
             if (docs.returnsBorrowedView(function.origin.*) and function.origin.@"return".opaque_ptr.nullable)
@@ -653,6 +680,10 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
                         try writer.writeAll(", zigoHas");
                     } else if (semantic.isStringSlice(error_payload, function.origin.return_semantic)) {
                         try writer.writeAll("result");
+                    } else if (function.origin.return_go_adapter) |adapter| {
+                        try writer.print("{s}(", .{adapter.from_raw});
+                        try public_writers.writePublicResultConversion(scope, writer, program, error_payload, "result");
+                        try writer.writeByte(')');
                     } else {
                         try public_writers.writePublicResultConversion(scope, writer, program, error_payload, "result");
                     }
@@ -840,10 +871,11 @@ pub fn writePublicImports(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
     defer adapters.deinit(allocator);
     for (program.types) |declaration| {
         const adapter = declaration.go_adapter orelse continue;
-        const path = adapter.import orelse continue;
-        const last = if (std.mem.lastIndexOfScalar(u8, path, '/')) |slash| path[slash + 1 ..] else path;
-        if (!bodyUsesQualifier(body, adapter.qualifier() orelse last)) continue;
-        try appendAdapterImport(allocator, &adapters, adapter);
+        try appendAdapterImportIfUsed(allocator, &adapters, adapter, body);
+    }
+    for (program.functions) |function| {
+        if (function.origin.return_go_adapter) |adapter| try appendAdapterImportIfUsed(allocator, &adapters, adapter, body);
+        for (function.origin.params) |parameter| if (parameter.go_adapter) |adapter| try appendAdapterImportIfUsed(allocator, &adapters, adapter, body);
     }
     if (count == 0 and !uses_raw and !lifecycle and !default_foreign and foreign.items.len == 0 and adapters.items.len == 0) return writer.writeByte('\n');
     if (count + @as(usize, @intFromBool(uses_raw)) + @as(usize, @intFromBool(lifecycle)) + @as(usize, @intFromBool(default_foreign)) + foreign.items.len + adapters.items.len == 1) {
@@ -889,6 +921,14 @@ fn writeAdapterImport(writer: *std.Io.Writer, adapter: semantic.GoAdapter, inden
         try writer.print("{s}\"{s}\"\n", .{ indent, path })
     else
         try writer.print("{s}{s} \"{s}\"\n", .{ indent, qualifier, path });
+}
+
+/// Adds an adapter's import when the rendered body spells its qualifier.
+fn appendAdapterImportIfUsed(allocator: std.mem.Allocator, list: *std.ArrayList(semantic.GoAdapter), adapter: semantic.GoAdapter, body: []const u8) !void {
+    const path = adapter.import orelse return;
+    const last = if (std.mem.lastIndexOfScalar(u8, path, '/')) |slash| path[slash + 1 ..] else path;
+    if (!bodyUsesQualifier(body, adapter.qualifier() orelse last)) return;
+    try appendAdapterImport(allocator, list, adapter);
 }
 
 /// Adds an adapter's import once per file, keyed by import path.
@@ -994,6 +1034,12 @@ fn nodeReferences(program: abi.Program, node: semantic.TypeNode, leaf: RefLeaf) 
 
 fn programReferencesPackage(program: abi.Program, active: []const u8, target: []const u8) bool {
     return programReferences(program, active, .{ .package = target });
+}
+
+/// A `[]E` whose enum carries a type-level `.go` adapter: it is converted
+/// element by element rather than handed over as the raw integer slice.
+fn isAdaptedEnumSlice(program: abi.Program, node: semantic.TypeNode) bool {
+    return node == .slice and node.slice.element.* == .@"enum" and public_writers.enumAdapter(program, node.slice.element.@"enum".ref) != null;
 }
 
 pub fn programReferencesType(program: abi.Program, active: []const u8, target: []const u8) bool {

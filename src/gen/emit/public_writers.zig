@@ -214,6 +214,9 @@ pub fn renderRangeChecks(
 /// The zero value of a public result type. A UTF-8 slice surfaces as a string,
 /// so its zero is the empty string rather than `nil`.
 fn writePublicZeroValue(scope: PublicScope, writer: *std.Io.Writer, function: semantic.SemanticFn, payload: semantic.TypeNode) !void {
+    // `*new(T)` is the zero of any type, which is all that is known about an
+    // adapted one.
+    if (function.return_go_adapter) |adapter| return writer.print("*new({s})", .{adapter.type});
     if (semantic.isStringSlice(payload, function.return_semantic)) return writer.writeAll("\"\"");
     // A `?T` payload returns the zero of `T` beside a false presence flag:
     // there is no zero value of the optional itself to write.
@@ -251,6 +254,8 @@ pub fn writeCheckedFunctionReturnType(scope: PublicScope, writer: *std.Io.Writer
         try writer.print("*{s}", .{function.@"return".opaque_ptr.ref});
     } else if (docs.returnsBorrowedOpaque(function)) {
         try writer.print("*{s}Ref", .{function.@"return".opaque_ptr.ref});
+    } else if (function.return_go_adapter) |adapter| {
+        try writer.writeAll(adapter.type);
     } else {
         try writePublicGoType(scope, writer, function.@"return");
     }
@@ -287,7 +292,7 @@ pub fn writePublicFunctionReturnType(scope: PublicScope, writer: *std.Io.Writer,
         try writer.print(" (*{s}Ref, error)", .{function.@"return".error_union.payload.opaque_ptr.ref});
         return;
     }
-    try writePublicReturnType(scope, writer, function.@"return", function.return_semantic);
+    try writePublicReturnType(scope, writer, function.@"return", function.return_semantic, function.return_go_adapter);
 }
 
 pub fn writeBorrowedResult(
@@ -395,7 +400,7 @@ pub fn typeBelongsToPackage(program: abi.Program, name: []const u8, active: ?[]c
     return emit.packageMatches(declaration.package, active);
 }
 
-fn writePublicReturnType(scope: PublicScope, writer: *std.Io.Writer, node: semantic.TypeNode, hint: ?semantic.SemanticHint) !void {
+fn writePublicReturnType(scope: PublicScope, writer: *std.Io.Writer, node: semantic.TypeNode, hint: ?semantic.SemanticHint, adapter: ?semantic.GoAdapter) !void {
     switch (node) {
         .void => {},
         .error_union => |value| {
@@ -407,7 +412,9 @@ fn writePublicReturnType(scope: PublicScope, writer: *std.Io.Writer, node: seman
                 try writer.writeAll(", bool, error)");
             } else {
                 try writer.writeAll(" (");
-                if (semantic.isStringSlice(value.payload.*, hint))
+                if (adapter) |value_adapter|
+                    try writer.writeAll(value_adapter.type)
+                else if (semantic.isStringSlice(value.payload.*, hint))
                     try writer.writeAll("string")
                 else
                     try writePublicGoType(scope, writer, value.payload.*);
@@ -421,7 +428,10 @@ fn writePublicReturnType(scope: PublicScope, writer: *std.Io.Writer, node: seman
         },
         else => {
             try writer.writeByte(' ');
-            try writePublicGoType(scope, writer, node);
+            if (adapter) |value_adapter|
+                try writer.writeAll(value_adapter.type)
+            else
+                try writePublicGoType(scope, writer, node);
         },
     }
 }
@@ -458,15 +468,36 @@ pub fn writePublicResultConversion(scope: PublicScope, writer: *std.Io.Writer, p
             try writer.print("zigo{s}{s}({s})", .{ value.element.*.value_struct.ref, public.publicSliceFromRawSuffix(program, value.element.*.value_struct.ref), expression })
         else if (value.element.* == .materialized)
             try writer.print("zigoDecode{s}SliceBuffer({s})", .{ value.element.materialized.ref, expression })
+        else if (value.element.* == .@"enum" and enumAdapter(program, value.element.@"enum".ref) != null)
+            try writer.print("zigo{s}SliceFromRaw({s})", .{ value.element.@"enum".ref, expression })
         else
             try writer.writeAll(expression),
         .materialized => |value| try writer.print("zigoDecode{s}Buffer({s})", .{ value.ref, expression }),
-        .@"enum" => |value| {
-            try scope.writeTypeName(writer, value.ref);
-            try writer.print("({s})", .{expression});
-        },
+        .@"enum" => |value| try writeEnumFromRaw(scope, writer, value.ref, expression),
         else => try writer.writeAll(expression),
     }
+}
+
+/// The type-level `.go` adapter of a registered enum, if any.
+pub fn enumAdapter(program: abi.Program, ref: []const u8) ?semantic.GoAdapter {
+    const declaration = semantic.typeDecl(program.types, ref) orelse return null;
+    return if (declaration.kind == .@"enum") declaration.go_adapter else null;
+}
+
+/// `expression` as the raw integer an enum crosses as: through the adapter's
+/// helper when the enum has one, otherwise a plain conversion.
+pub fn writeEnumToRaw(program: abi.Program, writer: *std.Io.Writer, ref: []const u8, expression: []const u8) !void {
+    if (enumAdapter(program, ref) != null) return writer.print("zigo{s}ToRaw({s})", .{ ref, expression });
+    try writer.writeAll(type_spelling.rawGoTypeName(program, .{ .@"enum" = .{ .ref = ref } }));
+    try writer.print("({s})", .{expression});
+}
+
+/// The public value of a raw enum integer: the adapter's helper or the
+/// generated enum type.
+pub fn writeEnumFromRaw(scope: PublicScope, writer: *std.Io.Writer, ref: []const u8, expression: []const u8) !void {
+    if (enumAdapter(scope.program, ref) != null) return writer.print("zigo{s}FromRaw({s})", .{ ref, expression });
+    try scope.writeTypeName(writer, ref);
+    try writer.print("({s})", .{expression});
 }
 
 pub fn writeRawGoType(writer: *std.Io.Writer, program: abi.Program, node: semantic.TypeNode) !void {
@@ -578,6 +609,7 @@ pub fn writePublicGoType(scope: PublicScope, writer: *std.Io.Writer, node: seman
 }
 
 pub fn writePublicParameterType(scope: PublicScope, writer: *std.Io.Writer, parameter: semantic.Parameter) !void {
+    if (parameter.go_adapter) |adapter| return writer.writeAll(adapter.type);
     if (semantic.isStringSliceParameter(parameter)) return writer.writeAll("[]string");
     // `?[]T` and `?[]const u8` become `*[]T` and `*string`: a Go slice or
     // string has no spelling for absence that an empty one does not also have.
@@ -663,6 +695,10 @@ pub fn functionReachesCallbacks(program: abi.Program, function: semantic.Semanti
 /// The zero value an error path returns. A struct needs its own composite
 /// literal, so callers that can see one use this instead of `goZero`.
 pub fn writeGoZeroValue(scope: PublicScope, writer: *std.Io.Writer, node: semantic.TypeNode) !void {
+    if (node == .@"enum") if (enumAdapter(scope.program, node.@"enum".ref)) |adapter| return writer.print("*new({s})", .{adapter.type});
+    if (node == .value_struct) if (semantic.typeDecl(scope.program.types, node.value_struct.ref)) |declaration| {
+        if (declaration.go_adapter) |adapter| return writer.print("*new({s})", .{adapter.type});
+    };
     if (node == .value_struct or (node == .materialized and !node.materialized.pointer)) {
         try scope.writeTypeName(writer, if (node == .value_struct) node.value_struct.ref else node.materialized.ref);
         return writer.writeAll("{}");
@@ -715,10 +751,7 @@ fn writePublicTaggedUnionPayloadRawArguments(
     try writer.writeAll(", ");
     switch (node) {
         .bool => try writer.print("zigoBoolToUint8({s})", .{expression}),
-        .@"enum" => {
-            try writer.writeAll(type_spelling.rawGoTypeName(program, node));
-            try writer.print("({s})", .{expression});
-        },
+        .@"enum" => |value| try writeEnumToRaw(program, writer, value.ref, expression),
         else => try writer.writeAll(expression),
     }
 }

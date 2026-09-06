@@ -14,6 +14,8 @@ type Rect struct {
 	Min image.Point
 	// Max corresponds to the Zig field max.
 	Max image.Point
+	// Speed corresponds to the Zig field speed.
+	Speed Mode
 }
 
 // zigoPointToRaw converts through the binding's `.go` adapter (pointToRaw).
@@ -46,5 +48,6 @@ func zigoRectFromRaw(value raw.RectData) Rect {
 	return Rect{
 		Min: zigoPointFromRaw(value.Min),
 		Max: zigoPointFromRaw(value.Max),
+		Speed: zigoSpeedFromRaw(value.Speed),
 	}
 }

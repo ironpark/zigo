@@ -241,8 +241,9 @@ materialized 결과의 필드나 소유권·해제 선언이 잘못되었습니�
 
 ### ZIGO052
 
-`.go` 어댑터를 `extern struct` 값이 아닌 타입에 붙였거나, `.type`이 비어 있거나,
-`.to_raw`/`.from_raw`가 Go 식별자가 아닙니다.
+`.go` 어댑터를 `extern struct` 값이나 enum이 아닌 타입에 붙였거나, tagged union의 tag enum에
+붙였거나, plain scalar가 아닌 파라미터·반환값(optional, slice, flatten 필드, 좁은 정수)에
+붙였거나, `.type`이 비어 있거나, `.to_raw`/`.from_raw`가 Go 식별자가 아닙니다.
 [Go 타입 어댑터](bindings-types.md#go-타입-어댑터)를 참고하세요.
 
 ### ZIGO051

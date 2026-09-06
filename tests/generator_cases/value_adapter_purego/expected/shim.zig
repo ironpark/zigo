@@ -34,6 +34,24 @@ export fn zg_corners_impl(out_result_ptr: *[*c]const target.Point, out_result_le
 export fn zg_bounds_impl(out_result: *target.Rect) void {
     out_result.* = target.bounds();
 }
+export fn zg_set_speed_impl(speed: u8) u8 {
+    return @intFromEnum(target.setSpeed(@enumFromInt(speed)));
+}
+export fn zg_speeds_impl(values_ptr: [*c]const u8, values_len: usize, out_result_ptr: *[*c]const u8, out_result_len: *usize) void {
+    const result = target.speeds(if (values_len == 0) &.{} else values_ptr[0..values_len]);
+    out_result_ptr.* = result.ptr;
+    out_result_len.* = result.len;
+}
+export fn zg_elapsed_impl(since: u64) u64 {
+    return target.elapsed(since);
+}
+export fn zg_checked_elapsed_impl(strict: u8, out_result: *u64) i32 {
+    const result = target.checkedElapsed(strict != 0) catch |err| return switch (err) {
+        error.Overflow => 1,
+    };
+    out_result.* = result;
+    return 0;
+}
 
 /// Fails this compile when a layout zigo reflected on the build host does
 /// not describe the compilation target. The usual cause is a C type whose
@@ -58,8 +76,9 @@ comptime {
 }
 
 comptime {
-    zigoAbiGuard("@sizeOf(Rect)", 8, @sizeOf(target.Rect));
+    zigoAbiGuard("@sizeOf(Rect)", 10, @sizeOf(target.Rect));
     zigoAbiGuard("@alignOf(Rect)", 2, @alignOf(target.Rect));
     zigoAbiGuard("@offsetOf(Rect, \"min\")", 0, @offsetOf(target.Rect, "min"));
     zigoAbiGuard("@offsetOf(Rect, \"max\")", 4, @offsetOf(target.Rect, "max"));
+    zigoAbiGuard("@offsetOf(Rect, \"speed\")", 8, @offsetOf(target.Rect, "speed"));
 }

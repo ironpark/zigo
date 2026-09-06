@@ -101,8 +101,8 @@ func (a *Accumulator) Total() (int64, error) {
 }
 
 // LiveObjects calls the Zig function liveObjects.
-func LiveObjects() uint {
-	return raw.LiveObjects()
+func LiveObjects() ObjectCount {
+	return objectCountFromRaw(raw.LiveObjects())
 }
 
 // DefaultCursorStyle calls the Zig function defaultCursorStyle.
@@ -220,7 +220,7 @@ func CheckedShift(origin *image.Point, delta int16) (image.Point, bool, error) {
 	}
 	result, zigoHas, code := raw.CheckedShift(originRaw, delta)
 	if code != 0 {
-		return image.Point{}, false, zigoErrorForCode("CheckedShift", code)
+		return *new(image.Point), false, zigoErrorForCode("CheckedShift", code)
 	}
 	return zigoPointFromRaw(result), zigoHas, nil
 }

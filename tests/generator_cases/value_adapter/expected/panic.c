@@ -127,3 +127,50 @@ ZIGO_EXPORT void zg_bounds(zg_rect * out_result) {
 zg_bounds_impl(out_result);
     zg_panic_active = 0;
 }
+
+uint8_t zg_set_speed_impl(uint8_t speed);
+ZIGO_EXPORT uint8_t zg_set_speed(uint8_t speed) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        zg_panic_fatal();
+    }
+    uint8_t result = zg_set_speed_impl(speed);
+    zg_panic_active = 0;
+    return result;
+}
+
+void zg_speeds_impl(const uint8_t * values_ptr, size_t values_len, const uint8_t * * out_result_ptr, size_t * out_result_len);
+ZIGO_EXPORT void zg_speeds(const uint8_t * values_ptr, size_t values_len, const uint8_t * * out_result_ptr, size_t * out_result_len) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        zg_panic_fatal();
+    }
+zg_speeds_impl(values_ptr, values_len, out_result_ptr, out_result_len);
+    zg_panic_active = 0;
+}
+
+uint64_t zg_elapsed_impl(uint64_t since);
+ZIGO_EXPORT uint64_t zg_elapsed(uint64_t since) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        zg_panic_fatal();
+    }
+    uint64_t result = zg_elapsed_impl(since);
+    zg_panic_active = 0;
+    return result;
+}
+
+int32_t zg_checked_elapsed_impl(uint8_t strict, uint64_t * out_result);
+ZIGO_EXPORT int32_t zg_checked_elapsed(uint8_t strict, uint64_t * out_result) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return zg_panic_publish();
+    }
+    int32_t result = zg_checked_elapsed_impl(strict, out_result);
+    zg_panic_active = 0;
+    return result;
+}

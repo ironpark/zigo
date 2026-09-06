@@ -38,6 +38,7 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic) 
             .hint = "use an explicit error set in the Zig function signature",
         };
         if (try iteratorIssue(allocator, function)) |issue| return issue;
+        if (try scalarAdapterIssue(allocator, function)) |issue| return issue;
         if (function.has_comptime_params == true) return .{
             .severity = .@"error",
             .code = "ZIGO008",
@@ -382,6 +383,50 @@ fn cancelIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !?di
         .hint = try std.fmt.allocPrint(allocator, "return an error union whose set contains `{s}`; generated Go maps it back to `ctx.Err()`", .{canceled}),
     };
     return null;
+}
+
+/// A per-site `.go` adapter converts one scalar in Go before or after the
+/// raw call. Anything that crosses in another shape -- optionals, slices,
+/// structs, promoted narrow integers with their range check -- keeps its
+/// generated conversion, so the adapter is refused there.
+fn adaptableScalar(node: semantic.TypeNode) bool {
+    return switch (node) {
+        .bool, .float => true,
+        .int => |integer| integer.is_usize or integer.bits == 8 or integer.bits == 16 or integer.bits == 32 or integer.bits == 64,
+        else => false,
+    };
+}
+
+fn scalarAdapterIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !?diagnostic.Diagnostic {
+    for (function.params) |parameter| {
+        const adapter = parameter.go_adapter orelse continue;
+        if (parameter.injected == null and parameter.flatten == null and parameter.direction == .in and adaptableScalar(parameter.type) and
+            adapter.type.len != 0 and isGoIdentifierName(adapter.to_raw) and isGoIdentifierName(adapter.from_raw)) continue;
+        return .{
+            .severity = .@"error",
+            .code = "ZIGO052",
+            .message = try std.fmt.allocPrint(allocator, "`.go` adapter on parameter `{s}`, which is not a plain scalar", .{parameter.name}),
+            .site = site.functionSite(function),
+            .hint = "a parameter adapter needs a bool, float, or integer of 8/16/32/64 bits (or usize) passed in; register a type-level `.go` for structs and enums",
+        };
+    }
+    if (function.return_go_adapter) |adapter| {
+        const payload = function.@"return".errorPayload();
+        if (!adaptableScalar(payload) or adapter.type.len == 0 or !isGoIdentifierName(adapter.to_raw) or !isGoIdentifierName(adapter.from_raw)) return .{
+            .severity = .@"error",
+            .code = "ZIGO052",
+            .message = "`.go` on a function whose result is not a plain scalar",
+            .site = site.functionSite(function),
+            .hint = "a return adapter needs a bool, float, or integer of 8/16/32/64 bits (or usize), possibly inside an error union; optional results keep their generated spelling",
+        };
+    }
+    return null;
+}
+
+fn isGoIdentifierName(name: []const u8) bool {
+    if (name.len == 0 or std.ascii.isDigit(name[0])) return false;
+    for (name) |byte| if (!(std.ascii.isAlphanumeric(byte) or byte == '_')) return false;
+    return true;
 }
 
 /// An iterator wrapper drives `next()` for the caller, so the method has to

@@ -214,9 +214,39 @@ func pointFromRaw(p raw.PointData) image.Point { return image.Point{X: int(p.X),
 함수를 호출하는 한 줄이 되며, 필요한 파일마다 `import`가 추가됩니다. 어댑터 타입은 raw와
 레이아웃을 공유하지 않으므로 slice는 언제나 원소별로 변환됩니다.
 
-이 옵션은 `extern struct`를 `.repr = .value`로 등록한 항목에서만 유효합니다. packed struct,
-enum, union에는 적용할 수 없고 어긋나면 `ZIGO052`입니다. `abi-check`는 어댑터의 추가·제거·
-변경을 breaking으로 보고합니다. 예제는 `09-type-relations`의 `Point`에 있습니다.
+같은 `.go`를 `.repr = .enumeration` 항목에도 붙일 수 있습니다. 그러면 enum 타입·상수·`String()`이
+생성되지 않고 사용자 타입이 그 자리에 쓰이며, 변환 함수는 raw 정수(`uint8` 등)와 사용자
+타입 사이를 오갑니다. tagged union의 tag enum에는 적용할 수 없습니다.
+
+```zig
+.{ .type = mylib.Speed, .repr = .enumeration, .go = .{
+    .type = "Mode", .to_raw = "modeToRaw", .from_raw = "modeFromRaw",
+} },
+```
+
+scalar에는 타입이 아니라 사용 지점에 붙입니다. 함수 메타의 `.go`는 반환값을, `param_meta`의
+`.go`는 파라미터 하나를 바꿉니다. bool, 실수, 8·16·32·64비트 정수와 usize를 그대로 넘기는
+자리에서만 쓸 수 있고, optional·slice·flatten 필드·범위 검사가 붙는 좁은 정수(`u21` 등)에는
+쓸 수 없습니다.
+
+```zig
+.{
+    .path = "root.elapsed",
+    .params = .{"since"},
+    .go = .{ .type = "time.Duration", .import = "time", .to_raw = "durationToRaw", .from_raw = "durationFromRaw" },
+    .param_meta = .{ .since = .{ .go = .{ .type = "time.Duration", .import = "time", .to_raw = "durationToRaw", .from_raw = "durationFromRaw" } } },
+},
+```
+
+```go
+func durationToRaw(d time.Duration) uint64 { return uint64(d) }
+func durationFromRaw(v uint64) time.Duration { return time.Duration(v) }
+```
+
+이 옵션은 `extern struct` 값, enum, 그리고 사용 지점의 plain scalar에만 유효합니다. packed
+struct와 union, optional·slice·좁은 정수에는 적용할 수 없고 어긋나면 `ZIGO052`입니다.
+`abi-check`는 어댑터의 추가·제거·변경을 breaking으로 보고합니다. 예제는
+`09-type-relations`의 `Point`(struct)와 `LiveObjects`(반환 scalar)에 있습니다.
 
 ## Packed struct 값
 

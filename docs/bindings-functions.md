@@ -105,11 +105,14 @@ error입니다.
 | `returns` | 반환 pointer의 ownership |
 | `release` | caller-owned 반환 버퍼를 해제할 함수 경로 |
 | `iterator` | `?T`를 반환하는 메서드에 `iter.Seq` wrapper를 추가 ([Iterator wrapper](bindings-handles.md#iterator-wrapper)) |
+| `go` | scalar 반환값을 사용자 Go 타입으로 바꾸는 어댑터 ([Go 타입 어댑터](bindings-types.md#go-타입-어댑터)) |
 
 `param_meta`에서는 필요한 계약만 지정합니다. 문자열·`direction`·`written`은
 [버퍼 가이드](bindings-buffers.md), `retention`·`go_error`·`on_callback_failure`와
 스레드 계약은 [콜백 가이드](bindings-callbacks.md), `buffer`는
-[스트림 가이드](bindings-streams.md)를 참고하세요. `flatten`은 아래에서 설명합니다.
+[스트림 가이드](bindings-streams.md)를 참고하세요. `go`는 scalar 파라미터 하나를 사용자 Go
+타입으로 바꾸는 어댑터입니다([Go 타입 어댑터](bindings-types.md#go-타입-어댑터)).
+`flatten`은 아래에서 설명합니다.
 
 문자열 의미, 반환 pointer ownership, retained pointer와 callback 수명은 타입만으로 결정할 수
 없으므로 명시해야 합니다.

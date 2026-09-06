@@ -5,6 +5,10 @@
 #include <stddef.h>
 #include <stdint.h>
 
+typedef uint8_t zg_speed;
+#define ZG_SPEED_FAST 0
+#define ZG_SPEED_SLOW 1
+
 // ELF and Mach-O export every non-static symbol of a shared library;
 // COFF exports nothing without an explicit annotation, so a DLL built
 // without this would load and then resolve none of its entry points.
@@ -24,6 +28,7 @@ typedef struct zg_point {
 typedef struct zg_rect {
     zg_point min;
     zg_point max;
+    zg_speed speed;
 } zg_rect;
 
 ZIGO_EXPORT void zg_translate(const zg_point * origin, int16_t dx, zg_point * out_result);
@@ -31,6 +36,10 @@ ZIGO_EXPORT int32_t zg_shift(const zg_point * origin, uint8_t * out_result_has, 
 ZIGO_EXPORT size_t zg_accept_points(const zg_point * values_ptr, size_t values_len);
 ZIGO_EXPORT void zg_corners(const zg_point * * out_result_ptr, size_t * out_result_len);
 ZIGO_EXPORT void zg_bounds(zg_rect * out_result);
+ZIGO_EXPORT uint8_t zg_set_speed(uint8_t speed);
+ZIGO_EXPORT void zg_speeds(const uint8_t * values_ptr, size_t values_len, const uint8_t * * out_result_ptr, size_t * out_result_len);
+ZIGO_EXPORT uint64_t zg_elapsed(uint64_t since);
+ZIGO_EXPORT int32_t zg_checked_elapsed(uint8_t strict, uint64_t * out_result);
 ZIGO_EXPORT const char *zg_last_error_message(void);
 ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);
 

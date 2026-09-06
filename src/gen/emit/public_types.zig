@@ -191,9 +191,10 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
                     else
                         try writer.print("zigo{s}ToRaw(value.{s})", .{ nested.ref, member }),
                     .bool => try writer.print("zigoBoolToUint8(value.{s})", .{member}),
-                    .@"enum" => {
-                        try writer.writeAll(type_spelling.rawGoTypeName(program, field.node));
-                        try writer.print("(value.{s})", .{member});
+                    .@"enum" => |value| {
+                        const expression = try std.fmt.allocPrint(allocator, "value.{s}", .{member});
+                        defer allocator.free(expression);
+                        try public_writers.writeEnumToRaw(program, writer, value.ref, expression);
                     },
                     else => try writer.print("value.{s}", .{member}),
                 }
@@ -333,11 +334,7 @@ fn writeValueUnionPayloadFromRaw(
     defer allocator.free(expression);
     switch (node) {
         .bool => try writer.print("{s} != 0", .{expression}),
-        .@"enum" => {
-            try writer.print("{s}(", .{node.@"enum".ref});
-            try writer.writeAll(expression);
-            try writer.writeByte(')');
-        },
+        .@"enum" => |value| try public_writers.writeEnumFromRaw(.{ .program = program, .options = options }, writer, value.ref, expression),
         else => try writer.writeAll(expression),
     }
 }
@@ -488,7 +485,7 @@ fn publicIdentifiersAlloc(allocator: std.mem.Allocator, program: abi.Program) ![
                 try names.append(allocator, try std.fmt.allocPrint(allocator, "{s}Snapshot", .{declaration.name}));
                 try names.append(allocator, try std.fmt.allocPrint(allocator, "{s}Variant", .{declaration.name}));
             },
-            .@"enum" => for (declaration.fields) |field| {
+            .@"enum" => if (declaration.go_adapter == null) for (declaration.fields) |field| {
                 const constant = try naming.pascalAlloc(allocator, field.name);
                 defer allocator.free(constant);
                 try names.append(allocator, try std.fmt.allocPrint(allocator, "{s}{s}", .{ declaration.name, constant }));
@@ -846,6 +843,10 @@ pub fn renderGoEnums(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
     for (program.types) |declaration| {
         if (!emit.packageMatches(declaration.package, options.active_package)) continue;
         if (declaration.kind != .@"enum") continue;
+        if (declaration.go_adapter) |adapter| {
+            try renderGoEnumAdapter(writer, program, options, declaration, adapter);
+            continue;
+        }
         if (declaration.open == true) {
             try writer.print("// {s} represents the corresponding Zig open enum; values outside the named constants are valid.\ntype {s} ", .{ declaration.name, declaration.name });
         } else {
@@ -872,6 +873,30 @@ pub fn renderGoEnums(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
         try writer.writeAll(" + \")\"\n\t}\n}\n\n");
         if (declaration.text == true) try renderGoEnumText(allocator, writer, program, declaration);
     }
+}
+
+/// An adapted enum has no generated type: the user's type stands in, and
+/// these helpers carry it across the raw integer, one value or a slice at a
+/// time, through the two functions the binding named.
+fn renderGoEnumAdapter(writer: *std.Io.Writer, program: abi.Program, options: emit.Options, declaration: semantic.TypeDecl, adapter: semantic.GoAdapter) !void {
+    const node: semantic.TypeNode = .{ .@"enum" = .{ .ref = declaration.name } };
+    const raw_type = type_spelling.rawGoTypeName(program, node);
+    if (options.emitsHelperFmt("zigo{s}ToRaw", .{declaration.name})) try writer.print(
+        "// zigo{0s}ToRaw converts through the binding's `.go` adapter ({1s}).\nfunc zigo{0s}ToRaw(value {2s}) {3s} {{\n\treturn {1s}(value)\n}}\n\n",
+        .{ declaration.name, adapter.to_raw, adapter.type, raw_type },
+    );
+    if (options.emitsHelperFmt("zigo{s}FromRaw", .{declaration.name})) try writer.print(
+        "// zigo{0s}FromRaw converts through the binding's `.go` adapter ({1s}).\nfunc zigo{0s}FromRaw(value {3s}) {2s} {{\n\treturn {1s}(value)\n}}\n\n",
+        .{ declaration.name, adapter.from_raw, adapter.type, raw_type },
+    );
+    if (options.emitsHelperFmt("zigo{s}SliceToRaw", .{declaration.name})) try writer.print(
+        "func zigo{0s}SliceToRaw(values []{1s}) []{2s} {{\n\tresult := make([]{2s}, len(values))\n\tfor i := range values {{\n\t\tresult[i] = zigo{0s}ToRaw(values[i])\n\t}}\n\treturn result\n}}\n\n",
+        .{ declaration.name, adapter.type, raw_type },
+    );
+    if (options.emitsHelperFmt("zigo{s}SliceFromRaw", .{declaration.name})) try writer.print(
+        "func zigo{0s}SliceFromRaw(values []{2s}) []{1s} {{\n\tresult := make([]{1s}, len(values))\n\tfor i := range values {{\n\t\tresult[i] = zigo{0s}FromRaw(values[i])\n\t}}\n\treturn result\n}}\n\n",
+        .{ declaration.name, adapter.type, raw_type },
+    );
 }
 
 fn packageHasTextEnum(program: abi.Program, options: emit.Options) bool {

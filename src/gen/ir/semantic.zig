@@ -365,6 +365,9 @@ pub const Parameter = struct {
     /// rather than a plain `bool` so a binding that never asks for it keeps
     /// the field out of `semantic.json` entirely.
     go_error: ?bool = null,
+    /// `param_meta.<name>.go`: the public parameter is spelled as the user's
+    /// Go type and converted with `to_raw` before the raw call. Scalars only.
+    go_adapter: ?GoAdapter = null,
     /// Parameter-level override for the result a failed callback returns.
     /// Absent preserves the historical in-band sentinel behavior.
     on_callback_failure: ?CallbackFailure = null,
@@ -552,6 +555,9 @@ pub const SemanticFn = struct {
     @"return": TypeNode,
     /// The Zig result is `std.atomic.Value(T)` while Go and C receive T.
     return_atomic: ?bool = null,
+    /// Function-level `.go`: the scalar result is converted with `from_raw`
+    /// and the public signature spells the user's Go type.
+    return_go_adapter: ?GoAdapter = null,
     return_semantic: ?SemanticHint = null,
     /// The function declaration's source location, from `names.zig`. Purely
     /// diagnostic: it has no bearing on the generated ABI, so `abi_diff`
