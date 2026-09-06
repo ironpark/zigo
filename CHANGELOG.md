@@ -4,17 +4,7 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
-## [0.13.1] - 2026-09-06
-
-### Fixed
-
-- 루트 모듈이 여러 파일로 나뉜 바인딩에서 doc 주석과 파라미터 이름이 생성 코드에 닿지
-  않던 문제를 고쳤습니다. 이름 보강이 bindings 파일과 그 직접 import, `root.zig`만 읽어서
-  루트가 다시 import한 파일에 선언된 함수는 doc과 인자 이름을 잃었습니다. 이제 coverage
-  전용이던 루트 import 순회를 일반 보강에서도 돌리며, 기록되는 경로는 루트 디렉터리 기준
-  상대 경로라 `semantic.json`이 기계마다 같습니다.
-
-## [Unreleased]
+## [0.14.0] - 2026-09-07
 
 ### Added
 
@@ -34,7 +24,8 @@
   위해 두던 래퍼 함수와 그 `.covers` 항목이 필요 없어집니다. receiver는 enum의 backing 정수로
   건너가므로 새 wire 형식은 없고, handle 검사·수명 관리·retained 콜백 순회도 붙지 않습니다.
   단순히 enum을 파라미터로 받는 함수는 그대로 패키지 레벨 함수입니다. 기존 래퍼를 메서드로
-  옮기면 C 심볼과 Go 표면이 바뀌므로 `abi-check`가 breaking으로 보고합니다.
+  옮기면 C 심볼과 Go 표면이 바뀌므로 `abi-check`가 breaking으로 보고합니다. `semantic.json`의
+  함수에 `receiver_kind`가 추가됩니다.
 - 값 receiver가 handle 전용 메타데이터(`.constructs`, `.child_of_receiver`,
   `.returns = .borrowed`, `.iterator`, `std.Io` 스트림 파라미터)를 갖거나 `.go` 어댑터가 붙은
   enum을 receiver로 쓰면 `ZIGO056`입니다. 메서드 이름이 zigo가 그 enum에 생성하는 `String`,
@@ -52,13 +43,15 @@
   바인딩 대상 라이브러리가 별도 Zig module이면 그 선언은 파라미터 이름이 `p0`로 남았습니다.
   기록되는 경로는 각 root 기준 상대 경로입니다.
 
-- root 모듈이 여러 파일로 나뉘어 있을 때 doc 주석과 파라미터 이름이 생성물에 실리지 않던
-  문제를 고쳤습니다. 이름·문서 보강 패스는 bindings 파일과 그 직접 import, 그리고 `root.zig`만
-  읽었고, root가 다시 import하는 파일은 coverage 경로에서만 훑었습니다. 이제 일반 생성도 같은
-  재귀 스캔을 하므로 선언이 어느 파일에 쓰였든 문서가 따라옵니다. 기록되는 소스 경로는
-  root 디렉터리 기준 상대경로라 `semantic.json`은 머신과 무관하게 같습니다. 바인딩이
-  `source_root`를 넘기지 않으면 bindings 파일 옆의 `root.zig`를 쓰고, 그런 파일이 없으면
-  조용히 넘어갑니다.
+## [0.13.1] - 2026-09-06
+
+### Fixed
+
+- 루트 모듈이 여러 파일로 나뉜 바인딩에서 doc 주석과 파라미터 이름이 생성 코드에 닿지
+  않던 문제를 고쳤습니다. 이름 보강이 bindings 파일과 그 직접 import, `root.zig`만 읽어서
+  루트가 다시 import한 파일에 선언된 함수는 doc과 인자 이름을 잃었습니다. 이제 coverage
+  전용이던 루트 import 순회를 일반 보강에서도 돌리며, 기록되는 경로는 루트 디렉터리 기준
+  상대 경로라 `semantic.json`이 기계마다 같습니다.
 
 ## [0.13.0] - 2026-09-06
 

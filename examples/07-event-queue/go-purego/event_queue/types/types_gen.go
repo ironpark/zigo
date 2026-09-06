@@ -32,7 +32,7 @@ func NewTicker(interval uint32) (*Ticker, error) {
 // MustNewTicker calls NewTicker and panics with its typed error on failure.
 func MustNewTicker(interval uint32) *Ticker { return zigoMust(NewTicker(interval)) }
 
-// Advance calls the Zig function Ticker.advance.
+// Advance: Advances a ticker and reports how many whole intervals have elapsed.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (t *Ticker) Advance(steps uint32) (uint32, error) {
@@ -51,7 +51,7 @@ func (t *Ticker) Advance(steps uint32) (uint32, error) {
 // MustAdvance calls Advance and panics with its typed error on failure.
 func (t *Ticker) MustAdvance(steps uint32) uint32 { return zigoMust(t.Advance(steps)) }
 
-// Elapsed calls the Zig function Ticker.elapsed.
+// Elapsed: Reports the raw elapsed tick count.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
 func (t *Ticker) Elapsed() (uint32, error) {
