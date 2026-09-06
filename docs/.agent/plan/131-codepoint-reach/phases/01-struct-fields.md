@@ -2,7 +2,7 @@
 depends_on:
 - "131-codepoint-reach#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `value_adapter`-style case shows a `rune` field crossing both ways; tests green.
 > NEXT: none
