@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-06T03:25:45Z"
 depends_on:
 - "131-codepoint-reach#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Callback case output compiles in the example and round-trips a rune; tests green.
 > NEXT: none

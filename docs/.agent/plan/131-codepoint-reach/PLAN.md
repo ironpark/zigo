@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-06T03:25:45Z"
 depends_on:
 - codepoint-semantic
 description: "Codepoint hints: Unicode range check, u21 inference option, extern struct fields, and callback signatures"
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-06T03:12:32Z"
 ---
 > NEXT: Unicode range check and the inference option. ([Phase 0](phases/00-range-inference.md))
@@ -11,7 +12,7 @@ registered_at: "2026-09-06T03:12:32Z"
 
 - [x] [Phase 00: Unicode range and u21 inference](phases/00-range-inference.md)
 - [x] [Phase 01: Extern struct fields](phases/01-struct-fields.md)
-- [ ] [Phase 02: Callback signatures](phases/02-callbacks.md)
+- [x] [Phase 02: Callback signatures](phases/02-callbacks.md)
 
 # Shared Verification
 
