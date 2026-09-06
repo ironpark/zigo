@@ -9,10 +9,13 @@
 설치 전에 완성된 프로젝트를 실행해 보고 싶다면
 [최소 실행 예제](../examples/00-quick-start/README.md)에서 시작하세요.
 
+한 장짜리 참조표가 필요하면 [치트시트](cheatsheet.md)를 보세요.
+
 ## 목적별로 찾기
 
 | 하고 싶은 일 | 읽을 문서 |
 |---|---|
+| 옵션·메타데이터·타입 대응·오류 코드를 한 장으로 보기 | [치트시트](cheatsheet.md) |
 | zigo를 설치하고 첫 Go 바인딩 만들기 | [시작 가이드](getting-started.md) |
 | 백엔드, Go 패키지와 빌드 옵션 선택하기 | [빌드 설정](configuration.md) |
 | 함수·타입·콜백을 어떻게 선언하는지 확인하기 | [`bindings.zig` 선언](bindings.md) |

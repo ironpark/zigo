@@ -110,6 +110,7 @@ purego를 선택했다면 [공유 라이브러리와 purego](docs/purego.md)를 
 ## 문서
 
 - [시작 가이드](docs/getting-started.md) — 설치부터 첫 생성, 테스트, CI까지
+- [치트시트](docs/cheatsheet.md) — 옵션, 메타데이터, 타입 대응, 오류 코드를 한 장으로
 - [빌드 설정](docs/configuration.md) — 백엔드, 패키지, cleanup과 ABI 옵션
 - [`bindings.zig` 선언](docs/bindings.md) — 함수, 타입, 메타데이터와 생성 Go 오류
 - [생성물과 CI 관리](docs/generated-code.md) — 빌드 스텝, 생성 파일과 커밋 정책
