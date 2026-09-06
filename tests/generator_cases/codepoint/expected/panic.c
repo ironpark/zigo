@@ -153,6 +153,29 @@ zg_take_codepoints_impl(out_result_ptr, out_result_len);
     zg_panic_active = 0;
 }
 
+void zg_measure_impl(const zg_glyph * glyph, zg_glyph * out_result);
+ZIGO_EXPORT void zg_measure(const zg_glyph * glyph, zg_glyph * out_result) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        zg_panic_fatal();
+    }
+zg_measure_impl(glyph, out_result);
+    zg_panic_active = 0;
+}
+
+uint64_t zg_count_wide_impl(const zg_glyph * glyphs_ptr, size_t glyphs_len);
+ZIGO_EXPORT uint64_t zg_count_wide(const zg_glyph * glyphs_ptr, size_t glyphs_len) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        zg_panic_fatal();
+    }
+    uint64_t result = zg_count_wide_impl(glyphs_ptr, glyphs_len);
+    zg_panic_active = 0;
+    return result;
+}
+
 void zg_free_codepoints_impl(const uint32_t * values_ptr, size_t values_len);
 ZIGO_EXPORT void zg_free_codepoints(const uint32_t * values_ptr, size_t values_len) {
     zg_panic_active = 1;

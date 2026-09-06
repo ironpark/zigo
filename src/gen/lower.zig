@@ -1012,6 +1012,7 @@ fn lowerValueStructs(allocator: std.mem.Allocator, document: semantic.Semantic, 
                 .name = field.name,
                 .scalar = scalar,
                 .node = node,
+                .semantic = field.semantic,
                 .offset = offset,
                 .bytes = bytes,
             };

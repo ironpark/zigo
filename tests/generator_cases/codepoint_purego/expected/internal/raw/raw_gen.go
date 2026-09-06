@@ -52,6 +52,8 @@ type nativeBindings struct {
 	fnSumCodepoints func(unsafe.Pointer, uintptr) uint32
 	fnFillCodepoints func(unsafe.Pointer, uintptr, *uintptr)
 	fnTakeCodepoints func(*unsafe.Pointer, *uintptr)
+	fnMeasure func(unsafe.Pointer, unsafe.Pointer)
+	fnCountWide func(unsafe.Pointer, uintptr) uint64
 	fnFreeCodepoints func(unsafe.Pointer, uintptr)
 }
 
@@ -126,6 +128,10 @@ func loadCandidate(path string) error {
 	if err != nil { return fail("zg_fill_codepoints", err) }
 	addrTakeCodepoints, err := resolveSymbol(handle, "zg_take_codepoints")
 	if err != nil { return fail("zg_take_codepoints", err) }
+	addrMeasure, err := resolveSymbol(handle, "zg_measure")
+	if err != nil { return fail("zg_measure", err) }
+	addrCountWide, err := resolveSymbol(handle, "zg_count_wide")
+	if err != nil { return fail("zg_count_wide", err) }
 	addrFreeCodepoints, err := resolveSymbol(handle, "zg_free_codepoints")
 	if err != nil { return fail("zg_free_codepoints", err) }
 	var next nativeBindings
@@ -138,6 +144,8 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnSumCodepoints, addrSumCodepoints)
 	purego.RegisterFunc(&next.fnFillCodepoints, addrFillCodepoints)
 	purego.RegisterFunc(&next.fnTakeCodepoints, addrTakeCodepoints)
+	purego.RegisterFunc(&next.fnMeasure, addrMeasure)
+	purego.RegisterFunc(&next.fnCountWide, addrCountWide)
 	purego.RegisterFunc(&next.fnFreeCodepoints, addrFreeCodepoints)
 	loadedBindings.Store(&next)
 	return nil
@@ -165,6 +173,13 @@ func PanicMessage(code int32) string {
 	length := 0
 	for *(*byte)(unsafe.Add(p, length)) != 0 { length++ }
 	return string(unsafe.Slice((*byte)(p), length))
+}
+
+// GlyphData mirrors the zg_glyph layout, padding included.
+type GlyphData struct {
+	Cp uint32
+	Width uint8
+	_ [3]byte
 }
 
 // CodepointWidth calls the generated purego ABI wrapper for zg_codepoint_width.
@@ -222,6 +237,21 @@ func TakeCodepoints() []uint32 {
 	}
 	bindings().fnFreeCodepoints(outResultPtr, outResultLen)
 	return result
+}
+
+// Measure calls the generated purego ABI wrapper for zg_measure.
+func Measure(glyph GlyphData) GlyphData {
+	var outResult GlyphData
+	bindings().fnMeasure(unsafe.Pointer(&glyph), unsafe.Pointer(&outResult))
+	return outResult
+}
+
+// CountWide calls the generated purego ABI wrapper for zg_count_wide.
+func CountWide(glyphs []GlyphData) uint64 {
+	var glyphsPtr unsafe.Pointer
+	if len(glyphs) != 0 { glyphsPtr = unsafe.Pointer(&glyphs[0]) }
+	result := bindings().fnCountWide(glyphsPtr, uintptr(len(glyphs)))
+	return uint64(result)
 }
 
 // FreeCodepoints calls the generated purego ABI wrapper for zg_free_codepoints.

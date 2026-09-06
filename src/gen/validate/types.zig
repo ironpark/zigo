@@ -101,6 +101,19 @@ pub fn typeIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .site = .{ .path = "semantic.json", .declaration = declaration.name },
             .hint = "use void, scalar, enum, opaque-pointer, or numeric-slice payloads",
         };
+        for (declaration.fields) |field| {
+            const hint = field.semantic orelse continue;
+            const extern_u32 = declaration.kind == .value_struct and declaration.layout == .@"extern" and
+                field.type != null and field.type.? == .int and !field.type.?.int.signed and !field.type.?.int.is_usize and field.type.?.int.bits == 32;
+            if (hint == .codepoint and extern_u32) continue;
+            return .{
+                .severity = .@"error",
+                .code = "ZIGO053",
+                .message = try std.fmt.allocPrint(allocator, "`.semantic` on field `{s}` of `{s}`, which is not a u32 member of an extern struct", .{ field.name, declaration.name }),
+                .site = .{ .path = "semantic.json", .declaration = declaration.name },
+                .hint = "a field hint is `.codepoint` on a `u32` member of a `.repr = .value` extern struct; other members and packed, materialized, or union fields take no hint",
+            };
+        }
         if (declaration.kind == .value_struct and declaration.layout == .@"extern") {
             // A width zigo would promote elsewhere gets its own message here:
             // the field is mirrored into C byte for byte, with no shim in
@@ -1525,4 +1538,37 @@ fn enumIsUnionTag(document: semantic.Semantic, name: []const u8) bool {
         if (tag == .@"enum" and std.mem.eql(u8, tag.@"enum".ref, name)) return true;
     }
     return false;
+}
+
+test "field codepoint hints are limited to u32 extern struct members" {
+    const u32_node: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = false } };
+    const u8_node: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    const cases = [_]struct { layout: ?semantic.Layout, node: semantic.TypeNode, code: ?[]const u8 }{
+        .{ .layout = .@"extern", .node = u32_node, .code = null },
+        .{ .layout = .@"extern", .node = u8_node, .code = "ZIGO053" },
+        .{ .layout = .@"packed", .node = u32_node, .code = "ZIGO053" },
+    };
+    for (cases) |case| {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const document: semantic.Semantic = .{
+            .types = &.{.{
+                .kind = .value_struct,
+                .layout = case.layout,
+                .name = "Glyph",
+                .backing_type = if (case.layout == .@"packed") u32_node else null,
+                .registered_value = if (case.layout == .@"packed") true else null,
+                .fields = &.{.{ .name = "cp", .semantic = .codepoint, .type = case.node }},
+            }},
+            .package = "text",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        };
+        const issue = try validate.findIssue(scratch.allocator(), document);
+        if (case.code) |code| {
+            try std.testing.expectEqualStrings(code, (issue orelse return error.MissingDiagnostic).code);
+        } else {
+            try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), issue);
+        }
+    }
 }

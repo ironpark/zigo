@@ -16,6 +16,11 @@
 #endif
 #endif
 
+typedef struct zg_glyph {
+    uint32_t cp;
+    uint8_t width;
+} zg_glyph;
+
 ZIGO_EXPORT int32_t zg_codepoint_width(uint32_t cp, int8_t * out_result);
 ZIGO_EXPORT uint32_t zg_to_lower(uint32_t cp);
 ZIGO_EXPORT int32_t zg_decode(uint8_t byte, uint32_t * out_result);
@@ -23,6 +28,8 @@ ZIGO_EXPORT uint8_t zg_peek(uint32_t * out_result);
 ZIGO_EXPORT uint32_t zg_sum_codepoints(const uint32_t * values_ptr, size_t values_len);
 ZIGO_EXPORT void zg_fill_codepoints(uint32_t * values_ptr, size_t values_len, size_t * values_written);
 ZIGO_EXPORT void zg_take_codepoints(const uint32_t * * out_result_ptr, size_t * out_result_len);
+ZIGO_EXPORT void zg_measure(const zg_glyph * glyph, zg_glyph * out_result);
+ZIGO_EXPORT uint64_t zg_count_wide(const zg_glyph * glyphs_ptr, size_t glyphs_len);
 ZIGO_EXPORT void zg_free_codepoints(const uint32_t * values_ptr, size_t values_len);
 ZIGO_EXPORT const char *zg_last_error_message(void);
 ZIGO_EXPORT const char *zg_caught_panic_message(int32_t code);

@@ -657,7 +657,7 @@ fn optionalStringsEqual(lhs: ?[]const []const u8, rhs: ?[]const []const u8) bool
 }
 
 fn typeFieldEqual(lhs: semantic.TypeField, rhs: semantic.TypeField) bool {
-    if (!std.mem.eql(u8, lhs.name, rhs.name) or lhs.atomic != rhs.atomic or lhs.value != rhs.value or (lhs.type == null) != (rhs.type == null)) return false;
+    if (!std.mem.eql(u8, lhs.name, rhs.name) or lhs.atomic != rhs.atomic or lhs.value != rhs.value or lhs.semantic != rhs.semantic or (lhs.type == null) != (rhs.type == null)) return false;
     return lhs.type == null or declaredTypeEqual(lhs.type.?, rhs.type.?);
 }
 
@@ -724,6 +724,25 @@ test "string slice element sentinels are not a signature change" {
     var report = try diff(std.testing.allocator, old, current);
     defer report.deinit(std.testing.allocator);
     try std.testing.expectEqual(@as(usize, 0), report.changes.items.len);
+}
+
+test "a codepoint hint on a struct field is a breaking type change" {
+    const u32_node: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = false } };
+    const old: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .types = &.{.{
+        .kind = .value_struct,
+        .layout = .@"extern",
+        .name = "Glyph",
+        .fields = &.{.{ .name = "cp", .type = u32_node }},
+    }} };
+    const current: semantic.Semantic = .{ .package = "demo", .prefix = "zg", .zig_version = "0.16.0", .types = &.{.{
+        .kind = .value_struct,
+        .layout = .@"extern",
+        .name = "Glyph",
+        .fields = &.{.{ .name = "cp", .semantic = .codepoint, .type = u32_node }},
+    }} };
+    var report = try diff(std.testing.allocator, old, current);
+    defer report.deinit(std.testing.allocator);
+    try std.testing.expect(report.hasBreaking());
 }
 
 test "adding a codepoint hint changes the Go surface" {

@@ -51,6 +51,34 @@ export fn zg_take_codepoints_impl(out_result_ptr: *[*c]const u32, out_result_len
     out_result_ptr.* = zigo_result_ptr;
     out_result_len.* = result.len;
 }
+export fn zg_measure_impl(glyph: *const target.Glyph, out_result: *target.Glyph) void {
+    out_result.* = target.measure(glyph.*);
+}
+export fn zg_count_wide_impl(glyphs_ptr: [*c]const target.Glyph, glyphs_len: usize) u64 {
+    return target.countWide(if (glyphs_len == 0) &.{} else glyphs_ptr[0..glyphs_len]);
+}
 export fn zg_free_codepoints_impl(values_ptr: [*c]const u32, values_len: usize) void {
     target.freeCodepoints(if (values_len == 0) &.{} else @as([*]const u21, @ptrCast(values_ptr))[0..values_len]);
+}
+
+/// Fails this compile when a layout zigo reflected on the build host does
+/// not describe the compilation target. The usual cause is a C type whose
+/// width varies by target -- `c_long` and `c_ulong` are 4 bytes on Windows
+/// and 8 bytes on Linux and macOS, and `c_longdouble` varies too. Use a
+/// fixed-width type in the binding surface, or generate on the target.
+fn zigoAbiGuard(comptime what: []const u8, comptime reflected: usize, comptime actual: usize) void {
+    if (reflected != actual) @compileError(std.fmt.comptimePrint(
+        "zigo ABI guard: {s} is {d} on this target, but zigo reflected {d} on the build host. " ++
+            "The generated C header and Go mirrors use the reflected layout, so this binding " ++
+            "cannot be built for this target. A C type whose width varies by target, such as " ++
+            "c_long or c_ulong, is the usual cause; replace it with a fixed-width type.",
+        .{ what, actual, reflected },
+    ));
+}
+
+comptime {
+    zigoAbiGuard("@sizeOf(Glyph)", 8, @sizeOf(target.Glyph));
+    zigoAbiGuard("@alignOf(Glyph)", 4, @alignOf(target.Glyph));
+    zigoAbiGuard("@offsetOf(Glyph, \"cp\")", 0, @offsetOf(target.Glyph, "cp"));
+    zigoAbiGuard("@offsetOf(Glyph, \"width\")", 4, @offsetOf(target.Glyph, "width"));
 }

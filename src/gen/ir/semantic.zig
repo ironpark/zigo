@@ -618,6 +618,9 @@ pub const TypeField = struct {
     /// The Zig member is `std.atomic.Value(T)` while its mirror contains T.
     atomic: ?bool = null,
     name: []const u8,
+    /// Only `codepoint`, and only on a `u32` member of an `extern struct`:
+    /// the mirror spells it `rune` over the same four bytes.
+    semantic: ?SemanticHint = null,
     type: ?TypeNode = null,
     value: ?i64 = null,
 };

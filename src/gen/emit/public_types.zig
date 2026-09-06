@@ -142,7 +142,10 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
             const member = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(member);
             try writer.print("\t// {s} corresponds to the Zig field {s}.\n\t{s} ", .{ member, field.name, member });
-            try public_writers.writePublicGoType(scope, writer, field.node);
+            if (public_writers.codepointTypeName(field.node, field.semantic)) |name|
+                try writer.writeAll(name)
+            else
+                try public_writers.writePublicGoType(scope, writer, field.node);
             try writer.writeByte('\n');
         }
         try writer.writeAll("}\n\n");
@@ -196,7 +199,10 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
                         defer allocator.free(expression);
                         try public_writers.writeEnumToRaw(program, writer, value.ref, expression);
                     },
-                    else => try writer.print("value.{s}", .{member}),
+                    else => if (semantic.isCodepoint(field.node, field.semantic))
+                        try writer.print("uint32(value.{s})", .{member})
+                    else
+                        try writer.print("value.{s}", .{member}),
                 }
                 try writer.writeAll(",\n");
             }
@@ -219,7 +225,8 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
                     else => {
                         const expression = try std.fmt.allocPrint(allocator, "value.{s}", .{member});
                         defer allocator.free(expression);
-                        try public_writers.writePublicResultConversion(scope, writer, program, field.node, expression);
+                        if (!try public_writers.writeCodepointResult(writer, field.node, field.semantic, expression))
+                            try public_writers.writePublicResultConversion(scope, writer, program, field.node, expression);
                     },
                 }
                 try writer.writeAll(",\n");

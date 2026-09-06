@@ -46,7 +46,7 @@ pub fn reflect(
                     };
                 },
                 .value => switch (info) {
-                    .@"struct" => try appendValueStruct(allocator, &types, declaration, T, type_name, try registeredZigPath(allocator, declaration, T, type_name), true, comptime goAdapter(entry)),
+                    .@"struct" => try appendValueStruct(allocator, &types, declaration, T, type_name, try registeredZigPath(allocator, declaration, T, type_name), true, comptime goAdapter(entry), comptime fieldMeta(entry)),
                     else => @compileError("zigo value type entries must name a struct"),
                 },
                 .materialized => switch (info) {
@@ -1313,6 +1313,21 @@ fn accessStrategy(comptime entry: anytype) semantic.Access {
 /// The display name of a `types` entry: the explicit `.name` when given, and
 /// otherwise the short Zig type name. Generic instantiations need the explicit
 /// form, which is why registering one is an ordinary `types` entry.
+/// The `.field_meta` of a `.repr = .value` entry, or nothing.
+fn fieldMeta(comptime entry: anytype) @TypeOf(if (@hasField(@TypeOf(entry), "field_meta")) entry.field_meta else .{}) {
+    return if (@hasField(@TypeOf(entry), "field_meta")) entry.field_meta else .{};
+}
+
+/// The hint `.field_meta` gives one member. `.integer` is the same opt-out
+/// it is on a parameter and records nothing.
+fn fieldSemantic(comptime field_meta: anytype, comptime name: []const u8) ?semantic.SemanticHint {
+    if (!@hasField(@TypeOf(field_meta), name)) return null;
+    const meta = @field(field_meta, name);
+    if (!@hasField(@TypeOf(meta), "semantic")) return null;
+    const hint: semantic.SemanticHint = meta.semantic;
+    return if (hint == .integer) null else hint;
+}
+
 pub fn typeEntryName(comptime entry: anytype) []const u8 {
     return if (@hasField(@TypeOf(entry), "name")) entry.name else shortTypeName(@typeName(entry.type));
 }
@@ -1703,7 +1718,7 @@ fn typeNode(
                     break;
                 }
             }
-            if (!exists) try appendValueStruct(allocator, types, declaration, T, name, @typeName(T), false, null);
+            if (!exists) try appendValueStruct(allocator, types, declaration, T, name, @typeName(T), false, null, .{});
             break :blk .{ .value_struct = .{ .ref = name } };
         },
         .@"union" => blk: {
@@ -2104,9 +2119,15 @@ fn appendValueStruct(
     zig_path: []const u8,
     explicitly_registered: bool,
     go_adapter: ?semantic.GoAdapter,
+    comptime field_meta: anytype,
 ) !void {
     const info = @typeInfo(T).@"struct";
     const index = types.items.len;
+    comptime {
+        for (@typeInfo(@TypeOf(field_meta)).@"struct".fields) |meta_field| {
+            if (!@hasField(T, meta_field.name)) @compileError("zigo `.field_meta` names `" ++ meta_field.name ++ "`, which is not a field of `" ++ shortTypeName(@typeName(T)) ++ "`");
+        }
+    }
     try types.append(allocator, .{
         .backing_type = if (info.layout == .@"packed")
             try typeNode(allocator, declaration, info.backing_integer.?, types, "packed struct backing integer")
@@ -2130,6 +2151,7 @@ fn appendValueStruct(
         fields[field_index] = .{
             .atomic = if (comptime atomicScalar(field.type) != null) true else null,
             .name = field.name,
+            .semantic = comptime fieldSemantic(field_meta, field.name),
             .type = if (info.layout == .@"packed")
                 try packedFieldTypeNode(allocator, declaration, field.type, types, "`" ++ comptime shortTypeName(@typeName(T)) ++ "` field `" ++ field.name ++ "`")
             else
@@ -2971,6 +2993,25 @@ test "an iterator opt-in records the wrapper name" {
     const bytes = try document.serialize(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"iterator\": {") != null);
+}
+
+test "field_meta records a codepoint hint on an extern struct member" {
+    const Glyph = extern struct { cp: u32, width: u8 };
+    const Fixture = struct {
+        pub fn measure(glyph: Glyph) Glyph {
+            return glyph;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = .{.{ .type = Glyph, .repr = .value, .field_meta = .{ .cp = .{ .semantic = .codepoint }, .width = .{ .semantic = .integer } } }},
+        .functions = .{.{ .path = "root.measure", .params = .{"glyph"} }},
+    }, "text", "zg");
+
+    try std.testing.expectEqual(semantic.SemanticHint.codepoint, document.types[0].fields[0].semantic.?);
+    try std.testing.expectEqual(@as(?semantic.SemanticHint, null), document.types[0].fields[1].semantic);
 }
 
 test "a value struct records its Go adapter" {

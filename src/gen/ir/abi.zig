@@ -615,6 +615,8 @@ pub const AbiStruct = struct {
         name: []const u8,
         scalar: AbiScalar,
         node: semantic.TypeNode,
+        /// The declared hint, which only the public mirror reads.
+        semantic: ?semantic.SemanticHint = null,
         /// Byte offset in the C mirror, which Go must reproduce exactly.
         offset: usize,
         bytes: usize,

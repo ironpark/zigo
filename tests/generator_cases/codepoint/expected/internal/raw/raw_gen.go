@@ -77,8 +77,37 @@ func TakeCodepoints() []uint32 {
 	C.zg_free_codepoints(outResultPtr, outResultLen)
 	return result
 }
+// Measure calls the generated C ABI wrapper for zg_measure.
+func Measure(glyph GlyphData) GlyphData {
+	var cglyph C.zg_glyph
+	cglyph.cp = C.uint32_t(glyph.Cp)
+	cglyph.width = C.uint8_t(glyph.Width)
+	var outResult C.zg_glyph
+	C.zg_measure(&cglyph, &outResult)
+	return GlyphData{
+		Cp: uint32(outResult.cp),
+		Width: uint8(outResult.width),
+	}
+}
+// CountWide calls the generated C ABI wrapper for zg_count_wide.
+func CountWide(glyphs []GlyphData) uint64 {
+	glyphsPtr := (*C.zg_glyph)(zigoSlicePtr(glyphs))
+	return uint64(C.zg_count_wide(glyphsPtr, C.size_t(len(glyphs))))
+}
 // FreeCodepoints calls the generated C ABI wrapper for zg_free_codepoints.
 func FreeCodepoints(values []uint32) {
 	valuesPtr := (*C.uint32_t)(zigoSlicePtr(values))
 	C.zg_free_codepoints(valuesPtr, C.size_t(len(values)))
 }
+
+// GlyphData mirrors the zg_glyph layout, padding included.
+type GlyphData struct {
+	Cp uint32
+	Width uint8
+	_ [3]byte
+}
+
+// GlyphData slices are copied from C memory as one run, so it must match zg_glyph byte for byte.
+var _ = [1]struct{}{}[unsafe.Sizeof(GlyphData{})-unsafe.Sizeof(C.zg_glyph{})]
+var _ = [1]struct{}{}[unsafe.Offsetof(GlyphData{}.Cp)-unsafe.Offsetof(C.zg_glyph{}.cp)]
+var _ = [1]struct{}{}[unsafe.Offsetof(GlyphData{}.Width)-unsafe.Offsetof(C.zg_glyph{}.width)]

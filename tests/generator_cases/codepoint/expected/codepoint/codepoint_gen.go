@@ -67,6 +67,20 @@ func TakeCodepoints() []rune {
 	return zigoUint32ToRunes(raw.TakeCodepoints())
 }
 
+// Measure: Measures a glyph and returns it with its width filled in.
+func Measure(glyph Glyph) Glyph {
+	return zigoGlyphFromRaw(raw.Measure(zigoGlyphToRaw(glyph)))
+}
+
+// CountWide: Counts the glyphs whose codepoint is wide.
+func CountWide(glyphs []Glyph) uint64 {
+	var glyphsRaw []raw.GlyphData
+	if len(glyphs) != 0 {
+		glyphsRaw = unsafe.Slice((*raw.GlyphData)(unsafe.Pointer(&glyphs[0])), len(glyphs))
+	}
+	return raw.CountWide(glyphsRaw)
+}
+
 // zigoRunesToUint32 views a []rune as the []uint32 the raw layer takes, without copying.
 func zigoRunesToUint32(values []rune) []uint32 {
 	return unsafe.Slice((*uint32)(unsafe.Pointer(unsafe.SliceData(values))), len(values))

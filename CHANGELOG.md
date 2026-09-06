@@ -23,6 +23,9 @@
   파라미터가 있는 함수도 `error`를 반환합니다. 다른 자리에 붙인 힌트는 `ZIGO053`입니다.
 - `zigo.define`의 `.codepoints = .infer_u21`로 모든 `u21` 파라미터·반환값을 코드포인트로
   추론하고, `.semantic = .integer`로 자리별 opt-out합니다.
+- `.repr = .value` 등록 항목의 `.field_meta = .{ .<field> = .{ .semantic = .codepoint } }`로
+  extern struct의 `u32` 필드를 mirror struct에서 `rune`으로 노출합니다. 배치가 같아 castable
+  여부는 바뀌지 않습니다.
 
 ### Changed
 
