@@ -69,12 +69,34 @@ Zig 텍스트 코드는 유니코드 코드포인트를 `u21`이나 `u32`로 다
 
 `[]rune`과 `[]uint32`는 메모리 배치가 같아 slice는 복사 없이 같은 메모리를 다시 해석합니다.
 `.out` slice는 호출자의 `[]rune`에 직접 쓰이고, caller-owned 반환은 Go가 복사해 둔
-`[]uint32`를 `[]rune`으로 봅니다. `u21`의 [입력 범위 검사](#입력-범위와-오류)는 유지되며
-`rune`이 부호 있는 타입이므로 음수도 `*RangeError`(`Type: "u21"`)입니다. `u32` 자리에는
-범위 검사가 없어 음수 `rune`이 그대로 `uint32`로 재해석됩니다.
+`[]uint32`를 `[]rune`으로 봅니다.
+
+코드포인트 파라미터(스칼라와 입력 slice)는 폭과 무관하게 Unicode 범위 `0..0x10FFFF`로
+검사됩니다. 음수 `rune`이나 `0x110000` 이상은 native를 부르지 않고
+`*RangeError{Type: "codepoint"}`(`ErrOutOfRange`)로 돌아오며, 그래서 `u32` 코드포인트
+파라미터가 있는 함수도 `error`를 하나 더 반환합니다. C ABI와 shim은 바뀌지 않습니다.
 
 힌트를 붙일 수 있는 자리는 위 표가 전부입니다. optional 파라미터, sentinel slice, struct
 필드, callback 파라미터, flatten 필드, 주입 파라미터에 붙이면 `ZIGO053`입니다.
+
+### u21 자동 추론
+
+Zig에서 `u21`은 거의 항상 코드포인트입니다. `zigo.define`에 `.codepoints = .infer_u21`을
+주면 `u21` 스칼라와 plain slice 파라미터·반환값(`!`, `?` 안 포함)이 힌트 없이도 코드포인트가
+됩니다. 정수로 남겨야 하는 자리는 `.semantic = .integer`로 opt-out합니다. 추론은 reflection
+단계에서 끝나므로 `semantic.json`에는 항상 명시적 `codepoint`가 기록되고 `.integer`는
+기록되지 않습니다. `u32`는 정수로 쓰이는 경우가 훨씬 많아 추론하지 않습니다.
+
+```zig
+pub const bindings = zigo.define(.{
+    .root = text,
+    .codepoints = .infer_u21,
+    .functions = .{
+        .{ .path = "root.width", .params = .{"cp"} }, // cp: u21 → rune
+        .{ .path = "root.bits", .params = .{"mask"}, .param_meta = .{ .mask = .{ .semantic = .integer } } },
+    },
+});
+```
 
 ## Enum 이름 지정
 

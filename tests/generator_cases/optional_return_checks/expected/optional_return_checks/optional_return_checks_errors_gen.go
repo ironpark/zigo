@@ -67,7 +67,8 @@ type RangeError struct {
 	Operation string
 	// Parameter names the offending Go parameter.
 	Parameter string
-	// Type is how Zig spells the integer the value has to fit, such as "u21".
+	// Type is how Zig spells the integer the value has to fit, such as "u21",
+	// or "codepoint" for a rune outside 0..0x10FFFF.
 	Type string
 }
 

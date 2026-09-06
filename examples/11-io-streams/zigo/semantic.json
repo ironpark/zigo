@@ -408,6 +408,7 @@
           "name": "values",
           "name_source": "sidecar",
           "retention": "borrowed",
+          "semantic": "codepoint",
           "source": {
             "line": 161,
             "column": 23

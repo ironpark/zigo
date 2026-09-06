@@ -318,8 +318,14 @@ pub const CallbackReentrancy = enum { allowed, forbidden };
 pub const CallbackThread = enum { caller, any };
 /// `codepoint` marks a `u21`/`u32` (or a plain slice of one) as a Unicode
 /// scalar value: the raw carrier stays `uint32`, and the public Go API spells
-/// it `rune`.
-pub const SemanticHint = enum { c_string, opaque_bytes, utf8_string, codepoint };
+/// it `rune`. `integer` is the opposite claim, for a `u21` a binding with
+/// `.codepoints = .infer_u21` would otherwise infer; reflection records it as
+/// no hint at all, so a document never carries it.
+pub const SemanticHint = enum { c_string, opaque_bytes, utf8_string, codepoint, integer };
+
+/// The largest Unicode scalar value. A codepoint position is checked against
+/// this rather than against the Zig integer's own range.
+pub const max_codepoint: u32 = 0x10FFFF;
 /// Who owns a function's result. `library` is reserved: no generator rule
 /// reads it, and it stays only so documents that spelled it still parse.
 pub const Ownership = enum { borrowed, caller, library };
@@ -974,6 +980,14 @@ pub fn isCodepoint(node: TypeNode, hint: ?SemanticHint) bool {
 /// over the same memory the raw `[]uint32` uses.
 pub fn isCodepointSlice(node: TypeNode, hint: ?SemanticHint) bool {
     return hint == .codepoint and node == .slice and node.slice.sentinel == null and isCodepointInt(node.slice.element.*);
+}
+
+/// Whether a parameter is a codepoint position Go has to range-check before
+/// the call: any scalar, or any input slice, marked `codepoint`.
+pub fn isCheckedCodepointParameter(parameter: Parameter) bool {
+    if (parameter.injected != null or parameter.flatten != null) return false;
+    if (isCodepoint(parameter.type, parameter.semantic)) return true;
+    return parameter.direction == .in and isCodepointSlice(parameter.type, parameter.semantic);
 }
 
 /// Either kind of string: both are rendered as a Go `string`.

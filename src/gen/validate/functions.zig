@@ -430,6 +430,13 @@ fn scalarAdapterIssue(allocator: std.mem.Allocator, function: semantic.SemanticF
 /// has no `rune` spelling to promise.
 fn codepointIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !?diagnostic.Diagnostic {
     for (function.params) |parameter| {
+        if (parameter.semantic == .integer) return .{
+            .severity = .@"error",
+            .code = "ZIGO053",
+            .message = try std.fmt.allocPrint(allocator, "`.semantic = .integer` on parameter `{s}` reached the document", .{parameter.name}),
+            .site = site.functionSite(function),
+            .hint = "`.integer` only opts a site out of `.codepoints = .infer_u21`; reflection drops it, so remove it from a hand-written semantic.json",
+        };
         if (parameter.semantic != .codepoint) continue;
         const plain = parameter.injected == null and parameter.flatten == null;
         if (plain and (semantic.isCodepoint(parameter.type, .codepoint) or semantic.isCodepointSlice(parameter.type, .codepoint))) continue;

@@ -13,8 +13,8 @@ import (
 // CodepointWidth: Reports the display width of a codepoint.
 // A native panic is returned as *NativePanicError.
 func CodepointWidth(cp rune) (int8, error) {
-	if cp < 0 || cp > 2097151 {
-		return 0, &RangeError{Operation: "CodepointWidth", Parameter: "cp", Type: "u21"}
+	if cp < 0 || cp > 1114111 {
+		return 0, &RangeError{Operation: "CodepointWidth", Parameter: "cp", Type: "codepoint"}
 	}
 	result, code := raw.CodepointWidth(uint32(cp))
 	if code != 0 {
@@ -24,8 +24,11 @@ func CodepointWidth(cp rune) (int8, error) {
 }
 
 // ToLower: Folds a codepoint to lower case.
-func ToLower(cp rune) rune {
-	return rune(raw.ToLower(uint32(cp)))
+func ToLower(cp rune) (rune, error) {
+	if cp < 0 || cp > 1114111 {
+		return 0, &RangeError{Operation: "ToLower", Parameter: "cp", Type: "codepoint"}
+	}
+	return rune(raw.ToLower(uint32(cp))), nil
 }
 
 // Decode: Decodes the next codepoint, or fails on malformed input.
@@ -47,8 +50,8 @@ func Peek() (rune, bool) {
 // SumCodepoints: Sums codepoints after narrowing them in the shim.
 func SumCodepoints(values []rune) (uint32, error) {
 	for _, zigoValue := range values {
-		if zigoValue < 0 || zigoValue > 2097151 {
-			return 0, &RangeError{Operation: "SumCodepoints", Parameter: "values", Type: "u21"}
+		if zigoValue < 0 || zigoValue > 1114111 {
+			return 0, &RangeError{Operation: "SumCodepoints", Parameter: "values", Type: "codepoint"}
 		}
 	}
 	return raw.SumCodepoints(zigoRunesToUint32(values)), nil

@@ -40,21 +40,21 @@ func TestCodepointWidth(t *testing.T) {
 	}
 }
 
-// A `u21` argument is a Go `rune` that travels in a `uint32`, so Go can hand
-// over a value the Zig type cannot hold, in either direction. The generated function checks the range itself and returns
+// A codepoint argument is a Go `rune` that travels in a `uint32`, so Go can
+// hand over a value that is not a Unicode scalar value, in either direction. The generated function checks the range itself and returns
 // a RangeError; the native library is never called, which is why the panic
 // message left behind by any earlier call is still whatever it was.
 func TestCodepointWidthOutOfRange(t *testing.T) {
-	_, err := CodepointWidth(1 << 21)
+	_, err := CodepointWidth(0x110000)
 	if !stderrors.Is(err, ErrOutOfRange) {
-		t.Fatalf("CodepointWidth(1<<21) error = %v, want ErrOutOfRange", err)
+		t.Fatalf("CodepointWidth(0x110000) error = %v, want ErrOutOfRange", err)
 	}
 	var rangeErr *RangeError
-	if !stderrors.As(err, &rangeErr) || rangeErr.Parameter != "cp" || rangeErr.Type != "u21" {
-		t.Fatalf("CodepointWidth(1<<21) error = %#v, want a RangeError naming cp and u21", err)
+	if !stderrors.As(err, &rangeErr) || rangeErr.Parameter != "cp" || rangeErr.Type != "codepoint" {
+		t.Fatalf("CodepointWidth(0x110000) error = %#v, want a RangeError naming cp and codepoint", err)
 	}
-	if !strings.Contains(err.Error(), "out of range for u21") {
-		t.Fatalf("CodepointWidth(1<<21) error = %q, want it to name the range", err)
+	if !strings.Contains(err.Error(), "out of range for codepoint") {
+		t.Fatalf("CodepointWidth(0x110000) error = %q, want it to name the range", err)
 	}
 	if message := ffi.LastErrorMessage(); message != "" {
 		t.Fatalf("LastErrorMessage() = %q, want empty: no native call was made", message)

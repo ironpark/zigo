@@ -145,6 +145,17 @@ fn writeRangeCheck(
 ) !void {
     const optional = type_node == .optional;
     const node = if (optional) type_node.optional.child.* else type_node;
+    // A codepoint is checked against Unicode, whatever width carries it: a
+    // `rune` is signed and `u32` holds far more than the scalar values.
+    if (semantic.isCodepoint(node, hint)) {
+        try writer.print("\tif {0s} < 0 || {0s} > {1d} {{\n\t\t", .{ name, semantic.max_codepoint });
+        var expression: std.Io.Writer.Allocating = .init(allocator);
+        defer expression.deinit();
+        try expression.writer.print("&RangeError{{Operation: \"{s}\", Parameter: \"{s}\", Type: \"codepoint\"}}", .{ operation, name });
+        try writeCheckedErrorReturn(scope, writer, function.origin.*, constructor, expression.written());
+        try writer.writeAll("\t}\n");
+        return;
+    }
     const narrow = abi.narrowInt(node) orelse return;
     const spelling: u8 = if (narrow.signed) 'i' else 'u';
     const deref: []const u8 = if (optional) "*" else "";
@@ -152,10 +163,6 @@ fn writeRangeCheck(
     if (narrow.signed) {
         const limit = @as(i128, 1) << @intCast(narrow.bits - 1);
         try writer.print("\tif {3s}{0s} < {1d} || {3s}{0s} > {2d} {{\n\t\t", .{ name, -limit, limit - 1, deref });
-    } else if (semantic.isCodepoint(node, hint)) {
-        // A `rune` is signed, so the unsigned Zig range needs both bounds.
-        const limit = (@as(u128, 1) << @intCast(narrow.bits)) - 1;
-        try writer.print("\tif {2s}{0s} < 0 || {2s}{0s} > {1d} {{\n\t\t", .{ name, limit, deref });
     } else {
         const limit = (@as(u128, 1) << @intCast(narrow.bits)) - 1;
         try writer.print("\tif {2s}{0s} > {1d} {{\n\t\t", .{ name, limit, deref });
@@ -190,6 +197,16 @@ pub fn renderRangeChecks(
             }
             continue;
         }
+        if (parameter.direction == .in and semantic.isCodepointSlice(parameter.type, parameter.semantic)) {
+            const name = go_names[parameter_index];
+            try writer.print("\tfor _, zigoValue := range {s} {{\n\t\tif zigoValue < 0 || zigoValue > {d} {{\n\t\t\t", .{ name, semantic.max_codepoint });
+            var expression: std.Io.Writer.Allocating = .init(allocator);
+            defer expression.deinit();
+            try expression.writer.print("&RangeError{{Operation: \"{s}\", Parameter: \"{s}\", Type: \"codepoint\"}}", .{ operation, name });
+            try writeCheckedErrorReturn(scope, writer, function.origin.*, constructor, expression.written());
+            try writer.writeAll("\t\t}\n\t}\n");
+            continue;
+        }
         if (parameter.direction == .in) if (abi.narrowSliceElement(parameter.type)) |element| {
             const narrow = element.int;
             const name = go_names[parameter_index];
@@ -198,9 +215,6 @@ pub fn renderRangeChecks(
             if (narrow.signed) {
                 const limit = @as(i128, 1) << @intCast(narrow.bits - 1);
                 try writer.print("\t\tif zigoValue < {d} || zigoValue > {d} {{\n\t\t\t", .{ -limit, limit - 1 });
-            } else if (semantic.isCodepointSlice(parameter.type, parameter.semantic)) {
-                const limit = (@as(u128, 1) << @intCast(narrow.bits)) - 1;
-                try writer.print("\t\tif zigoValue < 0 || zigoValue > {d} {{\n\t\t\t", .{limit});
             } else {
                 const limit = (@as(u128, 1) << @intCast(narrow.bits)) - 1;
                 try writer.print("\t\tif zigoValue > {d} {{\n\t\t\t", .{limit});
@@ -264,6 +278,8 @@ pub fn writeCheckedFunctionReturnType(scope: PublicScope, writer: *std.Io.Writer
         try writer.print("*{s}Ref", .{function.@"return".opaque_ptr.ref});
     } else if (function.return_go_adapter) |adapter| {
         try writer.writeAll(adapter.type);
+    } else if (codepointTypeName(function.@"return", function.return_semantic)) |name| {
+        try writer.writeAll(name);
     } else {
         try writePublicGoType(scope, writer, function.@"return");
     }

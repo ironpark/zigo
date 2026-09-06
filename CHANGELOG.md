@@ -18,8 +18,11 @@
 
 - `param_meta`와 함수 메타데이터의 `.semantic = .codepoint`로 `u21`/`u32` 스칼라와 그 plain
   slice를 Go `rune`·`[]rune`으로 노출합니다. raw 계층과 C ABI는 `uint32` 그대로이고 slice는
-  복사 없이 같은 메모리를 다시 해석하며, `u21`의 범위 검사는 음수 `rune`까지 잡습니다. 다른
-  자리에 붙인 힌트는 `ZIGO053`입니다.
+  복사 없이 같은 메모리를 다시 해석합니다. 코드포인트 파라미터는 폭과 무관하게 Unicode 범위
+  `0..0x10FFFF`로 검사되어 `*RangeError{Type: "codepoint"}`를 돌려주므로 `u32` 코드포인트
+  파라미터가 있는 함수도 `error`를 반환합니다. 다른 자리에 붙인 힌트는 `ZIGO053`입니다.
+- `zigo.define`의 `.codepoints = .infer_u21`로 모든 `u21` 파라미터·반환값을 코드포인트로
+  추론하고, `.semantic = .integer`로 자리별 opt-out합니다.
 
 ### Changed
 

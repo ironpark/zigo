@@ -179,8 +179,8 @@ func Tee(r io.Reader, w io.Writer) (uint, error) {
 // element into the `u21` representation used by Zig text code.
 func SumCodepoints(values []rune) (uint32, error) {
 	for _, zigoValue := range values {
-		if zigoValue < 0 || zigoValue > 2097151 {
-			return 0, &RangeError{Operation: "SumCodepoints", Parameter: "values", Type: "u21"}
+		if zigoValue < 0 || zigoValue > 1114111 {
+			return 0, &RangeError{Operation: "SumCodepoints", Parameter: "values", Type: "codepoint"}
 		}
 	}
 	return raw.SumCodepoints(zigoRunesToUint32(values)), nil

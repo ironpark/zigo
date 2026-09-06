@@ -36,6 +36,7 @@ pub const bindings = zigo.define(.{
 | `root` | 경로를 해석할 기준 module. 항상 필요 |
 | `types` | opaque handle, extern struct 값, enum, tagged union, callback 등록 |
 | `functions` | 노출할 함수와 추가 메타데이터 |
+| `codepoints` | `.infer_u21`이면 모든 `u21`을 Go `rune`으로 추론 ([코드포인트](bindings-types.md#u21-자동-추론)) |
 
 `root.<name>`은 module 자유 함수를, `<Type>.<name>`은 등록 타입의 함수를 가리킵니다. 경로가
 공개 함수를 가리키지 않으면 compile error입니다. 함수 항목의 `.name`은 경로가 아니라 생성할

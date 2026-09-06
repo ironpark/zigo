@@ -848,6 +848,7 @@ fn appendFunction(
         // without sidecar metadata. The unsentinel `[][]const u8` spelling is
         // intentionally opt-in through `.semantic = .utf8_string`.
         if (isSentinelStringSlice(param.type.?)) reflected.semantic = .utf8_string;
+        reflected.semantic = resolveCodepointHint(declaration, reflected.semantic, reflected.type);
         params[output_index] = reflected;
     }
     // A Zig `init` that returns its value has no C representation, so with an
@@ -897,6 +898,7 @@ fn appendFunction(
         reflected_function.child_of_receiver = true;
     if (boxed_type != null) reflected_function.ownership = .caller;
     if (@hasField(@TypeOf(metadata), "semantic")) reflected_function.return_semantic = metadata.semantic;
+    reflected_function.return_semantic = resolveCodepointHint(declaration, reflected_function.return_semantic, reflected_function.@"return".errorPayload());
     if (@hasField(@TypeOf(metadata), "go")) reflected_function.return_go_adapter = comptime goAdapterValue(metadata.go);
     if (@hasField(@TypeOf(metadata), "returns")) {
         reflected_function.ownership = metadata.returns;
@@ -1252,6 +1254,31 @@ pub fn isNestedContainer(comptime Container: type, comptime Child: type) bool {
     return child.len > parent.len + 1 and
         std.mem.startsWith(u8, child, parent) and child[parent.len] == '.' and
         std.mem.indexOfScalar(u8, child[parent.len + 1 ..], '.') == null;
+}
+
+/// Whether the binding asked for every `u21` to be a codepoint.
+pub fn infersCodepoints(comptime declaration: anytype) bool {
+    if (!@hasField(@TypeOf(declaration), "codepoints")) return false;
+    if (declaration.codepoints != .explicit and declaration.codepoints != .infer_u21)
+        @compileError("zigo `.codepoints` must be `.explicit` or `.infer_u21`");
+    return declaration.codepoints == .infer_u21;
+}
+
+/// The hint a position ends up with once inference and the `.integer`
+/// opt-out are applied. `.integer` never reaches the document: it only stops
+/// inference, so the recorded hint is null. Inference marks a `u21` scalar or
+/// plain slice of `u21`, in either direction and through `!`/`?`.
+fn resolveCodepointHint(comptime declaration: anytype, hint: ?semantic.SemanticHint, node: semantic.TypeNode) ?semantic.SemanticHint {
+    if (hint == .integer) return null;
+    if (hint != null or !comptime infersCodepoints(declaration)) return hint;
+    const scalar = if (node == .optional) node.optional.child.* else node;
+    if (isNarrowCodepointInt(scalar)) return .codepoint;
+    if (node == .slice and node.slice.sentinel == null and isNarrowCodepointInt(node.slice.element.*)) return .codepoint;
+    return hint;
+}
+
+fn isNarrowCodepointInt(node: semantic.TypeNode) bool {
+    return node == .int and !node.int.signed and !node.int.is_usize and node.int.bits == 21;
 }
 
 pub fn discoveryEnabled(comptime declaration: anytype) bool {
@@ -3023,6 +3050,43 @@ test "codepoint hints are recorded on parameters and returns" {
     try std.testing.expectEqual(semantic.SemanticHint.codepoint, document.functions[0].return_semantic.?);
     try std.testing.expectEqual(semantic.SemanticHint.codepoint, document.functions[1].params[0].semantic.?);
     try std.testing.expectEqual(@as(?semantic.SemanticHint, null), document.functions[1].return_semantic);
+}
+
+test "infer_u21 marks u21 positions as codepoints unless the site says integer" {
+    const Fixture = struct {
+        pub fn width(cp: u21) u21 {
+            return cp;
+        }
+        pub fn sum(values: []const u21) u32 {
+            return @intCast(values.len);
+        }
+        pub fn bits(mask: u21) ?u21 {
+            return mask;
+        }
+        pub fn wide(cp: u32) u32 {
+            return cp;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .codepoints = .infer_u21,
+        .functions = .{
+            .{ .path = "root.width", .params = .{"cp"} },
+            .{ .path = "root.sum", .params = .{"values"} },
+            .{ .path = "root.bits", .params = .{"mask"}, .semantic = .integer, .param_meta = .{ .mask = .{ .semantic = .integer } } },
+            .{ .path = "root.wide", .params = .{"cp"} },
+        },
+    }, "text", "zg");
+
+    try std.testing.expectEqual(semantic.SemanticHint.codepoint, document.functions[0].params[0].semantic.?);
+    try std.testing.expectEqual(semantic.SemanticHint.codepoint, document.functions[0].return_semantic.?);
+    try std.testing.expectEqual(semantic.SemanticHint.codepoint, document.functions[1].params[0].semantic.?);
+    try std.testing.expectEqual(@as(?semantic.SemanticHint, null), document.functions[1].return_semantic);
+    try std.testing.expectEqual(@as(?semantic.SemanticHint, null), document.functions[2].params[0].semantic);
+    try std.testing.expectEqual(@as(?semantic.SemanticHint, null), document.functions[2].return_semantic);
+    try std.testing.expectEqual(@as(?semantic.SemanticHint, null), document.functions[3].params[0].semantic);
 }
 
 test "a registered enum records the text encoding opt-in" {

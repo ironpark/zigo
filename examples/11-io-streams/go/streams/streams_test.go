@@ -248,7 +248,7 @@ func TestNarrowIntegerSlices(t *testing.T) {
 		t.Fatalf("TakeCodepoints = %#v", owned)
 	}
 
-	if _, err := SumCodepoints([]rune{0x200000}); !errors.Is(err, ErrOutOfRange) {
+	if _, err := SumCodepoints([]rune{0x110000}); !errors.Is(err, ErrOutOfRange) {
 		t.Fatalf("out-of-range SumCodepoints returned %v", err)
 	}
 	if _, err := SumCodepoints([]rune{-1}); !errors.Is(err, ErrOutOfRange) {

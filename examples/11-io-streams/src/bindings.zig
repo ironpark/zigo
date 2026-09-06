@@ -4,6 +4,9 @@ const library = @import("streams");
 pub const bindings = zigo.define(.{
     .allocator = .c_allocator,
     .root = library,
+    // Every `u21` in this library is a codepoint, so the binding says so once
+    // instead of at each site.
+    .codepoints = .infer_u21,
     .types = .{
         .{ .type = library.Document, .repr = .@"opaque" },
         .{ .type = library.Sink, .repr = .@"opaque" },
@@ -22,15 +25,16 @@ pub const bindings = zigo.define(.{
         .{ .path = "Document.load", .params = .{"r"}, .param_meta = .{ .r = .{ .buffer = 4096 } } },
         .{ .path = "root.banner", .params = .{ "w", "width" } },
         .{ .path = "root.tee", .params = .{ "r", "w" } },
-        // `.semantic = .codepoint` spells these `[]u21` as Go `[]rune` over
-        // the same memory the raw `[]uint32` uses; the u21 range check stays.
-        .{ .path = "root.sumCodepoints", .params = .{"values"}, .param_meta = .{ .values = .{ .semantic = .codepoint } } },
+        // Inferred codepoints: these `[]u21` are Go `[]rune` over the same
+        // memory the raw `[]uint32` uses, and inputs are checked against the
+        // Unicode range.
+        .{ .path = "root.sumCodepoints", .params = .{"values"} },
         .{
             .path = "root.fillCodepoints",
             .params = .{"output"},
-            .param_meta = .{ .output = .{ .direction = .out, .semantic = .codepoint } },
+            .param_meta = .{ .output = .{ .direction = .out } },
         },
-        .{ .path = "root.takeCodepoints", .returns = .caller, .release = "root.freeCodepoints", .semantic = .codepoint },
+        .{ .path = "root.takeCodepoints", .returns = .caller, .release = "root.freeCodepoints" },
         .{ .path = "root.freeCodepoints", .params = .{"values"} },
         // A method that hands a stream out. It generates `Write` and `Flush`
         // on the handle rather than a Go value standing for the pointer, so

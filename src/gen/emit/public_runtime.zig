@@ -199,7 +199,7 @@ fn renderGoSentinels(writer: *std.Io.Writer, set: SentinelSet, options: emit.Opt
             "type RangeError struct {\n" ++
             "\t// Operation names the generated call.\n\tOperation string\n" ++
             "\t// Parameter names the offending Go parameter.\n\tParameter string\n" ++
-            "\t// Type is how Zig spells the integer the value has to fit, such as \"u21\".\n\tType string\n" ++
+            "\t// Type is how Zig spells the integer the value has to fit, such as \"u21\",\n\t// or \"codepoint\" for a rune outside 0..0x10FFFF.\n\tType string\n" ++
             "}\n\n" ++
             "// Error implements error.\nfunc (err *RangeError) Error() string {\n" ++
             "\treturn \"zigo: \" + err.Operation + \": argument \" + err.Parameter + \" is out of range for \" + err.Type\n" ++

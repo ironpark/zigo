@@ -599,6 +599,9 @@ pub fn functionHasStream(function: semantic.SemanticFn) bool {
 pub fn hasNarrowIntParameter(function: semantic.SemanticFn) bool {
     for (function.params) |parameter| {
         if (abi.narrowInt(parameter.type) != null) return true;
+        // A codepoint is checked against Unicode, so even a `u32` one can be
+        // out of range.
+        if (semantic.isCheckedCodepointParameter(parameter)) return true;
         if (parameter.direction == .in and abi.narrowSliceElement(parameter.type) != null) return true;
         if (parameter.flatten) |fields| for (fields) |field| {
             const node = if (field.type == .optional) field.type.optional.child.* else field.type;
