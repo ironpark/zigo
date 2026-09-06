@@ -6,6 +6,29 @@
 
 ## [Unreleased]
 
+### Added
+
+- materialized 결과 트리가 `[N]T` 배열, `[][]T` 중첩 slice, 등록 `extern struct` 값,
+  `.field_meta`의 `.opaque_bytes` 힌트를 붙인 `[]byte`, optional `extern struct`와 optional
+  내장 노드(`?Leaf`) 필드를 지원합니다.
+- materialized 결과 트리의 필드에 optional scalar(`?i32`, `?bool`, `?f64`, `?Enum`)와
+  optional string(`?[]const u8`)을 허용합니다. presence 바이트 또는 offset 0으로
+  없음을 표현하고 Go에서는 `*T`, `*string`으로 디코딩합니다. `T`↔`?T` 변경은 breaking입니다.
+- `.repr = .enumeration` 타입 항목이 `.covers`를 받아, 생성된 Go enum이 대신하는 Zig 메서드를
+  `go-coverage`에서 `wrapped`로 셉니다.
+- bool 파라미터나 결과를 가진 콜백을 두 백엔드 모두 지원합니다. wire는 `u8`이고 native 콜백은
+  `bool`이므로 shim thunk가 `@intFromBool`로 넓히고 `!= 0`으로 좁히며, Go handle 생성자가
+  저장된 함수를 raw 타입에 맞춥니다. purego도 bool 결과 콜백을 받습니다(`ZIGO014`).
+
+### Changed
+
+- **Breaking**: materialized 버퍼 layout이 version 2가 됐습니다. 필드는 자연 폭·정렬로 저장되고
+  (`i16` 2바이트, bool 1바이트, slice 원소도 원소 폭), record는 8바이트 정렬입니다. magic이
+  `0x0002_4f47495a`로 바뀌며 `abi-check`가 breaking으로 보고합니다. Go 소스를 재생성하고
+  네이티브 라이브러리와 함께 배포하세요.
+- materialized 결과를 Go가 native 버퍼에서 바로 디코딩합니다. raw 계층의 전체 버퍼 복사가 사라지고
+  `.out` slice 결과는 호출자 slice에 직접 디코딩됩니다.
+
 ## [0.12.1] - 2026-09-06
 
 ### Fixed
@@ -88,14 +111,6 @@
 
 ### Added
 
-- materialized 결과 트리가 `[N]T` 배열, `[][]T` 중첩 slice, 등록 `extern struct` 값,
-  `.field_meta`의 `.opaque_bytes` 힌트를 붙인 `[]byte`, optional `extern struct`와 optional
-  내장 노드(`?Leaf`) 필드를 지원합니다.
-- `.repr = .enumeration` 타입 항목이 `.covers`를 받아, 생성된 Go enum이 대신하는 Zig 메서드를
-  `go-coverage`에서 `wrapped`로 셉니다.
-- materialized 결과 트리의 필드에 optional scalar(`?i32`, `?bool`, `?f64`, `?Enum`)와
-  optional string(`?[]const u8`)을 허용합니다. 슬롯의 presence 워드 또는 offset 0으로
-  없음을 표현하고 Go에서는 `*T`, `*string`으로 디코딩합니다. `T`↔`?T` 변경은 breaking입니다.
 - `addGoBindings`의 `targets`로 한 cgo 바인딩 세트가 여러 `GOOS`/`GOARCH`용 네이티브
   라이브러리를 빌드합니다. Go 소스는 한 번 생성되고, raw 패키지는 타깃마다
   `#cgo <goos>,<goarch> LDFLAGS:` 줄을 가지며 각 라이브러리와 정적 링크 입력은
@@ -125,12 +140,6 @@
 
 ### Changed
 
-- **Breaking**: materialized 버퍼 layout이 version 2가 됐습니다. 필드는 자연 폭·정렬로 저장되고
-  (`i16` 2바이트, bool 1바이트, slice 원소도 원소 폭), record는 8바이트 정렬입니다. magic이
-  `0x0002_4f47495a`로 바뀌며 `abi-check`가 breaking으로 보고합니다. Go 소스를 재생성하고
-  네이티브 라이브러리와 함께 배포하세요.
-- materialized 결과를 Go가 native 버퍼에서 바로 디코딩합니다. raw 계층의 전체 버퍼 복사가 사라지고
-  `.out` slice 결과는 호출자 slice에 직접 디코딩됩니다.
 - 외부 도구 실행 결과와 doctor 표시 로직을 분리하고, 스트림·Materialized의 생성 및
   레이아웃 결정 코드를 책임별 모듈로 정리했습니다. 공개 API와 생성물은 변경하지 않습니다.
 - 소유권 판정과 Go 핸들 수명 관리 코드 생성을 전용 모듈로 분리했습니다.
