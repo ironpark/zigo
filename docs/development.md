@@ -219,6 +219,16 @@ zig build shared-library-smoke -- \
 
    `git status --short examples`가 비어 있어야 합니다. CI의 purego 잡은 이 검사와 같은
    `purego-go-verify`를 실행하므로, 여기서 빠뜨리면 릴리즈 뒤 CI가 실패합니다.
+   CI의 `test` 잡은 예제 Go 모듈마다 `staticcheck -checks U1000 ./...`도 돌려 참조되지 않는
+   생성 헬퍼와 사용자 함수를 잡습니다. 같은 검사를 로컬에서 먼저 돌리세요(`staticcheck`는
+   Go 툴체인과 맞는 최신 버전이어야 합니다):
+
+   ```bash
+   while IFS= read -r module; do
+     (cd "${module%/go.mod}" && staticcheck -checks U1000 ./...)
+   done < <(find examples -maxdepth 4 -name go.mod -print | sort)
+   ```
+
 6. **CI 경로 확인**: 예제의 `install` 배치나 `targets`를 바꿨다면
    [`.github/workflows/ci.yml`](../.github/workflows/ci.yml)의 "Inspect the shared artifacts"
    목록과 Windows 잡의 `test -f` 경로가 새 라이브러리 위치(예:
