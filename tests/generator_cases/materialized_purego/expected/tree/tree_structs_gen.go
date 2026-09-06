@@ -20,7 +20,7 @@ type Leaf struct {
 	Labels []string
 }
 
-const zigoMaterializedMagicVersion = uint64(0x00014f47495a)
+const zigoMaterializedMagicVersion = uint64(0x00024f47495a)
 
 func zigoMaterializedU64(buffer []byte, offset uint64) uint64 {
 	if offset > uint64(len(buffer)) || uint64(len(buffer))-offset < 8 {
@@ -34,6 +34,15 @@ func zigoMaterializedBytes(buffer []byte, offset, length uint64) []byte {
 		panic("zigo: invalid materialized result buffer")
 	}
 	return buffer[int(offset):int(offset+length)]
+}
+
+// zigoMaterializedWord reads a little-endian value of width bytes.
+func zigoMaterializedWord(buffer []byte, offset, width uint64) uint64 {
+	var value uint64
+	for i, b := range zigoMaterializedBytes(buffer, offset, width) {
+		value |= uint64(b) << (8 * uint(i))
+	}
+	return value
 }
 
 func zigoMaterializedArray(buffer []byte, offset, count, stride uint64) []byte {
@@ -54,61 +63,70 @@ func zigoMaterializedHeader(buffer []byte, layout uint64) (uint64, uint64) {
 func zigoDecodeRootBuffer(buffer []byte) Root {
 	offset, count := zigoMaterializedHeader(buffer, 0)
 	if count != 1 { panic("zigo: invalid materialized result buffer") }
-	return zigoDecodeRootAt(buffer, offset)
+	var result Root
+	zigoDecodeRootInto(buffer, offset, &result)
+	return result
 }
 
 func zigoDecodeRootSliceBuffer(buffer []byte) []Root {
 	offset, count := zigoMaterializedHeader(buffer, 0)
 	_ = zigoMaterializedArray(buffer, offset, count, 8)
 	result := make([]Root, int(count))
-	for i := range result { result[i] = zigoDecodeRootAt(buffer, zigoMaterializedU64(buffer, offset+uint64(i)*8)) }
+	for i := range result { zigoDecodeRootInto(buffer, zigoMaterializedU64(buffer, offset+uint64(i)*8), &result[i]) }
 	return result
 }
 
-func zigoDecodeRootAt(buffer []byte, offset uint64) Root {
-	_ = zigoMaterializedBytes(buffer, offset, 80)
-	var result Root
-	zigoCountOffset := zigoMaterializedU64(buffer, offset+0)
-	result.Count = uint(zigoCountOffset)
-	zigoNameOffset := zigoMaterializedU64(buffer, offset+16)
-	zigoNameCount := zigoMaterializedU64(buffer, offset+24)
-	result.Name = string(zigoMaterializedBytes(buffer, zigoNameOffset, zigoNameCount))
-	zigoChildOffset := zigoMaterializedU64(buffer, offset+32)
-	zigoChildValue := zigoDecodeLeafAt(buffer, zigoChildOffset)
-	result.Child = &zigoChildValue
-	zigoMaybeOffset := zigoMaterializedU64(buffer, offset+48)
-	if zigoMaybeOffset != 0 {
-	zigoMaybeValue := zigoDecodeLeafAt(buffer, zigoMaybeOffset)
-	result.Maybe = &zigoMaybeValue
+func zigoDecodeRootInto(buffer []byte, offset uint64, result *Root) {
+	_ = zigoMaterializedBytes(buffer, offset, 56)
+	result.Count = uint(zigoMaterializedU64(buffer, offset+0))
+	result.Name = string(zigoMaterializedBytes(buffer, zigoMaterializedU64(buffer, offset+8), zigoMaterializedU64(buffer, offset+8+8)))
+	{
+	zigoOff0 := zigoMaterializedU64(buffer, offset+24)
+	var zigoVal0 Leaf
+	zigoDecodeLeafInto(buffer, zigoOff0, &zigoVal0)
+	result.Child = &zigoVal0
 	}
-	zigoChildrenOffset := zigoMaterializedU64(buffer, offset+64)
-	_ = zigoMaterializedArray(buffer, zigoChildrenOffset, zigoMaterializedU64(buffer, offset+72), 8)
-	zigoChildrenCount := zigoMaterializedU64(buffer, offset+72)
-	result.Children = make([]Leaf, int(zigoChildrenCount))
-	for i := range result.Children { result.Children[i] = zigoDecodeLeafAt(buffer, zigoMaterializedU64(buffer, zigoChildrenOffset+uint64(i)*8)) }
-	return result
+	{
+	zigoOff0 := zigoMaterializedU64(buffer, offset+32)
+	if zigoOff0 != 0 {
+	var zigoVal0 Leaf
+	zigoDecodeLeafInto(buffer, zigoOff0, &zigoVal0)
+	result.Maybe = &zigoVal0
+	}
+	}
+	{
+	zigoOff0 := zigoMaterializedU64(buffer, offset+40)
+	zigoCount0 := zigoMaterializedU64(buffer, offset+40+8)
+	_ = zigoMaterializedArray(buffer, zigoOff0, zigoCount0, 8)
+	result.Children = make([]Leaf, int(zigoCount0))
+	for zigoI0 := range result.Children {
+	{
+	zigoOff1 := zigoMaterializedU64(buffer, zigoOff0+uint64(zigoI0)*8)
+	zigoDecodeLeafInto(buffer, zigoOff1, &result.Children[zigoI0])
+	}
+	}
+	}
 }
 
-func zigoDecodeLeafAt(buffer []byte, offset uint64) Leaf {
-	_ = zigoMaterializedBytes(buffer, offset, 48)
-	var result Leaf
-	zigoOkOffset := zigoMaterializedU64(buffer, offset+0)
-	result.Ok = zigoOkOffset != 0
-	zigoValuesOffset := zigoMaterializedU64(buffer, offset+16)
-	_ = zigoMaterializedArray(buffer, zigoValuesOffset, zigoMaterializedU64(buffer, offset+24), 8)
-	zigoValuesCount := zigoMaterializedU64(buffer, offset+24)
-	result.Values = make([]int32, int(zigoValuesCount))
-	for i := range result.Values {
-		zigoValue := zigoMaterializedU64(buffer, zigoValuesOffset+uint64(i)*8)
-		result.Values[i] = int32(zigoValue)
+func zigoDecodeLeafInto(buffer []byte, offset uint64, result *Leaf) {
+	_ = zigoMaterializedBytes(buffer, offset, 40)
+	result.Ok = zigoMaterializedWord(buffer, offset+0, 1) != 0
+	{
+	zigoOff0 := zigoMaterializedU64(buffer, offset+8)
+	zigoCount0 := zigoMaterializedU64(buffer, offset+8+8)
+	_ = zigoMaterializedArray(buffer, zigoOff0, zigoCount0, 4)
+	result.Values = make([]int32, int(zigoCount0))
+	for zigoI0 := range result.Values {
+	result.Values[zigoI0] = int32(zigoMaterializedWord(buffer, zigoOff0+uint64(zigoI0)*4, 4))
 	}
-	zigoLabelsOffset := zigoMaterializedU64(buffer, offset+32)
-	_ = zigoMaterializedArray(buffer, zigoLabelsOffset, zigoMaterializedU64(buffer, offset+40), 16)
-	zigoLabelsCount := zigoMaterializedU64(buffer, offset+40)
-	result.Labels = make([]string, int(zigoLabelsCount))
-	for i := range result.Labels {
-		zigoItem := zigoLabelsOffset + uint64(i)*16
-		result.Labels[i] = string(zigoMaterializedBytes(buffer, zigoMaterializedU64(buffer, zigoItem), zigoMaterializedU64(buffer, zigoItem+8)))
 	}
-	return result
+	{
+	zigoOff0 := zigoMaterializedU64(buffer, offset+24)
+	zigoCount0 := zigoMaterializedU64(buffer, offset+24+8)
+	_ = zigoMaterializedArray(buffer, zigoOff0, zigoCount0, 16)
+	result.Labels = make([]string, int(zigoCount0))
+	for zigoI0 := range result.Labels {
+	result.Labels[zigoI0] = string(zigoMaterializedBytes(buffer, zigoMaterializedU64(buffer, zigoOff0+uint64(zigoI0)*16), zigoMaterializedU64(buffer, zigoOff0+uint64(zigoI0)*16+8)))
+	}
+	}
 }

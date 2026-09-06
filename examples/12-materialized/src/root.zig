@@ -2,6 +2,8 @@ const std = @import("std");
 
 pub const Status = enum(u8) { ready, busy };
 
+pub const Point = extern struct { x: i32, y: i32 };
+
 pub const Leaf = struct {
     value: i32,
     enabled: bool,
@@ -23,6 +25,11 @@ pub const Probe = struct {
     children: []const Leaf,
     weight: ?f64,
     note: ?[]const u8,
+    origin: Point,
+    matrix: []const []const i32,
+    raw: []const u8,
+    flags: [3]bool,
+    spare: ?Leaf,
 };
 
 const samples = [_]f64{ 1.25, -2.5, 9.75 };
@@ -46,7 +53,15 @@ const probe = Probe{
     .children = &children,
     .weight = 0.5,
     .note = null,
+    .origin = .{ .x = -3, .y = 9 },
+    .matrix = &matrix,
+    .raw = &.{ 0, 255, 7 },
+    .flags = .{ true, false, true },
+    .spare = leaf,
 };
+const row_a = [_]i32{ 1, 2 };
+const row_b = [_]i32{3};
+const matrix = [_][]const i32{ &row_a, &row_b };
 const corpus = [_]Probe{probe} ** 128;
 
 pub fn snapshot() Probe {

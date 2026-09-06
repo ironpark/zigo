@@ -5,6 +5,9 @@ package materialized
 import (
 	"encoding/binary"
 	"math"
+	"unsafe"
+
+	"example.com/zigo/materialized/internal/raw"
 )
 
 // Leaf is an owned Go snapshot of the Zig struct of the same name.
@@ -30,9 +33,14 @@ type Probe struct {
 	Children []Leaf
 	Weight   *float64
 	Note     *string
+	Origin   Point
+	Matrix   [][]int32
+	Raw      []byte
+	Flags    []bool
+	Spare    *Leaf
 }
 
-const zigoMaterializedMagicVersion = uint64(0x00014f47495a)
+const zigoMaterializedMagicVersion = uint64(0x00024f47495a)
 
 func zigoMaterializedU64(buffer []byte, offset uint64) uint64 {
 	if offset > uint64(len(buffer)) || uint64(len(buffer))-offset < 8 {
@@ -46,6 +54,15 @@ func zigoMaterializedBytes(buffer []byte, offset, length uint64) []byte {
 		panic("zigo: invalid materialized result buffer")
 	}
 	return buffer[int(offset):int(offset+length)]
+}
+
+// zigoMaterializedWord reads a little-endian value of width bytes.
+func zigoMaterializedWord(buffer []byte, offset, width uint64) uint64 {
+	var value uint64
+	for i, b := range zigoMaterializedBytes(buffer, offset, width) {
+		value |= uint64(b) << (8 * uint(i))
+	}
+	return value
 }
 
 func zigoMaterializedArray(buffer []byte, offset, count, stride uint64) []byte {
@@ -63,30 +80,27 @@ func zigoMaterializedHeader(buffer []byte, layout uint64) (uint64, uint64) {
 	return zigoMaterializedU64(buffer, 24), zigoMaterializedU64(buffer, 16)
 }
 
-func zigoDecodeLeafAt(buffer []byte, offset uint64) Leaf {
-	_ = zigoMaterializedBytes(buffer, offset, 80)
-	var result Leaf
-	zigoValueOffset := zigoMaterializedU64(buffer, offset+0)
-	result.Value = int32(zigoValueOffset)
-	zigoEnabledOffset := zigoMaterializedU64(buffer, offset+16)
-	result.Enabled = zigoEnabledOffset != 0
-	zigoLabelOffset := zigoMaterializedU64(buffer, offset+32)
-	zigoLabelCount := zigoMaterializedU64(buffer, offset+40)
-	result.Label = string(zigoMaterializedBytes(buffer, zigoLabelOffset, zigoLabelCount))
-	zigoSamplesOffset := zigoMaterializedU64(buffer, offset+48)
-	_ = zigoMaterializedArray(buffer, zigoSamplesOffset, zigoMaterializedU64(buffer, offset+56), 8)
-	zigoSamplesCount := zigoMaterializedU64(buffer, offset+56)
-	result.Samples = make([]float64, int(zigoSamplesCount))
-	for i := range result.Samples {
-		zigoValue := zigoMaterializedU64(buffer, zigoSamplesOffset+uint64(i)*8)
-		result.Samples[i] = math.Float64frombits(uint64(zigoValue))
+func zigoDecodeLeafInto(buffer []byte, offset uint64, result *Leaf) {
+	_ = zigoMaterializedBytes(buffer, offset, 56)
+	result.Value = int32(zigoMaterializedWord(buffer, offset+0, 4))
+	result.Enabled = zigoMaterializedWord(buffer, offset+4, 1) != 0
+	result.Label = string(zigoMaterializedBytes(buffer, zigoMaterializedU64(buffer, offset+8), zigoMaterializedU64(buffer, offset+8+8)))
+	{
+		zigoOff0 := zigoMaterializedU64(buffer, offset+24)
+		zigoCount0 := zigoMaterializedU64(buffer, offset+24+8)
+		_ = zigoMaterializedArray(buffer, zigoOff0, zigoCount0, 8)
+		result.Samples = make([]float64, int(zigoCount0))
+		for zigoI0 := range result.Samples {
+			result.Samples[zigoI0] = math.Float64frombits(uint64(zigoMaterializedU64(buffer, zigoOff0+uint64(zigoI0)*8)))
+		}
 	}
-	zigoAliasOffset := zigoMaterializedU64(buffer, offset+64)
-	if zigoAliasOffset != 0 {
-		zigoAliasValue := string(zigoMaterializedBytes(buffer, zigoAliasOffset, zigoMaterializedU64(buffer, offset+72)))
-		result.Alias = &zigoAliasValue
+	{
+		zigoOff0 := zigoMaterializedU64(buffer, offset+40)
+		if zigoOff0 != 0 {
+			zigoVal0 := string(zigoMaterializedBytes(buffer, zigoOff0, zigoMaterializedU64(buffer, offset+40+8)))
+			result.Alias = &zigoVal0
+		}
 	}
-	return result
 }
 
 func zigoDecodeProbeBuffer(buffer []byte) Probe {
@@ -94,7 +108,9 @@ func zigoDecodeProbeBuffer(buffer []byte) Probe {
 	if count != 1 {
 		panic("zigo: invalid materialized result buffer")
 	}
-	return zigoDecodeProbeAt(buffer, offset)
+	var result Probe
+	zigoDecodeProbeInto(buffer, offset, &result)
+	return result
 }
 
 func zigoDecodeProbeSliceBuffer(buffer []byte) []Probe {
@@ -102,65 +118,126 @@ func zigoDecodeProbeSliceBuffer(buffer []byte) []Probe {
 	_ = zigoMaterializedArray(buffer, offset, count, 8)
 	result := make([]Probe, int(count))
 	for i := range result {
-		result[i] = zigoDecodeProbeAt(buffer, zigoMaterializedU64(buffer, offset+uint64(i)*8))
+		zigoDecodeProbeInto(buffer, zigoMaterializedU64(buffer, offset+uint64(i)*8), &result[i])
 	}
 	return result
 }
 
-func zigoDecodeProbeAt(buffer []byte, offset uint64) Probe {
-	_ = zigoMaterializedBytes(buffer, offset, 192)
-	var result Probe
-	zigoIDOffset := zigoMaterializedU64(buffer, offset+0)
-	result.ID = uint64(zigoIDOffset)
-	zigoActiveOffset := zigoMaterializedU64(buffer, offset+16)
-	result.Active = zigoActiveOffset != 0
-	zigoStatusOffset := zigoMaterializedU64(buffer, offset+32)
-	result.Status = Status(zigoStatusOffset)
-	zigoNameOffset := zigoMaterializedU64(buffer, offset+48)
-	zigoNameCount := zigoMaterializedU64(buffer, offset+56)
-	result.Name = string(zigoMaterializedBytes(buffer, zigoNameOffset, zigoNameCount))
-	zigoCodesOffset := zigoMaterializedU64(buffer, offset+64)
-	_ = zigoMaterializedArray(buffer, zigoCodesOffset, zigoMaterializedU64(buffer, offset+72), 8)
-	zigoCodesCount := zigoMaterializedU64(buffer, offset+72)
-	result.Codes = make([]int16, int(zigoCodesCount))
-	for i := range result.Codes {
-		zigoValue := zigoMaterializedU64(buffer, zigoCodesOffset+uint64(i)*8)
-		result.Codes[i] = int16(zigoValue)
+func zigoDecodeProbeInto(buffer []byte, offset uint64, result *Probe) {
+	_ = zigoMaterializedBytes(buffer, offset, 200)
+	result.ID = uint64(zigoMaterializedU64(buffer, offset+0))
+	result.Active = zigoMaterializedWord(buffer, offset+8, 1) != 0
+	result.Status = Status(zigoMaterializedWord(buffer, offset+9, 1))
+	result.Name = string(zigoMaterializedBytes(buffer, zigoMaterializedU64(buffer, offset+16), zigoMaterializedU64(buffer, offset+16+8)))
+	{
+		zigoOff0 := zigoMaterializedU64(buffer, offset+32)
+		zigoCount0 := zigoMaterializedU64(buffer, offset+32+8)
+		_ = zigoMaterializedArray(buffer, zigoOff0, zigoCount0, 2)
+		result.Codes = make([]int16, int(zigoCount0))
+		for zigoI0 := range result.Codes {
+			result.Codes[zigoI0] = int16(zigoMaterializedWord(buffer, zigoOff0+uint64(zigoI0)*2, 2))
+		}
 	}
-	zigoTagsOffset := zigoMaterializedU64(buffer, offset+80)
-	_ = zigoMaterializedArray(buffer, zigoTagsOffset, zigoMaterializedU64(buffer, offset+88), 16)
-	zigoTagsCount := zigoMaterializedU64(buffer, offset+88)
-	result.Tags = make([]string, int(zigoTagsCount))
-	for i := range result.Tags {
-		zigoItem := zigoTagsOffset + uint64(i)*16
-		result.Tags[i] = string(zigoMaterializedBytes(buffer, zigoMaterializedU64(buffer, zigoItem), zigoMaterializedU64(buffer, zigoItem+8)))
+	{
+		zigoOff0 := zigoMaterializedU64(buffer, offset+48)
+		zigoCount0 := zigoMaterializedU64(buffer, offset+48+8)
+		_ = zigoMaterializedArray(buffer, zigoOff0, zigoCount0, 16)
+		result.Tags = make([]string, int(zigoCount0))
+		for zigoI0 := range result.Tags {
+			result.Tags[zigoI0] = string(zigoMaterializedBytes(buffer, zigoMaterializedU64(buffer, zigoOff0+uint64(zigoI0)*16), zigoMaterializedU64(buffer, zigoOff0+uint64(zigoI0)*16+8)))
+		}
 	}
-	zigoEmbeddedOffset := zigoMaterializedU64(buffer, offset+96)
-	result.Embedded = zigoDecodeLeafAt(buffer, zigoEmbeddedOffset)
-	zigoChildOffset := zigoMaterializedU64(buffer, offset+112)
-	zigoChildValue := zigoDecodeLeafAt(buffer, zigoChildOffset)
-	result.Child = &zigoChildValue
-	zigoMaybeOffset := zigoMaterializedU64(buffer, offset+128)
-	if zigoMaybeOffset != 0 {
-		zigoMaybeValue := zigoDecodeLeafAt(buffer, zigoMaybeOffset)
-		result.Maybe = &zigoMaybeValue
+	{
+		zigoOff0 := zigoMaterializedU64(buffer, offset+64)
+		zigoDecodeLeafInto(buffer, zigoOff0, &result.Embedded)
 	}
-	zigoChildrenOffset := zigoMaterializedU64(buffer, offset+144)
-	_ = zigoMaterializedArray(buffer, zigoChildrenOffset, zigoMaterializedU64(buffer, offset+152), 8)
-	zigoChildrenCount := zigoMaterializedU64(buffer, offset+152)
-	result.Children = make([]Leaf, int(zigoChildrenCount))
-	for i := range result.Children {
-		result.Children[i] = zigoDecodeLeafAt(buffer, zigoMaterializedU64(buffer, zigoChildrenOffset+uint64(i)*8))
+	{
+		zigoOff0 := zigoMaterializedU64(buffer, offset+72)
+		var zigoVal0 Leaf
+		zigoDecodeLeafInto(buffer, zigoOff0, &zigoVal0)
+		result.Child = &zigoVal0
 	}
-	zigoWeightOffset := zigoMaterializedU64(buffer, offset+160)
-	if zigoWeightOffset != 0 {
-		zigoWeightValue := math.Float64frombits(uint64(zigoMaterializedU64(buffer, offset+168)))
-		result.Weight = &zigoWeightValue
+	{
+		zigoOff0 := zigoMaterializedU64(buffer, offset+80)
+		if zigoOff0 != 0 {
+			var zigoVal0 Leaf
+			zigoDecodeLeafInto(buffer, zigoOff0, &zigoVal0)
+			result.Maybe = &zigoVal0
+		}
 	}
-	zigoNoteOffset := zigoMaterializedU64(buffer, offset+176)
-	if zigoNoteOffset != 0 {
-		zigoNoteValue := string(zigoMaterializedBytes(buffer, zigoNoteOffset, zigoMaterializedU64(buffer, offset+184)))
-		result.Note = &zigoNoteValue
+	{
+		zigoOff0 := zigoMaterializedU64(buffer, offset+88)
+		zigoCount0 := zigoMaterializedU64(buffer, offset+88+8)
+		_ = zigoMaterializedArray(buffer, zigoOff0, zigoCount0, 8)
+		result.Children = make([]Leaf, int(zigoCount0))
+		for zigoI0 := range result.Children {
+			{
+				zigoOff1 := zigoMaterializedU64(buffer, zigoOff0+uint64(zigoI0)*8)
+				zigoDecodeLeafInto(buffer, zigoOff1, &result.Children[zigoI0])
+			}
+		}
 	}
-	return result
+	if zigoMaterializedWord(buffer, offset+104, 1) != 0 {
+		var zigoVal0 float64
+		zigoVal0 = math.Float64frombits(uint64(zigoMaterializedU64(buffer, offset+104+8)))
+		result.Weight = &zigoVal0
+	}
+	{
+		zigoOff0 := zigoMaterializedU64(buffer, offset+120)
+		if zigoOff0 != 0 {
+			zigoVal0 := string(zigoMaterializedBytes(buffer, zigoOff0, zigoMaterializedU64(buffer, offset+120+8)))
+			result.Note = &zigoVal0
+		}
+	}
+	result.Origin.X = int32(zigoMaterializedWord(buffer, offset+136+0, 4))
+	result.Origin.Y = int32(zigoMaterializedWord(buffer, offset+136+4, 4))
+	{
+		zigoOff0 := zigoMaterializedU64(buffer, offset+144)
+		zigoCount0 := zigoMaterializedU64(buffer, offset+144+8)
+		_ = zigoMaterializedArray(buffer, zigoOff0, zigoCount0, 16)
+		result.Matrix = make([][]int32, int(zigoCount0))
+		for zigoI0 := range result.Matrix {
+			{
+				zigoOff1 := zigoMaterializedU64(buffer, zigoOff0+uint64(zigoI0)*16)
+				zigoCount1 := zigoMaterializedU64(buffer, zigoOff0+uint64(zigoI0)*16+8)
+				_ = zigoMaterializedArray(buffer, zigoOff1, zigoCount1, 4)
+				result.Matrix[zigoI0] = make([]int32, int(zigoCount1))
+				for zigoI1 := range result.Matrix[zigoI0] {
+					result.Matrix[zigoI0][zigoI1] = int32(zigoMaterializedWord(buffer, zigoOff1+uint64(zigoI1)*4, 4))
+				}
+			}
+		}
+	}
+	result.Raw = append([]byte(nil), zigoMaterializedBytes(buffer, zigoMaterializedU64(buffer, offset+160), zigoMaterializedU64(buffer, offset+160+8))...)
+	{
+		zigoOff0 := zigoMaterializedU64(buffer, offset+176)
+		zigoCount0 := zigoMaterializedU64(buffer, offset+176+8)
+		_ = zigoMaterializedArray(buffer, zigoOff0, zigoCount0, 1)
+		result.Flags = make([]bool, int(zigoCount0))
+		for zigoI0 := range result.Flags {
+			result.Flags[zigoI0] = zigoMaterializedWord(buffer, zigoOff0+uint64(zigoI0)*1, 1) != 0
+		}
+	}
+	{
+		zigoOff0 := zigoMaterializedU64(buffer, offset+192)
+		if zigoOff0 != 0 {
+			var zigoVal0 Leaf
+			zigoDecodeLeafInto(buffer, zigoOff0, &zigoVal0)
+			result.Spare = &zigoVal0
+		}
+	}
 }
+
+// Point mirrors the Zig `extern struct` of the same name.
+type Point struct {
+	// X corresponds to the Zig field x.
+	X int32
+	// Y corresponds to the Zig field y.
+	Y int32
+}
+
+// Point is reinterpreted as raw.PointData instead of copied, so the two
+// layouts must stay identical.
+var _ = [1]struct{}{}[unsafe.Sizeof(Point{})-unsafe.Sizeof(raw.PointData{})]
+var _ = [1]struct{}{}[unsafe.Offsetof(Point{}.X)-unsafe.Offsetof(raw.PointData{}.X)]
+var _ = [1]struct{}{}[unsafe.Offsetof(Point{}.Y)-unsafe.Offsetof(raw.PointData{}.Y)]

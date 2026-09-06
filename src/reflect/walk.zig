@@ -54,7 +54,7 @@ pub fn reflect(
                     else => @compileError("zigo value type entries must name a struct"),
                 },
                 .materialized => switch (info) {
-                    .@"struct" => try appendMaterializedStruct(allocator, &types, declaration, T, type_name, try registeredZigPath(allocator, declaration, T, type_name)),
+                    .@"struct" => try appendMaterializedStruct(allocator, &types, declaration, T, type_name, try registeredZigPath(allocator, declaration, T, type_name), comptime fieldMeta(entry)),
                     else => @compileError("zigo materialized type entries must name a struct"),
                 },
                 // An enum registered here is not walked for declarations --
@@ -1749,6 +1749,13 @@ fn typeNode(
         // one (planned separately from this phase).
         .optional => |info| blk: {
             const child = @typeInfo(info.child);
+            // An optional materialized value (`?Leaf`) is stored as a record
+            // offset that may be 0, the same way `?*const Leaf` is.
+            if (comptime child == .@"struct" and registeredTypeName(declaration, info.child, .materialized) != null) {
+                const child_node = try allocator.create(semantic.TypeNode);
+                child_node.* = .{ .materialized = .{ .ref = comptime registeredTypeName(declaration, info.child, .materialized).? } };
+                break :blk .{ .optional = .{ .child = child_node } };
+            }
             if (child == .pointer and child.pointer.size == .one and @typeInfo(child.pointer.child) != .@"fn") {
                 if (comptime registeredTypeName(declaration, child.pointer.child, .materialized)) |name|
                     break :blk .{ .materialized = .{ .ref = name, .pointer = true, .nullable = true } };
@@ -2107,12 +2114,13 @@ fn appendMaterializedStruct(
     comptime T: type,
     name: []const u8,
     zig_path: []const u8,
+    comptime field_meta: anytype,
 ) !void {
     const info = @typeInfo(T).@"struct";
     const index = types.items.len;
     try types.append(allocator, .{
         .kind = .materialized,
-        .materialized_version = 1,
+        .materialized_version = 2,
         .name = name,
         .zig_path = zig_path,
     });
@@ -2120,10 +2128,45 @@ fn appendMaterializedStruct(
     inline for (info.fields, 0..) |field, field_index| {
         fields[field_index] = .{
             .name = field.name,
-            .type = try typeNode(allocator, declaration, field.type, types, "`" ++ comptime shortTypeName(@typeName(T)) ++ "` field `" ++ field.name ++ "`"),
+            .semantic = comptime fieldSemantic(field_meta, field.name),
+            .type = try materializedFieldNode(allocator, declaration, field.type, types, "`" ++ comptime shortTypeName(@typeName(T)) ++ "` field `" ++ field.name ++ "`"),
         };
     }
     types.items[index].fields = fields;
+}
+
+/// A materialized field is copied, never addressed, so it admits shapes a
+/// parameter cannot: an array is a sequence like a slice, and slices nest to
+/// any depth. Everything else reflects as usual.
+fn materializedFieldNode(
+    allocator: std.mem.Allocator,
+    comptime declaration: anytype,
+    comptime T: type,
+    types: *std.ArrayList(semantic.TypeDecl),
+    comptime context: []const u8,
+) !semantic.TypeNode {
+    switch (@typeInfo(T)) {
+        .array => |array| {
+            const element = try allocator.create(semantic.TypeNode);
+            element.* = try materializedFieldNode(allocator, declaration, array.child, types, context ++ " (array element)");
+            return .{ .slice = .{ .@"const" = true, .element = element } };
+        },
+        .pointer => |pointer| if (pointer.size == .slice) {
+            const element = try allocator.create(semantic.TypeNode);
+            element.* = try materializedFieldNode(allocator, declaration, pointer.child, types, context ++ " (slice element)");
+            return .{ .slice = .{ .@"const" = pointer.is_const, .element = element } };
+        },
+        .optional => |optional| {
+            const inner = @typeInfo(optional.child);
+            if (inner == .array or (inner == .pointer and inner.pointer.size == .slice)) {
+                const child = try allocator.create(semantic.TypeNode);
+                child.* = try materializedFieldNode(allocator, declaration, optional.child, types, context ++ " (optional child)");
+                return .{ .optional = .{ .child = child } };
+            }
+        },
+        else => {},
+    }
+    return typeNode(allocator, declaration, T, types, context);
 }
 
 test "materialized result trees preserve nested field shapes in semantic json" {

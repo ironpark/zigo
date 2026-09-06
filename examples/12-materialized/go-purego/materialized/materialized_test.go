@@ -25,6 +25,18 @@ func checkProbe(t testing.TB, got Probe) {
 	if got.Child.Alias == nil || *got.Child.Alias != "L" || got.Children[1].Alias != nil {
 		t.Fatalf("optional strings = %+v / %+v", got.Child.Alias, got.Children[1].Alias)
 	}
+	if got.Origin != (Point{X: -3, Y: 9}) {
+		t.Fatalf("extern struct field = %+v", got.Origin)
+	}
+	if len(got.Matrix) != 2 || len(got.Matrix[0]) != 2 || got.Matrix[0][1] != 2 || got.Matrix[1][0] != 3 {
+		t.Fatalf("nested slices = %+v", got.Matrix)
+	}
+	if string(got.Raw) != "\x00\xff\x07" || len(got.Flags) != 3 || got.Flags[1] || !got.Flags[2] {
+		t.Fatalf("bytes / array = %v / %v", got.Raw, got.Flags)
+	}
+	if got.Spare == nil || got.Spare.Value != 42 || got.Spare.Alias == nil {
+		t.Fatalf("optional node = %+v", got.Spare)
+	}
 }
 
 func TestMaterializedPositions(t *testing.T) {

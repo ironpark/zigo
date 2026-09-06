@@ -19,7 +19,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 52,
+        "line": 67,
         "column": 8
       },
       "symbol": "zg_snapshot"
@@ -45,7 +45,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 56,
+        "line": 71,
         "column": 8
       },
       "symbol": "zg_probe_many"
@@ -60,7 +60,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 60,
+            "line": 75,
             "column": 13
           },
           "type": {
@@ -83,7 +83,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 60,
+        "line": 75,
         "column": 8
       },
       "symbol": "zg_fill"
@@ -98,7 +98,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 66,
+            "line": 81,
             "column": 16
           },
           "type": {
@@ -118,7 +118,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 66,
+        "line": 81,
         "column": 8
       },
       "symbol": "zg_release"
@@ -134,7 +134,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 82,
+            "line": 97,
             "column": 19
           },
           "type": {
@@ -159,7 +159,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 82,
+        "line": 97,
         "column": 12
       },
       "symbol": "zg_legacy_probe_create"
@@ -177,7 +177,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 89,
+        "line": 104,
         "column": 12
       },
       "symbol": "zg_legacy_probe_id"
@@ -192,7 +192,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 93,
+        "line": 108,
         "column": 12
       },
       "symbol": "zg_legacy_probe_active"
@@ -211,7 +211,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 97,
+        "line": 112,
         "column": 12
       },
       "symbol": "zg_legacy_probe_child"
@@ -226,7 +226,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 101,
+        "line": 116,
         "column": 12
       },
       "symbol": "zg_legacy_probe_deinit"
@@ -244,7 +244,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 73,
+        "line": 88,
         "column": 12
       },
       "symbol": "zg_legacy_leaf_value"
@@ -275,6 +275,33 @@
         "signed": false
       },
       "zig_path": "root.Status"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "x",
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          }
+        },
+        {
+          "name": "y",
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": true
+          }
+        }
+      ],
+      "kind": "value_struct",
+      "layout": "extern",
+      "name": "Point",
+      "zig_path": "root.Point"
     },
     {
       "exhaustive": true,
@@ -336,7 +363,7 @@
         }
       ],
       "kind": "materialized",
-      "materialized_version": 1,
+      "materialized_version": 2,
       "name": "Leaf",
       "zig_path": "root.Leaf"
     },
@@ -468,10 +495,68 @@
             },
             "kind": "optional"
           }
+        },
+        {
+          "name": "origin",
+          "type": {
+            "kind": "value_struct",
+            "ref": "Point"
+          }
+        },
+        {
+          "name": "matrix",
+          "type": {
+            "const": true,
+            "element": {
+              "const": true,
+              "element": {
+                "bits": 32,
+                "is_usize": false,
+                "kind": "int",
+                "signed": true
+              },
+              "kind": "slice"
+            },
+            "kind": "slice"
+          }
+        },
+        {
+          "name": "raw",
+          "semantic": "opaque_bytes",
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        },
+        {
+          "name": "flags",
+          "type": {
+            "const": true,
+            "element": {
+              "kind": "bool"
+            },
+            "kind": "slice"
+          }
+        },
+        {
+          "name": "spare",
+          "type": {
+            "child": {
+              "kind": "materialized",
+              "ref": "Leaf"
+            },
+            "kind": "optional"
+          }
         }
       ],
       "kind": "materialized",
-      "materialized_version": 1,
+      "materialized_version": 2,
       "name": "Probe",
       "zig_path": "root.Probe"
     },

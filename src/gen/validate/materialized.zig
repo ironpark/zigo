@@ -96,32 +96,32 @@ fn materializedNodeProblemAlloc(
         .int => |value| if (types.integerSupported(value)) return null,
         .float => |value| if (types.floatSupported(value)) return null,
         .@"enum" => return null,
-        // Presence rides in the field's own slot, so only leaves that fit a
-        // slot can be optional: a scalar beside its flag, or a string whose
-        // offset doubles as the flag. An optional node is already spelled as
-        // a nullable pointer; an optional slice has no room for a flag.
+        // An `extern struct` is stored inline and a packed one as its backing
+        // integer; both already restrict their own members. A plain struct has
+        // no layout to store, so it must be registered as a tree of its own.
+        .value_struct => |value| {
+            const declaration = semantic.typeDecl(document.types, value.ref);
+            if (declaration != null and declaration.?.kind == .value_struct and declaration.?.layout != null) return null;
+            return .{ .path = try allocator.dupe(u8, path), .reason = "register a plain struct with `.repr = .materialized`; only `extern struct` and packed values are stored inline" };
+        },
+        // Presence rides in the field's own storage, so only leaves that fit
+        // there can be optional: a scalar or inline struct beside a presence
+        // byte, a string whose offset doubles as the flag, or a node whose
+        // record offset does. An optional slice has no room for a flag.
         .optional => |value| {
-            if (in_slice) return .{ .path = try allocator.dupe(u8, path), .reason = "slices may contain scalars, strings, or materialized structs" };
+            if (in_slice) return .{ .path = try allocator.dupe(u8, path), .reason = "slice elements cannot be optional" };
             const child = value.child.*;
             const supported = switch (child) {
-                .bool, .@"enum" => true,
+                .bool, .@"enum", .value_struct, .materialized => true,
                 .int => |integer| types.integerSupported(integer),
                 .float => |float| types.floatSupported(float),
                 .slice => |slice| semantic.isByte(slice.element.*),
                 else => false,
             };
-            if (supported) return null;
-            return .{ .path = try allocator.dupe(u8, path), .reason = "optional fields may hold a scalar, bool, registered enum, or string; spell an optional node as `?*const T`" };
+            if (!supported) return .{ .path = try allocator.dupe(u8, path), .reason = "optional fields may hold a scalar, bool, registered enum, string, extern struct, or materialized struct" };
+            return materializedNodeProblemAlloc(allocator, document, child, path, ancestors, depth, false);
         },
-        .slice => |value| {
-            const element = value.element.*;
-            if (element == .slice) {
-                const inner = element.slice.element.*;
-                if (inner == .int and inner.int.bits == 8 and !inner.int.signed) return null;
-                return .{ .path = try allocator.dupe(u8, path), .reason = "slices may contain scalars, strings, or materialized structs" };
-            }
-            return materializedNodeProblemAlloc(allocator, document, element, path, ancestors, depth, true);
-        },
+        .slice => |value| return materializedNodeProblemAlloc(allocator, document, value.element.*, path, ancestors, depth, true),
         .materialized => |value| {
             if (in_slice and value.pointer) return .{ .path = try allocator.dupe(u8, path), .reason = "slices may contain materialized struct values, not pointers" };
             for (ancestors[0..depth]) |ancestor| if (std.mem.eql(u8, ancestor, value.ref)) return .{
@@ -148,7 +148,7 @@ fn materializedNodeProblemAlloc(
     }
     return .{
         .path = try allocator.dupe(u8, path),
-        .reason = "use scalars, bool, registered enums, strings, supported slices, or materialized structs and pointers",
+        .reason = "use scalars, bool, registered enums, strings, extern structs, slices, or materialized structs and pointers",
     };
 }
 
@@ -215,6 +215,16 @@ test "materialized fields accept optional scalars and strings but not optional s
         .zig_version = "0.16.0",
     };
     try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try validate.findIssue(allocator, ok_document));
+
+    const nested: semantic.TypeNode = .{ .slice = .{ .@"const" = true, .element = &counts } };
+    const nested_fields = [_]semantic.TypeField{.{ .name = "matrix", .type = nested }};
+    const nested_document: semantic.Semantic = .{
+        .package = "tree",
+        .prefix = "zg",
+        .types = &.{.{ .fields = &nested_fields, .kind = .materialized, .materialized_version = 2, .name = "Root", .zig_path = "Root" }},
+        .zig_version = "0.16.0",
+    };
+    try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try validate.findIssue(allocator, nested_document));
 
     const bad_fields = [_]semantic.TypeField{.{ .name = "counts", .type = .{ .optional = .{ .child = &counts } } }};
     const bad_document: semantic.Semantic = .{

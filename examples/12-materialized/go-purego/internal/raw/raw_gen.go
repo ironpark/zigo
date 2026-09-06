@@ -237,6 +237,12 @@ func PanicMessage(code int32) string {
 	return string(unsafe.Slice((*byte)(p), length))
 }
 
+// PointData mirrors the zg_point layout, padding included.
+type PointData struct {
+	X int32
+	Y int32
+}
+
 // Snapshot calls the generated purego ABI wrapper for zg_snapshot.
 func Snapshot() []byte {
 	var outResultPtr unsafe.Pointer

@@ -14,7 +14,7 @@ pub fn renderMaterializedWalker(allocator: std.mem.Allocator, writer: *std.Io.Wr
             "    pub fn init(allocator: std.mem.Allocator) !ZigoMaterializedBuilder {{\n" ++
             "        var self: ZigoMaterializedBuilder = .{{ .allocator = allocator }};\n" ++
             "        try self.bytes.appendNTimes(allocator, 0, {d});\n" ++
-            "        self.writeU64(0, 0x0001_4f47495a);\n" ++
+            "        self.writeU64(0, 0x{x});\n" ++
             "        return self;\n" ++
             "    }}\n" ++
             "    pub fn deinit(self: *ZigoMaterializedBuilder) void {{\n" ++
@@ -23,13 +23,21 @@ pub fn renderMaterializedWalker(allocator: std.mem.Allocator, writer: *std.Io.Wr
             "    fn reserveArray(self: *ZigoMaterializedBuilder, count: usize, stride: usize) !usize {{\n" ++
             "        return self.reserve(try std.math.mul(usize, count, stride));\n" ++
             "    }}\n" ++
+            "    // Records and arrays start 8-aligned so every stored value sits at\n" ++
+            "    // its natural alignment relative to the buffer.\n" ++
             "    fn reserve(self: *ZigoMaterializedBuilder, count: usize) !usize {{\n" ++
+            "        const padding = (8 - self.bytes.items.len % 8) % 8;\n" ++
+            "        try self.bytes.appendNTimes(self.allocator, 0, padding);\n" ++
             "        const offset = self.bytes.items.len;\n" ++
             "        try self.bytes.appendNTimes(self.allocator, 0, count);\n" ++
             "        return offset;\n" ++
             "    }}\n" ++
             "    fn writeU64(self: *ZigoMaterializedBuilder, offset: usize, value: u64) void {{\n" ++
             "        std.mem.writeInt(u64, self.bytes.items[offset..][0..8], value, .little);\n" ++
+            "    }}\n" ++
+            "    fn writeWord(self: *ZigoMaterializedBuilder, offset: usize, comptime width: u8, value: u64) void {{\n" ++
+            "        const Word = std.meta.Int(.unsigned, width * 8);\n" ++
+            "        std.mem.writeInt(Word, self.bytes.items[offset..][0..width], @intCast(value), .little);\n" ++
             "    }}\n" ++
             "    fn appendBytes(self: *ZigoMaterializedBuilder, value: []const u8) !u64 {{\n" ++
             "        const offset = self.bytes.items.len;\n" ++
@@ -51,10 +59,11 @@ pub fn renderMaterializedWalker(allocator: std.mem.Allocator, writer: *std.Io.Wr
             "        .int => @intCast(@as(std.meta.Int(.unsigned, @bitSizeOf(T)), @bitCast(value))),\n" ++
             "        .float => @intCast(@as(std.meta.Int(.unsigned, @bitSizeOf(T)), @bitCast(value))),\n" ++
             "        .@\"enum\" => zigoMaterializedScalar(@intFromEnum(value)),\n" ++
+            "        .@\"struct\" => |info| zigoMaterializedScalar(@as(info.backing_integer.?, @bitCast(value))),\n" ++
             "        else => unreachable,\n" ++
             "    }};\n" ++
             "}}\n\n",
-        .{abi.MaterializedLayout.header_size},
+        .{ abi.MaterializedLayout.header_size, abi.MaterializedLayout.magic },
     );
     for (program.materialized_layouts) |layout| {
         const function_name = try materializedEncoderNameAlloc(allocator, layout.owner.name);
@@ -62,7 +71,7 @@ pub fn renderMaterializedWalker(allocator: std.mem.Allocator, writer: *std.Io.Wr
         try writer.print("pub fn {s}(builder: *ZigoMaterializedBuilder, value: ", .{function_name});
         try target_types.writeTargetType(writer, program, layout.owner.name);
         try writer.print(") !u64 {{\n    const record = try builder.reserve({d});\n", .{layout.record_size});
-        for (layout.fields) |field| try writeMaterializedField(allocator, writer, field, "value", "record");
+        for (layout.fields) |field| try writeField(allocator, writer, field, "value", "record", 0);
         try writer.writeAll("    return @intCast(record);\n}\n\n");
         try writer.print(
             "pub fn {0s}Buffer(allocator: std.mem.Allocator, value: anytype, comptime is_slice: bool) ![]u8 {{\n" ++
@@ -81,49 +90,73 @@ pub fn renderMaterializedWalker(allocator: std.mem.Allocator, writer: *std.Io.Wr
     }
 }
 
-fn writeMaterializedField(
+fn writeField(
     allocator: std.mem.Allocator,
     writer: *std.Io.Writer,
     field: abi.MaterializedLayout.Field,
     value: []const u8,
-    record: []const u8,
+    base: []const u8,
+    depth: usize,
 ) !void {
     const expression = try std.fmt.allocPrint(allocator, "{s}.{s}", .{ value, field.name });
     defer allocator.free(expression);
-    const slot = try std.fmt.allocPrint(allocator, "{s} + {d}", .{ record, field.offset });
-    defer allocator.free(slot);
-    switch (field.kind) {
-        .scalar => try writer.print("    builder.writeU64({s}, zigoMaterializedScalar({s}));\n", .{ slot, expression }),
-        .string => try writer.print("    builder.writeU64({0s}, try builder.appendBytes({1s}));\n    builder.writeU64({0s} + 8, {1s}.len);\n", .{ slot, expression }),
-        // `reserve` zero-fills the record, so an absent value writes nothing:
-        // the presence word (or the string offset) stays 0.
-        .optional_scalar => try writer.print("    if ({1s}) |item| {{\n        builder.writeU64({0s}, 1);\n        builder.writeU64({0s} + 8, zigoMaterializedScalar(item));\n    }}\n", .{ slot, expression }),
-        .optional_string => try writer.print("    if ({1s}) |item| {{\n        builder.writeU64({0s}, try builder.appendBytes(item));\n        builder.writeU64({0s} + 8, item.len);\n    }}\n", .{ slot, expression }),
-        .scalar_slice => {
-            try writer.print("    const {0s}_data = try builder.reserveArray({1s}.len, {3d});\n    for ({1s}, 0..) |item, index| builder.writeU64({0s}_data + index * {3d}, zigoMaterializedScalar(item));\n    builder.writeU64({2s}, {0s}_data);\n    builder.writeU64({2s} + 8, {1s}.len);\n", .{ field.name, expression, slot, field.kind.elementStride() });
+    const offset = try std.fmt.allocPrint(allocator, "{s} + {d}", .{ base, field.offset });
+    defer allocator.free(offset);
+    try writeShape(allocator, writer, field.shape, expression, offset, depth);
+}
+
+/// Serializes `expression`, whose storage starts at byte `offset`, according
+/// to `shape`. Nested shapes get a fresh depth so their temporaries do not
+/// shadow the enclosing ones.
+fn writeShape(
+    allocator: std.mem.Allocator,
+    writer: *std.Io.Writer,
+    shape: abi.MaterializedLayout.Shape,
+    expression: []const u8,
+    offset: []const u8,
+    depth: usize,
+) anyerror!void {
+    switch (shape) {
+        .scalar => |scalar| if (scalar.width == 8)
+            try writer.print("    builder.writeU64({s}, zigoMaterializedScalar({s}));\n", .{ offset, expression })
+        else
+            try writer.print("    builder.writeWord({s}, {d}, zigoMaterializedScalar({s}));\n", .{ offset, scalar.width, expression }),
+        .string => |string| if (string.nullable)
+            try writer.print("    if ({1s}) |zigo_item{2d}| {{\n        builder.writeU64({0s}, try builder.appendBytes(zigo_item{2d}[0..]));\n        builder.writeU64({0s} + 8, zigo_item{2d}.len);\n    }}\n", .{ offset, expression, depth })
+        else
+            try writer.print("    builder.writeU64({0s}, try builder.appendBytes({1s}[0..]));\n    builder.writeU64({0s} + 8, {1s}.len);\n", .{ offset, expression }),
+        .optional => |child| {
+            const item = try std.fmt.allocPrint(allocator, "zigo_item{d}", .{depth});
+            defer allocator.free(item);
+            const child_offset = try std.fmt.allocPrint(allocator, "{s} + {d}", .{ offset, child.alignment() });
+            defer allocator.free(child_offset);
+            try writer.print("    if ({s}) |{s}| {{\n        builder.writeWord({s}, 1, 1);\n", .{ expression, item, offset });
+            try writeShape(allocator, writer, child.*, item, child_offset, depth + 1);
+            try writer.writeAll("    }\n");
         },
-        .string_slice => {
-            try writer.print("    const {0s}_data = try builder.reserveArray({1s}.len, {3d});\n    for ({1s}, 0..) |item, index| {{\n        builder.writeU64({0s}_data + index * {3d}, try builder.appendBytes(item));\n        builder.writeU64({0s}_data + index * {3d} + 8, item.len);\n    }}\n    builder.writeU64({2s}, {0s}_data);\n    builder.writeU64({2s} + 8, {1s}.len);\n", .{ field.name, expression, slot, field.kind.elementStride() });
+        .sequence => |element| {
+            const data = try std.fmt.allocPrint(allocator, "zigo_data{d}", .{depth});
+            defer allocator.free(data);
+            const item = try std.fmt.allocPrint(allocator, "zigo_item{d}", .{depth});
+            defer allocator.free(item);
+            const element_offset = try std.fmt.allocPrint(allocator, "{s} + zigo_index{d} * {d}", .{ data, depth, element.stride() });
+            defer allocator.free(element_offset);
+            // Each sequence keeps its temporaries in a block so sibling
+            // fields at the same depth can reuse the names.
+            try writer.print("    {{\n    const {0s} = try builder.reserveArray({1s}.len, {2d});\n    for ({1s}[0..], 0..) |{3s}, zigo_index{4d}| {{\n", .{ data, expression, element.stride(), item, depth });
+            try writeShape(allocator, writer, element.*, item, element_offset, depth + 1);
+            try writer.print("    }}\n    builder.writeU64({0s}, {1s});\n    builder.writeU64({0s} + 8, {2s}.len);\n    }}\n", .{ offset, data, expression });
         },
-        .node => {
-            const name = try materializedEncoderNameAlloc(allocator, field.node.materialized.ref);
-            defer allocator.free(name);
-            try writer.print("    builder.writeU64({s}, try {s}(builder, {s}));\n", .{ slot, name, expression });
-        },
-        .node_pointer => {
-            const node = field.node.materialized;
+        .node => |node| {
             const name = try materializedEncoderNameAlloc(allocator, node.ref);
             defer allocator.free(name);
+            const deref: []const u8 = if (node.pointer) ".*" else "";
             if (node.nullable)
-                try writer.print("    builder.writeU64({s}, if ({s}) |item| try {s}(builder, item.*) else 0);\n", .{ slot, expression, name })
+                try writer.print("    builder.writeU64({s}, if ({s}) |zigo_item{d}| try {s}(builder, zigo_item{d}{s}) else 0);\n", .{ offset, expression, depth, name, depth, deref })
             else
-                try writer.print("    builder.writeU64({s}, try {s}(builder, {s}.*));\n", .{ slot, name, expression });
+                try writer.print("    builder.writeU64({s}, try {s}(builder, {s}{s}));\n", .{ offset, name, expression, deref });
         },
-        .node_slice => {
-            const name = try materializedEncoderNameAlloc(allocator, field.node.slice.element.materialized.ref);
-            defer allocator.free(name);
-            try writer.print("    const {0s}_nodes = try builder.reserveArray({1s}.len, {4d});\n    for ({1s}, 0..) |item, index| builder.writeU64({0s}_nodes + index * {4d}, try {2s}(builder, item));\n    builder.writeU64({3s}, {0s}_nodes);\n    builder.writeU64({3s} + 8, {1s}.len);\n", .{ field.name, expression, name, slot, field.kind.elementStride() });
-        },
+        .value_struct => |record| for (record.fields) |field| try writeField(allocator, writer, field, expression, offset, depth),
     }
 }
 

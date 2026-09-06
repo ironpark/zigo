@@ -351,13 +351,14 @@ pub const AbiLiveFields = struct {
     fields: []const semantic.TypeField,
 };
 
-/// Versioned, lowering-owned description of one fixed-size materialized node
-/// record. Every field occupies a 16-byte slot; offsets and lengths stored in
-/// slots are relative to the beginning of the serialized buffer.
+/// The serialized form of one materialized struct: where each field sits in
+/// its record and how it is stored there. Records and arrays are 8-aligned
+/// and every offset stored in the buffer is relative to the buffer start.
 pub const MaterializedLayout = struct {
-    pub const version: u16 = 1;
+    pub const version: u16 = 2;
+    /// `ZIGO` followed by the layout version, as the buffer's first word.
+    pub const magic: u64 = 0x0002_4f47495a;
     pub const header_size: usize = 40;
-    pub const slot_size: usize = 16;
 
     owner: *const semantic.TypeDecl,
     id: u32,
@@ -366,31 +367,66 @@ pub const MaterializedLayout = struct {
 
     pub const Field = struct {
         name: []const u8,
+        /// Relative to the record (or, for an inline struct, its parent field).
         offset: usize,
         node: semantic.TypeNode,
-        kind: Kind,
-
-        pub const Kind = enum {
-            scalar,
-            string,
-            /// Presence in the first `u64` of the slot, the value in the second.
-            optional_scalar,
-            /// The string pair; an offset of 0 (inside the header) means absent.
-            optional_string,
-            scalar_slice,
-            string_slice,
-            node,
-            node_pointer,
-            node_slice,
-
-            /// Bytes per element of a slice field's array: a string element is
-            /// an (offset, length) pair of `u64` slots, every other one slot.
-            /// Encoder and decoder both walk the array by this.
-            pub fn elementStride(self: Kind) u8 {
-                return if (self == .string_slice) 16 else 8;
-            }
-        };
+        shape: Shape,
     };
+
+    /// How one value is stored. Encoder and decoder both walk this, so the
+    /// two cannot disagree about a width or an offset.
+    pub const Shape = union(enum) {
+        /// bool, integer, float, enum, or packed struct backing integer,
+        /// little-endian in `width` bytes.
+        scalar: Scalar,
+        /// Offset and length words; the bytes live elsewhere in the buffer.
+        /// A nullable string is absent when its offset is 0, which no data
+        /// can occupy because the header comes first.
+        string: String,
+        /// A presence byte followed by the child at the child's own alignment.
+        optional: *const Shape,
+        /// Offset and count words; elements follow each other at the element
+        /// stride in an 8-aligned array.
+        sequence: *const Shape,
+        /// The offset of a separately stored record, 0 when nullable and absent.
+        node: Node,
+        /// The fields of an `extern struct`, stored inline.
+        value_struct: Record,
+
+        pub const Scalar = struct { width: u8 };
+        pub const String = struct { bytes: bool = false, nullable: bool = false };
+        pub const Node = struct { ref: []const u8, pointer: bool, nullable: bool };
+        pub const Record = struct { ref: []const u8, fields: []const Field, size: usize, alignment: usize };
+
+        pub fn size(self: Shape) usize {
+            return switch (self) {
+                .scalar => |scalar| scalar.width,
+                .string, .sequence => 16,
+                .node => 8,
+                .optional => |child| child.alignment() + child.size(),
+                .value_struct => |record| record.size,
+            };
+        }
+
+        pub fn alignment(self: Shape) usize {
+            return switch (self) {
+                .scalar => |scalar| scalar.width,
+                .string, .sequence, .node => 8,
+                .optional => |child| child.alignment(),
+                .value_struct => |record| record.alignment,
+            };
+        }
+
+        /// Bytes between two consecutive elements of this shape in an array.
+        pub fn stride(self: Shape) usize {
+            return alignUp(self.size(), self.alignment());
+        }
+    };
+
+    pub fn alignUp(value: usize, alignment: usize) usize {
+        if (alignment <= 1) return value;
+        return (value + alignment - 1) / alignment * alignment;
+    }
 };
 
 pub const ErrorCode = struct { code: i32, name: []const u8 };

@@ -106,12 +106,18 @@ pub fn typeIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             const extern_u32 = declaration.kind == .value_struct and declaration.layout == .@"extern" and
                 field.type != null and field.type.? == .int and !field.type.?.int.signed and !field.type.?.int.is_usize and field.type.?.int.bits == 32;
             if (hint == .codepoint and extern_u32) continue;
+            // A materialized byte slice is text unless the entry says the
+            // bytes are opaque, which is the one hint it takes.
+            const materialized_bytes = declaration.kind == .materialized and field.type != null and
+                semantic.sliceThroughOptional(field.type.?) == .slice and
+                semantic.isByte(semantic.sliceThroughOptional(field.type.?).slice.element.*);
+            if (hint == .opaque_bytes and materialized_bytes) continue;
             return .{
                 .severity = .@"error",
                 .code = "ZIGO053",
-                .message = try std.fmt.allocPrint(allocator, "`.semantic` on field `{s}` of `{s}`, which is not a u32 member of an extern struct", .{ field.name, declaration.name }),
+                .message = try std.fmt.allocPrint(allocator, "`.semantic` on field `{s}` of `{s}`, which is not a u32 member of an extern struct or a materialized byte slice", .{ field.name, declaration.name }),
                 .site = .{ .path = "semantic.json", .declaration = declaration.name },
-                .hint = "a field hint is `.codepoint` on a `u32` member of a `.repr = .value` extern struct; other members and packed, materialized, or union fields take no hint",
+                .hint = "a field hint is `.codepoint` on a `u32` member of a `.repr = .value` extern struct, or `.opaque_bytes` on a `[]const u8` member of a `.repr = .materialized` struct; other fields take no hint",
             };
         }
         if (declaration.kind == .value_struct and declaration.layout == .@"extern") {

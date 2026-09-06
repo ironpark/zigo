@@ -6,8 +6,9 @@ pub const bindings = zigo.define(.{
     .root = library,
     .types = .{
         .{ .type = library.Status, .repr = .enumeration },
+        .{ .type = library.Point, .repr = .value },
         .{ .type = library.Leaf, .repr = .materialized },
-        .{ .type = library.Probe, .repr = .materialized },
+        .{ .type = library.Probe, .repr = .materialized, .field_meta = .{ .raw = .{ .semantic = .opaque_bytes } } },
         .{ .type = library.LegacyLeaf, .repr = .@"opaque" },
         .{ .type = library.LegacyProbe, .repr = .@"opaque" },
     },

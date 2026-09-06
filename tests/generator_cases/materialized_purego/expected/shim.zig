@@ -15,7 +15,7 @@ pub const ZigoMaterializedBuilder = struct {
     pub fn init(allocator: std.mem.Allocator) !ZigoMaterializedBuilder {
         var self: ZigoMaterializedBuilder = .{ .allocator = allocator };
         try self.bytes.appendNTimes(allocator, 0, 40);
-        self.writeU64(0, 0x0001_4f47495a);
+        self.writeU64(0, 0x24f47495a);
         return self;
     }
     pub fn deinit(self: *ZigoMaterializedBuilder) void {
@@ -24,13 +24,21 @@ pub const ZigoMaterializedBuilder = struct {
     fn reserveArray(self: *ZigoMaterializedBuilder, count: usize, stride: usize) !usize {
         return self.reserve(try std.math.mul(usize, count, stride));
     }
+    // Records and arrays start 8-aligned so every stored value sits at
+    // its natural alignment relative to the buffer.
     fn reserve(self: *ZigoMaterializedBuilder, count: usize) !usize {
+        const padding = (8 - self.bytes.items.len % 8) % 8;
+        try self.bytes.appendNTimes(self.allocator, 0, padding);
         const offset = self.bytes.items.len;
         try self.bytes.appendNTimes(self.allocator, 0, count);
         return offset;
     }
     fn writeU64(self: *ZigoMaterializedBuilder, offset: usize, value: u64) void {
         std.mem.writeInt(u64, self.bytes.items[offset..][0..8], value, .little);
+    }
+    fn writeWord(self: *ZigoMaterializedBuilder, offset: usize, comptime width: u8, value: u64) void {
+        const Word = std.meta.Int(.unsigned, width * 8);
+        std.mem.writeInt(Word, self.bytes.items[offset..][0..width], @intCast(value), .little);
     }
     fn appendBytes(self: *ZigoMaterializedBuilder, value: []const u8) !u64 {
         const offset = self.bytes.items.len;
@@ -53,21 +61,26 @@ fn zigoMaterializedScalar(value: anytype) u64 {
         .int => @intCast(@as(std.meta.Int(.unsigned, @bitSizeOf(T)), @bitCast(value))),
         .float => @intCast(@as(std.meta.Int(.unsigned, @bitSizeOf(T)), @bitCast(value))),
         .@"enum" => zigoMaterializedScalar(@intFromEnum(value)),
+        .@"struct" => |info| zigoMaterializedScalar(@as(info.backing_integer.?, @bitCast(value))),
         else => unreachable,
     };
 }
 
 pub fn zigoMaterialize_root(builder: *ZigoMaterializedBuilder, value: target.Root) !u64 {
-    const record = try builder.reserve(80);
+    const record = try builder.reserve(56);
     builder.writeU64(record + 0, zigoMaterializedScalar(value.count));
-    builder.writeU64(record + 16, try builder.appendBytes(value.name));
-    builder.writeU64(record + 16 + 8, value.name.len);
-    builder.writeU64(record + 32, try zigoMaterialize_leaf(builder, value.child.*));
-    builder.writeU64(record + 48, if (value.maybe) |item| try zigoMaterialize_leaf(builder, item.*) else 0);
-    const children_nodes = try builder.reserveArray(value.children.len, 8);
-    for (value.children, 0..) |item, index| builder.writeU64(children_nodes + index * 8, try zigoMaterialize_leaf(builder, item));
-    builder.writeU64(record + 64, children_nodes);
-    builder.writeU64(record + 64 + 8, value.children.len);
+    builder.writeU64(record + 8, try builder.appendBytes(value.name[0..]));
+    builder.writeU64(record + 8 + 8, value.name.len);
+    builder.writeU64(record + 24, try zigoMaterialize_leaf(builder, value.child.*));
+    builder.writeU64(record + 32, if (value.maybe) |zigo_item0| try zigoMaterialize_leaf(builder, zigo_item0.*) else 0);
+    {
+    const zigo_data0 = try builder.reserveArray(value.children.len, 8);
+    for (value.children[0..], 0..) |zigo_item0, zigo_index0| {
+    builder.writeU64(zigo_data0 + zigo_index0 * 8, try zigoMaterialize_leaf(builder, zigo_item0));
+    }
+    builder.writeU64(record + 40, zigo_data0);
+    builder.writeU64(record + 40 + 8, value.children.len);
+    }
     return @intCast(record);
 }
 
@@ -85,19 +98,25 @@ pub fn zigoMaterialize_rootBuffer(allocator: std.mem.Allocator, value: anytype, 
 }
 
 pub fn zigoMaterialize_leaf(builder: *ZigoMaterializedBuilder, value: target.Leaf) !u64 {
-    const record = try builder.reserve(48);
-    builder.writeU64(record + 0, zigoMaterializedScalar(value.ok));
-    const values_data = try builder.reserveArray(value.values.len, 8);
-    for (value.values, 0..) |item, index| builder.writeU64(values_data + index * 8, zigoMaterializedScalar(item));
-    builder.writeU64(record + 16, values_data);
-    builder.writeU64(record + 16 + 8, value.values.len);
-    const labels_data = try builder.reserveArray(value.labels.len, 16);
-    for (value.labels, 0..) |item, index| {
-        builder.writeU64(labels_data + index * 16, try builder.appendBytes(item));
-        builder.writeU64(labels_data + index * 16 + 8, item.len);
+    const record = try builder.reserve(40);
+    builder.writeWord(record + 0, 1, zigoMaterializedScalar(value.ok));
+    {
+    const zigo_data0 = try builder.reserveArray(value.values.len, 4);
+    for (value.values[0..], 0..) |zigo_item0, zigo_index0| {
+    builder.writeWord(zigo_data0 + zigo_index0 * 4, 4, zigoMaterializedScalar(zigo_item0));
     }
-    builder.writeU64(record + 32, labels_data);
-    builder.writeU64(record + 32 + 8, value.labels.len);
+    builder.writeU64(record + 8, zigo_data0);
+    builder.writeU64(record + 8 + 8, value.values.len);
+    }
+    {
+    const zigo_data0 = try builder.reserveArray(value.labels.len, 16);
+    for (value.labels[0..], 0..) |zigo_item0, zigo_index0| {
+    builder.writeU64(zigo_data0 + zigo_index0 * 16, try builder.appendBytes(zigo_item0[0..]));
+    builder.writeU64(zigo_data0 + zigo_index0 * 16 + 8, zigo_item0.len);
+    }
+    builder.writeU64(record + 24, zigo_data0);
+    builder.writeU64(record + 24 + 8, value.labels.len);
+    }
     return @intCast(record);
 }
 

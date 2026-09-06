@@ -892,8 +892,30 @@ pub const Semantic = struct {
             .slice => |value| self.mentionsValueStruct(value.element.*, name),
             .error_union => |value| self.mentionsValueStruct(value.payload.*, name),
             .optional => |value| self.mentionsValueStruct(value.child.*, name),
+            // A materialized tree stores an extern struct inline, so the
+            // struct's Go mirror is needed wherever the tree is decoded.
+            .materialized => |value| self.materializedMentionsValueStruct(value.ref, name, 0),
             else => false,
         };
+    }
+
+    /// Validation rejects cyclic trees, but this can run before it does, so
+    /// the walk is bounded rather than trusting the document.
+    fn materializedMentionsValueStruct(self: Semantic, tree: []const u8, name: []const u8, depth: usize) bool {
+        if (depth == 64) return false;
+        const declaration = typeDecl(self.types, tree) orelse return false;
+        if (declaration.kind != .materialized) return false;
+        for (declaration.fields) |field| {
+            const node = field.type orelse continue;
+            if (node == .materialized) {
+                if (self.materializedMentionsValueStruct(node.materialized.ref, name, depth + 1)) return true;
+            } else if (node == .optional and node.optional.child.* == .materialized) {
+                if (self.materializedMentionsValueStruct(node.optional.child.materialized.ref, name, depth + 1)) return true;
+            } else if (node == .slice and node.slice.element.* == .materialized) {
+                if (self.materializedMentionsValueStruct(node.slice.element.materialized.ref, name, depth + 1)) return true;
+            } else if (self.mentionsValueStruct(node, name)) return true;
+        }
+        return false;
     }
 };
 

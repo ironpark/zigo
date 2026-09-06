@@ -119,3 +119,14 @@ func LegacyLeafValue(self unsafe.Pointer) (int32, int32) {
 	code := int32(C.zg_legacy_leaf_value((*C.zg_legacy_leaf)(self), &outResult))
 	return int32(outResult), code
 }
+
+// PointData mirrors the zg_point layout, padding included.
+type PointData struct {
+	X int32
+	Y int32
+}
+
+// PointData slices are copied from C memory as one run, so it must match zg_point byte for byte.
+var _ = [1]struct{}{}[unsafe.Sizeof(PointData{})-unsafe.Sizeof(C.zg_point{})]
+var _ = [1]struct{}{}[unsafe.Offsetof(PointData{}.X)-unsafe.Offsetof(C.zg_point{}.x)]
+var _ = [1]struct{}{}[unsafe.Offsetof(PointData{}.Y)-unsafe.Offsetof(C.zg_point{}.y)]
