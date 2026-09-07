@@ -101,14 +101,16 @@ pub const ValueOptions = struct { fields: []const ir.ValueField = &.{}, go: ?GoA
 pub const MaterializedOptions = struct { fields: []const ir.ValueField = &.{} };
 pub const EnumOptions = struct { exhaustive: bool = true, go: ?GoAdapter = null, covers: []const FunctionRef = &.{} };
 pub const UnionOptions = struct { access: ir.Access = .projection, omit: []const []const u8 = &.{} };
+/// Sparse hints indexed by the original native callback signature.
+pub const CallbackParam = struct { index: usize, semantic: ?SemanticHint = null };
 pub const CallbackOptions = struct {
-    params: []const ir.CallbackParam = &.{},
+    params: []const CallbackParam = &.{},
     returns: struct { semantic: ?SemanticHint = null } = .{},
     userdata: ?ir.Userdata = null,
     retention: ?ir.Retention = null,
     reentrancy: ?ir.Reentrancy = null,
     thread: ?ir.Thread = null,
-    on_callback_failure: ?ir.CallbackFailure = null,
+    on_failure: ?ir.CallbackFailure = null,
 };
 pub const Representation = union(enum) {
     handle: HandleOptions,

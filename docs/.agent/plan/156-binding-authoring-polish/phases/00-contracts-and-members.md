@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T13:47:31Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Helpers and contextual/static/explicit receiver choices are implemented and verified without runtime changes.
 > NEXT: none

@@ -107,7 +107,7 @@ fn collectTypes(comptime entries: []const a.Entry, state: *State) void {
                 .materialized => |o| .{ .materialized = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = o.fields } },
                 .enumeration => |o| .{ .enumeration = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .go = o.go, .exhaustive = o.exhaustive, .text = hasText(t.extensions), .ext = externalExtensions(t.extensions) } },
                 .tagged_union => |o| .{ .tagged_union = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .access = o.access, .omit = o.omit, .ext = externalExtensions(t.extensions) } },
-                .callback => |o| .{ .callback = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .params = o.params, .returns = .{ .semantic = o.returns.semantic }, .userdata = o.userdata, .retention = o.retention, .thread = o.thread, .reentrancy = o.reentrancy, .on_callback_failure = o.on_callback_failure } },
+                .callback => |o| .{ .callback = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .params = callbackParams(t.ref.type, o, t.ref.path), .returns = .{ .semantic = o.returns.semantic }, .userdata = o.userdata, .retention = o.retention, .thread = o.thread, .reentrancy = o.reentrancy, .on_callback_failure = o.on_failure } },
             };
             state.source_types = state.source_types ++ [_]a.Type{t};
             state.types = state.types ++ [_]ir.Type{result};
@@ -486,4 +486,61 @@ test "contract helpers and explicit constructor context normalize once" {
     try std.testing.expectEqual(@as(?usize, 3), p.callback(2, .{ .userdata = 3 }).contract.callback.userdata);
     try std.testing.expectEqualStrings("Canceled", p.cancel(4, "Canceled").contract.cancel.canceled.?);
     try std.testing.expectEqualStrings("x", p.flatten(5, &.{"x"}).contract.flatten[0]);
+}
+
+fn callbackParams(comptime T: type, comptime options: a.CallbackOptions, comptime path: []const u8) []const ir.CallbackParam {
+    const pointer = @typeInfo(T);
+    if (pointer != .pointer or @typeInfo(pointer.pointer.child) != .@"fn")
+        @compileError("zigo callback requires a function pointer: " ++ path);
+    const info = @typeInfo(pointer.pointer.child).@"fn";
+    const count = info.params.len;
+    if (info.is_generic or info.is_var_args)
+        @compileError("zigo callback requires a concrete non-variadic signature: " ++ path);
+    const userdata: ?usize = if (options.userdata) |spec| switch (spec) {
+        .first => 0,
+        .last => if (count == 0) 0 else count - 1,
+        .index => |index| index,
+    } else if (count != 0 and info.params[count - 1].type == usize) count - 1 else null;
+    if (userdata) |index| {
+        if (index >= count) @compileError("zigo callback userdata index is outside the Zig signature: " ++ path);
+        if (info.params[index].type != usize) @compileError("zigo callback userdata must be usize: " ++ path);
+    }
+    const layout = ir.callback_layout.describe(info, userdata);
+    var params: [layout.go_count - @intFromBool(userdata != null)]ir.CallbackParam = @splat(.{});
+    for (options.params, 0..) |param, i| {
+        if (param.index >= count) @compileError("zigo callback parameter index is outside the Zig signature: " ++ path);
+        for (options.params[0..i]) |previous| {
+            if (previous.index == param.index) @compileError("zigo duplicate callback parameter index: " ++ path);
+        }
+        switch (layout.kinds[param.index]) {
+            .userdata => @compileError("zigo cannot annotate callback userdata: " ++ path),
+            .pair_length => @compileError("zigo annotate the callback byte pointer, not its length: " ++ path),
+            .value, .pair_pointer => params[layout.go_index[param.index]] = .{ .semantic = param.semantic },
+        }
+    }
+    const frozen = params;
+    return if (options.params.len == 0) &.{} else &frozen;
+}
+
+test "callback hints use sparse native indices for every userdata position" {
+    const Lib = struct {
+        pub const First = *const fn (usize, u32, [*]const u8, usize) callconv(.c) void;
+        pub const Middle = *const fn (u32, usize, [*]const u8, usize) callconv(.c) void;
+        pub const Last = *const fn (u32, [*]const u8, usize, usize) callconv(.c) void;
+    };
+    const api = a.scope(Lib);
+    const result = comptime binding(.{ .root = Lib, .declarations = &.{
+        api.callback("First", .{ .userdata = .first, .params = &.{
+            .{ .index = 2, .semantic = .opaque_bytes }, .{ .index = 1, .semantic = .codepoint },
+        }, .on_failure = .{ .result = 0 } }),
+        api.callback("Middle", .{ .userdata = .{ .index = 1 }, .params = &.{.{ .index = 2, .semantic = .utf8_string }} }),
+        api.callback("Last", .{ .params = &.{.{ .index = 1, .semantic = .opaque_bytes }} }),
+    } });
+    try std.testing.expectEqual(@as(usize, 2), result.types[0].callback.params.len);
+    try std.testing.expectEqual(ir.SemanticHint.codepoint, result.types[0].callback.params[0].semantic.?);
+    try std.testing.expectEqual(ir.SemanticHint.opaque_bytes, result.types[0].callback.params[1].semantic.?);
+    try std.testing.expect(result.types[1].callback.params[0].semantic == null);
+    try std.testing.expectEqual(ir.SemanticHint.utf8_string, result.types[1].callback.params[1].semantic.?);
+    try std.testing.expectEqual(ir.SemanticHint.opaque_bytes, result.types[2].callback.params[1].semantic.?);
+    try std.testing.expectEqual(@as(i64, 0), result.types[0].callback.on_callback_failure.?.result);
 }

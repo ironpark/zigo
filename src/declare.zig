@@ -483,3 +483,6 @@ test "a binding literal coerces, keeps defaults, and exposes type values" {
         std.debug.assert(binding.discover == null and binding.exclude.len == 0);
     }
 }
+
+// Shared native callback layout for authoring and reflection.
+pub const callback_layout = @import("callback_layout.zig");

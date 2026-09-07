@@ -17,6 +17,7 @@ pub const MaterializedOptions = author.MaterializedOptions;
 pub const EnumOptions = author.EnumOptions;
 pub const UnionOptions = author.UnionOptions;
 pub const CallbackOptions = author.CallbackOptions;
+pub const CallbackParam = author.CallbackParam;
 pub const Buffer = author.Buffer;
 pub const CallbackContract = author.CallbackContract;
 pub const Package = author.Package;
