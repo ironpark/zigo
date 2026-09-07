@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T02:54:34Z"
 perf_phase: true
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 기존 coverage 테스트가 그대로 통과하고, `functionListed`가 항목 순회 대신 색인 조회를 사용한다.
 > NEXT: none
