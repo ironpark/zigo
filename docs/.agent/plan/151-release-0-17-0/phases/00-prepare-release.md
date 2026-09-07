@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T10:53:22Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Release checks pass and the version commit and local 0.17.0 tag are ready.
 > NEXT: none

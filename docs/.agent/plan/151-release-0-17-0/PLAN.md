@@ -7,7 +7,7 @@ registered_at: "2026-09-07T10:49:38Z"
 
 # Phases
 
-- [ ] [Phase 00: Prepare the release](phases/00-prepare-release.md)
+- [x] [Phase 00: Prepare the release](phases/00-prepare-release.md)
 - [ ] [Phase 01: Publish and verify](phases/01-publish-and-verify.md)
 
 # Shared Verification
