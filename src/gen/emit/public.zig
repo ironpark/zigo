@@ -10,7 +10,6 @@ const callbacks = @import("callbacks.zig");
 const common = @import("common.zig");
 const docs = @import("docs.zig");
 const emit = @import("emit.zig");
-const must = @import("must.zig");
 const implements = @import("../plugins/implements.zig");
 const public_runtime = @import("public_runtime.zig");
 const public_types = @import("public_types.zig");
@@ -763,8 +762,6 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
             }
         }
         try writer.writeAll("}\n");
-        if (options.go_must_variants and function.must_variant)
-            try must.renderMustVariant(scope, allocator, writer, function, go_names, receiver_name, go_name, owned_type);
         try plugin_hooks.runMethodHooks(plugin_hooks.methodContext(allocator, program, options, .{
             .go_name = go_name,
             .receiver = function.origin.receiver,

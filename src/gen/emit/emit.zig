@@ -1248,7 +1248,6 @@ test {
     _ = purego;
     _ = @import("callbacks.zig");
     _ = public;
-    _ = @import("must.zig");
     _ = public_types;
     _ = public_runtime;
     _ = interfaces;

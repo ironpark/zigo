@@ -7,7 +7,7 @@ const semantic = @import("semantic");
 const common = @import("common.zig");
 const docs = @import("docs.zig");
 const emit = @import("emit.zig");
-const must = @import("must.zig");
+const must = @import("../plugins/must.zig");
 const public = @import("public.zig");
 const public_writers = @import("public_writers.zig");
 

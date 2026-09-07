@@ -7,11 +7,15 @@
 const builtin = @import("builtin");
 const implements = @import("implements.zig");
 const iterator = @import("iterator.zig");
+const must = @import("must.zig");
 const plugin = @import("plugin");
 const testing_plugin = @import("testing.zig");
 
 /// The features zigo ships with, migrated onto the plugin frame.
 pub const builtins: []const plugin.Plugin = &.{
+    // `Must` writes first, so a method that has both a `Must` variant and an
+    // iterator wrapper keeps the order the generated file has always had.
+    must.plugin,
     // `.implements` judges before `.iterator`: a method that claims both is
     // an `.implements` fault, and the order the two validators ran in when
     // they lived in `functions.zig` is what decides which code it gets.

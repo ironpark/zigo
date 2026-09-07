@@ -1,11 +1,38 @@
 //! `Must` variants of public functions, which panic instead of returning an error.
+//!
+//! A built-in plugin, gated by `options.go_must_variants` rather than by a
+//! declaration key: the binding asks for the variants once, for the whole
+//! package. The name-collision rule for the generated `Must` name stays in
+//! `validate.findMustVariantIssue`, which runs on the promoted functions the
+//! generator will actually emit.
 const std = @import("std");
 const abi = @import("abi");
+const common = @import("../emit/common.zig");
+const docs = @import("../emit/docs.zig");
+const plugin_api = @import("plugin");
+const public = @import("../emit/public.zig");
+const public_writers = @import("../emit/public_writers.zig");
 const semantic = @import("semantic");
-const common = @import("common.zig");
-const docs = @import("docs.zig");
-const public = @import("public.zig");
-const public_writers = @import("public_writers.zig");
+
+pub const plugin: plugin_api.Plugin = .{
+    .name = "MUST",
+    .method_hook = methodHook,
+};
+
+fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
+    if (!context.options.go_must_variants or !function.must_variant) return;
+    const method = context.method.?;
+    try renderMustVariant(
+        .{ .program = context.program, .options = context.options },
+        context.allocator,
+        writer,
+        function,
+        method.param_names,
+        method.receiver_name,
+        method.go_name,
+        method.owned_type,
+    );
+}
 
 pub fn writeMustCallArguments(allocator: std.mem.Allocator, writer: *std.Io.Writer, function: abi.AbiFn, go_names: [][]u8) !void {
     var index: usize = 0;
