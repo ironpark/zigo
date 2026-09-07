@@ -23,6 +23,8 @@ pub const CallbackContract = author.CallbackContract;
 pub const Package = author.Package;
 pub const Interface = author.Interface;
 pub const Discovery = author.Discovery;
+pub const param = @import("param.zig");
+pub const result = @import("result.zig");
 pub const Param = author.Param;
 pub const ParamContract = author.ParamContract;
 pub const Returns = author.Returns;
@@ -49,6 +51,3 @@ test {
     _ = features;
     _ = dsl;
 }
-
-pub const param = @import("param.zig");
-pub const result = @import("result.zig");

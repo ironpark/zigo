@@ -69,6 +69,56 @@ func (c *CallbackContext) SetRunCount(v uint32) error {
 	return nil
 }
 
+// NewCallbackContext creates a caller-owned CallbackContext.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+// An error a Go callback returned is returned as *CallbackError once the native call returns.
+func NewCallbackContext(callback Observer) (*CallbackContext, error) {
+	callbackHandle := zigoNewObserverHandle(callback)
+	result, code := zigoRawCallbackContextCreate(uintptr(callbackHandle))
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("NewCallbackContext", callbackHandle)
+	}
+	if err := zigoCallbackError("NewCallbackContext", "callback", callbackHandle); err != nil {
+		zigoDeleteCallbackHandle(callbackHandle)
+		return nil, err
+	}
+	if code != 0 {
+		zigoDeleteCallbackHandle(callbackHandle)
+		return nil, zigoErrorForCode("NewCallbackContext", code)
+	}
+	return zigoNewCallbackContext(result, []zigoCallbackHandle{callbackHandle}), nil
+}
+
+// Run calls the Zig function CallbackContext.run.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+// An error a Go callback returned is returned as *CallbackError once the native call returns.
+func (c *CallbackContext) Run(value int32) (int32, error) {
+	ptr, err := zigoCheckedPointer("CallbackContext.Run receiver", c)
+	if err != nil {
+		return 0, err
+	}
+	defer c.zigoRelease()
+	result, code := zigoRawCallbackContextRun(ptr, value)
+	if zigoCallbackPanicPending() {
+		for slot := range 1 {
+			zigoRethrowCallbackPanic("CallbackContext.Run", c.zigoCallbackHandle(slot))
+		}
+	}
+	for slot := range 1 {
+		if err := zigoCallbackError("CallbackContext.Run", "callback", c.zigoCallbackHandle(slot)); err != nil {
+			return 0, err
+		}
+	}
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("CallbackContext.Run", code), c)
+	}
+	return result, nil
+}
+
 // NewFloatBuffer creates a caller-owned FloatBuffer.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
@@ -151,56 +201,6 @@ func (i *IntBuffer) Len() (uint, error) {
 	result, code := zigoRawIntBufferLen(ptr)
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(zigoErrorForCode("IntBuffer.Len", code), i)
-	}
-	return result, nil
-}
-
-// NewCallbackContext creates a caller-owned CallbackContext.
-// The caller must call Close on the returned handle.
-// Native failures are returned as generated error values.
-// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
-// An error a Go callback returned is returned as *CallbackError once the native call returns.
-func NewCallbackContext(callback Observer) (*CallbackContext, error) {
-	callbackHandle := zigoNewObserverHandle(callback)
-	result, code := zigoRawCallbackContextCreate(uintptr(callbackHandle))
-	if zigoCallbackPanicPending() {
-		zigoRethrowCallbackPanic("NewCallbackContext", callbackHandle)
-	}
-	if err := zigoCallbackError("NewCallbackContext", "callback", callbackHandle); err != nil {
-		zigoDeleteCallbackHandle(callbackHandle)
-		return nil, err
-	}
-	if code != 0 {
-		zigoDeleteCallbackHandle(callbackHandle)
-		return nil, zigoErrorForCode("NewCallbackContext", code)
-	}
-	return zigoNewCallbackContext(result, []zigoCallbackHandle{callbackHandle}), nil
-}
-
-// Run calls the Zig function CallbackContext.run.
-// It returns *HandleError if a required handle is nil or closed.
-// A native panic is returned as *NativePanicError.
-// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
-// An error a Go callback returned is returned as *CallbackError once the native call returns.
-func (c *CallbackContext) Run(value int32) (int32, error) {
-	ptr, err := zigoCheckedPointer("CallbackContext.Run receiver", c)
-	if err != nil {
-		return 0, err
-	}
-	defer c.zigoRelease()
-	result, code := zigoRawCallbackContextRun(ptr, value)
-	if zigoCallbackPanicPending() {
-		for slot := range 1 {
-			zigoRethrowCallbackPanic("CallbackContext.Run", c.zigoCallbackHandle(slot))
-		}
-	}
-	for slot := range 1 {
-		if err := zigoCallbackError("CallbackContext.Run", "callback", c.zigoCallbackHandle(slot)); err != nil {
-			return 0, err
-		}
-	}
-	if code != 0 {
-		return 0, zigoPoisonAfterPanic(zigoErrorForCode("CallbackContext.Run", code), c)
 	}
 	return result, nil
 }

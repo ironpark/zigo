@@ -9,6 +9,8 @@ pub const bindings = zigo.define(.{
         api.function("divide", .{}),
         api.function("sum", .{}),
         api.function("normalizeFormat", .{}),
-        api.function("codepointWidth", .{ .params = &.{.{ .index = 0, .go_name = "cp", .semantic = .codepoint }} }),
+        api.function("codepointWidth", .{ .params = &.{
+            .{ .index = 0, .semantic = .codepoint },
+        } }),
     },
 });

@@ -60,10 +60,10 @@ type nativeBindings struct {
 	fnContextRewind          func(unsafe.Pointer) int32
 	fnContextAddCopy         func(unsafe.Pointer, int64, *int64) int32
 	fnContextBorrowView      func(unsafe.Pointer, *unsafe.Pointer) int32
-	fnContextViewTotal       func(unsafe.Pointer, *int64) int32
 	fnContextCrash           func(unsafe.Pointer) int32
 	fnContextCrashInfallible func(unsafe.Pointer, *int64) int32
 	fnContextDeinit          func(unsafe.Pointer) int32
+	fnContextViewTotal       func(unsafe.Pointer, *int64) int32
 	fnCrashFatal             func()
 	fnLiveBytes              func() uintptr
 	fnSumCopies              func(int64, unsafe.Pointer, unsafe.Pointer, *int64) int32
@@ -190,10 +190,6 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_context_borrow_view", err)
 	}
-	addrContextViewTotal, err := resolveSymbol(handle, "zg_context_view_total")
-	if err != nil {
-		return fail("zg_context_view_total", err)
-	}
 	addrContextCrash, err := resolveSymbol(handle, "zg_context_crash")
 	if err != nil {
 		return fail("zg_context_crash", err)
@@ -205,6 +201,10 @@ func loadCandidate(path string) error {
 	addrContextDeinit, err := resolveSymbol(handle, "zg_context_deinit")
 	if err != nil {
 		return fail("zg_context_deinit", err)
+	}
+	addrContextViewTotal, err := resolveSymbol(handle, "zg_context_view_total")
+	if err != nil {
+		return fail("zg_context_view_total", err)
 	}
 	addrCrashFatal, err := resolveSymbol(handle, "zg_crash_fatal")
 	if err != nil {
@@ -238,10 +238,10 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnContextRewind, addrContextRewind)
 	purego.RegisterFunc(&next.fnContextAddCopy, addrContextAddCopy)
 	purego.RegisterFunc(&next.fnContextBorrowView, addrContextBorrowView)
-	purego.RegisterFunc(&next.fnContextViewTotal, addrContextViewTotal)
 	purego.RegisterFunc(&next.fnContextCrash, addrContextCrash)
 	purego.RegisterFunc(&next.fnContextCrashInfallible, addrContextCrashInfallible)
 	purego.RegisterFunc(&next.fnContextDeinit, addrContextDeinit)
+	purego.RegisterFunc(&next.fnContextViewTotal, addrContextViewTotal)
 	purego.RegisterFunc(&next.fnCrashFatal, addrCrashFatal)
 	purego.RegisterFunc(&next.fnLiveBytes, addrLiveBytes)
 	purego.RegisterFunc(&next.fnSumCopies, addrSumCopies)
@@ -349,13 +349,6 @@ func ContextBorrowView(self unsafe.Pointer) (unsafe.Pointer, int32) {
 	return outResult, code
 }
 
-// ContextViewTotal calls the generated purego ABI wrapper for zg_context_view_total.
-func ContextViewTotal(self unsafe.Pointer) (int64, int32) {
-	var outResult int64
-	code := bindings().fnContextViewTotal(self, &outResult)
-	return outResult, code
-}
-
 // ContextCrash calls the generated purego ABI wrapper for zg_context_crash.
 func ContextCrash(self unsafe.Pointer) int32 {
 	code := bindings().fnContextCrash(self)
@@ -373,6 +366,13 @@ func ContextCrashInfallible(self unsafe.Pointer) (int64, int32) {
 func ContextDeinit(self unsafe.Pointer) int32 {
 	code := bindings().fnContextDeinit(self)
 	return code
+}
+
+// ContextViewTotal calls the generated purego ABI wrapper for zg_context_view_total.
+func ContextViewTotal(self unsafe.Pointer) (int64, int32) {
+	var outResult int64
+	code := bindings().fnContextViewTotal(self, &outResult)
+	return outResult, code
 }
 
 // CrashFatal calls the generated purego ABI wrapper for zg_crash_fatal.

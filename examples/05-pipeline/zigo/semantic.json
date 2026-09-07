@@ -3,20 +3,298 @@
     {
       "deinit": "deinit",
       "init": "create",
+      "type": "Pipeline"
+    },
+    {
+      "deinit": "deinit",
+      "init": "create",
       "type": "IntBatch"
     },
     {
       "deinit": "deinit",
       "init": "create",
       "type": "FloatBatch"
-    },
-    {
-      "deinit": "deinit",
-      "init": "create",
-      "type": "Pipeline"
     }
   ],
   "functions": [
+    {
+      "name": "create",
+      "namespace": "Pipeline",
+      "ownership": "caller",
+      "params": [
+        {
+          "direction": "in",
+          "name": "name",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "semantic": "utf8_string",
+          "source": {
+            "line": 26,
+            "column": 9
+          },
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "mode",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 27,
+            "column": 9
+          },
+          "type": {
+            "kind": "enum",
+            "ref": "Mode"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "callback",
+          "name_source": "ast",
+          "retention": "retained",
+          "source": {
+            "line": 28,
+            "column": 9
+          },
+          "type": {
+            "c_callconv": true,
+            "has_userdata": true,
+            "kind": "callback",
+            "params": [
+              {
+                "bits": 32,
+                "is_usize": false,
+                "kind": "int",
+                "signed": true
+              },
+              {
+                "bits": 64,
+                "is_usize": true,
+                "kind": "int",
+                "signed": false
+              }
+            ],
+            "return": {
+              "bits": 32,
+              "is_usize": false,
+              "kind": "int",
+              "signed": true
+            }
+          }
+        },
+        {
+          "direction": "in",
+          "name": "userdata",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "source": {
+            "line": 29,
+            "column": 9
+          },
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "OutOfMemory",
+          "InvalidName"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "Pipeline"
+        }
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 25,
+        "column": 12
+      },
+      "symbol": "zg_pipeline_create"
+    },
+    {
+      "name": "process",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "values",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "source": {
+            "line": 48,
+            "column": 37
+          },
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 32,
+              "is_usize": false,
+              "kind": "int",
+              "signed": true
+            },
+            "kind": "slice"
+          }
+        }
+      ],
+      "receiver": "Pipeline",
+      "return": {
+        "error_set": [
+          "EmptyInput",
+          "Disabled",
+          "CallbackPanicked"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "bits": 64,
+          "is_usize": false,
+          "kind": "int",
+          "signed": true
+        }
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 48,
+        "column": 12
+      },
+      "symbol": "zg_pipeline_process"
+    },
+    {
+      "name": "name",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Pipeline",
+      "return": {
+        "const": true,
+        "element": {
+          "bits": 8,
+          "is_usize": false,
+          "kind": "int",
+          "signed": false
+        },
+        "kind": "slice"
+      },
+      "return_semantic": "utf8_string",
+      "source": {
+        "path": "root.zig",
+        "line": 68,
+        "column": 12
+      },
+      "symbol": "zg_pipeline_name"
+    },
+    {
+      "name": "mode",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Pipeline",
+      "return": {
+        "kind": "enum",
+        "ref": "Mode"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 72,
+        "column": 12
+      },
+      "symbol": "zg_pipeline_mode"
+    },
+    {
+      "name": "setEnabled",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "enabled",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "source": {
+            "line": 76,
+            "column": 40
+          },
+          "type": {
+            "kind": "bool"
+          }
+        }
+      ],
+      "receiver": "Pipeline",
+      "return": {
+        "kind": "bool"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 76,
+        "column": 12
+      },
+      "symbol": "zg_pipeline_set_enabled"
+    },
+    {
+      "name": "processed",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Pipeline",
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 82,
+        "column": 12
+      },
+      "symbol": "zg_pipeline_processed"
+    },
+    {
+      "name": "total",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Pipeline",
+      "return": {
+        "bits": 64,
+        "is_usize": false,
+        "kind": "int",
+        "signed": true
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 86,
+        "column": 12
+      },
+      "symbol": "zg_pipeline_total"
+    },
+    {
+      "name": "deinit",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Pipeline",
+      "return": {
+        "kind": "void"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 90,
+        "column": 12
+      },
+      "symbol": "zg_pipeline_deinit"
+    },
     {
       "name": "create",
       "namespace": "IntBatch",
@@ -204,284 +482,6 @@
         "column": 12
       },
       "symbol": "zg_float_batch_deinit"
-    },
-    {
-      "name": "create",
-      "namespace": "Pipeline",
-      "ownership": "caller",
-      "params": [
-        {
-          "direction": "in",
-          "name": "name",
-          "name_source": "sidecar",
-          "retention": "borrowed",
-          "semantic": "utf8_string",
-          "source": {
-            "line": 26,
-            "column": 9
-          },
-          "type": {
-            "const": true,
-            "element": {
-              "bits": 8,
-              "is_usize": false,
-              "kind": "int",
-              "signed": false
-            },
-            "kind": "slice"
-          }
-        },
-        {
-          "direction": "in",
-          "name": "mode",
-          "name_source": "sidecar",
-          "retention": "borrowed",
-          "source": {
-            "line": 27,
-            "column": 9
-          },
-          "type": {
-            "kind": "enum",
-            "ref": "Mode"
-          }
-        },
-        {
-          "direction": "in",
-          "name": "callback",
-          "name_source": "sidecar",
-          "retention": "retained",
-          "source": {
-            "line": 28,
-            "column": 9
-          },
-          "type": {
-            "c_callconv": true,
-            "has_userdata": true,
-            "kind": "callback",
-            "params": [
-              {
-                "bits": 32,
-                "is_usize": false,
-                "kind": "int",
-                "signed": true
-              },
-              {
-                "bits": 64,
-                "is_usize": true,
-                "kind": "int",
-                "signed": false
-              }
-            ],
-            "return": {
-              "bits": 32,
-              "is_usize": false,
-              "kind": "int",
-              "signed": true
-            }
-          }
-        },
-        {
-          "direction": "in",
-          "name": "userdata",
-          "name_source": "sidecar",
-          "retention": "borrowed",
-          "source": {
-            "line": 29,
-            "column": 9
-          },
-          "type": {
-            "bits": 64,
-            "is_usize": true,
-            "kind": "int",
-            "signed": false
-          }
-        }
-      ],
-      "return": {
-        "error_set": [
-          "OutOfMemory",
-          "InvalidName"
-        ],
-        "kind": "error_union",
-        "payload": {
-          "const": false,
-          "kind": "opaque_ptr",
-          "nullable": false,
-          "ref": "Pipeline"
-        }
-      },
-      "source": {
-        "path": "root.zig",
-        "line": 25,
-        "column": 12
-      },
-      "symbol": "zg_pipeline_create"
-    },
-    {
-      "name": "process",
-      "ownership": "borrowed",
-      "params": [
-        {
-          "direction": "in",
-          "name": "values",
-          "name_source": "sidecar",
-          "retention": "borrowed",
-          "source": {
-            "line": 48,
-            "column": 37
-          },
-          "type": {
-            "const": true,
-            "element": {
-              "bits": 32,
-              "is_usize": false,
-              "kind": "int",
-              "signed": true
-            },
-            "kind": "slice"
-          }
-        }
-      ],
-      "receiver": "Pipeline",
-      "return": {
-        "error_set": [
-          "EmptyInput",
-          "Disabled",
-          "CallbackPanicked"
-        ],
-        "kind": "error_union",
-        "payload": {
-          "bits": 64,
-          "is_usize": false,
-          "kind": "int",
-          "signed": true
-        }
-      },
-      "source": {
-        "path": "root.zig",
-        "line": 48,
-        "column": 12
-      },
-      "symbol": "zg_pipeline_process"
-    },
-    {
-      "name": "name",
-      "ownership": "borrowed",
-      "params": [],
-      "receiver": "Pipeline",
-      "return": {
-        "const": true,
-        "element": {
-          "bits": 8,
-          "is_usize": false,
-          "kind": "int",
-          "signed": false
-        },
-        "kind": "slice"
-      },
-      "return_semantic": "utf8_string",
-      "source": {
-        "path": "root.zig",
-        "line": 68,
-        "column": 12
-      },
-      "symbol": "zg_pipeline_name"
-    },
-    {
-      "name": "mode",
-      "ownership": "borrowed",
-      "params": [],
-      "receiver": "Pipeline",
-      "return": {
-        "kind": "enum",
-        "ref": "Mode"
-      },
-      "source": {
-        "path": "root.zig",
-        "line": 72,
-        "column": 12
-      },
-      "symbol": "zg_pipeline_mode"
-    },
-    {
-      "name": "setEnabled",
-      "ownership": "borrowed",
-      "params": [
-        {
-          "direction": "in",
-          "name": "enabled",
-          "name_source": "sidecar",
-          "retention": "borrowed",
-          "source": {
-            "line": 76,
-            "column": 40
-          },
-          "type": {
-            "kind": "bool"
-          }
-        }
-      ],
-      "receiver": "Pipeline",
-      "return": {
-        "kind": "bool"
-      },
-      "source": {
-        "path": "root.zig",
-        "line": 76,
-        "column": 12
-      },
-      "symbol": "zg_pipeline_set_enabled"
-    },
-    {
-      "name": "processed",
-      "ownership": "borrowed",
-      "params": [],
-      "receiver": "Pipeline",
-      "return": {
-        "bits": 64,
-        "is_usize": true,
-        "kind": "int",
-        "signed": false
-      },
-      "source": {
-        "path": "root.zig",
-        "line": 82,
-        "column": 12
-      },
-      "symbol": "zg_pipeline_processed"
-    },
-    {
-      "name": "total",
-      "ownership": "borrowed",
-      "params": [],
-      "receiver": "Pipeline",
-      "return": {
-        "bits": 64,
-        "is_usize": false,
-        "kind": "int",
-        "signed": true
-      },
-      "source": {
-        "path": "root.zig",
-        "line": 86,
-        "column": 12
-      },
-      "symbol": "zg_pipeline_total"
-    },
-    {
-      "name": "deinit",
-      "ownership": "borrowed",
-      "params": [],
-      "receiver": "Pipeline",
-      "return": {
-        "kind": "void"
-      },
-      "source": {
-        "path": "root.zig",
-        "line": 90,
-        "column": 12
-      },
-      "symbol": "zg_pipeline_deinit"
     },
     {
       "name": "liveBytes",

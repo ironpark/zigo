@@ -5,92 +5,6 @@ package pipeline
 
 import "example.com/zigo/pipeline/internal/raw"
 
-// NewIntBatch creates a caller-owned IntBatch.
-// The caller must call Close on the returned handle.
-// Native failures are returned as generated error values.
-func NewIntBatch() (*IntBatch, error) {
-	result, code := raw.IntBatchCreate()
-	if code != 0 {
-		return nil, zigoErrorForCode("NewIntBatch", code)
-	}
-	return zigoNewIntBatch(result), nil
-}
-
-// Push calls the Zig function IntBatch.push.
-// It returns *HandleError if a required handle is nil or closed.
-// Native failures are returned as generated error values.
-func (i *IntBatch) Push(value int32) error {
-	ptr, err := zigoCheckedPointer("IntBatch.Push receiver", i)
-	if err != nil {
-		return err
-	}
-	defer i.zigoRelease()
-	code := raw.IntBatchPush(ptr, value)
-	if code != 0 {
-		return zigoPoisonAfterPanic(zigoErrorForCode("IntBatch.Push", code), i)
-	}
-	return nil
-}
-
-// Len calls the Zig function IntBatch.len.
-// It returns *HandleError if a required handle is nil or closed.
-// A native panic is returned as *NativePanicError.
-func (i *IntBatch) Len() (uint, error) {
-	ptr, err := zigoCheckedPointer("IntBatch.Len receiver", i)
-	if err != nil {
-		return 0, err
-	}
-	defer i.zigoRelease()
-	result, code := raw.IntBatchLen(ptr)
-	if code != 0 {
-		return 0, zigoPoisonAfterPanic(zigoErrorForCode("IntBatch.Len", code), i)
-	}
-	return result, nil
-}
-
-// NewFloatBatch creates a caller-owned FloatBatch.
-// The caller must call Close on the returned handle.
-// Native failures are returned as generated error values.
-func NewFloatBatch() (*FloatBatch, error) {
-	result, code := raw.FloatBatchCreate()
-	if code != 0 {
-		return nil, zigoErrorForCode("NewFloatBatch", code)
-	}
-	return zigoNewFloatBatch(result), nil
-}
-
-// Push calls the Zig function FloatBatch.push.
-// It returns *HandleError if a required handle is nil or closed.
-// Native failures are returned as generated error values.
-func (f *FloatBatch) Push(value float64) error {
-	ptr, err := zigoCheckedPointer("FloatBatch.Push receiver", f)
-	if err != nil {
-		return err
-	}
-	defer f.zigoRelease()
-	code := raw.FloatBatchPush(ptr, value)
-	if code != 0 {
-		return zigoPoisonAfterPanic(zigoErrorForCode("FloatBatch.Push", code), f)
-	}
-	return nil
-}
-
-// Len calls the Zig function FloatBatch.len.
-// It returns *HandleError if a required handle is nil or closed.
-// A native panic is returned as *NativePanicError.
-func (f *FloatBatch) Len() (uint, error) {
-	ptr, err := zigoCheckedPointer("FloatBatch.Len receiver", f)
-	if err != nil {
-		return 0, err
-	}
-	defer f.zigoRelease()
-	result, code := raw.FloatBatchLen(ptr)
-	if code != 0 {
-		return 0, zigoPoisonAfterPanic(zigoErrorForCode("FloatBatch.Len", code), f)
-	}
-	return result, nil
-}
-
 // NewPipeline creates a caller-owned Pipeline.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
@@ -236,6 +150,92 @@ func (p *Pipeline) Total() (int64, error) {
 	}
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Pipeline.Total", code), p)
+	}
+	return result, nil
+}
+
+// NewIntBatch creates a caller-owned IntBatch.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
+func NewIntBatch() (*IntBatch, error) {
+	result, code := raw.IntBatchCreate()
+	if code != 0 {
+		return nil, zigoErrorForCode("NewIntBatch", code)
+	}
+	return zigoNewIntBatch(result), nil
+}
+
+// Push calls the Zig function IntBatch.push.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+func (i *IntBatch) Push(value int32) error {
+	ptr, err := zigoCheckedPointer("IntBatch.Push receiver", i)
+	if err != nil {
+		return err
+	}
+	defer i.zigoRelease()
+	code := raw.IntBatchPush(ptr, value)
+	if code != 0 {
+		return zigoPoisonAfterPanic(zigoErrorForCode("IntBatch.Push", code), i)
+	}
+	return nil
+}
+
+// Len calls the Zig function IntBatch.len.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (i *IntBatch) Len() (uint, error) {
+	ptr, err := zigoCheckedPointer("IntBatch.Len receiver", i)
+	if err != nil {
+		return 0, err
+	}
+	defer i.zigoRelease()
+	result, code := raw.IntBatchLen(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("IntBatch.Len", code), i)
+	}
+	return result, nil
+}
+
+// NewFloatBatch creates a caller-owned FloatBatch.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
+func NewFloatBatch() (*FloatBatch, error) {
+	result, code := raw.FloatBatchCreate()
+	if code != 0 {
+		return nil, zigoErrorForCode("NewFloatBatch", code)
+	}
+	return zigoNewFloatBatch(result), nil
+}
+
+// Push calls the Zig function FloatBatch.push.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+func (f *FloatBatch) Push(value float64) error {
+	ptr, err := zigoCheckedPointer("FloatBatch.Push receiver", f)
+	if err != nil {
+		return err
+	}
+	defer f.zigoRelease()
+	code := raw.FloatBatchPush(ptr, value)
+	if code != 0 {
+		return zigoPoisonAfterPanic(zigoErrorForCode("FloatBatch.Push", code), f)
+	}
+	return nil
+}
+
+// Len calls the Zig function FloatBatch.len.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (f *FloatBatch) Len() (uint, error) {
+	ptr, err := zigoCheckedPointer("FloatBatch.Len receiver", f)
+	if err != nil {
+		return 0, err
+	}
+	defer f.zigoRelease()
+	result, code := raw.FloatBatchLen(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("FloatBatch.Len", code), f)
 	}
 	return result, nil
 }

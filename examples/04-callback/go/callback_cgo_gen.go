@@ -338,6 +338,26 @@ func zigoRawCallbackContextSetRunCount(self unsafe.Pointer, v uint32) int32 {
 	return code
 }
 
+// zigoRawCallbackContextCreate calls the generated C ABI wrapper for zg_callback_context_create.
+func zigoRawCallbackContextCreate(callbackHandle uintptr) (unsafe.Pointer, int32) {
+	var outResult *C.zg_callback_context
+	code := int32(C.zg_callback_context_create(C.size_t(callbackHandle), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+
+// zigoRawCallbackContextRun calls the generated C ABI wrapper for zg_callback_context_run.
+func zigoRawCallbackContextRun(self unsafe.Pointer, value int32) (int32, int32) {
+	var outResult C.int32_t
+	code := int32(C.zg_callback_context_run((*C.zg_callback_context)(self), C.int32_t(value), &outResult))
+	return int32(outResult), code
+}
+
+// zigoRawCallbackContextDeinit calls the generated C ABI wrapper for zg_callback_context_deinit.
+func zigoRawCallbackContextDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_callback_context_deinit((*C.zg_callback_context)(self)))
+	return code
+}
+
 // zigoRawFloatBufferCreate calls the generated C ABI wrapper for zg_float_buffer_create.
 func zigoRawFloatBufferCreate() (unsafe.Pointer, int32) {
 	var outResult *C.zg_float_buffer
@@ -387,26 +407,6 @@ func zigoRawIntBufferLen(self unsafe.Pointer) (uint, int32) {
 // zigoRawIntBufferDeinit calls the generated C ABI wrapper for zg_int_buffer_deinit.
 func zigoRawIntBufferDeinit(self unsafe.Pointer) int32 {
 	code := int32(C.zg_int_buffer_deinit((*C.zg_int_buffer)(self)))
-	return code
-}
-
-// zigoRawCallbackContextCreate calls the generated C ABI wrapper for zg_callback_context_create.
-func zigoRawCallbackContextCreate(callbackHandle uintptr) (unsafe.Pointer, int32) {
-	var outResult *C.zg_callback_context
-	code := int32(C.zg_callback_context_create(C.size_t(callbackHandle), &outResult))
-	return unsafe.Pointer(outResult), code
-}
-
-// zigoRawCallbackContextRun calls the generated C ABI wrapper for zg_callback_context_run.
-func zigoRawCallbackContextRun(self unsafe.Pointer, value int32) (int32, int32) {
-	var outResult C.int32_t
-	code := int32(C.zg_callback_context_run((*C.zg_callback_context)(self), C.int32_t(value), &outResult))
-	return int32(outResult), code
-}
-
-// zigoRawCallbackContextDeinit calls the generated C ABI wrapper for zg_callback_context_deinit.
-func zigoRawCallbackContextDeinit(self unsafe.Pointer) int32 {
-	code := int32(C.zg_callback_context_deinit((*C.zg_callback_context)(self)))
 	return code
 }
 

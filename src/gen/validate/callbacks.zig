@@ -61,7 +61,7 @@ pub fn callbackFailureResultIssue(
         .code = "ZIGO046",
         .message = try std.fmt.allocPrint(allocator, "callback failure result declared on parameter `{s}`, which is not a callback", .{parameter.name}),
         .site = site.functionSiteFor(function, declaration),
-        .hint = "use `.on_callback_failure` only on a callback type entry or callback parameter",
+        .hint = "use `.on_failure` on a callback type entry or `.contract.callback.on_failure` on a callback parameter",
     };
     const result = parameter.type.callback.@"return".*;
     if (result == .void) return .{
@@ -69,7 +69,7 @@ pub fn callbackFailureResultIssue(
         .code = "ZIGO046",
         .message = try std.fmt.allocPrint(allocator, "callback `{s}` cannot declare a failure result because it returns void", .{parameter.name}),
         .site = site.functionSiteFor(function, declaration),
-        .hint = "remove `.on_callback_failure`, or give the callback a scalar return type",
+        .hint = "remove the `on_failure` setting, or give the callback a scalar return type",
     };
     if (callbackFailureValueFits(document, result, failure.result)) return null;
     return .{

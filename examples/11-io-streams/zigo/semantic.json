@@ -66,7 +66,7 @@
         {
           "direction": "in",
           "name": "line",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 29,
@@ -128,7 +128,7 @@
         {
           "direction": "in",
           "name": "w",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 43,
@@ -166,7 +166,7 @@
           "buffer": 4096,
           "direction": "in",
           "name": "r",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 76,
@@ -207,7 +207,7 @@
         {
           "direction": "out",
           "name": "dst",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 54,
@@ -321,7 +321,7 @@
         {
           "direction": "in",
           "name": "bytes",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 128,
@@ -396,7 +396,7 @@
         {
           "direction": "in",
           "name": "w",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 148,
@@ -409,7 +409,7 @@
         {
           "direction": "in",
           "name": "width",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 148,
@@ -447,7 +447,7 @@
         {
           "direction": "in",
           "name": "r",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 156,
@@ -460,7 +460,7 @@
         {
           "direction": "in",
           "name": "w",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 156,
@@ -499,7 +499,7 @@
         {
           "direction": "in",
           "name": "values",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "semantic": "codepoint",
           "source": {
@@ -539,7 +539,7 @@
         {
           "direction": "out",
           "name": "output",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "semantic": "codepoint",
           "source": {
@@ -599,7 +599,7 @@
         {
           "direction": "in",
           "name": "values",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "semantic": "codepoint",
           "source": {

@@ -100,6 +100,11 @@ func (a *Accumulator) Total() (int64, error) {
 	return result, nil
 }
 
+// Columns: How many columns this mode selects.
+func (d DeccolmMode) Columns() uint16 {
+	return raw.DeccolmModeColumns(uint8(d))
+}
+
 // LiveObjects calls the Zig function liveObjects.
 func LiveObjects() ObjectCount {
 	return objectCountFromRaw(raw.LiveObjects())
@@ -108,11 +113,6 @@ func LiveObjects() ObjectCount {
 // DefaultCursorStyle calls the Zig function defaultCursorStyle.
 func DefaultCursorStyle() CursorStyle {
 	return CursorStyle(raw.DefaultCursorStyle())
-}
-
-// Columns: How many columns this mode selects.
-func (d DeccolmMode) Columns() uint16 {
-	return raw.DeccolmModeColumns(uint8(d))
 }
 
 // ConfigureStyles calls the Zig function configureStyles.

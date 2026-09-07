@@ -39,7 +39,7 @@
         {
           "direction": "in",
           "name": "value",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 29,
@@ -74,7 +74,7 @@
         {
           "direction": "in",
           "name": "present",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 34,
@@ -109,7 +109,7 @@
         {
           "direction": "in",
           "name": "c",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 38,
@@ -213,7 +213,7 @@
         {
           "direction": "in",
           "name": "value",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 63,
@@ -260,24 +260,6 @@
         "column": 12
       },
       "symbol": "zg_context_borrow_view"
-    },
-    {
-      "name": "total",
-      "ownership": "borrowed",
-      "params": [],
-      "receiver": "ContextView",
-      "return": {
-        "bits": 64,
-        "is_usize": false,
-        "kind": "int",
-        "signed": true
-      },
-      "source": {
-        "path": "root.zig",
-        "line": 10,
-        "column": 12
-      },
-      "symbol": "zg_context_view_total"
     },
     {
       "doc": "crash panics inside a method: what leaves a handle poisoned.",
@@ -336,6 +318,24 @@
       "symbol": "zg_context_deinit"
     },
     {
+      "name": "total",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "ContextView",
+      "return": {
+        "bits": 64,
+        "is_usize": false,
+        "kind": "int",
+        "signed": true
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 10,
+        "column": 12
+      },
+      "symbol": "zg_context_view_total"
+    },
+    {
       "doc": "A free function with no handle and no promoted integer has no `error` in\nits Go signature, so a panic here has nowhere to be reported. Zig calls\nthat fatal, and so does zigo: the message goes to stderr and the process\naborts.",
       "name": "crashFatal",
       "ownership": "borrowed",
@@ -374,7 +374,7 @@
         {
           "direction": "in",
           "name": "bias",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 93,
@@ -390,7 +390,7 @@
         {
           "direction": "in",
           "name": "left",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 93,
@@ -407,7 +407,7 @@
         {
           "direction": "in",
           "name": "right",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 93,
@@ -443,7 +443,7 @@
         {
           "direction": "in",
           "name": "text",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "semantic": "utf8_string",
           "source": {

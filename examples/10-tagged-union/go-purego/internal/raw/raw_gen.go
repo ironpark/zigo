@@ -75,6 +75,8 @@ type nativeBindings struct {
 	fnSignalSetMode          func(unsafe.Pointer, uint8) int32
 	fnSignalSetActive        func(unsafe.Pointer, uint8) int32
 	fnSignalDeinit           func(unsafe.Pointer) int32
+	fnPaletteCreate          func(uint16, *unsafe.Pointer) int32
+	fnPaletteDeinit          func(unsafe.Pointer) int32
 	fnLiveValues             func() uintptr
 	fnDivide                 func(float64, float64, *float64) int32
 	fnSum                    func(unsafe.Pointer, uintptr) float64
@@ -85,8 +87,6 @@ type nativeBindings struct {
 	fnCheckedRgb             func(uint8, *uint32) int32
 	fnEchoColorRecord        func(unsafe.Pointer, unsafe.Pointer)
 	fnFlattenFlags           func(uint16) uint16
-	fnPaletteCreate          func(uint16, *unsafe.Pointer) int32
-	fnPaletteDeinit          func(unsafe.Pointer) int32
 	fnVisitFlags             func(uintptr, uintptr)
 	fnPanicError             func() int32
 	fnProjection0            func(unsafe.Pointer, *uint8) int32
@@ -432,6 +432,14 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_signal_deinit", err)
 	}
+	addrPaletteCreate, err := resolveSymbol(handle, "zg_palette_create")
+	if err != nil {
+		return fail("zg_palette_create", err)
+	}
+	addrPaletteDeinit, err := resolveSymbol(handle, "zg_palette_deinit")
+	if err != nil {
+		return fail("zg_palette_deinit", err)
+	}
 	addrLiveValues, err := resolveSymbol(handle, "zg_live_values")
 	if err != nil {
 		return fail("zg_live_values", err)
@@ -471,14 +479,6 @@ func loadCandidate(path string) error {
 	addrFlattenFlags, err := resolveSymbol(handle, "zg_flatten_flags")
 	if err != nil {
 		return fail("zg_flatten_flags", err)
-	}
-	addrPaletteCreate, err := resolveSymbol(handle, "zg_palette_create")
-	if err != nil {
-		return fail("zg_palette_create", err)
-	}
-	addrPaletteDeinit, err := resolveSymbol(handle, "zg_palette_deinit")
-	if err != nil {
-		return fail("zg_palette_deinit", err)
 	}
 	addrVisitFlags, err := resolveSymbol(handle, "zg_visit_flags_purego_v2")
 	if err != nil {
@@ -570,6 +570,8 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnSignalSetMode, addrSignalSetMode)
 	purego.RegisterFunc(&next.fnSignalSetActive, addrSignalSetActive)
 	purego.RegisterFunc(&next.fnSignalDeinit, addrSignalDeinit)
+	purego.RegisterFunc(&next.fnPaletteCreate, addrPaletteCreate)
+	purego.RegisterFunc(&next.fnPaletteDeinit, addrPaletteDeinit)
 	purego.RegisterFunc(&next.fnLiveValues, addrLiveValues)
 	purego.RegisterFunc(&next.fnDivide, addrDivide)
 	purego.RegisterFunc(&next.fnSum, addrSum)
@@ -580,8 +582,6 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnCheckedRgb, addrCheckedRgb)
 	purego.RegisterFunc(&next.fnEchoColorRecord, addrEchoColorRecord)
 	purego.RegisterFunc(&next.fnFlattenFlags, addrFlattenFlags)
-	purego.RegisterFunc(&next.fnPaletteCreate, addrPaletteCreate)
-	purego.RegisterFunc(&next.fnPaletteDeinit, addrPaletteDeinit)
 	purego.RegisterFunc(&next.fnVisitFlags, addrVisitFlags)
 	purego.RegisterFunc(&next.fnPanicError, addrPanicError)
 	purego.RegisterFunc(&next.fnProjection0, addrProjection0)
@@ -823,6 +823,19 @@ func SignalDeinit(self unsafe.Pointer) int32 {
 	return code
 }
 
+// PaletteCreate calls the generated purego ABI wrapper for zg_palette_create.
+func PaletteCreate(flags uint16) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := bindings().fnPaletteCreate(flags, &outResult)
+	return outResult, code
+}
+
+// PaletteDeinit calls the generated purego ABI wrapper for zg_palette_deinit.
+func PaletteDeinit(self unsafe.Pointer) int32 {
+	code := bindings().fnPaletteDeinit(self)
+	return code
+}
+
 // LiveValues calls the generated purego ABI wrapper for zg_live_values.
 func LiveValues() uint {
 	result := bindings().fnLiveValues()
@@ -890,19 +903,6 @@ func EchoColorRecord(value ColorRecordData) ColorRecordData {
 func FlattenFlags(flags uint16) uint16 {
 	result := bindings().fnFlattenFlags(flags)
 	return uint16(result)
-}
-
-// PaletteCreate calls the generated purego ABI wrapper for zg_palette_create.
-func PaletteCreate(flags uint16) (unsafe.Pointer, int32) {
-	var outResult unsafe.Pointer
-	code := bindings().fnPaletteCreate(flags, &outResult)
-	return outResult, code
-}
-
-// PaletteDeinit calls the generated purego ABI wrapper for zg_palette_deinit.
-func PaletteDeinit(self unsafe.Pointer) int32 {
-	code := bindings().fnPaletteDeinit(self)
-	return code
 }
 
 // VisitFlags calls the generated purego ABI wrapper for zg_visit_flags_purego_v2.

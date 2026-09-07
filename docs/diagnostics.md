@@ -227,7 +227,7 @@ bool·정수·등록 enum·등록된 정수 기반 packed struct 필드로 바�
 
 ### ZIGO046
 
-`.on_callback_failure`를 콜백이 아닌 곳에 지정했거나, 반환 타입이 `void`이거나,
+콜백의 `on_failure`를 잘못 지정했거나, 반환 타입이 `void`이거나,
 지정한 `.result`가 콜백 반환 타입으로 표현되지 않습니다. 콜백에만 설정하고 반환 타입에
 맞는 실패값을 선택하세요. [콜백 가이드](bindings-callbacks.md)를 참고하세요.
 

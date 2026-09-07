@@ -33,7 +33,8 @@ pub fn reduce(ctx: usize, values: []const i32, reducer: Reducer) i32 { ... }
     api.callback("Reducer", .{ .userdata = .first }),
 
     api.function("reduce", .{ .params = &.{
-        .{ .index = 0, .go_name = "ctx" }, .{ .index = 1, .go_name = "values" }, .{ .index = 2, .go_name = "reducer", .contract = .{ .callback = .{ .userdata = 0 } } },
+        .{ .index = 0, .go_name = "ctx" },
+        zigo.param.callback(2, .{ .userdata = 0 }),
     } }),
 },
 ```
@@ -42,9 +43,10 @@ Go 타입은 값 파라미터만 native 순서대로 받습니다(`func(acc, val
 shim이 native 순서와 Go dispatcher 순서 사이를 thunk로 바꿔 주므로 C 시그니처와 Go 타입은
 userdata를 어디에 두든 같고, `abi-diff`도 위치 이동을 변경으로 보지 않습니다.
 
-규약이 깨지면 생성기가 `ZIGO055`로 거부합니다: 콜백에 userdata 자리가 없거나, 선언한 자리가
-`usize`가 아니거나, 함수 쪽에 토큰을 받을 `usize` 파라미터가 없을 때입니다. 예전에는 이런
-선언이 생성 단계에서 위치 없이 실패하거나, 엉뚱한 인자를 토큰으로 써서 호출 시점에 panic했습니다.
+등록한 콜백의 userdata 인덱스가 범위를 벗어나거나 해당 인자가 `usize`가 아니면 작성 단계에서
+컴파일 오류가 납니다. 콜백에 userdata가 없거나 함수 쪽에 토큰을 받을 `usize`가 없는
+규약 위반은 생성기가 `ZIGO055`로 거부합니다. 명시적 userdata 링크의 `ctx` 이름은
+정규화 단계에서 고정하므로 위 예제처럼 `go_name`을 남깁니다.
 
 ## 콜백 타입 이름
 
@@ -60,7 +62,7 @@ alias라 reflection이 이름을 알 수 없으니, 하나의 이름을 원하�
 ```
 
 같은 시그니처의 모든 콜백 파라미터가 `Observer` 하나로 생성됩니다. 시그니처가 같은 alias
-둘을 등록하면 먼저 등록한 이름이 둘 다에 쓰입니다 — Zig에게는 같은 타입입니다.
+둘을 등록하면 중복 타입 등록 오류입니다. Zig에게는 같은 타입입니다.
 
 콜백 반환은 scalar뿐 아니라 `void`도 지원합니다. `*const fn (..., userdata: usize)
 callconv(.c) void`는 Go에서 반환값 없는 `func(...)`가 되고, cgo와 purego 모두 native 호출이
@@ -91,7 +93,7 @@ spelling으로 씁니다.
 dispatcher가 콜백을 부르기 전에 Go 메모리로 **복사**하므로, 콜백은 값을 보관해도 됩니다.
 native 버퍼는 호출 동안만 유효하고 Go는 그것을 직접 참조하지 않습니다.
 
-Go 타입은 등록 항목의 위치별 힌트가 정합니다. 쌍은 일반 파라미터의 `[]const u8`과 같은
+Go 타입은 등록 항목의 원본 인덱스별 힌트가 정합니다. 쌍은 일반 파라미터의 `[]const u8`과 같은
 규칙을 따라 `.semantic = .utf8_string`이나 `.defaults = .{ .strings = .infer_utf8 }`이면 `string`, 그 밖에는
 `[]byte`이고 `.opaque_bytes`는 명시적으로 `[]byte`입니다. 문자열은 힌트 없이 `string`이며
 `.opaque_bytes`로 `[]byte`가 됩니다.
@@ -102,8 +104,8 @@ pub const ByteSink = *const fn (data: [*]const u8, len: usize, userdata: usize) 
 ```
 
 ```zig
-api.callback("Logger", .{ .params = &.{ .{}, .{ .semantic = .utf8_string } } }),
-api.callback("ByteSink", .{ .params = &.{.{ .semantic = .opaque_bytes }} }),
+api.callback("Logger", .{ .params = &.{.{ .index = 1, .semantic = .utf8_string }} }),
+api.callback("ByteSink", .{ .params = &.{.{ .index = 0, .semantic = .opaque_bytes }} }),
 ```
 
 ```go
@@ -111,13 +113,17 @@ type Logger func(string, string)
 type ByteSink func([]byte)
 ```
 
+`CallbackParam.index`는 함수의 `Param.index`와 같이 0부터 세는 원본 인덱스입니다.
+userdata가 첫 번째나 중간에 있어도 그 자리를 포함해 셉니다. pointer/length 쌍은 pointer에만
+힌트를 붙이며 length와 userdata에는 붙일 수 없습니다. 중복·범위 밖 인덱스도 컴파일 오류입니다.
+목록 순서는 자유이고, 나머지 인자를 빈 항목으로 채울 필요가 없습니다.
+
 같은 native 시그니처라도 힌트가 다르면(`string`과 `[]byte`) 서로 다른 Go 콜백 타입이며,
 purego dispatcher도 따로 생성됩니다. 콜백 결과로는 문자열을 돌려줄 수 없습니다.
 
 콜백의 `u32` 파라미터나 결과가 코드포인트라면 등록 항목에 힌트를 붙여 Go 타입을
-`func(rune) rune`으로 만듭니다. `param_semantics`는 값 파라미터 순서대로 나열하며(뒤의
-userdata는 제외) 코드포인트가 아닌 자리는 `.integer`로 채웁니다. `semantic`은 결과에
-적용되며, purego는 콜백 결과로 `void`, `bool`, `i32`만 허용하므로(`ZIGO014`) 코드포인트
+`func(rune) rune`으로 만듭니다. `params`에는 힌트가 필요한 원본 인덱스만 적습니다.
+`returns.semantic`은 결과에 적용되며, purego는 콜백 결과로 `void`, `bool`, `i32`만 허용하므로(`ZIGO014`) 코드포인트
 결과는 cgo 전용입니다. 생성된 handle 생성자가 `rune`과 `uint32`를 양방향으로 변환하고, 결과에는
 범위 검사가 없어 잘못된 `rune`이 그대로 `uint32`로 재해석됩니다. 등록하지 않은 콜백은
 힌트를 가질 수 없고, `.defaults = .{ .codepoints = .infer_u21 }` 추론은 콜백에는 해당하는 자리(`u21`)가
@@ -125,7 +131,7 @@ userdata는 제외) 코드포인트가 아닌 자리는 `.integer`로 채웁니�
 
 ```zig
 api.callback("Visitor", .{
-    .params = &.{ .{ .semantic = .codepoint }, .{ .semantic = .integer } },
+    .params = &.{.{ .index = 0, .semantic = .codepoint }},
     .returns = .{ .semantic = .codepoint },
 }),
 ```
@@ -222,7 +228,7 @@ C ABI는 바뀌지 않습니다 — `go_error`는 Go 표면만 넓힙니다. 다
 > `.go_error = true`를 켜면 그 시그니처를 쓰는 모든 콜백 파라미터가 `error`를 돌려주는
 > 타입이 됩니다.
 
-## 콜백 실패 반환값 (`on_callback_failure`)
+## 콜백 실패 반환값 (`on_failure`)
 
 기본 dispatcher는 `i32` 콜백의 panic에 `-3`, 삭제된 userdata token에 `-4`, Go error에
 `-5`를 반환합니다. 이 값들이 native 도메인의 정상 값과 겹치거나, 도메인이 별도의 정지 값을
@@ -230,7 +236,7 @@ C ABI는 바뀌지 않습니다 — `go_error`는 Go 표면만 넓힙니다. 다
 
 ```zig
 .declarations = &.{
-    api.callback("Observer", .{ .on_callback_failure = .{ .result = 0 } }),
+    api.callback("Observer", .{ .on_failure = .{ .result = 0 } }),
 },
 ```
 
@@ -304,7 +310,7 @@ panic하는 `Must*` method에서 복구한 값도 `error`이면 같은 규칙으
 
 Go 콜백이 native 호출 안에서 panic하면 trampoline이 그것을 복구합니다 — panic은 native
 frame을 풀 수 없기 때문입니다. native 쪽은 부호 있는 32비트 결과에서 기본값 `-3` 또는
-`on_callback_failure.result`를 받아 스스로 정리하고 반환할 수 있고, 그 호출이 돌아온 직후 생성된 함수가 **같은 goroutine에서 panic을
+`on_failure.result`를 받아 스스로 정리하고 반환할 수 있고, 그 호출이 돌아온 직후 생성된 함수가 **같은 goroutine에서 panic을
 다시 일으킵니다**. 다시 일어난 값은 `*CallbackPanicError`이며 원래 panic 값(`Value`)과 복구
 시점의 stack(`Stack`)을 담습니다. `Unwrap`은 `Value`가 `error`일 때 그것을 돌려주므로
 `errors.Is`·`errors.As`가 원인까지 닿습니다.

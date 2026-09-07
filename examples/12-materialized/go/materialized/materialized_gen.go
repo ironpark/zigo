@@ -5,30 +5,20 @@ package materialized
 
 import "example.com/zigo/materialized/internal/raw"
 
-// Snapshot calls the Zig function snapshot.
-func Snapshot() Probe {
-	result := raw.Snapshot()
-	defer raw.Release(result)
-	return zigoDecodeProbeBuffer(result)
-}
-
-// ProbeMany calls the Zig function probeMany.
-// Native failures are returned as generated error values.
-func ProbeMany() ([]Probe, error) {
-	result, code := raw.ProbeMany()
-	if code != 0 {
-		return nil, zigoErrorForCode("ProbeMany", code)
+// Value calls the Zig function LegacyLeaf.value.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (l *LegacyLeaf) Value() (int32, error) {
+	ptr, err := zigoCheckedPointer("LegacyLeaf.Value receiver", l)
+	if err != nil {
+		return 0, err
 	}
-	defer raw.Release(result)
-	return zigoDecodeProbeSliceBuffer(result), nil
-}
-
-// Fill calls the Zig function fill.
-func Fill(output []Probe) uint {
-	zigoBuffer, result := raw.Fill(len(output))
-	defer raw.Release(zigoBuffer)
-	zigoDecodeProbeSliceInto(zigoBuffer, output)
-	return result
+	defer l.zigoRelease()
+	result, code := raw.LegacyLeafValue(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("LegacyLeaf.Value", code), l)
+	}
+	return result, nil
 }
 
 // NewLegacyProbe creates a caller-owned LegacyProbe.
@@ -91,18 +81,28 @@ func (l *LegacyProbe) Child() (*LegacyLeaf, error) {
 	return zigoNewBorrowedLegacyLeaf(result, l), nil
 }
 
-// Value calls the Zig function LegacyLeaf.value.
-// It returns *HandleError if a required handle is nil or closed.
-// A native panic is returned as *NativePanicError.
-func (l *LegacyLeaf) Value() (int32, error) {
-	ptr, err := zigoCheckedPointer("LegacyLeaf.Value receiver", l)
-	if err != nil {
-		return 0, err
-	}
-	defer l.zigoRelease()
-	result, code := raw.LegacyLeafValue(ptr)
+// Snapshot calls the Zig function snapshot.
+func Snapshot() Probe {
+	result := raw.Snapshot()
+	defer raw.Release(result)
+	return zigoDecodeProbeBuffer(result)
+}
+
+// ProbeMany calls the Zig function probeMany.
+// Native failures are returned as generated error values.
+func ProbeMany() ([]Probe, error) {
+	result, code := raw.ProbeMany()
 	if code != 0 {
-		return 0, zigoPoisonAfterPanic(zigoErrorForCode("LegacyLeaf.Value", code), l)
+		return nil, zigoErrorForCode("ProbeMany", code)
 	}
-	return result, nil
+	defer raw.Release(result)
+	return zigoDecodeProbeSliceBuffer(result), nil
+}
+
+// Fill calls the Zig function fill.
+func Fill(output []Probe) uint {
+	zigoBuffer, result := raw.Fill(len(output))
+	defer raw.Release(zigoBuffer)
+	zigoDecodeProbeSliceInto(zigoBuffer, output)
+	return result
 }

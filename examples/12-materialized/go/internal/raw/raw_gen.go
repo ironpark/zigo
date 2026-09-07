@@ -31,6 +31,47 @@ func zigoSlicePtr[T any](values []T) unsafe.Pointer {
 	return unsafe.Pointer(&values[0])
 }
 
+// LegacyLeafValue calls the generated C ABI wrapper for zg_legacy_leaf_value.
+func LegacyLeafValue(self unsafe.Pointer) (int32, int32) {
+	var outResult C.int32_t
+	code := int32(C.zg_legacy_leaf_value((*C.zg_legacy_leaf)(self), &outResult))
+	return int32(outResult), code
+}
+
+// LegacyProbeCreate calls the generated C ABI wrapper for zg_legacy_probe_create.
+func LegacyProbeCreate(index uint) (unsafe.Pointer, int32) {
+	var outResult *C.zg_legacy_probe
+	code := int32(C.zg_legacy_probe_create(C.size_t(index), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+
+// LegacyProbeID calls the generated C ABI wrapper for zg_legacy_probe_id.
+func LegacyProbeID(self unsafe.Pointer) (uint64, int32) {
+	var outResult C.uint64_t
+	code := int32(C.zg_legacy_probe_id((*C.zg_legacy_probe)(self), &outResult))
+	return uint64(outResult), code
+}
+
+// LegacyProbeActive calls the generated C ABI wrapper for zg_legacy_probe_active.
+func LegacyProbeActive(self unsafe.Pointer) (uint8, int32) {
+	var outResult C.uint8_t
+	code := int32(C.zg_legacy_probe_active((*C.zg_legacy_probe)(self), &outResult))
+	return uint8(outResult), code
+}
+
+// LegacyProbeChild calls the generated C ABI wrapper for zg_legacy_probe_child.
+func LegacyProbeChild(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult *C.zg_legacy_leaf
+	code := int32(C.zg_legacy_probe_child((*C.zg_legacy_probe)(self), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+
+// LegacyProbeDeinit calls the generated C ABI wrapper for zg_legacy_probe_deinit.
+func LegacyProbeDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_legacy_probe_deinit((*C.zg_legacy_probe)(self)))
+	return code
+}
+
 // Snapshot calls the generated C ABI wrapper for zg_snapshot.
 func Snapshot() []byte {
 	var outResultPtr *C.uint8_t
@@ -74,47 +115,6 @@ func Fill(output int) ([]byte, uint) {
 func Release(buffer []uint8) {
 	bufferPtr := (*C.uint8_t)(zigoSlicePtr(buffer))
 	C.zg_release(bufferPtr, C.size_t(len(buffer)))
-}
-
-// LegacyProbeCreate calls the generated C ABI wrapper for zg_legacy_probe_create.
-func LegacyProbeCreate(index uint) (unsafe.Pointer, int32) {
-	var outResult *C.zg_legacy_probe
-	code := int32(C.zg_legacy_probe_create(C.size_t(index), &outResult))
-	return unsafe.Pointer(outResult), code
-}
-
-// LegacyProbeID calls the generated C ABI wrapper for zg_legacy_probe_id.
-func LegacyProbeID(self unsafe.Pointer) (uint64, int32) {
-	var outResult C.uint64_t
-	code := int32(C.zg_legacy_probe_id((*C.zg_legacy_probe)(self), &outResult))
-	return uint64(outResult), code
-}
-
-// LegacyProbeActive calls the generated C ABI wrapper for zg_legacy_probe_active.
-func LegacyProbeActive(self unsafe.Pointer) (uint8, int32) {
-	var outResult C.uint8_t
-	code := int32(C.zg_legacy_probe_active((*C.zg_legacy_probe)(self), &outResult))
-	return uint8(outResult), code
-}
-
-// LegacyProbeChild calls the generated C ABI wrapper for zg_legacy_probe_child.
-func LegacyProbeChild(self unsafe.Pointer) (unsafe.Pointer, int32) {
-	var outResult *C.zg_legacy_leaf
-	code := int32(C.zg_legacy_probe_child((*C.zg_legacy_probe)(self), &outResult))
-	return unsafe.Pointer(outResult), code
-}
-
-// LegacyProbeDeinit calls the generated C ABI wrapper for zg_legacy_probe_deinit.
-func LegacyProbeDeinit(self unsafe.Pointer) int32 {
-	code := int32(C.zg_legacy_probe_deinit((*C.zg_legacy_probe)(self)))
-	return code
-}
-
-// LegacyLeafValue calls the generated C ABI wrapper for zg_legacy_leaf_value.
-func LegacyLeafValue(self unsafe.Pointer) (int32, int32) {
-	var outResult C.int32_t
-	code := int32(C.zg_legacy_leaf_value((*C.zg_legacy_leaf)(self), &outResult))
-	return int32(outResult), code
 }
 
 // PointData mirrors the zg_point layout, padding included.

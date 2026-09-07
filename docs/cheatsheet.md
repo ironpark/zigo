@@ -114,7 +114,7 @@ const batch = zigo.interface(.{
 | `api.materialized("T", options)` | 복사할 결과 트리, `fields` |
 | `api.callback("T", options)` | 콜백 alias, `params`, `returns`, `userdata`, 수명·실패 기본값 |
 
-공통 설정은 `.named()`, `.documented()`, `.with(.{ .members = ... })`입니다.
+공통 설정은 `.named()`, `.documented()`, `.members(entries)`입니다.
 아래 예제의 `api`는 대상 모듈의 scope입니다.
 
 ```zig
@@ -122,7 +122,7 @@ const mode = api.enumeration("Mode", .{ .exhaustive = false })
     .use(zigo.features.text, .{});
 const terminal = api.handle("Terminal", .{
     .fields = &.{.{ .path = "cols", .set = true }},
-}).with(.{ .members = api.in("Terminal").functions(.{ .names = &.{ "create", "deinit" } }) });
+}).members(api.in("Terminal").functions(.{ .names = &.{ "create", "deinit" } }));
 ```
 
 값과 결과 트리의 자세한 지원 모양은 [타입 문서](bindings-types.md)에 있습니다.
@@ -271,3 +271,9 @@ staticcheck -checks U1000 ./...                                       # 각 Go �
 ```
 
 절차 전체는 [프로젝트 개발](development.md#릴리즈-절차).
+
+
+작은 계약 helper: `zigo.param.output(index, .result)`, `stream(index, buffer)`,
+`callback(index, options)`, `cancel(index, canceled)`, `flatten(index, fields)`.
+반환은 `zigo.result.owned()`, `releasedBy(api.ref("release"))`, `borrowed()`로 만듭니다.
+함수와 콜백 타입 모두 원본 Zig 인덱스를 사용합니다. 콜백 타입 실패 설정은 `on_failure`입니다.

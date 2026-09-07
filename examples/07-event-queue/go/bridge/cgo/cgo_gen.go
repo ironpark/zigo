@@ -160,11 +160,6 @@ func zg_event_queue_set_observer_go_callback_observer(p0 C.uint64_t, p1 C.int32_
 	return C.int32_t(callback(uint64(p0), int32(p1)))
 }
 
-// EchoQueueSignal calls the generated C ABI wrapper for zg_echo_queue_signal.
-func EchoQueueSignal(signal uint8) uint8 {
-	return uint8(C.zg_echo_queue_signal(C.uint8_t(signal)))
-}
-
 // EventQueueCreate calls the generated C ABI wrapper for zg_event_queue_create.
 func EventQueueCreate(name string, capacity uint, policy uint32, observerHandle uintptr) (unsafe.Pointer, int32) {
 	namePtr := (*C.uint8_t)(zigoStringPtr(name))
@@ -185,118 +180,6 @@ func EventQueueNewStream(self unsafe.Pointer) (unsafe.Pointer, int32) {
 	var outResult *C.zg_stream
 	code := int32(C.zg_event_queue_new_stream((*C.zg_event_queue)(self), &outResult))
 	return unsafe.Pointer(outResult), code
-}
-
-// BorrowBoxCreate calls the generated C ABI wrapper for zg_borrow_box_create.
-func BorrowBoxCreate(value int32) (unsafe.Pointer, int32) {
-	var outResult *C.zg_borrow_box
-	code := int32(C.zg_borrow_box_create(C.int32_t(value), &outResult))
-	return unsafe.Pointer(outResult), code
-}
-
-// BorrowBoxView calls the generated C ABI wrapper for zg_borrow_box_view.
-func BorrowBoxView(self unsafe.Pointer) (unsafe.Pointer, int32) {
-	var outResult *C.zg_borrow_view
-	code := int32(C.zg_borrow_box_view((*C.zg_borrow_box)(self), &outResult))
-	return unsafe.Pointer(outResult), code
-}
-
-// BorrowBoxDeinit calls the generated C ABI wrapper for zg_borrow_box_deinit.
-func BorrowBoxDeinit(self unsafe.Pointer) int32 {
-	code := int32(C.zg_borrow_box_deinit((*C.zg_borrow_box)(self)))
-	return code
-}
-
-// BorrowViewView calls the generated C ABI wrapper for zg_borrow_view_view.
-func BorrowViewView(self unsafe.Pointer) (unsafe.Pointer, int32) {
-	var outResult *C.zg_borrow_view
-	code := int32(C.zg_borrow_view_view((*C.zg_borrow_view)(self), &outResult))
-	return unsafe.Pointer(outResult), code
-}
-
-// BorrowViewNewChild calls the generated C ABI wrapper for zg_borrow_view_new_child.
-func BorrowViewNewChild(self unsafe.Pointer) (unsafe.Pointer, int32) {
-	var outResult *C.zg_borrow_child
-	code := int32(C.zg_borrow_view_new_child((*C.zg_borrow_view)(self), &outResult))
-	return unsafe.Pointer(outResult), code
-}
-
-// BorrowViewGet calls the generated C ABI wrapper for zg_borrow_view_get.
-func BorrowViewGet(self unsafe.Pointer) (int32, int32) {
-	var outResult C.int32_t
-	code := int32(C.zg_borrow_view_get((*C.zg_borrow_view)(self), &outResult))
-	return int32(outResult), code
-}
-
-// BorrowViewExplode calls the generated C ABI wrapper for zg_borrow_view_explode.
-func BorrowViewExplode(self unsafe.Pointer) int32 {
-	code := int32(C.zg_borrow_view_explode((*C.zg_borrow_view)(self)))
-	return code
-}
-
-// BorrowChildGet calls the generated C ABI wrapper for zg_borrow_child_get.
-func BorrowChildGet(self unsafe.Pointer) (int32, int32) {
-	var outResult C.int32_t
-	code := int32(C.zg_borrow_child_get((*C.zg_borrow_child)(self), &outResult))
-	return int32(outResult), code
-}
-
-// BorrowChildDeinit calls the generated C ABI wrapper for zg_borrow_child_deinit.
-func BorrowChildDeinit(self unsafe.Pointer) int32 {
-	code := int32(C.zg_borrow_child_deinit((*C.zg_borrow_child)(self)))
-	return code
-}
-
-// LiveBorrowChildren calls the generated C ABI wrapper for zg_live_borrow_children.
-func LiveBorrowChildren() uint {
-	return uint(C.zg_live_borrow_children())
-}
-
-// TerminalInit calls the generated C ABI wrapper for zg_terminal_init.
-func TerminalInit(cols uint16, rows uint16, maxScrollbackBytes uint) (unsafe.Pointer, int32) {
-	var outResult *C.zg_terminal
-	code := int32(C.zg_terminal_init(C.uint16_t(cols), C.uint16_t(rows), C.size_t(maxScrollbackBytes), &outResult))
-	return unsafe.Pointer(outResult), code
-}
-
-// TerminalCols calls the generated C ABI wrapper for zg_terminal_cols.
-func TerminalCols(self unsafe.Pointer) (uint16, int32) {
-	var outResult C.uint16_t
-	code := int32(C.zg_terminal_cols((*C.zg_terminal)(self), &outResult))
-	return uint16(outResult), code
-}
-
-// TerminalRows calls the generated C ABI wrapper for zg_terminal_rows.
-func TerminalRows(self unsafe.Pointer) (uint16, int32) {
-	var outResult C.uint16_t
-	code := int32(C.zg_terminal_rows((*C.zg_terminal)(self), &outResult))
-	return uint16(outResult), code
-}
-
-// TerminalMaxScrollbackBytes calls the generated C ABI wrapper for zg_terminal_max_scrollback_bytes.
-func TerminalMaxScrollbackBytes(self unsafe.Pointer) (uint, int32) {
-	var outResult C.size_t
-	code := int32(C.zg_terminal_max_scrollback_bytes((*C.zg_terminal)(self), &outResult))
-	return uint(outResult), code
-}
-
-// TerminalDeinit calls the generated C ABI wrapper for zg_terminal_deinit.
-func TerminalDeinit(self unsafe.Pointer) int32 {
-	code := int32(C.zg_terminal_deinit((*C.zg_terminal)(self)))
-	return code
-}
-
-// StreamCapacity calls the generated C ABI wrapper for zg_stream_capacity.
-func StreamCapacity(self unsafe.Pointer) (uint32, int32) {
-	var outResult C.uint32_t
-	code := int32(C.zg_stream_capacity((*C.zg_stream)(self), &outResult))
-	return uint32(outResult), code
-}
-
-// StreamFreeStream calls the generated C ABI wrapper for zg_stream_free_stream.
-func StreamFreeStream(self unsafe.Pointer) int32 {
-	code := int32(C.zg_stream_free_stream((*C.zg_stream)(self)))
-	return code
 }
 
 // EventQueueEnqueue calls the generated C ABI wrapper for zg_event_queue_enqueue.
@@ -667,6 +550,123 @@ func EventQueueDeinit(self unsafe.Pointer) int32 {
 	return code
 }
 
+// StreamCapacity calls the generated C ABI wrapper for zg_stream_capacity.
+func StreamCapacity(self unsafe.Pointer) (uint32, int32) {
+	var outResult C.uint32_t
+	code := int32(C.zg_stream_capacity((*C.zg_stream)(self), &outResult))
+	return uint32(outResult), code
+}
+
+// BorrowBoxCreate calls the generated C ABI wrapper for zg_borrow_box_create.
+func BorrowBoxCreate(value int32) (unsafe.Pointer, int32) {
+	var outResult *C.zg_borrow_box
+	code := int32(C.zg_borrow_box_create(C.int32_t(value), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+
+// BorrowBoxView calls the generated C ABI wrapper for zg_borrow_box_view.
+func BorrowBoxView(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult *C.zg_borrow_view
+	code := int32(C.zg_borrow_box_view((*C.zg_borrow_box)(self), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+
+// BorrowBoxDeinit calls the generated C ABI wrapper for zg_borrow_box_deinit.
+func BorrowBoxDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_borrow_box_deinit((*C.zg_borrow_box)(self)))
+	return code
+}
+
+// BorrowViewView calls the generated C ABI wrapper for zg_borrow_view_view.
+func BorrowViewView(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult *C.zg_borrow_view
+	code := int32(C.zg_borrow_view_view((*C.zg_borrow_view)(self), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+
+// BorrowViewNewChild calls the generated C ABI wrapper for zg_borrow_view_new_child.
+func BorrowViewNewChild(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult *C.zg_borrow_child
+	code := int32(C.zg_borrow_view_new_child((*C.zg_borrow_view)(self), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+
+// BorrowViewGet calls the generated C ABI wrapper for zg_borrow_view_get.
+func BorrowViewGet(self unsafe.Pointer) (int32, int32) {
+	var outResult C.int32_t
+	code := int32(C.zg_borrow_view_get((*C.zg_borrow_view)(self), &outResult))
+	return int32(outResult), code
+}
+
+// BorrowViewExplode calls the generated C ABI wrapper for zg_borrow_view_explode.
+func BorrowViewExplode(self unsafe.Pointer) int32 {
+	code := int32(C.zg_borrow_view_explode((*C.zg_borrow_view)(self)))
+	return code
+}
+
+// BorrowChildGet calls the generated C ABI wrapper for zg_borrow_child_get.
+func BorrowChildGet(self unsafe.Pointer) (int32, int32) {
+	var outResult C.int32_t
+	code := int32(C.zg_borrow_child_get((*C.zg_borrow_child)(self), &outResult))
+	return int32(outResult), code
+}
+
+// BorrowChildDeinit calls the generated C ABI wrapper for zg_borrow_child_deinit.
+func BorrowChildDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_borrow_child_deinit((*C.zg_borrow_child)(self)))
+	return code
+}
+
+// TerminalInit calls the generated C ABI wrapper for zg_terminal_init.
+func TerminalInit(cols uint16, rows uint16, maxScrollbackBytes uint) (unsafe.Pointer, int32) {
+	var outResult *C.zg_terminal
+	code := int32(C.zg_terminal_init(C.uint16_t(cols), C.uint16_t(rows), C.size_t(maxScrollbackBytes), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+
+// TerminalCols calls the generated C ABI wrapper for zg_terminal_cols.
+func TerminalCols(self unsafe.Pointer) (uint16, int32) {
+	var outResult C.uint16_t
+	code := int32(C.zg_terminal_cols((*C.zg_terminal)(self), &outResult))
+	return uint16(outResult), code
+}
+
+// TerminalRows calls the generated C ABI wrapper for zg_terminal_rows.
+func TerminalRows(self unsafe.Pointer) (uint16, int32) {
+	var outResult C.uint16_t
+	code := int32(C.zg_terminal_rows((*C.zg_terminal)(self), &outResult))
+	return uint16(outResult), code
+}
+
+// TerminalMaxScrollbackBytes calls the generated C ABI wrapper for zg_terminal_max_scrollback_bytes.
+func TerminalMaxScrollbackBytes(self unsafe.Pointer) (uint, int32) {
+	var outResult C.size_t
+	code := int32(C.zg_terminal_max_scrollback_bytes((*C.zg_terminal)(self), &outResult))
+	return uint(outResult), code
+}
+
+// TerminalDeinit calls the generated C ABI wrapper for zg_terminal_deinit.
+func TerminalDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_terminal_deinit((*C.zg_terminal)(self)))
+	return code
+}
+
+// EchoQueueSignal calls the generated C ABI wrapper for zg_echo_queue_signal.
+func EchoQueueSignal(signal uint8) uint8 {
+	return uint8(C.zg_echo_queue_signal(C.uint8_t(signal)))
+}
+
+// LiveBorrowChildren calls the generated C ABI wrapper for zg_live_borrow_children.
+func LiveBorrowChildren() uint {
+	return uint(C.zg_live_borrow_children())
+}
+
+// StreamFreeStream calls the generated C ABI wrapper for zg_stream_free_stream.
+func StreamFreeStream(self unsafe.Pointer) int32 {
+	code := int32(C.zg_stream_free_stream((*C.zg_stream)(self)))
+	return code
+}
+
 // InspectTicker calls the generated C ABI wrapper for zg_inspect_ticker.
 func InspectTicker(info TickerInfoData, ticker unsafe.Pointer) (TickerInfoData, int32) {
 	var cinfo C.zg_ticker_info
@@ -718,11 +718,6 @@ func TickerFreeTicker(self unsafe.Pointer) int32 {
 	return code
 }
 
-// LiveTickers calls the generated C ABI wrapper for zg_live_tickers.
-func LiveTickers() uint {
-	return uint(C.zg_live_tickers())
-}
-
 // TickerAdvance calls the generated C ABI wrapper for zg_ticker_advance.
 func TickerAdvance(self unsafe.Pointer, steps uint32) (uint32, int32) {
 	var outResult C.uint32_t
@@ -735,6 +730,11 @@ func TickerElapsed(self unsafe.Pointer) (uint32, int32) {
 	var outResult C.uint32_t
 	code := int32(C.zg_ticker_elapsed((*C.zg_ticker)(self), &outResult))
 	return uint32(outResult), code
+}
+
+// LiveTickers calls the generated C ABI wrapper for zg_live_tickers.
+func LiveTickers() uint {
+	return uint(C.zg_live_tickers())
 }
 
 // StatsData mirrors the zg_stats layout, padding included.

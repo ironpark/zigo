@@ -1,6 +1,9 @@
 # Binding authoring ergonomics review
 
-Reviewed at `c485f8ac`. This is an assessment, not an implementation proposal approved for execution.
+Reviewed at `c485f8ac`. The original assessment below records the state before implementation.
+The user subsequently authorized all six improvements. Implementation is tracked by
+`planr show binding-authoring-polish --all`; the updated API is documented in
+[bindings.md](../../bindings.md) and [migration-authoring.md](../../migration-authoring.md).
 The typed declaration tree is useful, but the migrated examples retain much of the old metadata and flat organization.
 
 ## 1. Remove redundant metadata before expanding the API
@@ -98,5 +101,5 @@ Keep at least one explicit full-schema example for reference; make normal exampl
 3. Unify callback argument addressing and define contextual receiver semantics.
 4. Consider a type-bound scope only if the resulting examples still demonstrate substantial repetition.
 
-No executable changes were made. Evidence was checked against the binding files, source signatures,
+No executable changes were made during the assessment. Evidence was checked against the binding files, source signatures,
 `src/author.zig` and `src/normalize.zig`; runtime tests were not required for this assessment.

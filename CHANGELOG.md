@@ -8,6 +8,12 @@
 
 ### Changed
 
+- **Breaking:** 콜백 타입의 파라미터 힌트도 원본 native 인덱스의 sparse 목록으로 통일하고
+  실패 기본값 이름을 `on_failure`로 변경했습니다. userdata·byte length·중복·범위 밖 인덱스를 검증합니다.
+- **Breaking:** 명시적 생성자의 receiver를 `.none`·`.member`·명시 타입으로 구분합니다.
+  멤버 타입과 receiver 또는 Zig 인자가 다르면 컴파일 오류입니다.
+- 예제의 중복 파라미터 이름을 제거하고 타입별 멤버·공통 selector·반환 계약 상수로 구성을 정리했습니다.
+
 - **Breaking:** 바인딩 작성 API를 `scope()`와 `declarations` 트리로 교체했습니다.
   함수·타입·패키지를 한 곳에서 구성하고 `FunctionRef`·`TypeRef`로 원본 Zig 선언을 참조합니다.
   기존 flat `.types`·`.functions`·`.methods`와 문자열 기반 DSL은 공개 작성 API에서 제거했습니다.
@@ -21,6 +27,8 @@
   [마이그레이션 안내](docs/migration-authoring.md)에 대응표와 지원 범위를 정리했습니다.
 
 ### Added
+
+- 완성된 계약 값을 반환하는 `zigo.param`·`zigo.result` helper와 멤버 목록을 교체하는 `.members(entries)`.
 
 - 명시적인 `.role = .free`, scope별 함수 선택, package 안의 명시 함수에 적용되는 추론 기본값.
 - 잘못된 참조·중복 선언·파라미터 인덱스·계약과 플러그인 대상에 대한 컴파일 단계 검증 및 회귀 테스트.

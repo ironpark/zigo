@@ -26,7 +26,7 @@ pub const bindings = zigo.define(.{
 ```
 
 함수·타입을 함께 `declarations`에 넣습니다. package에는 경로 목록 대신 실제 선언을 넣고,
-타입에는 `.with(.{ .members = ... })`로 메서드를 묶습니다. 중첩 namespace는
+타입에는 `.members(entries)`로 메서드를 묶습니다. 중첩 namespace는
 `api.in("namespace").in("child")`로 선택합니다.
 
 | 이전 작성 방식 | 새 작성 방식 |
@@ -41,7 +41,7 @@ pub const bindings = zigo.define(.{
 | `.receiver = library.Store` | `.role = .{ .method = api.typeRef("Store") }` |
 | `.constructs = library.Store` | `.role = .{ .constructor = .{ .type = api.typeRef("Store") } }` |
 | `.destroys = library.Store` | `.role = .{ .destructor = api.typeRef("Store") }` |
-| `.child_of_receiver = true` | constructor의 `.parent = .receiver`와 `.receiver = api.typeRef("Parent")` |
+| `.child_of_receiver = true` | constructor의 `.parent = .receiver`와 `.receiver = .{ .type = api.typeRef("Parent") }` (멤버 안에서는 `.member`) |
 | `.returns.ownership = .caller` | `.returns.lifetime = .{ .owned = .{} }` |
 | `.returns.release = "root.free"` | `.returns.lifetime.owned.release = api.ref("free")` |
 | `.returns.ownership = .borrowed` | `.returns.lifetime = .{ .borrowed = .receiver }` |
@@ -89,8 +89,31 @@ api.in("Store").function("read", .{
 | 함수의 `.cancel` | 대상 Param의 `.contract = .{ .cancel = .{ .canceled = "Canceled" } }` |
 
 userdata 인덱스도 receiver·주입 인자를 포함합니다. 생략한 파라미터는 기존 source 이름과
-기본 계약을 사용합니다. 콜백 타입의 `CallbackOptions.params`는 userdata와 pointer/length를
-정리한 콜백 인자 순서로 유지됩니다. 함수 인덱스 규칙과 혼동하지 마세요.
+기본 계약을 사용합니다. 콜백 타입의 `CallbackOptions.params`도 원본 native 인덱스의 sparse
+목록입니다. 기존 위치 목록에 `.index`를 넣을 때 userdata와 byte pair의 length도 포함해
+다시 세세요. pointer에만 힌트를 붙이며 length·userdata 항목은 제거합니다.
+콜백 타입의 `on_callback_failure`도 `on_failure`로 바뀌었습니다.
+
+```zig
+// fn (ctx: usize, text: [*]const u8, len: usize, cp: u32) callconv(.c) void
+api.callback("Visitor", .{
+    .userdata = .first,
+    .params = &.{
+        .{ .index = 1, .semantic = .utf8_string },
+        .{ .index = 3, .semantic = .codepoint },
+    },
+})
+```
+
+초기 declaration tree API에서 옮긴다면 constructor의 nullable `TypeRef` receiver도 바꿔야 합니다.
+생략·`.none`은 정적 생성자이고, 멤버 문맥은 `.member`, 명시 타입은
+`.{ .type = api.typeRef("Parent") }`입니다. 생성자에 첫 handle 인자가 있어도 `.none`이면
+receiver로 추론하지 않습니다.
+
+`zigo.param.output(3, .result)`, `zigo.param.callback(2, options)`,
+`zigo.result.releasedBy(api.ref("release"))` 등의 helper는 전체 schema literal과 같은 값을
+만듭니다. 반복 계약은 상수로 공유하고, source와 같은 이름만 적던 항목은 생략할 수 있습니다.
+명시적 userdata 링크나 cancellation 이름처럼 정규화에서 고정하는 이름은 남기세요.
 
 ## 교체 의미와 참조
 

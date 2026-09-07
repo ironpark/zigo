@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-07T13:49:42Z"
 depends_on:
 - "156-binding-authoring-polish#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Callback conventions match function indices and existing callback behavior is preserved in tests/examples.
 > NEXT: none

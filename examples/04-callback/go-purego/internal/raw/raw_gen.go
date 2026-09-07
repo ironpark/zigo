@@ -54,6 +54,9 @@ type nativeBindings struct {
 	panicMessage                 func(int32) unsafe.Pointer
 	fnCallbackContextRunCount    func(unsafe.Pointer, *uint32) int32
 	fnCallbackContextSetRunCount func(unsafe.Pointer, uint32) int32
+	fnCallbackContextCreate      func(uintptr, uintptr, *unsafe.Pointer) int32
+	fnCallbackContextRun         func(unsafe.Pointer, int32, *int32) int32
+	fnCallbackContextDeinit      func(unsafe.Pointer) int32
 	fnFloatBufferCreate          func(*unsafe.Pointer) int32
 	fnFloatBufferPush            func(unsafe.Pointer, float32) int32
 	fnFloatBufferLen             func(unsafe.Pointer, *uintptr) int32
@@ -62,9 +65,6 @@ type nativeBindings struct {
 	fnIntBufferPush              func(unsafe.Pointer, int32) int32
 	fnIntBufferLen               func(unsafe.Pointer, *uintptr) int32
 	fnIntBufferDeinit            func(unsafe.Pointer) int32
-	fnCallbackContextCreate      func(uintptr, uintptr, *unsafe.Pointer) int32
-	fnCallbackContextRun         func(unsafe.Pointer, int32, *int32) int32
-	fnCallbackContextDeinit      func(unsafe.Pointer) int32
 	fnPanicNow                   func() int32
 	fnCompressionBound           func(uintptr) uintptr
 	fnIncrementShared            func(*uint64, uint64) uint64
@@ -530,6 +530,18 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_callback_context_set_run_count", err)
 	}
+	addrCallbackContextCreate, err := resolveSymbol(handle, "zg_callback_context_create_purego_v2")
+	if err != nil {
+		return fail("zg_callback_context_create_purego_v2", err)
+	}
+	addrCallbackContextRun, err := resolveSymbol(handle, "zg_callback_context_run")
+	if err != nil {
+		return fail("zg_callback_context_run", err)
+	}
+	addrCallbackContextDeinit, err := resolveSymbol(handle, "zg_callback_context_deinit")
+	if err != nil {
+		return fail("zg_callback_context_deinit", err)
+	}
 	addrFloatBufferCreate, err := resolveSymbol(handle, "zg_float_buffer_create")
 	if err != nil {
 		return fail("zg_float_buffer_create", err)
@@ -561,18 +573,6 @@ func loadCandidate(path string) error {
 	addrIntBufferDeinit, err := resolveSymbol(handle, "zg_int_buffer_deinit")
 	if err != nil {
 		return fail("zg_int_buffer_deinit", err)
-	}
-	addrCallbackContextCreate, err := resolveSymbol(handle, "zg_callback_context_create_purego_v2")
-	if err != nil {
-		return fail("zg_callback_context_create_purego_v2", err)
-	}
-	addrCallbackContextRun, err := resolveSymbol(handle, "zg_callback_context_run")
-	if err != nil {
-		return fail("zg_callback_context_run", err)
-	}
-	addrCallbackContextDeinit, err := resolveSymbol(handle, "zg_callback_context_deinit")
-	if err != nil {
-		return fail("zg_callback_context_deinit", err)
 	}
 	addrPanicNow, err := resolveSymbol(handle, "zg_panic_now")
 	if err != nil {
@@ -631,6 +631,9 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
 	purego.RegisterFunc(&next.fnCallbackContextRunCount, addrCallbackContextRunCount)
 	purego.RegisterFunc(&next.fnCallbackContextSetRunCount, addrCallbackContextSetRunCount)
+	purego.RegisterFunc(&next.fnCallbackContextCreate, addrCallbackContextCreate)
+	purego.RegisterFunc(&next.fnCallbackContextRun, addrCallbackContextRun)
+	purego.RegisterFunc(&next.fnCallbackContextDeinit, addrCallbackContextDeinit)
 	purego.RegisterFunc(&next.fnFloatBufferCreate, addrFloatBufferCreate)
 	purego.RegisterFunc(&next.fnFloatBufferPush, addrFloatBufferPush)
 	purego.RegisterFunc(&next.fnFloatBufferLen, addrFloatBufferLen)
@@ -639,9 +642,6 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnIntBufferPush, addrIntBufferPush)
 	purego.RegisterFunc(&next.fnIntBufferLen, addrIntBufferLen)
 	purego.RegisterFunc(&next.fnIntBufferDeinit, addrIntBufferDeinit)
-	purego.RegisterFunc(&next.fnCallbackContextCreate, addrCallbackContextCreate)
-	purego.RegisterFunc(&next.fnCallbackContextRun, addrCallbackContextRun)
-	purego.RegisterFunc(&next.fnCallbackContextDeinit, addrCallbackContextDeinit)
 	purego.RegisterFunc(&next.fnPanicNow, addrPanicNow)
 	purego.RegisterFunc(&next.fnCompressionBound, addrCompressionBound)
 	purego.RegisterFunc(&next.fnIncrementShared, addrIncrementShared)
@@ -717,6 +717,26 @@ func CallbackContextSetRunCount(self unsafe.Pointer, v uint32) int32 {
 	return code
 }
 
+// CallbackContextCreate calls the generated purego ABI wrapper for zg_callback_context_create_purego_v2.
+func CallbackContextCreate(callbackCallback, callbackToken uintptr) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := bindings().fnCallbackContextCreate(callbackCallback, callbackToken, &outResult)
+	return outResult, code
+}
+
+// CallbackContextRun calls the generated purego ABI wrapper for zg_callback_context_run.
+func CallbackContextRun(self unsafe.Pointer, value int32) (int32, int32) {
+	var outResult int32
+	code := bindings().fnCallbackContextRun(self, value, &outResult)
+	return outResult, code
+}
+
+// CallbackContextDeinit calls the generated purego ABI wrapper for zg_callback_context_deinit.
+func CallbackContextDeinit(self unsafe.Pointer) int32 {
+	code := bindings().fnCallbackContextDeinit(self)
+	return code
+}
+
 // FloatBufferCreate calls the generated purego ABI wrapper for zg_float_buffer_create.
 func FloatBufferCreate() (unsafe.Pointer, int32) {
 	var outResult unsafe.Pointer
@@ -766,26 +786,6 @@ func IntBufferLen(self unsafe.Pointer) (uint, int32) {
 // IntBufferDeinit calls the generated purego ABI wrapper for zg_int_buffer_deinit.
 func IntBufferDeinit(self unsafe.Pointer) int32 {
 	code := bindings().fnIntBufferDeinit(self)
-	return code
-}
-
-// CallbackContextCreate calls the generated purego ABI wrapper for zg_callback_context_create_purego_v2.
-func CallbackContextCreate(callbackCallback, callbackToken uintptr) (unsafe.Pointer, int32) {
-	var outResult unsafe.Pointer
-	code := bindings().fnCallbackContextCreate(callbackCallback, callbackToken, &outResult)
-	return outResult, code
-}
-
-// CallbackContextRun calls the generated purego ABI wrapper for zg_callback_context_run.
-func CallbackContextRun(self unsafe.Pointer, value int32) (int32, int32) {
-	var outResult int32
-	code := bindings().fnCallbackContextRun(self, value, &outResult)
-	return outResult, code
-}
-
-// CallbackContextDeinit calls the generated purego ABI wrapper for zg_callback_context_deinit.
-func CallbackContextDeinit(self unsafe.Pointer) int32 {
-	code := bindings().fnCallbackContextDeinit(self)
 	return code
 }
 

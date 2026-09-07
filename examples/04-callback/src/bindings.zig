@@ -2,6 +2,12 @@ const zigo = @import("zigo");
 const library = @import("callback");
 
 const api = zigo.scope(library);
+const callback_context = api.in("CallbackContext");
+const float_buffer = api.in("FloatBuffer");
+const int_buffer = api.in("IntBuffer");
+
+// The same explicit export list applies to both generic instantiations.
+const buffer_members: zigo.Selector = .{ .names = &.{ "create", "push", "len", "deinit" } };
 
 pub const bindings = zigo.define(.{
     .root = library,
@@ -13,9 +19,17 @@ pub const bindings = zigo.define(.{
                 .set = true,
                 .doc = "RunCount reports how many callbacks have run.",
             },
-        } }),
-        api.handle("FloatBuffer", .{}),
-        api.handle("IntBuffer", .{}),
+        } }).members(&.{
+            callback_context.function("create", .{
+                .params = &.{
+                    zigo.param.callback(0, .{ .retention = .retained, .go_error = true }),
+                },
+            }),
+            callback_context.function("run", .{}),
+            callback_context.function("deinit", .{}),
+        }),
+        api.handle("FloatBuffer", .{}).members(float_buffer.functions(buffer_members)),
+        api.handle("IntBuffer", .{}).members(int_buffer.functions(buffer_members)),
         api.callback("Observer", .{ .on_failure = .{ .result = 0 } }),
         api.callback("VoidObserver", .{}),
         api.callback("Predicate", .{}),
@@ -24,51 +38,33 @@ pub const bindings = zigo.define(.{
         api.callback("Logger", .{ .params = &.{.{ .index = 1, .semantic = .utf8_string }} }),
         api.callback("ByteSink", .{ .params = &.{.{ .index = 0, .semantic = .opaque_bytes }} }),
         api.callback("Inspector", .{}),
-        api.in("FloatBuffer").function("create", .{}),
-        api.in("FloatBuffer").function("push", .{}),
-        api.in("FloatBuffer").function("len", .{}),
-        api.in("FloatBuffer").function("deinit", .{}),
-        api.in("IntBuffer").function("create", .{}),
-        api.in("IntBuffer").function("push", .{}),
-        api.in("IntBuffer").function("len", .{}),
-        api.in("IntBuffer").function("deinit", .{}),
-        api.in("CallbackContext").function("create", .{ .params = &.{ .{
-            .index = 0,
-            .go_name = "callback",
-            .contract = .{ .callback = .{ .retention = .retained, .go_error = true } },
-        }, .{ .index = 1, .go_name = "userdata" } } }),
-        api.in("CallbackContext").function("run", .{}),
-        api.in("CallbackContext").function("deinit", .{}),
         api.function("panicNow", .{}),
         api.function("compressionBound", .{}),
-        api.function("incrementShared", .{ .params = &.{ .{ .index = 0, .go_name = "counter" }, .{ .index = 1, .go_name = "delta" } } }),
-        api.function("readShared", .{ .params = &.{.{ .index = 0, .go_name = "value" }} }),
+        api.function("incrementShared", .{}),
+        api.function("readShared", .{}),
         api.function("apply", .{ .params = &.{
-            .{ .index = 0, .go_name = "value" }, .{ .index = 1, .go_name = "callback", .contract = .{ .callback = .{ .go_error = true } } }, .{ .index = 2, .go_name = "userdata" },
+            zigo.param.callback(1, .{ .go_error = true }),
         } }),
-        api.function("applyUntilCancelled", .{ .params = &.{
-            .{ .index = 0, .go_name = "limit" }, .{ .index = 1, .go_name = "callback", .contract = .{ .callback = .{ .go_error = true } } }, .{ .index = 2, .go_name = "userdata" }, .{ .index = 3, .go_name = "cancel", .contract = .{ .cancel = .{} } },
-        } }),
-        api.function("notify", .{ .params = &.{
-            .{ .index = 0, .go_name = "value" }, .{ .index = 1, .go_name = "callback" }, .{ .index = 2, .go_name = "userdata" },
-        } }),
-        api.function("filter", .{ .params = &.{
-            .{ .index = 0, .go_name = "value" }, .{ .index = 1, .go_name = "strict" }, .{ .index = 2, .go_name = "predicate" }, .{ .index = 3, .go_name = "userdata" },
-        } }),
-        api.function("reduce", .{ .params = &.{
-            .{ .index = 0, .go_name = "ctx" }, .{ .index = 1, .go_name = "values" }, .{ .index = 2, .go_name = "reducer", .contract = .{ .callback = .{ .userdata = 0 } } },
-        } }),
-        api.function("logMessage", .{ .params = &.{
-            .{ .index = 0, .go_name = "message" }, .{ .index = 1, .go_name = "logger" }, .{ .index = 2, .go_name = "userdata" },
-        } }),
+        api.function("applyUntilCancelled", .{
+            .params = &.{
+                zigo.param.callback(1, .{ .go_error = true }),
+                zigo.param.cancel(3, null).named("cancel"),
+            },
+        }),
+        api.function("notify", .{}),
+        api.function("filter", .{}),
+        // Keep a stable name for the explicit userdata link.
+        api.function("reduce", .{
+            .params = &.{
+                .{ .index = 0, .go_name = "ctx" },
+                zigo.param.callback(2, .{ .userdata = 0 }),
+            },
+        }),
+        api.function("logMessage", .{}),
         api.function("emitChunks", .{ .params = &.{
-            .{ .index = 0, .go_name = "data" }, .{ .index = 1, .go_name = "chunkLen" }, .{ .index = 2, .go_name = "sink" }, .{ .index = 3, .go_name = "userdata" },
+            .{ .index = 1, .go_name = "chunkLen" },
         } }),
-        api.function("inspect", .{ .params = &.{
-            .{ .index = 0, .go_name = "context" }, .{ .index = 1, .go_name = "level" }, .{ .index = 2, .go_name = "strict" }, .{ .index = 3, .go_name = "inspector" }, .{ .index = 4, .go_name = "userdata" },
-        } }),
-        api.function("visitCodepoints", .{ .returns = .{ .semantic = .codepoint }, .params = &.{
-            .{ .index = 0, .go_name = "text" }, .{ .index = 1, .go_name = "visitor" }, .{ .index = 2, .go_name = "userdata" },
-        } }),
+        api.function("inspect", .{}),
+        api.function("visitCodepoints", .{ .returns = .{ .semantic = .codepoint } }),
     },
 });

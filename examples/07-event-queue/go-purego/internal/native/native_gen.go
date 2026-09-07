@@ -52,27 +52,9 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError                           func() unsafe.Pointer
 	panicMessage                        func(int32) unsafe.Pointer
-	fnEchoQueueSignal                   func(uint8) uint8
 	fnEventQueueCreate                  func(unsafe.Pointer, uintptr, uintptr, uint32, uintptr, uintptr, *unsafe.Pointer) int32
 	fnEventQueueClone                   func(unsafe.Pointer, uintptr, uintptr, *unsafe.Pointer) int32
 	fnEventQueueNewStream               func(unsafe.Pointer, *unsafe.Pointer) int32
-	fnBorrowBoxCreate                   func(int32, *unsafe.Pointer) int32
-	fnBorrowBoxView                     func(unsafe.Pointer, *unsafe.Pointer) int32
-	fnBorrowBoxDeinit                   func(unsafe.Pointer) int32
-	fnBorrowViewView                    func(unsafe.Pointer, *unsafe.Pointer) int32
-	fnBorrowViewNewChild                func(unsafe.Pointer, *unsafe.Pointer) int32
-	fnBorrowViewGet                     func(unsafe.Pointer, *int32) int32
-	fnBorrowViewExplode                 func(unsafe.Pointer) int32
-	fnBorrowChildGet                    func(unsafe.Pointer, *int32) int32
-	fnBorrowChildDeinit                 func(unsafe.Pointer) int32
-	fnLiveBorrowChildren                func() uintptr
-	fnTerminalInit                      func(uint16, uint16, uintptr, *unsafe.Pointer) int32
-	fnTerminalCols                      func(unsafe.Pointer, *uint16) int32
-	fnTerminalRows                      func(unsafe.Pointer, *uint16) int32
-	fnTerminalMaxScrollbackBytes        func(unsafe.Pointer, *uintptr) int32
-	fnTerminalDeinit                    func(unsafe.Pointer) int32
-	fnStreamCapacity                    func(unsafe.Pointer, *uint32) int32
-	fnStreamFreeStream                  func(unsafe.Pointer) int32
 	fnEventQueueEnqueue                 func(unsafe.Pointer, uint64, int32) int32
 	fnEventQueueMergeFrom               func(unsafe.Pointer, unsafe.Pointer, *uintptr) int32
 	fnEventQueueProcess                 func(unsafe.Pointer, uintptr, *uintptr) int32
@@ -108,6 +90,24 @@ type nativeBindings struct {
 	fnEventQueueApplyLimits             func(unsafe.Pointer, unsafe.Pointer) int32
 	fnEventQueueClear                   func(unsafe.Pointer, *uintptr) int32
 	fnEventQueueDeinit                  func(unsafe.Pointer) int32
+	fnStreamCapacity                    func(unsafe.Pointer, *uint32) int32
+	fnBorrowBoxCreate                   func(int32, *unsafe.Pointer) int32
+	fnBorrowBoxView                     func(unsafe.Pointer, *unsafe.Pointer) int32
+	fnBorrowBoxDeinit                   func(unsafe.Pointer) int32
+	fnBorrowViewView                    func(unsafe.Pointer, *unsafe.Pointer) int32
+	fnBorrowViewNewChild                func(unsafe.Pointer, *unsafe.Pointer) int32
+	fnBorrowViewGet                     func(unsafe.Pointer, *int32) int32
+	fnBorrowViewExplode                 func(unsafe.Pointer) int32
+	fnBorrowChildGet                    func(unsafe.Pointer, *int32) int32
+	fnBorrowChildDeinit                 func(unsafe.Pointer) int32
+	fnTerminalInit                      func(uint16, uint16, uintptr, *unsafe.Pointer) int32
+	fnTerminalCols                      func(unsafe.Pointer, *uint16) int32
+	fnTerminalRows                      func(unsafe.Pointer, *uint16) int32
+	fnTerminalMaxScrollbackBytes        func(unsafe.Pointer, *uintptr) int32
+	fnTerminalDeinit                    func(unsafe.Pointer) int32
+	fnEchoQueueSignal                   func(uint8) uint8
+	fnLiveBorrowChildren                func() uintptr
+	fnStreamFreeStream                  func(unsafe.Pointer) int32
 	fnInspectTicker                     func(unsafe.Pointer, unsafe.Pointer, unsafe.Pointer) int32
 	fnLiveStreams                       func() uintptr
 	fnLiveQueues                        func() uintptr
@@ -116,9 +116,9 @@ type nativeBindings struct {
 	fnLiveSelectionStrings              func() uintptr
 	fnNewTicker                         func(uint32, *unsafe.Pointer) int32
 	fnTickerFreeTicker                  func(unsafe.Pointer) int32
-	fnLiveTickers                       func() uintptr
 	fnTickerAdvance                     func(unsafe.Pointer, uint32, *uint32) int32
 	fnTickerElapsed                     func(unsafe.Pointer, *uint32) int32
+	fnLiveTickers                       func() uintptr
 }
 
 type callbackEntry struct {
@@ -360,10 +360,6 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_caught_panic_message", err)
 	}
-	addrEchoQueueSignal, err := resolveSymbol(handle, "zg_echo_queue_signal")
-	if err != nil {
-		return fail("zg_echo_queue_signal", err)
-	}
 	addrEventQueueCreate, err := resolveSymbol(handle, "zg_event_queue_create_purego_v2")
 	if err != nil {
 		return fail("zg_event_queue_create_purego_v2", err)
@@ -375,74 +371,6 @@ func loadCandidate(path string) error {
 	addrEventQueueNewStream, err := resolveSymbol(handle, "zg_event_queue_new_stream")
 	if err != nil {
 		return fail("zg_event_queue_new_stream", err)
-	}
-	addrBorrowBoxCreate, err := resolveSymbol(handle, "zg_borrow_box_create")
-	if err != nil {
-		return fail("zg_borrow_box_create", err)
-	}
-	addrBorrowBoxView, err := resolveSymbol(handle, "zg_borrow_box_view")
-	if err != nil {
-		return fail("zg_borrow_box_view", err)
-	}
-	addrBorrowBoxDeinit, err := resolveSymbol(handle, "zg_borrow_box_deinit")
-	if err != nil {
-		return fail("zg_borrow_box_deinit", err)
-	}
-	addrBorrowViewView, err := resolveSymbol(handle, "zg_borrow_view_view")
-	if err != nil {
-		return fail("zg_borrow_view_view", err)
-	}
-	addrBorrowViewNewChild, err := resolveSymbol(handle, "zg_borrow_view_new_child")
-	if err != nil {
-		return fail("zg_borrow_view_new_child", err)
-	}
-	addrBorrowViewGet, err := resolveSymbol(handle, "zg_borrow_view_get")
-	if err != nil {
-		return fail("zg_borrow_view_get", err)
-	}
-	addrBorrowViewExplode, err := resolveSymbol(handle, "zg_borrow_view_explode")
-	if err != nil {
-		return fail("zg_borrow_view_explode", err)
-	}
-	addrBorrowChildGet, err := resolveSymbol(handle, "zg_borrow_child_get")
-	if err != nil {
-		return fail("zg_borrow_child_get", err)
-	}
-	addrBorrowChildDeinit, err := resolveSymbol(handle, "zg_borrow_child_deinit")
-	if err != nil {
-		return fail("zg_borrow_child_deinit", err)
-	}
-	addrLiveBorrowChildren, err := resolveSymbol(handle, "zg_live_borrow_children")
-	if err != nil {
-		return fail("zg_live_borrow_children", err)
-	}
-	addrTerminalInit, err := resolveSymbol(handle, "zg_terminal_init")
-	if err != nil {
-		return fail("zg_terminal_init", err)
-	}
-	addrTerminalCols, err := resolveSymbol(handle, "zg_terminal_cols")
-	if err != nil {
-		return fail("zg_terminal_cols", err)
-	}
-	addrTerminalRows, err := resolveSymbol(handle, "zg_terminal_rows")
-	if err != nil {
-		return fail("zg_terminal_rows", err)
-	}
-	addrTerminalMaxScrollbackBytes, err := resolveSymbol(handle, "zg_terminal_max_scrollback_bytes")
-	if err != nil {
-		return fail("zg_terminal_max_scrollback_bytes", err)
-	}
-	addrTerminalDeinit, err := resolveSymbol(handle, "zg_terminal_deinit")
-	if err != nil {
-		return fail("zg_terminal_deinit", err)
-	}
-	addrStreamCapacity, err := resolveSymbol(handle, "zg_stream_capacity")
-	if err != nil {
-		return fail("zg_stream_capacity", err)
-	}
-	addrStreamFreeStream, err := resolveSymbol(handle, "zg_stream_free_stream")
-	if err != nil {
-		return fail("zg_stream_free_stream", err)
 	}
 	addrEventQueueEnqueue, err := resolveSymbol(handle, "zg_event_queue_enqueue")
 	if err != nil {
@@ -584,6 +512,78 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_event_queue_deinit", err)
 	}
+	addrStreamCapacity, err := resolveSymbol(handle, "zg_stream_capacity")
+	if err != nil {
+		return fail("zg_stream_capacity", err)
+	}
+	addrBorrowBoxCreate, err := resolveSymbol(handle, "zg_borrow_box_create")
+	if err != nil {
+		return fail("zg_borrow_box_create", err)
+	}
+	addrBorrowBoxView, err := resolveSymbol(handle, "zg_borrow_box_view")
+	if err != nil {
+		return fail("zg_borrow_box_view", err)
+	}
+	addrBorrowBoxDeinit, err := resolveSymbol(handle, "zg_borrow_box_deinit")
+	if err != nil {
+		return fail("zg_borrow_box_deinit", err)
+	}
+	addrBorrowViewView, err := resolveSymbol(handle, "zg_borrow_view_view")
+	if err != nil {
+		return fail("zg_borrow_view_view", err)
+	}
+	addrBorrowViewNewChild, err := resolveSymbol(handle, "zg_borrow_view_new_child")
+	if err != nil {
+		return fail("zg_borrow_view_new_child", err)
+	}
+	addrBorrowViewGet, err := resolveSymbol(handle, "zg_borrow_view_get")
+	if err != nil {
+		return fail("zg_borrow_view_get", err)
+	}
+	addrBorrowViewExplode, err := resolveSymbol(handle, "zg_borrow_view_explode")
+	if err != nil {
+		return fail("zg_borrow_view_explode", err)
+	}
+	addrBorrowChildGet, err := resolveSymbol(handle, "zg_borrow_child_get")
+	if err != nil {
+		return fail("zg_borrow_child_get", err)
+	}
+	addrBorrowChildDeinit, err := resolveSymbol(handle, "zg_borrow_child_deinit")
+	if err != nil {
+		return fail("zg_borrow_child_deinit", err)
+	}
+	addrTerminalInit, err := resolveSymbol(handle, "zg_terminal_init")
+	if err != nil {
+		return fail("zg_terminal_init", err)
+	}
+	addrTerminalCols, err := resolveSymbol(handle, "zg_terminal_cols")
+	if err != nil {
+		return fail("zg_terminal_cols", err)
+	}
+	addrTerminalRows, err := resolveSymbol(handle, "zg_terminal_rows")
+	if err != nil {
+		return fail("zg_terminal_rows", err)
+	}
+	addrTerminalMaxScrollbackBytes, err := resolveSymbol(handle, "zg_terminal_max_scrollback_bytes")
+	if err != nil {
+		return fail("zg_terminal_max_scrollback_bytes", err)
+	}
+	addrTerminalDeinit, err := resolveSymbol(handle, "zg_terminal_deinit")
+	if err != nil {
+		return fail("zg_terminal_deinit", err)
+	}
+	addrEchoQueueSignal, err := resolveSymbol(handle, "zg_echo_queue_signal")
+	if err != nil {
+		return fail("zg_echo_queue_signal", err)
+	}
+	addrLiveBorrowChildren, err := resolveSymbol(handle, "zg_live_borrow_children")
+	if err != nil {
+		return fail("zg_live_borrow_children", err)
+	}
+	addrStreamFreeStream, err := resolveSymbol(handle, "zg_stream_free_stream")
+	if err != nil {
+		return fail("zg_stream_free_stream", err)
+	}
 	addrInspectTicker, err := resolveSymbol(handle, "zg_inspect_ticker")
 	if err != nil {
 		return fail("zg_inspect_ticker", err)
@@ -616,10 +616,6 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_ticker_free_ticker", err)
 	}
-	addrLiveTickers, err := resolveSymbol(handle, "zg_live_tickers")
-	if err != nil {
-		return fail("zg_live_tickers", err)
-	}
 	addrTickerAdvance, err := resolveSymbol(handle, "zg_ticker_advance")
 	if err != nil {
 		return fail("zg_ticker_advance", err)
@@ -628,30 +624,16 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_ticker_elapsed", err)
 	}
+	addrLiveTickers, err := resolveSymbol(handle, "zg_live_tickers")
+	if err != nil {
+		return fail("zg_live_tickers", err)
+	}
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnEchoQueueSignal, addrEchoQueueSignal)
 	purego.RegisterFunc(&next.fnEventQueueCreate, addrEventQueueCreate)
 	purego.RegisterFunc(&next.fnEventQueueClone, addrEventQueueClone)
 	purego.RegisterFunc(&next.fnEventQueueNewStream, addrEventQueueNewStream)
-	purego.RegisterFunc(&next.fnBorrowBoxCreate, addrBorrowBoxCreate)
-	purego.RegisterFunc(&next.fnBorrowBoxView, addrBorrowBoxView)
-	purego.RegisterFunc(&next.fnBorrowBoxDeinit, addrBorrowBoxDeinit)
-	purego.RegisterFunc(&next.fnBorrowViewView, addrBorrowViewView)
-	purego.RegisterFunc(&next.fnBorrowViewNewChild, addrBorrowViewNewChild)
-	purego.RegisterFunc(&next.fnBorrowViewGet, addrBorrowViewGet)
-	purego.RegisterFunc(&next.fnBorrowViewExplode, addrBorrowViewExplode)
-	purego.RegisterFunc(&next.fnBorrowChildGet, addrBorrowChildGet)
-	purego.RegisterFunc(&next.fnBorrowChildDeinit, addrBorrowChildDeinit)
-	purego.RegisterFunc(&next.fnLiveBorrowChildren, addrLiveBorrowChildren)
-	purego.RegisterFunc(&next.fnTerminalInit, addrTerminalInit)
-	purego.RegisterFunc(&next.fnTerminalCols, addrTerminalCols)
-	purego.RegisterFunc(&next.fnTerminalRows, addrTerminalRows)
-	purego.RegisterFunc(&next.fnTerminalMaxScrollbackBytes, addrTerminalMaxScrollbackBytes)
-	purego.RegisterFunc(&next.fnTerminalDeinit, addrTerminalDeinit)
-	purego.RegisterFunc(&next.fnStreamCapacity, addrStreamCapacity)
-	purego.RegisterFunc(&next.fnStreamFreeStream, addrStreamFreeStream)
 	purego.RegisterFunc(&next.fnEventQueueEnqueue, addrEventQueueEnqueue)
 	purego.RegisterFunc(&next.fnEventQueueMergeFrom, addrEventQueueMergeFrom)
 	purego.RegisterFunc(&next.fnEventQueueProcess, addrEventQueueProcess)
@@ -687,6 +669,24 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnEventQueueApplyLimits, addrEventQueueApplyLimits)
 	purego.RegisterFunc(&next.fnEventQueueClear, addrEventQueueClear)
 	purego.RegisterFunc(&next.fnEventQueueDeinit, addrEventQueueDeinit)
+	purego.RegisterFunc(&next.fnStreamCapacity, addrStreamCapacity)
+	purego.RegisterFunc(&next.fnBorrowBoxCreate, addrBorrowBoxCreate)
+	purego.RegisterFunc(&next.fnBorrowBoxView, addrBorrowBoxView)
+	purego.RegisterFunc(&next.fnBorrowBoxDeinit, addrBorrowBoxDeinit)
+	purego.RegisterFunc(&next.fnBorrowViewView, addrBorrowViewView)
+	purego.RegisterFunc(&next.fnBorrowViewNewChild, addrBorrowViewNewChild)
+	purego.RegisterFunc(&next.fnBorrowViewGet, addrBorrowViewGet)
+	purego.RegisterFunc(&next.fnBorrowViewExplode, addrBorrowViewExplode)
+	purego.RegisterFunc(&next.fnBorrowChildGet, addrBorrowChildGet)
+	purego.RegisterFunc(&next.fnBorrowChildDeinit, addrBorrowChildDeinit)
+	purego.RegisterFunc(&next.fnTerminalInit, addrTerminalInit)
+	purego.RegisterFunc(&next.fnTerminalCols, addrTerminalCols)
+	purego.RegisterFunc(&next.fnTerminalRows, addrTerminalRows)
+	purego.RegisterFunc(&next.fnTerminalMaxScrollbackBytes, addrTerminalMaxScrollbackBytes)
+	purego.RegisterFunc(&next.fnTerminalDeinit, addrTerminalDeinit)
+	purego.RegisterFunc(&next.fnEchoQueueSignal, addrEchoQueueSignal)
+	purego.RegisterFunc(&next.fnLiveBorrowChildren, addrLiveBorrowChildren)
+	purego.RegisterFunc(&next.fnStreamFreeStream, addrStreamFreeStream)
 	purego.RegisterFunc(&next.fnInspectTicker, addrInspectTicker)
 	purego.RegisterFunc(&next.fnLiveStreams, addrLiveStreams)
 	purego.RegisterFunc(&next.fnLiveQueues, addrLiveQueues)
@@ -695,9 +695,9 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnLiveSelectionStrings, addrLiveSelectionStrings)
 	purego.RegisterFunc(&next.fnNewTicker, addrNewTicker)
 	purego.RegisterFunc(&next.fnTickerFreeTicker, addrTickerFreeTicker)
-	purego.RegisterFunc(&next.fnLiveTickers, addrLiveTickers)
 	purego.RegisterFunc(&next.fnTickerAdvance, addrTickerAdvance)
 	purego.RegisterFunc(&next.fnTickerElapsed, addrTickerElapsed)
+	purego.RegisterFunc(&next.fnLiveTickers, addrLiveTickers)
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -814,12 +814,6 @@ func zigoUintptrsPtr(lens []uintptr) unsafe.Pointer {
 	return unsafe.Pointer(&lens[0])
 }
 
-// EchoQueueSignal calls the generated purego ABI wrapper for zg_echo_queue_signal.
-func EchoQueueSignal(signal uint8) uint8 {
-	result := bindings().fnEchoQueueSignal(signal)
-	return uint8(result)
-}
-
 // EventQueueCreate calls the generated purego ABI wrapper for zg_event_queue_create_purego_v2.
 func EventQueueCreate(name string, capacity uint, policy uint32, observerCallback, observerToken uintptr) (unsafe.Pointer, int32) {
 	var namePtr unsafe.Pointer
@@ -843,119 +837,6 @@ func EventQueueNewStream(self unsafe.Pointer) (unsafe.Pointer, int32) {
 	var outResult unsafe.Pointer
 	code := bindings().fnEventQueueNewStream(self, &outResult)
 	return outResult, code
-}
-
-// BorrowBoxCreate calls the generated purego ABI wrapper for zg_borrow_box_create.
-func BorrowBoxCreate(value int32) (unsafe.Pointer, int32) {
-	var outResult unsafe.Pointer
-	code := bindings().fnBorrowBoxCreate(value, &outResult)
-	return outResult, code
-}
-
-// BorrowBoxView calls the generated purego ABI wrapper for zg_borrow_box_view.
-func BorrowBoxView(self unsafe.Pointer) (unsafe.Pointer, int32) {
-	var outResult unsafe.Pointer
-	code := bindings().fnBorrowBoxView(self, &outResult)
-	return outResult, code
-}
-
-// BorrowBoxDeinit calls the generated purego ABI wrapper for zg_borrow_box_deinit.
-func BorrowBoxDeinit(self unsafe.Pointer) int32 {
-	code := bindings().fnBorrowBoxDeinit(self)
-	return code
-}
-
-// BorrowViewView calls the generated purego ABI wrapper for zg_borrow_view_view.
-func BorrowViewView(self unsafe.Pointer) (unsafe.Pointer, int32) {
-	var outResult unsafe.Pointer
-	code := bindings().fnBorrowViewView(self, &outResult)
-	return outResult, code
-}
-
-// BorrowViewNewChild calls the generated purego ABI wrapper for zg_borrow_view_new_child.
-func BorrowViewNewChild(self unsafe.Pointer) (unsafe.Pointer, int32) {
-	var outResult unsafe.Pointer
-	code := bindings().fnBorrowViewNewChild(self, &outResult)
-	return outResult, code
-}
-
-// BorrowViewGet calls the generated purego ABI wrapper for zg_borrow_view_get.
-func BorrowViewGet(self unsafe.Pointer) (int32, int32) {
-	var outResult int32
-	code := bindings().fnBorrowViewGet(self, &outResult)
-	return outResult, code
-}
-
-// BorrowViewExplode calls the generated purego ABI wrapper for zg_borrow_view_explode.
-func BorrowViewExplode(self unsafe.Pointer) int32 {
-	code := bindings().fnBorrowViewExplode(self)
-	return code
-}
-
-// BorrowChildGet calls the generated purego ABI wrapper for zg_borrow_child_get.
-func BorrowChildGet(self unsafe.Pointer) (int32, int32) {
-	var outResult int32
-	code := bindings().fnBorrowChildGet(self, &outResult)
-	return outResult, code
-}
-
-// BorrowChildDeinit calls the generated purego ABI wrapper for zg_borrow_child_deinit.
-func BorrowChildDeinit(self unsafe.Pointer) int32 {
-	code := bindings().fnBorrowChildDeinit(self)
-	return code
-}
-
-// LiveBorrowChildren calls the generated purego ABI wrapper for zg_live_borrow_children.
-func LiveBorrowChildren() uint {
-	result := bindings().fnLiveBorrowChildren()
-	return uint(result)
-}
-
-// TerminalInit calls the generated purego ABI wrapper for zg_terminal_init.
-func TerminalInit(cols uint16, rows uint16, maxScrollbackBytes uint) (unsafe.Pointer, int32) {
-	var outResult unsafe.Pointer
-	code := bindings().fnTerminalInit(cols, rows, uintptr(maxScrollbackBytes), &outResult)
-	return outResult, code
-}
-
-// TerminalCols calls the generated purego ABI wrapper for zg_terminal_cols.
-func TerminalCols(self unsafe.Pointer) (uint16, int32) {
-	var outResult uint16
-	code := bindings().fnTerminalCols(self, &outResult)
-	return outResult, code
-}
-
-// TerminalRows calls the generated purego ABI wrapper for zg_terminal_rows.
-func TerminalRows(self unsafe.Pointer) (uint16, int32) {
-	var outResult uint16
-	code := bindings().fnTerminalRows(self, &outResult)
-	return outResult, code
-}
-
-// TerminalMaxScrollbackBytes calls the generated purego ABI wrapper for zg_terminal_max_scrollback_bytes.
-func TerminalMaxScrollbackBytes(self unsafe.Pointer) (uint, int32) {
-	var outResult uintptr
-	code := bindings().fnTerminalMaxScrollbackBytes(self, &outResult)
-	return uint(outResult), code
-}
-
-// TerminalDeinit calls the generated purego ABI wrapper for zg_terminal_deinit.
-func TerminalDeinit(self unsafe.Pointer) int32 {
-	code := bindings().fnTerminalDeinit(self)
-	return code
-}
-
-// StreamCapacity calls the generated purego ABI wrapper for zg_stream_capacity.
-func StreamCapacity(self unsafe.Pointer) (uint32, int32) {
-	var outResult uint32
-	code := bindings().fnStreamCapacity(self, &outResult)
-	return outResult, code
-}
-
-// StreamFreeStream calls the generated purego ABI wrapper for zg_stream_free_stream.
-func StreamFreeStream(self unsafe.Pointer) int32 {
-	code := bindings().fnStreamFreeStream(self)
-	return code
 }
 
 // EventQueueEnqueue calls the generated purego ABI wrapper for zg_event_queue_enqueue.
@@ -1323,6 +1204,125 @@ func EventQueueDeinit(self unsafe.Pointer) int32 {
 	return code
 }
 
+// StreamCapacity calls the generated purego ABI wrapper for zg_stream_capacity.
+func StreamCapacity(self unsafe.Pointer) (uint32, int32) {
+	var outResult uint32
+	code := bindings().fnStreamCapacity(self, &outResult)
+	return outResult, code
+}
+
+// BorrowBoxCreate calls the generated purego ABI wrapper for zg_borrow_box_create.
+func BorrowBoxCreate(value int32) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := bindings().fnBorrowBoxCreate(value, &outResult)
+	return outResult, code
+}
+
+// BorrowBoxView calls the generated purego ABI wrapper for zg_borrow_box_view.
+func BorrowBoxView(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := bindings().fnBorrowBoxView(self, &outResult)
+	return outResult, code
+}
+
+// BorrowBoxDeinit calls the generated purego ABI wrapper for zg_borrow_box_deinit.
+func BorrowBoxDeinit(self unsafe.Pointer) int32 {
+	code := bindings().fnBorrowBoxDeinit(self)
+	return code
+}
+
+// BorrowViewView calls the generated purego ABI wrapper for zg_borrow_view_view.
+func BorrowViewView(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := bindings().fnBorrowViewView(self, &outResult)
+	return outResult, code
+}
+
+// BorrowViewNewChild calls the generated purego ABI wrapper for zg_borrow_view_new_child.
+func BorrowViewNewChild(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := bindings().fnBorrowViewNewChild(self, &outResult)
+	return outResult, code
+}
+
+// BorrowViewGet calls the generated purego ABI wrapper for zg_borrow_view_get.
+func BorrowViewGet(self unsafe.Pointer) (int32, int32) {
+	var outResult int32
+	code := bindings().fnBorrowViewGet(self, &outResult)
+	return outResult, code
+}
+
+// BorrowViewExplode calls the generated purego ABI wrapper for zg_borrow_view_explode.
+func BorrowViewExplode(self unsafe.Pointer) int32 {
+	code := bindings().fnBorrowViewExplode(self)
+	return code
+}
+
+// BorrowChildGet calls the generated purego ABI wrapper for zg_borrow_child_get.
+func BorrowChildGet(self unsafe.Pointer) (int32, int32) {
+	var outResult int32
+	code := bindings().fnBorrowChildGet(self, &outResult)
+	return outResult, code
+}
+
+// BorrowChildDeinit calls the generated purego ABI wrapper for zg_borrow_child_deinit.
+func BorrowChildDeinit(self unsafe.Pointer) int32 {
+	code := bindings().fnBorrowChildDeinit(self)
+	return code
+}
+
+// TerminalInit calls the generated purego ABI wrapper for zg_terminal_init.
+func TerminalInit(cols uint16, rows uint16, maxScrollbackBytes uint) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := bindings().fnTerminalInit(cols, rows, uintptr(maxScrollbackBytes), &outResult)
+	return outResult, code
+}
+
+// TerminalCols calls the generated purego ABI wrapper for zg_terminal_cols.
+func TerminalCols(self unsafe.Pointer) (uint16, int32) {
+	var outResult uint16
+	code := bindings().fnTerminalCols(self, &outResult)
+	return outResult, code
+}
+
+// TerminalRows calls the generated purego ABI wrapper for zg_terminal_rows.
+func TerminalRows(self unsafe.Pointer) (uint16, int32) {
+	var outResult uint16
+	code := bindings().fnTerminalRows(self, &outResult)
+	return outResult, code
+}
+
+// TerminalMaxScrollbackBytes calls the generated purego ABI wrapper for zg_terminal_max_scrollback_bytes.
+func TerminalMaxScrollbackBytes(self unsafe.Pointer) (uint, int32) {
+	var outResult uintptr
+	code := bindings().fnTerminalMaxScrollbackBytes(self, &outResult)
+	return uint(outResult), code
+}
+
+// TerminalDeinit calls the generated purego ABI wrapper for zg_terminal_deinit.
+func TerminalDeinit(self unsafe.Pointer) int32 {
+	code := bindings().fnTerminalDeinit(self)
+	return code
+}
+
+// EchoQueueSignal calls the generated purego ABI wrapper for zg_echo_queue_signal.
+func EchoQueueSignal(signal uint8) uint8 {
+	result := bindings().fnEchoQueueSignal(signal)
+	return uint8(result)
+}
+
+// LiveBorrowChildren calls the generated purego ABI wrapper for zg_live_borrow_children.
+func LiveBorrowChildren() uint {
+	result := bindings().fnLiveBorrowChildren()
+	return uint(result)
+}
+
+// StreamFreeStream calls the generated purego ABI wrapper for zg_stream_free_stream.
+func StreamFreeStream(self unsafe.Pointer) int32 {
+	code := bindings().fnStreamFreeStream(self)
+	return code
+}
+
 // InspectTicker calls the generated purego ABI wrapper for zg_inspect_ticker.
 func InspectTicker(info TickerInfoData, ticker unsafe.Pointer) (TickerInfoData, int32) {
 	var outResult TickerInfoData
@@ -1373,12 +1373,6 @@ func TickerFreeTicker(self unsafe.Pointer) int32 {
 	return code
 }
 
-// LiveTickers calls the generated purego ABI wrapper for zg_live_tickers.
-func LiveTickers() uint {
-	result := bindings().fnLiveTickers()
-	return uint(result)
-}
-
 // TickerAdvance calls the generated purego ABI wrapper for zg_ticker_advance.
 func TickerAdvance(self unsafe.Pointer, steps uint32) (uint32, int32) {
 	var outResult uint32
@@ -1391,4 +1385,10 @@ func TickerElapsed(self unsafe.Pointer) (uint32, int32) {
 	var outResult uint32
 	code := bindings().fnTickerElapsed(self, &outResult)
 	return outResult, code
+}
+
+// LiveTickers calls the generated purego ABI wrapper for zg_live_tickers.
+func LiveTickers() uint {
+	result := bindings().fnLiveTickers()
+	return uint(result)
 }

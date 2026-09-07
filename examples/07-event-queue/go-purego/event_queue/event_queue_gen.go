@@ -27,11 +27,6 @@ func LibraryLoaded() bool { return raw.LibraryLoaded() }
 // LoadLibrary falls back to it when no explicit path and no ZIGO_LIBRARY_PATH are set.
 var DefaultLibraryName = raw.DefaultLibraryName
 
-// EchoQueueSignal calls the Zig function echoQueueSignal.
-func EchoQueueSignal(signal zigo_pkg_types.QueueSignal) zigo_pkg_types.QueueSignal {
-	return zigo_pkg_types.QueueSignal(raw.EchoQueueSignal(uint8(signal)))
-}
-
 // NewEventQueue creates a caller-owned EventQueue.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
@@ -121,241 +116,6 @@ func (e *EventQueue) NewStream() (*Stream, error) {
 
 // MustNewStream calls NewStream and panics with its typed error on failure.
 func (e *EventQueue) MustNewStream() *Stream { return zigoMust(e.NewStream()) }
-
-// NewBorrowBox creates a caller-owned BorrowBox.
-// The caller must call Close on the returned handle.
-// Native failures are returned as generated error values.
-func NewBorrowBox(value int32) (*BorrowBox, error) {
-	result, code := raw.BorrowBoxCreate(value)
-	if code != 0 {
-		return nil, zigoErrorForCode("NewBorrowBox", code)
-	}
-	return zigoNewBorrowBox(result), nil
-}
-
-// MustNewBorrowBox calls NewBorrowBox and panics with its typed error on failure.
-func MustNewBorrowBox(value int32) *BorrowBox { return zigoMust(NewBorrowBox(value)) }
-
-// View calls the Zig function BorrowBox.view.
-// The returned reference remains valid only while its parent handle remains open.
-// It returns *HandleError if a required handle is nil or closed.
-// A native panic is returned as *NativePanicError.
-func (b *BorrowBox) View() (*BorrowView, error) {
-	ptr, err := zigoCheckedPointer("BorrowBox.View receiver", b)
-	if err != nil {
-		return nil, err
-	}
-	defer b.zigoRelease()
-	result, code := raw.BorrowBoxView(ptr)
-	if code != 0 {
-		return nil, zigoPoisonAfterPanic(zigoErrorForCode("BorrowBox.View", code), b)
-	}
-	return zigoNewBorrowedBorrowView(result, b), nil
-}
-
-// MustView calls View and panics with its typed error on failure.
-func (b *BorrowBox) MustView() *BorrowView { return zigoMust(b.View()) }
-
-// View calls the Zig function BorrowView.view.
-// The returned reference remains valid only while its parent handle remains open.
-// It returns *HandleError if a required handle is nil or closed.
-// A native panic is returned as *NativePanicError.
-func (b *BorrowView) View() (*BorrowView, error) {
-	ptr, err := zigoCheckedPointer("BorrowView.View receiver", b)
-	if err != nil {
-		return nil, err
-	}
-	defer b.zigoRelease()
-	result, code := raw.BorrowViewView(ptr)
-	if code != 0 {
-		return nil, zigoPoisonAfterPanic(zigoErrorForCode("BorrowView.View", code), b)
-	}
-	return zigoNewBorrowedBorrowView(result, b), nil
-}
-
-// MustView calls View and panics with its typed error on failure.
-func (b *BorrowView) MustView() *BorrowView { return zigoMust(b.View()) }
-
-// NewBorrowChild creates a caller-owned BorrowChild.
-// The caller must call Close on the returned handle.
-// It returns *HandleError if a required handle is nil or closed.
-// Native failures are returned as generated error values.
-func (b *BorrowView) NewBorrowChild() (*BorrowChild, error) {
-	ptr, zigoChildParent, err := b.zigoAcquireChild("BorrowView.NewBorrowChild receiver")
-	if err != nil {
-		return nil, err
-	}
-	zigoChildCreated := false
-	defer func() {
-		b.zigoRelease()
-		if !zigoChildCreated {
-			zigoChildParent.ZigoDropChild()
-		}
-	}()
-	result, code := raw.BorrowViewNewChild(ptr)
-	if code != 0 {
-		return nil, zigoPoisonAfterPanic(zigoErrorForCode("BorrowView.NewBorrowChild", code), b)
-	}
-	zigoChildCreated = true
-	return zigoNewBorrowChild(result, zigoChildParent), nil
-}
-
-// MustNewBorrowChild calls NewBorrowChild and panics with its typed error on failure.
-func (b *BorrowView) MustNewBorrowChild() *BorrowChild { return zigoMust(b.NewBorrowChild()) }
-
-// Get calls the Zig function BorrowView.get.
-// It returns *HandleError if a required handle is nil or closed.
-// A native panic is returned as *NativePanicError.
-func (b *BorrowView) Get() (int32, error) {
-	ptr, err := zigoCheckedPointer("BorrowView.Get receiver", b)
-	if err != nil {
-		return 0, err
-	}
-	defer b.zigoRelease()
-	result, code := raw.BorrowViewGet(ptr)
-	if code != 0 {
-		return 0, zigoPoisonAfterPanic(zigoErrorForCode("BorrowView.Get", code), b)
-	}
-	return result, nil
-}
-
-// MustGet calls Get and panics with its typed error on failure.
-func (b *BorrowView) MustGet() int32 { return zigoMust(b.Get()) }
-
-// Explode calls the Zig function BorrowView.explode.
-// It returns *HandleError if a required handle is nil or closed.
-// A native panic is returned as *NativePanicError.
-func (b *BorrowView) Explode() error {
-	ptr, err := zigoCheckedPointer("BorrowView.Explode receiver", b)
-	if err != nil {
-		return err
-	}
-	defer b.zigoRelease()
-	code := raw.BorrowViewExplode(ptr)
-	if code != 0 {
-		return zigoPoisonAfterPanic(zigoErrorForCode("BorrowView.Explode", code), b)
-	}
-	return nil
-}
-
-// MustExplode calls Explode and panics with its typed error on failure.
-func (b *BorrowView) MustExplode() { _ = zigoMust(struct{}{}, b.Explode()) }
-
-// Get calls the Zig function BorrowChild.get.
-// It returns *HandleError if a required handle is nil or closed.
-// A native panic is returned as *NativePanicError.
-func (b *BorrowChild) Get() (int32, error) {
-	ptr, err := zigoCheckedPointer("BorrowChild.Get receiver", b)
-	if err != nil {
-		return 0, err
-	}
-	defer b.zigoRelease()
-	result, code := raw.BorrowChildGet(ptr)
-	if code != 0 {
-		return 0, zigoPoisonAfterPanic(zigoErrorForCode("BorrowChild.Get", code), b)
-	}
-	return result, nil
-}
-
-// MustGet calls Get and panics with its typed error on failure.
-func (b *BorrowChild) MustGet() int32 { return zigoMust(b.Get()) }
-
-// LiveBorrowChildren calls the Zig function liveBorrowChildren.
-func LiveBorrowChildren() uint {
-	return raw.LiveBorrowChildren()
-}
-
-// NewTerminal creates a caller-owned Terminal.
-// The caller must call Close on the returned handle.
-// Native failures are returned as generated error values.
-func NewTerminal(cols uint16, rows uint16, maxScrollbackBytes uint) (*Terminal, error) {
-	result, code := raw.TerminalInit(cols, rows, maxScrollbackBytes)
-	if code != 0 {
-		return nil, zigoErrorForCode("NewTerminal", code)
-	}
-	return zigoNewTerminal(result), nil
-}
-
-// MustNewTerminal calls NewTerminal and panics with its typed error on failure.
-func MustNewTerminal(cols uint16, rows uint16, maxScrollbackBytes uint) *Terminal {
-	return zigoMust(NewTerminal(cols, rows, maxScrollbackBytes))
-}
-
-// Cols calls the Zig function Terminal.cols.
-// It returns *HandleError if a required handle is nil or closed.
-// A native panic is returned as *NativePanicError.
-func (t *Terminal) Cols() (uint16, error) {
-	ptr, err := zigoCheckedPointer("Terminal.Cols receiver", t)
-	if err != nil {
-		return 0, err
-	}
-	defer t.zigoRelease()
-	result, code := raw.TerminalCols(ptr)
-	if code != 0 {
-		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Terminal.Cols", code), t)
-	}
-	return result, nil
-}
-
-// MustCols calls Cols and panics with its typed error on failure.
-func (t *Terminal) MustCols() uint16 { return zigoMust(t.Cols()) }
-
-// Rows calls the Zig function Terminal.rows.
-// It returns *HandleError if a required handle is nil or closed.
-// A native panic is returned as *NativePanicError.
-func (t *Terminal) Rows() (uint16, error) {
-	ptr, err := zigoCheckedPointer("Terminal.Rows receiver", t)
-	if err != nil {
-		return 0, err
-	}
-	defer t.zigoRelease()
-	result, code := raw.TerminalRows(ptr)
-	if code != 0 {
-		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Terminal.Rows", code), t)
-	}
-	return result, nil
-}
-
-// MustRows calls Rows and panics with its typed error on failure.
-func (t *Terminal) MustRows() uint16 { return zigoMust(t.Rows()) }
-
-// MaxScrollbackBytes calls the Zig function Terminal.maxScrollbackBytes.
-// It returns *HandleError if a required handle is nil or closed.
-// A native panic is returned as *NativePanicError.
-func (t *Terminal) MaxScrollbackBytes() (uint, error) {
-	ptr, err := zigoCheckedPointer("Terminal.MaxScrollbackBytes receiver", t)
-	if err != nil {
-		return 0, err
-	}
-	defer t.zigoRelease()
-	result, code := raw.TerminalMaxScrollbackBytes(ptr)
-	if code != 0 {
-		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Terminal.MaxScrollbackBytes", code), t)
-	}
-	return result, nil
-}
-
-// MustMaxScrollbackBytes calls MaxScrollbackBytes and panics with its typed error on failure.
-func (t *Terminal) MustMaxScrollbackBytes() uint { return zigoMust(t.MaxScrollbackBytes()) }
-
-// Capacity calls the Zig function Stream.capacity.
-// It returns *HandleError if a required handle is nil or closed.
-// A native panic is returned as *NativePanicError.
-func (s *Stream) Capacity() (uint32, error) {
-	ptr, err := zigoCheckedPointer("Stream.Capacity receiver", s)
-	if err != nil {
-		return 0, err
-	}
-	defer s.zigoRelease()
-	result, code := raw.StreamCapacity(ptr)
-	if code != 0 {
-		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Stream.Capacity", code), s)
-	}
-	return result, nil
-}
-
-// MustCapacity calls Capacity and panics with its typed error on failure.
-func (s *Stream) MustCapacity() uint32 { return zigoMust(s.Capacity()) }
 
 // Enqueue calls the Zig function EventQueue.enqueue.
 // It returns *HandleError if a required handle is nil or closed.
@@ -1093,6 +853,246 @@ func (e *EventQueue) Clear() (uint, error) {
 
 // MustClear calls Clear and panics with its typed error on failure.
 func (e *EventQueue) MustClear() uint { return zigoMust(e.Clear()) }
+
+// Capacity calls the Zig function Stream.capacity.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (s *Stream) Capacity() (uint32, error) {
+	ptr, err := zigoCheckedPointer("Stream.Capacity receiver", s)
+	if err != nil {
+		return 0, err
+	}
+	defer s.zigoRelease()
+	result, code := raw.StreamCapacity(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Stream.Capacity", code), s)
+	}
+	return result, nil
+}
+
+// MustCapacity calls Capacity and panics with its typed error on failure.
+func (s *Stream) MustCapacity() uint32 { return zigoMust(s.Capacity()) }
+
+// NewBorrowBox creates a caller-owned BorrowBox.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
+func NewBorrowBox(value int32) (*BorrowBox, error) {
+	result, code := raw.BorrowBoxCreate(value)
+	if code != 0 {
+		return nil, zigoErrorForCode("NewBorrowBox", code)
+	}
+	return zigoNewBorrowBox(result), nil
+}
+
+// MustNewBorrowBox calls NewBorrowBox and panics with its typed error on failure.
+func MustNewBorrowBox(value int32) *BorrowBox { return zigoMust(NewBorrowBox(value)) }
+
+// View calls the Zig function BorrowBox.view.
+// The returned reference remains valid only while its parent handle remains open.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (b *BorrowBox) View() (*BorrowView, error) {
+	ptr, err := zigoCheckedPointer("BorrowBox.View receiver", b)
+	if err != nil {
+		return nil, err
+	}
+	defer b.zigoRelease()
+	result, code := raw.BorrowBoxView(ptr)
+	if code != 0 {
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("BorrowBox.View", code), b)
+	}
+	return zigoNewBorrowedBorrowView(result, b), nil
+}
+
+// MustView calls View and panics with its typed error on failure.
+func (b *BorrowBox) MustView() *BorrowView { return zigoMust(b.View()) }
+
+// View calls the Zig function BorrowView.view.
+// The returned reference remains valid only while its parent handle remains open.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (b *BorrowView) View() (*BorrowView, error) {
+	ptr, err := zigoCheckedPointer("BorrowView.View receiver", b)
+	if err != nil {
+		return nil, err
+	}
+	defer b.zigoRelease()
+	result, code := raw.BorrowViewView(ptr)
+	if code != 0 {
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("BorrowView.View", code), b)
+	}
+	return zigoNewBorrowedBorrowView(result, b), nil
+}
+
+// MustView calls View and panics with its typed error on failure.
+func (b *BorrowView) MustView() *BorrowView { return zigoMust(b.View()) }
+
+// NewBorrowChild creates a caller-owned BorrowChild.
+// The caller must call Close on the returned handle.
+// It returns *HandleError if a required handle is nil or closed.
+// Native failures are returned as generated error values.
+func (b *BorrowView) NewBorrowChild() (*BorrowChild, error) {
+	ptr, zigoChildParent, err := b.zigoAcquireChild("BorrowView.NewBorrowChild receiver")
+	if err != nil {
+		return nil, err
+	}
+	zigoChildCreated := false
+	defer func() {
+		b.zigoRelease()
+		if !zigoChildCreated {
+			zigoChildParent.ZigoDropChild()
+		}
+	}()
+	result, code := raw.BorrowViewNewChild(ptr)
+	if code != 0 {
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("BorrowView.NewBorrowChild", code), b)
+	}
+	zigoChildCreated = true
+	return zigoNewBorrowChild(result, zigoChildParent), nil
+}
+
+// MustNewBorrowChild calls NewBorrowChild and panics with its typed error on failure.
+func (b *BorrowView) MustNewBorrowChild() *BorrowChild { return zigoMust(b.NewBorrowChild()) }
+
+// Get calls the Zig function BorrowView.get.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (b *BorrowView) Get() (int32, error) {
+	ptr, err := zigoCheckedPointer("BorrowView.Get receiver", b)
+	if err != nil {
+		return 0, err
+	}
+	defer b.zigoRelease()
+	result, code := raw.BorrowViewGet(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("BorrowView.Get", code), b)
+	}
+	return result, nil
+}
+
+// MustGet calls Get and panics with its typed error on failure.
+func (b *BorrowView) MustGet() int32 { return zigoMust(b.Get()) }
+
+// Explode calls the Zig function BorrowView.explode.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (b *BorrowView) Explode() error {
+	ptr, err := zigoCheckedPointer("BorrowView.Explode receiver", b)
+	if err != nil {
+		return err
+	}
+	defer b.zigoRelease()
+	code := raw.BorrowViewExplode(ptr)
+	if code != 0 {
+		return zigoPoisonAfterPanic(zigoErrorForCode("BorrowView.Explode", code), b)
+	}
+	return nil
+}
+
+// MustExplode calls Explode and panics with its typed error on failure.
+func (b *BorrowView) MustExplode() { _ = zigoMust(struct{}{}, b.Explode()) }
+
+// Get calls the Zig function BorrowChild.get.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (b *BorrowChild) Get() (int32, error) {
+	ptr, err := zigoCheckedPointer("BorrowChild.Get receiver", b)
+	if err != nil {
+		return 0, err
+	}
+	defer b.zigoRelease()
+	result, code := raw.BorrowChildGet(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("BorrowChild.Get", code), b)
+	}
+	return result, nil
+}
+
+// MustGet calls Get and panics with its typed error on failure.
+func (b *BorrowChild) MustGet() int32 { return zigoMust(b.Get()) }
+
+// NewTerminal creates a caller-owned Terminal.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
+func NewTerminal(cols uint16, rows uint16, maxScrollbackBytes uint) (*Terminal, error) {
+	result, code := raw.TerminalInit(cols, rows, maxScrollbackBytes)
+	if code != 0 {
+		return nil, zigoErrorForCode("NewTerminal", code)
+	}
+	return zigoNewTerminal(result), nil
+}
+
+// MustNewTerminal calls NewTerminal and panics with its typed error on failure.
+func MustNewTerminal(cols uint16, rows uint16, maxScrollbackBytes uint) *Terminal {
+	return zigoMust(NewTerminal(cols, rows, maxScrollbackBytes))
+}
+
+// Cols calls the Zig function Terminal.cols.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (t *Terminal) Cols() (uint16, error) {
+	ptr, err := zigoCheckedPointer("Terminal.Cols receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	defer t.zigoRelease()
+	result, code := raw.TerminalCols(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Terminal.Cols", code), t)
+	}
+	return result, nil
+}
+
+// MustCols calls Cols and panics with its typed error on failure.
+func (t *Terminal) MustCols() uint16 { return zigoMust(t.Cols()) }
+
+// Rows calls the Zig function Terminal.rows.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (t *Terminal) Rows() (uint16, error) {
+	ptr, err := zigoCheckedPointer("Terminal.Rows receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	defer t.zigoRelease()
+	result, code := raw.TerminalRows(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Terminal.Rows", code), t)
+	}
+	return result, nil
+}
+
+// MustRows calls Rows and panics with its typed error on failure.
+func (t *Terminal) MustRows() uint16 { return zigoMust(t.Rows()) }
+
+// MaxScrollbackBytes calls the Zig function Terminal.maxScrollbackBytes.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (t *Terminal) MaxScrollbackBytes() (uint, error) {
+	ptr, err := zigoCheckedPointer("Terminal.MaxScrollbackBytes receiver", t)
+	if err != nil {
+		return 0, err
+	}
+	defer t.zigoRelease()
+	result, code := raw.TerminalMaxScrollbackBytes(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Terminal.MaxScrollbackBytes", code), t)
+	}
+	return result, nil
+}
+
+// MustMaxScrollbackBytes calls MaxScrollbackBytes and panics with its typed error on failure.
+func (t *Terminal) MustMaxScrollbackBytes() uint { return zigoMust(t.MaxScrollbackBytes()) }
+
+// EchoQueueSignal calls the Zig function echoQueueSignal.
+func EchoQueueSignal(signal zigo_pkg_types.QueueSignal) zigo_pkg_types.QueueSignal {
+	return zigo_pkg_types.QueueSignal(raw.EchoQueueSignal(uint8(signal)))
+}
+
+// LiveBorrowChildren calls the Zig function liveBorrowChildren.
+func LiveBorrowChildren() uint {
+	return raw.LiveBorrowChildren()
+}
 
 // InspectTicker: Exercises cross-package handle and value-struct parameters without making
 // this free function a Ticker method.

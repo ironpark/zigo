@@ -94,6 +94,11 @@ func AccumulatorDeinit(self unsafe.Pointer) int32 {
 	return code
 }
 
+// DeccolmModeColumns calls the generated C ABI wrapper for zg_deccolm_mode_columns.
+func DeccolmModeColumns(self uint8) uint16 {
+	return uint16(C.zg_deccolm_mode_columns(C.uint8_t(self)))
+}
+
 // LiveObjects calls the generated C ABI wrapper for zg_live_objects.
 func LiveObjects() uint {
 	return uint(C.zg_live_objects())
@@ -102,11 +107,6 @@ func LiveObjects() uint {
 // DefaultCursorStyle calls the generated C ABI wrapper for zg_default_cursor_style.
 func DefaultCursorStyle() uint8 {
 	return uint8(C.zg_default_cursor_style())
-}
-
-// DeccolmModeColumns calls the generated C ABI wrapper for zg_deccolm_mode_columns.
-func DeccolmModeColumns(self uint8) uint16 {
-	return uint16(C.zg_deccolm_mode_columns(C.uint8_t(self)))
 }
 
 // ConfigureStyles calls the generated C ABI wrapper for zg_configure_styles.

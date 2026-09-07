@@ -103,58 +103,6 @@ func zg_pipeline_create_go_callback_callback(p0 C.int32_t, p1 C.size_t) (result 
 	return C.int32_t(callback(int32(p0)))
 }
 
-// IntBatchCreate calls the generated C ABI wrapper for zg_int_batch_create.
-func IntBatchCreate() (unsafe.Pointer, int32) {
-	var outResult *C.zg_int_batch
-	code := int32(C.zg_int_batch_create(&outResult))
-	return unsafe.Pointer(outResult), code
-}
-
-// IntBatchPush calls the generated C ABI wrapper for zg_int_batch_push.
-func IntBatchPush(self unsafe.Pointer, value int32) int32 {
-	code := int32(C.zg_int_batch_push((*C.zg_int_batch)(self), C.int32_t(value)))
-	return code
-}
-
-// IntBatchLen calls the generated C ABI wrapper for zg_int_batch_len.
-func IntBatchLen(self unsafe.Pointer) (uint, int32) {
-	var outResult C.size_t
-	code := int32(C.zg_int_batch_len((*C.zg_int_batch)(self), &outResult))
-	return uint(outResult), code
-}
-
-// IntBatchDeinit calls the generated C ABI wrapper for zg_int_batch_deinit.
-func IntBatchDeinit(self unsafe.Pointer) int32 {
-	code := int32(C.zg_int_batch_deinit((*C.zg_int_batch)(self)))
-	return code
-}
-
-// FloatBatchCreate calls the generated C ABI wrapper for zg_float_batch_create.
-func FloatBatchCreate() (unsafe.Pointer, int32) {
-	var outResult *C.zg_float_batch
-	code := int32(C.zg_float_batch_create(&outResult))
-	return unsafe.Pointer(outResult), code
-}
-
-// FloatBatchPush calls the generated C ABI wrapper for zg_float_batch_push.
-func FloatBatchPush(self unsafe.Pointer, value float64) int32 {
-	code := int32(C.zg_float_batch_push((*C.zg_float_batch)(self), C.double(value)))
-	return code
-}
-
-// FloatBatchLen calls the generated C ABI wrapper for zg_float_batch_len.
-func FloatBatchLen(self unsafe.Pointer) (uint, int32) {
-	var outResult C.size_t
-	code := int32(C.zg_float_batch_len((*C.zg_float_batch)(self), &outResult))
-	return uint(outResult), code
-}
-
-// FloatBatchDeinit calls the generated C ABI wrapper for zg_float_batch_deinit.
-func FloatBatchDeinit(self unsafe.Pointer) int32 {
-	code := int32(C.zg_float_batch_deinit((*C.zg_float_batch)(self)))
-	return code
-}
-
 // PipelineCreate calls the generated C ABI wrapper for zg_pipeline_create.
 func PipelineCreate(name string, mode uint32, callbackHandle uintptr) (unsafe.Pointer, int32) {
 	namePtr := (*C.uint8_t)(zigoStringPtr(name))
@@ -213,6 +161,58 @@ func PipelineTotal(self unsafe.Pointer) (int64, int32) {
 // PipelineDeinit calls the generated C ABI wrapper for zg_pipeline_deinit.
 func PipelineDeinit(self unsafe.Pointer) int32 {
 	code := int32(C.zg_pipeline_deinit((*C.zg_pipeline)(self)))
+	return code
+}
+
+// IntBatchCreate calls the generated C ABI wrapper for zg_int_batch_create.
+func IntBatchCreate() (unsafe.Pointer, int32) {
+	var outResult *C.zg_int_batch
+	code := int32(C.zg_int_batch_create(&outResult))
+	return unsafe.Pointer(outResult), code
+}
+
+// IntBatchPush calls the generated C ABI wrapper for zg_int_batch_push.
+func IntBatchPush(self unsafe.Pointer, value int32) int32 {
+	code := int32(C.zg_int_batch_push((*C.zg_int_batch)(self), C.int32_t(value)))
+	return code
+}
+
+// IntBatchLen calls the generated C ABI wrapper for zg_int_batch_len.
+func IntBatchLen(self unsafe.Pointer) (uint, int32) {
+	var outResult C.size_t
+	code := int32(C.zg_int_batch_len((*C.zg_int_batch)(self), &outResult))
+	return uint(outResult), code
+}
+
+// IntBatchDeinit calls the generated C ABI wrapper for zg_int_batch_deinit.
+func IntBatchDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_int_batch_deinit((*C.zg_int_batch)(self)))
+	return code
+}
+
+// FloatBatchCreate calls the generated C ABI wrapper for zg_float_batch_create.
+func FloatBatchCreate() (unsafe.Pointer, int32) {
+	var outResult *C.zg_float_batch
+	code := int32(C.zg_float_batch_create(&outResult))
+	return unsafe.Pointer(outResult), code
+}
+
+// FloatBatchPush calls the generated C ABI wrapper for zg_float_batch_push.
+func FloatBatchPush(self unsafe.Pointer, value float64) int32 {
+	code := int32(C.zg_float_batch_push((*C.zg_float_batch)(self), C.double(value)))
+	return code
+}
+
+// FloatBatchLen calls the generated C ABI wrapper for zg_float_batch_len.
+func FloatBatchLen(self unsafe.Pointer) (uint, int32) {
+	var outResult C.size_t
+	code := int32(C.zg_float_batch_len((*C.zg_float_batch)(self), &outResult))
+	return uint(outResult), code
+}
+
+// FloatBatchDeinit calls the generated C ABI wrapper for zg_float_batch_deinit.
+func FloatBatchDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_float_batch_deinit((*C.zg_float_batch)(self)))
 	return code
 }
 

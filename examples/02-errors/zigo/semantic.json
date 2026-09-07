@@ -123,7 +123,7 @@
         {
           "direction": "in",
           "name": "cp",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "semantic": "codepoint",
           "source": {

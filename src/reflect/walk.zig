@@ -4966,3 +4966,63 @@ test "explicit free role keeps handle parameter visible" {
     try std.testing.expectEqualStrings("item", document.functions[0].params[0].name);
     try std.testing.expectEqual(@as(usize, 1), document.functions[0].params.len);
 }
+
+test "authoring static constructor keeps its handle input in the public signature" {
+    const author = @import("zigo");
+    const Fixture = struct {
+        pub const Parent = opaque {};
+        pub const Child = opaque {};
+        pub fn create(_: *Parent) *Child {
+            unreachable;
+        }
+        pub fn destroy(_: *Child) void {}
+    };
+    const api = author.scope(Fixture);
+    const tree = comptime author.define(.{ .root = Fixture, .declarations = &.{
+        api.handle("Parent", .{}).members(&.{
+            api.function("create", .{
+                .role = .{ .constructor = .{ .type = api.typeRef("Child"), .receiver = .none } },
+                .params = &.{.{ .index = 0, .go_name = "parent" }},
+            }),
+        }),
+        api.handle("Child", .{}).members(&.{
+            api.function("destroy", .{ .role = .{ .destructor = api.typeRef("Child") } }),
+        }),
+    } });
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), tree, "fixture", "zg");
+    try std.testing.expect(document.functions[0].receiver == null);
+    try std.testing.expectEqual(@as(usize, 1), document.functions[0].params.len);
+    try std.testing.expectEqualStrings("parent", document.functions[0].params[0].name);
+    try std.testing.expectEqualStrings("Child", document.constructors[0].type);
+}
+
+test "authoring sparse callback hints survive native userdata and byte pair lowering" {
+    const author = @import("zigo");
+    const Fixture = struct {
+        pub const Callback = *const fn (u32, usize, [*]const u8, usize) callconv(.c) i32;
+        pub fn run(_: Callback, _: usize) void {}
+    };
+    const api = author.scope(Fixture);
+    const tree = comptime author.define(.{ .root = Fixture, .declarations = &.{
+        api.callback("Callback", .{
+            .userdata = .{ .index = 1 },
+            .params = &.{
+                .{ .index = 2, .semantic = .utf8_string },
+                .{ .index = 0, .semantic = .codepoint },
+            },
+            .on_failure = .{ .result = -1 },
+        }),
+        api.function("run", .{}),
+    } });
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), tree, "fixture", "zg");
+    const callback = document.functions[0].params[0].type.callback;
+    try std.testing.expectEqual(@as(?usize, 1), callback.userdata_at);
+    try std.testing.expectEqual(@as(usize, 3), callback.params.len);
+    try std.testing.expectEqual(@as(?semantic.SemanticHint, .codepoint), callback.paramHint(0));
+    try std.testing.expectEqual(@as(?semantic.SemanticHint, .utf8_string), callback.paramHint(1));
+    try std.testing.expectEqual(@as(i128, -1), document.types[0].on_callback_failure.?.result);
+}

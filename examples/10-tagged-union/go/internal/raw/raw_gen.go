@@ -237,6 +237,19 @@ func SignalDeinit(self unsafe.Pointer) int32 {
 	return code
 }
 
+// PaletteCreate calls the generated C ABI wrapper for zg_palette_create.
+func PaletteCreate(flags uint16) (unsafe.Pointer, int32) {
+	var outResult *C.zg_palette
+	code := int32(C.zg_palette_create(C.uint16_t(flags), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+
+// PaletteDeinit calls the generated C ABI wrapper for zg_palette_deinit.
+func PaletteDeinit(self unsafe.Pointer) int32 {
+	code := int32(C.zg_palette_deinit((*C.zg_palette)(self)))
+	return code
+}
+
 // LiveValues calls the generated C ABI wrapper for zg_live_values.
 func LiveValues() uint {
 	return uint(C.zg_live_values())
@@ -310,19 +323,6 @@ func EchoColorRecord(value ColorRecordData) ColorRecordData {
 // FlattenFlags calls the generated C ABI wrapper for zg_flatten_flags.
 func FlattenFlags(flags uint16) uint16 {
 	return uint16(C.zg_flatten_flags(C.uint16_t(flags)))
-}
-
-// PaletteCreate calls the generated C ABI wrapper for zg_palette_create.
-func PaletteCreate(flags uint16) (unsafe.Pointer, int32) {
-	var outResult *C.zg_palette
-	code := int32(C.zg_palette_create(C.uint16_t(flags), &outResult))
-	return unsafe.Pointer(outResult), code
-}
-
-// PaletteDeinit calls the generated C ABI wrapper for zg_palette_deinit.
-func PaletteDeinit(self unsafe.Pointer) int32 {
-	code := int32(C.zg_palette_deinit((*C.zg_palette)(self)))
-	return code
 }
 
 // VisitFlags calls the generated C ABI wrapper for zg_visit_flags.

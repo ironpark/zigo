@@ -192,22 +192,6 @@ func (co *Context) BorrowView() (*ContextView, error) {
 	return zigoNewBorrowedContextView(result, co), nil
 }
 
-// Total calls the Zig function ContextView.total.
-// It returns *HandleError if a required handle is nil or closed.
-// A native panic is returned as *NativePanicError.
-func (c *ContextView) Total() (int64, error) {
-	ptr, err := zigoCheckedPointer("ContextView.Total receiver", c)
-	if err != nil {
-		return 0, err
-	}
-	defer c.zigoRelease()
-	result, code := raw.ContextViewTotal(ptr)
-	if code != 0 {
-		return 0, zigoPoisonAfterPanic(zigoErrorForCode("ContextView.Total", code), c)
-	}
-	return result, nil
-}
-
 // Crash panics inside a method: what leaves a handle poisoned.
 // It returns *HandleError if a required handle is nil or closed.
 // Native failures are returned as generated error values.
@@ -238,6 +222,22 @@ func (co *Context) CrashInfallible() (int64, error) {
 	result, code := raw.ContextCrashInfallible(ptr)
 	if code != 0 {
 		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Context.CrashInfallible", code), co)
+	}
+	return result, nil
+}
+
+// Total calls the Zig function ContextView.total.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (c *ContextView) Total() (int64, error) {
+	ptr, err := zigoCheckedPointer("ContextView.Total receiver", c)
+	if err != nil {
+		return 0, err
+	}
+	defer c.zigoRelease()
+	result, code := raw.ContextViewTotal(ptr)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("ContextView.Total", code), c)
 	}
 	return result, nil
 }

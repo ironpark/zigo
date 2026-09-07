@@ -20,7 +20,7 @@
         {
           "direction": "in",
           "name": "initial",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 10,
@@ -78,7 +78,7 @@
         {
           "direction": "in",
           "name": "delta",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 21,
@@ -153,7 +153,7 @@
         {
           "direction": "in",
           "name": "counter",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 43,
@@ -215,6 +215,26 @@
       "symbol": "zg_accumulator_deinit"
     },
     {
+      "doc": "How many columns this mode selects.",
+      "name": "columns",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "DeccolmMode",
+      "receiver_kind": "value",
+      "return": {
+        "bits": 16,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 75,
+        "column": 12
+      },
+      "symbol": "zg_deccolm_mode_columns"
+    },
+    {
       "name": "liveObjects",
       "ownership": "borrowed",
       "params": [],
@@ -252,33 +272,13 @@
       "symbol": "zg_default_cursor_style"
     },
     {
-      "doc": "How many columns this mode selects.",
-      "name": "columns",
-      "ownership": "borrowed",
-      "params": [],
-      "receiver": "DeccolmMode",
-      "receiver_kind": "value",
-      "return": {
-        "bits": 16,
-        "is_usize": false,
-        "kind": "int",
-        "signed": false
-      },
-      "source": {
-        "path": "root.zig",
-        "line": 75,
-        "column": 12
-      },
-      "symbol": "zg_deccolm_mode_columns"
-    },
-    {
       "name": "configureStyles",
       "ownership": "borrowed",
       "params": [
         {
           "direction": "in",
           "name": "slot",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 83,
@@ -292,7 +292,7 @@
         {
           "direction": "in",
           "name": "style",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 83,
@@ -321,7 +321,7 @@
         {
           "direction": "in",
           "name": "mode",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 87,
@@ -350,7 +350,7 @@
         {
           "direction": "in",
           "name": "value",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 108,
@@ -382,7 +382,7 @@
         {
           "direction": "in",
           "name": "first",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 128,
@@ -398,7 +398,7 @@
         {
           "direction": "in",
           "name": "second",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 128,
@@ -434,7 +434,7 @@
         {
           "direction": "in",
           "name": "cp",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 122,
@@ -469,7 +469,7 @@
         {
           "direction": "in",
           "name": "value",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 143,
@@ -510,7 +510,7 @@
         {
           "direction": "in",
           "name": "value",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 148,
@@ -545,7 +545,7 @@
         {
           "direction": "in",
           "name": "style",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 153,
@@ -579,7 +579,7 @@
         {
           "direction": "in",
           "name": "style",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 158,
@@ -616,7 +616,7 @@
         {
           "direction": "in",
           "name": "origin",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 164,
@@ -633,7 +633,7 @@
         {
           "direction": "in",
           "name": "delta",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 164,
@@ -669,7 +669,7 @@
         {
           "direction": "in",
           "name": "origin",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 172,
@@ -686,7 +686,7 @@
         {
           "direction": "in",
           "name": "delta",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 172,
@@ -728,7 +728,7 @@
         {
           "direction": "in",
           "name": "label",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "semantic": "utf8_string",
           "source": {
@@ -771,7 +771,7 @@
         {
           "direction": "in",
           "name": "values",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 186,
@@ -813,7 +813,7 @@
         {
           "direction": "in",
           "name": "count",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 197,
@@ -855,7 +855,7 @@
         {
           "direction": "in",
           "name": "style",
-          "name_source": "sidecar",
+          "name_source": "ast",
           "retention": "borrowed",
           "source": {
             "line": 203,

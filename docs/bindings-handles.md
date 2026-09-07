@@ -110,16 +110,39 @@ breaking입니다.
 
 ### 다른 handle의 메서드인 생성자
 
-생성 함수가 새 타입 안에 있을 필요는 없습니다. 주입 파라미터를 건너뛴 첫 handle 파라미터는
-평소처럼 receiver가 되고, `.role.constructor`는 반환값을 어느 타입의 생성자로 소유할지 정합니다.
+생성 함수가 새 타입 안에 있을 필요는 없습니다. `.role.constructor.type`은 생성할 타입을,
+`receiver`는 메서드 호출의 receiver를 정합니다.
+
+| constructor.receiver | 의미 |
+|---|---|
+| `.none` (기본값) | receiver 없음. 첫 handle 인자도 일반 인자로 노출 |
+| `.member` | 이 함수를 감싼 타입의 `.members(...)`에서 receiver 선택 |
+| `.{ .type = api.typeRef("Terminal") }` | 명시한 타입을 receiver로 사용 |
+
+`.member`를 타입 밖에서 쓰거나, 명시 receiver가 멤버 타입과 다르거나, 첫 비주입 Zig 인자와
+맞지 않으면 컴파일 오류입니다. `.parent = .receiver`에는 receiver가 반드시 필요합니다.
 
 ```zig
 pub fn newStream(gpa: std.mem.Allocator, terminal: *Terminal) !*Stream { ... }
 
 api.in("Terminal").function("newStream", .{.role = .{
- .constructor = .{.type = api.typeRef("Stream"), .parent = .receiver, .receiver = api.typeRef("Terminal")},
+ .constructor = .{.type = api.typeRef("Stream"), .parent = .receiver, .receiver = .{ .type = api.typeRef("Terminal") }},
 }}),
 api.function("freeStream", .{.role = .{ .destructor = api.typeRef("Stream") }}),
+```
+
+타입에 묶으면 같은 계약을 문맥으로 적을 수 있습니다.
+
+```zig
+api.handle("Terminal", .{}).members(&.{
+    api.in("Terminal").function("newStream", .{
+        .role = .{ .constructor = .{
+            .type = api.typeRef("Stream"),
+            .receiver = .member,
+            .parent = .receiver,
+        } },
+    }),
+})
 ```
 
 Go에는 `func (t *Terminal) NewStream() (*Stream, error)`가 생깁니다. 호출 중에는 `Terminal`을

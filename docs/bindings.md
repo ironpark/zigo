@@ -42,12 +42,10 @@ pub const bindings = zigo.define(.{
 ```zig
 const store = api.in("Store");
 
-const store_entry = api.handle("Store", .{}).with(.{
-    .members = &.{
-        store.function("create", .{}),
-        store.function("len", .{}),
-        store.function("deinit", .{}),
-    },
+const store_entry = api.handle("Store", .{}).members(&.{
+    store.function("create", .{}),
+    store.function("len", .{}),
+    store.function("deinit", .{}),
 });
 
 const storage = zigo.package(.{
@@ -69,7 +67,7 @@ const storage = zigo.package(.{
 | `api.callback("T", options)` | 공개 `*const fn` alias와 공통 콜백 계약 |
 
 helper의 옵션은 표현별로 다릅니다. 공통 이름·문서·멤버는 `.named()`, `.documented()`,
-`.with(.{ .members = ... })`로 설정합니다. 타입의 Go 기본 이름은 공개 Zig alias 이름입니다.
+`.members(entries)`로 설정합니다. 타입의 Go 기본 이름은 공개 Zig alias 이름입니다.
 
 ## 계약과 참조
 
@@ -79,11 +77,7 @@ helper의 옵션은 표현별로 다릅니다. 공통 이름·문서·멤버는 
 ```zig
 // Zig: fn read(self: *Store, gpa: Allocator, dst: []u8) usize
 const read = store.function("read", .{
-    .params = &.{.{
-        .index = 2,
-        .go_name = "dst",
-        .contract = .{ .buffer = .{ .output = .{ .written = .result } } },
-    }},
+    .params = &.{zigo.param.output(2, .result)},
 });
 ```
 
@@ -93,13 +87,17 @@ const read = store.function("read", .{
 | `returns.lifetime` | `.inferred`, `.owned`, `.borrowed = .receiver`, `.library` |
 | `Param.contract` | `.value`, `.buffer`, `.stream`, `.callback`, `.cancel`, `.flatten` |
 
+`zigo.param`과 `zigo.result`는 기존 `Param`·`Returns` 값을 만드는 작은 helper입니다.
+전체 schema literal과 함께 쓸 수 있고, 별도의 정규화나 계약 누적 규칙은 없습니다.
+소스와 같은 이름은 생략하고 의도적으로 바꿀 때만 `go_name` 또는 `.named("name")`을 씁니다.
+
 각 계약은 tagged union이므로 생성자와 소멸자, owned와 borrowed, stream과 callback 같은
 서로 다른 역할을 동시에 적을 수 없습니다. 함수 참조는 `api.ref("release")`, 타입 참조는
 `api.typeRef("Store")`로 만듭니다. Go 이름을 바꿔도 원본 Zig 참조는 유지됩니다.
 
 `.with()`는 적은 필드만 교체하고 **명시적인 `null`은 기존 값을 지웁니다**. 중첩 계약은
 전체를 교체하며 deep merge하지 않습니다. 예를 들어 `.returns`를 교체하면 이전 release가
-새 lifetime에 남지 않습니다. 자세한 조합 예시는 [함수 문서](bindings-functions.md)에 있습니다.
+새 lifetime에 남지 않습니다. `.members(entries)`도 기존 멤버 목록을 전체 교체합니다. 자세한 조합 예시는 [함수 문서](bindings-functions.md)에 있습니다.
 
 ## 기능과 플러그인
 

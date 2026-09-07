@@ -387,6 +387,12 @@ test "scoped references and explicit selection preserve source identity" {
     const entries = comptime api.functions(.{ .names = &.{ "b", "a" } });
     try std.testing.expectEqualStrings("root.b", comptime entries[0].functionRef().path);
     try std.testing.expect(api.typeRef("Item").type == Lib.Item);
+    const original = comptime api.handle("Item", .{}).members(entries);
+    const replaced = comptime original.members(&.{api.function("a", .{})});
+    try std.testing.expectEqual(@as(usize, 1), replaced.type.options.members.len);
+    try std.testing.expectEqualStrings("root.a", replaced.type.options.members[0].function.ref.path);
+    const param = comptime (Param{ .index = 1 }).named("alias").named(null);
+    try std.testing.expect(param.go_name == null);
     const renamed = api.function("a", .{}).named("Other");
     try std.testing.expectEqualStrings("root.a", renamed.functionRef().path);
 }

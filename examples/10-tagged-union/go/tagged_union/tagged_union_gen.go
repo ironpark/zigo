@@ -316,6 +316,17 @@ func (s *Signal) SetActive(active bool) error {
 	return nil
 }
 
+// NewPalette creates a caller-owned Palette.
+// The caller must call Close on the returned handle.
+// Native failures are returned as generated error values.
+func NewPalette(flags Flags) (*Palette, error) {
+	result, code := raw.PaletteCreate(flags.Backing())
+	if code != 0 {
+		return nil, zigoErrorForCode("NewPalette", code)
+	}
+	return zigoNewPalette(result), nil
+}
+
 // LiveValues calls the Zig function liveValues.
 func LiveValues() uint {
 	return raw.LiveValues()
@@ -380,17 +391,6 @@ func EchoColorRecord(value ColorRecord) ColorRecord {
 // FlattenFlags calls the Zig function flattenFlags.
 func FlattenFlags(flags Flags) Flags {
 	return FlagsFromBacking(raw.FlattenFlags(flags.Backing()))
-}
-
-// NewPalette creates a caller-owned Palette.
-// The caller must call Close on the returned handle.
-// Native failures are returned as generated error values.
-func NewPalette(flags Flags) (*Palette, error) {
-	result, code := raw.PaletteCreate(flags.Backing())
-	if code != 0 {
-		return nil, zigoErrorForCode("NewPalette", code)
-	}
-	return zigoNewPalette(result), nil
 }
 
 // VisitFlags calls the Zig function visitFlags.

@@ -51,16 +51,16 @@ func (err *LibraryError) Unwrap() error { return err.Cause }
 type nativeBindings struct {
 	lastError           func() unsafe.Pointer
 	panicMessage        func(int32) unsafe.Pointer
-	fnSnapshot          func(*unsafe.Pointer, *uintptr)
-	fnProbeMany         func(*unsafe.Pointer, *uintptr) int32
-	fnFill              func(uintptr, *unsafe.Pointer, *uintptr) uintptr
-	fnRelease           func(unsafe.Pointer, uintptr)
+	fnLegacyLeafValue   func(unsafe.Pointer, *int32) int32
 	fnLegacyProbeCreate func(uintptr, *unsafe.Pointer) int32
 	fnLegacyProbeID     func(unsafe.Pointer, *uint64) int32
 	fnLegacyProbeActive func(unsafe.Pointer, *uint8) int32
 	fnLegacyProbeChild  func(unsafe.Pointer, *unsafe.Pointer) int32
 	fnLegacyProbeDeinit func(unsafe.Pointer) int32
-	fnLegacyLeafValue   func(unsafe.Pointer, *int32) int32
+	fnSnapshot          func(*unsafe.Pointer, *uintptr)
+	fnProbeMany         func(*unsafe.Pointer, *uintptr) int32
+	fnFill              func(uintptr, *unsafe.Pointer, *uintptr) uintptr
+	fnRelease           func(unsafe.Pointer, uintptr)
 }
 
 var loadedBindings atomic.Pointer[nativeBindings]
@@ -146,21 +146,9 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_caught_panic_message", err)
 	}
-	addrSnapshot, err := resolveSymbol(handle, "zg_snapshot")
+	addrLegacyLeafValue, err := resolveSymbol(handle, "zg_legacy_leaf_value")
 	if err != nil {
-		return fail("zg_snapshot", err)
-	}
-	addrProbeMany, err := resolveSymbol(handle, "zg_probe_many")
-	if err != nil {
-		return fail("zg_probe_many", err)
-	}
-	addrFill, err := resolveSymbol(handle, "zg_fill")
-	if err != nil {
-		return fail("zg_fill", err)
-	}
-	addrRelease, err := resolveSymbol(handle, "zg_release")
-	if err != nil {
-		return fail("zg_release", err)
+		return fail("zg_legacy_leaf_value", err)
 	}
 	addrLegacyProbeCreate, err := resolveSymbol(handle, "zg_legacy_probe_create")
 	if err != nil {
@@ -182,23 +170,35 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_legacy_probe_deinit", err)
 	}
-	addrLegacyLeafValue, err := resolveSymbol(handle, "zg_legacy_leaf_value")
+	addrSnapshot, err := resolveSymbol(handle, "zg_snapshot")
 	if err != nil {
-		return fail("zg_legacy_leaf_value", err)
+		return fail("zg_snapshot", err)
+	}
+	addrProbeMany, err := resolveSymbol(handle, "zg_probe_many")
+	if err != nil {
+		return fail("zg_probe_many", err)
+	}
+	addrFill, err := resolveSymbol(handle, "zg_fill")
+	if err != nil {
+		return fail("zg_fill", err)
+	}
+	addrRelease, err := resolveSymbol(handle, "zg_release")
+	if err != nil {
+		return fail("zg_release", err)
 	}
 	var next nativeBindings
 	purego.RegisterFunc(&next.lastError, addrLastError)
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
-	purego.RegisterFunc(&next.fnSnapshot, addrSnapshot)
-	purego.RegisterFunc(&next.fnProbeMany, addrProbeMany)
-	purego.RegisterFunc(&next.fnFill, addrFill)
-	purego.RegisterFunc(&next.fnRelease, addrRelease)
+	purego.RegisterFunc(&next.fnLegacyLeafValue, addrLegacyLeafValue)
 	purego.RegisterFunc(&next.fnLegacyProbeCreate, addrLegacyProbeCreate)
 	purego.RegisterFunc(&next.fnLegacyProbeID, addrLegacyProbeID)
 	purego.RegisterFunc(&next.fnLegacyProbeActive, addrLegacyProbeActive)
 	purego.RegisterFunc(&next.fnLegacyProbeChild, addrLegacyProbeChild)
 	purego.RegisterFunc(&next.fnLegacyProbeDeinit, addrLegacyProbeDeinit)
-	purego.RegisterFunc(&next.fnLegacyLeafValue, addrLegacyLeafValue)
+	purego.RegisterFunc(&next.fnSnapshot, addrSnapshot)
+	purego.RegisterFunc(&next.fnProbeMany, addrProbeMany)
+	purego.RegisterFunc(&next.fnFill, addrFill)
+	purego.RegisterFunc(&next.fnRelease, addrRelease)
 	loadedBindings.Store(&next)
 	return nil
 }
@@ -241,6 +241,47 @@ func PanicMessage(code int32) string {
 type PointData struct {
 	X int32
 	Y int32
+}
+
+// LegacyLeafValue calls the generated purego ABI wrapper for zg_legacy_leaf_value.
+func LegacyLeafValue(self unsafe.Pointer) (int32, int32) {
+	var outResult int32
+	code := bindings().fnLegacyLeafValue(self, &outResult)
+	return outResult, code
+}
+
+// LegacyProbeCreate calls the generated purego ABI wrapper for zg_legacy_probe_create.
+func LegacyProbeCreate(index uint) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := bindings().fnLegacyProbeCreate(uintptr(index), &outResult)
+	return outResult, code
+}
+
+// LegacyProbeID calls the generated purego ABI wrapper for zg_legacy_probe_id.
+func LegacyProbeID(self unsafe.Pointer) (uint64, int32) {
+	var outResult uint64
+	code := bindings().fnLegacyProbeID(self, &outResult)
+	return outResult, code
+}
+
+// LegacyProbeActive calls the generated purego ABI wrapper for zg_legacy_probe_active.
+func LegacyProbeActive(self unsafe.Pointer) (uint8, int32) {
+	var outResult uint8
+	code := bindings().fnLegacyProbeActive(self, &outResult)
+	return outResult, code
+}
+
+// LegacyProbeChild calls the generated purego ABI wrapper for zg_legacy_probe_child.
+func LegacyProbeChild(self unsafe.Pointer) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := bindings().fnLegacyProbeChild(self, &outResult)
+	return outResult, code
+}
+
+// LegacyProbeDeinit calls the generated purego ABI wrapper for zg_legacy_probe_deinit.
+func LegacyProbeDeinit(self unsafe.Pointer) int32 {
+	code := bindings().fnLegacyProbeDeinit(self)
+	return code
 }
 
 // Snapshot calls the generated purego ABI wrapper for zg_snapshot.
@@ -289,45 +330,4 @@ func Release(buffer []uint8) {
 		bufferPtr = unsafe.Pointer(&buffer[0])
 	}
 	bindings().fnRelease(bufferPtr, uintptr(len(buffer)))
-}
-
-// LegacyProbeCreate calls the generated purego ABI wrapper for zg_legacy_probe_create.
-func LegacyProbeCreate(index uint) (unsafe.Pointer, int32) {
-	var outResult unsafe.Pointer
-	code := bindings().fnLegacyProbeCreate(uintptr(index), &outResult)
-	return outResult, code
-}
-
-// LegacyProbeID calls the generated purego ABI wrapper for zg_legacy_probe_id.
-func LegacyProbeID(self unsafe.Pointer) (uint64, int32) {
-	var outResult uint64
-	code := bindings().fnLegacyProbeID(self, &outResult)
-	return outResult, code
-}
-
-// LegacyProbeActive calls the generated purego ABI wrapper for zg_legacy_probe_active.
-func LegacyProbeActive(self unsafe.Pointer) (uint8, int32) {
-	var outResult uint8
-	code := bindings().fnLegacyProbeActive(self, &outResult)
-	return outResult, code
-}
-
-// LegacyProbeChild calls the generated purego ABI wrapper for zg_legacy_probe_child.
-func LegacyProbeChild(self unsafe.Pointer) (unsafe.Pointer, int32) {
-	var outResult unsafe.Pointer
-	code := bindings().fnLegacyProbeChild(self, &outResult)
-	return outResult, code
-}
-
-// LegacyProbeDeinit calls the generated purego ABI wrapper for zg_legacy_probe_deinit.
-func LegacyProbeDeinit(self unsafe.Pointer) int32 {
-	code := bindings().fnLegacyProbeDeinit(self)
-	return code
-}
-
-// LegacyLeafValue calls the generated purego ABI wrapper for zg_legacy_leaf_value.
-func LegacyLeafValue(self unsafe.Pointer) (int32, int32) {
-	var outResult int32
-	code := bindings().fnLegacyLeafValue(self, &outResult)
-	return outResult, code
 }

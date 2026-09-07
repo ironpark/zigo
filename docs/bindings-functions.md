@@ -95,11 +95,7 @@ receiver와 주입 인자를 직접 annotate하거나 같은 인덱스를 두 �
 ```zig
 // fn read(self: *Store, gpa: Allocator, offset: u32, dst: []u8) usize
 api.in("Store").function("read", .{
-    .params = &.{.{
-        .index = 3,
-        .go_name = "dst",
-        .contract = .{ .buffer = .{ .output = .{ .written = .result } } },
-    }},
+    .params = &.{zigo.param.output(3, .result)},
 })
 ```
 
@@ -111,8 +107,39 @@ api.in("Store").function("read", .{
 
 `Param.contract`는 `.value` 기본값 또는 `.buffer`, `.stream`, `.callback`, `.cancel`,
 `.flatten` 중 하나입니다. 의미 힌트와 Go adapter는 `semantic`, `go`에 별도로 적습니다.
-콜백 **타입**의 `CallbackOptions.params`는 별도 규칙이며, userdata·pointer/length 쌍을
-정리한 콜백 인자 순서입니다([콜백 문서](bindings-callbacks.md)).
+콜백 **타입**의 `CallbackOptions.params`도 원본 native 시그니처의 인덱스를 사용합니다.
+userdata를 포함해 세고, 바이트 pointer/length 쌍은 pointer의 인덱스에만 힌트를 붙입니다
+([콜백 문서](bindings-callbacks.md)).
+
+### 작은 계약 helper
+
+| Helper | 생성하는 계약 |
+|---|---|
+| `zigo.param.input(index)` | 입력 slice |
+| `zigo.param.output(index, written)` | 출력 slice, `.all`·`.result` 등 작성 길이 |
+| `zigo.param.inout(index, written)` | 입출력 slice |
+| `zigo.param.stream(index, buffer)` | Reader/Writer, `null`은 기본 버퍼 |
+| `zigo.param.callback(index, options)` | 콜백 계약 |
+| `zigo.param.cancel(index, canceled)` | 취소 flag, `null`은 기본 오류 처리 |
+| `zigo.param.flatten(index, fields)` | struct 필드 펼치기 |
+| `zigo.result.owned()` | caller-owned 결과 |
+| `zigo.result.releasedBy(api.ref("release"))` | 해제 함수가 있는 caller-owned 결과 |
+| `zigo.result.borrowed()` | receiver가 소유하는 borrowed 결과 |
+
+각 helper는 완성된 `Param` 또는 `Returns` 값을 반환합니다. 파라미터 이름을 바꾸려면
+`zigo.param.output(3, .result).named("output")`처럼 적습니다. `.named(null)`은 이름 override를
+지웁니다. `semantic`·Go adapter 등 추가 설정은 전체 struct literal로 작성할 수 있습니다.
+
+공통 selector도 평범한 Zig 상수로 공유합니다. 예를 들어 두 generic alias에 같은 export
+목록을 적용해도 새 함수를 자동 공개하지 않습니다.
+
+```zig
+const members: zigo.Selector = .{ .names = &.{ "create", "push", "len", "deinit" } };
+const floats = api.handle("FloatBuffer", .{}).members(api.in("FloatBuffer").functions(members));
+const ints = api.handle("IntBuffer", .{}).members(api.in("IntBuffer").functions(members));
+```
+
+`.members(entries)`는 타입에만 쓸 수 있으며 목록을 추가하지 않고 전체 교체합니다.
 
 ### 자유 함수를 메서드로 등록하기
 
@@ -124,16 +151,14 @@ api.function("searchMatchCount", .{ .role = .{ .method = api.typeRef("Search") }
 여러 함수가 같은 receiver를 공유하면 타입의 멤버로 묶을 수 있습니다.
 
 ```zig
-api.handle("Screen", .{}).with(.{
-    .members = &.{
-        api.function("screenSelectAll", .{}).named("selectAll"),
-        api.function("screenClearSelection", .{}).named("clear"),
-    },
+api.handle("Screen", .{}).members(&.{
+    api.function("screenSelectAll", .{}).named("selectAll"),
+    api.function("screenClearSelection", .{}).named("clear"),
 })
 ```
 
 멤버의 첫 비주입 인자가 부모 타입과 맞으면 receiver로 추론합니다. 접두사는 자동 제거하지
-않으며 `.named()`로 최종 이름을 정합니다. 기존 메서드 자동 추론도 유지됩니다. handle이 첫
+않으며 `.named()`로 최종 이름을 정합니다. 다른 타입을 receiver로 지정하거나 추론하면 컴파일 오류입니다. handle이 첫
 인자여도 자유 함수로 두려면 `.role = .free`를 지정하세요. 생성자·소멸자는
 [수명 문서](bindings-handles.md)의 `.role` 계약으로 지정합니다.
 
@@ -153,10 +178,7 @@ Io 스트림 계약은 `ZIGO056`으로 거부됩니다. 외부 Go 타입 adapter
 ```zig
 // fn init(gpa: Allocator, options: Options) !Terminal
 api.in("Terminal").function("init", .{
-    .params = &.{.{
-        .index = 1,
-        .contract = .{ .flatten = &.{ "cols", "rows", "max_scrollback_bytes" } },
-    }},
+    .params = &.{zigo.param.flatten(1, &.{ "cols", "rows", "max_scrollback_bytes" })},
 })
 ```
 
@@ -170,7 +192,7 @@ Zig default가 있어야 합니다. nested struct·slice·string 필드는 펼�
 ```zig
 const original = api.function("take", .{
     .name = "takeOwned",
-    .returns = .{ .lifetime = .{ .owned = .{ .release = api.ref("release") } } },
+    .returns = zigo.result.releasedBy(api.ref("release")),
 });
 const reset = original.with(.{ .name = null, .returns = zigo.Returns{} });
 ```
