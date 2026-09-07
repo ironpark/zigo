@@ -161,6 +161,8 @@ nested 항목에 둡니다. receiver 타입이나 첫 파라미터가 맞지 않
 생성된 Go 메서드의 수신자가 되고, 주입 파라미터(`std.mem.Allocator`, `std.Io`)는
 공개 인자에서 빠집니다. `fn freeString(gpa: Allocator, str: []const u8) void`의 `params`는
 `.{"str"}` 하나입니다. 개수가 맞지 않으면 reflection 단계에서 `ZIGO027`로 거부됩니다.
+이름은 C 헤더에 그대로 나가므로 `double`, `int` 같은 C 키워드나 `uint8_t` 같은 표준 typedef
+이름은 `ZIGO021`로 거부됩니다. Go 쪽 키워드(`type`, `range`)는 `type_`처럼 자동으로 피합니다.
 
 `param_meta`의 field는 같은 항목의 `params`가 준 이름과 일치해야 합니다. `params`에 없는
 키를 적거나 `params` 없이 `param_meta`만 적으면 reflection 단계에서 `ZIGO057`로 거부됩니다.

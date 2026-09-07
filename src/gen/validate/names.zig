@@ -232,6 +232,30 @@ pub fn identifierIssue(allocator: std.mem.Allocator, document: semantic.Semantic
             result.note = try functionOrConstructorRenameNoteAlloc(allocator, document, function);
             return result;
         }
+        // A parameter name reaches the C header verbatim, where `uint8_t
+        // double` is a syntax error the Go escaping above never sees. The
+        // header is public, so the name is rejected rather than mangled.
+        for (function.params) |parameter| {
+            if (parameter.injected != null) continue;
+            if (!naming.isCKeyword(parameter.name)) continue;
+            const function_path = try site.functionDeclarationAlloc(allocator, function);
+            var location = site.functionSiteFor(function, function_path);
+            if (parameter.source) |source| {
+                location.line = source.line;
+                location.column = source.column;
+            }
+            return .{
+                .severity = .@"error",
+                .code = "ZIGO021",
+                .message = try std.fmt.allocPrint(
+                    allocator,
+                    "parameter name `{s}` of `{s}` is a C keyword and cannot be declared in the generated header",
+                    .{ parameter.name, function_path },
+                ),
+                .site = location,
+                .hint = "rename the parameter in `.params` (or in the Zig signature) so the C declaration compiles",
+            };
+        }
     }
     return null;
 }
@@ -586,6 +610,43 @@ test "names zigo case-converts are judged on the Go spelling, not the Zig one" {
     // becomes `Kind80Cols`: Zig spellings that are invalid alone need not be
     // rejected when their emitted Go identifiers are valid.
     try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try validate.findIssue(scratch.allocator(), document));
+}
+
+test "a parameter named after a C keyword is rejected before it reaches the header" {
+    const byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    const document: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "scale",
+            .params = &.{ .{ .name = "value", .type = byte }, .{ .name = "double", .type = byte, .name_source = .sidecar } },
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_scale",
+        }},
+        .package = "keywords",
+        .prefix = "zg",
+        .types = &.{},
+        .zig_version = "0.16.0",
+    };
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
+    const issue = (try validate.findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
+    try std.testing.expectEqualStrings("ZIGO021", issue.code);
+    try std.testing.expect(std.mem.indexOf(u8, issue.message, "`double`") != null);
+    try std.testing.expect(std.mem.indexOf(u8, issue.message, "C keyword") != null);
+    // An injected parameter has no C declaration, so its name is free.
+    const injected: semantic.Semantic = .{
+        .allocator = "std.heap.c_allocator",
+        .functions = &.{.{
+            .name = "scale",
+            .params = &.{ .{ .injected = .allocator, .name = "int", .type = .{ .void = {} } }, .{ .name = "value", .type = byte } },
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_scale",
+        }},
+        .package = "keywords",
+        .prefix = "zg",
+        .types = &.{},
+        .zig_version = "0.16.0",
+    };
+    try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try validate.findIssue(scratch.allocator(), injected));
 }
 
 test "tagged union generated accessor collisions are rejected" {

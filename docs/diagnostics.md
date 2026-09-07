@@ -71,6 +71,11 @@ tagged union의 non-exhaustive tag에는 이 설정을 적용할 수 없습니�
 `@typeName`이 식별자가 아니어도 명시적 이름으로 해결할 수 있습니다.
 [이름 규칙](bindings-functions.md#경로와-이름)을 참고하세요.
 
+파라미터 이름은 C 헤더에 그대로 선언되므로, `double`·`int`·`register` 같은 C 키워드와
+`<stdint.h>`·`<stddef.h>`의 typedef 이름(`uint8_t`, `size_t` 등)도 같은 코드로 거부합니다.
+공개 헤더의 일부라 맹글링하지 않으니, `.params`나 Zig 시그니처에서 이름을 바꾸세요. 주입
+파라미터(`std.mem.Allocator`, `std.Io`)는 C 선언이 없어 검사하지 않습니다.
+
 ### ZIGO022
 
 `std.mem.Allocator` 또는 `std.Io` 인자가 있지만 주입할 값이 없습니다.

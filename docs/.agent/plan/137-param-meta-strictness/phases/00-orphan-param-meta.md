@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T02:49:55Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 고아 키 테스트가 `error.ParamMetaKey`를 기대하며 통과한다.
 > NEXT: none

@@ -235,6 +235,34 @@ pub fn isGoKeyword(value: []const u8) bool {
     return false;
 }
 
+/// Whether a spelling cannot be a C parameter name: the C keywords through
+/// C23, plus the `<stdint.h>`/`<stddef.h>` typedefs the generated header
+/// includes, which a parameter of that name would shadow mid-declaration.
+/// The Go side escapes its keywords by appending `_`, but a C name is part of
+/// the public header and the ABI report, so it is rejected instead of
+/// mangled.
+pub fn isCKeyword(value: []const u8) bool {
+    const keywords = [_][]const u8{
+        "alignas",       "alignof",       "auto",          "bool",          "break",
+        "case",          "char",          "const",         "constexpr",     "continue",
+        "default",       "do",            "double",        "else",          "enum",
+        "extern",        "false",         "float",         "for",           "goto",
+        "if",            "inline",        "int",           "long",          "nullptr",
+        "register",      "restrict",      "return",        "short",         "signed",
+        "sizeof",        "static",        "static_assert", "struct",        "switch",
+        "thread_local",  "true",          "typedef",       "typeof",        "typeof_unqual",
+        "union",         "unsigned",      "void",          "volatile",      "while",
+        "_Alignas",      "_Alignof",      "_Atomic",       "_BitInt",       "_Bool",
+        "_Complex",      "_Decimal128",   "_Decimal32",    "_Decimal64",    "_Generic",
+        "_Imaginary",    "_Noreturn",     "_Static_assert", "_Thread_local",
+        "size_t",        "ptrdiff_t",     "intptr_t",      "uintptr_t",     "intmax_t",
+        "uintmax_t",     "int8_t",        "int16_t",       "int32_t",       "int64_t",
+        "uint8_t",       "uint16_t",      "uint32_t",      "uint64_t",
+    };
+    for (keywords) |keyword| if (std.mem.eql(u8, value, keyword)) return true;
+    return false;
+}
+
 /// Rejects a name that cannot be a Go package identifier.
 pub fn validateGoPackageName(name: []const u8) error{InvalidGoPackageName}!void {
     if (!isGoIdentifier(name)) return error.InvalidGoPackageName;
@@ -295,6 +323,13 @@ test "Go parameter names are camelCase and escape keywords, locals and duplicate
     defer freeParamNames(std.testing.allocator, names);
     const expected = [_][]const u8{ "sourceLen", "type_", "range_", "code_", "result_", "newName", "newName2", "p0" };
     for (expected, names) |want, got| try std.testing.expectEqualStrings(want, got);
+}
+
+test "C keywords and header typedefs are recognised, ordinary names are not" {
+    for ([_][]const u8{ "double", "int", "register", "bool", "_Bool", "uint8_t", "size_t", "typeof" }) |name|
+        try std.testing.expect(isCKeyword(name));
+    for ([_][]const u8{ "dst", "value", "double_", "Double", "count", "" }) |name|
+        try std.testing.expect(!isCKeyword(name));
 }
 
 test "Go package names reject keywords and non-identifiers" {
