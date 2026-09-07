@@ -56,6 +56,28 @@ func (value *Mode) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// ModeValues returns a fresh slice of known values in declaration order.
+func ModeValues() []Mode {
+	return []Mode{
+		ModeIdle,
+		ModeActive,
+		ModePaused,
+	}
+}
+
+// IsKnown reports whether value is an exported tag; unknown open-enum values return false.
+func (value Mode) IsKnown() bool {
+	switch value {
+	case ModeIdle:
+		return true
+	case ModeActive:
+		return true
+	case ModePaused:
+		return true
+	}
+	return false
+}
+
 // ValueTag represents the corresponding Zig enum.
 type ValueTag uint8
 

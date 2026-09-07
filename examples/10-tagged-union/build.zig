@@ -22,6 +22,11 @@ pub fn build(b: *std.Build) void {
         .root_source_file = b.dependency("zigo_json", .{}).path("src/plugin.zig"),
     };
 
+    const enumkit: zigo.PluginModule = .{
+        .name = "zigo_enumkit",
+        .root_source_file = b.dependency("zigo_enumkit", .{}).path("src/plugin.zig"),
+    };
+
     const bindings = zigo.addGoBindings(b, .{
         .name = "tagged_union",
         .module = tagged_union,
@@ -33,7 +38,7 @@ pub fn build(b: *std.Build) void {
         .abi_base = "HEAD",
         .link = if (purego) .purego else .cgo_static,
         .coverage_json = coverage_json,
-        .plugins = &.{json},
+        .plugins = &.{ json, enumkit },
     });
     _ = bindings.addStandardSteps(b, .{});
 }

@@ -5,6 +5,7 @@
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .zigo = .{ .path = "../.." },
+        .zigo_enumkit = .{ .path = "../../plugins/enumkit" },
         .zigo_json = .{ .path = "../../plugins/json" },
     },
     .paths = .{ "build.zig", "build.zig.zon", "src", "go", "zigo" },

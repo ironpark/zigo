@@ -34,6 +34,8 @@
 
 ### Added
 
+- `enumkit` 플러그인: enum 값 목록과 `IsKnown()` 생성. 옵션으로 각각 활성화하며 cgo·purego를 지원합니다.
+
 - 타입 선언의 `.context()`: 원본 scope·타입 참조·표현 옵션을 캡처하는 제네릭 문맥.
   `define()`·`select()`로 기존 Entry를 만들며 여덟 예제에 적용했습니다.
 

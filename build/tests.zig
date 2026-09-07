@@ -303,6 +303,18 @@ pub fn addRepositorySteps(
         b.path("plugins/satisfies/src/plugin.zig"),
         b.path("plugins/json/src/plugin.zig"),
     });
+    const enumkit_tests = b.addTest(.{ .root_module = b.createModule(.{
+        .root_source_file = b.path("plugins/enumkit/src/plugin.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "plugin", .module = showcase_modules.plugin },
+            .{ .name = "semantic", .module = showcase_modules.semantic },
+            .{ .name = "naming", .module = showcase_modules.naming },
+            .{ .name = "diagnostic", .module = showcase_modules.diagnostic },
+        },
+    }) });
+    test_step.dependOn(&b.addRunArtifact(enumkit_tests).step);
     const generator_case_runner = b.addExecutable(.{
         .name = "zigo-generator-case",
         .root_module = b.createModule(.{

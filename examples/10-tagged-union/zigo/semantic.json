@@ -1062,6 +1062,10 @@
       "ext": {
         "JSON": {
           "field_names": "zig"
+        },
+        "ENUMKIT": {
+          "values": true,
+          "is_known": true
         }
       },
       "fields": [

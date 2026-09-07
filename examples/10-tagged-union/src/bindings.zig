@@ -1,5 +1,6 @@
 const zigo = @import("zigo");
 const library = @import("tagged_union");
+const enumkit = @import("zigo_enumkit");
 const json = @import("zigo_json");
 
 const api = zigo.scope(library);
@@ -12,7 +13,7 @@ const Palette = api.handle("Palette", .{ .fields = &.{.{ .path = "flags", .set =
 pub const bindings = zigo.define(.{
     .root = library,
     .declarations = &.{
-        api.enumType("Mode", .{}).use(json.plugin, .{}),
+        api.enumType("Mode", .{}).use(json.plugin, .{}).use(enumkit.plugin, .{}),
         Child.define(&.{
             Child.func("create", .{}),
             Child.func("get", .{}),

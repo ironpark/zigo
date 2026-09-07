@@ -74,3 +74,9 @@ zig build go go-verify -Dpurego
 caller-owned handle의 GC 정리는 안전망이며 명시적인 `Close`를 대신하지 않습니다.
 
 전체 예제 목록은 [예제 선택 가이드](../../docs/examples.md)를 참고하세요.
+
+## Enum 값 목록
+
+`Mode`에는 [enumkit](../../plugins/enumkit)도 붙어 있어 `ModeValues()`와 `IsKnown()`을 제공합니다.
+값 목록은 `idle`, `active`, `paused` 순서의 독립된 slice입니다. `Mode(255).IsKnown()`은 `false`입니다.
+기존 JSON 메서드와 함께 cgo·purego에서 검증합니다.

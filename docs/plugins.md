@@ -157,3 +157,7 @@ _ = zigo.addGoBindings(b, .{
 - [`plugins/json`](../plugins/json): 값 struct와 enum에 `MarshalJSON`/`UnmarshalJSON`을
   씁니다. 옵션(`field_names`)으로 JSON 키 철자를 고르고, `imports`로 `encoding/json`과
   `fmt`를 선언합니다. [`10-tagged-union`](../examples/10-tagged-union/README.md)이 씁니다.
+
+- [`plugins/enumkit`](../plugins/enumkit): enum의 `<Type>Values()`와 `IsKnown()`을 생성합니다.
+  값 목록은 선언 순서의 새 slice이며, 열린 enum의 알 수 없는 숫자는 known으로 취급하지 않습니다.
+  [`10-tagged-union`](../examples/10-tagged-union/README.md)에서 JSON과 함께 사용합니다.
