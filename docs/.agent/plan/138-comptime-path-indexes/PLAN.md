@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T03:00:23Z"
 description: reflect의 comptime 선형 조회(exclude, discovery 항목 매칭)를 한 번 만든 색인으로 대체
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-07T02:57:39Z"
 ---
 > NEXT: exclude 색인. ([Phase 0](phases/00-exclude-index.md))
@@ -8,7 +9,7 @@ registered_at: "2026-09-07T02:57:39Z"
 # Phases
 
 - [x] [Phase 00: Index excluded paths](phases/00-exclude-index.md)
-- [ ] [Phase 01: Index bound entries by path](phases/01-entry-index.md)
+- [x] [Phase 01: Index bound entries by path](phases/01-entry-index.md)
 
 # Shared Verification
 

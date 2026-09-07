@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-07T03:00:23Z"
 depends_on:
 - "138-comptime-path-indexes#0"
 perf_phase: true
-status: in-progress
+status: done
 ---
 > DONE-WHEN: discovery 테스트 전부 통과, 예제 coverage 통과.
 > NEXT: none
