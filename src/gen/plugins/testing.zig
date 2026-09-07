@@ -18,7 +18,7 @@ pub const Options = struct {
 
 pub const plugin: plugin_api.Plugin = .{
     .name = "TEST",
-    .Options = Options,
+    .FunctionOptions = Options,
     .method_hook = methodHook,
     .type_hook = typeHook,
     .files = &.{.{ .pathAlloc = filePath, .render = renderFile }},

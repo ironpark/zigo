@@ -178,84 +178,6 @@ func (d *Document) Read(p []byte) (int, error) {
 	return int(n), nil
 }
 
-// Banner: A free function taking a stream, so the example covers the shape that has
-// no receiver and no error union of its own.
-// Native failures are returned as generated error values.
-// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
-func Banner(w io.Writer, width uint32) error {
-	if w == nil {
-		return &StreamError{Operation: "Banner", Parameter: "w", Err: ErrNilStream}
-	}
-	wHandle := zigoNewWriterStreamHandle(w)
-	defer zigoDeleteCallbackHandle(wHandle)
-	code := raw.Banner(uintptr(wHandle), width)
-	if zigoCallbackPanicPending() {
-		zigoRethrowCallbackPanic("Banner", wHandle)
-	}
-	if err := zigoStreamError("Banner", "w", wHandle); err != nil {
-		return err
-	}
-	if code != 0 {
-		return zigoErrorForCode("Banner", code)
-	}
-	return nil
-}
-
-// Tee: Copies a reader into a writer, so one call exercises both directions at
-// once and the byte count comes back through the return value.
-// Native failures are returned as generated error values.
-// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
-func Tee(r io.Reader, w io.Writer) (uint, error) {
-	if r == nil {
-		return 0, &StreamError{Operation: "Tee", Parameter: "r", Err: ErrNilStream}
-	}
-	if w == nil {
-		return 0, &StreamError{Operation: "Tee", Parameter: "w", Err: ErrNilStream}
-	}
-	rHandle := zigoNewReaderStreamHandle(r)
-	defer zigoDeleteCallbackHandle(rHandle)
-	rData := zigoReaderBytes(r)
-	wHandle := zigoNewWriterStreamHandle(w)
-	defer zigoDeleteCallbackHandle(wHandle)
-	result, code := raw.Tee(uintptr(rHandle), rData, uintptr(wHandle))
-	if zigoCallbackPanicPending() {
-		zigoRethrowCallbackPanic("Tee", rHandle)
-		zigoRethrowCallbackPanic("Tee", wHandle)
-	}
-	if err := zigoStreamError("Tee", "r", rHandle); err != nil {
-		return 0, err
-	}
-	if err := zigoStreamError("Tee", "w", wHandle); err != nil {
-		return 0, err
-	}
-	if code != 0 {
-		return 0, zigoErrorForCode("Tee", code)
-	}
-	return result, nil
-}
-
-// SumCodepoints: Sums Unicode scalar storage after the binding narrows each promoted Go
-// element into the `u21` representation used by Zig text code.
-func SumCodepoints(values []rune) (uint32, error) {
-	for _, zigoValue := range values {
-		if zigoValue < 0 || zigoValue > 1114111 {
-			return 0, &RangeError{Operation: "SumCodepoints", Parameter: "values", Type: "codepoint"}
-		}
-	}
-	return raw.SumCodepoints(zigoRunesToUint32(values)), nil
-}
-
-// FillCodepoints: Writes narrow elements through a caller-owned output slice.
-func FillCodepoints(output []rune) {
-	raw.FillCodepoints(zigoRunesToUint32(output))
-}
-
-// TakeCodepoints: Returns caller-owned narrow storage; generated Go widens it before calling
-// `freeCodepoints` with the original allocation.
-func TakeCodepoints() []rune {
-	return zigoUint32ToRunes(raw.TakeCodepoints())
-}
-
 // NewSink creates a caller-owned Sink.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.
@@ -347,6 +269,84 @@ func (s *Source) Read(buffer []byte) (int, error) {
 		return 0, io.EOF
 	}
 	return result, nil
+}
+
+// Banner: A free function taking a stream, so the example covers the shape that has
+// no receiver and no error union of its own.
+// Native failures are returned as generated error values.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+func Banner(w io.Writer, width uint32) error {
+	if w == nil {
+		return &StreamError{Operation: "Banner", Parameter: "w", Err: ErrNilStream}
+	}
+	wHandle := zigoNewWriterStreamHandle(w)
+	defer zigoDeleteCallbackHandle(wHandle)
+	code := raw.Banner(uintptr(wHandle), width)
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("Banner", wHandle)
+	}
+	if err := zigoStreamError("Banner", "w", wHandle); err != nil {
+		return err
+	}
+	if code != 0 {
+		return zigoErrorForCode("Banner", code)
+	}
+	return nil
+}
+
+// Tee: Copies a reader into a writer, so one call exercises both directions at
+// once and the byte count comes back through the return value.
+// Native failures are returned as generated error values.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+func Tee(r io.Reader, w io.Writer) (uint, error) {
+	if r == nil {
+		return 0, &StreamError{Operation: "Tee", Parameter: "r", Err: ErrNilStream}
+	}
+	if w == nil {
+		return 0, &StreamError{Operation: "Tee", Parameter: "w", Err: ErrNilStream}
+	}
+	rHandle := zigoNewReaderStreamHandle(r)
+	defer zigoDeleteCallbackHandle(rHandle)
+	rData := zigoReaderBytes(r)
+	wHandle := zigoNewWriterStreamHandle(w)
+	defer zigoDeleteCallbackHandle(wHandle)
+	result, code := raw.Tee(uintptr(rHandle), rData, uintptr(wHandle))
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("Tee", rHandle)
+		zigoRethrowCallbackPanic("Tee", wHandle)
+	}
+	if err := zigoStreamError("Tee", "r", rHandle); err != nil {
+		return 0, err
+	}
+	if err := zigoStreamError("Tee", "w", wHandle); err != nil {
+		return 0, err
+	}
+	if code != 0 {
+		return 0, zigoErrorForCode("Tee", code)
+	}
+	return result, nil
+}
+
+// SumCodepoints: Sums Unicode scalar storage after the binding narrows each promoted Go
+// element into the `u21` representation used by Zig text code.
+func SumCodepoints(values []rune) (uint32, error) {
+	for _, zigoValue := range values {
+		if zigoValue < 0 || zigoValue > 1114111 {
+			return 0, &RangeError{Operation: "SumCodepoints", Parameter: "values", Type: "codepoint"}
+		}
+	}
+	return raw.SumCodepoints(zigoRunesToUint32(values)), nil
+}
+
+// FillCodepoints: Writes narrow elements through a caller-owned output slice.
+func FillCodepoints(output []rune) {
+	raw.FillCodepoints(zigoRunesToUint32(output))
+}
+
+// TakeCodepoints: Returns caller-owned narrow storage; generated Go widens it before calling
+// `freeCodepoints` with the original allocation.
+func TakeCodepoints() []rune {
+	return zigoUint32ToRunes(raw.TakeCodepoints())
 }
 
 // zigoRunesToUint32 views a []rune as the []uint32 the raw layer takes, without copying.

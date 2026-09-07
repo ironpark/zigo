@@ -1,74 +1,49 @@
 const zigo = @import("zigo");
 const library = @import("type_relations");
 
+const api = zigo.scope(library);
+
 pub const bindings = zigo.define(.{
     .root = library,
-    .types = &.{
-        .{ .handle = .{ .type = library.Counter } },
-        .{ .handle = .{ .type = library.Accumulator } },
-        // The enum has no name of its own: `@typeName` ends in the slice
-        // expression that built it. `.name` is what Go and C get called.
-        .{ .enumeration = .{ .name = "CursorStyle", .type = library.CursorStyle } },
-        .{ .enumeration = .{ .name = "CharsetSlot", .type = library.CharsetSlot } },
-        .{ .enumeration = .{ .name = "DeccolmMode", .type = library.DeccolmMode } },
-        .{ .enumeration = .{ .name = "EraseDisplay", .type = library.EraseDisplay, .exhaustive = false } },
-        // `.go` maps the extern struct onto a Go type the caller already
-        // uses; the two conversions live in point_adapter.go beside the
-        // generated files.
-        .{
-            .value = .{
-                .type = library.Point,
-                .go = .{
-                    .type = "image.Point",
-                    .import = "image",
-                    .to_raw = "pointToRaw",
-                    .from_raw = "pointFromRaw",
-                },
-            },
-        },
-    },
-    .functions = &.{
-        .{ .path = "Counter.create", .params = &.{.{ .name = "initial" }} },
-        .{ .path = "Counter.get" },
-        .{ .path = "Counter.add", .params = &.{.{ .name = "delta" }} },
-        .{ .path = "Counter.deinit" },
-        .{ .path = "Accumulator.create" },
-        .{ .path = "Accumulator.absorb", .params = &.{.{ .name = "counter" }} },
-        .{ .path = "Accumulator.total" },
-        .{ .path = "Accumulator.deinit" },
-        // A per-function `.go` adapts a scalar result: Go sees ObjectCount,
-        // a type defined beside the generated files, instead of uint.
-        .{ .path = "root.liveObjects", .returns = .{ .go = .{ .type = "ObjectCount", .to_raw = "objectCountToRaw", .from_raw = "objectCountFromRaw" } } },
-        .{ .path = "root.defaultCursorStyle" },
-        // A registered enum owns its methods. `DeccolmMode.columns` is a Zig
-        // method and binds as one; `cursorStyleBlinks` is a free function the
-        // group attaches to `CursorStyle`, dropping the shared prefix. Both
-        // become Go methods on the enum, with the enum value as the receiver.
-        .{ .path = "DeccolmMode.columns" },
-        .{ .path = "root.configureStyles", .params = &.{ .{ .name = "slot" }, .{ .name = "style" } } },
-        .{ .path = "root.isWideColumns", .params = &.{.{ .name = "mode" }} },
-        .{ .path = "root.echoEraseDisplay", .params = &.{.{ .name = "value" }} },
-        .{ .path = "root.text.runWidth", .params = &.{ .{ .name = "first" }, .{ .name = "second" } } },
-        .{ .path = "root.text.unicode.codepointWidth", .params = &.{.{ .name = "cp" }} },
-        .{ .path = "root.doubleWidth", .params = &.{.{ .name = "value" }} },
-        .{ .path = "root.invert", .params = &.{.{ .name = "value" }} },
-        .{ .path = "root.styleOrDefault", .params = &.{.{ .name = "style" }} },
-        .{ .path = "root.blinkingStyle", .params = &.{.{ .name = "style" }} },
-        .{ .path = "root.shiftPoint", .params = &.{ .{ .name = "origin" }, .{ .name = "delta" } } },
-        .{ .path = "root.checkedShift", .params = &.{ .{ .name = "origin" }, .{ .name = "delta" } } },
-        .{
-            .path = "root.describeText",
-            .params = &.{.{ .name = "label", .semantic = .utf8_string }},
-        },
-        .{ .path = "root.sumOrZero", .params = &.{.{ .name = "values" }} },
-        .{ .path = "root.leadingDigits", .params = &.{.{ .name = "count" }} },
-        .{ .path = "root.styleName", .params = &.{.{ .name = "style" }}, .returns = .{ .semantic = .utf8_string } },
-    },
-    .methods = &.{
-        .{
-            .receiver = library.CursorStyle,
-            .strip_prefix = "cursorStyle",
-            .functions = &.{.{ .path = "root.cursorStyleBlinks" }},
-        },
+    .declarations = &.{
+        api.handle("Counter", .{}),
+        api.handle("Accumulator", .{}),
+        api.enumeration("CursorStyle", .{}),
+        api.enumeration("CharsetSlot", .{}),
+        api.enumeration("DeccolmMode", .{}),
+        api.enumeration("EraseDisplay", .{ .exhaustive = false }),
+        api.value("Point", .{ .go = .{
+            .type = "image.Point",
+            .import = "image",
+            .to_raw = "pointToRaw",
+            .from_raw = "pointFromRaw",
+        } }),
+        api.in("Counter").function("create", .{ .params = &.{.{ .index = 0, .go_name = "initial" }} }),
+        api.in("Counter").function("get", .{}),
+        api.in("Counter").function("add", .{ .params = &.{.{ .index = 1, .go_name = "delta" }} }),
+        api.in("Counter").function("deinit", .{}),
+        api.in("Accumulator").function("create", .{}),
+        api.in("Accumulator").function("absorb", .{ .params = &.{.{ .index = 1, .go_name = "counter" }} }),
+        api.in("Accumulator").function("total", .{}),
+        api.in("Accumulator").function("deinit", .{}),
+        api.function("liveObjects", .{ .returns = .{ .go = .{ .type = "ObjectCount", .to_raw = "objectCountToRaw", .from_raw = "objectCountFromRaw" } } }),
+        api.function("defaultCursorStyle", .{}),
+        api.in("DeccolmMode").function("columns", .{}),
+        api.function("configureStyles", .{ .params = &.{ .{ .index = 0, .go_name = "slot" }, .{ .index = 1, .go_name = "style" } } }),
+        api.function("isWideColumns", .{ .params = &.{.{ .index = 0, .go_name = "mode" }} }),
+        api.function("echoEraseDisplay", .{ .params = &.{.{ .index = 0, .go_name = "value" }} }),
+        api.in("text").function("runWidth", .{ .params = &.{ .{ .index = 0, .go_name = "first" }, .{ .index = 1, .go_name = "second" } } }),
+        api.in("text").in("unicode").function("codepointWidth", .{ .params = &.{.{ .index = 0, .go_name = "cp" }} }),
+        api.function("doubleWidth", .{ .params = &.{.{ .index = 0, .go_name = "value" }} }),
+        api.function("invert", .{ .params = &.{.{ .index = 0, .go_name = "value" }} }),
+        api.function("styleOrDefault", .{ .params = &.{.{ .index = 0, .go_name = "style" }} }),
+        api.function("blinkingStyle", .{ .params = &.{.{ .index = 0, .go_name = "style" }} }),
+        api.function("shiftPoint", .{ .params = &.{ .{ .index = 0, .go_name = "origin" }, .{ .index = 1, .go_name = "delta" } } }),
+        api.function("checkedShift", .{ .params = &.{ .{ .index = 0, .go_name = "origin" }, .{ .index = 1, .go_name = "delta" } } }),
+        api.function("describeText", .{ .params = &.{.{ .index = 0, .go_name = "label", .semantic = .utf8_string }} }),
+        api.function("sumOrZero", .{ .params = &.{.{ .index = 0, .go_name = "values" }} }),
+        api.function("leadingDigits", .{ .params = &.{.{ .index = 0, .go_name = "count" }} }),
+        api.function("styleName", .{ .returns = .{ .semantic = .utf8_string }, .params = &.{.{ .index = 0, .go_name = "style" }} }),
+        api.function("cursorStyleBlinks", .{ .name = "blinks", .role = .{ .method = api.typeRef("CursorStyle") } }),
     },
 });

@@ -1,6 +1,6 @@
 const std = @import("std");
 const semantic = @import("semantic");
-const zigo = @import("zigo");
+const zigo = @import("zigo").normalized;
 const walk = @import("walk.zig");
 
 pub const Status = enum { bound, wrapped, excluded, unbound };

@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-07T12:52:43Z"
 depends_on:
 - "154-binding-authoring-v2#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Tree and flat internal declarations have equivalent semantics in focused tests, with invalid contracts rejected.
 > NEXT: none

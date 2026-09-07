@@ -92,6 +92,8 @@ fn collectTypes(comptime entries: []const a.Entry, state: *State) void {
         .type => |t| {
             checkRoot(t.ref.root, state.root, t.ref.path);
             checkExtensions(t.extensions);
+            if (t.extensions.len != 0 and (t.representation == .materialized or t.representation == .callback))
+                @compileError("zigo plugin attachments are not supported on " ++ @tagName(t.representation));
             for (state.source_types) |previous| {
                 if (std.mem.eql(u8, previous.ref.path, t.ref.path)) @compileError("zigo duplicate type declaration: " ++ t.ref.path);
                 if (previous.ref.type == t.ref.type) @compileError("zigo ambiguous registration of the same Zig type: " ++ t.ref.path);
@@ -99,8 +101,8 @@ fn collectTypes(comptime entries: []const a.Entry, state: *State) void {
             const name = t.options.name orelse lastSegment(t.ref.path);
             for (state.types) |previous| if (std.mem.eql(u8, previous.goName(), name)) @compileError("zigo duplicate Go type name: " ++ name);
             const result: ir.Type = switch (t.representation) {
-                .handle => |o| .{ .handle = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = o.fields, .ext = t.extensions } },
-                .value => |o| .{ .value = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = o.fields, .go = o.go, .ext = t.extensions } },
+                .handle => |o| .{ .handle = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = o.fields, .ext = externalExtensions(t.extensions) } },
+                .value => |o| .{ .value = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = o.fields, .go = o.go, .ext = externalExtensions(t.extensions) } },
                 .materialized => |o| .{ .materialized = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = o.fields } },
                 .enumeration => |o| b: {
                     var covers: []const []const u8 = &.{};
@@ -108,9 +110,9 @@ fn collectTypes(comptime entries: []const a.Entry, state: *State) void {
                         checkRoot(ref.root, state.root, ref.path);
                         covers = covers ++ [_][]const u8{ref.path};
                     }
-                    break :b .{ .enumeration = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .go = o.go, .exhaustive = o.exhaustive, .covers = covers, .ext = t.extensions } };
+                    break :b .{ .enumeration = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .go = o.go, .exhaustive = o.exhaustive, .text = hasText(t.extensions), .covers = covers, .ext = externalExtensions(t.extensions) } };
                 },
-                .tagged_union => |o| .{ .tagged_union = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .access = o.access, .omit = o.omit, .ext = t.extensions } },
+                .tagged_union => |o| .{ .tagged_union = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .access = o.access, .omit = o.omit, .ext = externalExtensions(t.extensions) } },
                 .callback => |o| .{ .callback = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .params = o.params, .returns = .{ .semantic = o.returns.semantic }, .userdata = o.userdata, .retention = o.retention, .thread = o.thread, .reentrancy = o.reentrancy, .on_callback_failure = o.on_callback_failure } },
             };
             state.source_types = state.source_types ++ [_]a.Type{t};
@@ -137,7 +139,8 @@ fn flatten(comptime entries: []const a.Entry, state: *State, comptime package_in
             if (package_index) |i| {
                 var packages = state.packages[0..state.packages.len].*;
                 packages[i].types = packages[i].types ++ [_][]const u8{typeName(t.ref, state.*)};
-                state.packages = &packages;
+                const frozen = packages;
+                state.packages = &frozen;
             }
             flatten(t.options.members, state, package_index, t.ref, defaults);
         },
@@ -152,7 +155,8 @@ fn flatten(comptime entries: []const a.Entry, state: *State, comptime package_in
             if (package_index) |i| {
                 var packages = state.packages[0..state.packages.len].*;
                 packages[i].functions = packages[i].functions ++ [_][]const u8{path};
-                state.packages = &packages;
+                const frozen = packages;
+                state.packages = &frozen;
             }
         },
         .interface => |i| {
@@ -167,15 +171,24 @@ fn flatten(comptime entries: []const a.Entry, state: *State, comptime package_in
     };
 }
 fn normalizeFunction(comptime f: a.Function, comptime state: State, comptime parent: ?a.TypeRef, comptime defaults: a.Defaults) ir.Function {
-    var result: ir.Function = .{ .path = functionPath(f.ref, state), .name = f.options.name, .doc = f.options.doc, .ext = f.extensions, .codepoints = defaults.codepoints, .strings = defaults.strings };
+    var result: ir.Function = .{ .path = functionPath(f.ref, state), .name = f.options.name, .doc = f.options.doc, .ext = externalExtensions(f.extensions), .codepoints = defaults.codepoints, .strings = defaults.strings };
+    for (f.extensions) |ext| switch (ext.builtin) {
+        .iterator => |value| result.iterator = value,
+        .implements => |value| result.implements = value,
+        else => {},
+    };
     const info = f.ref.signature();
     if (info.is_generic or info.is_var_args) @compileError("zigo function requires a concrete non-variadic wrapper: " ++ f.ref.path);
     var receiver: ?a.TypeRef = null;
     switch (f.options.role) {
+        .free => result.force_free = true,
         .auto => {
             if (parent) |p| {
                 if (firstVisible(info)) |index| {
-                    if (isReceiver(info.params[index].type.?, p.type)) receiver = p;
+                    for (state.types) |registered| {
+                        if (registered.zigType() != p.type) continue;
+                        if (automaticReceiver(info.params[index].type.?, registered) or (registered == .enumeration and info.params[index].type.? == p.type)) receiver = p;
+                    }
                 }
             }
         },
@@ -202,11 +215,11 @@ fn normalizeFunction(comptime f: a.Function, comptime state: State, comptime par
     if (receiver) |r| {
         if (first == null or !isReceiver(info.params[first.?].type.?, r.type)) @compileError("zigo receiver does not match the first non-injected Zig argument: " ++ f.ref.path);
         receiver_index = first;
-    } else if (first) |index| {
+    } else if (if (result.force_free) null else first) |index| {
         // Match the reflector's automatic handle and owner-enum receiver inference.
         const T = info.params[index].type.?;
         for (state.types) |t| {
-            if (t.isHandle() and isReceiver(T, t.zigType())) receiver_index = index;
+            if (automaticReceiver(T, t)) receiver_index = index;
             if (t == .enumeration and T == t.zigType() and std.mem.startsWith(u8, result.path, t.goName() ++ ".")) receiver_index = index;
         }
     }
@@ -230,6 +243,7 @@ fn normalizeFunction(comptime f: a.Function, comptime state: State, comptime par
     for (f.options.params, 0..) |p, i| {
         if (p.index >= info.params.len) @compileError("zigo parameter index is outside the Zig signature: " ++ f.ref.path);
         if (p.index == receiver_index or injected(info.params[p.index].type.?)) @compileError("zigo cannot annotate a receiver or injected parameter: " ++ f.ref.path);
+        validateContract(p, info.params[p.index].type.?, f.ref.path);
         for (f.options.params[0..i]) |previous| if (previous.index == p.index) @compileError("zigo duplicate parameter index: " ++ f.ref.path);
     }
     if (f.options.params.len != 0) {
@@ -284,6 +298,18 @@ fn normalizeFunction(comptime f: a.Function, comptime state: State, comptime par
         result.params = params;
     }
     return result;
+}
+fn validateContract(comptime p: a.Param, comptime T: type, comptime path: []const u8) void {
+    const info = @typeInfo(T);
+    const valid = switch (p.contract) {
+        .value => true,
+        .buffer => info == .pointer and info.pointer.size == .slice,
+        .stream => T == *std.Io.Writer or T == *std.Io.Reader,
+        .callback => info == .pointer and @typeInfo(info.pointer.child) == .@"fn",
+        .cancel => T == *const std.atomic.Value(u32),
+        .flatten => |fields| info == .@"struct" and fields.len != 0,
+    };
+    if (!valid) @compileError("zigo " ++ @tagName(p.contract) ++ " contract does not match Zig argument " ++ std.fmt.comptimePrint("{d}", .{p.index}) ++ ": " ++ path);
 }
 fn paramName(comptime f: a.Function, comptime at: usize, comptime info: std.builtin.Type.Fn, comptime receiver: ?usize) []const u8 {
     for (f.options.params) |p| if (p.index == at) {
@@ -367,4 +393,25 @@ test "package defaults override only declared authoring defaults" {
     } });
     try std.testing.expectEqual(ir.Strings.explicit, result.functions[0].strings.?);
     try std.testing.expectEqual(ir.Codepoints.infer_u21, result.functions[0].codepoints.?);
+}
+
+fn externalExtensions(comptime entries: []const ir.Extension) []const ir.Extension {
+    var result: []const ir.Extension = &.{};
+    for (entries) |e| if (e.builtin == .none) {
+        result = result ++ [_]ir.Extension{e};
+    };
+    return result;
+}
+fn hasText(comptime entries: []const ir.Extension) bool {
+    for (entries) |e| if (e.builtin == .text) return true;
+    return false;
+}
+
+fn automaticReceiver(comptime T: type, comptime entry: ir.Type) bool {
+    if (!entry.isHandle()) return false;
+    return switch (@typeInfo(T)) {
+        .pointer => |p| p.size == .one and p.child == entry.zigType(),
+        .@"struct" => T == entry.zigType(),
+        else => false,
+    };
 }

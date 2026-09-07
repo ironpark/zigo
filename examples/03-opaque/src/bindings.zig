@@ -4,36 +4,30 @@
 const zigo = @import("zigo");
 const library = @import("opaque");
 
+const api = zigo.scope(library);
+
 pub const bindings = zigo.define(.{
     .root = library,
-    .types = &.{
-        .{ .handle = .{ .type = library.Context } },
-        .{ .handle = .{ .type = library.ContextView } },
-    },
-    .functions = &.{
-        .{ .path = "Context.create" },
-        .{ .path = "Context.add", .params = &.{.{ .name = "value" }} },
-        .{ .path = "Context.maybeTotal", .params = &.{.{ .name = "present" }} },
-        .{ .path = "Context.setTotal", .params = &.{.{ .name = "c" }} },
-        // `.iterator` adds a range-over-func wrapper beside the method:
-        // `All()` here, and `Checked()` for the fallible variant.
-        .{ .path = "Context.next", .iterator = .{} },
-        .{ .path = "Context.nextChecked", .iterator = .{ .name = "Checked" } },
-        .{ .path = "Context.rewind" },
-        .{ .path = "Context.addCopy", .params = &.{.{ .name = "value" }} },
-        .{ .path = "Context.borrowView", .returns = .{ .ownership = .borrowed } },
-        .{ .path = "ContextView.total" },
-        .{ .path = "Context.crash" },
-        .{ .path = "Context.crashInfallible" },
-        .{ .path = "Context.deinit" },
-        .{ .path = "root.crashFatal" },
-        .{ .path = "root.liveBytes" },
-        .{ .path = "root.sumCopies", .params = &.{ .{ .name = "bias" }, .{ .name = "left" }, .{ .name = "right" } } },
-        .{
-            .path = "root.echo",
-            .params = &.{.{ .name = "text", .semantic = .utf8_string }},
-            .returns = .{ .semantic = .utf8_string },
-        },
-        .{ .path = "root.fallback" },
+    .declarations = &.{
+        api.handle("Context", .{}),
+        api.handle("ContextView", .{}),
+        api.in("Context").function("create", .{}),
+        api.in("Context").function("add", .{ .params = &.{.{ .index = 1, .go_name = "value" }} }),
+        api.in("Context").function("maybeTotal", .{ .params = &.{.{ .index = 1, .go_name = "present" }} }),
+        api.in("Context").function("setTotal", .{ .params = &.{.{ .index = 1, .go_name = "c" }} }),
+        api.in("Context").function("next", .{}).use(zigo.features.iterator, .{}),
+        api.in("Context").function("nextChecked", .{}).use(zigo.features.iterator, .{ .name = "Checked" }),
+        api.in("Context").function("rewind", .{}),
+        api.in("Context").function("addCopy", .{ .params = &.{.{ .index = 1, .go_name = "value" }} }),
+        api.in("Context").function("borrowView", .{ .returns = .{ .lifetime = .{ .borrowed = .receiver } } }),
+        api.in("ContextView").function("total", .{}),
+        api.in("Context").function("crash", .{}),
+        api.in("Context").function("crashInfallible", .{}),
+        api.in("Context").function("deinit", .{}),
+        api.function("crashFatal", .{}),
+        api.function("liveBytes", .{}),
+        api.function("sumCopies", .{ .params = &.{ .{ .index = 0, .go_name = "bias" }, .{ .index = 1, .go_name = "left" }, .{ .index = 2, .go_name = "right" } } }),
+        api.function("echo", .{ .returns = .{ .semantic = .utf8_string }, .params = &.{.{ .index = 0, .go_name = "text", .semantic = .utf8_string }} }),
+        api.function("fallback", .{}),
     },
 });

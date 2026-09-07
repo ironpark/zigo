@@ -1,6 +1,5 @@
 //! The generator's plugin contract. A plugin is an ordinary Zig package that
-//! compiles against this file alone: it names itself, owns a typed `Options`
-//! struct, validates its own declarations, and adds Go code through hooks.
+//! compiles against this file alone: it names itself, owns typed function and type options, validates its own declarations, and adds Go code through hooks.
 //!
 //! Hooks are additive and Go-only. Nothing here reaches the Zig shim, the C
 //! header or the raw package, so a plugin cannot move the ABI and works the
@@ -224,13 +223,13 @@ pub const Context = struct {
 
     /// `P`'s options on the function being written, or null when the
     /// declaration did not extend `P`.
-    pub fn functionOptions(self: Context, comptime P: anytype, function: semantic.SemanticFn) !?P.Options {
-        return readOptions(P, self.allocator, function.ext);
+    pub fn functionOptions(self: Context, comptime P: anytype, function: semantic.SemanticFn) !?P.FunctionOptions {
+        return readOptions(P, .function, self.allocator, function.ext);
     }
 
     /// `P`'s options on a type declaration, or null when it did not extend `P`.
-    pub fn typeOptions(self: Context, comptime P: anytype, declaration: semantic.TypeDecl) !?P.Options {
-        return readOptions(P, self.allocator, declaration.ext);
+    pub fn typeOptions(self: Context, comptime P: anytype, declaration: semantic.TypeDecl) !?P.TypeOptions {
+        return readOptions(P, .type, self.allocator, declaration.ext);
     }
 };
 
@@ -244,13 +243,25 @@ pub fn optionsCode(comptime P: anytype) []const u8 {
 /// `P`'s options on a declaration, or null when the declaration did not
 /// extend `P`. The result is allocated from `allocator` and never freed
 /// individually: the generator backs it with the arena that owns the run.
-pub fn readOptions(comptime P: anytype, allocator: std.mem.Allocator, ext: ?semantic.Extensions) !?P.Options {
+pub fn readOptions(comptime P: anytype, comptime attachment: enum { function, type }, allocator: std.mem.Allocator, ext: ?semantic.Extensions) !?(if (attachment == .function) P.FunctionOptions else P.TypeOptions) {
     const attached = (ext orelse return null).get(P.name) orelse return null;
-    return std.json.parseFromValueLeaky(P.Options, allocator, attached, .{}) catch return error.InvalidPluginOptions;
+    return std.json.parseFromValueLeaky(if (attachment == .function) P.FunctionOptions else P.TypeOptions, allocator, attached, .{}) catch return error.InvalidPluginOptions;
 }
 
 /// A generator plugin. Every field but `name` is optional, so a plugin that
 /// only adds a method next to an existing one is four lines long.
+pub const Target = enum { function, handle, value, enumeration, tagged_union };
+
+pub fn typeTarget(kind: semantic.TypeKind) ?Target {
+    return switch (kind) {
+        .@"opaque" => .handle,
+        .value_struct => .value,
+        .@"enum" => .enumeration,
+        .tagged_union => .tagged_union,
+        .callback, .materialized, .error_set => null,
+    };
+}
+
 pub const Plugin = struct {
     /// The plugin's identity: the `ext` key its options travel under, the
     /// prefix of its diagnostic codes, and the suffix of the files it writes.
@@ -258,7 +269,9 @@ pub const Plugin = struct {
     name: []const u8,
     /// The declaration options this plugin reads, as a `std.json`-serializable
     /// struct. A plugin that takes none leaves it at the empty struct.
-    Options: type = struct {},
+    FunctionOptions: type = struct {},
+    TypeOptions: type = struct {},
+    targets: []const Target = &.{ .function, .handle, .value, .enumeration, .tagged_union },
     /// Rules the plugin enforces over the document, run after the core rules.
     /// It takes the document rather than a `Context`: validation happens
     /// before lowering, so there is no program and no writers to hand over.
@@ -273,6 +286,13 @@ pub const Plugin = struct {
     /// Whole public files this plugin adds. A file whose body comes out empty
     /// is dropped, so an emitter that has nothing to say costs nothing.
     files: []const Emitter = &.{},
+
     /// Non-standard imports the hooks may write, added where they are used.
     imports: []const Import = &.{},
+
+    pub fn supports(comptime self: Plugin, target: ?Target) bool {
+        const requested = target orelse return false;
+        inline for (self.targets) |candidate| if (candidate == requested) return true;
+        return false;
+    }
 };

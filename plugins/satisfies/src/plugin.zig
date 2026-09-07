@@ -26,7 +26,8 @@ pub const Options = struct {
 
 pub const plugin: plugin_api.Plugin = .{
     .name = name,
-    .Options = Options,
+    .TypeOptions = Options,
+    .targets = &.{ .handle, .value, .enumeration, .tagged_union },
     .validate = validateDocument,
     .type_hook = typeHook,
 };
@@ -50,7 +51,7 @@ fn typeHook(context: plugin_api.Context, writer: *std.Io.Writer, declaration: se
 /// generated code, which is exactly the report a plugin exists to replace.
 fn validateDocument(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
     for (document.types) |declaration| {
-        const options = try plugin_api.readOptions(plugin, allocator, declaration.ext) orelse continue;
+        const options = try plugin_api.readOptions(plugin, .type, allocator, declaration.ext) orelse continue;
         for (options.interfaces) |interface| {
             const dot = std.mem.indexOfScalar(u8, interface, '.') orelse return .{
                 .severity = .@"error",

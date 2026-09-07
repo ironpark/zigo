@@ -28,6 +28,7 @@ pub const TypeRef = struct {
 
 pub const Role = union(enum) {
     auto,
+    free,
     method: TypeRef,
     constructor: struct { type: TypeRef, receiver: ?TypeRef = null, parent: enum { none, receiver } = .none },
     destructor: TypeRef,
@@ -178,7 +179,15 @@ pub const Entry = union(enum) {
             pub const name = P.name;
             pub const Options = pluginOptions(P, self);
         };
-        const extended = extensions ++ [_]ir.Extension{ir.extension(Captured, options)};
+        var captured = ir.extension(Captured, options);
+        if (@hasField(@TypeOf(P), "builtin")) {
+            captured.builtin = switch (P.builtin) {
+                .iterator => .{ .iterator = options },
+                .implements => .{ .implements = options.kind },
+                .text => .text,
+            };
+        }
+        const extended = extensions ++ [_]ir.Extension{captured};
         switch (result) {
             .function => |*f| f.extensions = extended,
             .type => |*t| t.extensions = extended,
@@ -208,13 +217,11 @@ pub const Entry = union(enum) {
 };
 
 fn pluginOptions(comptime P: anytype, comptime entry: Entry) type {
-    // The bridge accepts existing plugin contracts during the staged migration.
-    const T = @TypeOf(P);
-    if (entry == .function and @hasField(T, "FunctionOptions")) return P.FunctionOptions;
-    if (entry == .type and @hasField(T, "TypeOptions")) return P.TypeOptions;
-    return P.Options;
+    return if (entry == .function) P.FunctionOptions else P.TypeOptions;
 }
 fn checkPluginTarget(comptime P: anytype, comptime entry: Entry) void {
+    if (entry == .type and (entry.type.representation == .materialized or entry.type.representation == .callback))
+        @compileError("zigo plugin attachments are not supported on " ++ @tagName(entry.type.representation));
     if (@hasField(@TypeOf(P), "targets")) {
         const target = switch (entry) {
             .function => "function",
@@ -335,10 +342,11 @@ pub fn interface(comptime options: Interface) Entry {
     return .{ .interface = options };
 }
 
+pub const DiscoverySelection = struct { exclude: []const FunctionRef = &.{} };
 pub const Discovery = union(enum) {
     explicit,
-    public: struct { exclude: []const FunctionRef = &.{} },
-    recursive: struct { exclude: []const FunctionRef = &.{} },
+    public: DiscoverySelection,
+    recursive: DiscoverySelection,
 };
 pub const Binding = struct {
     root: type,
@@ -379,10 +387,27 @@ test "type plugins and explicit replacement keep one typed option payload" {
     const Lib = struct {
         pub const Record = extern struct { value: u32 };
     };
-    const P = .{ .name = "TEST", .Options = struct { limit: ?u32 = 10 }, .targets = [_]enum { value }{.value} };
+    const P = .{ .name = "TEST", .FunctionOptions = struct {}, .TypeOptions = struct { limit: ?u32 = 10 }, .targets = [_]enum { value }{.value} };
     const entry = comptime scope(Lib).value("Record", .{}).use(P, .{ .limit = 5 }).replacePlugin(P, .{ .limit = null });
     try std.testing.expectEqual(@as(usize, 1), entry.type.extensions.len);
     const bytes = try entry.type.extensions[0].jsonAlloc(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
     try std.testing.expectEqualStrings("{\"limit\":null}", bytes);
+}
+
+test "plugin options are selected by attachment target" {
+    const Lib = struct {
+        pub const Record = extern struct { value: u32 };
+        pub fn f() void {}
+    };
+    const P = .{ .name = "DUAL", .FunctionOptions = struct { checked: bool }, .TypeOptions = struct { key: []const u8 }, .targets = [_]enum { function, value }{ .function, .value } };
+    const api = scope(Lib);
+    const f = comptime api.function("f", .{}).use(P, .{ .checked = true });
+    const t = comptime api.value("Record", .{}).use(P, .{ .key = "value" });
+    const f_json = try f.function.extensions[0].jsonAlloc(std.testing.allocator);
+    defer std.testing.allocator.free(f_json);
+    const t_json = try t.type.extensions[0].jsonAlloc(std.testing.allocator);
+    defer std.testing.allocator.free(t_json);
+    try std.testing.expectEqualStrings("{\"checked\":true}", f_json);
+    try std.testing.expectEqualStrings("{\"key\":\"value\"}", t_json);
 }

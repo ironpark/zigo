@@ -1884,68 +1884,6 @@
       "symbol": "zg_event_queue_deinit"
     },
     {
-      "doc": "Opens a ticker the caller owns.",
-      "go_owner": "Ticker",
-      "name": "newTicker",
-      "package": "types",
-      "ownership": "caller",
-      "params": [
-        {
-          "direction": "in",
-          "name": "interval",
-          "name_source": "sidecar",
-          "retention": "borrowed",
-          "source": {
-            "line": 543,
-            "column": 18
-          },
-          "type": {
-            "bits": 32,
-            "is_usize": false,
-            "kind": "int",
-            "signed": false
-          }
-        }
-      ],
-      "return": {
-        "error_set": [
-          "OutOfMemory",
-          "InvalidInterval"
-        ],
-        "kind": "error_union",
-        "payload": {
-          "const": false,
-          "kind": "opaque_ptr",
-          "nullable": false,
-          "ref": "Ticker"
-        }
-      },
-      "source": {
-        "path": "root.zig",
-        "line": 543,
-        "column": 8
-      },
-      "symbol": "zg_new_ticker"
-    },
-    {
-      "doc": "Releases a ticker `newTicker` returned.",
-      "name": "freeTicker",
-      "package": "types",
-      "ownership": "borrowed",
-      "params": [],
-      "receiver": "Ticker",
-      "return": {
-        "kind": "void"
-      },
-      "source": {
-        "path": "root.zig",
-        "line": 552,
-        "column": 8
-      },
-      "zig_path": "freeTicker",
-      "symbol": "zg_ticker_free_ticker"
-    },
-    {
       "doc": "Exercises cross-package handle and value-struct parameters without making\nthis free function a Ticker method.",
       "name": "inspectTicker",
       "ownership": "borrowed",
@@ -1991,25 +1929,6 @@
         "column": 8
       },
       "symbol": "zg_inspect_ticker"
-    },
-    {
-      "doc": "Tickers still owned by the library.",
-      "name": "liveTickers",
-      "package": "types",
-      "ownership": "borrowed",
-      "params": [],
-      "return": {
-        "bits": 64,
-        "is_usize": true,
-        "kind": "int",
-        "signed": false
-      },
-      "source": {
-        "path": "root.zig",
-        "line": 575,
-        "column": 8
-      },
-      "symbol": "zg_live_tickers"
     },
     {
       "name": "liveStreams",
@@ -2096,6 +2015,87 @@
         "column": 8
       },
       "symbol": "zg_live_selection_strings"
+    },
+    {
+      "doc": "Opens a ticker the caller owns.",
+      "go_owner": "Ticker",
+      "name": "newTicker",
+      "package": "types",
+      "ownership": "caller",
+      "params": [
+        {
+          "direction": "in",
+          "name": "interval",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 543,
+            "column": 18
+          },
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "error_set": [
+          "OutOfMemory",
+          "InvalidInterval"
+        ],
+        "kind": "error_union",
+        "payload": {
+          "const": false,
+          "kind": "opaque_ptr",
+          "nullable": false,
+          "ref": "Ticker"
+        }
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 543,
+        "column": 8
+      },
+      "symbol": "zg_new_ticker"
+    },
+    {
+      "doc": "Releases a ticker `newTicker` returned.",
+      "name": "freeTicker",
+      "package": "types",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Ticker",
+      "return": {
+        "kind": "void"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 552,
+        "column": 8
+      },
+      "zig_path": "freeTicker",
+      "symbol": "zg_ticker_free_ticker"
+    },
+    {
+      "doc": "Tickers still owned by the library.",
+      "name": "liveTickers",
+      "package": "types",
+      "ownership": "borrowed",
+      "params": [],
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 575,
+        "column": 8
+      },
+      "symbol": "zg_live_tickers"
     },
     {
       "doc": "Advances a ticker and reports how many whole intervals have elapsed.",
@@ -2281,6 +2281,41 @@
       "zig_path": "root.Limits"
     },
     {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "opaque",
+      "name": "Stream",
+      "zig_path": "root.Stream"
+    },
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "opaque",
+      "name": "BorrowBox",
+      "zig_path": "root.BorrowBox"
+    },
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "opaque",
+      "name": "BorrowView",
+      "zig_path": "root.BorrowView"
+    },
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "opaque",
+      "name": "BorrowChild",
+      "zig_path": "root.BorrowChild"
+    },
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "opaque",
+      "name": "Terminal",
+      "zig_path": "root.Terminal"
+    },
+    {
       "exhaustive": false,
       "fields": [
         {
@@ -2340,41 +2375,6 @@
       "name": "TickerInfo",
       "package": "types",
       "zig_path": "root.TickerInfo"
-    },
-    {
-      "exhaustive": true,
-      "fields": [],
-      "kind": "opaque",
-      "name": "Stream",
-      "zig_path": "root.Stream"
-    },
-    {
-      "exhaustive": true,
-      "fields": [],
-      "kind": "opaque",
-      "name": "BorrowBox",
-      "zig_path": "root.BorrowBox"
-    },
-    {
-      "exhaustive": true,
-      "fields": [],
-      "kind": "opaque",
-      "name": "BorrowView",
-      "zig_path": "root.BorrowView"
-    },
-    {
-      "exhaustive": true,
-      "fields": [],
-      "kind": "opaque",
-      "name": "BorrowChild",
-      "zig_path": "root.BorrowChild"
-    },
-    {
-      "exhaustive": true,
-      "fields": [],
-      "kind": "opaque",
-      "name": "Terminal",
-      "zig_path": "root.Terminal"
     },
     {
       "exhaustive": true,

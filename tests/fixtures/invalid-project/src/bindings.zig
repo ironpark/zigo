@@ -1,10 +1,12 @@
 const zigo = @import("zigo");
 const invalid = @import("invalid");
 
+const api = zigo.scope(invalid);
+
 pub const bindings = zigo.define(.{
     .root = invalid,
-    .functions = &.{
-        .{ .path = "root.lookupID" },
-        .{ .path = "root.lookup_id" },
+    .declarations = &.{
+        api.function("lookupID", .{}),
+        api.function("lookup_id", .{}),
     },
 });

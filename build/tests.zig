@@ -293,6 +293,7 @@ pub fn addRepositorySteps(
     test_step.dependOn(&run_dynamic_library_tests.step);
     addProcessContractTests(b, test_step, generator);
     addPkgConfigContractTests(b, test_step);
+    addBindingAuthoringErrors(b, test_step);
 
     // The showcase plugins are packages outside `src/`, so the case runner is
     // built the way a consumer's generator is: its own module graph with the
@@ -768,4 +769,37 @@ fn matchesAnyFilter(name: []const u8, filters: []const []const u8) bool {
     if (filters.len == 0) return true;
     for (filters) |filter| if (std.mem.find(u8, name, filter) != null) return true;
     return false;
+}
+
+fn addBindingAuthoringErrors(b: *std.Build, test_step: *std.Build.Step) void {
+    const cases = .{
+        .{ "contract_buffer", "zigo buffer contract does not match Zig argument" },
+        .{ "contract_stream", "zigo stream contract does not match Zig argument" },
+        .{ "contract_callback", "zigo callback contract does not match Zig argument" },
+        .{ "contract_flatten", "zigo flatten contract does not match Zig argument" },
+        .{ "duplicate_function", "zigo duplicate function declaration" },
+        .{ "duplicate_type", "zigo duplicate type declaration" },
+        .{ "duplicate_param", "zigo duplicate parameter index" },
+        .{ "param_range", "zigo parameter index is outside" },
+        .{ "param_receiver", "zigo cannot annotate a receiver" },
+        .{ "wrong_root", "zigo reference belongs to a different root" },
+        .{ "missing_release", "zigo release function is not exported" },
+        .{ "unknown_option", "zigo unknown option: typo" },
+        .{ "empty_selection", "zigo function selection is empty" },
+        .{ "duplicate_plugin", "zigo duplicate plugin attachment" },
+        .{ "plugin_target", "zigo plugin TEST does not support handle" },
+        .{ "unsupported_plugin_target", "zigo plugin attachments are not supported on callback" },
+        .{ "plugin_options", "no field named 'limit'" },
+    };
+    inline for (cases) |case| {
+        const run = b.addSystemCommand(&.{ b.graph.zig_exe, "build-obj", "-fno-emit-bin", "--dep", "zigo" });
+        run.setName("authoring rejects " ++ case[0]);
+        run.addPrefixedFileArg("-Mroot=", b.path("tests/binding_errors/" ++ case[0] ++ ".zig"));
+        run.addPrefixedFileArg("-Mzigo=", b.path("src/root.zig"));
+        inline for (.{ "author", "normalize", "declare", "dsl", "features" }) |source|
+            run.addFileInput(b.path("src/" ++ source ++ ".zig"));
+        run.expectExitCode(1);
+        run.expectStdErrMatch(case[1]);
+        test_step.dependOn(&run.step);
+    }
 }

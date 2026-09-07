@@ -183,7 +183,7 @@ fn pluginIssue(allocator: std.mem.Allocator, document: semantic.Semantic, select
 }
 
 /// A hand-written `semantic.json` can carry anything under a plugin's key.
-/// Reading it through the plugin's own `Options` type is what turns that into
+/// Reading it through the plugin's target-specific option type is what turns that into
 /// a `<NAME>001` diagnostic instead of a panic inside a hook.
 fn pluginOptionsIssue(
     comptime registered: plugin.Plugin,
@@ -192,14 +192,20 @@ fn pluginOptionsIssue(
 ) !?diagnostic.Diagnostic {
     for (document.functions) |function| {
         if (function.ext == null) continue;
-        _ = plugin.readOptions(registered, allocator, function.ext) catch {
+        if (function.ext.?.get(registered.name) != null and !registered.supports(.function)) {
+            const declaration = try site.functionDeclarationAlloc(allocator, function);
+            return try pluginOptionsDiagnostic(registered, allocator, site.functionSiteFor(function, declaration), declaration);
+        }
+        _ = plugin.readOptions(registered, .function, allocator, function.ext) catch {
             const declaration = try site.functionDeclarationAlloc(allocator, function);
             return try pluginOptionsDiagnostic(registered, allocator, site.functionSiteFor(function, declaration), declaration);
         };
     }
     for (document.types) |declaration| {
         if (declaration.ext == null) continue;
-        _ = plugin.readOptions(registered, allocator, declaration.ext) catch {
+        if (declaration.ext.?.get(registered.name) != null and !registered.supports(plugin.typeTarget(declaration.kind)))
+            return try pluginOptionsDiagnostic(registered, allocator, .{ .path = "semantic.json", .declaration = declaration.name }, declaration.name);
+        _ = plugin.readOptions(registered, .type, allocator, declaration.ext) catch {
             return try pluginOptionsDiagnostic(
                 registered,
                 allocator,
@@ -226,7 +232,7 @@ fn pluginOptionsDiagnostic(
             .{ declaration, registered.name },
         ),
         .site = where,
-        .hint = "attach the options with `extend`, which checks them against the plugin's option type at the declaration",
+        .hint = "attach the options with `use`, which checks them against the plugin's option type at the declaration",
     };
 }
 

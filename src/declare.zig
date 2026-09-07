@@ -1,19 +1,5 @@
-//! The binding declaration schema: the types a `bindings.zig` fills in and
-//! `zigo.define` takes.
-//!
-//! Every entry is a real struct or union, so the compiler enforces the
-//! grammar: an unknown key, a key on the wrong kind of entry, or a value of
-//! the wrong shape is an ordinary Zig compile error at the literal. Defaults
-//! live here too, which is what keeps a typical entry to one line.
-//!
-//! Three spelling rules hold throughout:
-//! - Zig things are referenced by value: `.type`, `.receiver`, `.constructs`,
-//!   `.destroys` and `Interface.types` take the type itself.
-//! - Go things and declaration paths are strings: `.name` is always the Go
-//!   name, `.path` always addresses a Zig declaration, and `.covers`,
-//!   `.release`, `.string_release` and `.exclude` are paths.
-//! - Contracts sit on the thing they describe: a parameter's contract is in
-//!   its `Param`, a result's in `Returns`, a callback type's on its entry.
+//! Private flat declarations used between authoring normalization and reflection.
+//! Public binding files use scope(), declaration entries and typed contracts in author.zig.
 const std = @import("std");
 
 /// One plugin's options on a declaration. `extend` captures the value at
@@ -21,6 +7,7 @@ const std = @import("std");
 /// shape, is an ordinary Zig compile error at the declaration rather than a
 /// diagnostic long afterwards.
 pub const Extension = struct {
+    builtin: union(enum) { none, iterator: Iterator, implements: Implements, text } = .none,
     /// The plugin's name. It is the key the options travel under in
     /// `semantic.json`, so two plugins cannot collide silently.
     plugin: []const u8,
@@ -145,6 +132,7 @@ pub const FunctionOptions = struct {
     params: ?[]const Param = null,
     returns: ?Returns = null,
     receiver: ?type = null,
+    force_free: bool = false,
     constructs: ?type = null,
     destroys: ?type = null,
     child_of_receiver: ?bool = null,
@@ -171,6 +159,7 @@ pub const Function = struct {
     returns: Returns = .{},
     /// Makes a free function a method of a registered handle or enum.
     receiver: ?type = null,
+    force_free: bool = false,
     constructs: ?type = null,
     destroys: ?type = null,
     child_of_receiver: bool = false,

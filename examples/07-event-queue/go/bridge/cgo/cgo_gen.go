@@ -667,19 +667,6 @@ func EventQueueDeinit(self unsafe.Pointer) int32 {
 	return code
 }
 
-// NewTicker calls the generated C ABI wrapper for zg_new_ticker.
-func NewTicker(interval uint32) (unsafe.Pointer, int32) {
-	var outResult *C.zg_ticker
-	code := int32(C.zg_new_ticker(C.uint32_t(interval), &outResult))
-	return unsafe.Pointer(outResult), code
-}
-
-// TickerFreeTicker calls the generated C ABI wrapper for zg_ticker_free_ticker.
-func TickerFreeTicker(self unsafe.Pointer) int32 {
-	code := int32(C.zg_ticker_free_ticker((*C.zg_ticker)(self)))
-	return code
-}
-
 // InspectTicker calls the generated C ABI wrapper for zg_inspect_ticker.
 func InspectTicker(info TickerInfoData, ticker unsafe.Pointer) (TickerInfoData, int32) {
 	var cinfo C.zg_ticker_info
@@ -691,11 +678,6 @@ func InspectTicker(info TickerInfoData, ticker unsafe.Pointer) (TickerInfoData, 
 		Interval: uint32(outResult.interval),
 		Ticks:    uint32(outResult.ticks),
 	}, code
-}
-
-// LiveTickers calls the generated C ABI wrapper for zg_live_tickers.
-func LiveTickers() uint {
-	return uint(C.zg_live_tickers())
 }
 
 // LiveStreams calls the generated C ABI wrapper for zg_live_streams.
@@ -721,6 +703,24 @@ func LiveLimits() uint {
 // LiveSelectionStrings calls the generated C ABI wrapper for zg_live_selection_strings.
 func LiveSelectionStrings() uint {
 	return uint(C.zg_live_selection_strings())
+}
+
+// NewTicker calls the generated C ABI wrapper for zg_new_ticker.
+func NewTicker(interval uint32) (unsafe.Pointer, int32) {
+	var outResult *C.zg_ticker
+	code := int32(C.zg_new_ticker(C.uint32_t(interval), &outResult))
+	return unsafe.Pointer(outResult), code
+}
+
+// TickerFreeTicker calls the generated C ABI wrapper for zg_ticker_free_ticker.
+func TickerFreeTicker(self unsafe.Pointer) int32 {
+	code := int32(C.zg_ticker_free_ticker((*C.zg_ticker)(self)))
+	return code
+}
+
+// LiveTickers calls the generated C ABI wrapper for zg_live_tickers.
+func LiveTickers() uint {
+	return uint(C.zg_live_tickers())
 }
 
 // TickerAdvance calls the generated C ABI wrapper for zg_ticker_advance.

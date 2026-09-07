@@ -33,7 +33,8 @@ pub const Options = struct {
 
 pub const plugin: plugin_api.Plugin = .{
     .name = name,
-    .Options = Options,
+    .TypeOptions = Options,
+    .targets = &.{ .value, .enumeration },
     .validate = validateDocument,
     .type_hook = typeHook,
     // Written by the methods below. They are added to a file only when its
@@ -124,7 +125,7 @@ fn renderValueStruct(
 /// binding author wondering. Saying so is the whole point of a plugin rule.
 fn validateDocument(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
     for (document.types) |declaration| {
-        _ = try plugin_api.readOptions(plugin, allocator, declaration.ext) orelse continue;
+        _ = try plugin_api.readOptions(plugin, .type, allocator, declaration.ext) orelse continue;
         if (declaration.kind == .@"enum" or declaration.kind == .value_struct) continue;
         return .{
             .severity = .@"error",

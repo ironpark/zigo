@@ -235,60 +235,6 @@ func DocumentReadInto(self unsafe.Pointer, dst []uint8) (uint, int32) {
 	return uint(outResult), code
 }
 
-// Banner calls the generated C ABI wrapper for zg_banner.
-func Banner(wHandle uintptr, width uint32) int32 {
-	code := int32(C.zg_banner(C.size_t(wHandle), C.uint32_t(width)))
-	return code
-}
-
-// Tee calls the generated C ABI wrapper for zg_tee.
-func Tee(rHandle uintptr, rData []byte, wHandle uintptr) (uint, int32) {
-	var rDataPtr *C.uint8_t
-	if rData != nil {
-		if len(rData) != 0 {
-			rDataPtr = (*C.uint8_t)(unsafe.Pointer(&rData[0]))
-		} else {
-			rDataPtr = (*C.uint8_t)(unsafe.Pointer(&zigoEmptyStreamData))
-		}
-	}
-	var outResult C.size_t
-	code := int32(C.zg_tee(rDataPtr, C.size_t(len(rData)), C.size_t(rHandle), C.size_t(wHandle), &outResult))
-	return uint(outResult), code
-}
-
-// SumCodepoints calls the generated C ABI wrapper for zg_sum_codepoints.
-func SumCodepoints(values []uint32) uint32 {
-	valuesPtr := (*C.uint32_t)(zigoSlicePtr(values))
-	return uint32(C.zg_sum_codepoints(valuesPtr, C.size_t(len(values))))
-}
-
-// FillCodepoints calls the generated C ABI wrapper for zg_fill_codepoints.
-func FillCodepoints(output []uint32) {
-	outputPtr := (*C.uint32_t)(zigoSlicePtr(output))
-	var outputWritten C.size_t
-	C.zg_fill_codepoints(outputPtr, C.size_t(len(output)), &outputWritten)
-}
-
-// TakeCodepoints calls the generated C ABI wrapper for zg_take_codepoints.
-func TakeCodepoints() []uint32 {
-	var outResultPtr *C.uint32_t
-	var outResultLen C.size_t
-	C.zg_take_codepoints(&outResultPtr, &outResultLen)
-	var result []uint32
-	if outResultLen != 0 {
-		result = make([]uint32, int(outResultLen))
-		copy(result, unsafe.Slice((*uint32)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
-	}
-	C.zg_free_codepoints(outResultPtr, outResultLen)
-	return result
-}
-
-// FreeCodepoints calls the generated C ABI wrapper for zg_free_codepoints.
-func FreeCodepoints(values []uint32) {
-	valuesPtr := (*C.uint32_t)(zigoSlicePtr(values))
-	C.zg_free_codepoints(valuesPtr, C.size_t(len(values)))
-}
-
 // SinkCreate calls the generated C ABI wrapper for zg_sink_create.
 func SinkCreate() (unsafe.Pointer, int32) {
 	var outResult *C.zg_sink
@@ -343,4 +289,58 @@ func SourceRead(self unsafe.Pointer, buffer []uint8) (int, int32) {
 func SourceDeinit(self unsafe.Pointer) int32 {
 	code := int32(C.zg_source_deinit((*C.zg_source)(self)))
 	return code
+}
+
+// Banner calls the generated C ABI wrapper for zg_banner.
+func Banner(wHandle uintptr, width uint32) int32 {
+	code := int32(C.zg_banner(C.size_t(wHandle), C.uint32_t(width)))
+	return code
+}
+
+// Tee calls the generated C ABI wrapper for zg_tee.
+func Tee(rHandle uintptr, rData []byte, wHandle uintptr) (uint, int32) {
+	var rDataPtr *C.uint8_t
+	if rData != nil {
+		if len(rData) != 0 {
+			rDataPtr = (*C.uint8_t)(unsafe.Pointer(&rData[0]))
+		} else {
+			rDataPtr = (*C.uint8_t)(unsafe.Pointer(&zigoEmptyStreamData))
+		}
+	}
+	var outResult C.size_t
+	code := int32(C.zg_tee(rDataPtr, C.size_t(len(rData)), C.size_t(rHandle), C.size_t(wHandle), &outResult))
+	return uint(outResult), code
+}
+
+// SumCodepoints calls the generated C ABI wrapper for zg_sum_codepoints.
+func SumCodepoints(values []uint32) uint32 {
+	valuesPtr := (*C.uint32_t)(zigoSlicePtr(values))
+	return uint32(C.zg_sum_codepoints(valuesPtr, C.size_t(len(values))))
+}
+
+// FillCodepoints calls the generated C ABI wrapper for zg_fill_codepoints.
+func FillCodepoints(output []uint32) {
+	outputPtr := (*C.uint32_t)(zigoSlicePtr(output))
+	var outputWritten C.size_t
+	C.zg_fill_codepoints(outputPtr, C.size_t(len(output)), &outputWritten)
+}
+
+// TakeCodepoints calls the generated C ABI wrapper for zg_take_codepoints.
+func TakeCodepoints() []uint32 {
+	var outResultPtr *C.uint32_t
+	var outResultLen C.size_t
+	C.zg_take_codepoints(&outResultPtr, &outResultLen)
+	var result []uint32
+	if outResultLen != 0 {
+		result = make([]uint32, int(outResultLen))
+		copy(result, unsafe.Slice((*uint32)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
+	}
+	C.zg_free_codepoints(outResultPtr, outResultLen)
+	return result
+}
+
+// FreeCodepoints calls the generated C ABI wrapper for zg_free_codepoints.
+func FreeCodepoints(values []uint32) {
+	valuesPtr := (*C.uint32_t)(zigoSlicePtr(values))
+	C.zg_free_codepoints(valuesPtr, C.size_t(len(values)))
 }

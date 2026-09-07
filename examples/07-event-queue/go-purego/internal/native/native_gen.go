@@ -108,15 +108,15 @@ type nativeBindings struct {
 	fnEventQueueApplyLimits             func(unsafe.Pointer, unsafe.Pointer) int32
 	fnEventQueueClear                   func(unsafe.Pointer, *uintptr) int32
 	fnEventQueueDeinit                  func(unsafe.Pointer) int32
-	fnNewTicker                         func(uint32, *unsafe.Pointer) int32
-	fnTickerFreeTicker                  func(unsafe.Pointer) int32
 	fnInspectTicker                     func(unsafe.Pointer, unsafe.Pointer, unsafe.Pointer) int32
-	fnLiveTickers                       func() uintptr
 	fnLiveStreams                       func() uintptr
 	fnLiveQueues                        func() uintptr
 	fnLiveSamples                       func() uintptr
 	fnLiveLimits                        func() uintptr
 	fnLiveSelectionStrings              func() uintptr
+	fnNewTicker                         func(uint32, *unsafe.Pointer) int32
+	fnTickerFreeTicker                  func(unsafe.Pointer) int32
+	fnLiveTickers                       func() uintptr
 	fnTickerAdvance                     func(unsafe.Pointer, uint32, *uint32) int32
 	fnTickerElapsed                     func(unsafe.Pointer, *uint32) int32
 }
@@ -584,21 +584,9 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_event_queue_deinit", err)
 	}
-	addrNewTicker, err := resolveSymbol(handle, "zg_new_ticker")
-	if err != nil {
-		return fail("zg_new_ticker", err)
-	}
-	addrTickerFreeTicker, err := resolveSymbol(handle, "zg_ticker_free_ticker")
-	if err != nil {
-		return fail("zg_ticker_free_ticker", err)
-	}
 	addrInspectTicker, err := resolveSymbol(handle, "zg_inspect_ticker")
 	if err != nil {
 		return fail("zg_inspect_ticker", err)
-	}
-	addrLiveTickers, err := resolveSymbol(handle, "zg_live_tickers")
-	if err != nil {
-		return fail("zg_live_tickers", err)
 	}
 	addrLiveStreams, err := resolveSymbol(handle, "zg_live_streams")
 	if err != nil {
@@ -619,6 +607,18 @@ func loadCandidate(path string) error {
 	addrLiveSelectionStrings, err := resolveSymbol(handle, "zg_live_selection_strings")
 	if err != nil {
 		return fail("zg_live_selection_strings", err)
+	}
+	addrNewTicker, err := resolveSymbol(handle, "zg_new_ticker")
+	if err != nil {
+		return fail("zg_new_ticker", err)
+	}
+	addrTickerFreeTicker, err := resolveSymbol(handle, "zg_ticker_free_ticker")
+	if err != nil {
+		return fail("zg_ticker_free_ticker", err)
+	}
+	addrLiveTickers, err := resolveSymbol(handle, "zg_live_tickers")
+	if err != nil {
+		return fail("zg_live_tickers", err)
 	}
 	addrTickerAdvance, err := resolveSymbol(handle, "zg_ticker_advance")
 	if err != nil {
@@ -687,15 +687,15 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnEventQueueApplyLimits, addrEventQueueApplyLimits)
 	purego.RegisterFunc(&next.fnEventQueueClear, addrEventQueueClear)
 	purego.RegisterFunc(&next.fnEventQueueDeinit, addrEventQueueDeinit)
-	purego.RegisterFunc(&next.fnNewTicker, addrNewTicker)
-	purego.RegisterFunc(&next.fnTickerFreeTicker, addrTickerFreeTicker)
 	purego.RegisterFunc(&next.fnInspectTicker, addrInspectTicker)
-	purego.RegisterFunc(&next.fnLiveTickers, addrLiveTickers)
 	purego.RegisterFunc(&next.fnLiveStreams, addrLiveStreams)
 	purego.RegisterFunc(&next.fnLiveQueues, addrLiveQueues)
 	purego.RegisterFunc(&next.fnLiveSamples, addrLiveSamples)
 	purego.RegisterFunc(&next.fnLiveLimits, addrLiveLimits)
 	purego.RegisterFunc(&next.fnLiveSelectionStrings, addrLiveSelectionStrings)
+	purego.RegisterFunc(&next.fnNewTicker, addrNewTicker)
+	purego.RegisterFunc(&next.fnTickerFreeTicker, addrTickerFreeTicker)
+	purego.RegisterFunc(&next.fnLiveTickers, addrLiveTickers)
 	purego.RegisterFunc(&next.fnTickerAdvance, addrTickerAdvance)
 	purego.RegisterFunc(&next.fnTickerElapsed, addrTickerElapsed)
 	loadedBindings.Store(&next)
@@ -1323,30 +1323,11 @@ func EventQueueDeinit(self unsafe.Pointer) int32 {
 	return code
 }
 
-// NewTicker calls the generated purego ABI wrapper for zg_new_ticker.
-func NewTicker(interval uint32) (unsafe.Pointer, int32) {
-	var outResult unsafe.Pointer
-	code := bindings().fnNewTicker(interval, &outResult)
-	return outResult, code
-}
-
-// TickerFreeTicker calls the generated purego ABI wrapper for zg_ticker_free_ticker.
-func TickerFreeTicker(self unsafe.Pointer) int32 {
-	code := bindings().fnTickerFreeTicker(self)
-	return code
-}
-
 // InspectTicker calls the generated purego ABI wrapper for zg_inspect_ticker.
 func InspectTicker(info TickerInfoData, ticker unsafe.Pointer) (TickerInfoData, int32) {
 	var outResult TickerInfoData
 	code := bindings().fnInspectTicker(unsafe.Pointer(&info), ticker, unsafe.Pointer(&outResult))
 	return outResult, code
-}
-
-// LiveTickers calls the generated purego ABI wrapper for zg_live_tickers.
-func LiveTickers() uint {
-	result := bindings().fnLiveTickers()
-	return uint(result)
 }
 
 // LiveStreams calls the generated purego ABI wrapper for zg_live_streams.
@@ -1376,6 +1357,25 @@ func LiveLimits() uint {
 // LiveSelectionStrings calls the generated purego ABI wrapper for zg_live_selection_strings.
 func LiveSelectionStrings() uint {
 	result := bindings().fnLiveSelectionStrings()
+	return uint(result)
+}
+
+// NewTicker calls the generated purego ABI wrapper for zg_new_ticker.
+func NewTicker(interval uint32) (unsafe.Pointer, int32) {
+	var outResult unsafe.Pointer
+	code := bindings().fnNewTicker(interval, &outResult)
+	return outResult, code
+}
+
+// TickerFreeTicker calls the generated purego ABI wrapper for zg_ticker_free_ticker.
+func TickerFreeTicker(self unsafe.Pointer) int32 {
+	code := bindings().fnTickerFreeTicker(self)
+	return code
+}
+
+// LiveTickers calls the generated purego ABI wrapper for zg_live_tickers.
+func LiveTickers() uint {
+	result := bindings().fnLiveTickers()
 	return uint(result)
 }
 

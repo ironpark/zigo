@@ -2,67 +2,40 @@ const zigo = @import("zigo");
 const library = @import("streams");
 const satisfies = @import("zigo_satisfies");
 
+const api = zigo.scope(library);
+
+// Members inherit their Go receiver from the owning type. Parameter indices
+// still refer to the original Zig signature, including that receiver.
 pub const bindings = zigo.define(.{
-    .allocator = .c_allocator,
     .root = library,
-    // Every `u21` in this library is a codepoint, so the binding says so once
-    // instead of at each site.
-    .codepoints = .infer_u21,
-    .types = &.{
-        // `Document` gets Write, Read, WriteTo, ReadFrom and Close below, so
-        // it is an `io.ReadWriteCloser`. Go has no way to say so, and the
-        // idiom is an assertion the compiler checks; the plugin writes it
-        // next to the type instead of it living in a hand-kept file.
-        .{ .handle = (zigo.Handle{ .type = library.Document })
-            .extend(satisfies.plugin, .{ .interfaces = &.{"io.ReadWriteCloser"} }) },
-        .{ .handle = .{ .type = library.Sink } },
-        .{ .handle = .{ .type = library.Source } },
-    },
-    .functions = &.{
-        .{ .path = "Document.create" },
-        .{ .path = "Document.deinit" },
-        // `.implements` adds the method a Go standard interface needs next
-        // to the bound one: `Write` calls `Append`, so `fmt.Fprintf(doc, ...)`
-        // and `io.Copy(doc, r)` work, and `Append` is still there.
-        .{ .path = "Document.append", .params = &.{.{ .name = "line" }}, .implements = .writer },
-        .{ .path = "Document.count" },
-        // The default 64 KiB staging buffer batches small writes. Explicit
-        // flushes and the writer's behavior also affect the call count.
-        // `WriteTo` calls `Dump` through a counting writer, since `dump`
-        // returns no count of its own.
-        .{ .path = "Document.dump", .params = &.{.{ .name = "w" }}, .implements = .writer_to },
-        // A deliberately small buffer, so the test can count the crossings a
-        // known payload costs and see the size decide them. `load` reports
-        // its own count, so `ReadFrom` passes it on.
-        .{ .path = "Document.load", .params = &.{.{ .name = "r", .buffer = 4096 }}, .implements = .reader_from },
-        // An out buffer whose count is the result is the `io.Reader` shape;
-        // `Read` reports io.EOF when a call fills nothing.
-        .{
-            .path = "Document.readInto",
-            .params = &.{.{ .name = "dst", .direction = .out, .written = .result }},
-            .implements = .reader,
-        },
-        .{ .path = "root.banner", .params = &.{ .{ .name = "w" }, .{ .name = "width" } } },
-        .{ .path = "root.tee", .params = &.{ .{ .name = "r" }, .{ .name = "w" } } },
-        // Inferred codepoints: these `[]u21` are Go `[]rune` over the same
-        // memory the raw `[]uint32` uses, and inputs are checked against the
-        // Unicode range.
-        .{ .path = "root.sumCodepoints", .params = &.{.{ .name = "values" }} },
-        .{
-            .path = "root.fillCodepoints",
-            .params = &.{.{ .name = "output", .direction = .out }},
-        },
-        .{ .path = "root.takeCodepoints", .returns = .{ .ownership = .caller, .release = "root.freeCodepoints" } },
-        .{ .path = "root.freeCodepoints", .params = &.{.{ .name = "values" }} },
-        // A method that hands a stream out. It generates `Write` and `Flush`
-        // on the handle rather than a Go value standing for the pointer, so
-        // `io.Copy(sink, src)` works and nothing outlives the call.
-        .{ .path = "Sink.create" },
-        .{ .path = "Sink.writer" },
-        .{ .path = "Sink.count" },
-        .{ .path = "Sink.deinit" },
-        .{ .path = "Source.create", .params = &.{.{ .name = "bytes" }} },
-        .{ .path = "Source.reader" },
-        .{ .path = "Source.deinit" },
+    .allocator = .c_allocator,
+    .defaults = .{ .codepoints = .infer_u21 },
+    .declarations = &.{
+        api.handle("Document", .{}).use(satisfies.plugin, .{ .interfaces = &.{"io.ReadWriteCloser"} }).with(.{ .members = &.{
+            api.in("Document").function("create", .{}),
+            api.in("Document").function("deinit", .{}),
+            api.in("Document").function("append", .{ .params = &.{.{ .index = 1, .go_name = "line" }} }).use(zigo.features.implements, .{ .kind = .writer }),
+            api.in("Document").function("count", .{}),
+            api.in("Document").function("dump", .{ .params = &.{.{ .index = 1, .go_name = "w" }} }).use(zigo.features.implements, .{ .kind = .writer_to }),
+            api.in("Document").function("load", .{ .params = &.{.{ .index = 1, .go_name = "r", .contract = .{ .stream = .{ .buffer = 4096 } } }} }).use(zigo.features.implements, .{ .kind = .reader_from }),
+            api.in("Document").function("readInto", .{ .params = &.{.{ .index = 1, .go_name = "dst", .contract = .{ .buffer = .{ .output = .{ .written = .result } } } }} }).use(zigo.features.implements, .{ .kind = .reader }),
+        } }),
+        api.handle("Sink", .{}).with(.{ .members = &.{
+            api.in("Sink").function("create", .{}),
+            api.in("Sink").function("writer", .{}),
+            api.in("Sink").function("count", .{}),
+            api.in("Sink").function("deinit", .{}),
+        } }),
+        api.handle("Source", .{}).with(.{ .members = &.{
+            api.in("Source").function("create", .{ .params = &.{.{ .index = 0, .go_name = "bytes" }} }),
+            api.in("Source").function("reader", .{}),
+            api.in("Source").function("deinit", .{}),
+        } }),
+        api.function("banner", .{ .params = &.{ .{ .index = 0, .go_name = "w" }, .{ .index = 1, .go_name = "width" } } }),
+        api.function("tee", .{ .params = &.{ .{ .index = 0, .go_name = "r" }, .{ .index = 1, .go_name = "w" } } }),
+        api.function("sumCodepoints", .{ .params = &.{.{ .index = 0, .go_name = "values" }} }),
+        api.function("fillCodepoints", .{ .params = &.{.{ .index = 0, .go_name = "output", .contract = .{ .buffer = .{ .output = .{} } } }} }),
+        api.function("takeCodepoints", .{ .returns = .{ .lifetime = .{ .owned = .{ .release = api.ref("freeCodepoints") } } } }),
+        api.function("freeCodepoints", .{ .params = &.{.{ .index = 0, .go_name = "values" }} }),
     },
 });

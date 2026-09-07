@@ -1,56 +1,49 @@
-//! Declaration DSL imported by a user's `bindings.zig`.
-//!
-//! `define` takes a `Binding`; the schema it and every nested entry follow is
-//! in `declare.zig` and re-exported here, so a binding can name a type
-//! (`zigo.Param`, `zigo.Type`) to build entries in helper functions.
-const declare = @import("declare.zig");
-
+//! Typed declaration trees for authoring Zig-to-Go bindings.
+const author = @import("author.zig");
 pub const dsl = @import("dsl.zig");
+pub const scope = author.scope;
+pub const package = author.package;
+pub const interface = author.interface;
+pub const features = @import("features.zig");
+pub const Binding = author.Binding;
+pub const Entry = author.Entry;
+pub const FunctionRef = author.FunctionRef;
+pub const TypeRef = author.TypeRef;
+pub const FunctionOptions = author.FunctionOptions;
+pub const TypeOptions = author.TypeOptions;
+pub const HandleOptions = author.HandleOptions;
+pub const ValueOptions = author.ValueOptions;
+pub const MaterializedOptions = author.MaterializedOptions;
+pub const EnumOptions = author.EnumOptions;
+pub const UnionOptions = author.UnionOptions;
+pub const CallbackOptions = author.CallbackOptions;
+pub const Buffer = author.Buffer;
+pub const CallbackContract = author.CallbackContract;
+pub const Package = author.Package;
+pub const Interface = author.Interface;
+pub const Discovery = author.Discovery;
+pub const Param = author.Param;
+pub const ParamContract = author.ParamContract;
+pub const Returns = author.Returns;
+pub const Lifetime = author.Lifetime;
+pub const Role = author.Role;
+pub const Defaults = author.Defaults;
+pub const Selector = author.Selector;
+pub const GoAdapter = author.GoAdapter;
+pub const SemanticHint = author.SemanticHint;
+pub const Injection = author.Injection;
 
-pub const Binding = declare.Binding;
-pub const Type = declare.Type;
-pub const Handle = declare.Handle;
-pub const Value = declare.Value;
-pub const Materialized = declare.Materialized;
-pub const Enum = declare.Enum;
-pub const TaggedUnion = declare.TaggedUnion;
-pub const Callback = declare.Callback;
-pub const CallbackParam = declare.CallbackParam;
-pub const Function = declare.Function;
-pub const FunctionOptions = declare.FunctionOptions;
-pub const Methods = declare.Methods;
-pub const Param = declare.Param;
-pub const Returns = declare.Returns;
-pub const HandleField = declare.HandleField;
-pub const ValueField = declare.ValueField;
-pub const Package = declare.Package;
-pub const Interface = declare.Interface;
-pub const Injection = declare.Injection;
-pub const GoAdapter = declare.GoAdapter;
-pub const Iterator = declare.Iterator;
-pub const Cancel = declare.Cancel;
-pub const Userdata = declare.Userdata;
-pub const SemanticHint = declare.SemanticHint;
-pub const Extension = declare.Extension;
-pub const extension = declare.extension;
+/// Private lowering target shared with the reflector. Not an authoring API.
+pub const normalized = @import("declare.zig");
 
-/// Preserve a binding declaration as comptime data for the reflector.
-pub fn define(comptime binding: Binding) Binding {
-    return binding;
+/// Resolve and validate authoring declarations before reflection and lowering.
+pub fn define(comptime binding: Binding) normalized.Binding {
+    return @import("normalize.zig").binding(binding);
 }
 
 test {
-    const testing = @import("std").testing;
-    testing.refAllDecls(declare);
-    testing.refAllDecls(dsl);
-}
-
-test "define preserves the declaration" {
-    const Lib = struct {
-        pub fn add(a: i32, b: i32) i32 {
-            return a + b;
-        }
-    };
-    const binding = define(.{ .root = Lib, .functions = &.{.{ .path = "root.add" }} });
-    try @import("std").testing.expectEqual(@as(usize, 1), binding.functions.len);
+    _ = author;
+    _ = @import("normalize.zig");
+    _ = features;
+    _ = dsl;
 }

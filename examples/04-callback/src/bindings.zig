@@ -1,97 +1,47 @@
 const zigo = @import("zigo");
 const library = @import("callback");
 
+const api = zigo.scope(library);
+
 pub const bindings = zigo.define(.{
     .root = library,
-    .types = &.{
-        .{
-            .handle = .{
-                .type = library.CallbackContext,
-                .fields = &.{
-                    .{ .path = "stats.runs", .name = "runCount", .set = true, .doc = "RunCount reports how many callbacks have run." },
-                },
-            },
-        },
-        .{ .handle = .{ .name = "FloatBuffer", .type = library.FloatBuffer } },
-        .{ .handle = .{ .name = "IntBuffer", .type = library.IntBuffer } },
-        // One Go type for every parameter of this signature, named after the
-        // Zig alias: the alias itself has no reflectable name.
-        .{ .callback = .{ .name = "Observer", .type = library.Observer, .on_callback_failure = .{ .result = 0 } } },
-        .{ .callback = .{ .name = "VoidObserver", .type = library.VoidObserver } },
-        // `bool` in a callback signature becomes Go `bool` on both backends.
-        .{ .callback = .{ .name = "Predicate", .type = library.Predicate } },
-        // The native signature puts the context first; `.userdata` says so and
-        // the generated shim reorders the arguments for the Go dispatcher.
-        .{ .callback = .{ .name = "Reducer", .type = library.Reducer, .userdata = .first } },
-        // The visitor's `u32` parameter is a codepoint, so the Go type is
-        // `func(rune)`. Hints are positional over the value parameters; the
-        // trailing userdata is not listed.
-        .{ .callback = .{ .name = "Visitor", .type = library.Visitor, .params = &.{.{ .semantic = .codepoint }} } },
-        // A `[*:0]const u8` string and a `[*]const u8` + `usize` pair are one
-        // Go `string` each: the pair's hint says the bytes are text.
-        .{ .callback = .{ .name = "Logger", .type = library.Logger, .params = &.{ .{}, .{ .semantic = .utf8_string } } } },
-        // The same pair marked `.opaque_bytes` is a `[]byte`.
-        .{ .callback = .{ .name = "ByteSink", .type = library.ByteSink, .params = &.{.{ .semantic = .opaque_bytes }} } },
-        // A handle pointer, an enum, and a `bool` side by side: the handle
-        // arrives as a borrowed `*CallbackContext` that is nil for null.
-        .{ .callback = .{ .name = "Inspector", .type = library.Inspector } },
-    },
-    .functions = &.{
-        .{ .path = "FloatBuffer.create" },
-        .{ .path = "FloatBuffer.push" },
-        .{ .path = "FloatBuffer.len" },
-        .{ .path = "FloatBuffer.deinit" },
-        .{ .path = "IntBuffer.create" },
-        .{ .path = "IntBuffer.push" },
-        .{ .path = "IntBuffer.len" },
-        .{ .path = "IntBuffer.deinit" },
-        .{
-            .path = "CallbackContext.create",
-            .params = &.{ .{ .name = "callback", .retention = .retained, .go_error = true }, .{ .name = "userdata" } },
-        },
-        .{ .path = "CallbackContext.run" },
-        .{ .path = "CallbackContext.deinit" },
-        .{ .path = "root.panicNow" },
-        .{ .path = "root.compressionBound" },
-        .{ .path = "root.incrementShared", .params = &.{ .{ .name = "counter" }, .{ .name = "delta" } } },
-        .{ .path = "root.readShared", .params = &.{.{ .name = "value" }} },
-        .{
-            .path = "root.apply",
-            .params = &.{ .{ .name = "value" }, .{ .name = "callback", .go_error = true }, .{ .name = "userdata" } },
-        },
-        .{
-            .path = "root.applyUntilCancelled",
-            .params = &.{ .{ .name = "limit" }, .{ .name = "callback", .go_error = true }, .{ .name = "userdata" }, .{ .name = "cancel" } },
-            .cancel = .{ .param = "cancel" },
-        },
-        .{
-            .path = "root.notify",
-            .params = &.{ .{ .name = "value" }, .{ .name = "callback" }, .{ .name = "userdata" } },
-        },
-        .{
-            .path = "root.filter",
-            .params = &.{ .{ .name = "value" }, .{ .name = "strict" }, .{ .name = "predicate" }, .{ .name = "userdata" } },
-        },
-        .{
-            .path = "root.reduce",
-            .params = &.{ .{ .name = "ctx" }, .{ .name = "values" }, .{ .name = "reducer", .userdata = .{ .param = "ctx" } } },
-        },
-        .{
-            .path = "root.logMessage",
-            .params = &.{ .{ .name = "message" }, .{ .name = "logger" }, .{ .name = "userdata" } },
-        },
-        .{
-            .path = "root.emitChunks",
-            .params = &.{ .{ .name = "data" }, .{ .name = "chunkLen" }, .{ .name = "sink" }, .{ .name = "userdata" } },
-        },
-        .{
-            .path = "root.inspect",
-            .params = &.{ .{ .name = "context" }, .{ .name = "level" }, .{ .name = "strict" }, .{ .name = "inspector" }, .{ .name = "userdata" } },
-        },
-        .{
-            .path = "root.visitCodepoints",
-            .params = &.{ .{ .name = "text" }, .{ .name = "visitor" }, .{ .name = "userdata" } },
-            .returns = .{ .semantic = .codepoint },
-        },
+    .declarations = &.{
+        api.handle("CallbackContext", .{ .fields = &.{
+            .{ .path = "stats.runs", .name = "runCount", .set = true, .doc = "RunCount reports how many callbacks have run." },
+        } }),
+        api.handle("FloatBuffer", .{}),
+        api.handle("IntBuffer", .{}),
+        api.callback("Observer", .{ .on_callback_failure = .{ .result = 0 } }),
+        api.callback("VoidObserver", .{}),
+        api.callback("Predicate", .{}),
+        api.callback("Reducer", .{ .userdata = .first }),
+        api.callback("Visitor", .{ .params = &.{.{ .semantic = .codepoint }} }),
+        api.callback("Logger", .{ .params = &.{ .{}, .{ .semantic = .utf8_string } } }),
+        api.callback("ByteSink", .{ .params = &.{.{ .semantic = .opaque_bytes }} }),
+        api.callback("Inspector", .{}),
+        api.in("FloatBuffer").function("create", .{}),
+        api.in("FloatBuffer").function("push", .{}),
+        api.in("FloatBuffer").function("len", .{}),
+        api.in("FloatBuffer").function("deinit", .{}),
+        api.in("IntBuffer").function("create", .{}),
+        api.in("IntBuffer").function("push", .{}),
+        api.in("IntBuffer").function("len", .{}),
+        api.in("IntBuffer").function("deinit", .{}),
+        api.in("CallbackContext").function("create", .{ .params = &.{ .{ .index = 0, .go_name = "callback", .contract = .{ .callback = .{ .retention = .retained, .go_error = true } } }, .{ .index = 1, .go_name = "userdata" } } }),
+        api.in("CallbackContext").function("run", .{}),
+        api.in("CallbackContext").function("deinit", .{}),
+        api.function("panicNow", .{}),
+        api.function("compressionBound", .{}),
+        api.function("incrementShared", .{ .params = &.{ .{ .index = 0, .go_name = "counter" }, .{ .index = 1, .go_name = "delta" } } }),
+        api.function("readShared", .{ .params = &.{.{ .index = 0, .go_name = "value" }} }),
+        api.function("apply", .{ .params = &.{ .{ .index = 0, .go_name = "value" }, .{ .index = 1, .go_name = "callback", .contract = .{ .callback = .{ .go_error = true } } }, .{ .index = 2, .go_name = "userdata" } } }),
+        api.function("applyUntilCancelled", .{ .params = &.{ .{ .index = 0, .go_name = "limit" }, .{ .index = 1, .go_name = "callback", .contract = .{ .callback = .{ .go_error = true } } }, .{ .index = 2, .go_name = "userdata" }, .{ .index = 3, .go_name = "cancel", .contract = .{ .cancel = .{} } } } }),
+        api.function("notify", .{ .params = &.{ .{ .index = 0, .go_name = "value" }, .{ .index = 1, .go_name = "callback" }, .{ .index = 2, .go_name = "userdata" } } }),
+        api.function("filter", .{ .params = &.{ .{ .index = 0, .go_name = "value" }, .{ .index = 1, .go_name = "strict" }, .{ .index = 2, .go_name = "predicate" }, .{ .index = 3, .go_name = "userdata" } } }),
+        api.function("reduce", .{ .params = &.{ .{ .index = 0, .go_name = "ctx" }, .{ .index = 1, .go_name = "values" }, .{ .index = 2, .go_name = "reducer", .contract = .{ .callback = .{ .userdata = 0 } } } } }),
+        api.function("logMessage", .{ .params = &.{ .{ .index = 0, .go_name = "message" }, .{ .index = 1, .go_name = "logger" }, .{ .index = 2, .go_name = "userdata" } } }),
+        api.function("emitChunks", .{ .params = &.{ .{ .index = 0, .go_name = "data" }, .{ .index = 1, .go_name = "chunkLen" }, .{ .index = 2, .go_name = "sink" }, .{ .index = 3, .go_name = "userdata" } } }),
+        api.function("inspect", .{ .params = &.{ .{ .index = 0, .go_name = "context" }, .{ .index = 1, .go_name = "level" }, .{ .index = 2, .go_name = "strict" }, .{ .index = 3, .go_name = "inspector" }, .{ .index = 4, .go_name = "userdata" } } }),
+        api.function("visitCodepoints", .{ .returns = .{ .semantic = .codepoint }, .params = &.{ .{ .index = 0, .go_name = "text" }, .{ .index = 1, .go_name = "visitor" }, .{ .index = 2, .go_name = "userdata" } } }),
     },
 });

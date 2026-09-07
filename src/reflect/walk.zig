@@ -1,7 +1,7 @@
 const std = @import("std");
 const naming = @import("naming");
 const semantic = @import("semantic");
-const zigo = @import("zigo");
+const zigo = @import("zigo").normalized;
 const packages = @import("packages.zig");
 
 /// The declaration vocabulary and the IR vocabulary are separate enums with
@@ -786,14 +786,14 @@ fn appendFunction(
     // The receiver is the first parameter Go would see: an injected
     // `std.mem.Allocator` or `std.Io` ahead of the handle never reaches the
     // C signature, so it does not stop the function from being a method.
-    const inferred_receiver_index = comptime receiverIndex(info, declaration);
+    const inferred_receiver_index = comptime if (metadata.force_free) null else receiverIndex(info, declaration);
     // A registered enum owns a method when the binding reached the
     // declaration through it -- `.path = "Key.codepoint"` or an explicit
     // `.receiver = "Key"` -- and the first parameter Go would see is that
     // enum by value. Inference alone never promotes a function that merely
     // takes an enum, so a root-level `colorNameDefault(name: ColorName)`
     // stays the package-level function it has always been.
-    const enum_receiver = comptime enumReceiverName(declaration, info, explicit_receiver orelse discovered_owner);
+    const enum_receiver = comptime if (metadata.force_free) null else enumReceiverName(declaration, info, explicit_receiver orelse discovered_owner);
     if (comptime enum_receiver == null and explicit_receiver != null and enumEntryNamed(declaration, explicit_receiver.?) != null)
         return receiverIssue(allocator, "function `{s}` declares `.receiver = \"{s}\"` but its first non-injected parameter is not `{s}` by value", .{ source_name, explicit_receiver.?, explicit_receiver.? });
     const receiver_index = comptime if (enum_receiver != null or explicit_receiver != null) firstNonInjectedIndex(info) else inferred_receiver_index;
@@ -4990,4 +4990,50 @@ test "plugin options preserve explicit null through reflection and semantic pars
         try std.testing.expectEqual(@as(?u32, null), options.limit);
         try std.testing.expectEqual(@as(?u32, null), options.required);
     }
+}
+
+test "authoring tree preserves root method paths and package ownership" {
+    const author = @import("zigo");
+    const Lib = struct {
+        pub const Item = opaque {};
+        pub fn inspect(_: *Item, _: u32) u32 {
+            return 0;
+        }
+    };
+    const api = author.scope(Lib);
+    const tree = author.define(.{ .root = Lib, .declarations = &.{
+        author.package(.{ .path = "items", .declarations = &.{
+            api.handle("Item", .{}).named("Record").with(.{ .members = &.{
+                api.function("inspect", .{ .name = "read", .params = &.{.{ .index = 1, .go_name = "index" }} }),
+            } }),
+        } }),
+    } });
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), tree, "fixture", "zg");
+    try std.testing.expectEqualStrings("Record", document.functions[0].receiver.?);
+    try std.testing.expectEqualStrings("inspect", document.functions[0].zig_path.?);
+    try std.testing.expectEqualStrings("items", document.functions[0].package.?);
+    try std.testing.expectEqualStrings("index", document.functions[0].params[0].name);
+}
+
+test "explicit free role keeps handle parameter visible" {
+    const author = @import("zigo");
+    const Lib = struct {
+        pub const Item = opaque {};
+        pub fn inspect(_: *Item) u32 {
+            return 0;
+        }
+    };
+    const api = author.scope(Lib);
+    const tree = author.define(.{ .root = Lib, .declarations = &.{
+        api.handle("Item", .{}),
+        api.function("inspect", .{ .role = .free, .params = &.{.{ .index = 0, .go_name = "item" }} }),
+    } });
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), tree, "fixture", "zg");
+    try std.testing.expect(document.functions[0].receiver == null);
+    try std.testing.expectEqualStrings("item", document.functions[0].params[0].name);
+    try std.testing.expectEqual(@as(usize, 1), document.functions[0].params.len);
 }

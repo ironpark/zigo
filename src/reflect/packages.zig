@@ -2,7 +2,7 @@
 const std = @import("std");
 const naming = @import("naming");
 const semantic = @import("semantic");
-const zigo = @import("zigo");
+const zigo = @import("zigo").normalized;
 const Pairing = @import("pairing.zig").Pairing;
 
 pub fn reflectPackages(
@@ -312,7 +312,10 @@ fn namespaceMatches(namespace: []const u8, prefix: []const u8) bool {
 }
 
 fn functionMatchesSelector(function: semantic.SemanticFn, selector: []const u8) bool {
-    if (function.zig_path) |path| if (std.mem.eql(u8, path, selector)) return true;
+    if (function.zig_path) |path| {
+        const source = if (std.mem.startsWith(u8, selector, "root.")) selector[5..] else selector;
+        if (std.mem.eql(u8, path, selector) or std.mem.eql(u8, path, source)) return true;
+    }
     if (function.receiver orelse function.namespace) |owner| {
         if (selector.len == owner.len + function.name.len + 1 and std.mem.startsWith(u8, selector, owner) and selector[owner.len] == '.' and std.mem.endsWith(u8, selector, function.name)) return true;
         if (selector.len == owner.len + function.name.len + 6 and std.mem.startsWith(u8, selector, "root.") and std.mem.endsWith(u8, selector, function.name)) return true;
