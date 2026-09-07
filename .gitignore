@@ -14,6 +14,8 @@ zig-out/
 *.dylib
 *.dll
 *.exe
+__pycache__/
+*.py[cod]
 zigo_link_inputs_gen.go
 coverage/
 
