@@ -1121,7 +1121,7 @@ test "materialized decoders and output reuse are emitted for both raw backends" 
     };
     const fields = [_]semantic.TypeField{.{ .name = "value", .type = .{ .int = .{ .bits = 32, .signed = true } } }};
     const types = [_]semantic.TypeDecl{
-        .{ .fields = &fields, .kind = .materialized, .materialized_version = 1, .name = "Node", .zig_path = "Node" },
+        .{ .doc = "Node captures a materialized result.", .fields = &fields, .kind = .materialized, .materialized_version = 1, .name = "Node", .zig_path = "Node" },
         .{ .fields = &fields, .kind = .materialized, .materialized_version = 1, .name = "Unused", .zig_path = "Unused" },
     };
     const document: semantic.Semantic = .{
@@ -1145,6 +1145,7 @@ test "materialized decoders and output reuse are emitted for both raw backends" 
         try std.testing.expect(std.mem.indexOf(u8, public_text, "defer raw.Release(result)") != null);
         const structs = try renderForTest(public.renderPublicStructsFile, program);
         defer std.testing.allocator.free(structs);
+        try std.testing.expect(std.mem.indexOf(u8, structs, "// Node captures a materialized result.") != null);
         try std.testing.expect(std.mem.indexOf(u8, structs, "type Node struct") != null);
         try std.testing.expect(std.mem.indexOf(u8, structs, "type Unused struct") == null);
         try std.testing.expect(std.mem.indexOf(u8, structs, "func zigoDecodeNodeSliceInto") != null);

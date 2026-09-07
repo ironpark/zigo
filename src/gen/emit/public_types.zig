@@ -72,7 +72,11 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
     for (program.types) |declaration| {
         if (declaration.kind != .value_struct or declaration.layout != .@"packed") continue;
         if (!public_writers.typeBelongsToPackage(program, declaration.name, options.active_package)) continue;
-        try writer.print("// {s} mirrors the Zig packed struct of the same name.\ntype {s} struct {{\n", .{ declaration.name, declaration.name });
+        if (declaration.doc) |doc|
+            try docs.writeGoDoc(writer, declaration.name, declaration.name, doc)
+        else
+            try writer.print("// {s} mirrors the Zig packed struct of the same name.\n", .{declaration.name});
+        try writer.print("type {s} struct {{\n", .{declaration.name});
         for (declaration.fields) |field| {
             const member = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(member);
@@ -137,7 +141,11 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
         if (!public_writers.typeBelongsToPackage(program, record.name, options.active_package)) continue;
         // An adapted struct is the user's own Go type; nothing to mirror.
         if (record.owner.go_adapter != null) continue;
-        try writer.print("// {s} mirrors the Zig `extern struct` of the same name.\ntype {s} struct {{\n", .{ record.name, record.name });
+        if (record.owner.doc) |doc|
+            try docs.writeGoDoc(writer, record.name, record.name, doc)
+        else
+            try writer.print("// {s} mirrors the Zig `extern struct` of the same name.\n", .{record.name});
+        try writer.print("type {s} struct {{\n", .{record.name});
         for (record.fields) |field| {
             const member = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(member);
@@ -352,7 +360,11 @@ fn renderPublicTaggedUnionValues(allocator: std.mem.Allocator, writer: *std.Io.W
         if (!emit.packageMatches(declaration.package, options.active_package)) continue;
         if (!common.isValueOnlyTaggedUnion(program, declaration.name)) continue;
         const tag_type = declaration.tag_type.?.@"enum".ref;
-        try writer.print("// {0s} is a tagged-union value passed to native code by copy.\ntype {0s} struct {{\n\ttag {1s}\n", .{ declaration.name, tag_type });
+        if (declaration.doc) |doc|
+            try docs.writeGoDoc(writer, declaration.name, declaration.name, doc)
+        else
+            try writer.print("// {s} is a tagged-union value passed to native code by copy.\n", .{declaration.name});
+        try writer.print("type {0s} struct {{\n\ttag {1s}\n", .{ declaration.name, tag_type });
         for (program.liveFields(declaration.name)) |field| {
             const payload = field.type.?;
             if (payload == .void) continue;
@@ -854,7 +866,10 @@ pub fn renderGoEnums(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
             try renderGoEnumAdapter(writer, program, options, declaration, adapter);
             continue;
         }
-        if (declaration.open == true) {
+        if (declaration.doc) |doc| {
+            try docs.writeGoDoc(writer, declaration.name, declaration.name, doc);
+            try writer.print("type {s} ", .{declaration.name});
+        } else if (declaration.open == true) {
             try writer.print("// {s} represents the corresponding Zig open enum; values outside the named constants are valid.\ntype {s} ", .{ declaration.name, declaration.name });
         } else {
             try writer.print("// {s} represents the corresponding Zig enum.\ntype {s} ", .{ declaration.name, declaration.name });
@@ -979,7 +994,14 @@ pub fn renderGoCallbackTypes(writer: *std.Io.Writer, program: abi.Program, optio
             if (parameter.type != .callback) continue;
             if (!function.callbackType(parameter_index).?.first_use) continue;
             const callback_name = function.callbackType(parameter_index).?.name;
-            try writer.print("// {s} is the Go callback signature accepted by the generated binding.\n", .{callback_name});
+            if (semantic.typeDecl(program.types, callback_name)) |declaration| {
+                if (declaration.doc) |doc|
+                    try docs.writeGoDoc(writer, callback_name, callback_name, doc)
+                else
+                    try writer.print("// {s} is the Go callback signature accepted by the generated binding.\n", .{callback_name});
+            } else {
+                try writer.print("// {s} is the Go callback signature accepted by the generated binding.\n", .{callback_name});
+            }
             try docs.writeCallbackContractDoc(writer, parameter, null);
             try writer.print("type {s} ", .{callback_name});
             try public_writers.writePublicCallbackType(scope, writer, program, parameter.type.callback);

@@ -75,7 +75,7 @@ pub const Callback = struct {
     /// The hint on the callback's result.
     return_semantic: ?SemanticHint = null,
     /// The declared callback type this signature was registered under, when
-    /// the binding registered one (`.repr = .callback`). It names the Go
+    /// the binding registered one (`.callback`). It names the Go
     /// type; the signature alone still decides the ABI.
     ref: ?[]const u8 = null,
     @"return": *TypeNode,
@@ -399,7 +399,7 @@ pub const ParamSourceLocation = struct {
 };
 
 /// One scalar field selected from a struct parameter by
-/// `param_meta.<name>.flatten`. The original parameter type remains on
+/// `Param.flatten`. The original parameter type remains on
 /// `Parameter.type`; this list describes the Go/C arguments that replace it.
 pub const FlattenedField = struct {
     /// The Zig field is `std.atomic.Value(T)` while the public/ABI type is T.
@@ -412,7 +412,7 @@ pub const Parameter = struct {
     /// The Zig parameter is `std.atomic.Value(T)` while Go and C pass T.
     atomic: ?bool = null,
     /// Bytes of shim-side staging buffer behind an `*std.Io.Writer` or
-    /// `*std.Io.Reader` parameter, from `param_meta.<name>.buffer`. Only the
+    /// `*std.Io.Reader` parameter, from `Param.buffer`. Only the
     /// buffer size changes; the C signature does not, so this is an ABI
     /// compatible knob rather than part of the shape.
     buffer: ?u32 = null,
@@ -425,13 +425,13 @@ pub const Parameter = struct {
     /// this says the binding asked for it, so a mismatch can be reported
     /// against the parameter the author meant rather than passed over.
     cancel: ?bool = null,
-    /// Opt-in from `param_meta.<name>.go_error`: the Go callback type behind
+    /// Opt-in from `Param.go_error`: the Go callback type behind
     /// this parameter returns `(i32, error)` rather than `i32`, and an error
     /// it returns is stored and handed back by the public wrapper. Optional
     /// rather than a plain `bool` so a binding that never asks for it keeps
     /// the field out of `semantic.json` entirely.
     go_error: ?bool = null,
-    /// `param_meta.<name>.go`: the public parameter is spelled as the user's
+    /// `Param.go`: the public parameter is spelled as the user's
     /// Go type and converted with `to_raw` before the raw call. Scalars only.
     go_adapter: ?GoAdapter = null,
     /// Parameter-level override for the result a failed callback returns.
@@ -443,7 +443,7 @@ pub const Parameter = struct {
     /// Which native thread may invoke this callback. Documentation only;
     /// zigo deliberately does not add thread pinning for this contract.
     thread: ?CallbackThread = null,
-    /// `param_meta.<name>.userdata`: the parameter of the same function that
+    /// `Param.userdata`: the parameter of the same function that
     /// carries this callback's Go token. Absent means the one right after
     /// the callback.
     userdata: ?[]const u8 = null,
@@ -565,7 +565,8 @@ pub const GoAdapter = struct {
 pub const SemanticFn = struct {
     /// Set on the two halves of a boxed constructor pair.
     boxed: ?Boxed = null,
-    /// Set only when function metadata explicitly says `.returns = .borrowed`.
+    /// Set only when function metadata explicitly says
+    /// `.returns.ownership = .borrowed`.
     /// `ownership` defaults to borrowed for historical documents, so this
     /// separate bit distinguishes a deliberate borrowed-handle contract from
     /// metadata that made no lifetime choice.
@@ -624,7 +625,7 @@ pub const SemanticFn = struct {
     /// `fn free(gpa: Allocator, self: *T) void`. The shim passes `self` at
     /// this position; C and Go never see the difference.
     receiver_at: ?usize = null,
-    /// Name of the function that frees a `.returns = .caller` slice result.
+    /// Name of the function that frees a `.returns.ownership = .caller` slice result.
     /// Generated Go copies the payload and then calls this symbol, so the
     /// public API never hands native memory to the caller.
     release: ?[]const u8 = null,
@@ -712,6 +713,8 @@ pub const TypeDecl = struct {
     access: ?Access = null,
     /// Integer storage used by a packed struct. Absent for every other type.
     backing_type: ?TypeNode = null,
+    /// Go doc override supplied by an explicit type registration.
+    doc: ?[]const u8 = null,
     exhaustive: bool = true,
     fields: []const TypeField = &.{},
     /// Present only when the binding registered the value struct with `.go`.
@@ -723,7 +726,7 @@ pub const TypeDecl = struct {
     name: []const u8,
     /// Default failure result for callbacks registered under this type name.
     on_callback_failure: ?CallbackFailure = null,
-    /// The packed struct was explicitly registered with `.repr = .value`, not
+    /// The packed struct was explicitly registered with `.value`, not
     /// merely discovered as a tagged-union payload.
     registered_value: ?bool = null,
     /// Union variants deliberately excluded from the generated boundary.

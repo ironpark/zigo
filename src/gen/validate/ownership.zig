@@ -15,7 +15,7 @@ pub fn borrowedOpaqueReturn(document: semantic.Semantic, function: semantic.Sema
     return payload.opaque_ptr.ref;
 }
 
-/// Whether a `.returns = .caller` result can become an owned Go handle. Only a
+/// Whether a `.returns.ownership = .caller` result can become an owned Go handle. Only a
 /// pointer to a type the binding constructs has a `newX` helper to wrap it and a
 /// destructor for the cleanup to call; anything else would emit a raw pointer
 /// against a typed signature, which does not compile. The rule is the one
@@ -24,7 +24,7 @@ pub fn ownedReturnIsWrappable(document: semantic.Semantic, function: semantic.Se
     return lower.ownedOpaqueReturn(document.constructors, function) != null;
 }
 
-/// The count a `.written = .return` parameter reads back from. An error union
+/// The count a `.written = .result` parameter reads back from. An error union
 /// reports it through its payload; the error path writes zero instead.
 pub fn returnsCount(node: semantic.TypeNode) bool {
     const payload = node.errorPayload();
@@ -46,7 +46,7 @@ pub fn releaseTargetIssue(document: semantic.Semantic, function: semantic.Semant
         .code = "ZIGO016",
         .message = "caller-owned slice return has no matching release function",
         .site = site.functionSite(function),
-        .hint = "add `.release = \"<Type>.<fn>\"` naming an exposed `fn(slice) void` that takes exactly the returned slice type",
+        .hint = "add `.returns.release = \"<Type>.<fn>\"` naming an exposed `fn(slice) void` that takes exactly the returned slice type",
     };
     const target = lower.releaseTarget(document.functions, function.release orelse return missing) orelse return missing;
     const parameter = target.parameter;

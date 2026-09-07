@@ -72,14 +72,14 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic) 
             .code = "ZIGO033",
             .message = "borrowed return has no receiver to own its lifetime",
             .site = site.functionSite(function),
-            .hint = "use `.returns = .borrowed` only on a method, or use `.returns = .caller` with a constructor and destructor",
+            .hint = "use `.returns.ownership = .borrowed` only on a method, or use `.returns.ownership = .caller` with a constructor and destructor",
         };
         if (function.returnsBorrowedHandle() and ownership.borrowedOpaqueReturn(document, function) == null) return .{
             .severity = .@"error",
             .code = "ZIGO034",
             .message = "borrowed return is not a registered opaque handle",
             .site = site.functionSite(function),
-            .hint = "return `*T`, `?*T`, `!*T`, or `!?*T` where T is a registered opaque type, or drop `.returns = .borrowed`",
+            .hint = "return `*T`, `?*T`, `!*T`, or `!?*T` where T is a registered handle type, or drop `.returns.ownership = .borrowed`",
         };
         if (!function.returnsBorrowedHandle() and function.ownership == .borrowed and
             ownership.borrowedOpaqueReturn(document, function) != null) return .{
@@ -87,7 +87,7 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic) 
             .code = "ZIGO035",
             .message = "opaque handle return has no explicit ownership",
             .site = site.functionSite(function),
-            .hint = "add `.returns = .borrowed` for a receiver-owned view, or pair `.returns = .caller` with its constructor and destructor",
+            .hint = "add `.returns.ownership = .borrowed` for a receiver-owned view, or pair `.returns.ownership = .caller` with its constructor and destructor",
         };
         for (function.params) |parameter| {
             if (parameter.injected) |injection| {
@@ -150,7 +150,7 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic) 
                     .site = site.functionSite(function),
                     .hint = try std.fmt.allocPrint(
                         allocator,
-                        "variant `{s}` has an unsupported value payload; omit it with `.omit_variants` or use void, scalar, enum, packed struct, or extern struct payloads",
+                        "variant `{s}` has an unsupported value payload; omit it with `.omit` or use void, scalar, enum, packed struct, or extern struct payloads",
                         .{variant},
                     ),
                 };
@@ -231,7 +231,7 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic) 
                 .site = site.functionSite(function),
                 .hint = try std.fmt.allocPrint(
                     allocator,
-                    "variant `{s}` has an unsupported value payload; omit it with `.omit_variants` or use void, scalar, enum, packed struct, or extern struct payloads",
+                    "variant `{s}` has an unsupported value payload; omit it with `.omit` or use void, scalar, enum, packed struct, or extern struct payloads",
                     .{variant},
                 ),
             };
@@ -287,7 +287,7 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic) 
             .code = "ZIGO015",
             .message = "caller-owned return has no constructed handle to hand over",
             .site = site.functionSite(function),
-            .hint = "return a pointer to an opaque type that has both a constructor and a destructor, or drop `.returns = .caller`",
+            .hint = "return a pointer to a registered handle type that has both a constructor and a destructor, or drop `.returns.ownership = .caller`",
         };
         for (function.params) |parameter| {
             if (parameter.written == null) continue;
@@ -301,7 +301,7 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic) 
             if (parameter.writtenHint() == .@"return" and !ownership.returnsCount(function.@"return")) return .{
                 .severity = .@"error",
                 .code = "ZIGO017",
-                .message = "`.written = .return` needs a `usize` result to report the count",
+                .message = "`.written = .result` needs a `usize` result to report the count",
                 .site = site.functionSite(function),
                 .hint = "return `usize` or `!usize` from the function, or use the default `.written = .all`",
             };
@@ -311,7 +311,7 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic) 
             .code = "ZIGO016",
             .message = "release function declared on a return that zigo does not free",
             .site = site.functionSite(function),
-            .hint = "use `.release` only together with `.returns = .caller` on a slice return",
+            .hint = "use `.returns.release` only together with `.returns.ownership = .caller` on a slice return",
         };
     }
     return null;
@@ -468,7 +468,7 @@ fn codepointIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !
             .code = "ZIGO053",
             .message = try std.fmt.allocPrint(allocator, "callback `{s}` carries a semantic hint on a position that is not a u32 scalar", .{parameter.name}),
             .site = site.functionSite(function),
-            .hint = "a callback hint is `.codepoint` on a `u32` parameter or result of a registered `.repr = .callback` entry; slices and other widths take no hint",
+            .hint = "a callback hint is `.codepoint` on a `u32` parameter or result of a registered `.callback` entry; slices and other widths take no hint",
         };
     }
     if (function.return_semantic == .codepoint) {
@@ -514,7 +514,7 @@ fn valueReceiverIssue(
     }
     const offender: ?[]const u8 = blk: {
         if (function.childOfReceiver()) break :blk "`.child_of_receiver`";
-        if (function.returnsBorrowedHandle()) break :blk "`.returns = .borrowed`";
+        if (function.returnsBorrowedHandle()) break :blk "`.returns.ownership = .borrowed`";
         if (function.iterator != null) break :blk "`.iterator`";
         if (function.boxed != null) break :blk "a boxed constructor";
         // `.destroys` already needs the destroyed type as its receiver, so

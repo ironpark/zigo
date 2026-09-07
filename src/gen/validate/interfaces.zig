@@ -17,7 +17,7 @@ pub fn interfaceIssue(allocator: std.mem.Allocator, document: semantic.Semantic)
         if (interface.types.len == 0) return issue(interface, "interface lists no types", "list at least one registered opaque type in `.types`");
         if (interface.methods.len == 0) return issue(interface, "interface lists no methods", "list at least one Zig method name in `.methods`");
         for (interface.types, 0..) |type_name, type_index| {
-            if (!types.hasTypeKind(document, type_name, .@"opaque")) return try issueFmt(allocator, interface, "interface lists `{s}`, which is not a registered opaque handle", .{type_name}, "list only types registered with `.repr = .opaque`");
+            if (!types.hasTypeKind(document, type_name, .@"opaque")) return try issueFmt(allocator, interface, "interface lists `{s}`, which is not a registered handle", .{type_name}, "list only types registered with `.handle`");
             for (interface.types[0..type_index]) |previous| if (std.mem.eql(u8, previous, type_name))
                 return try issueFmt(allocator, interface, "interface lists `{s}` twice", .{type_name}, "list each implementing type once");
         }

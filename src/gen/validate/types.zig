@@ -37,7 +37,7 @@ pub fn typeIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                     .code = "ZIGO039",
                     .message = "invalid omitted tagged-union variant",
                     .site = .{ .path = "semantic.json", .declaration = declaration.name },
-                    .hint = try std.fmt.allocPrint(allocator, "name `{s}` exactly once in `.omit_variants` and ensure it is a variant of the registered union", .{name}),
+                    .hint = try std.fmt.allocPrint(allocator, "name `{s}` exactly once in `.omit` and ensure it is a variant of the registered union", .{name}),
                 };
             }
         }
@@ -75,7 +75,7 @@ pub fn typeIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 else
                     "`.go` adapter names are not Go identifiers",
                 .site = .{ .path = "semantic.json", .declaration = declaration.name },
-                .hint = "`.go` belongs on `.repr = .value` entries for `extern struct` and on `.repr = .enumeration` entries whose enum is not a union tag; `.type` must be non-empty and `.to_raw`/`.from_raw` must name functions in the public package",
+                .hint = "`.go` belongs on `.value` entries for `extern struct` and on `.enumeration` entries whose enum is not a union tag; `.type` must be non-empty and `.to_raw`/`.from_raw` must name functions in the public package",
             };
         }
         if (declaration.text == true and declaration.kind != .@"enum") return .{
@@ -83,7 +83,7 @@ pub fn typeIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
             .code = "ZIGO051",
             .message = "text encoding opt-in applied to a type that is not an enum",
             .site = .{ .path = "semantic.json", .declaration = declaration.name },
-            .hint = "`.text = true` belongs on `.repr = .enumeration` entries only",
+            .hint = "`.text = true` belongs on `.enumeration` entries only",
         };
         if (declaration.kind == .@"enum" and !declaration.exhaustive and declaration.open != true) return .{
             .severity = .@"error",
@@ -117,7 +117,7 @@ pub fn typeIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?di
                 .code = "ZIGO053",
                 .message = try std.fmt.allocPrint(allocator, "`.semantic` on field `{s}` of `{s}`, which is not a u32 member of an extern struct or a materialized byte slice", .{ field.name, declaration.name }),
                 .site = .{ .path = "semantic.json", .declaration = declaration.name },
-                .hint = "a field hint is `.codepoint` on a `u32` member of a `.repr = .value` extern struct, or `.opaque_bytes` on a `[]const u8` member of a `.repr = .materialized` struct; other fields take no hint",
+                .hint = "a field hint is `.codepoint` on a `u32` member of a `.value` extern struct, or `.opaque_bytes` on a `[]const u8` member of a `.materialized` struct; other fields take no hint",
             };
         }
         if (declaration.kind == .value_struct and declaration.layout == .@"extern") {
@@ -210,7 +210,7 @@ pub fn abiTypeIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !
                     .code = "ZIGO018",
                     .message = try std.fmt.allocPrint(allocator, "cannot promote integer width `{s}` in a borrowed slice return", .{spelling}),
                     .site = site.functionSiteFor(function, try site.functionDeclarationAlloc(allocator, function)),
-                    .hint = "mark the slice return `.returns = .caller` and name its `.release`; borrowed narrow slices have no stable widened storage",
+                    .hint = "mark the slice return `.returns.ownership = .caller` and name its `.returns.release`; borrowed narrow slices have no stable widened storage",
                 };
             }
         }

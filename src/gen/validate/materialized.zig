@@ -15,7 +15,7 @@ pub fn materializedReleaseIssue(_: std.mem.Allocator, document: semantic.Semanti
         .code = "ZIGO048",
         .message = "materialized result has no caller-owned buffer release",
         .site = site.functionSite(function),
-        .hint = "set `.returns = .caller` and `.release` to an exposed function that frees `[]u8` with the registered allocator",
+        .hint = "set `.returns.ownership = .caller` and `.returns.release` to an exposed function that frees `[]u8` with the registered allocator",
     };
     return null;
 }
@@ -102,7 +102,7 @@ fn materializedNodeProblemAlloc(
         .value_struct => |value| {
             const declaration = semantic.typeDecl(document.types, value.ref);
             if (declaration != null and declaration.?.kind == .value_struct and declaration.?.layout != null) return null;
-            return .{ .path = try allocator.dupe(u8, path), .reason = "register a plain struct with `.repr = .materialized`; only `extern struct` and packed values are stored inline" };
+            return .{ .path = try allocator.dupe(u8, path), .reason = "register a plain struct with `.materialized`; only `extern struct` and packed values are stored inline" };
         },
         // Presence rides in the field's own storage, so only leaves that fit
         // there can be optional: a scalar or inline struct beside a presence
@@ -130,11 +130,11 @@ fn materializedNodeProblemAlloc(
             };
             const declaration = semantic.typeDecl(document.types, value.ref) orelse return .{
                 .path = try allocator.dupe(u8, path),
-                .reason = "register the referenced struct with `.repr = .materialized`",
+                .reason = "register the referenced struct with `.materialized`",
             };
             if (declaration.kind != .materialized or depth == ancestors.len) return .{
                 .path = try allocator.dupe(u8, path),
-                .reason = "register the referenced struct with `.repr = .materialized`",
+                .reason = "register the referenced struct with `.materialized`",
             };
             ancestors[depth] = value.ref;
             for (declaration.fields) |field| {

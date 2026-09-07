@@ -620,7 +620,7 @@ pub fn hasRetainedCallback(function: semantic.SemanticFn) bool {
 }
 
 /// True for a callback whose Go type returns an `error` alongside its value,
-/// from `param_meta.<name>.go_error`.
+/// from `Param.go_error`.
 pub fn isErrorCallback(parameter: semantic.Parameter) bool {
     return parameter.type == .callback and parameter.goError();
 }
@@ -1585,7 +1585,7 @@ test "narrow integer slice elements cross at their promoted width" {
 
 /// The callback each userdata parameter belongs to. A callback that carries
 /// userdata is followed immediately by its token unless the binding named
-/// the token parameter with `param_meta.<callback>.userdata`.
+/// the token parameter with `Param.userdata`.
 fn pairUserdataParams(allocator: std.mem.Allocator, function: semantic.SemanticFn) ![]const ?usize {
     const result = try allocator.alloc(?usize, function.params.len);
     @memset(result, null);

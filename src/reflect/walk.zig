@@ -47,6 +47,7 @@ pub fn reflect(
         switch (entry) {
             .handle => |handle| {
                 try types.append(allocator, .{
+                    .doc = handle.doc,
                     .kind = .@"opaque",
                     .name = type_name,
                     .zig_path = try registeredZigPath(allocator, declaration, T, type_name),
@@ -56,11 +57,11 @@ pub fn reflect(
                 }
             },
             .value => |value| switch (info) {
-                .@"struct" => try appendValueStruct(allocator, &types, declaration, T, type_name, try registeredZigPath(allocator, declaration, T, type_name), true, comptime goAdapter(value.go), value.fields),
+                .@"struct" => try appendValueStruct(allocator, &types, declaration, T, type_name, value.doc, try registeredZigPath(allocator, declaration, T, type_name), true, comptime goAdapter(value.go), value.fields),
                 else => @compileError("zigo `.value` type entries must name a struct"),
             },
             .materialized => |materialized| switch (info) {
-                .@"struct" => try appendMaterializedStruct(allocator, &types, declaration, T, type_name, try registeredZigPath(allocator, declaration, T, type_name), materialized.fields),
+                .@"struct" => try appendMaterializedStruct(allocator, &types, declaration, T, type_name, materialized.doc, try registeredZigPath(allocator, declaration, T, type_name), materialized.fields),
                 else => @compileError("zigo `.materialized` type entries must name a struct"),
             },
             // An enum registered here is not walked for declarations --
@@ -69,13 +70,13 @@ pub fn reflect(
             // built by a comptime function has a `@typeName` that ends in
             // the expression that built it, and no name of its own.
             .enumeration => |enumeration| switch (info) {
-                .@"enum" => try appendEnum(allocator, &types, declaration, T, type_name, !enumeration.exhaustive, enumeration.text, comptime goAdapter(enumeration.go), try registeredZigPath(allocator, declaration, T, type_name)),
+                .@"enum" => try appendEnum(allocator, &types, declaration, T, type_name, enumeration.doc, !enumeration.exhaustive, enumeration.text, comptime goAdapter(enumeration.go), try registeredZigPath(allocator, declaration, T, type_name)),
                 else => @compileError("zigo `.enumeration` type entries must name an enum"),
             },
             .tagged_union => |tagged| switch (info) {
                 .@"union" => |union_info| {
                     if (union_info.tag_type == null) @compileError("zigo `.tagged_union` type entries must name a tagged union");
-                    try appendTaggedUnion(allocator, &types, declaration, T, type_name, comptime ir(semantic.Access, tagged.access), tagged.omit, try registeredZigPath(allocator, declaration, T, type_name));
+                    try appendTaggedUnion(allocator, &types, declaration, T, type_name, tagged.doc, comptime ir(semantic.Access, tagged.access), tagged.omit, try registeredZigPath(allocator, declaration, T, type_name));
                 },
                 else => @compileError("zigo `.tagged_union` type entries must name a tagged union"),
             },
@@ -86,6 +87,7 @@ pub fn reflect(
             .callback => |callback| {
                 if (info != .pointer or @typeInfo(info.pointer.child) != .@"fn") @compileError("zigo `.callback` type entries must name a `*const fn` type");
                 try types.append(allocator, .{
+                    .doc = callback.doc,
                     .kind = .callback,
                     .name = callback.name,
                     .on_callback_failure = if (callback.on_callback_failure) |failure| .{ .result = failure.result } else null,
@@ -398,6 +400,22 @@ test "duplicate and conflicting function paths are runtime diagnostics" {
         .exclude = &.{"root.sub"},
     }, "math", "zg");
     try std.testing.expectEqual(@as(usize, 1), document.functions.len);
+}
+
+test "registered type docs survive reflection" {
+    const Fixture = struct {
+        pub const Context = struct {};
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = &.{.{ .handle = .{
+            .type = Fixture.Context,
+            .doc = "Context owns the native state.",
+        } }},
+    }, "fixture", "zg");
+    try std.testing.expectEqualStrings("Context owns the native state.", document.types[0].doc.?);
 }
 
 test "packages assign explicit functions owning types and longest namespaces" {
@@ -847,7 +865,7 @@ fn appendFunction(
         // The lifetime, re-entrancy and thread contract is a property of the
         // callback type, not of each call site, so a registered entry declares
         // it once and every parameter of that type inherits it. The
-        // `param_meta` block below still assigns field by field, which is what
+        // matching `Param` entry below still assigns field by field, which is what
         // makes a call site able to override one field and inherit the rest.
         const contract = comptime callbackEntryContract(declaration, param.type.?);
         if (comptime contract.retention) |value| reflected.retention = value;
@@ -1813,7 +1831,7 @@ fn typeNode(
             for (types.items) |type_declaration| {
                 if (std.mem.eql(u8, type_declaration.name, name)) exists = true;
             }
-            if (!exists) try appendEnum(allocator, types, declaration, T, name, false, false, null, @typeName(T));
+            if (!exists) try appendEnum(allocator, types, declaration, T, name, null, false, false, null, @typeName(T));
             break :blk .{ .@"enum" = .{ .ref = name } };
         },
         .@"struct" => blk: {
@@ -1829,7 +1847,7 @@ fn typeNode(
                     break;
                 }
             }
-            if (!exists) try appendValueStruct(allocator, types, declaration, T, name, @typeName(T), false, null, &.{});
+            if (!exists) try appendValueStruct(allocator, types, declaration, T, name, null, @typeName(T), false, null, &.{});
             break :blk .{ .value_struct = .{ .ref = name } };
         },
         .@"union" => blk: {
@@ -1842,7 +1860,7 @@ fn typeNode(
                 }
             }
             if (@typeInfo(T).@"union".tag_type == null) @compileError("zigo cannot reflect an untagged union, at " ++ context);
-            try appendTaggedUnion(allocator, types, declaration, T, name, .projection, &.{}, @typeName(T));
+            try appendTaggedUnion(allocator, types, declaration, T, name, null, .projection, &.{}, @typeName(T));
             break :blk .{ .value_struct = .{ .ref = name } };
         },
         else => @compileError("zigo supports scalars, enums, slices, opaque pointers, structs, and error unions, at " ++ context),
@@ -1897,8 +1915,8 @@ fn returnTypeNode(
 /// message and a bare error name.
 fn missingOpaqueType(comptime type_name: []const u8, comptime context: []const u8) error{MissingOpaqueType} {
     std.debug.print(
-        "zigo: `{s}` is not a registered opaque type, at {s}\n" ++
-            "  hint: add it to `.types` with `.repr = .opaque`\n",
+        "zigo: `{s}` is not a registered handle type, at {s}\n" ++
+            "  hint: add it to `.types` as `.{{ .handle = .{{ .type = T }} }}`\n",
         .{ type_name, context },
     );
     return error.MissingOpaqueType;
@@ -2022,7 +2040,7 @@ fn registeredTypeName(comptime declaration: zigo.Binding, comptime T: type, comp
 
 const CallbackEntryHints = struct { params: []const ?semantic.SemanticHint, ret: ?semantic.SemanticHint };
 
-/// The `.param_semantics` and `.semantic` a registered `.repr = .callback`
+/// The positional `.params` and `.returns.semantic` of a registered `.callback`
 /// entry declares for `T`, positionally over the value parameters (the
 /// trailing userdata is not listed). Unregistered callbacks have none.
 /// The `params` index a native callback parameter lands on: values keep
@@ -2034,7 +2052,7 @@ fn goOrderIndex(userdata_native: ?usize, count: usize, native: usize) usize {
     return native - 1;
 }
 
-/// The call-site contract a registered `.repr = .callback` entry declares.
+/// The call-site contract a registered `.callback` entry declares.
 /// A field left null is one the entry did not spell, so the call site keeps
 /// whatever it says itself (or the `semantic.Parameter` default).
 const CallbackContract = struct {
@@ -2159,6 +2177,7 @@ fn appendMaterializedStruct(
     comptime declaration: zigo.Binding,
     comptime T: type,
     name: []const u8,
+    doc: ?[]const u8,
     zig_path: []const u8,
     comptime field_meta: []const zigo.ValueField,
 ) !void {
@@ -2166,6 +2185,7 @@ fn appendMaterializedStruct(
     const index = types.items.len;
     comptime validateFieldMeta(T, field_meta);
     try types.append(allocator, .{
+        .doc = doc,
         .kind = .materialized,
         .materialized_version = 2,
         .name = name,
@@ -2271,6 +2291,7 @@ fn appendEnum(
     comptime declaration: zigo.Binding,
     comptime T: type,
     name: []const u8,
+    doc: ?[]const u8,
     open: bool,
     text: bool,
     go_adapter: ?semantic.GoAdapter,
@@ -2281,6 +2302,7 @@ fn appendEnum(
     inline for (info.fields, 0..) |field, index| fields[index] = .{ .name = field.name, .value = @intCast(field.value) };
     const tag_type = try typeNode(allocator, declaration, info.tag_type, types, "the tag type of enum `" ++ @typeName(T) ++ "`");
     try types.append(allocator, .{
+        .doc = doc,
         .exhaustive = info.is_exhaustive,
         .fields = fields,
         .go_adapter = go_adapter,
@@ -2316,6 +2338,7 @@ fn appendValueStruct(
     comptime declaration: zigo.Binding,
     comptime T: type,
     name: []const u8,
+    doc: ?[]const u8,
     zig_path: []const u8,
     explicitly_registered: bool,
     go_adapter: ?semantic.GoAdapter,
@@ -2329,6 +2352,7 @@ fn appendValueStruct(
             try typeNode(allocator, declaration, info.backing_integer.?, types, "packed struct backing integer")
         else
             null,
+        .doc = doc,
         .go_adapter = go_adapter,
         .kind = .value_struct,
         .layout = switch (info.layout) {
@@ -2391,6 +2415,7 @@ fn appendTaggedUnion(
     comptime declaration: zigo.Binding,
     comptime T: type,
     name: []const u8,
+    doc: ?[]const u8,
     access: semantic.Access,
     omitted_variants: []const []const u8,
     zig_path: []const u8,
@@ -2402,6 +2427,7 @@ fn appendTaggedUnion(
 
     const union_index = types.items.len;
     try types.append(allocator, .{
+        .doc = doc,
         .kind = .tagged_union,
         .name = name,
         .omitted_variants = if (omitted_variants.len == 0) null else omitted_variants,
@@ -3300,7 +3326,7 @@ test "registered callbacks record positional codepoint hints" {
     try std.testing.expectEqual(semantic.SemanticHint.codepoint, callback.return_semantic.?);
 }
 
-test "field_meta records a codepoint hint on an extern struct member" {
+test "value field metadata records a codepoint hint on an extern struct member" {
     const Glyph = extern struct { cp: u32, width: u8 };
     const Fixture = struct {
         pub fn measure(glyph: Glyph) Glyph {

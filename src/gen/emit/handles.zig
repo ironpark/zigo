@@ -4,6 +4,7 @@ const std = @import("std");
 const abi = @import("abi");
 const naming = @import("naming");
 const common = @import("common.zig");
+const docs = @import("docs.zig");
 const emit = @import("emit.zig");
 const public_writers = @import("public_writers.zig");
 
@@ -28,7 +29,9 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
         // Owning a constructor is what gives a handle Close and the cleanup net.
         const constructor = handle.lifecycle.constructor;
         const auto_cleanup = constructor != null;
-        if (auto_cleanup) {
+        if (declaration.doc) |doc| {
+            try docs.writeGoDoc(writer, declaration.name, declaration.name, doc);
+        } else if (auto_cleanup) {
             try writer.print("// {s} is a caller-owned native handle. Call Close when it is no longer needed.\n", .{declaration.name});
         } else {
             try writer.print("// {s} represents a native Zig handle.\n", .{declaration.name});

@@ -149,12 +149,16 @@ pub const ValueField = struct {
 pub const Handle = struct {
     type: type,
     name: ?[]const u8 = null,
+    /// Go doc override; absent uses the generated description.
+    doc: ?[]const u8 = null,
     fields: []const HandleField = &.{},
 };
 
 pub const Value = struct {
     type: type,
     name: ?[]const u8 = null,
+    /// Go doc override; absent uses the generated description.
+    doc: ?[]const u8 = null,
     go: ?GoAdapter = null,
     fields: []const ValueField = &.{},
 };
@@ -162,12 +166,16 @@ pub const Value = struct {
 pub const Materialized = struct {
     type: type,
     name: ?[]const u8 = null,
+    /// Go doc override; absent uses the generated description.
+    doc: ?[]const u8 = null,
     fields: []const ValueField = &.{},
 };
 
 pub const Enum = struct {
     type: type,
     name: ?[]const u8 = null,
+    /// Go doc override; absent uses the generated description.
+    doc: ?[]const u8 = null,
     /// Generate `Parse<Enum>`, `MarshalText` and `UnmarshalText`.
     text: bool = false,
     /// `false` accepts values outside the named tags.
@@ -180,6 +188,8 @@ pub const Enum = struct {
 pub const TaggedUnion = struct {
     type: type,
     name: ?[]const u8 = null,
+    /// Go doc override; absent uses the generated description.
+    doc: ?[]const u8 = null,
     access: Access = .projection,
     /// Variants left out of the Go type.
     omit: []const []const u8 = &.{},
@@ -196,6 +206,8 @@ pub const Callback = struct {
     type: type,
     /// Required: a function-pointer alias has no name of its own.
     name: []const u8,
+    /// Go doc override; absent uses the generated description.
+    doc: ?[]const u8 = null,
     params: []const CallbackParam = &.{},
     returns: struct { semantic: ?SemanticHint = null } = .{},
     userdata: ?Userdata = null,

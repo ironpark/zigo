@@ -116,7 +116,7 @@ test "implemented diagnostic snapshots are stable" {
                 .{ .fields = &.{.{ .name = "bytes", .value = 0 }}, .kind = .@"enum", .name = "ValueTag", .tag_type = .{ .int = .{ .bits = 8, .signed = false } } },
             },
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO006]: cannot pass a tagged union by value\n  --> semantic.json (consume)\n  hint: variant `bytes` has an unsupported value payload; omit it with `.omit_variants` or use void, scalar, enum, packed struct, or extern struct payloads\n" },
+        }, .snapshot = "error[ZIGO006]: cannot pass a tagged union by value\n  --> semantic.json (consume)\n  hint: variant `bytes` has an unsupported value payload; omit it with `.omit` or use void, scalar, enum, packed struct, or extern struct payloads\n" },
         .{ .document = .{
             .functions = &.{.{
                 .name = "consume",
@@ -132,7 +132,7 @@ test "implemented diagnostic snapshots are stable" {
                 .{ .kind = .@"opaque", .name = "Thing" },
             },
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO006]: cannot pass a tagged union by value\n  --> semantic.json (consume)\n  hint: variant `child` has an unsupported value payload; omit it with `.omit_variants` or use void, scalar, enum, packed struct, or extern struct payloads\n" },
+        }, .snapshot = "error[ZIGO006]: cannot pass a tagged union by value\n  --> semantic.json (consume)\n  hint: variant `child` has an unsupported value payload; omit it with `.omit` or use void, scalar, enum, packed struct, or extern struct payloads\n" },
         .{ .document = .{
             .functions = &.{
                 .{ .name = "lookupID", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "ignored" },
@@ -231,7 +231,7 @@ test "implemented diagnostic snapshots are stable" {
             .package = "bad",
             .prefix = "zg",
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO016]: caller-owned slice return has no matching release function\n  --> semantic.json (takeName)\n  hint: add `.release = \"<Type>.<fn>\"` naming an exposed `fn(slice) void` that takes exactly the returned slice type\n" },
+        }, .snapshot = "error[ZIGO016]: caller-owned slice return has no matching release function\n  --> semantic.json (takeName)\n  hint: add `.returns.release = \"<Type>.<fn>\"` naming an exposed `fn(slice) void` that takes exactly the returned slice type\n" },
         .{ .document = .{
             .functions = &.{
                 .{
@@ -252,7 +252,7 @@ test "implemented diagnostic snapshots are stable" {
             .package = "bad",
             .prefix = "zg",
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO016]: caller-owned slice return has no matching release function\n  --> semantic.json (takeBytes)\n  hint: add `.release = \"<Type>.<fn>\"` naming an exposed `fn(slice) void` that takes exactly the returned slice type\n" },
+        }, .snapshot = "error[ZIGO016]: caller-owned slice return has no matching release function\n  --> semantic.json (takeBytes)\n  hint: add `.returns.release = \"<Type>.<fn>\"` naming an exposed `fn(slice) void` that takes exactly the returned slice type\n" },
         .{ .document = .{
             .functions = &.{.{
                 .name = "takeNameChecked",
@@ -264,7 +264,7 @@ test "implemented diagnostic snapshots are stable" {
             .package = "bad",
             .prefix = "zg",
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO016]: caller-owned slice return has no matching release function\n  --> semantic.json (takeNameChecked)\n  hint: add `.release = \"<Type>.<fn>\"` naming an exposed `fn(slice) void` that takes exactly the returned slice type\n" },
+        }, .snapshot = "error[ZIGO016]: caller-owned slice return has no matching release function\n  --> semantic.json (takeNameChecked)\n  hint: add `.returns.release = \"<Type>.<fn>\"` naming an exposed `fn(slice) void` that takes exactly the returned slice type\n" },
         .{ .document = .{
             .functions = &.{
                 .{
@@ -285,7 +285,7 @@ test "implemented diagnostic snapshots are stable" {
             .package = "bad",
             .prefix = "zg",
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO016]: caller-owned slice return has no matching release function\n  --> semantic.json (takeBytesChecked)\n  hint: add `.release = \"<Type>.<fn>\"` naming an exposed `fn(slice) void` that takes exactly the returned slice type\n" },
+        }, .snapshot = "error[ZIGO016]: caller-owned slice return has no matching release function\n  --> semantic.json (takeBytesChecked)\n  hint: add `.returns.release = \"<Type>.<fn>\"` naming an exposed `fn(slice) void` that takes exactly the returned slice type\n" },
         .{ .document = .{
             .functions = &.{.{
                 .name = "openThing",
@@ -298,7 +298,7 @@ test "implemented diagnostic snapshots are stable" {
             .prefix = "zg",
             .types = &.{.{ .kind = .@"opaque", .name = "Thing" }},
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO015]: caller-owned return has no constructed handle to hand over\n  --> semantic.json (openThing)\n  hint: return a pointer to an opaque type that has both a constructor and a destructor, or drop `.returns = .caller`\n" },
+        }, .snapshot = "error[ZIGO015]: caller-owned return has no constructed handle to hand over\n  --> semantic.json (openThing)\n  hint: return a pointer to a registered handle type that has both a constructor and a destructor, or drop `.returns.ownership = .caller`\n" },
         .{ .document = .{
             .functions = &.{.{
                 .name = "readInto",
@@ -320,7 +320,7 @@ test "implemented diagnostic snapshots are stable" {
             .package = "bad",
             .prefix = "zg",
             .zig_version = "0.16.0",
-        }, .snapshot = "error[ZIGO017]: `.written = .return` needs a `usize` result to report the count\n  --> semantic.json (fillInto)\n  hint: return `usize` or `!usize` from the function, or use the default `.written = .all`\n" },
+        }, .snapshot = "error[ZIGO017]: `.written = .result` needs a `usize` result to report the count\n  --> semantic.json (fillInto)\n  hint: return `usize` or `!usize` from the function, or use the default `.written = .all`\n" },
         .{ .document = .{
             .functions = &.{.{
                 .name = "codepointWidth",
@@ -539,7 +539,7 @@ test "borrowed return ownership diagnostics are stable" {
             .params = &.{},
             .@"return" = pointer,
             .symbol = "zg_view",
-        }, .snapshot = "error[ZIGO033]: borrowed return has no receiver to own its lifetime\n  --> semantic.json (view)\n  hint: use `.returns = .borrowed` only on a method, or use `.returns = .caller` with a constructor and destructor\n" },
+        }, .snapshot = "error[ZIGO033]: borrowed return has no receiver to own its lifetime\n  --> semantic.json (view)\n  hint: use `.returns.ownership = .borrowed` only on a method, or use `.returns.ownership = .caller` with a constructor and destructor\n" },
         .{ .function = .{
             .borrowed_return = true,
             .name = "count",
@@ -547,14 +547,14 @@ test "borrowed return ownership diagnostics are stable" {
             .receiver = "Owner",
             .@"return" = .{ .int = .{ .bits = 32, .signed = false } },
             .symbol = "zg_owner_count",
-        }, .snapshot = "error[ZIGO034]: borrowed return is not a registered opaque handle\n  --> semantic.json (count)\n  hint: return `*T`, `?*T`, `!*T`, or `!?*T` where T is a registered opaque type, or drop `.returns = .borrowed`\n" },
+        }, .snapshot = "error[ZIGO034]: borrowed return is not a registered opaque handle\n  --> semantic.json (count)\n  hint: return `*T`, `?*T`, `!*T`, or `!?*T` where T is a registered handle type, or drop `.returns.ownership = .borrowed`\n" },
         .{ .function = .{
             .name = "view",
             .params = &.{},
             .receiver = "Owner",
             .@"return" = pointer,
             .symbol = "zg_owner_view",
-        }, .snapshot = "error[ZIGO035]: opaque handle return has no explicit ownership\n  --> semantic.json (view)\n  hint: add `.returns = .borrowed` for a receiver-owned view, or pair `.returns = .caller` with its constructor and destructor\n" },
+        }, .snapshot = "error[ZIGO035]: opaque handle return has no explicit ownership\n  --> semantic.json (view)\n  hint: add `.returns.ownership = .borrowed` for a receiver-owned view, or pair `.returns.ownership = .caller` with its constructor and destructor\n" },
     };
     var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer scratch.deinit();
@@ -609,7 +609,7 @@ test "interface diagnostics have stable snapshots" {
     const cases = [_]struct { document: semantic.Semantic, snapshot: []const u8 }{
         .{ .document = interfaces.batchDocument(.{ .interfaces = &.{.{ .methods = &.{"len"}, .name = "batch-set", .types = &.{"IntBatch"} }} }), .snapshot = "error[ZIGO049]: interface name is not a Go identifier\n  --> semantic.json (batch-set)\n  hint: give the interface a `.name` that is a valid exported Go identifier\n" },
         .{ .document = interfaces.batchDocument(.{ .interfaces = &.{.{ .methods = &.{"len"}, .name = "IntBatch", .types = &.{"IntBatch"} }} }), .snapshot = "error[ZIGO024]: public Go name `IntBatch` collides between interface `IntBatch` and type `IntBatch`\n  --> semantic.json (IntBatch)\n  hint: give the interface a `.name` that resolves to a different Go identifier\n" },
-        .{ .document = interfaces.batchDocument(.{ .interfaces = &.{.{ .methods = &.{"len"}, .name = "Batch", .types = &.{ "IntBatch", "Missing" } }} }), .snapshot = "error[ZIGO049]: interface lists `Missing`, which is not a registered opaque handle\n  --> semantic.json (Batch)\n  hint: list only types registered with `.repr = .opaque`\n" },
+        .{ .document = interfaces.batchDocument(.{ .interfaces = &.{.{ .methods = &.{"len"}, .name = "Batch", .types = &.{ "IntBatch", "Missing" } }} }), .snapshot = "error[ZIGO049]: interface lists `Missing`, which is not a registered handle\n  --> semantic.json (Batch)\n  hint: list only types registered with `.handle`\n" },
         .{ .document = interfaces.batchDocument(.{ .interfaces = &.{.{ .methods = &.{"len"}, .name = "Batch", .types = &.{ "IntBatch", "IntBatch" } }} }), .snapshot = "error[ZIGO049]: interface lists `IntBatch` twice\n  --> semantic.json (Batch)\n  hint: list each implementing type once\n" },
         .{ .document = interfaces.batchDocument(.{ .interfaces = &.{.{ .methods = &.{ "len", "clear" }, .name = "Batch", .types = &.{ "IntBatch", "FloatBatch" } }} }), .snapshot = "error[ZIGO049]: type `IntBatch` has no exposed method `clear`\n  --> semantic.json (Batch)\n  hint: expose the method on every listed type, or drop it from `.methods`\n" },
         // The destructor is not a method a live handle offers.

@@ -110,7 +110,7 @@ fn isUsize(node: semantic.TypeNode) bool {
 /// The userdata contract: a callback carries its Go token in a `usize` slot,
 /// last unless its type entry says otherwise, and the function that takes the
 /// callback passes the token through a `usize` parameter of its own, the one
-/// right after the callback unless `param_meta.<callback>.userdata` names it.
+/// right after the callback unless `Param.userdata` names it.
 /// Everything a misplaced slot used to do at runtime -- dispatch on the wrong
 /// argument, or fail generation without a site -- is refused here instead.
 pub fn callbackUserdataIssue(
@@ -180,7 +180,7 @@ pub fn callbackUserdataIssue(
         .code = "ZIGO055",
         .message = try std.fmt.allocPrint(allocator, "callback `{s}` is not followed by its `usize` userdata parameter", .{parameter.name}),
         .site = site.functionSiteFor(function, declaration),
-        .hint = "declare a `usize` parameter directly after the callback, or name the one that carries the token with `.userdata` in `param_meta`",
+        .hint = "declare a `usize` parameter directly after the callback, or name the one that carries the token with `Param.userdata = .{ .param = \"...\" }`",
     };
 }
 

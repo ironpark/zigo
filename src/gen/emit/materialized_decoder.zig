@@ -3,6 +3,7 @@ const std = @import("std");
 const abi = @import("abi");
 const semantic = @import("semantic");
 const naming = @import("naming");
+const docs = @import("docs.zig");
 const emit = @import("emit.zig");
 const public_writers = @import("public_writers.zig");
 const type_spelling = @import("type_spelling.zig");
@@ -42,7 +43,11 @@ pub fn renderPublicMaterializedStructs(allocator: std.mem.Allocator, writer: *st
         if (!is_used) continue;
         if (!public_writers.typeBelongsToPackage(program, layout.owner.name, options.active_package)) continue;
         any = true;
-        try writer.print("// {s} is an owned Go snapshot of the Zig struct of the same name.\ntype {s} struct {{\n", .{ layout.owner.name, layout.owner.name });
+        if (layout.owner.doc) |doc|
+            try docs.writeGoDoc(writer, layout.owner.name, layout.owner.name, doc)
+        else
+            try writer.print("// {s} is an owned Go snapshot of the Zig struct of the same name.\n", .{layout.owner.name});
+        try writer.print("type {s} struct {{\n", .{layout.owner.name});
         for (layout.fields) |field| {
             const member = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(member);
