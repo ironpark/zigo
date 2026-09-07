@@ -2,19 +2,19 @@
 const std = @import("std");
 const naming = @import("naming");
 const semantic = @import("semantic");
+const zigo = @import("zigo");
 const Pairing = @import("pairing.zig").Pairing;
 
 pub fn reflectPackages(
     allocator: std.mem.Allocator,
-    comptime declaration: anytype,
+    comptime declaration: zigo.Binding,
     types: []semantic.TypeDecl,
     functions: []semantic.SemanticFn,
     pairings: []const Pairing,
 ) ![]const semantic.Package {
-    if (!@hasField(@TypeOf(declaration), "packages")) return &.{};
     var packages: std.ArrayList(semantic.Package) = .empty;
     inline for (declaration.packages) |entry| {
-        const name = if (@hasField(@TypeOf(entry), "name")) entry.name else blk: {
+        const name = entry.name orelse blk: {
             const base = std.fs.path.basename(entry.path);
             break :blk try naming.snakeAlloc(allocator, base);
         };
@@ -25,7 +25,7 @@ pub fn reflectPackages(
             if (std.mem.eql(u8, previous.name, name)) return packageIssue("duplicate package name `{s}`", .{name});
         }
         try packages.append(allocator, .{
-            .doc = if (@hasField(@TypeOf(entry), "doc")) entry.doc else null,
+            .doc = entry.doc,
             .name = name,
             .path = entry.path,
         });
@@ -35,7 +35,7 @@ pub fn reflectPackages(
     // exact assignment win even when the package carrying a matching pattern
     // appears first in the declaration.
     inline for (declaration.packages, 0..) |entry, package_index| {
-        if (@hasField(@TypeOf(entry), "types")) inline for (entry.types) |selector| {
+        inline for (entry.types) |selector| {
             if (comptime isPrefixPattern(selector)) continue;
             var found = false;
             for (types) |*type_decl| if (std.mem.eql(u8, type_decl.name, selector)) {
@@ -44,7 +44,7 @@ pub fn reflectPackages(
                 found = true;
             };
             if (!found) return packageIssue("package type selector `{s}` names no declaration", .{selector});
-        };
+        }
     }
 
     // A type pattern uses longest-prefix precedence. Equal matching patterns
@@ -54,7 +54,7 @@ pub fn reflectPackages(
         var best_package: ?usize = null;
         var best_length: usize = 0;
         inline for (declaration.packages, 0..) |entry, package_index| {
-            if (@hasField(@TypeOf(entry), "types")) inline for (entry.types) |selector| {
+            inline for (entry.types) |selector| {
                 if (comptime !isPrefixPattern(selector)) continue;
                 const prefix = patternPrefix(selector);
                 if (std.mem.startsWith(u8, type_decl.name, prefix)) {
@@ -65,25 +65,25 @@ pub fn reflectPackages(
                         best_length = prefix.len;
                     }
                 }
-            };
+            }
         }
         if (best_package) |package_index| type_decl.package = packages.items[package_index].name;
     }
     inline for (declaration.packages) |entry| {
-        if (@hasField(@TypeOf(entry), "types")) inline for (entry.types) |selector| {
+        inline for (entry.types) |selector| {
             if (comptime !isPrefixPattern(selector)) continue;
             var found = false;
             for (types) |type_decl| if (std.mem.startsWith(u8, type_decl.name, patternPrefix(selector))) {
                 found = true;
             };
             if (!found) return packagePatternIssue("type", selector);
-        };
+        }
     }
 
     // An explicitly listed function outranks both exact namespace selectors
     // and namespace patterns.
     inline for (declaration.packages, 0..) |entry, package_index| {
-        if (@hasField(@TypeOf(entry), "functions")) inline for (entry.functions) |selector| {
+        inline for (entry.functions) |selector| {
             var found = false;
             for (functions) |*function| if (functionMatchesSelector(function.*, selector)) {
                 const owned = function.receiver orelse function.goOwner();
@@ -96,7 +96,7 @@ pub fn reflectPackages(
                 found = true;
             };
             if (!found) return packageIssue("package function selector `{s}` names no declaration", .{selector});
-        };
+        }
     }
 
     // Exact namespaces retain their existing longest-prefix behavior. Pattern
@@ -107,7 +107,7 @@ pub fn reflectPackages(
         var best_package: ?usize = null;
         var best_length: usize = 0;
         inline for (declaration.packages, 0..) |entry, package_index| {
-            if (@hasField(@TypeOf(entry), "namespaces")) inline for (entry.namespaces) |selector| {
+            inline for (entry.namespaces) |selector| {
                 if (comptime isPrefixPattern(selector)) continue;
                 if (namespaceMatches(function.namespace.?, selector)) {
                     if (best_package != null and selector.len == best_length and best_package.? != package_index)
@@ -117,7 +117,7 @@ pub fn reflectPackages(
                         best_length = selector.len;
                     }
                 }
-            };
+            }
         }
         if (best_package) |package_index| function.package = packages.items[package_index].name;
     }
@@ -126,7 +126,7 @@ pub fn reflectPackages(
         var best_package: ?usize = null;
         var best_length: usize = 0;
         inline for (declaration.packages, 0..) |entry, package_index| {
-            if (@hasField(@TypeOf(entry), "namespaces")) inline for (entry.namespaces) |selector| {
+            inline for (entry.namespaces) |selector| {
                 if (comptime !isPrefixPattern(selector)) continue;
                 const prefix = patternPrefix(selector);
                 if (std.mem.startsWith(u8, function.namespace.?, prefix)) {
@@ -137,19 +137,19 @@ pub fn reflectPackages(
                         best_length = prefix.len;
                     }
                 }
-            };
+            }
         }
         if (best_package) |package_index| function.package = packages.items[package_index].name;
     }
     inline for (declaration.packages) |entry| {
-        if (@hasField(@TypeOf(entry), "namespaces")) inline for (entry.namespaces) |selector| {
+        inline for (entry.namespaces) |selector| {
             if (comptime !isPrefixPattern(selector)) continue;
             var found = false;
             for (functions) |function| if (function.namespace) |namespace| {
                 if (std.mem.startsWith(u8, namespace, patternPrefix(selector))) found = true;
             };
             if (!found) return packagePatternIssue("namespace", selector);
-        };
+        }
     }
 
     // Methods and generated accessors follow an already assigned owner before
@@ -163,7 +163,7 @@ pub fn reflectPackages(
     defer allocator.free(reachability);
     @memset(reachability, false);
     inline for (declaration.packages, 0..) |entry, package_index| {
-        if (@hasField(@TypeOf(entry), "closure") and entry.closure) {
+        if (entry.closure) {
             const row = reachability[package_index * types.len ..][0..types.len];
             findPackageClosure(types, functions, pairings, packages.items[package_index].name, row);
         }
@@ -172,7 +172,7 @@ pub fn reflectPackages(
         if (type_decl.package != null) continue;
         var owner: ?usize = null;
         inline for (declaration.packages, 0..) |entry, package_index| {
-            if (@hasField(@TypeOf(entry), "closure") and entry.closure and reachability[package_index * types.len + type_index]) {
+            if (entry.closure and reachability[package_index * types.len + type_index]) {
                 if (owner) |previous| return packageClosureIssue(type_decl.name, packages.items[previous].name, packages.items[package_index].name);
                 owner = package_index;
             }

@@ -1,5 +1,6 @@
 const std = @import("std");
 const semantic = @import("semantic");
+const zigo = @import("zigo");
 const walk = @import("walk.zig");
 
 pub const Status = enum { bound, wrapped, excluded, unbound };
@@ -50,7 +51,7 @@ pub const Report = struct {
 
 pub fn classify(
     allocator: std.mem.Allocator,
-    comptime binding: anytype,
+    comptime binding: zigo.Binding,
     package: []const u8,
     document: semantic.Semantic,
     source_functions: []const semantic.SemanticFn,
@@ -68,8 +69,8 @@ pub fn classify(
     var referenced_types: std.ArrayList([]const u8) = .empty;
     defer referenced_types.deinit(allocator);
 
-    if (@hasField(@TypeOf(binding), "types")) inline for (binding.types) |entry| {
-        if (comptime entry.repr != .callback) try collectContainer(
+    inline for (binding.types) |entry| {
+        if (comptime entry != .callback) try collectContainer(
             allocator,
             &declarations,
             &seen_functions,
@@ -79,12 +80,12 @@ pub fn classify(
             selectors,
             document,
             source_functions,
-            entry.type,
-            comptime walk.typeEntryName(entry),
-            comptime walk.typeEntryName(entry),
-            comptime walk.discoveryEnabled(binding) and entry.repr != .enumeration,
+            entry.zigType(),
+            comptime entry.goName(),
+            comptime entry.goName(),
+            comptime walk.discoveryEnabled(binding) and entry != .enumeration,
         );
-    };
+    }
     try collectContainer(allocator, &declarations, &seen_functions, &public_types, &referenced_types, binding, selectors, document, source_functions, binding.root, null, "root", comptime walk.discoveryEnabled(binding));
 
     // Field accessors are generated functions even though there is no Zig
@@ -105,13 +106,13 @@ pub fn classify(
     // A registered enum can cover the Zig methods its Go counterpart makes
     // redundant (a `name()` the generated `String()` replaces, say). The
     // entry itself is the wrapper, so its name is what the report cites.
-    if (@hasField(@TypeOf(binding), "types")) inline for (binding.types) |entry| {
-        if (@hasField(@TypeOf(entry), "covers")) {
-            for (comptime walk.coveragePaths(entry.covers)) |covered_path| {
-                markWrapped(declarations.items, covered_path, comptime walk.typeEntryName(entry));
+    inline for (binding.types) |entry| {
+        if (comptime entry == .enumeration) {
+            for (entry.enumeration.covers) |covered_path| {
+                markWrapped(declarations.items, covered_path, comptime entry.goName());
             }
         }
-    };
+    }
 
     var unregistered: std.ArrayList([]const u8) = .empty;
     for (referenced_types.items) |full_name| {
@@ -149,17 +150,17 @@ pub fn classify(
 /// into the binding document precisely because their signatures are invalid.
 pub fn sourceDocument(
     allocator: std.mem.Allocator,
-    comptime binding: anytype,
+    comptime binding: zigo.Binding,
     package: []const u8,
     prefix: []const u8,
 ) !semantic.Semantic {
     var functions: std.ArrayList(semantic.SemanticFn) = .empty;
     var seen: std.ArrayList([]const u8) = .empty;
     defer seen.deinit(allocator);
-    if (@hasField(@TypeOf(binding), "types")) inline for (binding.types) |entry| {
-        if (comptime entry.repr != .callback and entry.repr != .enumeration)
-            try collectSourceFunctions(allocator, &functions, &seen, entry.type, comptime walk.typeEntryName(entry));
-    };
+    inline for (binding.types) |entry| {
+        if (comptime entry != .callback and entry != .enumeration)
+            try collectSourceFunctions(allocator, &functions, &seen, entry.zigType(), comptime entry.goName());
+    }
     try collectSourceFunctions(allocator, &functions, &seen, binding.root, null);
     return .{
         .functions = try functions.toOwnedSlice(allocator),
@@ -222,7 +223,7 @@ fn collectContainer(
     seen_functions: *std.ArrayList([]const u8),
     public_types: *std.ArrayList(PublicType),
     referenced_types: *std.ArrayList([]const u8),
-    comptime binding: anytype,
+    comptime binding: zigo.Binding,
     selectors: Selectors,
     document: semantic.Semantic,
     source_functions: []const semantic.SemanticFn,
@@ -337,7 +338,7 @@ fn collectType(allocator: std.mem.Allocator, types: *std.ArrayList([]const u8), 
 /// it cannot prove falls back to "unsupported signature" at render time.
 fn signatureReason(
     allocator: std.mem.Allocator,
-    comptime binding: anytype,
+    comptime binding: zigo.Binding,
     document: semantic.Semantic,
     source_functions: []const semantic.SemanticFn,
     comptime owner: ?[]const u8,
@@ -352,9 +353,9 @@ fn signatureReason(
         const reason: ?[]const u8 = if (parameter.is_generic or parameter.type == null)
             "comptime parameter"
         else if (parameter.type.? == std.mem.Allocator)
-            if (!@hasField(@TypeOf(binding), "allocator")) "allocator, no metadata" else null
+            if (binding.allocator == null) "allocator, no metadata" else null
         else if (parameter.type.? == std.Io)
-            if (!@hasField(@TypeOf(binding), "io")) "io, no metadata" else null
+            if (binding.io == null) "io, no metadata" else null
         else
             try typeReason(allocator, binding, document, parameter.type.?, true);
         if (reason) |detail| {
@@ -401,7 +402,7 @@ fn sourceParameterName(
 
 fn typeReason(
     allocator: std.mem.Allocator,
-    comptime binding: anytype,
+    comptime binding: zigo.Binding,
     document: semantic.Semantic,
     comptime T: type,
     comptime whole: bool,
@@ -437,7 +438,7 @@ fn typeReason(
     };
 }
 
-fn plainStructReason(allocator: std.mem.Allocator, comptime binding: anytype, document: semantic.Semantic, comptime T: type) ![]const u8 {
+fn plainStructReason(allocator: std.mem.Allocator, comptime binding: zigo.Binding, document: semantic.Semantic, comptime T: type) ![]const u8 {
     @setEvalBranchQuota(100_000);
     inline for (@typeInfo(T).@"struct".fields) |field| {
         if (try typeReason(allocator, binding, document, field.type, false)) |reason|
@@ -446,11 +447,11 @@ fn plainStructReason(allocator: std.mem.Allocator, comptime binding: anytype, do
     return "plain struct";
 }
 
-fn unregisteredReason(allocator: std.mem.Allocator, comptime binding: anytype, comptime T: type) ![]const u8 {
+fn unregisteredReason(allocator: std.mem.Allocator, comptime binding: zigo.Binding, comptime T: type) ![]const u8 {
     return std.fmt.allocPrint(allocator, "{s} unregistered", .{try coverageTypeName(allocator, binding, @typeName(T))});
 }
 
-fn callbackReason(allocator: std.mem.Allocator, comptime binding: anytype, document: semantic.Semantic, comptime F: type) !?[]const u8 {
+fn callbackReason(allocator: std.mem.Allocator, comptime binding: zigo.Binding, document: semantic.Semantic, comptime F: type) !?[]const u8 {
     @setEvalBranchQuota(100_000);
     const info = @typeInfo(F).@"fn";
     if (!std.meta.eql(info.calling_convention, std.builtin.CallingConvention.c)) return "non-C callback";
@@ -468,16 +469,14 @@ const Selectors = struct {
     listed: std.StringHashMap(void),
     excluded: std.StringHashMap(void),
 
-    fn init(allocator: std.mem.Allocator, comptime binding: anytype) !Selectors {
+    fn init(allocator: std.mem.Allocator, comptime binding: zigo.Binding) !Selectors {
         var self: Selectors = .{
             .listed = std.StringHashMap(void).init(allocator),
             .excluded = std.StringHashMap(void).init(allocator),
         };
         errdefer self.deinit();
         for (comptime walk.declaredFunctionPaths(binding)) |path| try self.listed.put(path, {});
-        if (@hasField(@TypeOf(binding), "exclude")) {
-            inline for (binding.exclude) |path| try self.excluded.put(path, {});
-        }
+        inline for (binding.exclude) |path| try self.excluded.put(path, {});
         return self;
     }
 
@@ -500,7 +499,7 @@ fn typeKnownToDocument(document: semantic.Semantic, full_name: []const u8) bool 
 /// (`Terminal.Options`, not `Options`, which three containers may declare),
 /// the whole `@typeName` for a dependency module's type, and anonymous
 /// containers (`Limits__union_39951`) as `Limits.(anonymous union)`.
-fn coverageTypeName(allocator: std.mem.Allocator, comptime binding: anytype, full_name: []const u8) ![]const u8 {
+fn coverageTypeName(allocator: std.mem.Allocator, comptime binding: zigo.Binding, full_name: []const u8) ![]const u8 {
     const root_name = @typeName(binding.root);
     const below_root = if (full_name.len > root_name.len and full_name[root_name.len] == '.' and std.mem.startsWith(u8, full_name, root_name))
         full_name[root_name.len + 1 ..]
@@ -568,7 +567,7 @@ test "classifier distinguishes selected and unsupported functions" {
             return value;
         }
     };
-    const binding = .{ .root = Api, .functions = .{.{ .path = "root.selected" }} };
+    const binding: zigo.Binding = .{ .root = Api, .functions = &.{.{ .path = "root.selected" }} };
     var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -595,10 +594,10 @@ test "an enum entry's covers wrap the methods its Go enum replaces" {
             return .ready;
         }
     };
-    const binding = .{
+    const binding: zigo.Binding = .{
         .root = Api,
-        .types = .{.{ .type = Api.Mode, .repr = .enumeration, .covers = "Mode.label" }},
-        .functions = .{.{ .path = "root.mode" }},
+        .types = &.{.{ .enumeration = .{ .type = Api.Mode, .covers = &.{"Mode.label"} } }},
+        .functions = &.{.{ .path = "root.mode" }},
     };
     var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena.deinit();
@@ -629,10 +628,10 @@ test "a bound enum method needs no covers entry" {
             return .ready;
         }
     };
-    const binding = .{
+    const binding: zigo.Binding = .{
         .root = Api,
-        .types = .{.{ .type = Api.Mode, .repr = .enumeration }},
-        .functions = .{ .{ .path = "root.mode" }, .{ .path = "Mode.label" } },
+        .types = &.{.{ .enumeration = .{ .type = Api.Mode } }},
+        .functions = &.{ .{ .path = "root.mode" }, .{ .path = "Mode.label" } },
     };
     var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena.deinit();
@@ -656,13 +655,15 @@ test "covers classifies wrapped declarations in text and JSON" {
         pub fn other() void {}
         pub fn wrapper() void {}
     };
-    const binding = .{
+    const binding: zigo.Binding = .{
         .root = Api,
-        .types = .{.{ .type = Api.Service, .repr = .@"opaque" }},
-        .functions = .{.{
-            .path = "root.wrapper",
-            .covers = .{ "Service.upstream", "root.other" },
-        }},
+        .types = &.{.{ .handle = .{ .type = Api.Service } }},
+        .functions = &.{
+            .{
+                .path = "root.wrapper",
+                .covers = &.{ "Service.upstream", "root.other" },
+            },
+        },
     };
     var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena.deinit();
@@ -731,13 +732,14 @@ test "unregistered type names are readable and document aware" {
             _ = options;
         }
     };
-    const binding = .{
+    const binding: zigo.Binding = .{
         .root = Api,
-        .functions = .{.{
-            .path = "root.configure",
-            .params = .{"options"},
-            .param_meta = .{ .options = .{ .flatten = .{"enabled"} } },
-        }},
+        .functions = &.{
+            .{
+                .path = "root.configure",
+                .params = &.{.{ .name = "options", .flatten = &.{"enabled"} }},
+            },
+        },
     };
     var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena.deinit();
@@ -772,7 +774,7 @@ test "document type resolver accepts disambiguated zig paths" {
     const Api = struct {
         pub const Coordinate = struct { x: i32 };
     };
-    const binding = .{ .root = Api, .functions = .{} };
+    const binding: zigo.Binding = .{ .root = Api };
     var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -792,7 +794,7 @@ test "writer-only unbound function is merely not listed" {
             _ = writer;
         }
     };
-    const binding = .{ .root = Api, .functions = .{.{ .path = "root.wrapper" }} };
+    const binding: zigo.Binding = .{ .root = Api, .functions = &.{.{ .path = "root.wrapper" }} };
     var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -821,7 +823,7 @@ test "signature reason lists every offending parameter and return" {
             return .{ .pin = opts.tl };
         }
     };
-    const binding = .{ .root = Api, .functions = .{.{ .path = "root.wrapper" }} };
+    const binding: zigo.Binding = .{ .root = Api, .functions = &.{.{ .path = "root.wrapper" }} };
     var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();
@@ -855,7 +857,7 @@ test "signature reason names the first offending nested field" {
             _ = opts;
         }
     };
-    const binding = .{ .root = Api, .functions = .{.{ .path = "root.wrapper" }} };
+    const binding: zigo.Binding = .{ .root = Api, .functions = &.{.{ .path = "root.wrapper" }} };
     var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena.deinit();
     const allocator = arena.allocator();

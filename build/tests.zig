@@ -25,6 +25,7 @@ pub fn addRepositorySteps(
         .imports = &.{
             .{ .name = "naming", .module = generator_modules.naming },
             .{ .name = "semantic", .module = generator_modules.semantic },
+            .{ .name = "zigo", .module = zigo },
         },
     });
     const reflect_names_module = b.createModule(.{
@@ -42,6 +43,7 @@ pub fn addRepositorySteps(
         .imports = &.{
             .{ .name = "naming", .module = generator_modules.naming },
             .{ .name = "semantic", .module = generator_modules.semantic },
+            .{ .name = "zigo", .module = zigo },
         },
     });
     const emit_module = b.createModule(.{

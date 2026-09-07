@@ -1,13 +1,25 @@
 const std = @import("std");
 const naming = @import("naming");
 const semantic = @import("semantic");
+const zigo = @import("zigo");
 const packages = @import("packages.zig");
+
+/// The declaration vocabulary and the IR vocabulary are separate enums with
+/// the same tag names, so a declaration can be respelled without touching
+/// `semantic.json`. This is the one place they meet.
+fn ir(comptime To: type, value: anytype) To {
+    return std.meta.stringToEnum(To, @tagName(value)) orelse unreachable;
+}
+
+fn irOptional(comptime To: type, value: anytype) ?To {
+    return if (value) |v| ir(To, v) else null;
+}
 const pairing = @import("pairing.zig");
 const Pairing = pairing.Pairing;
 
 pub fn reflect(
     allocator: std.mem.Allocator,
-    comptime declaration: anytype,
+    comptime declaration: zigo.Binding,
     package_name: []const u8,
     prefix: []const u8,
 ) !semantic.Semantic {
@@ -18,12 +30,6 @@ pub fn reflect(
     // compare entries against each other runs at runtime instead
     // (`checkDeclaredPaths`) -- so the quota only has to grow with the API.
     @setEvalBranchQuota(10_000_000);
-    if (!@hasField(@TypeOf(declaration), "functions") and !comptime discoveryEnabled(declaration)) {
-        @compileError("zigo declarations require `.functions` or opt-in `.discover = .public`");
-    }
-    if (!@hasField(@TypeOf(declaration), "root")) {
-        @compileError("zigo declarations require `.root`; paths in `.functions` resolve against it");
-    }
     comptime validateSelectors(declaration);
     var declared = try checkDeclaredPaths(allocator, declaration);
     defer declared.deinit();
@@ -34,100 +40,82 @@ pub fn reflect(
     // it. The pair itself can only be formed once every function is known.
     var pairings: std.ArrayList(Pairing) = .empty;
 
-    if (@hasField(@TypeOf(declaration), "types")) {
-        inline for (declaration.types) |entry| {
-            const T = entry.type;
-            const info = @typeInfo(T);
-            const type_name = if (@hasField(@TypeOf(entry), "name")) entry.name else shortTypeName(@typeName(T));
-            switch (entry.repr) {
-                .@"opaque" => {
-                    try types.append(allocator, .{
-                        .kind = .@"opaque",
-                        .name = type_name,
-                        .zig_path = try registeredZigPath(allocator, declaration, T, type_name),
-                    });
-                    if (@hasField(@TypeOf(entry), "fields")) inline for (entry.fields) |field| {
-                        try appendFieldAccessors(allocator, &functions, &types, declaration, prefix, T, type_name, field);
-                    };
+    inline for (declaration.types) |entry| {
+        const T = entry.zigType();
+        const info = @typeInfo(T);
+        const type_name = comptime entry.goName();
+        switch (entry) {
+            .handle => |handle| {
+                try types.append(allocator, .{
+                    .kind = .@"opaque",
+                    .name = type_name,
+                    .zig_path = try registeredZigPath(allocator, declaration, T, type_name),
+                });
+                inline for (handle.fields) |field| {
+                    try appendFieldAccessors(allocator, &functions, &types, declaration, prefix, T, type_name, field);
+                }
+            },
+            .value => |value| switch (info) {
+                .@"struct" => try appendValueStruct(allocator, &types, declaration, T, type_name, try registeredZigPath(allocator, declaration, T, type_name), true, comptime goAdapter(value.go), value.fields),
+                else => @compileError("zigo `.value` type entries must name a struct"),
+            },
+            .materialized => |materialized| switch (info) {
+                .@"struct" => try appendMaterializedStruct(allocator, &types, declaration, T, type_name, try registeredZigPath(allocator, declaration, T, type_name), materialized.fields),
+                else => @compileError("zigo `.materialized` type entries must name a struct"),
+            },
+            // An enum registered here is not walked for declarations --
+            // like a callback entry, it exists to name a type, not to
+            // contribute functions. What it buys is the `.name`: an enum
+            // built by a comptime function has a `@typeName` that ends in
+            // the expression that built it, and no name of its own.
+            .enumeration => |enumeration| switch (info) {
+                .@"enum" => try appendEnum(allocator, &types, declaration, T, type_name, !enumeration.exhaustive, enumeration.text, comptime goAdapter(enumeration.go), try registeredZigPath(allocator, declaration, T, type_name)),
+                else => @compileError("zigo `.enumeration` type entries must name an enum"),
+            },
+            .tagged_union => |tagged| switch (info) {
+                .@"union" => |union_info| {
+                    if (union_info.tag_type == null) @compileError("zigo `.tagged_union` type entries must name a tagged union");
+                    try appendTaggedUnion(allocator, &types, declaration, T, type_name, comptime ir(semantic.Access, tagged.access), tagged.omit, try registeredZigPath(allocator, declaration, T, type_name));
                 },
-                .value => switch (info) {
-                    .@"struct" => try appendValueStruct(allocator, &types, declaration, T, type_name, try registeredZigPath(allocator, declaration, T, type_name), true, comptime goAdapter(entry), comptime fieldMeta(entry)),
-                    else => @compileError("zigo value type entries must name a struct"),
-                },
-                .materialized => switch (info) {
-                    .@"struct" => try appendMaterializedStruct(allocator, &types, declaration, T, type_name, try registeredZigPath(allocator, declaration, T, type_name), comptime fieldMeta(entry)),
-                    else => @compileError("zigo materialized type entries must name a struct"),
-                },
-                // An enum registered here is not walked for declarations --
-                // like a callback entry, it exists to name a type, not to
-                // contribute functions. What it buys is the `.name`: an enum
-                // built by a comptime function has a `@typeName` that ends in
-                // the expression that built it, and no name of its own.
-                .enumeration => switch (info) {
-                    .@"enum" => try appendEnum(allocator, &types, declaration, T, type_name, comptime enumOpenOptIn(entry), comptime enumTextOptIn(entry), comptime goAdapter(entry), try registeredZigPath(allocator, declaration, T, type_name)),
-                    else => @compileError("zigo enumeration type entries must name an enum"),
-                },
-                .tagged_union => switch (info) {
-                    .@"union" => |union_info| {
-                        if (union_info.tag_type == null) @compileError("zigo tagged_union type entries must name a tagged union");
-                        try appendTaggedUnion(allocator, &types, declaration, T, type_name, comptime accessStrategy(entry), comptime omittedVariants(entry), try registeredZigPath(allocator, declaration, T, type_name));
-                    },
-                    else => @compileError("zigo tagged_union type entries must name a tagged union"),
-                },
-                // A function pointer alias is not a distinct type, so its
-                // name cannot be reflected: the entry supplies it, and every
-                // parameter of the same signature is matched to it by the
-                // structural type name.
-                .callback => {
-                    if (!@hasField(@TypeOf(entry), "name")) @compileError("zigo callback type entries need an explicit `.name`: a `pub const` alias of a function pointer type carries no name of its own");
-                    if (info != .pointer or @typeInfo(info.pointer.child) != .@"fn") @compileError("zigo callback type entries must name a `*const fn` type");
-                    try types.append(allocator, .{
-                        .kind = .callback,
-                        .name = entry.name,
-                        .on_callback_failure = if (@hasField(@TypeOf(entry), "on_callback_failure"))
-                            .{ .result = entry.on_callback_failure.result }
-                        else
-                            null,
-                        .zig_path = try registeredZigPath(allocator, declaration, T, type_name),
-                    });
-                },
-                else => @compileError("zigo type repr must be .opaque, .value, .materialized, .enumeration, .tagged_union, or .callback"),
-            }
-            if (entry.repr != .@"opaque" and @hasField(@TypeOf(entry), "fields"))
-                @compileError("zigo `.fields` metadata is supported only on `.repr = .opaque` type entries");
-            if (entry.repr != .callback and @hasField(@TypeOf(entry), "userdata"))
-                @compileError("zigo `.userdata` is supported only on `.repr = .callback` type entries");
-            // The contract describes how a call site may invoke a function
-            // pointer, so it means nothing on any other kind of entry.
-            if (entry.repr != .callback) inline for (.{ "retention", "reentrancy", "thread" }) |key| {
-                if (@hasField(@TypeOf(entry), key))
-                    @compileError("zigo `." ++ key ++ "` is supported only on `.repr = .callback` type entries");
-            };
-            if (entry.repr != .enumeration and @hasField(@TypeOf(entry), "text"))
-                @compileError("zigo `.text` is supported only on `.repr = .enumeration` type entries");
-            if (entry.repr != .value and entry.repr != .enumeration and @hasField(@TypeOf(entry), "go"))
-                @compileError("zigo `.go` adapters are supported only on `.repr = .value` and `.repr = .enumeration` type entries");
+                else => @compileError("zigo `.tagged_union` type entries must name a tagged union"),
+            },
+            // A function pointer alias is not a distinct type, so its
+            // name cannot be reflected: the entry supplies it, and every
+            // parameter of the same signature is matched to it by the
+            // structural type name.
+            .callback => |callback| {
+                if (info != .pointer or @typeInfo(info.pointer.child) != .@"fn") @compileError("zigo `.callback` type entries must name a `*const fn` type");
+                try types.append(allocator, .{
+                    .kind = .callback,
+                    .name = callback.name,
+                    .on_callback_failure = if (callback.on_callback_failure) |failure| .{ .result = failure.result } else null,
+                    .zig_path = try registeredZigPath(allocator, declaration, T, type_name),
+                });
+            },
         }
     }
     // Listed entries are reflected the same way whether or not discovery is
     // on: each resolves its own path, once, linearly in the list. Discovery
     // then only adds what the list did not claim, so the two passes never
     // need to compare an entry against a declaration at comptime.
-    if (@hasField(@TypeOf(declaration), "functions")) {
-        inline for (declaration.functions) |entry| {
-            try appendSelectedEntry(allocator, &functions, &types, &pairings, declaration, prefix, entry, null, null);
+    inline for (declaration.functions) |entry| {
+        try appendSelectedPath(allocator, &functions, &types, &pairings, declaration, prefix, entry, null, null);
+    }
+    inline for (declaration.methods) |group| {
+        const receiver_name = comptime registeredContainerName(declaration, group.receiver) orelse
+            @compileError("zigo `.methods` receiver must be a type registered as a handle, tagged union, or enumeration: " ++ @typeName(group.receiver));
+        inline for (group.functions) |entry| {
+            try appendSelectedPath(allocator, &functions, &types, &pairings, declaration, prefix, entry, receiver_name, group.strip_prefix);
         }
     }
-    if (comptime discoveryEnabled(declaration)) {
+    if (declaration.discover != null) {
         // Discovery walks every registered container plus the root, skipping
         // the paths the list already bound and the ones `.exclude` names.
-        if (@hasField(@TypeOf(declaration), "types")) {
-            inline for (declaration.types) |entry| {
-                // A callback type is a signature and an enum is a name, not
-                // containers to walk.
-                if (comptime entry.repr != .callback and entry.repr != .enumeration)
-                    try discoverContainer(allocator, &functions, &types, &pairings, declaration, prefix, declared, entry.type, comptime typeEntryName(entry), comptime typeEntryName(entry));
-            }
+        inline for (declaration.types) |entry| {
+            // A callback type is a signature and an enum is a name, not
+            // containers to walk.
+            if (comptime entry != .callback and entry != .enumeration)
+                try discoverContainer(allocator, &functions, &types, &pairings, declaration, prefix, declared, entry.zigType(), comptime entry.goName(), comptime entry.goName());
         }
         try discoverContainer(allocator, &functions, &types, &pairings, declaration, prefix, declared, declaration.root, null, "root");
     }
@@ -171,11 +159,11 @@ pub fn reflect(
     const interfaces = try reflectInterfaces(allocator, declaration, types.items);
 
     return .{
-        .allocator = comptime injectionExpression(declaration, "allocator"),
+        .allocator = comptime injectionExpression(declaration.allocator),
         .constructors = try constructors.toOwnedSlice(allocator),
         .functions = try functions.toOwnedSlice(allocator),
         .interfaces = if (interfaces.len == 0) null else interfaces,
-        .io = comptime injectionExpression(declaration, "io"),
+        .io = comptime injectionExpression(declaration.io),
         .package = package_name,
         .packages = if (reflected_packages.len == 0) null else reflected_packages,
         .prefix = prefix,
@@ -184,43 +172,27 @@ pub fn reflect(
     };
 }
 
-fn appendSelectedEntry(
-    allocator: std.mem.Allocator,
-    functions: *std.ArrayList(semantic.SemanticFn),
-    types: *std.ArrayList(semantic.TypeDecl),
-    pairings: *std.ArrayList(Pairing),
-    comptime declaration: anytype,
-    prefix: []const u8,
-    comptime entry: anytype,
-    comptime inherited_receiver: ?[]const u8,
-    comptime inherited_prefix: ?[]const u8,
-) !void {
-    if (comptime isStringEntry(@TypeOf(entry))) {
-        return appendSelectedPath(allocator, functions, types, pairings, declaration, prefix, entry, .{}, inherited_receiver, inherited_prefix);
-    }
-    if (@hasField(@TypeOf(entry), "functions")) {
-        inline for (entry.functions) |nested| {
-            try appendSelectedEntry(allocator, functions, types, pairings, declaration, prefix, nested, entry.receiver, entry.strip_prefix);
-        }
-        return;
-    }
-    try appendSelectedPath(allocator, functions, types, pairings, declaration, prefix, entry.path, entry, inherited_receiver, inherited_prefix);
-}
-
 fn appendSelectedPath(
     allocator: std.mem.Allocator,
     functions: *std.ArrayList(semantic.SemanticFn),
     types: *std.ArrayList(semantic.TypeDecl),
     pairings: *std.ArrayList(Pairing),
-    comptime declaration: anytype,
+    comptime declaration: zigo.Binding,
     prefix: []const u8,
-    comptime path: []const u8,
-    comptime metadata: anytype,
+    comptime metadata: zigo.Function,
     comptime inherited_receiver: ?[]const u8,
     comptime inherited_prefix: ?[]const u8,
 ) !void {
+    const path = metadata.path;
     const owner = comptime pathOwner(path);
     const member = comptime pathMember(path);
+    // An explicit `.receiver` names a type; what the document carries is the
+    // Go name that type was registered under.
+    const explicit_receiver: ?[]const u8 = comptime if (metadata.receiver) |Receiver|
+        registeredContainerName(declaration, Receiver) orelse
+            @compileError("zigo `.receiver` must be a type registered as a handle, tagged union, or enumeration: " ++ @typeName(Receiver))
+    else
+        inherited_receiver;
     try appendFunction(
         allocator,
         functions,
@@ -232,7 +204,7 @@ fn appendSelectedPath(
         @field(comptime pathContainer(declaration, owner), member),
         metadata,
         owner,
-        comptime if (@hasField(@TypeOf(metadata), "receiver")) metadata.receiver else inherited_receiver,
+        explicit_receiver,
         inherited_prefix,
     );
 }
@@ -241,24 +213,22 @@ fn appendFieldAccessors(
     allocator: std.mem.Allocator,
     functions: *std.ArrayList(semantic.SemanticFn),
     types: *std.ArrayList(semantic.TypeDecl),
-    comptime declaration: anytype,
+    comptime declaration: zigo.Binding,
     prefix: []const u8,
     comptime Owner: type,
     owner_name: []const u8,
-    comptime metadata: anytype,
+    comptime metadata: zigo.HandleField,
 ) !void {
-    if (!@hasField(@TypeOf(metadata), "path"))
-        @compileError("zigo field entries require `.path`");
     const path = metadata.path;
     const resolved = comptime fieldPathType(Owner, path);
     if (resolved == null) return fieldAccessIssue(allocator, path, comptime fieldPathOffendingType(Owner, path));
     const Leaf = resolved.?;
     if (!comptime supportedFieldLeaf(declaration, Leaf))
         return fieldAccessIssue(allocator, path, Leaf);
-    if (@hasField(@TypeOf(metadata), "set") and metadata.set and !comptime fieldPathWritable(Owner, path))
+    if (metadata.set and !comptime fieldPathWritable(Owner, path))
         return fieldAccessIssue(allocator, path, comptime fieldPathConstPointerType(Owner, path));
 
-    const name = if (@hasField(@TypeOf(metadata), "name")) metadata.name else fieldPathMember(path);
+    const name = metadata.name orelse fieldPathMember(path);
     const field_type = try typeNode(
         allocator,
         declaration,
@@ -267,7 +237,7 @@ fn appendFieldAccessors(
         comptime "field `" ++ path ++ "`",
     );
     try functions.append(allocator, .{
-        .doc = if (@hasField(@TypeOf(metadata), "doc")) metadata.doc else null,
+        .doc = metadata.doc,
         .field_access = .{ .atomic = if (comptime atomicScalar(Leaf) != null) true else null, .path = path },
         .name = name,
         .params = &.{},
@@ -276,12 +246,12 @@ fn appendFieldAccessors(
         .symbol = try naming.functionSymbolAlloc(allocator, prefix, owner_name, name),
     });
 
-    if (@hasField(@TypeOf(metadata), "set") and metadata.set) {
+    if (metadata.set) {
         const setter_name = try setterNameAlloc(allocator, name);
         const params = try allocator.alloc(semantic.Parameter, 1);
         params[0] = .{ .name = "v", .name_source = .sidecar, .type = field_type };
         try functions.append(allocator, .{
-            .doc = if (@hasField(@TypeOf(metadata), "doc")) metadata.doc else null,
+            .doc = metadata.doc,
             .field_access = .{ .atomic = if (comptime atomicScalar(Leaf) != null) true else null, .path = path, .setter = true },
             .name = setter_name,
             .params = params,
@@ -364,7 +334,7 @@ fn fieldPathWritable(comptime Current: type, comptime path: []const u8) bool {
     return true;
 }
 
-fn supportedFieldLeaf(comptime declaration: anytype, comptime T: type) bool {
+fn supportedFieldLeaf(comptime declaration: zigo.Binding, comptime T: type) bool {
     const Scalar = atomicScalar(T) orelse T;
     return switch (@typeInfo(Scalar)) {
         .bool, .int, .float => true,
@@ -408,28 +378,24 @@ test "duplicate and conflicting function paths are runtime diagnostics" {
     defer arena.deinit();
     try std.testing.expectError(error.DuplicatePath, reflect(arena.allocator(), .{
         .root = Fixture,
-        .functions = .{ .{ .path = "root.add" }, .{ .path = "root.sub" }, .{ .path = "root.add" } },
-    }, "math", "zg"));
-    try std.testing.expectError(error.DuplicatePath, reflect(arena.allocator(), .{
-        .root = Fixture,
-        .functions = .{.{ .receiver = null, .strip_prefix = "", .functions = .{ "root.add", .{ .path = "root.add" } } }},
+        .functions = &.{ .{ .path = "root.add" }, .{ .path = "root.sub" }, .{ .path = "root.add" } },
     }, "math", "zg"));
     try std.testing.expectError(error.DuplicatePath, reflect(arena.allocator(), .{
         .root = Fixture,
         .discover = .public,
-        .functions = .{.{ .path = "root.add" }},
-        .exclude = .{"root.add"},
+        .functions = &.{.{ .path = "root.add" }},
+        .exclude = &.{"root.add"},
     }, "math", "zg"));
     try std.testing.expectError(error.DuplicatePath, reflect(arena.allocator(), .{
         .root = Fixture,
         .discover = .public,
-        .exclude = .{ "root.sub", "root.sub" },
+        .exclude = &.{ "root.sub", "root.sub" },
     }, "math", "zg"));
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
         .discover = .public,
-        .functions = .{.{ .path = "root.add" }},
-        .exclude = .{"root.sub"},
+        .functions = &.{.{ .path = "root.add" }},
+        .exclude = &.{"root.sub"},
     }, "math", "zg");
     try std.testing.expectEqual(@as(usize, 1), document.functions.len);
 }
@@ -454,11 +420,11 @@ test "packages assign explicit functions owning types and longest namespaces" {
     const document = try reflect(arena.allocator(), .{
         .root = Api,
         .discover = .recursive,
-        .types = .{.{ .type = Api.Handle, .repr = .@"opaque" }},
-        .packages = .{
-            .{ .path = "objects", .types = .{"Handle"} },
-            .{ .path = "text", .name = "textual", .namespaces = .{"text"} },
-            .{ .path = "unicode", .namespaces = .{"text.unicode"}, .functions = .{"root.rootFn"} },
+        .types = &.{.{ .handle = .{ .type = Api.Handle } }},
+        .packages = &.{
+            .{ .path = "objects", .types = &.{"Handle"} },
+            .{ .path = "text", .name = "textual", .namespaces = &.{"text"} },
+            .{ .path = "unicode", .namespaces = &.{"text.unicode"}, .functions = &.{"root.rootFn"} },
         },
     }, "sample", "zg");
     try std.testing.expectEqual(@as(usize, 3), document.packages.?.len);
@@ -490,14 +456,14 @@ test "interfaces record their methods and registered type names in order" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Api,
-        .types = .{
-            .{ .type = Api.IntBatch, .repr = .@"opaque" },
-            .{ .name = "Floats", .type = Api.FloatBatch, .repr = .@"opaque" },
+        .types = &.{
+            .{ .handle = .{ .type = Api.IntBatch } },
+            .{ .handle = .{ .name = "Floats", .type = Api.FloatBatch } },
         },
-        .functions = .{ .{ .path = "IntBatch.len" }, .{ .path = "Floats.len" } },
-        .packages = .{.{ .path = "batches", .types = .{ "IntBatch", "Floats" } }},
-        .interfaces = .{
-            .{ .name = "Batch", .methods = .{"len"}, .types = .{ Api.IntBatch, Api.FloatBatch }, .closer = false, .doc = "Batch counts values." },
+        .functions = &.{ .{ .path = "IntBatch.len" }, .{ .path = "Floats.len" } },
+        .packages = &.{.{ .path = "batches", .types = &.{ "IntBatch", "Floats" } }},
+        .interfaces = &.{
+            .{ .name = "Batch", .methods = &.{"len"}, .types = &.{ Api.IntBatch, Api.FloatBatch }, .closer = false, .doc = "Batch counts values." },
         },
     }, "sample", "zg");
     const interface = document.interfaces.?[0];
@@ -519,13 +485,13 @@ test "packages reject invalid paths and missing selectors" {
     defer arena.deinit();
     try std.testing.expectError(error.PackageDeclaration, reflect(arena.allocator(), .{
         .root = Api,
-        .functions = .{.{ .path = "root.ping" }},
-        .packages = .{.{ .path = "../bad" }},
+        .functions = &.{.{ .path = "root.ping" }},
+        .packages = &.{.{ .path = "../bad" }},
     }, "sample", "zg"));
     try std.testing.expectError(error.PackageDeclaration, reflect(arena.allocator(), .{
         .root = Api,
-        .functions = .{.{ .path = "root.ping" }},
-        .packages = .{.{ .path = "tools", .types = .{"Missing"} }},
+        .functions = &.{.{ .path = "root.ping" }},
+        .packages = &.{.{ .path = "tools", .types = &.{"Missing"} }},
     }, "sample", "zg"));
 }
 
@@ -547,13 +513,13 @@ test "package patterns yield to exact names and diagnose empty matches" {
     const document = try reflect(arena.allocator(), .{
         .root = Api,
         .discover = .recursive,
-        .types = .{
-            .{ .type = Key, .repr = .enumeration },
-            .{ .type = Keyboard, .repr = .enumeration },
+        .types = &.{
+            .{ .enumeration = .{ .type = Key } },
+            .{ .enumeration = .{ .type = Keyboard } },
         },
-        .packages = .{
-            .{ .path = "patterns", .types = .{"Key*"}, .namespaces = .{"text*"} },
-            .{ .path = "exact", .types = .{"Keyboard"}, .namespaces = .{"text.unicode"} },
+        .packages = &.{
+            .{ .path = "patterns", .types = &.{"Key*"}, .namespaces = &.{"text*"} },
+            .{ .path = "exact", .types = &.{"Keyboard"}, .namespaces = &.{"text.unicode"} },
         },
     }, "sample", "zg");
     try std.testing.expectEqualStrings("patterns", document.types[0].package.?);
@@ -566,13 +532,13 @@ test "package patterns yield to exact names and diagnose empty matches" {
     try std.testing.expectError(error.PackageDeclaration, reflect(arena.allocator(), .{
         .root = Api,
         .discover = .recursive,
-        .types = .{.{ .type = Key, .repr = .enumeration }},
-        .packages = .{.{ .path = "missing", .types = .{"Mouse*"} }},
+        .types = &.{.{ .enumeration = .{ .type = Key } }},
+        .packages = &.{.{ .path = "missing", .types = &.{"Mouse*"} }},
     }, "sample", "zg"));
     try std.testing.expectError(error.PackageDeclaration, reflect(arena.allocator(), .{
         .root = Api,
         .discover = .recursive,
-        .packages = .{.{ .path = "missing", .namespaces = .{"audio*"} }},
+        .packages = &.{.{ .path = "missing", .namespaces = &.{"audio*"} }},
     }, "sample", "zg"));
 }
 
@@ -600,23 +566,25 @@ test "package closure follows signatures callbacks payloads pairings and field a
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Api,
-        .types = .{
-            .{ .type = Mode, .repr = .enumeration },
-            .{ .type = Payload, .repr = .value },
-            .{ .type = Event, .repr = .tagged_union },
-            .{ .type = Callback, .repr = .callback, .name = "Callback" },
-            .{ .type = Box, .repr = .@"opaque", .fields = .{.{ .path = "mode" }} },
+        .types = &.{
+            .{ .enumeration = .{ .type = Mode } },
+            .{ .value = .{ .type = Payload } },
+            .{ .tagged_union = .{ .type = Event } },
+            .{ .callback = .{ .type = Callback, .name = "Callback" } },
+            .{ .handle = .{ .type = Box, .fields = &.{.{ .path = "mode" }} } },
         },
-        .functions = .{
-            .{ .path = "root.process", .params = .{ "event", "callback" } },
-            .{ .path = "root.makeBox", .params = .{}, .constructs = "Box" },
-            .{ .path = "root.freeBox", .params = .{}, .destroys = "Box" },
+        .functions = &.{
+            .{ .path = "root.process", .params = &.{ .{ .name = "event" }, .{ .name = "callback" } } },
+            .{ .path = "root.makeBox", .constructs = Box },
+            .{ .path = "root.freeBox", .destroys = Box },
         },
-        .packages = .{.{
-            .path = "events",
-            .functions = .{ "root.process", "root.makeBox" },
-            .closure = true,
-        }},
+        .packages = &.{
+            .{
+                .path = "events",
+                .functions = &.{ "root.process", "root.makeBox" },
+                .closure = true,
+            },
+        },
     }, "sample", "zg");
     for (document.types) |type_decl| try std.testing.expectEqualStrings("events", type_decl.package.?);
     for (document.functions) |function| {
@@ -640,28 +608,28 @@ test "package closure respects explicit assignments and rejects competing claims
     defer arena.deinit();
     const explicit = try reflect(arena.allocator(), .{
         .root = Api,
-        .types = .{.{ .type = Shared, .repr = .enumeration }},
-        .functions = .{
+        .types = &.{.{ .enumeration = .{ .type = Shared } }},
+        .functions = &.{
             .{ .path = "root.left" },
             .{ .path = "root.right" },
         },
-        .packages = .{
-            .{ .path = "left", .functions = .{"root.left"}, .closure = true },
-            .{ .path = "shared", .types = .{"Shared"} },
+        .packages = &.{
+            .{ .path = "left", .functions = &.{"root.left"}, .closure = true },
+            .{ .path = "shared", .types = &.{"Shared"} },
         },
     }, "sample", "zg");
     try std.testing.expectEqualStrings("shared", explicit.types[0].package.?);
 
     try std.testing.expectError(error.PackageDeclaration, reflect(arena.allocator(), .{
         .root = Api,
-        .types = .{.{ .type = Shared, .repr = .enumeration }},
-        .functions = .{
+        .types = &.{.{ .enumeration = .{ .type = Shared } }},
+        .functions = &.{
             .{ .path = "root.left" },
             .{ .path = "root.right" },
         },
-        .packages = .{
-            .{ .path = "left", .functions = .{"root.left"}, .closure = true },
-            .{ .path = "right", .functions = .{"root.right"}, .closure = true },
+        .packages = &.{
+            .{ .path = "left", .functions = &.{"root.left"}, .closure = true },
+            .{ .path = "right", .functions = &.{"root.right"}, .closure = true },
         },
     }, "sample", "zg"));
 }
@@ -673,22 +641,19 @@ test "package closure respects explicit assignments and rejects competing claims
 /// the offending method in a diagnostic rather than a compile error.
 fn reflectInterfaces(
     allocator: std.mem.Allocator,
-    comptime declaration: anytype,
+    comptime declaration: zigo.Binding,
     types: []const semantic.TypeDecl,
 ) ![]const semantic.Interface {
-    if (!@hasField(@TypeOf(declaration), "interfaces")) return &.{};
     var interfaces: std.ArrayList(semantic.Interface) = .empty;
     inline for (declaration.interfaces) |entry| {
         comptime validateInterfaceEntry(entry);
-        const methods = try allocator.alloc([]const u8, entry.methods.len);
-        inline for (entry.methods, 0..) |method, index| methods[index] = method;
         const type_names = try allocator.alloc([]const u8, entry.types.len);
         inline for (entry.types, 0..) |T, index| type_names[index] = comptime registeredOpaqueName(declaration, T) orelse
-            @compileError("zigo interface types must be registered in `.types` with `.repr = .opaque`: " ++ @typeName(T));
+            @compileError("zigo interface types must be registered in `.types` as `.handle`: " ++ @typeName(T));
         try interfaces.append(allocator, .{
-            .closer = if (@hasField(@TypeOf(entry), "closer")) entry.closer else true,
-            .doc = if (@hasField(@TypeOf(entry), "doc")) entry.doc else null,
-            .methods = methods,
+            .closer = entry.closer,
+            .doc = entry.doc,
+            .methods = entry.methods,
             .name = entry.name,
             .package = if (semantic.typeDecl(types, type_names[0])) |decl| decl.package else null,
             .types = type_names,
@@ -697,12 +662,11 @@ fn reflectInterfaces(
     return interfaces.toOwnedSlice(allocator);
 }
 
-fn validateInterfaceEntry(comptime entry: anytype) void {
-    if (!@hasField(@TypeOf(entry), "name")) @compileError("zigo interface entries require `.name`");
-    if (!@hasField(@TypeOf(entry), "methods") or entry.methods.len == 0)
-        @compileError("zigo interface entries require a non-empty `.methods` list of Zig method names");
-    if (!@hasField(@TypeOf(entry), "types") or entry.types.len == 0)
-        @compileError("zigo interface entries require a non-empty `.types` list of registered opaque types");
+fn validateInterfaceEntry(comptime entry: zigo.Interface) void {
+    if (entry.methods.len == 0)
+        @compileError("zigo interface `" ++ entry.name ++ "` requires a non-empty `.methods` list of Zig method names");
+    if (entry.types.len == 0)
+        @compileError("zigo interface `" ++ entry.name ++ "` requires a non-empty `.types` list of registered handle types");
 }
 
 /// The Zig expression the shim writes for an injected argument. `.allocator`
@@ -710,22 +674,16 @@ fn validateInterfaceEntry(comptime entry: anytype) void {
 /// module; `.io` takes a path only, because `std` has no default `Io`. There
 /// is no default for either: an allocator nobody chose is a lifetime decision
 /// zigo has no business making.
-fn injectionExpression(comptime declaration: anytype, comptime field: []const u8) ?[]const u8 {
-    if (!@hasField(@TypeOf(declaration), field)) return null;
-    const value = @field(declaration, field);
-    if (@TypeOf(value) == @TypeOf(.enum_literal)) {
-        if (!std.mem.eql(u8, field, "allocator"))
-            @compileError("zigo `." ++ field ++ "` must be a declaration path string");
-        return switch (value) {
-            .c_allocator => "std.heap.c_allocator",
-            .page_allocator => "std.heap.page_allocator",
-            .smp_allocator => "std.heap.smp_allocator",
-            else => @compileError("zigo `.allocator` must be .c_allocator, .page_allocator, .smp_allocator, or a declaration path string"),
-        };
-    }
-    // A path is resolved against the bound module, the same root every
-    // `.functions` path resolves against.
-    return "target." ++ value;
+fn injectionExpression(comptime injection: ?zigo.Injection) ?[]const u8 {
+    const value = injection orelse return null;
+    return switch (value) {
+        .c_allocator => "std.heap.c_allocator",
+        .page_allocator => "std.heap.page_allocator",
+        .smp_allocator => "std.heap.smp_allocator",
+        // A path is resolved against the bound module, the same root every
+        // `.functions` path resolves against.
+        .path => |path| "target." ++ path,
+    };
 }
 
 /// The parameters zigo fills in rather than exposing. Zig spells them as
@@ -742,11 +700,11 @@ fn appendFunction(
     functions: *std.ArrayList(semantic.SemanticFn),
     types: *std.ArrayList(semantic.TypeDecl),
     pairings: *std.ArrayList(Pairing),
-    comptime declaration: anytype,
+    comptime declaration: zigo.Binding,
     prefix: []const u8,
     comptime source_name: []const u8,
     comptime function_value: anytype,
-    comptime metadata: anytype,
+    comptime metadata: zigo.Function,
     comptime discovered_owner: ?[]const u8,
     comptime explicit_receiver: ?[]const u8,
     comptime strip_prefix: ?[]const u8,
@@ -760,7 +718,7 @@ fn appendFunction(
     const stripped_name: ?[]const u8 = comptime if (strip_prefix) |value| naming.stripFunctionPrefix(source_name, value) else source_name;
     if (strip_prefix != null and stripped_name == null)
         return receiverIssue(allocator, "function `{s}` does not begin with group prefix `{s}`", .{ source_name, strip_prefix.? });
-    const function_name = if (@hasField(@TypeOf(metadata), "name")) metadata.name else stripped_name orelse unreachable;
+    const function_name: []const u8 = if (metadata.name) |name| name else stripped_name.?;
     // The receiver is the first parameter Go would see: an injected
     // `std.mem.Allocator` or `std.Io` ahead of the handle never reaches the
     // C signature, so it does not stop the function from being a method.
@@ -791,7 +749,7 @@ fn appendFunction(
         value ++ "."
     else if (discovered_owner) |value| value ++ "." else "";
     const function_label = source_name;
-    const has_sidecar = @hasField(@TypeOf(metadata), "params");
+    const has_sidecar = metadata.params.len != 0;
     // `.params` names what Go sees, so the count it has to match leaves out
     // the receiver and every injected argument. Saying so here, before the
     // names are indexed, is what keeps a short list from failing as a
@@ -803,13 +761,6 @@ fn appendFunction(
             exposedParamCount(info, receiver_index),
         ));
     }
-    // `.param_meta` is keyed by the spellings `.params` gives, and a key
-    // that names no parameter would otherwise be dropped without a word:
-    // the metadata it carried -- a `.direction`, a `.semantic` -- simply
-    // stops applying, and the ABI moves while the build stays green.
-    if (comptime orphanParamMetaKey(metadata)) |key| {
-        return paramMetaKeyMismatch(comptime paramMetaKeyMessage(owner_label ++ function_label, key, has_sidecar));
-    }
     const params = try allocator.alloc(semantic.Parameter, comptime concreteParamCount(info, receiver_index));
     inline for (info.params, 0..) |param, param_index| {
         if (receiver_index != null and param_index == receiver_index.?) continue;
@@ -820,20 +771,25 @@ fn appendFunction(
         // Where this parameter falls in `.params`, which counts only the
         // parameters Go is given.
         const sidecar_index = comptime exposedParamIndex(info, receiver_index, param_index);
-        const named_by_sidecar = comptime injection == null and has_sidecar and sidecar_index < metadata.params.len;
+        // The `Param` the binding wrote for this position, or the defaults.
+        // A spec may carry contracts without a name: the name then comes from
+        // the source scan or the `p<n>` fallback like an unlisted parameter.
+        const has_spec = comptime injection == null and has_sidecar and sidecar_index < metadata.params.len;
+        const spec: zigo.Param = comptime if (has_spec) metadata.params[sidecar_index] else .{};
+        const named_by_sidecar = comptime has_spec and spec.name != null;
         // An injected parameter is never named by the binding -- it has no
         // C parameter to name -- so it carries the name of what fills it,
         // which is what a diagnostic about it has to say anyway.
         const parameter_name = if (comptime injection) |value|
             @tagName(value)
         else if (named_by_sidecar)
-            metadata.params[sidecar_index]
+            spec.name.?
         else
             try std.fmt.allocPrint(allocator, "p{d}", .{output_index});
         // The same name as a comptime string, for the messages `typeNode`
         // builds while walking this parameter.
         const parameter_label = comptime if (named_by_sidecar)
-            metadata.params[sidecar_index]
+            spec.name.?
         else
             std.fmt.comptimePrint("p{d}", .{output_index});
         // The cancellation flag is opt-in by name rather than by type: the
@@ -841,8 +797,8 @@ fn appendFunction(
         // check below is what makes it sound. Recognising it here keeps
         // `typeNode` from rejecting `*const std.atomic.Value(u32)` as an
         // unregistered struct pointer and reporting the wrong thing.
-        const names_cancel = comptime named_by_sidecar and @hasField(@TypeOf(metadata), "cancel") and
-            std.mem.eql(u8, metadata.cancel.param, metadata.params[sidecar_index]);
+        const names_cancel = comptime named_by_sidecar and metadata.cancel != null and
+            std.mem.eql(u8, metadata.cancel.?.param, spec.name.?);
         const is_cancel_flag = comptime names_cancel and isCancelFlag(param.type.?);
         // An injected parameter never reaches C, so it is not walked as a
         // type: `std.mem.Allocator` is a struct with a vtable pointer, and
@@ -852,16 +808,7 @@ fn appendFunction(
         // cannot carry, so walking every field would reject exactly the
         // structs it exists for. Unlisted fields are still required to have
         // a default, which `reflectFlattenedFields` checks.
-        const flatten_names: ?[]const []const u8 = comptime blk: {
-            if (!named_by_sidecar or !@hasField(@TypeOf(metadata), "param_meta")) break :blk null;
-            if (!@hasField(@TypeOf(metadata.param_meta), parameter_name)) break :blk null;
-            const value = @field(metadata.param_meta, parameter_name);
-            if (!@hasField(@TypeOf(value), "flatten")) break :blk null;
-            var names: [value.flatten.len][]const u8 = undefined;
-            for (value.flatten, 0..) |field_name, i| names[i] = field_name;
-            const frozen = names;
-            break :blk &frozen;
-        };
+        const flatten_names: ?[]const []const u8 = comptime if (has_spec and spec.flatten.len != 0) spec.flatten else null;
         const flattened_fields: ?[]const semantic.FlattenedField = if (flatten_names) |names| try reflectFlattenedFields(
             allocator,
             declaration,
@@ -906,24 +853,22 @@ fn appendFunction(
         if (comptime contract.retention) |value| reflected.retention = value;
         if (comptime contract.reentrancy) |value| reflected.reentrancy = value;
         if (comptime contract.thread) |value| reflected.thread = value;
-        if (named_by_sidecar and @hasField(@TypeOf(metadata), "param_meta")) {
-            const meta = metadata.param_meta;
-            if (@hasField(@TypeOf(meta), parameter_name)) {
-                const value = @field(meta, parameter_name);
-                if (@hasField(@TypeOf(value), "direction")) reflected.direction = value.direction;
-                if (@hasField(@TypeOf(value), "retention")) reflected.retention = value.retention;
-                if (@hasField(@TypeOf(value), "semantic")) reflected.semantic = value.semantic;
-                if (@hasField(@TypeOf(value), "written")) reflected.written = value.written;
-                if (@hasField(@TypeOf(value), "buffer")) reflected.buffer = value.buffer;
-                if (@hasField(@TypeOf(value), "go_error")) reflected.go_error = value.go_error;
-                if (@hasField(@TypeOf(value), "on_callback_failure"))
-                    reflected.on_callback_failure = .{ .result = value.on_callback_failure.result };
-                if (@hasField(@TypeOf(value), "reentrancy")) reflected.reentrancy = value.reentrancy;
-                if (@hasField(@TypeOf(value), "thread")) reflected.thread = value.thread;
-                if (@hasField(@TypeOf(value), "userdata")) reflected.userdata = value.userdata;
-                if (@hasField(@TypeOf(value), "flatten")) reflected.flatten = flattened_fields;
-                if (@hasField(@TypeOf(value), "go")) reflected.go_adapter = comptime goAdapterValue(value.go);
-            }
+        if (comptime has_spec) {
+            reflected.direction = ir(semantic.Direction, spec.direction);
+            if (spec.retention) |value| reflected.retention = ir(semantic.Retention, value);
+            if (spec.semantic) |value| reflected.semantic = ir(semantic.SemanticHint, value);
+            if (spec.written) |value| reflected.written = switch (value) {
+                .all => .all,
+                .result => .@"return",
+            };
+            if (spec.buffer) |value| reflected.buffer = value;
+            if (spec.go_error) reflected.go_error = true;
+            if (spec.on_callback_failure) |failure| reflected.on_callback_failure = .{ .result = failure.result };
+            if (spec.reentrancy) |value| reflected.reentrancy = ir(semantic.CallbackReentrancy, value);
+            if (spec.thread) |value| reflected.thread = ir(semantic.CallbackThread, value);
+            if (spec.userdata) |userdata| reflected.userdata = userdata.param;
+            if (spec.flatten.len != 0) reflected.flatten = flattened_fields;
+            if (spec.go) |adapter| reflected.go_adapter = comptime goAdapterValue(adapter);
         }
         // A cancel parameter whose spelling did not match keeps the `void`
         // above, and validation names it. One that did becomes its own node.
@@ -944,12 +889,7 @@ fn appendFunction(
     // binding hands Go a handle. The decision is made before the return type
     // is walked, because walking it would register a value struct C cannot
     // carry and reject the whole binding instead.
-    const boxed_type = comptime boxedConstructorName(
-        declaration,
-        info,
-        function_name,
-        if (@hasField(@TypeOf(metadata), "constructs")) metadata.constructs else null,
-    );
+    const boxed_type = comptime boxedConstructorName(declaration, info, function_name, metadata.constructs);
     const reflected_return = if (boxed_type) |type_name| blk: {
         const payload = try allocator.create(semantic.TypeNode);
         payload.* = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = type_name } };
@@ -963,6 +903,7 @@ fn appendFunction(
         semantic.TypeNode{ .void = {} };
     var reflected_function: semantic.SemanticFn = .{
         .boxed = if (boxed_type != null) .create else null,
+        .doc = metadata.doc,
         .has_comptime_params = if (info.is_generic) true else null,
         .name = function_name,
         .namespace = if (receiver == null) discovered_owner else null,
@@ -981,32 +922,28 @@ fn appendFunction(
         .symbol = try naming.functionSymbolAlloc(allocator, prefix, receiver orelse discovered_owner, function_name),
         .zig_path = comptime zigCallPath(receiver, discovered_owner, source_name, function_name),
     };
-    if (@hasField(@TypeOf(metadata), "covers"))
-        reflected_function.covers = comptime coveragePaths(metadata.covers);
-    if (@hasField(@TypeOf(metadata), "child_of_receiver") and metadata.child_of_receiver)
-        reflected_function.child_of_receiver = true;
+    if (metadata.covers.len != 0) reflected_function.covers = metadata.covers;
+    if (metadata.child_of_receiver) reflected_function.child_of_receiver = true;
     if (boxed_type != null) reflected_function.ownership = .caller;
-    if (@hasField(@TypeOf(metadata), "semantic")) reflected_function.return_semantic = metadata.semantic;
+    if (metadata.returns.semantic) |value| reflected_function.return_semantic = ir(semantic.SemanticHint, value);
     reflected_function.return_semantic = resolveCodepointHint(declaration, reflected_function.return_semantic, reflected_function.@"return".errorPayload());
     reflected_function.return_semantic = resolveStringHint(declaration, reflected_function.return_semantic, reflected_function.@"return".errorPayload(), .result);
-    if (@hasField(@TypeOf(metadata), "go")) reflected_function.return_go_adapter = comptime goAdapterValue(metadata.go);
-    if (@hasField(@TypeOf(metadata), "returns")) {
-        reflected_function.ownership = metadata.returns;
-        if (metadata.returns == .borrowed) reflected_function.borrowed_return = true;
+    if (metadata.returns.go) |adapter| reflected_function.return_go_adapter = comptime goAdapterValue(adapter);
+    if (metadata.returns.ownership) |ownership| {
+        reflected_function.ownership = ir(semantic.Ownership, ownership);
+        if (ownership == .borrowed) reflected_function.borrowed_return = true;
     }
     // `.release` addresses the freeing function the same way `.path` does, so
     // the last segment names it inside the generated document.
-    if (@hasField(@TypeOf(metadata), "release")) reflected_function.release = comptime pathMember(metadata.release);
-    if (@hasField(@TypeOf(metadata), "cancel")) {
-        reflected_function.cancel = metadata.cancel.param;
-        if (@hasField(@TypeOf(metadata.cancel), "canceled")) reflected_function.cancel_error = metadata.cancel.canceled;
+    if (metadata.returns.release) |release| reflected_function.release = comptime pathMember(release);
+    if (metadata.cancel) |cancel| {
+        reflected_function.cancel = cancel.param;
+        if (cancel.canceled) |canceled| reflected_function.cancel_error = canceled;
     }
     // `.iterator = .{}` names the wrapper `All`; `.iterator = .{ .name = "Rows" }`
     // picks another. The shape (a receiver, no data parameters, `?T`) is
     // checked by validation, where the whole signature is in hand.
-    if (@hasField(@TypeOf(metadata), "iterator")) reflected_function.iterator = .{
-        .name = if (@hasField(@TypeOf(metadata.iterator), "name")) metadata.iterator.name else "All",
-    };
+    if (metadata.iterator) |iterator| reflected_function.iterator = .{ .name = iterator.name };
     if (info.return_type) |return_type| {
         if (isSentinelBytePointer(return_type)) reflected_function.return_semantic = .c_string;
     }
@@ -1016,36 +953,37 @@ fn appendFunction(
     // `.string_release` that names nothing exposed fails through the ordinary
     // ZIGO016 release check rather than a rule of its own. This runs last so
     // that both the inferred and the sentinel-driven text hints are in place.
-    if (@hasField(@TypeOf(declaration), "string_release") and
-        reflected_function.release == null and
-        reflected_function.ownership == .caller and
-        isTextResult(reflected_function))
-        reflected_function.release = comptime pathMember(declaration.string_release);
+    if (declaration.string_release) |string_release| {
+        if (reflected_function.release == null and
+            reflected_function.ownership == .caller and
+            isTextResult(reflected_function))
+            reflected_function.release = comptime pathMember(string_release);
+    }
     // A binding pairs a constructor with a destructor by naming the type they
     // make and unmake. The claim is checked against the signature here, where
     // the declaration is still in hand; the pair is formed once the walk ends.
-    if (@hasField(@TypeOf(metadata), "constructs")) {
-        const type_name = metadata.constructs;
-        if (!comptime isRegisteredHandle(declaration, type_name))
-            return pairingIssue(allocator, "`{s}{s}` declares `.constructs = \"{s}\"`, which is not a registered opaque type", .{ owner_label, function_label, type_name });
+    if (metadata.constructs) |Constructed| {
+        const type_name = comptime registeredHandleName(declaration, Constructed) orelse shortTypeName(@typeName(Constructed));
+        if (!comptime isRegisteredHandle(declaration, Constructed))
+            return pairingIssue(allocator, "`{s}{s}` declares `.constructs = {s}`, which is not a registered handle type", .{ owner_label, function_label, type_name });
         const returned = returnedOpaqueName(reflected_function.@"return") orelse "";
         if (!std.mem.eql(u8, returned, type_name))
-            return pairingIssue(allocator, "`{s}{s}` declares `.constructs = \"{s}\"` but does not return `*{s}`", .{ owner_label, function_label, type_name, type_name });
+            return pairingIssue(allocator, "`{s}{s}` declares `.constructs = {s}` but does not return `*{s}`", .{ owner_label, function_label, type_name, type_name });
         try pairings.append(allocator, .{
             .index = functions.items.len,
             .kind = .constructs,
-            .name = if (@hasField(@TypeOf(metadata), "name")) metadata.name else null,
+            .name = metadata.name,
             .type = type_name,
         });
     }
-    if (@hasField(@TypeOf(metadata), "destroys")) {
-        const type_name = metadata.destroys;
-        if (!comptime isRegisteredHandle(declaration, type_name))
-            return pairingIssue(allocator, "`{s}{s}` declares `.destroys = \"{s}\"`, which is not a registered opaque type", .{ owner_label, function_label, type_name });
+    if (metadata.destroys) |Destroyed| {
+        const type_name = comptime registeredHandleName(declaration, Destroyed) orelse shortTypeName(@typeName(Destroyed));
+        if (!comptime isRegisteredHandle(declaration, Destroyed))
+            return pairingIssue(allocator, "`{s}{s}` declares `.destroys = {s}`, which is not a registered handle type", .{ owner_label, function_label, type_name });
         if (!std.mem.eql(u8, reflected_function.receiver orelse "", type_name))
-            return pairingIssue(allocator, "`{s}{s}` declares `.destroys = \"{s}\"` but does not take `*{s}` as its first parameter after any injected argument", .{ owner_label, function_label, type_name, type_name });
+            return pairingIssue(allocator, "`{s}{s}` declares `.destroys = {s}` but does not take `*{s}` as its first parameter after any injected argument", .{ owner_label, function_label, type_name, type_name });
         if (reflected_function.@"return" != .void)
-            return pairingIssue(allocator, "`{s}{s}` declares `.destroys = \"{s}\"` but does not return void", .{ owner_label, function_label, type_name });
+            return pairingIssue(allocator, "`{s}{s}` declares `.destroys = {s}` but does not return void", .{ owner_label, function_label, type_name });
         try pairings.append(allocator, .{ .index = functions.items.len, .kind = .destroys, .type = type_name });
     }
     try functions.append(allocator, reflected_function);
@@ -1053,10 +991,10 @@ fn appendFunction(
 
 fn reflectFlattenedFields(
     allocator: std.mem.Allocator,
-    comptime declaration: anytype,
+    comptime declaration: zigo.Binding,
     comptime T: type,
     types: *std.ArrayList(semantic.TypeDecl),
-    comptime selected: anytype,
+    comptime selected: []const []const u8,
     comptime function_label: []const u8,
     comptime parameter_label: []const u8,
 ) ![]const semantic.FlattenedField {
@@ -1140,14 +1078,27 @@ fn flattenMessageAlloc(allocator: std.mem.Allocator, comptime detail: []const u8
     );
 }
 
-/// Whether a `.types` entry registers this name as a handle, which is the only
+/// Whether a `.types` entry registers `T` as a handle, which is the only
 /// thing a constructor pair can be about.
-fn isRegisteredHandle(comptime declaration: anytype, comptime type_name: []const u8) bool {
-    if (!@hasField(@TypeOf(declaration), "types")) return false;
+fn isRegisteredHandle(comptime declaration: zigo.Binding, comptime T: type) bool {
+    return registeredHandleName(declaration, T) != null;
+}
+
+/// The Go name `T` was registered under as a handle or tagged union.
+fn registeredHandleName(comptime declaration: zigo.Binding, comptime T: type) ?[]const u8 {
     inline for (declaration.types) |entry| {
-        if (isHandleRepr(entry.repr) and std.mem.eql(u8, typeEntryName(entry), type_name)) return true;
+        if (comptime entry.isHandle() and entry.zigType() == T) return comptime entry.goName();
     }
-    return false;
+    return null;
+}
+
+/// The Go name `T` was registered under as anything a method can hang off:
+/// a handle, a tagged union, or an enumeration.
+fn registeredContainerName(comptime declaration: zigo.Binding, comptime T: type) ?[]const u8 {
+    inline for (declaration.types) |entry| {
+        if (comptime entry != .callback and entry.zigType() == T) return comptime entry.goName();
+    }
+    return null;
 }
 
 /// What a `.constructs`/`.destroys` claim the signatures do not support is
@@ -1210,14 +1161,14 @@ fn zigCallPath(
 /// function is left alone, so the rejection the author sees still names the
 /// struct rather than a decision zigo made for them.
 fn boxedConstructorName(
-    comptime declaration: anytype,
+    comptime declaration: zigo.Binding,
     comptime info: std.builtin.Type.Fn,
     comptime function_name: []const u8,
     /// The type `.constructs` named, which says this is a constructor whatever
     /// it is called.
-    comptime constructs: ?[]const u8,
+    comptime constructs: ?type,
 ) ?[]const u8 {
-    if (injectionExpression(declaration, "allocator") == null) return null;
+    if (injectionExpression(declaration.allocator) == null) return null;
     if (constructs == null and !isConstructorName(function_name)) return null;
     const return_type = info.return_type orelse return null;
     const value_type = switch (@typeInfo(return_type)) {
@@ -1225,15 +1176,12 @@ fn boxedConstructorName(
         else => return_type,
     };
     if (@typeInfo(value_type) != .@"struct") return null;
-    if (!@hasField(@TypeOf(declaration), "types")) return null;
+    // A `.constructs` claim about a different type is left alone here so the
+    // mismatch is reported against the declaration rather than silently boxed
+    // into the wrong handle.
+    if (constructs) |claimed| if (claimed != value_type) return null;
     inline for (declaration.types) |entry| {
-        if (entry.repr == .@"opaque" and entry.type == value_type) {
-            // A `.constructs` claim about a different type is left alone here
-            // so the mismatch is reported against the declaration rather than
-            // silently boxed into the wrong handle.
-            if (constructs) |claimed| if (!std.mem.eql(u8, claimed, typeEntryName(entry))) return null;
-            return typeEntryName(entry);
-        }
+        if (comptime entry == .handle and entry.zigType() == value_type) return comptime entry.goName();
     }
     return null;
 }
@@ -1260,7 +1208,7 @@ fn discoverContainer(
     functions: *std.ArrayList(semantic.SemanticFn),
     types: *std.ArrayList(semantic.TypeDecl),
     pairings: *std.ArrayList(Pairing),
-    comptime declaration: anytype,
+    comptime declaration: zigo.Binding,
     prefix: []const u8,
     declared: DeclaredPaths,
     comptime Container: type,
@@ -1278,10 +1226,10 @@ fn discoverContainer(
         // ran; an excluded one is left out. Either way this is one hash
         // lookup at runtime, not a comptime scan of the binding.
         if (!declared.claims(path)) {
-            try appendFunction(allocator, functions, types, pairings, declaration, prefix, candidate.name, value, .{}, owner, null, null);
+            try appendFunction(allocator, functions, types, pairings, declaration, prefix, candidate.name, value, .{ .path = path }, owner, null, null);
         }
     }
-    if (comptime !discoveryRecursive(declaration)) return;
+    if (declaration.discover != .recursive) return;
     inline for (comptime std.meta.declarations(Container)) |candidate| {
         const value = @field(Container, candidate.name);
         if (@TypeOf(value) != type or comptime !isNestedContainer(Container, value)) continue;
@@ -1314,10 +1262,7 @@ pub fn isNestedContainer(comptime Container: type, comptime Child: type) bool {
 }
 
 /// Whether the binding asked for every `u21` to be a codepoint.
-pub fn infersCodepoints(comptime declaration: anytype) bool {
-    if (!@hasField(@TypeOf(declaration), "codepoints")) return false;
-    if (declaration.codepoints != .explicit and declaration.codepoints != .infer_u21)
-        @compileError("zigo `.codepoints` must be `.explicit` or `.infer_u21`");
+pub fn infersCodepoints(comptime declaration: zigo.Binding) bool {
     return declaration.codepoints == .infer_u21;
 }
 
@@ -1325,7 +1270,7 @@ pub fn infersCodepoints(comptime declaration: anytype) bool {
 /// opt-out are applied. `.integer` never reaches the document: it only stops
 /// inference, so the recorded hint is null. Inference marks a `u21` scalar or
 /// plain slice of `u21`, in either direction and through `!`/`?`.
-fn resolveCodepointHint(comptime declaration: anytype, hint: ?semantic.SemanticHint, node: semantic.TypeNode) ?semantic.SemanticHint {
+fn resolveCodepointHint(comptime declaration: zigo.Binding, hint: ?semantic.SemanticHint, node: semantic.TypeNode) ?semantic.SemanticHint {
     if (hint == .integer) return null;
     if (hint != null or !comptime infersCodepoints(declaration)) return hint;
     const scalar = if (node == .optional) node.optional.child.* else node;
@@ -1339,10 +1284,7 @@ fn isNarrowCodepointInt(node: semantic.TypeNode) bool {
 }
 
 /// Whether the binding asked for every plain byte slice to be text.
-pub fn infersStrings(comptime declaration: anytype) bool {
-    if (!@hasField(@TypeOf(declaration), "strings")) return false;
-    if (declaration.strings != .explicit and declaration.strings != .infer_utf8)
-        @compileError("zigo `.strings` must be `.explicit` or `.infer_utf8`");
+pub fn infersStrings(comptime declaration: zigo.Binding) bool {
     return declaration.strings == .infer_utf8;
 }
 
@@ -1355,7 +1297,7 @@ pub fn infersStrings(comptime declaration: anytype) bool {
 /// opts one site out generating exactly what it generated before `.strings`
 /// existed.
 fn resolveStringHint(
-    comptime declaration: anytype,
+    comptime declaration: zigo.Binding,
     hint: ?semantic.SemanticHint,
     node: semantic.TypeNode,
     position: StringPosition,
@@ -1403,163 +1345,88 @@ fn isPlainByteSlice(node: semantic.TypeNode, position: StringPosition) bool {
     return semantic.isByte(node.slice.element.*);
 }
 
-pub fn discoveryEnabled(comptime declaration: anytype) bool {
-    if (!@hasField(@TypeOf(declaration), "discover")) return false;
-    if (declaration.discover != .public and declaration.discover != .recursive)
-        @compileError("zigo `.discover` must be `.public` or `.recursive`");
-    if (@TypeOf(declaration.root) != type) @compileError("zigo `.root` must be a module or container type");
-    return true;
+pub fn discoveryEnabled(comptime declaration: zigo.Binding) bool {
+    return declaration.discover != null;
 }
 
-/// `.public` finds the functions declared directly in the root and in each
-/// registered type. `.recursive` also descends into the namespace structs
-/// those containers declare. It stays opt-in because turning it on would
-/// otherwise silently widen an existing binding's exported surface.
-pub fn discoveryRecursive(comptime declaration: anytype) bool {
-    if (!@hasField(@TypeOf(declaration), "discover")) return false;
-    return declaration.discover == .recursive;
-}
-
-/// The access strategy a `types` entry chose. Defaults keep the axis out of
-/// declarations that do not need it; new strategies add a value here rather
-/// than a new `repr` name.
-fn accessStrategy(comptime entry: anytype) semantic.Access {
-    if (!@hasField(@TypeOf(entry), "access")) return .projection;
-    return switch (entry.access) {
-        .projection => .projection,
-        .snapshot => .snapshot,
-        else => @compileError("zigo `.access` must be `.projection` or `.snapshot`"),
-    };
+/// The hint a value or materialized entry gives one member through
+/// `.fields`. `.integer` is the same opt-out it is on a parameter and records
+/// nothing.
+fn fieldSemantic(comptime fields: []const zigo.ValueField, comptime name: []const u8) ?semantic.SemanticHint {
+    inline for (fields) |field| {
+        if (comptime std.mem.eql(u8, field.name, name)) {
+            return if (field.semantic == .integer) null else ir(semantic.SemanticHint, field.semantic);
+        }
+    }
+    return null;
 }
 
 /// The display name of a `types` entry: the explicit `.name` when given, and
-/// otherwise the short Zig type name. Generic instantiations need the explicit
-/// form, which is why registering one is an ordinary `types` entry.
-/// The `.field_meta` of a `.repr = .value` entry, or nothing.
-fn fieldMeta(comptime entry: anytype) @TypeOf(if (@hasField(@TypeOf(entry), "field_meta")) entry.field_meta else .{}) {
-    return if (@hasField(@TypeOf(entry), "field_meta")) entry.field_meta else .{};
+/// otherwise the short Zig type name.
+pub fn typeEntryName(comptime entry: zigo.Type) []const u8 {
+    return entry.goName();
 }
 
-/// The hint `.field_meta` gives one member. `.integer` is the same opt-out
-/// it is on a parameter and records nothing.
-fn fieldSemantic(comptime field_meta: anytype, comptime name: []const u8) ?semantic.SemanticHint {
-    if (!@hasField(@TypeOf(field_meta), name)) return null;
-    const meta = @field(field_meta, name);
-    if (!@hasField(@TypeOf(meta), "semantic")) return null;
-    const hint: semantic.SemanticHint = meta.semantic;
-    return if (hint == .integer) null else hint;
-}
-
-pub fn typeEntryName(comptime entry: anytype) []const u8 {
-    return if (@hasField(@TypeOf(entry), "name")) entry.name else shortTypeName(@typeName(entry.type));
-}
-
-fn validateSelectors(comptime declaration: anytype) void {
-    if (@TypeOf(declaration.root) != type) @compileError("zigo `.root` must be a module or container type");
-    if (@hasField(@TypeOf(declaration), "functions")) {
-        inline for (declaration.functions) |entry| validateFunctionEntry(declaration, entry, false);
+fn validateSelectors(comptime declaration: zigo.Binding) void {
+    inline for (declaration.functions) |entry| validateFunctionEntry(declaration, entry);
+    inline for (declaration.methods) |group| {
+        inline for (group.functions) |entry| validateFunctionEntry(declaration, entry);
     }
     // A registered enum contributes no functions of its own, so the Go enum
-    // it produces may stand in for the Zig methods it makes redundant. Other
-    // type entries expose functions directly and cover nothing.
-    if (@hasField(@TypeOf(declaration), "types")) {
-        inline for (declaration.types) |entry| {
-            if (@hasField(@TypeOf(entry), "covers")) {
-                if (entry.repr != .enumeration) @compileError("zigo `.covers` on a type entry is only supported for `.repr = .enumeration`");
-                validateCoveragePaths(declaration, entry.covers);
-            }
+    // it produces may stand in for the Zig methods it makes redundant.
+    inline for (declaration.types) |entry| {
+        if (entry == .enumeration) {
+            inline for (entry.enumeration.covers) |path| validateCoveragePath(declaration, path);
         }
     }
-    if (!discoveryEnabled(declaration)) {
-        if (@hasField(@TypeOf(declaration), "exclude")) {
-            @compileError("zigo `.exclude` requires `.discover = .public`; an explicit list simply omits the function");
+    if (declaration.discover == null) {
+        if (declaration.exclude.len != 0) {
+            @compileError("zigo `.exclude` requires `.discover`; an explicit list simply omits the function");
         }
         return;
     }
-    if (@hasField(@TypeOf(declaration), "exclude")) {
-        inline for (declaration.exclude) |path| {
-            if (!declarationPathExists(declaration, path)) {
-                @compileError("zigo exclusion path does not name a discovered public function: " ++ path);
-            }
+    inline for (declaration.exclude) |path| {
+        if (!declarationPathExists(declaration, path)) {
+            @compileError("zigo exclusion path does not name a discovered public function: " ++ path);
         }
     }
 }
 
-fn validateFunctionEntry(comptime declaration: anytype, comptime entry: anytype, comptime nested: bool) void {
-    if (comptime isStringEntry(@TypeOf(entry))) {
-        if (!nested) @compileError("zigo function entries require `.path`");
-        validateFunctionPath(declaration, entry);
-        return;
-    }
-    if (@hasField(@TypeOf(entry), "functions")) {
-        if (nested) @compileError("zigo function groups cannot be nested");
-        if (!@hasField(@TypeOf(entry), "receiver") or !@hasField(@TypeOf(entry), "strip_prefix"))
-            @compileError("zigo function groups require `.receiver`, `.strip_prefix`, and `.functions`");
-        if (@hasField(@TypeOf(entry), "params") or @hasField(@TypeOf(entry), "param_meta"))
-            @compileError("zigo function groups put `.params` and `.param_meta` on nested function entries");
-        inline for (entry.functions) |child| validateFunctionEntry(declaration, child, true);
-        return;
-    }
-    if (!@hasField(@TypeOf(entry), "path")) @compileError("zigo function entries require `.path`");
+fn validateFunctionEntry(comptime declaration: zigo.Binding, comptime entry: zigo.Function) void {
     validateFunctionPath(declaration, entry.path);
-    if (@hasField(@TypeOf(entry), "covers")) validateCoveragePaths(declaration, entry.covers);
+    inline for (entry.covers) |path| validateCoveragePath(declaration, path);
 }
 
-fn validateCoveragePaths(comptime declaration: anytype, comptime covers: anytype) void {
-    if (comptime isStringEntry(@TypeOf(covers))) {
-        validateCoveragePath(declaration, covers);
-        return;
-    }
-    inline for (covers) |path| validateCoveragePath(declaration, path);
-}
-
-fn validateCoveragePath(comptime declaration: anytype, comptime path: []const u8) void {
+fn validateCoveragePath(comptime declaration: zigo.Binding, comptime path: []const u8) void {
     if (!declarationPathExists(declaration, path) and !enumMethodPathExists(declaration, path)) {
         @compileError("zigo `.covers` path does not name a public function: " ++ path ++
             " (use `root.<name>` for a function in `.root`, or `<Type>.<name>` for one in a registered type)");
     }
 }
 
-pub fn coveragePaths(comptime covers: anytype) []const []const u8 {
-    if (comptime isStringEntry(@TypeOf(covers))) {
-        const paths = [_][]const u8{covers};
-        return &paths;
-    }
-    comptime var paths: [covers.len][]const u8 = undefined;
-    inline for (covers, 0..) |path, index| paths[index] = path;
-    const frozen = paths;
-    return &frozen;
-}
-
-fn validateFunctionPath(comptime declaration: anytype, comptime path: []const u8) void {
+fn validateFunctionPath(comptime declaration: zigo.Binding, comptime path: []const u8) void {
     if (!declarationPathExists(declaration, path)) {
         @compileError("zigo path does not name a public function: " ++ path ++
             " (use `root.<name>` for a function in `.root`, or `<Type>.<name>` for one in a registered type)");
     }
 }
 
-/// Every function path the declaration lists, groups flattened, in order.
-/// Built once, linearly, so the cross-entry checks can run at runtime over a
-/// hash set instead of comparing every entry against every other at comptime.
-pub fn declaredFunctionPaths(comptime declaration: anytype) []const []const u8 {
+/// Every function path the declaration lists, `.functions` then each
+/// `.methods` group, in order. Built once, linearly, so the cross-entry checks
+/// can run at runtime over a hash set instead of comparing every entry
+/// against every other at comptime.
+pub fn declaredFunctionPaths(comptime declaration: zigo.Binding) []const []const u8 {
     comptime {
-        if (!@hasField(@TypeOf(declaration), "functions")) return &.{};
-        var count: usize = 0;
-        for (declaration.functions) |entry| {
-            count += if (!isStringEntry(@TypeOf(entry)) and @hasField(@TypeOf(entry), "functions")) entry.functions.len else 1;
-        }
+        var count: usize = declaration.functions.len;
+        for (declaration.methods) |group| count += group.functions.len;
         var paths: [count][]const u8 = undefined;
         var index: usize = 0;
         for (declaration.functions) |entry| {
-            if (isStringEntry(@TypeOf(entry))) {
-                paths[index] = entry;
-                index += 1;
-            } else if (@hasField(@TypeOf(entry), "functions")) {
-                for (entry.functions) |nested| {
-                    paths[index] = if (isStringEntry(@TypeOf(nested))) nested else nested.path;
-                    index += 1;
-                }
-            } else {
+            paths[index] = entry.path;
+            index += 1;
+        }
+        for (declaration.methods) |group| {
+            for (group.functions) |entry| {
                 paths[index] = entry.path;
                 index += 1;
             }
@@ -1595,7 +1462,7 @@ const DeclaredPaths = struct {
 /// what a thousand lookups cost -- at runtime, where the comptime branch quota
 /// does not apply. The sets are returned because discovery needs exactly
 /// them next.
-fn checkDeclaredPaths(allocator: std.mem.Allocator, comptime declaration: anytype) error{ DuplicatePath, OutOfMemory }!DeclaredPaths {
+fn checkDeclaredPaths(allocator: std.mem.Allocator, comptime declaration: zigo.Binding) error{ DuplicatePath, OutOfMemory }!DeclaredPaths {
     var paths: DeclaredPaths = .{
         .listed = std.StringHashMap(void).init(allocator),
         .excluded = std.StringHashMap(void).init(allocator),
@@ -1605,12 +1472,10 @@ fn checkDeclaredPaths(allocator: std.mem.Allocator, comptime declaration: anytyp
         const slot = try paths.listed.getOrPut(path);
         if (slot.found_existing) return selectorIssue(allocator, "duplicate zigo function path: `{s}`", .{path});
     }
-    if (@hasField(@TypeOf(declaration), "exclude")) {
-        inline for (declaration.exclude) |path| {
-            const slot = try paths.excluded.getOrPut(path);
-            if (slot.found_existing) return selectorIssue(allocator, "duplicate zigo exclusion path: `{s}`", .{path});
-            if (paths.listed.contains(path)) return selectorIssue(allocator, "zigo path cannot be both listed and excluded: `{s}`", .{path});
-        }
+    inline for (declaration.exclude) |path| {
+        const slot = try paths.excluded.getOrPut(path);
+        if (slot.found_existing) return selectorIssue(allocator, "duplicate zigo exclusion path: `{s}`", .{path});
+        if (paths.listed.contains(path)) return selectorIssue(allocator, "zigo path cannot be both listed and excluded: `{s}`", .{path});
     }
     return paths;
 }
@@ -1625,16 +1490,6 @@ fn selectorIssue(allocator: std.mem.Allocator, comptime detail: []const u8, args
     defer allocator.free(message);
     if (!@import("builtin").is_test) std.debug.print("{s}", .{message});
     return error.DuplicatePath;
-}
-
-pub fn isStringEntry(comptime T: type) bool {
-    return switch (@typeInfo(T)) {
-        .pointer => |pointer| switch (@typeInfo(pointer.child)) {
-            .array => |array| array.child == u8,
-            else => pointer.size == .slice and pointer.child == u8,
-        },
-        else => false,
-    };
 }
 
 /// `root.<name>` for a function in `.root`, `<Type>.<name>` for one in a
@@ -1659,7 +1514,7 @@ fn pathMember(comptime path: []const u8) []const u8 {
     return path[index + 1 ..];
 }
 
-fn pathContainer(comptime declaration: anytype, comptime owner: ?[]const u8) type {
+fn pathContainer(comptime declaration: zigo.Binding, comptime owner: ?[]const u8) type {
     const path = owner orelse return declaration.root;
     comptime {
         var iterator = std.mem.splitScalar(u8, path, '.');
@@ -1675,11 +1530,9 @@ fn pathContainer(comptime declaration: anytype, comptime owner: ?[]const u8) typ
 /// how `<Type>.<name>` has always addressed a method. Enumerations resolve
 /// here too, so `<Enum>.<name>` reaches a method the generated Go enum will
 /// carry. Everything after it is an ordinary public container declaration.
-fn registeredContainer(comptime declaration: anytype, comptime name: []const u8) ?type {
-    if (@hasField(@TypeOf(declaration), "types")) {
-        inline for (declaration.types) |entry| {
-            if (comptime entry.repr != .callback and std.mem.eql(u8, typeEntryName(entry), name)) return entry.type;
-        }
+fn registeredContainer(comptime declaration: zigo.Binding, comptime name: []const u8) ?type {
+    inline for (declaration.types) |entry| {
+        if (comptime entry != .callback and std.mem.eql(u8, entry.goName(), name)) return entry.zigType();
     }
     return null;
 }
@@ -1687,25 +1540,21 @@ fn registeredContainer(comptime declaration: anytype, comptime name: []const u8)
 /// `<Enum>.<fn>` for a registered enumeration entry. Function paths never
 /// resolve through an enum (it contributes no bindings), but a coverage path
 /// may name one of its methods as covered by the generated Go enum.
-fn enumMethodPathExists(comptime declaration: anytype, comptime wanted: []const u8) bool {
+fn enumMethodPathExists(comptime declaration: zigo.Binding, comptime wanted: []const u8) bool {
     comptime {
         const dot = std.mem.indexOfScalar(u8, wanted, '.') orelse return false;
-        if (@hasField(@TypeOf(declaration), "types")) {
-            for (declaration.types) |entry| {
-                if (entry.repr == .enumeration and std.mem.eql(u8, typeEntryName(entry), wanted[0..dot]))
-                    return containerHasPath(entry.type, wanted[dot + 1 ..]);
-            }
+        for (declaration.types) |entry| {
+            if (entry == .enumeration and std.mem.eql(u8, entry.goName(), wanted[0..dot]))
+                return containerHasPath(entry.zigType(), wanted[dot + 1 ..]);
         }
         return false;
     }
 }
 
 /// The registered enumeration entry named `name`, if there is one.
-fn enumEntryNamed(comptime declaration: anytype, comptime name: []const u8) ?type {
-    if (@hasField(@TypeOf(declaration), "types")) {
-        inline for (declaration.types) |entry| {
-            if (comptime entry.repr == .enumeration and std.mem.eql(u8, typeEntryName(entry), name)) return entry.type;
-        }
+fn enumEntryNamed(comptime declaration: zigo.Binding, comptime name: []const u8) ?type {
+    inline for (declaration.types) |entry| {
+        if (comptime entry == .enumeration and std.mem.eql(u8, entry.goName(), name)) return entry.zigType();
     }
     return null;
 }
@@ -1714,7 +1563,7 @@ fn enumEntryNamed(comptime declaration: anytype, comptime name: []const u8) ?typ
 /// the first parameter Go would see is that enum by value. A `*Enum` first
 /// parameter is not a receiver here -- Go value receivers would drop the
 /// mutation -- and returns null so the caller can say so.
-fn enumReceiverName(comptime declaration: anytype, comptime info: std.builtin.Type.Fn, comptime owner: ?[]const u8) ?[]const u8 {
+fn enumReceiverName(comptime declaration: zigo.Binding, comptime info: std.builtin.Type.Fn, comptime owner: ?[]const u8) ?[]const u8 {
     const name = owner orelse return null;
     const Enum = enumEntryNamed(declaration, name) orelse return null;
     const index = firstNonInjectedIndex(info) orelse return null;
@@ -1735,7 +1584,7 @@ pub fn isContainer(comptime T: type) bool {
     };
 }
 
-fn declarationPathExists(comptime declaration: anytype, comptime wanted: []const u8) bool {
+fn declarationPathExists(comptime declaration: zigo.Binding, comptime wanted: []const u8) bool {
     comptime {
         const dot = std.mem.indexOfScalar(u8, wanted, '.') orelse return false;
         const head = wanted[0..dot];
@@ -1766,7 +1615,7 @@ fn containerHasPath(comptime Container: type, comptime rest: []const u8) bool {
 /// build, and without it they only name the constraint, never where it broke.
 fn typeNode(
     allocator: std.mem.Allocator,
-    comptime declaration: anytype,
+    comptime declaration: zigo.Binding,
     comptime T: type,
     types: *std.ArrayList(semantic.TypeDecl),
     comptime context: []const u8,
@@ -2005,7 +1854,7 @@ fn typeNode(
 /// that unsupported ownership transfer with an actionable boxing hint.
 fn returnTypeNode(
     allocator: std.mem.Allocator,
-    comptime declaration: anytype,
+    comptime declaration: zigo.Binding,
     comptime T: type,
     types: *std.ArrayList(semantic.TypeDecl),
     comptime context: []const u8,
@@ -2111,37 +1960,6 @@ fn paramNameCountMessage(comptime declaration: []const u8, comptime named: usize
     );
 }
 
-/// The first `.param_meta` key that `.params` does not name, or null when
-/// every key resolves. Without `.params` every key is orphaned, because the
-/// fallback names (`p0`, `p1`) are never what a binding author writes.
-fn orphanParamMetaKey(comptime metadata: anytype) ?[]const u8 {
-    if (!@hasField(@TypeOf(metadata), "param_meta")) return null;
-    const fields = @typeInfo(@TypeOf(metadata.param_meta)).@"struct".fields;
-    inline for (fields) |field| {
-        if (!@hasField(@TypeOf(metadata), "params")) return field.name;
-        var named = false;
-        inline for (metadata.params) |name| {
-            if (std.mem.eql(u8, name, field.name)) named = true;
-        }
-        if (!named) return field.name;
-    }
-    return null;
-}
-
-fn paramMetaKeyMessage(comptime declaration: []const u8, comptime key: []const u8, comptime has_params: bool) []const u8 {
-    return std.fmt.comptimePrint(
-        "error[ZIGO057]: `.param_meta` names `{s}` but {s} in `{s}`\n" ++
-            "  --> {s}\n" ++
-            "  hint: every `.param_meta` key must be one of the names `.params` gives; add `.params` or fix the key so the metadata applies to a parameter\n",
-        .{ key, if (has_params) "`.params` has no such name" else "the entry has no `.params`", declaration, declaration },
-    );
-}
-
-fn paramMetaKeyMismatch(comptime message: []const u8) error{ParamMetaKey} {
-    if (!@import("builtin").is_test) std.debug.print("{s}", .{message});
-    return error.ParamMetaKey;
-}
-
 fn paramNameCountMismatch(comptime message: []const u8) error{ParamNameCount} {
     // The message is the whole diagnostic, so it goes out the moment it is
     // built -- except under `zig test`, where the case that asserts the error
@@ -2153,7 +1971,7 @@ fn paramNameCountMismatch(comptime message: []const u8) error{ParamNameCount} {
 /// The index of the receiver parameter: the first parameter that is not an
 /// injected argument, when it is a pointer to a registered handle or a
 /// registered opaque type by value.
-fn receiverIndex(comptime info: std.builtin.Type.Fn, comptime declaration: anytype) ?usize {
+fn receiverIndex(comptime info: std.builtin.Type.Fn, comptime declaration: zigo.Binding) ?usize {
     inline for (info.params, 0..) |parameter, index| {
         const T = parameter.type orelse return null;
         if (injectionFor(T) != null) continue;
@@ -2170,23 +1988,16 @@ fn firstNonInjectedIndex(comptime info: std.builtin.Type.Fn) ?usize {
     return null;
 }
 
-fn receiverNameAt(comptime info: std.builtin.Type.Fn, comptime declaration: anytype, comptime index: usize) ?[]const u8 {
+fn receiverNameAt(comptime info: std.builtin.Type.Fn, comptime declaration: zigo.Binding, comptime index: usize) ?[]const u8 {
     const T = info.params[index].type orelse return null;
-    if (@hasField(@TypeOf(declaration), "types")) {
-        switch (@typeInfo(T)) {
-            .pointer => |pointer| {
-                if (pointer.size != .one) return null;
-                inline for (declaration.types) |entry| {
-                    if (isHandleRepr(entry.repr) and entry.type == pointer.child) return typeEntryName(entry);
-                }
-            },
-            .@"struct" => inline for (declaration.types) |entry| {
-                if (entry.repr == .@"opaque" and entry.type == T) return typeEntryName(entry);
-            },
-            else => {},
-        }
+    switch (@typeInfo(T)) {
+        .pointer => |pointer| {
+            if (pointer.size != .one) return null;
+            return registeredHandleName(declaration, pointer.child);
+        },
+        .@"struct" => return registeredOpaqueName(declaration, T),
+        else => return null,
     }
-    return null;
 }
 
 /// The public name attached to an exact registered type. Type equality is the
@@ -2194,19 +2005,17 @@ fn receiverNameAt(comptime info: std.builtin.Type.Fn, comptime declaration: anyt
 /// comptime-generated types.
 const RegisteredUse = enum { callback, enumeration, handle, materialized, tagged_union, value };
 
-fn registeredTypeName(comptime declaration: anytype, comptime T: type, comptime use: RegisteredUse) ?[]const u8 {
-    if (@hasField(@TypeOf(declaration), "types")) {
-        inline for (declaration.types) |entry| {
-            const matches_repr = switch (use) {
-                .callback => entry.repr == .callback,
-                .enumeration => entry.repr == .enumeration,
-                .handle => isHandleRepr(entry.repr),
-                .materialized => entry.repr == .materialized,
-                .tagged_union => entry.repr == .tagged_union,
-                .value => entry.repr == .value,
-            };
-            if (matches_repr and entry.type == T) return typeEntryName(entry);
-        }
+fn registeredTypeName(comptime declaration: zigo.Binding, comptime T: type, comptime use: RegisteredUse) ?[]const u8 {
+    inline for (declaration.types) |entry| {
+        const matches_repr = comptime switch (use) {
+            .callback => entry == .callback,
+            .enumeration => entry == .enumeration,
+            .handle => entry.isHandle(),
+            .materialized => entry == .materialized,
+            .tagged_union => entry == .tagged_union,
+            .value => entry == .value,
+        };
+        if (comptime matches_repr and entry.zigType() == T) return comptime entry.goName();
     }
     return null;
 }
@@ -2238,80 +2047,72 @@ const CallbackContract = struct {
 /// here, during reflection, keeps the recorded document identical to one whose
 /// call sites spelled the contract themselves, so nothing downstream of the
 /// document has to know defaults exist.
-fn callbackEntryContract(comptime declaration: anytype, comptime T: type) CallbackContract {
+fn callbackEntryContract(comptime declaration: zigo.Binding, comptime T: type) CallbackContract {
     comptime {
-        if (!@hasField(@TypeOf(declaration), "types")) return .{};
-        for (declaration.types) |entry| {
-            if (entry.repr != .callback or entry.type != T) continue;
-            const Entry = @TypeOf(entry);
-            return .{
-                .retention = if (@hasField(Entry, "retention")) @as(semantic.Retention, entry.retention) else null,
-                .reentrancy = if (@hasField(Entry, "reentrancy")) @as(semantic.CallbackReentrancy, entry.reentrancy) else null,
-                .thread = if (@hasField(Entry, "thread")) @as(semantic.CallbackThread, entry.thread) else null,
-            };
-        }
-        return .{};
+        const entry = callbackEntry(declaration, T) orelse return .{};
+        return .{
+            .retention = irOptional(semantic.Retention, entry.retention),
+            .reentrancy = irOptional(semantic.CallbackReentrancy, entry.reentrancy),
+            .thread = irOptional(semantic.CallbackThread, entry.thread),
+        };
     }
+}
+
+/// The `.callback` entry registered for `T`, if there is one.
+fn callbackEntry(comptime declaration: zigo.Binding, comptime T: type) ?zigo.Callback {
+    for (declaration.types) |entry| {
+        switch (entry) {
+            .callback => |callback| if (callback.type == T) return callback,
+            else => {},
+        }
+    }
+    return null;
 }
 
 /// The native position of the userdata slot a registered callback entry
 /// declares with `.userdata`, or null to take the trailing `usize`.
-fn callbackEntryUserdata(comptime declaration: anytype, comptime T: type, comptime count: usize) ?usize {
+fn callbackEntryUserdata(comptime declaration: zigo.Binding, comptime T: type, comptime count: usize) ?usize {
     comptime {
-        if (!@hasField(@TypeOf(declaration), "types")) return null;
-        for (declaration.types) |entry| {
-            if (entry.repr != .callback or entry.type != T) continue;
-            if (!@hasField(@TypeOf(entry), "userdata")) return null;
-            const spec = entry.userdata;
-            const Spec = @TypeOf(spec);
-            const shape_error = "zigo `.userdata` on callback `" ++ entry.name ++ "` must be `.first`, `.last`, or `.{ .index = n }`";
-            if (Spec == @TypeOf(.enum_literal)) {
+        const entry = callbackEntry(declaration, T) orelse return null;
+        const spec = entry.userdata orelse return null;
+        switch (spec) {
+            .first, .last => {
                 if (count == 0) @compileError("zigo `.userdata` on callback `" ++ entry.name ++ "` points at a parameter, but the callback has none");
-                if (spec == .first) return 0;
-                if (spec == .last) return count - 1;
-                @compileError(shape_error);
-            }
-            if (@typeInfo(Spec) == .@"struct" and @hasField(Spec, "index")) {
-                if (spec.index >= count) @compileError(std.fmt.comptimePrint(
+                return if (spec == .first) 0 else count - 1;
+            },
+            .index => |index| {
+                if (index >= count) @compileError(std.fmt.comptimePrint(
                     "zigo `.userdata` on callback `{s}` names parameter {d}, but the callback has {d} parameters",
-                    .{ entry.name, spec.index, count },
+                    .{ entry.name, index, count },
                 ));
-                return spec.index;
-            }
-            @compileError(shape_error);
+                return index;
+            },
         }
-        return null;
     }
 }
 
-fn callbackEntryHints(comptime declaration: anytype, comptime T: type, comptime value_count: usize) CallbackEntryHints {
+fn callbackEntryHints(comptime declaration: zigo.Binding, comptime T: type, comptime value_count: usize) CallbackEntryHints {
     comptime {
         var params: [value_count]?semantic.SemanticHint = @splat(null);
         var ret: ?semantic.SemanticHint = null;
-        if (@hasField(@TypeOf(declaration), "types")) {
-            for (declaration.types) |entry| {
-                if (entry.repr != .callback or entry.type != T) continue;
-                if (@hasField(@TypeOf(entry), "param_semantics")) {
-                    if (entry.param_semantics.len != value_count) @compileError(std.fmt.comptimePrint(
-                        "zigo `.param_semantics` on callback `{s}` lists {d} hints but the callback has {d} value parameters (userdata is not listed)",
-                        .{ entry.name, entry.param_semantics.len, value_count },
-                    ));
-                    for (entry.param_semantics, 0..) |hint, index| params[index] = @as(semantic.SemanticHint, hint);
-                }
-                if (@hasField(@TypeOf(entry), "semantic")) ret = @as(semantic.SemanticHint, entry.semantic);
-                break;
+        if (callbackEntry(declaration, T)) |entry| {
+            if (entry.params.len != 0) {
+                if (entry.params.len != value_count) @compileError(std.fmt.comptimePrint(
+                    "zigo `.params` on callback `{s}` lists {d} parameters but the callback has {d} value parameters (userdata is not listed)",
+                    .{ entry.name, entry.params.len, value_count },
+                ));
+                for (entry.params, 0..) |param, index| params[index] = irOptional(semantic.SemanticHint, param.semantic);
             }
+            ret = irOptional(semantic.SemanticHint, entry.returns.semantic);
         }
         const frozen = params;
         return .{ .params = &frozen, .ret = ret };
     }
 }
 
-fn registeredOpaqueName(comptime declaration: anytype, comptime T: type) ?[]const u8 {
-    if (@hasField(@TypeOf(declaration), "types")) {
-        inline for (declaration.types) |entry| {
-            if (entry.repr == .@"opaque" and entry.type == T) return typeEntryName(entry);
-        }
+fn registeredOpaqueName(comptime declaration: zigo.Binding, comptime T: type) ?[]const u8 {
+    inline for (declaration.types) |entry| {
+        if (comptime entry == .handle and entry.zigType() == T) return comptime entry.goName();
     }
     return null;
 }
@@ -2322,15 +2123,13 @@ fn registeredOpaqueName(comptime declaration: anytype, comptime T: type) ?[]cons
 /// source of type identity again.
 fn registeredZigPath(
     allocator: std.mem.Allocator,
-    comptime declaration: anytype,
+    comptime declaration: zigo.Binding,
     comptime T: type,
     name: []const u8,
 ) ![]const u8 {
-    if (@hasField(@TypeOf(declaration), "types")) {
-        inline for (declaration.types) |entry| {
-            if (entry.type != T and std.mem.eql(u8, @typeName(entry.type), @typeName(T)))
-                return std.fmt.allocPrint(allocator, "{s}#{s}", .{ @typeName(T), name });
-        }
+    inline for (declaration.types) |entry| {
+        if (comptime entry.zigType() != T and std.mem.eql(u8, @typeName(entry.zigType()), @typeName(T)))
+            return std.fmt.allocPrint(allocator, "{s}#{s}", .{ @typeName(T), name });
     }
     return @typeName(T);
 }
@@ -2354,21 +2153,18 @@ fn opaqueNameForPath(types: []const semantic.TypeDecl, path: []const u8) ?[]cons
     return null;
 }
 
-fn isHandleRepr(comptime repr: anytype) bool {
-    return repr == .@"opaque" or repr == .tagged_union;
-}
-
 fn appendMaterializedStruct(
     allocator: std.mem.Allocator,
     types: *std.ArrayList(semantic.TypeDecl),
-    comptime declaration: anytype,
+    comptime declaration: zigo.Binding,
     comptime T: type,
     name: []const u8,
     zig_path: []const u8,
-    comptime field_meta: anytype,
+    comptime field_meta: []const zigo.ValueField,
 ) !void {
     const info = @typeInfo(T).@"struct";
     const index = types.items.len;
+    comptime validateFieldMeta(T, field_meta);
     try types.append(allocator, .{
         .kind = .materialized,
         .materialized_version = 2,
@@ -2391,7 +2187,7 @@ fn appendMaterializedStruct(
 /// any depth. Everything else reflects as usual.
 fn materializedFieldNode(
     allocator: std.mem.Allocator,
-    comptime declaration: anytype,
+    comptime declaration: zigo.Binding,
     comptime T: type,
     types: *std.ArrayList(semantic.TypeDecl),
     comptime context: []const u8,
@@ -2446,11 +2242,11 @@ test "materialized result trees preserve nested field shapes in semantic json" {
     };
     const document = try reflect(allocator, .{
         .root = Api,
-        .functions = .{.{ .path = "root.inspect" }},
-        .types = .{
-            .{ .type = Kind, .repr = .enumeration },
-            .{ .type = Leaf, .repr = .materialized },
-            .{ .type = Root, .repr = .materialized },
+        .functions = &.{.{ .path = "root.inspect" }},
+        .types = &.{
+            .{ .enumeration = .{ .type = Kind } },
+            .{ .materialized = .{ .type = Leaf } },
+            .{ .materialized = .{ .type = Root } },
         },
     }, "tree", "zg");
     const json = try document.serialize(allocator);
@@ -2464,23 +2260,6 @@ test "materialized result trees preserve nested field shapes in semantic json" {
     try std.testing.expectEqual(semantic.TypeKind.materialized, parsed.value.types[1].kind);
 }
 
-/// `.exhaustive = false` on an enum registration is an assertion that the
-/// binding deliberately accepts values outside the named tags. The reflected
-/// type still records whether Zig itself is exhaustive; validation compares
-/// the assertion with that fact.
-fn enumOpenOptIn(comptime entry: anytype) bool {
-    if (!@hasField(@TypeOf(entry), "exhaustive")) return false;
-    return !entry.exhaustive;
-}
-
-/// `.text = true` on an enum registration asks for the Go text encoding:
-/// `Parse<Enum>`, `MarshalText` and `UnmarshalText`. Only an enumeration
-/// entry can carry it; any other repr is a comptime error at the entry.
-fn enumTextOptIn(comptime entry: anytype) bool {
-    if (!@hasField(@TypeOf(entry), "text")) return false;
-    return entry.text;
-}
-
 /// A value struct carries its field types into the IR. Validation needs them
 /// to decide whether the struct can cross the C ABI, and lowering needs them
 /// to mirror the struct in the C header.
@@ -2489,7 +2268,7 @@ fn enumTextOptIn(comptime entry: anytype) bool {
 fn appendEnum(
     allocator: std.mem.Allocator,
     types: *std.ArrayList(semantic.TypeDecl),
-    comptime declaration: anytype,
+    comptime declaration: zigo.Binding,
     comptime T: type,
     name: []const u8,
     open: bool,
@@ -2514,45 +2293,37 @@ fn appendEnum(
     });
 }
 
-/// `.go = .{ .type, .import, .to_raw, .from_raw }` on a value entry. The
-/// shape is checked here so a missing member is a comptime error naming the
-/// entry; validation checks the strings once the document exists.
-fn goAdapter(comptime entry: anytype) ?semantic.GoAdapter {
-    if (!@hasField(@TypeOf(entry), "go")) return null;
-    return goAdapterValue(entry.go);
+/// The IR form of a `.go` adapter; validation checks the strings once the
+/// document exists.
+fn goAdapter(comptime go: ?zigo.GoAdapter) ?semantic.GoAdapter {
+    return if (go) |adapter| goAdapterValue(adapter) else null;
 }
 
-/// The `.go` value itself, from a type entry, a function entry or a
-/// `param_meta` entry.
-fn goAdapterValue(comptime go: anytype) semantic.GoAdapter {
-    if (!@hasField(@TypeOf(go), "type") or !@hasField(@TypeOf(go), "to_raw") or !@hasField(@TypeOf(go), "from_raw"))
-        @compileError("zigo `.go` adapters need `.type`, `.to_raw` and `.from_raw`");
-    return .{
-        .from_raw = go.from_raw,
-        .import = if (@hasField(@TypeOf(go), "import")) go.import else null,
-        .to_raw = go.to_raw,
-        .type = go.type,
-    };
+fn goAdapterValue(comptime go: zigo.GoAdapter) semantic.GoAdapter {
+    return .{ .from_raw = go.from_raw, .import = go.import, .to_raw = go.to_raw, .type = go.type };
+}
+
+/// Every `.fields` hint has to name a member of the struct it annotates.
+fn validateFieldMeta(comptime T: type, comptime fields: []const zigo.ValueField) void {
+    for (fields) |field| {
+        if (!@hasField(T, field.name)) @compileError("zigo `.fields` names `" ++ field.name ++ "`, which is not a field of `" ++ shortTypeName(@typeName(T)) ++ "`");
+    }
 }
 
 fn appendValueStruct(
     allocator: std.mem.Allocator,
     types: *std.ArrayList(semantic.TypeDecl),
-    comptime declaration: anytype,
+    comptime declaration: zigo.Binding,
     comptime T: type,
     name: []const u8,
     zig_path: []const u8,
     explicitly_registered: bool,
     go_adapter: ?semantic.GoAdapter,
-    comptime field_meta: anytype,
+    comptime field_meta: []const zigo.ValueField,
 ) !void {
     const info = @typeInfo(T).@"struct";
     const index = types.items.len;
-    comptime {
-        for (@typeInfo(@TypeOf(field_meta)).@"struct".fields) |meta_field| {
-            if (!@hasField(T, meta_field.name)) @compileError("zigo `.field_meta` names `" ++ meta_field.name ++ "`, which is not a field of `" ++ shortTypeName(@typeName(T)) ++ "`");
-        }
-    }
+    comptime validateFieldMeta(T, field_meta);
     try types.append(allocator, .{
         .backing_type = if (info.layout == .@"packed")
             try typeNode(allocator, declaration, info.backing_integer.?, types, "packed struct backing integer")
@@ -2598,7 +2369,7 @@ fn appendValueStruct(
 /// enum/struct that was never part of the public contract).
 fn packedFieldTypeNode(
     allocator: std.mem.Allocator,
-    comptime declaration: anytype,
+    comptime declaration: zigo.Binding,
     comptime T: type,
     types: *std.ArrayList(semantic.TypeDecl),
     comptime context: []const u8,
@@ -2617,7 +2388,7 @@ fn packedFieldTypeNode(
 fn appendTaggedUnion(
     allocator: std.mem.Allocator,
     types: *std.ArrayList(semantic.TypeDecl),
-    comptime declaration: anytype,
+    comptime declaration: zigo.Binding,
     comptime T: type,
     name: []const u8,
     access: semantic.Access,
@@ -2674,11 +2445,6 @@ fn appendTaggedUnion(
     });
 }
 
-fn omittedVariants(comptime entry: anytype) []const []const u8 {
-    if (!@hasField(@TypeOf(entry), "omit_variants")) return &.{};
-    return &entry.omit_variants;
-}
-
 fn returnedOpaqueName(node: semantic.TypeNode) ?[]const u8 {
     return switch (node) {
         .opaque_ptr => |pointer| pointer.ref,
@@ -2725,7 +2491,7 @@ fn atomicScalar(comptime T: type) ?type {
     return if (T == std.atomic.Value(Scalar)) Scalar else null;
 }
 
-fn supportedAtomicScalar(comptime declaration: anytype, comptime T: type) bool {
+fn supportedAtomicScalar(comptime declaration: zigo.Binding, comptime T: type) bool {
     return switch (@typeInfo(T)) {
         .bool, .int, .float => true,
         .@"enum" => registeredTypeName(declaration, T, .enumeration) != null,
@@ -2763,7 +2529,7 @@ test "scalar reflection matches the semantic JSON golden" {
             return a + b;
         }
     };
-    const declaration = .{ .root = Api, .functions = .{.{ .path = "root.add" }} };
+    const declaration: zigo.Binding = .{ .root = Api, .functions = &.{.{ .path = "root.add" }} };
     const document = try reflect(std.testing.allocator, declaration, "scalar", "zg");
     const json = try document.serialize(std.testing.allocator);
     defer std.testing.allocator.free(json);
@@ -2845,11 +2611,14 @@ test "reflection preserves invalid declarations for generator diagnostics" {
             _ = value;
         }
     };
-    const declaration = .{ .root = Fixture, .functions = .{
-        .{ .path = "root.generic" },
-        .{ .path = "root.callback" },
-        .{ .path = "root.tagged" },
-    } };
+    const declaration: zigo.Binding = .{
+        .root = Fixture,
+        .functions = &.{
+            .{ .path = "root.generic" },
+            .{ .path = "root.callback" },
+            .{ .path = "root.tagged" },
+        },
+    };
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const document = try reflect(arena.allocator(), declaration, "invalid", "zg");
@@ -2868,11 +2637,12 @@ test "callback parameter contracts reflect into semantic metadata" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .functions = .{.{
-            .path = "root.watch",
-            .params = .{"callback"},
-            .param_meta = .{ .callback = .{ .reentrancy = .forbidden, .thread = .any } },
-        }},
+        .functions = &.{
+            .{
+                .path = "root.watch",
+                .params = &.{.{ .name = "callback", .reentrancy = .forbidden, .thread = .any }},
+            },
+        },
     }, "callbacks", "zg");
     const callback = document.functions[0].params[0];
     try std.testing.expectEqual(semantic.CallbackReentrancy.forbidden, callback.reentrancy.?);
@@ -2897,21 +2667,23 @@ test "a registered callback type declares the contract its call sites inherit" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{
-            .name = "ClipboardFn",
-            .type = Fixture.ClipboardFn,
-            .repr = .callback,
-            .retention = .retained,
-            .reentrancy = .allowed,
-            .thread = .caller,
-        }},
-        .functions = .{
-            .{ .path = "root.onRequest", .params = .{ "callback", "userdata" } },
+        .types = &.{
+            .{
+                .callback = .{
+                    .name = "ClipboardFn",
+                    .type = Fixture.ClipboardFn,
+                    .retention = .retained,
+                    .reentrancy = .allowed,
+                    .thread = .caller,
+                },
+            },
+        },
+        .functions = &.{
+            .{ .path = "root.onRequest", .params = &.{ .{ .name = "callback" }, .{ .name = "userdata" } } },
             // The site overrides one field and inherits the other two.
             .{
                 .path = "root.onConfirm",
-                .params = .{ "callback", "userdata" },
-                .param_meta = .{ .callback = .{ .thread = .any } },
+                .params = &.{ .{ .name = "callback", .thread = .any }, .{ .name = "userdata" } },
             },
         },
     }, "callbacks", "zg");
@@ -2945,18 +2717,22 @@ test "a call site may override an inherited retention while keeping the rest" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{
-            .name = "SysFn",
-            .type = Fixture.SysFn,
-            .repr = .callback,
-            .retention = .retained,
-            .thread = .any,
-        }},
-        .functions = .{.{
-            .path = "root.scoped",
-            .params = .{ "callback", "userdata" },
-            .param_meta = .{ .callback = .{ .retention = .borrowed } },
-        }},
+        .types = &.{
+            .{
+                .callback = .{
+                    .name = "SysFn",
+                    .type = Fixture.SysFn,
+                    .retention = .retained,
+                    .thread = .any,
+                },
+            },
+        },
+        .functions = &.{
+            .{
+                .path = "root.scoped",
+                .params = &.{ .{ .name = "callback", .retention = .borrowed }, .{ .name = "userdata" } },
+            },
+        },
     }, "callbacks", "zg");
     const callback = document.functions[0].params[0];
     try std.testing.expectEqual(semantic.Retention.borrowed, callback.retention);
@@ -2974,12 +2750,13 @@ test "callback failure results reflect from type and parameter metadata" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .name = "Observer", .type = Fixture.Observer, .repr = .callback, .on_callback_failure = .{ .result = 0 } }},
-        .functions = .{.{
-            .path = "root.apply",
-            .params = .{ "callback", "userdata" },
-            .param_meta = .{ .callback = .{ .on_callback_failure = .{ .result = 1 } } },
-        }},
+        .types = &.{.{ .callback = .{ .name = "Observer", .type = Fixture.Observer, .on_callback_failure = .{ .result = 0 } } }},
+        .functions = &.{
+            .{
+                .path = "root.apply",
+                .params = &.{ .{ .name = "callback", .on_callback_failure = .{ .result = 1 } }, .{ .name = "userdata" } },
+            },
+        },
     }, "callbacks", "zg");
     try std.testing.expectEqual(@as(i128, 0), document.types[0].on_callback_failure.?.result);
     try std.testing.expectEqual(@as(i128, 1), document.functions[0].params[0].on_callback_failure.?.result);
@@ -2998,7 +2775,7 @@ test "sentinel byte pointers reflect as c strings" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .functions = .{.{ .path = "root.echo", .params = .{"text"} }},
+        .functions = &.{.{ .path = "root.echo", .params = &.{.{ .name = "text" }} }},
     }, "sentinel", "zg");
 
     try std.testing.expectEqual(@as(u16, 8), document.functions[0].params[0].type.slice.element.*.int.bits);
@@ -3028,10 +2805,10 @@ test "string slice element spellings survive reflection" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .functions = .{
-            .{ .path = "root.plain", .params = .{"paths"}, .param_meta = .{ .paths = .{ .semantic = .utf8_string } } },
-            .{ .path = "root.sentinelSlice", .params = .{"paths"} },
-            .{ .path = "root.sentinelMany", .params = .{"paths"} },
+        .functions = &.{
+            .{ .path = "root.plain", .params = &.{.{ .name = "paths", .semantic = .utf8_string }} },
+            .{ .path = "root.sentinelSlice", .params = &.{.{ .name = "paths" }} },
+            .{ .path = "root.sentinelMany", .params = &.{.{ .name = "paths" }} },
         },
     }, "strings", "zg");
 
@@ -3063,8 +2840,8 @@ test "the snapshot access strategy is recorded only when it is opted into" {
 
     const snapshot = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .type = Signal, .repr = .tagged_union, .access = .snapshot }},
-        .functions = .{.{ .path = "root.current" }},
+        .types = &.{.{ .tagged_union = .{ .type = Signal, .access = .snapshot } }},
+        .functions = &.{.{ .path = "root.current" }},
     }, "variant", "zg");
     try std.testing.expectEqual(semantic.Access.snapshot, snapshot.types[0].accessStrategy());
     const snapshot_json = try snapshot.serialize(std.testing.allocator);
@@ -3073,8 +2850,8 @@ test "the snapshot access strategy is recorded only when it is opted into" {
 
     const projection = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .type = Signal, .repr = .tagged_union }},
-        .functions = .{.{ .path = "root.current" }},
+        .types = &.{.{ .tagged_union = .{ .type = Signal } }},
+        .functions = &.{.{ .path = "root.current" }},
     }, "variant", "zg");
     try std.testing.expectEqual(semantic.Access.projection, projection.types[0].accessStrategy());
     const projection_json = try projection.serialize(std.testing.allocator);
@@ -3093,10 +2870,10 @@ test "tagged union representation reflects discriminants and payloads" {
             unreachable;
         }
     };
-    const declaration = .{
+    const declaration: zigo.Binding = .{
         .root = Fixture,
-        .types = .{.{ .type = Value, .repr = .tagged_union }},
-        .functions = .{.{ .path = "root.current" }},
+        .types = &.{.{ .tagged_union = .{ .type = Value } }},
+        .functions = &.{.{ .path = "root.current" }},
     };
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -3137,13 +2914,12 @@ test "named generic instantiations are ordinary registered types" {
     };
     const FloatBuffer = Generic.Buffer(f32);
     const IntBuffer = Generic.Buffer(i32);
-    const declaration = .{
+    const declaration: zigo.Binding = .{
         .root = Generic,
-        .types = .{
-            .{ .name = "FloatBuffer", .type = FloatBuffer, .repr = .@"opaque" },
-            .{ .name = "IntBuffer", .type = IntBuffer, .repr = .@"opaque" },
+        .types = &.{
+            .{ .handle = .{ .name = "FloatBuffer", .type = FloatBuffer } },
+            .{ .handle = .{ .name = "IntBuffer", .type = IntBuffer } },
         },
-        .functions = .{},
     };
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -3181,15 +2957,15 @@ test "public discovery combines methods root functions exclusions and entries" {
 
         fn privateHelper() void {}
     };
-    const declaration = .{
+    const declaration: zigo.Binding = .{
         .root = Api,
         .discover = .public,
-        .types = .{.{ .type = Api.Handle, .repr = .@"opaque" }},
-        .functions = .{
-            .{ .path = "Handle.set", .name = "put", .params = .{"value"} },
+        .types = &.{.{ .handle = .{ .type = Api.Handle } }},
+        .functions = &.{
+            .{ .path = "Handle.set", .name = "put", .params = &.{.{ .name = "value" }} },
             .{ .path = "root.ping", .name = "health" },
         },
-        .exclude = .{"Handle.internal"},
+        .exclude = &.{"Handle.internal"},
     };
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -3220,10 +2996,10 @@ test "discovery selectors use stable owner-qualified paths" {
 
         pub fn update() void {}
     };
-    const declaration = .{
+    const declaration: zigo.Binding = .{
         .root = Api,
         .discover = .public,
-        .types = .{.{ .type = Api.Handle, .repr = .@"opaque" }},
+        .types = &.{.{ .handle = .{ .type = Api.Handle } }},
     };
     try std.testing.expect(comptime declarationPathExists(declaration, "Handle.update"));
     try std.testing.expect(comptime declarationPathExists(declaration, "root.update"));
@@ -3246,10 +3022,10 @@ test "a nested namespace path reflects with a dotted owner" {
             };
         };
     };
-    const declaration = .{
+    const declaration: zigo.Binding = .{
         .root = Api,
-        .functions = .{
-            .{ .path = "root.unicode.codepointWidth", .params = .{"cp"} },
+        .functions = &.{
+            .{ .path = "root.unicode.codepointWidth", .params = &.{.{ .name = "cp" }} },
             .{ .path = "root.unicode.grapheme.breaks" },
         },
     };
@@ -3284,7 +3060,7 @@ test "nested paths resolve only through public container segments" {
 
         pub fn topLevel() void {}
     };
-    const declaration = .{ .root = Api, .functions = .{.{ .path = "root.topLevel" }} };
+    const declaration: zigo.Binding = .{ .root = Api, .functions = &.{.{ .path = "root.topLevel" }} };
     try std.testing.expect(comptime declarationPathExists(declaration, "root.unicode.codepointWidth"));
     try std.testing.expect(comptime declarationPathExists(declaration, "root.unicode.grapheme.breaks"));
     try std.testing.expect(comptime declarationPathExists(declaration, "root.topLevel"));
@@ -3338,7 +3114,7 @@ test "recursive discovery honours an exclusion on a nested path" {
     const document = try reflect(arena.allocator(), .{
         .root = Api,
         .discover = .recursive,
-        .exclude = .{"root.osc.internalHelper"},
+        .exclude = &.{"root.osc.internalHelper"},
     }, "term", "zg");
     try std.testing.expectEqual(@as(usize, 1), document.functions.len);
     try std.testing.expectEqualStrings("parse", document.functions[0].name);
@@ -3362,13 +3138,13 @@ test "an optional opaque pointer parameter reflects as a nullable handle" {
             }
         };
     };
-    const declaration = .{
+    const declaration: zigo.Binding = .{
         .root = Api,
-        .types = .{.{ .type = Api.Handle, .repr = .@"opaque" }},
-        .functions = .{
+        .types = &.{.{ .handle = .{ .type = Api.Handle } }},
+        .functions = &.{
             .{ .path = "Handle.create" },
             .{ .path = "Handle.deinit" },
-            .{ .path = "Handle.adopt", .params = .{ "other", "owner" } },
+            .{ .path = "Handle.adopt", .params = &.{ .{ .name = "other" }, .{ .name = "owner" } } },
         },
     };
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -3406,8 +3182,8 @@ test "a registered enum keeps its name wherever a signature reaches it" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .name = "CursorStyle", .type = Style, .repr = .enumeration }},
-        .functions = .{.{ .path = "root.current" }},
+        .types = &.{.{ .enumeration = .{ .name = "CursorStyle", .type = Style } }},
+        .functions = &.{.{ .path = "root.current" }},
     }, "cursor", "zg");
 
     try std.testing.expectEqual(@as(usize, 1), document.types.len);
@@ -3436,11 +3212,11 @@ test "registered generated enums with the same @typeName keep distinct identity"
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{
-            .{ .name = "CursorStyle", .type = CursorStyle, .repr = .enumeration },
-            .{ .name = "CharsetSlot", .type = CharsetSlot, .repr = .enumeration },
+        .types = &.{
+            .{ .enumeration = .{ .name = "CursorStyle", .type = CursorStyle } },
+            .{ .enumeration = .{ .name = "CharsetSlot", .type = CharsetSlot } },
         },
-        .functions = .{.{ .path = "root.configure", .params = .{ "slot", "style" } }},
+        .functions = &.{.{ .path = "root.configure", .params = &.{ .{ .name = "slot" }, .{ .name = "style" } } }},
     }, "terminal", "zg");
 
     try std.testing.expectEqualStrings("CharsetSlot", document.functions[0].params[0].type.@"enum".ref);
@@ -3461,8 +3237,8 @@ test "a registered non-exhaustive enum records an explicit open opt-in" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .name = "EraseDisplay", .type = EraseDisplay, .repr = .enumeration, .exhaustive = false }},
-        .functions = .{.{ .path = "root.echo", .params = .{"value"} }},
+        .types = &.{.{ .enumeration = .{ .name = "EraseDisplay", .type = EraseDisplay, .exhaustive = false } }},
+        .functions = &.{.{ .path = "root.echo", .params = &.{.{ .name = "value" }} }},
     }, "terminal", "zg");
 
     try std.testing.expect(!document.types[0].exhaustive);
@@ -3488,8 +3264,8 @@ test "an iterator opt-in records the wrapper name" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .type = Cursor, .repr = .@"opaque" }},
-        .functions = .{
+        .types = &.{.{ .handle = .{ .type = Cursor } }},
+        .functions = &.{
             .{ .path = "Cursor.next", .iterator = .{} },
             .{ .path = "Cursor.nextNamed", .iterator = .{ .name = "Named" } },
         },
@@ -3513,8 +3289,8 @@ test "registered callbacks record positional codepoint hints" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .name = "Visitor", .type = Visitor, .repr = .callback, .param_semantics = .{ .codepoint, .integer }, .semantic = .codepoint }},
-        .functions = .{.{ .path = "root.visit", .params = .{ "callback", "userdata" } }},
+        .types = &.{.{ .callback = .{ .name = "Visitor", .type = Visitor, .params = &.{ .{ .semantic = .codepoint }, .{ .semantic = .integer } }, .returns = .{ .semantic = .codepoint } } }},
+        .functions = &.{.{ .path = "root.visit", .params = &.{ .{ .name = "callback" }, .{ .name = "userdata" } } }},
     }, "text", "zg");
 
     const callback = document.functions[0].params[0].type.callback;
@@ -3535,8 +3311,8 @@ test "field_meta records a codepoint hint on an extern struct member" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .type = Glyph, .repr = .value, .field_meta = .{ .cp = .{ .semantic = .codepoint }, .width = .{ .semantic = .integer } } }},
-        .functions = .{.{ .path = "root.measure", .params = .{"glyph"} }},
+        .types = &.{.{ .value = .{ .type = Glyph, .fields = &.{ .{ .name = "cp", .semantic = .codepoint }, .{ .name = "width", .semantic = .integer } } } }},
+        .functions = &.{.{ .path = "root.measure", .params = &.{.{ .name = "glyph" }} }},
     }, "text", "zg");
 
     try std.testing.expectEqual(semantic.SemanticHint.codepoint, document.types[0].fields[0].semantic.?);
@@ -3554,8 +3330,8 @@ test "a value struct records its Go adapter" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .type = Point, .repr = .value, .go = .{ .type = "image.Point", .import = "image", .to_raw = "pointToRaw", .from_raw = "pointFromRaw" } }},
-        .functions = .{.{ .path = "root.translate", .params = .{ "origin", "dx" } }},
+        .types = &.{.{ .value = .{ .type = Point, .go = .{ .type = "image.Point", .import = "image", .to_raw = "pointToRaw", .from_raw = "pointFromRaw" } } }},
+        .functions = &.{.{ .path = "root.translate", .params = &.{ .{ .name = "origin" }, .{ .name = "dx" } } }},
     }, "geometry", "zg");
 
     const adapter = document.types[0].go_adapter.?;
@@ -3580,13 +3356,13 @@ test "enum and scalar adapters are recorded where they were declared" {
     };
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
-    const duration = .{ .type = "time.Duration", .import = "time", .to_raw = "durationToRaw", .from_raw = "durationFromRaw" };
+    const duration: zigo.GoAdapter = .{ .type = "time.Duration", .import = "time", .to_raw = "durationToRaw", .from_raw = "durationFromRaw" };
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .type = Speed, .repr = .enumeration, .go = .{ .type = "Mode", .to_raw = "modeToRaw", .from_raw = "modeFromRaw" } }},
-        .functions = .{
-            .{ .path = "root.setSpeed", .params = .{"speed"} },
-            .{ .path = "root.elapsed", .params = .{"since"}, .go = duration, .param_meta = .{ .since = .{ .go = duration } } },
+        .types = &.{.{ .enumeration = .{ .type = Speed, .go = .{ .type = "Mode", .to_raw = "modeToRaw", .from_raw = "modeFromRaw" } } }},
+        .functions = &.{
+            .{ .path = "root.setSpeed", .params = &.{.{ .name = "speed" }} },
+            .{ .path = "root.elapsed", .params = &.{.{ .name = "since", .go = duration }}, .returns = .{ .go = duration } },
         },
     }, "geometry", "zg");
 
@@ -3610,9 +3386,9 @@ test "codepoint hints are recorded on parameters and returns" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .functions = .{
-            .{ .path = "root.width", .params = .{"cp"}, .semantic = .codepoint, .param_meta = .{ .cp = .{ .semantic = .codepoint } } },
-            .{ .path = "root.sum", .params = .{"values"}, .param_meta = .{ .values = .{ .semantic = .codepoint } } },
+        .functions = &.{
+            .{ .path = "root.width", .params = &.{.{ .name = "cp", .semantic = .codepoint }}, .returns = .{ .semantic = .codepoint } },
+            .{ .path = "root.sum", .params = &.{.{ .name = "values", .semantic = .codepoint }} },
         },
     }, "text", "zg");
 
@@ -3642,11 +3418,11 @@ test "infer_u21 marks u21 positions as codepoints unless the site says integer" 
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
         .codepoints = .infer_u21,
-        .functions = .{
-            .{ .path = "root.width", .params = .{"cp"} },
-            .{ .path = "root.sum", .params = .{"values"} },
-            .{ .path = "root.bits", .params = .{"mask"}, .semantic = .integer, .param_meta = .{ .mask = .{ .semantic = .integer } } },
-            .{ .path = "root.wide", .params = .{"cp"} },
+        .functions = &.{
+            .{ .path = "root.width", .params = &.{.{ .name = "cp" }} },
+            .{ .path = "root.sum", .params = &.{.{ .name = "values" }} },
+            .{ .path = "root.bits", .params = &.{.{ .name = "mask", .semantic = .integer }}, .returns = .{ .semantic = .integer } },
+            .{ .path = "root.wide", .params = &.{.{ .name = "cp" }} },
         },
     }, "text", "zg");
 
@@ -3686,13 +3462,13 @@ test "infer_utf8 marks byte slices as text unless the site says opaque bytes" {
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
         .strings = .infer_utf8,
-        .functions = .{
-            .{ .path = "root.upper", .params = .{"text"} },
-            .{ .path = "root.join", .params = .{"parts"} },
-            .{ .path = "root.checksum", .params = .{"bytes"}, .param_meta = .{ .bytes = .{ .semantic = .opaque_bytes } } },
-            .{ .path = "root.label", .params = .{"id"}, .semantic = .c_string },
-            .{ .path = "root.cstring", .params = .{"path"} },
-            .{ .path = "root.fill", .params = .{"buffer"}, .param_meta = .{ .buffer = .{ .direction = .out } } },
+        .functions = &.{
+            .{ .path = "root.upper", .params = &.{.{ .name = "text" }} },
+            .{ .path = "root.join", .params = &.{.{ .name = "parts" }} },
+            .{ .path = "root.checksum", .params = &.{.{ .name = "bytes", .semantic = .opaque_bytes }} },
+            .{ .path = "root.label", .params = &.{.{ .name = "id" }}, .returns = .{ .semantic = .c_string } },
+            .{ .path = "root.cstring", .params = &.{.{ .name = "path" }} },
+            .{ .path = "root.fill", .params = &.{.{ .name = "buffer", .direction = .out }} },
         },
     }, "text", "zg");
 
@@ -3722,7 +3498,7 @@ test "a binding without .strings keeps every byte slice unhinted" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .functions = .{.{ .path = "root.upper", .params = .{"text"} }},
+        .functions = &.{.{ .path = "root.upper", .params = &.{.{ .name = "text" }} }},
     }, "text", "zg");
 
     try std.testing.expectEqual(@as(?semantic.SemanticHint, null), document.functions[0].params[0].semantic);
@@ -3755,12 +3531,12 @@ test "string_release supplies the release of a caller-owned string result" {
         .root = Fixture,
         .strings = .infer_utf8,
         .string_release = "root.freeString",
-        .functions = .{
-            .{ .path = "root.describe", .params = .{"value"}, .returns = .caller },
-            .{ .path = "root.render", .params = .{"value"}, .returns = .caller, .release = "root.freeOther" },
-            .{ .path = "root.freeString", .params = .{"text"} },
-            .{ .path = "root.freeOther", .params = .{"text"} },
-            .{ .path = "root.count", .params = .{"text"} },
+        .functions = &.{
+            .{ .path = "root.describe", .params = &.{.{ .name = "value" }}, .returns = .{ .ownership = .caller } },
+            .{ .path = "root.render", .params = &.{.{ .name = "value" }}, .returns = .{ .ownership = .caller, .release = "root.freeOther" } },
+            .{ .path = "root.freeString", .params = &.{.{ .name = "text" }} },
+            .{ .path = "root.freeOther", .params = &.{.{ .name = "text" }} },
+            .{ .path = "root.count", .params = &.{.{ .name = "text" }} },
         },
     }, "text", "zg");
 
@@ -3782,8 +3558,8 @@ test "a registered enum records the text encoding opt-in" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .type = Mode, .repr = .enumeration, .text = true }},
-        .functions = .{.{ .path = "root.echo", .params = .{"value"} }},
+        .types = &.{.{ .enumeration = .{ .type = Mode, .text = true } }},
+        .functions = &.{.{ .path = "root.echo", .params = &.{.{ .name = "value" }} }},
     }, "terminal", "zg");
 
     try std.testing.expectEqual(@as(?bool, true), document.types[0].text);
@@ -3804,7 +3580,7 @@ test "an unregistered generated enum is named from @typeName and rejected downst
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .functions = .{.{ .path = "root.current" }},
+        .functions = &.{.{ .path = "root.current" }},
     }, "cursor", "zg");
 
     // Reflection still records what it saw; `ZIGO021` is what refuses it, and
@@ -3827,8 +3603,8 @@ test "an allocator parameter is injected rather than exposed" {
     const document = try reflect(arena.allocator(), .{
         .allocator = .smp_allocator,
         .root = Fixture,
-        .types = .{.{ .name = "Store", .type = Fixture.Store, .repr = .@"opaque" }},
-        .functions = .{.{ .path = "root.open", .params = .{"name"} }},
+        .types = &.{.{ .handle = .{ .name = "Store", .type = Fixture.Store } }},
+        .functions = &.{.{ .path = "root.open", .params = &.{.{ .name = "name" }} }},
     }, "store", "zg");
 
     try std.testing.expectEqualStrings("std.heap.smp_allocator", document.allocator.?);
@@ -3849,11 +3625,13 @@ test "a cancellable function records its configured error name" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .functions = .{.{
-            .path = "root.crunch",
-            .params = .{"cancel"},
-            .cancel = .{ .param = "cancel", .canceled = "Cancelled" },
-        }},
+        .functions = &.{
+            .{
+                .path = "root.crunch",
+                .params = &.{.{ .name = "cancel" }},
+                .cancel = .{ .param = "cancel", .canceled = "Cancelled" },
+            },
+        },
     }, "job", "zg");
 
     try std.testing.expectEqualStrings("Cancelled", document.functions[0].cancel_error.?);
@@ -3874,7 +3652,7 @@ test "`.params` names only what Go passes, and a wrong count is reported" {
     const document = try reflect(arena.allocator(), .{
         .allocator = .smp_allocator,
         .root = Fixture,
-        .functions = .{.{ .path = "root.freeString", .params = .{"str"} }},
+        .functions = &.{.{ .path = "root.freeString", .params = &.{.{ .name = "str" }} }},
     }, "text", "zg");
 
     // The injected parameter keeps its place in the Zig call, and carries the
@@ -3892,46 +3670,8 @@ test "`.params` names only what Go passes, and a wrong count is reported" {
     try std.testing.expectError(error.ParamNameCount, reflect(arena.allocator(), .{
         .allocator = .smp_allocator,
         .root = Fixture,
-        .functions = .{.{ .path = "root.freeString", .params = .{ "gpa", "str" } }},
+        .functions = &.{.{ .path = "root.freeString", .params = &.{ .{ .name = "gpa" }, .{ .name = "str" } } }},
     }, "text", "zg"));
-}
-
-test "a `.param_meta` key that `.params` does not name is rejected" {
-    const Fixture = struct {
-        pub fn copyOut(dst: []u8, src: []const u8) void {
-            _ = dst;
-            _ = src;
-        }
-    };
-    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
-    defer arena.deinit();
-    // The key matches: the metadata applies.
-    const document = try reflect(arena.allocator(), .{
-        .root = Fixture,
-        .functions = .{.{ .path = "root.copyOut", .params = .{ "dst", "src" }, .param_meta = .{ .dst = .{ .direction = .out } } }},
-    }, "copy", "zg");
-    try std.testing.expectEqual(semantic.Direction.out, document.functions[0].params[0].direction);
-    // Dropping `.params` would otherwise leave `dst` an input and the
-    // binding silently building.
-    try std.testing.expectError(error.ParamMetaKey, reflect(arena.allocator(), .{
-        .root = Fixture,
-        .functions = .{.{ .path = "root.copyOut", .param_meta = .{ .dst = .{ .direction = .out } } }},
-    }, "copy", "zg"));
-    // A renamed parameter with a stale key is the same mistake.
-    try std.testing.expectError(error.ParamMetaKey, reflect(arena.allocator(), .{
-        .root = Fixture,
-        .functions = .{.{ .path = "root.copyOut", .params = .{ "out", "src" }, .param_meta = .{ .dst = .{ .direction = .out } } }},
-    }, "copy", "zg"));
-}
-
-test "the orphaned param_meta key message names the key, the declaration and the code" {
-    try std.testing.expectEqualStrings(
-        \\error[ZIGO057]: `.param_meta` names `dst` but `.params` has no such name in `root.copyOut`
-        \\  --> root.copyOut
-        \\  hint: every `.param_meta` key must be one of the names `.params` gives; add `.params` or fix the key so the metadata applies to a parameter
-        \\
-    , comptime paramMetaKeyMessage("root.copyOut", "dst", true));
-    try std.testing.expect(std.mem.indexOf(u8, comptime paramMetaKeyMessage("root.copyOut", "dst", false), "the entry has no `.params`") != null);
 }
 
 test "the parameter count message names the declaration and the code" {
@@ -3953,9 +3693,9 @@ test "a declaration path becomes an expression against the bound module" {
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
-        .allocator = "gpa",
+        .allocator = .{ .path = "gpa" },
         .root = Fixture,
-        .functions = .{.{ .path = "root.touch" }},
+        .functions = &.{.{ .path = "root.touch" }},
     }, "store", "zg");
 
     try std.testing.expectEqualStrings("target.gpa", document.allocator.?);
@@ -3978,9 +3718,9 @@ test "a root-level constructor keeps its Zig call path while Go groups it" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .name = "Terminal", .type = Fixture.Terminal, .repr = .@"opaque" }},
-        .functions = .{
-            .{ .path = "root.new", .params = .{"columns"} },
+        .types = &.{.{ .handle = .{ .name = "Terminal", .type = Fixture.Terminal } }},
+        .functions = &.{
+            .{ .path = "root.new", .params = &.{.{ .name = "columns" }} },
             .{ .path = "root.destroy" },
         },
     }, "terminal", "zg");
@@ -4012,13 +3752,13 @@ test "a receiver constructor reflects its dependent lifetime opt-in" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{
-            .{ .name = "Parent", .type = Fixture.Parent, .repr = .@"opaque" },
-            .{ .name = "Child", .type = Fixture.Child, .repr = .@"opaque" },
+        .types = &.{
+            .{ .handle = .{ .name = "Parent", .type = Fixture.Parent } },
+            .{ .handle = .{ .name = "Child", .type = Fixture.Child } },
         },
-        .functions = .{
-            .{ .path = "root.newChild", .constructs = "Child", .child_of_receiver = true },
-            .{ .path = "root.freeChild", .destroys = "Child" },
+        .functions = &.{
+            .{ .path = "root.newChild", .constructs = Fixture.Child, .child_of_receiver = true },
+            .{ .path = "root.freeChild", .destroys = Fixture.Child },
         },
     }, "handles", "zg");
 
@@ -4044,10 +3784,10 @@ test "`.constructs` and `.destroys` pair functions the name rule never would" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .name = "Terminal", .type = Fixture.Terminal, .repr = .@"opaque" }},
-        .functions = .{
-            .{ .path = "root.makeTerminal", .params = .{"columns"}, .constructs = "Terminal" },
-            .{ .path = "root.releaseTerminal", .destroys = "Terminal" },
+        .types = &.{.{ .handle = .{ .name = "Terminal", .type = Fixture.Terminal } }},
+        .functions = &.{
+            .{ .path = "root.makeTerminal", .params = &.{.{ .name = "columns" }}, .constructs = Fixture.Terminal },
+            .{ .path = "root.releaseTerminal", .destroys = Fixture.Terminal },
         },
     }, "terminal", "zg");
 
@@ -4082,10 +3822,10 @@ test "an explicit constructor name is recorded for the public Go wrapper" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .name = "AudioBuffer", .type = Fixture.AudioBuffer, .repr = .@"opaque" }},
-        .functions = .{
-            .{ .path = "root.makeBuffer", .name = "extractAudio", .constructs = "AudioBuffer" },
-            .{ .path = "root.freeBuffer", .destroys = "AudioBuffer" },
+        .types = &.{.{ .handle = .{ .name = "AudioBuffer", .type = Fixture.AudioBuffer } }},
+        .functions = &.{
+            .{ .path = "root.makeBuffer", .name = "extractAudio", .constructs = Fixture.AudioBuffer },
+            .{ .path = "root.freeBuffer", .destroys = Fixture.AudioBuffer },
         },
     }, "audio", "zg");
 
@@ -4110,11 +3850,11 @@ test "explicit borrowed return is recorded without changing ownership defaults" 
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{
-            .{ .name = "Parent", .type = Fixture.Parent, .repr = .@"opaque" },
-            .{ .name = "View", .type = Fixture.View, .repr = .@"opaque" },
+        .types = &.{
+            .{ .handle = .{ .name = "Parent", .type = Fixture.Parent } },
+            .{ .handle = .{ .name = "View", .type = Fixture.View } },
         },
-        .functions = .{.{ .path = "root.view", .returns = .borrowed }},
+        .functions = &.{.{ .path = "root.view", .returns = .{ .ownership = .borrowed } }},
     }, "borrowed", "zg");
 
     try std.testing.expect(document.functions[0].returnsBorrowedHandle());
@@ -4155,16 +3895,18 @@ test "function groups attach free functions and strip their shared prefix" {
     const document = try reflect(arena.allocator(), .{
         .allocator = .smp_allocator,
         .root = Fixture,
-        .types = .{.{ .type = Fixture.Screen, .repr = .@"opaque" }},
-        .functions = .{.{
-            .receiver = "Screen",
-            .strip_prefix = "screen",
-            .functions = .{
-                "root.screenSelectAll",
-                .{ .path = "root.screenClearSelection", .name = "wipe" },
-                .{ .path = "root.screenMove", .params = .{"count"} },
+        .types = &.{.{ .handle = .{ .type = Fixture.Screen } }},
+        .methods = &.{
+            .{
+                .receiver = Fixture.Screen,
+                .strip_prefix = "screen",
+                .functions = &.{
+                    .{ .path = "root.screenSelectAll" },
+                    .{ .path = "root.screenClearSelection", .name = "wipe" },
+                    .{ .path = "root.screenMove", .params = &.{.{ .name = "count" }} },
+                },
             },
-        }},
+        },
     }, "display", "zg");
 
     try std.testing.expectEqual(@as(usize, 3), document.functions.len);
@@ -4190,9 +3932,9 @@ test "per-function explicit receivers validate the first non-injected parameter"
             return 0;
         }
     };
-    const types = .{
-        .{ .type = Fixture.Screen, .repr = .@"opaque" },
-        .{ .type = Fixture.Search, .repr = .@"opaque" },
+    const types: []const zigo.Type = &.{
+        .{ .handle = .{ .type = Fixture.Screen } },
+        .{ .handle = .{ .type = Fixture.Search } },
     };
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -4200,7 +3942,7 @@ test "per-function explicit receivers validate the first non-injected parameter"
         .allocator = .smp_allocator,
         .root = Fixture,
         .types = types,
-        .functions = .{.{ .path = "root.matchCount", .receiver = "Search" }},
+        .functions = &.{.{ .path = "root.matchCount", .receiver = Fixture.Search }},
     }, "search", "zg");
     try std.testing.expectEqualStrings("Search", document.functions[0].receiver.?);
     try std.testing.expectEqual(@as(?usize, 1), document.functions[0].receiver_at);
@@ -4209,7 +3951,7 @@ test "per-function explicit receivers validate the first non-injected parameter"
         .allocator = .smp_allocator,
         .root = Fixture,
         .types = types,
-        .functions = .{.{ .path = "root.matchCount", .receiver = "Screen" }},
+        .functions = &.{.{ .path = "root.matchCount", .receiver = Fixture.Screen }},
     }, "search", "zg"));
 }
 
@@ -4254,17 +3996,19 @@ test "a registered enum owns the methods addressed through it" {
             return key;
         }
     };
-    const types = .{.{ .type = Fixture.Key, .repr = .enumeration, .name = "Key" }};
+    const types: []const zigo.Type = &.{.{ .enumeration = .{ .type = Fixture.Key, .name = "Key" } }};
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
         .types = types,
-        .functions = .{
+        .functions = &.{
             .{ .path = "Key.printable" },
-            .{ .path = "root.keyModifier", .receiver = "Key", .params = .{} },
-            .{ .path = "root.defaultKey", .params = .{"key"} },
-            .{ .receiver = "Key", .strip_prefix = "key", .functions = .{"root.keyKeypad"} },
+            .{ .path = "root.keyModifier", .receiver = Fixture.Key },
+            .{ .path = "root.defaultKey", .params = &.{.{ .name = "key" }} },
+        },
+        .methods = &.{
+            .{ .receiver = Fixture.Key, .strip_prefix = "key", .functions = &.{.{ .path = "root.keyKeypad" }} },
         },
     }, "input", "zg");
 
@@ -4308,8 +4052,8 @@ test "an enum receiver has to be taken by value" {
     defer arena.deinit();
     try std.testing.expectError(error.ReceiverMetadata, reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .type = Fixture.Key, .repr = .enumeration, .name = "Key" }},
-        .functions = .{.{ .path = "Key.clear", .receiver = "Key" }},
+        .types = &.{.{ .enumeration = .{ .type = Fixture.Key, .name = "Key" } }},
+        .functions = &.{.{ .path = "Key.clear", .receiver = Fixture.Key }},
     }, "input", "zg"));
 }
 
@@ -4335,10 +4079,10 @@ test "registered opaque values become receiver and parameter handles" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .type = Fixture.Screen, .repr = .@"opaque" }},
-        .functions = .{
+        .types = &.{.{ .handle = .{ .type = Fixture.Screen } }},
+        .functions = &.{
             .{ .path = "Screen.isBottom" },
-            .{ .path = "root.same", .params = .{ "bias", "left", "right" } },
+            .{ .path = "root.same", .params = &.{ .{ .name = "bias" }, .{ .name = "left" }, .{ .name = "right" } } },
             .{ .path = "root.snapshot" },
         },
     }, "screen", "zg");
@@ -4368,12 +4112,14 @@ test "function groups reject paths without their prefix" {
     defer arena.deinit();
     try std.testing.expectError(error.ReceiverMetadata, reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .type = Fixture.Screen, .repr = .@"opaque" }},
-        .functions = .{.{
-            .receiver = "Screen",
-            .strip_prefix = "screen",
-            .functions = .{"root.selectAll"},
-        }},
+        .types = &.{.{ .handle = .{ .type = Fixture.Screen } }},
+        .methods = &.{
+            .{
+                .receiver = Fixture.Screen,
+                .strip_prefix = "screen",
+                .functions = &.{.{ .path = "root.selectAll" }},
+            },
+        },
     }, "display", "zg"));
 }
 
@@ -4401,11 +4147,11 @@ test "an injected argument ahead of the handle does not stop a function being a 
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .name = "Terminal", .type = Fixture.Terminal, .repr = .@"opaque" }},
-        .functions = .{
-            .{ .path = "root.makeTerminal", .params = .{"columns"}, .constructs = "Terminal" },
-            .{ .path = "root.releaseTerminal", .destroys = "Terminal" },
-            .{ .path = "root.resize", .params = .{"columns"} },
+        .types = &.{.{ .handle = .{ .name = "Terminal", .type = Fixture.Terminal } }},
+        .functions = &.{
+            .{ .path = "root.makeTerminal", .params = &.{.{ .name = "columns" }}, .constructs = Fixture.Terminal },
+            .{ .path = "root.releaseTerminal", .destroys = Fixture.Terminal },
+            .{ .path = "root.resize", .params = &.{.{ .name = "columns" }} },
         },
     }, "terminal", "zg");
 
@@ -4437,9 +4183,9 @@ test "a `.constructs` claim the signatures do not support is refused" {
             _ = self;
         }
     };
-    const types = .{
-        .{ .name = "Terminal", .type = Fixture.Terminal, .repr = .@"opaque" },
-        .{ .name = "Cursor", .type = Fixture.Cursor, .repr = .@"opaque" },
+    const types: []const zigo.Type = &.{
+        .{ .handle = .{ .name = "Terminal", .type = Fixture.Terminal } },
+        .{ .handle = .{ .name = "Cursor", .type = Fixture.Cursor } },
     };
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -4448,9 +4194,9 @@ test "a `.constructs` claim the signatures do not support is refused" {
     try std.testing.expectError(error.ConstructorPairing, reflect(arena.allocator(), .{
         .root = Fixture,
         .types = types,
-        .functions = .{
-            .{ .path = "root.makeTerminal", .params = .{"columns"}, .constructs = "Cursor" },
-            .{ .path = "root.releaseTerminal", .destroys = "Cursor" },
+        .functions = &.{
+            .{ .path = "root.makeTerminal", .params = &.{.{ .name = "columns" }}, .constructs = Fixture.Cursor },
+            .{ .path = "root.releaseTerminal", .destroys = Fixture.Cursor },
         },
     }, "terminal", "zg"));
 
@@ -4458,9 +4204,9 @@ test "a `.constructs` claim the signatures do not support is refused" {
     try std.testing.expectError(error.ConstructorPairing, reflect(arena.allocator(), .{
         .root = Fixture,
         .types = types,
-        .functions = .{
-            .{ .path = "root.makeTerminal", .params = .{"columns"}, .constructs = "Terminal" },
-            .{ .path = "root.releaseTerminal", .destroys = "Cursor" },
+        .functions = &.{
+            .{ .path = "root.makeTerminal", .params = &.{.{ .name = "columns" }}, .constructs = Fixture.Terminal },
+            .{ .path = "root.releaseTerminal", .destroys = Fixture.Cursor },
         },
     }, "terminal", "zg"));
 
@@ -4468,19 +4214,19 @@ test "a `.constructs` claim the signatures do not support is refused" {
     try std.testing.expectError(error.ConstructorPairing, reflect(arena.allocator(), .{
         .root = Fixture,
         .types = types,
-        .functions = .{.{ .path = "root.makeTerminal", .params = .{"columns"}, .constructs = "Screen" }},
+        .functions = &.{.{ .path = "root.makeTerminal", .params = &.{.{ .name = "columns" }}, .constructs = struct {} }},
     }, "terminal", "zg"));
 
     // One half on its own.
     try std.testing.expectError(error.ConstructorPairing, reflect(arena.allocator(), .{
         .root = Fixture,
         .types = types,
-        .functions = .{.{ .path = "root.makeTerminal", .params = .{"columns"}, .constructs = "Terminal" }},
+        .functions = &.{.{ .path = "root.makeTerminal", .params = &.{.{ .name = "columns" }}, .constructs = Fixture.Terminal }},
     }, "terminal", "zg"));
     try std.testing.expectError(error.ConstructorPairing, reflect(arena.allocator(), .{
         .root = Fixture,
         .types = types,
-        .functions = .{.{ .path = "root.releaseTerminal", .destroys = "Terminal" }},
+        .functions = &.{.{ .path = "root.releaseTerminal", .destroys = Fixture.Terminal }},
     }, "terminal", "zg"));
 }
 
@@ -4528,15 +4274,14 @@ test "a value-returning init is boxed into a caller-owned handle" {
     const document = try reflect(arena.allocator(), .{
         .allocator = .smp_allocator,
         .root = Fixture,
-        .types = .{
-            .{ .type = Fixture.Terminal, .repr = .@"opaque" },
-            .{ .type = Fixture.Mode, .repr = .enumeration },
+        .types = &.{
+            .{ .handle = .{ .type = Fixture.Terminal } },
+            .{ .enumeration = .{ .type = Fixture.Mode } },
         },
-        .functions = .{
+        .functions = &.{
             .{
                 .path = "Terminal.init",
-                .params = .{"options"},
-                .param_meta = .{ .options = .{ .flatten = .{ "columns", "rows", "enabled", "scale", "mode", "maybe_limit" } } },
+                .params = &.{.{ .name = "options", .flatten = &.{ "columns", "rows", "enabled", "scale", "mode", "maybe_limit" } }},
             },
             .{ .path = "Terminal.deinit" },
         },
@@ -4588,14 +4333,13 @@ test "flattened struct parameters skip unselected fields that C cannot carry" {
     const document = try reflect(arena.allocator(), .{
         .allocator = .smp_allocator,
         .root = Fixture,
-        .types = .{
-            .{ .type = Fixture.Terminal, .repr = .@"opaque" },
+        .types = &.{
+            .{ .handle = .{ .type = Fixture.Terminal } },
         },
-        .functions = .{
+        .functions = &.{
             .{
                 .path = "Terminal.init",
-                .params = .{"options"},
-                .param_meta = .{ .options = .{ .flatten = .{ "cols", "rows" } } },
+                .params = &.{.{ .name = "options", .flatten = &.{ "cols", "rows" } }},
             },
             .{ .path = "Terminal.deinit" },
         },
@@ -4642,20 +4386,26 @@ test "atomic values reflect as marked scalar leaves in every value position" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{
-            .{ .type = Fixture.Handle, .repr = .@"opaque", .fields = .{
-                .{ .path = "counter", .set = true },
-                .{ .path = "enabled", .set = true },
-            } },
-            .{ .type = Fixture.Mode, .repr = .enumeration },
-            .{ .type = Fixture.Record, .repr = .value },
-            .{ .type = Fixture.Event, .repr = .tagged_union },
+        .types = &.{
+            .{
+                .handle = .{
+                    .type = Fixture.Handle,
+                    .fields = &.{
+                        .{ .path = "counter", .set = true },
+                        .{ .path = "enabled", .set = true },
+                    },
+                },
+            },
+            .{ .enumeration = .{ .type = Fixture.Mode } },
+            .{ .value = .{ .type = Fixture.Record } },
+            .{ .tagged_union = .{ .type = Fixture.Event } },
         },
-        .functions = .{.{
-            .path = "root.take",
-            .params = .{ "value", "options", "record", "event" },
-            .param_meta = .{ .options = .{ .flatten = .{"limit"} } },
-        }},
+        .functions = &.{
+            .{
+                .path = "root.take",
+                .params = &.{ .{ .name = "value" }, .{ .name = "options", .flatten = &.{"limit"} }, .{ .name = "record" }, .{ .name = "event" } },
+            },
+        },
     }, "atomic_values", "zg");
 
     try std.testing.expect(document.functions[0].field_access.?.atomic.?);
@@ -4698,11 +4448,12 @@ test "atomic pointers reflect their scalar and call-scoped contract" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .functions = .{.{
-            .path = "root.share",
-            .params = .{ "counter", "delta", "unsupported" },
-            .param_meta = .{ .delta = .{ .retention = .retained } },
-        }},
+        .functions = &.{
+            .{
+                .path = "root.share",
+                .params = &.{ .{ .name = "counter" }, .{ .name = "delta", .retention = .retained }, .{ .name = "unsupported" } },
+            },
+        },
     }, "atomic_pointers", "zg");
 
     const share = document.functions[0];
@@ -4725,11 +4476,12 @@ test "flattened struct parameters reject unlisted required fields" {
     defer arena.deinit();
     try std.testing.expectError(error.FlattenedParameter, reflect(arena.allocator(), .{
         .root = Fixture,
-        .functions = .{.{
-            .path = "root.configure",
-            .params = .{"options"},
-            .param_meta = .{ .options = .{ .flatten = .{"columns"} } },
-        }},
+        .functions = &.{
+            .{
+                .path = "root.configure",
+                .params = &.{.{ .name = "options", .flatten = &.{"columns"} }},
+            },
+        },
     }, "terminal", "zg"));
     const message = try flattenMessageAlloc(
         std.testing.allocator,
@@ -4755,8 +4507,8 @@ test "without an allocator a value-returning opaque init stays unboxed" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .type = Fixture.Terminal, .repr = .@"opaque" }},
-        .functions = .{.{ .path = "Terminal.init", .params = .{"columns"} }},
+        .types = &.{.{ .handle = .{ .type = Fixture.Terminal } }},
+        .functions = &.{.{ .path = "Terminal.init", .params = &.{.{ .name = "columns" }} }},
     }, "terminal", "zg");
 
     // It is not silently boxed, but retains the registered handle identity so
@@ -4779,9 +4531,9 @@ test "std.Io.Writer and std.Io.Reader parameters reflect as stream nodes" {
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .functions = .{
-            .{ .path = "root.dump", .params = .{"w"} },
-            .{ .path = "root.load", .params = .{"r"}, .param_meta = .{ .r = .{ .buffer = 8192 } } },
+        .functions = &.{
+            .{ .path = "root.dump", .params = &.{.{ .name = "w" }} },
+            .{ .path = "root.load", .params = &.{.{ .name = "r", .buffer = 8192 }} },
         },
     }, "stream", "zg");
 
@@ -4811,15 +4563,19 @@ test "opaque fields reflect nested value and pointer accessors" {
 
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{
-            .{ .type = Style, .repr = .enumeration },
-            .{ .type = Terminal, .repr = .@"opaque", .fields = .{
-                .{ .path = "enabled" },
-                .{ .path = "screen.cursor.x", .name = "cursorX" },
-                .{ .path = "screen.cursor.style", .name = "cursorStyle", .set = true, .doc = "Current cursor style." },
-            } },
+        .types = &.{
+            .{ .enumeration = .{ .type = Style } },
+            .{
+                .handle = .{
+                    .type = Terminal,
+                    .fields = &.{
+                        .{ .path = "enabled" },
+                        .{ .path = "screen.cursor.x", .name = "cursorX" },
+                        .{ .path = "screen.cursor.style", .name = "cursorStyle", .set = true, .doc = "Current cursor style." },
+                    },
+                },
+            },
         },
-        .functions = .{},
     }, "terminal", "zg");
 
     try std.testing.expectEqual(@as(usize, 4), document.functions.len);
@@ -4843,13 +4599,11 @@ test "invalid opaque field paths and leaf types use ZIGO037" {
 
     try std.testing.expectError(error.FieldAccess, reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .type = Terminal, .repr = .@"opaque", .fields = .{.{ .path = "missing" }} }},
-        .functions = .{},
+        .types = &.{.{ .handle = .{ .type = Terminal, .fields = &.{.{ .path = "missing" }} } }},
     }, "terminal", "zg"));
     try std.testing.expectError(error.FieldAccess, reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .type = Terminal, .repr = .@"opaque", .fields = .{.{ .path = "label" }} }},
-        .functions = .{},
+        .types = &.{.{ .handle = .{ .type = Terminal, .fields = &.{.{ .path = "label" }} } }},
     }, "terminal", "zg"));
 
     const unknown = try fieldAccessMessageAlloc(std.testing.allocator, "screen.cursor.x", null);
@@ -4886,13 +4640,12 @@ test "packed value fields require registered enum and packed struct identities" 
 
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{
-            .{ .type = Fixture.Mode, .repr = .enumeration },
-            .{ .type = Fixture.Nibble, .repr = .value },
-            .{ .type = Fixture.Flags, .repr = .value },
-            .{ .type = Fixture.Invalid, .repr = .value },
+        .types = &.{
+            .{ .enumeration = .{ .type = Fixture.Mode } },
+            .{ .value = .{ .type = Fixture.Nibble } },
+            .{ .value = .{ .type = Fixture.Flags } },
+            .{ .value = .{ .type = Fixture.Invalid } },
         },
-        .functions = .{},
     }, "packed", "zg");
 
     var saw_flags = false;
@@ -4922,12 +4675,13 @@ test "a declared userdata position reorders the callback signature to Go order" 
     defer arena.deinit();
     const document = try reflect(arena.allocator(), .{
         .root = Fixture,
-        .types = .{.{ .name = "Reducer", .type = Fixture.Reducer, .repr = .callback, .userdata = .first }},
-        .functions = .{.{
-            .path = "root.reduce",
-            .params = .{ "ctx", "callback", "acc" },
-            .param_meta = .{ .callback = .{ .userdata = "ctx" } },
-        }},
+        .types = &.{.{ .callback = .{ .name = "Reducer", .type = Fixture.Reducer, .userdata = .first } }},
+        .functions = &.{
+            .{
+                .path = "root.reduce",
+                .params = &.{ .{ .name = "ctx" }, .{ .name = "callback", .userdata = .{ .param = "ctx" } }, .{ .name = "acc" } },
+            },
+        },
     }, "callbacks", "zg");
     const callback = document.functions[0].params[1];
     try std.testing.expectEqualStrings("ctx", callback.userdata.?);

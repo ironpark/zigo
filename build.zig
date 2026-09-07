@@ -403,6 +403,10 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
                 .{ .name = "bindings", .module = bindings_module },
                 .{ .name = "naming", .module = naming_module },
                 .{ .name = "semantic", .module = semantic_module },
+                // The same module instance `bindings.zig` imports, so the
+                // declaration types the reflector reads are the ones the
+                // binding was written in.
+                .{ .name = "zigo", .module = zigo_dependency.module("zigo") },
             },
         }),
     });
