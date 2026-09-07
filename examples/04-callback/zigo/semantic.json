@@ -253,7 +253,7 @@
           "name_source": "sidecar",
           "retention": "retained",
           "source": {
-            "line": 129,
+            "line": 143,
             "column": 19
           },
           "type": {
@@ -289,7 +289,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 129,
+            "line": 143,
             "column": 39
           },
           "type": {
@@ -314,7 +314,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 129,
+        "line": 143,
         "column": 12
       },
       "symbol": "zg_callback_context_create"
@@ -329,7 +329,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 135,
+            "line": 149,
             "column": 40
           },
           "type": {
@@ -349,7 +349,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 135,
+        "line": 149,
         "column": 12
       },
       "symbol": "zg_callback_context_run"
@@ -364,7 +364,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 140,
+        "line": 154,
         "column": 12
       },
       "symbol": "zg_callback_context_deinit"
@@ -384,7 +384,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 145,
+        "line": 159,
         "column": 8
       },
       "symbol": "zg_panic_now"
@@ -399,7 +399,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 151,
+            "line": 165,
             "column": 25
           },
           "type": {
@@ -418,7 +418,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 151,
+        "line": 165,
         "column": 8
       },
       "symbol": "zg_compression_bound"
@@ -433,7 +433,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 155,
+            "line": 169,
             "column": 24
           },
           "type": {
@@ -453,7 +453,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 155,
+            "line": 169,
             "column": 57
           },
           "type": {
@@ -472,7 +472,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 155,
+        "line": 169,
         "column": 8
       },
       "symbol": "zg_increment_shared"
@@ -487,7 +487,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 159,
+            "line": 173,
             "column": 19
           },
           "type": {
@@ -510,7 +510,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 159,
+        "line": 173,
         "column": 8
       },
       "symbol": "zg_read_shared"
@@ -1202,6 +1202,127 @@
       "symbol": "zg_emit_chunks"
     },
     {
+      "doc": "Calls inspector once with context, level, and strict, and returns its result.",
+      "name": "inspect",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "context",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 132,
+            "column": 16
+          },
+          "type": {
+            "const": false,
+            "kind": "opaque_ptr",
+            "nullable": true,
+            "ref": "CallbackContext"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "level",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 132,
+            "column": 44
+          },
+          "type": {
+            "kind": "enum",
+            "ref": "Level"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "strict",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 132,
+            "column": 58
+          },
+          "type": {
+            "kind": "bool"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "inspector",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 132,
+            "column": 72
+          },
+          "type": {
+            "c_callconv": true,
+            "has_userdata": true,
+            "kind": "callback",
+            "params": [
+              {
+                "const": false,
+                "kind": "opaque_ptr",
+                "nullable": true,
+                "ref": "CallbackContext"
+              },
+              {
+                "kind": "enum",
+                "ref": "Level"
+              },
+              {
+                "kind": "bool"
+              },
+              {
+                "bits": 64,
+                "is_usize": true,
+                "kind": "int",
+                "signed": false
+              }
+            ],
+            "ref": "Inspector",
+            "return": {
+              "bits": 32,
+              "is_usize": false,
+              "kind": "int",
+              "signed": true
+            }
+          }
+        },
+        {
+          "direction": "in",
+          "name": "userdata",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 132,
+            "column": 94
+          },
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "bits": 32,
+        "is_usize": false,
+        "kind": "int",
+        "signed": true
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 132,
+        "column": 8
+      },
+      "symbol": "zg_inspect"
+    },
+    {
       "doc": "Calls visitor for every codepoint of text and returns the last one, or 0\nfor empty text. Malformed bytes are visited as U+FFFD.",
       "name": "visitCodepoints",
       "ownership": "borrowed",
@@ -1371,6 +1492,39 @@
       "kind": "callback",
       "name": "ByteSink",
       "zig_path": "*const fn ([*]const u8, usize, usize) callconv(.c) void"
+    },
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "callback",
+      "name": "Inspector",
+      "zig_path": "*const fn (?*root.CallbackContext, root.Level, bool, usize) callconv(.c) i32"
+    },
+    {
+      "exhaustive": true,
+      "fields": [
+        {
+          "name": "info",
+          "value": 0
+        },
+        {
+          "name": "warn",
+          "value": 1
+        },
+        {
+          "name": "err",
+          "value": 2
+        }
+      ],
+      "kind": "enum",
+      "name": "Level",
+      "tag_type": {
+        "bits": 32,
+        "is_usize": false,
+        "kind": "int",
+        "signed": true
+      },
+      "zig_path": "root.Level"
     }
   ],
   "zig_version": "0.16.0"

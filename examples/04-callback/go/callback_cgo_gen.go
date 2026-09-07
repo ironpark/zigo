@@ -292,6 +292,23 @@ func zg_emit_chunks_go_callback_sink(p0 *C.uint8_t, p0_len C.size_t, p1 C.size_t
 	callback(append([]byte(nil), unsafe.Slice((*byte)(unsafe.Pointer(p0)), int(p0_len))...))
 }
 
+//export zg_inspect_go_callback_inspector
+func zg_inspect_go_callback_inspector(p0 unsafe.Pointer, p1 C.int32_t, p2 C.uint8_t, p3 C.size_t) (result C.int32_t) {
+	state, ok := callbackState(cgo.Handle(p3))
+	if !ok {
+		tripCallbackCancel(uintptr(p3))
+		return C.int32_t(-4)
+	}
+	defer func() {
+		if value := recover(); value != nil {
+			state.record(value)
+			result = C.int32_t(-3)
+		}
+	}()
+	callback := state.Fn.(func(unsafe.Pointer, int32, uint8) int32)
+	return C.int32_t(callback(unsafe.Pointer(p0), int32(p1), uint8(p2)))
+}
+
 //export zg_visit_codepoints_go_callback_visitor
 func zg_visit_codepoints_go_callback_visitor(p0 C.uint32_t, p1 C.size_t) {
 	state, ok := callbackState(cgo.Handle(p1))
@@ -452,6 +469,13 @@ func zigoRawLogMessage(message []uint8, loggerHandle uintptr) {
 func zigoRawEmitChunks(data []uint8, chunkLen uint, sinkHandle uintptr) uint {
 	dataPtr := (*C.uint8_t)(zigoSlicePtr(data))
 	return uint(C.zg_emit_chunks(dataPtr, C.size_t(len(data)), C.size_t(chunkLen), C.size_t(sinkHandle)))
+}
+
+// zigoRawInspect calls the generated C ABI wrapper for zg_inspect.
+func zigoRawInspect(context unsafe.Pointer, level int32, strict uint8, inspectorHandle uintptr) (int32, int32) {
+	var outResult C.int32_t
+	code := int32(C.zg_inspect((*C.zg_callback_context)(context), C.int32_t(level), C.uint8_t(strict), C.size_t(inspectorHandle), &outResult))
+	return int32(outResult), code
 }
 
 // zigoRawVisitCodepoints calls the generated C ABI wrapper for zg_visit_codepoints.

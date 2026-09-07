@@ -4,6 +4,20 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Fixed
+
+- 콜백 시그니처의 등록 enum 파라미터·결과를 Go handle 생성자의 어댑터가 enum 타입(또는
+  `.go` adapter)으로 변환합니다. 0.16.0은 shim thunk만 고쳐서, enum이 `bool`·packed 값·문자열과
+  함께 있는 시그니처는 컴파일되지 않았고 enum만 있는 시그니처는 raw 계층의 타입 단언과
+  어긋났습니다.
+- 콜백 파라미터의 handle 포인터(`*Handle`, `?*const Handle`)를 소유자 없는 borrowed handle로
+  감싸서 전달합니다. 이전에는 공개 타입이 `func(*Handle)`이어도 raw 계층이
+  `func(unsafe.Pointer)`로 단언해 첫 호출에서 panic했습니다. `?*`의 null은 nil로 도착하고,
+  retained 콜백을 가진 타입의 borrowed view는 빈 콜백 slot 표를 가져 method 호출이
+  안전합니다. 콜백이 받는 타입은 `zigoNewBorrowed<T>`와 `HandleInUseError`를 함께 생성합니다.
+
 ## [0.16.0] - 2026-09-07
 
 ### Added

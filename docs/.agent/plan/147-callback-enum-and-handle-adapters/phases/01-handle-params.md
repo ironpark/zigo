@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-07T08:44:59Z"
 depends_on:
 - "147-callback-enum-and-handle-adapters#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test` passes and the `OnStream`/`OnView` constructors in both goldens wrap
 > NEXT: none

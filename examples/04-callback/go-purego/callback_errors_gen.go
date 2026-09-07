@@ -13,6 +13,9 @@ import (
 // ErrInvalidHandle identifies a nil, closed, or invalid borrowed handle.
 var ErrInvalidHandle = errors.New("zigo: nil or closed handle")
 
+// ErrHandleInUse identifies a parent handle with dependent children still open.
+var ErrHandleInUse = errors.New("zigo: handle has open children")
+
 // ErrNativePanic identifies a Zig panic caught at the native boundary.
 var ErrNativePanic = errors.New("zigo: native panic")
 
@@ -38,6 +41,22 @@ func (err *HandleError) Error() string {
 
 // Unwrap returns ErrInvalidHandle for errors.Is classification.
 func (err *HandleError) Unwrap() error { return ErrInvalidHandle }
+
+// HandleInUseError reports a Close refused because dependent children remain open.
+type HandleInUseError struct {
+	// Operation names the generated Close operation.
+	Operation string
+	// Children is the number of dependent handles still open or being constructed.
+	Children int
+}
+
+// Error implements error.
+func (err *HandleInUseError) Error() string {
+	return "zigo: " + err.Operation + ": handle has open children: " + strconv.Itoa(err.Children)
+}
+
+// Unwrap returns ErrHandleInUse for errors.Is classification.
+func (err *HandleInUseError) Unwrap() error { return ErrHandleInUse }
 
 // NativePanicError reports a Zig panic caught at the native boundary.
 type NativePanicError struct {

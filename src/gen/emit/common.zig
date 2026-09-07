@@ -602,6 +602,9 @@ pub fn programHasDependentHandles(program: abi.Program) bool {
     for (program.functions) |function| {
         if (function.origin.childOfReceiver() or docs.returnsBorrowedView(function.origin.*)) return true;
     }
+    // A handle a callback receives is borrowed too, and its Close refuses
+    // with the same in-use error while a call is still inside native.
+    for (program.handles) |handle| if (handle.lifecycle.can_be_borrowed) return true;
     return false;
 }
 

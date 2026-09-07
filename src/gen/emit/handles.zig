@@ -65,7 +65,13 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
         // One receiver name per type, matching the methods emitted elsewhere.
         const recv = try common.typeReceiverNameAlloc(allocator, program, declaration.name);
         defer allocator.free(recv);
-        if (can_be_borrowed) try writer.print(
+        // A borrowed view of a type that retains callbacks has no callback of
+        // its own: every slot stays zero, which the error checks skip.
+        if (can_be_borrowed and owns_callbacks) try writer.print(
+            "func zigoNewBorrowed{0s}(ptr unsafe.Pointer, owner zigoHandle) *{0s} {{\n" ++
+                "\treturn &{0s}{{ptr: ptr, owner: owner, callbackHandles: make([]zigoCallbackHandle, {1d})}}\n}}\n\n",
+            .{ declaration.name, handle.retained_callback_slots },
+        ) else if (can_be_borrowed) try writer.print(
             "func zigoNewBorrowed{0s}(ptr unsafe.Pointer, owner zigoHandle) *{0s} {{\n" ++
                 "\treturn &{0s}{{ptr: ptr, owner: owner}}\n}}\n\n",
             .{declaration.name},

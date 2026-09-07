@@ -24,6 +24,13 @@ func zigoCheckedPointer(operation string, value zigoHandle) (unsafe.Pointer, err
 	return value.zigoAcquire(operation)
 }
 
+func zigoOptionalPointer(operation string, absent bool, value zigoHandle) (unsafe.Pointer, error) {
+	if absent {
+		return nil, nil
+	}
+	return zigoCheckedPointer(operation, value)
+}
+
 // zigoPoisonAfterPanic marks every handle a call reached unusable when that
 // call ended in a Zig panic: the panic unwound the native frames without
 // running their defers, so what is behind those handles is unknown. Any
@@ -54,6 +61,9 @@ type Logger func(string, string)
 
 // ByteSink is the Go callback signature accepted by the generated binding.
 type ByteSink func([]byte)
+
+// Inspector is the Go callback signature accepted by the generated binding.
+type Inspector func(*CallbackContext, Level, bool) int32
 
 // Visitor is the Go callback signature accepted by the generated binding.
 type Visitor func(rune)
@@ -91,6 +101,16 @@ func zigoNewLoggerHandle(value Logger) zigoCallbackHandle {
 
 func zigoNewByteSinkHandle(value ByteSink) zigoCallbackHandle {
 	return raw.NewCallbackHandle((func([]byte))(value))
+}
+
+func zigoNewInspectorHandle(value Inspector) zigoCallbackHandle {
+	return raw.NewCallbackHandle(func(p0 unsafe.Pointer, p1 int32, p2 uint8) int32 {
+		var h0 *CallbackContext
+		if p0 != nil {
+			h0 = zigoNewBorrowedCallbackContext(p0, nil)
+		}
+		return value(h0, Level(p1), p2 != 0)
+	})
 }
 
 func zigoNewVisitorHandle(value Visitor) zigoCallbackHandle {

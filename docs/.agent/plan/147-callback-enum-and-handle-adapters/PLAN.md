@@ -8,7 +8,7 @@ registered_at: "2026-09-07T08:40:47Z"
 # Phases
 
 - [x] [Phase 00: Enum callback adapters](phases/00-enum-adapters.md)
-- [ ] [Phase 01: Borrowed handle callback parameters](phases/01-handle-params.md)
+- [x] [Phase 01: Borrowed handle callback parameters](phases/01-handle-params.md)
 - [ ] [Phase 02: Example coverage and changelog](phases/02-example-and-changelog.md)
 
 # Shared Verification

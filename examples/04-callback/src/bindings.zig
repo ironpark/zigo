@@ -32,6 +32,9 @@ pub const bindings = zigo.define(.{
         .{ .callback = .{ .name = "Logger", .type = library.Logger, .params = &.{ .{}, .{ .semantic = .utf8_string } } } },
         // The same pair marked `.opaque_bytes` is a `[]byte`.
         .{ .callback = .{ .name = "ByteSink", .type = library.ByteSink, .params = &.{.{ .semantic = .opaque_bytes }} } },
+        // A handle pointer, an enum, and a `bool` side by side: the handle
+        // arrives as a borrowed `*CallbackContext` that is nil for null.
+        .{ .callback = .{ .name = "Inspector", .type = library.Inspector } },
     },
     .functions = &.{
         .{ .path = "FloatBuffer.create" },
@@ -80,6 +83,10 @@ pub const bindings = zigo.define(.{
         .{
             .path = "root.emitChunks",
             .params = &.{ .{ .name = "data" }, .{ .name = "chunkLen" }, .{ .name = "sink" }, .{ .name = "userdata" } },
+        },
+        .{
+            .path = "root.inspect",
+            .params = &.{ .{ .name = "context" }, .{ .name = "level" }, .{ .name = "strict" }, .{ .name = "inspector" }, .{ .name = "userdata" } },
         },
         .{
             .path = "root.visitCodepoints",

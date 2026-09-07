@@ -119,6 +119,20 @@ pub fn reduce(ctx: usize, values: []const i32, reducer: Reducer) i32 {
     return acc;
 }
 
+/// Levels an inspector can be asked about. The enum crosses the callback
+/// boundary as its tag and reaches Go as the generated `Level` type.
+pub const Level = enum(i32) { info, warn, err };
+
+/// An inspector receives the context whose callback is running as a borrowed
+/// handle, next to an enum and a `bool`. The context is optional so a null
+/// pointer is observable as a nil Go handle.
+pub const Inspector = *const fn (context: ?*CallbackContext, level: Level, strict: bool, userdata: usize) callconv(.c) i32;
+
+/// Calls inspector once with context, level, and strict, and returns its result.
+pub fn inspect(context: ?*CallbackContext, level: Level, strict: bool, inspector: Inspector, userdata: usize) i32 {
+    return inspector(context, level, strict, userdata);
+}
+
 pub const CallbackContext = struct {
     const Stats = struct { runs: std.atomic.Value(u32) = .init(0) };
 
@@ -203,4 +217,13 @@ test "generic specializations and callback context" {
     }.call;
     notify(10, &void_callback, @intFromPtr(&notified));
     try std.testing.expectEqual(@as(i32, 10), notified);
+
+    const inspector = struct {
+        fn call(ctx: ?*CallbackContext, level: Level, strict: bool, _: usize) callconv(.c) i32 {
+            const target = ctx orelse return -1;
+            return @as(i32, @intCast(target.stats.runs.load(.seq_cst))) + @intFromEnum(level) + @intFromBool(strict);
+        }
+    }.call;
+    try std.testing.expectEqual(@as(i32, 3), inspect(context, .warn, true, &inspector, 0));
+    try std.testing.expectEqual(@as(i32, -1), inspect(null, .info, false, &inspector, 0));
 }

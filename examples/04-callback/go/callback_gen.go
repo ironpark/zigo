@@ -351,6 +351,41 @@ func EmitChunks(data []byte, chunkLen uint, sink ByteSink) uint {
 	return result
 }
 
+// Inspect: Calls inspector once with context, level, and strict, and returns its result.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+// An error a Go callback returned is returned as *CallbackError once the native call returns.
+func Inspect(context *CallbackContext, level Level, strict bool, inspector Inspector) (int32, error) {
+	contextPtr, err := zigoOptionalPointer("Inspect parameter context", context == nil, context)
+	if err != nil {
+		return 0, err
+	}
+	defer context.zigoRelease()
+	inspectorHandle := zigoNewInspectorHandle(inspector)
+	defer zigoDeleteCallbackHandle(inspectorHandle)
+	result, code := zigoRawInspect(contextPtr, int32(level), zigoBoolToUint8(strict), uintptr(inspectorHandle))
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("Inspect", inspectorHandle)
+		if context != nil {
+			for slot := range 1 {
+				zigoRethrowCallbackPanic("Inspect", context.zigoCallbackHandle(slot))
+			}
+		}
+	}
+	if context != nil {
+		for slot := range 1 {
+			if err := zigoCallbackError("Inspect", "callback", context.zigoCallbackHandle(slot)); err != nil {
+				return 0, err
+			}
+		}
+	}
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Inspect", code), context)
+	}
+	return result, nil
+}
+
 // VisitCodepoints: Calls visitor for every codepoint of text and returns the last one, or 0
 // for empty text. Malformed bytes are visited as U+FFFD.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.

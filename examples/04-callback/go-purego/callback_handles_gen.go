@@ -17,8 +17,13 @@ type CallbackContext struct {
 	active          int
 	closed          bool
 	poison          *NativePanicError
+	owner           zigoHandle
 	callbackHandles []zigoCallbackHandle
 	cleanup         runtime.Cleanup
+}
+
+func zigoNewBorrowedCallbackContext(ptr unsafe.Pointer, owner zigoHandle) *CallbackContext {
+	return &CallbackContext{ptr: ptr, owner: owner, callbackHandles: make([]zigoCallbackHandle, 1)}
 }
 
 func (c *CallbackContext) zigoCallbackHandle(slot int) zigoCallbackHandle {
@@ -37,22 +42,38 @@ func (c *CallbackContext) zigoReplaceCallbackHandle(slot int, handle zigoCallbac
 	return previous
 }
 
-// zigoAcquire pins c open for one native call and hands back its pointer;
-// the call ends with zigoRelease. A nil, closed, or poisoned handle is the error.
+// zigoAcquire pins c and its parent open for one native call.
 func (c *CallbackContext) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	if c == nil {
 		return nil, &HandleError{Operation: operation}
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
-	if c.closed || c.ptr == nil {
-		return nil, &HandleError{Operation: operation}
+	parent := c.owner
+	c.mu.Unlock()
+	if parent != nil {
+		if _, err := parent.zigoAcquire(operation); err != nil {
+			return nil, err
+		}
 	}
-	if c.poison != nil {
-		return nil, c.poison.poisoned(operation)
+	c.mu.Lock()
+	var err error
+	switch {
+	case c.closed || c.ptr == nil:
+		err = &HandleError{Operation: operation}
+	case c.poison != nil:
+		err = c.poison.poisoned(operation)
+	default:
+		c.active++
 	}
-	c.active++
-	return c.ptr, nil
+	ptr := c.ptr
+	c.mu.Unlock()
+	if err != nil {
+		if parent != nil {
+			parent.zigoRelease()
+		}
+		return nil, err
+	}
+	return ptr, nil
 }
 
 func (c *CallbackContext) zigoRelease() {
@@ -61,10 +82,14 @@ func (c *CallbackContext) zigoRelease() {
 	}
 	c.mu.Lock()
 	c.active--
+	parent := c.owner
 	state, release := c.zigoTakeLocked()
 	c.mu.Unlock()
 	if release {
 		zigoCleanupCallbackContext(state)
+	}
+	if parent != nil {
+		parent.zigoRelease()
 	}
 }
 
@@ -75,10 +100,16 @@ func (c *CallbackContext) zigoPoison(cause *NativePanicError) {
 		return
 	}
 	c.mu.Lock()
-	defer c.mu.Unlock()
+	parent := c.owner
 	if c.poison == nil {
 		c.poison = cause
-		c.cleanup.Stop()
+		if c.owner == nil {
+			c.cleanup.Stop()
+		}
+	}
+	c.mu.Unlock()
+	if parent != nil {
+		parent.zigoPoison(cause)
 	}
 }
 
@@ -104,7 +135,7 @@ func zigoCleanupCallbackContext(state zigoCallbackContextCleanupState) {
 }
 
 // Close releases the native CallbackContext resources. It is safe to call more than once.
-// The error result is always nil; it exists so CallbackContext satisfies io.Closer.
+// It returns *HandleInUseError while a call is still inside native; otherwise the error is nil.
 // Close does not wait: a call still inside native keeps the resources until it
 // returns, and every call made after Close fails with *HandleError.
 func (c *CallbackContext) Close() error {
@@ -113,6 +144,18 @@ func (c *CallbackContext) Close() error {
 	}
 	c.mu.Lock()
 	if c.closed {
+		c.mu.Unlock()
+		return nil
+	}
+	if c.owner != nil {
+		if c.active != 0 {
+			active := c.active
+			c.mu.Unlock()
+			return &HandleInUseError{Operation: "CallbackContext.Close", Children: active}
+		}
+		c.closed = true
+		c.ptr = nil
+		c.owner = nil
 		c.mu.Unlock()
 		return nil
 	}
