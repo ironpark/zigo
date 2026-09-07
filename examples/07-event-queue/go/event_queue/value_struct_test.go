@@ -194,7 +194,7 @@ func TestCastableStructSliceReturnKeepsItsValues(t *testing.T) {
 		t.Fatalf("SampleLimits() aliased native memory: again[0] = %+v", again[0])
 	}
 
-	// `.returns = .caller` copies the native buffer, releases it, and only then
+	// `.returns.ownership = .caller` copies the native buffer, releases it, and only then
 	// reinterprets the copy, so the values outlive the release.
 	if err := queue.Enqueue(1, 10); err != nil {
 		t.Fatal(err)

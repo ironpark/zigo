@@ -58,7 +58,7 @@ receiver나 handle parameter에 `runtime.KeepAlive`를 따로 걸지 않습니�
 |---|---:|---|---|
 | 일반 caller-owned | 예 | destructor를 한 번 호출 | 자신의 호출이 `HandleError` |
 | `.child_of_receiver` 자식 | 예 | destructor 후 부모 등록 해제 | 열린 자식이 있으면 부모 Close 거부 |
-| `.returns = .borrowed` view | 아니요 | view 조기 detach, destructor 없음 | view 호출이 `HandleError` |
+| `.returns.ownership = .borrowed` view | 아니요 | view 조기 detach, destructor 없음 | view 호출이 `HandleError` |
 | tagged-union `*TRef` | 아니요 | 제공하지 않음 | projection 호출이 `HandleError` |
 
 borrowed view는 일반 `*T` handle 구조를 쓰되 owner lifecycle interface를 보관합니다. 호출은
@@ -177,4 +177,3 @@ Zig panic은 `panic.c`가 `setjmp`/`longjmp`로 붙잡습니다. 붙잡힌 메�
 이전 설계는 메시지를 thread-local에만 두고 두 번째 호출로 읽었기 때문에 error union
 함수마다 `runtime.LockOSThread`가 필요했습니다. 그 비용은 호출당 약 5 ns(2%)로 작았고,
 raw 시그니처가 바뀌는 minor 릴리스에 맞춰 ABI를 정리하면서 없앴습니다.
-

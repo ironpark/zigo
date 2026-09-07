@@ -27,15 +27,16 @@ pub fn reduce(ctx: usize, values: []const i32, reducer: Reducer) i32 { ... }
 ```
 
 ```zig
-.types = .{
-    .{ .name = "Reducer", .type = mylib.Reducer, .repr = .callback, .userdata = .first },
+.types = &.{
+    .{ .callback = .{ .name = "Reducer", .type = mylib.Reducer, .userdata = .first } },
 },
-.functions = .{
+.functions = &.{
     .{
         .path = "root.reduce",
-        .params = .{ "ctx", "values", "reducer" },
+        .params = &.{ .{ .name = "ctx" }, .{ .name = "values" },
         // 토큰 파라미터가 콜백 바로 다음이 아니면 이름으로 가리킵니다.
-        .param_meta = .{ .reducer = .{ .userdata = "ctx" } },
+            .{ .name = "reducer", .userdata = .{ .param = "ctx" } },
+        },
     },
 },
 ```
@@ -56,8 +57,8 @@ userdata를 어디에 두든 같고, `abi-diff`도 위치 이동을 변경으로
 alias라 reflection이 이름을 알 수 없으니, 하나의 이름을 원하면 `types`에 등록합니다.
 
 ```zig
-.types = .{
-    .{ .name = "Observer", .type = mylib.Observer, .repr = .callback },
+.types = &.{
+    .{ .callback = .{ .name = "Observer", .type = mylib.Observer } },
 },
 ```
 
@@ -79,7 +80,7 @@ userdata는 제외) 코드포인트가 아닌 자리는 `.integer`로 채웁니�
 `ZIGO018`로 거부되므로 사실상 영향이 없습니다.
 
 ```zig
-.{ .name = "Visitor", .type = mylib.Visitor, .repr = .callback, .param_semantics = .{ .codepoint, .integer }, .semantic = .codepoint },
+.{ .callback = .{ .name = "Visitor", .type = mylib.Visitor, .params = &.{ .{ .semantic = .codepoint }, .{ .semantic = .integer } }, .returns = .{ .semantic = .codepoint } } },
 ```
 
 콜백이 호출 중 바인딩을 다시 부를 수 있는지와 어떤 thread에서 불리는지는 파라미터별
@@ -87,13 +88,12 @@ userdata는 제외) 코드포인트가 아닌 자리는 `.integer`로 채웁니�
 콜백 타입과 그 콜백을 받는 함수의 Go doc에만 나타납니다.
 
 ```zig
-.param_meta = .{
-    .observer = .{
+.params = &.{.{
+        .name = "observer",
         .retention = .retained,
         .reentrancy = .forbidden,
         .thread = .any,
-    },
-},
+    }},
 ```
 
 `reentrancy`는 `.allowed` 또는 `.forbidden`, `thread`는 호출을 시작한 thread만 허용하는
@@ -103,28 +103,28 @@ userdata는 제외) 코드포인트가 아닌 자리는 `.integer`로 채웁니�
 `ZIGO025`로 거부합니다.
 
 계약이 그 콜백 타입 자체의 성질이라면 등록 항목에 한 번만 적을 수 있습니다.
-`.repr = .callback` 항목의 `retention`·`reentrancy`·`thread`는 그 타입을 받는 모든
+`.callback` 항목의 `retention`·`reentrancy`·`thread`는 그 타입을 받는 모든
 파라미터가 물려받습니다.
 
 ```zig
-.types = .{
+.types = &.{
     .{
-        .name = "ClipboardHandler",
-        .type = mylib.ClipboardFn,
-        .repr = .callback,
-        .retention = .retained,
-        .reentrancy = .allowed,
-        .thread = .caller,
+        .callback = .{
+            .name = "ClipboardHandler",
+            .type = mylib.ClipboardFn,
+            .retention = .retained,
+            .reentrancy = .allowed,
+            .thread = .caller,
+        },
     },
 },
-.functions = .{
+.functions = &.{
     // 세 줄짜리 계약 블록이 필요 없습니다.
-    .{ .path = "Stream.onClipboardWriteRequest", .params = .{ "callback", "userdata" } },
+    .{ .path = "Stream.onClipboardWriteRequest", .params = &.{ .{ .name = "callback" }, .{ .name = "userdata" } } },
     // 자리마다 필드 단위로 덮어쓸 수 있습니다. 나머지 둘은 그대로 물려받습니다.
     .{
         .path = "Stream.onClipboardPeek",
-        .params = .{ "callback", "userdata" },
-        .param_meta = .{ .callback = .{ .retention = .borrowed } },
+        .params = &.{ .{ .name = "callback", .retention = .borrowed }, .{ .name = "userdata" } },
     },
 },
 ```
@@ -135,14 +135,13 @@ userdata는 제외) 코드포인트가 아닌 자리는 `.integer`로 채웁니�
 
 ## 콜백이 돌려주는 Go error
 
-기본적으로 Go 콜백은 Zig 시그니처가 말하는 값만 돌려줍니다. `param_meta.<이름>.go_error`를
+기본적으로 Go 콜백은 Zig 시그니처가 말하는 값만 돌려줍니다. 해당 `Param`의 `.go_error`를
 켜면 Go 타입이 `error`를 하나 더 돌려주고, 그 error가 공개 함수의 반환값으로 나옵니다.
 
 ```zig
 .{
     .path = "CallbackContext.create",
-    .params = .{ "callback", "userdata" },
-    .param_meta = .{ .callback = .{ .retention = .retained, .go_error = true } },
+    .params = &.{ .{ .name = "callback", .retention = .retained, .go_error = true }, .{ .name = "userdata" } },
 }
 ```
 
@@ -189,12 +188,13 @@ C ABI는 바뀌지 않습니다 — `go_error`는 Go 표면만 넓힙니다. 다
 요구하면 callback 타입 항목에 실패 반환값을 선언할 수 있습니다.
 
 ```zig
-.types = .{
+.types = &.{
     .{
-        .name = "Observer",
-        .type = mylib.Observer,
-        .repr = .callback,
-        .on_callback_failure = .{ .result = 0 },
+        .callback = .{
+            .name = "Observer",
+            .type = mylib.Observer,
+            .on_callback_failure = .{ .result = 0 },
+        },
     },
 },
 ```
@@ -202,9 +202,7 @@ C ABI는 바뀌지 않습니다 — `go_error`는 Go 표면만 넓힙니다. 다
 한 함수의 callback에만 적용하려면 파라미터 메타데이터에 같은 값을 둡니다.
 
 ```zig
-.param_meta = .{
-    .callback = .{ .on_callback_failure = .{ .result = 0 } },
-},
+.params = &.{.{ .name = "callback", .on_callback_failure = .{ .result = 0 } }},
 ```
 
 이 설정은 **native에 돌려주는 값만** 바꿉니다. dispatcher는 panic이나 Go error를 여전히

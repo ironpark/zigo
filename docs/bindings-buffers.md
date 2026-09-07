@@ -40,10 +40,9 @@ plain byte slice 파라미터와 반환값(그리고 `[]const []const u8`)을 `.
 pub const bindings = zigo.define(.{
     .root = mylib,
     .strings = .infer_utf8,
-    .functions = .{
-        .{ .path = "root.render", .params = .{"text"} },                 // text: []const u8 → string
-        .{ .path = "root.digest", .params = .{"payload"},
-           .param_meta = .{ .payload = .{ .semantic = .opaque_bytes } } }, // → []byte
+    .functions = &.{
+        .{ .path = "root.render", .params = &.{.{ .name = "text" }} }, // text: []const u8 → string
+        .{ .path = "root.digest", .params = &.{.{ .name = "payload", .semantic = .opaque_bytes }} }, // → []byte
     },
 });
 ```
@@ -55,7 +54,7 @@ pub const bindings = zigo.define(.{
 - `[]u8` **파라미터**는 callee가 채우는 버퍼(`.direction = .out` 포함)로 보고 추론하지
   않습니다. `[]u8` **반환**은 방금 만들어 넘기는 저장소이므로 텍스트로 봅니다.
 - 콜백 파라미터와 materialized 필드는 이 추론이 닿지 않습니다. materialized 필드는 이미
-  `[]const u8`을 문자열로 보고 `.field_meta`의 `.opaque_bytes`로 빼며, 콜백은 자리마다
+  `[]const u8`을 문자열로 보고 `.fields`의 `.opaque_bytes`로 빼며, 콜백은 자리마다
   선언합니다.
 
 ## 문자열 slice 매개변수
@@ -70,8 +69,7 @@ pub fn extractPaths(paths: []const []const u8) usize { /* ... */ }
 // bindings.zig
 .{
     .path = "Context.extractPaths",
-    .params = .{"paths"},
-    .param_meta = .{ .paths = .{ .semantic = .utf8_string } },
+    .params = &.{.{ .name = "paths", .semantic = .utf8_string }},
 },
 ```
 
@@ -99,8 +97,8 @@ optional slice는 [optional 규칙](#optional)을 함께 따릅니다.
 
 ## 호출자 소유 slice 반환
 
-slice 반환은 `.returns = .caller`로 소유권을 넘길 수 있습니다. 이때는 감쌀 handle 대신
-버퍼를 되돌려줄 함수가 필요하므로 `.release`로 그 함수의 경로를 함께 지정합니다. release
+slice 반환은 `.returns.ownership = .caller`로 소유권을 넘길 수 있습니다. 이때는 감쌀 handle 대신
+버퍼를 되돌려줄 함수가 필요하므로 `.returns.release`로 그 함수의 경로를 함께 지정합니다. release
 함수는 반환된 slice와 같은 원소 타입의 slice 하나만 받고 아무것도 반환하지 않아야 합니다.
 
 ```zig
@@ -110,26 +108,25 @@ pub fn freeSamples(_: *EventQueue, samples: []f32) void { /* 버퍼 해제 */ }
 // bindings.zig
 .{
     .path = "EventQueue.extractSamples",
-    .returns = .caller,
-    .release = "EventQueue.freeSamples",
+    .returns = .{ .ownership = .caller, .release = "EventQueue.freeSamples" },
 },
-.{ .path = "EventQueue.freeSamples", .params = .{"samples"} },
+.{ .path = "EventQueue.freeSamples", .params = &.{.{ .name = "samples" }} },
 ```
 
 문자열 결과의 해제 함수가 바인딩 전체에서 하나라면 `zigo.define`의
-`.string_release = "root.freeString"`으로 한 번만 적을 수 있습니다. `.returns = .caller`인
-문자열 결과(`.utf8_string`·`.c_string`으로 표시된 byte slice)가 `.release`를 적지 않았을 때
-이 함수가 쓰이며, 자리에 적은 `.release`가 항상 이깁니다. 문자열이 아닌 버퍼 결과는 그대로
-자기 `.release`가 필요합니다.
+`.string_release = "root.freeString"`으로 한 번만 적을 수 있습니다. `.returns.ownership = .caller`인
+문자열 결과(`.utf8_string`·`.c_string`으로 표시된 byte slice)가 `.returns.release`를 적지 않았을 때
+이 함수가 쓰이며, 자리에 적은 `.returns.release`가 항상 이깁니다. 문자열이 아닌 버퍼 결과는 그대로
+자기 `.returns.release`가 필요합니다.
 
 ```zig
 pub const bindings = zigo.define(.{
     .root = mylib,
     .strings = .infer_utf8,
     .string_release = "root.freeString",
-    .functions = .{
-        .{ .path = "Terminal.plainString", .returns = .caller },   // 세 줄이 한 줄로
-        .{ .path = "root.freeString", .params = .{"str"} },
+    .functions = &.{
+        .{ .path = "Terminal.plainString", .returns = .{ .ownership = .caller } },
+        .{ .path = "root.freeString", .params = &.{.{ .name = "str" }} },
     },
 });
 ```
@@ -159,8 +156,7 @@ pub fn extractSamplesChecked(self: *EventQueue) ProcessError![]f32 { /* 실패 �
 // bindings.zig
 .{
     .path = "EventQueue.extractSamplesChecked",
-    .returns = .caller,
-    .release = "EventQueue.freeSamples",
+    .returns = .{ .ownership = .caller, .release = "EventQueue.freeSamples" },
 },
 ```
 
@@ -168,7 +164,7 @@ release 함수가 allocator를 받아도 됩니다. `fn freeSamples(gpa: Allocat
 주입 파라미터를 빼고 slice 하나만 받는 함수로 판정되며, shim이 호출할 때 바인딩이 정한
 allocator를 채웁니다.
 
-`.release`가 없거나, 이름이 가리키는 함수가 없거나, 그 함수의 매개변수가 반환 slice와
+`.returns.release`가 없거나, 이름이 가리키는 함수가 없거나, 그 함수의 매개변수가 반환 slice와
 맞지 않으면 `ZIGO016`으로 거부됩니다. `![]T`는 payload slice의 원소 타입으로 비교합니다.
 slice가 아닌 반환에 `.release`를 붙여도 같은 코드입니다. abi-check는 release 함수가 바뀌면
 breaking으로 봅니다.
@@ -181,7 +177,7 @@ breaking으로 봅니다.
 ## 얼마나 채워졌는가: `written`
 
 `.direction = .out`인 slice는 기본값 `.written = .all`로, 호출이 끝나면 버퍼 전체가
-채워진 것으로 봅니다. `.written = .@"return"`을 붙이면 함수가 반환한 개수만큼만
+채워진 것으로 봅니다. `.written = .result`를 붙이면 함수가 반환한 개수만큼만
 채워진 것으로 봅니다. 성공한 호출에서는 `buf[:n]`을 결과로 사용하세요.
 
 이 설정은 native 쓰기를 제한하거나 되돌리지 않습니다. 직접 전달되는 slice는 native가
@@ -214,8 +210,7 @@ pub fn extractSamplesInto(self: *Queue, dst: []f32) usize {
 // bindings.zig
 .{
     .path = "Queue.extractSamplesInto",
-    .params = .{"dst"},
-    .param_meta = .{ .dst = .{ .direction = .out, .written = .@"return" } },
+    .params = &.{.{ .name = "dst", .direction = .out, .written = .result }},
 },
 ```
 

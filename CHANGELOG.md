@@ -4,6 +4,28 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Breaking
+
+- `zigo.define`이 익명 구조체 대신 공개 `zigo.Binding` 타입을 받습니다. 타입 등록은 `.repr` 대신
+  `zigo.Type`의 `.handle`·`.value`·`.materialized`·`.enumeration`·`.tagged_union`·`.callback`
+  variant를 사용하고, 모든 목록은 `&.{}` slice로 적습니다.
+- 함수 파라미터 이름과 계약을 위치별 `zigo.Param` 하나로 합쳤습니다. `.param_meta`와 `ZIGO057`은
+  사라졌고, 반환 ownership·semantic·release·Go adapter는 `zigo.Returns` 안에 모였습니다.
+- `.receiver`·`.constructs`·`.destroys`와 interface의 타입 목록은 등록 이름 문자열 대신 Zig 타입
+  값을 받습니다. receiver group은 `.functions`에서 최상위 `.methods`로 이동했습니다.
+- 선언 경로로 주입하는 allocator와 `std.Io`는 문자열 대신 `.{ .path = "..." }`를 사용합니다.
+  tagged union의 `.omit_variants`는 `.omit`, out buffer의 `.written = .@"return"`은 `.result`입니다.
+
+### Added
+
+- 공개 선언 스키마(`zigo.Binding`, `zigo.Type`, `zigo.Function`, `zigo.Param`, `zigo.Returns` 등)를
+  추가했습니다. 모르는 키와 잘못된 위치의 키를 Zig 컴파일러가 선언 자리에서 검사합니다.
+- 타입과 함수의 `.doc`이 생성 GoDoc을 덮어씁니다.
+- 0.14 선언을 새 스키마로 옮기는 `scripts/migrate-bindings.py`와
+  [마이그레이션 가이드](docs/migration-0.15.md)를 추가했습니다.
+
 ## [0.14.4] - 2026-09-07
 
 ### Changed

@@ -32,8 +32,8 @@ Zig panic 후에는 native 소멸자도 실행하지 않으므로 [panic 처리 
 일반 Zig struct나 상태를 가진 객체는 pointer handle로 등록합니다.
 
 ```zig
-.types = .{
-    .{ .type = mylib.Context, .repr = .@"opaque" },
+.types = &.{
+    .{ .handle = .{ .type = mylib.Context } },
 },
 ```
 
@@ -60,7 +60,7 @@ handle과 같습니다.
 
 ### 복제 함수와 추가 생성 경로
 
-`init`/`create`/`new`/`open` 이름을 쓰지 않는 factory도 `.returns = .caller`를 붙이면
+`init`/`create`/`new`/`open` 이름을 쓰지 않는 factory도 `.returns.ownership = .caller`를 붙이면
 같은 owned handle을 돌려줍니다. 이름이 아니라 ownership metadata가 기준이므로,
 `clone`이나 `openChild` 같은 메서드도 `newX` helper를 거쳐 cleanup과 retained callback
 등록을 그대로 받습니다. 다만 이것은 그 타입에 이미 짝지어진 생성자와 소멸자가 있을 때의
@@ -69,22 +69,21 @@ handle과 같습니다.
 ```zig
 .{
     .path = "EventQueue.clone",
-    .params = .{ "observer", "userdata" },
-    .param_meta = .{ .observer = .{ .retention = .retained } },
-    .returns = .caller,
+    .params = &.{ .{ .name = "observer", .retention = .retained }, .{ .name = "userdata" } },
+    .returns = .{ .ownership = .caller },
 },
 ```
 
 ### Receiver가 소유하는 borrowed handle 반환
 
 메서드가 receiver 내부의 opaque 객체를 가리키는 `*T`, `?*T`, `!*T`, `!?*T`를 반환하면
-`.returns = .borrowed`를 명시할 수 있습니다. `T`는 opaque 타입으로 등록되어야 하며,
+`.returns.ownership = .borrowed`를 명시할 수 있습니다. `T`는 handle 타입으로 등록되어야 하며,
 반환된 Go 값은 projection 전용 `*TRef`가 아니라 T의 일반 handle인 `*T`입니다.
 
 ```zig
 pub fn screen(self: *Terminal) ?*Screen { return self.active_screen; }
 
-.{ .path = "Terminal.screen", .returns = .borrowed },
+.{ .path = "Terminal.screen", .returns = .{ .ownership = .borrowed } },
 ```
 
 optional 반환은 `(*Screen, bool, error)`가 됩니다. false이면 handle은 nil입니다. borrowed
@@ -117,10 +116,10 @@ pub fn newStream(gpa: std.mem.Allocator, terminal: *Terminal) !*Stream { ... }
 
 .{
     .path = "Terminal.newStream",
-    .constructs = "Stream",
+    .constructs = Stream,
     .child_of_receiver = true,
 },
-.{ .path = "root.freeStream", .destroys = "Stream" },
+.{ .path = "root.freeStream", .destroys = Stream },
 ```
 
 Go에는 `func (t *Terminal) NewStream() (*Stream, error)`가 생깁니다. 호출 중에는 `Terminal`을
@@ -141,7 +140,7 @@ Go에는 `func (t *Terminal) NewStream() (*Stream, error)`가 생깁니다. 호�
 
 ### 타입 밖에 선언된 생성자와 소멸자
 
-이름 규칙과 `.returns = .caller`는 모두 **타입 안에 선언된** 짝을 전제합니다. 남의
+이름 규칙과 `.returns.ownership = .caller`는 모두 **타입 안에 선언된** 짝을 전제합니다. 남의
 라이브러리처럼 선언을 더할 수 없는 코드에서는 생성자와 소멸자가 타입 옆의 자유 함수로
 있기 마련이고, 그때는 어느 타입의 짝인지를 직접 적습니다.
 
@@ -152,8 +151,8 @@ pub fn newTicker(interval: u32) !*Ticker { ... }
 pub fn freeTicker(ticker: *Ticker) void { ... }
 
 // bindings.zig
-.{ .path = "root.newTicker", .params = .{"interval"}, .constructs = "Ticker" },
-.{ .path = "root.freeTicker", .destroys = "Ticker" },
+.{ .path = "root.newTicker", .params = &.{.{ .name = "interval" }}, .constructs = Ticker },
+.{ .path = "root.freeTicker", .destroys = Ticker },
 ```
 
 Go에는 `NewTicker(interval uint32) (*Ticker, error)`와 `(*Ticker).Close()`가 생기고,
@@ -162,11 +161,11 @@ Zig에서의 호출 경로는 서로 다른 축이며, `semantic.json`은 전자
 `zig_path`로 적습니다(둘 다 기본값과 다를 때만 나타납니다).
 
 생성자 함수에도 `.name`을 지정할 수 있습니다. 예를 들어
-`.constructs = "AudioBuffer", .name = "extractAudio"`는 기본 이름
+`.constructs = AudioBuffer, .name = "extractAudio"`는 기본 이름
 `NewAudioBuffer` 대신 `ExtractAudio`(그리고 opt-in 시 `MustExtractAudio`)를 생성합니다.
 `.name`을 생략한 생성자는 이전과 같이 항상 `New<Type>`을 사용합니다.
 
-- `.constructs`와 `.destroys`는 `.types`에 등록된 opaque 타입 이름을 받습니다.
+- `.constructs`와 `.destroys`는 `.types`에 등록된 handle 타입 값을 받습니다.
 - `.constructs`를 붙인 함수는 그 타입의 pointer(또는 `!*T`)를 반환해야 하고,
   `.destroys`를 붙인 함수는 그 타입의 pointer를 첫 파라미터로 받고 아무것도 반환하지
   않아야 합니다. 주입 파라미터(`std.mem.Allocator`, `std.Io`)는 세지 않으므로
@@ -181,7 +180,7 @@ Zig에서의 호출 경로는 서로 다른 축이며, `semantic.json`은 전자
 `.allocator`가 설정되어 있으면 값으로 반환하는 생성자를 상자에 담는 규칙도 `.constructs`를
 따릅니다 — 이름이 `init`이 아니어도 됩니다.
 
-감쌀 handle이 없는 `.returns = .caller`는 `ZIGO015`로 거부됩니다(slice 반환은
+감쌀 handle이 없는 `.returns.ownership = .caller`는 `ZIGO015`로 거부됩니다(slice 반환은
 [별도의 해제 규칙](bindings-buffers.md#호출자-소유-slice-반환)을 따릅니다). 반환 타입이 opaque
 pointer가 아니거나, 그 타입에 constructor와 deinitializer가 등록되어 있지 않은
 경우입니다.
@@ -189,14 +188,14 @@ pointer가 아니거나, 그 타입에 constructor와 deinitializer가 등록되
 ## 값으로 반환하는 `init`
 
 `pub fn init(gpa: Allocator, options: Options) !Terminal`처럼 값을 반환하는 생성자는 C로
-표현할 수 없습니다. `.allocator`가 설정되어 있고 반환 타입이 `.repr = .@"opaque"`로 등록된
+표현할 수 없습니다. `.allocator`가 설정되어 있고 반환 타입이 `.handle`로 등록된
 struct라면, zigo가 그 값을 상자에 담습니다: shim이 `alloc.create(T)`로 저장 공간을 만들고
 `T.init(...)`의 결과를 거기에 넣어 포인터를 돌려주며, 짝이 되는 `deinit` 래퍼가 Zig
 `deinit`을 부른 뒤 `alloc.destroy`까지 합니다. Go에서는 다른 생성자와 똑같이
 `NewTerminal(...) (*Terminal, error)`와 `Close()`입니다.
 
 `Options`가 C layout이 아니거나 slice 같은 내부 설정을 담아 struct 자체를 Go에 노출할 수
-없다면 [`param_meta.options.flatten`](bindings-functions.md#함수-메타데이터)을 함께 사용하세요. Go 생성자는 선택한 field를
+없다면 해당 [`Param.flatten`](bindings-functions.md#함수-메타데이터)을 함께 사용하세요. Go 생성자는 선택한 field를
 개별 인자로 받고, shim은 선택한 field만 적은 `Options{ .cols = ..., ... }`를 만듭니다. 따라서
 나머지는 Zig 선언의 default로 채워집니다. 선택 field를 추가하면 C와 Go 함수 시그니처가
 늘어나므로 `abi-diff`는 breaking으로 보고합니다.
@@ -210,18 +209,18 @@ struct라면, zigo가 그 값을 상자에 담습니다: shim이 `alloc.create(T
 
 ## 필드 접근자
 
-`.repr = .@"opaque"`로 등록한 struct에는 `.fields`를 붙여 Zig 함수를 따로 작성하지 않고
+`.handle`로 등록한 struct에는 `.fields`를 붙여 Zig 함수를 따로 작성하지 않고
 Go 메서드를 만들 수 있습니다.
 
 ```zig
-.types = .{
-    .{ .type = mylib.Terminal, .repr = .@"opaque", .fields = .{
+.types = &.{
+    .{ .handle = .{ .type = mylib.Terminal, .fields = &.{
         .{ .path = "cols" },
         .{ .path = "screen.cursor.x", .name = "cursorX" },
         .{ .path = "screen.cursor.style", .name = "cursorStyle", .set = true,
            .doc = "CursorStyle reports the current cursor style." },
-    } },
-    .{ .type = mylib.CursorStyle, .repr = .enumeration },
+    } } },
+    .{ .enumeration = .{ .type = mylib.CursorStyle } },
 },
 ```
 
@@ -243,7 +242,7 @@ compatible append이며, 함수와 이름이 겹치면 기존 `ZIGO024`/`ZIGO036
 wrapper가 함께 생성됩니다.
 
 ```zig
-.functions = .{
+.functions = &.{
     .{ .path = "Context.next", .iterator = .{} },
     .{ .path = "Context.nextChecked", .iterator = .{ .name = "Checked" } },
 },
@@ -286,15 +285,15 @@ for value, err := range ctx.All() {
 ```zig
 pub const bindings = zigo.define(.{
     .root = library,
-    .types = .{
-        .{ .name = "IntBatch", .type = library.IntBatch, .repr = .@"opaque" },
-        .{ .name = "FloatBatch", .type = library.FloatBatch, .repr = .@"opaque" },
+    .types = &.{
+        .{ .handle = .{ .name = "IntBatch", .type = library.IntBatch } },
+        .{ .handle = .{ .name = "FloatBatch", .type = library.FloatBatch } },
     },
-    .interfaces = .{
+    .interfaces = &.{
         .{
             .name = "Batch",                                   // Go 인터페이스 이름
-            .methods = .{"len"},                               // Zig 메서드 이름
-            .types = .{ library.IntBatch, library.FloatBatch }, // 등록된 opaque 타입
+            .methods = &.{"len"},                              // Zig 메서드 이름
+            .types = &.{ library.IntBatch, library.FloatBatch }, // 등록된 handle 타입
             .closer = true,                                    // 기본값. io.Closer 포함
             .doc = "Batch is any staged batch, whatever its element type.",
         },
@@ -303,7 +302,7 @@ pub const bindings = zigo.define(.{
 });
 ```
 
-- `.types`의 각 항목은 `.repr = .@"opaque"`로 등록된 타입이어야 하며, `.methods`는 그 타입
+- `.types`의 각 항목은 `.handle`로 등록된 타입 값이어야 하며, `.methods`는 그 타입
   모두가 receiver 메서드로 노출하는 Zig 선언 이름입니다. 소멸자는 메서드로 치지 않습니다.
 - `.closer`는 모든 타입이 생성자 짝을 가질 때만 참일 수 있습니다. 생성자 짝이 없는 타입을
   묶으려면 `.closer = false`를 적습니다.

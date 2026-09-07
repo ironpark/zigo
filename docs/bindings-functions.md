@@ -11,8 +11,8 @@
 묶는 module은 Zig 호출자가 쓰는 것과 같은 철자를 그대로 씁니다.
 
 ```zig
-.functions = .{
-    .{ .path = "root.unicode.codepointWidth", .params = .{"cp"} },
+.functions = &.{
+    .{ .path = "root.unicode.codepointWidth", .params = &.{.{ .name = "cp" }} },
     .{ .path = "root.osc.parser.parse" },
 },
 ```
@@ -61,14 +61,14 @@ Zig 공개 API 전체가 바인딩 API인 큰 module은 자동 발견을 선택�
 pub const bindings = zigo.define(.{
     .root = mylib,
     .discover = .public,
-    .types = .{
-        .{ .type = mylib.Context, .repr = .@"opaque" },
+    .types = &.{
+        .{ .handle = .{ .type = mylib.Context } },
     },
-    .functions = .{
+    .functions = &.{
         // 자동 발견된 함수에 메타데이터를 보강합니다.
-        .{ .path = "Context.name", .semantic = .utf8_string },
+        .{ .path = "Context.name", .returns = .{ .semantic = .utf8_string } },
     },
-    .exclude = .{"Context.debugState"},
+    .exclude = &.{"Context.debugState"},
 });
 ```
 
@@ -96,23 +96,18 @@ pub const bindings = zigo.define(.{
 | 필드 | 역할 |
 |---|---|
 | `path` | `root.<name>` 또는 `<Type>.<name>` 선언 경로 |
-| `covers` | 이 함수가 대신 노출하는 상류 선언 경로 하나 또는 목록 (`go-coverage` 전용) |
 | `name` | 공개 Go 함수 이름 override |
-| `receiver` | 자유 함수를 method로 붙일 등록 opaque 타입 이름 |
-| `strip_prefix` | 함수 group에서 기본 Go 이름을 만들 때 제거할 공통 접두사 |
-| `functions` | `receiver`/`strip_prefix`를 공유하는 함수 경로 또는 메타데이터 항목 목록 |
-| `params` | Go가 넘기는 파라미터의 이름 목록 |
-| `constructs` | 이 함수가 만드는 opaque 타입 이름 |
-| `destroys` | 이 함수가 없애는 opaque 타입 이름 |
+| `receiver` | 자유 함수를 method로 붙일 등록 handle·enum 타입 값 |
+| `params` | 위치 순서대로 적는 파라미터 이름과 계약 (`[]const zigo.Param`) |
+| `constructs` | 이 함수가 만드는 handle 타입 값 |
+| `destroys` | 이 함수가 없애는 handle 타입 값 |
 | `child_of_receiver` | 생성된 handle이 receiver보다 먼저 닫혀야 하는지 여부 |
-| `param_meta` | 문자열·버퍼·콜백 등 파라미터별 추가 계약 |
-| `semantic` | 반환값 의미. 예: `.utf8_string`, `.codepoint` ([코드포인트](bindings-types.md#코드포인트)) |
-| `returns` | 반환 pointer의 ownership |
-| `release` | caller-owned 반환 버퍼를 해제할 함수 경로 |
+| `returns` | ownership·semantic·release·Go adapter를 묶은 반환값 계약 |
 | `iterator` | `?T`를 반환하는 메서드에 `iter.Seq` wrapper를 추가 ([Iterator wrapper](bindings-handles.md#iterator-wrapper)) |
-| `go` | scalar 반환값을 사용자 Go 타입으로 바꾸는 어댑터 ([Go 타입 어댑터](bindings-types.md#go-타입-어댑터)) |
+| `covers` | `go-coverage`에서 대신 노출한 것으로 계산할 경로 목록 |
+| `doc` | 생성 GoDoc override |
 
-`param_meta`에서는 필요한 계약만 지정합니다. 문자열·`direction`·`written`은
+각 `Param`에는 필요한 계약만 지정합니다. 문자열·`direction`·`written`은
 [버퍼 가이드](bindings-buffers.md), `retention`·`go_error`·`on_callback_failure`와
 스레드 계약은 [콜백 가이드](bindings-callbacks.md), `buffer`는
 [스트림 가이드](bindings-streams.md)를 참고하세요. `go`는 scalar 파라미터 하나를 사용자 Go
@@ -127,37 +122,39 @@ pub const bindings = zigo.define(.{
 ### 자유 함수를 메서드로 등록하기
 
 등록 타입을 선언한 외부 모듈을 고칠 수 없을 때는 자유 함수의 첫 번째 비주입
-파라미터를 receiver로 지정할 수 있습니다. `.receiver = "Screen"`이면
+파라미터를 receiver로 지정할 수 있습니다. `.receiver = mylib.Screen`이면
 `std.mem.Allocator`나 `std.Io` 뒤의 첫 파라미터가 `*Screen` 또는 `*const Screen`인지
 reflection이 확인하고, 이후 단계는 타입 안에 선언된 method와 똑같이 처리합니다.
 
 ```zig
-.functions = .{
-    .{ .path = "root.searchMatchCount", .receiver = "Search" },
+.functions = &.{
+    .{ .path = "root.searchMatchCount", .receiver = mylib.Search },
+},
+.methods = &.{
     .{
-        .receiver = "Screen",
+        .receiver = mylib.Screen,
         .strip_prefix = "screen",
-        .functions = .{
-            "root.screenSelectAll",
+        .functions = &.{
+            .{ .path = "root.screenSelectAll" },
             .{ .path = "root.screenClearSelection", .name = "clear" },
         },
     },
 },
 ```
 
-group은 Zig 함수 이름에서 `strip_prefix`를 제거하고 남은 첫 글자를 소문자로 바꾼 뒤 기존
+`.methods` group은 Zig 함수 이름에서 `strip_prefix`를 제거하고 남은 첫 글자를 소문자로 바꾼 뒤 기존
 Go casing 규칙을 적용합니다(`screenSelectAll` → `selectAll` → `SelectAll`). nested 항목의
-`.name`은 이 기본값을 덮어씁니다. group 자체에는 `params`나 `param_meta`를 둘 수 없고 각
+`.name`은 이 기본값을 덮어씁니다. group 자체에는 `params`를 둘 수 없고 각
 nested 항목에 둡니다. receiver 타입이나 첫 파라미터가 맞지 않거나 함수 이름에 접두사가
 없으면 `ZIGO038`입니다.
 
 ```zig
 .{
     .path = "Context.create",
-    .params = .{ "name", "callback", "userdata" },
-    .param_meta = .{
-        .name = .{ .semantic = .utf8_string },
-        .callback = .{ .retention = .retained },
+    .params = &.{
+        .{ .name = "name", .semantic = .utf8_string },
+        .{ .name = "callback", .retention = .retained },
+        .{ .name = "userdata" },
     },
 }
 ```
@@ -165,27 +162,25 @@ nested 항목에 둡니다. receiver 타입이나 첫 파라미터가 맞지 않
 `params`에는 receiver와 주입 파라미터를 제외한 이름을 적습니다. receiver(`self`)는
 생성된 Go 메서드의 수신자가 되고, 주입 파라미터(`std.mem.Allocator`, `std.Io`)는
 공개 인자에서 빠집니다. `fn freeString(gpa: Allocator, str: []const u8) void`의 `params`는
-`.{"str"}` 하나입니다. 개수가 맞지 않으면 reflection 단계에서 `ZIGO027`로 거부됩니다.
+`&.{.{ .name = "str" }}` 하나입니다. 개수가 맞지 않으면 reflection 단계에서 `ZIGO027`로 거부됩니다.
 이름은 C 헤더에 그대로 나가므로 `double`, `int` 같은 C 키워드나 `uint8_t` 같은 표준 typedef
 이름은 `ZIGO021`로 거부됩니다. Go 쪽 키워드(`type`, `range`)는 `type_`처럼 자동으로 피합니다.
 
-`param_meta`의 field는 같은 항목의 `params`가 준 이름과 일치해야 합니다. `params`에 없는
-키를 적거나 `params` 없이 `param_meta`만 적으면 reflection 단계에서 `ZIGO057`로 거부됩니다.
-계약이 조용히 사라진 채 빌드가 통과하는 것을 막기 위한 검사입니다. 이름은 명시적 `params`,
-대상 source AST, `p0` fallback 순으로 결정됩니다.
+파라미터 계약은 위치가 같은 `Param`에 이름과 함께 붙으므로 이름과 계약이 따로 놀 수 없습니다.
+이름은 명시적 `Param.name`, 대상 source AST, `p0` fallback 순으로 결정됩니다.
 
 ### 등록 enum의 메서드
 
-`.repr = .enumeration`으로 등록한 enum도 메서드를 가질 수 있습니다. 경로가 그 enum을
+`.enumeration`으로 등록한 enum도 메서드를 가질 수 있습니다. 경로가 그 enum을
 거치거나(`.path = "DeccolmMode.columns"`) `.receiver`가 그 enum을 지목하고, 첫 번째 비주입
 파라미터가 그 enum을 값으로 받으면 메서드가 됩니다. Go에서는 값 receiver가 됩니다.
 
 ```zig
 .{ .path = "DeccolmMode.columns" },              // Zig가 enum 안에 선언한 메서드
 .{
-    .receiver = "CursorStyle",                   // 루트에 선언된 자유 함수
+    .receiver = library.CursorStyle,              // 루트에 선언된 자유 함수
     .strip_prefix = "cursorStyle",
-    .functions = .{"root.cursorStyleBlinks"},
+    .functions = &.{.{ .path = "root.cursorStyleBlinks" }},
 },
 ```
 
@@ -196,7 +191,7 @@ blinks := CursorStyleUnderline.Blinks()
 
 값 receiver에는 handle이 없습니다. C ABI로는 enum의 backing 정수가 그대로 건너가고,
 `ErrInvalidHandle` 검사도, 부모·자식 수명도, retained 콜백 순회도 없습니다. 그래서
-`.constructs`, `.child_of_receiver`, `.returns = .borrowed`, `.iterator`, `std.Io` 스트림
+`.constructs`, `.child_of_receiver`, `.returns.ownership = .borrowed`, `.iterator`, `std.Io` 스트림
 파라미터는 값 receiver에 쓸 수 없고 `ZIGO056`입니다. `.go` 어댑터가 붙은 enum도 Go에서 남의
 패키지 타입이라 메서드를 가질 수 없습니다. 메서드 이름은 zigo가 그 enum에 생성하는
 `String`(그리고 `.text = true`면 `MarshalText`·`UnmarshalText`)과 겹칠 수 없습니다(`ZIGO024`).
@@ -219,10 +214,7 @@ blinks := CursorStyleUnderline.Blinks()
 ```zig
 .{
     .path = "Terminal.init",
-    .params = .{"options"},
-    .param_meta = .{
-        .options = .{ .flatten = .{ "cols", "rows", "max_scrollback_bytes" } },
-    },
+    .params = &.{.{ .name = "options", .flatten = &.{ "cols", "rows", "max_scrollback_bytes" } }},
 }
 ```
 
@@ -242,8 +234,8 @@ options struct도 선택한 field만으로 바인딩됩니다. 이 기능은 생
 ```zig
 pub const bindings = zigo.define(.{
     .root = library,
-    .allocator = .smp_allocator, // 또는 .c_allocator, .page_allocator, 또는 "gpa" 같은 선언 경로
-    .io = "io", // 선언 경로만 받습니다. std에는 기본 Io가 없습니다
+    .allocator = .smp_allocator, // 또는 .c_allocator, .page_allocator, .{ .path = "gpa" }
+    .io = .{ .path = "io" }, // std에는 기본 Io가 없습니다
     // ...
 });
 ```
@@ -253,7 +245,7 @@ pub const bindings = zigo.define(.{
 Go에서 `NewStore(name string) (*Store, error)`가 됩니다. 문자열 값(`"gpa"`)은 바인딩된
 루트 모듈 기준으로 해석되며, `.functions`의 경로와 같은 기준입니다.
 
-주입 파라미터는 `.params`에도, `param_meta`에도 나오지 않습니다. release 함수도
+주입 파라미터는 `.params`에 나오지 않습니다. release 함수도
 마찬가지입니다: `fn freeString(gpa: Allocator, str: []const u8) void`는 slice 하나만 받는
 release 함수로 취급되고, shim이 호출할 때 allocator를 채웁니다.
 
@@ -269,14 +261,14 @@ release 함수로 취급되고, shim이 호출할 때 allocator를 채웁니다.
 기본 패키지에 남습니다.
 
 ```zig
-.packages = .{
+.packages = &.{
     .{
         .path = "types",
         .name = "types", // 생략하면 path의 마지막 요소를 snake_case로 변환
         .doc = "Package types contains shared values and handles.",
-        .types = .{ "Ticker", "Key*" },
-        .namespaces = .{"text.*"},
-        .functions = .{"root.liveTickers"},
+        .types = &.{ "Ticker", "Key*" },
+        .namespaces = &.{"text.*"},
+        .functions = &.{"root.liveTickers"},
         .closure = true,
     },
 },

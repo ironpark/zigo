@@ -2,7 +2,7 @@
 depends_on:
 - "140-typed-binding-schema#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 문서에 `param_meta`·`.repr`·`@"opaque"`가 남지 않고 0.15.0 태그가 푸시된다.
 > NEXT: none

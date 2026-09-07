@@ -95,7 +95,7 @@ func TestNumericSliceReturnIsCopied(t *testing.T) {
 	}
 }
 
-// Clone is not named like a constructor; only its `.returns = .caller`
+// Clone is not named like a constructor; only its `.returns.ownership = .caller`
 // metadata makes it hand over an owned handle.
 func TestCloneReturnsAnIndependentOwnedHandle(t *testing.T) {
 	queue, err := NewEventQueue("source", 2, PolicyReject, func(uint64, int32) int32 { return 0 })

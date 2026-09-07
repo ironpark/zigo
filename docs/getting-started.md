@@ -114,7 +114,7 @@ const mylib = @import("mylib");
 
 pub const bindings = zigo.define(.{
     .root = mylib,
-    .functions = .{
+    .functions = &.{
         .{ .path = "root.add" },
     },
 });

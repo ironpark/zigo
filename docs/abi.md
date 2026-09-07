@@ -6,7 +6,7 @@
 
 ## 버퍼 헤더
 
-`.repr = .materialized` 결과는 caller-owned byte 버퍼 하나로 전달됩니다.
+`.materialized` 결과는 caller-owned byte 버퍼 하나로 전달됩니다.
 모든 값은 little-endian이며, offset은 버퍼 시작을 기준으로 한 unsigned 64-bit 값입니다.
 native 포인터 자체는 기록하지 않습니다.
 
@@ -41,19 +41,19 @@ layout version과 전체 필드 정보는 semantic ABI 비교에 포함됩니다
 ## 할당과 해제
 
 Zig walker는 바인딩에 등록한 allocator로 버퍼를 만듭니다. 결과 선언에는
-`.returns = .caller`와 `[]u8`를 받는 `.release` 함수가 필요합니다.
+`.returns.ownership = .caller`와 `[]u8`를 받는 `.returns.release` 함수가 필요합니다.
 Go raw 계층은 native 버퍼의 view를 그대로 넘기고, 공개 래퍼가 디코딩하면서 필요한 값을 모두
 복사한 뒤 release를 한 번 호출합니다. 디코딩 결과는 버퍼를 참조하지 않습니다.
 
 직접 반환, error union payload와 `[]T` 반환을 지원합니다. slice 결과도 배치 전체에
 헤더 하나와 버퍼 하나를 사용합니다. out `[]T`는 `.direction = .out`,
-`.written = .@"return"`으로 선언합니다. 이 경우 용량만 shim에 넘기고, shim이 native
+`.written = .result`로 선언합니다. 이 경우 용량만 shim에 넘기고, shim이 native
 값을 임시 저장한 뒤 작성된 범위를 같은 결과 버퍼 형식으로 직렬화합니다.
 
 ## 지원 필드와 검증
 
 scalar, bool, 등록 enum, `extern struct`·packed 값, string과 `[]byte`
-(`.field_meta = .{ .name = .{ .semantic = .opaque_bytes } }`), optional scalar·string·struct·node,
+(`.fields = &.{.{ .name = "name", .semantic = .opaque_bytes }}`), optional scalar·string·struct·node,
 내장 materialized struct, 필수·optional materialized 포인터, 그리고 scalar·string·struct·
 materialized struct의 slice와 배열(중첩 가능)을 지원합니다. optional slice(`?[]T`)와 optional
 원소(`[]?T`)는 presence를 실을 자리가 없어 거부됩니다.

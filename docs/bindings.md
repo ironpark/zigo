@@ -21,7 +21,7 @@ const mylib = @import("mylib");
 
 pub const bindings = zigo.define(.{
     .root = mylib,
-    .functions = .{
+    .functions = &.{
         .{ .path = "root.add" },
     },
 });
@@ -34,8 +34,9 @@ pub const bindings = zigo.define(.{
 | 그룹 | 역할 |
 |---|---|
 | `root` | 경로를 해석할 기준 module. 항상 필요 |
-| `types` | opaque handle, extern struct 값, enum, tagged union, callback 등록 |
-| `functions` | 노출할 함수와 추가 메타데이터 |
+| `types` | `.handle`, `.value`, `.enumeration`, `.tagged_union`, `.materialized`, `.callback` 등록 |
+| `functions` | 노출할 함수와 추가 메타데이터 (`[]const zigo.Function`) |
+| `methods` | receiver 타입과 접두사를 공유하는 자유 함수 그룹 |
 | `codepoints` | `.infer_u21`이면 모든 `u21`을 Go `rune`으로 추론 ([코드포인트](bindings-types.md#u21-자동-추론)) |
 
 `root.<name>`은 module 자유 함수를, `<Type>.<name>`은 등록 타입의 함수를 가리킵니다. 경로가
@@ -50,9 +51,9 @@ Go 이름만 바꿉니다.
 `repr`은 타입의 ABI 표현을, `access`는 tagged union 내용을 Go에서 읽는 방법을 선택합니다.
 enum 항목의 `exhaustive = false`는 Zig의 non-exhaustive enum을 그대로 공개하는 opt-in입니다.
 
-| `repr` | 용도 |
+| `.types` variant | 용도 |
 |---|---|
-| `.@"opaque"` | pointer handle과 수명주기 |
+| `.handle` | pointer handle과 수명주기 |
 | `.value` | 적격한 `extern struct` 또는 정수-backed `packed struct`의 Go 값 mirror |
 | `.tagged_union` | tagged union을 handle로 읽거나 지원하는 payload를 값으로 전달 |
 | `.materialized` | 포인터를 포함한 결과 트리를 한 번의 caller-owned buffer로 복사 |

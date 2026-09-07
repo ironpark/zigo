@@ -24,7 +24,7 @@ variant가 다르면 `bool`이 false이며, nil·닫힌 handle·무효한 부모
 바뀌므로 ABI breaking 변경입니다.
 
 `ScrollViewport`의 RGB payload는 `packed struct(u24)`, region payload는 평탄화한
-scalar 필드로 전달합니다. slice를 담는 `unknown` variant는 `.omit_variants`로 제외하며,
+scalar 필드로 전달합니다. slice를 담는 `unknown` variant는 `.omit`으로 제외하며,
 native가 제외한 tag를 반환하면 Go 오류가 됩니다. 값 union의 variant 추가도 ABI를 바꿉니다.
 `Flags`는 extern struct 필드, 평탄화한 필드, opaque accessor와 콜백의 packed 변환을 검증합니다.
 

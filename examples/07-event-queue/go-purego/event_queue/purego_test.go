@@ -118,7 +118,7 @@ func TestPuregoOpenEnumRoundTrip(t *testing.T) {
 	}
 }
 
-// Clone is not named like a constructor; only its `.returns = .caller`
+// Clone is not named like a constructor; only its `.returns.ownership = .caller`
 // metadata makes it hand over an owned handle that carries its own retained
 // observer.
 func TestPuregoCloneOwnsItsObserverHandle(t *testing.T) {

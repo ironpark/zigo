@@ -39,7 +39,7 @@ func TestCallerOwnedSliceReturnIsCopiedAndReleased(t *testing.T) {
 	}
 }
 
-// ExtractSamplesChecked combines `.returns = .caller` with a fallible return.
+// ExtractSamplesChecked combines `.returns.ownership = .caller` with a fallible return.
 // The release call belongs on the success path only: a failure allocated
 // nothing, so calling the release symbol would free a buffer that never existed.
 func TestFallibleCallerOwnedSliceReleasesOnlyOnSuccess(t *testing.T) {

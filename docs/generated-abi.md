@@ -116,7 +116,7 @@ dispatcher 주소를 부릅니다. `semantic.json`의 콜백 `params`는 Go 규�
 
 ## 콜백이 돌려주는 Go error
 
-`param_meta.<이름>.go_error`가 켜진 콜백은 Go 타입이 `func(...) (int32, error)`가 되고, C
+해당 callback `Param`의 `.go_error`가 켜지면 Go 타입이 `func(...) (int32, error)`가 되고, C
 시그니처는 그대로입니다. trampoline(cgo)과 dispatcher(purego)는 `err != nil`이면 그 error를
 `CallbackState`/registry entry의 error 자리에 저장하고 결과로 **`-5`**를 돌려줍니다 —
 `-3`(Go panic), `-4`(삭제된 토큰), `-1`(스트림 실패)과 구별되는 값입니다. 저장 자리는 스트림
@@ -188,7 +188,7 @@ bool·atomic 필드가 없는 `extern struct`는 Go mirror(`TData`)와 공개 �
 없습니다.
 
 반환 방향도 같은 배치를 씁니다. raw 계층은 반환 slice를 C 메모리에서 `[]TData`로 한 번에
-`copy`해 핸들 수명과 끊어 놓고(`.returns = .caller`는 복사한 뒤 release합니다), 공개 계층은 그
+`copy`해 핸들 수명과 끊어 놓고(`.returns.ownership = .caller`는 복사한 뒤 release합니다), 공개 계층은 그
 결과를 `zigo{T}SliceView`로 `[]T`로 재해석하기만 합니다. 복사는 계층 전체에서 한 번뿐이고,
 길이가 0이면 `nil`입니다. bool·atomic 필드가 있어 캐스트할 수 없는 원소도 raw 계층의 `copy`는
 같고, 공개 계층에서만 `zigo{T}SliceFromRaw`로 원소별 변환을 한 번 합니다.
@@ -249,7 +249,7 @@ receiver 앞에 주입 파라미터가 선언된 함수(`fn free(gpa: Allocator,
 `child_of_receiver: true`는 설정한 constructor에만 나타납니다. gain/loss는 C signature를
 움직이지 않지만 부모 `Close`의 동작과 생성된 Go handle 구조를 바꾸므로 ABI-compatible
 Go-surface 변경으로 보고됩니다.
-`borrowed_return: true`도 `.returns = .borrowed`를 명시한 함수에만 나타납니다. 생략된
+`borrowed_return: true`도 `.returns.ownership = .borrowed`를 명시한 함수에만 나타납니다. 생략된
 `ownership: borrowed`와 구분되며, borrowed/caller 변경은 공개 Go handle의 cleanup 계약을
 바꾸므로 breaking입니다.
 

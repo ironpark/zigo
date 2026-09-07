@@ -38,7 +38,7 @@ error[ZIGO018]: unsupported integer width `u128` in parameter `cp`
 
 non-exhaustive enum을 명시적 허용 없이 노출했습니다.
 
-Zig enum을 exhaustive로 만들거나 `.repr = .enumeration, .exhaustive = false`로 등록하세요.
+Zig enum을 exhaustive로 만들거나 `.enumeration = .{ .type = T, .exhaustive = false }`로 등록하세요.
 tagged union의 non-exhaustive tag에는 이 설정을 적용할 수 없습니다.
 
 ### ZIGO018
@@ -118,7 +118,7 @@ Go에서는 충돌할 수 있고, enum tag도 Go 상수 이름으로 변환한 �
 
 ### ZIGO027
 
-`.params`에 지정한 이름 개수가 기대하는 인자 개수와 다릅니다.
+`.params`의 `Param` 항목 수가 기대하는 인자 개수와 다릅니다.
 
 receiver와 주입 인자(`std.mem.Allocator`, `std.Io`)를 목록에서 제외하세요.
 진단에는 실제 개수·기대 개수와 선언 경로가 표시됩니다.
@@ -161,14 +161,14 @@ exhaustive enum에 `.exhaustive = false`를 지정했습니다.
 
 ### ZIGO033
 
-receiver가 없는 함수에 `.returns = .borrowed`를 지정했습니다.
+receiver가 없는 함수에 `.returns.ownership = .borrowed`를 지정했습니다.
 
 borrowed handle은 소유자를 receiver로 확인할 수 있어야 합니다. receiver 메서드로 노출하거나
 실제 소유권에 맞는 반환 방식을 선택하세요.
 
 ### ZIGO034
 
-`.returns = .borrowed`의 반환값이 지원하는 opaque 포인터 형태가 아닙니다.
+`.returns.ownership = .borrowed`의 반환값이 지원하는 opaque 포인터 형태가 아닙니다.
 
 등록 opaque 타입의 `*T`, `?*T`, `!*T`, `!?*T`인지 확인하세요.
 
@@ -176,7 +176,7 @@ borrowed handle은 소유자를 receiver로 확인할 수 있어야 합니다. r
 
 생성자가 아닌 메서드가 opaque 포인터를 반환하지만 소유권을 명시하지 않았습니다.
 
-receiver가 소유한 view라면 `.returns = .borrowed`, 소유권을 넘긴다면 `.returns = .caller`와
+receiver가 소유한 view라면 `.returns.ownership = .borrowed`, 소유권을 넘긴다면 `.returns.ownership = .caller`와
 생성자·소멸자 짝을 지정하세요.
 
 ### ZIGO036
@@ -230,14 +230,14 @@ bool·정수·등록 enum·등록된 정수 기반 packed struct 필드로 바�
 
 콜백의 userdata 규약이 깨졌습니다. 콜백에 `usize` userdata 자리가 없거나(기본은 마지막
 파라미터), 등록 항목의 `.userdata`가 가리킨 자리가 `usize`가 아니거나, 콜백을 받는 함수에
-토큰을 넘길 `usize` 파라미터가 없거나(기본은 콜백 바로 다음), `param_meta.<콜백>.userdata`가
+토큰을 넘길 `usize` 파라미터가 없거나(기본은 콜백 바로 다음), callback `Param.userdata`가
 이름한 파라미터가 없거나 `usize`가 아닙니다. 콜백이 아닌 파라미터에 `.userdata`를 두어도 같은
 코드입니다. [콜백 시그니처 규약](bindings-callbacks.md#콜백-시그니처-규약)을 참고하세요.
 
 ### ZIGO048
 
 materialized 결과의 필드나 소유권·해제 선언이 잘못되었습니다. 진단의 전체 필드 경로를
-먼저 확인하고, 결과에 `.returns = .caller`와 직렬화 버퍼 `[]u8`를 해제하는 `.release`를
+먼저 확인하고, 결과에 `.returns.ownership = .caller`와 직렬화 버퍼 `[]u8`를 해제하는 `.returns.release`를
 지정했는지 확인하세요. 필드 제약은 [Materialized 버퍼 ABI](abi.md)에 있습니다.
 
 ### ZIGO049
@@ -264,7 +264,7 @@ materialized 결과의 필드나 소유권·해제 선언이 잘못되었습니�
 ### ZIGO053
 
 `.semantic = .codepoint`를 `u21`/`u32` 스칼라나 그 plain slice(`[]const T`, `[]T`)가 아닌
-파라미터·반환값에 붙였거나, `.field_meta`로 extern struct의 `u32`가 아닌 필드에 붙였거나,
+파라미터·반환값에 붙였거나, `.fields`로 extern struct의 `u32`가 아닌 필드에 붙였거나,
 등록 callback의 `u32` 스칼라가 아닌 자리에 붙였거나, 손으로 쓴 `semantic.json`에 `.integer`
 힌트가 남아 있습니다. 반환값은 `!`나 `?` 안의 스칼라, 또는 plain slice여야 하며,
 optional 파라미터·sentinel slice·flatten 필드·주입 파라미터에는 붙일 수 없습니다.
@@ -272,38 +272,30 @@ optional 파라미터·sentinel slice·flatten 필드·주입 파라미터에는
 
 ### ZIGO051
 
-`.text = true`를 enum이 아닌 타입에 지정했습니다. 텍스트 인코딩은 `.repr = .enumeration`
+`.text = true`를 enum이 아닌 타입에 지정했습니다. 텍스트 인코딩은 `.enumeration`
 등록 항목에서만 켤 수 있습니다. [Enum 텍스트 인코딩](bindings-types.md#enum-텍스트-인코딩)을
 참고하세요.
 
 ### ZIGO054
 
-`functions`에 같은 경로를 두 번 적었거나, `exclude`에 같은 경로를 두 번 적었거나, 한 경로가
-`functions`와 `exclude`에 모두 있습니다. 경로는 한 번만 적고, 제외할 함수는 `functions`에서
+`functions`나 `methods`에 같은 경로를 두 번 적었거나, `exclude`에 같은 경로를 두 번 적었거나,
+한 경로가 함수 목록과 `exclude`에 모두 있습니다. 경로는 한 번만 적고, 제외할 함수는 목록에서
 빼세요. 이 검사는 등록 수에 비례하도록 reflection 런타임에서 수행되므로, 존재하지 않는
 경로와 달리 `@compileError`가 아니라 생성기 진단으로 나옵니다.
 
 ### ZIGO056
 
 값 receiver가 handle에만 있는 것을 요구했습니다. 등록 enum의 메서드에는 닫을 handle도, 부모도,
-빌려줄 수명도 없으므로 `.constructs`, `.child_of_receiver`, `.returns = .borrowed`,
+빌려줄 수명도 없으므로 `.constructs`, `.child_of_receiver`, `.returns.ownership = .borrowed`,
 `.iterator`, `std.Io` 스트림 파라미터를 쓸 수 없습니다. 또 `.go` 어댑터가 붙은 enum은 Go에서
 남의 패키지 타입이라 메서드를 가질 수 없습니다. 함수를 패키지 레벨로 바인딩하거나, 상태가
-있는 타입이라면 `.repr = .@"opaque"`로 등록하세요.
+있는 타입이라면 `.handle`로 등록하세요.
 [자유 함수를 메서드로 등록하기](bindings-functions.md#자유-함수를-메서드로-등록하기)를
 참고하세요.
 
-### ZIGO057
-
-`.param_meta`의 키가 `.params`에 없는 이름이거나, `.param_meta`만 있고 `.params`가 없습니다.
-
-`param_meta`는 `params`가 준 이름으로만 파라미터를 찾습니다. 가리킬 이름이 없으면 `.direction`,
-`.semantic` 같은 계약이 조용히 사라져 빌드는 통과한 채 ABI만 바뀌므로, reflection 단계에서
-거부합니다. 같은 항목에 `params`를 적고, 키를 그 이름 중 하나로 맞추세요.
-
 ## 리플렉션 단계의 오류
 
-`ZIGO027`, `ZIGO028`, `ZIGO037`, `ZIGO038`, `ZIGO054`, `ZIGO057`는 reflection이 문서를 만들기 전에 걸리므로 `semantic.json` 자리가
+`ZIGO027`, `ZIGO028`, `ZIGO037`, `ZIGO038`, `ZIGO054`는 reflection이 문서를 만들기 전에 걸리므로 `semantic.json` 자리가
 아니라 선언 경로를 가리키며, 생성기는 이 진단을 출력하고 종료합니다.
 
 리플렉션 단계의 거부는 `bindings.zig`를 빌드할 때의 `@compileError`로 나오며, 제약과 함께

@@ -1,6 +1,6 @@
 # Tagged union 읽기와 값 전달
 
-같은 `.repr = .tagged_union` 등록에서도 객체를 참조할지 값을 복사할지에 따라 API가 달라집니다.
+같은 `.tagged_union` 등록에서도 객체를 참조할지 값을 복사할지에 따라 API가 달라집니다.
 선언의 기본 형태는 [`bindings.zig` 선언](bindings.md)을 참고하세요.
 
 | 필요한 동작 | 표현 |
@@ -15,8 +15,8 @@
 기본 표현은 union을 pointer handle로 유지하고 variant별 accessor를 생성합니다.
 
 ```zig
-.types = .{
-    .{ .type = mylib.Value, .repr = .tagged_union },
+.types = &.{
+    .{ .tagged_union = .{ .type = mylib.Value } },
 },
 ```
 
@@ -69,8 +69,8 @@ variant type 이름이 이미 생성된 다른 이름과 겹치면 `Variant` 접
 작고 모양이 고정된 scalar union을 자주 읽는다면 snapshot을 추가할 수 있습니다.
 
 ```zig
-.types = .{
-    .{ .type = mylib.Signal, .repr = .tagged_union, .access = .snapshot },
+.types = &.{
+    .{ .tagged_union = .{ .type = mylib.Signal, .access = .snapshot } },
 },
 ```
 
@@ -125,9 +125,9 @@ union 값을 재구성합니다. packed struct는 backing integer 하나로 전�
 중첩된 leaf scalar slot으로 평탄화합니다. 따라서 variant 추가도 C signature를 늘리는 breaking
 change입니다.
 
-교차할 수 없는 variant는 등록에 `.omit_variants = .{ "unknown" }`을 지정해 C/Go
+교차할 수 없는 variant는 등록에 `.omit = &.{"unknown"}`을 지정해 C/Go
 surface에서 제외할 수 있습니다. 남은 slice, pointer, auto-layout struct 같은 payload는
-`ZIGO006`이 variant를 지목하고 `.omit_variants`를 안내합니다.
+`ZIGO006`이 variant를 지목하고 `.omit`을 안내합니다.
 값 반환은 같은 tag/slot 순서의 zigo 소유 `extern struct`를 out parameter로 채웁니다.
 반환된 active tag가 제외된 variant이면 Go는 `*Error`의 `OmittedVariant`를 받고
 snapshot을 읽지 않습니다.

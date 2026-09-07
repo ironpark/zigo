@@ -32,12 +32,12 @@ shim이 파라미터마다 어댑터를 만들어 대상 함수에 넘깁니다.
 함수가 돌아오기 전에 shim이 `flush`하므로 대상 함수가
 직접 flush하지 않아도 남은 바이트가 나갑니다.
 
-버퍼 크기는 `param_meta.<name>.buffer`로 바꿉니다. 기본값 65536, 최소 4096, 최대 16 MiB이며,
+버퍼 크기는 해당 `Param`의 `.buffer`로 바꿉니다. 기본값 65536, 최소 4096, 최대 16 MiB이며,
 범위 밖은 `ZIGO023`으로 거부합니다. 262144바이트를 넘으면 스택 배열 대신 힙에서 잡습니다 —
 바인딩이 `.allocator`를 정했으면 그 allocator, 아니면 `std.heap.c_allocator`입니다.
 
 ```zig
-.{ .path = "Document.load", .params = .{"r"}, .param_meta = .{ .r = .{ .buffer = 4096 } } }
+.{ .path = "Document.load", .params = &.{.{ .name = "r", .buffer = 4096 }} }
 ```
 
 ### 실패와 panic
@@ -166,7 +166,7 @@ pub fn reduce(self: *Hub, rounds: u32, cancel: *const std.atomic.Value(u32)) Red
 ```zig
 .{
     .path = "Hub.reduce",
-    .params = .{ "rounds", "cancel" },
+    .params = &.{ .{ .name = "rounds" }, .{ .name = "cancel" } },
     .cancel = .{ .param = "cancel" },
 }
 ```
