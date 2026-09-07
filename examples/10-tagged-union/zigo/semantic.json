@@ -1059,6 +1059,11 @@
   "types": [
     {
       "exhaustive": true,
+      "ext": {
+        "JSON": {
+          "field_names": "zig"
+        }
+      },
       "fields": [
         {
           "name": "idle",
@@ -1323,6 +1328,11 @@
         "signed": false
       },
       "exhaustive": true,
+      "ext": {
+        "JSON": {
+          "field_names": "zig"
+        }
+      },
       "fields": [
         {
           "name": "r",

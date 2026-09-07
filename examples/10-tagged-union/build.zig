@@ -14,6 +14,14 @@ pub fn build(b: *std.Build) void {
     const tests = b.addTest(.{ .root_module = tagged_union });
     b.step("test", "Run the Zig tagged-union tests").dependOn(&b.addRunArtifact(tests).step);
 
+    // A generator plugin: an ordinary Zig package that adds Go surface. This
+    // one writes MarshalJSON/UnmarshalJSON for the value types that cross as
+    // data, so a caller can put them on a wire without a hand-kept file.
+    const json: zigo.PluginModule = .{
+        .name = "zigo_json",
+        .root_source_file = b.dependency("zigo_json", .{}).path("src/plugin.zig"),
+    };
+
     const bindings = zigo.addGoBindings(b, .{
         .name = "tagged_union",
         .module = tagged_union,
@@ -25,6 +33,7 @@ pub fn build(b: *std.Build) void {
         .abi_base = "HEAD",
         .link = if (purego) .purego else .cgo_static,
         .coverage_json = coverage_json,
+        .plugins = &.{json},
     });
     _ = bindings.addStandardSteps(b, .{});
 }

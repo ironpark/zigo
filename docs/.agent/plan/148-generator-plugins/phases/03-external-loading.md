@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-07T10:11:03Z"
 depends_on:
 - "148-generator-plugins#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: A plugin package outside `src/` is compiled into `zigo-gen` through `.plugins` and its
 > NEXT: none

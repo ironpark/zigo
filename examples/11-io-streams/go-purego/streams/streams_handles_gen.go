@@ -3,6 +3,7 @@
 package streams
 
 import (
+	"io"
 	"runtime"
 	"sync"
 	"unsafe"
@@ -120,6 +121,9 @@ func (d *Document) zigoTakeLocked() (zigoDocumentCleanupState, bool) {
 	}
 	return state, true
 }
+
+// Document satisfies io.ReadWriteCloser; this assertion stops compiling the day it does not.
+var _ io.ReadWriteCloser = (*Document)(nil)
 
 // Sink is a caller-owned native handle. Call Close when it is no longer needed.
 type Sink struct {

@@ -217,7 +217,7 @@ scripts/release.sh 0.14.3 --push   # 위에 더해 origin으로 푸시
 3. **fetch 안내 갱신**: README와 [시작 가이드](getting-started.md)의
    `zig fetch --save git+https://github.com/ironpark/zigo#<태그>` 줄을 새 태그로 바꿉니다.
    버전·변경 기록·설치 안내가 같은 릴리즈 커밋에 포함되어야 합니다.
-4. **포맷 확인**: `zig fmt --check build.zig build src tests/*.zig examples/*/build.zig examples/*/src`가
+4. **포맷 확인**: `zig fmt --check build.zig build src tests/*.zig examples/*/build.zig examples/*/src plugins/*/build.zig plugins/*/src`가
    아무것도 출력하지 않아야 합니다. 걸린 파일은 `zig fmt`로 고쳐 릴리즈 커밋 전에 커밋합니다.
 5. **예제 생성물 최신화 확인**: 생성기나 바인딩을 바꿨다면 cgo 트리와 purego 트리를 모두
    다시 생성해야 합니다. 예제마다 `zig build go` 뒤에 purego 바인딩이 있으면

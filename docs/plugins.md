@@ -98,20 +98,26 @@ reflection은 이를 `semantic.json`에 플러그인 이름을 키로 그대로 
 
 ```zig
 // build.zig
-const satisfies = b.dependency("zigo_satisfies", .{});
+const satisfies: zigo.PluginModule = .{
+    // `bindings.zig`가 import할 이름
+    .name = "zigo_satisfies",
+    // 플러그인의 루트 소스 파일
+    .root_source_file = b.dependency("zigo_satisfies", .{}).path("src/plugin.zig"),
+};
 _ = zigo.addGoBindings(b, .{
     // ...
-    .plugins = &.{satisfies.module("plugin")},
+    .plugins = &.{satisfies},
 });
 ```
 
 `.plugins`의 순서가 실행 순서입니다. 생성기는 소비하는 프로젝트마다 새로 컴파일되므로
 플러그인은 빌드 시점에 정적으로 링크됩니다. 별도의 프로세스도, 런타임 로딩도 없습니다.
 
-`addGoBindings`는 나열된 각 플러그인 모듈에 `plugin`, `abi`, `semantic`, `diagnostic`,
-`naming` import를 주입합니다. 플러그인 패키지는 이 import들을 스스로 연결하지 마세요.
-같은 파일에서 나온 두 벌의 타입은 Zig에서 서로 다른 타입이고, 그러면 플러그인과 생성기가
-같은 `Plugin`을 이야기하지 않게 됩니다.
+모듈이 아니라 소스 경로를 받는 이유가 여기 있습니다. `addGoBindings`는 그 파일을 생성기
+자신의 `plugin`, `abi`, `semantic`, `diagnostic`, `naming` 위에서 컴파일합니다. 같은
+파일에서 나온 두 벌의 모듈은 Zig에서 서로 다른 타입이므로, 모듈을 그대로 넘겨받으면
+플러그인과 그것을 돌리는 생성기가 겉모습만 같은 두 개의 `Plugin`을 이야기하게 됩니다.
+플러그인 패키지의 `build.zig`가 노출하는 모듈은 편집기와 단독 `zig build`를 위한 것입니다.
 
 ## 진단
 
@@ -139,4 +145,8 @@ _ = zigo.addGoBindings(b, .{
 ## 예제
 
 - [`plugins/satisfies`](../plugins/satisfies): `type_hook` 하나로
-  `var _ io.Closer = (*Document)(nil)` 어서션을 붙입니다.
+  `var _ io.ReadWriteCloser = (*Document)(nil)` 어서션을 붙입니다.
+  [`11-io-streams`](../examples/11-io-streams/README.md)가 씁니다.
+- [`plugins/json`](../plugins/json): 값 struct와 enum에 `MarshalJSON`/`UnmarshalJSON`을
+  씁니다. 옵션(`field_names`)으로 JSON 키 철자를 고르고, `imports`로 `encoding/json`과
+  `fmt`를 선언합니다. [`10-tagged-union`](../examples/10-tagged-union/README.md)이 씁니다.

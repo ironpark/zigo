@@ -1,0 +1,6 @@
+{
+  "package": "palette",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/palette",
+  "plugins": ["JSON"]
+}

@@ -9,7 +9,7 @@ pub fn addGenerator(
     root_source_file: std.Build.LazyPath,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-    plugins: []const *std.Build.Module,
+    plugins: []const std.Build.LazyPath,
 ) *std.Build.Step.Compile {
     const modules = createGeneratorModules(b, root_source_file.dirname(), target, optimize, plugins);
     return addGeneratorWithModules(b, root_source_file, target, optimize, modules);
@@ -37,7 +37,7 @@ pub fn createGeneratorModules(
     source_root: std.Build.LazyPath,
     target: std.Build.ResolvedTarget,
     optimize: std.builtin.OptimizeMode,
-    plugins: []const *std.Build.Module,
+    plugins: []const std.Build.LazyPath,
 ) GeneratorModules {
     const build_options_module = b.createModule(.{
         .root_source_file = source_root.path(b, "build_options.zig"),
@@ -84,17 +84,27 @@ pub fn createGeneratorModules(
             .{ .name = "diagnostic", .module = diagnostic_module },
         },
     });
-    // A plugin package leaves these unwired, so its module and the generator
-    // that runs it speak about one set of types rather than two
-    // identical-looking copies compiled from the same files.
-    for (plugins) |entry| {
-        entry.addImport("plugin", plugin_module);
-        entry.addImport("abi", abi_module);
-        entry.addImport("semantic", semantic_module);
-        entry.addImport("diagnostic", diagnostic_module);
-        entry.addImport("naming", naming_module);
+    // A plugin is taken as a source path, not as a module: the generator
+    // compiles it against its own `plugin`, `abi` and `semantic`, and two
+    // modules built from the same files are different types in Zig. A shared
+    // module would have the plugin and the generator running it talk about
+    // two `Plugin`s that only look alike.
+    const plugin_modules = b.allocator.alloc(*std.Build.Module, plugins.len) catch @panic("OOM");
+    for (plugins, plugin_modules) |root, *module| {
+        module.* = b.createModule(.{
+            .root_source_file = root,
+            .target = target,
+            .optimize = optimize,
+            .imports = &.{
+                .{ .name = "plugin", .module = plugin_module },
+                .{ .name = "abi", .module = abi_module },
+                .{ .name = "semantic", .module = semantic_module },
+                .{ .name = "diagnostic", .module = diagnostic_module },
+                .{ .name = "naming", .module = naming_module },
+            },
+        });
     }
-    const plugin_registry_module = createPluginRegistry(b, target, optimize, plugin_module, plugins);
+    const plugin_registry_module = createPluginRegistry(b, target, optimize, plugin_module, plugin_modules);
     const errors_lock_module = b.createModule(.{
         .root_source_file = source_root.path(b, "gen/ir/errors_lock.zig"),
         .target = target,

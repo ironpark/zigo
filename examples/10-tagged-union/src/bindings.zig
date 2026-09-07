@@ -1,14 +1,20 @@
 const zigo = @import("zigo");
 const library = @import("tagged_union");
+const json = @import("zigo_json");
 
 pub const bindings = zigo.define(.{
     .root = library,
     .types = &.{
-        .{ .enumeration = .{ .type = library.Mode } },
+        // The json plugin writes MarshalJSON/UnmarshalJSON next to the type.
+        // An enum crosses as its Zig tag name rather than as a number, which
+        // is what makes the wire format readable and stable across a reorder.
+        .{ .enumeration = (zigo.Enum{ .type = library.Mode }).extend(json.plugin, .{}) },
         .{ .handle = .{ .type = library.Child } },
         .{ .tagged_union = .{ .type = library.Value } },
         .{ .tagged_union = .{ .type = library.Signal, .access = .snapshot } },
-        .{ .value = .{ .type = library.RGB } },
+        // A value struct crosses as an object whose keys are the Zig field
+        // names, so the two sides agree on one spelling.
+        .{ .value = (zigo.Value{ .type = library.RGB }).extend(json.plugin, .{ .field_names = .zig }) },
         .{ .value = .{ .type = library.Flags } },
         .{ .value = .{ .type = library.ColorRecord } },
         .{ .handle = .{ .type = library.Palette, .fields = &.{.{ .path = "flags", .set = true }} } },

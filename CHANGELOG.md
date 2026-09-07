@@ -4,6 +4,40 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Added
+
+- 생성기 플러그인. 플러그인은 저장소 밖의 평범한 Zig 패키지이고, 생성되는 Go 표면에만
+  코드를 더합니다. 메서드 옆에 메서드(`method_hook`), 타입 뒤에 코드(`type_hook`), 공개
+  파일 하나(`files`)를 추가할 수 있습니다. Zig shim·C 헤더·raw 패키지에는 손댈 수 없으므로
+  플러그인 때문에 ABI가 움직이는 일은 없고, cgo와 purego에서 똑같이 동작합니다. 계약은
+  `src/plugin.zig` 하나이며 사용자 문서는 [플러그인](docs/plugins.md)입니다.
+- `addGoBindings`의 `.plugins`. 나열한 순서가 실행 순서이고, 각 항목은 `bindings.zig`가
+  import할 이름과 플러그인의 루트 소스 파일입니다. 생성기는 소비하는 프로젝트마다 새로
+  컴파일되므로 플러그인은 빌드 시점에 정적으로 링크됩니다. 별도 프로세스도, 런타임
+  로딩도 없습니다.
+- 선언에 플러그인 옵션을 붙이는 `extend(plugin, value)`. 함수와 handle·value·enum·tagged
+  union 항목에서 쓸 수 있습니다. 값은 comptime에 잡히므로 플러그인에 없는 필드나 모양이
+  다른 값은 선언한 자리에서 Zig 컴파일 오류가 됩니다. `semantic.json`에는 플러그인 이름을
+  키로 하는 `ext` 객체로 선언 순서 그대로 실립니다.
+- 예제 플러그인 두 개. [`plugins/satisfies`](plugins/satisfies)는 `var _ io.ReadWriteCloser =
+  (*Document)(nil)` 어서션을 타입 옆에 쓰고 `11-io-streams`가 사용합니다.
+  [`plugins/json`](plugins/json)은 값 struct와 enum에 `MarshalJSON`/`UnmarshalJSON`을 쓰고
+  `10-tagged-union`이 사용합니다. 둘 다 cgo와 purego 양쪽에서 테스트합니다.
+- `go-doctor`가 생성기에 함께 빌드된 플러그인 이름을 `PASS plugins:` 줄로 보고합니다.
+
+### Changed
+
+- `.iterator`, `.implements`, `Must*`, `.interfaces`가 같은 플러그인 프레임 위에서 돕니다.
+  선언 키와 `semantic.json` 철자, 진단 코드는 그대로이고 생성물도 바이트가 같습니다.
+- `abi-diff`가 플러그인 옵션을 플러그인 이름별로 비교합니다. 옵션이 생기면 호환 변경,
+  없어지거나 바뀌면 breaking입니다. Go 표면이 늘거나 주는 변화이기 때문입니다.
+- 플러그인 규칙은 생성기의 핵심 규칙이 모두 통과한 뒤에 돌므로, 플러그인이 문서 자체의
+  결함을 가리지 않습니다. 플러그인 진단은 `ZIGO` 코드가 아니라 플러그인 이름을 접두어로
+  씁니다(`SATIS002`). 손으로 고친 `semantic.json`의 `ext`가 플러그인의 옵션 타입으로
+  읽히지 않으면 `<NAME>001`입니다.
+
 ## [0.16.1] - 2026-09-07
 
 ### Fixed

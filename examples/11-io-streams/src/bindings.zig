@@ -1,5 +1,6 @@
 const zigo = @import("zigo");
 const library = @import("streams");
+const satisfies = @import("zigo_satisfies");
 
 pub const bindings = zigo.define(.{
     .allocator = .c_allocator,
@@ -8,7 +9,12 @@ pub const bindings = zigo.define(.{
     // instead of at each site.
     .codepoints = .infer_u21,
     .types = &.{
-        .{ .handle = .{ .type = library.Document } },
+        // `Document` gets Write, Read, WriteTo, ReadFrom and Close below, so
+        // it is an `io.ReadWriteCloser`. Go has no way to say so, and the
+        // idiom is an assertion the compiler checks; the plugin writes it
+        // next to the type instead of it living in a hand-kept file.
+        .{ .handle = (zigo.Handle{ .type = library.Document })
+            .extend(satisfies.plugin, .{ .interfaces = &.{"io.ReadWriteCloser"} }) },
         .{ .handle = .{ .type = library.Sink } },
         .{ .handle = .{ .type = library.Source } },
     },

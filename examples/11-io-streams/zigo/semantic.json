@@ -635,6 +635,13 @@
   "types": [
     {
       "exhaustive": true,
+      "ext": {
+        "SATIS": {
+          "interfaces": [
+            "io.ReadWriteCloser"
+          ]
+        }
+      },
       "fields": [],
       "kind": "opaque",
       "name": "Document",

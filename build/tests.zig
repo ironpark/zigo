@@ -191,6 +191,7 @@ pub fn addRepositorySteps(
         "tests/generator_cases/interfaces_purego/expected",
         "tests/generator_cases/narrow_int/expected",
         "tests/generator_cases/nested_namespace/expected",
+        "tests/generator_cases/plugin_json/expected",
         "tests/generator_cases/plugin_satisfies/expected",
         "tests/generator_cases/optional/expected",
         "tests/generator_cases/optional_purego/expected",
@@ -285,7 +286,8 @@ pub fn addRepositorySteps(
     // plugin modules compiled in. Each case names the plugins its golden
     // expects, so one binary serves the plugin cases and the plain ones.
     const showcase_modules = modules.createGeneratorModules(b, b.path("src"), target, optimize, &.{
-        b.createModule(.{ .root_source_file = b.path("plugins/satisfies/src/plugin.zig") }),
+        b.path("plugins/satisfies/src/plugin.zig"),
+        b.path("plugins/json/src/plugin.zig"),
     });
     const generator_case_runner = b.addExecutable(.{
         .name = "zigo-generator-case",

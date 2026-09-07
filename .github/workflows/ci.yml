@@ -38,7 +38,7 @@ jobs:
           cache: true
           cache-dependency-path: examples/**/go.sum
       - name: Check Zig formatting
-        run: zig fmt --check build.zig src tests examples
+        run: zig fmt --check build.zig src tests examples plugins
       - name: Compile all Zig artifacts
         run: zig build check --summary all
       - name: Zig unit and snapshot tests

@@ -2,7 +2,11 @@
 
 package tagged_union
 
-import "strconv"
+import (
+	"encoding/json"
+	"fmt"
+	"strconv"
+)
 
 // Mode represents the corresponding Zig enum.
 type Mode uint8
@@ -28,6 +32,28 @@ func (value Mode) String() string {
 	default:
 		return "Mode(" + strconv.Itoa(int(value)) + ")"
 	}
+}
+
+// MarshalJSON encodes Mode as its Zig tag name.
+func (value Mode) MarshalJSON() ([]byte, error) { return json.Marshal(value.String()) }
+
+// UnmarshalJSON decodes a Zig tag name written by MarshalJSON.
+func (value *Mode) UnmarshalJSON(data []byte) error {
+	var text string
+	if err := json.Unmarshal(data, &text); err != nil {
+		return err
+	}
+	switch text {
+	case "idle":
+		*value = ModeIdle
+	case "active":
+		*value = ModeActive
+	case "paused":
+		*value = ModePaused
+	default:
+		return fmt.Errorf("Mode: unknown value %q", text)
+	}
+	return nil
 }
 
 // ValueTag represents the corresponding Zig enum.

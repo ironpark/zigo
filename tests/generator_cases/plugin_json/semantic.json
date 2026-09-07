@@ -1,0 +1,90 @@
+{
+  "functions": [
+    {
+      "name": "echoColor",
+      "params": [
+        {
+          "direction": "in",
+          "name": "value",
+          "type": {
+            "kind": "value_struct",
+            "ref": "Color"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "mode",
+          "type": {
+            "kind": "enum",
+            "ref": "Mode"
+          }
+        }
+      ],
+      "return": {
+        "kind": "value_struct",
+        "ref": "Color"
+      },
+      "symbol": "zg_echo_color"
+    }
+  ],
+  "ir_version": 1,
+  "package": "palette",
+  "prefix": "zg",
+  "types": [
+    {
+      "ext": {
+        "JSON": {
+          "field_names": "zig"
+        }
+      },
+      "fields": [
+        {
+          "name": "red",
+          "type": {
+            "bits": 8,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "name": "green",
+          "type": {
+            "bits": 8,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "kind": "value_struct",
+      "layout": "extern",
+      "name": "Color"
+    },
+    {
+      "exhaustive": true,
+      "ext": {
+        "JSON": {}
+      },
+      "fields": [
+        {
+          "name": "idle",
+          "value": 0
+        },
+        {
+          "name": "active",
+          "value": 1
+        }
+      ],
+      "kind": "enum",
+      "name": "Mode",
+      "tag_type": {
+        "bits": 8,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      }
+    }
+  ],
+  "zig_version": "0.16.0"
+}

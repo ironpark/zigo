@@ -46,6 +46,38 @@ Zig의 `streamRemaining`으로 reader와 writer adapter를 직접 연결합니�
 `Bytes() []byte`가 있는 reader는 빠른 경로에서 읽기 위치가 전진하지 않습니다.
 위 예제는 `strings.Reader`를 사용해 이 차이를 피합니다.
 
+## 생성기 플러그인
+
+이 예제는 [`plugins/satisfies`](../../plugins/satisfies)를 `.plugins`로 붙입니다.
+플러그인은 저장소 밖의 평범한 Zig 패키지이고, 생성되는 Go 표면에만 코드를 더합니다.
+
+```zig
+// build.zig
+const satisfies: zigo.PluginModule = .{
+    .name = "zigo_satisfies",
+    .root_source_file = b.dependency("zigo_satisfies", .{}).path("src/plugin.zig"),
+};
+```
+
+```zig
+// src/bindings.zig
+.{ .handle = (zigo.Handle{ .type = library.Document })
+    .extend(satisfies.plugin, .{ .interfaces = &.{"io.ReadWriteCloser"} }) },
+```
+
+`Document`는 `.implements`로 `Write`·`Read`·`WriteTo`·`ReadFrom`을, 생성자 쌍으로
+`Close`를 얻으므로 `io.ReadWriteCloser`입니다. Go에는 그 사실을 선언하는 문법이 없어
+어서션을 손으로 두는 것이 관례인데, 플러그인이 그 줄을 타입 옆(생성된 handle 파일)에
+써 줍니다. 메서드 모양이 바뀌면 그 자리에서 컴파일이 멈춥니다.
+
+```go
+// go/streams/streams_handles_gen.go
+var _ io.ReadWriteCloser = (*Document)(nil)
+```
+
+옵션은 선언 시점에 comptime으로 검사되므로 오타는 `bindings.zig`에서 Zig 컴파일
+오류가 됩니다. 자세한 내용은 [생성기 플러그인](../../docs/plugins.md)을 참고하세요.
+
 ## 검증과 추가 기능
 
 ```sh

@@ -922,13 +922,32 @@ pub fn writePublicParameters(
 }
 
 pub fn writePublicImports(allocator: std.mem.Allocator, writer: *std.Io.Writer, body: []const u8, program: abi.Program, options: emit.Options) !void {
-    var needed: [public_std_imports.len][]const u8 = undefined;
-    var count: usize = 0;
+    // The standard-library group, which a plugin can add to: `encoding/json`
+    // sits between `encoding/binary` and `io` rather than in a group of its
+    // own, since that is where gofmt would put it.
+    var std_group: std.ArrayList(plugin.Import) = .empty;
+    defer std_group.deinit(allocator);
     for (public_std_imports) |entry| {
         if (!bodyUsesQualifier(body, entry.qualifier)) continue;
-        needed[count] = entry.path;
-        count += 1;
+        try std_group.append(allocator, .{ .qualifier = entry.qualifier, .path = entry.path });
     }
+    // A plugin declares the imports its hooks may write; the body decides
+    // which of them this file gets, the same rule the generated imports
+    // follow. A path the generator already knows is not repeated.
+    for (plugin_hooks.declaredImports()) |entry| {
+        if (!bodyUsesQualifier(body, entry.qualifier)) continue;
+        var seen = false;
+        for (std_group.items) |existing| {
+            if (std.mem.eql(u8, existing.path, entry.path)) seen = true;
+        }
+        if (!seen) try std_group.append(allocator, entry);
+    }
+    std.mem.sort(plugin.Import, std_group.items, {}, struct {
+        fn lessThan(_: void, lhs: plugin.Import, rhs: plugin.Import) bool {
+            return std.mem.lessThan(u8, lhs.path, rhs.path);
+        }
+    }.lessThan);
+    const count = std_group.items.len;
     // The raw package is always reached through the `raw` qualifier: a raw
     // package with another name is imported under that alias.
     const uses_raw = !options.raw_colocated and bodyUsesQualifier(body, "raw");
@@ -952,22 +971,10 @@ pub fn writePublicImports(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
         if (function.origin.return_go_adapter) |adapter| try appendAdapterImportIfUsed(allocator, &adapters, adapter, body);
         for (function.origin.params) |parameter| if (parameter.go_adapter) |adapter| try appendAdapterImportIfUsed(allocator, &adapters, adapter, body);
     }
-    // A plugin declares the non-standard imports its hooks may write; the
-    // body decides which of them this file gets, the same rule the generated
-    // imports follow.
-    var plugin_imports: std.ArrayList(plugin.Import) = .empty;
-    defer plugin_imports.deinit(allocator);
-    for (plugin_hooks.declaredImports()) |entry| {
-        if (!bodyUsesQualifier(body, entry.qualifier)) continue;
-        for (plugin_imports.items) |seen| if (std.mem.eql(u8, seen.path, entry.path)) break;
-        try plugin_imports.append(allocator, entry);
-    }
-    if (count == 0 and !uses_raw and !lifecycle and !default_foreign and foreign.items.len == 0 and adapters.items.len == 0 and plugin_imports.items.len == 0) return writer.writeByte('\n');
-    if (count + @as(usize, @intFromBool(uses_raw)) + @as(usize, @intFromBool(lifecycle)) + @as(usize, @intFromBool(default_foreign)) + foreign.items.len + adapters.items.len + plugin_imports.items.len == 1) {
+    if (count == 0 and !uses_raw and !lifecycle and !default_foreign and foreign.items.len == 0 and adapters.items.len == 0) return writer.writeByte('\n');
+    if (count + @as(usize, @intFromBool(uses_raw)) + @as(usize, @intFromBool(lifecycle)) + @as(usize, @intFromBool(default_foreign)) + foreign.items.len + adapters.items.len == 1) {
         try writer.writeAll("\nimport ");
-        if (plugin_imports.items.len == 1) {
-            try writePluginImport(writer, plugin_imports.items[0], "");
-        } else if (adapters.items.len == 1) {
+        if (adapters.items.len == 1) {
             try writeAdapterImport(writer, adapters.items[0], "");
         } else if (uses_raw) {
             try public_writers.writeRawImport(writer, options, "");
@@ -978,16 +985,15 @@ pub fn writePublicImports(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
         } else if (lifecycle) {
             try writer.print("\"{s}/{s}\"\n", .{ options.go_module, options.lifecycle_package_path });
         } else {
-            try writer.print("\"{s}\"\n", .{needed[0]});
+            try writePluginImport(writer, std_group.items[0], "");
         }
         return writer.writeByte('\n');
     }
     try writer.writeAll("\nimport (\n");
-    for (needed[0..count]) |path| try writer.print("\t\"{s}\"\n", .{path});
+    for (std_group.items) |entry| try writePluginImport(writer, entry, "\t");
     for (adapters.items) |adapter| try writeAdapterImport(writer, adapter, "\t");
-    for (plugin_imports.items) |entry| try writePluginImport(writer, entry, "\t");
     if (uses_raw) {
-        if (count != 0 or adapters.items.len != 0 or plugin_imports.items.len != 0) try writer.writeByte('\n');
+        if (count != 0 or adapters.items.len != 0) try writer.writeByte('\n');
         try public_writers.writeRawImport(writer, options, "\t");
     }
     if (lifecycle) try writer.print("\tlifecycle \"{s}/{s}\"\n", .{ options.go_module, options.lifecycle_package_path });
@@ -999,8 +1005,9 @@ pub fn writePublicImports(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
     try writer.writeAll(")\n\n");
 }
 
-/// One `import` line a plugin declared: aliased when the qualifier its hooks
-/// write is not the import path's last segment.
+/// One `import` line of the standard-library group: aliased when the
+/// qualifier the body writes is not the import path's last segment, which
+/// only a plugin-declared import can be.
 fn writePluginImport(writer: *std.Io.Writer, entry: plugin.Import, indent: []const u8) !void {
     const path = entry.path;
     const last = if (std.mem.lastIndexOfScalar(u8, path, '/')) |slash| path[slash + 1 ..] else path;

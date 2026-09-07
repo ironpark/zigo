@@ -5,6 +5,7 @@
     .minimum_zig_version = "0.16.0",
     .dependencies = .{
         .zigo = .{ .path = "../.." },
+        .zigo_satisfies = .{ .path = "../../plugins/satisfies" },
     },
     .paths = .{ "build.zig", "build.zig.zon", "src", "go", "go-purego", "zigo" },
 }

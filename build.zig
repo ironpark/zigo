@@ -65,6 +65,21 @@ pub const Install = struct {
     header_name: ?[]const u8 = null,
 };
 
+/// One generator plugin: the module whose root file declares
+/// `pub const plugin`, and the name `bindings.zig` imports it under so a
+/// declaration can name its options with `extend`. Both sides are one entry,
+/// since a plugin that a declaration cannot reach has nothing to read.
+pub const PluginModule = struct {
+    /// The name `bindings.zig` imports the plugin under, so a declaration can
+    /// name its options with `extend`.
+    name: []const u8,
+    /// The plugin's root source file, the one declaring `pub const plugin`.
+    /// A path rather than a module: the generator compiles it against its own
+    /// `plugin`, `abi` and `semantic`, since two modules built from the same
+    /// files are different types in Zig.
+    root_source_file: std.Build.LazyPath,
+};
+
 pub const Options = struct {
     name: []const u8,
     module: *std.Build.Module,
@@ -85,10 +100,9 @@ pub const Options = struct {
     /// graph is rebuilt per platform, so it must not carry prebuilt archives.
     /// Empty keeps the single-target layout.
     targets: []const std.Build.ResolvedTarget = &.{},
-    /// Generator plugin modules, in the order they run. Each module's root
-    /// file declares `pub const plugin: zigo.plugin.Plugin`. A plugin only
-    /// adds Go surface, so listing one can never move the C ABI.
-    plugins: []const *std.Build.Module = &.{},
+    /// Generator plugins, in the order they run. A plugin only adds Go
+    /// surface, so listing one can never move the C ABI.
+    plugins: []const PluginModule = &.{},
     cgo_flags: ?CgoFlags = null,
     abi_base: ?[]const u8 = null,
     /// Slash-separated path of the raw package inside `go_dir`. Setting it to
@@ -364,7 +378,9 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     };
     const native_targets = resolveNativeTargets(b, options, backend, install);
     const zigo_dependency = b.dependencyFromBuildZig(@This(), .{});
-    const generator = modules.addGenerator(b, zigo_dependency.path("src/main.zig"), b.graph.host, .Debug, options.plugins);
+    const plugin_sources = b.allocator.alloc(std.Build.LazyPath, options.plugins.len) catch @panic("OOM");
+    for (options.plugins, plugin_sources) |entry, *source| source.* = entry.root_source_file;
+    const generator = modules.addGenerator(b, zigo_dependency.path("src/main.zig"), b.graph.host, .Debug, plugin_sources);
     // Reflection runs the bindings module as an executable on the host, so the
     // whole reflection pipeline builds for `b.graph.host` even when the library
     // targets another platform. The generated Go tree is platform-independent;
@@ -380,6 +396,31 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
         .target = b.graph.host,
         .optimize = .Debug,
         .imports = &.{.{ .name = "naming", .module = naming_module }},
+    });
+    // The declaration side of a plugin: what `bindings.zig` imports so
+    // `extend` can name the plugin and its option type. Only created because
+    // a plugin's root file is written against the whole contract; a module
+    // nothing references is never compiled.
+    const abi_declaration_module = b.createModule(.{
+        .root_source_file = zigo_dependency.path("src/gen/ir/abi.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+        .imports = &.{.{ .name = "semantic", .module = semantic_module }},
+    });
+    const diagnostic_declaration_module = b.createModule(.{
+        .root_source_file = zigo_dependency.path("src/gen/diagnostic.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+    });
+    const plugin_declaration_module = b.createModule(.{
+        .root_source_file = zigo_dependency.path("src/plugin.zig"),
+        .target = b.graph.host,
+        .optimize = .Debug,
+        .imports = &.{
+            .{ .name = "abi", .module = abi_declaration_module },
+            .{ .name = "semantic", .module = semantic_module },
+            .{ .name = "diagnostic", .module = diagnostic_declaration_module },
+        },
     });
     // The reflected module is the caller's, retargeted to the host. Its
     // Static link inputs were built for `options.target`, and a host executable
@@ -397,6 +438,24 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
             .{ .name = options.name, .module = reflected_module },
         },
     });
+    // `extend` reads the plugin's name and its option type off the same value
+    // the generator runs, so the declaration and the generator can never
+    // disagree about what the options are.
+    // The declaration side gets its own module from the same file. It only
+    // reads the plugin's name and the type of its options, so nothing it
+    // declares has to be the same type as what the generator runs.
+    for (options.plugins) |entry| bindings_module.addImport(entry.name, b.createModule(.{
+        .root_source_file = entry.root_source_file,
+        .target = b.graph.host,
+        .optimize = options.optimize,
+        .imports = &.{
+            .{ .name = "plugin", .module = plugin_declaration_module },
+            .{ .name = "abi", .module = abi_declaration_module },
+            .{ .name = "semantic", .module = semantic_module },
+            .{ .name = "diagnostic", .module = diagnostic_declaration_module },
+            .{ .name = "naming", .module = naming_module },
+        },
+    }));
     const reflector = b.addExecutable(.{
         .name = "zigo-reflect",
         .root_module = b.createModule(.{

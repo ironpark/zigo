@@ -83,7 +83,7 @@ fi
 
 if [[ $skip_checks -eq 0 ]]; then
   step "zig fmt --check"
-  if ! zig fmt --check build.zig build src tests/*.zig examples/*/build.zig examples/*/src; then
+  if ! zig fmt --check build.zig build src tests/*.zig examples/*/build.zig examples/*/src plugins/*/build.zig plugins/*/src; then
     echo "release.sh: files above are not formatted; run 'zig fmt' on them and commit" >&2
     exit 1
   fi

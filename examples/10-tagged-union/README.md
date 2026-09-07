@@ -28,6 +28,31 @@ scalar 필드로 전달합니다. slice를 담는 `unknown` variant는 `.omit`�
 native가 제외한 tag를 반환하면 Go 오류가 됩니다. 값 union의 variant 추가도 ABI를 바꿉니다.
 `Flags`는 extern struct 필드, 평탄화한 필드, opaque accessor와 콜백의 packed 변환을 검증합니다.
 
+## 생성기 플러그인
+
+이 예제는 [`plugins/json`](../../plugins/json)을 `.plugins`로 붙여 값 타입에
+`MarshalJSON`/`UnmarshalJSON`을 더합니다.
+
+```zig
+// src/bindings.zig
+.{ .enumeration = (zigo.Enum{ .type = library.Mode }).extend(json.plugin, .{}) },
+.{ .value = (zigo.Value{ .type = library.RGB }).extend(json.plugin, .{ .field_names = .zig }) },
+```
+
+기본 `encoding/json`은 struct 키를 Go 필드 이름으로 쓰고 enum을 숫자로 씁니다. 둘 다
+보통 원하는 wire 형식이 아니어서 struct 태그와 메서드 한 쌍을 손으로 두게 되는데,
+플러그인이 그것을 타입 옆에 써 줍니다. `RGB`는 Zig 필드 이름을 키로, `Mode`는 Zig tag
+이름을 값으로 씁니다. 모르는 tag는 0이 아니라 오류입니다.
+
+```go
+json.Marshal(RGB{R: 1, G: 2, B: 3}) // {"r":1,"g":2,"b":3}
+json.Marshal(ModePaused)            // "paused"
+```
+
+`ext`는 Go 표면만 바꾸므로 `abi-check`는 이를 호환 변경으로 보고합니다
+(`ABI COMPATIBLE: Mode: \`JSON\` plugin options added`). 자세한 내용은
+[생성기 플러그인](../../docs/plugins.md)을 참고하세요.
+
 ## 실행
 
 이 디렉터리에서 실행합니다. 이 예제의 purego 선택은 다른 예제의 `purego-go` 스텝과 달리

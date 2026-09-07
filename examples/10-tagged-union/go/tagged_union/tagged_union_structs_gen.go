@@ -3,6 +3,7 @@
 package tagged_union
 
 import (
+	"encoding/json"
 	"unsafe"
 
 	"example.com/zigo/tagged-union/internal/raw"
@@ -33,6 +34,28 @@ func RGBFromBacking(value uint32) RGB {
 		G: uint8(((uint64(value) >> 8) & 0xff)),
 		B: uint8(((uint64(value) >> 16) & 0xff)),
 	}
+}
+
+// zigoRGBJSON is the wire shape of RGB: the same fields under the JSON keys the binding chose.
+type zigoRGBJSON struct {
+	R uint8 `json:"r"`
+	G uint8 `json:"g"`
+	B uint8 `json:"b"`
+}
+
+// MarshalJSON encodes RGB under the JSON keys the binding chose.
+func (value RGB) MarshalJSON() ([]byte, error) {
+	return json.Marshal(zigoRGBJSON{R: value.R, G: value.G, B: value.B})
+}
+
+// UnmarshalJSON decodes what MarshalJSON wrote.
+func (value *RGB) UnmarshalJSON(data []byte) error {
+	var wire zigoRGBJSON
+	if err := json.Unmarshal(data, &wire); err != nil {
+		return err
+	}
+	*value = RGB{R: wire.R, G: wire.G, B: wire.B}
+	return nil
 }
 
 // Flags mirrors the Zig packed struct of the same name.

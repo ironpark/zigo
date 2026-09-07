@@ -14,6 +14,14 @@ pub fn build(b: *std.Build) void {
     const tests = b.addTest(.{ .root_module = streams });
     b.step("test", "Run the Zig stream tests").dependOn(&b.addRunArtifact(tests).step);
 
+    // A generator plugin: an ordinary Zig package that adds Go surface. This
+    // one writes the `var _ io.ReadWriteCloser = (*Document)(nil)` assertion
+    // next to the handle it belongs to.
+    const satisfies: zigo.PluginModule = .{
+        .name = "zigo_satisfies",
+        .root_source_file = b.dependency("zigo_satisfies", .{}).path("src/plugin.zig"),
+    };
+
     const bindings = zigo.addGoBindings(b, .{
         .name = "streams",
         .module = streams,
@@ -24,6 +32,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .abi_base = "HEAD",
         .coverage_json = coverage_json,
+        .plugins = &.{satisfies},
     });
     _ = bindings.addStandardSteps(b, .{});
 
@@ -37,6 +46,7 @@ pub fn build(b: *std.Build) void {
         .optimize = optimize,
         .abi_base = "HEAD",
         .link = .purego,
+        .plugins = &.{satisfies},
     });
     _ = purego_bindings.addStandardSteps(b, .{ .name_prefix = "purego" });
 }

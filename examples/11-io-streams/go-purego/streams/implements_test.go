@@ -13,12 +13,14 @@ import (
 // through Append, ReadInto, Dump and Load, and each source method is still
 // there. Which interface a type satisfies is decided at compile time.
 var (
-	_ io.Writer          = (*Document)(nil)
-	_ io.Reader          = (*Document)(nil)
-	_ io.WriterTo        = (*Document)(nil)
-	_ io.ReaderFrom      = (*Document)(nil)
-	_ io.ReadWriteCloser = (*Document)(nil)
+	_ io.Writer     = (*Document)(nil)
+	_ io.Reader     = (*Document)(nil)
+	_ io.WriterTo   = (*Document)(nil)
+	_ io.ReaderFrom = (*Document)(nil)
 )
+
+// io.ReadWriteCloser is not restated here: the satisfies plugin writes that
+// assertion into the generated handles file, next to the type it is about.
 
 func TestDocumentIsAnIoWriter(t *testing.T) {
 	doc, err := NewDocument()

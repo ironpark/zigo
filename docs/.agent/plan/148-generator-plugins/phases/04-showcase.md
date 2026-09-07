@@ -2,7 +2,7 @@
 depends_on:
 - "148-generator-plugins#3"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Both plugins have golden cases and example tests on both backends;
 > NEXT: none
