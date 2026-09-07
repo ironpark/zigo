@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T08:06:09Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Goldens and example tests pass with the accessors.
 > NEXT: none

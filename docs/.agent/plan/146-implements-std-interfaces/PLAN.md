@@ -1,16 +1,17 @@
 ---
+completed_at: "2026-09-07T08:08:05Z"
 description: Function-level .implements opt-in that adds io.Writer/io.Reader/io.WriterTo/io.ReaderFrom conformance wrappers to handle methods
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-07T07:54:46Z"
 ---
 > NEXT: Add the `.implements` key to the declaration DSL, reflect it, and carry it in semantic.json. ([Phase 0](phases/00-declare-reflect-ir.md))
 
 # Phases
 
-- [ ] [Phase 00: Declaration, reflection, IR](phases/00-declare-reflect-ir.md)
-- [ ] [Phase 01: Validation ZIGO058](phases/01-validate-shape.md)
-- [ ] [Phase 02: Emission and golden cases](phases/02-emit-wrappers.md)
-- [ ] [Phase 03: Example 11, docs, changelog](phases/03-example-docs.md)
+- [x] [Phase 00: Declaration, reflection, IR](phases/00-declare-reflect-ir.md)
+- [x] [Phase 01: Validation ZIGO058](phases/01-validate-shape.md)
+- [x] [Phase 02: Emission and golden cases](phases/02-emit-wrappers.md)
+- [x] [Phase 03: Example 11, docs, changelog](phases/03-example-docs.md)
 
 # Shared Verification
 

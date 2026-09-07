@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-07T08:08:05Z"
 depends_on:
 - "146-implements-std-interfaces#2"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: Example 11 tests pass on cgo and purego; other examples regenerate with no git diff;
 > NEXT: none

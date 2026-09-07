@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-07T08:07:05Z"
 depends_on:
 - "146-implements-std-interfaces#0"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: Each rejected shape has a test; a hand-written `semantic.json` with a bad shape fails
 > NEXT: none

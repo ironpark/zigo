@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T08:06:28Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: The example callback with string payloads passes on cgo and purego; goldens updated.
 > NEXT: none

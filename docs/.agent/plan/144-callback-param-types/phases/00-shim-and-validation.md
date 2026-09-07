@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T08:05:51Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test` passes; the new cases' shims compile with `zig build-obj` against a stub target module; the `/tmp/zigo-repro` documents no longer crash.
 > NEXT: none

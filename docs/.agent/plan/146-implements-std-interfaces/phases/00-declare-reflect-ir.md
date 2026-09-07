@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T08:06:47Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test -Dtest-filter=implements` passes with the new reflection and IR tests;
 > NEXT: none

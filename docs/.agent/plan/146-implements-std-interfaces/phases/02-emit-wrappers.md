@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-07T08:07:30Z"
 depends_on:
 - "146-implements-std-interfaces#1"
 perf_phase: false
-status: planned
+status: done
 ---
 > DONE-WHEN: Goldens are generated and reviewed; both expected trees compile with
 > NEXT: none
