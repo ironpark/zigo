@@ -758,7 +758,7 @@ fn appendFunction(
     functions: *std.ArrayList(semantic.SemanticFn),
     types: *std.ArrayList(semantic.TypeDecl),
     pairings: *std.ArrayList(Pairing),
-    comptime declaration: zigo.Binding,
+    comptime source_declaration: zigo.Binding,
     prefix: []const u8,
     comptime source_name: []const u8,
     comptime function_value: anytype,
@@ -767,6 +767,12 @@ fn appendFunction(
     comptime explicit_receiver: ?[]const u8,
     comptime strip_prefix: ?[]const u8,
 ) !void {
+    const declaration = comptime blk: {
+        var effective = source_declaration;
+        if (metadata.codepoints) |value| effective.codepoints = value;
+        if (metadata.strings) |value| effective.strings = value;
+        break :blk effective;
+    };
     const info = switch (@typeInfo(@TypeOf(function_value))) {
         .@"fn" => |info| info,
         else => @compileError("zigo function entry must contain a function"),

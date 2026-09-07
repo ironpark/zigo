@@ -2,7 +2,7 @@
 depends_on:
 - "154-binding-authoring-v2#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Tree and flat internal declarations have equivalent semantics in focused tests, with invalid contracts rejected.
 > NEXT: none

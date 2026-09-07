@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T12:48:00Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: The new authoring layer compiles and targeted unit tests pass.
 > NEXT: none

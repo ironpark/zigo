@@ -160,6 +160,8 @@ pub const FunctionOptions = struct {
 /// One bound function. `.path` is `root.<name>`, `<Type>.<name>`, or
 /// `root.<namespace>.<name>`.
 pub const Function = struct {
+    codepoints: ?Codepoints = null,
+    strings: ?Strings = null,
     path: []const u8,
     /// Go name override.
     name: ?[]const u8 = null,
