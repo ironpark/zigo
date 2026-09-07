@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-07T05:52:13Z"
 depends_on:
 - "140-typed-binding-schema#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 문서에 `param_meta`·`.repr`·`@"opaque"`가 남지 않고 0.15.0 태그가 푸시된다.
 > NEXT: none

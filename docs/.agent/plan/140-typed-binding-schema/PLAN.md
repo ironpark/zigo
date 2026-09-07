@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T05:52:13Z"
 description: 바인딩 선언을 zigo가 내보내는 타입 구조체로 바꾸고 문법 불일치를 한 번에 정리한다 (0.15.0)
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-07T04:41:56Z"
 ---
 > NEXT: 스키마 정의와 walk.zig 반영. ([Phase 0](phases/00-schema-and-walk.md))
@@ -10,7 +11,7 @@ registered_at: "2026-09-07T04:41:56Z"
 - [x] [Phase 00: Schema and reflection](phases/00-schema-and-walk.md)
 - [x] [Phase 01: Coverage, packages, interfaces](phases/01-coverage-packages.md)
 - [x] [Phase 02: Examples](phases/02-examples.md)
-- [ ] [Phase 03: Docs and release](phases/03-docs-and-release.md)
+- [x] [Phase 03: Docs and release](phases/03-docs-and-release.md)
 
 # Shared Verification
 
