@@ -21,6 +21,10 @@ const CaseOptions = struct {
     raw_package_name: []const u8 = "raw",
     raw_colocated: bool = false,
     go_must_variants: bool = false,
+    /// Added plugins this case runs, by name. Absent runs every plugin the
+    /// case runner was built with, which is what an ordinary case wants: none
+    /// of the goldens below name one.
+    plugins: ?[]const []const u8 = null,
     errors_lock_path: ?[]const u8 = null,
     link_mode: enum { static, dynamic } = .static,
     /// cgo platforms the raw package links for; empty keeps the single line.
@@ -73,6 +77,7 @@ pub fn main(init: std.process.Init) !void {
         .raw_package_name = options.raw_package_name,
         .raw_colocated = options.raw_colocated,
         .go_must_variants = options.go_must_variants,
+        .plugins = options.plugins,
         .errors_lock_bytes = errors_lock_bytes,
         .link_mode = switch (options.link_mode) {
             .static => .static,

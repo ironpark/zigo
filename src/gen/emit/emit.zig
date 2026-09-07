@@ -4,6 +4,7 @@ const target_types = @import("target_types.zig");
 const std = @import("std");
 const abi = @import("abi");
 const plugin = @import("plugin");
+const plugin_hooks = @import("plugin_hooks.zig");
 const registry = @import("../plugins/registry.zig");
 const semantic = @import("semantic");
 const naming = @import("naming");
@@ -63,11 +64,11 @@ pub const PublicEmitters = struct {
             return builtin_public_emitters[self.index];
         }
         var offset = builtin_public_emitters.len;
-        inline for (registry.plugins) |registered| {
+        inline for (registry.plugins, 0..) |registered, plugin_index| {
             inline for (registered.files) |file| {
                 if (self.index == offset) {
                     self.index += 1;
-                    return framedPluginFile(file);
+                    return framedPluginFile(plugin_index, file);
                 }
                 offset += 1;
             }
@@ -81,11 +82,14 @@ pub const PublicEmitters = struct {
 /// block derived from that body are added here. A plugin therefore never
 /// spells an import block, and a body that came out empty leaves the file at
 /// its prelude, which the generator drops.
-fn framedPluginFile(comptime file: Emitter) Emitter {
+fn framedPluginFile(comptime plugin_index: usize, comptime file: Emitter) Emitter {
     return .{
         .pathAlloc = file.pathAlloc,
         .render = struct {
             fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) anyerror!void {
+                // A plugin this generation does not run writes nothing, which
+                // leaves the file at its prelude and the generator drops it.
+                if (!plugin_hooks.runs(plugin_index, options)) return;
                 return public.renderPublicFile(allocator, writer, program, options, file.render);
             }
         }.render,

@@ -2,7 +2,7 @@
 depends_on:
 - "148-generator-plugins#2"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: A plugin package outside `src/` is compiled into `zigo-gen` through `.plugins` and its
 > NEXT: none

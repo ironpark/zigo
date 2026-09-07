@@ -1,0 +1,6 @@
+{
+  "package": "docs",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/docs",
+  "plugins": ["SATIS"]
+}

@@ -85,6 +85,10 @@ pub const Options = struct {
     /// graph is rebuilt per platform, so it must not carry prebuilt archives.
     /// Empty keeps the single-target layout.
     targets: []const std.Build.ResolvedTarget = &.{},
+    /// Generator plugin modules, in the order they run. Each module's root
+    /// file declares `pub const plugin: zigo.plugin.Plugin`. A plugin only
+    /// adds Go surface, so listing one can never move the C ABI.
+    plugins: []const *std.Build.Module = &.{},
     cgo_flags: ?CgoFlags = null,
     abi_base: ?[]const u8 = null,
     /// Slash-separated path of the raw package inside `go_dir`. Setting it to
@@ -325,7 +329,7 @@ pub fn build(b: *std.Build) void {
         .target = target,
         .optimize = optimize,
     });
-    const generator_modules = modules.createGeneratorModules(b, b.path("src"), target, optimize);
+    const generator_modules = modules.createGeneratorModules(b, b.path("src"), target, optimize, &.{});
     const generator = modules.addGeneratorWithModules(b, b.path("src/main.zig"), target, optimize, generator_modules);
     b.installArtifact(generator);
 
@@ -360,7 +364,7 @@ pub fn addGoBindings(b: *std.Build, options: Options) GoBindings {
     };
     const native_targets = resolveNativeTargets(b, options, backend, install);
     const zigo_dependency = b.dependencyFromBuildZig(@This(), .{});
-    const generator = modules.addGenerator(b, zigo_dependency.path("src/main.zig"), b.graph.host, .Debug);
+    const generator = modules.addGenerator(b, zigo_dependency.path("src/main.zig"), b.graph.host, .Debug, options.plugins);
     // Reflection runs the bindings module as an executable on the host, so the
     // whole reflection pipeline builds for `b.graph.host` even when the library
     // targets another platform. The generated Go tree is platform-independent;

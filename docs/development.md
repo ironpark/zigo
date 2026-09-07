@@ -145,10 +145,17 @@ zig build shared-library-smoke -- \
 - 공개 패키지의 helper(`zigo<T>ToRaw`, `boolToUint8`, materialized decoder 등)는 렌더링한
   본문에서 참조된 식별자를 읽어 낼지 정합니다(`emit/references.zig`). import 블록과 같은
   방식이므로 emit 지점을 추가할 때 별도의 "사용 여부" predicate를 만들 필요가 없습니다.
+- `src/gen/plugins/`: 생성기 플러그인입니다. `registry.zig`가 실행 순서이고,
+  `must.zig`, `implements.zig`, `iterator.zig`, `interfaces.zig`가 zigo 자신의 Go 표면
+  기능을 그 프레임 위에서 냅니다. 내장 기능은 선언 키와 `semantic.json` 철자를 그대로
+  두고 타입이 있는 필드를 직접 읽습니다. 저장소 밖 플러그인은 `ext`로 옵션을 나릅니다.
+  계약은 `src/plugin.zig` 하나이고 사용자 문서는 [플러그인](plugins.md)입니다.
+  `plugins/`의 패키지는 `.plugins`로 붙이는 저장소 밖 플러그인의 예시입니다.
 - `src/gen/validate/`: `validate.zig`의 `rules` 표가 진단 우선순위입니다. 먼저 나열된 규칙이
   먼저 이깁니다. 규칙과 helper는 `packages`, `names`, `functions`, `callbacks`, `types`,
   `ownership`, `materialized`, `interfaces`, `site`로 나뉘고, 전체 진단 스냅샷 테스트는
-  `snapshot_tests.zig`에 있습니다.
+  `snapshot_tests.zig`에 있습니다. 플러그인 규칙은 이 표가 모두 통과한 뒤에 돌므로
+  플러그인이 문서 자체의 결함을 가리지 않습니다.
 - `build.zig`는 소비자가 쓰는 `Options`, `GoBindings`, `addGoBindings`만 가집니다. 이 저장소의
   테스트와 `check`/`snapshot`/`shared-library-smoke` 단계는 `build/tests.zig`, 생성기 모듈
   그래프는 `build/modules.zig`, `addGoBindings`가 배선하는 custom step은 `build/steps.zig`에

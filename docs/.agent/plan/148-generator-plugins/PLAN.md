@@ -9,7 +9,7 @@ registered_at: "2026-09-07T09:09:09Z"
 
 - [x] [Phase 00: Contract and hook points](phases/00-contract-and-hooks.md)
 - [x] [Phase 01: Typed extension transport and validation](phases/01-ext-transport.md)
-- [ ] [Phase 02: Migrate built-ins onto the frame](phases/02-migrate-builtins.md)
+- [x] [Phase 02: Migrate built-ins onto the frame](phases/02-migrate-builtins.md)
 - [ ] [Phase 03: External plugins: build wiring and cases](phases/03-external-loading.md)
 - [ ] [Phase 04: Showcase plugins](phases/04-showcase.md)
 

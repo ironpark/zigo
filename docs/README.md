@@ -26,6 +26,7 @@
 | `CGO_ENABLED=0`으로 빌드하거나 공유 라이브러리 배포하기 | [공유 라이브러리와 purego](purego.md) |
 | 지원하지 않는 타입, ABI 또는 수명 제약 확인하기 | [지원 범위와 제한사항](limitations.md) |
 | materialized 결과 버퍼의 바이너리 형식 확인하기 | [Materialized 버퍼 ABI](abi.md) |
+| 생성되는 Go 표면을 플러그인으로 넓히기 | [생성기 플러그인](plugins.md) |
 | zigo 저장소를 빌드하고 변경 검증하기 | [프로젝트 개발](development.md) |
 
 ## 바인딩 상세 가이드

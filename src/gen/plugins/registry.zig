@@ -25,9 +25,10 @@ pub const builtins: []const plugin.Plugin = &.{
     interfaces.plugin,
 };
 
-/// The plugins the consuming build compiled in. Replaced by the generated
-/// `plugin_registry` module once a build passes `.plugins`.
-pub const external: []const plugin.Plugin = &.{};
+/// The plugins the consuming build compiled in, from the module its build
+/// integration generated. It is always present and empty when `.plugins` was
+/// not used, so there is one spelling either way.
+pub const external: []const plugin.Plugin = @import("plugin_registry").plugins;
 
 /// The plugins in force. Unit tests see one more: a plugin that stays inert
 /// until a test switches it on, so the frame itself has something to exercise

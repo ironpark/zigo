@@ -35,6 +35,10 @@ pub const Options = struct {
     go_package_path: []const u8 = "",
     go_package_doc: []const u8 = "",
     go_must_variants: bool = false,
+    /// Which added plugins run, by name. Null runs every plugin the generator
+    /// was built with; naming a subset is how a golden case pins one plugin
+    /// out of a binary that holds several.
+    plugins: ?[]const []const u8 = null,
     errors_lock_bytes: ?[]const u8 = null,
     backend: emit.Options.Backend = .cgo,
     link_mode: emit.Options.LinkMode = .static,
@@ -111,6 +115,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
         .go_package_path = options.go_package_path,
         .go_package_doc = options.go_package_doc,
         .go_must_variants = options.go_must_variants,
+        .plugins = options.plugins,
         .backend = options.backend,
         .link_mode = options.link_mode,
         .cgo_targets = options.cgo_targets,

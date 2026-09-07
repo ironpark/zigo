@@ -70,6 +70,7 @@ cd go && go test ./...
 | `targets` | `&.{}` | 추가 타깃용 네이티브 라이브러리 (`library_dir/<goos>_<goarch>/`) |
 | `cgo_flags` | 모듈에서 계산 | `.cflags`, `.ldflags`(교체), `.extra_ldflags`(보강), `.target_ldflags`(GOOS별) |
 | `abi_base` | `null` | `abi-check` 기준 Git ref (예: `"HEAD"`) |
+| `plugins` | `&.{}` | Go 표면을 더하는 생성기 플러그인 모듈 ([플러그인](plugins.md)) |
 | `library_loading` | 명시적 로드 | purego 검색 경로·환경 변수·`.explicit`/`.automatic` |
 | `install` | `.lib` / `.header` | `.library_dir`, `.header_dir`, `.library_name`(`<name>_zigo`), `.header_name`(`zigo_<name>.h`) |
 | `coverage_json` | `null` | 커버리지 보고서 경로 |

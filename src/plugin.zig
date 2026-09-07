@@ -105,11 +105,27 @@ pub const Options = struct {
     /// `<goos>_<goarch>` subdirectory, the layout `targets` installs, so the
     /// loader joins the running platform's name before the file name.
     library_platform_dirs: bool = false,
+    /// Which registered plugins run beyond the built-in ones, by name. Null
+    /// runs every plugin the generator was built with, which is what a build
+    /// wants: listing a plugin module is already the choice. Naming a subset
+    /// is how one binary can hold several plugins and a golden case still pin
+    /// exactly one.
+    plugins: ?[]const []const u8 = null,
     /// The generated helpers the public package references, decided by
     /// rendering it (`emit.references.referencedHelpersAlloc`). Null emits every
     /// gated helper, which only the discovery rendering itself relies on
     /// being absent.
     helpers: ?*const Referenced = null,
+
+    /// Whether an added plugin of this name runs. Built-in features are not
+    /// asked: they are the generator's own surface, not an opt-in.
+    pub fn runsPlugin(self: Options, name: []const u8) bool {
+        const selected = self.plugins orelse return true;
+        for (selected) |entry| {
+            if (std.mem.eql(u8, entry, name)) return true;
+        }
+        return false;
+    }
 
     /// Whether a gated helper of this name is written.
     pub fn emitsHelper(self: Options, name: []const u8) bool {

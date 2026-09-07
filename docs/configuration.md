@@ -79,6 +79,7 @@ raw 패키지는 `internal/raw`에서 생성됩니다. `addStandardSteps`는 기
 | `abi_base` | `null` | ABI 비교 기준 Git ref |
 | `library_loading` | 명시적 로드 | purego 로딩 정책 |
 | `install` | `.lib` / `.header` | 라이브러리·헤더 설치 위치와 이름 |
+| `plugins` | `&.{}` | 생성기 플러그인 모듈; 나열한 순서대로 실행 |
 
 ## 설치 위치
 

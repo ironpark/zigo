@@ -41,16 +41,28 @@ pub fn methodContext(
 
 /// Runs every registered `method_hook`, in registration order.
 pub fn runMethodHooks(value: plugin.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
-    inline for (registry.plugins) |registered| {
-        if (registered.method_hook) |hook| try hook(value, writer, function);
+    inline for (registry.plugins, 0..) |registered, index| {
+        if (registered.method_hook) |hook| {
+            if (runs(index, value.options)) try hook(value, writer, function);
+        }
     }
 }
 
 /// Runs every registered `type_hook`, in registration order.
 pub fn runTypeHooks(value: plugin.Context, writer: *std.Io.Writer, declaration: semantic.TypeDecl) !void {
-    inline for (registry.plugins) |registered| {
-        if (registered.type_hook) |hook| try hook(value, writer, declaration);
+    inline for (registry.plugins, 0..) |registered, index| {
+        if (registered.type_hook) |hook| {
+            if (runs(index, value.options)) try hook(value, writer, declaration);
+        }
     }
+}
+
+/// Whether the plugin at `index` writes for this generation. The built-ins
+/// always do -- they are the generator's own surface, not an opt-in -- and
+/// anything the build added runs unless the options name a subset.
+pub fn runs(comptime index: usize, options: emit.Options) bool {
+    if (index < registry.builtins.len) return true;
+    return options.runsPlugin(registry.plugins[index].name);
 }
 
 /// Whether any registered plugin declares this import. The caller still only

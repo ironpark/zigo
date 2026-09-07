@@ -1,0 +1,56 @@
+{
+  "constructors": [
+    {
+      "deinit": "close",
+      "init": "open",
+      "type": "Document"
+    }
+  ],
+  "functions": [
+    {
+      "name": "open",
+      "namespace": "Document",
+      "ownership": "caller",
+      "params": [],
+      "return": {
+        "kind": "error_union",
+        "error_set": [
+          "OutOfMemory"
+        ],
+        "payload": {
+          "kind": "opaque_ptr",
+          "const": false,
+          "nullable": false,
+          "ref": "Document"
+        }
+      },
+      "symbol": "zg_document_open"
+    },
+    {
+      "name": "close",
+      "params": [],
+      "receiver": "Document",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_document_close"
+    }
+  ],
+  "ir_version": 1,
+  "package": "docs",
+  "prefix": "zg",
+  "types": [
+    {
+      "ext": {
+        "SATIS": {
+          "interfaces": [
+            "io.Closer"
+          ]
+        }
+      },
+      "kind": "opaque",
+      "name": "Document"
+    }
+  ],
+  "zig_version": "0.16.0"
+}

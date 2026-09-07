@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-07T09:58:09Z"
 depends_on:
 - "148-generator-plugins#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `src/gen/plugins/registry.zig` lists four built-ins; `public.zig` has no feature-
 > NEXT: none

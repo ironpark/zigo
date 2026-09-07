@@ -56,6 +56,7 @@ pub fn addRepositorySteps(
             .{ .name = "abi", .module = generator_modules.abi },
             .{ .name = "lower", .module = generator_modules.lower },
             .{ .name = "plugin", .module = generator_modules.plugin },
+            .{ .name = "plugin_registry", .module = generator_modules.plugin_registry },
             .{ .name = "diagnostic", .module = generator_modules.diagnostic },
         },
     });
@@ -69,6 +70,7 @@ pub fn addRepositorySteps(
             .{ .name = "naming", .module = generator_modules.naming },
             .{ .name = "diagnostic", .module = generator_modules.diagnostic },
             .{ .name = "plugin", .module = generator_modules.plugin },
+            .{ .name = "plugin_registry", .module = generator_modules.plugin_registry },
             .{ .name = "semantic", .module = generator_modules.semantic },
         },
     });
@@ -100,6 +102,7 @@ pub fn addRepositorySteps(
             .{ .name = "lower", .module = generator_modules.lower },
             .{ .name = "naming", .module = generator_modules.naming },
             .{ .name = "plugin", .module = generator_modules.plugin },
+            .{ .name = "plugin_registry", .module = generator_modules.plugin_registry },
             .{ .name = "semantic", .module = generator_modules.semantic },
         },
     });
@@ -188,6 +191,7 @@ pub fn addRepositorySteps(
         "tests/generator_cases/interfaces_purego/expected",
         "tests/generator_cases/narrow_int/expected",
         "tests/generator_cases/nested_namespace/expected",
+        "tests/generator_cases/plugin_satisfies/expected",
         "tests/generator_cases/optional/expected",
         "tests/generator_cases/optional_purego/expected",
         "tests/generator_cases/optional_slice/expected",
@@ -276,13 +280,20 @@ pub fn addRepositorySteps(
     addProcessContractTests(b, test_step, generator);
     addPkgConfigContractTests(b, test_step);
 
+    // The showcase plugins are packages outside `src/`, so the case runner is
+    // built the way a consumer's generator is: its own module graph with the
+    // plugin modules compiled in. Each case names the plugins its golden
+    // expects, so one binary serves the plugin cases and the plain ones.
+    const showcase_modules = modules.createGeneratorModules(b, b.path("src"), target, optimize, &.{
+        b.createModule(.{ .root_source_file = b.path("plugins/satisfies/src/plugin.zig") }),
+    });
     const generator_case_runner = b.addExecutable(.{
         .name = "zigo-generator-case",
         .root_module = b.createModule(.{
             .root_source_file = b.path("tests/generator_case_main.zig"),
             .target = target,
             .optimize = optimize,
-            .imports = &.{.{ .name = "generator", .module = generator_modules.generator }},
+            .imports = &.{.{ .name = "generator", .module = showcase_modules.generator }},
         }),
     });
     addGeneratorCases(b, test_step, generator_case_runner, test_filters);
