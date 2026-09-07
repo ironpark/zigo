@@ -29,7 +29,12 @@ Go 이름 대신 `api.ref("name")`를 사용하므로 이름 변경으로 참조
 따라가지 않습니다. alias가 대상보다 먼저 스캔되는 파일(`root.zig` 등)에 있어야 대상 파일에서 매칭됩니다.
 
 공개 자유 함수는 namespace를 이름에 붙이지 않으므로 같은 패키지의 이름 충돌을
-`.named()`로 해결해야 합니다. Go 식별자 충돌은 `ZIGO024`, lowering된 C 식별자 충돌은
+`.named()`로 해결해야 합니다. C 심볼은 `<prefix>_<owner>_<name>`으로 만들어지므로
+`api.in("Key").func("fromASCII", .{ .name = "keyFromASCII" })`는 `zg_key_key_from_ascii`가
+됩니다. 심볼을 직접 정하려면 `.symbol = "zg_key_from_ascii"`를 쓰세요. 값은 C 식별자여야
+하며(아니면 선언 자리에서 컴파일 오류), 충돌은 `ZIGO036`으로 잡힙니다. `semantic.json`에는
+`custom_symbol: true`가 함께 기록되어 생성기가 심볼을 다시 유도하지 않습니다. 심볼을
+바꾸는 것은 `abi-check`에서 breaking입니다. Go 식별자 충돌은 `ZIGO024`, lowering된 C 식별자 충돌은
 `ZIGO036`으로 두 선언을 함께 보고합니다. 메서드는 receiver마다 이름 공간이 다릅니다.
 
 ## 명시 목록과 자동 발견

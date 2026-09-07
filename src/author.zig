@@ -93,6 +93,9 @@ pub const FunctionOptions = struct {
     params: []const Param = &.{},
     returns: Returns = .{},
     covers: []const FunctionRef = &.{},
+    /// The exported C symbol, written as is. Absent derives it from the
+    /// prefix, the owner and the Go name.
+    symbol: ?[]const u8 = null,
 };
 pub const Function = struct { ref: FunctionRef, options: FunctionOptions = .{}, extensions: []const ir.Extension = &.{} };
 

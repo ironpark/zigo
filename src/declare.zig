@@ -140,6 +140,7 @@ pub const FunctionOptions = struct {
     implements: ?Implements = null,
     cancel: ?Cancel = null,
     covers: ?[]const []const u8 = null,
+    symbol: ?[]const u8 = null,
     /// Plugin options to add. They are appended, never replaced, so a helper
     /// that extends a function cannot drop what another one attached.
     ext: ?[]const Extension = null,
@@ -169,6 +170,10 @@ pub const Function = struct {
     cancel: ?Cancel = null,
     /// Declarations this function stands in for in `go-coverage`.
     covers: []const []const u8 = &.{},
+    /// The exported C symbol, written as is. Absent derives it from the
+    /// prefix, the receiver or namespace, and the Go name -- which doubles
+    /// the container when a namespace function is `.name`d after it.
+    symbol: ?[]const u8 = null,
     /// Plugin options, one entry per plugin. Written by `extend`.
     ext: []const Extension = &.{},
 
@@ -187,6 +192,7 @@ pub const Function = struct {
         if (options.implements) |value| result.implements = value;
         if (options.cancel) |value| result.cancel = value;
         if (options.covers) |value| result.covers = value;
+        if (options.symbol) |value| result.symbol = value;
         if (options.ext) |value| result.ext = result.ext ++ value;
         return result;
     }

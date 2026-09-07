@@ -833,6 +833,11 @@ pub const SemanticFn = struct {
     /// whenever the owner and the name already spell the declaration.
     zig_path: ?[]const u8 = null,
     symbol: []const u8,
+    /// Set when the binding wrote `symbol` itself with `.symbol`. Lowering
+    /// and validation then use it as written instead of deriving it from the
+    /// owner and the name. Omitted otherwise, so existing documents are
+    /// byte-identical.
+    custom_symbol: ?bool = null,
 
     /// The type Go groups this function under: the one a binding paired it
     /// with, or the container it was declared in.
@@ -1183,6 +1188,15 @@ pub fn validPackagePath(path: []const u8) bool {
         for (component) |character| if (!(std.ascii.isAlphanumeric(character) or character == '_' or character == '-' or character == '.')) return false;
     }
     return true;
+}
+
+/// The undecorated C symbol of a function: the one the binding wrote, or the
+/// one the shared naming rule derives from the prefix, the owner and the
+/// name. Lowering, validation and `semantic.json` all go through here, so
+/// none of them can spell the symbol differently.
+pub fn functionSymbolAlloc(allocator: std.mem.Allocator, prefix: []const u8, function: SemanticFn) ![]u8 {
+    if (function.custom_symbol orelse false) return allocator.dupe(u8, function.symbol);
+    return naming.functionSymbolAlloc(allocator, prefix, function.receiver orelse function.namespace, function.name);
 }
 
 /// True when the function carries a Go-side dispatcher pointer: a user

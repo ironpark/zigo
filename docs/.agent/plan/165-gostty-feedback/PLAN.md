@@ -9,7 +9,7 @@ registered_at: "2026-09-07T23:44:04Z"
 
 - [x] [Phase 00: HandleField.ext](phases/00-handle-field-ext.md)
 - [x] [Phase 01: Optional and slice field leafs](phases/01-field-leaf-optional-slice.md)
-- [ ] [Phase 02: Alias enrichment](phases/02-alias-enrichment.md)
+- [x] [Phase 02: Alias enrichment](phases/02-alias-enrichment.md)
 - [ ] [Phase 03: Symbol override](phases/03-symbol-override.md)
 - [ ] [Phase 04: Fallback name gating](phases/04-fallback-name-gating.md)
 - [ ] [Phase 05: Docs and changelog](phases/05-docs-changelog.md)

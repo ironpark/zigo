@@ -1021,7 +1021,11 @@ fn appendFunction(
         .receiver_at = comptime if (receiver_index != null and receiver_index.? != 0) receiver_index.? else null,
         .@"return" = reflected_return,
         .return_atomic = if (comptime info.return_type != null and atomicScalar(info.return_type.?) != null) true else null,
-        .symbol = try naming.functionSymbolAlloc(allocator, prefix, receiver orelse discovered_owner, function_name),
+        .symbol = if (metadata.symbol) |symbol|
+            try allocator.dupe(u8, comptime checkedSymbol(symbol, metadata.path))
+        else
+            try naming.functionSymbolAlloc(allocator, prefix, receiver orelse discovered_owner, function_name),
+        .custom_symbol = if (metadata.symbol != null) true else null,
         .zig_path = comptime zigCallPath(receiver, discovered_owner, source_name, function_name),
     };
     if (metadata.covers.len != 0) reflected_function.covers = metadata.covers;
@@ -1244,6 +1248,17 @@ fn receiverMessageAlloc(allocator: std.mem.Allocator, comptime detail: []const u
             "  hint: name a registered opaque type whose value or pointer is the function's first parameter after any injected `std.mem.Allocator` or `std.Io`\n",
         args,
     );
+}
+
+/// A `.symbol` the binding wrote has to be a C identifier as it stands: the
+/// shim exports it and the header declares it without any conversion. Checked
+/// where the declaration is, so the message names the function.
+fn checkedSymbol(comptime symbol: []const u8, comptime path: []const u8) []const u8 {
+    if (symbol.len == 0) @compileError("zigo `.symbol` must not be empty on " ++ path);
+    if (std.ascii.isDigit(symbol[0])) @compileError("zigo `.symbol` must not start with a digit on " ++ path ++ ": " ++ symbol);
+    for (symbol) |byte| if (!(std.ascii.isAlphanumeric(byte) or byte == '_'))
+        @compileError("zigo `.symbol` must be a C identifier on " ++ path ++ ": " ++ symbol);
+    return symbol;
 }
 
 /// Where the shim has to reach to call this declaration, when the owner and
@@ -3134,6 +3149,39 @@ test "discovery selectors use stable owner-qualified paths" {
     try std.testing.expect(comptime declarationPathExists(declaration, "root.update"));
     try std.testing.expect(!comptime declarationPathExists(declaration, "Missing.update"));
     try std.testing.expect(!comptime declarationPathExists(declaration, "root.privateHelper"));
+}
+
+test "a namespace function renamed after its container writes its own symbol" {
+    const Api = struct {
+        pub const Key = struct {
+            pub fn fromASCII(byte: u8) u8 {
+                return byte;
+            }
+            pub fn fromUTF8(byte: u8) u8 {
+                return byte;
+            }
+        };
+    };
+    const declaration: zigo.Binding = .{
+        .root = Api,
+        .functions = &.{
+            // `.name` alone doubles the container: `zg_key_key_from_ascii`.
+            .{ .path = "root.Key.fromASCII", .name = "keyFromASCII", .force_free = true },
+            .{ .path = "root.Key.fromUTF8", .name = "keyFromUTF8", .force_free = true, .symbol = "zg_key_from_utf8" },
+        },
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), declaration, "keys", "zg");
+
+    try std.testing.expectEqualStrings("zg_key_key_from_ascii", document.functions[0].symbol);
+    try std.testing.expect(document.functions[0].custom_symbol == null);
+    try std.testing.expectEqualStrings("zg_key_from_utf8", document.functions[1].symbol);
+    try std.testing.expect(document.functions[1].custom_symbol.?);
+    // The written symbol is what the document carries, so the generator
+    // derives nothing for it.
+    const bytes = try document.serialize(arena.allocator());
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"custom_symbol\": true") != null);
 }
 
 test "a nested namespace path reflects with a dotted owner" {

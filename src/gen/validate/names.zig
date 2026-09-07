@@ -566,7 +566,7 @@ fn validGoNameAlloc(allocator: std.mem.Allocator, candidate: []const u8, fallbac
 }
 
 fn functionSymbolAlloc(allocator: std.mem.Allocator, prefix: []const u8, function: semantic.SemanticFn) ![]u8 {
-    return naming.functionSymbolAlloc(allocator, prefix, function.receiver orelse function.namespace, function.name);
+    return semantic.functionSymbolAlloc(allocator, prefix, function);
 }
 
 fn findGeneratedAccessorCollision(allocator: std.mem.Allocator, document: semantic.Semantic) !?[]const u8 {
@@ -701,6 +701,25 @@ test "a parameter named after a C keyword is rejected before it reaches the head
         .zig_version = "0.16.0",
     };
     try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try validate.findIssue(scratch.allocator(), injected));
+}
+
+test "a written symbol is checked as the C identifier it is" {
+    // `.symbol` on `Key.fromASCII` spells `zg_key_from_ascii` by hand;
+    // a root function whose derived symbol is the same collides with it.
+    const document: semantic.Semantic = .{
+        .functions = &.{
+            .{ .name = "keyFromASCII", .namespace = "Key", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_key_from_ascii", .custom_symbol = true },
+            .{ .name = "keyFromAscii", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_key_from_ascii" },
+        },
+        .package = "keys",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer scratch.deinit();
+    const issue = (try validate.findIssue(scratch.allocator(), document)).?;
+    try std.testing.expectEqualStrings("ZIGO036", issue.code);
+    try std.testing.expect(std.mem.indexOf(u8, issue.message, "zg_key_from_ascii") != null);
 }
 
 test "tagged union generated accessor collisions are rejected" {

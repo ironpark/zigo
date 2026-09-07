@@ -465,12 +465,7 @@ pub fn semanticDocumentForBackend(
         };
         // The undecorated name comes from the shared rule that also fills
         // `semantic.json`; only the purego callback ABI decorates it further.
-        const base_symbol = try naming.functionSymbolAlloc(
-            allocator,
-            prefix,
-            function.receiver orelse function.namespace,
-            function.name,
-        );
+        const base_symbol = try semantic.functionSymbolAlloc(allocator, prefix, function.*);
         const symbol = if (backend == .purego and semantic.functionHasCallback(function.*))
             try std.fmt.allocPrint(allocator, "{s}_purego_v2", .{base_symbol})
         else
@@ -1905,6 +1900,26 @@ test "sentinel byte strings lower to one const C pointer" {
     try std.testing.expect(function.params[0].scalar.pointer.is_const);
     try std.testing.expect(function.ret.pointer.is_c_string);
     try std.testing.expect(function.ret.pointer.is_many);
+}
+
+test "a written symbol is exported as written and still takes the purego decoration" {
+    const document: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "keyFromASCII",
+            .namespace = "Key",
+            .params = &.{},
+            .@"return" = .{ .void = {} },
+            .symbol = "zg_key_from_ascii",
+            .custom_symbol = true,
+        }},
+        .package = "keys",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const function = (try semanticDocument(arena.allocator(), document, "keys", "zg", &.{})).functions[0];
+    try std.testing.expectEqualStrings("zg_key_from_ascii", function.symbol);
 }
 
 test "string slice parameters lower to data and length roles" {
