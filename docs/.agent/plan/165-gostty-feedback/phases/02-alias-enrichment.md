@@ -1,6 +1,6 @@
 ---
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: alias 테스트에서 doc과 파라미터 이름이 채워지고 `zig build test` 통과, 커밋.
 > NEXT: none

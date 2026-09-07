@@ -32,6 +32,10 @@ const ImportIterator = struct {
 const Scanned = struct {
     paths: std.StringHashMapUnmanaged(void) = .empty,
     root_source: ?[]const u8 = null,
+    /// `pub const a = B.c;` re-exports seen so far. They outlive the file
+    /// that spelled them because the declaration they name is usually in
+    /// another file, scanned later.
+    aliases: Aliases = .{},
 
     /// Whether this file has been read already. The key is the resolved path,
     /// not the spelling the import used: the same file is reached as
@@ -47,6 +51,60 @@ const Scanned = struct {
         try self.paths.put(allocator, canonical, {});
     }
 };
+
+/// A declaration re-exported under another name: `pub const keyFromASCII =
+/// Key.fromASCII;`. The binding addresses the alias, so the reflected
+/// function is named after it; the prototype, the doc comment and the
+/// parameter names live at the target. Keyed the way `declarationOf` spells a
+/// function (`owner.name`, or a bare `name` at the root).
+const Alias = struct {
+    name: []const u8,
+    owner: ?[]const u8,
+};
+
+const Aliases = struct {
+    entries: std.StringHashMapUnmanaged(Alias) = .empty,
+
+    fn deinit(self: *Aliases, allocator: std.mem.Allocator) void {
+        var iterator = self.entries.iterator();
+        while (iterator.next()) |entry| {
+            allocator.free(entry.key_ptr.*);
+            allocator.free(entry.value_ptr.name);
+            if (entry.value_ptr.owner) |owner| allocator.free(owner);
+        }
+        self.entries.deinit(allocator);
+    }
+
+    /// Records `key` as standing for `target`, a dotted path as the source
+    /// spelled it, resolved against the container the alias sits in when it
+    /// is a bare identifier. The first spelling wins.
+    fn put(self: *Aliases, allocator: std.mem.Allocator, key: []const u8, target: []const u8, current_owner: ?[]const u8) !void {
+        if (self.entries.contains(key)) return;
+        const alias: Alias = if (std.mem.lastIndexOfScalar(u8, target, '.')) |index|
+            .{ .name = try allocator.dupe(u8, target[index + 1 ..]), .owner = try allocator.dupe(u8, target[0..index]) }
+        else
+            .{ .name = try allocator.dupe(u8, target), .owner = if (current_owner) |owner| try allocator.dupe(u8, owner) else null };
+        errdefer {
+            allocator.free(alias.name);
+            if (alias.owner) |owner| allocator.free(owner);
+        }
+        try self.entries.put(allocator, try allocator.dupe(u8, key), alias);
+    }
+
+    fn get(self: *const Aliases, declaration: Declaration) ?Alias {
+        var buffer: [512]u8 = undefined;
+        const key = declarationKey(&buffer, declaration) orelse return null;
+        return self.entries.get(key);
+    }
+};
+
+/// `owner.name`, or `name` at the root; null when it does not fit `buffer`,
+/// which no real declaration path fails.
+fn declarationKey(buffer: []u8, declaration: Declaration) ?[]const u8 {
+    if (declaration.owner) |owner|
+        return std.fmt.bufPrint(buffer, "{s}.{s}", .{ owner, declaration.name }) catch null;
+    return std.fmt.bufPrint(buffer, "{s}", .{declaration.name}) catch null;
+}
 
 /// The path with `.` and `..` resolved, which is what identifies a file. The
 /// result is absolute, so two spellings of one file collide as they should.
@@ -79,6 +137,7 @@ pub fn apply(
 ) !void {
     var scanned: Scanned = .{};
     defer scanned.paths.deinit(allocator);
+    defer scanned.aliases.deinit(allocator);
     try applyRecording(allocator, io, document, bindings_path, source_root_path, diagnostics, &scanned);
     try applyRootImports(allocator, io, document, bindings_path, source_root_path, diagnostics, &scanned);
     try applyDependencyRoots(allocator, io, document, dependency_roots, diagnostics, &scanned);
@@ -113,7 +172,7 @@ fn applyDependencyRoots(
         // package cache -- so its own directory, not the bindings directory,
         // is what its recorded paths stay relative to.
         const directory = std.fs.path.dirname(root_path) orelse ".";
-        _ = try scanSourceWithDiagnostics(allocator, source, functions, try recordedPathAlloc(allocator, directory, root_path), diagnostics, .best_effort);
+        _ = try scanSourceWithDiagnostics(allocator, source, functions, try recordedPathAlloc(allocator, directory, root_path), diagnostics, .best_effort, &scanned.aliases);
         _ = try scanImportedSources(allocator, io, source, directory, functions, scanned, diagnostics, .best_effort);
     }
     document.functions = functions;
@@ -187,6 +246,7 @@ pub fn applyWithCoverageImports(
 ) !void {
     var scanned: Scanned = .{};
     defer scanned.paths.deinit(allocator);
+    defer scanned.aliases.deinit(allocator);
     try applyRecording(allocator, io, document, bindings_path, source_root_path, diagnostics, &scanned);
     try applyRootImports(allocator, io, document, bindings_path, source_root_path, diagnostics, &scanned);
     try applyDependencyRoots(allocator, io, document, dependency_roots, diagnostics, &scanned);
@@ -208,7 +268,7 @@ fn applyRecording(
     try scanned.record(allocator, try canonicalAlloc(allocator, bindings_path));
     const functions = try allocator.dupe(semantic.SemanticFn, document.functions);
     const directory = std.fs.path.dirname(bindings_path) orelse ".";
-    var has_errors = try scanSourceWithDiagnostics(allocator, bindings_source, functions, try recordedPathAlloc(allocator, directory, bindings_path), diagnostics, .strict);
+    var has_errors = try scanSourceWithDiagnostics(allocator, bindings_source, functions, try recordedPathAlloc(allocator, directory, bindings_path), diagnostics, .strict, &scanned.aliases);
 
     // The bindings file is the one file the binding's author owns, so its
     // `//!` speaks to Go readers. The root module's `//!` is only reached when
@@ -225,7 +285,7 @@ fn applyRecording(
             scanned.root_source = root_source;
             try scanned.record(allocator, try canonicalAlloc(allocator, root_path));
             if (document.doc == null) document.doc = try containerDocAlloc(allocator, root_source);
-            has_errors = try scanSourceWithDiagnostics(allocator, root_source, functions, try recordedPathAlloc(allocator, directory, root_path), diagnostics, .strict) or has_errors;
+            has_errors = try scanSourceWithDiagnostics(allocator, root_source, functions, try recordedPathAlloc(allocator, directory, root_path), diagnostics, .strict, &scanned.aliases) or has_errors;
         } else |err| switch (err) {
             error.FileNotFound => {},
             else => {
@@ -242,7 +302,7 @@ fn applyRecording(
         const path = try std.fs.path.join(allocator, &.{ directory, referenced });
         if (std.Io.Dir.cwd().readFileAlloc(io, path, allocator, source_limit)) |source| {
             try scanned.record(allocator, try canonicalAlloc(allocator, path));
-            has_errors = try scanSourceWithDiagnostics(allocator, source, functions, try recordedPathAlloc(allocator, directory, path), diagnostics, .strict) or has_errors;
+            has_errors = try scanSourceWithDiagnostics(allocator, source, functions, try recordedPathAlloc(allocator, directory, path), diagnostics, .strict, &scanned.aliases) or has_errors;
         } else |err| {
             try writeReadError(diagnostics, path, err);
             has_errors = true;
@@ -302,7 +362,7 @@ fn scanImportedSourcesFrom(
             // Recorded from the resolved path, so a file reached through
             // `../` is written the same way as one reached directly.
             const recorded = try recordedPathAlloc(allocator, try canonicalAlloc(allocator, root), canonical);
-            has_errors = try scanSourceWithDiagnostics(allocator, imported, functions, recorded, diagnostics, strictness) or has_errors;
+            has_errors = try scanSourceWithDiagnostics(allocator, imported, functions, recorded, diagnostics, strictness, &scanned.aliases) or has_errors;
             has_errors = try scanImportedSourcesFrom(
                 allocator,
                 io,
@@ -369,8 +429,9 @@ fn scanSourceWithDiagnostics(
     path: ?[]const u8,
     diagnostics: *std.Io.Writer,
     strictness: Strictness,
+    aliases: *Aliases,
 ) !bool {
-    const parse_error_count = try scanSource(allocator, source, functions, path);
+    const parse_error_count = try scanSourceWithAliases(allocator, source, functions, path, aliases);
     if (parse_error_count != 0) {
         const label = switch (strictness) {
             .strict => "error",
@@ -417,7 +478,16 @@ fn writeReadError(writer: *std.Io.Writer, path: []const u8, err: anyerror) !void
     try writer.print("error: zigo could not read enrichment source {s}: {s}\n", .{ path, @errorName(err) });
 }
 
+/// One file on its own: aliases it spells resolve within it and are
+/// forgotten afterwards. The enrichment walk uses `scanSourceWithAliases`
+/// so a re-export in `root.zig` still finds its target in a later file.
 fn scanSource(allocator: std.mem.Allocator, source: []const u8, functions: []semantic.SemanticFn, path: ?[]const u8) !usize {
+    var aliases: Aliases = .{};
+    defer aliases.deinit(allocator);
+    return scanSourceWithAliases(allocator, source, functions, path, &aliases);
+}
+
+fn scanSourceWithAliases(allocator: std.mem.Allocator, source: []const u8, functions: []semantic.SemanticFn, path: ?[]const u8, aliases: *Aliases) !usize {
     const terminated = try allocator.dupeZ(u8, source);
     defer allocator.free(terminated);
     var tree = try std.zig.Ast.parse(allocator, terminated, .zig);
@@ -440,7 +510,10 @@ fn scanSource(allocator: std.mem.Allocator, source: []const u8, functions: []sem
         owners.deinit(allocator);
     }
 
-    try scanMembers(allocator, tree, tree.rootDecls(), null, functions, visited, matched, path, &owners);
+    // Aliases first, so a re-export matches its target wherever in the file
+    // the target is written.
+    try collectAliases(allocator, tree, tree.rootDecls(), null, functions, aliases);
+    try scanMembers(allocator, tree, tree.rootDecls(), null, functions, visited, matched, path, &owners, aliases);
 
     // Generic type factories contain methods in anonymous containers rather
     // than a named source-level owner. Give those remaining declarations a
@@ -452,7 +525,7 @@ fn scanSource(allocator: std.mem.Allocator, source: []const u8, functions: []sem
         const proto = tree.fullFnProto(&buffer, node) orelse continue;
         const doc = try declDocAlloc(allocator, tree, proto.firstToken());
         defer if (doc) |value| allocator.free(value);
-        try enrichMatches(allocator, tree, proto, null, functions, matched, false, doc, path, owners.items);
+        try enrichMatches(allocator, tree, proto, null, functions, matched, false, doc, path, owners.items, aliases);
     }
     return 0;
 }
@@ -490,6 +563,7 @@ fn scanMembers(
     matched: []bool,
     path: ?[]const u8,
     owners: *std.ArrayList([]const u8),
+    aliases: *Aliases,
 ) !void {
     // A run of declarations written with no blank line between them reads as
     // one documented group in Zig source, so an undocumented member of the run
@@ -514,7 +588,7 @@ fn scanMembers(
                 if (group_doc) |previous| allocator.free(previous);
                 group_doc = null;
             }
-            try enrichMatches(allocator, tree, proto, owner, functions, matched, true, group_doc, path, &.{});
+            try enrichMatches(allocator, tree, proto, owner, functions, matched, true, group_doc, path, &.{}, aliases);
             group_end = declarationEnd(tree, node);
             continue;
         }
@@ -524,9 +598,9 @@ fn scanMembers(
 
         const variable = tree.fullVarDecl(node) orelse continue;
         const init_node = variable.ast.init_node.unwrap() orelse continue;
+        const declaration_name = tree.tokenSlice(variable.ast.mut_token + 1);
         var container_buffer: [2]std.zig.Ast.Node.Index = undefined;
         const container = tree.fullContainerDecl(&container_buffer, init_node) orelse continue;
-        const declaration_name = tree.tokenSlice(variable.ast.mut_token + 1);
         // A namespace inside a namespace owns its functions under the joined
         // lexical path, which is exactly what the binding recorded as the
         // reflected owner, so the two still compare as equal.
@@ -536,7 +610,71 @@ fn scanMembers(
             try allocator.dupe(u8, declaration_name);
         defer allocator.free(nested_owner);
         try owners.append(allocator, try allocator.dupe(u8, nested_owner));
-        try scanMembers(allocator, tree, container.ast.members, nested_owner, functions, visited, matched, path, owners);
+        try scanMembers(allocator, tree, container.ast.members, nested_owner, functions, visited, matched, path, owners, aliases);
+    }
+}
+
+/// Every alias this file spells, at the root and inside named containers.
+fn collectAliases(
+    allocator: std.mem.Allocator,
+    tree: std.zig.Ast,
+    members: []const std.zig.Ast.Node.Index,
+    owner: ?[]const u8,
+    functions: []semantic.SemanticFn,
+    aliases: *Aliases,
+) !void {
+    for (members) |node| {
+        const variable = tree.fullVarDecl(node) orelse continue;
+        const init_node = variable.ast.init_node.unwrap() orelse continue;
+        const declaration_name = tree.tokenSlice(variable.ast.mut_token + 1);
+        var container_buffer: [2]std.zig.Ast.Node.Index = undefined;
+        const container = tree.fullContainerDecl(&container_buffer, init_node) orelse {
+            try recordAlias(allocator, tree, variable, init_node, declaration_name, owner, functions, aliases);
+            continue;
+        };
+        const nested_owner = if (owner) |parent|
+            try std.fmt.allocPrint(allocator, "{s}.{s}", .{ parent, declaration_name })
+        else
+            try allocator.dupe(u8, declaration_name);
+        defer allocator.free(nested_owner);
+        try collectAliases(allocator, tree, container.ast.members, nested_owner, functions, aliases);
+    }
+}
+
+/// `pub const a = B.c;` or `pub const a = c;`: the declaration is a name for
+/// another one. Anything else on the right-hand side -- a call, an
+/// `@import`, a literal -- is not followed. The alias's own doc comment, when
+/// it has one, is what the re-export means to say and goes on the function
+/// now; the target's doc only fills in when the alias said nothing.
+fn recordAlias(
+    allocator: std.mem.Allocator,
+    tree: std.zig.Ast,
+    variable: std.zig.Ast.full.VarDecl,
+    init_node: std.zig.Ast.Node.Index,
+    declaration_name: []const u8,
+    owner: ?[]const u8,
+    functions: []semantic.SemanticFn,
+    aliases: *Aliases,
+) !void {
+    switch (tree.nodeTag(init_node)) {
+        .identifier, .field_access => {},
+        else => return,
+    }
+    const target = tree.getNodeSource(init_node);
+    for (target) |byte| if (!(std.ascii.isAlphanumeric(byte) or byte == '_' or byte == '.')) return;
+    if (std.mem.eql(u8, target, declaration_name)) return;
+    var key_buffer: [512]u8 = undefined;
+    const key = declarationKey(&key_buffer, .{ .name = declaration_name, .owner = owner }) orelse return;
+    try aliases.put(allocator, key, target, owner);
+
+    const doc = try declDocAlloc(allocator, tree, variable.firstToken());
+    defer if (doc) |value| allocator.free(value);
+    if (doc == null) return;
+    for (functions) |*function| {
+        if (function.doc != null) continue;
+        var buffer: [512]u8 = undefined;
+        const function_key = declarationKey(&buffer, declarationOf(function.*)) orelse continue;
+        if (std.mem.eql(u8, function_key, key)) function.doc = try allocator.dupe(u8, doc.?);
     }
 }
 
@@ -553,6 +691,7 @@ fn enrichMatches(
     /// Containers this file declares by name. Only the unqualified pass reads
     /// it; the qualified one already knows the owner it is standing in.
     declared_owners: []const []const u8,
+    aliases: *const Aliases,
 ) !void {
     const name_token = proto.name_token orelse return;
     const declaration_name = tree.tokenSlice(name_token);
@@ -570,10 +709,15 @@ fn enrichMatches(
 
     for (functions, 0..) |*function, index| {
         if (matched[index]) continue;
-        const declaration = declarationOf(function.*);
+        const bound = declarationOf(function.*);
+        // The binding may address a re-export; the prototype is at the
+        // declaration the alias names, so that is what this candidate is
+        // compared against.
+        const alias = aliases.get(bound);
+        const declaration: Declaration = if (alias) |value| .{ .name = value.name, .owner = value.owner } else bound;
         if (!std.mem.eql(u8, declaration.name, declaration_name)) continue;
         if (qualified) {
-            if (!semantic.optionalStringEqual(declaration.owner, source_owner)) continue;
+            if (!ownerMatches(declaration.owner, source_owner, alias != null)) continue;
         } else if (declaration.owner) |owner| {
             // A declaration in an anonymous container cannot be the one this
             // function names when the same file writes that owner out.
@@ -697,6 +841,18 @@ fn hasBlankLine(gap: []const u8) bool {
 
 fn tokenEnd(tree: std.zig.Ast, token: std.zig.Ast.TokenIndex) usize {
     return tree.tokenStart(token) + tree.tokenSlice(token).len;
+}
+
+/// Whether the container a prototype sits in is the one a declaration names.
+/// An alias target is spelled from where the alias stands, so it may lead
+/// with an import binding -- `key.Key.fromASCII` -- that the target file has
+/// no name for; the trailing segments are what both spell the same way.
+fn ownerMatches(declared: ?[]const u8, source_owner: ?[]const u8, through_alias: bool) bool {
+    if (semantic.optionalStringEqual(declared, source_owner)) return true;
+    if (!through_alias) return false;
+    const wanted = declared orelse return false;
+    const actual = source_owner orelse return false;
+    return wanted.len > actual.len and std.mem.endsWith(u8, wanted, actual) and wanted[wanted.len - actual.len - 1] == '.';
 }
 
 fn declarationEnd(tree: std.zig.Ast, node: std.zig.Ast.Node.Index) usize {
@@ -920,6 +1076,87 @@ test "AST enrichment follows the declaration an explicit `.name` renamed" {
     try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), source, &functions, "bindings.zig"));
     try std.testing.expectEqualStrings("ratio", functions[0].params[0].name);
     try std.testing.expectEqualStrings("Scales the alpha.", functions[0].doc.?);
+}
+
+test "an alias re-export takes its doc and parameter names from the declaration it names" {
+    // `root.zig` re-exports `Key.fromASCII`; the binding addresses the alias,
+    // so the reflected function is named after it, and the prototype lives
+    // in a file scanned later.
+    const root_source =
+        \\pub const Key = @import("key.zig").Key;
+        \\pub const keyFromASCII = Key.fromASCII;
+    ;
+    const key_source =
+        \\pub const Key = struct {
+        \\    /// Maps an ASCII byte to a key.
+        \\    pub fn fromASCII(byte: u8) Key { _ = byte; return .{}; }
+        \\};
+    ;
+    var functions = [_]semantic.SemanticFn{.{
+        .name = "keyFromASCII",
+        .params = &.{.{ .name = "p0", .type = .{ .int = .{ .bits = 8, .signed = false } } }},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_key_from_ascii",
+    }};
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var aliases: Aliases = .{};
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), root_source, &functions, "root.zig", &aliases));
+    try std.testing.expectEqual(.fallback, functions[0].params[0].name_source);
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), key_source, &functions, "key.zig", &aliases));
+    try std.testing.expectEqualStrings("byte", functions[0].params[0].name);
+    try std.testing.expectEqualStrings("Maps an ASCII byte to a key.", functions[0].doc.?);
+    try std.testing.expectEqualStrings("key.zig", functions[0].source.?.path);
+}
+
+test "an alias's own doc comment wins and an import-qualified target still matches" {
+    const root_source =
+        \\const key = @import("key.zig");
+        \\/// KeyFromASCII is the Go entry point for ASCII lookups.
+        \\pub const keyFromASCII = key.Key.fromASCII;
+    ;
+    const key_source =
+        \\pub const Key = struct {
+        \\    /// Maps an ASCII byte to a key.
+        \\    pub fn fromASCII(byte: u8) Key { _ = byte; return .{}; }
+        \\};
+    ;
+    var functions = [_]semantic.SemanticFn{.{
+        .name = "keyFromASCII",
+        .params = &.{.{ .name = "p0", .type = .{ .int = .{ .bits = 8, .signed = false } } }},
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_key_from_ascii",
+    }};
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var aliases: Aliases = .{};
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), root_source, &functions, "root.zig", &aliases));
+    try std.testing.expectEqualStrings("KeyFromASCII is the Go entry point for ASCII lookups.", functions[0].doc.?);
+    try std.testing.expectEqual(@as(usize, 0), try scanSourceWithAliases(arena.allocator(), key_source, &functions, "key.zig", &aliases));
+    try std.testing.expectEqualStrings("byte", functions[0].params[0].name);
+    try std.testing.expectEqualStrings("KeyFromASCII is the Go entry point for ASCII lookups.", functions[0].doc.?);
+}
+
+test "an alias inside a container resolves a bare identifier against that container" {
+    const source =
+        \\pub const Key = struct {
+        \\    /// Maps an ASCII byte to a key.
+        \\    pub fn fromASCII(byte: u8) Key { _ = byte; return .{}; }
+        \\    pub const fromAscii = fromASCII;
+        \\};
+    ;
+    var functions = [_]semantic.SemanticFn{.{
+        .name = "fromAscii",
+        .params = &.{.{ .name = "p0", .type = .{ .int = .{ .bits = 8, .signed = false } } }},
+        .namespace = "Key",
+        .@"return" = .{ .void = {} },
+        .symbol = "zg_key_from_ascii",
+    }};
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    try std.testing.expectEqual(@as(usize, 0), try scanSource(arena.allocator(), source, &functions, "key.zig"));
+    try std.testing.expectEqualStrings("byte", functions[0].params[0].name);
+    try std.testing.expectEqualStrings("Maps an ASCII byte to a key.", functions[0].doc.?);
 }
 
 test "the anonymous-container fallback refuses an owner the source contradicts" {
