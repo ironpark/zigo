@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T14:18:47Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Prototype checks pass, limits and integration steps are documented, and production files remain unchanged.
 > NEXT: none
