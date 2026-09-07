@@ -103,11 +103,9 @@ const types_package = zigo.package(.{
             api.function("freeTicker", .{ .role = .{ .destructor = Ticker.typeRef() } }),
             api.function("tickerAdvance", .{
                 .name = "advance",
-                .role = .{ .method = Ticker.typeRef() },
             }),
             api.function("tickerElapsed", .{
                 .name = "elapsed",
-                .role = .{ .method = Ticker.typeRef() },
             }),
         }),
         api.value("TickerInfo", .{}),
@@ -124,6 +122,7 @@ pub const bindings = zigo.define(.{
         api.value("Limits", .{}),
         Stream.define(&.{
             Stream.function("capacity", .{}),
+            api.function("freeStream", .{ .role = .{ .destructor = Stream.typeRef() } }),
         }),
         BorrowBox.define(&.{
             BorrowBox.function("create", .{}),
@@ -161,7 +160,6 @@ pub const bindings = zigo.define(.{
         }),
         api.function("echoQueueSignal", .{}),
         api.function("liveBorrowChildren", .{}),
-        api.function("freeStream", .{ .role = .{ .destructor = Stream.typeRef() } }),
         api.function("inspectTicker", .{}),
         api.function("liveStreams", .{}),
         api.function("liveQueues", .{}),

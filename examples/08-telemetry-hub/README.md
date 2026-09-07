@@ -4,6 +4,8 @@
 검증합니다. 작은 기능 하나를 배우려면 [예제 선택 가이드](../../docs/examples.md)에서
 더 단순한 예제를 먼저 선택하세요.
 
+[바인딩 선언](src/bindings.zig)의 `TelemetryHub` Context는 문자열·콜백·취소 계약이 필요한 네 함수만 보강합니다. 나머지는 `.discovery.public`으로 발견하므로 Context의 멤버 목록이 전체 export 목록을 제한하지 않습니다.
+
 ## 확인할 기능
 
 - 여러 enum과 typed error set

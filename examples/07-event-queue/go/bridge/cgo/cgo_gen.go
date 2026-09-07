@@ -557,6 +557,12 @@ func StreamCapacity(self unsafe.Pointer) (uint32, int32) {
 	return uint32(outResult), code
 }
 
+// StreamFreeStream calls the generated C ABI wrapper for zg_stream_free_stream.
+func StreamFreeStream(self unsafe.Pointer) int32 {
+	code := int32(C.zg_stream_free_stream((*C.zg_stream)(self)))
+	return code
+}
+
 // BorrowBoxCreate calls the generated C ABI wrapper for zg_borrow_box_create.
 func BorrowBoxCreate(value int32) (unsafe.Pointer, int32) {
 	var outResult *C.zg_borrow_box
@@ -659,12 +665,6 @@ func EchoQueueSignal(signal uint8) uint8 {
 // LiveBorrowChildren calls the generated C ABI wrapper for zg_live_borrow_children.
 func LiveBorrowChildren() uint {
 	return uint(C.zg_live_borrow_children())
-}
-
-// StreamFreeStream calls the generated C ABI wrapper for zg_stream_free_stream.
-func StreamFreeStream(self unsafe.Pointer) int32 {
-	code := int32(C.zg_stream_free_stream((*C.zg_stream)(self)))
-	return code
 }
 
 // InspectTicker calls the generated C ABI wrapper for zg_inspect_ticker.

@@ -2,31 +2,31 @@ const zigo = @import("zigo");
 const library = @import("type_relations");
 
 const api = zigo.scope(library);
-const counter = api.in("Counter");
-const accumulator = api.in("Accumulator");
-const deccolm_mode = api.in("DeccolmMode");
+const Counter = api.handle("Counter", .{}).context();
+const Accumulator = api.handle("Accumulator", .{}).context();
+const DeccolmMode = api.enumeration("DeccolmMode", .{}).context();
 const text = api.in("text");
 
 // Scopes keep source identity; Go adapters only change the public Go type.
 pub const bindings = zigo.define(.{
     .root = library,
     .declarations = &.{
-        api.handle("Counter", .{}).members(&.{
-            counter.function("create", .{}),
-            counter.function("get", .{}),
-            counter.function("add", .{}),
-            counter.function("deinit", .{}),
+        Counter.define(&.{
+            Counter.function("create", .{}),
+            Counter.function("get", .{}),
+            Counter.function("add", .{}),
+            Counter.function("deinit", .{}),
         }),
-        api.handle("Accumulator", .{}).members(&.{
-            accumulator.function("create", .{}),
-            accumulator.function("absorb", .{}),
-            accumulator.function("total", .{}),
-            accumulator.function("deinit", .{}),
+        Accumulator.define(&.{
+            Accumulator.function("create", .{}),
+            Accumulator.function("absorb", .{}),
+            Accumulator.function("total", .{}),
+            Accumulator.function("deinit", .{}),
         }),
         api.enumeration("CursorStyle", .{}),
         api.enumeration("CharsetSlot", .{}),
-        api.enumeration("DeccolmMode", .{}).members(&.{
-            deccolm_mode.function("columns", .{}),
+        DeccolmMode.define(&.{
+            DeccolmMode.function("columns", .{}),
         }),
         api.enumeration("EraseDisplay", .{ .exhaustive = false }),
         api.value("Point", .{ .go = .{

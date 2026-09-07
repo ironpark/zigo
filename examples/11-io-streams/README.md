@@ -3,6 +3,8 @@
 파일·메모리·stdin/stdout을 `io.Reader`와 `io.Writer`로 받아 Zig가 처리하게 합니다.
 반대로 native 객체를 Go의 `io.Reader`·`io.Writer`로 사용하는 흐름도 포함합니다.
 
+[바인딩 선언](src/bindings.zig)에서 옵션이 없는 `Sink`·`Source` 멤버는 `.select()`로 선택하고, 함수별 계약과 플러그인이 다른 `Document`는 `.define()`으로 구성합니다. `fillCodepoints`는 helper와 비교할 수 있도록 전체 출력 버퍼 스키마를 남겼습니다.
+
 ## 먼저 실행할 예제
 
 이 디렉터리에서 실행합니다. 명령은 Bash·zsh 기준입니다.
@@ -62,8 +64,9 @@ const satisfies: zigo.PluginModule = .{
 ```zig
 // src/bindings.zig
 const api = zigo.scope(library);
-const document = api.handle("Document", .{})
-    .use(satisfies.plugin, .{ .interfaces = &.{"io.ReadWriteCloser"} });
+const Document = api.handle("Document", .{}).use(satisfies.plugin, .{
+    .interfaces = &.{"io.ReadWriteCloser"},
+}).context();
 ```
 
 `Document`는 `features.implements`로 `Write`·`Read`·`WriteTo`·`ReadFrom`을, 생성자 쌍으로

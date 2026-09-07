@@ -73,6 +73,20 @@ zig build purego-go purego-go-verify
 
 공유 라이브러리 로드 전제는 [purego 가이드](purego.md)를 참고하세요.
 
+## 바인딩 작성 기능별 예제
+
+| 작성할 내용 | 선언을 볼 예제 |
+|---|---|
+| `scope.in()`과 `Entry.members()`의 기본 조합 | [03-opaque](../examples/03-opaque/src/bindings.zig) |
+| Context와 generic 구체화의 공통 selector·타입 참조 | [05-pipeline](../examples/05-pipeline/src/bindings.zig) |
+| 타입 밖 함수의 receiver 추론·명시적 생성자와 소멸자·공통 반환 계약 | [07-event-queue](../examples/07-event-queue/src/bindings.zig) |
+| 자동 발견에 Context로 일부 계약만 보강 | [08-telemetry-hub](../examples/08-telemetry-hub/src/bindings.zig) |
+| handle·enum Context와 일반 네임스페이스 scope | [09-type-relations](../examples/09-type-relations/src/bindings.zig) |
+| union 표현 옵션과 명시적 멤버 selector | [10-tagged-union](../examples/10-tagged-union/src/bindings.zig) |
+| plugin을 붙인 Context, `define()`과 `select()`, helper와 전체 버퍼 스키마 | [11-io-streams](../examples/11-io-streams/src/bindings.zig) |
+| 공유 release 계약과 materialized 반환 | [12-materialized](../examples/12-materialized/src/bindings.zig) |
+| native 인덱스 기반 sparse 콜백 계약 | [04-callback](../examples/04-callback/src/bindings.zig) |
+
 ## 전체 예제
 
 | 예제 | 보여 주는 내용 |

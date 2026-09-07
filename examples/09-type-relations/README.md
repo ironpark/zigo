@@ -4,6 +4,8 @@
 `Accumulator`의 메서드이지만 다른 타입인 `*const Counter`를 호출 동안 빌려 받습니다.
 메서드의 소속 타입과 인자의 참조 타입이 달라도 각각의 수명을 검사합니다.
 
+[바인딩 선언](src/bindings.zig)은 handle과 enum 멤버를 각각 `Counter`·`Accumulator`·`DeccolmMode` Context에 묶습니다. 타입 등록이 아닌 `text`·`text.unicode` 네임스페이스에는 `api.in()`을 사용하고, 루트의 `cursorStyleBlinks`는 명시적 receiver 지정 예시로 유지합니다.
+
 ## Go에서 사용
 
 아래 함수는 생성된 `type_relations` 패키지 안에 작성하는 예제입니다. 다른 패키지에서는

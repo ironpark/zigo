@@ -3,6 +3,8 @@
 Zig tagged union을 handle projection, snapshot, 값 전달로 노출하는 예제입니다.
 표현별 선언과 지원 payload는 [Tagged union 가이드](../../docs/bindings-unions.md)에 있습니다.
 
+[바인딩 선언](src/bindings.zig)의 `Value`·`Signal` Context는 projection·snapshot 옵션을 캡처하고 `.select(.{ .names = ... })`로 공개 멤버를 선택합니다. `Palette`는 필드 설정을 함께 보존합니다. 별도 멤버가 없는 값 타입과 JSON 플러그인 등록은 직접 Entry로 선언합니다.
+
 ## 어떤 API가 생성되나요?
 
 | 등록 타입 | 표현 | 주요 Go API |

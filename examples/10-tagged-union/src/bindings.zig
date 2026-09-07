@@ -3,49 +3,49 @@ const library = @import("tagged_union");
 const json = @import("zigo_json");
 
 const api = zigo.scope(library);
-const child = api.in("Child");
-const value = api.in("Value");
-const signal = api.in("Signal");
-const palette = api.in("Palette");
+const Child = api.handle("Child", .{}).context();
+const Value = api.taggedUnion("Value", .{}).context();
+const Signal = api.taggedUnion("Signal", .{ .access = .snapshot }).context();
+const Palette = api.handle("Palette", .{ .fields = &.{.{ .path = "flags", .set = true }} }).context();
 
 // Plugin attachment targets and their option types are checked at this declaration.
 pub const bindings = zigo.define(.{
     .root = library,
     .declarations = &.{
         api.enumeration("Mode", .{}).use(json.plugin, .{}),
-        api.handle("Child", .{}).members(&.{
-            child.function("create", .{}),
-            child.function("get", .{}),
-            child.function("deinit", .{}),
+        Child.define(&.{
+            Child.function("create", .{}),
+            Child.function("get", .{}),
+            Child.function("deinit", .{}),
         }),
-        api.taggedUnion("Value", .{}).members(&.{
-            value.function("create", .{}),
-            value.function("setNone", .{}),
-            value.function("setFlag", .{}),
-            value.function("setMode", .{}),
-            value.function("usePresetSamples", .{}),
-            value.function("useEmptySamples", .{}),
-            value.function("useMutableSamples", .{}),
-            value.function("setChild", .{}),
-            value.function("borrow", .{}),
-            value.function("deinit", .{}),
-        }),
-        api.taggedUnion("Signal", .{ .access = .snapshot }).members(&.{
-            signal.function("create", .{}),
-            signal.function("setIdle", .{}),
-            signal.function("setTicks", .{}),
-            signal.function("setLevel", .{}),
-            signal.function("setOffset", .{}),
-            signal.function("setMode", .{}),
-            signal.function("setActive", .{}),
-            signal.function("deinit", .{}),
-        }),
+        Value.select(.{ .names = &.{
+            "create",
+            "setNone",
+            "setFlag",
+            "setMode",
+            "usePresetSamples",
+            "useEmptySamples",
+            "useMutableSamples",
+            "setChild",
+            "borrow",
+            "deinit",
+        } }),
+        Signal.select(.{ .names = &.{
+            "create",
+            "setIdle",
+            "setTicks",
+            "setLevel",
+            "setOffset",
+            "setMode",
+            "setActive",
+            "deinit",
+        } }),
         api.value("RGB", .{}).use(json.plugin, .{ .field_names = .zig }),
         api.value("Flags", .{}),
         api.value("ColorRecord", .{}),
-        api.handle("Palette", .{ .fields = &.{.{ .path = "flags", .set = true }} }).members(&.{
-            palette.function("create", .{}),
-            palette.function("deinit", .{}),
+        Palette.define(&.{
+            Palette.function("create", .{}),
+            Palette.function("deinit", .{}),
         }),
         api.callback("FlagsObserver", .{}),
         api.taggedUnion("ScrollViewport", .{ .omit = &.{"unknown"} }),

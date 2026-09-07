@@ -111,3 +111,7 @@ No new full runtime or generated-tree run was performed for this review.
 ## Recommended next scope
 
 Migrate 05/08/09/10, apply the simple selectors and redundant-role cleanup, group Stream's destructor, and update the authoring-feature guide and affected READMEs. Keep 03 as a documented lower-level baseline and preserve the explicit buffer schema example.
+
+## 후속 적용
+
+`example-adoption-polish` 계획에서 05·08·09·10의 Context, 10·11의 selector, 07의 receiver·소멸자 정리와 학습 안내를 적용했습니다. 위 평가는 적용 전 기준의 기록입니다.

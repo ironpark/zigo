@@ -8,6 +8,8 @@
 - `Close`, 수명 카운터와 동시 생성 테스트로 자원 정리를 확인합니다.
 - `CompressionBound`는 zlib 링크 설정의 전파를 확인합니다.
 
+[바인딩 선언](src/bindings.zig)은 `Pipeline`·`IntBatch`·`FloatBatch`를 `.context()`로 묶습니다. 두 generic 구체화는 같은 `batch_members`를 `.select()`에 전달하고, `Batch` 인터페이스는 각 Context의 `.typeRef()`를 참조합니다.
+
 ## 실행
 
 이 디렉터리에서 실행합니다.

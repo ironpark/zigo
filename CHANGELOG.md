@@ -8,6 +8,9 @@
 
 ### Changed
 
+- Context 적용을 05·08·09·10 예제로 확대하고 단순 멤버 selector와 수명 선언을 정리했습니다.
+  예제 선택 가이드에 작성 기능별 안내를 추가했습니다.
+
 - **Breaking:** 콜백 타입의 파라미터 힌트도 원본 native 인덱스의 sparse 목록으로 통일하고
   실패 기본값 이름을 `on_failure`로 변경했습니다. userdata·byte length·중복·범위 밖 인덱스를 검증합니다.
 - **Breaking:** 명시적 생성자의 receiver를 `.none`·`.member`·명시 타입으로 구분합니다.
@@ -29,7 +32,7 @@
 ### Added
 
 - 타입 선언의 `.context()`: 원본 scope·타입 참조·표현 옵션을 캡처하는 제네릭 문맥.
-  `define()`·`select()`로 기존 Entry를 만들며 네 예제에 적용했습니다.
+  `define()`·`select()`로 기존 Entry를 만들며 여덟 예제에 적용했습니다.
 
 - 완성된 계약 값을 반환하는 `zigo.param`·`zigo.result` helper와 멤버 목록을 교체하는 `.members(entries)`.
 

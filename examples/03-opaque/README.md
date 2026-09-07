@@ -3,6 +3,8 @@
 상태를 가진 Zig 객체를 Go handle로 사용합니다. [실행 가능한 사용 예제](go/opaque/example_test.go)에서
 생성 오류 확인, 메서드 호출, optional 결과의 존재 여부, `defer Close`를 순서대로 확인하세요.
 
+이 예제는 `api.in()`과 `Entry.members()`를 직접 조합하는 기본 작성 방식을 유지합니다. 타입 선언과 scope를 함께 묶는 Context 방식은 [Pipeline](../05-pipeline/src/bindings.zig)과 비교하세요.
+
 ## 실행
 
 이 디렉터리에서 실행합니다.

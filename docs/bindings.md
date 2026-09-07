@@ -116,6 +116,7 @@ callback은 함수 포인터여서 자체 멤버 문맥을 제공하지 않습�
 [event-queue](../examples/07-event-queue/src/bindings.zig),
 [스트림](../examples/11-io-streams/src/bindings.zig),
 [materialized](../examples/12-materialized/src/bindings.zig)를 참고하세요.
+Context·selector·자동 발견의 조합은 [작성 기능별 예제](examples.md#바인딩-작성-기능별-예제)에서 찾을 수 있습니다.
 
 ## 계약과 참조
 

@@ -2,26 +2,26 @@ const zigo = @import("zigo");
 const library = @import("telemetry_hub");
 
 const api = zigo.scope(library);
-const telemetry_hub = api.in("TelemetryHub");
+const TelemetryHub = api.handle("TelemetryHub", .{}).context();
 
 pub const bindings = zigo.define(.{
     .root = library,
     .discovery = .{ .public = .{} },
     .declarations = &.{
-        api.handle("TelemetryHub", .{}).members(&.{
-            telemetry_hub.function("create", .{
+        TelemetryHub.define(&.{
+            TelemetryHub.function("create", .{
                 .params = &.{
                     .{ .index = 0, .semantic = .utf8_string },
                     zigo.param.callback(4, .{ .retention = .retained }),
                 },
             }),
-            telemetry_hub.function("rename", .{
+            TelemetryHub.function("rename", .{
                 .params = &.{
                     .{ .index = 1, .semantic = .utf8_string },
                 },
             }),
-            telemetry_hub.function("name", .{ .returns = .{ .semantic = .utf8_string } }),
-            telemetry_hub.function("reduce", .{
+            TelemetryHub.function("name", .{ .returns = .{ .semantic = .utf8_string } }),
+            TelemetryHub.function("reduce", .{
                 .params = &.{
                     zigo.param.cancel(2, "Cancelled").named("cancel"),
                 },

@@ -1466,6 +1466,38 @@
       "symbol": "zg_stream_capacity"
     },
     {
+      "name": "freeStream",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "injected": "allocator",
+          "name": "stream",
+          "name_source": "ast",
+          "retention": "borrowed",
+          "source": {
+            "line": 497,
+            "column": 43
+          },
+          "type": {
+            "kind": "void"
+          }
+        }
+      ],
+      "receiver": "Stream",
+      "receiver_at": 1,
+      "return": {
+        "kind": "void"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 497,
+        "column": 8
+      },
+      "zig_path": "freeStream",
+      "symbol": "zg_stream_free_stream"
+    },
+    {
       "name": "create",
       "namespace": "BorrowBox",
       "ownership": "caller",
@@ -1850,38 +1882,6 @@
         "column": 8
       },
       "symbol": "zg_live_borrow_children"
-    },
-    {
-      "name": "freeStream",
-      "ownership": "borrowed",
-      "params": [
-        {
-          "direction": "in",
-          "injected": "allocator",
-          "name": "stream",
-          "name_source": "ast",
-          "retention": "borrowed",
-          "source": {
-            "line": 497,
-            "column": 43
-          },
-          "type": {
-            "kind": "void"
-          }
-        }
-      ],
-      "receiver": "Stream",
-      "receiver_at": 1,
-      "return": {
-        "kind": "void"
-      },
-      "source": {
-        "path": "root.zig",
-        "line": 497,
-        "column": 8
-      },
-      "zig_path": "freeStream",
-      "symbol": "zg_stream_free_stream"
     },
     {
       "doc": "Exercises cross-package handle and value-struct parameters without making\nthis free function a Ticker method.",

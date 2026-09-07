@@ -91,6 +91,7 @@ type nativeBindings struct {
 	fnEventQueueClear                   func(unsafe.Pointer, *uintptr) int32
 	fnEventQueueDeinit                  func(unsafe.Pointer) int32
 	fnStreamCapacity                    func(unsafe.Pointer, *uint32) int32
+	fnStreamFreeStream                  func(unsafe.Pointer) int32
 	fnBorrowBoxCreate                   func(int32, *unsafe.Pointer) int32
 	fnBorrowBoxView                     func(unsafe.Pointer, *unsafe.Pointer) int32
 	fnBorrowBoxDeinit                   func(unsafe.Pointer) int32
@@ -107,7 +108,6 @@ type nativeBindings struct {
 	fnTerminalDeinit                    func(unsafe.Pointer) int32
 	fnEchoQueueSignal                   func(uint8) uint8
 	fnLiveBorrowChildren                func() uintptr
-	fnStreamFreeStream                  func(unsafe.Pointer) int32
 	fnInspectTicker                     func(unsafe.Pointer, unsafe.Pointer, unsafe.Pointer) int32
 	fnLiveStreams                       func() uintptr
 	fnLiveQueues                        func() uintptr
@@ -516,6 +516,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_stream_capacity", err)
 	}
+	addrStreamFreeStream, err := resolveSymbol(handle, "zg_stream_free_stream")
+	if err != nil {
+		return fail("zg_stream_free_stream", err)
+	}
 	addrBorrowBoxCreate, err := resolveSymbol(handle, "zg_borrow_box_create")
 	if err != nil {
 		return fail("zg_borrow_box_create", err)
@@ -579,10 +583,6 @@ func loadCandidate(path string) error {
 	addrLiveBorrowChildren, err := resolveSymbol(handle, "zg_live_borrow_children")
 	if err != nil {
 		return fail("zg_live_borrow_children", err)
-	}
-	addrStreamFreeStream, err := resolveSymbol(handle, "zg_stream_free_stream")
-	if err != nil {
-		return fail("zg_stream_free_stream", err)
 	}
 	addrInspectTicker, err := resolveSymbol(handle, "zg_inspect_ticker")
 	if err != nil {
@@ -670,6 +670,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnEventQueueClear, addrEventQueueClear)
 	purego.RegisterFunc(&next.fnEventQueueDeinit, addrEventQueueDeinit)
 	purego.RegisterFunc(&next.fnStreamCapacity, addrStreamCapacity)
+	purego.RegisterFunc(&next.fnStreamFreeStream, addrStreamFreeStream)
 	purego.RegisterFunc(&next.fnBorrowBoxCreate, addrBorrowBoxCreate)
 	purego.RegisterFunc(&next.fnBorrowBoxView, addrBorrowBoxView)
 	purego.RegisterFunc(&next.fnBorrowBoxDeinit, addrBorrowBoxDeinit)
@@ -686,7 +687,6 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnTerminalDeinit, addrTerminalDeinit)
 	purego.RegisterFunc(&next.fnEchoQueueSignal, addrEchoQueueSignal)
 	purego.RegisterFunc(&next.fnLiveBorrowChildren, addrLiveBorrowChildren)
-	purego.RegisterFunc(&next.fnStreamFreeStream, addrStreamFreeStream)
 	purego.RegisterFunc(&next.fnInspectTicker, addrInspectTicker)
 	purego.RegisterFunc(&next.fnLiveStreams, addrLiveStreams)
 	purego.RegisterFunc(&next.fnLiveQueues, addrLiveQueues)
@@ -1211,6 +1211,12 @@ func StreamCapacity(self unsafe.Pointer) (uint32, int32) {
 	return outResult, code
 }
 
+// StreamFreeStream calls the generated purego ABI wrapper for zg_stream_free_stream.
+func StreamFreeStream(self unsafe.Pointer) int32 {
+	code := bindings().fnStreamFreeStream(self)
+	return code
+}
+
 // BorrowBoxCreate calls the generated purego ABI wrapper for zg_borrow_box_create.
 func BorrowBoxCreate(value int32) (unsafe.Pointer, int32) {
 	var outResult unsafe.Pointer
@@ -1315,12 +1321,6 @@ func EchoQueueSignal(signal uint8) uint8 {
 func LiveBorrowChildren() uint {
 	result := bindings().fnLiveBorrowChildren()
 	return uint(result)
-}
-
-// StreamFreeStream calls the generated purego ABI wrapper for zg_stream_free_stream.
-func StreamFreeStream(self unsafe.Pointer) int32 {
-	code := bindings().fnStreamFreeStream(self)
-	return code
 }
 
 // InspectTicker calls the generated purego ABI wrapper for zg_inspect_ticker.

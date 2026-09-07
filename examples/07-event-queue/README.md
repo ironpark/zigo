@@ -3,6 +3,8 @@
 용량 제한이 있는 Zig 이벤트 큐를 Go 패키지로 노출합니다. 객체 수명뿐 아니라 값 타입,
 버퍼, 하위 패키지를 함께 확인할 때 사용하는 예제입니다.
 
+[바인딩 선언](src/bindings.zig)은 타입별 Context에 멤버와 수명 계약을 모읍니다. 루트 함수인 `freeStream`도 `Stream.define()` 안에 소멸자로 등록합니다. `newStream`은 부모인 `EventQueue`의 멤버 생성자로 남으며, `Ticker`의 일반 메서드는 소속과 Zig 시그니처에서 receiver를 추론합니다.
+
 ## 확인할 기능
 
 | 기능 | 이 예제의 API |
