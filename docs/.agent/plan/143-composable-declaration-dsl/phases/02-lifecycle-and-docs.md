@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-07T06:41:52Z"
 depends_on:
 - "143-composable-declaration-dsl#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Lifecycle modifiers preserve unrelated metadata and produce the same typed schema as literals.
 > NEXT: none
