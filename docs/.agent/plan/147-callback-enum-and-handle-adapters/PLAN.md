@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T09:02:40Z"
 description: Callback adapters convert enum params/results and wrap handle pointer params as borrowed handles on both backends
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-07T08:40:47Z"
 ---
 > NEXT: Enum callback adapters: adapter converts enum params and results. ([Phase 0](phases/00-enum-adapters.md))
@@ -9,7 +10,7 @@ registered_at: "2026-09-07T08:40:47Z"
 
 - [x] [Phase 00: Enum callback adapters](phases/00-enum-adapters.md)
 - [x] [Phase 01: Borrowed handle callback parameters](phases/01-handle-params.md)
-- [ ] [Phase 02: Example coverage and changelog](phases/02-example-and-changelog.md)
+- [x] [Phase 02: Example coverage and changelog](phases/02-example-and-changelog.md)
 
 # Shared Verification
 

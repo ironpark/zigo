@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-07T09:02:40Z"
 depends_on:
 - "147-callback-enum-and-handle-adapters#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test go-check go-lib abi-check go-coverage` and the purego steps pass in the
 > NEXT: none
