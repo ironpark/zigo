@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-09-07T06:17:57Z"
 description: make func/funcs concise and composable without weakening exact-path binding validation
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-07T06:14:53Z"
 ---
 > NEXT: Implement and verify the concise, composable function DSL. ([Phase 0](phases/00-initial-work.md))
 
 # Phases
 
-- [ ] [Phase 00: Initial Work](phases/00-initial-work.md)
+- [x] [Phase 00: Initial Work](phases/00-initial-work.md)
 
 # Shared Verification
 

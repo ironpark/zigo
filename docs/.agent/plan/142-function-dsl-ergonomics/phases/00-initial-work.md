@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T06:17:57Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Focused public-module tests and `zig build test --summary all` pass; documentation demonstrates a mixed collected list with no wildcard final paths.
 > NEXT: none
