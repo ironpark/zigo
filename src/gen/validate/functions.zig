@@ -39,7 +39,6 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic) 
         };
         if (try valueReceiverIssue(allocator, document, function)) |issue| return issue;
         if (try implementsIssue(allocator, function)) |issue| return issue;
-        if (try iteratorIssue(allocator, function)) |issue| return issue;
         if (try scalarAdapterIssue(allocator, function)) |issue| return issue;
         if (try codepointIssue(allocator, function)) |issue| return issue;
         if (function.has_comptime_params == true) return .{
@@ -543,45 +542,6 @@ fn valueReceiverIssue(
         .message = try std.fmt.allocPrint(allocator, "{s} on `{s}.{s}`, whose receiver is a value and owns no lifetime", .{ what, receiver, function.name }),
         .site = site.functionSite(function),
         .hint = "a value receiver has no handle to construct, close, lend, or keep a stream in; move the function to a registered opaque type or bind it at package level",
-    };
-    return null;
-}
-
-/// An iterator wrapper drives `next()` for the caller, so the method has to
-/// be one Go can call with nothing but the receiver (and its `ctx`), and it
-/// has to say when it is finished: `?T` or `!?T`.
-fn iteratorIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !?diagnostic.Diagnostic {
-    const iterator = function.iterator orelse return null;
-    if (function.receiver == null) return .{
-        .severity = .@"error",
-        .code = "ZIGO050",
-        .message = try std.fmt.allocPrint(allocator, "`.iterator` on `{s}`, which has no receiver", .{function.name}),
-        .site = site.functionSite(function),
-        .hint = "an iterator wrapper is a method of the handle it advances; move `.iterator` to a method of a registered opaque type",
-    };
-    if (function.@"return".errorPayload() != .optional) return .{
-        .severity = .@"error",
-        .code = "ZIGO050",
-        .message = try std.fmt.allocPrint(allocator, "`.iterator` on `{s}.{s}`, which does not return `?T` or `!?T`", .{ function.receiver.?, function.name }),
-        .site = site.functionSite(function),
-        .hint = "the absent value is what ends the sequence; return an optional",
-    };
-    for (function.params) |parameter| {
-        if (parameter.injected != null or parameter.type == .cancel_flag) continue;
-        return .{
-            .severity = .@"error",
-            .code = "ZIGO050",
-            .message = try std.fmt.allocPrint(allocator, "`.iterator` on `{s}.{s}`, which takes parameter `{s}`", .{ function.receiver.?, function.name, parameter.name }),
-            .site = site.functionSite(function),
-            .hint = try std.fmt.allocPrint(allocator, "`{s}()` is called with only the receiver; move the argument into the handle's constructor", .{iterator.name}),
-        };
-    }
-    if (iterator.name.len == 0 or !std.ascii.isUpper(iterator.name[0])) return .{
-        .severity = .@"error",
-        .code = "ZIGO050",
-        .message = try std.fmt.allocPrint(allocator, "`.iterator` name `{s}` on `{s}.{s}` is not an exported Go identifier", .{ iterator.name, function.receiver.?, function.name }),
-        .site = site.functionSite(function),
-        .hint = "start the wrapper name with an uppercase letter, or omit `.name` for `All`",
     };
     return null;
 }

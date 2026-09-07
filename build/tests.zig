@@ -56,6 +56,7 @@ pub fn addRepositorySteps(
             .{ .name = "abi", .module = generator_modules.abi },
             .{ .name = "lower", .module = generator_modules.lower },
             .{ .name = "plugin", .module = generator_modules.plugin },
+            .{ .name = "diagnostic", .module = generator_modules.diagnostic },
         },
     });
     const validate_module = b.createModule(.{
@@ -93,6 +94,11 @@ pub fn addRepositorySteps(
             .{ .name = "dynamic_library", .module = generator_modules.dynamic_library },
             .{ .name = "abi", .module = generator_modules.abi },
             .{ .name = "diagnostic", .module = generator_modules.diagnostic },
+            // The plugin registry reaches the emitters a built-in plugin
+            // writes through, so doctor's module carries the same graph the
+            // generator does.
+            .{ .name = "lower", .module = generator_modules.lower },
+            .{ .name = "naming", .module = generator_modules.naming },
             .{ .name = "plugin", .module = generator_modules.plugin },
             .{ .name = "semantic", .module = generator_modules.semantic },
         },

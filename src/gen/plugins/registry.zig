@@ -5,11 +5,12 @@
 //! Order is registration order: the built-ins first, then whatever the
 //! consuming build passed to `addGoBindings(.plugins)`.
 const builtin = @import("builtin");
+const iterator = @import("iterator.zig");
 const plugin = @import("plugin");
 const testing_plugin = @import("testing.zig");
 
 /// The features zigo ships with, migrated onto the plugin frame.
-pub const builtins: []const plugin.Plugin = &.{};
+pub const builtins: []const plugin.Plugin = &.{iterator.plugin};
 
 /// The plugins the consuming build compiled in. Replaced by the generated
 /// `plugin_registry` module once a build passes `.plugins`.
