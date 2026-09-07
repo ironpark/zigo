@@ -36,6 +36,50 @@
       "receiver": "Terminal",
       "return": {"kind": "void"},
       "symbol": "ignored"
+    },
+    {
+      "doc": "Reports the pending single shift, if any.",
+      "field_access": {"path": "screen.charset.single_shift"},
+      "name": "charsetSingleShift",
+      "params": [],
+      "receiver": "Terminal",
+      "return": {"kind": "optional", "child": {"kind": "enum", "ref": "CursorStyle"}},
+      "symbol": "ignored"
+    },
+    {
+      "field_access": {"path": "scrollback"},
+      "name": "scrollback",
+      "params": [],
+      "receiver": "Terminal",
+      "return": {"kind": "optional", "child": {"bits": 16, "kind": "int", "signed": false}},
+      "symbol": "ignored"
+    },
+    {
+      "field_access": {"path": "scrollback", "setter": true},
+      "name": "setScrollback",
+      "params": [
+        {"name": "v", "name_source": "sidecar", "type": {"kind": "optional", "child": {"bits": 16, "kind": "int", "signed": false}}}
+      ],
+      "receiver": "Terminal",
+      "return": {"kind": "void"},
+      "symbol": "ignored"
+    },
+    {
+      "field_access": {"path": "title"},
+      "name": "title",
+      "params": [],
+      "receiver": "Terminal",
+      "return": {"kind": "slice", "const": true, "element": {"bits": 8, "kind": "int", "signed": false}},
+      "return_semantic": "utf8_string",
+      "symbol": "ignored"
+    },
+    {
+      "field_access": {"path": "palette"},
+      "name": "palette",
+      "params": [],
+      "receiver": "Terminal",
+      "return": {"kind": "slice", "const": true, "element": {"bits": 32, "kind": "int", "signed": false}},
+      "symbol": "ignored"
     }
   ],
   "package": "fieldaccess",

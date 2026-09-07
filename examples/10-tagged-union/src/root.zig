@@ -203,6 +203,10 @@ pub fn flattenFlags(options: PaintOptions) Flags {
 
 pub const Palette = struct {
     flags: Flags,
+    /// The mode the palette is pinned to, or null when it follows `flags`.
+    pinned_mode: ?Mode = null,
+    /// A name the palette borrows for its lifetime.
+    name: []const u8 = "default",
 
     pub fn create(flags: Flags) CreateError!*Palette {
         const palette = std.heap.page_allocator.create(Palette) catch return error.OutOfMemory;

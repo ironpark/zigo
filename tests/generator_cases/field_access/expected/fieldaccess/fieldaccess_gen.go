@@ -73,3 +73,84 @@ func (t *Terminal) SetCursorX(v uint16) error {
 	}
 	return nil
 }
+
+// CharsetSingleShift: Reports the pending single shift, if any.
+// Zig field: Terminal.screen.charset.single_shift.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (t *Terminal) CharsetSingleShift() (CursorStyle, bool, error) {
+	ptr, err := zigoCheckedPointer("Terminal.CharsetSingleShift receiver", t)
+	if err != nil {
+		return 0, false, err
+	}
+	defer t.zigoRelease()
+	result, zigoHas, code := raw.TerminalCharsetSingleShift(ptr)
+	if code != 0 {
+		return 0, false, zigoPoisonAfterPanic(zigoErrorForCode("Terminal.CharsetSingleShift", code), t)
+	}
+	return CursorStyle(result), zigoHas, nil
+}
+
+// Scrollback returns the Zig field Terminal.scrollback.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (t *Terminal) Scrollback() (uint16, bool, error) {
+	ptr, err := zigoCheckedPointer("Terminal.Scrollback receiver", t)
+	if err != nil {
+		return 0, false, err
+	}
+	defer t.zigoRelease()
+	result, zigoHas, code := raw.TerminalScrollback(ptr)
+	if code != 0 {
+		return 0, false, zigoPoisonAfterPanic(zigoErrorForCode("Terminal.Scrollback", code), t)
+	}
+	return result, zigoHas, nil
+}
+
+// SetScrollback sets the Zig field Terminal.scrollback.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (t *Terminal) SetScrollback(v *uint16) error {
+	ptr, err := zigoCheckedPointer("Terminal.SetScrollback receiver", t)
+	if err != nil {
+		return err
+	}
+	defer t.zigoRelease()
+	code := raw.TerminalSetScrollback(ptr, v)
+	if code != 0 {
+		return zigoPoisonAfterPanic(zigoErrorForCode("Terminal.SetScrollback", code), t)
+	}
+	return nil
+}
+
+// Title returns the Zig field Terminal.title.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (t *Terminal) Title() (string, error) {
+	ptr, err := zigoCheckedPointer("Terminal.Title receiver", t)
+	if err != nil {
+		return "", err
+	}
+	defer t.zigoRelease()
+	result, code := raw.TerminalTitle(ptr)
+	if code != 0 {
+		return "", zigoPoisonAfterPanic(zigoErrorForCode("Terminal.Title", code), t)
+	}
+	return result, nil
+}
+
+// Palette returns the Zig field Terminal.palette.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (t *Terminal) Palette() ([]uint32, error) {
+	ptr, err := zigoCheckedPointer("Terminal.Palette receiver", t)
+	if err != nil {
+		return nil, err
+	}
+	defer t.zigoRelease()
+	result, code := raw.TerminalPalette(ptr)
+	if code != 0 {
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("Terminal.Palette", code), t)
+	}
+	return result, nil
+}

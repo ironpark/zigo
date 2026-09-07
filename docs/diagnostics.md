@@ -196,7 +196,8 @@ receiver가 소유한 view라면 `.returns.lifetime = .{ .borrowed = .receiver }
 opaque `.fields`의 경로가 없거나 중간 값·마지막 필드의 타입을 지원하지 않습니다.
 
 진단의 경로를 확인하세요. 중간 값은 struct 또는 non-optional 단일 포인터여야 합니다.
-마지막 필드의 조건은 [필드 접근자](bindings-handles.md#필드-접근자)를 참고하세요.
+마지막 필드는 scalar, 그 optional, 또는 그 slice(getter만)입니다. slice 필드에 `.set = true`를
+붙여도 같은 진단입니다. 자세한 조건은 [필드 접근자](bindings-handles.md#필드-접근자)를 참고하세요.
 
 ### ZIGO038
 

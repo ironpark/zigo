@@ -37,6 +37,59 @@ func (p *Palette) SetFlags(v Flags) error {
 	return nil
 }
 
+// PinnedMode returns the Zig field Palette.pinned_mode.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (p *Palette) PinnedMode() (Mode, bool, error) {
+	ptr, err := zigoCheckedPointer("Palette.PinnedMode receiver", p)
+	if err != nil {
+		return 0, false, err
+	}
+	defer p.zigoRelease()
+	result, zigoHas, code := raw.PalettePinnedMode(ptr)
+	if code != 0 {
+		return 0, false, zigoPoisonAfterPanic(zigoErrorForCode("Palette.PinnedMode", code), p)
+	}
+	return Mode(result), zigoHas, nil
+}
+
+// SetPinnedMode sets the Zig field Palette.pinned_mode.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (p *Palette) SetPinnedMode(v *Mode) error {
+	ptr, err := zigoCheckedPointer("Palette.SetPinnedMode receiver", p)
+	if err != nil {
+		return err
+	}
+	defer p.zigoRelease()
+	var vRaw *uint8
+	if v != nil {
+		vRawValue := uint8(*v)
+		vRaw = &vRawValue
+	}
+	code := raw.PaletteSetPinnedMode(ptr, vRaw)
+	if code != 0 {
+		return zigoPoisonAfterPanic(zigoErrorForCode("Palette.SetPinnedMode", code), p)
+	}
+	return nil
+}
+
+// Name returns the Zig field Palette.name.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (p *Palette) Name() ([]byte, error) {
+	ptr, err := zigoCheckedPointer("Palette.Name receiver", p)
+	if err != nil {
+		return nil, err
+	}
+	defer p.zigoRelease()
+	result, code := raw.PaletteName(ptr)
+	if code != 0 {
+		return nil, zigoPoisonAfterPanic(zigoErrorForCode("Palette.Name", code), p)
+	}
+	return result, nil
+}
+
 // NewChild creates a caller-owned Child.
 // The caller must call Close on the returned handle.
 // Native failures are returned as generated error values.

@@ -265,7 +265,11 @@ fn appendFieldAccessors(
     const resolved = comptime fieldPathType(Owner, path);
     if (resolved == null) return fieldAccessIssue(allocator, path, comptime fieldPathOffendingType(Owner, path));
     const Leaf = resolved.?;
-    if (!comptime supportedFieldLeaf(declaration, Leaf))
+    if (!comptime supportedFieldAccessLeaf(declaration, Leaf))
+        return fieldAccessIssue(allocator, path, Leaf);
+    // A slice getter hands Go a view into the handle; a setter would store a
+    // pointer into Go memory, which nothing keeps alive.
+    if (metadata.set and @typeInfo(Leaf) == .pointer)
         return fieldAccessIssue(allocator, path, Leaf);
     if (metadata.set and !comptime fieldPathWritable(Owner, path))
         return fieldAccessIssue(allocator, path, comptime fieldPathConstPointerType(Owner, path));
@@ -290,6 +294,9 @@ fn appendFieldAccessors(
         .params = &.{},
         .receiver = owner_name,
         .@"return" = field_type,
+        // A `[]const u8` field is text under the same inference a method
+        // result gets, so `title` reads as a Go string, not `[]byte`.
+        .return_semantic = resolveStringHint(declaration, null, field_type, .result),
         .symbol = try naming.functionSymbolAlloc(allocator, prefix, owner_name, name),
     });
 
@@ -382,6 +389,31 @@ fn fieldPathWritable(comptime Current: type, comptime path: []const u8) bool {
     return true;
 }
 
+/// What a field path may end at: a scalar `supportedFieldLeaf` accepts, an
+/// optional of one, or a slice of one. Each crosses the way the same return
+/// type of a function does: `?T` as presence plus value, `[]const T` as a
+/// pointer and length borrowed from the handle.
+fn supportedFieldAccessLeaf(comptime declaration: zigo.Binding, comptime T: type) bool {
+    return switch (@typeInfo(T)) {
+        .optional => |optional| @typeInfo(optional.child) != .pointer and
+            atomicScalar(optional.child) == null and supportedFieldLeaf(declaration, optional.child),
+        .pointer => |pointer| pointer.size == .slice and supportedFieldSliceElement(declaration, pointer.child),
+        else => supportedFieldLeaf(declaration, T),
+    };
+}
+
+/// A narrow integer element is repacked through the caller's buffer on the
+/// way out, and a borrowed field has no buffer of its own to repack into, so
+/// only elements that cross at their own width qualify.
+fn supportedFieldSliceElement(comptime declaration: zigo.Binding, comptime E: type) bool {
+    if (atomicScalar(E) != null) return false;
+    if (@typeInfo(E) == .int) {
+        const bits = @typeInfo(E).int.bits;
+        if (bits != 8 and bits != 16 and bits != 32 and bits != 64) return false;
+    }
+    return supportedFieldLeaf(declaration, E);
+}
+
 fn supportedFieldLeaf(comptime declaration: zigo.Binding, comptime T: type) bool {
     const Scalar = atomicScalar(T) orelse T;
     return switch (@typeInfo(Scalar)) {
@@ -408,7 +440,7 @@ fn fieldAccessMessageAlloc(allocator: std.mem.Allocator, comptime path: []const 
     return std.fmt.allocPrint(
         allocator,
         "error[ZIGO037]: field path `{s}`{s}\n" ++
-            "  hint: paths may cross struct values or non-optional single pointers and must end at a bool, integer, float, registered enum, or registered packed value\n",
+            "  hint: paths may cross struct values or non-optional single pointers and must end at a bool, integer, float, registered enum, or registered packed value, an optional of one, or a slice of one (getter only)\n",
         .{ path, detail },
     );
 }
@@ -4711,7 +4743,7 @@ test "opaque fields reflect nested value and pointer accessors" {
 }
 
 test "invalid opaque field paths and leaf types use ZIGO037" {
-    const Terminal = struct { label: []const u8 };
+    const Terminal = struct { label: []const []const u8, title: []const u8 };
     const Fixture = struct {};
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -4724,21 +4756,59 @@ test "invalid opaque field paths and leaf types use ZIGO037" {
         .root = Fixture,
         .types = &.{.{ .handle = .{ .type = Terminal, .fields = &.{.{ .path = "label" }} } }},
     }, "terminal", "zg"));
+    // A slice reads fine but has no setter: Go memory would dangle in it.
+    try std.testing.expectError(error.FieldAccess, reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = &.{.{ .handle = .{ .type = Terminal, .fields = &.{.{ .path = "title", .set = true }} } }},
+    }, "terminal", "zg"));
 
     const unknown = try fieldAccessMessageAlloc(std.testing.allocator, "screen.cursor.x", null);
     defer std.testing.allocator.free(unknown);
     try std.testing.expectEqualStrings(
         "error[ZIGO037]: field path `screen.cursor.x` is unknown or crosses something other than a plain struct or non-optional single pointer\n" ++
-            "  hint: paths may cross struct values or non-optional single pointers and must end at a bool, integer, float, registered enum, or registered packed value\n",
+            "  hint: paths may cross struct values or non-optional single pointers and must end at a bool, integer, float, registered enum, or registered packed value, an optional of one, or a slice of one (getter only)\n",
         unknown,
     );
-    const unsupported = try fieldAccessMessageAlloc(std.testing.allocator, "label", []const u8);
+    const unsupported = try fieldAccessMessageAlloc(std.testing.allocator, "label", []const []const u8);
     defer std.testing.allocator.free(unsupported);
     try std.testing.expectEqualStrings(
-        "error[ZIGO037]: field path `label` encounters unsupported type `[]const u8`\n" ++
-            "  hint: paths may cross struct values or non-optional single pointers and must end at a bool, integer, float, registered enum, or registered packed value\n",
+        "error[ZIGO037]: field path `label` encounters unsupported type `[]const []const u8`\n" ++
+            "  hint: paths may cross struct values or non-optional single pointers and must end at a bool, integer, float, registered enum, or registered packed value, an optional of one, or a slice of one (getter only)\n",
         unsupported,
     );
+}
+
+test "opaque fields reflect optional and slice leafs as the matching return shapes" {
+    const Slot = enum(u8) { g0, g1 };
+    const Terminal = struct { single_shift: ?Slot, title: []const u8, palette: []const u32, scrollback: ?u16 };
+    const Fixture = struct {};
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = &.{
+            .{ .enumeration = .{ .type = Slot } },
+            .{ .handle = .{ .type = Terminal, .fields = &.{
+                .{ .path = "single_shift", .name = "charsetSingleShift" },
+                .{ .path = "title" },
+                .{ .path = "palette" },
+                .{ .path = "scrollback", .set = true },
+            } } },
+        },
+    }, "terminal", "zg");
+
+    try std.testing.expectEqual(@as(usize, 5), document.functions.len);
+    try std.testing.expectEqualStrings("Slot", document.functions[0].@"return".optional.child.@"enum".ref);
+    try std.testing.expectEqual(@as(u16, 8), document.functions[1].@"return".slice.element.int.bits);
+    try std.testing.expect(document.functions[1].@"return".slice.@"const");
+    try std.testing.expectEqual(@as(u16, 32), document.functions[2].@"return".slice.element.int.bits);
+    // A borrowed view: nothing sets `ownership`, so the default stays.
+    try std.testing.expectEqual(semantic.Ownership.borrowed, document.functions[2].ownership);
+    try std.testing.expectEqual(@as(u16, 16), document.functions[3].@"return".optional.child.int.bits);
+    // The optional setter takes the same `?T`, which crosses as a nullable pointer.
+    try std.testing.expectEqualStrings("setScrollback", document.functions[4].name);
+    try std.testing.expect(document.functions[4].params[0].type == .optional);
 }
 
 test "packed value fields require registered enum and packed struct identities" {

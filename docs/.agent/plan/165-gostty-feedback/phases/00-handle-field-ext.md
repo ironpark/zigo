@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T23:45:52Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: reflect 테스트에서 getter/setter `ext.get("TEST")`가 읽히고 `zig build test` 통과, 커밋.
 > NEXT: none

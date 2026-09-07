@@ -118,3 +118,63 @@ ZIGO_EXPORT int32_t zg_terminal_set_cursor_x(zg_terminal * self, uint16_t v) {
     zg_panic_active = 0;
     return result;
 }
+
+int32_t zg_terminal_charset_single_shift_impl(const zg_terminal * self, uint8_t * out_result_has, uint8_t * out_result);
+ZIGO_EXPORT int32_t zg_terminal_charset_single_shift(const zg_terminal * self, uint8_t * out_result_has, uint8_t * out_result) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return zg_panic_publish();
+    }
+    int32_t result = zg_terminal_charset_single_shift_impl(self, out_result_has, out_result);
+    zg_panic_active = 0;
+    return result;
+}
+
+int32_t zg_terminal_scrollback_impl(const zg_terminal * self, uint8_t * out_result_has, uint16_t * out_result);
+ZIGO_EXPORT int32_t zg_terminal_scrollback(const zg_terminal * self, uint8_t * out_result_has, uint16_t * out_result) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return zg_panic_publish();
+    }
+    int32_t result = zg_terminal_scrollback_impl(self, out_result_has, out_result);
+    zg_panic_active = 0;
+    return result;
+}
+
+int32_t zg_terminal_set_scrollback_impl(zg_terminal * self, const uint16_t * v);
+ZIGO_EXPORT int32_t zg_terminal_set_scrollback(zg_terminal * self, const uint16_t * v) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return zg_panic_publish();
+    }
+    int32_t result = zg_terminal_set_scrollback_impl(self, v);
+    zg_panic_active = 0;
+    return result;
+}
+
+int32_t zg_terminal_title_impl(const zg_terminal * self, const uint8_t * * out_result_ptr, size_t * out_result_len);
+ZIGO_EXPORT int32_t zg_terminal_title(const zg_terminal * self, const uint8_t * * out_result_ptr, size_t * out_result_len) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return zg_panic_publish();
+    }
+    int32_t result = zg_terminal_title_impl(self, out_result_ptr, out_result_len);
+    zg_panic_active = 0;
+    return result;
+}
+
+int32_t zg_terminal_palette_impl(const zg_terminal * self, const uint32_t * * out_result_ptr, size_t * out_result_len);
+ZIGO_EXPORT int32_t zg_terminal_palette(const zg_terminal * self, const uint32_t * * out_result_ptr, size_t * out_result_len) {
+    zg_panic_active = 1;
+    if (setjmp(zg_panic_env) != 0) {
+        zg_panic_active = 0;
+        return zg_panic_publish();
+    }
+    int32_t result = zg_terminal_palette_impl(self, out_result_ptr, out_result_len);
+    zg_panic_active = 0;
+    return result;
+}

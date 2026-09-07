@@ -40,3 +40,51 @@ func TerminalSetCursorX(self unsafe.Pointer, v uint16) int32 {
 	code := int32(C.zg_terminal_set_cursor_x((*C.zg_terminal)(self), C.uint16_t(v)))
 	return code
 }
+// TerminalCharsetSingleShift calls the generated C ABI wrapper for zg_terminal_charset_single_shift.
+func TerminalCharsetSingleShift(self unsafe.Pointer) (uint8, bool, int32) {
+	var outResultHas C.uint8_t
+	var outResult C.uint8_t
+	code := int32(C.zg_terminal_charset_single_shift((*C.zg_terminal)(self), &outResultHas, &outResult))
+	return uint8(outResult), outResultHas != 0, code
+}
+// TerminalScrollback calls the generated C ABI wrapper for zg_terminal_scrollback.
+func TerminalScrollback(self unsafe.Pointer) (uint16, bool, int32) {
+	var outResultHas C.uint8_t
+	var outResult C.uint16_t
+	code := int32(C.zg_terminal_scrollback((*C.zg_terminal)(self), &outResultHas, &outResult))
+	return uint16(outResult), outResultHas != 0, code
+}
+// TerminalSetScrollback calls the generated C ABI wrapper for zg_terminal_set_scrollback.
+func TerminalSetScrollback(self unsafe.Pointer, v *uint16) int32 {
+	var vValue C.uint16_t
+	var vPtr *C.uint16_t
+	if v != nil {
+		vValue = C.uint16_t(*v)
+		vPtr = &vValue
+	}
+	code := int32(C.zg_terminal_set_scrollback((*C.zg_terminal)(self), vPtr))
+	return code
+}
+// TerminalTitle calls the generated C ABI wrapper for zg_terminal_title.
+func TerminalTitle(self unsafe.Pointer) (string, int32) {
+	var outResultPtr *C.uint8_t
+	var outResultLen C.size_t
+	code := int32(C.zg_terminal_title((*C.zg_terminal)(self), &outResultPtr, &outResultLen))
+	if code != 0 {
+		return "", code
+	}
+	return C.GoStringN((*C.char)(unsafe.Pointer(outResultPtr)), C.int(outResultLen)), code
+}
+// TerminalPalette calls the generated C ABI wrapper for zg_terminal_palette.
+func TerminalPalette(self unsafe.Pointer) ([]uint32, int32) {
+	var outResultPtr *C.uint32_t
+	var outResultLen C.size_t
+	code := int32(C.zg_terminal_palette((*C.zg_terminal)(self), &outResultPtr, &outResultLen))
+	if code != 0 {
+		return nil, code
+	}
+	if outResultLen == 0 { return nil, code }
+	result := make([]uint32, int(outResultLen))
+	copy(result, unsafe.Slice((*uint32)(unsafe.Pointer(outResultPtr)), int(outResultLen)))
+	return result, code
+}

@@ -106,6 +106,37 @@ func PaletteSetFlags(self unsafe.Pointer, v uint16) int32 {
 	return code
 }
 
+// PalettePinnedMode calls the generated C ABI wrapper for zg_palette_pinned_mode.
+func PalettePinnedMode(self unsafe.Pointer) (uint8, bool, int32) {
+	var outResultHas C.uint8_t
+	var outResult C.uint8_t
+	code := int32(C.zg_palette_pinned_mode((*C.zg_palette)(self), &outResultHas, &outResult))
+	return uint8(outResult), outResultHas != 0, code
+}
+
+// PaletteSetPinnedMode calls the generated C ABI wrapper for zg_palette_set_pinned_mode.
+func PaletteSetPinnedMode(self unsafe.Pointer, v *uint8) int32 {
+	var vValue C.uint8_t
+	var vPtr *C.uint8_t
+	if v != nil {
+		vValue = C.uint8_t(*v)
+		vPtr = &vValue
+	}
+	code := int32(C.zg_palette_set_pinned_mode((*C.zg_palette)(self), vPtr))
+	return code
+}
+
+// PaletteName calls the generated C ABI wrapper for zg_palette_name.
+func PaletteName(self unsafe.Pointer) ([]uint8, int32) {
+	var outResultPtr *C.uint8_t
+	var outResultLen C.size_t
+	code := int32(C.zg_palette_name((*C.zg_palette)(self), &outResultPtr, &outResultLen))
+	if code != 0 {
+		return nil, code
+	}
+	return C.GoBytes(unsafe.Pointer(outResultPtr), C.int(outResultLen)), code
+}
+
 // ChildCreate calls the generated C ABI wrapper for zg_child_create.
 func ChildCreate(value int32) (unsafe.Pointer, int32) {
 	var outResult *C.zg_child

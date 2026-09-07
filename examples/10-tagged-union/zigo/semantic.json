@@ -63,6 +63,73 @@
       "symbol": "zg_palette_set_flags"
     },
     {
+      "field_access": {
+        "path": "pinned_mode",
+        "setter": false
+      },
+      "name": "pinnedMode",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Palette",
+      "return": {
+        "child": {
+          "kind": "enum",
+          "ref": "Mode"
+        },
+        "kind": "optional"
+      },
+      "symbol": "zg_palette_pinned_mode"
+    },
+    {
+      "field_access": {
+        "path": "pinned_mode",
+        "setter": true
+      },
+      "name": "setPinnedMode",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "v",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "child": {
+              "kind": "enum",
+              "ref": "Mode"
+            },
+            "kind": "optional"
+          }
+        }
+      ],
+      "receiver": "Palette",
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_palette_set_pinned_mode"
+    },
+    {
+      "field_access": {
+        "path": "name",
+        "setter": false
+      },
+      "name": "name",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Palette",
+      "return": {
+        "const": true,
+        "element": {
+          "bits": 8,
+          "is_usize": false,
+          "kind": "int",
+          "signed": false
+        },
+        "kind": "slice"
+      },
+      "symbol": "zg_palette_name"
+    },
+    {
       "name": "create",
       "namespace": "Child",
       "ownership": "caller",
@@ -596,7 +663,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 207,
+            "line": 211,
             "column": 19
           },
           "type": {
@@ -619,7 +686,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 207,
+        "line": 211,
         "column": 12
       },
       "symbol": "zg_palette_create"
@@ -634,7 +701,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 213,
+        "line": 217,
         "column": 12
       },
       "symbol": "zg_palette_deinit"
@@ -651,7 +718,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 238,
+        "line": 242,
         "column": 8
       },
       "symbol": "zg_live_values"
@@ -666,7 +733,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 242,
+            "line": 246,
             "column": 15
           },
           "type": {
@@ -680,7 +747,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 242,
+            "line": 246,
             "column": 31
           },
           "type": {
@@ -701,7 +768,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 242,
+        "line": 246,
         "column": 8
       },
       "symbol": "zg_divide"
@@ -716,7 +783,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 247,
+            "line": 251,
             "column": 12
           },
           "type": {
@@ -735,7 +802,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 247,
+        "line": 251,
         "column": 8
       },
       "symbol": "zg_sum"
@@ -980,7 +1047,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 220,
+            "line": 224,
             "column": 19
           },
           "type": {
@@ -1011,7 +1078,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 220,
+            "line": 224,
             "column": 44
           },
           "type": {
@@ -1027,7 +1094,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 220,
+        "line": 224,
         "column": 8
       },
       "symbol": "zg_visit_flags"
@@ -1047,7 +1114,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 253,
+        "line": 257,
         "column": 8
       },
       "symbol": "zg_panic_error"

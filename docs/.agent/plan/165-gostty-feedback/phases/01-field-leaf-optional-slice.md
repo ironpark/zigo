@@ -2,7 +2,7 @@
 depends_on:
 - "165-gostty-feedback#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: reflect 테스트와 generator case가 optional/slice getter를 생성하고 `zig build test` 통과, 커밋.
 > NEXT: none

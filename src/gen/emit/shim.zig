@@ -334,7 +334,9 @@ fn writeFieldAccess(
             try writer.writeAll(", .seq_cst)");
         } else {
             try writer.print("self.{s} = ", .{access.path});
-            try writeShimInboundValue(writer, program, "v", function.origin.params[0].type, false);
+            // `?T` arrives as a nullable pointer, which the flattened form
+            // already knows how to rebuild into the Zig optional.
+            try writeFlattenedShimValue(allocator, writer, program, "v", function.origin.params[0].type, false);
         }
         try writer.writeAll(trailer);
         return;
@@ -344,15 +346,42 @@ fn writeFieldAccess(
         function.origin.@"return".error_union.payload.*
     else
         function.origin.@"return";
-    if (checked)
-        try writer.writeAll("out_result.* = ")
-    else
-        try writer.writeAll("return ");
     const expression = if (access.atomic orelse false)
         try std.fmt.allocPrint(allocator, "self.{s}.load(.seq_cst)", .{access.path})
     else
         try std.fmt.allocPrint(allocator, "self.{s}", .{access.path});
     defer allocator.free(expression);
+
+    // A slice field is a borrowed view into the handle: the pointer and
+    // length cross as they do for a slice-returning method, and the getter's
+    // `*const` receiver is what keeps the shim from writing through it.
+    if (field_type == .slice) {
+        try writer.print("const zigo_field = {s};\n", .{expression});
+        try writeShimSliceReturn(writer, program, function, "zigo_field");
+        try writer.writeAll(if (checked) "    return 0;\n}\n" else "}\n");
+        return;
+    }
+    // An optional field crosses as presence plus value, the way an optional
+    // method result does: the status code is spent on the handle check, so
+    // presence gets `out_result_has` and the value stays untouched when absent.
+    if (field_type == .optional) {
+        const child = field_type.optional.child.*;
+        if (checked) {
+            try writer.print("if ({s}) |zigo_value| {{\n        out_result_has.* = 1;\n        out_result.* = ", .{expression});
+            try writeZigReturnConversion(allocator, writer, program, child, "zigo_value", false);
+            try writer.writeAll(";\n    } else {\n        out_result_has.* = 0;\n    }\n    return 0;\n}\n");
+        } else {
+            try writer.print("const zigo_value = {s} orelse return 0;\n    out_result.* = ", .{expression});
+            try writeZigReturnConversion(allocator, writer, program, child, "zigo_value", false);
+            try writer.writeAll(";\n    return 1;\n}\n");
+        }
+        return;
+    }
+
+    if (checked)
+        try writer.writeAll("out_result.* = ")
+    else
+        try writer.writeAll("return ");
     try writeZigReturnConversion(allocator, writer, program, field_type, expression, false);
     try writer.writeAll(trailer);
 }

@@ -253,9 +253,13 @@ segment가 기본 이름이므로 위 선언은 `Cols()`, `CursorX()`, `CursorSt
 생성된 Go 문서에는 원래 Zig 필드 경로가 항상 남고, `.doc`이 있으면 그 설명도 함께 씁니다.
 
 경로의 각 중간 segment는 struct 값이거나 non-optional single pointer가 가리키는 struct여야
-합니다. 마지막 필드는 bool, 정수, 실수 또는 `.enumeration`으로 등록한 enum만 지원합니다.
-알 수 없는 경로, optional·slice·union 같은 중간 값, 지원하지 않는 leaf 타입은 `ZIGO037`로
-거부합니다. getter/setter는 reflection에서 일반 메서드로 합성되므로 cgo와 purego에 같은 Go
+합니다. 마지막 필드는 bool, 정수, 실수, `.enumeration`으로 등록한 enum, 등록한 packed value,
+그리고 그 optional(`?T`)과 slice(`[]const T`)를 지원합니다. `?T` getter는 메서드의 `?T` 결과와
+같이 `(T, bool, error)`로, setter는 `*T`를 받아 nil이 `null`입니다. slice getter는 handle 안의
+메모리를 빌려 보는 view라 같은 규약의 slice 결과처럼 Go로 복사되며, `[]const u8`은 `.strings`
+추론에 따라 `string`이 됩니다. slice에는 setter가 없고(`.set = true`는 `ZIGO037`), narrow 정수
+element(`u12` 등)와 atomic element도 받지 않습니다. 알 수 없는 경로, optional·slice·union 같은
+중간 값, 지원하지 않는 leaf 타입은 `ZIGO037`로 거부합니다. getter/setter는 reflection에서 일반 메서드로 합성되므로 cgo와 purego에 같은 Go
 API를 만들고 `abi-check` 및 `abi-diff`에도 일반 함수처럼 나타납니다. 접근자를 추가하는 것은
 compatible append이며, 함수와 이름이 겹치면 기존 `ZIGO024`/`ZIGO036` 진단을 사용합니다.
 

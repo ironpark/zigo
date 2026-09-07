@@ -25,3 +25,37 @@ export fn zg_terminal_set_cursor_x_impl(self: *target.Terminal, v: u16) i32 {
     self.screen.cursor.x = @intCast(v);
     return 0;
 }
+export fn zg_terminal_charset_single_shift_impl(self: *const target.Terminal, out_result_has: *u8, out_result: *u8) i32 {
+    if (self.screen.charset.single_shift) |zigo_value| {
+        out_result_has.* = 1;
+        out_result.* = @intFromEnum(zigo_value);
+    } else {
+        out_result_has.* = 0;
+    }
+    return 0;
+}
+export fn zg_terminal_scrollback_impl(self: *const target.Terminal, out_result_has: *u8, out_result: *u16) i32 {
+    if (self.scrollback) |zigo_value| {
+        out_result_has.* = 1;
+        out_result.* = zigo_value;
+    } else {
+        out_result_has.* = 0;
+    }
+    return 0;
+}
+export fn zg_terminal_set_scrollback_impl(self: *target.Terminal, v: ?*const u16) i32 {
+    self.scrollback = if (v) |zigo_v| zigo_v.* else null;
+    return 0;
+}
+export fn zg_terminal_title_impl(self: *const target.Terminal, out_result_ptr: *[*c]const u8, out_result_len: *usize) i32 {
+    const zigo_field = self.title;
+    out_result_ptr.* = zigo_field.ptr;
+    out_result_len.* = zigo_field.len;
+    return 0;
+}
+export fn zg_terminal_palette_impl(self: *const target.Terminal, out_result_ptr: *[*c]const u32, out_result_len: *usize) i32 {
+    const zigo_field = self.palette;
+    out_result_ptr.* = zigo_field.ptr;
+    out_result_len.* = zigo_field.len;
+    return 0;
+}

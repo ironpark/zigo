@@ -7,7 +7,7 @@ registered_at: "2026-09-07T23:44:04Z"
 
 # Phases
 
-- [ ] [Phase 00: HandleField.ext](phases/00-handle-field-ext.md)
+- [x] [Phase 00: HandleField.ext](phases/00-handle-field-ext.md)
 - [ ] [Phase 01: Optional and slice field leafs](phases/01-field-leaf-optional-slice.md)
 - [ ] [Phase 02: Alias enrichment](phases/02-alias-enrichment.md)
 - [ ] [Phase 03: Symbol override](phases/03-symbol-override.md)

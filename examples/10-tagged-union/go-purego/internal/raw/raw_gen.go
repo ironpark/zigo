@@ -54,6 +54,9 @@ type nativeBindings struct {
 	panicMessage             func(int32) unsafe.Pointer
 	fnPaletteFlags           func(unsafe.Pointer, *uint16) int32
 	fnPaletteSetFlags        func(unsafe.Pointer, uint16) int32
+	fnPalettePinnedMode      func(unsafe.Pointer, *uint8, *uint8) int32
+	fnPaletteSetPinnedMode   func(unsafe.Pointer, *uint8) int32
+	fnPaletteName            func(unsafe.Pointer, *unsafe.Pointer, *uintptr) int32
 	fnChildCreate            func(int32, *unsafe.Pointer) int32
 	fnChildGet               func(unsafe.Pointer, *int32) int32
 	fnChildDeinit            func(unsafe.Pointer) int32
@@ -348,6 +351,18 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_palette_set_flags", err)
 	}
+	addrPalettePinnedMode, err := resolveSymbol(handle, "zg_palette_pinned_mode")
+	if err != nil {
+		return fail("zg_palette_pinned_mode", err)
+	}
+	addrPaletteSetPinnedMode, err := resolveSymbol(handle, "zg_palette_set_pinned_mode")
+	if err != nil {
+		return fail("zg_palette_set_pinned_mode", err)
+	}
+	addrPaletteName, err := resolveSymbol(handle, "zg_palette_name")
+	if err != nil {
+		return fail("zg_palette_name", err)
+	}
 	addrChildCreate, err := resolveSymbol(handle, "zg_child_create")
 	if err != nil {
 		return fail("zg_child_create", err)
@@ -549,6 +564,9 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.panicMessage, addrPanicMessage)
 	purego.RegisterFunc(&next.fnPaletteFlags, addrPaletteFlags)
 	purego.RegisterFunc(&next.fnPaletteSetFlags, addrPaletteSetFlags)
+	purego.RegisterFunc(&next.fnPalettePinnedMode, addrPalettePinnedMode)
+	purego.RegisterFunc(&next.fnPaletteSetPinnedMode, addrPaletteSetPinnedMode)
+	purego.RegisterFunc(&next.fnPaletteName, addrPaletteName)
 	purego.RegisterFunc(&next.fnChildCreate, addrChildCreate)
 	purego.RegisterFunc(&next.fnChildGet, addrChildGet)
 	purego.RegisterFunc(&next.fnChildDeinit, addrChildDeinit)
@@ -690,6 +708,36 @@ func PaletteFlags(self unsafe.Pointer) (uint16, int32) {
 func PaletteSetFlags(self unsafe.Pointer, v uint16) int32 {
 	code := bindings().fnPaletteSetFlags(self, v)
 	return code
+}
+
+// PalettePinnedMode calls the generated purego ABI wrapper for zg_palette_pinned_mode.
+func PalettePinnedMode(self unsafe.Pointer) (uint8, bool, int32) {
+	var outResultHas uint8
+	var outResult uint8
+	code := bindings().fnPalettePinnedMode(self, &outResultHas, &outResult)
+	return outResult, outResultHas != 0, code
+}
+
+// PaletteSetPinnedMode calls the generated purego ABI wrapper for zg_palette_set_pinned_mode.
+func PaletteSetPinnedMode(self unsafe.Pointer, v *uint8) int32 {
+	code := bindings().fnPaletteSetPinnedMode(self, v)
+	return code
+}
+
+// PaletteName calls the generated purego ABI wrapper for zg_palette_name.
+func PaletteName(self unsafe.Pointer) ([]uint8, int32) {
+	var outResultPtr unsafe.Pointer
+	var outResultLen uintptr
+	code := bindings().fnPaletteName(self, &outResultPtr, &outResultLen)
+	if code != 0 {
+		return nil, code
+	}
+	if outResultLen == 0 {
+		return nil, code
+	}
+	result := make([]uint8, int(outResultLen))
+	copy(result, unsafe.Slice((*uint8)(outResultPtr), int(outResultLen)))
+	return result, code
 }
 
 // ChildCreate calls the generated purego ABI wrapper for zg_child_create.

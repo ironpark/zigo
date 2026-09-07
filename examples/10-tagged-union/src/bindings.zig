@@ -7,7 +7,11 @@ const api = zigo.scope(library);
 const Child = api.handle("Child", .{}).context();
 const Value = api.taggedUnion("Value", .{}).context();
 const Signal = api.taggedUnion("Signal", .{ .access = .snapshot }).context();
-const Palette = api.handle("Palette", .{ .fields = &.{.{ .path = "flags", .set = true }} }).context();
+const Palette = api.handle("Palette", .{ .fields = &.{
+    .{ .path = "flags", .set = true },
+    .{ .path = "pinned_mode", .name = "pinnedMode", .set = true },
+    .{ .path = "name" },
+} }).context();
 
 // Plugin attachment targets and their option types are checked at this declaration.
 pub const bindings = zigo.define(.{
