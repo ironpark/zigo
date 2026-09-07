@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-07T10:56:05Z"
 depends_on:
 - "151-release-0-17-0#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: GitHub release 0.17.0 is published and points to the intended commit.
 > NEXT: none

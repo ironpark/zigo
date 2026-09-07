@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T10:56:05Z"
 description: Validate and publish 0.17.0 with generator plugins and review corrections
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-07T10:49:38Z"
 ---
 > NEXT: Prepare the changelog and run all release checks. ([Phase 0](phases/00-prepare-release.md))
@@ -8,7 +9,7 @@ registered_at: "2026-09-07T10:49:38Z"
 # Phases
 
 - [x] [Phase 00: Prepare the release](phases/00-prepare-release.md)
-- [ ] [Phase 01: Publish and verify](phases/01-publish-and-verify.md)
+- [x] [Phase 01: Publish and verify](phases/01-publish-and-verify.md)
 
 # Shared Verification
 
