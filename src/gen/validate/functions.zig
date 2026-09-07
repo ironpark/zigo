@@ -8,6 +8,7 @@ const callbacks = @import("callbacks.zig");
 const materialized = @import("materialized.zig");
 const names = @import("names.zig");
 const ownership = @import("ownership.zig");
+const implements_plugin = @import("../plugins/implements.zig");
 const site = @import("site.zig");
 const types = @import("types.zig");
 const validate = @import("validate.zig");
@@ -38,7 +39,6 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic) 
             .hint = "use an explicit error set in the Zig function signature",
         };
         if (try valueReceiverIssue(allocator, document, function)) |issue| return issue;
-        if (try implementsIssue(allocator, function)) |issue| return issue;
         if (try scalarAdapterIssue(allocator, function)) |issue| return issue;
         if (try codepointIssue(allocator, function)) |issue| return issue;
         if (function.has_comptime_params == true) return .{
@@ -543,71 +543,6 @@ fn valueReceiverIssue(
         .site = site.functionSite(function),
         .hint = "a value receiver has no handle to construct, close, lend, or keep a stream in; move the function to a registered opaque type or bind it at package level",
     };
-    return null;
-}
-
-/// An `.implements` wrapper calls the public method with the interface's
-/// arguments and adapts its result, so the method has to be a handle method
-/// whose Go shape is one step from the interface: the single parameter the
-/// interface passes, and a `void` or integer result.
-fn implementsIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !?diagnostic.Diagnostic {
-    const implements = function.implements orelse return null;
-    const interface = implements.interfaceName();
-    if (function.receiver == null) return .{
-        .severity = .@"error",
-        .code = "ZIGO058",
-        .message = try std.fmt.allocPrint(allocator, "`.implements = .{s}` on `{s}`, which has no receiver", .{ @tagName(implements), function.name }),
-        .site = site.functionSite(function),
-        .hint = try std.fmt.allocPrint(allocator, "`{s}` is satisfied by a method; move `.implements` to a method of a registered opaque type", .{interface}),
-    };
-    const receiver = function.receiver.?;
-    if (function.iterator != null or function.cancel != null) return .{
-        .severity = .@"error",
-        .code = "ZIGO058",
-        .message = try std.fmt.allocPrint(allocator, "`.implements = .{s}` on `{s}.{s}`, which also has `{s}`", .{ @tagName(implements), receiver, function.name, if (function.iterator != null) "`.iterator`" else "`.cancel`" }),
-        .site = site.functionSite(function),
-        .hint = try std.fmt.allocPrint(allocator, "`{s}` has no place for a `ctx` or a sequence; bind a plain method for the interface", .{interface}),
-    };
-    const result = function.@"return".errorPayload();
-    if (result != .void and result != .int) return .{
-        .severity = .@"error",
-        .code = "ZIGO058",
-        .message = try std.fmt.allocPrint(allocator, "`.implements = .{s}` on `{s}.{s}`, which does not return `void` or an integer", .{ @tagName(implements), receiver, function.name }),
-        .site = site.functionSite(function),
-        .hint = try std.fmt.allocPrint(allocator, "`{s}` reports a count; return `void` (the whole input counts) or the number of bytes handled", .{implements.signature()}),
-    };
-    var data: ?semantic.Parameter = null;
-    var data_count: usize = 0;
-    for (function.params) |parameter| {
-        if (parameter.injected != null) continue;
-        data_count += 1;
-        data = parameter;
-    }
-    const expected: []const u8 = switch (implements) {
-        .writer => "one `[]const u8` parameter",
-        .reader => "one `.out` `[]u8` parameter with `.written = .result`",
-        .writer_to => "one `*std.Io.Writer` parameter",
-        .reader_from => "one `*std.Io.Reader` parameter",
-    };
-    const shape_ok = data_count == 1 and switch (implements) {
-        .writer => data.?.direction == .in and data.?.type == .slice and semantic.isByte(data.?.type.slice.element.*) and !semantic.isTextHint(data.?.semantic),
-        .reader => data.?.direction == .out and data.?.type == .slice and semantic.isByte(data.?.type.slice.element.*) and data.?.writtenHint() == .@"return" and result == .int,
-        .writer_to => data.?.type == .io_stream and data.?.type.io_stream.direction == .writer,
-        .reader_from => data.?.type == .io_stream and data.?.type.io_stream.direction == .reader,
-    };
-    if (!shape_ok) {
-        const text_hinted = implements == .writer and data_count == 1 and data.?.type == .slice and semantic.isTextHint(data.?.semantic);
-        return .{
-            .severity = .@"error",
-            .code = "ZIGO058",
-            .message = try std.fmt.allocPrint(allocator, "`.implements = .{s}` on `{s}.{s}`, which does not take {s}", .{ @tagName(implements), receiver, function.name, expected }),
-            .site = site.functionSite(function),
-            .hint = if (text_hinted)
-                "`Write(p []byte)` passes bytes; drop the string hint so the wrapper does not copy on every call"
-            else
-                try std.fmt.allocPrint(allocator, "`{s}` calls the method with exactly the argument `{s}` takes", .{ interface, implements.signature() }),
-        };
-    }
     return null;
 }
 
@@ -1204,11 +1139,15 @@ test "implements accepts one-step shapes and rejects the rest" {
     reader_void.@"return" = void_node;
     var wrong_stream = writer_to;
     wrong_stream.params = &.{reader_in};
+    // The rejections are asserted against the rule itself. Some of these
+    // shapes are faulty for a second reason as well -- a `.cancel` that names
+    // nothing is also ZIGO026 -- and plugin rules run after the core ones, so
+    // going through `findIssue` would ask which fault is reported first
+    // rather than what this rule says.
     for ([_]semantic.SemanticFn{ free_function, iterating, cancelling, bool_result, two_params, text_hinted, reader_all, reader_void, wrong_stream }) |function| {
         var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
         defer scratch.deinit();
-        const document: semantic.Semantic = .{ .functions = &.{function}, .package = "vt", .prefix = "zg", .types = &.{handle}, .zig_version = "0.16.0" };
-        const issue = (try validate.findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
+        const issue = (try implements_plugin.implementsIssue(scratch.allocator(), function)) orelse return error.MissingDiagnostic;
         try std.testing.expectEqualStrings("ZIGO058", issue.code);
     }
 }
