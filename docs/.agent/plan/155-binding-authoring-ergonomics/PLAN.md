@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-09-07T13:38:42Z"
 description: Review migrated binding examples for authoring friction and prioritize concrete DSL improvements without implementing API changes.
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-07T13:36:05Z"
 ---
 > NEXT: Review the examples and record the findings. ([Phase 0](phases/00-review-ergonomics.md))
 
 # Phases
 
-- [ ] [Phase 00: Review authoring ergonomics](phases/00-review-ergonomics.md)
+- [x] [Phase 00: Review authoring ergonomics](phases/00-review-ergonomics.md)
 
 # Shared Verification
 

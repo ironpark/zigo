@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T13:38:42Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Review findings are recorded and ready to explain to the user without API implementation changes.
 > NEXT: none
