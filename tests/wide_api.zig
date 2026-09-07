@@ -12,7 +12,7 @@ test "reflecting 400 explicitly listed functions stays within the comptime quota
     defer arena.deinit();
     const document = try walk.reflect(arena.allocator(), .{
         .root = wide_api,
-        .functions = .{
+        .functions = &.{
             .{ .path = "root.op000" },
             .{ .path = "root.op001" },
             .{ .path = "root.op002" },

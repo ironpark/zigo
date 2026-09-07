@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T05:01:05Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test -Dtest-filter=walk` 통과, `walk.zig`에 선언 대상 `@hasField`가 남지 않는다.
 > NEXT: none

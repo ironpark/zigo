@@ -3,7 +3,7 @@ const divergence = @import("divergence");
 
 pub const bindings = zigo.define(.{
     .root = divergence,
-    .functions = .{
-        .{ .path = "root.measure", .params = .{"sizes"} },
+    .functions = &.{
+        .{ .path = "root.measure", .params = &.{.{ .name = "sizes" }} },
     },
 });

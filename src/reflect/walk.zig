@@ -1829,7 +1829,7 @@ fn typeNode(
                     break;
                 }
             }
-            if (!exists) try appendValueStruct(allocator, types, declaration, T, name, @typeName(T), false, null, .{});
+            if (!exists) try appendValueStruct(allocator, types, declaration, T, name, @typeName(T), false, null, &.{});
             break :blk .{ .value_struct = .{ .ref = name } };
         },
         .@"union" => blk: {

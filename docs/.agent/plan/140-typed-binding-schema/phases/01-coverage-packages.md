@@ -2,7 +2,7 @@
 depends_on:
 - "140-typed-binding-schema#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: `zig build test --summary all` 전체 통과.
 > NEXT: none

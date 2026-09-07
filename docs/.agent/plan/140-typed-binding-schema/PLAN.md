@@ -7,7 +7,7 @@ registered_at: "2026-09-07T04:41:56Z"
 
 # Phases
 
-- [ ] [Phase 00: Schema and reflection](phases/00-schema-and-walk.md)
+- [x] [Phase 00: Schema and reflection](phases/00-schema-and-walk.md)
 - [ ] [Phase 01: Coverage, packages, interfaces](phases/01-coverage-packages.md)
 - [ ] [Phase 02: Examples](phases/02-examples.md)
 - [ ] [Phase 03: Docs and release](phases/03-docs-and-release.md)
