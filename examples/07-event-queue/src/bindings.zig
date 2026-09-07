@@ -13,7 +13,7 @@ const Terminal = api.handle("Terminal", .{}).context();
 const owned_samples = zigo.result.releasedBy(EventQueue.ref("freeSamples"));
 
 const queue_binding = EventQueue.define(&.{
-    EventQueue.function("create", .{
+    EventQueue.func("create", .{
         .params = &.{
             .{ .index = 0, .go_name = "name", .semantic = .utf8_string },
             .{ .index = 1, .go_name = "capacity" },
@@ -21,13 +21,13 @@ const queue_binding = EventQueue.define(&.{
             zigo.param.callback(3, .{ .retention = .retained }),
         },
     }),
-    EventQueue.function("clone", .{
+    EventQueue.func("clone", .{
         .returns = zigo.result.owned(),
         .params = &.{
             zigo.param.callback(1, .{ .retention = .retained }),
         },
     }),
-    EventQueue.function("newStream", .{
+    EventQueue.func("newStream", .{
         .role = .{
             .constructor = .{
                 .type = Stream.typeRef(),
@@ -36,80 +36,80 @@ const queue_binding = EventQueue.define(&.{
             },
         },
     }),
-    EventQueue.function("enqueue", .{}),
-    EventQueue.function("mergeFrom", .{}),
-    EventQueue.function("process", .{}),
-    EventQueue.function("setObserver", .{
+    EventQueue.func("enqueue", .{}),
+    EventQueue.func("mergeFrom", .{}),
+    EventQueue.func("process", .{}),
+    EventQueue.func("setObserver", .{
         .params = &.{
             zigo.param.callback(1, .{ .retention = .retained }),
         },
     }),
-    EventQueue.function("name", .{ .returns = .{ .semantic = .utf8_string } }),
-    EventQueue.function("sampleValues", .{}),
-    EventQueue.function("sampleValuesChecked", .{}),
-    EventQueue.function("selectionString", .{
+    EventQueue.func("name", .{ .returns = .{ .semantic = .utf8_string } }),
+    EventQueue.func("sampleValues", .{}),
+    EventQueue.func("sampleValuesChecked", .{}),
+    EventQueue.func("selectionString", .{
         .returns = zigo.result.releasedBy(EventQueue.ref("freeSelectionString")),
     }),
-    EventQueue.function("freeSelectionString", .{}),
-    EventQueue.function("echoCString", .{}),
-    EventQueue.function("sampleCString", .{}),
-    EventQueue.function("extractPaths", .{
+    EventQueue.func("freeSelectionString", .{}),
+    EventQueue.func("echoCString", .{}),
+    EventQueue.func("sampleCString", .{}),
+    EventQueue.func("extractPaths", .{
         .params = &.{
             .{ .index = 0, .semantic = .utf8_string },
         },
     }),
-    EventQueue.function("extractSentinelSlices", .{}),
-    EventQueue.function("extractSentinelPointers", .{}),
-    EventQueue.function("extractSamples", .{ .returns = owned_samples }),
-    EventQueue.function("extractSamplesChecked", .{ .returns = owned_samples }),
-    EventQueue.function("freeSamples", .{}),
-    EventQueue.function("extractLimits", .{ .returns = zigo.result.releasedBy(EventQueue.ref("freeLimits")) }),
-    EventQueue.function("freeLimits", .{}),
-    EventQueue.function("acceptStats", .{}),
-    EventQueue.function("extractSamplesInto", .{
+    EventQueue.func("extractSentinelSlices", .{}),
+    EventQueue.func("extractSentinelPointers", .{}),
+    EventQueue.func("extractSamples", .{ .returns = owned_samples }),
+    EventQueue.func("extractSamplesChecked", .{ .returns = owned_samples }),
+    EventQueue.func("freeSamples", .{}),
+    EventQueue.func("extractLimits", .{ .returns = zigo.result.releasedBy(EventQueue.ref("freeLimits")) }),
+    EventQueue.func("freeLimits", .{}),
+    EventQueue.func("acceptStats", .{}),
+    EventQueue.func("extractSamplesInto", .{
         .params = &.{
             zigo.param.output(1, .result),
         },
     }),
-    EventQueue.function("limitsInto", .{
+    EventQueue.func("limitsInto", .{
         .params = &.{
             zigo.param.output(1, .result),
         },
     }),
-    EventQueue.function("estimate", .{ .params = &.{
+    EventQueue.func("estimate", .{ .params = &.{
         zigo.param.output(1, .result),
     } }),
-    EventQueue.function("sampleStats", .{}),
-    EventQueue.function("sampleLimits", .{}),
-    EventQueue.function("len", .{}),
-    EventQueue.function("capacity", .{}),
-    EventQueue.function("policy", .{}),
-    EventQueue.function("dropped", .{}),
-    EventQueue.function("processed", .{}),
-    EventQueue.function("stats", .{}),
-    EventQueue.function("limits", .{}),
-    EventQueue.function("applyLimits", .{}),
-    EventQueue.function("clear", .{}),
-    EventQueue.function("deinit", .{}),
+    EventQueue.func("sampleStats", .{}),
+    EventQueue.func("sampleLimits", .{}),
+    EventQueue.func("len", .{}),
+    EventQueue.func("capacity", .{}),
+    EventQueue.func("policy", .{}),
+    EventQueue.func("dropped", .{}),
+    EventQueue.func("processed", .{}),
+    EventQueue.func("stats", .{}),
+    EventQueue.func("limits", .{}),
+    EventQueue.func("applyLimits", .{}),
+    EventQueue.func("clear", .{}),
+    EventQueue.func("deinit", .{}),
 });
 
 const types_package = zigo.package(.{
     .path = "types",
     .doc = "Package types contains event-queue values and the standalone Ticker handle.",
     .declarations = &.{
-        api.enumeration("QueueSignal", .{ .exhaustive = false }).use(zigo.features.text, .{}),
+        api.enumType("QueueSignal", .{ .exhaustive = false }).use(zigo.features.text, .{}),
         Ticker.define(&.{
-            api.function("newTicker", .{ .role = .{ .constructor = .{ .type = Ticker.typeRef() } } }),
-            api.function("freeTicker", .{ .role = .{ .destructor = Ticker.typeRef() } }),
-            api.function("tickerAdvance", .{
+            api.func("newTicker", .{ .role = .{ .constructor = .{ .type = Ticker.typeRef() } } }),
+            api.func("freeTicker", .{ .role = .{ .destructor = Ticker.typeRef() } }),
+            api.func("tickerAdvance", .{
                 .name = "advance",
             }),
-            api.function("tickerElapsed", .{
+            api.func("tickerElapsed", .{
                 .name = "elapsed",
             }),
         }),
-        api.value("TickerInfo", .{}),
-        api.function("liveTickers", .{}),
+        api.val("TickerInfo", .{}),
+        api.func("liveTickers", .{}),
     },
 });
 
@@ -118,20 +118,20 @@ pub const bindings = zigo.define(.{
     .allocator = .page_allocator,
     .declarations = &.{
         queue_binding,
-        api.value("Stats", .{}),
-        api.value("Limits", .{}),
+        api.val("Stats", .{}),
+        api.val("Limits", .{}),
         Stream.define(&.{
-            Stream.function("capacity", .{}),
-            api.function("freeStream", .{ .role = .{ .destructor = Stream.typeRef() } }),
+            Stream.func("capacity", .{}),
+            api.func("freeStream", .{ .role = .{ .destructor = Stream.typeRef() } }),
         }),
         BorrowBox.define(&.{
-            BorrowBox.function("create", .{}),
-            BorrowBox.function("view", .{ .returns = zigo.result.borrowed() }),
-            BorrowBox.function("deinit", .{}),
+            BorrowBox.func("create", .{}),
+            BorrowBox.func("view", .{ .returns = zigo.result.borrowed() }),
+            BorrowBox.func("deinit", .{}),
         }),
         BorrowView.define(&.{
-            BorrowView.function("view", .{ .returns = zigo.result.borrowed() }),
-            BorrowView.function("newChild", .{
+            BorrowView.func("view", .{ .returns = zigo.result.borrowed() }),
+            BorrowView.func("newChild", .{
                 .role = .{
                     .constructor = .{
                         .type = BorrowChild.typeRef(),
@@ -140,32 +140,32 @@ pub const bindings = zigo.define(.{
                     },
                 },
             }),
-            BorrowView.function("get", .{}),
-            BorrowView.function("explode", .{}),
+            BorrowView.func("get", .{}),
+            BorrowView.func("explode", .{}),
         }),
         BorrowChild.define(&.{
-            BorrowChild.function("get", .{}),
-            BorrowChild.function("deinit", .{ .role = .{ .destructor = BorrowChild.typeRef() } }),
+            BorrowChild.func("get", .{}),
+            BorrowChild.func("deinit", .{ .role = .{ .destructor = BorrowChild.typeRef() } }),
         }),
         Terminal.define(&.{
-            Terminal.function("init", .{
+            Terminal.func("init", .{
                 .params = &.{
                     zigo.param.flatten(1, &.{ "cols", "rows", "max_scrollback_bytes" }),
                 },
             }),
-            Terminal.function("cols", .{}),
-            Terminal.function("rows", .{}),
-            Terminal.function("maxScrollbackBytes", .{}),
-            Terminal.function("deinit", .{}),
+            Terminal.func("cols", .{}),
+            Terminal.func("rows", .{}),
+            Terminal.func("maxScrollbackBytes", .{}),
+            Terminal.func("deinit", .{}),
         }),
-        api.function("echoQueueSignal", .{}),
-        api.function("liveBorrowChildren", .{}),
-        api.function("inspectTicker", .{}),
-        api.function("liveStreams", .{}),
-        api.function("liveQueues", .{}),
-        api.function("liveSamples", .{}),
-        api.function("liveLimits", .{}),
-        api.function("liveSelectionStrings", .{}),
+        api.func("echoQueueSignal", .{}),
+        api.func("liveBorrowChildren", .{}),
+        api.func("inspectTicker", .{}),
+        api.func("liveStreams", .{}),
+        api.func("liveQueues", .{}),
+        api.func("liveSamples", .{}),
+        api.func("liveLimits", .{}),
+        api.func("liveSelectionStrings", .{}),
         types_package,
     },
 });

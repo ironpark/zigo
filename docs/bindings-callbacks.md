@@ -32,7 +32,7 @@ pub fn reduce(ctx: usize, values: []const i32, reducer: Reducer) i32 { ... }
 .declarations = &.{
     api.callback("Reducer", .{ .userdata = .first }),
 
-    api.function("reduce", .{ .params = &.{
+    api.func("reduce", .{ .params = &.{
         .{ .index = 0, .go_name = "ctx" },
         zigo.param.callback(2, .{ .userdata = 0 }),
     } }),
@@ -167,9 +167,9 @@ semantic 문서의 잘못된 callback metadata는 `ZIGO025`로 거부합니다.
 .declarations = &.{
     api.callback("ClipboardFn", .{ .retention = .retained, .reentrancy = .allowed, .thread = .caller }).named("ClipboardHandler"),
 
-    api.in("Stream").function("onClipboardWriteRequest", .{ .params = &.{ .{ .index = 1, .go_name = "callback" }, .{ .index = 2, .go_name = "userdata" } } }),
+    api.in("Stream").func("onClipboardWriteRequest", .{ .params = &.{ .{ .index = 1, .go_name = "callback" }, .{ .index = 2, .go_name = "userdata" } } }),
 
-    api.in("Stream").function("onClipboardPeek", .{ .params = &.{
+    api.in("Stream").func("onClipboardPeek", .{ .params = &.{
         .{ .index = 1, .go_name = "callback", .contract = .{ .callback = .{ .retention = .borrowed } } }, .{ .index = 2, .go_name = "userdata" },
     } }),
 },
@@ -185,7 +185,7 @@ semantic 문서의 잘못된 callback metadata는 `ZIGO025`로 거부합니다.
 켜면 Go 타입이 `error`를 하나 더 돌려주고, 그 error가 공개 함수의 반환값으로 나옵니다.
 
 ```zig
-api.in("CallbackContext").function("create", .{ .params = &.{ .{
+api.in("CallbackContext").func("create", .{ .params = &.{ .{
     .index = 0,
     .go_name = "callback",
     .contract = .{ .callback = .{ .retention = .retained, .go_error = true } },

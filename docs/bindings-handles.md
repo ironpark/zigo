@@ -69,7 +69,7 @@ handle과 같습니다.
 이야기입니다(없으면 `ZIGO015`). 짝 자체를 만드는 것은 아래의 `.role.constructor`/`.role.destructor`입니다.
 
 ```zig
-api.in("EventQueue").function("clone", .{ .returns = .{ .lifetime = .{ .owned = .{} } }, .params = &.{
+api.in("EventQueue").func("clone", .{ .returns = .{ .lifetime = .{ .owned = .{} } }, .params = &.{
     .{ .index = 1, .go_name = "observer", .contract = .{ .callback = .{ .retention = .retained } } }, .{ .index = 2, .go_name = "userdata" },
 } }),
 ```
@@ -85,7 +85,7 @@ pub fn screen(self: *Terminal) ?*Screen {
     return self.active_screen;
 }
 
-api.in("Terminal").function("screen", .{ .returns = .{ .lifetime = .{ .borrowed = .receiver } } }),
+api.in("Terminal").func("screen", .{ .returns = .{ .lifetime = .{ .borrowed = .receiver } } }),
 ```
 
 optional 반환은 `(*Screen, bool, error)`가 됩니다. false이면 handle은 nil입니다. borrowed
@@ -125,17 +125,17 @@ breaking입니다.
 ```zig
 pub fn newStream(gpa: std.mem.Allocator, terminal: *Terminal) !*Stream { ... }
 
-api.in("Terminal").function("newStream", .{.role = .{
+api.in("Terminal").func("newStream", .{.role = .{
  .constructor = .{.type = api.typeRef("Stream"), .parent = .receiver, .receiver = .{ .type = api.typeRef("Terminal") }},
 }}),
-api.function("freeStream", .{.role = .{ .destructor = api.typeRef("Stream") }}),
+api.func("freeStream", .{.role = .{ .destructor = api.typeRef("Stream") }}),
 ```
 
 타입에 묶으면 같은 계약을 문맥으로 적을 수 있습니다.
 
 ```zig
 api.handle("Terminal", .{}).members(&.{
-    api.in("Terminal").function("newStream", .{
+    api.in("Terminal").func("newStream", .{
         .role = .{ .constructor = .{
             .type = api.typeRef("Stream"),
             .receiver = .member,
@@ -173,10 +173,10 @@ pub fn newTicker(interval: u32) !*Ticker { ... }
 pub fn freeTicker(ticker: *Ticker) void { ... }
 
 
-api.function("newTicker", .{
+api.func("newTicker", .{
 .params = &.{.{.index = 0, .go_name = "interval"}}, .role = .{ .constructor = .{.type = api.typeRef("Ticker")} },
 }),
-api.function("freeTicker", .{.role = .{ .destructor = api.typeRef("Ticker") }}),
+api.func("freeTicker", .{.role = .{ .destructor = api.typeRef("Ticker") }}),
 ```
 
 Go에는 `NewTicker(interval uint32) (*Ticker, error)`와 `(*Ticker).Close()`가 생기고,
@@ -243,7 +243,7 @@ Go 메서드를 만들 수 있습니다.
         .{ .path = "screen.cursor.x", .name = "cursorX" },
         .{ .path = "screen.cursor.style", .name = "cursorStyle", .set = true, .doc = "CursorStyle reports the current cursor style." },
     } }),
-    api.enumeration("CursorStyle", .{}),
+    api.enumType("CursorStyle", .{}),
 },
 ```
 
@@ -266,8 +266,8 @@ wrapper가 함께 생성됩니다.
 
 ```zig
 .declarations = &.{
-    api.in("Context").function("next", .{}).use(zigo.features.iterator, .{}),
-    api.in("Context").function("nextChecked", .{}).use(zigo.features.iterator, .{ .name = "Checked" }),
+    api.in("Context").func("next", .{}).use(zigo.features.iterator, .{}),
+    api.in("Context").func("nextChecked", .{}).use(zigo.features.iterator, .{ .name = "Checked" }),
 },
 ```
 

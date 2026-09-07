@@ -30,7 +30,7 @@ const api = zigo.scope(mylib);
 
 pub const bindings = zigo.define(.{
     .root = mylib,
-    .declarations = &.{api.function("add", .{})},
+    .declarations = &.{api.func("add", .{})},
 });
 ```
 
@@ -91,7 +91,7 @@ cd go && go test ./...
 const api = zigo.scope(mylib);
 const shared = zigo.package(.{
     .path = "types",
-    .declarations = &.{api.value("Point", .{})},
+    .declarations = &.{api.val("Point", .{})},
 });
 const batch = zigo.interface(.{
     .name = "Batch",
@@ -108,8 +108,8 @@ const batch = zigo.interface(.{
 | Helper | 용도·옵션 |
 |---|---|
 | `api.handle("T", options)` | 객체 수명, `fields` 접근자 |
-| `api.value("T", options)` | 적격한 extern/packed struct, `fields`, `go` adapter |
-| `api.enumeration("T", options)` | enum, `exhaustive`, `go`, `covers` 참조 |
+| `api.val("T", options)` | 적격한 extern/packed struct, `fields`, `go` adapter |
+| `api.enumType("T", options)` | enum, `exhaustive`, `go`, `covers` 참조 |
 | `api.taggedUnion("T", options)` | tagged union, `access`, `omit` |
 | `api.materialized("T", options)` | 복사할 결과 트리, `fields` |
 | `api.callback("T", options)` | 콜백 alias, `params`, `returns`, `userdata`, 수명·실패 기본값 |
@@ -118,11 +118,11 @@ const batch = zigo.interface(.{
 아래 예제의 `api`는 대상 모듈의 scope입니다.
 
 ```zig
-const mode = api.enumeration("Mode", .{ .exhaustive = false })
+const mode = api.enumType("Mode", .{ .exhaustive = false })
     .use(zigo.features.text, .{});
 const terminal = api.handle("Terminal", .{
     .fields = &.{.{ .path = "cols", .set = true }},
-}).members(api.in("Terminal").functions(.{ .names = &.{ "create", "deinit" } }));
+}).members(api.in("Terminal").funcs(.{ .names = &.{ "create", "deinit" } }));
 ```
 
 값과 결과 트리의 자세한 지원 모양은 [타입 문서](bindings-types.md)에 있습니다.
@@ -132,7 +132,7 @@ const terminal = api.handle("Terminal", .{
 ```zig
 const Store = api.handle("Store", .{}).context();
 const store = Store.select(.{ .names = &.{ "create", "deinit" } });
-// 개별 옵션은 Store.define(&.{Store.function("read", options)})로 작성.
+// 개별 옵션은 Store.define(&.{Store.func("read", options)})로 작성.
 // 타입 참조: Store.typeRef(), 함수 참조: Store.ref("read").
 ```
 
@@ -167,16 +167,16 @@ const store = Store.select(.{ .names = &.{ "create", "deinit" } });
 
 ```zig
 // fn load(self: *Document, reader: *std.Io.Reader) !usize
-const load = api.in("Document").function("load", .{
+const load = api.in("Document").func("load", .{
     .params = &.{.{ .index = 1, .contract = .{ .stream = .{ .buffer = 4096 } } }},
 });
-const take = api.function("takeCodepoints", .{
+const take = api.func("takeCodepoints", .{
     .returns = .{
         .semantic = .codepoint,
         .lifetime = .{ .owned = .{ .release = api.ref("freeCodepoints") } },
     },
 });
-const next = api.in("Context").function("next", .{}).use(zigo.features.iterator, .{});
+const next = api.in("Context").func("next", .{}).use(zigo.features.iterator, .{});
 ```
 
 `with()`는 적은 필드만 교체하며 null은 기존 값을 지웁니다. 중첩 계약은 전체 교체입니다.

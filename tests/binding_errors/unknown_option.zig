@@ -12,5 +12,5 @@ const Lib = struct {
 };
 const api = zigo.scope(Lib);
 comptime {
-    _ = api.function("f", .{}).with(.{ .typo = true });
+    _ = api.func("f", .{}).with(.{ .typo = true });
 }

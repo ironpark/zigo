@@ -5,7 +5,7 @@
 
 ## 경로와 이름
 
-`api.function("name", options)`는 scope 안의 실제 공개 함수를 검사합니다.
+`api.func("name", options)`는 scope 안의 실제 공개 함수를 검사합니다.
 중첩 namespace는 `in()`으로 선택합니다.
 
 ```zig
@@ -13,8 +13,8 @@ const unicode = api.in("unicode");
 const parser = api.in("osc").in("parser");
 
 const declarations = &[_]zigo.Entry{
-    unicode.function("codepointWidth", .{}),
-    parser.function("parse", .{}).named("parseOsc"),
+    unicode.func("codepointWidth", .{}),
+    parser.func("parse", .{}).named("parseOsc"),
 };
 ```
 
@@ -36,24 +36,24 @@ Go 이름 대신 `api.ref("name")`를 사용하므로 이름 변경으로 참조
 ```zig
 const input = zigo.package(.{
     .path = "input",
-    .declarations = api.functions(.{ .names = &.{ "encodeMouse", "encodeKey" } }),
+    .declarations = api.funcs(.{ .names = &.{ "encodeMouse", "encodeKey" } }),
 });
 ```
 
 공개 함수를 접두사로 고르는 selector는 별도 variant입니다. `.names`와 섞을 수 없습니다.
 
 ```zig
-const queries = api.functions(.{ .public = .{
+const queries = api.funcs(.{ .public = .{
     .prefix = "query",
     .exclude = &.{"queryDebug"},
 } });
 
-const declarations = &[_]zigo.Entry{api.function("version", .{})} ++ queries;
+const declarations = &[_]zigo.Entry{api.func("version", .{})} ++ queries;
 ```
 
-`functions()`는 현재 scope의 공개 함수만 선택하고 결과를 실제 선언 항목으로 만듭니다.
+`funcs()`는 현재 scope의 공개 함수만 선택하고 결과를 실제 선언 항목으로 만듭니다.
 제외 이름이 없거나 접두사 밖이면 컴파일 오류입니다. 개별 계약이 필요한 함수는
-`function()`으로 따로 선언하세요. 배열 결합은 Zig의 `++`를 사용합니다.
+`func()`으로 따로 선언하세요. 배열 결합은 Zig의 `++`를 사용합니다.
 
 모듈 전체를 자동 노출하려면 Binding의 discovery를 설정합니다.
 
@@ -65,7 +65,7 @@ pub const bindings = zigo.define(.{
     } },
     .declarations = &.{
         api.handle("Context", .{}),
-        api.in("Context").function("name", .{ .returns = .{ .semantic = .utf8_string } }),
+        api.in("Context").func("name", .{ .returns = .{ .semantic = .utf8_string } }),
     },
 });
 ```
@@ -94,7 +94,7 @@ receiver와 주입 인자를 직접 annotate하거나 같은 인덱스를 두 �
 
 ```zig
 // fn read(self: *Store, gpa: Allocator, offset: u32, dst: []u8) usize
-api.in("Store").function("read", .{
+api.in("Store").func("read", .{
     .params = &.{zigo.param.output(3, .result)},
 })
 ```
@@ -135,8 +135,8 @@ userdata를 포함해 세고, 바이트 pointer/length 쌍은 pointer의 인덱�
 
 ```zig
 const members: zigo.Selector = .{ .names = &.{ "create", "push", "len", "deinit" } };
-const floats = api.handle("FloatBuffer", .{}).members(api.in("FloatBuffer").functions(members));
-const ints = api.handle("IntBuffer", .{}).members(api.in("IntBuffer").functions(members));
+const floats = api.handle("FloatBuffer", .{}).members(api.in("FloatBuffer").funcs(members));
+const ints = api.handle("IntBuffer", .{}).members(api.in("IntBuffer").funcs(members));
 ```
 
 `.members(entries)`는 타입에만 쓸 수 있으며 목록을 추가하지 않고 전체 교체합니다.
@@ -144,7 +144,7 @@ const ints = api.handle("IntBuffer", .{}).members(api.in("IntBuffer").functions(
 ### 자유 함수를 메서드로 등록하기
 
 ```zig
-api.function("searchMatchCount", .{ .role = .{ .method = api.typeRef("Search") } })
+api.func("searchMatchCount", .{ .role = .{ .method = api.typeRef("Search") } })
 ```
 
 첫 번째 비주입 인자가 등록 handle의 값·포인터 또는 등록 enum 값인지 검사합니다.
@@ -152,8 +152,8 @@ api.function("searchMatchCount", .{ .role = .{ .method = api.typeRef("Search") }
 
 ```zig
 api.handle("Screen", .{}).members(&.{
-    api.function("screenSelectAll", .{}).named("selectAll"),
-    api.function("screenClearSelection", .{}).named("clear"),
+    api.func("screenSelectAll", .{}).named("selectAll"),
+    api.func("screenClearSelection", .{}).named("clear"),
 })
 ```
 
@@ -177,7 +177,7 @@ Io 스트림 계약은 `ZIGO056`으로 거부됩니다. 외부 Go 타입 adapter
 
 ```zig
 // fn init(gpa: Allocator, options: Options) !Terminal
-api.in("Terminal").function("init", .{
+api.in("Terminal").func("init", .{
     .params = &.{zigo.param.flatten(1, &.{ "cols", "rows", "max_scrollback_bytes" })},
 })
 ```
@@ -190,7 +190,7 @@ Zig default가 있어야 합니다. nested struct·slice·string 필드는 펼�
 ### 옵션 교체
 
 ```zig
-const original = api.function("take", .{
+const original = api.func("take", .{
     .name = "takeOwned",
     .returns = zigo.result.releasedBy(api.ref("release")),
 });
@@ -208,7 +208,7 @@ pub const bindings = zigo.define(.{
     .root = library,
     .allocator = .smp_allocator, // .c_allocator, .page_allocator도 지원
     .io = .{ .path = "io" },
-    .declarations = &.{api.function("run", .{})},
+    .declarations = &.{api.func("run", .{})},
 });
 ```
 
@@ -226,9 +226,9 @@ const types = zigo.package(.{
     .defaults = .{ .strings = .infer_utf8 },
     .declarations = &.{
         api.handle("Ticker", .{}),
-        api.function("newTicker", .{ .role = .{ .constructor = .{ .type = api.typeRef("Ticker") } } }),
-        api.function("freeTicker", .{ .role = .{ .destructor = api.typeRef("Ticker") } }),
-        api.function("liveTickers", .{}),
+        api.func("newTicker", .{ .role = .{ .constructor = .{ .type = api.typeRef("Ticker") } } }),
+        api.func("freeTicker", .{ .role = .{ .destructor = api.typeRef("Ticker") } }),
+        api.func("liveTickers", .{}),
     },
 });
 ```

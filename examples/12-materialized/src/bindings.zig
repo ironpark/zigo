@@ -12,28 +12,28 @@ pub const bindings = zigo.define(.{
     .root = library,
     .allocator = .c_allocator,
     .declarations = &.{
-        api.enumeration("Status", .{}),
-        api.value("Point", .{}),
+        api.enumType("Status", .{}),
+        api.val("Point", .{}),
         api.materialized("Leaf", .{}),
         api.materialized("Probe", .{ .fields = &.{.{ .name = "raw", .semantic = .opaque_bytes }} }),
         LegacyLeaf.define(&.{
-            LegacyLeaf.function("value", .{}),
+            LegacyLeaf.func("value", .{}),
         }),
         LegacyProbe.define(&.{
-            LegacyProbe.function("create", .{}),
-            LegacyProbe.function("id", .{}),
-            LegacyProbe.function("active", .{}),
-            LegacyProbe.function("child", .{ .returns = zigo.result.borrowed() }),
-            LegacyProbe.function("deinit", .{}),
+            LegacyProbe.func("create", .{}),
+            LegacyProbe.func("id", .{}),
+            LegacyProbe.func("active", .{}),
+            LegacyProbe.func("child", .{ .returns = zigo.result.borrowed() }),
+            LegacyProbe.func("deinit", .{}),
         }),
-        api.function("snapshot", .{ .returns = owned_tree }),
-        api.function("probeMany", .{ .returns = owned_tree }),
-        api.function("fill", .{
+        api.func("snapshot", .{ .returns = owned_tree }),
+        api.func("probeMany", .{ .returns = owned_tree }),
+        api.func("fill", .{
             .returns = owned_tree,
             .params = &.{
                 zigo.param.output(0, .result),
             },
         }),
-        api.function("release", .{}),
+        api.func("release", .{}),
     },
 });

@@ -119,12 +119,12 @@ const api = zigo.scope(mylib);
 
 pub const bindings = zigo.define(.{
     .root = mylib,
-    .declarations = &.{api.function("add", .{})},
+    .declarations = &.{api.func("add", .{})},
 });
 ```
 
-`api.function("add", .{})`는 루트 모듈의 공개 함수를 선택합니다. 타입 안의 메서드는
-`api.in("Context").function("process", .{})`로 선택합니다.
+`api.func("add", .{})`는 루트 모듈의 공개 함수를 선택합니다. 타입 안의 메서드는
+`api.in("Context").func("process", .{})`로 선택합니다.
 
 처음에는 안정적으로 노출할 함수만 `declarations`에 명시하세요. 공개 Zig API 전체가
 바인딩 API인 프로젝트는 `.discovery = .{ .public = .{} }`로 자동 발견을 선택할 수 있습니다.

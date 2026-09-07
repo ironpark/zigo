@@ -9,6 +9,6 @@ const Lib = struct {
 const api = zigo.scope(Lib);
 comptime {
     _ = zigo.define(.{ .root = Lib, .declarations = &.{
-        api.handle("A", .{}), api.handle("B", .{}).members(&.{api.function("make", .{ .role = .{ .method = api.typeRef("A") } })}),
+        api.handle("A", .{}), api.handle("B", .{}).members(&.{api.func("make", .{ .role = .{ .method = api.typeRef("A") } })}),
     } });
 }

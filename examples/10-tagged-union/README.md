@@ -37,8 +37,8 @@ native가 제외한 tag를 반환하면 Go 오류가 됩니다. 값 union의 var
 
 ```zig
 // src/bindings.zig
-api.enumeration("Mode", .{}).use(json.plugin, .{}),
-api.value("RGB", .{}).use(json.plugin, .{ .field_names = .zig }),
+api.enumType("Mode", .{}).use(json.plugin, .{}),
+api.val("RGB", .{}).use(json.plugin, .{ .field_names = .zig }),
 ```
 
 기본 `encoding/json`은 struct 키를 Go 필드 이름으로 쓰고 enum을 숫자로 씁니다. 둘 다

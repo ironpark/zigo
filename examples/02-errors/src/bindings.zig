@@ -6,10 +6,10 @@ const api = zigo.scope(errors);
 pub const bindings = zigo.define(.{
     .root = errors,
     .declarations = &.{
-        api.function("divide", .{}),
-        api.function("sum", .{}),
-        api.function("normalizeFormat", .{}),
-        api.function("codepointWidth", .{ .params = &.{
+        api.func("divide", .{}),
+        api.func("sum", .{}),
+        api.func("normalizeFormat", .{}),
+        api.func("codepointWidth", .{ .params = &.{
             .{ .index = 0, .semantic = .codepoint },
         } }),
     },

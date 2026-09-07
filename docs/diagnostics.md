@@ -42,7 +42,7 @@ error[ZIGO018]: unsupported integer width `u128` in parameter `cp`
 
 non-exhaustive enum을 명시적 허용 없이 노출했습니다.
 
-Zig enum을 exhaustive로 만들거나 `api.enumeration("T", .{ .exhaustive = false })`로 등록하세요.
+Zig enum을 exhaustive로 만들거나 `api.enumType("T", .{ .exhaustive = false })`로 등록하세요.
 tagged union의 non-exhaustive tag에는 이 설정을 적용할 수 없습니다.
 
 ### ZIGO018

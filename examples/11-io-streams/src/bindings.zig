@@ -17,15 +17,15 @@ pub const bindings = zigo.define(.{
     .defaults = .{ .codepoints = .infer_u21 },
     .declarations = &.{
         Document.define(&.{
-            Document.function("create", .{}),
-            Document.function("deinit", .{}),
-            Document.function("append", .{}).use(zigo.features.implements, .{ .kind = .writer }),
-            Document.function("count", .{}),
-            Document.function("dump", .{}).use(zigo.features.implements, .{ .kind = .writer_to }),
-            Document.function("load", .{ .params = &.{
+            Document.func("create", .{}),
+            Document.func("deinit", .{}),
+            Document.func("append", .{}).use(zigo.features.implements, .{ .kind = .writer }),
+            Document.func("count", .{}),
+            Document.func("dump", .{}).use(zigo.features.implements, .{ .kind = .writer_to }),
+            Document.func("load", .{ .params = &.{
                 zigo.param.stream(1, 4096),
             } }).use(zigo.features.implements, .{ .kind = .reader_from }),
-            Document.function("readInto", .{
+            Document.func("readInto", .{
                 .params = &.{
                     zigo.param.output(1, .result),
                 },
@@ -33,16 +33,16 @@ pub const bindings = zigo.define(.{
         }),
         Sink.select(.{ .names = &.{ "create", "writer", "count", "deinit" } }),
         Source.select(.{ .names = &.{ "create", "reader", "deinit" } }),
-        api.function("banner", .{}),
-        api.function("tee", .{}),
-        api.function("sumCodepoints", .{}),
+        api.func("banner", .{}),
+        api.func("tee", .{}),
+        api.func("sumCodepoints", .{}),
         // Full schema spelling: omitting written means the entire output is filled.
-        api.function("fillCodepoints", .{
+        api.func("fillCodepoints", .{
             .params = &.{
                 .{ .index = 0, .contract = .{ .buffer = .{ .output = .{} } } },
             },
         }),
-        api.function("takeCodepoints", .{ .returns = zigo.result.releasedBy(api.ref("freeCodepoints")) }),
-        api.function("freeCodepoints", .{}),
+        api.func("takeCodepoints", .{ .returns = zigo.result.releasedBy(api.ref("freeCodepoints")) }),
+        api.func("freeCodepoints", .{}),
     },
 });

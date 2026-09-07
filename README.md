@@ -79,7 +79,7 @@ const api = zigo.scope(mylib);
 
 pub const bindings = zigo.define(.{
     .root = mylib,
-    .declarations = &.{api.function("add", .{})},
+    .declarations = &.{api.func("add", .{})},
 });
 ```
 

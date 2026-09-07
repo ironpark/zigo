@@ -11,5 +11,5 @@ const Lib = struct {
 const api = zigo.scope(Lib);
 
 comptime {
-    _ = api.function("rootFn", .{}).context();
+    _ = api.func("rootFn", .{}).context();
 }

@@ -16,11 +16,11 @@ const api = zigo.scope(library);
 const declarations = &[_]zigo.Entry{
     api.handle("Screen", .{}),
     api.handle("Search", .{}),
-    api.value("Point", .{}),
-    api.value("Size", .{}),
-    api.enumeration("CursorStyle", .{}).use(zigo.features.text, .{}),
-    api.enumeration("Mode", .{}).use(zigo.features.text, .{}),
-    api.enumeration("ColorName", .{ .exhaustive = false }).use(zigo.features.text, .{}),
+    api.val("Point", .{}),
+    api.val("Size", .{}),
+    api.enumType("CursorStyle", .{}).use(zigo.features.text, .{}),
+    api.enumType("Mode", .{}).use(zigo.features.text, .{}),
+    api.enumType("ColorName", .{ .exhaustive = false }).use(zigo.features.text, .{}),
     api.taggedUnion("Attribute", .{}),
 };
 ```
@@ -80,9 +80,9 @@ Zig 텍스트 코드는 유니코드 코드포인트를 `u21`이나 `u32`로 다
 `abi-check`의 심볼 시그니처는 바뀌지 않고, Go 표면 변경만 breaking으로 기록됩니다.
 
 ```zig
-api.function("codepointWidth", .{ .params = &.{.{ .index = 0, .go_name = "cp", .semantic = .codepoint }} }),
-api.function("sumCodepoints", .{ .params = &.{.{ .index = 0, .go_name = "values", .semantic = .codepoint }} }),
-api.function("takeCodepoints", .{
+api.func("codepointWidth", .{ .params = &.{.{ .index = 0, .go_name = "cp", .semantic = .codepoint }} }),
+api.func("sumCodepoints", .{ .params = &.{.{ .index = 0, .go_name = "values", .semantic = .codepoint }} }),
+api.func("takeCodepoints", .{
     .returns = .{ .semantic = .codepoint, .lifetime = .{ .owned = .{ .release = api.ref("freeCodepoints") } } },
 }),
 ```
@@ -108,7 +108,7 @@ extern struct 필드는 `.value` 등록 항목의 `.fields`로 지정합니다. 
 범위 검사가 없어 잘못된 `rune`이 그대로 `uint32`로 재해석됩니다.
 
 ```zig
-api.value("Glyph", .{ .fields = &.{.{ .name = "cp", .semantic = .codepoint }} }),
+api.val("Glyph", .{ .fields = &.{.{ .name = "cp", .semantic = .codepoint }} }),
 ```
 
 힌트를 붙일 수 있는 자리는 위 표가 전부입니다. optional 파라미터, sentinel slice, packed·
@@ -128,8 +128,8 @@ pub const bindings = zigo.define(.{
     .root = text,
     .defaults = .{ .codepoints = .infer_u21 },
     .declarations = &.{
-        api.function("width", .{ .params = &.{.{ .index = 0, .go_name = "cp" }} }),
-        api.function("bits", .{ .params = &.{.{ .index = 0, .go_name = "mask", .semantic = .integer }} }),
+        api.func("width", .{ .params = &.{.{ .index = 0, .go_name = "cp" }} }),
+        api.func("bits", .{ .params = &.{.{ .index = 0, .go_name = "mask", .semantic = .integer }} }),
     },
 });
 ```
@@ -144,7 +144,7 @@ segment에서 옵니다. 보통은 그것이 곧 타입 이름이지만, comptim
 
 ```zig
 .declarations = &.{
-    api.enumeration("CursorStyle", .{}),
+    api.enumType("CursorStyle", .{}),
 },
 ```
 
@@ -165,7 +165,7 @@ Zig enum이 `enum(u8) { below, above, _ }`처럼 non-exhaustive이면 자동 등
 
 ```zig
 .declarations = &.{
-    api.enumeration("EraseDisplay", .{ .exhaustive = false }),
+    api.enumType("EraseDisplay", .{ .exhaustive = false }),
 },
 ```
 
@@ -173,7 +173,7 @@ Zig enum이 `enum(u8) { below, above, _ }`처럼 non-exhaustive이면 자동 등
 `ZIGO029`이며, 생략한 기존 등록은 그대로 exhaustive 계약입니다. tagged union의 tag가
 non-exhaustive인 경우에는 이 opt-in을 적용하지 않으며 계속 거부합니다.
 
-등록 enum은 메서드도 가질 수 있습니다. `api.in("Enum").function("method", .{})`로 선택하거나
+등록 enum은 메서드도 가질 수 있습니다. `api.in("Enum").func("method", .{})`로 선택하거나
 `.role.method`로 지목하면 Go에서 값 receiver 메서드가 됩니다. 규칙과 제약은
 [등록 enum의 메서드](bindings-functions.md#등록-enum의-메서드)에 있습니다. `.go` 어댑터를
 붙인 enum은 Go 타입이 다른 패키지의 것이므로 메서드를 가질 수 없습니다.
@@ -185,7 +185,7 @@ non-exhaustive인 경우에는 이 opt-in을 적용하지 않으며 계속 거�
 
 ```zig
 .declarations = &.{
-    api.enumeration("QueueSignal", .{ .exhaustive = false }).use(zigo.features.text, .{}),
+    api.enumType("QueueSignal", .{ .exhaustive = false }).use(zigo.features.text, .{}),
 },
 ```
 
@@ -215,7 +215,7 @@ Go에서 struct를 값처럼 주고받으려면 Zig 타입을 `extern struct`로
 
 ```zig
 .declarations = &.{
-    api.value("Config", .{}),
+    api.val("Config", .{}),
 },
 ```
 
@@ -238,7 +238,7 @@ nullable pointer 하나로 내려가므로 매개변수·반환·error payload �
 ```zig
 pub fn estimate(output: []Stats) !usize {}
 
-api.in("Context").function("estimate", .{
+api.in("Context").func("estimate", .{
     .params = &.{.{ .index = 0, .go_name = "output", .contract = .{ .buffer = .{ .output = .{ .written = .result } } } }},
 }),
 ```
@@ -259,7 +259,7 @@ out slice로 선언하려면 해당 `Param`에 `.contract = .{ .buffer = .{ .out
 
 ```zig
 .declarations = &.{
-    api.value("Point", .{ .go = .{
+    api.val("Point", .{ .go = .{
         .type = "image.Point",
         .import = "image",
         .to_raw = "pointToRaw",
@@ -301,7 +301,7 @@ func pointFromRaw(p raw.PointData) image.Point { return image.Point{X: int(p.X),
 타입 사이를 오갑니다. tagged union의 tag enum에는 적용할 수 없습니다.
 
 ```zig
-api.enumeration("Speed", .{ .go = .{
+api.enumType("Speed", .{ .go = .{
     .type = "Mode",
     .to_raw = "modeToRaw",
     .from_raw = "modeFromRaw",
@@ -314,7 +314,7 @@ scalar에는 타입이 아니라 사용 지점에 붙입니다. `.returns.go`는
 쓸 수 없습니다.
 
 ```zig
-api.function("elapsed", .{ .returns = .{ .go = .{
+api.func("elapsed", .{ .returns = .{ .go = .{
     .type = "time.Duration",
     .import = "time",
     .to_raw = "durationToRaw",
@@ -350,8 +350,8 @@ const Flags = packed struct(u16) {
 };
 
 .declarations = &.{
-    api.enumeration("Mode", .{}),
-    api.value("Flags", .{}),
+    api.enumType("Mode", .{}),
+    api.val("Flags", .{}),
 },
 ```
 
@@ -431,8 +431,8 @@ pub const bindings = zigo.define(.{
         api.materialized("Result", .{}),
         api.materialized("Child", .{}),
 
-        api.function("probeMany", .{ .returns = .{ .lifetime = .{ .owned = .{ .release = api.ref("release") } } } }),
-        api.function("release", .{ .params = &.{.{ .index = 0, .go_name = "buffer" }} }),
+        api.func("probeMany", .{ .returns = .{ .lifetime = .{ .owned = .{ .release = api.ref("release") } } } }),
+        api.func("release", .{ .params = &.{.{ .index = 0, .go_name = "buffer" }} }),
     },
 });
 ```

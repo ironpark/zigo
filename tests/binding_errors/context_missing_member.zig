@@ -12,5 +12,5 @@ const api = zigo.scope(Lib);
 
 comptime {
     const A = api.handle("A", .{}).context();
-    _ = A.function("missing", .{});
+    _ = A.func("missing", .{});
 }

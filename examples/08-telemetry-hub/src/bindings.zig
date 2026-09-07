@@ -9,19 +9,19 @@ pub const bindings = zigo.define(.{
     .discovery = .{ .public = .{} },
     .declarations = &.{
         TelemetryHub.define(&.{
-            TelemetryHub.function("create", .{
+            TelemetryHub.func("create", .{
                 .params = &.{
                     .{ .index = 0, .semantic = .utf8_string },
                     zigo.param.callback(4, .{ .retention = .retained }),
                 },
             }),
-            TelemetryHub.function("rename", .{
+            TelemetryHub.func("rename", .{
                 .params = &.{
                     .{ .index = 1, .semantic = .utf8_string },
                 },
             }),
-            TelemetryHub.function("name", .{ .returns = .{ .semantic = .utf8_string } }),
-            TelemetryHub.function("reduce", .{
+            TelemetryHub.func("name", .{ .returns = .{ .semantic = .utf8_string } }),
+            TelemetryHub.func("reduce", .{
                 .params = &.{
                     zigo.param.cancel(2, "Cancelled").named("cancel"),
                 },

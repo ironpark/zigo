@@ -38,7 +38,7 @@ shim이 파라미터마다 어댑터를 만들어 대상 함수에 넘깁니다.
 바인딩이 `.allocator`를 정했으면 그 allocator, 아니면 `std.heap.c_allocator`입니다.
 
 ```zig
-api.in("Document").function("load", .{ .params = &.{.{ .index = 1, .go_name = "r", .contract = .{ .stream = .{ .buffer = 4096 } } }} })
+api.in("Document").func("load", .{ .params = &.{.{ .index = 1, .go_name = "r", .contract = .{ .stream = .{ .buffer = 4096 } } }} })
 ```
 
 ### 실패와 panic
@@ -155,10 +155,10 @@ Go 표준 인터페이스에서 한 걸음 떨어진 평범한 메서드가 있�
 
 ```zig
 .declarations = &.{
-    api.in("Document").function("append", .{ .params = &.{.{ .index = 1, .go_name = "line" }} }).use(zigo.features.implements, .{ .kind = .writer }),
-    api.in("Document").function("dump", .{ .params = &.{.{ .index = 1, .go_name = "w" }} }).use(zigo.features.implements, .{ .kind = .writer_to }),
-    api.in("Document").function("load", .{ .params = &.{.{ .index = 1, .go_name = "r" }} }).use(zigo.features.implements, .{ .kind = .reader_from }),
-    api.in("Document").function("readInto", .{
+    api.in("Document").func("append", .{ .params = &.{.{ .index = 1, .go_name = "line" }} }).use(zigo.features.implements, .{ .kind = .writer }),
+    api.in("Document").func("dump", .{ .params = &.{.{ .index = 1, .go_name = "w" }} }).use(zigo.features.implements, .{ .kind = .writer_to }),
+    api.in("Document").func("load", .{ .params = &.{.{ .index = 1, .go_name = "r" }} }).use(zigo.features.implements, .{ .kind = .reader_from }),
+    api.in("Document").func("readInto", .{
         .params = &.{.{ .index = 1, .go_name = "dst", .contract = .{ .buffer = .{ .output = .{ .written = .result } } } }},
     }).use(zigo.features.implements, .{ .kind = .reader }),
 },
@@ -222,7 +222,7 @@ pub fn reduce(self: *Hub, rounds: u32, cancel: *const std.atomic.Value(u32)) Red
 ```
 
 ```zig
-api.in("Hub").function("reduce", .{ .params = &.{
+api.in("Hub").func("reduce", .{ .params = &.{
     .{ .index = 1, .go_name = "rounds" }, .{ .index = 2, .go_name = "cancel", .contract = .{ .cancel = .{} } },
 } })
 ```

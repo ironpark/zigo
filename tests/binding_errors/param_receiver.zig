@@ -12,5 +12,5 @@ const Lib = struct {
 };
 const api = zigo.scope(Lib);
 comptime {
-    _ = zigo.define(.{ .root = Lib, .declarations = &.{ api.handle("Item", .{}), api.in("Item").function("read", .{ .params = &.{.{ .index = 0 }} }) } });
+    _ = zigo.define(.{ .root = Lib, .declarations = &.{ api.handle("Item", .{}), api.in("Item").func("read", .{ .params = &.{.{ .index = 0 }} }) } });
 }

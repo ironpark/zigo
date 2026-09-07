@@ -21,7 +21,7 @@ pub const bindings = zigo.define(.{
 const api = zigo.scope(library);
 pub const bindings = zigo.define(.{
     .root = library,
-    .declarations = &.{api.function("add", .{})},
+    .declarations = &.{api.func("add", .{})},
 });
 ```
 
@@ -31,11 +31,11 @@ pub const bindings = zigo.define(.{
 
 | 이전 작성 방식 | 새 작성 방식 |
 |---|---|
-| `zigo.dsl.func("root.add")` | `api.function("add", .{})` |
-| `zigo.dsl.func("Store.read")` | `api.in("Store").function("read", .{})` |
+| `zigo.dsl.func("root.add")` | `api.func("add", .{})` |
+| `zigo.dsl.func("Store.read")` | `api.in("Store").func("read", .{})` |
 | `.types = &.{.{ .handle = .{ .type = library.Store } }}` | `.declarations = &.{api.handle("Store", .{})}` |
-| `funcs(..., .{ .names = ... })` | `api.functions(.{ .names = ... })` |
-| `funcs(..., .{ .prefix = ..., .exclude = ... })` | `api.functions(.{ .public = .{ .prefix = ..., .exclude = ... } })` |
+| `funcs(..., .{ .names = ... })` | `api.funcs(.{ .names = ... })` |
+| `funcs(..., .{ .prefix = ..., .exclude = ... })` | `api.funcs(.{ .public = .{ .prefix = ..., .exclude = ... } })` |
 | `collect(...)` | `++`로 `[]const zigo.Entry` 또는 배열 결합 |
 | `pathsOf(...)`, package selector·closure | `zigo.package(.{ .path = ..., .declarations = ... })` |
 | `.receiver = library.Store` | `.role = .{ .method = api.typeRef("Store") }` |
@@ -65,8 +65,8 @@ pub const bindings = zigo.define(.{
 ```zig
 const Store = api.handle("Store", .{}).context();
 const store = Store.define(&.{
-    Store.function("create", .{}),
-    Store.function("deinit", .{}),
+    Store.func("create", .{}),
+    Store.func("deinit", .{}),
 });
 ```
 
@@ -81,7 +81,7 @@ const store = Store.define(&.{
 
 ```zig
 // fn read(self: *Store, gpa: Allocator, offset: u32, dst: []u8) usize
-api.in("Store").function("read", .{
+api.in("Store").func("read", .{
     .params = &.{.{
         .index = 3,
         .go_name = "dst",
@@ -184,3 +184,15 @@ zig build go-check
 명시한 receiver 부모를 사용합니다. package 기본값 override는 그 안의 명시 함수에 적용되고,
 타입 필드와 자동 발견 함수는 Binding 기본값을 사용합니다. 함수별 backend 선택과
 파라미터 이름 기반 selector도 제공하지 않습니다.
+
+## 선언 메서드 이름 변경
+
+| 이전 작성 API | 현재 작성 API |
+|---|---|
+| `.function(name, options)` | `.func(name, options)` |
+| `.functions(selector)` | `.funcs(selector)` |
+| `.value(name, options)` | `.val(name, options)` |
+| `.enumeration(name, options)` | `.enumType(name, options)` |
+
+Scope와 Context의 호출부를 함께 변경하세요. 이전 이름의 alias는 제공하지 않습니다.
+내부 IR 필드와 representation 태그 이름은 바뀌지 않으며 생성된 Go API와 ABI도 동일합니다.

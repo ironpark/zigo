@@ -17,7 +17,7 @@ const api = zigo.scope(mylib);
 pub const bindings = zigo.define(.{
     .root = mylib,
     .declarations = &.{
-        api.function("add", .{}),
+        api.func("add", .{}),
     },
 });
 ```
@@ -43,9 +43,9 @@ pub const bindings = zigo.define(.{
 const store = api.in("Store");
 
 const store_entry = api.handle("Store", .{}).members(&.{
-    store.function("create", .{}),
-    store.function("len", .{}),
-    store.function("deinit", .{}),
+    store.func("create", .{}),
+    store.func("len", .{}),
+    store.func("deinit", .{}),
 });
 
 const storage = zigo.package(.{
@@ -60,8 +60,8 @@ const storage = zigo.package(.{
 | 타입 helper | 용도 |
 |---|---|
 | `api.handle("T", options)` | Zig에 남는 객체와 수명주기 |
-| `api.value("T", options)` | 적격한 `extern struct` 또는 정수 기반 `packed struct`의 Go 값 |
-| `api.enumeration("T", options)` | enum. `.exhaustive = false`로 열린 enum 허용 |
+| `api.val("T", options)` | 적격한 `extern struct` 또는 정수 기반 `packed struct`의 Go 값 |
+| `api.enumType("T", options)` | enum. `.exhaustive = false`로 열린 enum 허용 |
 | `api.taggedUnion("T", options)` | tagged union. `.access = .projection` 또는 `.snapshot` |
 | `api.materialized("T", options)` | 포인터를 포함한 결과 트리를 복사해 반환 |
 | `api.callback("T", options)` | 공개 `*const fn` alias와 공통 콜백 계약 |
@@ -78,11 +78,11 @@ Context는 제네릭이 반환한 타입이며, `.define()` 또는 `.select()`�
 const Document = api.handle("Document", .{}).context();
 
 const document = Document.define(&.{
-    Document.function("create", .{}),
-    Document.function("readInto", .{
+    Document.func("create", .{}),
+    Document.func("readInto", .{
         .params = &.{zigo.param.output(1, .result)},
     }),
-    Document.function("deinit", .{}),
+    Document.func("deinit", .{}),
 });
 ```
 
@@ -105,7 +105,7 @@ const document = Document.define(&.{
 
 Context 내부의 `Self = @This()`는 바인딩 문맥 타입입니다. 실제 대상 타입은 `Target`이며
 Go 이름을 바꿔도 source 경로와 참조는 유지됩니다. 멤버의 receiver는 기존 normalizer가
-결정하므로 root 함수도 `Document.define(&.{api.function("readDocument", .{})})`로 묶을 수
+결정하므로 root 함수도 `Document.define(&.{api.func("readDocument", .{})})`로 묶을 수
 있습니다. 정적 생성자의 `.none`, 자식 생성자의 `.member` 규칙도 그대로입니다.
 
 handle·value·enumeration·taggedUnion·materialized 선언에 사용할 수 있습니다.
@@ -125,7 +125,7 @@ Context·selector·자동 발견의 조합은 [작성 기능별 예제](examples
 
 ```zig
 // Zig: fn read(self: *Store, gpa: Allocator, dst: []u8) usize
-const read = store.function("read", .{
+const read = store.func("read", .{
     .params = &.{zigo.param.output(2, .result)},
 });
 ```
@@ -153,8 +153,8 @@ const read = store.function("read", .{
 선언에 붙는 내장 기능과 외부 플러그인은 `.use()`로 연결합니다.
 
 ```zig
-const next = store.function("next", .{}).use(zigo.features.iterator, .{});
-const mode = api.enumeration("Mode", .{}).use(zigo.features.text, .{});
+const next = store.func("next", .{}).use(zigo.features.iterator, .{});
+const mode = api.enumType("Mode", .{}).use(zigo.features.text, .{});
 ```
 
 내장 기능은 `iterator`, `implements`, `text`입니다. `Must*`는 빌드 옵션으로,
@@ -184,3 +184,10 @@ zig build go-report
 `go-report`에서 최종 Go 이름과 수명 결정을 확인합니다. 생성된 파일을 직접 수정하지 말고
 바인딩 선언을 바꿔 다시 생성하세요. CI 연결은 [생성물과 CI 관리](generated-code.md),
 지원 범위는 [제한사항](limitations.md)을 참고하세요.
+
+## 짧은 선언 이름
+
+작성 API는 `func(name, options)`, `funcs(selector)`, `val(name, options)`,
+`enumType(name, options)`를 사용합니다. Context에서도 `func`와 `funcs`를 제공합니다.
+기존 `function`·`functions`·`value`·`enumeration` 메서드는 이 이름으로 교체했습니다.
+`enum`은 Zig 예약어이므로 enum 타입 선언에는 `enumType`을 사용합니다.

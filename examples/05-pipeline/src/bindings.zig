@@ -13,25 +13,25 @@ pub const bindings = zigo.define(.{
     .root = library,
     .declarations = &.{
         Pipeline.define(&.{
-            Pipeline.function("create", .{
+            Pipeline.func("create", .{
                 .params = &.{
                     .{ .index = 0, .go_name = "name", .semantic = .utf8_string },
                     .{ .index = 1, .go_name = "mode" },
                     zigo.param.callback(2, .{ .retention = .retained }),
                 },
             }),
-            Pipeline.function("process", .{}),
-            Pipeline.function("name", .{ .returns = .{ .semantic = .utf8_string } }),
-            Pipeline.function("mode", .{}),
-            Pipeline.function("setEnabled", .{}),
-            Pipeline.function("processed", .{}),
-            Pipeline.function("total", .{}),
-            Pipeline.function("deinit", .{}),
+            Pipeline.func("process", .{}),
+            Pipeline.func("name", .{ .returns = .{ .semantic = .utf8_string } }),
+            Pipeline.func("mode", .{}),
+            Pipeline.func("setEnabled", .{}),
+            Pipeline.func("processed", .{}),
+            Pipeline.func("total", .{}),
+            Pipeline.func("deinit", .{}),
         }),
         IntBatch.select(batch_members),
         FloatBatch.select(batch_members),
-        api.function("liveBytes", .{}),
-        api.function("compressionBound", .{}),
+        api.func("liveBytes", .{}),
+        api.func("compressionBound", .{}),
         zigo.interface(.{
             .name = "Batch",
             .methods = &.{"len"},

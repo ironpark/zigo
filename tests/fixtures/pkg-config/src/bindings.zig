@@ -6,6 +6,6 @@ const api = zigo.scope(fixture);
 pub const bindings = zigo.define(.{
     .root = fixture,
     .declarations = &.{
-        api.function("answer", .{}),
+        api.func("answer", .{}),
     },
 });

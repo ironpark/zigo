@@ -13,5 +13,5 @@ const Lib = struct {
 const api = zigo.scope(Lib);
 const P = .{ .name = "TEST", .FunctionOptions = struct {}, .TypeOptions = struct {}, .targets = [_]enum { function }{.function} };
 comptime {
-    _ = api.function("f", .{}).use(P, .{ .limit = 3 });
+    _ = api.func("f", .{}).use(P, .{ .limit = 3 });
 }

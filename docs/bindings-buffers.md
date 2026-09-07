@@ -43,8 +43,8 @@ pub const bindings = zigo.define(.{
     .root = mylib,
     .defaults = .{ .strings = .infer_utf8 },
     .declarations = &.{
-        api.function("render", .{ .params = &.{.{ .index = 0, .go_name = "text" }} }),
-        api.function("digest", .{ .params = &.{.{ .index = 0, .go_name = "payload", .semantic = .opaque_bytes }} }),
+        api.func("render", .{ .params = &.{.{ .index = 0, .go_name = "text" }} }),
+        api.func("digest", .{ .params = &.{.{ .index = 0, .go_name = "payload", .semantic = .opaque_bytes }} }),
     },
 });
 ```
@@ -68,7 +68,7 @@ Go에서는 `[]string`이 됩니다. 일반 unsentinel 형태는 sidecar에서 �
 ```zig
 pub fn extractPaths(paths: []const []const u8) usize {}
 
-api.in("Context").function("extractPaths", .{ .params = &.{.{ .index = 0, .go_name = "paths", .semantic = .utf8_string }} }),
+api.in("Context").func("extractPaths", .{ .params = &.{.{ .index = 0, .go_name = "paths", .semantic = .utf8_string }} }),
 ```
 
 native ABI는 `paths_data`, `paths_data_len`, `paths_lens`, `paths_count` 네 scalar 인자로
@@ -103,8 +103,8 @@ slice 반환은 `.returns.lifetime = .{ .owned = .{} }`로 소유권을 넘길 �
 pub fn extractSamples(self: *EventQueue) []f32 {}
 pub fn freeSamples(_: *EventQueue, samples: []f32) void {}
 
-api.in("EventQueue").function("extractSamples", .{ .returns = .{ .lifetime = .{ .owned = .{ .release = api.in("EventQueue").ref("freeSamples") } } } }),
-api.in("EventQueue").function("freeSamples", .{ .params = &.{.{ .index = 1, .go_name = "samples" }} }),
+api.in("EventQueue").func("extractSamples", .{ .returns = .{ .lifetime = .{ .owned = .{ .release = api.in("EventQueue").ref("freeSamples") } } } }),
+api.in("EventQueue").func("freeSamples", .{ .params = &.{.{ .index = 1, .go_name = "samples" }} }),
 ```
 
 문자열 결과의 해제 함수가 바인딩 전체에서 하나라면 `zigo.define`의
@@ -119,8 +119,8 @@ pub const bindings = zigo.define(.{
     .defaults = .{ .strings = .infer_utf8 },
     .string_release = api.ref("freeString"),
     .declarations = &.{
-        api.in("Terminal").function("plainString", .{ .returns = .{ .lifetime = .{ .owned = .{} } } }),
-        api.function("freeString", .{ .params = &.{.{ .index = 1, .go_name = "str" }} }),
+        api.in("Terminal").func("plainString", .{ .returns = .{ .lifetime = .{ .owned = .{} } } }),
+        api.func("freeString", .{ .params = &.{.{ .index = 1, .go_name = "str" }} }),
     },
 });
 ```
@@ -147,7 +147,7 @@ release하므로 부재와 오류 경로에서는 release 함수가 호출되지
 ```zig
 pub fn extractSamplesChecked(self: *EventQueue) ProcessError![]f32 {}
 
-api.in("EventQueue").function("extractSamplesChecked", .{ .returns = .{ .lifetime = .{ .owned = .{ .release = api.in("EventQueue").ref("freeSamples") } } } }),
+api.in("EventQueue").func("extractSamplesChecked", .{ .returns = .{ .lifetime = .{ .owned = .{ .release = api.in("EventQueue").ref("freeSamples") } } } }),
 ```
 
 release 함수가 allocator를 받아도 됩니다. `fn freeSamples(gpa: Allocator, samples: []f32) void`는
@@ -197,7 +197,7 @@ pub fn extractSamplesInto(self: *Queue, dst: []f32) usize {
     return wanted;
 }
 
-api.in("Queue").function("extractSamplesInto", .{
+api.in("Queue").func("extractSamplesInto", .{
     .params = &.{.{ .index = 1, .go_name = "dst", .contract = .{ .buffer = .{ .output = .{ .written = .result } } } }},
 }),
 ```

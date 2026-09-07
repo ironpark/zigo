@@ -6,7 +6,7 @@ const api = zigo.scope(invalid);
 pub const bindings = zigo.define(.{
     .root = invalid,
     .declarations = &.{
-        api.function("lookupID", .{}),
-        api.function("lookup_id", .{}),
+        api.func("lookupID", .{}),
+        api.func("lookup_id", .{}),
     },
 });

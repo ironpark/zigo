@@ -275,8 +275,8 @@ fn Context(comptime entry: Entry) type {
         const Self = @This();
         pub const Target = entry.type.ref.type;
         pub const source = Scope(entry.type.ref.root, Target, entry.type.ref.path);
-        pub const function = source.function;
-        pub const functions = source.functions;
+        pub const func = source.func;
+        pub const funcs = source.funcs;
         pub const ref = source.ref;
 
         pub fn typeRef() TypeRef {
@@ -287,7 +287,7 @@ fn Context(comptime entry: Entry) type {
             return entry.members(entries);
         }
         pub fn select(comptime selector: Selector) Entry {
-            return Self.define(Self.functions(selector));
+            return Self.define(Self.funcs(selector));
         }
     };
 }
@@ -314,16 +314,16 @@ fn Scope(comptime Root: type, comptime Container: type, comptime path: []const u
         pub fn typeRef(comptime name: []const u8) TypeRef {
             return .{ .root = Root, .type = namedType(Container, name), .path = path ++ "." ++ name };
         }
-        pub fn function(comptime name: []const u8, comptime options: FunctionOptions) Entry {
+        pub fn func(comptime name: []const u8, comptime options: FunctionOptions) Entry {
             return .{ .function = .{ .ref = ref(name), .options = options } };
         }
-        pub fn functions(comptime selector: Selector) []const Entry {
+        pub fn funcs(comptime selector: Selector) []const Entry {
             comptime var entries: []const Entry = &.{};
             switch (selector) {
                 .names => |names| {
                     inline for (names, 0..) |name, i| {
                         inline for (names[0..i]) |prior| if (std.mem.eql(u8, prior, name)) @compileError("zigo duplicate function selection: " ++ name);
-                        entries = entries ++ [_]Entry{function(name, .{})};
+                        entries = entries ++ [_]Entry{func(name, .{})};
                     }
                 },
                 .public => |selection| {
@@ -339,7 +339,7 @@ fn Scope(comptime Root: type, comptime Container: type, comptime path: []const u
                         inline for (selection.exclude) |name| if (std.mem.eql(u8, d.name, name)) {
                             excluded = true;
                         };
-                        if (!excluded) entries = entries ++ [_]Entry{function(d.name, .{})};
+                        if (!excluded) entries = entries ++ [_]Entry{func(d.name, .{})};
                     }
                 },
             }
@@ -363,13 +363,13 @@ fn Scope(comptime Root: type, comptime Container: type, comptime path: []const u
         pub fn handle(comptime name: []const u8, comptime options: HandleOptions) Entry {
             return typeEntry(name, .{ .handle = options });
         }
-        pub fn value(comptime name: []const u8, comptime options: ValueOptions) Entry {
+        pub fn val(comptime name: []const u8, comptime options: ValueOptions) Entry {
             return typeEntry(name, .{ .value = options });
         }
         pub fn materialized(comptime name: []const u8, comptime options: MaterializedOptions) Entry {
             return typeEntry(name, .{ .materialized = options });
         }
-        pub fn enumeration(comptime name: []const u8, comptime options: EnumOptions) Entry {
+        pub fn enumType(comptime name: []const u8, comptime options: EnumOptions) Entry {
             return typeEntry(name, .{ .enumeration = options });
         }
         pub fn taggedUnion(comptime name: []const u8, comptime options: UnionOptions) Entry {
@@ -415,16 +415,16 @@ test "scoped references and explicit selection preserve source identity" {
         pub fn b() void {}
     };
     const api = scope(Lib);
-    const entries = comptime api.functions(.{ .names = &.{ "b", "a" } });
+    const entries = comptime api.funcs(.{ .names = &.{ "b", "a" } });
     try std.testing.expectEqualStrings("root.b", comptime entries[0].functionRef().path);
     try std.testing.expect(api.typeRef("Item").type == Lib.Item);
     const original = comptime api.handle("Item", .{}).members(entries);
-    const replaced = comptime original.members(&.{api.function("a", .{})});
+    const replaced = comptime original.members(&.{api.func("a", .{})});
     try std.testing.expectEqual(@as(usize, 1), replaced.type.options.members.len);
     try std.testing.expectEqualStrings("root.a", replaced.type.options.members[0].function.ref.path);
     const param = comptime (Param{ .index = 1 }).named("alias").named(null);
     try std.testing.expect(param.go_name == null);
-    const renamed = api.function("a", .{}).named("Other");
+    const renamed = api.func("a", .{}).named("Other");
     try std.testing.expectEqualStrings("root.a", renamed.functionRef().path);
 }
 test "contract replacement clears stale lifetime and explicit null clears names" {
@@ -433,7 +433,7 @@ test "contract replacement clears stale lifetime and explicit null clears names"
         pub fn free() void {}
     };
     const api = scope(Lib);
-    const owned = api.function("take", .{ .name = "Take", .returns = .{ .lifetime = .{ .owned = .{ .release = api.ref("free") } } } });
+    const owned = api.func("take", .{ .name = "Take", .returns = .{ .lifetime = .{ .owned = .{ .release = api.ref("free") } } } });
     const borrowed = owned.with(.{ .name = null, .returns = Returns{ .lifetime = .{ .borrowed = .receiver } } });
     try std.testing.expect(borrowed.function.options.name == null);
     try std.testing.expect(borrowed.function.options.returns.lifetime == .borrowed);
@@ -444,7 +444,7 @@ test "type plugins and explicit replacement keep one typed option payload" {
         pub const Record = extern struct { value: u32 };
     };
     const P = .{ .name = "TEST", .FunctionOptions = struct {}, .TypeOptions = struct { limit: ?u32 = 10 }, .targets = [_]enum { value }{.value} };
-    const entry = comptime scope(Lib).value("Record", .{}).use(P, .{ .limit = 5 }).replacePlugin(P, .{ .limit = null });
+    const entry = comptime scope(Lib).val("Record", .{}).use(P, .{ .limit = 5 }).replacePlugin(P, .{ .limit = null });
     try std.testing.expectEqual(@as(usize, 1), entry.type.extensions.len);
     const bytes = try entry.type.extensions[0].jsonAlloc(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
@@ -458,8 +458,8 @@ test "plugin options are selected by attachment target" {
     };
     const P = .{ .name = "DUAL", .FunctionOptions = struct { checked: bool }, .TypeOptions = struct { key: []const u8 }, .targets = [_]enum { function, value }{ .function, .value } };
     const api = scope(Lib);
-    const f = comptime api.function("f", .{}).use(P, .{ .checked = true });
-    const t = comptime api.value("Record", .{}).use(P, .{ .key = "value" });
+    const f = comptime api.func("f", .{}).use(P, .{ .checked = true });
+    const t = comptime api.val("Record", .{}).use(P, .{ .key = "value" });
     const f_json = try f.function.extensions[0].jsonAlloc(std.testing.allocator);
     defer std.testing.allocator.free(f_json);
     const t_json = try t.type.extensions[0].jsonAlloc(std.testing.allocator);

@@ -6,6 +6,6 @@ const api = zigo.scope(library);
 pub const bindings = zigo.define(.{
     .root = library,
     .declarations = &.{
-        api.function("add", .{}),
+        api.func("add", .{}),
     },
 });

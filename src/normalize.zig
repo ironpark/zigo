@@ -372,7 +372,7 @@ test "tree normalization owns packages and sparse original argument indices" {
     };
     const api = a.scope(Lib);
     const doc = api.in("Document");
-    const result = comptime binding(.{ .root = Lib, .declarations = &.{a.package(.{ .path = "io", .declarations = &.{api.handle("Document", .{}).with(.{ .members = &.{ doc.function("create", .{}), doc.function("read", .{ .params = &.{.{ .index = 3, .go_name = "dst", .contract = .{ .buffer = .{ .output = .{ .written = .result } } } }} }), doc.function("deinit", .{}) } })} })} });
+    const result = comptime binding(.{ .root = Lib, .declarations = &.{a.package(.{ .path = "io", .declarations = &.{api.handle("Document", .{}).with(.{ .members = &.{ doc.func("create", .{}), doc.func("read", .{ .params = &.{.{ .index = 3, .go_name = "dst", .contract = .{ .buffer = .{ .output = .{ .written = .result } } } }} }), doc.func("deinit", .{}) } })} })} });
     try std.testing.expectEqualStrings("Document.read", result.functions[1].path);
     try std.testing.expectEqual(@as(usize, 2), result.functions[1].params.len);
     try std.testing.expectEqualStrings("dst", result.functions[1].params[1].name.?);
@@ -396,9 +396,9 @@ test "Go renames preserve source references and release ownership" {
     const api = a.scope(Lib);
     const result = comptime binding(.{ .root = Lib, .declarations = &.{
         api.handle("Store", .{}).named("Renamed"),
-        api.in("Store").function("size", .{}),
-        api.function("take", .{ .returns = .{ .lifetime = .{ .owned = .{ .release = api.ref("free") } }, .semantic = .utf8_string } }),
-        api.function("free", .{}),
+        api.in("Store").func("size", .{}),
+        api.func("take", .{ .returns = .{ .lifetime = .{ .owned = .{ .release = api.ref("free") } }, .semantic = .utf8_string } }),
+        api.func("free", .{}),
     } });
     try std.testing.expectEqualStrings("Renamed.size", result.functions[0].path);
     try std.testing.expectEqualStrings("root.free", result.functions[1].returns.release.?);
@@ -411,7 +411,7 @@ test "package defaults override only declared authoring defaults" {
     };
     const api = a.scope(Lib);
     const result = comptime binding(.{ .root = Lib, .defaults = .{ .strings = .infer_utf8, .codepoints = .infer_u21 }, .declarations = &.{
-        a.package(.{ .path = "text", .defaults = .{ .strings = .explicit }, .declarations = &.{api.function("text", .{})} }),
+        a.package(.{ .path = "text", .defaults = .{ .strings = .explicit }, .declarations = &.{api.func("text", .{})} }),
     } });
     try std.testing.expectEqual(ir.Strings.explicit, result.functions[0].strings.?);
     try std.testing.expectEqual(ir.Codepoints.infer_u21, result.functions[0].codepoints.?);
@@ -454,7 +454,7 @@ test "contract helpers and explicit constructor context normalize once" {
     };
     const api = a.scope(Lib);
     const member = comptime binding(.{ .root = Lib, .declarations = &.{
-        api.handle("Parent", .{}).members(&.{api.function("create", .{
+        api.handle("Parent", .{}).members(&.{api.func("create", .{
             .role = .{ .constructor = .{ .type = api.typeRef("Child"), .receiver = .member, .parent = .receiver } },
             .params = &.{p.output(1, .all).named("dst")},
         })}),
@@ -465,13 +465,13 @@ test "contract helpers and explicit constructor context normalize once" {
     try std.testing.expectEqual(@as(usize, 1), member.functions[0].params.len);
     try std.testing.expectEqualStrings("dst", member.functions[0].params[0].name.?);
     const static = comptime binding(.{ .root = Lib, .declarations = &.{
-        api.handle("Parent", .{}).members(&.{api.function("create", .{
+        api.handle("Parent", .{}).members(&.{api.func("create", .{
             .role = .{ .constructor = .{ .type = api.typeRef("Child") } },
             .params = &.{.{ .index = 0, .go_name = "parent" }},
         })}),
         api.handle("Child", .{}),
-        api.function("take", .{ .returns = r.releasedBy(api.ref("release")) }),
-        api.function("release", .{}),
+        api.func("take", .{ .returns = r.releasedBy(api.ref("release")) }),
+        api.func("release", .{}),
     } });
     try std.testing.expect(static.functions[0].force_free);
     try std.testing.expect(static.functions[0].receiver == null);

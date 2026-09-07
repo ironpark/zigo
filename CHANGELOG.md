@@ -8,6 +8,9 @@
 
 ### Changed
 
+- **Breaking:** 작성 메서드 `function`·`functions`·`value`·`enumeration`을
+  `func`·`funcs`·`val`·`enumType`으로 교체했습니다. Scope·Context와 예제·문서를 함께 갱신했습니다.
+
 - Context 적용을 05·08·09·10 예제로 확대하고 단순 멤버 selector와 수명 선언을 정리했습니다.
   예제 선택 가이드에 작성 기능별 안내를 추가했습니다.
 

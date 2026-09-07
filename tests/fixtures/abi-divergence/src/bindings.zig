@@ -6,6 +6,6 @@ const api = zigo.scope(divergence);
 pub const bindings = zigo.define(.{
     .root = divergence,
     .declarations = &.{
-        api.function("measure", .{ .params = &.{.{ .index = 0, .go_name = "sizes" }} }),
+        api.func("measure", .{ .params = &.{.{ .index = 0, .go_name = "sizes" }} }),
     },
 });

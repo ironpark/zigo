@@ -6,6 +6,6 @@ const api = zigo.scope(http_client);
 pub const bindings = zigo.define(.{
     .root = http_client,
     .declarations = &.{
-        api.function("statusCode", .{}),
+        api.func("statusCode", .{}),
     },
 });

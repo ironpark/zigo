@@ -20,13 +20,13 @@ pub const bindings = zigo.define(.{
     .root = library,
     .declarations = &.{
         CallbackContext.define(&.{
-            CallbackContext.function("create", .{
+            CallbackContext.func("create", .{
                 .params = &.{
                     zigo.param.callback(0, .{ .retention = .retained, .go_error = true }),
                 },
             }),
-            CallbackContext.function("run", .{}),
-            CallbackContext.function("deinit", .{}),
+            CallbackContext.func("run", .{}),
+            CallbackContext.func("deinit", .{}),
         }),
         FloatBuffer.select(buffer_members),
         IntBuffer.select(buffer_members),
@@ -38,33 +38,33 @@ pub const bindings = zigo.define(.{
         api.callback("Logger", .{ .params = &.{.{ .index = 1, .semantic = .utf8_string }} }),
         api.callback("ByteSink", .{ .params = &.{.{ .index = 0, .semantic = .opaque_bytes }} }),
         api.callback("Inspector", .{}),
-        api.function("panicNow", .{}),
-        api.function("compressionBound", .{}),
-        api.function("incrementShared", .{}),
-        api.function("readShared", .{}),
-        api.function("apply", .{ .params = &.{
+        api.func("panicNow", .{}),
+        api.func("compressionBound", .{}),
+        api.func("incrementShared", .{}),
+        api.func("readShared", .{}),
+        api.func("apply", .{ .params = &.{
             zigo.param.callback(1, .{ .go_error = true }),
         } }),
-        api.function("applyUntilCancelled", .{
+        api.func("applyUntilCancelled", .{
             .params = &.{
                 zigo.param.callback(1, .{ .go_error = true }),
                 zigo.param.cancel(3, null).named("cancel"),
             },
         }),
-        api.function("notify", .{}),
-        api.function("filter", .{}),
+        api.func("notify", .{}),
+        api.func("filter", .{}),
         // Keep a stable name for the explicit userdata link.
-        api.function("reduce", .{
+        api.func("reduce", .{
             .params = &.{
                 .{ .index = 0, .go_name = "ctx" },
                 zigo.param.callback(2, .{ .userdata = 0 }),
             },
         }),
-        api.function("logMessage", .{}),
-        api.function("emitChunks", .{ .params = &.{
+        api.func("logMessage", .{}),
+        api.func("emitChunks", .{ .params = &.{
             .{ .index = 1, .go_name = "chunkLen" },
         } }),
-        api.function("inspect", .{}),
-        api.function("visitCodepoints", .{ .returns = .{ .semantic = .codepoint } }),
+        api.func("inspect", .{}),
+        api.func("visitCodepoints", .{ .returns = .{ .semantic = .codepoint } }),
     },
 });

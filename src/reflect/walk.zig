@@ -4933,7 +4933,7 @@ test "authoring tree preserves root method paths and package ownership" {
     const tree = author.define(.{ .root = Lib, .declarations = &.{
         author.package(.{ .path = "items", .declarations = &.{
             api.handle("Item", .{}).named("Record").with(.{ .members = &.{
-                api.function("inspect", .{ .name = "read", .params = &.{.{ .index = 1, .go_name = "index" }} }),
+                api.func("inspect", .{ .name = "read", .params = &.{.{ .index = 1, .go_name = "index" }} }),
             } }),
         } }),
     } });
@@ -4957,7 +4957,7 @@ test "explicit free role keeps handle parameter visible" {
     const api = author.scope(Lib);
     const tree = author.define(.{ .root = Lib, .declarations = &.{
         api.handle("Item", .{}),
-        api.function("inspect", .{ .role = .free, .params = &.{.{ .index = 0, .go_name = "item" }} }),
+        api.func("inspect", .{ .role = .free, .params = &.{.{ .index = 0, .go_name = "item" }} }),
     } });
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();
@@ -4980,13 +4980,13 @@ test "authoring static constructor keeps its handle input in the public signatur
     const api = author.scope(Fixture);
     const tree = comptime author.define(.{ .root = Fixture, .declarations = &.{
         api.handle("Parent", .{}).members(&.{
-            api.function("create", .{
+            api.func("create", .{
                 .role = .{ .constructor = .{ .type = api.typeRef("Child"), .receiver = .none } },
                 .params = &.{.{ .index = 0, .go_name = "parent" }},
             }),
         }),
         api.handle("Child", .{}).members(&.{
-            api.function("destroy", .{ .role = .{ .destructor = api.typeRef("Child") } }),
+            api.func("destroy", .{ .role = .{ .destructor = api.typeRef("Child") } }),
         }),
     } });
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
@@ -5014,7 +5014,7 @@ test "authoring sparse callback hints survive native userdata and byte pair lowe
             },
             .on_failure = .{ .result = -1 },
         }),
-        api.function("run", .{}),
+        api.func("run", .{}),
     } });
     var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
     defer arena.deinit();

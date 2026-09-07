@@ -894,8 +894,8 @@ test "scoped enum covers follow renamed owners regardless of declaration order" 
     };
     const api = author.scope(Api);
     const binding = author.define(.{ .root = Api, .declarations = &.{
-        api.enumeration("Mode", .{ .covers = &.{ api.in("Mode").ref("label"), api.in("Other").ref("label") } }).named("State"),
-        api.enumeration("Other", .{}).named("Second"),
+        api.enumType("Mode", .{ .covers = &.{ api.in("Mode").ref("label"), api.in("Other").ref("label") } }).named("State"),
+        api.enumType("Other", .{}).named("Second"),
     } });
     var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
     defer arena.deinit();

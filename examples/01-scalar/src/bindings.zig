@@ -6,6 +6,6 @@ const api = zigo.scope(scalar);
 pub const bindings = zigo.define(.{
     .root = scalar,
     .declarations = &.{
-        api.function("add", .{ .covers = &.{api.ref("subtract")} }),
+        api.func("add", .{ .covers = &.{api.ref("subtract")} }),
     },
 });

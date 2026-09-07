@@ -66,8 +66,8 @@ test "generic context Self, target and alias identity stay distinct" {
     const names: zigo.Selector = .{ .names = &.{ "create", "push", "len", "deinit" } };
     const actual = comptime zigo.define(.{ .root = Lib, .declarations = &.{ Float.select(names), Int.select(names) } });
     const expected = comptime zigo.define(.{ .root = Lib, .declarations = &.{
-        api.handle("FloatBuffer", .{}).members(api.in("FloatBuffer").functions(names)),
-        api.handle("IntBuffer", .{}).members(api.in("IntBuffer").functions(names)),
+        api.handle("FloatBuffer", .{}).members(api.in("FloatBuffer").funcs(names)),
+        api.handle("IntBuffer", .{}).members(api.in("IntBuffer").funcs(names)),
     } });
     comptime try std.testing.expectEqualDeep(expected, actual);
 }
@@ -78,16 +78,16 @@ test "root functions, contextual child constructors and packages preserve normal
     const actual = comptime zigo.define(.{ .root = Lib, .declarations = &.{
         zigo.package(.{ .path = "io", .declarations = &.{
             Doc.define(&.{
-                Doc.function("read", .{ .params = &.{zigo.param.output(2, .result)} }),
-                Doc.function("newStream", .{ .role = .{ .constructor = .{
+                Doc.func("read", .{ .params = &.{zigo.param.output(2, .result)} }),
+                Doc.func("newStream", .{ .role = .{ .constructor = .{
                     .type = Stream.typeRef(),
                     .receiver = .member,
                     .parent = .receiver,
                 } } }),
             }),
             Stream.define(&.{
-                api.function("freeStream", .{ .role = .{ .destructor = Stream.typeRef() } }),
-                api.function("streamLen", .{}).named("len"),
+                api.func("freeStream", .{ .role = .{ .destructor = Stream.typeRef() } }),
+                api.func("streamLen", .{}).named("len"),
             }),
         } }),
     } });
@@ -109,8 +109,8 @@ test "decorations before context and after define share existing replacement rul
         .TypeOptions = struct { label: ?[]const u8 = "default" },
         .targets = [_]enum { value }{.value},
     };
-    const Point = api.value("Point", .{}).named("Position").use(Plugin, .{ .label = "point" }).context();
-    const old_members = &[_]zigo.Entry{api.function("take", .{})};
+    const Point = api.val("Point", .{}).named("Position").use(Plugin, .{ .label = "point" }).context();
+    const old_members = &[_]zigo.Entry{api.func("take", .{})};
     const again = Point.define(old_members).context();
     const cleared = again.define(&.{}).named(null).replacePlugin(Plugin, .{ .label = null });
     try std.testing.expectEqual(@as(usize, 0), cleared.type.options.members.len);
@@ -118,13 +118,13 @@ test "decorations before context and after define share existing replacement rul
     try std.testing.expectEqual(@as(usize, 1), cleared.type.extensions.len);
     try std.testing.expectEqualStrings("root.Point", cleared.type.ref.path);
     comptime try std.testing.expectEqualDeep(
-        api.value("Point", .{}).named(null).use(Plugin, .{ .label = null }),
+        api.val("Point", .{}).named(null).use(Plugin, .{ .label = null }),
         cleared,
     );
 }
 
 test "context is representation-independent for member-bearing declarations" {
-    const Mode = api.enumeration("Mode", .{}).use(zigo.features.text, .{}).context();
+    const Mode = api.enumType("Mode", .{}).use(zigo.features.text, .{}).context();
     const Value = api.taggedUnion("Value", .{ .access = .snapshot }).context();
     const Probe = api.materialized("Probe", .{}).context();
     const actual = comptime zigo.define(.{ .root = Lib, .declarations = &.{
@@ -142,8 +142,8 @@ test "context role remains explicit for a static constructor taking another hand
     const actual = comptime zigo.define(.{ .root = Lib, .declarations = &.{
         Doc.define(&.{}),
         Stream.define(&.{
-            api.function("newStream", .{ .role = .{ .constructor = .{ .type = Stream.typeRef(), .receiver = .none } } }),
-            api.function("freeStream", .{ .role = .{ .destructor = Stream.typeRef() } }),
+            api.func("newStream", .{ .role = .{ .constructor = .{ .type = Stream.typeRef(), .receiver = .none } } }),
+            api.func("freeStream", .{ .role = .{ .destructor = Stream.typeRef() } }),
         }),
     } });
     try std.testing.expect(actual.functions[0].force_free);
