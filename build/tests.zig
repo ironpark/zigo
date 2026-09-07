@@ -773,6 +773,12 @@ fn matchesAnyFilter(name: []const u8, filters: []const []const u8) bool {
 
 fn addBindingAuthoringErrors(b: *std.Build, test_step: *std.Build.Step) void {
     const cases = .{
+        .{ "members_function", "zigo members requires a type declaration" },
+        .{ "receiver_context", "zigo member receiver requires an enclosing type" },
+        .{ "receiver_mismatch", "zigo receiver differs from the enclosing member type" },
+        .{ "receiver_inferred_mismatch", "zigo receiver differs from the enclosing member type" },
+        .{ "receiver_argument", "zigo receiver does not match the first non-injected Zig argument" },
+        .{ "child_static", "zigo a child constructor needs a receiver" },
         .{ "contract_buffer", "zigo buffer contract does not match Zig argument" },
         .{ "contract_stream", "zigo stream contract does not match Zig argument" },
         .{ "contract_callback", "zigo callback contract does not match Zig argument" },
@@ -796,7 +802,7 @@ fn addBindingAuthoringErrors(b: *std.Build, test_step: *std.Build.Step) void {
         run.setName("authoring rejects " ++ case[0]);
         run.addPrefixedFileArg("-Mroot=", b.path("tests/binding_errors/" ++ case[0] ++ ".zig"));
         run.addPrefixedFileArg("-Mzigo=", b.path("src/root.zig"));
-        inline for (.{ "author", "normalize", "declare", "dsl", "features" }) |source|
+        inline for (.{ "author", "normalize", "declare", "dsl", "features", "param", "result" }) |source|
             run.addFileInput(b.path("src/" ++ source ++ ".zig"));
         run.expectExitCode(1);
         run.expectStdErrMatch(case[1]);

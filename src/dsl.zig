@@ -4,3 +4,6 @@ pub const package = @import("author.zig").package;
 pub const interface = @import("author.zig").interface;
 pub const Selector = @import("author.zig").Selector;
 pub const features = @import("features.zig");
+
+pub const param = @import("param.zig");
+pub const result = @import("result.zig");

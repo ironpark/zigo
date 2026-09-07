@@ -204,7 +204,12 @@ fn normalizeFunction(comptime f: a.Function, comptime state: State, comptime par
         .constructor => |r| {
             _ = typeName(r.type, state);
             result.constructs = r.type.type;
-            receiver = r.receiver;
+            receiver = switch (r.receiver) {
+                .none => null,
+                .member => parent orelse @compileError("zigo member receiver requires an enclosing type: " ++ f.ref.path),
+                .type => |ref| ref,
+            };
+            result.force_free = r.receiver == .none;
             if (r.parent == .receiver and receiver == null) @compileError("zigo a child constructor needs a receiver: " ++ f.ref.path);
             result.child_of_receiver = r.parent == .receiver;
         },
@@ -215,6 +220,10 @@ fn normalizeFunction(comptime f: a.Function, comptime state: State, comptime par
         },
     }
     if (receiver) |r| {
+        if (parent) |p| {
+            if (p.type != r.type or !std.mem.eql(u8, p.path, r.path))
+                @compileError("zigo receiver differs from the enclosing member type: " ++ f.ref.path);
+        }
         _ = typeName(r, state);
         result.receiver = r.type;
     }
@@ -227,7 +236,12 @@ fn normalizeFunction(comptime f: a.Function, comptime state: State, comptime par
         // Match the reflector's automatic handle and owner-enum receiver inference.
         const T = info.params[index].type.?;
         for (state.types) |t| {
-            if (automaticReceiver(T, t)) receiver_index = index;
+            if (automaticReceiver(T, t)) {
+                if (parent) |p| {
+                    if (p.type != t.zigType()) @compileError("zigo receiver differs from the enclosing member type: " ++ f.ref.path);
+                }
+                receiver_index = index;
+            }
             if (t == .enumeration and T == t.zigType() and std.mem.startsWith(u8, result.path, t.goName() ++ ".")) receiver_index = index;
         }
     }
@@ -422,4 +436,54 @@ fn automaticReceiver(comptime T: type, comptime entry: ir.Type) bool {
         .@"struct" => T == entry.zigType(),
         else => false,
     };
+}
+
+test "contract helpers and explicit constructor context normalize once" {
+    const p = @import("param.zig");
+    const r = @import("result.zig");
+    const Lib = struct {
+        pub const Parent = opaque {};
+        pub const Child = opaque {};
+        pub fn create(_: *Parent, _: []u8) *Child {
+            unreachable;
+        }
+        pub fn release(_: []u8) void {}
+        pub fn take() []u8 {
+            unreachable;
+        }
+    };
+    const api = a.scope(Lib);
+    const member = comptime binding(.{ .root = Lib, .declarations = &.{
+        api.handle("Parent", .{}).members(&.{api.function("create", .{
+            .role = .{ .constructor = .{ .type = api.typeRef("Child"), .receiver = .member, .parent = .receiver } },
+            .params = &.{p.output(1, .all).named("dst")},
+        })}),
+        api.handle("Child", .{}),
+    } });
+    try std.testing.expectEqual(Lib.Parent, member.functions[0].receiver.?);
+    try std.testing.expect(member.functions[0].child_of_receiver);
+    try std.testing.expectEqual(@as(usize, 1), member.functions[0].params.len);
+    try std.testing.expectEqualStrings("dst", member.functions[0].params[0].name.?);
+    const static = comptime binding(.{ .root = Lib, .declarations = &.{
+        api.handle("Parent", .{}).members(&.{api.function("create", .{
+            .role = .{ .constructor = .{ .type = api.typeRef("Child") } },
+            .params = &.{.{ .index = 0, .go_name = "parent" }},
+        })}),
+        api.handle("Child", .{}),
+        api.function("take", .{ .returns = r.releasedBy(api.ref("release")) }),
+        api.function("release", .{}),
+    } });
+    try std.testing.expect(static.functions[0].force_free);
+    try std.testing.expect(static.functions[0].receiver == null);
+    try std.testing.expectEqual(@as(usize, 2), static.functions[0].params.len);
+    try std.testing.expectEqualStrings("root.release", static.functions[1].returns.release.?);
+    try std.testing.expectEqual(a.Lifetime.inferred, (a.Returns{}).lifetime);
+    try std.testing.expect(r.owned().lifetime.owned.release == null);
+    try std.testing.expect(r.borrowed().lifetime == .borrowed);
+    try std.testing.expect(p.input(0).contract.buffer == .input);
+    try std.testing.expect(p.inout(1, .result).contract.buffer == .inout);
+    try std.testing.expectEqual(@as(?u32, 1024), p.stream(2, 1024).contract.stream.buffer);
+    try std.testing.expectEqual(@as(?usize, 3), p.callback(2, .{ .userdata = 3 }).contract.callback.userdata);
+    try std.testing.expectEqualStrings("Canceled", p.cancel(4, "Canceled").contract.cancel.canceled.?);
+    try std.testing.expectEqualStrings("x", p.flatten(5, &.{"x"}).contract.flatten[0]);
 }

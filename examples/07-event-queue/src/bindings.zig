@@ -23,14 +23,14 @@ pub const bindings = zigo.define(.{
             .{ .index = 1, .go_name = "observer", .contract = .{ .callback = .{ .retention = .retained } } }, .{ .index = 2, .go_name = "userdata" },
         } }),
         api.in("EventQueue").function("newStream", .{ .role = .{
-            .constructor = .{ .type = api.typeRef("Stream"), .parent = .receiver, .receiver = api.typeRef("EventQueue") },
+            .constructor = .{ .type = api.typeRef("Stream"), .parent = .receiver, .receiver = .{ .type = api.typeRef("EventQueue") } },
         } }),
         api.in("BorrowBox").function("create", .{ .params = &.{.{ .index = 0, .go_name = "value" }} }),
         api.in("BorrowBox").function("view", .{ .returns = .{ .lifetime = .{ .borrowed = .receiver } } }),
         api.in("BorrowBox").function("deinit", .{}),
         api.in("BorrowView").function("view", .{ .returns = .{ .lifetime = .{ .borrowed = .receiver } } }),
         api.in("BorrowView").function("newChild", .{ .role = .{
-            .constructor = .{ .type = api.typeRef("BorrowChild"), .parent = .receiver, .receiver = api.typeRef("BorrowView") },
+            .constructor = .{ .type = api.typeRef("BorrowChild"), .parent = .receiver, .receiver = .{ .type = api.typeRef("BorrowView") } },
         } }),
         api.in("BorrowView").function("get", .{}),
         api.in("BorrowView").function("explode", .{}),

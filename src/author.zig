@@ -26,11 +26,17 @@ pub const TypeRef = struct {
     path: []const u8,
 };
 
+/// A constructor is static unless it explicitly selects a receiver.
+pub const Receiver = union(enum) {
+    none,
+    member,
+    type: TypeRef,
+};
 pub const Role = union(enum) {
     auto,
     free,
     method: TypeRef,
-    constructor: struct { type: TypeRef, receiver: ?TypeRef = null, parent: enum { none, receiver } = .none },
+    constructor: struct { type: TypeRef, receiver: Receiver = .none, parent: enum { none, receiver } = .none },
     destructor: TypeRef,
 };
 pub const Lifetime = union(enum) {
@@ -73,6 +79,12 @@ pub const Param = struct {
     semantic: ?SemanticHint = null,
     go: ?GoAdapter = null,
     contract: ParamContract = .value,
+
+    pub fn named(comptime self: Param, comptime name: ?[]const u8) Param {
+        var copy = self;
+        copy.go_name = name;
+        return copy;
+    }
 };
 pub const FunctionOptions = struct {
     name: ?[]const u8 = null,
@@ -149,6 +161,11 @@ pub const Entry = union(enum) {
             else => @compileError("zigo with requires a function or type declaration"),
         }
         return result;
+    }
+    /// Replace the type's complete member list, retaining its options and plugins.
+    pub fn members(comptime self: Entry, comptime entries: []const Entry) Entry {
+        if (self != .type) @compileError("zigo members requires a type declaration");
+        return self.with(.{ .members = entries });
     }
     pub fn named(comptime self: Entry, comptime name: ?[]const u8) Entry {
         return self.with(.{ .name = name });

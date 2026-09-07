@@ -27,6 +27,7 @@ pub const ParamContract = author.ParamContract;
 pub const Returns = author.Returns;
 pub const Lifetime = author.Lifetime;
 pub const Role = author.Role;
+pub const Receiver = author.Receiver;
 pub const Defaults = author.Defaults;
 pub const Selector = author.Selector;
 pub const GoAdapter = author.GoAdapter;
@@ -47,3 +48,6 @@ test {
     _ = features;
     _ = dsl;
 }
+
+pub const param = @import("param.zig");
+pub const result = @import("result.zig");
