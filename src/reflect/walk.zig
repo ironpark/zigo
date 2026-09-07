@@ -1297,6 +1297,47 @@ fn discoverContainer(
     }
 }
 
+/// Every function path a binding lists, nested groups included, as one
+/// comptime index. Zig memoises comptime calls, so the index is built once
+/// per binding; a membership query is then a length-bucketed lookup rather
+/// than a walk over every entry, which is what keeps coverage of a broad root
+/// from costing `declarations × entries` comptime branches.
+pub fn boundFunctionPaths(comptime declaration: anytype) std.StaticStringMap(void) {
+    comptime {
+        if (!@hasField(@TypeOf(declaration), "functions")) return .{};
+        var count: usize = 0;
+        for (declaration.functions) |entry| count += functionEntryPathCount(entry);
+        var keys: [count]struct { []const u8 } = undefined;
+        var index: usize = 0;
+        for (declaration.functions) |entry| appendFunctionEntryPaths(entry, &keys, &index);
+        return std.StaticStringMap(void).initComptime(keys);
+    }
+}
+
+fn functionEntryPathCount(comptime entry: anytype) usize {
+    if (isStringEntry(@TypeOf(entry))) return 1;
+    if (@hasField(@TypeOf(entry), "functions")) {
+        var count: usize = 0;
+        for (entry.functions) |nested| count += functionEntryPathCount(nested);
+        return count;
+    }
+    return 1;
+}
+
+fn appendFunctionEntryPaths(comptime entry: anytype, keys: anytype, index: *usize) void {
+    if (isStringEntry(@TypeOf(entry))) {
+        keys[index.*] = .{entry};
+        index.* += 1;
+        return;
+    }
+    if (@hasField(@TypeOf(entry), "functions")) {
+        for (entry.functions) |nested| appendFunctionEntryPaths(nested, keys, index);
+        return;
+    }
+    keys[index.*] = .{entry.path};
+    index.* += 1;
+}
+
 pub fn functionEntryContainsPath(comptime entry: anytype, comptime path: []const u8) bool {
     if (comptime isStringEntry(@TypeOf(entry))) return std.mem.eql(u8, entry, path);
     if (@hasField(@TypeOf(entry), "functions")) {
@@ -3250,6 +3291,30 @@ test "discovery selectors use stable owner-qualified paths" {
     try std.testing.expect(comptime declarationPathExists(declaration, "root.update"));
     try std.testing.expect(!comptime declarationPathExists(declaration, "Missing.update"));
     try std.testing.expect(!comptime declarationPathExists(declaration, "root.privateHelper"));
+}
+
+test "bound function paths are indexed once, nested groups and plain strings included" {
+    const declaration = .{
+        .root = struct {},
+        .functions = .{
+            .{ .path = "root.plain" },
+            "root.bare",
+            .{ .receiver = "Handle", .strip_prefix = "handle_", .functions = .{
+                .{ .path = "root.handle_open" },
+                .{ .path = "root.handle_close" },
+            } },
+        },
+    };
+    const paths = comptime boundFunctionPaths(declaration);
+    try std.testing.expect(paths.has("root.plain"));
+    try std.testing.expect(paths.has("root.bare"));
+    try std.testing.expect(paths.has("root.handle_open"));
+    try std.testing.expect(paths.has("root.handle_close"));
+    try std.testing.expect(!paths.has("root.missing"));
+    try std.testing.expect(!paths.has("root.handle_"));
+    try std.testing.expectEqual(@as(usize, 4), paths.kvs.len);
+    // A binding with nothing listed still answers, and answers no.
+    try std.testing.expect(!comptime boundFunctionPaths(.{ .root = struct {} }).has("root.plain"));
 }
 
 test "a nested namespace path reflects with a dotted owner" {

@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T02:52:28Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `double` 파라미터 문서가 ZIGO021 진단을 받는 테스트가 통과한다.
 > NEXT: none

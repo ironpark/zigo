@@ -8,7 +8,7 @@ registered_at: "2026-09-07T02:46:55Z"
 # Phases
 
 - [x] [Phase 00: Reject orphaned param_meta keys](phases/00-orphan-param-meta.md)
-- [ ] [Phase 01: Reject C keyword parameter names](phases/01-c-keyword-params.md)
+- [x] [Phase 01: Reject C keyword parameter names](phases/01-c-keyword-params.md)
 - [ ] [Phase 02: Index bound function paths once](phases/02-index-bound-function-paths-once.md)
 
 # Shared Verification

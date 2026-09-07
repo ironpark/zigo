@@ -455,11 +455,12 @@ fn callbackReason(allocator: std.mem.Allocator, comptime binding: anytype, docum
     return null;
 }
 
+/// Whether the binding lists `path` in `.functions`. The index is built once
+/// per binding (see `walk.boundFunctionPaths`) so asking for every source
+/// declaration does not rescan every entry.
 fn functionListed(comptime binding: anytype, comptime path: []const u8) bool {
-    @setEvalBranchQuota(100_000);
-    if (!@hasField(@TypeOf(binding), "functions")) return false;
-    inline for (binding.functions) |entry| if (walk.functionEntryContainsPath(entry, path)) return true;
-    return false;
+    const paths = comptime walk.boundFunctionPaths(binding);
+    return paths.has(path);
 }
 
 fn typeKnownToDocument(document: semantic.Semantic, full_name: []const u8) bool {

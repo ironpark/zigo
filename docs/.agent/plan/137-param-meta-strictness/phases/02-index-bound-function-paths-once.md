@@ -1,6 +1,6 @@
 ---
 perf_phase: true
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: 기존 coverage 테스트가 그대로 통과하고, `functionListed`가 항목 순회 대신 색인 조회를 사용한다.
 > NEXT: none
