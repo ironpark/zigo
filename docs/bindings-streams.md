@@ -2,6 +2,8 @@
 
 Go의 `io.Writer`, `io.Reader`, `context.Context`를 Zig API에 연결합니다. 선언의 기본 형태는 [`bindings.zig` 선언](bindings.md)을 참고하세요.
 
+아래 선언 조각의 `api`는 `zigo.scope(대상_모듈)`로 만든 scope입니다.
+
 [Go 스트림을 인자로 넘기기](#stdio-스트림-파라미터),
 [Zig 스트림을 Go 메서드로 노출하기](#zig가-내주는-스트림),
 [긴 호출 취소하기](#취소-cancel)는 각각 독립적으로 사용할 수 있습니다.
@@ -12,7 +14,6 @@ Go의 `io.Writer`, `io.Reader`, `context.Context`를 Zig API에 연결합니다.
 등록도 메타데이터도 필요 없습니다 — 타입 자체가 결정합니다.
 
 ```zig
-// Zig
 pub fn dump(self: *Document, w: *std.Io.Writer) error{WriteFailed}!void { ... }
 pub fn load(self: *Document, r: *std.Io.Reader) error{ReadFailed}!usize { ... }
 ```
@@ -32,12 +33,12 @@ shim이 파라미터마다 어댑터를 만들어 대상 함수에 넘깁니다.
 함수가 돌아오기 전에 shim이 `flush`하므로 대상 함수가
 직접 flush하지 않아도 남은 바이트가 나갑니다.
 
-버퍼 크기는 해당 `Param`의 `.buffer`로 바꿉니다. 기본값 65536, 최소 4096, 최대 16 MiB이며,
+버퍼 크기는 해당 `Param.contract.stream.buffer`로 바꿉니다. 기본값 65536, 최소 4096, 최대 16 MiB이며,
 범위 밖은 `ZIGO023`으로 거부합니다. 262144바이트를 넘으면 스택 배열 대신 힙에서 잡습니다 —
 바인딩이 `.allocator`를 정했으면 그 allocator, 아니면 `std.heap.c_allocator`입니다.
 
 ```zig
-.{ .path = "Document.load", .params = &.{.{ .name = "r", .buffer = 4096 }} }
+api.in("Document").function("load", .{ .params = &.{.{ .index = 1, .go_name = "r", .contract = .{ .stream = .{ .buffer = 4096 } } }} })
 ```
 
 ### 실패와 panic
@@ -91,7 +92,7 @@ goroutine이 계속 소유합니다. 대상 함수가 어댑터를 다른 스레
 
 어댑터가 호출 스택에 살기 때문에 스트림은 파라미터 자리에서만,
 그리고 call-scoped로만 쓸 수 있습니다. extern struct 필드, 콜백 시그니처, 슬라이스 원소,
-optional, `.retention = .retained`는 각각 이유를 담은 `ZIGO023`으로 거부합니다. 반환 위치는
+optional 위치는 `ZIGO023`으로 거부하며, 호출 뒤에 보관하는 계약은 제공하지 않습니다. 반환 위치는
 아래의 규칙을 따릅니다.
 
 ## Zig가 내주는 스트림
@@ -100,9 +101,12 @@ Zig 메서드가 스트림을 반환하면 handle에 `io.Writer`·`io.Reader`를
 생성합니다. 스트림 포인터 자체는 Go에 반환하지 않으며 원래 객체의 수명 안에서 사용합니다.
 
 ```zig
-// Zig
-pub fn writer(self: *Sink) *std.Io.Writer { return &self.inner.writer; }
-pub fn reader(self: *Source) *std.Io.Reader { return &self.inner; }
+pub fn writer(self: *Sink) *std.Io.Writer {
+    return &self.inner.writer;
+}
+pub fn reader(self: *Source) *std.Io.Reader {
+    return &self.inner;
+}
 ```
 
 생성되는 API:
@@ -143,18 +147,20 @@ if err := sink.Flush(); err != nil {
 `semantic.json`에는 Zig 메서드(`Sink.writer`)가 그대로 기록되고, 연산으로의 확장은 파싱과
 lowering 사이에서 일어납니다. `abi-diff`가 비교하는 것은 Zig 표면입니다.
 
-## handle이 io 인터페이스를 구현하기 (`.implements`)
+## handle이 io 인터페이스를 구현하기
 
 앞 절의 반대 방향입니다. Zig 타입이 스트림을 내주지는 않지만 `feed(bytes: []const u8) !void`처럼
-Go 표준 인터페이스에서 한 걸음 떨어진 평범한 메서드가 있으면, 그 함수 항목에 `.implements`를
+Go 표준 인터페이스에서 한 걸음 떨어진 평범한 메서드가 있으면, 그 함수 항목에 `zigo.features.implements`를
 붙여 인터페이스가 요구하는 메서드를 옆에 만들 수 있습니다.
 
 ```zig
-.functions = &.{
-    .{ .path = "Document.append", .params = &.{.{ .name = "line" }}, .implements = .writer },
-    .{ .path = "Document.dump", .params = &.{.{ .name = "w" }}, .implements = .writer_to },
-    .{ .path = "Document.load", .params = &.{.{ .name = "r" }}, .implements = .reader_from },
-    .{ .path = "Document.readInto", .params = &.{.{ .name = "dst", .direction = .out, .written = .result }}, .implements = .reader },
+.declarations = &.{
+    api.in("Document").function("append", .{ .params = &.{.{ .index = 1, .go_name = "line" }} }).use(zigo.features.implements, .{ .kind = .writer }),
+    api.in("Document").function("dump", .{ .params = &.{.{ .index = 1, .go_name = "w" }} }).use(zigo.features.implements, .{ .kind = .writer_to }),
+    api.in("Document").function("load", .{ .params = &.{.{ .index = 1, .go_name = "r" }} }).use(zigo.features.implements, .{ .kind = .reader_from }),
+    api.in("Document").function("readInto", .{
+        .params = &.{.{ .index = 1, .go_name = "dst", .contract = .{ .buffer = .{ .output = .{ .written = .result } } } }},
+    }).use(zigo.features.implements, .{ .kind = .reader }),
 },
 ```
 
@@ -192,38 +198,33 @@ wrapper에 만들지 않습니다.
 바이트를 셉니다. 이때 `.reader_from`은 `Bytes()` 빠른 경로를 타지 않고 청크 단위로 읽습니다.
 
 받아들이는 모양이 아니면 `ZIGO058`입니다: receiver가 없거나, 파라미터 수와 종류가 표와
-다르거나, 결과가 `void`·정수가 아니거나, `.cancel`·`.iterator`가 함께 있거나, `.writer`의
+다르거나, 결과가 `void`·정수가 아니거나, 취소 contract·`zigo.features.iterator`가 함께 있거나, `.writer`의
 slice에 문자열 힌트가 있는 경우입니다. 한 타입은 인터페이스마다 메서드 하나로 구현하며, wrapper
 이름(`Write`, `Read`, `WriteTo`, `ReadFrom`)이 같은 타입의 다른 메서드와 겹치면 `ZIGO024`입니다.
 `fmt.Stringer`는 지원하지 않습니다. handle 메서드는 항상 실패할 수 있는데 `String() string`에는
 오류를 둘 곳이 없기 때문입니다. 예제는 `11-io-streams`의 `Document`에 있습니다.
 
-## 취소 (`.cancel`)
+## 취소 (cancel)
 
-긴 native 호출을 Go의 `context.Context`로 끊을 수 있습니다. 함수 메타 `.cancel`이 어느
-파라미터가 취소 플래그인지 말하면, 그 파라미터는 Go 시그니처에서 사라지고 대신
+긴 native 호출을 Go의 `context.Context`로 끊을 수 있습니다. 해당 파라미터에 `.contract = .{ .cancel = .{} }`를 붙이면, 그 파라미터는 Go 시그니처에서 사라지고 대신
 `ctx context.Context`가 **첫 인자**로 들어옵니다.
 
 ```zig
-// Zig — 플래그를 폴링하는 것은 대상 함수의 책임이다.
 pub const ReduceError = error{ Empty, Canceled };
 
 pub fn reduce(self: *Hub, rounds: u32, cancel: *const std.atomic.Value(u32)) ReduceError!f64 {
     var round: u32 = 0;
     while (round < rounds) : (round += 1) {
         if (cancel.load(.monotonic) != 0) return error.Canceled;
-        // ... 실제 작업 ...
     }
     return total;
 }
 ```
 
 ```zig
-.{
-    .path = "Hub.reduce",
-    .params = &.{ .{ .name = "rounds" }, .{ .name = "cancel" } },
-    .cancel = .{ .param = "cancel" },
-}
+api.in("Hub").function("reduce", .{ .params = &.{
+    .{ .index = 1, .go_name = "rounds" }, .{ .index = 2, .go_name = "cancel", .contract = .{ .cancel = .{} } },
+} })
 ```
 
 생성되는 API:
@@ -257,14 +258,14 @@ native 코드가 저장하거나 호출이 끝난 뒤 사용하면 안 됩니다
 연결합니다. callback이 panic하거나 Go `error`를 반환하거나 이미 삭제된 userdata token으로
 호출되면 dispatcher가 실패 값을 반환하기 전에 `atomic.StoreUint32(..., 1)`로 플래그를
 세웁니다. 따라서 native loop가 callback 반환값을 무시하더라도 다음 폴링 지점에서 멈추며,
-panic과 error는 호출이 돌아온 뒤 기존과 같이 Go 호출자에게 다시 전달됩니다. `.cancel`이 없는
+panic과 error는 호출이 돌아온 뒤 기존과 같이 Go 호출자에게 다시 전달됩니다. 취소 contract가 없는
 함수의 callback state와 dispatcher 출력은 바뀌지 않습니다.
 
 ### 취소 오류 이름
 
-`.cancel.canceled`는 취소를 뜻하는 Zig error 이름이며 생략하면
+`Param.contract.cancel.canceled`는 취소를 뜻하는 Zig error 이름이며 생략하면
 `Canceled`입니다. 예를 들어 라이브러리가 영국식 이름을 쓰면
-`.cancel = .{ .param = "cancel", .canceled = "Cancelled" }`로 지정합니다. 대상 함수의
+`.contract = .{ .cancel = .{ .canceled = "Cancelled" } }`로 지정합니다. 대상 함수의
 error set에 이 이름이 있어야 합니다(`ZIGO026`). native가 해당 error를 돌려주고
 `ctx.Err() != nil`이면 공개 함수는 `ctx.Err()`를 반환합니다 —
 `context.Canceled` 또는 `context.DeadlineExceeded`, 호출자의 ctx가 말하는 것 그대로입니다.
@@ -273,9 +274,8 @@ ctx가 멀쩡한데 native가 해당 error를 돌려줬다면 그것은 라이�
 
 ### 잘못된 선언
 
-`.cancel`이 없는 파라미터를 가리키거나, 그 파라미터 타입이
-`*const std.atomic.Value(u32)`가 아니거나, error set에 설정한 error 이름이 없거나, 반대로
-플래그 파라미터가 있는데 `.cancel`이 그것을 가리키지 않으면 `ZIGO026`으로 거부합니다.
+인덱스가 없거나 대상 인자가 `*const std.atomic.Value(u32)`가 아니면 작성 단계에서 거부합니다.
+error set에 설정한 error 이름이 없거나 취소 계약이 맞지 않으면 `ZIGO026`입니다.
 
-`.cancel`을 추가하거나 제거하면 Go 시그니처의 `ctx`가 생기거나 사라지므로
+취소 contract를 추가하거나 제거하면 Go 시그니처의 `ctx`가 생기거나 사라지므로
 `abi-diff`는 호환성을 깨뜨리는 변경으로 판정합니다.

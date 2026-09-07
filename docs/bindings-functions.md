@@ -1,376 +1,229 @@
 # 함수 선택, 이름과 패키지
 
-노출할 함수를 고른 뒤 Go 이름과 패키지를 정하는 문서입니다. 선언의 기본 형태는 [`bindings.zig` 선언](bindings.md)을 참고하세요.
-
-[자동 발견](#명시-목록과-자동-발견) → [함수 메타데이터](#함수-메타데이터) →
-[하위 패키지](#공개-go-하위-패키지) 순서로 필요한 설정만 적용하세요.
+기본 작성 방식은 [`bindings.zig` 선언](bindings.md)을 참고하세요.
+아래의 `api`는 `const api = zigo.scope(library);`로 만든 scope입니다.
 
 ## 경로와 이름
 
-경로는 임의 깊이의 namespace struct를 따라갑니다. 루트에 `pub fn` 없이 API를 struct로
-묶는 module은 Zig 호출자가 쓰는 것과 같은 철자를 그대로 씁니다.
+`api.function("name", options)`는 scope 안의 실제 공개 함수를 검사합니다.
+중첩 namespace는 `in()`으로 선택합니다.
 
 ```zig
-.functions = &.{
-    .{ .path = "root.unicode.codepointWidth", .params = &.{.{ .name = "cp" }} },
-    .{ .path = "root.osc.parser.parse" },
-},
+const unicode = api.in("unicode");
+const parser = api.in("osc").in("parser");
+
+const declarations = &[_]zigo.Entry{
+    unicode.function("codepointWidth", .{}),
+    parser.function("parse", .{}).named("parseOsc"),
+};
 ```
 
-마지막 segment 앞의 모든 segment는 공개 container 타입(struct, union, enum, opaque)이어야
-합니다. 첫 segment만 `root` 또는 등록된 `.types` 항목 이름으로 해석되고, 나머지는 그 안의
-공개 선언입니다. namespace는 `semantic.json`에 점으로 이어진 경로(`"unicode"`,
-`"osc.parser"`)로 기록되며 여기서 나머지 이름이 모두 파생됩니다.
+`named()` 또는 함수 옵션 `.name`은 Go 이름만 바꿉니다. release·covers·discovery 제외에는
+Go 이름 대신 `api.ref("name")`를 사용하므로 이름 변경으로 참조가 끊어지지 않습니다.
+타입 참조는 `api.typeRef("T")`, 선언 항목에서 얻는 참조는 `.functionRef()`와 `.typeRef()`입니다.
+없는 선언·함수가 아닌 선언·다른 루트의 참조는 컴파일 오류입니다.
 
-| 경로 | C 심볼 | raw Go | ABI identity |
-|---|---|---|---|
-| `root.version` | `zg_version` | `Version` | `version` |
-| `Context.create` | `zg_context_create` | `ContextCreate` | `Context.create` |
-| `root.unicode.codepointWidth` | `zg_unicode_codepoint_width` | `UnicodeCodepointWidth` | `unicode.codepointWidth` |
-| `root.osc.parser.parse` | `zg_osc_parser_parse` | `OscParserParse` | `osc.parser.parse` |
-
-공개 Go 함수 이름은 namespace를 붙이지 않고 함수 이름만 씁니다(`CodepointWidth`). 서로 다른
-namespace에 같은 이름의 함수가 있다면 `.name`으로 하나를 바꿉니다.
-
-### 공개 Go 이름 충돌
-
-receiver가 없는 함수(namespace 함수와 최상위 함수)는 모두 같은 이름 공간을 나눠 쓰고, 등록된
-타입 이름도 여기 포함됩니다. 메서드는 receiver별로 별도의 이름 공간을 가지므로 다른 receiver의
-같은 메서드 이름은 충돌이 아닙니다(`Counter.reset`과 `Timer.reset`은 둘 다 `Reset` 메서드가
-됩니다). 같은 enum의 두 tag가 PascalCase로 변환했을 때 같은 이름이 되는 경우도 같은 검사를
-받습니다.
-
-생성기는 이런 충돌을 생성 시점에 `ZIGO024`로 거부하며, 메시지에 충돌하는 두 Zig 경로를 모두
-적습니다. 함수는 `.name`으로, 타입은 `.types`의 `.name`으로 한쪽 이름을 바꿔 충돌을 없앱니다.
-
-C 헤더의 이름 공간도 별도로 검사합니다. 함수 심볼뿐 아니라 handle·enum·`extern struct`·
-snapshot typedef, enum 상수, tagged-union projection, last-error 함수까지 실제 lowering된
-식별자를 한 공간에 모읍니다. 예를 들어 타입 `SearchSelect`와 `Search.select`가 둘 다
-`zg_search_select`가 되면 `ZIGO036`이 두 선언을 함께 지목합니다. 한 선언의 `.name`을
-바꾸거나 바인딩 `.prefix`를 달리해 해결합니다. cgo와 purego에서 실제로 내보내는 이름을 각각
-검사하므로 callback dispatcher suffix도 포함됩니다.
+공개 자유 함수는 namespace를 이름에 붙이지 않으므로 같은 패키지의 이름 충돌을
+`.named()`로 해결해야 합니다. Go 식별자 충돌은 `ZIGO024`, lowering된 C 식별자 충돌은
+`ZIGO036`으로 두 선언을 함께 보고합니다. 메서드는 receiver마다 이름 공간이 다릅니다.
 
 ## 명시 목록과 자동 발견
 
-안정적인 공개 API가 중요하다면 `functions`에 함수를 명시하세요. 목록에 없는 함수는 노출되지
-않으므로 Zig의 새 `pub fn`이 의도치 않게 Go ABI에 들어오지 않습니다.
-
-반복되는 exact path는 comptime DSL로 만들 수 있습니다. `func`는 한 항목을 만들고,
-`funcs`는 container에 직접 선언된 공개 함수를 prefix 또는 exact 이름 목록으로 고릅니다.
-selector는 최종 바인딩에 남지 않고 모두 exact path로 확장됩니다.
+기본값은 `.discovery = .explicit`입니다. `declarations`에 없는 함수는 노출하지 않습니다.
+고정 목록을 만들 때는 `.names` selector를 씁니다. 적은 순서가 유지되고, 없는 이름·중복 이름·
+빈 결과는 컴파일 오류입니다.
 
 ```zig
-const queries = zigo.dsl.funcs(mylib, .{
+const input = zigo.package(.{
+    .path = "input",
+    .declarations = api.functions(.{ .names = &.{ "encodeMouse", "encodeKey" } }),
+});
+```
+
+공개 함수를 접두사로 고르는 selector는 별도 variant입니다. `.names`와 섞을 수 없습니다.
+
+```zig
+const queries = api.functions(.{ .public = .{
     .prefix = "query",
     .exclude = &.{"queryDebug"},
-});
+} });
 
-const functions = zigo.dsl.collect(.{
-    zigo.dsl.func("root.version"),
-    queries,
-    zigo.dsl.func("root.take").releasedBy("root.free"),
-});
-
-pub const bindings = zigo.define(.{
-    .root = mylib,
-    .functions = &functions,
-});
+const declarations = &[_]zigo.Entry{api.function("version", .{})} ++ queries;
 ```
 
-외부 라이브러리처럼 새 공개 함수가 바인딩 ABI에 자동으로 들어오면 안 되는 경우에는 `.names`로
-고정 allowlist를 만듭니다. 적은 순서가 최종 순서이며, 없는 이름·함수가 아닌 선언·중복 이름은
-compile error입니다. `.names`는 `.prefix` 또는 `.exclude`와 함께 쓸 수 없습니다.
+`functions()`는 현재 scope의 공개 함수만 선택하고 결과를 실제 선언 항목으로 만듭니다.
+제외 이름이 없거나 접두사 밖이면 컴파일 오류입니다. 개별 계약이 필요한 함수는
+`function()`으로 따로 선언하세요. 배열 결합은 Zig의 `++`를 사용합니다.
 
-```zig
-const input_functions = zigo.dsl.funcs(mylib, .{
-    .names = &.{ "encodeMouse", "encodeKey" },
-});
-const input_paths = zigo.dsl.pathsOf(input_functions);
-
-pub const bindings = zigo.define(.{
-    .root = mylib,
-    .functions = &input_functions,
-    .packages = &.{.{
-        .path = "input",
-        .functions = &input_paths,
-    }},
-});
-```
-
-`pathsOf`는 고정 크기 `zigo.Function` 배열에서 package에 쓸 exact path 배열을 파생하므로 같은
-경로 문자열을 두 번 관리하지 않게 합니다.
-
-단일 항목은 경로 문자열로 만들고, 상세 메타데이터가 필요하면 typed `with` 옵션을 연결합니다.
-
-```zig
-const len = zigo.dsl.func("Context.len");
-const open = zigo.dsl.func("Context.open").callerOwned();
-const take = zigo.dsl.func("Context.take").releasedBy("Context.free");
-const view = zigo.dsl.func("Context.view").borrowed();
-```
-
-`funcs`의 `.base` 기본값은 `"root"`이고 빈 `prefix`는 해당 container의 공개 함수 전체를
-선택합니다. `.exclude`는 prefix로 선택된 선언 이름을 정확히 제외합니다. 아무 함수도 고르지
-못하거나 존재하지 않는 이름을 제외하면 compile error입니다. `collect`는 개별 `func`와
-`funcs` 배열을 왼쪽부터 하나의 고정 크기 배열로 합칩니다. 여러 함수에 하나의 파라미터·반환
-계약을 일괄 적용하지 않으므로 개별 메타데이터가 필요한 함수는 `func`로 명시합니다. 그 밖의
-옵션은 `func(path).with(.{ ... })`로 적용합니다.
-
-생성·해제 함수는 생명주기 shortcut으로 기존 메타데이터를 보존하며 조합할 수 있습니다.
-
-```zig
-const open = zigo.dsl.func("root.newSearch")
-    .constructor(mylib.Search)
-    .childOfReceiver();
-const close = zigo.dsl.func("root.searchClose").destructor(mylib.Search);
-```
-
-`collect`는 함수뿐 아니라 `zigo.Type` 항목과 고정 크기 타입 배열도 하나로 합칩니다. 한 호출에서
-함수와 타입을 섞는 것은 compile error입니다.
-
-Zig 공개 API 전체가 바인딩 API인 큰 module은 자동 발견을 선택할 수 있습니다.
-
-```zig
-pub const bindings = zigo.define(.{
-    .root = mylib,
-    .discover = .public,
-    .types = &.{
-        .{ .handle = .{ .type = mylib.Context } },
-    },
-    .functions = &.{
-        // 자동 발견된 함수에 메타데이터를 보강합니다.
-        .{ .path = "Context.name", .returns = .{ .semantic = .utf8_string } },
-    },
-    .exclude = &.{"Context.debugState"},
-});
-```
-
-`.discover = .public`은 한 단계만 봅니다. namespace struct 안까지 내려가려면
-`.discover = .recursive`를 씁니다. 기본값을 바꾸지 않는 이유는 기존 바인딩의 노출 표면이
-조용히 넓어지지 않게 하기 위해서입니다. 재귀 발견은 container 안에 **작성된** 선언만
-따라가므로 `@This()` alias나 다시 내보낸 import를 건너뜁니다. 중첩 경로도 `exclude`에
-같은 철자로 적습니다(`"root.osc.internalHelper"`).
-
-생성물의 함수 순서는 `functions`에 적은 항목이 먼저(목록 순서), 그 뒤에 발견된 나머지가
-선언 순서로 옵니다. 목록 항목은 명시 바인딩과 같은 경로로 한 번씩 반영되고, 발견 단계는
-"이미 목록에 있거나 제외됐는가"만 런타임 집합으로 확인하므로 comptime 비용이 바인딩 크기에
-선형입니다.
-
-자동 발견은 등록한 타입의 공개 함수, 이어서 `root` module의 공개 함수를 찾습니다.
-`functions`는 발견 대상을 제한하지 않고 메타데이터를 붙이며, `exclude`가 제외 대상을
-지정합니다. 존재하지 않는 경로는 compile error이고, 중복된 경로와 `functions`·`exclude`의
-충돌은 생성기가 `ZIGO054`로 거부합니다.
-
-자동 발견에서는 새 `pub fn`이 C/Go API에도 추가됩니다. 생성물 `go-check`와 독립 배포
-계약이 있다면 `abi-check`를 함께 사용하세요.
-
-## 함수 메타데이터
-
-| 필드 | 역할 |
-|---|---|
-| `path` | `root.<name>` 또는 `<Type>.<name>` 선언 경로 |
-| `name` | 공개 Go 함수 이름 override |
-| `receiver` | 자유 함수를 method로 붙일 등록 handle·enum 타입 값 |
-| `params` | 위치 순서대로 적는 파라미터 이름과 계약 (`[]const zigo.Param`) |
-| `constructs` | 이 함수가 만드는 handle 타입 값 |
-| `destroys` | 이 함수가 없애는 handle 타입 값 |
-| `child_of_receiver` | 생성된 handle이 receiver보다 먼저 닫혀야 하는지 여부 |
-| `returns` | ownership·semantic·release·Go adapter를 묶은 반환값 계약 |
-| `iterator` | `?T`를 반환하는 메서드에 `iter.Seq` wrapper를 추가 ([Iterator wrapper](bindings-handles.md#iterator-wrapper)) |
-| `covers` | `go-coverage`에서 대신 노출한 것으로 계산할 경로 목록 |
-| `doc` | 생성 GoDoc override |
-
-각 `Param`에는 필요한 계약만 지정합니다. 문자열·`direction`·`written`은
-[버퍼 가이드](bindings-buffers.md), `retention`·`go_error`·`on_callback_failure`와
-스레드 계약은 [콜백 가이드](bindings-callbacks.md), `buffer`는
-[스트림 가이드](bindings-streams.md)를 참고하세요. `go`는 scalar 파라미터 하나를 사용자 Go
-타입으로 바꾸는 어댑터입니다([Go 타입 어댑터](bindings-types.md#go-타입-어댑터)).
-`semantic = .codepoint`는 `u21`/`u32` 파라미터와 그 slice를 `rune`으로
-노출합니다([코드포인트](bindings-types.md#코드포인트)).
-`flatten`은 아래에서 설명합니다.
-
-문자열 의미, 반환 pointer ownership, retained pointer와 callback 수명은 타입만으로 결정할 수
-없으므로 명시해야 합니다.
-
-### 자유 함수를 메서드로 등록하기
-
-등록 타입을 선언한 외부 모듈을 고칠 수 없을 때는 자유 함수의 첫 번째 비주입
-파라미터를 receiver로 지정할 수 있습니다. `.receiver = mylib.Screen`이면
-`std.mem.Allocator`나 `std.Io` 뒤의 첫 파라미터가 `*Screen` 또는 `*const Screen`인지
-reflection이 확인하고, 이후 단계는 타입 안에 선언된 method와 똑같이 처리합니다.
-
-```zig
-.functions = &.{
-    .{ .path = "root.searchMatchCount", .receiver = mylib.Search },
-},
-.methods = &.{
-    .{
-        .receiver = mylib.Screen,
-        .strip_prefix = "screen",
-        .functions = &.{
-            .{ .path = "root.screenSelectAll" },
-            .{ .path = "root.screenClearSelection", .name = "clear" },
-        },
-    },
-},
-```
-
-`.methods` group은 Zig 함수 이름에서 `strip_prefix`를 제거하고 남은 첫 글자를 소문자로 바꾼 뒤 기존
-Go casing 규칙을 적용합니다(`screenSelectAll` → `selectAll` → `SelectAll`). nested 항목의
-`.name`은 이 기본값을 덮어씁니다. group 자체에는 `params`를 둘 수 없고 각
-nested 항목에 둡니다. receiver 타입이나 첫 파라미터가 맞지 않거나 함수 이름에 접두사가
-없으면 `ZIGO038`입니다.
-
-```zig
-.{
-    .path = "Context.create",
-    .params = &.{
-        .{ .name = "name", .semantic = .utf8_string },
-        .{ .name = "callback", .retention = .retained },
-        .{ .name = "userdata" },
-    },
-}
-```
-
-`params`에는 receiver와 주입 파라미터를 제외한 이름을 적습니다. receiver(`self`)는
-생성된 Go 메서드의 수신자가 되고, 주입 파라미터(`std.mem.Allocator`, `std.Io`)는
-공개 인자에서 빠집니다. `fn freeString(gpa: Allocator, str: []const u8) void`의 `params`는
-`&.{.{ .name = "str" }}` 하나입니다. 개수가 맞지 않으면 reflection 단계에서 `ZIGO027`로 거부됩니다.
-이름은 C 헤더에 그대로 나가므로 `double`, `int` 같은 C 키워드나 `uint8_t` 같은 표준 typedef
-이름은 `ZIGO021`로 거부됩니다. Go 쪽 키워드(`type`, `range`)는 `type_`처럼 자동으로 피합니다.
-
-파라미터 계약은 위치가 같은 `Param`에 이름과 함께 붙으므로 이름과 계약이 따로 놀 수 없습니다.
-이름은 명시적 `Param.name`, 대상 source AST, `p0` fallback 순으로 결정됩니다.
-
-### 등록 enum의 메서드
-
-`.enumeration`으로 등록한 enum도 메서드를 가질 수 있습니다. 경로가 그 enum을
-거치거나(`.path = "DeccolmMode.columns"`) `.receiver`가 그 enum을 지목하고, 첫 번째 비주입
-파라미터가 그 enum을 값으로 받으면 메서드가 됩니다. Go에서는 값 receiver가 됩니다.
-
-```zig
-.{ .path = "DeccolmMode.columns" },              // Zig가 enum 안에 선언한 메서드
-.{
-    .receiver = library.CursorStyle,              // 루트에 선언된 자유 함수
-    .strip_prefix = "cursorStyle",
-    .functions = &.{.{ .path = "root.cursorStyleBlinks" }},
-},
-```
-
-```go
-n := DeccolmMode132Cols.Columns()   // uint16
-blinks := CursorStyleUnderline.Blinks()
-```
-
-값 receiver에는 handle이 없습니다. C ABI로는 enum의 backing 정수가 그대로 건너가고,
-`ErrInvalidHandle` 검사도, 부모·자식 수명도, retained 콜백 순회도 없습니다. 그래서
-`.constructs`, `.child_of_receiver`, `.returns.ownership = .borrowed`, `.iterator`, `std.Io` 스트림
-파라미터는 값 receiver에 쓸 수 없고 `ZIGO056`입니다. `.go` 어댑터가 붙은 enum도 Go에서 남의
-패키지 타입이라 메서드를 가질 수 없습니다. 메서드 이름은 zigo가 그 enum에 생성하는
-`String`(그리고 `.text = true`면 `MarshalText`·`UnmarshalText`)과 겹칠 수 없습니다(`ZIGO024`).
-
-`*Enum`을 받는 메서드는 받지 않습니다. Go 값 receiver로 내보내면 변경이 복사본에 남기
-때문이며, 그런 함수는 파라미터를 가진 패키지 레벨 함수로 바인딩하세요. 단순히 enum을
-파라미터로 받는 함수는 지금처럼 그대로 패키지 레벨 함수입니다. 메서드는 그 enum이 배정된
-패키지에 함께 놓입니다.
-
-자유 함수를 메서드로 옮기면 C 심볼과 Go 표면이 모두 바뀌므로 `abi-check`가 breaking으로
-보고합니다.
-
-### 설정 struct의 일부 필드만 인자로 받기
-
-일반 struct 파라미터에서 일부 scalar 필드만 Go 인자로 받고 싶으면 `flatten`에 필드 이름을
-순서대로 적습니다. `params`는 flatten 뒤의 인자 수가 아니라 원래 struct 파라미터 하나를
-셉니다. field 이름이 다른 파라미터나 다른 flattened field와 겹치지 않으면 그대로 Go 이름이
-되고, 겹치면 `<파라미터>_<field>`가 됩니다.
-
-```zig
-.{
-    .path = "Terminal.init",
-    .params = &.{.{ .name = "options", .flatten = &.{ "cols", "rows", "max_scrollback_bytes" } }},
-}
-```
-
-허용되는 leaf는 bool, 정수, 실수, 등록 enum과 그 optional입니다. optional scalar는 일반
-optional 파라미터처럼 Go에서 `*T`이며 `nil`이 Zig의 `null`입니다. nested struct, slice,
-string은 flatten할 수 없습니다. 목록에 없는 field는 모두 Zig default를 가져야 하며, 그렇지
-않으면 reflection이 그 field 이름과 함께 `ZIGO040`을 냅니다. 목록에 없는 field는 default만
-확인하고 타입은 걷지 않으므로, C로 표현할 수 없는 nested struct나 optional struct가 섞인
-options struct도 선택한 field만으로 바인딩됩니다. 이 기능은 생성자뿐 아니라 모든 함수
-파라미터에 적용됩니다.
-
-## Allocator와 Io 주입
-
-`std.mem.Allocator`와 `std.Io`는 C로 표현할 수 없습니다. 바인딩이 값을 한 번 정하면
-그 파라미터는 C와 Go 시그니처에서 빠지고 shim이 채웁니다.
+모듈 전체를 자동 노출하려면 Binding의 discovery를 설정합니다.
 
 ```zig
 pub const bindings = zigo.define(.{
     .root = library,
-    .allocator = .smp_allocator, // 또는 .c_allocator, .page_allocator, .{ .path = "gpa" }
-    .io = .{ .path = "io" }, // std에는 기본 Io가 없습니다
-    // ...
+    .discovery = .{ .public = .{
+        .exclude = &.{api.in("Context").ref("debugState")},
+    } },
+    .declarations = &.{
+        api.handle("Context", .{}),
+        api.in("Context").function("name", .{ .returns = .{ .semantic = .utf8_string } }),
+    },
 });
 ```
 
-`fn open(gpa: Allocator, name: []const u8) !*Store`는 C에서
-`int32_t zg_store_open(const uint8_t *name_ptr, size_t name_len, zg_store **out_result)`,
-Go에서 `NewStore(name string) (*Store, error)`가 됩니다. 문자열 값(`"gpa"`)은 바인딩된
-루트 모듈 기준으로 해석되며, `.functions`의 경로와 같은 기준입니다.
+`.public`은 등록 타입과 루트의 공개 함수를, `.recursive`는 중첩 namespace까지 발견합니다.
+재귀 발견은 다시 내보낸 import와 자기 자신을 가리키는 alias를 건너뜁니다. 명시 선언은
+메타데이터를 보강하며 먼저 출력되고, 나머지는 발견 순서로 이어집니다.
+자동 발견은 새 `pub fn`을 Go/C API에도 추가하므로 `go-check`로 생성물 변경을 확인하세요.
+release 함수는 발견에만 맡기지 말고 `declarations`에 명시해야 합니다.
 
-주입 파라미터는 `.params`에 나오지 않습니다. release 함수도
-마찬가지입니다: `fn freeString(gpa: Allocator, str: []const u8) void`는 slice 하나만 받는
-release 함수로 취급되고, shim이 호출할 때 allocator를 채웁니다.
+## 함수 메타데이터
 
-기본값은 없습니다. 설정 없이 그런 파라미터를 만나면 `ZIGO022`로 거부합니다 — 어떤 메모리를
-쓸지는 zigo가 대신 정할 문제가 아닙니다. 주입 파라미터는 `semantic.json`에
-`"injected": "allocator"`로 남지만 ABI 비교에서는 제외됩니다. 주입 인자만 추가하거나
-옮기는 변경은 공개 시그니처를 바꾸지 않습니다. 반면 일반 인자를 주입 인자로 바꾸면
-공개 인자가 사라지므로 breaking 변경입니다.
+| 옵션 | 역할 |
+|---|---|
+| `name`, `doc` | 공개 이름·GoDoc override |
+| `role` | 자동 추론·자유 함수·메서드·생성자·소멸자 중 하나 |
+| `params` | 원본 Zig 인덱스로 선택한 sparse 파라미터 계약 |
+| `returns` | lifetime·semantic·Go adapter |
+| `covers` | `go-coverage`에서 대신 노출한 것으로 셀 `FunctionRef` 목록 |
+
+### 파라미터 인덱스
+
+`Param.index`는 0부터 시작하는 **원본 Zig 시그니처의 인덱스**입니다. receiver, allocator,
+Io, 콜백 userdata도 인덱스에 포함합니다. 필요한 인자만 적으며, 목록 순서는 중요하지 않습니다.
+receiver와 주입 인자를 직접 annotate하거나 같은 인덱스를 두 번 적으면 컴파일 오류입니다.
+
+```zig
+// fn read(self: *Store, gpa: Allocator, offset: u32, dst: []u8) usize
+api.in("Store").function("read", .{
+    .params = &.{.{
+        .index = 3,
+        .go_name = "dst",
+        .contract = .{ .buffer = .{ .output = .{ .written = .result } } },
+    }},
+})
+```
+
+위 선언은 `offset` 메타데이터를 반복하지 않습니다. 이름은 `go_name`, source AST,
+`pN` fallback 순으로 결정됩니다. 이 이름은 C 파라미터에도 사용되므로 C 키워드와 표준 typedef
+이름은 `ZIGO021`로 거부됩니다. Go 키워드는 `type_`처럼 자동으로 피합니다.
+함수 인자의 이름으로 선택하는 API는 제공하지 않습니다. Zig comptime reflection에는
+파라미터 이름 정보가 없고, source 이름 보강은 그 뒤에 실행되기 때문입니다.
+
+`Param.contract`는 `.value` 기본값 또는 `.buffer`, `.stream`, `.callback`, `.cancel`,
+`.flatten` 중 하나입니다. 의미 힌트와 Go adapter는 `semantic`, `go`에 별도로 적습니다.
+콜백 **타입**의 `CallbackOptions.params`는 별도 규칙이며, userdata·pointer/length 쌍을
+정리한 콜백 인자 순서입니다([콜백 문서](bindings-callbacks.md)).
+
+### 자유 함수를 메서드로 등록하기
+
+```zig
+api.function("searchMatchCount", .{ .role = .{ .method = api.typeRef("Search") } })
+```
+
+첫 번째 비주입 인자가 등록 handle의 값·포인터 또는 등록 enum 값인지 검사합니다.
+여러 함수가 같은 receiver를 공유하면 타입의 멤버로 묶을 수 있습니다.
+
+```zig
+api.handle("Screen", .{}).with(.{
+    .members = &.{
+        api.function("screenSelectAll", .{}).named("selectAll"),
+        api.function("screenClearSelection", .{}).named("clear"),
+    },
+})
+```
+
+멤버의 첫 비주입 인자가 부모 타입과 맞으면 receiver로 추론합니다. 접두사는 자동 제거하지
+않으며 `.named()`로 최종 이름을 정합니다. 기존 메서드 자동 추론도 유지됩니다. handle이 첫
+인자여도 자유 함수로 두려면 `.role = .free`를 지정하세요. 생성자·소멸자는
+[수명 문서](bindings-handles.md)의 `.role` 계약으로 지정합니다.
+
+### 등록 enum의 메서드
+
+등록 enum 안의 함수가 그 enum을 첫 비주입 인자로 받으면 Go 값 receiver가 됩니다.
+루트 자유 함수는 `.role = .{ .method = api.typeRef("CursorStyle") }`로 지정합니다.
+단순히 enum을 인자로 받는 자유 함수는 자동으로 메서드가 되지 않습니다.
+
+값 receiver에는 handle 수명이 없습니다. child constructor, borrowed 결과, iterator,
+Io 스트림 계약은 `ZIGO056`으로 거부됩니다. 외부 Go 타입 adapter가 있는 enum에 메서드를
+붙일 수도 없습니다. `String`, text 기능의 `MarshalText`·`UnmarshalText`와의 충돌은
+`ZIGO024`입니다. `*Enum` receiver는 지원하지 않습니다.
+
+### 설정 struct의 일부 필드만 인자로 받기
+
+```zig
+// fn init(gpa: Allocator, options: Options) !Terminal
+api.in("Terminal").function("init", .{
+    .params = &.{.{
+        .index = 1,
+        .contract = .{ .flatten = &.{ "cols", "rows", "max_scrollback_bytes" } },
+    }},
+})
+```
+
+선택한 bool·정수·실수·등록 enum과 그 optional 필드만 Go 인자로 펼칩니다. 나머지 필드는
+Zig default가 있어야 합니다. nested struct·slice·string 필드는 펼칠 수 없습니다.
+빈 선택은 컴파일 오류, 부적합한 필드나 없는 default는 `ZIGO040`입니다. 이름 충돌 시
+`<파라미터>_<필드>`로 구분하며, 인덱스는 펼치기 전 struct 인자를 가리킵니다.
+
+### 옵션 교체
+
+```zig
+const original = api.function("take", .{
+    .name = "takeOwned",
+    .returns = .{ .lifetime = .{ .owned = .{ .release = api.ref("release") } } },
+});
+const reset = original.with(.{ .name = null, .returns = zigo.Returns{} });
+```
+
+`.with()`는 주어진 필드만 교체하고 다른 필드는 보존합니다. `null`은 제거이며 중첩 struct와
+union은 전체 교체입니다. `reset`의 이름은 source 기본값, lifetime은 `.inferred`가 됩니다.
+잘못된 필드 이름과 타입은 호출 위치에서 컴파일 오류입니다.
+
+## Allocator와 Io 주입
+
+```zig
+pub const bindings = zigo.define(.{
+    .root = library,
+    .allocator = .smp_allocator, // .c_allocator, .page_allocator도 지원
+    .io = .{ .path = "io" },
+    .declarations = &.{api.function("run", .{})},
+});
+```
+
+`std.mem.Allocator`와 `std.Io` 인자는 공개 시그니처에서 빠지고 shim이 채웁니다.
+사용자 값은 `.path`로 라이브러리 루트의 선언을 지정합니다. 자동 기본값은 없으며 설정 없이
+해당 인자를 만나면 `ZIGO022`입니다. release 함수에도 같은 주입 규칙이 적용됩니다.
+주입 인자를 옮기면 새 원본 인덱스에 맞춰 `Param.index`도 갱신해야 합니다.
 
 ## 공개 Go 하위 패키지
 
-`.packages`는 기본 공개 패키지 아래에 타입·namespace·함수를 나눕니다. 선택되지 않은 선언은
-기본 패키지에 남습니다.
-
 ```zig
-.packages = &.{
-    .{
-        .path = "types",
-        .name = "types", // 생략하면 path의 마지막 요소를 snake_case로 변환
-        .doc = "Package types contains shared values and handles.",
-        .types = &.{ "Ticker", "Key*" },
-        .namespaces = &.{"text.*"},
-        .functions = &.{"root.liveTickers"},
-        .closure = true,
+const types = zigo.package(.{
+    .path = "types",
+    .doc = "Package types contains shared values and handles.",
+    .defaults = .{ .strings = .infer_utf8 },
+    .declarations = &.{
+        api.handle("Ticker", .{}),
+        api.function("newTicker", .{ .role = .{ .constructor = .{ .type = api.typeRef("Ticker") } } }),
+        api.function("freeTicker", .{ .role = .{ .destructor = api.typeRef("Ticker") } }),
+        api.function("liveTickers", .{}),
     },
-},
+});
 ```
 
-`path`는 `go_package_path` 기준 상대 경로입니다. 함수 배정은 명시적인 `functions`, receiver나
-`go_owner`인 타입, 가장 긴 `namespaces` 접두사, 기본 패키지 순서로 결정됩니다. 타입의 메서드,
-constructor, destructor, tagged-union projection은 언제나 그 타입과 같은 패키지에 있어야 하며
-명시적인 함수 배정으로 떼어 놓으면 `ZIGO031`입니다.
+`path`는 기본 공개 패키지 아래 상대 경로입니다. 중첩 package의 경로는 부모 경로와 합쳐집니다.
+`name`을 생략하면 경로 마지막 요소를 snake_case로 바꿉니다. 선언을 두 번 배정하거나 타입과
+소유 메서드를 다른 패키지로 나누면 오류입니다. 명시적으로 넣지 않은 자동 발견 메서드와
+생성 접근자도 소유 타입의 패키지를 따릅니다.
 
-`types`와 `namespaces` selector의 마지막 `*`는 prefix pattern입니다. 예를 들어 `"Key*"`는
-`Key`, `Keyboard`, `KeyEvent`를 선택하고, `"text.*"`는 그 prefix로 시작하는 namespace를
-선택합니다. 정확한 이름은 모든 package에서 pattern보다 먼저 적용되고, 같은 종류 안에서는 더
-긴 prefix가 우선합니다. 어떤 선언도 찾지 못한 pattern은 오타나 낡은 설정으로 보고
-`ZIGO041`로 거부합니다.
+이름 pattern·namespace selector·전이 closure는 작성 API에서 제거했습니다. 같은 declaration을
+별도 경로 목록으로 관리하지 않고 원하는 package에 직접 넣으세요. Go 타입 이름은 내부
+참조의 유일한 키이므로 현재 모든 패키지에서 고유해야 합니다. 함수 이름 충돌은 패키지별로
+검사합니다. 패키지 간 import 의존은 DAG여야 하며 순환은 `ZIGO032`입니다.
 
-`.closure = true`는 그 package에 배정된 함수와 타입에서 도달할 수 있는 등록 타입을 전이적으로
-같은 package에 넣습니다. 함수의 parameter와 return, optional/error-union payload, callback
-이름·parameter·return, tagged-union과 value-struct field, `.constructs`/`.destroys` 대상,
-opaque `.fields` accessor가 사용하는 타입을 모두 따라갑니다. 정확한 이름이나 pattern으로 다른
-package에 먼저 배정된 타입은 이동하지 않습니다. 아직 배정되지 않은 한 타입을 두 closure
-package가 요구하면 둘의 이름을 포함한 `ZIGO042`가 발생하므로, 그 타입을 한 package에
-명시적으로 배정해 경계를 정합니다. 이 순서는 declaration 순서와 무관합니다.
-
-다른 공개 패키지의 타입을 쓰는 시그니처는 `<go_module>/<go_package_path>/<path>`를 import하고
-한정 이름으로 적습니다. 이 의존 그래프는 DAG여야 하며 순환은 관련 선언과 경로를 적은
-`ZIGO032` 진단입니다. `ZIGO024` 이름 충돌 검사도 패키지별로 적용되므로 서로 다른 공개
-패키지는 같은 Go 이름을 사용할 수 있습니다. 패키지 배정을 바꾸면 import path와 Go 표면이
-움직이므로 `abi-diff`는 breaking으로 보고합니다.
+`defaults`는 부모 값 중 생략한 필드를 상속합니다. package override는 그 아래 명시 함수의
+인자·반환 추론에 적용됩니다. 등록 타입의 필드와 자동 발견된 함수에는 Binding의 기본값을
+사용합니다. 이 범위를 넘어서는 변경은 개별 `semantic` 힌트로 적으세요.
 
 ## Doc 주석
 

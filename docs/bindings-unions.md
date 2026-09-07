@@ -3,6 +3,8 @@
 같은 `.tagged_union` 등록에서도 객체를 참조할지 값을 복사할지에 따라 API가 달라집니다.
 선언의 기본 형태는 [`bindings.zig` 선언](bindings.md)을 참고하세요.
 
+아래 선언 조각의 `api`는 `zigo.scope(대상_모듈)`로 만든 scope입니다.
+
 | 필요한 동작 | 표현 |
 |---|---|
 | union 객체에서 활성 payload 읽기 | [projection](#tagged-union-projection)의 `Tag`·`As*` |
@@ -15,8 +17,8 @@
 기본 표현은 union을 pointer handle로 유지하고 variant별 accessor를 생성합니다.
 
 ```zig
-.types = &.{
-    .{ .tagged_union = .{ .type = mylib.Value } },
+.declarations = &.{
+    api.taggedUnion("Value", .{}),
 },
 ```
 
@@ -69,8 +71,8 @@ variant type 이름이 이미 생성된 다른 이름과 겹치면 `Variant` 접
 작고 모양이 고정된 scalar union을 자주 읽는다면 snapshot을 추가할 수 있습니다.
 
 ```zig
-.types = &.{
-    .{ .tagged_union = .{ .type = mylib.Signal, .access = .snapshot } },
+.declarations = &.{
+    api.taggedUnion("Signal", .{ .access = .snapshot }),
 },
 ```
 

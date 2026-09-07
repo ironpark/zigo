@@ -26,11 +26,11 @@ _ = bindings.addStandardSteps(b, .{});
 const zigo = @import("zigo");
 const mylib = @import("mylib");
 
+const api = zigo.scope(mylib);
+
 pub const bindings = zigo.define(.{
     .root = mylib,
-    .functions = &.{
-        .{ .path = "root.add" },
-    },
+    .declarations = &.{api.function("add", .{})},
 });
 ```
 
@@ -79,126 +79,98 @@ cd go && go test ./...
 
 | 키 | 용도 |
 |---|---|
-| `root` | 경로의 기준 module. 필수 |
-| `types` | opaque·value·enum·tagged union·materialized·callback 등록 |
-| `functions` | 노출 함수와 메타데이터 (`discover`와 함께 쓰면 메타데이터만 붙임) |
-| `discover` | `.public` / `.recursive` 자동 발견 |
-| `exclude` | 자동 발견에서 뺄 경로 |
-| `packages` | 공개 Go 하위 패키지 분할 ([함수와 패키지](bindings-functions.md#공개-go-하위-패키지)) |
-| `interfaces` | 여러 opaque 타입을 묶는 Go 인터페이스 ([객체 수명](bindings-handles.md#인터페이스)) |
-| `allocator` | `.c_allocator` / `.page_allocator` / `.smp_allocator` / `.{ .path = "gpa" }`. `std.mem.Allocator` 주입·narrow slice·materialized에 필요 |
-| `io` | `std.Io`를 주입할 `.{ .path = "io" }` 선언 경로 |
-| `codepoints` | `.infer_u21`이면 모든 `u21`이 `rune` ([코드포인트](bindings-types.md#코드포인트)) |
-| `strings` | `.infer_utf8`이면 힌트 없는 `[]const u8` 파라미터·반환이 `string`. 자리별 opt-out은 `.opaque_bytes` ([문자열](bindings-buffers.md#바인딩-전체의-문자열-기본값)) |
-| `string_release` | `.returns.ownership = .caller` 문자열 결과의 기본 `.release` 함수 경로 |
+| `root` | `scope`와 같은 Zig 루트 모듈 |
+| `declarations` | 함수·타입·package·interface를 담는 `[]const zigo.Entry` |
+| `discovery` | `.explicit` 기본값, `.{ .public = .{} }`, `.{ .recursive = .{} }` |
+| `defaults` | `strings = .infer_utf8`, `codepoints = .infer_u21` 등 추론 정책 |
+| `allocator` | `.c_allocator`, `.page_allocator`, `.smp_allocator`, `.{ .path = "gpa" }` |
+| `io` | `std.Io`를 주입할 `.{ .path = "io" }` |
+| `string_release` | owned 문자열의 기본 `FunctionRef` |
 
 ```zig
-.interfaces = &.{
-    .{ .name = "Batch", .methods = &.{"len"}, .types = &.{ mylib.IntBatch, mylib.FloatBatch },
-       .closer = true, .doc = "Batch is any staged batch." },
-},
-.packages = &.{
-    .{ .path = "types", .name = "types", .doc = "Package types ...",
-       .types = &.{ "Ticker", "Key*" }, .namespaces = &.{"text.*"}, .functions = &.{"root.liveTickers"},
-       .closure = true },   // 도달 가능한 등록 타입을 같은 패키지로
-},
+const api = zigo.scope(mylib);
+const shared = zigo.package(.{
+    .path = "types",
+    .declarations = &.{api.value("Point", .{})},
+});
+const batch = zigo.interface(.{
+    .name = "Batch",
+    .methods = &.{"len"},
+    .types = &.{ api.typeRef("IntBatch"), api.typeRef("FloatBatch") },
+});
 ```
 
-## `types` 항목
+`shared`, `batch`를 `declarations`에 넣고 참조한 handle·메서드도 등록합니다.
+[함수와 패키지](bindings-functions.md), [인터페이스](bindings-handles.md#인터페이스)를 참고하세요.
 
-각 항목은 `zigo.Type` tagged union입니다. variant payload의 공통 필드는 `type`(필수),
-`name`(Go 이름 override; callback은 필수), `doc`입니다.
+## 타입 선언
 
-| variant | Zig 타입 | 추가 필드 | 문서 |
-|---|---|---|---|
-| `.handle` | 상태를 가진 struct | `fields`(getter/setter 접근자) | [객체 수명](bindings-handles.md) |
-| `.value` | `extern struct`, 정수 backing `packed struct` | `go`(어댑터), `fields` | [값 타입](bindings-types.md#extern-struct-값) |
-| `.enumeration` | enum | `exhaustive = false`(열린 enum), `text = true`, `go`, `covers`(Go enum이 대신하는 Zig 메서드 경로). `.path = "<Enum>.<메서드>"`로 메서드를 바인딩 | [값 타입](bindings-types.md#enum-이름-지정) |
-| `.tagged_union` | `union(enum)` | `access = .snapshot`, `omit` | [Tagged union](bindings-unions.md) |
-| `.materialized` | pointer·string·slice 결과 트리 | `fields`(`[]const u8` 필드를 `.opaque_bytes`로 두면 `[]byte`) | [값 타입](bindings-types.md#materialized-결과-트리) |
-| `.callback` | `*const fn (...) callconv(.c)` | `on_callback_failure`, `params`, `returns.semantic`, `userdata`(`.first`/`.last`/`.{ .index = n }`), `retention`·`reentrancy`·`thread` | [콜백](bindings-callbacks.md#콜백-시그니처-규약) |
-
-```zig
-.types = &.{
-    .{ .handle = .{ .type = mylib.Terminal, .fields = &.{
-        .{ .path = "cols" },                                            // getter
-        .{ .path = "screen.cursor.style", .name = "cursorStyle", .set = true },
-    } } },
-    .{ .value = .{ .type = mylib.Point, .go = .{ .type = "image.Point", .import = "image", .to_raw = "pointToRaw", .from_raw = "pointFromRaw" } } },
-    .{ .value = .{ .type = mylib.Glyph, .fields = &.{.{ .name = "cp", .semantic = .codepoint }} } },
-    .{ .enumeration = .{ .type = mylib.Mode, .exhaustive = false, .text = true } },
-    .{ .tagged_union = .{ .type = mylib.Signal, .access = .snapshot } },
-    .{ .callback = .{ .name = "Observer", .type = mylib.Observer, .on_callback_failure = .{ .result = 0 } } },
-    .{ .callback = .{ .name = "Visitor", .type = mylib.Visitor, .params = &.{ .{ .semantic = .codepoint }, .{ .semantic = .integer } }, .returns = .{ .semantic = .codepoint } } },
-    .{ .callback = .{ .name = "Reducer", .type = mylib.Reducer, .userdata = .first } },   // ctx가 첫 인자인 콜백
-    .{ .callback = .{ .name = "ClipboardHandler", .type = mylib.ClipboardFn,
-       .retention = .retained, .reentrancy = .allowed, .thread = .caller } },             // 호출 자리가 물려받음
-},
-```
-
-### materialized 필드 모양
-
-| Zig 필드 | Go 필드 |
+| Helper | 용도·옵션 |
 |---|---|
-| scalar·등록 enum·packed 값 | 같은 타입 |
-| `[]const u8` | `string` (`.semantic = .opaque_bytes`면 `[]byte`) |
-| `[]T`, `[N]T`, `[][]T` | `[]T`, `[][]T` (원소는 scalar·string·extern struct·materialized·slice) |
-| 등록 `extern struct`, 중첩 materialized struct | 값 mirror struct / 값 |
-| `*const T` | `*T` |
-| `?scalar`, `?[]const u8`, `?ExternStruct`, `?Node`, `?*const Node` | `*T`, `*string`; nil이 없음 |
+| `api.handle("T", options)` | 객체 수명, `fields` 접근자 |
+| `api.value("T", options)` | 적격한 extern/packed struct, `fields`, `go` adapter |
+| `api.enumeration("T", options)` | enum, `exhaustive`, `go`, `covers` 참조 |
+| `api.taggedUnion("T", options)` | tagged union, `access`, `omit` |
+| `api.materialized("T", options)` | 복사할 결과 트리, `fields` |
+| `api.callback("T", options)` | 콜백 alias, `params`, `returns`, `userdata`, 수명·실패 기본값 |
 
-`?[]T`, `[]?T`, 순환, 일반 struct, opaque pointer, callback, union은 `ZIGO048`입니다. 버퍼는
-version 2 layout(자연 폭·정렬, record 8바이트 정렬)이라 `T`↔`?T`를 포함한 모양 변경은
-`abi-check`에서 breaking입니다.
-
-## `functions` 항목
-
-| 필드 | 값 | 용도 |
-|---|---|---|
-| `path` | `"root.name"` / `"Type.name"` | 선언 경로 |
-| `name` | 문자열 | 공개 Go 이름 override |
-| `params` | `Param` 목록 | Go가 넘기는 파라미터의 이름과 계약 (receiver·주입 인자 제외) |
-| `receiver` | 등록 handle·enum 타입 값 | 자유 함수를 메서드로. enum은 값 receiver |
-| `methods` + `receiver` + `strip_prefix` | 그룹 | 여러 함수에 같은 receiver·접두사 제거 |
-| `constructs` / `destroys` | handle 타입 값 | 이름 규칙(`init`/`create`/`new`/`open`, `deinit`)이 맞지 않는 생성자·소멸자 |
-| `child_of_receiver` | `true` | 생성된 handle이 receiver보다 먼저 닫혀야 함 |
-| `returns` | `.{ .ownership, .semantic, .release, .go }` | 반환값 계약 |
-| `iterator` | `.{}` / `.{ .name = "Checked" }` | `?T`·`!?T` 메서드를 `iter.Seq`로 |
-| `implements` | `.writer` / `.reader` / `.writer_to` / `.reader_from` | handle 메서드 옆에 `io` 인터페이스 메서드 추가 |
-| `cancel` | `.{ .param = "cancel", .canceled = "Cancelled" }` | `context.Context` 취소 |
-| `covers` | 경로 목록 | `go-coverage`에서 대신 노출한 것으로 계산 |
-| `doc` | 문자열 | Go doc override |
-
-### `Param`
-
-| 키 | 값 | 적용 대상 |
-|---|---|---|
-| `semantic` | `.utf8_string` / `.c_string` / `.opaque_bytes` / `.codepoint` / `.integer` | `[]const u8`, `[]const []const u8`, `u21`/`u32`와 그 slice |
-| `direction` | `.in` / `.out` | slice 버퍼 |
-| `written` | `.all` / `.result` | `.out` slice가 얼마나 채워졌는지 |
-| `flatten` | 필드 이름 목록 | 설정 struct의 일부 필드만 Go 인자로 |
-| `retention` | `.borrowed` / `.retained` | 콜백·atomic 포인터를 호출 뒤에도 보관하는지 |
-| `go_error` | `true` | 콜백이 Go `error`를 돌려줄 수 있음 (Zig 반환 `i32`) |
-| `on_callback_failure` | `.{ .result = n }` | 콜백 panic·error 시 native에 돌려줄 값 |
-| `userdata` | `.{ .param = "ctx" }` | 콜백의 토큰을 받는 `usize` 파라미터가 콜백 바로 다음이 아닐 때 |
-| `reentrancy`, `thread` | `.allowed`/`.forbidden`, `.caller`/`.any` | 콜백 계약 (doc에만 반영). `retention`과 함께 등록 항목에서 물려받고 여기서 필드 단위로 덮어씀 |
-| `buffer` | 바이트 수 | `std.Io` 스트림 staging 버퍼 |
-| `go` | 어댑터 | scalar 파라미터 하나 |
+공통 설정은 `.named()`, `.documented()`, `.with(.{ .members = ... })`입니다.
+아래 예제의 `api`는 대상 모듈의 scope입니다.
 
 ```zig
-.{ .path = "Document.load", .params = &.{.{ .name = "r", .buffer = 4096 }} },
-.{ .path = "root.render", .params = &.{
-    .{ .name = "text", .semantic = .utf8_string },
-    .{ .name = "dst", .direction = .out, .written = .result },
-} },
-.{ .path = "Terminal.init", .params = &.{.{ .name = "options", .flatten = &.{ "cols", "rows" } }} },
-.{ .path = "root.takeCodepoints", .returns = .{ .ownership = .caller, .release = "root.freeCodepoints", .semantic = .codepoint } },
-.{ .path = "Context.next", .iterator = .{} },
-.{ .path = "Document.append", .params = &.{.{ .name = "line" }}, .implements = .writer },   // + Write(p []byte) (int, error)
-.{ .path = "Key.codepoint" },                        // 등록 enum의 메서드 → func (k Key) Codepoint() rune
-.{ .path = "root.run", .params = &.{ .{ .name = "limit" }, .{ .name = "callback", .retention = .retained, .go_error = true }, .{ .name = "userdata" }, .{ .name = "cancel" } },
-   .cancel = .{ .param = "cancel" } },
+const mode = api.enumeration("Mode", .{ .exhaustive = false })
+    .use(zigo.features.text, .{});
+const terminal = api.handle("Terminal", .{
+    .fields = &.{.{ .path = "cols", .set = true }},
+}).with(.{ .members = api.in("Terminal").functions(.{ .names = &.{ "create", "deinit" } }) });
 ```
+
+값과 결과 트리의 자세한 지원 모양은 [타입 문서](bindings-types.md)에 있습니다.
+
+## 함수와 파라미터
+
+| 옵션 | 용도 |
+|---|---|
+| `name`, `doc` | 이름·GoDoc override |
+| `role` | `.auto`, `.free`, `.{ .method = TypeRef }`, constructor, destructor |
+| `params` | 필요한 원본 Zig 인덱스만 적는 sparse 목록 |
+| `returns` | `lifetime`, `semantic`, `go` |
+| `covers` | 대신 노출한 함수의 `FunctionRef` 목록 |
+
+| Param 필드 | 용도 |
+|---|---|
+| `index` | 0부터 시작. receiver·주입 인자·userdata 포함 |
+| `go_name` | 파라미터 이름 override |
+| `semantic` | `.utf8_string`, `.c_string`, `.opaque_bytes`, `.codepoint`, `.integer` |
+| `go` | scalar Go 타입 adapter |
+| `contract` | 아래의 배타적인 계약 중 하나 |
+
+| contract | payload |
+|---|---|
+| `.value` | 기본값 |
+| `.buffer` | `.input`, `.{ .output = .{ .written = .result } }`, `.{ .inout = .{} }` |
+| `.stream` | `.{ .buffer = 4096 }` |
+| `.callback` | `retention`, `thread`, `reentrancy`, `go_error`, `on_failure`, `userdata` 원본 인덱스 |
+| `.cancel` | `.{ .canceled = "Canceled" }` |
+| `.flatten` | 펼칠 struct 필드 이름 목록 |
+
+```zig
+// fn load(self: *Document, reader: *std.Io.Reader) !usize
+const load = api.in("Document").function("load", .{
+    .params = &.{.{ .index = 1, .contract = .{ .stream = .{ .buffer = 4096 } } }},
+});
+const take = api.function("takeCodepoints", .{
+    .returns = .{
+        .semantic = .codepoint,
+        .lifetime = .{ .owned = .{ .release = api.ref("freeCodepoints") } },
+    },
+});
+const next = api.in("Context").function("next", .{}).use(zigo.features.iterator, .{});
+```
+
+`with()`는 적은 필드만 교체하며 null은 기존 값을 지웁니다. 중첩 계약은 전체 교체입니다.
+선언의 `.use()`는 중복 플러그인을 거절하고 `.replacePlugin()`은 명시적으로 교체합니다.
+[작성 API 마이그레이션](migration-authoring.md)에 이전 표기와의 대응표가 있습니다.
 
 ## Zig 타입 → Go 타입
 
@@ -214,7 +186,7 @@ version 2 layout(자연 폭·정렬, record 8바이트 정렬)이라 `T`↔`?T`�
 | `?T` 파라미터 / 반환 | `*T` / `(T, bool)` | struct 필드·콜백에는 불가 |
 | `E!T` | `(T, error)` | `anyerror` 불가 |
 | `*Opaque` | `*Opaque` handle | `Close()`, `ErrInvalidHandle` |
-| 등록 enum | `type E uint8` + 상수 + `String()` | `.text`면 `ParseE`, `MarshalText`/`UnmarshalText` |
+| 등록 enum | `type E uint8` + 상수 + `String()` | `features.text`를 쓰면 `ParseE`, `MarshalText`/`UnmarshalText` |
 | `extern struct` | mirror struct 또는 `.go` 어댑터 타입 | |
 | `*const fn(..., userdata: usize) callconv(.c)` | `func(...)` | 마지막 `usize`가 userdata; 다른 자리면 `.userdata`로 지정. `bool` 인자·결과 가능 |
 | `*std.Io.Writer` / `*std.Io.Reader` | `io.Writer` / `io.Reader` | |
@@ -228,8 +200,8 @@ version 2 layout(자연 폭·정렬, record 8바이트 정렬)이라 `T`↔`?T`�
 h, err := NewTerminal(80, 24)         // 생성자 → *Terminal, error
 defer h.Close()                        // 두 번 호출해도 안전
 n, err := h.Write(data)                // 메서드: 닫힌 handle이면 ErrInvalidHandle
-for v, err := range h.All() { ... }    // .iterator = .{} → All(); .name = "Checked" → Checked()
-fmt.Fprintf(doc, "%d", n)              // .implements = .writer → Write; handle이 io.Writer
+for v, err := range h.All() { ... }    // features.iterator → All(); .name = "Checked" → Checked()
+fmt.Fprintf(doc, "%d", n)              // features.implements의 .writer → Write
 v := MustParse(s)                      // go_must_variants = true일 때
 ```
 
@@ -276,16 +248,16 @@ ZIGO_LIBRARY_PATH=/path/libmylib_zigo.so go run .   # 또는 ZIGO_<PACKAGE>_LIBR
 | ZIGO002 / ZIGO029 | 열린 enum 미표시 / 닫힌 enum에 `.exhaustive = false` | 등록 항목의 `exhaustive` 조정 |
 | ZIGO018 / ZIGO019 | 지원하지 않는 폭·타입·위치 | 표준 폭으로 바꾸거나 opaque·materialized로 |
 | ZIGO024 / ZIGO036 | Go 이름 / C 심볼 충돌 | `.name`, `prefix` 조정 |
-| ZIGO027 | `.params` 개수 불일치 | receiver·주입 인자 제외하고 나열 |
-| ZIGO028 / ZIGO035 | 생성자·소멸자 짝 / 소유권 미지정 | `.constructs`/`.destroys`, `.returns` |
+| 작성 컴파일 오류 | 인덱스·참조·중복·대상 contract 오류 | 원본 Zig 인덱스와 선언 확인 |
+| ZIGO028 / ZIGO035 | 생성자·소멸자 짝 / 소유권 미지정 | `.role`, `.returns.lifetime` |
 | ZIGO045 | narrow slice용 allocator 없음 | `.allocator = .c_allocator` |
 | ZIGO050 / ZIGO051 / ZIGO052 / ZIGO053 | `iterator` / `text` / `go` / `codepoint` 오용 | 해당 표의 적용 대상 확인 |
 | ZIGO048 | materialized 트리가 지원하지 않는 필드 모양 | 위 materialized 필드 표 확인 |
-| ZIGO054 | 경로 중복 또는 `functions`·`exclude` 충돌 | 경로 한 번만 |
+| ZIGO054 | 명시 선언과 discovery 제외 충돌 | 경로 한 번만 |
 | ZIGO056 | 값 receiver(등록 enum)에 handle 전용 메타데이터 | 소유권·`iterator`·스트림은 opaque 타입에만 |
-| ZIGO055 | 콜백 userdata 규약 위반(`usize` 자리 없음·자리 불일치) | callback 등록의 `.userdata`, `Param.userdata` 확인 |
+| ZIGO055 | 콜백 userdata 규약 위반(`usize` 자리 없음·자리 불일치) | callback 등록의 `.userdata`, `Param.contract.callback.userdata` 확인 |
 | ZIGO057 | 콜백 시그니처에 `[]T` slice·extern struct·optional 등 | 콜백 값은 scalar·enum·packed·handle 포인터·`[*:0]const u8`·`[*]const u8`+`usize` |
-| ZIGO058 | `.implements` 메서드의 모양이 인터페이스와 다름 | receiver 있는 handle 메서드, 파라미터 하나, 결과 `void`·정수 |
+| ZIGO058 | `features.implements` 메서드의 모양이 인터페이스와 다름 | receiver 있는 handle 메서드, 파라미터 하나, 결과 `void`·정수 |
 
 전체 목록은 [진단 코드](diagnostics.md).
 

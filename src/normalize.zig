@@ -18,6 +18,7 @@ pub fn binding(comptime source: a.Binding) ir.Binding {
         @setEvalBranchQuota(2_000_000);
         var state: State = .{ .root = source.root };
         collectTypes(source.declarations, &state);
+        resolveTypeReferences(&state);
         flatten(source.declarations, &state, null, null, source.defaults);
         var exclusions: []const []const u8 = &.{};
         const discover: ?ir.Discover = switch (source.discovery) {
@@ -104,14 +105,7 @@ fn collectTypes(comptime entries: []const a.Entry, state: *State) void {
                 .handle => |o| .{ .handle = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = o.fields, .ext = externalExtensions(t.extensions) } },
                 .value => |o| .{ .value = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = o.fields, .go = o.go, .ext = externalExtensions(t.extensions) } },
                 .materialized => |o| .{ .materialized = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .fields = o.fields } },
-                .enumeration => |o| b: {
-                    var covers: []const []const u8 = &.{};
-                    for (o.covers) |ref| {
-                        checkRoot(ref.root, state.root, ref.path);
-                        covers = covers ++ [_][]const u8{ref.path};
-                    }
-                    break :b .{ .enumeration = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .go = o.go, .exhaustive = o.exhaustive, .text = hasText(t.extensions), .covers = covers, .ext = externalExtensions(t.extensions) } };
-                },
+                .enumeration => |o| .{ .enumeration = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .go = o.go, .exhaustive = o.exhaustive, .text = hasText(t.extensions), .ext = externalExtensions(t.extensions) } },
                 .tagged_union => |o| .{ .tagged_union = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .access = o.access, .omit = o.omit, .ext = externalExtensions(t.extensions) } },
                 .callback => |o| .{ .callback = .{ .type = t.ref.type, .name = name, .doc = t.options.doc, .params = o.params, .returns = .{ .semantic = o.returns.semantic }, .userdata = o.userdata, .retention = o.retention, .thread = o.thread, .reentrancy = o.reentrancy, .on_callback_failure = o.on_callback_failure } },
             };
@@ -122,6 +116,20 @@ fn collectTypes(comptime entries: []const a.Entry, state: *State) void {
         .package => |p| collectTypes(p.declarations, state),
         else => {},
     };
+}
+fn resolveTypeReferences(state: *State) void {
+    // All owners must be registered before resolving covers, including a
+    // reference to a type that appears later in the declaration tree.
+    var types = state.types[0..state.types.len].*;
+    for (state.source_types, 0..) |source, i| {
+        if (source.representation != .enumeration) continue;
+        var covers: []const []const u8 = &.{};
+        for (source.representation.enumeration.covers) |ref|
+            covers = covers ++ [_][]const u8{functionPath(ref, state.*)};
+        types[i].enumeration.covers = covers;
+    }
+    const frozen = types;
+    state.types = &frozen;
 }
 fn flatten(comptime entries: []const a.Entry, state: *State, comptime package_index: ?usize, comptime parent: ?a.TypeRef, comptime defaults: a.Defaults) void {
     for (entries) |entry| switch (entry) {

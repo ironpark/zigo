@@ -14,6 +14,10 @@ error[ZIGO018]: unsupported integer width `u128` in parameter `cp`
   hint: use an integer of 64 bits or fewer
 ```
 
+작성 단계의 잘못된 source 참조·중복 선언·원본 인자 인덱스·서로 맞지 않는 contract·
+플러그인 대상은 `zigo.define()` 또는 helper 호출에서 Zig 컴파일 오류로 먼저 거부됩니다.
+아래 코드는 reflection 이후의 진단이며, 일부는 직접 작성한 semantic 문서에서만 나타납니다.
+
 ## 어디부터 확인하나요?
 
 1. `-->`에서 문제가 된 선언·인자를 확인합니다.
@@ -38,7 +42,7 @@ error[ZIGO018]: unsupported integer width `u128` in parameter `cp`
 
 non-exhaustive enum을 명시적 허용 없이 노출했습니다.
 
-Zig enum을 exhaustive로 만들거나 `.enumeration = .{ .type = T, .exhaustive = false }`로 등록하세요.
+Zig enum을 exhaustive로 만들거나 `api.enumeration("T", .{ .exhaustive = false })`로 등록하세요.
 tagged union의 non-exhaustive tag에는 이 설정을 적용할 수 없습니다.
 
 ### ZIGO018
@@ -87,8 +91,8 @@ tagged union의 non-exhaustive tag에는 이 설정을 적용할 수 없습니�
 
 스트림의 위치·수명·버퍼 설정이 잘못되었습니다.
 
-스트림에 `.retention = .retained`를 지정하지 않았는지, `buffer`가 4096~16777216바이트인지,
-스트림이 아닌 인자에 `buffer`를 붙이지 않았는지 확인하세요. 인자와 반환 위치의 조건은
+`Param.contract.stream.buffer`가 4096~16777216바이트인지 확인하세요. 스트림은 호출 동안만
+사용할 수 있고, 스트림이 아닌 인자에 stream contract를 붙이면 컴파일 오류입니다. 인자와 반환 위치의 조건은
 [스트림 가이드](bindings-streams.md)에 있습니다.
 
 ### ZIGO024
@@ -98,7 +102,7 @@ tagged union의 non-exhaustive tag에는 이 설정을 적용할 수 없습니�
 진단에 나온 두 선언 중 하나의 `.name`을 바꾸세요. 서로 다른 Zig namespace의 자유 함수도
 Go에서는 충돌할 수 있고, enum tag도 Go 상수 이름으로 변환한 뒤 충돌을 검사합니다.
 다른 receiver의 메서드나 서로 다른 공개 패키지는 별도 이름 공간입니다. 등록 enum을 receiver로
-쓰는 메서드는 zigo가 그 enum에 생성하는 메서드(`String`, `.text = true`면 `MarshalText`와
+쓰는 메서드는 zigo가 그 enum에 생성하는 메서드(`String`, `.use(zigo.features.text, .{})`면 `MarshalText`와
 `UnmarshalText`)와도 겹칠 수 없습니다.
 
 ### ZIGO025
@@ -110,24 +114,25 @@ Go에서는 충돌할 수 있고, enum tag도 Go 상수 이름으로 변환한 �
 
 ### ZIGO026
 
-취소 플래그 선언과 `.cancel` 설정이 맞지 않습니다.
+취소 플래그 선언과 cancel contract가 맞지 않습니다.
 
-`.cancel.param`이 실제 `*const std.atomic.Value(u32)` 인자를 가리키는지, 함수의 error set에
-설정한 취소 오류 이름이 있는지 확인하세요. 기본 오류 이름은 `Canceled`입니다.
+해당 `*const std.atomic.Value(u32)` 인자에 `.contract = .{ .cancel = .{} }`를 붙이고, error set에
+`contract.cancel.canceled`가 지정한 오류 이름이 있는지 확인하세요. 기본 오류 이름은 `Canceled`입니다.
 [취소 설정](bindings-streams.md#취소-cancel)을 참고하세요.
 
 ### ZIGO027
 
-`.params`의 `Param` 항목 수가 기대하는 인자 개수와 다릅니다.
+reflection에 전달된 내부 파라미터 메타데이터 수가 시그니처와 다릅니다.
 
-receiver와 주입 인자(`std.mem.Allocator`, `std.Io`)를 목록에서 제외하세요.
-진단에는 실제 개수·기대 개수와 선언 경로가 표시됩니다.
+새 작성 API의 sparse `params`는 이 목록으로 정규화됩니다. `Param.index`에는 receiver와
+주입 인자를 포함한 원본 Zig 인덱스를 적으세요. 유효한 새 선언에서 이 진단이 나오면
+정규화 문제이므로 최소 재현을 확인해야 합니다.
 
 ### ZIGO028
 
 생성자·소멸자의 타입, 시그니처 또는 짝이 맞지 않습니다.
 
-`.constructs`·`.destroys`가 등록한 타입을 가리키는지 확인하세요. 생성자는 해당 타입의
+constructor의 `.type` 참조와 destructor의 타입 참조가 등록 handle을 가리키는지 확인하세요. 생성자는 해당 타입의
 포인터를 반환하고, 소멸자는 주입 인자를 제외한 첫 인자로 포인터를 받아 `void`를 반환해야
 합니다. 한쪽만 선언하거나 같은 타입의 짝을 중복 지정할 수 없습니다.
 [명시적 짝 지정](bindings-handles.md#타입-밖에-선언된-생성자와-소멸자)을 참고하세요.
@@ -140,14 +145,14 @@ exhaustive enum에 `.exhaustive = false`를 지정했습니다.
 
 ### ZIGO030
 
-`.child_of_receiver = true`를 receiver가 있는 생성자가 아닌 함수에 지정했습니다.
+`.role.constructor.parent = .receiver`를 receiver가 있는 생성자가 아닌 함수에 지정했습니다.
 
 부모 객체의 메서드로 자식을 생성하는 경우에만 사용하세요.
 [자식 생성자](bindings-handles.md#다른-handle의-메서드인-생성자)를 참고하세요.
 
 ### ZIGO031
 
-`.packages`의 경로·이름·selector가 잘못되었거나 선언을 중복 선택했습니다.
+`zigo.package()`의 경로·이름이 잘못되었거나, 소유 타입과 함수를 다른 패키지로 나눴습니다.
 
 타입과 그 메서드·생성자·소멸자는 같은 공개 패키지에 배치하세요.
 [하위 패키지 설정](bindings-functions.md#공개-go-하위-패키지)을 참고하세요.
@@ -161,14 +166,14 @@ exhaustive enum에 `.exhaustive = false`를 지정했습니다.
 
 ### ZIGO033
 
-receiver가 없는 함수에 `.returns.ownership = .borrowed`를 지정했습니다.
+receiver가 없는 함수에 `.returns.lifetime = .{ .borrowed = .receiver }`를 지정했습니다.
 
 borrowed handle은 소유자를 receiver로 확인할 수 있어야 합니다. receiver 메서드로 노출하거나
 실제 소유권에 맞는 반환 방식을 선택하세요.
 
 ### ZIGO034
 
-`.returns.ownership = .borrowed`의 반환값이 지원하는 opaque 포인터 형태가 아닙니다.
+`.returns.lifetime = .{ .borrowed = .receiver }`의 반환값이 지원하는 opaque 포인터 형태가 아닙니다.
 
 등록 opaque 타입의 `*T`, `?*T`, `!*T`, `!?*T`인지 확인하세요.
 
@@ -176,7 +181,7 @@ borrowed handle은 소유자를 receiver로 확인할 수 있어야 합니다. r
 
 생성자가 아닌 메서드가 opaque 포인터를 반환하지만 소유권을 명시하지 않았습니다.
 
-receiver가 소유한 view라면 `.returns.ownership = .borrowed`, 소유권을 넘긴다면 `.returns.ownership = .caller`와
+receiver가 소유한 view라면 `.returns.lifetime = .{ .borrowed = .receiver }`, 소유권을 넘긴다면 `.returns.lifetime = .{ .owned = .{} }`와
 생성자·소멸자 짝을 지정하세요.
 
 ### ZIGO036
@@ -237,7 +242,7 @@ bool·정수·등록 enum·등록된 정수 기반 packed struct 필드로 바�
 ### ZIGO048
 
 materialized 결과의 필드나 소유권·해제 선언이 잘못되었습니다. 진단의 전체 필드 경로를
-먼저 확인하고, 결과에 `.returns.ownership = .caller`와 직렬화 버퍼 `[]u8`를 해제하는 `.returns.release`를
+먼저 확인하고, 결과에 `.returns.lifetime = .{ .owned = .{} }`와 직렬화 버퍼 `[]u8`를 해제하는 `.returns.lifetime.owned.release`를
 지정했는지 확인하세요. 필드 제약은 [Materialized 버퍼 ABI](abi.md)에 있습니다.
 
 ### ZIGO049
@@ -249,7 +254,7 @@ materialized 결과의 필드나 소유권·해제 선언이 잘못되었습니�
 
 ### ZIGO050
 
-`.iterator`를 붙인 함수가 receiver가 없거나, receiver 외의 파라미터를 받거나, `?T`·`!?T`가
+`features.iterator`를 붙인 함수가 receiver가 없거나, receiver 외의 파라미터를 받거나, `?T`·`!?T`가
 아닌 값을 반환하거나, wrapper 이름이 exported Go 식별자가 아닙니다. 등록 opaque 타입의
 메서드로 옮기고 인자는 생성자로 빼세요.
 [Iterator wrapper](bindings-handles.md#iterator-wrapper)를 참고하세요.
@@ -272,22 +277,21 @@ optional 파라미터·sentinel slice·flatten 필드·주입 파라미터에는
 
 ### ZIGO051
 
-`.text = true`를 enum이 아닌 타입에 지정했습니다. 텍스트 인코딩은 `.enumeration`
+`.use(zigo.features.text, .{})`를 enum이 아닌 타입에 지정했습니다. 텍스트 인코딩은 `.enumeration`
 등록 항목에서만 켤 수 있습니다. [Enum 텍스트 인코딩](bindings-types.md#enum-텍스트-인코딩)을
 참고하세요.
 
 ### ZIGO054
 
-`functions`나 `methods`에 같은 경로를 두 번 적었거나, `exclude`에 같은 경로를 두 번 적었거나,
-한 경로가 함수 목록과 `exclude`에 모두 있습니다. 경로는 한 번만 적고, 제외할 함수는 목록에서
-빼세요. 이 검사는 등록 수에 비례하도록 reflection 런타임에서 수행되므로, 존재하지 않는
-경로와 달리 `@compileError`가 아니라 생성기 진단으로 나옵니다.
+명시 선언과 discovery 제외 목록이 충돌했습니다. 제외할 함수를 명시 선언에도 넣지 마세요.
+새 API의 중복 선언·중복 제외는 작성 단계에서 먼저 거부합니다. 내부 flat 선언을 직접
+사용하는 reflection 테스트에서는 중복도 이 진단으로 나타납니다.
 
 ### ZIGO056
 
 값 receiver가 handle에만 있는 것을 요구했습니다. 등록 enum의 메서드에는 닫을 handle도, 부모도,
-빌려줄 수명도 없으므로 `.constructs`, `.child_of_receiver`, `.returns.ownership = .borrowed`,
-`.iterator`, `std.Io` 스트림 파라미터를 쓸 수 없습니다. 또 `.go` 어댑터가 붙은 enum은 Go에서
+빌려줄 수명도 없으므로 `.role.constructor`, `.role.constructor.parent`, `.returns.lifetime = .{ .borrowed = .receiver }`,
+`features.iterator`, `std.Io` 스트림 파라미터를 쓸 수 없습니다. 또 `.go` 어댑터가 붙은 enum은 Go에서
 남의 패키지 타입이라 메서드를 가질 수 없습니다. 함수를 패키지 레벨로 바인딩하거나, 상태가
 있는 타입이라면 `.handle`로 등록하세요.
 [자유 함수를 메서드로 등록하기](bindings-functions.md#자유-함수를-메서드로-등록하기)를
@@ -305,13 +309,13 @@ optional 파라미터·sentinel slice·flatten 필드·주입 파라미터에는
 
 ### ZIGO058
 
-`.implements`를 붙인 메서드가 인터페이스에서 한 걸음 떨어진 모양이 아닙니다. receiver가 없거나,
-`.iterator`·`.cancel`이 함께 있거나, 결과가 `void`·정수가 아니거나, 파라미터가 인터페이스가
+`features.implements`를 붙인 메서드가 인터페이스에서 한 걸음 떨어진 모양이 아닙니다. receiver가 없거나,
+`features.iterator`·`.cancel`이 함께 있거나, 결과가 `void`·정수가 아니거나, 파라미터가 인터페이스가
 넘기는 하나(`.writer`는 문자열 힌트 없는 `[]const u8`, `.reader`는 `.written = .result`인 `.out`
 `[]u8`, `.writer_to`는 `*std.Io.Writer`, `.reader_from`은 `*std.Io.Reader`)가 아닙니다. wrapper는
 그 인자만 넘겨 메서드를 호출하므로 다른 인자는 생성자로 빼고, 문자열 힌트는 지우세요.
 wrapper 이름이 같은 타입의 다른 메서드와 겹치면 `ZIGO024`입니다.
-[handle이 io 인터페이스를 구현하기](bindings-streams.md#handle이-io-인터페이스를-구현하기-implements)를
+[handle이 io 인터페이스를 구현하기](bindings-streams.md#handle이-io-인터페이스를-구현하기)를
 참고하세요.
 
 ## 리플렉션 단계의 오류
@@ -330,6 +334,6 @@ wrapper 이름이 같은 타입의 다른 메서드와 겹치면 `ZIGO024`입니
 가리는 일은 없습니다.
 
 `<NAME>001`은 모든 플러그인이 공통으로 가지는 코드입니다. `semantic.json`의 `ext`에
-그 플러그인의 옵션 타입으로 읽을 수 없는 값이 들어 있다는 뜻입니다. 손으로 고친
-문서가 아니라면 나오지 않습니다. `bindings.zig`에서 `extend`로 붙인 옵션은 선언
+그 대상에 맞지 않거나 대상별 옵션 타입으로 읽을 수 없는 값이 들어 있다는 뜻입니다. 손으로 고친
+문서가 아니라면 나오지 않습니다. `bindings.zig`에서 `use`로 붙인 옵션은 선언
 자리에서 Zig 컴파일 오류로 걸리기 때문입니다.

@@ -2,37 +2,32 @@
 
 Go에 값으로 전달할 타입을 선택하고 등록합니다. 선언의 기본 형태는 [`bindings.zig` 선언](bindings.md)을 참고하세요.
 
+아래 선언 조각의 `api`는 `zigo.scope(대상_모듈)`로 만든 scope입니다.
+
 단순 값은 [extern struct](#extern-struct-값), 비트 필드는 [packed struct](#packed-struct-값),
 포인터를 포함한 반환 트리는 [materialized](#materialized-결과-트리)를 사용합니다.
 객체 수명은 [handle 문서](bindings-handles.md), union은 [tagged union 문서](bindings-unions.md)에 있습니다.
 
-단순 등록 항목이 많으면 comptime DSL로 공개 선언 이름의 고정 목록을 만들 수 있습니다. 선언
-문자열 하나로 Zig 타입과 Go 이름을 함께 정하므로 둘이 어긋나지 않으며, 목록 순서를 그대로
-유지합니다.
+타입 helper는 scope 안의 공개 alias 이름으로 Zig 타입과 기본 Go 이름을 함께 정합니다.
+종류별 설정은 helper의 두 번째 인자에 적고 선언 목록에서 함수와 함께 조합합니다.
 
 ```zig
-const handles = zigo.dsl.handles(library, &.{ "Screen", "Search" });
-const values = zigo.dsl.values(library, &.{ "Point", "Size" });
-const text_enums = zigo.dsl.enumerations(
-    library,
-    &.{ "CursorStyle", "Mode" },
-    .{ .text = true },
-);
-const open_enums = zigo.dsl.enumerations(
-    library,
-    &.{"ColorName"},
-    .{ .text = true, .open = true },
-);
-const unions = zigo.dsl.taggedUnions(library, &.{"Attribute"});
-
-const types = zigo.dsl.collect(.{ handles, values, text_enums, open_enums, unions });
+const api = zigo.scope(library);
+const declarations = &[_]zigo.Entry{
+    api.handle("Screen", .{}),
+    api.handle("Search", .{}),
+    api.value("Point", .{}),
+    api.value("Size", .{}),
+    api.enumeration("CursorStyle", .{}).use(zigo.features.text, .{}),
+    api.enumeration("Mode", .{}).use(zigo.features.text, .{}),
+    api.enumeration("ColorName", .{ .exhaustive = false }).use(zigo.features.text, .{}),
+    api.taggedUnion("Attribute", .{}),
+};
 ```
 
-단일 항목에는 `handle`, `value`, `enumeration`, `taggedUnion`을 사용합니다. batch와 단일 helper
-모두 container의 공개 type 선언만 받으며, `value`는 struct, `enumeration`은 enum,
-`taggedUnion`은 tagged union인지 comptime에 확인합니다. 이름이 없거나 중복되거나 종류가 맞지
-않으면 호출 위치에서 compile error입니다. 필드·문서·Go adapter처럼 항목마다 다른 설정이 있는
-타입은 기존 `zigo.Type` literal로 적어 함께 `collect`하면 됩니다.
+`handle`, `value`, `enumeration`, `taggedUnion`, `materialized`, `callback`은 실제 Zig 타입을
+검사합니다. 공통 이름·문서·멤버는 `.named()`, `.documented()`, `.with()`로 설정합니다.
+같은 Zig 타입을 여러 번 등록하거나 잘못된 표현을 고르면 컴파일 오류입니다.
 
 ## 정수 폭
 
@@ -62,13 +57,13 @@ C는 8, 16, 32, 64비트 정수만 이름 붙일 수 있습니다. `u21`이나 `
 ### 비표준 폭 정수의 slice
 
 `[]const u21` 입력은 Go의 `[]uint32`가 되고 shim이 바인딩의 `.allocator`로 `[]u21` 임시
-버퍼를 만들어 범위를 검사하며 원소별로 좁힙니다. `.direction = .out`인 `[]u21`도 같은 임시
+버퍼를 만들어 범위를 검사하며 원소별로 좁힙니다. `.contract = .{ .buffer = .{ .output = .{} } }`인 `[]u21`도 같은 임시
 버퍼를 사용하고, 성공한 호출 뒤 caller-owned Go slice로 원소별 승격 복사합니다. 따라서 이런
 slice가 하나라도 있으면 바인딩에 `.allocator`가 필요하며, 없으면 설정 방법을 적은
 `ZIGO045`가 발생합니다. 입력 slice의 범위 밖 원소는 scalar 파라미터와 같은
 `*RangeError`(`ErrOutOfRange`)이고 raw 호출에서는 같은 native range panic입니다.
 
-반환 `[]u21`은 `.returns.ownership = .caller`와 `.returns.release`가 있는 경우에만 지원합니다. shim이 각 원소를
+반환 `[]u21`은 `.returns.lifetime = .{ .owned = .{} }`와 `.returns.lifetime.owned.release`가 있는 경우에만 지원합니다. shim이 각 원소를
 승격한 뒤 Go가 새 `[]uint32`로 복사하고 즉시 원래 release를 호출합니다. 안정적으로 승격해 둘
 메모리가 없는 borrowed narrow slice 반환은 `ZIGO018`로 거부됩니다. sentinel/optional narrow
 slice도 아직 지원하지 않습니다.
@@ -85,9 +80,11 @@ Zig 텍스트 코드는 유니코드 코드포인트를 `u21`이나 `u32`로 다
 `abi-check`의 심볼 시그니처는 바뀌지 않고, Go 표면 변경만 breaking으로 기록됩니다.
 
 ```zig
-.{ .path = "root.codepointWidth", .params = &.{.{ .name = "cp", .semantic = .codepoint }} },
-.{ .path = "root.sumCodepoints", .params = &.{.{ .name = "values", .semantic = .codepoint }} },
-.{ .path = "root.takeCodepoints", .returns = .{ .ownership = .caller, .release = "root.freeCodepoints", .semantic = .codepoint } },
+api.function("codepointWidth", .{ .params = &.{.{ .index = 0, .go_name = "cp", .semantic = .codepoint }} }),
+api.function("sumCodepoints", .{ .params = &.{.{ .index = 0, .go_name = "values", .semantic = .codepoint }} }),
+api.function("takeCodepoints", .{
+    .returns = .{ .semantic = .codepoint, .lifetime = .{ .owned = .{ .release = api.ref("freeCodepoints") } } },
+}),
 ```
 
 | 자리 | Zig | Go |
@@ -111,7 +108,7 @@ extern struct 필드는 `.value` 등록 항목의 `.fields`로 지정합니다. 
 범위 검사가 없어 잘못된 `rune`이 그대로 `uint32`로 재해석됩니다.
 
 ```zig
-.{ .value = .{ .type = text.Glyph, .fields = &.{.{ .name = "cp", .semantic = .codepoint }} } },
+api.value("Glyph", .{ .fields = &.{.{ .name = "cp", .semantic = .codepoint }} }),
 ```
 
 힌트를 붙일 수 있는 자리는 위 표가 전부입니다. optional 파라미터, sentinel slice, packed·
@@ -120,7 +117,7 @@ materialized struct 필드, tagged union payload, flatten 필드, 주입 파라�
 
 ### u21 자동 추론
 
-Zig에서 `u21`은 거의 항상 코드포인트입니다. `zigo.define`에 `.codepoints = .infer_u21`을
+Zig에서 `u21`은 거의 항상 코드포인트입니다. `zigo.define`에 `.defaults = .{ .codepoints = .infer_u21 }`을
 주면 `u21` 스칼라와 plain slice 파라미터·반환값(`!`, `?` 안 포함)이 힌트 없이도 코드포인트가
 됩니다. 정수로 남겨야 하는 자리는 `.semantic = .integer`로 opt-out합니다. 추론은 reflection
 단계에서 끝나므로 `semantic.json`에는 항상 명시적 `codepoint`가 기록되고 `.integer`는
@@ -129,10 +126,10 @@ Zig에서 `u21`은 거의 항상 코드포인트입니다. `zigo.define`에 `.co
 ```zig
 pub const bindings = zigo.define(.{
     .root = text,
-    .codepoints = .infer_u21,
-    .functions = &.{
-        .{ .path = "root.width", .params = &.{.{ .name = "cp" }} }, // cp: u21 → rune
-        .{ .path = "root.bits", .params = &.{.{ .name = "mask", .semantic = .integer }} },
+    .defaults = .{ .codepoints = .infer_u21 },
+    .declarations = &.{
+        api.function("width", .{ .params = &.{.{ .index = 0, .go_name = "cp" }} }),
+        api.function("bits", .{ .params = &.{.{ .index = 0, .go_name = "mask", .semantic = .integer }} }),
     },
 });
 ```
@@ -146,8 +143,8 @@ segment에서 옵니다. 보통은 그것이 곧 타입 이름이지만, comptim
 거부되고, `.enumeration` variant로 등록해 이름을 줍니다.
 
 ```zig
-.types = &.{
-    .{ .enumeration = .{ .name = "CursorStyle", .type = library.CursorStyle } },
+.declarations = &.{
+    api.enumeration("CursorStyle", .{}),
 },
 ```
 
@@ -167,14 +164,8 @@ Zig enum이 `enum(u8) { below, above, _ }`처럼 non-exhaustive이면 자동 등
 등록 항목에 opt-in을 적습니다.
 
 ```zig
-.types = &.{
-    .{
-        .enumeration = .{
-            .name = "EraseDisplay",
-            .type = library.EraseDisplay,
-            .exhaustive = false,
-        },
-    },
+.declarations = &.{
+    api.enumeration("EraseDisplay", .{ .exhaustive = false }),
 },
 ```
 
@@ -182,19 +173,19 @@ Zig enum이 `enum(u8) { below, above, _ }`처럼 non-exhaustive이면 자동 등
 `ZIGO029`이며, 생략한 기존 등록은 그대로 exhaustive 계약입니다. tagged union의 tag가
 non-exhaustive인 경우에는 이 opt-in을 적용하지 않으며 계속 거부합니다.
 
-등록 enum은 메서드도 가질 수 있습니다. `.path = "<Enum>.<메서드>"`로 주소를 지정하거나
-`.receiver`로 지목하면 Go에서 값 receiver 메서드가 됩니다. 규칙과 제약은
+등록 enum은 메서드도 가질 수 있습니다. `api.in("Enum").function("method", .{})`로 선택하거나
+`.role.method`로 지목하면 Go에서 값 receiver 메서드가 됩니다. 규칙과 제약은
 [등록 enum의 메서드](bindings-functions.md#등록-enum의-메서드)에 있습니다. `.go` 어댑터를
 붙인 enum은 Go 타입이 다른 패키지의 것이므로 메서드를 가질 수 없습니다.
 
 ## Enum 텍스트 인코딩
 
 생성된 enum은 기본적으로 `String()`만 갖습니다. JSON, CLI 플래그, 설정 파일처럼 문자열에서
-값을 복원해야 하면 등록 항목에 `.text = true`를 적습니다.
+값을 복원해야 하면 등록 항목에 `.use(zigo.features.text, .{})`를 적습니다.
 
 ```zig
-.types = &.{
-    .{ .enumeration = .{ .type = library.QueueSignal, .exhaustive = false, .text = true } },
+.declarations = &.{
+    api.enumeration("QueueSignal", .{ .exhaustive = false }).use(zigo.features.text, .{}),
 },
 ```
 
@@ -223,8 +214,8 @@ Go에는 다음이 추가됩니다.
 Go에서 struct를 값처럼 주고받으려면 Zig 타입을 `extern struct`로 선언하고 등록합니다.
 
 ```zig
-.types = &.{
-    .{ .value = .{ .type = mylib.Config } },
+.declarations = &.{
+    api.value("Config", .{}),
 },
 ```
 
@@ -245,13 +236,11 @@ nullable pointer 하나로 내려가므로 매개변수·반환·error payload �
 추가·삭제·재정렬·타입 변경은 모두 breaking ABI 변경입니다.
 
 ```zig
-pub fn estimate(output: []Stats) !usize { /* ... */ }
+pub fn estimate(output: []Stats) !usize {}
 
-// bindings.zig
-.{
-    .path = "Context.estimate",
-    .params = &.{.{ .name = "output", .direction = .out, .written = .result }},
-},
+api.in("Context").function("estimate", .{
+    .params = &.{.{ .index = 0, .go_name = "output", .contract = .{ .buffer = .{ .output = .{ .written = .result } } } }},
+}),
 ```
 
 직접 slice 원소인 `extern struct`는 C에서 `const T*`/`T*`와 길이로 전달됩니다. Go public
@@ -260,7 +249,7 @@ API는 `[]T`를 받습니다. bool field가 없는 struct는 Go mirror가 C layo
 호출자의 버퍼에 직접 씁니다. 이 동일성은 생성된 compile 시점 layout 단정이 지키므로,
 어긋나면 Go build가 실패합니다. bool field가 있는 struct만 원소별 복사 경로를 씁니다.
 반환 slice는 어느 쪽이든 `[]T`의 새 사본이며 native 메모리를 alias하지 않습니다.
-out slice로 선언하려면 해당 `Param`에 `.direction = .out`을 명시해야 합니다.
+out slice로 선언하려면 해당 `Param`에 `.contract = .{ .buffer = .{ .output = .{} } }`을 명시해야 합니다.
 
 ### Go 타입 어댑터
 
@@ -269,13 +258,13 @@ out slice로 선언하려면 해당 `Param`에 `.direction = .out`을 명시해�
 바로 드러낼 수 있습니다.
 
 ```zig
-.types = &.{
-    .{ .value = .{ .type = mylib.Point, .go = .{
+.declarations = &.{
+    api.value("Point", .{ .go = .{
         .type = "image.Point",
         .import = "image",
         .to_raw = "pointToRaw",
         .from_raw = "pointFromRaw",
-    } } },
+    } }),
 },
 ```
 
@@ -312,9 +301,11 @@ func pointFromRaw(p raw.PointData) image.Point { return image.Point{X: int(p.X),
 타입 사이를 오갑니다. tagged union의 tag enum에는 적용할 수 없습니다.
 
 ```zig
-.{ .enumeration = .{ .type = mylib.Speed, .go = .{
-    .type = "Mode", .to_raw = "modeToRaw", .from_raw = "modeFromRaw",
-} } },
+api.enumeration("Speed", .{ .go = .{
+    .type = "Mode",
+    .to_raw = "modeToRaw",
+    .from_raw = "modeFromRaw",
+} }),
 ```
 
 scalar에는 타입이 아니라 사용 지점에 붙입니다. `.returns.go`는 반환값을, `Param.go`는
@@ -323,11 +314,17 @@ scalar에는 타입이 아니라 사용 지점에 붙입니다. `.returns.go`는
 쓸 수 없습니다.
 
 ```zig
-.{
-    .path = "root.elapsed",
-    .params = &.{.{ .name = "since", .go = .{ .type = "time.Duration", .import = "time", .to_raw = "durationToRaw", .from_raw = "durationFromRaw" } }},
-    .returns = .{ .go = .{ .type = "time.Duration", .import = "time", .to_raw = "durationToRaw", .from_raw = "durationFromRaw" } },
-},
+api.function("elapsed", .{ .returns = .{ .go = .{
+    .type = "time.Duration",
+    .import = "time",
+    .to_raw = "durationToRaw",
+    .from_raw = "durationFromRaw",
+} }, .params = &.{.{ .index = 0, .go_name = "since", .go = .{
+    .type = "time.Duration",
+    .import = "time",
+    .to_raw = "durationToRaw",
+    .from_raw = "durationFromRaw",
+} }} }),
 ```
 
 ```go
@@ -352,9 +349,9 @@ const Flags = packed struct(u16) {
     reserved: u10,
 };
 
-.types = &.{
-    .{ .enumeration = .{ .type = Mode } },
-    .{ .value = .{ .type = Flags } },
+.declarations = &.{
+    api.enumeration("Mode", .{}),
+    api.value("Flags", .{}),
 },
 ```
 
@@ -379,14 +376,14 @@ const Stats = struct {
     requests: std.atomic.Value(u64) = .init(0),
 };
 
-.types = &.{
-    .{ .handle = .{ .type = Stats, .fields = &.{
+.declarations = &.{
+    api.handle("Stats", .{ .fields = &.{
         .{ .path = "requests", .set = true },
-    } } },
+    } }),
 },
 ```
 
-같은 규칙은 `Param.flatten`, `.value`인 `extern struct` field, 값 tagged
+같은 규칙은 `Param.contract.flatten`, `.value`인 `extern struct` field, 값 tagged
 union payload, 함수의 값 파라미터와 반환에도 적용됩니다. shim은 경계에서 `.raw`로 풀고
 `.init(value)`로 다시 감싸며 C와 Go 표면에는 scalar만 남깁니다. atomic field가 있는
 `extern struct` slice는 주소를 재해석하지 않고 원소별로 복사합니다.
@@ -415,8 +412,8 @@ fmt.Println(counter.Load())
 주소는 호출 동안만 native에 빌려줍니다. cgo는 호출 인자를 그동안 pin하고 purego 생성물은
 `runtime.Pinner`로 같은 보장을 만들며, 둘 다 호출 뒤 `runtime.KeepAlive`까지 유지합니다.
 native 함수는 주소를 저장하거나 호출이 끝난 뒤 다른 스레드에서 사용하면 안 됩니다.
-`.retention = .retained`와 bool·8/16비트 정수·부동소수 같은 다른 atomic scalar는
-`ZIGO043`입니다. `.cancel`의 `ctx` 변환과 전용 `*const std.atomic.Value(u32)` 계약은 이 기능과
+호출 뒤에도 atomic 포인터를 보관하는 계약은 지원하지 않습니다. bool·8/16비트 정수·부동소수 같은
+다른 atomic scalar는 `ZIGO043`입니다. 취소 contract의 `ctx` 변환과 전용 `*const std.atomic.Value(u32)` 계약은 이 기능과
 별개이며 기존 동작을 그대로 유지합니다.
 
 ## Materialized 결과 트리
@@ -430,18 +427,17 @@ struct로 생성됩니다. 반환값, error-union payload, `[]T` 반환은 트�
 pub const bindings = zigo.define(.{
     .root = library,
     .allocator = .c_allocator,
-    .types = &.{
-        .{ .materialized = .{ .type = library.Result } },
-        .{ .materialized = .{ .type = library.Child } },
-    },
-    .functions = &.{
-        .{ .path = "root.probeMany", .returns = .{ .ownership = .caller, .release = "root.release" } },
-        .{ .path = "root.release", .params = &.{.{ .name = "buffer" }} },
+    .declarations = &.{
+        api.materialized("Result", .{}),
+        api.materialized("Child", .{}),
+
+        api.function("probeMany", .{ .returns = .{ .lifetime = .{ .owned = .{ .release = api.ref("release") } } } }),
+        api.function("release", .{ .params = &.{.{ .index = 0, .go_name = "buffer" }} }),
     },
 });
 ```
 
-함수는 등록 allocator와 `.returns.ownership = .caller`, `[]u8`을 받는 `.returns.release`를 사용해야 합니다.
+함수는 등록 allocator와 `.returns.lifetime = .{ .owned = .{} }`, `[]u8`을 받는 `.returns.lifetime.owned.release`를 사용해야 합니다.
 지원 필드와 Go 표현은 다음과 같습니다.
 
 | Zig 필드 | Go 필드 |
@@ -460,7 +456,7 @@ union은 `ZIGO048`과 해당 field path로 거부됩니다. 버퍼 형식은 [Ma
 위 예제는 `probeMany`가 `Result`를 반환하고 `release`가 버퍼를 해제하는 라이브러리를
 가정합니다. 실행 가능한 전체 구현은 [12-materialized](../examples/12-materialized)에 있습니다.
 
-`.direction = .out`인 `[]T` 파라미터는 `.written = .result`와 함께 사용할 수 있습니다.
+`.contract = .{ .buffer = .{ .output = .{} } }`인 `[]T` 파라미터는 `.written = .result`와 함께 사용할 수 있습니다.
 Go slice의 capacity만 native에 전달하고 Zig 임시 slice에 결과를 만든 뒤 작성된 prefix 전체를
 한 버퍼로 직렬화하므로 Go pointer가 materialized tree 안으로 넘어가지 않습니다.
 
@@ -469,9 +465,14 @@ Go slice의 capacity만 native에 전달하고 Zig 임시 slice에 결과를 만
 구체화된 generic 타입마다 고유한 Go 이름을 지정합니다.
 
 ```zig
-.types = &.{
-    .{ .handle = .{ .name = "FloatBuffer", .type = mylib.Buffer(f32) } },
-    .{ .handle = .{ .name = "IntBuffer", .type = mylib.Buffer(i32) } },
+// 바인딩할 라이브러리 또는 wrapper 모듈에서 공개 alias를 내보냅니다.
+pub const FloatBuffer = Buffer(f32);
+pub const IntBuffer = Buffer(i32);
+
+// bindings.zig — api는 위 alias를 내보내는 모듈의 scope입니다.
+.declarations = &.{
+    api.handle("FloatBuffer", .{}),
+    api.handle("IntBuffer", .{}),
 },
 ```
 
@@ -483,7 +484,6 @@ shim은 root module을 `target`으로 import하고 등록 타입을
 반영된 Zig 경로로 적습니다. root 안의 타입(`root.Terminal.Options`)은 `target.Terminal.Options`,
 dependency module의 타입은 경로가 접두사로 겹치는 가장 가까운 등록 조상을 거쳐 적습니다.
 등록 조상이 없는 dependency module 타입은 root가 다시 내보낸 이름으로 닿습니다. 등록
-`.name`이 Zig 이름과 같으면 `target.<name>` 하나이고, 다르면(`.type = lib.ProbeReader,
-.name = "Probe"`) shim이 module 아래 경로 → Zig 타입 이름 → 등록 이름 순으로 root가 `pub`으로
+이름이 Zig alias와 같으면 `target.<name>` 하나이고, 다르면(`api.handle("ProbeReader", .{}).named("Probe")`) shim이 module 아래 경로 → Zig 타입 이름 → 등록 이름 순으로 root가 `pub`으로
 내보내는 첫 선언을 comptime에 고릅니다. 어느 것도 없으면 후보를 나열한 컴파일 에러가 납니다.
-`.opaque`, `.value`, `.materialized` 모두 같은 규칙입니다.
+handle·value·materialized 모두 같은 규칙입니다.

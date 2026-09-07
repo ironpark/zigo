@@ -26,8 +26,13 @@ pub const bindings = zigo.define(.{
         api.in("Context").function("deinit", .{}),
         api.function("crashFatal", .{}),
         api.function("liveBytes", .{}),
-        api.function("sumCopies", .{ .params = &.{ .{ .index = 0, .go_name = "bias" }, .{ .index = 1, .go_name = "left" }, .{ .index = 2, .go_name = "right" } } }),
-        api.function("echo", .{ .returns = .{ .semantic = .utf8_string }, .params = &.{.{ .index = 0, .go_name = "text", .semantic = .utf8_string }} }),
+        api.function("sumCopies", .{ .params = &.{
+            .{ .index = 0, .go_name = "bias" }, .{ .index = 1, .go_name = "left" }, .{ .index = 2, .go_name = "right" },
+        } }),
+        api.function("echo", .{
+            .returns = .{ .semantic = .utf8_string },
+            .params = &.{.{ .index = 0, .go_name = "text", .semantic = .utf8_string }},
+        }),
         api.function("fallback", .{}),
     },
 });

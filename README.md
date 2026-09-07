@@ -26,8 +26,11 @@ cgo 코드, 사용하기 편한 Go API를 함께 만듭니다.
 
 Zig 라이브러리 프로젝트에서 zigo를 의존성으로 추가합니다.
 
+이 문서의 선언 트리 API는 0.17.0과 호환되지 않습니다.
+0.17.0을 고정해 사용하려면 [해당 태그의 시작 가이드](https://github.com/ironpark/zigo/blob/0.17.0/docs/getting-started.md)를 따르세요.
+
 ```bash
-zig fetch --save git+https://github.com/ironpark/zigo#0.17.0
+zig fetch --save git+https://github.com/ironpark/zigo#main
 ```
 
 `build.zig`에 바인딩 생성을 연결합니다. 아래는 기본값인 cgo 정적 링크 구성입니다.
@@ -72,9 +75,11 @@ pub fn add(a: i32, b: i32) i32 {
 const zigo = @import("zigo");
 const mylib = @import("mylib");
 
+const api = zigo.scope(mylib);
+
 pub const bindings = zigo.define(.{
     .root = mylib,
-    .functions = &.{.{ .path = "root.add" }},
+    .declarations = &.{api.function("add", .{})},
 });
 ```
 

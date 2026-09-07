@@ -15,7 +15,7 @@
 | 문자열 slice | `ExtractPaths`, `ExtractSentinelSlices`, `ExtractSentinelPointers` |
 | caller-owned slice와 release | `ExtractSamples`, `freeSamples`, `LiveSamples` |
 | allocator 주입 | `freeLimits` |
-| 타입 밖의 생성자·소멸자 | `.constructs`·`.destroys`로 등록한 `Ticker` |
+| 타입 밖의 생성자·소멸자 | `.role.constructor`·`.role.destructor`로 등록한 `Ticker` |
 | 하위 패키지 간 참조 | `event_queue/types`의 `Ticker`, `TickerInfo`, 열린 enum |
 
 raw cgo 패키지는 `go/bridge/cgo`에 둡니다. `Stats`·`Limits`는 공개 Go에서 값으로

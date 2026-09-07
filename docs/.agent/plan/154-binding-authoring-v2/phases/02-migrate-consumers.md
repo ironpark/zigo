@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-07T13:12:49Z"
 depends_on:
 - "154-binding-authoring-v2#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: All in-repository consumers use the new public authoring API and the full test suite passes.
 > NEXT: none

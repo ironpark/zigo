@@ -3,6 +3,7 @@ const library = @import("type_relations");
 
 const api = zigo.scope(library);
 
+// Scopes keep source identity; Go adapters only change the public Go type.
 pub const bindings = zigo.define(.{
     .root = library,
     .declarations = &.{
@@ -26,7 +27,9 @@ pub const bindings = zigo.define(.{
         api.in("Accumulator").function("absorb", .{ .params = &.{.{ .index = 1, .go_name = "counter" }} }),
         api.in("Accumulator").function("total", .{}),
         api.in("Accumulator").function("deinit", .{}),
-        api.function("liveObjects", .{ .returns = .{ .go = .{ .type = "ObjectCount", .to_raw = "objectCountToRaw", .from_raw = "objectCountFromRaw" } } }),
+        api.function("liveObjects", .{
+            .returns = .{ .go = .{ .type = "ObjectCount", .to_raw = "objectCountToRaw", .from_raw = "objectCountFromRaw" } },
+        }),
         api.function("defaultCursorStyle", .{}),
         api.in("DeccolmMode").function("columns", .{}),
         api.function("configureStyles", .{ .params = &.{ .{ .index = 0, .go_name = "slot" }, .{ .index = 1, .go_name = "style" } } }),

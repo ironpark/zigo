@@ -2,6 +2,8 @@
 
 입력 문자열, 반환 버퍼의 해제, 재사용할 출력 버퍼와 값의 부재를 선언합니다. 선언의 기본 형태는 [`bindings.zig` 선언](bindings.md)을 참고하세요.
 
+아래 선언 조각의 `api`는 `zigo.scope(대상_모듈)`로 만든 scope입니다.
+
 반환 slice는 Go 소유 사본입니다. 새 native 버퍼를 반환한다면
 [해제 함수](#호출자-소유-slice-반환)를 지정하고, Go 버퍼를 재사용하려면
 [out 파라미터](#큰-결과는-out-파라미터로)를 사용하세요.
@@ -31,7 +33,7 @@ Go byte buffer를 호출 동안만 native에 전달합니다. 반환 문자열�
 
 ## 바인딩 전체의 문자열 기본값
 
-라이브러리의 `[]const u8`이 대부분 텍스트라면 `zigo.define`에 `.strings = .infer_utf8`을
+라이브러리의 `[]const u8`이 대부분 텍스트라면 `zigo.define`에 `.defaults = .{ .strings = .infer_utf8 }`을
 지정해 자리마다 `.semantic = .utf8_string`을 쓰지 않을 수 있습니다. 이 옵션은 힌트가 없는
 plain byte slice 파라미터와 반환값(그리고 `[]const []const u8`)을 `.utf8_string`으로 봅니다.
 `?`와 `!`는 통과합니다.
@@ -39,19 +41,19 @@ plain byte slice 파라미터와 반환값(그리고 `[]const []const u8`)을 `.
 ```zig
 pub const bindings = zigo.define(.{
     .root = mylib,
-    .strings = .infer_utf8,
-    .functions = &.{
-        .{ .path = "root.render", .params = &.{.{ .name = "text" }} }, // text: []const u8 → string
-        .{ .path = "root.digest", .params = &.{.{ .name = "payload", .semantic = .opaque_bytes }} }, // → []byte
+    .defaults = .{ .strings = .infer_utf8 },
+    .declarations = &.{
+        api.function("render", .{ .params = &.{.{ .index = 0, .go_name = "text" }} }),
+        api.function("digest", .{ .params = &.{.{ .index = 0, .go_name = "payload", .semantic = .opaque_bytes }} }),
     },
 });
 ```
 
 - 자리에 쓴 힌트가 항상 이깁니다. 바이트로 남길 자리는 `.semantic = .opaque_bytes`로 빼며,
-  이 힌트는 문서에 기록되지 않고 추론만 멈춥니다. 결과는 `.strings`를 쓰기 전과 같습니다.
+  이 힌트는 문서에 기록되지 않고 추론만 멈춥니다. 결과는 `defaults.strings`를 쓰기 전과 같습니다.
 - sentinel 스펠링(`[:0]const u8`, `[*:0]const u8`)은 이미 C 문자열 규칙을 따르므로 추론
   대상이 아닙니다.
-- `[]u8` **파라미터**는 callee가 채우는 버퍼(`.direction = .out` 포함)로 보고 추론하지
+- `[]u8` **파라미터**는 callee가 채우는 버퍼(`.contract = .{ .buffer = .{ .output = .{} } }` 포함)로 보고 추론하지
   않습니다. `[]u8` **반환**은 방금 만들어 넘기는 저장소이므로 텍스트로 봅니다.
 - 콜백 파라미터와 materialized 필드는 이 추론이 닿지 않습니다. materialized 필드는 이미
   `[]const u8`을 문자열로 보고 `.fields`의 `.opaque_bytes`로 빼며, 콜백은 자리마다
@@ -64,13 +66,9 @@ element를 `[:0]const u8` 또는 `[*:0]const u8`로 선언할 수 있습니다. 
 Go에서는 `[]string`이 됩니다. 일반 unsentinel 형태는 sidecar에서 의미를 지정해야 합니다.
 
 ```zig
-pub fn extractPaths(paths: []const []const u8) usize { /* ... */ }
+pub fn extractPaths(paths: []const []const u8) usize {}
 
-// bindings.zig
-.{
-    .path = "Context.extractPaths",
-    .params = &.{.{ .name = "paths", .semantic = .utf8_string }},
-},
+api.in("Context").function("extractPaths", .{ .params = &.{.{ .index = 0, .go_name = "paths", .semantic = .utf8_string }} }),
 ```
 
 native ABI는 `paths_data`, `paths_data_len`, `paths_lens`, `paths_count` 네 scalar 인자로
@@ -85,7 +83,7 @@ native ABI는 `paths_data`, `paths_data_len`, `paths_lens`, `paths_count` 네 sc
 `.utf8_string` 반환은 그 사본이 곧 Go `string`이며 추가 복사가 없습니다.
 따라서 반환된 `[]T`는 다음 native 호출이나 원본 객체의 `Close`와 독립적이며, 호출자는
 반환된 사본만 수정할 수 있습니다. tagged-union의 숫자 slice payload도 같은 복사 계약을
-따릅니다. 이 복사가 부담이라면 결과를 `.direction = .out` 파라미터로 받는
+따릅니다. 이 복사가 부담이라면 결과를 `.contract = .{ .buffer = .{ .output = .{} } }` 파라미터로 받는
 [`...Into(dst)` 패턴](#큰-결과는-out-파라미터로)을 쓰세요.
 
 실패할 수 있는 slice 반환(`![]T`)도 같은 방식으로 내려갑니다. C 시그니처는 정수 코드를
@@ -97,42 +95,38 @@ optional slice는 [optional 규칙](#optional)을 함께 따릅니다.
 
 ## 호출자 소유 slice 반환
 
-slice 반환은 `.returns.ownership = .caller`로 소유권을 넘길 수 있습니다. 이때는 감쌀 handle 대신
-버퍼를 되돌려줄 함수가 필요하므로 `.returns.release`로 그 함수의 경로를 함께 지정합니다. release
+slice 반환은 `.returns.lifetime = .{ .owned = .{} }`로 소유권을 넘길 수 있습니다. 이때는 감쌀 handle 대신
+버퍼를 되돌려줄 함수가 필요하므로 `.returns.lifetime.owned.release`로 그 함수의 `FunctionRef`를 함께 지정합니다. release
 함수는 반환된 slice와 같은 원소 타입의 slice 하나만 받고 아무것도 반환하지 않아야 합니다.
 
 ```zig
-pub fn extractSamples(self: *EventQueue) []f32 { /* 새 버퍼를 할당해 반환 */ }
-pub fn freeSamples(_: *EventQueue, samples: []f32) void { /* 버퍼 해제 */ }
+pub fn extractSamples(self: *EventQueue) []f32 {}
+pub fn freeSamples(_: *EventQueue, samples: []f32) void {}
 
-// bindings.zig
-.{
-    .path = "EventQueue.extractSamples",
-    .returns = .{ .ownership = .caller, .release = "EventQueue.freeSamples" },
-},
-.{ .path = "EventQueue.freeSamples", .params = &.{.{ .name = "samples" }} },
+api.in("EventQueue").function("extractSamples", .{ .returns = .{ .lifetime = .{ .owned = .{ .release = api.in("EventQueue").ref("freeSamples") } } } }),
+api.in("EventQueue").function("freeSamples", .{ .params = &.{.{ .index = 1, .go_name = "samples" }} }),
 ```
 
 문자열 결과의 해제 함수가 바인딩 전체에서 하나라면 `zigo.define`의
-`.string_release = "root.freeString"`으로 한 번만 적을 수 있습니다. `.returns.ownership = .caller`인
-문자열 결과(`.utf8_string`·`.c_string`으로 표시된 byte slice)가 `.returns.release`를 적지 않았을 때
-이 함수가 쓰이며, 자리에 적은 `.returns.release`가 항상 이깁니다. 문자열이 아닌 버퍼 결과는 그대로
-자기 `.returns.release`가 필요합니다.
+`.string_release = api.ref("freeString")`으로 한 번만 적을 수 있습니다. `.returns.lifetime = .{ .owned = .{} }`인
+문자열 결과(`.utf8_string`·`.c_string`으로 표시된 byte slice)가 `.returns.lifetime.owned.release`를 적지 않았을 때
+이 함수가 쓰이며, 자리에 적은 `.returns.lifetime.owned.release`가 항상 이깁니다. 문자열이 아닌 버퍼 결과는 그대로
+자기 `.returns.lifetime.owned.release`가 필요합니다.
 
 ```zig
 pub const bindings = zigo.define(.{
     .root = mylib,
-    .strings = .infer_utf8,
-    .string_release = "root.freeString",
-    .functions = &.{
-        .{ .path = "Terminal.plainString", .returns = .{ .ownership = .caller } },
-        .{ .path = "root.freeString", .params = &.{.{ .name = "str" }} },
+    .defaults = .{ .strings = .infer_utf8 },
+    .string_release = api.ref("freeString"),
+    .declarations = &.{
+        api.in("Terminal").function("plainString", .{ .returns = .{ .lifetime = .{ .owned = .{} } } }),
+        api.function("freeString", .{ .params = &.{.{ .index = 1, .go_name = "str" }} }),
     },
 });
 ```
 
-`.string_release`가 노출되지 않았거나 모양이 맞지 않는 함수를 가리키면, 직접 적은
-`.release`와 똑같이 `ZIGO016`으로 거부됩니다.
+`.string_release`의 시그니처가 맞지 않으면 `ZIGO016`으로 거부됩니다.
+참조한 함수는 `declarations`에 명시해야 합니다.
 
 생성된 raw 계층은 native가 채운 `ptr, len`을 먼저 Go slice로 복사한 뒤 곧바로 release
 심볼을 같은 `ptr, len`으로 호출합니다. 따라서 반환된 slice는 항상 Go 메모리이고, 호출자가
@@ -151,20 +145,16 @@ optional slice도 같은 소유권 규칙을 따릅니다. `?[]T`는 `([]T, bool
 release하므로 부재와 오류 경로에서는 release 함수가 호출되지 않습니다.
 
 ```zig
-pub fn extractSamplesChecked(self: *EventQueue) ProcessError![]f32 { /* 실패 또는 새 버퍼 */ }
+pub fn extractSamplesChecked(self: *EventQueue) ProcessError![]f32 {}
 
-// bindings.zig
-.{
-    .path = "EventQueue.extractSamplesChecked",
-    .returns = .{ .ownership = .caller, .release = "EventQueue.freeSamples" },
-},
+api.in("EventQueue").function("extractSamplesChecked", .{ .returns = .{ .lifetime = .{ .owned = .{ .release = api.in("EventQueue").ref("freeSamples") } } } }),
 ```
 
 release 함수가 allocator를 받아도 됩니다. `fn freeSamples(gpa: Allocator, samples: []f32) void`는
 주입 파라미터를 빼고 slice 하나만 받는 함수로 판정되며, shim이 호출할 때 바인딩이 정한
 allocator를 채웁니다.
 
-`.returns.release`가 없거나, 이름이 가리키는 함수가 없거나, 그 함수의 매개변수가 반환 slice와
+release 참조가 명시 선언에 없으면 컴파일 오류입니다. 해제 함수가 필요하지만 지정하지 않았거나 그 매개변수가 반환 slice와
 맞지 않으면 `ZIGO016`으로 거부됩니다. `![]T`는 payload slice의 원소 타입으로 비교합니다.
 slice가 아닌 반환에 `.release`를 붙여도 같은 코드입니다. abi-check는 release 함수가 바뀌면
 breaking으로 봅니다.
@@ -176,7 +166,7 @@ breaking으로 봅니다.
 
 ## 얼마나 채워졌는가: `written`
 
-`.direction = .out`인 slice는 기본값 `.written = .all`로, 호출이 끝나면 버퍼 전체가
+`.contract = .{ .buffer = .{ .output = .{} } }`인 slice는 기본값 `.written = .all`로, 호출이 끝나면 버퍼 전체가
 채워진 것으로 봅니다. `.written = .result`를 붙이면 함수가 반환한 개수만큼만
 채워진 것으로 봅니다. 성공한 호출에서는 `buf[:n]`을 결과로 사용하세요.
 
@@ -203,15 +193,13 @@ slice를 반환하면 호출마다 Go 쪽 할당과 복사가 한 번씩 일어�
 pub fn extractSamplesInto(self: *Queue, dst: []f32) usize {
     const wanted = self.items.len + 1;
     if (dst.len < wanted) return 0;
-    // ... dst[0..wanted] 를 채운다
+
     return wanted;
 }
 
-// bindings.zig
-.{
-    .path = "Queue.extractSamplesInto",
-    .params = &.{.{ .name = "dst", .direction = .out, .written = .result }},
-},
+api.in("Queue").function("extractSamplesInto", .{
+    .params = &.{.{ .index = 1, .go_name = "dst", .contract = .{ .buffer = .{ .output = .{ .written = .result } } } }},
+}),
 ```
 
 ```go
@@ -244,7 +232,7 @@ bool, 정수(승격 대상인 좁은 정수 포함), 부동소수, 등록 enum, 
 C 포인터·출력 인자의 상세 표현은 [optional ABI](generated-abi.md#optional의-c-표현)를 참고하세요.
 
 ```zig
-pub fn shiftPoint(origin: ?Point, delta: i16) ?Point { /* ... */ }
+pub fn shiftPoint(origin: ?Point, delta: i16) ?Point {}
 ```
 
 ```go

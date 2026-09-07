@@ -2,6 +2,8 @@
 
 native 객체를 Go handle로 노출하고, 누가 언제 닫을지 정합니다. 선언의 기본 형태는 [`bindings.zig` 선언](bindings.md)을 참고하세요.
 
+아래 선언 조각의 `api`는 `zigo.scope(대상_모듈)`로 만든 scope입니다.
+
 먼저 아래의 수명 규칙을 확인한 뒤 [opaque 등록](#opaque-handle)을 작성하세요.
 타입 밖에 생성자·소멸자가 있다면 [명시적 짝 지정](#타입-밖에-선언된-생성자와-소멸자)을 사용합니다. 부모 객체에 의존하면 [borrowed 반환](#receiver가-소유하는-borrowed-handle-반환)과
 [자식 생성자](#다른-handle의-메서드인-생성자)를 구분해야 합니다.
@@ -32,8 +34,8 @@ Zig panic 후에는 native 소멸자도 실행하지 않으므로 [panic 처리 
 일반 Zig struct나 상태를 가진 객체는 pointer handle로 등록합니다.
 
 ```zig
-.types = &.{
-    .{ .handle = .{ .type = mylib.Context } },
+.declarations = &.{
+    api.handle("Context", .{}),
 },
 ```
 
@@ -56,34 +58,34 @@ handle과 같습니다.
 역참조는 Zig의 값 전달 규칙에 따라 **복사본**을 만듭니다. callee가 값 파라미터 안의 필드를
 바꿔도 Go handle이 가리키는 원본에는 반영되지 않습니다. 반대로 opaque 타입을 값으로 반환하는
 것은 `ZIGO003`으로 계속 거부됩니다. 소유할 값을 반환하려면 pointer를 반환하고
-`.constructs`를 지정하거나, `.allocator`를 설정해 값 생성자를 boxing하는 경로를 사용하십시오.
+`.role.constructor`를 지정하거나, `.allocator`를 설정해 값 생성자를 boxing하는 경로를 사용하십시오.
 
 ### 복제 함수와 추가 생성 경로
 
-`init`/`create`/`new`/`open` 이름을 쓰지 않는 factory도 `.returns.ownership = .caller`를 붙이면
+`init`/`create`/`new`/`open` 이름을 쓰지 않는 factory도 `.returns.lifetime = .{ .owned = .{} }`를 붙이면
 같은 owned handle을 돌려줍니다. 이름이 아니라 ownership metadata가 기준이므로,
 `clone`이나 `openChild` 같은 메서드도 `newX` helper를 거쳐 cleanup과 retained callback
 등록을 그대로 받습니다. 다만 이것은 그 타입에 이미 짝지어진 생성자와 소멸자가 있을 때의
-이야기입니다(없으면 `ZIGO015`). 짝 자체를 만드는 것은 아래의 `.constructs`/`.destroys`입니다.
+이야기입니다(없으면 `ZIGO015`). 짝 자체를 만드는 것은 아래의 `.role.constructor`/`.role.destructor`입니다.
 
 ```zig
-.{
-    .path = "EventQueue.clone",
-    .params = &.{ .{ .name = "observer", .retention = .retained }, .{ .name = "userdata" } },
-    .returns = .{ .ownership = .caller },
-},
+api.in("EventQueue").function("clone", .{ .returns = .{ .lifetime = .{ .owned = .{} } }, .params = &.{
+    .{ .index = 1, .go_name = "observer", .contract = .{ .callback = .{ .retention = .retained } } }, .{ .index = 2, .go_name = "userdata" },
+} }),
 ```
 
 ### Receiver가 소유하는 borrowed handle 반환
 
 메서드가 receiver 내부의 opaque 객체를 가리키는 `*T`, `?*T`, `!*T`, `!?*T`를 반환하면
-`.returns.ownership = .borrowed`를 명시할 수 있습니다. `T`는 handle 타입으로 등록되어야 하며,
+`.returns.lifetime = .{ .borrowed = .receiver }`를 명시할 수 있습니다. `T`는 handle 타입으로 등록되어야 하며,
 반환된 Go 값은 projection 전용 `*TRef`가 아니라 T의 일반 handle인 `*T`입니다.
 
 ```zig
-pub fn screen(self: *Terminal) ?*Screen { return self.active_screen; }
+pub fn screen(self: *Terminal) ?*Screen {
+    return self.active_screen;
+}
 
-.{ .path = "Terminal.screen", .returns = .{ .ownership = .borrowed } },
+api.in("Terminal").function("screen", .{ .returns = .{ .lifetime = .{ .borrowed = .receiver } } }),
 ```
 
 optional 반환은 `(*Screen, bool, error)`가 됩니다. false이면 handle은 nil입니다. borrowed
@@ -94,38 +96,36 @@ handle은 native 자원을 소유하지 않으므로 `Close()`가 destructor를 
 panic은 부모도 poison합니다.
 
 borrowed view가 다시 borrowed view를 반환해도 owner 사슬은 최종 owning handle까지 이어집니다.
-그 view를 receiver로 `.child_of_receiver = true` 자식을 만들면 자식 예약과 `Close`의 해제가
+그 view를 receiver로 `.role.constructor.parent = .receiver` 자식을 만들면 자식 예약과 `Close`의 해제가
 모두 그 최종 owner에 적용됩니다. 따라서 열린 자식 하나는 최종 owner의 `Close`에서 정확히
 `Children == 1`로 보이고, 자식을 닫은 뒤에는 owner도 닫힙니다. view를 보관하거나 닫는 것만으로는
 자식 수가 변하지 않습니다.
 
-`.returns`의 기본 enum 값은 역사적으로 `.borrowed`이므로, 명시 여부는 별도 계약입니다.
+작성 API의 기본 lifetime은 `.inferred`이며 borrowed view는 명시적인 계약입니다.
 `semantic.json`에는 명시한 함수에만 `borrowed_return: true`가 나타납니다. receiver 없는
 함수, 등록 opaque pointer가 아닌 반환에 붙인 opt-in은 각각 `ZIGO033`, `ZIGO034`이고,
-constructor가 아닌 메서드가 opaque pointer ownership을 생략하면 `ZIGO035`가 `.borrowed`와
-`.caller` 중 하나를 고르라고 안내합니다. borrowed와 caller 사이 변경은 `abi-check`에서
+constructor가 아닌 메서드가 opaque pointer ownership을 생략하면 `ZIGO035`가 borrowed와
+owned 중 하나를 고르라고 안내합니다. borrowed와 caller 사이 변경은 `abi-check`에서
 breaking입니다.
 
 ### 다른 handle의 메서드인 생성자
 
 생성 함수가 새 타입 안에 있을 필요는 없습니다. 주입 파라미터를 건너뛴 첫 handle 파라미터는
-평소처럼 receiver가 되고, `.constructs`는 반환값을 어느 타입의 생성자로 소유할지 정합니다.
+평소처럼 receiver가 되고, `.role.constructor`는 반환값을 어느 타입의 생성자로 소유할지 정합니다.
 
 ```zig
 pub fn newStream(gpa: std.mem.Allocator, terminal: *Terminal) !*Stream { ... }
 
-.{
-    .path = "Terminal.newStream",
-    .constructs = Stream,
-    .child_of_receiver = true,
-},
-.{ .path = "root.freeStream", .destroys = Stream },
+api.in("Terminal").function("newStream", .{.role = .{
+ .constructor = .{.type = api.typeRef("Stream"), .parent = .receiver, .receiver = api.typeRef("Terminal")},
+}}),
+api.function("freeStream", .{.role = .{ .destructor = api.typeRef("Stream") }}),
 ```
 
 Go에는 `func (t *Terminal) NewStream() (*Stream, error)`가 생깁니다. 호출 중에는 `Terminal`을
 다른 메서드와 똑같이 acquire/release하고 native panic이면 그 receiver를 poison합니다. 반환된
 `Stream`은 별개의 caller-owned handle이며 cleanup과 멱등 `Close()`를 등록하고 `freeStream`으로
-해제됩니다. `.child_of_receiver = true`이면 생성된 `Stream`은 부모 `Terminal` 참조를 보관하고,
+해제됩니다. `.role.constructor.parent = .receiver`이면 생성된 `Stream`은 부모 `Terminal` 참조를 보관하고,
 열린 자식 수를 부모에 등록합니다. 자식을 닫기 전에 부모를 닫으면 `Close`가
 `*HandleInUseError`를 반환하며 `errors.Is(err, ErrHandleInUse)`로 분류할 수 있습니다. 자동으로
 자식을 닫지는 않습니다. 자식 `Close`가 native destructor를 끝낸 뒤 카운트를 내리므로, 그 뒤
@@ -140,19 +140,20 @@ Go에는 `func (t *Terminal) NewStream() (*Stream, error)`가 생깁니다. 호�
 
 ### 타입 밖에 선언된 생성자와 소멸자
 
-이름 규칙과 `.returns.ownership = .caller`는 모두 **타입 안에 선언된** 짝을 전제합니다. 남의
+이름 규칙과 `.returns.lifetime = .{ .owned = .{} }`는 모두 **타입 안에 선언된** 짝을 전제합니다. 남의
 라이브러리처럼 선언을 더할 수 없는 코드에서는 생성자와 소멸자가 타입 옆의 자유 함수로
 있기 마련이고, 그때는 어느 타입의 짝인지를 직접 적습니다.
 
 ```zig
-// mylib: 타입 안에는 아무것도 없고, 옆에 free 함수만 있는 형태
 pub const Ticker = struct { interval: u32 };
 pub fn newTicker(interval: u32) !*Ticker { ... }
 pub fn freeTicker(ticker: *Ticker) void { ... }
 
-// bindings.zig
-.{ .path = "root.newTicker", .params = &.{.{ .name = "interval" }}, .constructs = Ticker },
-.{ .path = "root.freeTicker", .destroys = Ticker },
+
+api.function("newTicker", .{
+.params = &.{.{.index = 0, .go_name = "interval"}}, .role = .{ .constructor = .{.type = api.typeRef("Ticker")} },
+}),
+api.function("freeTicker", .{.role = .{ .destructor = api.typeRef("Ticker") }}),
 ```
 
 Go에는 `NewTicker(interval uint32) (*Ticker, error)`와 `(*Ticker).Close()`가 생기고,
@@ -161,13 +162,13 @@ Zig에서의 호출 경로는 서로 다른 축이며, `semantic.json`은 전자
 `zig_path`로 적습니다(둘 다 기본값과 다를 때만 나타납니다).
 
 생성자 함수에도 `.name`을 지정할 수 있습니다. 예를 들어
-`.constructs = AudioBuffer, .name = "extractAudio"`는 기본 이름
+`.role = .{ .constructor = .{ .type = api.typeRef("AudioBuffer") } }, .name = "extractAudio"`는 기본 이름
 `NewAudioBuffer` 대신 `ExtractAudio`(그리고 opt-in 시 `MustExtractAudio`)를 생성합니다.
 `.name`을 생략한 생성자는 이전과 같이 항상 `New<Type>`을 사용합니다.
 
-- `.constructs`와 `.destroys`는 `.types`에 등록된 handle 타입 값을 받습니다.
-- `.constructs`를 붙인 함수는 그 타입의 pointer(또는 `!*T`)를 반환해야 하고,
-  `.destroys`를 붙인 함수는 그 타입의 pointer를 첫 파라미터로 받고 아무것도 반환하지
+- constructor의 `.type`과 destructor payload는 등록 handle의 `TypeRef`를 받습니다.
+- `.role.constructor`를 붙인 함수는 그 타입의 pointer(또는 `!*T`)를 반환해야 하고,
+  `.role.destructor`를 붙인 함수는 그 타입의 pointer를 첫 파라미터로 받고 아무것도 반환하지
   않아야 합니다. 주입 파라미터(`std.mem.Allocator`, `std.Io`)는 세지 않으므로
   `fn freeTerminal(gpa: Allocator, self: *Terminal) void`도 됩니다. 이는 메서드 판정
   일반에 적용되는 규칙입니다: 주입 파라미터를 건너뛴 첫 파라미터가 handle이면 receiver이고,
@@ -177,10 +178,10 @@ Zig에서의 호출 경로는 서로 다른 축이며, `semantic.json`은 전자
 - 메타를 적지 않은 함수에는 `init`/`create`/`new`/`open` + `deinit`/`destroy`/`close`
   이름 규칙이 그대로 fallback으로 남습니다. 메타가 있으면 이름은 보지 않습니다.
 
-`.allocator`가 설정되어 있으면 값으로 반환하는 생성자를 상자에 담는 규칙도 `.constructs`를
+`.allocator`가 설정되어 있으면 값으로 반환하는 생성자를 상자에 담는 규칙도 `.role.constructor`를
 따릅니다 — 이름이 `init`이 아니어도 됩니다.
 
-감쌀 handle이 없는 `.returns.ownership = .caller`는 `ZIGO015`로 거부됩니다(slice 반환은
+감쌀 handle이 없는 `.returns.lifetime = .{ .owned = .{} }`는 `ZIGO015`로 거부됩니다(slice 반환은
 [별도의 해제 규칙](bindings-buffers.md#호출자-소유-slice-반환)을 따릅니다). 반환 타입이 opaque
 pointer가 아니거나, 그 타입에 constructor와 deinitializer가 등록되어 있지 않은
 경우입니다.
@@ -195,7 +196,7 @@ struct라면, zigo가 그 값을 상자에 담습니다: shim이 `alloc.create(T
 `NewTerminal(...) (*Terminal, error)`와 `Close()`입니다.
 
 `Options`가 C layout이 아니거나 slice 같은 내부 설정을 담아 struct 자체를 Go에 노출할 수
-없다면 해당 [`Param.flatten`](bindings-functions.md#함수-메타데이터)을 함께 사용하세요. Go 생성자는 선택한 field를
+없다면 해당 [`Param.contract.flatten`](bindings-functions.md#함수-메타데이터)을 함께 사용하세요. Go 생성자는 선택한 field를
 개별 인자로 받고, shim은 선택한 field만 적은 `Options{ .cols = ..., ... }`를 만듭니다. 따라서
 나머지는 Zig 선언의 default로 채워집니다. 선택 field를 추가하면 C와 Go 함수 시그니처가
 늘어나므로 `abi-diff`는 breaking으로 보고합니다.
@@ -213,14 +214,13 @@ struct라면, zigo가 그 값을 상자에 담습니다: shim이 `alloc.create(T
 Go 메서드를 만들 수 있습니다.
 
 ```zig
-.types = &.{
-    .{ .handle = .{ .type = mylib.Terminal, .fields = &.{
+.declarations = &.{
+    api.handle("Terminal", .{ .fields = &.{
         .{ .path = "cols" },
         .{ .path = "screen.cursor.x", .name = "cursorX" },
-        .{ .path = "screen.cursor.style", .name = "cursorStyle", .set = true,
-           .doc = "CursorStyle reports the current cursor style." },
-    } } },
-    .{ .enumeration = .{ .type = mylib.CursorStyle } },
+        .{ .path = "screen.cursor.style", .name = "cursorStyle", .set = true, .doc = "CursorStyle reports the current cursor style." },
+    } }),
+    api.enumeration("CursorStyle", .{}),
 },
 ```
 
@@ -238,13 +238,13 @@ compatible append이며, 함수와 이름이 겹치면 기존 `ZIGO024`/`ZIGO036
 
 ## Iterator wrapper
 
-`?T`를 반환하는 `next()` 형태의 메서드에 `.iterator`를 붙이면 Go에 range-over-func
+`?T`를 반환하는 `next()` 형태의 메서드에 `zigo.features.iterator`를 붙이면 Go에 range-over-func
 wrapper가 함께 생성됩니다.
 
 ```zig
-.functions = &.{
-    .{ .path = "Context.next", .iterator = .{} },
-    .{ .path = "Context.nextChecked", .iterator = .{ .name = "Checked" } },
+.declarations = &.{
+    api.in("Context").function("next", .{}).use(zigo.features.iterator, .{}),
+    api.in("Context").function("nextChecked", .{}).use(zigo.features.iterator, .{ .name = "Checked" }),
 },
 ```
 
@@ -266,7 +266,7 @@ for value, err := range ctx.All() {
 - 호출이 실패하면 zero 값과 오류를 한 번 yield하고 끝납니다. handle 메서드는 항상 `error`를
   가지므로 wrapper는 `iter.Seq2[T, error]`입니다. Go 시그니처에 `error`가 없는 경우에만
   `iter.Seq[T]`가 됩니다.
-- `.cancel`이 있는 메서드는 wrapper도 `ctx context.Context`를 받아 매 호출에 전달합니다.
+- 취소 contract가 있는 메서드는 wrapper도 `ctx context.Context`를 받아 매 호출에 전달합니다.
 - 조기 `break`는 native 상태를 되돌리지 않습니다. 다시 처음부터 순회하려면 Zig 쪽에
   `rewind` 같은 메서드가 필요합니다.
 
@@ -275,40 +275,39 @@ for value, err := range ctx.All() {
 `abi-check`는 wrapper 추가를 호환으로, 제거·이름 변경을 breaking으로 보고합니다.
 예제는 `03-opaque`의 `Context.next`에 있습니다.
 
-같은 방식의 추가형 wrapper로 `.implements`가 있습니다. `[]const u8`를 받는 메서드에
-`.implements = .writer`를 붙이면 `Write(p []byte) (int, error)`가 생겨 handle이 `io.Writer`가
+같은 방식의 추가형 wrapper로 `zigo.features.implements`가 있습니다. `[]const u8`를 받는 메서드에
+`.use(zigo.features.implements, .{ .kind = .writer })`를 붙이면 `Write(p []byte) (int, error)`가 생겨 handle이 `io.Writer`가
 됩니다. `.reader`, `.writer_to`, `.reader_from`도 같습니다.
-[handle이 io 인터페이스를 구현하기](bindings-streams.md#handle이-io-인터페이스를-구현하기-implements)를
+[handle이 io 인터페이스를 구현하기](bindings-streams.md#handle이-io-인터페이스를-구현하기)를
 참고하세요.
 
 ## 인터페이스
 
-등록한 opaque handle 여러 개가 같은 메서드를 같은 Go 시그니처로 제공하면, `.interfaces`로
+등록한 opaque handle 여러 개가 같은 메서드를 같은 Go 시그니처로 제공하면, `zigo.interface(...)`로
 그 메서드 집합에 이름을 붙여 하나의 Go 인터페이스로 내보낼 수 있습니다. 같은 generic에서
 나온 구체 타입(`Batch(i32)`, `Batch(f64)`)이나 같은 vtable을 채우는 구현체가 전형적인
 경우입니다.
 
 ```zig
+const api = zigo.scope(library);
 pub const bindings = zigo.define(.{
     .root = library,
-    .types = &.{
-        .{ .handle = .{ .name = "IntBatch", .type = library.IntBatch } },
-        .{ .handle = .{ .name = "FloatBatch", .type = library.FloatBatch } },
-    },
-    .interfaces = &.{
-        .{
-            .name = "Batch",                                   // Go 인터페이스 이름
-            .methods = &.{"len"},                              // Zig 메서드 이름
-            .types = &.{ library.IntBatch, library.FloatBatch }, // 등록된 handle 타입
-            .closer = true,                                    // 기본값. io.Closer 포함
+    .declarations = &.{
+        api.handle("IntBatch", .{}),
+        api.handle("FloatBatch", .{}),
+        zigo.interface(.{
+            .name = "Batch",
+            .methods = &.{"len"},
+            .types = &.{ api.typeRef("IntBatch"), api.typeRef("FloatBatch") },
+            .closer = true,
             .doc = "Batch is any staged batch, whatever its element type.",
-        },
+        }),
+        // 생성자·소멸자·len 메서드도 선언합니다.
     },
-    ...
 });
 ```
 
-- `.types`의 각 항목은 `.handle`로 등록된 타입 값이어야 하며, `.methods`는 그 타입
+- 인터페이스의 `.types`는 `handle()`로 등록한 타입의 `TypeRef`여야 하며, `.methods`는 그 타입
   모두가 receiver 메서드로 노출하는 Zig 선언 이름입니다. 소멸자는 메서드로 치지 않습니다.
 - `.closer`는 모든 타입이 생성자 짝을 가질 때만 참일 수 있습니다. 생성자 짝이 없는 타입을
   묶으려면 `.closer = false`를 적습니다.

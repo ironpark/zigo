@@ -1,88 +1,132 @@
 # `bindings.zig` 선언
 
-`bindings.zig`는 Zig API 중 무엇을 Go에 노출할지, 값과 객체를 어떻게 전달할지 정하는 파일입니다.
-빌드 연결이 아직 없다면 [시작 가이드](getting-started.md)를 먼저 완료하세요.
-
-## 선언하는 순서
-
-1. `root`에 라이브러리 모듈을 지정합니다.
-2. 객체와 값 타입을 `types`에 등록합니다.
-3. 공개할 함수를 `functions`에 추가합니다.
-4. 문자열 의미, 반환값 소유권, 콜백 수명처럼 타입만으로 알 수 없는 조건을 명시합니다.
+`bindings.zig`는 Zig API 중 무엇을 Go에 노출할지, 값과 객체를 어떻게 전달할지 정합니다.
+빌드 연결은 [시작 가이드](getting-started.md), 이전 작성 API에서 옮기는 방법은
+[작성 API 마이그레이션](migration-authoring.md)을 참고하세요.
 
 ## 기본 구조
 
-시작 가이드의 `pub fn add(a: i32, b: i32) i32`를 노출하는 최소 선언입니다.
-기본값만 쓰는 함수에는 `types`나 추가 수명 메타데이터가 필요하지 않습니다.
+`scope`는 실제 Zig 모듈에서 함수와 타입을 찾습니다. `declarations`에는 함수·타입·패키지를
+하나의 트리로 적고, `define`이 이를 검증한 뒤 reflection에 전달합니다.
 
 ```zig
 const zigo = @import("zigo");
 const mylib = @import("mylib");
+const api = zigo.scope(mylib);
 
 pub const bindings = zigo.define(.{
     .root = mylib,
-    .functions = &.{
-        .{ .path = "root.add" },
+    .declarations = &.{
+        api.function("add", .{}),
     },
 });
 ```
 
-생성되는 공개 Go 함수는 `func Add(a int32, b int32) int32`입니다. 객체·enum·값 struct를
-추가할 때 아래의 `types` 등록을 함께 사용합니다. 객체 생성자의 소유권과 문자열 인자 같은
-추가 계약은 [객체 수명](bindings-handles.md)과 [문자열·버퍼](bindings-buffers.md)를 따릅니다.
+`pub fn add(a: i32, b: i32) i32`는 `func Add(a int32, b int32) int32`가 됩니다.
+기본값만 쓰는 함수에는 파라미터 목록을 반복하지 않아도 됩니다.
 
-| 그룹 | 역할 |
+| Binding 필드 | 역할 |
 |---|---|
-| `root` | 경로를 해석할 기준 module. 항상 필요 |
-| `types` | `.handle`, `.value`, `.enumeration`, `.tagged_union`, `.materialized`, `.callback` 등록 |
-| `functions` | 노출할 함수와 추가 메타데이터 (`[]const zigo.Function`) |
-| `methods` | receiver 타입과 접두사를 공유하는 자유 함수 그룹 |
-| `codepoints` | `.infer_u21`이면 모든 `u21`을 Go `rune`으로 추론 ([코드포인트](bindings-types.md#u21-자동-추론)) |
+| `root` | 바인딩할 Zig 모듈. `scope`의 루트와 같아야 함 |
+| `declarations` | `[]const zigo.Entry`. 함수·타입·패키지·인터페이스 선언 |
+| `defaults` | `strings`, `codepoints` 추론 기본값 |
+| `discovery` | `.explicit` 기본값. `.public` 또는 `.recursive`는 명시적 opt-in |
+| `allocator`, `io` | Zig 인자에 주입할 값 |
+| `string_release` | caller-owned 문자열에 쓸 기본 해제 함수의 `FunctionRef` |
 
-`root.<name>`은 module 자유 함수를, `<Type>.<name>`은 등록 타입의 함수를 가리킵니다. 경로가
-공개 함수를 가리키지 않으면 compile error입니다. 함수 항목의 `.name`은 경로가 아니라 생성할
-Go 이름만 바꿉니다.
+## 타입과 멤버
 
-중첩 namespace 경로와 이름 충돌의 해결 방법은
-[함수 선택, 이름과 패키지](bindings-functions.md#경로와-이름)에 있습니다.
+`in()`은 Zig namespace를 선택합니다. 타입의 `.members`는 Go receiver와 패키지 배치를
+함께 정리하는 자리입니다. 실제 함수가 그 타입 안에 있을 필요는 없습니다.
 
-## 타입 등록 선택
+```zig
+const store = api.in("Store");
 
-`repr`은 타입의 ABI 표현을, `access`는 tagged union 내용을 Go에서 읽는 방법을 선택합니다.
-enum 항목의 `exhaustive = false`는 Zig의 non-exhaustive enum을 그대로 공개하는 opt-in입니다.
+const store_entry = api.handle("Store", .{}).with(.{
+    .members = &.{
+        store.function("create", .{}),
+        store.function("len", .{}),
+        store.function("deinit", .{}),
+    },
+});
 
-| `.types` variant | 용도 |
+const storage = zigo.package(.{
+    .path = "storage",
+    .declarations = &.{store_entry},
+});
+```
+
+`storage`를 바인딩의 `declarations`에 넣으면 됩니다. 같은 함수를 별도 목록에 다시 넣으면
+중복 선언 오류입니다. 하위 패키지도 `declarations` 안에 중첩할 수 있습니다.
+
+| 타입 helper | 용도 |
 |---|---|
-| `.handle` | pointer handle과 수명주기 |
-| `.value` | 적격한 `extern struct` 또는 정수-backed `packed struct`의 Go 값 mirror |
-| `.tagged_union` | tagged union을 handle로 읽거나 지원하는 payload를 값으로 전달 |
-| `.materialized` | 포인터를 포함한 결과 트리를 한 번의 caller-owned buffer로 복사 |
-| `.enumeration` | enum에 Go 타입 이름을 부여. `.name` 선택 |
-| `.callback` | `*const fn` alias에 Go 타입 이름을 부여. `.name` 필수 |
+| `api.handle("T", options)` | Zig에 남는 객체와 수명주기 |
+| `api.value("T", options)` | 적격한 `extern struct` 또는 정수 기반 `packed struct`의 Go 값 |
+| `api.enumeration("T", options)` | enum. `.exhaustive = false`로 열린 enum 허용 |
+| `api.taggedUnion("T", options)` | tagged union. `.access = .projection` 또는 `.snapshot` |
+| `api.materialized("T", options)` | 포인터를 포함한 결과 트리를 복사해 반환 |
+| `api.callback("T", options)` | 공개 `*const fn` alias와 공통 콜백 계약 |
 
-| `access` | 용도 |
+helper의 옵션은 표현별로 다릅니다. 공통 이름·문서·멤버는 `.named()`, `.documented()`,
+`.with(.{ .members = ... })`로 설정합니다. 타입의 Go 기본 이름은 공개 Zig alias 이름입니다.
+
+## 계약과 참조
+
+파라미터는 **receiver·allocator·userdata를 포함한 원본 Zig 인자 인덱스**로 선택합니다.
+필요한 인자만 적으면 되며 나머지는 타입과 source에서 추론합니다.
+
+```zig
+// Zig: fn read(self: *Store, gpa: Allocator, dst: []u8) usize
+const read = store.function("read", .{
+    .params = &.{.{
+        .index = 2,
+        .go_name = "dst",
+        .contract = .{ .buffer = .{ .output = .{ .written = .result } } },
+    }},
+});
+```
+
+| 계약 | 선택지 |
 |---|---|
-| `.projection` | variant별 tag/payload accessor. 기본값 |
-| `.snapshot` | tag와 scalar payload를 한 native 호출로 복사. projection도 유지 |
+| `role` | `.auto`, `.free`, `.method`, `.constructor`, `.destructor` |
+| `returns.lifetime` | `.inferred`, `.owned`, `.borrowed = .receiver`, `.library` |
+| `Param.contract` | `.value`, `.buffer`, `.stream`, `.callback`, `.cancel`, `.flatten` |
 
-구체화한 generic 타입은 `.name`으로 이름을 지정합니다. `anytype` 함수는 구체 타입을 받는
-Zig 래퍼를 작성해 등록하세요. 타입 등록의 상세 조건은 [값 타입과 결과 트리](bindings-types.md)에 있습니다.
+각 계약은 tagged union이므로 생성자와 소멸자, owned와 borrowed, stream과 callback 같은
+서로 다른 역할을 동시에 적을 수 없습니다. 함수 참조는 `api.ref("release")`, 타입 참조는
+`api.typeRef("Store")`로 만듭니다. Go 이름을 바꿔도 원본 Zig 참조는 유지됩니다.
 
-## 필요한 기능 추가하기
+`.with()`는 적은 필드만 교체하고 **명시적인 `null`은 기존 값을 지웁니다**. 중첩 계약은
+전체를 교체하며 deep merge하지 않습니다. 예를 들어 `.returns`를 교체하면 이전 release가
+새 lifetime에 남지 않습니다. 자세한 조합 예시는 [함수 문서](bindings-functions.md)에 있습니다.
 
-| 하고 싶은 일 | 읽을 문서 |
+## 기능과 플러그인
+
+선언에 붙는 내장 기능과 외부 플러그인은 `.use()`로 연결합니다.
+
+```zig
+const next = store.function("next", .{}).use(zigo.features.iterator, .{});
+const mode = api.enumeration("Mode", .{}).use(zigo.features.text, .{});
+```
+
+내장 기능은 `iterator`, `implements`, `text`입니다. `Must*`는 빌드 옵션으로,
+사용자 Go 인터페이스는 `zigo.interface(...)`로 선언합니다. 외부 플러그인의 대상별 옵션과
+명시적 교체는 [플러그인 문서](plugins.md)를 참고하세요.
+
+## 필요한 기능 찾아보기
+
+| 하고 싶은 일 | 문서 |
 |---|---|
-| 함수 이름·파라미터·자동 발견·하위 패키지 설정 | [함수 선택, 이름과 패키지](bindings-functions.md) |
-| 정수·enum·struct·atomic·중첩 결과 등록 | [값 타입과 결과 트리](bindings-types.md) |
-| 생성자·소멸자·부모와 자식·borrowed 객체·인터페이스 선언 | [객체 수명과 Go 인터페이스](bindings-handles.md) |
-| 문자열·반환 slice·재사용 버퍼·optional 전달 | [문자열, 슬라이스와 optional](bindings-buffers.md) |
-| 콜백 등록·오류 처리·panic 전달 | [콜백과 Go 오류 처리](bindings-callbacks.md) |
-| `io.Writer`·`io.Reader`·취소 연결 | [스트림과 취소](bindings-streams.md) |
-| `Tag`·`As*`·`Variant`·snapshot 사용 | [Tagged union 읽기와 값 전달](bindings-unions.md) |
+| 함수 선택·이름·자동 발견·패키지 배치 | [함수 선택, 이름과 패키지](bindings-functions.md) |
+| 정수·enum·struct·atomic·중첩 결과 | [값 타입과 결과 트리](bindings-types.md) |
+| 생성자·소멸자·borrowed·부모와 자식·인터페이스 | [객체 수명과 Go 인터페이스](bindings-handles.md) |
+| 문자열·반환 slice·버퍼·optional | [문자열, 슬라이스와 optional](bindings-buffers.md) |
+| 콜백 수명·오류·panic | [콜백과 Go 오류 처리](bindings-callbacks.md) |
+| Reader·Writer·취소 | [스트림과 취소](bindings-streams.md) |
+| Union projection·snapshot | [Tagged union](bindings-unions.md) |
 
 ## 생성하고 확인하기
-
-프로젝트 루트에서 실행합니다.
 
 ```bash
 zig build go
@@ -90,7 +134,6 @@ zig build go-report
 (cd go && go test ./...)
 ```
 
-`go-report`에서 최종 Go 이름과 소유권·수명 결정을 확인하고, Go 테스트로 실제 호출을 검증하세요.
-생성된 파일을 직접 수정하지 말고 `bindings.zig`의 선언을 바꾼 뒤 다시 생성합니다.
-커밋과 CI 연결은 [생성물과 CI 관리](generated-code.md), 지원 여부는
-[제한사항](limitations.md), `ZIGO...` 오류는 [진단 안내](diagnostics.md)를 참고하세요.
+`go-report`에서 최종 Go 이름과 수명 결정을 확인합니다. 생성된 파일을 직접 수정하지 말고
+바인딩 선언을 바꿔 다시 생성하세요. CI 연결은 [생성물과 CI 관리](generated-code.md),
+지원 범위는 [제한사항](limitations.md)을 참고하세요.

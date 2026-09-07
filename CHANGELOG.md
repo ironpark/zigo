@@ -4,6 +4,27 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Changed
+
+- **Breaking:** 바인딩 작성 API를 `scope()`와 `declarations` 트리로 교체했습니다.
+  함수·타입·패키지를 한 곳에서 구성하고 `FunctionRef`·`TypeRef`로 원본 Zig 선언을 참조합니다.
+  기존 flat `.types`·`.functions`·`.methods`와 문자열 기반 DSL은 공개 작성 API에서 제거했습니다.
+- **Breaking:** 함수 파라미터는 receiver·주입 인자를 포함한 원본 Zig 인덱스로 선택합니다.
+  역할·반환 수명·파라미터 contract를 tagged union으로 분리했고, `.with()`는 명시적인 null로
+  값을 지우며 중첩 계약을 전체 교체합니다.
+- **Breaking:** 플러그인 옵션을 `FunctionOptions`·`TypeOptions`로 분리하고 `targets`를 추가했습니다.
+  `.use()`는 중복 attachment를 거부하며 `.replacePlugin()`으로 교체합니다. iterator·io interface·
+  enum text 기능도 `.use(zigo.features.*, options)`로 연결합니다.
+- 13개 예제와 fixture·작성 문서를 새 API로 옮겼습니다.
+  [마이그레이션 안내](docs/migration-authoring.md)에 대응표와 지원 범위를 정리했습니다.
+
+### Added
+
+- 명시적인 `.role = .free`, scope별 함수 선택, package 안의 명시 함수에 적용되는 추론 기본값.
+- 잘못된 참조·중복 선언·파라미터 인덱스·계약과 플러그인 대상에 대한 컴파일 단계 검증 및 회귀 테스트.
+
 ## [0.17.0] - 2026-09-07
 
 ### Added

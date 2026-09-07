@@ -2,7 +2,7 @@
 
 플러그인은 생성된 Go 표면에 코드를 더하는 보통의 Zig 패키지입니다. 메서드 옆에 메서드를
 하나 더 쓰거나, 타입 뒤에 줄을 붙이거나, 공개 파일을 하나 더 만듭니다. zigo 자체의
-`.iterator`, `.implements`, `Must*`, `.interfaces`도 같은 프레임 위에서 돕니다.
+`features.iterator`, `features.implements`, `Must*`, `zigo.interface()`도 같은 프레임 위에서 돕니다.
 
 플러그인은 **Go 표면만** 바꿉니다. Zig shim, C 헤더, raw 패키지에는 손을 댈 수 없으므로
 플러그인을 추가해서 ABI가 움직이는 일은 없고, cgo와 purego에서 똑같이 동작합니다.
@@ -10,7 +10,8 @@
 ## 계약
 
 플러그인 패키지는 `plugin`이라는 모듈 하나를 노출하고, 그 루트 파일이
-`pub const plugin: zigo.plugin.Plugin`을 선언합니다. 계약은 `src/plugin.zig`가 전부이며,
+`const plugin_api = @import("plugin");`로 계약을 가져와 `pub const plugin: plugin_api.Plugin`을
+선언합니다. 계약은 `src/plugin.zig`가 전부이며,
 플러그인은 이 파일 하나에만 기대면 됩니다.
 
 ```zig
@@ -19,7 +20,9 @@ pub const Plugin = struct {
     /// 대문자이므로 이름도 대문자로 씁니다.
     name: []const u8,
     /// 이 플러그인이 읽는 선언 옵션. `std.json`으로 직렬화 가능한 struct입니다.
-    Options: type = struct {},
+    FunctionOptions: type = struct {},
+    TypeOptions: type = struct {},
+    targets: []const Target = &.{ .function, .handle, .value, .enumeration, .tagged_union },
     /// 핵심 규칙 뒤에 도는 이 플러그인만의 문서 규칙.
     validate: ?*const fn (std.mem.Allocator, semantic.Semantic) anyerror!?diagnostic.Diagnostic = null,
     /// 공개 메서드마다, 그 메서드를 담은 파일에 이어서 씁니다.
@@ -52,20 +55,22 @@ const options = try context.typeOptions(plugin, declaration) orelse return;
 
 ### 옵션 전달
 
-옵션은 선언에 붙습니다. `bindings.zig`에서 `extend`를 쓰면 값이 comptime에 잡히므로,
+옵션은 선언에 붙습니다. `bindings.zig`에서 `use`를 쓰면 값이 comptime에 잡히므로,
 플러그인에 없는 필드나 모양이 다른 값은 **선언한 자리에서 Zig 컴파일 오류**가 됩니다.
 
 ```zig
 const satisfies = @import("zigo_satisfies");
+const api = zigo.scope(mylib);
 
-.types = &.{
-    .{ .handle = (zigo.Handle{ .type = mylib.Document })
-        .extend(satisfies.plugin, .{ .interfaces = &.{"io.ReadWriteCloser"} }) },
-},
-.functions = &.{
-    zigo.dsl.func("Document.write").extend(satisfies.plugin, .{}),
-},
+const document = api.handle("Document", .{})
+    .use(satisfies.plugin, .{ .interfaces = &.{"io.ReadWriteCloser"} });
 ```
+
+`targets`는 attachment를 허용할 대상입니다. function에는 `FunctionOptions`, 타입에는
+`TypeOptions`를 검사합니다. 현재 materialized와 callback 타입의 attachment는 지원하지 않습니다.
+같은 이름을 두 번 `.use()`하면 컴파일 오류이고, `.replacePlugin(plugin, options)`로 교체할 수
+있습니다. null은 JSON에도 보존합니다. hook은 등록 순서대로 실행되며, 선언에 붙은 옵션이
+필요한 hook은 `context.functionOptions()` 또는 `context.typeOptions()`의 null을 확인합니다.
 
 reflection은 이를 `semantic.json`에 플러그인 이름을 키로 그대로 적고, 생성기는 같은 옵션
 타입으로 다시 읽습니다. 문서에는 선언한 순서 그대로 남으므로 재작성해도 바이트가 같습니다.
@@ -75,7 +80,8 @@ reflection은 이를 `semantic.json`에 플러그인 이름을 키로 그대로 
 ```
 
 `semantic.json`을 손으로 고쳐 플러그인이 읽을 수 없는 값이 들어가면 `<NAME>001` 진단이
-나옵니다. 자세한 내용은 [진단 코드](diagnostics.md#플러그인-진단)를 참고하세요.
+나옵니다. 직접 읽는 validator는 `readOptions(plugin, .function, allocator, ext)` 또는
+`readOptions(plugin, .type, allocator, ext)`로 대상 옵션을 선택합니다. 자세한 내용은 [진단 코드](diagnostics.md#플러그인-진단)를 참고하세요.
 
 ### 파일
 
@@ -136,7 +142,7 @@ _ = zigo.addGoBindings(b, .{
 
 `plugins`를 적지 않으면 생성기가 함께 빌드된 플러그인이 전부 돕니다. 이름을 적는 것은
 하나의 실행 파일에 여러 플러그인이 들어 있어도 golden이 정확히 하나를 고정하기 위해서입니다.
-내장 기능(`Must*`, `.implements`, `.iterator`, `.interfaces`)은 생성기 자신의 표면이므로
+내장 기능(`Must*`, `features.implements`, `features.iterator`, `zigo.interface()`)은 생성기 자신의 표면이므로
 이 목록과 무관하게 항상 돕니다. 선택하지 않은 외부 플러그인은 옵션 검증과 자체 검증도
 실행하지 않습니다.
 

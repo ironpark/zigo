@@ -27,7 +27,7 @@ zig build purego-go purego-go-verify
 
 materialized 결과는 Go 소유 값입니다. 반환값에 `Close`할 필요가 없고 native 결과 버퍼는
 생성 코드가 release합니다. 반면 `LegacyProbe`는 명시적으로 닫아야 합니다.
-[바인딩 선언](src/bindings.zig)의 allocator, `.materialized`, `.returns.ownership = .caller`,
+[바인딩 선언](src/bindings.zig)의 allocator, `.materialized`, `.returns.lifetime = .{ .owned = .{} }`,
 `[]u8` release 함수는 함께 옮겨야 합니다.
 
 `Fill`은 Go slice 자체를 재사용하지만 중첩 데이터의 할당이나 native 직렬화 버퍼까지

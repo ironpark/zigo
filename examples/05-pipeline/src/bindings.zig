@@ -17,7 +17,9 @@ pub const bindings = zigo.define(.{
         api.in("FloatBatch").function("push", .{}),
         api.in("FloatBatch").function("len", .{}),
         api.in("FloatBatch").function("deinit", .{}),
-        api.in("Pipeline").function("create", .{ .params = &.{ .{ .index = 0, .go_name = "name", .semantic = .utf8_string }, .{ .index = 1, .go_name = "mode" }, .{ .index = 2, .go_name = "callback", .contract = .{ .callback = .{ .retention = .retained } } }, .{ .index = 3, .go_name = "userdata" } } }),
+        api.in("Pipeline").function("create", .{ .params = &.{
+            .{ .index = 0, .go_name = "name", .semantic = .utf8_string }, .{ .index = 1, .go_name = "mode" }, .{ .index = 2, .go_name = "callback", .contract = .{ .callback = .{ .retention = .retained } } }, .{ .index = 3, .go_name = "userdata" },
+        } }),
         api.in("Pipeline").function("process", .{ .params = &.{.{ .index = 1, .go_name = "values" }} }),
         api.in("Pipeline").function("name", .{ .returns = .{ .semantic = .utf8_string } }),
         api.in("Pipeline").function("mode", .{}),
@@ -27,6 +29,11 @@ pub const bindings = zigo.define(.{
         api.in("Pipeline").function("deinit", .{}),
         api.function("liveBytes", .{}),
         api.function("compressionBound", .{}),
-        zigo.interface(.{ .name = "Batch", .methods = &.{"len"}, .types = &.{ api.typeRef("IntBatch"), api.typeRef("FloatBatch") }, .doc = "Batch is any staged batch, whatever its element type." }),
+        zigo.interface(.{
+            .name = "Batch",
+            .methods = &.{"len"},
+            .types = &.{ api.typeRef("IntBatch"), api.typeRef("FloatBatch") },
+            .doc = "Batch is any staged batch, whatever its element type.",
+        }),
     },
 });

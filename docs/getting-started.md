@@ -36,8 +36,11 @@ purego도 실행할 OS·아키텍처에 맞는 Zig 공유 라이브러리가 필
 `zig init`으로 만든 뒤 진행하세요. 아래 전체 `build.zig`는 최소 예제이므로, 기존 프로젝트에서는
 필요한 바인딩 설정만 합치고 기존 빌드 스텝을 보존하세요.
 
+이 문서의 선언 트리 API는 0.17.0과 호환되지 않습니다.
+0.17.0을 고정해 사용하려면 [해당 태그의 시작 가이드](https://github.com/ironpark/zigo/blob/0.17.0/docs/getting-started.md)를 따르세요.
+
 ```bash
-zig fetch --save git+https://github.com/ironpark/zigo#0.17.0
+zig fetch --save git+https://github.com/ironpark/zigo#main
 ```
 
 명령이 `build.zig.zon`에 `zigo` 의존성을 추가합니다. 재현 가능한 빌드를 위해 생성된
@@ -112,19 +115,19 @@ pub fn add(a: i32, b: i32) i32 {
 const zigo = @import("zigo");
 const mylib = @import("mylib");
 
+const api = zigo.scope(mylib);
+
 pub const bindings = zigo.define(.{
     .root = mylib,
-    .functions = &.{
-        .{ .path = "root.add" },
-    },
+    .declarations = &.{api.function("add", .{})},
 });
 ```
 
-`root.add`는 모듈의 자유 함수를 뜻합니다. 등록한 타입의 메서드는 `Context.process`처럼
-`<타입 이름>.<함수 이름>`으로 적습니다.
+`api.function("add", .{})`는 루트 모듈의 공개 함수를 선택합니다. 타입 안의 메서드는
+`api.in("Context").function("process", .{})`로 선택합니다.
 
-처음에는 안정적으로 노출할 함수만 `functions`에 명시하는 것을 권장합니다. 공개 Zig API
-전체가 곧 바인딩 API인 프로젝트는 나중에 `.discover = .public`을 선택할 수 있습니다.
+처음에는 안정적으로 노출할 함수만 `declarations`에 명시하세요. 공개 Zig API 전체가
+바인딩 API인 프로젝트는 `.discovery = .{ .public = .{} }`로 자동 발견을 선택할 수 있습니다.
 
 ## 4. 생성하고 테스트
 

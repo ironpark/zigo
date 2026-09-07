@@ -4,6 +4,7 @@ const json = @import("zigo_json");
 
 const api = zigo.scope(library);
 
+// Plugin attachment targets and their option types are checked at this declaration.
 pub const bindings = zigo.define(.{
     .root = library,
     .declarations = &.{

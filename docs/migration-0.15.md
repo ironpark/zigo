@@ -1,5 +1,8 @@
 # 0.15 바인딩 선언 마이그레이션
 
+이 문서는 0.14 → 0.15 변환의 기록입니다. 현재 API까지 옮기려면 이 변환 이후
+[작성 API 마이그레이션](migration-authoring.md)을 적용하세요. 아래 스크립트는 0.15 형식까지만 만듭니다.
+
 0.15부터 `zigo.define`은 익명 구조체를 추측해 읽지 않고 `zigo.Binding`을 받습니다. 이전 선언은
 호환되지 않으며 `bindings.zig`를 한 번에 새 스키마로 옮겨야 합니다. 생성되는 C ABI,
 `semantic.json`, Go API는 선언 순서 변경(`functions` 뒤에 `methods`)이나 새 `doc` override를

@@ -34,9 +34,9 @@ Zig의 `streamRemaining`으로 reader와 writer adapter를 직접 연결합니�
 | Go reader에서 줄 단위 데이터를 객체에 추가 | `Document.Load` |
 | native 객체에 Go의 `io.Copy`로 쓰기 | `Sink.Write`, `Sink.Flush` |
 | native 객체에서 Go의 `io.ReadAll`로 읽기 | `Source.Read` |
-| 평범한 메서드로 handle이 `io` 인터페이스를 구현 | `Document.Write`·`Read`·`WriteTo`·`ReadFrom` (`.implements`) |
+| 평범한 메서드로 handle이 `io` 인터페이스를 구현 | `Document.Write`·`Read`·`WriteTo`·`ReadFrom` (`features.implements`) |
 
-`Document`는 스트림을 내주지 않지만 `append`·`readInto`·`dump`·`load`에 `.implements`를 붙여
+`Document`는 스트림을 내주지 않지만 `append`·`readInto`·`dump`·`load`에 `features.implements`를 붙여
 `io.Writer`·`io.Reader`·`io.WriterTo`·`io.ReaderFrom`이 됩니다. 원래 메서드는 그대로 남고,
 `fmt.Fprintf(doc, ...)`와 `io.ReadAll(doc)`이 됩니다.
 [테스트](go/streams/implements_test.go)가 네 wrapper와 닫힌 handle의 오류를 확인합니다.
@@ -61,11 +61,12 @@ const satisfies: zigo.PluginModule = .{
 
 ```zig
 // src/bindings.zig
-.{ .handle = (zigo.Handle{ .type = library.Document })
-    .extend(satisfies.plugin, .{ .interfaces = &.{"io.ReadWriteCloser"} }) },
+const api = zigo.scope(library);
+const document = api.handle("Document", .{})
+    .use(satisfies.plugin, .{ .interfaces = &.{"io.ReadWriteCloser"} });
 ```
 
-`Document`는 `.implements`로 `Write`·`Read`·`WriteTo`·`ReadFrom`을, 생성자 쌍으로
+`Document`는 `features.implements`로 `Write`·`Read`·`WriteTo`·`ReadFrom`을, 생성자 쌍으로
 `Close`를 얻으므로 `io.ReadWriteCloser`입니다. Go에는 그 사실을 선언하는 문법이 없어
 어서션을 손으로 두는 것이 관례인데, 플러그인이 그 줄을 타입 옆(생성된 handle 파일)에
 써 줍니다. 메서드 모양이 바뀌면 그 자리에서 컴파일이 멈춥니다.

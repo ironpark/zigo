@@ -2,6 +2,9 @@
 """Rewrites zigo binding declarations from the 0.14 anonymous-literal grammar
 to the 0.15 typed schema.
 
+Historical intermediate migration only. For the current declaration-tree API,
+continue with docs/migration-authoring.md.
+
 Usage: scripts/migrate-bindings.py <file.zig>...
 
 Every `.{ ... }` literal that carries a `.root` key is treated as a binding

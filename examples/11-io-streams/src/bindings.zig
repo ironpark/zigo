@@ -18,7 +18,9 @@ pub const bindings = zigo.define(.{
             api.in("Document").function("count", .{}),
             api.in("Document").function("dump", .{ .params = &.{.{ .index = 1, .go_name = "w" }} }).use(zigo.features.implements, .{ .kind = .writer_to }),
             api.in("Document").function("load", .{ .params = &.{.{ .index = 1, .go_name = "r", .contract = .{ .stream = .{ .buffer = 4096 } } }} }).use(zigo.features.implements, .{ .kind = .reader_from }),
-            api.in("Document").function("readInto", .{ .params = &.{.{ .index = 1, .go_name = "dst", .contract = .{ .buffer = .{ .output = .{ .written = .result } } } }} }).use(zigo.features.implements, .{ .kind = .reader }),
+            api.in("Document").function("readInto", .{
+                .params = &.{.{ .index = 1, .go_name = "dst", .contract = .{ .buffer = .{ .output = .{ .written = .result } } } }},
+            }).use(zigo.features.implements, .{ .kind = .reader }),
         } }),
         api.handle("Sink", .{}).with(.{ .members = &.{
             api.in("Sink").function("create", .{}),

@@ -2,6 +2,8 @@
 
 Go 함수를 Zig에 넘길 때의 수명, 오류 반환과 panic 전달을 설명합니다. 선언의 기본 형태는 [`bindings.zig` 선언](bindings.md)을 참고하세요.
 
+아래 선언 조각의 `api`는 `zigo.scope(대상_모듈)`로 만든 scope입니다.
+
 콜백은 [이름과 수명](#콜백-타입-이름)을 먼저 정하고, 실패를 반환하려면
 [`go_error`](#콜백이-돌려주는-go-error)를 지정하세요.
 호출 결과는 [오류 분류](#생성된-go-error-판별)로 확인합니다.
@@ -27,17 +29,12 @@ pub fn reduce(ctx: usize, values: []const i32, reducer: Reducer) i32 { ... }
 ```
 
 ```zig
-.types = &.{
-    .{ .callback = .{ .name = "Reducer", .type = mylib.Reducer, .userdata = .first } },
-},
-.functions = &.{
-    .{
-        .path = "root.reduce",
-        .params = &.{ .{ .name = "ctx" }, .{ .name = "values" },
-        // 토큰 파라미터가 콜백 바로 다음이 아니면 이름으로 가리킵니다.
-            .{ .name = "reducer", .userdata = .{ .param = "ctx" } },
-        },
-    },
+.declarations = &.{
+    api.callback("Reducer", .{ .userdata = .first }),
+
+    api.function("reduce", .{ .params = &.{
+        .{ .index = 0, .go_name = "ctx" }, .{ .index = 1, .go_name = "values" }, .{ .index = 2, .go_name = "reducer", .contract = .{ .callback = .{ .userdata = 0 } } },
+    } }),
 },
 ```
 
@@ -54,11 +51,11 @@ userdata를 어디에 두든 같고, `abi-diff`도 위치 이동을 변경으로
 콜백 파라미터마다 Go 함수 타입이 하나씩 생깁니다. 이름은 기본적으로 소유 타입이나 함수와
 파라미터 이름에서 파생되므로(`ContextCallback`, `ApplyCallback`), 같은 Zig 시그니처를 여러
 함수가 받으면 Go 타입도 여러 개가 됩니다. Zig의 `pub const Observer = *const fn (...)`은
-alias라 reflection이 이름을 알 수 없으니, 하나의 이름을 원하면 `types`에 등록합니다.
+alias라 reflection이 이름을 알 수 없으니, 하나의 이름을 원하면 `api.callback("Observer", options)`로 등록합니다.
 
 ```zig
-.types = &.{
-    .{ .callback = .{ .name = "Observer", .type = mylib.Observer } },
+.declarations = &.{
+    api.callback("Observer", .{}),
 },
 ```
 
@@ -95,7 +92,7 @@ dispatcher가 콜백을 부르기 전에 Go 메모리로 **복사**하므로, �
 native 버퍼는 호출 동안만 유효하고 Go는 그것을 직접 참조하지 않습니다.
 
 Go 타입은 등록 항목의 위치별 힌트가 정합니다. 쌍은 일반 파라미터의 `[]const u8`과 같은
-규칙을 따라 `.semantic = .utf8_string`이나 `.strings = .infer_utf8`이면 `string`, 그 밖에는
+규칙을 따라 `.semantic = .utf8_string`이나 `.defaults = .{ .strings = .infer_utf8 }`이면 `string`, 그 밖에는
 `[]byte`이고 `.opaque_bytes`는 명시적으로 `[]byte`입니다. 문자열은 힌트 없이 `string`이며
 `.opaque_bytes`로 `[]byte`가 됩니다.
 
@@ -105,8 +102,8 @@ pub const ByteSink = *const fn (data: [*]const u8, len: usize, userdata: usize) 
 ```
 
 ```zig
-.{ .callback = .{ .name = "Logger", .type = mylib.Logger, .params = &.{ .{}, .{ .semantic = .utf8_string } } } },
-.{ .callback = .{ .name = "ByteSink", .type = mylib.ByteSink, .params = &.{.{ .semantic = .opaque_bytes }} } },
+api.callback("Logger", .{ .params = &.{ .{}, .{ .semantic = .utf8_string } } }),
+api.callback("ByteSink", .{ .params = &.{.{ .semantic = .opaque_bytes }} }),
 ```
 
 ```go
@@ -123,11 +120,14 @@ userdata는 제외) 코드포인트가 아닌 자리는 `.integer`로 채웁니�
 적용되며, purego는 콜백 결과로 `void`, `bool`, `i32`만 허용하므로(`ZIGO014`) 코드포인트
 결과는 cgo 전용입니다. 생성된 handle 생성자가 `rune`과 `uint32`를 양방향으로 변환하고, 결과에는
 범위 검사가 없어 잘못된 `rune`이 그대로 `uint32`로 재해석됩니다. 등록하지 않은 콜백은
-힌트를 가질 수 없고, `.codepoints = .infer_u21` 추론은 콜백에는 해당하는 자리(`u21`)가
+힌트를 가질 수 없고, `.defaults = .{ .codepoints = .infer_u21 }` 추론은 콜백에는 해당하는 자리(`u21`)가
 `ZIGO018`로 거부되므로 사실상 영향이 없습니다.
 
 ```zig
-.{ .callback = .{ .name = "Visitor", .type = mylib.Visitor, .params = &.{ .{ .semantic = .codepoint }, .{ .semantic = .integer } }, .returns = .{ .semantic = .codepoint } } },
+api.callback("Visitor", .{
+    .params = &.{ .{ .semantic = .codepoint }, .{ .semantic = .integer } },
+    .returns = .{ .semantic = .codepoint },
+}),
 ```
 
 콜백이 호출 중 바인딩을 다시 부를 수 있는지와 어떤 thread에서 불리는지는 파라미터별
@@ -135,61 +135,55 @@ userdata는 제외) 코드포인트가 아닌 자리는 `.integer`로 채웁니�
 콜백 타입과 그 콜백을 받는 함수의 Go doc에만 나타납니다.
 
 ```zig
+// fn observe(self: *Context, observer: Observer, userdata: usize) void
 .params = &.{.{
-        .name = "observer",
+    .index = 1,
+    .go_name = "observer",
+    .contract = .{ .callback = .{
         .retention = .retained,
         .reentrancy = .forbidden,
         .thread = .any,
-    }},
+    } },
+}},
 ```
 
 `reentrancy`는 `.allowed` 또는 `.forbidden`, `thread`는 호출을 시작한 thread만 허용하는
 `.caller` 또는 임의의 native thread를 허용하는 `.any`입니다. 이 값은 native 라이브러리가
 지켜야 할 문서 계약입니다. zigo는 `runtime.LockOSThread`를 추가하거나 thread를 고정하지
-않으며, 콜백이 아닌 파라미터에 두 값을 쓰면 기존 callback metadata 오용 진단인
-`ZIGO025`로 거부합니다.
+않습니다. 콜백이 아닌 함수 인자에 callback contract를 붙이면 컴파일 오류입니다.
+semantic 문서의 잘못된 callback metadata는 `ZIGO025`로 거부합니다.
 
 계약이 그 콜백 타입 자체의 성질이라면 등록 항목에 한 번만 적을 수 있습니다.
-`.callback` 항목의 `retention`·`reentrancy`·`thread`는 그 타입을 받는 모든
+`api.callback()` 옵션의 `retention`·`reentrancy`·`thread`는 그 타입을 받는 모든
 파라미터가 물려받습니다.
 
 ```zig
-.types = &.{
-    .{
-        .callback = .{
-            .name = "ClipboardHandler",
-            .type = mylib.ClipboardFn,
-            .retention = .retained,
-            .reentrancy = .allowed,
-            .thread = .caller,
-        },
-    },
-},
-.functions = &.{
-    // 세 줄짜리 계약 블록이 필요 없습니다.
-    .{ .path = "Stream.onClipboardWriteRequest", .params = &.{ .{ .name = "callback" }, .{ .name = "userdata" } } },
-    // 자리마다 필드 단위로 덮어쓸 수 있습니다. 나머지 둘은 그대로 물려받습니다.
-    .{
-        .path = "Stream.onClipboardPeek",
-        .params = &.{ .{ .name = "callback", .retention = .borrowed }, .{ .name = "userdata" } },
-    },
+.declarations = &.{
+    api.callback("ClipboardFn", .{ .retention = .retained, .reentrancy = .allowed, .thread = .caller }).named("ClipboardHandler"),
+
+    api.in("Stream").function("onClipboardWriteRequest", .{ .params = &.{ .{ .index = 1, .go_name = "callback" }, .{ .index = 2, .go_name = "userdata" } } }),
+
+    api.in("Stream").function("onClipboardPeek", .{ .params = &.{
+        .{ .index = 1, .go_name = "callback", .contract = .{ .callback = .{ .retention = .borrowed } } }, .{ .index = 2, .go_name = "userdata" },
+    } }),
 },
 ```
 
 기본값은 reflection 단계에서 풀리므로 `semantic.json`은 자리마다 직접 적었을 때와 완전히
 같습니다. 생성물과 `abi-check` 판정도 달라지지 않습니다. 콜백이 아닌 등록 항목에 이 세 키를
-두면 `.userdata`·`.text`와 마찬가지로 `bindings.zig` 컴파일 시점에 거부됩니다.
+두면 지원하지 않는 타입 옵션과 마찬가지로 `bindings.zig` 컴파일 시점에 거부됩니다.
 
 ## 콜백이 돌려주는 Go error
 
-기본적으로 Go 콜백은 Zig 시그니처가 말하는 값만 돌려줍니다. 해당 `Param`의 `.go_error`를
+기본적으로 Go 콜백은 Zig 시그니처가 말하는 값만 돌려줍니다. 해당 `Param.contract.callback.go_error`를
 켜면 Go 타입이 `error`를 하나 더 돌려주고, 그 error가 공개 함수의 반환값으로 나옵니다.
 
 ```zig
-.{
-    .path = "CallbackContext.create",
-    .params = &.{ .{ .name = "callback", .retention = .retained, .go_error = true }, .{ .name = "userdata" } },
-}
+api.in("CallbackContext").function("create", .{ .params = &.{ .{
+    .index = 0,
+    .go_name = "callback",
+    .contract = .{ .callback = .{ .retention = .retained, .go_error = true } },
+}, .{ .index = 1, .go_name = "userdata" } } })
 ```
 
 생성되는 API:
@@ -235,26 +229,25 @@ C ABI는 바뀌지 않습니다 — `go_error`는 Go 표면만 넓힙니다. 다
 요구하면 callback 타입 항목에 실패 반환값을 선언할 수 있습니다.
 
 ```zig
-.types = &.{
-    .{
-        .callback = .{
-            .name = "Observer",
-            .type = mylib.Observer,
-            .on_callback_failure = .{ .result = 0 },
-        },
-    },
+.declarations = &.{
+    api.callback("Observer", .{ .on_callback_failure = .{ .result = 0 } }),
 },
 ```
 
 한 함수의 callback에만 적용하려면 파라미터 메타데이터에 같은 값을 둡니다.
 
 ```zig
-.params = &.{.{ .name = "callback", .on_callback_failure = .{ .result = 0 } }},
+// 이 예제는 첫 Zig 인자가 콜백인 함수의 옵션입니다.
+.params = &.{.{
+    .index = 0,
+    .go_name = "callback",
+    .contract = .{ .callback = .{ .on_failure = .{ .result = 0 } } },
+}},
 ```
 
 이 설정은 **native에 돌려주는 값만** 바꿉니다. dispatcher는 panic이나 Go error를 여전히
 callback state에 기록하고, 생성된 공개 함수는 native 호출이 끝난 뒤 `*CallbackPanicError`로
-다시 panic하거나 `*CallbackError`를 반환합니다. `.cancel`도 함께 있으면 실패 반환 전에 취소
+다시 panic하거나 `*CallbackError`를 반환합니다. 취소 contract도 함께 있으면 실패 반환 전에 취소
 플래그를 먼저 세웁니다. cgo와 purego가 같은 값을 사용합니다.
 
 `.result`는 callback 반환 타입에 들어가야 하고 void callback에는 쓸 수 없습니다

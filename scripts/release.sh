@@ -127,12 +127,16 @@ edit() { sed -i.release-bak "$1" "$2" && rm -f "$2.release-bak"; }
 edit "s/^## \[Unreleased\]\$/## [$version] - $today/" CHANGELOG.md
 edit "s/^\( *\.version = \)\"$current\"/\1\"$version\"/" build.zig.zon
 for file in README.md docs/getting-started.md; do
-  if ! grep -q "github.com/ironpark/zigo#$current" "$file"; then
-    echo "release.sh: $file has no fetch line for $current to update" >&2
+  fetch_ref="$current"
+  if ! grep -Fq "github.com/ironpark/zigo#$fetch_ref" "$file"; then
+    fetch_ref=main
+  fi
+  if ! grep -Fq "github.com/ironpark/zigo#$fetch_ref" "$file"; then
+    echo "release.sh: $file has no fetch line for $current or main to update" >&2
     git checkout -- CHANGELOG.md build.zig.zon
     exit 1
   fi
-  edit "s#github.com/ironpark/zigo\#$current#github.com/ironpark/zigo\#$version#g" "$file"
+  edit "s#github.com/ironpark/zigo\#$fetch_ref#github.com/ironpark/zigo\#$version#g" "$file"
 done
 
 # The release notes the workflow will publish must be extractable now.

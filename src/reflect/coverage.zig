@@ -875,3 +875,36 @@ test "signature reason names the first offending nested field" {
             declaration.reason.?,
         );
 }
+
+test "scoped enum covers follow renamed owners regardless of declaration order" {
+    const author = @import("zigo");
+    const Api = struct {
+        pub const Mode = enum(u8) {
+            ready,
+            pub fn label(self: @This()) []const u8 {
+                return @tagName(self);
+            }
+        };
+        pub const Other = enum(u8) {
+            active,
+            pub fn label(self: @This()) []const u8 {
+                return @tagName(self);
+            }
+        };
+    };
+    const api = author.scope(Api);
+    const binding = author.define(.{ .root = Api, .declarations = &.{
+        api.enumeration("Mode", .{ .covers = &.{ api.in("Mode").ref("label"), api.in("Other").ref("label") } }).named("State"),
+        api.enumeration("Other", .{}).named("Second"),
+    } });
+    var arena: std.heap.ArenaAllocator = .init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try walk.reflect(arena.allocator(), binding, "sample", "zg");
+    const report = try classify(arena.allocator(), binding, "sample", document, &.{});
+    try std.testing.expectEqual(@as(usize, 0), report.unbound);
+    try std.testing.expectEqual(@as(usize, 2), report.bound);
+    for (report.declarations) |declaration| {
+        try std.testing.expectEqual(.wrapped, declaration.status);
+        try std.testing.expectEqualStrings("State", declaration.via.?);
+    }
+}

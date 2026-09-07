@@ -70,7 +70,7 @@ Go race detector는 `CGO_ENABLED=0` 테스트에 사용할 수 없습니다.
 |---|---|---|
 | 단순 값 struct | `.value` + `extern struct` | 필드는 scalar·등록 enum·적격 extern struct; 빈 struct 불가 |
 | 비트 필드 | `.value` + 정수 backing의 `packed struct` | bool·정수·등록 enum·등록 packed struct 필드 |
-| 중첩 pointer·string·slice 결과 트리 | `.materialized` | allocator, `.returns.ownership = .caller`, `[]u8` 해제 함수 필요 |
+| 중첩 pointer·string·slice 결과 트리 | `.materialized` | allocator, `.returns.lifetime = .{ .owned = .{} }`, `[]u8` 해제 함수 필요 |
 | tagged union | `.tagged_union` | handle projection, snapshot, 값 전달의 payload 조건이 다름 |
 | generic | 구체화된 타입 또는 Zig 래퍼 | 구체화 전 함수·`anytype` 함수는 직접 노출 불가 |
 
@@ -92,7 +92,7 @@ union 값을 중첩할 수는 없습니다. snapshot은 scalar·enum payload로 
 | 형태 | 제약과 사용 방법 |
 |---|---|
 | 일반 `[]T` 반환 | scalar·enum·extern struct 원소를 Go 메모리로 복사 |
-| 호출자 소유 native slice 반환 | `.returns.ownership = .caller`와 같은 원소 타입의 `.returns.release` 필요 |
+| 호출자 소유 native slice 반환 | `.returns.lifetime = .{ .owned = .{} }`와 같은 원소 타입의 `.returns.lifetime.owned.release` 필요 |
 | `![]T`, `?[]T`, `!?[]T` | 지원하는 원소 타입·소유권 규칙 적용; 성공하며 존재하는 값만 복사·해제 |
 | `[]u21` 같은 slice | 입력·out에는 allocator 필요; 반환은 caller-owned와 release 필요 |
 | `?[]u21`·sentinel narrow slice | 미지원 |
@@ -115,8 +115,8 @@ out 버퍼의 `written`은 성공한 결과의 개수를 알려줄 뿐, native�
 | 객체 | 호출자가 지킬 조건 |
 |---|---|
 | caller-owned handle | 사용 후 `Close`; 이후 호출은 `ErrInvalidHandle` |
-| `.child_of_receiver` 자식 | 자식을 먼저 닫고 부모를 닫음; 열린 자식이 있으면 부모는 `ErrHandleInUse` |
-| `.returns.ownership = .borrowed` view | 부모가 살아 있는 동안만 사용; view의 `Close`는 조기 분리이며 native 해제 없음 |
+| `.role.constructor.parent` 자식 | 자식을 먼저 닫고 부모를 닫음; 열린 자식이 있으면 부모는 `ErrHandleInUse` |
+| `.returns.lifetime = .{ .borrowed = .receiver }` view | 부모가 살아 있는 동안만 사용; view의 `Close`는 조기 분리이며 native 해제 없음 |
 | projection의 `*TRef` | 소유 union의 수명 안에서 사용; 별도 `Close` 없음 |
 
 handle의 진행 중 호출 수는 메모리 해제 시점을 지키지만, native 함수 호출 전체를 잠그지는
@@ -151,7 +151,7 @@ native 코드가 주소를 저장하거나 호출이 끝난 뒤 사용하면 안
 | `.go_error` 콜백 | Zig 반환은 `i32`; 같은 ABI 시그니처의 콜백들이 설정을 공유 |
 | 스트림 인자 | 같은 스레드에서 호출 범위 안에만 사용; retained·optional·필드·콜백 인자로 사용 불가 |
 | 스트림 반환 | 인자가 없는 메서드의 직접 반환만 지원; optional·error union 불가 |
-| `.implements` | `io.Writer`·`io.Reader`·`io.WriterTo`·`io.ReaderFrom`만; 파라미터 하나와 `void`·정수 결과인 handle 메서드. `fmt.Stringer`와 그 밖의 인터페이스는 같은 패키지의 손 메서드로 |
+| `features.implements` | `io.Writer`·`io.Reader`·`io.WriterTo`·`io.ReaderFrom`만; 파라미터 하나와 `void`·정수 결과인 handle 메서드. `fmt.Stringer`와 그 밖의 인터페이스는 같은 패키지의 손 메서드로 |
 | `.cancel` | Zig 함수가 취소 플래그를 직접 확인하고 설정된 취소 오류를 반환 |
 
 콜백 오류가 생겨도 native 실행을 강제로 중단하지 않습니다. Zig 코드가 실패 반환값을
