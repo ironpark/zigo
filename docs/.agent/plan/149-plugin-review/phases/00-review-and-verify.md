@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T10:38:11Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Review evidence and limitations are recorded and findings are ready to deliver to the user.
 > NEXT: none
