@@ -93,6 +93,7 @@ fn collectTypes(comptime entries: []const a.Entry, state: *State) void {
         .type => |t| {
             checkRoot(t.ref.root, state.root, t.ref.path);
             checkExtensions(t.extensions);
+            if (t.representation == .handle) for (t.representation.handle.fields) |field| checkExtensions(field.ext);
             if (t.extensions.len != 0 and (t.representation == .materialized or t.representation == .callback))
                 @compileError("zigo plugin attachments are not supported on " ++ @tagName(t.representation));
             for (state.source_types) |previous| {

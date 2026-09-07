@@ -12,6 +12,7 @@ pub const TypeRef = author.TypeRef;
 pub const FunctionOptions = author.FunctionOptions;
 pub const TypeOptions = author.TypeOptions;
 pub const HandleOptions = author.HandleOptions;
+pub const HandleField = @import("declare.zig").HandleField;
 pub const ValueOptions = author.ValueOptions;
 pub const MaterializedOptions = author.MaterializedOptions;
 pub const EnumOptions = author.EnumOptions;

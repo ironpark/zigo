@@ -257,6 +257,31 @@ pub const HandleField = struct {
     name: ?[]const u8 = null,
     set: bool = false,
     doc: ?[]const u8 = null,
+    /// Plugin options, one entry per plugin. Written by `extend`. The
+    /// getter and the setter both carry them, the way they share `doc`.
+    ext: []const Extension = &.{},
+
+    /// Attach `value` as plugin `P`'s function options for the accessors
+    /// this field synthesizes. A plugin whose `targets` exclude `.function`
+    /// is refused here, where the declaration is written.
+    pub fn extend(comptime self: HandleField, comptime P: anytype, comptime value: P.FunctionOptions) HandleField {
+        // `P` is a `plugin.Plugin` value from a binding, or a type spelling
+        // the same decls in a test; only a value carries `targets`.
+        comptime if (@TypeOf(P) != type and @hasField(@TypeOf(P), "targets")) {
+            var supported = false;
+            for (P.targets) |candidate| if (candidate == .function) {
+                supported = true;
+            };
+            if (!supported) @compileError("zigo plugin " ++ P.name ++ " does not support function");
+        };
+        const Captured = struct {
+            pub const name = P.name;
+            pub const Options = P.FunctionOptions;
+        };
+        var result = self;
+        result.ext = self.ext ++ [_]Extension{extension(Captured, value)};
+        return result;
+    }
 };
 
 /// A hint for one field of a value or materialized struct.

@@ -271,6 +271,10 @@ fn appendFieldAccessors(
         return fieldAccessIssue(allocator, path, comptime fieldPathConstPointerType(Owner, path));
 
     const name = metadata.name orelse fieldPathMember(path);
+    // `extend` captured each plugin's options on the field; the getter and
+    // the setter are the functions a plugin's `method_hook` sees, so both
+    // carry them the way both carry `doc`.
+    const ext: ?semantic.Extensions = if (metadata.ext.len != 0) try extensionsAlloc(allocator, metadata.ext) else null;
     const field_type = try typeNode(
         allocator,
         declaration,
@@ -280,6 +284,7 @@ fn appendFieldAccessors(
     );
     try functions.append(allocator, .{
         .doc = metadata.doc,
+        .ext = ext,
         .field_access = .{ .atomic = if (comptime atomicScalar(Leaf) != null) true else null, .path = path },
         .name = name,
         .params = &.{},
@@ -294,6 +299,7 @@ fn appendFieldAccessors(
         params[0] = .{ .name = "v", .name_source = .sidecar, .type = field_type };
         try functions.append(allocator, .{
             .doc = metadata.doc,
+            .ext = ext,
             .field_access = .{ .atomic = if (comptime atomicScalar(Leaf) != null) true else null, .path = path, .setter = true },
             .name = setter_name,
             .params = params,
@@ -4853,6 +4859,33 @@ test "a byte pair and a sentinel string in a callback signature reflect as strin
         .functions = &.{.{ .path = "root.log", .params = &.{ .{ .name = "callback" }, .{ .name = "userdata" } } }},
     }, "callbacks", "zg");
     try std.testing.expectEqual(@as(?semantic.SemanticHint, .utf8_string), inferred.functions[0].params[0].type.callback.paramHint(1));
+}
+
+test "extend attaches plugin options to a field getter and its setter" {
+    const Sample = struct {
+        pub const name = "TEST";
+        pub const FunctionOptions = struct { mode: enum { a, b } = .a };
+    };
+    const Terminal = struct { cols: u16, rows: u16 };
+    const Fixture = struct {};
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = &.{.{ .handle = .{ .type = Terminal, .fields = &.{
+            (zigo.HandleField{ .path = "cols", .set = true }).extend(Sample, .{ .mode = .b }),
+            .{ .path = "rows" },
+        } } }},
+    }, "terminal", "zg");
+
+    try std.testing.expectEqual(@as(usize, 3), document.functions.len);
+    // The getter and the setter both carry the options, the way both carry `doc`.
+    try std.testing.expectEqualStrings("cols", document.functions[0].name);
+    try std.testing.expectEqualStrings("b", document.functions[0].ext.?.get("TEST").?.object.get("mode").?.string);
+    try std.testing.expectEqualStrings("setCols", document.functions[1].name);
+    try std.testing.expectEqualStrings("b", document.functions[1].ext.?.get("TEST").?.object.get("mode").?.string);
+    // A field nothing extended carries no `ext` at all.
+    try std.testing.expect(document.functions[2].ext == null);
 }
 
 test "extend attaches typed plugin options to a function and to a type" {

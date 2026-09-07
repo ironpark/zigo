@@ -259,6 +259,17 @@ segment가 기본 이름이므로 위 선언은 `Cols()`, `CursorX()`, `CursorSt
 API를 만들고 `abi-check` 및 `abi-diff`에도 일반 함수처럼 나타납니다. 접근자를 추가하는 것은
 compatible append이며, 함수와 이름이 겹치면 기존 `ZIGO024`/`ZIGO036` 진단을 사용합니다.
 
+필드 접근자에도 플러그인을 붙일 수 있습니다. 항목을 `zigo.HandleField`로 쓰고 `.extend(plugin, options)`를
+이으면 getter와 setter 모두 그 옵션을 `ext`로 갖고, 플러그인의 `method_hook`이 일반 메서드처럼
+`context.functionOptions()`로 읽습니다. 옵션 타입은 함수와 같은 `FunctionOptions`이며, `.function`을
+대상으로 하지 않는 플러그인은 선언 자리에서 컴파일 오류입니다.
+
+```zig
+api.handle("Terminal", .{ .fields = &.{
+    (zigo.HandleField{ .path = "cols" }).extend(myplugin.plugin, .{ .mode = .strict }),
+} }),
+```
+
 ## Iterator wrapper
 
 `?T`를 반환하는 `next()` 형태의 메서드에 `zigo.features.iterator`를 붙이면 Go에 range-over-func

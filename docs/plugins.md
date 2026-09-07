@@ -66,6 +66,9 @@ const document = api.handle("Document", .{})
     .use(satisfies.plugin, .{ .interfaces = &.{"io.ReadWriteCloser"} });
 ```
 
+handle의 `.fields` 항목은 `Entry`가 아니므로 `.use()` 대신 `zigo.HandleField`의 `.extend()`를 씁니다.
+getter와 setter가 같은 `FunctionOptions`를 받으며, hook에는 일반 메서드로 도착합니다.
+
 `targets`는 attachment를 허용할 대상입니다. function에는 `FunctionOptions`, 타입에는
 `TypeOptions`를 검사합니다. 현재 materialized와 callback 타입의 attachment는 지원하지 않습니다.
 같은 이름을 두 번 `.use()`하면 컴파일 오류이고, `.replacePlugin(plugin, options)`로 교체할 수
