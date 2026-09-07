@@ -236,9 +236,18 @@ fn typeHasBorrowedRefs(program: abi.Program, type_name: []const u8) bool {
 fn typeCanBeBorrowed(program: abi.Program, type_name: []const u8) bool {
     for (program.functions) |function| {
         const origin = function.origin.*;
-        if (!returnsBorrowedView(origin)) continue;
-        const node = origin.@"return".errorPayload();
-        if (std.mem.eql(u8, node.opaque_ptr.ref, type_name)) return true;
+        if (returnsBorrowedView(origin)) {
+            const node = origin.@"return".errorPayload();
+            if (std.mem.eql(u8, node.opaque_ptr.ref, type_name)) return true;
+        }
+        // A handle pointer a callback receives is delivered as an owner-less
+        // borrowed handle, so the type needs the borrowed constructor too.
+        for (origin.params) |parameter| {
+            if (parameter.type != .callback) continue;
+            for (parameter.type.callback.params) |node| {
+                if (node == .opaque_ptr and std.mem.eql(u8, node.opaque_ptr.ref, type_name)) return true;
+            }
+        }
     }
     return false;
 }

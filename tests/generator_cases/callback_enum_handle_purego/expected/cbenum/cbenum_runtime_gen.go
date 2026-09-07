@@ -63,13 +63,17 @@ func zigoNewOnLocationCallbackHandle(value OnLocationCallback) zigoCallbackHandl
 
 func zigoNewOnStreamCallbackHandle(value OnStreamCallback) zigoCallbackHandle {
 	return raw.NewCallbackHandle(func(p0 unsafe.Pointer, p1 int32) {
-		value(p0, Location(p1))
+		value(zigoNewBorrowedStream(p0, nil), Location(p1))
 	})
 }
 
 func zigoNewOnViewCallbackHandle(value OnViewCallback) zigoCallbackHandle {
 	return raw.NewCallbackHandle(func(p0 unsafe.Pointer) uint8 {
-		return zigoBoolToUint8(value(p0))
+		var h0 *Stream
+		if p0 != nil {
+			h0 = zigoNewBorrowedStream(p0, nil)
+		}
+		return zigoBoolToUint8(value(h0))
 	})
 }
 

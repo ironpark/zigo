@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T08:43:04Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test` passes and the `OnLocation`/`PickLocation` constructors in both
 > NEXT: none

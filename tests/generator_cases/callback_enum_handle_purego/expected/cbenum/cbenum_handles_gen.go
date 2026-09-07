@@ -14,24 +14,45 @@ type Stream struct {
 	active int
 	closed bool
 	poison *NativePanicError
+	owner  zigoHandle
 }
 
-// zigoAcquire pins s open for one native call and hands back its pointer;
-// the call ends with zigoRelease. A nil, closed, or poisoned handle is the error.
+func zigoNewBorrowedStream(ptr unsafe.Pointer, owner zigoHandle) *Stream {
+	return &Stream{ptr: ptr, owner: owner}
+}
+
+// zigoAcquire pins s and its parent open for one native call.
 func (s *Stream) zigoAcquire(operation string) (unsafe.Pointer, error) {
 	if s == nil {
 		return nil, &HandleError{Operation: operation}
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	if s.closed || s.ptr == nil {
-		return nil, &HandleError{Operation: operation}
+	parent := s.owner
+	s.mu.Unlock()
+	if parent != nil {
+		if _, err := parent.zigoAcquire(operation); err != nil {
+			return nil, err
+		}
 	}
-	if s.poison != nil {
-		return nil, s.poison.poisoned(operation)
+	s.mu.Lock()
+	var err error
+	switch {
+	case s.closed || s.ptr == nil:
+		err = &HandleError{Operation: operation}
+	case s.poison != nil:
+		err = s.poison.poisoned(operation)
+	default:
+		s.active++
 	}
-	s.active++
-	return s.ptr, nil
+	ptr := s.ptr
+	s.mu.Unlock()
+	if err != nil {
+		if parent != nil {
+			parent.zigoRelease()
+		}
+		return nil, err
+	}
+	return ptr, nil
 }
 
 func (s *Stream) zigoRelease() {
@@ -40,7 +61,9 @@ func (s *Stream) zigoRelease() {
 	}
 	s.mu.Lock()
 	s.active--
+	parent := s.owner
 	s.mu.Unlock()
+	if parent != nil { parent.zigoRelease() }
 }
 
 // zigoPoison marks s unusable: a Zig panic unwound through native frames
@@ -50,8 +73,29 @@ func (s *Stream) zigoPoison(cause *NativePanicError) {
 		return
 	}
 	s.mu.Lock()
-	defer s.mu.Unlock()
+	parent := s.owner
 	if s.poison == nil {
 		s.poison = cause
 	}
+	s.mu.Unlock()
+	if parent != nil {
+		parent.zigoPoison(cause)
+	}
+}
+
+// Close detaches this borrowed Stream view without releasing native resources.
+func (s *Stream) Close() error {
+	if s == nil { return nil }
+	s.mu.Lock()
+	if s.closed { s.mu.Unlock(); return nil }
+	if s.active != 0 {
+		active := s.active
+		s.mu.Unlock()
+		return &HandleInUseError{Operation: "Stream.Close", Children: active}
+	}
+	s.closed = true
+	s.ptr = nil
+	s.owner = nil
+	s.mu.Unlock()
+	return nil
 }

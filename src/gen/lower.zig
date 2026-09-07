@@ -2659,6 +2659,9 @@ test "lowering records who owns every result" {
     var cursor: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Cursor" } };
     const view: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = true, .ref = "View" } };
     var node: semantic.TypeNode = .{ .materialized = .{ .ref = "Node" } };
+    const userdata: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
+    var no_result: semantic.TypeNode = .{ .void = {} };
+    const watch_callback: semantic.TypeNode = .{ .callback = .{ .has_userdata = true, .params = &.{ cursor, userdata }, .@"return" = &no_result } };
     const fields = [_]semantic.TypeField{.{ .name = "value", .type = .{ .int = .{ .bits = 32, .signed = true } } }};
     const document: semantic.Semantic = .{
         .allocator = "std.heap.smp_allocator",
@@ -2692,6 +2695,8 @@ test "lowering records who owns every result" {
             .{ .name = "fill", .ownership = .caller, .release = "free", .params = &.{.{ .direction = .out, .name = "output", .type = .{ .slice = .{ .@"const" = false, .element = &node } }, .written = .@"return" }}, .@"return" = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } }, .symbol = "zg_fill" },
             // 13. A value.
             .{ .name = "count", .params = &.{}, .@"return" = .{ .int = .{ .bits = 32, .signed = true } }, .symbol = "zg_count" },
+            // 14. A callback that receives a cursor as an owner-less borrowed handle.
+            .{ .name = "watch", .params = &.{ .{ .name = "callback", .type = watch_callback }, .{ .name = "userdata", .type = userdata } }, .@"return" = .{ .void = {} }, .symbol = "zg_watch" },
         },
         .package = "owners",
         .prefix = "zg",
@@ -2715,6 +2720,8 @@ test "lowering records who owns every result" {
     try std.testing.expect(store_lifecycle.returns_borrowed_views);
     try std.testing.expect(!store_lifecycle.can_be_borrowed);
     try std.testing.expect(program.handles[1].lifecycle.constructor != null);
+    // The cursor is never returned borrowed, but a callback receives one.
+    try std.testing.expect(program.handles[1].lifecycle.can_be_borrowed);
     try std.testing.expect(program.handles[2].lifecycle.can_be_borrowed);
     try std.testing.expect(!program.handles[2].lifecycle.has_borrowed_refs);
 

@@ -737,7 +737,7 @@ pub fn writePublicCallbackType(scope: PublicScope, writer: *std.Io.Writer, progr
 /// wrap the user's function instead of converting its type.
 pub fn callbackNeedsAdapter(program: abi.Program, callback: semantic.Callback) bool {
     const value_count = if (callback.has_userdata and callback.params.len != 0) callback.params.len - 1 else callback.params.len;
-    for (callback.params[0..value_count]) |parameter| if (type_spelling.isPackedValue(program, parameter) or parameter == .bool or parameter == .@"enum") return true;
+    for (callback.params[0..value_count]) |parameter| if (type_spelling.isPackedValue(program, parameter) or parameter == .bool or parameter == .@"enum" or parameter == .opaque_ptr) return true;
     return callback.@"return".* == .bool or callback.@"return".* == .@"enum" or callback.hasCodepoints();
 }
 
@@ -765,6 +765,14 @@ pub fn writeCallbackAdapter(scope: PublicScope, writer: *std.Io.Writer, callback
         if (go_error) try writer.writeAll(", error)");
     }
     try writer.writeAll(" {\n\t\t");
+    // A nullable handle pointer keeps `nil` as a nil handle rather than a
+    // handle around a null pointer.
+    for (callback.params[0..value_count], 0..) |parameter, index| {
+        if (parameter != .opaque_ptr or !parameter.opaque_ptr.nullable) continue;
+        try writer.print("var h{d} *", .{index});
+        try scope.writeTypeName(writer, parameter.opaque_ptr.ref);
+        try writer.print("\n\t\tif p{d} != nil {{\n\t\t\th{d} = zigoNewBorrowed{s}(p{d}, nil)\n\t\t}}\n\t\t", .{ index, index, parameter.opaque_ptr.ref, index });
+    }
     // A `rune` result is converted back to its carrier; with `go_error` the
     // pair has to be taken apart first.
     if (callback.@"return".* != .void) {
@@ -797,6 +805,10 @@ fn writeCallbackAdapterArgument(scope: PublicScope, writer: *std.Io.Writer, call
         try writer.print("{s}FromBacking(p{d})", .{ parameter.value_struct.ref, index })
     else if (parameter == .bool)
         try writer.print("p{d} != 0", .{index})
+    else if (parameter == .opaque_ptr and parameter.opaque_ptr.nullable)
+        try writer.print("h{d}", .{index})
+    else if (parameter == .opaque_ptr)
+        try writer.print("zigoNewBorrowed{s}(p{d}, nil)", .{ parameter.opaque_ptr.ref, index })
     else if (parameter == .@"enum") {
         var buffer: [16]u8 = undefined;
         const name = try std.fmt.bufPrint(&buffer, "p{d}", .{index});
