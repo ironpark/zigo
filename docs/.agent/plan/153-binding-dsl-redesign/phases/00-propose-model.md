@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T12:14:02Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Prioritized redesign recommendations are ready to present with clear separation from existing APIs.
 > NEXT: none
