@@ -154,6 +154,28 @@ pub const Function = struct {
         if (options.covers) |value| result.covers = value;
         return result;
     }
+
+    /// Mark a handle result as owned by the caller.
+    pub fn callerOwned(comptime self: Function) Function {
+        var result = self;
+        result.returns.ownership = .caller;
+        return result;
+    }
+
+    /// Mark a buffer result as caller-owned and name its release function.
+    pub fn releasedBy(comptime self: Function, comptime path: []const u8) Function {
+        var result = self;
+        result.returns.ownership = .caller;
+        result.returns.release = path;
+        return result;
+    }
+
+    /// Mark a handle result as borrowed from its receiver.
+    pub fn borrowed(comptime self: Function) Function {
+        var result = self;
+        result.returns.ownership = .borrowed;
+        return result;
+    }
 };
 
 /// Free functions attached to one receiver, with a shared name prefix

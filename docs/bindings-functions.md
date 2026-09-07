@@ -61,13 +61,19 @@ snapshot typedef, enum 상수, tagged-union projection, last-error 함수까지 
 
 ```zig
 const queries = zigo.dsl.funcs(mylib, .{
-    .base = "root",
     .prefix = "query",
+    .exclude = &.{"queryDebug"},
+});
+
+const functions = zigo.dsl.collect(.{
+    zigo.dsl.func("root.version"),
+    queries,
+    zigo.dsl.func("root.take").releasedBy("root.free"),
 });
 
 pub const bindings = zigo.define(.{
     .root = mylib,
-    .functions = &queries,
+    .functions = &functions,
 });
 ```
 
@@ -75,14 +81,17 @@ pub const bindings = zigo.define(.{
 
 ```zig
 const len = zigo.dsl.func("Context.len");
-const take = zigo.dsl.func("Context.take").with(.{
-    .returns = .{ .ownership = .caller, .release = "Context.free" },
-});
+const open = zigo.dsl.func("Context.open").callerOwned();
+const take = zigo.dsl.func("Context.take").releasedBy("Context.free");
+const view = zigo.dsl.func("Context.view").borrowed();
 ```
 
-`funcs`의 빈 `prefix`는 해당 container의 공개 함수 전체를 선택합니다. 아무 함수도 고르지
-못하면 compile error입니다. 여러 함수에 하나의 파라미터·반환 계약을 일괄 적용하지 않으므로
-개별 메타데이터가 필요한 함수는 `func`로 명시합니다.
+`funcs`의 `.base` 기본값은 `"root"`이고 빈 `prefix`는 해당 container의 공개 함수 전체를
+선택합니다. `.exclude`는 prefix로 선택된 선언 이름을 정확히 제외합니다. 아무 함수도 고르지
+못하거나 존재하지 않는 이름을 제외하면 compile error입니다. `collect`는 개별 `func`와
+`funcs` 배열을 왼쪽부터 하나의 고정 크기 배열로 합칩니다. 여러 함수에 하나의 파라미터·반환
+계약을 일괄 적용하지 않으므로 개별 메타데이터가 필요한 함수는 `func`로 명시합니다. 그 밖의
+옵션은 `func(path).with(.{ ... })`로 적용합니다.
 
 Zig 공개 API 전체가 바인딩 API인 큰 module은 자동 발견을 선택할 수 있습니다.
 

@@ -11,6 +11,8 @@
 - `zigo.dsl.func(path)`와 `zigo.dsl.funcs(Container, selector)` comptime helper를 추가했습니다.
   상세 단일 항목은 `func(path).with(options)`로 구성하며, 복수 selector는 최종 바인딩 전에
   선언 순서의 exact path 목록으로 확장됩니다.
+- `funcs`의 root 기본값·정확한 제외 목록, `func`/배열을 평탄화하는 `zigo.dsl.collect`,
+  `callerOwned`·`releasedBy`·`borrowed` ownership shortcut을 추가했습니다.
 
 ## [0.15.0] - 2026-09-07
 
