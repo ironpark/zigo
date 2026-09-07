@@ -35,3 +35,9 @@ pub const external: []const plugin.Plugin = @import("plugin_registry").plugins;
 /// without any golden moving.
 pub const plugins: []const plugin.Plugin = builtins ++ external ++
     if (builtin.is_test) &[_]plugin.Plugin{testing_plugin.plugin} else &[_]plugin.Plugin{};
+
+/// Validation and emission share the same selection; built-ins always run.
+pub fn runs(comptime index: usize, selected: ?[]const []const u8) bool {
+    if (index < builtins.len) return true;
+    return (plugin.Options{ .go_module = "", .plugins = selected }).runsPlugin(plugins[index].name);
+}

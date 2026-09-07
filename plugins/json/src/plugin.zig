@@ -94,7 +94,10 @@ fn renderValueStruct(
         const member = try naming.pascalAlloc(context.allocator, field.name);
         defer context.allocator.free(member);
         try writer.print("\t{s} ", .{member});
-        try context.writeGoType(writer, field.type orelse continue);
+        if (semantic.isCodepoint(field.type.?, field.semantic))
+            try writer.writeAll("rune")
+        else
+            try context.writeGoType(writer, field.type.?);
         try writer.print(" `json:\"{s}\"`\n", .{switch (options.field_names) {
             .zig => field.name,
             .go => member,

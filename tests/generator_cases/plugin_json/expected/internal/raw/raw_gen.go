@@ -23,11 +23,13 @@ func EchoColor(value ColorData, mode uint8) ColorData {
 	var cvalue C.zg_color
 	cvalue.red = C.uint8_t(value.Red)
 	cvalue.green = C.uint8_t(value.Green)
+	cvalue.codepoint = C.uint32_t(value.Codepoint)
 	var outResult C.zg_color
 	C.zg_echo_color(&cvalue, C.uint8_t(mode), &outResult)
 	return ColorData{
 		Red: uint8(outResult.red),
 		Green: uint8(outResult.green),
+		Codepoint: uint32(outResult.codepoint),
 	}
 }
 
@@ -35,9 +37,12 @@ func EchoColor(value ColorData, mode uint8) ColorData {
 type ColorData struct {
 	Red uint8
 	Green uint8
+	_ [2]byte
+	Codepoint uint32
 }
 
 // ColorData slices are copied from C memory as one run, so it must match zg_color byte for byte.
 var _ = [1]struct{}{}[unsafe.Sizeof(ColorData{})-unsafe.Sizeof(C.zg_color{})]
 var _ = [1]struct{}{}[unsafe.Offsetof(ColorData{}.Red)-unsafe.Offsetof(C.zg_color{}.red)]
 var _ = [1]struct{}{}[unsafe.Offsetof(ColorData{}.Green)-unsafe.Offsetof(C.zg_color{}.green)]
+var _ = [1]struct{}{}[unsafe.Offsetof(ColorData{}.Codepoint)-unsafe.Offsetof(C.zg_color{}.codepoint)]

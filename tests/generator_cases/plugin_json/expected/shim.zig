@@ -28,8 +28,9 @@ fn zigoAbiGuard(comptime what: []const u8, comptime reflected: usize, comptime a
 }
 
 comptime {
-    zigoAbiGuard("@sizeOf(Color)", 2, @sizeOf(target.Color));
-    zigoAbiGuard("@alignOf(Color)", 1, @alignOf(target.Color));
+    zigoAbiGuard("@sizeOf(Color)", 8, @sizeOf(target.Color));
+    zigoAbiGuard("@alignOf(Color)", 4, @alignOf(target.Color));
     zigoAbiGuard("@offsetOf(Color, \"red\")", 0, @offsetOf(target.Color, "red"));
     zigoAbiGuard("@offsetOf(Color, \"green\")", 1, @offsetOf(target.Color, "green"));
+    zigoAbiGuard("@offsetOf(Color, \"codepoint\")", 4, @offsetOf(target.Color, "codepoint"));
 }

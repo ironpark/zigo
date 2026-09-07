@@ -1,0 +1,31 @@
+{
+  "functions": [
+    {
+      "name": "ping",
+      "params": [],
+      "return": {
+        "kind": "void"
+      },
+      "symbol": "zg_ping"
+    }
+  ],
+  "types": [
+    {
+      "kind": "opaque",
+      "name": "Counter",
+      "ext": {
+        "JSON": {
+          "field_names": "invalid"
+        },
+        "SATIS": {
+          "interfaces": [
+            "unqualified"
+          ]
+        }
+      }
+    }
+  ],
+  "package": "meter",
+  "prefix": "zg",
+  "zig_version": "0.16.0"
+}

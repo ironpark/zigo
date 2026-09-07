@@ -36,7 +36,8 @@ pub fn extension(comptime P: anytype, comptime value: P.Options) Extension {
         .plugin = P.name,
         .jsonAlloc = struct {
             fn jsonAlloc(allocator: std.mem.Allocator) anyerror![]u8 {
-                return std.json.Stringify.valueAlloc(allocator, value, .{ .emit_null_optional_fields = false });
+                // Null is an explicit plugin value, even when the option has a non-null default.
+                return std.json.Stringify.valueAlloc(allocator, value, .{});
             }
         }.jsonAlloc,
     };

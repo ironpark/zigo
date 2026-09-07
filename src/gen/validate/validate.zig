@@ -21,9 +21,14 @@ const types = @import("types.zig");
 /// `findIssue` themselves; the scratch arena here owns the strings that
 /// diagnostic built.
 pub fn semanticDocument(allocator: std.mem.Allocator, document: semantic.Semantic) !void {
+    return semanticDocumentWithPlugins(allocator, document, null);
+}
+
+/// Validate core rules and only the selected external plugins; null selects all.
+pub fn semanticDocumentWithPlugins(allocator: std.mem.Allocator, document: semantic.Semantic, selected: ?[]const []const u8) !void {
     var scratch = std.heap.ArenaAllocator.init(allocator);
     defer scratch.deinit();
-    if (try findIssue(scratch.allocator(), document) != null) return error.InvalidSemantic;
+    if (try findIssueWithPlugins(scratch.allocator(), document, selected) != null) return error.InvalidSemantic;
 }
 
 pub fn mustVariantNames(allocator: std.mem.Allocator, document: semantic.Semantic) !void {
@@ -153,19 +158,26 @@ const rules = [_]Rule{
 };
 
 pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+    return findIssueWithPlugins(allocator, document, null);
+}
+
+/// Built-in rules always run, including when the external selection is empty.
+pub fn findIssueWithPlugins(allocator: std.mem.Allocator, document: semantic.Semantic, selected: ?[]const []const u8) !?diagnostic.Diagnostic {
     for (rules) |check| if (try check(allocator, document)) |issue| return issue;
     // Plugins judge last, so a plugin rule can never mask a document fault
     // the generator itself would have rejected.
-    return pluginIssue(allocator, document);
+    return pluginIssue(allocator, document, selected);
 }
 
 /// Every registered plugin, in registration order: first its options are
 /// checked against the type it declared for them, then whatever rule it
 /// wrote of its own.
-fn pluginIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
-    inline for (registry.plugins) |registered| {
-        if (try pluginOptionsIssue(registered, allocator, document)) |issue| return issue;
-        if (registered.validate) |check| if (try check(allocator, document)) |issue| return issue;
+fn pluginIssue(allocator: std.mem.Allocator, document: semantic.Semantic, selected: ?[]const []const u8) !?diagnostic.Diagnostic {
+    inline for (registry.plugins, 0..) |registered, index| {
+        if (registry.runs(index, selected)) {
+            if (try pluginOptionsIssue(registered, allocator, document)) |issue| return issue;
+            if (registered.validate) |check| if (try check(allocator, document)) |issue| return issue;
+        }
     }
     return null;
 }

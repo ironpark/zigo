@@ -4959,3 +4959,29 @@ test "extend attaches typed plugin options to a function and to a type" {
     const plain_bytes = try plain.serialize(arena.allocator());
     try std.testing.expect(std.mem.indexOf(u8, plain_bytes, "\"ext\"") == null);
 }
+
+test "plugin options preserve explicit null through reflection and semantic parsing" {
+    const Sample = struct {
+        pub const name = "NULLABLE";
+        pub const Options = struct { limit: ?u32 = 10, required: ?u32 };
+    };
+    const Fixture = struct {
+        pub const Counter = opaque {};
+        pub fn bump(_: *Counter) void {}
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    const document = try reflect(allocator, .{
+        .root = Fixture,
+        .types = &.{.{ .handle = (zigo.Handle{ .type = Fixture.Counter }).extend(Sample, .{ .limit = null, .required = null }) }},
+        .functions = &.{(zigo.Function{ .path = "root.bump", .receiver = Fixture.Counter }).extend(Sample, .{ .limit = null, .required = null })},
+    }, "meter", "zg");
+    var parsed = try semantic.Semantic.parse(allocator, try document.serialize(allocator));
+    defer parsed.deinit();
+    for ([_]semantic.Extensions{ parsed.value.functions[0].ext.?, parsed.value.types[0].ext.? }) |ext| {
+        const options = try std.json.parseFromValueLeaky(Sample.Options, allocator, ext.get(Sample.name).?, .{});
+        try std.testing.expectEqual(@as(?u32, null), options.limit);
+        try std.testing.expectEqual(@as(?u32, null), options.required);
+    }
+}

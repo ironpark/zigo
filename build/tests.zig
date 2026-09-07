@@ -191,6 +191,7 @@ pub fn addRepositorySteps(
         "tests/generator_cases/interfaces_purego/expected",
         "tests/generator_cases/narrow_int/expected",
         "tests/generator_cases/nested_namespace/expected",
+        "tests/generator_cases/plugin_disabled/expected",
         "tests/generator_cases/plugin_json/expected",
         "tests/generator_cases/plugin_satisfies/expected",
         "tests/generator_cases/optional/expected",
@@ -258,6 +259,18 @@ pub fn addRepositorySteps(
     layout_guard.expectExitCode(1);
     layout_guard.expectStdErrMatch("index 2 out of bounds");
     test_step.dependOn(&layout_guard.step);
+    // Compile the JSON golden's public code and exercise its wire round trip.
+    // The raw layout stub isolates Go methods from native library linking.
+    const json_fixture = b.addWriteFiles();
+    _ = json_fixture.add("go.mod", "module example.com/zigo/palette\n\ngo 1.26\n");
+    _ = json_fixture.add("internal/raw/raw.go", "package raw\ntype ColorData struct { Red uint8; Green uint8; Codepoint uint32 }\n");
+    _ = json_fixture.addCopyFile(b.path("tests/generator_cases/plugin_json/expected/palette/palette_structs_gen.go"), "palette/structs.go");
+    _ = json_fixture.addCopyFile(b.path("tests/generator_cases/plugin_json/expected/palette/palette_enums_gen.go"), "palette/enums.go");
+    _ = json_fixture.addCopyFile(b.path("tests/plugin_json_test.go"), "palette/plugin_json_test.go");
+    const json_test = b.addSystemCommand(&.{ "go", "test", "./..." });
+    json_test.setName("JSON plugin generated Go round trips codepoints");
+    json_test.setCwd(json_fixture.getDirectory());
+    test_step.dependOn(&json_test.step);
     test_step.dependOn(&run_tests.step);
     test_step.dependOn(&run_generator_tests.step);
     test_step.dependOn(&run_reflect_walk_tests.step);

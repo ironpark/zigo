@@ -1,0 +1,6 @@
+{
+  "package": "meter",
+  "prefix": "zg",
+  "go_module": "example.com/meter",
+  "plugins": []
+}

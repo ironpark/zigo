@@ -15,6 +15,8 @@ type Color struct {
 	Red uint8
 	// Green corresponds to the Zig field green.
 	Green uint8
+	// Codepoint corresponds to the Zig field codepoint.
+	Codepoint rune
 }
 
 // Color is reinterpreted as raw.ColorData instead of copied, so the two
@@ -22,16 +24,18 @@ type Color struct {
 var _ = [1]struct{}{}[unsafe.Sizeof(Color{})-unsafe.Sizeof(raw.ColorData{})]
 var _ = [1]struct{}{}[unsafe.Offsetof(Color{}.Red)-unsafe.Offsetof(raw.ColorData{}.Red)]
 var _ = [1]struct{}{}[unsafe.Offsetof(Color{}.Green)-unsafe.Offsetof(raw.ColorData{}.Green)]
+var _ = [1]struct{}{}[unsafe.Offsetof(Color{}.Codepoint)-unsafe.Offsetof(raw.ColorData{}.Codepoint)]
 
 // zigoColorJSON is the wire shape of Color: the same fields under the JSON keys the binding chose.
 type zigoColorJSON struct {
 	Red uint8 `json:"red"`
 	Green uint8 `json:"green"`
+	Codepoint rune `json:"codepoint"`
 }
 
 // MarshalJSON encodes Color under the JSON keys the binding chose.
 func (value Color) MarshalJSON() ([]byte, error) {
-	return json.Marshal(zigoColorJSON{Red: value.Red, Green: value.Green})
+	return json.Marshal(zigoColorJSON{Red: value.Red, Green: value.Green, Codepoint: value.Codepoint})
 }
 
 // UnmarshalJSON decodes what MarshalJSON wrote.
@@ -40,7 +44,7 @@ func (value *Color) UnmarshalJSON(data []byte) error {
 	if err := json.Unmarshal(data, &wire); err != nil {
 		return err
 	}
-	*value = Color{Red: wire.Red, Green: wire.Green}
+	*value = Color{Red: wire.Red, Green: wire.Green, Codepoint: wire.Codepoint}
 	return nil
 }
 
@@ -48,6 +52,7 @@ func zigoColorToRaw(value Color) raw.ColorData {
 	return raw.ColorData{
 		Red: value.Red,
 		Green: value.Green,
+		Codepoint: uint32(value.Codepoint),
 	}
 }
 
@@ -55,5 +60,6 @@ func zigoColorFromRaw(value raw.ColorData) Color {
 	return Color{
 		Red: value.Red,
 		Green: value.Green,
+		Codepoint: rune(value.Codepoint),
 	}
 }

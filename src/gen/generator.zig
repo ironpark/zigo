@@ -66,7 +66,7 @@ pub fn generate(allocator: std.mem.Allocator, io: std.Io, semantic_bytes: []cons
 
     var parsed = try semantic.Semantic.parse(scratch_allocator, semantic_bytes);
     defer parsed.deinit();
-    try validate.semanticDocument(scratch_allocator, parsed.value);
+    try validate.semanticDocumentWithPlugins(scratch_allocator, parsed.value, options.plugins);
     if (options.backend == .purego) try validate.puregoCallbacks(parsed.value);
     // Validation judged the Zig surface the document records; everything below
     // works on the expansion, where a stream-returning method has become the
@@ -1228,4 +1228,23 @@ test "an interface whose implementations disagree on a signature is a ZIGO049" {
     var temporary = std.testing.tmpDir(.{ .iterate = true });
     defer temporary.cleanup();
     try std.testing.expectError(error.InvalidSemantic, generate(arena.allocator(), std.testing.io, bytes, temporary.dir, options));
+}
+
+test "disabled plugin options do not prevent generation but selected and builtin options are validated" {
+    const fixture =
+        \\{"functions":[],"types":[{"kind":"opaque","name":"Counter","ext":{"TEST":{"mode":"invalid"}}}],"package":"meter","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    var output = std.testing.tmpDir(.{ .iterate = true });
+    defer output.cleanup();
+    const options: Options = .{ .package = "meter", .prefix = "zg", .go_module = "example.com/meter", .plugins = &.{} };
+    try generate(std.testing.allocator, std.testing.io, fixture, output.dir, options);
+    var selected = options;
+    selected.plugins = &.{"TEST"};
+    try std.testing.expectError(error.InvalidSemantic, generate(std.testing.allocator, std.testing.io, fixture, output.dir, selected));
+    selected.plugins = null;
+    try std.testing.expectError(error.InvalidSemantic, generate(std.testing.allocator, std.testing.io, fixture, output.dir, selected));
+    const builtin_fixture =
+        \\{"functions":[],"types":[{"kind":"opaque","name":"Counter","ext":{"MUST":{"unknown":true}}}],"package":"meter","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    try std.testing.expectError(error.InvalidSemantic, generate(std.testing.allocator, std.testing.io, builtin_fixture, output.dir, options));
 }
