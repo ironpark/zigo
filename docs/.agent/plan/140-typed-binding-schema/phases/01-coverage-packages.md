@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-07T05:02:44Z"
 depends_on:
 - "140-typed-binding-schema#0"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test --summary all` 전체 통과.
 > NEXT: none

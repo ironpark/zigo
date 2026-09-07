@@ -448,8 +448,81 @@ def indent_of(src, pos):
     return (pos - line_start) // 4
 
 
+# --- markdown fragments -------------------------------------------------------
+
+
+def migrate_fragment(block):
+    """A doc snippet is usually a few top-level keys (`.types = .{...},`) or a
+    single entry. Wrap it as a declaration, transform, and unwrap."""
+    text = block.strip()
+    if not text.startswith("."):
+        return block
+    try:
+        decl = Parser(".{" + text + "}", 0).parse_obj()
+    except Exception:  # noqa: BLE001
+        return block
+    if get(decl, "root") is None and not any(get(decl, k) for k in ("types", "functions", "exclude", "packages", "interfaces")):
+        # Bare entries, one per positional field: decide each by its keys.
+        changed = False
+        for f in decl.fields:
+            if f.key is not None or not isinstance(f.value, Obj):
+                continue
+            if get(f.value, "repr"):
+                f.value = transform_type_entry(f.value)
+                changed = True
+            elif get(f.value, "path") or get(f.value, "functions"):
+                f.value = transform_function_entry(f.value, {})
+                changed = True
+        if not changed:
+            return block
+    else:
+        transform_declaration(decl)
+    inner = emit(Obj(decl.fields, True), 0)
+    lines = inner.split("\n")[1:-1]
+    return reindent("\n".join(lines))
+
+
+def reindent(text):
+    """Nested slices are emitted without knowing their depth; rebuild the
+    indentation from brace depth, which is all a literal-only snippet has."""
+    out = []
+    depth = 0
+    for raw in text.split("\n"):
+        line = raw.strip()
+        if not line:
+            out.append("")
+            continue
+        closing = len(line) - len(line.lstrip("}"))
+        depth -= closing
+        out.append("    " * max(depth, 0) + line)
+        depth += line.count("{") - line.count("}") + closing
+    return "\n".join(out)
+
+
+def migrate_markdown(src):
+    out = []
+    pos = 0
+    for m in re.finditer(r"```zig\n(.*?)```", src, re.S):
+        out.append(src[pos:m.start(1)])
+        block = m.group(1)
+        if ".root =" in block or "zigo.define" in block:
+            out.append(migrate(block))
+        else:
+            out.append(migrate_fragment(block).rstrip("\n") + "\n")
+        pos = m.end(1)
+    out.append(src[pos:])
+    return "".join(out)
+
+
 if __name__ == "__main__":
     for path in sys.argv[1:]:
+        if path.endswith(".md"):
+            text = open(path).read()
+            result = migrate_markdown(text)
+            with open(path, "w") as out:
+                out.write(result)
+            print(f"migrated {path}")
+            continue
         text = open(path).read()
         result = migrate(text)
         with open(path, "w") as out:

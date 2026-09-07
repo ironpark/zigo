@@ -3,66 +3,72 @@ const library = @import("type_relations");
 
 pub const bindings = zigo.define(.{
     .root = library,
-    .types = .{
-        .{ .type = library.Counter, .repr = .@"opaque" },
-        .{ .type = library.Accumulator, .repr = .@"opaque" },
+    .types = &.{
+        .{ .handle = .{ .type = library.Counter } },
+        .{ .handle = .{ .type = library.Accumulator } },
         // The enum has no name of its own: `@typeName` ends in the slice
         // expression that built it. `.name` is what Go and C get called.
-        .{ .name = "CursorStyle", .type = library.CursorStyle, .repr = .enumeration },
-        .{ .name = "CharsetSlot", .type = library.CharsetSlot, .repr = .enumeration },
-        .{ .name = "DeccolmMode", .type = library.DeccolmMode, .repr = .enumeration },
-        .{ .name = "EraseDisplay", .type = library.EraseDisplay, .repr = .enumeration, .exhaustive = false },
+        .{ .enumeration = .{ .name = "CursorStyle", .type = library.CursorStyle } },
+        .{ .enumeration = .{ .name = "CharsetSlot", .type = library.CharsetSlot } },
+        .{ .enumeration = .{ .name = "DeccolmMode", .type = library.DeccolmMode } },
+        .{ .enumeration = .{ .name = "EraseDisplay", .type = library.EraseDisplay, .exhaustive = false } },
         // `.go` maps the extern struct onto a Go type the caller already
         // uses; the two conversions live in point_adapter.go beside the
         // generated files.
-        .{ .type = library.Point, .repr = .value, .go = .{
-            .type = "image.Point",
-            .import = "image",
-            .to_raw = "pointToRaw",
-            .from_raw = "pointFromRaw",
-        } },
+        .{
+            .value = .{
+                .type = library.Point,
+                .go = .{
+                    .type = "image.Point",
+                    .import = "image",
+                    .to_raw = "pointToRaw",
+                    .from_raw = "pointFromRaw",
+                },
+            },
+        },
     },
-    .functions = .{
-        .{ .path = "Counter.create", .params = .{"initial"} },
+    .functions = &.{
+        .{ .path = "Counter.create", .params = &.{.{ .name = "initial" }} },
         .{ .path = "Counter.get" },
-        .{ .path = "Counter.add", .params = .{"delta"} },
+        .{ .path = "Counter.add", .params = &.{.{ .name = "delta" }} },
         .{ .path = "Counter.deinit" },
         .{ .path = "Accumulator.create" },
-        .{ .path = "Accumulator.absorb", .params = .{"counter"} },
+        .{ .path = "Accumulator.absorb", .params = &.{.{ .name = "counter" }} },
         .{ .path = "Accumulator.total" },
         .{ .path = "Accumulator.deinit" },
         // A per-function `.go` adapts a scalar result: Go sees ObjectCount,
         // a type defined beside the generated files, instead of uint.
-        .{ .path = "root.liveObjects", .go = .{ .type = "ObjectCount", .to_raw = "objectCountToRaw", .from_raw = "objectCountFromRaw" } },
+        .{ .path = "root.liveObjects", .returns = .{ .go = .{ .type = "ObjectCount", .to_raw = "objectCountToRaw", .from_raw = "objectCountFromRaw" } } },
         .{ .path = "root.defaultCursorStyle" },
         // A registered enum owns its methods. `DeccolmMode.columns` is a Zig
         // method and binds as one; `cursorStyleBlinks` is a free function the
         // group attaches to `CursorStyle`, dropping the shared prefix. Both
         // become Go methods on the enum, with the enum value as the receiver.
         .{ .path = "DeccolmMode.columns" },
-        .{
-            .receiver = "CursorStyle",
-            .strip_prefix = "cursorStyle",
-            .functions = .{"root.cursorStyleBlinks"},
-        },
-        .{ .path = "root.configureStyles", .params = .{ "slot", "style" } },
-        .{ .path = "root.isWideColumns", .params = .{"mode"} },
-        .{ .path = "root.echoEraseDisplay", .params = .{"value"} },
-        .{ .path = "root.text.runWidth", .params = .{ "first", "second" } },
-        .{ .path = "root.text.unicode.codepointWidth", .params = .{"cp"} },
-        .{ .path = "root.doubleWidth", .params = .{"value"} },
-        .{ .path = "root.invert", .params = .{"value"} },
-        .{ .path = "root.styleOrDefault", .params = .{"style"} },
-        .{ .path = "root.blinkingStyle", .params = .{"style"} },
-        .{ .path = "root.shiftPoint", .params = .{ "origin", "delta" } },
-        .{ .path = "root.checkedShift", .params = .{ "origin", "delta" } },
+        .{ .path = "root.configureStyles", .params = &.{ .{ .name = "slot" }, .{ .name = "style" } } },
+        .{ .path = "root.isWideColumns", .params = &.{.{ .name = "mode" }} },
+        .{ .path = "root.echoEraseDisplay", .params = &.{.{ .name = "value" }} },
+        .{ .path = "root.text.runWidth", .params = &.{ .{ .name = "first" }, .{ .name = "second" } } },
+        .{ .path = "root.text.unicode.codepointWidth", .params = &.{.{ .name = "cp" }} },
+        .{ .path = "root.doubleWidth", .params = &.{.{ .name = "value" }} },
+        .{ .path = "root.invert", .params = &.{.{ .name = "value" }} },
+        .{ .path = "root.styleOrDefault", .params = &.{.{ .name = "style" }} },
+        .{ .path = "root.blinkingStyle", .params = &.{.{ .name = "style" }} },
+        .{ .path = "root.shiftPoint", .params = &.{ .{ .name = "origin" }, .{ .name = "delta" } } },
+        .{ .path = "root.checkedShift", .params = &.{ .{ .name = "origin" }, .{ .name = "delta" } } },
         .{
             .path = "root.describeText",
-            .params = .{"label"},
-            .param_meta = .{ .label = .{ .semantic = .utf8_string } },
+            .params = &.{.{ .name = "label", .semantic = .utf8_string }},
         },
-        .{ .path = "root.sumOrZero", .params = .{"values"} },
-        .{ .path = "root.leadingDigits", .params = .{"count"} },
-        .{ .path = "root.styleName", .params = .{"style"}, .semantic = .utf8_string },
+        .{ .path = "root.sumOrZero", .params = &.{.{ .name = "values" }} },
+        .{ .path = "root.leadingDigits", .params = &.{.{ .name = "count" }} },
+        .{ .path = "root.styleName", .params = &.{.{ .name = "style" }}, .returns = .{ .semantic = .utf8_string } },
+    },
+    .methods = &.{
+        .{
+            .receiver = library.CursorStyle,
+            .strip_prefix = "cursorStyle",
+            .functions = &.{.{ .path = "root.cursorStyleBlinks" }},
+        },
     },
 });

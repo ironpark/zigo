@@ -279,7 +279,7 @@ fn collectContainer(
             value,
             comptime if (owner) |parent| parent ++ "." ++ candidate.name else candidate.name,
             path_prefix ++ "." ++ candidate.name,
-            comptime discovered and walk.discoveryRecursive(binding),
+            comptime discovered and (binding.discover == .recursive),
         );
     }
 }

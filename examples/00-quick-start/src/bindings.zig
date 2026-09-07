@@ -3,5 +3,5 @@ const library = @import("calculator");
 
 pub const bindings = zigo.define(.{
     .root = library,
-    .functions = .{.{ .path = "root.add" }},
+    .functions = &.{.{ .path = "root.add" }},
 });

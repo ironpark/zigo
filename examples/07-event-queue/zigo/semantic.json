@@ -1946,65 +1946,6 @@
       "symbol": "zg_ticker_free_ticker"
     },
     {
-      "doc": "Advances a ticker and reports how many whole intervals have elapsed.",
-      "name": "advance",
-      "package": "types",
-      "ownership": "borrowed",
-      "params": [
-        {
-          "direction": "in",
-          "name": "steps",
-          "name_source": "sidecar",
-          "retention": "borrowed",
-          "source": {
-            "line": 558,
-            "column": 39
-          },
-          "type": {
-            "bits": 32,
-            "is_usize": false,
-            "kind": "int",
-            "signed": false
-          }
-        }
-      ],
-      "receiver": "Ticker",
-      "return": {
-        "bits": 32,
-        "is_usize": false,
-        "kind": "int",
-        "signed": false
-      },
-      "source": {
-        "path": "root.zig",
-        "line": 558,
-        "column": 8
-      },
-      "zig_path": "tickerAdvance",
-      "symbol": "zg_ticker_advance"
-    },
-    {
-      "doc": "Reports the raw elapsed tick count.",
-      "name": "elapsed",
-      "package": "types",
-      "ownership": "borrowed",
-      "params": [],
-      "receiver": "Ticker",
-      "return": {
-        "bits": 32,
-        "is_usize": false,
-        "kind": "int",
-        "signed": false
-      },
-      "source": {
-        "path": "root.zig",
-        "line": 564,
-        "column": 8
-      },
-      "zig_path": "tickerElapsed",
-      "symbol": "zg_ticker_elapsed"
-    },
-    {
       "doc": "Exercises cross-package handle and value-struct parameters without making\nthis free function a Ticker method.",
       "name": "inspectTicker",
       "ownership": "borrowed",
@@ -2155,6 +2096,65 @@
         "column": 8
       },
       "symbol": "zg_live_selection_strings"
+    },
+    {
+      "doc": "Advances a ticker and reports how many whole intervals have elapsed.",
+      "name": "advance",
+      "package": "types",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "steps",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 558,
+            "column": 39
+          },
+          "type": {
+            "bits": 32,
+            "is_usize": false,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "receiver": "Ticker",
+      "return": {
+        "bits": 32,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 558,
+        "column": 8
+      },
+      "zig_path": "tickerAdvance",
+      "symbol": "zg_ticker_advance"
+    },
+    {
+      "doc": "Reports the raw elapsed tick count.",
+      "name": "elapsed",
+      "package": "types",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "Ticker",
+      "return": {
+        "bits": 32,
+        "is_usize": false,
+        "kind": "int",
+        "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 564,
+        "column": 8
+      },
+      "zig_path": "tickerElapsed",
+      "symbol": "zg_ticker_elapsed"
     }
   ],
   "ir_version": 1,

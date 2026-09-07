@@ -109,11 +109,6 @@ func DeccolmModeColumns(self uint8) uint16 {
 	return uint16(C.zg_deccolm_mode_columns(C.uint8_t(self)))
 }
 
-// CursorStyleBlinks calls the generated C ABI wrapper for zg_cursor_style_blinks.
-func CursorStyleBlinks(self uint8) uint8 {
-	return uint8(C.zg_cursor_style_blinks(C.uint8_t(self)))
-}
-
 // ConfigureStyles calls the generated C ABI wrapper for zg_configure_styles.
 func ConfigureStyles(slot uint8, style uint8) uint8 {
 	return uint8(C.zg_configure_styles(C.uint8_t(slot), C.uint8_t(style)))
@@ -281,6 +276,11 @@ func StyleName(style *uint8) (string, bool) {
 		return "", false
 	}
 	return C.GoStringN((*C.char)(unsafe.Pointer(outResultPtr)), C.int(outResultLen)), true
+}
+
+// CursorStyleBlinks calls the generated C ABI wrapper for zg_cursor_style_blinks.
+func CursorStyleBlinks(self uint8) uint8 {
+	return uint8(C.zg_cursor_style_blinks(C.uint8_t(self)))
 }
 
 // PointData mirrors the zg_point layout, padding included.

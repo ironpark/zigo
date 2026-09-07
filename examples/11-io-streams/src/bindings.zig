@@ -7,35 +7,34 @@ pub const bindings = zigo.define(.{
     // Every `u21` in this library is a codepoint, so the binding says so once
     // instead of at each site.
     .codepoints = .infer_u21,
-    .types = .{
-        .{ .type = library.Document, .repr = .@"opaque" },
-        .{ .type = library.Sink, .repr = .@"opaque" },
-        .{ .type = library.Source, .repr = .@"opaque" },
+    .types = &.{
+        .{ .handle = .{ .type = library.Document } },
+        .{ .handle = .{ .type = library.Sink } },
+        .{ .handle = .{ .type = library.Source } },
     },
-    .functions = .{
+    .functions = &.{
         .{ .path = "Document.create" },
         .{ .path = "Document.deinit" },
-        .{ .path = "Document.append", .params = .{"line"} },
+        .{ .path = "Document.append", .params = &.{.{ .name = "line" }} },
         .{ .path = "Document.count" },
         // The default 64 KiB staging buffer batches small writes. Explicit
         // flushes and the writer's behavior also affect the call count.
-        .{ .path = "Document.dump", .params = .{"w"} },
+        .{ .path = "Document.dump", .params = &.{.{ .name = "w" }} },
         // A deliberately small buffer, so the test can count the crossings a
         // known payload costs and see the size decide them.
-        .{ .path = "Document.load", .params = .{"r"}, .param_meta = .{ .r = .{ .buffer = 4096 } } },
-        .{ .path = "root.banner", .params = .{ "w", "width" } },
-        .{ .path = "root.tee", .params = .{ "r", "w" } },
+        .{ .path = "Document.load", .params = &.{.{ .name = "r", .buffer = 4096 }} },
+        .{ .path = "root.banner", .params = &.{ .{ .name = "w" }, .{ .name = "width" } } },
+        .{ .path = "root.tee", .params = &.{ .{ .name = "r" }, .{ .name = "w" } } },
         // Inferred codepoints: these `[]u21` are Go `[]rune` over the same
         // memory the raw `[]uint32` uses, and inputs are checked against the
         // Unicode range.
-        .{ .path = "root.sumCodepoints", .params = .{"values"} },
+        .{ .path = "root.sumCodepoints", .params = &.{.{ .name = "values" }} },
         .{
             .path = "root.fillCodepoints",
-            .params = .{"output"},
-            .param_meta = .{ .output = .{ .direction = .out } },
+            .params = &.{.{ .name = "output", .direction = .out }},
         },
-        .{ .path = "root.takeCodepoints", .returns = .caller, .release = "root.freeCodepoints" },
-        .{ .path = "root.freeCodepoints", .params = .{"values"} },
+        .{ .path = "root.takeCodepoints", .returns = .{ .ownership = .caller, .release = "root.freeCodepoints" } },
+        .{ .path = "root.freeCodepoints", .params = &.{.{ .name = "values" }} },
         // A method that hands a stream out. It generates `Write` and `Flush`
         // on the handle rather than a Go value standing for the pointer, so
         // `io.Copy(sink, src)` works and nothing outlives the call.
@@ -43,7 +42,7 @@ pub const bindings = zigo.define(.{
         .{ .path = "Sink.writer" },
         .{ .path = "Sink.count" },
         .{ .path = "Sink.deinit" },
-        .{ .path = "Source.create", .params = .{"bytes"} },
+        .{ .path = "Source.create", .params = &.{.{ .name = "bytes" }} },
         .{ .path = "Source.reader" },
         .{ .path = "Source.deinit" },
     },

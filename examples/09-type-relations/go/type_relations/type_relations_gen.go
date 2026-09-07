@@ -115,11 +115,6 @@ func (d DeccolmMode) Columns() uint16 {
 	return raw.DeccolmModeColumns(uint8(d))
 }
 
-// Blinks: Reports whether a cursor of this style blinks.
-func (c CursorStyle) Blinks() bool {
-	return raw.CursorStyleBlinks(uint8(c)) != 0
-}
-
 // ConfigureStyles calls the Zig function configureStyles.
 func ConfigureStyles(slot CharsetSlot, style CursorStyle) bool {
 	return raw.ConfigureStyles(uint8(slot), uint8(style)) != 0
@@ -257,4 +252,9 @@ func StyleName(style *CursorStyle) (string, bool) {
 	}
 	zigoResult, zigoHas := raw.StyleName(styleRaw)
 	return zigoResult, zigoHas
+}
+
+// Blinks: Reports whether a cursor of this style blinks.
+func (c CursorStyle) Blinks() bool {
+	return raw.CursorStyleBlinks(uint8(c)) != 0
 }

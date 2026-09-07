@@ -680,20 +680,6 @@ func TickerFreeTicker(self unsafe.Pointer) int32 {
 	return code
 }
 
-// TickerAdvance calls the generated C ABI wrapper for zg_ticker_advance.
-func TickerAdvance(self unsafe.Pointer, steps uint32) (uint32, int32) {
-	var outResult C.uint32_t
-	code := int32(C.zg_ticker_advance((*C.zg_ticker)(self), C.uint32_t(steps), &outResult))
-	return uint32(outResult), code
-}
-
-// TickerElapsed calls the generated C ABI wrapper for zg_ticker_elapsed.
-func TickerElapsed(self unsafe.Pointer) (uint32, int32) {
-	var outResult C.uint32_t
-	code := int32(C.zg_ticker_elapsed((*C.zg_ticker)(self), &outResult))
-	return uint32(outResult), code
-}
-
 // InspectTicker calls the generated C ABI wrapper for zg_inspect_ticker.
 func InspectTicker(info TickerInfoData, ticker unsafe.Pointer) (TickerInfoData, int32) {
 	var cinfo C.zg_ticker_info
@@ -735,6 +721,20 @@ func LiveLimits() uint {
 // LiveSelectionStrings calls the generated C ABI wrapper for zg_live_selection_strings.
 func LiveSelectionStrings() uint {
 	return uint(C.zg_live_selection_strings())
+}
+
+// TickerAdvance calls the generated C ABI wrapper for zg_ticker_advance.
+func TickerAdvance(self unsafe.Pointer, steps uint32) (uint32, int32) {
+	var outResult C.uint32_t
+	code := int32(C.zg_ticker_advance((*C.zg_ticker)(self), C.uint32_t(steps), &outResult))
+	return uint32(outResult), code
+}
+
+// TickerElapsed calls the generated C ABI wrapper for zg_ticker_elapsed.
+func TickerElapsed(self unsafe.Pointer) (uint32, int32) {
+	var outResult C.uint32_t
+	code := int32(C.zg_ticker_elapsed((*C.zg_ticker)(self), &outResult))
+	return uint32(outResult), code
 }
 
 // StatsData mirrors the zg_stats layout, padding included.

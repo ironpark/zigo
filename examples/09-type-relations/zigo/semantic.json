@@ -272,24 +272,6 @@
       "symbol": "zg_deccolm_mode_columns"
     },
     {
-      "doc": "Reports whether a cursor of this style blinks.",
-      "name": "blinks",
-      "ownership": "borrowed",
-      "params": [],
-      "receiver": "CursorStyle",
-      "receiver_kind": "value",
-      "return": {
-        "kind": "bool"
-      },
-      "source": {
-        "path": "root.zig",
-        "line": 104,
-        "column": 8
-      },
-      "zig_path": "cursorStyleBlinks",
-      "symbol": "zg_cursor_style_blinks"
-    },
-    {
       "name": "configureStyles",
       "ownership": "borrowed",
       "params": [
@@ -908,6 +890,24 @@
         "column": 8
       },
       "symbol": "zg_style_name"
+    },
+    {
+      "doc": "Reports whether a cursor of this style blinks.",
+      "name": "blinks",
+      "ownership": "borrowed",
+      "params": [],
+      "receiver": "CursorStyle",
+      "receiver_kind": "value",
+      "return": {
+        "kind": "bool"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 104,
+        "column": 8
+      },
+      "zig_path": "cursorStyleBlinks",
+      "symbol": "zg_cursor_style_blinks"
     }
   ],
   "ir_version": 1,

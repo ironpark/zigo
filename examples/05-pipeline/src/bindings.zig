@@ -3,17 +3,17 @@ const library = @import("pipeline");
 
 pub const bindings = zigo.define(.{
     .root = library,
-    .types = .{
-        .{ .type = library.Pipeline, .repr = .@"opaque" },
-        .{ .name = "IntBatch", .type = library.IntBatch, .repr = .@"opaque" },
-        .{ .name = "FloatBatch", .type = library.FloatBatch, .repr = .@"opaque" },
+    .types = &.{
+        .{ .handle = .{ .type = library.Pipeline } },
+        .{ .handle = .{ .name = "IntBatch", .type = library.IntBatch } },
+        .{ .handle = .{ .name = "FloatBatch", .type = library.FloatBatch } },
     },
     // Both batches come from the same generic, so the methods that do not
     // mention the element type can be one Go interface.
-    .interfaces = .{
-        .{ .name = "Batch", .methods = .{"len"}, .types = .{ library.IntBatch, library.FloatBatch }, .doc = "Batch is any staged batch, whatever its element type." },
+    .interfaces = &.{
+        .{ .name = "Batch", .methods = &.{"len"}, .types = &.{ library.IntBatch, library.FloatBatch }, .doc = "Batch is any staged batch, whatever its element type." },
     },
-    .functions = .{
+    .functions = &.{
         .{ .path = "IntBatch.create" },
         .{ .path = "IntBatch.push" },
         .{ .path = "IntBatch.len" },
@@ -24,16 +24,12 @@ pub const bindings = zigo.define(.{
         .{ .path = "FloatBatch.deinit" },
         .{
             .path = "Pipeline.create",
-            .params = .{ "name", "mode", "callback", "userdata" },
-            .param_meta = .{
-                .name = .{ .semantic = .utf8_string },
-                .callback = .{ .retention = .retained },
-            },
+            .params = &.{ .{ .name = "name", .semantic = .utf8_string }, .{ .name = "mode" }, .{ .name = "callback", .retention = .retained }, .{ .name = "userdata" } },
         },
-        .{ .path = "Pipeline.process", .params = .{"values"} },
-        .{ .path = "Pipeline.name", .semantic = .utf8_string },
+        .{ .path = "Pipeline.process", .params = &.{.{ .name = "values" }} },
+        .{ .path = "Pipeline.name", .returns = .{ .semantic = .utf8_string } },
         .{ .path = "Pipeline.mode" },
-        .{ .path = "Pipeline.setEnabled", .params = .{"enabled"} },
+        .{ .path = "Pipeline.setEnabled", .params = &.{.{ .name = "enabled" }} },
         .{ .path = "Pipeline.processed" },
         .{ .path = "Pipeline.total" },
         .{ .path = "Pipeline.deinit" },
