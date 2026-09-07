@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T14:56:09Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Findings and exceptions are recorded with evidence; production examples remain unchanged.
 > NEXT: none

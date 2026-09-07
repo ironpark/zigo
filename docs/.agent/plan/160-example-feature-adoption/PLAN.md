@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-09-07T14:56:09Z"
 description: Audit all examples for useful adoption gaps in the current binding authoring API
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-07T14:52:00Z"
 ---
 > NEXT: Audit the current examples and verify candidate improvements. ([Phase 0](phases/00-initial-work.md))
 
 # Phases
 
-- [ ] [Phase 00: Initial Work](phases/00-initial-work.md)
+- [x] [Phase 00: Initial Work](phases/00-initial-work.md)
 
 # Shared Verification
 
