@@ -38,6 +38,7 @@ pub fn functionIssue(allocator: std.mem.Allocator, document: semantic.Semantic) 
             .hint = "use an explicit error set in the Zig function signature",
         };
         if (try valueReceiverIssue(allocator, document, function)) |issue| return issue;
+        if (try implementsIssue(allocator, function)) |issue| return issue;
         if (try iteratorIssue(allocator, function)) |issue| return issue;
         if (try scalarAdapterIssue(allocator, function)) |issue| return issue;
         if (try codepointIssue(allocator, function)) |issue| return issue;
@@ -457,6 +458,13 @@ fn codepointIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !
             if (hints.len != callback.params.len) bad = true;
             for (hints, callback.params) |hint, node| {
                 if (hint == null) continue;
+                // A byte payload carries the text marking that decides
+                // between `string` and `[]byte`; every other hint is the
+                // codepoint one on a `u32`.
+                if (semantic.isBytePayload(node)) {
+                    if (!semantic.isTextHint(hint)) bad = true;
+                    continue;
+                }
                 if (hint != .codepoint or !semantic.isCodepointInt(node)) bad = true;
             }
         }
@@ -468,7 +476,7 @@ fn codepointIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !
             .code = "ZIGO053",
             .message = try std.fmt.allocPrint(allocator, "callback `{s}` carries a semantic hint on a position that is not a u32 scalar", .{parameter.name}),
             .site = site.functionSite(function),
-            .hint = "a callback hint is `.codepoint` on a `u32` parameter or result of a registered `.callback` entry; slices and other widths take no hint",
+            .hint = "a callback hint is `.codepoint` on a `u32` parameter or result of a registered `.callback` entry, or a text marking on a byte payload; other positions take no hint",
         };
     }
     if (function.return_semantic == .codepoint) {
@@ -516,6 +524,7 @@ fn valueReceiverIssue(
         if (function.childOfReceiver()) break :blk "`.child_of_receiver`";
         if (function.returnsBorrowedHandle()) break :blk "`.returns.ownership = .borrowed`";
         if (function.iterator != null) break :blk "`.iterator`";
+        if (function.implements != null) break :blk "`.implements`";
         if (function.boxed != null) break :blk "a boxed constructor";
         // `.destroys` already needs the destroyed type as its receiver, so
         // only the constructor side can reach a value receiver.
@@ -574,6 +583,71 @@ fn iteratorIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !?
         .site = site.functionSite(function),
         .hint = "start the wrapper name with an uppercase letter, or omit `.name` for `All`",
     };
+    return null;
+}
+
+/// An `.implements` wrapper calls the public method with the interface's
+/// arguments and adapts its result, so the method has to be a handle method
+/// whose Go shape is one step from the interface: the single parameter the
+/// interface passes, and a `void` or integer result.
+fn implementsIssue(allocator: std.mem.Allocator, function: semantic.SemanticFn) !?diagnostic.Diagnostic {
+    const implements = function.implements orelse return null;
+    const interface = implements.interfaceName();
+    if (function.receiver == null) return .{
+        .severity = .@"error",
+        .code = "ZIGO058",
+        .message = try std.fmt.allocPrint(allocator, "`.implements = .{s}` on `{s}`, which has no receiver", .{ @tagName(implements), function.name }),
+        .site = site.functionSite(function),
+        .hint = try std.fmt.allocPrint(allocator, "`{s}` is satisfied by a method; move `.implements` to a method of a registered opaque type", .{interface}),
+    };
+    const receiver = function.receiver.?;
+    if (function.iterator != null or function.cancel != null) return .{
+        .severity = .@"error",
+        .code = "ZIGO058",
+        .message = try std.fmt.allocPrint(allocator, "`.implements = .{s}` on `{s}.{s}`, which also has `{s}`", .{ @tagName(implements), receiver, function.name, if (function.iterator != null) "`.iterator`" else "`.cancel`" }),
+        .site = site.functionSite(function),
+        .hint = try std.fmt.allocPrint(allocator, "`{s}` has no place for a `ctx` or a sequence; bind a plain method for the interface", .{interface}),
+    };
+    const result = function.@"return".errorPayload();
+    if (result != .void and result != .int) return .{
+        .severity = .@"error",
+        .code = "ZIGO058",
+        .message = try std.fmt.allocPrint(allocator, "`.implements = .{s}` on `{s}.{s}`, which does not return `void` or an integer", .{ @tagName(implements), receiver, function.name }),
+        .site = site.functionSite(function),
+        .hint = try std.fmt.allocPrint(allocator, "`{s}` reports a count; return `void` (the whole input counts) or the number of bytes handled", .{implements.signature()}),
+    };
+    var data: ?semantic.Parameter = null;
+    var data_count: usize = 0;
+    for (function.params) |parameter| {
+        if (parameter.injected != null) continue;
+        data_count += 1;
+        data = parameter;
+    }
+    const expected: []const u8 = switch (implements) {
+        .writer => "one `[]const u8` parameter",
+        .reader => "one `.out` `[]u8` parameter with `.written = .result`",
+        .writer_to => "one `*std.Io.Writer` parameter",
+        .reader_from => "one `*std.Io.Reader` parameter",
+    };
+    const shape_ok = data_count == 1 and switch (implements) {
+        .writer => data.?.direction == .in and data.?.type == .slice and semantic.isByte(data.?.type.slice.element.*) and !semantic.isTextHint(data.?.semantic),
+        .reader => data.?.direction == .out and data.?.type == .slice and semantic.isByte(data.?.type.slice.element.*) and data.?.writtenHint() == .@"return" and result == .int,
+        .writer_to => data.?.type == .io_stream and data.?.type.io_stream.direction == .writer,
+        .reader_from => data.?.type == .io_stream and data.?.type.io_stream.direction == .reader,
+    };
+    if (!shape_ok) {
+        const text_hinted = implements == .writer and data_count == 1 and data.?.type == .slice and semantic.isTextHint(data.?.semantic);
+        return .{
+            .severity = .@"error",
+            .code = "ZIGO058",
+            .message = try std.fmt.allocPrint(allocator, "`.implements = .{s}` on `{s}.{s}`, which does not take {s}", .{ @tagName(implements), receiver, function.name, expected }),
+            .site = site.functionSite(function),
+            .hint = if (text_hinted)
+                "`Write(p []byte)` passes bytes; drop the string hint so the wrapper does not copy on every call"
+            else
+                try std.fmt.allocPrint(allocator, "`{s}` calls the method with exactly the argument `{s}` takes", .{ interface, implements.signature() }),
+        };
+    }
     return null;
 }
 
@@ -1114,6 +1188,68 @@ test "callback codepoint hints are limited to u32 positions" {
         } else {
             try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), issue);
         }
+    }
+}
+
+test "implements accepts one-step shapes and rejects the rest" {
+    const handle: semantic.TypeDecl = .{ .kind = .@"opaque", .name = "Stream" };
+    var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    const bytes_in: semantic.Parameter = .{ .name = "bytes", .type = .{ .slice = .{ .@"const" = true, .element = &byte } } };
+    const buffer_out: semantic.Parameter = .{ .name = "dst", .direction = .out, .written = .@"return", .type = .{ .slice = .{ .@"const" = false, .element = &byte } } };
+    const writer_in: semantic.Parameter = .{ .name = "w", .type = .{ .io_stream = .{ .direction = .writer } } };
+    const reader_in: semantic.Parameter = .{ .name = "r", .type = .{ .io_stream = .{ .direction = .reader } } };
+    const void_node: semantic.TypeNode = .{ .void = {} };
+    const count_node: semantic.TypeNode = .{ .int = .{ .bits = 64, .signed = false, .is_usize = true } };
+    const base: semantic.SemanticFn = .{ .name = "feed", .params = &.{bytes_in}, .receiver = "Stream", .@"return" = void_node, .symbol = "zg_stream_feed" };
+
+    var writer = base;
+    writer.implements = .writer;
+    var reader = base;
+    reader.implements = .reader;
+    reader.params = &.{buffer_out};
+    reader.@"return" = count_node;
+    var writer_to = base;
+    writer_to.implements = .writer_to;
+    writer_to.params = &.{writer_in};
+    var reader_from = base;
+    reader_from.implements = .reader_from;
+    reader_from.params = &.{reader_in};
+    reader_from.@"return" = count_node;
+    for ([_]semantic.SemanticFn{ writer, reader, writer_to, reader_from }) |function| {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const document: semantic.Semantic = .{ .functions = &.{function}, .package = "vt", .prefix = "zg", .types = &.{handle}, .zig_version = "0.16.0" };
+        try std.testing.expectEqual(@as(?diagnostic.Diagnostic, null), try validate.findIssue(scratch.allocator(), document));
+    }
+
+    var free_function = writer;
+    free_function.receiver = null;
+    var iterating = writer;
+    iterating.iterator = .{ .name = "All" };
+    var cancelling = writer;
+    cancelling.cancel = "flag";
+    var bool_result = writer;
+    bool_result.@"return" = .{ .bool = {} };
+    var two_params = writer;
+    two_params.params = &.{ bytes_in, bytes_in };
+    var text_hinted = writer;
+    var hinted_param = bytes_in;
+    hinted_param.semantic = .utf8_string;
+    text_hinted.params = &.{hinted_param};
+    var reader_all = reader;
+    var all_param = buffer_out;
+    all_param.written = null;
+    reader_all.params = &.{all_param};
+    var reader_void = reader;
+    reader_void.@"return" = void_node;
+    var wrong_stream = writer_to;
+    wrong_stream.params = &.{reader_in};
+    for ([_]semantic.SemanticFn{ free_function, iterating, cancelling, bool_result, two_params, text_hinted, reader_all, reader_void, wrong_stream }) |function| {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const document: semantic.Semantic = .{ .functions = &.{function}, .package = "vt", .prefix = "zg", .types = &.{handle}, .zig_version = "0.16.0" };
+        const issue = (try validate.findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
+        try std.testing.expectEqualStrings("ZIGO058", issue.code);
     }
 }
 

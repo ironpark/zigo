@@ -10,6 +10,9 @@ pub const LoadError = error{ ReadFailed, TooLarge };
 /// streaming is in how it is written out and read back.
 pub const Document = struct {
     lines: std.ArrayList([]u8) = .empty,
+    /// Where `readInto` continues: the line it is on and the offset into it.
+    read_line: usize = 0,
+    read_offset: usize = 0,
 
     pub fn create() error{OutOfMemory}!*Document {
         const value = try std.heap.c_allocator.create(Document);
@@ -42,6 +45,29 @@ pub const Document = struct {
             try w.writeAll(line);
             try w.writeByte('\n');
         }
+    }
+
+    /// Copies the newline-terminated lines into `dst`, continuing where the
+    /// last call stopped, and reports how many bytes it copied. Zero means
+    /// everything has been read. It is the `io.Reader` shape: an out buffer
+    /// and a count, with nothing streamed through Zig.
+    pub fn readInto(self: *Document, dst: []u8) usize {
+        var copied: usize = 0;
+        while (copied < dst.len and self.read_line < self.lines.items.len) {
+            const line = self.lines.items[self.read_line];
+            if (self.read_offset < line.len) {
+                const take = @min(line.len - self.read_offset, dst.len - copied);
+                @memcpy(dst[copied .. copied + take], line[self.read_offset .. self.read_offset + take]);
+                copied += take;
+                self.read_offset += take;
+            } else {
+                dst[copied] = '\n';
+                copied += 1;
+                self.read_line += 1;
+                self.read_offset = 0;
+            }
+        }
+        return copied;
     }
 
     /// Reads newline-terminated lines until the stream ends, and reports how

@@ -111,3 +111,15 @@ func zigoReaderBytes(value io.Reader) []byte {
 	}
 	return data
 }
+
+// zigoCountingWriter counts the bytes a WriteTo wrapper sends on to w.
+type zigoCountingWriter struct {
+	w io.Writer
+	n int64
+}
+
+func (c *zigoCountingWriter) Write(p []byte) (int, error) {
+	n, err := c.w.Write(p)
+	c.n += int64(n)
+	return n, err
+}

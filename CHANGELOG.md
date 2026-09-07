@@ -17,6 +17,27 @@
   `pathsOf`, 함수 또는 타입 배열을 조합하는 범용 `collect`를 추가했습니다.
 - 공개 선언 이름으로 단일·복수 `handle`, `value`, `enumeration`, `taggedUnion` 타입 항목을 만드는
   helper와 `constructor`·`destructor`·`childOfReceiver` 함수 생명주기 shortcut을 추가했습니다.
+- 콜백 시그니처의 `[*:0]const u8` 문자열과 `[*]const u8` + `usize` 바이트 쌍을 Go `string`
+  또는 `[]byte`(`.opaque_bytes`) 파라미터로 받습니다. 생성된 dispatcher가 콜백 호출 전에 Go
+  메모리로 복사하므로 콜백이 값을 보관할 수 있습니다. cgo와 purego 모두 지원하며, 같은 native
+  시그니처라도 `string`·`[]byte` 힌트가 다르면 별도의 Go 콜백 타입이 됩니다.
+- 값으로 전달·반환하는 tagged union에 payload variant별 `As<Variant>() (payload, bool)` accessor를
+  생성합니다. 이전에는 반환된 값에서 `Tag()`만 읽을 수 있고 payload에 닿을 수 없었습니다.
+- 콜백 시그니처에 `[]T` slice·extern struct·optional·값 handle처럼 C scalar로 건너갈 수
+  없는 타입이 있으면 `ZIGO057`로 거부합니다. 이전에는 `zigo-gen`이 진단 없이 panic했습니다.
+- 함수 항목의 `.implements = .writer | .reader | .writer_to | .reader_from`이 handle 메서드 옆에
+  `io.Writer`·`io.Reader`·`io.WriterTo`·`io.ReaderFrom`의 메서드를 추가합니다. `[]const u8`를 받는
+  `feed`에 `.writer`를 붙이면 `Write(p []byte) (int, error)`가 생겨 `fmt.Fprintf(handle, ...)`가
+  됩니다. wrapper는 공개 메서드를 호출하므로 handle 검사와 오류 변환을 공유하고, 모양이 맞지
+  않으면 `ZIGO058`입니다.
+
+### Fixed
+
+- 콜백 파라미터의 등록 enum과 handle 포인터(`*Stream`)가 shim 컴파일에 실패하던 문제를
+  고쳤습니다. 트램펄린이 enum을 tag 정수로, 포인터를 값 타입으로 적어 native `*const fn`
+  타입과 어긋났습니다. 이제 enum은 packed 값처럼 shim thunk가 `@intFromEnum`·`@enumFromInt`로
+  맞추고(결과도 지원), handle 포인터는 const·optional을 포함해 포인터로 적습니다. cgo export의
+  Go 시그니처도 `C.void` 대신 `unsafe.Pointer`를 씁니다.
 
 ## [0.15.0] - 2026-09-07
 

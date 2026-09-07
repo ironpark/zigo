@@ -57,9 +57,10 @@ func TestBorrowedAndRetainedCallbacks(t *testing.T) {
 	if got := zigoActiveCallbackHandleCount(); got != 0 {
 		t.Fatalf("retained callback handles = %d, want 0", got)
 	}
-	// Observer, VoidObserver, Visitor, Predicate, and Reducer: five unique ABI signatures.
-	if got := zigoCallbackDispatcherCount(); got != 5 {
-		t.Fatalf("permanent callback dispatchers = %d, want five unique signatures", got)
+	// Observer, VoidObserver, Visitor, Predicate, Reducer, Logger, and ByteSink:
+	// seven unique ABI signatures.
+	if got := zigoCallbackDispatcherCount(); got != 7 {
+		t.Fatalf("permanent callback dispatchers = %d, want seven unique signatures", got)
 	}
 }
 

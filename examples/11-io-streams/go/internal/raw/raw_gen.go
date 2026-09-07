@@ -227,6 +227,14 @@ func DocumentLoad(self unsafe.Pointer, rHandle uintptr, rData []byte) (uint, int
 	return uint(outResult), code
 }
 
+// DocumentReadInto calls the generated C ABI wrapper for zg_document_read_into.
+func DocumentReadInto(self unsafe.Pointer, dst []uint8) (uint, int32) {
+	dstPtr := (*C.uint8_t)(zigoSlicePtr(dst))
+	var outResult C.size_t
+	code := int32(C.zg_document_read_into((*C.zg_document)(self), dstPtr, C.size_t(len(dst)), &outResult))
+	return uint(outResult), code
+}
+
 // Banner calls the generated C ABI wrapper for zg_banner.
 func Banner(wHandle uintptr, width uint32) int32 {
 	code := int32(C.zg_banner(C.size_t(wHandle), C.uint32_t(width)))

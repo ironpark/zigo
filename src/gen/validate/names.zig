@@ -114,6 +114,38 @@ pub fn publicNameCollisionIssue(allocator: std.mem.Allocator, document: semantic
             };
         }
     }
+    // An `.implements` wrapper is one more method on its receiver, named by
+    // the interface, so a receiver carries each interface once and no bound
+    // method may already own that name.
+    for (document.functions, 0..) |function, index| {
+        const implements = function.implements orelse continue;
+        const receiver = function.receiver orelse continue;
+        const wrapper = implements.methodName();
+        for (document.functions, 0..) |other, other_index| {
+            if (!std.mem.eql(u8, other.receiver orelse "", receiver)) continue;
+            if (!semantic.optionalStringEqual(function.package, other.package)) continue;
+            const other_name = try semantic.publicFunctionNameAlloc(allocator, document, other);
+            defer allocator.free(other_name);
+            const clashes_method = std.mem.eql(u8, wrapper, other_name);
+            const clashes_iterator = other.iterator != null and std.mem.eql(u8, wrapper, other.iterator.?.name);
+            const clashes_wrapper = other_index < index and other.implements != null and std.mem.eql(u8, wrapper, other.implements.?.methodName());
+            if (!clashes_method and !clashes_iterator and !clashes_wrapper) continue;
+            const function_path = try site.functionDeclarationAlloc(allocator, function);
+            const other_path = try site.functionDeclarationAlloc(allocator, other);
+            defer allocator.free(other_path);
+            return .{
+                .severity = .@"error",
+                .code = "ZIGO024",
+                .message = try std.fmt.allocPrint(
+                    allocator,
+                    "public Go name `{s}.{s}` collides between the {s} wrapper of `{s}` and `{s}`",
+                    .{ receiver, wrapper, implements.interfaceName(), function_path, other_path },
+                ),
+                .site = site.functionSiteFor(function, function_path),
+                .hint = "a handle satisfies each interface through one method; drop one `.implements`, or rename the other declaration",
+            };
+        }
+    }
     // A method bound onto a registered enum shares a namespace with the
     // methods zigo generates on that enum, and Go has no way to tell two
     // `String()` declarations apart.
@@ -584,6 +616,28 @@ fn findGeneratedAccessorCollision(allocator: std.mem.Allocator, document: semant
         }
     }
     return null;
+}
+
+test "an implements wrapper collides with a same-named method or a second implements" {
+    const handle: semantic.TypeDecl = .{ .kind = .@"opaque", .name = "Stream" };
+    var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    const bytes_in: semantic.Parameter = .{ .name = "bytes", .type = .{ .slice = .{ .@"const" = true, .element = &byte } } };
+    const feed: semantic.SemanticFn = .{ .implements = .writer, .name = "feed", .params = &.{bytes_in}, .receiver = "Stream", .@"return" = .{ .void = {} }, .symbol = "zg_stream_feed" };
+    var write = feed;
+    write.implements = null;
+    write.name = "write";
+    write.symbol = "zg_stream_write";
+    var push = feed;
+    push.name = "push";
+    push.symbol = "zg_stream_push";
+    for ([_][]const semantic.SemanticFn{ &.{ feed, write }, &.{ feed, push } }) |functions| {
+        var scratch = std.heap.ArenaAllocator.init(std.testing.allocator);
+        defer scratch.deinit();
+        const document: semantic.Semantic = .{ .functions = functions, .package = "vt", .prefix = "zg", .types = &.{handle}, .zig_version = "0.16.0" };
+        const issue = (try validate.findIssue(scratch.allocator(), document)) orelse return error.MissingDiagnostic;
+        try std.testing.expectEqualStrings("ZIGO024", issue.code);
+        try std.testing.expect(std.mem.indexOf(u8, issue.message, "Stream.Write") != null);
+    }
 }
 
 test "names zigo case-converts are judged on the Go spelling, not the Zig one" {

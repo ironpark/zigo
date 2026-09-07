@@ -348,7 +348,7 @@ pub fn renderPuregoRaw(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
         "\tp := bindings().panicMessage(code)\n\tif p == nil {{ return \"\" }}\n" ++
         "\tlength := 0\n\tfor *(*byte)(unsafe.Add(p, length)) != 0 {{ length++ }}\n" ++
         "\treturn string(unsafe.Slice((*byte)(p), length))\n}}\n", .{panic_message_name});
-    if (common.programHasCString(program)) try writer.writeAll(
+    if (common.programHasCString(program) or common.programHasCallbackCString(program)) try writer.writeAll(
         "\nfunc zigoCStringString(p unsafe.Pointer) string {\n" ++
             "\tif p == nil { return \"\" }\n" ++
             "\tlength := 0\n" ++

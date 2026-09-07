@@ -95,6 +95,14 @@ pub const Returns = struct {
 
 pub const Iterator = struct { name: []const u8 = "All" };
 
+/// A Go standard interface a handle method also satisfies. The generator adds
+/// the interface's method next to the bound one, calling it and adapting the
+/// result: `.writer` adds `Write(p []byte) (int, error)`, `.reader` adds
+/// `Read(p []byte) (int, error)`, `.writer_to` adds
+/// `WriteTo(w io.Writer) (int64, error)`, and `.reader_from` adds
+/// `ReadFrom(r io.Reader) (int64, error)`.
+pub const Implements = enum { writer, reader, writer_to, reader_from };
+
 pub const Cancel = struct {
     /// The `*const std.atomic.Value(u32)` parameter, by its `Param.name`.
     param: []const u8,
@@ -114,6 +122,7 @@ pub const FunctionOptions = struct {
     destroys: ?type = null,
     child_of_receiver: ?bool = null,
     iterator: ?Iterator = null,
+    implements: ?Implements = null,
     cancel: ?Cancel = null,
     covers: ?[]const []const u8 = null,
 };
@@ -134,6 +143,8 @@ pub const Function = struct {
     destroys: ?type = null,
     child_of_receiver: bool = false,
     iterator: ?Iterator = null,
+    /// A Go standard interface this method also satisfies through a wrapper.
+    implements: ?Implements = null,
     cancel: ?Cancel = null,
     /// Declarations this function stands in for in `go-coverage`.
     covers: []const []const u8 = &.{},
@@ -150,6 +161,7 @@ pub const Function = struct {
         if (options.destroys) |value| result.destroys = value;
         if (options.child_of_receiver) |value| result.child_of_receiver = value;
         if (options.iterator) |value| result.iterator = value;
+        if (options.implements) |value| result.implements = value;
         if (options.cancel) |value| result.cancel = value;
         if (options.covers) |value| result.covers = value;
         return result;

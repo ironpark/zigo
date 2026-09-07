@@ -143,6 +143,61 @@ if err := sink.Flush(); err != nil {
 `semantic.json`에는 Zig 메서드(`Sink.writer`)가 그대로 기록되고, 연산으로의 확장은 파싱과
 lowering 사이에서 일어납니다. `abi-diff`가 비교하는 것은 Zig 표면입니다.
 
+## handle이 io 인터페이스를 구현하기 (`.implements`)
+
+앞 절의 반대 방향입니다. Zig 타입이 스트림을 내주지는 않지만 `feed(bytes: []const u8) !void`처럼
+Go 표준 인터페이스에서 한 걸음 떨어진 평범한 메서드가 있으면, 그 함수 항목에 `.implements`를
+붙여 인터페이스가 요구하는 메서드를 옆에 만들 수 있습니다.
+
+```zig
+.functions = &.{
+    .{ .path = "Document.append", .params = &.{.{ .name = "line" }}, .implements = .writer },
+    .{ .path = "Document.dump", .params = &.{.{ .name = "w" }}, .implements = .writer_to },
+    .{ .path = "Document.load", .params = &.{.{ .name = "r" }}, .implements = .reader_from },
+    .{ .path = "Document.readInto", .params = &.{.{ .name = "dst", .direction = .out, .written = .result }}, .implements = .reader },
+},
+```
+
+생성되는 API — 원래 메서드(`Append`, `Dump`, `Load`, `ReadInto`)는 그대로 남고 wrapper가
+추가됩니다.
+
+```text
+func (d *Document) Write(p []byte) (int, error)          // io.Writer
+func (d *Document) WriteTo(w io.Writer) (int64, error)   // io.WriterTo
+func (d *Document) ReadFrom(r io.Reader) (int64, error)  // io.ReaderFrom
+func (d *Document) Read(p []byte) (int, error)           // io.Reader
+```
+
+```go
+fmt.Fprintf(doc, "line %d", n)
+io.Copy(doc, file)
+doc.WriteTo(os.Stdout)
+data, _ := io.ReadAll(doc)
+```
+
+| 키 | 인터페이스 | 메서드가 받는 것 | 결과 |
+|---|---|---|---|
+| `.writer` | `io.Writer` | `[]const u8` 하나 (문자열 힌트 없이) | `void`이면 `len(p)`, 정수이면 그 수. 오류 없이 모자라면 `io.ErrShortWrite` |
+| `.reader` | `io.Reader` | `.out` `[]u8` 하나, `.written = .result` | 채운 바이트 수. `p`에 자리가 있는데 0이면 `io.EOF` |
+| `.writer_to` | `io.WriterTo` | `*std.Io.Writer` 하나 | 정수이면 그 수, `void`이면 writer가 받은 바이트를 세어 보고 |
+| `.reader_from` | `io.ReaderFrom` | `*std.Io.Reader` 하나 | 정수이면 그 수, `void`이면 reader가 내준 바이트를 세어 보고 |
+
+wrapper는 공개 메서드를 호출하므로 handle 검사, poison, 오류 변환을 그대로 공유합니다. 닫힌
+handle의 `Write`는 다른 메서드처럼 `*HandleError`입니다. 메서드는 error set을 가져도 되고,
+wrapper는 변환된 Go 오류를 그대로 돌려줍니다. 모든 handle에는 `Close() error`가 있으므로
+`.writer`만으로 `io.WriteCloser`, `.reader`만으로 `io.ReadCloser`가 됩니다. `Must` 변형은
+wrapper에 만들지 않습니다.
+
+`void`를 돌려주는 `.writer_to`·`.reader_from`은 스트림을 counting adapter로 감싸 지나간
+바이트를 셉니다. 이때 `.reader_from`은 `Bytes()` 빠른 경로를 타지 않고 청크 단위로 읽습니다.
+
+받아들이는 모양이 아니면 `ZIGO058`입니다: receiver가 없거나, 파라미터 수와 종류가 표와
+다르거나, 결과가 `void`·정수가 아니거나, `.cancel`·`.iterator`가 함께 있거나, `.writer`의
+slice에 문자열 힌트가 있는 경우입니다. 한 타입은 인터페이스마다 메서드 하나로 구현하며, wrapper
+이름(`Write`, `Read`, `WriteTo`, `ReadFrom`)이 같은 타입의 다른 메서드와 겹치면 `ZIGO024`입니다.
+`fmt.Stringer`는 지원하지 않습니다. handle 메서드는 항상 실패할 수 있는데 `String() string`에는
+오류를 둘 곳이 없기 때문입니다. 예제는 `11-io-streams`의 `Document`에 있습니다.
+
 ## 취소 (`.cancel`)
 
 긴 native 호출을 Go의 `context.Context`로 끊을 수 있습니다. 함수 메타 `.cancel`이 어느

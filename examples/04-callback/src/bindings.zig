@@ -27,6 +27,11 @@ pub const bindings = zigo.define(.{
         // `func(rune)`. Hints are positional over the value parameters; the
         // trailing userdata is not listed.
         .{ .callback = .{ .name = "Visitor", .type = library.Visitor, .params = &.{.{ .semantic = .codepoint }} } },
+        // A `[*:0]const u8` string and a `[*]const u8` + `usize` pair are one
+        // Go `string` each: the pair's hint says the bytes are text.
+        .{ .callback = .{ .name = "Logger", .type = library.Logger, .params = &.{ .{}, .{ .semantic = .utf8_string } } } },
+        // The same pair marked `.opaque_bytes` is a `[]byte`.
+        .{ .callback = .{ .name = "ByteSink", .type = library.ByteSink, .params = &.{.{ .semantic = .opaque_bytes }} } },
     },
     .functions = &.{
         .{ .path = "FloatBuffer.create" },
@@ -67,6 +72,14 @@ pub const bindings = zigo.define(.{
         .{
             .path = "root.reduce",
             .params = &.{ .{ .name = "ctx" }, .{ .name = "values" }, .{ .name = "reducer", .userdata = .{ .param = "ctx" } } },
+        },
+        .{
+            .path = "root.logMessage",
+            .params = &.{ .{ .name = "message" }, .{ .name = "logger" }, .{ .name = "userdata" } },
+        },
+        .{
+            .path = "root.emitChunks",
+            .params = &.{ .{ .name = "data" }, .{ .name = "chunkLen" }, .{ .name = "sink" }, .{ .name = "userdata" } },
         },
         .{
             .path = "root.visitCodepoints",

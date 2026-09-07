@@ -147,9 +147,11 @@ native 코드가 주소를 저장하거나 호출이 끝난 뒤 사용하면 안
 | retained 콜백·포인터 | 소유 객체가 닫힐 때까지 유효하게 유지 |
 | 콜백 `reentrancy`·`thread` | 문서 계약이며 런타임에서 자동 강제하지 않음 |
 | purego 콜백 | 반환은 `void` 또는 `i32`; 부동소수 파라미터는 지원 |
+| 콜백 파라미터 | scalar·enum·packed 값·handle 포인터·`[*:0]const u8`·`[*]const u8`+`usize`(Go로 복사); `[]T` slice·struct·optional은 `ZIGO057` |
 | `.go_error` 콜백 | Zig 반환은 `i32`; 같은 ABI 시그니처의 콜백들이 설정을 공유 |
 | 스트림 인자 | 같은 스레드에서 호출 범위 안에만 사용; retained·optional·필드·콜백 인자로 사용 불가 |
 | 스트림 반환 | 인자가 없는 메서드의 직접 반환만 지원; optional·error union 불가 |
+| `.implements` | `io.Writer`·`io.Reader`·`io.WriterTo`·`io.ReaderFrom`만; 파라미터 하나와 `void`·정수 결과인 handle 메서드. `fmt.Stringer`와 그 밖의 인터페이스는 같은 패키지의 손 메서드로 |
 | `.cancel` | Zig 함수가 취소 플래그를 직접 확인하고 설정된 취소 오류를 반환 |
 
 콜백 오류가 생겨도 native 실행을 강제로 중단하지 않습니다. Zig 코드가 실패 반환값을

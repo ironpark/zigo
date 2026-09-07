@@ -54,6 +54,15 @@ func (d *Document) Append(line []byte) error {
 	return nil
 }
 
+// Write calls Append, satisfying io.Writer.
+// The method takes the whole of p, so the count is len(p) whenever it succeeds.
+func (d *Document) Write(p []byte) (int, error) {
+	if err := d.Append(p); err != nil {
+		return 0, err
+	}
+	return len(p), nil
+}
+
 // Count calls the Zig function Document.count.
 // It returns *HandleError if a required handle is nil or closed.
 // A native panic is returned as *NativePanicError.
@@ -101,6 +110,14 @@ func (d *Document) Dump(w io.Writer) error {
 	return nil
 }
 
+// WriteTo calls Dump, satisfying io.WriterTo.
+// The count is what w received during the call.
+func (d *Document) WriteTo(w io.Writer) (int64, error) {
+	counting := &zigoCountingWriter{w: w}
+	err := d.Dump(counting)
+	return counting.n, err
+}
+
 // Load: Reads newline-terminated lines until the stream ends, and reports how
 // many bytes it consumed. A trailing fragment with no newline is not a
 // line: `dump` always terminates, so a stream this can read always does.
@@ -130,6 +147,48 @@ func (d *Document) Load(r io.Reader) (uint, error) {
 		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Document.Load", code), d)
 	}
 	return result, nil
+}
+
+// ReadFrom calls Load, satisfying io.ReaderFrom.
+// The count is what the method reports.
+func (d *Document) ReadFrom(r io.Reader) (int64, error) {
+	n, err := d.Load(r)
+	if err != nil {
+		return 0, err
+	}
+	return int64(n), nil
+}
+
+// ReadInto: Copies the newline-terminated lines into `dst`, continuing where the
+// last call stopped, and reports how many bytes it copied. Zero means
+// everything has been read. It is the `io.Reader` shape: an out buffer
+// and a count, with nothing streamed through Zig.
+// It returns *HandleError if a required handle is nil or closed.
+// A native panic is returned as *NativePanicError.
+func (d *Document) ReadInto(dst []byte) (uint, error) {
+	ptr, err := zigoCheckedPointer("Document.ReadInto receiver", d)
+	if err != nil {
+		return 0, err
+	}
+	defer d.zigoRelease()
+	result, code := raw.DocumentReadInto(ptr, dst)
+	if code != 0 {
+		return 0, zigoPoisonAfterPanic(zigoErrorForCode("Document.ReadInto", code), d)
+	}
+	return result, nil
+}
+
+// Read calls ReadInto, satisfying io.Reader.
+// A call that fills nothing while p has room reports io.EOF.
+func (d *Document) Read(p []byte) (int, error) {
+	n, err := d.ReadInto(p)
+	if err != nil {
+		return 0, err
+	}
+	if n == 0 && len(p) > 0 {
+		return 0, io.EOF
+	}
+	return int(n), nil
 }
 
 // Banner: A free function taking a stream, so the example covers the shape that has

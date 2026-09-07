@@ -253,7 +253,7 @@
           "name_source": "sidecar",
           "retention": "retained",
           "source": {
-            "line": 103,
+            "line": 129,
             "column": 19
           },
           "type": {
@@ -289,7 +289,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 103,
+            "line": 129,
             "column": 39
           },
           "type": {
@@ -314,7 +314,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 103,
+        "line": 129,
         "column": 12
       },
       "symbol": "zg_callback_context_create"
@@ -329,7 +329,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 109,
+            "line": 135,
             "column": 40
           },
           "type": {
@@ -349,7 +349,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 109,
+        "line": 135,
         "column": 12
       },
       "symbol": "zg_callback_context_run"
@@ -364,7 +364,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 114,
+        "line": 140,
         "column": 12
       },
       "symbol": "zg_callback_context_deinit"
@@ -384,7 +384,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 119,
+        "line": 145,
         "column": 8
       },
       "symbol": "zg_panic_now"
@@ -399,7 +399,7 @@
           "name_source": "ast",
           "retention": "borrowed",
           "source": {
-            "line": 125,
+            "line": 151,
             "column": 25
           },
           "type": {
@@ -418,7 +418,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 125,
+        "line": 151,
         "column": 8
       },
       "symbol": "zg_compression_bound"
@@ -433,7 +433,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 129,
+            "line": 155,
             "column": 24
           },
           "type": {
@@ -453,7 +453,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 129,
+            "line": 155,
             "column": 57
           },
           "type": {
@@ -472,7 +472,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 129,
+        "line": 155,
         "column": 8
       },
       "symbol": "zg_increment_shared"
@@ -487,7 +487,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 133,
+            "line": 159,
             "column": 19
           },
           "type": {
@@ -510,7 +510,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 133,
+        "line": 159,
         "column": 8
       },
       "symbol": "zg_read_shared"
@@ -899,7 +899,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 90,
+            "line": 116,
             "column": 15
           },
           "type": {
@@ -915,7 +915,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 90,
+            "line": 116,
             "column": 27
           },
           "type": {
@@ -936,7 +936,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 90,
+            "line": 116,
             "column": 48
           },
           "type": {
@@ -982,10 +982,224 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 90,
+        "line": 116,
         "column": 8
       },
       "symbol": "zg_reduce"
+    },
+    {
+      "doc": "Logs message at the info level, then at the debug level, through logger.",
+      "name": "logMessage",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "message",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 89,
+            "column": 19
+          },
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "logger",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 89,
+            "column": 40
+          },
+          "type": {
+            "c_callconv": true,
+            "has_userdata": true,
+            "kind": "callback",
+            "param_semantics": [
+              "c_string",
+              "utf8_string",
+              null
+            ],
+            "params": [
+              {
+                "const": true,
+                "element": {
+                  "bits": 8,
+                  "is_usize": false,
+                  "kind": "int",
+                  "signed": false
+                },
+                "sentinel": 0,
+                "sentinel_many": true,
+                "kind": "slice"
+              },
+              {
+                "const": true,
+                "element": {
+                  "bits": 8,
+                  "is_usize": false,
+                  "kind": "int",
+                  "signed": false
+                },
+                "kind": "slice"
+              },
+              {
+                "bits": 64,
+                "is_usize": true,
+                "kind": "int",
+                "signed": false
+              }
+            ],
+            "ref": "Logger",
+            "return": {
+              "kind": "void"
+            }
+          }
+        },
+        {
+          "direction": "in",
+          "name": "userdata",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 89,
+            "column": 56
+          },
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "kind": "void"
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 89,
+        "column": 8
+      },
+      "symbol": "zg_log_message"
+    },
+    {
+      "doc": "Splits data into chunks of at most chunk_len bytes and hands each to sink.",
+      "name": "emitChunks",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "in",
+          "name": "data",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 99,
+            "column": 19
+          },
+          "type": {
+            "const": true,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          }
+        },
+        {
+          "direction": "in",
+          "name": "chunkLen",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 99,
+            "column": 37
+          },
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        },
+        {
+          "direction": "in",
+          "name": "sink",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 99,
+            "column": 55
+          },
+          "type": {
+            "c_callconv": true,
+            "has_userdata": true,
+            "kind": "callback",
+            "params": [
+              {
+                "const": true,
+                "element": {
+                  "bits": 8,
+                  "is_usize": false,
+                  "kind": "int",
+                  "signed": false
+                },
+                "kind": "slice"
+              },
+              {
+                "bits": 64,
+                "is_usize": true,
+                "kind": "int",
+                "signed": false
+              }
+            ],
+            "ref": "ByteSink",
+            "return": {
+              "kind": "void"
+            }
+          }
+        },
+        {
+          "direction": "in",
+          "name": "userdata",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 99,
+            "column": 71
+          },
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ],
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 99,
+        "column": 8
+      },
+      "symbol": "zg_emit_chunks"
     },
     {
       "doc": "Calls visitor for every codepoint of text and returns the last one, or 0\nfor empty text. Malformed bytes are visited as U+FFFD.",
@@ -1143,6 +1357,20 @@
       "kind": "callback",
       "name": "Visitor",
       "zig_path": "*const fn (u32, usize) callconv(.c) void"
+    },
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "callback",
+      "name": "Logger",
+      "zig_path": "*const fn ([*:0]const u8, [*]const u8, usize, usize) callconv(.c) void"
+    },
+    {
+      "exhaustive": true,
+      "fields": [],
+      "kind": "callback",
+      "name": "ByteSink",
+      "zig_path": "*const fn ([*]const u8, usize, usize) callconv(.c) void"
     }
   ],
   "zig_version": "0.16.0"

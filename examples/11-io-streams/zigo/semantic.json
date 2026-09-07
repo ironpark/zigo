@@ -38,7 +38,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 14,
+        "line": 17,
         "column": 12
       },
       "symbol": "zg_document_create"
@@ -53,12 +53,13 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 20,
+        "line": 23,
         "column": 12
       },
       "symbol": "zg_document_deinit"
     },
     {
+      "implements": "writer",
       "name": "append",
       "ownership": "borrowed",
       "params": [
@@ -68,7 +69,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 26,
+            "line": 29,
             "column": 36
           },
           "type": {
@@ -95,7 +96,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 26,
+        "line": 29,
         "column": 12
       },
       "symbol": "zg_document_append"
@@ -113,13 +114,14 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 32,
+        "line": 35,
         "column": 12
       },
       "symbol": "zg_document_count"
     },
     {
       "doc": "Writes every line out, newline separated. The output is far larger than\nthe shim's staging buffer for a document of any size, which is the\npoint: the buffer is what keeps the crossings proportional to the\npayload rather than to the number of `writeAll` calls.",
+      "implements": "writer_to",
       "name": "dump",
       "ownership": "borrowed",
       "params": [
@@ -129,7 +131,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 40,
+            "line": 43,
             "column": 34
           },
           "type": {
@@ -149,13 +151,14 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 40,
+        "line": 43,
         "column": 12
       },
       "symbol": "zg_document_dump"
     },
     {
       "doc": "Reads newline-terminated lines until the stream ends, and reports how\nmany bytes it consumed. A trailing fragment with no newline is not a\nline: `dump` always terminates, so a stream this can read always does.",
+      "implements": "reader_from",
       "name": "load",
       "ownership": "borrowed",
       "params": [
@@ -166,7 +169,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 50,
+            "line": 76,
             "column": 34
           },
           "type": {
@@ -190,10 +193,52 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 50,
+        "line": 76,
         "column": 12
       },
       "symbol": "zg_document_load"
+    },
+    {
+      "doc": "Copies the newline-terminated lines into `dst`, continuing where the\nlast call stopped, and reports how many bytes it copied. Zero means\neverything has been read. It is the `io.Reader` shape: an out buffer\nand a count, with nothing streamed through Zig.",
+      "implements": "reader",
+      "name": "readInto",
+      "ownership": "borrowed",
+      "params": [
+        {
+          "direction": "out",
+          "name": "dst",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "source": {
+            "line": 54,
+            "column": 38
+          },
+          "type": {
+            "const": false,
+            "element": {
+              "bits": 8,
+              "is_usize": false,
+              "kind": "int",
+              "signed": false
+            },
+            "kind": "slice"
+          },
+          "written": "return"
+        }
+      ],
+      "receiver": "Document",
+      "return": {
+        "bits": 64,
+        "is_usize": true,
+        "kind": "int",
+        "signed": false
+      },
+      "source": {
+        "path": "root.zig",
+        "line": 54,
+        "column": 12
+      },
+      "symbol": "zg_document_read_into"
     },
     {
       "doc": "A free function taking a stream, so the example covers the shape that has\nno receiver and no error union of its own.",
@@ -206,7 +251,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 122,
+            "line": 148,
             "column": 15
           },
           "type": {
@@ -219,7 +264,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 122,
+            "line": 148,
             "column": 34
           },
           "type": {
@@ -241,7 +286,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 122,
+        "line": 148,
         "column": 8
       },
       "symbol": "zg_banner"
@@ -257,7 +302,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 130,
+            "line": 156,
             "column": 12
           },
           "type": {
@@ -270,7 +315,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 130,
+            "line": 156,
             "column": 31
           },
           "type": {
@@ -293,7 +338,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 130,
+        "line": 156,
         "column": 8
       },
       "symbol": "zg_tee"
@@ -310,7 +355,7 @@
           "retention": "borrowed",
           "semantic": "codepoint",
           "source": {
-            "line": 139,
+            "line": 165,
             "column": 22
           },
           "type": {
@@ -333,7 +378,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 139,
+        "line": 165,
         "column": 8
       },
       "symbol": "zg_sum_codepoints"
@@ -350,7 +395,7 @@
           "retention": "borrowed",
           "semantic": "codepoint",
           "source": {
-            "line": 146,
+            "line": 172,
             "column": 23
           },
           "type": {
@@ -370,7 +415,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 146,
+        "line": 172,
         "column": 8
       },
       "symbol": "zg_fill_codepoints"
@@ -394,7 +439,7 @@
       "return_semantic": "codepoint",
       "source": {
         "path": "root.zig",
-        "line": 153,
+        "line": 179,
         "column": 8
       },
       "symbol": "zg_take_codepoints"
@@ -410,7 +455,7 @@
           "retention": "borrowed",
           "semantic": "codepoint",
           "source": {
-            "line": 161,
+            "line": 187,
             "column": 23
           },
           "type": {
@@ -430,7 +475,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 161,
+        "line": 187,
         "column": 8
       },
       "symbol": "zg_free_codepoints"
@@ -454,7 +499,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 75,
+        "line": 101,
         "column": 12
       },
       "symbol": "zg_sink_create"
@@ -470,7 +515,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 87,
+        "line": 113,
         "column": 12
       },
       "symbol": "zg_sink_writer"
@@ -488,7 +533,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 91,
+        "line": 117,
         "column": 12
       },
       "symbol": "zg_sink_count"
@@ -503,7 +548,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 81,
+        "line": 107,
         "column": 12
       },
       "symbol": "zg_sink_deinit"
@@ -519,7 +564,7 @@
           "name_source": "sidecar",
           "retention": "borrowed",
           "source": {
-            "line": 102,
+            "line": 128,
             "column": 19
           },
           "type": {
@@ -548,7 +593,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 102,
+        "line": 128,
         "column": 12
       },
       "symbol": "zg_source_create"
@@ -563,7 +608,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 115,
+        "line": 141,
         "column": 12
       },
       "symbol": "zg_source_reader"
@@ -578,7 +623,7 @@
       },
       "source": {
         "path": "root.zig",
-        "line": 110,
+        "line": 136,
         "column": 12
       },
       "symbol": "zg_source_deinit"

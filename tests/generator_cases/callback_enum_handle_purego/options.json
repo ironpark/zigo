@@ -1,0 +1,6 @@
+{
+  "backend": "purego",
+  "package": "cbenum",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/cbenum"
+}

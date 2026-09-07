@@ -239,9 +239,7 @@ pub fn semanticDocumentForBackend(
             switch (parameter.type) {
                 .callback => |callback| {
                     if (backend == .cgo) continue;
-                    const callback_params = try allocator.alloc(abi.AbiScalar, callback.params.len);
-                    for (callback.params, 0..) |callback_parameter, callback_index|
-                        callback_params[callback_index] = callbackWireScalar(try lowerValue(allocator, document, prefix, callback_parameter));
+                    const callback_params = try lowerCallbackWireParams(allocator, document, prefix, callback);
                     const callback_return = try allocator.create(abi.AbiScalar);
                     callback_return.* = try lowerValue(allocator, document, prefix, callback.@"return".*);
                     try params.append(allocator, .{
@@ -648,7 +646,12 @@ pub fn callbackHasGoError(functions: []const semantic.SemanticFn, parameter: sem
 
 pub fn callbackSignatureEqual(lhs: semantic.Callback, rhs: semantic.Callback) bool {
     if (lhs.params.len != rhs.params.len or !semanticTypeEqual(lhs.@"return".*, rhs.@"return".*)) return false;
-    for (lhs.params, rhs.params) |a, b| if (!semanticTypeEqual(a, b)) return false;
+    for (lhs.params, rhs.params, 0..) |a, b, index| {
+        if (!semanticTypeEqual(a, b)) return false;
+        // A byte payload is stored as `string` or `[]byte` by its hint, so
+        // two signatures that differ there cannot share one dispatcher.
+        if (semantic.isBytePayload(a) and semantic.isTextHint(lhs.paramHint(index)) != semantic.isTextHint(rhs.paramHint(index))) return false;
+    }
     return true;
 }
 
@@ -790,6 +793,25 @@ fn callbackWireScalar(scalar: abi.AbiScalar) abi.AbiScalar {
         .float => |bits| .{ .unsigned_int = bits },
         else => scalar,
     };
+}
+
+/// The wire parameters of a callback, in Go order (userdata last). A byte
+/// pair is its `const uint8_t *` and `size_t` halves; a sentinel string is
+/// one `const char *`; everything else is one promoted scalar.
+fn lowerCallbackWireParams(allocator: std.mem.Allocator, document: semantic.Semantic, prefix: []const u8, callback: semantic.Callback) ![]const abi.AbiScalar {
+    var wire: std.ArrayList(abi.AbiScalar) = .empty;
+    for (callback.params) |node| {
+        if (semantic.isBytePayload(node)) {
+            const byte = try allocator.create(abi.AbiScalar);
+            byte.* = .{ .unsigned_int = 8 };
+            const pair = semantic.isBytePair(node);
+            try wire.append(allocator, .{ .pointer = .{ .child = byte, .is_const = true, .is_many = true, .is_c_string = !pair } });
+            if (pair) try wire.append(allocator, .usize);
+            continue;
+        }
+        try wire.append(allocator, callbackWireScalar(try lowerValue(allocator, document, prefix, node)));
+    }
+    return wire.toOwnedSlice(allocator);
 }
 
 /// The C parameters one stream parameter lowers to. A writer needs only the

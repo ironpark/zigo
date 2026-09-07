@@ -561,3 +561,179 @@ test "the userdata contract is refused with a site" {
         }
     }
 }
+
+/// What a callback signature can carry. Every value crosses the wire as C
+/// scalars the shim thunk can adapt: a parameter is a bool, an integer, a
+/// float, a registered enum, a packed value, a pointer to a registered
+/// handle, or a byte payload (a `[*:0]const u8` string or a `[*]const u8` +
+/// `usize` pair, copied into Go memory), and a result is a scalar, enum,
+/// packed value, or `void`. A mutable or non-byte slice, an extern struct, an
+/// optional, or a by-value handle has no such shape; refusing it up front
+/// keeps the emitters from meeting it as an `unreachable`.
+pub fn callbackTypeIssue(
+    allocator: std.mem.Allocator,
+    document: semantic.Semantic,
+    function: semantic.SemanticFn,
+    parameter: semantic.Parameter,
+) !?diagnostic.Diagnostic {
+    if (parameter.type != .callback) return null;
+    const callback = parameter.type.callback;
+    for (callback.params, 0..) |node, index| {
+        if (callbackValueSupported(document, node, true)) continue;
+        return try callbackTypeDiagnostic(allocator, function, parameter, node, index);
+    }
+    const result = callback.@"return".*;
+    if (result == .void or callbackValueSupported(document, result, false)) return null;
+    return try callbackTypeDiagnostic(allocator, function, parameter, result, null);
+}
+
+fn callbackValueSupported(document: semantic.Semantic, node: semantic.TypeNode, pointer_allowed: bool) bool {
+    return switch (node) {
+        .bool, .int, .float, .@"enum" => true,
+        .slice => pointer_allowed and semantic.isBytePayload(node),
+        .value_struct => semantic.isPackedValue(document.types, node),
+        .opaque_ptr => |value| pointer_allowed and !value.by_value,
+        else => false,
+    };
+}
+
+fn callbackTypeDiagnostic(
+    allocator: std.mem.Allocator,
+    function: semantic.SemanticFn,
+    parameter: semantic.Parameter,
+    node: semantic.TypeNode,
+    index: ?usize,
+) !diagnostic.Diagnostic {
+    const declaration = try site.functionDeclarationAlloc(allocator, function);
+    const shape: []const u8 = switch (node) {
+        .slice => |value| if (value.sentinel != null) "a sentinel string" else "a slice",
+        .value_struct => "an extern struct",
+        .optional => "an optional",
+        .opaque_ptr => |value| if (value.by_value) "a handle by value" else "a handle pointer",
+        .callback => "a callback",
+        .error_union => "an error union",
+        .materialized => "a materialized result",
+        .io_stream => "a stream",
+        else => @tagName(node),
+    };
+    return .{
+        .severity = .@"error",
+        .code = "ZIGO057",
+        .message = if (index) |position|
+            try std.fmt.allocPrint(allocator, "callback `{s}` parameter {d} is {s}, which a callback cannot carry", .{ parameter.name, position, shape })
+        else
+            try std.fmt.allocPrint(allocator, "callback `{s}` returns {s}, which a callback cannot return", .{ parameter.name, shape }),
+        .site = site.functionSiteFor(function, declaration),
+        .hint = "callback parameters may be bool, integer, float, registered enum, packed value, a pointer to a registered handle, a `[*:0]const u8` string, or a `[*]const u8` + `usize` byte pair; results the same without pointers and strings, or void",
+    };
+}
+
+/// The callback value-shape contract over the whole document, ahead of the
+/// userdata rule so a signature that cannot cross at all is named first.
+pub fn callbackTypeRule(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+    for (document.functions) |function| {
+        for (function.params) |parameter| {
+            if (try callbackTypeIssue(allocator, document, function, parameter)) |issue| return issue;
+        }
+    }
+    return null;
+}
+
+test "a callback carrying a mutable or non-byte slice, or a by-value handle is a ZIGO057" {
+    const usize_param: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
+    var void_return: semantic.TypeNode = .{ .void = {} };
+    var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    var wide: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+    const cases = [_]struct { node: semantic.TypeNode, shape: []const u8 }{
+        .{ .node = .{ .slice = .{ .@"const" = false, .element = &byte } }, .shape = "a slice" },
+        .{ .node = .{ .slice = .{ .@"const" = true, .element = &wide } }, .shape = "a slice" },
+        .{ .node = .{ .opaque_ptr = .{ .by_value = true, .@"const" = true, .nullable = false, .ref = "Stream" } }, .shape = "a handle by value" },
+        .{ .node = .{ .value_struct = .{ .ref = "Point" } }, .shape = "an extern struct" },
+    };
+    for (cases) |case| {
+        const callback: semantic.TypeNode = .{ .callback = .{
+            .c_callconv = true,
+            .has_userdata = true,
+            .params = &.{ case.node, usize_param },
+            .@"return" = &void_return,
+        } };
+        const document: semantic.Semantic = .{
+            .functions = &.{.{
+                .name = "observe",
+                .params = &.{ .{ .name = "sink", .type = callback }, .{ .name = "userdata", .type = usize_param } },
+                .@"return" = .{ .void = {} },
+                .symbol = "ignored",
+            }},
+            .types = &.{
+                .{ .name = "Stream", .kind = .@"opaque", .zig_path = "root.Stream" },
+                .{ .name = "Point", .kind = .value_struct, .layout = .@"extern", .zig_path = "root.Point" },
+            },
+            .package = "hub",
+            .prefix = "zg",
+            .zig_version = "0.16.0",
+        };
+        const issue = (try callbackTypeRule(std.testing.allocator, document)).?;
+        defer std.testing.allocator.free(issue.message);
+        defer std.testing.allocator.free(issue.site.declaration);
+        try std.testing.expectEqualStrings("ZIGO057", issue.code);
+        try std.testing.expect(std.mem.indexOf(u8, issue.message, case.shape) != null);
+    }
+}
+
+test "a callback carrying an enum, a handle pointer, a packed value, and byte payloads passes ZIGO057" {
+    const usize_param: semantic.TypeNode = .{ .int = .{ .bits = 64, .is_usize = true, .signed = false } };
+    var byte: semantic.TypeNode = .{ .int = .{ .bits = 8, .signed = false } };
+    var enum_return: semantic.TypeNode = .{ .@"enum" = .{ .ref = "Mode" } };
+    const tag: semantic.TypeNode = .{ .int = .{ .bits = 32, .signed = true } };
+    const backing: semantic.TypeNode = .{ .int = .{ .bits = 16, .signed = false } };
+    const callback: semantic.TypeNode = .{ .callback = .{
+        .c_callconv = true,
+        .has_userdata = true,
+        .params = &.{
+            .{ .@"enum" = .{ .ref = "Mode" } },
+            .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Stream" } },
+            .{ .value_struct = .{ .ref = "Flags" } },
+            .{ .slice = .{ .@"const" = true, .element = &byte } },
+            .{ .slice = .{ .@"const" = true, .element = &byte, .sentinel = 0, .sentinel_many = true } },
+            usize_param,
+        },
+        .@"return" = &enum_return,
+    } };
+    const document: semantic.Semantic = .{
+        .functions = &.{.{
+            .name = "observe",
+            .params = &.{ .{ .name = "sink", .type = callback }, .{ .name = "userdata", .type = usize_param } },
+            .@"return" = .{ .void = {} },
+            .symbol = "ignored",
+        }},
+        .types = &.{
+            .{ .name = "Mode", .kind = .@"enum", .tag_type = tag, .zig_path = "root.Mode" },
+            .{ .name = "Stream", .kind = .@"opaque", .zig_path = "root.Stream" },
+            .{ .name = "Flags", .kind = .value_struct, .layout = .@"packed", .backing_type = backing, .zig_path = "root.Flags" },
+        },
+        .package = "hub",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    try std.testing.expect((try callbackTypeRule(std.testing.allocator, document)) == null);
+
+    var pointer_return: semantic.TypeNode = .{ .opaque_ptr = .{ .@"const" = false, .nullable = false, .ref = "Stream" } };
+    var pointer_result = document;
+    const pointer_callback: semantic.TypeNode = .{ .callback = .{
+        .c_callconv = true,
+        .has_userdata = true,
+        .params = &.{usize_param},
+        .@"return" = &pointer_return,
+    } };
+    pointer_result.functions = &.{.{
+        .name = "observe",
+        .params = &.{ .{ .name = "sink", .type = pointer_callback }, .{ .name = "userdata", .type = usize_param } },
+        .@"return" = .{ .void = {} },
+        .symbol = "ignored",
+    }};
+    const issue = (try callbackTypeRule(std.testing.allocator, pointer_result)).?;
+    defer std.testing.allocator.free(issue.message);
+    defer std.testing.allocator.free(issue.site.declaration);
+    try std.testing.expectEqualStrings("ZIGO057", issue.code);
+    try std.testing.expect(std.mem.indexOf(u8, issue.message, "returns a handle pointer") != null);
+}

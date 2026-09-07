@@ -690,6 +690,18 @@ pub fn writePublicParameterType(scope: PublicScope, writer: *std.Io.Writer, para
     try writePublicGoType(scope, writer, parameter.type);
 }
 
+/// The Go type a callback's byte payload has, raw and public alike: `string`
+/// for text, `[]byte` otherwise. Either is a copy the callback may keep.
+pub fn writeBytePayloadGoType(writer: *std.Io.Writer, callback: semantic.Callback, index: usize) !void {
+    try writer.writeAll(if (semantic.isTextHint(callback.paramHint(index))) "string" else "[]byte");
+}
+
+/// The type the raw closure receives for callback value `index`.
+pub fn writeCallbackRawGoType(writer: *std.Io.Writer, program: abi.Program, callback: semantic.Callback, index: usize) !void {
+    if (semantic.isBytePayload(callback.params[index])) return writeBytePayloadGoType(writer, callback, index);
+    try writeRawGoType(writer, program, callback.params[index]);
+}
+
 pub fn writePublicCallbackType(scope: PublicScope, writer: *std.Io.Writer, program: abi.Program, callback: semantic.Callback) !void {
     const value_count = if (callback.has_userdata and callback.params.len != 0) callback.params.len - 1 else callback.params.len;
     try writer.writeAll("func(");
@@ -697,6 +709,8 @@ pub fn writePublicCallbackType(scope: PublicScope, writer: *std.Io.Writer, progr
         if (index != 0) try writer.writeAll(", ");
         if (semantic.isCodepoint(parameter, callback.paramHint(index)))
             try writer.writeAll("rune")
+        else if (semantic.isBytePayload(parameter))
+            try writeBytePayloadGoType(writer, callback, index)
         else
             try writePublicGoType(scope, writer, parameter);
     }
@@ -733,10 +747,10 @@ pub fn writeCallbackAdapter(writer: *std.Io.Writer, program: abi.Program, callba
     const codepoint_result = semantic.isCodepoint(callback.@"return".*, callback.return_semantic);
     const bool_result = callback.@"return".* == .bool;
     try writer.writeAll("func(");
-    for (callback.params[0..value_count], 0..) |parameter, index| {
+    for (callback.params[0..value_count], 0..) |_, index| {
         if (index != 0) try writer.writeAll(", ");
         try writer.print("p{d} ", .{index});
-        try writeRawGoType(writer, program, parameter);
+        try writeCallbackRawGoType(writer, program, callback, index);
     }
     try writer.writeByte(')');
     if (callback.@"return".* != .void) {

@@ -146,6 +146,26 @@ type ScrollViewport struct {
 // Tag returns the active ScrollViewport variant.
 func (value ScrollViewport) Tag() ScrollViewportTag { return value.tag }
 
+// AsDelta returns the delta payload and whether it is the active variant.
+func (value ScrollViewport) AsDelta() (int, bool) {
+	return value.delta, value.tag == ScrollViewportTagDelta
+}
+
+// AsPage returns the page payload and whether it is the active variant.
+func (value ScrollViewport) AsPage() (uint, bool) {
+	return value.page, value.tag == ScrollViewportTagPage
+}
+
+// AsRgb returns the rgb payload and whether it is the active variant.
+func (value ScrollViewport) AsRgb() (RGB, bool) {
+	return value.rgb, value.tag == ScrollViewportTagRgb
+}
+
+// AsRegion returns the region payload and whether it is the active variant.
+func (value ScrollViewport) AsRegion() (Region, bool) {
+	return value.region, value.tag == ScrollViewportTagRegion
+}
+
 // ScrollViewportTop constructs the top variant.
 func ScrollViewportTop() ScrollViewport {
 	return ScrollViewport{tag: ScrollViewportTagTop}

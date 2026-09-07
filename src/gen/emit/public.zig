@@ -12,6 +12,7 @@ const docs = @import("docs.zig");
 const emit = @import("emit.zig");
 const must = @import("must.zig");
 const iterators = @import("iterators.zig");
+const implements = @import("implements.zig");
 const public_runtime = @import("public_runtime.zig");
 const public_types = @import("public_types.zig");
 const public_writers = @import("public_writers.zig");
@@ -765,6 +766,8 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
             try must.renderMustVariant(scope, allocator, writer, function, go_names, receiver_name, go_name, owned_type);
         if (function.origin.iterator != null)
             try iterators.renderIteratorWrapper(scope, allocator, writer, function, go_names, receiver_name.?, go_name, needs_check);
+        if (function.origin.implements != null)
+            try implements.renderImplementsWrapper(writer, function, receiver_name.?, go_name, needs_check);
     }
     if (programHasCodepointSlice(program)) try renderCodepointSliceHelpers(writer);
 }
@@ -1146,6 +1149,7 @@ pub fn renderPublicRuntimeBody(allocator: std.mem.Allocator, writer: *std.Io.Wri
     try public_types.renderGoProjectionRuntime(writer, program, options);
     try public_types.renderGoCallbackTypes(writer, program, options);
     try public_runtime.renderPublicHelpers(writer, program, options);
+    try implements.renderCountingStreams(writer, program);
 }
 
 /// After the native call: rethrow any panic a reachable callback recorded.

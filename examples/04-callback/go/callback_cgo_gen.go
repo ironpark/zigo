@@ -260,6 +260,38 @@ func zg_reduce_go_callback_reducer(p0 C.int32_t, p1 C.int32_t, p2 C.size_t) (res
 	return C.int32_t(callback(int32(p0), int32(p1)))
 }
 
+//export zg_log_message_go_callback_logger
+func zg_log_message_go_callback_logger(p0 *C.char, p1 *C.uint8_t, p1_len C.size_t, p2 C.size_t) {
+	state, ok := callbackState(cgo.Handle(p2))
+	if !ok {
+		tripCallbackCancel(uintptr(p2))
+		return
+	}
+	defer func() {
+		if value := recover(); value != nil {
+			state.record(value)
+		}
+	}()
+	callback := state.Fn.(func(string, string))
+	callback(C.GoString(p0), string(unsafe.Slice((*byte)(unsafe.Pointer(p1)), int(p1_len))))
+}
+
+//export zg_emit_chunks_go_callback_sink
+func zg_emit_chunks_go_callback_sink(p0 *C.uint8_t, p0_len C.size_t, p1 C.size_t) {
+	state, ok := callbackState(cgo.Handle(p1))
+	if !ok {
+		tripCallbackCancel(uintptr(p1))
+		return
+	}
+	defer func() {
+		if value := recover(); value != nil {
+			state.record(value)
+		}
+	}()
+	callback := state.Fn.(func([]byte))
+	callback(append([]byte(nil), unsafe.Slice((*byte)(unsafe.Pointer(p0)), int(p0_len))...))
+}
+
 //export zg_visit_codepoints_go_callback_visitor
 func zg_visit_codepoints_go_callback_visitor(p0 C.uint32_t, p1 C.size_t) {
 	state, ok := callbackState(cgo.Handle(p1))
@@ -408,6 +440,18 @@ func zigoRawFilter(value int32, strict uint8, predicateHandle uintptr) uint8 {
 func zigoRawReduce(values []int32, reducerHandle uintptr) int32 {
 	valuesPtr := (*C.int32_t)(zigoSlicePtr(values))
 	return int32(C.zg_reduce(C.size_t(reducerHandle), valuesPtr, C.size_t(len(values))))
+}
+
+// zigoRawLogMessage calls the generated C ABI wrapper for zg_log_message.
+func zigoRawLogMessage(message []uint8, loggerHandle uintptr) {
+	messagePtr := (*C.uint8_t)(zigoSlicePtr(message))
+	C.zg_log_message(messagePtr, C.size_t(len(message)), C.size_t(loggerHandle))
+}
+
+// zigoRawEmitChunks calls the generated C ABI wrapper for zg_emit_chunks.
+func zigoRawEmitChunks(data []uint8, chunkLen uint, sinkHandle uintptr) uint {
+	dataPtr := (*C.uint8_t)(zigoSlicePtr(data))
+	return uint(C.zg_emit_chunks(dataPtr, C.size_t(len(data)), C.size_t(chunkLen), C.size_t(sinkHandle)))
 }
 
 // zigoRawVisitCodepoints calls the generated C ABI wrapper for zg_visit_codepoints.

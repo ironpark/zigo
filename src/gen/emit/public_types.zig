@@ -375,6 +375,19 @@ fn renderPublicTaggedUnionValues(allocator: std.mem.Allocator, writer: *std.Io.W
             try writer.writeByte('\n');
         }
         try writer.print("}}\n\n// Tag returns the active {s} variant.\nfunc (value {s}) Tag() {s} {{ return value.tag }}\n\n", .{ declaration.name, declaration.name, tag_type });
+        // The same `As<Variant>` readers the handle representation has, minus
+        // the error: a value copy has no native call left to fail.
+        for (program.liveFields(declaration.name)) |field| {
+            const payload = field.type.?;
+            if (payload == .void) continue;
+            const accessor = try naming.pascalAlloc(allocator, field.name);
+            defer allocator.free(accessor);
+            const member = try naming.camelAlloc(allocator, field.name);
+            defer allocator.free(member);
+            try writer.print("// As{0s} returns the {1s} payload and whether it is the active variant.\nfunc (value {2s}) As{0s}() (", .{ accessor, field.name, declaration.name });
+            try public_writers.writePublicGoType(scope, writer, payload);
+            try writer.print(", bool) {{\n\treturn value.{s}, value.tag == {s}{s}\n}}\n\n", .{ member, tag_type, accessor });
+        }
         for (program.liveFields(declaration.name)) |field| {
             const constructor = try naming.pascalAlloc(allocator, field.name);
             defer allocator.free(constructor);

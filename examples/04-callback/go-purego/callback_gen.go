@@ -352,13 +352,36 @@ func Reduce(values []int32, reducer Reducer) int32 {
 	return result
 }
 
+// LogMessage: Logs message at the info level, then at the debug level, through logger.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+func LogMessage(message []byte, logger Logger) {
+	loggerHandle := zigoNewLoggerHandle(logger)
+	defer zigoDeleteCallbackHandle(loggerHandle)
+	raw.LogMessage(message, raw.CallbackPointer4(), uintptr(loggerHandle))
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("LogMessage", loggerHandle)
+	}
+}
+
+// EmitChunks: Splits data into chunks of at most chunk_len bytes and hands each to sink.
+// A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
+func EmitChunks(data []byte, chunkLen uint, sink ByteSink) uint {
+	sinkHandle := zigoNewByteSinkHandle(sink)
+	defer zigoDeleteCallbackHandle(sinkHandle)
+	result := raw.EmitChunks(data, chunkLen, raw.CallbackPointer5(), uintptr(sinkHandle))
+	if zigoCallbackPanicPending() {
+		zigoRethrowCallbackPanic("EmitChunks", sinkHandle)
+	}
+	return result
+}
+
 // VisitCodepoints: Calls visitor for every codepoint of text and returns the last one, or 0
 // for empty text. Malformed bytes are visited as U+FFFD.
 // A panic in a Go callback is rethrown as *CallbackPanicError once the native call returns.
 func VisitCodepoints(text []byte, visitor Visitor) rune {
 	visitorHandle := zigoNewVisitorHandle(visitor)
 	defer zigoDeleteCallbackHandle(visitorHandle)
-	result := raw.VisitCodepoints(text, raw.CallbackPointer4(), uintptr(visitorHandle))
+	result := raw.VisitCodepoints(text, raw.CallbackPointer6(), uintptr(visitorHandle))
 	if zigoCallbackPanicPending() {
 		zigoRethrowCallbackPanic("VisitCodepoints", visitorHandle)
 	}

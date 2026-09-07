@@ -45,11 +45,15 @@ pub fn renderShim(allocator: std.mem.Allocator, writer: *std.Io.Writer, program:
                 try writer.print("extern fn {s}(", .{name});
                 for (parameter.type.callback.params, 0..) |callback_parameter, index| {
                     if (index != 0) try writer.writeAll(", ");
+                    if (semantic.isBytePayload(callback_parameter)) {
+                        try writeBytePayloadParams(writer, callback_parameter, index);
+                        continue;
+                    }
                     try writer.print("p{d}: ", .{index});
-                    try type_spelling.writeZigType(writer, program, type_spelling.semanticScalar(program, callback_parameter));
+                    try writeCallbackWireType(writer, program, callback_parameter);
                 }
                 try writer.writeAll(") callconv(.c) ");
-                try type_spelling.writeZigType(writer, program, type_spelling.semanticScalar(program, parameter.type.callback.@"return".*));
+                try writeCallbackWireType(writer, program, parameter.type.callback.@"return".*);
                 try writer.writeAll(";\n");
                 if (common.needsCallbackThunk(program, function, parameter_index)) {
                     const thunk = try common.callbackPackedThunkNameAlloc(allocator, function, parameter_index);
@@ -1022,46 +1026,96 @@ fn renderCallbackBitThunks(allocator: std.mem.Allocator, writer: *std.Io.Writer,
 fn writeCallbackThunkSignature(writer: *std.Io.Writer, program: abi.Program, callback: semantic.Callback, thunk: []const u8) !void {
     try writer.print("fn {s}(", .{thunk});
     // Parameters are declared in native order but named by their Go-order
-    // index, so the forwarding call can list `p0..pN` in order.
-    for (0..callback.params.len) |native| {
+    // index, so the forwarding call can list `p0..pN` in order. A byte
+    // payload keeps its native spelling: it is two parameters (or one
+    // sentinel pointer) on both sides.
+    for (0..callback.nativeParamCount()) |native| {
         if (native != 0) try writer.writeAll(", ");
-        const index = callback.goIndexOfNative(native);
-        try writer.print("p{d}: ", .{index});
-        try writeCallbackNativeType(writer, program, callback.params[index]);
+        const slot = callback.slotAtNative(native);
+        const node = callback.params[slot.index];
+        switch (slot.part) {
+            .pointer => try writer.print("p{d}_ptr: [*]const u8", .{slot.index}),
+            .length => try writer.print("p{d}_len: usize", .{slot.index}),
+            .value => {
+                try writer.print("p{d}: ", .{slot.index});
+                if (semantic.isBytePayload(node))
+                    try writer.writeAll("[*:0]const u8")
+                else
+                    try writeCallbackNativeType(writer, program, node);
+            },
+        }
     }
     try writer.writeAll(") callconv(.c) ");
     try writeCallbackNativeType(writer, program, callback.@"return".*);
     try writer.writeAll(" {\n    ");
 }
 
-/// The type a callback value has in the native signature: a packed struct and
-/// a `bool` keep their Zig spelling, everything else its promoted wire scalar.
-fn writeCallbackNativeType(writer: *std.Io.Writer, program: abi.Program, node: semantic.TypeNode) !void {
-    if (node == .bool) return writer.writeAll("bool");
-    if (type_spelling.isPackedValue(program, node))
-        try target_types.writeTargetType(writer, program, node.value_struct.ref)
+/// The wire parameters of one byte payload, named by its Go-order index: the
+/// `[*]const u8` + `usize` halves of a pair, or one `[*:0]const u8`.
+fn writeBytePayloadParams(writer: *std.Io.Writer, node: semantic.TypeNode, index: usize) !void {
+    if (semantic.isBytePair(node))
+        try writer.print("p{d}_ptr: [*]const u8, p{d}_len: usize", .{ index, index })
     else
-        try type_spelling.writeZigType(writer, program, type_spelling.semanticScalar(program, node));
+        try writer.print("p{d}: [*:0]const u8", .{index});
+}
+
+/// The type a callback value has on the wire, as the Go-exported trampoline
+/// and the purego dispatcher declare it: a handle pointer stays a pointer to
+/// its target type, everything else is its promoted scalar.
+fn writeCallbackWireType(writer: *std.Io.Writer, program: abi.Program, node: semantic.TypeNode) !void {
+    if (node == .opaque_ptr) return writeHandlePointerType(writer, program, node.opaque_ptr);
+    try type_spelling.writeZigType(writer, program, type_spelling.semanticScalar(program, node));
+}
+
+/// The type a callback value has in the native signature: a packed struct, an
+/// enum, a handle pointer and a `bool` keep their Zig spelling, everything
+/// else its promoted wire scalar.
+fn writeCallbackNativeType(writer: *std.Io.Writer, program: abi.Program, node: semantic.TypeNode) !void {
+    switch (node) {
+        .bool => try writer.writeAll("bool"),
+        .@"enum" => |value| try target_types.writeTargetType(writer, program, value.ref),
+        .opaque_ptr => |value| try writeHandlePointerType(writer, program, value),
+        else => if (type_spelling.isPackedValue(program, node))
+            try target_types.writeTargetType(writer, program, node.value_struct.ref)
+        else
+            try type_spelling.writeZigType(writer, program, type_spelling.semanticScalar(program, node)),
+    }
+}
+
+fn writeHandlePointerType(writer: *std.Io.Writer, program: abi.Program, pointer: semantic.OpaquePtr) !void {
+    if (pointer.nullable) try writer.writeByte('?');
+    try writer.writeAll(if (pointer.@"const") "*const " else "*");
+    try target_types.writeTargetType(writer, program, pointer.ref);
 }
 
 /// The forwarding call that closes a thunk: packed values travel on as their
-/// backing integers, and floats as their bits when the callee takes them so.
+/// backing integers, enums as their tags, and floats as their bits when the
+/// callee takes them so.
 fn writeCallbackThunkCall(writer: *std.Io.Writer, program: abi.Program, callback: semantic.Callback, callee: []const u8, floats_as_bits: bool) !void {
-    const bool_result = callback.@"return".* == .bool;
-    if (callback.@"return".* != .void) try writer.writeAll("return ");
+    const result = callback.@"return".*;
+    if (result != .void) try writer.writeAll("return ");
+    if (result == .@"enum") try writer.writeAll("@enumFromInt(");
     try writer.print("{s}(", .{callee});
     for (callback.params, 0..) |callback_parameter, index| {
         if (index != 0) try writer.writeAll(", ");
-        if (floats_as_bits and callback_parameter == .float)
+        if (semantic.isBytePair(callback_parameter))
+            try writer.print("p{d}_ptr, p{d}_len", .{ index, index })
+        else if (floats_as_bits and callback_parameter == .float)
             try writer.print("@bitCast(p{d})", .{index})
         else if (callback_parameter == .bool)
             try writer.print("@intFromBool(p{d})", .{index})
+        else if (callback_parameter == .@"enum")
+            try writer.print("@intFromEnum(p{d})", .{index})
         else if (type_spelling.isPackedValue(program, callback_parameter)) {
             try type_spelling.writePackedZigToBackingPrefix(writer, program, callback_parameter);
             try writer.print("p{d})))", .{index});
         } else try writer.print("p{d}", .{index});
     }
-    try writer.writeAll(if (bool_result) ") != 0;\n}\n" else ");\n}\n");
+    try writer.writeAll(switch (result) {
+        .bool => ") != 0;\n}\n",
+        .@"enum" => "));\n}\n",
+        else => ");\n}\n",
+    });
 }
 
 /// Records the Go dispatcher a thunk forwards to, before the native side can

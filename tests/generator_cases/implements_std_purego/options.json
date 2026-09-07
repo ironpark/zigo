@@ -1,0 +1,6 @@
+{
+  "backend": "purego",
+  "package": "impl",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/impl"
+}

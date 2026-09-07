@@ -119,7 +119,17 @@ ApplyViewport(ScrollViewportDelta(-3))
 ```
 
 이 값 표현은 `ScrollViewportTop()`, `ScrollViewportDelta(n)`처럼 variant별 constructor와
-`Tag()` accessor를 제공합니다. handle 검사, ownership, poison 상태는 없습니다. C ABI에서는
+`Tag()`, payload variant별 `As<Variant>() (payload, bool)` accessor를 제공합니다. projection의
+`As*`와 같은 이름이지만 값 복사에는 실패할 native 호출이 없어 error 반환이 없습니다.
+handle 검사, ownership, poison 상태는 없습니다.
+
+```go
+viewport, err := CurrentViewport()
+if delta, ok := viewport.AsDelta(); ok {
+    scrollBy(delta)
+}
+```
+ C ABI에서는
 tag 정수 뒤에 payload가 있는 각 variant의 slot을 선언 순서대로 붙이고, shim이 tag에 맞는
 union 값을 재구성합니다. packed struct는 backing integer 하나로 전달하고, extern struct는
 중첩된 leaf scalar slot으로 평탄화합니다. 따라서 variant 추가도 C signature를 늘리는 breaking

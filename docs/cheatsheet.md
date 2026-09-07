@@ -163,6 +163,7 @@ version 2 layout(자연 폭·정렬, record 8바이트 정렬)이라 `T`↔`?T`�
 | `child_of_receiver` | `true` | 생성된 handle이 receiver보다 먼저 닫혀야 함 |
 | `returns` | `.{ .ownership, .semantic, .release, .go }` | 반환값 계약 |
 | `iterator` | `.{}` / `.{ .name = "Checked" }` | `?T`·`!?T` 메서드를 `iter.Seq`로 |
+| `implements` | `.writer` / `.reader` / `.writer_to` / `.reader_from` | handle 메서드 옆에 `io` 인터페이스 메서드 추가 |
 | `cancel` | `.{ .param = "cancel", .canceled = "Cancelled" }` | `context.Context` 취소 |
 | `covers` | 경로 목록 | `go-coverage`에서 대신 노출한 것으로 계산 |
 | `doc` | 문자열 | Go doc override |
@@ -192,6 +193,7 @@ version 2 layout(자연 폭·정렬, record 8바이트 정렬)이라 `T`↔`?T`�
 .{ .path = "Terminal.init", .params = &.{.{ .name = "options", .flatten = &.{ "cols", "rows" } }} },
 .{ .path = "root.takeCodepoints", .returns = .{ .ownership = .caller, .release = "root.freeCodepoints", .semantic = .codepoint } },
 .{ .path = "Context.next", .iterator = .{} },
+.{ .path = "Document.append", .params = &.{.{ .name = "line" }}, .implements = .writer },   // + Write(p []byte) (int, error)
 .{ .path = "Key.codepoint" },                        // 등록 enum의 메서드 → func (k Key) Codepoint() rune
 .{ .path = "root.run", .params = &.{ .{ .name = "limit" }, .{ .name = "callback", .retention = .retained, .go_error = true }, .{ .name = "userdata" }, .{ .name = "cancel" } },
    .cancel = .{ .param = "cancel" } },
@@ -226,6 +228,7 @@ h, err := NewTerminal(80, 24)         // 생성자 → *Terminal, error
 defer h.Close()                        // 두 번 호출해도 안전
 n, err := h.Write(data)                // 메서드: 닫힌 handle이면 ErrInvalidHandle
 for v, err := range h.All() { ... }    // .iterator = .{} → All(); .name = "Checked" → Checked()
+fmt.Fprintf(doc, "%d", n)              // .implements = .writer → Write; handle이 io.Writer
 v := MustParse(s)                      // go_must_variants = true일 때
 ```
 
@@ -280,6 +283,8 @@ ZIGO_LIBRARY_PATH=/path/libmylib_zigo.so go run .   # 또는 ZIGO_<PACKAGE>_LIBR
 | ZIGO054 | 경로 중복 또는 `functions`·`exclude` 충돌 | 경로 한 번만 |
 | ZIGO056 | 값 receiver(등록 enum)에 handle 전용 메타데이터 | 소유권·`iterator`·스트림은 opaque 타입에만 |
 | ZIGO055 | 콜백 userdata 규약 위반(`usize` 자리 없음·자리 불일치) | callback 등록의 `.userdata`, `Param.userdata` 확인 |
+| ZIGO057 | 콜백 시그니처에 `[]T` slice·extern struct·optional 등 | 콜백 값은 scalar·enum·packed·handle 포인터·`[*:0]const u8`·`[*]const u8`+`usize` |
+| ZIGO058 | `.implements` 메서드의 모양이 인터페이스와 다름 | receiver 있는 handle 메서드, 파라미터 하나, 결과 `void`·정수 |
 
 전체 목록은 [진단 코드](diagnostics.md).
 

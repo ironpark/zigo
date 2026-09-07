@@ -70,6 +70,53 @@ callconv(.c) void`는 Go에서 반환값 없는 `func(...)`가 되고, cgo와 pu
 돌아온 뒤 같은 panic 전달과 수명 규칙을 적용합니다. 파라미터와 결과의 `bool`은 Go `bool`이
 됩니다. wire에서는 `u8`로 건너가고 shim thunk가 native 시그니처의 `bool`과 맞춥니다.
 
+### 콜백 값 타입
+
+콜백의 파라미터와 결과는 C scalar 하나로 건너가는 값이어야 합니다.
+
+| Zig 콜백 시그니처 자리 | wire | Go 콜백 타입 |
+|---|---|---|
+| bool, 정수, 부동소수 | 같은 scalar(`bool`은 `u8`, purego 부동소수는 비트 패턴) | `bool`, 정수, 부동소수 |
+| 등록 enum | tag 정수; shim thunk가 `@intFromEnum`·`@enumFromInt`로 맞춤 | 등록 enum 타입 |
+| 등록 packed 값 | backing 정수 | packed mirror struct |
+| `*Handle`, `*const Handle`, `?*Handle` (파라미터만) | 포인터 | `*Handle` |
+| `[*:0]const u8` (파라미터만) | `const char *` | `string` 복사본 |
+| `[*]const u8` + 바로 뒤의 `usize` (파라미터만) | `const uint8_t *`, `size_t` | `string` 또는 `[]byte` 복사본 |
+
+`[]const u8` slice, 가변·비바이트 many pointer, extern struct, optional, 값으로 받는 handle은
+`ZIGO057`로 거부됩니다. C 호출 규약 함수는 slice를 받을 수 없으므로 문자열은 위의 두
+spelling으로 씁니다.
+
+### 콜백의 문자열과 바이트
+
+`[*]const u8` 바로 뒤에 오는 `usize`는 그 포인터의 길이로 읽어 하나의 Go 파라미터가
+됩니다(userdata 자리는 제외). `[*:0]const u8`은 NUL까지 읽습니다. 어느 쪽이든 생성된
+dispatcher가 콜백을 부르기 전에 Go 메모리로 **복사**하므로, 콜백은 값을 보관해도 됩니다.
+native 버퍼는 호출 동안만 유효하고 Go는 그것을 직접 참조하지 않습니다.
+
+Go 타입은 등록 항목의 위치별 힌트가 정합니다. 쌍은 일반 파라미터의 `[]const u8`과 같은
+규칙을 따라 `.semantic = .utf8_string`이나 `.strings = .infer_utf8`이면 `string`, 그 밖에는
+`[]byte`이고 `.opaque_bytes`는 명시적으로 `[]byte`입니다. 문자열은 힌트 없이 `string`이며
+`.opaque_bytes`로 `[]byte`가 됩니다.
+
+```zig
+pub const Logger = *const fn (level: [*:0]const u8, message: [*]const u8, message_len: usize, userdata: usize) callconv(.c) void;
+pub const ByteSink = *const fn (data: [*]const u8, len: usize, userdata: usize) callconv(.c) void;
+```
+
+```zig
+.{ .callback = .{ .name = "Logger", .type = mylib.Logger, .params = &.{ .{}, .{ .semantic = .utf8_string } } } },
+.{ .callback = .{ .name = "ByteSink", .type = mylib.ByteSink, .params = &.{.{ .semantic = .opaque_bytes }} } },
+```
+
+```go
+type Logger func(string, string)
+type ByteSink func([]byte)
+```
+
+같은 native 시그니처라도 힌트가 다르면(`string`과 `[]byte`) 서로 다른 Go 콜백 타입이며,
+purego dispatcher도 따로 생성됩니다. 콜백 결과로는 문자열을 돌려줄 수 없습니다.
+
 콜백의 `u32` 파라미터나 결과가 코드포인트라면 등록 항목에 힌트를 붙여 Go 타입을
 `func(rune) rune`으로 만듭니다. `param_semantics`는 값 파라미터 순서대로 나열하며(뒤의
 userdata는 제외) 코드포인트가 아닌 자리는 `.integer`로 채웁니다. `semantic`은 결과에

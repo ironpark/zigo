@@ -293,6 +293,27 @@ optional 파라미터·sentinel slice·flatten 필드·주입 파라미터에는
 [자유 함수를 메서드로 등록하기](bindings-functions.md#자유-함수를-메서드로-등록하기)를
 참고하세요.
 
+### ZIGO057
+
+콜백 시그니처에 C scalar로 건너갈 수 없는 타입이 있습니다. 콜백 파라미터는 bool, 정수,
+부동소수, 등록 enum, 등록 packed 값, 등록 handle의 포인터, `[*:0]const u8` 문자열,
+`[*]const u8` + `usize` 바이트 쌍만 될 수 있고, 결과는 scalar·enum·packed 값과 `void`입니다.
+`[]const u8` slice(C 호출 규약이 받지 못함)·가변이나 비바이트 slice·extern struct·optional·
+값으로 받는 handle은 콜백에 실을 수 없습니다. 문자열은 many pointer spelling으로 바꾸고,
+그 밖의 payload는 콜백이 받는 handle의 메서드로 읽게 하세요.
+[콜백 값 타입](bindings-callbacks.md#콜백-값-타입)을 참고하세요.
+
+### ZIGO058
+
+`.implements`를 붙인 메서드가 인터페이스에서 한 걸음 떨어진 모양이 아닙니다. receiver가 없거나,
+`.iterator`·`.cancel`이 함께 있거나, 결과가 `void`·정수가 아니거나, 파라미터가 인터페이스가
+넘기는 하나(`.writer`는 문자열 힌트 없는 `[]const u8`, `.reader`는 `.written = .result`인 `.out`
+`[]u8`, `.writer_to`는 `*std.Io.Writer`, `.reader_from`은 `*std.Io.Reader`)가 아닙니다. wrapper는
+그 인자만 넘겨 메서드를 호출하므로 다른 인자는 생성자로 빼고, 문자열 힌트는 지우세요.
+wrapper 이름이 같은 타입의 다른 메서드와 겹치면 `ZIGO024`입니다.
+[handle이 io 인터페이스를 구현하기](bindings-streams.md#handle이-io-인터페이스를-구현하기-implements)를
+참고하세요.
+
 ## 리플렉션 단계의 오류
 
 `ZIGO027`, `ZIGO028`, `ZIGO037`, `ZIGO038`, `ZIGO054`는 reflection이 문서를 만들기 전에 걸리므로 `semantic.json` 자리가

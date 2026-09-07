@@ -51,28 +51,29 @@ func (err *LibraryError) Is(target error) bool { return target == ErrLibraryLoad
 func (err *LibraryError) Unwrap() error { return err.Cause }
 
 type nativeBindings struct {
-	lastError        func() unsafe.Pointer
-	panicMessage     func(int32) unsafe.Pointer
-	fnDocumentCreate func(*unsafe.Pointer) int32
-	fnDocumentDeinit func(unsafe.Pointer) int32
-	fnDocumentAppend func(unsafe.Pointer, unsafe.Pointer, uintptr) int32
-	fnDocumentCount  func(unsafe.Pointer, *uintptr) int32
-	fnDocumentDump   func(unsafe.Pointer, uintptr, uintptr) int32
-	fnDocumentLoad   func(unsafe.Pointer, uintptr, unsafe.Pointer, uintptr, uintptr, *uintptr) int32
-	fnBanner         func(uintptr, uintptr, uint32) int32
-	fnTee            func(uintptr, unsafe.Pointer, uintptr, uintptr, uintptr, uintptr, *uintptr) int32
-	fnSumCodepoints  func(unsafe.Pointer, uintptr) uint32
-	fnFillCodepoints func(unsafe.Pointer, uintptr, *uintptr)
-	fnTakeCodepoints func(*unsafe.Pointer, *uintptr)
-	fnFreeCodepoints func(unsafe.Pointer, uintptr)
-	fnSinkCreate     func(*unsafe.Pointer) int32
-	fnSinkWrite      func(unsafe.Pointer, unsafe.Pointer, uintptr, *int) int32
-	fnSinkFlush      func(unsafe.Pointer) int32
-	fnSinkCount      func(unsafe.Pointer, *uintptr) int32
-	fnSinkDeinit     func(unsafe.Pointer) int32
-	fnSourceCreate   func(unsafe.Pointer, uintptr, *unsafe.Pointer) int32
-	fnSourceRead     func(unsafe.Pointer, unsafe.Pointer, uintptr, *int) int32
-	fnSourceDeinit   func(unsafe.Pointer) int32
+	lastError          func() unsafe.Pointer
+	panicMessage       func(int32) unsafe.Pointer
+	fnDocumentCreate   func(*unsafe.Pointer) int32
+	fnDocumentDeinit   func(unsafe.Pointer) int32
+	fnDocumentAppend   func(unsafe.Pointer, unsafe.Pointer, uintptr) int32
+	fnDocumentCount    func(unsafe.Pointer, *uintptr) int32
+	fnDocumentDump     func(unsafe.Pointer, uintptr, uintptr) int32
+	fnDocumentLoad     func(unsafe.Pointer, uintptr, unsafe.Pointer, uintptr, uintptr, *uintptr) int32
+	fnDocumentReadInto func(unsafe.Pointer, unsafe.Pointer, uintptr, *uintptr) int32
+	fnBanner           func(uintptr, uintptr, uint32) int32
+	fnTee              func(uintptr, unsafe.Pointer, uintptr, uintptr, uintptr, uintptr, *uintptr) int32
+	fnSumCodepoints    func(unsafe.Pointer, uintptr) uint32
+	fnFillCodepoints   func(unsafe.Pointer, uintptr, *uintptr)
+	fnTakeCodepoints   func(*unsafe.Pointer, *uintptr)
+	fnFreeCodepoints   func(unsafe.Pointer, uintptr)
+	fnSinkCreate       func(*unsafe.Pointer) int32
+	fnSinkWrite        func(unsafe.Pointer, unsafe.Pointer, uintptr, *int) int32
+	fnSinkFlush        func(unsafe.Pointer) int32
+	fnSinkCount        func(unsafe.Pointer, *uintptr) int32
+	fnSinkDeinit       func(unsafe.Pointer) int32
+	fnSourceCreate     func(unsafe.Pointer, uintptr, *unsafe.Pointer) int32
+	fnSourceRead       func(unsafe.Pointer, unsafe.Pointer, uintptr, *int) int32
+	fnSourceDeinit     func(unsafe.Pointer) int32
 }
 
 type callbackEntry struct {
@@ -426,6 +427,10 @@ func loadCandidate(path string) error {
 	if err != nil {
 		return fail("zg_document_load_purego_v2", err)
 	}
+	addrDocumentReadInto, err := resolveSymbol(handle, "zg_document_read_into")
+	if err != nil {
+		return fail("zg_document_read_into", err)
+	}
 	addrBanner, err := resolveSymbol(handle, "zg_banner_purego_v2")
 	if err != nil {
 		return fail("zg_banner_purego_v2", err)
@@ -491,6 +496,7 @@ func loadCandidate(path string) error {
 	purego.RegisterFunc(&next.fnDocumentCount, addrDocumentCount)
 	purego.RegisterFunc(&next.fnDocumentDump, addrDocumentDump)
 	purego.RegisterFunc(&next.fnDocumentLoad, addrDocumentLoad)
+	purego.RegisterFunc(&next.fnDocumentReadInto, addrDocumentReadInto)
 	purego.RegisterFunc(&next.fnBanner, addrBanner)
 	purego.RegisterFunc(&next.fnTee, addrTee)
 	purego.RegisterFunc(&next.fnSumCodepoints, addrSumCodepoints)
@@ -597,6 +603,17 @@ func DocumentLoad(self unsafe.Pointer, rCallback, rHandle uintptr, rData []byte)
 	var outResult uintptr
 	code := bindings().fnDocumentLoad(self, rCallback, rDataPtr, uintptr(len(rData)), rHandle, &outResult)
 	runtime.KeepAlive(rData)
+	return uint(outResult), code
+}
+
+// DocumentReadInto calls the generated purego ABI wrapper for zg_document_read_into.
+func DocumentReadInto(self unsafe.Pointer, dst []uint8) (uint, int32) {
+	var dstPtr unsafe.Pointer
+	if len(dst) != 0 {
+		dstPtr = unsafe.Pointer(&dst[0])
+	}
+	var outResult uintptr
+	code := bindings().fnDocumentReadInto(self, dstPtr, uintptr(len(dst)), &outResult)
 	return uint(outResult), code
 }
 

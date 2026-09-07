@@ -81,6 +81,32 @@ pub fn visitCodepoints(text: []const u8, visitor: Visitor, userdata: usize) u32 
     return last;
 }
 
+/// A logger receives a NUL-terminated level name and the message as a
+/// pointer/length pair. Both reach Go as `string` copies the callback may keep.
+pub const Logger = *const fn (level: [*:0]const u8, message: [*]const u8, message_len: usize, userdata: usize) callconv(.c) void;
+
+/// Logs message at the info level, then at the debug level, through logger.
+pub fn logMessage(message: []const u8, logger: Logger, userdata: usize) void {
+    logger("info", message.ptr, message.len, userdata);
+    logger("debug", message.ptr, message.len, userdata);
+}
+
+/// A sink receives a chunk of bytes. The binding marks the pair `.opaque_bytes`,
+/// so Go sees `[]byte` rather than `string`.
+pub const ByteSink = *const fn (data: [*]const u8, len: usize, userdata: usize) callconv(.c) void;
+
+/// Splits data into chunks of at most chunk_len bytes and hands each to sink.
+pub fn emitChunks(data: []const u8, chunk_len: usize, sink: ByteSink, userdata: usize) usize {
+    var count: usize = 0;
+    var rest = data;
+    while (rest.len != 0) : (count += 1) {
+        const take = @min(chunk_len, rest.len);
+        sink(rest.ptr, take, userdata);
+        rest = rest[take..];
+    }
+    return count;
+}
+
 /// A reducer takes its context first, the way many C libraries declare their
 /// callbacks. The binding points `.userdata = .first` at it and the shim thunk
 /// reorders the arguments into the order Go dispatches in.

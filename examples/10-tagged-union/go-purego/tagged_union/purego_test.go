@@ -89,6 +89,7 @@ func TestPuregoTaggedUnion(t *testing.T) {
 	assertSignalSnapshots(t)
 	assertTaggedUnionValueParameters(t)
 	assertTaggedUnionValueReturns(t)
+	assertTaggedUnionValueAccessors(t)
 	assertValueVariants(t)
 	assertConcurrentCallsRacingClose(t)
 	assertConcurrentProjectionsRacingClose(t)

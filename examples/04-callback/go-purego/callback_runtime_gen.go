@@ -49,6 +49,12 @@ type Predicate func(int32, bool) bool
 // Reducer is the Go callback signature accepted by the generated binding.
 type Reducer func(int32, int32) int32
 
+// Logger is the Go callback signature accepted by the generated binding.
+type Logger func(string, string)
+
+// ByteSink is the Go callback signature accepted by the generated binding.
+type ByteSink func([]byte)
+
 // Visitor is the Go callback signature accepted by the generated binding.
 type Visitor func(rune)
 
@@ -77,6 +83,14 @@ func zigoNewPredicateHandle(value Predicate) zigoCallbackHandle {
 
 func zigoNewReducerHandle(value Reducer) zigoCallbackHandle {
 	return raw.NewCallbackHandle((func(int32, int32) int32)(value))
+}
+
+func zigoNewLoggerHandle(value Logger) zigoCallbackHandle {
+	return raw.NewCallbackHandle((func(string, string))(value))
+}
+
+func zigoNewByteSinkHandle(value ByteSink) zigoCallbackHandle {
+	return raw.NewCallbackHandle((func([]byte))(value))
 }
 
 func zigoNewVisitorHandle(value Visitor) zigoCallbackHandle {

@@ -84,6 +84,16 @@ pub fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.I
             const callback = parameter.type.callback;
             for (callback.params, 0..) |callback_parameter, index| {
                 if (index != 0) try writer.writeAll(", ");
+                // A byte pair arrives as its pointer and length; a sentinel
+                // string as one pointer.
+                if (semantic.isBytePair(callback_parameter)) {
+                    try writer.print("p{d} unsafe.Pointer, p{d}_len uint", .{ index, index });
+                    continue;
+                }
+                if (semantic.isBytePayload(callback_parameter)) {
+                    try writer.print("p{d} unsafe.Pointer", .{index});
+                    continue;
+                }
                 try writer.print("p{d} ", .{index});
                 // A float parameter arrives as its IEEE-754 bit pattern in an
                 // integer of the same width; the shim thunk converted it so the
@@ -123,9 +133,9 @@ pub fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.I
             // stored type to name.
             const go_error = common.callbackSignatureHasGoError(program, callback);
             try writer.writeAll("\t\t\tcallback := stored.(func(");
-            for (callback.params[0..userdata_index], 0..) |callback_parameter, index| {
+            for (callback.params[0..userdata_index], 0..) |_, index| {
                 if (index != 0) try writer.writeAll(", ");
-                try public_writers.writeRawGoType(writer, program, callback_parameter);
+                try public_writers.writeCallbackRawGoType(writer, program, callback, index);
             }
             try writer.writeByte(')');
             if (go_error) {
@@ -145,6 +155,8 @@ pub fn renderPuregoCallbackRegistry(allocator: std.mem.Allocator, writer: *std.I
                 if (index != 0) try writer.writeAll(", ");
                 if (callback_parameter == .float)
                     try writer.print("math.Float{d}frombits(p{d})", .{ callback_parameter.float.bits, index })
+                else if (semantic.isBytePayload(callback_parameter))
+                    try writeBytePayloadArgument(writer, callback, index, .purego)
                 else
                     try writer.print("p{d}", .{index});
             }
@@ -257,6 +269,28 @@ pub fn callbackSignatureIndex(program: abi.Program, wanted: semantic.Parameter) 
     unreachable;
 }
 
+/// The Go value a byte payload becomes before the callback runs: a copy of
+/// the native bytes as `string` or `[]byte`. Copying is what lets the
+/// callback keep the value; the native memory is only valid during the call.
+fn writeBytePayloadArgument(writer: *std.Io.Writer, callback: semantic.Callback, index: usize, backend: abi.Program.Backend) !void {
+    const text = semantic.isTextHint(callback.paramHint(index));
+    if (semantic.isBytePair(callback.params[index])) {
+        if (!text) try writer.writeAll("append([]byte(nil), ");
+        if (text) try writer.writeAll("string(");
+        switch (backend) {
+            .cgo => try writer.print("unsafe.Slice((*byte)(unsafe.Pointer(p{d})), int(p{d}_len))", .{ index, index }),
+            .purego => try writer.print("unsafe.Slice((*byte)(p{d}), p{d}_len)", .{ index, index }),
+        }
+        return writer.writeAll(if (text) ")" else "...)");
+    }
+    if (!text) try writer.writeAll("[]byte(");
+    switch (backend) {
+        .cgo => try writer.print("C.GoString(p{d})", .{index}),
+        .purego => try writer.print("zigoCStringString(p{d})", .{index}),
+    }
+    if (!text) try writer.writeByte(')');
+}
+
 fn isFirstCallbackSignatureAt(program: abi.Program, origin: *const semantic.SemanticFn, parameter_index: usize) bool {
     const wanted = origin.params[parameter_index];
     for (program.functions) |function| {
@@ -353,6 +387,20 @@ pub fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
             try writer.print("//export {s}\nfunc {s}(", .{ name, name });
             for (callback.params, 0..) |callback_parameter, index| {
                 if (index != 0) try writer.writeAll(", ");
+                // A handle pointer is `void *` to C, which cgo hands an
+                // exported function as `unsafe.Pointer`.
+                if (callback_parameter == .opaque_ptr) {
+                    try writer.print("p{d} unsafe.Pointer", .{index});
+                    continue;
+                }
+                if (semantic.isBytePair(callback_parameter)) {
+                    try writer.print("p{d} *C.uint8_t, p{d}_len C.size_t", .{ index, index });
+                    continue;
+                }
+                if (semantic.isBytePayload(callback_parameter)) {
+                    try writer.print("p{d} *C.char", .{index});
+                    continue;
+                }
                 try writer.print("p{d} C.", .{index});
                 try type_spelling.writeCgoType(writer, type_spelling.semanticScalar(program, callback_parameter));
             }
@@ -400,9 +448,9 @@ pub fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
             const go_error = common.callbackHasGoError(program, parameter);
             try writer.writeAll("\t\t}\n\t}()\n\tcallback := state.Fn.(func(");
             const value_count = callback.params.len - 1;
-            for (callback.params[0..value_count], 0..) |callback_parameter, index| {
+            for (callback.params[0..value_count], 0..) |_, index| {
                 if (index != 0) try writer.writeAll(", ");
-                try public_writers.writeRawGoType(writer, program, callback_parameter);
+                try public_writers.writeCallbackRawGoType(writer, program, callback, index);
             }
             try writer.writeByte(')');
             if (go_error) {
@@ -424,6 +472,10 @@ pub fn renderRawCallbacks(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
             try writer.writeAll("callback(");
             for (callback.params[0..value_count], 0..) |callback_parameter, index| {
                 if (index != 0) try writer.writeAll(", ");
+                if (semantic.isBytePayload(callback_parameter)) {
+                    try writeBytePayloadArgument(writer, callback, index, .cgo);
+                    continue;
+                }
                 try public_writers.writeRawGoType(writer, program, callback_parameter);
                 try writer.print("(p{d})", .{index});
             }

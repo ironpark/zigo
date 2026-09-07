@@ -43,3 +43,20 @@ func TestTaggedUnionValueReturns(t *testing.T) {
 		t.Fatalf("omitted return error = %#v, want *Error OmittedVariant", err)
 	}
 }
+
+func TestTaggedUnionValueAccessors(t *testing.T) {
+	value, err := CurrentViewport(0)
+	if err != nil {
+		t.Fatalf("CurrentViewport(0): %v", err)
+	}
+	rgb, ok := value.AsRgb()
+	if !ok || rgb != (RGB{R: 5, G: 6, B: 7}) {
+		t.Fatalf("AsRgb() = %v, %v; want {5 6 7}, true", rgb, ok)
+	}
+	if delta, ok := value.AsDelta(); ok || delta != 0 {
+		t.Fatalf("AsDelta() on an rgb value = %d, %v; want 0, false", delta, ok)
+	}
+	if region, ok := ScrollViewportRegion(Region{Width: 4}).AsRegion(); !ok || region.Width != 4 {
+		t.Fatalf("AsRegion() = %v, %v; want width 4, true", region, ok)
+	}
+}

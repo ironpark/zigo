@@ -87,7 +87,7 @@ zig build purego-go purego-go-verify
 | [08-telemetry-hub](../examples/08-telemetry-hub) | 큰 API 자동 발견, 여러 enum/error set, purego 자동 로딩과 비공개 로더 |
 | [09-type-relations](../examples/09-type-relations) | 한 바인딩 문서의 opaque 타입 2종과 borrowed 타입 간 참조 |
 | [10-tagged-union](../examples/10-tagged-union) | projection 방식의 `Tag`/`As*`, 값 snapshot 방식의 `Snapshot()`, sealed variant 방식의 `Variant()` |
-| [11-io-streams](../examples/11-io-streams) | `*std.Io.Writer`/`*std.Io.Reader` 파라미터가 `io.Writer`/`io.Reader`로, 버퍼 크기와 경계 횡단 횟수, writer error·panic·reader EOF 경로, cgo·purego 병행 |
+| [11-io-streams](../examples/11-io-streams) | `*std.Io.Writer`/`*std.Io.Reader` 파라미터가 `io.Writer`/`io.Reader`로, 버퍼 크기와 경계 횡단 횟수, writer error·panic·reader EOF 경로, `.implements`로 handle이 `io.Writer`·`io.Reader` 구현, cgo·purego 병행 |
 | [12-materialized](../examples/12-materialized) | 중첩 pointer·slice·string 결과 트리, batch와 out buffer, accessor handle 대비 materialized decode benchmark, cgo·purego 병행 |
 
 예제를 복사해 시작하기보다, 각 예제의 `build.zig`와 `src/bindings.zig`에서 필요한 부분만

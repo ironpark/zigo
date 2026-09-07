@@ -42,6 +42,11 @@ type Event struct {
 // Tag returns the active Event variant.
 func (value Event) Tag() EventTag { return value.tag }
 
+// AsCount returns the count payload and whether it is the active variant.
+func (value Event) AsCount() (uint64, bool) {
+	return value.count, value.tag == EventTagCount
+}
+
 // EventCount constructs the count variant.
 func EventCount(n uint64) Event {
 	return Event{tag: EventTagCount, count: n}

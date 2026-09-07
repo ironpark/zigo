@@ -1,0 +1,146 @@
+{
+  "package": "cbbytes",
+  "prefix": "zg",
+  "zig_version": "0.16.0",
+  "types": [],
+  "functions": [
+    {
+      "name": "onLog",
+      "symbol": "zg_on_log",
+      "return": {
+        "kind": "void"
+      },
+      "params": [
+        {
+          "direction": "in",
+          "name": "callback",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "c_callconv": true,
+            "has_userdata": true,
+            "kind": "callback",
+            "params": [
+              {
+                "const": true,
+                "element": {
+                  "bits": 8,
+                  "is_usize": false,
+                  "kind": "int",
+                  "signed": false
+                },
+                "kind": "slice",
+                "sentinel": 0,
+                "sentinel_many": true
+              },
+              {
+                "const": true,
+                "element": {
+                  "bits": 8,
+                  "is_usize": false,
+                  "kind": "int",
+                  "signed": false
+                },
+                "kind": "slice"
+              },
+              {
+                "bits": 32,
+                "is_usize": false,
+                "kind": "int",
+                "signed": true
+              },
+              {
+                "bits": 64,
+                "is_usize": true,
+                "kind": "int",
+                "signed": false
+              }
+            ],
+            "param_semantics": [
+              "c_string",
+              "utf8_string",
+              null,
+              null
+            ],
+            "return": {
+              "kind": "void"
+            }
+          }
+        },
+        {
+          "direction": "in",
+          "name": "userdata",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ]
+    },
+    {
+      "name": "onChunk",
+      "symbol": "zg_on_chunk",
+      "return": {
+        "kind": "void"
+      },
+      "params": [
+        {
+          "direction": "in",
+          "name": "callback",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "c_callconv": true,
+            "has_userdata": true,
+            "kind": "callback",
+            "params": [
+              {
+                "const": true,
+                "element": {
+                  "bits": 8,
+                  "is_usize": false,
+                  "kind": "int",
+                  "signed": false
+                },
+                "kind": "slice"
+              },
+              {
+                "kind": "bool"
+              },
+              {
+                "bits": 64,
+                "is_usize": true,
+                "kind": "int",
+                "signed": false
+              }
+            ],
+            "param_semantics": [
+              null,
+              null,
+              null
+            ],
+            "return": {
+              "kind": "bool"
+            }
+          }
+        },
+        {
+          "direction": "in",
+          "name": "userdata",
+          "name_source": "sidecar",
+          "retention": "borrowed",
+          "type": {
+            "bits": 64,
+            "is_usize": true,
+            "kind": "int",
+            "signed": false
+          }
+        }
+      ]
+    }
+  ]
+}

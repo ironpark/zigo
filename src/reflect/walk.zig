@@ -962,6 +962,9 @@ fn appendFunction(
     // picks another. The shape (a receiver, no data parameters, `?T`) is
     // checked by validation, where the whole signature is in hand.
     if (metadata.iterator) |iterator| reflected_function.iterator = .{ .name = iterator.name };
+    // `.implements` names a Go standard interface; the shape the interface
+    // needs is checked by validation, where the whole signature is in hand.
+    if (metadata.implements) |implements| reflected_function.implements = ir(semantic.Implements, implements);
     if (info.return_type) |return_type| {
         if (isSentinelBytePointer(return_type)) reflected_function.return_semantic = .c_string;
     }
@@ -1685,18 +1688,30 @@ fn typeNode(
                         (if (native_count != 0 and function_info.params[native_count - 1].type == usize) native_count - 1 else null);
                     const has_userdata = userdata_native != null;
                     // `params` is in Go order: values as declared, userdata
-                    // last. Native order is remembered as `userdata_at`.
-                    const callback_params = try allocator.alloc(semantic.TypeNode, native_count);
+                    // last. Native order is remembered as `userdata_at`. A
+                    // `[*]const u8` followed by a `usize` is one byte payload
+                    // that Go receives as a string, so the pair lands on a
+                    // single `params` entry.
+                    const layout = comptime callbackLayout(function_info, userdata_native);
+                    const callback_params = try allocator.alloc(semantic.TypeNode, layout.go_count);
                     inline for (function_info.params, 0..) |parameter, index| {
                         const parameter_type = parameter.type orelse
                             @compileError("zigo cannot reflect a generic callback parameter, at " ++ context);
-                        callback_params[comptime goOrderIndex(userdata_native, native_count, index)] = try typeNode(
-                            allocator,
-                            declaration,
-                            parameter_type,
-                            types,
-                            context ++ std.fmt.comptimePrint(" (callback parameter {d})", .{index}),
-                        );
+                        switch (layout.kinds[index]) {
+                            .pair_length => {},
+                            .pair_pointer => {
+                                const element = try allocator.create(semantic.TypeNode);
+                                element.* = .{ .int = .{ .bits = 8, .is_usize = false, .signed = false } };
+                                callback_params[layout.go_index[index]] = .{ .slice = .{ .@"const" = true, .element = element } };
+                            },
+                            .value, .userdata => callback_params[layout.go_index[index]] = try typeNode(
+                                allocator,
+                                declaration,
+                                parameter_type,
+                                types,
+                                context ++ std.fmt.comptimePrint(" (callback parameter {d})", .{index}),
+                            ),
+                        }
                     }
                     const callback_return = try allocator.create(semantic.TypeNode);
                     const callback_return_type = function_info.return_type orelse
@@ -1704,12 +1719,12 @@ fn typeNode(
                     callback_return.* = try typeNode(allocator, declaration, callback_return_type, types, context ++ " (callback return value)");
                     // Hints come from the registered callback entry, then
                     // inference; the userdata slot never carries one.
-                    const value_count = if (has_userdata) native_count - 1 else native_count;
+                    const value_count = if (has_userdata) layout.go_count - 1 else layout.go_count;
                     const declared = comptime callbackEntryHints(declaration, T, value_count);
-                    const hints = try allocator.alloc(?semantic.SemanticHint, function_info.params.len);
+                    const hints = try allocator.alloc(?semantic.SemanticHint, layout.go_count);
                     var any_hint = false;
                     for (hints, 0..) |*slot, index| {
-                        slot.* = if (index < value_count) resolveCodepointHint(declaration, declared.params[index], callback_params[index]) else null;
+                        slot.* = if (index < value_count) resolveCallbackValueHint(declaration, declared.params[index], callback_params[index]) else null;
                         if (slot.* != null) any_hint = true;
                     }
                     break :blk .{ .callback = .{
@@ -2050,6 +2065,78 @@ fn goOrderIndex(userdata_native: ?usize, count: usize, native: usize) usize {
     if (native < userdata) return native;
     if (native == userdata) return count - 1;
     return native - 1;
+}
+
+/// What each native parameter of a callback signature is, and where it lands
+/// in the Go-order `params`. A `[*]const u8` immediately followed by a `usize`
+/// (that is not the userdata slot) is one byte payload: the pointer carries
+/// the `params` entry and the length is folded into it.
+fn CallbackLayout(comptime count: usize) type {
+    return struct {
+        kinds: [count]enum { value, pair_pointer, pair_length, userdata },
+        go_index: [count]usize,
+        go_count: usize,
+    };
+}
+
+fn callbackLayout(comptime function_info: std.builtin.Type.Fn, comptime userdata_native: ?usize) CallbackLayout(function_info.params.len) {
+    comptime {
+        const count = function_info.params.len;
+        var layout: CallbackLayout(count) = undefined;
+        var go_count: usize = 0;
+        var native: usize = 0;
+        while (native < count) : (native += 1) {
+            if (userdata_native != null and native == userdata_native.?) {
+                layout.kinds[native] = .userdata;
+                layout.go_index[native] = 0;
+                continue;
+            }
+            const T = function_info.params[native].type orelse {
+                layout.kinds[native] = .value;
+                layout.go_index[native] = go_count;
+                go_count += 1;
+                continue;
+            };
+            const paired = isBytePairPointer(T) and native + 1 < count and
+                function_info.params[native + 1].type == usize and
+                (userdata_native == null or native + 1 != userdata_native.?);
+            if (paired) {
+                layout.kinds[native] = .pair_pointer;
+                layout.go_index[native] = go_count;
+                layout.kinds[native + 1] = .pair_length;
+                layout.go_index[native + 1] = go_count;
+                go_count += 1;
+                native += 1;
+                continue;
+            }
+            layout.kinds[native] = .value;
+            layout.go_index[native] = go_count;
+            go_count += 1;
+        }
+        if (userdata_native) |at| layout.go_index[at] = go_count;
+        layout.go_count = go_count + @intFromBool(userdata_native != null);
+        return layout;
+    }
+}
+
+/// `[*]const u8` without a sentinel: the pointer half of a byte pair.
+fn isBytePairPointer(comptime T: type) bool {
+    const info = switch (@typeInfo(T)) {
+        .pointer => |value| value,
+        else => return false,
+    };
+    return info.size == .many and info.child == u8 and info.is_const and info.sentinel() == null;
+}
+
+/// The hint on one callback value: a codepoint on its carrier, or the text
+/// marking a byte payload gets -- `.c_string` for a sentinel string, the
+/// binding's inference for a byte pair, `null` (bytes) with `.opaque_bytes`.
+fn resolveCallbackValueHint(comptime declaration: zigo.Binding, hint: ?semantic.SemanticHint, node: semantic.TypeNode) ?semantic.SemanticHint {
+    if (semantic.isBytePayload(node)) {
+        if (node.slice.sentinel != null) return if (hint == .opaque_bytes) null else .c_string;
+        return resolveStringHint(declaration, hint, node, .parameter);
+    }
+    return resolveCodepointHint(declaration, hint, node);
 }
 
 /// The call-site contract a registered `.callback` entry declares.
@@ -3302,6 +3389,28 @@ test "an iterator opt-in records the wrapper name" {
     const bytes = try document.serialize(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"iterator\": {") != null);
+}
+
+test "an implements opt-in records the interface" {
+    const Stream = struct {
+        count: usize = 0,
+        pub fn feed(self: *@This(), bytes: []const u8) void {
+            self.count += bytes.len;
+        }
+    };
+    const Fixture = struct {};
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = &.{.{ .handle = .{ .type = Stream } }},
+        .functions = &.{.{ .path = "Stream.feed", .params = &.{.{ .name = "bytes" }}, .implements = .writer }},
+    }, "terminal", "zg");
+
+    try std.testing.expectEqual(semantic.Implements.writer, document.functions[0].implements.?);
+    const bytes = try document.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"implements\": \"writer\"") != null);
 }
 
 test "registered callbacks record positional codepoint hints" {
@@ -4727,4 +4836,43 @@ test "a declared userdata position reorders the callback signature to Go order" 
     defer std.testing.allocator.free(bytes);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"userdata_at\": 0") != null);
     try std.testing.expect(std.mem.indexOf(u8, bytes, "\"userdata\": \"ctx\"") != null);
+}
+
+test "a byte pair and a sentinel string in a callback signature reflect as string payloads" {
+    const Fixture = struct {
+        pub const Logger = *const fn (name: [*:0]const u8, data: [*]const u8, len: usize, level: u8, userdata: usize) callconv(.c) void;
+        pub fn log(callback: Logger, userdata: usize) void {
+            callback("name", "data", 4, 1, userdata);
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = &.{.{ .callback = .{ .name = "Logger", .type = Fixture.Logger, .params = &.{ .{}, .{ .semantic = .opaque_bytes }, .{} } } }},
+        .functions = &.{.{ .path = "root.log", .params = &.{ .{ .name = "callback" }, .{ .name = "userdata" } } }},
+    }, "callbacks", "zg");
+    const signature = document.functions[0].params[0].type.callback;
+    // Native `name, data, len, level, userdata` is Go `name, data, level, userdata`.
+    try std.testing.expectEqual(@as(usize, 4), signature.params.len);
+    try std.testing.expectEqual(@as(usize, 5), signature.nativeParamCount());
+    try std.testing.expect(signature.params[0].slice.sentinel_many);
+    try std.testing.expectEqual(@as(?semantic.SemanticHint, .c_string), signature.paramHint(0));
+    try std.testing.expect(semantic.isBytePair(signature.params[1]));
+    try std.testing.expectEqual(@as(?semantic.SemanticHint, null), signature.paramHint(1));
+    try std.testing.expectEqual(@as(u16, 8), signature.params[2].int.bits);
+    try std.testing.expect(signature.params[3].int.is_usize);
+    try std.testing.expectEqual(@as(usize, 1), signature.slotAtNative(1).index);
+    try std.testing.expectEqual(@as(usize, 1), signature.slotAtNative(2).index);
+    try std.testing.expect(signature.slotAtNative(2).part == .length);
+    try std.testing.expectEqual(@as(usize, 2), signature.goIndexOfNative(3));
+    try std.testing.expectEqual(@as(usize, 3), signature.goIndexOfNative(4));
+
+    // Without a hint the pair is inferred text, like a `[]const u8` parameter.
+    const inferred = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .strings = .infer_utf8,
+        .functions = &.{.{ .path = "root.log", .params = &.{ .{ .name = "callback" }, .{ .name = "userdata" } } }},
+    }, "callbacks", "zg");
+    try std.testing.expectEqual(@as(?semantic.SemanticHint, .utf8_string), inferred.functions[0].params[0].type.callback.paramHint(1));
 }

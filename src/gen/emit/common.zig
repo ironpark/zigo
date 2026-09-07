@@ -146,6 +146,32 @@ pub fn programHasCString(program: abi.Program) bool {
     return false;
 }
 
+/// True when a callback signature carries a `[*:0]const u8` string, which the
+/// purego dispatcher reads with the same NUL scan a C-string result uses.
+pub fn programHasCallbackCString(program: abi.Program) bool {
+    for (program.functions) |function| {
+        for (function.origin.params) |parameter| {
+            if (parameter.type != .callback) continue;
+            const callback = parameter.type.callback;
+            for (callback.params[0..callback.valueCount()]) |node| if (semantic.isBytePayload(node) and !semantic.isBytePair(node)) return true;
+        }
+    }
+    return false;
+}
+
+/// True when a callback hands Go a pointer it has to reinterpret: a handle,
+/// or a byte payload that becomes a `string` or `[]byte`.
+pub fn programHasPointerCallbackParams(program: abi.Program) bool {
+    for (program.functions) |function| {
+        for (function.origin.params) |parameter| {
+            if (parameter.type != .callback) continue;
+            const callback = parameter.type.callback;
+            for (callback.params[0..callback.valueCount()]) |node| if (node == .opaque_ptr or semantic.isBytePayload(node)) return true;
+        }
+    }
+    return false;
+}
+
 pub fn programHasOpaqueTypes(program: abi.Program) bool {
     for (program.types) |declaration| {
         if (declaration.isHandle() and !isValueOnlyTaggedUnion(program, declaration.name)) return true;
@@ -449,17 +475,25 @@ pub fn callbackWireScalar(function: abi.AbiFn, source_index: usize) ?abi.AbiScal
     return null;
 }
 
+/// True when a registered enum appears anywhere in the callback signature.
+/// The wire carries its tag integer; the native side declares the enum.
+pub fn callbackHasEnum(callback: semantic.Callback) bool {
+    if (callback.@"return".* == .@"enum") return true;
+    for (callback.params) |parameter| if (parameter == .@"enum") return true;
+    return false;
+}
+
 /// A callback whose native signature differs from what Go receives needs the
 /// shim to sit between the native caller and Go: packed values travel as their
-/// backing integer, `bool` as `u8`, a userdata slot declared anywhere but last
-/// moves to the end, and on purego floats travel as their bits. The native
-/// side calls the callback pointer directly with its own signature and the
-/// shim is the only code that can adapt it.
+/// backing integer, enums as their tag, `bool` as `u8`, a userdata slot
+/// declared anywhere but last moves to the end, and on purego floats travel as
+/// their bits. The native side calls the callback pointer directly with its
+/// own signature and the shim is the only code that can adapt it.
 pub fn needsCallbackThunk(program: abi.Program, function: abi.AbiFn, parameter_index: usize) bool {
     const parameter = function.origin.params[parameter_index];
     if (parameter.type != .callback) return false;
     const callback = parameter.type.callback;
-    if (callbackHasPackedParam(program, callback) or callbackHasBool(callback) or callback.userdata_at != null) return true;
+    if (callbackHasPackedParam(program, callback) or callbackHasBool(callback) or callbackHasEnum(callback) or callback.userdata_at != null) return true;
     return program.backend == .purego and callbackHasFloatParam(callback);
 }
 
@@ -467,6 +501,7 @@ pub fn programNeedsUnsafe(program: abi.Program) bool {
     // A stream trampoline builds a Go slice over the native buffer it was
     // handed, which is the whole of what it does.
     if (programHasSlices(program) or programHasOpaqueTypes(program) or programHasStreams(program)) return true;
+    if (programHasPointerCallbackParams(program)) return true;
     // The layout guards a castable struct carries are spelled with `unsafe`.
     for (program.structs) |record| if (record.castable) return true;
     for (program.functions) |function| {

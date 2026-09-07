@@ -1,0 +1,5 @@
+{
+  "package": "cbbytes",
+  "prefix": "zg",
+  "go_module": "example.com/zigo/cbbytes"
+}

@@ -275,6 +275,12 @@ for value, err := range ctx.All() {
 `abi-check`는 wrapper 추가를 호환으로, 제거·이름 변경을 breaking으로 보고합니다.
 예제는 `03-opaque`의 `Context.next`에 있습니다.
 
+같은 방식의 추가형 wrapper로 `.implements`가 있습니다. `[]const u8`를 받는 메서드에
+`.implements = .writer`를 붙이면 `Write(p []byte) (int, error)`가 생겨 handle이 `io.Writer`가
+됩니다. `.reader`, `.writer_to`, `.reader_from`도 같습니다.
+[handle이 io 인터페이스를 구현하기](bindings-streams.md#handle이-io-인터페이스를-구현하기-implements)를
+참고하세요.
+
 ## 인터페이스
 
 등록한 opaque handle 여러 개가 같은 메서드를 같은 Go 시그니처로 제공하면, `.interfaces`로

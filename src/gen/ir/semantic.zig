@@ -93,15 +93,49 @@ pub const Callback = struct {
     /// Where the userdata slot sits in the native signature.
     pub fn nativeUserdataIndex(self: Callback) ?usize {
         if (!self.has_userdata or self.params.len == 0) return null;
-        return self.userdata_at orelse self.params.len - 1;
+        return self.userdata_at orelse self.nativeParamCount() - 1;
     }
 
     /// The `params` index of the parameter at native position `native`.
+    /// Positions count native parameters, so a byte pair (`[*]const u8`,
+    /// `usize`) takes two of them; `slotAtNative` tells the halves apart.
     pub fn goIndexOfNative(self: Callback, native: usize) usize {
-        const userdata = self.nativeUserdataIndex() orelse return native;
-        if (native < userdata) return native;
-        if (native == userdata) return self.params.len - 1;
-        return native - 1;
+        return self.slotAtNative(native).index;
+    }
+
+    /// How many native parameters the callback declares: one per value, two
+    /// for a byte pair, and the userdata slot.
+    pub fn nativeParamCount(self: Callback) usize {
+        var count: usize = 0;
+        for (self.params) |node| count += nativeSlots(node);
+        return count;
+    }
+
+    /// Where native parameter `native` lands in `params`, and which half of a
+    /// byte pair it is when the parameter is one.
+    pub fn slotAtNative(self: Callback, native: usize) NativeSlot {
+        const userdata = self.nativeUserdataIndex();
+        if (userdata != null and native == userdata.?) return .{ .index = self.params.len - 1, .part = .value };
+        var position: usize = 0;
+        const value_count = self.valueCount();
+        for (self.params[0..value_count], 0..) |node, index| {
+            const slots = nativeSlots(node);
+            // The userdata slot sits between value parameters; skip over it.
+            if (userdata != null and position <= userdata.? and userdata.? < position + slots) position += 1;
+            if (native < position + slots) return .{
+                .index = index,
+                .part = if (slots == 1) .value else if (native == position) .pointer else .length,
+            };
+            position += slots;
+        }
+        unreachable;
+    }
+
+    /// Whether a value position carries a byte pair or a sentinel string,
+    /// which Go receives as a copied `string` or `[]byte`.
+    pub fn hasBytePayload(self: Callback) bool {
+        for (self.params[0..self.valueCount()]) |node| if (isBytePayload(node)) return true;
+        return false;
     }
 
     /// Whether any position of the signature is spelled differently in Go
@@ -111,6 +145,36 @@ pub const Callback = struct {
         return isCodepoint(self.@"return".*, self.return_semantic);
     }
 };
+
+/// One native parameter of a callback, located in the Go-order `params`.
+pub const NativeSlot = struct {
+    index: usize,
+    part: enum { value, pointer, length },
+};
+
+/// A callback value Go receives as text or bytes: a const byte slice, which
+/// the native signature spells as a `[*]const u8` + `usize` pair, or a
+/// `[*:0]const u8` sentinel string. Either is copied into Go memory before
+/// the callback runs, so it may be kept after the callback returns.
+pub fn isBytePayload(node: TypeNode) bool {
+    return node == .slice and node.slice.@"const" and isByte(node.slice.element.*);
+}
+
+/// Whether a byte payload's hint makes it Go text (`string`) rather than
+/// `[]byte`.
+pub fn isTextHint(hint: ?SemanticHint) bool {
+    return hint == .utf8_string or hint == .c_string;
+}
+
+/// A byte payload the native signature spells as two parameters.
+pub fn isBytePair(node: TypeNode) bool {
+    return isBytePayload(node) and node.slice.sentinel == null;
+}
+
+/// How many native parameters one callback value occupies.
+pub fn nativeSlots(node: TypeNode) usize {
+    return if (isBytePair(node)) 2 else 1;
+}
 
 pub const TypeNode = union(enum) {
     atomic_ptr: AtomicPtr,
@@ -542,6 +606,45 @@ pub const Iterator = struct {
     name: []const u8,
 };
 
+/// The `.implements` opt-in: a handle method also gets the method of one Go
+/// standard interface, which calls it and adapts the result.
+pub const Implements = enum {
+    writer,
+    reader,
+    writer_to,
+    reader_from,
+
+    /// The Go interface the wrapper satisfies.
+    pub fn interfaceName(self: Implements) []const u8 {
+        return switch (self) {
+            .writer => "io.Writer",
+            .reader => "io.Reader",
+            .writer_to => "io.WriterTo",
+            .reader_from => "io.ReaderFrom",
+        };
+    }
+
+    /// The method the interface requires, which is also the wrapper's name.
+    pub fn methodName(self: Implements) []const u8 {
+        return switch (self) {
+            .writer => "Write",
+            .reader => "Read",
+            .writer_to => "WriteTo",
+            .reader_from => "ReadFrom",
+        };
+    }
+
+    /// The Go signature the wrapper has, for diagnostics and docs.
+    pub fn signature(self: Implements) []const u8 {
+        return switch (self) {
+            .writer => "Write(p []byte) (int, error)",
+            .reader => "Read(p []byte) (int, error)",
+            .writer_to => "WriteTo(w io.Writer) (int64, error)",
+            .reader_from => "ReadFrom(r io.Reader) (int64, error)",
+        };
+    }
+};
+
 /// The `.go` opt-in on a value struct: the public API spells the user's Go
 /// type instead of a generated mirror, and the conversions to and from the
 /// raw mirror are two functions the user writes in the public package.
@@ -595,6 +698,9 @@ pub const SemanticFn = struct {
     /// Set by `.iterator`: the method is a `next()` and Go also gets an
     /// `iter.Seq` wrapper. Go surface only; the C symbol is unchanged.
     iterator: ?Iterator = null,
+    /// Set by `.implements`: Go also gets the named `io` interface's method,
+    /// calling this one. Go surface only; the C symbol is unchanged.
+    implements: ?Implements = null,
     /// The type a paired constructor is grouped under in Go, when that is not
     /// where the function is declared. `namespace` stays the Zig container the
     /// shim calls through, so a root-level `newTerminal` can be `Terminal`'s
@@ -1252,6 +1358,31 @@ test "cancel error defaults to Canceled and only an override is serialized" {
     const bytes = try document.serialize(std.testing.allocator);
     defer std.testing.allocator.free(bytes);
     try std.testing.expectEqual(@as(usize, 1), std.mem.count(u8, bytes, "\"cancel_error\": \"Cancelled\""));
+}
+
+test "implements is omitted by default and round trips when present" {
+    const plain: Semantic = .{
+        .functions = &.{.{ .name = "feed", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_feed" }},
+        .package = "sample",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    const plain_bytes = try plain.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(plain_bytes);
+    try std.testing.expect(std.mem.indexOf(u8, plain_bytes, "\"implements\"") == null);
+
+    const declared: Semantic = .{
+        .functions = &.{.{ .implements = .writer_to, .name = "dump", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_dump" }},
+        .package = "sample",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    const bytes = try declared.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"implements\": \"writer_to\"") != null);
+    var parsed = try Semantic.parse(std.testing.allocator, bytes);
+    defer parsed.deinit();
+    try std.testing.expectEqual(Implements.writer_to, parsed.value.functions[0].implements.?);
 }
 
 test "package metadata is omitted by default and round trips when present" {

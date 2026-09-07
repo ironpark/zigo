@@ -34,6 +34,12 @@ Zig의 `streamRemaining`으로 reader와 writer adapter를 직접 연결합니�
 | Go reader에서 줄 단위 데이터를 객체에 추가 | `Document.Load` |
 | native 객체에 Go의 `io.Copy`로 쓰기 | `Sink.Write`, `Sink.Flush` |
 | native 객체에서 Go의 `io.ReadAll`로 읽기 | `Source.Read` |
+| 평범한 메서드로 handle이 `io` 인터페이스를 구현 | `Document.Write`·`Read`·`WriteTo`·`ReadFrom` (`.implements`) |
+
+`Document`는 스트림을 내주지 않지만 `append`·`readInto`·`dump`·`load`에 `.implements`를 붙여
+`io.Writer`·`io.Reader`·`io.WriterTo`·`io.ReaderFrom`이 됩니다. 원래 메서드는 그대로 남고,
+`fmt.Fprintf(doc, ...)`와 `io.ReadAll(doc)`이 됩니다.
+[테스트](go/streams/implements_test.go)가 네 wrapper와 닫힌 handle의 오류를 확인합니다.
 
 `Document.Load`는 newline으로 끝나는 줄을 추가합니다. 마지막 줄의 newline이 없으면 그
 조각은 버립니다. 임의 파일의 바이트를 보존하려면 `Tee`나 CLI를 사용하세요.

@@ -9,7 +9,7 @@ Zig tagged union을 handle projection, snapshot, 값 전달로 노출하는 예�
 |---|---|---|
 | `Value` | opaque handle 뒤의 union | `Tag() (ValueTag, error)`, `As<Variant>() (payload, bool, error)` |
 | `Signal` | handle에 snapshot 추가 | `Snapshot() (SignalSnapshot, error)`; projection도 유지 |
-| `ScrollViewport` | 수명 관리가 없는 Go 값 | variant 생성자, `Tag()`, 값 인자·반환 |
+| `ScrollViewport` | 수명 관리가 없는 Go 값 | variant 생성자, `Tag()`, `As<Variant>() (payload, bool)`, 값 인자·반환 |
 | `RGB`, `Flags` | 직접 등록한 packed 값 | `Backing()`, `RGBFromBacking()` 등의 변환 |
 
 이 예제는 `MustTag`, `MustAs<Variant>`, `MustSnapshot`도 생성합니다. 이 변형은

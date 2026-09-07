@@ -45,3 +45,18 @@ func assertTaggedUnionValueReturns(t *testing.T) {
 		t.Fatalf("omitted return error = %#v, want *Error OmittedVariant", err)
 	}
 }
+
+func assertTaggedUnionValueAccessors(t *testing.T) {
+	t.Helper()
+	value, err := CurrentViewport(0)
+	if err != nil {
+		t.Fatalf("CurrentViewport(0): %v", err)
+	}
+	rgb, ok := value.AsRgb()
+	if !ok || rgb != (RGB{R: 5, G: 6, B: 7}) {
+		t.Fatalf("AsRgb() = %v, %v; want {5 6 7}, true", rgb, ok)
+	}
+	if delta, ok := value.AsDelta(); ok || delta != 0 {
+		t.Fatalf("AsDelta() on an rgb value = %d, %v; want 0, false", delta, ok)
+	}
+}

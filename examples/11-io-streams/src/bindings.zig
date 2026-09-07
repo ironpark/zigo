@@ -15,14 +15,27 @@ pub const bindings = zigo.define(.{
     .functions = &.{
         .{ .path = "Document.create" },
         .{ .path = "Document.deinit" },
-        .{ .path = "Document.append", .params = &.{.{ .name = "line" }} },
+        // `.implements` adds the method a Go standard interface needs next
+        // to the bound one: `Write` calls `Append`, so `fmt.Fprintf(doc, ...)`
+        // and `io.Copy(doc, r)` work, and `Append` is still there.
+        .{ .path = "Document.append", .params = &.{.{ .name = "line" }}, .implements = .writer },
         .{ .path = "Document.count" },
         // The default 64 KiB staging buffer batches small writes. Explicit
         // flushes and the writer's behavior also affect the call count.
-        .{ .path = "Document.dump", .params = &.{.{ .name = "w" }} },
+        // `WriteTo` calls `Dump` through a counting writer, since `dump`
+        // returns no count of its own.
+        .{ .path = "Document.dump", .params = &.{.{ .name = "w" }}, .implements = .writer_to },
         // A deliberately small buffer, so the test can count the crossings a
-        // known payload costs and see the size decide them.
-        .{ .path = "Document.load", .params = &.{.{ .name = "r", .buffer = 4096 }} },
+        // known payload costs and see the size decide them. `load` reports
+        // its own count, so `ReadFrom` passes it on.
+        .{ .path = "Document.load", .params = &.{.{ .name = "r", .buffer = 4096 }}, .implements = .reader_from },
+        // An out buffer whose count is the result is the `io.Reader` shape;
+        // `Read` reports io.EOF when a call fills nothing.
+        .{
+            .path = "Document.readInto",
+            .params = &.{.{ .name = "dst", .direction = .out, .written = .result }},
+            .implements = .reader,
+        },
         .{ .path = "root.banner", .params = &.{ .{ .name = "w" }, .{ .name = "width" } } },
         .{ .path = "root.tee", .params = &.{ .{ .name = "r" }, .{ .name = "w" } } },
         // Inferred codepoints: these `[]u21` are Go `[]rune` over the same

@@ -147,6 +147,7 @@ const rules = [_]Rule{
     types.integrityIssue,
     functions.optionalOutIssue,
     types.abiTypeIssue,
+    callbacks.callbackTypeRule,
     callbacks.callbackUserdataRule,
 };
 
