@@ -1267,7 +1267,7 @@ fn discoverContainer(
         const value = @field(Container, candidate.name);
         if (@typeInfo(@TypeOf(value)) != .@"fn") continue;
         const path = path_prefix ++ "." ++ candidate.name;
-        if (comptime selectorContains(declaration, "exclude", path)) continue;
+        if (comptime excludedPaths(declaration).has(path)) continue;
         comptime var adjusted = false;
         if (@hasField(@TypeOf(declaration), "functions")) {
             inline for (declaration.functions) |entry| {
@@ -1817,12 +1817,17 @@ fn containerHasPath(comptime Container: type, comptime rest: []const u8) bool {
     }
 }
 
-pub fn selectorContains(comptime declaration: anytype, comptime field_name: []const u8, comptime path: []const u8) bool {
-    if (!@hasField(@TypeOf(declaration), field_name)) return false;
-    inline for (@field(declaration, field_name)) |candidate| {
-        if (std.mem.eql(u8, candidate, path)) return true;
+/// Every path a binding lists in `.exclude`, as one comptime index built
+/// once per binding (comptime calls are memoised). Discovery and coverage
+/// ask about every public function they find, so a scan of `.exclude` for
+/// each would cost `declarations × exclusions` comptime branches.
+pub fn excludedPaths(comptime declaration: anytype) std.StaticStringMap(void) {
+    comptime {
+        if (!@hasField(@TypeOf(declaration), "exclude")) return .{};
+        var keys: [declaration.exclude.len]struct { []const u8 } = undefined;
+        for (declaration.exclude, 0..) |path, index| keys[index] = .{path};
+        return std.StaticStringMap(void).initComptime(keys);
     }
-    return false;
 }
 
 /// `context` names the parameter, return value, or field the type was reached
@@ -3291,6 +3296,15 @@ test "discovery selectors use stable owner-qualified paths" {
     try std.testing.expect(comptime declarationPathExists(declaration, "root.update"));
     try std.testing.expect(!comptime declarationPathExists(declaration, "Missing.update"));
     try std.testing.expect(!comptime declarationPathExists(declaration, "root.privateHelper"));
+}
+
+test "excluded paths are indexed once" {
+    const declaration = .{ .root = struct {}, .discover = .public, .exclude = .{ "root.skip", "Handle.drop" } };
+    const excluded = comptime excludedPaths(declaration);
+    try std.testing.expect(excluded.has("root.skip"));
+    try std.testing.expect(excluded.has("Handle.drop"));
+    try std.testing.expect(!excluded.has("root.keep"));
+    try std.testing.expect(!comptime excludedPaths(.{ .root = struct {} }).has("root.skip"));
 }
 
 test "bound function paths are indexed once, nested groups and plain strings included" {

@@ -242,7 +242,7 @@ fn collectContainer(
         if (!contains(seen_functions.items, identity)) {
             try seen_functions.append(allocator, identity);
             const path = path_prefix ++ "." ++ candidate.name;
-            const status: Status = if (comptime walk.selectorContains(binding, "exclude", path))
+            const status: Status = if (comptime walk.excludedPaths(binding).has(path))
                 .excluded
             else if (discovered or comptime functionListed(binding, path))
                 .bound
