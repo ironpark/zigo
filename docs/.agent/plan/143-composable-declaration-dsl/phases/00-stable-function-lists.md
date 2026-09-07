@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T06:35:58Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Exact names retain their requested order and all invalid selector shapes produce intentional compile errors.
 > NEXT: none

@@ -16,6 +16,14 @@ pub const FuncSelector = struct {
     exclude: []const []const u8 = &.{},
 };
 
+/// Shared options for one or more exact-name enumeration entries.
+pub const EnumerationOptions = struct {
+    /// Generate text parsing and marshaling helpers.
+    text: bool = false,
+    /// Accept values outside the enum's named tags.
+    open: bool = false,
+};
+
 /// Build one function entry from an exact path. Call `.with(options)` on the
 /// result when the entry needs metadata.
 pub fn func(comptime path: []const u8) declare.Function {
@@ -41,8 +49,8 @@ pub fn funcs(
         }
     } else {
         inline for (comptime std.meta.declarations(Container)) |candidate| {
-            const value = @field(Container, candidate.name);
-            if (@typeInfo(@TypeOf(value)) != .@"fn") continue;
+            const candidate_value = @field(Container, candidate.name);
+            if (@typeInfo(@TypeOf(candidate_value)) != .@"fn") continue;
             if (!std.mem.startsWith(u8, candidate.name, selector.prefix)) continue;
             if (comptime isExcluded(candidate.name, selector.exclude)) continue;
             entries[index] = .{ .path = selector.base ++ "." ++ candidate.name };
@@ -87,13 +95,99 @@ pub fn pathsOf(comptime entries: anytype) [entries.len][]const u8 {
     return paths;
 }
 
+/// Register one exact declaration as a handle, coupling its Zig declaration
+/// and Go name to the same string.
+pub fn handle(comptime Container: type, comptime name: []const u8) declare.Type {
+    const T = namedType(Container, name);
+    return .{ .handle = .{ .type = T, .name = name } };
+}
+
+/// Register exact declarations as handles in the listed order.
+pub fn handles(
+    comptime Container: type,
+    comptime names: []const []const u8,
+) [names.len]declare.Type {
+    comptime validateTypeNames(Container, names, "handles");
+    var entries: [names.len]declare.Type = undefined;
+    inline for (names, 0..) |name, index| entries[index] = handle(Container, name);
+    return entries;
+}
+
+/// Register one exact struct declaration as a value.
+pub fn value(comptime Container: type, comptime name: []const u8) declare.Type {
+    const T = namedType(Container, name);
+    if (@typeInfo(T) != .@"struct")
+        @compileError("zigo.dsl.value declaration must name a struct type: " ++ name);
+    return .{ .value = .{ .type = T, .name = name } };
+}
+
+/// Register exact struct declarations as values in the listed order.
+pub fn values(
+    comptime Container: type,
+    comptime names: []const []const u8,
+) [names.len]declare.Type {
+    comptime validateTypeNames(Container, names, "values");
+    var entries: [names.len]declare.Type = undefined;
+    inline for (names, 0..) |name, index| entries[index] = value(Container, name);
+    return entries;
+}
+
+/// Register one exact enum declaration with shared enum options.
+pub fn enumeration(
+    comptime Container: type,
+    comptime name: []const u8,
+    comptime options: EnumerationOptions,
+) declare.Type {
+    const T = namedType(Container, name);
+    if (@typeInfo(T) != .@"enum")
+        @compileError("zigo.dsl.enumeration declaration must name an enum type: " ++ name);
+    return .{ .enumeration = .{
+        .type = T,
+        .name = name,
+        .text = options.text,
+        .exhaustive = !options.open,
+    } };
+}
+
+/// Register exact enum declarations with shared options in the listed order.
+pub fn enumerations(
+    comptime Container: type,
+    comptime names: []const []const u8,
+    comptime options: EnumerationOptions,
+) [names.len]declare.Type {
+    comptime validateTypeNames(Container, names, "enumerations");
+    var entries: [names.len]declare.Type = undefined;
+    inline for (names, 0..) |name, index| entries[index] = enumeration(Container, name, options);
+    return entries;
+}
+
+/// Register one exact tagged-union declaration.
+pub fn taggedUnion(comptime Container: type, comptime name: []const u8) declare.Type {
+    const T = namedType(Container, name);
+    const info = @typeInfo(T);
+    if (info != .@"union" or info.@"union".tag_type == null)
+        @compileError("zigo.dsl.taggedUnion declaration must name a tagged union type: " ++ name);
+    return .{ .tagged_union = .{ .type = T, .name = name } };
+}
+
+/// Register exact tagged-union declarations in the listed order.
+pub fn taggedUnions(
+    comptime Container: type,
+    comptime names: []const []const u8,
+) [names.len]declare.Type {
+    comptime validateTypeNames(Container, names, "taggedUnions");
+    var entries: [names.len]declare.Type = undefined;
+    inline for (names, 0..) |name, index| entries[index] = taggedUnion(Container, name);
+    return entries;
+}
+
 fn matchingFunctionCount(comptime Container: type, comptime selector: FuncSelector) usize {
     comptime validateSelector(Container, selector);
     if (selector.names.len != 0) return selector.names.len;
     var count: usize = 0;
     inline for (comptime std.meta.declarations(Container)) |candidate| {
-        const value = @field(Container, candidate.name);
-        if (@typeInfo(@TypeOf(value)) == .@"fn" and
+        const candidate_value = @field(Container, candidate.name);
+        if (@typeInfo(@TypeOf(candidate_value)) == .@"fn" and
             std.mem.startsWith(u8, candidate.name, selector.prefix) and
             !isExcluded(candidate.name, selector.exclude)) count += 1;
     }
@@ -114,8 +208,8 @@ fn validateSelector(comptime Container: type, comptime selector: FuncSelector) v
             var found = false;
             inline for (comptime std.meta.declarations(Container)) |candidate| {
                 if (!std.mem.eql(u8, candidate.name, name)) continue;
-                const value = @field(Container, candidate.name);
-                found = @typeInfo(@TypeOf(value)) == .@"fn";
+                const candidate_value = @field(Container, candidate.name);
+                found = @typeInfo(@TypeOf(candidate_value)) == .@"fn";
             }
             if (!found)
                 @compileError("zigo.dsl.funcs exact name does not name a public function: " ++ name);
@@ -129,8 +223,8 @@ fn validateSelector(comptime Container: type, comptime selector: FuncSelector) v
     inline for (selector.exclude, 0..) |excluded, index| {
         var found = false;
         inline for (comptime std.meta.declarations(Container)) |candidate| {
-            const value = @field(Container, candidate.name);
-            if (@typeInfo(@TypeOf(value)) == .@"fn" and
+            const candidate_value = @field(Container, candidate.name);
+            if (@typeInfo(@TypeOf(candidate_value)) == .@"fn" and
                 std.mem.eql(u8, candidate.name, excluded) and
                 std.mem.startsWith(u8, candidate.name, selector.prefix)) found = true;
         }
@@ -148,6 +242,36 @@ fn isExcluded(comptime name: []const u8, comptime exclusions: []const []const u8
         if (std.mem.eql(u8, name, excluded)) return true;
     }
     return false;
+}
+
+fn namedType(comptime Container: type, comptime name: []const u8) type {
+    var found = false;
+    inline for (comptime std.meta.declarations(Container)) |candidate| {
+        if (!std.mem.eql(u8, candidate.name, name)) continue;
+        const declaration = @field(Container, candidate.name);
+        if (@TypeOf(declaration) != type)
+            @compileError("zigo.dsl type name does not name a public type declaration: " ++ name);
+        found = true;
+    }
+    if (!found)
+        @compileError("zigo.dsl type name does not name a public type declaration: " ++ name);
+    return @field(Container, name);
+}
+
+fn validateTypeNames(
+    comptime Container: type,
+    comptime names: []const []const u8,
+    comptime helper: []const u8,
+) void {
+    if (names.len == 0)
+        @compileError("zigo.dsl." ++ helper ++ " requires at least one declaration name");
+    inline for (names, 0..) |name, index| {
+        _ = namedType(Container, name);
+        inline for (names[0..index]) |earlier| {
+            if (std.mem.eql(u8, earlier, name))
+                @compileError("zigo.dsl." ++ helper ++ " lists a declaration more than once: " ++ name);
+        }
+    }
 }
 
 fn collectedElement(comptime parts: anytype) type {
@@ -288,9 +412,9 @@ test "collect flattens generated arrays and individual functions in order" {
 test "collect infers registered type entries" {
     const First = struct {};
     const Second = enum { value };
-    const handles = [_]declare.Type{.{ .handle = .{ .type = First } }};
+    const handle_entries = [_]declare.Type{.{ .handle = .{ .type = First } }};
     const entries = collect(.{
-        handles,
+        handle_entries,
         declare.Type{ .enumeration = .{ .type = Second } },
     });
     try std.testing.expectEqual(@as(usize, 2), entries.len);
@@ -308,4 +432,42 @@ test "pathsOf derives package paths without repeating strings" {
     try std.testing.expectEqual(@as(usize, 2), paths.len);
     try std.testing.expectEqualStrings("root.encodeMouse", paths[0]);
     try std.testing.expectEqualStrings("root.encodeKey", paths[1]);
+}
+
+test "named type helpers couple declarations and Go names" {
+    const Library = struct {
+        pub const Object = struct {};
+        pub const Snapshot = struct {};
+        pub const Status = enum(u8) { ready };
+        pub const Event = union(enum) { count: u32 };
+    };
+
+    const handle_entries = handles(Library, &.{ "Snapshot", "Object" });
+    const value_entries = values(Library, &.{"Object"});
+    const enum_entries = enumerations(Library, &.{"Status"}, .{ .text = true, .open = true });
+    const union_entry = taggedUnion(Library, "Event");
+    const entries = collect(.{ handle_entries, value_entries, enum_entries, union_entry });
+
+    try std.testing.expectEqual(@as(usize, 5), entries.len);
+    try std.testing.expectEqualStrings("Snapshot", entries[0].goName());
+    try std.testing.expect(entries[0].zigType() == Library.Snapshot);
+    try std.testing.expectEqualStrings("Object", entries[1].goName());
+    try std.testing.expect(entries[2] == .value);
+    try std.testing.expect(entries[3] == .enumeration);
+    try std.testing.expect(entries[3].enumeration.text);
+    try std.testing.expect(!entries[3].enumeration.exhaustive);
+    try std.testing.expect(entries[4] == .tagged_union);
+}
+
+test "singular type helpers emit the requested representation" {
+    const Library = struct {
+        pub const Handle = opaque {};
+        pub const Record = struct { value: u32 };
+        pub const Mode = enum { on };
+        pub const Result = union(enum) { value: u32 };
+    };
+    try std.testing.expect(handle(Library, "Handle") == .handle);
+    try std.testing.expect(value(Library, "Record") == .value);
+    try std.testing.expect(enumeration(Library, "Mode", .{}) == .enumeration);
+    try std.testing.expect(taggedUnion(Library, "Result") == .tagged_union);
 }

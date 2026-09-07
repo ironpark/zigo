@@ -2,7 +2,7 @@
 depends_on:
 - "143-composable-declaration-dsl#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: Every batch expands to ordered `zigo.Type` entries with the requested representation and exact Go name.
 > NEXT: none
