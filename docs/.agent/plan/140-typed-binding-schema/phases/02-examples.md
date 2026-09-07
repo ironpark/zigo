@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-07T05:20:57Z"
 depends_on:
 - "140-typed-binding-schema#1"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 예제 루프 go-check와 staticcheck 통과, 생성물 diff 검토 완료.
 > NEXT: none
