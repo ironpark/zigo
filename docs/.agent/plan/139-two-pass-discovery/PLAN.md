@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T04:10:20Z"
 description: discovery를 항목 주도 패스와 런타임 집합 기반 탐색 패스로 나눠 comptime 교차 조회를 없앤다
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-07T04:06:31Z"
 ---
 > NEXT: walk 두 패스. ([Phase 0](phases/00-walk-two-pass.md))
@@ -8,7 +9,7 @@ registered_at: "2026-09-07T04:06:31Z"
 # Phases
 
 - [x] [Phase 00: Two-pass discovery in walk](phases/00-walk-two-pass.md)
-- [ ] [Phase 01: Runtime sets in coverage and example regeneration](phases/01-coverage-and-examples.md)
+- [x] [Phase 01: Runtime sets in coverage and example regeneration](phases/01-coverage-and-examples.md)
 
 # Shared Verification
 

@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-07T04:10:20Z"
 depends_on:
 - "139-two-pass-discovery#0"
 perf_phase: true
-status: in-progress
+status: done
 ---
 > DONE-WHEN: 전체 테스트와 예제 go-check 루프 통과, `git status --short examples` 비어 있음.
 > NEXT: none
