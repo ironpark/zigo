@@ -737,15 +737,20 @@ pub fn writePublicCallbackType(scope: PublicScope, writer: *std.Io.Writer, progr
 /// wrap the user's function instead of converting its type.
 pub fn callbackNeedsAdapter(program: abi.Program, callback: semantic.Callback) bool {
     const value_count = if (callback.has_userdata and callback.params.len != 0) callback.params.len - 1 else callback.params.len;
-    for (callback.params[0..value_count]) |parameter| if (type_spelling.isPackedValue(program, parameter) or parameter == .bool) return true;
-    return callback.@"return".* == .bool or callback.hasCodepoints();
+    for (callback.params[0..value_count]) |parameter| if (type_spelling.isPackedValue(program, parameter) or parameter == .bool or parameter == .@"enum") return true;
+    return callback.@"return".* == .bool or callback.@"return".* == .@"enum" or callback.hasCodepoints();
 }
 
-pub fn writeCallbackAdapter(writer: *std.Io.Writer, program: abi.Program, callback: semantic.Callback, value_name: []const u8) !void {
+pub fn writeCallbackAdapter(scope: PublicScope, writer: *std.Io.Writer, callback: semantic.Callback, value_name: []const u8) !void {
+    const program = scope.program;
     const value_count = if (callback.has_userdata and callback.params.len != 0) callback.params.len - 1 else callback.params.len;
     const go_error = common.callbackSignatureHasGoError(program, callback);
     const codepoint_result = semantic.isCodepoint(callback.@"return".*, callback.return_semantic);
     const bool_result = callback.@"return".* == .bool;
+    const enum_result = callback.@"return".* == .@"enum";
+    // A result whose public spelling differs from the wire has to be
+    // converted after the call; with `go_error` the pair is taken apart first.
+    const converted_result = codepoint_result or bool_result or enum_result;
     try writer.writeAll("func(");
     for (callback.params[0..value_count], 0..) |_, index| {
         if (index != 0) try writer.writeAll(", ");
@@ -763,37 +768,59 @@ pub fn writeCallbackAdapter(writer: *std.Io.Writer, program: abi.Program, callba
     // A `rune` result is converted back to its carrier; with `go_error` the
     // pair has to be taken apart first.
     if (callback.@"return".* != .void) {
-        if (codepoint_result and go_error)
-            try writer.writeAll("zigoResult, err := ")
-        else if (codepoint_result)
-            try writer.writeAll("return uint32(")
-        else if (bool_result and go_error)
-            try writer.writeAll("zigoResult, err := ")
-        else if (bool_result)
-            try writer.writeAll("return zigoBoolToUint8(")
-        else
+        if (converted_result and go_error) {
+            try writer.writeAll("zigoResult, err := ");
+        } else {
             try writer.writeAll("return ");
+            if (converted_result) try writeCallbackAdapterResultOpen(scope, writer, callback);
+        }
     }
     try writer.print("{s}(", .{value_name});
     for (callback.params[0..value_count], 0..) |parameter, index| {
         if (index != 0) try writer.writeAll(", ");
-        if (type_spelling.isPackedValue(program, parameter))
-            try writer.print("{s}FromBacking(p{d})", .{ parameter.value_struct.ref, index })
-        else if (parameter == .bool)
-            try writer.print("p{d} != 0", .{index})
-        else if (semantic.isCodepoint(parameter, callback.paramHint(index)))
-            try writer.print("rune(p{d})", .{index})
-        else
-            try writer.print("p{d}", .{index});
+        try writeCallbackAdapterArgument(scope, writer, callback, index, parameter);
     }
     try writer.writeByte(')');
-    if (codepoint_result and go_error)
-        try writer.writeAll("\n\t\treturn uint32(zigoResult), err")
-    else if (bool_result and go_error)
-        try writer.writeAll("\n\t\treturn zigoBoolToUint8(zigoResult), err")
-    else if (codepoint_result or bool_result)
-        try writer.writeByte(')');
+    if (converted_result and go_error) {
+        try writer.writeAll("\n\t\treturn ");
+        try writeCallbackAdapterResultOpen(scope, writer, callback);
+        try writer.writeAll("zigoResult), err");
+    } else if (converted_result) try writer.writeByte(')');
     try writer.writeAll("\n\t}");
+}
+
+/// One raw parameter `p{index}` spelled as the public value the user's
+/// function takes.
+fn writeCallbackAdapterArgument(scope: PublicScope, writer: *std.Io.Writer, callback: semantic.Callback, index: usize, parameter: semantic.TypeNode) !void {
+    const program = scope.program;
+    if (type_spelling.isPackedValue(program, parameter))
+        try writer.print("{s}FromBacking(p{d})", .{ parameter.value_struct.ref, index })
+    else if (parameter == .bool)
+        try writer.print("p{d} != 0", .{index})
+    else if (parameter == .@"enum") {
+        var buffer: [16]u8 = undefined;
+        const name = try std.fmt.bufPrint(&buffer, "p{d}", .{index});
+        try writeEnumFromRaw(scope, writer, parameter.@"enum".ref, name);
+    } else if (semantic.isCodepoint(parameter, callback.paramHint(index)))
+        try writer.print("rune(p{d})", .{index})
+    else
+        try writer.print("p{d}", .{index});
+}
+
+/// The opening of the conversion that takes a public result back to its wire
+/// spelling; the caller writes the expression and the closing parenthesis.
+fn writeCallbackAdapterResultOpen(scope: PublicScope, writer: *std.Io.Writer, callback: semantic.Callback) !void {
+    const result = callback.@"return".*;
+    if (semantic.isCodepoint(result, callback.return_semantic))
+        try writer.writeAll("uint32(")
+    else if (result == .bool)
+        try writer.writeAll("zigoBoolToUint8(")
+    else if (result == .@"enum") {
+        const ref = result.@"enum".ref;
+        if (enumAdapter(scope.program, ref) != null) return writer.print("zigo{s}ToRaw(", .{ref});
+        try writer.writeAll(type_spelling.rawGoTypeName(scope.program, result));
+        try writer.writeByte('(');
+    }
 }
 
 /// True when native code running under this call can invoke a Go callback:

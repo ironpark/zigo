@@ -63,14 +63,18 @@ var zigoActiveCallbackHandles atomic.Int64
 type zigoCallbackHandle = cgo.Handle
 
 func zigoNewOnLocationCallbackHandle(value OnLocationCallback) zigoCallbackHandle {
-	stored := (func(Location))(value)
+	stored := func(p0 int32) {
+		value(Location(p0))
+	}
 	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
 	zigoActiveCallbackHandles.Add(1)
 	return handle
 }
 
 func zigoNewOnStreamCallbackHandle(value OnStreamCallback) zigoCallbackHandle {
-	stored := (func(*Stream, Location))(value)
+	stored := func(p0 unsafe.Pointer, p1 int32) {
+		value(p0, Location(p1))
+	}
 	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
 	zigoActiveCallbackHandles.Add(1)
 	return handle
@@ -86,7 +90,9 @@ func zigoNewOnViewCallbackHandle(value OnViewCallback) zigoCallbackHandle {
 }
 
 func zigoNewPickLocationCallbackHandle(value PickLocationCallback) zigoCallbackHandle {
-	stored := (func(int32) Location)(value)
+	stored := func(p0 int32) int32 {
+		return int32(value(p0))
+	}
 	handle := cgo.NewHandle(&raw.CallbackState{Fn: stored})
 	zigoActiveCallbackHandles.Add(1)
 	return handle

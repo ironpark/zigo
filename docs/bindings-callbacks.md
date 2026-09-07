@@ -77,7 +77,7 @@ callconv(.c) void`는 Go에서 반환값 없는 `func(...)`가 되고, cgo와 pu
 | Zig 콜백 시그니처 자리 | wire | Go 콜백 타입 |
 |---|---|---|
 | bool, 정수, 부동소수 | 같은 scalar(`bool`은 `u8`, purego 부동소수는 비트 패턴) | `bool`, 정수, 부동소수 |
-| 등록 enum | tag 정수; shim thunk가 `@intFromEnum`·`@enumFromInt`로 맞춤 | 등록 enum 타입 |
+| 등록 enum | tag 정수; shim thunk가 `@intFromEnum`·`@enumFromInt`로, Go handle 생성자가 enum 타입(또는 `.go` adapter)으로 맞춤 | 등록 enum 타입 |
 | 등록 packed 값 | backing 정수 | packed mirror struct |
 | `*Handle`, `*const Handle`, `?*Handle` (파라미터만) | 포인터 | `*Handle` |
 | `[*:0]const u8` (파라미터만) | `const char *` | `string` 복사본 |

@@ -56,11 +56,15 @@ func zigoBoolToUint8(value bool) uint8 {
 type zigoCallbackHandle = uintptr
 
 func zigoNewOnLocationCallbackHandle(value OnLocationCallback) zigoCallbackHandle {
-	return raw.NewCallbackHandle((func(Location))(value))
+	return raw.NewCallbackHandle(func(p0 int32) {
+		value(Location(p0))
+	})
 }
 
 func zigoNewOnStreamCallbackHandle(value OnStreamCallback) zigoCallbackHandle {
-	return raw.NewCallbackHandle((func(*Stream, Location))(value))
+	return raw.NewCallbackHandle(func(p0 unsafe.Pointer, p1 int32) {
+		value(p0, Location(p1))
+	})
 }
 
 func zigoNewOnViewCallbackHandle(value OnViewCallback) zigoCallbackHandle {
