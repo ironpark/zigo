@@ -1,8 +1,9 @@
 ---
+completed_at: "2026-09-07T13:29:50Z"
 depends_on:
 - "154-binding-authoring-v2#2"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: The new API is documented, required checks pass and the working tree is clean.
 > NEXT: none

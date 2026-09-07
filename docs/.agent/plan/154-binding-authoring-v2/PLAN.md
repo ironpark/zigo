@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T13:29:50Z"
 description: Implement a typed declaration tree and normalized binding authoring API
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-07T12:44:16Z"
 ---
 > NEXT: Implement the typed authoring contracts and scoped references. ([Phase 0](phases/00-contracts-and-references.md))
@@ -10,7 +11,7 @@ registered_at: "2026-09-07T12:44:16Z"
 - [x] [Phase 00: Typed authoring contracts and references](phases/00-contracts-and-references.md)
 - [x] [Phase 01: Declaration tree normalization](phases/01-normalize-tree.md)
 - [x] [Phase 02: Switch public API and migrate consumers](phases/02-migrate-consumers.md)
-- [ ] [Phase 03: Documentation and final verification](phases/03-docs-and-verification.md)
+- [x] [Phase 03: Documentation and final verification](phases/03-docs-and-verification.md)
 
 # Shared Verification
 
