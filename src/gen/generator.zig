@@ -185,6 +185,14 @@ fn appendEmitters(allocator: std.mem.Allocator, prepared: *std.ArrayList(Prepare
     }
 }
 
+/// The public-package emitters, the built-in files and the plugin files
+/// alike. They are walked rather than indexed because how many files the
+/// registered plugins add is decided at comptime, not written in a table.
+fn appendPublicEmitters(allocator: std.mem.Allocator, prepared: *std.ArrayList(PreparedFile), program: abi.Program, options: emit.Options) !void {
+    var emitters = emit.publicEmitters();
+    while (emitters.next()) |emitter| try appendEmitters(allocator, prepared, program, options, &.{emitter});
+}
+
 fn appendPublicPackage(allocator: std.mem.Allocator, prepared: *std.ArrayList(PreparedFile), full_program: abi.Program, options: emit.Options) !void {
     var functions: std.ArrayList(abi.AbiFn) = .empty;
     for (full_program.functions) |function| if (emit.packageMatches(function.origin.package, options.active_package)) try functions.append(allocator, function);
@@ -196,7 +204,7 @@ fn appendPublicPackage(allocator: std.mem.Allocator, prepared: *std.ArrayList(Pr
     defer referenced.deinit(allocator);
     var package_options = options;
     package_options.helpers = &referenced;
-    try appendEmitters(allocator, prepared, program, package_options, &emit.public_emitters);
+    try appendPublicEmitters(allocator, prepared, program, package_options);
     // The tagged-union files are not in the emitter table: how many there are
     // depends on the bindings, so they are rendered per union.
     for (try emit.unionFilesAlloc(allocator, program, package_options)) |file| {

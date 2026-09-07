@@ -7,6 +7,7 @@ const naming = @import("naming");
 const common = @import("common.zig");
 const docs = @import("docs.zig");
 const emit = @import("emit.zig");
+const plugin_hooks = @import("plugin_hooks.zig");
 const materialized_decoder = @import("materialized_decoder.zig");
 const public = @import("public.zig");
 const public_writers = @import("public_writers.zig");
@@ -135,6 +136,7 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
             }
             try writer.writeAll("\t}\n}\n\n");
         }
+        try plugin_hooks.runTypeHooks(plugin_hooks.context(allocator, program, options), writer, declaration);
     }
     for (program.structs) |record| {
         if (record.owner.kind == .tagged_union) continue;
@@ -158,6 +160,7 @@ pub fn renderPublicValueStructs(allocator: std.mem.Allocator, writer: *std.Io.Wr
         }
         try writer.writeAll("}\n\n");
         try renderPublicStructLayoutGuards(allocator, writer, options, record);
+        try plugin_hooks.runTypeHooks(plugin_hooks.context(allocator, program, options), writer, record.owner.*);
     }
     for (program.structs) |record| {
         if (record.owner.kind == .tagged_union) {
@@ -907,6 +910,7 @@ pub fn renderGoEnums(allocator: std.mem.Allocator, writer: *std.Io.Writer, progr
         try writeEnumNumberFormat(writer, declaration.tag_type.?);
         try writer.writeAll(" + \")\"\n\t}\n}\n\n");
         if (declaration.text == true) try renderGoEnumText(allocator, writer, program, declaration);
+        try plugin_hooks.runTypeHooks(plugin_hooks.context(allocator, program, options), writer, declaration);
     }
 }
 

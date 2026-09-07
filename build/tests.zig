@@ -47,7 +47,7 @@ pub fn addRepositorySteps(
         },
     });
     const emit_module = b.createModule(.{
-        .root_source_file = b.path("src/gen/emit/emit.zig"),
+        .root_source_file = b.path("src/gen/emit_tests.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
@@ -55,6 +55,7 @@ pub fn addRepositorySteps(
             .{ .name = "semantic", .module = generator_modules.semantic },
             .{ .name = "abi", .module = generator_modules.abi },
             .{ .name = "lower", .module = generator_modules.lower },
+            .{ .name = "plugin", .module = generator_modules.plugin },
         },
     });
     const validate_module = b.createModule(.{

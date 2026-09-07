@@ -5,29 +5,11 @@
 const std = @import("std");
 const abi = @import("abi");
 const emit = @import("emit.zig");
+const plugin = @import("plugin");
 
-/// The identifiers a rendering of the public package used. Selectors
-/// (`x.Name`) are not identifiers of this package and are skipped.
-pub const Referenced = struct {
-    names: std.StringHashMapUnmanaged(void) = .empty,
-
-    pub fn contains(self: *const Referenced, name: []const u8) bool {
-        return self.names.contains(name);
-    }
-
-    pub fn deinit(self: *Referenced, allocator: std.mem.Allocator) void {
-        var keys = self.names.keyIterator();
-        while (keys.next()) |key| allocator.free(key.*);
-        self.names.deinit(allocator);
-    }
-
-    fn add(self: *Referenced, allocator: std.mem.Allocator, name: []const u8) !void {
-        if (self.names.contains(name)) return;
-        const owned = try allocator.dupe(u8, name);
-        errdefer allocator.free(owned);
-        try self.names.put(allocator, owned, {});
-    }
-};
+/// The identifiers a rendering of the public package used. It is declared
+/// with the plugin contract, since the emitter options carry it.
+pub const Referenced = plugin.Referenced;
 
 /// Records every identifier of a Go body: comments and string literals are
 /// skipped, and so is the name after a `.`, which belongs to another package
@@ -89,7 +71,8 @@ pub fn referencedHelpersAlloc(allocator: std.mem.Allocator, program: abi.Program
         trial.helpers = &set;
         var next: Referenced = .{};
         errdefer next.deinit(allocator);
-        for (emit.public_emitters) |emitter| {
+        var emitters = emit.publicEmitters();
+        while (emitters.next()) |emitter| {
             var rendered: std.Io.Writer.Allocating = .init(allocator);
             defer rendered.deinit();
             // The writer only allocates, so a failed write is a failed allocation.

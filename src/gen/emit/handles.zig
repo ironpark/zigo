@@ -6,6 +6,7 @@ const naming = @import("naming");
 const common = @import("common.zig");
 const docs = @import("docs.zig");
 const emit = @import("emit.zig");
+const plugin_hooks = @import("plugin_hooks.zig");
 const public_writers = @import("public_writers.zig");
 
 /// One lifecycle for every handle. Fields are `ptr`, `mu`, `active`,
@@ -306,6 +307,7 @@ pub fn renderGoHandles(allocator: std.mem.Allocator, writer: *std.Io.Writer, pro
             try writeInUseCheck(writer, recv, declaration.name, "active", "\t");
             try writer.print("\t{0s}.closed = true\n\t{0s}.ptr = nil\n\t{0s}.owner = nil\n\t{0s}.mu.Unlock()\n\treturn nil\n}}\n\n", .{recv});
         }
+        try plugin_hooks.runTypeHooks(plugin_hooks.context(allocator, program, options), writer, declaration);
     }
 }
 

@@ -21,6 +21,7 @@ pub const GeneratorModules = struct {
     naming: *std.Build.Module,
     abi: *std.Build.Module,
     diagnostic: *std.Build.Module,
+    plugin: *std.Build.Module,
     errors_lock: *std.Build.Module,
     abi_diff: *std.Build.Module,
     lower: *std.Build.Module,
@@ -66,6 +67,19 @@ pub fn createGeneratorModules(
         .root_source_file = source_root.path(b, "gen/diagnostic.zig"),
         .target = target,
         .optimize = optimize,
+    });
+    // The plugin contract is its own module: a plugin package compiles
+    // against it alone, so it cannot depend on generator internals and the
+    // generator cannot depend on a plugin's.
+    const plugin_module = b.createModule(.{
+        .root_source_file = source_root.path(b, "plugin.zig"),
+        .target = target,
+        .optimize = optimize,
+        .imports = &.{
+            .{ .name = "abi", .module = abi_module },
+            .{ .name = "semantic", .module = semantic_module },
+            .{ .name = "diagnostic", .module = diagnostic_module },
+        },
     });
     const errors_lock_module = b.createModule(.{
         .root_source_file = source_root.path(b, "gen/ir/errors_lock.zig"),
@@ -116,6 +130,7 @@ pub fn createGeneratorModules(
             .{ .name = "diagnostic", .module = diagnostic_module },
             .{ .name = "errors_lock", .module = errors_lock_module },
             .{ .name = "lower", .module = gen_lower_module },
+            .{ .name = "plugin", .module = plugin_module },
             .{ .name = "stream_return", .module = gen_stream_return_module },
         },
     });
@@ -126,6 +141,7 @@ pub fn createGeneratorModules(
         .naming = naming_module,
         .abi = abi_module,
         .diagnostic = diagnostic_module,
+        .plugin = plugin_module,
         .errors_lock = errors_lock_module,
         .abi_diff = abi_diff_module,
         .lower = gen_lower_module,
@@ -158,6 +174,7 @@ pub fn addGeneratorWithModules(
                 .{ .name = "errors_lock", .module = modules.errors_lock },
                 .{ .name = "abi_diff", .module = modules.abi_diff },
                 .{ .name = "lower", .module = modules.lower },
+                .{ .name = "plugin", .module = modules.plugin },
                 .{ .name = "stream_return", .module = modules.stream_return },
                 .{ .name = "sync_check", .module = modules.sync_check },
             },

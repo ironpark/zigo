@@ -17,6 +17,8 @@ const public_runtime = @import("public_runtime.zig");
 const public_types = @import("public_types.zig");
 const public_writers = @import("public_writers.zig");
 const raw = @import("raw.zig");
+const plugin = @import("plugin");
+const plugin_hooks = @import("plugin_hooks.zig");
 const references = @import("references.zig");
 const lower = @import("lower");
 
@@ -768,6 +770,14 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
             try iterators.renderIteratorWrapper(scope, allocator, writer, function, go_names, receiver_name.?, go_name, needs_check);
         if (function.origin.implements != null)
             try implements.renderImplementsWrapper(writer, function, receiver_name.?, go_name, needs_check);
+        try plugin_hooks.runMethodHooks(plugin_hooks.methodContext(allocator, program, options, .{
+            .go_name = go_name,
+            .receiver = function.origin.receiver,
+            .receiver_name = receiver_name,
+            .param_names = go_names,
+            .owned_type = owned_type,
+            .needs_check = needs_check,
+        }), writer, function);
     }
     if (programHasCodepointSlice(program)) try renderCodepointSliceHelpers(writer);
 }
@@ -776,7 +786,7 @@ pub fn renderPublic(allocator: std.mem.Allocator, writer: *std.Io.Writer, progra
 /// marker, the package clause, the import block the body actually needs, and
 /// the body. A body that declares nothing leaves the file at its prelude, and
 /// the generator drops it.
-fn renderPublicFile(
+pub fn renderPublicFile(
     allocator: std.mem.Allocator,
     writer: *std.Io.Writer,
     program: abi.Program,
@@ -950,10 +960,22 @@ pub fn writePublicImports(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
         if (function.origin.return_go_adapter) |adapter| try appendAdapterImportIfUsed(allocator, &adapters, adapter, body);
         for (function.origin.params) |parameter| if (parameter.go_adapter) |adapter| try appendAdapterImportIfUsed(allocator, &adapters, adapter, body);
     }
-    if (count == 0 and !uses_raw and !lifecycle and !default_foreign and foreign.items.len == 0 and adapters.items.len == 0) return writer.writeByte('\n');
-    if (count + @as(usize, @intFromBool(uses_raw)) + @as(usize, @intFromBool(lifecycle)) + @as(usize, @intFromBool(default_foreign)) + foreign.items.len + adapters.items.len == 1) {
+    // A plugin declares the non-standard imports its hooks may write; the
+    // body decides which of them this file gets, the same rule the generated
+    // imports follow.
+    var plugin_imports: std.ArrayList(plugin.Import) = .empty;
+    defer plugin_imports.deinit(allocator);
+    for (plugin_hooks.declaredImports()) |entry| {
+        if (!bodyUsesQualifier(body, entry.qualifier)) continue;
+        for (plugin_imports.items) |seen| if (std.mem.eql(u8, seen.path, entry.path)) break;
+        try plugin_imports.append(allocator, entry);
+    }
+    if (count == 0 and !uses_raw and !lifecycle and !default_foreign and foreign.items.len == 0 and adapters.items.len == 0 and plugin_imports.items.len == 0) return writer.writeByte('\n');
+    if (count + @as(usize, @intFromBool(uses_raw)) + @as(usize, @intFromBool(lifecycle)) + @as(usize, @intFromBool(default_foreign)) + foreign.items.len + adapters.items.len + plugin_imports.items.len == 1) {
         try writer.writeAll("\nimport ");
-        if (adapters.items.len == 1) {
+        if (plugin_imports.items.len == 1) {
+            try writePluginImport(writer, plugin_imports.items[0], "");
+        } else if (adapters.items.len == 1) {
             try writeAdapterImport(writer, adapters.items[0], "");
         } else if (uses_raw) {
             try public_writers.writeRawImport(writer, options, "");
@@ -971,8 +993,9 @@ pub fn writePublicImports(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
     try writer.writeAll("\nimport (\n");
     for (needed[0..count]) |path| try writer.print("\t\"{s}\"\n", .{path});
     for (adapters.items) |adapter| try writeAdapterImport(writer, adapter, "\t");
+    for (plugin_imports.items) |entry| try writePluginImport(writer, entry, "\t");
     if (uses_raw) {
-        if (count != 0 or adapters.items.len != 0) try writer.writeByte('\n');
+        if (count != 0 or adapters.items.len != 0 or plugin_imports.items.len != 0) try writer.writeByte('\n');
         try public_writers.writeRawImport(writer, options, "\t");
     }
     if (lifecycle) try writer.print("\tlifecycle \"{s}/{s}\"\n", .{ options.go_module, options.lifecycle_package_path });
@@ -982,6 +1005,17 @@ pub fn writePublicImports(allocator: std.mem.Allocator, writer: *std.Io.Writer, 
         for (foreign.items) |package| try writeForeignImport(writer, package, options, "\t");
     }
     try writer.writeAll(")\n\n");
+}
+
+/// One `import` line a plugin declared: aliased when the qualifier its hooks
+/// write is not the import path's last segment.
+fn writePluginImport(writer: *std.Io.Writer, entry: plugin.Import, indent: []const u8) !void {
+    const path = entry.path;
+    const last = if (std.mem.lastIndexOfScalar(u8, path, '/')) |slash| path[slash + 1 ..] else path;
+    if (std.mem.eql(u8, entry.qualifier, last))
+        try writer.print("{s}\"{s}\"\n", .{ indent, path })
+    else
+        try writer.print("{s}{s} \"{s}\"\n", .{ indent, entry.qualifier, path });
 }
 
 /// One `import` line for a `.go` adapter: aliased when the qualifier the

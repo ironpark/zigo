@@ -3,6 +3,8 @@
 const target_types = @import("target_types.zig");
 const std = @import("std");
 const abi = @import("abi");
+const plugin = @import("plugin");
+const registry = @import("../plugins/registry.zig");
 const semantic = @import("semantic");
 const naming = @import("naming");
 const common = @import("common.zig");
@@ -17,102 +19,11 @@ const raw = @import("raw.zig");
 const shim = @import("shim.zig");
 pub const references = @import("references.zig");
 
-pub const Options = struct {
-    pub const Backend = enum { cgo, purego };
-    pub const LinkMode = enum { static, dynamic };
-    /// One Go platform the cgo raw package links a native library for.
-    pub const CgoTarget = struct { goos: []const u8, goarch: []const u8 };
-    /// Extra link flags for one platform: a `#cgo <constraint> LDFLAGS:` line
-    /// of its own, so a flag one platform needs never reaches the others.
-    pub const TargetLdflags = struct {
-        /// `goos` or `goos,goarch`, spelled as cgo's build constraint.
-        constraint: []const u8,
-        flags: []const u8,
-    };
-    go_module: []const u8,
-    cflags_override: ?[]const u8 = null,
-    ldflags_override: ?[]const u8 = null,
-    extra_ldflags: []const u8 = "",
-    /// The build integration emits the complete LDFLAGS line into a volatile
-    /// Go file when it contains machine-local static archive paths.
-    ldflags_external: bool = false,
-    system_ldflags: []const u8 = "",
-    framework_ldflags: []const u8 = "",
-    /// Space-separated pkg-config package names. They become a `#cgo
-    /// pkg-config:` line rather than `-l` flags, so cgo asks pkg-config for the
-    /// compile and link flags of each one.
-    pkg_config_libs: []const u8 = "",
-    include_dir: []const u8 = "${SRCDIR}/../../../zig-out/include",
-    library_dir: []const u8 = "${SRCDIR}/../../../zig-out/lib",
-    /// Installed header filename. Empty derives `zigo_<package>.h`.
-    header_name: []const u8 = "",
-    raw_package_path: []const u8 = "internal/raw",
-    raw_package_name: []const u8 = "raw",
-    raw_colocated: bool = false,
-    /// Emit and use the backend-neutral runtime shared by split public packages.
-    /// Kept off for legacy single-package documents so their output stays byte-identical.
-    shared_lifecycle: bool = false,
-    lifecycle_package_path: []const u8 = "internal/lifecycle",
-    backend: Backend = .cgo,
-    link_mode: Options.LinkMode = .static,
-    /// Go platforms the cgo raw package links for. Empty keeps one unqualified
-    /// `#cgo LDFLAGS` line naming `library_dir` directly. Otherwise every entry
-    /// gets its own `#cgo <goos>,<goarch> LDFLAGS` line naming the library in
-    /// `library_dir/<goos>_<goarch>/`, so one generated tree builds for each
-    /// listed platform. Ignored by purego, which resolves the library at run time.
-    cgo_targets: []const CgoTarget = &.{},
-    /// Appended per-platform lines, written after the library link lines.
-    target_ldflags: []const TargetLdflags = &.{},
-    library_stem: []const u8 = "",
-    /// Public Go package name. Empty derives it from the binding name.
-    go_package: []const u8 = "",
-    /// Public package path below the module root. Empty defaults to the public
-    /// package name; `.` publishes at the module root.
-    go_package_path: []const u8 = "",
-    /// Body of the generated `// Package ...` doc. Empty falls back to the
-    /// `//!` container doc of the bindings file, then to a default sentence.
-    go_package_doc: []const u8 = "",
-    /// Emit checked-call convenience wrappers that panic on error.
-    go_must_variants: bool = false,
-    /// Null renders the legacy single package; empty selects the default package
-    /// of a split document; a value selects that named sub-package.
-    active_package: ?[]const u8 = null,
-    default_package_path: []const u8 = "",
-    /// Colon-separated purego candidate locations, in the order they are tried.
-    library_search_paths: []const u8 = "",
-    /// Comma-separated environment variable names. `null` selects the defaults.
-    library_env_vars: ?[]const u8 = null,
-    library_automatic: bool = false,
-    library_exported_api: bool = true,
-    /// Every search-path directory holds the library under a
-    /// `<goos>_<goarch>` subdirectory, the layout `targets` installs, so the
-    /// loader joins the running platform's name before the file name.
-    library_platform_dirs: bool = false,
-    /// The generated helpers the public package references, decided by
-    /// rendering it (`references.referencedHelpersAlloc`). Null emits every
-    /// gated helper, which only the discovery rendering itself relies on
-    /// being absent.
-    helpers: ?*const references.Referenced = null,
+/// The emitter options, defined with the plugin contract so a plugin
+/// compiled as its own module reaches them without importing the generator.
+pub const Options = plugin.Options;
 
-    /// Whether a gated helper of this name is written.
-    pub fn emitsHelper(self: Options, name: []const u8) bool {
-        const set = self.helpers orelse return true;
-        return set.contains(name);
-    }
-
-    /// `emitsHelper` for a name spelled from a type name, such as
-    /// `zigo<Type>ToRaw`. A name too long to spell is treated as referenced.
-    pub fn emitsHelperFmt(self: Options, comptime format: []const u8, args: anytype) bool {
-        var buffer: [256]u8 = undefined;
-        const name = std.fmt.bufPrint(&buffer, format, args) catch return true;
-        return self.emitsHelper(name);
-    }
-};
-
-pub const Emitter = struct {
-    pathAlloc: *const fn (std.mem.Allocator, abi.Program, Options) anyerror![]u8,
-    render: *const fn (std.mem.Allocator, *std.Io.Writer, abi.Program, Options) anyerror!void,
-};
+pub const Emitter = plugin.Emitter;
 
 pub const core_emitters = [_]Emitter{
     .{ .pathAlloc = shimPath, .render = shim.renderShim },
@@ -124,7 +35,7 @@ pub const core_emitters = [_]Emitter{
     .{ .pathAlloc = lifecyclePath, .render = renderLifecycle },
 };
 
-pub const public_emitters = [_]Emitter{
+const builtin_public_emitters = [_]Emitter{
     .{ .pathAlloc = publicPath, .render = public.renderPublic },
     .{ .pathAlloc = publicEnumsPath, .render = public.renderPublicEnumsFile },
     .{ .pathAlloc = publicStructsPath, .render = public.renderPublicStructsFile },
@@ -133,6 +44,54 @@ pub const public_emitters = [_]Emitter{
     .{ .pathAlloc = publicErrorsPath, .render = public_runtime.renderPublicErrors },
     .{ .pathAlloc = interfaces.interfacesPath, .render = interfaces.renderInterfacesFile },
 };
+
+/// Every public-package emitter, in order: the built-in files first, then the
+/// files each registered plugin adds, in registration order. Plugins are a
+/// comptime list, so the walk is a plain iterator rather than an allocation.
+pub fn publicEmitters() PublicEmitters {
+    return .{};
+}
+
+/// The walk `publicEmitters` hands out. It exists so the two callers that
+/// render the whole public package -- the generator and the helper-pruning
+/// pass -- cannot disagree about which files a plugin contributes.
+pub const PublicEmitters = struct {
+    index: usize = 0,
+
+    pub fn next(self: *PublicEmitters) ?Emitter {
+        if (self.index < builtin_public_emitters.len) {
+            defer self.index += 1;
+            return builtin_public_emitters[self.index];
+        }
+        var offset = builtin_public_emitters.len;
+        inline for (registry.plugins) |registered| {
+            inline for (registered.files) |file| {
+                if (self.index == offset) {
+                    self.index += 1;
+                    return framedPluginFile(file);
+                }
+                offset += 1;
+            }
+        }
+        return null;
+    }
+};
+
+/// A plugin file emitter wrapped in the public-file frame: the plugin writes
+/// declarations, and the generated marker, the package clause and the import
+/// block derived from that body are added here. A plugin therefore never
+/// spells an import block, and a body that came out empty leaves the file at
+/// its prelude, which the generator drops.
+fn framedPluginFile(comptime file: Emitter) Emitter {
+    return .{
+        .pathAlloc = file.pathAlloc,
+        .render = struct {
+            fn render(allocator: std.mem.Allocator, writer: *std.Io.Writer, program: abi.Program, options: Options) anyerror!void {
+                return public.renderPublicFile(allocator, writer, program, options, file.render);
+            }
+        }.render,
+    };
+}
 
 fn lifecyclePath(allocator: std.mem.Allocator, _: abi.Program, options: Options) ![]u8 {
     return std.fmt.allocPrint(allocator, "{s}/lifecycle_gen.go", .{options.lifecycle_package_path});
