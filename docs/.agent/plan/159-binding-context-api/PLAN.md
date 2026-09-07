@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-09-07T14:38:18Z"
 description: Implement public generic binding contexts and migrate four representative examples
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-07T14:31:06Z"
 ---
 > NEXT: Implement and verify the public Context API. ([Phase 0](phases/00-initial-work.md))
 
 # Phases
 
-- [ ] [Phase 00: Initial Work](phases/00-initial-work.md)
+- [x] [Phase 00: Initial Work](phases/00-initial-work.md)
 
 # Shared Verification
 

@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T14:38:18Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: All checks pass and source, examples, docs and plan are committed.
 > NEXT: none
