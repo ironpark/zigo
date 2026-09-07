@@ -243,21 +243,21 @@ pub fn isGoKeyword(value: []const u8) bool {
 /// mangled.
 pub fn isCKeyword(value: []const u8) bool {
     const keywords = [_][]const u8{
-        "alignas",       "alignof",       "auto",          "bool",          "break",
-        "case",          "char",          "const",         "constexpr",     "continue",
-        "default",       "do",            "double",        "else",          "enum",
-        "extern",        "false",         "float",         "for",           "goto",
-        "if",            "inline",        "int",           "long",          "nullptr",
-        "register",      "restrict",      "return",        "short",         "signed",
-        "sizeof",        "static",        "static_assert", "struct",        "switch",
-        "thread_local",  "true",          "typedef",       "typeof",        "typeof_unqual",
-        "union",         "unsigned",      "void",          "volatile",      "while",
-        "_Alignas",      "_Alignof",      "_Atomic",       "_BitInt",       "_Bool",
-        "_Complex",      "_Decimal128",   "_Decimal32",    "_Decimal64",    "_Generic",
-        "_Imaginary",    "_Noreturn",     "_Static_assert", "_Thread_local",
-        "size_t",        "ptrdiff_t",     "intptr_t",      "uintptr_t",     "intmax_t",
-        "uintmax_t",     "int8_t",        "int16_t",       "int32_t",       "int64_t",
-        "uint8_t",       "uint16_t",      "uint32_t",      "uint64_t",
+        "alignas",      "alignof",     "auto",           "bool",          "break",
+        "case",         "char",        "const",          "constexpr",     "continue",
+        "default",      "do",          "double",         "else",          "enum",
+        "extern",       "false",       "float",          "for",           "goto",
+        "if",           "inline",      "int",            "long",          "nullptr",
+        "register",     "restrict",    "return",         "short",         "signed",
+        "sizeof",       "static",      "static_assert",  "struct",        "switch",
+        "thread_local", "true",        "typedef",        "typeof",        "typeof_unqual",
+        "union",        "unsigned",    "void",           "volatile",      "while",
+        "_Alignas",     "_Alignof",    "_Atomic",        "_BitInt",       "_Bool",
+        "_Complex",     "_Decimal128", "_Decimal32",     "_Decimal64",    "_Generic",
+        "_Imaginary",   "_Noreturn",   "_Static_assert", "_Thread_local", "size_t",
+        "ptrdiff_t",    "intptr_t",    "uintptr_t",      "intmax_t",      "uintmax_t",
+        "int8_t",       "int16_t",     "int32_t",        "int64_t",       "uint8_t",
+        "uint16_t",     "uint32_t",    "uint64_t",
     };
     for (keywords) |keyword| if (std.mem.eql(u8, value, keyword)) return true;
     return false;
