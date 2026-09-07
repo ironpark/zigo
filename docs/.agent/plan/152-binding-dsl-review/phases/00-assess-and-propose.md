@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T11:58:43Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Evidence-backed improvement recommendations are ready to present.
 > NEXT: none
