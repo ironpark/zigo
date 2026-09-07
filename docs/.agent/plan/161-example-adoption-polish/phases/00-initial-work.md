@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T15:18:28Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Semantic comparison and affected example checks pass; documentation matches code; changes committed.
 > NEXT: none
