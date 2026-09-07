@@ -145,7 +145,6 @@ const rules = [_]Rule{
     names.cIdentifierIssue,
     names.generatedAccessorCollisionIssue,
     names.publicNameCollisionIssue,
-    interfaces.interfaceIssue,
     types.integrityIssue,
     functions.optionalOutIssue,
     types.abiTypeIssue,

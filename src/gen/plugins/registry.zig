@@ -6,6 +6,7 @@
 //! consuming build passed to `addGoBindings(.plugins)`.
 const builtin = @import("builtin");
 const implements = @import("implements.zig");
+const interfaces = @import("interfaces.zig");
 const iterator = @import("iterator.zig");
 const must = @import("must.zig");
 const plugin = @import("plugin");
@@ -21,6 +22,7 @@ pub const builtins: []const plugin.Plugin = &.{
     // they lived in `functions.zig` is what decides which code it gets.
     implements.plugin,
     iterator.plugin,
+    interfaces.plugin,
 };
 
 /// The plugins the consuming build compiled in. Replaced by the generated

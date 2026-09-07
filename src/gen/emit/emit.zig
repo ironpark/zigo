@@ -10,7 +10,7 @@ const naming = @import("naming");
 const common = @import("common.zig");
 const docs = @import("docs.zig");
 const header = @import("header.zig");
-pub const interfaces = @import("interfaces.zig");
+pub const interfaces = @import("../plugins/interfaces.zig");
 const public = @import("public.zig");
 const public_runtime = @import("public_runtime.zig");
 const public_types = @import("public_types.zig");
@@ -42,7 +42,6 @@ const builtin_public_emitters = [_]Emitter{
     .{ .pathAlloc = publicHandlesPath, .render = public.renderPublicHandlesFile },
     .{ .pathAlloc = publicRuntimePath, .render = public.renderPublicRuntimeFile },
     .{ .pathAlloc = publicErrorsPath, .render = public_runtime.renderPublicErrors },
-    .{ .pathAlloc = interfaces.interfacesPath, .render = interfaces.renderInterfacesFile },
 };
 
 /// Every public-package emitter, in order: the built-in files first, then the
