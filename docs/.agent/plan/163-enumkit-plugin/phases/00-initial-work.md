@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T15:59:18Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: cgo and purego tests and generated checks pass; full suite passes; changes committed.
 > NEXT: none

@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-09-07T15:59:18Z"
 description: Add enum value enumeration and known-value helpers as a Go-only plugin
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-07T15:56:15Z"
 ---
 > NEXT: Implement and verify enumkit. ([Phase 0](phases/00-initial-work.md))
 
 # Phases
 
-- [ ] [Phase 00: Initial Work](phases/00-initial-work.md)
+- [x] [Phase 00: Initial Work](phases/00-initial-work.md)
 
 # Shared Verification
 
