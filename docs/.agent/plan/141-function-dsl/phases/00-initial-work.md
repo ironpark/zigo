@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T06:08:17Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig fmt --check` and `zig build test --summary all` pass, examples show both helpers, and the committed tree contains no wildcard path in a resulting `zigo.Function`.
 > NEXT: none

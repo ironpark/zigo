@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-09-07T06:08:17Z"
 description: comptime func/funcs helpers that materialize typed exact-path binding entries
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-07T06:02:52Z"
 ---
 > NEXT: Implement the declaration-layer comptime function DSL and verify it end to end. ([Phase 0](phases/00-initial-work.md))
 
 # Phases
 
-- [ ] [Phase 00: Initial Work](phases/00-initial-work.md)
+- [x] [Phase 00: Initial Work](phases/00-initial-work.md)
 
 # Shared Verification
 
