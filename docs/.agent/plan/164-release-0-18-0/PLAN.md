@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-09-07T16:15:35Z"
 description: Verify and publish 0.18.0 with breaking authoring redesign and enumkit
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-07T16:10:48Z"
 ---
 > NEXT: Verify and publish 0.18.0. ([Phase 0](phases/00-initial-work.md))
 
 # Phases
 
-- [ ] [Phase 00: Initial Work](phases/00-initial-work.md)
+- [x] [Phase 00: Initial Work](phases/00-initial-work.md)
 
 # Shared Verification
 

@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T16:15:35Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Checks pass, version and tag are pushed, GitHub release is published.
 > NEXT: none
