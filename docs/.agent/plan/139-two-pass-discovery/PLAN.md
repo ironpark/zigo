@@ -7,7 +7,7 @@ registered_at: "2026-09-07T04:06:31Z"
 
 # Phases
 
-- [ ] [Phase 00: Two-pass discovery in walk](phases/00-walk-two-pass.md)
+- [x] [Phase 00: Two-pass discovery in walk](phases/00-walk-two-pass.md)
 - [ ] [Phase 01: Runtime sets in coverage and example regeneration](phases/01-coverage-and-examples.md)
 
 # Shared Verification

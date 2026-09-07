@@ -78,6 +78,11 @@ pub const bindings = zigo.define(.{
 따라가므로 `@This()` alias나 다시 내보낸 import를 건너뜁니다. 중첩 경로도 `exclude`에
 같은 철자로 적습니다(`"root.osc.internalHelper"`).
 
+생성물의 함수 순서는 `functions`에 적은 항목이 먼저(목록 순서), 그 뒤에 발견된 나머지가
+선언 순서로 옵니다. 목록 항목은 명시 바인딩과 같은 경로로 한 번씩 반영되고, 발견 단계는
+"이미 목록에 있거나 제외됐는가"만 런타임 집합으로 확인하므로 comptime 비용이 바인딩 크기에
+선형입니다.
+
 자동 발견은 등록한 타입의 공개 함수, 이어서 `root` module의 공개 함수를 찾습니다.
 `functions`는 발견 대상을 제한하지 않고 메타데이터를 붙이며, `exclude`가 제외 대상을
 지정합니다. 존재하지 않는 경로는 compile error이고, 중복된 경로와 `functions`·`exclude`의

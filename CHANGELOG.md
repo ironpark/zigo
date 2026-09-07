@@ -4,6 +4,20 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Changed
+
+- `.discover = .public` 반영이 두 패스로 나뉩니다. `.functions` 항목을 명시 바인딩과 같은
+  경로로 먼저 반영하고, 발견 단계는 목록·`.exclude` 집합을 런타임 해시로 확인해 나머지만
+  더합니다. 발견한 함수마다 바인딩 목록을 comptime에 조회하던 색인(0.14.3의
+  `StaticStringMap`)과 그에 딸린 분기 quota 의존이 사라지고, comptime 루프는 바인딩 크기에
+  선형인 것만 남습니다.
+- 그 결과 discovery 바인딩의 `semantic.json`과 생성 코드에서 함수 순서가 "목록 항목 먼저,
+  발견 함수 다음"이 됩니다. ABI와 동작은 같지만, 목록 항목이 소스 선언 순서와 다르게 적힌
+  바인딩은 `zig build go`(purego면 `purego-go`도)로 생성물을 다시 만들어야 `go-check`가
+  통과합니다.
+
 ## [0.14.3] - 2026-09-07
 
 ### Fixed
