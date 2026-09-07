@@ -4,6 +4,15 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Fixed
+
+- `.param_meta`의 키가 `.params`에 없거나 `.params` 없이 `.param_meta`만 적으면 reflection이
+  `ZIGO057`로 거부합니다. 전에는 가리킬 파라미터가 없는 키가 조용히 무시되어 `.direction = .out`,
+  `.semantic = .codepoint` 같은 계약이 사라진 채 빌드와 테스트가 통과했고, C ABI의 복사 방향이
+  뒤집힌 것은 다른 이유로 빌드가 깨질 때에만 드러났습니다.
+
 ## [0.14.2] - 2026-09-07
 
 ### Fixed

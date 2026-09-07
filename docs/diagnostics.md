@@ -288,9 +288,17 @@ optional 파라미터·sentinel slice·flatten 필드·주입 파라미터에는
 [자유 함수를 메서드로 등록하기](bindings-functions.md#자유-함수를-메서드로-등록하기)를
 참고하세요.
 
+### ZIGO057
+
+`.param_meta`의 키가 `.params`에 없는 이름이거나, `.param_meta`만 있고 `.params`가 없습니다.
+
+`param_meta`는 `params`가 준 이름으로만 파라미터를 찾습니다. 가리킬 이름이 없으면 `.direction`,
+`.semantic` 같은 계약이 조용히 사라져 빌드는 통과한 채 ABI만 바뀌므로, reflection 단계에서
+거부합니다. 같은 항목에 `params`를 적고, 키를 그 이름 중 하나로 맞추세요.
+
 ## 리플렉션 단계의 오류
 
-`ZIGO027`, `ZIGO028`, `ZIGO037`, `ZIGO038`, `ZIGO054`는 reflection이 문서를 만들기 전에 걸리므로 `semantic.json` 자리가
+`ZIGO027`, `ZIGO028`, `ZIGO037`, `ZIGO038`, `ZIGO054`, `ZIGO057`는 reflection이 문서를 만들기 전에 걸리므로 `semantic.json` 자리가
 아니라 선언 경로를 가리키며, 생성기는 이 진단을 출력하고 종료합니다.
 
 리플렉션 단계의 거부는 `bindings.zig`를 빌드할 때의 `@compileError`로 나오며, 제약과 함께

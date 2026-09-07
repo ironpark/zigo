@@ -797,6 +797,13 @@ fn appendFunction(
             exposedParamCount(info, receiver_index),
         ));
     }
+    // `.param_meta` is keyed by the spellings `.params` gives, and a key
+    // that names no parameter would otherwise be dropped without a word:
+    // the metadata it carried -- a `.direction`, a `.semantic` -- simply
+    // stops applying, and the ABI moves while the build stays green.
+    if (comptime orphanParamMetaKey(metadata)) |key| {
+        return paramMetaKeyMismatch(comptime paramMetaKeyMessage(owner_label ++ function_label, key, has_sidecar));
+    }
     const params = try allocator.alloc(semantic.Parameter, comptime concreteParamCount(info, receiver_index));
     inline for (info.params, 0..) |param, param_index| {
         if (receiver_index != null and param_index == receiver_index.?) continue;
@@ -2125,6 +2132,37 @@ fn paramNameCountMessage(comptime declaration: []const u8, comptime named: usize
             "  hint: `.params` names only the parameters Go passes: leave out the receiver and any injected `std.mem.Allocator` or `std.Io`\n",
         .{ named, if (named == 1) "" else "s", declaration, exposed, declaration },
     );
+}
+
+/// The first `.param_meta` key that `.params` does not name, or null when
+/// every key resolves. Without `.params` every key is orphaned, because the
+/// fallback names (`p0`, `p1`) are never what a binding author writes.
+fn orphanParamMetaKey(comptime metadata: anytype) ?[]const u8 {
+    if (!@hasField(@TypeOf(metadata), "param_meta")) return null;
+    const fields = @typeInfo(@TypeOf(metadata.param_meta)).@"struct".fields;
+    inline for (fields) |field| {
+        if (!@hasField(@TypeOf(metadata), "params")) return field.name;
+        var named = false;
+        inline for (metadata.params) |name| {
+            if (std.mem.eql(u8, name, field.name)) named = true;
+        }
+        if (!named) return field.name;
+    }
+    return null;
+}
+
+fn paramMetaKeyMessage(comptime declaration: []const u8, comptime key: []const u8, comptime has_params: bool) []const u8 {
+    return std.fmt.comptimePrint(
+        "error[ZIGO057]: `.param_meta` names `{s}` but {s} in `{s}`\n" ++
+            "  --> {s}\n" ++
+            "  hint: every `.param_meta` key must be one of the names `.params` gives; add `.params` or fix the key so the metadata applies to a parameter\n",
+        .{ key, if (has_params) "`.params` has no such name" else "the entry has no `.params`", declaration, declaration },
+    );
+}
+
+fn paramMetaKeyMismatch(comptime message: []const u8) error{ParamMetaKey} {
+    if (!@import("builtin").is_test) std.debug.print("{s}", .{message});
+    return error.ParamMetaKey;
 }
 
 fn paramNameCountMismatch(comptime message: []const u8) error{ParamNameCount} {
@@ -3877,6 +3915,44 @@ test "`.params` names only what Go passes, and a wrong count is reported" {
         .root = Fixture,
         .functions = .{.{ .path = "root.freeString", .params = .{ "gpa", "str" } }},
     }, "text", "zg"));
+}
+
+test "a `.param_meta` key that `.params` does not name is rejected" {
+    const Fixture = struct {
+        pub fn copyOut(dst: []u8, src: []const u8) void {
+            _ = dst;
+            _ = src;
+        }
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    // The key matches: the metadata applies.
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .functions = .{.{ .path = "root.copyOut", .params = .{ "dst", "src" }, .param_meta = .{ .dst = .{ .direction = .out } } }},
+    }, "copy", "zg");
+    try std.testing.expectEqual(semantic.Direction.out, document.functions[0].params[0].direction);
+    // Dropping `.params` would otherwise leave `dst` an input and the
+    // binding silently building.
+    try std.testing.expectError(error.ParamMetaKey, reflect(arena.allocator(), .{
+        .root = Fixture,
+        .functions = .{.{ .path = "root.copyOut", .param_meta = .{ .dst = .{ .direction = .out } } }},
+    }, "copy", "zg"));
+    // A renamed parameter with a stale key is the same mistake.
+    try std.testing.expectError(error.ParamMetaKey, reflect(arena.allocator(), .{
+        .root = Fixture,
+        .functions = .{.{ .path = "root.copyOut", .params = .{ "out", "src" }, .param_meta = .{ .dst = .{ .direction = .out } } }},
+    }, "copy", "zg"));
+}
+
+test "the orphaned param_meta key message names the key, the declaration and the code" {
+    try std.testing.expectEqualStrings(
+        \\error[ZIGO057]: `.param_meta` names `dst` but `.params` has no such name in `root.copyOut`
+        \\  --> root.copyOut
+        \\  hint: every `.param_meta` key must be one of the names `.params` gives; add `.params` or fix the key so the metadata applies to a parameter
+        \\
+    , comptime paramMetaKeyMessage("root.copyOut", "dst", true));
+    try std.testing.expect(std.mem.indexOf(u8, comptime paramMetaKeyMessage("root.copyOut", "dst", false), "the entry has no `.params`") != null);
 }
 
 test "the parameter count message names the declaration and the code" {

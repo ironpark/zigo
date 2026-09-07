@@ -284,6 +284,7 @@ ZIGO_LIBRARY_PATH=/path/libmylib_zigo.so go run .   # 또는 ZIGO_<PACKAGE>_LIBR
 | ZIGO054 | 경로 중복 또는 `functions`·`exclude` 충돌 | 경로 한 번만 |
 | ZIGO056 | 값 receiver(등록 enum)에 handle 전용 메타데이터 | 소유권·`iterator`·스트림은 opaque 타입에만 |
 | ZIGO055 | 콜백 userdata 규약 위반(`usize` 자리 없음·자리 불일치) | `.userdata`, `param_meta.<콜백>.userdata` 확인 |
+| ZIGO057 | `param_meta` 키가 `params`에 없음 | 같은 항목에 `params`를 적고 키를 맞추기 |
 
 전체 목록은 [진단 코드](diagnostics.md).
 

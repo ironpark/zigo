@@ -162,9 +162,10 @@ nested 항목에 둡니다. receiver 타입이나 첫 파라미터가 맞지 않
 공개 인자에서 빠집니다. `fn freeString(gpa: Allocator, str: []const u8) void`의 `params`는
 `.{"str"}` 하나입니다. 개수가 맞지 않으면 reflection 단계에서 `ZIGO027`로 거부됩니다.
 
-`param_meta`의 field는 파라미터 이름과 일치해야 합니다. 해당 이름을 reflection 단계에서
-확실히 식별하려면 같은 항목에 `params`도 적으세요. 이름은 명시적 `params`, 대상 source AST,
-`p0` fallback 순으로 결정됩니다.
+`param_meta`의 field는 같은 항목의 `params`가 준 이름과 일치해야 합니다. `params`에 없는
+키를 적거나 `params` 없이 `param_meta`만 적으면 reflection 단계에서 `ZIGO057`로 거부됩니다.
+계약이 조용히 사라진 채 빌드가 통과하는 것을 막기 위한 검사입니다. 이름은 명시적 `params`,
+대상 source AST, `p0` fallback 순으로 결정됩니다.
 
 ### 등록 enum의 메서드
 
