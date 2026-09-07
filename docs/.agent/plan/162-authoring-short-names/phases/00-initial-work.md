@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T15:33:56Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Public API and normalized behavior, root suite and example generated checks pass; documentation and commits complete.
 > NEXT: none
