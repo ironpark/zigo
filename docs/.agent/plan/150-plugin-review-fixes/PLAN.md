@@ -1,13 +1,14 @@
 ---
+completed_at: "2026-09-07T10:45:05Z"
 description: Fix the three reproduced plugin review defects with regression coverage
-plan_status: in-progress
+plan_status: done
 registered_at: "2026-09-07T10:40:29Z"
 ---
 > NEXT: Implement and verify the three corrections. ([Phase 0](phases/00-fix-and-verify.md))
 
 # Phases
 
-- [ ] [Phase 00: Fix plugin review findings](phases/00-fix-and-verify.md)
+- [x] [Phase 00: Fix plugin review findings](phases/00-fix-and-verify.md)
 
 # Shared Verification
 

@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T10:45:05Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: All three reproductions pass with fixes and the repository test suite passes.
 > NEXT: none
