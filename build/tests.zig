@@ -59,7 +59,7 @@ pub fn addRepositorySteps(
         },
     });
     const validate_module = b.createModule(.{
-        .root_source_file = b.path("src/gen/validate/validate.zig"),
+        .root_source_file = b.path("src/gen/validate_tests.zig"),
         .target = target,
         .optimize = optimize,
         .imports = &.{
@@ -67,6 +67,7 @@ pub fn addRepositorySteps(
             .{ .name = "lower", .module = generator_modules.lower },
             .{ .name = "naming", .module = generator_modules.naming },
             .{ .name = "diagnostic", .module = generator_modules.diagnostic },
+            .{ .name = "plugin", .module = generator_modules.plugin },
             .{ .name = "semantic", .module = generator_modules.semantic },
         },
     });
@@ -90,6 +91,10 @@ pub fn addRepositorySteps(
         .imports = &.{
             .{ .name = "build_options", .module = generator_modules.build_options },
             .{ .name = "dynamic_library", .module = generator_modules.dynamic_library },
+            .{ .name = "abi", .module = generator_modules.abi },
+            .{ .name = "diagnostic", .module = generator_modules.diagnostic },
+            .{ .name = "plugin", .module = generator_modules.plugin },
+            .{ .name = "semantic", .module = generator_modules.semantic },
         },
     });
     const tests = b.addTest(.{ .root_module = b.createModule(.{

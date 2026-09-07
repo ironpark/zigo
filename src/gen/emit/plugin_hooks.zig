@@ -139,7 +139,7 @@ test "a registered plugin adds a method next to a bound one, a line after a type
 
     // The method hook wrote next to the bound method, with the names the
     // method itself used.
-    try std.testing.expect(std.mem.indexOf(u8, rendered, "func (c *Counter) BumpTestHook() string") != null);
+    try std.testing.expect(std.mem.indexOf(u8, rendered, "func (c *Counter) BumpTestHook() string { return \"a\" }") != null);
     // The type hook ran for the handle and for the enum.
     try std.testing.expect(std.mem.indexOf(u8, rendered, "// zigoTestHook saw Counter.") != null);
     try std.testing.expect(std.mem.indexOf(u8, rendered, "// zigoTestHook saw Mode.") != null);
@@ -172,4 +172,25 @@ fn renderAllPublicFiles(allocator: std.mem.Allocator, program: abi.Program) ![]u
         try emitter.render(allocator, &joined.writer, program, with_helpers);
     }
     return joined.toOwnedSlice();
+}
+
+test "a hook reads the typed options the declaration attached" {
+    const fixture =
+        \\{"functions":[{"ext":{"TEST":{"mode":"b"}},"name":"bump","params":[],"receiver":"Counter","return":{"kind":"void"},"symbol":"zg_counter_bump"}],"ir_version":1,"package":"meter","prefix":"zg","types":[{"kind":"opaque","name":"Counter"}],"zig_version":"0.16.0"}
+    ;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const allocator = arena.allocator();
+    var parsed = try semantic.Semantic.parse(allocator, fixture);
+    defer parsed.deinit();
+    const program = try @import("lower").semanticDocument(allocator, parsed.value, "meter", "zg", &.{});
+
+    const testing_plugin = @import("../plugins/testing.zig");
+    testing_plugin.enabled = true;
+    defer testing_plugin.enabled = false;
+
+    var rendered: std.Io.Writer.Allocating = .init(allocator);
+    try public.renderPublic(allocator, &rendered.writer, program, .{ .go_module = "example.com/meter" });
+    // `.mode = .b` travelled through `extend`, the document and the parse.
+    try std.testing.expect(std.mem.indexOf(u8, rendered.written(), "func (c *Counter) BumpTestHook() string { return \"b\" }") != null);
 }

@@ -205,7 +205,33 @@ pub const Context = struct {
     pub fn writeSignature(self: Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
         return self.writers.writeSignature(self, writer, function);
     }
+
+    /// `P`'s options on the function being written, or null when the
+    /// declaration did not extend `P`.
+    pub fn functionOptions(self: Context, comptime P: anytype, function: semantic.SemanticFn) !?P.Options {
+        return readOptions(P, self.allocator, function.ext);
+    }
+
+    /// `P`'s options on a type declaration, or null when it did not extend `P`.
+    pub fn typeOptions(self: Context, comptime P: anytype, declaration: semantic.TypeDecl) !?P.Options {
+        return readOptions(P, self.allocator, declaration.ext);
+    }
 };
+
+/// The diagnostic code a plugin reports unreadable options under: its name
+/// followed by `001`. Plugin codes never borrow the `ZIGO` prefix, so a
+/// diagnostic always says which plugin objected.
+pub fn optionsCode(comptime P: anytype) []const u8 {
+    return P.name ++ "001";
+}
+
+/// `P`'s options on a declaration, or null when the declaration did not
+/// extend `P`. The result is allocated from `allocator` and never freed
+/// individually: the generator backs it with the arena that owns the run.
+pub fn readOptions(comptime P: anytype, allocator: std.mem.Allocator, ext: ?semantic.Extensions) !?P.Options {
+    const attached = (ext orelse return null).get(P.name) orelse return null;
+    return std.json.parseFromValueLeaky(P.Options, allocator, attached, .{}) catch return error.InvalidPluginOptions;
+}
 
 /// A generator plugin. Every field but `name` is optional, so a plugin that
 /// only adds a method next to an existing one is four lines long.
@@ -218,7 +244,11 @@ pub const Plugin = struct {
     /// struct. A plugin that takes none leaves it at the empty struct.
     Options: type = struct {},
     /// Rules the plugin enforces over the document, run after the core rules.
-    validate: ?*const fn (Context, semantic.Semantic) anyerror!?diagnostic.Diagnostic = null,
+    /// It takes the document rather than a `Context`: validation happens
+    /// before lowering, so there is no program and no writers to hand over.
+    /// Options that will not parse are reported as `<NAME>001` without the
+    /// plugin writing a rule for it.
+    validate: ?*const fn (std.mem.Allocator, semantic.Semantic) anyerror!?diagnostic.Diagnostic = null,
     /// Written after each public method, into the file that owns it.
     method_hook: ?*const fn (Context, *std.Io.Writer, abi.AbiFn) anyerror!void = null,
     /// Written after each handle, value struct and enum, into the file that

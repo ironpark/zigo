@@ -9,21 +9,30 @@ const semantic = @import("semantic");
 /// Set by the test that wants the hooks to write, cleared by the same test.
 pub var enabled = false;
 
+/// What the test plugin can be told to do. It exists so a test can prove that
+/// a typed option survives `extend`, the document, and the parse on the way
+/// back, and that a value outside the type is a diagnostic rather than a panic.
+pub const Options = struct {
+    mode: enum { a, b } = .a,
+};
+
 pub const plugin: plugin_api.Plugin = .{
     .name = "TEST",
+    .Options = Options,
     .method_hook = methodHook,
     .type_hook = typeHook,
     .files = &.{.{ .pathAlloc = filePath, .render = renderFile }},
 };
 
 /// A method next to the bound one, spelled from the names the method used.
-fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, _: abi.AbiFn) !void {
+fn methodHook(context: plugin_api.Context, writer: *std.Io.Writer, function: abi.AbiFn) !void {
     if (!enabled) return;
     const method = context.method.?;
     const receiver = method.receiver orelse return;
+    const options = try context.functionOptions(plugin, function.origin.*) orelse Options{};
     try writer.print(
-        "\n// {0s}TestHook reports the name of {0s}.\nfunc ({1s} *{2s}) {0s}TestHook() string {{ return \"{0s}\" }}\n",
-        .{ method.go_name, method.receiver_name.?, receiver },
+        "\n// {0s}TestHook reports the name of {0s}.\nfunc ({1s} *{2s}) {0s}TestHook() string {{ return \"{3s}\" }}\n",
+        .{ method.go_name, method.receiver_name.?, receiver, @tagName(options.mode) },
     );
 }
 

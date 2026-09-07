@@ -665,6 +665,84 @@ pub const GoAdapter = struct {
     }
 };
 
+/// Plugin options as they travel through the document: one JSON object per
+/// plugin, kept verbatim so the generator can hand each plugin exactly what
+/// its own declaration wrote. The generator never reads inside an entry; the
+/// plugin that owns the key parses it into its own `Options` type.
+pub const Extensions = struct {
+    /// In the order the declaration wrote them, which is also the order they
+    /// are serialized in, so a document round-trips byte-identically.
+    entries: []const Entry = &.{},
+
+    pub const Entry = struct {
+        /// The owning plugin's name.
+        plugin: []const u8,
+        options: std.json.Value,
+    };
+
+    pub fn get(self: Extensions, plugin: []const u8) ?std.json.Value {
+        for (self.entries) |entry| {
+            if (std.mem.eql(u8, entry.plugin, plugin)) return entry.options;
+        }
+        return null;
+    }
+
+    pub fn jsonStringify(self: Extensions, jw: anytype) !void {
+        try jw.beginObject();
+        for (self.entries) |entry| {
+            try jw.objectField(entry.plugin);
+            try jw.write(entry.options);
+        }
+        try jw.endObject();
+    }
+
+    /// The value tree the caller parsed is freed right after `parseFromValue`
+    /// returns, so every entry is copied into the parse arena here.
+    pub fn jsonParseFromValue(
+        allocator: std.mem.Allocator,
+        source: std.json.Value,
+        _: std.json.ParseOptions,
+    ) std.json.ParseFromValueError!Extensions {
+        const object = switch (source) {
+            .object => |value| value,
+            else => return error.UnexpectedToken,
+        };
+        const entries = try allocator.alloc(Entry, object.count());
+        var index: usize = 0;
+        var iterator = object.iterator();
+        while (iterator.next()) |entry| : (index += 1) {
+            entries[index] = .{
+                .plugin = try allocator.dupe(u8, entry.key_ptr.*),
+                .options = try cloneJsonValue(allocator, entry.value_ptr.*),
+            };
+        }
+        return .{ .entries = entries };
+    }
+};
+
+fn cloneJsonValue(allocator: std.mem.Allocator, source: std.json.Value) std.mem.Allocator.Error!std.json.Value {
+    return switch (source) {
+        .null, .bool, .integer, .float => source,
+        .number_string => |text| .{ .number_string = try allocator.dupe(u8, text) },
+        .string => |text| .{ .string = try allocator.dupe(u8, text) },
+        .array => |items| blk: {
+            var copy: std.json.Array = .init(allocator);
+            try copy.ensureTotalCapacityPrecise(items.items.len);
+            for (items.items) |item| copy.appendAssumeCapacity(try cloneJsonValue(allocator, item));
+            break :blk .{ .array = copy };
+        },
+        .object => |fields| blk: {
+            var copy: std.json.ObjectMap = .{};
+            try copy.ensureTotalCapacity(allocator, fields.count());
+            var iterator = fields.iterator();
+            while (iterator.next()) |entry| {
+                copy.putAssumeCapacity(try allocator.dupe(u8, entry.key_ptr.*), try cloneJsonValue(allocator, entry.value_ptr.*));
+            }
+            break :blk .{ .object = copy };
+        },
+    };
+}
+
 pub const SemanticFn = struct {
     /// Set on the two halves of a boxed constructor pair.
     boxed: ?Boxed = null,
@@ -694,6 +772,9 @@ pub const SemanticFn = struct {
     /// method, and the expansion happens between parsing and lowering.
     stream_accessor: ?StreamAccessor = null,
     doc: ?[]const u8 = null,
+    /// Plugin options, keyed by plugin name. Absent when no plugin extended
+    /// this function, so a document without plugins is unchanged.
+    ext: ?Extensions = null,
     has_comptime_params: ?bool = null,
     /// Set by `.iterator`: the method is a `next()` and Go also gets an
     /// `iter.Seq` wrapper. Go surface only; the C symbol is unchanged.
@@ -822,6 +903,9 @@ pub const TypeDecl = struct {
     /// Go doc override supplied by an explicit type registration.
     doc: ?[]const u8 = null,
     exhaustive: bool = true,
+    /// Plugin options, keyed by plugin name. Absent when no plugin extended
+    /// this type.
+    ext: ?Extensions = null,
     fields: []const TypeField = &.{},
     /// Present only when the binding registered the value struct with `.go`.
     go_adapter: ?GoAdapter = null,
@@ -1536,4 +1620,43 @@ test "callback hints round-trip through the semantic document" {
     try std.testing.expectEqual(@as(?SemanticHint, null), callback.paramHint(1));
     try std.testing.expectEqual(SemanticHint.codepoint, callback.return_semantic.?);
     try std.testing.expect(callback.hasCodepoints());
+}
+
+test "plugin options round trip verbatim, in declaration order, and are omitted when absent" {
+    const fixture =
+        \\{"functions":[{"ext":{"SATIS":{"interfaces":["io.Writer"]},"JSON":{"lower":true}},"name":"feed","params":[],"return":{"kind":"void"},"symbol":"zg_feed"}],"ir_version":1,"package":"sample","prefix":"zg","types":[{"ext":{"JSON":{"lower":false}},"kind":"opaque","name":"Doc"}],"zig_version":"0.16.0"}
+    ;
+    var parsed = try Semantic.parse(std.testing.allocator, fixture);
+    defer parsed.deinit();
+    // Two plugins on one function, each reachable by its own key alone.
+    const attached = parsed.value.functions[0].ext.?;
+    try std.testing.expectEqual(@as(usize, 2), attached.entries.len);
+    try std.testing.expectEqualStrings("SATIS", attached.entries[0].plugin);
+    try std.testing.expectEqualStrings("io.Writer", attached.get("SATIS").?.object.get("interfaces").?.array.items[0].string);
+    try std.testing.expect(attached.get("JSON").?.object.get("lower").?.bool);
+    try std.testing.expect(parsed.value.types[0].ext.?.get("JSON").?.object.get("lower").?.bool == false);
+    try std.testing.expect(attached.get("NOBODY") == null);
+
+    // Serialization keeps the order the document had, so a round trip is
+    // byte-identical and a golden cannot move on a rewrite.
+    const bytes = try parsed.value.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(bytes);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"SATIS\"").? < std.mem.indexOf(u8, bytes, "\"JSON\"").?);
+
+    var again = try Semantic.parse(std.testing.allocator, bytes);
+    defer again.deinit();
+    const rewritten = try again.value.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(rewritten);
+    try std.testing.expectEqualStrings(bytes, rewritten);
+
+    // A document no plugin extended carries no `ext` key at all.
+    const plain: Semantic = .{
+        .functions = &.{.{ .name = "feed", .params = &.{}, .@"return" = .{ .void = {} }, .symbol = "zg_feed" }},
+        .package = "sample",
+        .prefix = "zg",
+        .zig_version = "0.16.0",
+    };
+    const plain_bytes = try plain.serialize(std.testing.allocator);
+    defer std.testing.allocator.free(plain_bytes);
+    try std.testing.expect(std.mem.indexOf(u8, plain_bytes, "\"ext\"") == null);
 }

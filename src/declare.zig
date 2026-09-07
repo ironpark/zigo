@@ -16,6 +16,32 @@
 //!   its `Param`, a result's in `Returns`, a callback type's on its entry.
 const std = @import("std");
 
+/// One plugin's options on a declaration. `extend` captures the value at
+/// comptime, so a field the plugin does not have, or a value of the wrong
+/// shape, is an ordinary Zig compile error at the declaration rather than a
+/// diagnostic long afterwards.
+pub const Extension = struct {
+    /// The plugin's name. It is the key the options travel under in
+    /// `semantic.json`, so two plugins cannot collide silently.
+    plugin: []const u8,
+    /// The captured options, encoded on demand. Reflection is what calls it.
+    jsonAlloc: *const fn (std.mem.Allocator) anyerror![]u8,
+};
+
+/// `value` as `P`'s options, ready to hang on a declaration. A plugin is
+/// anything that names itself and names the type of its options, which is what
+/// `zigo.plugin.Plugin` does.
+pub fn extension(comptime P: anytype, comptime value: P.Options) Extension {
+    return .{
+        .plugin = P.name,
+        .jsonAlloc = struct {
+            fn jsonAlloc(allocator: std.mem.Allocator) anyerror![]u8 {
+                return std.json.Stringify.valueAlloc(allocator, value, .{ .emit_null_optional_fields = false });
+            }
+        }.jsonAlloc,
+    };
+}
+
 /// What a byte or integer position means to Go.
 pub const SemanticHint = enum { c_string, opaque_bytes, utf8_string, codepoint, integer };
 pub const Direction = enum { in, inout, out };
@@ -125,6 +151,9 @@ pub const FunctionOptions = struct {
     implements: ?Implements = null,
     cancel: ?Cancel = null,
     covers: ?[]const []const u8 = null,
+    /// Plugin options to add. They are appended, never replaced, so a helper
+    /// that extends a function cannot drop what another one attached.
+    ext: ?[]const Extension = null,
 };
 
 /// One bound function. `.path` is `root.<name>`, `<Type>.<name>`, or
@@ -148,6 +177,8 @@ pub const Function = struct {
     cancel: ?Cancel = null,
     /// Declarations this function stands in for in `go-coverage`.
     covers: []const []const u8 = &.{},
+    /// Plugin options, one entry per plugin. Written by `extend`.
+    ext: []const Extension = &.{},
 
     /// Return a copy with the supplied DSL options overlaid.
     pub fn with(comptime self: Function, comptime options: FunctionOptions) Function {
@@ -164,6 +195,14 @@ pub const Function = struct {
         if (options.implements) |value| result.implements = value;
         if (options.cancel) |value| result.cancel = value;
         if (options.covers) |value| result.covers = value;
+        if (options.ext) |value| result.ext = result.ext ++ value;
+        return result;
+    }
+
+    /// Attach `value` as plugin `P`'s options for this function.
+    pub fn extend(comptime self: Function, comptime P: anytype, comptime value: P.Options) Function {
+        var result = self;
+        result.ext = self.ext ++ [_]Extension{extension(P, value)};
         return result;
     }
 
@@ -240,6 +279,15 @@ pub const Handle = struct {
     /// Go doc override; absent uses the generated description.
     doc: ?[]const u8 = null,
     fields: []const HandleField = &.{},
+    /// Plugin options, one entry per plugin. Written by `extend`.
+    ext: []const Extension = &.{},
+
+    /// Attach `value` as plugin `P`'s options for this type.
+    pub fn extend(comptime self: @This(), comptime P: anytype, comptime value: P.Options) @This() {
+        var result = self;
+        result.ext = self.ext ++ [_]Extension{extension(P, value)};
+        return result;
+    }
 };
 
 pub const Value = struct {
@@ -249,6 +297,15 @@ pub const Value = struct {
     doc: ?[]const u8 = null,
     go: ?GoAdapter = null,
     fields: []const ValueField = &.{},
+    /// Plugin options, one entry per plugin. Written by `extend`.
+    ext: []const Extension = &.{},
+
+    /// Attach `value` as plugin `P`'s options for this type.
+    pub fn extend(comptime self: @This(), comptime P: anytype, comptime value: P.Options) @This() {
+        var result = self;
+        result.ext = self.ext ++ [_]Extension{extension(P, value)};
+        return result;
+    }
 };
 
 pub const Materialized = struct {
@@ -271,6 +328,15 @@ pub const Enum = struct {
     go: ?GoAdapter = null,
     /// Zig methods the generated Go enum makes redundant, for `go-coverage`.
     covers: []const []const u8 = &.{},
+    /// Plugin options, one entry per plugin. Written by `extend`.
+    ext: []const Extension = &.{},
+
+    /// Attach `value` as plugin `P`'s options for this type.
+    pub fn extend(comptime self: @This(), comptime P: anytype, comptime value: P.Options) @This() {
+        var result = self;
+        result.ext = self.ext ++ [_]Extension{extension(P, value)};
+        return result;
+    }
 };
 
 pub const TaggedUnion = struct {
@@ -281,6 +347,15 @@ pub const TaggedUnion = struct {
     access: Access = .projection,
     /// Variants left out of the Go type.
     omit: []const []const u8 = &.{},
+    /// Plugin options, one entry per plugin. Written by `extend`.
+    ext: []const Extension = &.{},
+
+    /// Attach `value` as plugin `P`'s options for this type.
+    pub fn extend(comptime self: @This(), comptime P: anytype, comptime value: P.Options) @This() {
+        var result = self;
+        result.ext = self.ext ++ [_]Extension{extension(P, value)};
+        return result;
+    }
 };
 
 /// The hint for one value parameter of a callback, positionally; the

@@ -14,6 +14,33 @@ fn ir(comptime To: type, value: anytype) To {
 fn irOptional(comptime To: type, value: anytype) ?To {
     return if (value) |v| ir(To, v) else null;
 }
+/// The plugin options a type entry carries. Only the entries a plugin can
+/// extend have the field; a callback entry is a signature, not a Go type.
+fn entryExtensions(comptime entry: zigo.Type) []const zigo.Extension {
+    return switch (entry) {
+        .handle => |value| value.ext,
+        .value => |value| value.ext,
+        .enumeration => |value| value.ext,
+        .tagged_union => |value| value.ext,
+        else => &.{},
+    };
+}
+
+/// The declaration's plugin options as the document carries them: each
+/// plugin's captured value encoded, then read back as a JSON value so the
+/// document round-trips it verbatim.
+fn extensionsAlloc(allocator: std.mem.Allocator, attached: []const zigo.Extension) !semantic.Extensions {
+    const entries = try allocator.alloc(semantic.Extensions.Entry, attached.len);
+    for (attached, 0..) |entry, index| {
+        const text = try entry.jsonAlloc(allocator);
+        entries[index] = .{
+            .plugin = entry.plugin,
+            .options = try std.json.parseFromSliceLeaky(std.json.Value, allocator, text, .{}),
+        };
+    }
+    return .{ .entries = entries };
+}
+
 const pairing = @import("pairing.zig");
 const Pairing = pairing.Pairing;
 
@@ -120,6 +147,19 @@ pub fn reflect(
                 try discoverContainer(allocator, &functions, &types, &pairings, declaration, prefix, declared, entry.zigType(), comptime entry.goName(), comptime entry.goName());
         }
         try discoverContainer(allocator, &functions, &types, &pairings, declaration, prefix, declared, declaration.root, null, "root");
+    }
+
+    // Plugin options sit on the type entry, but one entry can append more
+    // than one declaration, so they are attached by name once every type the
+    // walk produces is known.
+    inline for (declaration.types) |entry| {
+        const attached = comptime entryExtensions(entry);
+        if (attached.len != 0) {
+            const extended = comptime entry.goName();
+            for (types.items) |*declared_type| {
+                if (std.mem.eql(u8, declared_type.name, extended)) declared_type.ext = try extensionsAlloc(allocator, attached);
+            }
+        }
     }
 
     var constructors: std.ArrayList(semantic.Constructor) = .empty;
@@ -965,6 +1005,9 @@ fn appendFunction(
     // `.implements` names a Go standard interface; the shape the interface
     // needs is checked by validation, where the whole signature is in hand.
     if (metadata.implements) |implements| reflected_function.implements = ir(semantic.Implements, implements);
+    // `extend` captured each plugin's options at the declaration; here they
+    // become the `ext` object the generator hands back to that plugin.
+    if (metadata.ext.len != 0) reflected_function.ext = try extensionsAlloc(allocator, metadata.ext);
     if (info.return_type) |return_type| {
         if (isSentinelBytePointer(return_type)) reflected_function.return_semantic = .c_string;
     }
@@ -4875,4 +4918,44 @@ test "a byte pair and a sentinel string in a callback signature reflect as strin
         .functions = &.{.{ .path = "root.log", .params = &.{ .{ .name = "callback" }, .{ .name = "userdata" } } }},
     }, "callbacks", "zg");
     try std.testing.expectEqual(@as(?semantic.SemanticHint, .utf8_string), inferred.functions[0].params[0].type.callback.paramHint(1));
+}
+
+test "extend attaches typed plugin options to a function and to a type" {
+    // A plugin is anything that names itself and names the type of its
+    // options, which is what a real `zigo.plugin.Plugin` value does. Spelling
+    // one here keeps the reflection test free of the generator's modules.
+    const Sample = struct {
+        pub const name = "TEST";
+        pub const Options = struct { mode: enum { a, b } = .a, depth: u8 = 0 };
+    };
+    const Fixture = struct {
+        pub const Counter = opaque {};
+        pub fn bump(_: *Counter) void {}
+    };
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    const document = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = &.{.{ .handle = (zigo.Handle{ .type = Fixture.Counter }).extend(Sample, .{ .depth = 2 }) }},
+        .functions = &.{(zigo.Function{ .path = "root.bump", .receiver = Fixture.Counter }).extend(Sample, .{ .mode = .b })},
+    }, "meter", "zg");
+
+    const bytes = try document.serialize(arena.allocator());
+    // The value is written under the plugin's own name, as its own object.
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"TEST\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"mode\": \"b\"") != null);
+    try std.testing.expect(std.mem.indexOf(u8, bytes, "\"depth\": 2") != null);
+    try std.testing.expectEqualStrings("TEST", document.functions[0].ext.?.entries[0].plugin);
+    try std.testing.expectEqualStrings("b", document.functions[0].ext.?.get("TEST").?.object.get("mode").?.string);
+    try std.testing.expectEqual(@as(i64, 2), document.types[0].ext.?.get("TEST").?.object.get("depth").?.integer);
+
+    // A declaration nothing extended carries no `ext` at all, so a document
+    // without plugins is byte-identical to what it was before.
+    const plain = try reflect(arena.allocator(), .{
+        .root = Fixture,
+        .types = &.{.{ .handle = .{ .type = Fixture.Counter } }},
+        .functions = &.{.{ .path = "root.bump", .receiver = Fixture.Counter }},
+    }, "meter", "zg");
+    const plain_bytes = try plain.serialize(arena.allocator());
+    try std.testing.expect(std.mem.indexOf(u8, plain_bytes, "\"ext\"") == null);
 }

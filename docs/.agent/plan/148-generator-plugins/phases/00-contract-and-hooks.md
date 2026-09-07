@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T09:29:14Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: `zig build test` passes and `scripts/update-generator-cases.sh` reports no updates.
 > NEXT: none

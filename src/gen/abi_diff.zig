@@ -152,6 +152,7 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
             try add(allocator, &report, .compatible, identity, "dependent handle lifetime Go surface changed");
         if (!streamBufferEqual(old.params, new.params))
             try add(allocator, &report, .compatible, identity, "stream staging buffer resized");
+        try compareExtensions(allocator, &report, identity, old.ext, new.ext);
         try compareErrors(allocator, &report, identity, old.@"return", new.@"return");
     }
     for (current.functions) |new| if (findFunctionIndex(base.functions, new) == null) {
@@ -210,6 +211,7 @@ pub fn diffWithBackends(allocator: std.mem.Allocator, base: semantic.Semantic, b
             .access_changed => try add(allocator, &report, .breaking, old.name, "type access strategy changed"),
             .breaking => try add(allocator, &report, .breaking, old.name, "type definition changed"),
         }
+        try compareExtensions(allocator, &report, old.name, old.ext, new.ext);
     }
     for (current.types) |new| if (semantic.typeDecl(base.types, new.name) == null)
         try add(allocator, &report, .added, new.name, "type added");
@@ -312,6 +314,49 @@ test "the one-time symbol metadata correction is compatible, a rename is not" {
     defer rename_report.deinit(std.testing.allocator);
     try std.testing.expect(rename_report.hasBreaking());
     try std.testing.expectEqualStrings("exported C symbol changed", rename_report.changes.items[0].detail);
+}
+
+/// Plugin options are Go surface: a plugin that starts writing something adds
+/// to the package, while one that stops -- or that is handed different options
+/// -- takes away a declaration callers may already name. Each plugin is judged
+/// on its own key, so one plugin's change never speaks for another's.
+fn compareExtensions(
+    allocator: std.mem.Allocator,
+    report: *Report,
+    subject: []const u8,
+    base: ?semantic.Extensions,
+    current: ?semantic.Extensions,
+) !void {
+    for ((base orelse semantic.Extensions{}).entries) |old| {
+        const detail = try std.fmt.allocPrint(allocator, "`{s}` plugin options ", .{old.plugin});
+        defer allocator.free(detail);
+        const new = (current orelse semantic.Extensions{}).get(old.plugin) orelse {
+            const removed = try std.fmt.allocPrint(allocator, "{s}removed", .{detail});
+            defer allocator.free(removed);
+            try add(allocator, report, .breaking, subject, removed);
+            continue;
+        };
+        if (try jsonValueEqual(allocator, old.options, new)) continue;
+        const changed = try std.fmt.allocPrint(allocator, "{s}changed", .{detail});
+        defer allocator.free(changed);
+        try add(allocator, report, .breaking, subject, changed);
+    }
+    for ((current orelse semantic.Extensions{}).entries) |new| {
+        if ((base orelse semantic.Extensions{}).get(new.plugin) != null) continue;
+        const added = try std.fmt.allocPrint(allocator, "`{s}` plugin options added", .{new.plugin});
+        defer allocator.free(added);
+        try add(allocator, report, .compatible, subject, added);
+    }
+}
+
+/// Two plugin option objects compare as the text they serialize to: the
+/// generator never looks inside one, and the encoder is deterministic.
+fn jsonValueEqual(allocator: std.mem.Allocator, left: std.json.Value, right: std.json.Value) !bool {
+    const left_text = try std.json.Stringify.valueAlloc(allocator, left, .{});
+    defer allocator.free(left_text);
+    const right_text = try std.json.Stringify.valueAlloc(allocator, right, .{});
+    defer allocator.free(right_text);
+    return std.mem.eql(u8, left_text, right_text);
 }
 
 fn add(allocator: std.mem.Allocator, report: *Report, kind: ChangeKind, subject: []const u8, detail: []const u8) !void {
@@ -1989,4 +2034,48 @@ test "a receiver that stops being a handle is breaking" {
     var report = try diff(std.testing.allocator, base, current);
     defer report.deinit(std.testing.allocator);
     try std.testing.expect(report.hasBreaking());
+}
+
+test "plugin options are compared per plugin: adding is compatible, removing or changing breaks" {
+    const with_two =
+        \\{"functions":[{"ext":{"SATIS":{"interfaces":["io.Writer"]},"JSON":{"lower":true}},"name":"feed","params":[],"return":{"kind":"void"},"symbol":"zg_feed"}],"ir_version":1,"package":"sample","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    const with_one =
+        \\{"functions":[{"ext":{"JSON":{"lower":true}},"name":"feed","params":[],"return":{"kind":"void"},"symbol":"zg_feed"}],"ir_version":1,"package":"sample","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    const with_changed =
+        \\{"functions":[{"ext":{"SATIS":{"interfaces":["io.Reader"]},"JSON":{"lower":true}},"name":"feed","params":[],"return":{"kind":"void"},"symbol":"zg_feed"}],"ir_version":1,"package":"sample","prefix":"zg","zig_version":"0.16.0"}
+    ;
+    var one = try semantic.Semantic.parse(std.testing.allocator, with_one);
+    defer one.deinit();
+    var two = try semantic.Semantic.parse(std.testing.allocator, with_two);
+    defer two.deinit();
+    var changed = try semantic.Semantic.parse(std.testing.allocator, with_changed);
+    defer changed.deinit();
+
+    // A plugin that starts writing only adds declarations.
+    var added = try diff(std.testing.allocator, one.value, two.value);
+    defer added.deinit(std.testing.allocator);
+    try std.testing.expect(!added.hasBreaking());
+    try std.testing.expect(containsDetail(added, "`SATIS` plugin options added"));
+
+    // One that stops takes declarations away, and the report names which one.
+    var removed = try diff(std.testing.allocator, two.value, one.value);
+    defer removed.deinit(std.testing.allocator);
+    try std.testing.expect(removed.hasBreaking());
+    try std.testing.expect(containsDetail(removed, "`SATIS` plugin options removed"));
+    // The other plugin did not move, so nothing is said about it.
+    try std.testing.expect(!containsDetail(removed, "`JSON` plugin options removed"));
+
+    var edited = try diff(std.testing.allocator, two.value, changed.value);
+    defer edited.deinit(std.testing.allocator);
+    try std.testing.expect(edited.hasBreaking());
+    try std.testing.expect(containsDetail(edited, "`SATIS` plugin options changed"));
+}
+
+fn containsDetail(report: Report, detail: []const u8) bool {
+    for (report.changes.items) |change| {
+        if (std.mem.eql(u8, change.detail, detail)) return true;
+    }
+    return false;
 }

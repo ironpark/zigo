@@ -31,6 +31,8 @@ pub const Iterator = declare.Iterator;
 pub const Cancel = declare.Cancel;
 pub const Userdata = declare.Userdata;
 pub const SemanticHint = declare.SemanticHint;
+pub const Extension = declare.Extension;
+pub const extension = declare.extension;
 
 /// Preserve a binding declaration as comptime data for the reflector.
 pub fn define(comptime binding: Binding) Binding {

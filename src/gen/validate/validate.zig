@@ -9,6 +9,8 @@ const callbacks = @import("callbacks.zig");
 const interfaces = @import("interfaces.zig");
 const materialized = @import("materialized.zig");
 const names = @import("names.zig");
+const plugin = @import("plugin");
+const registry = @import("../plugins/registry.zig");
 const ownership = @import("ownership.zig");
 const packages = @import("packages.zig");
 const site = @import("site.zig");
@@ -153,7 +155,68 @@ const rules = [_]Rule{
 
 pub fn findIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
     for (rules) |check| if (try check(allocator, document)) |issue| return issue;
+    // Plugins judge last, so a plugin rule can never mask a document fault
+    // the generator itself would have rejected.
+    return pluginIssue(allocator, document);
+}
+
+/// Every registered plugin, in registration order: first its options are
+/// checked against the type it declared for them, then whatever rule it
+/// wrote of its own.
+fn pluginIssue(allocator: std.mem.Allocator, document: semantic.Semantic) !?diagnostic.Diagnostic {
+    inline for (registry.plugins) |registered| {
+        if (try pluginOptionsIssue(registered, allocator, document)) |issue| return issue;
+        if (registered.validate) |check| if (try check(allocator, document)) |issue| return issue;
+    }
     return null;
+}
+
+/// A hand-written `semantic.json` can carry anything under a plugin's key.
+/// Reading it through the plugin's own `Options` type is what turns that into
+/// a `<NAME>001` diagnostic instead of a panic inside a hook.
+fn pluginOptionsIssue(
+    comptime registered: plugin.Plugin,
+    allocator: std.mem.Allocator,
+    document: semantic.Semantic,
+) !?diagnostic.Diagnostic {
+    for (document.functions) |function| {
+        if (function.ext == null) continue;
+        _ = plugin.readOptions(registered, allocator, function.ext) catch {
+            const declaration = try site.functionDeclarationAlloc(allocator, function);
+            return try pluginOptionsDiagnostic(registered, allocator, site.functionSiteFor(function, declaration), declaration);
+        };
+    }
+    for (document.types) |declaration| {
+        if (declaration.ext == null) continue;
+        _ = plugin.readOptions(registered, allocator, declaration.ext) catch {
+            return try pluginOptionsDiagnostic(
+                registered,
+                allocator,
+                .{ .path = "semantic.json", .declaration = declaration.name },
+                declaration.name,
+            );
+        };
+    }
+    return null;
+}
+
+fn pluginOptionsDiagnostic(
+    comptime registered: plugin.Plugin,
+    allocator: std.mem.Allocator,
+    where: diagnostic.Site,
+    declaration: []const u8,
+) !diagnostic.Diagnostic {
+    return .{
+        .severity = .@"error",
+        .code = comptime plugin.optionsCode(registered),
+        .message = try std.fmt.allocPrint(
+            allocator,
+            "`{s}` carries options the `{s}` plugin cannot read",
+            .{ declaration, registered.name },
+        ),
+        .site = where,
+        .hint = "attach the options with `extend`, which checks them against the plugin's option type at the declaration",
+    };
 }
 
 /// The document itself: an IR version this generator reads and the names it
@@ -249,6 +312,33 @@ test "a callback signature flagged go_error elsewhere gives a free function a Mu
     const issue = (try findMustVariantIssue(arena.allocator(), document)) orelse return error.MissingDiagnostic;
     try std.testing.expectEqualStrings("ZIGO024", issue.code);
     try std.testing.expect(std.mem.indexOf(u8, issue.message, "MustRun") != null);
+}
+
+test "options a plugin cannot read are its own diagnostic, not a panic" {
+    const fixture =
+        \\{"functions":[{"ext":{"TEST":{"mode":"c"}},"name":"bump","params":[],"receiver":"Counter","return":{"kind":"void"},"symbol":"zg_counter_bump"}],"ir_version":1,"package":"meter","prefix":"zg","types":[{"kind":"opaque","name":"Counter"}],"zig_version":"0.16.0"}
+    ;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var parsed = try semantic.Semantic.parse(arena.allocator(), fixture);
+    defer parsed.deinit();
+    const issue = (try findIssue(arena.allocator(), parsed.value)) orelse return error.MissingDiagnostic;
+    // The plugin's own prefix, never a ZIGO code: the fault is the plugin's
+    // option type, and the message has to say whose.
+    try std.testing.expectEqualStrings("TEST001", issue.code);
+    try std.testing.expect(std.mem.indexOf(u8, issue.message, "`TEST` plugin") != null);
+    try std.testing.expectError(error.InvalidSemantic, semanticDocument(std.testing.allocator, parsed.value));
+}
+
+test "options a plugin can read leave the document valid" {
+    const fixture =
+        \\{"functions":[{"ext":{"TEST":{"mode":"b"}},"name":"bump","params":[],"receiver":"Counter","return":{"kind":"void"},"symbol":"zg_counter_bump"}],"ir_version":1,"package":"meter","prefix":"zg","types":[{"kind":"opaque","name":"Counter"}],"zig_version":"0.16.0"}
+    ;
+    var arena = std.heap.ArenaAllocator.init(std.testing.allocator);
+    defer arena.deinit();
+    var parsed = try semantic.Semantic.parse(arena.allocator(), fixture);
+    defer parsed.deinit();
+    try std.testing.expect(try findIssue(arena.allocator(), parsed.value) == null);
 }
 
 test {

@@ -2,7 +2,7 @@
 depends_on:
 - "148-generator-plugins#0"
 perf_phase: false
-status: planned
+status: in-progress
 ---
 > DONE-WHEN: A test plugin with `Options = struct { mode: enum { a, b } }` reads `.b` from a
 > NEXT: none

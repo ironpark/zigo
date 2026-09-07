@@ -1,6 +1,7 @@
 const std = @import("std");
 const tool_probe = @import("tool_probe.zig");
 const build_options = @import("build_options");
+const registry = @import("plugins/registry.zig");
 const dynamic_library = @import("dynamic_library");
 
 pub const Options = struct {
@@ -188,8 +189,22 @@ pub fn render(writer: *std.Io.Writer, probe: Probe, backend: Options.Backend) !b
         try writer.writeAll("FAIL gofmt: unavailable; generated Go is formatted with gofmt, so install the Go distribution or set `.gofmt`\n");
     }
 
+    try renderPlugins(writer);
+
     try writer.writeAll(if (healthy) "doctor: ok\n" else "doctor: failed\n");
     return healthy;
+}
+
+/// Which plugins this generator was built with. It is never a failure -- a
+/// binding that lists none is the normal case -- but it is the one place that
+/// answers "is my plugin actually compiled in?".
+fn renderPlugins(writer: *std.Io.Writer) !void {
+    if (registry.plugins.len == 0) return writer.writeAll("PASS plugins: none registered\n");
+    try writer.writeAll("PASS plugins:");
+    inline for (registry.plugins, 0..) |registered, index| {
+        try writer.print("{s} {s}", .{ if (index == 0) "" else ",", registered.name });
+    }
+    try writer.writeByte('\n');
 }
 
 fn renderPurego(writer: *std.Io.Writer, purego: Purego, native_target: bool, healthy: *bool) !void {
