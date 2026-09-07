@@ -55,6 +55,35 @@ snapshot typedef, enum 상수, tagged-union projection, last-error 함수까지 
 안정적인 공개 API가 중요하다면 `functions`에 함수를 명시하세요. 목록에 없는 함수는 노출되지
 않으므로 Zig의 새 `pub fn`이 의도치 않게 Go ABI에 들어오지 않습니다.
 
+반복되는 exact path는 comptime DSL로 만들 수 있습니다. `func`는 한 항목을 만들고,
+`funcs`는 container에 직접 선언된 공개 함수 중 이름 prefix가 맞는 항목을 선언 순서대로
+고릅니다. selector는 최종 바인딩에 남지 않고 모두 exact path로 확장됩니다.
+
+```zig
+const queries = zigo.dsl.funcs(mylib, .{
+    .base = "root",
+    .prefix = "query",
+});
+
+pub const bindings = zigo.define(.{
+    .root = mylib,
+    .functions = &queries,
+});
+```
+
+단일 항목은 경로 문자열로 만들고, 상세 메타데이터가 필요하면 typed `with` 옵션을 연결합니다.
+
+```zig
+const len = zigo.dsl.func("Context.len");
+const take = zigo.dsl.func("Context.take").with(.{
+    .returns = .{ .ownership = .caller, .release = "Context.free" },
+});
+```
+
+`funcs`의 빈 `prefix`는 해당 container의 공개 함수 전체를 선택합니다. 아무 함수도 고르지
+못하면 compile error입니다. 여러 함수에 하나의 파라미터·반환 계약을 일괄 적용하지 않으므로
+개별 메타데이터가 필요한 함수는 `func`로 명시합니다.
+
 Zig 공개 API 전체가 바인딩 API인 큰 module은 자동 발견을 선택할 수 있습니다.
 
 ```zig

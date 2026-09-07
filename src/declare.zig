@@ -102,6 +102,22 @@ pub const Cancel = struct {
     canceled: ?[]const u8 = null,
 };
 
+/// Fields a function-building helper may overlay on an existing entry.
+/// `null` keeps the current value.
+pub const FunctionOptions = struct {
+    name: ?[]const u8 = null,
+    doc: ?[]const u8 = null,
+    params: ?[]const Param = null,
+    returns: ?Returns = null,
+    receiver: ?type = null,
+    constructs: ?type = null,
+    destroys: ?type = null,
+    child_of_receiver: ?bool = null,
+    iterator: ?Iterator = null,
+    cancel: ?Cancel = null,
+    covers: ?[]const []const u8 = null,
+};
+
 /// One bound function. `.path` is `root.<name>`, `<Type>.<name>`, or
 /// `root.<namespace>.<name>`.
 pub const Function = struct {
@@ -121,6 +137,23 @@ pub const Function = struct {
     cancel: ?Cancel = null,
     /// Declarations this function stands in for in `go-coverage`.
     covers: []const []const u8 = &.{},
+
+    /// Return a copy with the supplied DSL options overlaid.
+    pub fn with(comptime self: Function, comptime options: FunctionOptions) Function {
+        var result = self;
+        if (options.name) |value| result.name = value;
+        if (options.doc) |value| result.doc = value;
+        if (options.params) |value| result.params = value;
+        if (options.returns) |value| result.returns = value;
+        if (options.receiver) |value| result.receiver = value;
+        if (options.constructs) |value| result.constructs = value;
+        if (options.destroys) |value| result.destroys = value;
+        if (options.child_of_receiver) |value| result.child_of_receiver = value;
+        if (options.iterator) |value| result.iterator = value;
+        if (options.cancel) |value| result.cancel = value;
+        if (options.covers) |value| result.covers = value;
+        return result;
+    }
 };
 
 /// Free functions attached to one receiver, with a shared name prefix

@@ -4,6 +4,14 @@
 [Semantic Versioning](https://semver.org/lang/ko/)을 따릅니다. 0.x 동안은 minor 버전이
 생성물의 C ABI 또는 `semantic.json` 계약이 바뀌는 릴리스를 뜻합니다.
 
+## [Unreleased]
+
+### Added
+
+- `zigo.dsl.func(path)`와 `zigo.dsl.funcs(Container, selector)` comptime helper를 추가했습니다.
+  상세 단일 항목은 `func(path).with(options)`로 구성하며, 복수 selector는 최종 바인딩 전에
+  선언 순서의 exact path 목록으로 확장됩니다.
+
 ## [0.15.0] - 2026-09-07
 
 ### Breaking

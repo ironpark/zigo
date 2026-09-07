@@ -5,6 +5,8 @@
 //! (`zigo.Param`, `zigo.Type`) to build entries in helper functions.
 const declare = @import("declare.zig");
 
+pub const dsl = @import("dsl.zig");
+
 pub const Binding = declare.Binding;
 pub const Type = declare.Type;
 pub const Handle = declare.Handle;
@@ -15,6 +17,7 @@ pub const TaggedUnion = declare.TaggedUnion;
 pub const Callback = declare.Callback;
 pub const CallbackParam = declare.CallbackParam;
 pub const Function = declare.Function;
+pub const FunctionOptions = declare.FunctionOptions;
 pub const Methods = declare.Methods;
 pub const Param = declare.Param;
 pub const Returns = declare.Returns;
@@ -35,7 +38,9 @@ pub fn define(comptime binding: Binding) Binding {
 }
 
 test {
-    @import("std").testing.refAllDecls(declare);
+    const testing = @import("std").testing;
+    testing.refAllDecls(declare);
+    testing.refAllDecls(dsl);
 }
 
 test "define preserves the declaration" {
