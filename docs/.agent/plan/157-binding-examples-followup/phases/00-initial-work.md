@@ -1,6 +1,7 @@
 ---
+completed_at: "2026-09-07T14:05:02Z"
 perf_phase: false
-status: in-progress
+status: done
 ---
 > DONE-WHEN: Findings and validation limits are recorded and communicated; review artifacts are committed.
 > NEXT: none
